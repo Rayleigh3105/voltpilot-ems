@@ -1,5 +1,8 @@
 package com.voltpilot.api.uems;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.ResultSet;
@@ -7,7 +10,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,7 +21,8 @@ import org.springframework.stereotype.Repository;
 /**
  * Die Tabellen der Kennzahl-Definition (UEMS AP-11 IP-4, {@code V20260915003000}) für die Schreibrouten und das
  * Lesemodell der Definition (IP-5). Alles läuft unter der Mandanten-RLS der Anwendungsrolle: eine fremde Zeile ist
- * nicht da. Werte schreibt hier niemand (IP-6); gelesen wird nur, ob es sie gibt, und für die Vorschau der jüngste.
+ * nicht da. Werte schreibt hier niemand — das tut der Rechenlauf als Verwaltungsrolle ({@link KennzahlLauf}); gelesen
+ * werden sie für die Vorschau, die Paare einer Zusammenfassung und den Rechenlauf ({@link #werte}).
  */
 @Repository
 public class KennzahlRepository {
@@ -248,6 +254,90 @@ public class KennzahlRepository {
                         rs.getString("zustand"), rs.getString("kennzeichen") == null ? List.of()
                                 : List.of(rs.getString("kennzeichen"))),
                 kennzahl, periodeArt, Date.valueOf(periodeVon)).stream().findFirst();
+    }
+
+    // ------------------------------------------------------------------------------ Werte (IP-6)
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /**
+     * Die jüngste Zeile eines Kennzahl-Werts in ihrer Periode (höchste Version, dann jüngstes {@code berechnet_am}).
+     * {@code eingangZustand} ist der schlechteste Zustand ihrer Eingänge — eine Zeile ohne Zahl hat selbst keinen.
+     */
+    public record Gespeichert(UUID id, LocalDate periodeVon, Integer version, BigDecimal wert, BigDecimal zaehler,
+            BigDecimal nenner, String mengeZustand, List<String> kennzeichen, BigDecimal abdeckungProzent,
+            String richtung, String grund, String zustand, Instant endgueltigAb, UUID definitionFassungId,
+            Instant berechnetAm, String eingangZustand) {
+
+        public boolean endgueltig() {
+            return "endgueltig".equals(zustand);
+        }
+    }
+
+    /** Je Periode, deren erster Tag in {@code [von, bis]} liegt, die jüngste Zeile. */
+    public Map<LocalDate, Gespeichert> werte(UUID kennzahl, String periodeArt, LocalDate von, LocalDate bis) {
+        Map<LocalDate, Gespeichert> aus = new LinkedHashMap<>();
+        jdbc.query("SELECT DISTINCT ON (w.periode_von) w.id, w.periode_von, w.version, w.wert, w.zaehler, w.nenner, "
+                + "w.menge_zustand, w.kennzeichen::text AS kennzeichen, w.abdeckung_prozent, w.richtung, w.grund, "
+                + "w.zustand, w.endgueltig_ab, w.definition_fassung_id, w.berechnet_am, "
+                + "(SELECT e.menge_zustand FROM kennzahl_wert_eingang e WHERE e.tenant_id = w.tenant_id "
+                + "AND e.wert_id = w.id ORDER BY array_position(ARRAY['vollständig', 'mit Ersatzwert', 'unvollständig', "
+                + "'keine Werte']::text[], e.menge_zustand) DESC NULLS LAST LIMIT 1) AS eingang_zustand "
+                + "FROM kennzahl_wert w WHERE w.kennzahl_id = ? AND w.periode_art = ? AND w.periode_von BETWEEN ? AND ? "
+                + "ORDER BY w.periode_von, w.version DESC NULLS LAST, w.berechnet_am DESC",
+                (rs, i) -> new Gespeichert(rs.getObject("id", UUID.class), rs.getDate("periode_von").toLocalDate(),
+                        rs.getObject("version", Integer.class), rs.getBigDecimal("wert"), rs.getBigDecimal("zaehler"),
+                        rs.getBigDecimal("nenner"), rs.getString("menge_zustand"), saetze(rs.getString("kennzeichen")),
+                        rs.getBigDecimal("abdeckung_prozent"), rs.getString("richtung"), rs.getString("grund"),
+                        rs.getString("zustand"), instant(rs.getTimestamp("endgueltig_ab")),
+                        rs.getObject("definition_fassung_id", UUID.class), instant(rs.getTimestamp("berechnet_am")),
+                        rs.getString("eingang_zustand")),
+                kennzahl, periodeArt, Date.valueOf(von), Date.valueOf(bis)).forEach(g -> aus.put(g.periodeVon(), g));
+        return aus;
+    }
+
+    /** Was eine gespeicherte Zeile von ihren Eingängen las — je Eingang eine Textzeile in Position (Vergleich V3). */
+    public List<String> eingaengeText(UUID wert) {
+        return jdbc.query("SELECT position, rolle, art, objekt, wert, zaehler, nenner, einheit, menge_zustand, "
+                + "abdeckung_prozent, version, fassung, kennzeichen::text AS kennzeichen FROM kennzahl_wert_eingang "
+                + "WHERE wert_id = ? ORDER BY position",
+                (rs, i) -> KennzahlLauf.eingangText(rs.getInt("position"), rs.getString("rolle"), rs.getString("art"),
+                        rs.getString("objekt"), rs.getBigDecimal("wert"), rs.getBigDecimal("zaehler"),
+                        rs.getBigDecimal("nenner"), rs.getString("einheit"), rs.getString("menge_zustand"),
+                        rs.getBigDecimal("abdeckung_prozent"), rs.getObject("version", Integer.class),
+                        rs.getObject("fassung", Integer.class), saetze(rs.getString("kennzeichen"))),
+                wert);
+    }
+
+    /** Das Kurzzeichen des Geltungsobjekts — der Präfix geerbter Kennzeichen („G-5 ab 15.10.2026“, Q8/K3). */
+    public Optional<String> geltungKurzzeichen(String art, UUID id) {
+        if ("unternehmen".equals(art)) {
+            return Optional.of(KennzahlEingangLeser.UNTERNEHMEN_KURZ);
+        }
+        String sql = switch (art) {
+            case "standort" -> "SELECT kurzzeichen FROM standort WHERE id = ?";
+            case "gebaeude", "bereich" -> "SELECT kurzzeichen FROM ort WHERE id = ?";
+            case "prozess" -> "SELECT kennzeichen FROM prozess WHERE id = ?";
+            case "kostenstelle" -> "SELECT kennzeichen FROM kostenstelle WHERE id = ?";
+            case "messstelle" -> "SELECT kennzeichen FROM messstelle WHERE id = ?";
+            default -> null;
+        };
+        return sql == null ? Optional.empty() : jdbc.queryForList(sql, String.class, id).stream().findFirst();
+    }
+
+    static List<String> saetze(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        try {
+            return List.copyOf(JSON.readValue(text, new TypeReference<List<String>>() {}));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("kennzeichen ist kein Array von Sätzen: " + text, e);
+        }
+    }
+
+    private static Instant instant(Timestamp t) {
+        return t == null ? null : t.toInstant();
     }
 
     // ------------------------------------------------------------------------------ schreiben

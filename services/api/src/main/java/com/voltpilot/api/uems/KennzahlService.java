@@ -389,6 +389,56 @@ public class KennzahlService {
      */
     Urteil berechnung(String rechenform, Geltung g, List<KennzahlDto.Eingang> anfrage, Boolean komplement,
             String wunsch, String eigenesKennzeichen, UUID eigeneId, LocalDate tag, Katalog kat) {
+        Urteil u = rechnung(rechenform, anfrage, komplement, wunsch, tag, kat);
+        List<Aufgeloest> aufgeloest = u.eingaenge();
+
+        // Q10: der Kreis über Kennzahl-Verweise, am Tag
+        List<String> verweise = aufgeloest.stream().filter(x -> KennzahlRegeln.KENNZAHL.equals(x.art()))
+                .map(Aufgeloest::kennzeichen).toList();
+        if (!verweise.isEmpty()) {
+            Map<String, List<String>> bestehende = new LinkedHashMap<>();
+            for (Zeile andere : kat.kennzahlen()) {
+                if (andere.id().equals(eigeneId)) {
+                    continue;
+                }
+                kat.fassungAm(andere.id(), tag).ifPresent(f -> bestehende.put(andere.kennzeichen(), kat.eingaenge(f.id())
+                        .stream().filter(x -> KennzahlRegeln.KENNZAHL.equals(x.art())).map(EingangZeile::kennzeichen)
+                        .toList()));
+            }
+            KennzahlRegeln.KreisUrteil ku = KennzahlRegeln.zyklus(eigenesKennzeichen, verweise, bestehende);
+            if (ku.zyklus()) {
+                throw KennzahlAbgelehnt.regel(ku.fehler(), ku.kundensatz(), Map.of("kette", ku.kette()));
+            }
+        }
+
+        // G3: Eingänge einer Standort-Kennzahl liegen an ihrem Standort
+        if (KennzahlRegeln.STANDORT.equals(g.rechteGeltung()) && g.standort() != null) {
+            KennzahlRegeln.KennzahlOrt ort = new KennzahlRegeln.KennzahlOrt(g.rechteGeltung(), g.standort().toString(),
+                    g.standortName(), g.name());
+            Map<UUID, String> namen = new HashMap<>();
+            repo.standorte().forEach(s -> namen.put(s.id(), s.name()));
+            for (Aufgeloest x : aufgeloest) {
+                Optional<UUID> st = standortVon(x, tag);
+                if (st.isEmpty()) {
+                    continue;
+                }
+                KennzahlRegeln.GeltungHinweis h = KennzahlRegeln.eingangGeltung(ort,
+                        new KennzahlRegeln.EingangOrt(x.kennzeichen(), st.get().toString(), namen.get(st.get()), true, null));
+                if (h.fehler() != null) {
+                    throw KennzahlAbgelehnt.regel(h.fehler(), h.kundensatz(), Map.of("eingang", x.kennzeichen()));
+                }
+            }
+        }
+        return u;
+    }
+
+    /**
+     * Die Berechnung einer Fassung ohne die Prüfungen am Schreibweg: Form, Eingänge, Einheit (U1–U3) und Perioden
+     * (P1–P3). Der Rechenlauf (IP-6) rechnet gespeicherte Fassungen damit — den Kreis ordnet er selbst (Q10), und ein
+     * Eingang, der inzwischen außerhalb des Geltungsbereichs liegt, rechnet weiter (K22).
+     */
+    Urteil rechnung(String rechenform, List<KennzahlDto.Eingang> anfrage, Boolean komplement, String wunsch,
+            LocalDate tag, Katalog kat) {
         if (rechenform == null || rechenform.isBlank()) {
             throw KennzahlAbgelehnt.anfrage("rechenform");
         }
@@ -446,43 +496,6 @@ public class KennzahlService {
             throw KennzahlAbgelehnt.regel(pu.fehler(), pu.kundensatz(), fakten);
         }
 
-        // Q10: der Kreis über Kennzahl-Verweise, am Tag
-        List<String> verweise = aufgeloest.stream().filter(x -> KennzahlRegeln.KENNZAHL.equals(x.art()))
-                .map(Aufgeloest::kennzeichen).toList();
-        if (!verweise.isEmpty()) {
-            Map<String, List<String>> bestehende = new LinkedHashMap<>();
-            for (Zeile andere : kat.kennzahlen()) {
-                if (andere.id().equals(eigeneId)) {
-                    continue;
-                }
-                kat.fassungAm(andere.id(), tag).ifPresent(f -> bestehende.put(andere.kennzeichen(), kat.eingaenge(f.id())
-                        .stream().filter(x -> KennzahlRegeln.KENNZAHL.equals(x.art())).map(EingangZeile::kennzeichen)
-                        .toList()));
-            }
-            KennzahlRegeln.KreisUrteil ku = KennzahlRegeln.zyklus(eigenesKennzeichen, verweise, bestehende);
-            if (ku.zyklus()) {
-                throw KennzahlAbgelehnt.regel(ku.fehler(), ku.kundensatz(), Map.of("kette", ku.kette()));
-            }
-        }
-
-        // G3: Eingänge einer Standort-Kennzahl liegen an ihrem Standort
-        if (KennzahlRegeln.STANDORT.equals(g.rechteGeltung()) && g.standort() != null) {
-            KennzahlRegeln.KennzahlOrt ort = new KennzahlRegeln.KennzahlOrt(g.rechteGeltung(), g.standort().toString(),
-                    g.standortName(), g.name());
-            Map<UUID, String> namen = new HashMap<>();
-            repo.standorte().forEach(s -> namen.put(s.id(), s.name()));
-            for (Aufgeloest x : aufgeloest) {
-                Optional<UUID> st = standortVon(x, tag);
-                if (st.isEmpty()) {
-                    continue;
-                }
-                KennzahlRegeln.GeltungHinweis h = KennzahlRegeln.eingangGeltung(ort,
-                        new KennzahlRegeln.EingangOrt(x.kennzeichen(), st.get().toString(), namen.get(st.get()), true, null));
-                if (h.fehler() != null) {
-                    throw KennzahlAbgelehnt.regel(h.fehler(), h.kundensatz(), Map.of("eingang", x.kennzeichen()));
-                }
-            }
-        }
         return new Urteil(rechenform, Boolean.TRUE.equals(komplement), List.copyOf(aufgeloest), eu.einheit(), eu.anzeige(),
                 pu.grundperiode(), pu.perioden());
     }
