@@ -180,7 +180,7 @@ Object.assign(api, {
         .map(ohneAnlage),
     }),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was
-  // Leerzustand und Zonen lesen; der Rest antwortet wie ein älteres Backend.
+  // die Zonen lesen (seit der Steuern-Regel ohne Hinweis); der Rest antwortet wie ein älteres Backend.
   siteEntities: async (id: string) => ({ registry: null, localSetup: [], staleOnDevice: [], entities: komponentenVon(id) }),
   siteVerbraucher: async (id: string) => verbraucherVon(id),
   entityStrategies: async () => ({}),

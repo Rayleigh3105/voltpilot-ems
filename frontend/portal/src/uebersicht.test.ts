@@ -25,6 +25,7 @@ import {
   kopfzeile,
   standortGruppen,
   steuerndeAnlagen,
+  steuernSpricht,
   type UebersichtEbene,
 } from './uebersicht';
 
@@ -234,9 +235,22 @@ describe('die Kopfzeile (A7)', () => {
     expect(k.zahlen).toBe('2 Standorte · 3 Anlagen');
     expect(steuerndeAnlagen(null)).toBeNull();
   });
+
+  it('„reine Messung“ bleibt als Wort (Steuern-Regel): es benennt, was der Kunde ist — in der Kopfzeile des reinen Messkunden und in den Zahlen von Werk Lindach', () => {
+    const nurMessen = structuredClone(funktionen);
+    nurMessen.standorte[0].steuern.anlagen[0].teilnahme.zustand = 'kein_objekt';
+    expect(kopfzeile({ ebene: UNTERNEHMEN, sites: AHRENBERG, funktionen: nurMessen, mitDatenlage: false, now: JETZT }).zahlen).toBe(
+      '2 Standorte · 3 Anlagen · reine Messung',
+    );
+    const [ahrenberg, lindach] = standortGruppen({ ebene: UNTERNEHMEN, zeilen: [], sites: AHRENBERG, funktionen, now: JETZT });
+    expect(ahrenberg.zahlen).toBe('2 Anlagen · 1 steuert · 2 von 2 Anlagen liefern Daten');
+    expect(lindach.zahlen).toBe('1 Anlage · reine Messung · 1 von 1 Anlage liefert Daten');
+    // … und dabei trägt Werk Lindach keine Zeile „Steuern & Optimieren“.
+    expect(lindach.funktionen?.map((f) => f.funktion)).toEqual(['messen']);
+  });
 });
 
-describe('beide Funktionen je Standort (E6 = C)', () => {
+describe('die Funktionen je Standort: Messen immer, Steuern nur mit teilnehmender Anlage (Steuern-Regel)', () => {
   it('Werk Ahrenberg: Messen mit Datenlage der Messstellen, Steuern mit der teilnehmenden Anlage', () => {
     expect(funktionsZeilen(funktionWerkAhrenberg())).toEqual([
       {
@@ -256,34 +270,62 @@ describe('beide Funktionen je Standort (E6 = C)', () => {
     ]);
   });
 
-  it('ein Standort ohne eingerichtete Funktion trägt einen benannten Zustand, nie eine Leerstelle', () => {
-    for (const fs of [funktionWerkLindach(), funktionWerkLindach('bestand'), funktionWerkAhrenberg('bestand')]) {
+  it('löst „immer beide, nie eine Leerstelle“ (PR 771) BEWUSST ab: an einem Standort, an dem keine Anlage steuert, schweigt Steuern — Messen bleibt benannt, auch „Noch nicht eingerichtet“', () => {
+    // Werk Lindach misst nur: die Zeile „Steuern & Optimieren · Noch nicht eingerichtet“ war das Aufdrängen.
+    for (const fs of [funktionWerkLindach(), funktionWerkLindach('bestand')]) {
+      expect(funktionsZeilen(fs).map((z) => z.funktion), fs.name).toEqual(['messen']);
+    }
+    // Messen bleibt auch ohne Objekt eine benannte Zeile — dort gilt „nie eine Leerstelle“ weiter.
+    for (const fs of [funktionWerkLindach('bestand'), funktionWerkAhrenberg('bestand')]) {
+      expect(funktionsZeilen(fs)[0], fs.name).toMatchObject({ funktion: 'messen', satz: 'Noch nicht eingerichtet', ton: 'off' });
+    }
+    // Werk Ahrenberg spricht weiter, weil Halle 1 steuert — auch nach dem Umstieg.
+    for (const fs of [funktionWerkAhrenberg(), funktionWerkAhrenberg('bestand')]) {
       const zeilen = funktionsZeilen(fs);
-      expect(zeilen.map((z) => z.funktion)).toEqual(['messen', 'steuern']);
+      expect(zeilen.map((z) => z.funktion), fs.name).toEqual(['messen', 'steuern']);
       for (const z of zeilen) {
         expect(z.satz.trim(), `${fs.name} ${z.funktion}`).not.toBe('');
         // Der Name steht vor dem Satz — im Satz nie ein zweites Mal.
         expect(z.satz, `${fs.name} ${z.funktion}`).not.toContain(z.label);
       }
     }
-    expect(funktionsZeilen(funktionWerkLindach())[1]).toMatchObject({ satz: 'Noch nicht eingerichtet', ton: 'off' });
-    expect(funktionsZeilen(funktionWerkLindach('bestand'))[0]).toMatchObject({ satz: 'Noch nicht eingerichtet', ton: 'off' });
+  });
+
+  it('die Ebene ist die ANLAGE: jede Teilnahme, die der Kunde angestoßen hat, lässt den Standort sprechen — nur „kein Objekt“ und „archiviert“ schweigen', () => {
+    for (const zustand of ['entwurf', 'eingerichtet', 'angehalten', 'aktiv'] as const) {
+      const fs = funktionWerkLindach();
+      fs.steuern.anlagen[0].teilnahme.zustand = zustand;
+      expect(steuernSpricht(fs), zustand).toBe(true);
+    }
+    for (const zustand of ['kein_objekt', 'archiviert'] as const) {
+      const fs = funktionWerkLindach();
+      fs.steuern.anlagen[0].teilnahme.zustand = zustand;
+      expect(steuernSpricht(fs), zustand).toBe(false);
+    }
+    // Werk Ahrenberg spricht, obwohl Halle 2 nur misst — eine teilnehmende Anlage genügt.
+    expect(steuernSpricht(funktionWerkAhrenberg())).toBe(true);
+    // Die Fixture teilt Halle 1 zwischen den Aufrufen — nur an einer Kopie drehen.
+    const ohneHalle1 = structuredClone(funktionWerkAhrenberg());
+    ohneHalle1.steuern.anlagen[0].teilnahme.zustand = 'kein_objekt';
+    expect(steuernSpricht(ohneHalle1)).toBe(false);
+    expect(funktionsZeilen(ohneHalle1).map((z) => z.funktion)).toEqual(['messen']);
   });
 });
 
 describe('die Standort-Gruppen der Anlagen-Tabelle', () => {
   const zeilen = anlagenZeilen({ overview: { sites: AHRENBERG } as never, earnings: null, dichte: 'komfortabel', now: JETZT });
 
-  it('A7: je Standort seine Anlagen, seine Zahlen und beide Funktionen — in der Reihenfolge des Servers', () => {
+  it('A7: je Standort seine Anlagen, seine Zahlen und ihre Funktionen — in der Reihenfolge des Servers', () => {
     const gruppen = standortGruppen({ ebene: UNTERNEHMEN, zeilen, sites: AHRENBERG, funktionen: ahrenbergFunktionen(), now: JETZT });
     expect(gruppen.map((g) => [g.name, g.zahlen, g.zeilen.map((z) => z.id)])).toEqual([
       ['Werk Ahrenberg', '2 Anlagen · 1 steuert · 2 von 2 Anlagen liefern Daten', [an1, an2]],
       ['Werk Lindach', '1 Anlage · reine Messung · 1 von 1 Anlage liefert Daten', [an3]],
     ]);
     expect(gruppen.map((g) => g.standortId)).toEqual([st1, st2]);
+    expect(gruppen[0].funktionen?.map((f) => f.funktion)).toEqual(['messen', 'steuern']);
+    // Werk Lindach misst nur: keine Steuern-Zeile (Steuern-Regel, löst „immer beide“ ab).
     expect(gruppen[1].funktionen?.map((f) => f.satz)).toEqual([
       'Eingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten',
-      'Noch nicht eingerichtet',
     ]);
   });
 

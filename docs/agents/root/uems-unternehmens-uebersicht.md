@@ -1,8 +1,8 @@
 # UEMS-Fläche: Unternehmens- und Standort-Übersicht (AP-01 IP-6)
 
 Die Übersicht IST das Portfolio-Cockpit (Entscheid E2) — mit einer **Ebene**: Kopfzeile (Name, Standorte,
-Anlagen, wer steuert, Datenlage), Standort-Gruppen der Anlagen-Tabelle mit dem Zustand BEIDER Funktionen je
-Standort (E6 = C), Standort-Filter (die Standort-Übersicht ist dieselbe Seite) und die Geld-Regel
+Anlagen, wer steuert, Datenlage), Standort-Gruppen der Anlagen-Tabelle mit dem Zustand der Funktionen je
+Standort (E6 = C; Steuern nur mit teilnehmender Anlage, `uems-steuern-still.md`), Standort-Filter (die Standort-Übersicht ist dieselbe Seite) und die Geld-Regel
 (Captain 10.09.2026: „Die Messdatenkunden brauchen keine Geldanzeige."). Kein Backend, keine Migration:
 gelesen über `GET /api/v1/overview`, `/earnings`, `/funktionen` (IP-3, `uems-funktionen-routen.md`) und den
 Standort-Schnappschuss aus IP-5 (`uems-startansicht.md`).
@@ -37,6 +37,7 @@ Standort-Schnappschuss aus IP-5 (`uems-startansicht.md`).
    (der Name ist ein Knopf), und `.vp-at-gruppe th` hebt Versalien und `nowrap` des Tabellenkopfs auf.
 7. **Funktionen:** `undefined` = lädt („Wird geladen …“), `null` = nicht abrufbar (eigener Satz); nie eine
    leere Zeile. Bei `kein_objekt` streicht `funktionsZeilen` den doppelten Funktionsnamen aus dem Server-Satz.
+   Steuern fehlt, wo keine Anlage teilnimmt (`steuernSpricht`, `uems-steuern-still.md`) — Absicht, keine Lücke.
 8. **Nicht hier:** Telefon-Leiste je Ebene (IP-7), Messstellen-Datenlage in der Kopfzeile (AP-04); die
    Erlöse-Welt selbst ist nur auf die Geld-Anlagen gefiltert, nicht umgebaut. Die Karte „Funktionen" mit dem
    nächsten Schritt und die Geld-Regel JE ANLAGE stehen seit IP-8 in `uems-leerzustaende.md`.

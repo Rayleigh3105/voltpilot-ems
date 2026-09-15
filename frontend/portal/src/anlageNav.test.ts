@@ -428,3 +428,27 @@ describe('resolveAnlage - one resolution for the shell AND the page', () => {
     expect(resolveAnlage([], null)).toBeNull();
   });
 });
+
+/**
+ * Steuern-Regel (Captain über firstmate 004, 15.09.2026: „Okay ich will aber
+ * schon das Messkunden auch zu Kunden werden wo man verbraucher steuern kann."):
+ * eine Anlage, die nur misst, bekommt kein Steuern angeboten — aber der Weg
+ * dorthin bleibt offen. Still heißt nicht Sackgasse.
+ */
+describe('Steuern-Regel · Erreichbarkeit: eine Anlage, die nur misst, behält den Bereich „Steuerung"', () => {
+  it('nur ein Netzzähler: „Steuerung" steht in der Seitenleiste UND als Telefon-Kachel, jeweils mit Ziel', () => {
+    const nurMessen = anlageSurface({
+      entities: [{ id: 'e-netz', entityType: 'grid-meter', capabilities: { measure: [{ channel: 'power_kw' }] } }],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    const sidebar = anlageSidebar(nurMessen);
+    expect(sidebar.bereiche.find((b) => b.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+    expect(bottomBarSlots(sidebar).find((s) => s.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+  });
+});

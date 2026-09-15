@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Die Unternehmens- und Standort-Übersicht (UEMS AP-01 IP-6) bei 375 und 1440 px
  * auf der Bühne `startansicht.html` (Referenzunternehmen Ahrenberg, 20.10.2026
- * 10:15): Kopfzeile, Standort-Gruppen, Filter, beide Funktionen je Standort —
+ * 10:15): Kopfzeile, Standort-Gruppen, Filter, die Funktionen je Standort (Steuern nur mit teilnehmender Anlage) —
  * und KEIN Querlauf, GEMESSEN am Dokument (`scrollWidth − clientWidth`), nicht
  * am Fenster: in der Telefon-Emulation ist `innerWidth` nicht zwingend die
  * Gerätebreite. Der Messkunde (A13) zeigt nirgends Euro.
@@ -28,6 +28,8 @@ interface Fall {
   sichtbar: string[];
   /** Zahl der Standort-Karten (Gruppen) — 0 auf der Standort-Übersicht. */
   gruppen: number;
+  /** Steuern-Regel: auf der Seite steht kein Wort über Steuern (hier nimmt keine Anlage teil). */
+  ohneSteuern?: boolean;
 }
 
 const FAELLE: Fall[] = [
@@ -56,7 +58,8 @@ const FAELLE: Fall[] = [
     name: 'messkunde-lindach',
     query: 'bild=messkunde',
     route: `#/standort/${ST2}`,
-    sichtbar: ['1 von 1 Anlage liefert Daten', '38,7', 'Noch nicht eingerichtet'],
+    sichtbar: ['1 von 1 Anlage liefert Daten', '38,7', '3 von 3 Messstellen liefern Daten'],
+    ohneSteuern: true,
     gruppen: 0,
   },
 ];
@@ -92,6 +95,7 @@ async function messe(page: Page) {
       draussen,
       gruppen: document.querySelectorAll('[data-testid="standort-gruppe"]').length,
       euro: /€|\bEUR\b|Vorteil|Mehrerlös|Erlös|Spitze/.test(main?.textContent ?? ''),
+      steuern: /steuer/i.test(main?.textContent ?? ''),
       kleineTreffer: [...document.querySelectorAll<HTMLElement>('.vp-ueb-standort-name')]
         .map((b) => Math.round(b.getBoundingClientRect().height))
         .filter((h) => h < 44),
@@ -121,6 +125,7 @@ for (const fall of FAELLE) {
       expect(m.gruppen, `${fall.name} ${breite}: Standort-Karten`).toBe(fall.gruppen);
       // Das Referenzunternehmen trägt keine Geldwerte — und der Messkunde sieht ohnehin keine (A13).
       expect(m.euro, `${fall.name} ${breite}: Geld auf der Seite`).toBe(false);
+      if (fall.ohneSteuern) expect(m.steuern, `${fall.name} ${breite}: ein Wort über Steuern`).toBe(false);
       if (breite < 721) expect(m.kleineTreffer, `${fall.name} ${breite}: Trefferfläche`).toEqual([]);
       await ablegen(page, fall.name, breite, m);
     });
