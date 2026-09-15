@@ -12,6 +12,7 @@ Regeln AP-10 §4.3–§4.7, §5.2, §5.6. Die Route: `uems-bilanz-lesemodell.md`
 | Render + Laden | `pages/EnergiebilanzSection.tsx` (+ `.css`), Chunk `SUB_CHUNK.energiebilanz` |
 | Reiter-Fakt | `useAnlageSurface`: nur für eine Anlage auf einer Ebene (`anlageAufEbene`) ein `GET …/bilanz?periode=tag` (heute) → `surface.energiebilanz` |
 | Tests | `anlageEnergiebilanz.test.ts` (O5–O8, B2, Leerzustand, Stellungswechsel, Rechte) · `ebenenNav.test.ts` (Reiter nur mit Fakt) · `copy.test.ts` (Welt Oberflächen, Chart-Liste) · `e2e/energiebilanz.spec.ts` (`ENERGIEBILANZ_BILDER=<Ordner>`) |
+| Wege hierher | Reiter des Verlaufs · Baustein „Energiebilanz“ der Übersicht (je Anlage) · „Standort › Anlagen“ je Zeile (`AnlagenTabelle` `energiebilanz`, nur mit Hauptzähler, nur `nurAnlagen`) |
 | Bühne | `e2e/startansicht.html?ansicht=bilanz&an=AN-2` · `&bilanz=ohne-hz` · `&rest=vorschlag` · `&live=veraltet` · `&person=CB` (Leser) |
 
 ## Quelle je Zeile (nichts wird gerechnet)

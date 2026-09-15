@@ -124,11 +124,12 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       expect(m.anlagen.join(' · ')).toContain('Halle 1');
       expect(m.anlagen.join(' · ')).toContain('Halle 2');
       expect(m.anlagen.join(' · ')).not.toContain('Lindach');
-      // Kennzahlen-Leiste, „Anpassen“ und die Karte „Funktionen“ gehören der Übersicht; „Energiebilanz“ kommt mit IP-8.
+      // Kennzahlen-Leiste, „Anpassen“ und die Karte „Funktionen“ gehören der Übersicht; den Weg „Energiebilanz“ je Zeile bringt IP-8.
       expect(m.kennzahlLeiste).toBe(0);
       expect(m.funktionenKarte).toBe(0);
       await expect(page.locator('.vp-main').getByRole('button', { name: 'Anpassen' })).toHaveCount(0);
-      expect(m.text).not.toContain('Energiebilanz');
+      // AP-13 IP-8: beide Anlagen haben einen Hauptzähler — je Zeile der Weg in ihren Reiter Verlauf › Energiebilanz.
+      await expect(page.locator('.vp-main .vp-at-weg')).toHaveCount(2);
       leisteOderReiter(m, breite, 'Anlagen', `anlagen-${breite}`);
       await ablegen(page, `anlagen-${breite}`, m);
     }

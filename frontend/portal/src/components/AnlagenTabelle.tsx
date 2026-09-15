@@ -7,6 +7,7 @@ import { VORSCHAU_ABSPRUNG, type VorschauZeile } from '../portfolioVorschau';
 import { Icon } from '../../designsystem/components/core/Icon';
 import './AnlagenTabelle.css';
 import { useStaffel } from '../staffel';
+import { UEMS_ENERGIEBILANZ } from '../glossar';
 
 /**
  * DIE ANLAGEN-TABELLE — EINE Fläche in zwei Dichten (Scout
@@ -41,6 +42,12 @@ export interface AnlagenTabelleProps {
    * fluchten.
    */
   gruppen?: AnlagenGruppe[] | null;
+  /**
+   * UEMS AP-13 IP-8 („Standort › Anlagen“, Ü7): die Anlagen mit Hauptzähler in der Stellung — sie tragen den Weg
+   * „Energiebilanz“. Fehlt es, rendert die Tabelle wie bisher (die Übersicht bleibt zeichengleich).
+   */
+  energiebilanz?: ReadonlySet<string> | null;
+  onEnergiebilanz?: (siteId: string) => void;
 }
 
 /** Eine Gruppe der Tabelle: ihr Kopf, ihre Zeilen, und der Satz, wenn sie keine hat. */
@@ -183,7 +190,7 @@ function VorschauBlock({
 // Desktop
 // ---------------------------------------------------------------------------
 
-function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau, gruppen }: AnlagenTabelleProps) {
+function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz }: AnlagenTabelleProps) {
   // Bewegung P6: die Zeilen staffeln beim ERSTEN Blick auf das Portfolio, nie
   // beim zweiten (`src/staffel.ts`). Beide Formen teilen den Schlüssel — es
   // ist dieselbe Liste, nur einmal als Tabelle und einmal als Karten.
@@ -214,6 +221,18 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
                 <Warnzeile z={z} />
               </span>
             </button>
+            {onEnergiebilanz && energiebilanz?.has(z.id) && (
+              <button
+                type="button"
+                className="vp-at-weg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEnergiebilanz(z.id);
+                }}
+              >
+                {UEMS_ENERGIEBILANZ}
+              </button>
+            )}
             <button
               type="button"
               className="vp-at-details"
@@ -305,7 +324,7 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
  * Vorschau bzw. auf der Anlagen-Seite. Eine Kachel ohne Wert erscheint gar
  * nicht.
  */
-function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen }: AnlagenTabelleProps) {
+function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz }: AnlagenTabelleProps) {
   const zeigt = new Set(spalten);
   const staffel = useStaffel('portfolio-anlagen');
   const liste = staffel ? `vp-at-karten ${staffel}` : 'vp-at-karten';
@@ -315,6 +334,18 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen
     if (zeigt.has('pv-jetzt') && z.pvJetztKw != null) nums.push({ id: 'pv-jetzt', label: 'PV jetzt' });
     if (zeigt.has('speicher') && z.ladestandPct != null) nums.push({ id: 'speicher', label: 'Speicher' });
     if (zeigt.has('netz-heute') && z.netz) nums.push({ id: 'netz-heute', label: 'Netz jetzt' });
+    const oeffnen = (
+      <button
+        type="button"
+        className="vp-at-open"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOeffnen(z.id);
+        }}
+      >
+        Öffnen <Icon name="chevron-right" size={14} />
+      </button>
+    );
     return (
       <article key={z.id} className="vp-at-karte" onClick={() => onOeffnen(z.id)}>
         <div className="vp-at-karte-kopf">
@@ -373,16 +404,23 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen
           ) : (
             <span />
           )}
-          <button
-            type="button"
-            className="vp-at-open"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOeffnen(z.id);
-            }}
-          >
-            Öffnen <Icon name="chevron-right" size={14} />
-          </button>
+          {onEnergiebilanz && energiebilanz?.has(z.id) ? (
+            <span className="vp-at-karte-wege">
+              <button
+                type="button"
+                className="vp-at-weg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEnergiebilanz(z.id);
+                }}
+              >
+                {UEMS_ENERGIEBILANZ}
+              </button>
+              {oeffnen}
+            </span>
+          ) : (
+            oeffnen
+          )}
         </div>
         {auf && (
           <div

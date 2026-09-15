@@ -16,6 +16,7 @@ import {
 import { fleetTonalitaet } from '../fleet';
 import { ortsHinweis } from '../cockpitLayout';
 import { anlageRoute, pageRoute, standortRoute, type Route } from '../nav';
+import { hatHauptzaehler } from '../anlageEnergiebilanz';
 import {
   CANONICAL_PORTFOLIO,
   anlagenZeilen,
@@ -229,6 +230,27 @@ export function PortfolioCockpit({
   // UEMS AP-13 IP-7: die Bausteine der Messstellen-Welt — nur auf einer Übersicht, nicht auf „Standort › Anlagen“.
   const anlagenDerSicht = useMemo(() => anlagenDerEbene(sites, ebene).map((s) => ({ id: s.id, name: s.name })), [sites, ebene]);
   const uems = useUebersichtBausteine(ebene && !nurAnlagen ? ebene : null, anlagenDerSicht);
+  // UEMS AP-13 IP-8 (Ü7, versprochen von IP-2): „Standort › Anlagen“ trägt je Zeile den Weg „Energiebilanz“ — nur für eine
+  // Anlage mit Hauptzähler in der Stellung (dieselbe Frage wie der Reiter). Die Übersicht fragt nichts und bleibt gleich.
+  const mitBilanzWeg = nurAnlagen && ebene?.art === 'standort';
+  const [energiebilanz, setEnergiebilanz] = useState<ReadonlySet<string> | null>(null);
+  useEffect(() => {
+    if (!mitBilanzWeg) return;
+    let aktiv = true;
+    Promise.all(
+      anlagenDerSicht.map((a) =>
+        Promise.resolve()
+          .then(() => api.anlageBilanz(a.id, 'tag'))
+          .then(
+            (b) => (hatHauptzaehler(b) ? a.id : null),
+            () => null,
+          ),
+      ),
+    ).then((ids) => aktiv && setEnergiebilanz(new Set(ids.filter((x): x is string => x !== null))));
+    return () => {
+      aktiv = false;
+    };
+  }, [mitBilanzWeg, anlagenDerSicht]);
   const uemsInhalt = uems?.inhalt.join(',') ?? '';
   // Die Standort-Übersicht ist DIESELBE Fläche, auf die Anlagen des Standorts
   // gefiltert: jede Zahl darunter geht nur über sie.
@@ -548,6 +570,8 @@ export function PortfolioCockpit({
             onToggle={(id) => setOffen((cur) => (cur === id ? null : id))}
             onOeffnen={(id) => onNavigate(anlageRoute(id))}
             vorschau={vorschau}
+            energiebilanz={mitBilanzWeg ? energiebilanz : null}
+            onEnergiebilanz={mitBilanzWeg ? (id) => onNavigate(anlageRoute(id, 'energiebilanz')) : undefined}
           />
         )}
       </section>
