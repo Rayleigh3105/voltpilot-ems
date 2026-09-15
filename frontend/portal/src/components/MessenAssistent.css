@@ -1,0 +1,164 @@
+/*
+ * DER ASSISTENT „MESSEN & AUSWERTEN" (UEMS AP-01 IP-9a) — der Rumpf der Schritte.
+ * Die Schale (Schrittleiste, Zähler, Fokusfalle, klebender Fuß) ist der
+ * Anlege-Dialog (`AnlegenDialog.css`); hier steht nur, was die Schritte zeigen.
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt. Jedes Kind darf
+ * schrumpfen und umbrechen — bei 375 px darf nichts die Seite verbreitern.
+ */
+
+.vp-ma-schritt {
+  display: grid;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-ma-frage {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-ma-satz {
+  margin: -0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-ort {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-ort-wort {
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-ma-hinweis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  margin: 0;
+  font-size: 0.875rem;
+  min-width: 0;
+}
+
+.vp-ma-fehler {
+  margin: 0;
+  padding: var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 10px);
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* Kein Standort / keine Anlage: der Zustand und der Weg, ruhig in einer Fläche. */
+.vp-ma-leer {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  justify-items: start;
+  padding: var(--vp-space-4, 16px);
+  border: 1px dashed var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  min-width: 0;
+}
+
+.vp-ma-leer p {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-weg-wort {
+  font-weight: 600;
+}
+
+/* Schritt 2: je Anlage die zwei bestehenden Wege. */
+.vp-ma-anlagen {
+  display: grid;
+  gap: var(--vp-space-3, 12px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-ma-anlage {
+  display: grid;
+  gap: var(--vp-space-3, 12px);
+  padding: var(--vp-space-4, 16px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+  min-width: 0;
+}
+
+.vp-ma-anlage-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-ma-anlage-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-anlage-zahl {
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
+/* Zwei Wege nebeneinander, sobald jeder 220 px hat — sonst untereinander. */
+.vp-ma-wege {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-ma-weg {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--vp-space-3, 12px) var(--vp-space-4, 16px);
+  text-align: left;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.vp-ma-weg:hover,
+.vp-ma-weg:focus-visible {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-surface-alt, #f8fafc);
+}
+
+.vp-ma-weg-titel {
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+}
+
+.vp-ma-weg-satz {
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-spaeter {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #64748b);
+}

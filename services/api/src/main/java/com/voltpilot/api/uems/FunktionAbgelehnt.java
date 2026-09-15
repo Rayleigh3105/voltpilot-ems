@@ -11,7 +11,8 @@ import java.util.Map;
  *
  * <p>Der geschlossene Satz: {@code anfrage_ungueltig} (400), {@code nicht_gefunden} (404 — eine fremde Anlage
  * und ein fremder Standort sind nie 403) und die Gründe des Vertrags {@link FunktionZustandAbleitung.Grund},
- * die ein Übergang von „Steuern &amp; Optimieren“ nennen kann (409, Satz aus dem Vertrag). Bei
+ * die ein Übergang von „Steuern &amp; Optimieren“ oder das Einrichten von „Messen &amp; Auswerten“ (AP-01 IP-9a)
+ * nennen kann (409, Satz aus dem Vertrag). Bei
  * {@code pruefliste_offen} tragen {@code fehlt} und {@code wege} die roten Zeilen der Prüfliste, die IN
  * derselben Transaktion erneut gelaufen ist (R1/R2).
  */
@@ -20,7 +21,10 @@ public final class FunktionAbgelehnt extends RuntimeException {
     public static final String ANFRAGE_UNGUELTIG = "anfrage_ungueltig";
     public static final String NICHT_GEFUNDEN = "nicht_gefunden";
 
-    /** Die Gründe des Vertrags, die ein Übergang von „Steuern &amp; Optimieren“ nennt. */
+    /**
+     * Die Gründe des Vertrags, die ein Übergang von „Steuern &amp; Optimieren“ nennt — und die zwei, mit denen das
+     * Einrichten von „Messen &amp; Auswerten“ abgelehnt wird (AP-01 IP-9a).
+     */
     public static final List<FunktionZustandAbleitung.Grund> GRUENDE = List.of(
             FunktionZustandAbleitung.Grund.NICHT_AUFGENOMMEN,
             FunktionZustandAbleitung.Grund.PRUEFLISTE_OFFEN,
@@ -28,7 +32,9 @@ public final class FunktionAbgelehnt extends RuntimeException {
             FunktionZustandAbleitung.Grund.LAEUFT_BEREITS,
             FunktionZustandAbleitung.Grund.IST_ANGEHALTEN,
             FunktionZustandAbleitung.Grund.BEREITS_ANGEHALTEN,
-            FunktionZustandAbleitung.Grund.BEENDET);
+            FunktionZustandAbleitung.Grund.BEENDET,
+            FunktionZustandAbleitung.Grund.BEREITS_ANGELEGT,
+            FunktionZustandAbleitung.Grund.STANDORT_ARCHIVIERT);
 
     /** Alle Codes, die die Schnittstelle je antwortet. */
     public static final List<String> CODES;
@@ -69,7 +75,7 @@ public final class FunktionAbgelehnt extends RuntimeException {
     public static FunktionAbgelehnt uebergang(FunktionZustandAbleitung.UebergangErgebnis u, List<String> fehlt,
             List<FunktionDto.Weg> wege) {
         if (u.erlaubt() || !GRUENDE.contains(u.grund())) {
-            throw new IllegalArgumentException("kein Ablehnungsgrund von Steuern & Optimieren: " + u.grund());
+            throw new IllegalArgumentException("kein Ablehnungsgrund der Funktions-Schnittstelle: " + u.grund());
         }
         boolean offen = u.grund() == FunktionZustandAbleitung.Grund.PRUEFLISTE_OFFEN;
         return new FunktionAbgelehnt(409, u.grund().code(), u.text(), offen ? fehlt : List.of(),

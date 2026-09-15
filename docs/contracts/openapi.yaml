@@ -9304,6 +9304,34 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/FunktionAbgelehnt" }
         "409": { $ref: "#/components/responses/FunktionAbgelehnt" }
+  /api/v1/standorte/{standortId}/funktionen/messen:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [funktionen]
+      summary: Messen & Auswerten für einen Standort einrichten - legt die Funktion im Entwurf an (Schritt 1 des Assistenten).
+      description: >
+        Recht `funktion.messen_einrichten` (AP-01 IP-9a). Legt NUR das Funktionsobjekt des Standorts im
+        Entwurf an; Box, Messstellen und Prüfung folgen in den weiteren Schritten, und ob der Entwurf
+        eingerichtet ist, entscheidet jedes Lesen neu. Der Übergang ist der des Vertrags funktion-zustand:
+        ein zweites Einrichten ist 409 `bereits_angelegt` (nie eine zweite Funktion), ein archivierter
+        Standort 409 `standort_archiviert`. Einzige Aktion ist `einrichten` - Messen startet mit der
+        Einrichtung von selbst.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FunktionMessenAnfrage" }
+      responses:
+        "200":
+          description: Eingerichtet; der Standort, wie er danach steht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FunktionMessenErgebnis" }
+        "400": { $ref: "#/components/responses/FunktionAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/FunktionAbgelehnt" }
+        "409": { $ref: "#/components/responses/FunktionAbgelehnt" }
   /api/v1/sites/{siteId}/bilanz:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -11018,7 +11046,8 @@ components:
     FunktionAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben. 400 `anfrage_ungueltig`, 404 `nicht_gefunden` (fremd, nie 403),
-        409 mit dem Grund des Vertrags funktion-zustand und seinem Satz; bei `pruefliste_offen` die roten
+        409 mit dem Grund des Vertrags funktion-zustand und seinem Satz (Steuern & Optimieren, dazu
+        `bereits_angelegt`/`standort_archiviert` beim Einrichten von Messen & Auswerten); bei `pruefliste_offen` die roten
         Zeilen als `fehlt` und `wege` (uems/FunktionAbgelehnt).
       content:
         application/json:
@@ -19441,7 +19470,7 @@ components:
       type: object
       required: [code, message, fehlt, wege]
       properties:
-        code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, nicht_aufgenommen, pruefliste_offen, noch_nicht_gestartet, laeuft_bereits, ist_angehalten, bereits_angehalten, beendet] }
+        code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, nicht_aufgenommen, pruefliste_offen, noch_nicht_gestartet, laeuft_bereits, ist_angehalten, bereits_angehalten, beendet, bereits_angelegt, standort_archiviert] }
         message: { type: string }
         fehlt: { type: array, items: { type: string } }
         wege: { type: array, items: { $ref: "#/components/schemas/FunktionWeg" } }
@@ -19543,6 +19572,18 @@ components:
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
+    FunktionMessenAnfrage:
+      type: object
+      additionalProperties: false
+      required: [aktion]
+      properties:
+        aktion: { type: string, enum: [einrichten] }
+    FunktionMessenErgebnis:
+      type: object
+      required: [aktion, standort]
+      properties:
+        aktion: { type: string, enum: [einrichten] }
+        standort: { $ref: "#/components/schemas/FunktionStandort" }
     BilanzFehler:
       type: object
       description: >

@@ -3782,6 +3782,16 @@ export interface FunktionAnlageRef {
   name: string;
 }
 
+/** `PUT /api/v1/standorte/{id}/funktionen/messen` (AP-01 IP-9a) — „Messen & Auswerten“ im Entwurf anlegen. */
+export interface FunktionMessenAnfrage {
+  aktion: 'einrichten';
+}
+
+export interface FunktionMessenErgebnis {
+  aktion: FunktionMessenAnfrage['aktion'];
+  standort: FunktionStandort;
+}
+
 /** Die Ablehnungen der Funktions-Schnittstelle (`uems/FunktionAbgelehnt`, OpenAPI `FunktionFehler`). */
 export type FunktionFehlerCode =
   | 'anfrage_ungueltig'
@@ -3792,7 +3802,9 @@ export type FunktionFehlerCode =
   | 'laeuft_bereits'
   | 'ist_angehalten'
   | 'bereits_angehalten'
-  | 'beendet';
+  | 'beendet'
+  | 'bereits_angelegt'
+  | 'standort_archiviert';
 
 /** `{code, message, fehlt, wege}` — bei `pruefliste_offen` die roten Zeilen. */
 export interface FunktionFehler {
@@ -6974,6 +6986,12 @@ export const api = {
   unternehmen: () => request<Unternehmen>('/api/v1/unternehmen'),
   /** UEMS AP-01 IP-6: beide Funktionen je Standort (`GET /api/v1/funktionen`, Routen aus IP-3). */
   funktionen: () => request<Funktionen>('/api/v1/funktionen'),
+  /** UEMS AP-01 IP-9a: „Messen & Auswerten“ für einen Standort einrichten (Entwurf); ein zweites Mal ist 409 `bereits_angelegt`. */
+  funktionMessenEinrichten: (standortId: string) =>
+    request<FunktionMessenErgebnis>(`/api/v1/standorte/${encodeURIComponent(standortId)}/funktionen/messen`, {
+      method: 'PUT',
+      body: JSON.stringify({ aktion: 'einrichten' }),
+    }),
 
   /** Die Standorte zum Stichtag (ohne: heute) samt der Gruppe „Noch nicht zugeordnet“. */
   standorte: (stichtag?: string) =>

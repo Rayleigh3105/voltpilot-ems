@@ -81,4 +81,12 @@ public final class FunktionDto {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record AnlageRef(UUID id, String name) {}
+
+    /** {@code PUT …/standorte/{id}/funktionen/messen} — genau ein Feld (AP-01 IP-9a). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record MessenAnfrage(String aktion) {}
+
+    /** Die Antwort des Einrichtens: der Standort, wie er danach steht — „Messen &amp; Auswerten“ im Entwurf. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record MessenErgebnis(String aktion, Standort standort) {}
 }

@@ -54,6 +54,8 @@ class FunktionSchnittstelleVertragTest {
         formen.put("FunktionSteuernAnfrage", FunktionDto.SteuernAnfrage.class);
         formen.put("FunktionSteuernErgebnis", FunktionDto.SteuernErgebnis.class);
         formen.put("FunktionAnlageRef", FunktionDto.AnlageRef.class);
+        formen.put("FunktionMessenAnfrage", FunktionDto.MessenAnfrage.class);
+        formen.put("FunktionMessenErgebnis", FunktionDto.MessenErgebnis.class);
         String ts = Files.readString(API_TS);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
@@ -70,7 +72,7 @@ class FunktionSchnittstelleVertragTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void dieWoerterSindDieDesVertrags() {
+    void dieWoerterSindDieDesVertrags() throws Exception {
         List<String> zustaende = Arrays.stream(FunktionZustandAbleitung.Zustand.values())
                 .map(FunktionZustandAbleitung.Zustand::code).toList();
         assertThat((List<String>) feld("FunktionTeilnahme", "zustand").get("enum")).containsExactlyElementsOf(zustaende);
@@ -84,6 +86,10 @@ class FunktionSchnittstelleVertragTest {
                 FunktionService.STANDORT_AKTIONEN.stream().map(FunktionZustandAbleitung.Aktion::code).toList());
         assertThat((List<String>) feld("FunktionSteuernAnfrage", "aktion").get("enum")).containsExactlyElementsOf(
                 FunktionService.ANLAGEN_AKTIONEN.stream().map(FunktionZustandAbleitung.Aktion::code).toList());
+        List<String> messen = FunktionService.MESSEN_AKTIONEN.stream().map(FunktionZustandAbleitung.Aktion::code).toList();
+        assertThat((List<String>) feld("FunktionMessenAnfrage", "aktion").get("enum")).containsExactlyElementsOf(messen);
+        assertThat((List<String>) feld("FunktionMessenErgebnis", "aktion").get("enum")).containsExactlyElementsOf(messen);
+        assertThat(Files.readString(API_TS)).contains("  aktion: 'einrichten';");
     }
 
     @Test
@@ -115,6 +121,12 @@ class FunktionSchnittstelleVertragTest {
             assertThat(((Map<String, Object>) ((Map<String, Object>) p.get("put")).get("responses")).keySet())
                     .containsExactlyInAnyOrder("200", "400", "401", "404", "409");
         }
+        // „Messen & Auswerten“ einrichten (AP-01 IP-9a) — sein eigenes Recht aus der Matrix.
+        Map<String, Object> messen = (Map<String, Object>) pfade.get("/api/v1/standorte/{standortId}/funktionen/messen");
+        assertThat(messen.keySet()).containsExactlyInAnyOrder("parameters", "put");
+        assertThat(String.valueOf(messen.get("put"))).contains("funktion.messen_einrichten");
+        assertThat(((Map<String, Object>) ((Map<String, Object>) messen.get("put")).get("responses")).keySet())
+                .containsExactlyInAnyOrder("200", "400", "401", "404", "409");
     }
 
     @SuppressWarnings("unchecked")

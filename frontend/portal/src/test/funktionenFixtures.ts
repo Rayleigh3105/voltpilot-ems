@@ -1,4 +1,5 @@
 import type { FunktionAnlage, FunktionMessen, FunktionStandort, Funktionen } from '../api';
+import { messen as messenRegel } from '../uemsFunktion';
 import { FIXTURE_IDS } from './standorteFixtures';
 
 /**
@@ -103,6 +104,27 @@ export function funktionWerkLindach(art: 'eingerichtet' | 'bestand' = 'eingerich
       anlagen: [misstNur(FIXTURE_IDS.an3, 'Werk Lindach')],
     },
   };
+}
+
+/**
+ * „Messen & Auswerten" im Entwurf — der Standort nach Schritt 1 des Assistenten
+ * (AP-01 IP-9a): die Funktion ist angelegt, Box und Messstellen fehlen noch.
+ * Zustand und Satz aus der Regel `messen()`, nie abgeschrieben.
+ */
+export function funktionMessenEntwurf(fs: FunktionStandort): FunktionStandort {
+  const m = messenRegel({
+    standort: fs.name,
+    angelegt: true,
+    standortEingerichtet: true,
+    standortArchiviertAm: null,
+    eingerichtetAm: null,
+    boxen: [],
+    messstellen: [],
+    anlagen: [],
+    jetzt: '2026-10-20T08:15:30Z',
+    zeitzone: fs.zeitzone,
+  });
+  return { ...fs, messen: { zustand: m.zustand, seit: m.seit, text: m.text, fehlt: m.fehlt, datenlage: m.datenlage } };
 }
 
 /** Die Antwort für die gewählten Standorte (Vorgabe: beide, Messen eingerichtet). */
