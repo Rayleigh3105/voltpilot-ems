@@ -17,12 +17,15 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -93,6 +96,50 @@ public class KennzahlService {
         Katalog kat = katalog();
         Instant jetzt = jetzt();
         return new KennzahlDto.Liste(kat.kennzahlen().stream().map(k -> darstellung(k, kat, jetzt)).toList());
+    }
+
+    /** Die Parameter von {@code GET …/paare} — jeder andere ist 400 (streng wie die Werte-Route). */
+    static final Set<String> PARAMETER_PAARE = Set.of("rechenform", "einheit", "standort_id");
+
+    /**
+     * Die möglichen Paare einer Zusammenfassung für den Assistenten (AP-11 IP-11, R4, §5.6): jede nicht archivierte
+     * Kennzahl mit heute geltender Berechnung in der Gruppe ihrer Rechenform und Einheit — genau die Gleichheit, die
+     * {@link KennzahlRegeln#einheit} beim Anlegen verlangt. {@code rechenform} und {@code einheit} lassen nur ihre Gruppe
+     * übrig, {@code standort_id} nur Kennzahlen dieses Standorts (die Eingänge einer Standort-Kennzahl liegen im
+     * Standort). Gruppen nach Rechenform, dann Einheit; Kennzahlen nach Kennzeichen. Rechnet nichts, schreibt nichts.
+     */
+    public KennzahlDto.Paare paare(Collection<String> parameter, String rechenform, String einheit, String standortId) {
+        for (String p : parameter) {
+            if (!PARAMETER_PAARE.contains(p)) {
+                throw KennzahlAbgelehnt.anfrage(p);
+            }
+        }
+        if (rechenform != null && !KennzahlRegeln.RECHENFORMEN.contains(rechenform)) {
+            throw KennzahlAbgelehnt.anfrage("rechenform");
+        }
+        if (einheit != null && einheit.isBlank()) {
+            throw KennzahlAbgelehnt.anfrage("einheit");
+        }
+        UUID standort = standortId == null ? null : paarStandort(standortId);
+        Map<String, List<KennzahlDto.Kennzahl>> gruppen = new LinkedHashMap<>();
+        liste().kennzahlen().stream()
+                .filter(k -> k.archiviertAm() == null && k.einheit() != null)
+                .filter(k -> rechenform == null || rechenform.equals(k.rechenform()))
+                .filter(k -> einheit == null || einheit.equals(k.einheit()))
+                .filter(k -> standort == null || standort.equals(k.standortId()))
+                .sorted(Comparator.comparingInt((KennzahlDto.Kennzahl k) -> KennzahlRegeln.RECHENFORMEN.indexOf(k.rechenform()))
+                        .thenComparing(KennzahlDto.Kennzahl::einheit).thenComparing(KennzahlDto.Kennzahl::kennzeichen))
+                .forEach(k -> gruppen.computeIfAbsent(k.rechenform() + '\n' + k.einheit(), x -> new ArrayList<>()).add(k));
+        return new KennzahlDto.Paare(gruppen.values().stream().map(ks -> new KennzahlDto.PaarGruppe(ks.get(0).rechenform(),
+                ks.get(0).einheit(), ks.get(0).einheitAnzeige(), List.copyOf(ks))).toList());
+    }
+
+    private static UUID paarStandort(String text) {
+        try {
+            return UUID.fromString(text);
+        } catch (IllegalArgumentException x) {
+            throw KennzahlAbgelehnt.anfrage("standort_id");
+        }
     }
 
     public KennzahlDto.Kennzahl eine(UUID id) {

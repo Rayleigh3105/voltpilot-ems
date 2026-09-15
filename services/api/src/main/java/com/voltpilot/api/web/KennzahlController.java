@@ -10,6 +10,7 @@ import com.voltpilot.api.uems.KennzahlService;
 import com.voltpilot.api.uems.KennzahlVorschauService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.KennzahlDto;
+import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -100,6 +101,18 @@ public class KennzahlController {
     @PostMapping("/vorschau")
     public KennzahlDto.Vorschau vorschau(@RequestBody(required = false) JsonNode body, Authentication auth) {
         return vorschau.vorschau(lies(body, ANLEGEN, KennzahlDto.Anfrage.class), akteur(auth));
+    }
+
+    /**
+     * Recht: {@code messwerte.ansehen} (AP-11 R2). Die möglichen Paare einer Zusammenfassung für den Assistenten (AP-11
+     * IP-11, §5.6): gruppiert nach Rechenform und Einheit, gefiltert mit {@code rechenform}, {@code einheit} und
+     * {@code standort_id} — alle optional, jeder andere Parameter ist 400. Schreibt nichts.
+     */
+    @GetMapping("/paare")
+    public KennzahlDto.Paare paare(@RequestParam(required = false) String rechenform,
+            @RequestParam(required = false) String einheit,
+            @RequestParam(name = "standort_id", required = false) String standortId, HttpServletRequest anfrage) {
+        return kennzahlen.paare(anfrage.getParameterMap().keySet(), rechenform, einheit, standortId);
     }
 
     /** Recht: {@code messwerte.ansehen}. */

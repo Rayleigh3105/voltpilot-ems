@@ -358,13 +358,9 @@ public class KennzahlLauf {
         if (schon != null) {
             return schon;
         }
-        List<KennzahlDto.Eingang> eingaenge = r.kx().kat().eingaenge(f.id()).stream()
-                .map(e -> new KennzahlDto.Eingang(e.rolle(), e.art(), e.kennzeichen())).toList();
-        LocalDate tag = f.gueltigBis() != null && f.gueltigBis().isBefore(r.heute()) ? f.gueltigBis()
-                : f.gueltigAb() != null && f.gueltigAb().isAfter(r.heute()) ? f.gueltigAb() : r.heute();
         Optional<Urteil> u;
         try {
-            u = Optional.of(kennzahlen.rechnung(f.rechenform(), eingaenge, f.komplement(), null, tag, r.kx().kat()));
+            u = Optional.of(rechnung(r, f));
         } catch (KennzahlAbgelehnt x) {
             log.warn("UEMS Kennzahl {} Fassung {} nicht gerechnet ({}): {}", r.k().kennzeichen(), f.nummer(), x.code(),
                     x.getMessage());
@@ -373,6 +369,15 @@ public class KennzahlLauf {
         }
         r.urteile().put(f.id(), u);
         return u;
+    }
+
+    /** Die Berechnung einer gespeicherten Fassung, geprüft wie beim Anlegen — wirft {@link KennzahlAbgelehnt}. */
+    private Urteil rechnung(Rahmen r, FassungZeile f) {
+        List<KennzahlDto.Eingang> eingaenge = r.kx().kat().eingaenge(f.id()).stream()
+                .map(e -> new KennzahlDto.Eingang(e.rolle(), e.art(), e.kennzeichen())).toList();
+        LocalDate tag = f.gueltigBis() != null && f.gueltigBis().isBefore(r.heute()) ? f.gueltigBis()
+                : f.gueltigAb() != null && f.gueltigAb().isAfter(r.heute()) ? f.gueltigAb() : r.heute();
+        return kennzahlen.rechnung(f.rechenform(), eingaenge, f.komplement(), null, tag, r.kx().kat());
     }
 
     /** Alle offenen Perioden EINER Art, je Fassung am letzten Tag gruppiert (V2). */
@@ -416,23 +421,22 @@ public class KennzahlLauf {
                     }
                 }
                 case EBENE -> {
-                    List<Map<String, Paar>> paare = new ArrayList<>();
-                    for (Aufgeloest x : u.eingaenge()) {
-                        paare.add(r.kx().leser().paare(x, art, a, b));
-                    }
+                    List<Map<String, Paar>> paare = paare(r, u, art, a, b);
                     for (LocalDate[] p : perioden) {
                         String s = BezugsPeriode.schluesselVon(p[0], art);
                         Gespeichert g = gespeichert.get(p[0]);
-                        schreiben(r, f, art, p, g, ebene(r, u, new KennzahlRegeln.Periode(art, s), paare, s, g));
+                        schreiben(r, f, art, p, g, ebene(r, u, new KennzahlRegeln.Periode(art, s), p, paare, g));
                     }
                 }
                 default -> {
                     String feiner = feinere(u.perioden(), art);
                     Map<LocalDate, Gespeichert> eigene = r.kx().repo().werte(k.id(), feiner, a, b);
+                    List<Map<String, Paar>> paare = paare(r, u, art, a, b);
                     for (LocalDate[] p : perioden) {
                         String s = BezugsPeriode.schluesselVon(p[0], art);
                         Gespeichert g = gespeichert.get(p[0]);
-                        schreiben(r, f, art, p, g, zeit(r, u, new KennzahlRegeln.Periode(art, s), p, feiner, eigene, g));
+                        schreiben(r, f, art, p, g, zeit(r, u, new KennzahlRegeln.Periode(art, s), p, feiner, eigene, paare,
+                                g));
                     }
                 }
             }
@@ -497,7 +501,7 @@ public class KennzahlLauf {
     }
 
     /** Q5 über Ebenen: Summe durch Summe über die Paare derselben Periode (K3) — nie ihr Mittel. */
-    private Bildung ebene(Rahmen r, Urteil u, KennzahlRegeln.Periode per, List<Map<String, Paar>> paare, String s,
+    private Bildung ebene(Rahmen r, Urteil u, KennzahlRegeln.Periode per, LocalDate[] p, List<Map<String, Paar>> paare,
             Gespeichert bisher) {
         List<KennzahlRegeln.Teil> teile = new ArrayList<>();
         List<HerkunftEingang> eingaenge = new ArrayList<>();
@@ -507,7 +511,7 @@ public class KennzahlLauf {
         Instant ab = null;
         for (int i = 0; i < u.eingaenge().size(); i++) {
             Aufgeloest x = u.eingaenge().get(i);
-            Paar pp = paare.get(i).get(s);
+            Paar pp = zaehltMit(r, x.id(), per.art(), p, paare.get(i).get(per.schluessel()));
             Gespeichert g = pp.zeile();
             teile.add(pp.teil());
             alleMitZahl &= pp.teil().zaehler() != null && pp.teil().nenner() != null;
@@ -516,10 +520,7 @@ public class KennzahlLauf {
                 nichtZuEnde |= KennzahlRegeln.PERIODE_NICHT_ZU_ENDE.equals(g.grund());
                 ab = spaeter(ab, g.endgueltig() ? g.endgueltigAb() : null);
             }
-            eingaenge.add(new HerkunftEingang(i, "paar", KennzahlRegeln.KENNZAHL, x.kennzeichen(), null, null, x.id(),
-                    g == null ? null : g.wert(), g == null ? null : g.zaehler(), g == null ? null : g.nenner(),
-                    einheit(x, u), pp.teil().zustand(), g == null ? BigDecimal.ZERO : g.abdeckungProzent(),
-                    g == null ? null : g.version(), null, g == null ? List.of() : g.kennzeichen()));
+            eingaenge.add(paarEingang(i, x, pp, u));
         }
         if (!irgendeins && bisher == null) {
             return null;
@@ -542,10 +543,11 @@ public class KennzahlLauf {
      * Q5 über die Zeit: Summe durch Summe über die eigenen Teilperioden (K14) — ab der ersten, die es gibt (P4), bis zur
      * letzten, die begonnen hat; eine fehlende dazwischen oder danach heißt „x von y … (… fehlt)“. Die Teilperioden sind
      * Zeilen DIESER Kennzahl — ein Selbstverweis in {@code kennzahl_wert_eingang} ist verboten, die Herkunft nennt sie
-     * darum nicht als Eingang.
+     * darum nicht als Eingang. Eine Zusammenfassung nennt stattdessen ihre Paare in DIESER Periode (IP-11, Herkunft K14:
+     * „KZ-0001 18 200 kWh je 122 500 Stück“); eine andere Kennzahl nennt keine Eingänge.
      */
     private Bildung zeit(Rahmen r, Urteil u, KennzahlRegeln.Periode per, LocalDate[] p, String feiner,
-            Map<LocalDate, Gespeichert> eigene, Gespeichert bisher) {
+            Map<LocalDate, Gespeichert> eigene, List<Map<String, Paar>> paare, Gespeichert bisher) {
         List<LocalDate[]> teilPerioden = KennzahlEingangLeser.perioden(feiner, p[0], p[1]);
         int erste = -1;
         for (int i = 0; i < teilPerioden.size() && erste < 0; i++) {
@@ -561,18 +563,25 @@ public class KennzahlLauf {
         Instant ab = null;
         for (int i = erste; i < teilPerioden.size() && !teilPerioden.get(i)[0].isAfter(r.heute()); i++) {
             LocalDate[] t = teilPerioden.get(i);
-            Gespeichert g = eigene.get(t[0]);
-            teile.add(KennzahlEingangLeser.teil(BezugsPeriode.schluesselVon(t[0], feiner), null, g));
+            Gespeichert roh = eigene.get(t[0]);
+            Paar tp = zaehltMit(r, r.k().id(), feiner, t,
+                    new Paar(KennzahlEingangLeser.teil(BezugsPeriode.schluesselVon(t[0], feiner), null, roh), roh));
+            Gespeichert g = tp.zeile();
+            teile.add(tp.teil());
             if (g != null) {
                 nichtZuEnde |= KennzahlRegeln.PERIODE_NICHT_ZU_ENDE.equals(g.grund());
                 ab = spaeter(ab, g.endgueltig() ? g.endgueltigAb() : null);
             }
         }
+        List<HerkunftEingang> eingaenge = new ArrayList<>();
+        for (int i = 0; i < paare.size(); i++) {
+            eingaenge.add(paarEingang(i, u.eingaenge().get(i), paare.get(i).get(per.schluessel()), u));
+        }
         if (laeuft(r, per)) {
             boolean periodenwertNenner = !KennzahlRegeln.ZUSAMMENFASSUNG.equals(u.rechenform())
                     && KennzahlRegeln.PERIODENWERT.equals(rolle(u, "nenner").wertart());
             if (periodenwertNenner || nichtZuEnde) {
-                return new Bildung(nichtZuEnde(bisher), List.of(), null);
+                return new Bildung(nichtZuEnde(bisher), eingaenge, null);
             }
         }
         String formDerTeile = KennzahlRegeln.ZUSAMMENFASSUNG.equals(u.rechenform()) ? u.eingaenge().get(0).rechenform()
@@ -581,7 +590,65 @@ public class KennzahlLauf {
                 false, false, teile, "zeit", WORT_ZEIT.get(feiner), feiner, formDerTeile,
                 bestehenAb(eigene.get(teilPerioden.get(erste)[0]), teilPerioden.get(erste)[0]), List.of(), bisher(bisher),
                 anlass(r, bisher));
-        return new Bildung(KennzahlRegeln.wert(a), List.of(), ab);
+        return new Bildung(KennzahlRegeln.wert(a), eingaenge, ab);
+    }
+
+    /** Je Paar einer Zusammenfassung seine gespeicherten Zeilen der Art in {@code [von, bis]}; sonst keine. */
+    private static List<Map<String, Paar>> paare(Rahmen r, Urteil u, String art, LocalDate von, LocalDate bis) {
+        List<Map<String, Paar>> aus = new ArrayList<>();
+        if (KennzahlRegeln.ZUSAMMENFASSUNG.equals(u.rechenform())) {
+            for (Aufgeloest x : u.eingaenge()) {
+                aus.add(r.kx().leser().paare(x, art, von, bis));
+            }
+        }
+        return aus;
+    }
+
+    /** Ein Paar in der Herkunft: was die Kennzahl in der Periode gespeichert hat, mit Zähler und Nenner (R4). */
+    private static HerkunftEingang paarEingang(int position, Aufgeloest x, Paar pp, Urteil u) {
+        Gespeichert g = pp.zeile();
+        return new HerkunftEingang(position, "paar", KennzahlRegeln.KENNZAHL, x.kennzeichen(), null, null, x.id(),
+                g == null ? null : g.wert(), g == null ? null : g.zaehler(), g == null ? null : g.nenner(),
+                einheit(x, u), pp.teil().zustand(), g == null ? BigDecimal.ZERO : g.abdeckungProzent(),
+                g == null ? null : g.version(), null, g == null ? List.of() : g.kennzeichen());
+    }
+
+    /**
+     * K9: eine Zeile ohne Zahl, aber mit Zähler UND Nenner (Nenner 0), zählt in Summe durch Summe mit. Ohne Version trägt
+     * sie selbst kein vorläufig/endgültig (die Tabelle erlaubt den Zustand nur mit Version) — als Teil ist sie endgültig,
+     * wenn ihre eigenen Eingänge es sind: gelesen über denselben Leser (in der Kaskade auf deren Transaktion), nie
+     * gespeichert. Nur für eine Kennzahl, die die Periode direkt aus Zähler und Nenner bildet; sonst bleibt der Teil
+     * vorläufig, wie jede laufende Periode.
+     */
+    private Paar zaehltMit(Rahmen r, UUID kennzahl, String art, LocalDate[] p, Paar pp) {
+        Gespeichert g = pp.zeile();
+        KennzahlRegeln.Periode per = new KennzahlRegeln.Periode(art, BezugsPeriode.schluesselVon(p[0], art));
+        if (g == null || g.version() != null || g.zaehler() == null || g.nenner() == null || laeuft(r, per)) {
+            return pp;
+        }
+        Optional<FassungZeile> f = r.kx().kat().fassungAm(kennzahl, p[1]);
+        if (f.isEmpty()) {
+            return pp;
+        }
+        Urteil u;
+        try {
+            u = rechnung(r, f.get());
+        } catch (KennzahlAbgelehnt x) {
+            return pp;
+        }
+        if (!DIREKT.equals(weg(u, art))) {
+            return pp;
+        }
+        Gelesen z = r.kx().leser().lies(rolle(u, "zaehler"), art, p[0], p[1]).get(per.schluessel());
+        Gelesen n = r.kx().leser().lies(rolle(u, "nenner"), art, p[0], p[1]).get(per.schluessel());
+        if (!z.eingang().endgueltig() || !n.eingang().endgueltig()) {
+            return pp;
+        }
+        Gespeichert endgueltig = new Gespeichert(g.id(), g.periodeVon(), g.version(), g.wert(), g.zaehler(), g.nenner(),
+                g.mengeZustand(), g.kennzeichen(), g.abdeckungProzent(), g.richtung(), g.grund(),
+                ViertelstundeRegeln.ENDGUELTIG, spaetestes(List.of(z, n)), g.definitionFassungId(), g.berechnetAm(),
+                g.eingangZustand());
+        return new Paar(KennzahlEingangLeser.teil(pp.teil().objekt(), pp.teil().geltung(), endgueltig), endgueltig);
     }
 
     // ------------------------------------------------------------------------------ schreiben (V3)

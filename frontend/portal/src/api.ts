@@ -2433,6 +2433,19 @@ export interface KennzahlVorlagen {
   vorlagen: KennzahlVorlage[];
 }
 
+/** Eine Gruppe möglicher Paare einer Zusammenfassung: dieselbe Rechenform, dieselbe Einheit (UEMS AP-11 IP-11, R4). */
+export interface KennzahlPaarGruppe {
+  rechenform: KennzahlRechenform;
+  einheit: string;
+  einheit_anzeige: string | null;
+  kennzahlen: Kennzahl[];
+}
+
+/** Die Antwort von `GET /api/v1/kennzahlen/paare?rechenform=&einheit=&standort_id=` (alle Filter optional). */
+export interface KennzahlPaare {
+  gruppen: KennzahlPaarGruppe[];
+}
+
 /** Der geschlossene Satz der Ablehnungen (`schnittstelle.ablehnungen`); der Satz steht in `message`. */
 export type KennzahlFehlerCode =
   | 'anfrage_ungueltig' | 'kennzeichen_format' | 'recht_fehlt' | 'nicht_gefunden' | 'kennzeichen_belegt'

@@ -122,6 +122,18 @@ public final class KennzahlDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Liste(List<Kennzahl> kennzahlen) {}
 
+    /**
+     * {@code GET /api/v1/kennzahlen/paare}: die möglichen Paare einer Zusammenfassung (AP-11 IP-11, R4) — gruppiert nach
+     * Rechenform und Einheit; eine Zusammenfassung nimmt mindestens zwei aus EINER Gruppe.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Paare(List<PaarGruppe> gruppen) {}
+
+    /** Eine Gruppe: dieselbe Rechenform, dieselbe Einheit der heute geltenden Fassung; Kennzahlen nach Kennzeichen. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record PaarGruppe(String rechenform, String einheit, String einheitAnzeige, List<Kennzahl> kennzahlen) {}
+
     /** {@code GET …/{id}/fassungen}: jede Fassung, nach Nummer. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Fassungen(UUID kennzahlId, String kennzeichen, List<Fassung> fassungen) {}

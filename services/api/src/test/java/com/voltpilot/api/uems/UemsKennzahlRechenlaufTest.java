@@ -223,6 +223,30 @@ class UemsKennzahlRechenlaufTest {
         lauf.lauf(Instant.parse("2027-01-20T07:00:00Z"));
 
         gleichDemVektor(zeile(w, "KZ-0003", "jahr", "2026-01-01"), ergebnis("K14", "wert", 0), "K14");
+        // IP-11: das Jahr nennt als Herkunft seine Paare im Jahr (Report K14) — je Gebäude die gespeicherte Jahreszeile mit
+        // Zähler und Nenner; ihre Summen sind Zähler und Nenner des Jahres. Die Route baut daraus den Satz.
+        Map<String, Object> jahr = zeile(w, "KZ-0003", "jahr", "2026-01-01");
+        List<Map<String, Object>> paare = eingaenge(jahr);
+        assertThat(paare).extracting(e -> e.get("rolle") + " " + e.get("art") + " " + e.get("objekt"))
+                .containsExactly("paar kennzahl KZ-0001", "paar kennzahl KZ-0002");
+        for (Map<String, Object> e : paare) {
+            Map<String, Object> paarJahr = zeile(w, (String) e.get("objekt"), "jahr", "2026-01-01");
+            assertThat(zahl(e.get("zaehler"))).as(e.get("objekt") + " Zähler").isEqualByComparingTo(zahl(paarJahr.get("zaehler")));
+            assertThat(zahl(e.get("nenner"))).as(e.get("objekt") + " Nenner").isEqualByComparingTo(zahl(paarJahr.get("nenner")));
+            assertThat(e.get("version")).as(e.get("objekt") + " Version").isEqualTo(paarJahr.get("version"));
+        }
+        assertThat(zahl(paare.get(0).get("zaehler")).add(zahl(paare.get(1).get("zaehler"))))
+                .isEqualByComparingTo(zahl(jahr.get("zaehler")));
+        assertThat(zahl(paare.get(0).get("nenner")).add(zahl(paare.get(1).get("nenner"))))
+                .isEqualByComparingTo(zahl(jahr.get("nenner")));
+        UUID kz3 = root.queryForObject("SELECT id FROM kennzahl WHERE tenant_id = ? AND kennzeichen = 'KZ-0003'", UUID.class,
+                w.mandant());
+        JsonNode schritt = lesen(w, PFAD + "/" + kz3 + "/werte?periode=jahr&von=2026-01-01&bis=2026-12-31").get("werte")
+                .get(0);
+        assertThat(schritt.get("herkunft").get("fehlt")).as(schritt.toString()).isEmpty();
+        assertThat(schritt.get("herkunft").get("satz").get("rechenform").asText()).isEqualTo("zusammenfassung");
+        assertThat(schritt.get("herkunft").get("satz").get("eingaenge").findValuesAsText("objekt"))
+                .containsExactly("KZ-0001", "KZ-0002");
         assertThat(vier(zeile(w, "KZ-0003", "monat", "2026-11-01").get("wert"))).isEqualByComparingTo("0.2470");
         assertThat(vier(zeile(w, "KZ-0003", "monat", "2026-12-01").get("wert"))).isEqualByComparingTo("0.2555");
         assertThat(root.queryForList("SELECT coalesce(w.version::text, '-') || ':' || coalesce(w.zustand, '-') || ':' "
@@ -281,6 +305,48 @@ class UemsKennzahlRechenlaufTest {
         assertThat(februar.get("version")).isNull();
         assertThat(root.queryForObject("SELECT count(*) FROM kennzahl_wert WHERE tenant_id = ? AND periode_art = 'monat'",
                 Long.class, w.mandant())).as("nur Februar und August tragen einen Periodenwert").isEqualTo(2L);
+    }
+
+    /**
+     * K9 in der Zusammenfassung (IP-11): Lindach mit 410 kWh und 0 Stück hat selbst keine Zahl, zählt aber MIT — Summe der
+     * Zähler 6 310, Summe der Nenner 38 000, „2 von 2 Gebäuden“, byte-gleich zum Vertrag und endgültig: ein Paar ohne Zahl
+     * ist endgültig, wenn seine eigenen Eingänge es sind. Nicht stillschweigend übersprungen — dann stünde 5 900 ÷ 38 000
+     * da. Und ein Monat, in dem Lindach gar nichts hat, ist „1 von 2 Gebäuden (KZ-0002 fehlt)“, unvollständig, Richtung
+     * unbestimmt.
+     */
+    @Test
+    void k9DieZusammenfassungZaehltDasPaarMitNennerNullMitUndEinFehlendesPaarIstXVonY() throws Exception {
+        Welt w = welt();
+        quotient(w, "KZ-0001", "gebaeude", w.g2(), "MS-12", "BZ-6");
+        quotient(w, "KZ-0002", "gebaeude", w.g5(), "MS-18", "BZ-7");
+        zusammenfassung(w, "KZ-0003", "KZ-0001", "KZ-0002");
+        monat(w, "MS-12", "2027-08-01", "5900", List.of(), true);
+        bezugswert(w, "BZ-6", "2027-08-01", "38000");
+        monat(w, "MS-18", "2027-08-01", "410", List.of(), true);
+        bezugswert(w, "BZ-7", "2027-08-01", "0");
+        monat(w, "MS-12", "2027-07-01", "5000", List.of(), true);
+        bezugswert(w, "BZ-6", "2027-07-01", "30000");
+
+        lauf.lauf(Instant.parse("2027-09-20T06:00:00Z"));
+
+        gleichDemVektor(zeile(w, "KZ-0002", "monat", "2027-08-01"), ergebnis("K9", "wert", 0), "K9 Lindach");
+        Map<String, Object> august = zeile(w, "KZ-0003", "monat", "2027-08-01");
+        gleichDemVektor(august, ergebnis("K9", "wert", 1), "K9 Unternehmen");
+        assertThat(vier(august.get("wert"))).as("übersprungen wäre 5 900 ÷ 38 000")
+                .isNotEqualByComparingTo(vier(quotient("5900", "38000")));
+        List<Map<String, Object>> paare = eingaenge(august);
+        assertThat(paare).extracting(e -> e.get("rolle") + " " + e.get("objekt")).containsExactly("paar KZ-0001",
+                "paar KZ-0002");
+        assertThat(paare.get(1).get("wert")).as("das Paar Lindach hat keine Zahl").isNull();
+        assertThat(zahl(paare.get(1).get("zaehler"))).isEqualByComparingTo("410");
+        assertThat(zahl(paare.get(1).get("nenner"))).isEqualByComparingTo("0");
+
+        Map<String, Object> juli = zeile(w, "KZ-0003", "monat", "2027-07-01");
+        assertThat(juli.get("menge_zustand")).isEqualTo(ErgebnisZustand.UNVOLLSTAENDIG);
+        assertThat(juli.get("richtung")).isEqualTo(KennzahlRegeln.UNBESTIMMT);
+        assertThat(vier(juli.get("wert"))).isEqualByComparingTo(vier(quotient("5000", "30000")));
+        assertThat(saetze(juli.get("kennzeichen"))).contains(KennzahlRegeln.GEWICHTET, KennzahlRegeln.RICHTUNG_UNBESTIMMT,
+                "1 von 2 Gebäuden (KZ-0002 fehlt)");
     }
 
     // ================================================================ K10: gemessen → berechnet → Kennzahl in einem Takt
@@ -793,5 +859,17 @@ class UemsKennzahlRechenlaufTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(MAPPER.writeValueAsString(body));
         return mvc.perform(anfrage).andReturn();
+    }
+
+    /** Ein GET als Ines — die Antwort muss 200 sein. */
+    private JsonNode lesen(Welt w, String pfad) throws Exception {
+        MvcResult r = mvc.perform(request(HttpMethod.GET, pfad).with(jwt().jwt(j -> {
+            j.subject("sub-ines-" + w.mandant());
+            j.claim("preferred_username", "Ines Kaltenbach");
+            j.claim("tenant_id", w.mandant().toString());
+        }))).andReturn();
+        String text = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(r.getResponse().getStatus()).as(text).isEqualTo(200);
+        return MAPPER.readTree(text);
     }
 }
