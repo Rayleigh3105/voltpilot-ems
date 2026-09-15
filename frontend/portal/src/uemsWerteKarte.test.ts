@@ -11,16 +11,23 @@ import {
   f14Tag,
   f16Monat,
   f16Tage,
+  f20Tag,
   f8Stunden,
   f8Tag,
+  f9Tag,
+  LUECKE_F20,
+  nochNichtGebildetStunden,
+  nochNichtGebildetTag,
   normalStunden,
   normalTag,
   ohneQuelleStunden,
   ohneQuelleTag,
   schritt,
 } from './test/werteKarteFixtures';
-import { OHNE_ZAHL, TRENNER, ZUSTAENDE, fassung, satz, tagesdauer } from './uemsErgebnis';
-import { anfragen, karte, liste, monatTitel, tagTitel } from './uemsWerteKarte';
+import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
+import { EREIGNIS_TEXTE } from './uemsEreignis';
+import { KEINE_WERTE, OHNE_ZAHL, TRENNER, ZUSTAENDE, fassung, satz, tagesdauer } from './uemsErgebnis';
+import { anfragen, karte, liste, luecken, monatTitel, tagTitel } from './uemsWerteKarte';
 
 /**
  * Die Tages- und Monatskarte (UEMS AP-08 IP-11) gegen die Sätze der Fälle F8,
@@ -267,10 +274,18 @@ describe('uemsWerteKarte — null ist ein Strich, überall', () => {
     expect(new Set(zeilen.map((z) => `${z.zahl} ${z.zustand}`))).toEqual(new Set([`${OHNE_ZAHL} keine Werte`]));
   });
 
-  it('ein Schritt ohne Zustand (noch nicht gebildet) spricht nichts — nur den Strich', () => {
+  it('ein Schritt ohne Zustand (noch nicht gebildet) spricht keine Zahl — aber seinen eigenen Satz', () => {
     const a = f8Tag();
     a.werte = [schritt({ von: a.werte[0].von, bis: a.werte[0].bis, grund: 'noch_nicht_gebildet', quelle: null })];
-    expect(karte(a)).toMatchObject({ zahl: OHNE_ZAHL, zustand: null, abdeckung: null, kennzeichen: [] });
+    expect(karte(a)).toMatchObject({
+      zahl: OHNE_ZAHL,
+      zustand: null,
+      abdeckung: null,
+      kennzeichen: [],
+      fassung: null,
+      luecken: null,
+      grund: UEMS_NOCH_NICHT_GERECHNET_SATZ,
+    });
   });
 
   it('ein Schritt, der den Vertrag verletzt, wird nicht gesprochen — auch nicht seine Zahl', () => {
@@ -293,6 +308,118 @@ describe('uemsWerteKarte — null ist ein Strich, überall', () => {
     expect(satz({ wert: 2304, einheit: 'kWh', ebene: 'tag', zustand: 'vollständig', abdeckungProzent: 100, kennzeichen: [] }))
       .toBe([karte(normalTag())!.zahl, 'vollständig', karte(normalTag())!.abdeckung].join(TRENNER));
     expect(liste(normalStunden()).map((z) => z.zahl)).toEqual(Array(24).fill(`96,0${NB}kWh`));
+  });
+});
+
+describe('uemsWerteKarte — drei Lagen: Wert da · noch nicht gebildet · keine Werte (Captain 15.09.2026)', () => {
+  it('jede Lage spricht ihren eigenen Satz — keine sieht aus wie eine andere', () => {
+    const da = karte(normalTag())!;
+    const nochNicht = karte(nochNichtGebildetTag())!;
+    const keine = karte(ohneQuelleTag())!;
+    expect([da.zahl, da.zustand, da.grund]).toEqual([`2.304${NB}kWh`, 'vollständig (Menge aus Zählerständen)', null]);
+    expect([nochNicht.zahl, nochNicht.zustand, nochNicht.abdeckung, nochNicht.grund]).toEqual([
+      OHNE_ZAHL,
+      null,
+      null,
+      UEMS_NOCH_NICHT_GERECHNET_SATZ,
+    ]);
+    expect([keine.zahl, keine.zustand, keine.grund]).toEqual([OHNE_ZAHL, KEINE_WERTE, null]);
+    const gesagt = [da, nochNicht, keine].map((k) => [k.zahl, k.zustand, k.grund].filter((t) => t !== null).join(TRENNER));
+    expect(new Set(gesagt).size).toBe(3);
+    // Nie „keine Werte“ und nie der Strich allein.
+    expect(UEMS_NOCH_NICHT_GERECHNET_SATZ).not.toContain(KEINE_WERTE);
+    expect(gesagt[1]).not.toBe(OHNE_ZAHL);
+  });
+
+  it('Wort und Satz stehen im Glossar — der Satz beginnt mit dem Wort der Zeile', () => {
+    const wort = UEMS_NOCH_NICHT_GERECHNET;
+    expect(UEMS_NOCH_NICHT_GERECHNET_SATZ.startsWith(`${wort.charAt(0).toUpperCase()}${wort.slice(1)} — `)).toBe(true);
+  });
+
+  it('die Liste: die noch nicht gebildete Stunde trägt das Wort, eine Stunde ohne Werte nicht', () => {
+    const zeilen = liste(nochNichtGebildetStunden());
+    expect(zeilen).toHaveLength(24);
+    const letzte = zeilen[23];
+    expect(letzte.beschriftung).toMatch(/^23:00–/);
+    expect([letzte.zahl, letzte.zustand, letzte.grund]).toEqual([OHNE_ZAHL, null, UEMS_NOCH_NICHT_GERECHNET]);
+    expect(zeilen.slice(0, 23).every((z) => z.zahl === `96,0${NB}kWh` && z.grund === null)).toBe(true);
+    const leer = zeileMit(f8Stunden(), '15:00–16:00');
+    expect([leer.zahl, leer.zustand, leer.grund]).toEqual([OHNE_ZAHL, KEINE_WERTE, null]);
+    expect(liste(ohneQuelleStunden()).every((z) => z.grund === null)).toBe(true);
+  });
+
+  it('nur `noch_nicht_gebildet` bekommt den Satz — ein anderer Grund ohne Zahl bleibt der Strich', () => {
+    const a = f8Tag();
+    a.werte = [schritt({ von: a.werte[0].von, bis: a.werte[0].bis, grund: 'ohne_menge_gespeichert' })];
+    expect(karte(a)).toMatchObject({ zahl: OHNE_ZAHL, zustand: null, grund: null });
+  });
+});
+
+describe('uemsWerteKarte — die Anzahl der Lücken an der Karte (Captain 15.09.2026)', () => {
+  it('null Lücken: der gewöhnliche Tag nennt keine Anzahl — der Verlauf steht wie bisher', () => {
+    const a = normalTag();
+    expect(a.werte[0].ereignisse).toEqual([]);
+    const k = karte(a)!;
+    expect(k.luecken).toBeNull();
+    expect(k.abdeckung).toMatch(/^Verlauf 100\s%$/);
+  });
+
+  it('genau eine Lücke: F8 nennt „1 Lücke“ — das eine Ereignis, das die Route an den Tag hängt', () => {
+    const a = f8Tag();
+    expect(a.werte[0].ereignisse.filter((e) => e.art === 'data_gap')).toHaveLength(1);
+    const k = karte(a)!;
+    expect(k.luecken).toBe(`1 ${UEMS_LUECKE.singular}`);
+    expect(k.abdeckung).toMatch(/^Verlauf 85\s%$/);
+    // Der Satz der Lücke bleibt unter den Kennzeichen — die Anzahl ersetzt ihn nicht.
+    expect(k.kennzeichen).toEqual([F8_LUECKE]);
+  });
+
+  it('F20: die Lücke über die Tagesgrenze ist an jedem der beiden Tage genau eine', () => {
+    const tage = [
+      ['2026-10-20', 'Tag 20.10.2026'],
+      ['2026-10-21', 'Tag 21.10.2026'],
+    ] as const;
+    for (const [tag, name] of tage) {
+      const a = f20Tag(tag);
+      gleichDerErwartung(a, 0, erwartung('f20', name));
+      expect(a.werte[0].ereignisse).toEqual([LUECKE_F20]);
+      expect(karte(a)).toMatchObject({ zahl: `2.208${NB}kWh`, luecken: '1 Lücke' });
+    }
+  });
+
+  it('mehrere Lücken heißen „Lücken“ — F24, die Leistungsreihe von MS-10 am 20.10.2026 (10:14–10:16, 10:29–10:30)', () => {
+    const ereignisse = [
+      { id: 'e8a1c2d3-0000-4000-8000-000000000241', art: 'data_gap', von: '2026-10-20T10:14:00+02:00', bis: '2026-10-20T10:16:00+02:00' },
+      { id: 'e8a1c2d3-0000-4000-8000-000000000242', art: 'data_gap', von: '2026-10-20T10:29:00+02:00', bis: '2026-10-20T10:30:00+02:00' },
+    ];
+    const w = schritt({ von: '2026-10-20T10:00:00+02:00', bis: '2026-10-20T11:00:00+02:00', abdeckung_prozent: 96, ereignisse });
+    expect(luecken(w)).toBe(`2 ${UEMS_LUECKE.plural}`);
+  });
+
+  it('jede Lücke einmal: dasselbe Ereignis zweimal bleibt eine Lücke, eine Übergabe ist keine', () => {
+    const w = f8Tag().werte[0];
+    // Die Übergabe beim Box-Tausch am 04.11.2026 09:38–09:40 ist ein anderes Ereignis (`handover`).
+    const uebergabe = { id: 'e8a1c2d3-0000-4000-8000-000000000404', art: 'handover', von: '2026-11-04T09:38:00+01:00', bis: '2026-11-04T09:40:00+01:00' };
+    expect(luecken({ ...w, ereignisse: [...w.ereignisse, ...w.ereignisse, uebergabe] })).toBe('1 Lücke');
+  });
+
+  it('F9: die nachgelieferte Lücke bleibt als Ereignis, der Verlauf ist 100 % — keine Anzahl, kein Widerspruch', () => {
+    const a = f9Tag();
+    gleichDerErwartung(a, 0, erwartung('f9', 'Tag 03.11.2026'));
+    expect(a.werte[0].ereignisse).toEqual(f8Tag().werte[0].ereignisse);
+    const k = karte(a)!;
+    expect(k.luecken).toBeNull();
+    expect(k.abdeckung).toMatch(/^Verlauf 100\s%$/);
+  });
+
+  it('ein Schritt, der nicht gesprochen wird, nennt auch keine Anzahl', () => {
+    const a = f8Tag();
+    a.werte = [{ ...a.werte[0], kennzeichen: ['geschätzt'] }];
+    expect(karte(a)).toMatchObject({ zahl: OHNE_ZAHL, zustand: null, luecken: null });
+  });
+
+  it('„Lücke“ ist der Name der Ereignis-Art im Vokabular', () => {
+    expect(UEMS_LUECKE.singular).toBe(EREIGNIS_TEXTE.data_gap.name);
   });
 });
 

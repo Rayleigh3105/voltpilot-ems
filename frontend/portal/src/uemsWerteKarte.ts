@@ -21,13 +21,22 @@
  *  - `null` ist ein Strich, nie 0.
  *
  * Ein Schritt ohne Zustand (die Route nennt dann `grund`) oder einer, der den
- * Vertrag verletzt, wird NICHT gesprochen: er zeigt nur den Strich.
+ * Vertrag verletzt, wird NICHT gesprochen: er zeigt nur den Strich. Nur der Grund
+ * `noch_nicht_gebildet` bekommt ein Wort (Zeile) bzw. einen Satz (Karte) aus
+ * `glossar.ts` — „noch nicht gerechnet“ ist nicht „keine Werte“, und nur das eine
+ * löst sich von selbst (Captain 15.09.2026).
+ *
+ * Die Karte nennt die ANZAHL der Lücken neben dem Verlauf („Verlauf 85 % · 1 Lücke“):
+ * jede Lücke (Ereignis-Art `data_gap`) einmal, so wie die Route sie an den Schritt
+ * hängt — gezählt, nicht gerechnet, nichts aufgefüllt (Captain 15.09.2026).
  *
  * REIN: kein Netz, kein Zustand, keine Uhr.
  */
 
 import type { MessstelleWerte, MessstelleWerteQuelle, MessstelleWerteRaster, MessstelleWerteWert } from './api';
+import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
 import { MONATE, WOCHENTAGE } from './picker/datum';
+import { zahlText } from './uemsEreignis';
 import {
   ANZEIGE_EINHEITEN,
   FASSUNG_KENNZEICHEN,
@@ -75,6 +84,18 @@ export interface Karte extends WertAnzeige {
   fassung: string | null;
   /** Der Wert der Route zur Fassung — nur für die Darstellung (Ton), nie für einen Satz. */
   fassungWert: MessstelleWerteWert['fassung'];
+  /**
+   * „1 Lücke“ · „3 Lücken“ — steht im Abzeichen des Verlaufs. Nur die Karte einer Messstelle nennt sie
+   * (Kennzahl und Bericht bauen ihre Karte ohne); fehlt sie oder ist sie `null`, steht keine Anzahl.
+   */
+  luecken?: string | null;
+}
+
+/** Die Karte einer Messstelle: dazu die Anzahl der Lücken und der Satz eines noch nicht gebildeten Schritts. */
+export interface MessstellenKarte extends Karte {
+  luecken: string | null;
+  /** `UEMS_NOCH_NICHT_GERECHNET_SATZ` an einem noch nicht gebildeten Schritt, sonst `null`. */
+  grund: string | null;
 }
 
 /** Eine Zeile der Liste: eine Stunde des Tages bzw. ein Tag des Monats. */
@@ -83,6 +104,8 @@ export interface Zeile extends WertAnzeige {
   beschriftung: string;
   /** Nur in der Tagesliste des Monats. */
   tagesdauer: string | null;
+  /** `UEMS_NOCH_NICHT_GERECHNET` an einem noch nicht gebildeten Schritt, sonst `null` — in der Zeile das Wort, nie der Satz. */
+  grund: string | null;
 }
 
 /** Eine Anfrage an die Route (Tage in der Zeitzone des Standorts, `bis` einschließlich). */
@@ -195,8 +218,27 @@ export const anzeige = (
   };
 };
 
+/** Die Lücken eines Schritts: jede Lücke (Ereignis-Art `data_gap`) EINMAL, so wie die Route sie an den Schritt hängt. */
+const lueckenDes = (w: MessstelleWerteWert): number =>
+  new Set(w.ereignisse.filter((e) => e.art === 'data_gap').map((e) => e.id)).size;
+
+/**
+ * „1 Lücke“ · „3 Lücken“ — oder `null`: ohne Lücke und bei Verlauf 100 %. Dort sind alle erwarteten Werte
+ * da; eine Lücke, die die Route trotzdem nennt, ist nachgeliefert (der Lücken-Melder schließt sie mit
+ * `nachgeliefert_am` und löscht sie nie, F9) — „Verlauf 100 % · 1 Lücke“ wäre ein Widerspruch.
+ */
+export const luecken = (w: MessstelleWerteWert): string | null => {
+  const n = lueckenDes(w);
+  if (n === 0 || w.abdeckung_prozent === 100) return null;
+  return `${zahlText(n)} ${n === 1 ? UEMS_LUECKE.singular : UEMS_LUECKE.plural}`;
+};
+
+/** Ein Schritt, den die Route „noch nicht gebildet“ nennt — er wird nicht gesprochen, sagt aber, warum. */
+const nochNichtGebildet = (a: WertAnzeige, w: MessstelleWerteWert): boolean =>
+  a.zustand === null && w.grund === 'noch_nicht_gebildet';
+
 /** Die Karte aus der Antwort der Periode (Raster `tag` bzw. `monat`, genau ein Schritt). */
-export const karte = (antwort: MessstelleWerte): Karte | null => {
+export const karte = (antwort: MessstelleWerte): MessstellenKarte | null => {
   const w = antwort.werte[0];
   if (!w) return null;
   const a = anzeige(antwort, w, true);
@@ -209,18 +251,26 @@ export const karte = (antwort: MessstelleWerte): Karte | null => {
     tagesdauer: antwort.raster === 'tag' ? w.tagesdauer : null,
     fassung: gesprochen ? fassung(w.fassung) : null,
     fassungWert: gesprochen ? w.fassung : null,
+    // Die Anzahl der Lücken nennt, wie die Fassung, nur ein gesprochener Schritt.
+    luecken: a.zustand !== null ? luecken(w) : null,
+    grund: nochNichtGebildet(a, w) ? UEMS_NOCH_NICHT_GERECHNET_SATZ : null,
   };
 };
 
 /**
  * Die Liste unter der Karte: am Tag die Stunden mit der Beschriftung der Route
  * (die doppelte Stunde mit MESZ/MEZ, die fehlende fehlt), im Monat die Tage mit
- * ihrer Tagesdauer.
+ * ihrer Tagesdauer. Ein noch nicht gebildeter Schritt trägt das Wort „noch nicht
+ * gerechnet“ (die Karte den Satz); die Anzahl der Lücken steht nur an der Karte.
  */
 export const liste = (antwort: MessstelleWerte): Zeile[] =>
-  antwort.werte.map((w) => ({
-    ...anzeige(antwort, w, false),
-    schluessel: w.von,
-    beschriftung: antwort.raster === 'tag' ? tagTitel(w.von, false) : (w.beschriftung ?? w.von),
-    tagesdauer: antwort.raster === 'tag' ? w.tagesdauer : null,
-  }));
+  antwort.werte.map((w) => {
+    const a = anzeige(antwort, w, false);
+    return {
+      ...a,
+      schluessel: w.von,
+      beschriftung: antwort.raster === 'tag' ? tagTitel(w.von, false) : (w.beschriftung ?? w.von),
+      tagesdauer: antwort.raster === 'tag' ? w.tagesdauer : null,
+      grund: nochNichtGebildet(a, w) ? UEMS_NOCH_NICHT_GERECHNET : null,
+    };
+  });

@@ -154,6 +154,14 @@ export const F8_LUECKE = 'Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nic
 export const ANFANG_NICHT_GEMESSEN = 'Anfang nicht gemessen (kein Stand an der Periodengrenze)';
 export const NUR_EIN_STAND = 'nur ein Stand in der Periode — keine Menge bildbar';
 
+/** Die Lücke des Box-Ausfalls Halle 2 am 03.11.2026 (AP-00 §7.6) — das Ereignis, das die Route an den Tag hängt. */
+export const LUECKE_03_11 = {
+  id: 'e8a1c2d3-0000-4000-8000-000000000008',
+  art: 'data_gap',
+  von: '2026-11-03T14:00:00+01:00',
+  bis: '2026-11-03T17:31:00+01:00',
+};
+
 /** Tag 03.11.2026: 2 304,0 kWh vollständig aus den Ständen, Verlauf 1 230 von 1 440 = 85 %. */
 export const f8Tag = (): MessstelleWerte =>
   antwort(MS_10, 'tag', '2026-11-03T00:00:00+01:00', '2026-11-04T00:00:00+01:00', [
@@ -165,7 +173,7 @@ export const f8Tag = (): MessstelleWerte =>
       erwartet: 1440,
       abdeckung_prozent: 85,
       kennzeichen: [F8_LUECKE],
-      ereignisse: [{ id: 'e8a1c2d3-0000-4000-8000-000000000008', art: 'data_gap', von: '2026-11-03T14:00:00+01:00', bis: '2026-11-03T17:31:00+01:00' }],
+      ereignisse: [LUECKE_03_11],
     }),
   ]);
 
@@ -266,3 +274,60 @@ export const ohneQuelleStunden = (): MessstelleWerte =>
     stundenDes('2026-11-03', () => ({ zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, gebildet_aus: null, versionen: null })),
     false,
   );
+
+// ------------------------------------------------------------------ noch nicht gebildet · MS-10 · 05.11.2026
+
+/**
+ * Gelesen am 06.11.2026 um 00:05: die Viertelstunden des 05.11. sind bis 23:45 gebildet (je Stunde 96,0 kWh wie
+ * am 02.11.), die letzte noch nicht — darum sind die Stunde 23:00–24:00 und der Tag noch nicht gebildet. Die Route
+ * sagt dann `grund` `noch_nicht_gebildet`: ohne Zustand, ohne Zahl, ohne Version; der nächste Lauf bildet sie.
+ */
+export const nochNichtGebildetTag = (): MessstelleWerte =>
+  antwort(MS_10, 'tag', '2026-11-05T00:00:00+01:00', '2026-11-06T00:00:00+01:00', [
+    tagSchritt('2026-11-05', { grund: 'noch_nicht_gebildet', version: null, gebildet_aus: null, versionen: null }),
+  ]);
+
+export const nochNichtGebildetStunden = (): MessstelleWerte =>
+  antwort(MS_10, 'stunde', '2026-11-05T00:00:00+01:00', '2026-11-06T00:00:00+01:00', stundenDes('2026-11-05', (_b, h) =>
+    h < 23 ? voll(96.0, 60) : { grund: 'noch_nicht_gebildet', version: null, gebildet_aus: null },
+  ));
+
+// ------------------------------------------------------------------ Lücken zählen · MS-10 · F9 und F20
+
+/**
+ * F9 · 03.11.2026, Nachlieferung innerhalb von 7 Tagen: die Box liefert die gepufferten Werte 14:00–17:30 nach,
+ * der Tag hat 1 440 von 1 440 Werten. Die Lücke bleibt als Ereignis stehen — der Lücken-Melder schließt sie mit
+ * `nachgeliefert_am` und löscht sie nie —, und die Route hängt sie weiter an den Schritt.
+ */
+export const f9Tag = (): MessstelleWerte =>
+  antwort(MS_10, 'tag', '2026-11-03T00:00:00+01:00', '2026-11-04T00:00:00+01:00', [
+    tagSchritt('2026-11-03', { ...voll(2304.0, 1440), fassung: 'vorlaeufig', ereignisse: [LUECKE_03_11] }),
+  ]);
+
+export const ENDE_NICHT_GEMESSEN = 'Ende nicht gemessen (kein Stand an der Periodengrenze)';
+
+/** F20 · die Lücke 20.10.2026 23:00 – 21.10.2026 01:00: EIN Ereignis, das beide Tage berührt. */
+export const LUECKE_F20 = {
+  id: 'e8a1c2d3-0000-4000-8000-000000000020',
+  art: 'data_gap',
+  von: '2026-10-20T23:00:00+02:00',
+  bis: '2026-10-21T01:00:00+02:00',
+};
+
+/** F20 · jeder der beiden Tage: 2 208,0 kWh unvollständig, Verlauf 95 % — endgültig (gelesen am 05.11.2026). */
+export const f20Tag = (tag: '2026-10-20' | '2026-10-21'): MessstelleWerte => {
+  const { von, bis } = tagesgrenzen(tag);
+  const erster = tag === '2026-10-20';
+  return antwort(MS_10, 'tag', von, bis, [
+    tagSchritt(tag, {
+      menge: 2208.0,
+      zustand: 'unvollständig',
+      erhalten: erster ? 1381 : 1380,
+      erwartet: 1440,
+      abdeckung_prozent: 95,
+      kennzeichen: [erster ? ENDE_NICHT_GEMESSEN : ANFANG_NICHT_GEMESSEN],
+      fassung: 'endgueltig',
+      ereignisse: [LUECKE_F20],
+    }),
+  ]);
+};

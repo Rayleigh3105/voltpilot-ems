@@ -12,6 +12,8 @@ import {
   f16Tage,
   f8Stunden,
   f8Tag,
+  nochNichtGebildetStunden,
+  nochNichtGebildetTag,
   normalStunden,
   normalTag,
   ohneQuelleStunden,
@@ -49,6 +51,8 @@ const ANTWORTEN: Record<string, () => MessstelleWerte> = {
   'MS-06|tag|2026-10-01': f16Tage,
   'MS-21|tag|2026-11-03': ohneQuelleTag,
   'MS-21|stunde|2026-11-03': ohneQuelleStunden,
+  'MS-10|tag|2026-11-05': nochNichtGebildetTag,
+  'MS-10|stunde|2026-11-05': nochNichtGebildetStunden,
 };
 
 const BILDER = process.env.TAGESKARTE_BILDER;
@@ -209,6 +213,41 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await expect(page.getByTestId('werte-fassung')).toHaveCount(0);
     await keinQuerlauf(page);
     await bilder(page, '6-ohne-werte');
+  });
+
+  // Captain 15.09.2026: die ANZAHL der Lücken steht auf der Karte — im Abzeichen des Verlaufs, nicht daneben.
+  test('die Anzahl der Lücken: F8 „Verlauf 85 % · 1 Lücke“, der gewöhnliche Tag ohne Anzahl', async ({ page }) => {
+    await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-03');
+    const karte = page.getByTestId('werte-karte');
+    await expect(karte.getByTestId('werte-verlauf')).toHaveText(/^Verlauf 85\s%\s·\s1\sLücke$/);
+    // Kein eigenes Abzeichen: Zustand und Verlauf, sonst nichts (Falle 9).
+    await expect(karte.locator('.vp-wk-abzeichen > *')).toHaveCount(2);
+    // Der Satz der Lücke steht weiter unter den Kennzeichen.
+    await expect(karte.locator('.vp-wk-kennzeichen li')).toHaveCount(1);
+    await keinQuerlauf(page);
+    await bilder(page, '15-anzahl-der-luecken');
+    await page.goto('/e2e/tageskarte.html?ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-02');
+    await expect(page.getByTestId('werte-verlauf')).toHaveText(/^Verlauf 100\s%$/);
+    await expect(page.getByTestId('werte-karte')).not.toContainText('Lücke');
+  });
+
+  // Captain 15.09.2026: „noch nicht gerechnet“ und „keine Werte“ sind zwei Lagen — und nur eine löst sich von selbst.
+  test('ein noch nicht gebildeter Tag: Strich und eigener Satz, nie „keine Werte“; die letzte Stunde sagt es auch', async ({ page }) => {
+    await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-05');
+    const karte = page.getByTestId('werte-karte');
+    await expect(karte.locator('.vp-wk-zahl')).toHaveText('—');
+    await expect(karte.getByTestId('werte-grund')).toHaveText('Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.');
+    await expect(karte).not.toContainText('keine Werte');
+    await expect(karte.locator('.vp-wk-abzeichen')).toHaveCount(0);
+    await expect(page.getByTestId('werte-fassung')).toHaveCount(0);
+    // Die Liste: 23 Stunden mit Zahl, die letzte ohne — mit dem Wort, nicht mit dem Satz.
+    const letzte = page.getByTestId('werte-zeile').last();
+    await expect(letzte.locator('.vp-wk-zeile-zahl')).toHaveText('—');
+    await expect(letzte.locator('.vp-wk-zeile-info')).toHaveText('noch nicht gerechnet');
+    await expect(page.locator('.vp-wk-zeile', { hasText: 'noch nicht gerechnet' })).toHaveCount(1);
+    await expect(page.locator('.vp-wk-liste')).not.toContainText('keine Werte');
+    await keinQuerlauf(page);
+    await bilder(page, '14-noch-nicht-gebildet');
   });
 
   // ergebnis-zustand 1.7: immer zeigen, beide Fälle — blättern wechselt die Fassung mit der Periode.

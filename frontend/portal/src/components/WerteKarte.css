@@ -150,6 +150,13 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* Der Satz eines Schritts ohne Zahl — an der Messstelle „noch nicht gerechnet“ (wie `.vp-kz .vp-wk-grund`). */
+.vp-wk-grund {
+  margin: var(--vp-c-space-3) 0 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
 
 .vp-wk-kennzeichen {
   list-style: none;
