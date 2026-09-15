@@ -157,6 +157,12 @@ public class ComponentAdoptionRunner {
                 waiting++;
                 log.info("Bestands-Übernahme: Anlage {} (\"{}\") wartet noch: {}", c.siteId(),
                         c.name(), e.getMessage());
+            } catch (ComponentAdoptionService.PushNotDeliveredException e) {
+                failed++;
+                log.warn("Bestands-Übernahme: Anlage {} bleibt am Gerät verwaltet: {}", c.siteId(),
+                        e.toString());
+                // UEMS AP-06 W7: hat eine Box den Push schon, stellt erst das sie zurück.
+                adoption.nachAbbruchZurueckstellen(c.siteId(), e);
             } catch (RuntimeException e) {
                 failed++;
                 log.warn("Bestands-Übernahme: Anlage {} bleibt am Gerät verwaltet: {}", c.siteId(),

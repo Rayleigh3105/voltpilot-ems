@@ -112,11 +112,16 @@ public class AdminComponentFleetRepository {
         return out;
     }
 
-    /** Das SOLL: die zuletzt komponierte Push-Revision je Anlage. */
+    /**
+     * Das SOLL: die zuletzt komponierte Push-Revision je Anlage. Seit UEMS AP-06 IP-6 hat eine
+     * Anlage eine Zeile je Box - gelesen wird die jüngste, wortgleich
+     * {@code EntityRegistryRepository.registryState}.
+     */
     public Map<UUID, String> registryRevisionPerSite() {
         Map<UUID, String> out = new HashMap<>();
         each(rs -> out.put(rs.getObject("site_id", UUID.class),
-                rs.getString("revision")), "SELECT site_id, revision FROM entity_registry_state");
+                rs.getString("revision")), "SELECT DISTINCT ON (site_id) site_id, revision FROM entity_registry_state "
+                + "ORDER BY site_id, composed_at DESC, device_id NULLS LAST");
         return out;
     }
 

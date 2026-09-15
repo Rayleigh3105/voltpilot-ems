@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -361,7 +362,8 @@ class DatenquelleVorschlagApiTest {
     /**
      * A9: eine zusätzliche Lese-Box in AN-1. Gruppiert wird je Box — was Box Halle 1 liest, bleibt
      * DQ-1 … DQ-3; was die zweite liest, wird eine eigene Quelle mit IHREM Reihenbeginn. Die
-     * führende Box bleibt Box Halle 1 (Speicher-Box), der Push geht weiter nur an sie.
+     * führende Box bleibt Box Halle 1 (Speicher-Box). Seit IP-6 (Push je Box) bekommt die Lese-Box nach
+     * der Bestätigung ihren EIGENEN Registry-Push mit genau ihrer Quelle; Box Halle 1 liest K-96 nicht mehr.
      */
     @Test
     void a9ZweiteBoxVorschlaegeJeBoxDieFuehrendeBleibt() throws Exception {
@@ -397,7 +399,22 @@ class DatenquelleVorschlagApiTest {
         Antwort u = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen", alle(liste));
         assertThat(u.body().get("neu").asInt()).as(u.body().toString()).isEqualTo(4);
         assertThat(u.body().at("/datenquellen/3/zustaendige_box/id").asText()).isEqualTo(lese.toString());
-        assertThat(stand(w, an1)).as("kein Verbund, kein Push an die zweite Box").isEqualTo(vorher);
+        // Kein Verbund: die führende Box und die Flow-Aktivierung bleiben Box Halle 1. Aber seit IP-6 geht
+        // der Registry-Push je Box — die Lese-Box bekommt genau K-96, Box Halle 1 alles andere.
+        Stand nachher = stand(w, an1);
+        assertThat(vorher.registryPushes()).isEqualTo(1);
+        assertThat(nachher.registryPushes()).isEqualTo(2);
+        assertThat(nachher.registryBox()).isEqualTo(w.boxen.get("E-1"));
+        assertThat(nachher.flow()).isEqualTo(vorher.flow());
+        assertThat(nachher.flowBox()).isEqualTo(vorher.flowBox());
+        assertThat(nachher.fuehrend()).isEqualTo(vorher.fuehrend());
+        assertThat(nachher.fuehrungsGrund()).isEqualTo(vorher.fuehrungsGrund());
+        Map<UUID, Set<UUID>> jeBox = entitaetenJeBox(w, an1);
+        Set<UUID> ohneKantine = new HashSet<>(entitaeten(vorher.registry()));
+        assertThat(ohneKantine.remove(kantine)).as("vor der Bestätigung las Box Halle 1 auch K-96").isTrue();
+        assertThat(jeBox.keySet()).containsExactly(w.boxen.get("E-1"), lese);
+        assertThat(jeBox.get(w.boxen.get("E-1"))).isEqualTo(ohneKantine);
+        assertThat(jeBox.get(lese)).containsExactly(kantine);
     }
 
     // ================================================================ benannt ausgelassen
@@ -532,8 +549,8 @@ class DatenquelleVorschlagApiTest {
     // ================================================================ Gerüst
 
     /** Was eine Box erreicht: Registry-Push und Flow-Aktivierung (ohne ihre Zeitstempel), und wer führt. */
-    private record Stand(String registry, UUID registryBox, String flow, UUID flowBox, UUID fuehrend,
-            String fuehrungsGrund) {}
+    private record Stand(String registry, UUID registryBox, int registryPushes, String flow, UUID flowBox,
+            UUID fuehrend, String fuehrungsGrund) {}
 
     private Stand stand(Welt w, UUID anlage) throws Exception {
         reset(registryPublisher, flowPublisher);
@@ -546,15 +563,48 @@ class DatenquelleVorschlagApiTest {
             flows.republishForSite(anlage);
             ArgumentCaptor<UUID> rBox = ArgumentCaptor.forClass(UUID.class);
             ArgumentCaptor<byte[]> rPush = ArgumentCaptor.forClass(byte[].class);
-            verify(registryPublisher).publishRegistry(eq(w.mandant), eq(anlage), rBox.capture(), rPush.capture());
+            // Seit IP-6 geht der Registry-Push je Box: der Stand trägt den Push an die FÜHRENDE Box und zählt,
+            // wie viele Boxen einen bekamen.
+            verify(registryPublisher, atLeastOnce()).publishRegistry(eq(w.mandant), eq(anlage), rBox.capture(),
+                    rPush.capture());
+            int fuehrende = rBox.getAllValues().indexOf(f.box());
             ArgumentCaptor<UUID> fBox = ArgumentCaptor.forClass(UUID.class);
             ArgumentCaptor<byte[]> fPush = ArgumentCaptor.forClass(byte[].class);
             verify(flowPublisher).publishDeployment(eq(w.mandant), eq(anlage), fBox.capture(), fPush.capture());
-            return new Stand(ohne(rPush.getValue(), "revision", "published_at"), rBox.getValue(),
+            return new Stand(ohne(rPush.getAllValues().get(fuehrende), "revision", "published_at"),
+                    rBox.getAllValues().get(fuehrende), rBox.getAllValues().size(),
                     ohne(fPush.getValue(), "deployed_at"), fBox.getValue(), f.box(), f.grund().code());
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /** Seit IP-6: je Box (in Zustell-Reihenfolge) die Entitäten ihres Registry-Pushs. */
+    private Map<UUID, Set<UUID>> entitaetenJeBox(Welt w, UUID anlage) throws Exception {
+        reset(registryPublisher);
+        when(registryPublisher.publishRegistry(any(), any(), any(), any())).thenReturn(true);
+        TenantContext.set(w.mandant);
+        try {
+            registry.pushRegistryBestEffort(anlage);
+        } finally {
+            TenantContext.clear();
+        }
+        ArgumentCaptor<UUID> box = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<byte[]> push = ArgumentCaptor.forClass(byte[].class);
+        verify(registryPublisher, atLeastOnce()).publishRegistry(eq(w.mandant), eq(anlage), box.capture(),
+                push.capture());
+        Map<UUID, Set<UUID>> out = new LinkedHashMap<>();
+        for (int i = 0; i < box.getAllValues().size(); i++) {
+            out.put(box.getAllValues().get(i),
+                    entitaeten(new String(push.getAllValues().get(i), StandardCharsets.UTF_8)));
+        }
+        return out;
+    }
+
+    private static Set<UUID> entitaeten(String push) throws IOException {
+        Set<UUID> out = new HashSet<>();
+        MAPPER.readTree(push).get("entities").forEach(e -> out.add(UUID.fromString(e.get("entity_id").asText())));
+        return out;
     }
 
     private static String ohne(byte[] push, String... zeitstempel) throws IOException {

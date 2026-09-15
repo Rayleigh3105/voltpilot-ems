@@ -17,7 +17,8 @@ veröffentlichen gegen die wörtlich kopierte alte Weiche). Regeln: `uems-datenq
   pushRegistryBestEffort, gatewayDeviceFor, gatewayAmbiguous) und `FlowActivationService`
   (activate, deactivate, republishForSite, hasGatewayDevice) fragen NUR `LeadDeviceService`; die
   private Weiche und ihre Kopie sind weg. Wer für diese Wege eine Box je Anlage braucht, fragt
-  dort — nie eine dritte Kopie.
+  dort — nie eine dritte Kopie. Seit IP-6 geht der Registry-Push je Box; die führende Box trägt die
+  Anlagen-Rollen und alles ohne Datenquelle (`uems-registry-push-je-box.md`).
 - **Verhaltensgleich für den Bestand.** `lead_device_id` ist überall NULL (kein Backfill; gesetzt
   wird es erst mit der Wahl-Route des Portal-Teils). Dann gilt: Box des Speichers (OHNE
   Anmelde-Prüfung, wie die Weiche), sonst die einzige Box. Die Fehlerfälle behalten ihre Codes
