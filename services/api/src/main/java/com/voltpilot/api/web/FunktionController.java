@@ -25,8 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
  * Die Funktionen je Standort (UEMS AP-01 IP-3, E6 = C): lesend beide Funktionen je Standort mit Zustand, „es
  * fehlt“ und der Teilnahme je Anlage samt Prüfliste; schreibend „Steuern &amp; Optimieren“ je Anlage (starten ·
  * anhalten · fortsetzen · beenden) und für den ganzen Standort (anhalten · fortsetzen · beenden aller
- * Teilnahmen). Die Arbeit macht {@link FunktionService}, die Regel {@code FunktionZustandAbleitung}; Starten und
- * Fortsetzen prüfen die Liste in derselben Transaktion erneut (R1/R2).
+ * Teilnahmen); dazu „Messen &amp; Auswerten“ je Standort einrichten (AP-01 IP-9a). Die Arbeit macht
+ * {@link FunktionService}, die Regel {@code FunktionZustandAbleitung}; Starten und Fortsetzen prüfen die Liste in
+ * derselben Transaktion erneut (R1/R2).
  *
  * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die Mandanten-RLS —
  * eine fremde Anlage und ein fremder Standort sind 404 {@code nicht_gefunden}, nie 403. Ein 409 nennt den Grund
@@ -69,6 +70,16 @@ public class FunktionController {
     public FunktionDto.SteuernErgebnis steuernStandort(@PathVariable UUID standortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return dienst.steuernStandort(standortId, aktion(body), akteur(auth));
+    }
+
+    /**
+     * Recht: {@code funktion.messen_einrichten} — eingetragen, nicht durchgesetzt. Legt „Messen &amp; Auswerten“ des
+     * Standorts im Entwurf an (AP-01 IP-9a, Schritt 1 des Assistenten); ein zweites Mal ist 409.
+     */
+    @PutMapping("/api/v1/standorte/{standortId}/funktionen/messen")
+    public FunktionDto.MessenErgebnis messenStandort(@PathVariable UUID standortId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return dienst.messenStandort(standortId, aktion(body), akteur(auth));
     }
 
     /** Die Aktion aus {@code {"aktion": "…"}}; {@code null}, wenn die Anfrage nicht genau so aussieht. */

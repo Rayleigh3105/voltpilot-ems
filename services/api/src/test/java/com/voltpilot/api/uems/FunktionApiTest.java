@@ -312,6 +312,60 @@ class FunktionApiTest {
         assertThat(stand(a)).isEqualTo(vorher);
     }
 
+    // ============================================== Messen & Auswerten einrichten (AP-01 IP-9a, Schritt 1)
+
+    @Test
+    void messenEinrichtenLegtDieFunktionImEntwurfGenauEinmalAnFremdIst404ArchiviertIst409() throws Exception {
+        Welt a = welt();
+        Welt b = welt();
+        String pfad = messen(a, "ST-2");
+        String vorher = stand(a);
+
+        // Fremd ist 404 — vor der Aktion geprüft, nichts geschrieben.
+        for (String aktion : List.of("einrichten", "quatsch")) {
+            Antwort fremd = ruf(b, HttpMethod.PUT, pfad, Map.of("aktion", aktion));
+            assertThat(fremd.status()).as(aktion).isEqualTo(404);
+            assertThat(fremd.body().path("code").asText()).isEqualTo("nicht_gefunden");
+        }
+        // Im eigenen Kundenbereich gibt es nur „einrichten“ — alles andere ist 400.
+        for (String aktion : List.of("starten", "anhalten", "beenden", "aufnehmen", "quatsch")) {
+            Antwort falsch = ruf(a, HttpMethod.PUT, pfad, Map.of("aktion", aktion));
+            assertThat(falsch.status()).as(aktion).isEqualTo(400);
+            assertThat(falsch.body().path("code").asText()).isEqualTo("anfrage_ungueltig");
+        }
+        assertThat(stand(a)).isEqualTo(vorher);
+
+        JsonNode erst = ok(ruf(a, HttpMethod.PUT, pfad, Map.of("aktion", "einrichten")), 200).body();
+        assertThat(erst.path("aktion").asText()).isEqualTo("einrichten");
+        assertThat(erst.at("/standort/id").asText()).isEqualTo(a.id("ST-2").toString());
+        assertThat(erst.at("/standort/messen/zustand").asText()).isEqualTo("entwurf");
+        assertThat(messenZeilen(a, "ST-2")).containsExactly("entwurf|Jonas Wendlinger");
+        String nachEinrichten = stand(a);
+
+        // Ein zweites Einrichten ist der Grund des Vertrags — nie eine zweite Funktion, nichts geschrieben.
+        Antwort zweit = ruf(a, HttpMethod.PUT, pfad, Map.of("aktion", "einrichten"));
+        assertThat(zweit.status()).isEqualTo(409);
+        assertThat(zweit.body().path("code").asText()).isEqualTo("bereits_angelegt");
+        assertThat(zweit.body().path("message").asText()).isEqualTo("Messen & Auswerten ist hier bereits angelegt");
+        assertThat(messenZeilen(a, "ST-2")).hasSize(1);
+        assertThat(stand(a)).isEqualTo(nachEinrichten);
+
+        // Die Übersicht liest dasselbe: Lindach im Entwurf, Ahrenberg ohne Funktion, Steuern unberührt.
+        JsonNode sicht = ok(ruf(a, HttpMethod.GET, "/api/v1/funktionen", null), 200).body();
+        assertThat(standortIn(sicht, a.id("ST-2")).at("/messen")).isEqualTo(erst.at("/standort/messen"));
+        assertThat(standortIn(sicht, a.id("ST-1")).at("/messen/zustand").asText()).isEqualTo("kein_objekt");
+        assertThat(standortIn(sicht, a.id("ST-2")).at("/steuern/zustand").asText()).isEqualTo("kein_objekt");
+
+        // Ein archivierter Standort bekommt keine Funktion mehr.
+        a.ids().put("ST-9", root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, "
+                + "zeitzone, zustand, archiviert_am) VALUES (?, ?, 'Werk Altstadt', 'ST-9', 'Europe/Berlin', "
+                + "'archiviert', now()) RETURNING id", UUID.class, a.mandant(), a.id("U")));
+        Antwort archiviert = ruf(a, HttpMethod.PUT, messen(a, "ST-9"), Map.of("aktion", "einrichten"));
+        assertThat(archiviert.status()).isEqualTo(409);
+        assertThat(archiviert.body().path("code").asText()).isEqualTo("standort_archiviert");
+        assertThat(messenZeilen(a, "ST-9")).isEmpty();
+    }
+
     // ================================================================================ Lesen
 
     @Test
@@ -510,6 +564,16 @@ class FunktionApiTest {
 
     private static String standort(Welt w, String kennzeichen) {
         return "/api/v1/standorte/" + w.id(kennzeichen) + "/funktionen/steuern";
+    }
+
+    private static String messen(Welt w, String kennzeichen) {
+        return "/api/v1/standorte/" + w.id(kennzeichen) + "/funktionen/messen";
+    }
+
+    /** Die Funktionen „Messen &amp; Auswerten“ des Standorts als „zustand|geändert von“. */
+    private static List<String> messenZeilen(Welt w, String standort) {
+        return root.queryForList("SELECT zustand || '|' || geaendert_von FROM funktion WHERE standort_id = ? "
+                + "AND funktion = 'messen' ORDER BY created_at", String.class, w.id(standort));
     }
 
     private static JsonNode standortIn(JsonNode sicht, UUID id) {

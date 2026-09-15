@@ -65,6 +65,8 @@ public class FunktionService {
     static final List<Aktion> ANLAGEN_AKTIONEN = List.of(Aktion.STARTEN, Aktion.ANHALTEN, Aktion.FORTSETZEN,
             Aktion.BEENDEN);
     static final List<Aktion> STANDORT_AKTIONEN = List.of(Aktion.ANHALTEN, Aktion.FORTSETZEN, Aktion.BEENDEN);
+    /** „Messen &amp; Auswerten“ kennt nur das Einrichten — es startet damit von selbst (AP-01 IP-9a). */
+    static final List<Aktion> MESSEN_AKTIONEN = List.of(Aktion.EINRICHTEN);
 
     private final StandortRepository standorte;
     private final AnlageStandortRepository zuordnungen;
@@ -219,6 +221,38 @@ public class FunktionService {
         nachziehen(f, danach, zone, jetzt, wer);
         nachDemCommitPushen(betroffen.stream().map(FunktionDto.AnlageRef::id).toList());
         return new FunktionDto.SteuernErgebnis(aktion.code(), List.copyOf(betroffen), standortBlock(st, welt(), jetzt));
+    }
+
+    /**
+     * {@code PUT /api/v1/standorte/{id}/funktionen/messen}: „Messen &amp; Auswerten“ für den Standort einrichten
+     * (AP-01 IP-9a, Schritt 1 des Assistenten; §4.3 „— → Entwurf“). Legt NUR das Funktionsobjekt im Entwurf an —
+     * Box, Messstellen und Prüfung folgen in den weiteren Schritten, und ob der Entwurf eingerichtet ist, entscheidet
+     * jedes Lesen neu. Der Übergang ist der des Vertrags ({@link FunktionZustandAbleitung#uebergangMessen}), aus dem
+     * Zustand, den auch {@code GET /funktionen} zeigt: ein zweites Einrichten ist 409 {@code bereits_angelegt}, nie
+     * eine zweite Zeile; ein archivierter Standort 409 {@code standort_archiviert}.
+     */
+    @Transactional
+    public FunktionDto.MessenErgebnis messenStandort(UUID standortId, String aktionCode, ProtokollAkteur wer) {
+        standorte.finde(standortId).orElseThrow(() -> FunktionAbgelehnt.nichtGefunden("Standort nicht gefunden."));
+        Aktion aktion = aktion(aktionCode, MESSEN_AKTIONEN, "Für Messen & Auswerten gibt es nur einrichten.");
+        unternehmen.sperren();
+        Instant jetzt = uhr.instant();
+        Welt w = welt();
+        StandortRepository.Standort st = w.standort(standortId);
+        ZoneId zone = ZoneId.of(st.zeitzone());
+        List<UUID> heuteDa = w.heuteZugeordnet(st.id(), LocalDate.ofInstant(jetzt, zone));
+        // `messen()` sagt ohne Funktion „kein Objekt“, auch am archivierten Standort — für den Übergang zählt, dass
+        // der Standort archiviert ist (Grund `standort_archiviert`), sonst bekäme er eine neue Funktion.
+        Zustand vorher = st.archiviertAm() != null ? Zustand.ARCHIVIERT
+                : FunktionZustandAbleitung.messen(messenEingang(st, w, w.funktionDerArt(st.id(), Funktion.MESSEN),
+                        heuteDa, zone, jetzt)).zustand();
+        UebergangErgebnis u = FunktionZustandAbleitung.uebergangMessen(aktion, vorher);
+        if (!u.erlaubt()) {
+            throw FunktionAbgelehnt.uebergang(u, List.of(), List.of());
+        }
+        funktionen.anlegen(TenantContext.get(), st.id(), Funktion.MESSEN,
+                new FunktionRepository.Stand(u.nachher(), null, null, null, null), OrtProtokoll.akteurName(wer), jetzt);
+        return new FunktionDto.MessenErgebnis(aktion.code(), standortBlock(st, welt(), jetzt));
     }
 
     private static Aktion aktion(String code, List<Aktion> erlaubt, String satz) {
