@@ -310,3 +310,50 @@
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
 }
+
+/* AP-13 IP-6 · eine Auskunft statt einer Fehlermeldung (400, 404, nicht mehr gespeichert): ruhig wie der Versions-Hinweis,
+   ohne „Erneut versuchen“ — dieselbe Anfrage gäbe dieselbe Antwort. */
+.vp-wk-auskunft {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--vp-c-space-3);
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-wk-auskunft > span {
+  min-width: 0;
+}
+
+/* AP-13 IP-6 · Z4: der Zeitraum ohne Datenquelle — Titel · Satz · nächster Schritt, an der Stelle der Karte. */
+.vp-wk-leer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  padding: var(--vp-c-space-4, 16px);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-wk-leer-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-wk-leer p {
+  margin: 0;
+  max-width: 100%;
+}

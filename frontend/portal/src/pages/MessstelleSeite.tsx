@@ -15,6 +15,7 @@ import {
   type StandorteAmStichtag,
 } from '../api';
 import { MessstelleDialog } from '../components/MessstelleDialog';
+import type { Schritt } from '../messstelleDialog';
 import { PROTOKOLL_LABEL } from '../components/ProtokollDialog';
 import { ProtokollListe, useProtokoll } from '../components/ProtokollListe';
 import { ErrorState, Skeleton } from '../components/States';
@@ -45,7 +46,7 @@ import {
   type ZuordnungsKarte,
 } from '../messstelleZuordnung';
 import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
-import { periodeAus } from '../uemsWerteKarte';
+import { nebengroessen, periodeAus } from '../uemsWerteKarte';
 import './MessstelleSeite.css';
 
 interface Stamm {
@@ -101,6 +102,8 @@ export function MessstelleSeite({
   const [aendern, setAendern] = useState<AendernArt | null>(null);
   const [gespeichert, setGespeichert] = useState<{ art: AendernArt; satz: string } | null>(null);
   const [bearbeiten, setBearbeiten] = useState(false);
+  // „Bearbeiten“ öffnet Schritt 1, „Quelle zuordnen“ aus den Werten Schritt 3 (AP-13 IP-6).
+  const [bearbeitenAb, setBearbeitenAb] = useState<Schritt>(1);
   const [bearbeitet, setBearbeitet] = useState(false);
   const protokoll = useProtokoll({ art: 'messstelle', id }, { achse: MESSSTELLE_PROTOKOLL_ACHSE, anlegeSatz: true });
 
@@ -231,6 +234,12 @@ export function MessstelleSeite({
   ];
   const darfAendern = aenderbar(m);
   const werteAnfang = periodeAus(werte?.periode);
+  const haupt = zeile?.hauptgroesse ?? m.hauptgroesse ?? null;
+  const neben = haupt ? nebengroessen(w, haupt) : null;
+  const oeffneBearbeiten = (ab: Schritt) => {
+    setBearbeitenAb(ab);
+    setBearbeiten(true);
+  };
 
   return (
     <div className="vp-mss" data-testid="messstelle-seite">
@@ -250,7 +259,7 @@ export function MessstelleSeite({
           )}
         </div>
         {darfAendern && (
-          <Button variant="outline" onClick={() => setBearbeiten(true)}>
+          <Button variant="outline" onClick={() => oeffneBearbeiten(1)}>
             {BEARBEITEN}
           </Button>
         )}
@@ -266,8 +275,22 @@ export function MessstelleSeite({
           version={werteAnfang ? (werte?.version ?? null) : null}
           heute={heute}
           standortName={zeile?.ort.standort_name ?? null}
+          quelle={zeile?.quelle ?? null}
+          onQuelleZuordnen={darfAendern ? () => oeffneBearbeiten(3) : undefined}
           onZeitraum={onWerteZeitraum}
         />
+        {/* V8: Nebengrößen haben keine Werte-Route — ihr letzter Wert aus dem Register, und wofür es Werte gibt. */}
+        {neben && (
+          <div className="vp-mss-neben" data-testid="werte-nebengroessen">
+            <h3>{neben.titel}</h3>
+            <ul>
+              {neben.zeilen.map((z) => (
+                <li key={z}>{z}</li>
+              ))}
+            </ul>
+            <p>{neben.satz}</p>
+          </div>
+        )}
       </section>
 
       <div className="vp-mss-karten">
@@ -313,6 +336,7 @@ export function MessstelleSeite({
       <MessstelleDialog
         open={bearbeiten}
         messstelleId={m.id}
+        schritt={bearbeitenAb}
         heute={heute}
         onClose={() => {
           setBearbeiten(false);

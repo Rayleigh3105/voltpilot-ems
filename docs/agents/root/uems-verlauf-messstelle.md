@@ -20,8 +20,8 @@ Kunde, was gemessen wurde, welchen Zeitraum er betrachtet und warum eine Zahl fe
    Verlauf in Stunden und die Tage als Liste, der Kopf sagt `UEMS_WOCHE_OHNE_ZAHL`. Keine Wochensumme „der Übersicht
    halber“ nachrüsten — das wäre eine neue Rechenregel.
 2. **Im Monat und im Jahr IST der Verlauf die Liste** (`gleicheAnfrage`) — EINE Anfrage. Am Tag (Viertelstunden) und in
-   der Woche (Stunden) fragt der Verlauf selbst; scheitert er, bleiben Karte und Liste stehen („Der Verlauf konnte nicht
-   geladen werden.“). ⚠ Ein Mock nach Raster (`MessstelleSeite.test.tsx`, Bühnen) wird jetzt auch mit `viertelstunde`
+   der Woche (Stunden) fragt der Verlauf selbst; scheitert er, bleiben Karte und Liste stehen („Der Verlauf ist gerade nicht
+   abrufbar.“, seit AP-13 IP-6). ⚠ Ein Mock nach Raster (`MessstelleSeite.test.tsx`, Bühnen) wird jetzt auch mit `viertelstunde`
    gefragt — eine unbekannte Antwort ist ein Fehler, nie eine leere Zeichnung.
 3. **Nur `data_gap` spricht seinen Standard-Satz** aus `{von, bis}` der Route. Jede andere Art (Zählerwechsel, Übergabe,
    Box-Tausch …) bräuchte Felder, die die Werte-Route nicht liefert — dort steht der Name der Art mit ihrer Zeit
@@ -43,8 +43,8 @@ Kunde, was gemessen wurde, welchen Zeitraum er betrachtet und warum eine Zahl fe
    die der Periode und eindeutig. Sie spricht über `uemsWerteKarte.karte` (Herkunft, Fassung, Lückenzahl, Grund) und
    hängt „14 von 15 Werten“ an das Verlauf-Abzeichen.
 9. **Kernaussage (K1/V6):** abgeleitet aus der Karte der Periode („Di 03.11.2026: 2.304 kWh · vollständig · vorläufig“).
-   Ohne Zahl hat nur `noch_nicht_gebildet` einen Grund; jeder andere Grund lässt den Kopf leer, bis IP-6 die Grund-Sätze
-   an die Karte bringt.
+   Ohne Zahl hat nur `noch_nicht_gebildet` einen Grund; jeder andere Grund lässt den Kopf leer — seine Sätze stehen seit
+   IP-6 an der Karte und an der Schritt-Karte (`uems-werte-gruende.md`).
 
 ## Offen (Befunde)
 
@@ -54,7 +54,7 @@ Kunde, was gemessen wurde, welchen Zeitraum er betrachtet und warum eine Zahl fe
   Feld nicht gebaut.
 - O1 schreibt „unvollständig (14 von 15)“; die Karte sagt „unvollständig (Menge aus Zählerständen)“ (Vertrag 1.6) und
   „Verlauf 93 % · 14 von 15 Werten“.
-- Nebengrößen (V8), Vergleich (IP-5), Grund- und Ablehnungssätze (IP-6) folgen.
+- Vergleich (IP-5) folgt. Grund- und Ablehnungssätze, Leerzustände und Nebengrößen (V8): `uems-werte-gruende.md` (IP-6).
 
 ## Prüfen
 

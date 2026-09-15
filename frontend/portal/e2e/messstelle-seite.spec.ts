@@ -10,6 +10,8 @@ import {
   ms08OrtGeplant,
   ms08Vorher,
   ms10,
+  ms16,
+  ms21,
   ohneProzesse,
   ohneVerteilung,
   protokollMs06,
@@ -42,6 +44,11 @@ import {
   grundlastViertelstunden,
   grundlastWoche,
   jahr2026,
+  ms16Oktober,
+  ms16OktoberTage,
+  ohneQuelleStunden,
+  ohneQuelleTag,
+  ohneQuelleViertelstunden,
 } from '../src/test/werteKarteFixtures';
 import { f21Stunden, f21Tag, f21TagWert } from '../src/test/wertVersionenFixtures';
 
@@ -90,6 +97,11 @@ function werteAntwort(kz: string, p: URLSearchParams, heute: string, f8 = false)
     if (von === '2026-01-01' && bis === '2026-12-31') return nach({ jahr: () => jahr2026(heute).karte, monat: () => jahr2026(heute).monate });
     return null;
   }
+  // AP-13 IP-6: MS-21 ohne Datenquelle am 03.11.2026 (Z4), MS-16 im Oktober 2026 — die Bindung beginnt am 15.10. (O16).
+  if (kz === 'MS-21' && von === '2026-11-03' && bis === von) {
+    return nach({ tag: ohneQuelleTag, stunde: ohneQuelleStunden, viertelstunde: ohneQuelleViertelstunden });
+  }
+  if (kz === 'MS-16' && von === '2026-10-01' && bis === '2026-10-31') return nach({ monat: ms16Oktober, tag: ms16OktoberTage });
   if (kz === 'MS-10' && von === '2026-11-03' && bis === von) {
     // O1: die Lücke des Box-Ausfalls (F8) — sonst derselbe Tag nach Ersatzwert und Korrektur (F21).
     if (f8) return nach({ tag: f8Tag, stunde: f8Stunden, viertelstunde: f8Viertelstunden });
@@ -97,6 +109,25 @@ function werteAntwort(kz: string, p: URLSearchParams, heute: string, f8 = false)
     if (raster !== 'tag') return null;
     const v = Number(p.get('version') ?? '3');
     return v === 1 || v === 2 || v === 3 ? { ...f21Tag(), version: p.get('version') ? v : null, werte: [f21TagWert(v)] } : null;
+  }
+  return null;
+}
+
+/**
+ * AP-13 IP-6 · zwei GESTELLTE Ablehnungen der Route, die die Fläche mit festen Zeiträumen selbst nie auslöst: MS-06 am
+ * 24.10.2026 antwortet 400 `nicht_im_raster`; der Oktober 2026 in Version 1 antwortet 404 `wert_nicht_mehr_gespeichert`
+ * (so, wie AP-12 IP-16 es nach den Fristen tun wird — O19; ohne Berichtsstand, den MS-06 hier nicht hat).
+ */
+function werteAblehnung(kz: string, p: URLSearchParams): { status: number; body: unknown } | null {
+  if (kz !== 'MS-06') return null;
+  if (p.get('von') === '2026-10-24') {
+    return { status: 400, body: { code: 'anfrage_ungueltig', message: 'Der Zeitpunkt liegt nicht auf dem Raster.', feld: 'von', grund: 'nicht_im_raster' } };
+  }
+  if (p.get('raster') === 'monat' && p.get('von') === '2026-10-01' && p.get('version') === '1') {
+    return {
+      status: 404,
+      body: { code: 'wert_nicht_mehr_gespeichert', message: 'Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre).' },
+    };
   }
   return null;
 }
@@ -113,7 +144,15 @@ async function cloud(page: Page, { angelegt = false, heute = null as string | nu
     if (methode !== 'GET') gesendet.push({ methode, pfad, body: req.postDataJSON() });
 
     const ms08 = () => (angelegt ? ms08Angelegt() : gespeichert ? ms08OrtGeplant() : ms08Vorher());
-    const messstelle = pfad.includes(MS_IDS.ms06) ? ms06() : pfad.includes(MS_IDS.ms10) ? ms10() : ms08();
+    const messstelle = pfad.includes(MS_IDS.ms06)
+      ? ms06()
+      : pfad.includes(MS_IDS.ms10)
+        ? ms10()
+        : pfad.includes(MS_IDS.ms16)
+          ? ms16()
+          : pfad.includes(MS_IDS.ms21)
+            ? ms21()
+            : ms08();
 
     if (pfad === '/api/v1/unternehmen/prozesse') return route.fulfill(json({ stichtag: null, prozesse: prozesseAhrenberg() }));
     if (pfad === '/api/v1/unternehmen/kostenstellen') {
@@ -125,11 +164,12 @@ async function cloud(page: Page, { angelegt = false, heute = null as string | nu
       const register = angelegt ? { ...ahrenbergRegister(), stichtag: EINFUEHRUNG_TAG } : heute ? ahrenbergRegister({ stichtag: heute }) : ahrenbergRegister();
       return route.fulfill(json(register));
     }
-    const hauptzaehler = messstelle.kennzeichen === 'MS-10';
+    // Ohne Prozess und Kostenstelle: die Hauptzähler MS-10 und MS-16, und MS-21 (AP-13 IP-6) zeigt nichts Geliehenes.
+    const hauptzaehler = ['MS-10', 'MS-16', 'MS-21'].includes(messstelle.kennzeichen);
     if (pfad.endsWith('/prozesse') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneProzesse(messstelle) : prozesseVon(messstelle)));
     if (pfad.endsWith('/verteilung') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneVerteilung(messstelle) : verteilungVon(messstelle)));
     if (pfad.endsWith('/aenderungen')) {
-      const protokoll = pfad.includes(MS_IDS.ms10)
+      const protokoll = pfad.includes(MS_IDS.ms10) || pfad.includes(MS_IDS.ms16) || pfad.includes(MS_IDS.ms21)
         ? protokollMs10()
         : pfad.includes(MS_IDS.ms06)
         ? protokollMs06()
@@ -146,6 +186,8 @@ async function cloud(page: Page, { angelegt = false, heute = null as string | nu
     }
     const werte = /^\/api\/v1\/messstellen\/([^/]+)\/werte$/.exec(pfad);
     if (werte && methode === 'GET') {
+      const ablehnung = werteAblehnung(decodeURIComponent(werte[1]), url.searchParams);
+      if (ablehnung) return route.fulfill(json(ablehnung.body, ablehnung.status));
       const antwort = werteAntwort(decodeURIComponent(werte[1]), url.searchParams, heute ?? SEITE_HEUTE, f8);
       return route.fulfill(antwort ? json(antwort) : json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
     }
@@ -550,4 +592,119 @@ test('E5 · MS-06: Tag · Woche · Monat · Jahr im Raster der Route — die Woc
   // Neu geladen trägt die Adresse das Jahr — die Sektion öffnet es wieder.
   await page.reload();
   await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(12);
+});
+
+// ------------------------------------------------------------------------------------------------------------------
+// UEMS AP-13 IP-6 · warum eine Zahl fehlt: der Leerzustand ohne Datenquelle (Z4), der Grund-Satz (O16), die Auskunft
+// statt einer Fehlermeldung (Z2, V9/O19) und die Nebengrößen (V8). Die Bilder der Ansicht sind die LEERZUSTÄNDE.
+// ------------------------------------------------------------------------------------------------------------------
+
+/** Ein Bild nur eines Elements — für die Ansicht, wo der Abschnitt zu hoch wäre. */
+async function elementBild(ziel: Locator, breite: number, name: string) {
+  if (!BILDER) return;
+  mkdirSync(BILDER, { recursive: true });
+  await ziel.screenshot({ path: join(BILDER, `${name}-${breite}.png`) });
+}
+
+test('Z4 · MS-21 am 04.11.2026 ohne Datenquelle: der Leerzustand statt 24 Strichen — „Quelle zuordnen“ öffnet den Dialog bei „Quelle“', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-11-04' });
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms21}`);
+
+  const werte = page.getByTestId('werte');
+  const leer = werte.getByTestId('werte-leer');
+  await expect(leer.getByRole('heading', { name: 'Keine Datenquelle' })).toBeVisible();
+  await expect(leer).toContainText(
+    'Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.',
+  );
+  await expect(werte.getByTestId('werte-karte')).toHaveCount(0);
+  await expect(werte.getByTestId('werte-zeile')).toHaveCount(0);
+  await expect(werte.getByTestId('verlauf')).toHaveCount(0);
+  // „Ablesung eintragen“ hat weder Route noch Fläche — kein Knopf ins Leere.
+  await expect(leer.getByRole('button', { name: /Ablesung/ })).toHaveCount(0);
+  const zuordnen = leer.getByRole('button', { name: 'Quelle zuordnen' });
+  expect((await zuordnen.boundingBox())!.height).toBeGreaterThanOrEqual(breite === 375 ? 44 : 32);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'z4-ms21-seite');
+  await werteBild(werte, breite, 'z4-ms21-ohne-quelle');
+
+  await zuordnen.click();
+  const dialog = page.getByRole('dialog', { name: 'Messstelle bearbeiten' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.vp-step-active .vp-step-label')).toHaveText('Quelle');
+});
+
+test('O16 · MS-16 im Oktober 2026 (W5): „—“ mit dem Satz der Route, darunter die 17 Tage ab 15.10. — die Fläche summiert nichts', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-11-05' });
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms16}?periode=2026-10`);
+
+  const werte = page.getByTestId('werte');
+  const karte = werte.getByTestId('werte-karte');
+  await expect(karte.getByTestId('werte-grund')).toHaveText(
+    'Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler Lindach (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.',
+  );
+  await expect(karte.locator('.vp-wk-zahl')).toHaveText('—');
+  await expect(karte).not.toContainText(/9\.100/);
+  await expect(werte.getByTestId('werte-zeile')).toHaveCount(31);
+  await expect(werte.getByTestId('werte-zeile').filter({ hasText: 'vollständig' })).toHaveCount(17);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'o16-ms16-seite');
+  await elementBild(karte, breite, 'o16-ms16-karte');
+});
+
+test('Z2 · gestellt: die Route lehnt den 24.10.2026 ab (400 `nicht_im_raster`) — der Satz des Grundes ohne „Erneut versuchen“; die Zeit-Leiste bleibt der Weg', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-11-05' });
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms06}?periode=2026-10-24`);
+
+  const werte = page.getByTestId('werte');
+  const auskunft = werte.getByTestId('werte-auskunft');
+  await expect(auskunft).toHaveText('Der Zeitraum konnte nicht gelesen werden (Beginn liegt nicht auf einer Tagesgrenze). Wählen Sie einen anderen Zeitraum.');
+  await expect(werte.getByRole('button', { name: 'Erneut versuchen' })).toHaveCount(0);
+  await expect(werte.getByText(/konnte nicht geladen werden/)).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'z2-ablehnung-seite');
+  await werteBild(werte, breite, 'z2-ablehnung');
+
+  // Der nächste Tag ist der 25-Stunden-Tag — die Zeit-Leiste führt heraus.
+  await werte.getByRole('button', { name: 'Nächster Zeitraum' }).click();
+  await expect(werte.getByTestId('werte-karte')).toContainText(/720\skWh/);
+  await expect(auskunft).toHaveCount(0);
+});
+
+test('V9/O19 · gestellt: der Oktober 2026 in Version 1 ist nach den Fristen (404 `wert_nicht_mehr_gespeichert`) — der Satz der Route, KEIN Sprung, bis AP-12 IP-16 antwortet', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-11-05' });
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms06}?periode=2026-10&version=1`);
+
+  const werte = page.getByTestId('werte');
+  const auskunft = werte.getByTestId('werte-auskunft');
+  await expect(auskunft).toHaveText('Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre).');
+  await expect(auskunft).toHaveAttribute('data-art', 'nicht_mehr_gespeichert');
+  await expect(auskunft.getByRole('link')).toHaveCount(0);
+  await expect(auskunft.getByRole('button')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'o19-frist-seite');
+  await werteBild(werte, breite, 'o19-frist');
+});
+
+test('V8 · MS-06 am 20.10.2026: die Nebengröße unter den Werten — Wirkleistung mit dem letzten Wert aus der Box, ohne Sprung', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page);
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+
+  const neben = page.getByTestId('werte').getByTestId('werte-nebengroessen');
+  await expect(neben.getByRole('heading', { name: 'Weitere Größen' })).toBeVisible();
+  await expect(neben.getByRole('listitem')).toHaveText([/^Wirkleistung 148,6\skW · .*10:15 Uhr$/]);
+  await expect(neben).toContainText('Letzter Wert aus der Box — Werte und Verlauf gibt es hier nur für Wirkenergie Bezug.');
+  await expect(neben.getByRole('link')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'v8-nebengroessen-seite');
+  await elementBild(neben, breite, 'v8-nebengroessen');
 });

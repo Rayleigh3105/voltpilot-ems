@@ -12,7 +12,10 @@
  *     Version im Hash; ein Objekt ohne Seite bleibt Text (`null`);
  *  4. das Raster des VERLAUFS je Zeitraum (E5, V1) — das der Route, nie summiert;
  *  5. den ZONE-SATZ im Kopf jeder Fläche (E12, V7) — aus `zeitzone` und
- *     `zeitzone_herkunft` der Antwort, nie aus dem Browser.
+ *     `zeitzone_herkunft` der Antwort, nie aus dem Browser;
+ *  6. die AUSKUNFT statt einer Fehlermeldung (IP-6, Z2–Z4): der Satz einer
+ *     400-Ablehnung je Grund, die 404 „gibt es nicht“ bzw. „nicht mehr
+ *     gespeichert“, und die Leerzustände Vergleich und Energiebilanz.
  *
  * Hier wird NICHTS gerechnet: keine Menge, keine Summe, kein Δ. Zahlen, Zustände
  * und Sätze sprechen die Zwillinge (`uemsErgebnis`, `uemsBilanz`, `uemsBericht`);
@@ -32,7 +35,9 @@ import {
   type EbenenOrt,
   type EbenenSeiten,
 } from './ebenenNav';
+import { UEMS_HAUPTZAEHLER } from './glossar';
 import { berichtRoute, hashForRoute, kennzahlRoute, messstelleRoute, type Route } from './nav';
+import { zahlText } from './uemsEreignis';
 
 // ------------------------------------------------------------------ 1 · passend (E6)
 
@@ -182,3 +187,146 @@ export function zoneSatz(
   const woher = herkunft === 'standort' && standortName ? `${ZONE_HERKUNFT.standort} ${standortName}` : ZONE_HERKUNFT[herkunft];
   return `Zeiten in ${zeitzone} (${woher})`;
 }
+
+// ------------------------------------------------------------------ 6 · Auskunft statt Fehlermeldung (IP-6, Z2–Z4)
+
+/**
+ * Die Gründe einer 400 `anfrage_ungueltig` der Werte-Route, denen §5.8 je einen Satz gibt — geschlossen, in der
+ * Reihenfolge von `MessstelleWerteRegeln.Grund` (Java). Die zwei weiteren Gründe dort (`raster_ohne_versionen`,
+ * `nicht_genau_eine_periode`) gehören der Versions-Historie, nicht der Werte-Route.
+ */
+export const ABLEHNUNG_GRUENDE = [
+  'fehlt',
+  'raster_unbekannt',
+  'form',
+  'nicht_im_raster',
+  'von_nicht_vor_bis',
+  'ausserhalb',
+  'zu_viele_schritte',
+  'version_ungueltig',
+] as const;
+
+export type AblehnungGrund = (typeof ABLEHNUNG_GRUENDE)[number];
+
+/** So viele Schritte trägt eine Antwort höchstens, in Stunden ein Viertel — Zwilling von `MessstelleWerteRegeln` (2 200 / 550). */
+export const HOECHSTENS_SCHRITTE = 2200;
+export const HOECHSTENS_STUNDEN = 550;
+
+/** Das Feld einer Ablehnung in Kundenwörtern — „Raster“ ist kein Wort der Oberflächen (E15). */
+const FELD_WORT: Readonly<Record<string, string>> = { von: 'Beginn', bis: 'Ende', raster: 'Einteilung', version: 'Version' };
+
+/** Die Grenze, auf der ein Zeitpunkt liegen muss, je Einteilung der Anfrage. */
+const GRENZE: Readonly<Record<MessstelleWerteRaster, string>> = {
+  viertelstunde: 'Viertelstundengrenze',
+  stunde: 'Stundengrenze',
+  tag: 'Tagesgrenze',
+  monat: 'Monatsgrenze',
+  jahr: 'Jahresgrenze',
+};
+
+export const ZEITRAUM_UNLESBAR = 'Der Zeitraum konnte nicht gelesen werden ({was}). Wählen Sie einen anderen Zeitraum.';
+export const ZEITRAUM_UNLESBAR_OHNE_GRUND = 'Der Zeitraum konnte nicht gelesen werden. Wählen Sie einen anderen Zeitraum.';
+export const ZU_VIELE_SCHRITTE =
+  'Dieser Zeitraum hat zu viele Schritte (höchstens {schritte}, in Stunden {stunden}). Wählen Sie einen kürzeren Zeitraum.';
+export const VERSION_UNLESBAR = 'Die Version in der Adresse konnte nicht gelesen werden (erlaubt sind ganze Zahlen ab 1).';
+
+/** Was in der Klammer von `ZEITRAUM_UNLESBAR` steht — je Grund, mit dem Feld und der Grenze der Anfrage. */
+const WAS: Readonly<Record<Exclude<AblehnungGrund, 'zu_viele_schritte' | 'version_ungueltig'>, string>> = {
+  fehlt: '{feld} fehlt',
+  raster_unbekannt: 'diese Einteilung gibt es nicht',
+  form: '{feld} ist kein gültiges Datum',
+  nicht_im_raster: '{feld} liegt nicht auf einer {grenze}',
+  von_nicht_vor_bis: 'Beginn liegt nicht vor dem Ende',
+  ausserhalb: '{feld} liegt vor 2000 oder nach 2100',
+};
+
+/**
+ * Der Satz einer 400-Ablehnung der Werte-Route (Z2, §5.8): je Grund einer, mit `feld` der Antwort und dem Raster der
+ * Anfrage („Beginn liegt nicht auf einer Tagesgrenze“). Ein fremder Grund oder ein Feld, das der Satz braucht und die
+ * Antwort nicht nennt, spricht den Satz ohne Klammer — nie eine geratene Ursache.
+ */
+export function ablehnungSatz(grund: string, feld: string | null, raster: MessstelleWerteRaster): string {
+  if (grund === 'zu_viele_schritte') {
+    return ZU_VIELE_SCHRITTE.replace('{schritte}', zahlText(HOECHSTENS_SCHRITTE)).replace('{stunden}', zahlText(HOECHSTENS_STUNDEN));
+  }
+  if (grund === 'version_ungueltig') return VERSION_UNLESBAR;
+  const muster = Object.prototype.hasOwnProperty.call(WAS, grund) ? WAS[grund as keyof typeof WAS] : null;
+  const wort = feld !== null && Object.prototype.hasOwnProperty.call(FELD_WORT, feld) ? FELD_WORT[feld] : null;
+  if (muster === null || (muster.includes('{feld}') && wort === null)) return ZEITRAUM_UNLESBAR_OHNE_GRUND;
+  return ZEITRAUM_UNLESBAR.replace('{was}', muster.replace('{feld}', wort ?? '').replace('{grenze}', GRENZE[raster]));
+}
+
+/** Z3: eine fremde oder unbekannte Messstelle — nie 403, das verriete, dass es sie gibt (AP-03). */
+export const MESSSTELLE_GIBT_ES_NICHT = 'Diese Messstelle gibt es nicht.';
+/** Z3/V9 ohne Satz der Route: die Frist der Speicherklasse (AP-12 §5.8 `wert_nicht_mehr_gespeichert_ohne_stand`). */
+export const WERT_NICHT_MEHR_GESPEICHERT = 'Dieser Wert wird nicht mehr gespeichert (Aufbewahrung 10 Jahre).';
+/** Z5: die Route antwortet nicht — je Abschnitt, mit „Erneut versuchen“; die anderen Abschnitte bleiben stehen. */
+export const WERTE_NICHT_ABRUFBAR = 'Die Werte sind gerade nicht abrufbar.';
+export const VERLAUF_NICHT_ABRUFBAR = 'Der Verlauf ist gerade nicht abrufbar.';
+
+/**
+ * Was eine gescheiterte Anfrage an die Werte-Route dem Kunden sagt. Nur `nicht_abrufbar` ist eine Störung (mit
+ * „Erneut versuchen“); die anderen drei sind Auskünfte — dieselbe Anfrage gäbe dieselbe Antwort.
+ *  - `abgelehnt` (400): der Satz des Grundes; `neueste` bietet „Neueste zeigen“, wenn die Version der Adresse schuld ist.
+ *  - `gibt_es_nicht` (404): die Messstelle — auch eine fremde.
+ *  - `nicht_mehr_gespeichert` (404 `wert_nicht_mehr_gespeichert`, V9/O19): der Satz der Route. ⚠ `sprung` ist heute
+ *    IMMER `null`: den Code sendet die Route erst mit AP-12 IP-16, und ihr Körper nennt den Berichtsstand nur im Satz,
+ *    nicht als Feld — ein Sprung ohne Kennung ginge ins Leere.
+ */
+export type Auskunft =
+  | { art: 'abgelehnt'; satz: string; neueste: boolean }
+  | { art: 'gibt_es_nicht'; satz: string }
+  | { art: 'nicht_mehr_gespeichert'; satz: string; sprung: Sprung | null }
+  | { art: 'nicht_abrufbar' };
+
+/** Die Auskunft zu Status und JSON-Körper einer Ablehnung (`ApiError.status`/`.body`); `status` `null` = kein Server. */
+export function auskunft(status: number | null, body: unknown, raster: MessstelleWerteRaster): Auskunft {
+  const b = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const text = (feld: string): string | null => (typeof b[feld] === 'string' && b[feld] !== '' ? (b[feld] as string) : null);
+  if (status === 400) {
+    const grund = text('code') === 'anfrage_ungueltig' ? text('grund') : null;
+    return {
+      art: 'abgelehnt',
+      satz: grund === null ? ZEITRAUM_UNLESBAR_OHNE_GRUND : ablehnungSatz(grund, text('feld'), raster),
+      neueste: grund === 'version_ungueltig',
+    };
+  }
+  if (status === 404) {
+    if (text('code') === 'wert_nicht_mehr_gespeichert') {
+      return { art: 'nicht_mehr_gespeichert', satz: text('message') ?? WERT_NICHT_MEHR_GESPEICHERT, sprung: null };
+    }
+    return { art: 'gibt_es_nicht', satz: MESSSTELLE_GIBT_ES_NICHT };
+  }
+  return { art: 'nicht_abrufbar' };
+}
+
+/**
+ * Ein Leerzustand nach dem Muster AP-01 IP-8 (Z4): Titel · Satz · der benannte nächste Schritt. `schritt` ist ein NAME:
+ * der Wirt macht ihn nur zum Knopf, wenn er das Ziel kennt und das Recht besteht — sonst steht er nicht da.
+ */
+export interface Leerzustand {
+  titel: string;
+  satz: string;
+  schritt: string | null;
+}
+
+/**
+ * Z4 · Vergleich ohne passende Messstelle (der Wirt ist IP-5): keine der anderen ist `passend` — der Satz nennt, was
+ * gemessen werden müsste. `null`, sobald eine passt. Ohne nächsten Schritt: eine passende Messstelle entsteht nicht im
+ * Vergleich.
+ */
+export function vergleichOhnePassende(basis: MessstelleGroesse, andere: readonly MessstelleGroesse[]): Leerzustand | null {
+  if (andere.some((a) => passend(basis, a).passend)) return null;
+  return {
+    titel: 'Keine passende Messstelle',
+    satz: `Keine weitere Messstelle misst ${basis.groesse} ${basis.richtung} in ${basis.einheit}.`,
+    schritt: null,
+  };
+}
+
+/** Z4 · Energiebilanz ohne Hauptzähler (der Wirt ist IP-8, §5.5): „Stellung eintragen“ nur mit Weg und Recht. */
+export const OHNE_HAUPTZAEHLER: Leerzustand = {
+  titel: `Kein ${UEMS_HAUPTZAEHLER}`,
+  satz: `Diese Anlage hat keinen ${UEMS_HAUPTZAEHLER} in der elektrischen Stellung.`,
+  schritt: 'Stellung eintragen',
+};

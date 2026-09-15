@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { MessstelleGroesse } from './api';
+import type { MessstelleGroesse, MessstelleWerteRaster } from './api';
 import { EBENEN_SEITEN, type EbenenLesemodell, type EbenenSeiten } from './ebenenNav';
 import { parseRoute } from './nav';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
@@ -10,8 +10,18 @@ import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
 import { FIXTURE_IDS, werkAhrenberg, werkLindach } from './test/standorteFixtures';
 import { GRUENDE, raster } from './uemsErgebnis';
 import {
+  ABLEHNUNG_GRUENDE,
+  HOECHSTENS_SCHRITTE,
+  HOECHSTENS_STUNDEN,
+  MESSSTELLE_GIBT_ES_NICHT,
+  OHNE_HAUPTZAEHLER,
   VERGLEICH_HOECHSTENS,
+  VERSION_UNLESBAR,
+  WERT_NICHT_MEHR_GESPEICHERT,
   ZEITRAEUME,
+  ZEITRAUM_UNLESBAR_OHNE_GRUND,
+  auskunft,
+  vergleichOhnePassende,
   kacheln,
   passend,
   passendSatz,
@@ -243,5 +253,91 @@ describe('uemsOberflaechen · Zeitraum → Raster (E5) und Zone-Satz (E12) — O
     expect(zoneSatz('Europe/Berlin', 'vorgabe')).toBe('Zeiten in Europe/Berlin (Vorgabe)');
     expect(o14.schritte[0]).toContain('„(Zeitzone des Unternehmens)“');
     expect(o14.schritte[0]).toContain('„(Vorgabe)“');
+  });
+});
+
+describe('UEMS AP-13 IP-6 · Auskunft statt Fehlermeldung (Z2, Z3, §5.8) und die Leerzustände Vergleich und Energiebilanz (Z4)', () => {
+  const abgelehnt = (grund: string, feld: string | null, raster: MessstelleWerteRaster = 'tag') =>
+    auskunft(400, { code: 'anfrage_ungueltig', message: 'Satz des Servers', feld, grund }, raster);
+  const JAVA = readFileSync(resolve(process.cwd(), '../../services/api/src/main/java/com/voltpilot/api/uems/MessstelleWerteRegeln.java'), 'utf8');
+
+  it('die Gründe sind die der Route: `MessstelleWerteRegeln.Grund` ohne die zwei der Versions-Historie, in derselben Reihenfolge, und dieselben Grenzen', () => {
+    const beginn = JAVA.indexOf('public enum Grund');
+    const block = JAVA.slice(beginn, JAVA.indexOf('private final String wort', beginn));
+    const woerter = [...block.matchAll(/[A-Z_]+\("([a-z_]+)"\)/g)].map((m) => m[1]);
+    expect(woerter.filter((w) => w !== 'raster_ohne_versionen' && w !== 'nicht_genau_eine_periode')).toEqual([...ABLEHNUNG_GRUENDE]);
+    expect(JAVA).toContain(`return r == Raster.STUNDE ? ${HOECHSTENS_STUNDEN} : ${HOECHSTENS_SCHRITTE};`);
+  });
+
+  it('jede der acht 400-Ablehnungen hat ihren Satz — mit dem Feld der Antwort und der Grenze der Anfrage, nie „konnte nicht geladen werden“', () => {
+    const faelle: Array<[string, string, MessstelleWerteRaster, string]> = [
+      ['fehlt', 'von', 'tag', 'Der Zeitraum konnte nicht gelesen werden (Beginn fehlt). Wählen Sie einen anderen Zeitraum.'],
+      ['raster_unbekannt', 'raster', 'tag', 'Der Zeitraum konnte nicht gelesen werden (diese Einteilung gibt es nicht). Wählen Sie einen anderen Zeitraum.'],
+      ['form', 'bis', 'tag', 'Der Zeitraum konnte nicht gelesen werden (Ende ist kein gültiges Datum). Wählen Sie einen anderen Zeitraum.'],
+      ['nicht_im_raster', 'von', 'tag', 'Der Zeitraum konnte nicht gelesen werden (Beginn liegt nicht auf einer Tagesgrenze). Wählen Sie einen anderen Zeitraum.'],
+      ['von_nicht_vor_bis', 'bis', 'tag', 'Der Zeitraum konnte nicht gelesen werden (Beginn liegt nicht vor dem Ende). Wählen Sie einen anderen Zeitraum.'],
+      ['ausserhalb', 'von', 'tag', 'Der Zeitraum konnte nicht gelesen werden (Beginn liegt vor 2000 oder nach 2100). Wählen Sie einen anderen Zeitraum.'],
+      ['zu_viele_schritte', 'bis', 'viertelstunde', 'Dieser Zeitraum hat zu viele Schritte (höchstens 2.200, in Stunden 550). Wählen Sie einen kürzeren Zeitraum.'],
+      ['version_ungueltig', 'version', 'tag', VERSION_UNLESBAR],
+    ];
+    expect(faelle.map((f) => f[0])).toEqual([...ABLEHNUNG_GRUENDE]);
+    for (const [grund, feld, raster, satz] of faelle) {
+      expect(abgelehnt(grund, feld, raster), grund).toEqual({ art: 'abgelehnt', satz, neueste: grund === 'version_ungueltig' });
+    }
+    // §5.8 nennt das Beispiel wörtlich; die Grenze folgt der Einteilung der Anfrage.
+    expect(abgelehnt('nicht_im_raster', 'bis', 'monat')).toMatchObject({ satz: expect.stringContaining('(Ende liegt nicht auf einer Monatsgrenze)') });
+  });
+
+  it('ein fremder Grund, ein fehlendes Feld oder ein anderer Code: der Satz ohne Klammer — keine geratene Ursache', () => {
+    expect(abgelehnt('fehlt', null)).toEqual({ art: 'abgelehnt', satz: ZEITRAUM_UNLESBAR_OHNE_GRUND, neueste: false });
+    expect(abgelehnt('ganz_neu', 'von')).toEqual({ art: 'abgelehnt', satz: ZEITRAUM_UNLESBAR_OHNE_GRUND, neueste: false });
+    expect(auskunft(400, { code: 'anderes', grund: 'version_ungueltig' }, 'tag')).toEqual({ art: 'abgelehnt', satz: ZEITRAUM_UNLESBAR_OHNE_GRUND, neueste: false });
+    expect(auskunft(400, undefined, 'tag')).toEqual({ art: 'abgelehnt', satz: ZEITRAUM_UNLESBAR_OHNE_GRUND, neueste: false });
+  });
+
+  it('Z3 · 404 ohne Code — die Route kennt die Messstelle nicht oder sie gehört einem anderen: „gibt es nicht“', () => {
+    expect(auskunft(404, { status: 404, error: 'Not Found', message: 'Messstelle nicht gefunden.' }, 'tag')).toEqual({
+      art: 'gibt_es_nicht',
+      satz: MESSSTELLE_GIBT_ES_NICHT,
+    });
+    expect(auskunft(404, undefined, 'monat')).toEqual({ art: 'gibt_es_nicht', satz: MESSSTELLE_GIBT_ES_NICHT });
+  });
+
+  it('O19 · 404 `wert_nicht_mehr_gespeichert`: der Fristen-Satz der Route — der Sprung zum Berichtsstand ist `null`, bis AP-12 IP-16 gebaut ist', () => {
+    // AP-12 §5.8 / O19: am 02.11.2036 hält Berichtsstand Nr. 1 vom 10.11.2026 den Oktober 2026 von MS-12.
+    const satz = 'Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. 1 vom 10.11.2026 hält ihn fest.';
+    expect(fall('O19').titel ?? JSON.stringify(fall('O19'))).toContain('wert_nicht_mehr_gespeichert');
+    expect(auskunft(404, { code: 'wert_nicht_mehr_gespeichert', message: satz }, 'monat')).toEqual({ art: 'nicht_mehr_gespeichert', satz, sprung: null });
+    // Ohne Satz der Route der Satz ohne Berichtsstand — nie „gibt es nicht“, die Messstelle gibt es ja.
+    expect(auskunft(404, { code: 'wert_nicht_mehr_gespeichert' }, 'monat')).toEqual({
+      art: 'nicht_mehr_gespeichert',
+      satz: WERT_NICHT_MEHR_GESPEICHERT,
+      sprung: null,
+    });
+    // ⚠ Heute sendet die Werte-Route diesen Code NICHT (AP-12 IP-16 ist offen): jede 404 der Route ist heute „gibt es nicht“.
+  });
+
+  it('Z5 · Server nicht erreichbar, 5xx oder ein anderer Status: eine Störung — nur sie bekommt „Erneut versuchen“', () => {
+    for (const status of [null, 500, 502, 503]) expect(auskunft(status, undefined, 'tag')).toEqual({ art: 'nicht_abrufbar' });
+  });
+
+  it('Z4 · Vergleich ohne passende Messstelle: der Satz von §5.8, ohne Knopf — sobald eine passt, kein Leerzustand', () => {
+    const basis: MessstelleGroesse = { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Zählerstand' };
+    const gas: MessstelleGroesse = { groesse: 'Volumen', richtung: 'Bezug', einheit: 'm³', wertart: 'Zählerstand' };
+    const speicher: MessstelleGroesse = { ...basis, richtung: 'Laden / Entladen' };
+    expect(vergleichOhnePassende(basis, [gas, speicher])).toEqual({
+      titel: 'Keine passende Messstelle',
+      satz: 'Keine weitere Messstelle misst Wirkenergie Bezug in kWh.',
+      schritt: null,
+    });
+    expect(vergleichOhnePassende(basis, [])).not.toBeNull();
+    expect(vergleichOhnePassende(basis, [gas, { ...basis }])).toBeNull();
+  });
+
+  it('Z4 · Energiebilanz ohne Hauptzähler: Satz und Schritt ergeben zusammen den Satz von §5.8', () => {
+    expect(`${OHNE_HAUPTZAEHLER.satz.slice(0, -1)} — ${OHNE_HAUPTZAEHLER.schritt}.`).toBe(
+      'Diese Anlage hat keinen Hauptzähler in der elektrischen Stellung — Stellung eintragen.',
+    );
+    expect(OHNE_HAUPTZAEHLER.titel).toBe('Kein Hauptzähler');
   });
 });

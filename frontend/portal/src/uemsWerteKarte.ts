@@ -21,10 +21,12 @@
  *  - `null` ist ein Strich, nie 0.
  *
  * Ein Schritt ohne Zustand (die Route nennt dann `grund`) oder einer, der den
- * Vertrag verletzt, wird NICHT gesprochen: er zeigt nur den Strich. Nur der Grund
- * `noch_nicht_gebildet` bekommt ein Wort (Zeile) bzw. einen Satz (Karte) aus
- * `glossar.ts` — „noch nicht gerechnet“ ist nicht „keine Werte“, und nur das eine
- * löst sich von selbst (Captain 15.09.2026).
+ * Vertrag verletzt, wird NICHT gesprochen: er zeigt nur den Strich. Seit AP-13
+ * IP-6 (E11 = A, D5) steht unter dem Strich der Karte, WARUM: der Satz des
+ * Grundes aus dem Ergebnis-Vertrag (`grundSatz`), mit den Feldern der Antwort
+ * und den Namen des Registers — fehlt ein Name, steht kein Satz statt eines
+ * geratenen. In der Zeile trägt nur `noch_nicht_gebildet` ein Wort („noch nicht
+ * gerechnet“ ist nicht „keine Werte“, Captain 15.09.2026).
  *
  * Die Karte nennt die ANZAHL der Lücken neben dem Verlauf („Verlauf 85 % · 1 Lücke“):
  * jede Lücke (Ereignis-Art `data_gap`) einmal, so wie die Route sie an den Schritt
@@ -33,17 +35,27 @@
  * REIN: kein Netz, kein Zustand, keine Uhr.
  */
 
-import type { MessstelleWerte, MessstelleWerteQuelle, MessstelleWerteRaster, MessstelleWerteWert } from './api';
-import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
+import type {
+  MessstelleRegisterZeile,
+  MessstelleWerte,
+  MessstelleWerteQuelle,
+  MessstelleWerteRaster,
+  MessstelleWerteWert,
+} from './api';
+import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET } from './glossar';
+import { KEINE_DATENQUELLE, type ZeileWoerter } from './messstellen';
 import { MONATE, WOCHENTAGE, datumVon, isoWoche } from './picker/datum';
 import { zahlText } from './uemsEreignis';
 import {
   ANZEIGE_EINHEITEN,
   FASSUNG_KENNZEICHEN,
+  GRUENDE,
+  GRUND_ANTEIL,
   KEINE_WERTE,
   OHNE_ZAHL,
   VOLLSTAENDIG,
   fassung,
+  grundSatz,
   menge,
   pruefe,
   pruefeMenge,
@@ -52,6 +64,7 @@ import {
   type Ergebnis,
 } from './uemsErgebnis';
 import { zoneSatz, type Zeitraum } from './uemsOberflaechen';
+import { datumText, type Tag } from './uemsOrtsbaum';
 
 /** Tag oder Monat — was die Karte zusammenfasst. */
 export type KartenArt = 'tag' | 'monat';
@@ -92,10 +105,13 @@ export interface Karte extends WertAnzeige {
   luecken?: string | null;
 }
 
-/** Die Karte einer Messstelle: dazu die Anzahl der Lücken und der Satz eines noch nicht gebildeten Schritts. */
+/** Die Karte einer Messstelle: dazu die Anzahl der Lücken und der Satz, warum eine Zahl fehlt. */
 export interface MessstellenKarte extends Karte {
   luecken: string | null;
-  /** `UEMS_NOCH_NICHT_GERECHNET_SATZ` an einem noch nicht gebildeten Schritt, sonst `null`. */
+  /**
+   * Unter dem Strich: der Satz des Grundes (`grundDes`, AP-13 IP-6) — am noch nicht gebildeten Schritt zeichengleich
+   * `UEMS_NOCH_NICHT_GERECHNET_SATZ`. `null` unter einer Zahl, ohne Grund und wo ein Platzhalter keinen Namen hat.
+   */
   grund: string | null;
 }
 
@@ -258,8 +274,11 @@ export const luecken = (w: MessstelleWerteWert): string | null => {
 const nochNichtGebildet = (a: WertAnzeige, w: MessstelleWerteWert): boolean =>
   a.zustand === null && w.grund === 'noch_nicht_gebildet';
 
-/** Die Karte aus der Antwort der Periode (Raster `tag` bzw. `monat`, genau ein Schritt). */
-export const karte = (antwort: MessstelleWerte): MessstellenKarte | null => {
+/**
+ * Die Karte aus der Antwort der Periode (Raster `tag` bzw. `monat`, genau ein Schritt). `namen` sind die Bindungen,
+ * wie das Register sie nennt (`quellenNamen`) — nur der Grund-Satz braucht sie.
+ */
+export const karte = (antwort: MessstelleWerte, namen: QuellenNamen = {}): MessstellenKarte | null => {
   const w = antwort.werte[0];
   if (!w) return null;
   const a = anzeige(antwort, w, true);
@@ -274,7 +293,8 @@ export const karte = (antwort: MessstelleWerte): MessstellenKarte | null => {
     fassungWert: gesprochen ? w.fassung : null,
     // Die Anzahl der Lücken nennt, wie die Fassung, nur ein gesprochener Schritt.
     luecken: a.zustand !== null ? luecken(w) : null,
-    grund: nochNichtGebildet(a, w) ? UEMS_NOCH_NICHT_GERECHNET_SATZ : null,
+    // Unter dem Strich steht, warum — nur dort, wo die Route keine Zahl hat (AP-13 IP-6, D5).
+    grund: a.zahl === OHNE_ZAHL && w.menge === null ? grundDes(antwort, w, namen) : null,
   };
 };
 
@@ -328,4 +348,176 @@ export const versionHinweis = (antwort: MessstelleWerte, gewaehlt: number | null
   return (gewaehlt === w.versionen ? VERSION_NEUESTE : VERSION_FRUEHERE)
     .replace('{n}', String(gewaehlt))
     .replace('{neueste}', String(w.versionen));
+};
+
+// ------------------------------------------------------------------ Warum eine Zahl fehlt (AP-13 IP-6, E11 = A, D5)
+
+/** Eine Bindung, wie das Register sie nennt — die Werte-Route liefert nur ihre Kennung. */
+export interface BindungsNamen {
+  /** „Netzzähler Lindach (GR-10)“: der Name der Komponente mit dem Kennzeichen ihres Geräts (Vertrag `woher.quelle`). */
+  quelle: string;
+  /**
+   * „Wirkenergie Bezug (Netzzähler Halle 1)“: der Name des Messwerts mit dem NAMEN seiner Komponente. Der Vertrag
+   * (`woher.kanal`) nennt ihr Kennzeichen („K-3“) — das Register liefert zur Bindung aber nur die Kennung der Komponente.
+   */
+  kanal: string;
+}
+
+/** Die Namen je Kennung der Bindung — `quellen[].id` der Werte-Route ist `quelle.fuehrend.id` des Registers. */
+export type QuellenNamen = Readonly<Record<string, BindungsNamen>>;
+
+/**
+ * Die Namen der Bindungen, die das Register heute kennt: die führende und die davor. Eine Bindung ohne Namen der
+ * Komponente oder des Messwerts fehlt — ein Satz mit einer Kennung statt eines Namens wäre keiner des Vertrags.
+ */
+export const quellenNamen = (quelle: MessstelleRegisterZeile['quelle'] | null | undefined): QuellenNamen => {
+  const namen: Record<string, BindungsNamen> = {};
+  for (const b of [quelle?.fuehrend, quelle?.davor]) {
+    if (!b?.komponente_name || !b.kanal_name) continue;
+    namen[b.id] = { quelle: `${b.komponente_name} (${b.geraet.geraet})`, kanal: `${b.kanal_name} (${b.komponente_name})` };
+  }
+  return namen;
+};
+
+const zeitwert = (iso: string): number => Date.parse(iso);
+
+/** Die Bindungen der Antwort, die den Schritt berühren — nach ihrem Beginn, wie `MessstelleWerteRegeln.deckung` sie liest. */
+const beruehrend = (antwort: MessstelleWerte, w: MessstelleWerteWert): MessstelleWerteQuelle[] =>
+  antwort.quellen
+    .filter((q) => zeitwert(q.gueltig_ab) < zeitwert(w.bis) && (q.gueltig_bis === null || zeitwert(q.gueltig_bis) > zeitwert(w.von)))
+    .sort((a, b) => zeitwert(a.gueltig_ab) - zeitwert(b.gueltig_ab));
+
+/**
+ * Der Satz, warum ein Schritt keine Zahl hat (E11 = A, D5): `grundSatz` des Ergebnis-Vertrags mit den Platzhaltern, die
+ * der Vertrag unter `woher` nennt —
+ *  - `keine_quelle`: Kennzeichen und Name der Messstelle;
+ *  - `quelle_teilweise`: die Bindung, die IM Schritt beginnt, mit ihrem Namen und dem Tag ihres Beginns in der Zone der
+ *    Antwort. Endet die Deckung nur, ohne dass eine beginnt, gibt es keinen „gilt seit“-Satz;
+ *  - `anteil_nicht_gespeichert`: der Anteil der Bindung des Schritts und der Name ihres Messwerts;
+ *  - `version_nicht_gespeichert`: die angefragte Version und die neueste des Schritts.
+ * `null` ohne Grund, bei einem Code, den der Vertrag nicht kennt, und wo ein Platzhalter keinen Wert hat — kein Satz
+ * nennt eine Ursache, die kein Modul geliefert hat.
+ */
+export const grundDes = (antwort: MessstelleWerte, w: MessstelleWerteWert, namen: QuellenNamen = {}): string | null => {
+  const code = w.grund;
+  if (code === null || !GRUENDE.some((g) => g.code === code)) return null;
+  switch (code) {
+    case 'keine_quelle':
+      return grundSatz(code, { messstelle: [antwort.messstelle.kennzeichen, antwort.messstelle.name].filter(Boolean).join(' ') });
+    case 'quelle_teilweise': {
+      const q = beruehrend(antwort, w).find((b) => zeitwert(b.gueltig_ab) > zeitwert(w.von));
+      const n = q ? namen[q.id] : undefined;
+      return q && n ? grundSatz(code, { quelle: n.quelle, ab: datumText(q.gueltig_ab.slice(0, 10)) }) : null;
+    }
+    case 'anteil_nicht_gespeichert': {
+      const q = beruehrend(antwort, w).find((b) => b.anteil !== null);
+      const n = q ? namen[q.id] : undefined;
+      return q?.anteil && n ? grundSatz(code, { anteil: GRUND_ANTEIL[q.anteil], kanal: n.kanal }) : null;
+    }
+    case 'version_nicht_gespeichert':
+      return antwort.version !== null && w.versionen !== null
+        ? grundSatz(code, { n: String(antwort.version), max: String(w.versionen) })
+        : null;
+    default:
+      return grundSatz(code, {});
+  }
+};
+
+// ------------------------------------------------------------------ Werte ohne Datenquelle (AP-13 IP-6, Z4)
+
+export interface OhneQuelle {
+  titel: string;
+  satz: string;
+}
+
+/**
+ * Z4 · Werte ohne Datenquelle: im GANZEN Zeitraum führt keine Quelle — keine Bindung in der Antwort, jeder Schritt
+ * `keine_quelle`. Eine Liste voller Striche ist dann keine Auskunft; die Sektion zeigt stattdessen Titel und Satz des
+ * Grundes. Eine berechnete Messstelle kommt nie hierher; `null`, sobald eine Bindung den Zeitraum berührt.
+ */
+export const ohneQuelle = (antwort: MessstelleWerte | null): OhneQuelle | null => {
+  if (!antwort || antwort.messstelle.art === 'berechnet' || antwort.quellen.length > 0 || antwort.werte.length === 0) return null;
+  if (!antwort.werte.every((w) => w.grund === 'keine_quelle')) return null;
+  const satz = grundDes(antwort, antwort.werte[0]);
+  return satz === null ? null : { titel: KEINE_DATENQUELLE, satz };
+};
+
+export const QUELLE_GILT_SEIT = '{quelle} gilt seit {datum} — ab dann stehen hier Werte.';
+export const QUELLE_GILT_AB = '{quelle} gilt ab {datum} — ab dann stehen hier Werte.';
+/** Ohne Namen im Register: die Quelle ohne Namen, nie ihre Kennung. */
+export const DIE_DATENQUELLE = 'Die Datenquelle';
+export const QUELLE_AB_ZEIGEN = 'Ab {datum} zeigen';
+export const QUELLE_ZUORDNEN = 'Quelle zuordnen';
+export const QUELLE_OHNE_RECHT = 'Eine Datenquelle ordnet zu, wer diese Messstelle bearbeiten darf.';
+
+/**
+ * Der nächste Schritt aus einem Zeitraum ohne Datenquelle (Z4: benannt, kein Knopf ohne Ziel), aus dem Register von heute:
+ *  - `ab`: die heute führende Quelle beginnt NACH dem Zeitraum — der Satz nennt sie, der Knopf blättert zu ihrem ersten
+ *    Tag (nur, wenn der schon da ist);
+ *  - `zuordnen`: heute führt keine Quelle, und der Wirt darf eine zuordnen (Messstellen-Dialog, Schritt „Quelle“);
+ *  - `hinweis`: heute führt keine Quelle, und das Recht fehlt — der Satz sagt, wer es kann.
+ * ⚠ „Ablesung eintragen“ (Z4, O15) steht NICHT hier: eine Ablesung an einer Messstelle hat weder Route noch Fläche —
+ * AP-09 IP-7 schreibt Werte einer Bezugsgröße. `null` ohne Register (der Dialog an den Gesamtwert-Karten), an einer
+ * berechneten Messstelle und wo das Register dem Zeitraum widerspricht.
+ */
+export type OhneQuelleWeg =
+  | { art: 'ab'; tag: Tag; satz: string; knopf: string | null }
+  | { art: 'zuordnen'; knopf: string }
+  | { art: 'hinweis'; satz: string };
+
+export const ohneQuelleWeg = (
+  quelle: MessstelleRegisterZeile['quelle'] | null | undefined,
+  bis: Tag,
+  heute: Tag,
+  darfZuordnen: boolean,
+): OhneQuelleWeg | null => {
+  if (!quelle || quelle.stand === 'berechnet') return null;
+  if (quelle.stand === 'keine_datenquelle') {
+    return darfZuordnen ? { art: 'zuordnen', knopf: QUELLE_ZUORDNEN } : { art: 'hinweis', satz: QUELLE_OHNE_RECHT };
+  }
+  const b = quelle.fuehrend;
+  if (!b) return null;
+  const tag = b.gueltig_ab.slice(0, 10);
+  if (tag <= bis) return null;
+  const datum = datumText(tag);
+  const schonDa = tag <= heute;
+  return {
+    art: 'ab',
+    tag,
+    satz: (schonDa ? QUELLE_GILT_SEIT : QUELLE_GILT_AB)
+      .replace('{quelle}', quellenNamen(quelle)[b.id]?.quelle ?? DIE_DATENQUELLE)
+      .replace('{datum}', datum),
+    knopf: schonDa ? QUELLE_AB_ZEIGEN.replace('{datum}', datum) : null,
+  };
+};
+
+// ------------------------------------------------------------------ Nebengrößen (AP-13 V8)
+
+export const NEBENGROESSEN_TITEL = 'Weitere Größen';
+export const NEBENGROESSEN_SATZ = 'Letzter Wert aus der Box — Werte und Verlauf gibt es hier nur für {hauptgroesse}.';
+
+export interface Nebengroessen {
+  titel: string;
+  /** „Wirkleistung 148,6 kW · 10:15 Uhr“ — Wortlaut des Registers (`zeileWoerter.nebenwerte`). */
+  zeilen: string[];
+  satz: string;
+}
+
+/**
+ * V8: eine Nebengröße (Wirkleistung, Ladestand) hat keine Werte-Route — die Seite nennt ihren letzten Wert aus dem
+ * Register und sagt, dass Werte und Verlauf nur der Hauptgröße gehören. Der Weg zum Register-Verlauf der Geräteseite fehlt:
+ * das Register nennt zur Bindung weder Anlage noch Box-Referenz, ohne die die Geräteseite keine Adresse hat. `null` ohne
+ * Nebengröße mit Wert.
+ */
+export const nebengroessen = (
+  woerter: Pick<ZeileWoerter, 'nebenwerte'> | null,
+  haupt: { groesse: string; richtung: string },
+): Nebengroessen | null => {
+  if (!woerter || woerter.nebenwerte.length === 0) return null;
+  const hauptgroesse = haupt.richtung === 'richtungslos' ? haupt.groesse : `${haupt.groesse} ${haupt.richtung}`;
+  return {
+    titel: NEBENGROESSEN_TITEL,
+    zeilen: woerter.nebenwerte.map((n) => `${n.groesse} ${n.text} · ${n.zeit}`),
+    satz: NEBENGROESSEN_SATZ.replace('{hauptgroesse}', hauptgroesse),
+  };
 };

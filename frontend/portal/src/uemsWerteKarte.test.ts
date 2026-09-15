@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { MessstelleWerte } from './api';
+import type { MessstelleWerte, MessstelleWerteWert } from './api';
 import {
   F8_LUECKE,
   ANFANG_NICHT_GEMESSEN,
@@ -23,7 +23,14 @@ import {
   ohneQuelleStunden,
   ohneQuelleTag,
   schritt,
+  MS_06,
+  MS16_BINDUNG,
+  antwort,
+  ms16Oktober,
+  ms16OktoberTage,
+  tagesgrenzen,
 } from './test/werteKarteFixtures';
+import { ahrenbergRegister } from './test/messstellenRegisterFixtures';
 import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
 import { EREIGNIS_TEXTE } from './uemsEreignis';
 import { KEINE_WERTE, OHNE_ZAHL, TRENNER, ZUSTAENDE, fassung, satz, tagesdauer } from './uemsErgebnis';
@@ -38,6 +45,10 @@ import {
   VERSION_FRUEHERE,
   VERSION_NEUESTE,
   versionHinweis,
+  nebengroessen,
+  ohneQuelle,
+  ohneQuelleWeg,
+  quellenNamen,
   zeitenKopf,
 } from './uemsWerteKarte';
 import { f21Tag, f21TagWert } from './test/wertVersionenFixtures';
@@ -336,7 +347,12 @@ describe('uemsWerteKarte — drei Lagen: Wert da · noch nicht gebildet · keine
       null,
       UEMS_NOCH_NICHT_GERECHNET_SATZ,
     ]);
-    expect([keine.zahl, keine.zustand, keine.grund]).toEqual([OHNE_ZAHL, KEINE_WERTE, null]);
+    // Seit AP-13 IP-6 sagt auch „keine Werte“ ohne Quelle, warum (E11 = A).
+    expect([keine.zahl, keine.zustand, keine.grund]).toEqual([
+      OHNE_ZAHL,
+      KEINE_WERTE,
+      'Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.',
+    ]);
     const gesagt = [da, nochNicht, keine].map((k) => [k.zahl, k.zustand, k.grund].filter((t) => t !== null).join(TRENNER));
     expect(new Set(gesagt).size).toBe(3);
     // Nie „keine Werte“ und nie der Strich allein.
@@ -361,10 +377,15 @@ describe('uemsWerteKarte — drei Lagen: Wert da · noch nicht gebildet · keine
     expect(liste(ohneQuelleStunden()).every((z) => z.grund === null)).toBe(true);
   });
 
-  it('nur `noch_nicht_gebildet` bekommt den Satz — ein anderer Grund ohne Zahl bleibt der Strich', () => {
+  it('seit AP-13 IP-6 spricht jeder Grund ohne Zahl seinen Satz an der Karte — die Zeile trägt weiter nur „noch nicht gerechnet“', () => {
     const a = f8Tag();
     a.werte = [schritt({ von: a.werte[0].von, bis: a.werte[0].bis, grund: 'ohne_menge_gespeichert' })];
-    expect(karte(a)).toMatchObject({ zahl: OHNE_ZAHL, zustand: null, grund: null });
+    expect(karte(a)).toMatchObject({
+      zahl: OHNE_ZAHL,
+      zustand: null,
+      grund: 'Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.',
+    });
+    expect(liste(a)[0].grund).toBeNull();
   });
 });
 
@@ -526,5 +547,170 @@ describe('uemsWerteKarte — die Periode der Adresse (UEMS AP-13 IP-3)', () => {
     for (const falsch of [null, undefined, '', '2027-W53', '2026-W00', '2026-W54', '2026-W4', '26', '2026-13', '2026-00', '2026-02-30', '2027-02-29', '2026-10-25T00:00', 'gestern']) {
       expect(periodeAus(falsch), String(falsch)).toBeNull();
     }
+  });
+});
+
+// ------------------------------------------------------------------ AP-13 IP-6 · warum eine Zahl fehlt (E11 = A, Z4, V8)
+
+const register = ahrenbergRegister();
+const zeileVon = (kz: string) => {
+  const z = register.register.find((r) => r.kennzeichen === kz);
+  if (!z) throw new Error(`keine Zeile ${kz}`);
+  return z;
+};
+const grundBeispiel = (code: string): string => (lies('ergebnis-zustand-vectors.json').grund.saetze as Json[]).find((s) => s.code === code)!.beispiel;
+const oberflaechenFall = (id: string): Json =>
+  (JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/oberflaechenFaelle.json'), 'utf8')).faelle as Json[]).find((f) => f.id === id);
+const OKTOBER = { von: '2026-10-01T00:00:00+02:00', bis: '2026-11-01T00:00:00+01:00' };
+const ohneZahl = (t: Partial<MessstelleWerteWert>): Partial<MessstelleWerteWert> => ({ quelle: null, fassung: null, version: null, versionen: null, gebildet_aus: null, ...t });
+/** Die Vertragsnamen der Referenz („K-11“) stehen im Register als Name der Komponente („Netzzähler Lindach“). */
+const MIT_REGISTERNAMEN = (satz: string) => satz.replace('Netzzähler K-11 (GR-10)', 'Netzzähler Lindach (GR-10)');
+
+describe('uemsWerteKarte — O15 · unter dem Strich der Satz des Grundes, einer je Grund (UEMS AP-13 IP-6, E11 = A)', () => {
+  it('die acht Beispiele von O15: jede Karte zeigt „—“ und genau den Satz des Vertrags', () => {
+    const g = tagesgrenzen('2026-10-31');
+    const ms01 = zeileVon('MS-01');
+    const b01 = ms01.quelle.fuehrend!;
+    const karten: Record<string, ReturnType<typeof karte>> = {
+      // MS-21 Gas Heizung Verwaltung: keine Datenquelle.
+      keine_quelle: karte(ohneQuelleTag()),
+      // MS-16 Netzbezug Lindach, Oktober 2026 — die Bindung beginnt am 15.10. im Monat.
+      quelle_teilweise: karte(ms16Oktober(), quellenNamen(zeileVon('MS-16').quelle)),
+      // MS-01 Netzbezug Halle 1, eine Viertelstunde am Vorzeichen-Kanal.
+      anteil_nicht_gespeichert: karte(
+        {
+          ...antwort({ ...MS_06, kennzeichen: 'MS-01', name: 'Netzbezug Halle 1' }, 'viertelstunde', g.von, '2026-10-31T00:15:00+02:00', [
+            schritt(ohneZahl({ von: g.von, bis: '2026-10-31T00:15:00+02:00', beschriftung: '00:00–00:15', grund: 'anteil_nicht_gespeichert' })),
+          ], false),
+          quellen: [{ id: b01.id, komponente: b01.komponente, kanal: b01.kanal, herleitung: 'zaehlerstand', anteil: 'positiv', gueltig_ab: b01.gueltig_ab, gueltig_bis: null }],
+        },
+        quellenNamen(ms01.quelle),
+      ),
+      // MS-15 Halle 2 nicht zugeordnet, eine Stunde.
+      berechnet: karte(
+        antwort({ ...MS_06, kennzeichen: 'MS-15', name: 'Halle 2 nicht zugeordnet', art: 'berechnet' }, 'stunde', g.von, g.bis, [
+          schritt(ohneZahl({ von: '2026-10-31T10:00:00+01:00', bis: '2026-10-31T11:00:00+01:00', beschriftung: '10:00–11:00', grund: 'berechnet' })),
+        ], false),
+      ),
+      noch_nicht_gebildet: karte(nochNichtGebildetTag()),
+      ohne_menge_gespeichert: karte({ ...f8Tag(), werte: [schritt({ ...tagesgrenzen('2026-11-03'), grund: 'ohne_menge_gespeichert' })] }),
+      // MS-12 Montage Linie M1, Oktober 2026 mit ?version=3 — der neueste Stand ist Version 2.
+      version_nicht_gespeichert: karte({
+        ...antwort({ ...MS_06, kennzeichen: 'MS-12', name: 'Montage Linie M1' }, 'monat', OKTOBER.von, OKTOBER.bis, [
+          schritt({ ...OKTOBER, grund: 'version_nicht_gespeichert', fassung: null, version: null, versionen: 2 }),
+        ]),
+        version: 3,
+      }),
+      // MS-12, Stunde 10:00–11:00 am 31.10.2026 mit ?version=1.
+      version_nicht_gebildet: karte({
+        ...antwort({ ...MS_06, kennzeichen: 'MS-12', name: 'Montage Linie M1' }, 'stunde', g.von, g.bis, [
+          schritt({ von: '2026-10-31T10:00:00+01:00', bis: '2026-10-31T11:00:00+01:00', beschriftung: '10:00–11:00', grund: 'version_nicht_gebildet', version: null, versionen: null }),
+        ]),
+        version: 1,
+      }),
+    };
+    const codes = (lies('ergebnis-zustand-vectors.json').grund.saetze as Json[]).map((s) => s.code);
+    expect(Object.keys(karten)).toEqual(codes);
+    for (const code of codes) {
+      const k = karten[code]!;
+      expect(k.zahl, code).toBe(OHNE_ZAHL);
+      expect(k.grund, code).toBe(code === 'quelle_teilweise' ? MIT_REGISTERNAMEN(grundBeispiel(code)) : code === 'anteil_nicht_gespeichert'
+        ? 'Die Quelle liest nur den positiven Anteil von Wirkenergie Bezug (Netzzähler Halle 1); eine Menge je Anteil ist nicht gespeichert.'
+        : grundBeispiel(code));
+    }
+    // Der Satz der Tageskarte (Captain 15.09.2026) und der des Vertrags sind derselbe.
+    expect(karten.noch_nicht_gebildet!.grund).toBe(UEMS_NOCH_NICHT_GERECHNET_SATZ);
+  });
+
+  it('kein Satz ohne seinen Namen (D5): ohne das Register bleibt `quelle_teilweise` und `anteil_nicht_gespeichert` beim Strich', () => {
+    expect(karte(ms16Oktober())).toMatchObject({ zahl: OHNE_ZAHL, grund: null });
+    // Eine Bindung, die nicht im Zeitraum BEGINNT (sie endet nur), trägt keinen „gilt seit“-Satz.
+    const endet = ms16Oktober();
+    endet.quellen = [{ ...endet.quellen[0], gueltig_ab: '2024-03-12T00:00:00+01:00', gueltig_bis: '2026-10-15T00:00:00+02:00' }];
+    expect(karte(endet, quellenNamen(zeileVon('MS-16').quelle))!.grund).toBeNull();
+    // Die Version ohne die Zahl der Versionen: kein Satz mit „undefined“.
+    const ohneVersionen = { ...ms16Oktober(), version: 3 };
+    ohneVersionen.werte = [{ ...ohneVersionen.werte[0], grund: 'version_nicht_gespeichert' as const, versionen: null }];
+    expect(karte(ohneVersionen)!.grund).toBeNull();
+  });
+
+  it('der Satz steht nur unter dem Strich — nie unter einer Zahl, nie ohne Grund', () => {
+    expect(karte(normalTag())!.grund).toBeNull();
+    const widerspruch = f8Tag();
+    widerspruch.werte = [{ ...widerspruch.werte[0], grund: 'keine_quelle' }];
+    expect(karte(widerspruch)).toMatchObject({ grund: null });
+    expect(karte(widerspruch)!.zahl).not.toBe(OHNE_ZAHL);
+  });
+
+  it('O16 · MS-16 im Oktober 2026 (W5): „—“ mit dem Satz der Route, darunter 17 vollständige Tage ab 15.10. — die Fläche summiert nichts', () => {
+    const o16 = oberflaechenFall('O16').erwartet;
+    const k = karte(ms16Oktober(), quellenNamen(zeileVon('MS-16').quelle))!;
+    expect(ms16Oktober().quellen.map((q) => q.id)).toEqual([MS16_BINDUNG]);
+    expect(zeileVon('MS-16').quelle.fuehrend!.id).toBe(MS16_BINDUNG);
+    expect([k.zahl, k.zustand, k.abdeckung, k.fassung]).toEqual([OHNE_ZAHL, null, null, null]);
+    expect(`${k.zahl} · ${k.grund}`).toBe(MIT_REGISTERNAMEN(o16.karte_heute));
+    const tage = liste(ms16OktoberTage());
+    expect(tage).toHaveLength(31);
+    expect(tage.filter((z) => z.zustand === 'vollständig')).toHaveLength(o16.tage_darunter);
+    expect(tage.slice(0, 14).every((z) => z.zahl === OHNE_ZAHL && z.zustand === KEINE_WERTE)).toBe(true);
+    expect(o16.flaeche_summiert).toBe(false);
+    expect(k.zahl).not.toMatch(/9[.\s]?100/);
+  });
+});
+
+describe('uemsWerteKarte — Z4 · Werte ohne Datenquelle und ihr nächster Schritt (UEMS AP-13 IP-6)', () => {
+  it('der ganze Zeitraum ohne Bindung: Titel „Keine Datenquelle“ und der Satz des Grundes; eine Bindung im Zeitraum: kein Leerzustand', () => {
+    expect(ohneQuelle(ohneQuelleStunden())).toEqual({ titel: 'Keine Datenquelle', satz: grundBeispiel('keine_quelle') });
+    expect(ohneQuelle(ohneQuelleTag())).not.toBeNull();
+    // Lindach im Oktober: 14 Tage ohne Quelle, aber die Bindung berührt den Monat — die Tage sprechen selbst.
+    expect(ohneQuelle(ms16OktoberTage())).toBeNull();
+    expect(ohneQuelle(normalTag())).toBeNull();
+    expect(ohneQuelle(null)).toBeNull();
+  });
+
+  it('MS-21 heute ohne Datenquelle: „Quelle zuordnen“ nur mit Recht, sonst der Satz, wer es kann — nie „Ablesung eintragen“', () => {
+    const q = zeileVon('MS-21').quelle;
+    expect(q.stand).toBe('keine_datenquelle');
+    expect(ohneQuelleWeg(q, '2026-10-19', '2026-10-20', true)).toEqual({ art: 'zuordnen', knopf: 'Quelle zuordnen' });
+    expect(ohneQuelleWeg(q, '2026-10-19', '2026-10-20', false)).toEqual({
+      art: 'hinweis',
+      satz: 'Eine Datenquelle ordnet zu, wer diese Messstelle bearbeiten darf.',
+    });
+    expect(JSON.stringify([ohneQuelleWeg(q, '2026-10-19', '2026-10-20', true), ohneQuelleWeg(q, '2026-10-19', '2026-10-20', false)])).not.toMatch(/Ablesung/);
+  });
+
+  it('MS-16 im September 2026: die Quelle beginnt NACH dem Zeitraum — der Satz nennt sie, der Knopf blättert zum 15.10.2026', () => {
+    const q = zeileVon('MS-16').quelle;
+    expect(ohneQuelleWeg(q, '2026-09-30', '2026-10-20', true)).toEqual({
+      art: 'ab',
+      tag: '2026-10-15',
+      satz: 'Netzzähler Lindach (GR-10) gilt seit 15.10.2026 — ab dann stehen hier Werte.',
+      knopf: 'Ab 15.10.2026 zeigen',
+    });
+    // Vor ihrem ersten Tag: der Satz „gilt ab“, kein Knopf in einen Zeitraum ohne Werte.
+    expect(ohneQuelleWeg(q, '2026-09-30', '2026-10-10', true)).toMatchObject({
+      satz: 'Netzzähler Lindach (GR-10) gilt ab 15.10.2026 — ab dann stehen hier Werte.',
+      knopf: null,
+    });
+    // Beginnt die Quelle im Zeitraum, widerspricht das Register dem Leerzustand — dann kein Schritt.
+    expect(ohneQuelleWeg(q, '2026-10-31', '2026-10-20', true)).toBeNull();
+    expect(ohneQuelleWeg(zeileVon('MS-22').quelle, '2026-09-30', '2026-10-20', true)).toBeNull();
+    expect(ohneQuelleWeg(null, '2026-09-30', '2026-10-20', true)).toBeNull();
+  });
+});
+
+describe('uemsWerteKarte — V8 · Nebengrößen: der letzte Wert aus dem Register (UEMS AP-13 IP-6)', () => {
+  it('die Wirkleistung im Wortlaut des Registers; der Satz nennt die Hauptgröße; ohne Nebenwert keine Zeile', () => {
+    const haupt = { groesse: 'Wirkenergie', richtung: 'Bezug' };
+    expect(nebengroessen({ nebenwerte: [{ groesse: 'Wirkleistung', text: `148,6${NB}kW`, zeit: '10:15 Uhr' }] }, haupt)).toEqual({
+      titel: 'Weitere Größen',
+      zeilen: [`Wirkleistung 148,6${NB}kW · 10:15 Uhr`],
+      satz: 'Letzter Wert aus der Box — Werte und Verlauf gibt es hier nur für Wirkenergie Bezug.',
+    });
+    expect(nebengroessen({ nebenwerte: [{ groesse: 'Ladestand', text: `62${NB}%`, zeit: '10:15 Uhr' }] }, { groesse: 'Ladestand', richtung: 'richtungslos' })!.satz).toBe(
+      'Letzter Wert aus der Box — Werte und Verlauf gibt es hier nur für Ladestand.',
+    );
+    expect(nebengroessen({ nebenwerte: [] }, haupt)).toBeNull();
+    expect(nebengroessen(null, haupt)).toBeNull();
   });
 });

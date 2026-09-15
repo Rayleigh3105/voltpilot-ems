@@ -26,16 +26,34 @@
  * Hat die Zahl der Karte zwei oder mehr Versionen, öffnet ihr Einstieg die Historie in einem gestapelten
  * Dialog (`WertVersionen`, AP-08 IP-18) — NEBEN dem Rahmen gerendert, nicht darin: React-Ereignisse
  * blubbern durch Portale, Escape und Klicks gehören dem oberen.
+ *
+ * Seit AP-13 IP-6 sagt die Sektion, WARUM eine Zahl fehlt: unter dem Strich der Karte der Satz des Grundes (mit den
+ * Namen der Bindungen aus dem Register des Wirts, `quelle`); eine abgelehnte Anfrage (400), eine Messstelle, die es
+ * nicht gibt (404), und ein nicht mehr gespeicherter Wert sind AUSKÜNFTE ohne „Erneut versuchen“ — nur eine Route, die
+ * nicht antwortet, ist eine Störung. Hat der ganze Zeitraum keine Datenquelle, steht statt Karte, Verlauf und Liste der
+ * Leerzustand mit seinem nächsten Schritt (Z4).
  */
 import { useEffect, useState, type ReactNode } from 'react';
+import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type MessstelleWerte } from '../api';
+import { api, ApiError, type MessstelleRegisterZeile, type MessstelleWerte } from '../api';
 import { UEMS_ZEITRAEUME } from '../glossar';
 import { isoTag, verschiebe } from '../picker/datum';
-import { ZEITRAEUME, type Zeitraum } from '../uemsOberflaechen';
+import { VERLAUF_NICHT_ABRUFBAR, WERTE_NICHT_ABRUFBAR, ZEITRAEUME, auskunft, type Auskunft, type Zeitraum } from '../uemsOberflaechen';
 import { LISTE_TITEL, blaettere, ersterTag, gleicheAnfrage, heuteOderSpaeter, kernaussage, wertAm, zeitraumAnfragen } from '../uemsVerlauf';
 import { einstieg, type Einstieg } from '../uemsWertVersionen';
-import { karte, liste, versionHinweis, zeitenKopf, type Anfrage } from '../uemsWerteKarte';
+import {
+  karte,
+  liste,
+  ohneQuelle,
+  ohneQuelleWeg,
+  quellenNamen,
+  versionHinweis,
+  zeitenKopf,
+  type Anfrage,
+  type OhneQuelle,
+  type OhneQuelleWeg,
+} from '../uemsWerteKarte';
 import { ZeitSegment } from './HistorieWelt';
 import { MessstellenVerlauf } from './MessstellenVerlauf';
 import { ErrorState, Skeleton } from './States';
@@ -72,6 +90,10 @@ const hole = async (kennzeichen: string, a: Anfrage, version: number | null = nu
   return antwort;
 };
 
+/** Was eine gescheiterte Anfrage sagt: Status und Körper des Servers, sonst eine Störung. */
+const auskunftAus = (e: unknown, raster: Anfrage['raster']): Auskunft =>
+  e instanceof ApiError ? auskunft(e.status, e.body, raster) : auskunft(null, null, raster);
+
 export function WerteSektion({
   kennzeichen,
   messstelle,
@@ -80,9 +102,18 @@ export function WerteSektion({
   version = null,
   heute = isoTag(new Date()),
   standortName = null,
+  quelle = null,
+  onQuelleZuordnen,
   onZeitraum,
   rahmen = (inhalt) => inhalt,
 }: {
+  /**
+   * Die Quelle der Messstelle im Register von heute — nur, wo der Wirt das Register kennt (die Messstellen-Seite). Sie
+   * gibt dem Grund-Satz die Namen der Bindungen und dem Leerzustand ohne Datenquelle seinen nächsten Schritt.
+   */
+  quelle?: MessstelleRegisterZeile['quelle'] | null;
+  /** „Quelle zuordnen“ im Leerzustand — nur mit Recht; ohne steht der Satz, wer es kann. */
+  onQuelleZuordnen?: () => void;
   /** Das Kennzeichen, das die Messstelle HEUTE trägt; null = nichts gewählt, nichts geladen. */
   kennzeichen: string | null;
   /** Die Messstelle („MS-10 · Netzbezug Halle 2“) — für den Kopf der Versionen. */
@@ -109,10 +140,10 @@ export function WerteSektion({
   const [bezug, setBezug] = useState(ersterTag(start.art, start.wert));
   const [gewaehlt, setGewaehlt] = useState<number | null>(version);
   const [geladen, setGeladen] = useState<Geladen | null>(null);
-  const [fehler, setFehler] = useState(false);
+  const [fehler, setFehler] = useState<Auskunft | null>(null);
   const [neu, setNeu] = useState(0);
   const [verlauf, setVerlauf] = useState<{ schluessel: string; antwort: MessstelleWerte } | null>(null);
-  const [verlaufFehler, setVerlaufFehler] = useState(false);
+  const [verlaufFehler, setVerlaufFehler] = useState<Auskunft | null>(null);
   const [verlaufNeu, setVerlaufNeu] = useState(0);
   const [versionen, setVersionen] = useState<{ einstieg: Einstieg; periode: string } | null>(null);
 
@@ -124,11 +155,11 @@ export function WerteSektion({
   useEffect(() => {
     if (!kennzeichen) return;
     let aktiv = true;
-    setFehler(false);
+    setFehler(null);
     const a = zeitraumAnfragen(art, wert);
     Promise.all([a.karte ? hole(kennzeichen, a.karte, gewaehlt) : Promise.resolve(null), hole(kennzeichen, a.liste)])
       .then(([k, l]) => aktiv && setGeladen({ schluessel, karte: k, liste: l }))
-      .catch(() => aktiv && setFehler(true));
+      .catch((e: unknown) => aktiv && setFehler(auskunftAus(e, (a.karte ?? a.liste).raster)));
     return () => {
       aktiv = false;
     };
@@ -140,10 +171,10 @@ export function WerteSektion({
     const a = zeitraumAnfragen(art, wert);
     if (gleicheAnfrage(a.liste, a.verlauf)) return;
     let aktiv = true;
-    setVerlaufFehler(false);
+    setVerlaufFehler(null);
     hole(kennzeichen, a.verlauf)
       .then((antwort) => aktiv && setVerlauf({ schluessel: verlaufSchluessel, antwort }))
-      .catch(() => aktiv && setVerlaufFehler(true));
+      .catch((e: unknown) => aktiv && setVerlaufFehler(auskunftAus(e, a.verlauf.raster)));
     return () => {
       aktiv = false;
     };
@@ -162,7 +193,11 @@ export function WerteSektion({
 
   const vorGesperrt = heuteOderSpaeter(art, wert, heute);
   const aktuell = geladen?.schluessel === schluessel ? geladen : null;
-  const k = aktuell?.karte ? karte(aktuell.karte) : null;
+  const namen = quellenNamen(quelle);
+  const k = aktuell?.karte ? karte(aktuell.karte, namen) : null;
+  // Z4: der ganze Zeitraum ohne Datenquelle — Karte (falls der Zeitraum eine hat) UND Liste.
+  const leer = aktuell && (aktuell.karte === null || ohneQuelle(aktuell.karte)) ? ohneQuelle(aktuell.liste) : null;
+  const weg = leer ? ohneQuelleWeg(quelle, anfragen.liste.bis, heute, onQuelleZuordnen !== undefined) : null;
   const e = aktuell?.karte ? einstieg(aktuell.karte) : null;
   const hinweis = aktuell?.karte ? versionHinweis(aktuell.karte, gewaehlt) : null;
   const frueher = hinweis !== null && gewaehlt !== aktuell?.karte?.werte[0]?.versionen;
@@ -217,11 +252,18 @@ export function WerteSektion({
         </div>
 
         {fehler ? (
-          <ErrorState message="Die Werte konnten nicht geladen werden." onRetry={() => setNeu((n) => n + 1)} />
+          <WerteAuskunft
+            auskunft={fehler}
+            stoerung={WERTE_NICHT_ABRUFBAR}
+            onRetry={() => setNeu((n) => n + 1)}
+            onNeueste={() => waehle(art, wert)}
+          />
         ) : !aktuell ? (
           <div aria-busy="true">
             <Skeleton height={148} />
           </div>
+        ) : leer ? (
+          <WerteLeer leer={leer} weg={weg} onAb={(tag) => waehle(art, wertAm(art, tag))} onQuelleZuordnen={onQuelleZuordnen} />
         ) : (
           <>
             {hinweis && (
@@ -244,11 +286,12 @@ export function WerteSektion({
               />
             )}
             {verlaufFehler && !verlaufIstListe ? (
-              <ErrorState message="Der Verlauf konnte nicht geladen werden." onRetry={() => setVerlaufNeu((n) => n + 1)} />
+              <WerteAuskunft auskunft={verlaufFehler} stoerung={VERLAUF_NICHT_ABRUFBAR} onRetry={() => setVerlaufNeu((n) => n + 1)} />
             ) : verlaufAntwort ? (
               <MessstellenVerlauf
                 key={`${art}|${wert}`}
                 antwort={verlaufAntwort}
+                namen={namen}
                 kern={kernaussage(art, aktuell.karte)}
                 versionen={(s) => {
                   const se = einstieg({ ...verlaufAntwort, werte: [s.wert] });
@@ -263,7 +306,7 @@ export function WerteSektion({
           </>
         )}
       </div>
-      {!fehler && aktuell && <WerteListe titel={LISTE_TITEL[art]} zeilen={liste(aktuell.liste)} />}
+      {!fehler && aktuell && !leer && <WerteListe titel={LISTE_TITEL[art]} zeilen={liste(aktuell.liste)} />}
     </div>
   );
 
@@ -282,5 +325,64 @@ export function WerteSektion({
         />
       )}
     </>
+  );
+}
+
+/**
+ * Eine gescheiterte Anfrage: eine Störung mit „Erneut versuchen“ — oder eine Auskunft (400, 404, nicht mehr gespeichert)
+ * als ruhiger Satz ohne Wiederholung, denn dieselbe Anfrage gäbe dieselbe Antwort. Die Zeit-Leiste darüber bleibt der Weg.
+ */
+function WerteAuskunft({
+  auskunft: a,
+  stoerung,
+  onRetry,
+  onNeueste,
+}: {
+  auskunft: Auskunft;
+  stoerung: string;
+  onRetry: () => void;
+  onNeueste?: () => void;
+}) {
+  if (a.art === 'nicht_abrufbar') return <ErrorState message={stoerung} onRetry={onRetry} />;
+  return (
+    <p className="vp-wk-auskunft" role="status" data-testid="werte-auskunft" data-art={a.art}>
+      <span>{a.satz}</span>
+      {a.art === 'abgelehnt' && a.neueste && onNeueste && (
+        <button type="button" className="vp-wk-neueste" onClick={onNeueste}>
+          {NEUESTE_ZEIGEN}
+        </button>
+      )}
+    </p>
+  );
+}
+
+/** Z4 · der Zeitraum ohne Datenquelle: Titel · Satz des Grundes · der nächste Schritt (kein Knopf ohne Ziel). */
+function WerteLeer({
+  leer,
+  weg,
+  onAb,
+  onQuelleZuordnen,
+}: {
+  leer: OhneQuelle;
+  weg: OhneQuelleWeg | null;
+  onAb: (tag: string) => void;
+  onQuelleZuordnen?: () => void;
+}) {
+  return (
+    <section className="vp-wk-leer" aria-label={leer.titel} data-testid="werte-leer">
+      <h3 className="vp-wk-leer-titel">{leer.titel}</h3>
+      <p>{leer.satz}</p>
+      {(weg?.art === 'ab' || weg?.art === 'hinweis') && <p data-testid="werte-leer-weg">{weg.satz}</p>}
+      {weg?.art === 'ab' && weg.knopf && (
+        <Button variant="outline" onClick={() => onAb(weg.tag)}>
+          {weg.knopf}
+        </Button>
+      )}
+      {weg?.art === 'zuordnen' && onQuelleZuordnen && (
+        <Button variant="outline" onClick={onQuelleZuordnen}>
+          {weg.knopf}
+        </Button>
+      )}
+    </section>
   );
 }

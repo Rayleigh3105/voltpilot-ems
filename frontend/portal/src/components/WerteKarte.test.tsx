@@ -37,11 +37,15 @@ describe('WerteKarte — drei Lagen, jede mit ihrem eigenen Satz', () => {
     expect(text(k)).not.toContain('keine Werte');
   });
 
-  it('keine Werte: der Strich und das Wort des Vertrags — ohne den Satz des noch nicht Gebildeten', () => {
+  it('keine Werte: der Strich und das Wort des Vertrags — darunter der Satz SEINES Grundes, nie der des noch nicht Gebildeten', () => {
     const k = zeige(karte(ohneQuelleTag())!);
     expect(text(k.querySelector('.vp-wk-zahl')!)).toBe('—');
     expect(text(k.querySelector('.vp-wk-abzeichen')!)).toBe('keine Werte');
-    expect(within(k).queryByTestId('werte-grund')).toBeNull();
+    // Seit AP-13 IP-6 (E11 = A): der Grund `keine_quelle` spricht seinen Satz unter dem Strich.
+    expect(text(within(k).getByTestId('werte-grund'))).toBe(
+      'Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.',
+    );
+    expect(within(k).queryByText(UEMS_NOCH_NICHT_GERECHNET_SATZ)).toBeNull();
   });
 
   it('die Zeile eines noch nicht gebildeten Schritts trägt das Wort, nie den Satz', () => {

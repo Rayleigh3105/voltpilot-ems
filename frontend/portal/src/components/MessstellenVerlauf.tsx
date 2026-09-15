@@ -22,6 +22,7 @@ import { UEMS_VERLAUF, UEMS_VERLAUF_EREIGNISSE, UEMS_VERLAUF_WAHL } from '../glo
 import { useContainerWidth } from '../useContainerWidth';
 import { ZUSTAND_WORT, bild, luecken, marker, schrittKarte, schritte, tooltipSatz, type Schritt } from '../uemsVerlauf';
 import { ChartHeadline } from './ChartExplain';
+import type { QuellenNamen } from '../uemsWerteKarte';
 import { WerteKarte } from './WerteKarte';
 import './MessstellenVerlauf.css';
 
@@ -29,6 +30,7 @@ export function MessstellenVerlauf({
   antwort,
   kern,
   versionen,
+  namen,
 }: {
   /** Die Antwort der Werte-Route im Raster des Zeitraums (V1). */
   antwort: MessstelleWerte;
@@ -36,6 +38,8 @@ export function MessstellenVerlauf({
   kern: Kernaussage | null;
   /** Der Einstieg „Versionen“ an der Karte eines gewählten Schritts — nur, wo der Wirt die Historie öffnet. */
   versionen?: (s: Schritt) => ReactNode;
+  /** Die Namen der Bindungen aus dem Register — für den Grund-Satz der Schritt-Karte (AP-13 IP-6). */
+  namen?: QuellenNamen;
 }) {
   const [ref, breite] = useContainerWidth<HTMLDivElement>();
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
@@ -232,7 +236,7 @@ export function MessstellenVerlauf({
               <Icon name="chevron-right" size={18} />
             </button>
           </div>
-          <SchrittKarte antwort={antwort} schritt={auswahl} versionen={versionen} />
+          <SchrittKarte antwort={antwort} schritt={auswahl} versionen={versionen} namen={namen} />
         </div>
       ) : (
         <p className="vp-mv-tipp">{wahl.tipp}</p>
@@ -245,11 +249,13 @@ function SchrittKarte({
   antwort,
   schritt,
   versionen,
+  namen,
 }: {
   antwort: MessstelleWerte;
   schritt: Schritt;
   versionen?: (s: Schritt) => ReactNode;
+  namen?: QuellenNamen;
 }) {
-  const k = schrittKarte(antwort, schritt);
+  const k = schrittKarte(antwort, schritt, namen);
   return <WerteKarte karte={k} grund={k.grund} testId="verlauf-schritt-karte" versionen={versionen?.(schritt)} />;
 }
