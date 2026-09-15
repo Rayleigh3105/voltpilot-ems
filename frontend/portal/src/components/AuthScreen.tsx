@@ -20,7 +20,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
  * 3. Das QUARTETT ist die Inhaltsangabe der App - vier taegliche Fragen, kein
  *    Marketing-Claim. Es folgte der Telefon-Leiste, als die noch abgeleitet
  *    war; seit der Navigations-Runde "zwei Ebenen" traegt sie die fuenf
- *    BEREICHE (`anlageNav.bottomBarSlots`) und ist damit anlagen-abhaengig -
+ *    BEREICHE (`ebenenNav.bottomBarSlots`) und ist damit anlagen-abhaengig -
  *    diese Anmeldeseite kennt keine Anlage, also bleibt die Liste hier fest.
  * 4. Das Keycloak-Login-Theme (`deploy/keycloak/themes/voltpilot/login/`)
  *    traegt die GLEICHE Buehne fuer den direkten Anmelde-Weg. Es kann die

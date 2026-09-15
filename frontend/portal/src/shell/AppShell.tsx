@@ -26,13 +26,15 @@ import {
   bottomBarSlots,
   HELP_ITEM,
   type AnlageSidebar,
+  type EbenenBereichId,
+  type EbenenKachel,
   type NavTarget,
   type SidebarItem,
-} from '../anlageNav';
+} from '../ebenenNav';
 import type { HealthBadge } from '../health';
 import { VpPicker } from '../components/VpPicker';
 import type { VpOption } from '../picker/optionen';
-import type { AnlagenSub } from '../nav';
+import type { AnlagenSub, Route } from '../nav';
 import { HealthBadgeButton } from './HealthBadgeButton';
 import './Shell.css';
 import { HelpProvider, HelpLink } from '../help/HelpProvider';
@@ -41,7 +43,7 @@ import type { HelpArticleId } from '../help/model';
 /**
  * Die Anlagen-Navigation der Schale — seit der Navigations-Runde „zwei Ebenen"
  * (Konzept `data/vp-portfolio-konzept-r2` §5.5, Captain-Entscheide E3/E4 vom
- * 25.08.2026) sind es die FÜNF BEREICHE aus `anlageNav.ts`, der Pfad
+ * 25.08.2026) sind es die FÜNF BEREICHE aus `ebenenNav.ts`, der Pfad
  * („Portfolio › Solarpark Dachau ▾") in der Kopfzeile und der Fuß
  * (Hilfe & Kontakt).
  *
@@ -87,6 +89,20 @@ export interface AnlageNav {
   health: HealthBadge | null;
 }
 
+/**
+ * Die Telefon-Leiste der Unternehmens- oder Standort-Ebene (UEMS AP-01 IP-7,
+ * E4 = A). Die Kacheln kommen FERTIG aus `ebenenNav.ebenenLeiste` — Bereiche
+ * mit Seite, erst ab drei; die Schale leitet hier nichts ab.
+ */
+export interface EbenenLeisteNav {
+  /** Der Name der Leiste („Bereiche des Unternehmens Kunststoffwerk Ahrenberg GmbH"). */
+  titel: string;
+  kacheln: EbenenKachel[];
+  /** Welcher Bereich gerade offen ist (`ebenenAktiv`). */
+  aktiv: EbenenBereichId | null;
+  onOpen: (ziel: Route) => void;
+}
+
 /** Ein Glied des Pfades in der Kopfzeile (UEMS AP-01 IP-5). */
 export interface PfadEintrag {
   /** Zugleich der Wert seiner Zeile im Anlagen-Umschalter. */
@@ -126,6 +142,7 @@ export function AppShell({
   tenantOverride,
   onTenantChange,
   anlage = null,
+  ebenen = null,
   ortsPfad = null,
   helpArticle = null,
   children,
@@ -168,6 +185,11 @@ export function AppShell({
   onTenantChange: (tenantId: string | null) => void;
   /** Die Anlagen-Navigation (fünf Bereiche + Pfad); null = keine Anlage offen. */
   anlage?: AnlageNav | null;
+  /**
+   * UEMS AP-01 IP-7: die Telefon-Leiste der Unternehmens- oder Standort-Ebene;
+   * null = keine (unter drei Bereichen mit Seite). In einer Anlage gilt IHRE Leiste.
+   */
+  ebenen?: EbenenLeisteNav | null;
   helpArticle?: HelpArticleId | null;
   children: React.ReactNode;
 }) {
@@ -257,11 +279,30 @@ export function AppShell({
   };
 
   /**
-   * Die Telefon-Leiste gibt es NUR in einer Anlage (E4): auf der Flotten-Ebene
-   * navigieren die Reiter der Portfolio-Seite, eine zweite Leiste daneben wäre
-   * ein zweites Menü für dieselbe Ebene.
+   * Die Telefon-Leiste: in einer Anlage ihre fünf Bereiche (E4), auf der
+   * Unternehmens- oder Standort-Ebene deren Bereiche mit Seite, erst ab drei
+   * (UEMS AP-01 IP-7) — sonst keine: dann navigieren die Reiter der Seite, eine
+   * zweite Leiste daneben wäre ein zweites Menü für dieselbe Ebene.
    */
-  const barSlots = anlage ? bottomBarSlots(anlage.sidebar) : [];
+  const barSlots: { key: string; label: string; icon: SidebarItem['icon']; badge: number | null; aktiv: boolean; oeffnen: () => void }[] =
+    anlage
+      ? bottomBarSlots(anlage.sidebar).map((item) => ({
+          key: item.key,
+          label: item.label,
+          icon: item.icon,
+          badge: item.badge,
+          aktiv: anlage.activeKey === item.key,
+          oeffnen: () => openTarget(item.target),
+        }))
+      : (ebenen?.kacheln ?? []).map((kachel) => ({
+          key: kachel.key,
+          label: kachel.label,
+          icon: kachel.icon,
+          badge: null,
+          aktiv: ebenen?.aktiv === kachel.key,
+          oeffnen: () => ebenen?.onOpen(kachel.ziel),
+        }));
+  const barName = anlage ? `Bereiche der Anlage ${anlage.siteName ?? ''}`.trim() : ebenen?.titel ?? '';
   /** 2+ Anlagen or a fleet level to return to = there is something to switch. */
   const canSwitchAnlage =
     !!anlage && (anlage.sites.length > 1 || !!anlage.onOpenFleet || (anlage.pfad?.length ?? 0) > 0);
@@ -616,23 +657,24 @@ export function AppShell({
 
       {/* Die Telefon-Leiste trägt seit E4 die FÜNF Bereiche der Anlage und
           KEINE „Mehr"-Kachel — es gibt nichts mehr zu falten. Auf der
-          Flotten-Ebene rendert sie gar nicht (dort navigieren die Reiter).
-          Oberhalb von 720 px blendet CSS sie aus. */}
+          Unternehmens- und Standort-Ebene trägt sie deren Bereiche mit Seite,
+          erst ab drei (IP-7); darunter rendert sie gar nicht (dort navigieren
+          die Reiter). Oberhalb von 720 px blendet CSS sie aus. */}
       {barSlots.length > 0 && (
         <nav
           className="vp-bottombar"
-          aria-label={`Bereiche der Anlage ${anlage?.siteName ?? ''}`.trim()}
+          aria-label={barName}
           style={{ ['--vp-bar-slots' as string]: String(barSlots.length) } as React.CSSProperties}
         >
           {barSlots.map((item) => {
-            const active = anlage?.activeKey === item.key;
+            const active = item.aktiv;
             return (
               <button
                 key={item.key}
                 type="button"
                 className={`vp-bottombar-item${active ? ' active' : ''}`}
                 aria-current={active ? 'page' : undefined}
-                onClick={() => openTarget(item.target)}
+                onClick={item.oeffnen}
               >
                 <span className="ic" aria-hidden="true">
                   <Icon name={item.icon} size={20} />

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createElement } from 'react';
 import { cleanup, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { anlageSidebar } from './anlageNav';
+import { anlageSidebar } from './ebenenNav';
 import { healthBadge } from './health';
 import { flussKnoten, ladenKachel } from './ladenKachel';
 import { layoutFlow } from './adaptiveFlow';
@@ -380,7 +380,7 @@ describe('Abbau-Invarianten (M6)', () => {
     expect(files.some((f) => /adaptiveNav\.tsx?$/.test(f))).toBe(false);
     for (const f of files) {
       const code = readFileSync(f, 'utf8');
-      // Der Doc-Kommentar in anlageNav.ts erklärt die LÖSCHUNG - erlaubt ist
+      // Der Doc-Kommentar in ebenenNav.ts erklärt die LÖSCHUNG - erlaubt ist
       // nur die Erwähnung in einem Kommentar, nie eine echte Verwendung.
       expect(code).not.toMatch(/\bconst\s+FACES\b|\bFACES\s*[:=]|from\s+'.*adaptiveNav'/);
     }

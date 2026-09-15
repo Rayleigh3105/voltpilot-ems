@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { MobileStickyHead } from '../src/components/CockpitBlocks';
 import { AppShell } from '../src/shell/AppShell';
-import { anlageSidebar } from '../src/anlageNav';
+import { anlageSidebar } from '../src/ebenenNav';
 import { anlageSurface } from '../src/surface';
 import { keycloak } from '../src/auth';
 import { healthBadge } from '../src/health';

@@ -7,7 +7,7 @@
  * die sich fast nie ändert und über die nichts zu tun ist. Ein Abzeichen ist
  * aber eine Aufforderung: es sagt „hier ist etwas, das Sie ansehen sollten".
  * Seit dieser Stufe zählt es genau das — die Dinge, die AUFMERKSAMKEIT
- * brauchen. `anlageNav.ts` hatte den Wechsel schon als Argument-Wechsel im
+ * brauchen. `ebenenNav.ts` hatte den Wechsel schon als Argument-Wechsel im
  * Aufrufer vorgesehen; hier ist er.
  *
  * **Die drei Quellen** (§3.1) und was sie beweisen:
@@ -32,7 +32,7 @@
  * hier NIE zur Zahl bei. Der Eingang existiert trotzdem, damit ein späterer,
  * billiger Zähler (eine Server-Zahl) ihn ohne Umbau füllen kann.
  *
- * Rein + deterministisch (das `betriebsart.ts`/`anlageNav.ts`-Muster): kein
+ * Rein + deterministisch (das `betriebsart.ts`/`ebenenNav.ts`-Muster): kein
  * React, kein Netz, jede zeitabhängige Entscheidung nimmt ihr `now`.
  */
 

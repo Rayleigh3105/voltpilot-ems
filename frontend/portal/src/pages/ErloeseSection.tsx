@@ -212,13 +212,13 @@ export function ErloeseSection({
   site: Site;
   /**
    * ⚠ Reserviert: seit E3 leitet die Seite daraus nichts mehr ab (die Welten
-   * stehen als Bereichs-Reiter, `anlageNav` entscheidet über sie). Die Prop
+   * stehen als Bereichs-Reiter, `ebenenNav` entscheidet über sie). Die Prop
    * bleibt in der Signatur, weil jeder Aufrufer sie führt.
    */
   surface?: AnlageSurface | null;
   /**
    * ⚠ Reserviert und derzeit ohne Wirkung: der Welt-Wechsel wohnt seit E3 in
-   * den Bereichs-Reitern (`anlageNav` Verlauf › Messwerte · Erlöse). Die Prop
+   * den Bereichs-Reitern (`ebenenNav` Verlauf › Messwerte · Erlöse). Die Prop
    * bleibt optional in der Signatur, damit ein Aufrufer, der sie noch übergibt,
    * nicht bricht.
    */

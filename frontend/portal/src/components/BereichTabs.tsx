@@ -1,4 +1,4 @@
-import type { BereichTab } from '../anlageNav';
+import type { BereichTab } from '../ebenenNav';
 import type { AnlagenSub } from '../nav';
 import './BereichTabs.css';
 
@@ -11,7 +11,7 @@ import './BereichTabs.css';
  * 3 Gruppen, zwei davon DOPPELT auf zwei Ebenen) und sind jetzt Reiter der
  * Seite, auf der sie gemeint sind.
  *
- * ⚠ Sie kommen FERTIG von `anlageNav.tabsFor` — die Fläche leitet keine
+ * ⚠ Sie kommen FERTIG von `ebenenNav.tabsFor` — die Fläche leitet keine
  * Reiter ab. `tabsFor` gibt bei höchstens EINEM Reiter eine leere Liste
  * zurück, also rendert dieser Baustein dann gar nichts: eine Leiste mit einem
  * Reiter behauptete eine Wahl, die es nicht gibt.

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { AppShell, type PfadEintrag } from './AppShell';
-import { anlageSidebar } from '../anlageNav';
+import { anlageSidebar } from '../ebenenNav';
 import { anlageSurface, type AnlageSurfaceInput } from '../surface';
 
 // Die Schale braucht nur einen Namen am Avatar (wie `PortfolioNav.test.tsx`).

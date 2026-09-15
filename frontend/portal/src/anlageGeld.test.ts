@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OverviewSite } from './api';
-import { anlageBereiche, VERLAUF_TABS } from './anlageNav';
+import { anlageBereiche, VERLAUF_TABS } from './ebenenNav';
 import {
   GELD_ANSICHT,
   GELD_BAUSTEIN,

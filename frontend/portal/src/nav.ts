@@ -6,7 +6,7 @@
  *
  * IA (captain decision 2026-07-07, "Anlagen-Seite"; evolved by M1 #529): the
  * customer nav is Übersicht / Meine Anlage(n) plus, per SELECTED Anlage, the
- * shell trio Übersicht · Steuerung · Geräte (`anlageNav.ts`) and — only while
+ * shell trio Übersicht · Steuerung · Geräte (`ebenenNav.ts`) and — only while
  * the market mode is active — the mode-tagged Marktpreise/Prognosequalität
  * group. ONE site = ONE Anlage; everything that used to be its own menu item
  * (Standorte,
@@ -694,7 +694,7 @@ export function routeDepth(route: Route): number {
   if (route.page !== 'anlagen' || route.siteId == null) return 0;
   if (route.sub == null) return 1;
   // Die Geräte- und die Box-Seite wohnen EINE Ebene unter dem Anlagen-Modell
-  // (`anlageNav.OHNE_BEREICHS_REITER`: sie tragen deshalb keinen Reiter,
+  // (`ebenenNav.OHNE_BEREICHS_REITER`: sie tragen deshalb keinen Reiter,
   // sondern ihren eigenen Rückweg als Brotkrume).
   return route.sub === 'geraet' || route.sub === 'box' ? 3 : 2;
 }

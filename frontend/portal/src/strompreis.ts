@@ -57,7 +57,7 @@ import { hasMode, type ActiveMode } from './surface';
 
 /**
  * Wo der Streifen erscheint: exakt die Signalmenge, die auch die
- * Marktpreise-Ansicht erreichbar macht (`surface.ts`/`anlageNav`) — der
+ * Marktpreise-Ansicht erreichbar macht (`surface.ts`/`ebenenNav`) — der
  * Markt-Modus ODER ein dynamischer Tarif. Keine neue Regel, kein Drift.
  */
 export function gateStrompreis(

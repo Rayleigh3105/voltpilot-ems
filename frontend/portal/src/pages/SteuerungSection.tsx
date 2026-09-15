@@ -48,7 +48,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModusContainer } from '../components/ModusContainer';
 import { EINRICHTUNG_DURCH_VOLTPILOT } from '../moduleSurface';
 import { anlageRoute, befehleHash, hashForRoute, pageRoute, type AnlagenSub } from '../nav';
-import type { NavTarget } from '../anlageNav';
+import type { NavTarget } from '../ebenenNav';
 import {
   customerFlowApi,
   type FlowNodeGovernance,

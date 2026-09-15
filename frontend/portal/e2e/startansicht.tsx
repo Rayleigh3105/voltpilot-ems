@@ -4,7 +4,16 @@ import { api, type FunktionStandort, type Overview, type OverviewSite, type Site
 import { keycloak } from '../src/auth';
 import { showAddAnlageButton } from '../src/addAnlage';
 import { ohneGeld } from '../src/anlageGeld';
-import { activeAreaKey, anlageSidebar } from '../src/anlageNav';
+import {
+  activeAreaKey,
+  anlageSidebar,
+  ebenenAktiv,
+  ebenenLeiste,
+  ebenenOrt,
+  ebenenTitel,
+  type EbenenLesemodell,
+  type EbenenSeiten,
+} from '../src/ebenenNav';
 import { anlagenOptionen } from '../src/anlagenWahl';
 import {
   canonicalShellRoute,
@@ -37,6 +46,7 @@ import {
   werkLindach,
 } from '../src/test/standorteFixtures';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
+import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
 import type { UebersichtEbene } from '../src/uebersicht';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -77,6 +87,25 @@ const params = new URLSearchParams(location.search);
 const bild = params.get('bild') ?? 'einzel';
 const ansicht = params.get('ansicht');
 const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet';
+/**
+ * AP-01 IP-7: `&seiten=kuenftig` stellt das Bild, sobald JEDER Bereich der Ebene
+ * eine Seite hat (AP-04 IP-5, AP-13) — nur für die Vorschau; die Kacheln führen
+ * in der Bühne auf die Übersicht der Ebene. Ohne den Schalter gilt der heutige
+ * Stand (`EBENEN_SEITEN`).
+ */
+const KUENFTIG = params.get('seiten') === 'kuenftig';
+const ALLE_SEITEN_KUENFTIG: EbenenSeiten = (ort) => {
+  const hier = ort.art === 'unternehmen' ? pageRoute('portfolio') : standortRoute(ort.standortId);
+  return {
+    uebersicht: hier,
+    standorte: pageRoute('portfolio-standorte'),
+    gebaeude: hier,
+    anlagen: hier,
+    messstellen: hier,
+    kennzahlen: hier,
+    berichte: hier,
+  };
+};
 
 Object.assign(keycloak, {
   token: 'e2e-token',
@@ -173,12 +202,7 @@ Object.assign(api, {
   },
   tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
   // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
-  funktionen: async () =>
-    ahrenbergFunktionen({
-      standorte: [funktionWerkAhrenberg(messenArt), funktionWerkLindach(messenArt)]
-        .filter((f) => szene.liste.standorte.some((s) => s.id === f.id))
-        .map(ohneAnlage),
-    }),
+  funktionen: async () => funktionenDerSzene(),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was
   // die Zonen lesen (seit der Steuern-Regel ohne Hinweis); der Rest antwortet wie ein älteres Backend.
   siteEntities: async (id: string) => ({ registry: null, localSetup: [], staleOnDevice: [], entities: komponentenVon(id) }),
@@ -215,6 +239,15 @@ async function nichtGestellt(): Promise<never> {
 }
 
 /** IP-8: ein Standort ohne Anlage misst noch nicht und hat keine Teilnahme. */
+/** `GET /funktionen` der Szene: beide Funktionen je sichtbarem Standort — dieselbe Antwort für Schale und Seite. */
+function funktionenDerSzene() {
+  return ahrenbergFunktionen({
+    standorte: [funktionWerkAhrenberg(messenArt), funktionWerkLindach(messenArt)]
+      .filter((f) => szene.liste.standorte.some((s) => s.id === f.id))
+      .map(ohneAnlage),
+  });
+}
+
 function ohneAnlage(f: FunktionStandort): FunktionStandort {
   const hier = szene.liste.standorte.find((s) => s.id === f.id);
   if (!hier || hier.anlagen.length > 0) return f;
@@ -310,8 +343,27 @@ function Vorschau() {
       ? { art: 'unternehmen', name: szene.unternehmen.name ?? '', standorte: szene.liste.standorte }
       : null;
 
+  // UEMS AP-01 IP-7: die Leiste der Ebene aus denselben reinen Funktionen wie `App.tsx`.
+  const lesemodell: EbenenLesemodell = {
+    standorte: szene.liste.standorte,
+    funktionen: funktionenDerSzene(),
+    kennzahlen: ahrenbergKennzahlen(),
+  };
+  const ort = site ? null : ebenenOrt(route, ebene);
+  const kacheln = ort ? ebenenLeiste(ort, lesemodell, KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined) : [];
+  const ebenenNav =
+    ort && kacheln.length > 0
+      ? {
+          titel: ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? ''),
+          kacheln,
+          aktiv: ebenenAktiv(route.page),
+          onOpen: (ziel: Route) => navigate(ziel),
+        }
+      : null;
+
   return (
     <AppShell
+      ebenen={ebenenNav}
       page={route.page}
       onNavigate={navigateSchale}
       isAdmin={false}

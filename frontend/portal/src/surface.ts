@@ -317,7 +317,7 @@ export interface BaseSurface {
   hasEntities: boolean;
   blocks: CockpitBlock[];
   /**
-   * Die modus-UNABHÄNGIGEN Tiefen-Ansichten. Die Navigation (`anlageNav.ts`)
+   * Die modus-UNABHÄNGIGEN Tiefen-Ansichten. Die Navigation (`ebenenNav.ts`)
    * liest sie: was hier steht, ist ohne jeden aktiven Modus erreichbar.
    */
   deepViews: DeepViewId[];

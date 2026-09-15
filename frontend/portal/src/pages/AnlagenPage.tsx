@@ -53,7 +53,7 @@ import { todaySlots } from '../schedule';
 import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
-import { resolveAnlage } from '../anlageNav';
+import { resolveAnlage } from '../ebenenNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
 import { consumerStrip, type ConsumerStripView } from '../consumers/fulfillment';
@@ -117,7 +117,7 @@ import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { LazyBoundary } from '../components/Lazy';
 import { BereichTabs } from '../components/BereichTabs';
-import { anlageSidebar, bereichLabel, tabsFor } from '../anlageNav';
+import { anlageSidebar, bereichLabel, tabsFor } from '../ebenenNav';
 // Die Unterseiten einer Anlage werden LAZY geladen. Das Cockpit (`sub === null`)
 // zeichnet keine von ihnen, zog aber über den statischen Import ihre gesamte
 // Fracht ins Einstiegs-Bündel: ECharts (jede Diagramm-Fläche), Leaflet (die
@@ -223,7 +223,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
     return <AnlagenEmpty onReload={props.onReload} isAdmin={isAdmin} />;
   }
 
-  // The SAME resolution the shell uses to scope its trio (anlageNav.ts).
+  // The SAME resolution the shell uses to scope its trio (ebenenNav.ts).
   const site = resolveAnlage(sites, route.siteId);
 
   if (!site) {
@@ -238,7 +238,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
 
   // Portal v3 M1: every area of an Anlage lives in the SHELL now - the grouped
   // sidebar (base group + one group per active mode) plus the phone 5-slot
-  // bottom bar with its Mehr sheet (`anlageNav.ts`). The page head carries no
+  // bottom bar with its Mehr sheet (`ebenenNav.ts`). The page head carries no
   // navigation of its own any more; the cockpit's drill-in links stay as
   // shortcuts. Routes are unchanged, so every bookmark keeps working.
   return route.sub ? (

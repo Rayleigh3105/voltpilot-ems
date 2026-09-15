@@ -111,7 +111,7 @@ Quellen: [LadeparkRahmenKarte.tsx](../frontend/portal/src/components/LadeparkRah
 
 **Grenzen und Besonderheiten:** Der Einstieg zum neuen Pausieren liegt in Steuerung → Jetzt. Diese Seite ist primär die laufende Vorgangsübersicht; abgeschlossene OCPP-Transaktionen stehen auf der Geräteseite. Bei mehreren oder nicht eindeutig zugeordneten Boxen ist ein direkter Geräte-Link nicht immer verfügbar.
 
-Quellen: [LadevorgaengeSection.tsx](../frontend/portal/src/pages/LadevorgaengeSection.tsx) · [anlageNav.ts](../frontend/portal/src/anlageNav.ts) · [SiteChargerController.java](../services/api/src/main/java/com/voltpilot/api/web/SiteChargerController.java)
+Quellen: [LadevorgaengeSection.tsx](../frontend/portal/src/pages/LadevorgaengeSection.tsx) · [ebenenNav.ts](../frontend/portal/src/ebenenNav.ts) · [SiteChargerController.java](../services/api/src/main/java/com/voltpilot/api/web/SiteChargerController.java)
 
 ### 8. Geräteseite · Betrieb und Details
 

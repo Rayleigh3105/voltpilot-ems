@@ -76,7 +76,7 @@ quelle_einstellung
 # Portal- und Vertrags-Dateien, die die Karte namentlich anführt.
 DATEIEN="
 frontend/portal/src/nav.ts
-frontend/portal/src/anlageNav.ts
+frontend/portal/src/ebenenNav.ts
 frontend/portal/src/copy.test.ts
 frontend/portal/src/glossar.ts
 frontend/portal/src/komponenten.ts

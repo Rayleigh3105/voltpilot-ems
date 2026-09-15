@@ -49,7 +49,7 @@ describe('welche Welten es gibt — das Lese-Modell entscheidet', () => {
 /**
  * E3 (Konzept `vp-erloese-lesbar-konzept-u3` §3.5): der Welt-Kopf und sein
  * Kartenpaar sind ERSATZLOS entfallen — der Wechsel wohnt in den
- * Bereichs-Reitern (`anlageNav` Verlauf › Messwerte · Erlöse), und ein
+ * Bereichs-Reitern (`ebenenNav` Verlauf › Messwerte · Erlöse), und ein
  * Kartenpaar daneben war derselbe Schalter ein zweites Mal (189 px vor der
  * ersten Zahl, Befund B4).
  */

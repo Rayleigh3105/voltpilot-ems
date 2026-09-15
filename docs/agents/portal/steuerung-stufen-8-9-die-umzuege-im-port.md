@@ -13,7 +13,7 @@ betroffenen Zeilen rendert zeichengleich wie vorher** (`migration.test.ts`).
   Anpassen-Modus IMMER, ohne vorheriges Einschalten, und `AnlagenPage` liest die Regal-Karten
   nicht mehr (der Grund, aus dem es sie überhaupt holte). `anwendungen.istCockpitGesteuert` ist
   die Lese-Schicht der neuen Klasse; sie urteilt über eine UNBEKANNTE Id nie „ja".
-- **„Komponenten & Regeln" heisst überall „Komponenten"** — Nav-Titel (`anlageNav.ANLAGE_TABS`),
+- **„Komponenten & Regeln" heisst überall „Komponenten"** — Nav-Titel (`ebenenNav.ANLAGE_TABS`),
   Karten-Kopf, Zustands-Hebel (`health.LEVERS.device.label`), Rückwege der Geräte-/Box-Seite,
   der Baukasten-Ausweg und die Katalog-Leerzustände. **⚠ Die Nav-Id `modell` und JEDE Route
   bleiben unverändert** — es ist die Anzeige, nicht die Adresse.
