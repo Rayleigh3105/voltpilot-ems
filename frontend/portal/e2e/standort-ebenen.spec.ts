@@ -117,6 +117,8 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       ohneQuerlauf(m, `anlagen-${breite}`);
       expect(m.route).toMatch(/^#\/standort\/[^/]+\/anlagen$/);
       expect(m.titel).toBe('Anlagen');
+      // Der Standort steht unter dem Titel — wie auf „Gebäude“ und „Messstellen“.
+      await expect(page.locator('.vp-main .vp-portfolio-zahlen')).toHaveText(/^Werk Ahrenberg/);
       expect(m.anlagen).toHaveLength(2);
       expect(m.anlagen.join(' · ')).toContain('Halle 1');
       expect(m.anlagen.join(' · ')).toContain('Halle 2');

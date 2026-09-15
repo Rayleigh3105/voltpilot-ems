@@ -307,9 +307,12 @@ export function PortfolioCockpit({
         </h1>
         {kopf ? (
           <>
-            {/* AP-13 IP-2: auf „Standort › Anlagen“ ist der Titel der Bereich — der Standort steht vor den Zahlen. */}
-            {nurAnlagen && kopf.titel ? (
-              <p className="vp-portfolio-zahlen">{[kopf.titel, kopf.zahlen].filter(Boolean).join(' · ')}</p>
+            {/* AP-13 IP-2: auf „Standort › Anlagen“ ist der Titel der Bereich — der Standort steht vor den Zahlen
+                (die Kopfzeile des Standorts nennt ihn nicht: dort trägt ihn der Standort-Kopf der Übersicht). */}
+            {nurAnlagen ? (
+              <p className="vp-portfolio-zahlen">
+                {[ebene?.art === 'standort' ? ebene.standort.name : kopf.titel, kopf.zahlen].filter(Boolean).join(' · ')}
+              </p>
             ) : (
               kopf.zahlen && <p className="vp-portfolio-zahlen">{kopf.zahlen}</p>
             )}

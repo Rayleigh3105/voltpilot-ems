@@ -40,9 +40,12 @@
   background: var(--vp-c-muted);
 }
 
-/* Der Baum bringt seinen Abstand nach oben für die Karten der Liste „Standorte“ mit — hier ist die Karte der Rahmen. */
+/* Der Baum bringt Abstand und Trennlinie nach oben für die Karten der Liste „Standorte“ mit (dort steht der
+   Standort-Kopf darüber) — hier ist die Karte der Rahmen, und eine Linie über nichts wäre ein leerer Strich. */
 .vp-sb-karte > .vp-ob {
   margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .vp-sb-hinweis {
