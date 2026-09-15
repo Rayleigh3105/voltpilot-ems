@@ -311,7 +311,7 @@ GLOSSAR += [
      "kurz": "Wie viele Messstellen einer Ebene Daten liefern — „15 von 16 Messstellen liefern Daten“, EINE Zählung je Ebene.",
      "lang": "Gezählt wird aus dem Messstellen-Register: berechnete Messstellen zählen mit, eine Messstelle ohne Datenquelle steht im Nenner, manuell abgelesene werden als Zusatz genannt („· 1 manuell abgelesen“). Schweigen ist nie rot: eine Messstelle, die nicht liefert, sagt seit wann.",
      "beispiel": "Unternehmen Ahrenberg, Oktober 2026: Werk Ahrenberg „15 von 16“, Werk Lindach „4 von 4“.",
-     "heute": "Die Zählung: `frontend/portal/src/uemsZustand.ts` (`aggregatLiefertDaten`); die Wörter: `frontend/portal/src/glossar.ts` (`UEMS_DATENLAGE`, `UEMS_MANUELL_ABGELESEN`). Der Baustein der Übersicht und dieselbe Zählung an der Karte „Funktionen“ kommen mit AP-13 IP-7.",
+     "heute": "Die Zählung je Zeile: `services/api/src/main/java/com/voltpilot/api/uems/MessstelleRegisterService.java` (`aggregatZustand`) über `aggregatLiefertDaten` (`frontend/portal/src/uemsZustand.ts`); seit AP-13 IP-7 spricht die Karte „Funktionen“ dieselbe Zählung (`services/api/src/main/java/com/voltpilot/api/uems/FunktionZustandAbleitung.java`, `datenlage` über `register_zeilen`) und der Baustein „Messstellen“ der Übersicht liest sie aus dem Register (`frontend/portal/src/uebersichtBausteine.ts`); die Wörter: `frontend/portal/src/glossar.ts` (`UEMS_DATENLAGE`, `UEMS_MANUELL_ABGELESEN`).",
      "abgrenzung": "Nicht der Online-Status einer Anlage oder Box, nicht die Vollständigkeit einer Zahl, nicht „Verlauf n %“."},
     {"id": "grund", "sicht": "zustand", "begriff": "Grund (einer fehlenden Zahl)", "nachtrag": "AP-13 §4.10 (E11)",
      "kurz": "Der Satz, warum an einer Stelle keine Zahl steht — je Grund genau einer.",

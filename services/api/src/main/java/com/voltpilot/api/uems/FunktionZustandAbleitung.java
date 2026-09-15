@@ -585,6 +585,9 @@ public final class FunktionZustandAbleitung {
      * @param standortEingerichtet Name + Adresse + Zeitzone (AP-02)
      * @param standortArchiviertAm das Archivieren des Standorts (AP-02); {@code null} = nicht
      * @param eingerichtetAm wann Messen eingerichtet wurde; einmal gesetzt, bleibt es aktiv
+     * @param messstellen die gemessenen Messstellen der Prüfliste (was fehlt, was blockiert)
+     * @param registerZeilen AP-13 IP-7 (E13 = A): je Zeile des Messstellen-Registers am Standort, wie das Register sie
+     *     zählt ({@code MessstelleRegisterService.aggregatZustand}) — allein daraus entsteht die Datenlage
      */
     public record MessenEingang(
             String standort,
@@ -594,6 +597,7 @@ public final class FunktionZustandAbleitung {
             Instant eingerichtetAm,
             List<BoxZustand> boxen,
             List<Messstelle> messstellen,
+            List<LiefertDaten> registerZeilen,
             List<MessenAnlage> anlagen,
             Instant jetzt,
             ZoneId zeitzone) {}
@@ -624,7 +628,6 @@ public final class FunktionZustandAbleitung {
                     "Archiviert am " + datum(e.standortArchiviertAm(), zone),
                     null);
         }
-        List<LiefertDaten> reihen = new ArrayList<>();
         List<String> messstellenFehlen = new ArrayList<>();
         int manuell = 0;
         boolean mitDaten = false;
@@ -643,7 +646,6 @@ public final class FunktionZustandAbleitung {
                                     m.kadenzS(),
                                     e.jetzt(),
                                     zone));
-            reihen.add(r.zustand());
             switch (r.zustand()) {
                 case LIEFERT -> mitDaten = true;
                 case WARTET_AUF_ERSTE_DATEN -> messstellenFehlen.add("erste Daten " + m.kennzeichen());
@@ -658,13 +660,7 @@ public final class FunktionZustandAbleitung {
                 }
             }
         }
-        String datenlage =
-                reihen.isEmpty() && manuell > 0
-                        ? manuell + " manuell abgelesen"
-                        : ZustandAbleitung.aggregatLiefertDaten(
-                                                reihen, ZustandAbleitung.Einheit.MESSSTELLE)
-                                        .text()
-                                + (manuell > 0 ? " · " + manuell + " manuell abgelesen" : "");
+        String datenlage = datenlage(e.registerZeilen(), manuell);
 
         if (e.eingerichtetAm() != null) {
             return new MessenErgebnis(
@@ -699,6 +695,21 @@ public final class FunktionZustandAbleitung {
         }
         return new MessenErgebnis(
                 Zustand.ENTWURF, null, fehlt, fehltSatz("Noch nicht eingerichtet", fehlt), datenlage);
+    }
+
+    /**
+     * Die Datenlage-Zeile von „Messen &amp; Auswerten“ (AP-13 IP-7, E13 = A): „x von y Messstellen liefern Daten“ über
+     * die Zeilen des Messstellen-Registers am Standort — dieselbe Zählung wie das Register und der Baustein
+     * „Messstellen“ der Übersicht: berechnete zählen mit, „keine Datenquelle“ steht im Nenner — dazu manuell abgelesene
+     * als Zusatz. Bis IP-7 zählte die Zeile nur die gemessenen, nicht archivierten Messstellen (W6: zwei Zahlen für
+     * einen Standort).
+     */
+    public static String datenlage(List<LiefertDaten> registerZeilen, int manuell) {
+        if (registerZeilen.isEmpty() && manuell > 0) {
+            return manuell + " manuell abgelesen";
+        }
+        return ZustandAbleitung.aggregatLiefertDaten(registerZeilen, ZustandAbleitung.Einheit.MESSSTELLE).text()
+                + (manuell > 0 ? " · " + manuell + " manuell abgelesen" : "");
     }
 
     // --------------------------------------------------------------------- Übergänge

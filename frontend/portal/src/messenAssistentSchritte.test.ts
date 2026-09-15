@@ -213,6 +213,7 @@ describe('Schritt 4 — die Prüfliste aus Fakten: Standort, Box, Datenlage, Hau
         { kennzeichen: 'MS-12', manuell: false, quelleVorhanden: true, letzterGuterWert: null, jeEinWert: false, kadenzS: 60 },
         { kennzeichen: 'MS-11', manuell: false, quelleVorhanden: true, letzterGuterWert: '2026-10-20T06:00:00Z', jeEinWert: true, kadenzS: 60 },
       ],
+      registerZeilen: ['wartet_auf_erste_daten', 'liefert'],
       anlagen: [
         { name: 'Werk Ahrenberg – Halle 1', hauptzaehlerAnzahl: 0 },
         { name: 'Werk Ahrenberg – Halle 2', hauptzaehlerAnzahl: 2 },

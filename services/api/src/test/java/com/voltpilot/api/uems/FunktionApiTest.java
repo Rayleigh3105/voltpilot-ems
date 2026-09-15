@@ -414,7 +414,59 @@ class FunktionApiTest {
         assertThat(lindach.at("/teilnahme/seit").isNull()).isTrue();
     }
 
+    /**
+     * AP-13 IP-7 (E13 = A, W6): die Datenlage von „Messen &amp; Auswerten“ ist die Zählung des Registers — dieselbe Zahl,
+     * die {@code GET /api/v1/messstellen} für den Standort nennt. Der Fall ist so gebaut, dass die Zählung VOR IP-7 (nur
+     * gemessene, nicht archivierte Zeilen) etwas anderes sagte: MS-01 liefert, MS-31 ist berechnet ohne Formel (keine
+     * Datenquelle → Nenner), MS-32 ist archiviert (steht im Register, also im Nenner).
+     */
+    @Test
+    void dieDatenlageVonMessenIstDieZaehlungDesRegisters() throws Exception {
+        Welt w = welt();
+        gruen(w, "AN-1", "ST-1", "NA-1");
+        root.update("INSERT INTO funktion (tenant_id, standort_id, funktion, zustand, geaendert_von) "
+                + "VALUES (?, ?, 'messen', 'entwurf', 'test')", w.mandant(), w.id("ST-1"));
+        messstelleOhneQuelle(w, "MS-31", "berechnet", "ST-1", null);
+        messstelleOhneQuelle(w, "MS-32", "gemessen", "ST-1", Instant.parse("2026-01-02T00:00:00Z"));
+
+        JsonNode register = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen", null), 200).body();
+        String zaehlung = null;
+        for (JsonNode s : register.at("/aggregat/standorte")) {
+            if ("ST-1".equals(s.path("kurzzeichen").asText())) {
+                zaehlung = s.path("text").asText();
+            }
+        }
+        // Die Zählung VOR IP-7, aus denselben Zeilen nachgestellt: nur gemessene mit Beobachtung, nicht archiviert.
+        List<ZustandAbleitung.LiefertDaten> alt = new ArrayList<>();
+        for (JsonNode z : register.path("register")) {
+            if ("ST-1".equals(z.at("/ort/standort").asText()) && !z.path("beobachtung").isNull()
+                    && !"archiviert".equals(z.path("lebenszyklus").asText())) {
+                alt.add(ZustandAbleitung.LiefertDaten.vonCode(z.at("/beobachtung/zustand").asText()));
+            }
+        }
+        String vorher = ZustandAbleitung.aggregatLiefertDaten(alt, ZustandAbleitung.Einheit.MESSSTELLE).text();
+
+        JsonNode sicht = ok(ruf(w, HttpMethod.GET, "/api/v1/funktionen", null), 200).body();
+        String nachher = standortIn(sicht, w.id("ST-1")).at("/messen/datenlage").asText();
+
+        System.out.println("E13 Datenlage ST-1 — vorher: " + vorher + " | nachher: " + nachher + " | Register: " + zaehlung);
+        assertThat(vorher).isEqualTo("1 von 1 Messstelle liefert Daten");
+        assertThat(zaehlung).isEqualTo("1 von 3 Messstellen liefert Daten");
+        assertThat(nachher).isEqualTo(zaehlung);
+    }
+
     // ============================================================================== Gerüst
+
+    /** Eine Messstelle am Standort OHNE Quelle — berechnet ohne Formel oder gemessen, auf Wunsch archiviert. */
+    private static void messstelleOhneQuelle(Welt w, String kennzeichen, String art, String standort,
+            Instant archiviertAm) {
+        UUID m = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart, archiviert_am) VALUES (?, ?, ?, ?, 'Strom', 'Wirkenergie', 'Bezug', "
+                + "'kWh', 'Zählerstand', ?) RETURNING id", UUID.class, w.mandant(), kennzeichen, "Prüfung " + kennzeichen,
+                art, archiviertAm == null ? null : Timestamp.from(archiviertAm));
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?,?,?,?)",
+                w.mandant(), m, w.id(standort), AB);
+    }
 
     /** Ein Kundenbereich mit Werk Ahrenberg (ST-1), Werk Lindach (ST-2) und AN-1 … AN-3, zugeordnet ab 12.03.2024. */
     private Welt welt() {

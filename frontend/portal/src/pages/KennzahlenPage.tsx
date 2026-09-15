@@ -1,24 +1,17 @@
-import { useEffect, useState } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
+import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Kennzahl } from '../api';
 import { KennzahlAnlegenDialog, type KopieVon } from '../components/KennzahlAnlegenDialog';
+import { KennzahlKarte, useKennzahlenListe } from '../components/KennzahlListe';
 import { ErrorState, Skeleton } from '../components/States';
 import { KNOPF_ANLEGEN, LEER_SATZ } from '../kennzahlAnlegen';
 import {
-  ANZAHL_VERLAUF,
-  anfrage,
-  heuteIn,
   LADEFEHLER,
   LADEN,
-  amStandort,
   LEER,
   LEER_STANDORT,
   listenKarte,
   TITEL,
-  type ListenKarte,
-  type ListenWerte,
 } from '../kennzahlKarte';
 import { STANDORT_KENNZAHLEN } from '../ebenenNav';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
@@ -114,43 +107,9 @@ function KennzahlenListe({
   onOeffnen: (id: string) => void;
   onAnlegen: () => void;
 }) {
-  const [liste, setListe] = useState<Kennzahl[] | null>(null);
-  const [werte, setWerte] = useState<Record<string, ListenWerte>>({});
-  const [fehler, setFehler] = useState(false);
   const [versuch, setVersuch] = useState(0);
   const standortId = standort?.id ?? null;
-
-  useEffect(() => {
-    let aktiv = true;
-    setFehler(false);
-    api.kennzahlen().then(
-      ({ kennzahlen: alle }) => {
-        if (!aktiv) return;
-        // Am Standort nur, was dort gilt — und nur deren Werte werden gelesen.
-        const kennzahlen = standortId ? amStandort(alle, standortId) : alle;
-        setListe(kennzahlen);
-        setWerte({});
-        const heute = heuteIn(zone, Date.now());
-        const setze = (id: string, w: ListenWerte) => aktiv && setWerte((alt) => ({ ...alt, [id]: w }));
-        for (const k of kennzahlen) {
-          const art = k.grundperiode ?? k.perioden[0] ?? null;
-          if (art === null) {
-            setze(k.id, { art: 'ohne_periode' });
-            continue;
-          }
-          const { von, bis } = anfrage(art, heute, ANZAHL_VERLAUF[art]);
-          api.kennzahlWerte(k.id, art, von, bis).then(
-            (antwort) => setze(k.id, { art: 'geladen', antwort }),
-            (e) => setze(k.id, e instanceof ApiError && e.status === 404 ? { art: 'ausserhalb' } : { art: 'fehler' }),
-          );
-        }
-      },
-      () => aktiv && setFehler(true),
-    );
-    return () => {
-      aktiv = false;
-    };
-  }, [zone, versuch, standortId]);
+  const { liste, werte, fehler } = useKennzahlenListe(zone, standortId, versuch);
 
   // Archivierte stehen hinten — sonst die Reihenfolge der Route.
   const sortiert = liste ? [...liste].sort((a, b) => Number(a.archiviert_am !== null) - Number(b.archiviert_am !== null)) : [];
@@ -190,42 +149,5 @@ function KennzahlenListe({
         </ul>
       )}
     </div>
-  );
-}
-
-function KennzahlKarte({ karte, onOeffnen }: { karte: ListenKarte; onOeffnen: () => void }) {
-  return (
-    <button type="button" className="vp-kz-karte" data-testid="kennzahl-karte" onClick={onOeffnen}>
-      <span className="vp-kz-karte-kopf">
-        <span className="vp-kz-kennzeichen">{karte.kennzeichen}</span>
-        {karte.archiviert && <Badge variant="tint">{karte.archiviert}</Badge>}
-        <span className="vp-kz-pfeil" aria-hidden="true">
-          <Icon name="chevron-right" size={18} />
-        </span>
-      </span>
-      <span className="vp-kz-name">{karte.name}</span>
-      {karte.hinweis ? (
-        <span className="vp-kz-hinweis" data-testid="kennzahl-hinweis">
-          {karte.hinweis}
-        </span>
-      ) : karte.fehler ? (
-        <span className="vp-kz-hinweis">{karte.fehler}</span>
-      ) : karte.zahl === null ? (
-        <span className="vp-kz-platzhalter" aria-hidden="true" />
-      ) : (
-        <>
-          <span className="vp-kz-zahl" data-testid="kennzahl-zahl">
-            {karte.zahl}
-          </span>
-          {(karte.zustand || karte.periode) && (
-            <span className="vp-kz-abzeichen">
-              {karte.zustand && <Badge variant={karte.zustandTon}>{karte.zustand}</Badge>}
-              {karte.periode && <span>{karte.periode}</span>}
-            </span>
-          )}
-        </>
-      )}
-      <span className="vp-kz-unter">{karte.unter}</span>
-    </button>
   );
 }

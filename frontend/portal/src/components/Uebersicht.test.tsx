@@ -172,7 +172,7 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     const [ahrenberg, lindach] = screen.getAllByTestId('standort-gruppe');
 
     expect(within(ahrenberg).getByText('2 Anlagen · 1 steuert · 2 von 2 Anlagen liefern Daten')).toBeTruthy();
-    expect(within(ahrenberg).getByText('Eingerichtet am 01.10.2026 · 13 von 13 Messstellen liefern Daten')).toBeTruthy();
+    expect(within(ahrenberg).getByText('Eingerichtet am 01.10.2026 · 15 von 16 Messstellen liefern Daten')).toBeTruthy();
     expect(within(ahrenberg).getByText('Läuft mit Werk Ahrenberg – Halle 1')).toBeTruthy();
 
     expect(within(lindach).getByText('1 Anlage · reine Messung · 1 von 1 Anlage liefert Daten')).toBeTruthy();

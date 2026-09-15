@@ -1198,6 +1198,8 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'kennzahlAnlegen.ts',
     'kennzahlAendern.ts',
     'pages/KennzahlenPage.tsx',
+    // AP-13 IP-7: die Listen-Karte und ihr Lade-Hook (von der Seite und vom Baustein „Kennzahlen“ der Übersicht geteilt).
+    'components/KennzahlListe.tsx',
     'pages/KennzahlSeite.tsx',
     'components/KennzahlAnlegenDialog.tsx',
     'components/KennzahlStammdatenDialog.tsx',
@@ -1542,7 +1544,16 @@ const CHART_FILES_OBERFLAECHEN: string[] = [
 
 describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlauf · Vergleich · Energiebilanz · Datenlage (E15)', () => {
   // AP-13 IP-3: der Abschnitt „Werte“ (Sektion und ihre reine Ableitung).
-  const FLAECHEN = ['uemsOberflaechen.ts', 'uemsWerteKarte.ts', 'components/WerteSektion.tsx', 'uemsVerlauf.ts', 'components/MessstellenVerlauf.tsx'];
+  // AP-13 IP-7: die Übersichts-Bausteine je Ebene (reines Modul und Render).
+  const FLAECHEN = [
+    'uemsOberflaechen.ts',
+    'uemsWerteKarte.ts',
+    'components/WerteSektion.tsx',
+    'uemsVerlauf.ts',
+    'components/MessstellenVerlauf.tsx',
+    'uebersichtBausteine.ts',
+    'components/UebersichtBausteine.tsx',
+  ];
   const vertrag = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'));
   const faelle = JSON.parse(readFileSync(join(SRC, 'test/oberflaechenFaelle.json'), 'utf8'));
   const rel = (file: string) => file.slice(SRC.length + 1).replace(/\\/g, '/');

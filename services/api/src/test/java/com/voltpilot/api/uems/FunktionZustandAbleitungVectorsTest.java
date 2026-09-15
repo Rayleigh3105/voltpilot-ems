@@ -261,6 +261,12 @@ class FunktionZustandAbleitungVectorsTest {
                                         m.path("je_ein_wert").asBoolean(),
                                         m.path("kadenz_s").asLong()));
                     }
+                    // AP-13 IP-7 (E13): die Datenlage liest die Zeilen des Registers — jeder Fall trägt sie.
+                    assertThat(in.has("register_zeilen")).as("register_zeilen").isTrue();
+                    List<ZustandAbleitung.LiefertDaten> registerZeilen = new ArrayList<>();
+                    for (JsonNode z : in.path("register_zeilen")) {
+                        registerZeilen.add(ZustandAbleitung.LiefertDaten.vonCode(z.asText()));
+                    }
                     List<FunktionZustandAbleitung.MessenAnlage> anlagen = new ArrayList<>();
                     for (JsonNode a : in.path("anlagen")) {
                         anlagen.add(
@@ -277,6 +283,7 @@ class FunktionZustandAbleitungVectorsTest {
                                             instant(in.get("eingerichtet_am")),
                                             boxen(in.path("boxen")),
                                             messstellen,
+                                            registerZeilen,
                                             anlagen,
                                             instant(in.get("jetzt")),
                                             zone(in)));

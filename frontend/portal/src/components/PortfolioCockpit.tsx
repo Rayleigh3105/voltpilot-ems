@@ -50,6 +50,7 @@ import { AddDeviceDrawer } from './DeviceDrawers';
 import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
 import { FunktionenKarte } from './FunktionenKarte';
+import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
 import { FunktionsZustaende, StandortGruppeKopf } from './StandortGruppeKopf';
 import { EmptyState, ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
@@ -225,6 +226,10 @@ export function PortfolioCockpit({
 
   const dichte = portfolioDichte(betriebsart);
   const configById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
+  // UEMS AP-13 IP-7: die Bausteine der Messstellen-Welt — nur auf einer Übersicht, nicht auf „Standort › Anlagen“.
+  const anlagenDerSicht = useMemo(() => anlagenDerEbene(sites, ebene).map((s) => ({ id: s.id, name: s.name })), [sites, ebene]);
+  const uems = useUebersichtBausteine(ebene && !nurAnlagen ? ebene : null, anlagenDerSicht);
+  const uemsInhalt = uems?.inhalt.join(',') ?? '';
   // Die Standort-Übersicht ist DIESELBE Fläche, auf die Anlagen des Standorts
   // gefiltert: jede Zahl darunter geht nur über sie.
   const blick = useMemo<Overview | null>(
@@ -251,9 +256,9 @@ export function PortfolioCockpit({
         anwendungen,
         kennzahlen,
         anlagen: blick?.sites.length ?? 0,
-        uebersicht: ebene ? { geld: (geld?.size ?? 0) > 0 } : null,
+        uebersicht: ebene ? { geld: (geld?.size ?? 0) > 0, uems: uemsInhalt ? uemsInhalt.split(',') : [] } : null,
       }),
-    [anwendungen, kennzahlen, blick, ebene, geld],
+    [anwendungen, kennzahlen, blick, ebene, geld, uemsInhalt],
   );
 
   const layout = useCockpitLayout<PortfolioBausteinId>({
@@ -546,6 +551,9 @@ export function PortfolioCockpit({
           />
         )}
       </section>
+
+      {/* UEMS AP-13 IP-7 (Ü1): die Bausteine der Messstellen-Welt — unter der Tabelle, vor der Karte „Funktionen“. */}
+      {uems && <UebersichtBausteine daten={uems} zeigen={layout.resolved.order} onNavigate={onNavigate} />}
 
       {/* AP-01 IP-8: die Karte „Funktionen" — nur auf einer Ebene; das Portfolio
           eines Betreibers bleibt zeichengleich. */}

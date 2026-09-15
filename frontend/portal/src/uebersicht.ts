@@ -246,8 +246,8 @@ function satzVon(funktion: FunktionCode, zustand: FunktionZustand, text: string)
  * BEWUSST ab: an einem Standort, an dem nur gemessen wird, war die Zeile
  * „Steuern & Optimieren · Noch nicht eingerichtet" genau das Aufdrängen, das der
  * Captain ausgeschlossen hat. Die Messen-Zeile trägt, sobald die Funktion
- * angelegt ist, die Datenlage ihrer Messstellen („13 von 13 Messstellen liefern
- * Daten").
+ * angelegt ist, die Datenlage ihrer Messstellen („15 von 16 Messstellen liefern
+ * Daten" — seit AP-13 IP-7 die Zählung des Registers).
  */
 export function funktionsZeilen(fs: FunktionStandort): FunktionsZeile[] {
   const messenSatz = satzVon('messen', fs.messen.zustand, fs.messen.text);

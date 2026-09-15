@@ -1,5 +1,6 @@
 import type { FunktionAnlage, FunktionMessen, FunktionStandort, Funktionen } from '../api';
 import { messen as messenRegel } from '../uemsFunktion';
+import { ahrenbergRegister } from './messstellenRegisterFixtures';
 import { FIXTURE_IDS } from './standorteFixtures';
 
 /**
@@ -51,7 +52,11 @@ function misstNur(id: string, name: string): FunktionAnlage {
   };
 }
 
-function messen(art: 'eingerichtet' | 'bestand', seit: string, text: string, messstellen: number): FunktionMessen {
+/** AP-13 IP-7 (E13): die Datenlage der Funktion IST die Zählung des Registers — dieselbe Zeile wie `GET /messstellen`. */
+const registerDatenlage = (standortId: string): string =>
+  ahrenbergRegister().aggregat.standorte.find((s) => s.id === standortId)?.text ?? 'Noch keine Messstellen';
+
+function messen(art: 'eingerichtet' | 'bestand', seit: string, text: string, datenlage: string): FunktionMessen {
   if (art === 'bestand') {
     return {
       zustand: 'kein_objekt',
@@ -66,7 +71,7 @@ function messen(art: 'eingerichtet' | 'bestand', seit: string, text: string, mes
     seit,
     text,
     fehlt: [],
-    datenlage: `${messstellen} von ${messstellen} Messstellen liefern Daten`,
+    datenlage,
   };
 }
 
@@ -76,7 +81,7 @@ export function funktionWerkAhrenberg(art: 'eingerichtet' | 'bestand' = 'eingeri
     kurzzeichen: 'ST-1',
     name: 'Werk Ahrenberg',
     zeitzone: 'Europe/Berlin',
-    messen: messen(art, '2026-10-01T00:00:00+02:00', 'Eingerichtet am 01.10.2026', 13),
+    messen: messen(art, '2026-10-01T00:00:00+02:00', 'Eingerichtet am 01.10.2026', registerDatenlage(FIXTURE_IDS.st1)),
     steuern: {
       zustand: 'aktiv',
       seit: '2024-05-02T00:00:00+02:00',
@@ -94,7 +99,7 @@ export function funktionWerkLindach(art: 'eingerichtet' | 'bestand' = 'eingerich
     kurzzeichen: 'ST-2',
     name: 'Werk Lindach',
     zeitzone: 'Europe/Berlin',
-    messen: messen(art, '2026-10-15T00:00:00+02:00', 'Eingerichtet am 15.10.2026', 3),
+    messen: messen(art, '2026-10-15T00:00:00+02:00', 'Eingerichtet am 15.10.2026', registerDatenlage(FIXTURE_IDS.st2)),
     steuern: {
       zustand: 'kein_objekt',
       seit: null,
@@ -120,6 +125,7 @@ export function funktionMessenEntwurf(fs: FunktionStandort): FunktionStandort {
     eingerichtetAm: null,
     boxen: [],
     messstellen: [],
+    registerZeilen: [],
     anlagen: [],
     jetzt: '2026-10-20T08:15:30Z',
     zeitzone: fs.zeitzone,
