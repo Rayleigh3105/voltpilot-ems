@@ -1,0 +1,374 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/wago-registerbild.schema.json",
+  "title": "VoltPilot-Registerbild WAGO v1: Aufbau, Herkunft jeder Angabe und Lese-Fälle",
+  "description": "Schema der Vektor-Datei wago-registerbild-vectors.json (UEMS AP-05 IP-2). Die Prosa steht in wago-registerbild.md. Jede Zahl der Datei steht in einer Angabe mit ihrer Herkunft: `festlegung` (dieser Vertrag bestimmt sie), `handbuch` (WAGO-Handbuch mit Seite und den Karten, für die das Zitat gilt), `repo` (Datei:Zeile im Repository) oder `zu erheben` (am Gerät festzustellen, kein Schätzwert). Die Fälle lesen rohe Registerwörter ab der Basisadresse; ein Fall ist nur `belegt`, wenn er aus dem Pilot stammt UND einen Nachweis trägt. Das Schema bleibt in der Teilmenge des UEMS-Schema-Läufers (frontend/portal/src/test/uemsSchemaLaeufer.ts). Semantisch und nicht im Schema (prüft wagoRegisterbild.test.ts): lückenlose Offsets, Längen 12/42, Übereinstimmung mit wago-registerbild.md und docs/wago/hardwareblatt-vorlage.md, Quellen-Schlüssel, Rechnung jedes Falls.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_comment", "schema_version", "$schema_datei", "vertrag", "herkunft", "zwillinge", "pruefer", "registerbild", "quellen", "parameter", "kopf", "karte", "gueltigkeit", "statuswoerter", "messwerte", "lesen", "faelle"],
+  "properties": {
+    "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "schema_version": { "type": "string", "const": "1.0" },
+    "$schema_datei": { "type": "string", "const": "./wago-registerbild.schema.json" },
+    "vertrag": { "type": "string", "const": "./wago-registerbild.md" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "zwillinge": { "type": "array", "items": { "type": "string" } },
+    "pruefer": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "registerbild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hauptversion", "nebenversion"],
+      "properties": {
+        "hauptversion": { "type": "integer", "const": 1 },
+        "nebenversion": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "quellen": {
+      "type": "object",
+      "description": "Schlüssel → Handbuch; eine Fundstelle `WAGO-750-495 S. 81` verweist auf den Schlüssel `WAGO-750-495`.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["titel", "url", "abgerufen"],
+        "properties": {
+          "titel": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "pattern": "^https://" },
+          "abgerufen": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+        }
+      }
+    },
+    "parameter": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schluessel", "bedeutung", "werte", "angabe"],
+        "properties": {
+          "schluessel": { "$ref": "#/$defs/schluessel" },
+          "bedeutung": { "type": "string", "minLength": 1 },
+          "werte": { "type": "string", "minLength": 1 },
+          "angabe": { "$ref": "#/$defs/angabe" }
+        }
+      }
+    },
+    "kopf": { "$ref": "#/$defs/block" },
+    "karte": { "$ref": "#/$defs/block" },
+    "gueltigkeit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bits", "frei_ab_bit"],
+      "properties": {
+        "bits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bit", "schluessel", "bedeutung", "angabe"],
+            "properties": {
+              "bit": { "type": "integer", "minimum": 0, "maximum": 15 },
+              "schluessel": { "$ref": "#/$defs/schluessel" },
+              "bedeutung": { "type": "string", "minLength": 1 },
+              "angabe": { "$ref": "#/$defs/angabe" }
+            }
+          }
+        },
+        "frei_ab_bit": { "$ref": "#/$defs/angabe" }
+      }
+    },
+    "statuswoerter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gruppen", "woerter_je_gruppe", "gruppe_deckt", "packung", "gruppe_in_einer_auswahl", "bitlage_bereichsbegrenzung", "woerter"],
+      "properties": {
+        "gruppen": { "$ref": "#/$defs/angabe" },
+        "woerter_je_gruppe": { "$ref": "#/$defs/angabe" },
+        "gruppe_deckt": { "$ref": "#/$defs/angabe" },
+        "packung": { "$ref": "#/$defs/angabe" },
+        "gruppe_in_einer_auswahl": { "$ref": "#/$defs/angabe" },
+        "bitlage_bereichsbegrenzung": { "$ref": "#/$defs/angabe" },
+        "woerter": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/schluessel" } }
+      }
+    },
+    "messwerte": { "type": "array", "minItems": 12, "items": { "$ref": "#/$defs/messwert" } },
+    "lesen": { "type": "object", "additionalProperties": { "$ref": "#/$defs/angabe" } },
+    "faelle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } }
+  },
+  "$defs": {
+    "schluessel": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "wort": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "u32": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "festlegung": {
+      "type": "object",
+      "description": "Dieser Vertrag (oder ein Entscheid, auf den er sich stützt) bestimmt den Wert. Keine Aussage über Hardware.",
+      "additionalProperties": false,
+      "required": ["art", "wert", "fundstelle"],
+      "properties": {
+        "art": { "const": "festlegung" },
+        "wert": {
+          "anyOf": [
+            { "type": "integer" },
+            { "type": "string", "pattern": "^(?!zu erheben$)" },
+            { "type": "array", "minItems": 1, "items": { "anyOf": [{ "type": "integer" }, { "type": "string" }] } }
+          ]
+        },
+        "fundstelle": { "type": "string", "minLength": 1 }
+      }
+    },
+    "handbuch": {
+      "type": "object",
+      "description": "Wörtlich belegt in einem WAGO-Handbuch. `gilt_fuer` nennt die Artikel, für die das zitierte Handbuch spricht — für jeden anderen Artikel ist die Angabe zu erheben.",
+      "additionalProperties": false,
+      "required": ["art", "wert", "fundstelle", "gilt_fuer"],
+      "properties": {
+        "art": { "const": "handbuch" },
+        "wert": {
+          "anyOf": [
+            { "type": "integer" },
+            { "type": "string", "pattern": "^(?!zu erheben$)" },
+            { "type": "array", "minItems": 1, "items": { "type": "integer" } }
+          ]
+        },
+        "fundstelle": { "type": "string", "pattern": "^WAGO-[0-9]{3}-[0-9]{3,4} S\\. [0-9]" },
+        "gilt_fuer": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[0-9]{3}-[0-9]{3,4}$" } }
+      }
+    },
+    "repo": {
+      "type": "object",
+      "description": "Steht so im Repository (Datei:Zeile).",
+      "additionalProperties": false,
+      "required": ["art", "wert", "fundstelle"],
+      "properties": {
+        "art": { "const": "repo" },
+        "wert": {
+          "anyOf": [
+            { "type": "integer" },
+            { "type": "string" },
+            { "type": "array", "minItems": 1, "items": { "type": "string" } }
+          ]
+        },
+        "fundstelle": { "type": "string", "pattern": "^[a-z][^ ]*:[0-9]+$" }
+      }
+    },
+    "zuErheben": {
+      "type": "object",
+      "description": "Noch nicht festgestellt. Kein Schätzwert, keine Null; `wo` nennt Bogen, Hardwareblatt oder Pilotschritt, `erwartung` höchstens einen Hinweis — nie einen Vertragswert.",
+      "additionalProperties": false,
+      "required": ["art", "wo"],
+      "properties": {
+        "art": { "const": "zu erheben" },
+        "wo": { "type": "string", "minLength": 1 },
+        "erwartung": { "type": "string", "minLength": 1 }
+      }
+    },
+    "angabe": {
+      "anyOf": [
+        { "$ref": "#/$defs/festlegung" },
+        { "$ref": "#/$defs/handbuch" },
+        { "$ref": "#/$defs/repo" },
+        { "$ref": "#/$defs/zuErheben" }
+      ]
+    },
+    "regel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "angabe"],
+      "properties": {
+        "name": { "$ref": "#/$defs/schluessel" },
+        "angabe": { "$ref": "#/$defs/angabe" }
+      }
+    },
+    "feld": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offset", "woerter", "schluessel", "typ", "inhalt", "wert"],
+      "properties": {
+        "offset": { "type": "integer", "minimum": 0 },
+        "woerter": { "type": "integer", "minimum": 1 },
+        "schluessel": { "$ref": "#/$defs/schluessel" },
+        "typ": { "type": "string", "minLength": 1 },
+        "inhalt": { "type": "string", "minLength": 1 },
+        "wert": { "$ref": "#/$defs/angabe" },
+        "regeln": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/regel" } }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["laenge", "felder"],
+      "properties": {
+        "laenge": { "type": "integer", "minimum": 1 },
+        "felder": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/feld" } }
+      }
+    },
+    "messwert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nr", "offset", "schluessel", "kundenwort", "gruppe", "hardwareblatt_zeile", "met_id", "datentyp", "skalierung"],
+      "properties": {
+        "nr": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "offset": { "type": "integer", "minimum": 0 },
+        "schluessel": { "$ref": "#/$defs/schluessel" },
+        "kundenwort": { "type": "string", "minLength": 1 },
+        "gruppe": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "hardwareblatt_zeile": { "type": "integer", "minimum": 1 },
+        "met_id": { "$ref": "#/$defs/angabe" },
+        "datentyp": { "$ref": "#/$defs/angabe" },
+        "skalierung": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["messbereich", "angabe"],
+            "properties": {
+              "messbereich": { "enum": ["1 A", "5 A", "alle"] },
+              "angabe": { "$ref": "#/$defs/angabe" }
+            }
+          }
+        },
+        "vorzeichen": { "$ref": "#/$defs/angabe" }
+      }
+    },
+    "soll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kartenzahl", "controller_kennung", "karten"],
+      "properties": {
+        "kartenzahl": { "$ref": "#/$defs/wort" },
+        "controller_kennung": { "$ref": "#/$defs/u32" },
+        "karten": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["steckplatz", "kartentyp", "variante"],
+            "properties": {
+              "steckplatz": { "$ref": "#/$defs/wort" },
+              "kartentyp": { "$ref": "#/$defs/wort" },
+              "variante": { "$ref": "#/$defs/wort" }
+            }
+          }
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parameter", "soll", "woerter"],
+      "properties": {
+        "parameter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basisadresse", "funktionscode", "wortfolge"],
+          "properties": {
+            "basisadresse": { "$ref": "#/$defs/wort" },
+            "funktionscode": { "enum": [3, 4] },
+            "wortfolge": { "type": "string", "enum": ["big", "little"] }
+          }
+        },
+        "soll": { "$ref": "#/$defs/soll" },
+        "woerter": {
+          "type": "array",
+          "description": "Registerwörter ab der Basisadresse, in Adressreihenfolge, so wie sie über Modbus kamen.",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/wort" }
+        }
+      }
+    },
+    "wortOderNull": { "anyOf": [{ "$ref": "#/$defs/wort" }, { "type": "null" }] },
+    "wertOderNull": { "anyOf": [{ "type": "integer", "minimum": -2147483648, "maximum": 4294967294 }, { "type": "null" }] },
+    "kopfErwartet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hauptversion", "nebenversion", "kopflaenge", "kartenblocklaenge", "kartenzahl", "herzschlag", "controller_kennung"],
+      "properties": {
+        "hauptversion": { "$ref": "#/$defs/wort" },
+        "nebenversion": { "$ref": "#/$defs/wort" },
+        "kopflaenge": { "$ref": "#/$defs/wort" },
+        "kartenblocklaenge": { "$ref": "#/$defs/wort" },
+        "kartenzahl": { "$ref": "#/$defs/wort" },
+        "herzschlag": { "$ref": "#/$defs/wort" },
+        "controller_kennung": { "$ref": "#/$defs/u32" }
+      }
+    },
+    "karteErwartet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steckplatz", "kartentyp", "variante", "ergebnis", "kartenregister_32", "kartenregister_35", "statuswoerter", "messwerte_roh", "messwerte"],
+      "properties": {
+        "steckplatz": { "$ref": "#/$defs/wort" },
+        "kartentyp": { "$ref": "#/$defs/wort" },
+        "variante": { "$ref": "#/$defs/wort" },
+        "ergebnis": { "type": "string", "enum": ["gelesen", "nicht_gelesen", "kartentyp_fremd", "aufbau_abweichend"] },
+        "kartenregister_32": { "$ref": "#/$defs/wortOderNull" },
+        "kartenregister_35": { "$ref": "#/$defs/wortOderNull" },
+        "statuswoerter": { "anyOf": [{ "type": "array", "minItems": 12, "items": { "$ref": "#/$defs/wort" } }, { "type": "null" }] },
+        "messwerte_roh": { "anyOf": [{ "type": "array", "minItems": 12, "items": { "$ref": "#/$defs/u32" } }, { "type": "null" }] },
+        "messwerte": { "anyOf": [{ "type": "array", "minItems": 12, "items": { "$ref": "#/$defs/wertOderNull" } }, { "type": "null" }] }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ergebnis", "grund", "kopf", "karten", "anfragen_mindestens"],
+      "properties": {
+        "ergebnis": { "type": "string", "enum": ["erkannt", "nicht_lesbar"] },
+        "grund": {
+          "anyOf": [
+            { "type": "string", "enum": ["signatur_fremd", "hauptversion_fremd", "laenge_ungueltig", "wortfolge_abweichend", "kartenzahl_abweichend", "controller_kennung_abweichend"] },
+            { "type": "null" }
+          ]
+        },
+        "kopf": { "anyOf": [{ "$ref": "#/$defs/kopfErwartet" }, { "type": "null" }] },
+        "karten": { "type": "array", "items": { "$ref": "#/$defs/karteErwartet" } },
+        "anfragen_mindestens": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] }
+      }
+    },
+    "nachweis": {
+      "type": "object",
+      "description": "Woraus ein belegter Fall stammt — die Angaben aus dem Pilot-Protokoll.",
+      "additionalProperties": false,
+      "required": ["datum", "ort", "pruefer", "vergleich"],
+      "properties": {
+        "datum": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "ort": { "type": "string", "minLength": 1 },
+        "pruefer": { "type": "string", "minLength": 1 },
+        "vergleich": { "type": "string", "minLength": 1 },
+        "protokoll": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fall": {
+      "description": "Beweisregel wie im Referenzdatensatz: belegt ist nur ein Pilot-Fall mit Nachweis. Vertrag und Simulator dienen dem Bauen, nie dem Beleg.",
+      "anyOf": [{ "$ref": "#/$defs/fallNichtBelegt" }, { "$ref": "#/$defs/fallBelegtAusDemPilot" }]
+    },
+    "fallNichtBelegt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "herkunft", "belegt", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^V[0-9]+ [a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string", "enum": ["vertrag", "simulator", "pilot"] },
+        "belegt": { "const": false },
+        "input": { "$ref": "#/$defs/input" },
+        "expected": { "$ref": "#/$defs/expected" }
+      }
+    },
+    "fallBelegtAusDemPilot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "herkunft", "belegt", "nachweis", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^V[0-9]+ [a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "const": "pilot" },
+        "belegt": { "const": true },
+        "nachweis": { "$ref": "#/$defs/nachweis" },
+        "input": { "$ref": "#/$defs/input" },
+        "expected": { "$ref": "#/$defs/expected" }
+      }
+    }
+  }
+}
