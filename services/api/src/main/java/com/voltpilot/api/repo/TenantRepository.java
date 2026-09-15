@@ -256,7 +256,7 @@ public class TenantRepository {
                 // protocol are append-only for EVERY role - not even the admin role holds DELETE - so one
                 // narrow SECURITY DEFINER function, executable only by it, removes them. Then the draft
                 // before its Bericht; the Kennung counter holds only the tenant (RESTRICT). The Kennzahl
-                // Abwahl (V20260915113000) names its Bericht (RESTRICT), so it goes before the draft.
+                // Abwahl (V20260915113000) holds only the tenant too and goes with the Berichte.
                 try (var ps = con.prepareStatement("SELECT uems_berichte_des_kundenbereichs_entfernen(?)")) {
                     ps.setObject(1, tenantId);
                     ps.executeQuery().close();

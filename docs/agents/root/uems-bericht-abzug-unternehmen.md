@@ -48,8 +48,11 @@ Neu angelegt am 15.09.2026. Baut auf `uems-bericht-abzug.md` (IP-5) auf. Vertrag
 - **R1 für IP-7:** `BerichtRegeln.abweichungen` liest nur `werte` und `kennzahlen` — B4s „2 Abweichungen (4200, KZ-0003)“
   stimmt erst, wenn R1 auch `kostenstellen` vergleicht.
 - **Abwahl-Tabelle:** Anwendung SELECT/INSERT/UPDATE(`aufgehoben_am`, genau einmal per Trigger), kein DELETE; Verwaltung
-  SELECT/DELETE (Offboarding vor `bericht_entwurf`); Kennzahl OHNE Fremdschlüssel. Eine weitere Migration auf den
-  Berichts-Tabellen gehört in `UemsBerichtMigrationTest.BAUEN_DARAUF_AUF`.
+  SELECT/DELETE (Offboarding mit den Berichten); Bericht und Kennzahl OHNE Fremdschlüssel, nur der Mandant mit RESTRICT.
+  ⚠ `UemsBerichtMigrationTest.keinBestehenderWegWirdEnger` verbietet jeden Fremdschlüssel von außen auf die acht
+  Berichts-Tabellen UND jede Trigger-Funktion `bericht%`/`uems_bericht%` an einer anderen Tabelle — darum heißt die
+  Funktion `uems_abwahl_einmal_aufheben`. Eine weitere Migration auf den Berichts-Tabellen gehört in
+  `UemsBerichtMigrationTest.BAUEN_DARAUF_AUF`.
 - **Bleibt offen:** die Lücken 3–5 aus IP-5 (Speicher-Paar, `speicher_*`, MS-03-Kennzeichen) und Tagesverlauf/Monatswerte —
   Folgepaket `vp-uems-b12-tagesverlauf-speicher`, Vertrag 1.2. Neu benannt: MS-22 (Rest ohne Ort) fehlt im Standort-Bericht
   Lindach, weil Q3 über die Anlage nicht gebaut ist.

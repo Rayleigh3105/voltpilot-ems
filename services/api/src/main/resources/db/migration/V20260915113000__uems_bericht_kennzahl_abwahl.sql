@@ -11,8 +11,11 @@
 --
 -- Wieder wählen hebt die Abwahl auf (aufgehoben_am, genau einmal); niemand löscht
 -- eine Zeile — nur das Offboarding räumt ab (TenantRepository.offboard).
--- Die Kennzahl steht als Kennung OHNE Fremdschlüssel (wie bericht_quelle.objekt_id):
--- das Löschen einer Kennzahl (uems_kennzahl_loeschen) wird dadurch nicht enger.
+-- Bericht und Kennzahl stehen als Kennung OHNE Fremdschlüssel (wie
+-- bericht_quelle.objekt_id): kein bestehender Löschweg wird enger — weder das
+-- Löschen einer Kennzahl (uems_kennzahl_loeschen) noch das eines Berichts
+-- (UemsBerichtMigrationTest.keinBestehenderWegWirdEnger). Der Mandant reist mit
+-- RESTRICT.
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS bericht_kennzahl_abwahl (
@@ -27,8 +30,6 @@ CREATE TABLE IF NOT EXISTS bericht_kennzahl_abwahl (
     aufgehoben_am        TIMESTAMPTZ,
     CONSTRAINT bericht_kennzahl_abwahl_tenant_fk FOREIGN KEY (tenant_id)
         REFERENCES tenant (id) ON DELETE RESTRICT,
-    CONSTRAINT bericht_kennzahl_abwahl_bericht_fk FOREIGN KEY (bericht_id, tenant_id)
-        REFERENCES bericht (id, tenant_id) ON DELETE RESTRICT,
     CONSTRAINT bericht_kennzahl_abwahl_von_chk
         CHECK (btrim(abgewaehlt_von_name) <> '' AND (abgewaehlt_von_sub IS NULL OR abgewaehlt_von_sub <> '')),
     CONSTRAINT bericht_kennzahl_abwahl_aufgehoben_chk
@@ -41,7 +42,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS bericht_kennzahl_abwahl_wirksam_uq
     ON bericht_kennzahl_abwahl (tenant_id, bericht_id, kennzahl_id) WHERE aufgehoben_am IS NULL;
 
 -- Eine aufgehobene Abwahl bleibt, wie sie ist: wer wieder abwählt, legt eine neue Zeile an.
-CREATE OR REPLACE FUNCTION bericht_kennzahl_abwahl_einmal_aufheben()
+CREATE OR REPLACE FUNCTION uems_abwahl_einmal_aufheben()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF OLD.aufgehoben_am IS NOT NULL THEN
@@ -54,7 +55,7 @@ END $$;
 DROP TRIGGER IF EXISTS bericht_kennzahl_abwahl_einmal_aufheben ON bericht_kennzahl_abwahl;
 CREATE TRIGGER bericht_kennzahl_abwahl_einmal_aufheben
     BEFORE UPDATE ON bericht_kennzahl_abwahl
-    FOR EACH ROW EXECUTE FUNCTION bericht_kennzahl_abwahl_einmal_aufheben();
+    FOR EACH ROW EXECUTE FUNCTION uems_abwahl_einmal_aufheben();
 
 ALTER TABLE bericht_kennzahl_abwahl ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bericht_kennzahl_abwahl FORCE ROW LEVEL SECURITY;

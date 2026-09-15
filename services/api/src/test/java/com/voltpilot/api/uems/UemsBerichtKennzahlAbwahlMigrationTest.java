@@ -134,10 +134,11 @@ class UemsBerichtKennzahlAbwahlMigrationTest {
         assertThat(abwaehlen(a, kennzahl)).as("nach dem Aufheben wieder abwählbar").isNotEqualTo(erste);
     }
 
+    /** Bericht und Kennzahl ohne Fremdschlüssel: weder ihr Löschweg noch der eines Berichts wird enger (IP-4-Regel). */
     @Test
-    void keinFremdschluesselAufDieKennzahl_ihrLoeschwegWirdNichtEnger() {
+    void keinFremdschluesselAufBerichtOderKennzahl_keinLoeschwegWirdEnger() {
         assertThat(root.queryForList("SELECT confrelid::regclass::text FROM pg_constraint WHERE conrelid = ?::regclass "
-                + "AND contype = 'f' ORDER BY 1", String.class, TABELLE)).containsExactly("bericht", "tenant");
+                + "AND contype = 'f' ORDER BY 1", String.class, TABELLE)).containsExactly("tenant");
         assertThat(root.queryForList("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = ?::regclass "
                 + "AND contype = 'f'", String.class, TABELLE)).allSatisfy(d -> assertThat(d).contains("RESTRICT"));
     }
