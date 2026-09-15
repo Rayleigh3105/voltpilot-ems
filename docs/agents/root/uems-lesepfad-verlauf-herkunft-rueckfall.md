@@ -97,6 +97,12 @@ Herkunfts-Spalten (`quelle` … `stand_anfang,stand_ende`) und die Kopfzeilen `#
 gespeicherte Fassung steht in der Spalte `katalog_version` — ein Export, der eine alte Messung mit
 heutigen Stammdaten beschreibt, ist falsch. Eine Zahl, die es nicht gibt, bleibt LEER, nie 0.
 
+⚠ **Seit AP-12 IP-10 (E11 DA4) neun Kopfzeilen mehr**, direkt hinter `# catalog_version_gespeichert=`
+(Position 16–24): `zeitraum_von`, `zeitraum_bis`, `erzeugt_am`, `erzeugt_von`, `zeitzone="UTC"`,
+`dezimal="."`, `trenner=","`, `standort`, `unternehmen` — `csv(History, Erzeugung)`. Wer eine
+Kopfzeile ergänzt, hängt sie HINTER die neun; der Vergleich mit dem Stand davor
+(`BestandGeraeteCsvVergleich`, `uems-bericht-ausgabe-csv.md`) prüft die Stelle.
+
 ## 5. Rechte (AP-03 ist NICHT gebaut)
 
 `DeviceMeasurementSelectionController` nennt seit diesem Paket „UEMS" in seinem Klassen-Javadoc
@@ -104,7 +110,9 @@ und steht damit unter `RechteKennungenDerRoutenTest`: jede seiner acht Routen tr
 Rechte-Kommentar (`messwerte.ansehen`, `ereignisse.ansehen`, `export.standort`,
 `mess_selektion.bearbeiten`). Durchgesetzt wird heute `authenticated()` plus die
 Zeilen-Abschirmung des Kundenbereichs; ein fremdes Gerät ist **404, nie 403**. Eine Durchsetzung
-je Standort entsteht erst mit AP-03 — sie wird hier NICHT erfunden.
+je Standort entsteht erst mit AP-03 — sie wird hier NICHT erfunden. **Die EINE Ausnahme seit
+AP-12 IP-10 (E12 G1):** der Export ist `export.standort`, durchgesetzt über `uems/BestandGeraeteCsv`
+— die VoltPilot-Unterstützung bekommt 403 statt der Datei (`uems-bericht-ausgabe-csv.md`).
 
 ## 6. Bestandsschutz: der Fingerabdruck
 

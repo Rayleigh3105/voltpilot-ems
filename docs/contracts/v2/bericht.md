@@ -213,8 +213,21 @@ gepinnten Fingerabdruck `konzept_tabelle.sha256`.
   Datenstand, Freigabe am/von, Zone, `dezimal=,`, `trenner=;`, `zahlen=ungerundet`, Prüfsumme, Erzeugung am/von, Teilansicht),
   dann eine Zeile je Wert mit den 13 Spalten `regeln.csv_spalten`: Zahlen ungerundet mit Dezimalkomma, Zeitpunkte in der Zone
   mit Offset, Kennzeichen mit „ · “; eine Zelle mit `;`, `"` oder Zeilenumbruch in Anführungszeichen (verdoppelt). Regeln
-  `csv_kopf` und `csv_zeile`. BOM, Zeilenende und `# abschnitt=` legt IP-10 fest.
-- **DA4** Der Bestand-Geräte-CSV bleibt Maschinenform und bekommt Kopfzeilen (IP-10). **DA5** Jeder Abruf wird protokolliert.
+  `csv_kopf` und `csv_zeile`. **Die Datei (IP-10):** UTF-8 mit BOM, Zeilenende CRLF; bei einem ersetzten Stand direkt hinter
+  dem Kopf `# wasserzeichen=ersetzt durch Nr. n (Datum)` (Kennzeichen `ersetzt_durch`); dann die Spaltenzeile und je Abschnitt
+  `# abschnitt=<Schlüssel der Vorlage>` mit einer Zeile je Wert — nur Abschnitte mit Werten in der Trägerform des Abzugs, in der
+  Folge der Vorlagen: am Standort `verbrauch_je_messstelle` (`werte`), am Unternehmen `standorte` (`werte`) und
+  `kostenstellen` (Block `summe`; ohne eine Menge ihr `grund` als Kennzeichen), an beiden `kennzahlen` (Periode = Zeitraum des
+  Berichts; die Richtung steht als Kennzeichen in `kennzeichen`, keine 14. Spalte; `ort` und `endgueltig_ab` bleiben leer,
+  solange der Abzug sie je Kennzahl nicht trägt). Die Datei entsteht NUR aus dem Abzug und der Freigabe des Stands (A1); zwei
+  Abrufe unterscheiden sich nur in `erzeugt_am`, `erzeugt_von` und `teilansicht`. Route `GET …/staende/{nr}/csv`, Datei
+  `bericht-<Kennung>-nr<Nr.>.csv`; ein Entwurf hat keine (EW4).
+- **DA4** Der Bestand-Geräte-CSV bleibt Maschinenform und bekommt neun Kopfzeilen direkt hinter
+  `# catalog_version_gespeichert=`: `zeitraum_von`, `zeitraum_bis`, `erzeugt_am`, `erzeugt_von`, `zeitzone="UTC"`,
+  `dezimal="."`, `trenner=","`, `standort`, `unternehmen` — Text in Anführungszeichen wie jede Kopfzeile davor, leer ohne
+  Objekt; jede Kopfzeile davor, die Spalten und die Zeilen bleiben Byte für Byte; Recht `export.standort` (Unterstützer 403).
+  **DA5** Jeder Abruf wird protokolliert: `bericht_abruf` (Stand, Format, Person, Rolle, Zeitpunkt, Teilansicht) und die
+  Meldung `bericht_abgerufen` (Kennung = die des Abrufs) in derselben Transaktion — ohne Protokoll keine Datei.
 
 ## 11. Belegschutz und Aufbewahrung (S1–S5, E13)
 

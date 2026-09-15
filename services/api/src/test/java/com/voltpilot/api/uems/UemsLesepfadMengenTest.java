@@ -1,6 +1,8 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.voltpilot.api.measurement.BestandGeraeteCsvVergleich.erzeugung;
+import static com.voltpilot.api.measurement.BestandGeraeteCsvVergleich.ohneNeueKopfzeilen;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -587,18 +589,27 @@ class UemsLesepfadMengenTest {
             for (String darstellung : List.of("decoded", "raw")) {
                 History h = verlauf.history(IDS.get("BOX"), kanal, "free", von, bis, darstellung, null, null);
                 aus.put(name + " roh 09.04. " + darstellung + " JSON", md5(json(h)));
-                aus.put(name + " roh 09.04. " + darstellung + " CSV", md5(verlauf.csv(h)));
+                aus.put(name + " roh 09.04. " + darstellung + " CSV", md5(exportVorher(h)));
             }
         }
         History fein = frei(F8, Instant.parse("2026-11-02T23:00:00Z"), Instant.parse("2026-11-03T23:00:00Z"));
-        aus.put("F8 Viertelstunden 03.11. CSV", md5(verlauf.csv(fein)));
+        aus.put("F8 Viertelstunden 03.11. CSV", md5(exportVorher(fein)));
         aus.put("F8 Viertelstunden 03.11. Bestandsfelder", md5(bestandsfelder(fein)));
         History leistung = frei(P, Instant.parse("2026-11-12T08:00:00Z"), Instant.parse("2026-11-12T11:00:00Z"));
-        aus.put("Leistung Viertelstunden 12.11. CSV", md5(verlauf.csv(leistung)));
+        aus.put("Leistung Viertelstunden 12.11. CSV", md5(exportVorher(leistung)));
         aus.put("Leistung Viertelstunden 12.11. Bestandsfelder", md5(bestandsfelder(leistung)));
         History grob = frei(P, GROB_VON, GROB_BIS);
-        aus.put("Leistung Stunden CSV", md5(verlauf.csv(grob)));
+        aus.put("Leistung Stunden CSV", md5(exportVorher(grob)));
         return aus;
+    }
+
+    /**
+     * Der Export von heute OHNE die neun Kopfzeilen von AP-12 IP-10 (DA4) — seine md5 ist die aus der Karte
+     * {@link #FLAECHE_VORHER}, die AP-07 IP-14 vor diesem Paket aufgenommen hat: dieselben Spalten, dieselben Zeilen,
+     * dieselben Kopfzeilen davor, Byte für Byte. Stehen die neun woanders, bricht schon der Vergleich selbst.
+     */
+    private static byte[] exportVorher(History h) {
+        return ohneNeueKopfzeilen(verlauf.csv(h, erzeugung()));
     }
 
     /** Die Felder von VOR IP-14 (dieselbe Projektion wie {@code UemsLesepfadTest}). */

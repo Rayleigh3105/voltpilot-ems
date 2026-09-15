@@ -327,6 +327,17 @@ public class BerichtRepository {
                 + "AND zustand = 'offen'", begruendung, wer.sub(), wer.name(), Timestamp.from(jetzt), tenant, id) == 1;
     }
 
+    // ================================================================================ Abrufe
+
+    /** DA5 — ein Abruf einer Ausgabe eines Stands (append-only); seine Kennung ist auch die der Meldung. */
+    public UUID abruf(UUID tenant, UUID stand, String format, boolean teilansicht, ProtokollAkteur wer, String rolle,
+            Instant jetzt) {
+        return jdbc.queryForObject("INSERT INTO bericht_abruf (tenant_id, stand_id, format, teilansicht, actor_sub, "
+                + "actor_name, actor_rolle, actor_art, abgerufen_am) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                UUID.class, tenant, stand, format, teilansicht, wer.sub(), wer.name(), rolle, wer.art(),
+                Timestamp.from(jetzt));
+    }
+
     // ================================================================================ Protokoll
 
     /** Ein Eintrag in {@code bericht_aenderung}; {@code art} ist ein Wort aus {@code handlung}. */

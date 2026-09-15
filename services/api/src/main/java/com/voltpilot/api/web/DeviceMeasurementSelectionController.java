@@ -12,6 +12,7 @@ import com.voltpilot.api.measurement.MeasurementSelectionService.Actor;
 import com.voltpilot.api.measurement.MeasurementSelectionService.Change;
 import com.voltpilot.api.measurement.MeasurementSelectionService.CustomChange;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
+import com.voltpilot.api.uems.BestandGeraeteCsv;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -23,6 +24,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -48,6 +50,10 @@ import org.springframework.web.server.ResponseStatusException;
  * ({@code RechteKennungenDerRoutenTest} erzwingt es). AP-03 ist NICHT gebaut - durchgesetzt
  * wird heute {@code authenticated()} plus die Zeilen-Abschirmung des Kundenbereichs; ein
  * fremdes Geraet ist 404, nie 403. Eine Durchsetzung je Standort entsteht erst mit AP-03.
+ *
+ * <p>Die EINE Ausnahme seit UEMS AP-12 IP-10 (E12 G1): der Export gehoert zu
+ * {@code export.standort} und wird ueber {@code uems/BestandGeraeteCsv} durchgesetzt - wer das
+ * Recht nicht hat (heute die VoltPilot-Unterstuetzung), bekommt 403 statt der Datei.
  */
 @RestController
 @RequestMapping("/api/v1/devices/{deviceId}/measurement-selection")
@@ -75,14 +81,16 @@ public class DeviceMeasurementSelectionController {
     private final MeasurementCatalog catalog;
     private final ObjectProvider<MeasurementConfigPublisher> publisher;
     private final MeasurementHistoryService history;
+    private final BestandGeraeteCsv bestandCsv;
 
     public DeviceMeasurementSelectionController(MeasurementSelectionService selections,
             MeasurementCatalog catalog, ObjectProvider<MeasurementConfigPublisher> publisher,
-            MeasurementHistoryService history) {
+            MeasurementHistoryService history, BestandGeraeteCsv bestandCsv) {
         this.selections = selections;
         this.catalog = catalog;
         this.publisher = publisher;
         this.history = history;
+        this.bestandCsv = bestandCsv;
     }
 
     /**
@@ -104,6 +112,11 @@ public class DeviceMeasurementSelectionController {
     /**
      * Recht: {@code export.standort} (AP-07 §4.10 „Export mit Herkunfts-Spalten"); der
      * gelesene Inhalt ist der des Verlaufs, also zusaetzlich {@code messwerte.ansehen}.
+     *
+     * <p>Seit UEMS AP-12 IP-10 DURCHGESETZT ({@link BestandGeraeteCsv}, E12 G1): ein fremdes
+     * Geraet bleibt 404, dann das Recht - wer es nicht hat (heute die VoltPilot-Unterstuetzung),
+     * bekommt 403 statt der Datei. Die Datei traegt neun Kopfzeilen mehr (DA4); Spalten und
+     * Zeilen bleiben Byte fuer Byte.
      */
     @GetMapping(value = "/{pointKey}/export", produces = "text/csv")
     public ResponseEntity<byte[]> export(@PathVariable UUID deviceId,
@@ -112,13 +125,15 @@ public class DeviceMeasurementSelectionController {
             @RequestParam(required = false) Instant to,
             @RequestParam(defaultValue = "decoded") String representation,
             @RequestParam(required = false) UUID siteId,
-            @RequestParam(required = false) UUID entityId) {
+            @RequestParam(required = false) UUID entityId, Authentication auth) {
+        var wer = OrtAnfrage.akteur(auth);
         var result = history.history(deviceId, pointKey, range, from, to, representation, siteId,
                 entityId);
+        var erzeugung = bestandCsv.erzeugung(wer, result.meta().siteId());
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=messwert-" + pointKey.replaceAll("[^a-zA-Z0-9._-]", "_") + ".csv")
-                .body(history.csv(result));
+                .body(history.csv(result, erzeugung));
     }
 
     /**

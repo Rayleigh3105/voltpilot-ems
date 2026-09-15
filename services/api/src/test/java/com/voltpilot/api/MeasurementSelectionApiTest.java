@@ -305,6 +305,8 @@ class MeasurementSelectionApiTest {
         assertThat(csv.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(csv.getHeaders().getContentDisposition().getFilename()).contains("messwert-");
         assertThat(csv.getBody()).contains("# point_key=", "# aggregation=", "# representation=\"raw\"");
+        // UEMS AP-12 IP-10 (DA4): der Kunde mit Recht bekommt die Datei — mit neun Kopfzeilen mehr
+        assertThat(csv.getBody()).contains("\n# erzeugt_von=\"demo\"\n", "\n# zeitzone=\"UTC\"\n# dezimal=\".\"\n");
     }
 
     @Test

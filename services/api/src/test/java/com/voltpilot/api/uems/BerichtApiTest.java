@@ -25,6 +25,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -503,6 +504,144 @@ class BerichtApiTest {
                 .containsExactly("freigeben", "verwerfen", "freigeben");
     }
 
+    // =========================================================================== B14 — die Ausgabe CSV (IP-10)
+
+    /**
+     * B14 über die Route: Jonas ruft Nr. 1 am 20.11.2026 17:45 als CSV ab — Kopf und MS-12 Byte für Byte der Vektor, zwei
+     * Abrufe byte-gleich und beide protokolliert (Tabelle und {@code bericht_abgerufen}); Claudias Datei trägt ihre
+     * Teilansicht; nach Nr. 2 trägt Nr. 1 das Wasserzeichen. Unterstützer und Plattform nie, Peter sieht ST-1 nicht.
+     */
+    @Test
+    void b14DerCsvEinesStandsIstDerAbzugInKundenformUndJederAbrufIstProtokolliert() throws Exception {
+        List<JsonNode> b14 = new ArrayList<>();
+        EXAKT.readTree(Files.readString(Path.of("..", "..", "docs", "contracts", "v2", "bericht-vectors.json")))
+                .path("cases").forEach(c -> {
+                    if ("B14".equals(c.path("id").asText())) {
+                        c.path("pruefungen").forEach(b14::add);
+                    }
+                });
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+
+        // Nie eine Datei ohne Recht (G2), nie die eines Stands, den es nicht gibt — und dann auch kein Abruf
+        uhr("2026-11-20T17:45:00+01:00");
+        verboten(ruf(w.thomas(), HttpMethod.GET, k + "/staende/1/csv", null));
+        verboten(ruf(w.voss(), HttpMethod.GET, k + "/staende/1/csv", null));
+        abgelehnt(ruf(w.peter(), HttpMethod.GET, k + "/staende/1/csv", null), 404, "nicht_gefunden");
+        abgelehnt(ruf(w.jonas(), HttpMethod.GET, k + "/staende/2/csv", null), 404, "stand_gibt_es_nicht");
+        abgelehnt(ruf(w.jonas(), HttpMethod.GET, k + "/staende/entwurf/csv", null), 404, "nicht_gefunden");
+        assertThat(zaehle("bericht_abruf", w)).isZero();
+
+        // Jonas: Kopf (16 Zeilen) und MS-12 Byte für Byte der Vektor; zwei Abrufe byte-gleich
+        MvcResult erster = datei(w.jonas(), k + "/staende/1/csv");
+        assertThat(erster.getResponse().getStatus()).isEqualTo(200);
+        assertThat(erster.getResponse().getContentType()).isEqualTo("text/csv;charset=UTF-8");
+        assertThat(erster.getResponse().getHeader("Content-Disposition"))
+                .isEqualTo("attachment; filename=bericht-BR-2026-0001-nr1.csv");
+        byte[] bytes = erster.getResponse().getContentAsByteArray();
+        assertThat(new byte[] {bytes[0], bytes[1], bytes[2]}).as("BOM").containsExactly(0xEF, 0xBB, 0xBF);
+        List<String> zeilen = zeilen(bytes);
+        assertThat(zeilen.subList(0, 16)).containsExactlyElementsOf(texte(b14.get(0).path("ergebnis").path("zeilen")));
+        assertThat(zeilen.get(16)).isEqualTo(String.join(";", BerichtRegeln.CSV_SPALTEN));
+        assertThat(zeilen).contains(b14.get(1).path("ergebnis").path("zeile").asText());
+        assertThat(zeilen).as("KZ-0001 — ort und endgültig ab trägt der Abzug 1.1 nicht (firstmate 001)")
+                .anySatisfy(z -> assertThat(z).startsWith("KZ-0001;").contains(";2026-10;0,1488;"));
+        assertThat(datei(w.jonas(), k + "/staende/1/csv").getResponse().getContentAsByteArray())
+                .as("zwei Abrufe, byte-gleich").isEqualTo(bytes);
+
+        List<Map<String, Object>> abrufe = root.queryForList("SELECT a.id, a.format, a.teilansicht, a.actor_name, "
+                + "a.actor_rolle, a.actor_art, a.abgerufen_am, s.nr FROM bericht_abruf a JOIN bericht_stand s "
+                + "ON s.id = a.stand_id WHERE a.tenant_id = ? ORDER BY a.id", w.mandant());
+        assertThat(abrufe).as("zwei Abrufe, zwei Zeilen").hasSize(2).allSatisfy(a -> {
+            assertThat(a).containsEntry("format", "csv").containsEntry("teilansicht", false)
+                    .containsEntry("actor_name", "Jonas Wendlinger").containsEntry("actor_rolle", "kundenadministrator")
+                    .containsEntry("actor_art", "kunde").containsEntry("nr", 1);
+            assertThat(((Timestamp) a.get("abgerufen_am")).toInstant()).isEqualTo(t("2026-11-20T17:45:00+01:00"));
+        });
+        List<Map<String, Object>> meldungen = root.queryForList("SELECT ereignis_id, urheber, kennungen->>'bericht' AS bericht, "
+                + "nutzlast->>'nr' AS nr, nutzlast->>'format' AS format FROM messreihe_ereignis WHERE tenant_id = ? "
+                + "AND art = 'bericht_abgerufen'", w.mandant());
+        assertThat(meldungen).hasSize(2).allSatisfy(m -> assertThat(m).containsEntry("urheber", "kunde")
+                .containsEntry("bericht", "BR-2026-0001").containsEntry("nr", "1").containsEntry("format", "csv"));
+        assertThat(meldungen.stream().map(m -> m.get("ereignis_id")).toList())
+                .containsExactlyInAnyOrderElementsOf(abrufe.stream().map(a -> a.get("id")).toList());
+
+        // Claudia (Leserin an beiden Werken): ihre Teilansicht im Kopf (G3) — B14-Randfall Byte für Byte
+        uhr("2026-11-12T08:10:00+01:00");
+        MvcResult claudia = datei(w.claudia(), k + "/staende/1/csv");
+        assertThat(claudia.getResponse().getStatus()).isEqualTo(200);
+        assertThat(zeilen(claudia.getResponse().getContentAsByteArray()).subList(0, 16))
+                .containsExactlyElementsOf(texte(b14.get(4).path("ergebnis").path("zeilen")));
+        assertThat(root.queryForObject("SELECT teilansicht FROM bericht_abruf WHERE tenant_id = ? AND actor_name = ?",
+                Boolean.class, w.mandant(), "Claudia Berger")).isTrue();
+
+        // Nach der Revision: Nr. 1 trägt das Wasserzeichen, Nr. 2 nicht
+        UUID stand1 = root.queryForObject("SELECT id FROM bericht_stand WHERE bericht_id = ? AND nr = 1", UUID.class, st);
+        anstoss(w, stand1, "K-2026-0007", 2, "2026-11-12T10:05:33+01:00");
+        entwurf(w, st, nummerZwei, "2026-11-12T10:05:33+01:00");
+        uhr("2026-11-16T14:20:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-12T10:05:33+01:00")), 201);
+        uhr("2026-11-20T17:50:00+01:00");
+        List<String> eins = zeilen(datei(w.jonas(), k + "/staende/1/csv").getResponse().getContentAsByteArray());
+        assertThat(eins.get(4)).isEqualTo("# stand=1");
+        assertThat(eins.get(12)).isEqualTo(zeilen.get(12));
+        assertThat(eins.get(16)).isEqualTo("# wasserzeichen="
+                + BerichtRegeln.ersetztDurch(2, t("2026-11-16T14:20:00+01:00"), ZoneId.of("Europe/Berlin")))
+                .contains("(16.11.2026)");
+        List<String> zwei = zeilen(datei(w.jonas(), k + "/staende/2/csv").getResponse().getContentAsByteArray());
+        assertThat(zwei.get(4)).isEqualTo("# stand=2");
+        assertThat(zwei.get(12)).isEqualTo("# pruefsumme=" + BerichtRegeln.pruefsumme(nummerZwei));
+        assertThat(zwei.get(16)).isEqualTo(String.join(";", BerichtRegeln.CSV_SPALTEN));
+        assertThat(zaehle("bericht_abruf", w)).isEqualTo(5);
+    }
+
+    /**
+     * E12 G1 am Bestand-Geräte-CSV (DA4) über die Route: Jonas bekommt die Datei mit neun Kopfzeilen mehr (Standort und
+     * Unternehmen von heute), Thomas (Unterstützer) und Lena Voss (Plattform) 403 statt der Datei; Claudia darf am Werk, nicht
+     * an einer Anlage ohne Standort (403); Peter sieht Werk Ahrenberg nicht (404).
+     */
+    @Test
+    void derBestandGeraeteCsvGehoertZuExportStandort_dieUnterstuetzungBekommt403() throws Exception {
+        Welt w = welt();
+        String kurz = w.mandant().toString().substring(0, 8).toUpperCase();
+        UUID an1 = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, 'AN-1') RETURNING id", UUID.class,
+                w.mandant());
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab, created_by) "
+                + "VALUES (?, ?, ?, '2024-01-01', 'test')", w.mandant(), an1, w.st1());
+        UUID box1 = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, status) "
+                + "VALUES (?, ?, ?, 'claimed') RETURNING id", UUID.class, w.mandant(), an1, "VP-BOX-IP10-" + kurz + "-1");
+        UUID an9 = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, 'AN-9') RETURNING id", UUID.class,
+                w.mandant());
+        UUID box9 = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, status) "
+                + "VALUES (?, ?, ?, 'claimed') RETURNING id", UUID.class, w.mandant(), an9, "VP-BOX-IP10-" + kurz + "-9");
+        String export = "/measurement-selection/deye.hybrid_1p.meter.today-energy/export?range=24h";
+
+        MvcResult jonas = datei(w.jonas(), "/api/v1/devices/" + box1 + export);
+        assertThat(jonas.getResponse().getStatus()).as(jonas.getResponse().getContentAsString()).isEqualTo(200);
+        List<String> z = List.of(jonas.getResponse().getContentAsString(StandardCharsets.UTF_8).split("\n"));
+        assertThat(z.get(14)).startsWith("# catalog_version_gespeichert=");
+        assertThat(z.subList(15, 24)).extracting(s -> s.substring(2, s.indexOf('=')))
+                .containsExactlyElementsOf(com.voltpilot.api.measurement.MeasurementHistoryService.KOPF_ERZEUGUNG);
+        assertThat(z.subList(18, 24)).containsExactly("# erzeugt_von=\"Jonas Wendlinger\"", "# zeitzone=\"UTC\"",
+                "# dezimal=\".\"", "# trenner=\",\"", "# standort=\"ST-1 Werk Ahrenberg\"",
+                "# unternehmen=\"Kunststoffwerk Ahrenberg GmbH\"");
+        assertThat(z.get(24)).startsWith("time,value,min,max,text,sample_count,gap,");
+
+        assertThat(datei(w.thomas(), "/api/v1/devices/" + box1 + export).getResponse().getStatus()).isEqualTo(403);
+        assertThat(datei(w.voss(), "/api/v1/devices/" + box1 + export).getResponse().getStatus()).isEqualTo(403);
+        assertThat(datei(w.claudia(), "/api/v1/devices/" + box1 + export).getResponse().getStatus()).isEqualTo(200);
+        assertThat(datei(w.claudia(), "/api/v1/devices/" + box9 + export).getResponse().getStatus()).isEqualTo(403);
+        assertThat(datei(w.peter(), "/api/v1/devices/" + box1 + export).getResponse().getStatus()).isEqualTo(404);
+        MvcResult ohneStandort = datei(w.jonas(), "/api/v1/devices/" + box9 + export);
+        assertThat(ohneStandort.getResponse().getStatus()).isEqualTo(200);
+        assertThat(ohneStandort.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("\n# standort=\n# unternehmen=\"Kunststoffwerk Ahrenberg GmbH\"\ntime,");
+    }
+
     // =========================================================================== Archivieren, Anlegen
 
     /** V4: Archivieren verbirgt den Bericht in der Liste, der Bericht bleibt lesbar; ein zweites Mal ändert nichts. */
@@ -893,7 +1032,25 @@ class BerichtApiTest {
         assertThat(a.body().has("rolle_noetig")).isTrue();
     }
 
-    private Antwort ruf(Wer wer, HttpMethod methode, String pfad, Object body) throws Exception {
+    /** Eine Datei-Route (CSV): Status, Kopfzeilen und Bytes — die Antwort ist kein JSON. */
+    private MvcResult datei(Wer wer, String pfad) throws Exception {
+        return mvc.perform(als(wer, HttpMethod.GET, pfad)).andReturn();
+    }
+
+    /** Die Zeilen eines Berichts-CSV: mit BOM und CRLF geschrieben, ohne beide gelesen. */
+    private static List<String> zeilen(byte[] csv) {
+        String text = new String(csv, StandardCharsets.UTF_8);
+        assertThat(text).startsWith("﻿").endsWith("\r\n");
+        return List.of(text.substring(1).split("\r\n"));
+    }
+
+    private static List<String> texte(JsonNode liste) {
+        List<String> raus = new ArrayList<>();
+        liste.forEach(n -> raus.add(n.asText()));
+        return raus;
+    }
+
+    private static MockHttpServletRequestBuilder als(Wer wer, HttpMethod methode, String pfad) {
         MockHttpServletRequestBuilder anfrage = request(methode, pfad)
                 .with(jwt().jwt(j -> {
                     j.subject(wer.sub());
@@ -907,6 +1064,11 @@ class BerichtApiTest {
         if (wer.plattform()) {
             anfrage.header("X-Tenant-Id", wer.kundenbereich().toString());
         }
+        return anfrage;
+    }
+
+    private Antwort ruf(Wer wer, HttpMethod methode, String pfad, Object body) throws Exception {
+        MockHttpServletRequestBuilder anfrage = als(wer, methode, pfad);
         if (body != null) {
             anfrage.content(MAPPER.writeValueAsString(body));
         }

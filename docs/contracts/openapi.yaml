@@ -2006,7 +2006,14 @@ paths:
       description: >
         Trägt Punkt-Schlüssel, Standort, Labels, Einheit, Aggregation, Semantik,
         Katalogfassung und Darstellung im Kopf und neutralisiert Formel-Präfixe
-        von Tabellenkalkulationen.
+        von Tabellenkalkulationen. Recht `export.standort` (UEMS AP-12 IP-10, E12 G1,
+        durchgesetzt über uems/BestandGeraeteCsv): ein fremdes Gerät bleibt 404, wer das
+        Recht nicht hat (heute die VoltPilot-Unterstützung), bekommt 403 statt der Datei.
+        Maschinenform (UTC `Z`, Punkt, Komma); seit AP-12 IP-10 (E11 DA4) additiv neun
+        Kopfzeilen direkt hinter `# catalog_version_gespeichert=`: `zeitraum_von`,
+        `zeitraum_bis`, `erzeugt_am`, `erzeugt_von`, `zeitzone="UTC"`, `dezimal="."`,
+        `trenner=","`, `standort`, `unternehmen` (leer, wo es kein Objekt gibt) - jede
+        Kopfzeile davor, die Spalten und die Zeilen bleiben Byte für Byte.
       parameters:
         - name: deviceId
           in: path
@@ -2051,9 +2058,14 @@ paths:
             Unbekannter Zeitraum, oder für diesen Zeitraum liegen keine echten
             Rohdaten vor.
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: >
+            Recht `export.standort` fehlt (UEMS AP-12 IP-10) - mit dem Satz der
+            Rechte-Ableitung; die VoltPilot-Unterstützung bekommt nie eine Datei.
         "404":
           description: >
-            Gerät, Anlage, Komponente oder Messwert nicht gefunden (RLS).
+            Gerät, Anlage, Komponente oder Messwert nicht gefunden (RLS), oder der
+            Standort der Anlage liegt außerhalb des Geltungsbereichs der Person.
   /api/v1/devices/claim:
     post:
       tags: [devices]
@@ -10089,6 +10101,36 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BerichtStand" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "500": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/staende/{nr}/csv:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+      - { name: nr, in: path, required: true, schema: { type: integer, minimum: 1 }, description: "Die Nr. des Berichtsstands." }
+    get:
+      tags: [berichte]
+      summary: Der Berichts-CSV eines Stands in Kundenform - nur aus dem Abzug, jeder Abruf protokolliert.
+      description: >
+        Recht `export.standort` am Standort-Bericht, `export.unternehmen` am Unternehmens-Bericht
+        (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder fremder Standort
+        404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung bekommt nie eine
+        Datei. Form (E11 DA3): UTF-8 mit BOM, Zeilenende CRLF, 16 Kopfzeilen `# schlüssel=wert`
+        (Bericht, Vorlage, Geltung, Zeitraum, Stand, Datenstand, Freigabe am/von, Zeitzone, Dezimal,
+        Trenner, Zahlen ungerundet, Prüfsumme, erzeugt am/von, Teilansicht), bei einem ersetzten Stand
+        direkt dahinter `# wasserzeichen=ersetzt durch Nr. n (Datum)`, dann die 13 Spalten und je
+        Abschnitt `# abschnitt=<Schlüssel der Vorlage>` eine Zeile je Wert (Standort
+        verbrauch_je_messstelle, kennzahlen; Unternehmen standorte, kostenstellen, kennzahlen).
+        Die Datei entsteht NUR aus dem Abzug (A1); jeder Abruf schreibt `bericht_abruf` und die
+        Meldung `bericht_abgerufen` (DA5) - scheitert das, geht keine Datei hinaus. Ein Entwurf hat
+        keine Datei (EW4); stimmt die Prüfsumme nicht, 500 `abzug_beschaedigt`.
+      responses:
+        "200":
+          description: Der Berichts-CSV (Content-Disposition attachment, filename bericht-<Kennung>-nr<Nr.>.csv).
+          content:
+            "text/csv":
+              schema: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "404": { $ref: "#/components/responses/BerichtAbgelehnt" }

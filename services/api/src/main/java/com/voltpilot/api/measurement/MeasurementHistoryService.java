@@ -517,6 +517,20 @@ public class MeasurementHistoryService {
     }
 
     /**
+     * Die neun Kopfzeilen, die UEMS AP-12 IP-10 (E11 DA4) dem Export additiv anhängt — in dieser
+     * Folge, direkt hinter {@code # catalog_version_gespeichert=}.
+     */
+    public static final List<String> KOPF_ERZEUGUNG = List.of("zeitraum_von", "zeitraum_bis",
+            "erzeugt_am", "erzeugt_von", "zeitzone", "dezimal", "trenner", "standort", "unternehmen");
+
+    /**
+     * Wann, von wem und wo ein Export erzeugt wurde (UEMS AP-12 IP-10, DA4). {@code standort}
+     * und {@code unternehmen} sind {@code null}, wo es kein Objekt dafür gibt — nie geraten.
+     */
+    public record Erzeugung(Instant erzeugtAm, String erzeugtVon, String standort,
+            String unternehmen) {}
+
+    /**
      * Der Export — ADDITIV erweitert (UEMS AP-07 IP-14).
      *
      * <p>Die zehn Kopfzeilen und die sieben Spalten von vorher stehen unverändert an
@@ -526,8 +540,15 @@ public class MeasurementHistoryService {
      * Katalogs; ein Export, der eine alte Messung mit heutigen Stammdaten beschreibt, ist
      * falsch, darum steht die Fassung des Werts in seiner eigenen Spalte und der Kopf
      * {@code # catalog_version_gespeichert=} nennt die im Zeitraum vorkommenden.
+     *
+     * <p><b>UEMS AP-12 IP-10 (E11 DA4):</b> dahinter neun Kopfzeilen mehr ({@link #KOPF_ERZEUGUNG})
+     * — Zeitraum, wann und von wem erzeugt, {@code zeitzone="UTC"}, {@code dezimal="."},
+     * {@code trenner=","}, Standort und Unternehmen, Text in Anführungszeichen wie jede Kopfzeile
+     * davor. Die Datei bleibt Maschinenform; jede Kopfzeile davor, die Spalten und jede Zeile
+     * bleiben Byte für Byte ({@code BestandGeraeteCsvTest}, md5-Karte in
+     * {@code UemsLesepfadMengenTest}).
      */
-    public byte[] csv(History history) {
+    public byte[] csv(History history, Erzeugung erzeugung) {
         StringBuilder out = new StringBuilder();
         Meta m = history.meta();
         out.append("# point_key=").append(csv(m.pointKey())).append('\n')
@@ -548,6 +569,19 @@ public class MeasurementHistoryService {
                         : m.rohGrenze().toString())).append('\n')
                 .append("# catalog_version_gespeichert=")
                 .append(csv(String.join(" ", m.katalogVersionenGespeichert()))).append('\n')
+                // UEMS AP-12 IP-10 (E11 DA4): additiv — die Datei sagt selbst, welcher Zeitraum,
+                // wann, von wem, in welcher Form und wo.
+                .append("# zeitraum_von=").append(csv(m.from() == null ? null
+                        : m.from().toString())).append('\n')
+                .append("# zeitraum_bis=").append(csv(m.to() == null ? null
+                        : m.to().toString())).append('\n')
+                .append("# erzeugt_am=").append(csv(erzeugung.erzeugtAm().toString())).append('\n')
+                .append("# erzeugt_von=").append(csv(erzeugung.erzeugtVon())).append('\n')
+                .append("# zeitzone=").append(csv("UTC")).append('\n')
+                .append("# dezimal=").append(csv(".")).append('\n')
+                .append("# trenner=").append(csv(",")).append('\n')
+                .append("# standort=").append(csv(erzeugung.standort())).append('\n')
+                .append("# unternehmen=").append(csv(erzeugung.unternehmen())).append('\n')
                 .append("time,value,min,max,text,sample_count,gap")
                 .append(",quelle,wertart,abdeckung_prozent,erhalten,erwartet,n_good,n_uncertain,")
                 .append("n_invalid,n_stale,n_device_error,zustand,endgueltig_ab,version,")

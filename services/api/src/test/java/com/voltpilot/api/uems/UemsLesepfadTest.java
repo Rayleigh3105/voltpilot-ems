@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.voltpilot.api.measurement.BestandGeraeteCsvVergleich.erzeugung;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -305,13 +306,22 @@ class UemsLesepfadTest {
     /**
      * Der Export-Spaltentest: die sieben Spalten und die zehn Kopfzeilen von vorher stehen
      * unverändert, dahinter die Herkunfts-Spalten — und die je Wert GESPEICHERTE
-     * Katalogfassung, nicht die heutige.
+     * Katalogfassung, nicht die heutige. Seit AP-12 IP-10 (DA4) folgen den Kopfzeilen von vorher
+     * neun weitere; die Spalten bleiben, wie sie waren.
      */
     @Test
     void derExportTraegtDieHerkunftUndDieGespeicherteKatalogfassung() {
         History h = frei(KANAL, TAG_VON, TAG_BIS, "decoded");
-        String csv = new String(verlauf.csv(h), StandardCharsets.UTF_8);
+        String csv = new String(verlauf.csv(h, erzeugung()), StandardCharsets.UTF_8);
         List<String> zeilen = List.of(csv.split("\n"));
+
+        assertThat(zeilen.subList(15, 24)).as("AP-12 IP-10: neun Kopfzeilen, direkt hinter den bisherigen")
+                .containsExactly("# zeitraum_von=\"2026-10-19T22:00:00Z\"",
+                        "# zeitraum_bis=\"2026-10-20T22:00:00Z\"", "# erzeugt_am=\"2027-01-19T10:00:00Z\"",
+                        "# erzeugt_von=\"Jonas Wendlinger\"", "# zeitzone=\"UTC\"", "# dezimal=\".\"",
+                        "# trenner=\",\"", "# standort=\"ST-1 Werk Ahrenberg\"",
+                        "# unternehmen=\"Kunststoffwerk Ahrenberg GmbH\"");
+        assertThat(zeilen.get(24)).as("die Spalten folgen direkt — unverändert").startsWith("time,");
 
         assertThat(zeilen.subList(0, 10)).as("die zehn Kopfzeilen von vorher, in ihrer Reihenfolge")
                 .allMatch(z -> z.startsWith("# "))
@@ -347,12 +357,37 @@ class UemsLesepfadTest {
     @Test
     void derExportErfindetKeineZahl() {
         History h = frei(KANAL, TAG_VON, TAG_BIS, "decoded");
-        String csv = new String(verlauf.csv(h), StandardCharsets.UTF_8);
+        String csv = new String(verlauf.csv(h, erzeugung()), StandardCharsets.UTF_8);
         String luecke = List.of(csv.split("\n")).stream()
                 .filter(z -> z.startsWith("2026-10-20T08:15:00Z")).findFirst().orElseThrow();
         // time,value,… — der zweite Wert ist die Menge und ist leer, nicht 0.
         assertThat(luecke.split(",", -1)[1]).isEmpty();
         assertThat(luecke).contains(",66,10,15,");
+    }
+
+    /**
+     * AP-12 IP-10 (E12 G1): der Export gehört zu {@code export.standort}. Der Kunde (heute
+     * Kundenadministrator unternehmensweit) bekommt die Datei; die VoltPilot-Unterstützung
+     * (Plattform-Admin über den Mandanten-Umschalter) bekommt 403 statt der Datei. Diese Anlage
+     * hat kein Standort-Objekt und der Kundenbereich kein Unternehmen — der Kopf nennt darum
+     * keins von beiden, statt zu raten.
+     */
+    @Test
+    void derExportGehoertZuExportStandort_dieUnterstuetzungBekommt403() {
+        BestandGeraeteCsv recht = new BestandGeraeteCsv(app, new KennzahlAufrufer(),
+                Clock.fixed(JETZT, ZoneOffset.UTC));
+        MeasurementHistoryService.Erzeugung kunde = recht.erzeugung(
+                ProtokollAkteur.fuer("kc-jw", "Jonas Wendlinger", false), IDS.get("AN2"));
+        assertThat(kunde).isEqualTo(new MeasurementHistoryService.Erzeugung(JETZT, "Jonas Wendlinger", null, null));
+        String csv = new String(verlauf.csv(frei(KANAL, TAG_VON, TAG_BIS, "decoded"), kunde),
+                StandardCharsets.UTF_8);
+        assertThat(csv).contains("\n# erzeugt_von=\"Jonas Wendlinger\"\n")
+                .contains("\n# standort=\n# unternehmen=\ntime,value,min,max,text,sample_count,gap,");
+
+        assertThatThrownBy(() -> recht.erzeugung(ProtokollAkteur.fuer("kc-voss", "Lena Voss", true),
+                IDS.get("AN2")))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode().value()).isEqualTo(403));
     }
 
     // ============================================== Der Bestandsschutz der Kundenfläche
