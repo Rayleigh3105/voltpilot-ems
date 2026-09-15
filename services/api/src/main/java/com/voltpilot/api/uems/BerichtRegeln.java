@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Die reinen Regeln des BERICHTS (UEMS AP-12 IP-1/IP-3) — Vertrag {@code docs/contracts/v2/bericht.md}, Vektoren
@@ -204,6 +206,10 @@ public final class BerichtRegeln {
             "zeit_mit_zone", "{zeitpunkt} ({zone})",
             "anlass_korrektur", "Korrektur {kennung}",
             "anlass_ersatzwert", "Ersatzwert {kennung}",
+            "anlass_zuordnung_rueckwirkend", "Zuordnung {objekt} geändert, gilt ab {ab}, eingetragen {am}",
+            "anlass_anlage_umzug_rueckwirkend", "Anlage {objekt} umgezogen, gilt ab {ab}, eingetragen {am}",
+            "anlass_flaeche_rueckwirkend", "Fläche {objekt} geändert, gilt ab {ab}, eingetragen {am}",
+            "anlass_verteilung_rueckwirkend", "Verteilung {objekt} berichtigt, gilt ab {ab}, eingetragen {am}",
             "ueber_formel", "{anlass} (über die Formel)",
             "ueber_kennzahl", "{anlass} (über die Kennzahl)",
             "csv_geltung_standort", "Standort {kennzeichen} {name}",
@@ -866,7 +872,11 @@ public final class BerichtRegeln {
         return fuelle(muster("anstoss_verworfen"), Map.of("begruendung", begruendung));
     }
 
-    /** Der Anlass in Kundensprache: „Korrektur K-2026-0007“, „Ersatzwert EW-2026-0001“, sonst der Text selbst. */
+    /**
+     * Der Anlass in Kundensprache: „Korrektur K-2026-0007“, „Ersatzwert EW-2026-0001“, die Kennung einer Strukturänderung
+     * ({@link #strukturKennung}) als „Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026“ — ohne
+     * Kennzeichen entfällt es —, sonst der Text selbst.
+     */
     public static String anlass(String kennung) {
         if (kennung.startsWith("K-")) {
             return fuelle(SAETZE.get("anlass_korrektur"), Map.of("kennung", kennung));
@@ -874,7 +884,40 @@ public final class BerichtRegeln {
         if (kennung.startsWith("EW-")) {
             return fuelle(SAETZE.get("anlass_ersatzwert"), Map.of("kennung", kennung));
         }
+        Matcher s = STRUKTUR_KENNUNG.matcher(kennung);
+        if (s.matches()) {
+            String satz = SAETZE.get("anlass_" + s.group(1));
+            String ab = OrtsbaumAbleitung.datumText(LocalDate.parse(s.group(3)));
+            String am = OrtsbaumAbleitung.datumText(LocalDate.parse(s.group(4)));
+            return s.group(2) == null ? fuelle(satz.replace(" {objekt}", ""), Map.of("ab", ab, "am", am))
+                    : fuelle(satz, Map.of("objekt", s.group(2), "ab", ab, "am", am));
+        }
         return kennung;
+    }
+
+    /** Ein Kennzeichen, das in einer Ereignis-Kennung stehen darf — sonst entfällt es in der Strukturänderungs-Kennung. */
+    private static final Pattern KENNZEICHEN_IN_KENNUNG = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]*$");
+
+    private static final Pattern STRUKTUR_KENNUNG = Pattern.compile("^(" + ZUORDNUNG_RUECKWIRKEND + "|"
+            + ANLAGE_UMZUG_RUECKWIRKEND + "|" + FLAECHE_RUECKWIRKEND + "|" + VERTEILUNG_RUECKWIRKEND
+            + ")/([A-Za-z0-9][A-Za-z0-9._-]*)?/([0-9]{4}-[0-9]{2}-[0-9]{2})/([0-9]{4}-[0-9]{2}-[0-9]{2})/(" + ORT_AENDERUNG
+            + "|" + MESSSTELLE_AENDERUNG + ")-([0-9]+)$");
+
+    /**
+     * B3, Pfad 2 — die Anlass-Kennung einer Strukturänderung: {@code <Anstoß-Art>/<Kennzeichen>/<gilt ab>/<eingetragen>/
+     * <Protokoll>-<Zeile>}, z. B. {@code verteilung_rueckwirkend/MS-07/2026-10-01/2026-11-20/messstelle_aenderung-4711}.
+     * Die Protokollzeile macht sie eindeutig (zwei Berichtigungen am selben Tag sind zwei Anstöße, B7), die übrigen Teile
+     * lesbar ({@link #anlass}); sie ist eine Ereignis-Kennung ({@code events-raw} {@code $defs/kennung}) — ein Kennzeichen
+     * mit anderen Zeichen (Leerzeichen, Schrägstrich) entfällt darum, der Satz sagt es ohne.
+     */
+    public static String strukturKennung(String anstossArt, String kennzeichen, LocalDate giltAb, LocalDate eingetragen,
+            String protokoll, long zeile) {
+        if (!List.of(ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND, FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND)
+                .contains(anstossArt) || !STRUKTUR_PROTOKOLLE.contains(protokoll)) {
+            throw new IllegalArgumentException(anstossArt + " aus " + protokoll + " ist keine Strukturänderung");
+        }
+        String objekt = kennzeichen != null && KENNZEICHEN_IN_KENNUNG.matcher(kennzeichen).matches() ? kennzeichen : "";
+        return anstossArt + "/" + objekt + "/" + giltAb + "/" + eingetragen + "/" + protokoll + "-" + zeile;
     }
 
     // ============================================================== Sätze (§5.8) und Anzeige (DA1)

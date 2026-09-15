@@ -185,6 +185,10 @@ export const SAETZE: Record<string, string> = {
   zeit_mit_zone: '{zeitpunkt} ({zone})',
   anlass_korrektur: 'Korrektur {kennung}',
   anlass_ersatzwert: 'Ersatzwert {kennung}',
+  anlass_zuordnung_rueckwirkend: 'Zuordnung {objekt} geändert, gilt ab {ab}, eingetragen {am}',
+  anlass_anlage_umzug_rueckwirkend: 'Anlage {objekt} umgezogen, gilt ab {ab}, eingetragen {am}',
+  anlass_flaeche_rueckwirkend: 'Fläche {objekt} geändert, gilt ab {ab}, eingetragen {am}',
+  anlass_verteilung_rueckwirkend: 'Verteilung {objekt} berichtigt, gilt ab {ab}, eingetragen {am}',
   ueber_formel: '{anlass} (über die Formel)',
   ueber_kennzahl: '{anlass} (über die Kennzahl)',
   csv_geltung_standort: 'Standort {kennzeichen} {name}',
@@ -666,10 +670,24 @@ export const teilansichtKennzeichen = (standorte: string[]): string | null =>
 export const vorBeginn = (seit: string): string => fuelle(muster('vor_beginn'), { datum: datumText(seit) });
 export const anstossVerworfen = (begruendung: string): string => fuelle(muster('anstoss_verworfen'), { begruendung });
 
-/** Der Anlass in Kundensprache: „Korrektur K-2026-0007“, „Ersatzwert EW-2026-0001“, sonst der Text selbst. */
+/** Pfad 2 (IP-9): `<Anstoß-Art>/<Kennzeichen>/<gilt ab>/<eingetragen>/<Protokoll>-<Zeile>` — Java `strukturKennung`. */
+const STRUKTUR_KENNUNG =
+  /^(zuordnung_rueckwirkend|anlage_umzug_rueckwirkend|flaeche_rueckwirkend|verteilung_rueckwirkend)\/([A-Za-z0-9][A-Za-z0-9._-]*)?\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})\/(ort_aenderung|messstelle_aenderung)-(\d+)$/;
+
+/**
+ * Der Anlass in Kundensprache: „Korrektur K-2026-0007“, „Ersatzwert EW-2026-0001“, die Kennung einer
+ * Strukturänderung als „Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026“ (ohne
+ * Kennzeichen entfällt es), sonst der Text selbst.
+ */
 export const anlass = (kennungText: string): string => {
   if (kennungText.startsWith('K-')) return fuelle(SAETZE.anlass_korrektur, { kennung: kennungText });
   if (kennungText.startsWith('EW-')) return fuelle(SAETZE.anlass_ersatzwert, { kennung: kennungText });
+  const s = STRUKTUR_KENNUNG.exec(kennungText);
+  if (s) {
+    const satz = SAETZE[`anlass_${s[1]}`];
+    const tage = { ab: datumText(s[3]), am: datumText(s[4]) };
+    return s[2] === undefined ? fuelle(satz.replace(' {objekt}', ''), tage) : fuelle(satz, { objekt: s[2], ...tage });
+  }
   return kennungText;
 };
 

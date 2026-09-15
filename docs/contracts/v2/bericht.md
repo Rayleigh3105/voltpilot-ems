@@ -150,6 +150,28 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
   - **Pfad 2** `betroffene(quellen, objekte, giltAb)` (TS `betroffeneStruktur`): Objekte, die der Strukturänderungs-Läufer
     auflöst; Tage ab `gilt_ab`, offen.
 - **B2** Pfad 1 ist die Korrektur-Kaskade (PR 741); **B3** Pfad 2 der Strukturänderungs-Läufer (IP-9).
+- **B3 gebaut (AP-12 IP-9, `uems/StrukturAenderungLaeufer`, Flag `voltpilot.uems.berichte.struktur.enabled`):** liest
+  `ort_aenderung` (`verschoben`, `korrigiert`, `flaeche_geaendert`) und `messstelle_aenderung` (`ort_zugeordnet`,
+  `ort_korrigiert`, `verteilung_geaendert`) mit dem Wasserzeichen `bericht_struktur_gelesen` (eine Zeile je gelesenem
+  Eintrag, in derselben Transaktion wie die Naht — nichts zweimal, nichts übersprungen), urteilt mit der Regel `struktur`,
+  löst die Objekte auf (`uems/StrukturAufloesung`) und ruft `BerichteNaht.betroffene`/`entwurfNeuBilden`/`revisionAusloesen`
+  (Überladungen mit `StrukturBetroffen`) in einer eigenen Transaktion je Eintrag. Die Schreibwege bleiben, wie sie sind.
+  - **Objekte** (IDs, nie ein heutiges Kennzeichen): Zuordnung eines Gebäudes oder Bereichs → Messstellen und Bezugsgrößen
+    des Unterbaus, nur bei einem Standortwechsel; Zuordnung einer Messstelle → sie selbst; Anlage-Umzug → keine (kein Abzug
+    liest `anlage_standort`); Fläche → die Bezugsfläche des Orts und seiner Eltern, Objekt = der Ort (B9: „BZ-4“ an G-2;
+    heute zitiert noch kein Bericht eine Fläche, sie ist kein Kennzahl-Eingang); Verteilung → die
+    Kostenstellen des alten und des neuen Satzes und die berechneten Messstellen, deren Formel einen Anteil der Messstelle
+    liest (B8: MS-20, 4100, 4200). Mittelbare Quellen stehen schon im Verzeichnis.
+  - **Wer die Änderung schon kennt, ist nicht betroffen:** nur Stände und Entwürfe, deren Datenstand vor dem Eintrag
+    (`created_at`) liegt.
+  - **Anlass-Kennung** `<Anstoß-Art>/<Kennzeichen>/<gilt ab>/<eingetragen>/<Protokoll>-<Zeile>` (Regel `anlass`:
+    „Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026“); ein Kennzeichen, das in keiner
+    Ereignis-Kennung stehen darf, entfällt. Ohne Fassung und Status — B7 greift über die Kennung (je Protokollzeile).
+  - **Bezugsgrößen liest Pfad 2 nicht:** Pfad 1 trägt Berichtigung, Rücknahme und rückwirkendes Stammdatum seit AP-11 IP-9;
+    ein Anstoß aus Pfad 2 trüge eine andere Art und Kennung, `bericht_revision_anstoss_einmal` finge ihn nicht ab.
+  - **Vorschau** `GET /api/v1/berichte/betroffen?objekt&gilt_ab&anlass`: dieselbe Auflösung ohne Protokollzeile und ohne
+    Datenstand-Schranke — `betroffen` (gültige Stände), `zitieren` (jeder Stand, der eine Quelle des Objekts zitiert, B12),
+    `berichte_vorhanden`; die Sätze der Folgen-Zeile spricht das Portal (`berichteFolgen.ts`).
 - **B4 Anstoß-Arten** (`anstoss_art`): Pfad 1 aus Anlass und Status (`anstossArt`): `K-…` freigegeben →
   `korrektur_freigegeben`, zurückgenommen → `korrektur_zurueckgenommen`; `EW-…` wirksam → `ersatzwert_wirksam`,
   zurückgenommen → `ersatzwert_zurueckgenommen`. `bezugsgroesse_fassung` und `kennzahl_fassung_rueckwirkend` kommen über

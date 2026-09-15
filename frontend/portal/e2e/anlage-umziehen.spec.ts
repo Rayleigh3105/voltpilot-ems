@@ -95,6 +95,24 @@ async function verdrahte(page: Page) {
       ),
     );
   });
+  // AP-12 IP-9 · freigegebene Berichte (Ahrenberg): eine geplante Zuordnung trifft keinen gültigen Berichtsstand;
+  // rückwirkend vor heute träfe sie den Stand BR-2026-0001 Nr. 2.
+  await page.route('**/api/v1/berichte/betroffen**', (r) => {
+    const q = new URL(r.request().url()).searchParams;
+    const ab = q.get('gilt_ab') ?? '';
+    return r.fulfill(
+      json({
+        anlass: q.get('anlass'),
+        gilt_ab: ab,
+        berichte_vorhanden: true,
+        betroffen: ab < HEUTE ? [{ kennung: 'BR-2026-0001', nr: 2 }] : [],
+        zitieren: [
+          { kennung: 'BR-2026-0001', nr: 1 },
+          { kennung: 'BR-2026-0001', nr: 2 },
+        ],
+      }),
+    );
+  });
   return gesendet;
 }
 
@@ -109,7 +127,7 @@ async function messe(page: Page, breite: number) {
       .map(({ el }) => `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className)}`);
     const koerper = [...document.querySelectorAll('.vp-modal .dbody')] as HTMLElement[];
     const folgen = document.querySelector('[data-testid="umzug-folgen"]') as HTMLElement | null;
-    const bleibt = document.querySelector('.vp-au-folgen .vp-au-teil:last-child') as HTMLElement | null;
+    const bleibt = document.querySelector('.vp-au-folgen .vp-au-teil:has(.vp-au-bleibt)') as HTMLElement | null;
     return {
       seite: document.documentElement.scrollWidth - window.innerWidth,
       dialog: koerper.length ? Math.max(...koerper.map((k) => k.scrollWidth - k.clientWidth)) : null,
@@ -192,19 +210,51 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
       await expect(folgen.getByText('Ab 01.03.2027 gehört die Anlage zu Werk Ahrenberg Nord (ST-3).')).toBeVisible();
       await expect(folgen.getByText('Geplant: bis dahin ändert sich nichts.')).toBeVisible();
       await expect(folgen.getByText('Es wird kein Befehl an die Anlage gesendet.')).toBeVisible();
+      // AP-12 IP-9: eine geplante Zuordnung trifft keinen freigegebenen Berichtsstand.
+      const berichte = folgen.getByTestId('berichte-folgen');
+      await expect(berichte).toHaveText('Freigegebene Berichte: keine betroffen');
       await dialog.getByLabel('Begründung (freiwillig)').fill(BEGRUENDUNG);
       if (VARIANTE === 'b') {
         await sammelsatz(page);
         await messeUndFotografiere(page, breite, 't6b-folgen-b', dialog);
         return;
       }
+      await berichte.scrollIntoViewIfNeeded();
       await messeUndFotografiere(page, breite, 't6b-folgen', dialog);
 
       await dialog.getByRole('button', { name: 'Zuordnen', exact: true }).click();
       await expect(dialog.getByText('Zuordnung gespeichert')).toBeVisible();
       await expect(dialog.getByText('Werk Ahrenberg – Halle 2 gehört ab 01.03.2027 zu Werk Ahrenberg Nord (ST-3).')).toBeVisible();
       expect(gesendet).toEqual([{ standortId: NORD, gueltigAb: '2027-03-01', begruendung: BEGRUENDUNG }]);
+      await expect(dialog.getByTestId('berichte-folgen')).toHaveCount(0);
       await messeUndFotografiere(page, breite, 't6b-ergebnis', dialog);
     });
   }
+
+  test('Halle 2 → Werk Ahrenberg Nord rückwirkend ab 01.12.2026 — BR-2026-0001 Nr. 2 bekommt den Vermerk (AP-12 IP-9) — 375 px', async ({ page }) => {
+    test.skip(VARIANTE === 'b', 'nur Variante A');
+    await verdrahte(page);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/e2e/meine-anlage.html?fall=ahrenberg');
+
+    const karte = page.locator('#technik-anlage');
+    await expect(karte).toBeVisible();
+    const aufklappen = karte.locator('button[aria-expanded="false"]');
+    if (await aufklappen.count()) await aufklappen.first().click();
+    await karte.getByRole('button', { name: 'Anderem Standort zuordnen: Werk Ahrenberg – Halle 2' }).click();
+    const dialog = page.locator('.vp-modal').last();
+    await expect(dialog.getByRole('heading', { name: 'Anlage zuordnen' })).toBeVisible();
+    await dialog.getByRole('combobox', { name: 'Neuer Standort *' }).click();
+    await page.getByRole('option', { name: /Werk Ahrenberg Nord \(ST-3\)/ }).click();
+    await dialog.getByRole('combobox', { name: 'Gültig ab *' }).click();
+    for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Voriger Monat' }).click();
+    await page.getByRole('gridcell', { name: '1', exact: true }).first().click();
+
+    const folgen = dialog.getByTestId('umzug-folgen');
+    await expect(folgen).toContainText('01.12.2026');
+    const berichte = folgen.getByTestId('berichte-folgen');
+    await expect(berichte).toHaveText('Freigegebene Berichte: BR-2026-0001 Nr. 2 bekommt den Vermerk „Revision nötig“');
+    await berichte.scrollIntoViewIfNeeded();
+    await messeUndFotografiere(page, 375, 't6b-folgen-revision', dialog);
+  });
 });

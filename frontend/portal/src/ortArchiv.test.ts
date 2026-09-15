@@ -3,6 +3,7 @@ import type { OrtAktionen } from './api';
 import {
   archiviertAmText,
   archivierenFolgen,
+  archivTag,
   KNOPF_ARCHIVIEREN,
   KNOPF_ARCHIVIEREN_GESPERRT,
   KNOPF_LOESCHEN,
@@ -120,6 +121,23 @@ describe('Folgenlisten', () => {
     ]);
     expect(folgen[0].text).toBe('Berichte bis dahin bleiben, wie sie sind.');
     expect(folgen[1].text).toBe('Ausgegraut mit „Archiviert am 30.06.2027“; in „Stand am …“ vor dem 30.06.2027 wie bisher.');
+  });
+
+  it('AP-12 IP-9: gefragt wird ab dem Archivtag; „Freigegebene Berichte“ steht zuletzt, mit Punkt — die Sätze davor bleiben', () => {
+    const a = { erlaubt: true, text: null, gruende: [], letzterTag: '2027-06-29', mitarchiviert: [] };
+    expect(archivTag(a)).toBe('2027-06-30');
+    expect(archivTag({ ...a, letzterTag: '2027-12-31' })).toBe('2028-01-01');
+    expect(archivTag({ ...a, letzterTag: null })).toBeNull();
+
+    const berichte = { titel: 'Freigegebene Berichte', text: '4 zitieren Messstellen dieses Orts — sie bleiben unverändert' };
+    const folgen = archivierenFolgen('bereich', a, berichte);
+    expect(folgen.at(-1)).toEqual({
+      titel: 'Freigegebene Berichte',
+      text: '4 zitieren Messstellen dieses Orts — sie bleiben unverändert.',
+    });
+    expect(folgen.slice(0, -1)).toEqual(archivierenFolgen('bereich', a));
+    expect(folgen[0].text).toBe('Berichte bis dahin bleiben, wie sie sind.');
+    expect(archivierenFolgen('bereich', a, null).map((f) => f.titel)).not.toContain('Freigegebene Berichte');
   });
 
   it('ein Gebäude nennt die leeren Bereiche, die mitgehen; der Standort sagt, dass Anlagen und Messstellen bleiben', () => {

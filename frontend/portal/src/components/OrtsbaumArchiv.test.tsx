@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { KNOPF_LOESCHEN } from '../ortArchiv';
 import {
   A7_SATZ,
@@ -114,6 +114,62 @@ describe('Ortsbaum — Archivieren, Wiederherstellen, Löschen (AP-02 IP-15)', (
     expect(archivieren).toHaveBeenCalledWith(ORT_IDS.b5);
     expect(lesen).toHaveBeenCalledTimes(2);
   });
+
+  it('Z2 · AP-12 IP-9: „Freigegebene Berichte“ steht zuletzt — gefragt ab dem Archivtag, gezählt die zitierenden Stände', async () => {
+    vi.spyOn(api, 'standortOrte').mockResolvedValue(ahrenbergA8Archivieren());
+    const betroffen = vi.spyOn(api, 'berichteBetroffen').mockResolvedValue({
+      anlass: 'zuordnung_rueckwirkend',
+      gilt_ab: '2027-06-30',
+      berichte_vorhanden: true,
+      betroffen: [],
+      zitieren: [
+        { kennung: 'BR-2026-0001', nr: 1 },
+        { kennung: 'BR-2026-0001', nr: 2 },
+        { kennung: 'BR-2026-0002', nr: 1 },
+        { kennung: 'BR-2026-0004', nr: 1 },
+      ],
+    });
+    render(<Ortsbaum standort={werkAhrenberg()} onGeaendert={vi.fn()} />);
+    fireEvent.click(within(await menue('Halle 2 Lager')).getByRole('button', { name: 'Archivieren …' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Halle 2 Lager archivieren?' });
+    const letzte = () => within(dialog).getAllByRole('listitem').at(-1);
+    await waitFor(() => expect(letzte()).toHaveTextContent('Freigegebene Berichte'));
+    expect(letzte()).toHaveTextContent('4 zitieren Messstellen dieses Orts — sie bleiben unverändert.');
+    expect(betroffen).toHaveBeenCalledTimes(1);
+    expect(betroffen).toHaveBeenCalledWith(ORT_IDS.b5, '2027-06-30', 'zuordnung_rueckwirkend');
+    // Die Sätze über alte Berichte bleiben, wie sie sind.
+    expect(dialog.textContent).toContain('Berichte bis dahin bleiben, wie sie sind.');
+    expect(dialog.textContent).toContain('Halle 2 Lager bleibt lesbar und in alten Berichten unverändert.');
+  });
+
+  for (const fall of ['ohne lesbaren Bericht', 'bei einer Ablehnung (403)'] as const) {
+    it(`Z2 · AP-12 IP-9: ${fall} hat die Folgenliste keine Berichte-Zeile — ohne Meldung`, async () => {
+      vi.spyOn(api, 'standortOrte').mockResolvedValue(ahrenbergA8Archivieren());
+      const betroffen = vi.spyOn(api, 'berichteBetroffen');
+      if (fall === 'ohne lesbaren Bericht') {
+        betroffen.mockResolvedValue({
+          anlass: 'zuordnung_rueckwirkend',
+          gilt_ab: '2027-06-30',
+          berichte_vorhanden: false,
+          betroffen: [],
+          zitieren: [],
+        });
+      } else {
+        betroffen.mockRejectedValue(new ApiError(403, 'Dafür ist Ihr Konto nicht freigeschaltet.', {}));
+      }
+      const fehler = vi.spyOn(console, 'error');
+      render(<Ortsbaum standort={werkAhrenberg()} onGeaendert={vi.fn()} />);
+      fireEvent.click(within(await menue('Halle 2 Lager')).getByRole('button', { name: 'Archivieren …' }));
+
+      const dialog = screen.getByRole('dialog', { name: 'Halle 2 Lager archivieren?' });
+      await waitFor(() => expect(betroffen).toHaveBeenCalled());
+      await act(() => new Promise<void>((fertig) => setTimeout(fertig, 0)));
+      expect(dialog.textContent).not.toContain('Freigegebene Berichte');
+      expect(within(dialog).getAllByRole('listitem').at(-1)).toHaveTextContent('Wiederherstellen jederzeit möglich');
+      expect(fehler).not.toHaveBeenCalled();
+    });
+  }
 
   it('Z3: der archivierte Bereich bleibt unter Halle 2 — ausgegraut mit „Archiviert am 30.06.2027“, mit „Wiederherstellen …“', async () => {
     vi.spyOn(api, 'standortOrte').mockResolvedValue(ahrenbergA8Archiviert());

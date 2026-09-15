@@ -124,6 +124,24 @@ async function verdrahteStandorte(page: Page) {
     gesendet.push(r.request().postDataJSON());
     return r.fulfill(json(anbau()));
   });
+  // AP-12 IP-9 · freigegebene Berichte (Ahrenberg): ab 01.01.2027 ist kein gültiger Berichtsstand betroffen;
+  // früher träfe die Fläche den Stand BR-2026-0001 Nr. 2.
+  await page.route('**/api/v1/berichte/betroffen**', (r) => {
+    const q = new URL(r.request().url()).searchParams;
+    const ab = q.get('gilt_ab') ?? '';
+    return r.fulfill(
+      json({
+        anlass: q.get('anlass'),
+        gilt_ab: ab,
+        berichte_vorhanden: true,
+        betroffen: ab < '2027-01-01' ? [{ kennung: 'BR-2026-0001', nr: 2 }] : [],
+        zitieren: [
+          { kennung: 'BR-2026-0001', nr: 1 },
+          { kennung: 'BR-2026-0001', nr: 2 },
+        ],
+      }),
+    );
+  });
   return gesendet;
 }
 
@@ -145,16 +163,43 @@ test.describe('T7 · Fläche ändern mit Verlauf (AP-02 IP-8)', () => {
       const folgen = page.getByTestId('flaeche-folgen');
       await expect(folgen).toContainText('Rückwirkend um 14 Tage');
       await expect(folgen).toContainText('Heute ist der 15.01.2027.');
-      await messeUndFotografiere(page, breite, 't7-eingabe');
+      // AP-12 IP-9: die Auskunft über freigegebene Berichte steht in der Karte vor dem Speichern.
+      const berichte = folgen.getByTestId('berichte-folgen');
+      await expect(berichte).toHaveText('Freigegebene Berichte: keine betroffen');
+      await berichte.scrollIntoViewIfNeeded();
+      await messeUndFotografiere(page, breite, 't7-eingabe', folgen);
 
       await page.getByRole('button', { name: 'Fläche speichern' }).click();
       await expect(page.getByRole('heading', { name: 'Verlauf der Fläche' })).toBeVisible();
       expect(gesendet).toEqual([{ m2: 3400, gueltigAb: '2027-01-01' }]);
       await expect(page.getByText('rückwirkend (14 Tage)')).toBeVisible();
       await expect(folgen).toContainText('Für die 14 Tage vom 01.01.2027 bis 14.01.2027 gilt die neue Fläche nachträglich.');
+      await expect(page.getByTestId('berichte-folgen')).toHaveCount(0);
       await messeUndFotografiere(page, breite, 't7-verlauf');
     });
   }
+
+  test('Halle 2: 3 400 m² ab 01.10.2026 — BR-2026-0001 Nr. 2 bekommt den Vermerk (AP-12 IP-9) — 375 px', async ({ page }) => {
+    await verdrahteStandorte(page);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/e2e/standorte.html');
+    await expect(page.getByRole('heading', { level: 1, name: 'Standorte' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Halle 2 bearbeiten', exact: true }).click();
+    await page.getByRole('button', { name: 'Fläche ändern: Halle 2' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Fläche ändern' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Neue Fläche (m²) *').fill('3400');
+    await dialog.getByRole('combobox', { name: 'Gültig ab *' }).click();
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Voriger Monat' }).click();
+    await page.getByRole('gridcell', { name: '1', exact: true }).first().click();
+    const folgen = page.getByTestId('flaeche-folgen');
+    await expect(folgen).toContainText('01.10.2026');
+    const berichte = folgen.getByTestId('berichte-folgen');
+    await expect(berichte).toHaveText('Freigegebene Berichte: BR-2026-0001 Nr. 2 bekommt den Vermerk „Revision nötig“');
+    await berichte.scrollIntoViewIfNeeded();
+    await messeUndFotografiere(page, 375, 't7-eingabe-revision', folgen);
+  });
 });
 
 const OHNE: StandorteAmStichtag = {

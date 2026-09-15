@@ -9,10 +9,12 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -128,53 +130,118 @@ public class BerichtKaskade implements BerichteNaht {
         return BerichtRegeln.betroffene(quellen, b, r -> gebunden);
     }
 
+    /**
+     * Pfad 2 (IP-9, bericht.md B1/B3): die Zeilen des Quellenverzeichnisses mit einem der aufgelösten Objekte ab
+     * {@code giltAb} — aber nur an Ständen und Entwürfen, deren Datenstand VOR dem Eintrag der Änderung liegt. Wer nach ihr
+     * gebildet wurde, trägt sie schon; ein Anstoß fragte ihn, was sich geändert habe.
+     */
+    @Override
+    public List<Bericht> betroffene(Connection con, StrukturBetroffen s) throws SQLException {
+        if (s.objekte().isEmpty()) {
+            return List.of();
+        }
+        List<BerichtRegeln.Quelle> quellen = strukturQuellen(new JdbcTemplate(new SingleConnectionDataSource(con, true)),
+                s.tenant(), s.objekte(), s.giltAb(), s.eingetragen());
+        return BerichtRegeln.betroffene(quellen, s.objekte().stream().map(UUID::toString).toList(), s.giltAb());
+    }
+
+    /**
+     * Die Zeilen von {@code bericht_quelle} mit einem dieser Objekte, deren letzter Tag {@code giltAb} oder später ist — das
+     * Objekt der Regel ist die ID ({@code objekt_id}), nie ein heutiges Kennzeichen. {@code kenntNichtVor} nicht
+     * {@code null}: nur Stände und Entwürfe mit einem Datenstand davor. Mandant ausdrücklich (Verwaltungsrolle ohne RLS);
+     * die Route liest dasselbe über die App-Rolle.
+     */
+    static List<BerichtRegeln.Quelle> strukturQuellen(JdbcTemplate j, UUID tenant, Collection<UUID> objekte,
+            LocalDate giltAb, Instant kenntNichtVor) {
+        String sql = """
+                SELECT b.kennung, q.stand_nr, s.ersetzt_durch_nr IS NOT NULL AS ersetzt, q.objekt_id::text AS objekt, q.bezug,
+                       q.erster_tag, q.letzter_tag
+                  FROM bericht_quelle q
+                  JOIN bericht b ON b.id = q.bericht_id AND b.tenant_id = q.tenant_id
+                  LEFT JOIN bericht_stand s ON s.tenant_id = q.tenant_id AND s.bericht_id = q.bericht_id
+                       AND s.nr = q.stand_nr
+                  LEFT JOIN bericht_entwurf e ON e.tenant_id = q.tenant_id AND e.bericht_id = q.bericht_id
+                 WHERE q.tenant_id = ? AND q.objekt_id = ANY (?::uuid[]) AND q.letzter_tag >= ?
+                """ + (kenntNichtVor == null ? "" : """
+                   AND (CASE WHEN q.stand_nr IS NULL THEN e.datenstand ELSE s.datenstand END) < ?
+                """) + " ORDER BY b.kennung, q.stand_nr NULLS LAST, 4, q.bezug";
+        List<Object> args = new ArrayList<>(List.of(tenant, objekte.stream().map(UUID::toString).toArray(String[]::new),
+                java.sql.Date.valueOf(giltAb)));
+        if (kenntNichtVor != null) {
+            args.add(Timestamp.from(kenntNichtVor));
+        }
+        return j.query(sql, (rs, i) -> new BerichtRegeln.Quelle(rs.getString("kennung"), (Integer) rs.getObject("stand_nr"),
+                rs.getBoolean("ersetzt"), rs.getString("objekt"), rs.getString("bezug"),
+                rs.getObject("erster_tag", LocalDate.class), rs.getObject("letzter_tag", LocalDate.class)), args.toArray());
+    }
+
     @Override
     public void entwurfNeuBilden(Connection con, Bericht bericht, KorrekturKaskade.Betroffen b) throws SQLException {
+        neuBilden(con, b.tenant(), bericht.kennung(), b.jetzt(), b.anlass(), b.fassung() + ":" + b.status());
+    }
+
+    @Override
+    public void entwurfNeuBilden(Connection con, Bericht bericht, StrukturBetroffen s) throws SQLException {
+        neuBilden(con, s.tenant(), bericht.kennung(), s.jetzt(), s.anlass(), s.anstossArt());
+    }
+
+    private void neuBilden(Connection con, UUID tenant, String kennung, Instant jetzt, String anlass, String zusatz)
+            throws SQLException {
         UUID id;
         // Die Sperre der Neubildung beim Abruf (D4): erst der Entwurf, dann lesen und schreiben — wer gleichzeitig neu
         // bildet, wartet und findet danach den Datenstand der Kaskade.
         try (PreparedStatement ps = con.prepareStatement("SELECT e.bericht_id FROM bericht_entwurf e JOIN bericht b "
                 + "ON b.id = e.bericht_id AND b.tenant_id = e.tenant_id WHERE e.tenant_id = ? AND b.kennung = ? "
                 + "FOR UPDATE OF e")) {
-            ps.setObject(1, b.tenant());
-            ps.setString(2, bericht.kennung());
+            ps.setObject(1, tenant);
+            ps.setString(2, kennung);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
-                    throw new IllegalStateException("UEMS Bericht-Kaskade: " + bericht.kennung() + " hat keinen Entwurf");
+                    throw new IllegalStateException("UEMS Bericht-Kaskade: " + kennung + " hat keinen Entwurf");
                 }
                 id = rs.getObject(1, UUID.class);
             }
         }
-        BerichtAbzugBildung.Ergebnis e = bildung.bilden(con, id, datenstand(con, b), GEBILDET_VON);
-        ObjectNode m = meldung(NEU_GEBILDET, b.tenant() + ":" + bericht.kennung() + ":" + e.datenstand() + ":"
-                + b.anlass() + ":" + b.fassung() + ":" + b.status(), e.datenstand(), bericht.kennung());
+        BerichtAbzugBildung.Ergebnis e = bildung.bilden(con, id, datenstand(con, jetzt, anlass), GEBILDET_VON);
+        ObjectNode m = meldung(NEU_GEBILDET, tenant + ":" + kennung + ":" + e.datenstand() + ":" + anlass + ":" + zusatz,
+                e.datenstand(), kennung);
         m.put("datenstand", e.datenstand().toString());
-        m.put("anlass_kennung", b.anlass());
-        melden(con, b.tenant(), m, e.datenstand());
+        m.put("anlass_kennung", anlass);
+        melden(con, tenant, m, e.datenstand());
     }
 
     @Override
     public void revisionAusloesen(Connection con, Bericht bericht, KorrekturKaskade.Betroffen b) throws SQLException {
+        anstossen(con, b.tenant(), bericht.kennung(), BerichtRegeln.anstossArt(b), b.jetzt(), b.anlass(), b.fassung(),
+                b.status());
+    }
+
+    /** Pfad 2: derselbe Anstoß — die Art aus der Regel {@code struktur}, ohne Fassung und Status (B7 über die Kennung). */
+    @Override
+    public void revisionAusloesen(Connection con, Bericht bericht, StrukturBetroffen s) throws SQLException {
+        anstossen(con, s.tenant(), bericht.kennung(), s.anstossArt(), s.jetzt(), s.anlass(), null, null);
+    }
+
+    private void anstossen(Connection con, UUID tenant, String kennung, String art, Instant jetzt, String anlass,
+            Integer fassung, String status) throws SQLException {
         UUID stand;
         int nr;
         try (PreparedStatement ps = con.prepareStatement("SELECT s.id, s.nr FROM bericht_stand s JOIN bericht b "
                 + "ON b.id = s.bericht_id AND b.tenant_id = s.tenant_id WHERE s.tenant_id = ? AND b.kennung = ? "
                 + "AND s.ersetzt_durch_nr IS NULL ORDER BY s.nr DESC LIMIT 1")) {
-            ps.setObject(1, b.tenant());
-            ps.setString(2, bericht.kennung());
+            ps.setObject(1, tenant);
+            ps.setString(2, kennung);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
-                    throw new IllegalStateException("UEMS Bericht-Kaskade: " + bericht.kennung()
-                            + " hat keinen gültigen Berichtsstand");
+                    throw new IllegalStateException("UEMS Bericht-Kaskade: " + kennung + " hat keinen gültigen Berichtsstand");
                 }
                 stand = rs.getObject(1, UUID.class);
                 nr = rs.getInt(2);
             }
         }
-        String art = BerichtRegeln.anstossArt(b);
-        Instant zeitpunkt = datenstand(con, b);
-        String schluessel = b.tenant() + ":" + stand + ":" + art + ":" + b.anlass() + ":" + b.fassung() + ":" + b.status();
-        ObjectNode m = meldung(ANGESTOSSEN, schluessel, zeitpunkt, bericht.kennung());
+        Instant zeitpunkt = datenstand(con, jetzt, anlass);
+        String schluessel = tenant + ":" + stand + ":" + art + ":" + anlass + ":" + fassung + ":" + status;
+        ObjectNode m = meldung(ANGESTOSSEN, schluessel, zeitpunkt, kennung);
         boolean neu;
         try (PreparedStatement ps = con.prepareStatement("""
                 INSERT INTO bericht_revision_anstoss (tenant_id, stand_id, art, anlass_kennung, anlass_fassung,
@@ -182,12 +249,12 @@ public class BerichtKaskade implements BerichteNaht {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT ON CONSTRAINT bericht_revision_anstoss_einmal DO NOTHING
                 """)) {
-            ps.setObject(1, b.tenant());
+            ps.setObject(1, tenant);
             ps.setObject(2, stand);
             ps.setString(3, art);
-            ps.setString(4, b.anlass());
-            ps.setInt(5, b.fassung());
-            ps.setString(6, b.status());
+            ps.setString(4, anlass);
+            ps.setObject(5, fassung, Types.INTEGER);
+            ps.setString(6, status);
             ps.setObject(7, UUID.fromString(m.get("ereignis_id").asText()));
             ps.setTimestamp(8, Timestamp.from(zeitpunkt));
             neu = ps.executeUpdate() == 1;
@@ -197,11 +264,13 @@ public class BerichtKaskade implements BerichteNaht {
         }
         m.put("nr", nr);
         m.put("anstoss_art", art);
-        m.put("anlass_kennung", b.anlass());
-        m.put("anlass_fassung", b.fassung());
-        melden(con, b.tenant(), m, zeitpunkt);
-        log.info("UEMS Bericht-Kaskade {} (Fassung {}): Revision nötig für {} Nr. {} ({})", b.anlass(), b.fassung(),
-                bericht.kennung(), nr, art);
+        m.put("anlass_kennung", anlass);
+        if (fassung != null) {
+            m.put("anlass_fassung", fassung);
+        }
+        melden(con, tenant, m, zeitpunkt);
+        log.info("UEMS Bericht-Kaskade {} (Fassung {}): Revision nötig für {} Nr. {} ({})", anlass, fassung, kennung, nr,
+                art);
     }
 
     /**
@@ -211,8 +280,13 @@ public class BerichtKaskade implements BerichteNaht {
      * zurück. Darum die spätere von {@code jetzt} und der Uhr der Datenbank, auf die nächste volle Sekunde.
      */
     static Instant datenstand(Connection con, KorrekturKaskade.Betroffen b) throws SQLException {
-        if (b.jetzt() == null) {
-            throw new IllegalStateException("UEMS Bericht-Kaskade: " + b.anlass() + " ohne Zeitpunkt des Laufs");
+        return datenstand(con, b.jetzt(), b.anlass());
+    }
+
+    /** Dieselbe Regel für Pfad 2: {@code jetzt} ist der Zeitpunkt des Strukturänderungs-Laufs. */
+    static Instant datenstand(Connection con, Instant jetzt, String anlass) throws SQLException {
+        if (jetzt == null) {
+            throw new IllegalStateException("UEMS Bericht-Kaskade: " + anlass + " ohne Zeitpunkt des Laufs");
         }
         Instant uhr;
         try (PreparedStatement ps = con.prepareStatement("SELECT clock_timestamp()");
@@ -220,7 +294,7 @@ public class BerichtKaskade implements BerichteNaht {
             rs.next();
             uhr = rs.getTimestamp(1).toInstant();
         }
-        return aufDieSekunde(uhr.isAfter(b.jetzt()) ? uhr : b.jetzt());
+        return aufDieSekunde(uhr.isAfter(jetzt) ? uhr : jetzt);
     }
 
     static Instant aufDieSekunde(Instant t) {

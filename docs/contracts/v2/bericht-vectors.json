@@ -199,6 +199,10 @@
     "zeit_mit_zone": "{zeitpunkt} ({zone})",
     "anlass_korrektur": "Korrektur {kennung}",
     "anlass_ersatzwert": "Ersatzwert {kennung}",
+    "anlass_zuordnung_rueckwirkend": "Zuordnung {objekt} geändert, gilt ab {ab}, eingetragen {am}",
+    "anlass_anlage_umzug_rueckwirkend": "Anlage {objekt} umgezogen, gilt ab {ab}, eingetragen {am}",
+    "anlass_flaeche_rueckwirkend": "Fläche {objekt} geändert, gilt ab {ab}, eingetragen {am}",
+    "anlass_verteilung_rueckwirkend": "Verteilung {objekt} berichtigt, gilt ab {ab}, eingetragen {am}",
     "ueber_formel": "{anlass} (über die Formel)",
     "ueber_kennzahl": "{anlass} (über die Kennzahl)",
     "csv_geltung_standort": "Standort {kennzeichen} {name}",
@@ -4212,6 +4216,24 @@
             "anlass": "Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026"
           },
           "ergebnis": {"text": "Revision nötig — Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026"}
+        },
+        {
+          "regel": "anlass",
+          "name": "Pfad 2 (IP-9): die Kennung der Strukturänderung spricht den Anlass — Verteilung MS-07",
+          "eingang": {"kennung": "verteilung_rueckwirkend/MS-07/2026-10-01/2026-11-20/messstelle_aenderung-4711"},
+          "ergebnis": {"text": "Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026"}
+        },
+        {
+          "regel": "anlass",
+          "name": "Pfad 2 (IP-9): rückwirkende Fläche Halle 2 (B9) — dieselbe Form",
+          "eingang": {"kennung": "flaeche_rueckwirkend/G-2/2027-01-01/2027-01-15/ort_aenderung-812"},
+          "ergebnis": {"text": "Fläche G-2 geändert, gilt ab 01.01.2027, eingetragen 15.01.2027"}
+        },
+        {
+          "regel": "anlass",
+          "name": "Pfad 2 (IP-9): ohne Kennzeichen (eine Anlage hat keins) entfällt es im Satz",
+          "eingang": {"kennung": "anlage_umzug_rueckwirkend//2026-10-01/2026-11-20/ort_aenderung-900"},
+          "ergebnis": {"text": "Anlage umgezogen, gilt ab 01.10.2026, eingetragen 20.11.2026"}
         },
         {
           "regel": "anzeige",

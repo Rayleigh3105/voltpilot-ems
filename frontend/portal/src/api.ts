@@ -2698,6 +2698,31 @@ export interface BerichtDetail {
 /** Ein Abzug: `docs/contracts/v2/bericht.schema.json` `$defs/abzug` — gelesen über `uemsBericht.ts`. */
 export type BerichtAbzug = Record<string, unknown>;
 
+/** Die Strukturänderung, nach deren Folgen für freigegebene Berichte `GET /api/v1/berichte/betroffen` fragt (AP-12 IP-9). */
+export type BerichtStrukturAnlass =
+  | 'flaeche_rueckwirkend'
+  | 'zuordnung_rueckwirkend'
+  | 'anlage_umzug_rueckwirkend'
+  | 'verteilung_rueckwirkend';
+
+/** Ein Berichtsstand, genannt über die Kennung des Berichts und seine Nr. */
+export interface BerichtStandRef {
+  kennung: string;
+  nr: number;
+}
+
+/** `GET /api/v1/berichte/betroffen` — welche freigegebenen Berichtsstände eine Strukturänderung träfe (AP-12 IP-9). */
+export interface BerichteBetroffen {
+  anlass: BerichtStrukturAnlass;
+  gilt_ab: string;
+  /** Es gibt im Unternehmen mindestens einen Bericht, den die Person lesen darf. */
+  berichte_vorhanden: boolean;
+  /** Gültige (nicht ersetzte) Berichtsstände, die mit Wirkung ab `gilt_ab` einen Revisions-Anstoß bekämen. */
+  betroffen: BerichtStandRef[];
+  /** Alle freigegebenen Berichtsstände (auch ersetzte), die eine Quelle des Objekts zitieren — ohne Zeitschnitt. */
+  zitieren: BerichtStandRef[];
+}
+
 /** `GET …/entwurf` nach der D4-Prüfung; `neu_gebildet` = dieser Abruf hat ihn neu gebildet. */
 export interface BerichtEntwurf {
   kennung: string;
@@ -7566,4 +7591,12 @@ export const api = {
     }),
   berichtArchivieren: (kennung: string) =>
     request<Bericht>(`/api/v1/berichte/${kennung}/archivieren`, { method: 'POST' }),
+  /**
+   * Welche freigegebenen Berichtsstände eine Strukturänderung an `objekt` mit Wirkung ab `giltAb` träfe
+   * (AP-12 IP-9). 403, wenn die Person keinen Bericht lesen darf — die Folgen-Karten zeigen dann nichts.
+   */
+  berichteBetroffen: (objekt: string, giltAb: string, anlass: BerichtStrukturAnlass) =>
+    request<BerichteBetroffen>(
+      `/api/v1/berichte/betroffen?${new URLSearchParams({ objekt, gilt_ab: giltAb, anlass }).toString()}`,
+    ),
 };

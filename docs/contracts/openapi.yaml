@@ -9968,6 +9968,39 @@ paths:
         "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "409": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "422": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/betroffen:
+    get:
+      tags: [berichte]
+      summary: Die Zeile „Freigegebene Berichte …“ einer Folgen-Karte - wen eine Strukturänderung ab gilt_ab träfe.
+      description: >
+        Recht je Bericht: `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht; genannt werden nur Stände, die die Person lesen darf; darf sie nirgends einen
+        Bericht lesen, 403 `recht_fehlt`. Für die Folgen-Karten „Fläche ändern“ (anlass flaeche_rueckwirkend,
+        objekt = Gebäude, Bereich oder Standort), „Anlage zuordnen“ (anlage_umzug_rueckwirkend, objekt = Anlage)
+        und „Archivieren“ (zuordnung_rueckwirkend, objekt = Ort oder Standort, gilt_ab = Archivtag). Dieselbe
+        Auflösung wie der Strukturänderungs-Läufer (uems/StrukturAufloesung, bericht.md §7 B3) - ohne
+        Protokollzeile und ohne Datenstand-Schranke, weil die Änderung noch nicht geschrieben ist. `betroffen`:
+        die gültigen Stände, die den Vermerk „Revision nötig“ bekämen; `zitieren`: jeder Stand (auch ersetzte),
+        der eine Quelle des Objekts zitiert (B12); `berichte_vorhanden`: die Person liest hier mindestens einen
+        Bericht (sonst beide Listen leer). Reihenfolge: Felder (400 `anfrage_ungueltig` mit `feld`) → Recht (403)
+        → Objekt des Kundenbereichs, passend zur Art (404 `nicht_gefunden`). Schreibt nichts. UEMS AP-12 IP-9.
+      parameters:
+        - { name: objekt, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: gilt_ab, in: query, required: true, schema: { type: string, format: date } }
+        - name: anlass
+          in: query
+          required: true
+          schema: { type: string, enum: [zuordnung_rueckwirkend, anlage_umzug_rueckwirkend, flaeche_rueckwirkend, verteilung_rueckwirkend] }
+      responses:
+        "200":
+          description: Die betroffenen und die zitierenden Stände.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichteBetroffen" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
   /api/v1/berichte/{kennung}:
     parameters:
       - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
@@ -22038,6 +22071,24 @@ components:
       required: [berichte]
       properties:
         berichte: { type: array, items: { $ref: "#/components/schemas/Bericht" } }
+    BerichtStandRef:
+      type: object
+      description: Ein Berichtsstand in einer Folgen-Karte - „BR-2026-0001 Nr. 2“.
+      required: [kennung, nr]
+      properties:
+        kennung: { type: string, example: BR-2026-0001 }
+        nr: { type: integer, minimum: 1 }
+    BerichteBetroffen:
+      type: object
+      description: >
+        GET /api/v1/berichte/betroffen (AP-12 IP-9): die Zeile „Freigegebene Berichte: …“ der Folgen-Karten.
+      required: [anlass, gilt_ab, berichte_vorhanden, betroffen, zitieren]
+      properties:
+        anlass: { type: string, enum: [zuordnung_rueckwirkend, anlage_umzug_rueckwirkend, flaeche_rueckwirkend, verteilung_rueckwirkend] }
+        gilt_ab: { type: string, format: date }
+        berichte_vorhanden: { type: boolean }
+        betroffen: { type: array, items: { $ref: "#/components/schemas/BerichtStandRef" } }
+        zitieren: { type: array, items: { $ref: "#/components/schemas/BerichtStandRef" } }
     BerichtStandKurz:
       type: object
       description: >

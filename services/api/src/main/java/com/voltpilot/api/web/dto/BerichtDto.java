@@ -41,6 +41,18 @@ public final class BerichtDto {
     /** {@code GET /api/v1/berichte}: die Berichte, die die Person lesen darf — archivierte nicht (V4). */
     public record Liste(List<Bericht> berichte) {}
 
+    /** Ein Berichtsstand in einer Folgen-Karte: „BR-2026-0001 Nr. 2“. */
+    public record StandRef(String kennung, int nr) {}
+
+    /**
+     * {@code GET /api/v1/berichte/betroffen} (AP-12 IP-9): die Zeile „Freigegebene Berichte: …“ der Folgen-Karten —
+     * {@code betroffen} bekäme den Vermerk „Revision nötig“, {@code zitieren} nennt jeden Stand, der eine Quelle des Objekts
+     * zitiert (B12); {@code berichte_vorhanden} = die Person liest hier mindestens einen Bericht.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Betroffen(String anlass, String giltAb, boolean berichteVorhanden, List<StandRef> betroffen,
+            List<StandRef> zitieren) {}
+
     /** Ein Berichtsstand im Verlauf — ohne Abzug. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record StandKurz(int nr, OffsetDateTime datenstand, OffsetDateTime freigegebenAm, Person freigegebenVon,

@@ -190,6 +190,6 @@ class KorrekturKaskadeWiringTest {
     /** Mit dem Flag aus kennt die Naht keinen Bericht — und die Grenze steht in der Kaskade, nicht in ihr. */
     @Test
     void dieLeereNahtKenntKeinenBericht() throws Exception {
-        assertThat(new BerichteNaht.Keine().betroffene(null, null)).isEmpty();
+        assertThat(new BerichteNaht.Keine().betroffene(null, (KorrekturKaskade.Betroffen) null)).isEmpty();
     }
 }
