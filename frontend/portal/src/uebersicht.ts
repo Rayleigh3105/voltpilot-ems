@@ -80,6 +80,33 @@ export function steuerndeAnlagen(funktionen: Funktionen | null): Set<string> | n
   return out;
 }
 
+/** Teilnahme-Zustände, die schweigen: keine Teilnahme oder eine beendete. */
+const STEUERN_STILL: ReadonlySet<FunktionZustand> = new Set<FunktionZustand>(['kein_objekt', 'archiviert']);
+
+/**
+ * DIE STEUERN-REGEL (Captain über firstmate 003/004, 15.09.2026: „Von steuern
+ * soll beim messen eigentlich noch nicht die rede sein."): ein Standort spricht
+ * von „Steuern & Optimieren", sobald mindestens EINE seiner Anlagen teilnimmt —
+ * die Ebene ist die Anlage. Ein Standort, an dem keine teilnimmt, schweigt ganz:
+ * keine Zeile „Noch nicht eingerichtet", kein Schritt „einrichten".
+ *
+ * Teilnehmen heißt: im Entwurf, eingerichtet, angehalten oder aktiv — jeder
+ * dieser Zustände entsteht erst auf den Anstoß des Kunden. Nur `kein_objekt`
+ * und `archiviert` schweigen. Eine angehaltene oder noch nicht gestartete
+ * Teilnahme zu verschweigen, nähme ihm den Weg zurück; kollidieren Schweigen und
+ * Erreichbarkeit, gewinnt die Erreichbarkeit („Okay ich will aber schon das
+ * Messkunden auch zu Kunden werden wo man verbraucher steuern kann.").
+ *
+ * ⚠ Gezählt wird an den Anlagen, die `GET /funktionen` unter DIESEM Standort
+ * nennt — dieselbe Quelle wie die Zeile, die dann erscheint; so steht nie eine
+ * Steuern-Zeile ohne Teilnahme da. „reine Messung" in Kopfzeile und
+ * Standort-Zahlen bleibt ({@link steuertTeil}): das Wort benennt, was der Kunde
+ * ist, nicht was ihm fehlt.
+ */
+export function steuernSpricht(fs: FunktionStandort): boolean {
+  return fs.steuern.anlagen.some((a) => !STEUERN_STILL.has(a.teilnahme.zustand));
+}
+
 /**
  * DIE GELD-REGEL als Fakt je Anlage (AP-01 §4.6, Captain-Vorgabe 10.09.2026:
  * „Die Messdatenkunden brauchen keine Geldanzeige.").
@@ -150,8 +177,9 @@ export function kopfzeile(i: {
     if (steuert) teile.push(steuert);
   }
   // Am Standort nennt der Standort-Kopf (AP-02) die Zahl der Anlagen, und die
-  // Zeile „Steuern & Optimieren" direkt darunter sagt, wer steuert — eine eigene
-  // Zeile „reine Messung" stünde dort ein zweites Mal.
+  // Zeile „Steuern & Optimieren" darunter sagt, wer steuert. Nimmt dort keine
+  // Anlage teil, fehlt die Zeile ({@link steuernSpricht}) — der Standort schweigt
+  // dann über Steuern ganz, auch ohne „reine Messung".
 
   let datenlage: Kopfzeile['datenlage'] = null;
   if (sites.length > 0) {
@@ -209,13 +237,21 @@ function satzVon(funktion: FunktionCode, zustand: FunktionZustand, text: string)
 }
 
 /**
- * Beide Funktionen eines Standorts, IMMER beide und immer in dieser Reihenfolge
- * (E6 = C). Die Messen-Zeile trägt, sobald die Funktion angelegt ist, die
- * Datenlage ihrer Messstellen („13 von 13 Messstellen liefern Daten").
+ * Die Funktionen eines Standorts, immer in dieser Reihenfolge: „Messen &
+ * Auswerten" IMMER — auch „Noch nicht eingerichtet" ist ein benannter Zustand,
+ * nie eine Leerstelle —, „Steuern & Optimieren" NUR, wenn eine Anlage des
+ * Standorts teilnimmt ({@link steuernSpricht}).
+ *
+ * ⚠ Das löst die Zusage „immer beide, nie eine Leerstelle" aus PR 771 (E6 = C)
+ * BEWUSST ab: an einem Standort, an dem nur gemessen wird, war die Zeile
+ * „Steuern & Optimieren · Noch nicht eingerichtet" genau das Aufdrängen, das der
+ * Captain ausgeschlossen hat. Die Messen-Zeile trägt, sobald die Funktion
+ * angelegt ist, die Datenlage ihrer Messstellen („13 von 13 Messstellen liefern
+ * Daten").
  */
 export function funktionsZeilen(fs: FunktionStandort): FunktionsZeile[] {
   const messenSatz = satzVon('messen', fs.messen.zustand, fs.messen.text);
-  return [
+  const zeilen: FunktionsZeile[] = [
     {
       funktion: 'messen',
       label: FUNKTIONEN.messen,
@@ -223,14 +259,17 @@ export function funktionsZeilen(fs: FunktionStandort): FunktionsZeile[] {
       satz: fs.messen.datenlage ? `${messenSatz} · ${fs.messen.datenlage}` : messenSatz,
       ton: TON[fs.messen.zustand],
     },
-    {
+  ];
+  if (steuernSpricht(fs)) {
+    zeilen.push({
       funktion: 'steuern',
       label: FUNKTIONEN.steuern,
       zustand: fs.steuern.zustand,
       satz: satzVon('steuern', fs.steuern.zustand, fs.steuern.text),
       ton: TON[fs.steuern.zustand],
-    },
-  ];
+    });
+  }
+  return zeilen;
 }
 
 /** Der Satz, wenn die Funktionen gerade nicht abrufbar sind — eine Aussage statt einer Lücke. */
@@ -263,8 +302,10 @@ export interface StandortGruppe {
   zahlen: string;
   ton: Ton;
   /**
-   * Beide Funktionen; `null` = nicht abrufbar. Die Gruppe ohne Standort trägt
-   * keine Funktion (sie gelten je Standort) und sagt das in {@link OHNE_STANDORT_SATZ}.
+   * Die Funktionen des Standorts ({@link funktionsZeilen}: Messen immer, Steuern
+   * nur mit teilnehmender Anlage); `null` = nicht abrufbar. Die Gruppe ohne
+   * Standort trägt keine Funktion (sie gelten je Standort) und sagt das in
+   * {@link OHNE_STANDORT_SATZ}.
    */
   funktionen: FunktionsZeile[] | null;
   zeilen: AnlagenZeile[];
@@ -376,7 +417,10 @@ function naechsterSchritt(funktion: FunktionCode, fs: FunktionStandort): string 
   if (funktion === 'messen') {
     return fs.messen.zustand === 'kein_objekt' ? `${FUNKTIONEN.messen} für ${fs.name} einrichten` : null;
   }
-  if (fs.steuern.zustand === 'kein_objekt') return `${FUNKTIONEN.steuern} für ${fs.name} einrichten`;
+  // Kein „Steuern & Optimieren für … einrichten" mehr: ein Standort ohne
+  // teilnehmende Anlage schweigt ({@link steuernSpricht}) und steht gar nicht in
+  // der Karte. Wo eine teilnimmt, spricht der Standort — dort heißt der Schritt
+  // für die übrigen Anlagen „aufnehmen".
   const offen = fs.steuern.anlagen.filter((a) => a.teilnahme.zustand === 'kein_objekt').map((a) => a.name);
   return offen.length > 0 ? `${undListe(offen)} aufnehmen` : null;
 }
@@ -385,6 +429,10 @@ function naechsterSchritt(funktion: FunktionCode, fs: FunktionStandort): string 
  * Die Karte „Funktionen" (AP-01 E5 = A, E6 = C): je Funktion, je Standort der
  * Ebene der Zustand und der nächste Schritt. `null` = die Funktionen sind nicht
  * abrufbar — die Karte sagt das, statt leer zu stehen.
+ *
+ * „Steuern & Optimieren" nennt nur die Standorte, an denen eine Anlage
+ * teilnimmt ({@link steuernSpricht}); gibt es keinen, entfällt der Abschnitt
+ * ganz — samt „Läuft an 0 von 2 Standorten".
  */
 export function funktionenKarte(
   ebene: UebersichtEbene,
@@ -395,26 +443,30 @@ export function funktionenKarte(
     .map((st) => funktionen.standorte.find((f) => f.id === st.id))
     .filter((f): f is FunktionStandort => f != null);
   const imUnternehmen = ebene.art === 'unternehmen';
-  return (['messen', 'steuern'] as const).map((funktion) => {
+  return (['messen', 'steuern'] as const).flatMap((funktion) => {
+    const hier = funktion === 'steuern' ? standorte.filter(steuernSpricht) : standorte;
+    if (funktion === 'steuern' && hier.length === 0) return [];
     const label = FUNKTIONEN[funktion];
     const text = funktionen.unternehmen[funktion].text;
     const rest = text?.startsWith(`${label} `) ? text.slice(label.length + 1) : text;
-    return {
-      funktion,
-      label,
-      verbreitung: imUnternehmen && rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : null,
-      zeilen: standorte.map((fs) => {
-        const z = funktionsZeilen(fs).find((x) => x.funktion === funktion)!;
-        return {
-          standortId: fs.id,
-          name: imUnternehmen ? fs.name : null,
-          zustand: z.zustand,
-          satz: z.satz,
-          ton: z.ton,
-          schritt: naechsterSchritt(funktion, fs),
-        };
-      }),
-    };
+    return [
+      {
+        funktion,
+        label,
+        verbreitung: imUnternehmen && rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : null,
+        zeilen: hier.map((fs) => {
+          const z = funktionsZeilen(fs).find((x) => x.funktion === funktion)!;
+          return {
+            standortId: fs.id,
+            name: imUnternehmen ? fs.name : null,
+            zustand: z.zustand,
+            satz: z.satz,
+            ton: z.ton,
+            schritt: naechsterSchritt(funktion, fs),
+          };
+        }),
+      },
+    ];
   });
 }
 

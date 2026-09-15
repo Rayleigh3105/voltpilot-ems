@@ -164,7 +164,7 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     expect(within(leiste).getByText('PV jetzt')).toBeTruthy();
   });
 
-  it('die Anlagen-Tabelle ist nach Standorten gruppiert, jede Karte zeigt BEIDE Funktionen', async () => {
+  it('die Anlagen-Tabelle ist nach Standorten gruppiert, jede Karte zeigt Messen — Steuern nur, wo eine Anlage steuert', async () => {
     mocks({ overview: ahrenbergOverview() });
     const onNavigate = renderUnternehmen();
     await waitFor(() => expect(screen.getAllByTestId('standort-gruppe')).toHaveLength(2));
@@ -177,10 +177,9 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
 
     expect(within(lindach).getByText('1 Anlage · reine Messung · 1 von 1 Anlage liefert Daten')).toBeTruthy();
     const zustaende = [...lindach.querySelectorAll('li')].map((li) => li.textContent);
-    expect(zustaende).toEqual([
-      'Messen & AuswertenEingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten',
-      'Steuern & OptimierenNoch nicht eingerichtet',
-    ]);
+    // Steuern-Regel: an Werk Lindach steuert keine Anlage — keine Zeile „Noch nicht eingerichtet“ (löst PR 771 ab).
+    expect(zustaende).toEqual(['Messen & AuswertenEingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten']);
+    expect(lindach.textContent).not.toMatch(/steuer/i);
 
     // Die Anlagen stehen unter IHREM Standort: jede Gruppe ist ein eigener Zeilen-Block.
     const bloecke = [...document.querySelectorAll('tbody')];
@@ -211,7 +210,7 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
 });
 
 describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
-  it('Werk Lindach: nur seine Anlage, nur ihre Zahlen, beide Funktionen unter der Kopfzeile', async () => {
+  it('Werk Lindach: nur seine Anlage, nur ihre Zahlen, nur Messen unter der Kopfzeile', async () => {
     mocks({ overview: ahrenbergOverview() });
     render(
       <StandortUebersichtPage standort={werkLindach()} sites={SITES} onNavigate={() => {}} onReload={() => {}} betriebsart="endkunde" />,
@@ -222,7 +221,9 @@ describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
     expect(screen.queryByRole('button', { name: /Anlage Werk Ahrenberg/ })).toBeNull();
     expect(screen.getByText('1 von 1 Anlage liefert Daten')).toBeTruthy();
     // Unter der Kopfzeile — dieselben Sätze stehen seit IP-8 auch in der Karte „Funktionen".
-    await waitFor(() => expect(within(funktionenImKopf()).getByText('Noch nicht eingerichtet')).toBeTruthy());
+    await waitFor(() =>
+      expect(within(funktionenImKopf()).getByText('Eingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten')).toBeTruthy(),
+    );
     // Eine Seite, ein Standort — keine Standort-Gruppen darüber.
     expect(screen.queryByTestId('standort-gruppe')).toBeNull();
   });
@@ -264,7 +265,9 @@ describe('A13 · Geld-Regel: ein Messkunde sieht NIRGENDS eine Geldzahl', () => 
     );
     const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
     await waitFor(() => expect(within(leiste).getByText('Netzbezug jetzt')).toBeTruthy());
-    await waitFor(() => expect(within(funktionenImKopf()).getByText('Noch nicht eingerichtet')).toBeTruthy());
+    await waitFor(() =>
+      expect(within(funktionenImKopf()).getByText('Eingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten')).toBeTruthy(),
+    );
     // Erst wenn auch das Geld des Servers angekommen ist, ist das Nicht-Zeigen ein Beweis.
     await waitFor(() => expect(api.earnings).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
@@ -327,7 +330,9 @@ describe('AP-01 IP-8 · die Karte „Funktionen" und der Leerzustand der Standor
     expect(within(karte).getByRole('heading', { level: 2, name: 'Funktionen' })).toBeTruthy();
     expect(within(karte).getByText('Läuft an 2 von 2 Standorten')).toBeTruthy();
     expect(within(karte).getByText('Läuft an 1 von 2 Standorten')).toBeTruthy();
-    expect(within(karte).getByText('Steuern & Optimieren für Werk Lindach einrichten')).toBeTruthy();
+    // Steuern-Regel: Werk Lindach steht nicht im Abschnitt „Steuern & Optimieren“ — kein „einrichten“.
+    expect(within(karte).queryByText(/Werk Lindach einrichten/)).toBeNull();
+    expect(karte.querySelector('[data-funktion="steuern"]')?.textContent).not.toContain('Werk Lindach');
     expect(within(karte).queryAllByRole('button')).toHaveLength(0);
     expect(within(karte).queryAllByRole('link')).toHaveLength(0);
   });
@@ -379,5 +384,59 @@ describe('AP-01 IP-8 · die Karte „Funktionen" und der Leerzustand der Standor
     );
     await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
     expect(screen.queryByTestId('funktionen-karte')).toBeNull();
+  });
+});
+
+/**
+ * Steuern-Regel je Ebene (Captain über firstmate 003/004, 15.09.2026: „Von
+ * steuern soll beim messen eigentlich noch nicht die rede sein."): ein Standort
+ * spricht von Steuern, sobald eine seiner Anlagen teilnimmt; einer, an dem keine
+ * teilnimmt, schweigt ganz. Das Wort „reine Messung" bleibt. (Die Anlage Halle 2,
+ * die auf ihrer eigenen Steuerungsseite schweigt: `pages/SteuerungSection.test.tsx`.)
+ */
+describe('Steuern-Regel · je Ebene am Referenzunternehmen Ahrenberg', () => {
+  it('Werk Lindach (keine Anlage steuert): die Standort-Übersicht zeigt NIRGENDS ein Wort über Steuern', async () => {
+    mocks({ overview: ahrenbergOverview() });
+    const { container } = render(
+      <StandortUebersichtPage standort={werkLindach()} sites={SITES} onNavigate={() => {}} onReload={() => {}} betriebsart="endkunde" />,
+    );
+    const karte = await screen.findByTestId('funktionen-karte');
+    await waitFor(() =>
+      expect(within(karte).getByText('Eingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten')).toBeTruthy(),
+    );
+    expect(karte.querySelector('[data-funktion="steuern"]')).toBeNull();
+    expect(container.textContent).not.toMatch(/steuer/i);
+  });
+
+  it('Werk Ahrenberg spricht, weil Halle 1 steuert — Kopf und Karte nennen „Steuern & Optimieren“', async () => {
+    const overview = ahrenbergOverview();
+    overview.sites = overview.sites.filter((s) => s.id !== an3);
+    mocks({ overview });
+    render(
+      <StandortUebersichtPage standort={werkAhrenberg()} sites={SITES.slice(0, 2)} onNavigate={() => {}} onReload={() => {}} betriebsart="endkunde" />,
+    );
+    const karte = await screen.findByTestId('funktionen-karte');
+    await waitFor(() => expect(within(karte).getByText('Werk Ahrenberg – Halle 2 aufnehmen')).toBeTruthy());
+    expect(within(karte).getByRole('heading', { level: 3, name: 'Steuern & Optimieren' })).toBeTruthy();
+    expect(within(funktionenImKopf()).getByText('Steuern & Optimieren')).toBeTruthy();
+    expect(within(funktionenImKopf()).getByText('Läuft mit Werk Ahrenberg – Halle 1')).toBeTruthy();
+  });
+
+  it('der reine Messkunde (nirgends steuert eine Anlage): die Unternehmens-Übersicht sagt „reine Messung“ — und sonst kein Wort über Steuern', async () => {
+    // Die Fixture teilt Halle 1 zwischen den Aufrufen — nur an einer Kopie drehen.
+    const f = structuredClone(ahrenbergFunktionen());
+    const st = f.standorte[0].steuern;
+    st.zustand = 'kein_objekt';
+    st.text = 'Steuern & Optimieren — noch nicht eingerichtet';
+    st.anlagen[0].teilnahme.zustand = 'kein_objekt';
+    f.unternehmen.steuern = { laeuft_an: 0, standorte: 2, text: 'Steuern & Optimieren läuft an 0 von 2 Standorten' };
+    mocks({ overview: ahrenbergOverview(), funktionen: f });
+    renderUnternehmen();
+    expect(await screen.findByText('2 Standorte · 3 Anlagen · reine Messung')).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByTestId('standort-gruppe')).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByText('Wird geladen …')).toBeNull());
+    expect(screen.getByTestId('funktionen-karte').querySelector('[data-funktion="steuern"]')).toBeNull();
+    // Das eine Wort, das bleibt, benennt, was der Kunde ist.
+    expect((document.body.textContent ?? '').replaceAll('reine Messung', '')).not.toMatch(/steuer/i);
   });
 });

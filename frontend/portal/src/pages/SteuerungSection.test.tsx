@@ -7,7 +7,7 @@ import type { SiteProfile } from '../profiles';
 import type { Consumer, ConsumerOptions } from '../consumers/types';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
 import { DURCH_VOLTPILOT } from '../betriebsmodelle';
-import { OHNE_STEUERBARE_KOMPONENTE } from '../steuerungArea';
+import { NEUE_REGEL_LABEL } from '../steuerungArea';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { FIXTURE_IDS } from '../test/standorteFixtures';
 
@@ -1174,23 +1174,32 @@ describe('Umstellung des Anlagentyps hinterlässt keinen kaputten Zwischenzustan
 });
 
 /**
- * UEMS AP-01 IP-8 · der Leerzustand „Diese Anlage misst nur" (Konzept §5.5,
- * A8) — Referenzunternehmen Ahrenberg: Halle 1 steuert, Halle 2 misst mit dem
- * Ladepunkt „Parkplatz Halle 2", Werk Lindach hat weder die Funktion noch eine
- * steuerbare Komponente. Er steht ÜBER den Zonen; der nächste Schritt ist ein
- * benannter Hinweis, kein Knopf — nur „Gerät anbinden" hat heute ein Ziel.
+ * Steuern-Regel (Captain über firstmate 003/004, 15.09.2026) — löst den
+ * Leerzustand „Diese Anlage misst nur" aus AP-01 IP-8 (PR 776) BEWUSST ab: eine
+ * Anlage, die nur misst, schweigt auf ihrer Steuerungsseite, auch wenn am
+ * Standort eine andere Anlage steuert („Von steuern soll beim messen eigentlich
+ * noch nicht die rede sein."). Die Seite bleibt, und mit ihr der Weg zu
+ * Steuerart und Regeln („Okay ich will aber schon das Messkunden auch zu Kunden
+ * werden wo man verbraucher steuern kann."). Referenzunternehmen Ahrenberg:
+ * Halle 1 steuert, Halle 2 misst mit dem Ladepunkt „Parkplatz Halle 2", Werk
+ * Lindach hat keine steuerbare Komponente.
  */
-describe('UEMS AP-01 IP-8 · „Diese Anlage misst nur"', () => {
-  const { an1, an2, an3 } = FIXTURE_IDS;
+describe('Steuern-Regel · eine Anlage, die nur misst, schweigt auf ihrer Steuerungsseite — der Weg bleibt offen', () => {
+  const { an2, an3 } = FIXTURE_IDS;
+  /** Was PR 776 hier anbot — kein Wort davon darf mehr erscheinen. */
+  const ANGEBOTE = [
+    'Diese Anlage misst nur',
+    'Steuern & Optimieren',
+    'aufnehmen',
+    'Wenn VoltPilot',
+    'Zum Steuern braucht sie',
+    'Gerät anbinden',
+  ];
   const nurNetz = () =>
     BOUND.entities.mockResolvedValue([
       { id: 'e-grid', entityType: 'grid-meter', label: 'Netzanschluss', measure: ['power_kw'], actuate: [] },
     ]);
-
-  it('Fassung „Standort mit Funktion" (Halle 2): nennt Halle 1 und „aufnehmen" — kein Knopf, die Zonen bleiben', async () => {
-    setup();
-    nurNetz();
-    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+  const ladepunktHalle2 = () =>
     vi.spyOn(api, 'siteVerbraucher').mockResolvedValue({
       verbraucher: [{
         entityId: 'k-9',
@@ -1201,55 +1210,54 @@ describe('UEMS AP-01 IP-8 · „Diese Anlage misst nur"', () => {
         chargePointId: 'AHR-LP-01',
         steuerart: { quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'mindestleistung' },
         regeln: 0,
+        optionen: {
+          schreibbar: true,
+          quellen: [
+            { id: 'ueberschuss', gesperrt: false },
+            { id: 'sofort', gesperrt: false },
+          ],
+          ziele: [],
+          vorgaben: {
+            schwelleKw: 3, mindestlaufzeitMinuten: 10, zielFensterStunden: 12,
+            fenster: { tage: 'daily', von: '13:00', bis: '14:00' },
+          },
+        },
       }],
       ladepunkte: { standard: null, standardFolger: 0, gesamt: 1, rahmen: null },
       rangliste: [],
     } as never);
-    render(<SteuerungSection site={{ ...site, id: an2, name: 'Werk Ahrenberg – Halle 2' }} />);
 
-    const hinweis = await screen.findByTestId('nur-messen');
-    expect(hinweis.dataset.fassung).toBe('standort-mit-funktion');
-    expect(within(hinweis).getByRole('heading', { name: 'Diese Anlage misst nur.' })).toBeInTheDocument();
-    expect(hinweis.textContent).toContain(
-      'Am Standort Werk Ahrenberg läuft Steuern & Optimieren bereits (Werk Ahrenberg – Halle 1). '
-      + 'Wenn VoltPilot „Ladepunkt Parkplatz Halle 2“ steuern soll, nehmen Sie diese Anlage auf — nichts schaltet, bevor Sie starten.',
-    );
-    expect(hinweis.textContent).toContain('Nächster Schritt: Werk Ahrenberg – Halle 2 aufnehmen');
-    // Bewusst KEIN Knopf: den Assistenten „Steuern & Optimieren" gibt es noch nicht.
-    expect(within(hinweis).queryAllByRole('button')).toHaveLength(0);
-    // Er ersetzt nichts: die Regeln (und damit die heutigen Wege) stehen darunter.
-    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
-  });
-
-  it('Fassung „Standort ohne Funktion" (Werk Lindach, A8): ohne steuerbare Komponente führt der Weg zu den Komponenten', async () => {
+  it('Halle 2 schweigt auf ihrer eigenen Seite, obwohl am Standort Halle 1 steuert — kein Hinweis, kein „aufnehmen“', async () => {
     setup();
     nurNetz();
-    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
-    const onOpenSub = vi.fn();
-    render(<SteuerungSection site={{ ...site, id: an3, name: 'Werk Lindach' }} onOpenSub={onOpenSub} />);
-
-    const hinweis = await screen.findByTestId('nur-messen');
-    expect(hinweis.dataset.fassung).toBe('standort-ohne-funktion');
-    expect(hinweis.textContent).toContain(OHNE_STEUERBARE_KOMPONENTE);
-    // Kein „einrichten", solange nichts Steuerbares da ist — sondern der Weg.
-    expect(hinweis.textContent).not.toContain('einrichten');
-    const knoepfe = within(hinweis).getAllByRole('button');
-    expect(knoepfe.map((k) => k.textContent)).toEqual(['Gerät anbinden']);
-    fireEvent.click(knoepfe[0]);
-    expect(onOpenSub).toHaveBeenCalledWith('modell');
+    ladepunktHalle2();
+    // Selbst wenn der Server „Werk Ahrenberg steuert mit Halle 1“ sagt: die Seite fragt gar nicht danach.
+    const funktionen = vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    const { container } = render(<SteuerungSection site={{ ...site, id: an2, name: 'Werk Ahrenberg – Halle 2' }} />);
+    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Ladepunkt Parkplatz Halle 2/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('nur-messen')).toBeNull();
+    for (const wort of ANGEBOTE) expect(container.textContent, wort).not.toContain(wort);
+    expect(container.textContent).not.toContain('Werk Ahrenberg – Halle 1');
+    expect(funktionen).not.toHaveBeenCalled();
   });
 
-  it('eine steuernde Anlage und eine Anlage ohne Funktionen bekommen keinen Leerzustand', async () => {
+  it('Erreichbarkeit: der Weg zu Steuerart und Regeln bleibt — die Zeile des Ladepunkts öffnet den Steuerart-Dialog, „＋ Neue Regel“ steht da', async () => {
     setup();
-    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
-    const halle1 = render(<SteuerungSection site={{ ...site, id: an1 }} />);
-    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
-    expect(screen.queryByTestId('nur-messen')).toBeNull();
-    halle1.unmount();
+    nurNetz();
+    ladepunktHalle2();
+    render(<SteuerungSection site={{ ...site, id: an2, name: 'Werk Ahrenberg – Halle 2' }} />);
+    expect(await screen.findByRole('button', { name: NEUE_REGEL_LABEL })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Ladepunkt Parkplatz Halle 2/ }));
+    expect(await screen.findByRole('dialog', { name: /Steuerart/ })).toBeInTheDocument();
+  });
 
-    vi.spyOn(api, 'funktionen').mockRejectedValue(new Error('älteres Backend'));
-    render(<SteuerungSection site={{ ...site, id: an3 }} />);
+  it('Werk Lindach ohne steuerbare Komponente schweigt ebenso — kein „Gerät anbinden“, die Regeln stehen da', async () => {
+    setup();
+    nurNetz();
+    render(<SteuerungSection site={{ ...site, id: an3, name: 'Werk Lindach' }} onOpenSub={vi.fn()} />);
     expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
-    expect(screen.queryByTestId('nur-messen')).toBeNull();
+    expect(screen.getByRole('button', { name: NEUE_REGEL_LABEL })).toBeInTheDocument();
+    for (const wort of ANGEBOTE) expect(document.body.textContent, wort).not.toContain(wort);
   });
 });

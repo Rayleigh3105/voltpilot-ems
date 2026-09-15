@@ -9,6 +9,11 @@ import { join } from 'node:path';
  * gibt es nur mit heutigem Ziel, und es gibt KEINEN Querlauf — GEMESSEN am
  * Dokument (`scrollWidth − clientWidth`), nicht am Fenster.
  *
+ * Steuern-Regel (Captain 15.09.2026): wo keine Anlage teilnimmt, steht kein Wort
+ * über Steuern (`nie`, geprüft an der ganzen Seite) — und die Steuerungsseite
+ * einer Anlage, die nur misst, trägt keinen Hinweis mehr, behält aber ihre Wege
+ * zu Steuerart und Regeln (`wege`).
+ *
  * Mit `LEERZUSTAENDE_BILDER=<Ordner>` legt der Lauf je Fall das Bild der
  * Stelle, die ganze Seite und die Messung ab.
  */
@@ -23,8 +28,12 @@ interface Fall {
   /** Die Fläche dieses Pakets. */
   ziel: string;
   sichtbar: string[];
-  /** Die Knöpfe IN der Fläche — leer heißt: bewusst keiner. */
-  knoepfe: string[];
+  /** Die Knöpfe IN der Fläche, genau — leer heißt: bewusst keiner; fehlt = nicht gezählt (ganze Seite). */
+  knoepfe?: string[];
+  /** Wörter, die NIRGENDS auf der Seite stehen dürfen (Steuern-Regel). */
+  nie?: string[];
+  /** Knöpfe, die in der Fläche da sein MÜSSEN — still heißt nicht Sackgasse. */
+  wege?: string[];
   /** Die Seite gehört einer Anlage bzw. einem Standort ohne Geld (A13). */
   ohneGeld: boolean;
 }
@@ -34,13 +43,9 @@ const FAELLE: Fall[] = [
     name: 'karte-unternehmen',
     query: 'bild=unternehmen',
     ziel: '[data-testid="funktionen-karte"]',
-    sichtbar: [
-      'Läuft an 2 von 2 Standorten',
-      'Läuft an 1 von 2 Standorten',
-      'Werk Ahrenberg – Halle 2 aufnehmen',
-      'Steuern & Optimieren für Werk Lindach einrichten',
-    ],
+    sichtbar: ['Läuft an 2 von 2 Standorten', 'Läuft an 1 von 2 Standorten', 'Werk Ahrenberg – Halle 2 aufnehmen'],
     knoepfe: [],
+    nie: ['Steuern & Optimieren für Werk Lindach einrichten', 'Noch nicht eingerichtet'],
     ohneGeld: false,
   },
   {
@@ -57,22 +62,25 @@ const FAELLE: Fall[] = [
     ziel: '.vp-empty',
     sichtbar: ['Werk Lindach ist angelegt — noch ohne Anlage', 'Nächster Schritt:'],
     knoepfe: [],
+    nie: ['Steuern'],
     ohneGeld: true,
   },
   {
     name: 'steuerung-halle2',
     query: 'bild=unternehmen&ansicht=steuerung-halle2',
-    ziel: '[data-testid="nur-messen"]',
-    sichtbar: ['Diese Anlage misst nur.', 'Werk Ahrenberg – Halle 1', 'Werk Ahrenberg – Halle 2 aufnehmen'],
-    knoepfe: [],
+    ziel: '.vp-main',
+    sichtbar: ['Ladepunkt Parkplatz Halle 2', 'Regeln'],
+    nie: ['Diese Anlage misst nur', 'Steuern & Optimieren', 'Werk Ahrenberg – Halle 1', 'aufnehmen', 'Wenn VoltPilot'],
+    wege: ['Neue Regel'],
     ohneGeld: true,
   },
   {
     name: 'steuerung-lindach',
     query: 'bild=unternehmen&ansicht=steuerung-lindach',
-    ziel: '[data-testid="nur-messen"]',
-    sichtbar: ['Diese Anlage misst nur.', 'heute ist keine angebunden', 'Gerät anbinden'],
-    knoepfe: ['Gerät anbinden'],
+    ziel: '.vp-main',
+    sichtbar: ['Regeln'],
+    nie: ['Diese Anlage misst nur', 'Steuern & Optimieren', 'Zum Steuern braucht sie', 'Gerät anbinden', 'einrichten'],
+    wege: ['Neue Regel'],
     ohneGeld: true,
   },
 ];
@@ -132,11 +140,18 @@ for (const fall of FAELLE) {
       await oeffne(page, fall, breite);
       const flaeche = page.locator(fall.ziel).first();
       for (const text of fall.sichtbar) await expect(flaeche).toContainText(text);
+      const seite = (await page.locator('.vp-main').textContent()) ?? '';
+      for (const wort of fall.nie ?? []) expect(seite, `${fall.name} ${breite}: „${wort}“ darf nicht stehen`).not.toContain(wort);
       const m = await messe(page, fall.ziel);
-      expect(m.knoepfe).toEqual(fall.knoepfe);
+      if (fall.knoepfe) {
+        expect(m.knoepfe).toEqual(fall.knoepfe);
+        expect(m.kleineTreffer).toEqual([]);
+      }
+      for (const weg of fall.wege ?? []) {
+        expect(m.knoepfe.some((k) => k.includes(weg)), `${fall.name} ${breite}: Weg „${weg}“`).toBe(true);
+      }
       expect(m.dokument).toBe(0);
       expect(m.draussen).toEqual([]);
-      expect(m.kleineTreffer).toEqual([]);
       if (fall.ohneGeld) expect(m.euro).toBe(false);
       await ablegen(page, fall, breite, m);
     });

@@ -104,12 +104,17 @@ describe('Unternehmens-Übersicht nach „Anlage zuordnen“ (IP-11 × AP-01 IP-
     );
   });
 
-  it('⚠ Befund: die Teilnahme bleibt bei Werk Ahrenberg — dessen Steuern-Zeile nennt Halle 1 weiter, Nord sagt „Noch nicht eingerichtet“', () => {
+  it('⚠ Befund: die Teilnahme bleibt bei Werk Ahrenberg — dessen Steuern-Zeile nennt Halle 1 weiter, Nord schweigt (Steuern-Regel), obwohl seine Zahlen „1 steuert“ sagen', () => {
     const gruppen = standortGruppen({ ebene: heuteNachUmzug, zeilen: ZEILEN, sites: SITES, funktionen, now: JETZT });
     const steuern = (name: string) => gruppen.find((g) => g.name === name)?.funktionen?.find((f) => f.funktion === 'steuern');
     // Genau das sagt die Folgen-Karte vorher: „geführt wird sie weiter bei Werk Ahrenberg (ST-1)“.
     expect(steuern('Werk Ahrenberg')?.satz).toBe('Läuft mit Werk Ahrenberg – Halle 1');
-    expect(steuern('Werk Ahrenberg Nord')?.satz).toBe('Noch nicht eingerichtet');
+    // Unter Nord nennt `GET /funktionen` Halle 1 ohne Teilnahme — dort nimmt keine Anlage teil, also keine
+    // Steuern-Zeile mehr (vorher: „Noch nicht eingerichtet“). Die Zahl zählt die Anlage, die heute dort steht.
+    const nord = gruppen.find((g) => g.name === 'Werk Ahrenberg Nord');
+    expect(steuern('Werk Ahrenberg Nord')).toBeUndefined();
+    expect(nord?.funktionen?.map((f) => f.funktion)).toEqual(['messen']);
+    expect(nord?.zahlen).toContain('1 steuert');
   });
 
   it('ein GEPLANTER Umzug ändert die Übersicht heute nicht: bis zum Vortag zählt der alte Standort', () => {

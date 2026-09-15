@@ -4,7 +4,9 @@ import './FunktionenKarte.css';
 /**
  * Die Karte „Funktionen" der Unternehmens- und der Standort-Übersicht (UEMS
  * AP-01 IP-8, E5 = A, E6 = C): je Funktion, je Standort der Zustand und der
- * nächste Schritt — „einrichten" oder „Anlage aufnehmen".
+ * nächste Schritt — „Messen & Auswerten … einrichten" oder „Anlage aufnehmen".
+ * „Steuern & Optimieren" steht nur da, wo eine Anlage teilnimmt; ein Standort,
+ * an dem nur gemessen wird, schweigt darüber (`uebersicht.steuernSpricht`).
  *
  * ⚠ Der nächste Schritt ist ein BENANNTER Hinweis, kein Knopf: die Assistenten
  * „Messen & Auswerten" und „Steuern & Optimieren" (IP-9a/IP-10a) gibt es noch

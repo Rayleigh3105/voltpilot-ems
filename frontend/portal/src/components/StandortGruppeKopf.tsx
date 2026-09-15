@@ -8,9 +8,11 @@ import {
 import './StandortGruppeKopf.css';
 
 /**
- * Beide Funktionen eines Standorts, je eine Zeile: Punkt · Name · Satz des
- * Servers (UEMS AP-01 IP-6, E6 = C). Immer beide — ein Standort ohne
- * eingerichtete Funktion trägt den benannten Zustand, nie eine leere Zelle.
+ * Die Funktionen eines Standorts, je eine Zeile: Punkt · Name · Satz des
+ * Servers (UEMS AP-01 IP-6). „Messen & Auswerten" steht immer da, auch als
+ * „Noch nicht eingerichtet" — nie eine leere Zelle. „Steuern & Optimieren" nur,
+ * wenn eine Anlage des Standorts teilnimmt: die frühere Zusage „immer beide"
+ * (PR 771) ist durch die Steuern-Regel abgelöst (`uebersicht.steuernSpricht`).
  *
  * Render-only: Zustand, Ton und Satz entstehen in `uebersicht.funktionsZeilen`.
  */
@@ -40,7 +42,7 @@ export function FunktionsZustaende({
 /**
  * Der Kopf einer Standort-Gruppe der Anlagen-Tabelle — die STANDORT-KARTE der
  * Unternehmens-Übersicht: Name (führt zur Standort-Übersicht), die Zahlen mit
- * der Datenlage, darunter beide Funktionen.
+ * der Datenlage, darunter ihre Funktionen.
  *
  * ⚠ Er steht am Rechner in einem `<th scope="rowgroup">` — dort sind keine
  * Überschriften erlaubt; der Name ist deshalb ein Knopf, keine `h2`.
