@@ -2,7 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.ocpp.OcppActionPolicy;
 import com.voltpilot.api.ocpp.OcppActionService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.OcppActionDto;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -28,12 +28,12 @@ import org.springframework.web.server.ResponseStatusException;
 // AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter)
 @PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer')")
 public class SiteOcppActionController {
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final OcppActionPolicy policy;
     private final OcppActionService service;
 
-    public SiteOcppActionController(SiteRepository sites, OcppActionPolicy policy, OcppActionService service) {
-        this.sites = sites; this.policy = policy; this.service = service;
+    public SiteOcppActionController(Geltungsbereich geltungsbereich, OcppActionPolicy policy, OcppActionService service) {
+        this.geltungsbereich = geltungsbereich; this.policy = policy; this.service = service;
     }
 
     @PostMapping("/stations/{chargePointId}/action-intents")
@@ -77,7 +77,7 @@ public class SiteOcppActionController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        geltungsbereich.requireSite(siteId);
     }
     private void requireAllowed(Authentication auth, String action) {
         if (!policy.allowed(auth, action)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,

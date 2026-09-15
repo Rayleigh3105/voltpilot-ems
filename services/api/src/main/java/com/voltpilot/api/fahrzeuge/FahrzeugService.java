@@ -2,7 +2,7 @@ package com.voltpilot.api.fahrzeuge;
 
 import com.voltpilot.api.chargers.ChargingConfigService;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SiteChargingDto;
 import com.voltpilot.api.web.dto.FahrzeugDto;
@@ -35,14 +35,14 @@ public class FahrzeugService {
     static final String KEIN_PSEUDONYM =
             "Das ist keine Kennung, die Ihre Box vergeben hat.";
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final SiteVehicleRepository vehicles;
     private final DeviceChargerStatusRepository chargers;
     private final ChargingConfigService charging;
 
-    public FahrzeugService(SiteRepository sites, SiteVehicleRepository vehicles,
+    public FahrzeugService(Geltungsbereich geltungsbereich, SiteVehicleRepository vehicles,
             DeviceChargerStatusRepository chargers, ChargingConfigService charging) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.vehicles = vehicles;
         this.chargers = chargers;
         this.charging = charging;
@@ -153,8 +153,6 @@ public class FahrzeugService {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

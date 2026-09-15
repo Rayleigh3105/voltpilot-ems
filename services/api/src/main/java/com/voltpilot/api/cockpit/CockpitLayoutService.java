@@ -19,6 +19,7 @@ import com.voltpilot.api.web.dto.CockpitLayoutDto.CustomBausteinDto;
 import com.voltpilot.api.web.dto.CockpitLayoutDto.LayoutDocumentDto;
 import com.voltpilot.api.web.dto.CockpitLayoutDto.VorlageDto;
 import com.voltpilot.api.web.dto.SiteDto;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
@@ -72,14 +73,17 @@ public class CockpitLayoutService {
     public static final String SURFACE_PORTFOLIO = CockpitLayoutRepository.SURFACE_PORTFOLIO;
 
     private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final CockpitLayoutRepository layouts;
     private final AnwendungKatalog anwendungen;
     private final EntityRegistryRepository entities;
     private final ObjectMapper mapper;
 
     public CockpitLayoutService(SiteRepository sites, CockpitLayoutRepository layouts,
-            AnwendungKatalog anwendungen, EntityRegistryRepository entities, ObjectMapper mapper) {
+            AnwendungKatalog anwendungen, EntityRegistryRepository entities, ObjectMapper mapper,
+            Geltungsbereich geltungsbereich) {
         this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.layouts = layouts;
         this.anwendungen = anwendungen;
         this.entities = entities;
@@ -394,9 +398,7 @@ public class CockpitLayoutService {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private static UUID requireTenant() {

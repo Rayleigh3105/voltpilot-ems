@@ -21,7 +21,7 @@ import com.voltpilot.api.consumers.ConsumerAuditRepository;
 import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SaveSelfBuildRequest;
@@ -108,7 +108,7 @@ public class SelfBuildComponentService {
             SwitchDefinition.Consumer consumer, Boolean physicallyConfirmed) {
     }
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository entityRepo;
     private final EntityRegistryService entityRegistry;
     private final ComponentDefinitionRepository definitions;
@@ -124,14 +124,14 @@ public class SelfBuildComponentService {
     private final ObjectMapper mapper;
     private final BerichtsBelege berichtsBelege;
 
-    public SelfBuildComponentService(SiteRepository sites, EntityRegistryRepository entityRepo,
+    public SelfBuildComponentService(Geltungsbereich geltungsbereich, EntityRegistryRepository entityRepo,
             EntityRegistryService entityRegistry, ComponentDefinitionRepository definitions,
             ComponentService components, ComponentConnectionReceipts receipts,
             SiteComponentTemplateRepository templates, SelfBuildFlowCompiler compiler,
             FlowRepository flows, FlowActivationService deployments,
             ObjectProvider<FlowCompiler> flowc, ProbeService probes,
             ConsumerAuditRepository audit, ObjectMapper mapper, BerichtsBelege berichtsBelege) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.entityRepo = entityRepo;
         this.entityRegistry = entityRegistry;
         this.definitions = definitions;
@@ -363,9 +363,7 @@ public class SelfBuildComponentService {
     // ---- Regeln -----------------------------------------------------------
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private void requirePortalManaged(UUID siteId) {

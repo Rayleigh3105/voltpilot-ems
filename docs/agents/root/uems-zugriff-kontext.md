@@ -23,8 +23,8 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
   `/api/v1/me` antwortet 200 ohne Kundenbereich.
 - **Sitzungs-Einstellungen** in derselben `set_config`-Anweisung wie `app.tenant_id`, beim Zurückgeben zusammen
   zurückgesetzt:
-  - `app.zugriff` ist `unternehmen` bei einem Kundenkonto mit wirksamer mandantenweiter Zuweisung und am Umschalter,
-    sonst `standorte`.
+  - `app.zugriff` ist `unternehmen` bei einem Kundenkonto mit wirksamer mandantenweiter Zuweisung oder ganz ohne je
+    eine Zuweisung (E12, seit IP-5) und am Umschalter, sonst `standorte`.
   - `app.standort_ids` ist das Array-Literal `{uuid,…}` der standortbezogenen Zuweisungen, sortiert, auch `{}`.
 - **`GET /api/v1/me`** (Recht `konto.eigenes`) leitet ausschließlich mit `RechteAbleitung` ab:
   - `sichtbareStandorte` liefert Standorte, künftige Zuweisungen, den Satz ohne Standort und die Teilansicht.
@@ -34,14 +34,14 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
 
 ## ⚠ Fallen für die Folgepakete
 
-- ⚠ **IP-5 (`site_scope`):** Ohne Zugriff sind beide Einstellungen LEER: `''` nach einem Zurücksetzen, NULL auf einer
-  frischen Verbindung. Das betrifft Jobs, Takt, Bestandslauf, Admin-Routen und die Plattform ohne Kopf. Die Policy
-  entscheidet, was „leer" heißt; immer mit NULLIF lesen. Ein Kundenkonto OHNE wirksame Zuweisung trägt
-  `standorte` + `{}`, also den engsten Zaun.
+- ⚠ **`site_scope` (IP-5, `uems-standort-zaun.md`):** Ohne Zugriff sind beide Einstellungen LEER: `''` nach einem
+  Zurücksetzen, NULL auf einer frischen Verbindung. Das betrifft Jobs, Takt, Bestandslauf, Admin-Routen und die
+  Plattform ohne Kopf. Die Policy liest leer als „kein Standort-Zaun" (nur Mandant). Ein Kundenkonto, das NIE eine
+  Zuweisung hatte, trägt `unternehmen` (Bestandsregel E12); eines mit nur beendeten oder künftigen `standorte` + `{}`.
 - ⚠ Die Einstellungen gelten nur, wenn der `TenantContext` der Kundenbereich des Zugriffs ist. Ein Hörer, der im
   Anfrage-Thread umschaltet (`ZugriffBestand.beiAnlage`), bekommt sie leer.
-- ⚠ **Bis IP-5/IP-6 sieht ein angenommener Unterstützer den GANZEN Kundenbereich** und schreibt wie ein Kundenkonto.
-  Heute legt keine Route eine Unterstützung an (IP-8). Wer IP-8 vor IP-5 und IP-6 ausliefert, öffnet genau das.
+- ⚠ **Seit IP-5 liest ein angenommener Unterstützer nur seine Standorte; bis IP-6 schreibt er dort wie ein
+  Kundenkonto.** Heute legt keine Route eine Unterstützung an (IP-8). Wer IP-8 vor IP-6 ausliefert, öffnet genau das.
 - ⚠ **Nicht umgestellt:** `KennzahlAufrufer`, `KorrekturRechte.benutzer`, `BerichtRechte` und `ProtokollAkteur` legen
   die Rolle weiter fest (Kundenkonto = Kundenadministrator). Wer durchsetzt, liest `ZugriffContext.get()`, nie einen
   Anfragekörper.

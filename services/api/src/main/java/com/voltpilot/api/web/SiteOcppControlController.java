@@ -7,7 +7,7 @@ import com.voltpilot.api.chargers.ChargingConfigRepository;
 import com.voltpilot.api.chargers.ChargingConfigService;
 import com.voltpilot.api.ocpp.OcppControlValidator;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
 import java.util.Map;
@@ -26,17 +26,17 @@ import org.springframework.web.server.ResponseStatusException;
 // AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter)
 @PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer')")
 public class SiteOcppControlController {
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ChargingConfigRepository configs;
     private final ChargingConfigService distribution;
     private final DeviceChargerStatusRepository status;
     private final OcppControlValidator validator;
     private final ObjectMapper mapper;
 
-    public SiteOcppControlController(SiteRepository sites, ChargingConfigRepository configs,
+    public SiteOcppControlController(Geltungsbereich geltungsbereich, ChargingConfigRepository configs,
             ChargingConfigService distribution, DeviceChargerStatusRepository status,
             OcppControlValidator validator, ObjectMapper mapper) {
-        this.sites = sites; this.configs = configs; this.distribution = distribution;
+        this.geltungsbereich = geltungsbereich; this.configs = configs; this.distribution = distribution;
         this.status = status; this.validator = validator; this.mapper = mapper;
     }
 
@@ -81,6 +81,6 @@ public class SiteOcppControlController {
         try { return mapper.readTree(raw); } catch (Exception ex) { throw new IllegalStateException("Gespeicherte OCPP-Steuerung beschädigt", ex); }
     }
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        geltungsbereich.requireSite(siteId);
     }
 }

@@ -4,7 +4,7 @@ import com.voltpilot.api.registerwrite.RegisterKnowledge;
 import com.voltpilot.api.registerwrite.RegisterWriteEvents;
 import com.voltpilot.api.registerwrite.RegisterWriteService;
 import com.voltpilot.api.registerwrite.RegisterWriteTargets;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.RegisterWriteEventDto;
 import com.voltpilot.api.web.dto.RegisterWriteOutcomeDto;
 import com.voltpilot.api.web.dto.RegisterWriteRequest;
@@ -86,14 +86,14 @@ public class SiteRegisterWriteController {
     private static final String PLATFORM_ADMIN_AUTHORITY = "ROLE_platform-admin";
     private static final int DEFAULT_HISTORY = 50;
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final RegisterWriteService service;
     private final RegisterWriteTargets targets;
     private final RegisterKnowledge knowledge;
 
-    public SiteRegisterWriteController(SiteRepository sites, RegisterWriteService service,
+    public SiteRegisterWriteController(Geltungsbereich geltungsbereich, RegisterWriteService service,
             RegisterWriteTargets targets, RegisterKnowledge knowledge) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.service = service;
         this.targets = targets;
         this.knowledge = knowledge;
@@ -176,9 +176,7 @@ public class SiteRegisterWriteController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /**

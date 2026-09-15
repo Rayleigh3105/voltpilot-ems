@@ -17,7 +17,7 @@ import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowCompiler;
 import com.voltpilot.api.repo.FlowRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.topology.TopologyRepository;
 import com.voltpilot.api.uems.BerichtsBelege;
@@ -61,7 +61,7 @@ class UserDefinedBatteryProtectionPersistenceTest {
 
     @BeforeEach
     void setUp() {
-        SiteRepository sites = mock(SiteRepository.class);
+        Geltungsbereich sites = mock(Geltungsbereich.class);
         entityRepo = mock(EntityRegistryRepository.class);
         entityRegistry = mock(EntityRegistryService.class);
         definitions = mock(ComponentDefinitionRepository.class);
@@ -73,7 +73,6 @@ class UserDefinedBatteryProtectionPersistenceTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<FlowCompiler> flowc = mock(ObjectProvider.class);
 
-        when(sites.existsForCurrentTenant(eq(SITE))).thenReturn(true);
         when(definitions.componentAuthority(eq(SITE))).thenReturn("portal");
         when(entityRepo.siteDeviceIds(eq(SITE)))
                 .thenReturn(List.of(UUID.fromString("00000000-0000-0000-0000-00000000e001")));

@@ -1,13 +1,12 @@
 package com.voltpilot.api.web;
 
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.topology.TopologyService;
 import com.voltpilot.api.topology.TopologyService.Assignment;
 import com.voltpilot.api.topology.TopologyService.TopologyResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -41,11 +40,11 @@ public class SiteTopologyController {
     /** The PUT body: a batch of assignments applied in order. */
     public record AssignmentRequest(List<Assignment> assignments) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final TopologyService topology;
 
-    public SiteTopologyController(SiteRepository sites, TopologyService topology) {
-        this.sites = sites;
+    public SiteTopologyController(Geltungsbereich geltungsbereich, TopologyService topology) {
+        this.geltungsbereich = geltungsbereich;
         this.topology = topology;
     }
 
@@ -53,9 +52,7 @@ public class SiteTopologyController {
     @Transactional
     public TopologyResponse set(@PathVariable UUID siteId,
             @RequestBody AssignmentRequest request) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return topology.applyAssignments(siteId,
                 request == null ? null : request.assignments());
     }

@@ -2,13 +2,12 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.ocpp.OcppActionPolicy;
 import com.voltpilot.api.ocpp.OcppRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.OcppDto;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,7 +15,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Tenant-scoped, strictly read-only OCPP 1.6 data API. There is intentionally
@@ -28,12 +26,12 @@ import org.springframework.web.server.ResponseStatusException;
 // AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter)
 @PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer')")
 public class SiteOcppController {
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final OcppRepository ocpp;
     private final OcppActionPolicy policy;
 
-    public SiteOcppController(SiteRepository sites, OcppRepository ocpp, OcppActionPolicy policy) {
-        this.sites = sites;
+    public SiteOcppController(Geltungsbereich geltungsbereich, OcppRepository ocpp, OcppActionPolicy policy) {
+        this.geltungsbereich = geltungsbereich;
         this.ocpp = ocpp;
         this.policy = policy;
     }
@@ -94,8 +92,6 @@ public class SiteOcppController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

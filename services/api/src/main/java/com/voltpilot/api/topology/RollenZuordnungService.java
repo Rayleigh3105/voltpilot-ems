@@ -2,7 +2,7 @@ package com.voltpilot.api.topology;
 
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.topology.RollenZuordnungRepository.Zuordnung;
 import com.voltpilot.api.uems.MessstelleFormelService;
 import com.voltpilot.api.uems.MessstelleRegeln;
@@ -65,17 +65,17 @@ public class RollenZuordnungService {
     private static final String MESSKANAL = "messkanal";
     private static final String GESAMTWERT = "gesamtwert";
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository registry;
     private final RollenZuordnungRepository repo;
     private final TopologyRepository topology;
     private final MessstelleRepository messstellen;
     private final MessstelleFormelService formeln;
 
-    public RollenZuordnungService(SiteRepository sites, EntityRegistryRepository registry,
+    public RollenZuordnungService(Geltungsbereich geltungsbereich, EntityRegistryRepository registry,
             RollenZuordnungRepository repo, TopologyRepository topology,
             MessstelleRepository messstellen, MessstelleFormelService formeln) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.registry = registry;
         this.repo = repo;
         this.topology = topology;
@@ -285,9 +285,7 @@ public class RollenZuordnungService {
     }
 
     private void pruefeAnlage(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private void pruefeGeraet(UUID siteId, UUID entityId) {

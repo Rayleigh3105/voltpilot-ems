@@ -3,7 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.CreateMeasurementPointRequest;
 import com.voltpilot.api.web.dto.MeasurementPointDto;
@@ -60,14 +60,14 @@ public class MeasurementPointController {
     // topic and (topology layer) renders as a consumer entity.
     private static final String ROLE_CONSUMER = "consumer";
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final MeasurementPointRepository points;
     private final AssetRepository assets;
     private final EntityRegistryService entityRegistry;
 
-    public MeasurementPointController(SiteRepository sites, MeasurementPointRepository points,
+    public MeasurementPointController(Geltungsbereich geltungsbereich, MeasurementPointRepository points,
             AssetRepository assets, EntityRegistryService entityRegistry) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.points = points;
         this.assets = assets;
         this.entityRegistry = entityRegistry;
@@ -162,9 +162,7 @@ public class MeasurementPointController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private static String blankToNull(String s) {

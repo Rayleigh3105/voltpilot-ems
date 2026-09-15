@@ -1,6 +1,6 @@
 package com.voltpilot.api.web;
 
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.repo.SiteSuggestionStateRepository;
 import com.voltpilot.api.suggestions.Vorschlaege;
 import java.time.Instant;
@@ -51,11 +51,11 @@ public class SiteSuggestionController {
     /** Alles, was gerade stumm ist. */
     public record SuggestionStatesDto(List<SuggestionStateDto> states) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final SiteSuggestionStateRepository store;
 
-    public SiteSuggestionController(SiteRepository sites, SiteSuggestionStateRepository store) {
-        this.sites = sites;
+    public SiteSuggestionController(Geltungsbereich geltungsbereich, SiteSuggestionStateRepository store) {
+        this.geltungsbereich = geltungsbereich;
         this.store = store;
     }
 
@@ -102,9 +102,7 @@ public class SiteSuggestionController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /** Deutsche Gründe erreichen das Portal als {"message": …}. */

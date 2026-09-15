@@ -17,7 +17,7 @@ import com.voltpilot.api.consumers.ConsumerService.PolicyDto;
 import com.voltpilot.api.consumers.ConsumerService.SavePolicyRequest;
 import com.voltpilot.api.repo.ConsumerOverrideRepository;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.ConsumerDeviationDto;
 import com.voltpilot.api.web.dto.ConsumerFulfillmentDto;
@@ -64,7 +64,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteConsumerController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ConsumerService consumers;
     private final ConsumerScheduleRepository consumerSchedules;
     private final ConsumerRuntimeStatusRepository runtimeStatus;
@@ -74,13 +74,13 @@ public class SiteConsumerController {
     private final ConsumerOverrideService overrideService;
     private final ConsumerOverrideRepository overrides;
 
-    public SiteConsumerController(SiteRepository sites, ConsumerService consumers,
+    public SiteConsumerController(Geltungsbereich geltungsbereich, ConsumerService consumers,
             ConsumerScheduleRepository consumerSchedules,
             ConsumerRuntimeStatusRepository runtimeStatus,
             ConsumerPolicyActivationService activation, ConsumerFulfillmentReader fulfillment,
             ConsumerDeviationReader deviation, ConsumerOverrideService overrideService,
             ConsumerOverrideRepository overrides) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.consumers = consumers;
         this.consumerSchedules = consumerSchedules;
         this.runtimeStatus = runtimeStatus;
@@ -92,9 +92,7 @@ public class SiteConsumerController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     @GetMapping("/consumer-options")

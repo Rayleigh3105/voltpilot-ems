@@ -4,7 +4,7 @@ import com.voltpilot.api.entities.EntityObservedRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityTypeCatalog;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.uems.BerichtsBelege;
 import jakarta.validation.Valid;
@@ -81,17 +81,17 @@ public class SiteEntityAdoptController {
      */
     private static final Set<String> COMPOSED_BASE_ROLES = Set.of("grid-meter", "house-load");
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryService service;
     private final EntityTypeCatalog catalog;
     private final EntityObservedRepository observed;
     private final EntityRegistryRepository registry;
     private final BerichtsBelege berichtsBelege;
 
-    public SiteEntityAdoptController(SiteRepository sites, EntityRegistryService service,
+    public SiteEntityAdoptController(Geltungsbereich geltungsbereich, EntityRegistryService service,
             EntityTypeCatalog catalog, EntityObservedRepository observed,
             EntityRegistryRepository registry, BerichtsBelege berichtsBelege) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.service = service;
         this.catalog = catalog;
         this.observed = observed;
@@ -103,9 +103,7 @@ public class SiteEntityAdoptController {
     @Transactional
     public AdoptedEntityDto adopt(@PathVariable UUID siteId,
             @Valid @RequestBody AdoptRequest request) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         String type = request.entityType();
         if (type == null || type.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "entityType ist erforderlich.");
@@ -150,9 +148,7 @@ public class SiteEntityAdoptController {
     @Transactional
     public AdoptedEntityDto repin(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody RepinRequest request) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         String sourceId = request.sourceId() == null ? "" : request.sourceId().trim();
         if (sourceId.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceId ist erforderlich.");
@@ -215,9 +211,7 @@ public class SiteEntityAdoptController {
     @Transactional
     public AdoptedEntityDto rename(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody LabelRequest request) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         EntityRegistryRepository.EntityRow row = service.updateEntity(siteId, entityId,
                 normalizeLabel(request.label()), null, null, null);
         if (row == null) {
@@ -286,9 +280,7 @@ public class SiteEntityAdoptController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Transactional
     public void delete(@PathVariable UUID siteId, @PathVariable UUID entityId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         EntityRegistryRepository.EntityRow row = registry.entityForSite(siteId, entityId);
         if (row == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");

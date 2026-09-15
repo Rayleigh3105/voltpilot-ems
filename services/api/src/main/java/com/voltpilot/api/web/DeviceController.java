@@ -13,7 +13,7 @@ import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
@@ -55,7 +55,7 @@ public class DeviceController {
     static final String STICKER_PREFIX = "VP-";
 
     private final DeviceRepository devices;
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final AssetRepository assets;
     private final ProvisionedDeviceRepository provisioned;
     private final DevicePurgeService purge;
@@ -69,7 +69,7 @@ public class DeviceController {
     private final com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides;
     private final CommandLogRepository commandLog;
 
-    public DeviceController(DeviceRepository devices, SiteRepository sites,
+    public DeviceController(DeviceRepository devices, Geltungsbereich geltungsbereich,
             AssetRepository assets,
             ProvisionedDeviceRepository provisioned,
             DevicePurgeService purge,
@@ -83,7 +83,7 @@ public class DeviceController {
             com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides,
             CommandLogRepository commandLog) {
         this.devices = devices;
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.assets = assets;
         this.provisioned = provisioned;
         this.purge = purge;
@@ -111,7 +111,7 @@ public class DeviceController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
         }
         // The target site must belong to the caller's tenant (RLS-checked).
-        if (!sites.existsForCurrentTenant(request.siteId())) {
+        if (!geltungsbereich.siteVisible(request.siteId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
         String externalRef = canonicalExternalRef(request.externalRef());

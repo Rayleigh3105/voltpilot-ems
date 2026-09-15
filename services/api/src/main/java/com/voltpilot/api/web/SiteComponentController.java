@@ -7,7 +7,7 @@ import com.voltpilot.api.components.UserDefinedBatteryDefinition;
 import com.voltpilot.api.components.UserDefinedBatteryService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
@@ -71,20 +71,20 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteComponentController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ComponentService components;
     private final ComponentConnectionReceipts receipts;
     private final ProbeService probes;
     private final SelfBuildComponentService selfBuild;
     private final UserDefinedBatteryService batteries;
 
-    public SiteComponentController(SiteRepository sites, ComponentService components,
+    public SiteComponentController(Geltungsbereich geltungsbereich, ComponentService components,
             ComponentConnectionReceipts receipts,
             ProbeService probes, SelfBuildComponentService selfBuild,
             UserDefinedBatteryService batteries) {
         this.selfBuild = selfBuild;
         this.batteries = batteries;
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.components = components;
         this.receipts = receipts;
         this.probes = probes;
@@ -446,9 +446,7 @@ public class SiteComponentController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private static String subject(Jwt jwt) {

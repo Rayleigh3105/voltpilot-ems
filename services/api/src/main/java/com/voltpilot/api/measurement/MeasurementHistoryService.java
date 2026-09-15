@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.voltpilot.api.measurement.MeasurementCatalog.Point;
 import com.voltpilot.api.uems.LesepfadQuelle;
 import com.voltpilot.api.uems.VerbrauchRegeln;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -146,6 +147,7 @@ public class MeasurementHistoryService {
     private final MeasurementSelectionRepository selections;
     private final SpeicherklasseHistorie speicherklassen;
     private final Clock uhr;
+    private final Geltungsbereich geltungsbereich;
 
     /** Die Form von VOR IP-14 (ohne Rückfall) — sie hält bestehende Aufrufer am Laufen. */
     public MeasurementHistoryService(JdbcTemplate jdbc, MeasurementCatalog catalog,
@@ -168,6 +170,7 @@ public class MeasurementHistoryService {
         this.selections = selections;
         this.speicherklassen = speicherklassen;
         this.uhr = uhr;
+        this.geltungsbereich = new Geltungsbereich(jdbc);
     }
 
     public History history(UUID deviceId, String pointKey, String range, Instant freeFrom,
@@ -177,12 +180,11 @@ public class MeasurementHistoryService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
         }
         UUID siteId = requestedSiteId == null ? scope.siteId() : requestedSiteId;
-        Boolean siteVisible = jdbc.queryForObject(
-                "SELECT EXISTS(SELECT 1 FROM site WHERE tenant_id=? AND id=?)",
-                Boolean.class, scope.tenantId(), siteId);
-        if (!Boolean.TRUE.equals(siteVisible)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        // Standort-Zaun (UEMS AP-03 IP-5): das Gerät liest nur, wer seine Anlage UND die angefragte
+        // Anlage sieht — sonst läse ein ?siteId= der eigenen Anlage ein Gerät einer fremden. Verlauf
+        // und Geräte-CSV (`export`) gehen beide hier durch.
+        geltungsbereich.requireSite(scope.siteId());
+        geltungsbereich.requireSite(siteId);
         if (entityId != null) {
             // Scoped exactly like the family marker below (tenant + site +
             // entity) and like a per-component measurement selection. A

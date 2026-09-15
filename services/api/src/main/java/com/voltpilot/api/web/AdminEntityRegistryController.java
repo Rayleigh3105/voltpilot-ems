@@ -6,7 +6,7 @@ import com.voltpilot.api.components.ComponentAdoption;
 import com.voltpilot.api.components.ComponentAdoptionService;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -78,16 +78,16 @@ public class AdminEntityRegistryController {
             @DecimalMin("0.0") @DecimalMax("100000.0") BigDecimal capacityKwp,
             @Size(max = 64) String registryUnitId) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository repo;
     private final EntityRegistryService service;
     private final ComponentAdoptionService adoption;
     private final ObjectMapper mapper;
 
-    public AdminEntityRegistryController(SiteRepository sites, EntityRegistryRepository repo,
+    public AdminEntityRegistryController(Geltungsbereich geltungsbereich, EntityRegistryRepository repo,
             EntityRegistryService service, ComponentAdoptionService adoption,
             ObjectMapper mapper) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.repo = repo;
         this.service = service;
         this.adoption = adoption;
@@ -294,8 +294,6 @@ public class AdminEntityRegistryController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

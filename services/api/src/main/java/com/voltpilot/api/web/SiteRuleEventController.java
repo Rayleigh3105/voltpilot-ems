@@ -1,16 +1,14 @@
 package com.voltpilot.api.web;
 
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.rules.RuleEventReader;
 import com.voltpilot.api.web.dto.RuleEventsDto;
 import java.time.Instant;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Das REGEL-PROTOKOLL einer Anlage (Einheitsmodell Stufe 5b, Teil 5b.6) -
@@ -32,19 +30,17 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteRuleEventController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final RuleEventReader reader;
 
-    public SiteRuleEventController(SiteRepository sites, RuleEventReader reader) {
-        this.sites = sites;
+    public SiteRuleEventController(Geltungsbereich geltungsbereich, RuleEventReader reader) {
+        this.geltungsbereich = geltungsbereich;
         this.reader = reader;
     }
 
     @GetMapping("/rule-events")
     public RuleEventsDto ruleEvents(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
         return reader.forSite(siteId, Instant.now());
     }
 }

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.DatenquelleAbgelehnt.Schnittstelle;
 import com.voltpilot.api.uems.DatenquelleAenderungRepository.Eintrag;
@@ -111,7 +111,7 @@ public class DatenquelleService {
     private final DatenquelleRepository quellen;
     private final ZustaendigkeitRepository zustaendigkeiten;
     private final DatenquelleAenderungRepository protokoll;
-    private final SiteRepository anlagen;
+    private final Geltungsbereich geltungsbereich;
     private final ProbeService probes;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
@@ -123,12 +123,12 @@ public class DatenquelleService {
      *     spielen
      */
     public DatenquelleService(DatenquelleRepository quellen, ZustaendigkeitRepository zustaendigkeiten,
-            DatenquelleAenderungRepository protokoll, SiteRepository anlagen, ProbeService probes,
+            DatenquelleAenderungRepository protokoll, Geltungsbereich geltungsbereich, ProbeService probes,
             PlatformTransactionManager transaktionen, ObjectMapper json, ObjectProvider<Clock> uhr) {
         this.quellen = quellen;
         this.zustaendigkeiten = zustaendigkeiten;
         this.protokoll = protokoll;
-        this.anlagen = anlagen;
+        this.geltungsbereich = geltungsbereich;
         this.probes = probes;
         this.transaktion = new TransactionTemplate(transaktionen);
         this.json = json;
@@ -618,9 +618,7 @@ public class DatenquelleService {
     // ------------------------------------------------------------------ Gerüst
 
     void anlage(UUID siteId) {
-        if (!anlagen.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /** Die Quelle DIESER Anlage im Zaun — sonst 404 (auch für eine fremde, nie 403). */

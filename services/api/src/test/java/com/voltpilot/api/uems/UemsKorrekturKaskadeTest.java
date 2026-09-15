@@ -765,7 +765,7 @@ class UemsKorrekturKaskadeTest {
         SpeicherklasseHistorie historie = new SpeicherklasseHistorie(app, katalog);
         BerechnetePeriodenRepository speicher = new BerechnetePeriodenRepository(app);
         werte = new MessstelleWerteService(app, ms, quellen, new QuelleKadenzRepository(app),
-                new MesskanalService(app, new SiteRepository(app), katalog, JSON, new GeraetRepository(app), quellen),
+                new MesskanalService(app, new com.voltpilot.api.zugriff.Geltungsbereich(app), katalog, JSON, new GeraetRepository(app), quellen),
                 historie, speicher);
         return new BerechnetePeriodenLauf(admin, app, ms, new BilanzRestRepository(app),
                 new MessstelleFormelTermRepository(app), new BilanzStellungen(ms, new MessstelleZuordnungRepository(app)),
