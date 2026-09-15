@@ -33,6 +33,8 @@ import './KennzahlenPage.css';
  *
  * AP-11 IP-14: „Kennzahl anlegen“ im Kopf der Liste und „Kopieren“ im Kopf der Seite öffnen denselben Assistenten
  * (`KennzahlAnlegenDialog`) — er gehört der Welt, nicht der Karte; nach dem Anlegen lädt die Liste neu.
+ * AP-11 IP-15: „Berechnung ändern ab …“ an der Seite öffnet denselben Assistenten im Modus „ändern“; nach dem Speichern
+ * lädt die Seite neu.
  * ⚠ R-A7: antwortet `…/werte` für eine gelistete Kennzahl mit 404, trägt die Karte die Hinweiszeile ohne Wert.
  */
 export function KennzahlenPage({
@@ -47,14 +49,17 @@ export function KennzahlenPage({
   /** Die Zeitzone, in der „heute“ liegt. */
   zone?: string;
 }) {
-  const [assistent, setAssistent] = useState<{ quelle: KopieVon | null } | null>(null);
+  const [assistent, setAssistent] = useState<{ quelle: KopieVon | null; aendern?: KopieVon } | null>(null);
   const [neu, setNeu] = useState(0);
   const dialog = assistent && (
     <KennzahlAnlegenDialog
       open
       quelle={assistent.quelle}
+      aendern={assistent.aendern ?? null}
+      zone={zone}
       onClose={() => setAssistent(null)}
       onAngelegt={() => setNeu((n) => n + 1)}
+      onGeaendert={() => setNeu((n) => n + 1)}
       onZurKennzahl={(id) => {
         setAssistent(null);
         onOeffnen(id);
@@ -64,7 +69,15 @@ export function KennzahlenPage({
   if (kennzahlId) {
     return (
       <>
-        <KennzahlSeite key={kennzahlId} id={kennzahlId} zone={zone} onListe={onListe} onKopieren={(quelle) => setAssistent({ quelle })} />
+        {/* Nach „Berechnung ändern“ lädt die Seite neu (Schlüssel) — der Dialog daneben bleibt auf „Fertig“ stehen. */}
+        <KennzahlSeite
+          key={`${kennzahlId}|${neu}`}
+          id={kennzahlId}
+          zone={zone}
+          onListe={onListe}
+          onKopieren={(quelle) => setAssistent({ quelle })}
+          onBerechnungAendern={(quelle) => setAssistent({ quelle: null, aendern: quelle })}
+        />
         {dialog}
       </>
     );

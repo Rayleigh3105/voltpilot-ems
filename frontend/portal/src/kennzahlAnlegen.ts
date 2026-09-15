@@ -135,24 +135,43 @@ export const FERTIG_SUB = `Ihre Werte bildet VoltPilot im nächsten Rechenlauf �
 export const ZUR_KENNZAHL = `Zur ${UEMS_KENNZAHL}`;
 export const STRICH = '—';
 
-/** Die Wörter der fünf Schritte — Schritt 2 und 3 heißen je Rechenform (E12: „Teil an Ganzem“). */
-export const schrittWoerter = (form: KennzahlRechenform | null): string[] => [
-  UEMS_VORLAGE,
-  form === KZ.ANTEIL ? UEMS_TEIL : form === KZ.ZUSAMMENFASSUNG ? UEMS_KENNZAHLEN : UEMS_MENGE,
-  form === KZ.ANTEIL ? UEMS_GANZES : form === KZ.ZUSAMMENFASSUNG ? ENTFAELLT : UEMS_BEZUGSGROESSE,
-  UEMS_GELTUNGSBEREICH,
-  VORSCHAU,
-];
+/**
+ * Anlegen (§5.1) oder „Berechnung ändern ab …“ (AP-11 IP-15, §5.4): DERSELBE Assistent — beim Ändern heißt Schritt 1
+ * „Gilt ab“, Schritte 2 und 3 sind die des Anlegens, der Geltungsbereich entfällt (er ist nach der ersten Fassung fest).
+ */
+export type Weg = 'anlegen' | 'aendern';
 
-export const eyebrow = (n: number, wort: string): string => `Schritt ${n} von ${SCHRITT_ZAHL} · ${wort}`;
+export const SCHRITT_GILT_AB = 'Gilt ab';
+
+/** Die Wörter der Schritte — Schritt 2 und 3 heißen je Rechenform (E12: „Teil an Ganzem“). */
+export const schrittWoerter = (form: KennzahlRechenform | null, modus: Weg = 'anlegen'): string[] => {
+  const zweiter = form === KZ.ANTEIL ? UEMS_TEIL : form === KZ.ZUSAMMENFASSUNG ? UEMS_KENNZAHLEN : UEMS_MENGE;
+  const dritter = form === KZ.ANTEIL ? UEMS_GANZES : form === KZ.ZUSAMMENFASSUNG ? ENTFAELLT : UEMS_BEZUGSGROESSE;
+  return modus === 'aendern'
+    ? [SCHRITT_GILT_AB, zweiter, dritter, VORSCHAU]
+    : [UEMS_VORLAGE, zweiter, dritter, UEMS_GELTUNGSBEREICH, VORSCHAU];
+};
 
 export type Schritt = 1 | 2 | 3 | 4 | 5 | 6;
 
-/** Eine Zusammenfassung überspringt Schritt 3 (§5.6) — vorwärts wie rückwärts. */
-export const naechster = (s: Schritt, form: KennzahlRechenform | null): Schritt =>
-  (s === 2 && form === KZ.ZUSAMMENFASSUNG ? 4 : Math.min(s + 1, 6)) as Schritt;
-export const voriger = (s: Schritt, form: KennzahlRechenform | null): Schritt =>
-  (s === 4 && form === KZ.ZUSAMMENFASSUNG ? 2 : Math.max(s - 1, 1)) as Schritt;
+/** Die Nummer, die der Kunde sieht: beim Ändern ist die Vorschau Schritt 4 von 4. */
+export const anzeigeNummer = (s: Schritt, modus: Weg = 'anlegen'): number => (modus === 'aendern' && s >= 5 ? s - 1 : s);
+
+export const eyebrow = (n: number, wort: string, zahl: number = SCHRITT_ZAHL): string => `Schritt ${n} von ${zahl} · ${wort}`;
+
+/** Eine Zusammenfassung überspringt Schritt 3 (§5.6), das Ändern Schritt 4 — vorwärts wie rückwärts. */
+export const naechster = (s: Schritt, form: KennzahlRechenform | null, modus: Weg = 'anlegen'): Schritt => {
+  const aendern = modus === 'aendern';
+  if (s === 2 && form === KZ.ZUSAMMENFASSUNG) return aendern ? 5 : 4;
+  if (s === 3 && aendern) return 5;
+  return Math.min(s + 1, 6) as Schritt;
+};
+export const voriger = (s: Schritt, form: KennzahlRechenform | null, modus: Weg = 'anlegen'): Schritt => {
+  const aendern = modus === 'aendern';
+  if ((s === 4 || (s === 5 && aendern)) && form === KZ.ZUSAMMENFASSUNG) return 2;
+  if (s === 5 && aendern) return 3;
+  return Math.max(s - 1, 1) as Schritt;
+};
 
 // ------------------------------------------------------------------ Vorlage, Kopie, Entwurf
 
@@ -479,18 +498,22 @@ export const befundSatz = (b: Befund): string => {
   return b.message;
 };
 
-/** In welchem Schritt ein Befund zu beheben ist. */
-export const befundSchritt = (code: string): Schritt =>
-  (
-    ({
-      rechenform_unbekannt: 1,
-      formel_zyklus: 2,
-      groesse_unbekannt: 2,
-      eingang_unbekannt: 3,
-      einheit_unpassend: 3,
-      periode_passt_nicht: 3,
-    }) as Record<string, Schritt>
-  )[code] ?? 4;
+/** In welchem Schritt ein Befund zu beheben ist — beim Ändern gibt es weder Vorlage noch Geltungsbereich. */
+export const befundSchritt = (code: string, modus: Weg = 'anlegen', form: KennzahlRechenform | null = null): Schritt => {
+  const s =
+    (
+      ({
+        rechenform_unbekannt: 1,
+        formel_zyklus: 2,
+        groesse_unbekannt: 2,
+        eingang_unbekannt: 3,
+        einheit_unpassend: 3,
+        periode_passt_nicht: 3,
+      }) as Record<string, Schritt>
+    )[code] ?? 4;
+  if (modus !== 'aendern') return s;
+  return s === 1 || form === KZ.ZUSAMMENFASSUNG ? 2 : s === 4 ? 3 : s;
+};
 
 // ------------------------------------------------------------------ Geltungsbereich (G1, G3)
 
@@ -675,15 +698,27 @@ export const berechnungText = (e: Entwurf): string => {
   return `${form} · ${menge} je ${bezug}`;
 };
 
-/** Darf „Weiter“? Schritt 5 schaltet „Anlegen“ über {@link anlegenMoeglich}. */
-export const weiterMoeglich = (s: Schritt, e: Entwurf, pruefung: Pruefung | null, geltungFehler: string | null): boolean => {
+/**
+ * Darf „Weiter“? Schritt 5 schaltet „Anlegen“ über {@link anlegenMoeglich}. Beim Ändern prüft Schritt 1 der Tag
+ * (`kennzahlAendern.ts`), und der Geltungsbereich steht fest — sein Satz (G3) sperrt dann schon Schritt 3.
+ */
+export const weiterMoeglich = (
+  s: Schritt,
+  e: Entwurf,
+  pruefung: Pruefung | null,
+  geltungFehler: string | null,
+  modus: Weg = 'anlegen',
+): boolean => {
+  const aendern = modus === 'aendern';
   switch (s) {
     case 1:
       return e.rechenform !== null;
     case 2:
-      return e.rechenform === KZ.ZUSAMMENFASSUNG ? e.paare.length >= 2 && pruefung?.fehler === null : e.menge.length === 1;
+      return e.rechenform === KZ.ZUSAMMENFASSUNG
+        ? e.paare.length >= 2 && pruefung?.fehler === null && (!aendern || geltungFehler === null)
+        : e.menge.length === 1;
     case 3:
-      return e.bezug !== null && pruefung !== null && pruefung.fehler === null;
+      return e.bezug !== null && pruefung !== null && pruefung.fehler === null && (!aendern || geltungFehler === null);
     case 4:
       return e.geltung !== null && e.name.trim() !== '' && e.verantwortlich.trim() !== '' && geltungFehler === null;
     default:

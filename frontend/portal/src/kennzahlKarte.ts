@@ -505,11 +505,17 @@ const fassungZeile = (f: KennzahlFassung, gilt: boolean, zone: string): FassungZ
   gilt,
 });
 
-/** Die Berechnung (§5.3) mit ihrem Fassungs-Verlauf; `null`, wenn keine Fassung gilt. */
+/**
+ * Die Berechnung (§5.3) mit ihrem Fassungs-Verlauf; `null`, wenn keine Fassung gilt. Der Verlauf steht nach dem
+ * Zeitpunkt der EINTRAGUNG, jüngste zuerst (Captain 15.09.2026) — nie nach „gilt ab“, sonst rutschte eine
+ * rückwirkend eingetragene Fassung zwischen ältere Zeilen; ihr „gilt ab“ steht an jeder Zeile.
+ */
 export const berechnung = (k: Kennzahl, fassungen: readonly KennzahlFassung[], zone: string): BerechnungAnzeige | null => {
   const aktuell = fassungen.find((f) => f.nummer === k.fassung) ?? null;
   if (!aktuell) return null;
-  const zeilen = [...fassungen].sort((a, b) => b.nummer - a.nummer).map((f) => fassungZeile(f, f.nummer === aktuell.nummer, zone));
+  const zeilen = [...fassungen]
+    .sort((a, b) => Date.parse(b.eingetragen_am) - Date.parse(a.eingetragen_am) || b.nummer - a.nummer)
+    .map((f) => fassungZeile(f, f.nummer === aktuell.nummer, zone));
   const eigene = zeilen.find((z) => z.gilt) as FassungZeile;
   return {
     satz: [UEMS_RECHENFORM[aktuell.rechenform], eingaengeText(aktuell), `${eigene.titel} gilt ${eigene.zeitraum}`].join(TRENNER),

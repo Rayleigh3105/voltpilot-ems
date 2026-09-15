@@ -52,7 +52,17 @@ import {
   type PageId,
   type Route,
 } from '../src/nav';
-import { ApiError, type Kennzahl, type KennzahlAnfrage, type KennzahlPeriodeArt, type KennzahlWerte } from '../src/api';
+import {
+  ApiError,
+  type Kennzahl,
+  type KennzahlAnfrage,
+  type KennzahlEingang,
+  type KennzahlFassung,
+  type KennzahlPeriodeArt,
+  type KennzahlWerte,
+} from '../src/api';
+import { iso } from '../src/bezugsPeriode';
+import { ABLEHNUNG_SATZ, fassungEintrag, naechsteNummer, wirksame } from '../src/kennzahlAendern';
 import { AnlagenPage } from '../src/pages/AnlagenPage';
 import { BerichtePage } from '../src/pages/BerichtePage';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
@@ -88,6 +98,7 @@ import {
   kennzahlWertVersionenAntwort,
 } from '../src/test/kennzahlWerteFixtures';
 import { berichteAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm } from '../src/test/berichtFixtures';
+import { fassungenK17, k17Stand, k17VorschauAntwort, k17WerteAntwort, KZ4_ID, kz0004, mitMs24 } from '../src/test/kennzahlAendernFixtures';
 import type { UebersichtEbene } from '../src/uebersicht';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -133,7 +144,8 @@ const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet
  * Kennzahl-Seite; `&ausserhalb=KZ-0003` lässt die Werte-Route für diese Kennzahl mit 404 antworten (R-A7). Die
  * Werte (K1, K7, K8, K10, K11 aus den Vektoren) gelten zur Uhr der Bühne (`page.clock`).
  */
-const kennzahlId = (kennzeichen: string | null) => kennzahlenDerWelt().find((k) => k.kennzeichen === kennzeichen)?.id ?? null;
+const kennzahlId = (kennzeichen: string | null) =>
+  [...kennzahlenDerWelt(), ...(k17Stand(params.get('welt')) ? [kz0004('vorher')] : [])].find((k) => k.kennzeichen === kennzeichen)?.id ?? null;
 const kzOffen = kennzahlId(params.get('kz'));
 const kzAusserhalb = kennzahlId(params.get('ausserhalb'));
 /**
@@ -145,10 +157,67 @@ const PERSONEN: Record<string, string> = { IK: 'Ines Kaltenbach', PH: 'Peter Hol
 const person = PERSONEN[params.get('person') ?? ''] ?? null;
 const weltLeer = params.get('welt') === 'leer';
 const angelegt: Kennzahl[] = [];
-const kennzahlAufrufe = { vorschau: [] as KennzahlAnfrage[], anlegen: [] as KennzahlAnfrage[] };
+// AP-11 IP-15: `&frisch=1` beginnt mit einer eben angelegten Kennzahl OHNE einen Wert (KZ-0009, MS-12 je BZ-6) — die
+// Bühne fürs Löschen; sie hat noch keine Fassung in der Bühne, also auch kein „Berechnung ändern“.
+if (params.get('frisch') === '1') {
+  const bz6 = ahrenbergBezugsgroessen().bezugsgroessen.find((b) => b.kennzeichen === 'BZ-6')!;
+  const frisch: KennzahlAnfrage = {
+    kennzeichen: null,
+    name: 'Stromeinsatz je Stück — Halle 2',
+    rechenform: 'quotient',
+    geltung_art: 'gebaeude',
+    geltung_id: bz6.geltung_id,
+    verantwortlich_name: 'Ines Kaltenbach',
+    zweck: null,
+    periode_art: null,
+    komplement: null,
+    eingaenge: [
+      { rolle: 'zaehler', art: 'messstelle', kennzeichen: 'MS-12' },
+      { rolle: 'nenner', art: 'bezugsgroesse', kennzeichen: 'BZ-6' },
+    ],
+  };
+  angelegt.push(angelegteKennzahl(frisch, 'KZ-0009', 'Halle 2', Date.now(), 'Ines Kaltenbach'));
+}
+/**
+ * AP-11 IP-15: `&welt=k17` stellt KZ-0004 „Stromeinsatz Spritzguss je kg“ mit Fassung 1 dazu (und MS-24 ins Register) —
+ * die Bühne für „Berechnung ändern ab …“; `&welt=k17-fassung2` den Stand nach dem Eintrag vom 20.03.2027 (K17). Was
+ * Ändern, Stammdaten, Archivieren und Löschen tun, bleibt in der Bühne; `__kennzahlAufrufe` zählt auch diese vier Wege.
+ */
+const k17 = k17Stand(params.get('welt'));
+const buehnenStand = new Map<string, Kennzahl>();
+const buehnenFassungen = new Map<string, KennzahlFassung[]>();
+const geloescht = new Set<string>();
+const kennzahlAufrufe = {
+  vorschau: [] as KennzahlAnfrage[],
+  anlegen: [] as KennzahlAnfrage[],
+  fassung: [] as unknown[],
+  stammdaten: [] as unknown[],
+  archivieren: [] as string[],
+  loeschen: [] as string[],
+};
 (window as unknown as Record<string, unknown>).__kennzahlAufrufe = kennzahlAufrufe;
-const kennzahlenDerBuehne = (): Kennzahl[] => [...(weltLeer ? [] : kennzahlenDerWelt()), ...angelegt];
+const kennzahlenDerBuehne = (): Kennzahl[] =>
+  [...(weltLeer ? [] : kennzahlenDerWelt()), ...(k17 ? [kz0004(k17)] : []), ...angelegt]
+    .filter((k) => !geloescht.has(k.id))
+    .map((k) => buehnenStand.get(k.id) ?? k);
 const istAngelegt = (id: string) => angelegt.some((k) => k.id === id);
+const fassungenDerBuehne = (id: string): KennzahlFassung[] =>
+  buehnenFassungen.get(id) ?? (istAngelegt(id) ? [] : k17 && id === KZ4_ID ? fassungenK17(k17) : fassungenVon(id));
+const kennzahlDerBuehne = (id: string): Kennzahl => {
+  const k = kennzahlenDerBuehne().find((x) => x.id === id);
+  if (!k) throw new ApiError(404, 'Diese Kennzahl gibt es nicht.');
+  return k;
+};
+const eingangMitName = (e: KennzahlEingang): KennzahlFassung['eingaenge'][number] => {
+  const register = k17 ? mitMs24(ahrenbergRegister()) : ahrenbergRegister();
+  const o =
+    e.art === 'messstelle'
+      ? register.register.find((z) => z.kennzeichen === e.kennzeichen)
+      : e.art === 'bezugsgroesse'
+        ? ahrenbergBezugsgroessen().bezugsgroessen.find((b) => b.kennzeichen === e.kennzeichen)
+        : kennzahlenDerBuehne().find((k) => k.kennzeichen === e.kennzeichen);
+  return { ...e, id: o?.id ?? e.kennzeichen, name: o?.name ?? null };
+};
 const ohneWerte = (id: string, periode: KennzahlPeriodeArt, von: string, bis: string): KennzahlWerte => {
   const k = angelegt.find((x) => x.id === id)!;
   const kopf = { id: k.id, kennzeichen: k.kennzeichen, name: k.name, rechenform: k.rechenform, einheit: k.einheit, einheit_anzeige: k.einheit_anzeige };
@@ -291,8 +360,9 @@ Object.assign(api, {
   },
   tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
   // AP-04 IP-5: das Messstellen-Register des Referenzunternehmens (heute = 20.10.2026, mit Stichtag und Filtern).
+  // AP-11 IP-15: `welt=k17` stellt MS-24 dazu.
   messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => {
-    const r = ahrenbergRegister(a);
+    const r = k17 ? mitMs24(ahrenbergRegister(a)) : ahrenbergRegister(a);
     if (!heuteB10) return r;
     return { ...r, register: r.register.map((z) => ({ ...z, name: nameHeuteAm(Date.now(), z.kennzeichen, z.name) })) };
   },
@@ -302,19 +372,16 @@ Object.assign(api, {
   standortOrte: async (id: string) => (id === werkLindach().id ? ortsbaumLindach() : ortsbaumAhrenberg()),
   // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
   kennzahlen: async () => ({ kennzahlen: kennzahlenDerBuehne() }),
-  kennzahl: async (id: string) => {
-    const k = kennzahlenDerBuehne().find((x) => x.id === id);
-    if (!k) throw new ApiError(404, 'Diese Kennzahl gibt es nicht.');
-    return k;
-  },
+  kennzahl: async (id: string) => kennzahlDerBuehne(id),
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,
     kennzeichen: kennzahlenDerBuehne().find((x) => x.id === id)?.kennzeichen ?? '',
-    fassungen: istAngelegt(id) ? [] : fassungenVon(id),
+    fassungen: fassungenDerBuehne(id),
   }),
   kennzahlWerte: async (id: string, periode: KennzahlPeriodeArt, von: string, bis: string) => {
     if (id === kzAusserhalb) throw new ApiError(404, 'Diese Kennzahl gibt es nicht.');
     if (istAngelegt(id)) return ohneWerte(id, periode, von, bis);
+    if (k17 && id === KZ4_ID) return k17WerteAntwort(k17, periode, von, bis, Date.now());
     return kennzahlWerteAntwort(id, periode, von, bis, Date.now());
   },
   kennzahlWertVersionen: async (id: string, periode: KennzahlPeriodeArt, von: string) =>
@@ -326,7 +393,7 @@ Object.assign(api, {
   kostenstellen: async () => ({ stichtag: null, kostenstellen: ahrenbergKostenstellen() }),
   kennzahlVorschau: async (a: KennzahlAnfrage) => {
     kennzahlAufrufe.vorschau.push(structuredClone(a));
-    return kennzahlVorschauAntwort(a, Date.now());
+    return (k17 ? k17VorschauAntwort(a, Date.now()) : null) ?? kennzahlVorschauAntwort(a, Date.now());
   },
   kennzahlAnlegen: async (a: KennzahlAnfrage) => {
     kennzahlAufrufe.anlegen.push(structuredClone(a));
@@ -344,6 +411,60 @@ Object.assign(api, {
   berichtEntwurf: async () => entwurfAm(Date.now()),
   berichtStand: async (_kennung: string, nr: number) => standAm(nr, Date.now()),
   messstelleWerte: async (kennzeichen: string) => heutigeWerteAm(kennzeichen, Date.now()),
+  // AP-11 IP-15: die vier schreibenden Wege der Kennzahl-Seite — sie ändern die Bühne und werden gezählt.
+  kennzahlFassungEintragen: async (
+    id: string,
+    body: { gueltig_ab: string; begruendung: string; periode_art?: KennzahlPeriodeArt | null; komplement?: boolean | null; eingaenge: KennzahlEingang[] },
+  ) => {
+    kennzahlAufrufe.fassung.push(structuredClone({ id, ...body }));
+    const k = kennzahlDerBuehne(id);
+    const alle = fassungenDerBuehne(id);
+    const vorlage = alle.find((f) => f.nummer === k.fassung);
+    if (!vorlage) throw new ApiError(404, 'Diese Kennzahl gibt es nicht.');
+    const jetzt = iso(Date.now(), 'Europe/Berlin');
+    const u = fassungEintrag(wirksame(alle), body.gueltig_ab, jetzt, 'Europe/Berlin');
+    if (u.fehler) throw new ApiError(422, u.kundensatz ?? '');
+    const nummer = naechsteNummer(alle);
+    const neu: KennzahlFassung[] = [
+      ...alle.map((f) => (f.nummer === u.beenden ? { ...f, gueltig_bis: u.beenden_am } : f)),
+      {
+        ...vorlage,
+        nummer,
+        gueltig_ab: body.gueltig_ab,
+        gueltig_bis: null,
+        aufgehoben_am: null,
+        herkunft: 'eintrag',
+        rueckwirkend: u.rueckwirkend,
+        abzeichen: u.abzeichen,
+        begruendung: body.begruendung,
+        eingetragen_von: { name: person ?? 'Jonas Wendlinger', rolle: 'Energiemanager', art: 'kunde' },
+        eingetragen_am: jetzt,
+        komplement: body.komplement ?? false,
+        eingaenge: body.eingaenge.map(eingangMitName),
+      },
+    ];
+    buehnenFassungen.set(id, neu);
+    buehnenStand.set(id, { ...k, fassung: nummer });
+    return { kennzahl_id: id, kennzeichen: k.kennzeichen, fassungen: neu };
+  },
+  kennzahlAendern: async (id: string, body: { kennzeichen: string; name: string; verantwortlich_name: string; zweck?: string | null }) => {
+    kennzahlAufrufe.stammdaten.push(structuredClone({ id, ...body }));
+    const neu = { ...kennzahlDerBuehne(id), name: body.name, verantwortlich_name: body.verantwortlich_name, zweck: body.zweck ?? null };
+    buehnenStand.set(id, neu);
+    return neu;
+  },
+  kennzahlArchivieren: async (id: string) => {
+    kennzahlAufrufe.archivieren.push(id);
+    const neu = { ...kennzahlDerBuehne(id), archiviert_am: iso(Date.now(), 'Europe/Berlin') };
+    buehnenStand.set(id, neu);
+    return neu;
+  },
+  kennzahlLoeschen: async (id: string) => {
+    kennzahlAufrufe.loeschen.push(id);
+    const k = kennzahlDerBuehne(id);
+    if (k.hat_werte) throw new ApiError(409, ABLEHNUNG_SATZ.hat_werte.replace('{kennzahl}', k.kennzeichen));
+    geloescht.add(id);
+  },
   // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
   funktionen: async () => funktionenDerSzene(),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was

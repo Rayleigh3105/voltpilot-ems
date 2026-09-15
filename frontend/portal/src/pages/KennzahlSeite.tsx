@@ -3,10 +3,14 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl, type KennzahlFassung, type KennzahlPeriodeArt, type KennzahlWerte } from '../api';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { DangerZone } from '../components/DangerZone';
 import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
+import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
 import { ErrorState, Skeleton } from '../components/States';
-import { KNOPF_KOPIEREN } from '../kennzahlAnlegen';
+import * as E from '../kennzahlAendern';
+import { ablehnungSatz, KNOPF_KOPIEREN } from '../kennzahlAnlegen';
 import { VersionenEinstieg, VersionenModal } from '../components/WertVersionen';
 import { WerteKarte } from '../components/WerteKarte';
 import {
@@ -43,9 +47,11 @@ const LADEFEHLER_SEITE = 'Die Kennzahl konnte nicht geladen werden.';
  * (`WerteKarte` wiederverwendet, mit dem Einstieg „Versionen“ ab zwei), der Verlauf als Balken, die Herkunft, die
  * Berechnung mit ihrem Fassungs-Verlauf und die Stammdaten.
  *
- * Sie LIEST nur: `GET /api/v1/kennzahlen/{id}`, `…/fassungen`, `…/werte` (die letzten Perioden bis heute) und —
- * erst im geöffneten Dialog — `…/werte/versionen`. „Berechnung ändern ab …“, Stammdaten ändern und Archivieren
- * kommen mit IP-15; vorher kein Knopf ohne Ziel.
+ * Sie liest `GET /api/v1/kennzahlen/{id}`, `…/fassungen`, `…/werte` (die letzten Perioden bis heute) und — erst im
+ * geöffneten Dialog — `…/werte/versionen`; dazu die Liste und die Fassungen der Zusammenfassungen, um ihre Leser und
+ * archivierte Eingänge zu kennen (IP-15). Schreibend (IP-15, §5.4/§5.7): „Berechnung ändern ab …“ (der Assistent der
+ * Welt), „Stammdaten ändern“ (`PUT …/{id}`), „Archivieren“ (`POST …/archivieren`) und „Löschen“ (`DELETE`, nur ohne Wert).
+ * Ein Wiederherstellen gibt es nicht — die Route fehlt, also auch der Knopf.
  *
  * Ein Tipp auf einen Balken zeigt dessen Periode in der Karte; ohne Wahl steht dort der jüngste Schritt mit einer
  * Zeile (auch „keine Werte“ mit seinem Grund).
@@ -55,12 +61,15 @@ export function KennzahlSeite({
   zone,
   onListe,
   onKopieren,
+  onBerechnungAendern,
 }: {
   id: string;
   zone: string;
   onListe: () => void;
   /** AP-11 IP-14 (§5.2): „Kopieren“ — Form, Name und Zweck gehen in den Assistenten, die Eingänge nicht. */
   onKopieren?: (quelle: KopieVon) => void;
+  /** AP-11 IP-15 (§5.4): „Berechnung ändern ab …“ — derselbe Assistent im Modus „ändern“, er gehört der Welt. */
+  onBerechnungAendern?: (quelle: KopieVon) => void;
 }) {
   const [stamm, setStamm] = useState<{ kennzahl: Kennzahl; fassungen: KennzahlFassung[] } | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
@@ -70,6 +79,53 @@ export function KennzahlSeite({
   const [gewaehlt, setGewaehlt] = useState<string | null>(null);
   const [versionenOffen, setVersionenOffen] = useState(false);
   const [versuch, setVersuch] = useState(0);
+  // IP-15: das Umfeld (wer liest mich, welcher Eingang ist archiviert) und die drei schreibenden Wege.
+  const [umfeld, setUmfeld] = useState<{ liste: Kennzahl[]; fassungen: Record<string, KennzahlFassung[]> } | null>(null);
+  const [stammdatenOffen, setStammdatenOffen] = useState(false);
+  const [archivierenOffen, setArchivierenOffen] = useState(false);
+  const [archiv, setArchiv] = useState<{ laeuft: boolean; fehler: string | null }>({ laeuft: false, fehler: null });
+  const [loeschen, setLoeschen] = useState<{ laeuft: boolean; fehler: string | null }>({ laeuft: false, fehler: null });
+
+  // Nur eine Zusammenfassung liest Kennzahlen — ihre Fassungen sagen, wer diese liest. Scheitert das, fehlt nur die
+  // Vorab-Sperre; die Route entscheidet trotzdem und ihr Satz steht nach dem Versuch.
+  useEffect(() => {
+    let aktiv = true;
+    setUmfeld(null);
+    api
+      .kennzahlen()
+      .then(async ({ kennzahlen }) => {
+        const selbst = kennzahlen.find((x) => x.id === id);
+        const kandidaten = selbst ? E.moeglicheLeser(selbst, kennzahlen) : [];
+        const je = await Promise.all(kandidaten.map((x) => api.kennzahlFassungen(x.id).then((f) => [x.id, f.fassungen] as const)));
+        if (aktiv) setUmfeld({ liste: kennzahlen, fassungen: Object.fromEntries(je) });
+      })
+      .catch(() => undefined);
+    return () => {
+      aktiv = false;
+    };
+  }, [id, versuch]);
+
+  const archivieren = async () => {
+    setArchiv({ laeuft: true, fehler: null });
+    try {
+      const neu = await api.kennzahlArchivieren(id);
+      setStamm((s) => (s ? { ...s, kennzahl: neu } : s));
+      setArchivierenOffen(false);
+      setArchiv({ laeuft: false, fehler: null });
+    } catch (e) {
+      setArchiv({ laeuft: false, fehler: ablehnungSatz(e, E.AKTION_FEHLER) });
+    }
+  };
+
+  const endgueltigLoeschen = async () => {
+    setLoeschen({ laeuft: true, fehler: null });
+    try {
+      await api.kennzahlLoeschen(id);
+      onListe();
+    } catch (e) {
+      setLoeschen({ laeuft: false, fehler: ablehnungSatz(e, E.AKTION_FEHLER) });
+    }
+  };
 
   useEffect(() => {
     let aktiv = true;
@@ -144,6 +200,10 @@ export function KennzahlSeite({
   const einstieg = versionenEinstieg(schritt);
   const herkunft = aktuell && schritt ? herkunftAnzeige(aktuell, schritt) : null;
   const b = berechnung(k, stamm.fassungen, zoneDerWerte);
+  const archiviertSatz = E.archiviertSatz(k);
+  const eingaengeArchiviert = umfeld ? E.archivierteEingaenge(E.aktuelleFassung(k, stamm.fassungen), umfeld.liste) : [];
+  const sperre = E.loeschenSperre(k, umfeld ? E.leserVon(k, umfeld.liste, umfeld.fassungen) : null);
+  const aenderbar = k.archiviert_am === null;
 
   return (
     <div className="vp-kz" data-testid="kennzahl-seite">
@@ -154,6 +214,11 @@ export function KennzahlSeite({
           <span>{kp.unter}</span>
           {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
         </p>
+        {archiviertSatz && (
+          <p className="vp-kz-leise" data-testid="kennzahl-archiviert">
+            {archiviertSatz}
+          </p>
+        )}
         {onKopieren && (
           <div className="vp-kz-aktionen">
             <Button variant="outline" size="sm" onClick={() => onKopieren({ kennzahl: k, fassungen: stamm.fassungen })}>
@@ -232,6 +297,27 @@ export function KennzahlSeite({
                 )}
               </p>
               <p className="vp-kz-leise">{b.wer}</p>
+              {eingaengeArchiviert.length > 0 && (
+                <p className="vp-kz-zeichen" data-testid="kennzahl-eingang-archiviert">
+                  {eingaengeArchiviert.map((t) => (
+                    <Badge key={t} variant="warn">
+                      {t}
+                    </Badge>
+                  ))}
+                </p>
+              )}
+              {onBerechnungAendern && aenderbar && (
+                <div className="vp-kz-aktionen">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="berechnung-aendern-knopf"
+                    onClick={() => onBerechnungAendern({ kennzahl: k, fassungen: stamm.fassungen })}
+                  >
+                    {E.KNOPF_BERECHNUNG_AENDERN}
+                  </Button>
+                </div>
+              )}
               {b.fassungen.length > 0 && (
                 <>
                   <h3>{FASSUNGEN_TITEL}</h3>
@@ -268,6 +354,46 @@ export function KennzahlSeite({
                 </div>
               ))}
             </dl>
+            {aenderbar && (
+              <div className="vp-kz-aktionen">
+                <Button variant="outline" size="sm" data-testid="stammdaten-aendern-knopf" onClick={() => setStammdatenOffen(true)}>
+                  {E.KNOPF_STAMMDATEN}
+                </Button>
+              </div>
+            )}
+          </section>
+          <section className="vp-kz-block" aria-label={E.KARTE_LEBENSZYKLUS} data-testid="kennzahl-lebenszyklus">
+            <h2>{E.KARTE_LEBENSZYKLUS}</h2>
+            {aenderbar ? (
+              <>
+                <p>{E.ARCHIVIEREN_SATZ}</p>
+                <div className="vp-kz-aktionen">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="archivieren-knopf"
+                    onClick={() => {
+                      setArchiv({ laeuft: false, fehler: null });
+                      setArchivierenOffen(true);
+                    }}
+                  >
+                    {E.KNOPF_ARCHIVIEREN}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="vp-kz-leise">{archiviertSatz}</p>
+            )}
+            <DangerZone
+              actionLabel={E.KNOPF_LOESCHEN}
+              description={E.LOESCHEN_SATZ}
+              consequences={E.loeschenFolgen(k)}
+              confirmLabel={E.LOESCHEN_BESTAETIGEN}
+              disabledReason={sperre}
+              busy={loeschen.laeuft}
+              error={loeschen.fehler}
+              onConfirm={endgueltigLoeschen}
+            />
           </section>
         </div>
       </div>
@@ -282,6 +408,32 @@ export function KennzahlSeite({
           onClose={() => setVersionenOffen(false)}
         />
       )}
+      <KennzahlStammdatenDialog
+        open={stammdatenOffen}
+        kennzahl={k}
+        onClose={() => setStammdatenOffen(false)}
+        onGespeichert={(neu) => {
+          setStamm((s) => (s ? { ...s, kennzahl: neu } : s));
+          setStammdatenOffen(false);
+        }}
+      />
+      <ConfirmDialog
+        open={archivierenOffen}
+        title={E.ARCHIVIEREN_TITEL}
+        intro={E.archivierenIntro(k)}
+        consequences={E.archivierenFolgen(k, umfeld ? E.heutigeLeser(k, umfeld.liste, umfeld.fassungen) : [])}
+        confirmLabel={E.KNOPF_ARCHIVIEREN}
+        busy={archiv.laeuft}
+        onConfirm={archivieren}
+        onCancel={() => setArchivierenOffen(false)}
+        extra={
+          archiv.fehler ? (
+            <p className="vp-gw-error" role="alert">
+              {archiv.fehler}
+            </p>
+          ) : undefined
+        }
+      />
     </div>
   );
 }

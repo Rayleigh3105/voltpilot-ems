@@ -1155,7 +1155,15 @@ describe('UEMS AP-04 IP-5 · das Messstellen-Register spricht Messstelle · Quel
  * Quelltexte der Flächen UND die Sätze, die sie zur Laufzeit aus den Vektor-Fixtures bilden.
  */
 describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Berechnung · Fassung · Version (§4.13)', () => {
-  const FLAECHEN = ['kennzahlKarte.ts', 'kennzahlAnlegen.ts', 'pages/KennzahlenPage.tsx', 'pages/KennzahlSeite.tsx', 'components/KennzahlAnlegenDialog.tsx'];
+  const FLAECHEN = [
+    'kennzahlKarte.ts',
+    'kennzahlAnlegen.ts',
+    'kennzahlAendern.ts',
+    'pages/KennzahlenPage.tsx',
+    'pages/KennzahlSeite.tsx',
+    'components/KennzahlAnlegenDialog.tsx',
+    'components/KennzahlStammdatenDialog.tsx',
+  ];
   const verboten = (woerter: string[]) => new RegExp(`(^|[^\\p{L}])(${woerter.join('|')})([^\\p{L}]|$)`, 'u');
   const KUNDENSICHT_VERBOTEN = verboten(['KPI', 'Metrik', 'Kenngröße', 'Kenngrößen', 'Dashboard', 'Widget', 'Template']);
   const MITTEL_VERBOTEN = verboten(['Durchschnitt', 'Durchschnitte', 'Mittel', 'Mittelwert', 'Mittelwerte']);
@@ -1239,7 +1247,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
 
   it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
     // Die Wörter-Quellen (Glossar, Vertrags-Zwilling) und die Navigation dürfen es; jede ANDERE Kundenfläche nicht.
-    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'uemsKennzahl.ts', 'test/kennzahlWerteFixtures.ts']);
+    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'uemsKennzahl.ts', 'test/kennzahlWerteFixtures.ts', 'test/kennzahlAendernFixtures.ts']);
     const treffer = new Set<string>();
     for (const file of customerFiles()) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
