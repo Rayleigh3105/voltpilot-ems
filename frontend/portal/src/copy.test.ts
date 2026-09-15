@@ -1198,6 +1198,8 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'kennzahlAnlegen.ts',
     'kennzahlAendern.ts',
     'pages/KennzahlenPage.tsx',
+    // AP-13 IP-7: die Listen-Karte und ihr Lade-Hook (von der Seite und vom Baustein „Kennzahlen“ der Übersicht geteilt).
+    'components/KennzahlListe.tsx',
     'pages/KennzahlSeite.tsx',
     'components/KennzahlAnlegenDialog.tsx',
     'components/KennzahlStammdatenDialog.tsx',

@@ -53,8 +53,9 @@ async function messe(page: Page) {
       ueberstehend: [...new Set(ueberstehend)],
       leiste: leisteSichtbar ? [...bar!.querySelectorAll('.vp-bottombar-item .lbl')].map((l) => l.textContent ?? '') : null,
       leisteAktiv: leisteSichtbar ? bar!.querySelector('[aria-current="page"] .lbl')?.textContent ?? null : null,
-      reiter: [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')].filter(sichtbar).map((t) => t.textContent?.trim() ?? ''),
-      reiterAktiv: [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"][aria-selected="true"]')].filter(sichtbar).map((t) => t.textContent?.trim() ?? ''),
+      // Ein Zeitraum-Segment (`ZeitSegment`, `.vp-seg`) ist kein Reiter — die Übersicht trägt eines seit AP-13 IP-7.
+      reiter: [...document.querySelectorAll<HTMLElement>('[role="tablist"]:not(.vp-seg) [role="tab"]')].filter(sichtbar).map((t) => t.textContent?.trim() ?? ''),
+      reiterAktiv: [...document.querySelectorAll<HTMLElement>('[role="tablist"]:not(.vp-seg) [role="tab"][aria-selected="true"]')].filter(sichtbar).map((t) => t.textContent?.trim() ?? ''),
       zeilen: document.querySelectorAll('.vp-ms-tabelle tbody tr').length,
       karten: document.querySelectorAll('.vp-ms-karte').length,
       still: [...document.querySelectorAll('.vp-ms-still')].map((e) => e.querySelector('.vp-ms-kz')?.textContent ?? ''),

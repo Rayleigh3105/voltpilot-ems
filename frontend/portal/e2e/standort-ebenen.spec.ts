@@ -47,8 +47,9 @@ async function messe(page: Page) {
       titel: main?.querySelector('h1:not(.vp-sr-only)')?.textContent?.trim() ?? null,
       leiste: leisteSichtbar ? [...bar!.querySelectorAll('.vp-bottombar-item .lbl')].map((l) => l.textContent ?? '') : null,
       leisteAktiv: leisteSichtbar ? bar!.querySelector('[aria-current="page"] .lbl')?.textContent ?? null : null,
-      reiter: texte('[role="tablist"] [role="tab"]'),
-      reiterAktiv: texte('[role="tablist"] [role="tab"][aria-selected="true"]'),
+      // Ein Zeitraum-Segment (`ZeitSegment`, `.vp-seg`) ist kein Reiter — die Übersicht trägt eines seit AP-13 IP-7.
+      reiter: texte('[role="tablist"]:not(.vp-seg) [role="tab"]'),
+      reiterAktiv: texte('[role="tablist"]:not(.vp-seg) [role="tab"][aria-selected="true"]'),
       gebaeude: texte('.vp-ob-knoten[data-art="gebaeude"] > .vp-ob-zeile .vp-st-name-text'),
       aufklapper: document.querySelectorAll('.vp-ob-aufklapper').length,
       anlagen: texte('.vp-at-name-text, .vp-at-karte-name'),
