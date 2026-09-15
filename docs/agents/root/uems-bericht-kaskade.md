@@ -21,8 +21,8 @@ Regeln sind `docs/contracts/v2/bericht.md` B1/B4/B5/B7, R1, EW1/EW3.
    zurück. Der Datenstand ist darum `max(jetzt, clock_timestamp())`, auf die nächste volle Sekunde AUFGERUNDET
    (sekundengenau wie die Meldungen). Tests mit einer Uhr in der Zukunft sehen `jetzt`.
 2. **Wirft statt zu überspringen.** D2, ein fehlender Entwurf oder Stand, eine verworfene Meldung — jeder Fehler rollt die
-   ganze Kaskade zurück, auch Stufen und Kennzahlen; der nächste Takt versucht es wieder. Einen Unternehmensbericht bildet
-   `bilden` erst mit IP-6 — vorher gibt es auch keinen Unternehmens-Entwurf (Anlegen = 501), also keine Quelle, die trifft.
+   ganze Kaskade zurück, auch Stufen und Kennzahlen; der nächste Takt versucht es wieder. Den Unternehmens-Entwurf bildet
+   `bilden` seit AP-12 IP-6 mit (`uems-bericht-abzug-unternehmen.md`).
 3. **Verwaltungsrolle ohne RLS:** jede Abfrage nennt `tenant_id`; die Bildung liest über dieselbe Verbindung und sieht so
    die eben geschriebene Version.
 4. **Welcher Weg gilt, entscheidet die Kaskade** (`KorrekturKaskade.berichteBenachrichtigen`), nie die Naht.
@@ -43,7 +43,8 @@ Regeln sind `docs/contracts/v2/bericht.md` B1/B4/B5/B7, R1, EW1/EW3.
 - **Kennzahl-Quellen** (KZ-…) trifft Pfad 1 über ihre Messstellen (mittelbare Quellen, B3); `kennzahl_neu_gebildet` liest
   die Naht nicht.
 - **Unternehmensbericht:** der Kaskaden-Test nimmt als zweiten betroffenen Bericht den Jahresbericht ST-1; BR-2026-0002 (U)
-  prüft der Vertragslauf gegen das Quellenverzeichnis der Datenbank — gebildet wird er erst mit IP-6.
+  prüft der Vertragslauf gegen das Quellenverzeichnis der Datenbank — gebildet wird er seit IP-6, der Kaskaden-Test bildet ihn
+  weiter nicht (Stand IP-15).
 - Archivierte Berichte behandelt die Naht wie alle anderen (B1 kennt keine Ausnahme).
 
 ## Prüfen

@@ -14,6 +14,14 @@ IP-13 (`uems-ersatzwert-methoden.md`), IP-14 (`uems-korrektur-vorschlaege.md`) u
    ein Bericht-ENTWURF bildet sich neu. Die Grenze steht an EINER Stelle: `KorrekturKaskade.berichteBenachrichtigen`
    ruft für `FREIGEGEBEN` ausschließlich `revisionAusloesen` — die Naht entscheidet das nicht. Benannter Test:
    `UemsKorrekturKaskadeTest.einFreigegebenerBerichtBleibtUnveraendertUndBekommtNurDenAusloeserEinEntwurfAktualisiertSich`.
+   **Die Naht hat seit AP-12 IP-8 eine Bean:** `BerichtKaskade` bildet den Entwurf in derselben Transaktion neu
+   (`bericht_entwurf`, Meldung `bericht_entwurf_neu_gebildet`) und schreibt am gültigen Stand den Anstoß
+   (`bericht_revision_anstoss`, idempotent, Meldung `bericht_revision_angestossen`) — `uems-bericht-kaskade.md`.
+   `BerichteNaht.Keine` gilt nur bei `voltpilot.uems.berichte.enabled` = false und im Testlauf (surefire). Pfad 2
+   (rückwirkende Struktur) ruft dieselbe Grenze über `StrukturAenderungLaeufer.benachrichtigen`. Dass die Naht
+   außerhalb von `bericht%` nichts schreibt außer ihren Meldungen: `UemsBerichteBestandsschutzTest`
+   (`uems-berichte-abschluss.md`). ⚠ Aus heißt: freigegebene Stände erfahren von einer Korrektur NICHTS, und der
+   Anstoß wird beim Wieder-Einschalten nicht nachgeholt — die Wirkung des Anlasses ist geschrieben.
 
 | Teil | Stelle |
 |---|---|
@@ -93,5 +101,6 @@ IP-15 (`uems-vieraugen-freigabe.md`) — die Kaskade liest weiter nur die Fassun
 ```bash
 (cd services/api && ./mvnw test -Dtest='ErgebnisZustandVectorsTest,BerechnetePeriodeVectorsTest,KorrekturKaskadeWiringTest')
 (cd services/api && ./mvnw test -Dtest='UemsKorrekturKaskadeTest,UemsKaskadeErsatzwertTest,UemsErsatzwertMethodenTest')   # Testcontainers
+(cd services/api && ./mvnw test -Dtest='UemsBerichtKaskadeTest,UemsBerichteBestandsschutzTest')   # Testcontainers
 (cd frontend/portal && npx vitest run src/uemsErgebnis.test.ts src/copy.test.ts)
 ```
