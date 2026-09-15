@@ -313,9 +313,11 @@ public class BerichtService {
 
     /**
      * {@code POST /berichte}: Vorlage (422) → Zeitraum (400) → Geltung (404, fremd ebenso) → Recht → gibt es schon (409) →
-     * Messstellen im Zeitraum (422) → Bericht mit Kennung und Entwurf in einer Transaktion.
+     * Messstellen im Zeitraum (422) → abgewählte Kennzahlen des Kundenbereichs (400, V3) → Bericht mit Kennung, Abwahl und
+     * Entwurf in einer Transaktion.
      */
-    public Uebersicht anlegen(String vorlageSchluessel, String geltungId, String zeitraum, ProtokollAkteur wer) {
+    public Uebersicht anlegen(String vorlageSchluessel, String geltungId, String zeitraum, List<UUID> abgewaehlt,
+            ProtokollAkteur wer) {
         UUID tenant = kundenbereich();
         Instant jetzt = jetzt();
         BerichtRegeln.Vorlage v = BerichtRegeln.vorlage(vorlageSchluessel);
@@ -348,12 +350,21 @@ public class BerichtService {
             throw BerichtAbgelehnt.regel(Ablehnung.KEINE_QUELLEN, BerichtRegeln.keineQuellen(g.name(), v.zeitraumArt(),
                     zeitraum, seit != null && seit.isAfter(zr.letzterTag()) ? seit : null), Map.of("feld", "zeitraum"));
         }
+        // V3 (AP-12 IP-14) — jede abgewählte Kennzahl ist eine des Kundenbereichs; eine außerhalb der Geltung ist erlaubt
+        // und wirkt nicht, weil Q4 sie nie liest. Kennung → Kennzeichen für das Protokoll.
+        List<UUID> kennungen = abgewaehlt == null ? List.of() : abgewaehlt.stream().distinct().toList();
+        Map<UUID, String> abwahl = kennungen.isEmpty() ? Map.of() : repo.kennzahlenDesKundenbereichs(tenant, kennungen);
+        if (abwahl.size() != kennungen.size()) {
+            throw BerichtAbgelehnt.anfrage("kennzahlen_abgewaehlt");
+        }
         String rolle = rolle(d, wer);
         String kennung;
         try {
             kennung = transaktion.execute(tx -> {
                 String neueKennung = repo.kennungNeu(tenant, LocalDate.ofInstant(jetzt, zone).getYear());
                 UUID id = repo.anlegen(tenant, neueKennung, v, g.id(), zeitraum, zone, wer, jetzt);
+                // Die Abwahl steht vor der ersten Bildung — schon der erste Entwurf lässt die Kennzahl weg.
+                repo.abwaehlen(tenant, id, abwahl.keySet(), wer, jetzt);
                 bilden(id, jetzt, GEBILDET_BEIM_ANLEGEN);
                 Map<String, Object> neu = new LinkedHashMap<>();
                 neu.put("kennung", neueKennung);
@@ -361,6 +372,9 @@ public class BerichtService {
                 neu.put("geltung_art", v.geltungArt());
                 neu.put("geltung_id", g.id().toString());
                 neu.put("zeitraum", zeitraum);
+                if (!abwahl.isEmpty()) {
+                    neu.put("kennzahlen_abgewaehlt", abwahl.values().stream().sorted().toList());
+                }
                 repo.protokoll(tenant, id, null, BerichtRechte.ANLEGEN, null, text(neu), null, wer, rolle, jetzt);
                 return neueKennung;
             });

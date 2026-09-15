@@ -40,6 +40,8 @@ import {
 import { alsOrtFehler } from '../standorte';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
+import type { BerichteFolgen } from '../berichteFolgen';
+import { useBerichteFolgen } from '../useBerichteFolgen';
 import { Zeitstrahl } from './Zeitstrahl';
 import './StandortDialog.css';
 import './FlaecheDialog.css';
@@ -98,6 +100,9 @@ export function VerschiebenDialog({
   const fehler: VerschiebenFehler = { ...(versucht ? pruefung : {}), ...serverFehler };
   const feldId = (feld: VerschiebenFeld) => `${basis}-${feld}`;
   const { options, groups } = zielOptionen(ort.art, ziele);
+  // AP-12 IP-14 (Wege zu IP-9): welche freigegebenen Berichtsstände das Verschieben ab dem Tag träfe — gefragt, sobald
+  // Ziel und Tag gewählt sind; ein Anstoß entsteht nur bei einem Standortwechsel (die Route löst auf).
+  const berichte = useBerichteFolgen(ort.id, form.zielId ? form.gueltigAb : null, 'zuordnung_rueckwirkend', 'aendern');
 
   // Die Folgen zu jeder Wahl — die jüngste Antwort gewinnt, eine ältere wird verworfen.
   useEffect(() => {
@@ -241,7 +246,7 @@ export function VerschiebenDialog({
               error={fehler.begruendung}
             />
             {vorschau.stand === 'da' ? (
-              <FolgenKarteAnsicht karte={folgenKarte(vorschau.v)} />
+              <FolgenKarteAnsicht karte={folgenKarte(vorschau.v)} berichte={berichte} />
             ) : vorschau.stand === 'abgelehnt' ? null : (
               <p className="vp-au-folgen-hinweis" aria-live="polite">
                 {vorschau.stand === 'pruefen' ? FOLGEN_PRUEFEN : FOLGEN_WAEHLEN}
@@ -259,7 +264,7 @@ export function VerschiebenDialog({
   );
 }
 
-function FolgenKarteAnsicht({ karte }: { karte: VerschiebenKarte }) {
+function FolgenKarteAnsicht({ karte, berichte = null }: { karte: VerschiebenKarte; berichte?: BerichteFolgen | null }) {
   return (
     <section className="vp-au-folgen vp-vd-folgen" aria-live="polite" data-testid="verschieben-folgen">
       <div className="vp-au-teil">
@@ -298,6 +303,11 @@ function FolgenKarteAnsicht({ karte }: { karte: VerschiebenKarte }) {
           ))}
         </ul>
       </div>
+      {berichte && (
+        <p className="vp-au-berichte" data-testid="berichte-folgen">
+          <strong>{berichte.titel}:</strong> {berichte.text}
+        </p>
+      )}
       <p className="vp-au-befehl">{karte.nichts}</p>
     </section>
   );

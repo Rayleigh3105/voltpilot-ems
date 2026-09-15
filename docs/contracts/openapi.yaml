@@ -22286,6 +22286,15 @@ components:
         vorlage: { type: string, description: "Ein Schlüssel aus GET /api/v1/bericht-vorlagen." }
         geltung_id: { type: string, format: uuid, description: "Der Standort; beim Unternehmensbericht das Unternehmen." }
         zeitraum: { type: string, pattern: "^[0-9]{4}(-(0[1-9]|1[0-2]))?$", description: "2026-10 (Monat) bzw. 2026 (Jahr), passend zur Vorlage." }
+        kennzahlen_abgewaehlt:
+          type: array
+          items: { type: string, format: uuid }
+          maxItems: 200
+          description: >
+            V3 (AP-12 IP-14), freiwillig: die Kennzahlen (`id`), die dieser Bericht weglässt; fehlt die Liste oder ist sie
+            leer, sind alle Kennzahlen der Geltung gewählt. Kein Array, ein Eintrag ohne UUID-Text, mehr als 200 Einträge
+            oder eine Kennzahl, die es im Kundenbereich nicht gibt → 400 `anfrage_ungueltig` mit `feld` =
+            `kennzahlen_abgewaehlt`; doppelte fallen zusammen. Die Abwahl steht vor der ersten Bildung des Entwurfs.
     BerichtFreigeben:
       type: object
       description: >

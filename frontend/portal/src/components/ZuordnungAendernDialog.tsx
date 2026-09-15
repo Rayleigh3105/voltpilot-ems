@@ -6,6 +6,7 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   api,
   ApiError,
+  type BerichtStrukturAnlass,
   type Messstelle,
   type MessstelleRegisterZeile,
   type OrtsbaumAmStichtag,
@@ -55,6 +56,17 @@ import { VpPicker } from './VpPicker';
 import './StandortDialog.css';
 import './FlaecheDialog.css';
 import './ZuordnungAendernDialog.css';
+import { useBerichteFolgen } from '../useBerichteFolgen';
+
+/**
+ * AP-12 IP-14 (Wege zu IP-9): welche Änderung einer Messstelle ein freigegebener Bericht als Strukturänderung liest —
+ * der Ort (`ort_zugeordnet`/`ort_korrigiert`) und die Verteilung (`verteilung_geaendert` mit Korrektur). Stellung und
+ * Prozesse fragen nicht.
+ */
+const BERICHTE_ANLASS: Partial<Record<AendernArt, BerichtStrukturAnlass>> = {
+  ort: 'zuordnung_rueckwirkend',
+  verteilung: 'verteilung_rueckwirkend',
+};
 
 const REIHENFOLGE: AendernFeld[] = ['ort', 'anlage', 'stellung', 'unterzaehlerVon', 'prozesse', 'anteile', 'tag'];
 
@@ -107,6 +119,13 @@ export function ZuordnungAendernDialog({
   const zf = zeitformAm(form.tag, heute, zone);
   const bisher = bisherAm(art, bestand, form.tag, kataloge.namen);
   const vorher = folgen({ art, kennzeichen: messstelle.kennzeichen, f: form, b: bestand, k: kataloge, heute, zone });
+  const berichteAnlass = BERICHTE_ANLASS[art] ?? null;
+  const berichte = useBerichteFolgen(
+    messstelle.id,
+    vorher && berichteAnlass ? form.tag : null,
+    berichteAnlass ?? 'zuordnung_rueckwirkend',
+    'aendern',
+  );
 
   const orte = useMemo(() => (standorte ? ortWahlen(standorte, baeume) : []), [standorte, baeume]);
   const anlagen = useMemo(() => (standorte ? anlageWahlen(standorte, null) : []), [standorte]);
@@ -325,6 +344,11 @@ export function ZuordnungAendernDialog({
             {vorher.saetze.map((s) => (
               <p key={s}>{s}</p>
             ))}
+            {berichte && (
+              <p data-testid="berichte-folgen">
+                <strong>{berichte.titel}:</strong> {berichte.text}
+              </p>
+            )}
           </section>
         )}
 

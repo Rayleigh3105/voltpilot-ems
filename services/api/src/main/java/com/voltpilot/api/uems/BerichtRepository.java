@@ -5,6 +5,8 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -115,6 +117,27 @@ public class BerichtRepository {
                 tenant, kennung, vorlage.schluessel(), vorlage.fassung(), vorlage.geltungArt(), standort ? geltung : null,
                 standort ? null : geltung, vorlage.zeitraumArt(), schluessel, zone.getId(), wer.sub(), wer.name(),
                 Timestamp.from(jetzt));
+    }
+
+    /** V3 — die Kennzeichen der genannten Kennzahlen des Kundenbereichs; eine unbekannte oder fremde fehlt in der Antwort. */
+    public Map<UUID, String> kennzahlenDesKundenbereichs(UUID tenant, Collection<UUID> kennzahlen) {
+        Map<UUID, String> aus = new LinkedHashMap<>();
+        jdbc.query("SELECT id, kennzeichen FROM kennzahl WHERE tenant_id = ? AND id = ANY (?::uuid[])", rs -> {
+            aus.put(rs.getObject("id", UUID.class), rs.getString("kennzeichen"));
+        }, tenant, kennzahlen.stream().map(UUID::toString).toArray(String[]::new));
+        return aus;
+    }
+
+    /**
+     * V3 — je Kennzahl eine wirksame Abwahl ({@code bericht_kennzahl_abwahl}; keine Zeile = gewählt). Beim Anlegen vor der
+     * ersten Bildung, damit schon der erste Entwurf sie weglässt.
+     */
+    public void abwaehlen(UUID tenant, UUID bericht, Collection<UUID> kennzahlen, ProtokollAkteur wer, Instant jetzt) {
+        for (UUID kennzahl : kennzahlen) {
+            jdbc.update("INSERT INTO bericht_kennzahl_abwahl (tenant_id, bericht_id, kennzahl_id, abgewaehlt_am, "
+                    + "abgewaehlt_von_sub, abgewaehlt_von_name) VALUES (?, ?, ?, ?, ?, ?)", tenant, bericht, kennzahl,
+                    Timestamp.from(jetzt), wer.sub(), wer.name());
+        }
     }
 
     /** Setzt „archiviert am“ genau einmal; {@code false} = war schon archiviert. */

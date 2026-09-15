@@ -1,0 +1,292 @@
+/*
+ * Die Dialoge der Welt „Berichte“ (UEMS AP-12 IP-14): Bericht anlegen, Berichtsstand freigeben, Vergleich Entwurf gegen
+ * Berichtsstand, Anstoß verwerfen — im zentrierten `Modal`. Klassen mit `vp-bd-`, damit nichts anderswo greift.
+ * ⚠ 375 px zuerst: eine Spalte, Karten und Wortpaare statt Tabellen, jede Zeile bricht um, nichts hat eine feste Breite.
+ */
+
+.vp-bd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-bd > * {
+  min-width: 0;
+}
+
+.vp-bd-vorspann,
+.vp-bd-hinweis {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-bd-hinweis {
+  font-size: var(--vp-c-fs-12);
+}
+
+.vp-bd-satz {
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  border-radius: 8px;
+  background: var(--vp-c-muted);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-bd-text {
+  margin: 0;
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-bd-gruppe {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-bd-gruppe > legend,
+.vp-bd-titel {
+  margin: 0 0 var(--vp-c-space-2);
+  padding: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-bd-feldfehler {
+  margin: 0;
+  color: var(--vp-c-destructive);
+  font-size: var(--vp-c-fs-12);
+}
+
+.vp-bd-kz {
+  margin-right: 6px;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Vorlage-Karten (Radio) */
+
+.vp-bd-karten {
+  display: grid;
+  gap: var(--vp-c-space-2);
+}
+
+@media (min-width: 720px) {
+  .vp-bd-karten {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.vp-bd-karte {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: var(--vp-c-card, #fff);
+  cursor: pointer;
+}
+
+.vp-bd-karte.is-gewaehlt {
+  border-color: var(--vp-c-primary);
+  box-shadow: 0 0 0 1px var(--vp-c-primary) inset;
+}
+
+.vp-bd-karte:focus-within {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-bd-karte > input {
+  flex: none;
+  margin-top: 3px;
+}
+
+.vp-bd-karte > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-bd-karte b {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+
+.vp-bd-karte small {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-bd-karte em {
+  color: var(--vp-c-primary);
+  font-size: var(--vp-c-fs-12);
+  font-style: normal;
+  font-weight: var(--vp-c-fw-600);
+}
+
+/* Kennzahlen (Häkchen) */
+
+.vp-bd-kennzahlen {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-bd-check {
+  display: flex;
+  gap: var(--vp-c-space-2);
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 32px;
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.vp-bd-check > input {
+  flex: none;
+  margin-top: 3px;
+}
+
+.vp-bd-check small {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+}
+
+/* Voraussetzungen: Vorschau beim Anlegen, Liste beim Freigeben */
+
+.vp-bd-vorschau {
+  padding: var(--vp-c-space-3);
+  border-radius: 8px;
+  background: var(--vp-c-muted);
+}
+
+.vp-bd-vorschau h3 {
+  margin: 0 0 4px;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-bd-vorschau p,
+.vp-bd-punkte li {
+  display: flex;
+  gap: var(--vp-c-space-2);
+  align-items: flex-start;
+  min-width: 0;
+  margin: 0;
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-bd-vorschau svg,
+.vp-bd-punkte svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--vp-c-primary);
+}
+
+.vp-bd-vorschau.is-laeuft svg,
+.vp-bd-punkte li.is-offen svg {
+  color: var(--vp-c-warn-fg);
+}
+
+.vp-bd-punkte {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-bd-ersetzt {
+  margin: var(--vp-c-space-2) 0 0;
+}
+
+.vp-bd-fehler {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
+/* Vergleich: je Abweichung eine Karte mit Wortpaaren */
+
+.vp-bd-abweichungen {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-bd-abweichungen > li {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: var(--vp-c-card, #fff);
+}
+
+.vp-bd-abw-kopf {
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+
+.vp-bd-abw-zahlen {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px var(--vp-c-space-3);
+  margin: 0;
+}
+
+.vp-bd-abw-zahlen > div {
+  display: contents;
+}
+
+.vp-bd-abw-zahlen dt {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-bd-abw-zahlen dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-bd-abw-zahlen .vp-bd-abw-neu {
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-bd-beleg {
+  display: block;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+}
