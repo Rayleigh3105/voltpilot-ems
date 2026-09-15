@@ -3,8 +3,12 @@ package com.voltpilot.api.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import com.voltpilot.api.zugriff.ZugriffKontextLader;
+import com.voltpilot.api.zugriff.ZugriffRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.Filter;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mockito;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -17,6 +21,7 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerA
 import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
@@ -72,6 +77,15 @@ class MetricsEndpointSecurityTest {
     })
     @Import(SecurityConfig.class)
     static class MetricsOnlyApp {
+
+        /**
+         * Der ZugriffFilter der Kette (UEMS AP-03 IP-4) braucht seinen Lader; ein anonymer Aufrufer erreicht das
+         * Repository nie, darum steht eine Attrappe für die Datenbank.
+         */
+        @Bean
+        ZugriffKontextLader zugriffKontextLader() {
+            return new ZugriffKontextLader(Mockito.mock(ZugriffRepository.class), new SimpleMeterRegistry());
+        }
     }
 
     @Autowired

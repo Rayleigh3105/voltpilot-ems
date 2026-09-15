@@ -252,17 +252,25 @@ class KeycloakPartnerRolleApiTest {
         assertThat(realmRollen(c)).contains("partner")
                 .doesNotContain("operator", "admin", "site-admin", "platform-admin");
 
-        assertThat(siteNamen(bearer(t))).isEmpty();
-        assertThat(siteNamen(withTenant(bearer(t), DEMO_TENANT))).as("X-Tenant-Id nur für die Plattform").isEmpty();
+        // Seit AP-03 IP-4 ist ein Partner ohne wirksame Unterstützung auf JEDER Kundenroute 404 — keine leere Liste,
+        // kein 403 (ZugriffFilter; alle Routen: ZugriffZaunApiTest). Der Plattform-Betrieb bleibt 403.
+        assertThat(get("/api/v1/sites", bearer(t)).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(get("/api/v1/sites", withTenant(bearer(t), DEMO_TENANT)).getStatusCode())
+                .as("X-Tenant-Id nur für die Plattform").isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(get("/api/v1/sites/" + BERLIN_SITE, withTenant(bearer(t), DEMO_TENANT)).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(get("/api/v1/sites/" + BERLIN_SITE + "/ocpp/action-permissions", withTenant(bearer(t), DEMO_TENANT))
-                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+                .getStatusCode()).as("404 vor dem Recht, nie 403").isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(get("/api/v1/admin/tenants", bearer(t)).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<String> me = get("/api/v1/me", withTenant(bearer(t), DEMO_TENANT));
+        assertThat(me.getStatusCode()).as("die Selbstauskunft antwortet ohne Kundenbereich").isEqualTo(HttpStatus.OK);
+        assertThat(JSON.readTree(me.getBody()).path("konto").asText()).isEqualTo("partner");
+        assertThat(JSON.readTree(me.getBody()).path("kundenbereich").isNull()).isTrue();
 
         ResponseEntity<String> anlegen = rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("name", "Partner-Anlage"), withTenant(bearer(t), DEMO_TENANT)), String.class);
-        assertThat(anlegen.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(anlegen.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(siteNamen(bearer(token("demo", "demo")))).doesNotContain("Partner-Anlage");
     }
 
