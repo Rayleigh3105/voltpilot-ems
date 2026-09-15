@@ -37,7 +37,8 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
   (§4.15) — die Prop heißt darum `onAbruf`. Die Typ-Namen in `berichtSeite.ts` sind kein Kundentext.
 - **„heute: …“ (A5)** kommt aus `messstellenRegister()` und `kennzahlen()`; fällt eine Quelle aus, fehlt nur der Hinweis.
   B10 (MS-12 heißt ab 01.12.2026 anders) ist eine Vektor-Annahme — die Bühne nennt sie nur mit `heute=b10`.
-- **B16:** heute antwortet keine Route `404 wert_nicht_mehr_gespeichert` (bringt IP-16); `heutigerWert` spricht den Satz
+- **B16:** seit IP-16 antwortet `…/werte` `404 wert_nicht_mehr_gespeichert` — aber ohne `version` nur, wo es keine spätere
+  Version gibt (nach einer Korrektur zeigt die Route Version 2, `uems-bericht-nach-den-fristen.md`); `heutigerWert` spricht den Satz
   schon, sobald der Code kommt — jede andere Ablehnung ist „konnte nicht geladen werden“, nie „nicht mehr gespeichert“.
 - **Kopf-Abschnitt zugeklappt (Variante B, 15.09.2026):** Datenstand, Stand, Freigabe und Prüfsumme trägt der Seitenkopf
   (Satz der Route, D5); die acht Angaben samt Regelwerk bleiben einen Tipp entfernt. Rundung und Sommerzeit der

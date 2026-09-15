@@ -294,6 +294,13 @@
       "vorlage": "neun Muster",
       "vertrag": "zehn: dazu „Anstoß verworfen (…)“",
       "grund": "F5, R4 und R5 nennen den Vermerk; die Vokabularliste in §7 ließ ihn aus."
+    },
+    {
+      "fall": "B16",
+      "feld": "werte_route ohne version",
+      "vorlage": "„keine Werte“ für Oktober 2026 (Zeile weg)",
+      "vertrag": "Version 2 aus `messreihe_periode_version` (200); 404 `wert_nicht_mehr_gespeichert` nur, wo die gefragte oder die neueste Version 1 ist",
+      "grund": "Die Route zeigt ohne Angabe die NEUESTE Version (AP-08 IP-18), und Version 2 hat keine Frist — genau die Asymmetrie, die B16 beschreibt. Ohne spätere Version antwortet auch die Route ohne Angabe 404 (der Hebel „heutigen Wert zeigen“); geprüft in `UemsBerichtNachDenFristenTest` (IP-16)."
     }
   ],
   "_nicht_geprueft": [
@@ -332,11 +339,6 @@
       "fall": "B15",
       "was": "KZ-0002 Jahr 0,5213 als Σ ÷ Σ",
       "warum": "AP-11 (kennzahl-vectors.json); ein Bericht zitiert den gespeicherten Kennzahl-Wert."
-    },
-    {
-      "fall": "B16",
-      "was": "dass die Route `werte?version=1` nach den Fristen 404 antwortet",
-      "warum": "Nachweis nach den Fristen IP-16."
     },
     {
       "fall": "—",
@@ -5241,7 +5243,8 @@
       "why": "Die Asymmetrie der Fristen (ist/C.2): `messreihe_periode` (trägt Version 1) hat 3 653 Tage, `messreihe_periode_version` (Version ≥ 2) keine Frist. Ein Bericht, der nur verweist, könnte nach 2036 Version 2 zeigen und Version 1 nicht — der Abzug macht den Bericht von dieser Asymmetrie unabhängig.",
       "schritte": [
         "Nach 3 653 Tagen sind die Oktober-Zeilen der Speicherklasse weg; der Abzug Nr. 1 ist Text mit Prüfsumme und braucht sie nicht (E1).",
-        "Die Route nach Version 1 antwortet ehrlich 404 mit dem Satz, der auf den Berichtsstand verweist."
+        "Die Route nach Version 1 antwortet ehrlich 404 mit dem Satz, der auf den Berichtsstand verweist.",
+        "Die Abnahme in Code (IP-16, Testcontainers `UemsBerichtNachDenFristenTest`): Bericht anlegen, Nr. 1 freigeben, eine Korrektur durch die Kaskade, Nr. 2 freigeben; dann `messreihe_periode`, `messreihe_tag`, `messreihe_viertelstunde`, `device_measurement_sample` und `telemetry_v2` bis zum Ende des Oktobers per SQL löschen (gezählt: vorher Zeilen, nachher keine) — Nr. 1 und Nr. 2 lesbar, Prüfsummen, PDF und CSV byte-gleich; `werte?version=1` am 02.11.2036 antwortet 404 mit dem Satz der Prüfung unten, ohne Angabe Version 2."
       ],
       "annahmen": ["Der Abruf-Zeitpunkt ist eine Annahme; die Fristen sind Bestand (ist/C.2)."],
       "pruefungen": [
@@ -5250,6 +5253,12 @@
           "name": "02.11.2036: der Abzug Nr. 1 hat dieselbe Prüfsumme wie am 10.11.2026",
           "eingang": {"abzug": "BR-2026-0001/1"},
           "ergebnis": {"pruefsumme": "sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d", "bytes": 8734}
+        },
+        {
+          "regel": "kanonisch",
+          "name": "02.11.2036: der Abzug Nr. 2 hat dieselbe Prüfsumme wie am 16.11.2026",
+          "eingang": {"abzug": "BR-2026-0001/2"},
+          "ergebnis": {"pruefsumme": "sha256:d2073f76be088dd37208be95df8e57796aac2fdfb295da702e79f77afb285b18", "bytes": 9015}
         },
         {
           "regel": "satz",

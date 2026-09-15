@@ -11096,6 +11096,11 @@ paths:
         zählt sie (die Naht der Portal-Fläche „Versionen“ am Wert). Die Stunde hat keine eigenen
         Versionen: trägt eine ihrer Viertelstunden eine spätere, sagt sie `version_nicht_gebildet`
         (mit `version=1` die damalige Stunde). Eine fremde Messstelle ist 404, nie 403.
+        Nach den Fristen (AP-12 IP-16, Bericht-Vertrag S4/B16): fragt die Anfrage GENAU EINE Periode (Monat
+        oder Jahr) einer gemessenen Reihe in Version 1 - angefragt oder als neueste -, liegt ihr Beginn 3 653
+        Tage oder länger zurück und sind Zeile und Viertelstunden weg, ist die Antwort 404
+        `wert_nicht_mehr_gespeichert` mit dem Satz des Bericht-Vertrags und dem Berichtsstand, der sie
+        festhält. Versionen ab 2 haben keine Frist; innerhalb der Aufbewahrung bleibt es `keine Werte`.
       responses:
         "200":
           description: Die Werte.
@@ -11105,12 +11110,13 @@ paths:
         "400": { $ref: "#/components/responses/MessstelleWerteAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
-          description: Die Messstelle gibt es nicht (`{message}`) - oder die angefragte Version an keinem Schritt.
+          description: Die Messstelle gibt es nicht (`{message}`) - oder die angefragte Version an keinem Schritt - oder die EINE Periode ist nach den Fristen nicht mehr gespeichert (`wert_nicht_mehr_gespeichert`).
           content:
             application/json:
               schema:
                 oneOf:
                   - { $ref: "#/components/schemas/MessstelleWerteVersionGibtEsNicht" }
+                  - { $ref: "#/components/schemas/MessstelleWerteNichtMehrGespeichert" }
                   - { type: object, required: [message], properties: { message: { type: string } } }
   /api/v1/messstellen/{kennzeichen}/werte/versionen:
     parameters:
@@ -21514,6 +21520,29 @@ components:
         grund: { type: string, enum: [version_gibt_es_nicht] }
         version: { type: integer }
         hoechste_version: { type: integer }
+    MessstelleWerteNichtMehrGespeichert:
+      type: object
+      description: >
+        Die EINE Periode der Anfrage (Monat oder Jahr) ist nach den Fristen nicht mehr gespeichert (AP-12 IP-16,
+        Bericht-Vertrag S4/B16) - `message` ist der Satz des Bericht-Vertrags, `stand` der früheste freigegebene
+        Berichtsstand, der genau diese Periode in Version 1 zitiert, sonst null.
+      required: [code, message, zeitraum, stand]
+      properties:
+        code: { type: string, enum: [wert_nicht_mehr_gespeichert] }
+        message: { type: string, example: "Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. 1 vom 10.11.2026 hält ihn fest." }
+        zeitraum:
+          type: object
+          required: [art, schluessel]
+          properties:
+            art: { type: string, enum: [monat, jahr] }
+            schluessel: { type: string, example: "2026-10" }
+        stand:
+          type: object
+          nullable: true
+          required: [nr, freigegeben_am]
+          properties:
+            nr: { type: integer, minimum: 1 }
+            freigegeben_am: { type: string, format: date-time }
     MessstelleWerteEreignis:
       type: object
       description: Ein Verweis auf eine Meldung des Ereignis-Vertrags - der Inhalt bleibt dort.

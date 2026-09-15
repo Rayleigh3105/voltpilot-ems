@@ -73,3 +73,7 @@ KEINE Durchsetzung (AP-03). Keine Portal-Fläche (IP-10/11), keine Ersatzwerte (
 (IP-12 ff.), nur die Hauptgröße. Die Stunde liest ihre Viertelstunden nur noch für „noch nicht gebildet",
 Version und vorläufig/endgültig, NICHT für die Abdeckung (der Umweg aus PR 725 ist entfallen). Befund: das
 Mittel im groben Raster bleibt das des Lesepfads (gewichtetes Mittel gespeicherter Mittel).
+
+Seit AP-12 IP-16 ruft der Controller `werteDerRoute`: EINE Periode (Monat/Jahr) in Version 1 jenseits der Aufbewahrung ohne
+Zeile ist 404 `wert_nicht_mehr_gespeichert` — nur an der Route, die Leser im Haus lesen `werte(…)` weiter ohne Frist
+(`uems-bericht-nach-den-fristen.md`).
