@@ -104,6 +104,9 @@ class KennzahlApiTest {
     @MockBean
     KennzahlAufrufer aufrufer;
 
+    @Autowired
+    KennzahlVorlagen vorlagen;
+
     private static JdbcTemplate root;
     private static JsonNode vertrag;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -531,6 +534,45 @@ class KennzahlApiTest {
     }
 
     // ================================================================ Gerüst
+
+    // ================================================================ Vorlagen (IP-10, K20)
+
+    /**
+     * K20: der Katalog steht an der Route (vorlage_gefunden); die Vorbelegung aus „Stromeinsatz je Stück“ ist eine
+     * gültige Anfrage — mit den Eingängen, die Ines bindet, rechnet die Vorschau „kWh/Stück“ und schreibt nichts
+     * (vorschau_schreibt = false). Erst „Anlegen“ schreibt: Name und Zweck der Vorlage, Fassung 1.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void k20DieVorschauAusDerVorlageSchreibtNichts() throws Exception {
+        Welt w = welt();
+        Antwort katalog = ruf(w, HttpMethod.GET, "/api/v1/kennzahl-vorlagen", null);
+        assertThat(katalog.status()).as(katalog.body().toString()).isEqualTo(200);
+        assertThat(felder(katalog.body())).containsExactly("schema_version", "vorlagen");
+        assertThat(katalog.body().get("vorlagen")).hasSize(8);
+        assertThat(katalog.body().get("vorlagen").get(0).get("kennung").asText()).isEqualTo("stromeinsatz_je_stueck");
+
+        KennzahlVorlagen.Vorlage vorlage = vorlagen.vorlage("stromeinsatz_je_stueck").orElseThrow();
+        Map<String, Object> anfrage = MAPPER.convertValue(
+                KennzahlVorlagen.vorbelegung(vorlage, "gebaeude", w.g2().toString(), "Halle 2"), LinkedHashMap.class);
+        anfrage.put("eingaenge", List.of(e("zaehler", "messstelle", "MS-12"), e("nenner", "bezugsgroesse", "BZ-6")));
+
+        String vorher = zustand(w);
+        Antwort v = ruf(w, HttpMethod.POST, PFAD + "/vorschau", anfrage);
+        assertThat(v.status()).as(v.body().toString()).isEqualTo(200);
+        assertThat(v.body().get("befunde")).as(v.body().toString()).isEmpty();
+        assertThat(v.body().get("einheit").asText()).isEqualTo("kWh/Stück");
+        assertThat(v.body().get("kennung").asText()).isEqualTo("kennzahl.standort_definieren");
+        assertThat(zustand(w)).as("die Vorschau aus der Vorlage schreibt nichts").isEqualTo(vorher);
+
+        Antwort a = ruf(w, HttpMethod.POST, PFAD, anfrage);
+        assertThat(a.status()).as(a.body().toString()).isEqualTo(201);
+        assertThat(a.body().get("kennzeichen").asText()).isEqualTo("KZ-0001");
+        assertThat(a.body().get("name").asText()).isEqualTo("Stromeinsatz je Stück — Halle 2");
+        assertThat(a.body().get("zweck").asText()).isEqualTo("Spezifischer Stromeinsatz je gutem Stück");
+        assertThat(a.body().get("verantwortlich_name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(a.body().get("fassung").asInt()).isEqualTo(1);
+    }
 
     private Welt welt() {
         int nr = NR.incrementAndGet();

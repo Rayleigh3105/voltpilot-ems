@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.io/contracts/v2/kennzahl-vorlagen.schema.json",
+  "title": "Der Vorlagen-Katalog der Kennzahlen (UEMS AP-11 IP-10, E9 = A)",
+  "description": "Die Form von services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json und ihrer byte-gleichen Portal-Kopie. Die Aufzählungen sind die Wörter der Nachbarverträge (messstelle.schema.json, bezugsdaten-vectors.json → arten.je_art); KennzahlVorlagenTest und kennzahlVorlagen.test.ts halten sie gleich.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "vorlagen"],
+  "properties": {
+    "_comment": { "type": "array", "items": { "type": "string" } },
+    "schema_version": { "type": "string", "const": "1.0" },
+    "$schema_datei": { "type": "string", "const": "docs/contracts/v2/kennzahl-vorlagen.schema.json" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "vorlagen": { "type": "array", "minItems": 8, "items": { "$ref": "#/$defs/vorlage" } }
+  },
+  "$defs": {
+    "vorlage": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Eine Vorlage (§4.12): belegt den Assistenten vor, ist nie eine Kennzahl.",
+      "required": ["kennung", "name_vorschlag", "zweck_vorschlag", "hilfesatz", "rechenform", "komplement", "zaehler_erwartung", "nenner_erwartung"],
+      "properties": {
+        "kennung": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Stabil; nie umbenannt, nie wiederverwendet." },
+        "name_vorschlag": { "type": "string", "pattern": "^\\S.* — \\{Geltungsbereich\\}$", "description": "Der Name mit dem Platzhalter am Ende — dieselbe Endung, die „Kopieren“ gegen den neuen Geltungsbereich tauscht (K20)." },
+        "zweck_vorschlag": { "type": "string", "minLength": 1 },
+        "hilfesatz": { "type": "string", "minLength": 1, "description": "Der Satz der Karte in Schritt 1 des Assistenten." },
+        "rechenform": { "type": "string", "enum": ["quotient", "anteil"], "description": "Eine Zusammenfassung hat keine Menge und keine Bezugsgröße — sie ist keine Vorlage dieses Satzes." },
+        "komplement": { "type": "boolean", "description": "Nur beim Anteil: 100 − Teil ÷ Ganzes × 100." },
+        "zaehler_erwartung": { "anyOf": [{ "$ref": "#/$defs/messstelle_erwartung" }, { "$ref": "#/$defs/bezugsgroesse_erwartung" }], "description": "Menge (quotient) bzw. Teil (anteil)." },
+        "nenner_erwartung": { "anyOf": [{ "$ref": "#/$defs/messstelle_erwartung" }, { "$ref": "#/$defs/bezugsgroesse_erwartung" }], "description": "Bezugsgröße (quotient) bzw. Ganzes (anteil)." }
+      }
+    },
+    "messstelle_erwartung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "messstelle_arten", "groesse", "richtungen", "wertarten", "satz"],
+      "properties": {
+        "art": { "type": "string", "const": "messstelle" },
+        "messstelle_arten": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["gemessen", "berechnet"] }, "description": "berechnet = Gesamtwert." },
+        "groesse": { "type": "string", "enum": ["Wirkenergie", "Wirkleistung", "Blindenergie", "Scheinleistung", "Ladestand", "Volumen"] },
+        "richtungen": {
+          "anyOf": [
+            { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "Laden / Entladen", "richtungslos"] } },
+            { "type": "null" }
+          ],
+          "description": "null = die Vorlage verlangt keine Richtung."
+        },
+        "wertarten": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["Zählerstand", "Intervallmenge"] }, "description": "Nie Momentanwert (U3)." },
+        "satz": { "type": "string", "minLength": 1 }
+      }
+    },
+    "bezugsgroesse_erwartung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "bezugsgroesse_arten", "einheiten", "wertarten", "satz"],
+      "properties": {
+        "art": { "type": "string", "const": "bezugsgroesse" },
+        "bezugsgroesse_arten": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["produktionsmenge", "gutteile", "betriebszeit", "schichten", "bezugsflaeche", "mitarbeitende", "gradtagzahl", "zaehlerstand", "sonstige_menge"] } },
+        "einheiten": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Nie umgerechnet — kg und t sind zwei Vorlagen." },
+        "wertarten": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["periodenwert", "stammdatum"] }, "description": "Nie Stand (U3)." },
+        "satz": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

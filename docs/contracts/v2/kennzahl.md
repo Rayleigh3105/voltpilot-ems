@@ -159,7 +159,14 @@ AP-11 IP-8 an (seit V20260915061500 angelegt: Bezug `kennzahl`, Pflicht `ausloes
 
 Eine Vorlage belegt Rechenform, Name („Stromeinsatz je Stück — {Geltungsbereich}“) und Zweck vor. Eine Kopie übernimmt Form,
 Name (mit dem neuen Geltungsobjekt) und Zweck und verlangt Eingänge und Geltungsbereich neu; sie bekommt ein neues Kennzeichen
-und Fassung 1 „gilt seit Beginn“ (K20). Der Katalog `kennzahl-vorlagen.json` kommt mit IP-10.
+und Fassung 1 „gilt seit Beginn“ (K20). Der Katalog (IP-10) ist `services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json`: acht Vorlagen in der
+Form von [`kennzahl-vorlagen.schema.json`](./kennzahl-vorlagen.schema.json), byte-gleich im Portal
+(`src/kennzahlen/`), gelesen über `GET /api/v1/kennzahl-vorlagen` (keine eigene Kennung, kein Mandant). Je Vorlage:
+`kennung`, `name_vorschlag`, `zweck_vorschlag`, `hilfesatz`, `rechenform` (quotient · anteil), `komplement` und die
+Erwartung an Menge und Bezugsgröße (`zaehler_erwartung`/`nenner_erwartung`: Messstelle mit Größe, Richtungen und
+Wertarten — oder Bezugsgröße mit Arten, Einheiten und Wertarten, in den Wörtern ihrer Verträge). Die Vorbelegung
+(`KennzahlVorlagen.vorbelegung` ⟷ `kennzahlVorlagen.ts`) setzt nur Rechenform, Name, Zweck und beim Anteil das
+Komplement; die Eingänge bindet der Kunde, die Vorschau prüft sie.
 
 ## 12. Fehler und Kundensätze (§5.8)
 

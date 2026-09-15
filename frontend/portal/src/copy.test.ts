@@ -1259,6 +1259,33 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     for (const rel of FLAECHEN) expect(dateien).toContain(rel);
   });
 
+  /**
+   * AP-11 IP-10: der Vorlagen-Katalog ist ein Kundentext-Wohnort (die Karten des Assistenten: Name, Zweck, Hilfesatz und
+   * der Satz jeder Erwartung) — er liegt als JSON und wird vom Datei-Walker nicht erfasst. `_comment` ist Entwickler-Doku.
+   */
+  it('die Kennzahl-Vorlagen sprechen dasselbe Wörterbuch (§4.13)', () => {
+    const katalog = JSON.parse(readFileSync(join(SRC, 'kennzahlen/kennzahl-vorlagen.json'), 'utf8')) as {
+      vorlagen: { kennung: string; name_vorschlag: string; zweck_vorschlag: string; hilfesatz: string; zaehler_erwartung: { satz: string }; nenner_erwartung: { satz: string } }[];
+    };
+    expect(katalog.vorlagen.length).toBe(8);
+    const texte = katalog.vorlagen.flatMap((v) =>
+      [v.name_vorschlag, v.zweck_vorschlag, v.hilfesatz, v.zaehler_erwartung.satz, v.nenner_erwartung.satz].map((text) => ({
+        wo: v.kennung,
+        text: text.split('{Geltungsbereich}').join('Halle 2'),
+      })),
+    );
+    const violations: string[] = [];
+    for (const { wo, text } of texte) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN]) {
+        if (re.test(ohneAusnahmen(text))) violations.push(`${wo}: „${text}“ — ${why}`);
+      }
+      for (const re of [KUNDENSICHT_VERBOTEN, MITTEL_VERBOTEN, ROLLEN_VERBOTEN]) {
+        if (re.test(text)) violations.push(`${wo}: „${text}“ — §4.13`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
   it('beißt wirklich — und nicht die Kundenwörter', () => {
     for (const falsch of ['KPI Halle 2', 'Kenngröße anlegen', 'Durchschnitt je Stück', 'Mittelwert der Gebäude', 'Zähler je Nenner']) {
       expect([KUNDENSICHT_VERBOTEN, MITTEL_VERBOTEN, ROLLEN_VERBOTEN].some((re) => re.test(falsch)), falsch).toBe(true);

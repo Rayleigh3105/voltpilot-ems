@@ -9921,6 +9921,26 @@ paths:
               schema: { $ref: "#/components/schemas/Bezugsflaechen" }
         "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/kennzahl-vorlagen:
+    get:
+      tags: [kennzahlen]
+      summary: Der Vorlagen-Katalog der Kennzahlen - acht VoltPilot-Vorlagen, die den Assistenten „Kennzahl anlegen“ vorbelegen.
+      description: >
+        Keine eigene Kennung (E9 - kein Kundenobjekt, kein Mandant, kein Recht für Vorlagen): jeder
+        angemeldete Benutzer liest denselben Katalog. Die Antwort ist Knoten für Knoten die Datei
+        `services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json` ohne ihre Entwickler-Felder
+        (`_comment`, `$schema_datei`, `herkunft`); das Portal trägt eine byte-gleiche Kopie, die Form hält
+        `docs/contracts/v2/kennzahl-vorlagen.schema.json` fest. Eine Vorlage ist nie eine Kennzahl: sie
+        belegt Rechenform, Name (Platzhalter `{Geltungsbereich}`), Zweck und beim Anteil das Komplement
+        vor und nennt die Erwartung an Menge und Bezugsgröße. Die Eingänge bindet der Kunde ausdrücklich;
+        `POST /api/v1/kennzahlen/vorschau` prüft die vorbelegte Anfrage mit ihnen und schreibt nichts (K20).
+      responses:
+        "200":
+          description: Der Katalog.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlVorlagen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/kennzahlen:
     get:
       tags: [kennzahlen]
@@ -20121,6 +20141,52 @@ components:
         hat_werte: { type: boolean, description: "Trägt sie einen Wert? Dann ist sie nicht löschbar (V5)." }
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
+    KennzahlVorlagen:
+      type: object
+      required: [schema_version, vorlagen]
+      properties:
+        schema_version: { type: string, description: "Die Fassung der Katalog-Form (1.0)." }
+        vorlagen: { type: array, items: { $ref: "#/components/schemas/KennzahlVorlage" } }
+    KennzahlVorlage:
+      type: object
+      description: Eine Vorlage (kennzahl-vorlagen.schema.json, $defs/vorlage).
+      required: [kennung, name_vorschlag, zweck_vorschlag, hilfesatz, rechenform, komplement, zaehler_erwartung, nenner_erwartung]
+      properties:
+        kennung: { type: string, description: "Stabil, etwa stromeinsatz_je_stueck." }
+        name_vorschlag: { type: string, description: "„Stromeinsatz je Stück — {Geltungsbereich}“; der Platzhalter wird der Name des Geltungsobjekts." }
+        zweck_vorschlag: { type: string }
+        hilfesatz: { type: string, description: "Der Satz der Karte in Schritt 1 des Assistenten." }
+        rechenform: { type: string, enum: [quotient, anteil] }
+        komplement: { type: boolean, description: "Nur beim Anteil: 100 minus Teil durch Ganzes mal 100." }
+        zaehler_erwartung:
+          description: Menge (quotient) bzw. Teil (anteil).
+          oneOf:
+            - { $ref: "#/components/schemas/KennzahlVorlageMessstelle" }
+            - { $ref: "#/components/schemas/KennzahlVorlageBezugsgroesse" }
+        nenner_erwartung:
+          description: Bezugsgröße (quotient) bzw. Ganzes (anteil).
+          oneOf:
+            - { $ref: "#/components/schemas/KennzahlVorlageMessstelle" }
+            - { $ref: "#/components/schemas/KennzahlVorlageBezugsgroesse" }
+    KennzahlVorlageMessstelle:
+      type: object
+      required: [art, messstelle_arten, groesse, richtungen, wertarten, satz]
+      properties:
+        art: { type: string, enum: [messstelle] }
+        messstelle_arten: { type: array, items: { type: string, enum: [gemessen, berechnet] }, description: "berechnet = Gesamtwert." }
+        groesse: { type: string, description: "Eine Größe des Messstellen-Vertrags, etwa Wirkenergie." }
+        richtungen: { type: array, nullable: true, items: { type: string }, description: "null = die Vorlage verlangt keine Richtung." }
+        wertarten: { type: array, items: { type: string, enum: [Zählerstand, Intervallmenge] } }
+        satz: { type: string }
+    KennzahlVorlageBezugsgroesse:
+      type: object
+      required: [art, bezugsgroesse_arten, einheiten, wertarten, satz]
+      properties:
+        art: { type: string, enum: [bezugsgroesse] }
+        bezugsgroesse_arten: { type: array, items: { type: string }, description: "Arten des Bezugsdaten-Vertrags (arten.je_art), etwa gutteile." }
+        einheiten: { type: array, items: { type: string }, description: "Nie umgerechnet." }
+        wertarten: { type: array, items: { type: string, enum: [periodenwert, stammdatum] } }
+        satz: { type: string }
     KennzahlListe:
       type: object
       required: [kennzahlen]

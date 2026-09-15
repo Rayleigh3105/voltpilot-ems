@@ -1,0 +1,200 @@
+{
+  "_comment": [
+    "Der Vorlagen-Katalog der Kennzahlen (UEMS AP-11 IP-10, §4.12, E9 = A): acht VoltPilot-Vorlagen, keine Kundenobjekte, keine Fassungen, kein Recht.",
+    "Eine Vorlage belegt den Assistenten „Kennzahl anlegen“ vor — Rechenform, Name (mit „{Geltungsbereich}“), Zweck, Komplement — und sagt, was sie an Menge und Bezugsgröße erwartet. Sie ist nie eine Kennzahl; die Eingänge bindet der Kunde ausdrücklich (Invariante 5).",
+    "Kanonisch ist DIESE Datei (services/api, GET /api/v1/kennzahl-vorlagen); frontend/portal/src/kennzahlen/kennzahl-vorlagen.json ist die BYTE-gleiche Kopie (kennzahlVorlagen.sync.test.ts) — beide Dateien zusammen ändern.",
+    "Die Wörter der Erwartungen sind die ihrer Verträge: Größe, Richtung, Wertart aus messstelle.schema.json; Art, Einheit, Wertart der Bezugsgröße aus bezugsdaten-vectors.json → arten.je_art. `richtungen` null heißt: die Vorlage verlangt keine Richtung. KennzahlVorlagenTest und kennzahlVorlagen.test.ts prüfen jede Vorlage gegen KennzahlRegeln.einheit."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "docs/contracts/v2/kennzahl-vorlagen.schema.json",
+  "herkunft": "UEMS AP-11 §4.12 (acht Vorlagen), E9 = A vom 14.09.2026, Referenzfall K20",
+  "vorlagen": [
+    {
+      "kennung": "stromeinsatz_je_stueck",
+      "name_vorschlag": "Stromeinsatz je Stück — {Geltungsbereich}",
+      "zweck_vorschlag": "Spezifischer Stromeinsatz je gutem Stück",
+      "hilfesatz": "Setzt den Strombezug ins Verhältnis zu den guten Stücken, etwa einer Montagelinie.",
+      "rechenform": "quotient",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "bezugsgroesse",
+        "bezugsgroesse_arten": ["gutteile", "produktionsmenge"],
+        "einheiten": ["Stück"],
+        "wertarten": ["periodenwert"],
+        "satz": "Bezugsgröße Gutteile oder Produktionsmenge in Stück"
+      }
+    },
+    {
+      "kennung": "stromeinsatz_je_kg",
+      "name_vorschlag": "Stromeinsatz je kg — {Geltungsbereich}",
+      "zweck_vorschlag": "Spezifischer Stromeinsatz je kg Produktionsmenge",
+      "hilfesatz": "Setzt den Strombezug ins Verhältnis zur erzeugten Menge in kg, etwa im Spritzguss.",
+      "rechenform": "quotient",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "bezugsgroesse",
+        "bezugsgroesse_arten": ["produktionsmenge"],
+        "einheiten": ["kg"],
+        "wertarten": ["periodenwert"],
+        "satz": "Bezugsgröße Produktionsmenge in kg"
+      }
+    },
+    {
+      "kennung": "stromeinsatz_je_betriebsstunde",
+      "name_vorschlag": "Stromeinsatz je Betriebsstunde — {Geltungsbereich}",
+      "zweck_vorschlag": "Stromeinsatz je Stunde Betriebszeit",
+      "hilfesatz": "Setzt den Strombezug ins Verhältnis zu den Stunden, in denen eine Anlage läuft.",
+      "rechenform": "quotient",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "bezugsgroesse",
+        "bezugsgroesse_arten": ["betriebszeit"],
+        "einheiten": ["h"],
+        "wertarten": ["periodenwert"],
+        "satz": "Bezugsgröße Betriebszeit in h"
+      }
+    },
+    {
+      "kennung": "stromeinsatz_je_m2",
+      "name_vorschlag": "Stromeinsatz je m² — {Geltungsbereich}",
+      "zweck_vorschlag": "Stromeinsatz je m² Bezugsfläche",
+      "hilfesatz": "Setzt den Strombezug ins Verhältnis zur Bezugsfläche. Flächen aus der Standortstruktur sind sofort nutzbar.",
+      "rechenform": "quotient",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "bezugsgroesse",
+        "bezugsgroesse_arten": ["bezugsflaeche"],
+        "einheiten": ["m²"],
+        "wertarten": ["stammdatum"],
+        "satz": "Bezugsgröße Bezugsfläche in m²"
+      }
+    },
+    {
+      "kennung": "stromeinsatz_je_mitarbeitenden",
+      "name_vorschlag": "Stromeinsatz je Mitarbeitenden — {Geltungsbereich}",
+      "zweck_vorschlag": "Stromeinsatz je Person",
+      "hilfesatz": "Setzt den Strombezug ins Verhältnis zur Zahl der Mitarbeitenden am Stichtag.",
+      "rechenform": "quotient",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "bezugsgroesse",
+        "bezugsgroesse_arten": ["mitarbeitende"],
+        "einheiten": ["Personen"],
+        "wertarten": ["stammdatum"],
+        "satz": "Bezugsgröße Mitarbeitende in Personen"
+      }
+    },
+    {
+      "kennung": "anteil_am_netzbezug",
+      "name_vorschlag": "Anteil am Netzbezug — {Geltungsbereich}",
+      "zweck_vorschlag": "Anteil eines Verbrauchs am Netzbezug",
+      "hilfesatz": "Zeigt in Prozent, welchen Teil des Netzbezugs ein Bereich oder eine Anlage ausmacht.",
+      "rechenform": "anteil",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Netzbezug: Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      }
+    },
+    {
+      "kennung": "autarkiegrad",
+      "name_vorschlag": "Autarkiegrad — {Geltungsbereich}",
+      "zweck_vorschlag": "Anteil des Verbrauchs, der nicht aus dem Netz kommt",
+      "hilfesatz": "100 % weniger den Anteil des Netzbezugs am Verbrauch: so viel Strom deckt der Ort selbst.",
+      "rechenform": "anteil",
+      "komplement": true,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Netzbezug: Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Verbrauch: Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      }
+    },
+    {
+      "kennung": "eigenverbrauchsanteil",
+      "name_vorschlag": "Eigenverbrauchsanteil — {Geltungsbereich}",
+      "zweck_vorschlag": "Anteil der Erzeugung, der selbst verbraucht wird",
+      "hilfesatz": "Setzt den selbst verbrauchten Teil der Erzeugung ins Verhältnis zur ganzen Erzeugung.",
+      "rechenform": "anteil",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": null,
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Gesamtwert Erzeugung − Einspeisung, Wirkenergie"
+      },
+      "nenner_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Erzeugung"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Erzeugung: Messstelle oder Gesamtwert, Wirkenergie · Erzeugung"
+      }
+    }
+  ]
+}
