@@ -13,6 +13,9 @@ const expect = baseExpect.configure({ timeout: 30_000 });
 // hebt. Der Assistent selbst ist warm sofort da (die 8–10-s-Läufe). Ein
 // Wiederholungslauf fährt gegen den dann warmen Server und ist grün — das ist
 // die dafür vorgesehene, dateilokale Stellschraube (kein globaler Eingriff).
+// ⚠ Die Wiederholung deckt NUR den Kaltstart. Die Ausfälle bis 15.09.2026 waren
+// ein Wirt, der den Assistenten schon beim Speichern schloss (siehe `stehtOffen`)
+// — die Wiederholungen hatten sie als „flaky" grün gefärbt.
 test.describe.configure({ retries: 2 });
 
 /**
@@ -31,6 +34,17 @@ const KANAELE = [
 
 function bucket(last: number) {
   return [{ start: '2026-09-12T09:45:00Z', avg: last, min: last, max: last, last, n: 1 }];
+}
+
+/**
+ * Der Abschluss-Schritt STEHT, bis der Kunde „Fertig" drückt. Schließt der Wirt das Modal
+ * schon beim Speichern, erscheint „ist angelegt" im selben Frame wie `is-closing` und ist
+ * nach ~180 ms weg — das war bis 15.09.2026 ein Zeitrennen, das die Wiederholungen still
+ * grün färbten. Diese Aussage macht daraus einen festen Befund: sie wartet nicht das
+ * Ausblenden ab, sondern scheitert daran (auch ein verschwundenes Modal erfüllt sie nie).
+ */
+async function stehtOffen(page: Page) {
+  await expect(page.locator('.vp-modal-scrim')).not.toHaveClass(/is-closing/);
 }
 
 async function mock(page: Page) {
@@ -181,11 +195,11 @@ test('SUN-30K: der Assistent stellt Gesamt-PV zusammen und der Wert erscheint in
   await expect(dialog.getByText(/PV 1 5,20 \+ PV 2 4,10 \+ PV 3 3,10/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Speichern' }).click();
 
-  // Schritt 5: Fertig
+  // Schritt 5: Fertig — steht offen, und „Fertig" ist ohne `force` klickbar (erst der
+  // Klick blendet aus).
   await expect(dialog.getByText('ist angelegt')).toBeVisible();
-  // „Fertig" schließt das Modal (es blendet aus) — force überspringt die
-  // Stabilitätsprüfung, die sonst am Ausblenden scheitert.
-  await dialog.getByRole('button', { name: 'Fertig' }).click({ force: true });
+  await stehtOffen(page);
+  await dialog.getByRole('button', { name: 'Fertig' }).click();
   await expect(dialog).toBeHidden();
 
   // Übersicht: die Kachel „Gesamt-PV" mit „berechnet" + Live-Wert (dies beweist
@@ -265,8 +279,9 @@ for (const width of [375, 768, 1440]) {
 
     // Schritt 5 + schließen
     await expect(dialog.getByText('ist angelegt')).toBeVisible();
+    await stehtOffen(page);
     ok(await modalUeberlauf());
-    await dialog.getByRole('button', { name: 'Fertig' }).click({ force: true });
+    await dialog.getByRole('button', { name: 'Fertig' }).click();
     await expect(dialog).toBeHidden();
 
     // Fertige Kachel im Cockpit

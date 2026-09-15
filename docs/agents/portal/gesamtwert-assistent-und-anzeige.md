@@ -100,6 +100,12 @@ npx playwright test e2e/gesamtwert.spec.ts   # SUN-30K durchspielen + Anzeige, L
 Backend-Seite der Cockpit-Umlenkung (vp-agg §2.4): `SiteRollenApiTest` (Umlenkung + Rückfall +
 „null statt 0 bei stummer Zuordnung" gegen `GET /api/v1/overview`).
 
-⚠ `e2e/gesamtwert.spec.ts` zieht den schweren Chart-Graphen herein; unter voller Parallelität
-kompiliert der Dev-Server ihn kalt in mehreren Workern gleichzeitig (selten über der Frist),
-deshalb `test.describe.configure({ retries: 2 })` — serial/isoliert ist er zuverlässig grün.
+⚠ Die Bühne `e2e/gesamtwert.tsx` verhält sich wie die echten Wirte (`MesswerteSection`,
+`KennzahlAnlegenDialog`): `onGespeichert` lädt nur neu und schließt NICHT. Bis 15.09.2026 schloss
+sie beim Speichern — „ist angelegt" stand dann nur ~180 ms (das Ausblenden des Modals), und unter
+Last scheiterten SUN-30K und die Layout-Fälle an „Fertig" bzw. `.vp-modal` (auf 84f8307f wie auf
+43cd7834: 6 bzw. 5 von 24 Fällen bei `--repeat-each=6 --workers=8`). `stehtOffen` prüft darum nach
+„ist angelegt", dass das Modal NICHT `is-closing` trägt, und „Fertig" wird ohne `force` geklickt: ein
+Wirt, der beim Speichern schließt, ist damit in JEDEM Versuch rot statt „flaky".
+`test.describe.configure({ retries: 2 })` bleibt nur als Schutz gegen den Kaltstart des
+Chart-Graphen unter Fremdlast — `flaky` in der Zusammenfassung ist ein Befund, kein Grün.
