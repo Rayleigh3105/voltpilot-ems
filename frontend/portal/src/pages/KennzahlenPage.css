@@ -404,3 +404,25 @@
   color: var(--vp-c-fg);
   font-weight: var(--vp-c-fw-700);
 }
+
+/* --- AP-11 IP-14: „Kennzahl anlegen“ im Kopf der Liste, „Kopieren“ im Kopf der Seite ------------------------ */
+
+/* Titel und Knopf teilen die Zeile, solange sie passen — bei 375 px rutscht der Knopf unter den Titel. */
+.vp-kz-kopf-aktion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+}
+
+.vp-kz-kopf-aktion h1 {
+  min-width: 0;
+}
+
+.vp-kz-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-3);
+}

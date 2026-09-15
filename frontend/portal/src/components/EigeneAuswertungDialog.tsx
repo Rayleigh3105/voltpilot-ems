@@ -229,7 +229,7 @@ export function EigeneAuswertungDialog({
             />
 
             <fieldset className="vp-eigen-feld" disabled={!entwurf.channel}>
-              <legend>3 · Kennzahl</legend>
+              <legend>3 · Zeitbezug</legend>
               <div className="vp-eigen-optionen">
                 {AGGREGATE.map((a) => {
                   const ok = !entwurf.channel || erlaubt(entwurf.channel, a);

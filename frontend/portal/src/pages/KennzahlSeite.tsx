@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
+import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl, type KennzahlFassung, type KennzahlPeriodeArt, type KennzahlWerte } from '../api';
 import { ZeitSegment } from '../components/HistorieWelt';
+import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { ErrorState, Skeleton } from '../components/States';
+import { KNOPF_KOPIEREN } from '../kennzahlAnlegen';
 import { VersionenEinstieg, VersionenModal } from '../components/WertVersionen';
 import { WerteKarte } from '../components/WerteKarte';
 import {
@@ -47,7 +50,18 @@ const LADEFEHLER_SEITE = 'Die Kennzahl konnte nicht geladen werden.';
  * Ein Tipp auf einen Balken zeigt dessen Periode in der Karte; ohne Wahl steht dort der jüngste Schritt mit einer
  * Zeile (auch „keine Werte“ mit seinem Grund).
  */
-export function KennzahlSeite({ id, zone, onListe }: { id: string; zone: string; onListe: () => void }) {
+export function KennzahlSeite({
+  id,
+  zone,
+  onListe,
+  onKopieren,
+}: {
+  id: string;
+  zone: string;
+  onListe: () => void;
+  /** AP-11 IP-14 (§5.2): „Kopieren“ — Form, Name und Zweck gehen in den Assistenten, die Eingänge nicht. */
+  onKopieren?: (quelle: KopieVon) => void;
+}) {
   const [stamm, setStamm] = useState<{ kennzahl: Kennzahl; fassungen: KennzahlFassung[] } | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
   const [art, setArt] = useState<KennzahlPeriodeArt | null>(null);
@@ -140,6 +154,13 @@ export function KennzahlSeite({ id, zone, onListe }: { id: string; zone: string;
           <span>{kp.unter}</span>
           {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
         </p>
+        {onKopieren && (
+          <div className="vp-kz-aktionen">
+            <Button variant="outline" size="sm" onClick={() => onKopieren({ kennzahl: k, fassungen: stamm.fassungen })}>
+              {KNOPF_KOPIEREN}
+            </Button>
+          </div>
+        )}
       </header>
       {wahl.optionen.length > 0 && art && (
         <div className="vp-kz-perioden">

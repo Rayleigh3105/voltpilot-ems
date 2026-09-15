@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
+import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl } from '../api';
+import { KennzahlAnlegenDialog, type KopieVon } from '../components/KennzahlAnlegenDialog';
 import { ErrorState, Skeleton } from '../components/States';
+import { KNOPF_ANLEGEN, LEER_SATZ } from '../kennzahlAnlegen';
 import {
   ANZAHL_VERLAUF,
   anfrage,
@@ -28,7 +31,8 @@ import './KennzahlenPage.css';
  * (`…/werte`, IP-7) — gezeigt wird der jüngste Schritt mit einer Zeile; jede Ableitung steht im reinen Modul
  * `kennzahlKarte.ts`.
  *
- * ⚠ Einen Knopf „Kennzahl anlegen“ gibt es hier noch nicht: der Assistent kommt mit IP-14 — vorher kein Knopf ohne Ziel.
+ * AP-11 IP-14: „Kennzahl anlegen“ im Kopf der Liste und „Kopieren“ im Kopf der Seite öffnen denselben Assistenten
+ * (`KennzahlAnlegenDialog`) — er gehört der Welt, nicht der Karte; nach dem Anlegen lädt die Liste neu.
  * ⚠ R-A7: antwortet `…/werte` für eine gelistete Kennzahl mit 404, trägt die Karte die Hinweiszeile ohne Wert.
  */
 export function KennzahlenPage({
@@ -43,11 +47,37 @@ export function KennzahlenPage({
   /** Die Zeitzone, in der „heute“ liegt. */
   zone?: string;
 }) {
-  if (kennzahlId) return <KennzahlSeite key={kennzahlId} id={kennzahlId} zone={zone} onListe={onListe} />;
-  return <KennzahlenListe zone={zone} onOeffnen={onOeffnen} />;
+  const [assistent, setAssistent] = useState<{ quelle: KopieVon | null } | null>(null);
+  const [neu, setNeu] = useState(0);
+  const dialog = assistent && (
+    <KennzahlAnlegenDialog
+      open
+      quelle={assistent.quelle}
+      onClose={() => setAssistent(null)}
+      onAngelegt={() => setNeu((n) => n + 1)}
+      onZurKennzahl={(id) => {
+        setAssistent(null);
+        onOeffnen(id);
+      }}
+    />
+  );
+  if (kennzahlId) {
+    return (
+      <>
+        <KennzahlSeite key={kennzahlId} id={kennzahlId} zone={zone} onListe={onListe} onKopieren={(quelle) => setAssistent({ quelle })} />
+        {dialog}
+      </>
+    );
+  }
+  return (
+    <>
+      <KennzahlenListe key={neu} zone={zone} onOeffnen={onOeffnen} onAnlegen={() => setAssistent({ quelle: null })} />
+      {dialog}
+    </>
+  );
 }
 
-function KennzahlenListe({ zone, onOeffnen }: { zone: string; onOeffnen: (id: string) => void }) {
+function KennzahlenListe({ zone, onOeffnen, onAnlegen }: { zone: string; onOeffnen: (id: string) => void; onAnlegen: () => void }) {
   const [liste, setListe] = useState<Kennzahl[] | null>(null);
   const [werte, setWerte] = useState<Record<string, ListenWerte>>({});
   const [fehler, setFehler] = useState(false);
@@ -88,8 +118,11 @@ function KennzahlenListe({ zone, onOeffnen }: { zone: string; onOeffnen: (id: st
 
   return (
     <div className="vp-kz" data-testid="kennzahlen">
-      <header className="vp-kz-kopf">
+      <header className="vp-kz-kopf vp-kz-kopf-aktion">
         <h1>{TITEL}</h1>
+        <Button size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={onAnlegen} data-testid="kennzahl-anlegen-knopf">
+          {KNOPF_ANLEGEN}
+        </Button>
       </header>
       {fehler ? (
         <ErrorState message={LADEFEHLER} onRetry={() => setVersuch((v) => v + 1)} />
@@ -98,7 +131,9 @@ function KennzahlenListe({ zone, onOeffnen }: { zone: string; onOeffnen: (id: st
           <Skeleton height={132} />
         </div>
       ) : liste.length === 0 ? (
-        <p className="vp-kz-leer">{LEER}</p>
+        <p className="vp-kz-leer">
+          {LEER} {LEER_SATZ}
+        </p>
       ) : (
         <ul className="vp-kz-liste">
           {sortiert.map((k) => (

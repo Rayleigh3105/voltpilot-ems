@@ -51,7 +51,7 @@ import {
   type PageId,
   type Route,
 } from '../src/nav';
-import { ApiError, type KennzahlPeriodeArt } from '../src/api';
+import { ApiError, type Kennzahl, type KennzahlAnfrage, type KennzahlPeriodeArt, type KennzahlWerte } from '../src/api';
 import { AnlagenPage } from '../src/pages/AnlagenPage';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
@@ -71,6 +71,14 @@ import {
 } from '../src/test/standorteFixtures';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
+import {
+  ahrenbergBezugsgroessen,
+  ahrenbergKostenstellen,
+  ahrenbergProzesse,
+  angelegteKennzahl,
+  kennzahlVorschauAntwort,
+  naechstesKennzeichen,
+} from '../src/test/kennzahlAnlegenFixtures';
 import {
   fassungenVon,
   kennzahlenDerWelt,
@@ -126,6 +134,40 @@ const kennzahlId = (kennzeichen: string | null) => kennzahlenDerWelt().find((k) 
 const kzOffen = kennzahlId(params.get('kz'));
 const kzAusserhalb = kennzahlId(params.get('ausserhalb'));
 /**
+ * AP-11 IP-14: `&person=IK` meldet Ines Kaltenbach an (sie ist „Verantwortlich“ im Assistenten, §5.1), `&person=PH`
+ * Peter Hollerbach; `&welt=leer` beginnt ohne Kennzahl (Neukunde). Was der Assistent anlegt, bleibt in der Bühne;
+ * `window.__kennzahlAufrufe` zählt jede Vorschau und jedes Anlegen — der Nachweis „vor Anlegen nichts gespeichert“.
+ */
+const PERSONEN: Record<string, string> = { IK: 'Ines Kaltenbach', PH: 'Peter Hollerbach' };
+const person = PERSONEN[params.get('person') ?? ''] ?? null;
+const weltLeer = params.get('welt') === 'leer';
+const angelegt: Kennzahl[] = [];
+const kennzahlAufrufe = { vorschau: [] as KennzahlAnfrage[], anlegen: [] as KennzahlAnfrage[] };
+(window as unknown as Record<string, unknown>).__kennzahlAufrufe = kennzahlAufrufe;
+const kennzahlenDerBuehne = (): Kennzahl[] => [...(weltLeer ? [] : kennzahlenDerWelt()), ...angelegt];
+const istAngelegt = (id: string) => angelegt.some((k) => k.id === id);
+const ohneWerte = (id: string, periode: KennzahlPeriodeArt, von: string, bis: string): KennzahlWerte => {
+  const k = angelegt.find((x) => x.id === id)!;
+  const kopf = { id: k.id, kennzeichen: k.kennzeichen, name: k.name, rechenform: k.rechenform, einheit: k.einheit, einheit_anzeige: k.einheit_anzeige };
+  return { kennzahl: kopf, periode, von, bis, zeitzone: 'Europe/Berlin', version: null, werte: [] };
+};
+const geltungName = (art: string, id: string): string | null => {
+  if (art === 'unternehmen') return ahrenbergUnternehmen().name;
+  for (const baum of [ortsbaumAhrenberg(), ortsbaumLindach()]) {
+    if (baum.standort.id === id) return baum.standort.name;
+    for (const g of baum.gebaeude) {
+      if (g.id === id) return g.name;
+      const b = g.bereiche.find((x) => x.id === id);
+      if (b) return b.name;
+    }
+  }
+  return (
+    [...ahrenbergProzesse(), ...ahrenbergKostenstellen()].find((x) => x.id === id)?.name ??
+    ahrenbergRegister().register.find((z) => z.id === id)?.name ??
+    null
+  );
+};
+/**
  * AP-01 IP-7: `&seiten=kuenftig` stellt das Bild, sobald JEDER Bereich der Ebene
  * eine Seite hat (AP-04 IP-5, AP-13) — nur für die Vorschau; die Kacheln führen
  * in der Bühne auf die Übersicht der Ebene. Ohne den Schalter gilt der heutige
@@ -149,7 +191,7 @@ Object.assign(keycloak, {
   token: 'e2e-token',
   authenticated: true,
   updateToken: async () => false,
-  tokenParsed: { name: 'Jonas Wendlinger', email: 'jonas.wendlinger@example.test', realm_access: { roles: ['operator'] } },
+  tokenParsed: { name: person ?? 'Jonas Wendlinger', email: 'jonas.wendlinger@example.test', realm_access: { roles: ['operator'] } },
 });
 
 const halle1 = { id: an1, name: 'Werk Ahrenberg – Halle 1', biddingZone: 'DE-LU' };
@@ -246,23 +288,40 @@ Object.assign(api, {
   standorte: async () => structuredClone(szene.liste),
   standortOrte: async (id: string) => (id === werkLindach().id ? ortsbaumLindach() : ortsbaumAhrenberg()),
   // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
-  kennzahlen: async () => ({ kennzahlen: kennzahlenDerWelt() }),
+  kennzahlen: async () => ({ kennzahlen: kennzahlenDerBuehne() }),
   kennzahl: async (id: string) => {
-    const k = kennzahlenDerWelt().find((x) => x.id === id);
+    const k = kennzahlenDerBuehne().find((x) => x.id === id);
     if (!k) throw new ApiError(404, 'Diese Kennzahl gibt es nicht.');
     return k;
   },
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,
-    kennzeichen: kennzahlenDerWelt().find((x) => x.id === id)?.kennzeichen ?? '',
-    fassungen: fassungenVon(id),
+    kennzeichen: kennzahlenDerBuehne().find((x) => x.id === id)?.kennzeichen ?? '',
+    fassungen: istAngelegt(id) ? [] : fassungenVon(id),
   }),
   kennzahlWerte: async (id: string, periode: KennzahlPeriodeArt, von: string, bis: string) => {
     if (id === kzAusserhalb) throw new ApiError(404, 'Diese Kennzahl gibt es nicht.');
+    if (istAngelegt(id)) return ohneWerte(id, periode, von, bis);
     return kennzahlWerteAntwort(id, periode, von, bis, Date.now());
   },
   kennzahlWertVersionen: async (id: string, periode: KennzahlPeriodeArt, von: string) =>
     kennzahlWertVersionenAntwort(id, periode, von, Date.now()),
+  // AP-11 IP-14: was der Assistent „Kennzahl anlegen“ liest — und seine zwei Aufrufe, gezählt.
+  bezugsgroessen: async () => ahrenbergBezugsgroessen(),
+  unternehmen: async () => ahrenbergUnternehmen(),
+  prozesse: async () => ({ stichtag: null, prozesse: ahrenbergProzesse() }),
+  kostenstellen: async () => ({ stichtag: null, kostenstellen: ahrenbergKostenstellen() }),
+  kennzahlVorschau: async (a: KennzahlAnfrage) => {
+    kennzahlAufrufe.vorschau.push(structuredClone(a));
+    return kennzahlVorschauAntwort(a, Date.now());
+  },
+  kennzahlAnlegen: async (a: KennzahlAnfrage) => {
+    kennzahlAufrufe.anlegen.push(structuredClone(a));
+    const kennzeichen = naechstesKennzeichen(kennzahlenDerBuehne().map((k) => k.kennzeichen));
+    const k = angelegteKennzahl(a, kennzeichen, geltungName(a.geltung_art, a.geltung_id), Date.now(), person ?? 'Jonas Wendlinger');
+    angelegt.push(k);
+    return k;
+  },
   // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
   funktionen: async () => funktionenDerSzene(),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was

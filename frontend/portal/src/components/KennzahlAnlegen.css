@@ -1,0 +1,329 @@
+/*
+ * Der Assistent „Kennzahl anlegen“ (UEMS AP-11 IP-14). Der Rahmen — Schritt-Leiste, Kopf, Fuß, Fertig — ist der des
+ * Gesamtwert-Assistenten (`Gesamtwert.css`, `.vp-steps` in `index.css`); hier steht nur, was die Kennzahl dazu braucht.
+ * 375 px zuerst: jede Zeile bricht um, nichts hat eine feste Breite.
+ */
+
+.vp-kza-karten {
+  display: grid;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-kza-karte {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: var(--vp-c-card, #fff);
+  cursor: pointer;
+}
+
+.vp-kza-karte.is-gewaehlt {
+  border-color: var(--vp-c-primary);
+  box-shadow: 0 0 0 1px var(--vp-c-primary) inset;
+}
+
+.vp-kza-karte:focus-within {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-kza-karte > input {
+  flex: none;
+  margin-top: 3px;
+}
+
+.vp-kza-karte > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-kza-karte b {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+
+.vp-kza-karte small {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-kza-karte em {
+  font-style: normal;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-primary);
+}
+
+.vp-kza-formen,
+.vp-kza-perioden {
+  min-width: 0;
+  margin: var(--vp-c-space-4) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-kza-formen legend,
+.vp-kza-perioden legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-kza-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-kza-quelle {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+
+.vp-kza-quelle small {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+/* Der Hebel zum Gesamtwert-Assistenten: dieselbe Hinweis-Form wie `.vp-gw-warn`. */
+.vp-kza-hebel {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  margin-top: var(--vp-c-space-3);
+  padding: 12px 14px;
+  border-left: 3px solid #f59e0b;
+  border-radius: 0 12px 12px 0;
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-kza-hebel p {
+  margin: 0;
+}
+
+.vp-kza-kontext {
+  margin: 0 0 var(--vp-c-space-3);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-kza-kontext b {
+  color: var(--vp-c-fg);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-kza-ok {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: var(--vp-c-space-3) 0 0;
+  color: var(--vp-ok-ink, #2e7d32);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-kza-ok svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.vp-kza-fein {
+  margin: 6px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-kza-seg {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.vp-kza-seg label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 10px;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  cursor: pointer;
+}
+
+.vp-kza-seg input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.vp-kza-seg label.is-gewaehlt {
+  border-color: var(--vp-c-primary);
+  box-shadow: 0 0 0 1px var(--vp-c-primary) inset;
+  color: var(--vp-c-primary);
+}
+
+.vp-kza-seg label:focus-within {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-kza-felder {
+  display: grid;
+  gap: var(--vp-c-space-4);
+}
+
+.vp-kza-rechte {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+
+.vp-kza-rechte span {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-kza-rechte small {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kza-kopf {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+}
+
+.vp-kza-kopf div {
+  display: grid;
+  grid-template-columns: minmax(0, 10rem) minmax(0, 1fr);
+  gap: 8px;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-kza-kopf dt {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kza-kopf dd {
+  margin: 0;
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+
+.vp-kza-vorschau h4 {
+  margin: var(--vp-c-space-4) 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-kza-vorschau ul,
+.vp-kza-befunde {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-kza-vorschau li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+}
+
+.vp-kza-p-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-kza-p-zahl {
+  font-size: var(--vp-c-fs-20);
+  font-weight: var(--vp-c-fw-800);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.vp-kza-p-zahl.is-leer {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kza-vorschau small {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+}
+
+.vp-kza-vorschau li p {
+  margin: 0;
+  color: var(--vp-c-warn-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-kza-befunde {
+  margin-top: var(--vp-c-space-3);
+}
+
+.vp-kza-befunde li {
+  display: grid;
+  gap: 2px;
+}
+
+.vp-kza-befunde p,
+.vp-kza .vp-gw-error p {
+  margin: 0;
+}
+
+.vp-kza-befunde p {
+  color: var(--vp-c-destructive);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+@media (max-width: 480px) {
+  .vp-kza-kopf div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

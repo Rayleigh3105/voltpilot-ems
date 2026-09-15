@@ -43,9 +43,10 @@ Spezifikation: AP-11 §8 IP-13, §5.3 (Kennzahl-Seite bei 375 px), §5.5 (Versio
   „Berechnung Fassung n · eingetragen von …“; eine Version ohne Entscheidung zeigt ihren Anlass.
 - **`copy.test.ts`** (§4.13): nie KPI/Metrik/Kenngröße/Dashboard/Widget/Template in der Kundensicht (Hilfe-Suchwörter
   ausgenommen), auf Kennzahl-Flächen nie Durchschnitt/Mittel und nie Zähler/Nenner als Rolle. `KENNZAHL_BESTAND` nennt die
-  Flächen, die „Kennzahl“ heute schon außerhalb der Welt sagen — IP-14 streicht die Eigene Auswertung nach „3 · Zeitbezug“.
+  Flächen, die „Kennzahl“ heute schon außerhalb der Welt sagen — IP-14 hat die Eigene Auswertung auf „3 · Zeitbezug“ umbenannt und dort gestrichen.
 - **Die Playwright-Spec importiert keine Fixtures**: sie laden `api.ts`, und dem fehlt im Node-Lauf `import.meta.env`.
 - **Abweichung:** §5.5 schreibt „freigegeben von Jonas Wendlinger“; die Referenzdatei 1.4 hat K-2026-0007 von Ines
   Kaltenbach freigegeben — die Fixtures folgen der Datei.
-- **Nicht gebaut:** Assistent „Kennzahl anlegen“ (IP-14), „Berechnung ändern ab …“, Stammdaten ändern, Archivieren und
-  Löschen (IP-15) — bis dahin kein Knopf ohne Ziel; Paare einer Jahres-Zusammenfassung (K14, IP-11).
+- **Nicht gebaut:** „Berechnung ändern ab …“, Stammdaten ändern, Archivieren und Löschen (IP-15) — bis dahin kein Knopf
+  ohne Ziel; Paare einer Jahres-Zusammenfassung (K14, IP-11). „Kennzahl anlegen“ und „Kopieren“ stehen seit IP-14 im
+  Kopf von Liste und Seite: `uems-kennzahl-anlegen.md`.

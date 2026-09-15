@@ -1152,7 +1152,7 @@ describe('UEMS AP-04 IP-5 · das Messstellen-Register spricht Messstelle · Quel
  * Quelltexte der Flächen UND die Sätze, die sie zur Laufzeit aus den Vektor-Fixtures bilden.
  */
 describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Berechnung · Fassung · Version (§4.13)', () => {
-  const FLAECHEN = ['kennzahlKarte.ts', 'pages/KennzahlenPage.tsx', 'pages/KennzahlSeite.tsx'];
+  const FLAECHEN = ['kennzahlKarte.ts', 'kennzahlAnlegen.ts', 'pages/KennzahlenPage.tsx', 'pages/KennzahlSeite.tsx', 'components/KennzahlAnlegenDialog.tsx'];
   const verboten = (woerter: string[]) => new RegExp(`(^|[^\\p{L}])(${woerter.join('|')})([^\\p{L}]|$)`, 'u');
   const KUNDENSICHT_VERBOTEN = verboten(['KPI', 'Metrik', 'Kenngröße', 'Kenngrößen', 'Dashboard', 'Widget', 'Template']);
   const MITTEL_VERBOTEN = verboten(['Durchschnitt', 'Durchschnitte', 'Mittel', 'Mittelwert', 'Mittelwerte']);
@@ -1303,12 +1303,10 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
 // Sortiert wie der Vergleich. „alt“ = das ALTE Wort (AP-11 W7, Kachel oder Aggregat — umzubenennen, die Eigene
 // Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
 const KENNZAHL_BESTAND: string[] = [
-  'components/EigeneAuswertungDialog.tsx', // alt
   'components/MarktpreiseMobil.tsx', // alt
   'components/PortfolioCockpit.tsx', // alt
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
-  'eigeneAuswertung.ts', // alt
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
