@@ -1,4 +1,4 @@
-import { expect as baseExpect, test, type Page } from '@playwright/test';
+import { expect as baseExpect, test, type Locator, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -103,7 +103,7 @@ async function ruhig(page: Page) {
   await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
 }
 
-async function messeUndFotografiere(page: Page, breite: number, name: string) {
+async function messeUndFotografiere(page: Page, breite: number, name: string, { ganz = true } = {}) {
   await ruhig(page);
   const m = await messe(page, breite);
   expect(m.dokument, `${name} ${breite}: Dokument`).toBe(0);
@@ -115,7 +115,7 @@ async function messeUndFotografiere(page: Page, breite: number, name: string) {
   writeFileSync(join(BILDER, `messung-${datei}.json`), JSON.stringify(m, null, 2));
   await page.screenshot({ path: join(BILDER, `${datei}.png`) });
   // Das ganze Bild: das Fenster so hoch wie der Dialog-Inhalt, damit nichts im Scrollbereich fehlt.
-  if (m.inhaltHoehe && m.sichtHoehe && m.inhaltHoehe > m.sichtHoehe) {
+  if (ganz && m.inhaltHoehe && m.sichtHoehe && m.inhaltHoehe > m.sichtHoehe) {
     const vorher = page.viewportSize()!;
     await page.setViewportSize({ width: breite, height: vorher.height + (m.inhaltHoehe - m.sichtHoehe) + 40 });
     await ruhig(page);
@@ -124,10 +124,19 @@ async function messeUndFotografiere(page: Page, breite: number, name: string) {
   }
 }
 
-async function waehle(page: Page, feld: string, option: RegExp) {
-  await page.getByRole('combobox', { name: feld, exact: true }).click();
-  await page.getByRole('option', { name: option }).click();
+/** Die Liste DIESES Felds — eine eben geschlossene blendet noch aus und steht solange im DOM. */
+async function listeVon(page: Page, feld: Locator): Promise<Locator> {
+  await feld.click();
+  const id = await feld.getAttribute('id');
+  return id ? page.locator(`[id="${id}-liste"]`) : page.locator('body');
 }
+
+async function waehleIn(page: Page, feld: Locator, option: RegExp) {
+  await (await listeVon(page, feld)).getByRole('option', { name: option }).click();
+}
+
+const waehle = (page: Page, feld: string, option: RegExp) =>
+  waehleIn(page, page.getByRole('combobox', { name: feld, exact: true }), option);
 
 const aktiverSchritt = (page: Page) => page.locator('.vp-step-active .vp-step-label');
 
@@ -156,10 +165,8 @@ for (const breite of BREITEN) {
     await waehle(page, 'Wertart *', /^Zählerstand/);
     await page.getByRole('button', { name: 'Nebengröße hinzufügen' }).click();
     const neben = dialog.locator('.vp-msd-neben');
-    await neben.getByRole('combobox', { name: 'Größe *' }).click();
-    await page.getByRole('option', { name: /^Wirkleistung/ }).click();
-    await neben.getByRole('combobox', { name: 'Richtung *' }).click();
-    await page.getByRole('option', { name: /^Bezug/ }).click();
+    await waehleIn(page, neben.getByRole('combobox', { name: 'Größe *' }), /^Wirkleistung/);
+    await waehleIn(page, neben.getByRole('combobox', { name: 'Richtung *' }), /^Bezug/);
     await messeUndFotografiere(page, breite, 'd1-ausgefuellt');
 
     // D2 — Ort ist der Standort (Vorgabe); zweiter Hauptzähler → 409 mit Wortlaut.
@@ -182,10 +189,14 @@ for (const breite of BREITEN) {
 
     // D3 — nur passende Messwerte wählbar, „Was geschieht“ vor dem Klick.
     await waehle(page, 'Komponente', /^Unterzähler Spritzguss SG01–SG06/);
-    await page.getByRole('combobox', { name: 'Messwert für die Hauptgröße · Wirkenergie · Bezug' }).click();
-    await expect(page.getByRole('option', { name: /^Wirkleistung/ })).toHaveAttribute('aria-disabled', 'true');
-    await messeUndFotografiere(page, breite, 'd3-messwerte');
-    await page.getByRole('option', { name: /^Wirkenergie Bezug/ }).click();
+    const hauptListe = await listeVon(
+      page,
+      page.getByRole('combobox', { name: 'Messwert für die Hauptgröße · Wirkenergie · Bezug' }),
+    );
+    await expect(hauptListe.getByRole('option', { name: /^Wirkleistung/ })).toHaveAttribute('aria-disabled', 'true');
+    // Offene Liste: kein „ganz“-Bild — ein anderes Fenstermaß schlösse sie.
+    await messeUndFotografiere(page, breite, 'd3-messwerte', { ganz: false });
+    await hauptListe.getByRole('option', { name: /^Wirkenergie Bezug/ }).click();
     await waehle(page, 'Messwert für die Nebengröße · Wirkleistung · Bezug', /^Wirkleistung/);
     await expect(page.getByTestId('messstelle-folgen')).toContainText(
       'MS-0022 liest ab 20.10.2026, 09:00 Uhr Unterzähler Spritzguss SG01–SG06 · Wirkenergie Bezug, Wirkleistung.',
