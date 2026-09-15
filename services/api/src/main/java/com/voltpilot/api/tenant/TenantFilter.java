@@ -1,5 +1,6 @@
 package com.voltpilot.api.tenant;
 
+import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,13 +30,20 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * through the RLS-scoped app datasource, never BYPASSRLS. For every other
  * principal the header is ignored outright; a customer's tenant always comes
  * from the validated JWT claim, so the override cannot widen customer access.
+ *
+ * <p><b>Partner-Konto (UEMS AP-03 IP-3).</b> A token with realm role {@code partner} never gets a
+ * tenant here: neither from a {@code tenant_id} claim (a partner account has none; one present is
+ * a misconfiguration and ignored) nor from {@code X-Tenant-Id}. Its customer context comes only
+ * from a valid Unterstützung, which AP-03 IP-4 resolves.
  */
 public class TenantFilter extends OncePerRequestFilter {
 
     static final String CLAIM = "tenant_id";
     /** Header carrying the admin-selected tenant (platform-admin tokens only). */
     public static final String TENANT_OVERRIDE_HEADER = "X-Tenant-Id";
-    private static final String PLATFORM_ADMIN_AUTHORITY = "ROLE_platform-admin";
+    private static final String PLATFORM_ADMIN_AUTHORITY =
+            "ROLE_" + KeycloakRealmRoleConverter.PLATFORM_ADMIN_ROLE;
+    private static final String PARTNER_AUTHORITY = "ROLE_" + KeycloakRealmRoleConverter.PARTNER_ROLE;
     private static final Logger log = LoggerFactory.getLogger(TenantFilter.class);
 
     @Override
@@ -57,6 +65,12 @@ public class TenantFilter extends OncePerRequestFilter {
         if (isPlatformAdmin(auth)) {
             return adminOverride(request);
         }
+        if (hasAuthority(auth, PARTNER_AUTHORITY)) {
+            if (jwt.getClaimAsString(CLAIM) != null) {
+                log.warn("Partner token carries a '{}' claim; ignored - a partner account has no tenant", CLAIM);
+            }
+            return java.util.Optional.empty();
+        }
         String raw = jwt.getClaimAsString(CLAIM);
         if (raw == null || raw.isBlank()) {
             log.warn("Authenticated token is missing a '{}' claim; request will see no tenant data", CLAIM);
@@ -71,8 +85,12 @@ public class TenantFilter extends OncePerRequestFilter {
     }
 
     private static boolean isPlatformAdmin(Authentication auth) {
+        return hasAuthority(auth, PLATFORM_ADMIN_AUTHORITY);
+    }
+
+    private static boolean hasAuthority(Authentication auth, String authority) {
         return auth.getAuthorities().stream()
-                .anyMatch(a -> PLATFORM_ADMIN_AUTHORITY.equals(a.getAuthority()));
+                .anyMatch(a -> authority.equals(a.getAuthority()));
     }
 
     /**

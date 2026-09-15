@@ -52,7 +52,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Platform-admin API: manage tenants and customer users across the whole
  * platform. Every method is gated by {@code hasRole('platform-admin')}, so a
- * Portal-User (customer, {@code operator}) calling any of these gets HTTP 403 -
+ * Portal-User (customer, tenant-scoped) calling any of these gets HTTP 403 -
  * the backend, not the UI, is the boundary between operators and customers.
  *
  * <p>Tenants are read/written through the {@code voltpilot_admin} BYPASSRLS

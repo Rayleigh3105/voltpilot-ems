@@ -1,5 +1,6 @@
 package com.voltpilot.api.ocpp;
 
+import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.voltpilot.api.web.dto.OcppDto;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -34,7 +35,11 @@ public class OcppActionPolicy {
         // alias so existing realms/users gain exactly the D4 site-admin level
         // without a flag day; new assignments use the explicit site-admin.
         boolean siteAdmin = platform || has(auth, "ROLE_site-admin") || has(auth, "ROLE_admin");
-        boolean customer = siteAdmin || has(auth, "ROLE_operator");
+        // AP-03 IP-3: new customer accounts carry no realm role; a customer account (valid
+        // tenant_id, neither partner nor platform) keeps exactly the level operator has. IP-7
+        // moves all three levels onto the Zuweisung (E13).
+        boolean customer = siteAdmin || has(auth, "ROLE_operator")
+                || has(auth, KeycloakRealmRoleConverter.KONTO_BENUTZER);
         Map<String, Boolean> out = new LinkedHashMap<>();
         put(out, CUSTOMER, customer);
         put(out, SITE_ADMIN, siteAdmin);

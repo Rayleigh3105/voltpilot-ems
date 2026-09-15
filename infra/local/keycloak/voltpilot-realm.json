@@ -27,7 +27,7 @@
     "realm": [
       {
         "name": "operator",
-        "description": "Portal-User: customer, scoped to one tenant via tenant_id (dev)"
+        "description": "Portal-User, legacy accounts only: customer scoped to one tenant via tenant_id. Since UEMS AP-03 IP-3 new customer accounts get no realm role (dev)"
       },
       {
         "name": "admin",
@@ -40,6 +40,10 @@
       {
         "name": "platform-admin",
         "description": "Portal-Admin: platform operator, manages tenants and users across all tenants (dev)"
+      },
+      {
+        "name": "partner",
+        "description": "Partner account (installer, UEMS AP-03 E7): NEVER a tenant_id; reaches a customer area only through a granted Unterstuetzung (dev)"
       },
       {
         "name": "edge-release-publisher",
