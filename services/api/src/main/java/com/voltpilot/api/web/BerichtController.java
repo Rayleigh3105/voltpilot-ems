@@ -192,6 +192,24 @@ public class BerichtController {
                 .body(datei.inhalt());
     }
 
+    /**
+     * Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} (G1: das PDF folgt dem Abrufen) — das PDF eines
+     * Stands (DA2), server-seitig aus dem Abzug, byte-gleich bei jedem Abruf; jeder Abruf protokolliert (DA5); ein Entwurf hat
+     * keins (EW4). Ablehnungen wie am Stand, als JSON — darum kein {@code produces}.
+     */
+    @GetMapping("/berichte/{kennung}/staende/{nr}/pdf")
+    public ResponseEntity<byte[]> pdf(@PathVariable String kennung, @PathVariable String nr, Authentication auth) {
+        ProtokollAkteur wer = OrtAnfrage.akteur(auth);
+        String k = kennung(kennung);
+        if (!NR.matcher(nr).matches()) {
+            throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
+        }
+        BerichtService.Datei datei = dienst.pdf(k, Integer.parseInt(nr), wer);
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + datei.name())
+                .body(datei.inhalt());
+    }
+
     /** Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — R4, mit Begründung. */
     @PostMapping("/berichte/{kennung}/anstoesse/{id}/verwerfen")
     public BerichtDto.Anstoss verwerfen(@PathVariable String kennung, @PathVariable String id,

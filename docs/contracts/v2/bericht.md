@@ -229,7 +229,16 @@ gepinnten Fingerabdruck `konzept_tabelle.sha256`.
 - **DA1** Ein Stand friert seine Darstellung ein: Zone der Geltung, `de-DE`, Mengen mit den Stellen ihrer Ebene
   (`ErgebnisZustand.zahl`), Kennzahlen wie AP-11 (`KennzahlRegeln.anzeige`, zwei Stellen), Prozent eines Vergleichs mit
   einer Nachkommastelle. Regel `anzeige`.
-- **DA2** PDF aus dem Abzug, deterministisch (IP-11).
+- **DA2** PDF aus dem Abzug, deterministisch (IP-11). **Die Datei (IP-11):** Route `GET …/staende/{nr}/pdf`, Datei
+  `bericht-<Kennung>-nr<Nr.>.pdf`, Recht wie Abrufen (G1); A4, Schrift Liberation Sans eingebettet (Teilmenge); Abschnitte
+  in der Folge der Vorlagen — Kopf · Zusammenfassung · Tabellen (am Standort `verbrauch_je_messstelle`, am Unternehmen
+  `standorte` mit den Messstellen und `kostenstellen`) · Kennzahlen · Qualität · Quellenverzeichnis —, Zahlen nach DA1; auf
+  jeder Seite der Fuß „<Kennung> · Datenstand … · Berichtsstand Nr. n · freigegeben … von …“ mit Prüfsumme und „Seite i von
+  n“; ein ersetzter Stand trägt auf jeder Seite `ersetzt durch Nr. n (Datum)` schräg hinter dem Inhalt und als Zeile oben
+  rechts. Erzeugungs- und Änderungsdatum = Freigabe, die Dokument-Kennung `/ID` aus der Prüfsumme; Abrufzeit, Abrufer und
+  Teilansicht stehen NICHT in der Datei (nur in `bericht_abruf`) — zwei Abrufe desselben Stands sind byte-gleich, auch durch
+  verschiedene Personen; ersetzt wird ein Stand genau einmal, und nur dann ändert sich seine Datei (Wasserzeichen). Die Datei
+  entsteht NUR aus dem Abzug und der Freigabe des Stands (A1); ein Entwurf hat keine (EW4).
 - **DA3 Berichts-CSV** in Kundenform: Kopfblock `# schlüssel=wert` in der Reihenfolge `regeln.csv_kopf` (16 Zeilen: Bericht,
   Vorlage mit Fassung, Geltung „Standort ST-1 Werk Ahrenberg“, Zeitraum „2026-10 (01.10.2026–31.10.2026)“, Stand,
   Datenstand, Freigabe am/von, Zone, `dezimal=,`, `trenner=;`, `zahlen=ungerundet`, Prüfsumme, Erzeugung am/von, Teilansicht),

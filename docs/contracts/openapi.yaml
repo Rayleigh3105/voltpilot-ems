@@ -10168,6 +10168,37 @@ paths:
         "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "500": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/staende/{nr}/pdf:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+      - { name: nr, in: path, required: true, schema: { type: integer, minimum: 1 }, description: "Die Nr. des Berichtsstands." }
+    get:
+      tags: [berichte]
+      summary: Das PDF eines Stands - server-seitig nur aus dem Abzug, byte-gleich bei jedem Abruf, jeder Abruf protokolliert.
+      description: >
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1: das PDF folgt dem Abrufen, durchgesetzt über uems/BerichtRechte);
+        fremder Kundenbereich oder fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403
+        `recht_fehlt` - die Unterstützung bekommt nie eine Datei. Inhalt (E11 DA2): Kopf,
+        Zusammenfassung, Tabellen, Kennzahlen, Qualität, Quellenverzeichnis, auf jeder Seite der Fuß
+        mit Bericht, Datenstand, Berichtsstand Nr., Freigabe und Prüfsumme; ein ersetzter Stand trägt
+        auf jeder Seite das Wasserzeichen „ersetzt durch Nr. n (Datum)“. Deterministisch: Datum im
+        Dokument = Freigabe, Dokument-Kennung aus der Prüfsumme, eingebettete Schrift - zwei Abrufe
+        desselben Stands sind byte-gleich, auch durch verschiedene Personen (Abrufer und Teilansicht
+        stehen nur im Protokoll). Die Datei entsteht NUR aus dem Abzug (A1); jeder Abruf schreibt
+        `bericht_abruf` und die Meldung `bericht_abgerufen` mit Format `pdf` (DA5) - scheitert das,
+        geht keine Datei hinaus. Ein Entwurf hat keine Datei (EW4); stimmt die Prüfsumme nicht, 500
+        `abzug_beschaedigt`.
+      responses:
+        "200":
+          description: Das PDF (Content-Disposition attachment, filename bericht-<Kennung>-nr<Nr.>.pdf).
+          content:
+            "application/pdf":
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "500": { $ref: "#/components/responses/BerichtAbgelehnt" }
   /api/v1/berichte/{kennung}/anstoesse/{id}/verwerfen:
     parameters:
       - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }

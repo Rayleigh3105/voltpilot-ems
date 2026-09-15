@@ -93,13 +93,13 @@ class BerichtSchnittstelleVertragTest {
     }
 
     /**
-     * Zehn Pfade, elf Routen — keine löscht (F6: eine Freigabe wird nie zurückgenommen, ein Stand nie gelöscht): die neun
-     * aus IP-7, seit AP-12 IP-9 die lesende Folgen-Zeile {@code /berichte/betroffen} und seit AP-12 IP-10 der Berichts-CSV
-     * eines Stands.
+     * Elf Pfade, zwölf Routen — keine löscht (F6: eine Freigabe wird nie zurückgenommen, ein Stand nie gelöscht): die neun
+     * aus IP-7, seit AP-12 IP-9 die lesende Folgen-Zeile {@code /berichte/betroffen}, seit AP-12 IP-10 der Berichts-CSV und
+     * seit AP-12 IP-11 das PDF eines Stands.
      */
     @Test
     @SuppressWarnings("unchecked")
-    void dieRoutenSindDieElfDerPakete() {
+    void dieRoutenSindDieZwoelfDerPakete() {
         Map<String, List<String>> soll = new LinkedHashMap<>();
         soll.put("/api/v1/berichte", List.of("get", "post"));
         soll.put("/api/v1/berichte/betroffen", List.of("get"));
@@ -109,6 +109,7 @@ class BerichtSchnittstelleVertragTest {
         soll.put("/api/v1/berichte/{kennung}/freigeben", List.of("parameters", "post"));
         soll.put("/api/v1/berichte/{kennung}/staende/{nr}", List.of("parameters", "get"));
         soll.put("/api/v1/berichte/{kennung}/staende/{nr}/csv", List.of("parameters", "get"));
+        soll.put("/api/v1/berichte/{kennung}/staende/{nr}/pdf", List.of("parameters", "get"));
         soll.put("/api/v1/berichte/{kennung}/anstoesse/{id}/verwerfen", List.of("parameters", "post"));
         soll.put("/api/v1/berichte/{kennung}/archivieren", List.of("parameters", "post"));
         soll.forEach((p, methoden) -> assertThat(((Map<String, Object>) pfade.get(p)).keySet()).as(p)
