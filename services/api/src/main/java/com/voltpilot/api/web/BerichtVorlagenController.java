@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
  * {@code docs/contracts/v2/bericht-vorlagen.json} und die Portal-Kopie {@code frontend/portal/src/berichte/}
  * ({@code BerichtVorlagenControllerTest}, {@code berichtVorlagen.sync.test.ts}). Die Regeln lesen die Vorlagen aus
  * {@code BerichtRegeln.VORLAGEN}; {@code BerichtVectorsTest} hält beide gleich.
+ *
+ * <p><b>Rechte:</b> die Route selbst hat keine eigene Kennung. Eine Vorlage wählt, wer einen Bericht anlegt — an einem
+ * Standort mit {@code bericht.standort_freigeben}, am Unternehmen mit {@code bericht.unternehmen} (G1,
+ * {@code BerichtRegeln.kennung}); durchgesetzt wird das an der Berichts-Route (IP-7), nicht hier.
  */
 @RestController
 public class BerichtVorlagenController {
