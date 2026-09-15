@@ -224,7 +224,7 @@ export function BerichtSeite({
           <ul className="vp-br-revision-anstoesse">
             {banner.anstoesse.map((a) => (
               <li key={a.id}>
-                <span>{a.text}</span>
+                <span>{a.zeile}</span>
                 {hebel.verwerfen && banner.anstoesse.length > 1 && (
                   <Button variant="outline" size="sm" onClick={() => setDialog({ art: 'verwerfen', anstoss: a, nr: banner.nr })}>
                     {VERWERFEN}

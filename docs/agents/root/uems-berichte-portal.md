@@ -46,5 +46,7 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
   die Playwright-Spec importiert keine Fixtures (`api.ts` ohne `import.meta.env` im Node-Lauf).
 - **Ahrenberg hat FÜNF Kacheln** (Berichte, sobald ein Standort misst) und am Rechner den Reiter „Berichte“ vor
   „Messwerte“: `ebenenNav.test.ts`, `telefonleiste.spec.ts`, `messstellen.spec.ts`, `kennzahlen.spec.ts` tragen es.
-- **Nicht gebaut:** „Bericht anlegen“, Freigabe-Dialog, Vergleich, „Anstoß verwerfen“, das lange Revisions-Banner (IP-14).
-  Die Liste zeigt die 403 der Unterstützung mit dem Satz der Route (Rechte-Ableitung, nicht §5.8), ohne „Erneut versuchen“.
+- **Seit AP-12 IP-14 schreibt die Welt:** „Bericht anlegen“, Freigabe-Dialog, Vergleich, „Anstoß verwerfen“ und das
+  Banner „Revision nötig“ — `uems-bericht-dialoge.md`. Die Liste zeigt die 403 der Unterstützung weiter mit dem Satz der
+  Route (Rechte-Ableitung, nicht §5.8), ohne „Erneut versuchen“ und ohne „Bericht anlegen“.
+- **`.vp-br-hebel` ist der Knopf „heutigen Wert zeigen“** (IP-13) — die Hebel-Leisten von IP-14 heißen `.vp-br-aktionen`.

@@ -1669,7 +1669,7 @@ describe('UEMS AP-12 IP-14 · die Berichts-Dialoge sprechen Bericht · Entwurf �
       }
       if (h.vergleichen) out.push(h.vergleichen.knopf, BD.vergleichTitel(h.vergleichen.gegen), BD.keineAbweichung(h.vergleichen.gegen));
       const banner = BD.revisionBanner(detail);
-      if (banner) out.push(banner.titel, banner.satz, ...banner.anstoesse.map((a) => a.text), BD.verwerfenVorspann(banner.nr));
+      if (banner) out.push(banner.titel, banner.satz, ...banner.anstoesse.flatMap((a) => [a.zeile, a.text]), BD.verwerfenVorspann(banner.nr));
       for (const art of ['monat', 'jahr'] as const) {
         out.push(...BD.zeitraumWahlen(art, jetzt, ZONE).map((z) => z.label));
         out.push(BD.zeitraumVorschau(art, art === 'monat' ? '2026-10' : '2026', ZONE, jetzt).text);

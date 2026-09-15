@@ -177,7 +177,7 @@ describe('Revision nötig und Anstoß verwerfen (R1, R4, R5)', () => {
     const banner = revisionBanner(detailAm(jetzt));
     expect(banner).toEqual({
       titel: 'Revision nötig — Korrektur K-2026-0007',
-      anstoesse: [{ id: detailAm(jetzt).anstoesse[0].id, text: 'Erkannt am 12.11.2026 10:05.' }],
+      anstoesse: [{ id: detailAm(jetzt).anstoesse[0].id, zeile: 'Erkannt am 12.11.2026 10:05.', text: 'Korrektur K-2026-0007 · erkannt 12.11.2026 10:05' }],
       satz: 'Der Berichtsstand Nr. 1 bleibt unverändert.',
       nr: 1,
     });

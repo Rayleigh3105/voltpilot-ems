@@ -446,8 +446,11 @@ export const keineAbweichung = (nr: number): string => `Keine Abweichung — der
 export interface RevisionBanner {
   /** R5 — „Revision nötig — Korrektur K-2026-0007“ (Kennzeichen `revision_noetig`). */
   titel: string;
-  /** Je offener Anstoß: was ihn auslöste und wann er erkannt wurde. */
-  anstoesse: Array<{ id: string; text: string }>;
+  /**
+   * Je offener Anstoß: `zeile` für das Banner (bei einem Anstoß nennt der Titel den Anlass schon — die Zeile sagt nur,
+   * wann), `text` vollständig mit Anlass und Zeit für die Rückfrage „Anstoß verwerfen“.
+   */
+  anstoesse: Array<{ id: string; zeile: string; text: string }>;
   /** „Der Berichtsstand Nr. 1 bleibt unverändert.“ */
   satz: string;
   nr: number;
@@ -462,11 +465,10 @@ export const revisionBanner = (detail: BerichtDetail): RevisionBanner | null => 
   const zone = detail.bericht.zeitzone;
   return {
     titel: B.revisionNoetig(offen.map((a) => a.anlass_text).join(', ')),
-    // Ein Anstoß: der Titel nennt den Anlass schon — die Zeile sagt nur, wann. Mehrere: je Zeile Anlass und Zeit.
-    anstoesse: offen.map((a) => ({
-      id: a.id,
-      text: offen.length === 1 ? `Erkannt am ${zeitpunkt(a.erkannt_am, zone)}.` : `${a.anlass_text}${TRENNER}erkannt ${zeitpunkt(a.erkannt_am, zone)}`,
-    })),
+    anstoesse: offen.map((a) => {
+      const text = `${a.anlass_text}${TRENNER}erkannt ${zeitpunkt(a.erkannt_am, zone)}`;
+      return { id: a.id, zeile: offen.length === 1 ? `Erkannt am ${zeitpunkt(a.erkannt_am, zone)}.` : text, text };
+    }),
     satz: `Der ${B.berichtsstand(gueltig.nr)} bleibt unverändert.`,
     nr: gueltig.nr,
   };
