@@ -228,6 +228,13 @@ tags:
       Zeile dort `geraet.einrichten`; bis AP-03 durchsetzt, gilt authenticated().
       Push an die Box (IP-6), Übergabe zum Zeitpunkt (IP-7), Budget (IP-10) und die
       Bestands-Vorschlagsliste (IP-4) kommen mit ihren Paketen.
+  - name: kennzahlen
+    description: >
+      UEMS-Kennzahlen (AP-11 IP-5): Menge je Bezugsgröße, Anteil, Zusammenfassung (Summe durch
+      Summe) anlegen, lesen, Stammdaten ändern, archivieren und - nur ohne einen einzigen Wert
+      und ohne lesende Kennzahl - löschen; die Berechnung ab einem Tag als Fassung n + 1 (auch
+      rückwirkend) und die Fassung an einem Stichtag; die Vorschau prüft und rechnet die letzten
+      drei Perioden in einer Nur-Lese-Transaktion. Regeln: docs/contracts/v2/kennzahl.md.
   - name: bezugsgroessen
     description: >
       UEMS-Bezugsgrößen (AP-09 IP-5): die Zahl, mit der Energie verglichen wird
@@ -9808,6 +9815,222 @@ paths:
               schema: { $ref: "#/components/schemas/Bezugsflaechen" }
         "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/kennzahlen:
+    get:
+      tags: [kennzahlen]
+      summary: Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen.
+      description: >
+        Recht `messwerte.ansehen` (AP-11 R2). Die Sichtbarkeit R-A1 und R-A6 je Person setzt
+        der Geltungsbereich-Prüfpunkt durch (AP-03 IP-11).
+      responses:
+        "200":
+          description: Die Kennzahlen (ein Objekt, kein nacktes Array - additiv erweiterbar).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [kennzahlen]
+      summary: Legt eine Kennzahl mit Fassung 1 „gilt seit Beginn“ an; ohne Kennzeichen vergibt der Server KZ-0001 …
+      description: >
+        Recht `kennzahl.standort_definieren` (Geltungsbereich Standort, Gebäude, Bereich, Messstelle - am Standort des Objekts) bzw. `kennzahl.unternehmen_definieren` (Unternehmen, Prozess, Kostenstelle) nach G1, durchgesetzt über die Rechte-Ableitung: 403 `recht_fehlt` mit `rolle_noetig` und dem Satz der Rechte-Ableitung; ein Standort außerhalb des Zugriffs ist 404 `nicht_gefunden` (fremd ist nicht da). Prüfreihenfolge: die Anfrage (400 `anfrage_ungueltig` mit `feld`,
+        `kennzeichen_format`) → der Geltungsbereich (422 `geltung_unbekannt`) → das Recht (403/404)
+        → das Kennzeichen (409 `kennzeichen_belegt`; auch das einer gelöschten Kennzahl bleibt
+        belegt) → die Berechnung (422 `rechenform_unbekannt`, `eingang_unbekannt`,
+        `einheit_unpassend`, `groesse_unbekannt`, `periode_passt_nicht`, `formel_zyklus`,
+        `eingang_ausserhalb_geltung`) mit dem Satz der Regel. Eingänge werden über das
+        Kennzeichen ihres Objekts genannt. `periode_art` ist ein geprüfter Wunsch, kein
+        gespeichertes Feld. Die Anfrage wird streng gelesen (auch camelCase ist ein unbekanntes
+        Feld). GENAU EIN Protokolleintrag `kennzahl_fassung_eingetragen`; eine Ablehnung schreibt
+        nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KennzahlAnfrage" }
+            example:
+              name: Stromeinsatz Montage je Stück — Halle 2
+              rechenform: quotient
+              geltung_art: gebaeude
+              geltung_id: 5b0d6f0e-8a3c-4f5e-9d2a-2f6f0c1b7a11
+              zweck: Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil.
+              eingaenge:
+                - { rolle: zaehler, art: messstelle, kennzeichen: MS-12 }
+                - { rolle: nenner, art: bezugsgroesse, kennzeichen: BZ-6 }
+      responses:
+        "201":
+          description: Angelegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kennzahl" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "409": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "422": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/vorschau:
+    post:
+      tags: [kennzahlen]
+      summary: Prüft eine Kennzahl wie das Anlegen und rechnet die letzten drei abgeschlossenen Perioden - schreibt nichts.
+      description: >
+        Recht `kennzahl.standort_definieren` (Geltungsbereich Standort, Gebäude, Bereich, Messstelle - am Standort des Objekts) bzw. `kennzahl.unternehmen_definieren` (Unternehmen, Prozess, Kostenstelle) nach G1, durchgesetzt über die Rechte-Ableitung: 403 `recht_fehlt` mit `rolle_noetig` und dem Satz der Rechte-Ableitung; ein Standort außerhalb des Zugriffs ist 404 `nicht_gefunden` (fremd ist nicht da). Nur-Lese-Transaktion (Muster Import-Vorschau): kein Kennzeichen, keine
+        Fassung, kein Protokoll. Dieselbe Anfrage wie das Anlegen (Name darf fehlen). Eine
+        fachliche Ablehnung (409, 422 und eine Regel über die Eingänge) steht als Befund in
+        `befunde`, die Perioden nur ohne Befund; die Form der Anfrage (400) und das Recht
+        (403/404) antworten wie beim Anlegen. Werte der Eingänge werden aus ihren Lesemodellen
+        gelesen, nie nachgerechnet; eine Kennzahl je Woche hat noch keine Vorschau-Perioden (IP-12).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KennzahlAnfrage" }
+      responses:
+        "200":
+          description: Die Befunde und die Perioden.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlVorschau" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Eine Kennzahl mit der heute geltenden Berechnung.
+      description: Recht `messwerte.ansehen`.
+      responses:
+        "200":
+          description: Die Kennzahl.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kennzahl" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+    put:
+      tags: [kennzahlen]
+      summary: Ändert die GANZEN Stammdaten (Kennzeichen, Name, Verantwortlich, Zweck) ohne Fassung.
+      description: >
+        Recht `kennzahl.standort_definieren` (Geltungsbereich Standort, Gebäude, Bereich, Messstelle - am Standort des Objekts) bzw. `kennzahl.unternehmen_definieren` (Unternehmen, Prozess, Kostenstelle) nach G1, durchgesetzt über die Rechte-Ableitung: 403 `recht_fehlt` mit `rolle_noetig` und dem Satz der Rechte-Ableitung; ein Standort außerhalb des Zugriffs ist 404 `nicht_gefunden` (fremd ist nicht da). V4: Geltungsbereich und Rechenform sind nach der ersten Fassung fest (ein Feld
+        dafür ist 400). Eine archivierte Kennzahl ist 409 `archiviert`. Ein unverändertes PUT
+        schreibt nichts, sonst genau ein Protokolleintrag `kennzahl_geaendert`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KennzahlStammdatenAnfrage" }
+      responses:
+        "200":
+          description: Geändert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kennzahl" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "409": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+    delete:
+      tags: [kennzahlen]
+      summary: Löscht eine Kennzahl ohne einen einzigen Wert, die keine andere Kennzahl liest.
+      description: >
+        Recht `kennzahl.standort_definieren` (Geltungsbereich Standort, Gebäude, Bereich, Messstelle - am Standort des Objekts) bzw. `kennzahl.unternehmen_definieren` (Unternehmen, Prozess, Kostenstelle) nach G1, durchgesetzt über die Rechte-Ableitung: 403 `recht_fehlt` mit `rolle_noetig` und dem Satz der Rechte-Ableitung; ein Standort außerhalb des Zugriffs ist 404 `nicht_gefunden` (fremd ist nicht da). V5: sonst 409 `hat_werte` (`werte`) bzw. `wird_gelesen` (`leser`) - archivieren
+        Sie sie stattdessen. Das Kennzeichen bleibt belegt (Grabstein); das Protokoll behält einen
+        Eintrag `kennzahl_geaendert` mit dem letzten Stand und leerem `neu`.
+      responses:
+        "204": { description: Gelöscht. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "409": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/{id}/archivieren:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Archiviert eine Kennzahl - die Werte bleiben lesbar, kein Rechenlauf mehr.
+      description: >
+        Recht `kennzahl.standort_definieren` (Geltungsbereich Standort, Gebäude, Bereich, Messstelle - am Standort des Objekts) bzw. `kennzahl.unternehmen_definieren` (Unternehmen, Prozess, Kostenstelle) nach G1, durchgesetzt über die Rechte-Ableitung: 403 `recht_fehlt` mit `rolle_noetig` und dem Satz der Rechte-Ableitung; ein Standort außerhalb des Zugriffs ist 404 `nicht_gefunden` (fremd ist nicht da). V5; schon archiviert ist 409 `archiviert`. Genau ein Protokolleintrag `kennzahl_archiviert`.
+      responses:
+        "200":
+          description: Archiviert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kennzahl" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "409": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/{id}/fassungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Jede Fassung der Berechnung, nach Nummer - Fassung 1 bleibt lesbar.
+      description: Recht `messwerte.ansehen`.
+      responses:
+        "200":
+          description: Die Fassungen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlFassungen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+    post:
+      tags: [kennzahlen]
+      summary: Trägt die Berechnung ab einem Tag als Fassung n + 1 ein - mit Begründung, auch rückwirkend.
+      description: >
+        Recht `kennzahl.standort_definieren` (Geltungsbereich Standort, Gebäude, Bereich, Messstelle - am Standort des Objekts) bzw. `kennzahl.unternehmen_definieren` (Unternehmen, Prozess, Kostenstelle) nach G1, durchgesetzt über die Rechte-Ableitung: 403 `recht_fehlt` mit `rolle_noetig` und dem Satz der Rechte-Ableitung; ein Standort außerhalb des Zugriffs ist 404 `nicht_gefunden` (fremd ist nicht da). V1 (Regel `fassungEintrag` der Formel-Fassung): Fassung n + 1 beginnt an
+        `gueltig_ab` und beendet die laufende am Vortag; ein Tag vor dem Eintragstag trägt
+        „rückwirkend (n Tage)“; ein Tag an oder vor dem Beginn der jüngsten ist 422
+        `fassung_ueberlappt`. Rechenform und Geltungsbereich bleiben; der Kreis wird am Tag
+        `gueltig_ab` geprüft (`formel_zyklus` mit `kette`), G3 ebenso. Eine archivierte Kennzahl
+        ist 409. Genau ein Protokolleintrag `kennzahl_fassung_eingetragen` mit „gilt ab“,
+        rückwirkend und Begründung.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KennzahlFassungAnfrage" }
+            example:
+              gueltig_ab: "2027-03-01"
+              begruendung: Seit dem Umzug des Kaltwassersatzes gehört die Prozesskühlung zum Stromeinsatz Spritzguss.
+              eingaenge:
+                - { rolle: zaehler, art: messstelle, kennzeichen: MS-24 }
+                - { rolle: nenner, art: bezugsgroesse, kennzeichen: BZ-1 }
+      responses:
+        "200":
+          description: Eingetragen - alle Fassungen danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlFassungen" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "409": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "422": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/{id}/berechnung:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Die Fassung der Berechnung, die an einem Tag galt.
+      description: Recht `messwerte.ansehen`. Ohne `am` gilt heute in der Zeitzone des Standorts (sonst des Unternehmens).
+      parameters:
+        - { name: am, in: query, required: false, schema: { type: string, format: date }, description: "Der Tag (JJJJ-MM-TT)." }
+      responses:
+        "200":
+          description: Die Fassung am Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlBerechnung" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
   /api/v1/bezugsdaten/importe/vorschau:
     post:
       tags: [bezugsgroessen]
@@ -10626,6 +10849,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/BezugsgroesseFehler" }
+    KennzahlAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Code und Status kommen aus dem
+        geschlossenen Satz des Vertrags (kennzahl-vectors.json → schnittstelle.ablehnungen); der
+        deutsche `message`-Satz aus der Schnittstelle, der Regel oder der Rechte-Ableitung; dazu die Fakten.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/KennzahlFehler" }
     KostenstelleProzessAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Code, Status und der
@@ -16619,7 +16850,7 @@ components:
           description: >
             `loeschen_gesperrt`: was der Ort je getragen hat, in der Reihenfolge des
             Vertrags (`gruende_loeschen`); `hat_bezugsgroessen` ergänzt die Datenbank
-            (AP-09). Leer, wenn erst die Datenbank widersprochen hat.
+            (AP-09), `hat_kennzahlen` ebenso (AP-11). Leer, wenn erst die Datenbank widersprochen hat.
           items: { $ref: "#/components/schemas/OrtLoeschGrund" }
         standorte:
           type: array
@@ -16874,7 +17105,7 @@ components:
         text: { type: string, nullable: true, description: Gesperrt - der Satz, der die Historie nennt. }
     OrtLoeschGrund:
       type: string
-      enum: [hat_messstellen, hat_anlagen, hat_flaeche, hat_kinder, hat_bezugsgroessen]
+      enum: [hat_messstellen, hat_anlagen, hat_flaeche, hat_kinder, hat_bezugsgroessen, hat_kennzahlen]
     OrtsbaumGebaeude:
       type: object
       properties:
@@ -19568,6 +19799,200 @@ components:
         hinweis: { type: string, description: "`zahl_unlesbar` bei Stück, Personen und Schichten: „Stück sind ganze Zahlen.“ (U5)." }
         wirksamer_betrag: { type: string, description: "`konflikt_anderer_wert`: der wirksame Betrag des Werts (F5)." }
         zeichen: { type: integer, description: "`begruendung_zu_kurz`, `begruendung_zu_lang`: wie viele Zeichen die Begründung hat." }
+    KennzahlFehler:
+      type: object
+      description: >
+        Die Ablehnung der Kennzahl-Schnittstelle - der geschlossene Satz `schnittstelle.ablehnungen`
+        des Kennzahl-Vertrags: 400 `anfrage_ungueltig` (`feld`), `kennzeichen_format` (`feld`); 403
+        `recht_fehlt` (`rolle_noetig`); 404 `nicht_gefunden`; 409 `kennzeichen_belegt` (`feld`),
+        `archiviert`, `hat_werte` (`werte`), `wird_gelesen` (`leser`); 422 `periode_passt_nicht`
+        (`grundperiode`, `perioden`), `einheit_unpassend`, `groesse_unbekannt` (`eingang`),
+        `eingang_ausserhalb_geltung` (`eingang`), `formel_zyklus` (`kette`), `fassung_ueberlappt`
+        (`fassung`, `gueltig_ab`), `geltung_unbekannt` (`feld`), `eingang_unbekannt` (`eingang`),
+        `rechenform_unbekannt` (`feld`).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, kennzeichen_format, recht_fehlt, nicht_gefunden, kennzeichen_belegt, archiviert, hat_werte, wird_gelesen, periode_passt_nicht, einheit_unpassend, groesse_unbekannt, eingang_ausserhalb_geltung, formel_zyklus, fassung_ueberlappt, geltung_unbekannt, eingang_unbekannt, rechenform_unbekannt]
+        message: { type: string }
+        feld: { type: string }
+        rolle_noetig: { type: string, nullable: true, description: "`recht_fehlt`: die kleinste Rolle, die es dürfte (Rechte-Ableitung)." }
+        werte: { type: integer }
+        leser: { type: array, items: { type: string }, description: "`wird_gelesen`: die Kennzeichen der lesenden Kennzahlen." }
+        grundperiode: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
+        perioden: { type: array, items: { type: string, enum: [tag, woche, monat, jahr] } }
+        eingang: { type: string, description: "Kennzeichen des Eingangs." }
+        kette: { type: array, items: { type: string }, description: "`formel_zyklus`: KZ-0012 → KZ-0011 → KZ-0012." }
+        fassung: { type: integer, description: "`fassung_ueberlappt`: die jüngste Fassung." }
+        gueltig_ab: { type: string, format: date, nullable: true }
+    KennzahlEingang:
+      type: object
+      additionalProperties: false
+      required: [rolle, art, kennzeichen]
+      properties:
+        rolle: { type: string, enum: [zaehler, nenner, paar] }
+        art: { type: string, enum: [messstelle, bezugsgroesse, kennzahl] }
+        kennzeichen: { type: string, description: "Das Kennzeichen des Objekts (MS-12, BZ-6, KZ-0001)." }
+    KennzahlAnfrage:
+      type: object
+      additionalProperties: false
+      description: >
+        Der Körper von POST und der Vorschau. Quotient und Anteil: genau ein `zaehler` und ein
+        `nenner`; Zusammenfassung: nur `paar`e aus Kennzahlen. Ohne `kennzeichen` vergibt der Server
+        KZ-0001 …, ohne `verantwortlich_name` ist der Aufrufer verantwortlich. Einen Faktor nimmt die
+        Schnittstelle nicht an - die Regel rechnet keinen.
+      required: [name, rechenform, geltung_art, geltung_id, eingaenge]
+      properties:
+        kennzeichen: { type: string, nullable: true, pattern: "^[A-Z0-9./-]{2,16}$" }
+        name: { type: string }
+        rechenform: { type: string, description: "quotient · anteil · zusammenfassung; ein anderes Wort ist 422 `rechenform_unbekannt`." }
+        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle] }
+        geltung_id: { type: string, format: uuid }
+        verantwortlich_name: { type: string, nullable: true }
+        zweck: { type: string, nullable: true, maxLength: 500 }
+        periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr], description: "Gewünschte Periode - geprüft, nicht gespeichert." }
+        komplement: { type: boolean, nullable: true, description: "Nur beim Anteil: 100 − Teil ÷ Ganzes × 100." }
+        eingaenge: { type: array, items: { $ref: "#/components/schemas/KennzahlEingang" } }
+    KennzahlStammdatenAnfrage:
+      type: object
+      additionalProperties: false
+      required: [kennzeichen, name, verantwortlich_name]
+      properties:
+        kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$" }
+        name: { type: string }
+        verantwortlich_name: { type: string }
+        zweck: { type: string, nullable: true, maxLength: 500 }
+    KennzahlFassungAnfrage:
+      type: object
+      additionalProperties: false
+      required: [gueltig_ab, begruendung, eingaenge]
+      properties:
+        gueltig_ab: { type: string, format: date }
+        begruendung: { type: string, maxLength: 500 }
+        periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
+        komplement: { type: boolean, nullable: true }
+        eingaenge: { type: array, items: { $ref: "#/components/schemas/KennzahlEingang" } }
+    KennzahlPerson:
+      type: object
+      required: [name, rolle, art]
+      properties:
+        name: { type: string }
+        rolle: { type: string, nullable: true }
+        art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+    KennzahlEingangAntwort:
+      type: object
+      required: [rolle, art, id, kennzeichen, name]
+      properties:
+        rolle: { type: string, enum: [zaehler, nenner, paar] }
+        art: { type: string, enum: [messstelle, bezugsgroesse, kennzahl] }
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, description: "Das HEUTIGE Kennzeichen des Objekts." }
+        name: { type: string, nullable: true }
+    KennzahlFassung:
+      type: object
+      required: [nummer, gueltig_ab, gueltig_bis, aufgehoben_am, herkunft, rueckwirkend, abzeichen, begruendung, eingetragen_von, eingetragen_am, rechenform, einheit, einheit_anzeige, komplement, eingaenge]
+      properties:
+        nummer: { type: integer, minimum: 1 }
+        gueltig_ab: { type: string, format: date, nullable: true, description: "null = gilt seit Beginn." }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Der LETZTE gültige Tag, einschließlich." }
+        aufgehoben_am: { type: string, format: date-time, nullable: true }
+        herkunft: { type: string, enum: [anlage, eintrag, kopie] }
+        rueckwirkend: { type: boolean }
+        abzeichen: { type: string, nullable: true, description: "„rückwirkend (n Tage)“ - nur bei einer rückwirkenden Fassung." }
+        begruendung: { type: string, nullable: true }
+        eingetragen_von: { $ref: "#/components/schemas/KennzahlPerson" }
+        eingetragen_am: { type: string, format: date-time }
+        rechenform: { type: string, enum: [quotient, anteil, zusammenfassung] }
+        einheit: { type: string, description: "Ungekürzt aus den Eingängen (U1): kWh/Stück, %." }
+        einheit_anzeige: { type: string, description: "„kWh je Stück“." }
+        komplement: { type: boolean }
+        eingaenge: { type: array, items: { $ref: "#/components/schemas/KennzahlEingangAntwort" } }
+    Kennzahl:
+      type: object
+      required: [id, kennzeichen, name, rechenform, geltung_art, geltung_id, geltung_name, rechte_geltung, standort_id, kennung, verantwortlich_name, zweck, fassung, einheit, einheit_anzeige, grundperiode, perioden, hat_werte, archiviert_am, angelegt_am]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        rechenform: { type: string, enum: [quotient, anteil, zusammenfassung] }
+        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle] }
+        geltung_id: { type: string, format: uuid }
+        geltung_name: { type: string, nullable: true }
+        rechte_geltung: { type: string, enum: [standort, unternehmen], description: "G1." }
+        standort_id: { type: string, format: uuid, nullable: true, description: "Der Standort des Geltungsobjekts heute; null beim Unternehmen." }
+        kennung: { type: string, enum: [kennzahl.standort_definieren, kennzahl.unternehmen_definieren], description: "Das Recht zum Definieren." }
+        verantwortlich_name: { type: string }
+        zweck: { type: string, nullable: true }
+        fassung: { type: integer, nullable: true, description: "Die Nummer der heute geltenden Fassung." }
+        einheit: { type: string, nullable: true }
+        einheit_anzeige: { type: string, nullable: true }
+        grundperiode: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
+        perioden: { type: array, items: { type: string, enum: [tag, woche, monat, jahr] }, description: "Die bildbaren Perioden (P2)." }
+        hat_werte: { type: boolean, description: "Trägt sie einen Wert? Dann ist sie nicht löschbar (V5)." }
+        archiviert_am: { type: string, format: date-time, nullable: true }
+        angelegt_am: { type: string, format: date-time }
+    KennzahlListe:
+      type: object
+      required: [kennzahlen]
+      properties:
+        kennzahlen: { type: array, items: { $ref: "#/components/schemas/Kennzahl" } }
+    KennzahlFassungen:
+      type: object
+      required: [kennzahl_id, kennzeichen, fassungen]
+      properties:
+        kennzahl_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        fassungen: { type: array, items: { $ref: "#/components/schemas/KennzahlFassung" } }
+    KennzahlBerechnung:
+      type: object
+      required: [kennzahl_id, kennzeichen, am, fassung]
+      properties:
+        kennzahl_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        am: { type: string, format: date }
+        fassung: { $ref: "#/components/schemas/KennzahlFassung" }
+    KennzahlBefund:
+      type: object
+      required: [code, message, fakten]
+      properties:
+        code: { type: string, description: "Ein Code aus KennzahlFehler." }
+        message: { type: string }
+        fakten: { type: object, additionalProperties: true }
+    KennzahlVorschauPeriode:
+      type: object
+      required: [periode_art, schluessel, beschriftung, von, bis, wert, zaehler, nenner, zustand, richtung, grund, abdeckung_prozent, fassung, kennzeichen, anzeige, kundensatz]
+      properties:
+        periode_art: { type: string, enum: [tag, woche, monat, jahr] }
+        schluessel: { type: string, description: "2026-10 · 2026-10-31 · 2026." }
+        beschriftung: { type: string, description: "„Oktober 2026“." }
+        von: { type: string, format: date }
+        bis: { type: string, format: date, description: "Der LETZTE Tag, einschließlich." }
+        wert: { type: string, nullable: true, description: "Dezimaltext; null = keine Werte, nie 0." }
+        zaehler: { type: string, nullable: true }
+        nenner: { type: string, nullable: true }
+        zustand: { type: string }
+        richtung: { type: string, nullable: true, enum: [untergrenze, obergrenze, unbestimmt] }
+        grund: { type: string, nullable: true }
+        abdeckung_prozent: { type: string, nullable: true }
+        fassung: { type: string, nullable: true, description: "vorläufig · endgültig." }
+        kennzeichen: { type: array, items: { type: string } }
+        anzeige: { type: string }
+        kundensatz: { type: string, nullable: true }
+    KennzahlVorschau:
+      type: object
+      required: [befunde, rechte_geltung, standort_id, kennung, einheit, einheit_anzeige, grundperiode, perioden, periode_art, letzte_perioden]
+      properties:
+        befunde: { type: array, items: { $ref: "#/components/schemas/KennzahlBefund" }, description: "Leer = das Anlegen würde gelingen." }
+        rechte_geltung: { type: string, nullable: true, enum: [standort, unternehmen] }
+        standort_id: { type: string, format: uuid, nullable: true }
+        kennung: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+        einheit_anzeige: { type: string, nullable: true }
+        grundperiode: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
+        perioden: { type: array, items: { type: string, enum: [tag, woche, monat, jahr] } }
+        periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr], description: "Die Periode der Vorschau - der Wunsch, sonst die Grundperiode." }
+        letzte_perioden: { type: array, items: { $ref: "#/components/schemas/KennzahlVorschauPeriode" }, description: "Die letzten drei abgeschlossenen Perioden, die jüngste zuerst." }
     BezugsgroesseAnfrage:
       type: object
       additionalProperties: false

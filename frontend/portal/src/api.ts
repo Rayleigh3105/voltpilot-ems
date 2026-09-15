@@ -2275,6 +2275,120 @@ export interface BezugsgroesseAnfrage {
   geltung_id: string;
 }
 
+/** UEMS AP-11: die Wörter des Kennzahl-Vertrags (`docs/contracts/v2/kennzahl-vectors.json`). */
+export type KennzahlRechenform = 'quotient' | 'anteil' | 'zusammenfassung';
+export type KennzahlPeriodeArt = 'tag' | 'woche' | 'monat' | 'jahr';
+export type KennzahlGeltungArt = 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | 'prozess' | 'kostenstelle' | 'messstelle';
+
+/** Ein Eingang über das Kennzeichen seines Objekts (MS-12, BZ-6, KZ-0001). */
+export interface KennzahlEingang {
+  rolle: 'zaehler' | 'nenner' | 'paar';
+  art: 'messstelle' | 'bezugsgroesse' | 'kennzahl';
+  kennzeichen: string;
+}
+
+/**
+ * Eine Kennzahl (UEMS AP-11 IP-5, `/api/v1/kennzahlen`, snake_case wie der Kennzahl-Vertrag).
+ * `rechte_geltung` und `kennung` folgen aus dem Geltungsbereich (G1); `fassung`, `einheit`,
+ * `grundperiode` und `perioden` beschreiben die HEUTE geltende Berechnung.
+ */
+export interface Kennzahl {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  rechenform: KennzahlRechenform;
+  geltung_art: KennzahlGeltungArt;
+  geltung_id: string;
+  geltung_name: string | null;
+  rechte_geltung: 'standort' | 'unternehmen';
+  standort_id: string | null;
+  kennung: 'kennzahl.standort_definieren' | 'kennzahl.unternehmen_definieren';
+  verantwortlich_name: string;
+  zweck: string | null;
+  fassung: number | null;
+  einheit: string | null;
+  einheit_anzeige: string | null;
+  grundperiode: KennzahlPeriodeArt | null;
+  perioden: KennzahlPeriodeArt[];
+  hat_werte: boolean;
+  archiviert_am: string | null;
+  angelegt_am: string;
+}
+
+/** Der Körper von `POST /api/v1/kennzahlen` und `…/vorschau` (streng gelesen; `periode_art` ist ein Wunsch). */
+export interface KennzahlAnfrage {
+  kennzeichen?: string | null;
+  name: string;
+  rechenform: string;
+  geltung_art: KennzahlGeltungArt;
+  geltung_id: string;
+  verantwortlich_name?: string | null;
+  zweck?: string | null;
+  periode_art?: KennzahlPeriodeArt | null;
+  komplement?: boolean | null;
+  eingaenge: KennzahlEingang[];
+}
+
+/** Eine Fassung der Berechnung; `gueltig_ab` null = gilt seit Beginn, `gueltig_bis` = letzter Tag einschließlich. */
+export interface KennzahlFassung {
+  nummer: number;
+  gueltig_ab: string | null;
+  gueltig_bis: string | null;
+  aufgehoben_am: string | null;
+  herkunft: 'anlage' | 'eintrag' | 'kopie';
+  rueckwirkend: boolean;
+  abzeichen: string | null;
+  begruendung: string | null;
+  eingetragen_von: { name: string; rolle: string | null; art: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall' };
+  eingetragen_am: string;
+  rechenform: KennzahlRechenform;
+  einheit: string;
+  einheit_anzeige: string;
+  komplement: boolean;
+  eingaenge: { rolle: KennzahlEingang['rolle']; art: KennzahlEingang['art']; id: string; kennzeichen: string; name: string | null }[];
+}
+
+/** Eine Periode der Vorschau — gerechnet, nie gespeichert; `wert` null heißt keine Werte, nie 0. */
+export interface KennzahlVorschauPeriode {
+  periode_art: KennzahlPeriodeArt;
+  schluessel: string;
+  beschriftung: string;
+  von: string;
+  bis: string;
+  wert: string | null;
+  zaehler: string | null;
+  nenner: string | null;
+  zustand: string;
+  richtung: 'untergrenze' | 'obergrenze' | 'unbestimmt' | null;
+  grund: string | null;
+  abdeckung_prozent: string | null;
+  fassung: string | null;
+  kennzeichen: string[];
+  anzeige: string;
+  kundensatz: string | null;
+}
+
+/** Die Antwort von `POST /api/v1/kennzahlen/vorschau`: `befunde` leer = das Anlegen würde gelingen. */
+export interface KennzahlVorschau {
+  befunde: { code: KennzahlFehlerCode; message: string; fakten: Record<string, unknown> }[];
+  rechte_geltung: 'standort' | 'unternehmen' | null;
+  standort_id: string | null;
+  kennung: string | null;
+  einheit: string | null;
+  einheit_anzeige: string | null;
+  grundperiode: KennzahlPeriodeArt | null;
+  perioden: KennzahlPeriodeArt[];
+  periode_art: KennzahlPeriodeArt | null;
+  letzte_perioden: KennzahlVorschauPeriode[];
+}
+
+/** Der geschlossene Satz der Ablehnungen (`schnittstelle.ablehnungen`); der Satz steht in `message`. */
+export type KennzahlFehlerCode =
+  | 'anfrage_ungueltig' | 'kennzeichen_format' | 'recht_fehlt' | 'nicht_gefunden' | 'kennzeichen_belegt'
+  | 'archiviert' | 'hat_werte' | 'wird_gelesen' | 'periode_passt_nicht' | 'einheit_unpassend' | 'groesse_unbekannt'
+  | 'eingang_ausserhalb_geltung' | 'formel_zyklus' | 'fassung_ueberlappt' | 'geltung_unbekannt' | 'eingang_unbekannt'
+  | 'rechenform_unbekannt';
+
 /** Wer eine Fassung eingetragen oder freigegeben hat. */
 export interface BezugsgroessePerson {
   name: string;
@@ -3217,8 +3331,8 @@ export interface OrtsbaumAmStichtag {
   aktionen?: OrtAktionen | null;
 }
 
-/** IP-15: warum ein Ort nicht gelöscht wird (E1); `hat_bezugsgroessen` ergänzt die Datenbank. */
-export type OrtLoeschGrund = 'hat_messstellen' | 'hat_anlagen' | 'hat_flaeche' | 'hat_kinder' | 'hat_bezugsgroessen';
+/** IP-15: warum ein Ort nicht gelöscht wird (E1); `hat_bezugsgroessen` und `hat_kennzahlen` ergänzt die Datenbank. */
+export type OrtLoeschGrund = 'hat_messstellen' | 'hat_anlagen' | 'hat_flaeche' | 'hat_kinder' | 'hat_bezugsgroessen' | 'hat_kennzahlen';
 
 /**
  * IP-15: was man HEUTE mit einem Knoten tun kann, bevor jemand drückt — dieselben Urteile und
@@ -6862,6 +6976,38 @@ export const api = {
   /** Löscht eine Bezugsgröße ohne einen einzigen Wert (sonst 409 `hat_werte`). */
   bezugsgroesseLoeschen: (id: string) =>
     request<void>(`/api/v1/bezugsgroessen/${id}`, { method: 'DELETE' }),
+
+  /** Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen (AP-11 IP-5); Ablehnungen tragen `KennzahlFehlerCode`. */
+  kennzahlen: () => request<{ kennzahlen: Kennzahl[] }>(`/api/v1/kennzahlen`),
+  kennzahl: (id: string) => request<Kennzahl>(`/api/v1/kennzahlen/${id}`),
+  /** Legt die Kennzahl mit Fassung 1 „gilt seit Beginn“ an. */
+  kennzahlAnlegen: (body: KennzahlAnfrage) =>
+    request<Kennzahl>(`/api/v1/kennzahlen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Prüft und rechnet die letzten drei Perioden — schreibt nichts. */
+  kennzahlVorschau: (body: KennzahlAnfrage) =>
+    request<KennzahlVorschau>(`/api/v1/kennzahlen/vorschau`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Die GANZEN Stammdaten ohne Fassung. */
+  kennzahlAendern: (id: string, body: { kennzeichen: string; name: string; verantwortlich_name: string; zweck?: string | null }) =>
+    request<Kennzahl>(`/api/v1/kennzahlen/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  kennzahlArchivieren: (id: string) => request<Kennzahl>(`/api/v1/kennzahlen/${id}/archivieren`, { method: 'POST' }),
+  /** Nur ohne Wert und ohne lesende Kennzahl (sonst 409 `hat_werte` bzw. `wird_gelesen`). */
+  kennzahlLoeschen: (id: string) => request<void>(`/api/v1/kennzahlen/${id}`, { method: 'DELETE' }),
+  kennzahlFassungen: (id: string) =>
+    request<{ kennzahl_id: string; kennzeichen: string; fassungen: KennzahlFassung[] }>(`/api/v1/kennzahlen/${id}/fassungen`),
+  /** Die Berechnung ab einem Tag als Fassung n + 1, mit Begründung, auch rückwirkend. */
+  kennzahlFassungEintragen: (
+    id: string,
+    body: { gueltig_ab: string; begruendung: string; periode_art?: KennzahlPeriodeArt | null; komplement?: boolean | null; eingaenge: KennzahlEingang[] },
+  ) =>
+    request<{ kennzahl_id: string; kennzeichen: string; fassungen: KennzahlFassung[] }>(`/api/v1/kennzahlen/${id}/fassungen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Die Fassung, die am Tag `am` (JJJJ-MM-TT, Vorgabe heute) galt. */
+  kennzahlBerechnung: (id: string, am?: string) =>
+    request<{ kennzahl_id: string; kennzeichen: string; am: string; fassung: KennzahlFassung }>(
+      `/api/v1/kennzahlen/${id}/berechnung` + (am ? `?am=${encodeURIComponent(am)}` : ''),
+    ),
 
   /**
    * Die Werte mit ihren Fassungen und der Herkunft je Fassung. `von`/`bis` sind Tage

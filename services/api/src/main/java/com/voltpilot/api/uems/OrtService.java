@@ -134,7 +134,8 @@ public class OrtService {
         // IP-15: ohne Stichtag trägt jeder Knoten, was man HEUTE mit ihm tun kann — auf demselben
         // Baum, auf dem die Schreibrouten urteilen. „Stand am …“ ändert nichts: keine Aktionen.
         OrtAktionen aktionen = stichtag != null ? null
-                : new OrtAktionen(StandortService.baum(z, ms == null ? List.of() : ms), tag, orte.mitBezugsgroesse());
+                : new OrtAktionen(StandortService.baum(z, ms == null ? List.of() : ms), tag, orte.mitBezugsgroesse(),
+                        orte.mitKennzahl());
         return OrtsbaumLesemodell.ortsbaum(z, standortId, tag, ms, aktionen);
     }
 
@@ -481,7 +482,7 @@ public class OrtService {
             Lage lage = lage(z, StandortLesemodell.baum(z), ortId, jetzt);
             LocalDate heute = jetzt.atZone(lage.zone()).toLocalDate();
             StandortService.Baum b = StandortService.baum(z, messstellenAmOrt());
-            OrtAktionen.Loeschen l = OrtAktionen.loeschen(b, o, orte.mitBezugsgroesse());
+            OrtAktionen.Loeschen l = OrtAktionen.loeschen(b, o, orte.mitBezugsgroesse(), orte.mitKennzahl());
             if (!l.erlaubt()) {
                 throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.LOESCHEN_GESPERRT, l.text(), Map.of("historie", l.gruende()));
             }

@@ -115,6 +115,11 @@ public class OrtRepository {
                 "SELECT DISTINCT ort_id FROM bezugsgroesse WHERE ort_id IS NOT NULL", UUID.class));
     }
 
+    /** AP-11 IP-5: die Orte, die Geltungsbereich einer Kennzahl sind — auch einer archivierten. */
+    public Set<UUID> mitKennzahl() {
+        return Set.copyOf(jdbc.queryForList("SELECT DISTINCT ort_id FROM kennzahl WHERE ort_id IS NOT NULL", UUID.class));
+    }
+
     /** Der Ort im Zaun — leer, wenn es ihn nicht gibt ODER er einem anderen Mandanten gehört. */
     public Optional<Ort> finde(UUID id) {
         return jdbc.query("SELECT " + SPALTEN + " FROM ort WHERE id = ?", OrtRepository::map, id)

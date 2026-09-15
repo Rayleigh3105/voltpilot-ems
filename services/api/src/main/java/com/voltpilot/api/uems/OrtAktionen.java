@@ -37,6 +37,8 @@ public final class OrtAktionen {
 
     /** Der Grund außerhalb des Vertrags (siehe oben). */
     public static final String HAT_BEZUGSGROESSEN = "hat_bezugsgroessen";
+    /** AP-11 IP-5: eine Kennzahl mit diesem Ort als Geltungsbereich hält ihn (FK {@code kennzahl_ort_fk}). */
+    public static final String HAT_KENNZAHLEN = "hat_kennzahlen";
 
     /**
      * Je Knoten genau die Aktionen, die zu seinem Zustand gehören: ein Knoten im Baum kann
@@ -85,6 +87,7 @@ public final class OrtAktionen {
     private final StandortService.Baum baum;
     private final LocalDate heute;
     private final Set<UUID> mitBezugsgroesse;
+    private final Set<UUID> mitKennzahl;
     private StandAm stand;
 
     /**
@@ -92,14 +95,21 @@ public final class OrtAktionen {
      * @param mitBezugsgroesse die Orte, an denen eine Bezugsgröße hängt (auch eine archivierte)
      */
     public OrtAktionen(StandortService.Baum baum, LocalDate heute, Set<UUID> mitBezugsgroesse) {
+        this(baum, heute, mitBezugsgroesse, Set.of());
+    }
+
+    /** @param mitKennzahl die Orte, die Geltungsbereich einer Kennzahl sind (auch einer archivierten) */
+    public OrtAktionen(StandortService.Baum baum, LocalDate heute, Set<UUID> mitBezugsgroesse, Set<UUID> mitKennzahl) {
         this.baum = baum;
         this.heute = heute;
         this.mitBezugsgroesse = Set.copyOf(mitBezugsgroesse);
+        this.mitKennzahl = Set.copyOf(mitKennzahl);
     }
 
     /** Ein Gebäude oder Bereich, der heute im Baum steht. */
     public Aktionen imBaum(OrtRepository.Ort o) {
-        return new Aktionen(archivieren(o.kurzzeichen()), null, loeschen(baum, o, mitBezugsgroesse), verschieben(o));
+        return new Aktionen(archivieren(o.kurzzeichen()), null, loeschen(baum, o, mitBezugsgroesse, mitKennzahl),
+                verschieben(o));
     }
 
     /** Ein archiviertes Gebäude oder ein archivierter Bereich (Grabstein, Z3). */
@@ -107,7 +117,7 @@ public final class OrtAktionen {
         WiederherstellErgebnis w = OrtsbaumAbleitung.wiederherstellen(baum.baum(), o.kurzzeichen(), heute, null);
         String grund = w.grund() == null ? null : w.grund().name().toLowerCase(Locale.ROOT);
         return new Aktionen(null, new Wiederherstellen(w.erlaubt(), grund, w.text(), heute),
-                loeschen(baum, o, mitBezugsgroesse), null);
+                loeschen(baum, o, mitBezugsgroesse, mitKennzahl), null);
     }
 
     /** Der Standort selbst: nur Archivieren. */
@@ -170,14 +180,22 @@ public final class OrtAktionen {
 
     /**
      * E1 für einen Ort — dieselbe Antwort, die {@code DELETE /api/v1/orte/{id}} gibt: die Gründe des
-     * Vertrags und, außerhalb davon, {@link #HAT_BEZUGSGROESSEN}.
+     * Vertrags und, außerhalb davon, {@link #HAT_BEZUGSGROESSEN} und {@link #HAT_KENNZAHLEN}.
      */
     static Loeschen loeschen(StandortService.Baum baum, OrtRepository.Ort o, Set<UUID> mitBezugsgroesse) {
+        return loeschen(baum, o, mitBezugsgroesse, Set.of());
+    }
+
+    static Loeschen loeschen(StandortService.Baum baum, OrtRepository.Ort o, Set<UUID> mitBezugsgroesse,
+            Set<UUID> mitKennzahl) {
         LoeschErgebnis e = OrtsbaumAbleitung.loeschen(baum.baum(), o.kurzzeichen());
         List<String> gruende = new ArrayList<>();
         e.gruende().forEach(g -> gruende.add(g.name().toLowerCase(Locale.ROOT)));
         if (mitBezugsgroesse.contains(o.id())) {
             gruende.add(HAT_BEZUGSGROESSEN);
+        }
+        if (mitKennzahl.contains(o.id())) {
+            gruende.add(HAT_KENNZAHLEN);
         }
         return new Loeschen(gruende.isEmpty(), List.copyOf(gruende),
                 gruende.isEmpty() ? null : loeschenSatz(o.name(), gruende));
@@ -202,6 +220,7 @@ public final class OrtAktionen {
             case "hat_flaeche" -> "Fläche";
             case "hat_kinder" -> "Bereiche";
             case HAT_BEZUGSGROESSEN -> "Bezugsgrößen";
+            case HAT_KENNZAHLEN -> "Kennzahlen";
             default -> null;
         };
     }
