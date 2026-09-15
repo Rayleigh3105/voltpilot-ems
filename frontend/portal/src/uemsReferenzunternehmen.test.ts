@@ -917,6 +917,31 @@ describe('UEMS-Referenzunternehmen — Fassung 1.2', () => {
   });
 });
 
+/** So viele Zeilen hatte `_comment` in Fassung 1.3 — Fassung 1.4 hängt nur an. */
+const KOMMENTAR_ZEILEN_1_3 = 80;
+
+/**
+ * Nimmt GENAU die Zusätze der Fassung 1.4 heraus (AP-12 IP-2) — die Blöcke `korrekturen` und
+ * `berichte`, die vier Zeilen der Zeitachse aus AP-12, die Herkunft `fassung_1_4` und die angehängten
+ * Kommentarzeilen — und setzt Fassung und Stand auf 1.3 zurück.
+ */
+const ohneFassung14 = (d: Record<string, any>): void => {
+  expect(d.version).toBe('1.4');
+  d.version = '1.3';
+  d.stand = '2026-09-14';
+  expect(d._comment.length).toBeGreaterThan(KOMMENTAR_ZEILEN_1_3);
+  d._comment = d._comment.slice(0, KOMMENTAR_ZEILEN_1_3);
+  expect(d._herkunft.fassung_1_4).toBeDefined();
+  delete d._herkunft.fassung_1_4;
+  expect(d.korrekturen).toBeDefined();
+  delete d.korrekturen;
+  expect(d.berichte).toBeDefined();
+  delete d.berichte;
+  const zeilen = d.zeitachse.length;
+  d.zeitachse = d.zeitachse.filter((z: any) => !z.herkunft.startsWith('AP-12'));
+  expect(zeilen - d.zeitachse.length).toBe(4);
+};
+
 describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
   /** Der Fingerabdruck der Fassung 1.2, kanonisch geschrieben, aus origin/uems vor AP-11 IP-2 — derselbe wie im Java-Zwilling. */
   const FASSUNG_1_2_SHA256 = '33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd';
@@ -939,6 +964,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
    */
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.2', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung14(d);
     expect(d.version).toBe('1.3');
     d.version = '1.2';
     d.stand = '2026-09-12';
@@ -994,5 +1020,100 @@ describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
     }
     expect(fehler).toEqual([]);
     expect(daten.kennzahl_beispiel.ergebnis).toBe(Math.round(kz.get('KZ-0004').oktober_2026_wert * 100) / 100);
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.4 (AP-12 E15)', () => {
+  /** Der Fingerabdruck der Fassung 1.3, kanonisch geschrieben, aus origin/uems vor AP-12 IP-2 — derselbe wie im Java-Zwilling. */
+  const FASSUNG_1_3_SHA256 = 'e65be4ed56d5f3cec687075f0a782c4e1807c82410f8962444272dc200424196';
+
+  const kanonisch = (x: unknown): string => {
+    if (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(x);
+  };
+
+  it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.3', () => {
+    const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung14(d);
+    expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_3_SHA256);
+  });
+
+  /**
+   * Die Korrektur berichtigt die Zahl der Datei; Nr. 1 zitiert die Zahl der Datei in Version 1, Nr. 2
+   * die Korrektur in Version 2; MS-15 ist in beiden die Formel; jeder Stand nennt nur Kennzeichen der
+   * Datei; Datenstand vor Freigabe; Nr. 2 trägt den Datenstand der Kaskade; „ersetzt durch“ zeigt auf
+   * den Nachfolger.
+   */
+  it('Korrektur und Bericht stimmen mit der Datei: Zahl der Datei, Korrektur, Formel, Datenstand, ersetzt durch', () => {
+    const ms = new Map<string, any>((daten.messstellen as any[]).map((m) => [m.kennzeichen, m]));
+    const bz = new Map<string, any>((daten.bezugsgroessen as any[]).map((b) => [b.kennzeichen, b]));
+    const kz = new Map<string, any>((daten.kennzahlen as any[]).map((k) => [k.kennzeichen, k]));
+    const personen = new Set((daten.personen as any[]).map((p) => p.kuerzel));
+    const standorte = new Set((daten.standorte as any[]).map((s) => s.kennzeichen));
+    const vier = (x: number): number => Math.round(x * 10000) / 10000;
+    const oktober = (kennzeichen: string): number => ms.get(kennzeichen).beispielwerte.oktober_2026_kwh;
+    const formel = (messstelle: string, ersetzt: string, durch: number): number => {
+      let summe = 0;
+      let vorzeichen = 1;
+      for (const teil of (ms.get(messstelle).formel as string).split(' ')) {
+        if (teil === '−' || teil === '+') {
+          vorzeichen = teil === '+' ? 1 : -1;
+          continue;
+        }
+        summe += vorzeichen * (teil === ersetzt ? durch : oktober(teil));
+      }
+      return summe;
+    };
+    const fehler: string[] = [];
+    const k = daten.korrekturen[0];
+    if (k.alt_kwh !== oktober(k.reihe)) fehler.push('Korrektur: alt ist nicht die Oktober-Zahl der Reihe');
+    if (k.zeitraum_von !== '2026-10-01' || k.zeitraum_bis !== '2026-10-31' || k.periode !== '2026-10') fehler.push('Korrektur: nicht der Oktober 2026');
+    if (!personen.has(k.vorgeschlagen_von) || !personen.has(k.freigegeben_von)) fehler.push('Korrektur: unbekannte Person');
+    if (!(zeit(k.vorgeschlagen_am) < zeit(k.freigegeben_am))) fehler.push('Korrektur: freigegeben vor dem Vorschlag');
+    if (formel('MS-15', k.reihe, k.alt_kwh) !== oktober('MS-15')) fehler.push('MS-15 ist mit der Zahl der Datei nicht seine Formel');
+    const nenner1 = bz.get(kz.get('KZ-0001').nenner).oktober_2026_wert;
+    const kz2 = kz.get('KZ-0002');
+    const soll: Record<string, number> = {
+      [k.reihe]: k.neu_kwh,
+      'MS-15': formel('MS-15', k.reihe, k.neu_kwh),
+      'KZ-0001': vier(k.neu_kwh / nenner1),
+      'KZ-0003': vier((k.neu_kwh + kz2.oktober_2026_zaehler) / (nenner1 + kz2.oktober_2026_nenner)),
+    };
+    expect((k.folgen as any[]).map((f) => f.objekt)).toEqual(Object.keys(soll));
+    for (const f of k.folgen as any[]) {
+      if (f.wert !== soll[f.objekt] || f.version !== 2) fehler.push(`Folge ${f.objekt}: ${f.wert} v${f.version} statt ${soll[f.objekt]} v2`);
+    }
+    const b = daten.berichte[0];
+    if (!standorte.has(b.geltung)) fehler.push(`Bericht: Geltung ${b.geltung} gibt es nicht`);
+    const quellen = new Set(b.quellen as string[]);
+    for (const q of quellen) if (!ms.has(q) && !bz.has(q) && !kz.has(q)) fehler.push(`Bericht: Quelle ${q} gibt es nicht`);
+    const erste: Record<string, number> = { [k.reihe]: k.alt_kwh, 'MS-15': formel('MS-15', k.reihe, k.alt_kwh), 'KZ-0001': kz.get('KZ-0001').oktober_2026_wert };
+    (b.staende as any[]).forEach((st, i) => {
+      const nr = `Nr. ${st.nr}`;
+      if (st.nr !== i + 1) fehler.push(`${nr}: Nummern nicht lückenlos`);
+      if (!(zeit(st.datenstand) < zeit(st.freigegeben_am))) fehler.push(`${nr}: Datenstand nicht vor der Freigabe`);
+      if (!personen.has(st.freigegeben_von)) fehler.push(`${nr}: unbekannte Person`);
+      const letzter = i === b.staende.length - 1;
+      if (letzter ? st.ersetzt_durch !== null : st.ersetzt_durch !== i + 2) fehler.push(`${nr}: ersetzt_durch zeigt nicht auf den Nachfolger`);
+      const zahlen = i === 0 ? erste : soll;
+      for (const w of st.werte as any[]) {
+        if (!quellen.has(w.objekt)) fehler.push(`${nr}: ${w.objekt} steht nicht im Quellenverzeichnis`);
+        if (w.wert !== zahlen[w.objekt] || w.version !== (i === 0 ? 1 : 2)) fehler.push(`${nr}: ${w.objekt} = ${w.wert} v${w.version}`);
+      }
+    });
+    const [nr1, nr2] = b.staende as any[];
+    if (nr1.anlass !== null || nr2.anlass !== k.kennung) fehler.push('Anlass: Nr. 1 ohne, Nr. 2 mit der Korrektur');
+    if (zeit(nr2.datenstand) !== zeit(k.freigegeben_am)) fehler.push('Nr. 2: Datenstand ist nicht der der Kaskade');
+    if (!(zeit(nr1.freigegeben_am) < zeit(k.freigegeben_am))) fehler.push('Nr. 1 ist nicht vor der Korrektur freigegeben');
+    if (zeit(nr1.datenstand) < zeit('2026-11-08T00:00:00+01:00')) fehler.push('Nr. 1: Datenstand vor „endgültig ab“ des Oktobers');
+    const abweichungen = (nr1.werte as any[]).filter((w: any, i: number) => w.wert !== nr2.werte[i].wert || w.version !== nr2.werte[i].version).length;
+    if (nr2.abweichungen !== abweichungen) fehler.push(`Nr. 2: ${nr2.abweichungen} Abweichungen statt ${abweichungen}`);
+    const zeitachse = new Set((daten.zeitachse as any[]).map((z) => zeit(z.zeitpunkt)));
+    for (const t of [nr1.freigegeben_am, k.freigegeben_am, nr2.freigegeben_am]) if (!zeitachse.has(zeit(t))) fehler.push(`Zeitachse nennt ${t} nicht`);
+    expect(fehler).toEqual([]);
   });
 });

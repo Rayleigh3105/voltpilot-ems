@@ -1,7 +1,7 @@
 {
-  "version": "1.3",
+  "version": "1.4",
   "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS). Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
-  "stand": "2026-09-14",
+  "stand": "2026-09-15",
   "_comment": [
     "Diese Datei ist die maschinenlesbare Fassung von AP-00 §4.4 (Referenzunternehmen),",
     "erweitert um die Verfeinerungen aus AP-01…AP-07. Sie wird von ZWEI Zwillingen",
@@ -82,7 +82,16 @@
     "  (6 100 + 3 600) ÷ (41 000 + 7 200) = 0,2012. `mittel_ungewichtet_nicht_gebildet`",
     "  hält fest, welche Zahl dabei NICHT entsteht (kennzahl.md, Q5).",
     "  `kennzahl_beispiel` bleibt; sein Ergebnis ist KZ-0004 auf 2 Stellen.",
-    "  ZEITACHSE: am 03.11.2026 entstehen die fünf Kennzahlen, je in Fassung 1."
+    "  ZEITACHSE: am 03.11.2026 entstehen die fünf Kennzahlen, je in Fassung 1.",
+    "FASSUNG 1.4 (AP-12 IP-2, E15 = A): KORREKTUREN — K-2026-0007 berichtigt MS-12 im Oktober 2026 (6 100 → 6 040 kWh,",
+    "  Ablesefehler 60 kWh), freigegeben von Ines Kaltenbach bei ausgeschaltetem Vier-Augen-Prinzip. Die Kaskade macht MS-12,",
+    "  MS-15 (= MS-10 − MS-11 − MS-12 − MS-13 − MS-14 = 3 860), KZ-0001 (0,1473) und KZ-0003 (0,2) zu Version 2 — dieselbe",
+    "  Korrektur, die AP-11 K7 als Annahme nutzt, ist jetzt Fakt der Datei.",
+    "  BERICHTE — BR-2026-0001, Monatsbericht Werk Ahrenberg Oktober 2026 (Vorlage monatsbericht_standort, Fassung 1), mit",
+    "  zwei Berichtsständen: Nr. 1 (Datenstand 10.11.2026 08:55, freigegeben 09:02, MS-12 = 6 100 in Version 1, ersetzt durch",
+    "  Nr. 2) und Nr. 2 (Datenstand = die Kaskade 12.11.2026 10:05:33, freigegeben 16.11.2026 14:20, Anlass K-2026-0007, drei",
+    "  Abweichungen). Die Stände nennen MS-12, MS-15 und KZ-0001 je Version; den vollständigen Abzug trägt bericht-vectors.json.",
+    "  ZEITACHSE: vier Einträge — 10.11.2026 Nr. 1, 12.11.2026 Korrektur und Anstoß, 16.11.2026 Nr. 2, 29.01.2027 Rohwerte weg."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",
@@ -100,6 +109,7 @@
     "messstellen": "AP-00 §4.4 · Hauptgröße + Nebengrößen (AP-04 E1), Kennzeichen-Format (AP-04 E7), elektrische Stellung „Unterzähler von“ (AP-04 E12), zeitgültige führende Quelle (AP-04 §4.2), Kadenz je Quellenbindung und Wertart je Kanal (AP-07 E9/E12), Vergleichsquelle an MS-01 aus der AP-04-Feldtabelle §4.1 (E3) ab dem Zeitpunkt des AP-04-Protokolls 20.11.2026 08:30 — eingetragen von Ines Kaltenbach an MS-01 (das Protokoll nennt MS-06 und Elektro Brunner, dessen Unterstützung erst am 24.11.2026 beginnt; Entscheid firstmate 11.09.2026)",
     "fassung_1_2": "AP-09 IP-2 (W5: `einheit_code`, `periode_code`, `wertart`, `geltung_art`, `messstelle`, BZ-5, `MS-21.ablesungen[]`) und AP-10 IP-2 (E19 = A: MS-22, `tag_2026_10_18_kwh`, MS-04 Laden/Entladen als Zahlen, MS-09 = 54 580, Ende der 9000-Anteile, `formel_typ`) — beide am 12.09.2026 entschieden",
     "fassung_1_3": "AP-11 IP-2 (E13 = A, 14.09.2026): BZ-6, BZ-7, `kennzahlen[]` KZ-0001 … KZ-0005 und die Zeitachse am 03.11.2026 — die Zahlen sind die der Abnahmefälle K1–K5 und K12 aus dem Konzept AP-11 §7",
+    "fassung_1_4": "AP-12 IP-2 (E15 = A, 14.09.2026): `korrekturen[]` K-2026-0007, `berichte[]` BR-2026-0001 mit den Berichtsständen Nr. 1 und Nr. 2 und vier Zeilen der Zeitachse — die Zahlen und Zeitpunkte sind die des Abnahmefalls B1 aus dem Konzept AP-12 §7 (Ergänzung der Referenzdatei)",
     "personen": "AP-00 §4.4 (vier Personen) · vollständiger Personen-Satz mit Rollen, Geltungsbereichen und Unterstützungszugriffen aus AP-03 §4.1",
     "zeitachse": "AP-00 §4.4 · Box-Ausfall Halle 2 am 03.11.2026 mit Rückkehr um 17:30 und Nachlieferung (AP-00 §7.6, AP-06 A2, AP-07 A3), danach Box-Tausch am 04.11.2026 (AP-06 A5), Zählerwechsel-Zeitpunkt (AP-04 E2), Unterstützungszeiträume (AP-03 §4.1), Hardwareblatt-Fassungen und Wandlertausch (AP-05 §4.1)",
     "bewusst_ausgelassen": "Standort ST-3 „Werk Ahrenberg Nord“ (ab 20.02.2027) und die daran hängende Person Sabine Rauch aus AP-03 §4.1 — AP-00 §4.4 führt das Referenzunternehmen mit ZWEI Standorten, und die Abnahme dieses Pakets zählt zwei."
@@ -1066,6 +1076,53 @@
       "oktober_2026_zaehler": 36900, "oktober_2026_nenner": 3100, "oktober_2026_wert": 11.9032, "hinweis": "Abnahmefall K12: 36 900 kWh ÷ 3 100 m² (Fläche von G-2 am 31.10.2026) = 11,90 kWh je m²" }
   ],
 
+  "korrekturen": [
+    {
+      "kennung": "K-2026-0007", "reihe": "MS-12", "art": "wert_berichtigt", "periode_art": "monat", "periode": "2026-10",
+      "zeitraum_von": "2026-10-01", "zeitraum_bis": "2026-10-31", "alt_kwh": 6100, "neu_kwh": 6040,
+      "vorgeschlagen_am": "2026-11-11T16:40:00+01:00", "vorgeschlagen_von": "IK",
+      "freigegeben_am": "2026-11-12T10:05:33+01:00", "freigegeben_von": "IK", "vieraugen": false,
+      "begruendung": "Zählerablesung 31.10. berichtigt (Ablesefehler 60 kWh)",
+      "folgen": [
+        { "objekt": "MS-12", "version": 2, "wert": 6040 },
+        { "objekt": "MS-15", "version": 2, "wert": 3860 },
+        { "objekt": "KZ-0001", "version": 2, "wert": 0.1473 },
+        { "objekt": "KZ-0003", "version": 2, "wert": 0.2 }
+      ],
+      "hinweis": "Die Kaskade schreibt in derselben Transaktion wie die Freigabe: MS-12 und MS-15 bis zum Jahr, KZ-0001 = 6 040 ÷ 41 000 und KZ-0003 = (6 040 + 3 600) ÷ (41 000 + 7 200) als Version 2; KZ-0002 bleibt Version 1. Die Fassung der Berechnung bleibt 1."
+    }
+  ],
+
+  "berichte": [
+    {
+      "kennung": "BR-2026-0001", "name": "Monatsbericht Werk Ahrenberg Oktober 2026",
+      "vorlage": "monatsbericht_standort", "vorlage_fassung": 1, "geltung_art": "standort", "geltung": "ST-1",
+      "zeitraum_art": "monat", "zeitraum": "2026-10",
+      "quellen": ["BZ-4", "BZ-6", "KZ-0001", "KZ-0005", "MS-01", "MS-02", "MS-03", "MS-04", "MS-05", "MS-06", "MS-07", "MS-08", "MS-09", "MS-10", "MS-11", "MS-12", "MS-13", "MS-14", "MS-15"],
+      "staende": [
+        {
+          "nr": 1, "datenstand": "2026-11-10T08:55:00+01:00", "freigegeben_am": "2026-11-10T09:02:00+01:00", "freigegeben_von": "IK",
+          "vieraugen": false, "anlass": null, "ersetzt_durch": 2, "abweichungen": null,
+          "werte": [
+            { "objekt": "MS-12", "version": 1, "wert": 6100 },
+            { "objekt": "MS-15", "version": 1, "wert": 3800 },
+            { "objekt": "KZ-0001", "version": 1, "wert": 0.1488 }
+          ]
+        },
+        {
+          "nr": 2, "datenstand": "2026-11-12T10:05:33+01:00", "freigegeben_am": "2026-11-16T14:20:00+01:00", "freigegeben_von": "IK",
+          "vieraugen": false, "anlass": "K-2026-0007", "ersetzt_durch": null, "abweichungen": 3,
+          "werte": [
+            { "objekt": "MS-12", "version": 2, "wert": 6040 },
+            { "objekt": "MS-15", "version": 2, "wert": 3860 },
+            { "objekt": "KZ-0001", "version": 2, "wert": 0.1473 }
+          ]
+        }
+      ],
+      "hinweis": "Ein Berichtsstand ist ein Abzug (Kopie mit Prüfsumme), nie ein Verweis: Nr. 1 nennt nach der Korrektur, nach dem Ende der Rohwerte (29.01.2027) und nach dem Ende der Zeilen (31.10.2036) weiter 6 100 kWh in Version 1. Der Datenstand ist der Zeitpunkt der Bildung, nicht der Freigabe."
+    }
+  ],
+
   "zuordnungen": [
     { "art": "ort_eltern", "von": "ST-1", "nach": null, "gueltig_ab": "2024-03-12", "gueltig_bis": null, "eingetragen_am": "2026-10-01", "abzeichen": "rückwirkend (933 Tage)", "hinweis": "Bestandsübernahme: automatisch aus der Bestandsanlage AN-1 angelegt, besteht seit deren Beginn — sonst hinge AN-1 an einem Standort, den es nicht gibt (AP-02 E5, §4.4-Protokoll)" },
     { "art": "ort_eltern", "von": "ST-2", "nach": null, "gueltig_ab": "2026-10-15", "gueltig_bis": null, "hinweis": null },
@@ -1135,6 +1192,9 @@
     { "zeitpunkt": "2026-11-04T09:20:00+01:00", "genauigkeit": "minute", "ereignis": "Jonas Wendlinger verbindet die neue Box und wählt „als Nachfolger von Box Halle 2“", "herkunft": "AP-06 §Abnahmefall Box-Tausch" },
     { "zeitpunkt": "2026-11-04T09:38:00+01:00", "genauigkeit": "minute", "ereignis": "Cloud hängt um: E-2′ übernimmt Heimat-Anlage AN-2, führende Rolle und die Zuständigkeit für DQ-4/DQ-5; E-2 „ausgebaut“, Zertifikat gesperrt; nichts gelöscht", "herkunft": "AP-06 §Abnahmefall Box-Tausch" },
     { "zeitpunkt": "2026-11-04T09:40:00+01:00", "genauigkeit": "minute", "ereignis": "Erste Lesung von E-2′; MS-10…MS-14 laufen unter derselben Messstelle weiter und zeigen nur die Lücke der Übergabe 09:38–09:40 (nie 0); Herkunft je Wert: bis 09:38 E-2 (auch die am 03.11. nachgelieferten Werte 14:00–17:30), ab 09:40 E-2′", "herkunft": "AP-06 A5, AP-07 §4.5" },
+    { "zeitpunkt": "2026-11-10T09:02:00+01:00", "genauigkeit": "minute", "ereignis": "Ines Kaltenbach gibt Berichtsstand Nr. 1 des Monatsberichts Werk Ahrenberg Oktober 2026 frei (Datenstand 08:55)", "herkunft": "AP-12 §7 (B1), E15" },
+    { "zeitpunkt": "2026-11-12T10:05:33+01:00", "genauigkeit": "minute", "ereignis": "Korrektur K-2026-0007 freigegeben: MS-12 Oktober 6 100 → 6 040 kWh; Kaskade bis zum Jahr, KZ-0001 und KZ-0003 Version 2; Berichtsstand Nr. 1 bekommt den Revisions-Anstoß, der Entwurf bildet sich neu", "herkunft": "AP-12 §7 (B1, B2), E15; AP-11 K7" },
+    { "zeitpunkt": "2026-11-16T14:20:00+01:00", "genauigkeit": "minute", "ereignis": "Berichtsstand Nr. 2 (Revision) freigegeben; Nr. 1 bleibt lesbar, ersetzt durch Nr. 2", "herkunft": "AP-12 §7 (B1), E15" },
     { "zeitpunkt": "2026-11-18T10:40:00+01:00", "genauigkeit": "minute", "ereignis": "Zählerwechsel an MS-06: Z-5a → Z-5b; Endstand Z-5a 1 083 415,2 kWh, Anfangsstand Z-5b 0,0 kWh; Messstelle bleibt, alte Werte bleiben Z-5a zugeordnet; Lücke 10:40–10:47 bleibt sichtbar", "herkunft": "AP-00 §4.4, AP-04 E2" },
     { "zeitpunkt": "2026-11-20T08:30:00+01:00", "genauigkeit": "minute", "ereignis": "Ines Kaltenbach kennzeichnet an MS-01 die Netzleistung am Wechselrichter (K-1 · Einspeise-/Bezugsleistung am Wechselrichter) als Vergleichsquelle der Wirkleistung, Zweck „Plausibilität“ — beide Werte stehen nebeneinander, bewertet und ersetzt wird nichts; die führende Quelle K-3 bleibt", "herkunft": "AP-04 §4.1 (Feld „Vergleichsquellen“), E3; Zeitpunkt aus dem AP-04-Änderungsprotokoll" },
     { "zeitpunkt": "2026-11-24T09:40:00+01:00", "genauigkeit": "minute", "ereignis": "Jonas Wendlinger gewährt Elektro Brunner Unterstützung für ST-1, Umfang „Einrichten und Bedienen“, befristet bis 15.12.2026", "herkunft": "AP-03 §4.1" },
@@ -1143,6 +1203,7 @@
     { "zeitpunkt": "2027-01-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kostenstelle 9000 aufgeteilt in 9010 Druckluft und 9020 Kühlung; Berichte 2026 bleiben unverändert (zeitliche Gültigkeit)", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2027-01-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsfläche Halle 2 (G-2) 3 100 → 3 400 m² (Anbau); eingetragen am 15.01.2027 und deshalb als „rückwirkend (14 Tage)“ protokolliert (Eintragstag − gilt ab, wie A2 zählt)", "herkunft": "AP-02 §4.4, E2" },
     { "zeitpunkt": "2027-01-14T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Hardwareblatt Ahrenberg C-1, Fassung 1 (Pilot der Kombination PFC200 × 750-494/-495 × Registerbild v1)", "herkunft": "AP-05 §4.1" },
+    { "zeitpunkt": "2027-01-29T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Die Oktober-Rohwerte sind 90 Tage alt und werden gelöscht — beide Berichtsstände bleiben erklärbar (Abzug)", "herkunft": "AP-12 §7 (B1), E15" },
     { "zeitpunkt": "2027-02-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Stromwandler EK-2 getauscht: 250/5 A → 400/5 A; Hardwareblatt Ahrenberg C-1, Fassung 2", "herkunft": "AP-05 §4.1, Erhebungsbogen B3" },
     { "zeitpunkt": "2027-03-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kaltwassersatz zieht in Halle 2: MS-08 wechselt Ort (B-2 → B-3), elektrisches System (AN-1 → AN-2), Quelle (K-7 → EK-7/K-8.7 an C-1) und Box (E-1 → E-2′) — EINE Messstelle, vier zeitgültige Zuordnungen", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2027-04-09T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Erreichbarkeitsprüfung von DQ-3 aus Box Halle 2 bestanden (Route VLAN 20 → VLAN 10 durch die Kunden-IT freigegeben)", "herkunft": "AP-06 §4.1" },

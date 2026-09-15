@@ -1968,6 +1968,50 @@
       "gelesen_von": "AP-12 — die Revision freigegebener Berichte",
       "regel": "Der Rechenlauf oder die Kaskade hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet — „korrigiert (Version n)“ nach einem Eingang, „Berechnung geändert (Fassung n)“ nach einer rückwirkenden Fassung. Pflicht ist der Anlass. Vorläufige Werte ziehen ohne Meldung nach (AP-11 V3).",
       "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-11 IP-1."
+    },
+    {
+      "art": "bericht_freigegeben",
+      "bezug": "bericht",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-7, der Freigabe eines Berichtsentwurfs",
+      "gelesen_von": "AP-12 IP-13 — der Verlauf der Berichtsstände auf der Berichtsseite",
+      "regel": "Eine Person mit Recht gibt den Entwurf frei, den sie gesehen hat: Berichtsstand Nr. n mit Datenstand, Freigabe-Zeitpunkt und Prüfsumme (bericht.md F2). Zeitform Zeitpunkt; Bezug der Bericht (BR-…) mit der Nummer des Stands. Eine Wiederholung derselben Freigabe (Bericht, Datenstand) schreibt nichts (F5).",
+      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-12 IP-1. Die Migration der Berichts-Tabellen (AP-12 IP-4, Version nach dem höchsten ausgelieferten Stand) trägt die Art in `vokabular.arten` und die Prüfung ein."
+    },
+    {
+      "art": "bericht_revision_angestossen",
+      "bezug": "bericht",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-8 (Kaskaden-Naht, Pfad 1) und IP-9 (Strukturänderungs-Läufer, Pfad 2)",
+      "gelesen_von": "AP-12 IP-13/IP-14 — der Vermerk „Revision nötig — …“",
+      "regel": "Eine Änderung trifft einen GÜLTIGEN freigegebenen Berichtsstand (Zeitraum × Quellenverzeichnis, bericht.md B1): der Stand bleibt byte-gleich und bekommt einen Anstoß mit Art (`anstoss_art`) und Anlass. Idempotent über Stand, Art, Anlass und Fassung (B7); ein ersetzter Stand bekommt keinen.",
+      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-12 IP-1. Die Migration der Berichts-Tabellen (AP-12 IP-4, Version nach dem höchsten ausgelieferten Stand) trägt die Art in `vokabular.arten` und die Prüfung ein."
+    },
+    {
+      "art": "bericht_entwurf_neu_gebildet",
+      "bezug": "bericht",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-8 und IP-9",
+      "gelesen_von": "AP-12 IP-13 — der Datenstand des Entwurfs",
+      "regel": "Pfad 1 oder Pfad 2 hat den Entwurf eines Berichts aus neuen Versionen neu gebildet (neuer Datenstand, bericht.md EW1). Bildet ein Abruf ihn neu, weil er nicht mehr aktuell ist (D4), wird nichts gemeldet (B6).",
+      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-12 IP-1. Die Migration der Berichts-Tabellen (AP-12 IP-4, Version nach dem höchsten ausgelieferten Stand) trägt die Art in `vokabular.arten` und die Prüfung ein."
+    },
+    {
+      "art": "bericht_abgerufen",
+      "bezug": "bericht",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-10/IP-11 (CSV und PDF)",
+      "gelesen_von": "AP-12 — „wer hat welchen Stand gesehen“ (bericht.md DA5)",
+      "regel": "Eine Person ruft PDF oder CSV eines Berichtsstands ab — nie eines Entwurfs (EW4): Stand, Format, Person, Zeitpunkt und Teilansicht. Jeder Abruf ist eine Meldung.",
+      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-12 IP-1. Die Migration der Berichts-Tabellen (AP-12 IP-4, Version nach dem höchsten ausgelieferten Stand) trägt die Art in `vokabular.arten` und die Prüfung ein."
     }
   ],
   "cases": [

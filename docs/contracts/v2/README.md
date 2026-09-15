@@ -83,6 +83,7 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md) + [`bilanzwert-herkunft.schema.json`](./bilanzwert-herkunft.schema.json) + [`bilanzwert-herkunft-vectors.json`](./bilanzwert-herkunft-vectors.json) | Schema, Regeln und gemeinsame Testvektoren; seit 1.1 die Ableitung der Routen aus gespeicherten Zeilen. |
 | [`kennzahl.md`](./kennzahl.md) + [`kennzahl-vectors.json`](./kennzahl-vectors.json) + [`kennzahl.schema.json`](./kennzahl.schema.json) | Schema, Regeln und gemeinsame Testvektoren der Kennzahl (AP-11): Rechenformen, Perioden, Einheiten, Qualität, Summe ÷ Summe, Geltung. |
 | [`kennzahlwert-herkunft.md`](./kennzahlwert-herkunft.md) + [`kennzahlwert-herkunft.schema.json`](./kennzahlwert-herkunft.schema.json) | Schema und Regeln der Herkunft eines Kennzahl-Werts; die Fälle stehen in `kennzahl-vectors.json`. |
+| [`bericht.md`](./bericht.md) + [`bericht-vectors.json`](./bericht-vectors.json) + [`bericht.schema.json`](./bericht.schema.json) + [`bericht-vorlagen.json`](./bericht-vorlagen.json) | Schema, Regeln, Vorlagen und gemeinsame Testvektoren des Berichts (AP-12): Abzug mit Prüfsumme, Datenstand, Freigabe, Betroffenheit, Revision, Rechte, CSV. |
 
 ## Ergänzende Entscheidungen
 

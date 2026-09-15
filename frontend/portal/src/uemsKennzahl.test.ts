@@ -204,7 +204,9 @@ describe('Kennzahl-Vertrag: Form der Vektor-Datei', () => {
 
   it('die Beispielwelt ist das Referenzunternehmen in der Fassung, deren Kennzahlen sie liest', () => {
     expect(vektoren.referenzunternehmen).toBe('./uems-referenzunternehmen.json');
-    expect(lies('uems-referenzunternehmen.json').version).toBe(vektoren.referenz_stand);
+    // Seit 1.4 (AP-12 IP-2) darf die Datei weiter sein — sie ergänzt nur, der Diff-Test hält die Kennzahlen gleich.
+    const fassung = (t: string): number => Number(t.split('.')[0]) * 1000 + Number(t.split('.')[1]);
+    expect(fassung(lies('uems-referenzunternehmen.json').version)).toBeGreaterThanOrEqual(fassung(vektoren.referenz_stand));
   });
 
   it('Prosa und Java-Zwilling liegen, wo die Datei sie nennt', () => {
