@@ -73,6 +73,8 @@ class BerichtSchnittstelleVertragTest {
         formen.put("BerichtAbweichung", BerichtDto.Abweichung.class);
         formen.put("BerichtVergleich", BerichtDto.Vergleich.class);
         formen.put("BerichtStand", BerichtDto.Stand.class);
+        formen.put("BerichtStandRef", BerichtDto.StandRef.class);
+        formen.put("BerichteBetroffen", BerichtDto.Betroffen.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -91,14 +93,16 @@ class BerichtSchnittstelleVertragTest {
     }
 
     /**
-     * Neun Pfade, zehn Routen — keine löscht (F6: eine Freigabe wird nie zurückgenommen, ein Stand nie gelöscht); seit
-     * AP-12 IP-10 dazu der Berichts-CSV eines Stands.
+     * Zehn Pfade, elf Routen — keine löscht (F6: eine Freigabe wird nie zurückgenommen, ein Stand nie gelöscht): die neun
+     * aus IP-7, seit AP-12 IP-9 die lesende Folgen-Zeile {@code /berichte/betroffen} und seit AP-12 IP-10 der Berichts-CSV
+     * eines Stands.
      */
     @Test
     @SuppressWarnings("unchecked")
-    void dieRoutenSindDieZehnDerPakete() {
+    void dieRoutenSindDieElfDerPakete() {
         Map<String, List<String>> soll = new LinkedHashMap<>();
         soll.put("/api/v1/berichte", List.of("get", "post"));
+        soll.put("/api/v1/berichte/betroffen", List.of("get"));
         soll.put("/api/v1/berichte/{kennung}", List.of("parameters", "get"));
         soll.put("/api/v1/berichte/{kennung}/entwurf", List.of("parameters", "get"));
         soll.put("/api/v1/berichte/{kennung}/entwurf/vergleich", List.of("parameters", "get"));

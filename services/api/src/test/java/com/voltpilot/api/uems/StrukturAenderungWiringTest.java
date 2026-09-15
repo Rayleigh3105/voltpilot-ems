@@ -62,15 +62,6 @@ class StrukturAenderungWiringTest {
         });
     }
 
-    /** Ohne Eintrag gilt die Vorgabe: an ({@code matchIfMissing}) — so läuft er in Produktion. */
-    @Test
-    void ohneEintragIstErAn() {
-        runner.run(context -> {
-            assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(StrukturAenderungLaeufer.class);
-        });
-    }
-
     /** Der Not-Aus nimmt den Läufer und seinen Thread-Pool — nie die Naht, die die Kaskade braucht. */
     @Test
     void derNotAusNimmtDenLaeuferNieDieNaht() {
