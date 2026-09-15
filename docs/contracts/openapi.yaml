@@ -238,7 +238,12 @@ tags:
   - name: berichte
     description: >
       UEMS-Berichte (AP-12): die vier VoltPilot-Vorlagen mit Fassungsnummer und festen Abschnitten
-      (IP-5, V2). Regeln: docs/contracts/v2/bericht.md.
+      (IP-5, V2); seit IP-7 anlegen, lesen, Entwurf (D4), Vergleich (R1), Freigabe als Berichtsstand
+      (F1–F5, byte-gleiche Kopie mit Prüfsumme), Stand lesen (Prüfsumme geprüft), Anstoß verwerfen,
+      archivieren. Rechte DURCHGESETZT (E12): `bericht.standort_abrufen`,
+      `bericht.standort_freigeben`, `bericht.unternehmen` über uems/BerichtRechte → RechteAbleitung;
+      fremder Kundenbereich oder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt`, die
+      Unterstützung bekommt nie Entwurf oder Stand. Regeln: docs/contracts/v2/bericht.md.
   - name: bezugsgroessen
     description: >
       UEMS-Bezugsgrößen (AP-09 IP-5): die Zahl, mit der Energie verglichen wird
@@ -9897,6 +9902,254 @@ paths:
             application/json:
               schema: { type: object, additionalProperties: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/berichte:
+    get:
+      tags: [berichte]
+      summary: Die Berichte, die die Person lesen darf - mit Vermerk (R5); archivierte nicht (V4).
+      description: >
+        Recht je Bericht: `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
+        bekommt nie Entwurf oder Stand. Die Liste enthält nur, was die Person lesen darf; darf sie
+        nirgends einen Bericht lesen, ist das 403. Neueste zuerst. UEMS AP-12 IP-7.
+      responses:
+        "200":
+          description: Die Berichte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+    post:
+      tags: [berichte]
+      summary: Legt einen Bericht an (Vorlage × Geltung × Zeitraum) und bildet seinen Entwurf.
+      description: >
+        Recht `bericht.standort_freigeben` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt`. Anlegen folgt dem
+        Freigabe-Recht. Reihenfolge: Felder (400 `anfrage_ungueltig`) → Vorlage (422
+        `vorlage_unbekannt`) → Zeitraum-Schlüssel passend zur Vorlage (400) → Geltung des Kundenbereichs
+        (404 `geltung_unbekannt`, fremd ebenso) → Recht → Vorlage × Geltung × Zeitraum gibt es schon
+        (409 `bericht_gibt_es_schon` mit `kennung`, auch archiviert) → Unternehmensbericht (501
+        `unternehmensbericht_folgt` bis AP-12 IP-6) → Messstellen der Geltung im Zeitraum (422
+        `keine_quellen`). Dann in EINER Transaktion: Kennung `BR-<Jahr>-<Nr.>` (Jahr des Anlegens),
+        Entwurf mit Datenstand = jetzt (D1, `gebildet_von` anlegen, uems/BerichtAbzugBildung), Protokoll
+        `anlegen`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BerichtAnlegen" }
+            example:
+              vorlage: monatsbericht_standort
+              geltung_id: "5f0c9a1e-3b2d-4c6e-8a7f-1d2e3f4a5b6c"
+              zeitraum: "2026-10"
+      responses:
+        "201":
+          description: Angelegt - mit Entwurf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bericht" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "409": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "422": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "501": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+    get:
+      tags: [berichte]
+      summary: Kopf, Berichtsstände (Nr. 1 zuerst) und Revisions-Anstöße eines Berichts.
+      description: >
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
+        bekommt nie Entwurf oder Stand. Ein archivierter Bericht bleibt lesbar.
+      responses:
+        "200":
+          description: Der Bericht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/entwurf:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+    get:
+      tags: [berichte]
+      summary: Der Entwurf - auf Aktualität geprüft (D4), nötigenfalls neu gebildet.
+      description: >
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
+        bekommt nie Entwurf oder Stand. D4: hat eine Quelle des Entwurfs seit seinem Datenstand eine
+        neue Version, Fassung, Periodenrechnung oder ein rückwirkendes Protokoll, oder lief seitdem das
+        Ende des Zeitraums oder ein „endgültig ab“ ab, wird der Entwurf neu gebildet (`gebildet_von`
+        abruf, `neu_gebildet` true, kein Ereignis - B6). Der Abzug steht als der gespeicherte kanonische
+        Text in der Antwort. Ein Entwurf wird nie als Datei ausgegeben und nie als Abruf protokolliert
+        (EW4). Einen Unternehmensbericht bildet erst AP-12 IP-6 (501).
+      responses:
+        "200":
+          description: Der aktuelle Entwurf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtEntwurf" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "501": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/entwurf/vergleich:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+      - { name: gegen, in: query, required: true, schema: { type: integer, minimum: 1 }, description: "Die Nr. des Berichtsstands, gegen den verglichen wird; fehlt sie, 400 `anfrage_ungueltig`." }
+    get:
+      tags: [berichte]
+      summary: Vergleicht den aktuellen Entwurf mit einem Berichtsstand - jede Abweichung (R1).
+      description: >
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
+        bekommt nie Entwurf oder Stand. Erst der Stand (404 `stand_gibt_es_nicht`, Prüfsumme geprüft -
+        500 `abzug_beschaedigt`), dann der Entwurf nach D4 wie `…/entwurf`; die Abweichungen spricht die
+        Regel `abweichungen` (bericht.md §8). Zahlen als Dezimaltext, ungerundet.
+      responses:
+        "200":
+          description: Die Abweichungen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtVergleich" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "500": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "501": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/freigeben:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+    post:
+      tags: [berichte]
+      summary: Gibt den gesehenen Entwurf als Berichtsstand frei - eine byte-gleiche Kopie mit Prüfsumme (F1–F5).
+      description: >
+        Recht `bericht.standort_freigeben` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt`. Das Recht prüft VOR
+        den Voraussetzungen. In EINER Transaktion: Bericht gesperrt, Entwurf `FOR SHARE`; dieselbe
+        Freigabe (Bericht, Datenstand) noch einmal ist 200 mit demselben Stand (F5). F1 in dieser
+        Reihenfolge: Zeitraum zu Ende (422 `zeitraum_nicht_zu_ende`, `moeglich_ab`) → jeder Wert
+        endgültig (422 `werte_vorlaeufig`) → der gesehene Entwurf ist der gespeicherte und seit seinem
+        Datenstand hat sich nichts geändert (D2, D3; 409 `entwurf_veraltet`). Dann wird nichts neu
+        gerechnet: der Abzug wird Byte für Byte nach `bericht_stand` kopiert (Nr. = letzte + 1), die
+        Quellen eingefroren, am Vorgänger „ersetzt durch“ gesetzt, offene Anstöße erledigt (der erste
+        ist der Anlass), Ereignis `bericht_freigegeben` und Protokoll geschrieben. Kein
+        Vier-Augen-Prinzip (F4); eine Freigabe wird nie zurückgenommen (F6).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BerichtFreigeben" }
+            example:
+              entwurf_datenstand: "2026-11-10T07:55:00Z"
+      responses:
+        "201":
+          description: Berichtsstand Nr. n - neu.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtStand" }
+        "200":
+          description: Dieselbe Freigabe noch einmal (F5) - derselbe Stand, nichts geschrieben.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtStand" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "409": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "422": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/staende/{nr}:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+      - { name: nr, in: path, required: true, schema: { type: integer, minimum: 1 }, description: "Die Nr. des Berichtsstands." }
+    get:
+      tags: [berichte]
+      summary: Ein freigegebener Berichtsstand - seine Prüfsumme wird geprüft, nicht nur mitgeliefert.
+      description: >
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
+        bekommt nie Entwurf oder Stand. Stimmt die Prüfsumme nicht mehr zum gespeicherten Abzug,
+        verlässt er den Server nie: 500 `abzug_beschaedigt`. Ein ersetzter Stand bleibt lesbar
+        (`ersetzt_durch_nr`). Das Lesen ist kein Abruf einer Datei (PDF/CSV: AP-12 IP-10/IP-11).
+      responses:
+        "200":
+          description: Der Berichtsstand.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtStand" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "500": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/anstoesse/{id}/verwerfen:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid }, description: "Der Revisions-Anstoß an einem Stand dieses Berichts." }
+    post:
+      tags: [berichte]
+      summary: Verwirft einen offenen Revisions-Anstoß mit Begründung - der Stand bleibt der gültige (R4).
+      description: >
+        Recht `bericht.standort_freigeben` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt`. Reihenfolge: Anstoß
+        dieses Berichts (404) → Begründung 10 bis 500 Zeichen (422 `begruendung_fehlt`) → offen (409
+        `anstoss_nicht_offen`). Verwerfen löscht nichts; der Vermerk wird „Anstoß verworfen (…)“.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BerichtAnstossVerwerfen" }
+            example:
+              begruendung: "Korrektur betrifft nur den 31.10. nach Betriebsschluss, Bericht bleibt"
+      responses:
+        "200":
+          description: Verworfen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtAnstoss" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "409": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "422": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/archivieren:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+    post:
+      tags: [berichte]
+      summary: Archiviert einen Bericht - er verschwindet aus der Liste, seine Stände bleiben lesbar (V4).
+      description: >
+        Recht `bericht.standort_freigeben` am Standort-Bericht, `bericht.unternehmen` am
+        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt`. Archivieren folgt dem
+        Freigabe-Recht. Kein Inhalt oder `{}`; jedes Feld ist 400. Ein zweites Mal ändert nichts
+        (dasselbe `archiviert_am`, kein Protokoll).
+      responses:
+        "200":
+          description: Der archivierte Bericht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bericht" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
   /api/v1/bezugsflaechen:
     get:
       tags: [bezugsgroessen]
@@ -11061,6 +11314,15 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/KostenstelleProzessFehler" }
+    BerichtAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - kein Bericht, kein Stand, kein Protokoll, kein Ereignis. Code
+        und Status aus dem geschlossenen Satz (uems/BerichtAbgelehnt): die Codes des Vertrags
+        (bericht.md, Report §5.8) mit dem Kundensatz ihrer Regel, ein 403 mit dem Satz der
+        Rechte-Ableitung; dazu die Fakten.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/BerichtFehler" }
     KorrekturFreigabeAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben. Code, Status und der deutsche `message`-Satz kommen aus dem
@@ -21594,6 +21856,208 @@ components:
         name: { type: string }
         rolle: { type: string, nullable: true }
         art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+    BerichtFehler:
+      type: object
+      description: >
+        Die Ablehnung der Berichts-Routen (AP-12 IP-7): 400 `anfrage_ungueltig` (`feld`); 403
+        `recht_fehlt` (`rolle_noetig`, null bei der Unterstützung - „nie“); 404 `nicht_gefunden`,
+        `geltung_unbekannt` (`feld`), `stand_gibt_es_nicht` (`nr`, `neueste_nr`); 409
+        `bericht_gibt_es_schon` (`kennung`), `entwurf_veraltet` (`datenstand_uebermittelt`,
+        `datenstand_aktuell` - null, wenn der gespeicherte Entwurf selbst veraltet ist -, `abweichungen`
+        gegen den gültigen Stand, `aenderungen` seit dem Datenstand), `anstoss_nicht_offen` (`zustand`),
+        `gleichzeitig`; 422 `vorlage_unbekannt` (`feld`), `keine_quellen` (`feld`),
+        `zeitraum_nicht_zu_ende` (`moeglich_ab`), `werte_vorlaeufig` (`vorlaeufig`, `vorlaeufige`,
+        `moeglich_ab`), `begruendung_fehlt` (`feld`, `zeichen`); 500 `abzug_beschaedigt` (`nr`); 501
+        `unternehmensbericht_folgt`. Zeitpunkte der Fakten mit dem Versatz der Zone der Geltung.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, nicht_gefunden, recht_fehlt, vorlage_unbekannt, geltung_unbekannt, bericht_gibt_es_schon, keine_quellen, zeitraum_nicht_zu_ende, werte_vorlaeufig, entwurf_veraltet, stand_gibt_es_nicht, abzug_beschaedigt, begruendung_fehlt, anstoss_nicht_offen, gleichzeitig, unternehmensbericht_folgt]
+        message: { type: string }
+        feld: { type: string }
+        rolle_noetig: { type: string, nullable: true }
+        kennung: { type: string }
+        nr: { type: integer }
+        neueste_nr: { type: integer, nullable: true }
+        moeglich_ab: { type: string, format: date-time }
+        vorlaeufig: { type: integer }
+        vorlaeufige: { type: array, items: { type: string } }
+        datenstand_uebermittelt: { type: string, format: date-time }
+        datenstand_aktuell: { type: string, format: date-time, nullable: true }
+        abweichungen: { type: array, items: { $ref: "#/components/schemas/BerichtAbweichung" } }
+        aenderungen:
+          type: array
+          items:
+            type: object
+            required: [quelle, art, zeitpunkt]
+            properties:
+              quelle: { type: string, nullable: true }
+              art: { type: string }
+              zeitpunkt: { type: string, format: date-time }
+        zustand: { type: string }
+        zeichen: { type: integer }
+    BerichtAnlegen:
+      type: object
+      description: >
+        Der Körper von `POST /api/v1/berichte` (streng gelesen).
+      additionalProperties: false
+      required: [vorlage, geltung_id, zeitraum]
+      properties:
+        vorlage: { type: string, description: "Ein Schlüssel aus GET /api/v1/bericht-vorlagen." }
+        geltung_id: { type: string, format: uuid, description: "Der Standort; beim Unternehmensbericht das Unternehmen." }
+        zeitraum: { type: string, pattern: "^[0-9]{4}(-(0[1-9]|1[0-2]))?$", description: "2026-10 (Monat) bzw. 2026 (Jahr), passend zur Vorlage." }
+    BerichtFreigeben:
+      type: object
+      description: >
+        Der Körper von `POST …/freigeben`: der Datenstand des Entwurfs, den die Person sah (F2).
+      additionalProperties: false
+      required: [entwurf_datenstand]
+      properties:
+        entwurf_datenstand: { type: string, format: date-time }
+    BerichtAnstossVerwerfen:
+      type: object
+      description: >
+        Der Körper von `POST …/anstoesse/{id}/verwerfen` (R4).
+      additionalProperties: false
+      required: [begruendung]
+      properties:
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    BerichtPerson:
+      type: object
+      description: >
+        Wer etwas tat: der Name und - wo gespeichert - die Rolle, die das Recht gab.
+      required: [name, rolle]
+      properties:
+        name: { type: string }
+        rolle: { type: string, nullable: true }
+    Bericht:
+      type: object
+      description: >
+        Ein Bericht in der Liste und im Kopf: `stand_zeichen` ist der Vermerk aus R5 als Wort,
+        `stand_text` sein Kundensatz („Entwurf · Datenstand …“, „Berichtsstand Nr. 1“, „Revision nötig —
+        Korrektur K-2026-0007“, „Anstoß verworfen (…)“).
+      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand]
+      properties:
+        kennung: { type: string }
+        vorlage: { type: string }
+        vorlage_fassung: { type: integer, minimum: 1 }
+        geltung_art: { type: string, enum: [standort, unternehmen] }
+        geltung_id: { type: string, format: uuid }
+        geltung_name: { type: string, nullable: true }
+        zeitraum_art: { type: string, enum: [monat, jahr] }
+        zeitraum: { type: string }
+        zeitraum_text: { type: string }
+        zeitzone: { type: string }
+        angelegt_von: { $ref: "#/components/schemas/BerichtPerson" }
+        angelegt_am: { type: string, format: date-time }
+        archiviert_am: { type: string, format: date-time, nullable: true }
+        stand_zeichen: { type: string, enum: [entwurf, berichtsstand, revision_noetig, anstoss_verworfen] }
+        stand_text: { type: string, nullable: true }
+        neueste_nr: { type: integer, nullable: true }
+        entwurf_datenstand: { type: string, format: date-time, nullable: true }
+    BerichtListe:
+      type: object
+      required: [berichte]
+      properties:
+        berichte: { type: array, items: { $ref: "#/components/schemas/Bericht" } }
+    BerichtStandKurz:
+      type: object
+      description: >
+        Ein Berichtsstand im Verlauf - ohne Abzug.
+      required: [nr, datenstand, freigegeben_am, freigegeben_von, pruefsumme, ersetzt_durch_nr, anlass_anstoss_id]
+      properties:
+        nr: { type: integer, minimum: 1 }
+        datenstand: { type: string, format: date-time }
+        freigegeben_am: { type: string, format: date-time }
+        freigegeben_von: { $ref: "#/components/schemas/BerichtPerson" }
+        pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        ersetzt_durch_nr: { type: integer, nullable: true }
+        anlass_anstoss_id: { type: string, format: uuid, nullable: true }
+    BerichtAnstoss:
+      type: object
+      description: >
+        Ein Revisions-Anstoß an Stand `nr` (R1–R4); `anlass_text` in Kundensprache.
+      required: [id, nr, art, anlass_kennung, anlass_fassung, anlass_text, erkannt_am, zustand, erledigt_durch_nr, verworfen_begruendung, verworfen_von, verworfen_am]
+      properties:
+        id: { type: string, format: uuid }
+        nr: { type: integer, minimum: 1 }
+        art: { type: string, enum: [korrektur_freigegeben, korrektur_zurueckgenommen, ersatzwert_wirksam, ersatzwert_zurueckgenommen, bezugsgroesse_fassung, kennzahl_fassung_rueckwirkend, zuordnung_rueckwirkend, anlage_umzug_rueckwirkend, flaeche_rueckwirkend, verteilung_rueckwirkend] }
+        anlass_kennung: { type: string }
+        anlass_fassung: { type: integer, nullable: true }
+        anlass_text: { type: string }
+        erkannt_am: { type: string, format: date-time }
+        zustand: { type: string, enum: [offen, erledigt, verworfen] }
+        erledigt_durch_nr: { type: integer, nullable: true }
+        verworfen_begruendung: { type: string, nullable: true }
+        verworfen_von: { allOf: [{ $ref: "#/components/schemas/BerichtPerson" }], nullable: true }
+        verworfen_am: { type: string, format: date-time, nullable: true }
+    BerichtDetail:
+      type: object
+      required: [bericht, staende, anstoesse]
+      properties:
+        bericht: { $ref: "#/components/schemas/Bericht" }
+        staende: { type: array, items: { $ref: "#/components/schemas/BerichtStandKurz" } }
+        anstoesse: { type: array, items: { $ref: "#/components/schemas/BerichtAnstoss" } }
+    BerichtEntwurf:
+      type: object
+      description: >
+        Der gespeicherte Entwurf nach der D4-Prüfung. `abzug` ist docs/contracts/v2/bericht.schema.json
+        $defs/abzug als der gespeicherte kanonische Text; `teilansicht` die Standortnamen einer
+        Teilansicht (G3), unternehmensweit null.
+      required: [kennung, datenstand, gebildet_von, neu_gebildet, pruefsumme, kopf, teilansicht, abzug]
+      properties:
+        kennung: { type: string }
+        datenstand: { type: string, format: date-time }
+        gebildet_von: { type: string, enum: [anlegen, abruf, kaskade, struktur] }
+        neu_gebildet: { type: boolean }
+        pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        kopf: { type: string }
+        teilansicht: { type: array, items: { type: string }, nullable: true }
+        abzug: { type: object, additionalProperties: true }
+    BerichtAbweichung:
+      type: object
+      description: >
+        Eine Abweichung zwischen Stand und Entwurf (R1); fehlt eine Seite, ist sie null.
+      required: [quelle, menge_art, vorher, nachher, version, anlass]
+      properties:
+        quelle: { type: string }
+        menge_art: { type: string, nullable: true }
+        vorher: { type: string, nullable: true }
+        nachher: { type: string, nullable: true }
+        version: { type: string }
+        anlass: { type: string, nullable: true }
+    BerichtVergleich:
+      type: object
+      required: [kennung, gegen, entwurf_datenstand, abweichungen]
+      properties:
+        kennung: { type: string }
+        gegen: { type: integer, minimum: 1 }
+        entwurf_datenstand: { type: string, format: date-time }
+        abweichungen: { type: array, items: { $ref: "#/components/schemas/BerichtAbweichung" } }
+    BerichtStand:
+      type: object
+      description: >
+        Ein freigegebener Berichtsstand. `pruefsumme_geprueft` ist immer true - ein Abzug, dessen
+        Prüfsumme nicht stimmt, verlässt den Server nie. `darstellung`, `regelwerk` und `abzug` sind die
+        eingefrorenen Texte (F3, A1).
+      required: [kennung, nr, datenstand, freigegeben_am, freigegeben_von, pruefsumme, pruefsumme_geprueft, ersetzt_durch_nr, anlass_anstoss_id, vorlage_fassung, kopf, teilansicht, darstellung, regelwerk, abzug]
+      properties:
+        kennung: { type: string }
+        nr: { type: integer, minimum: 1 }
+        datenstand: { type: string, format: date-time }
+        freigegeben_am: { type: string, format: date-time }
+        freigegeben_von: { $ref: "#/components/schemas/BerichtPerson" }
+        pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        pruefsumme_geprueft: { type: boolean, enum: [true] }
+        ersetzt_durch_nr: { type: integer, nullable: true }
+        anlass_anstoss_id: { type: string, format: uuid, nullable: true }
+        vorlage_fassung: { type: integer, minimum: 1 }
+        kopf: { type: string }
+        teilansicht: { type: array, items: { type: string }, nullable: true }
+        darstellung: { type: object, additionalProperties: true }
+        regelwerk: { type: object, additionalProperties: true }
+        abzug: { type: object, additionalProperties: true }
     KorrekturEntscheidung:
       type: object
       description: >

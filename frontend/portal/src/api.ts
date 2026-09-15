@@ -2580,6 +2580,160 @@ export interface KennzahlWerteHistorie {
   versionen: KennzahlWertVersion[];
 }
 
+// Die Formen der Berichts-Routen (UEMS AP-12 IP-7, OpenAPI Tag `berichte`) — snake_case wie der Bericht-Vertrag,
+// streng: jedes Feld ist da, `null` heißt „gibt es nicht“. Zeitpunkte UTC; die Fakten einer Ablehnung in der Zone
+// der Geltung. Rechte (E12): 403 `recht_fehlt`, fremd 404 `nicht_gefunden` — die Unterstützung liest keinen Bericht.
+
+/** R5 — der Vermerk eines Berichts als Wort; der Kundensatz steht in `stand_text`. */
+export type BerichtStandZeichen = 'entwurf' | 'berichtsstand' | 'revision_noetig' | 'anstoss_verworfen';
+export type BerichtAnstossArt =
+  | 'korrektur_freigegeben'
+  | 'korrektur_zurueckgenommen'
+  | 'ersatzwert_wirksam'
+  | 'ersatzwert_zurueckgenommen'
+  | 'bezugsgroesse_fassung'
+  | 'kennzahl_fassung_rueckwirkend'
+  | 'zuordnung_rueckwirkend'
+  | 'anlage_umzug_rueckwirkend'
+  | 'flaeche_rueckwirkend'
+  | 'verteilung_rueckwirkend';
+/** Der geschlossene Satz der Ablehnungen (`uems/BerichtAbgelehnt`, OpenAPI `BerichtFehler`). */
+export type BerichtFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'recht_fehlt'
+  | 'vorlage_unbekannt'
+  | 'geltung_unbekannt'
+  | 'bericht_gibt_es_schon'
+  | 'keine_quellen'
+  | 'zeitraum_nicht_zu_ende'
+  | 'werte_vorlaeufig'
+  | 'entwurf_veraltet'
+  | 'stand_gibt_es_nicht'
+  | 'abzug_beschaedigt'
+  | 'begruendung_fehlt'
+  | 'anstoss_nicht_offen'
+  | 'gleichzeitig'
+  | 'unternehmensbericht_folgt';
+
+/** Wer etwas tat: der Name und — wo gespeichert — die Rolle, die das Recht gab. */
+export interface BerichtPerson {
+  name: string;
+  rolle: string | null;
+}
+
+/** Ein Bericht in der Liste und im Kopf. */
+export interface Bericht {
+  kennung: string;
+  vorlage: string;
+  vorlage_fassung: number;
+  geltung_art: 'standort' | 'unternehmen';
+  geltung_id: string;
+  geltung_name: string | null;
+  zeitraum_art: 'monat' | 'jahr';
+  zeitraum: string;
+  zeitraum_text: string;
+  zeitzone: string;
+  angelegt_von: BerichtPerson;
+  angelegt_am: string;
+  archiviert_am: string | null;
+  stand_zeichen: BerichtStandZeichen;
+  stand_text: string | null;
+  neueste_nr: number | null;
+  entwurf_datenstand: string | null;
+}
+
+/** Der Körper von `POST /api/v1/berichte` (streng gelesen). */
+export interface BerichtAnlegen {
+  vorlage: string;
+  geltung_id: string;
+  zeitraum: string;
+}
+
+/** Ein Berichtsstand im Verlauf — ohne Abzug. */
+export interface BerichtStandKurz {
+  nr: number;
+  datenstand: string;
+  freigegeben_am: string;
+  freigegeben_von: BerichtPerson;
+  pruefsumme: string;
+  ersetzt_durch_nr: number | null;
+  anlass_anstoss_id: string | null;
+}
+
+/** Ein Revisions-Anstoß an Stand `nr` (R1–R4). */
+export interface BerichtAnstoss {
+  id: string;
+  nr: number;
+  art: BerichtAnstossArt;
+  anlass_kennung: string;
+  anlass_fassung: number | null;
+  anlass_text: string;
+  erkannt_am: string;
+  zustand: 'offen' | 'erledigt' | 'verworfen';
+  erledigt_durch_nr: number | null;
+  verworfen_begruendung: string | null;
+  verworfen_von: BerichtPerson | null;
+  verworfen_am: string | null;
+}
+
+export interface BerichtDetail {
+  bericht: Bericht;
+  staende: BerichtStandKurz[];
+  anstoesse: BerichtAnstoss[];
+}
+
+/** Ein Abzug: `docs/contracts/v2/bericht.schema.json` `$defs/abzug` — gelesen über `uemsBericht.ts`. */
+export type BerichtAbzug = Record<string, unknown>;
+
+/** `GET …/entwurf` nach der D4-Prüfung; `neu_gebildet` = dieser Abruf hat ihn neu gebildet. */
+export interface BerichtEntwurf {
+  kennung: string;
+  datenstand: string;
+  gebildet_von: 'anlegen' | 'abruf' | 'kaskade' | 'struktur';
+  neu_gebildet: boolean;
+  pruefsumme: string;
+  kopf: string;
+  teilansicht: string[] | null;
+  abzug: BerichtAbzug;
+}
+
+/** Eine Abweichung zwischen Stand und Entwurf (R1); Zahlen als Dezimaltext. */
+export interface BerichtAbweichung {
+  quelle: string;
+  menge_art: string | null;
+  vorher: string | null;
+  nachher: string | null;
+  version: string;
+  anlass: string | null;
+}
+
+export interface BerichtVergleich {
+  kennung: string;
+  gegen: number;
+  entwurf_datenstand: string;
+  abweichungen: BerichtAbweichung[];
+}
+
+/** Ein freigegebener Berichtsstand — die Prüfsumme hat der Server geprüft (`pruefsumme_geprueft` ist immer true). */
+export interface BerichtStand {
+  kennung: string;
+  nr: number;
+  datenstand: string;
+  freigegeben_am: string;
+  freigegeben_von: BerichtPerson;
+  pruefsumme: string;
+  pruefsumme_geprueft: true;
+  ersetzt_durch_nr: number | null;
+  anlass_anstoss_id: string | null;
+  vorlage_fassung: number;
+  kopf: string;
+  teilansicht: string[] | null;
+  darstellung: Record<string, unknown>;
+  regelwerk: Record<string, unknown>;
+  abzug: BerichtAbzug;
+}
+
 /** Wer eine Fassung eingetragen oder freigegeben hat. */
 export interface BezugsgroessePerson {
   name: string;
@@ -7375,4 +7529,29 @@ export const api = {
     const s = q.toString();
     return request<BezugsgroesseWerte>(`/api/v1/bezugsgroessen/${id}/werte${s ? `?${s}` : ''}`);
   },
+  /** Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. */
+  berichte: () => request<{ berichte: Bericht[] }>(`/api/v1/berichte`),
+  /** Legt den Bericht an und bildet seinen Entwurf. */
+  berichtAnlegen: (body: BerichtAnlegen) =>
+    request<Bericht>(`/api/v1/berichte`, { method: 'POST', body: JSON.stringify(body) }),
+  bericht: (kennung: string) => request<BerichtDetail>(`/api/v1/berichte/${kennung}`),
+  /** Der Entwurf nach der D4-Prüfung, nötigenfalls neu gebildet. */
+  berichtEntwurf: (kennung: string) => request<BerichtEntwurf>(`/api/v1/berichte/${kennung}/entwurf`),
+  berichtVergleich: (kennung: string, gegen: number) =>
+    request<BerichtVergleich>(`/api/v1/berichte/${kennung}/entwurf/vergleich?gegen=${gegen}`),
+  /** Gibt genau den gesehenen Entwurf frei (F2); dieselbe Freigabe noch einmal ist derselbe Stand (F5, 200). */
+  berichtFreigeben: (kennung: string, entwurfDatenstand: string) =>
+    request<BerichtStand>(`/api/v1/berichte/${kennung}/freigeben`, {
+      method: 'POST',
+      body: JSON.stringify({ entwurf_datenstand: entwurfDatenstand }),
+    }),
+  berichtStand: (kennung: string, nr: number) => request<BerichtStand>(`/api/v1/berichte/${kennung}/staende/${nr}`),
+  /** Verwirft einen offenen Anstoß — die Begründung ist Pflicht (10 bis 500 Zeichen). */
+  berichtAnstossVerwerfen: (kennung: string, id: string, begruendung: string) =>
+    request<BerichtAnstoss>(`/api/v1/berichte/${kennung}/anstoesse/${id}/verwerfen`, {
+      method: 'POST',
+      body: JSON.stringify({ begruendung }),
+    }),
+  berichtArchivieren: (kennung: string) =>
+    request<Bericht>(`/api/v1/berichte/${kennung}/archivieren`, { method: 'POST' }),
 };

@@ -3,7 +3,8 @@ package com.voltpilot.api.uems;
 import org.springframework.stereotype.Component;
 
 /**
- * Wer ruft die Kennzahl-Routen auf — als Benutzer der Rechte-Ableitung (UEMS AP-11 IP-5).
+ * Wer ruft die Kennzahl-Routen auf — als Benutzer der Rechte-Ableitung (UEMS AP-11 IP-5). Seit AP-12 IP-7 fragen auch die
+ * Berichts-Routen ({@link BerichtService}) hier, damit es bei EINER Naht bleibt.
  *
  * <p>Bis AP-03 IP-2 Zuweisungen je Person und Standort bringt, gibt es genau die zwei Prinzipale von
  * {@link KorrekturRechte#benutzer}: Kundenbenutzer → Kundenadministrator unternehmensweit, Plattform-Admin →
