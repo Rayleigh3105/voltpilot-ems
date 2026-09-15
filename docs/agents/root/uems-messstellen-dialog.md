@@ -53,6 +53,5 @@ Sammelzweig stehen.
   Erweiterung dort.
 - **Steuern und Geld kommen nicht vor** (Captain-Regeln „wer nur misst, hört nichts vom Steuern“ und
   „keine Geldanzeige“).
-- **`api.messstellenHeute`** liest das Register von heute (Hauptzähler, „Unterzähler von“). Die
-  IP-5-Fläche bringt für dieselbe Route `api.messstellenRegister(anfrage)` — wer beide sieht, legt sie
-  zusammen.
+- **Das Register von heute** (Hauptzähler, „Unterzähler von“) liest der Dialog über dieselbe
+  `api.messstellenRegister()` wie die Register-Fläche (IP-5), ohne Filter und ohne Stichtag.

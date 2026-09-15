@@ -67,7 +67,7 @@ beforeEach(() => {
   vi.spyOn(api, 'standortOrte').mockImplementation(async (id: string) =>
     id === FIXTURE_IDS.st1 ? ortsbaumAhrenberg() : ortsbaumLindach(),
   );
-  vi.spyOn(api, 'messstellenHeute').mockResolvedValue(registerAntwort());
+  vi.spyOn(api, 'messstellenRegister').mockResolvedValue(registerAntwort());
   vi.spyOn(api, 'siteEntities').mockResolvedValue(komponentenHalle1());
   vi.spyOn(api, 'komponenteMesskanaele').mockResolvedValue(kanaeleK5Frei());
 });

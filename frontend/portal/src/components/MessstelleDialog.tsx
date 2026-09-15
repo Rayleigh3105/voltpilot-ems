@@ -224,7 +224,7 @@ export function MessstelleDialog({
       },
       () => aktiv && setOrteFehler(true),
     );
-    api.messstellenHeute().then(
+    api.messstellenRegister().then(
       (r) => aktiv && setRegister(r.register),
       () => undefined,
     );

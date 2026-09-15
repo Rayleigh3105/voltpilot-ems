@@ -7048,8 +7048,6 @@ export const api = {
   messstelleQuelleBinden: (id: string, body: MessstelleQuelleBinden) =>
     request<unknown>(`/api/v1/messstellen/${id}/quellen`, { method: 'POST', body: JSON.stringify(body) }),
 
-  /** Das Register heute (IP-4) — der Dialog liest daraus Hauptzähler und „Unterzähler von“ je Anlage. */
-  messstellenHeute: () => request<MessstellenRegister>(`/api/v1/messstellen`),
   // ---- Ortsstruktur: Unternehmen und Standorte (UEMS AP-02 IP-3/IP-4; Fläche dazu IP-6)
   /** Das Unternehmen des Kundenbereichs — die Zeitzonen-Vorgabe eines neuen Standorts. */
   unternehmen: () => request<Unternehmen>('/api/v1/unternehmen'),
