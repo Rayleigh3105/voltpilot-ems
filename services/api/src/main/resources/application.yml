@@ -583,7 +583,6 @@ voltpilot:
       realm: ${KEYCLOAK_REALM:voltpilot}
       client-id: ${KEYCLOAK_API_CLIENT_ID:voltpilot-api}
       client-secret: ${KEYCLOAK_API_CLIENT_SECRET:voltpilot-api-dev-secret}
-      customer-role: operator
 
 # Expose actuator at the root so health is reachable at /health (and /info).
 #

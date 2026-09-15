@@ -25,10 +25,11 @@
   "minimumQuickLoginWaitSeconds": 60,
   "roles": {
     "realm": [
-      { "name": "operator", "description": "Portal-User: customer, scoped to one tenant via tenant_id" },
+      { "name": "operator", "description": "Portal-User, legacy accounts only: customer scoped to one tenant via tenant_id. Since UEMS AP-03 IP-3 new customer accounts get no realm role" },
       { "name": "admin", "description": "Tenant admin (legacy)" },
       { "name": "site-admin", "description": "Site administrator: OCPP availability, soft reset, allowlisted configuration and local-auth operations" },
       { "name": "platform-admin", "description": "Portal-Admin: platform operator, manages tenants and users across all tenants" },
+      { "name": "partner", "description": "Partner account (installer, UEMS AP-03 E7): NEVER a tenant_id; reaches a customer area only through a granted Unterstuetzung" },
       { "name": "edge-release-publisher", "description": "OTA release automation: may ONLY register a signed edge release (POST /api/v1/admin/edge-releases + its next-seq read). Never a rollout, never a device target - see docs/ota-signing.md." }
     ]
   },

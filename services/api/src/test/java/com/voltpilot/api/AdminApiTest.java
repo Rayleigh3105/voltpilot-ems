@@ -41,7 +41,7 @@ import org.testcontainers.utility.DockerImageName;
  *   <li><b>A Portal-Admin can create a tenant and a customer user.</b> The admin
  *       token ({@code platform-admin} realm role) creates a tenant via the
  *       BYPASSRLS admin datasource and provisions a customer in Keycloak with the
- *       {@code tenant_id} attribute + {@code operator} role via the Admin REST
+ *       {@code tenant_id} attribute (no realm role since AP-03 IP-3) via the Admin REST
  *       API.</li>
  *   <li><b>That new customer logs in and sees only their tenant.</b> The
  *       provisioned user gets a token from Keycloak; through the same OIDC + RLS

@@ -25,7 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/ocpp")
-@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin')")
+// AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter)
+@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer')")
 public class SiteOcppController {
     private final SiteRepository sites;
     private final OcppRepository ocpp;

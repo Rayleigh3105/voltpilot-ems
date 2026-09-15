@@ -1,5 +1,6 @@
 package com.voltpilot.api.admin;
 
+import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -21,10 +22,15 @@ import org.springframework.web.client.RestClientResponseException;
  * Thin client over the Keycloak Admin REST API for provisioning customer users.
  *
  * <p>Authenticates as the {@code voltpilot-api} service account
- * (client_credentials) and caches the short-lived admin token. All user records
- * it creates carry the {@code tenant_id} attribute and the customer realm role,
- * so the very same OIDC + RLS spine that isolates the seeded demo tenants also
- * isolates every admin-provisioned customer.
+ * (client_credentials) and caches the short-lived admin token. All customer user
+ * records it creates carry the {@code tenant_id} attribute, so the very same
+ * OIDC + RLS spine that isolates the seeded demo tenants also isolates every
+ * admin-provisioned customer.
+ *
+ * <p><b>UEMS AP-03 IP-3.</b> A customer account gets NO realm role any more - what it
+ * may do is its Zuweisung in the API (E11); {@code operator} stays only on existing
+ * accounts. A partner account ({@link #createPartnerUser}) carries the realm role
+ * {@code partner} and never a {@code tenant_id}. The access token itself is unchanged.
  */
 @Component
 public class KeycloakAdminClient {
@@ -72,12 +78,57 @@ public class KeycloakAdminClient {
     // ---- provisioning --------------------------------------------------------
 
     /**
-     * Create a customer user in the tenant, set the password, and assign the
-     * customer realm role. Returns the projected user. Throws with status 409 if
-     * the username/email already exists.
+     * Create a customer user in the tenant and set the password. Returns the
+     * projected user. Throws with status 409 if the username/email already exists.
+     *
+     * <p>No realm role (AP-03 IP-3): the account is a customer account through its
+     * {@code tenant_id} alone ({@code KONTO_benutzer} in {@code KeycloakRealmRoleConverter}).
      */
     public KeycloakUser createCustomerUser(UUID tenantId, String username, String email,
             String firstName, String lastName, String password, boolean temporaryPassword) {
+        Map<String, Object> body = userBody(username, email, firstName, lastName, password,
+                temporaryPassword);
+        body.put("attributes", Map.of("tenant_id", List.of(tenantId.toString())));
+        String userId = create(body);
+        try {
+            KeycloakUser user = getUser(userId);
+            log.info("Provisioned customer user '{}' ({}) in tenant {}", username, userId, tenantId);
+            return user;
+        } catch (RuntimeException ex) {
+            // All-or-nothing: a created user the caller never hears about would strand
+            // the email - every retry hits 409 and only manual Keycloak surgery recovers
+            // it. Roll the creation back so the caller can simply retry.
+            bestEffortDeleteUser(userId);
+            throw ex;
+        }
+    }
+
+    /**
+     * Create a partner account (installer, AP-03 E7): realm role {@code partner}, NO
+     * {@code tenant_id} attribute - it reaches a customer area only through a granted
+     * Unterstützung (AP-03 IP-4/IP-8), never through its token. Throws with status 409
+     * if the username/email already exists; if the realm lacks the role (a live realm
+     * not yet updated, see {@code infra/prod/keycloak/README.md}) the account is rolled
+     * back and the 404 "Realm role 'partner' not found" propagates.
+     */
+    public KeycloakUser createPartnerUser(String username, String email, String firstName,
+            String lastName, String password, boolean temporaryPassword) {
+        String userId = create(userBody(username, email, firstName, lastName, password,
+                temporaryPassword));
+        try {
+            assignRealmRole(userId, KeycloakRealmRoleConverter.PARTNER_ROLE);
+            KeycloakUser user = getUser(userId);
+            log.info("Provisioned partner user '{}' ({})", username, userId);
+            return user;
+        } catch (RuntimeException ex) {
+            // All-or-nothing: without its role the login would be an account of no kind.
+            bestEffortDeleteUser(userId);
+            throw ex;
+        }
+    }
+
+    private static Map<String, Object> userBody(String username, String email, String firstName,
+            String lastName, String password, boolean temporaryPassword) {
         Map<String, Object> body = new java.util.HashMap<>();
         body.put("username", username);
         body.put("enabled", true);
@@ -91,14 +142,17 @@ public class KeycloakAdminClient {
         if (lastName != null && !lastName.isBlank()) {
             body.put("lastName", lastName);
         }
-        body.put("attributes", Map.of("tenant_id", List.of(tenantId.toString())));
         if (password != null && !password.isBlank()) {
             body.put("credentials", List.of(Map.of(
                     "type", "password",
                     "value", password,
                     "temporary", temporaryPassword)));
         }
+        return body;
+    }
 
+    /** POST the user representation; returns the new Keycloak user id. */
+    private String create(Map<String, Object> body) {
         ResponseEntity<Void> res;
         try {
             res = admin().post().uri("/admin/realms/{realm}/users", props.getRealm())
@@ -112,21 +166,7 @@ public class KeycloakAdminClient {
             }
             throw upstreamError("user creation", ex);
         }
-
-        String userId = extractId(res.getHeaders().getLocation());
-        try {
-            assignRealmRole(userId, props.getCustomerRole());
-            KeycloakUser user = getUser(userId);
-            log.info("Provisioned customer user '{}' ({}) in tenant {}", username, userId, tenantId);
-            return user;
-        } catch (RuntimeException ex) {
-            // All-or-nothing: a half-provisioned user (created but without the
-            // customer role) would strand the email - every retry hits 409 and
-            // only manual Keycloak surgery recovers it. Roll the creation back
-            // so the caller can simply retry.
-            bestEffortDeleteUser(userId);
-            throw ex;
-        }
+        return extractId(res.getHeaders().getLocation());
     }
 
     /**
