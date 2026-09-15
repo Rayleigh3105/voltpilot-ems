@@ -173,7 +173,8 @@ const zitat = (text: string): string => `„${text}“`;
 
 const person = (wer: MessstelleWerteUrheber | null): string => (wer ? ` von ${wer.name}` : '');
 
-const urheberschaft = (
+/** Exportiert seit AP-11 IP-13: die Kennzahl spricht die geänderte Berechnung mit denselben Wörtern. */
+export const urheberschaft = (
   verb: string,
   wer: MessstelleWerteUrheber | null,
   wann: string | null,

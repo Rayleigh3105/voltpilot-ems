@@ -12,11 +12,11 @@
  * Tages- und Monatswerte: am Telefon ein ganzer Bildschirm für die Versionen,
  * Escape und ✕ führen zurück zur Karte (`docs/agents/root/uems-tageskarte.md`).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type MessstelleWerteHistorie } from '../api';
+import { api } from '../api';
 import {
   DANACH,
   VERSIONEN_TITEL,
@@ -24,6 +24,7 @@ import {
   historie,
   type EntscheidungAnzeige,
   type Einstieg,
+  type HistorieAnzeige,
   type HistorieWert,
   type Urheberschaft,
   type VersionAnzeige,
@@ -32,7 +33,7 @@ import { ErrorState, Skeleton } from './States';
 import './WertVersionen.css';
 
 /** Der Einstieg unten in der Karte. Der Auslöser nimmt den Fokus ausdrücklich (iOS fokussiert einen Klick nicht). */
-export function VersionenEinstieg({ einstieg, onOeffnen }: { einstieg: Einstieg; onOeffnen: () => void }) {
+export function VersionenEinstieg({ einstieg, onOeffnen }: { einstieg: Pick<Einstieg, 'text' | 'unter'>; onOeffnen: () => void }) {
   return (
     <button
       type="button"
@@ -70,37 +71,73 @@ export function VersionenDialog({
   periode: string;
   onClose: () => void;
 }) {
-  const [geladen, setGeladen] = useState<{ schluessel: string; historie: MessstelleWerteHistorie } | null>(null);
+  // Der Modal bleibt eingehängt und schließt selbst (Ausblenden, dann Fokus zurück an den Einstieg).
+  if (!einstieg) return null;
+  const { raster, von, bis } = einstieg.anfrage;
+  return (
+    <VersionenModal
+      open={open}
+      objekt={messstelle}
+      periode={periode}
+      schluessel={`${kennzeichen}|${raster}|${von}|${bis}`}
+      laden={() => api.messstelleWerteVersionen(kennzeichen, raster, von, bis).then(historie)}
+      onClose={onClose}
+    />
+  );
+}
+
+/**
+ * Der gestapelte Dialog mit den Versionen EINER Periode — geteilt von der Messstelle ({@link VersionenDialog}) und
+ * der Kennzahl (AP-11 IP-13, `kennzahlKarte.kennzahlHistorie`). Wer lädt und spricht, sagt `laden`; gefragt wird,
+ * wenn der Dialog offen ist und `schluessel` (die gemeinte Periode) wechselt.
+ */
+export function VersionenModal({
+  open,
+  objekt,
+  periode,
+  schluessel,
+  laden,
+  onClose,
+}: {
+  open: boolean;
+  /** „MS-10 · Netzbezug Halle 2“ bzw. „KZ-0001 · Stromeinsatz Montage je Stück — Halle 2“. */
+  objekt: string;
+  /** Der Titel der Karte: „Di 03.11.2026“ bzw. „November 2026“. */
+  periode: string;
+  schluessel: string;
+  laden: () => Promise<HistorieAnzeige>;
+  onClose: () => void;
+}) {
+  const [geladen, setGeladen] = useState<{ schluessel: string; historie: HistorieAnzeige } | null>(null);
   const [fehler, setFehler] = useState(false);
   const [neu, setNeu] = useState(0);
-  // Nur Zeichenketten als Abhängigkeiten: der Einstieg wird bei jedem Zeichnen neu abgeleitet.
-  const raster = einstieg?.anfrage.raster;
-  const von = einstieg?.anfrage.von;
-  const bis = einstieg?.anfrage.bis;
-  const schluessel = `${kennzeichen}|${raster}|${von}|${bis}|${neu}`;
+  // `laden` entsteht bei jedem Zeichnen neu — nur Zeichenketten sind Abhängigkeiten.
+  const ladenRef = useRef(laden);
+  useEffect(() => {
+    ladenRef.current = laden;
+  });
+  const voll = `${schluessel}|${neu}`;
 
   useEffect(() => {
-    if (!open || !raster || !von || !bis) return;
+    if (!open) return;
     let aktiv = true;
     setFehler(false);
-    api
-      .messstelleWerteVersionen(kennzeichen, raster, von, bis)
-      .then((h) => aktiv && setGeladen({ schluessel, historie: h }))
+    ladenRef
+      .current()
+      .then((h) => aktiv && setGeladen({ schluessel: voll, historie: h }))
       .catch(() => aktiv && setFehler(true));
     return () => {
       aktiv = false;
     };
-  }, [open, kennzeichen, raster, von, bis, schluessel]);
+  }, [open, voll]);
 
-  // Der Modal bleibt eingehängt und schließt selbst (Ausblenden, dann Fokus zurück an den Einstieg).
-  if (!einstieg) return null;
-  const aktuell = geladen?.schluessel === schluessel ? historie(geladen.historie) : null;
+  const aktuell = geladen?.schluessel === voll ? geladen.historie : null;
 
   return (
     <Modal open={open} onClose={onClose} title={VERSIONEN_TITEL}>
       <div className="vp-wv" data-testid="versionen-dialog">
         <p className="vp-wv-kopf">
-          <span className="vp-wv-messstelle">{messstelle}</span>
+          <span className="vp-wv-messstelle">{objekt}</span>
           <span className="vp-wv-periode">{periode}</span>
         </p>
         {fehler ? (

@@ -544,9 +544,11 @@ export type EbenenSeiten = (ort: EbenenOrt) => Partial<Record<EbenenBereichId, R
  * und „immer fünf Kacheln, auch leere" hat E4 ausdrücklich verworfen. Seit
  * AP-04 IP-5 haben die Messstellen beider Ebenen ihre Seite — beim
  * Referenzkunden steigt das Unternehmen damit auf drei Kacheln, und die Leiste
- * erscheint. Heute fehlen noch Kennzahlen und Berichte (AP-13), Gebäude und
- * Anlagen des Standorts (AP-13) — wer eine davon einhängt, trägt ihre Route
- * HIER ein, und die Leiste erscheint von selbst.
+ * erscheint. Seit AP-11 IP-13 haben auch die Kennzahlen des Unternehmens ihre
+ * Seite (`#/portfolio/kennzahlen`) — Ahrenberg hat damit VIER Kacheln. Heute
+ * fehlen noch Berichte (AP-12/AP-13), Gebäude und Anlagen des Standorts (AP-13)
+ * — wer eine davon einhängt, trägt ihre Route HIER ein, und die Leiste
+ * erscheint von selbst.
  */
 export const EBENEN_SEITEN: EbenenSeiten = (ort) =>
   ort.art === 'unternehmen'
@@ -554,6 +556,7 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort) =>
         uebersicht: pageRoute('portfolio'),
         standorte: pageRoute('portfolio-standorte'),
         messstellen: pageRoute('portfolio-messstellen'),
+        kennzahlen: pageRoute('portfolio-kennzahlen'),
       }
     : { uebersicht: standortRoute(ort.standortId), messstellen: standortMessstellenRoute(ort.standortId) };
 
@@ -622,6 +625,7 @@ export function ebenenOrt(
 export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBereich']): EbenenBereichId | null {
   if (page === 'portfolio-standorte') return 'standorte';
   if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';
+  if (page === 'portfolio-kennzahlen') return 'kennzahlen';
   return page === 'standort' || isPortfolioPage(page) ? 'uebersicht' : null;
 }
 

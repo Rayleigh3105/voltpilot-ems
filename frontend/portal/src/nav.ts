@@ -22,6 +22,7 @@ export type PageId =
   | 'portfolio'
   | 'portfolio-standorte'
   | 'portfolio-messstellen'
+  | 'portfolio-kennzahlen'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
   | 'standort'
@@ -127,6 +128,11 @@ export interface Route {
    * Übersicht — jede bestehende Standort-Route bleibt unverändert.
    */
   standortBereich?: 'messstellen';
+  /**
+   * Nur bei `page === 'portfolio-kennzahlen'`: WELCHE Kennzahl die Seite zeigt
+   * (UEMS AP-11 IP-13, `#/portfolio/kennzahlen/{id}`). Absent = die Liste.
+   */
+  kennzahlId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -210,6 +216,10 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // UEMS AP-04 IP-5: „Unternehmen › Messstellen“ (`#/portfolio/messstellen`). Der
   // Reiter steht nur, wenn ein Standort misst (`PortfolioTabs.showMessstellen`).
   { id: 'portfolio-messstellen', label: 'Messstellen', icon: 'activity' },
+  // UEMS AP-11 IP-13: „Unternehmen › Kennzahlen“ (`#/portfolio/kennzahlen`, eine
+  // Kennzahl unter `…/kennzahlen/{id}`), bis AP-13 die Ebenen-Navigation bringt.
+  // Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showKennzahlen`).
+  { id: 'portfolio-kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
   { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];
@@ -568,6 +578,7 @@ export function parseRoute(hash: string): Route {
   // `#/portfolio/{welt}`. Ein unbekannter zweiter Abschnitt landet auf der
   // Landung, statt ins Leere zu zeigen.
   if (head === 'portfolio') {
+    if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
   }
@@ -652,7 +663,8 @@ export function hashForRoute(route: Route): string {
   }
   // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
   if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}`;
+    const kennzahl = route.page === 'portfolio-kennzahlen' && route.kennzahlId ? `/${encodeURIComponent(route.kennzahlId)}` : '';
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}`;
   }
   return `#/${route.page}`;
 }
@@ -675,6 +687,11 @@ export function standortRoute(standortId: string): Route {
 /** Route von „Standort › Messstellen“ (UEMS AP-04 IP-5): `#/standort/{id}/messstellen`. */
 export function standortMessstellenRoute(standortId: string): Route {
   return { page: 'standort', siteId: null, sub: null, standortId, standortBereich: 'messstellen' };
+}
+
+/** Route einer Kennzahl-Seite (UEMS AP-11 IP-13): `#/portfolio/kennzahlen/{id}`. */
+export function kennzahlRoute(kennzahlId: string): Route {
+  return { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
 }
 
 /* =========================================================================

@@ -21,6 +21,15 @@ import { ahrenbergRegister, leeresRegister } from './test/messstellenRegisterFix
 import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SAETZE as KENNZAHL_SAETZE, VERBOTENE_WOERTER as KENNZAHL_VERBOTEN } from './uemsKennzahl';
 import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
+import * as KK from './kennzahlKarte';
+import { UEMS_BERECHNUNG, UEMS_BEZUGSGROESSE, UEMS_KENNZAHLEN, UEMS_MENGE, UEMS_RECHENFORM } from './glossar';
+import {
+  fassungenVon as kennzahlFassungen,
+  KZ as KENNZAHL_IDS,
+  kennzahlenDerWelt,
+  kennzahlWerteAntwort,
+  kennzahlWertVersionenAntwort,
+} from './test/kennzahlWerteFixtures';
 
 /**
  * Portal v3 · M7 — the copy guard.
@@ -1135,3 +1144,149 @@ describe('UEMS AP-04 IP-5 · das Messstellen-Register spricht Messstelle · Quel
     }
   });
 });
+
+/**
+ * UEMS AP-11 IP-13 — die Welt „Kennzahlen“ spricht die Wörter von §4.13 (E12 = A): „Kennzahl“ gehört nur dem neuen
+ * Objekt, „Berechnung“/„Fassung“ der Rechnung, „Version“ dem Wert; in der Kundensicht nie KPI, Metrik, Kenngröße,
+ * Dashboard, Widget, Template — und auf einer Kennzahl-Fläche nie Durchschnitt oder Mittel (Q5). Gelesen werden die
+ * Quelltexte der Flächen UND die Sätze, die sie zur Laufzeit aus den Vektor-Fixtures bilden.
+ */
+describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Berechnung · Fassung · Version (§4.13)', () => {
+  const FLAECHEN = ['kennzahlKarte.ts', 'pages/KennzahlenPage.tsx', 'pages/KennzahlSeite.tsx'];
+  const verboten = (woerter: string[]) => new RegExp(`(^|[^\\p{L}])(${woerter.join('|')})([^\\p{L}]|$)`, 'u');
+  const KUNDENSICHT_VERBOTEN = verboten(['KPI', 'Metrik', 'Kenngröße', 'Kenngrößen', 'Dashboard', 'Widget', 'Template']);
+  const MITTEL_VERBOTEN = verboten(['Durchschnitt', 'Durchschnitte', 'Mittel', 'Mittelwert', 'Mittelwerte']);
+  const ROLLEN_VERBOTEN = verboten(['Zähler', 'Nenner', 'Dividend', 'Divisor']);
+  const da = (t: string | null | undefined): t is string => typeof t === 'string';
+
+  const laufzeit = (): string[] => {
+    const jetzt = Date.parse('2026-12-03T09:00:00+01:00');
+    const out: string[] = [];
+    for (const k of kennzahlenDerWelt()) {
+      const art = k.grundperiode!;
+      const { von, bis } = KK.anfrage(art, '2026-12-03', KK.ANZAHL_VERLAUF[art]);
+      const antwort = kennzahlWerteAntwort(k.id, art, von, bis, jetzt);
+      const fassungen = kennzahlFassungen(k.id);
+      const kopf = KK.kopf(k);
+      out.push(kopf.titel, kopf.unter, ...KK.stammdaten(k).flatMap((s) => [s.name, s.wert]));
+      const b = KK.berechnung(k, fassungen, 'Europe/Berlin');
+      if (b) out.push(b.satz, b.wer);
+      const karte = KK.listenKarte(k, { art: 'geladen', antwort });
+      out.push(...[karte.zahl, karte.zustand, karte.periode, karte.unter].filter(da));
+      for (const w of antwort.werte) {
+        const wk = KK.wertKarte(antwort, w, KK.eingaengeDer(fassungen, w));
+        out.push(wk.karte.titel, wk.karte.zahl, ...[wk.karte.zustand, wk.karte.abdeckung, wk.karte.fassung, wk.grund].filter(da));
+        const h = KK.herkunftAnzeige(antwort, w);
+        if (h) out.push(...[h.eingaenge, h.gebildet, h.fehlt].filter(da), ...h.paare);
+      }
+      for (const balken of KK.verlauf(antwort)) out.push(balken.kurz, balken.titel);
+    }
+    const h = KK.kennzahlHistorie(kennzahlWertVersionenAntwort(KENNZAHL_IDS.kz1, 'monat', '2026-10-01', jetzt));
+    for (const v of h.versionen) {
+      out.push(v.titel, ...[v.etikett, v.vorher?.zahl, v.danach.zahl, v.danach.info, v.gebildet, v.ohneEntscheidung].filter(da));
+      for (const e of v.entscheidungen) out.push(e.vorgang, ...[e.fassung?.wer, e.fassung?.warum, e.angelegt?.wer].filter(da));
+    }
+    out.push(
+      KK.TITEL, KK.LADEN, KK.LADEFEHLER, KK.WERTE_FEHLER, KK.LEER, KK.NICHT_GEFUNDEN, KK.ZUR_LISTE, KK.ARCHIVIERT,
+      KK.AUSSERHALB_ZUGRIFF, KK.KARTE_VERLAUF, KK.KARTE_HERKUNFT, KK.KARTE_BERECHNUNG, KK.KARTE_STAMMDATEN, KK.FASSUNGEN_TITEL,
+      KK.PERIODE_WAHL, KK.OHNE_ZWECK, KK.SEIT_BEGINN, KK.HERKUNFT_FEHLT,
+      ...Object.values(KK.PERIODEN_NAME), ...Object.values(KK.GELTUNG_WORT), ...Object.values(KK.FEHLT_WORT),
+    );
+    return out;
+  };
+
+  /** Die sichtbaren Texte der Flächen selbst (Quelltext, ohne Kommentare und Code). */
+  const flaechenTexte = (): Array<{ wo: string; text: string }> =>
+    FLAECHEN.flatMap((rel) => visibleTexts(readFileSync(join(SRC, rel), 'utf8')).map((text) => ({ wo: rel, text })));
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    const alle = laufzeit();
+    expect(alle.length).toBeGreaterThan(150);
+    expect(alle).toContain('Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn');
+    expect(alle).toContain('Für November 2026 fehlt der Wert der Bezugsgröße BZ-6 Gutteile Montage Halle 2.');
+    expect(flaechenTexte().length).toBeGreaterThan(5);
+  });
+
+  it('kein Satz der Welt trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const violations = [...laufzeit(), ...flaechenTexte().map((t) => t.text)].flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('in der ganzen Kundensicht nie KPI, Metrik, Kenngröße, Dashboard, Widget oder Template', () => {
+    const violations: string[] = [];
+    for (const file of customerFiles()) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      // Der Vertrags-Zwilling trägt die Liste der verbotenen Wörter selbst (`VERBOTENE_WOERTER`) — sie ist kein Kundensatz.
+      if (rel === 'uemsKennzahl.ts') continue;
+      // Suchwörter der Hilfe sind keine Kundensätze (derselbe Schnitt wie im Werkstatt-Wächter oben).
+      for (const text of visibleTexts(readFileSync(file, 'utf8').replace(HILFE_SUCHWOERTER, ' '))) {
+        if (isKundentext(text) && KUNDENSICHT_VERBOTEN.test(text)) violations.push(`${rel}: „${text.trim().slice(0, 80)}“`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('auf den Kennzahl-Flächen nie Durchschnitt oder Mittel (Q5) — und nie Zähler oder Nenner als Rolle', () => {
+    const texte = [...laufzeit(), ...flaechenTexte().map((t) => t.text)];
+    expect(texte.filter((t) => MITTEL_VERBOTEN.test(t))).toEqual([]);
+    expect(texte.filter((t) => ROLLEN_VERBOTEN.test(t))).toEqual([]);
+  });
+
+  it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
+    // Die Wörter-Quellen (Glossar, Vertrags-Zwilling) und die Navigation dürfen es; jede ANDERE Kundenfläche nicht.
+    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'uemsKennzahl.ts', 'test/kennzahlWerteFixtures.ts']);
+    const treffer = new Set<string>();
+    for (const file of customerFiles()) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (erlaubt.has(rel)) continue;
+      const texte = visibleTexts(readFileSync(file, 'utf8')).filter((t) => isKundentext(t) && /Kennzahl/.test(t));
+      if (texte.length > 0) treffer.add(rel);
+    }
+    expect([...treffer].sort()).toEqual(KENNZAHL_BESTAND);
+  });
+
+  it('die Wörter kommen aus dem Glossar: „Kennzahlen“, „Berechnung“, „Menge je Bezugsgröße“', () => {
+    expect(KK.TITEL).toBe(UEMS_KENNZAHLEN);
+    expect(KK.KARTE_BERECHNUNG).toBe(UEMS_BERECHNUNG);
+    expect(UEMS_RECHENFORM.quotient).toBe(`${UEMS_MENGE} je ${UEMS_BEZUGSGROESSE}`);
+    expect(UEMS_RECHENFORM).toEqual({ quotient: 'Menge je Bezugsgröße', anteil: 'Teil an Ganzem', zusammenfassung: 'Kennzahlen zusammenfassen' });
+  });
+
+  it('die Flächen und ihr Modul stehen im Bestand des Wächters', () => {
+    const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
+    for (const rel of FLAECHEN) expect(dateien).toContain(rel);
+  });
+
+  it('beißt wirklich — und nicht die Kundenwörter', () => {
+    for (const falsch of ['KPI Halle 2', 'Kenngröße anlegen', 'Durchschnitt je Stück', 'Mittelwert der Gebäude', 'Zähler je Nenner']) {
+      expect([KUNDENSICHT_VERBOTEN, MITTEL_VERBOTEN, ROLLEN_VERBOTEN].some((re) => re.test(falsch)), falsch).toBe(true);
+    }
+    for (const richtig of ['Kennzahlen zusammenfassen', 'gewichtet (Summe ÷ Summe)', 'Mittelspannung', 'Zählerstand', 'Menge je Bezugsgröße']) {
+      expect([KUNDENSICHT_VERBOTEN, MITTEL_VERBOTEN, ROLLEN_VERBOTEN].some((re) => re.test(richtig)), richtig).toBe(false);
+    }
+  });
+});
+
+/**
+ * Kundenflächen, die „Kennzahl“ HEUTE schon außerhalb der Welt sagen — benannt, damit jede neue Stelle rot wird.
+ * Wer eine davon umbenennt (IP-14: „3 · Kennzahl“ der Eigenen Auswertung wird „3 · Zeitbezug“), streicht sie hier.
+ */
+// Sortiert wie der Vergleich. „alt“ = das ALTE Wort (AP-11 W7, Kachel oder Aggregat — umzubenennen, die Eigene
+// Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
+const KENNZAHL_BESTAND: string[] = [
+  'components/EigeneAuswertungDialog.tsx', // alt
+  'components/MarktpreiseMobil.tsx', // alt
+  'components/PortfolioCockpit.tsx', // alt
+  'components/VerlaufExplorer.tsx', // alt
+  'components/WidgetGrid.tsx', // alt
+  'eigeneAuswertung.ts', // alt
+  'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
+  'help/content/alltag.ts', // alt
+  'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
+  'pages/DataPages.tsx', // alt
+  'portfolioCockpit.ts', // alt
+  'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
+  'uemsEreignis.ts', // neu: „Berechnung einer Kennzahl rückwirkend geändert“ im Änderungsprotokoll
+];

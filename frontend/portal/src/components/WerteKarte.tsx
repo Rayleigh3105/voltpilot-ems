@@ -27,7 +27,16 @@ import { TRENNER } from '../uemsErgebnis';
 import type { Karte, Zeile } from '../uemsWerteKarte';
 import './WerteKarte.css';
 
-export function WerteKarte({ karte, versionen }: { karte: Karte; versionen?: ReactNode }) {
+export function WerteKarte({
+  karte,
+  versionen,
+  grund = null,
+}: {
+  karte: Karte;
+  versionen?: ReactNode;
+  /** UEMS AP-11 IP-13: der Kundensatz eines Schritts ohne Zahl (§5.8) — an der Messstelle nie gesetzt. */
+  grund?: string | null;
+}) {
   return (
     <section className="vp-wk-karte" aria-label={karte.titel} data-testid="werte-karte">
       <div className="vp-wk-kopf">
@@ -52,6 +61,11 @@ export function WerteKarte({ karte, versionen }: { karte: Karte; versionen?: Rea
         </div>
       )}
       <Kennzeichen saetze={karte.kennzeichen} />
+      {grund && (
+        <p className="vp-wk-grund" data-testid="werte-grund">
+          {grund}
+        </p>
+      )}
       {versionen}
     </section>
   );

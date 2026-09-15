@@ -143,6 +143,7 @@ const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
   portfolio: PAGE_CHUNK.portfolio,
   'portfolio-standorte': PAGE_CHUNK['portfolio-standorte'],
   'portfolio-messstellen': PAGE_CHUNK['portfolio-messstellen'],
+  'portfolio-kennzahlen': PAGE_CHUNK['portfolio-kennzahlen'],
   'portfolio-messwerte': PAGE_CHUNK['portfolio-messwerte'],
   'portfolio-erloese': PAGE_CHUNK['portfolio-erloese'],
   standort: PAGE_CHUNK.standort,
