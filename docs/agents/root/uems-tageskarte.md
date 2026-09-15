@@ -80,8 +80,9 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
    `MessstelleWerteWert.grund`), KEIN Wort des Ergebnis-Vertrags. Die Karte zeigt den Strich und darunter den Satz
    `UEMS_NOCH_NICHT_GERECHNET_SATZ` im Platz `werte-grund` (derselbe wie der Kundensatz der Kennzahl); die Zeile
    trägt das Wort `UEMS_NOCH_NICHT_GERECHNET` an der Stelle des Zustands. Wort und Satz stehen NUR in `glossar.ts`.
-   Kein Zustands-Abzeichen, keine Fassung, keine Lückenzahl — der Schritt wird weiter nicht gesprochen; jeder andere
-   Grund bleibt der Strich allein.
+   Kein Zustands-Abzeichen, keine Fassung, keine Lückenzahl — der Schritt wird weiter nicht gesprochen. Seit AP-13 IP-6
+   spricht JEDER Grund seinen Satz unter dem Strich (`grundDes`, am noch nicht gebildeten Schritt zeichengleich dieser
+   Satz); die Zeile trägt weiter nur dieses eine Wort — `uems-werte-gruende.md`.
 
 11. **Die Zahl wohnt auf der Messstellen-Seite; der Dialog ist nur ein Rahmen (AP-13 IP-3, E9 = A).** Wer an Zeit-Leiste,
    Karte oder Liste etwas ändert, ändert `WerteSektion` — `WerteDialog` rendert nur `Modal` + Sektion, und

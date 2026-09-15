@@ -39,7 +39,16 @@ import { MONATE, datumVon, isoTag, isoWoche, montagDerWoche, verschiebe } from '
 import { EREIGNIS_TEXTE, ereignisSatz, zahlText, zeitText, type ArtText } from './uemsEreignis';
 import { KEINE_WERTE, MIT_ERSATZWERT, OHNE_ZAHL, TRENNER, UNVOLLSTAENDIG, VOLLSTAENDIG, menge } from './uemsErgebnis';
 import { VERLAUF_RASTER, type Zeitraum } from './uemsOberflaechen';
-import { anzeige, karte, monatTitel, tagTitel, type Anfrage, type MessstellenKarte, type WertAnzeige } from './uemsWerteKarte';
+import {
+  anzeige,
+  karte,
+  monatTitel,
+  tagTitel,
+  type Anfrage,
+  type MessstellenKarte,
+  type QuellenNamen,
+  type WertAnzeige,
+} from './uemsWerteKarte';
 
 const zwei = (n: number): string => String(n).padStart(2, '0');
 
@@ -336,9 +345,10 @@ export const tooltipSatz = (s: Schritt): string =>
 /**
  * Die Karte eines gewählten Schritts (V3, WerteKarte-Form): Zahl · Zustand samt Herkunft · Verlauf mit „erhalten von
  * erwartet“ · Fassung · Kennzeichen · Grund — dieselbe Ableitung wie die Karte der Periode, nur mit dem Titel des Schritts.
+ * `namen` braucht nur der Grund-Satz (AP-13 IP-6), wie an der Karte der Periode.
  */
-export const schrittKarte = (antwort: MessstelleWerte, s: Schritt): MessstellenKarte => {
-  const k = karte({ ...antwort, werte: [s.wert] })!;
+export const schrittKarte = (antwort: MessstelleWerte, s: Schritt, namen: QuellenNamen = {}): MessstellenKarte => {
+  const k = karte({ ...antwort, werte: [s.wert] }, namen)!;
   const verlauf = [k.abdeckung, s.erhalten].filter((t): t is string => t !== null);
   return { ...k, titel: s.titel, abdeckung: verlauf.length > 0 ? verlauf.join(TRENNER) : null };
 };

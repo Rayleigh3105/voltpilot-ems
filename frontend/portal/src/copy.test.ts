@@ -49,7 +49,18 @@ import {
 } from './glossar';
 import * as OF from './uemsOberflaechen';
 import * as VL from './uemsVerlauf';
-import { VERSION_FRUEHERE, VERSION_NEUESTE } from './uemsWerteKarte';
+import {
+  DIE_DATENQUELLE,
+  NEBENGROESSEN_SATZ,
+  NEBENGROESSEN_TITEL,
+  QUELLE_AB_ZEIGEN,
+  QUELLE_GILT_AB,
+  QUELLE_GILT_SEIT,
+  QUELLE_OHNE_RECHT,
+  QUELLE_ZUORDNEN,
+  VERSION_FRUEHERE,
+  VERSION_NEUESTE,
+} from './uemsWerteKarte';
 import {
   fassungenVon as kennzahlFassungen,
   KZ as KENNZAHL_IDS,
@@ -1584,6 +1595,28 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       out.push({ wo: 'Verlauf', text: ohnePlatz(t) });
     }
     out.push({ wo: 'Verlauf', text: VL.markerSatz({ art: 'handover', von: '2026-11-04T09:38:00+01:00', bis: '2026-11-04T09:40:00+01:00' }, 'Europe/Berlin') ?? '' });
+    // AP-13 IP-6: die Sätze der Ablehnungen je Grund und Feld, die Auskünfte, die Leerzustände und die Nebengrößen.
+    for (const g of OF.ABLEHNUNG_GRUENDE) {
+      for (const feld of ['von', 'bis', 'raster', 'version']) out.push({ wo: `Ablehnung ${g}`, text: OF.ablehnungSatz(g, feld, 'tag') });
+    }
+    const keinePassende = OF.vergleichOhnePassende(basis, []);
+    for (const t of [
+      OF.ZEITRAUM_UNLESBAR_OHNE_GRUND,
+      OF.MESSSTELLE_GIBT_ES_NICHT,
+      OF.WERT_NICHT_MEHR_GESPEICHERT,
+      OF.WERTE_NICHT_ABRUFBAR,
+      OF.VERLAUF_NICHT_ABRUFBAR,
+      OF.OHNE_HAUPTZAEHLER.titel,
+      OF.OHNE_HAUPTZAEHLER.satz,
+      OF.OHNE_HAUPTZAEHLER.schritt ?? '',
+      keinePassende?.titel ?? '',
+      keinePassende?.satz ?? '',
+    ]) {
+      out.push({ wo: 'Auskunft', text: t });
+    }
+    for (const t of [QUELLE_GILT_SEIT, QUELLE_GILT_AB, QUELLE_AB_ZEIGEN, QUELLE_ZUORDNEN, QUELLE_OHNE_RECHT, DIE_DATENQUELLE, NEBENGROESSEN_TITEL, NEBENGROESSEN_SATZ]) {
+      out.push({ wo: 'Werte', text: ohnePlatz(t) });
+    }
     return out;
   };
 

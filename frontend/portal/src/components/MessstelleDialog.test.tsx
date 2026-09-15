@@ -296,3 +296,18 @@ describe('MessstelleDialog — bearbeiten', () => {
     expect(stellung).not.toHaveBeenCalled();
   });
 });
+
+describe('MessstelleDialog · öffnen ab einem Schritt (UEMS AP-13 IP-6: „Quelle zuordnen“ aus den Werten)', () => {
+  it('beim Bearbeiten öffnet `schritt={3}` gleich die Quelle', async () => {
+    vi.spyOn(api, 'messstelle').mockResolvedValue(messstelleAngelegt({ lebenszyklus: 'eingerichtet' }));
+    zeige({ messstelleId: 'ms-neu', schritt: 3 });
+    expect(screen.getByRole('dialog', { name: 'Messstelle bearbeiten' })).toBeInTheDocument();
+    await waitFor(() => expect(aktiverSchritt()).toBe('Quelle'));
+  });
+
+  it('beim Anlegen gilt er nicht — eine neue Messstelle beginnt immer mit dem ersten Schritt', async () => {
+    zeige({ schritt: 3 });
+    await waitFor(() => expect(feld('Kennzeichen').value).toBe(VORSCHLAG));
+    expect(aktiverSchritt()).not.toBe('Quelle');
+  });
+});

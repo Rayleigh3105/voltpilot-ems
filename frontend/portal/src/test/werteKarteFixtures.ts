@@ -475,3 +475,65 @@ export const nochNichtGebildetViertelstunden = (): MessstelleWerte =>
   antwort(MS_10, 'viertelstunde', '2026-11-05T00:00:00+01:00', '2026-11-06T00:00:00+01:00', viertelstundenDes('2026-11-05', (_b, i) =>
     i < 95 ? voll(24.0, 15) : { grund: 'noch_nicht_gebildet', version: null, gebildet_aus: null, versionen: null },
   ));
+
+// ------------------------------------------------------------------ MS-16 · Werk Lindach, Oktober 2026 (O15, O16 — W5)
+
+/** MS-16 Netzbezug Lindach (Referenz 1.4): gebunden an K-11 Netzzähler Lindach (GR-10) seit 15.10.2026. */
+export const MS_16: Messstelle = { ...MS_06, id: '6a0e1d4c-0000-4000-8000-000000000016', kennzeichen: 'MS-16', name: 'Netzbezug Lindach' };
+
+/** Die Kennung der Bindung wie im Register (`messstellenRegisterFixtures`) — über sie findet der Grund-Satz ihren Namen. */
+export const MS16_BINDUNG = 'b0000000-0000-4000-8000-000000160001';
+export const LINDACH_AB = '2026-10-15T00:00:00+02:00';
+
+const lindach = (art: MessstelleWerteRaster, von: string, bis: string, werte: MessstelleWerteWert[]): MessstelleWerte => ({
+  ...antwort(MS_16, art, von, bis, werte, false),
+  quellen: [
+    {
+      id: MS16_BINDUNG,
+      komponente: 'c0000000-0000-4000-8000-000000000011',
+      kanal: 'Wirkenergie Bezug',
+      herleitung: 'zaehlerstand',
+      anteil: null,
+      gueltig_ab: LINDACH_AB,
+      gueltig_bis: null,
+    },
+  ],
+});
+
+const OKTOBER = { von: '2026-10-01T00:00:00+02:00', bis: '2026-11-01T00:00:00+01:00' };
+const OHNE_QUELLE: Partial<MessstelleWerteWert> = {
+  zustand: 'keine Werte',
+  grund: 'keine_quelle',
+  quelle: null,
+  fassung: null,
+  version: null,
+  gebildet_aus: null,
+  versionen: null,
+};
+
+/** O16 · der Oktober 2026: die Bindung beginnt am 15.10. IM Schritt — die Route antwortet `quelle_teilweise` ohne Zahl (W5). */
+export const ms16Oktober = (): MessstelleWerte =>
+  lindach('monat', OKTOBER.von, OKTOBER.bis, [
+    schritt({ ...OKTOBER, stunden: 745, grund: 'quelle_teilweise', quelle: null, fassung: null, version: null, gebildet_aus: null, versionen: null }),
+  ]);
+
+/**
+ * Die Tage darunter: bis 14.10. ohne Quelle („keine Werte“, `keine_quelle`), ab 15.10. vollständig — 17 Tage. Die Referenz
+ * nennt nur die Summe (`beispielwerte.oktober_2026_kwh` 9 100); verteilt ist sie hier gleichmäßig (16 × 535,3 + 535,2,
+ * Kadenz 10 s) — eine Annahme der Bühne, keine Zahl der Route.
+ */
+export const ms16OktoberTage = (): MessstelleWerte =>
+  lindach(
+    'tag',
+    OKTOBER.von,
+    OKTOBER.bis,
+    Array.from({ length: 31 }, (_, i) => {
+      const tag = `2026-10-${String(i + 1).padStart(2, '0')}`;
+      if (i < 14) return tagSchritt(tag, OHNE_QUELLE);
+      return tagSchritt(tag, { ...voll(i === 30 ? 535.2 : 535.3, stundenDesTages(tag, ZONE) * 360), quelle: MS16_BINDUNG });
+    }),
+  );
+
+/** Der 03.11.2026 an MS-16 als Tag mit Stunden — ein gewöhnlicher Tag der Bindung (für die Bühne neben dem Oktober). */
+export const ms16Tag = (tag: string): MessstelleWerte =>
+  lindach('tag', tagesgrenzen(tag).von, tagesgrenzen(tag).bis, [tagSchritt(tag, { ...voll(535.3, stundenDesTages(tag, ZONE) * 360), quelle: MS16_BINDUNG })]);

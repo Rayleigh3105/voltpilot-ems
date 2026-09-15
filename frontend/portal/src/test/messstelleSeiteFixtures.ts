@@ -38,6 +38,8 @@ export const MS_IDS = {
   ms06: '3e000000-0000-4000-8000-000000000006',
   ms08: '3e000000-0000-4000-8000-000000000008',
   ms10: '3e000000-0000-4000-8000-000000000010',
+  ms16: '3e000000-0000-4000-8000-000000000016',
+  ms21: '3e000000-0000-4000-8000-000000000021',
 } as const;
 
 const prozessId = (n: number) => `9a000000-0000-4000-8000-00000000000${n}`;
@@ -332,6 +334,38 @@ export function ms10(): Messstelle {
     elektrische_stellung: [
       { anlage: FIXTURE_IDS.an2, stellung: 'Hauptzähler', unterzaehler_von: null, gueltig_ab: '2026-10-01', gueltig_bis: null },
     ],
+  });
+}
+
+/**
+ * UEMS AP-13 IP-6 · MS-16 Netzbezug Lindach: am Standort Werk Lindach, Hauptzähler von AN-3, gebunden an K-11 Netzzähler
+ * Lindach seit 15.10.2026 — die Bindung beginnt im Oktober (O16, W5).
+ */
+export function ms16(): Messstelle {
+  return messstelle({
+    id: MS_IDS.ms16,
+    kennzeichen: 'MS-16',
+    name: 'Netzbezug Lindach',
+    orte: [{ ort_art: 'standort', kennzeichen: 'ST-2', gueltig_ab: '2026-10-15', gueltig_bis: null }],
+    elektrische_stellung: [
+      { anlage: FIXTURE_IDS.an3, stellung: 'Hauptzähler', unterzaehler_von: null, gueltig_ab: '2026-10-15', gueltig_bis: null },
+    ],
+  });
+}
+
+/**
+ * UEMS AP-13 IP-6 · MS-21 Gas Heizung Verwaltung: eingerichtet, Ort G-3, ohne Datenquelle und ohne elektrische Stellung
+ * (Referenz: „keine Datenquelle — manuelle Ablesung (AP-09)“) — der Leerzustand Z4.
+ */
+export function ms21(): Messstelle {
+  return messstelle({
+    id: MS_IDS.ms21,
+    kennzeichen: 'MS-21',
+    name: 'Gas Heizung Verwaltung',
+    medium: 'Gas',
+    lebenszyklus: 'eingerichtet',
+    hauptgroesse: { groesse: 'Volumen', richtung: 'Bezug', einheit: 'm³', wertart: 'Zählerstand' },
+    orte: [{ ort_art: 'gebaeude', kennzeichen: 'G-3', gueltig_ab: '2026-10-01', gueltig_bis: null }],
   });
 }
 

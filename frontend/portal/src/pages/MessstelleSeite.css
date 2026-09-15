@@ -281,3 +281,29 @@
     align-items: start;
   }
 }
+
+/* AP-13 IP-6 · V8: die Nebengrößen unter den Werten — letzter Wert aus dem Register, kein Verlauf. */
+.vp-mss-neben {
+  margin-top: var(--vp-c-space-4, 16px);
+  min-width: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-mss-neben h3 {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700, 700);
+}
+
+.vp-mss-neben ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-mss-neben p {
+  margin: var(--vp-c-space-2) 0 0;
+  color: var(--vp-c-muted-fg);
+}

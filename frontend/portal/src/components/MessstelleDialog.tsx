@@ -114,6 +114,7 @@ export function MessstelleDialog({
   standortId = null,
   heute,
   jetzt,
+  schritt,
   onClose,
   onGespeichert,
 }: {
@@ -126,6 +127,11 @@ export function MessstelleDialog({
   heute?: string;
   /** Jetzt (ISO) — Vorgabe von „Gilt ab“ der Quelle; ohne: die Uhr beim Öffnen. */
   jetzt?: string;
+  /**
+   * Beim Bearbeiten: der Schritt, mit dem der Dialog öffnet — „Quelle zuordnen“ aus den Werten öffnet Schritt 3
+   * (UEMS AP-13 IP-6). Jeder Schritt speichert beim Bearbeiten seinen Teil; beim Anlegen öffnet er immer mit Schritt 1.
+   */
+  schritt?: Schritt;
   onClose: () => void;
   /** Ein Schritt hat gespeichert — der Wirt lädt das Register neu. Kommt je Schritt. */
   onGespeichert?: (m: Messstelle) => void;
@@ -168,7 +174,7 @@ export function MessstelleDialog({
     const t = jetzt ?? new Date().toISOString();
     const tag = heute ?? jetztEingabe(t).datum;
     setUhr({ jetzt: t, heute: tag });
-    setAnsicht(1);
+    setAnsicht(messstelleId ? (schritt ?? 1) : 1);
     setGespeichert(null);
     setLadeFehler(null);
     setVorschlag(null);

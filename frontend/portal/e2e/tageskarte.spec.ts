@@ -213,13 +213,20 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await bilder(page, '5-monat');
   });
 
-  test('eine Messstelle ohne Werte: Strich und „keine Werte“, nie 0', async ({ page }) => {
-    await oeffne(page, 'ms=MS-21&name=Gas%20Heizung%20Verwaltung&art=tag&wert=2026-11-03');
-    const karte = page.getByTestId('werte-karte');
-    await expect(karte.locator('.vp-wk-zahl')).toHaveText('—');
-    await expect(karte).toContainText('keine Werte');
-    await expect(karte).not.toContainText('Verlauf');
-    await expect(page.locator('.vp-wk-zeile-zahl', { hasText: '—' })).toHaveCount(24);
+  // AP-13 IP-6 (Z4): hat der ganze Zeitraum keine Datenquelle, steht statt Karte und 24 Strichen der Leerzustand.
+  test('eine Messstelle ohne Datenquelle: der Leerzustand mit dem Satz des Grundes — kein Strich-Bild, nie 0', async ({ page }) => {
+    await verdrahte(page);
+    await page.setViewportSize({ width: BREITE, height: 812 });
+    await page.goto('/e2e/tageskarte.html?ms=MS-21&name=Gas%20Heizung%20Verwaltung&art=tag&wert=2026-11-03');
+    const leer = page.getByTestId('werte-leer');
+    await expect(leer.getByRole('heading', { name: 'Keine Datenquelle' })).toBeVisible();
+    await expect(leer).toContainText(
+      'Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.',
+    );
+    // Der Dialog kennt das Register nicht: kein nächster Schritt, den er nicht gehen kann.
+    await expect(leer.getByRole('button')).toHaveCount(0);
+    await expect(page.getByTestId('werte-karte')).toHaveCount(0);
+    await expect(page.getByTestId('werte-zeile')).toHaveCount(0);
     await expect(page.locator('.vp-modal')).not.toContainText(/\b0,0\b|\b0 m³/);
     // Die Route kennt keine Fassung: es steht keine da, auch nicht „endgültig“.
     await expect(page.getByTestId('werte-fassung')).toHaveCount(0);
@@ -317,10 +324,11 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('Oktober 2026');
     await keinQuerlauf(page);
     await bilder(page, 'zeitwahl-monat');
-    // Der längste Monatsname steht ganz — auch ohne Werte (die Wahl steht über dem Fehlerhinweis).
+    // Der längste Monatsname steht ganz — auch ohne Werte (die Wahl steht über der Auskunft). Der Bühne fehlt die Antwort
+    // (404): seit AP-13 IP-6 ist das eine ruhige Auskunft, kein Alarm mit „Erneut versuchen“.
     await page.goto('/e2e/tageskarte.html?ms=MS-06&art=monat&wert=2026-09');
     await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('September 2026');
-    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page.getByTestId('werte-auskunft')).toBeVisible();
     await keinQuerlauf(page);
   });
 });

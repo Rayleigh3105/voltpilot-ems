@@ -331,3 +331,22 @@ describe('MessstelleSeite · Werte (UEMS AP-13 IP-3, E9 = A, E12 = A)', () => {
     expect(werte.mock.calls.every((c) => c.length === 4)).toBe(true);
   });
 });
+
+describe('MessstelleSeite · Nebengrößen unter den Werten (UEMS AP-13 IP-6, V8)', () => {
+  it('MS-06: die Wirkleistung mit ihrem letzten Wert aus dem Register und der Satz, wofür es Werte gibt — ohne einen Sprung, den es nicht gibt', async () => {
+    verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von) =>
+      raster === 'tag' ? grundlastTag(von, 'vorlaeufig') : grundlastStunden(von, 'vorlaeufig'),
+    );
+    render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
+
+    const neben = await screen.findByTestId('werte-nebengroessen', undefined, WARTEN);
+    expect(screen.getByTestId('werte')).toContainElement(neben);
+    expect(within(neben).getByRole('heading', { name: 'Weitere Größen' })).toBeInTheDocument();
+    expect(within(neben).getAllByRole('listitem').map((li) => li.textContent)).toEqual([expect.stringMatching(/^Wirkleistung 148,6\skW · .*10:15 Uhr$/)]);
+    expect(neben).toHaveTextContent('Letzter Wert aus der Box — Werte und Verlauf gibt es hier nur für Wirkenergie Bezug.');
+    // Der Register-Verlauf der Geräteseite hat von hier keine Adresse (keine Anlage, keine Box-Referenz an der Bindung).
+    expect(within(neben).queryAllByRole('link')).toHaveLength(0);
+    expect(within(neben).queryAllByRole('button')).toHaveLength(0);
+  });
+});

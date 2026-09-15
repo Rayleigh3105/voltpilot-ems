@@ -1,8 +1,20 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, type MessstelleWerte, type MessstelleWerteRaster } from '../api';
+import { api, ApiError, type MessstelleRegisterZeile, type MessstelleWerte, type MessstelleWerteRaster } from '../api';
 import { UEMS_WOCHE_OHNE_ZAHL } from '../glossar';
-import { f13Stunden, f13Tag, f13Viertelstunden, f16Monat, f16Tage, grundlastWoche, jahr2026 } from '../test/werteKarteFixtures';
+import {
+  f13Stunden,
+  f13Tag,
+  f13Viertelstunden,
+  f16Monat,
+  f16Tage,
+  grundlastWoche,
+  jahr2026,
+  ohneQuelleStunden,
+  ohneQuelleTag,
+  ohneQuelleViertelstunden,
+} from '../test/werteKarteFixtures';
+import { MESSSTELLE_GIBT_ES_NICHT, VERLAUF_NICHT_ABRUFBAR, WERTE_NICHT_ABRUFBAR } from '../uemsOberflaechen';
 import { WerteSektion } from './WerteSektion';
 
 /**
@@ -104,9 +116,117 @@ describe('WerteSektion · Verlauf in vier Zeiträumen (UEMS AP-13 IP-4)', () => 
   it('scheitert nur der Verlauf, bleiben Karte und Liste stehen — mit einem eigenen Weg, es noch einmal zu versuchen', async () => {
     verdrahte(true);
     zeige();
-    expect(await screen.findByText('Der Verlauf konnte nicht geladen werden.', undefined, WARTEN)).toBeInTheDocument();
+    expect(await screen.findByText(VERLAUF_NICHT_ABRUFBAR, undefined, WARTEN)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
     expect(screen.getByTestId('werte-karte')).toHaveTextContent(/720\skWh/);
     expect(screen.getAllByTestId('werte-zeile')).toHaveLength(25);
-    expect(screen.queryByText('Die Werte konnten nicht geladen werden.')).toBeNull();
+    expect(screen.queryByText(WERTE_NICHT_ABRUFBAR)).toBeNull();
+  });
+});
+
+describe('WerteSektion · warum eine Zahl fehlt: Auskunft statt Fehlermeldung, Leerzustand ohne Datenquelle (UEMS AP-13 IP-6)', () => {
+  const OHNE_DATENQUELLE: MessstelleRegisterZeile['quelle'] = { stand: 'keine_datenquelle', fuehrend: null, davor: null, vergleichsquellen: 0 };
+  const KEINE_QUELLE_MS21 =
+    'Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.';
+
+  const ms21 = (props: { onQuelleZuordnen?: () => void } = {}) => {
+    const werte = vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster) =>
+      raster === 'tag' ? ohneQuelleTag() : raster === 'stunde' ? ohneQuelleStunden() : ohneQuelleViertelstunden(),
+    );
+    render(
+      <WerteSektion
+        kennzeichen="MS-21"
+        messstelle="MS-21 · Gas Heizung Verwaltung"
+        anfang={{ art: 'tag', wert: '2026-11-03' }}
+        heute="2026-11-04"
+        quelle={OHNE_DATENQUELLE}
+        {...props}
+      />,
+    );
+    return werte;
+  };
+
+  const abgelehnt = (status: number, body: unknown) => {
+    vi.spyOn(api, 'messstelleWerte').mockRejectedValue(new ApiError(status, 'vom Server', body));
+    zeige();
+  };
+
+  it('Z4 · MS-21 ohne Datenquelle: statt 24 Strichen der Leerzustand — Titel, Satz des Grundes, „Quelle zuordnen“ mit Recht', async () => {
+    const onQuelleZuordnen = vi.fn();
+    ms21({ onQuelleZuordnen });
+    const leer = await screen.findByTestId('werte-leer', undefined, WARTEN);
+    expect(within(leer).getByRole('heading', { name: 'Keine Datenquelle' })).toBeInTheDocument();
+    expect(leer).toHaveTextContent(KEINE_QUELLE_MS21);
+    // Kein Strich-Bild: weder Karte noch Liste noch Verlauf — der Leerzustand IST die Auskunft.
+    expect(screen.queryByTestId('werte-karte')).toBeNull();
+    expect(screen.queryAllByTestId('werte-zeile')).toHaveLength(0);
+    expect(screen.queryByTestId('verlauf')).toBeNull();
+    // Die Zeit-Leiste bleibt: ein anderer Zeitraum kann eine Quelle haben.
+    expect(screen.getByRole('button', { name: 'Vorheriger Zeitraum' })).toBeInTheDocument();
+    fireEvent.click(within(leer).getByRole('button', { name: 'Quelle zuordnen' }));
+    expect(onQuelleZuordnen).toHaveBeenCalledTimes(1);
+    // „Ablesung eintragen“ (Z4) hat weder Route noch Fläche — kein Knopf ins Leere.
+    expect(within(leer).queryByRole('button', { name: /Ablesung/ })).toBeNull();
+  });
+
+  it('Z4 · ohne das Recht: kein Knopf — der Satz sagt, wer eine Datenquelle zuordnen kann', async () => {
+    ms21();
+    const leer = await screen.findByTestId('werte-leer', undefined, WARTEN);
+    expect(within(leer).queryAllByRole('button')).toHaveLength(0);
+    expect(within(leer).getByTestId('werte-leer-weg')).toHaveTextContent('Eine Datenquelle ordnet zu, wer diese Messstelle bearbeiten darf.');
+  });
+
+  it('Z2 · 400: der Satz des Grundes (§5.8) — ohne „Erneut versuchen“, die Zeit-Leiste bleibt der Weg', async () => {
+    abgelehnt(400, { code: 'anfrage_ungueltig', message: 'Der Zeitpunkt liegt nicht auf dem Raster.', feld: 'von', grund: 'nicht_im_raster' });
+    const a = await screen.findByTestId('werte-auskunft', undefined, WARTEN);
+    expect(a).toHaveTextContent('Der Zeitraum konnte nicht gelesen werden (Beginn liegt nicht auf einer Tagesgrenze). Wählen Sie einen anderen Zeitraum.');
+    expect(a).toHaveAttribute('data-art', 'abgelehnt');
+    expect(screen.queryByRole('button', { name: 'Erneut versuchen' })).toBeNull();
+    expect(screen.queryByText(/konnte nicht geladen werden/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Vorheriger Zeitraum' })).toBeInTheDocument();
+  });
+
+  it('Z3 · 404: „Diese Messstelle gibt es nicht.“ — auch für eine fremde, nie 403 und nie „konnte nicht geladen werden“', async () => {
+    abgelehnt(404, { status: 404, error: 'Not Found', message: 'Messstelle nicht gefunden.' });
+    const a = await screen.findByTestId('werte-auskunft', undefined, WARTEN);
+    expect(a).toHaveTextContent(MESSSTELLE_GIBT_ES_NICHT);
+    expect(a).toHaveAttribute('data-art', 'gibt_es_nicht');
+    expect(screen.queryByRole('button', { name: 'Erneut versuchen' })).toBeNull();
+  });
+
+  it('O19 · 404 `wert_nicht_mehr_gespeichert`: der Satz der Route — KEIN Sprung zum Berichtsstand, bis AP-12 IP-16 ihn als Feld liefert', async () => {
+    const satz = 'Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. 1 vom 10.11.2026 hält ihn fest.';
+    abgelehnt(404, { code: 'wert_nicht_mehr_gespeichert', message: satz });
+    const a = await screen.findByTestId('werte-auskunft', undefined, WARTEN);
+    expect(a).toHaveTextContent(satz);
+    expect(a).toHaveAttribute('data-art', 'nicht_mehr_gespeichert');
+    // Heute sendet die Route den Code nicht; ihr Körper nennt den Berichtsstand nur im Satz — ein Sprung ginge ins Leere.
+    expect(within(a).queryAllByRole('link')).toHaveLength(0);
+    expect(within(a).queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('eine ungültige Version der Adresse: der Satz und „Neueste zeigen“, das ohne Version fragt', async () => {
+    const werte = vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis, version) => {
+      if (version != null) throw new ApiError(400, 'vom Server', { code: 'anfrage_ungueltig', feld: 'version', grund: 'version_ungueltig' });
+      return antwortFuer(raster, von, bis);
+    });
+    render(<WerteSektion kennzeichen="MS-06" messstelle="MS-06 · Spritzguss SG01–SG06" anfang={{ art: 'tag', wert: '2026-10-25' }} version={7} heute={HEUTE} />);
+    const a = await screen.findByTestId('werte-auskunft', undefined, WARTEN);
+    expect(a).toHaveTextContent('Die Version in der Adresse konnte nicht gelesen werden (erlaubt sind ganze Zahlen ab 1).');
+    fireEvent.click(within(a).getByRole('button', { name: 'Neueste zeigen' }));
+    expect(await screen.findByTestId('werte-karte', undefined, WARTEN)).toHaveTextContent(/720\skWh/);
+    expect(werte).toHaveBeenLastCalledWith('MS-06', expect.any(String), expect.any(String), expect.any(String));
+  });
+
+  it('Z5 · eine Route, die nicht antwortet, ist eine Störung: „Die Werte sind gerade nicht abrufbar.“ und „Erneut versuchen“ fragt noch einmal', async () => {
+    let versuche = 0;
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => {
+      if (raster === 'tag' && versuche++ === 0) throw new ApiError(503, 'Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.');
+      return antwortFuer(raster, von, bis);
+    });
+    zeige();
+    expect(await screen.findByText(WERTE_NICHT_ABRUFBAR, undefined, WARTEN)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
+    expect(await screen.findByTestId('werte-karte', undefined, WARTEN)).toHaveTextContent(/720\skWh/);
   });
 });
