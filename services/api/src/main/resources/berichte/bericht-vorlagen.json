@@ -1,0 +1,271 @@
+{
+  "_comment": [
+    "Der Katalog der Berichtsvorlagen (UEMS AP-12 IP-1, E9 = A, V2): vier Vorlagen mit Fassungsnummer und festen Abschnitten.",
+    "Der Kunde wählt Vorlage, Geltung, Zeitraum und abgewählte Kennzahlen — sonst nichts (V3). Eine neue Fassung ändert keinen Berichtsstand.",
+    "IP-5 legt eine byte-gleiche Kopie in die API-Ressourcen und ins Portal; BerichtVectorsTest und uemsBericht.test.ts prüfen diese Datei gegen BerichtRegeln.VORLAGEN."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./bericht.schema.json#/$defs/vorlagen_datei",
+  "herkunft": "UEMS AP-12 §4.5 (V1–V5), E9 vom 14.09.2026",
+  "vorlagen": [
+    {
+      "schluessel": "monatsbericht_standort",
+      "fassung": 1,
+      "name": "Monatsbericht Standort",
+      "geltung_art": "standort",
+      "zeitraum_art": "monat",
+      "vergleiche": ["vormonat", "vorjahresmonat"],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Standort mit Name zum Datenstand",
+            "Unternehmen und Sitz",
+            "Zeitraum mit Zeitzone",
+            "Vergleichszeiträume",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis"
+          ]
+        },
+        {
+          "schluessel": "zusammenfassung",
+          "titel": "Zusammenfassung",
+          "inhalt": [
+            "Netzbezug",
+            "Einspeisung",
+            "PV-Erzeugung",
+            "Speicher laden",
+            "Speicher entladen",
+            "Gas und Wärme, falls vorhanden",
+            "Anzahl Werte, davon endgültig und vollständig"
+          ]
+        },
+        {
+          "schluessel": "verbrauch_je_messstelle",
+          "titel": "Verbrauch je Messstelle",
+          "inhalt": ["Monat", "Vormonat", "Vorjahresmonat", "Differenz", "Zustand", "Abdeckung", "Kennzeichen", "Version"]
+        },
+        {"schluessel": "tagesverlauf", "titel": "Tagesverlauf je Messstelle", "inhalt": ["Menge", "Zustand"]},
+        {
+          "schluessel": "kennzahlen",
+          "titel": "Kennzahlen",
+          "inhalt": ["Wert", "Vergleich", "Zustand", "Fassung der Berechnung", "Version", "Richtung"]
+        },
+        {
+          "schluessel": "qualitaet",
+          "titel": "Qualität",
+          "inhalt": [
+            "Abdeckung",
+            "Lücken",
+            "Nachlieferungen",
+            "Ersatzwerte",
+            "Korrekturen im Zeitraum",
+            "vorläufig und endgültig"
+          ]
+        },
+        {
+          "schluessel": "quellenverzeichnis",
+          "titel": "Quellenverzeichnis",
+          "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]
+        }
+      ]
+    },
+    {
+      "schluessel": "jahresbericht_standort",
+      "fassung": 1,
+      "name": "Jahresbericht Standort",
+      "geltung_art": "standort",
+      "zeitraum_art": "jahr",
+      "vergleiche": ["vorjahr"],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Standort mit Name zum Datenstand",
+            "Unternehmen und Sitz",
+            "Zeitraum mit Zeitzone",
+            "Vergleichszeiträume",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis"
+          ]
+        },
+        {
+          "schluessel": "zusammenfassung",
+          "titel": "Zusammenfassung",
+          "inhalt": [
+            "Netzbezug",
+            "Einspeisung",
+            "PV-Erzeugung",
+            "Speicher laden",
+            "Speicher entladen",
+            "Gas und Wärme, falls vorhanden",
+            "Anzahl Werte, davon endgültig und vollständig"
+          ]
+        },
+        {
+          "schluessel": "verbrauch_je_messstelle",
+          "titel": "Verbrauch je Messstelle",
+          "inhalt": ["Jahr", "Vorjahr", "Differenz", "Zustand", "Abdeckung", "Kennzeichen", "Version"]
+        },
+        {"schluessel": "monatswerte", "titel": "Monatswerte je Messstelle", "inhalt": ["Menge", "Zustand"]},
+        {
+          "schluessel": "kennzahlen",
+          "titel": "Kennzahlen",
+          "inhalt": ["Wert", "Vergleich", "Zustand", "Fassung der Berechnung", "Version", "Richtung"]
+        },
+        {
+          "schluessel": "qualitaet",
+          "titel": "Qualität",
+          "inhalt": [
+            "Abdeckung",
+            "Lücken",
+            "Nachlieferungen",
+            "Ersatzwerte",
+            "Korrekturen im Zeitraum",
+            "vorläufig und endgültig"
+          ]
+        },
+        {
+          "schluessel": "quellenverzeichnis",
+          "titel": "Quellenverzeichnis",
+          "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]
+        }
+      ]
+    },
+    {
+      "schluessel": "monatsbericht_unternehmen",
+      "fassung": 1,
+      "name": "Monatsbericht Unternehmen",
+      "geltung_art": "unternehmen",
+      "zeitraum_art": "monat",
+      "vergleiche": ["vormonat", "vorjahresmonat"],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Unternehmen mit Name zum Datenstand und Sitz",
+            "Zeitraum mit Zeitzone",
+            "Vergleichszeiträume",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis"
+          ]
+        },
+        {
+          "schluessel": "zusammenfassung",
+          "titel": "Zusammenfassung",
+          "inhalt": ["Netzbezug gesamt", "Netzbezug je Standort", "Anzahl Werte, davon endgültig und vollständig"]
+        },
+        {
+          "schluessel": "standorte",
+          "titel": "Standorte",
+          "inhalt": ["Summen des Standorts", "Messstellen des Standorts"]
+        },
+        {
+          "schluessel": "kostenstellen",
+          "titel": "Prozesse und Kostenstellen",
+          "inhalt": ["Energie je Prozess", "Energie je Kostenstelle", "Verteilung zum Tag"]
+        },
+        {
+          "schluessel": "kennzahlen",
+          "titel": "Kennzahlen des Unternehmens",
+          "inhalt": ["Wert", "Vergleich", "Zustand", "Fassung der Berechnung", "Version", "Richtung"]
+        },
+        {
+          "schluessel": "qualitaet",
+          "titel": "Qualität",
+          "inhalt": [
+            "Abdeckung",
+            "Lücken",
+            "Nachlieferungen",
+            "Ersatzwerte",
+            "Korrekturen im Zeitraum",
+            "vorläufig und endgültig"
+          ]
+        },
+        {
+          "schluessel": "quellenverzeichnis",
+          "titel": "Quellenverzeichnis",
+          "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]
+        }
+      ]
+    },
+    {
+      "schluessel": "jahresbericht_unternehmen",
+      "fassung": 1,
+      "name": "Jahresbericht Unternehmen",
+      "geltung_art": "unternehmen",
+      "zeitraum_art": "jahr",
+      "vergleiche": ["vorjahr"],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Unternehmen mit Name zum Datenstand und Sitz",
+            "Zeitraum mit Zeitzone",
+            "Vergleichszeiträume",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis"
+          ]
+        },
+        {
+          "schluessel": "zusammenfassung",
+          "titel": "Zusammenfassung",
+          "inhalt": ["Netzbezug gesamt", "Netzbezug je Standort", "Anzahl Werte, davon endgültig und vollständig"]
+        },
+        {
+          "schluessel": "standorte",
+          "titel": "Standorte",
+          "inhalt": ["Summen des Standorts", "Messstellen des Standorts"]
+        },
+        {
+          "schluessel": "kostenstellen",
+          "titel": "Prozesse und Kostenstellen",
+          "inhalt": ["Energie je Prozess", "Energie je Kostenstelle", "Verteilung zum Tag"]
+        },
+        {"schluessel": "monatswerte", "titel": "Monatswerte", "inhalt": ["Menge", "Zustand"]},
+        {
+          "schluessel": "kennzahlen",
+          "titel": "Kennzahlen des Unternehmens",
+          "inhalt": ["Wert", "Vergleich", "Zustand", "Fassung der Berechnung", "Version", "Richtung"]
+        },
+        {
+          "schluessel": "qualitaet",
+          "titel": "Qualität",
+          "inhalt": [
+            "Abdeckung",
+            "Lücken",
+            "Nachlieferungen",
+            "Ersatzwerte",
+            "Korrekturen im Zeitraum",
+            "vorläufig und endgültig"
+          ]
+        },
+        {
+          "schluessel": "quellenverzeichnis",
+          "titel": "Quellenverzeichnis",
+          "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]
+        }
+      ]
+    }
+  ]
+}

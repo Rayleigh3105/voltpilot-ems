@@ -11,8 +11,9 @@ Neu angelegt am 15.09.2026. Migrationen `V20260915050000__uems_bericht.sql` (Tab
   für `bericht_gibt_es_schon`), `bericht_entwurf` (genau einer je Bericht, ersetzt), `bericht_stand` (Nr. 1, 2, …),
   `bericht_quelle` (Entwurf: `stand_nr` NULL), `bericht_revision_anstoss`, `bericht_abruf`, `bericht_aenderung`,
   `bericht_kennung_seq`.
-- Kein Abzug (IP-5/IP-6), keine Route und keine Freigabe (IP-7), keine Naht und kein Läufer (IP-8/IP-9), kein Abruf
-  (IP-10/IP-11), keine Belegprüfung an den Löschwegen (IP-12). Die Tabellen sind leer, niemand schreibt.
+- Seit IP-5 schreibt `BerichtAbzugBildung` Entwurf und Quellen des Entwurfs (`uems-bericht-abzug.md`). Noch kein
+  Unternehmens-Abzug (IP-6), keine Berichts-Route und keine Freigabe (IP-7), keine Naht und kein Läufer (IP-8/IP-9),
+  kein Abruf (IP-10/IP-11), keine Belegprüfung an den Löschwegen (IP-12).
 
 ## ⚠ Löschschutz (E13 S1) — nur an diesen Tabellen
 
