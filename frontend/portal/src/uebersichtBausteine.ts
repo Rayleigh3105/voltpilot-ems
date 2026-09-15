@@ -183,12 +183,14 @@ export interface SummenSatz {
   ton: Ton;
 }
 
-function summenSatz(periode: BilanzPeriode, systeme: SystemZeile[]): SummenSatz {
+function summenSatz(periode: BilanzPeriode, systeme: SystemZeile[], mitKennzeichen = true): SummenSatz {
   const u = ebenenSumme('kWh', systeme.length === 1 ? 'System' : 'Systemen', systeme);
   const xVonY = u.kennzeichen[u.kennzeichen.length - 1];
   if (u.mit_werten === 0) return { text: `${KEINE_WERTE} · ${xVonY}`, ton: 'off' };
   const menge = zahl(dezText(u.menge), 'kWh', periode);
-  const zusatz = u.anzeige_kennzeichen.map((k) => ` · ${k}`).join('');
+  // Das geerbte Kennzeichen („Werk Lindach ab 15.10.2026“) steht an der Summe der Ebene und an der Zeile der Anlage —
+  // die Zwischensumme eines Standorts wiederholt es nicht.
+  const zusatz = mitKennzeichen ? u.anzeige_kennzeichen.map((k) => ` · ${k}`).join('') : '';
   if (u.fehlend.length === 0) return { text: `${menge} · ${xVonY}${zusatz}`, ton: 'ok' };
   const namen = u.fehlend.map((m) => systeme.find((s) => s.messstelle === m)?.kurzname ?? m);
   return {
@@ -265,11 +267,11 @@ export function energiebilanzBaustein(i: {
   const zugeordnet = new Set(standorte.flatMap((st) => st.anlagen.map((an) => an.id)));
   const gruppen: EnergiebilanzGruppe[] = standorte.flatMap((st) => {
     const xs = lesungen.filter((s) => st.anlagen.some((an) => an.id === s.zeile.anlage));
-    return xs.length > 0 ? [{ key: st.id, name: st.name, summe: summenSatz(i.periode, xs.map((s) => s.zeile)), systeme: bilder(xs) }] : [];
+    return xs.length > 0 ? [{ key: st.id, name: st.name, summe: summenSatz(i.periode, xs.map((s) => s.zeile), false), systeme: bilder(xs) }] : [];
   });
   const ohne = lesungen.filter((s) => !zugeordnet.has(s.zeile.anlage));
   if (ohne.length > 0) {
-    gruppen.push({ key: 'ohne-standort', name: OHNE_STANDORT, summe: summenSatz(i.periode, ohne.map((s) => s.zeile)), systeme: bilder(ohne) });
+    gruppen.push({ key: 'ohne-standort', name: OHNE_STANDORT, summe: summenSatz(i.periode, ohne.map((s) => s.zeile), false), systeme: bilder(ohne) });
   }
   return { zeitraum, hinweis: null, summe, gruppen };
 }

@@ -451,7 +451,7 @@ class FunktionApiTest {
 
         System.out.println("E13 Datenlage ST-1 — vorher: " + vorher + " | nachher: " + nachher + " | Register: " + zaehlung);
         assertThat(vorher).isEqualTo("1 von 1 Messstelle liefert Daten");
-        assertThat(zaehlung).isEqualTo("1 von 3 Messstellen liefern Daten");
+        assertThat(zaehlung).isEqualTo("1 von 3 Messstellen liefert Daten");
         assertThat(nachher).isEqualTo(zaehlung);
     }
 

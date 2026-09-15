@@ -90,6 +90,7 @@ describe('O2 · Unternehmens-Übersicht Ahrenberg, Oktober 2026 (gelesen am 10.1
     expect(eben(ahrenberg.summe!.text)).toBe('165.300 kWh · 2 von 2 Systemen');
     expect(ziffern(ahrenberg.summe!.text)).toBe(O2.gegeben.summe_st1_kwh);
     expect(bild.gruppen.map((g) => g.name)).toEqual(['Werk Ahrenberg', 'Werk Lindach']);
+    expect(eben(bild.gruppen[1].summe!.text)).toBe('9.100 kWh · 1 von 1 System');
     expect(bild.gruppen[0].systeme.map((s) => [s.name, eben(s.zahl)])).toEqual([
       ['Werk Ahrenberg – Halle 1', '128.400 kWh'],
       ['Werk Ahrenberg – Halle 2', '36.900 kWh'],

@@ -64,8 +64,8 @@ const FAELLE: Fall[] = [
   },
 ];
 
-async function oeffne(page: Page, query: string, breite: number) {
-  await page.clock.setFixedTime(JETZT);
+async function oeffne(page: Page, query: string, breite: number, jetzt: Date = JETZT) {
+  await page.clock.setFixedTime(jetzt);
   await page.setViewportSize({ width: breite, height: breite < 721 ? 812 : 900 });
   await page.goto(`/e2e/startansicht.html?${query}`);
   await expect(page.locator('.vp-portfolio-kopf').first()).toBeVisible();
@@ -131,6 +131,122 @@ for (const fall of FAELLE) {
     });
   }
 }
+
+/**
+ * UEMS AP-13 IP-7 (O2, O3): die Übersichts-Bausteine je Ebene — „Messstellen“ (die Zählung des Registers),
+ * „Energiebilanz“ (Summe „x von y Systemen“, am Standort die Gebäude-Zeilen), „Kennzahlen“ — unter der Anlagen-Tabelle
+ * und vor der Karte „Funktionen“ (Ü1); kein Querlauf, Tippflächen ≥ 44 px, kein Geld, kein „nicht zugeordnet“ auf
+ * der Ebene. O2 liest am 10.11.2026 (der Oktober ist gebildet; die Anlagen-Zeilen der Bühne bleiben die Momentaufnahme
+ * vom 20.10.), O3 am 19.10.2026 den Tag davor — Werk Lindach ohne Kennzahl (`welt=leer`).
+ */
+interface BausteinFall {
+  name: string;
+  query: string;
+  route: string;
+  jetzt: Date;
+  /** Der Zeitraum der Leiste, der vor dem Prüfen gewählt wird. */
+  zeitraum?: { tab: 'Tag' | 'Monat' | 'Jahr'; text: string };
+  sichtbar: string[];
+  kennzahlen: number;
+  gebaeude: number;
+}
+
+const BAUSTEIN_FAELLE: BausteinFall[] = [
+  {
+    name: 'o2-unternehmen',
+    query: 'bild=unternehmen',
+    route: '#/portfolio',
+    jetzt: new Date('2026-11-10T08:00:00Z'),
+    sichtbar: [
+      '21 von 22 Messstellen liefern Daten',
+      '15 von 16 Messstellen liefern Daten',
+      'Oktober 2026',
+      'Netzbezug 174.400 kWh · 3 von 3 Systemen · Werk Lindach ab 15.10.2026',
+      '165.300 kWh · 2 von 2 Systemen',
+    ],
+    kennzahlen: 5,
+    gebaeude: 0,
+  },
+  {
+    name: 'o3-lindach-tag',
+    query: 'bild=messkunde&welt=leer',
+    route: `#/standort/${ST2}`,
+    jetzt: new Date('2026-10-19T08:00:00Z'),
+    zeitraum: { tab: 'Tag', text: '18.10.2026' },
+    sichtbar: [
+      '3 von 3 Messstellen liefern Daten',
+      'Netzbezug 100 kWh · 1 von 1 System',
+      'Lagerhalle Lindach',
+      'gemessen im Gebäude 60 kWh (1 Messstelle)',
+      'gemessen im Gebäude 30 kWh (1 Messstelle)',
+    ],
+    kennzahlen: 0,
+    gebaeude: 2,
+  },
+];
+
+for (const fall of BAUSTEIN_FAELLE) {
+  for (const breite of BREITEN) {
+    test(`Übersichts-Bausteine ${fall.name} bei ${breite} px (AP-13 IP-7)`, async ({ page }) => {
+      const konsole: string[] = [];
+      page.on('console', (m) => {
+        if (m.type() === 'error') konsole.push(m.text());
+      });
+      await oeffne(page, fall.query, breite, fall.jetzt);
+      const bausteine = page.getByTestId('uebersicht-bausteine');
+      await expect(bausteine).toBeVisible();
+      if (fall.zeitraum) {
+        await page.getByTestId('baustein-energiebilanz').getByRole('tab', { name: fall.zeitraum.tab }).click();
+        await expect(page.getByTestId('energiebilanz-zeitraum')).toHaveText(fall.zeitraum.text);
+      }
+      await expect(page.getByText('Wird geladen …')).toHaveCount(0);
+      await expect(page.getByTestId('energiebilanz-summe')).toBeVisible();
+      if (fall.gebaeude > 0) await expect(page.getByTestId('gebaeude-zeilen').getByText('gemessen im Gebäude').first()).toBeVisible();
+      if (fall.kennzahlen > 0) await expect(page.getByTestId('kennzahl-zahl').first()).toBeVisible();
+
+      const text = await bausteine.evaluate((el) => (el.textContent ?? '').split(String.fromCharCode(160)).join(' '));
+      for (const s of fall.sichtbar) expect(text, `${fall.name} ${breite}: „${s}“`).toContain(s);
+      expect(text, `${fall.name} ${breite}: kein Rest und kein Geld auf der Ebene`).not.toMatch(/€|\bEUR\b|nicht zugeordnet/);
+      await expect(page.getByTestId('baustein-kennzahlen')).toHaveCount(fall.kennzahlen > 0 ? 1 : 0);
+      await expect(page.getByTestId('baustein-kennzahlen').getByTestId('kennzahl-karte')).toHaveCount(fall.kennzahlen);
+      await expect(page.getByTestId('gebaeude-zeilen').locator('li')).toHaveCount(fall.gebaeude);
+
+      // Ü1: unter der Anlagen-Tabelle, vor der Karte „Funktionen“.
+      const ordnung = await page.evaluate(() => {
+        const [tabelle, mitte, funktionen] = ['.vp-portfolio-anlagen', '[data-testid="uebersicht-bausteine"]', '[data-testid="funktionen-karte"]'].map((q) =>
+          document.querySelector(q),
+        );
+        if (!tabelle || !mitte || !funktionen) return false;
+        const folgt = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return folgt(tabelle, mitte) && folgt(mitte, funktionen);
+      });
+      expect(ordnung, `${fall.name} ${breite}: Reihenfolge Tabelle → Bausteine → Funktionen`).toBe(true);
+
+      const m = await messe(page);
+      expect(m.route, `${fall.name} ${breite}: Landung`).toBe(fall.route);
+      expect(m.dokument, `${fall.name} ${breite}: Querlauf des Dokuments`).toBe(0);
+      expect(m.draussen, `${fall.name} ${breite}: Elemente über dem Rand`).toEqual([]);
+      expect(m.euro, `${fall.name} ${breite}: Geld auf der Seite`).toBe(false);
+      if (breite < 721) {
+        const klein = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('.vp-ub-zeile, .vp-ub-schritt, .vp-ub-alle')]
+            .map((b) => Math.round(b.getBoundingClientRect().height))
+            .filter((h) => h < 44),
+        );
+        expect(klein, `${fall.name} ${breite}: Tippflächen der Bausteine`).toEqual([]);
+      }
+      expect(konsole, `${fall.name} ${breite}: Konsolenfehler`).toEqual([]);
+      await ablegen(page, fall.name, breite, m);
+      if (BILDER) await bausteine.screenshot({ path: join(BILDER, `${fall.name}-${breite}-bausteine.png`) });
+    });
+  }
+}
+
+test('Rechner: „Werk Ahrenberg · 15 von 16“ im Baustein Messstellen springt ins Register des Standorts', async ({ page }) => {
+  await oeffne(page, 'bild=unternehmen', 1440, new Date('2026-11-10T08:00:00Z'));
+  await page.getByTestId(`datenlage-${ST1}`).click();
+  await expect.poll(() => page.evaluate(() => document.body.dataset.route)).toBe(`#/standort/${ST1}/messstellen`);
+});
 
 test('Rechner: die Standort-Karte führt zur Standort-Übersicht desselben Standorts', async ({ page }) => {
   await oeffne(page, 'bild=unternehmen', 1440);

@@ -840,7 +840,7 @@ Gezählt wird aus dem Messstellen-Register: berechnete Messstellen zählen mit, 
 
 **Beispiel (Referenzunternehmen Ahrenberg).** Unternehmen Ahrenberg, Oktober 2026: Werk Ahrenberg „15 von 16“, Werk Lindach „4 von 4“.
 
-**Heute im Code.** Die Zählung: `frontend/portal/src/uemsZustand.ts` (`aggregatLiefertDaten`); die Wörter: `frontend/portal/src/glossar.ts` (`UEMS_DATENLAGE`, `UEMS_MANUELL_ABGELESEN`). Der Baustein der Übersicht und dieselbe Zählung an der Karte „Funktionen“ kommen mit AP-13 IP-7.
+**Heute im Code.** Die Zählung je Zeile: `services/api/src/main/java/com/voltpilot/api/uems/MessstelleRegisterService.java` (`aggregatZustand`) über `aggregatLiefertDaten` (`frontend/portal/src/uemsZustand.ts`); seit AP-13 IP-7 spricht die Karte „Funktionen“ dieselbe Zählung (`services/api/src/main/java/com/voltpilot/api/uems/FunktionZustandAbleitung.java`, `datenlage` über `register_zeilen`) und der Baustein „Messstellen“ der Übersicht liest sie aus dem Register (`frontend/portal/src/uebersichtBausteine.ts`); die Wörter: `frontend/portal/src/glossar.ts` (`UEMS_DATENLAGE`, `UEMS_MANUELL_ABGELESEN`).
 
 **Abgrenzung.** Nicht der Online-Status einer Anlage oder Box, nicht die Vollständigkeit einer Zahl, nicht „Verlauf n %“.
 

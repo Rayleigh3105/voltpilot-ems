@@ -224,9 +224,11 @@
   padding: 0 8px;
   border: 0;
   background: none;
-  color: var(--vp-primary, #2563eb);
+  color: var(--vp-navy-1, #1e3a5f);
   font: inherit;
   font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 
