@@ -46,8 +46,9 @@ Vektor-Fälle durch den Schreibweg, Zaun, Rechte, Löschwege, Offboarding),
    `erwartet_fehlend` = `dropped_samples` (nur > 0), OHNE Zeitraum (`zeit` = `observed_at` des
    Umschlags). `ereignis_id` = UUID v3 aus dem Bestandsschlüssel. `device_measurement_event` und
    seine Leser (`MeasurementHistoryService`) bleiben unverändert, bis IP-14 umzieht.
-7. **`events.raw`** (Topic `REDPANDA_EVENTS_TOPIC`, Vorgabe `events.raw`, in beiden Compose-Dateien
-   angelegt): `EventsRawConsumer` prüft den Rahmen wie das Schema (für `box`: Umschlag-Felder,
+7. **`events.raw`** (Topic `REDPANDA_EVENTS_TOPIC`, Vorgabe `events.raw`, lokal von `redpanda-init`
+   angelegt, fehlt es, legt die Datenannahme es seit 15.09.2026 selbst an, Grund in Falle 1 von
+   `uems-datenannahme-ereignisse.md`): `EventsRawConsumer` prüft den Rahmen wie das Schema (für `box`: Umschlag-Felder,
    `ereignis.box` = `device_id`, Topic genau dieser Box), dann den Vertrag; verworfen wird geloggt und
    in `voltpilot_writer_events_raw_total{ergebnis,grund}` gezählt, nie geraten. Beschickt wird es
    von der Datenannahme (IP-5) und Cloud-Diensten — dieses Paket baut nur die Verbraucher-Seite.
