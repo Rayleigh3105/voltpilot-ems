@@ -130,6 +130,15 @@ export interface GeraetSeiteView {
   live: LiveKachel[];
   liveStand: string | null;
   liveLeer: string | null;
+  /**
+   * Meldet dieses Gerät ERZEUGUNG (ein PV-Leistungswert aus dem `/sources`-
+   * Echo)? Das ist der ehrliche Beleg dafür, dass das Gerät erzeugungsfähige
+   * Register trägt - unabhängig davon, ob die komponierte Entität schon einen
+   * `pv`-Aspekt bildet. Der Einstieg in den Summenwert-Assistenten hängt daran
+   * (vp-agg-konzept3-r8: „nie ein toter Knopf" - aber auch nie „gar kein Knopf"
+   * für genau ein erzeugendes Gerät ohne vorhandene PV-Komponente).
+   */
+  meldetErzeugung: boolean;
   /** C · Misst & steuert. */
   komponenten: PlantComponent[];
   komponentenLeer: string | null;
@@ -603,6 +612,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     live: [],
     liveStand: null,
     liveLeer: null,
+    meldetErzeugung: false,
     komponenten: [],
     komponentenLeer: null,
     bms: [],
@@ -921,6 +931,10 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     live,
     liveStand,
     liveLeer,
+    // Ein gemeldeter PV-Leistungswert (auch 0) beweist ein erzeugungsfähiges
+    // Register; `num` fällt bei fehlendem Feld auf null zurück. Kein Wert =
+    // keine Erzeugung, nie eine erfundene 0.
+    meldetErzeugung: !charger && num(src?.pvKw) != null,
     komponenten,
     komponentenLeer,
     bms: bmsZeilen(src ?? null),
@@ -928,6 +942,39 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     software,
     diagnose,
   };
+}
+
+/**
+ * Mit WELCHER Entität startet der Summenwert-Assistent „PV-Produktion dieses
+ * Geräts"? (vp-agg-konzept3-r8, Fix (b))
+ *
+ * <p>Erste Wahl ist der komponierte PV-Aspekt: trägt das Gerät ihn schon, wird
+ * die Karte wie bisher angeboten - unabhängig davon, ob gerade ein Live-Wert
+ * fließt. Fehlt er (z. B. ein Hybrid, dessen `battery-hybrid`-Entität ihren
+ * `pv_power_kw`-Kanal verloren hat), aber MELDET das Gerät nachweislich
+ * Erzeugung, dann fällt der Einstieg auf die Träger-Entität zurück: den
+ * Speicher des Hybriden, sonst die eindeutige Haupt-Komponente. Die Rollen-API
+ * ist entitäts-skopiert und verlangt keine PV-Entität, also darf der Assistent
+ * mit dieser Entität starten und ordnet den gebildeten Gesamtwert der Rolle
+ * PV-Produktion zu.
+ *
+ * <p>Ehrliche Grenze: das entsperrt den Assistenten und setzt die kanonische
+ * PV-Rolle (die das Cockpit liest). Der Anlagenbild-PV-Knoten selbst heilt erst,
+ * wenn der fehlende `pv_power_kw`-Kanal nachgezogen ist (Fix (a), Backfill).
+ *
+ * @returns die Entitäts-Kennung für den Einstieg, oder `null` (kein Knopf).
+ */
+export function pvEinstiegEntityId(view: GeraetSeiteView): string | null {
+  if (!view.gefunden) return null;
+  const pv = view.komponenten.find((c) => c.role === 'pv');
+  if (pv) return pv.entityId;
+  // Nur für ein Gerät, das nachweislich erzeugt - sonst wäre es „gar kein
+  // Knopf" richtig; hier soll es NICHT „gar kein Knopf" für den Zielfall sein.
+  if (!view.meldetErzeugung) return null;
+  const speicher = view.komponenten.find((c) => c.aspect === 'main' && c.role === 'storage');
+  if (speicher) return speicher.entityId;
+  const mains = view.komponenten.filter((c) => c.aspect === 'main');
+  return mains.length === 1 ? mains[0].entityId : null;
 }
 
 /**
