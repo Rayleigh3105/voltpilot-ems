@@ -34,11 +34,13 @@ Der Kennzahl-Schritt im Stundentakt `EndgueltigkeitLaeufer`: Endgültigkeit → 
   Kaskade zieht im Regellauf mit `K-…` nach, nicht mit NULL.
 - ⚠ **V3 über den Vergleich:** unverändert = gleiche Zahl, Zustände, Kennzeichen, Fassung UND gleiche Eingänge
   (`KennzahlRepository.eingaengeText`); `berechnet_am` muss nach der neuesten Zeile liegen (Trigger), sonst Warnung ohne Zeile.
-- ⚠ **Zeit-Perioden haben keine Eingangs-Zeilen:** die Teilperioden sind Zeilen derselben Kennzahl, `kennzahl_wert_eingang`
-  verbietet den Selbstverweis — die Herkunft der Route (IP-7) ist dort darum `satz` null, `fehlt` `[eingaenge]`; die Paare mit
-  ihren Periodenwerten (Report K14) als Eingänge zu schreiben ist IP-11 (`uems-kennzahl-werte-lesen.md`).
-- ⚠ **Paar ohne Zahl (Nenner 0) zählt mit (K9)**, aber ohne Version trägt die Zeile keinen vorläufig/endgültig-Zustand — eine
-  Zusammenfassung mit so einem Paar bleibt vorläufig. Zustand des Paars = schlechtester seiner Eingänge (`eingangZustand`).
+- ⚠ **Zeit-Perioden haben keine Eingangs-Zeilen ihrer Teilperioden:** die Teilperioden sind Zeilen derselben Kennzahl,
+  `kennzahl_wert_eingang` verbietet den Selbstverweis. Eine Zusammenfassung nennt stattdessen ihre Paare DERSELBEN Periode
+  (IP-11, `uems-kennzahl-zusammenfassung.md`); jede andere Zeit-Periode hat keine Eingänge — die Herkunft der Route (IP-7)
+  ist dort `satz` null, `fehlt` `[eingaenge]`.
+- ⚠ **Paar ohne Zahl (Nenner 0) zählt mit (K9)** — ohne Version trägt die Zeile keinen vorläufig/endgültig-Zustand; als Teil
+  ist sie endgültig, wenn ihre eigenen Eingänge es sind (`KennzahlLauf.zaehltMit`, IP-11). Zustand des Paars = schlechtester
+  seiner Eingänge (`eingangZustand`).
 - ⚠ **Nicht gebaut / nicht erreichbar:** Wochen (IP-12), Bezugsfläche als Nenner (keine Bezugsgröße mit Kennzeichen, K12 nur
   mit Stammdatum), Kanal-Bezugsgröße mit eigenem AP-08-Zustand (AP-09 IP-17), Hinweis „Eingang außerhalb“ (K22).
 - ⚠ `EndgueltigkeitLaeufer` hat zwei Konstruktoren: der alte (5 Argumente) ohne Kennzahl-Schritt für die Tests der Stufen

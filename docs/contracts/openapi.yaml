@@ -10274,6 +10274,30 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/paare:
+    parameters:
+      - { name: rechenform, in: query, required: false, schema: { type: string, enum: [quotient, anteil, zusammenfassung] }, description: "Nur die Gruppe dieser Rechenform." }
+      - { name: einheit, in: query, required: false, schema: { type: string, example: "kWh/Stück" }, description: "Nur die Gruppe dieser Einheit - wie `Kennzahl.einheit`, ungekürzt." }
+      - { name: standort_id, in: query, required: false, schema: { type: string, format: uuid }, description: "Nur Kennzahlen dieses Standorts (`Kennzahl.standort_id`) - die Eingänge einer Standort-Kennzahl liegen im Standort." }
+    get:
+      tags: [kennzahlen]
+      summary: Die möglichen Paare einer Zusammenfassung - gruppiert nach Rechenform und Einheit.
+      description: >
+        Recht `messwerte.ansehen` (AP-11 R2, keine Durchsetzung bis AP-03 IP-11). UEMS AP-11 IP-11,
+        für den Assistenten „Kennzahl anlegen“ (Schritt „Kennzahlen“). Jede nicht archivierte Kennzahl
+        mit heute geltender Berechnung steht in der Gruppe ihrer Rechenform und Einheit; eine
+        Zusammenfassung nimmt mindestens zwei aus EINER Gruppe (R4 - sonst 422 `einheit_unpassend`
+        beim Anlegen). Gruppen nach Rechenform (quotient, anteil, zusammenfassung), dann Einheit;
+        Kennzahlen nach Kennzeichen; auch eine Gruppe mit nur einer Kennzahl steht da. Ein unbekannter
+        oder leerer Parameter ist 400. Die Route rechnet nichts und schreibt nichts.
+      responses:
+        "200":
+          description: Die Gruppen (ein Objekt, kein nacktes Array - additiv erweiterbar).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlPaare" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/kennzahlen/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -10430,7 +10454,8 @@ paths:
         Periode ohne Zeile sagt `grund` `noch_nicht_gebildet`. `herkunft` ist die Hülle `{satz, fehlt}`
         nach docs/contracts/v2/kennzahlwert-herkunft.schema.json, gebaut aus dem, was die Zeile beim
         Bilden las - an jeder Version, auch ohne Zahl (K19); ohne Version null. Eine Zeit-Periode, die
-        der Rechenlauf über ihre eigenen Teilperioden bildet, hat keine gespeicherten Eingänge: `satz`
+        der Rechenlauf über ihre eigenen Teilperioden bildet, nennt bei einer Zusammenfassung ihre Paare
+        in derselben Periode (IP-11, K14); jede andere hat keine gespeicherten Eingänge: `satz`
         null, `fehlt` [eingaenge]. Ein unbekannter Parameter ist 400. Eine fremde Kennzahl ist 404, nie 403.
       responses:
         "200":
@@ -20453,6 +20478,19 @@ components:
       type: object
       required: [kennzahlen]
       properties:
+        kennzahlen: { type: array, items: { $ref: "#/components/schemas/Kennzahl" } }
+    KennzahlPaare:
+      type: object
+      required: [gruppen]
+      properties:
+        gruppen: { type: array, items: { $ref: "#/components/schemas/KennzahlPaarGruppe" } }
+    KennzahlPaarGruppe:
+      type: object
+      required: [rechenform, einheit, einheit_anzeige, kennzahlen]
+      properties:
+        rechenform: { type: string, enum: [quotient, anteil, zusammenfassung] }
+        einheit: { type: string, description: "Die Einheit der heute geltenden Fassung, ungekürzt (kWh/Stück, %)." }
+        einheit_anzeige: { type: string, nullable: true, description: "Das Kundenwort (kWh je Stück)." }
         kennzahlen: { type: array, items: { $ref: "#/components/schemas/Kennzahl" } }
     KennzahlFassungen:
       type: object

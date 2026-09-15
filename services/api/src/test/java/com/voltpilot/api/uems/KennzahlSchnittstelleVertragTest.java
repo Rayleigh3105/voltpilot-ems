@@ -147,6 +147,8 @@ class KennzahlSchnittstelleVertragTest {
                 Map.entry("KennzahlFassung", KennzahlDto.Fassung.class),
                 Map.entry("Kennzahl", KennzahlDto.Kennzahl.class),
                 Map.entry("KennzahlListe", KennzahlDto.Liste.class),
+                Map.entry("KennzahlPaare", KennzahlDto.Paare.class),
+                Map.entry("KennzahlPaarGruppe", KennzahlDto.PaarGruppe.class),
                 Map.entry("KennzahlFassungen", KennzahlDto.Fassungen.class),
                 Map.entry("KennzahlBerechnung", KennzahlDto.Berechnung.class),
                 Map.entry("KennzahlBefund", KennzahlDto.Befund.class),
@@ -174,6 +176,7 @@ class KennzahlSchnittstelleVertragTest {
         Map<String, List<String>> erwartet = Map.of(
                 "/api/v1/kennzahlen", List.of("get", "post"),
                 "/api/v1/kennzahlen/vorschau", List.of("post"),
+                "/api/v1/kennzahlen/paare", List.of("parameters", "get"),
                 "/api/v1/kennzahlen/{id}", List.of("parameters", "get", "put", "delete"),
                 "/api/v1/kennzahlen/{id}/archivieren", List.of("parameters", "post"),
                 "/api/v1/kennzahlen/{id}/fassungen", List.of("parameters", "get", "post"),

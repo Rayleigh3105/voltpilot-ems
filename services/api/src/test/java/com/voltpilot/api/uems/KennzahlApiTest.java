@@ -407,6 +407,55 @@ class KennzahlApiTest {
         assertThat(ruf(w, HttpMethod.POST, PFAD, anfrage).status()).isEqualTo(201);
     }
 
+    // ================================================================ Paare für den Assistenten (IP-11)
+
+    /**
+     * {@code GET …/paare} (AP-11 IP-11, §5.6): Halle 2 und Lindach (kWh/Stück) stehen in EINER Gruppe, der Stromeinsatz
+     * je kg in einer eigenen, die Zusammenfassung in ihrer; eine archivierte fehlt. Die Filter lassen nur die Gruppe
+     * (Rechenform, Einheit) bzw. den Standort übrig; ein unbekannter oder leerer Parameter ist 400. Nichts wird geschrieben.
+     */
+    @Test
+    void diePaareStehenJeRechenformUndEinheitInEinerGruppe() throws Exception {
+        Welt w = welt();
+        anlegenKz(w, "KZ-0001", "gebaeude", w.g2(), "MS-12", "BZ-6");
+        anlegenKz(w, "KZ-0002", "gebaeude", w.g5(), "MS-18", "BZ-7");
+        anlegenKz(w, "KZ-0004", "prozess", w.prozess(), "MS-20", "BZ-1");
+        UUID alt = UUID.fromString(anlegenKz(w, "KZ-0005", "gebaeude", w.g2(), "MS-24", "BZ-6").get("id").asText());
+        assertThat(ruf(w, HttpMethod.POST, PFAD + "/" + alt + "/archivieren", null).status()).isEqualTo(200);
+        zusammenfassung(w, "KZ-0003", "KZ-0001", "KZ-0002");
+        String vorher = zustand(w);
+
+        Antwort alle = ruf(w, HttpMethod.GET, PFAD + "/paare", null);
+        assertThat(alle.status()).as(alle.body().toString()).isEqualTo(200);
+        assertThat(gruppen(alle.body())).containsExactly("quotient kWh/Stück KZ-0001 KZ-0002", "quotient kWh/kg KZ-0004",
+                "zusammenfassung kWh/Stück KZ-0003");
+        assertThat(alle.body().get("gruppen").get(0).get("einheit_anzeige").asText()).isEqualTo("kWh je Stück");
+        assertThat(felder(alle.body().get("gruppen").get(0).get("kennzahlen").get(0)))
+                .as("die Kennzahl in derselben Form wie GET /kennzahlen")
+                .containsExactlyElementsOf(felder(ruf(w, HttpMethod.GET, PFAD + "/" + alt, null).body()));
+
+        assertThat(gruppen(ruf(w, HttpMethod.GET, PFAD + "/paare?rechenform=quotient&einheit=kWh/Stück", null).body()))
+                .containsExactly("quotient kWh/Stück KZ-0001 KZ-0002");
+        assertThat(gruppen(ruf(w, HttpMethod.GET, PFAD + "/paare?einheit=kWh/Stück", null).body()))
+                .containsExactly("quotient kWh/Stück KZ-0001 KZ-0002", "zusammenfassung kWh/Stück KZ-0003");
+        assertThat(gruppen(ruf(w, HttpMethod.GET, PFAD + "/paare?standort_id=" + w.st2(), null).body()))
+                .as("nur Lindach liegt in ST-2").containsExactly("quotient kWh/Stück KZ-0002");
+        assertThat(gruppen(ruf(w, HttpMethod.GET, PFAD + "/paare?rechenform=anteil", null).body())).isEmpty();
+
+        abgelehntMitFeld(w, HttpMethod.GET, PFAD + "/paare?faktor=1", null, "anfrage_ungueltig", "faktor");
+        abgelehntMitFeld(w, HttpMethod.GET, PFAD + "/paare?rechenform=produkt", null, "anfrage_ungueltig", "rechenform");
+        abgelehntMitFeld(w, HttpMethod.GET, PFAD + "/paare?einheit=", null, "anfrage_ungueltig", "einheit");
+        abgelehntMitFeld(w, HttpMethod.GET, PFAD + "/paare?standort_id=ST-2", null, "anfrage_ungueltig", "standort_id");
+        assertThat(zustand(w)).isEqualTo(vorher);
+    }
+
+    private static List<String> gruppen(JsonNode antwort) {
+        List<String> aus = new ArrayList<>();
+        antwort.get("gruppen").forEach(g -> aus.add(g.get("rechenform").asText() + " " + g.get("einheit").asText() + " "
+                + String.join(" ", g.get("kennzahlen").findValuesAsText("kennzeichen"))));
+        return aus;
+    }
+
     // ================================================================ Stammdaten, Archiv, Löschen
 
     @Test

@@ -19,8 +19,9 @@ mit dem Wert, den er beim Bilden trug.
 Beide Vektor-Tests halten jede gebaute Hülle zusätzlich gegen das Schema. **Seit AP-11 IP-7 ruft die Route an:**
 `GET /api/v1/kennzahlen/{id}/werte` bildet den Satz aus den gespeicherten Zeilen (`kennzahl_wert` + `kennzahl_wert_eingang`)
 über `KennzahlRegeln.herkunft` — `KennzahlWerteApiTest` hält jede Prüfung der Regel `herkunft` byte-gleich dagegen. Eine
-Zeit-Periode, die der Rechenlauf über ihre eigenen Teilperioden bildet, hat keine gespeicherten Eingänge: dort antwortet die
-Route mit Regel 7 (`satz` null, `fehlt` = `eingaenge`).
+Zeit-Periode, die der Rechenlauf über ihre eigenen Teilperioden bildet, nennt bei einer Zusammenfassung ihre Paare in
+derselben Periode (AP-11 IP-11, K14); jede andere hat keine gespeicherten Eingänge: dort antwortet die Route mit Regel 7
+(`satz` null, `fehlt` = `eingaenge`).
 
 ## 1. Was im Satz steht
 

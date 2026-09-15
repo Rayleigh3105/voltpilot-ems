@@ -110,6 +110,10 @@ Funktion dafür, und beide Tests prüfen den Quelltext darauf.
   „ab …“ der Teile; „x von y …“ eines Teils bleibt nur, wenn es in JEDER Teilperiode steht; die übrigen Sätze über die
   Periode werden übernommen.
 - Fehlt ein Paar oder eine Teilperiode: unvollständig, Richtung unbestimmt, „x von y … (… fehlt)“; fehlen alle: keine Werte.
+- Ein Paar ohne Zahl, aber mit Zähler und Nenner (Nenner 0, K9) ist als Teil endgültig, wenn seine eigenen Eingänge es sind —
+  die Zeile selbst trägt ohne Version keinen Zustand (IP-11).
+- Herkunft: über Ebenen die Paare der Periode mit Zähler und Nenner (K3); über die Zeit bei einer Zusammenfassung ebenfalls
+  die Paare DERSELBEN Periode (K14: „KZ-0001 18 200 kWh je 122 500 Stück“) — gerechnet wird trotzdem über die Teilperioden.
 
 ## 8. Fassungen der Berechnung und Versionen des Werts (E7)
 
@@ -206,6 +210,14 @@ Dezimaltext, mit Zustand, Richtung, Abdeckung, Kennzeichen, vorläufig/endgülti
 Version n; eine Version an keinem Schritt ist 404 `version_gibt_es_nicht` (Form der Messstelle). Ein Schritt ohne Zahl nennt
 `grund`: ein Wort von `grund_ohne_zahl` oder des Lesers (`noch_nicht_gebildet`, `version_nicht_gespeichert`).
 `…/werte/versionen?periode=&von=` nennt je Version den Wert davor und danach und wer, wann, warum (Muster AP-08 IP-18).
+
+### Die Paare (IP-11)
+
+`GET /api/v1/kennzahlen/paare?rechenform=&einheit=&standort_id=` (alle optional, Recht `messwerte.ansehen`) liefert dem
+Assistenten die möglichen Paare einer Zusammenfassung: jede nicht archivierte Kennzahl mit heute geltender Fassung in der
+Gruppe ihrer Rechenform und Einheit — genau die Gleichheit, die das Anlegen verlangt (R4, sonst 422 `einheit_unpassend`).
+Gruppen nach Rechenform, dann Einheit; Kennzahlen nach Kennzeichen, in der Form von `GET /api/v1/kennzahlen`. Ein
+unbekannter oder leerer Parameter ist 400 `anfrage_ungueltig` mit `feld`. Die Route rechnet nichts und schreibt nichts.
 
 ## 13. Wörter (E12)
 

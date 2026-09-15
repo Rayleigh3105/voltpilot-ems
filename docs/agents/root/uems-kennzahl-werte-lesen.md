@@ -29,10 +29,10 @@ IP-7, §4.9 V6, §4.10, E4/E11/E12.
 - **Herkunft = `KennzahlRegeln.herkunft` über die gespeicherten Eingänge** — byte-gleich zu jeder Prüfung der Regel
   `herkunft` in `kennzahl-vectors.json` (13 mit Satz; „ohne Anlass“ kann die Tabelle gar nicht speichern). Ohne Version
   (K8: keine Zahl, noch nie eine) ist sie `null` — der Satz verlangt eine Version, `grund` sagt das Warum.
-- ⚠ **Zeit-Perioden haben keine Eingänge** (IP-6 bildet Jahr/gröbere Periode über die EIGENEN Teilperioden, der
-  Selbstverweis ist verboten): die Route antwortet mit Regel 7, `satz` null, `fehlt` `[eingaenge]`. Der Report druckt für
-  K14 die Paare KZ-0001/KZ-0002 mit ihren Jahreswerten als Eingänge — das zu schreiben ist Sache von **IP-11**
-  („Zusammenfassung … in Naht und Lesemodell“, Prüfnachweis K14); der Leser erfindet sie nicht.
+- ⚠ **Zeit-Perioden haben keine Eingänge ihrer Teilperioden** (IP-6 bildet Jahr/gröbere Periode über die EIGENEN
+  Teilperioden, der Selbstverweis ist verboten): die Route antwortet dort mit Regel 7, `satz` null, `fehlt` `[eingaenge]`.
+  Eine Zusammenfassung schreibt seit **IP-11** ihre Paare derselben Periode als Eingänge (Report K14) — der Leser baut
+  daraus den Satz wie jeden anderen und erfindet nichts (`uems-kennzahl-zusammenfassung.md`).
 - **wer/wann/warum aus dem Beleg:** nennt `anlass_kennung` eine Korrektur `K-…` oder einen Ersatzwert `EW-…`, liest
   `WertVersionenLeser.fassungen` die jüngste Fassung bis `berechnet_am` der Version und spricht sie über
   `MessstelleWerteService.entscheidung` (paketweit, aufgerufen). Anlass `definition` → die `kennzahl_fassung` der gelesenen

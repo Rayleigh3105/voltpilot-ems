@@ -196,6 +196,18 @@ class UemsKennzahlKaskadeTest {
         assertThat(eingaenge(unternehmen)).extracting(e -> e.get("objekt") + " v" + e.get("version"))
                 .as("das Unternehmen las Halle 2 in Version 2, Lindach in Version 1")
                 .containsExactly("KZ-0001 v2", "KZ-0002 v1");
+        // IP-11: das laufende Jahr der Zusammenfassung zieht in DERSELBEN Transaktion nach (vorläufig, dieselbe Version) —
+        // Summe durch Summe über den korrigierten Oktober, als Herkunft seine Paare.
+        Map<String, Object> jahr = root.queryForMap("SELECT w.id, w.version, w.zaehler, w.nenner, w.zustand "
+                + "FROM kennzahl_wert w JOIN kennzahl k ON k.id = w.kennzahl_id WHERE w.tenant_id = ? "
+                + "AND k.kennzeichen = 'KZ-0003' AND w.periode_art = 'jahr' AND w.periode_von = '2026-01-01' "
+                + "ORDER BY w.version DESC NULLS LAST, w.berechnet_am DESC LIMIT 1", w.mandant());
+        assertThat(zahl(jahr.get("zaehler"))).as("6 040 + 3 600").isEqualByComparingTo("9640");
+        assertThat(zahl(jahr.get("nenner"))).isEqualByComparingTo("48200");
+        assertThat(jahr.get("version")).isEqualTo(1);
+        assertThat(jahr.get("zustand")).isEqualTo("vorlaeufig");
+        assertThat(eingaenge(jahr)).extracting(e -> e.get("rolle") + " " + e.get("objekt"))
+                .containsExactly("paar KZ-0001", "paar KZ-0002");
 
         assertThat(kennzahlZeilen(w, "KZ-0002")).as("Lindach: Zeile für Zeile unberührt").isEqualTo(lindachVorher);
         assertThat(zeile(w, "KZ-0002").get("version")).isEqualTo(1);
