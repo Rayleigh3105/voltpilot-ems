@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ class EndgueltigkeitLaeuferReihenfolgeTest {
     private final PeriodeVerdichter perioden = mock(PeriodeVerdichter.class);
     private final BerechnetePeriodenLauf berechnete = mock(BerechnetePeriodenLauf.class);
     private final KorrekturVorschlagLauf vorschlaege = mock(KorrekturVorschlagLauf.class);
+    private final KennzahlLauf kennzahlen = mock(KennzahlLauf.class);
 
     @Test
     void dieBerechnetenRechnenNachAllenGemessenenStufenUndVorDenVorschlaegen() {
@@ -43,6 +45,40 @@ class EndgueltigkeitLaeuferReihenfolgeTest {
         when(berechnete.lauf(any())).thenThrow(new IllegalStateException("berechnete kaputt"));
         new EndgueltigkeitLaeufer(endgueltigkeit, tage, perioden, berechnete, vorschlaege).takt();
         verify(berechnete).lauf(any());
+        verify(vorschlaege).lauf(any());
+    }
+
+    /**
+     * AP-11 IP-6: die Kennzahlen rechnen NACH den berechneten Messstellen (ein Gesamtwert ist ihr Zähler) und VOR den
+     * Korrektur-Vorschlägen — der Takt, den Spring baut ({@code @Autowired}-Konstruktor mit dem Kennzahl-Schritt).
+     */
+    @Test
+    void dieKennzahlenRechnenNachDenBerechnetenUndVorDenVorschlaegen() {
+        new EndgueltigkeitLaeufer(endgueltigkeit, tage, perioden, berechnete, kennzahlen, vorschlaege).takt();
+        InOrder reihenfolge = inOrder(endgueltigkeit, tage, perioden, berechnete, kennzahlen, vorschlaege);
+        reihenfolge.verify(endgueltigkeit).umschalten(any());
+        reihenfolge.verify(tage).lauf(any());
+        reihenfolge.verify(perioden).lauf(any());
+        reihenfolge.verify(berechnete).lauf(any());
+        reihenfolge.verify(kennzahlen).lauf(any());
+        reihenfolge.verify(vorschlaege).lauf(any());
+    }
+
+    /** Ein Fehlschlag der berechneten Messstellen kostet die Kennzahlen nicht — ein Fehlschlag der Kennzahlen nie den Rest. */
+    @Test
+    void einFehlschlagVorOderImKennzahlSchrittHaeltDenTaktNichtAuf() {
+        when(berechnete.lauf(any())).thenThrow(new IllegalStateException("berechnete kaputt"));
+        when(kennzahlen.lauf(any())).thenThrow(new IllegalStateException("Kennzahlen kaputt"));
+        new EndgueltigkeitLaeufer(endgueltigkeit, tage, perioden, berechnete, kennzahlen, vorschlaege).takt();
+        verify(kennzahlen).lauf(any());
+        verify(vorschlaege).lauf(any());
+    }
+
+    /** Der Takt ohne Kennzahl-Schritt (die Tests der Stufen davor bauen ihn so) ruft keine Kennzahl. */
+    @Test
+    void ohneKennzahlSchrittBleibtDerTaktWieVorher() {
+        new EndgueltigkeitLaeufer(endgueltigkeit, tage, perioden, berechnete, vorschlaege).takt();
+        verifyNoInteractions(kennzahlen);
         verify(vorschlaege).lauf(any());
     }
 }

@@ -415,6 +415,14 @@ voltpilot:
       stapel: ${VOLTPILOT_UEMS_VIERTELSTUNDE_STAPEL:500}
       stapel-je-lauf: ${VOLTPILOT_UEMS_VIERTELSTUNDE_STAPEL_JE_LAUF:40}
       arbeit-hochwasser: ${VOLTPILOT_UEMS_VIERTELSTUNDE_ARBEIT_HOCHWASSER:200000}
+    # UEMS AP-11 IP-6: der RECHENLAUF der Kennzahlen - ein Schritt im Stundentakt
+    # der Endgueltigkeit (unten), NACH den berechneten Messstellen. Er liest die
+    # Periodenwerte der Messstellen, die wirksamen Bezugsgroessen-Werte und die
+    # Stammdaten am Stichtag und haengt Kennzahl-Werte an (append-only, vorlaeufige
+    # ziehen nach, endgueltige bleiben stehen). `enabled` ist der Not-Aus NUR dieses
+    # Schritts - Vorgabe AN; im Testlauf ist der ganze Takt aus.
+    kennzahlen:
+      enabled: ${VOLTPILOT_UEMS_KENNZAHLEN_ENABLED:true}
     # UEMS AP-07 IP-13: der STUNDENLAUF der Endgueltigkeit und der TAGESLAUF.
     # Einmal je Stunde setzt er jede faellige Viertelstunde (Intervallende +
     # 7 Tage, Entscheid E5) auf `endgueltig` und zieht danach die Tageswerte

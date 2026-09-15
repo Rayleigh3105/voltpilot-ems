@@ -3,7 +3,9 @@ package com.voltpilot.api.uems;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -11,7 +13,8 @@ import org.springframework.stereotype.Component;
  * Der TAKT der Endgültigkeit und der Tageswerte (UEMS AP-07 IP-13): einmal je Stunde erst
  * {@link EndgueltigkeitLauf#umschalten}, dann {@link TagVerdichter#lauf}, dann
  * {@link PeriodeVerdichter#lauf} (Monat und Jahr, AP-08 IP-5), dann {@link BerechnetePeriodenLauf#lauf} (die
- * berechneten Messstellen, AP-10 IP-10), zuletzt {@link KorrekturVorschlagLauf#lauf} (AP-08 IP-14: das System
+ * berechneten Messstellen, AP-10 IP-10), dann {@link KennzahlLauf#lauf} (die Kennzahlen, AP-11 IP-6), zuletzt
+ * {@link KorrekturVorschlagLauf#lauf} (AP-08 IP-14: das System
  * schlägt vor, freigegeben wird von Hand).
  *
  * <p><b>Die Reihenfolge ist Absicht.</b> Erst werden die fälligen Viertelstunden endgültig, dann
@@ -19,7 +22,8 @@ import org.springframework.stereotype.Component;
  * frisch umgeschalteten Slots. Umgekehrt wäre sie eine Stunde lang hinterher. Dasselbe gilt eine
  * Stufe höher: der Monatslauf findet die Tage, die der Tageslauf gerade in seine Liste schrieb. Und die
  * berechneten Messstellen kommen NACH allen gemessenen Stufen: sie lesen deren Viertelstunden, Tage, Monate
- * und Jahre — vorher gerechnet, schrieben sie eine Zahl, die schon beim Schreiben veraltet ist.
+ * und Jahre — vorher gerechnet, schrieben sie eine Zahl, die schon beim Schreiben veraltet ist. Die Kennzahlen kommen
+ * NACH den berechneten Messstellen: ein Gesamtwert ist ihr Zähler.
  *
  * <p><b>Eine Stunde, weil §4.6 Nr. 3 es so nennt</b> („ein Lauf je Stunde setzt Intervalle mit
  * Ende + 7 Tage ≤ jetzt auf endgültig"). Genauer muss er nicht sein: die Frist gehört dem
@@ -49,14 +53,24 @@ public class EndgueltigkeitLaeufer {
     private final TagVerdichter tage;
     private final PeriodeVerdichter perioden;
     private final BerechnetePeriodenLauf berechnete;
+    private final KennzahlLauf kennzahlen;
     private final KorrekturVorschlagLauf vorschlaege;
 
+    /** Der Takt OHNE Kennzahl-Schritt — so bauen ihn die Tests der Stufen davor (AP-08, AP-10) weiterhin. */
     public EndgueltigkeitLaeufer(EndgueltigkeitLauf endgueltigkeit, TagVerdichter tage,
             PeriodeVerdichter perioden, BerechnetePeriodenLauf berechnete, KorrekturVorschlagLauf vorschlaege) {
+        this(endgueltigkeit, tage, perioden, berechnete, null, vorschlaege);
+    }
+
+    @Autowired
+    public EndgueltigkeitLaeufer(EndgueltigkeitLauf endgueltigkeit, TagVerdichter tage,
+            PeriodeVerdichter perioden, BerechnetePeriodenLauf berechnete, @Nullable KennzahlLauf kennzahlen,
+            KorrekturVorschlagLauf vorschlaege) {
         this.endgueltigkeit = endgueltigkeit;
         this.tage = tage;
         this.perioden = perioden;
         this.berechnete = berechnete;
+        this.kennzahlen = kennzahlen;
         this.vorschlaege = vorschlaege;
     }
 
@@ -91,6 +105,14 @@ public class EndgueltigkeitLaeufer {
             berechnete.lauf(jetzt);
         } catch (RuntimeException e) {
             log.warn("UEMS berechnete Periodenwerte übersprungen: {}", e.toString());
+        }
+        // Nach den berechneten Messstellen: die Kennzahlen lesen gemessene UND berechnete Periodenwerte (AP-11 IP-6).
+        if (kennzahlen != null) {
+            try {
+                kennzahlen.lauf(jetzt);
+            } catch (RuntimeException e) {
+                log.warn("UEMS Kennzahlen übersprungen: {}", e.toString());
+            }
         }
         // Zuletzt: was gerade endgültig wurde, kann eine Nachlieferung nur noch vorschlagen — nie anwenden.
         try {
