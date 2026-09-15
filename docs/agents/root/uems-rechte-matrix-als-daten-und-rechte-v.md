@@ -30,8 +30,8 @@ Matrix und Ableitung Vertrag:
 
 ## ⚠ Noch ruft niemand an
 
-IP-1 erzwingt NICHTS: keine Zuweisungstabelle (IP-2 backfillt jeden Kundenbenutzer als
-Kundenadministrator, E12), kein `ZugriffContext`/`/me` (IP-4), keine RLS-Policy `site_scope` (IP-5),
+IP-1 erzwingt NICHTS. Seit IP-2 gibt es die Zuweisungstabelle samt Bestandsübernahme (jeder Kundenbenutzer
+wird Kundenadministrator, E12 — `uems-zugriff-tabellen.md`), aber noch kein `ZugriffContext`/`/me` (IP-4), keine RLS-Policy `site_scope` (IP-5),
 kein `@Recht`-Interceptor (IP-6/IP-7), keine Fläche (IP-12 macht `rollen.ts` zur Rechte-Quelle
 und ruft `rechte.ts`). `TenantFilter`, `SecurityConfig`, `OcppActionPolicy` und Keycloak sind unberührt.
 **Einzige Ausnahme seit AP-08 IP-15:** die Korrektur-Routen setzen `darf` und die Familie `vieraugen`

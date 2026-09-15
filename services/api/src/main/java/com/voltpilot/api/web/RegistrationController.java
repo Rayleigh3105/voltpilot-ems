@@ -7,12 +7,14 @@ import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.web.dto.RegistrationRequest;
 import com.voltpilot.api.web.dto.RegistrationResponse;
 import com.voltpilot.api.web.dto.TenantDto;
+import com.voltpilot.api.zugriff.KundenbenutzerAngelegt;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -53,12 +55,14 @@ public class RegistrationController {
     private final TenantRepository tenants;
     private final KeycloakAdminClient keycloak;
     private final RegistrationRateLimiter rateLimiter;
+    private final ApplicationEventPublisher ereignisse;
 
     public RegistrationController(TenantRepository tenants, KeycloakAdminClient keycloak,
-            RegistrationRateLimiter rateLimiter) {
+            RegistrationRateLimiter rateLimiter, ApplicationEventPublisher ereignisse) {
         this.tenants = tenants;
         this.keycloak = keycloak;
         this.rateLimiter = rateLimiter;
+        this.ereignisse = ereignisse;
     }
 
     @PostMapping
@@ -107,6 +111,9 @@ public class RegistrationController {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Registration is temporarily unavailable, please try again later", ex);
         }
+        // AP-03 IP-2 (E12): the new login is the customer administrator of its tenant - isolated
+        // listener, a failure there never fails the registration.
+        ereignisse.publishEvent(new KundenbenutzerAngelegt(tenant.id(), user));
         log.info("Self-registered tenant '{}' ({}) with user '{}'", tenant.name(), tenant.id(),
                 user.username());
         return ResponseEntity.status(HttpStatus.CREATED)
