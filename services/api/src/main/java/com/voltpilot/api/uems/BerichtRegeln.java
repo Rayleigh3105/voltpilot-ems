@@ -463,15 +463,20 @@ public final class BerichtRegeln {
 
     /**
      * B1, Pfad 1 — die Berichte, die eine Verarbeitung der Kaskade trifft: Objekte = die Messstellen ihrer Reihen (über
-     * die Quellenbindung, die der Aufrufer liest) und {@link KorrekturKaskade.Betroffen#messstellen()}, Zeitraum =
-     * {@code ersterTag … letzterTag}. Je Bericht der gültige Stand ({@link BerichteNaht.Stand#FREIGEGEBEN}, nie ein ersetzter)
-     * vor dem Entwurf.
+     * die Quellenbindung, die der Aufrufer liest) und {@link KorrekturKaskade.Betroffen#messstellen()}, seit AP-11 IP-9 die
+     * Bezugsgrößen ({@link KorrekturKaskade.Betroffen#bezugsgroessen()}) und bei einer rückwirkend geänderten Berechnung
+     * die Kennzahl selbst ({@code anlass}); Zeitraum = {@code ersterTag … letzterTag}. Je Bericht der gültige Stand
+     * ({@link BerichteNaht.Stand#FREIGEGEBEN}, nie ein ersetzter) vor dem Entwurf.
      */
     public static List<BerichteNaht.Bericht> betroffene(List<Quelle> quellen, KorrekturKaskade.Betroffen betroffen,
             Function<KorrekturKaskade.Reihe, List<String>> bindung) {
         Set<String> objekte = new LinkedHashSet<>();
         betroffen.reihen().forEach(r -> objekte.addAll(bindung.apply(r)));
         objekte.addAll(betroffen.messstellen());
+        betroffen.bezugsgroessen().forEach(g -> objekte.add(g.kennzeichen()));
+        if (KorrekturKaskade.BERECHNUNG_GEAENDERT.equals(betroffen.status())) {
+            objekte.add(betroffen.anlass());
+        }
         return schnitt(quellen, objekte, betroffen.ersterTag(), betroffen.letzterTag());
     }
 
@@ -501,8 +506,18 @@ public final class BerichtRegeln {
         return raus;
     }
 
-    /** B4, Pfad 1 — die Anstoß-Art einer Verarbeitung der Kaskade (Korrektur K-…, Ersatzwert EW-…). */
+    /**
+     * B4, Pfad 1 — die Anstoß-Art einer Verarbeitung der Kaskade (Korrektur K-…, Ersatzwert EW-…); seit AP-11 IP-9 eine
+     * rückwirkend geänderte Berechnung ({@code kennzahl_fassung_rueckwirkend}) und jede geänderte Bezugsgröße — Fassung
+     * ≥ 2, Rücknahme oder rückwirkendes Stammdatum ({@code bezugsgroesse_fassung}).
+     */
     public static String anstossArt(KorrekturKaskade.Betroffen b) {
+        if (KorrekturKaskade.BERECHNUNG_GEAENDERT.equals(b.status())) {
+            return KENNZAHL_FASSUNG_RUECKWIRKEND;
+        }
+        if (!b.bezugsgroessen().isEmpty()) {
+            return BEZUGSGROESSE_FASSUNG;
+        }
         boolean korrektur = b.anlass().startsWith("K-");
         boolean ersatzwert = b.anlass().startsWith("EW-");
         if (korrektur && KorrekturKaskade.FREIGEGEBEN.equals(b.status())) {

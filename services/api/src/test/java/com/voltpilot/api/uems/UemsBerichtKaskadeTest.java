@@ -56,8 +56,8 @@ import org.testcontainers.utility.DockerImageName;
  * <p>⚠ Grenzen, benannt: der zweite betroffene Bericht in B3 ist im Vertrag der Unternehmensbericht BR-2026-0002 — seinen
  * Abzug bildet seit AP-12 IP-6 {@code BerichtAbzugUnternehmenTest}. Die Anfrage an das Quellenverzeichnis prüft der Vertrags-Lauf
  * ({@link #b3UndB7BetroffeneWieDerVertrag_ueberDasQuellenverzeichnisDerDatenbank}) mit ihm; der Kaskaden-Lauf nimmt als
- * zweiten Bericht den Jahresbericht Werk Ahrenberg 2026. Die Bezugsgrößen trägt Pfad 1 erst mit AP-11 IP-9
- * ({@link #dieBezugsgroessenTraegtPfadEinsErstMitAp11Ip9_bisDahinPfadZwei}).
+ * zweiten Bericht den Jahresbericht Werk Ahrenberg 2026. Die Bezugsgrößen trägt Pfad 1 seit AP-11 IP-9
+ * ({@link #dieBezugsgroesseTraegtPfadEinsSeitAp11Ip9_undStoesstNieDoppeltAn}).
  */
 @Testcontainers(disabledWithoutDocker = true)
 class UemsBerichtKaskadeTest {
@@ -400,31 +400,51 @@ class UemsBerichtKaskadeTest {
     }
 
     /**
-     * Die Grenze von Pfad 1: {@code Betroffen} trägt noch keine Bezugsgrößen (AP-11 IP-9). Ein Bericht, der BZ-6 zitiert,
-     * ist über Pfad 1 nur betroffen, wenn auch eine Messstelle trifft — eine Bezugsgrößen-Berichtigung erreicht ihn bis
-     * dahin über den Strukturänderungs-Läufer (AP-12 IP-9). Kommt das Feld, wird dieser Test rot und die Bezugsgröße gehört
-     * in {@link BerichtKaskade#betroffene}.
+     * Pfad 1 trägt seit AP-11 IP-9 die Bezugsgröße ({@code Betroffen.bezugsgroessen}, bericht.md B1/B4): ein Bericht, der
+     * BZ-6 zitiert, ist über die Kaskade betroffen, auch wenn keine Messstelle trifft — Anstoß
+     * {@code bezugsgroesse_fassung}; eine Berichtigung außerhalb seines Zeitraums trifft ihn nicht. Und er wird nicht
+     * doppelt angestoßen: derselbe Anlass zweimal ist EINE Zeile und EINE Meldung ({@code bericht_revision_anstoss_einmal},
+     * B7); die Messreihen-Korrektur K-2026-0007 an demselben Stand ist ein eigener Anlass und eine eigene Zeile.
      */
     @Test
-    void dieBezugsgroessenTraegtPfadEinsErstMitAp11Ip9_bisDahinPfadZwei() throws Exception {
+    void dieBezugsgroesseTraegtPfadEinsSeitAp11Ip9_undStoesstNieDoppeltAn() throws Exception {
         assertThat(Arrays.stream(KorrekturKaskade.Betroffen.class.getRecordComponents()).map(RecordComponent::getName))
-                .as("AP-11 IP-9 bringt Betroffen.bezugsgroessen[] — dann trägt Pfad 1 die Bezugsgröße (bericht.md B1)")
-                .doesNotContain("bezugsgroessen");
+                .as("AP-11 IP-9 bringt Betroffen.bezugsgroessen[]").contains("bezugsgroessen");
         Welt w = welt();
         anlegen(w, "BR-2026-0001", MONATSBERICHT, "monat", "2026-10", w.st1());
+        UUID bz6 = UUID.nameUUIDFromBytes((w.mandant() + ":BZ-6").getBytes(StandardCharsets.UTF_8));
         root.update("INSERT INTO bericht_quelle (tenant_id, bericht_id, stand_nr, art, kennzeichen, objekt_id, bezug, "
                 + "erster_tag, letzter_tag, fassung, name_zum_datenstand) VALUES (?, ?, NULL, 'bezugsgroesse', 'BZ-6', ?, "
                 + "'unmittelbar', ?, ?, 1, 'Gutteile Montage Halle 2')", w.mandant(), w.berichte().get("BR-2026-0001"),
-                UUID.nameUUIDFromBytes((w.mandant() + ":BZ-6").getBytes(StandardCharsets.UTF_8)), OKT_1, OKT_31);
-        KorrekturKaskade.Betroffen nurBz = new KorrekturKaskade.Betroffen(w.mandant(), "BK-2026-0001", 2,
-                KorrekturKaskade.FREIGEGEBEN, List.of(), OKT_1.atStartOfDay(ZONE).toInstant(),
-                OKT_1.plusMonths(1).atStartOfDay(ZONE).toInstant(), ZONE, OKT_1, OKT_31, List.of("BZ-6"), List.of(), 0,
-                T_KASKADE);
-        KorrekturKaskade.Betroffen mitMessstelle = k7(w, 2, KorrekturKaskade.FREIGEGEBEN, T_KASKADE);
+                bz6, OKT_1, OKT_31);
+        freigeben(w, "BR-2026-0001", 1, DATENSTAND_NR1, FREIGABE_NR1);
+        KorrekturKaskade.Betroffen nurBz = bezugsgroesse(w, bz6, OKT_1, OKT_31);
+        LocalDate nov1 = OKT_1.plusMonths(1);
+        KorrekturKaskade.Betroffen november = bezugsgroesse(w, bz6, nov1, nov1.plusMonths(1).minusDays(1));
         try (Connection con = admin.getConnection()) {
-            assertThat(naht.betroffene(con, nurBz)).as("BZ-6 allein erreicht Pfad 1 nicht").isEmpty();
-            assertThat(naht.betroffene(con, mitMessstelle)).as("die Messstelle schon").isNotEmpty();
+            assertThat(naht.betroffene(con, nurBz)).as("BZ-6 allein erreicht Pfad 1").containsExactly(
+                    new BerichteNaht.Bericht("BR-2026-0001", BerichteNaht.Stand.FREIGEGEBEN),
+                    new BerichteNaht.Bericht("BR-2026-0001", BerichteNaht.Stand.ENTWURF));
+            assertThat(naht.betroffene(con, november)).as("außerhalb des Zeitraums nicht").isEmpty();
         }
+        assertThat(BerichtRegeln.anstossArt(nurBz)).isEqualTo(BerichtRegeln.BEZUGSGROESSE_FASSUNG);
+
+        BerichteNaht.Bericht nr1 = new BerichteNaht.Bericht("BR-2026-0001", BerichteNaht.Stand.FREIGEGEBEN);
+        inDerKaskade(con -> naht.revisionAusloesen(con, nr1, nurBz));
+        inDerKaskade(con -> naht.revisionAusloesen(con, nr1, nurBz));
+        assertThat(anstoesse(w)).as("derselbe Anlass zweimal: eine Zeile")
+                .containsExactly("BR-2026-0001 Nr. 1 | bezugsgroesse_fassung | BK-2026-0001 Fassung 2 freigegeben | offen");
+        assertThat(meldungen(w, BerichtKaskade.ANGESTOSSEN)).as("und eine Meldung").hasSize(1);
+        inDerKaskade(con -> naht.revisionAusloesen(con, nr1, k7(w, 2, KorrekturKaskade.FREIGEGEBEN, T_KASKADE)));
+        assertThat(anstoesse(w)).as("ein anderer Anlass ist ein eigener Anstoß").hasSize(2);
+    }
+
+    /** Die Berichtigung BK-2026-0001 von BZ-6 (Fassung 2) für die Tage {@code von … bis}, wie die Kaskade sie baut. */
+    private static KorrekturKaskade.Betroffen bezugsgroesse(Welt w, UUID bz, LocalDate von, LocalDate bis) {
+        return new KorrekturKaskade.Betroffen(w.mandant(), "BK-2026-0001", 2, KorrekturKaskade.FREIGEGEBEN, List.of(),
+                von.atStartOfDay(ZONE).toInstant(), bis.plusDays(1).atStartOfDay(ZONE).toInstant(), ZONE, von, bis,
+                List.of(), List.of(), 0, T_KASKADE, List.of(new KorrekturKaskade.Bezugsgroesse(bz, "BZ-6", von, bis, 2,
+                        KorrekturKaskade.FREIGEGEBEN)));
     }
 
     // ================================================================ Hilfen: Vertrag

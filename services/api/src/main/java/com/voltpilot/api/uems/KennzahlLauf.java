@@ -96,6 +96,8 @@ public class KennzahlLauf {
 
     /** Der Anlass einer Korrektur an einem Eingang — {@code kennzahl_wert.anlass_art} {@code eingang}. */
     private static final KennzahlRegeln.Anlass EINGANG = new KennzahlRegeln.Anlass("eingang", null);
+    /** Der Anlass einer rückwirkend geänderten Berechnung (IP-9) — {@code kennzahl_wert.anlass_art} {@code definition}. */
+    private static final String DEFINITION = "definition";
 
     private static final Pattern AB = Pattern.compile("^ab (\\d{2}\\.\\d{2}\\.\\d{4})$");
     private static final DateTimeFormatter TAG_TEXT = DateTimeFormatter.ofPattern("dd.MM.uuuu");
@@ -128,10 +130,24 @@ public class KennzahlLauf {
             List<Abgelehnt> abgelehnt) {}
 
     /**
-     * Der Rahmen der Kaskade: ihre Transaktion, ihr Anlass, ihre Tage — {@code null} im Regellauf. Gelesen und geschrieben
-     * wird dann über {@code con}, ein endgültiger Wert wird Version n + 1, und jeder Fehler wirft.
+     * Wovon eine Neubildung der Kaskade ausgeht: die Messstellen (Reihen-Pfad, IP-8), die Bezugsgrößen (Nenner-Auslöser,
+     * IP-9, W1) und das Kennzeichen der Kennzahl, deren Berechnung rückwirkend in Fassung {@code fassung} gilt
+     * (Definitions-Auslöser, IP-9; sonst {@code null}).
      */
-    private record Kaskade(Connection con, String anlass, LocalDate ersterTag, LocalDate letzterTag, List<Neu> neu) {}
+    public record Ausloeser(Set<UUID> messstellen, Set<UUID> bezugsgroessen, String definition, int fassung) {
+
+        static Ausloeser nurMessstellen(Set<UUID> messstellen) {
+            return new Ausloeser(messstellen, Set.of(), null, 0);
+        }
+    }
+
+    /**
+     * Der Rahmen der Kaskade: ihre Transaktion, ihr Anlass, ihre Tage — {@code null} im Regellauf. Gelesen und geschrieben
+     * wird dann über {@code con}, ein endgültiger Wert wird Version n + 1, und jeder Fehler wirft. {@code definition} ist
+     * die Kennzahl, deren Berechnung rückwirkend in Fassung {@code fassung} gilt (IP-9), sonst {@code null}.
+     */
+    private record Kaskade(Connection con, String anlass, LocalDate ersterTag, LocalDate letzterTag, List<Neu> neu,
+            UUID definition, int fassung) {}
 
     private record Kontext(UUID tenant, Katalog kat, Instant jetzt, Zaehler z, KennzahlEingangLeser leser,
             KennzahlRepository repo, Kaskade kaskade) {}
@@ -253,13 +269,25 @@ public class KennzahlLauf {
      */
     public Neubildung nachKorrektur(Connection con, KorrekturKaskade.Betroffen betroffen, Set<UUID> messstellen,
             String beleg) throws SQLException {
+        return nachKorrektur(con, betroffen, Ausloeser.nurMessstellen(messstellen), beleg);
+    }
+
+    /**
+     * Dieselbe Neubildung für jeden Auslöser (AP-11 IP-9, E8 = A, W1): wer von einer geänderten Bezugsgröße lebt oder
+     * wessen Berechnung rückwirkend geändert wurde, wird genau so neu gebildet wie nach einer Messreihen-Korrektur — jede
+     * Periode, die {@code ersterTag…letzterTag} berührt, keine davor. Der endgültige Wert der Kennzahl mit der geänderten
+     * Berechnung wird Version n + 1 „Berechnung geändert (Fassung n)“ (Anlass {@code definition}), jeder andere
+     * „korrigiert (Version n + 1)“ (Anlass {@code eingang}).
+     */
+    public Neubildung nachKorrektur(Connection con, KorrekturKaskade.Betroffen betroffen, Ausloeser ausloeser,
+            String beleg) throws SQLException {
         Instant jetzt = Objects.requireNonNull(betroffen.jetzt(), "die Kaskade nennt den Zeitpunkt ihres Laufs");
         UUID vorher = TenantContext.get();
         TenantContext.set(betroffen.tenant());
         try {
             Katalog kat = kennzahlen.katalog();
             Map<String, List<String>> kanten = kanten(kat);
-            Set<String> betroffene = betroffene(kat, kanten, messstellen);
+            Set<String> betroffene = betroffene(kat, kanten, ausloeser);
             if (betroffene.isEmpty()) {
                 return new Neubildung(0, 0, 0, List.of(), List.of());
             }
@@ -267,9 +295,12 @@ public class KennzahlLauf {
             KennzahlRepository gespeichert = new KennzahlRepository(transaktion);
             List<Neu> neu = new ArrayList<>();
             Zaehler z = new Zaehler();
+            UUID definition = ausloeser.definition() == null ? null
+                    : kat.nachKennzeichen(ausloeser.definition()).map(Zeile::id).orElse(null);
             Kontext kx = new Kontext(betroffen.tenant(), kat, jetzt, z,
                     leser.mit(gespeichert, new WertVersionenLeser(transaktion)), gespeichert,
-                    new Kaskade(con, beleg, betroffen.ersterTag(), betroffen.letzterTag(), neu));
+                    new Kaskade(con, beleg, betroffen.ersterTag(), betroffen.letzterTag(), neu, definition,
+                            ausloeser.fassung()));
             BerechnetePeriode.Reihenfolge r = BerechnetePeriode.reihenfolge(kanten);
             for (BerechnetePeriode.Abgelehnt a : r.abgelehnt()) {
                 if (betroffene.contains(a.messstelle())) {
@@ -304,11 +335,24 @@ public class KennzahlLauf {
      * und rekursiv jede, die eine solche Kennzahl liest (über die Kanten der Ordnung).
      */
     static Set<String> betroffene(Katalog kat, Map<String, List<String>> kanten, Set<UUID> messstellen) {
+        return betroffene(kat, kanten, Ausloeser.nurMessstellen(messstellen));
+    }
+
+    /**
+     * Wer von den Auslösern lebt: jede nicht archivierte Kennzahl mit einer der Messstellen oder Bezugsgrößen als Eingang
+     * einer wirksamen Fassung, die Kennzahl der geänderten Berechnung selbst, und rekursiv jede, die eine solche Kennzahl
+     * liest (über die Kanten der Ordnung).
+     */
+    static Set<String> betroffene(Katalog kat, Map<String, List<String>> kanten, Ausloeser ausloeser) {
         Set<String> aus = new LinkedHashSet<>();
         for (Zeile k : kat.kennzahlen()) {
-            if (k.archiviertAm() == null && kat.fassungen(k.id()).stream().filter(FassungZeile::wirksam)
-                    .flatMap(f -> kat.eingaenge(f.id()).stream())
-                    .anyMatch(e -> KennzahlRegeln.MESSSTELLE.equals(e.art()) && messstellen.contains(e.objektId()))) {
+            if (k.archiviertAm() == null && (k.kennzeichen().equals(ausloeser.definition())
+                    || kat.fassungen(k.id()).stream().filter(FassungZeile::wirksam)
+                            .flatMap(f -> kat.eingaenge(f.id()).stream())
+                            .anyMatch(e -> KennzahlRegeln.MESSSTELLE.equals(e.art())
+                                    && ausloeser.messstellen().contains(e.objektId())
+                                    || KennzahlRegeln.BEZUGSGROESSE.equals(e.art())
+                                    && ausloeser.bezugsgroessen().contains(e.objektId())))) {
                 aus.add(k.kennzeichen());
             }
         }
@@ -716,7 +760,8 @@ public class KennzahlLauf {
             Bildung b, String zustand, Instant am, Instant endgueltigAb, boolean neueVersion) throws SQLException {
         KennzahlRegeln.Ergebnis e = b.ergebnis();
         sperren(con, r.kx().tenant(), r.k().id());
-        String anlassArt = neueVersion ? EINGANG.art() : null;
+        String anlassArt = !neueVersion ? null
+                : r.k().id().equals(r.kx().kaskade().definition()) ? DEFINITION : EINGANG.art();
         String anlassKennung = neueVersion ? r.kx().kaskade().anlass() : null;
         // Unter der Sperre: hat ein anderer Lauf die Periode inzwischen geschrieben oder endgültig gemacht?
         try (PreparedStatement ps = con.prepareStatement("SELECT zustand, berechnet_am, version, anlass_art, anlass_kennung "
@@ -847,9 +892,17 @@ public class KennzahlLauf {
                 .laeuft();
     }
 
-    /** Nur die Kaskade hat einen Anlass — für einen endgültigen Wert, der Version n + 1 wird (Q7). */
+    /**
+     * Nur die Kaskade hat einen Anlass — für einen endgültigen Wert, der Version n + 1 wird (Q7): {@code definition} mit
+     * der neuen Fassung für die Kennzahl der rückwirkend geänderten Berechnung (IP-9), sonst {@code eingang}.
+     */
     private static KennzahlRegeln.Anlass anlass(Rahmen r, Gespeichert bisher) {
-        return r.kx().kaskade() != null && bisher != null && bisher.endgueltig() ? EINGANG : null;
+        Kaskade kaskade = r.kx().kaskade();
+        if (kaskade == null || bisher == null || !bisher.endgueltig()) {
+            return null;
+        }
+        return r.k().id().equals(kaskade.definition()) ? new KennzahlRegeln.Anlass(DEFINITION, kaskade.fassung())
+                : EINGANG;
     }
 
     private static KennzahlRegeln.Bisher bisher(Gespeichert g) {

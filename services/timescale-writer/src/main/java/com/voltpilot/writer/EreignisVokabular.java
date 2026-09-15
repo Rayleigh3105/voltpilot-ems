@@ -356,6 +356,13 @@ public final class EreignisVokabular {
     private static final Pattern KORREKTUR_KENNUNG = Pattern.compile("^K-[0-9]{4}-[0-9]{4,}$");
     /** AP-10 IP-11 — der Auslöser einer Neuberechnung ist eine Korrektur oder ein Ersatzwert. */
     private static final Pattern AUSLOESER_KENNUNG = Pattern.compile("^(K|EW)-[0-9]{4}-[0-9]{4,}$");
+    /**
+     * AP-11 IP-9 — der Auslöser einer Kennzahl-Neubildung: eine Korrektur, ein Ersatzwert, die Berichtigung eines
+     * Bezugsgrößen-Werts ({@code BK-…}), eine rückwirkende Fassung der Berechnung ({@code KZ-0004/Fassung-2}) oder ein
+     * rückwirkendes Stammdatum ({@code BZ-8/ab-2027-01-01}). Ein bloßes Kennzeichen ({@code MS-12}) ist keine Ursache.
+     */
+    private static final Pattern KENNZAHL_AUSLOESER = Pattern.compile("^(?:(?:K|EW|BK)-[0-9]{4}-[0-9]{4,}"
+            + "|[A-Z0-9./-]{2,16}/Fassung-[0-9]+|[A-Z0-9./-]{2,16}/ab-[0-9]{4}-[0-9]{2}-[0-9]{2})$");
     /** AP-12 IP-4 — die Kennung eines Berichts (bericht.md §1) und die Prüfsumme eines Abzugs (A6). */
     private static final Pattern BERICHT_KENNUNG = Pattern.compile("^BR-[0-9]{4}-[0-9]{4,}$");
     private static final Pattern PRUEFSUMME = Pattern.compile("^sha256:[0-9a-f]{64}$");
@@ -1183,8 +1190,8 @@ public final class EreignisVokabular {
                 }
             }
             case KENNZAHL_NEU_GEBILDET -> {
-                if (!AUSLOESER_KENNUNG.matcher(e.get("ausloeser").asText()).matches()) {
-                    throw nein(Grund.REGEL_VERLETZT, "kein Auslöser (Korrektur oder Ersatzwert)");
+                if (!KENNZAHL_AUSLOESER.matcher(e.get("ausloeser").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "kein Auslöser (Korrektur, Ersatzwert, Berichtigung oder Kennzeichen)");
                 }
                 // AP-11 IP-8: Version 1 bildet der Regellauf ohne Meldung — neu gebildet ist erst Version n + 1.
                 if (e.get("version").asLong() < 2) {
