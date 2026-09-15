@@ -1942,6 +1942,15 @@ export interface Messstelle {
   lebenszyklus: string;
   fehlt: string[];
   notiz: string | null;
+  // Additiv (AP-04 IP-6): die volle Form der Detail-Route, snake_case — der Messstellen-Dialog
+  // „bearbeiten“ liest daraus Hauptgröße, Zuordnungen und ob schon eine Quelle führt.
+  hauptgroesse?: MessstelleGroesse | null;
+  nebengroessen?: (MessstelleGroesse & { lebenszyklus: string; fuehrende_quelle?: MessstelleQuelleZeitraum[] })[];
+  orte?: MessstelleOrtZuordnung[];
+  elektrische_stellung?: MessstelleStellungZuordnung[];
+  fuehrende_quelle?: MessstelleQuelleZeitraum[];
+  /** PUT ersetzt die Felder GANZ — wer umbenennt, schickt die Anschlussleistung mit. */
+  anschlussleistung_kw?: number | null;
 }
 
 /**
@@ -3856,6 +3865,42 @@ export interface MessstelleStellungAendern {
   gueltig_ab: string;
   korrektur?: boolean | null;
   grund?: string | null;
+}
+
+// ---- Messstellen-Dialog (UEMS AP-04 IP-6): anlegen und Quelle binden --------
+
+/** Eine führende Quelle der Messstelle (IP-13), soweit der Dialog sie liest; Zeitpunkte mit Versatz. */
+export interface MessstelleQuelleZeitraum {
+  komponente: string;
+  kanal: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/**
+ * POST /api/v1/messstellen (IP-3) — `kennzeichen` fehlt = automatisch (der Zähler rückt nur dann
+ * vor); Art, Medium und Hauptgröße sind danach nie mehr änderbar.
+ */
+export interface MessstelleAnlegen {
+  kennzeichen?: string;
+  name: string;
+  art: 'gemessen';
+  medium: string;
+  hauptgroesse: MessstelleGroesse;
+  nebengroessen: MessstelleGroesse[];
+  notiz?: string;
+}
+
+/**
+ * POST /api/v1/messstellen/{id}/quellen (IP-13) — ohne `groesse` die Hauptgröße, sonst Größe +
+ * Richtung einer Nebengröße; `gueltig_ab` auf die Minute mit Versatz.
+ */
+export interface MessstelleQuelleBinden {
+  groesse?: { groesse: string; richtung: string };
+  komponente: string;
+  kanal: string;
+  rolle: 'fuehrend';
+  gueltig_ab: string;
 }
 
 /**
@@ -6962,9 +7007,13 @@ export const api = {
   /**
    * Bearbeitet die drei änderbaren Felder einer Messstelle (Kennzeichen · Name ·
    * Notiz) — der Server ersetzt sie GANZ, ein fehlendes Feld wird leer. Zum
-   * Umbenennen also das bestehende Kennzeichen mitschicken.
+   * Umbenennen also das bestehende Kennzeichen mitschicken — und seit AP-08 IP-7 die
+   * Anschlussleistung, sonst wird auch sie leer.
    */
-  messstelleBearbeiten: (id: string, body: { kennzeichen?: string; name: string; notiz?: string }) =>
+  messstelleBearbeiten: (
+    id: string,
+    body: { kennzeichen?: string; name: string; notiz?: string; anschlussleistung_kw?: number | null },
+  ) =>
     request<Messstelle>(`/api/v1/messstellen/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body),
@@ -6981,6 +7030,24 @@ export const api = {
   /** Archiviert eine Messstelle (statt hartem Löschen; das Kennzeichen bleibt belegt). */
   messstelleArchivieren: (id: string) =>
     request<Messstelle>(`/api/v1/messstellen/${id}/archivieren`, { method: 'POST' }),
+
+  // ---- Messstellen-Dialog (UEMS AP-04 IP-6): jeder Schritt schreibt über seine Route
+  /** Legt eine gemessene Messstelle an; eine Ablehnung trägt Code und Fakten in `ApiError.body`. */
+  messstelleAnlegen: (body: MessstelleAnlegen) =>
+    request<Messstelle>(`/api/v1/messstellen`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Der Ort ab einem Tag (IP-7) — Antwort: die Messstelle mit ihren Orten. */
+  messstelleOrtAendern: (id: string, body: MessstelleOrtAendern) =>
+    request<Messstelle>(`/api/v1/messstellen/${id}/ort`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Die elektrische Stellung ab einem Tag (IP-7) — 409 `hauptzaehler_vorhanden` nennt `bestehend`. */
+  messstelleStellungAendern: (id: string, body: MessstelleStellungAendern) =>
+    request<Messstelle>(`/api/v1/messstellen/${id}/stellung`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Bindet eine führende Quelle (IP-13) — nie überschreibend. */
+  messstelleQuelleBinden: (id: string, body: MessstelleQuelleBinden) =>
+    request<unknown>(`/api/v1/messstellen/${id}/quellen`, { method: 'POST', body: JSON.stringify(body) }),
+
   // ---- Ortsstruktur: Unternehmen und Standorte (UEMS AP-02 IP-3/IP-4; Fläche dazu IP-6)
   /** Das Unternehmen des Kundenbereichs — die Zeitzonen-Vorgabe eines neuen Standorts. */
   unternehmen: () => request<Unternehmen>('/api/v1/unternehmen'),

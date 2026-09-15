@@ -46,8 +46,10 @@ jeder Filter geht als Parameter an DIESELBE Route. Bericht: `data/vp-uems-ap04-m
 7. **Filter-Optionen kommen aus der UNGEFILTERTEN Antwort desselben Tags** (je Tag gemerkt, nicht neu gefragt): Ort nur
    Gebäude/Bereiche, an denen Messstellen stehen (den Teilbaum filtert der Server), Zustände nur vorkommende, eine
    Liste mit nur einer Wahl erscheint nicht. Jede Antwort gilt nur für ihren Tag und ihre Filter (Anfrage-Nummer).
-8. **Kein Knopf ohne Ziel.** „Messstelle anlegen“ (IP-6) und „Vorschläge aus Komponenten (n)“ (AP-01 IP-9b) aus §5.11
-   fehlen, bis es ihre Dialoge gibt. Ohne „Messen & Auswerten“ nennt die Fläche den Satz und „Zur Übersicht“ (dort
+8. **Kein Knopf ohne Ziel.** „Vorschläge aus Komponenten (n)“ (AP-01 IP-9b) aus §5.11 fehlt, bis es die
+   Vorschlagsliste gibt. „Messstelle anlegen“ öffnet seit AP-04 IP-6 den `MessstelleDialog` — im Kopf, im Leerzustand
+   „noch keine Messstelle“ am Satz; nie mit Stichtag, nie ohne „Messen & Auswerten“; hat ein Schritt gespeichert, liest
+   die Fläche nach dem Schließen neu (Merker des Tags verworfen). Ohne „Messen & Auswerten“ nennt die Fläche den Satz und „Zur Übersicht“ (dort
    steht die Karte „Funktionen“). Kein Wort über Steuern, kein Geld-Baustein.
 9. **„Datenpunkt“ ist NICHT bewacht** — `components/DeviceDrawers.tsx` spricht es im Bestand; die Regel hätte ein
    Bestands-Portalwort geändert.

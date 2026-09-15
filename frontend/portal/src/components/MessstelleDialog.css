@@ -1,0 +1,149 @@
+/*
+ * Der Messstellen-Dialog (UEMS AP-04 IP-6, Mockups D1–D3). Der Rahmen ist das zentrierte
+ * `Modal` (am Telefon Vollbild); hier wohnen nur die drei Schritt-Stapel.
+ * ⚠ 375 px: jedes Flex-/Grid-Kind darf schrumpfen (`min-width: 0`), die drei Felder einer
+ * Größe stehen erst nebeneinander, wenn jedes mindestens 10 rem breit sein kann.
+ */
+
+.vp-msd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-msd > *,
+.vp-msd-stapel > * {
+  min-width: 0;
+}
+
+.vp-msd-stapel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-msd-vorspann,
+.vp-msd-grund {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-msd-kz {
+  white-space: nowrap;
+}
+
+.vp-msd-groesse {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-msd-groesse > * {
+  min-width: 0;
+}
+
+.vp-msd-fest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1);
+  min-width: 0;
+}
+
+.vp-msd-fest-label {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-fg);
+}
+
+.vp-msd-fest-wert {
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-msd-neben {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  min-width: 0;
+}
+
+.vp-msd-neben-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-msd-neben-titel {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-msd-fehler {
+  margin: 0;
+  color: var(--vp-industry-end);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-msd-links {
+  align-self: flex-start;
+}
+
+.vp-msd-zeit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-msd-zeit > * {
+  min-width: 0;
+}
+
+.vp-msd-folgen {
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-msd-folgen-titel {
+  display: block;
+  margin-bottom: var(--vp-c-space-1);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-msd-fertig {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  font-size: var(--vp-c-fs-16, 1rem);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+/* Fuß: die Knöpfe stehen direkt in `.dfoot` — am Telefon stapelt das Modal sie in voller Breite,
+   ab Tablet-Breite steht „Zurück“/„Abbrechen“ links. */
+@media (min-width: 721px) {
+  .vp-modal .dfoot .vp-msd-zurueck {
+    margin-right: auto;
+  }
+}

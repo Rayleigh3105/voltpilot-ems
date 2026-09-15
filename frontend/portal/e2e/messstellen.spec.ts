@@ -129,6 +129,39 @@ test.describe('Messstellen-Register', () => {
     }
   });
 
+  test('„Messstelle anlegen“ (AP-04 IP-6) in Standort › Messstellen bei 1440 und 375 px: Knopf im Kopf öffnet den Dialog, 0 px Überlauf', async ({ page }) => {
+    for (const breite of [1440, 375]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen', breite);
+      await warteAufRegister(page);
+      const knopf = page.locator('.vp-ms-kopf').getByRole('button', { name: 'Messstelle anlegen' });
+      await expect(knopf).toBeVisible();
+      const m = await messe(page);
+      ohneQuerlauf(m, `anlegen-knopf-${breite}`);
+      await ablegen(page, `anlegen-knopf-${breite}`, m);
+
+      await knopf.click();
+      const dialog = page.getByRole('dialog', { name: 'Messstelle anlegen' });
+      await expect(dialog).toBeVisible();
+      await expect(page.getByLabel('Kennzeichen', { exact: true })).toHaveValue('MS-0023');
+      await expect(page.locator('.vp-modal').last()).toHaveCSS('opacity', '1');
+      await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+      const d = await page.evaluate(() => {
+        const koerper = document.querySelector<HTMLElement>('.vp-modal .dbody');
+        return {
+          dokument: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          dialog: koerper ? koerper.scrollWidth - koerper.clientWidth : null,
+        };
+      });
+      expect(d.dokument, `anlegen-dialog-${breite}: Dokument`).toBe(0);
+      expect(d.dialog, `anlegen-dialog-${breite}: Dialog`).toBe(0);
+      await ablegen(page, `anlegen-dialog-${breite}`, d);
+
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await warteAufRegister(page);
+    }
+  });
+
   test('„Stand am 10.10.2026“ bei 1440 und 375 px: die Messstellen in Lindach sind benannt, nicht weggelassen', async ({ page }) => {
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=messstellen', breite);

@@ -54,6 +54,7 @@ import { AnlagenPage } from '../src/pages/AnlagenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
+import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
 import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
 import { AppShell } from '../src/shell/AppShell';
 import { anlageSurface } from '../src/surface';
@@ -223,6 +224,10 @@ Object.assign(api, {
   tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
   // AP-04 IP-5: das Messstellen-Register des Referenzunternehmens (heute = 20.10.2026, mit Stichtag und Filtern).
   messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => ahrenbergRegister(a),
+  // AP-04 IP-6: was der Messstellen-Dialog beim Öffnen liest (Vorschlag, Standorte, Ortsbäume).
+  kennzeichenVorschlag: async () => ({ kennzeichen: 'MS-0023' }),
+  standorte: async () => structuredClone(szene.liste),
+  standortOrte: async (id: string) => (id === werkLindach().id ? ortsbaumLindach() : ortsbaumAhrenberg()),
   // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
   funktionen: async () => funktionenDerSzene(),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was
