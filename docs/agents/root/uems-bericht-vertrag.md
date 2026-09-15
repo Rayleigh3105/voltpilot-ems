@@ -37,7 +37,8 @@ IP-4, Abzug IP-5/IP-6, Routen IP-7, Naht IP-8, Läufer IP-9, CSV/PDF IP-10/IP-11
 - **Referenzdatei 1.4 hat einen Diff-Test** gegen den Fingerabdruck von 1.3 (`e65be4ed…`); der 1.3-Test nimmt zuerst die
   1.4-Zusätze heraus. Wer 1.5 anlegt, macht es genauso. `KennzahlVectorsTest` und `uemsKennzahl.test.ts` prüfen seitdem
   „Fassung ≥ `referenz_stand`“, nicht Gleichheit.
-- **Reservierung, keine Anlage:** die vier `bericht_*`-Ereignisse legt IP-4 in `vokabular.arten` an. `KennzahlVectorsTest`
-  überspringt sie, `BerichtVectorsTest` prüft sie.
+- **Reservierung, dann Anlage:** die vier `bericht_*`-Ereignisse stehen seit IP-4 (`V20260915050100`) in `vokabular.arten`;
+  die Reservierung bleibt als Herkunft. `KennzahlVectorsTest` überspringt sie, `BerichtVectorsTest` prüft gleiche Urheber
+  (Tabellen und Ereignisse: `uems-bericht-tabellen.md`).
 - **Keine TS-Frist-Klasse:** `FREIGABE_FRIST_TAGE` im TS-Zwilling ist gegen `regeln.freigabe_frist_tage` geprüft, die Java
   gegen `TagRegeln.FRIST` prüft. Der Quelltext-Wächter verbietet feste Zeitzonen und eigene Sieben-Tage-Rechnungen.

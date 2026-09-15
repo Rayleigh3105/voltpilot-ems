@@ -86,6 +86,9 @@ class EreignisVokabularZwillingTest {
         assertThat(texte(w.path("ersatzwert_status"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_STATUS);
         assertThat(texte(w.path("korrektur_art"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
         assertThat(texte(w.path("korrektur_status"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
+        // AP-12 IP-4 (additiv): die Wörter der Berichts-Ereignisse.
+        assertThat(texte(w.path("anstoss_art"))).containsExactlyElementsOf(EreignisVokabular.ANSTOSS_ART);
+        assertThat(texte(w.path("bericht_format"))).containsExactlyElementsOf(EreignisVokabular.BERICHT_FORMAT);
         w.path("korrektur_art").forEach(a -> assertThat(a.path("ersatzwert").asBoolean()).as(a.path("code").asText())
                 .isEqualTo(EreignisVokabular.KORREKTUR_ART_ERSATZWERT.equals(a.path("code").asText())));
         assertThat(w.path("korrektur_status").get(0).path("folgt_auf").isEmpty()).as("vorschlag ist der Anfang").isTrue();

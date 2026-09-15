@@ -51,6 +51,10 @@ export const EREIGNIS_ARTEN = [
   'correction',
   'verteilung_geaendert',
   'bilanz_neu_berechnet',
+  'bericht_freigegeben',
+  'bericht_revision_angestossen',
+  'bericht_entwurf_neu_gebildet',
+  'bericht_abgerufen',
 ] as const;
 export type EreignisArt = (typeof EREIGNIS_ARTEN)[number];
 
@@ -159,6 +163,14 @@ export const FELDTYP: Record<string, Feldtyp> = {
   fassung_neu: 'ganz_ab_1',
   import: 'kennung',
   ausloeser: 'kennung',
+  bericht: 'kennung',
+  nr: 'ganz_ab_1',
+  datenstand: 'zeit',
+  pruefsumme: 'kennung',
+  anstoss_art: 'wort',
+  anlass_kennung: 'kennung',
+  anlass_fassung: 'ganz_ab_1',
+  format: 'wort',
 };
 
 export interface ArtText {
@@ -406,6 +418,34 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
     saetze: { standard: 'Bilanz neu berechnet für {von} bis {bis} nach {ausloeser}' },
     zusaetze: {},
   },
+  bericht_freigegeben: {
+    name: 'Bericht freigegeben',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Berichtsstand Nr. {nr} von {bericht} freigegeben (Datenstand {datenstand})' },
+    zusaetze: {},
+  },
+  bericht_revision_angestossen: {
+    name: 'Revision angestoßen',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Revision nötig für Berichtsstand Nr. {nr} von {bericht}: {anstoss_art} ({anlass_kennung})' },
+    zusaetze: {},
+  },
+  bericht_entwurf_neu_gebildet: {
+    name: 'Entwurf neu gebildet',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Entwurf von {bericht} neu gebildet (Datenstand {datenstand})' },
+    zusaetze: { anlass_kennung: ' nach {anlass_kennung}' },
+  },
+  bericht_abgerufen: {
+    name: 'Bericht abgerufen',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Berichtsstand Nr. {nr} von {bericht} als {format} abgerufen' },
+    zusaetze: {},
+  },
 };
 
 /**
@@ -428,6 +468,28 @@ export const KORREKTUR_ART_TEXT: Record<string, string> = {
   umklassifizierung: 'Rücksetzung und Überlauf umklassifiziert',
   ersatzwert: 'Ersatzwert',
   wert_berichtigt: 'Wert berichtigt (mit Beleg)',
+};
+
+/**
+ * AP-12 IP-4 — was einen Anstoß an einen Berichtsstand auslöst, und die abgerufenen Ausgaben, in Kundensprache; der
+ * Satz spricht nie das Vertragswort.
+ */
+export const ANSTOSS_ART_TEXT: Record<string, string> = {
+  korrektur_freigegeben: 'Korrektur freigegeben',
+  korrektur_zurueckgenommen: 'Korrektur zurückgenommen',
+  ersatzwert_wirksam: 'Ersatzwert wirksam',
+  ersatzwert_zurueckgenommen: 'Ersatzwert zurückgenommen',
+  bezugsgroesse_fassung: 'Wert einer Bezugsgröße berichtigt',
+  kennzahl_fassung_rueckwirkend: 'Berechnung einer Kennzahl rückwirkend geändert',
+  zuordnung_rueckwirkend: 'Zuordnung rückwirkend geändert',
+  anlage_umzug_rueckwirkend: 'Anlage rückwirkend umgezogen',
+  flaeche_rueckwirkend: 'Fläche rückwirkend geändert',
+  verteilung_rueckwirkend: 'Verteilung rückwirkend geändert',
+};
+
+export const BERICHT_FORMAT_TEXT: Record<string, string> = {
+  pdf: 'PDF',
+  csv: 'CSV',
 };
 
 /** Die Hauptwörter, die `{anzahl_…}` zu `anzahl` spricht. */
@@ -529,6 +591,8 @@ function feldText(feld: string, e: Ereignis, namen: Namen, zone: string): string
       if (feld === 'grund') return GRUND_TEXT[w as Grund] ?? String(w);
       if (feld === 'methode') return METHODE_TEXT[String(w)] ?? String(w);
       if (feld === 'korrektur_art') return KORREKTUR_ART_TEXT[String(w)] ?? String(w);
+      if (feld === 'anstoss_art') return ANSTOSS_ART_TEXT[String(w)] ?? String(w);
+      if (feld === 'format') return BERICHT_FORMAT_TEXT[String(w)] ?? String(w);
       return String(w);
     default:
       return wertText(w);

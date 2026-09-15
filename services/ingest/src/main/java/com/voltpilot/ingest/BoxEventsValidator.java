@@ -40,14 +40,15 @@ public class BoxEventsValidator {
     static final Set<String> UMSCHLAG_FELDER = Set.of("schema_version", "tenant_id", "site_id",
             "device_id", "sequence", "observed_at", "events");
 
-    /** Alle 28 Arten des Vokabulars: eine bekannte, aber nicht von der Box meldbare ist {@code urheber_unzulaessig}. */
+    /** Alle 32 Arten des Vokabulars: eine bekannte, aber nicht von der Box meldbare ist {@code urheber_unzulaessig}. */
     static final Set<String> ARTEN = Set.of("data_gap", "backfill", "duplicate_conflict",
             "sequence_gap", "sequence_reset", "late_arrival", "counter_reset", "counter_overflow",
             "device_boundary",
             "handover", "unassigned_reader", "rejected", "clock_ahead", "too_old", "clock_jump",
             "box_restart", "device_restart", "frozen_source", "range_limit", "layout_changed",
             "error_change", "state_change", "bitfield_change", "text_change", "substitute", "correction",
-            "verteilung_geaendert", "bilanz_neu_berechnet");
+            "verteilung_geaendert", "bilanz_neu_berechnet", "bericht_freigegeben", "bericht_revision_angestossen",
+            "bericht_entwurf_neu_gebildet", "bericht_abgerufen");
 
     /** Die Box-Arten mit Pflicht- und erlaubten Feldern (Vektor-Datei: {@code arten[].mqtt}). */
     record BoxArt(Set<String> pflicht, Set<String> felder) {}

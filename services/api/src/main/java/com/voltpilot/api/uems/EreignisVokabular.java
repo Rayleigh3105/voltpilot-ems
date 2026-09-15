@@ -273,6 +273,15 @@ public final class EreignisVokabular {
         f.put("import", Typ.KENNUNG);
         // AP-10 IP-11 (additiv): was eine Neuberechnung der Bilanz auslöste (K-… oder EW-…).
         f.put("ausloeser", Typ.KENNUNG);
+        // AP-12 IP-4 (additiv): die Berichts-Ereignisse — Bericht, Stand, Datenstand, Prüfsumme, Anstoß, Ausgabe.
+        f.put("bericht", Typ.KENNUNG);
+        f.put("nr", Typ.GANZ_AB_1);
+        f.put("datenstand", Typ.ZEIT);
+        f.put("pruefsumme", Typ.KENNUNG);
+        f.put("anstoss_art", Typ.WORT);
+        f.put("anlass_kennung", Typ.KENNUNG);
+        f.put("anlass_fassung", Typ.GANZ_AB_1);
+        f.put("format", Typ.WORT);
         FELDER = Collections.unmodifiableMap(f);
     }
 
@@ -355,6 +364,16 @@ public final class EreignisVokabular {
     private static final Pattern KORREKTUR_KENNUNG = Pattern.compile("^K-[0-9]{4}-[0-9]{4,}$");
     /** AP-10 IP-11 — der Auslöser einer Neuberechnung ist eine Korrektur oder ein Ersatzwert. */
     private static final Pattern AUSLOESER_KENNUNG = Pattern.compile("^(K|EW)-[0-9]{4}-[0-9]{4,}$");
+    /** AP-12 IP-4 — die Kennung eines Berichts (bericht.md §1) und die Prüfsumme eines Abzugs (A6). */
+    private static final Pattern BERICHT_KENNUNG = Pattern.compile("^BR-[0-9]{4}-[0-9]{4,}$");
+    private static final Pattern PRUEFSUMME = Pattern.compile("^sha256:[0-9a-f]{64}$");
+
+    /** AP-12 IP-4 — was einen Anstoß an einen Berichtsstand auslöst (bericht-vectors.json → vokabulare.anstoss_art). */
+    public static final List<String> ANSTOSS_ART = List.of("korrektur_freigegeben", "korrektur_zurueckgenommen",
+            "ersatzwert_wirksam", "ersatzwert_zurueckgenommen", "bezugsgroesse_fassung", "kennzahl_fassung_rueckwirkend",
+            "zuordnung_rueckwirkend", "anlage_umzug_rueckwirkend", "flaeche_rueckwirkend", "verteilung_rueckwirkend");
+    /** AP-12 IP-4 — die Ausgaben eines Berichtsstands, deren Abruf gemeldet wird (DA5). */
+    public static final List<String> BERICHT_FORMAT = List.of("pdf", "csv");
     /** AP-09 IP-7 — der Vorgang einer Berichtigung eines Bezugsgrößen-Werts (bezugsgroesse_berichtigung). */
     private static final Pattern BERICHTIGUNG_KENNUNG = Pattern.compile("^BK-[0-9]{4}-[0-9]{4,}$");
     /** AP-09 IP-7 — ein Import der Bezugsdaten (C2). */
@@ -499,7 +518,20 @@ public final class EreignisVokabular {
         // Versionen oder ihre verteilten Werte — für einen Zeitraum neu berechnet. Bezug NUR die Messstelle, nur die
         // Cloud (gerechnet hat das System; entschieden hat ein Mensch, und das meldet `correction`).
         BILANZ_NEU_BERECHNET("bilanz_neu_berechnet", EnumSet.of(CLOUD), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
-                List.of("messstelle"), List.of(), List.of("ausloeser"), List.of(), List.of(), null, null);
+                List.of("messstelle"), List.of(), List.of("ausloeser"), List.of(), List.of(), null, null),
+        // AP-12 IP-4 (additiv): die vier Berichts-Ereignisse — Zeitpunkt, Bezug NUR der Bericht (BR-…). Freigabe und
+        // Abruf meldet eine Person (kunde); Anstoß und Neubildung des Entwurfs erkennt das System (cloud).
+        BERICHT_FREIGEGEBEN("bericht_freigegeben", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("bericht"), List.of(), List.of("nr", "datenstand", "pruefsumme"), List.of(), List.of(), null,
+                null),
+        BERICHT_REVISION_ANGESTOSSEN("bericht_revision_angestossen", EnumSet.of(CLOUD), ZEITPUNKT, null, false,
+                MESSZEIT, List.of("bericht"), List.of(), List.of("nr", "anstoss_art", "anlass_kennung"),
+                List.of("anlass_fassung"), List.of(), null, null),
+        BERICHT_ENTWURF_NEU_GEBILDET("bericht_entwurf_neu_gebildet", EnumSet.of(CLOUD), ZEITPUNKT, null, false,
+                MESSZEIT, List.of("bericht"), List.of(), List.of("datenstand"), List.of("anlass_kennung"), List.of(),
+                null, null),
+        BERICHT_ABGERUFEN("bericht_abgerufen", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("bericht"), List.of(), List.of("nr", "format"), List.of(), List.of(), null, null);
 
         private final String code;
         private final Set<Urheber> urheber;
@@ -921,6 +953,8 @@ public final class EreignisVokabular {
         wort(e, "anlass", art == Art.DEVICE_BOUNDARY ? ANLASS_GERAETEGRENZE : ANLASS_UEBERGABE);
         wort(e, "methode", ERSATZWERT_METHODE);
         wort(e, "korrektur_art", KORREKTUR_ART);
+        wort(e, "anstoss_art", ANSTOSS_ART);
+        wort(e, "format", BERICHT_FORMAT);
         wort(e, "status", art == Art.SUBSTITUTE ? ERSATZWERT_STATUS : KORREKTUR_STATUS);
         if (art == Art.DATA_GAP) {
             wort(e, "einheit", EINHEITEN_ZUWACHS);
@@ -1131,6 +1165,19 @@ public final class EreignisVokabular {
             case BILANZ_NEU_BERECHNET -> {
                 if (!AUSLOESER_KENNUNG.matcher(e.get("ausloeser").asText()).matches()) {
                     throw nein(Grund.REGEL_VERLETZT, "kein Auslöser (Korrektur oder Ersatzwert)");
+                }
+            }
+            // AP-12 IP-4: der Bezug ist ein Bericht; eine Freigabe nennt die Prüfsumme eines Abzugs; der Datenstand
+            // liegt nie nach dem Zeitpunkt der Meldung (D1/D3).
+            case BERICHT_FREIGEGEBEN, BERICHT_REVISION_ANGESTOSSEN, BERICHT_ENTWURF_NEU_GEBILDET, BERICHT_ABGERUFEN -> {
+                if (!BERICHT_KENNUNG.matcher(e.get("bericht").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Berichts-Kennung");
+                }
+                if (e.has("pruefsumme") && !PRUEFSUMME.matcher(e.get("pruefsumme").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Prüfsumme eines Abzugs");
+                }
+                if (e.has("datenstand") && zeit(e, "zeitpunkt").isBefore(zeit(e, "datenstand"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Datenstand nach dem Zeitpunkt");
                 }
             }
             case ERROR_CHANGE, STATE_CHANGE, BITFIELD_CHANGE, TEXT_CHANGE -> {

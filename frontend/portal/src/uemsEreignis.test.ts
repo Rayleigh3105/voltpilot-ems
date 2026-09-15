@@ -8,6 +8,8 @@ import {
   FELDTYP,
   GRUND_TEXT,
   KORREKTUR_ART_TEXT,
+  ANSTOSS_ART_TEXT,
+  BERICHT_FORMAT_TEXT,
   METHODE_TEXT,
   dauerText,
   ereignisName,
@@ -61,6 +63,8 @@ interface Vektoren {
     ersatzwert_methode: { code: string; name: string }[];
     ersatzwert_status: { code: string }[];
     korrektur_art: { code: string; name: string }[];
+    anstoss_art: { code: string; name: string }[];
+    bericht_format: { code: string; name: string }[];
     korrektur_status: { code: string }[];
     felder: Record<string, { typ: string }>;
     arten: ArtVektor[];
@@ -108,6 +112,9 @@ describe('Ereignis-Vokabular: der TS-Zwilling spricht dieselben Sätze wie die V
   it('spricht Methode und Art einer Korrektur mit dem Namen der Vektor-Datei, nie mit dem Vertragswort', () => {
     expect(Object.entries(METHODE_TEXT)).toEqual(V.vokabular.ersatzwert_methode.map((m) => [m.code, m.name]));
     expect(Object.entries(KORREKTUR_ART_TEXT)).toEqual(V.vokabular.korrektur_art.map((a) => [a.code, a.name]));
+    // AP-12 IP-4: Anstoß und Ausgabe eines Berichtsstands ebenso.
+    expect(Object.entries(ANSTOSS_ART_TEXT)).toEqual(V.vokabular.anstoss_art.map((a) => [a.code, a.name]));
+    expect(Object.entries(BERICHT_FORMAT_TEXT)).toEqual(V.vokabular.bericht_format.map((a) => [a.code, a.name]));
   });
 
   it('kennt jedes Feld mit demselben Typ', () => {

@@ -225,8 +225,10 @@ gepinnten Fingerabdruck `konzept_tabelle.sha256`.
 
 Vier Arten, Bezug `bericht`, im Block `reserviert` von [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json)
 (`BerichtRegeln.EREIGNISSE_RESERVIERT`): `bericht_freigegeben` (`kunde`), `bericht_revision_angestossen` (`cloud`),
-`bericht_entwurf_neu_gebildet` (`cloud`), `bericht_abgerufen` (`kunde`). Angelegt mit den Berichts-Tabellen (IP-4); bis
-dahin lehnt die Prüfung sie ab ([`events-vocabulary.md`](./events-vocabulary.md)).
+`bericht_entwurf_neu_gebildet` (`cloud`), `bericht_abgerufen` (`kunde`). Angelegt mit den Berichts-Tabellen (IP-4,
+`V20260915050100__uems_bericht_ereignisse.sql`): Zeitpunkt, Bezug NUR `bericht`; Pflicht `nr`/`datenstand`/`pruefsumme`,
+`nr`/`anstoss_art`/`anlass_kennung` (optional `anlass_fassung`), `datenstand` (optional `anlass_kennung`), `nr`/`format`
+([`events-vocabulary.md`](./events-vocabulary.md), „Berichte“).
 
 ## 13. Sprache (E14)
 
