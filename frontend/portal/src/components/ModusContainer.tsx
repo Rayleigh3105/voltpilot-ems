@@ -43,7 +43,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { type EarningsSite, type SiteAsset, type Site } from '../api';
-import { modeViewItems, type NavTarget } from '../anlageNav';
+import { modeViewItems, type NavTarget } from '../ebenenNav';
 import { settingsForMode } from '../modeSettings';
 import {
   benefitLine,

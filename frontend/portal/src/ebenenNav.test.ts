@@ -6,14 +6,24 @@ import {
   bereichFor,
   bereichLabel,
   bottomBarSlots,
+  ebenenAktiv,
+  ebenenBereiche,
+  ebenenLeiste,
+  ebenenOrt,
+  EBENEN_SEITEN,
   modeViewItems,
   resolveAnlage,
   tabsFor,
   type AnlageBereich,
   type BereichId,
-} from './anlageNav';
-import { MAIN_PAGES, type AnlagenSub } from './nav';
+  type EbenenLesemodell,
+  type EbenenSeiten,
+} from './ebenenNav';
+import { MAIN_PAGES, pageRoute, standortRoute, type AnlagenSub } from './nav';
 import { anlageSurface, type AnlageSurfaceInput } from './surface';
+import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from './test/funktionenFixtures';
+import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
+import { FIXTURE_IDS, werkAhrenberg, werkLindach } from './test/standorteFixtures';
 
 /**
  * Jede `AnlagenSub`, die es gibt - die Wahrheit für „nichts ist verwaist".
@@ -450,5 +460,191 @@ describe('Steuern-Regel · Erreichbarkeit: eine Anlage, die nur misst, behält d
       label: 'Steuerung',
       target: { kind: 'sub', sub: 'steuerung' },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UEMS AP-01 IP-7 — die Telefon-Leiste je Ebene (E4 = A)
+// ---------------------------------------------------------------------------
+
+const UNTERNEHMEN = { art: 'unternehmen' } as const;
+const WERK = { art: 'standort', standortId: FIXTURE_IDS.st1 } as const;
+const LINDACH = { art: 'standort', standortId: FIXTURE_IDS.st2 } as const;
+
+/** Ahrenberg am 20.10.2026: zwei Standorte, beide messen, Kennzahlen aus dem Referenzunternehmen. */
+const MESSKUNDE: EbenenLesemodell = {
+  standorte: [werkAhrenberg(), werkLindach()],
+  funktionen: ahrenbergFunktionen(),
+  kennzahlen: ahrenbergKennzahlen(),
+};
+
+/** Ein Betriebskunde ohne „Messen": dieselben zwei Standorte, Messen hat kein Objekt (A11). */
+const BETRIEBSKUNDE: EbenenLesemodell = {
+  standorte: [werkAhrenberg(), werkLindach()],
+  funktionen: ahrenbergFunktionen({ messen: 'bestand' }),
+  kennzahlen: [],
+};
+
+/**
+ * Das Bild, sobald JEDER Bereich eine Seite hat (AP-04 IP-5, AP-13) — nur, um
+ * die Regel unabhängig vom heutigen Stand der Seiten zu prüfen.
+ */
+const ALLE_SEITEN: EbenenSeiten = (ort) => {
+  const hier = ort.art === 'unternehmen' ? pageRoute('portfolio') : standortRoute(ort.standortId);
+  return { uebersicht: hier, standorte: hier, gebaeude: hier, anlagen: hier, messstellen: hier, kennzahlen: hier, berichte: hier };
+};
+
+const labels = (liste: { label: string }[]) => liste.map((b) => b.label);
+
+describe('ebenenBereiche - die Bereiche der Ebene kommen aus dem Read-Model, nicht aus einer festen Liste', () => {
+  it('Unternehmen eines Messkunden: Übersicht · Standorte · Messstellen · Kennzahlen · Berichte', () => {
+    expect(labels(ebenenBereiche(UNTERNEHMEN, MESSKUNDE))).toEqual([
+      'Übersicht',
+      'Standorte',
+      'Messstellen',
+      'Kennzahlen',
+      'Berichte',
+    ]);
+  });
+
+  it('Standort Werk Ahrenberg (3 Gebäude, 2 Anlagen, misst): Übersicht · Gebäude · Anlagen · Messstellen', () => {
+    expect(labels(ebenenBereiche(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen']);
+  });
+
+  it('Werk Lindach hat EINE Anlage: kein Bereich „Anlagen"', () => {
+    expect(labels(ebenenBereiche(LINDACH, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Messstellen']);
+  });
+
+  it('Standorte erst ab zwei — ein archivierter zählt nicht', () => {
+    const einer = { ...MESSKUNDE, standorte: [werkAhrenberg(), werkLindach({ zustand: 'archiviert' })] };
+    expect(labels(ebenenBereiche(UNTERNEHMEN, einer))).not.toContain('Standorte');
+  });
+
+  it('Kennzahlen erst mit einer Kennzahl — eine archivierte zählt nicht', () => {
+    const archiviert = ahrenbergKennzahlen().map((k) => ({ ...k, archiviert_am: '2026-10-19T12:00:00+02:00' }));
+    expect(labels(ebenenBereiche(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }))).not.toContain('Kennzahlen');
+    expect(labels(ebenenBereiche(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: archiviert }))).not.toContain('Kennzahlen');
+    // Ohne Messen gibt es keine Kennzahlen-Ebene, auch mit Kennzahl.
+    expect(labels(ebenenBereiche(UNTERNEHMEN, { ...BETRIEBSKUNDE, kennzahlen: ahrenbergKennzahlen() }))).toEqual([
+      'Übersicht',
+      'Standorte',
+    ]);
+  });
+
+  it('ein Entwurf misst noch nicht; eingerichtet schon', () => {
+    const mit = (zustand: 'entwurf' | 'eingerichtet') => {
+      const f = ahrenbergFunktionen({ messen: 'bestand' });
+      f.standorte[1].messen = { ...f.standorte[1].messen, zustand };
+      return { ...BETRIEBSKUNDE, funktionen: f };
+    };
+    expect(labels(ebenenBereiche(LINDACH, mit('entwurf')))).toEqual(['Übersicht', 'Gebäude']);
+    expect(labels(ebenenBereiche(LINDACH, mit('eingerichtet')))).toEqual(['Übersicht', 'Gebäude', 'Messstellen']);
+    // Am Standort zählt NUR er selbst: Werk Ahrenberg misst hier nicht.
+    expect(labels(ebenenBereiche(WERK, mit('eingerichtet')))).toEqual(['Übersicht', 'Gebäude', 'Anlagen']);
+  });
+
+  it('unbekannt ist nie vorhanden: ohne Funktionen und Kennzahlen nur, was die Standorte selbst tragen', () => {
+    const unbekannt: EbenenLesemodell = { standorte: MESSKUNDE.standorte, funktionen: null, kennzahlen: null };
+    expect(labels(ebenenBereiche(UNTERNEHMEN, unbekannt))).toEqual(['Übersicht', 'Standorte']);
+    expect(labels(ebenenBereiche(WERK, { standorte: null, funktionen: null, kennzahlen: null }))).toEqual(['Übersicht']);
+  });
+});
+
+describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
+  it('1 · ein Betriebskunde ohne „Messen" bekommt keine Leiste — wie heute, auch wenn alle Seiten da wären', () => {
+    expect(ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE)).toEqual([]);
+    expect(ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE, ALLE_SEITEN)).toEqual([]);
+  });
+
+  it('2 · ein Messkunde bekommt fünf Kacheln, in der Reihenfolge der Tabelle', () => {
+    const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE, ALLE_SEITEN);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
+    expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'map-pin', 'activity', 'trending-up', 'file-text']);
+  });
+
+  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — Ahrenberg bleibt bei zwei, also ohne Leiste', () => {
+    expect(ebenenBereiche(UNTERNEHMEN, MESSKUNDE)).toHaveLength(5);
+    expect(ebenenLeiste(UNTERNEHMEN, MESSKUNDE)).toEqual([]);
+    expect(ebenenLeiste(WERK, MESSKUNDE)).toEqual([]);
+    expect(ebenenLeiste(LINDACH, MESSKUNDE)).toEqual([]);
+  });
+
+  it('jede Seite, die es heute gibt, ist eingetragen — und keine, die es nicht gibt', () => {
+    expect(EBENEN_SEITEN(UNTERNEHMEN)).toEqual({
+      uebersicht: pageRoute('portfolio'),
+      standorte: pageRoute('portfolio-standorte'),
+    });
+    expect(EBENEN_SEITEN(WERK)).toEqual({ uebersicht: standortRoute(FIXTURE_IDS.st1) });
+  });
+
+  it('3 · die Anlagen-Ebene ist unverändert: Cockpit · Fahrplan · Verlauf · Steuerung · Anlage', () => {
+    expect(bottomBarSlots(anlageSidebar(ALLE, 2)).map((s) => [s.key, s.label, s.target])).toEqual([
+      ['cockpit', 'Cockpit', { kind: 'sub', sub: null }],
+      ['fahrplan', 'Fahrplan', { kind: 'sub', sub: 'fahrplan' }],
+      ['verlauf', 'Verlauf', { kind: 'sub', sub: 'messwerte' }],
+      ['steuerung', 'Steuerung', { kind: 'sub', sub: 'steuerung' }],
+      ['anlage', 'Anlage', { kind: 'sub', sub: 'modell' }],
+    ]);
+  });
+
+  it('4 · Steuern-Regel: in der Leiste eines reinen Messkunden steht keine Steuerungs-Kachel — und der Weg zum Steuern bleibt', () => {
+    // Reiner Messkunde: keine Anlage nimmt an „Steuern & Optimieren" teil, kein Standort spricht davon.
+    const still = structuredClone(ahrenbergFunktionen());
+    for (const st of still.standorte) for (const a of st.steuern.anlagen) a.teilnahme.zustand = 'kein_objekt';
+    const reinerMesskunde: EbenenLesemodell = { ...MESSKUNDE, funktionen: still };
+    for (const ort of [UNTERNEHMEN, WERK, LINDACH]) {
+      const leiste = ebenenLeiste(ort, reinerMesskunde, ALLE_SEITEN);
+      expect(leiste.length).toBeGreaterThanOrEqual(3);
+      expect(labels(leiste).join(' · ')).not.toMatch(/Steuer/);
+      // Der Weg: die erste Kachel ist die Übersicht, deren Anlagen-Tabelle jede Anlage öffnet …
+      expect(leiste[0].key).toBe('uebersicht');
+    }
+    expect(EBENEN_SEITEN(UNTERNEHMEN).uebersicht).toEqual(pageRoute('portfolio'));
+    // … und dort behält die Anlage, die nur misst, ihre Kachel „Steuerung" mit Ziel.
+    const nurMessen = anlageSurface({
+      entities: [{ id: 'e-netz', entityType: 'grid-meter', capabilities: { measure: [{ channel: 'power_kw' }] } }],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    expect(bottomBarSlots(anlageSidebar(nurMessen)).find((s) => s.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+    // Auch wo ein Standort von Steuern spricht (Halle 1 steuert), bekommt die EBENE keine Steuerungs-Kachel:
+    // gesteuert wird je Anlage.
+    expect(labels(ebenenLeiste(UNTERNEHMEN, MESSKUNDE, ALLE_SEITEN)).join(' · ')).not.toMatch(/Steuer/);
+  });
+
+  it('5 · Schwelle: bei zwei Bereichen keine Leiste, bei drei eine', () => {
+    const ohneGebaeude: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg({ gebaeudeZahl: 0 })] };
+    expect(labels(ebenenBereiche(WERK, ohneGebaeude))).toEqual(['Übersicht', 'Anlagen']);
+    expect(ebenenLeiste(WERK, ohneGebaeude, ALLE_SEITEN)).toEqual([]);
+    const mitGebaeude: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg()] };
+    expect(labels(ebenenLeiste(WERK, mitGebaeude, ALLE_SEITEN))).toEqual(['Übersicht', 'Gebäude', 'Anlagen']);
+  });
+
+  it('5 · die Schwelle zählt nur Kacheln MIT Seite', () => {
+    const mitGebaeude: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg()] };
+    expect(ebenenBereiche(WERK, mitGebaeude)).toHaveLength(3);
+    expect(ebenenLeiste(WERK, mitGebaeude)).toEqual([]);
+  });
+});
+
+describe('ebenenOrt / ebenenAktiv - welche Ebene eine Seite ohne Anlage zeigt', () => {
+  it('Standort-Übersicht, Portfolio-Seiten — und ohne Standorte keine Ebene', () => {
+    const unternehmen = { art: 'unternehmen' };
+    expect(ebenenOrt(standortRoute(FIXTURE_IDS.st2), unternehmen)).toEqual(LINDACH);
+    expect(ebenenOrt(pageRoute('portfolio-messwerte'), unternehmen)).toEqual(UNTERNEHMEN);
+    expect(ebenenOrt(pageRoute('portfolio'), { art: 'standort', standort: { id: FIXTURE_IDS.st1 } })).toEqual(WERK);
+    expect(ebenenOrt(pageRoute('portfolio'), { art: 'heute' })).toBeNull();
+    expect(ebenenOrt(pageRoute('hilfe'), unternehmen)).toBeNull();
+  });
+
+  it('die Reiter Messwerte · Erlöse wohnen in der Übersicht, „Standorte" in seinem Bereich', () => {
+    expect(ebenenAktiv('portfolio')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-messwerte')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-erloese')).toBe('uebersicht');
+    expect(ebenenAktiv('standort')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-standorte')).toBe('standorte');
+    expect(ebenenAktiv('hilfe')).toBeNull();
   });
 });

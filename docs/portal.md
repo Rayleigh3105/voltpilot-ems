@@ -20,7 +20,7 @@ flowchart TD
 
 Leere Bereiche werden nicht angeboten. Eine reine Ladeanlage kann Ladevorgänge anstelle eines Speicherfahrplans anzeigen. Unterseiten bleiben der gewählten Anlage zugeordnet; alte Routen werden gezielt umgeleitet.
 
-Quellen: [Navigation](../frontend/portal/src/anlageNav.ts), [Router](../frontend/portal/src/nav.ts), [Anlagenprojektion](../frontend/portal/src/surface.ts).
+Quellen: [Navigation](../frontend/portal/src/ebenenNav.ts), [Router](../frontend/portal/src/nav.ts), [Anlagenprojektion](../frontend/portal/src/surface.ts).
 
 ## Fachliche Grenzen
 

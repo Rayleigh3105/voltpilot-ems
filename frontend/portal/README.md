@@ -19,7 +19,7 @@ Vite startet auf <http://localhost:5173>. API-/Keycloak-Adressen werden über `V
 | Bereich | Quelle |
 |---|---|
 | Routen und alte Lesezeichen | `src/nav.ts` |
-| Anlagenbereiche und verfügbare Ansichten | `src/anlageNav.ts`, `src/surface.ts` |
+| Anlagenbereiche und verfügbare Ansichten | `src/ebenenNav.ts`, `src/surface.ts` |
 | Gemeinsame UI / Tokens | `designsystem/` |
 | Kundenhilfe mit Screenshots | [src/help](src/help/README.md) |
 | Browserprüfung | `e2e/`, `playwright.config.ts` |

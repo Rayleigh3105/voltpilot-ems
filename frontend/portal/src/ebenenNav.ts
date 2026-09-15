@@ -23,7 +23,7 @@
  *    „Lastspitzen" mit der Lastspitzenkappung, „Marktpreise" auf einem
  *    Börsentarif. Nichts davon ist hier fest verdrahtet.
  * 3. **Nichts ist verwaist.** Jede `AnlagenSub` hat einen Bereich oder einen
- *    Reiter; `anlageNav.test.ts` erzwingt es, eine neue Unterseite muss also
+ *    Reiter; `ebenenNav.test.ts` erzwingt es, eine neue Unterseite muss also
  *    irgendwo montiert werden oder der Test fällt. Das wiegt seit dem Wegfall
  *    des Telefon-Blatts SCHWERER als vorher: es gibt keinen Sammelort mehr,
  *    an dem eine vergessene Ansicht noch erreichbar wäre.
@@ -38,8 +38,10 @@
  * Routen bleiben (`nav.ts` LEGACY-Disziplin): jedes Lesezeichen gilt weiter.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import type { AnlagenSub, PageId } from './nav';
+import type { Funktionen, Kennzahl, StandortAmStichtag } from './api';
+import { isPortfolioPage, pageRoute, standortRoute, type AnlagenSub, type PageId, type Route } from './nav';
 import type { AnlageSurface, DeepViewId } from './surface';
+import type { FunktionZustand } from './uemsFunktion';
 
 /**
  * Wohin ein Nav-Eintrag führt. `sub: null` = das Cockpit der Anlage selbst;
@@ -422,4 +424,172 @@ export function resolveAnlage<T extends { id: string }>(
   const requested = siteId ? sites.find((s) => s.id === siteId) ?? null : null;
   if (requested) return requested;
   return sites.length === 1 ? sites[0] : null;
+}
+
+// ---------------------------------------------------------------------------
+// Die Ebenen ÜBER der Anlage: Unternehmen und Standort (UEMS AP-01 IP-7, E4 = A)
+// ---------------------------------------------------------------------------
+
+/**
+ * Die Bereiche einer Ebene über der Anlage (AP-01 §4.6). Unternehmen:
+ * Übersicht · Standorte · Messstellen · Kennzahlen · Berichte. Standort:
+ * Übersicht · Gebäude · Anlagen · Messstellen. Die Anlage oben behält ihre fünf
+ * Bereiche — dieselbe Regel, eine Ebene tiefer, unverändert.
+ */
+export type EbenenBereichId =
+  | 'uebersicht'
+  | 'standorte'
+  | 'gebaeude'
+  | 'anlagen'
+  | 'messstellen'
+  | 'kennzahlen'
+  | 'berichte';
+
+export interface EbenenBereich {
+  key: EbenenBereichId;
+  label: string;
+  icon: IconName;
+}
+
+/** Eine Kachel der Telefon-Leiste einer Ebene: ein Bereich MIT seiner Seite. */
+export interface EbenenKachel extends EbenenBereich {
+  ziel: Route;
+}
+
+/** Die Ebene, deren Bereiche gemeint sind. */
+export type EbenenOrt = { art: 'unternehmen' } | { art: 'standort'; standortId: string };
+
+/**
+ * Was die Ableitung liest: die drei Lesemodelle, jedes `null` = unbekannt
+ * (lädt, Fehler, älteres Backend). Unbekannt ist nie „vorhanden" — ein Bereich,
+ * dessen Voraussetzung niemand kennt, entsteht nicht.
+ */
+export interface EbenenLesemodell {
+  /** `GET /api/v1/standorte` — die Standorte heute. */
+  standorte: readonly StandortAmStichtag[] | null;
+  /** `GET /api/v1/funktionen` — je Standort der Zustand von „Messen & Auswerten". */
+  funktionen: Funktionen | null;
+  /** `GET /api/v1/kennzahlen`. */
+  kennzahlen: readonly Kennzahl[] | null;
+}
+
+const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
+  uebersicht: { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard' },
+  standorte: { key: 'standorte', label: 'Standorte', icon: 'map-pin' },
+  gebaeude: { key: 'gebaeude', label: 'Gebäude', icon: 'building' },
+  anlagen: { key: 'anlagen', label: 'Anlagen', icon: 'layers' },
+  messstellen: { key: 'messstellen', label: 'Messstellen', icon: 'activity' },
+  kennzahlen: { key: 'kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
+  berichte: { key: 'berichte', label: 'Berichte', icon: 'file-text' },
+};
+
+/** Ein Standort misst: „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv — ein Entwurf misst noch nicht. */
+const MISST: ReadonlySet<FunktionZustand> = new Set<FunktionZustand>(['eingerichtet', 'angehalten', 'aktiv']);
+
+/**
+ * ALLE Bereiche, die es auf der Ebene nach der Tabelle AP-01 §4.6 gibt — aus
+ * den Lesemodellen, nie aus einer festen Liste. Ob ein Bereich schon eine
+ * Seite hat, entscheidet erst {@link ebenenLeiste}.
+ *
+ * - Unternehmen: Übersicht immer · Standorte ab 2 Standorten · Messstellen und
+ *   Berichte, sobald ein Standort misst · Kennzahlen, sobald ein Standort misst
+ *   UND es eine Kennzahl gibt.
+ * - Standort: Übersicht immer · Gebäude ab 1 Gebäude · Anlagen ab 2 Anlagen ·
+ *   Messstellen, wenn DIESER Standort misst.
+ *
+ * ⚠ Einen Bereich „Steuerung" gibt es auf keiner der beiden Ebenen (Steuern-Regel
+ * vom 15.09.2026): gesteuert wird je Anlage, und dort bleibt der Bereich
+ * „Steuerung" in Seitenleiste und Leiste erreichbar — der Weg führt über die
+ * Übersicht in die Anlage.
+ */
+export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBereich[] {
+  const lebend = (lm.standorte ?? []).filter((s) => s.zustand !== 'archiviert');
+  const misst = (standortId: string) =>
+    MISST.has(lm.funktionen?.standorte.find((f) => f.id === standortId)?.messen.zustand ?? 'kein_objekt');
+  const out: EbenenBereichId[] = ['uebersicht'];
+  if (ort.art === 'unternehmen') {
+    const irgendwoGemessen = lebend.some((s) => misst(s.id));
+    if (lebend.length >= 2) out.push('standorte');
+    if (irgendwoGemessen) out.push('messstellen');
+    if (irgendwoGemessen && (lm.kennzahlen ?? []).some((k) => k.archiviert_am == null)) out.push('kennzahlen');
+    if (irgendwoGemessen) out.push('berichte');
+  } else {
+    const standort = lebend.find((s) => s.id === ort.standortId);
+    if (standort) {
+      if ((standort.gebaeudeZahl ?? 0) >= 1) out.push('gebaeude');
+      if (standort.anlagen.length >= 2) out.push('anlagen');
+      if (misst(standort.id)) out.push('messstellen');
+    }
+  }
+  return out.map((key) => EBENEN_BEREICH[key]);
+}
+
+/** Welche Seite ein Bereich im Portal hat; ein fehlender Eintrag = noch keine. */
+export type EbenenSeiten = (ort: EbenenOrt) => Partial<Record<EbenenBereichId, Route>>;
+
+/**
+ * Die Seiten, die das Portal HEUTE für die Bereiche hat.
+ *
+ * ⚠ **Ein Bereich ohne Seite bekommt keine Kachel** (firstmate 001 vom
+ * 15.09.2026, dieselbe Antwort wie an der Karte „Funktionen" in PR 771): eine
+ * Kachel, die nirgendwohin führt, ist die Sackgasse, die das Portal nicht baut,
+ * und „immer fünf Kacheln, auch leere" hat E4 ausdrücklich verworfen. Heute
+ * fehlen Messstellen (AP-04 IP-5), Kennzahlen und Berichte (AP-13), Gebäude und
+ * Anlagen des Standorts (AP-13) — wer eine davon einhängt, trägt ihre Route
+ * HIER ein, und die Leiste erscheint von selbst.
+ */
+export const EBENEN_SEITEN: EbenenSeiten = (ort) =>
+  ort.art === 'unternehmen'
+    ? { uebersicht: pageRoute('portfolio'), standorte: pageRoute('portfolio-standorte') }
+    : { uebersicht: standortRoute(ort.standortId) };
+
+/** E4 = A: unter drei Kacheln keine Leiste — dann navigieren die Reiter der Seite wie heute. */
+export const EBENEN_LEISTE_AB = 3;
+
+/**
+ * Die Telefon-Leiste einer Ebene: ihre Bereiche MIT Seite, in der Reihenfolge
+ * der Tabelle — oder keine (leer), wenn es weniger als drei sind.
+ * `--vp-bar-slots` folgt der Zahl wie in der Anlage.
+ */
+export function ebenenLeiste(
+  ort: EbenenOrt,
+  lm: EbenenLesemodell,
+  seiten: EbenenSeiten = EBENEN_SEITEN,
+): EbenenKachel[] {
+  const ziele = seiten(ort);
+  const kacheln = ebenenBereiche(ort, lm).flatMap((b) => {
+    const ziel = ziele[b.key];
+    return ziel ? [{ ...b, ziel }] : [];
+  });
+  return kacheln.length >= EBENEN_LEISTE_AB ? kacheln : [];
+}
+
+/**
+ * Die Ebene, die eine Seite OHNE Anlage zeigt: `#/standort/{id}` den Standort,
+ * die Portfolio-Seiten die oberste Ebene (Unternehmen, oder den Standort, wenn
+ * er die oberste ist). `null` = keine Ebene — ohne Standorte bleibt alles wie
+ * vorher, also auch ohne Leiste.
+ */
+export function ebenenOrt(
+  route: Route,
+  oben: { art: string; standort?: { id: string } },
+): EbenenOrt | null {
+  if (route.page === 'standort') return route.standortId ? { art: 'standort', standortId: route.standortId } : null;
+  if (!isPortfolioPage(route.page)) return null;
+  if (oben.art === 'unternehmen') return { art: 'unternehmen' };
+  if (oben.art === 'standort' && oben.standort) return { art: 'standort', standortId: oben.standort.id };
+  return null;
+}
+
+/** Der Bereich, in dem eine Seite der Ebene wohnt — die Reiter Messwerte · Erlöse gehören zur Übersicht. */
+export function ebenenAktiv(page: PageId): EbenenBereichId | null {
+  if (page === 'portfolio-standorte') return 'standorte';
+  return page === 'standort' || isPortfolioPage(page) ? 'uebersicht' : null;
+}
+
+/** Der Name der Leiste für Screenreader („Bereiche des Standorts Werk Ahrenberg"). */
+export function ebenenTitel(ort: EbenenOrt, lm: EbenenLesemodell, unternehmen: string): string {
+  if (ort.art === 'unternehmen') return `Bereiche des Unternehmens ${unternehmen}`;
+  const name = lm.standorte?.find((s) => s.id === ort.standortId)?.name;
+  return name ? `Bereiche des Standorts ${name}` : 'Bereiche des Standorts';
 }

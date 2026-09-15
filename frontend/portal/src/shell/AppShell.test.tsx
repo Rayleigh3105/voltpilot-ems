@@ -3,8 +3,12 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
-import { anlageSidebar } from '../anlageNav';
+import { anlageSidebar, ebenenLeiste } from '../ebenenNav';
+import { pageRoute } from '../nav';
 import { anlageSurface } from '../surface';
+import { ahrenbergFunktionen } from '../test/funktionenFixtures';
+import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
+import { werkAhrenberg, werkLindach } from '../test/standorteFixtures';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
 vi.mock('../auth', () => ({
@@ -91,7 +95,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
   // Ein DV-Park OHNE Speicher: dort trägt der Markt-Modus den Fahrplan + die
   // Prognose selbst, es gibt also eine echte Modus-Gruppe zu rendern. Auf einer
   // SPEICHER-Anlage sind beide inzwischen Basis-Ansichten (Captain 2026-07-29),
-  // dann entfällt die Gruppe - das prüft `anlageNav.test.ts`.
+  // dann entfällt die Gruppe - das prüft `ebenenNav.test.ts`.
   const MARKT = anlageSurface({
     entities: [{ id: 'e1', entityType: 'producer', capabilities: { measure: [{ channel: 'pv_power_kw' }] } }],
     config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
@@ -709,5 +713,92 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     expect(sidebarLabels()).not.toContain('Plattform');
     expect(screen.queryByRole('button', { name: 'Plattform' })).toBeNull();
     expect(screen.queryByTitle('Geräte')).toBeNull();
+  });
+});
+
+describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () => {
+  const titel = 'Bereiche des Unternehmens Kunststoffwerk Ahrenberg GmbH';
+  // Das Bild mit eingehängten Seiten (AP-04 IP-5, AP-13) — heute gäbe es für Ahrenberg keine Leiste.
+  const kacheln = ebenenLeiste(
+    { art: 'unternehmen' },
+    { standorte: [werkAhrenberg(), werkLindach()], funktionen: ahrenbergFunktionen(), kennzahlen: ahrenbergKennzahlen() },
+    () => ({
+      uebersicht: pageRoute('portfolio'),
+      standorte: pageRoute('portfolio-standorte'),
+      messstellen: pageRoute('portfolio'),
+      kennzahlen: pageRoute('portfolio'),
+      berichte: pageRoute('portfolio'),
+    }),
+  );
+  const ebenen = { titel, kacheln, aktiv: 'uebersicht' as const, onOpen: vi.fn() };
+
+  const renderEbene = (over: Partial<typeof ebenen> | null = {}, anlage: React.ComponentProps<typeof AppShell>['anlage'] = null) =>
+    render(
+      <AppShell
+        {...baseProps}
+        page="portfolio"
+        showPortfolio
+        showAddAnlage={false}
+        onAddAnlage={vi.fn()}
+        anlage={anlage}
+        ebenen={over == null ? null : { ...ebenen, ...over }}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+
+  it('trägt die Kacheln der Ebene; `--vp-bar-slots` folgt ihrer Zahl, die offene ist markiert', () => {
+    renderEbene();
+    const bar = screen.getByLabelText(titel);
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
+      'Übersicht',
+      'Standorte',
+      'Messstellen',
+      'Kennzahlen',
+      'Berichte',
+    ]);
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 5');
+    expect(bar.querySelector('[aria-current="page"]')?.textContent).toBe('Übersicht');
+    expect(bar.textContent).not.toMatch(/Steuer/);
+  });
+
+  it('eine Kachel navigiert auf ihre Seite', () => {
+    const onOpen = vi.fn();
+    renderEbene({ onOpen });
+    fireEvent.click(within(screen.getByLabelText(titel)).getByRole('button', { name: 'Standorte' }));
+    expect(onOpen).toHaveBeenCalledWith(pageRoute('portfolio-standorte'));
+  });
+
+  it('ohne Kacheln — unter drei Bereichen mit Seite — gibt es keine Leiste, wie heute', () => {
+    const { container, unmount } = renderEbene({ kacheln: [] });
+    expect(container.querySelector('.vp-bottombar')).toBeNull();
+    unmount();
+    const ohne = renderEbene(null);
+    expect(ohne.container.querySelector('.vp-bottombar')).toBeNull();
+  });
+
+  it('in einer Anlage gilt IHRE Leiste — die Ebene ändert daran nichts', () => {
+    renderEbene({}, {
+      siteId: 's-1',
+      siteName: 'Hof Lindenberg',
+      sites: [{ id: 's-1', name: 'Hof Lindenberg' }],
+      onSelectSite: vi.fn(),
+      sidebar: anlageSidebar(null, 3),
+      activeKey: 'steuerung',
+      onOpenSub: vi.fn(),
+      onOpenPage: vi.fn(),
+      onOpenFleet: null,
+      health: null,
+    });
+    expect(screen.queryByLabelText(titel)).toBeNull();
+    const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
+      'Cockpit',
+      'Verlauf',
+      'Steuerung',
+      'Anlage',
+    ]);
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 4');
+    expect(bar.querySelector('[aria-current="page"]')?.textContent).toContain('Steuerung');
   });
 });

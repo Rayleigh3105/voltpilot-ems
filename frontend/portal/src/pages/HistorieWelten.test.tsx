@@ -964,7 +964,7 @@ describe('Die Erlöse-Welt folgt dem Lese-Modell, ist aber nie eine Sackgasse', 
     stubMoney(moneyEmpty);
     render(<ErloeseSection site={site} surface={PRIVAT} onOpenWelt={() => {}} />);
     // E3: die Fläche bietet den Rückweg nicht mehr selbst an; die
-    // Bereichs-Reiter der Schale tun es (`anlageNav.tabsFor` führt „Messwerte"
+    // Bereichs-Reiter der Schale tun es (`ebenenNav.tabsFor` führt „Messwerte"
     // auf JEDER Anlage, auch einer ohne Geld-Modus).
     expect(screen.queryByRole('link', { name: /Messwerte/ })).toBeNull();
     // Was die Fläche sagt, sagt sie ehrlich: kein Ergebnis, kein leeres Bild.

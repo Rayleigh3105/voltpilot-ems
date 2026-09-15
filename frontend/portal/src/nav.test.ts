@@ -41,7 +41,7 @@ import {
   parseKomponente,
   boxSeiteHash,
 } from './nav';
-import { anlageSidebar } from './anlageNav';
+import { anlageSidebar } from './ebenenNav';
 import { anlageSurface } from './surface';
 
 /** Every AnlagenSub route that exists. */
@@ -699,7 +699,7 @@ describe('Bewegung P5 · die Richtung eines Seitenwechsels', () => {
     expect(routeDepth(anlage)).toBe(1);
     expect(routeDepth(messwerte)).toBe(2);
     // Geräte- und Box-Seite wohnen EINE Ebene unter dem Anlagen-Modell
-    // (`anlageNav.OHNE_BEREICHS_REITER`: sie tragen keinen Reiter).
+    // (`ebenenNav.OHNE_BEREICHS_REITER`: sie tragen keinen Reiter).
     expect(routeDepth(geraet)).toBe(3);
     expect(routeDepth(anlageRoute('s-1', 'box'))).toBe(3);
   });

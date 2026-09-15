@@ -52,7 +52,16 @@ import { transitionToRoute } from './pageTransition';
 import { hatGeldWelt } from './portfolioHistorie';
 import { geldAnlagen, type UebersichtEbene } from './uebersicht';
 import { showAddAnlageButton } from './addAnlage';
-import { activeAreaKey, anlageSidebar, resolveAnlage } from './anlageNav';
+import {
+  activeAreaKey,
+  anlageSidebar,
+  ebenenAktiv,
+  ebenenLeiste,
+  ebenenOrt,
+  ebenenTitel,
+  resolveAnlage,
+  type EbenenLesemodell,
+} from './ebenenNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
 import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
 import { anlagenOptionen } from './anlagenWahl';
@@ -783,20 +792,32 @@ function UnifiedPortal() {
   // haben — ein reiner Messkunde bekommt ihn nicht. Solange die Fakten unbekannt
   // sind (lädt, Fehler, keine Ebene), gilt die heutige Regel `hatGeldWelt`.
   const [geldIds, setGeldIds] = useState<Set<string> | null>(null);
+  // UEMS AP-01 IP-7: dieselbe Welle liest die Lesemodelle der Ebenen-Leiste mit
+  // (`ebenenNav.ebenenBereiche`); jedes einzeln `null`, wenn es fehlt.
+  const [ebenenFakten, setEbenenFakten] = useState<Pick<EbenenLesemodell, 'funktionen' | 'kennzahlen'> | null>(null);
   const aufEbene = ebene.art === 'unternehmen' || ebene.art === 'standort';
   const anlagenSchluessel = sites.map((site) => site.id).join(',');
   useEffect(() => {
     if (!aufEbene) {
       setGeldIds(null);
+      setEbenenFakten(null);
       return;
     }
     let active = true;
-    Promise.all([api.overview(), api.funktionen().catch(() => null)]).then(
-      ([o, f]) => {
-        if (active) setGeldIds(geldAnlagen(o.sites, f));
+    Promise.all([
+      api.overview(),
+      api.funktionen().catch(() => null),
+      api.kennzahlen().then((k) => k.kennzahlen, () => null),
+    ]).then(
+      ([o, f, k]) => {
+        if (!active) return;
+        setGeldIds(geldAnlagen(o.sites, f));
+        setEbenenFakten({ funktionen: f, kennzahlen: k });
       },
       () => {
-        if (active) setGeldIds(null);
+        if (!active) return;
+        setGeldIds(null);
+        setEbenenFakten(null);
       },
     );
     return () => {
@@ -992,7 +1013,7 @@ function UnifiedPortal() {
         // ⚠ Das Abzeichen zählt seit Steuerung Stufe 8 die Dinge, die
         // AUFMERKSAMKEIT brauchen (§3.1) - nicht mehr die aktiven Anwendungen.
         // Der ORT ist derselbe geblieben, also ist das hier genau der
-        // Argument-Wechsel, den `anlageNav.ts` vorgesehen hatte.
+        // Argument-Wechsel, den `ebenenNav.ts` vorgesehen hatte.
         sidebar: anlageSidebar(surface, aufmerksam.anzahl, aufmerksamkeitTitel(aufmerksam)),
         // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
         // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
@@ -1019,6 +1040,26 @@ function UnifiedPortal() {
             : null,
       }
     : null;
+
+  // UEMS AP-01 IP-7 (E4 = A): auf einer Seite der Unternehmens- oder
+  // Standort-Ebene die Leiste ihrer Bereiche MIT Seite, erst ab drei — sonst
+  // keine, und die Reiter navigieren wie heute. In einer Anlage gilt ihre Leiste.
+  const ebenenOrtHier = anlageNav ? null : ebenenOrt(route, ebene);
+  const ebenenLesemodell: EbenenLesemodell = {
+    standorte: orteQuelle?.liste.standorte ?? null,
+    funktionen: ebenenFakten?.funktionen ?? null,
+    kennzahlen: ebenenFakten?.kennzahlen ?? null,
+  };
+  const ebenenKacheln = ebenenOrtHier ? ebenenLeiste(ebenenOrtHier, ebenenLesemodell) : [];
+  const ebenenNav =
+    ebenenOrtHier && ebenenKacheln.length > 0
+      ? {
+          titel: ebenenTitel(ebenenOrtHier, ebenenLesemodell, unternehmensEbene?.name ?? 'Ihr Unternehmen'),
+          kacheln: ebenenKacheln,
+          aktiv: ebenenAktiv(page),
+          onOpen: (ziel: Route) => navigate(ziel),
+        }
+      : null;
 
   const needsTenantPick = isAdmin && tenantId == null && !isPlatformPage(page);
 
@@ -1073,6 +1114,7 @@ function UnifiedPortal() {
       tenantOverride={tenantId}
       onTenantChange={changeTenant}
       anlage={anlageNav}
+      ebenen={ebenenNav}
       ortsPfad={!anlageNav && pfad.hier ? { vor: pfad.vor.map(pfadEintrag), hier: pfad.hier } : null}
       helpArticle={page === 'hilfe' ? null : loadFailed ? 'probleme' : showOnboarding ? null : helpForRoute(route)}
     >

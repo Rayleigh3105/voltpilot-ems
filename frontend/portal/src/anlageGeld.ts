@@ -22,7 +22,7 @@
  * Reines Modul: keine React-Importe, kein Netzwerk.
  */
 import type { Funktionen, OverviewSite } from './api';
-import { VERLAUF_TABS } from './anlageNav';
+import { VERLAUF_TABS } from './ebenenNav';
 import type { BausteinId } from './cockpitLayout';
 import type { AnlagenSub } from './nav';
 import type { AnlageSurface, CockpitBlockId, DeepViewId } from './surface';

@@ -14,7 +14,7 @@ umgesetzt, C bewusst nicht.
 | Standort-Karte der Unternehmens-Übersicht und Kopf der Standort-Übersicht: `funktionsZeilen` — Messen immer, Steuern nur, wenn der Standort spricht | `uebersicht.ts`, `components/StandortGruppeKopf.tsx` · `uebersicht.test.ts`, `components/Uebersicht.test.tsx` |
 | Karte „Funktionen": Abschnitt „Steuern & Optimieren" nur mit sprechenden Standorten, sonst ganz weg; kein Schritt „… einrichten" mehr | `uebersicht.funktionenKarte`, `components/FunktionenKarte.tsx` · `funktionenKarte.test.ts` |
 | Steuerungsseite einer Anlage, die nur misst: KEIN Hinweis (der Leerzustand „Diese Anlage misst nur." aus PR 776 ist entfernt, die Seite liest `GET /funktionen` nicht mehr) | `pages/SteuerungSection.tsx` · `pages/SteuerungSection.test.tsx` |
-| Erreichbarkeit: Bereich „Steuerung" in Seitenleiste und Telefon-Leiste auch ohne steuerbare Komponente | `anlageNav.ts` (unverändert) · `anlageNav.test.ts` |
+| Erreichbarkeit: Bereich „Steuerung" in Seitenleiste und Telefon-Leiste auch ohne steuerbare Komponente | `ebenenNav.ts` (unverändert) · `ebenenNav.test.ts` |
 | 375/1440 px | `e2e/leerzustaende.spec.ts` (`nie`, `wege`), `e2e/uebersicht.spec.ts` (`ohneSteuern`) |
 
 ## Die Fallen
@@ -33,7 +33,7 @@ umgesetzt, C bewusst nicht.
    für sie ausdrücklich, ob sie schweigen darf.
 5. **Der Bereich „Steuerung" bleibt, still.** Nicht entfernen, keinen Hinweis und kein Abzeichen ergänzen, das zum
    Einschalten drängt. Steuerart (Zeile der Verbraucher-Zone) und „＋ Neue Regel" sind bis zum Assistenten
-   „Steuern & Optimieren" (AP-01 IP-10a) der Weg — `SteuerungSection.test.tsx` und `anlageNav.test.ts` prüfen ihn.
+   „Steuern & Optimieren" (AP-01 IP-10a) der Weg — `SteuerungSection.test.tsx` und `ebenenNav.test.ts` prüfen ihn.
 6. **Nicht angefasst (Bestand vor UEMS, Abschnitt C, eigene Frage):** Einführung „Drei Zonen, drei Fragen",
    `JetztZone` „Für diese Anlage steuert VoltPilot noch nichts …", Betriebsmodelle, Cockpit-Hinweis „Betriebsmodell
    wählen", Hilfe `help/content/steuerung.ts`. Die Prüfungen der Steuerungsseite nennen darum die entfernten Sätze
@@ -47,7 +47,7 @@ umgesetzt, C bewusst nicht.
 ## Prüfen
 
 ```bash
-(cd frontend/portal && npx vitest run src/uebersicht.test.ts src/funktionenKarte.test.ts src/anlageNav.test.ts \
+(cd frontend/portal && npx vitest run src/uebersicht.test.ts src/funktionenKarte.test.ts src/ebenenNav.test.ts \
   src/uebersichtNachUmzug.test.ts src/pages/SteuerungSection.test.tsx src/components/Uebersicht.test.tsx src/copy.test.ts)
 (cd frontend/portal && npx playwright test e2e/leerzustaende.spec.ts e2e/uebersicht.spec.ts --project=desktop-chromium)
 ```
