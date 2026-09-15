@@ -49,13 +49,17 @@ Typen in `api.ts` (`Funktionen`, `FunktionTeilnahme`, `FunktionFehler` …) — 
   die Grenze wie der Start — eine übernommene Anlage ohne gebundenen Netzanschluss (AP-10 IP-6) bleibt nach
   dem Anhalten angehalten, bis er eingetragen ist; der 409 nennt den Weg („Ordnen Sie … unter Standort ›
   Netzanschlüsse ihrem Netzanschluss zu …“).
-- **Messen** hat noch keinen Schreibweg (IP-9a): ohne Zeile `kein_objekt` ohne Fakten; mit Zeile reicht der
-  Dienst die Register-Beobachtung als Eingänge an `messen()` zurück (liefert = guter Wert jetzt).
+- **Messen** hat seit IP-9a EINEN Schreibweg: `PUT /api/v1/standorte/{id}/funktionen/messen`
+  `{"aktion": "einrichten"}` legt die Funktion im Entwurf an (`messenStandort`, Übergang `uebergangMessen`,
+  409 `bereits_angelegt`/`standort_archiviert`; ⚠ am archivierten Standort gibt der Dienst `ARCHIVIERT` vor,
+  weil `messen()` ohne Zeile „kein Objekt" sagt) — `uems-messen-assistent.md`. Lesen: ohne Zeile `kein_objekt`
+  ohne Fakten; mit Zeile reicht der Dienst die Register-Beobachtung als Eingänge an `messen()` zurück (liefert =
+  guter Wert jetzt).
 
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest='FunktionApiTest')                  # 6, Testcontainers
+(cd services/api && ./mvnw test -Dtest='FunktionApiTest')                  # 7, Testcontainers
 (cd services/api && ./mvnw test -Dtest='FunktionSchnittstelleVertragTest') # 4, rein (DTO ⟷ OpenAPI ⟷ api.ts)
 (cd services/api && ./mvnw test -Dtest='RechteKennungenDerRoutenTest')     # Rechte-Kommentare der Routen
 ```

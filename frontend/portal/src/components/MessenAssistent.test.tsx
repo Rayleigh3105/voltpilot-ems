@@ -271,9 +271,13 @@ describe('MessenAssistent — die bestehenden Dialoge', () => {
     await schritt1();
     expect(within(assistent()).getByText('Es gibt noch keinen Standort. Legen Sie ihn zuerst an.')).toBeInTheDocument();
     klick('Neuen Standort anlegen');
-    expect(await screen.findByRole('dialog', { name: 'Standort anlegen' })).toBeInTheDocument();
-    // Der Assistent bleibt darunter stehen.
-    expect(assistent()).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'Standort anlegen' });
+    // Der Unterablauf ERSETZT die Schale (das Haus-Modal läge sonst unter ihr) …
+    expect(screen.queryByRole('dialog', { name: 'Messen & Auswerten einrichten' })).toBeNull();
+    // … und nach dem Schließen steht der Assistent wieder auf seinem Schritt.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+    await schritt1();
+    expect(ansage()).toBe('Schritt 1 von 5: Standort');
   });
 
   it('einem Standort im Entwurf fehlt die Adresse — „Adresse nachtragen" öffnet denselben Dialog', async () => {
@@ -296,13 +300,18 @@ describe('MessenAssistent — die bestehenden Dialoge', () => {
 
     klick('Gerät verbinden für Werk Lindach');
     const geraet = await screen.findByRole('dialog', { name: /Gerät hinzufügen/ });
+    expect(screen.queryByRole('dialog', { name: 'Messen & Auswerten einrichten' })).toBeNull();
     fireEvent.click(within(geraet).getByRole('button', { name: 'Abbrechen' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Gerät hinzufügen/ })).toBeNull());
+    await schritt2();
     expect(ansage()).toBe('Schritt 2 von 5: Datenquelle');
 
     klick('Gerät anbinden für Werk Lindach');
-    expect(await screen.findByRole('dialog', { name: 'Gerät anbinden' })).toBeInTheDocument();
-    expect(assistent()).toBeInTheDocument();
+    const anbinden = await screen.findByRole('dialog', { name: 'Gerät anbinden' });
+    expect(screen.queryByRole('dialog', { name: 'Messen & Auswerten einrichten' })).toBeNull();
+    fireEvent.click(within(anbinden).getByRole('button', { name: 'Schließen' }));
+    await schritt2();
+    expect(ansage()).toBe('Schritt 2 von 5: Datenquelle');
   });
 });
 

@@ -61,9 +61,11 @@ import './MessenAssistent.css';
  * über den Standort-Dialog aus AP-02 an; „Weiter" erzeugt die Standort-Funktion
  * (`PUT …/funktionen/messen`). Schritt 2 öffnet je Anlage die bestehenden Wege
  * „Gerät verbinden" (`AddDeviceDrawer`) und „Gerät anbinden" (der
- * Komponenten-Assistent `AnlegenFlow`). Diese Unterabläufe liegen als
- * GESCHWISTER über der Schale (gestapelte Dialoge, Escape trifft das obere) —
- * der Assistent bleibt darunter stehen und liest nach dem Schließen neu.
+ * Komponenten-Assistent `AnlegenFlow`). Solange ein Unterablauf offen ist,
+ * ERSETZT er die Schale: das Haus-`Modal` liegt mit seinem Schleier auf Ebene 60,
+ * die Schale auf 61 — gestapelt stünde „Gerät hinzufügen" UNTER dem Assistenten
+ * (im Browser-Durchstich bei 1440 px gefunden). Zustand, Wahl und Schritt leben
+ * hier, nicht in der Schale; nach dem Schließen steht sie wieder da und liest nach.
  *
  * <b>⚠ Steuern-Regel (Captain 14./15.09.2026).</b> Kein Schritt spricht von
  * Steuern oder Geld. Darum bindet Schritt 2 den Anlage-Assistenten NICHT ein
@@ -413,16 +415,18 @@ export function MessenAssistent({
 
   return (
     <>
-      <AnlegenDialog
-        titel={MESSEN_TITEL}
-        schritte={[...MESSEN_SCHRITTE]}
-        aktiv={schritt ?? 1}
-        onClose={onClose}
-        onBack={vorher ? () => setSchritt(vorher) : null}
-        footer={fuss}
-      >
-        {rumpf}
-      </AnlegenDialog>
+      {!unterfluss && (
+        <AnlegenDialog
+          titel={MESSEN_TITEL}
+          schritte={[...MESSEN_SCHRITTE]}
+          aktiv={schritt ?? 1}
+          onClose={onClose}
+          onBack={vorher ? () => setSchritt(vorher) : null}
+          footer={fuss}
+        >
+          {rumpf}
+        </AnlegenDialog>
+      )}
 
       {unterfluss?.art === 'standort' && liste && (
         <StandortDialog

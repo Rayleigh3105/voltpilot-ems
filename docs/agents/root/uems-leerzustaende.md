@@ -18,7 +18,9 @@ brauchen keine Geldanzeige."
 1. **Der nächste Schritt ist ein benannter Hinweis, kein Knopf** (Captain zu PR 771): die Assistenten
    IP-9a/IP-10a gibt es noch nicht, ein Knopf ohne Ziel wäre eine Sackgasse. Heute steht darum nirgends ein
    Knopf (das frühere „Gerät anbinden" der Steuerungsseite ist mit der Steuern-Regel entfallen). Kommt ein Assistent, wird sein Hinweis
-   zum Einstieg; die Tests prüfen „kein Knopf" ausdrücklich und werden dann bewusst angepasst.
+   zum Einstieg; die Tests prüfen „kein Knopf" ausdrücklich und werden dann bewusst angepasst. Seit IP-9a gibt es
+   das ZIEL für Messen (`MessenAssistent`, Text und Start aus `messenAssistent.messenEinstieg`,
+   `uems-messen-assistent.md`) — der Knopf selbst ist eine eigene Entscheidung und noch nicht gesetzt.
 2. **Schritte aus dem ZUSTAND, nie aus `aktionen`.** Der Server nennt dort nur starten, anhalten, fortsetzen
    und beenden (`FunktionService.ANLAGEN_AKTIONEN`/`STANDORT_AKTIONEN`). Die Fixture `funktionenFixtures.ts`
    trägt `einrichten`/`aufnehmen` trotzdem — nicht darauf bauen.
