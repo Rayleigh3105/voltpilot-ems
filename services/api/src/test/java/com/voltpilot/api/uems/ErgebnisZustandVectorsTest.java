@@ -9,6 +9,7 @@ import com.voltpilot.api.uems.ErgebnisZustand.AnzeigeEinheit;
 import com.voltpilot.api.uems.ErgebnisZustand.Erkannt;
 import com.voltpilot.api.uems.ErgebnisZustand.Ergebnis;
 import com.voltpilot.api.uems.ErgebnisZustand.Feld;
+import com.voltpilot.api.uems.ErgebnisZustand.Grund;
 import com.voltpilot.api.uems.ErgebnisZustand.FruehereFassung;
 import com.voltpilot.api.uems.ErgebnisZustand.Muster;
 import com.voltpilot.api.uems.ErgebnisZustand.Rundungsdifferenz;
@@ -23,6 +24,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -369,6 +371,19 @@ class ErgebnisZustandVectorsTest {
                     assertThat(ErgebnisZustand.fassung(wert)).isEqualTo(textOderNull(erw.get("text")));
                 }
             }
+            case "grund" -> {
+                String code = textOderNull(ein.get("code"));
+                Map<String, String> werte = new LinkedHashMap<>();
+                ein.path("werte").fields().forEachRemaining(e -> werte.put(e.getKey(), e.getValue().asText()));
+                String fehler = textOderNull(erw.get("fehler"));
+                if (fehler == null) {
+                    assertThat(ErgebnisZustand.grundSatz(code, werte)).isEqualTo(textOderNull(erw.get("text")));
+                } else {
+                    assertThatThrownBy(() -> ErgebnisZustand.grundSatz(code, werte))
+                            .isInstanceOf(IllegalArgumentException.class)
+                            .hasMessageContaining(fehler.equals("grund_unbekannt") ? "unbekannter Grund" : "braucht");
+                }
+            }
             default -> throw new AssertionError("unbekannte Familie " + fall.path("familie").asText());
         }
     }
@@ -384,7 +399,7 @@ class ErgebnisZustandVectorsTest {
             }
         }
         assertThat(familien).contains("zahl", "menge", "ergebnis", "erkennen", "tagesdauer", "raster", "uhr",
-                "rundungsdifferenz", "herkunft", "fassung");
+                "rundungsdifferenz", "herkunft", "fassung", "grund");
         assertThat(gesprocheneZustaende).containsAll(
                 ErgebnisZustand.ZUSTAENDE.stream().map(Zustand::wort).toList());
         // Jeder Verstoß des Vokabulars fliegt in mindestens einem Fall auf.
@@ -586,5 +601,69 @@ class ErgebnisZustandVectorsTest {
         }
         assertThat(texte(lies(VERBRAUCH).path("kennzeichen")))
                 .contains(ErgebnisZustand.fassung("vorlaeufig"), ErgebnisZustand.fassung("endgueltig"));
+    }
+
+    /**
+     * Seit 1.11 (AP-13 IP-1, E11 = A): je Code des Feldes {@code grund} der Route „Werte je Messstelle“ genau EIN
+     * Kundensatz. Das Vokabular im Code ist das der Datei, die Codes sind die der Route in ihrer Reihenfolge, jedes
+     * Beispiel passt auf sein Muster und spricht sich mit den erkannten Werten zurück, und jeder Satz wird in einem Fall
+     * gesprochen. Der Java-Zwilling spricht nur hier — die Route gibt Codes, die Fläche spricht (E11, der Preis der
+     * Zwillingsregel).
+     */
+    @Test
+    void jederGrundDerRouteHatGenauEinenSatz() throws Exception {
+        JsonNode block = lies(VECTORS).path("grund");
+
+        Map<String, String> platzhalter = new LinkedHashMap<>();
+        block.path("platzhalter").fields().forEachRemaining(e -> platzhalter.put(e.getKey(), e.getValue().asText()));
+        assertThat(ErgebnisZustand.GRUND_PLATZHALTER).isEqualTo(platzhalter);
+        Map<String, String> anteil = new LinkedHashMap<>();
+        block.path("anteil").fields().forEachRemaining(e -> anteil.put(e.getKey(), e.getValue().asText()));
+        assertThat(ErgebnisZustand.GRUND_ANTEIL).isEqualTo(anteil);
+        assertThat(ErgebnisZustand.GRUND_ANTEIL.values()).allSatisfy(w -> assertThat(w).matches(platzhalter.get("anteil")));
+        assertThat(block.path("ohne_grund").isNull()).isTrue();
+
+        List<Grund> gruende = new ArrayList<>();
+        block.path("saetze").forEach(s -> {
+            Map<String, String> arten = new LinkedHashMap<>();
+            s.path("platzhalter").fields().forEachRemaining(e -> arten.put(e.getKey(), e.getValue().asText()));
+            gruende.add(new Grund(s.path("code").asText(), s.path("muster").asText(), Map.copyOf(arten)));
+        });
+        assertThat(ErgebnisZustand.GRUENDE).containsExactlyElementsOf(gruende);
+        // Die Codes SIND die der Route, in ihrer Reihenfolge — kein neunter, keiner vergessen.
+        assertThat(ErgebnisZustand.GRUENDE).extracting(Grund::code).containsExactlyElementsOf(
+                Arrays.stream(MessstelleWerteRegeln.OhneZahl.values()).map(MessstelleWerteRegeln.OhneZahl::wort).toList());
+
+        List<String> gesprochen = new ArrayList<>();
+        for (JsonNode fall : lies(VECTORS).path("cases")) {
+            if (fall.path("familie").asText().equals("grund") && fall.path("erwartet").path("text").isTextual()) {
+                gesprochen.add(fall.path("eingang").path("code").asText());
+            }
+        }
+        Pattern platz = Pattern.compile("\\{([a-z_]+)\\}");
+        for (JsonNode s : block.path("saetze")) {
+            String code = s.path("code").asText();
+            String muster = s.path("muster").asText();
+            String beispiel = s.path("beispiel").asText();
+            assertThat(gesprochen).as(code).contains(code);
+            StringBuilder ausdruck = new StringBuilder("^");
+            List<String> namen = new ArrayList<>();
+            Matcher p = platz.matcher(muster);
+            int stelle = 0;
+            while (p.find()) {
+                ausdruck.append(Pattern.quote(muster.substring(stelle, p.start())))
+                        .append('(').append(platzhalter.get(s.path("platzhalter").path(p.group(1)).asText())).append(')');
+                namen.add(p.group(1));
+                stelle = p.end();
+            }
+            ausdruck.append(Pattern.quote(muster.substring(stelle))).append('$');
+            Matcher treffer = Pattern.compile(ausdruck.toString()).matcher(beispiel);
+            assertThat(treffer.matches()).as(beispiel).isTrue();
+            Map<String, String> werte = new LinkedHashMap<>();
+            for (int i = 0; i < namen.size(); i++) {
+                werte.put(namen.get(i), treffer.group(i + 1));
+            }
+            assertThat(ErgebnisZustand.grundSatz(code, werte)).isEqualTo(beispiel);
+        }
     }
 }

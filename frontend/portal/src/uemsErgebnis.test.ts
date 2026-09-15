@@ -8,6 +8,9 @@ import {
   EBENEN,
   FASSUNG_KENNZEICHEN,
   FRUEHERE_FASSUNGEN,
+  GRUENDE,
+  GRUND_ANTEIL,
+  GRUND_PLATZHALTER,
   HERKUNFT_ZUSTAENDE,
   KENNZEICHEN,
   KENNZEICHEN_EBENE,
@@ -28,6 +31,7 @@ import {
   erkenne,
   ersatzwert,
   fassung,
+  grundSatz,
   korrigiert,
   menge,
   pruefe,
@@ -46,6 +50,8 @@ import {
   type Ergebnis,
 } from './uemsErgebnis';
 import { stundenDesTages } from './bezugsPeriode';
+import type { MessstelleWerteWert } from './api';
+import { UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
 
 /**
  * Der Ergebnis-Zustand (UEMS AP-08 IP-8) gegen die geteilte Vektor-Datei
@@ -145,7 +151,7 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
 
   it('jede Familie, jedes Zustandswort und jeder Verstoß ist abgedeckt', () => {
     expect(new Set(faelle.map((f) => f.familie))).toEqual(
-      new Set(['zahl', 'menge', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz', 'herkunft', 'fassung']),
+      new Set(['zahl', 'menge', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz', 'herkunft', 'fassung', 'grund']),
     );
     const gesprochen = faelle.filter((f) => f.familie === 'ergebnis' && f.erwartet.satz !== null).map((f) => f.eingang.zustand);
     for (const z of ZUSTAENDE) expect(gesprochen).toContain(z.wort);
@@ -267,6 +273,11 @@ describe('uemsErgebnis — die Fälle der Vektor-Datei', () => {
         case 'fassung': {
           if (erw.unbekannt) expect(() => fassung(ein.fassung)).toThrow();
           else expect(fassung(ein.fassung)).toBe(erw.text);
+          break;
+        }
+        case 'grund': {
+          if (erw.fehler === null) expect(grundSatz(ein.code, ein.werte)).toBe(erw.text);
+          else expect(() => grundSatz(ein.code, ein.werte)).toThrow(erw.fehler === 'grund_unbekannt' ? /unbekannter Grund/ : /braucht/);
           break;
         }
         default:
@@ -399,5 +410,63 @@ describe('uemsErgebnis — die Fassung „vorläufig“ · „endgültig“ (sei
   it('ohne Fassung wird nichts gesprochen, und kein Zustandswort ist eine Fassung', () => {
     expect(fassung(null)).toBeNull();
     for (const z of ZUSTAENDE) expect(() => fassung(z.wort)).toThrow();
+  });
+});
+
+describe('uemsErgebnis — der Grund einer fehlenden Zahl (seit 1.11, AP-13 IP-1)', () => {
+  const block = vektoren.grund;
+  const roh = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  it('das Vokabular im Modul ist das der Datei — acht Codes, je ein Satz', () => {
+    expect(GRUND_PLATZHALTER).toEqual(block.platzhalter);
+    expect(GRUND_ANTEIL).toEqual(block.anteil);
+    for (const w of Object.values(GRUND_ANTEIL)) expect(w).toMatch(new RegExp(`^(?:${block.platzhalter.anteil})$`, 'u'));
+    expect(block.ohne_grund).toBeNull();
+    expect(GRUENDE).toEqual(block.saetze.map((s: Json) => ({ code: s.code, muster: s.muster, platzhalter: s.platzhalter })));
+  });
+
+  it('die Codes sind die Wörter der Route, in ihrer Reihenfolge (`MessstelleWerteWert.grund`)', () => {
+    // Die Liste ist gegen den Typ der Route geprüft; die Reihenfolge prüft der Java-Zwilling gegen `OhneZahl`.
+    const route: Array<NonNullable<MessstelleWerteWert['grund']>> = [
+      'keine_quelle',
+      'quelle_teilweise',
+      'anteil_nicht_gespeichert',
+      'berechnet',
+      'noch_nicht_gebildet',
+      'ohne_menge_gespeichert',
+      'version_nicht_gespeichert',
+      'version_nicht_gebildet',
+    ];
+    expect(GRUENDE.map((g) => g.code)).toEqual(route);
+  });
+
+  it('jedes Beispiel passt auf sein Muster und spricht sich zurück; jeder Satz wird in einem Fall gesprochen', () => {
+    const gesprochen = faelle.filter((f) => f.familie === 'grund' && f.erwartet.text !== null).map((f) => f.eingang.code);
+    for (const s of block.saetze as Json[]) {
+      expect(gesprochen, s.code).toContain(s.code);
+      const namen: string[] = [];
+      let ausdruck = '^';
+      let stelle = 0;
+      for (const m of (s.muster as string).matchAll(/\{([a-z_]+)\}/g)) {
+        ausdruck += `${roh(s.muster.slice(stelle, m.index))}(${block.platzhalter[s.platzhalter[m[1]]]})`;
+        namen.push(m[1]);
+        stelle = (m.index ?? 0) + m[0].length;
+      }
+      ausdruck += `${roh(s.muster.slice(stelle))}$`;
+      const treffer = new RegExp(ausdruck, 'u').exec(s.beispiel);
+      expect(treffer, s.beispiel).not.toBeNull();
+      expect(grundSatz(s.code, Object.fromEntries(namen.map((n, i) => [n, treffer![i + 1]])))).toBe(s.beispiel);
+    }
+  });
+
+  it('„noch nicht gerechnet“ ist der Satz der Tageskarte — ein Grund, EIN Wortlaut (PR 809, firstmate 001)', () => {
+    expect(grundSatz('noch_nicht_gebildet', {})).toBe(UEMS_NOCH_NICHT_GERECHNET_SATZ);
+  });
+
+  it('ohne Grund wird nichts gesprochen; ein Grund der Kennzahl oder ein Zustandswort ist kein Grund', () => {
+    expect(grundSatz(null, {})).toBeNull();
+    for (const fremd of ['nenner_fehlt', 'periode_nicht_zu_ende', ...ZUSTAENDE.map((z) => z.wort)]) {
+      expect(() => grundSatz(fremd, {}), fremd).toThrow(/unbekannter Grund/);
+    }
   });
 });

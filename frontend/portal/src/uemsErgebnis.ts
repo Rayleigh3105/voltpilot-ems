@@ -9,7 +9,7 @@
  * ändert die Datei UND beide Zwillinge; `uemsErgebnis.test.ts` fährt dieselbe
  * Datei per Pfad.
  *
- * Fünf Dinge wohnen hier, und die Flächen erfinden keinen zweiten Wortlaut:
+ * Sechs Dinge wohnen hier, und die Flächen erfinden keinen zweiten Wortlaut:
  *  1. das geschlossene Zustands-Vokabular (vollständig · unvollständig ·
  *     keine Werte · mit Ersatzwert) mit seiner Regel für Zahl und Kennzeichen;
  *  2. die geschlossene Liste der Kennzeichen-Sätze mit Rang — die
@@ -255,6 +255,91 @@ export const fassung = (wert: string | null): string | null => {
   if (wert === null) return null;
   if (!Object.prototype.hasOwnProperty.call(FASSUNG_KENNZEICHEN, wert)) throw new Error(`unbekannte Fassung ${wert}`);
   return sprich(FASSUNG_KENNZEICHEN[wert], {});
+};
+
+// ------------------------------------------------------------------ Grund einer fehlenden Zahl (seit 1.11)
+
+/**
+ * Seit 1.11 (AP-13 IP-1, E11 = A): der Kundensatz zu EINEM Code des Feldes
+ * `grund` der Route „Werte je Messstelle“ (`MessstelleWerteWert.grund`); die
+ * Art jedes Platzhalters steht in `GRUND_PLATZHALTER`.
+ */
+export type Grund = { code: string; muster: string; platzhalter: Record<string, string> };
+
+/** Je Platzhalter-Art der Gründe der reguläre Ausdruck (ohne fangende Gruppen). */
+export const GRUND_PLATZHALTER: Record<string, string> = {
+  text: '.+',
+  datum: '(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\.[0-9]{4}',
+  anteil: 'positiven|negativen',
+  version: '[1-9][0-9]*',
+};
+
+/** Das Wort, mit dem `anteil_nicht_gespeichert` das Feld `quellen[].anteil` beugt — nie die Fläche. */
+export const GRUND_ANTEIL: Record<'positiv' | 'negativ', string> = { positiv: 'positiven', negativ: 'negativen' };
+
+/** Die acht Gründe in der Reihenfolge der Route — je Code GENAU ein Satz. */
+export const GRUENDE: Grund[] = [
+  {
+    code: 'keine_quelle',
+    muster: 'Keine Quelle: {messstelle} hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.',
+    platzhalter: { messstelle: 'text' },
+  },
+  {
+    code: 'quelle_teilweise',
+    muster:
+      'Die Quelle deckt den Zeitraum nur zum Teil: {quelle} gilt seit {ab} — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.',
+    platzhalter: { quelle: 'text', ab: 'datum' },
+  },
+  {
+    code: 'anteil_nicht_gespeichert',
+    muster: 'Die Quelle liest nur den {anteil} Anteil von {kanal}; eine Menge je Anteil ist nicht gespeichert.',
+    platzhalter: { anteil: 'anteil', kanal: 'text' },
+  },
+  {
+    code: 'berechnet',
+    muster:
+      'Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine Formel aus Momentanwerten gar nicht.',
+    platzhalter: {},
+  },
+  {
+    code: 'noch_nicht_gebildet',
+    muster: 'Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.',
+    platzhalter: {},
+  },
+  {
+    code: 'ohne_menge_gespeichert',
+    muster: 'Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.',
+    platzhalter: {},
+  },
+  {
+    code: 'version_nicht_gespeichert',
+    muster: 'Version {n} ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version {max}.',
+    platzhalter: { n: 'version', max: 'version' },
+  },
+  {
+    code: 'version_nicht_gebildet',
+    muster:
+      'Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie.',
+    platzhalter: {},
+  },
+];
+
+/**
+ * Der Satz, warum eine Zahl fehlt — seit 1.11 (AP-13 IP-1, E11 = A, D5): die
+ * Karte zeigt „—“ UND diesen Satz. Sprache, keine Regel: ob ein Grund gilt,
+ * entscheidet die Route. `null` (die Route nennt keinen Grund) spricht nichts;
+ * ein fremder Code (auch ein Grund der Kennzahl oder ein Zustandswort) und
+ * Platzhalter, die nicht GENAU die des Satzes sind, sind Programmfehler. Die
+ * Werte selbst prüft er nicht — wie `sprich`.
+ */
+export const grundSatz = (code: string | null, werte: Record<string, string>): string | null => {
+  if (code === null) return null;
+  const g = GRUENDE.find((x) => x.code === code);
+  if (!g) throw new Error(`unbekannter Grund ${code}`);
+  const soll = Object.keys(g.platzhalter).sort().join(',');
+  const ist = Object.keys(werte).sort().join(',');
+  if (soll !== ist) throw new Error(`Grund ${code} braucht [${soll}], bekam [${ist}]`);
+  return g.muster.replace(PLATZ, (_, name: string) => werte[name]);
 };
 
 /** Der feste Anfang eines Musters bis zum ersten Platzhalter. */

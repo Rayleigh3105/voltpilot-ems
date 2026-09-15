@@ -127,6 +127,9 @@ export const UEMS_FUEHREND = 'führend';
  * Jede weitere Quelle derselben Größe ist ein Vergleich — gekennzeichnet mit
  * Zweck, beide Werte nebeneinander, ohne Bewertung und ohne Ersatz (AP-04 E3).
  * Im Satz als „Vergleichsquelle“, nie „Referenz-“ oder „Sekundärquelle“.
+ * Seit AP-13 (E6, E15) heißt so auch der Abschnitt der Werte: Überlagerung mit
+ * Vorperiode oder Vorjahr und bis drei passende Messstellen nebeneinander —
+ * dasselbe Wort, nie „Benchmark“.
  */
 export const UEMS_VERGLEICH = 'Vergleich';
 
@@ -305,6 +308,33 @@ export const UEMS_NOCH_NICHT_GERECHNET_SATZ = 'Noch nicht gerechnet — der Wert
  * wird aufgefüllt. „Lücke“ ist der Name der Ereignis-Art im Vokabular (`uemsEreignis.ts`).
  */
 export const UEMS_LUECKE = { singular: 'Lücke', plural: 'Lücken' } as const;
+
+/**
+ * UEMS AP-13 (E15 = A) — die Wörter der Messdaten- und Analyseoberflächen (`docs/fachmodell/glossar.md` › Werte,
+ * Verlauf, Datenlage; AP-13 §4.14). Keines ist neu erfunden, jedes kommt aus einem Vorgänger oder dem Bestand:
+ * „Werte“ ist der Abschnitt der Messstellen-Seite (nie „Messwerte“ — das bleibt der Reiter der Anlage), „Verlauf“ die
+ * Zeichnung über einen Zeitraum (dieselbe Bedeutung wie der Bereich „Verlauf“ der Anlage), „Verlauf n %“ die
+ * Abdeckung der Reihe — „Abdeckung“ selbst bleibt ein Wort der Bestandsflächen. „Vergleich“ steht oben
+ * (`UEMS_VERGLEICH`). Verboten auf diesen Flächen: Dashboard, Widget, KPI, Drilldown, Timeline, Sankey, Chart,
+ * Zeitreihe, Rollup, Bucket, Raster, Provenienz, Aggregat, Snapshot (`copy.test.ts`, Block „Welt Oberflächen“).
+ */
+export const UEMS_WERTE = 'Werte';
+export const UEMS_VERLAUF = 'Verlauf';
+
+/** Die Form des Abzeichens an der Karte („Verlauf 85 %“) — dieselbe wie `satz.abdeckung` im Ergebnis-Vertrag. */
+export const UEMS_VERLAUF_PROZENT = 'Verlauf {prozent}';
+
+/** Nur mit Präfix: „Bilanz“ allein ist auf Kundenflächen verboten, „Erlösbilanz“ ist etwas anderes (AP-10 E14). */
+export const UEMS_ENERGIEBILANZ = 'Energiebilanz';
+
+/** „15 von 16 Messstellen liefern Daten“ — EINE Zählung je Ebene aus dem Register (AP-13 E13), nie der Online-Status der Box. */
+export const UEMS_DATENLAGE = 'Datenlage';
+
+/** Der Rest eines Systems in der Gebäude-Sicht (AP-10 F17) — an der Anlage heißt er „nicht zugeordnet“. */
+export const UEMS_NICHT_VERORTET = 'nicht verortet';
+
+/** Eine Messstelle mit Ablesung statt Datenquelle — in der Datenlage ein Zusatz („· 1 manuell abgelesen“, E13). */
+export const UEMS_MANUELL_ABGELESEN = 'manuell abgelesen';
 
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex

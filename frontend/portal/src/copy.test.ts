@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
+import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
 import {
   BERECHNET_AUS,
@@ -26,6 +26,16 @@ import * as BS from './berichtSeite';
 import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm } from './test/berichtFixtures';
 import { UEMS_BERICHTE, UEMS_BERICHTSSTAND, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_PRUEFSUMME, UEMS_QUELLENVERZEICHNIS } from './glossar';
 import { UEMS_BERECHNUNG, UEMS_BEZUGSGROESSE, UEMS_KENNZAHLEN, UEMS_MENGE, UEMS_RECHENFORM } from './glossar';
+import {
+  UEMS_DATENLAGE,
+  UEMS_ENERGIEBILANZ,
+  UEMS_MANUELL_ABGELESEN,
+  UEMS_NICHT_VERORTET,
+  UEMS_VERLAUF,
+  UEMS_VERLAUF_PROZENT,
+  UEMS_WERTE,
+} from './glossar';
+import * as OF from './uemsOberflaechen';
 import {
   fassungenVon as kennzahlFassungen,
   KZ as KENNZAHL_IDS,
@@ -866,6 +876,9 @@ describe('UEMS AP-08 IP-8 · die Ergebnis-Sätze sprechen das Kunden-Wörterbuch
       }
       for (const feld of e.felder ?? []) out.push({ wo: `Raster ${f.name}`, text: feld.beschriftung });
     }
+    // Seit 1.11 (AP-13 IP-1): der Grund einer fehlenden Zahl — jedes Muster und jedes Beispiel.
+    for (const g of GRUENDE) out.push({ wo: `Grund ${g.code}`, text: ohnePlatz(g.muster) });
+    for (const g of vertrag.grund.saetze) out.push({ wo: `Grund-Beispiel ${g.code}`, text: g.beispiel });
     return out;
   };
 
@@ -1456,3 +1469,126 @@ const KENNZAHL_BESTAND: string[] = [
   'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
   'uemsEreignis.ts', // neu: „Berechnung einer Kennzahl rückwirkend geändert“ im Änderungsprotokoll
 ];
+
+/**
+ * UEMS AP-13 IP-1 — die Welt „Oberflächen“ spricht die Wörter von §4.14 (E15 = A): Werte · Verlauf · Vergleich ·
+ * Energiebilanz · Datenlage · liefert Daten · Verlauf n % · Herkunft · Nachweis · Zeitraum · Zeitzone. Verboten sind die
+ * Wörter der Analyse-Werkzeuge; „Abdeckung“ bleibt ein Wort der Bestandsflächen (W7) — `ABDECKUNG_BESTAND` nennt sie,
+ * jede NEUE Stelle wird rot. Gelesen werden die Quelltexte der Flächen (heute das reine Modul; IP-2 … IP-13 tragen ihre
+ * Dateien in `FLAECHEN` ein), die Sätze, die das Modul zur Laufzeit bildet, die acht Grund-Sätze und die Glossar-Wörter.
+ */
+const OBERFLAECHEN_VERBOTEN = new RegExp(
+  '(^|[^\\p{L}])(Dashboards?|Widgets?|KPIs?|Drilldowns?|Timelines?|Sankey|Charts?|Zeitreihen?|Rollups?|Buckets?|Raster|Provenienz|Aggregat(?:e|en)?|Snapshots?)([^\\p{L}]|$)',
+  'u',
+);
+
+/** Kundenflächen, die „Abdeckung“ HEUTE sagen (Bestand, W7) — sortiert wie der Vergleich. Eine neue Stelle wird rot. */
+const ABDECKUNG_BESTAND: string[] = [
+  'berichtSeite.ts', // UEMS AP-12 IP-13: „Abdeckung (geringste)“ im Kopf des Berichts — gebaut vor E15, W7-Befund an AP-12
+  'help/content/alltag.ts', // Handbuch: „Prüfen Sie Verbindung und Abdeckung“ (Bestand)
+  'marktpreise.ts', // Marktpreise-Rückblick: Zeile „Abdeckung“ der gesammelten Preise (Bestand)
+];
+
+/**
+ * Die Diagramm-Dateien der Oberflächen — vorbereitet, noch leer. Wer eine einhängt, trägt sie HIER ein: IP-4
+ * (Verlauf je Messstelle, Kennzahl-Balken), IP-5 (Vergleich als Überlagerung), IP-8 (Anteils-Balken der Energiebilanz).
+ * Es gelten die Chart-Regeln des Bestands (`CHART_FORBIDDEN`, `BARE_UNIT_AXIS`) UND die Verbote dieser Welt.
+ */
+const CHART_FILES_OBERFLAECHEN: string[] = [];
+
+describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlauf · Vergleich · Energiebilanz · Datenlage (E15)', () => {
+  const FLAECHEN = ['uemsOberflaechen.ts'];
+  const vertrag = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'));
+  const faelle = JSON.parse(readFileSync(join(SRC, 'test/oberflaechenFaelle.json'), 'utf8'));
+  const rel = (file: string) => file.slice(SRC.length + 1).replace(/\\/g, '/');
+
+  const flaechenTexte = (): Array<{ wo: string; text: string }> =>
+    FLAECHEN.flatMap((datei) =>
+      visibleTexts(readFileSync(join(SRC, datei), 'utf8'))
+        .filter(isKundentext)
+        .map((text) => ({ wo: datei, text })),
+    );
+
+  const laufzeit = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+    for (const g of GRUENDE) out.push({ wo: `Grund ${g.code}`, text: ohnePlatz(g.muster) });
+    for (const g of vertrag.grund.saetze) out.push({ wo: `Grund-Beispiel ${g.code}`, text: g.beispiel });
+    const basis = { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Zählerstand' };
+    for (const andere of [
+      { ...basis, groesse: 'Volumen', einheit: 'm³' },
+      { ...basis, richtung: 'Laden / Entladen' },
+      { ...basis, einheit: 'MWh' },
+      { ...basis, wertart: 'Intervallmenge' },
+    ]) {
+      out.push({ wo: 'passend', text: OF.passendSatz(OF.passend(basis, andere)) ?? '' });
+    }
+    out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Berlin', 'standort', 'Werk Ahrenberg') });
+    out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Vienna', 'unternehmen') });
+    out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Zurich', 'vorgabe') });
+    for (const w of [UEMS_WERTE, UEMS_VERLAUF, UEMS_VERLAUF_PROZENT, UEMS_ENERGIEBILANZ, UEMS_DATENLAGE, UEMS_NICHT_VERORTET, UEMS_MANUELL_ABGELESEN]) {
+      out.push({ wo: 'Glossar', text: w });
+    }
+    return out;
+  };
+
+  it('liest wirklich: die Flächen stehen im Bestand des Wächters, und die Sätze sind da', () => {
+    const dateien = customerFiles().map(rel);
+    for (const datei of FLAECHEN) expect(dateien).toContain(datei);
+    expect(flaechenTexte().length).toBeGreaterThan(3);
+    expect(laufzeit().length).toBeGreaterThan(25);
+  });
+
+  it('kein Satz der Welt trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of [...flaechenTexte(), ...laufzeit()]) {
+      const m = OBERFLAECHEN_VERBOTEN.exec(text);
+      if (m) violations.push(`${wo}: „${m[2]}“ in „${text}“ — E15: verboten auf den Oberflächen`);
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN]) {
+        if (re.test(ohneAusnahmen(text))) violations.push(`${wo}: „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('„Abdeckung“ steht nur auf den Flächen des Bestands — die Oberflächen sagen „Verlauf n %“ (W7)', () => {
+    const heute = customerFiles()
+      .filter((file) => visibleTexts(readFileSync(file, 'utf8')).some((text) => isKundentext(text) && /Abdeckung/u.test(text)))
+      .map(rel)
+      .sort();
+    expect(heute).toEqual(ABDECKUNG_BESTAND);
+    expect(laufzeit().filter(({ text }) => /Abdeckung/u.test(text))).toEqual([]);
+    for (const datei of FLAECHEN) expect(ABDECKUNG_BESTAND).not.toContain(datei);
+  });
+
+  it('die Wörter kommen aus dem Glossar und stehen im Vokabular von E15', () => {
+    const kundenwoerter = faelle.vokabulare['kundenwoerter (E15)'] as string[];
+    for (const w of [UEMS_WERTE, UEMS_VERLAUF, UEMS_ENERGIEBILANZ, UEMS_DATENLAGE]) expect(kundenwoerter).toContain(w);
+    expect(UEMS_VERLAUF_PROZENT).toBe(vertrag.satz.abdeckung);
+    expect(UEMS_VERLAUF_PROZENT.startsWith(`${UEMS_VERLAUF} `)).toBe(true);
+    for (const w of faelle.vokabulare['verboten (E15)'] as string[]) expect(OBERFLAECHEN_VERBOTEN.test(w), w).toBe(true);
+  });
+
+  it('die Chart-Liste der Oberflächen ist verdrahtet: jede Datei lesbar, nirgends doppelt, keine verbotene Beschriftung', () => {
+    const violations: string[] = [];
+    for (const datei of CHART_FILES_OBERFLAECHEN) {
+      expect(CHART_FILES, datei).not.toContain(datei);
+      const sichtbar = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      for (const { re, why } of [...CHART_FORBIDDEN, { re: OBERFLAECHEN_VERBOTEN, why: 'E15: verboten auf den Oberflächen' }]) {
+        const m = re.exec(sichtbar);
+        if (m) violations.push(`${datei}: „${m[0]}“ — ${why}`);
+      }
+      if (BARE_UNIT_AXIS.test(sichtbar)) violations.push(`${datei}: K4 — die Einheit steht nie allein`);
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('beißt wirklich — und nicht die Kundenwörter', () => {
+    for (const falsch of ['KPI-Übersicht', 'Zeitreihe MS-06', 'Raster Viertelstunde', 'Snapshot vom 10.11.2026', 'Drilldown', 'Aggregate je Standort']) {
+      expect(OBERFLAECHEN_VERBOTEN.test(falsch), falsch).toBe(true);
+    }
+    for (const richtig of ['Verlauf 85 %', 'Werte', 'Energiebilanz', 'Datenlage: 15 von 16 Messstellen liefern Daten', 'Zeitraster', 'Zeiten in Europe/Berlin (Vorgabe)']) {
+      expect(OBERFLAECHEN_VERBOTEN.test(richtig), richtig).toBe(false);
+    }
+  });
+});
