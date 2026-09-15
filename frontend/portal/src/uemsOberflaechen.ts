@@ -96,7 +96,9 @@ export function kacheln(ort: EbenenOrt, lm: EbenenLesemodell, seiten: EbenenSeit
  * Das Objekt einer Herkunfts-Zeile. Eine Seite haben heute Messstelle (mit
  * Periode und Version, D2), Kennzahl, Bericht und Gerät. Ohne Seite bleiben
  * Bezugsgröße (AP-09), Ereignis (AP-07) und Box (AP-06 IP-16) — D3 — sowie
- * Kostenstelle und Gebäude, bis IP-9 und IP-2 ihre Seiten einhängen.
+ * die Kostenstelle, bis IP-9 ihre Seite einhängt. Das Gebäude hat seit IP-2 die
+ * Seite „Standort › Gebäude“, aber seine Zeile nennt keinen Standort — der Sprung
+ * dorthin kommt mit IP-11, bis dahin bleibt sie Text.
  */
 export type SprungObjekt =
   | { art: 'messstelle'; id: string; standortId?: string | null; periode?: string | null; version?: number | null }

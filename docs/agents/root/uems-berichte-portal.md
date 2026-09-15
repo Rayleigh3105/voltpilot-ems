@@ -1,7 +1,8 @@
 # UEMS-Fläche: die Welt „Berichte“ — Liste und Berichtsseite (AP-12 IP-13)
 
-Neu am 15.09.2026. Portfolio-Welt `#/portfolio/berichte` (Liste) und `#/portfolio/berichte/{kennung}` (Berichtsseite),
-bis AP-13 die Ebenen-Navigation bringt. Die Fläche LIEST nur: `GET /api/v1/berichte`, `…/{kennung}`, `…/staende/{nr}`
+Neu am 15.09.2026. Portfolio-Welt `#/portfolio/berichte` (Liste) und `#/portfolio/berichte/{kennung}` (Berichtsseite);
+seit AP-13 IP-2 dieselbe Liste als „Berichte dieses Standorts“ unter `#/standort/{id}/berichte`
+(`uems-oberflaechen-ebenen.md`). Die Fläche LIEST nur: `GET /api/v1/berichte`, `…/{kennung}`, `…/staende/{nr}`
 bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das Messstellen-Register und die Kennzahlen, erst auf
 „heutigen Wert zeigen“ `GET /api/v1/messstellen/{kennzeichen}/werte`. Spezifikation: AP-12 §8 IP-13, §5.1–§5.6, §5.8, E14.
 
