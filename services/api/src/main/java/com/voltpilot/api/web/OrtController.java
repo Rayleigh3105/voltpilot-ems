@@ -8,6 +8,9 @@ import com.voltpilot.api.uems.OrtsbaumLesemodell.OrtsbaumAmStichtag;
 import com.voltpilot.api.web.dto.OrtDto;
 import com.voltpilot.api.web.dto.OrtVerschiebungDto;
 import com.voltpilot.api.web.dto.StandortDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -33,11 +36,12 @@ import org.springframework.web.server.ResponseStatusException;
  * liest {@link OrtAnfrage} streng, eine Ablehnung ist {@code {code, message, …Fakten}}
  * ({@link OrtAbgelehntHandler}) — wie beim Standort (IP-4).
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS wie unter {@code /api/v1/standorte} — ein fremder Standort oder Ort ist 404, nie
  * 403 (A14); der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Jede Route
- * nennt ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}; eine Rechte-Annotation
- * gibt es hier bewusst nicht. Archivieren, Wiederherstellen und Löschen ohne Historie (IP-15) urteilt
+ * nennt ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}; seit AP-03 IP-6 setzt {@code @Recht} sie
+ * vor dem Handler durch (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404). Archivieren, Wiederherstellen
+ * und Löschen ohne Historie (IP-15) urteilt
  * derselbe Vertrag wie am Standort. Verschieben (IP-12) hat eigene Routen mit Folgen-Vorschau
  * ({@link OrtVerschiebenService}) — wer an {@code PUT} einen Elternknoten schickt, bekommt 400
  * {@code anfrage_ungueltig}.
@@ -48,11 +52,13 @@ public class OrtController {
     private final OrtService orte;
     private final OrtVerschiebenService verschieben;
     private final OrtAnfrage anfrage;
+    private final RechtPruefung rechte;
 
-    public OrtController(OrtService orte, OrtVerschiebenService verschieben, OrtAnfrage anfrage) {
+    public OrtController(OrtService orte, OrtVerschiebenService verschieben, OrtAnfrage anfrage, RechtPruefung rechte) {
         this.orte = orte;
         this.verschieben = verschieben;
         this.anfrage = anfrage;
+        this.rechte = rechte;
     }
 
     // Rechte: heute lesend — keine eigene Kennung; ein Stichtag in der Vergangenheit
@@ -68,15 +74,18 @@ public class OrtController {
 
     // Rechte: `gebaeude.pflegen`; mit „gültig ab" vor heute zusätzlich `aenderung.rueckwirkend`.
     @PostMapping("/api/v1/standorte/{standortId}/orte")
+    @Recht(value = "gebaeude.pflegen", ziel = RechtZiel.STANDORT)
     public ResponseEntity<OrtDto.Ort> anlegen(@PathVariable UUID standortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
-        OrtDto.Ort neu = orte.anlegen(standortId, anfrage.lies(body, OrtDto.Anlegen.class, false),
-                OrtAnfrage.akteur(auth));
+        OrtDto.Anlegen a = anfrage.lies(body, OrtDto.Anlegen.class, false);
+        rechte.rueckwirkend(a.gueltigAb());
+        OrtDto.Ort neu = orte.anlegen(standortId, a, OrtAnfrage.akteur(auth));
         return ResponseEntity.created(URI.create("/api/v1/orte/" + neu.id())).body(neu);
     }
 
     // Rechte: `gebaeude.pflegen`.
     @PutMapping("/api/v1/orte/{ortId}")
+    @Recht(value = "gebaeude.pflegen", ziel = RechtZiel.ORT)
     public OrtDto.Ort bearbeiten(@PathVariable UUID ortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return orte.bearbeiten(ortId, anfrage.lies(body, OrtDto.Bearbeiten.class, false),
@@ -85,14 +94,17 @@ public class OrtController {
 
     // Rechte: `gebaeude.pflegen`; mit „gültig ab" vor heute zusätzlich `aenderung.rueckwirkend`.
     @PutMapping("/api/v1/orte/{ortId}/flaeche")
+    @Recht(value = "gebaeude.pflegen", ziel = RechtZiel.ORT)
     public OrtDto.Ort flaeche(@PathVariable UUID ortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
-        return orte.flaecheSetzen(ortId, anfrage.lies(body, OrtDto.Flaeche.class, false),
-                OrtAnfrage.akteur(auth));
+        OrtDto.Flaeche f = anfrage.lies(body, OrtDto.Flaeche.class, false);
+        rechte.rueckwirkend(f.gueltigAb());
+        return orte.flaecheSetzen(ortId, f, OrtAnfrage.akteur(auth));
     }
 
     // Rechte: `gebaeude.pflegen`. Ohne Inhalt: es gibt nichts zu wählen — archiviert wird ab heute (IP-15).
     @PostMapping("/api/v1/orte/{ortId}/archivieren")
+    @Recht(value = "gebaeude.pflegen", ziel = RechtZiel.ORT)
     public OrtDto.Ort archivieren(@PathVariable UUID ortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         OrtAnfrage.leer(body);
@@ -101,6 +113,7 @@ public class OrtController {
 
     // Rechte: `gebaeude.pflegen`. Optional `{"name": …}` — das Umbenennen im selben Dialog (IP-15).
     @PostMapping("/api/v1/orte/{ortId}/wiederherstellen")
+    @Recht(value = "gebaeude.pflegen", ziel = RechtZiel.ORT)
     public OrtDto.Ort wiederherstellen(@PathVariable UUID ortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return orte.wiederherstellen(ortId, anfrage.lies(body, StandortDto.Wiederherstellen.class, true),
@@ -109,6 +122,7 @@ public class OrtController {
 
     // Rechte: `gebaeude.pflegen`. Nur ohne Historie (E1) — sonst 409 `loeschen_gesperrt` (IP-15).
     @DeleteMapping("/api/v1/orte/{ortId}")
+    @Recht(value = "gebaeude.pflegen", ziel = RechtZiel.ORT)
     public ResponseEntity<Void> loeschen(@PathVariable UUID ortId, Authentication auth) {
         orte.loeschen(ortId, OrtAnfrage.akteur(auth));
         return ResponseEntity.noContent().build();
@@ -124,10 +138,15 @@ public class OrtController {
 
     // Rechte: `gebaeude.pflegen`; mit „gültig ab" vor heute zusätzlich `aenderung.rueckwirkend` (IP-12, V4).
     @PostMapping("/api/v1/orte/{ortId}/verschieben")
+    @Recht(value = "gebaeude.pflegen", ziel = RechtZiel.ORT)
     public OrtVerschiebungDto.Verschiebung verschieben(@PathVariable UUID ortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
-        return verschieben.verschieben(ortId, anfrage.lies(body, OrtVerschiebungDto.Anfrage.class, false),
-                OrtAnfrage.akteur(auth));
+        OrtVerschiebungDto.Anfrage a = anfrage.lies(body, OrtVerschiebungDto.Anfrage.class, false);
+        // Das Recht auch am neuen Elternknoten (UEMS AP-03 IP-6) — er steht im Körper, nicht im Pfad.
+        rechte.pruefenStandortOderOrt("gebaeude.pflegen", a.zielId(),
+                () -> OrtAbgelehnt.anfrage("zielId", "Dieses Ziel gibt es nicht."));
+        rechte.rueckwirkend(a.gueltigAb());
+        return verschieben.verschieben(ortId, a, OrtAnfrage.akteur(auth));
     }
 
     private static UUID uuid(String roh) {

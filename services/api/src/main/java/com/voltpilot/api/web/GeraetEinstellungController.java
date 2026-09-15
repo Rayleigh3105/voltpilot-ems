@@ -10,6 +10,8 @@ import com.voltpilot.api.uems.EinstellungAbgelehnt;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.QuelleEinstellungService;
 import com.voltpilot.api.web.dto.EinstellungDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -40,9 +42,11 @@ import org.springframework.web.server.ResponseStatusException;
  * ändert weder die Verbindung der Komponente noch die Konfiguration der Box noch einen Messwert — eine
  * angewendete Fassung bleibt „Zustellung ausstehend", bis AP-06 zustellt.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS — ein fremdes Gerät ist 404, nie 403. Jede Route nennt im Kommentar ihre Kennung
- * aus {@code docs/contracts/v2/rechte-matrix.json}. Die Anfrage wird streng gelesen: ein Feld, das
+ * aus {@code docs/contracts/v2/rechte-matrix.json}; seit AP-03 IP-6 setzt {@code @Recht} sie vor dem Handler
+ * durch (403 {@code recht_fehlt}, ein Gerät außerhalb des Geltungsbereichs wie ein unbekanntes 404). Die Anfrage
+ * wird streng gelesen: ein Feld, das
  * es an der Route nicht gibt, ist 400.
  */
 @RestController
@@ -74,6 +78,7 @@ public class GeraetEinstellungController {
      * Protokolls.
      */
     @PostMapping("/api/v1/geraete/{id}/einstellungen")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.GERAET)
     @ResponseStatus(HttpStatus.CREATED)
     public EinstellungDto.Eingetragen eintragen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {

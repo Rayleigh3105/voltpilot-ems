@@ -15,6 +15,8 @@ import com.voltpilot.api.uems.BerichtRepository.StandZeile;
 import com.voltpilot.api.uems.BerichtService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.BerichtDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -104,6 +106,7 @@ public class BerichtController {
      * {@code kennzahlen_abgewaehlt} (V3, AP-12 IP-14) ist freiwillig: jede eine Kennung, doppelte fallen zusammen.
      */
     @PostMapping("/berichte")
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<BerichtDto.Bericht> anlegen(@RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
         BerichtDto.Anlegen b = lies(body, BerichtDto.Anlegen.class);
@@ -154,6 +157,7 @@ public class BerichtController {
      * dieselbe Freigabe noch einmal.
      */
     @PostMapping("/berichte/{kennung}/freigeben")
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<BerichtDto.Stand> freigeben(@PathVariable String kennung,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -218,6 +222,7 @@ public class BerichtController {
 
     /** Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — R4, mit Begründung. */
     @PostMapping("/berichte/{kennung}/anstoesse/{id}/verwerfen")
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen"}, ziel = RechtZiel.DIENST)
     public BerichtDto.Anstoss verwerfen(@PathVariable String kennung, @PathVariable String id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -228,6 +233,7 @@ public class BerichtController {
 
     /** Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — Archivieren folgt dem Freigabe-Recht (G1). */
     @PostMapping("/berichte/{kennung}/archivieren")
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen"}, ziel = RechtZiel.DIENST)
     public BerichtDto.Bericht archivieren(@PathVariable String kennung, @RequestBody(required = false) JsonNode body,
             Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);

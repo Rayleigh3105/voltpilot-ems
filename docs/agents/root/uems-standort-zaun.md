@@ -46,15 +46,17 @@ Kundenbereich und Tabelle), `ZugriffZaunApiTest` (157 lesende Routen gleich, sta
 - ⚠ **Summen:** `/overview` und `/earnings` lesen je Anlage des ganzen Kundenbereichs (`ZEIGT_NUR_SICHTBARE`). Die Antwort
   nimmt nur Anlagen aus `sites.findAll()`. Die Teilansicht der Summen ist IP-10.
 - ⚠ Übrige Tabellen mit `site_id` (Konfiguration, Verbraucher, Ladepunkte, `ort_zuordnung` …) sind nur über ihre
-  Einstiege gezäunt (`requireSite`). Eine neue Route ohne Anlage im Pfad braucht den Prüfpunkt selbst. Den
-  Rechte-Interceptor mit 404 außerhalb baut IP-6.
+  Einstiege gezäunt (`requireSite`). Eine neue Route ohne Anlage im Pfad braucht den Prüfpunkt selbst. Der
+  Rechte-Interceptor (IP-6, `uems-rechte-schreibrouten.md`) reicht eine unsichtbare Anlage an die Route durch — die 404
+  bleibt deren Sache.
 - ⚠ **Anlage ohne gültige Zuordnung:** für standortbeschränkte Nutzer unsichtbar, für unternehmensweite sichtbar
   (§8 IP-5). Das trifft auch Bestandsanlagen, die die Übernahme nur als Vorschlag führt, und Zuordnungen mit
   `gueltig_ab` in der Zukunft bis zu diesem Tag.
-- ⚠ **IP-6 (Anlegen am Standort):** Eine Anlage, die der enge Zaun nicht sieht, kann er nicht zuordnen. Die
+- ⚠ **Anlegen am Standort:** Eine Anlage, die der enge Zaun nicht sieht, kann er nicht zuordnen. Die
   Einfüge-Prüfung `uems_anlage_standort_anlage_pruefen` liest `site` unter derselben Rolle und meldet
   `anlage_standort_site_fk`. Ein `INSERT … RETURNING` auf `site` oder `ort` scheitert im engen Zaun, weil die neue Zeile
-  noch keine Zuordnung hat.
+  noch keine Zuordnung hat. Seit IP-6 vergibt `OrtRepository.anlegen` die Kennung selbst (ohne `RETURNING`). `site`
+  legt nur der Kundenadministrator an (`anlage.verwalten`, unternehmensweit).
 - ⚠ **Bestandsregel E12 in der Anfrage:** ein Kundenkonto, das in diesem Kundenbereich NIE eine Zuweisung hatte, trägt
   `unternehmen` (`ZugriffContext.Zugriff.nieZugewiesen`, eine Abfrage mehr nur ohne wirksame Zuweisung). Sonst sperrte der
   Zaun jedes Konto aus, das der Start-Lauf noch nicht übernommen hat (Not-Aus, Keycloak nicht erreichbar, Testlauf). Mit

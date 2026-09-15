@@ -12,6 +12,8 @@ import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.SaveBatteryRequest;
 import com.voltpilot.api.web.dto.SiteAssetDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +86,7 @@ public class SiteBatteryController {
      */
     @Transactional
     @PutMapping("/battery")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<SiteAssetDto> saveBattery(@PathVariable UUID siteId,
             @Valid @RequestBody SaveBatteryRequest request) {
         requireSite(siteId);
@@ -130,6 +133,7 @@ public class SiteBatteryController {
      */
     @Transactional
     @DeleteMapping("/battery")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public List<SiteAssetDto> unregisterBattery(@PathVariable UUID siteId) {
         requireSite(siteId);
         // UEMS AP-12 E13 S2: the battery-hybrid point is a component - when a released Berichtsstand

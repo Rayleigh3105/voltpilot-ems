@@ -3,6 +3,8 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.cockpit.CockpitLayoutService;
 import com.voltpilot.api.web.SiteCockpitLayoutController.LayoutRequest;
 import com.voltpilot.api.web.dto.CockpitLayoutDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -60,6 +62,7 @@ public class TenantCockpitLayoutController {
     }
 
     @PutMapping
+    @Recht(value = "cockpit.anpassen", ziel = RechtZiel.UNTERNEHMEN)
     public CockpitLayoutDto put(
             @RequestParam(name = "surface", defaultValue = "cockpit") String surface,
             @RequestParam(name = "layer", defaultValue = "vorgabe") String layer,
@@ -73,6 +76,7 @@ public class TenantCockpitLayoutController {
     }
 
     @DeleteMapping
+    @Recht(value = "cockpit.anpassen", ziel = RechtZiel.UNTERNEHMEN)
     public CockpitLayoutDto reset(
             @RequestParam(name = "surface", defaultValue = "cockpit") String surface,
             @RequestParam(name = "layer", defaultValue = "vorgabe") String layer) {

@@ -9,6 +9,8 @@ import com.voltpilot.api.web.dto.MastrApplyRequest;
 import com.voltpilot.api.web.dto.MastrLookupRequest;
 import com.voltpilot.api.web.dto.MastrPreviewDto;
 import com.voltpilot.api.web.dto.SiteAssetDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
@@ -61,6 +63,7 @@ public class MastrController {
      * plausibility check) and decides.
      */
     @PostMapping("/mastr-lookup")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public MastrPreviewDto lookup(@PathVariable UUID siteId,
             @Valid @RequestBody MastrLookupRequest request) throws RegistryLookupException {
         requireSite(siteId);
@@ -74,6 +77,7 @@ public class MastrController {
      */
     @Transactional
     @PostMapping("/mastr-apply")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<SiteAssetDto> apply(@PathVariable UUID siteId,
             @Valid @RequestBody MastrApplyRequest request) {
         requireSite(siteId);

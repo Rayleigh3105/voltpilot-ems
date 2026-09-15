@@ -4,6 +4,8 @@ import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -58,6 +60,7 @@ public class SiteProbeController {
      * yields the honest {@code timeout} outcome, not an error.
      */
     @PostMapping("/modbus-probe")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ProbeResult probe(@PathVariable UUID siteId,
             @Valid @RequestBody ProbeRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);

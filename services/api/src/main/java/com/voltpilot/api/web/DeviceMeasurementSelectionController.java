@@ -13,6 +13,8 @@ import com.voltpilot.api.measurement.MeasurementSelectionService.Change;
 import com.voltpilot.api.measurement.MeasurementSelectionService.CustomChange;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
 import com.voltpilot.api.uems.BestandGeraeteCsv;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -210,6 +212,7 @@ public class DeviceMeasurementSelectionController {
      * <p>Recht: {@code mess_selektion.bearbeiten} - dieselbe Vorschau, sie schreibt nichts.
      */
     @PostMapping("/custom/estimate")
+    @Recht(value = "mess_selektion.bearbeiten", ziel = RechtZiel.DEVICE)
     public MeasurementBudget.Estimate estimateCustom(@PathVariable UUID deviceId,
             @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody Definition definition) {
@@ -222,6 +225,7 @@ public class DeviceMeasurementSelectionController {
      * <p>Recht: {@code mess_selektion.bearbeiten}.
      */
     @PutMapping("/{pointKey}")
+    @Recht(value = "mess_selektion.bearbeiten", ziel = RechtZiel.DEVICE)
     public State change(@PathVariable UUID deviceId, @PathVariable String pointKey,
             @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody SelectionChangeRequest request,
@@ -239,6 +243,7 @@ public class DeviceMeasurementSelectionController {
      * <p>Recht: {@code mess_selektion.bearbeiten}.
      */
     @PostMapping("/custom")
+    @Recht(value = "mess_selektion.bearbeiten", ziel = RechtZiel.DEVICE)
     public State custom(@PathVariable UUID deviceId,
             @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody CustomPointRequest request,

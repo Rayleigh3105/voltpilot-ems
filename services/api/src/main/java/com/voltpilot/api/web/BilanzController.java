@@ -10,6 +10,8 @@ import com.voltpilot.api.uems.BilanzAbgelehnt;
 import com.voltpilot.api.uems.BilanzService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.BilanzDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -36,10 +38,11 @@ import org.springframework.web.server.ResponseStatusException;
  * der Rest je Tag aus der Stellung, nie gespeichert — und der Vorschlag „Rest anlegen“. Die Arbeit macht
  * {@link BilanzService}, jede Zahl {@code BilanzAbleitung}.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die Mandanten-RLS —
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die Mandanten-RLS —
  * eine fremde Anlage ist 404, nie 403. Jede Route nennt im Kommentar ihre Kennung aus
- * {@code docs/contracts/v2/rechte-matrix.json} ({@code RechteKennungenDerRoutenTest}); durchgesetzt wird sie
- * hier nicht.
+ * {@code docs/contracts/v2/rechte-matrix.json} ({@code RechteKennungenDerRoutenTest}); seit AP-03 IP-6 setzt {@code
+ * @Recht} sie vor dem Handler durch
+ * (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404).
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein unbekanntes Feld (auch camelCase) ist 400
  * {@code anfrage_ungueltig} mit {@code feld}.
@@ -73,6 +76,7 @@ public class BilanzController {
      * wenn er schon einen Rest hat — es entsteht nie ein zweiter.
      */
     @PostMapping("/rest")
+    @Recht(value = "messstelle.formel", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<BilanzDto.RestAngelegt> restAnlegen(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         BilanzDto.RestAngelegt r = dienst.restAnlegen(siteId, lies(body), akteur(auth));

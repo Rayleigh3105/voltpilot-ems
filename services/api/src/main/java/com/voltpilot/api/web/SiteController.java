@@ -44,6 +44,8 @@ import com.voltpilot.api.web.dto.TelemetryPointDto;
 import com.voltpilot.api.web.dto.UpdateSiteRequest;
 import com.voltpilot.api.web.dto.WeatherForecastDto;
 import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -186,6 +188,7 @@ public class SiteController {
      */
     // Recht: `anlage.verwalten` (die Anlage anlegen); die Zuordnung dazu `anlage.zuordnen`.
     @PostMapping
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     @Transactional
     public ResponseEntity<SiteDto> createSite(@Valid @RequestBody CreateSiteRequest request,
             Authentication auth) {
@@ -221,6 +224,7 @@ public class SiteController {
      * tenant switcher can ever move a site across tenants.
      */
     @PutMapping("/{siteId}")
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     public SiteDto updateSite(@PathVariable UUID siteId,
             @Valid @RequestBody UpdateSiteRequest request) {
         SiteDto updated = sites.update(siteId, request.name().trim(),
@@ -267,6 +271,7 @@ public class SiteController {
     }
 
     @DeleteMapping("/{siteId}")
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId, Authentication auth) {
         geltungsbereich.requireSite(siteId);

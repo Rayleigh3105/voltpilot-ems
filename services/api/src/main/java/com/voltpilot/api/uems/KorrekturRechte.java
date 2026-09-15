@@ -12,6 +12,7 @@ import com.voltpilot.api.uems.RechteAbleitung.Umfang;
 import com.voltpilot.api.uems.RechteAbleitung.Zelle;
 import com.voltpilot.api.uems.RechteAbleitung.Ziel;
 import com.voltpilot.api.uems.RechteAbleitung.Zuweisung;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import java.time.Instant;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -77,9 +78,18 @@ public final class KorrekturRechte {
                 List.of(z));
     }
 
+    /**
+     * Der Aufrufer, seit AP-03 IP-6: die wirksamen Zuweisungen aus dem Zugriff-Kontext ({@link RechtPruefung#aufrufer}) —
+     * ohne Kontext und am Plattform-Umschalter bleibt es bei {@link #benutzer} (W3, bis IP-8). Das Ziel bleibt das
+     * Unternehmen: ein Bearbeiter je Standort wird abgewiesen, bis die Korrektur ihren Standort nennt.
+     */
+    public static Benutzer aufrufer(ProtokollAkteur wer) {
+        return RechtPruefung.aufrufer().orElseGet(() -> benutzer(wer));
+    }
+
     /** darf(aufrufer, aktion, Unternehmen) — für Aktionen ohne Vier-Augen-Bedingung. */
     public static DarfErgebnis darf(ProtokollAkteur wer, String aktion, Instant jetzt) {
-        return RechteAbleitung.darf(MATRIX, benutzer(wer), kundenbereich(), aktion, Ziel.unternehmen(), jetzt);
+        return RechteAbleitung.darf(MATRIX, aufrufer(wer), kundenbereich(), aktion, Ziel.unternehmen(), jetzt);
     }
 
     /**
@@ -88,7 +98,7 @@ public final class KorrekturRechte {
      */
     public static DarfErgebnis entscheiden(ProtokollAkteur wer, String aktion, String ersteller, boolean vierAugen,
             Instant jetzt) {
-        return RechteAbleitung.korrekturEntscheiden(MATRIX, benutzer(wer), kundenbereich(), aktion,
+        return RechteAbleitung.korrekturEntscheiden(MATRIX, aufrufer(wer), kundenbereich(), aktion,
                 Ziel.unternehmen(), jetzt, ersteller, vierAugen);
     }
 

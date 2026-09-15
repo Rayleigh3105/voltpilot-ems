@@ -7,6 +7,8 @@ import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.uems.BerichtsBelege;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -100,6 +102,7 @@ public class SiteEntityAdoptController {
     }
 
     @PostMapping("/adopt")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public AdoptedEntityDto adopt(@PathVariable UUID siteId,
             @Valid @RequestBody AdoptRequest request) {
@@ -145,6 +148,7 @@ public class SiteEntityAdoptController {
      * between the two calls would strand BOTH components unassigned.
      */
     @PostMapping("/{entityId}/edge-source")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public AdoptedEntityDto repin(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody RepinRequest request) {
@@ -208,6 +212,7 @@ public class SiteEntityAdoptController {
      * Duplicates are allowed on purpose: two arrays may both be called "Dach".
      */
     @PutMapping("/{entityId}/label")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public AdoptedEntityDto rename(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody LabelRequest request) {
@@ -277,6 +282,7 @@ public class SiteEntityAdoptController {
      * before anything is written ({@link BerichtsBelege#pruefeKomponente}).
      */
     @DeleteMapping("/{entityId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Transactional
     public void delete(@PathVariable UUID siteId, @PathVariable UUID entityId) {

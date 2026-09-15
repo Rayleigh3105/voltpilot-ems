@@ -12,6 +12,8 @@ import com.voltpilot.api.uems.MessstelleFormelService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleFormelDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -60,6 +62,7 @@ public class MessstelleFormelController {
      * Hauptgröße wird abgeleitet, die Terme sind Fassung 1 (gilt seit Beginn).
      */
     @PostMapping("/berechnet")
+    @Recht(value = "messstelle.formel", ziel = RechtZiel.DIENST)
     public ResponseEntity<MessstelleDto.Messstelle> anlegen(
             @RequestBody(required = false) MessstelleFormelDto.Anlegen body, Authentication auth) {
         MessstelleDto.Messstelle neu = formeln.anlegen(body, akteur(auth));
@@ -84,6 +87,7 @@ public class MessstelleFormelController {
      * 422 {@code formel_fassung_ueberlappt}. Antwort 201: die Formel an ihrem ersten Tag.
      */
     @PostMapping("/{id}/formel/fassungen")
+    @Recht(value = "messstelle.formel", ziel = RechtZiel.MESSSTELLE)
     public ResponseEntity<MessstelleFormelDto.Formel> fassungEintragen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         MessstelleFormelDto.FassungEintragen a = lies(body);

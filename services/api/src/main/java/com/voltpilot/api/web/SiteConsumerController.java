@@ -23,6 +23,8 @@ import com.voltpilot.api.web.dto.ConsumerDeviationDto;
 import com.voltpilot.api.web.dto.ConsumerFulfillmentDto;
 import com.voltpilot.api.web.dto.ConsumerOverrideDto;
 import com.voltpilot.api.web.dto.ConsumerRuntimeStatusDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -108,6 +110,7 @@ public class SiteConsumerController {
     }
 
     @PostMapping("/consumers")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<ConsumerDto> create(@PathVariable UUID siteId,
             @RequestBody CreateConsumerRequest request) {
         requireSite(siteId);
@@ -121,6 +124,7 @@ public class SiteConsumerController {
     }
 
     @PatchMapping("/consumers/{id}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ConsumerDto patch(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody PatchConsumerRequest request) {
         requireSite(siteId);
@@ -128,6 +132,7 @@ public class SiteConsumerController {
     }
 
     @DeleteMapping("/consumers/{id}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<Void> delete(@PathVariable UUID siteId, @PathVariable UUID id) {
         requireSite(siteId);
         consumers.delete(siteId, id);

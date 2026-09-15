@@ -10,6 +10,8 @@ import com.voltpilot.api.uems.CsvLeser;
 import com.voltpilot.api.uems.ImportVorschau;
 import com.voltpilot.api.uems.ImportVorschauService;
 import com.voltpilot.api.web.dto.BezugsdatenImportDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,10 +42,11 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
  * eine unvollständige Zuordnung ist 400 {@code anfrage_ungueltig} mit {@code feld}. Was an der DATEI nicht passt, ist
  * nie 400: es ist ein Befund an der Datei der Vorschau, eine zu große Datei 413 mit demselben Befund.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} plus die Mandanten-RLS: Bezugsgrößen, Werte
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} plus die Mandanten-RLS: Bezugsgrößen, Werte
  * und Importe eines fremden Kundenbereichs sieht die Vorschau nicht — eine fremde Bezugsgröße ist
  * {@code bezug_unbekannt}, eine fremde Datei nicht {@code datei_bekannt}. Die Kennung der Route steht im Kommentar
- * ({@code RechteKennungenDerRoutenTest}); durchgesetzt wird sie hier nicht.
+ * ({@code RechteKennungenDerRoutenTest}); seit AP-03 IP-6 setzt {@code @Recht} sie vor dem Handler durch
+ * (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404).
  */
 @RestController
 @RequestMapping("/api/v1/bezugsdaten/importe")
@@ -60,6 +63,7 @@ public class BezugsdatenImportController {
 
     /** Recht: {@code bezugsgroesse.importieren} (AP-09 §4.11 — Vorschau und Übernahme eines Imports). */
     @PostMapping(path = "/vorschau", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Recht(value = "bezugsgroesse.importieren", ziel = RechtZiel.DIENST)
     public BezugsdatenImportDto.Vorschau vorschau(
             @RequestPart("datei") MultipartFile datei, @RequestPart("zuordnung") String zuordnung) throws IOException {
         ImportVorschau.Zuordnung z = zuordnung(zuordnung);

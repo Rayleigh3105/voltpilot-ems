@@ -19,6 +19,9 @@ import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.UpdateDeviceRequest;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Locale;
@@ -68,8 +71,9 @@ public class DeviceController {
     private final ObjectProvider<ChargingConfigPublisher> chargingConfig;
     private final com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides;
     private final CommandLogRepository commandLog;
+    private final RechtPruefung rechte;
 
-    public DeviceController(DeviceRepository devices, Geltungsbereich geltungsbereich,
+    public DeviceController(DeviceRepository devices, Geltungsbereich geltungsbereich, RechtPruefung rechte,
             AssetRepository assets,
             ProvisionedDeviceRepository provisioned,
             DevicePurgeService purge,
@@ -84,6 +88,7 @@ public class DeviceController {
             CommandLogRepository commandLog) {
         this.devices = devices;
         this.geltungsbereich = geltungsbereich;
+        this.rechte = rechte;
         this.assets = assets;
         this.provisioned = provisioned;
         this.purge = purge;
@@ -104,6 +109,7 @@ public class DeviceController {
     }
 
     @PostMapping("/claim")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.DIENST)
     @Transactional
     public ResponseEntity<DeviceDto> claim(@Valid @RequestBody DeviceClaimRequest request) {
         UUID tenantId = TenantContext.get();
@@ -114,6 +120,9 @@ public class DeviceController {
         if (!geltungsbereich.siteVisible(request.siteId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
+        // Das Recht an der Zielanlage (UEMS AP-03 IP-6): der Interceptor kennt sie nicht, sie steht im Körper.
+        rechte.pruefen("geraet.einrichten", RechtZiel.ANLAGE, request.siteId(),
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found"));
         String externalRef = canonicalExternalRef(request.externalRef());
         // Topic-safety gate (defense in depth, same rule as the enrollment
         // path): the ref is interpolated into the retained MQTT provisioning
@@ -198,6 +207,7 @@ public class DeviceController {
      * an derselben Geräte-ID. RLS makes a foreign device a 404.
      */
     @PutMapping("/{deviceId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.DEVICE)
     public DeviceDto update(@PathVariable UUID deviceId,
             @Valid @RequestBody UpdateDeviceRequest request) {
         DeviceDto existing = devices.findById(deviceId)
@@ -219,6 +229,7 @@ public class DeviceController {
      * Full design: {@link DevicePurgeService}.
      */
     @PostMapping("/{deviceId}/purge-data")
+    @Recht(value = "aufzeichnungen.loeschen", ziel = RechtZiel.DEVICE)
     public com.voltpilot.api.web.dto.DevicePurgeResultDto purgeData(@PathVariable UUID deviceId) {
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
@@ -242,6 +253,7 @@ public class DeviceController {
      * in the manufacturing registry.
      */
     @DeleteMapping("/{deviceId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.DEVICE)
     @Transactional
     public ResponseEntity<Void> unclaim(@PathVariable UUID deviceId) {
         UUID tenantId = TenantContext.get();
