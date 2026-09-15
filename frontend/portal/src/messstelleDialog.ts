@@ -421,6 +421,7 @@ export interface OrtWahl {
   /** „Werk Ahrenberg › Halle 1 › Halle 1 Nord“ */
   pfad: string;
   standortId: string;
+  standortName: string;
   art: OrtArt;
 }
 
@@ -441,14 +442,15 @@ export function ortWahlen(
 ): OrtWahl[] {
   const out: OrtWahl[] = [];
   for (const s of standorte.standorte.filter(nichtArchiviert)) {
-    out.push({ kurzzeichen: s.kurzzeichen, name: s.name, pfad: s.name, standortId: s.id, art: 'standort' });
+    const am = { standortId: s.id, standortName: s.name };
+    out.push({ kurzzeichen: s.kurzzeichen, name: s.name, pfad: s.name, art: 'standort', ...am });
     const baum = baeume[s.id];
     if (!baum) continue;
     const bereich = (b: OrtsbaumBereich, ueber: string) =>
-      out.push({ kurzzeichen: b.kurzzeichen, name: b.name, pfad: `${ueber} › ${b.name}`, standortId: s.id, art: 'bereich' });
+      out.push({ kurzzeichen: b.kurzzeichen, name: b.name, pfad: `${ueber} › ${b.name}`, art: 'bereich', ...am });
     for (const g of baum.gebaeude.filter(nichtArchiviert).sort(nachKurzzeichen)) {
       const pfad = `${s.name} › ${g.name}`;
-      out.push({ kurzzeichen: g.kurzzeichen, name: g.name, pfad, standortId: s.id, art: 'gebaeude' });
+      out.push({ kurzzeichen: g.kurzzeichen, name: g.name, pfad, art: 'gebaeude', ...am });
       for (const b of g.bereiche.filter(nichtArchiviert).sort(nachKurzzeichen)) bereich(b, pfad);
     }
     for (const b of (baum.direktAmStandort?.bereiche ?? []).filter(nichtArchiviert).sort(nachKurzzeichen)) {
@@ -458,8 +460,25 @@ export function ortWahlen(
   return out;
 }
 
+/**
+ * Der Name vorn, gruppiert nach Standort, darunter Art und was darüber hängt — am Telefon ist der
+ * Auslöser zu schmal für „Werk Ahrenberg › Halle 1 › Halle 1 Nord“ und schnitte genau den Ort ab.
+ */
 export function ortOptionen(orte: OrtWahl[]): VpOption[] {
-  return orte.map((o) => ({ value: o.kurzzeichen, label: o.pfad, sub: ORT_ART_WORT[o.art] }));
+  return orte.map((o) => {
+    const ueber = o.pfad.split(' › ').slice(1, -1).join(' › ');
+    return {
+      value: o.kurzzeichen,
+      label: o.name,
+      sub: ueber ? `${ORT_ART_WORT[o.art]} in ${ueber}` : ORT_ART_WORT[o.art],
+      group: o.standortName,
+    };
+  });
+}
+
+/** Unter dem Ort-Feld: der ganze Pfad des gewählten Orts (D2) — sonst, was ohne Ort fehlt. */
+export function ortHinweis(o: OrtWahl | null, kennzeichen: string): string {
+  return o ? `${o.pfad} · ${ORT_ART_WORT[o.art]}` : ohneOrtSatz(kennzeichen);
 }
 
 export interface AnlageWahl {

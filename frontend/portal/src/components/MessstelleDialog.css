@@ -58,7 +58,7 @@
 }
 
 .vp-msd-fest-label {
-  font-size: var(--vp-c-fs-12);
+  font-size: var(--vp-c-fs-14);
   font-weight: var(--vp-c-fw-600);
   color: var(--vp-c-fg);
 }
@@ -105,7 +105,7 @@
 
 .vp-msd-zeit {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: var(--vp-c-space-3);
   min-width: 0;
 }
@@ -140,15 +140,10 @@
   overflow-wrap: anywhere;
 }
 
-.vp-msd-fuss {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--vp-c-space-2);
-  width: 100%;
-  min-width: 0;
-}
-
-.vp-msd-fuss-links {
-  margin-right: auto;
+/* Fuß: die Knöpfe stehen direkt in `.dfoot` — am Telefon stapelt das Modal sie in voller Breite,
+   ab Tablet-Breite steht „Zurück“/„Abbrechen“ links. */
+@media (min-width: 721px) {
+  .vp-modal .dfoot .vp-msd-zurueck {
+    margin-right: auto;
+  }
 }

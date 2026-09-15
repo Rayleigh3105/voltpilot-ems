@@ -160,7 +160,7 @@ for (const breite of BREITEN) {
     await messeUndFotografiere(page, breite, 'd1-pflichtfelder');
 
     await page.getByLabel('Name *').fill('Spritzguss SG01–SG06 Kühlung');
-    await waehle(page, 'Größe *', /^Wirkenergie/);
+    await waehle(page, 'Hauptgröße *', /^Wirkenergie/);
     await waehle(page, 'Richtung *', /^Bezug/);
     await waehle(page, 'Wertart *', /^Zählerstand/);
     await page.getByRole('button', { name: 'Nebengröße hinzufügen' }).click();
@@ -173,7 +173,8 @@ for (const breite of BREITEN) {
     await page.getByRole('button', { name: 'Weiter: Zuordnung' }).click();
     await expect(aktiverSchritt(page)).toHaveText('Zuordnung');
     await expect(page.getByRole('combobox', { name: 'Ort', exact: true })).toContainText('Werk Ahrenberg');
-    await waehle(page, 'Ort', /^Werk Ahrenberg › Halle 1 › Halle 1 Nord/);
+    await waehle(page, 'Ort', /^Halle 1 Nord/);
+    await expect(dialog.getByText('Werk Ahrenberg › Halle 1 › Halle 1 Nord · Bereich')).toBeVisible();
     await waehle(page, 'Anlage', /^Werk Ahrenberg – Halle 1/);
     await waehle(page, 'Elektrische Stellung', /^Hauptzähler/);
     await page.getByRole('button', { name: 'Weiter: Quelle' }).click();

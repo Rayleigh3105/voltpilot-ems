@@ -22,6 +22,8 @@ import {
   leereGroesse,
   leereIdentitaet,
   ortAnfrage,
+  ortHinweis,
+  ortOptionen,
   ortWahlen,
   passtNichtSatz,
   PFLICHT,
@@ -368,6 +370,19 @@ describe('Zuordnung — nur zulässige Ziele', () => {
       'Werk Ahrenberg › Halle 1 › Halle 1 Süd',
       'Werk Lindach',
     ]);
+  });
+
+  it('Ort-Auswahl: der Name vorn, gruppiert nach Standort — der ganze Pfad steht unter dem Feld', () => {
+    const orte = ortWahlen(ahrenbergHeute(), { [FIXTURE_IDS.st1]: ortsbaumAhrenberg({ gebaeude: [halle1()] }) });
+    expect(ortOptionen(orte).slice(0, 3)).toEqual([
+      { value: 'ST-1', label: 'Werk Ahrenberg', sub: 'Standort', group: 'Werk Ahrenberg' },
+      { value: 'G-1', label: 'Halle 1', sub: 'Gebäude', group: 'Werk Ahrenberg' },
+      { value: 'B-1', label: 'Halle 1 Nord', sub: 'Bereich in Halle 1', group: 'Werk Ahrenberg' },
+    ]);
+    expect(ortHinweis(orte[2], 'MS-0022')).toBe('Werk Ahrenberg › Halle 1 › Halle 1 Nord · Bereich');
+    expect(ortHinweis(null, 'MS-0022')).toBe(
+      'Ohne Ort bleibt MS-0022 ein Entwurf. Eingerichtet ist eine Messstelle mit Kennzeichen, Name, Hauptgröße und Ort.',
+    );
   });
 
   it('Anlagen: mit Ort nur die seines Standorts', () => {

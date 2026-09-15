@@ -56,7 +56,7 @@ async function waehle(label: string, option: RegExp) {
 async function identitaetAusfuellen() {
   await waitFor(() => expect(feld('Kennzeichen').value).toBe(VORSCHLAG));
   tippe('Name *', 'Spritzguss SG01–SG06 Kühlung');
-  await waehle('Größe *', /^Wirkenergie/);
+  await waehle('Hauptgröße *', /^Wirkenergie/);
   await waehle('Richtung *', /^Bezug/);
   await waehle('Wertart *', /^Zählerstand/);
 }
@@ -279,7 +279,7 @@ describe('MessstelleDialog — bearbeiten', () => {
     zeige({ messstelleId: 'ms-neu' });
     expect(screen.getByRole('dialog', { name: 'Messstelle bearbeiten' })).toBeInTheDocument();
     expect(await screen.findByText('Wirkenergie · Bezug · kWh · Zählerstand')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Größe *' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Hauptgröße *' })).toBeNull();
     expect(api.kennzeichenVorschlag).not.toHaveBeenCalled();
 
     tippe('Name *', 'Spritzguss SG01–SG06 Kühlkreis');

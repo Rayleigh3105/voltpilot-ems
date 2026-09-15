@@ -51,8 +51,8 @@ import {
   LEERER_BESTAND,
   MEDIUM,
   OHNE_ANLAGE,
-  ohneOrtSatz,
   ortAnfrage,
+  ortHinweis,
   ortOptionen,
   ortWahlen,
   QUELLE_VORSPANN,
@@ -506,7 +506,7 @@ export function MessstelleDialog({
       <div className="vp-msd-groesse">
         <VpPicker
           id={id('groesse')}
-          label="Größe *"
+          label={haupt ? `${UEMS_HAUPTGROESSE} *` : 'Größe *'}
           placeholder="Größe wählen"
           options={groesseOptionen()}
           value={e.groesse || null}
@@ -590,9 +590,6 @@ export function MessstelleDialog({
           </div>
         ) : (
           <>
-            <div className="vp-msd-fest">
-              <span className="vp-msd-fest-label">{UEMS_HAUPTGROESSE}</span>
-            </div>
             {groesseFelder(
               'haupt',
               identitaet.hauptgroesse,
@@ -682,7 +679,7 @@ export function MessstelleDialog({
           loading={!standorte && !orteFehler}
           loadError={orteFehler ? 'Die Orte konnten nicht geladen werden.' : null}
           emptyText={LEER_ORTE}
-          hint={zuordnung.ort ? undefined : ohneOrtSatz(kennzeichen)}
+          hint={ortHinweis(ortWahl, kennzeichen)}
           error={fehler('ort')}
         />
         <VpPicker
@@ -848,20 +845,17 @@ export function MessstelleDialog({
 
   function fuss() {
     if (ansicht === 'fertig') {
-      return (
-        <div className="vp-msd-fuss">
-          <Button onClick={onClose}>{KNOPF.schliessen}</Button>
-        </div>
-      );
+      return <Button onClick={onClose}>{KNOPF.schliessen}</Button>;
     }
     const zurueck =
       ansicht === 1 ? (
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" className="vp-msd-zurueck" onClick={onClose}>
           {gespeichert && fassung === 'anlegen' ? KNOPF.schliessen : KNOPF.abbrechen}
         </Button>
       ) : (
         <Button
           variant="ghost"
+          className="vp-msd-zurueck"
           disabled={busy}
           onClick={() => {
             setAllgemein(null);
@@ -873,8 +867,9 @@ export function MessstelleDialog({
       );
     const ladend = fassung === 'bearbeiten' && !gespeichert;
     return (
-      <div className="vp-msd-fuss">
-        <span className="vp-msd-fuss-links">{zurueck}</span>
+      // Die Knöpfe stehen direkt im Fuß des Modals: am Telefon stapelt er sie in voller Breite.
+      <>
+        {zurueck}
         {ansicht === 1 && (
           <Button onClick={() => void weiterIdentitaet()} disabled={busy || ladend || ladeFehler !== null}>
             {busy ? KNOPF.speichert : KNOPF.weiterZuordnung}
@@ -895,7 +890,7 @@ export function MessstelleDialog({
             </Button>
           </>
         )}
-      </div>
+      </>
     );
   }
 }
