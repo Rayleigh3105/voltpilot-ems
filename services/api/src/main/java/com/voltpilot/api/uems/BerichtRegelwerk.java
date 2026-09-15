@@ -54,7 +54,7 @@ public record BerichtRegelwerk(String software, Map<String, String> vertraege) {
     private static Map<String, String> vertraegeHeute() {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("verbrauch", "1.0");
-        m.put("ergebnis-zustand", "1.10");
+        m.put("ergebnis-zustand", "1.11");
         m.put("bilanz", "1.1");
         m.put("bilanzwert-herkunft", "1.0");
         m.put("kennzahl", "1.0");

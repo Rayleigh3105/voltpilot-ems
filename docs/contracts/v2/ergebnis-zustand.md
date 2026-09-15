@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 14.09.2026 · Vertrag 1.7 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 15.09.2026 · Vertrag 1.11 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -329,6 +329,34 @@ Gesprochen und geprüft werden sie von `uems/BerichtRegeln` ⟷ `uemsBericht.ts`
 Datei für standortbeschränkte Personen (G3). Die Uhrzeit trägt ihren Zusatz nur an der doppelten Stunde (§4); der Kopf eines
 Berichts nennt die Zone immer („Datenstand 10.11.2026 08:55 (MEZ)“, `bericht.md` D5). Platzhalter `datum` ist derselbe wie im
 Block `kennzahl_kennzeichen`, `uhr` derselbe wie in `platzhalter` (§5).
+
+## 9. Der Grund einer fehlenden Zahl (seit 1.11, AP-13 IP-1)
+
+Zeigt ein Schritt der Route „Werte je Messstelle“ keine Zahl, nennt sie im Feld `grund` einen von acht Codes
+(Java `uems/MessstelleWerteRegeln.OhneZahl`). Seit 1.11 hat jeder Code genau EINEN Kundensatz im Block `grund`
+(AP-13 E11 = A, D5): die Karte zeigt „—“ UND den Satz. **Das ist Sprache, keine Regel** — wann ein Grund gilt,
+entscheidet die Route (AP-08 IP-9); kein Satz nennt eine Ursache, die kein Modul geliefert hat. Gesprochen von
+`ErgebnisZustand.grundSatz(code, werte)` ⟷ `uemsErgebnis.grundSatz(code, werte)`: `null` spricht nichts, ein fremder
+Code (auch ein Grund der Kennzahl oder ein Zustandswort) und falsch belegte Platzhalter sind Programmfehler. Die
+Platzhalter bildet die Fläche aus den Feldern der Antwort (`woher` je Satz); den Anteil beugt der Block `anteil`
+(`positiv` → „positiven“), nie die Fläche.
+
+| Code | Satz | Beispiel |
+|---|---|---|
+| `keine_quelle` | Keine Quelle: {messstelle} hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0. | Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0. |
+| `quelle_teilweise` | Die Quelle deckt den Zeitraum nur zum Teil: {quelle} gilt seit {ab} — die gespeicherte Zahl gehört nicht ganz dieser Messstelle. | Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle. |
+| `anteil_nicht_gespeichert` | Die Quelle liest nur den {anteil} Anteil von {kanal}; eine Menge je Anteil ist nicht gespeichert. | Die Quelle liest nur den positiven Anteil von Wirkenergie Bezug (K-3); eine Menge je Anteil ist nicht gespeichert. |
+| `berechnet` | Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine Formel aus Momentanwerten gar nicht. | — |
+| `noch_nicht_gebildet` | Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun. | — |
+| `ohne_menge_gespeichert` | Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht. | — |
+| `version_nicht_gespeichert` | Version {n} ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version {max}. | Version 3 ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version 2. |
+| `version_nicht_gebildet` | Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie. | — |
+
+**Drei Sätze weichen vom Vorschlag in AP-13 O15 ab** (Block `befunde`, gemeldet an firstmate): `noch_nicht_gebildet`
+spricht den gebauten Satz der Tageskarte (PR 809) statt „… noch nicht gebildet — … (Monatslauf am …)“, dessen Datum
+kein Feld liefert; `ohne_menge_gespeichert` sagt nicht „Zustand bekannt“ (die Route liefert `zustand = null`, auch
+an Zeiträumen); `berechnet` verspricht keine Tag-/Monatswerte (eine Formel aus Momentanwerten hat keine). Die übrigen
+Blöcke (§2, §7, §8) bleiben Satz für Satz, wie sie sind.
 
 ## Grenzen
 

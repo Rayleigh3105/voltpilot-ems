@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 19 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 24 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -52,6 +52,11 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Revision](#revision) — Sicht Organisation · Nachtrag AP-12 §4.9 (E6, E7)
 - [Datenstand](#datenstand) — Sicht Organisation · Nachtrag AP-12 §4.6 (E4)
 - [Quellenverzeichnis](#quellenverzeichnis) — Sicht Organisation · Nachtrag AP-12 §4.4 (E3, E6)
+- [Werte](#werte) — Sicht Zustand · Nachtrag AP-13 §4.1 (E9, E15)
+- [Verlauf](#verlauf) — Sicht Zustand · Nachtrag AP-13 §4.1 (E5, E15)
+- [Vergleich](#vergleich) — Sicht Zustand · Nachtrag AP-13 §4.1 (E6, E15)
+- [Datenlage](#datenlage) — Sicht Zustand · Nachtrag AP-13 §4.1 (E13, E15)
+- [Grund (einer fehlenden Zahl)](#grund-einer-fehlenden-zahl) — Sicht Zustand · Nachtrag AP-13 §4.10 (E11)
 
 ## Kundenbereich
 
@@ -627,6 +632,8 @@ Die Bilanzgrenze ist die Anlage, nie ein Gebäude und nie ein Standort: nur hint
 
 **Abgrenzung.** Nicht die Erlösbilanz (die rechnet Geld, nicht Energie), nicht der Fahrplan (der plant, statt zu bilanzieren), nicht die Verdichtung (die bildet Mengen, nicht Rollen).
 
+> **Verfeinert durch AP-13 E15:** Auf den Messdaten- und Analyseoberflächen heißt der Rest eines Systems an der Anlage „nicht zugeordnet“, in der Gebäude-Sicht „nicht verortet“ und bei den Kostenstellen „nicht verteilt“ — drei Wörter für drei Sichten, nie vertauscht. „Bilanz“ steht nie ohne Präfix, „Energiefluss“ bleibt das Bestandsbild der Bühne. Die Wörter: `frontend/portal/src/glossar.ts` (`UEMS_ENERGIEBILANZ`, `UEMS_NICHT_VERORTET`).
+
 ## Bilanzdifferenz
 
 *Sicht: Elektrisch · Nachtrag AP-10 §4.3 (E1, E3)*
@@ -780,3 +787,73 @@ Das Quellenverzeichnis entscheidet, welche Änderung einen Bericht trifft: Zeitr
 **Heute im Code.** Heute nicht vorhanden. Die Form einer Zeile steht in `docs/contracts/v2/bericht.schema.json` (Quelle); die Tabelle kommt mit AP-12 IP-4.
 
 **Abgrenzung.** Nicht die Quellenbindung einer Messstelle (die verbindet Messstelle und Messkanal), nicht die Herkunft eines Werts (die erklärt eine einzelne Zahl).
+
+## Werte
+
+*Sicht: Zustand · Nachtrag AP-13 §4.1 (E9, E15)*
+
+**Der Abschnitt einer Messstelle, in dem ihre Zahlen für einen Zeitraum stehen: Karte, Liste, Verlauf und Vergleich.**
+
+Jede Zahl steht mit Zustand, Verlauf, Fassung, Kennzeichen und Version so, wie sie gebildet wurde; fehlt eine Zahl, steht ein Strich mit dem Satz ihres Grundes, nie eine 0. Die Zeiten stehen in der Zeitzone des Standorts, und der Kopf nennt sie. Jeder Weg zur Zahl einer Messstelle — aus dem Register, einer Übersicht, einer Kennzahl oder einem Bericht — endet hier, mit Zeitraum und Version.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-10 Netzbezug Halle 2 am 03.11.2026: 2.304 kWh · vollständig (Menge aus Zählerständen) · Verlauf 85 % · vorläufig — Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg).
+
+**Heute im Code.** Die Tages- und Monatskarte öffnet als Dialog an der Messstelle (`frontend/portal/src/uemsWerteKarte.ts`); als Abschnitt der Messstellen-Seite kommt sie mit AP-13 IP-3. Das Wort: `frontend/portal/src/glossar.ts` (`UEMS_WERTE`).
+
+**Abgrenzung.** Nicht der Reiter „Messwerte“ einer Anlage (Bestand, Verdichtung in Berlin-Zeit), nicht der Register-Verlauf eines Geräts.
+
+## Verlauf
+
+*Sicht: Zustand · Nachtrag AP-13 §4.1 (E5, E15)*
+
+**Die Zeichnung der Werte über einen Zeitraum — Tag in Viertelstunden, Woche in Stunden, Monat in Tagen, Jahr in Monaten.**
+
+Jeder Schritt zeigt Farbe und Wort seines Zustands; ein Schritt ohne Werte ist eine Lücke ohne Linie und ohne Null, eine Folge davon eine Fläche mit Satz. „Verlauf n %“ an einer Zahl sagt, welcher Anteil der erwarteten Werte angekommen ist — das ist nicht die Vollständigkeit der Menge: ein Tag kann vollständig gemessen sein und trotzdem „Verlauf 85 %“ tragen. Dasselbe Wort wie der Bereich „Verlauf“ einer Anlage, dieselbe Bedeutung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-10 am 03.11.2026: 96 Viertelstunden, 14:00–17:31 als Lücke mit dem Satz „Lücke von 14:00 bis 17:31 — nie als 0 gerechnet“; die Karte sagt „vollständig (Menge aus Zählerständen) · Verlauf 85 %“.
+
+**Heute im Code.** Das Wort und die Form des Abzeichens: `frontend/portal/src/glossar.ts` (`UEMS_VERLAUF`, `UEMS_VERLAUF_PROZENT` = `satz.abdeckung` in `docs/contracts/v2/ergebnis-zustand-vectors.json`); das Raster je Zeitraum: `frontend/portal/src/uemsOberflaechen.ts` (`verlaufRaster`). Die Zeichnung kommt mit AP-13 IP-4.
+
+**Abgrenzung.** Nicht die „Abdeckung“ der Bestandsflächen (Viertelstunden einer Anlage), nicht eine Hochrechnung, nicht ein freier Von–Bis-Zeitraum.
+
+## Vergleich
+
+*Sicht: Zustand · Nachtrag AP-13 §4.1 (E6, E15)*
+
+**Die Werte einer Messstelle neben ihrer Vorperiode oder ihrem Vorjahr — oder neben bis zu zwei weiteren passenden Messstellen.**
+
+Gegen die eigene Vorperiode steht die Differenz in kWh und Prozent, gemessen an der neuesten Version des Vergleichswerts; fehlt der Vergleichswert, steht sein Grund, nie eine 0. Zwischen zwei Messstellen gibt es keine Differenz — ein Unterschied zweier Zähler sagt nichts über einen von beiden. Passend sind Messstellen mit gleicher Größe, Richtung, Einheit und Wertart; bei den anderen nennt die Auswahl, warum nicht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-12 im November 2026 gegen Oktober 2026 (Version 2): +260 kWh (+4,3 %). MS-06 und MS-11 (Spritzguss) nebeneinander; MS-21 ist nicht passend (Volumen in m³).
+
+**Heute im Code.** Die Regel „passend“: `frontend/portal/src/uemsOberflaechen.ts` (`passend`); die Differenz rechnet der Bericht-Zwilling `frontend/portal/src/uemsBericht.ts` (AP-12). Das Wort: `frontend/portal/src/glossar.ts` (`UEMS_VERGLEICH`, dasselbe Wort wie die Vergleichsquelle). Die Fläche kommt mit AP-13 IP-5.
+
+**Abgrenzung.** Nicht die Vergleichsquelle (eine zweite Quelle derselben Größe an EINER Messstelle, AP-04), nicht ein Benchmark gegen andere Unternehmen.
+
+## Datenlage
+
+*Sicht: Zustand · Nachtrag AP-13 §4.1 (E13, E15)*
+
+**Wie viele Messstellen einer Ebene Daten liefern — „15 von 16 Messstellen liefern Daten“, EINE Zählung je Ebene.**
+
+Gezählt wird aus dem Messstellen-Register: berechnete Messstellen zählen mit, eine Messstelle ohne Datenquelle steht im Nenner, manuell abgelesene werden als Zusatz genannt („· 1 manuell abgelesen“). Schweigen ist nie rot: eine Messstelle, die nicht liefert, sagt seit wann.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Unternehmen Ahrenberg, Oktober 2026: Werk Ahrenberg „15 von 16“, Werk Lindach „4 von 4“.
+
+**Heute im Code.** Die Zählung: `frontend/portal/src/uemsZustand.ts` (`aggregatLiefertDaten`); die Wörter: `frontend/portal/src/glossar.ts` (`UEMS_DATENLAGE`, `UEMS_MANUELL_ABGELESEN`). Der Baustein der Übersicht und dieselbe Zählung an der Karte „Funktionen“ kommen mit AP-13 IP-7.
+
+**Abgrenzung.** Nicht der Online-Status einer Anlage oder Box, nicht die Vollständigkeit einer Zahl, nicht „Verlauf n %“.
+
+## Grund (einer fehlenden Zahl)
+
+*Sicht: Zustand · Nachtrag AP-13 §4.10 (E11)*
+
+**Der Satz, warum an einer Stelle keine Zahl steht — je Grund genau einer.**
+
+Die Karte zeigt den Strich UND den Satz. Der Satz nennt nur, was das System weiß: keine Quelle, eine Quelle, die den Zeitraum nur zum Teil deckt, ein Zeitraum, der noch nicht gerechnet ist, eine Version, die es nicht gibt — nie eine Ursache, die niemand festgestellt hat, und nie eine Störung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-21 Gas Heizung Verwaltung, Oktober 2026: „— · keine Werte“ und „Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.“
+
+**Heute im Code.** Acht Sätze als Vertrag: `docs/contracts/v2/ergebnis-zustand.md` §9 (Block `grund`, 1.11), gesprochen von `frontend/portal/src/uemsErgebnis.ts` und `services/api/src/main/java/com/voltpilot/api/uems/ErgebnisZustand.java` (`grundSatz`). An der Karte sprechen sie mit AP-13 IP-6.
+
+**Abgrenzung.** Nicht ein Fehler oder eine Störung, nicht der Zustand „keine Werte“ (der sagt, DASS keine Zahl da ist), nicht die Gründe einer Kennzahl (eigener Vertrag).

@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  * {@code ergebnis-zustand.md}); der TS-Zwilling ist {@code frontend/portal/src/uemsErgebnis.ts}.
  * Wer eine Regel oder einen Satz ändert, ändert die Vektor-Datei UND beide Zwillinge.
  *
- * <p>Fünf Dinge wohnen hier, und nur hier:
+ * <p>Sechs Dinge wohnen hier, und nur hier:
  *
  * <ol>
  *   <li><b>Das geschlossene Zustands-Vokabular</b> — vollständig · unvollständig · keine Werte ·
@@ -395,6 +395,80 @@ public final class ErgebnisZustand {
             throw new IllegalArgumentException("unbekannte Fassung " + wert);
         }
         return sprich(schluessel, Map.of());
+    }
+
+    // ------------------------------------------------------------------ Grund einer fehlenden Zahl (seit 1.11)
+
+    /**
+     * Seit 1.11 (AP-13 IP-1, E11 = A): der Kundensatz zu EINEM Code des Feldes {@code grund} der Route „Werte je
+     * Messstelle“ ({@link MessstelleWerteRegeln.OhneZahl}); die Art jedes Platzhalters steht in {@link #GRUND_PLATZHALTER}.
+     */
+    public record Grund(String code, String muster, Map<String, String> platzhalter) {}
+
+    /** Je Platzhalter-Art der Gründe der reguläre Ausdruck (ohne fangende Gruppen), der den eingesetzten Text erkennt. */
+    public static final Map<String, String> GRUND_PLATZHALTER = Map.of(
+            "text", ".+",
+            "datum", "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\.[0-9]{4}",
+            "anteil", "positiven|negativen",
+            "version", "[1-9][0-9]*");
+
+    /** Das Wort, mit dem {@code anteil_nicht_gespeichert} das Feld {@code quellen[].anteil} beugt — nie die Fläche. */
+    public static final Map<String, String> GRUND_ANTEIL = Map.of("positiv", "positiven", "negativ", "negativen");
+
+    /** Die acht Gründe in der Reihenfolge der Route — je Code GENAU ein Satz. */
+    public static final List<Grund> GRUENDE = List.of(
+            new Grund("keine_quelle",
+                    "Keine Quelle: {messstelle} hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.",
+                    Map.of("messstelle", "text")),
+            new Grund("quelle_teilweise",
+                    "Die Quelle deckt den Zeitraum nur zum Teil: {quelle} gilt seit {ab} — die gespeicherte Zahl gehört nicht ganz"
+                            + " dieser Messstelle.",
+                    Map.of("quelle", "text", "ab", "datum")),
+            new Grund("anteil_nicht_gespeichert",
+                    "Die Quelle liest nur den {anteil} Anteil von {kanal}; eine Menge je Anteil ist nicht gespeichert.",
+                    Map.of("anteil", "anteil", "kanal", "text")),
+            new Grund("berechnet",
+                    "Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine"
+                            + " Formel aus Momentanwerten gar nicht.",
+                    Map.of()),
+            new Grund("noch_nicht_gebildet",
+                    "Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.",
+                    Map.of()),
+            new Grund("ohne_menge_gespeichert",
+                    "Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.",
+                    Map.of()),
+            new Grund("version_nicht_gespeichert",
+                    "Version {n} ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version {max}.",
+                    Map.of("n", "version", "max", "version")),
+            new Grund("version_nicht_gebildet",
+                    "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die"
+                            + " Viertelstunden zeigen sie.",
+                    Map.of()));
+
+    /**
+     * Der Satz, warum eine Zahl fehlt — seit 1.11 (AP-13 IP-1, E11 = A, D5): die Karte zeigt „—“ UND diesen Satz.
+     * Sprache, keine Regel: ob ein Grund gilt, entscheidet die Route. {@code null} (die Route nennt keinen Grund)
+     * spricht nichts; ein fremder Code (auch ein Grund der Kennzahl oder ein Zustandswort) und Platzhalter, die nicht
+     * GENAU die des Satzes sind, sind Programmfehler. Die Werte selbst prüft er nicht — wie {@link #sprich}. Die API
+     * gibt Codes, gesprochen wird im Portal; dieser Zwilling spricht nur im Vektor-Test.
+     */
+    public static String grundSatz(String code, Map<String, String> werte) {
+        if (code == null) {
+            return null;
+        }
+        Grund g = GRUENDE.stream().filter(x -> x.code().equals(code)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("unbekannter Grund " + code));
+        if (!g.platzhalter().keySet().equals(werte.keySet())) {
+            throw new IllegalArgumentException("Grund " + code + " braucht " + g.platzhalter().keySet() + ", bekam "
+                    + werte.keySet());
+        }
+        Matcher p = PLATZ.matcher(g.muster());
+        StringBuilder satz = new StringBuilder();
+        while (p.find()) {
+            p.appendReplacement(satz, Matcher.quoteReplacement(werte.get(p.group(1))));
+        }
+        p.appendTail(satz);
+        return satz.toString();
     }
 
     /** „Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren“. */

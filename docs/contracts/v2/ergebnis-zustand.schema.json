@@ -8,7 +8,7 @@
   "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "fruehere_fassungen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "mengen_herkunft", "fassung", "befunde", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in ergebnis-zustand.md." },
-    "schema_version": { "type": "string", "const": "1.10", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
+    "schema_version": { "type": "string", "const": "1.11", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
     "$schema_datei": { "type": "string", "const": "./ergebnis-zustand.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt Ahrenberg; die Regeln selbst nehmen die Zone des Standorts." },
@@ -132,6 +132,121 @@
               "stelle": { "type": "string", "enum": ["bericht", "stand", "entwurf", "wert", "quelle", "datei"] },
               "beispiel": { "type": "string", "minLength": 1 },
               "fall": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "grund": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Seit 1.11 (AP-13 IP-1, E11 = A, D5): je Code des Feldes grund der Route „Werte je Messstelle“ genau EIN Kundensatz — warum eine Zahl fehlt. Keine Regel: wann ein Grund gilt, entscheidet die Route. Die übrigen Blöcke bleiben unberührt; die Anzahl der Sätze (acht) prüfen beide Zwillinge gegen die Route.",
+      "required": [
+        "herkunft",
+        "quelle",
+        "platzhalter",
+        "anteil",
+        "ohne_grund",
+        "saetze"
+      ],
+      "properties": {
+        "herkunft": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quelle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platzhalter": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "anteil": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "positiv",
+            "negativ"
+          ],
+          "properties": {
+            "positiv": {
+              "type": "string",
+              "minLength": 1
+            },
+            "negativ": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "ohne_grund": {
+          "type": "null",
+          "description": "Die Route nennt keinen Grund (ein Schritt mit Zahl): nichts wird gesprochen."
+        },
+        "saetze": {
+          "type": "array",
+          "minItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "muster",
+              "platzhalter",
+              "woher",
+              "beispiel",
+              "fall"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "keine_quelle",
+                  "quelle_teilweise",
+                  "anteil_nicht_gespeichert",
+                  "berechnet",
+                  "noch_nicht_gebildet",
+                  "ohne_menge_gespeichert",
+                  "version_nicht_gespeichert",
+                  "version_nicht_gebildet"
+                ]
+              },
+              "muster": {
+                "type": "string",
+                "minLength": 1
+              },
+              "platzhalter": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "datum",
+                    "anteil",
+                    "version"
+                  ]
+                }
+              },
+              "woher": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Aus welchem Feld der Antwort ein Platzhalter gebildet wird — Hinweis für die Fläche, keine Regel."
+              },
+              "beispiel": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fall": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         }
@@ -296,7 +411,8 @@
         { "$ref": "#/$defs/fall_uhr" },
         { "$ref": "#/$defs/fall_rundungsdifferenz" },
         { "$ref": "#/$defs/fall_herkunft" },
-        { "$ref": "#/$defs/fall_fassung" }
+        { "$ref": "#/$defs/fall_fassung" },
+        { "$ref": "#/$defs/fall_grund" }
       ] }
     }
   },
@@ -613,6 +729,87 @@
           "properties": {
             "text": { "type": ["string", "null"], "description": "Der gesprochene Satz; null = nichts gesprochen." },
             "unbekannt": { "type": "boolean", "description": "true = ein fremder Wert, der nicht gesprochen wird (Fehler)." }
+          }
+        }
+      }
+    },
+    "fall_grund": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "familie",
+        "fall",
+        "why",
+        "eingang",
+        "erwartet"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "familie": {
+          "const": "grund"
+        },
+        "fall": {
+          "type": "string",
+          "minLength": 1
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "werte"
+          ],
+          "properties": {
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Das Feld grund der Route, wie geliefert."
+            },
+            "werte": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Die Platzhalter, aus den Feldern der Antwort gebildet."
+            }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text",
+            "fehler"
+          ],
+          "properties": {
+            "text": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Der gesprochene Satz; null = nichts gesprochen."
+            },
+            "fehler": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "grund_unbekannt",
+                "platzhalter_falsch"
+              ],
+              "description": "null = gesprochen; sonst ein Programmfehler des Aufrufers."
+            }
           }
         }
       }

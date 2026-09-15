@@ -30,6 +30,10 @@ mit `ergebnis-zustand-vectors.json` und Schema.
   Seit 1.7 sind „vorläufig“ und „endgültig“ Kennzeichen — Rang 90, ganz zuletzt, aus dem Feld `fassung`
   der Route (`fassung`, Block `fassung`), höchstens EINES je Liste (sonst `kennzeichen_doppelt`), `null`
   spricht nichts; Captain 14.09.2026 „Ja, immer zeigen“ — beide Fälle, nie nur der Ausnahmefall.
+- **Seit 1.11 der Grund einer fehlenden Zahl** (AP-13 IP-1, Block `grund`): je Code des Feldes `grund` der
+  Werte-Route EIN Kundensatz, `grundSatz(code, werte)` — `null` spricht nichts, ein fremder Code oder falsche
+  Platzhalter werfen; die Codes prüft Java gegen `MessstelleWerteRegeln.OhneZahl`. Wortlaut, Abweichungen von
+  AP-13 O15 und Fallen: [`uems-oberflaechen-vertrag.md`](uems-oberflaechen-vertrag.md).
 - **Die Reihenfolge ist Vertrag:** der Rang steigt nie (Anteil 10 → Rand 20–22 → Strecke 30 →
   Neustart 40 → Werte 50 → Integration 60), die Sätze der Gerätegrenze stehen in fester Folge.
   In Rang 30 wird die zeitliche Folge NICHT an HH:MM geprüft (ein Monat hat zwei Tage 09:12).

@@ -18,9 +18,10 @@
     "1.7 (AP-08 IP-11, additiv, Captain 14.09.2026 „Ja, immer zeigen“): „vorläufig“ und „endgültig“ sind keine vorgesehenen Wörter mehr, sondern die Kennzeichen vorlaeufig und endgueltig — Rang 90, ganz zuletzt: die Fassung sagt über die ganze Zahl, ob sie sich noch ändern kann (wer eine Zahl abrechnet, muss das wissen). Wortlaut = das Wort, wie es kennzeichen_vorgesehen seit 1.0 führte, ohne Datum. Block fassung: das Feld fassung der Route „Werte je Messstelle“ (vorlaeufig · endgueltig) wird GENAU dieses Kennzeichen, null spricht nichts (die Route kennt die Fassung nicht) — nie abgeleitet, nie aus einer anderen Periode. Höchstens EINE Fassung je Liste (zwei = kennzeichen_doppelt). Die Fassung ist NICHT der Zustand (vollständig · unvollständig · keine Werte · mit Ersatzwert): der eine sagt, ob die Zahl feststeht, der andere, ob sie vollständig ist — beide stehen nebeneinander. Gespeichert wird der Satz nirgends; gesprochen von der Tages- und Monatskarte für die gezeigte Periode, immer, in beiden Fällen.",
     "1.8 (Katalog-Einheiten, additiv, firstmate 14.09.2026): Scheinarbeit hat eine EIGENE Anzeige-Einheit — VAh und kVAh werden kVAh (Stellen wie kWh), nie als kWh getarnt: Scheinarbeit ist nicht in Wirkarbeit umrechenbar. Wmin (Wirkarbeit in Wattminuten, Shelly Gen1) wird kWh mit dem neuen, optionalen teiler 60000 — 1/60000 ist kein endlicher Dezimalfaktor, darum rechnet menge() wert × faktor ÷ teiler und rundet den EXAKTEN Quotienten kaufmännisch. „0,1 kWh“ ist KEINE Einheit, sondern eine Einheit mit eingebackenem Faktor; der Faktor gehört an die Skalierung des Katalogs und die Einheit bleibt einheit_unbekannt.",
     "befunde:Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert.",
-    "Seit 1.9 (AP-11 IP-1): der Block `kennzahl_kennzeichen` — die Kennzeichen-Sätze eines KENNZAHL-Werts mit eigenem Rang und die Erbregeln ihrer Eingänge (kennzahl.md). Die Verbrauchs-Liste `kennzeichen` bleibt Satz für Satz, wie sie ist."
+    "Seit 1.9 (AP-11 IP-1): der Block `kennzahl_kennzeichen` — die Kennzeichen-Sätze eines KENNZAHL-Werts mit eigenem Rang und die Erbregeln ihrer Eingänge (kennzahl.md). Die Verbrauchs-Liste `kennzeichen` bleibt Satz für Satz, wie sie ist.",
+    "Seit 1.11 (AP-13 IP-1, E11 = A): der Block `grund` — je Code des Feldes grund der Route „Werte je Messstelle“ genau EIN Kundensatz, warum eine Zahl fehlt; die Karte zeigt „—“ UND den Satz. Keine Regel: wann ein Grund gilt, entscheidet die Route. Gesprochen von ErgebnisZustand.grundSatz ⟷ uemsErgebnis.grundSatz; alle übrigen Blöcke bleiben Satz für Satz, wie sie sind."
   ],
-  "schema_version": "1.10",
+  "schema_version": "1.11",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -901,6 +902,109 @@
       }
     ]
   },
+  "grund": {
+    "herkunft": "UEMS AP-13 §4.10 D5, E11 = A (Captain 15.09.2026), §7 O15 — IP-1. Die Codes sind das Feld grund der Route „Werte je Messstelle“ (Java uems/MessstelleWerteRegeln.OhneZahl ⟷ TS MessstelleWerteWert.grund), in der Reihenfolge der Route. WANN ein Grund gilt, entscheidet die Route (AP-08 IP-9) — der Satz sagt nur, was sie geliefert hat, und nennt keine Ursache, die kein Modul geliefert hat. Gesprochen von uems/ErgebnisZustand.grundSatz ⟷ uemsErgebnis.grundSatz.",
+    "quelle": "GET /api/v1/messstellen/{kennzeichen}/werte · werte[].grund",
+    "platzhalter": {
+      "text": ".+",
+      "datum": "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\.[0-9]{4}",
+      "anteil": "positiven|negativen",
+      "version": "[1-9][0-9]*"
+    },
+    "anteil": {
+      "positiv": "positiven",
+      "negativ": "negativen"
+    },
+    "ohne_grund": null,
+    "saetze": [
+      {
+        "code": "keine_quelle",
+        "muster": "Keine Quelle: {messstelle} hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.",
+        "platzhalter": {
+          "messstelle": "text"
+        },
+        "woher": {
+          "messstelle": "messstelle.kennzeichen und messstelle.name der Antwort, durch ein Leerzeichen getrennt"
+        },
+        "beispiel": "Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.",
+        "fall": "O15 · MS-21 Gas Heizung Verwaltung, Oktober 2026"
+      },
+      {
+        "code": "quelle_teilweise",
+        "muster": "Die Quelle deckt den Zeitraum nur zum Teil: {quelle} gilt seit {ab} — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.",
+        "platzhalter": {
+          "quelle": "text",
+          "ab": "datum"
+        },
+        "woher": {
+          "quelle": "die Bindung aus quellen[], die im Zeitraum beginnt: Name der Komponente mit dem Kennzeichen ihres Geräts, wie die Quelle-Spalte des Registers sie nennt",
+          "ab": "gueltig_ab derselben Bindung als Tag in der Zone der Antwort"
+        },
+        "beispiel": "Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.",
+        "fall": "O15 · MS-16 Netzbezug Lindach, Oktober 2026 (Bindung seit 15.10.2026), O16"
+      },
+      {
+        "code": "anteil_nicht_gespeichert",
+        "muster": "Die Quelle liest nur den {anteil} Anteil von {kanal}; eine Menge je Anteil ist nicht gespeichert.",
+        "platzhalter": {
+          "anteil": "anteil",
+          "kanal": "text"
+        },
+        "woher": {
+          "anteil": "quellen[].anteil der Bindung des Schritts, gesprochen über den Block anteil",
+          "kanal": "der Name des Messwerts der Bindung mit dem Kennzeichen seiner Komponente"
+        },
+        "beispiel": "Die Quelle liest nur den positiven Anteil von Wirkenergie Bezug (K-3); eine Menge je Anteil ist nicht gespeichert.",
+        "fall": "O15 · MS-01 Netzbezug Halle 1, Viertelstunde (Vorzeichen-Kanal)"
+      },
+      {
+        "code": "berechnet",
+        "muster": "Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine Formel aus Momentanwerten gar nicht.",
+        "platzhalter": {},
+        "woher": {},
+        "beispiel": "Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine Formel aus Momentanwerten gar nicht.",
+        "fall": "O15 · MS-15 Halle 2 nicht zugeordnet, Stunde — Wortlaut geändert, siehe befunde grund.berechnet"
+      },
+      {
+        "code": "noch_nicht_gebildet",
+        "muster": "Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.",
+        "platzhalter": {},
+        "woher": {},
+        "beispiel": "Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.",
+        "fall": "O15 · MS-06, Monat Oktober 2026, gelesen am 20.10.2026 — Wortlaut der Tageskarte, siehe befunde grund.noch_nicht_gebildet"
+      },
+      {
+        "code": "ohne_menge_gespeichert",
+        "muster": "Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.",
+        "platzhalter": {},
+        "woher": {},
+        "beispiel": "Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.",
+        "fall": "O15 · ein endgültiger Tag von vor AP-08 IP-5 — Wortlaut geändert, siehe befunde grund.ohne_menge_gespeichert"
+      },
+      {
+        "code": "version_nicht_gespeichert",
+        "muster": "Version {n} ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version {max}.",
+        "platzhalter": {
+          "n": "version",
+          "max": "version"
+        },
+        "woher": {
+          "n": "version der Antwort (die angefragte Version)",
+          "max": "versionen des Schritts (seine neueste Version)"
+        },
+        "beispiel": "Version 3 ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version 2.",
+        "fall": "O15 · MS-12, Oktober 2026, ?version=3"
+      },
+      {
+        "code": "version_nicht_gebildet",
+        "muster": "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie.",
+        "platzhalter": {},
+        "woher": {},
+        "beispiel": "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie.",
+        "fall": "O15 · MS-12, Stunde 10:00–11:00 am 31.10.2026, ?version=1"
+      }
+    ]
+  },
   "verstoesse": [
     "zustand_unbekannt",
     "einheit_unbekannt",
@@ -1051,6 +1155,21 @@
       "stelle": "kennzeichen.mit_ersatzwert",
       "befund": "Der Satz nennt „mit Ersatzwert“ zweimal: „2.304 kWh · mit Ersatzwert · Verlauf 58 % · mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)“ — einmal als Zustand, einmal als Anfang des Kennzeichens. Der Report schreibt am Wert „2 304 kWh · mit Ersatzwert (verteilt, EW-2026-0003)“ (§4.5) und je Methode ein eigenes Wort (§4.6: „verteilt (gleichmäßig)“, „Ersatzwert (Vorperiode dd.mm.)“ …).",
       "warum_so_aufgenommen": "Das vorgesehene Wort des Vokabulars war „mit Ersatzwert (Methode …)“ mit dem Anfang „mit Ersatzwert (“; AP-08 IP-13 legt nur die Platzhalter fest (Methodenname aus dem Ereignis-Vokabular, Kennung) und erfindet keinen zweiten Wortlaut. Ob eine Fläche Zustand und Kennzeichen zusammenzieht, entscheidet ihr Paket (IP-10/IP-11/IP-16) — der gespeicherte Satz bleibt dieser."
+    },
+    {
+      "stelle": "grund.noch_nicht_gebildet",
+      "befund": "AP-13 O15 schlägt „{periode} ist noch nicht gebildet — der Wert entsteht nach dem Ende des Zeitraums ({bildung})“ vor („Monatslauf am 01.11.2026“). Die Tageskarte spricht denselben Grund seit PR 809 (Captain 15.09.2026, nach dem Konzeptstand 84f8307f) als „Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.“ (glossar.ts UEMS_NOCH_NICHT_GERECHNET_SATZ); und {bildung} liefert kein Feld der Antwort (D5: Platzhalter aus Quelle, Anteil, Periode, Version).",
+      "warum_so_aufgenommen": "Ein Grund, EIN Satz: der Vertrag übernimmt den gebauten, bestätigten Wortlaut, damit die Karte mit IP-6 nicht ihren Satz wechselt, und erfindet kein Bildungsdatum. Entscheidung an firstmate gemeldet (needs-decision o13-grund-wortlaut); der Gleichheitstest der Portal-Kopie nennt die Abweichung."
+    },
+    {
+      "stelle": "grund.ohne_menge_gespeichert",
+      "befund": "AP-13 O15 schlägt „Dieser Tag ist ohne Menge gespeichert (Stand vor der Umstellung) — Zustand und Verlauf sind bekannt, die Zahl nicht.“ vor. Die Route liefert an diesem Schritt zustand = null (nur erhalten, erwartet, abdeckung_prozent, fassung), und der Grund steht auch an einem Zeitraum aus Tagen (gebildet_aus zeitraum), nicht nur am Tag.",
+      "warum_so_aufgenommen": "D5: kein Satz behauptet, was die Route nicht geliefert hat — „Dieser Zeitraum“ statt „Dieser Tag“, „der Verlauf ist bekannt“ statt „Zustand und Verlauf“. Gemeldet mit o13-grund-wortlaut."
+    },
+    {
+      "stelle": "grund.berechnet",
+      "befund": "AP-13 O15 schlägt „Für eine berechnete Messstelle gibt es keine Stundenwerte — Viertelstunde, Tag, Monat und Jahr stehen in den Werten.“ vor. Die Route antwortet berechnet an der Stunde JEDER berechneten Messstelle und an JEDER Einteilung einer Formel aus Momentanwerten (MessstelleWerteService.gespeicherteSpur: nur live) — dort stünde der Satz falsch.",
+      "warum_so_aufgenommen": "D5: ein Satz, der in beiden Lagen stimmt, ohne Platzhalter (die Route nennt nicht, welche Lage es ist). Gemeldet mit o13-grund-wortlaut."
     }
   ],
   "cases": [
@@ -2760,6 +2879,118 @@
       "why": "vollständig · unvollständig · keine Werte sagen, ob die Zahl VOLLSTÄNDIG ist; die Fassung, ob sie FESTSTEHT. Das eine wird nie als das andere gesprochen.",
       "eingang": {"fassung": "vollständig"},
       "erwartet": {"text": null, "unbekannt": true}
+    },
+    {
+      "name": "keine Quelle an MS-21",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Eine Messstelle ohne führende Quelle hat keine Zahl — auch keine 0; der Satz nennt die Messstelle, nie eine Ursache.",
+      "eingang": {"code": "keine_quelle", "werte": {"messstelle": "MS-21 Gas Heizung Verwaltung"}},
+      "erwartet": {"text": "Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.", "fehler": null}
+    },
+    {
+      "name": "Quelle teilweise an MS-16 im Oktober",
+      "familie": "grund",
+      "fall": "O15, O16",
+      "why": "Die Bindung beginnt am 15.10. mitten im Monat: die gespeicherte Monatszahl gehört nicht ganz dieser Messstelle (W5, Regel AP-08).",
+      "eingang": {"code": "quelle_teilweise", "werte": {"quelle": "Netzzähler K-11 (GR-10)", "ab": "15.10.2026"}},
+      "erwartet": {"text": "Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.", "fehler": null}
+    },
+    {
+      "name": "nur der positive Anteil an MS-01",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Ein Vorzeichen-Kanal: die Speicherklassen tragen den ganzen Wert, eine Menge je Anteil ist nirgends gespeichert.",
+      "eingang": {"code": "anteil_nicht_gespeichert", "werte": {"anteil": "positiven", "kanal": "Wirkenergie Bezug (K-3)"}},
+      "erwartet": {"text": "Die Quelle liest nur den positiven Anteil von Wirkenergie Bezug (K-3); eine Menge je Anteil ist nicht gespeichert.", "fehler": null}
+    },
+    {
+      "name": "nur der negative Anteil",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "Dasselbe Muster mit dem anderen Wort des Blocks anteil — die Fläche beugt nicht selbst.",
+      "eingang": {"code": "anteil_nicht_gespeichert", "werte": {"anteil": "negativen", "kanal": "Wirkenergie Abgabe (K-3)"}},
+      "erwartet": {"text": "Die Quelle liest nur den negativen Anteil von Wirkenergie Abgabe (K-3); eine Menge je Anteil ist nicht gespeichert.", "fehler": null}
+    },
+    {
+      "name": "berechnete Messstelle an der Stunde",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "MS-15 hat keine Reihe; die Stunde ist keine Speicherklasse.",
+      "eingang": {"code": "berechnet", "werte": {}},
+      "erwartet": {"text": "Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine Formel aus Momentanwerten gar nicht.", "fehler": null}
+    },
+    {
+      "name": "Oktober am 20.10. noch nicht gebildet",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Der laufende Monat hat noch keinen Wert — derselbe Satz wie an der Tageskarte (PR 809), und nur diese Lage löst sich von selbst.",
+      "eingang": {"code": "noch_nicht_gebildet", "werte": {}},
+      "erwartet": {"text": "Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.", "fehler": null}
+    },
+    {
+      "name": "ohne Menge gespeichert",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Eine Periode von vor der Mengenregel: Verlauf und Fassung stehen da, Zustand und Zahl nicht.",
+      "eingang": {"code": "ohne_menge_gespeichert", "werte": {}},
+      "erwartet": {"text": "Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.", "fehler": null}
+    },
+    {
+      "name": "Version 3 von MS-12 gibt es nicht",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Angefragt ist Version 3, die neueste des Schritts ist 2 — beide Zahlen aus der Antwort.",
+      "eingang": {"code": "version_nicht_gespeichert", "werte": {"n": "3", "max": "2"}},
+      "erwartet": {"text": "Version 3 ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version 2.", "fehler": null}
+    },
+    {
+      "name": "die Stunde hat keine eigenen Versionen",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Die Stunde ist nur aus Version 1 gebildet; eine ihrer Viertelstunden trägt eine spätere.",
+      "eingang": {"code": "version_nicht_gebildet", "werte": {}},
+      "erwartet": {"text": "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie.", "fehler": null}
+    },
+    {
+      "name": "die Route nennt keinen Grund",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "Ein Schritt mit Zahl hat grund = null: nichts wird gesprochen, nie ein leerer Satz.",
+      "eingang": {"code": null, "werte": {}},
+      "erwartet": {"text": null, "fehler": null}
+    },
+    {
+      "name": "ein Grund der Kennzahl ist kein Grund der Messstelle",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "nenner_fehlt spricht die Kennzahl-Karte mit ihrem Vertrag (kennzahl-vectors.json) — hier wird er nicht gesprochen.",
+      "eingang": {"code": "nenner_fehlt", "werte": {}},
+      "erwartet": {"text": null, "fehler": "grund_unbekannt"}
+    },
+    {
+      "name": "das Zustandswort ist kein Grund",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "„keine Werte“ ist ein Zustand; der Grund ist ein Code der Route.",
+      "eingang": {"code": "keine Werte", "werte": {}},
+      "erwartet": {"text": null, "fehler": "grund_unbekannt"}
+    },
+    {
+      "name": "ein fehlender Platzhalter wird nicht geraten",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "Ohne Beginn der Bindung spräche der Satz eine halbe Aussage.",
+      "eingang": {"code": "quelle_teilweise", "werte": {"quelle": "Netzzähler K-11 (GR-10)"}},
+      "erwartet": {"text": null, "fehler": "platzhalter_falsch"}
+    },
+    {
+      "name": "ein überzähliger Platzhalter wird nicht verschluckt",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "Wer zu berechnet einen Namen mitgibt, erwartet einen anderen Satz.",
+      "eingang": {"code": "berechnet", "werte": {"messstelle": "MS-15 Halle 2 nicht zugeordnet"}},
+      "erwartet": {"text": null, "fehler": "platzhalter_falsch"}
     }
   ]
 }
