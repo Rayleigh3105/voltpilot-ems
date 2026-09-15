@@ -28,6 +28,8 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -885,6 +887,79 @@ class BerichtApiTest {
                 Long.class, w.mandant())).as("die Neubildung beim Abruf meldet nichts (B6)").isZero();
     }
 
+    /**
+     * V3 über die Route (AP-12 IP-14): {@code kennzahlen_abgewaehlt} beim Anlegen. Falsch geformt ist 400 vor allem anderen,
+     * eine unbekannte oder fremde Kennzahl 400 erst nach {@code keine_quellen} — beides legt nichts an. Sonst steht die Abwahl
+     * vor der ersten Bildung: schon der erste Entwurf lässt die Kennzahl weg, das Protokoll nennt ihr Kennzeichen. Ohne Liste
+     * oder mit leerer bleibt das Anlegen, wie es war.
+     */
+    @Test
+    void anlegenMitAbgewaehlterKennzahl_schonDerErsteEntwurfLaesstSieWeg() throws Exception {
+        Welt w = welt();
+        Welt fremd = welt();
+        uhr("2026-11-02T10:00:00+01:00");
+        messstelle(w, "MS-18", "Montage Lindach", w.st2(), "2026-10-01");
+        messstelle(fremd, "MS-18", "Montage Lindach", fremd.st2(), "2026-10-01");
+        kennzahlMitOktober(w, "KZ-0001", w.st2());
+        UUID kz2 = kennzahlMitOktober(w, "KZ-0002", w.st2());
+        UUID fremdeKz = kennzahlMitOktober(fremd, "KZ-0002", fremd.st2());
+
+        List<Object> falsch = List.of(kz2.toString(), List.of("keine-kennung"), List.of(""), List.of(18),
+                List.of(List.of(kz2.toString())), Map.of("id", kz2.toString()), Collections.nCopies(201, kz2.toString()));
+        for (Object liste : falsch) {
+            Antwort a = abgelehnt(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10",
+                    liste)), 400, "anfrage_ungueltig");
+            assertThat(a.body().get("feld").asText()).as(String.valueOf(liste)).isEqualTo("kennzahlen_abgewaehlt");
+        }
+        // Die Form prüft vor der Vorlage; ob es die Kennzahl gibt, erst nach den Messstellen (Reihenfolge des Dienstes).
+        assertThat(abgelehnt(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("wochenbericht", w.st2(), "2026-10",
+                List.of("keine-kennung"))), 400, "anfrage_ungueltig").body().get("feld").asText())
+                .isEqualTo("kennzahlen_abgewaehlt");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st1(), "2026-10",
+                List.of(UUID.randomUUID().toString()))), 422, "keine_quellen");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st1(), "2026-10", null)), 422,
+                "keine_quellen");
+        for (UUID unbekannt : List.of(UUID.randomUUID(), fremdeKz)) {
+            Antwort a = abgelehnt(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10",
+                    List.of(kz2.toString(), unbekannt.toString()))), 400, "anfrage_ungueltig");
+            assertThat(a.body().get("feld").asText()).isEqualTo("kennzahlen_abgewaehlt");
+        }
+        assertThat(zaehle("bericht", w)).isZero();
+        assertThat(zaehle("bericht_kennzahl_abwahl", w)).isZero();
+        assertThat(zaehle("bericht_aenderung", w)).isZero();
+
+        // Doppelt (auch in Großbuchstaben) fällt zusammen
+        Antwort neu = ok(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10",
+                List.of(kz2.toString(), kz2.toString().toUpperCase()))), 201);
+        String kennung = neu.body().get("kennung").asText();
+        assertThat(zaehle("bericht_kennzahl_abwahl", w)).isEqualTo(1);
+        Map<String, Object> abwahl = root.queryForMap("SELECT a.kennzahl_id, a.abgewaehlt_am, a.abgewaehlt_von_name, "
+                + "a.abgewaehlt_von_sub = b.angelegt_von_sub AS von_der_person FROM bericht_kennzahl_abwahl a "
+                + "JOIN bericht b ON b.id = a.bericht_id WHERE b.tenant_id = ? AND b.kennung = ? AND a.aufgehoben_am IS NULL",
+                w.mandant(), kennung);
+        assertThat(abwahl.get("kennzahl_id")).isEqualTo(kz2);
+        assertThat(((Timestamp) abwahl.get("abgewaehlt_am")).toInstant()).isEqualTo(t("2026-11-02T10:00:00+01:00"));
+        assertThat(abwahl.get("abgewaehlt_von_name")).isEqualTo("Peter Hollerbach");
+        assertThat(abwahl.get("von_der_person")).isEqualTo(true);
+
+        Antwort entwurf = ok(ruf(w.peter(), HttpMethod.GET, PFAD + "/" + kennung + "/entwurf", null), 200);
+        assertThat(entwurf.body().get("neu_gebildet").asBoolean()).as("der Entwurf des Anlegens").isFalse();
+        List<String> kennzahlen = new ArrayList<>();
+        entwurf.body().get("abzug").path("kennzahlen").forEach(k -> kennzahlen.add(k.path("quelle").asText()));
+        assertThat(kennzahlen).as("KZ-0002 ist abgewählt, KZ-0001 nicht").containsExactly("KZ-0001");
+        assertThat(root.queryForObject("SELECT neu->>'kennzahlen_abgewaehlt' FROM bericht_aenderung a JOIN bericht b "
+                + "ON b.id = a.bericht_id WHERE b.tenant_id = ? AND b.kennung = ? AND a.art = 'anlegen'", String.class,
+                w.mandant(), kennung)).isEqualTo("[\"KZ-0002\"]");
+
+        // Leere Liste: kein Eintrag im Protokoll, keine Abwahl-Zeile
+        Antwort jahr = ok(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("jahresbericht_standort", w.st2(), "2026", List.of())),
+                201);
+        assertThat(root.queryForObject("SELECT neu::text FROM bericht_aenderung a JOIN bericht b ON b.id = a.bericht_id "
+                + "WHERE b.tenant_id = ? AND b.kennung = ? AND a.art = 'anlegen'", String.class, w.mandant(),
+                jahr.body().get("kennung").asText())).doesNotContain("kennzahlen_abgewaehlt");
+        assertThat(zaehle("bericht_kennzahl_abwahl", w)).isEqualTo(1);
+    }
+
     // =========================================================================== AP-12 IP-6: Unternehmensbericht
 
     /**
@@ -1133,6 +1208,39 @@ class BerichtApiTest {
 
     private static Map<String, String> anlegen(String vorlage, UUID geltung, String zeitraum) {
         return Map.of("vorlage", vorlage, "geltung_id", geltung.toString(), "zeitraum", zeitraum);
+    }
+
+    /** Mit {@code kennzahlen_abgewaehlt} — auch {@code null} oder etwas, das keine Liste von Kennungen ist. */
+    private static Map<String, Object> anlegen(String vorlage, UUID geltung, String zeitraum, Object abgewaehlt) {
+        Map<String, Object> body = new LinkedHashMap<>(anlegen(vorlage, geltung, zeitraum));
+        body.put("kennzahlen_abgewaehlt", abgewaehlt);
+        return body;
+    }
+
+    /**
+     * Eine Kennzahl am Standort mit ihrem Oktober-Wert (Version 1, endgültig, vor dem Datenstand gerechnet) und dem
+     * Zähler-Eingang MS-18 — wie AP-11 sie speichert (Muster {@code BerichtAbzugUnternehmenTest}).
+     */
+    private static UUID kennzahlMitOktober(Welt w, String kennzeichen, UUID standort) {
+        UUID kz = root.queryForObject("INSERT INTO kennzahl (tenant_id, kennzeichen, name, rechenform, geltung_art, "
+                + "standort_id, verantwortlich_sub, verantwortlich_name) VALUES (?, ?, ?, 'quotient', 'standort', ?, 'sub-ik', "
+                + "'Ines Kaltenbach') RETURNING id", UUID.class, w.mandant(), kennzeichen, "Energie je Stück " + kennzeichen,
+                standort);
+        UUID fassung = root.queryForObject("INSERT INTO kennzahl_fassung (tenant_id, kennzahl_id, nummer, rechenform, "
+                + "herkunft, actor_sub, actor_name, actor_rolle, actor_art, einheit) VALUES (?, ?, 1, 'quotient', 'anlage', "
+                + "'sub-ik', 'Ines Kaltenbach', 'energiemanager', 'kunde', 'kWh/Stück') RETURNING id", UUID.class,
+                w.mandant(), kz);
+        Timestamp lauf = Timestamp.from(t("2026-11-01T00:20:00+01:00"));
+        UUID wert = root.queryForObject("INSERT INTO kennzahl_wert (tenant_id, kennzahl_id, periode_art, periode_von, "
+                + "periode_bis, zeitzone, version, wert, zaehler, nenner, menge_zustand, abdeckung_prozent, zustand, "
+                + "endgueltig_ab, definition_fassung_id, berechnet_am) VALUES (?, ?, 'monat', DATE '2026-10-01', "
+                + "DATE '2026-10-31', 'Europe/Berlin', 1, 0.5, 3600, 7200, 'vollständig', 100, 'endgueltig', ?, ?, ?) "
+                + "RETURNING id", UUID.class, w.mandant(), kz, lauf, fassung, lauf);
+        root.update("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, kennzahl_id, position, rolle, art, objekt, "
+                + "messstelle_id, wert, einheit, menge_zustand, abdeckung_prozent, version) VALUES (?, ?, ?, 0, 'zaehler', "
+                + "'messstelle', 'MS-18', (SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = 'MS-18'), 3600, "
+                + "'kWh', 'vollständig', 100, 1)", w.mandant(), wert, kz, w.mandant());
+        return kz;
     }
 
     private JsonNode liste(Wer wer) throws Exception {

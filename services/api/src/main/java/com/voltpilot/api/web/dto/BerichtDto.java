@@ -14,9 +14,12 @@ import java.util.List;
 public final class BerichtDto {
     private BerichtDto() {}
 
-    /** {@code POST /api/v1/berichte}: Vorlage × Geltung × Zeitraum (Schlüssel {@code 2026-10} bzw. {@code 2026}). */
+    /**
+     * {@code POST /api/v1/berichte}: Vorlage × Geltung × Zeitraum (Schlüssel {@code 2026-10} bzw. {@code 2026}) und — freiwillig
+     * (V3, AP-12 IP-14) — die Kennungen der abgewählten Kennzahlen; fehlt die Liste oder ist sie leer, sind alle gewählt.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Anlegen(String vorlage, String geltungId, String zeitraum) {}
+    public record Anlegen(String vorlage, String geltungId, String zeitraum, List<String> kennzahlenAbgewaehlt) {}
 
     /** {@code POST …/freigeben}: der Datenstand des Entwurfs, den die Person sah (F2). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

@@ -96,7 +96,8 @@ Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen
 
   Regel `vorlage`; eine unbekannte ist `422 vorlage_unbekannt`.
 - **V3** Der Kunde wählt Vorlage, Geltung, Zeitraum und abgewählte Kennzahlen — sonst nichts. Eine neue Vorlagen-Fassung
-  ändert keinen Stand.
+  ändert keinen Stand. Die Abwahl reist beim Anlegen als `kennzahlen_abgewaehlt` (Kennungen der Kennzahlen) und steht in
+  `bericht_kennzahl_abwahl`, bevor der erste Entwurf entsteht.
 - **V4** Ein Bericht je Vorlage × Geltung × Zeitraum. **V5** Der Entwurf eines laufenden Zeitraums ist erlaubt
   (Kennzeichen „Zeitraum läuft“), die Freigabe nicht.
 - **Vergleich (Q5, DA1).** Differenz = aktuell − Vergleich; Prozent = Differenz ÷ Vergleich × 100, gespeichert auf

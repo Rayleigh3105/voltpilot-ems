@@ -2747,6 +2747,8 @@ export interface BerichtAnlegen {
   vorlage: string;
   geltung_id: string;
   zeitraum: string;
+  /** AP-12 IP-14 (V3, Q4): die abgewählten Kennzahlen (IDs) — fehlt das Feld, sind alle gewählt. */
+  kennzahlen_abgewaehlt?: string[];
 }
 
 /** Ein Berichtsstand im Verlauf — ohne Abzug. */
@@ -7655,6 +7657,11 @@ export const api = {
     const s = q.toString();
     return request<BezugsgroesseWerte>(`/api/v1/bezugsgroessen/${id}/werte${s ? `?${s}` : ''}`);
   },
+  /**
+   * UEMS AP-03 IP-4: die Selbstauskunft — wer fragt und was er darf. Die Berichts-Dialoge (AP-12 IP-14) lesen daraus,
+   * welche Hebel sie zeigen; entscheiden tut weiter die Route.
+   */
+  selbstauskunft: () => request<Selbstauskunft>('/api/v1/me'),
   /** Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. */
   berichte: () => request<{ berichte: Bericht[] }>(`/api/v1/berichte`),
   /** Legt den Bericht an und bildet seinen Entwurf. */

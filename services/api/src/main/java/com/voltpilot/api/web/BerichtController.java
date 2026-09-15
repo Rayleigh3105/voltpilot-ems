@@ -99,7 +99,10 @@ public class BerichtController {
                 b.zitieren().stream().map(s -> new BerichtDto.StandRef(s.kennung(), s.nr())).toList());
     }
 
-    /** Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — Anlegen folgt dem Freigabe-Recht (G1). */
+    /**
+     * Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — Anlegen folgt dem Freigabe-Recht (G1).
+     * {@code kennzahlen_abgewaehlt} (V3, AP-12 IP-14) ist freiwillig: jede eine Kennung, doppelte fallen zusammen.
+     */
     @PostMapping("/berichte")
     public ResponseEntity<BerichtDto.Bericht> anlegen(@RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -107,7 +110,10 @@ public class BerichtController {
         pflicht(b.vorlage(), "vorlage");
         pflicht(b.geltungId(), "geltung_id");
         pflicht(b.zeitraum(), "zeitraum");
-        return ResponseEntity.status(201).body(form(dienst.anlegen(b.vorlage(), b.geltungId(), b.zeitraum(), wer)));
+        List<UUID> abgewaehlt = b.kennzahlenAbgewaehlt() == null ? List.of()
+                : b.kennzahlenAbgewaehlt().stream().map(k -> uuid(k, ABGEWAEHLT)).distinct().toList();
+        return ResponseEntity.status(201).body(form(dienst.anlegen(b.vorlage(), b.geltungId(), b.zeitraum(), abgewaehlt,
+                wer)));
     }
 
     /** Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} — Kopf, Stände, Anstöße. */
@@ -305,6 +311,19 @@ public class BerichtController {
         }
     }
 
+    /** Eine Liste von höchstens {@link #ABWAHL_HOECHSTENS} Texten — ob jeder eine Kennung ist, prüft {@link #uuid}. */
+    private static boolean texte(JsonNode liste) {
+        if (!liste.isArray() || liste.size() > ABWAHL_HOECHSTENS) {
+            return false;
+        }
+        for (JsonNode eintrag : liste) {
+            if (!eintrag.isTextual()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static LocalDate tag(String wert, String feld) {
         pflicht(wert, feld);
         try {
@@ -314,14 +333,25 @@ public class BerichtController {
         }
     }
 
-    /** Der strenge Mapper: ein JSON-Objekt, nur bekannte Felder, Text oder {@code null}. */
+    /** V3 (AP-12 IP-14): das EINE Feld einer Anfrage, das eine Liste sein darf — beim Anlegen, höchstens 200 Texte. */
+    private static final String ABGEWAEHLT = "kennzahlen_abgewaehlt";
+    private static final int ABWAHL_HOECHSTENS = 200;
+
+    /**
+     * Der strenge Mapper: ein JSON-Objekt, nur bekannte Felder, Text oder {@code null} — einzig {@code kennzahlen_abgewaehlt}
+     * beim Anlegen darf eine Liste von Texten sein.
+     */
     private <T> T lies(JsonNode body, Class<T> form) {
         if (body == null || !body.isObject()) {
             throw BerichtAbgelehnt.anfrage("");
         }
         for (Iterator<Map.Entry<String, JsonNode>> it = body.fields(); it.hasNext(); ) {
             Map.Entry<String, JsonNode> f = it.next();
-            if (!f.getValue().isNull() && !f.getValue().isTextual()) {
+            if (form == BerichtDto.Anlegen.class && ABGEWAEHLT.equals(f.getKey())) {
+                if (!f.getValue().isNull() && !texte(f.getValue())) {
+                    throw BerichtAbgelehnt.anfrage(f.getKey());
+                }
+            } else if (!f.getValue().isNull() && !f.getValue().isTextual()) {
                 throw BerichtAbgelehnt.anfrage(f.getKey());
             }
         }

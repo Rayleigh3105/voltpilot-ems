@@ -47,6 +47,12 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
   was) — dann erst `GET …/entwurf`. `abweichungen` stehen gegen den GÜLTIGEN Stand (der gesehene Entwurf ist nicht
   gespeichert), ohne Stand leer; der Anlass kommt aus `bericht_entwurf_neu_gebildet` (schreibt seit IP-8 die Kaskaden-Naht, `uems-bericht-kaskade.md`).
 - **`gebildet_von` ist nicht die Handlung:** `anlegen`, `abruf` (EW1) — `abrufen` lehnt die Bildung ab.
+- **`kennzahlen_abgewaehlt` beim Anlegen (AP-12 IP-14, V3) ist additiv:** das EINE Feld, das `lies` als Liste durchlässt
+  (nur Texte, höchstens 200, doppelte fallen zusammen); fehlt es oder ist es leer, bleiben Anlegen und Protokoll byte-gleich.
+  Nach `keine_quellen` prüft der Dienst jede Kennung gegen `kennzahl` des Kundenbereichs (sonst 400 `anfrage_ungueltig`,
+  `feld` = `kennzahlen_abgewaehlt`; außerhalb der Geltung erlaubt, wirkt nicht) und schreibt `bericht_kennzahl_abwahl` in
+  der Anlege-Transaktion VOR der ersten Bildung; das Protokoll nennt die Kennzeichen. Wieder wählen oder die Abwahl nach
+  dem Anlegen ändern gibt es noch nicht.
 - **Unternehmensbericht:** seit AP-12 IP-6 bilden Anlegen und D4-Neubildung den Abzug des Unternehmens
   (`uems-bericht-abzug-unternehmen.md`); die 501 `unternehmensbericht_folgt` ist aus dem Vokabular genommen. Vor dem
   Anlegen fragt `BerichtAbzugBildung.hatMessstellen` die Geltung (am Unternehmen die Netzbezugs-Zähler der Standorte, die
