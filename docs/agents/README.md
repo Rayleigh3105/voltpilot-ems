@@ -209,6 +209,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Die STEUERUNGS-AUSSAGE: die Kundenansicht misst gegen einen STUREN Speicher (`speicherAussage.ts`)](portal/die-steuerungs-aussage-die-kundenansicht.md)
 - [Eigene Auswertung: die Fläche der Kunden-Kennzahl (Anwendungs-Programm Stufe 5)](portal/eigene-auswertung-die-flaeche-der-kunden.md)
 - [⚠ Ein Haus-Token ist fuer SEINE Flaeche bemessen — P7 der Erloese-Seite](portal/ein-haus-token-ist-fuer-seine-flaeche-be.md)
+- [E2E: der kalte Entwicklungsserver und die veraltete Zusicherung (zwei rote Oberflächen-Prüfungen)](portal/e2e-kaltstart-und-veraltete-zusicherung.md)
 - [Erlöse „Neu modern" (Variante C) · P0 — das Fundament für die ganze Fläche](portal/erloese-neu-modern-variante-c-p0-das-fun.md)
 - [Erlöse „Neu modern" (Variante C) · P3+P4 — das CHROME der Welt-Seiten](portal/erloese-neu-modern-variante-c-p3-p4-das.md)
 - [Erlöse „Neu modern" (Variante C) · P5 — die COCKPIT-Erlöskarte](portal/erloese-neu-modern-variante-c-p5-die-coc.md)
