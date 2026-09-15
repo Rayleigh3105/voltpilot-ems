@@ -318,7 +318,7 @@ public class OrtVerschiebenService {
                 .orElseThrow(() -> new IllegalStateException("Protokolleintrag fehlt: " + id));
         return new OrtVerschiebungDto.Eintrag(e.id(), e.objektArt(), e.objektId(),
                 AenderungSatz.satz(e.objektArt(), e.art(), knotenJson(e.altJson()), knotenJson(e.neuJson()), null),
-                e.giltAb(), e.rueckwirkend(), e.akteurName(), e.createdAt().atZone(p.zone()).toOffsetDateTime());
+                e.giltAb(), e.rueckwirkend(), e.actorName(), e.createdAt().atZone(p.zone()).toOffsetDateTime());
     }
 
     private JsonNode knotenJson(String roh) {

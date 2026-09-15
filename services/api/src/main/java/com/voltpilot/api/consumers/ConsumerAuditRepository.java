@@ -1,5 +1,6 @@
 package com.voltpilot.api.consumers;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Instant;
 import java.util.List;
@@ -27,12 +28,15 @@ public class ConsumerAuditRepository {
 
     public void append(UUID siteId, UUID entityId, String eventType, UUID policyId,
             Integer policyVersion, String actor, String detail) {
+        // Der Urheber im Akteur-Vokabular (AP-03 IP-7) — nur, wenn actor der Aufrufer der Anfrage ist.
+        ProtokollAkteur wer = ProtokollAkteur.angemeldetAls(actor).orElse(null);
         jdbc.update(
                 "INSERT INTO consumer_audit_event (tenant_id, site_id, entity_id, event_type, "
-                        + "policy_id, policy_version, actor, detail) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "policy_id, policy_version, actor, detail, actor_sub, actor_name, actor_rolle, actor_art) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 TenantContext.get(), siteId, entityId, eventType, policyId, policyVersion,
-                actor, detail);
+                actor, detail, wer == null ? null : wer.sub(), wer == null ? null : wer.name(),
+                wer == null ? null : wer.rolle(), wer == null ? null : wer.art());
     }
 
     /** Newest first, per consumer (support/diagnosis read). */

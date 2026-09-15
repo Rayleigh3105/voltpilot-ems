@@ -35,12 +35,10 @@ import org.springframework.stereotype.Repository;
  * Journale sind heute nicht zeichengleich; dieses Lesemodell überbrückt das an GENAU DREI
  * Stellen, ohne eine Tabelle umzubenennen:
  * <ol>
- *   <li><b>Urheber:</b> {@code messstelle_aenderung} und {@code data_source_aenderung} tragen
- *       {@code actor_sub/name/rolle/art}; {@code ort_aenderung} kennt nur
- *       {@code akteur_sub}/{@code akteur_name}. Die Rolle eines Orts-Eintrags ist deshalb
- *       {@code NULL} = „nicht festgehalten" — nie geraten. Seine ART ist
- *       {@code voltpilot}, wenn der Name das Wort trägt, das {@link OrtProtokoll#akteurName}
- *       dafür schreibt, sonst ebenfalls {@code NULL}.</li>
+ *   <li><b>Urheber:</b> alle drei tragen {@code actor_sub/name/rolle/art} — {@code ort_aenderung}
+ *       seit AP-03 IP-7 (V20260916010000, vorher {@code akteur_sub}/{@code akteur_name}). Die Rolle
+ *       eines Orts-Eintrags aus der Zeit davor ist {@code NULL} = „nicht festgehalten" — nie
+ *       geraten; seine Art hat die Migration aus dem Subject und dem Namen nachgetragen.</li>
  *   <li><b>„gilt ab":</b> in {@code ort_aenderung} ein TAG, in den beiden anderen ein
  *       Zeitpunkt. Der Tag wird auf seinen Beginn in {@link MessstelleService#ZEITZONE}
  *       gehoben — Europe/Berlin, Vienna und Zurich haben denselben Versatz, die Umrechnung
@@ -208,9 +206,8 @@ public class AenderungsprotokollRepository {
                    (o.gilt_ab::timestamp AT TIME ZONE ?::text) AS gilt_ab, o.created_at AS eingetragen_am,
                    o.rueckwirkend, o.neu->>'begruendung' AS grund,
                    NULL AS ergebnis, o.alt::text AS alt, o.neu::text AS neu,
-                   o.akteur_name AS urheber_name,
-                   NULL AS urheber_rolle,
-                   CASE WHEN o.akteur_name LIKE 'VoltPilot (%' THEN 'voltpilot' END AS urheber_art,
+                   o.actor_name AS urheber_name, o.actor_rolle AS urheber_rolle,
+                   o.actor_art AS urheber_art,
                    NULL AS einbau, NULL AS einbau_zweit,
                    o.gilt_ab AS gilt_ab_tag,
                    CASE WHEN o.art = 'geloescht' AND jsonb_exists(coalesce(o.alt, '{}'::jsonb), 'id')

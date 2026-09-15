@@ -362,8 +362,8 @@ class AnlageUmzugApiTest {
                 .containsExactly("anlage/" + anlage, "standort/" + werk);
         assertThat(e1).allSatisfy(m -> {
             assertThat(m.get("art")).isEqualTo("verschoben");
-            assertThat(m.get("akteur_sub")).isEqualTo(sub);
-            assertThat((String) m.get("akteur_name")).isNotBlank().doesNotStartWith("VoltPilot");
+            assertThat(m.get("actor_sub")).isEqualTo(sub);
+            assertThat((String) m.get("actor_name")).isNotBlank().doesNotStartWith("VoltPilot");
             assertThat(json(m.get("neu")).get("begruendung").asText()).isEqualTo("Bestand: die Anlage steht am Hof.");
         });
 
@@ -376,7 +376,7 @@ class AnlageUmzugApiTest {
         assertThat(e2).extracting(m -> m.get("objekt_art") + "/" + m.get("objekt_id"))
                 .containsExactly("anlage/" + anlage, "standort/" + scheune, "standort/" + werk);
         assertThat(e2).allSatisfy(m -> {
-            assertThat(m.get("akteur_sub")).isEqualTo(sub);
+            assertThat(m.get("actor_sub")).isEqualTo(sub);
             assertThat(m.get("gilt_ab")).isEqualTo(morgen);
             assertThat(json(m.get("neu")).get("begruendung").asText()).isEqualTo("Die Anlage zieht in die Scheune.");
         });
@@ -610,7 +610,7 @@ class AnlageUmzugApiTest {
 
     private static List<Map<String, Object>> eintraegeNach(UUID tenant, long id) {
         return root.queryForList("SELECT id, objekt_art, objekt_id::text AS objekt_id, art, alt::text AS alt, "
-                + "neu::text AS neu, gilt_ab::text AS gilt_ab, rueckwirkend, akteur_sub, akteur_name "
+                + "neu::text AS neu, gilt_ab::text AS gilt_ab, rueckwirkend, actor_sub, actor_name "
                 + "FROM ort_aenderung WHERE tenant_id = ? AND id > ? ORDER BY id", tenant, id);
     }
 

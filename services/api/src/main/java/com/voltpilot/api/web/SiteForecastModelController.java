@@ -4,6 +4,8 @@ import com.voltpilot.api.forecast.ForecastModelService;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.PromoteForecastModelRequest;
 import com.voltpilot.api.web.dto.SiteForecastModelsDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -70,6 +72,7 @@ public class SiteForecastModelController {
      * kein Urheber ist, den ein Mensch liest.
      */
     @PostMapping
+    @Recht(value = "prognose.befoerdern", ziel = RechtZiel.ANLAGE)
     public SiteForecastModelsDto promote(
             @PathVariable UUID siteId,
             @Valid @RequestBody PromoteForecastModelRequest req,

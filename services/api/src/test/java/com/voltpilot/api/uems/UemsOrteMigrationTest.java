@@ -1125,10 +1125,12 @@ class UemsOrteMigrationTest {
                         lage.isObject() ? lage.get("laengengrad").decimalValue() : null,
                         "aktiv", null));
                 REFERENZ_STANDORTE.put(kz, id);
-                aenderungen.eintragen(new NeuerEintrag(AHRENBERG, "standort", id, "angelegt",
-                        null, "{\"name\": \"" + s.get("name").asText() + "\"}",
-                        tagInBerlin(s.get("aktiv_seit").asText()), false, "ines.kaltenbach",
-                        "Ines Kaltenbach"));
+                // Roh: der Bestand entsteht auf der Fassung VOR dieser Migration, und die Spalten hießen dort
+                // noch akteur_* (AP-03 IP-7 benennt sie in V20260916010000 um) — der Lesecode von heute passt nicht.
+                root.update("INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, alt, neu, gilt_ab, "
+                        + "rueckwirkend, akteur_sub, akteur_name) VALUES (?, 'standort', ?, 'angelegt', NULL, ?::jsonb, "
+                        + "?, false, 'ines.kaltenbach', 'Ines Kaltenbach')", AHRENBERG, id,
+                        "{\"name\": \"" + s.get("name").asText() + "\"}", tagInBerlin(s.get("aktiv_seit").asText()));
             }
             JsonNode st3 = element(ortsbaum.at("/szenarien/ahrenberg-vor-dem-umzug/orte"), "ST-3");
             REFERENZ_STANDORTE.put("ST-3", standorte.anlegen(new NeuerStandort(AHRENBERG, ua,

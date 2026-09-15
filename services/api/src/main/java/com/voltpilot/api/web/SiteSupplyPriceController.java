@@ -4,6 +4,8 @@ import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.repo.SiteSupplyPriceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SupplyPriceDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -77,6 +79,7 @@ public class SiteSupplyPriceController {
     }
 
     @PutMapping
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     public SupplyPriceDto put(@PathVariable UUID siteId,
             @RequestBody(required = false) Map<String, Object> body) {
         requireSite(siteId);

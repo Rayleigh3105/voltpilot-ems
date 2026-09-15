@@ -449,7 +449,7 @@ class RechtMatrixApiTest {
             }
         }
         System.out.println("Bestand: Routen mit @Recht = " + routen.size() + ", bis zum Handler je Konto: " + zaehler);
-        assertThat(routen).hasSizeGreaterThanOrEqualTo(113);
+        assertThat(routen).hasSizeGreaterThanOrEqualTo(163);
         assertThat(abweichungen).as("heutige Konten, die eine Route mit @Recht nicht mehr erreichen").isEmpty();
     }
 

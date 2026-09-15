@@ -59,10 +59,11 @@ public class TenantRepository {
                         + " RETURNING id, tenant_id, name, zeitzone, created_at),"
                         + " p AS ("
                         + " INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, alt,"
-                        + " neu, gilt_ab, rueckwirkend, akteur_sub, akteur_name)"
+                        + " neu, gilt_ab, rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art)"
                         + " SELECT u.tenant_id, 'unternehmen', u.id, 'angelegt', NULL,"
                         + " jsonb_build_object('name', u.name, 'zeitzone', u.zeitzone),"
-                        + " (u.created_at AT TIME ZONE u.zeitzone)::date, false, NULL, 'VoltPilot'"
+                        + " (u.created_at AT TIME ZONE u.zeitzone)::date, false, NULL, 'VoltPilot',"
+                        + " 'voltpilot_betrieb', 'voltpilot'"
                         + " FROM u)"
                         + " SELECT id, name, segment, plan, betriebsart, created_at FROM t",
                 TenantRepository::map, name, segment);

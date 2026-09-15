@@ -9,6 +9,8 @@ import com.voltpilot.api.web.dto.RegisterWriteEventDto;
 import com.voltpilot.api.web.dto.RegisterWriteOutcomeDto;
 import com.voltpilot.api.web.dto.RegisterWriteRequest;
 import com.voltpilot.api.web.dto.RegisterWriteTargetDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -130,6 +132,7 @@ public class SiteRegisterWriteController {
 
     /** Schritt 1: den Ist-Wert lesen. Schreibt nichts und protokolliert nichts. */
     @PostMapping("/preview")
+    @Recht(value = "register.schreiben", ziel = RechtZiel.ANLAGE)
     public RegisterWriteOutcomeDto preview(@PathVariable UUID siteId,
             @Valid @RequestBody RegisterWriteRequest body,
             @AuthenticationPrincipal Jwt caller) {
@@ -139,6 +142,7 @@ public class SiteRegisterWriteController {
 
     /** Schritt 2: der EINE Schreibvorgang - mit Beleg und Papier-Spur. */
     @PostMapping
+    @Recht(value = "register.schreiben", ziel = RechtZiel.ANLAGE)
     public RegisterWriteOutcomeDto write(@PathVariable UUID siteId,
             @Valid @RequestBody RegisterWriteRequest body,
             @AuthenticationPrincipal Jwt caller) {

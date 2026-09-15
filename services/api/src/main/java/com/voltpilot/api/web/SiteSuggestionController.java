@@ -3,6 +3,8 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.repo.SiteSuggestionStateRepository;
 import com.voltpilot.api.suggestions.Vorschlaege;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +80,7 @@ public class SiteSuggestionController {
      * nie zurechtgebogen.
      */
     @PutMapping("/suggestion-states/{key}")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public SuggestionStateDto put(@PathVariable UUID siteId, @PathVariable String key,
             @RequestBody(required = false) SuggestionStateRequest request,
             @AuthenticationPrincipal Jwt jwt) {

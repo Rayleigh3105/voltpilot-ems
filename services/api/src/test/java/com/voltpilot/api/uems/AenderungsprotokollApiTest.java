@@ -691,8 +691,8 @@ class AenderungsprotokollApiTest {
      */
     private void dieNachbarJournale(Werk w) {
         root.update("INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, neu, gilt_ab, "
-                + "rueckwirkend, akteur_sub, akteur_name) VALUES (?, 'anlage', ?, 'angelegt', ?::jsonb, "
-                + "DATE '2026-11-16', false, NULL, 'VoltPilot (Bestandsübernahme)')",
+                + "rueckwirkend, actor_sub, actor_name, actor_art) VALUES (?, 'anlage', ?, 'angelegt', ?::jsonb, "
+                + "DATE '2026-11-16', false, NULL, 'VoltPilot (Bestandsübernahme)', 'voltpilot')",
                 w.tenant(), w.an1(), "{\"name\": \"" + anlagenName() + "\"}");
         UUID quelle = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, name, "
                 + "protokoll, adresse, kadenz_s) VALUES (?, ?, 'DQ-9', 'WAGO Halle 2', 'modbus_tcp', "

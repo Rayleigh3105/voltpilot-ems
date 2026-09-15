@@ -55,7 +55,8 @@ public class OrtProtokoll {
                 OffsetDateTime.ofInstant(jetzt, zeitzone), giltAb, null, zeitzone, null))
                 .art() == Rueckwirkung.RUECKWIRKEND;
         return aenderungen.eintragen(new NeuerEintrag(tenant, objektArt, objektId, art,
-                alsJson(alt), alsJson(neu), giltAb, rueckwirkend, wer.sub(), akteurName(wer)));
+                alsJson(alt), alsJson(neu), giltAb, rueckwirkend, wer.sub(), akteurName(wer), wer.rolle(),
+                wer.art()));
     }
 
     /** Der Name im Protokoll: die Person — beim Plattform-Betrieb ausdrücklich als VoltPilot. */

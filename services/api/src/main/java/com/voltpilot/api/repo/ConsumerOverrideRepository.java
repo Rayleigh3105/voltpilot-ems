@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -32,16 +33,23 @@ public class ConsumerOverrideRepository {
     /** Upsert the site's manual override for a consumer (RLS stamps the tenant). */
     public void put(UUID siteId, UUID entityId, String kind, String command, BigDecimal value,
             Instant endsAt, String createdBy) {
+        // Der Urheber im Akteur-Vokabular (AP-03 IP-7) — nur, wenn createdBy der Aufrufer der Anfrage ist.
+        ProtokollAkteur wer = ProtokollAkteur.angemeldetAls(createdBy).orElse(null);
         jdbc.update(
                 "INSERT INTO consumer_override (entity_id, tenant_id, site_id, kind, "
-                        + "target_command, target_value, ends_at, created_by, created_at) VALUES "
+                        + "target_command, target_value, ends_at, created_by, created_at, "
+                        + "actor_sub, actor_name, actor_rolle, actor_art) VALUES "
                         + "(?, NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, "
-                        + "?, ?, ?, now()) ON CONFLICT (entity_id) DO UPDATE SET "
+                        + "?, ?, ?, now(), ?, ?, ?, ?) ON CONFLICT (entity_id) DO UPDATE SET "
                         + "site_id = EXCLUDED.site_id, kind = EXCLUDED.kind, "
                         + "target_command = EXCLUDED.target_command, "
                         + "target_value = EXCLUDED.target_value, ends_at = EXCLUDED.ends_at, "
-                        + "created_by = EXCLUDED.created_by, created_at = now()",
-                entityId, siteId, kind, command, value, Timestamp.from(endsAt), createdBy);
+                        + "created_by = EXCLUDED.created_by, created_at = now(), "
+                        + "actor_sub = EXCLUDED.actor_sub, actor_name = EXCLUDED.actor_name, "
+                        + "actor_rolle = EXCLUDED.actor_rolle, actor_art = EXCLUDED.actor_art",
+                entityId, siteId, kind, command, value, Timestamp.from(endsAt), createdBy,
+                wer == null ? null : wer.sub(), wer == null ? null : wer.name(),
+                wer == null ? null : wer.rolle(), wer == null ? null : wer.art());
     }
 
     public void clear(UUID siteId, UUID entityId) {

@@ -266,7 +266,7 @@ public class RegisterWriteUplinkListener {
                 known.label(), known.clazz(), known.scaleNote(requested),
                 RegisterWriteEventRepository.ORIGIN_DEVICE,
                 boxSource == null ? "wartungszugang" : boxSource, null, "wartungszugang",
-                false, at));
+                false, at, null, null));
 
         Integer before = optRegister(e, "before");
         Integer after = optRegister(e, "after");

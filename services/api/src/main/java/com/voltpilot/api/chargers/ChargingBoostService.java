@@ -1,5 +1,6 @@
 package com.voltpilot.api.chargers;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.command.CommandLog;
 import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
@@ -135,7 +136,7 @@ public class ChargingBoostService {
                     "VoltPilot kann Ihre Ladesäule gerade nicht erreichen. Bitte gleich noch "
                             + "einmal versuchen - an Ihrer Anlage ändert sich dadurch nichts.");
         }
-        record(siteId, point, connectorId, cancel, action, now);
+        record(siteId, point, connectorId, cancel, action, now, actor);
         return new BoostResult(point.chargePointId(), connectorId, !cancel, now,
                 note(cancel, action));
     }
@@ -163,10 +164,12 @@ public class ChargingBoostService {
      * diesem Zeitpunkt bereits hinausgegangen.
      */
     private void record(UUID siteId, ChargePointDto point, int connectorId, boolean cancel,
-            Action action, Instant at) {
+            Action action, Instant at, String actor) {
         try {
+            // Der Urheber im Akteur-Vokabular (AP-03 IP-7): „Jetzt voll laden" ist ein Handeingriff.
             commandLog.appendEvent(siteId, point.deviceId(), point.entityId(),
-                    CommandLog.STREAM_LADEPUNKT, eventKind(cancel, action), at, at);
+                    CommandLog.STREAM_LADEPUNKT, eventKind(cancel, action), at, at,
+                    ProtokollAkteur.angemeldetAls(actor).orElse(null));
         } catch (RuntimeException e) {
             log.warn("charging boost not recorded in the command log (site {} charge point {}): {}",
                     siteId, point.chargePointId(), e.getMessage());

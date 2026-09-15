@@ -195,8 +195,8 @@ class OrtApiTest {
             assertThat(eintraege).as("Protokoll %s", e.getKey()).hasSize(erwartet);
             Map<String, Object> angelegt = eintraege.get(0);
             assertThat(angelegt.get("art")).isEqualTo("angelegt");
-            assertThat(angelegt.get("akteur_sub")).isEqualTo(anspruch(token).path("sub").asText());
-            assertThat(angelegt.get("akteur_name"))
+            assertThat(angelegt.get("actor_sub")).isEqualTo(anspruch(token).path("sub").asText());
+            assertThat(angelegt.get("actor_name"))
                     .isEqualTo(OrtProtokoll.akteurName(ProtokollAkteur.fuer("x", "admin", true)));
             assertThat((String) angelegt.get("neu")).contains(e.getKey());
         }
@@ -661,7 +661,7 @@ class OrtApiTest {
     }
 
     private List<Map<String, Object>> protokoll(String tenant, UUID objekt) {
-        return admin.queryForList("SELECT art, gilt_ab, rueckwirkend, akteur_sub, akteur_name, "
+        return admin.queryForList("SELECT art, gilt_ab, rueckwirkend, actor_sub, actor_name, "
                 + "alt::text AS alt, neu::text AS neu FROM ort_aenderung WHERE tenant_id = ?::uuid "
                 + "AND objekt_id = ? ORDER BY id", tenant, objekt);
     }

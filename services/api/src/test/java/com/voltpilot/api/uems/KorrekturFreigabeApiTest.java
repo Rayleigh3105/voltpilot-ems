@@ -135,9 +135,9 @@ class KorrekturFreigabeApiTest {
         vorschlag(w, "K-2027-0002", w.ines());
         Antwort an = ok(ruf(w.jonas(), HttpMethod.PUT, VIERAUGEN, Map.of("vieraugen", true)), 200);
         assertThat(an.body()).isEqualTo(MAPPER.readTree("{\"vieraugen\": true, \"vorgabe\": false}"));
-        Map<String, Object> eintrag = root.queryForMap("SELECT art, alt::text AS alt, neu::text AS neu, akteur_sub "
+        Map<String, Object> eintrag = root.queryForMap("SELECT art, alt::text AS alt, neu::text AS neu, actor_sub "
                 + "FROM ort_aenderung WHERE tenant_id = ? AND objekt_art = 'unternehmen'", w.mandant());
-        assertThat(eintrag).containsEntry("art", "bearbeitet").containsEntry("akteur_sub", w.jonas().sub());
+        assertThat(eintrag).containsEntry("art", "bearbeitet").containsEntry("actor_sub", w.jonas().sub());
         assertThat(MAPPER.readTree((String) eintrag.get("alt"))).isEqualTo(MAPPER.readTree("{\"vieraugen_freigabe\": null}"));
         assertThat(MAPPER.readTree((String) eintrag.get("neu"))).isEqualTo(MAPPER.readTree("{\"vieraugen_freigabe\": true}"));
 

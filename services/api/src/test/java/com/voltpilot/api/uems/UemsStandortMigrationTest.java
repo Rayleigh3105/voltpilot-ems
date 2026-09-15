@@ -657,7 +657,7 @@ class UemsStandortMigrationTest {
             abgelehntWegen("42501", "permission denied", () -> app.update(
                     "UPDATE ort_aenderung SET art = 'bearbeitet' WHERE id = ?", eintrag));
             assertThat(aenderungen.fuerObjekt("anlage", anlage)).singleElement()
-                    .satisfies(e -> assertThat(e.akteurName()).isEqualTo("Ines Kaltenbach"));
+                    .satisfies(e -> assertThat(e.actorName()).isEqualTo("Ines Kaltenbach"));
         });
         // Auch der Eigentümer schreibt kein Protokoll um: der Trigger an der Datenbankgrenze.
         abgelehntWegen("P0001", "append-only", () -> root.update(

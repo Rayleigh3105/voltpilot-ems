@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.RuheRegel;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -45,7 +46,14 @@ public class DeviceOverrideRepository {
      */
     public record Row(long id, UUID siteId, String kind, UUID entityId, BigDecimal targetValue,
             Instant endsAt, Instant renewedAt, String createdBy, Instant createdAt,
-            String herkunft) {
+            String herkunft, String actorName, String actorRolle, String actorArt) {
+
+        /** Without the actor vocabulary (AP-03 IP-7): a row written before V20260916010000 or by a job. */
+        public Row(long id, UUID siteId, String kind, UUID entityId, BigDecimal targetValue, Instant endsAt,
+                Instant renewedAt, String createdBy, Instant createdAt, String herkunft) {
+            this(id, siteId, kind, entityId, targetValue, endsAt, renewedAt, createdBy, createdAt, herkunft,
+                    null, null, null);
+        }
 
         /** A plant-wide pause (no component). */
         public boolean isPause() {
@@ -60,7 +68,7 @@ public class DeviceOverrideRepository {
 
     private static final String COLUMNS =
             "id, site_id, kind, entity_id, target_value, ends_at, renewed_at, created_by, "
-                    + "created_at, herkunft";
+                    + "created_at, herkunft, actor_name, actor_rolle, actor_art";
 
     private final JdbcTemplate jdbc;
 
@@ -71,17 +79,19 @@ public class DeviceOverrideRepository {
     /** Upsert the intervention of ONE component (RLS stamps the tenant). */
     public void putForEntity(UUID siteId, UUID entityId, String kind, BigDecimal value,
             Instant endsAt, String createdBy) {
+        Object[] wer = urheber(createdBy);
         jdbc.update(
                 "INSERT INTO device_override (tenant_id, site_id, kind, entity_id, target_value, "
-                        + "ends_at, renewed_at, created_by, created_at) VALUES "
+                        + "ends_at, renewed_at, created_by, created_at, " + ACTOR + ") VALUES "
                         + "(NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?, "
-                        + "?, now(), ?, now()) "
+                        + "?, now(), ?, now(), ?, ?, ?, ?) "
                         + "ON CONFLICT (entity_id) WHERE entity_id IS NOT NULL DO UPDATE SET "
                         + "site_id = EXCLUDED.site_id, kind = EXCLUDED.kind, "
                         + "target_value = EXCLUDED.target_value, ends_at = EXCLUDED.ends_at, "
                         + "renewed_at = now(), created_by = EXCLUDED.created_by, "
-                        + "created_at = now()",
-                siteId, kind, entityId, value, Timestamp.from(endsAt), createdBy);
+                        + "created_at = now(), " + ACTOR_UEBERNEHMEN,
+                siteId, kind, entityId, value, Timestamp.from(endsAt), createdBy, wer[0], wer[1], wer[2],
+                wer[3]);
     }
 
     /**
@@ -89,16 +99,17 @@ public class DeviceOverrideRepository {
      * rests in its Ruhe (R0): a timed manual pause must never shorten a rest until revoked.
      */
     public boolean putPause(UUID siteId, Instant endsAt, String createdBy) {
+        Object[] wer = urheber(createdBy);
         return jdbc.update(
                 "INSERT INTO device_override (tenant_id, site_id, kind, entity_id, ends_at, "
-                        + "renewed_at, created_by, created_at) VALUES "
+                        + "renewed_at, created_by, created_at, " + ACTOR + ") VALUES "
                         + "(NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, '"
-                        + KIND_PAUSE + "', NULL, ?, now(), ?, now()) "
+                        + KIND_PAUSE + "', NULL, ?, now(), ?, now(), ?, ?, ?, ?) "
                         + "ON CONFLICT (site_id) WHERE entity_id IS NULL DO UPDATE SET "
                         + "ends_at = EXCLUDED.ends_at, renewed_at = now(), "
-                        + "created_by = EXCLUDED.created_by, created_at = now() "
+                        + "created_by = EXCLUDED.created_by, created_at = now(), " + ACTOR_UEBERNEHMEN + " "
                         + "WHERE device_override.herkunft IS NULL",
-                siteId, Timestamp.from(endsAt), createdBy) > 0;
+                siteId, Timestamp.from(endsAt), createdBy, wer[0], wer[1], wer[2], wer[3]) > 0;
     }
 
     /**
@@ -108,17 +119,18 @@ public class DeviceOverrideRepository {
      * caller's own push failed. Returns whether a row was written.
      */
     public boolean putRuhe(UUID siteId, String createdBy) {
+        Object[] wer = urheber(createdBy);
         return jdbc.update(
                 "INSERT INTO device_override (tenant_id, site_id, kind, entity_id, ends_at, "
-                        + "renewed_at, created_by, created_at, herkunft) VALUES "
+                        + "renewed_at, created_by, created_at, herkunft, " + ACTOR + ") VALUES "
                         + "(NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, '"
                         + KIND_PAUSE + "', NULL, NULL, NULL, ?, now(), '"
-                        + RuheRegel.HERKUNFT_FUNKTION + "') "
+                        + RuheRegel.HERKUNFT_FUNKTION + "', ?, ?, ?, ?) "
                         + "ON CONFLICT (site_id) WHERE entity_id IS NULL DO UPDATE SET "
                         + "ends_at = NULL, herkunft = EXCLUDED.herkunft, renewed_at = NULL, "
-                        + "created_by = EXCLUDED.created_by, created_at = now() "
+                        + "created_by = EXCLUDED.created_by, created_at = now(), " + ACTOR_UEBERNEHMEN + " "
                         + "WHERE device_override.herkunft IS NULL",
-                siteId, createdBy) > 0;
+                siteId, createdBy, wer[0], wer[1], wer[2], wer[3]) > 0;
     }
 
     /** Die Ruhe aufheben („Steuerung starten"/„fortsetzen"). A manual pause stays untouched. */
@@ -234,6 +246,19 @@ public class DeviceOverrideRepository {
                 rs.getObject("entity_id", UUID.class), rs.getBigDecimal("target_value"),
                 ends == null ? null : ends.toInstant(),
                 renewed == null ? null : renewed.toInstant(), rs.getString("created_by"),
-                rs.getTimestamp("created_at").toInstant(), rs.getString("herkunft"));
+                rs.getTimestamp("created_at").toInstant(), rs.getString("herkunft"),
+                rs.getString("actor_name"), rs.getString("actor_rolle"), rs.getString("actor_art"));
+    }
+
+    /** Die Spalten des Akteur-Vokabulars (AP-03 IP-7, V20260916010000). */
+    private static final String ACTOR = "actor_sub, actor_name, actor_rolle, actor_art";
+    private static final String ACTOR_UEBERNEHMEN = "actor_sub = EXCLUDED.actor_sub, "
+            + "actor_name = EXCLUDED.actor_name, actor_rolle = EXCLUDED.actor_rolle, actor_art = EXCLUDED.actor_art";
+
+    /** Sub, Name, Rolle, Art — nur, wenn {@code createdBy} der Aufrufer der Anfrage ist; sonst alles leer. */
+    private static Object[] urheber(String createdBy) {
+        return ProtokollAkteur.angemeldetAls(createdBy)
+                .map(a -> new Object[] {a.sub(), a.name(), a.rolle(), a.art()})
+                .orElseGet(() -> new Object[4]);
     }
 }

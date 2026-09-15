@@ -4,6 +4,8 @@ import com.voltpilot.api.profile.UsageProfileDeriver;
 import com.voltpilot.api.profile.UsageProfileService;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.UsageProfileDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +55,7 @@ public class UsageProfileController {
      * or admin (RLS-scoped); returns the recomputed read-model.
      */
     @PutMapping
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     @Transactional
     public UsageProfileDto set(@PathVariable UUID siteId, @RequestBody OverrideRequest request) {
         String override = request == null ? null : request.override();

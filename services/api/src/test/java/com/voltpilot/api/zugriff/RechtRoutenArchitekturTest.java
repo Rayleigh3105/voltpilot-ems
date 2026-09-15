@@ -43,39 +43,6 @@ class RechtRoutenArchitekturTest {
 
     private static Map<String, String> ohneRecht() {
         Map<String, String> m = new TreeMap<>();
-        String ip7 = "Steuerung (AP-03 §4.3 Gruppe 4) — IP-7 bindet die Steuerungs-Schreibpfade";
-        for (String r : List.of(
-                "SiteInterventionController#pause", "SiteInterventionController#resume",
-                "SiteInterventionController#startBattery", "SiteInterventionController#clearBattery",
-                "SiteConsumerController#startOverride", "SiteConsumerController#clearOverride",
-                "SiteConsumerController#pause", "SiteConsumerController#resume",
-                "SiteConsumerController#activatePolicy", "SiteConsumerController#deactivatePolicy",
-                "SiteConsumerController#putPolicy",
-                "SiteFlowController#create", "SiteFlowController#save", "SiteFlowController#saveLayout",
-                "SiteFlowController#delete", "SiteFlowController#activate", "SiteFlowController#deactivate",
-                "SiteFlowController#simulate", "SiteFlowController#validate", "SiteFlowController#autoStart",
-                "SiteChargingConfigController#save", "SiteChargingConfigController#admit",
-                "SiteChargingConfigController#remove", "SiteChargingConfigController#setChargePointSource",
-                "SiteChargingBoostController#boost",
-                "SiteOcppActionController#create", "SiteOcppActionController#intent", "SiteOcppActionController#cancel",
-                "SiteOcppControlController#save",
-                "SiteRegisterWriteController#write", "SiteRegisterWriteController#preview",
-                "SiteFahrzeugController#save", "SiteFahrzeugController#delete",
-                "SiteVerbraucherController#rangliste", "SiteVerbraucherController#setzeSteuerart",
-                "SiteProfileController#set", "SiteProfileController#setAnwendungsPreset",
-                "FunktionController#messenStandort", "FunktionController#steuernStandort",
-                "FunktionController#steuernAnlage",
-                "SiteForecastModelController#promote",
-                "SiteVorschauController#vorschau",
-                "SiteComponentController#switchRelease", "SiteComponentController#switchRevoke",
-                "SiteComponentController#switchTest", "SiteComponentController#switchCancel")) {
-            m.put(r, ip7);
-        }
-        String ohneZeile = "ohne Zeile in der Matrix — IP-7 ordnet sie mit den Steuerungs-Schreibpfaden zu";
-        m.put("SimulationController#start", ohneZeile + " (Ersparnis-Simulation, schreibt nur einen Rechenauftrag)");
-        m.put("UsageProfileController#set", ohneZeile + " (Nutzungsprofil: steuert Portal und Box)");
-        m.put("SiteSupplyPriceController#put", ohneZeile + " (Preisblatt: preist den Netzbezug des Optimierers)");
-        m.put("SiteSuggestionController#put", ohneZeile + " (Gedächtnis der Steuerungs-Vorschläge)");
         String offen = "öffentlich (SecurityConfig permitAll) — kein Kundenkonto, kein Kundenbereich";
         m.put("RegistrationController#register", offen);
         m.put("EnrollmentController#submitCsr", offen);
@@ -103,6 +70,13 @@ class RechtRoutenArchitekturTest {
         m.put("MessstelleController#anlegen", "keine — eine neue Messstelle hängt an keinem Standort (Ort erst danach)");
         m.put("MessstelleFormelController#anlegen", "keine — eine neue berechnete Messstelle hängt an keinem Standort");
         m.put("BezugsdatenImportController#vorschau", "keine — die Vorschau schreibt nichts");
+        // AP-03 IP-7: zwei Rechte in einem Rumpf bzw. je Aktion.
+        String steuern = "FunktionController.pruefeSteuern — RechtPruefung.pruefen je Aktion (starten/beenden · anhalten/"
+                + "fortsetzen)";
+        m.put("FunktionController#steuernAnlage", steuern + " an der Anlage");
+        m.put("FunktionController#steuernStandort", steuern + " am Standort");
+        m.put("SiteChargingConfigController#save", "SiteChargingConfigController.save — RechtPruefung.pruefen je Feld: "
+                + "gridLimitKw = grenze.eintragen, Reihenfolge/Quellen-Wahl = betriebsweise.aendern");
         return m;
     }
 
@@ -119,7 +93,7 @@ class RechtRoutenArchitekturTest {
                 .count();
         System.out.printf("Kunden-Schreibrouten: %d mit @Recht, %d in OHNE_RECHT%n", mitRecht, ohne);
         assertThat(befunde).as("Befunde").isEmpty();
-        assertThat(mitRecht).as("Routen mit @Recht").isGreaterThanOrEqualTo(113);
+        assertThat(mitRecht).as("Routen mit @Recht").isGreaterThanOrEqualTo(163);
     }
 
     /** Der Test beißt: eine Kunden-Schreibroute ohne {@link Recht} und ohne Eintrag fällt auf. */
