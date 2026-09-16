@@ -257,6 +257,33 @@ test.describe('Messstellen-Register', () => {
     await karte.scrollIntoViewIfNeeded();
     await ablegen(page, 'box-an-quelle-375', t);
   });
+
+  test('Ausfall 03.11.2026: Messstellen und Standortkarte sprechen nur aus festgehaltenen Fakten', async ({ page }) => {
+    for (const breite of [1440, 375]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen&ausfall=1', breite);
+      await warteAufRegister(page);
+      const direkt = page.locator(breite === 375 ? '.vp-ms-karte' : '.vp-ms-tabelle tbody tr', {
+        has: page.locator('.vp-ms-kz', { hasText: /^MS-10$/ }),
+      });
+      await expect(direkt).toContainText('Unvollständig seit 14:00 (Box Halle 2)');
+      const berechnet = page.locator(breite === 375 ? '.vp-ms-karte' : '.vp-ms-tabelle tbody tr', {
+        has: page.locator('.vp-ms-kz', { hasText: /^MS-15$/ }),
+      });
+      await expect(berechnet).toContainText('fehlt: MS-10, MS-11, MS-12, MS-13, MS-14');
+      await expect(berechnet).not.toContainText('Box Halle 2');
+      const m = await messe(page);
+      ohneQuerlauf(m, `ausfall-messstellen-${breite}`);
+      await direkt.scrollIntoViewIfNeeded();
+      await ablegen(page, `ausfall-messstellen-${breite}`, m);
+      await berechnet.scrollIntoViewIfNeeded();
+      await ablegen(page, `ausfall-berechnet-${breite}`, m);
+    }
+
+    await oeffne(page, 'bild=unternehmen&ansicht=standorte&ausfall=1', 1440);
+    const standort = page.getByTestId('standort-ausfall');
+    await expect(standort).toHaveText('1 von 2 Boxen meldet sich nicht · 6 Messstellen unvollständig');
+    await ablegen(page, 'ausfall-standort-1440', await messe(page), true);
+  });
 });
 
 test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich die Leiste des Unternehmens zu', () => {

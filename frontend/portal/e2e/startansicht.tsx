@@ -18,6 +18,7 @@ import {
   type Overview,
   type OverviewSite,
   type Site,
+  type StandortAusfall,
 } from '../src/api';
 import { keycloak } from '../src/auth';
 import { showAddAnlageButton } from '../src/addAnlage';
@@ -108,6 +109,7 @@ import { ortsbaumAhrenberg, ortsbaumLindach, ortsbaumLindachOhneGebaeude } from 
 import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
 import { StandortAnlagenPage } from '../src/pages/StandortAnlagenPage';
 import { StandortGebaeudePage } from '../src/pages/StandortGebaeudePage';
+import { StandortePage } from '../src/pages/StandortePage';
 import { AppShell } from '../src/shell/AppShell';
 import { anlageSurface } from '../src/surface';
 import {
@@ -187,6 +189,7 @@ const STAND = '2026-10-20T08:15:00Z';
 const params = new URLSearchParams(location.search);
 const bild = params.get('bild') ?? 'einzel';
 const ansicht = params.get('ansicht');
+const AUSFALL = params.get('ausfall') === '1';
 const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet';
 /**
  * AP-13 IP-9: `&ansicht=kostenstellen` / `&ansicht=prozesse` öffnen „Unternehmen › Messstellen“ im Reiter (die Adresse
@@ -609,7 +612,16 @@ Object.assign(api, {
   messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => {
     // AP-13 IP-13: `&stand=` verschiebt den Stand des Registers — und mit ihm den Tag, auf dem der Einstieg „Werte“ landet.
     const anfrage = REGISTER_STAND && !a.stichtag ? { ...a, stichtag: REGISTER_STAND } : a;
-    const r = k17 ? mitMs24(ahrenbergRegister(anfrage)) : ahrenbergRegister(anfrage);
+    let r = k17 ? mitMs24(ahrenbergRegister(anfrage)) : ahrenbergRegister(anfrage);
+    if (AUSFALL) {
+      r = {
+        ...r,
+        zeitpunkt: '2026-11-03T14:05:00+01:00',
+        register: r.register.map((z) => z.kennzeichen === 'MS-15'
+          ? { ...z, berechnung: { zustand: 'unvollstaendig', fehlend: ['MS-10', 'MS-11', 'MS-12', 'MS-13', 'MS-14'], seit: '2026-11-03T14:00:00+01:00', text: 'Unvollständig · fehlt: MS-10, MS-11, MS-12, MS-13, MS-14' } }
+          : z),
+      };
+    }
     if (messenArt === 'bestand') {
       const leer = { erfuellt: 0, gesamt: 0, text: 'Noch keine Messstellen' };
       return { ...r, register: [], aggregat: { ...r.aggregat, unternehmen: leer, standorte: r.aggregat.standorte.map((st) => ({ ...st, ...leer })) } };
@@ -696,6 +708,31 @@ Object.assign(api, {
   bezugsdatenRuecknahmeVorschau: async () => ({ kennung: 'I-2026-0001', aenderungen: 1, vieraugen: false, werte: [{ bezugsgroesse_id: bzListe.bezugsgroessen[0]?.id ?? '', kennzeichen: 'BZ-1', name: 'Produktionsmenge', periode_von: '2026-10-01', periode_bis: '2026-10-31', zeitpunkt: null, bisheriger_betrag: '312400', neuer_betrag: null, einheit: 'kg', vorgang: 'zurueckgenommen' as const }] }),
   bezugsdatenImportZuruecknehmen: async (_kennung: string, begruendung: string) => { bzAufrufe.ruecknahmen.push(begruendung); importStatus = 'zurueckgenommen'; return { kennung: 'I-2026-0001', status: importStatus, aenderungen: 1, vorschlaege: 0, zaehler: null, vorlage: null }; },
   unternehmen: async () => ahrenbergUnternehmen(),
+  standorte: async () => ahrenbergHeute(),
+  standortAusfall: async (standortId: string): Promise<StandortAusfall> => {
+    if (!AUSFALL || standortId !== FIXTURE_IDS.st1) {
+      return { standort_id: standortId, boxen_gesamt: standortId === FIXTURE_IDS.st1 ? 2 : 1, boxen_ausgefallen: 0, messstellen_unvollstaendig: 0, boxen: [], messstellen: [] };
+    }
+    const register = ahrenbergRegister().register;
+    const betroffen = ['MS-10', 'MS-11', 'MS-12', 'MS-13', 'MS-14', 'MS-15'];
+    return {
+      standort_id: standortId,
+      boxen_gesamt: 2,
+      boxen_ausgefallen: 1,
+      messstellen_unvollstaendig: 6,
+      boxen: [{ id: 'e0000000-0000-4000-8000-000000000002', name: 'Box Halle 2', seit: '2026-11-03T14:00:00+01:00', anlagen: [FIXTURE_IDS.an2] }],
+      messstellen: register.filter((z) => betroffen.includes(z.kennzeichen)).map((z) => ({
+        id: z.id,
+        kennzeichen: z.kennzeichen,
+        name: z.name,
+        art: z.art,
+        seit: '2026-11-03T14:00:00+01:00',
+        box_id: z.art === 'gemessen' ? 'e0000000-0000-4000-8000-000000000002' : null,
+        box: z.art === 'gemessen' ? 'Box Halle 2' : null,
+        fehlt: z.art === 'berechnet' ? ['MS-10', 'MS-11', 'MS-12', 'MS-13', 'MS-14'] : [],
+      })),
+    };
+  },
   // AP-13 IP-9: in den Reitern gelten die Prozesse der Messstellen-Fixtures — dieselben Kennungen wie ihre Zuordnungen.
   prozesse: async () => ({
     stichtag: null,
@@ -1017,6 +1054,8 @@ function Vorschau() {
               ? messstelleRoute(wegMessstelleId())
             : ansicht === 'messstellen' || ORGANISATION_REITER
               ? pageRoute('portfolio-messstellen')
+              : ansicht === 'standorte'
+                ? pageRoute('portfolio-standorte')
               : ansicht === 'werk-messstellen'
                 ? standortMessstellenRoute(FIXTURE_IDS.st1)
                 : ansicht === 'lindach-messstellen'
@@ -1171,6 +1210,7 @@ function Vorschau() {
           onNavigate={navigate}
           onReload={() => undefined}
           surface={surfaceVon(site.id)}
+          standortId={szene.liste.standorte.find((s) => s.anlagen.some((a) => a.id === site.id))?.id ?? null}
         />
       )}
       {site && !route.sub && (
@@ -1245,6 +1285,10 @@ function Vorschau() {
         </>
       )}
       {route.page === 'portfolio-messstellen' && portfolioReiter('portfolio-messstellen')}
+      {route.page === 'portfolio-standorte' && <>
+        {portfolioReiter('portfolio-standorte')}
+        <StandortePage />
+      </>}
       {route.page === 'portfolio-bezugsgroessen' && <>
         {portfolioReiter(ansicht === 'bezugsgroessen-b' ? 'portfolio-messstellen' : 'portfolio-bezugsgroessen')}
         {ansicht === 'bezugsgroessen-b' && <div className="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Messstellen"><button className="vp-bereich-tab" role="tab" aria-selected={false}>Liste</button><button className="vp-bereich-tab" role="tab" aria-selected={false}>Kostenstellen</button><button className="vp-bereich-tab" role="tab" aria-selected={false}>Prozesse</button><button className="vp-bereich-tab active" role="tab" aria-selected={true}>Bezugsgrößen<span className="vp-tab-strich" /></button></div>}

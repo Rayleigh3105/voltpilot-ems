@@ -202,6 +202,25 @@ export interface SiteDetail extends Site {
   standort: StandortBezug | null;
 }
 
+/** Belegte offene Ausfälle eines Standorts; Ursachen stehen nur an Fakten aus `data_gap`. */
+export interface StandortAusfall {
+  standort_id: string;
+  boxen_gesamt: number;
+  boxen_ausgefallen: number;
+  messstellen_unvollstaendig: number;
+  boxen: Array<{ id: string; name: string; seit: string; anlagen: string[] }>;
+  messstellen: Array<{
+    id: string;
+    kennzeichen: string;
+    name: string | null;
+    art: 'gemessen' | 'berechnet';
+    seit: string | null;
+    box_id: string | null;
+    box: string | null;
+    fehlt: string[];
+  }>;
+}
+
 /**
  * One Anlage's structured supply-price sheet (site_supply_price, report
  * vp-nacht-bezug-e7 §3.1). Components ct/kWh NETTO, all nullable (null =
@@ -8039,6 +8058,10 @@ export const api = {
     const text = q.toString();
     return request<MessstellenRegister>(`/api/v1/messstellen${text ? `?${text}` : ''}`);
   },
+
+  /** AP-06 IP-17: reine, standortbezogene Sicht auf offene, festgehaltene Ausfall-Fakten. */
+  standortAusfall: (standortId: string) =>
+    request<StandortAusfall>(`/api/v1/standorte/${standortId}/ausfall`),
 
   /** Eine einzelne Messstelle. */
   messstelle: (id: string) => request<Messstelle>(`/api/v1/messstellen/${id}`),

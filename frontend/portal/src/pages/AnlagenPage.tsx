@@ -20,6 +20,7 @@ import {
   type RollenKanonischerWert,
   type SchedulePlan,
   type Site,
+  type StandortAusfall,
   type SiteEarnings,
   type SiteSource,
   type TelemetryPoint,
@@ -46,6 +47,7 @@ import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
 import { useWake } from '../useWake';
+import { anlageAusfallSatz } from '../ausfallAnzeige';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook } from '../control';
 import { curtailTruth, curtailTruthForSlot, exportGuardView } from '../curtailment';
@@ -216,6 +218,8 @@ export interface AnlagenPageProps {
    * Betriebskunde sieht und lädt nichts Neues. Die Zahlen des Cockpits ändert der Weg NIE.
    */
   misstHier?: boolean;
+  /** Standort der Anlage für die additive, fail-soft Ausfall-Lesesicht. */
+  standortId?: string | null;
 }
 
 /**
@@ -680,6 +684,7 @@ export function AnlageSeite({
   onReload,
   onHealthFacts,
   misstHier = false,
+  standortId = null,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -693,6 +698,7 @@ export function AnlageSeite({
 }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [overviewFailed, setOverviewFailed] = useState(false);
+  const [ausfall, setAusfall] = useState<StandortAusfall | null>(null);
   // Das GEMESSENE Geld dieser Anlage. Seit dem Perf-Audit (vp-portal-perf-a4,
   // B2) vom anlagen-scharfen `/sites/{id}/earnings` (3 Queries, ~0,42 s) statt
   // vom mandantenweiten `/earnings` (8 Queries, 1,8 s bei range=year) mit
@@ -803,6 +809,19 @@ export function AnlageSeite({
     // `sites` identity changes on explicit App reloads (device claimed, site
     // edited), keeping a fresh claim's status current without the 30 s poll.
   }, [site.id, sites, reloadKey]);
+
+  useEffect(() => {
+    let active = true;
+    if (!standortId) {
+      setAusfall(null);
+      return () => { active = false; };
+    }
+    api.standortAusfall(standortId).then(
+      (a) => { if (active) setAusfall(a); },
+      () => { if (active) setAusfall(null); },
+    );
+    return () => { active = false; };
+  }, [standortId, site.id, reloadKey]);
 
   // The measured money numbers - site-scoped (B2). Refetched when the period
   // (range/at) changes; the page keeps the previous numbers until the new ones
@@ -1775,6 +1794,8 @@ export function AnlageSeite({
       ) : null,
   };
 
+  const ausfallText = anlageAusfallSatz(ausfall, site.id);
+
   return (
     <>
       {/* Anwendungs-Programm Stufe 5: der geführte Dialog. Er hängt an der
@@ -1822,10 +1843,13 @@ export function AnlageSeite({
             />
             {site.name}
           </h1>
-          {showSetup ? (
+          {ausfallText ? (
+            <p className="vp-anlage-sentence tone-warn" data-testid="anlage-ausfall">{ausfallText}</p>
+          ) : null}
+          {!ausfallText && showSetup ? (
             // M5: der Leer-Zustand spricht nicht von "offline", sondern vom Weg.
             <p className="vp-anlage-sentence tone-warn">{SETUP_STATUS_LINE}</p>
-          ) : !showHeadSentence ? null : sentence ? (
+          ) : ausfallText ? null : !showHeadSentence ? null : sentence ? (
             <p className={`vp-anlage-sentence tone-${sentence.tone}`}>{sentence.text}</p>
           ) : overviewFailed ? (
             <p className="vp-anlage-sentence tone-off">

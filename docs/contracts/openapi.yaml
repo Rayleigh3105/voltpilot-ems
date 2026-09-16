@@ -840,6 +840,27 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/{standortId}/ausfall:
+    get:
+      tags: [ortsstruktur, messstellen]
+      summary: Belegte offene Box-Ausfälle und unvollständige Messstellen eines Standorts (AP-06 IP-17).
+      description: >
+        Reine Lesesicht auf die jüngste Fortschreibung offener data_gap-Ereignisse mit der
+        belegten Fehlerklasse box_meldet_sich_nicht. Eine gemessene Messstelle nennt Box und
+        Beginn nur über das offene Ereignis ihrer laufenden Datenquelle; berechnete Messstellen
+        nennen ausschließlich ihre fehlenden Eingänge. Fehlt der Fakt, fehlt die Ursache in der
+        Antwort. Ein fremder Standort ist 404, nie 403. Recht: `messstelle.ansehen`; als GET ohne
+        `@Recht`, Sichtbarkeit durch Standort-Zaun und RLS.
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die aktuell belegte Ausfall-Lage des Standorts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortAusfall" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Standort not found for this tenant. }
   /api/v1/standorte/{standortId}/versorgung:
     get:
       tags: [ortsstruktur, messstellen]
@@ -19504,6 +19525,38 @@ components:
           format: date-time
           nullable: true
           description: Additiv (IP-4) - wann er archiviert wurde; null, solange er es nicht ist.
+    StandortAusfall:
+      type: object
+      required: [standort_id, boxen_gesamt, boxen_ausgefallen, messstellen_unvollstaendig, boxen, messstellen]
+      properties:
+        standort_id: { type: string, format: uuid }
+        boxen_gesamt: { type: integer, minimum: 0 }
+        boxen_ausgefallen: { type: integer, minimum: 0 }
+        messstellen_unvollstaendig: { type: integer, minimum: 0 }
+        boxen:
+          type: array
+          items:
+            type: object
+            required: [id, name, seit, anlagen]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              seit: { type: string, format: date-time }
+              anlagen: { type: array, items: { type: string, format: uuid } }
+        messstellen:
+          type: array
+          items:
+            type: object
+            required: [id, kennzeichen, art, fehlt]
+            properties:
+              id: { type: string, format: uuid }
+              kennzeichen: { type: string }
+              name: { type: string, nullable: true }
+              art: { type: string, enum: [gemessen, berechnet] }
+              seit: { type: string, format: date-time, nullable: true }
+              box_id: { type: string, format: uuid, nullable: true }
+              box: { type: string, nullable: true }
+              fehlt: { type: array, items: { type: string } }
     Versorgung:
       type: object
       required: [stichtag, standort, gebaeude, ausserhalbGebaeude]

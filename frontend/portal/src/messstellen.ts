@@ -4,10 +4,12 @@ import type {
   MessstelleRegisterZeile,
   MessstellenRegister,
   MessstellenRegisterAnfrage,
+  StandortAusfall,
   MessstelleVertragsform,
   UemsDatenquelle,
 } from './api';
 import { boxAmGeraet, zustaendigSatz } from './boxAnQuelle';
+import { messstelleAusfallSatz } from './ausfallAnzeige';
 import {
   UEMS_FUEHREND,
   UEMS_FUNKTION_MESSEN,
@@ -161,6 +163,8 @@ export interface WortKontext {
    * `zeitpunkt` spricht die Spalte „Quelle“ die Box. Ohne Karte bleibt die Spalte wie zuvor.
    */
   boxen?: ReadonlyMap<string, UemsDatenquelle>;
+  /** Belegte Ausfall-Fakten je Messstelle; fehlt die Zeile, bleibt der vorhandene Zustandstext. */
+  ausfaelle?: ReadonlyMap<string, StandortAusfall['messstellen'][number]>;
 }
 
 const OHNE_BOXEN: ReadonlyMap<string, UemsDatenquelle> = new Map();
@@ -270,13 +274,15 @@ function zustandText(z: MessstelleRegisterZeile, zone: string): string {
   return z.lebenszyklus === 'entwurf' && fehlt.length > 0 ? `${wort} · es fehlt: ${fehlt.join(', ')}` : wort;
 }
 
-function beobachtungWoerter(z: MessstelleRegisterZeile): ZeileWoerter['beobachtung'] {
+function beobachtungWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileWoerter['beobachtung'] {
   if (z.art === 'berechnet') {
     if (!z.berechnung) return null;
     return { text: z.berechnung.text, ton: z.berechnung.zustand === 'vollstaendig' ? 'gut' : 'hinweis' };
   }
   const b = z.beobachtung;
   if (!b) return null;
+  const ausfall = messstelleAusfallSatz(k.ausfaelle?.get(z.id), (iso) => zeitpunktText(iso, k.zone, k.zeitpunkt));
+  if (ausfall) return { text: ausfall, ton: 'hinweis' };
   const ton: Ton = b.zustand === 'liefert' ? 'gut' : b.zustand === 'liefert_nicht_seit' ? 'hinweis' : 'still';
   return { text: b.text, ton };
 }
@@ -316,7 +322,7 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
     stellung: stellungText(z),
     quelle,
     zustand: zustandText(z, k.zone),
-    beobachtung: beobachtungWoerter(z),
+    beobachtung: beobachtungWoerter(z, k),
     wert: w && text !== null ? { text, zeit: `${zeitpunktText(w.zeitpunkt, k.zone, k.zeitpunkt)} Uhr` } : null,
     nebenwerte: (z.nebengroessen ?? []).flatMap((n) => {
       const nt = n.letzter_wert ? wertText(n.letzter_wert) : null;
