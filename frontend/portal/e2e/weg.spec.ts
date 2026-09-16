@@ -36,7 +36,8 @@ const HEUTE = '2026-11-21';
 const JETZT = new Date('2026-11-21T08:20:00Z');
 /** Der Tag, dessen Zahl der Weg liest: der Ausfall der Box Halle 2 (O1/F21). Er wird über „Stand am …“ erreicht. */
 const GESUCHTER_TAG = '2026-11-03';
-const VIER_KACHELN = ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'];
+const STANDORT_LEISTE = ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'];
+const STANDORT_REITER = ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'];
 
 /** Jede Station des Wegs: was gemessen wurde. Wird je Breite gesammelt und am Ende als eine Datei abgelegt. */
 interface Station {
@@ -190,9 +191,9 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       await oeffne(page, `bild=standort&stand=${HEUTE}`, breite);
       await expect(page.locator('.vp-main')).toContainText('Werk Ahrenberg');
       const ebene = await station(page, breite, '01-ebene', gesammelt);
-      // Die vier Bereiche des Standorts — am Telefon als Leiste, am Rechner als Reiter (M3).
-      if (breite === 375) expect(ebene.leiste).toEqual(VIER_KACHELN);
-      else expect(ebene.reiter, `Reiter am Rechner: ${ebene.reiter.join(' · ')}`).toEqual(expect.arrayContaining(VIER_KACHELN));
+      // Die Bereiche des Standorts — am Telefon als Leiste, am Rechner als Reiter (M3).
+      if (breite === 375) expect(ebene.leiste).toEqual(STANDORT_LEISTE);
+      else expect(ebene.reiter, `Reiter am Rechner: ${ebene.reiter.join(' · ')}`).toEqual(expect.arrayContaining(STANDORT_REITER));
 
       // ---------------------------------------------------------------- 2 · EBENE: Gebäude, Halle 2 aufgeklappt
       await zu(page, breite, 'Gebäude');

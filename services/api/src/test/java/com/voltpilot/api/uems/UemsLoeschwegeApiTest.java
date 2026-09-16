@@ -325,7 +325,7 @@ class UemsLoeschwegeApiTest {
                 .isEqualTo(404);
         JsonNode liste = ok(rufe(HttpMethod.GET, "/api/v1/devices", w.admin()));
         List<String> ids = new ArrayList<>();
-        liste.forEach(d -> ids.add(d.get("id").asText()));
+        liste.path("eintraege").forEach(d -> ids.add(d.get("id").asText()));
         assertThat(ids).doesNotContain(w.box().toString());
         // Die Historie der ausgebauten Box bleibt lesbar.
         assertThat(status(rufe(HttpMethod.GET, "/api/v1/devices/" + w.box() + "/measurement-selection/" + ENERGIE_BEZUG

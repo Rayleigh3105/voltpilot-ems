@@ -25,7 +25,7 @@ const AM_20_11 = new Date('2026-11-20T08:00:00Z');
 const AM_03_12 = new Date('2026-12-03T08:00:00Z');
 const AM_2036 = new Date('2036-11-02T09:00:00Z');
 const NB = String.fromCharCode(160);
-const LEISTE = ['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte'];
+const LEISTE = ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte'];
 
 async function oeffne(page: Page, query: string, breite: number, jetzt: Date) {
   await page.clock.setFixedTime(jetzt);
@@ -130,7 +130,7 @@ test.describe('Berichte — die Liste', () => {
     await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte', 'Messwerte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Messwerte']);
     expect(m.reiterAktiv).toEqual(['Berichte']);
     expect(m.stand).toEqual(['Berichtsstand Nr. 2']);
     await ablegen(page, 'liste-1440', m);
