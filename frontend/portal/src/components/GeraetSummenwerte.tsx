@@ -13,7 +13,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { ProtokollDialog, PROTOKOLL_LABEL } from "./ProtokollDialog";
 import { RolleAendernDialog } from "./RolleAendernDialog";
 import { SummenwertFormelDialog } from "./SummenwertFormelDialog";
-import { SummenwertAssistent } from "./SummenwertAssistent";
+import { useSummenwertAssistent } from "./SummenwertAssistent";
 import "./GeraetSummenwerte.css";
 
 type Zeile = GeraetSummenwert & { entityId: string };
@@ -36,7 +36,7 @@ export function GeraetSummenwerte({
   const rechte = useRollen();
   const [zeilen, setZeilen] = useState<Zeile[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
-  const [offen, setOffen] = useState(false);
+  const { oeffneSummenwertAssistent: oeffneAssistent, assistent } = useSummenwertAssistent();
   const [rolle, setRolle] = useState<Zeile | null>(null);
   const [formel, setFormel] = useState<Zeile | null>(null);
   const [name, setName] = useState<{ zeile: Zeile; name: string } | null>(null);
@@ -83,9 +83,8 @@ export function GeraetSummenwerte({
       ladeVersion.current++;
     };
   }, [laden]);
-  // Bis der gemeinsame Öffnen-Hook auf uems liegt, bleibt der heutige Assistent gekapselt.
   function oeffneSummenwertAssistent() {
-    setOffen(true);
+    oeffneAssistent({ siteId, deviceId, entityId, geraetName, onGespeichert: geaendert });
   }
   function geaendert() {
     void laden();
@@ -315,16 +314,7 @@ export function GeraetSummenwerte({
           optionen={{ achse: "eintrag" }}
           onClose={() => setProtokoll(false)}
         />
-        <SummenwertAssistent
-          open={offen}
-          siteId={siteId}
-          deviceId={deviceId}
-          entityId={entityId}
-          geraetName={geraetName}
-          bestehend={null}
-          onClose={() => setOffen(false)}
-          onGespeichert={geaendert}
-        />
+        {assistent}
       </Card>
     </div>
   );

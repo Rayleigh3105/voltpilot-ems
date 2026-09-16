@@ -23,7 +23,7 @@ import {
   type Unternehmen,
 } from '../api';
 import { currentUser } from '../auth';
-import { UEMS_BERECHNUNG, UEMS_GELTUNGSBEREICH, UEMS_RECHENFORM, UEMS_VERANTWORTLICH, UEMS_VORLAGE, UEMS_ZWECK } from '../glossar';
+import { SUMMENWERT, UEMS_BERECHNUNG, UEMS_GELTUNGSBEREICH, UEMS_RECHENFORM, UEMS_VERANTWORTLICH, UEMS_VORLAGE, UEMS_ZWECK } from '../glossar';
 import * as E from '../kennzahlAendern';
 import * as A from '../kennzahlAnlegen';
 import { berechnung, heuteIn, PERIODEN_NAME } from '../kennzahlKarte';
@@ -499,7 +499,7 @@ export function KennzahlAnlegenDialog({
             loading={register === null && !registerFehler}
             loadError={registerFehler ? A.LADEFEHLER : null}
             onRetry={() => setRegisterLauf((n) => n + 1)}
-            placeholder="Messstelle oder Gesamtwert wählen …"
+            placeholder={`Messstelle oder ${SUMMENWERT} wählen …`}
             searchPlaceholder="Messstelle suchen …"
             hint={auswahl ? A.erwartungHinweis(er?.satz ?? null, auswahl) : undefined}
           />
@@ -583,7 +583,7 @@ export function KennzahlAnlegenDialog({
             loading={laedt}
             loadError={fehlerLaden ? A.LADEFEHLER : null}
             onRetry={() => (istAnteil ? setRegisterLauf((n) => n + 1) : setLadeLauf((n) => n + 1))}
-            placeholder={istAnteil ? 'Messstelle oder Gesamtwert wählen …' : 'Bezugsgröße wählen …'}
+            placeholder={istAnteil ? `Messstelle oder ${SUMMENWERT} wählen …` : 'Bezugsgröße wählen …'}
             hint={auswahl ? A.erwartungHinweis(er?.satz ?? null, auswahl, istAnteil ? 'Messstellen' : 'Bezugsgrößen') : undefined}
             error={pruefung?.fehler ? pruefung.satz : modus === 'aendern' ? (geltungFehler ?? undefined) : undefined}
           />

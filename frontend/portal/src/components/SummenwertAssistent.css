@@ -403,3 +403,14 @@
   overflow-wrap: anywhere;
 }
 .vp-pvp-act { flex: 0 0 auto; }
+
+.vp-sw-live { font-size: 13px; margin-top: 5px; font-variant-numeric: tabular-nums; }
+.vp-sw-role-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.vp-sw-role-option { padding: 10px 14px; border: 1px solid var(--vp-c-border); border-radius: var(--vp-c-radius-sm); background: var(--vp-c-bg); color: var(--vp-c-fg); cursor: pointer; }
+.vp-sw-role-option.on { border-color: var(--vp-c-primary); background: var(--vp-c-muted); font-weight: 700; }
+.vp-sw-role-option:disabled { opacity: .5; cursor: default; }
+.vp-sw details > summary { padding: 12px; cursor: pointer; font-weight: 600; }
+.vp-sw .vp-sw-suggest { margin-top: 8px; flex-wrap: wrap; }
+.vp-sw .vp-sw-name-in { display: block; width: 100%; box-sizing: border-box; border: 1px solid var(--vp-c-border); padding: 12px; }
+.vp-sw .vp-steps { flex-wrap: wrap; }
+.vp-sw .vp-step { min-width: 0; }

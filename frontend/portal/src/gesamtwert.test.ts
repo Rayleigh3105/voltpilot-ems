@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GESAMTWERT,
+  SUMMENWERT,
   MAX_TERME,
   abgeleiteteGroesse,
   alsAnfrage,
@@ -46,8 +46,8 @@ function q(over: Partial<Quellwert> = {}): Quellwert {
 }
 
 describe('gesamtwert · Kundenwort', () => {
-  it('das eine Kundenwort ist „Gesamtwert"', () => {
-    expect(GESAMTWERT).toBe('Gesamtwert');
+  it('das eine Kundenwort ist „Summenwert"', () => {
+    expect(SUMMENWERT).toBe('Summenwert');
   });
 });
 

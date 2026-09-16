@@ -763,6 +763,7 @@ Object.assign(api, {
   funktionen: async () => funktionenDerSzene(),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was
   // die Zonen lesen (seit der Steuern-Regel ohne Hinweis); der Rest antwortet wie ein älteres Backend.
+  summenwertQuellen: async () => [], // Diese Bühne stellt keine lesbaren Geräte-Register.
   siteEntities: async (id: string) => ({ registry: null, localSetup: [], staleOnDevice: [], entities: komponentenVon(id) }),
   siteVerbraucher: async (id: string) => verbraucherVon(id),
   entityStrategies: async () => ({}),

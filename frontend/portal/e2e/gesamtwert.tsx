@@ -34,7 +34,7 @@ function Fixture() {
   return (
     <main style={{ maxWidth: 1180, margin: '0 auto', padding: 24, display: 'grid', gap: 32 }}>
       <button type="button" onClick={() => setOpen(true)}>
-        Gesamtwert anlegen
+        Summenwert anlegen
       </button>
 
       <section aria-label="Übersicht">

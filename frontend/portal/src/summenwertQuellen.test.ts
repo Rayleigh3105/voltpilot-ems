@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { MeasurementCatalogPoint } from './api';
 import {
   ankerAus,
+  mitSitzungswert,
+  standText,
   anhakbar,
   gruppen,
   istGenPort,
@@ -276,5 +278,21 @@ describe('summenwertQuellen: vorauswahl hakt nur Erzeugung vorab an (B2 - keine 
     const gewaehlt = vorauswahl([pv, genPort, hausverbrauch]);
     expect(gewaehlt.some((z) => z.name === 'Hausverbrauch')).toBe(false);
     expect(gewaehlt.some((z) => z.name === 'Gen-Port')).toBe(false);
+  });
+});
+
+
+describe('Einmal-Lesung und Stand-Text', () => {
+  it('nennt Stand und Sitzungs-Lesung als Text, unbekannt bleibt unbekannt', () => {
+    expect(standText(null)).toBe('Stand unbekannt');
+    expect(standText('kaputt')).toBe('Stand unbekannt');
+    expect(standText('2026-09-16T10:15:32Z')).toMatch(/^Stand \d{2}:\d{2}:32 Uhr$/);
+    expect(standText('2026-09-16T10:15:40Z', true)).toMatch(/^jetzt gelesen \d{2}:\d{2}:40 Uhr$/);
+  });
+  it('Sitzungswert schlägt den Registerzustand; ein Fehlschlag ist keine alte Zahl oder 0', () => {
+    const z = zeileAus(pt(), 'inv');
+    expect(mitSitzungswert(z, { wert: 2, einheit: 'kW', gelesen_am: '2026-09-16T10:15:40Z' })).toMatchObject({ wert: 2, einheit: 'kW', stand: '2026-09-16T10:15:40Z' });
+    expect(mitSitzungswert(z, { wert: null, einheit: 'kW', gelesen_am: null, grund: 'box_offline' })).toMatchObject({ wert: null, stand: null });
+    expect(mitSitzungswert(z, { wert: 0, einheit: 'kW', gelesen_am: '2026-09-16T10:15:40Z' }).wert).toBe(0);
   });
 });

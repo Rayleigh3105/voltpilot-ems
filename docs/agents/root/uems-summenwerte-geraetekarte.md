@@ -14,8 +14,9 @@ einmal auf der Karte. Box, Port und Transport sind dafür keine Identität.
   zum Entziehen. Der Netzwert-Konflikt verlangt ausdrückliches `ersetzen`. Größe
   und Richtung bestimmen die verfügbaren Rollen; der Server prüft sie erneut.
   Ein Entzug lässt die Messstelle und ihre Werte bestehen.
-- Die kleine Öffnen-Funktion kapselt bis zum gemeinsamen H-5-Hook den bestehenden
-  Assistenten. `onGespeichert` lädt nur neu und schließt den Fertig-Schritt nicht.
+- Die Öffnen-Funktion verwendet `useSummenwertAssistent` aus dem
+  [gemeinsamen H-5/H-6-Assistenten](uems-summenwert-assistent.md).
+  `onGespeichert` lädt nur neu und schließt den Fertig-Schritt nicht.
 - Anlegen/Formel brauchen `messstelle.formel`, Rolle `geraet.einrichten`,
   Umbenennen/Archivieren `messstelle.bearbeiten`, Protokoll
   `aenderungsprotokoll.lesen` über `rollen.ts`. Das Zeilenmenü ist ohne Schreibrecht

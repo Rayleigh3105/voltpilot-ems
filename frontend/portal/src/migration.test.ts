@@ -1523,6 +1523,18 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         ts.forEachChild(knoten, besuche);
       };
       besuche(datei);
+      const zusammen = kundenBestand.assistentZusammenfuehrung;
+      const umgebaut = zusammen.dateien[pfad as keyof typeof zusammen.dateien];
+      if (umgebaut) {
+        // E1/H-5 ersetzt ausdrücklich beide Flüsse durch EINEN Assistenten. Der ursprüngliche
+        // Bestand bleibt in der Datei; die neuen Bedienelemente werden vollständig geschützt.
+        expect(jetzt, zusammen.entscheid).toEqual(umgebaut);
+        if (pfad === 'components/GesamtwertDialog.tsx') {
+          expect(createHash('sha256').update(readFileSync(join(SRC, pfad))).digest('hex')).toBe(zusammen.wrapper);
+        }
+        zahl += vorher.length;
+        continue;
+      }
       for (const fingerabdruck of vorher) {
         // Der ursprüngliche Bestand bleibt erhalten. Nur ein ausdrücklich belegter Nachfolger
         // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.

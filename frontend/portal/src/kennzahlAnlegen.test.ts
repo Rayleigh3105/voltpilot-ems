@@ -161,7 +161,7 @@ describe('Schritt 2 und 3: gefiltert auf die Erwartung der Vorlage', () => {
     expect(menge.optionen.find((o) => o.value === 'MS-12')).toMatchObject({
       label: 'MS-12 Montage Linie M1', sub: 'Messstelle · Wirkenergie · Bezug · Halle 2 Montage', group: 'Werk Ahrenberg', disabled: false,
     });
-    expect(menge.optionen.find((o) => o.value === 'MS-19')?.sub).toBe('Gesamtwert · Wirkenergie · Bezug · Kunststoffwerk Ahrenberg GmbH');
+    expect(menge.optionen.find((o) => o.value === 'MS-19')?.sub).toBe('Summenwert · Wirkenergie · Bezug · Kunststoffwerk Ahrenberg GmbH');
     expect(A.erwartungHinweis('Messstelle oder Gesamtwert, Wirkenergie · Bezug', menge)).toBe(
       `Die Vorlage erwartet: Messstelle oder Gesamtwert, Wirkenergie · Bezug. ${menge.passend} von ${register.length} Messstellen passen.`,
     );
@@ -202,7 +202,7 @@ describe('Hebel: mehrere Messstellen → Gesamtwert-Assistent (E2)', () => {
     expect(A.weiterMoeglich(2, e, null, null)).toBe(false);
     const anlage = A.hebelAnlage(register, e.menge)!;
     expect(anlage).toEqual({ id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2' });
-    expect(A.hebelOrt(anlage)).toBe('Der Gesamtwert entsteht an der Anlage Werk Ahrenberg – Halle 2.');
+    expect(A.hebelOrt(anlage)).toBe('Der Summenwert entsteht an der Anlage Werk Ahrenberg – Halle 2.');
     expect(A.hebelAnlage(register, ['MS-20'])).toBeNull();
     const zurueck = A.nachGesamtwert(e, 'MS-23');
     expect(zurueck.menge).toEqual(['MS-23']);

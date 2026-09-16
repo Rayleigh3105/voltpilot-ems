@@ -1257,6 +1257,33 @@
       "nachher": "0e6f032a9b5f3cc1aca22df74b2de3f4dbaa39110b7a09f0dc21a486abbb57ad",
       "nachher_datei": "components/GeraetSummenwerte.tsx",
       "grund": "H-7/E9: Die Gerätekarte zeigt alle Summenwerte; der Anlegeknopf verlangt messstelle.formel, der Rollenwechsel bleibt im Zeilenmenü."
+    },
+    {
+      "datei": "pages/MesswerteSection.tsx",
+      "vorher": "e39bdcffda2c2340f6bec399d99af1f14dcb6f1424162950726b113617c2241a",
+      "nachher": "d2c8692c925fe968fcc97779def27d07f78d79978749e8474e94779e572362d6",
+      "grund": "H-5/E10: Einstieg heißt Summenwert und öffnet den gemeinsamen Assistenten."
     }
-  ]
+  ],
+  "assistentZusammenfuehrung": {
+    "entscheid": "H-5, E1/E7/E10: zwei Assistenten werden ein fünfstufiger Summenwert-Assistent; Bestandsfingerabdrücke bleiben unverändert.",
+    "dateien": {
+      "components/GesamtwertDialog.tsx": [],
+      "components/SummenwertAssistent.tsx": [
+        "999aca7f3223882d24e89445fa18ab5ff3a29ea83458620e1bd4d0e2d9eebf82",
+        "0c194234e77accb62233eca4aeee38bd564204bf2426be1065c574ddc77a772e",
+        "c34bee95f805e5a42a8358d61213f729900e5dcdc4f877a85983dfd8fd01b4e3",
+        "1381fa8aa6fa54e75627b4f0df6d31c351f77962509c7f77b8bbfe20baba7f6d",
+        "69bc59084a8e36e5ecd10719e88033c44d7d265052276732a7f89ae02e483e7b",
+        "10aaaf6b2799a85431c1bf85742c5819a203a64491ea9b1af779464af61da5cb",
+        "bfc88aea8cf9d7d3665760aa5b07c5c28bcf73f80e7d76198546bced5c8de42c",
+        "262834d4e9487dcfa595ad899c69cfacab05adf7554b361ac811c378e2ffb16e",
+        "4cbbf914241c0f08513ca47030e49f0adb9ae6e6922c33b0183c864b9a9c16fb",
+        "661d8cbc37a103b4440311179fa56bf512e1f30935cd852eedf7117c26269f4f",
+        "431fb1cc3097bb5f2efe0dd097035fd3ffae0115ac5a33fab135c82a6fe3d120",
+        "8ed6153fbded51f2e0d2525db76ad278d20e679d5f3513c69accfa05f2a1cc01"
+      ]
+    },
+    "wrapper": "5bab80e17aa4e03eceb8ccfb6326402e267a34b008cf46437004a38910ed5bc1"
+  }
 }
