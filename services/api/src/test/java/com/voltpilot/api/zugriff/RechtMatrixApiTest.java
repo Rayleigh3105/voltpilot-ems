@@ -707,8 +707,11 @@ class RechtMatrixApiTest {
                 new Stufe(TB, kunde, 200),
                 new Stufe(LV, plattform, 200),
                 new Stufe(VP, plattform, 200),
+                // Die Steuerungs-Achse folgt erst einer ECHTEN Zuweisung (firstmate 16.09.2026): E12 fuehrt das
+                // Bestandskonto zwar unternehmensweit als Kundenadministrator, die Stufe holt es sich damit aber
+                // NICHT - ohne Realm-Rolle bleibt es beim Kundensatz, wie vor IP-7.
                 new Stufe(new Person("BN", "Kundenkonto ohne je eine Zuweisung",
-                        authentication(konto("sub-ahr-bestand-nie", AHR))), anlage, 200));
+                        authentication(konto("sub-ahr-bestand-nie", AHR))), kunde, 200));
         Map<String, String> tabelle = new LinkedHashMap<>();
         for (Stufe s : stufen) {
             MvcResult r = ruf(HttpMethod.GET, "/api/v1/sites/" + A1 + "/ocpp/action-permissions", s.person(), false,

@@ -260,6 +260,19 @@ class ZugriffZaunApiTest {
      * hängt an einem Standort, die übrigen nicht — der Zaun hätte also etwas zu filtern.
      * Standortbeschränkte Konten ändern sich mit IP-5 absichtlich: {@link #standortbeschraenkteKontenSehenNurDieAnlagenIhrerStandorte}.
      */
+    /**
+     * Bestandsschutz je lesender Kundenroute: mit Zugriff-Kontext antwortet jede genauso wie ohne ihn (IP-4/IP-5).
+     *
+     * <p><b>Die EINE gewollte Ausnahme seit AP-03 IP-7 (E13):</b> {@code GET …/ocpp/action-permissions} nennt die
+     * OCPP-Stufe, und die kommt jetzt aus der ZUWEISUNG statt aus der Realm-Rolle ({@code RechtPruefung#ocppStufe}).
+     * Sie wird darum nicht als Abweichung gewertet, sondern in {@code stufenwechsel} auf den Namen der Stufe
+     * festgenagelt — so faellt sowohl eine ZWEITE Route auf, die den Bestand verlaesst, als auch ein Zurueckdrehen
+     * der Regel. Die beiden Plattform-Konten stehen bewusst nicht darin: am Umschalter gilt weiter die Realm-Rolle.
+     *
+     * <p><b>Und genau EIN Konto steigt:</b> das mit einer echten Zuweisung. Das Bestandskonto (E12) steht NICHT
+     * darin — die Steuerungs-Achse folgt erst einer echten Zuweisung ({@code RechtPruefung#ocppStufe}), sonst
+     * haette das Ausrollen von IP-7 jedem bestehenden Kundenkonto still den Hardware-Befehlssatz gegeben.
+     */
     @Test
     void jedesHeutigeKontoSiehtAufJederLesendenKundenrouteDasselbeWieVorIp4UndIp5() throws Exception {
         List<Route> routen = kundenrouten(true);
@@ -273,6 +286,7 @@ class ZugriffZaunApiTest {
                 new Konto("Plattform ohne Kopf", konto("sub-zaun-plattform", null, "platform-admin"),
                         new String[0]));
         List<String> abweichungen = new ArrayList<>();
+        List<String> stufenwechsel = new ArrayList<>();
         Set<String> fluechtig = new TreeSet<>();
         Set<String> mitAusnahme = new TreeSet<>();
         int mitDaten = 0;
@@ -284,6 +298,7 @@ class ZugriffZaunApiTest {
                 if (nachher.body().startsWith(AUSNAHME) || vorher2.body().startsWith(AUSNAHME)) {
                     mitAusnahme.add(r + " (" + nachher.body().substring(nachher.body().indexOf(':') + 2) + ")");
                 }
+                boolean gleich = false;
                 if (vorher1.status() != vorher2.status()) {
                     fluechtig.add(r.toString());
                 } else if (nachher.status() != vorher2.status()) {
@@ -291,19 +306,46 @@ class ZugriffZaunApiTest {
                 } else if (!vorher1.body().equals(vorher2.body())) {
                     fluechtig.add(r.toString());
                 } else if (!nachher.body().equals(vorher2.body())) {
-                    abweichungen.add(k.name() + ": " + r + " Körper weicht ab");
-                } else if (nachher.status() == 200 && nachher.body().length() > 2) {
+                    if (OCPP_STUFE.equals(r.muster())) {
+                        stufenwechsel.add(k.name() + ": " + stufe(vorher2.body()) + " → " + stufe(nachher.body()));
+                    } else {
+                        abweichungen.add(k.name() + ": " + r + " Körper weicht ab");
+                    }
+                } else {
+                    gleich = true;
+                }
+                if (gleich && nachher.status() == 200 && nachher.body().length() > 2) {
                     mitDaten++;
                 }
             }
         }
         System.out.printf("Bestand: %d lesende Kundenrouten × %d Konten, %d Antworten mit Daten gleich, flüchtig: %s, "
-                + "Ausnahme im Handler (beide Seiten): %s%n", routen.size(), konten.size(), mitDaten, fluechtig,
-                mitAusnahme);
+                + "Ausnahme im Handler (beide Seiten): %s, OCPP-Stufenwechsel (E13): %s%n", routen.size(),
+                konten.size(), mitDaten, fluechtig, mitAusnahme, stufenwechsel);
         assertThat(ruf(get("/api/v1/sites"), konten.get(0)).body()).contains(BERLIN_SITE);
         assertThat(routen).hasSizeGreaterThan(150);
         assertThat(mitDaten).isGreaterThan(100);
         assertThat(abweichungen).isEmpty();
+        // Genau EINER — und MIT Stufe, nicht nur „weicht ab": das Konto mit einer echten Zuweisung
+        // (Kundenadministrator, E13). Das Bestandskonto fehlt hier bewusst: ohne echte Zuweisung keine Stufe, sonst
+        // bekaeme jedes bestehende Kundenkonto den Hardware-Befehlssatz, ohne dass jemand es ihm gegeben hat.
+        assertThat(stufenwechsel).containsExactly(
+                "Kundenkonto (Bestandsübernahme: Kundenadministrator): CUSTOMER → SITE_ADMIN");
+    }
+
+    /** Das Muster der einen Route, die seit IP-7 die Stufe aus der Zuweisung nennt (E13). */
+    private static final String OCPP_STUFE = "/api/v1/sites/{siteId}/ocpp/action-permissions";
+
+    /** Die Stufe, wie die Antwort sie zeigt — an je EINER Aktion der drei Stufen (Profil-Aktionen sind immer aus). */
+    private static String stufe(String koerper) throws Exception {
+        JsonNode a = MAPPER.readTree(koerper).path("actions");
+        if (a.path("HardReset").asBoolean()) {
+            return "PLATFORM";
+        }
+        if (a.path("SoftReset").asBoolean()) {
+            return "SITE_ADMIN";
+        }
+        return a.path("RemoteStartTransaction").asBoolean() ? "CUSTOMER" : "KEINE";
     }
 
     /**
