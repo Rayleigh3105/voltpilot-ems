@@ -229,7 +229,9 @@ export const heutigeWerteAm = (kennzeichen: string, jetzt: number): MessstelleWe
 
 // ------------------------------------------------------------------ AP-12 IP-14: Rechte und schreibende Wege der Bühne
 
-const RECHTE_STANDORT = ['bericht.standort_abrufen', 'bericht.standort_freigeben', 'export.standort'];
+// AP-13 IP-10: `kennzahl.standort_definieren` trägt „Kennzahl anlegen“ der Gebäude-Karte (AP-11 E10: KA, EM und
+// Bearbeiter am Standort — der Leser nie).
+const RECHTE_STANDORT = ['bericht.standort_abrufen', 'bericht.standort_freigeben', 'export.standort', 'kennzahl.standort_definieren'];
 const RECHTE_LESEN = ['bericht.standort_abrufen'];
 const STANDORT_NAMEN: Record<string, { kennzeichen: string; name: string }> = {
   [FIXTURE_IDS.st1]: { kennzeichen: 'ST-1', name: 'Werk Ahrenberg' },

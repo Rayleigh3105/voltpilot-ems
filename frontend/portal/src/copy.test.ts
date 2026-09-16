@@ -1565,6 +1565,9 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     // AP-13 IP-9: Kostenstellen und Prozesse nebeneinander (reines Modul und Render).
     'kostenstellenUebersicht.ts',
     'pages/KostenstellenSection.tsx',
+    // AP-13 IP-10: die Gebäude-Karte (reines Modul und Render).
+    'gebaeudeKarte.ts',
+    'components/GebaeudeKarte.tsx',
   ];
   const vertrag = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'));
   const faelle = JSON.parse(readFileSync(join(SRC, 'test/oberflaechenFaelle.json'), 'utf8'));

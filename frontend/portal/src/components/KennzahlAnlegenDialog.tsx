@@ -87,6 +87,7 @@ export function KennzahlAnlegenDialog({
   open,
   quelle = null,
   aendern = null,
+  vorschlag = null,
   angemeldet,
   zone = VORGABE_ZEITZONE,
   onClose,
@@ -99,6 +100,13 @@ export function KennzahlAnlegenDialog({
   quelle?: KopieVon | null;
   /** Gesetzt = „Berechnung ändern ab …“ an dieser Kennzahl (IP-15). */
   aendern?: KopieVon | null;
+  /**
+   * AP-13 IP-10 (AP-11 §6.6): der Vorschlag der Gebäude-Karte — Menge (die Messstellen des Gebäudes) und
+   * Geltungsbereich. Er belegt Schritt 2 und 4 SICHTBAR vor und bleibt änderbar; eine andere Vorlage wirft ihn nicht
+   * weg, sondern nimmt aus ihm mit, was zu ihrer Erwartung passt. Angelegt wird nie still: der Assistent läuft ganz
+   * durch, mit Vorschau und „Anlegen“.
+   */
+  vorschlag?: A.MengenVorschlag | null;
   /** Wer angemeldet ist — belegt „Verantwortlich“ vor. */
   angemeldet?: string;
   /** Die Zeitzone, in der „heute“ liegt. */
@@ -115,7 +123,9 @@ export function KennzahlAnlegenDialog({
   const modus: A.Weg = aendern && aenderFassung ? 'aendern' : 'anlegen';
   const person = angemeldet ?? currentUser().name;
   const startEntwurf = (): A.Entwurf =>
-    aendern && aenderFassung ? E.aenderEntwurf(aendern.kennzahl, aenderFassung) : A.leererEntwurf(person, kopie);
+    aendern && aenderFassung
+      ? E.aenderEntwurf(aendern.kennzahl, aenderFassung)
+      : A.mitVorschlag(A.leererEntwurf(person, kopie), quelle ? null : vorschlag, []);
 
   const [schritt, setSchritt] = useState<A.Schritt>(1);
   const [entwurf, setEntwurf] = useState<A.Entwurf>(startEntwurf);
@@ -421,7 +431,7 @@ export function KennzahlAnlegenDialog({
                   name="kennzahl-vorlage"
                   value={k.wert}
                   checked={entwurf.wahl === k.wert}
-                  onChange={() => setEntwurf((e) => A.waehle(e, k.wert))}
+                  onChange={() => setEntwurf((e) => A.mitVorschlag(A.waehle(e, k.wert), vorschlag, register ?? []))}
                 />
                 <span>
                   <b>{k.titel}</b>
@@ -442,7 +452,7 @@ export function KennzahlAnlegenDialog({
                       name="kennzahl-rechenform"
                       value={f}
                       checked={form === f}
-                      onChange={() => setEntwurf((e) => A.rechenformWaehlen(e, f))}
+                      onChange={() => setEntwurf((e) => A.mitVorschlag(A.rechenformWaehlen(e, f), vorschlag, register ?? []))}
                     />
                     <span>
                       <b>{UEMS_RECHENFORM[f]}</b>
@@ -472,6 +482,12 @@ export function KennzahlAnlegenDialog({
       <>
         {Kopf({ n: 2, titel: A.S2_TITEL[form ?? 'quotient'], sub: modus === 'aendern' ? E.S2_SUB : null })}
         <div className="vp-gw-step-body">
+          {/* AP-13 IP-10: der Vorschlag der Gebäude-Karte wird AUSGESPROCHEN — eine stille Vorbelegung gibt es nicht. */}
+          {vorschlag && entwurf.menge.length > 0 && (
+            <p className="vp-gw-sub" data-testid="kennzahl-menge-vorschlag">
+              {vorschlag.satz}
+            </p>
+          )}
           <VpPicker
             label={woerter[1]}
             options={auswahl?.optionen ?? []}

@@ -241,6 +241,34 @@ export const leererEntwurf = (verantwortlich: string, quelle: KopieQuelle | null
   zweckBeruehrt: false,
 });
 
+/**
+ * AP-13 IP-10 (AP-11 §6.6) — was eine Fläche dem Assistenten mitgibt, wenn sie „Kennzahl anlegen“ anbietet: die
+ * Messstellen, deren Summe sie eben genannt hat, und ihr Geltungsobjekt. Ein VORSCHLAG, kein Eingang: er steht
+ * sichtbar in Schritt 2 und 4 und lässt sich dort ändern.
+ */
+export interface MengenVorschlag {
+  menge: readonly string[];
+  /** {@link geltungWert} des Geltungsobjekts; `null` = nur die Menge vorschlagen. */
+  geltung: string | null;
+  /** Der Satz, der den Vorschlag ausspricht — ohne ihn wäre die Vorbelegung still. */
+  satz: string;
+}
+
+/**
+ * Den Vorschlag anwenden: nur auf einen Entwurf OHNE eigene Menge (wer selbst gewählt oder geleert hat, behält das),
+ * und nur mit den Messstellen, die zur Erwartung der gewählten Vorlage passen — eine Vorlage „Wirkenergie Bezug“
+ * nimmt keinen Gaszähler mit. Passt keine, bleibt die Menge leer: dann ist der Vorschlag hier falsch, nicht der Kunde.
+ */
+export const mitVorschlag = (e: Entwurf, v: MengenVorschlag | null, zeilen: readonly MessstelleRegisterZeile[]): Entwurf => {
+  if (!v || e.menge.length > 0 || e.rechenform === KZ.ZUSAMMENFASSUNG) return e;
+  const er = mengeErwartung(e);
+  const passend = v.menge.filter((kz) => {
+    const z = zeilen.find((x) => x.kennzeichen === kz);
+    return z ? passtMessstelle(z, er) : er === null;
+  });
+  return { ...e, menge: [...passend], geltung: e.geltung ?? v.geltung };
+};
+
 const ohneEingaenge = { menge: [] as string[], bezug: null, paare: [] as string[], periode: null };
 
 /** Schritt 1: eine Vorlage oder „ohne Vorlage“. Eine andere Wahl nimmt keine Eingänge still mit. */

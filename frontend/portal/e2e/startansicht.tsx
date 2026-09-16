@@ -900,7 +900,20 @@ function Vorschau() {
               einstiege={einstiege}
             />
           )}
-          {route.standortBereich === 'gebaeude' && <StandortGebaeudePage key={standort.id} standort={standort} />}
+          {route.standortBereich === 'gebaeude' && (
+            <StandortGebaeudePage
+              key={standort.id}
+              standort={standort}
+              onNavigate={navigate}
+              // AP-13 IP-10: der Sprung ins gefilterte Register trägt seinen Filter in der Adresse (`?ort=G-2`);
+              // die Bühne führt die Route in ihrem Zustand, also wird der Hash zusätzlich gesetzt — das Register
+              // liest ihn beim Aufbau, wie im Portal.
+              springe={(s) => {
+                window.location.hash = s.hash.replace(/^#/, '');
+                navigate(s.route);
+              }}
+            />
+          )}
           {route.standortBereich === 'anlagen' && (
             <StandortAnlagenPage standort={standort} sites={sites} onNavigate={navigate} onReload={() => undefined} betriebsart="endkunde" />
           )}

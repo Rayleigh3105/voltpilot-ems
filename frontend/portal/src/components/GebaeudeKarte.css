@@ -1,0 +1,190 @@
+/*
+ * DIE GEBÄUDE-KARTE (UEMS AP-13 IP-10, Ü6) — die drei Blöcke in der Hülle `Ortsbaum.gebaeudeKarte`. Dieselbe
+ * Karten-Sprache wie die Übersichts-Bausteine (IP-7): weiße Karte, 1-px-Rahmen, Radius 16 px; Farbe nur am Punkt
+ * (Bedeutung), der Satz bleibt ruhig. Jede Zeile, die springt, ist eine Tippfläche ≥ 44 px.
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt.
+ */
+
+.vp-gk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-gk-block {
+  padding: var(--vp-space-4, 16px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  min-width: 0;
+}
+
+.vp-gk-titel {
+  margin: 0 0 var(--vp-space-3, 12px);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-gk-hinweis {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--vp-c-muted-fg, #64748b);
+  overflow-wrap: anywhere;
+}
+
+.vp-gk-system + .vp-gk-system {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-4, 16px);
+  border-top: 1px solid #f1f5f9;
+}
+
+.vp-gk-satz {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vp-space-2, 8px);
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
+.vp-gk-punkt {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.is-ok > .vp-gk-punkt {
+  background: #2563eb;
+}
+
+.is-warn > .vp-gk-punkt {
+  background: #b45309;
+}
+
+.vp-gk-posten {
+  list-style: none;
+  margin: var(--vp-space-2, 8px) 0 0;
+  padding: 0 0 0 16px;
+  min-width: 0;
+}
+
+.vp-gk-posten li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-2, 8px);
+  padding: 4px 0;
+  font-size: 0.875rem;
+  color: #475569;
+  min-width: 0;
+}
+
+.vp-gk-posten-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-gk-posten-zahl {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-gk-neben {
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: 0.875rem;
+  color: #475569;
+  overflow-wrap: anywhere;
+}
+
+.vp-gk-rest,
+.vp-gk-zeile {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--vp-space-2, 8px);
+  padding: var(--vp-space-2, 8px);
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vp-navy-1, #1e3a5f);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-gk-rest span,
+.vp-gk-satz-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-gk-rest:hover,
+.vp-gk-rest:focus-visible,
+.vp-gk-zeile:hover,
+.vp-gk-zeile:focus-visible {
+  background: #f1f5f9;
+}
+
+.vp-gk-zeile {
+  margin-top: 0;
+}
+
+.vp-gk-block .vp-kz-liste {
+  margin-bottom: var(--vp-space-3, 12px);
+}
+
+/* Die Zeit-Leiste über dem Baum — EIN Zeitraum für alle Karten der Seite. */
+.vp-gk-zeitwahl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-gk-datumzeile {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vp-gk-schritt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--vp-navy-1, #1e3a5f);
+  cursor: pointer;
+}
+
+.vp-gk-schritt:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vp-gk-zeitraum {
+  min-width: 9ch;
+  text-align: center;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}

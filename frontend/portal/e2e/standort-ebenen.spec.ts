@@ -102,8 +102,9 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       expect(m.route).toMatch(/^#\/standort\/[^/]+\/gebaeude$/);
       expect(m.titel).toBe('Gebäude');
       expect(m.gebaeude).toEqual(['Halle 1', 'Halle 2', 'Verwaltung']);
-      // Die Blöcke der Karte kommen mit IP-10 — bis dahin kein Aufklapper ohne Ziel.
-      expect(m.aufklapper).toBe(0);
+      // AP-13 IP-10: jedes Gebäude trägt jetzt seine Karte — der Aufklapper hat ein Ziel (die Blöcke prüft
+      // `gebaeude-karte.spec.ts`).
+      expect(m.aufklapper).toBe(3);
       leisteOderReiter(m, breite, 'Gebäude', `gebaeude-${breite}`);
       await ablegen(page, `gebaeude-${breite}`, m);
       await ablegen(page, `gebaeude-${breite}-ganz`, m, true);
