@@ -10,7 +10,8 @@ GRANT UPDATE (gueltig_ab) ON quelle_einstellung TO ${appDbUser};
 CREATE FUNCTION uems_wechsel_partner(gid UUID, beginn BOOLEAN) RETURNS UUID
 LANGUAGE sql STABLE AS $$
  SELECT partner.id FROM geraet g JOIN geraet partner
-   ON partner.tenant_id=g.tenant_id AND partner.kennzeichen=g.kennzeichen AND partner.id<>g.id
+   ON partner.tenant_id=g.tenant_id AND partner.site_id=g.site_id
+   AND partner.kennzeichen=g.kennzeichen AND partner.id<>g.id
  WHERE g.id=gid AND (EXISTS (
    SELECT 1 FROM messstelle_aenderung a WHERE a.tenant_id=g.tenant_id
      AND a.art='zaehler_gewechselt'
