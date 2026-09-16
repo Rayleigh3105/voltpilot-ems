@@ -42,9 +42,11 @@ public class TelemetryV2WriteRepository {
     private static final Logger log = LoggerFactory.getLogger(TelemetryV2WriteRepository.class);
 
     private final JdbcTemplate jdbc;
+    private final KernSpiegelNachschlag spiegel;
 
-    public TelemetryV2WriteRepository(JdbcTemplate jdbc) {
+    public TelemetryV2WriteRepository(JdbcTemplate jdbc, KernSpiegelNachschlag spiegel) {
         this.jdbc = jdbc;
+        this.spiegel = spiegel;
     }
 
     /** Inserts the event's channel rows; returns how many landed. */
@@ -122,10 +124,12 @@ public class TelemetryV2WriteRepository {
 
     private int insertRow(UUID tenantId, UUID siteId, UUID deviceId, String entityId,
             String channel, double value, Instant observedAt, Instant receivedAt) {
+        String spiegelPunkt = spiegel.pointKey(tenantId, siteId, deviceId, entityId, channel, observedAt);
         return jdbc.update("""
                 INSERT INTO telemetry_v2
-                    (time, received_at, tenant_id, site_id, device_id, entity_id, channel, value)
-                SELECT ?, ?, ?, ?, ?, ?, ?, ?
+                    (time, received_at, tenant_id, site_id, device_id, entity_id, channel, value,
+                     role, spiegel_point_key)
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 WHERE NOT EXISTS (
                     SELECT 1 FROM telemetry_v2 WHERE entity_id = ? AND channel = ? AND time = ?)
                 AND NOT EXISTS (
@@ -134,6 +138,7 @@ public class TelemetryV2WriteRepository {
                 """,
                 Timestamp.from(observedAt), Timestamp.from(receivedAt),
                 tenantId, siteId, deviceId, entityId, channel, value,
+                spiegelPunkt == null ? null : "spiegel", spiegelPunkt,
                 entityId, channel, Timestamp.from(observedAt),
                 deviceId, Timestamp.from(observedAt), Timestamp.from(observedAt));
     }

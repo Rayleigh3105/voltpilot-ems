@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS measurement_point (
     device_id   UUID,
     control     BOOLEAN NOT NULL DEFAULT FALSE,
     entity_type TEXT,
+    family TEXT,
+    source_kind TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- UEMS AP-06 (V20260911150000): die Datenquelle, über die diese Komponente
     -- gelesen wird. Sie ist die Weiche des Writers: NULL = Bestandswert.
@@ -112,7 +114,12 @@ CREATE TABLE IF NOT EXISTS telemetry_v2 (
     device_id   UUID        NOT NULL,
     entity_id   TEXT        NOT NULL,
     channel     TEXT        NOT NULL,
-    value       DOUBLE PRECISION NOT NULL
+    value       DOUBLE PRECISION NOT NULL,
+    role        TEXT,
+    spiegel_point_key TEXT,
+    CONSTRAINT telemetry_v2_kern_spiegel_chk CHECK (
+        (role IS NULL AND spiegel_point_key IS NULL)
+        OR coalesce(role = 'spiegel' AND length(spiegel_point_key) > 0, false))
 );
 
 SELECT create_hypertable('telemetry_v2', 'time', if_not_exists => TRUE);

@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "runtime_catalog_version": "2026.08.26.3",
+  "mappings": [
+    {
+      "family": "hybrid_1p",
+      "entity_type": "grid-meter",
+      "channel": "power_kw",
+      "point_key": "deye.hybrid_1p.grid.grid-power",
+      "address": {
+        "kind": "modbus_holding",
+        "registers": [
+          169
+        ],
+        "width_words": 1
+      },
+      "selector": "holding:0x00a9",
+      "driver": "edge-app/nodered/deye/deye-decode.js",
+      "driver_sha256": "263023d61daf80bbe7f4e4370e2bb04116c2ce8dcd40bc24151e26d5816d6580"
+    },
+    {
+      "family": "hybrid_1p",
+      "entity_type": "house-load",
+      "channel": "power_kw",
+      "point_key": "deye.hybrid_1p.load.load-power",
+      "address": {
+        "kind": "modbus_holding",
+        "registers": [
+          178
+        ],
+        "width_words": 1
+      },
+      "selector": "holding:0x00b2",
+      "driver": "edge-app/nodered/deye/deye-decode.js",
+      "driver_sha256": "263023d61daf80bbe7f4e4370e2bb04116c2ce8dcd40bc24151e26d5816d6580"
+    },
+    {
+      "family": "kostal_plenticore",
+      "entity_type": "grid-meter",
+      "channel": "power_kw",
+      "point_key": "kostal_plenticore.grid-power",
+      "address": {
+        "kind": "modbus_holding",
+        "registers": [
+          252,
+          253
+        ],
+        "width_words": 2
+      },
+      "selector": "holding:0x00fc,0x00fd",
+      "driver": "edge-app/nodered/kostal/kostal-decode.js",
+      "driver_sha256": "7dd5f8d3e59cc9b64ad733415a9169df46bd9f7416c97c904ccab5d673f008c9"
+    },
+    {
+      "family": "fronius_solar_api",
+      "entity_type": "grid-meter",
+      "channel": "power_kw",
+      "point_key": "fronius_solar_api.grid-power",
+      "address": null,
+      "selector": "/solar_api/v1/GetPowerFlowRealtimeData.fcgi#Body.Data.Site.P_Grid",
+      "driver": "edge-app/nodered/fronius/solar-api.js",
+      "driver_sha256": "21b48db8ece478ef616e5f4e9f40df94fd2552d147f32ef94176490a7d3bc399"
+    },
+    {
+      "family": "sunspec_live",
+      "entity_type": "grid-meter",
+      "channel": "power_kw",
+      "point_key": "sunspec.model_211.w",
+      "address": {
+        "base": "discovered",
+        "kind": "sunspec_relative",
+        "model_id": 211,
+        "offset_words": 28,
+        "width_words": 2
+      },
+      "selector": "model:211/W",
+      "driver": "edge-app/nodered/sunspec/sunspec-live.js",
+      "driver_sha256": "9cc4e257acd16b035ab494b4f98d0a6f66b15462f2f4642df3dbc7e9fcfb3a84"
+    },
+    {
+      "family": "sunspec_live",
+      "entity_type": "grid-meter",
+      "channel": "power_kw",
+      "point_key": "sunspec.model_212.w",
+      "address": {
+        "base": "discovered",
+        "kind": "sunspec_relative",
+        "model_id": 212,
+        "offset_words": 28,
+        "width_words": 2
+      },
+      "selector": "model:212/W",
+      "driver": "edge-app/nodered/sunspec/sunspec-live.js",
+      "driver_sha256": "9cc4e257acd16b035ab494b4f98d0a6f66b15462f2f4642df3dbc7e9fcfb3a84"
+    },
+    {
+      "family": "sunspec_live",
+      "entity_type": "grid-meter",
+      "channel": "power_kw",
+      "point_key": "sunspec.model_213.w",
+      "address": {
+        "base": "discovered",
+        "kind": "sunspec_relative",
+        "model_id": 213,
+        "offset_words": 28,
+        "width_words": 2
+      },
+      "selector": "model:213/W",
+      "driver": "edge-app/nodered/sunspec/sunspec-live.js",
+      "driver_sha256": "9cc4e257acd16b035ab494b4f98d0a6f66b15462f2f4642df3dbc7e9fcfb3a84"
+    }
+  ]
+}
