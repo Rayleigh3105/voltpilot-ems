@@ -561,6 +561,21 @@ export function anteileSumme(anteile: readonly AnteilEingabe[]): string | null {
   return normalAnteil((zehntel / 10).toFixed(1));
 }
 
+/** Leer bedeutet bewusst „nicht verteilt“; sobald es Zeilen gibt, darf nur ein ganzer 100-%-Satz gespeichert werden. */
+export function verteilungSpeicherbar(anteile: readonly AnteilEingabe[]): boolean {
+  return anteile.length === 0 || anteileSumme(anteile) === '100';
+}
+
+/** Der Live-Satz unter den Anteilen (§5.3): Erfolg oder die noch fehlende/überzählige Menge. */
+export function verteilungSummeSatz(anteile: readonly AnteilEingabe[]): string {
+  const summe = anteileSumme(anteile);
+  if (summe === null) return 'Summe: —';
+  if (summe === '100') return `Summe: ${prozentText(summe)} ✔`;
+  const rest = Math.abs(1000 - Math.round(Number(summe) * 10)) / 10;
+  const was = Number(summe) < 100 ? 'fehlen' : 'sind zu viel';
+  return `Summe: ${prozentText(summe)} · ${prozentText(normalAnteil(rest.toFixed(1)))} ${was} — eine Verteilung ist vollständig oder existiert nicht.`;
+}
+
 /** Der Rest bis 100 % als Vorschlag für eine neue Zeile (§5.12 „Restanteil vorgeschlagen“); leer ohne Rest. */
 export function restAnteil(anteile: readonly AnteilEingabe[]): string {
   const summe = anteileSumme(anteile);
@@ -583,6 +598,13 @@ export function kostenstelleOptionen(kostenstellen: readonly Kostenstelle[], tag
     .filter((k) => !TAG.test(tag) || deckt(k, tag))
     .sort(nachKennzeichen((k) => k.kennzeichen))
     .map((k) => ({ value: k.id, label: `${k.kennzeichen} ${k.name}` }));
+}
+
+/** Ein Ziel mit bekanntem Ende nimmt die Verteilung an genau diesem letzten Tag mit (§5.3/F12). */
+export function kostenstelleEndeSatz(kostenstellen: readonly Kostenstelle[], id: string, tag: string): string | null {
+  const k = kostenstellen.find((x) => x.id === id);
+  if (!k?.gueltig_bis || (TAG.test(tag) && k.gueltig_bis < tag)) return null;
+  return `endet mit Kostenstelle ${k.kennzeichen} am ${datumText(k.gueltig_bis)}`;
 }
 
 /** Die Stammdaten, gegen die das Formular die Wörter und die 100 % prüft. */

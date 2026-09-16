@@ -10,6 +10,7 @@ import {
   folgen,
   formularAus,
   gespeichertSatz,
+  kostenstelleEndeSatz,
   kostenstelleOptionen,
   MARKE_GEPLANT,
   MARKE_HEUTE,
@@ -25,6 +26,8 @@ import {
   summeSatz,
   unveraendertFehler,
   verteilungAbTagAnfrage,
+  verteilungSpeicherbar,
+  verteilungSummeSatz,
   zeitformAm,
   type AendernFormular,
   type Kataloge,
@@ -330,6 +333,17 @@ describe('Kostenstellen ändern — die 100 % ruft den Vertrag (`uemsVerteilung.
     expect(summeSatz('90')).toBe(`Die Anteile ergeben 90${NBSP}%. Sie müssen 100${NBSP}% ergeben.`);
     expect(anteileSumme(form.anteile)).toBe('90');
     expect(restAnteil(form.anteile)).toBe('10');
+    expect(verteilungSpeicherbar(form.anteile)).toBe(false);
+    expect(verteilungSummeSatz(form.anteile)).toBe(
+      `Summe: 90${NBSP}% · 10${NBSP}% fehlen — eine Verteilung ist vollständig oder existiert nicht.`,
+    );
+  });
+
+  it('100 % ist speicherbar und leer bleibt der ausdrückliche Zustand „nicht verteilt“', () => {
+    const ganz = [{ kostenstelle: KOSTENSTELLE_IDS.k4100, anteil: '100' }];
+    expect(verteilungSpeicherbar(ganz)).toBe(true);
+    expect(verteilungSummeSatz(ganz)).toBe(`Summe: 100${NBSP}% ✔`);
+    expect(verteilungSpeicherbar([])).toBe(true);
   });
 
   it('eine Kostenstelle, die es am Tag nicht gibt: 9000 endet am 31.12.2026', () => {
@@ -345,6 +359,10 @@ describe('Kostenstellen ändern — die 100 % ruft den Vertrag (`uemsVerteilung.
       '9020 Kühlung',
       '9100 Verwaltung',
     ]);
+    expect(kostenstelleEndeSatz(kostenstellenAhrenberg(), KOSTENSTELLE_IDS.k9000, '2026-10-01')).toBe(
+      'endet mit Kostenstelle 9000 am 31.12.2026',
+    );
+    expect(kostenstelleEndeSatz(kostenstellenAhrenberg(), KOSTENSTELLE_IDS.k9000, '2027-01-01')).toBeNull();
   });
 
   it('Form, Doppelt, Kommazahl; leer ist „nicht verteilt“ und kein Fehler', () => {

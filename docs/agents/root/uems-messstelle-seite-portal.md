@@ -1,4 +1,4 @@
-# UEMS-Fläche: die Messstellen-Seite — Ort · Elektrisch · Organisation (AP-04 IP-8)
+# UEMS-Fläche: die Messstellen-Seite — Ort · Elektrisch · Organisation (AP-04 IP-8, AP-10 IP-15)
 
 Neu am 15.09.2026. Kein Backend, keine Migration. Bericht: `data/vp-uems-ap04-messstellen/report.md`
 §5.4, §5.12, §5.14, Mockups R2 · Z4; Paket §8 IP-8. Die Seite ist das Ziel des Registers (IP-5).
@@ -6,8 +6,8 @@ Neu am 15.09.2026. Kein Backend, keine Migration. Bericht: `data/vp-uems-ap04-me
 | Teil | Datei |
 |---|---|
 | Ableitung (rein): Abschnitte aus den Intervallen, Karten + Historie, Zeitform des gewählten Tags, Bisher/Folgen, Prüfen, Anfragen, Ablehnungen | `frontend/portal/src/messstelleZuordnung.ts` · `messstelleZuordnung.test.ts` |
-| Seite: Kopf (Zustand, Quelle aus dem Register), drei Karten, „Ändern ab …“, `<details>` „Historie (n)“, Protokoll | `src/pages/MessstelleSeite.tsx` (+ `.css`) · `pages/MessstelleSeite.test.tsx` |
-| Dialog „Ändern ab <Tag>“ (Ort · Stellung · Prozesse · Kostenstellen) mit `VpDatePicker`, Bisher, „Was geschieht“ | `src/components/ZuordnungAendernDialog.tsx` (+ `.css`) |
+| Seite: Kopf (Zustand, Quelle aus dem Register), drei Karten, „Ändern ab …“, `<details>` „Historie (n)“ bzw. „Fassungen (n)“ an der Verteilung, Protokoll | `src/pages/MessstelleSeite.tsx` (+ `.css`) · `pages/MessstelleSeite.test.tsx` |
+| Dialog „Ändern ab <Tag>“ (Ort · Stellung · Prozesse · Kostenstellen) mit `VpDatePicker`, Bisher, „Was geschieht“; Verteilung mit Live-Summe, 100-%-Sperre und Ziel-Ende | `src/components/ZuordnungAendernDialog.tsx` (+ `.css`) |
 | Routen `#/portfolio/messstellen/{id}` und `#/standort/{sid}/messstellen/{id}` (`Route.messstelleId`, `messstelleRoute`); `MessstellenPage` schaltet mit `messstelleId` auf die Seite, der Name jeder Registerzeile ist der Einstieg | `src/nav.ts`, `src/App.tsx`, `src/pages/MessstellenPage.tsx` |
 | Abschnitt „Werte“ direkt unter dem Kopf (AP-13 IP-3, E9/E12 = A): `WerteSektion` mit Periode/Version aus der Adresse, Einstiege „Letzter Wert“ + Zeilenmenü „Werte“ (Rechner) und ganze Karte (Telefon) | `src/components/WerteSektion.tsx`, `src/pages/MessstelleSeite.tsx`, `MessstellenPage.tsx` (`onWerte`), `src/nav.ts` (`parseMessstelleWerte`), `src/App.tsx` (`springe`); Regeln `uems-tageskarte.md` Falle 11 |
 | Verlauf im Abschnitt „Werte“ (AP-13 IP-4 = AP-08 IP-10): Tag · Woche · Monat · Jahr, Lücken als Flächen, Marker, Schritt-Karte | `src/components/MessstellenVerlauf.tsx`, `src/uemsVerlauf.ts`; Regeln `uems-verlauf-messstelle.md` |
@@ -42,6 +42,12 @@ Geschrieben wird über die bestehenden Routen: `PUT …/messstellen/{id}/ort|ste
    `messstelleDialog.ablehnung` (FEHLER-Tabelle §5.12), Picker-Optionen über `ortWahlen`,
    `anlageWahlen`, `stellungOptionen`, `unterzaehlerOptionen` des Dialogs. Hauptzähler, Zyklus und
    Überlappung urteilt der Server.
+   Der Dialog zeigt dieselbe Summe live: ein nichtleerer Satz ist nur bei genau 100 % speicherbar;
+   leer bleibt der ausdrückliche Zustand „nicht verteilt“. `kostenstelleEndeSatz` nennt ein
+   bekanntes Ziel-Ende als „endet mit Kostenstelle …“, und die Verteilung trägt im Zeitstrahl
+   „Fassungen“, damit der alte Satz nach einer Änderung nicht wie eine editierte Zeile wirkt.
+   Die Hebel stehen ausschließlich hinter `Recht` mit `messstelle.verteilung`; Ort, Stellung und
+   Prozesse verwenden weiter `messstelle.bearbeiten`.
 7. **Testing Library normalisiert U+00A0 zu einem Leerzeichen** — `getByText('… 100 %')` mit
    normalem Leerzeichen; die reinen Tests pinnen das geschützte Leerzeichen.
 8. **Die Quelle-Karte steht seit AP-04 IP-14 über den Zuordnungs-Karten** (`components/QuelleKarte.tsx`,
