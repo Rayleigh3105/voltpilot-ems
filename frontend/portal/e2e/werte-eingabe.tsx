@@ -29,6 +29,7 @@ const antwort = (wert: string) => {
   werte = [w]; return { urteil: 'berichtigung', satz: 'Wert gespeichert.', kennung: null, hinweise: [], wert: w };
 };
 Object.assign(api, {
+  kanalbindungen: async () => [],
   bezugsgroessen: async () => ({ bezugsgroessen: ahrenbergBezugsgroessen().bezugsgroessen.filter(b => b.kennzeichen === 'BZ-2'), bezugsflaechen: [] }),
   unternehmen: async () => ahrenbergUnternehmen(), standorte: async () => ahrenbergHeute(),
   standortOrte: async (id: string) => id === FIXTURE_IDS.st1 ? ortsbaumAhrenberg() : ortsbaumLindach(),

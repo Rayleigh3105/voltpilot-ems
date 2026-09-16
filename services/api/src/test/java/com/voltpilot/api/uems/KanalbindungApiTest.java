@@ -110,7 +110,7 @@ class KanalbindungApiTest {
     private static final String KANAL="deye.hybrid_1p.battery.battery-state";
     private static final Instant TAG=Instant.parse("2025-12-01T23:00:00Z");
     private static final Instant ENDE=TAG.plusSeconds(86400);
-    private record Reihe(Welt welt,UUID bezug,UUID entity,UUID box,UUID site,String kanal) {}
+    private record Reihe(Welt welt,UUID bezug,UUID entity,UUID box,UUID site,String kanal,String art) {}
 
     @Test
     void b7DurchDenJobHatDauerAbdeckungUndHerkunftUndBleibtWiederholbar() throws Exception {
@@ -252,6 +252,70 @@ class KanalbindungApiTest {
         assertThat(root.queryForObject("SELECT count(*) FROM bezugsgroesse_kanalbindung WHERE bezugsgroesse_id=?",Integer.class,r.bezug())).isZero();
     }
 
+    @Test
+    void gradtageDurchEchtenJobMitUnvollstaendigemUndFehlendemTag() throws Exception {
+        // Annahme: gemessene Außentemperatur 10 °C, vier Stunden fehlen; kein Ahrenberg-Messwert.
+        Reihe r=reihe("gauge","Kd","deye.hybrid_1p.battery.battery-temperature");
+        root.update("INSERT INTO anlage_standort (tenant_id,site_id,standort_id,gueltig_ab) VALUES (?,?,?,'2025-01-01')",r.welt().mandant(),r.site(),r.welt().standort());
+        root.update("UPDATE device_measurement_selection SET cadence_s=3600 WHERE entity_id=?",r.entity());
+        for (int h=0;h<24;h++) if(h<10 || h>13) roh(r,TAG.plusSeconds(h*3600),null,new BigDecimal("10"),TAG.plusSeconds(h*3600+1));
+        bindungen.uhrStellen(Clock.fixed(ENDE.minusSeconds(60),ZoneOffset.UTC));
+        var auswahl=ok(ruf(r.welt().ines(),HttpMethod.GET,PFAD+"/"+r.bezug()+"/kanalbindung/kanaele",null),200).body();
+        assertThat(auswahl.get(0).path("wertart").asText()).isEqualTo("gauge");
+        var bindung=ok(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",Map.of(
+            "entity_id",r.entity(),"kanal",r.kanal(),"von",TAG.toString(),"raumtemperatur",22,"heizgrenze",17)),201).body();
+        assertThat(bindung.path("raumtemperatur").asInt()).isEqualTo(22);
+        KanalbindungLauf lauf=new KanalbindungLauf(laufJdbc(),MAPPER);
+        assertThat(lauf.lauf(ENDE.plusSeconds(60),r.welt().mandant())).isEqualTo(1);
+        var wert=ok(ruf(r.welt().ines(),HttpMethod.GET,PFAD+"/"+r.bezug()+"/werte?fassungen=alle",null),200).body().path("werte").get(0);
+        assertThat(new BigDecimal(wert.path("wirksamer_betrag").asText())).isEqualByComparingTo("12");
+        var quelle=wert.path("fassungen").get(0).path("kanal");
+        assertThat(quelle.path("regel").asText()).isEqualTo("Gradtage G22/17");
+        assertThat(quelle.path("zustand").asText()).isEqualTo("unvollständig");
+        assertThat(quelle.path("abdeckung_prozent").asDouble()).isLessThan(100);
+        assertThat(lauf.lauf(ENDE.plusSeconds(60),r.welt().mandant())).isZero();
+        lauf.lauf(ENDE.plusSeconds(86460),r.welt().mandant());
+        assertThat(root.queryForObject("SELECT kanal_herkunft->>'zustand' FROM bezugsgroesse_wert WHERE bezugsgroesse_id=? AND periode_von='2025-12-03'",String.class,r.bezug())).isEqualTo("keine Werte");
+        assertThat(root.queryForObject("SELECT betrag FROM bezugsgroesse_wert WHERE bezugsgroesse_id=? AND periode_von='2025-12-03'",BigDecimal.class,r.bezug())).isNull();
+        assertThat(lauf.fehlerAnzahl()).isZero();
+        assertThat(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/werte",Map.of("periode","2025-12-02","wert","12")).status()).isEqualTo(422);
+    }
+
+    @Test
+    void gradtageMonatSummiertTageswerteAberNichtDieFehlendenTage() throws Exception {
+        Reihe r=reihe("gauge","Kd","deye.hybrid_1p.battery.battery-temperature");
+        root.update("UPDATE bezugsgroesse SET periode_art='monat' WHERE id=?",r.bezug());
+        // Annahmen: 14,96 °C -> 5,04 Kd, 15/18 °C -> 0 Kd. Vierter Tag: 14 + 0,01/24 °C.
+        // Erst die Periodensumme wird auf die bestehende Speicherung mit sechs Stellen gerundet.
+        for(int d=0;d<4;d++) for(int h=0;h<24;h++) {
+            Instant t=TAG.plusSeconds(d*86400L+h*3600L);
+            roh(r,t,null,new BigDecimal(d==0?"14.96":d==1?"15":d==2?"18":h==0?"14.01":"14"),t.plusSeconds(1));
+        }
+        root.update("INSERT INTO bezugsgroesse_kanalbindung (tenant_id,bezugsgroesse_id,entity_id,kanal,wertart,einheit,kadenz_s,von,actor_name,actor_art,raumtemperatur,heizgrenze) VALUES (?,?,?,?,'gauge','°C',3600,?,'Test','voltpilot',20,15)",r.welt().mandant(),r.bezug(),r.entity(),r.kanal(),Timestamp.from(TAG));
+        KanalbindungLauf lauf=new KanalbindungLauf(laufJdbc(),MAPPER);
+        assertThat(lauf.lauf(Instant.parse("2026-01-01T00:00:00Z"),r.welt().mandant())).isEqualTo(1);
+        assertThat(root.queryForObject("SELECT betrag FROM bezugsgroesse_wert WHERE bezugsgroesse_id=?",BigDecimal.class,r.bezug())).isEqualByComparingTo("11.039583");
+        assertThat(lauf.lauf(Instant.parse("2026-01-01T00:00:00Z"),r.welt().mandant())).isZero();
+        assertThat(root.queryForObject("SELECT kanal_herkunft->>'zustand' FROM bezugsgroesse_wert WHERE bezugsgroesse_id=?",String.class,r.bezug())).isEqualTo("unvollständig");
+        assertThat(lauf.fehlerAnzahl()).isZero();
+    }
+
+    @Test
+    void gradtagePruefenStandortWertartUndGrenzen() throws Exception {
+        Reihe r=reihe("gauge","Kd","deye.hybrid_1p.battery.battery-temperature");
+        roh(r,TAG,null,new BigDecimal("15"),TAG.plusSeconds(1));
+        bindungen.uhrStellen(Clock.fixed(TAG.plusSeconds(30),ZoneOffset.UTC));
+        var a=new LinkedHashMap<String,Object>(Map.of("entity_id",r.entity(),"kanal",r.kanal(),"von",TAG.toString()));
+        assertThat(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",a).status()).isEqualTo(422);
+        root.update("INSERT INTO anlage_standort (tenant_id,site_id,standort_id,gueltig_ab) VALUES (?,?,?,'2025-01-01')",r.welt().mandant(),r.site(),r.welt().standort());
+        a.put("raumtemperatur",15);a.put("heizgrenze",20);
+        assertThat(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",a).body().path("code").asText()).isEqualTo("grenzen_ungueltig");
+        a.remove("raumtemperatur");a.remove("heizgrenze");
+        var b=ok(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",a),201).body();
+        assertThat(b.path("raumtemperatur").asInt()).isEqualTo(20);
+        assertThat(b.path("heizgrenze").asInt()).isEqualTo(15);
+    }
+
     private String fingerabdruck(UUID id) {
         return root.queryForObject("SELECT string_agg(to_jsonb(w)::text,'|' ORDER BY fassung) FROM bezugsgroesse_wert w WHERE bezugsgroesse_id=?",String.class,id);
     }
@@ -262,13 +326,13 @@ class KanalbindungApiTest {
         UUID box=root.queryForObject("INSERT INTO device (tenant_id,site_id,external_ref,status) VALUES (?,?,?,'online') RETURNING id",UUID.class,w.mandant(),site,"test-"+b);
         UUID entity=root.queryForObject("INSERT INTO measurement_point (tenant_id,site_id,role,label,entity_type,device_id,communication,connection_json) VALUES (?,?,'ev-charger','K-9','ev-charger',?,'modbus_tcp','{}') RETURNING id",UUID.class,w.mandant(),site,box);
         root.update("INSERT INTO device_measurement_selection (tenant_id,site_id,device_id,entity_id,point_key,enabled,cadence_s,desired_revision,enabled_at,catalog_version,changed_by,apply_status,retention_class,long_term_strategy) VALUES (?,?,?,?,?,true,60,1,?,'2026.09.16.1','test','pending_edge','live_power','fifteen_minute')",w.mandant(),site,box,entity,kanal,Timestamp.from(TAG));
-        return new Reihe(w,b,entity,box,site,kanal);
+        return new Reihe(w,b,entity,box,site,kanal,art);
     }
     private void bindenDirekt(Reihe r,String art,String zustand) {
         root.update("INSERT INTO bezugsgroesse_kanalbindung (tenant_id,bezugsgroesse_id,entity_id,kanal,wertart,einheit,zustand,kadenz_s,von,bis,actor_name,actor_art) VALUES (?,?,?,?,?,'h',?,60,?,?,'Test','voltpilot')",r.welt().mandant(),r.bezug(),r.entity(),r.kanal(),art,zustand,Timestamp.from(TAG),Timestamp.from(ENDE));
     }
     private void roh(Reihe r,Instant zeit,String wort,BigDecimal zahl,Instant eingang) {
-        root.update("INSERT INTO device_measurement_sample (time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,raw_text,quality,catalog_version,edge_sequence,aggregation_kind,entity_id,applied_revision,value_kind,role,delivery,delay_s) VALUES (?,?,?,?,?,?,?,?,'good','2026.09.16.1',?,?,?,3,?,'fuehrend','direkt',1)",Timestamp.from(zeit),Timestamp.from(eingang),r.welt().mandant(),r.site(),r.box(),r.kanal(),zahl,wort,zeit.getEpochSecond(),zahl==null?"state":"counter",r.entity(),zahl==null?"state":"counter");
+        root.update("INSERT INTO device_measurement_sample (time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,raw_text,quality,catalog_version,edge_sequence,aggregation_kind,entity_id,applied_revision,value_kind,role,delivery,delay_s) VALUES (?,?,?,?,?,?,?,?,'good','2026.09.16.1',?,?,?,3,?,'fuehrend','direkt',1)",Timestamp.from(zeit),Timestamp.from(eingang),r.welt().mandant(),r.site(),r.box(),r.kanal(),zahl,wort,zeit.getEpochSecond(),r.art(),r.entity(),r.art());
     }
     private JdbcTemplate laufJdbc() {
         return new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),"voltpilot_admin","voltpilot_admin_dev_pw"));

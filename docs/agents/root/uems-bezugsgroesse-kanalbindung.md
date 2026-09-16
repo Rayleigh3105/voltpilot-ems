@@ -1,4 +1,4 @@
-# Bezugsgrößen aus Messkanälen (AP-09 IP-17)
+# Bezugsgrößen aus Messkanälen (AP-09 IP-17/IP-18)
 
 `KanalbindungService` bindet eine Bezugsgröße mit Periodenwerten an Komponente + Kanal:
 `POST /api/v1/bezugsgroessen/{id}/kanalbindung` mit `entity_id`, `kanal`, `von` und bei
@@ -51,3 +51,32 @@ Abnahme: `KanalbindungApiTest` (B7 4,9667 h / unvollständig / 95,8 %, 422, Vor/
 404, Zähler/Nachlieferung, NULL, Wiederholung, Savepoint, RLS/Rechte, Bestand),
 `BezugsdatenVectorsTest` (unveränderte gemeinsame Vektoren),
 `EndgueltigkeitLaeuferReihenfolgeTest` und die sechs AP-08-Migrations-Nachbarn.
+
+## Temperatur und Portal (IP-18)
+
+- `V20260917103000` erweitert nur die vorhandene Bindung um `gauge` und zwei numerische
+  Parameter; CHECKs für Zähler/Zustand bleiben zulässig. Keine neue Maschine oder Sperre.
+- `KanalbindungService` akzeptiert Temperatur (`quantity=temperature`, °C) nur für Kd,
+  Standortgeltung und eine passende Anlagen-Zuordnung am Bindungsbeginn. Vorgabe 20/15,
+  Raumtemperatur muss über der Heizgrenze liegen. Der Kunde wählt den Außentemperaturkanal;
+  der Katalog beschreibt die Temperaturgröße, nicht den Montageort des Fühlers.
+- `GradtagRegeln` bildet aus Tagesmitteln Gradtage; Qualität nach AP-08 M1–M6, aber die
+  Heizgrenze prüft das ungerundete Mittel (14,96 °C darf nicht zu 15 °C werden). Erst die
+  Periodensumme wird vor Vergleich/Schreiben auf NUMERIC(18,6) gerundet; periodische Brüche
+  dürfen keinen neuen Wert bei jedem Takt auslösen. Kein Tagesmittel = NULL; fehlende
+  oder unvollständige Tage kennzeichnen die Summe. Angeschnittene Kalendertage werden nicht
+  zu ganzen Gradtagen hochgerechnet. Herkunft nennt jede Bindungsregel, auch bei Wechseln.
+- `GET …/kanalbindung/kanaele` liefert passende Katalogkanäle mit erstem Messwert,
+  aktuellem Lieferzustand und gemessenen Zustandsbezeichnungen, nur aus sichtbaren Anlagen.
+  Das Recht ist `bezugsgroesse.verwalten`; historische Bindungen bleiben über GET lesbar.
+- Portal: `BezugsKanalbindung` verwendet Modal, VpPicker und VpZeitpunktPicker. Auswahl nach
+  Wertart/Einheit, Zustandswahl, Temperaturgrenzen, Beginnen/Beenden; fehlende Daten haben
+  einen benannten Hinweis. `BezugswertListe` zeigt Regel, Zustand und Abdeckung am Wert.
+  `bezugsKanal.periodeGebunden` sperrt die gewählte Kalenderperiode im Eingabedialog;
+  die Server-/DB-Sperre bleibt maßgeblich. Alle neuen Hebel verwenden `rollen.ts`.
+- Vertrag und alle Leser: `rg -l 'bezugsdaten-vectors.json|bezugsdaten.schema.json' services frontend`.
+  B7 enthält ausdrücklich konstruierte Tagesmittel; kein Temperaturmesswert wird Ahrenberg
+  zugeschrieben. `KanalbindungApiTest` prüft Tages-/Monatsbildung im echten Job, fehlende Tage,
+  Parameterspeicherung, Standortgrenze und unverändert die Zähler-/Zustandsabnahmen.
+- Browser: `e2e/kanalbindung.spec.ts`, zusätzlich `werte-eingabe.spec.ts` und
+  `bezugsgroessen.spec.ts`; Aufnahme nur auf der echten Prüfbühne, bei 375/1440 Pixeln.

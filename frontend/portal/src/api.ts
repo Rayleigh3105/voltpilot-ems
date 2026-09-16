@@ -1901,6 +1901,7 @@ export interface EntityHistory {
  * snake_case schreiben — `request()` wandelt NICHT um.
  */
 export interface Messkanal {
+  quantity?: string | null;
   kanal: string;
   anzeigename: string | null;
   einheit: string | null;
@@ -3067,6 +3068,7 @@ export interface BezugsgroessePerson {
 
 /** Eine Fassung eines Werts mit ihrer Herkunft; `stand` ist null, solange `stand_offen`. */
 export interface BezugsgroesseFassung {
+  kanal?: { entity_id: string; kanal: string; regel: string; zustand: string; abdeckung_prozent: number; vorlaeufig: boolean; bindungen?: { kanal: string; regel?: string }[] };
   fassung: number;
   vorgang: 'erstwert' | 'berichtigung' | 'ruecknahme';
   status: 'wirksam' | 'vorschlag' | 'zurueckgenommen' | 'abgelehnt';
@@ -8566,6 +8568,10 @@ export const api = {
   ablesungBerichtigen: (kz: string, zeitpunkt: string, body: { stand: string; zuordnung_monat: string | null; begruendung: string }) =>
     request<AblesungAntwort>(`/api/v1/messstellen/${encodeURIComponent(kz)}/ablesungen/${encodeURIComponent(zeitpunkt)}/berichtigung`, { method: 'POST', body: JSON.stringify(body) }),
 
+  bezugsKanaele: (id: string) => request<BezugsKanalAuswahl[]>(`/api/v1/bezugsgroessen/${id}/kanalbindung/kanaele`),
+  kanalbindungen: (id: string) => request<BezugsKanalbindung[]>(`/api/v1/bezugsgroessen/${id}/kanalbindung`),
+  kanalBinden: (id: string, body: BezugsKanalAnfrage) => request<BezugsKanalbindung>(`/api/v1/bezugsgroessen/${id}/kanalbindung`, { method: 'POST', body: JSON.stringify(body) }),
+  kanalBeenden: (id: string, bindung: string, bis: string) => request<BezugsKanalbindung>(`/api/v1/bezugsgroessen/${id}/kanalbindung/${bindung}/beenden`, { method: 'POST', body: JSON.stringify({ bis }) }),
   bezugsgroesseWerte: (id: string, abfrage: { von?: string; bis?: string; fassungen?: BezugsgroesseLesart } = {}) => {
     const q = new URLSearchParams();
     if (abfrage.von) q.set('von', abfrage.von);
@@ -8613,3 +8619,16 @@ export const api = {
       `/api/v1/berichte/betroffen?${new URLSearchParams({ objekt, gilt_ab: giltAb, anlass }).toString()}`,
     ),
 };
+
+/** AP-09 K1/K7: Minutenintervall [von,bis), Parameter bleiben mit der Bindung erhalten. */
+export interface BezugsKanalAnfrage {
+  entity_id: string; kanal: string; zustand?: string; von: string; raumtemperatur?: number; heizgrenze?: number;
+}
+export interface BezugsKanalbindung extends BezugsKanalAnfrage {
+  id: string; wertart: string; bis: string | null;
+}
+
+export interface BezugsKanalAuswahl {
+  entity_id: string; komponente: string; kanal: string; name: string; wertart: string; einheit: string;
+  erste_messung: string | null; liefert: boolean; zustaende: string[];
+}

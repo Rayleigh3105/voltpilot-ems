@@ -558,6 +558,14 @@ class BezugsdatenVectorsTest {
                 intervallGleich(why + " · aufgehoben", e.path("aufgehoben"), ist.aufgehoben());
                 intervallGleich(why + " · neu", e.path("neu"), ist.neu());
             }
+            case "gradtage" -> {
+                List<GradtagRegeln.Tag> tage=new ArrayList<>();
+                ein.path("tage").forEach(t->tage.add(new GradtagRegeln.Tag(t.path("mittel").isNull()?null:new java.math.BigDecimal(t.path("mittel").asText()),t.path("zustand").asText())));
+                var ist=GradtagRegeln.gradtage(tage,new java.math.BigDecimal(ein.path("raumtemperatur").asText()),new java.math.BigDecimal(ein.path("heizgrenze").asText()));
+                betrag(why,soll.path("betrag"),ist.betrag());
+                assertThat(ist.zustand()).isEqualTo(soll.path("zustand").asText());
+                assertThat(ist.kennzeichen()).isEqualTo(texte(soll.path("kennzeichen")));
+            }
             case "kanal" -> {
                 List<Zustandswechsel> wechsel = new ArrayList<>();
                 ein.path("wechsel")

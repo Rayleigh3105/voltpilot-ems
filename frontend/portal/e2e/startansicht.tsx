@@ -665,6 +665,7 @@ Object.assign(api, {
   kennzahlWertVersionen: async (id: string, periode: KennzahlPeriodeArt, von: string) =>
     kennzahlWertVersionenAntwort(id, periode, von, Date.now()),
   // AP-11 IP-14: was der Assistent „Kennzahl anlegen“ liest — und seine zwei Aufrufe, gezählt.
+  kanalbindungen: async () => [],
   bezugsgroessen: async () => {
     if (params.get('bezugs') === 'fehler') throw new ApiError(503, 'Nicht erreichbar');
     return structuredClone(bzListe);

@@ -63,3 +63,14 @@ it('IP-16 liest Protokoll und Vorschau, bevor die bestätigte Rücknahme schreib
     [expect.stringContaining('/I-2026-0001/ruecknahme'), { method: 'POST', body: '{"begruendung":"Falsche Artikelgruppe exportiert"}' }],
   ]);
 });
+it('IP-18 übermittelt Temperaturgrenzen und halboffene Bindungszeiten unverändert', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })); vi.stubGlobal('fetch', fetch);
+  const body = { entity_id: 'e', kanal: 'aussen', von: '2026-11-02T07:40:00+01:00', raumtemperatur: 20.5, heizgrenze: 15 };
+  await api.bezugsKanaele('bz'); await api.kanalbindungen('bz'); await api.kanalBinden('bz', body); await api.kanalBeenden('bz', 'bindung', '2026-12-02T07:40:00+01:00');
+  expect(fetch.mock.calls).toMatchObject([
+    [expect.stringContaining('/bezugsgroessen/bz/kanalbindung/kanaele'), expect.anything()],
+    [expect.stringContaining('/bezugsgroessen/bz/kanalbindung'), expect.anything()],
+    [expect.stringContaining('/bezugsgroessen/bz/kanalbindung'), { method: 'POST', body: JSON.stringify(body) }],
+    [expect.stringContaining('/bezugsgroessen/bz/kanalbindung/bindung/beenden'), { method: 'POST', body: '{"bis":"2026-12-02T07:40:00+01:00"}' }],
+  ]);
+});

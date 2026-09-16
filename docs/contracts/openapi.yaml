@@ -9977,11 +9977,11 @@ paths:
         "404": { description: Bezugsgröße nicht gefunden. }
     post:
       tags: [bezugsgroessen]
-      summary: Bindet einen Zähler- oder Zustandskanal an Periodenwerte (K1–K6).
+      summary: Bindet einen Zähler-, Zustands- oder Temperaturkanal an Periodenwerte (K1–K6).
       description: >
         Recht `bezugsgroesse.verwalten`. Minutenweise, halboffen; frühestens ab dem ersten
         gespeicherten Rohwert. Der Kanal muss Daten liefern. Ein Zustandskanal braucht einen
-        gewählten Zustand; ein Zähler eine passende Einheit. Im gebundenen Zeitraum sind
+        gewählten Zustand; ein Zähler eine passende Einheit. Temperatur benötigt quantity=temperature, °C und Standortgeltung in Kd; Raumtemperatur und Heizgrenze sind je Bindung gespeichert (Vorgabe G20/15). Im gebundenen Zeitraum sind
         Eingabe, Berichtigung und Import mit 422 `kanal_gebunden` gesperrt. Archivieren erhält
         die Historie; eine Bezugsgröße mit Bindung kann nicht gelöscht werden.
       requestBody:
@@ -9996,6 +9996,8 @@ paths:
                 kanal: { type: string }
                 zustand: { type: string, nullable: true }
                 von: { type: string, format: date-time }
+                raumtemperatur: { type: number, default: 20, description: "Nur Temperatur; größer als Heizgrenze." }
+                heizgrenze: { type: number, default: 15, description: "Nur Temperatur; darunter zählt Raumtemperatur minus Tagesmittel." }
       responses:
         "201":
           description: Bindung und Protokolleintrag angelegt.
@@ -10008,6 +10010,34 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BezugsgroesseKanalfehler" }
+  /api/v1/bezugsgroessen/{id}/kanalbindung/kanaele:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bezugsgroessen]
+      summary: Passende Messkanäle für den Bindungsdialog.
+      description: Recht `bezugsgroesse.verwalten`; nur sichtbare Anlagen, passende Wertart und Einheit; fremde Bezugsgröße ist 404.
+      responses:
+        "200":
+          description: Kanäle mit erstem Rohwert, Lieferzustand und gemessenen Zustandsbezeichnungen.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [entity_id, komponente, kanal, name, wertart, einheit, erste_messung, liefert, zustaende]
+                  properties:
+                    entity_id: { type: string, format: uuid }
+                    komponente: { type: string, nullable: true }
+                    kanal: { type: string }
+                    name: { type: string, nullable: true }
+                    wertart: { type: string, enum: [counter, state, gauge] }
+                    einheit: { type: string, nullable: true }
+                    erste_messung: { type: string, format: date-time, nullable: true }
+                    liefert: { type: boolean }
+                    zustaende: { type: array, items: { type: string } }
+        "404": { description: Bezugsgröße nicht gefunden. }
   /api/v1/bezugsgroessen/{id}/kanalbindung/{bindung}/beenden:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -22825,7 +22855,9 @@ components:
         id: { type: string, format: uuid }
         entity_id: { type: string, format: uuid }
         kanal: { type: string }
-        wertart: { type: string, enum: [counter, state] }
+        wertart: { type: string, enum: [counter, state, gauge] }
+        raumtemperatur: { type: number, nullable: true, description: "Nur Temperatur; dauerhaft gespeicherter Parameter." }
+        heizgrenze: { type: number, nullable: true, description: "Nur Temperatur; dauerhaft gespeicherter Parameter." }
         zustand: { type: string, nullable: true }
         von: { type: string, format: date-time }
         bis: { type: string, format: date-time, nullable: true }
