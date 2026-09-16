@@ -304,6 +304,11 @@ class BestandsuebernahmeApiTest {
                 .isEqualTo(hamburgAb.toString());
         JsonNode overviewNordwindNachher = ok(get("/api/v1/overview", adminToken, NORDWIND));
         assertThat(ohneStandort(overviewNordwindNachher)).isEqualTo(ohneStandort(overviewNordwindVorher));
+        // Vorher gab es keinen Standort, nachher genau den EINEN, den die Übernahme angelegt hat - die
+        // Teilansicht zählt Standorte, und ein unternehmensweiter Zugriff sieht sie alle (AP-03 IP-10).
+        assertThat(overviewNordwindVorher.path("teilansicht").path("gesamt").asInt()).isZero();
+        assertThat(overviewNordwindNachher.path("teilansicht").path("sichtbar").asInt()).isEqualTo(1);
+        assertThat(overviewNordwindNachher.path("teilansicht").path("gesamt").asInt()).isEqualTo(1);
 
         // … und KEINE andere Tabelle: kein Kommando, kein Fahrplan, keine Komponente, kein Push.
         Map<String, String> tabellenNachher = tabellenStand();
@@ -556,7 +561,15 @@ class BestandsuebernahmeApiTest {
         return stand;
     }
 
-    /** Dieselbe Antwort ohne das additive Feld {@code standort} (auch je Anlage in /overview). */
+    /**
+     * Dieselbe Antwort ohne die additiven Felder, die von der Bestandsübernahme SELBST abhängen:
+     * {@code standort} (AP-02 IP-3, je Anlage in /overview und an /sites/{id}) und {@code teilansicht}
+     * (AP-03 IP-10, {@code {sichtbar, gesamt}} an /overview).
+     *
+     * <p>Beide dürfen sich ändern — die Übernahme legt ja genau die Standorte an, die sie zählen. Dass sie
+     * sich RICHTIG ändern, prüft der Aufrufer daneben ausdrücklich; hier fällt nur weg, was sonst jeden
+     * Zeichenvergleich verdecken würde.
+     */
     private static JsonNode ohneStandort(JsonNode antwort) {
         JsonNode kopie = antwort.deepCopy();
         entferne(kopie);
@@ -566,6 +579,7 @@ class BestandsuebernahmeApiTest {
     private static void entferne(JsonNode n) {
         if (n.isObject()) {
             ((com.fasterxml.jackson.databind.node.ObjectNode) n).remove("standort");
+            ((com.fasterxml.jackson.databind.node.ObjectNode) n).remove("teilansicht");
             n.forEach(BestandsuebernahmeApiTest::entferne);
         } else if (n.isArray()) {
             n.forEach(BestandsuebernahmeApiTest::entferne);
