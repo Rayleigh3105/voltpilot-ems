@@ -87,7 +87,7 @@ class UemsZugriffMigrationTest {
      * diese Migration gibt es ihre Tabellen nicht; in der späten Ankunft kommen sie darum MIT ihr, nicht vor ihr.
      * IP-14 erweitert dasselbe Vokabular und folgt deshalb ebenfalls nach der Grundlage.
      */
-    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260916070000", "20260916180000");
+    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260916070000", "20260916190000");
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");

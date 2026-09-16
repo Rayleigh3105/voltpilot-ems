@@ -37,7 +37,7 @@ vor dem Pflichtwechsel kein Token aus. Ein bedingtes UPDATE auf `benutzer.zustan
 genau einmal. Sperren und Entfernen werden dabei nie aufgehoben. Der Zustandswechsel gilt auch für den
 Partner-Spiegel im angenommenen Kundenbereich. Neuvergabe protokolliert `startpasswort_neu` ohne Passwort.
 
-`V20260916180000__uems_startpasswort.sql` erweitert nur `zugriff_vokabular()`, ohne Bestandszeilen zu ändern.
+`V20260916190000__uems_startpasswort.sql` erweitert nur `zugriff_vokabular()`, ohne Bestandszeilen zu ändern.
 Die zwei Wörter stehen gemeinsam in `rechte-vectors.json`, `rechte.schema.json`, `RechteAbleitung` und
 `rechte.ts`. Bei Änderungen alle Vertragsleser und die sechs Migrations-Nachbarklassen laufen lassen.
 
