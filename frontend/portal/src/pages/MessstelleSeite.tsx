@@ -19,6 +19,9 @@ import {
 } from '../api';
 import { MessstelleDialog } from '../components/MessstelleDialog';
 import { QuelleBindenDialog, type QuelleBindenZiel } from '../components/QuelleBindenDialog';
+import { ZaehlerwechselVerlauf } from '../components/ZaehlerwechselVerlauf';
+import { ZaehlerwechselDialog } from '../components/ZaehlerwechselDialog';
+import type { WechselZiel } from '../zaehlerwechsel';
 import { QuelleKarte } from '../components/QuelleKarte';
 import type { Schritt } from '../messstelleDialog';
 import { PROTOKOLL_LABEL } from '../components/ProtokollDialog';
@@ -176,6 +179,8 @@ function MessstelleSeiteMitId({
   const [bearbeitenAb, setBearbeitenAb] = useState<Schritt>(1);
   const [bearbeitet, setBearbeitet] = useState(false);
   // UEMS AP-04 IP-14: die Quelle-Karte liest ihre eigene Route; `binden` ist der offene Dialog.
+  const [wechsel, setWechsel] = useState<WechselZiel | null>(null);
+  const [wechselStand, setWechselStand] = useState(0);
   const [quellen, setQuellen] = useState<MessstelleQuellenListe | null>(null);
   const [binden, setBinden] = useState<{ rolle: BindungsRolle; ziel: QuelleBindenZiel } | null>(null);
   const protokoll = useProtokoll({ art: 'messstelle', id }, { achse: MESSSTELLE_PROTOKOLL_ACHSE, anlegeSatz: true });
@@ -367,6 +372,7 @@ function MessstelleSeiteMitId({
 
       <section className="vp-mss-werte" aria-labelledby="vp-mss-werte-titel" data-testid="werte" ref={werteRef}>
         <WerteSektion
+          key={wechselStand}
           kennzeichen={m.kennzeichen}
           messstelle={`${k.kennzeichen} · ${k.titel}`}
           kopf={<h2 id="vp-mss-werte-titel">{UEMS_WERTE}</h2>}
@@ -405,8 +411,16 @@ function MessstelleSeiteMitId({
           darfBinden={darfAendern}
           onBinden={oeffneBinden('fuehrend')}
           onVergleich={oeffneBinden('vergleich')}
+          onWechsel={(karte) => {
+            const q = quellen?.groessen.find(g => g.groesse === karte.groesse.groesse && g.richtung === karte.groesse.richtung)?.fuehrend;
+            if (q?.geraet.id) setWechsel({ art: 'messstelle', id: m.id, kennzeichen: m.kennzeichen, geraetId: q.geraet.id, anlageId: q.anlage });
+          }}
         />
       )}
+
+      {quellen?.groessen[0]?.fuehrend && <ZaehlerwechselVerlauf
+        anlageId={quellen.groessen[0].fuehrend.anlage}
+        komponenten={[...new Set(quellen.quellen.map(q => q.komponente))]} stand={wechselStand} />}
 
       <div className="vp-mss-karten">
         {karten.map((karte) => (
@@ -448,6 +462,8 @@ function MessstelleSeiteMitId({
           }}
         />
       )}
+      {wechsel && <ZaehlerwechselDialog ziel={wechsel} onClose={() => setWechsel(null)}
+        onGewechselt={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }} />}
       {binden && (
         <QuelleBindenDialog
           open

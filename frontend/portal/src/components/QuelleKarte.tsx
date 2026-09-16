@@ -30,11 +30,13 @@ export function QuelleKarte({
   darfBinden,
   onBinden,
   onVergleich,
+  onWechsel,
 }: {
   karten: QuelleGroesseKarte[];
   darfBinden: boolean;
   onBinden: (karte: QuelleGroesseKarte) => void;
   onVergleich: (karte: QuelleGroesseKarte) => void;
+  onWechsel?: (karte: QuelleGroesseKarte) => void;
 }) {
   return (
     <section className="vp-qk" aria-labelledby="vp-qk-titel" data-testid="quelle-karte">
@@ -75,6 +77,9 @@ export function QuelleKarte({
           {k.werte.length > 0 && k.leerVergleich && <p className="vp-qk-leer">{k.leerVergleich}</p>}
 
           <p className="vp-qk-knoepfe">
+            {darfBinden && k.werte.some(w => w.fuehrend && !w.geplant) && onWechsel && (
+              <Recht aktion="messstelle.quelle"><button type="button" className="vp-qk-knopf" onClick={event => { event.currentTarget.focus(); onWechsel(k); }}>Zähler wechseln</button></Recht>
+            )}
             {darfBinden && k.fuehrendMoeglich && (
               <Recht aktion="messstelle.quelle"><button type="button" className="vp-qk-knopf" onClick={() => onBinden(k)}>
                 <Icon name="activity" size={14} />

@@ -4871,8 +4871,8 @@ export interface ZaehlerwechselBindung {
   groesse: string;
   richtung: string;
   rolle: 'fuehrend' | 'vergleich';
-  beendet: unknown;
-  neu: unknown;
+  beendet: MessstelleQuelle;
+  neu: MessstelleQuelle;
 }
 
 /** Eine Einstellungs-Fassung, die auf den neuen Einbau übernommen wurde. */
@@ -4897,6 +4897,18 @@ export interface ZaehlerwechselVorgang {
   marken: number;
   rueckwirkung: { art: 'rueckwirkend' | 'ab_jetzt' | 'angekuendigt'; minuten: number; abzeichen: string | null };
   hinweise: 'ablesestand_pruefen'[];
+}
+
+/** Bestehender Komponenten-Ereignispfad; unbekannte Arten bleiben beim jeweiligen Leser. */
+export interface KomponentenEreignis {
+  revision: number;
+  eventType: string;
+  effectiveAt: string;
+  fromValue?: string | null;
+  toValue?: string | null;
+  createdAt: string;
+  createdBy?: string | null;
+  note?: string | null;
 }
 
 // ---- Vorschlagsliste der Bestandsübernahme (UEMS AP-04 IP-16) ---------------
@@ -7661,6 +7673,18 @@ export const api = {
   /** Die UEMS-Geräte einer Anlage (AP-04 IP-10) — der Weg von der Komponente zum Gerät. */
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
+
+  komponentenEreignisse: (siteId: string, entityId: string) =>
+    request<KomponentenEreignis[]>(`/api/v1/sites/${siteId}/components/${entityId}/events`),
+
+  messstelleZaehlerwechsel: (id: string, body: Zaehlerwechsel) =>
+    request<ZaehlerwechselVorgang>(`/api/v1/messstellen/${id}/quellen/wechsel`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  geraetAustauschen: (id: string, body: Zaehlerwechsel) =>
+    request<ZaehlerwechselVorgang>(`/api/v1/geraete/${id}/austausch`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
 
   /**
    * Die Datenquellen EINER Anlage (AP-06 IP-3) — AP-13 IP-12 ist ihr erster Aufrufer im Portal.
