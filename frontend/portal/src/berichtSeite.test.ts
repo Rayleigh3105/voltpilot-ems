@@ -333,6 +333,47 @@ describe('B10 — „heute: …“ (A5) und B16 — nach den Fristen', () => {
   });
 });
 
+/**
+ * UEMS AP-13 IP-11 (K4, O10 Schritt 6): „Vom Bericht aus derselbe Weg“ — der Nachweis führt auf die Seite
+ * seines Objekts, im ZEITRAUM DES BERICHTS. Ein Sprung ohne Periode zeigte die heutige Zahl statt der, die
+ * im Stand steht.
+ */
+describe('AP-13 IP-11 — vom Nachweis zur Zahl (K4, O10)', () => {
+  const liste = abschnitte(abzugAus(stand(1, AM_20_11).stand.abzug)).abschnitte;
+
+  it('MS-12 im Bericht springt auf die Messstellen-Seite mit der Periode des Berichts (Oktober 2026)', () => {
+    const ms12 = zeile(teil(liste, 'messstellen').zeilen, 'MS-12');
+    expect(ms12.sprung?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-10');
+    expect(ms12.sprungWort).toBe('Zur Messstelle');
+    // Der Weg steht NEBEN „heutigen Wert zeigen“, nicht statt dessen — die Messstelle bleibt gefragt.
+    expect(ms12.messstelle).toBe('MS-12');
+  });
+
+  it('eine Kennzahl des Berichts springt auf ihre Kennzahl-Seite; ihre Eingänge auf ihre Messstellen', () => {
+    const kz = teil(liste, 'kennzahlen').zeilen[0];
+    expect(kz.sprung?.hash).toBe(`#/portfolio/kennzahlen/${kz.kennzeichen}`);
+    expect(kz.sprungWort).toBe('Zur Kennzahl');
+    const mitSprung = kz.nachweis.herkunftStuecke.flat().filter((t) => t.sprung !== null);
+    expect(mitSprung.length).toBeGreaterThan(0);
+    for (const t of mitSprung) expect(t.sprung?.hash).toContain('periode=2026-10');
+    // Jede Zeile bleibt zeichengleich der Satz, den sie war (D1).
+    expect(kz.nachweis.herkunftStuecke.map((z) => z.map((t) => t.text).join(''))).toEqual(kz.nachweis.herkunft);
+  });
+
+  it('eine Bezugsgröße im Nachweis bleibt Text — AP-09 hat keine Kundenfläche (D3)', () => {
+    const kz = teil(liste, 'kennzahlen').zeilen[0];
+    expect(kz.nachweis.herkunftStuecke.flat().some((t) => t.text.startsWith('BZ-') && t.sprung !== null)).toBe(false);
+  });
+
+  it('eine Speicher-Mengenart hat keinen Weg — den heutigen Leseweg trennt der Bericht nicht (Folgepaket)', () => {
+    const speicher = teil(liste, 'messstellen').zeilen.filter((z) => z.schluessel.includes('/'));
+    for (const z of speicher) {
+      expect(z.sprung).toBeNull();
+      expect(z.sprungWort).toBeNull();
+    }
+  });
+});
+
 describe('PDF und CSV — abgeleitet, sichtbar erst mit ihrem Ziel (IP-10, IP-11)', () => {
   const b = berichtAm(AM_20_11);
   const alle = { pdf: true, csv: true } as const;

@@ -42,9 +42,10 @@ import type {
   MessstelleWerteRaster,
   MessstelleWerteWert,
 } from './api';
-import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET } from './glossar';
-import { KEINE_DATENQUELLE, type ZeileWoerter } from './messstellen';
+import { UEMS_FASSUNG, UEMS_LUECKE, UEMS_MESSSTELLE, UEMS_NOCH_NICHT_GERECHNET, UEMS_VERSION } from './glossar';
+import { KEINE_DATENQUELLE, zeitpunktText, type ZeileWoerter } from './messstellen';
 import { MONATE, WOCHENTAGE, datumVon, isoWoche } from './picker/datum';
+import { BERECHNET_DIFFERENZ, BERECHNET_SALDO, BERECHNET_SUMME } from './uemsBilanz';
 import { zahlText } from './uemsEreignis';
 import {
   ANZEIGE_EINHEITEN,
@@ -53,6 +54,7 @@ import {
   GRUND_ANTEIL,
   KEINE_WERTE,
   OHNE_ZAHL,
+  TRENNER,
   VOLLSTAENDIG,
   fassung,
   grundSatz,
@@ -63,7 +65,7 @@ import {
   zustandMitHerkunft,
   type Ergebnis,
 } from './uemsErgebnis';
-import { zoneSatz, type Zeitraum } from './uemsOberflaechen';
+import { herkunftsZeile, kennzeichenSprung, zoneSatz, type Stueck, type Zeitraum } from './uemsOberflaechen';
 import { datumText, type Tag } from './uemsOrtsbaum';
 
 /** Tag oder Monat — was die Karte zusammenfasst. */
@@ -490,6 +492,113 @@ export const ohneQuelleWeg = (
     knopf: schonDa ? QUELLE_AB_ZEIGEN.replace('{datum}', datum) : null,
   };
 };
+
+// ------------------------------------ Herkunft einer BERECHNETEN Zahl (AP-13 IP-11, D4)
+
+export const HERKUNFT_TITEL = 'Herkunft';
+export const HERKUNFT_FORMEL = 'Formel: {formel}';
+export const HERKUNFT_FASSUNG_N = `${UEMS_FASSUNG} {n}`;
+export const HERKUNFT_BERECHNET_AM = 'berechnet am {am}';
+export const HERKUNFT_VERSION_N = `${UEMS_VERSION} {n}`;
+/** D4: „ohne Angabe: …“ — eine halbe Herkunft wird gesagt, nie verschwiegen. */
+export const HERKUNFT_OHNE_ANGABE = 'ohne Angabe: {was}';
+
+/** Der Formel-Typ in Kundenwörtern — dieselben drei Wörter wie an der Bilanz-Fläche (AP-10 §5.6). */
+export const FORMEL_WORT: Readonly<Record<string, string>> = {
+  gewichtete_summe: BERECHNET_SUMME,
+  rest: BERECHNET_DIFFERENZ,
+  saldo: BERECHNET_SALDO,
+};
+
+/** Was an einer Herkunft fehlen kann (`fehlt[]` der Hülle), in Kundenwörtern. Ein unbekanntes Feld bleibt, wie es kam. */
+export const HERKUNFT_FEHLT_WORT: Readonly<Record<string, string>> = {
+  art: 'Art',
+  messstelle: UEMS_MESSSTELLE,
+  periode: 'Periode',
+  verteilung: 'Verteilung',
+  eingaenge: 'Eingänge',
+  eingang_messstelle: 'Eingänge',
+  formel_typ: 'Formel',
+  formel_fassung: `${UEMS_FASSUNG} der Formel`,
+  bilanz_rolle: 'Rolle in der Bilanz',
+  berechnet_am: 'Zeitpunkt der Rechnung',
+  ausloeser: 'Anlass',
+  ergebnis: 'Ergebnis',
+};
+
+export interface BerechneteHerkunft {
+  /** „berechnet (Summe) · Formel: Fassung 2“ · „berechnet am 01.11.2026, 00:20“ · „Version 2“. */
+  zeilen: string[];
+  /** Je Eingang eine Zeile in Stücken — sein Kennzeichen ist der Sprung (D1) MIT Periode und Version (D2). */
+  eingaenge: Stueck[][];
+  /** „ohne Angabe: Eingänge.“ — `null`, wenn die Herkunft vollständig ist. */
+  fehlt: string | null;
+}
+
+const alsText = (x: unknown): string | null => (typeof x === 'string' && x.length > 0 ? x : null);
+
+/**
+ * D4 — die Karte einer BERECHNETEN Messstelle spricht ihre Herkunft: Formel-Typ und Fassung, Zeitpunkt,
+ * Version und Anlass, und je Eingang eine Zeile, deren Messstelle ein Sprung ist (Periode der Karte,
+ * Version DIESES Eingangs). `null` an einer gemessenen Zahl und an einem Schritt ohne Zahl — dort trägt
+ * die Route die Hülle gar nicht, und es wird keine erfunden.
+ *
+ * Gelesen wird die Hülle `{satz, fehlt}` nach `bilanzwert-herkunft.schema.json` (AP-10 IP-12), Feld für
+ * Feld geprüft: was nicht in der erwarteten Form ankommt, steht nicht da — nie geraten, nie gerechnet.
+ */
+export const berechneteHerkunft = (
+  w: Pick<MessstelleWerteWert, 'herkunft'>,
+  zone: string,
+  periode: string | null,
+): BerechneteHerkunft | null => {
+  const h = w.herkunft;
+  if (!h) return null;
+  const fehlt =
+    h.fehlt.length === 0
+      ? null
+      : `${fuelleKarte(HERKUNFT_OHNE_ANGABE, { was: [...new Set(h.fehlt.map((f) => HERKUNFT_FEHLT_WORT[f] ?? f))].join(', ') })}.`;
+  const satz = h.satz;
+  if (!satz) return { zeilen: [], eingaenge: [], fehlt };
+  const typ = alsText(satz.formel_typ);
+  const fassung = satz.formel_fassung;
+  const berechnetAm = alsText(satz.berechnet_am);
+  const version = typeof satz.version === 'number' ? satz.version : null;
+  const kopf = [
+    typ ? (FORMEL_WORT[typ] ?? typ) : null,
+    typeof fassung === 'number'
+      ? fuelleKarte(HERKUNFT_FORMEL, { formel: fuelleKarte(HERKUNFT_FASSUNG_N, { n: fassung }) })
+      : alsText(fassung)
+        ? fuelleKarte(HERKUNFT_FORMEL, { formel: alsText(fassung) as string })
+        : null,
+  ].filter((t): t is string => t !== null);
+  const eingaenge = Array.isArray(satz.eingaenge) ? (satz.eingaenge as Array<Record<string, unknown>>) : [];
+  return {
+    zeilen: [
+      ...(kopf.length > 0 ? [kopf.join(TRENNER)] : []),
+      ...(berechnetAm && !Number.isNaN(Date.parse(berechnetAm))
+        ? [fuelleKarte(HERKUNFT_BERECHNET_AM, { am: zeitpunktText(berechnetAm, zone) })]
+        : []),
+      ...(version === null ? [] : [fuelleKarte(HERKUNFT_VERSION_N, { n: version })]),
+    ],
+    eingaenge: eingaenge.map((e) => {
+      const kennzeichen = alsText(e.messstelle) ?? '';
+      const eigene = typeof e.version === 'number' ? e.version : null;
+      const text = [
+        kennzeichen,
+        alsText(e.zustand),
+        eigene === null ? null : fuelleKarte(HERKUNFT_VERSION_N, { n: eigene }),
+        ...(Array.isArray(e.kennzeichen) ? e.kennzeichen.map(String) : []),
+      ]
+        .filter((t): t is string => t !== null && t !== '')
+        .join(TRENNER);
+      return herkunftsZeile(text, (k) => kennzeichenSprung(k, { periode, version: eigene }));
+    }),
+    fehlt,
+  };
+};
+
+const fuelleKarte = (vorlage: string, werte: Record<string, string | number>): string =>
+  vorlage.replace(/\{([a-z_]+)\}/g, (_, k: string) => String(werte[k] ?? `{${k}}`));
 
 // ------------------------------------------------------------------ Nebengrößen (AP-13 V8)
 

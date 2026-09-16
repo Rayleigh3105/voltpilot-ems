@@ -124,6 +124,62 @@ describe('O6 — Halle 1 mit Abfluss und den Speicher-Anteilen als zwei Zeilen',
   });
 });
 
+/**
+ * UEMS AP-13 IP-11 (D1/D2): die Bilanz-Zeilen bekommen ihre Kanten. Ein Unterzähler führt auf seine
+ * Messstellen-Seite MIT der Periode DIESER Bilanz; die Herkunft nennt je Eingang seine eigene Version;
+ * das Ziel einer Verteilung ist die Kostenstellen-Karte.
+ */
+describe('AP-13 IP-11 — die Sprünge der Bilanz-Zeilen', () => {
+  const b = energiebilanzBild(ahrenbergBilanz(an1, 'monat', '2026-10-01'), ctx());
+  const z = zeilen(b);
+
+  it('jeder Unterzähler führt auf seine Seite — mit der Periode der Bilanz, nicht der der Leiste', () => {
+    const teile = zeile(z, 'zugeordnet').teile;
+    expect(teile.length).toBeGreaterThan(0);
+    for (const t of teile) expect(t.sprung?.hash).toBe(`#/portfolio/messstellen/${t.kennzeichen}?periode=2026-10`);
+  });
+
+  it('ein Tag schneidet sich anders als ein Monat — der Schlüssel der Periode kommt aus der ANTWORT', () => {
+    const tag = energiebilanzBild(ahrenbergBilanz(an2, 'tag', '2026-11-04'), ctx());
+    const teil = zeilen(tag).flatMap((x) => x.teile)[0];
+    expect(teil.sprung?.hash).toBe(`#/portfolio/messstellen/${teil.kennzeichen}?periode=2026-11-04`);
+  });
+
+  it('die Herkunft nennt je Eingang SEINE Version; jede Zeile bleibt zeichengleich ihr Satz', () => {
+    const h = zeile(z, 'zugeordnet').herkunft;
+    expect(h.eingaengeStuecke.map((teile) => teile.map((t) => t.text).join(''))).toEqual(h.eingaenge);
+    const spruenge = h.eingaengeStuecke.flat().filter((t) => t.sprung !== null);
+    expect(spruenge.length).toBe(h.eingaenge.length);
+    for (const t of spruenge) expect(t.sprung?.hash).toContain('periode=2026-10');
+  });
+
+  it('das Ziel einer Verteilung ist die Kostenstellen-Karte — die Zahl im Satz wird der Sprung (D1)', () => {
+    const lindach = ahrenbergBilanz(an3, 'tag', '2026-10-18');
+    const w = lindach.hauptzaehler[0].abschnitte[0].werte[0];
+    const terme = lindach.hauptzaehler[0].abschnitte[0].terme;
+    const satz = { ...w.rest.herkunft!.satz!, verteilung: { fassung: 1, ziel: '4200', anteil_prozent: '60' } };
+    const h = restHerkunft({ satz, fehlt: [] }, w.eingaenge, terme, 'tag', 'Europe/Berlin', {
+      ...ctx(),
+      periode: { art: 'tag', am: '2026-10-18' },
+    });
+    const zeile = h.zeilenStuecke.find((teile) => teile.some((t) => t.text === '4200'))!;
+    expect(zeile.find((t) => t.text === '4200')?.sprung?.hash).toBe(
+      '#/portfolio/messstellen?reiter=kostenstellen&periode=tag&am=2026-10-18&kostenstelle=4200',
+    );
+    // Auch hier: der Satz bleibt zeichengleich der, der er war.
+    expect(h.zeilenStuecke.map((teile) => teile.map((t) => t.text).join(''))).toEqual(h.zeilen);
+  });
+
+  it('ohne Periode im Kontext trägt der Sprung keine — er zeigt dann die neueste, nie eine falsche', () => {
+    const lindach = ahrenbergBilanz(an3, 'tag', '2026-10-18');
+    const w = lindach.hauptzaehler[0].abschnitte[0].werte[0];
+    const terme = lindach.hauptzaehler[0].abschnitte[0].terme;
+    const h = restHerkunft(w.rest.herkunft!, w.eingaenge, terme, 'tag', 'Europe/Berlin', ctx());
+    const sprung = h.eingaengeStuecke.flat().find((t) => t.sprung !== null);
+    expect(sprung?.sprung?.hash).not.toContain('periode=');
+  });
+});
+
 describe('O7 — „mindestens … (MS-14 fehlt)“ und „— keine Werte“ am 04.11.2026', () => {
   const b = energiebilanzBild(ahrenbergBilanz(an2, 'tag', '2026-11-04'), ctx());
   const z = zeilen(b);

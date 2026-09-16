@@ -395,3 +395,25 @@
     margin-left: 0;
   }
 }
+
+/* UEMS AP-13 IP-11 (D1): der Unterzähler einer Bilanz-Zeile führt auf seine Messstellen-Seite. */
+a.vp-eb-teil-sprung {
+  color: var(--vp-action);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a.vp-eb-teil-sprung:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* E14 — am Telefon ist der Name des Unterzählers eine echte Tippfläche (≥ 44 px), nicht ein Wort von 22 px. */
+@media (max-width: 720px) {
+  a.vp-eb-teil-sprung {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

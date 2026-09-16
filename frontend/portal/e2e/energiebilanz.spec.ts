@@ -109,6 +109,36 @@ for (const breite of BREITEN) {
     if (BILDER) await page.getByTestId('zeile-rest').screenshot({ path: join(BILDER, `b1-herkunft-rest-${breite}.png`) });
   });
 
+  /**
+   * UEMS AP-13 IP-11 (D1/D2): die Bilanz-Zeilen bekommen ihre Kanten. Jeder Unterzähler führt auf seine
+   * Messstellen-Seite MIT der Periode der Bilanz; die Kostenstelle der Verteilung auf ihre Karte.
+   */
+  test(`IP-11 · O5 bei ${breite} px: jeder Unterzähler ein Sprung mit Periode, die Kostenstelle ihre Karte`, async ({ page }) => {
+    const fehler: string[] = [];
+    await oeffne(page, 'an=AN-2', breite, fehler);
+    const teile = page.getByTestId('zeile-zugeordnet').locator('a.vp-eb-teil-sprung');
+    await expect(teile).toHaveCount(4);
+    for (const href of await teile.evaluateAll((as) => as.map((a) => a.getAttribute('href')))) {
+      expect(href).toMatch(/^#\/portfolio\/messstellen\/MS-\d+\?periode=2026-10$/);
+    }
+    // Gemessen wird der Rahmen am ZUGEKLAPPTEN Bild — wie in O5: die Herkunft darf ihre Prozentzahl nennen.
+    const m = await pruefeRahmen(page, 'ip11-spruenge', breite, fehler);
+    await ablegen(page, 'ip11-spruenge', breite, m);
+    if (BILDER) await page.getByTestId('zeile-zugeordnet').screenshot({ path: join(BILDER, `ip11-zugeordnet-${breite}.png`) });
+
+    await page.getByTestId('herkunft-rest').locator('summary').click();
+    const ks = page.getByTestId('herkunft-rest').locator('a', { hasText: '4300' });
+    await expect(ks).toHaveAttribute(
+      'href',
+      '#/portfolio/messstellen?reiter=kostenstellen&periode=monat&am=2026-10-01&kostenstelle=4300',
+    );
+    // Die Eingänge der Herkunft springen ebenfalls — jeder mit SEINER Version.
+    await expect(page.getByTestId('herkunft-rest').locator('a', { hasText: /^MS-\d+$/ }).first()).toHaveAttribute(
+      'href',
+      /^#\/portfolio\/messstellen\/MS-\d+\?periode=2026-10(&version=\d+)?$/,
+    );
+  });
+
   test(`O6 Halle 1, Oktober 2026 bei ${breite} px: Abfluss und die Speicher-Anteile als zwei Zeilen`, async ({ page }) => {
     const fehler: string[] = [];
     await oeffne(page, 'an=AN-1', breite, fehler);

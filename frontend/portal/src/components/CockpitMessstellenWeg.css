@@ -1,0 +1,41 @@
+/* UEMS AP-13 IP-11 (O18): der EINE neue Weg unter der Bühne des Cockpits — eine Zeile, keine zweite
+   Leiste und keine Kachel. Tippfläche ≥ 44 px (E14). */
+.vp-cockpit-msweg {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  min-height: 44px;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-surface);
+  color: var(--vp-c-fg);
+  text-decoration: none;
+}
+
+.vp-cockpit-msweg-titel {
+  font-weight: 600;
+}
+
+.vp-cockpit-msweg-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-cockpit-msweg:hover,
+.vp-cockpit-msweg:focus-visible {
+  border-color: var(--vp-action);
+}
+
+.vp-cockpit-msweg:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .vp-cockpit-msweg {
+    flex-wrap: wrap;
+  }
+}

@@ -357,3 +357,35 @@
   margin: 0;
   max-width: 100%;
 }
+
+/* UEMS AP-13 IP-11 (D4): die Herkunft einer BERECHNETEN Zahl unter der Karte — aufklappbar wie an der
+   Bilanz-Fläche, damit die Karte selbst kurz bleibt. */
+.vp-wk-herkunft {
+  margin-top: var(--vp-c-space-3);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-wk-herkunft > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--vp-c-fg);
+}
+
+.vp-wk-herkunft-zeile,
+.vp-wk-herkunft-fehlt {
+  margin: 0 0 var(--vp-c-space-1);
+  overflow-wrap: anywhere;
+}
+
+.vp-wk-herkunft-eingaenge {
+  margin: 0 0 var(--vp-c-space-1);
+  padding-left: var(--vp-c-space-4);
+}
+
+.vp-wk-herkunft-eingaenge > li {
+  overflow-wrap: anywhere;
+}

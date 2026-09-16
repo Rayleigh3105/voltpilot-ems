@@ -68,6 +68,7 @@ import {
   ebenenOrt,
   ebenenReiter,
   ebenenTitel,
+  misstAnlage,
   resolveAnlage,
   standortEinstiege,
   type EbenenLesemodell,
@@ -1468,6 +1469,9 @@ function UnifiedPortal() {
               isAdmin={isAdmin}
               onHealthFacts={onHealthFacts}
               surface={surface}
+              // AP-13 IP-11 (E2 = A, O18): der EINE Weg „Messstellen dieser Anlage“ — nur, wenn der
+              // Standort dieser Anlage misst. Sonst fragt das Cockpit nichts und zeigt nichts Neues.
+              misstHier={route.siteId ? misstAnlage(ebenenLesemodell, route.siteId) : false}
             />
           )}
           {page === 'plattform-uebersicht' && isAdmin && (

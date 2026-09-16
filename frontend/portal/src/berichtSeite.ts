@@ -35,6 +35,8 @@ import {
   UEMS_DATENSTAND,
   UEMS_ENTWURF,
   UEMS_FASSUNG,
+  UEMS_KENNZAHL,
+  UEMS_MESSSTELLE,
   UEMS_PRUEFSUMME,
   UEMS_VERSION,
 } from './glossar';
@@ -43,6 +45,7 @@ import { zeitpunktText } from './messstellen';
 import * as B from './uemsBericht';
 import { fassung as fassungWort, menge, OHNE_ZAHL, PROZENT, TRENNER, zahl } from './uemsErgebnis';
 import { periodeText } from './uemsKennzahl';
+import { herkunftsZeile, kennzeichenSprung, type Sprung, type Stueck } from './uemsOberflaechen';
 import { datumText } from './uemsOrtsbaum';
 import type { Karte, Ton } from './uemsWerteKarte';
 
@@ -75,6 +78,12 @@ export const PRUEFSUMME_GEPRUEFT = `${UEMS_PRUEFSUMME} geprüft`;
 export const VERLAUF_TITEL = 'Verlauf der Berichtsstände';
 export const NACHWEIS = 'Nachweis';
 export const HEUTIGEN_WERT = 'heutigen Wert zeigen';
+/**
+ * AP-13 IP-11 (K4): der Weg vom Nachweis zum Objekt der Zahl. Er steht NEBEN „heutigen Wert zeigen“,
+ * nicht statt dessen — die eine Angabe ist die des Stands, die andere die von heute.
+ */
+export const ZUR_MESSSTELLE = `Zur ${UEMS_MESSSTELLE}`;
+export const ZUR_KENNZAHL = `Zur ${UEMS_KENNZAHL}`;
 export const HEUTIGER_WERT_LAEDT = 'Der heutige Wert wird geladen …';
 export const HEUTIGER_WERT_FEHLER = 'Der heutige Wert konnte nicht geladen werden.';
 /** Der Satz der Bildung (IP-5), solange ein Abzug keine Kennzahl trägt. */
@@ -332,6 +341,11 @@ export interface Nachweis {
   karte: Karte;
   /** Die Herkunft Zeile für Zeile: Ort, Version und Endgültigkeit, Berechnung, Eingänge, Regelwerk. */
   herkunft: string[];
+  /**
+   * AP-13 IP-11 (D1/D2): dieselben Zeilen in Stücken — die Kennzeichen mit Seite sind Sprünge MIT dem
+   * ZEITRAUM DES BERICHTS und der Version des Eingangs, nie mit der Periode der offenen Seite.
+   */
+  herkunftStuecke: Stueck[][];
 }
 
 export interface QuellenZahl {
@@ -349,6 +363,14 @@ export interface QuellenZahl {
   nachweis: Nachweis;
   /** Die Messstelle für „heutigen Wert zeigen“ — `null`, wo es keinen vergleichbaren heutigen Wert gibt. */
   messstelle: string | null;
+  /**
+   * AP-13 IP-11 (K4, O10 Schritt 6): der Weg von dieser Zahl zu ihrem Objekt — die Messstellen-Seite im
+   * Abschnitt „Werte“ bzw. die Kennzahl-Seite, beide mit dem Zeitraum des Berichts. `null`, wo das Objekt
+   * keine Seite hat (Speicher-Mengenarten: der heutige Leseweg trennt Laden und Entladen nicht).
+   */
+  sprung: Sprung | null;
+  /** Das Wort am Weg — „Zur Messstelle“ bzw. „Zur Kennzahl“; `null` ohne Sprung. */
+  sprungWort: string | null;
 }
 
 export type Abschnitt =
@@ -422,9 +444,13 @@ const wertZahl = (w: AbzugWert, kopf: AbzugKopf): QuellenZahl => {
     zustandTon: tonVon(w.zustand),
     version: `${UEMS_VERSION} ${w.version}`,
     kennzeichenSaetze: saetze,
-    nachweis: { karte, herkunft },
+    // AP-13 IP-11: die Zeilen einer gemessenen Zahl nennen kein fremdes Objekt — ihre Kante hängt an der Zahl
+    // selbst (`sprung`). Die Stücke entstehen trotzdem, damit jede Zeile durch dieselbe Form läuft.
+    nachweis: { karte, herkunft, herkunftStuecke: herkunft.map((t) => herkunftsZeile(t, () => null)) },
     // Laden und Entladen trägt der heutige Leseweg nicht getrennt (Folgepaket vp-uems-b12-tagesverlauf-speicher).
     messstelle: w.menge_art ? null : w.quelle,
+    sprung: w.menge_art ? null : kennzeichenSprung(w.quelle, { periode: kopf.zeitraum.schluessel }),
+    sprungWort: w.menge_art ? null : ZUR_MESSSTELLE,
   };
 };
 
@@ -466,17 +492,30 @@ const kennzahlZahl = (k: AbzugKennzahl, kopf: AbzugKopf): QuellenZahl => {
     zustandTon: tonVon(k.zustand),
     version: `${UEMS_VERSION} ${k.version}`,
     kennzeichenSaetze: [...k.kennzeichen],
-    nachweis: {
-      karte,
-      herkunft: [
-        ...k.eingaenge.map(eingangText),
-        [`${UEMS_BERECHNUNG} ${UEMS_FASSUNG} ${k.definition_fassung}`, `gerechnet ${zeitText(k.berechnet_am, zeitraum.zone)}`].join(TRENNER),
-        ...[regelwerkZeile(kopf, 'kennzahl')].filter((t): t is string => t !== null),
-      ],
-    },
+    nachweis: nachweisDerKennzahl(k, kopf, karte),
     messstelle: null,
+    // AP-13 IP-11: die Kennzahl-Zeile des Berichts führt auf ihre Kennzahl-Seite.
+    sprung: kennzeichenSprung(k.quelle, { periode: zeitraum.schluessel }),
+    sprungWort: ZUR_KENNZAHL,
   };
 };
+
+/**
+ * AP-13 IP-11 (D1/D2): der Nachweis einer Kennzahl — dieselben Zeilen, aber jedes Kennzeichen eines
+ * Eingangs ein Sprung. Die Periode ist die des BERICHTS (sein Zeitraum), die Version die des Eingangs,
+ * wie der Abzug sie festhält; eine Bezugsgröße bleibt Text (D3).
+ */
+function nachweisDerKennzahl(k: AbzugKennzahl, kopf: AbzugKopf, karte: Karte): Nachweis {
+  const zeitraum = kopf.zeitraum;
+  const herkunft = [
+    ...k.eingaenge.map(eingangText),
+    [`${UEMS_BERECHNUNG} ${UEMS_FASSUNG} ${k.definition_fassung}`, `gerechnet ${zeitText(k.berechnet_am, zeitraum.zone)}`].join(TRENNER),
+    ...[regelwerkZeile(kopf, 'kennzahl')].filter((t): t is string => t !== null),
+  ];
+  const rahmen = new Map(k.eingaenge.map((e) => [e.kennzeichen, { periode: zeitraum.schluessel, version: e.version ?? null }]));
+  const ziel = (kennzeichen: string) => kennzeichenSprung(kennzeichen, rahmen.get(kennzeichen) ?? { periode: zeitraum.schluessel });
+  return { karte, herkunft, herkunftStuecke: herkunft.map((t) => herkunftsZeile(t, ziel)) };
+}
 
 const kopfZeilen = (kopf: AbzugKopf): Zeile[] => {
   const z = B.zeitraum(kopf.zeitraum.art, kopf.zeitraum.schluessel, kopf.zeitraum.zone);

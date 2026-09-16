@@ -64,6 +64,11 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
         seit: 'führend seit 12.03.2024',
         davor: null,
         vergleich: null,
+        // AP-13 IP-11 (D1): der Weg zur Komponente auf der Geräte-Seite der Anlage aus der Stellung.
+        sprung: {
+          route: { page: 'anlagen', siteId: FIXTURE_IDS.an1, sub: 'modell' },
+          hash: `#/anlage/${FIXTURE_IDS.an1}/modell?komponente=c0000000-0000-4000-8000-000000000003`,
+        },
       },
       zustand: 'aktiv',
       beobachtung: { text: 'Liefert Daten', ton: 'gut' },
@@ -88,7 +93,7 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
   it('A17: MS-06 am 15.11. mit Z-5a, am 20.11. mit Z-5b „seit 18.11.2026 10:40 · davor Z-5a“ — Ort und Stellung gleich', () => {
     const vorher = woerter('MS-06', ahrenbergRegister({ stichtag: '2026-11-15' }));
     const nachher = woerter('MS-06', ahrenbergRegister({ stichtag: '2026-11-20' }));
-    expect(vorher.quelle).toEqual({
+    expect(vorher.quelle).toMatchObject({
       art: 'gebunden',
       geraet: 'Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a',
       messwert: 'Wirkenergie Bezug',
@@ -96,7 +101,7 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
       davor: null,
       vergleich: null,
     });
-    expect(nachher.quelle).toEqual({
+    expect(nachher.quelle).toMatchObject({
       art: 'gebunden',
       geraet: 'Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5b',
       messwert: 'Wirkenergie Bezug',
@@ -104,6 +109,11 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
       davor: 'davor Z-5a',
       vergleich: null,
     });
+    // AP-13 IP-11 (D1): der Einbau wechselt (Z-5a → Z-5b), die KOMPONENTE bleibt — also derselbe Weg.
+    // Ein Gerätetausch an derselben Komponente ist kein neues Ziel (AGENTS.md: ein Port beweist kein Gerät).
+    const weg = (w: typeof vorher) => (w.quelle.art === 'gebunden' ? w.quelle.sprung?.hash : null);
+    expect(weg(nachher)).toBe(weg(vorher));
+    expect(weg(vorher)).toBe(`#/anlage/${FIXTURE_IDS.an1}/modell?komponente=c0000000-0000-4000-8000-000000000005`);
     expect(nachher.ort).toEqual(vorher.ort);
     expect(nachher.stellung).toBe(vorher.stellung);
   });

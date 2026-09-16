@@ -20,7 +20,13 @@ import {
   WERT_NICHT_MEHR_GESPEICHERT,
   ZEITRAEUME,
   ZEITRAUM_UNLESBAR_OHNE_GRUND,
+  COCKPIT_WEG_TITEL,
   auskunft,
+  cockpitWeg,
+  herkunftsZeile,
+  kennzeichenImText,
+  kennzeichenSprung,
+  periodeSchluessel,
   vergleichOhnePassende,
   kacheln,
   passend,
@@ -347,5 +353,109 @@ describe('UEMS AP-13 IP-6 · Auskunft statt Fehlermeldung (Z2, Z3, §5.8) und di
       'Diese Anlage hat keinen Hauptzähler in der elektrischen Stellung — Stellung eintragen.',
     );
     expect(OHNE_HAUPTZAEHLER.titel).toBe('Kein Hauptzähler');
+  });
+});
+
+/**
+ * UEMS AP-13 IP-11 — die Sprünge der Kette (E2, E10, D1–D4). Der Befund, mit dem AP-13 anfing, lautete:
+ * „Die Kette bricht am Text ab.“ Herkunft, Nachweis und Quelle waren Zeichenketten. Hier wird gemessen,
+ * dass sie Kanten bekommen haben — und dass jede Kante ihre PERIODE und ihre VERSION mitnimmt: ein Sprung,
+ * der beides verliert, führt zu einer anderen Zahl als der angeklickten, und das ist schlimmer als kein Sprung.
+ */
+describe('IP-11 · Herkunfts-Zeilen als Sprünge (O10, O18)', () => {
+  const O10 = fall('O10');
+
+  it('O10: die Herkunfts-Zeile springt zu MS-12 › Werte › Oktober mit Version 2 — genau der Hash des Falls', () => {
+    const satz = `Menge 6.040 kWh (MS-12, korrigiert (Version 2)) je 41.000 Stück (BZ-6, Fassung 1)`;
+    const stuecke = herkunftsZeile(satz, (k) => kennzeichenSprung(k, { periode: '2026-10', version: k === 'MS-12' ? 2 : null }));
+    const sprung = stuecke.find((s) => s.text === 'MS-12');
+    expect(sprung?.sprung?.hash).toBe(O10.gegeben.sprungziel);
+    expect(O10.erwartet.herkunft_sprung).toBe(`MS-12 → ${sprung?.sprung?.hash}`);
+    // Zusammengefügt ist die Zeile Zeichen für Zeichen der Satz von vorher — kein zweiter Wortlaut (D1).
+    expect(stuecke.map((s) => s.text).join('')).toBe(satz);
+  });
+
+  it('O10: „41 000 Stück (BZ-6)“ bleibt Text — AP-09 hat keine Kundenfläche, und keine wird erfunden (D3)', () => {
+    expect(O10.erwartet.bz6_ist_sprung).toBe(false);
+    expect(kennzeichenSprung('BZ-6', { periode: '2026-10' })).toBeNull();
+    const stuecke = herkunftsZeile('je 41.000 Stück (BZ-6, Fassung 1)', (k) => kennzeichenSprung(k, {}));
+    expect(stuecke).toEqual([{ text: 'je 41.000 Stück (BZ-6, Fassung 1)', sprung: null }]);
+    // Ereignis und Box ebenso — ihr Paket hat (noch) keine Seite.
+    expect(kennzeichenImText('Box VP-DEMO-0001 · Ereignis EV-7 · BZ-6')).toEqual([]);
+  });
+
+  it('D2 · jeder Sprung trägt Periode UND Version — ohne Periode landet der Kunde bei einer anderen Zahl', () => {
+    expect(kennzeichenSprung('MS-12', { periode: '2026-10', version: 2 })?.hash).toBe(
+      '#/portfolio/messstellen/MS-12?periode=2026-10&version=2',
+    );
+    // Die Version fragt nur die Karte; ohne sie zeigt die Seite die neueste (IP-3) — aber die Periode fehlt nie.
+    expect(kennzeichenSprung('MS-12', { periode: '2026-10' })?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-10');
+    expect(kennzeichenSprung('MS-12', { periode: '2026-W44', version: 1 })?.hash).toBe(
+      '#/portfolio/messstellen/MS-12?periode=2026-W44&version=1',
+    );
+    // Im Standort-Bereich öffnet dieselbe Messstelle ihre Seite dort, mit denselben Angaben.
+    expect(kennzeichenSprung('MS-12', { periode: '2026', standortId: FIXTURE_IDS.st1 })?.hash).toBe(
+      `#/standort/${FIXTURE_IDS.st1}/messstellen/MS-12?periode=2026`,
+    );
+    // Eine Kennzahl hat keine Version im Hash — ihre Seite wählt die Periode selbst (AP-11 IP-13).
+    expect(kennzeichenSprung('KZ-0001', { periode: '2026-10', version: 2 })?.hash).toBe('#/portfolio/kennzahlen/KZ-0001');
+  });
+
+  it('D1 · ein Kennzeichen wird nur als GANZES Wort erkannt — „MS-1“ ist nicht „MS-12“', () => {
+    expect(kennzeichenImText('MS-12 und MS-1 und MS-12-alt')).toEqual(['MS-12', 'MS-1']);
+    // Der Treffer endet vor dem Bindestrich: „MS-12-alt“ ist kein MS-12, sondern gar kein Kennzeichen.
+    const stuecke = herkunftsZeile('MS-12-alt', (k) => kennzeichenSprung(k, {}));
+    expect(stuecke).toEqual([{ text: 'MS-12-alt', sprung: null }]);
+    // Ein Text ohne Treffer bleibt EIN Stück; ein leerer Text keines.
+    expect(herkunftsZeile('ohne Kennzeichen', (k) => kennzeichenSprung(k, {}))).toHaveLength(1);
+    expect(herkunftsZeile('', (k) => kennzeichenSprung(k, {}))).toEqual([]);
+  });
+
+  it('D1 · jedes Sprungziel führt auf die Seite seines Objekts — und jeder Hash liest sich zurück', () => {
+    const ziele = [
+      sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2026-10', version: 2 }),
+      sprungziel({ art: 'kennzahl', id: 'KZ-0001' }),
+      sprungziel({ art: 'bericht', kennung: 'BR-2026-0001' }),
+      sprungziel({ art: 'kostenstelle', kennzeichen: '4200', periode: 'monat', am: '2026-10-01' }),
+      sprungziel({ art: 'geraet', siteId: FIXTURE_IDS.an1, ref: 'edge-k7m2xqp', geraetId: 'inverter' }),
+    ];
+    for (const z of ziele) expect(z && parseRoute(z.hash)).toEqual(z?.route);
+    expect(ziele.map((z) => z?.hash)).toEqual([
+      '#/portfolio/messstellen/MS-12?periode=2026-10&version=2',
+      '#/portfolio/kennzahlen/KZ-0001',
+      '#/portfolio/berichte/BR-2026-0001',
+      '#/portfolio/messstellen?reiter=kostenstellen&periode=monat&am=2026-10-01&kostenstelle=4200',
+      `#/anlage/${FIXTURE_IDS.an1}/geraet/edge-k7m2xqp/inverter`,
+    ]);
+    // D3: Bezugsgröße, Ereignis, Box und Gebäude haben keine Seite je Objekt — sie bleiben Text.
+    for (const art of ['bezugsgroesse', 'ereignis', 'box', 'gebaeude'] as const) {
+      expect(sprungziel({ art, kennzeichen: 'X-1' })).toBeNull();
+    }
+  });
+
+  it('D2 · der Periodenschlüssel schneidet den Tag der Fläche — Tag, Monat, Jahr', () => {
+    expect(periodeSchluessel('tag', '2026-11-03')).toBe('2026-11-03');
+    expect(periodeSchluessel('monat', '2026-10-01')).toBe('2026-10');
+    expect(periodeSchluessel('jahr', '2026-01-01')).toBe('2026');
+  });
+
+  it('O18 · E2 = A: das Cockpit bekommt EINEN Weg mit der Zählung des Registers — und tauscht keine Zahl', () => {
+    const O18 = fall('O18');
+    const weg = cockpitWeg(FIXTURE_IDS.an1, O18.gegeben.register_an1);
+    expect(weg?.titel).toBe(COCKPIT_WEG_TITEL);
+    // Die Zählung steht WÖRTLICH so da, wie das Register sie spricht — im Portal wird nichts gezählt.
+    expect(weg?.text).toBe(O18.gegeben.register_an1.text);
+    expect(weg?.sprung.hash).toBe(`#/portfolio/messstellen?anlage=${FIXTURE_IDS.an1}`);
+    expect(weg && parseRoute(weg.sprung.hash)).toEqual(weg?.sprung.route);
+    // Der erwartete Satz des Falls nennt Titel und Zählung zusammen — beides kommt aus derselben Antwort.
+    expect(O18.erwartet.neuer_weg.startsWith(`${COCKPIT_WEG_TITEL} · 9 von 9`)).toBe(true);
+    expect(O18.erwartet.cockpit_zahl_getauscht).toBe(false);
+    expect(O18.erwartet.abgleich_warnung).toBe(false);
+  });
+
+  it('O18 · eine Anlage ohne Messstelle bekommt keinen Weg — der Betriebskunde sieht nichts Neues', () => {
+    expect(cockpitWeg(FIXTURE_IDS.an1, { gesamt: 0, text: 'Noch keine Messstellen' })).toBeNull();
+    expect(cockpitWeg(FIXTURE_IDS.an1, null)).toBeNull();
+    expect(fall('O18').erwartet.betriebskunde_neu).toBe('nichts');
   });
 });

@@ -162,8 +162,49 @@ function werteAblehnung(kz: string, p: URLSearchParams): { status: number; body:
   return null;
 }
 
+/**
+ * UEMS AP-13 IP-11 (D4): dieselbe Antwort, aber mit der Herkunfts-Hülle einer BERECHNETEN Zahl
+ * (`bilanzwert-herkunft`, AP-10 IP-12). Die Route trägt sie seit AP-10; gelesen hat sie bis IP-11 niemand.
+ */
+const alsBerechnet = (a: MessstelleWerte): MessstelleWerte => ({
+  ...a,
+  werte: a.werte.map((w, i) =>
+    i > 0
+      ? w
+      : {
+          ...w,
+          herkunft: {
+            satz: {
+              art: 'berechnet',
+              messstelle: 'MS-09',
+              periode: { art: 'monat', schluessel: '2026-10' },
+              formel_typ: 'gewichtete_summe',
+              formel_fassung: 2,
+              periode_ende: '2026-10-31T23:59:59+01:00',
+              berechnet_am: '2026-11-01T00:20:00+01:00',
+              version: 2,
+              ausloeser: 'correction MS-12 2026-10 Version 2',
+              verteilung: null,
+              eingaenge: [
+                { messstelle: 'MS-12', anteil: 'gesamt', menge: '6040', zustand: 'vollständig', abdeckung_prozent: 100, version: 2, kennzeichen: ['korrigiert (Version 2)'] },
+                { messstelle: 'MS-13', anteil: 'gesamt', menge: '2000', zustand: 'unvollständig', abdeckung_prozent: 80, version: 1, kennzeichen: [] },
+              ],
+              menge: '8040',
+              zustand: 'unvollständig',
+              abdeckung_prozent: 80,
+              kennzeichen: [],
+            },
+            fehlt: [],
+          },
+        },
+  ),
+});
+
 /** `angelegt`: MS-08 am 01.10.2026, eben angelegt (heute = Stichtag der Einführung); `heute`: der Stichtag des Registers. */
-async function cloud(page: Page, { angelegt = false, heute = null as string | null, f8 = false } = {}): Promise<Gesendet[]> {
+async function cloud(
+  page: Page,
+  { angelegt = false, heute = null as string | null, f8 = false, berechnet = false } = {},
+): Promise<Gesendet[]> {
   const gesendet: Gesendet[] = [];
   let gespeichert = false;
   await page.route('**/api/v1/**', async (route) => {
@@ -219,7 +260,8 @@ async function cloud(page: Page, { angelegt = false, heute = null as string | nu
       const ablehnung = werteAblehnung(decodeURIComponent(werte[1]), url.searchParams);
       if (ablehnung) return route.fulfill(json(ablehnung.body, ablehnung.status));
       const antwort = werteAntwort(decodeURIComponent(werte[1]), url.searchParams, heute ?? SEITE_HEUTE, f8);
-      return route.fulfill(antwort ? json(antwort) : json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
+      if (!antwort) return route.fulfill(json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
+      return route.fulfill(json(berechnet && url.searchParams.get('raster') === 'monat' ? alsBerechnet(antwort) : antwort));
     }
     if (/^\/api\/v1\/messstellen\/[^/]+$/.test(pfad) && methode === 'GET') return route.fulfill(json(messstelle));
     return route.fulfill(json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
@@ -683,6 +725,45 @@ test('O16 · MS-16 im Oktober 2026 (W5): „—“ mit dem Satz der Route, darun
   await page.mouse.move(0, 0);
   await messeUndFotografiere(page, breite, 'o16-ms16-seite');
   await elementBild(karte, breite, 'o16-ms16-karte');
+});
+
+/**
+ * UEMS AP-13 IP-11 — die Sprünge der Kette an der Messstellen-Welt: D4 (die Karte einer BERECHNETEN Zahl
+ * spricht ihre Herkunft und zeigt die Eingänge als Sprünge) und D1 (die Quelle im Register führt zur
+ * Komponente auf der Geräte-Seite ihrer Anlage).
+ */
+test('D4 · die Herkunft einer berechneten Zahl: Formel, Zeitpunkt, Version — und jeder Eingang ein Sprung mit seiner Version', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-11-05', berechnet: true });
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms16}?periode=2026-10`);
+
+  const herkunft = page.getByTestId('werte').getByTestId('werte-herkunft');
+  await expect(herkunft).toBeVisible();
+  await herkunft.locator('summary').click();
+  await expect(herkunft).toContainText('berechnet (Summe) · Formel: Fassung 2');
+  await expect(herkunft).toContainText('berechnet am 01.11.2026 00:20');
+  const spruenge = herkunft.locator('a');
+  await expect(spruenge).toHaveCount(2);
+  // D2: Periode der Karte, Version DES EINGANGS — nie die der Zeile.
+  await expect(spruenge.nth(0)).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=2');
+  await expect(spruenge.nth(1)).toHaveAttribute('href', '#/portfolio/messstellen/MS-13?periode=2026-10&version=1');
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'ip11-d4-herkunft');
+  await elementBild(herkunft, breite, 'ip11-d4-herkunft-block');
+});
+
+test('D1 · die Quelle im Register führt zur Komponente auf der Geräte-Seite ihrer Anlage', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  test.skip(breite !== 1440, 'Die Quelle-Spalte steht in der Tabelle des Rechners; am Telefon trägt die Karte sie nicht.');
+  await page.setViewportSize({ width: breite, height: 900 });
+  await cloud(page);
+  await page.goto('/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen');
+  const zeile = page.locator('.vp-ms-tabelle tbody tr').filter({ has: page.locator('td:first-child', { hasText: /^MS-06$/ }) });
+  const quelle = zeile.locator('a.vp-ms-quelle-sprung');
+  await expect(quelle).toHaveText('Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a');
+  await expect(quelle).toHaveAttribute('href', /^#\/anlage\/[0-9a-f-]+\/modell\?komponente=[0-9a-f-]+$/);
+  await messeUndFotografiere(page, breite, 'ip11-d1-quelle');
 });
 
 test('Z2 · gestellt: die Route lehnt den 24.10.2026 ab (400 `nicht_im_raster`) — der Satz des Grundes ohne „Erneut versuchen“; die Zeit-Leiste bleibt der Weg', async ({ page }, info) => {

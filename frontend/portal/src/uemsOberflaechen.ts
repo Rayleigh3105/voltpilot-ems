@@ -9,7 +9,9 @@
  *  2. die KACHELN einer Ebene aus dem Lesemodell (AP-01 E4, O17) — über
  *     `ebenenBereiche`, nie aus einer festen Liste; eine Kachel nur mit Seite;
  *  3. das SPRUNGZIEL einer Herkunfts-Zeile (E10, D1–D3) — mit Periode und
- *     Version im Hash; ein Objekt ohne Seite bleibt Text (`null`);
+ *     Version im Hash; ein Objekt ohne Seite bleibt Text (`null`); dazu seit
+ *     IP-11 die ZEILE selbst in Stücken (`herkunftsZeile`, Kennzeichen-Erkennung
+ *     MS-/KZ-) und der EINE Weg des Anlagen-Cockpits (`cockpitWeg`, E2 = A);
  *  4. das Raster des VERLAUFS je Zeitraum (E5, V1) — das der Route, nie summiert;
  *  5. den ZONE-SATZ im Kopf jeder Fläche (E12, V7) — aus `zeitzone` und
  *     `zeitzone_herkunft` der Antwort, nie aus dem Browser;
@@ -35,7 +37,7 @@ import {
   type EbenenOrt,
   type EbenenSeiten,
 } from './ebenenNav';
-import { UEMS_HAUPTZAEHLER } from './glossar';
+import { UEMS_HAUPTZAEHLER, UEMS_MESSSTELLE } from './glossar';
 import { berichtRoute, hashForRoute, kennzahlRoute, messstelleRoute, type Route } from './nav';
 import { zahlText } from './uemsEreignis';
 
@@ -164,6 +166,139 @@ export function sprungziel(o: SprungObjekt): Sprung | null {
   }
 }
 
+// ------------------------------------------------- 3b · Herkunfts-Zeilen als Sprünge (IP-11, D1/D2/D3)
+
+/**
+ * Ein Stück einer Herkunfts-Zeile: der Text, und — wo sein Objekt eine Seite hat — der Sprung dorthin
+ * (D1). Die Zeile bleibt der Satz, der sie war; sie bekommt keine zweite Form, nur Kanten.
+ */
+export interface Stueck {
+  text: string;
+  sprung: Sprung | null;
+}
+
+/**
+ * Was ein Sprung aus einer Herkunfts-Zeile mitnimmt (D2): ohne Periode und Version landet der Kunde
+ * bei einer ANDEREN Zahl als der, auf die er geklickt hat. Der Rahmen ist die Periode der Zeile, nicht
+ * die der gerade offenen Seite.
+ */
+export interface Rahmen {
+  periode?: string | null;
+  version?: number | null;
+  standortId?: string | null;
+}
+
+/**
+ * Die Kennzeichen-Familien, die ein Sprung aus einem TEXT erkennt (§8, IP-11: „bis dahin
+ * Kennzeichen-Erkennung MS-/KZ- im Text“). `BZ-` (Bezugsgröße), Ereignis und Box stehen bewusst NICHT
+ * hier — ihr Paket hat keine Kundenfläche, also bleibt ihre Zeile Text (D3).
+ */
+export const KENNZEICHEN_ART: Readonly<Record<string, 'messstelle' | 'kennzahl'>> = { MS: 'messstelle', KZ: 'kennzahl' };
+
+/** Ein Kennzeichen endet, wo kein Buchstabe, keine Ziffer und kein Bindestrich mehr steht. */
+const teilEinesKennzeichens = (z: string | undefined): boolean => z !== undefined && /[0-9A-Za-z-]/.test(z);
+
+const KENNZEICHEN_MUSTER = new RegExp(`(?:${Object.keys(KENNZEICHEN_ART).join('|')})-[0-9A-Za-z]+`, 'g');
+
+/**
+ * Die Kennzeichen, die in einem Text stehen, in der Reihenfolge ihres ersten Auftretens — als GANZES
+ * Wort: „MS-1“ in „MS-12“ ist kein Treffer, und „MS-12-alt“ ist nicht MS-12.
+ */
+export function kennzeichenImText(text: string): string[] {
+  const out: string[] = [];
+  for (const t of treffer(text)) if (!out.includes(t.kennzeichen)) out.push(t.kennzeichen);
+  return out;
+}
+
+function treffer(text: string): { kennzeichen: string; von: number; bis: number }[] {
+  const out: { kennzeichen: string; von: number; bis: number }[] = [];
+  KENNZEICHEN_MUSTER.lastIndex = 0;
+  for (let m = KENNZEICHEN_MUSTER.exec(text); m !== null; m = KENNZEICHEN_MUSTER.exec(text)) {
+    const von = m.index;
+    const bis = von + m[0].length;
+    if (teilEinesKennzeichens(text[von - 1]) || teilEinesKennzeichens(text[bis])) continue;
+    out.push({ kennzeichen: m[0], von, bis });
+  }
+  return out;
+}
+
+/**
+ * Der Sprung eines Kennzeichens: `MS-…` öffnet die Messstellen-Seite im Abschnitt „Werte“ mit Periode
+ * und Version, `KZ-…` die Kennzahl-Seite. Jedes andere Kennzeichen bleibt Text (`null`, D3).
+ */
+export function kennzeichenSprung(kennzeichen: string, rahmen: Rahmen = {}): Sprung | null {
+  const art = KENNZEICHEN_ART[kennzeichen.split('-')[0] ?? ''];
+  if (art === 'messstelle') {
+    return sprungziel({
+      art: 'messstelle',
+      id: kennzeichen,
+      standortId: rahmen.standortId ?? null,
+      periode: rahmen.periode ?? null,
+      version: rahmen.version ?? null,
+    });
+  }
+  if (art === 'kennzahl') return sprungziel({ art: 'kennzahl', id: kennzeichen });
+  return null;
+}
+
+/**
+ * Eine Herkunfts-Zeile in Stücke schneiden: jedes Kennzeichen, dessen Objekt eine Seite hat, wird ein
+ * Sprung (D1), alles dazwischen bleibt Text (D3). `ziel` entscheidet je Kennzeichen — die Flächen geben
+ * dort, was die Antwort STRUKTURIERT sagt (Art, Periode, Version des Eingangs), und fallen auf
+ * {@link kennzeichenSprung} zurück, wo sie nur den Satz haben.
+ *
+ * Ein Text ohne Treffer ergibt genau EIN Stück; ein leerer Text keines.
+ */
+export function herkunftsZeile(text: string, ziel: (kennzeichen: string) => Sprung | null): Stueck[] {
+  const out: Stueck[] = [];
+  let gelesen = 0;
+  for (const t of treffer(text)) {
+    const s = ziel(t.kennzeichen);
+    if (!s) continue;
+    if (t.von > gelesen) out.push({ text: text.slice(gelesen, t.von), sprung: null });
+    out.push({ text: t.kennzeichen, sprung: s });
+    gelesen = t.bis;
+  }
+  if (gelesen < text.length) out.push({ text: text.slice(gelesen), sprung: null });
+  return out;
+}
+
+/** Die bequeme Form für eine Zeile, die nur ihren Satz hat: jedes MS-/KZ-Kennzeichen springt im Rahmen. */
+export const herkunftsZeileImRahmen = (text: string, rahmen: Rahmen = {}): Stueck[] =>
+  herkunftsZeile(text, (k) => kennzeichenSprung(k, rahmen));
+
+// ------------------------------------------- 3c · Der EINE Weg aus dem Cockpit (IP-11, E2 = A, O18)
+
+/** „Messstellen dieser Anlage“ — der Titel des Wegs unter der Bühne des Anlagen-Cockpits. */
+export const COCKPIT_WEG_TITEL = `${UEMS_MESSSTELLE}n dieser Anlage`;
+
+export interface CockpitWeg {
+  titel: string;
+  /** Die Zählung des Registers WÖRTLICH („9 von 9 Messstellen liefern Daten“) — im Portal wird nichts gezählt. */
+  text: string;
+  sprung: Sprung;
+}
+
+/**
+ * Was das Anlagen-Cockpit von AP-13 bekommt — und NUR das (E2 = A, Q4): EINEN Weg zu den Messstellen
+ * dieser Anlage, mit der Zählung des Registers und dem Sprung in genau dieses gefilterte Register.
+ *
+ * **Keine Zahl des Cockpits wird getauscht.** „Netzbezug heute 1 212 kWh“ (Rollup der Box) und
+ * „MS-01 1 209 kWh“ sind zwei Abtastungen desselben Zählers (AP-07 W11), kein Fehler und kein Abgleich;
+ * die Umstellung der Cockpit-Leiste auf Messstellen-Zahlen ist der Bestätigungsschritt in AP-14.
+ *
+ * `null` = kein Weg: eine Anlage ohne Messstelle bekommt keinen (O18 — ein reiner Betriebskunde sieht
+ * keine Kachel, keinen Baustein und kein neues Wort).
+ */
+export function cockpitWeg(siteId: string, aggregat: { gesamt: number; text: string } | null): CockpitWeg | null {
+  if (!aggregat || aggregat.gesamt === 0) return null;
+  return {
+    titel: COCKPIT_WEG_TITEL,
+    text: aggregat.text,
+    sprung: sprung({ page: 'portfolio-messstellen', siteId: null, sub: null }, { anlage: siteId }),
+  };
+}
+
 // ------------------------------------------------------------------ 4 · Zeitraum → Raster (E5)
 
 /** Die vier Zeiträume der Zeit-Leiste — kein freies Von–Bis im ersten Ausbau (V1). */
@@ -180,6 +315,15 @@ export const VERLAUF_RASTER: Readonly<Record<Zeitraum, MessstelleWerteRaster>> =
 };
 
 export const verlaufRaster = (zeitraum: Zeitraum): MessstelleWerteRaster => VERLAUF_RASTER[zeitraum];
+
+/**
+ * Der Schlüssel, unter dem die Werte-Fläche eine Periode führt (`periode=` im Hash, {@link Rahmen}):
+ * ein Tag als `2026-11-03`, ein Monat als `2026-11`, ein Jahr als `2026`. `am` ist der KALENDERTAG, mit
+ * dem die Bilanz-, Kostenstellen- und Berichtsflächen ihre Periode benennen — der Schlüssel schneidet ihn
+ * nur; gerechnet wird hier nichts.
+ */
+export const periodeSchluessel = (art: 'tag' | 'monat' | 'jahr', am: string): string =>
+  art === 'jahr' ? am.slice(0, 4) : art === 'monat' ? am.slice(0, 7) : am;
 
 // ------------------------------------------------------------------ 5 · Zone-Satz (E12)
 

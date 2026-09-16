@@ -85,6 +85,7 @@ import {
   AusgeblendetZeile,
 } from '../components/CockpitAnpassen';
 import { useAnlageSurface } from '../useAnlageSurface';
+import { CockpitMessstellenWeg } from '../components/CockpitMessstellenWeg';
 import type { AnlageSurface } from '../surface';
 import { bausteineOhneGeld, unterseiteOhneGeld } from '../anlageGeld';
 import { anlageDecision, hasBlock } from '../cockpit';
@@ -208,6 +209,12 @@ export interface AnlagenPageProps {
    * KEINEN eigenen Abruf brauchen, um zu wissen, ob es die Erlöse-Welt gibt.
    */
   surface?: AnlageSurface | null;
+  /**
+   * UEMS AP-13 IP-11 (E2 = A, O18): misst der Standort DIESER Anlage? Nur dann bekommt das Cockpit den
+   * EINEN Weg „Messstellen dieser Anlage“ — und nur dann fragt es das Register überhaupt. Ein reiner
+   * Betriebskunde sieht und lädt nichts Neues. Die Zahlen des Cockpits ändert der Weg NIE.
+   */
+  misstHier?: boolean;
 }
 
 /**
@@ -671,6 +678,7 @@ export function AnlageSeite({
   onOpenSub,
   onReload,
   onHealthFacts,
+  misstHier = false,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -2038,8 +2046,19 @@ export function AnlageSeite({
               );
             }
             if (node == null) return null;
-            return <Fragment key={id}>{node}</Fragment>;
+            return (
+              <Fragment key={id}>
+                {node}
+                {/* AP-13 IP-11 (E2 = A, O18): der EINE neue Weg steht UNTER DER BÜHNE — keine zweite
+                    Leiste, keine Kachel und kein getauschter Wert. */}
+                {id === 'energiefluss' && <CockpitMessstellenWeg siteId={site.id} misst={misstHier} />}
+              </Fragment>
+            );
           })}
+          {/* Hat der Kunde die Bühne ausgeblendet, steht der Weg am Fuß des Stapels statt gar nicht. */}
+          {!layout.resolved.order.includes('energiefluss') && (
+            <CockpitMessstellenWeg siteId={site.id} misst={misstHier} />
+          )}
 
           {/* „Ausgeblendet (n)" bleibt erreichbar (§3.4) - ausblenden darf
               kein Weg ohne Rückweg sein. Am Telefon steht die Reihe schon in

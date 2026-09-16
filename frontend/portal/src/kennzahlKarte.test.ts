@@ -191,6 +191,37 @@ describe('Herkunft, Berechnung, Stammdaten und Kopf', () => {
     expect(KK.herkunftAnzeige(K11, K11_TAG)?.eingaenge).toContain(`je 4,9667${NB}h (BZ-5, unvollständig`);
   });
 
+  /**
+   * UEMS AP-13 IP-11 (O10, D1/D2): die Herkunfts-Zeile der Kennzahl ist ein SPRUNG. K7 ist genau der
+   * Referenzfall — KZ-0001 Oktober Version 2 nach der Korrektur K-2026-0007; die Zeile muss auf MS-12 ›
+   * Werte › Oktober mit `version=2` führen, und BZ-6 muss Text bleiben.
+   */
+  it('O10: die Herkunfts-Zeile von K7 springt zu MS-12 mit Periode Oktober UND Version 2; BZ-6 bleibt Text', () => {
+    const h = KK.herkunftAnzeige(K7, K7_OKTOBER);
+    const ms = h?.eingaengeStuecke.find((t) => t.text === 'MS-12');
+    expect(ms?.sprung?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-10&version=2');
+    expect(h?.eingaengeStuecke.some((t) => t.text === 'BZ-6')).toBe(false);
+    expect(h?.eingaengeStuecke.filter((t) => t.sprung !== null)).toHaveLength(1);
+    // Zusammengefügt ist die Zeile Zeichen für Zeichen der Satz von vorher — kein zweiter Wortlaut.
+    expect(h?.eingaengeStuecke.map((t) => t.text).join('')).toBe(h?.eingaenge);
+  });
+
+  it('IP-11: K1 trägt Version 1 an derselben Messstelle — der Sprung nennt die Version SEINES Eingangs', () => {
+    const h = KK.herkunftAnzeige(K1, K1_OKTOBER);
+    expect(h?.eingaengeStuecke.find((t) => t.text === 'MS-12')?.sprung?.hash).toBe(
+      '#/portfolio/messstellen/MS-12?periode=2026-10&version=1',
+    );
+  });
+
+  it('IP-11: die Paare einer Zusammenfassung springen auf ihre Kennzahl-Seiten (K3)', () => {
+    const h = KK.herkunftAnzeige(K3, K3_OKTOBER);
+    expect(h?.paareStuecke.map((zeile) => zeile.find((t) => t.sprung)?.sprung?.hash)).toEqual([
+      '#/portfolio/kennzahlen/KZ-0001',
+      '#/portfolio/kennzahlen/KZ-0002',
+    ]);
+    expect(h?.paareStuecke.map((zeile) => zeile.map((t) => t.text).join(''))).toEqual(h?.paare);
+  });
+
   it('K3: eine Zusammenfassung zeigt die Paare als Zeilen; K7: der Anlass steht ab Version 2 dabei', () => {
     const h = KK.herkunftAnzeige(K3, K3_OKTOBER);
     expect(h?.eingaenge).toBeNull();
@@ -205,7 +236,15 @@ describe('Herkunft, Berechnung, Stammdaten und Kopf', () => {
 
   it('eine Herkunft ohne Satz sagt, was fehlt — nie eine halbe', () => {
     const jahr = { ...K1_OKTOBER, herkunft: { satz: null, fehlt: ['eingaenge' as const] } };
-    expect(KK.herkunftAnzeige(K1, jahr)).toEqual({ eingaenge: null, paare: [], gebildet: null, fehlt: 'Nicht gespeichert: Eingänge.' });
+    expect(KK.herkunftAnzeige(K1, jahr)).toEqual({
+      eingaenge: null,
+      paare: [],
+      // AP-13 IP-11: ohne Satz gibt es auch keine Sprünge — die Stücke sind leer, nicht erfunden.
+      eingaengeStuecke: [],
+      paareStuecke: [],
+      gebildet: null,
+      fehlt: 'Nicht gespeichert: Eingänge.',
+    });
   });
 
   it('Kopf: „KZ-0001 · Stromeinsatz Montage je Stück — Halle 2 · Gebäude Halle 2 · verantwortlich Ines Kaltenbach“', () => {

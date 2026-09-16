@@ -25,6 +25,7 @@ import {
   filterOptionen,
   kopfZeile,
   leerzustand,
+  anlageAus,
   ortAus,
   ortSchluessel,
   registerAnfrage,
@@ -242,8 +243,13 @@ function RegisterFlaeche({
   const isPhone = useIsPhone();
   const [stichtag, setStichtag] = useState<string | null>(null);
   const [heute, setHeute] = useState<string | null>(null);
-  // AP-13 IP-10: der Sprung der Gebäude-Karte bringt seinen Ort als Kurzzeichen mit (`…/messstellen?ort=G-2`).
-  const [filter, setFilter] = useState<RegisterFilter>(() => ({ ...OHNE_FILTER, ort: ortAus(window.location.hash) }));
+  // AP-13 IP-10/IP-11: die Adresse bringt den Filter mit — `?ort=` aus der Gebäude-Karte, `?anlage=` aus
+  // dem EINEN Weg des Anlagen-Cockpits (O18). Beide sind Lesezeichen-fähig.
+  const [filter, setFilter] = useState<RegisterFilter>(() => ({
+    ...OHNE_FILTER,
+    ort: ortAus(window.location.hash),
+    anlage: anlageAus(window.location.hash),
+  }));
   const ortAufgeloest = useRef(false);
   const [stand, setStand] = useState<{ schluessel: string; basis: MessstellenRegister; liste: MessstellenRegister } | null>(
     null,
@@ -601,7 +607,15 @@ function Quelle({ w }: { w: ZeileWoerter }) {
   if (q.art !== 'gebunden') return <span className="vp-ms-block vp-ms-ohne">{q.text}</span>;
   return (
     <>
-      <span className="vp-ms-block">{q.geraet}</span>
+      {/* AP-13 IP-11 (D1): die Quelle führt zur Komponente auf der Geräte-Seite ihrer Anlage — ohne
+          Stellung an dem Tag kennt die Zeile keine Anlage, dann bleibt sie Text. */}
+      {q.sprung ? (
+        <a className="vp-ms-block vp-ms-quelle-sprung" href={q.sprung.hash}>
+          {q.geraet}
+        </a>
+      ) : (
+        <span className="vp-ms-block">{q.geraet}</span>
+      )}
       <span className="vp-ms-neben">{q.messwert}</span>
       <span className="vp-ms-neben">{[q.seit, q.davor, q.vergleich].filter(Boolean).join(' · ')}</span>
     </>

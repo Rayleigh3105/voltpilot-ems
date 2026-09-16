@@ -29,6 +29,7 @@ import {
   ms16Oktober,
   ms16OktoberTage,
   tagesgrenzen,
+  ZONE,
 } from './test/werteKarteFixtures';
 import { ahrenbergRegister } from './test/messstellenRegisterFixtures';
 import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
@@ -50,6 +51,7 @@ import {
   ohneQuelleWeg,
   quellenNamen,
   zeitenKopf,
+  berechneteHerkunft,
 } from './uemsWerteKarte';
 import { f21Tag, f21TagWert } from './test/wertVersionenFixtures';
 
@@ -712,5 +714,67 @@ describe('uemsWerteKarte — V8 · Nebengrößen: der letzte Wert aus dem Regist
     );
     expect(nebengroessen({ nebenwerte: [] }, haupt)).toBeNull();
     expect(nebengroessen(null, haupt)).toBeNull();
+  });
+});
+
+/**
+ * UEMS AP-13 IP-11 (D4) — die Karte einer BERECHNETEN Messstelle spricht ihre Herkunft. Bisher trug die
+ * Route die Hülle `{satz, fehlt}` (AP-10 IP-12), und die Fläche las sie gar nicht: die Kette brach am Text
+ * ab. Jetzt stehen Formel, Zeitpunkt und Version unter der Karte, und jeder Eingang ist ein Sprung MIT
+ * dieser Periode und SEINER Version.
+ */
+describe('uemsWerteKarte — die Herkunft einer berechneten Zahl (UEMS AP-13 IP-11, D4)', () => {
+  const satz = {
+    art: 'berechnet',
+    messstelle: 'MS-09',
+    periode: { art: 'monat', schluessel: '2026-10' },
+    formel_typ: 'gewichtete_summe',
+    formel_fassung: 2,
+    periode_ende: '2026-10-31T23:59:59+01:00',
+    berechnet_am: '2026-11-01T00:20:00+01:00',
+    version: 2,
+    ausloeser: 'correction MS-12 2026-10 Version 2',
+    verteilung: null,
+    eingaenge: [
+      { messstelle: 'MS-12', anteil: 'gesamt', menge: '6040', zustand: 'vollständig', abdeckung_prozent: 100, version: 2, kennzeichen: ['korrigiert (Version 2)'] },
+      { messstelle: 'MS-13', anteil: 'gesamt', menge: '2000', zustand: 'unvollständig', abdeckung_prozent: 80, version: 1, kennzeichen: [] },
+    ],
+    menge: '8040',
+    zustand: 'unvollständig',
+    abdeckung_prozent: 80,
+    kennzeichen: [],
+  };
+
+  it('spricht Formel, Zeitpunkt und Version — und je Eingang eine Zeile mit Kennzeichen, Zustand und Version', () => {
+    const h = berechneteHerkunft({ herkunft: { satz, fehlt: [] } }, ZONE, '2026-10');
+    expect(h?.zeilen).toEqual(['berechnet (Summe) · Formel: Fassung 2', 'berechnet am 01.11.2026 00:20', 'Version 2']);
+    expect(h?.eingaenge.map((teile) => teile.map((t) => t.text).join(''))).toEqual([
+      `MS-12${TRENNER}vollständig${TRENNER}Version 2${TRENNER}korrigiert (Version 2)`,
+      `MS-13${TRENNER}unvollständig${TRENNER}Version 1`,
+    ]);
+    expect(h?.fehlt).toBeNull();
+  });
+
+  it('D2 · jeder Eingang springt mit DIESER Periode und SEINER Version — nie mit der Version der Zeile', () => {
+    const h = berechneteHerkunft({ herkunft: { satz, fehlt: [] } }, ZONE, '2026-10');
+    expect(h?.eingaenge.map((teile) => teile.find((t) => t.sprung)?.sprung?.hash)).toEqual([
+      '#/portfolio/messstellen/MS-12?periode=2026-10&version=2',
+      '#/portfolio/messstellen/MS-13?periode=2026-10&version=1',
+    ]);
+  });
+
+  it('D4 · eine halbe Herkunft wird gesagt: „ohne Angabe: …“ statt einer stillen Lücke', () => {
+    const h = berechneteHerkunft({ herkunft: { satz: null, fehlt: ['eingaenge', 'berechnet_am'] } }, ZONE, '2026-10');
+    expect(h).toEqual({ zeilen: [], eingaenge: [], fehlt: 'ohne Angabe: Eingänge, Zeitpunkt der Rechnung.' });
+  });
+
+  it('eine GEMESSENE Zahl trägt keine Hülle — dann steht keine Herkunft da, und es wird keine erfunden', () => {
+    expect(berechneteHerkunft({ herkunft: null }, ZONE, '2026-10')).toBeNull();
+  });
+
+  it('was nicht in der erwarteten Form ankommt, steht nicht da — nie geraten, nie gerechnet', () => {
+    const krumm = { ...satz, formel_typ: null, formel_fassung: null, berechnet_am: 'kein Zeitpunkt', version: null, eingaenge: 'keine Liste' };
+    const h = berechneteHerkunft({ herkunft: { satz: krumm, fehlt: [] } }, ZONE, null);
+    expect(h).toEqual({ zeilen: [], eingaenge: [], fehlt: null });
   });
 });

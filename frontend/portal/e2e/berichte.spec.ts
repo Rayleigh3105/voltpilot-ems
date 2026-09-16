@@ -192,6 +192,13 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await n.zeile.evaluate((e) => e.scrollIntoView({ block: 'center' }));
     await ablegen(page, 'nachweis-ms12-1440', await messe(page));
 
+    // AP-13 IP-11 (K4, O10 Schritt 6): NEBEN „heutigen Wert zeigen“ steht der Weg zur Messstelle — mit dem
+    // ZEITRAUM DES BERICHTS. Der eine Satz ist der des Stands, der andere der von heute; keiner ersetzt den anderen.
+    const sprung = n.zeile.getByTestId('bericht-sprung');
+    await expect(sprung).toHaveText('Zur Messstelle');
+    await expect(sprung).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10');
+    expect(Math.round((await sprung.boundingBox())!.height)).toBeGreaterThanOrEqual(44);
+
     // „heutigen Wert zeigen“: heute steht Version 2 — Nr. 1 bleibt, wie er ist.
     await n.zeile.getByRole('button', { name: 'heutigen Wert zeigen' }).click();
     await expect(n.zeile.getByTestId('bericht-heutiger-wert')).toHaveText(`heute: 6.040${NB}kWh · vollständig · Version 2 · korrigiert (Version 2)`);

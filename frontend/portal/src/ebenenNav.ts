@@ -507,6 +507,17 @@ const MISST: ReadonlySet<FunktionZustand> = new Set<FunktionZustand>(['eingerich
 const misst = (lm: EbenenLesemodell, standortId: string) =>
   MISST.has(lm.funktionen?.standorte.find((f) => f.id === standortId)?.messen.zustand ?? 'kein_objekt');
 
+/**
+ * UEMS AP-13 IP-11 (E2 = A, O18): misst der Standort, an dem DIESE Anlage steht? Nur dann bekommt das
+ * Anlagen-Cockpit den EINEN Weg „Messstellen dieser Anlage“ — und fragt dafür überhaupt eine Route.
+ * Unbekannt ist nie „ja“: ohne Lesemodell und ohne Standort für die Anlage bleibt es beim Cockpit von
+ * gestern (ein reiner Betriebskunde sieht kein neues Wort).
+ */
+export function misstAnlage(lm: EbenenLesemodell, siteId: string): boolean {
+  const standort = (lm.standorte ?? []).find((s) => s.zustand !== 'archiviert' && s.anlagen.some((a) => a.id === siteId));
+  return standort !== undefined && misst(lm, standort.id);
+}
+
 /** Der Standort, wenn es ihn heute gibt und er nicht archiviert ist — sonst hat er keine Bereiche. */
 const lebenderStandort = (lm: EbenenLesemodell, standortId: string) =>
   (lm.standorte ?? []).find((s) => s.id === standortId && s.zustand !== 'archiviert') ?? null;

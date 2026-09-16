@@ -17,6 +17,8 @@ import {
   UEMS_UNTERZAEHLER_VON,
   UEMS_VERGLEICH,
 } from './glossar';
+import { komponenteHash, parseRoute } from './nav';
+import type { Sprung } from './uemsOberflaechen';
 import { bestandSatz, datumText, lokalerTag, type Tag } from './uemsOrtsbaum';
 
 /**
@@ -111,7 +113,20 @@ export interface ZeileWoerter {
   /** `null` = an dem Tag keine Stellung („—“). */
   stellung: string | null;
   quelle:
-    | { art: 'gebunden'; geraet: string; messwert: string; seit: string; davor: string | null; vergleich: string | null }
+    | {
+        art: 'gebunden';
+        geraet: string;
+        messwert: string;
+        seit: string;
+        davor: string | null;
+        vergleich: string | null;
+        /**
+         * AP-13 IP-11 (D1): der Weg von der Quelle zu ihrer KOMPONENTE auf der Anlagen-Seite. Er braucht die
+         * Anlage — die Zeile kennt sie aus ihrer elektrischen Stellung; eine Messstelle ohne Stellung an dem
+         * Tag hat keinen Weg (`null`), und keine Anlage wird dafür geraten.
+         */
+        sprung: Sprung | null;
+      }
     | { art: 'berechnet'; text: string }
     | { art: 'keine_datenquelle'; text: string };
   zustand: string;
@@ -186,6 +201,18 @@ export function geraetText(b: MessstelleRegisterBindung): string {
   return `${name} · ${b.geraet.geraet}${einbau}`;
 }
 
+/**
+ * AP-13 IP-11 (D1): die Quelle einer Zeile führt auf die Komponente ihres Geräts — `#/anlage/{id}/modell?
+ * komponente={entityId}`. Die Anlage steht in der elektrischen Stellung DES TAGES; ohne sie bleibt die
+ * Quelle Text (ein Port, eine Adresse oder ein Gerätename beweist keine Anlage).
+ */
+function komponenteSprung(z: MessstelleRegisterZeile, b: MessstelleRegisterBindung): Sprung | null {
+  const anlage = z.elektrische_stellung?.anlage;
+  if (!anlage || !b.komponente) return null;
+  const hash = komponenteHash(anlage, b.komponente);
+  return { route: parseRoute(hash), hash };
+}
+
 function vergleichText(n: number): string | null {
   if (n <= 0) return null;
   return n === 1 ? `1 ${VERGLEICHSQUELLE}` : `${n} ${VERGLEICHSQUELLE}n`;
@@ -257,6 +284,7 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
             seit: `${UEMS_FUEHREND} seit ${zeitpunktText(q.fuehrend.gueltig_ab, k.zone)}`,
             davor: q.davor ? `davor ${q.davor.geraet.einbau}` : null,
             vergleich: vergleichText(q.vergleichsquellen),
+            sprung: komponenteSprung(z, q.fuehrend),
           }
         : { art: 'keine_datenquelle', text: KEINE_DATENQUELLE };
   const w = z.letzter_wert;
@@ -355,8 +383,17 @@ export const OHNE_FILTER: RegisterFilter = { standort: null, ort: null, anlage: 
  * Gebäude-Karte in GENAU dieses gefilterte Register. In der Adresse steht das Kurzzeichen (lesbar, als Lesezeichen
  * haltbar); die Auswahlliste der Filterleiste führt Orte über ihre ID — {@link ortSchluessel} bringt beides zusammen.
  */
-export const ortAus = (hash: string): string | null =>
-  new URLSearchParams(hash.split('?').slice(1).join('?')).get('ort')?.trim() || null;
+export const ortAus = (hash: string): string | null => filterAus(hash, 'ort');
+
+/**
+ * UEMS AP-13 IP-11 (E2 = A, O18): der Anlagen-Filter aus der Adresse
+ * (`#/portfolio/messstellen?anlage={siteId}`) — damit springt der EINE Weg des Anlagen-Cockpits in genau
+ * die Messstellen dieser Anlage. In der Adresse steht die ID der Anlage, wie die Auswahlliste sie führt.
+ */
+export const anlageAus = (hash: string): string | null => filterAus(hash, 'anlage');
+
+const filterAus = (hash: string, schluessel: string): string | null =>
+  new URLSearchParams(hash.split('?').slice(1).join('?')).get(schluessel)?.trim() || null;
 
 /**
  * Das Kurzzeichen aus der Adresse auf den Schlüssel der Auswahlliste bringen (die ID des Orts). Kennt die Antwort das
