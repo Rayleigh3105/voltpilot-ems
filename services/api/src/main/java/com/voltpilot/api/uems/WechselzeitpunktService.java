@@ -25,8 +25,8 @@ public class WechselzeitpunktService {
     private final GeraetRepository geraete;
     private final ComponentDefinitionRepository definitionen;
     private final TransactionTemplate tx;
-    private Clock uhr = Clock.systemUTC();
-    private Runnable letzterSchritt = () -> { };
+    private volatile Clock uhr = Clock.systemUTC();
+    private volatile Runnable letzterSchritt = () -> { };
 
     public WechselzeitpunktService(JdbcTemplate jdbc, GeraetRepository geraete,
             ComponentDefinitionRepository definitionen, PlatformTransactionManager manager) {

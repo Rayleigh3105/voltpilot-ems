@@ -96,7 +96,8 @@ END $$;
 CREATE OR REPLACE FUNCTION messstelle_quelle_pruefen() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   -- Zusätzliche Trigger prüfen Zukunft, Wechselbeleg und gemeinsame Grenze.
-  IF TG_OP='UPDATE' AND (to_jsonb(NEW)-'gueltig_ab'-'gueltig_bis')=(to_jsonb(OLD)-'gueltig_ab'-'gueltig_bis')
+  IF TG_OP='UPDATE' AND uems_wechsel_partner(OLD.geraet_id, NEW.gueltig_ab IS DISTINCT FROM OLD.gueltig_ab) IS NOT NULL
+     AND (to_jsonb(NEW)-'gueltig_ab'-'gueltig_bis')=(to_jsonb(OLD)-'gueltig_ab'-'gueltig_bis')
      AND (NEW.gueltig_ab IS DISTINCT FROM OLD.gueltig_ab
           OR (OLD.gueltig_bis IS NOT NULL AND NEW.gueltig_bis IS DISTINCT FROM OLD.gueltig_bis)) THEN
     RETURN NEW;
@@ -140,7 +141,8 @@ END $$;
 CREATE OR REPLACE FUNCTION quelle_einstellung_nur_verkuerzen() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   -- Zusätzliche Trigger prüfen Zukunft, Wechselbeleg und gemeinsame Grenze.
-  IF TG_OP='UPDATE' AND (to_jsonb(NEW)-'gueltig_ab'-'gueltig_bis')=(to_jsonb(OLD)-'gueltig_ab'-'gueltig_bis')
+  IF TG_OP='UPDATE' AND uems_wechsel_partner(OLD.geraet_id, NEW.gueltig_ab IS DISTINCT FROM OLD.gueltig_ab) IS NOT NULL
+     AND (to_jsonb(NEW)-'gueltig_ab'-'gueltig_bis')=(to_jsonb(OLD)-'gueltig_ab'-'gueltig_bis')
      AND NEW.gueltig_ab IS DISTINCT FROM OLD.gueltig_ab AND NEW.gueltig_bis IS NOT DISTINCT FROM OLD.gueltig_bis THEN
     RETURN NEW;
   END IF;
