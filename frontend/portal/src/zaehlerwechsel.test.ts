@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ablesestandWert, ableseEinheit, wechselAbzeichen, wechselEingabe, wechselFolgen, wechselMarken, wechselPruefen, wechselZeit } from './zaehlerwechsel';
+import { ablesestandWert, ableseEinheit, wechselAbzeichen, wechselBerichtsfolge, wechselEingabe, wechselFolgen, wechselMarken, wechselPruefen, wechselZeit } from './zaehlerwechsel';
 import { wechselAntwort, wechselKanaele, WECHSEL_AM, WECHSEL_JETZT } from './test/zaehlerwechselFixtures';
 
 describe('Zählerwechsel: Tatsachen statt Verbrauchsrechnung', () => {
@@ -33,6 +33,11 @@ describe('Zählerwechsel: Tatsachen statt Verbrauchsrechnung', () => {
   it('zeigt Rückwirkung und angekündigt aus dem Vertragszwilling', () => {
     expect(wechselAbzeichen(WECHSEL_AM, WECHSEL_JETZT)).toBe('rückwirkend (25 min)');
     expect(wechselAbzeichen(WECHSEL_JETZT, WECHSEL_AM)).toBe('angekündigt');
+  });
+  it('nennt für A2 die abgeschlossenen Tagesberichte zwischen Wirkung und spätem Eintrag', () => {
+    expect(wechselBerichtsfolge(WECHSEL_AM, '2026-11-20T09:00:00+01:00', 'Europe/Berlin'))
+      .toBe('Berichte mit dem 18.–20.11.: Tagesberichte 18./19.11. (Berichtsentwurf).');
+    expect(wechselBerichtsfolge(WECHSEL_AM, WECHSEL_JETZT, 'Europe/Berlin')).toBeNull();
   });
   it('nimmt die Standortzone, einschließlich nicht vorhandener und doppelter Stunde', () => {
     expect(wechselEingabe(WECHSEL_JETZT, 'America/New_York')).toMatchObject({ datum: '2026-11-18', uhrzeit: '05:05' });

@@ -10,7 +10,7 @@ zuständigem Nachbarn sichtbar. Es gibt keine neue Migration und keine Änderung
 | Fall | Grüner Kern: Klasse · Methode | Noch offener Nachbarteil |
 |---|---|---|
 | A1 | `ZaehlerwechselApiTest.derZaehlerwechselVonMs06IstEinVorgang` | — |
-| A2 | `AenderungsprotokollApiTest.a2DerAmZwanzigstenNachgetrageneWechselBleibtAmAchtzehntenAuffindbar` | AP-12: Folgen-Karte nennt Tagesberichte 18./19.11. |
+| A2 | `AenderungsprotokollApiTest.a2DerAmZwanzigstenNachgetrageneWechselBleibtAmAchtzehntenAuffindbar`; `UemsStrukturAenderungTest.a2EinSpaeterZaehlerwechselStoesstBetroffeneBerichteAnUndAendertKeinenStand`; `zaehlerwechsel.test.ts` · A2 | — |
 | A3 | `ZaehlerwechselApiTest.einAngekuendigterWechselIstErlaubtUndHeisstGeplant` | eigener Folge-Schnitt: Korrektur braucht neue Rechte für sechs Zeitachsen und einen autorisierten Schreibweg |
 | A4 | `QuelleEinstellungApiTest.aVierWandlerwechselAnGrZweiDokumentiertUndKeinGespeicherterWertAendertSich`; `messstellen.test.ts` · `A4: …` | — |
 | A5 | `QuelleEinstellungApiTest.aFuenfAngewendeterWandlerfaktorWirktNurAbGueltigkeitsbeginnUndDieBoxBekommtNichts`; `geraetEinstellungen.test.ts` · `A5: …` | AP-06/Edge: Zustellung an die Box |
@@ -21,20 +21,25 @@ zuständigem Nachbarn sichtbar. Es gibt keine neue Migration und keine Änderung
 | A10 | `MessstelleQuelleApiTest.diePassungLehntJeGrundAbUndDerVorzeichenWertBindetNurMitAnteil`; `uemsWerteKarte.test.ts` und `WerteSektion.test.tsx` · `A10: …` | — |
 | A11 | `MessstelleZuordnungApiTest.a11FremdanlageZyklusUndDieUnterzaehlerDerGeaendertenMessstelle` | — |
 | A12 | `MessstelleApiTest.a12ArchiviertesKennzeichenBleibtBelegtUndMs0022BleibtVorgeschlagen` | — |
-| A13 | `MessstelleQuelleApiTest.archivierenBeendetDieOffenenQuellenZumArchivzeitpunkt`; `MessstelleZuordnungApiTest.archivierenBeendetDieZuordnungenAmVortagUndNichtsLiegtVorDemBeginn` | AP-12: Juni-Bericht über den Archivweg byte-gleich |
+| A13 | `MessstelleQuelleApiTest.archivierenBeendetDieOffenenQuellenZumArchivzeitpunkt`; `MessstelleZuordnungApiTest.archivierenBeendetDieZuordnungenAmVortagUndNichtsLiegtVorDemBeginn`; `MessstelleApiTest.a13ArchivierenLaesstDenFreigegebenenJuniBerichtByteGleich` | — |
 | A14 | `RechtMatrixApiTest.jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen`; `rollenRechte.test.tsx` · `messstelle.bearbeiten` | — |
 | A15 | `ZaehlerwechselApiTest.jedeAblehnungNenntGrundUndZeitpunktUndSchreibtNichts` | — |
 | A16 | `UemsZaehlerbruecheTest.a16DieWechsellueckeBleibtBisZumTagesurteilSichtbar` | — |
 | A17 | `MessstelleRegisterApiTest.a17DerStandAmVorUndNachDemZaehlerwechsel`; `messstellen.test.ts` · `A17: …` | — |
 
-## Die vier sichtbaren Nachbarbedarfe
+## Die zwei sichtbaren Nachbarbedarfe
 
 Die deaktivierten Methoden in `MessstellenregisterNachbarbedarfTest` sind absichtlich keine
 Ersatzimplementierung. Sie benennen die noch fehlende Kopplung und werden erst aktiviert, wenn der
 jeweilige Nachbar den echten Schreib-/Leseweg liefert:
 
-- A2 Berichtsfolgen (AP-12), A3 Korrektur eines angekündigten Wechsels,
-- A5 Edge-Zustellung (AP-06), A13 Bericht-Bestandsschutz (AP-12).
+- A3 Korrektur eines angekündigten Wechsels,
+- A5 Edge-Zustellung (AP-06).
+
+A2 nutzt den vorhandenen AP-12-Strukturpfad: Entwürfe werden neu gebildet, freigegebene Stände
+bleiben byte-gleich und erhalten nur einen Revisions-Anstoß. A13 ändert den Archivweg nicht; der
+Test friert den Juni-Bericht vor dem Archivieren ein und vergleicht danach seine UTF-8-Bytes und
+Prüfsumme.
 
 Die grünen Nachbarabnahmen A4, A7, A10 und A16 ersetzen ihre früheren Platzhalter: Einstellungsfakten
 stehen im Register, Gas bietet keinen Katalog-Quellenweg, und die Wechsellücke bleibt bis zum Tagesurteil sichtbar.

@@ -4,9 +4,10 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type EinstellungFassung, type UemsDatenquelle, type UemsGeraet, type ZaehlerwechselVorgang } from '../api';
 import { useRollen } from '../rollen';
+import { useBerichteFolgen } from '../useBerichteFolgen';
 import { zeitText } from '../uemsEreignis';
 import { VORGABE_ZEITZONE } from '../uemsZustand';
-import { ableseEinheit, standText, wechselAbzeichen, wechselEingabe, wechselFolgen, wechselPruefen,
+import { ableseEinheit, standText, wechselAbzeichen, wechselBerichtsfolge, wechselEingabe, wechselFolgen, wechselPruefen,
   type WechselEingabe, type WechselZiel } from '../zaehlerwechsel';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
@@ -69,6 +70,10 @@ export function ZaehlerwechselDialog({ ziel, jetzt, onClose, onGewechselt }: {
   const pruefung = eingabe && kontext ? wechselPruefen(eingabe, kontext.zone, kontext.einheit) : null;
   const body = pruefung?.body;
   const abzeichen = body?.zeitpunkt ? wechselAbzeichen(body.zeitpunkt, uhr) : null;
+  const rueckwirkend = abzeichen?.startsWith('rückwirkend') === true;
+  const berichte = useBerichteFolgen(ziel.art === 'messstelle' ? ziel.id : '',
+    ziel.art === 'messstelle' && rueckwirkend ? eingabe?.datum ?? null : null, 'zuordnung_rueckwirkend', 'aendern');
+  const berichtstage = body?.zeitpunkt && rueckwirkend ? wechselBerichtsfolge(body.zeitpunkt, uhr, kontext?.zone ?? VORGABE_ZEITZONE) : null;
   const darf = kontext && rollen.darf('messstelle.quelle', kontext.standort)
     && (ziel.art === 'messstelle' || rollen.darf('geraet.einrichten', kontext.standort))
     && (!abzeichen?.startsWith('rückwirkend') || rollen.darf('aenderung.rueckwirkend', kontext.standort));
@@ -112,6 +117,8 @@ export function ZaehlerwechselDialog({ ziel, jetzt, onClose, onGewechselt }: {
       {!k && !fehler && <p role="status">Angaben zum Zähler werden geladen …</p>}
       {ergebnis && k ? <section className="vp-zw-folgen" aria-label="Gespeicherte Folgen" role="status">
         {wechselFolgen(ergebnis, k.zone).map(s => <p key={s}>{s}</p>)}
+        {berichtstage && <p>{berichtstage}</p>}
+        {berichte && <p>{berichte.titel}: {berichte.text}.</p>}
       </section> : e && k && <>
         <p className="vp-zw-schritt">Schritt {schritt} von 2 · {schritt === 1 ? 'Zählerwechsel erfassen' : 'Angaben und Folgen prüfen'}</p>
         {schritt === 1 ? <form ref={formular} onSubmit={event => { event.preventDefault(); weiter(); }} noValidate>
@@ -156,6 +163,8 @@ export function ZaehlerwechselDialog({ ziel, jetzt, onClose, onGewechselt }: {
           <p>{e.uebernehmen ? 'Bisherige Einstellungen übernehmen.' : 'Keine Einstellungen übernehmen.'}</p>
           <h3>Was bleibt</h3>
           <p>Die Messstellen behalten Kennzeichen, Namen und Zuordnungen. Gespeicherte Werte bleiben unverändert. Eine Lücke bis zu den ersten Werten des neuen Zählers bleibt sichtbar.</p>
+          {berichtstage && <p>{berichtstage}</p>}
+          {berichte && <p>{berichte.titel}: {berichte.text}.</p>}
           {k.messstellen.length > 0 && <p>Derzeit liest aus diesem Gerät: {k.messstellen.join(' · ')}.</p>}
           <p>Nach dem Eintrag sehen Sie die bestätigten Quellen und Zeitpunkte.</p>
         </section>}

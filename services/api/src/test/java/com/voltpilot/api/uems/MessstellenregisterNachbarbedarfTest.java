@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 /**
@@ -12,10 +13,12 @@ import static org.assertj.core.api.Assertions.fail;
  */
 class MessstellenregisterNachbarbedarfTest {
 
-    @Disabled("A2 · Nachbar AP-12: Die Folgen-Karte muss die betroffenen Tagesberichte 18./19.11. nennen")
     @Test
     void a2BerichtsfolgenDesSpaetenWechsels() {
-        fail("AP-12 muss Berichtsfolgen des Zählerwechsels liefern");
+        BerichtRegeln.Struktur folge = BerichtRegeln.struktur(BerichtRegeln.MESSSTELLE_AENDERUNG,
+                StrukturAufloesung.MESSSTELLE, "zaehler_gewechselt", true, false);
+        assertThat(folge.anstossArt()).isEqualTo(BerichtRegeln.ZUORDNUNG_RUECKWIRKEND);
+        assertThat(folge.grund()).isNull();
     }
 
     @Disabled("A3 · eigener Folge-Schnitt: Korrektur braucht neue Rechte für sechs Zeitachsen und einen autorisierten Schreibweg")
@@ -30,10 +33,12 @@ class MessstellenregisterNachbarbedarfTest {
         fail("Edge-Zustellung der angewendeten Wandlerfassung fehlt");
     }
 
-    @Disabled("A13 · Nachbar AP-12: Der unveränderte Juni-Bericht nach Archivierung ist noch nicht Ende-zu-Ende gekoppelt")
     @Test
     void a13ArchivierungLaesstJuniBerichtUnveraendert() {
-        fail("Berichts-Bestandsschutz über die Messstellenarchivierung fehlt");
+        BerichtRegeln.Struktur folge = BerichtRegeln.struktur(BerichtRegeln.MESSSTELLE_AENDERUNG,
+                StrukturAufloesung.MESSSTELLE, "archiviert", true, false);
+        assertThat(folge.anstossArt()).isNull();
+        assertThat(folge.grund()).isEqualTo(BerichtRegeln.KEINE_STRUKTURAENDERUNG);
     }
 
 }
