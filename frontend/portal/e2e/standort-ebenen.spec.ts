@@ -305,7 +305,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 });
 
 
-test('O18 · Betriebskunde: nur Übersicht und Boxen; alte AP-13-Direktlinks landen auf der Übersicht', async ({ page }) => {
+test('O18 · Betriebskunde: keine neuen Standort-Reiter; alte AP-13-Direktlinks landen auf der Übersicht', async ({ page }) => {
   for (const breite of [1440, 375]) {
     let uebersichtText = '';
     for (const bereich of ['', '-gebaeude', '-anlagen', '-kennzahlen', '-berichte']) {
@@ -316,7 +316,7 @@ test('O18 · Betriebskunde: nur Übersicht und Boxen; alte AP-13-Direktlinks lan
       if (!bereich) uebersichtText = m.text;
       expect(m.text).toBe(uebersichtText);
       expect(m.leiste).toBeNull();
-      expect(m.reiter).toEqual(['Übersicht', 'Boxen']);
+      expect(m.reiter).toEqual([]);
       expect(m.einstiege).toEqual([]);
       await expect(page.getByTestId('uebersicht-bausteine')).toHaveCount(0);
       if (!bereich) await ablegen(page, `betrieb-${breite}`, m, true);

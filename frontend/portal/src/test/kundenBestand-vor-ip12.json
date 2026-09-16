@@ -1297,6 +1297,20 @@
       "vorher": "7a72b8053e042bca7a6dacc76898539571f65e1f99c8ddef2876f4ed0f3cef85",
       "nachher": "f5d49ac016558e3b8655ecde804ae798183986b61c56e00bfd586ed4f2f5dad6",
       "grund": "H-9/E10: alter Wortexport durch SUMMENWERT ersetzt; sichtbarer Knopf und Aktion unverändert."
+    },
+    {
+      "datei": "components/BeobachteteRegister.tsx",
+      "vorher": "97578407bdd828322016cf76b661a1e7b2a8facfb399e907cca24af1e8c95d9b",
+      "nachher": "4dd50481a89dc67223567f56fc86e520038555fe11914eff93ca4622451a36d3",
+      "commit": "564f0298aefed19d3b5c3fb9e63fda263b67cd86",
+      "grund": "AP-07 IP-15 lässt den Rohwert-Knopf sichtbar, sperrt ihn nach 90 Tagen und nennt den Grund; Auswahl, Beschriftung und Handler bleiben erhalten."
+    },
+    {
+      "datei": "components/LadesaeuleAnbinden.tsx",
+      "vorher": "7fbe9a9ae91d15783692d1fbe5ded992d2255de8f22ef8ad5b4bb1af1488c2f0",
+      "nachher": "4a2bd7dd0d3e194b6573bab8c5cca5948895a6dc0ce89d50cd8609961e0971b2",
+      "commit": "d8eff25145995313cd08082d0c4453b2a669894c",
+      "grund": "AP-06 IP-9 sperrt Kennung eintragen zusätzlich, solange bei mehreren Boxen keine Ziel-Box gewählt ist; Beschriftung, Handler und bisherige Mangelsperre bleiben erhalten."
     }
   ],
   "assistentZusammenfuehrung": {

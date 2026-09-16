@@ -216,7 +216,7 @@ describe('§4.3 C: der Nur-Monitoring-Kunde sieht ECHTE Zahlen statt „—, —
     const netz = within(leiste).getByText('Netz heute').closest('div')!;
     expect(netz.textContent).toContain('360');
     expect(netz.textContent).toContain('24');
-    expect(within(netz).getByText('Bezug · Einspeisung')).toBeTruthy();
+    expect(within(netz).getByText('Bezug: 3 von 3 Anlagen · Einspeisung: 3 von 3 Anlagen')).toBeTruthy();
   });
 
   it('lässt die Speicher- und Lastspitzen-Zellen WEG statt sie auf „—" zu stellen', async () => {

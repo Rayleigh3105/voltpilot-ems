@@ -53,7 +53,7 @@ und gelten ab ihrem Gültigkeitsbeginn.
 |---|---|---|
 | Basisadresse | Protokolladresse (0-basiert, so wie sie im Telegramm steht) des ersten Kopf-Worts; 0 … 65 535; Basisadresse + Kopflänge + Kartenzahl · Kartenblocklänge ≤ 65 536 | zu erheben: Programm → Hardwareblatt §3, Pilotschritt 1 |
 | Funktionscode | 3 (Holding Register) oder 4 (Input Register) | zu erheben: Programm → Hardwareblatt §4, Pilotschritt 1 |
-| Wortfolge | `big` = höherwertiges Wort zuerst, `little` = niederwertiges zuerst; gilt für jeden 32-bit-Wert (Prüfwert, Kennung, Messwerte). Im Messpunkt-Katalog: `big` → `big`, `little` → `word_little_byte_big` (`catalog/measurement-points/schema/catalog.schema.json:205`) | zu erheben: Hardwareblatt §3, Pilotschritt 2 |
+| Wortfolge | `big` = höherwertiges Wort zuerst, `little` = niederwertiges zuerst; gilt für jeden 32-bit-Wert (Prüfwert, Kennung, Messwerte). Im Messpunkt-Katalog: `big` → `big`, `little` → `word_little_byte_big` (`catalog/measurement-points/schema/catalog.schema.json:206`) | zu erheben: Hardwareblatt §3, Pilotschritt 2 |
 | Soll | Kartenzahl, Controller-Kennung, je Karte Steckplatz, Kartentyp, Variante | zu erheben: Erhebungsbogen B1/B2 → Hardwareblatt §2 |
 
 - Innerhalb eines Worts gilt die Byte-Reihenfolge des Modbus-Protokolls. Parameter ist nur, in welcher
