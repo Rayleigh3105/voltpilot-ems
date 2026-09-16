@@ -633,6 +633,33 @@ class UemsBerechnetePeriodenwerteTest {
                 Long.class, restA)).isEqualTo(1);
     }
 
+    @Test
+    void saldoRechnetGespeicherteMengenUndNiemalsEineTeilsumme() {
+        Welt w = lindach("2026-01-01");
+        LocalDate tag = LocalDate.parse("2026-10-18");
+        UUID ms = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, richtung, einheit, wertart) "
+                + "VALUES (?, 'SALDO', 'Saldo', 'berechnet', 'Strom', 'Wirkenergie', 'saldiert', 'kWh', 'Intervallmenge') RETURNING id",
+                UUID.class, w.mandant());
+        UUID fassung = root.queryForObject("INSERT INTO messstelle_formel_fassung (tenant_id, messstelle_id, nummer, formel_typ, herkunft, actor_sub, actor_name, actor_art) "
+                + "VALUES (?, ?, 1, 'saldo', 'anlage', 'test', 'Test', 'kunde') RETURNING id", UUID.class, w.mandant(), ms);
+        // Hier beginnt die Leser-Abnahme an gespeicherten Termen; die Hauptzähler-Grenze prüft der API-Test.
+        for (int i = 0; i < 2; i++) {
+            root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, eingang_art, quell_messstelle_id, vorzeichen, faktor) "
+                    + "VALUES (?, ?, ?, ?, 'messstelle', ?, ?, 1)", w.mandant(), ms, fassung, i,
+                    w.messstellen().get(i == 0 ? "MS-16" : "MS-17"), i == 0 ? "+" : "-");
+        }
+        tageswert(w, "MS-16", tag, "128400", VOLL, 100, List.of(), true);
+        tageswert(w, "MS-17", tag, "3120", VOLL, 100, List.of(), true);
+        tageswert(w, "MS-16", tag.plusDays(1), "100", VOLL, 100, List.of(), true);
+        lauf.lauf(Instant.parse("2026-10-28T12:00:00Z"));
+        Map<String, Object> voll = tagZeile(w, ms, tag);
+        assertThat((BigDecimal) voll.get("menge")).isEqualByComparingTo("125280");
+        assertThat(kennzeichen(voll)).contains("berechnet (Saldo)", "saldiert (Bezug − Abgabe)");
+        Map<String, Object> luecke = tagZeile(w, ms, tag.plusDays(1));
+        assertThat(luecke.get("menge")).isNull();
+        assertThat(luecke.get("menge_zustand")).isEqualTo("keine Werte");
+    }
+
     // ================================================================ die Welt
 
     private record Welt(UUID mandant, UUID anlage, Map<String, UUID> messstellen, Map<String, UUID> komponenten) {}

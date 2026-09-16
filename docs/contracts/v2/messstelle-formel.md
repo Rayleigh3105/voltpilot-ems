@@ -283,9 +283,14 @@ E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehe
 - **Terme eines `rest` (E3):** `speichertTerme("rest")` ist `false`; die Terme eines Tages leitet
   `BilanzAbleitung.restAusStellung(hauptzaehler, tag, stellungen)` aus den Stellungen ab (Regel
   `rest_aus_stellung` in `bilanz-vectors.json`).
-- **Nicht gebaut:** Anlegen einer `saldo`-Messstelle (die Route lehnt `formel_typ` ≠
-  `gewichtete_summe` weiter ab, der CHECK der Fassungs-Tabelle kennt `saldo` nicht, die
-  Datenbank-Funktion `messstelle_groesse_im_katalog` kennt `saldiert` nicht) — das kommt mit IP-16.
+- **Seit AP-10 IP-16:** Anlegen nimmt optional `formel_typ` (`gewichtete_summe` oder `saldo`)
+  und `gueltig_ab` entgegen. Ohne beide bleibt Fassung 1 wie bisher eine Summe seit Beginn.
+  Saldo liest genau zwei gemessene Wirkenergie-Messstellen: Hauptzähler Bezug mit `+` und
+  Hauptzähler Abgabe mit `-` derselben Anlage am Beginn, jeweils Faktor 1 und Anteil `gesamt`.
+  Die Geräte-Kontext-Prüfung gilt auch für diese Quellen. Ergebnis ist eine Intervallmenge;
+  die CHECK-Erweiterung `V20260917106000` erlaubt `saldiert` ausschließlich an berechneten
+  Hauptgrößen. Auch Saldo-Fassungen laufen durch die bestehenden Tages-/Größen-/Kreisprüfungen.
+  Ungültige Paare liefern `groessen_gemischt` mit `grund: saldo_braucht_zwei` (F9).
 - **Seit AP-10 IP-9 (13.09.2026) ist ein `rest` anlegbar — nur als bestätigter Vorschlag** „Rest
   anlegen“ (`POST /api/v1/sites/{siteId}/bilanz/rest`, E18): Fassung 1 vom Typ `rest` ohne ersten Tag
   und OHNE Terme, mit ihrem einzigen Parameter `rest_hauptzaehler_id` (`V20260913235700`: CHECK Rest ⇔
@@ -298,15 +303,17 @@ E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehe
 ### 6.4 Periodenwerte berechneter Messstellen (AP-10 IP-10, Stand 14.09.2026)
 
 E6 = A ist gebaut: Viertelstunde, Tag, Monat und Jahr einer berechneten Messstelle (`gewichtete_summe`,
-`rest`) liegen in der Speicherklasse — Spur `berechnet` von `messreihe_viertelstunde`, `messreihe_tag`,
+`rest`, seit IP-16 auch `saldo`) liegen in der Speicherklasse — Spur `berechnet` von `messreihe_viertelstunde`, `messreihe_tag`,
 `messreihe_periode` (`messstelle_id`, `formel_fassung_id`, `formel_typ`; ohne Reihe) — mit ihren
 Eingängen in `bilanzwert_eingang` (`V20260914100300`). Gerechnet vom Stundenlauf NACH den gemessenen
 Stufen, in der Abhängigkeitsordnung der Fassungen; ein Formel-Kreis wird benannt abgelehnt
 (`formel_kreis`/`haengt_an_kreis`). Der Wert je Periode ist `periodenwert` (§6.2) über die
 Periodenwerte der Eingänge (nie Summe der Viertelstunden), vorläufig/endgültig über die Eingänge.
 Gelesen über `GET /api/v1/messstellen/{kennzeichen}/werte`. Der Live-Wert (`wert`) und der Verlauf
-(`verlauf`, Geräte-Verdichtung) bleiben unverändert und werden nie gespeichert. Nicht gerechnet:
-eine Formel mit Momentanwert (nur live), `saldo` (kein Schreibweg), ein Term mit `anteil`
+(`verlauf`, Geräte-Verdichtung) bleiben für Summe und Rest unverändert und werden nie gespeichert.
+Für Saldo liefern diese Sample-Leser keinen Wert bzw. keine Punkte: Zählerstände und Leistungs-Samples
+sind keine Energiemengen desselben Intervalls. Der Mengen-Leseweg ist `werte`.
+Nicht gerechnet: eine Formel mit Momentanwert (nur live), ein Term mit `anteil`
 positiv/negativ oder Verteilung (verteilte Werte = IP-11) — der Eingang steht mit Grund und ohne Menge
 im Satz; eine Periode, an deren Tagen verschiedene Terme gelten (`terme_wechseln`).
 

@@ -163,8 +163,8 @@ public class MessstelleFormelService {
      * Legt eine berechnete Messstelle mit ihrer Formel an — in EINER Transaktion mit dem
      * Kennzeichen (automatisch, E7) und dem Protokolleintrag „angelegt". Die Hauptgröße wird aus
      * den Termen abgeleitet (nie gewählt); gemischte Größen lehnt {@link MessstelleFormelRegeln} ab.
-     * Die Terme sind Fassung 1 (Herkunft {@code anlage}) OHNE ersten Tag — sie gilt wie vor AP-10
-     * IP-3 für jeden Tag, bis eine Fassung 2 sie ablöst.
+     * Ohne ersten Tag gilt Fassung 1 (Herkunft {@code anlage}) wie im Bestand seit Beginn.
+     * Ein ausdrücklich übergebener Tag begrenzt sie; ohne Typ bleibt sie eine gewichtete Summe.
      */
     @org.springframework.transaction.annotation.Transactional
     public MessstelleDto.Messstelle anlegen(MessstelleFormelDto.Anlegen a, ProtokollAkteur wer) {
@@ -175,6 +175,8 @@ public class MessstelleFormelService {
         if (a == null || a.terme() == null || a.terme().isEmpty()) {
             throw MessstelleFormelAbgelehnt.anfrage("terme", "Eine Formel braucht mindestens einen Term.");
         }
+        String typ = schreibbarerTyp(a.formelTyp());
+        rechte.rueckwirkend(a.gueltigAb());
         UUID rollenAnlage = null;
         if (a.rolle() != null) {
             if (a.rolle().entityId() == null || a.rolle().role() == null) {
@@ -188,8 +190,8 @@ public class MessstelleFormelService {
         final UUID zielAnlage = rollenAnlage;
         List<Bindung> bindungen = new ArrayList<>();
         List<MessstelleFormelRegeln.Term> fuerAbleitung = new ArrayList<>();
-        // Fassung 1 gilt seit Beginn; ihr Anteil wird am Tag des Anlegens gefragt.
-        LocalDate ab = heute(zone());
+        // Ohne ausdrücklichen Beginn gilt Fassung 1 seit Beginn, die Verteilung wird heute geprüft.
+        LocalDate ab = a.gueltigAb() == null ? heute(zone()) : a.gueltigAb();
         for (int i = 0; i < a.terme().size(); i++) {
             Bindung b = bindung(a.terme().get(i), i, ab);
             bindungen.add(b);
@@ -197,7 +199,9 @@ public class MessstelleFormelService {
                     b.groesse().einheit(), b.groesse().wertart(), b.vorzeichen()));
         }
         pruefeKontext(a.kontext(), bindungen);
-        MessstelleFormelRegeln.GroesseUrteil urteil = MessstelleFormelRegeln.formelGroesse(fuerAbleitung);
+        pruefeSaldo(typ, bindungen, ab);
+        MessstelleFormelRegeln.GroesseUrteil urteil = MessstelleFormelRegeln.hauptgroesse(
+                typ, MessstelleRegeln.BERECHNET, "Intervallmenge", fuerAbleitung);
         if (urteil.fehler() != null) {
             throw MessstelleFormelAbgelehnt.regel(urteil.fehler(),
                     "Die Terme tragen nicht dieselbe Messgröße — sie lassen sich nicht summieren.",
@@ -211,8 +215,8 @@ public class MessstelleFormelService {
         UUID id = transaktion.execute(s -> {
             Messstelle m = messstellen.anlegen(new NeueMessstelle(tenant, null, name, "berechnet",
                     medium, haupt, notiz));
-            UUID fassung = fassungen.anlegen(m.id(), 1, MessstelleFormelRegeln.GEWICHTETE_SUMME, null,
-                    HERKUNFT_ANLAGE, false, null, uhr.instant(), wer);
+            UUID fassung = fassungen.anlegen(m.id(), 1, typ, a.gueltigAb(),
+                    HERKUNFT_ANLAGE, a.gueltigAb() != null && ab.isBefore(heute(zone())), null, uhr.instant(), wer);
             termeAnlegen(fassung, m.id(), bindungen);
             protokoll(m.id(), name, medium, haupt, bindungen, notiz, jetzt, wer);
             if (a.rolle() != null) {
@@ -227,6 +231,42 @@ public class MessstelleFormelService {
             return m.id();
         });
         return messstellenDienst.eine(id);
+    }
+
+    private static String schreibbarerTyp(String typ) {
+        if (typ == null) return MessstelleFormelRegeln.GEWICHTETE_SUMME;
+        if (!List.of(MessstelleFormelRegeln.GEWICHTETE_SUMME, MessstelleFormelRegeln.SALDO).contains(typ)) {
+            throw MessstelleFormelAbgelehnt.anfrage("formel_typ",
+                    "Wählen Sie Summe oder Saldo. Der Rest entsteht aus der elektrischen Stellung.");
+        }
+        return typ;
+    }
+
+    /** E1/F9: zwei Hauptzähler-Richtungen derselben Grenze, ohne Gewichtung oder Verteilung. */
+    private void pruefeSaldo(String typ, List<Bindung> bindungen, LocalDate tag) {
+        if (!MessstelleFormelRegeln.SALDO.equals(typ)) return;
+        BilanzStellungen.Stand stand = stellungen.lesen();
+        List<BilanzAbleitung.StellungZeile> paar = new ArrayList<>();
+        for (Bindung b : bindungen) {
+            Messstelle m = stand.nachKennzeichen().values().stream()
+                    .filter(q -> q.id().equals(b.quellMessstelleId())).findFirst().orElse(null);
+            if (!MESSSTELLE.equals(b.eingangArt()) || b.faktor() != 1 || b.anteil() != null
+                    || m == null || m.archiviertAm() != null || !"gemessen".equals(m.art())
+                    || !"Wirkenergie".equals(m.hauptgroesse().groesse())) throw saldoPaarFehlt();
+            var z = stand.zeilen().stream().filter(s -> s.messstelle().equals(m.kennzeichen())
+                    && s.gilt(tag) && "Hauptzähler".equals(s.stellung())).toList();
+            if (z.size() != 1 || !("Bezug".equals(z.getFirst().richtung()) && "+".equals(b.vorzeichen())
+                    || "Abgabe".equals(z.getFirst().richtung()) && "-".equals(b.vorzeichen()))) throw saldoPaarFehlt();
+            paar.add(z.getFirst());
+        }
+        if (paar.size() != 2 || !paar.get(0).anlage().equals(paar.get(1).anlage())
+                || paar.get(0).richtung().equals(paar.get(1).richtung())) throw saldoPaarFehlt();
+    }
+
+    private static MessstelleFormelAbgelehnt saldoPaarFehlt() {
+        return MessstelleFormelAbgelehnt.regel(MessstelleFormelRegeln.Fehler.GROESSEN_GEMISCHT,
+                "Ein Saldo braucht Bezug minus Abgabe der Hauptzähler derselben Anlage, jeweils mit Faktor 1.",
+                Map.of("grund", "saldo_braucht_zwei"));
     }
 
     /** Prüft jede tatsächlich gelesene Komponente, auch hinter verschachtelten Messstellen. */
@@ -485,15 +525,12 @@ public class MessstelleFormelService {
             throw MessstelleFormelAbgelehnt.anfrage("gueltig_ab",
                     "„gültig ab“ fehlt: der Tag (JJJJ-MM-TT), ab dem die neue Formel gilt.");
         }
-        String typ = a.formelTyp() == null ? MessstelleFormelRegeln.GEWICHTETE_SUMME : a.formelTyp();
+        rechte.rueckwirkend(a.gueltigAb());
+        String typ = schreibbarerTyp(a.formelTyp());
         if (fassungen.wirksame(id).stream().anyMatch(f -> MessstelleFormelRegeln.REST.equals(f.formelTyp()))) {
             // E3: die Terme eines Rests kommen je Tag aus der Stellung — es gibt nichts einzutragen.
             throw MessstelleFormelAbgelehnt.anfrage("formel_typ", m.kennzeichen() + " ist ein Rest: seine Terme "
                     + "kommen je Tag aus der elektrischen Stellung. Ändern Sie die Stellung, nicht die Formel.");
-        }
-        if (!MessstelleFormelRegeln.GEWICHTETE_SUMME.equals(typ)) {
-            throw MessstelleFormelAbgelehnt.anfrage("formel_typ",
-                    "Eine Formel ist heute eine gewichtete Summe („gewichtete_summe“).");
         }
         String begruendung = leerAlsNull(a.begruendung());
         if (begruendung != null && begruendung.length() > 500) {
@@ -520,7 +557,9 @@ public class MessstelleFormelService {
                         .orElse(b.quellMessstelleId().toString()));
             }
         }
-        MessstelleFormelRegeln.GroesseUrteil urteil = MessstelleFormelRegeln.formelGroesse(fuerAbleitung);
+        pruefeSaldo(typ, bindungen, a.gueltigAb());
+        MessstelleFormelRegeln.GroesseUrteil urteil = MessstelleFormelRegeln.hauptgroesse(
+                typ, MessstelleRegeln.BERECHNET, "Intervallmenge", fuerAbleitung);
         if (urteil.fehler() != null) {
             throw MessstelleFormelAbgelehnt.regel(urteil.fehler(),
                     "Die Terme tragen nicht dieselbe Messgröße — sie lassen sich nicht summieren.",
@@ -616,6 +655,15 @@ public class MessstelleFormelService {
     }
 
     private RohWert liveWert(Messstelle m, Instant cutoff, LocalDate tag, Set<UUID> besucht, int tiefe) {
+        if (fassungAm(fassungen.wirksame(m.id()), tag).isEmpty()) {
+            return new RohWert(null, null, m.hauptgroesse().einheit(), List.of());
+        }
+        // F9: Saldo ist eine Intervallmenge. Einzelne Zählerstände oder Leistungs-Samples
+        // sind keine Energiemengen desselben Intervalls. Dafür gilt der gespeicherte AP-08-Leseweg.
+        if (MessstelleRegeln.SALDIERT.equals(m.hauptgroesse().richtung())) {
+            return new RohWert(null, null, m.hauptgroesse().einheit(), termeAm(m.id(), tag).stream()
+                    .map(t -> fehlt(t, "unvollstaendig")).toList());
+        }
         Optional<UUID> restVon = restHauptzaehlerAm(m.id(), tag);
         if (restVon.isPresent()) {
             RestLive live = restLive(restVon.get(), cutoff, tag);
@@ -966,6 +1014,7 @@ public class MessstelleFormelService {
             Set<UUID> besucht, int tiefe) {
         TreeMap<Instant, Double> out = new TreeMap<>();
         for (FassungZeile f : fassungen.wirksame(m.id())) {
+            if (MessstelleFormelRegeln.SALDO.equals(f.formelTyp())) continue; // Mengen nur aus AP-08-Perioden.
             Instant a = f.gueltigAb() == null ? von : spaeter(von, f.gueltigAb().atStartOfDay(zone).toInstant());
             Instant e = f.gueltigBis() == null ? bis
                     : frueher(bis, f.gueltigBis().plusDays(1).atStartOfDay(zone).toInstant());

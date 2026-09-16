@@ -21758,7 +21758,7 @@ components:
       required: [nummer, formel_typ, gueltig_ab, gueltig_bis, herkunft, rueckwirkend, abzeichen, begruendung, eingetragen_am]
       properties:
         nummer: { type: integer, minimum: 1 }
-        formel_typ: { type: string, enum: [gewichtete_summe] }
+        formel_typ: { type: string, enum: [gewichtete_summe, rest, saldo] }
         gueltig_ab: { type: string, format: date, nullable: true }
         gueltig_bis: { type: string, format: date, nullable: true }
         herkunft:
@@ -21796,7 +21796,7 @@ components:
       required: [gueltig_ab, terme]
       properties:
         gueltig_ab: { type: string, format: date }
-        formel_typ: { type: string, enum: [gewichtete_summe], description: "Fehlend = gewichtete_summe; rest und saldo kommen mit AP-10 IP-4." }
+        formel_typ: { type: string, enum: [gewichtete_summe, saldo], description: "Fehlend = gewichtete_summe; ein Rest folgt der Stellung." }
         terme:
           type: array
           minItems: 1

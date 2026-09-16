@@ -2063,7 +2063,7 @@ export interface MessstelleFormelTerm {
  */
 export interface MessstelleFormelFassung {
   nummer: number;
-  formel_typ: 'gewichtete_summe';
+  formel_typ: 'gewichtete_summe' | 'rest' | 'saldo';
   gueltig_ab: string | null;
   gueltig_bis: string | null;
   herkunft: 'bestand' | 'anlage' | 'eintrag';
@@ -2307,6 +2307,8 @@ export interface GeraetSummenwert {
 export type SummenwertKontext = { art: 'anlage' } | { art: 'geraet'; boxId: string; geraetId: string };
 
 export interface BerechneteMessstelleAnlegen {
+  formel_typ?: 'gewichtete_summe' | 'saldo';
+  gueltig_ab?: string;
   kontext?: { art: 'anlage' | 'geraet'; site_id: string; box_id?: string; geraet_id?: string };
   rolle?: { entity_id: string; role: SummenwertRolle; ersetzen?: boolean };
   name: string;
@@ -2333,7 +2335,7 @@ export interface BerechneteMessstelleAnlegen {
 export interface MessstelleFormelFassungEintragen {
   /** Der erste Tag der neuen Fassung (JJJJ-MM-TT); die laufende endet am Vortag. */
   gueltig_ab: string;
-  formel_typ?: 'gewichtete_summe';
+  formel_typ?: 'gewichtete_summe' | 'saldo';
   terme: BerechneteMessstelleAnlegen['terme'];
   begruendung?: string;
 }
