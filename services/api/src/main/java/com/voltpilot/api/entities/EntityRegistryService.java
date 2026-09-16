@@ -842,6 +842,7 @@ public class EntityRegistryService {
         if (row == null) {
             return false;
         }
+        repo.deleteRoleAssignments(pointId);
         if (purgePoint) {
             // The purge fully removes the entity, so its flow_claim would dangle
             // (no FK, report §4b) and the optimizer would read a deleted

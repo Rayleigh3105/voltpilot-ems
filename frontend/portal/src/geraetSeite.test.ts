@@ -7,6 +7,7 @@ import {
   LAN_UNBEKANNT,
   NUR_GELESEN,
   pvEinstiegEntityId,
+  summenwertEinstieg,
   type GeraetSeiteInput,
 } from './geraetSeite';
 import { plantModel } from './komponenten';
@@ -462,6 +463,8 @@ describe('geraetSeite · PV-Produktion-Einstieg (Fix b, vp-agg-konzept3-r8)', ()
     );
     expect(v.meldetErzeugung).toBe(false);
     expect(pvEinstiegEntityId(v)).toBeNull();
+    // H-7: Auch ohne PV-Rolle bleibt der Summenwert-Einstieg am physischen Gerät.
+    expect(summenwertEinstieg(v)).toBe('ent-batt');
   });
 });
 

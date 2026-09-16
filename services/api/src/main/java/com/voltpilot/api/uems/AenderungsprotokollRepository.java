@@ -296,10 +296,12 @@ public class AenderungsprotokollRepository {
                 true, null, List.of(), f);
     }
 
-    /**
-     * Das Protokoll EINES Gebäudes oder Bereichs (AP-02 IP-14) — nur seine eigenen Einträge; das
-     * Löschen eines Bereichs steht am Gebäude, an dem er hing.
-     */
+    /** Die Einträge einer Anlage, einschließlich ihrer sofortigen Rollenänderungen. */
+    public List<Zeile> fuerAnlage(UUID siteId, Filter f) {
+        return lies(STROM_ORT, true, "bezug_art = 'anlage' AND bezug_id = ?", List.of(siteId), f);
+    }
+
+    /** Eigene Orts-Einträge; das Löschen eines Bereichs steht an seinem Gebäude. */
     public List<Zeile> fuerOrt(UUID ortId, Filter f) {
         return lies(STROM_ORT, true, "bezug_art IN ('gebaeude', 'bereich') AND bezug_id = ?", List.of(ortId), f);
     }

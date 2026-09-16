@@ -56,6 +56,13 @@ public class RollenZuordnungService {
         return new RollenDto.GeraetRolle(entity, rolle, repo.primaer(entity, rolle).map(this::alsWert).orElse(null));
     }
 
+    public java.util.Set<UUID> geleseneGeraete(UUID site, UUID messstelle) {
+        geltungsbereich.requireSite(site);
+        return quellen.herkunft(messstelle, site, Instant.now()).stream()
+                .filter(q -> q.entity_id() != null).map(q -> UUID.fromString(q.entity_id()))
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
     @Transactional
     public RollenDto.ZuordnungAntwort zuordnen(UUID site, UUID entity, String rolle,
             RollenDto.Eingabe eingabe, ProtokollAkteur wer) {

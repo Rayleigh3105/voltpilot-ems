@@ -1250,6 +1250,13 @@
       "vorher": "0f4c7c6ff44db6afd1f6904f202de92349dfca880e1c826f6342fd87903f10ba",
       "nachher": "eb1bc42f3a1b395443ed7e9efb22dc0fc6f5fe175532b6d075f6e58fea6d566f",
       "grund": "H-3: dieselbe Aufschlüsselung für PV, Verbrauch und Netz; Rollenwort und Symbol aus der kanonischen Rolle."
+    },
+    {
+      "datei": "components/GeraetPvProduktion.tsx",
+      "vorher": "3d148c9dc15ffd98a32450cf0719e69d900e6e3debd41125235a7c1c76b68cb6",
+      "nachher": "fe47ea69f834337a58dc6a9fd6bdd29b1938c207222780579755c3f31be3d204",
+      "nachher_datei": "components/GeraetSummenwerte.tsx",
+      "grund": "H-7/E9: Die Gerätekarte zeigt alle Summenwerte; der Anlegeknopf verlangt messstelle.formel, der Rollenwechsel bleibt im Zeilenmenü."
     }
   ]
 }

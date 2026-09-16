@@ -49,6 +49,15 @@ public class AenderungsprotokollController {
         this.protokoll = protokoll;
     }
 
+    /** Recht: {@code aenderungsprotokoll.lesen}. Anlagenprotokoll mit Zeit, Änderung und Akteur. */
+    @GetMapping("/api/v1/sites/{siteId}/aenderungen")
+    public ProtokollDto.Protokoll anlage(@PathVariable UUID siteId,
+            @RequestParam(required = false) String von, @RequestParam(required = false) String bis,
+            @RequestParam(required = false) String achse, @RequestParam(required = false) String limit,
+            @RequestParam(required = false) String nach) {
+        return protokoll.anlage(siteId, anfrage(von, bis, achse, limit, nach));
+    }
+
     /**
      * Recht: {@code aenderungsprotokoll.lesen}. Das Protokoll EINER Messstelle, jüngster
      * Eintrag zuerst: anlegen, bearbeiten, anhalten, fortsetzen, archivieren, Ort, elektrische

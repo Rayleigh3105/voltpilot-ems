@@ -129,6 +129,8 @@ async function mock(page: Page) {
     const path = url.pathname;
     const method = route.request().method();
 
+    if (path.endsWith('/summenwerte')) return route.fulfill({ json: [] });
+
     // Rollen-Zuordnung dieses Geräts
     if (/\/komponenten\/[^/]+\/rollen\/pv$/.test(path)) {
       if (method === 'PUT') {
@@ -226,8 +228,8 @@ test('SUN-30K: Gen-Port über „+ Beobachten" aufnehmen, als Erzeugung entschei
 
   // Deliverable A: die Ergebnis-Karte der Geräteseite (noch ohne Zuordnung).
   await page.goto('/e2e/summenwert.html');
-  await expect(page.getByText('PV-Produktion dieses Geräts')).toBeVisible();
-  await page.locator('.vp-geraet-pvp-card').screenshot({ path: 'e2e/shots/summenwert-geraetkarte.png' });
+  await expect(page.getByText('Summenwerte dieses Geräts')).toBeVisible();
+  await page.locator('.vp-summen-head').locator('..').screenshot({ path: 'e2e/shots/summenwert-geraetkarte.png' });
 
   await page.getByRole('button', { name: /Summenwert anlegen/ }).click();
   const dialog = page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });

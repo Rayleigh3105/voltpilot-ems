@@ -6,6 +6,10 @@ import com.voltpilot.api.measurement.MeasurementCatalog.Point;
 import com.voltpilot.api.measurement.MeasurementCatalog.Semantik;
 import com.voltpilot.api.measurement.MesskanalAbbildung;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.topology.RollenZuordnungService;
+import com.voltpilot.api.web.dto.RollenDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import com.voltpilot.api.uems.MessstelleAenderungRepository.NeuerEintrag;
 import com.voltpilot.api.uems.MessstelleFormelFassungRepository.FassungZeile;
 import com.voltpilot.api.uems.MessstelleFormelRegeln.FassungUrteil;
@@ -37,6 +41,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -101,6 +106,8 @@ public class MessstelleFormelService {
     private final KostenstelleProzessRepository kostenstellen;
     private final BilanzRestRepository reste;
     private final BilanzStellungen stellungen;
+    private final ObjectProvider<RollenZuordnungService> rollen;
+    private final RechtPruefung rechte;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleFormelService(MessstelleRepository messstellen,
@@ -109,7 +116,9 @@ public class MessstelleFormelService {
             MessstelleFormelWerteRepository werte, MessstelleQuelleRepository quellen,
             MessstelleService messstellenDienst, MeasurementCatalog katalog, UnternehmenRepository unternehmen,
             PlatformTransactionManager transactionManager, ObjectMapper json, AnteilLeseweg leseweg,
-            KostenstelleProzessRepository kostenstellen, BilanzRestRepository reste, BilanzStellungen stellungen) {
+            KostenstelleProzessRepository kostenstellen, BilanzRestRepository reste, BilanzStellungen stellungen,
+            ObjectProvider<RollenZuordnungService> rollen,
+            RechtPruefung rechte) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.terme = terme;
@@ -125,6 +134,8 @@ public class MessstelleFormelService {
         this.kostenstellen = kostenstellen;
         this.reste = reste;
         this.stellungen = stellungen;
+        this.rollen = rollen;
+        this.rechte = rechte;
     }
 
     /** Nur für Tests: die Uhr, an der „jetzt" (und die Frische-Grenze) hängt. */
@@ -157,6 +168,17 @@ public class MessstelleFormelService {
         if (a == null || a.terme() == null || a.terme().isEmpty()) {
             throw MessstelleFormelAbgelehnt.anfrage("terme", "Eine Formel braucht mindestens einen Term.");
         }
+        UUID rollenAnlage = null;
+        if (a.rolle() != null) {
+            if (a.rolle().entityId() == null || a.rolle().role() == null) {
+                throw MessstelleFormelAbgelehnt.anfrage("rolle", "Die Rolle braucht ein Gerät und eine Rollenart.");
+            }
+            rollenAnlage = werte.anlage(a.rolle().entityId()).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden."));
+            rechte.pruefen("geraet.einrichten", RechtZiel.ANLAGE,
+                    rollenAnlage, () -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        }
+        final UUID zielAnlage = rollenAnlage;
         List<Bindung> bindungen = new ArrayList<>();
         List<MessstelleFormelRegeln.Term> fuerAbleitung = new ArrayList<>();
         // Fassung 1 gilt seit Beginn; ihr Anteil wird am Tag des Anlegens gefragt.
@@ -185,6 +207,15 @@ public class MessstelleFormelService {
                     HERKUNFT_ANLAGE, false, null, uhr.instant(), wer);
             termeAnlegen(fassung, m.id(), bindungen);
             protokoll(m.id(), name, medium, haupt, bindungen, notiz, jetzt, wer);
+            if (a.rolle() != null) {
+                // Mitgliedschaft prüfen; die Anlage ordnet anschließend ALLEN gelesenen Geräten zu.
+                if (!rollen.getObject().geleseneGeraete(zielAnlage, m.id()).contains(a.rolle().entityId())) {
+                    throw MessstelleFormelAbgelehnt.anfrage("rolle", "Der Summenwert liest dieses Gerät nicht.");
+                }
+                rollen.getObject().zuordnenAnlage(zielAnlage, a.rolle().role(),
+                        new RollenDto.AnlageEingabe("gesamtwert", m.id(),
+                                Boolean.TRUE.equals(a.rolle().ersetzen())), wer);
+            }
             return m.id();
         });
         return messstellenDienst.eine(id);
@@ -296,6 +327,34 @@ public class MessstelleFormelService {
         }
         throw MessstelleFormelAbgelehnt.anfrage(feld + ".eingang_art",
                 "Der Eingang ist „messkanal“, „messstelle“ oder „verteilung“.");
+    }
+
+    /** Eine Liste pro Komponente, auch ohne Rolle und über verschachtelte Bausteine. */
+    public List<MessstelleFormelDto.GeraetSummenwert> summenwerte(UUID site, UUID entity) {
+        var zuordnungen = new java.util.HashMap<UUID, String>();
+        for (String rolle : List.of("pv", "consumer", "grid")) {
+            var z = rollen.getObject().lies(site, entity, rolle).zugeordnet();
+            if (z != null && z.quellMessstelleId() != null) zuordnungen.put(z.quellMessstelleId(), rolle);
+        }
+        List<MessstelleFormelDto.GeraetSummenwert> aus = new ArrayList<>();
+        for (UUID id : terme.summenwertKandidaten(entity)) {
+            if (liestGeraet(id, entity, new HashSet<>())) {
+                aus.add(new MessstelleFormelDto.GeraetSummenwert(messstellenDienst.eine(id),
+                        zuordnungen.get(id), wert(id)));
+            }
+        }
+        return aus;
+    }
+
+    private boolean liestGeraet(UUID id, UUID entity, Set<UUID> pfad) {
+        if (!pfad.add(id) || pfad.size() > MAX_TIEFE) return false;
+        try {
+            return formel(id, null).terme().stream().anyMatch(t -> entity.equals(t.entityId())
+                    || (MESSSTELLE.equals(t.eingangArt()) && t.quellMessstelleId() != null
+                        && liestGeraet(t.quellMessstelleId(), entity, pfad)));
+        } finally {
+            pfad.remove(id);
+        }
     }
 
     // ------------------------------------------------------------------ lesen

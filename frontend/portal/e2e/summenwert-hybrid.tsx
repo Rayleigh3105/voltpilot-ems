@@ -1,8 +1,8 @@
 import './rollen-fixture';
 import ReactDOM from 'react-dom/client';
 import { keycloak } from '../src/auth';
-import { GeraetPvProduktion } from '../src/components/GeraetPvProduktion';
-import { geraetSeite, pvEinstiegEntityId } from '../src/geraetSeite';
+import { GeraetSummenwerte } from '../src/components/GeraetSummenwerte';
+import { geraetSeite, summenwertEinstieg } from '../src/geraetSeite';
 import { plantModel } from '../src/komponenten';
 import type { Device, EntityLocalSetup, SiteEntity, SiteSource } from '../src/api';
 import '../designsystem/tokens/fonts.css';
@@ -23,8 +23,8 @@ import '../src/index.css';
  * `pv_power_kw`-Kanal verloren hat, also KEINEN PV-Aspekt mehr bildet, aber live
  * Solarstrom meldet. Die Karte „PV-Produktion dieses Geräts" muss trotzdem
  * erscheinen (nie „gar kein Knopf" für genau ein erzeugendes Gerät). Sie rendert
- * durch den ECHTEN Wirt-Gate: `geraetSeite()` baut die Sicht, `pvEinstiegEntityId`
- * leitet die Träger-Entität ab, erst dann erscheint `GeraetPvProduktion`.
+ * durch den ECHTEN Wirt-Gate: `geraetSeite()` baut die Sicht, `summenwertEinstieg`
+ * leitet die Träger-Entität ab, erst dann erscheint `GeraetSummenwerte`.
  */
 const NOW = Date.parse('2026-09-12T09:45:00Z');
 const ISO = new Date(NOW).toISOString();
@@ -86,14 +86,14 @@ function Fixture() {
     model: plantModel([DAMAGED_HYBRID], null, LOCAL_SETUP, SOURCES),
     now: NOW,
   });
-  const entityId = pvEinstiegEntityId(view);
+  const entityId = summenwertEinstieg(view);
   return (
     <main style={{ maxWidth: 1180, margin: '0 auto', padding: 24, display: 'grid', gap: 16 }}>
       <h2>Deye SUN-30K · ohne PV-Aspekt</h2>
       {/* Kein PV-Aspekt in den Komponenten (der Schaden), aber der Einstieg bleibt. */}
       <p data-testid="pv-aspekt">{view.komponenten.some((c) => c.role === 'pv') ? 'mit PV-Aspekt' : 'ohne PV-Aspekt'}</p>
       {entityId ? (
-        <GeraetPvProduktion siteId="site-e2e" deviceId={BOX.id} entityId={entityId} geraetName={view.kopf.titel} />
+        <GeraetSummenwerte siteId="site-e2e" deviceId={BOX.id} entityId={entityId} geraetName={view.kopf.titel} />
       ) : (
         <p data-testid="kein-einstieg">kein Einstieg</p>
       )}
