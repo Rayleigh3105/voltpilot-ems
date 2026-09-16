@@ -61,6 +61,7 @@ Tests auf einem frischen `git archive` dieses Stands erzeugt. `src/uemsBestandss
 Start-Ebene, sechs Verlauf-Reiter, Portfolio-Reiter und Standortnavigation; die mit „AP-13 Bestandsschutz“
 benannten Fälle in den bestehenden Komponententests vergleichen Cockpit, sechs Verlauf-Flächen, Portfolio
 und Geräteseite bytegenau. Aufnahme und Wiederholung: [Nachweis und Befehle](../../../frontend/portal/src/test/bestandsschutz/README.md).
+Der dort belegte main-Nachzug der Geräteseiten-Aufnahme ergänzt ausschließlich den bereits ausgelieferten PV-Einstieg am Hybrid ohne PV-Aspekt.
 Die erlaubte Cockpit-Ergänzung prüft `CockpitMessstellenWeg.test.tsx`; leere UEMS-Bausteine prüft
 `UebersichtBausteine.test.tsx`. Keine Aufnahme am neuen Produktstand erneuern, um eine Abweichung zu übergehen.
 

@@ -31,6 +31,7 @@ import { ausfallSchutz, type SiteCharging } from '../ladepunkte';
 import {
   chargePointIdOf,
   geraetSeite,
+  pvEinstiegEntityId,
   type GeraetArt,
   type GeraetSeiteView,
   type Zeile,
@@ -1083,32 +1084,34 @@ export function GeraetSeiteSection({
     gefahr?.kind === 'entfernen' ? gefahr.component.label : view?.kopf.titel ?? '';
 
   /**
-   * Die Erzeugungs-Komponente dieses Geräts (Konzept vp-agg-konzept3-r8): der
-   * PV-Aspekt eines Hybriden bzw. der PV-Wechselrichter selbst. Nur wenn es sie
-   * gibt, trägt das Gerät Erzeugungs-Register - und nur dann bietet die Karte
-   * „PV-Produktion dieses Geräts" überhaupt etwas an (nie ein toter Knopf).
+   * Die Entität, mit der der Summenwert-Assistent „PV-Produktion dieses Geräts"
+   * startet (Konzept vp-agg-konzept3-r8, Fix (b)): bevorzugt der PV-Aspekt, sonst
+   * - wenn das Gerät nachweislich Erzeugung meldet - die Träger-Entität (Speicher
+   * des Hybriden, sonst die eindeutige Haupt-Komponente). `null` heißt: kein Knopf,
+   * weil das Gerät nichts erzeugt (das „nie ein toter Knopf"-Prinzip, aber auch
+   * nie „gar kein Knopf" für genau ein erzeugendes Gerät ohne PV-Komponente).
    */
-  const pvKomponente = useMemo(
-    () => (view?.gefunden ? view.komponenten.find((c) => c.role === 'pv') ?? null : null),
+  const erzeugungEntityId = useMemo(
+    () => (view?.gefunden ? pvEinstiegEntityId(view) : null),
     [view],
   );
 
-  // Die PV-Rollen-Zuordnung dieses Geräts - nur für die Gefahrenzonen-Folge.
+  // Die PV-Rollen-Zuordnung dieses Geräts - für die Gefahrenzonen-Folge und den
+  // Karten-Zustand; sie hängt an genau der Entität, mit der die Karte startet.
   useEffect(() => {
     let aktiv = true;
-    const entityId = pvKomponente?.entityId;
-    if (!entityId) {
+    if (!erzeugungEntityId) {
       setPvZugeordnet(false);
       return;
     }
-    api.geraetRolle(site.id, entityId, 'pv').then(
+    api.geraetRolle(site.id, erzeugungEntityId, 'pv').then(
       (r) => aktiv && setPvZugeordnet(r.zugeordnet != null),
       () => aktiv && setPvZugeordnet(false),
     );
     return () => {
       aktiv = false;
     };
-  }, [pvKomponente, site.id, pvReload]);
+  }, [erzeugungEntityId, site.id, pvReload]);
 
   return (
     <div className="vp-geraet">
@@ -1315,14 +1318,15 @@ export function GeraetSeiteSection({
           </RahmenSektion>
 
           {/* 1b · PV-Produktion dieses Geräts (vp-agg-konzept3-r8): die kompakte
-              Ergebnis-Karte + der Summenwert-Assistent. NACH „Jetzt", nur für
-              Geräte mit Erzeugungs-Komponente; die Karte lädt ihre Zuordnung
-              selbst und öffnet den Assistenten. */}
-          {pvKomponente && boxDevice?.id && (
+              Ergebnis-Karte + der Summenwert-Assistent. NACH „Jetzt", für jedes
+              erzeugende Gerät - auch ohne vorhandenen PV-Aspekt, dann geseedet auf
+              die Träger-Entität (Fix (b)); die Karte lädt ihre Zuordnung selbst
+              und öffnet den Assistenten. */}
+          {erzeugungEntityId && boxDevice?.id && (
             <GeraetPvProduktion
               siteId={site.id}
               deviceId={boxDevice.id}
-              entityId={pvKomponente.entityId}
+              entityId={erzeugungEntityId}
               geraetName={view.kopf.titel}
               onZuordnungGeaendert={() => setPvReload((x) => x + 1)}
             />

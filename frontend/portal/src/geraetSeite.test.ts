@@ -6,6 +6,7 @@ import {
   KEIN_VERBINDUNGS_VERLAUF,
   LAN_UNBEKANNT,
   NUR_GELESEN,
+  pvEinstiegEntityId,
   type GeraetSeiteInput,
 } from './geraetSeite';
 import { plantModel } from './komponenten';
@@ -400,6 +401,68 @@ describe('geraetSeite · B Live-Werte', () => {
     expect(v.liveLeer).toMatch(/noch keine Messwerte geliefert/);
   });
 
+});
+
+describe('geraetSeite · PV-Produktion-Einstieg (Fix b, vp-agg-konzept3-r8)', () => {
+  // Ein Hybrid, dessen komponierte Speicher-Entität ihren `pv_power_kw`-Kanal
+  // verloren hat (der reproduzierte Captain-Fall): der Speicher bleibt, der
+  // PV-Aspekt entsteht nicht mehr.
+  const DAMAGED_HYBRID: SiteEntity = {
+    ...HYBRID,
+    capabilities: {
+      measure: [{ channel: 'soc_pct' }, { channel: 'battery_power_kw' }],
+      actuate: [{ command: 'setpoint_kw' }],
+    },
+  };
+  // Dieselbe Quelle, aber ohne echten PV-Wert: dann meldet das Gerät keine
+  // Erzeugung (fehlend ist keine 0).
+  const STUMME_QUELLEN: SiteSource[] = SOURCES.map((s) =>
+    s.sourceId === 'inverter' ? { ...s, pvKw: null } : s,
+  );
+
+  it('meldet Erzeugung, sobald die Quelle einen PV-Wert echot (auch 0)', () => {
+    // SOURCES.inverter.pvKw === 0.2
+    const v = geraetSeite(input({ geraetId: 'inverter', entities: [HYBRID] }));
+    expect(v.meldetErzeugung).toBe(true);
+  });
+
+  it('gesunder Hybrid: der Einstieg läuft über den vorhandenen PV-Aspekt', () => {
+    const v = geraetSeite(
+      input({ geraetId: 'inverter', entities: [HYBRID], model: plantModel([HYBRID], null, LOCAL_SETUP, SOURCES) }),
+    );
+    expect(v.komponenten.some((c) => c.role === 'pv')).toBe(true);
+    // Der PV-Aspekt trägt die entityId seines Trägers (des Speichers).
+    expect(pvEinstiegEntityId(v)).toBe('ent-batt');
+  });
+
+  it('CAPTAIN-FALL: Hybrid OHNE PV-Aspekt, aber mit gemeldetem Solarstrom, seedet die Speicher-Entität', () => {
+    const v = geraetSeite(
+      input({
+        geraetId: 'inverter',
+        entities: [DAMAGED_HYBRID],
+        model: plantModel([DAMAGED_HYBRID], null, LOCAL_SETUP, SOURCES),
+      }),
+    );
+    // Kein PV-Aspekt mehr - genau das versteckte heute die Karte.
+    expect(v.komponenten.some((c) => c.role === 'pv')).toBe(false);
+    // ... aber das Gerät meldet Erzeugung, also bleibt der Einstieg erreichbar
+    // und startet auf der Träger-Entität (dem Speicher).
+    expect(v.meldetErzeugung).toBe(true);
+    expect(pvEinstiegEntityId(v)).toBe('ent-batt');
+  });
+
+  it('kein erzeugendes Gerät (kein PV-Aspekt, kein PV-Echo): weiterhin KEIN Einstieg', () => {
+    const v = geraetSeite(
+      input({
+        geraetId: 'inverter',
+        entities: [DAMAGED_HYBRID],
+        sources: STUMME_QUELLEN,
+        model: plantModel([DAMAGED_HYBRID], null, LOCAL_SETUP, STUMME_QUELLEN),
+      }),
+    );
+    expect(v.meldetErzeugung).toBe(false);
+    expect(pvEinstiegEntityId(v)).toBeNull();
+  });
 });
 
 describe('geraetSeite · C Misst & steuert', () => {
