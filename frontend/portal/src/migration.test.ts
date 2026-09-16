@@ -1611,3 +1611,14 @@ describe('AP-01 IP-13 · Ladegrenze bleibt eine additive Bestandsfläche', () =>
     expect(nav).not.toContain('ladegrenze');
   });
 });
+
+// AP-02 IP-10: die neue Bestandsübernahme ergänzt das Portfolio nur bei einer
+// tatsächlich offenen Vorschlagsmenge. Ohne sie bleibt der O18-Bestand zeichengleich.
+describe('AP-02 IP-10 · Vorschau-Zuordnung bleibt additiv', () => {
+  it('lädt und rendert die Fläche nur mit Unternehmensrecht und offenen Anlagen', () => {
+    const quelle = ohneKommentare(readFileSync(join(SRC, 'components/PortfolioCockpit.tsx'), 'utf8'));
+    expect(quelle).toContain("rollen.darf('standort.verwalten', null)");
+    expect(quelle).toContain('v.anlagenZahl > 0 ? v : null');
+    expect(quelle).toContain('{standortVorschlag &&');
+  });
+});

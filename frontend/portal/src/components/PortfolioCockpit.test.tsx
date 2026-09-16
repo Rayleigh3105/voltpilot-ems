@@ -4,6 +4,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { PortfolioCockpit } from './PortfolioCockpit';
 import { api, type Earnings, type Overview, type OverviewSite, type Site } from '../api';
 import type { Route } from '../nav';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
 /**
  * Das Portfolio-Cockpit — Stufe 4 (E5) in der **Revision 2** vom 25.08.2026.
@@ -113,6 +115,7 @@ beforeEach(() => {
   // liefe sie in einen echten Abruf.
   vi.spyOn(api, 'schedule').mockResolvedValue({ slots: [], deviceId: null } as never);
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
+  vi.spyOn(api, 'standortZuordnungVorschlag').mockResolvedValue({ gruppen: [], anlagenZahl: 0 });
 });
 
 function renderCockpit(
@@ -139,6 +142,61 @@ it('AP-13 Bestandsschutz · Portfolio Übersicht ohne Messfunktion', async () =>
   await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
   expect(view.container.querySelector('[data-testid="uebersicht-bausteine"]')).toBeNull();
   await bestandSnapshot('portfolio-uebersicht', view);
+});
+
+it('AP-02 A6/A15 · Vorschläge ergänzen Karte und Chips, Bestätigen räumt beides ab', async () => {
+  vi.spyOn(api, 'funktionen').mockResolvedValue({
+    unternehmen: {
+      messen: { laeuft_an: 0, standorte: 0, text: null },
+      steuern: { laeuft_an: 0, standorte: 0, text: null },
+    },
+    standorte: [],
+  } as never);
+  vi.spyOn(api, 'standortZuordnungVorschlag').mockResolvedValueOnce({
+    anlagenZahl: 2,
+    gruppen: [
+      { name: 'Werk Ahrenberg – Halle 1', zeitzone: 'Europe/Berlin', adresse: null,
+        anlagen: [{ vorschlagId: 'v1', anlageId: 'f1', anlageName: 'Filiale Nord', gueltigAb: '2025-01-03' }] },
+      { name: 'Werk Ahrenberg – Halle 2', zeitzone: 'Europe/Berlin', adresse: null,
+        anlagen: [{ vorschlagId: 'v2', anlageId: 'f2', anlageName: 'Filiale Süd', gueltigAb: '2025-06-04' }] },
+    ],
+  }).mockResolvedValue({ gruppen: [], anlagenZahl: 0 });
+  const bestaetigen = vi.spyOn(api, 'standortZuordnungBestaetigen').mockResolvedValue({ standortIds: ['st1'], zuordnungen: 2 });
+  const reload = vi.fn();
+  renderCockpit({
+    onReload: reload,
+    ebene: { art: 'unternehmen', name: 'Kunststoffwerk Ahrenberg GmbH', standorte: [] },
+  });
+
+  expect(await screen.findByText('Noch nicht zugeordnet')).toBeTruthy();
+  expect(screen.getAllByText('noch nicht zugeordnet')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Standorte einrichten' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Alle Anlagen zusammenlegen' }));
+  const felder = screen.getAllByRole('textbox');
+  fireEvent.change(felder[0], { target: { value: 'Werk Ahrenberg' } });
+  fireEvent.change(felder[1], { target: { value: 'Gewerbering 7' } });
+  fireEvent.change(felder[2], { target: { value: '84123' } });
+  fireEvent.change(felder[3], { target: { value: 'Ahrenberg' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Zuordnung bestätigen' }));
+
+  await waitFor(() => expect(bestaetigen).toHaveBeenCalledWith({ gruppen: [{
+    name: 'Werk Ahrenberg', zeitzone: 'Europe/Berlin',
+    adresse: { strasse: 'Gewerbering 7', plz: '84123', ort: 'Ahrenberg', land: 'DE' },
+    vorschlagIds: ['v1', 'v2'],
+  }] }));
+  await waitFor(() => expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull());
+  expect(reload).toHaveBeenCalled();
+}, 20_000);
+
+it('AP-02 O18 · ein reiner Betriebskunde lädt und sieht die Vorschlagsfläche nicht', async () => {
+  setSelbstauskunft(rechteSeed('CB').me);
+  const holen = vi.mocked(api.standortZuordnungVorschlag);
+  renderCockpit({ ebene: { art: 'unternehmen', name: 'Kunststoffwerk Ahrenberg GmbH', standorte: [] } });
+
+  await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
+  expect(holen).not.toHaveBeenCalled();
+  expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Standorte einrichten' })).toBeNull();
 });
 
 describe('§4.3 C: der Nur-Monitoring-Kunde sieht ECHTE Zahlen statt „—, —, —"', () => {

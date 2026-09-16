@@ -1246,6 +1246,20 @@
       "grund": "AP-01 IP-13 sperrt Übernehmen zusätzlich, bis Netzanschluss und Ladebudget geprüft sind; Recht und sichtbares Markup bleiben unverändert."
     },
     {
+      "datei": "components/AnlagenTabelle.tsx",
+      "vorher": "f33673cda60e58e02bf184335e87b5a2ea1ccd998b29e98191f335d97ff59283",
+      "nachher": "4330aeb8d228735cd74bfffa49d373f3ca47596aead216f093bc164cdbe2cea9",
+      "commit": "AP-02-IP-10",
+      "grund": "Der bestehende Anlagen-Öffnen-Knopf erhält ausschließlich für offene Standort-Vorschläge den additiven Chip ‚noch nicht zugeordnet‘; ohne Vorschlag ist sein gerendertes Markup byte-identisch."
+    },
+    {
+      "datei": "components/AnlagenTabelle.tsx",
+      "vorher": "fc6ccb68586ebbe34e67d727155fc0bbb0806af543ba16c2b18941fd73d97712",
+      "nachher": "054e520456533d246be90f4836d62ef0e4c38c14716768a2702d8668ce61e045",
+      "commit": "AP-02-IP-10",
+      "grund": "Dieselbe additive Chip-Fortschreibung am Telefon; Anlage, Zustand, Öffnen-Handler und alle bisherigen Attribute bleiben erhalten."
+    },
+    {
       "datei": "shell/AppShell.tsx",
       "vorher": "74df2d1b0d2202fe3a6cb16f0ad991f81a9df25b4b796e45cf6ba076b0c07595",
       "nachher": "0289724397148b719bc555a44596e9d7c5a362e989985663745bdb4e2068b83f",

@@ -3906,6 +3906,36 @@ export interface StandorteAmStichtag {
   teilansicht?: Teilansicht;
 }
 
+/** Rein lesende Vorschau der Bestandsanlagen-Zuordnung (AP-02 IP-10). */
+export interface StandortZuordnungAnlage {
+  vorschlagId: string;
+  anlageId: string;
+  anlageName: string;
+  gueltigAb: string;
+}
+export interface StandortZuordnungGruppe {
+  name: string;
+  zeitzone: string;
+  adresse: StandortAdresse | null;
+  anlagen: StandortZuordnungAnlage[];
+}
+export interface StandortZuordnungVorschau {
+  gruppen: StandortZuordnungGruppe[];
+  anlagenZahl: number;
+}
+export interface StandortZuordnungBestaetigen {
+  gruppen: {
+    name: string;
+    zeitzone: string;
+    adresse: StandortAdresse;
+    vorschlagIds: string[];
+  }[];
+}
+export interface StandortZuordnungErgebnis {
+  standortIds: string[];
+  zuordnungen: number;
+}
+
 // ---- Ortsstruktur schreiben (UEMS AP-02 IP-4) --------------------------------
 // Nur die Formen von PUT /api/v1/unternehmen und POST/PUT /api/v1/standorte,
 // …/archivieren, …/wiederherstellen, …/kurzzeichen-vorschlag; die Fläche dazu
@@ -8082,6 +8112,15 @@ export const api = {
     request<StandorteAmStichtag>(
       `/api/v1/standorte${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
     ),
+  /** AP-02 IP-10: liest nur; vor der Bestätigung entsteht nichts. */
+  standortZuordnungVorschlag: () =>
+    request<StandortZuordnungVorschau>('/api/v1/standorte/vorschlag'),
+  /** Legt alle gezeigten Gruppen und Zuordnungen in einer Transaktion an. */
+  standortZuordnungBestaetigen: (body: StandortZuordnungBestaetigen) =>
+    request<StandortZuordnungErgebnis>('/api/v1/standorte/vorschlag/bestaetigen', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   netzanschluesse: (standortId: string, stichtag?: string) =>
     request<Netzanschluesse>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`),

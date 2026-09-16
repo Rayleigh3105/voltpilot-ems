@@ -712,6 +712,46 @@ paths:
               schema: { $ref: "#/components/schemas/StandortKurzzeichenVorschlag" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/vorschlag:
+    get:
+      tags: [ortsstruktur]
+      summary: Vorschau der Standort-Zuordnung für Bestandsanlagen (AP-02 IP-10).
+      description: >
+        Liefert je noch nicht zugeordneter Bestandsanlage zunächst eine Gruppe.
+        Der Abruf schreibt nichts; Standorte und Zuordnungen entstehen erst mit
+        der Bestätigung. Rechte: `standort.verwalten` am Unternehmen.
+      responses:
+        "200":
+          description: Die aktuelle, rein lesende Vorschau.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortZuordnungVorschau" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/standorte/vorschlag/bestaetigen:
+    post:
+      tags: [ortsstruktur]
+      summary: Die Vorschau-Zuordnung atomar bestätigen (AP-02 IP-10, A6/A15).
+      description: >
+        Jede aktuelle Vorschlagszeile muss genau einmal vorkommen. Legt je Gruppe
+        einen aktiven Standort mit Adresse an, ordnet die Anlagen ab ihrem
+        ursprünglichen `created_at`-Tag zu und protokolliert beides. Bei einer
+        veralteten Vorschau wird nichts geschrieben. Rechte: `standort.verwalten`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StandortZuordnungBestaetigen" }
+      responses:
+        "200":
+          description: Alle Standorte und Zuordnungen wurden angelegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortZuordnungErgebnis" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/standorte/{standortId}:
     get:
       tags: [ortsstruktur]
@@ -18761,6 +18801,64 @@ components:
       type: object
       properties:
         kurzzeichen: { type: string, example: ST-3 }
+    StandortZuordnungAnlage:
+      type: object
+      required: [vorschlagId, anlageId, anlageName, gueltigAb]
+      properties:
+        vorschlagId: { type: string, format: uuid }
+        anlageId: { type: string, format: uuid }
+        anlageName: { type: string }
+        gueltigAb: { type: string, format: date }
+    StandortZuordnungGruppe:
+      type: object
+      required: [name, zeitzone, anlagen]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        zeitzone: { type: string, enum: [Europe/Berlin, Europe/Vienna, Europe/Zurich] }
+        adresse:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/StandortAdresse" }]
+        anlagen:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/StandortZuordnungAnlage" }
+    StandortZuordnungVorschau:
+      type: object
+      required: [gruppen, anlagenZahl]
+      properties:
+        gruppen:
+          type: array
+          items: { $ref: "#/components/schemas/StandortZuordnungGruppe" }
+        anlagenZahl: { type: integer, minimum: 0 }
+    StandortZuordnungBestaetigen:
+      type: object
+      required: [gruppen]
+      additionalProperties: false
+      properties:
+        gruppen:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [name, adresse, vorschlagIds]
+            additionalProperties: false
+            properties:
+              name: { type: string, minLength: 1, maxLength: 120 }
+              zeitzone: { type: string, nullable: true, enum: [Europe/Berlin, Europe/Vienna, Europe/Zurich] }
+              adresse: { $ref: "#/components/schemas/StandortAdresse" }
+              vorschlagIds:
+                type: array
+                minItems: 1
+                uniqueItems: true
+                items: { type: string, format: uuid }
+    StandortZuordnungErgebnis:
+      type: object
+      required: [standortIds, zuordnungen]
+      properties:
+        standortIds:
+          type: array
+          items: { type: string, format: uuid }
+        zuordnungen: { type: integer, minimum: 1 }
     Nutzung:
       type: string
       description: AP-02 E4 - Code = Kundenwort in Kleinbuchstaben, ä→ae, ö→oe, ü→ue, ß→ss.
@@ -18801,7 +18899,7 @@ components:
                  archivieren_gesperrt, wiederherstellen_gesperrt, ziel_art_unzulaessig,
                  ziel_gab_es_noch_nicht, ziel_archiviert, flaeche_ungueltig, gab_es_noch_nicht,
                  gleiche_flaeche, standort_waehlen, loeschen_gesperrt, vor_dem_ersten_intervall,
-                 objekt_archiviert, gleicher_tag, ziel_ist_bisheriger_eltern]
+                 objekt_archiviert, gleicher_tag, ziel_ist_bisheriger_eltern, vorschlag_geaendert]
         message: { type: string }
         feld: { type: string }
         verweis:

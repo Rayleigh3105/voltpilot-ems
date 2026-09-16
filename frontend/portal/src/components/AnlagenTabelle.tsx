@@ -48,6 +48,8 @@ export interface AnlagenTabelleProps {
    */
   energiebilanz?: ReadonlySet<string> | null;
   onEnergiebilanz?: (siteId: string) => void;
+  /** AP-02 IP-10: nur die offenen Bestandsanlagen tragen den zusätzlichen Chip. */
+  nichtZugeordnet?: ReadonlySet<string>;
 }
 
 /** Eine Gruppe der Tabelle: ihr Kopf, ihre Zeilen, und der Satz, wenn sie keine hat. */
@@ -190,7 +192,7 @@ function VorschauBlock({
 // Desktop
 // ---------------------------------------------------------------------------
 
-function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz }: AnlagenTabelleProps) {
+function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz, nichtZugeordnet }: AnlagenTabelleProps) {
   // Bewegung P6: die Zeilen staffeln beim ERSTEN Blick auf das Portfolio, nie
   // beim zweiten (`src/staffel.ts`). Beide Formen teilen den Schlüssel — es
   // ist dieselbe Liste, nur einmal als Tabelle und einmal als Karten.
@@ -217,6 +219,7 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
             >
               <span className="vp-at-name-text">
                 <b>{z.name}</b>
+                {nichtZugeordnet?.has(z.id) && <span className="vp-at-unzugeordnet">noch nicht zugeordnet</span>}
                 {z.unterzeile && <span className="vp-at-sub">{z.unterzeile}</span>}
                 <Warnzeile z={z} />
               </span>
@@ -324,7 +327,7 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
  * Vorschau bzw. auf der Anlagen-Seite. Eine Kachel ohne Wert erscheint gar
  * nicht.
  */
-function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz }: AnlagenTabelleProps) {
+function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz, nichtZugeordnet }: AnlagenTabelleProps) {
   const zeigt = new Set(spalten);
   const staffel = useStaffel('portfolio-anlagen');
   const liste = staffel ? `vp-at-karten ${staffel}` : 'vp-at-karten';
@@ -361,6 +364,7 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen
             <span className={`vp-at-dot is-${z.zustand.ton}`} aria-hidden="true" />
             <span className="vp-at-karte-name">
               {z.name}
+              {nichtZugeordnet?.has(z.id) && <span className="vp-at-unzugeordnet">noch nicht zugeordnet</span>}
               <span className="vp-at-sub">
                 {z.zustand.wort}
                 {z.zustand.alter ? ` · ${z.zustand.alter}` : ''}

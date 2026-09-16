@@ -60,6 +60,8 @@ public final class OrtAbgelehnt extends RuntimeException {
         GLEICHER_TAG("gleicher_tag", 409),
         /** Die Anlage gehört an dem Tag schon zu diesem Standort. */
         ZIEL_IST_BISHERIGER_ELTERN("ziel_ist_bisheriger_eltern", 400),
+        /** Die bestätigte Vorschlagsmenge ist nicht mehr die aktuell offene Menge. */
+        VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409),
         /**
          * Eine neue Anlage ohne {@code standortId} in einem Kundenbereich mit MEHREREN Standorten
          * (IP-9, §6.3: vorbelegt nur bei genau einem); {@code standorte} nennt die Auswahl.
