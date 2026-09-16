@@ -28,6 +28,7 @@ export const benutzerApi = {
 
 export function benutzerFehler(fehler: unknown): string {
   if (fehler instanceof ApiError) {
+    if (fehler.status === 422) return 'Bitte wählen Sie mindestens einen Standort.';
     if (fehler.status === 409) return 'Benutzername oder E-Mail-Adresse ist bereits vergeben.';
     if (fehler.status === 403) return 'Nur der Kundenadministrator kann ein Startpasswort vergeben.';
     if (fehler.status === 404) return 'Dieser Benutzer oder Standort ist nicht mehr verfügbar.';

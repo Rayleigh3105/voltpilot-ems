@@ -18,7 +18,6 @@ import com.voltpilot.api.web.dto.DeleteTenantRequest;
 import com.voltpilot.api.web.dto.PendingEnrollmentDto;
 import com.voltpilot.api.web.dto.ProvisionDeviceRequest;
 import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
-import com.voltpilot.api.web.dto.ResetPasswordRequest;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TenantDto;
 import com.voltpilot.api.web.dto.TenantOffboardingReportDto;
@@ -315,13 +314,7 @@ public class AdminController {
         }
     }
 
-    /**
-     * Support-driven password reset: without SMTP there is no self-service
-     * reset, so this is how a customer who forgot their password (or locked
-     * themselves out guessing) gets back in. Sets the new password (temporary by
-     * default: must change on next login) and lifts any brute-force lockout so
-     * it works immediately.
-     */
+    /** IP-14: der Kundenadministrator vergibt das Startpasswort über die Kundenroute neu. */
     @PostMapping("/tenants/{tenantId}/users/{userId}/reset-password")
     public AdminUserDto resetPassword(@PathVariable UUID tenantId, @PathVariable String userId) {
         requireTenant(tenantId);

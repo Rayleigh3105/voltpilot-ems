@@ -21,6 +21,8 @@ function Anlage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(), removeItem: vi.fn() });
+  vi.stubGlobal('sessionStorage', { setItem: vi.fn(), getItem: vi.fn(), removeItem: vi.fn() });
   setSelbstauskunft(rechteSeed('JW').me);
   vi.mocked(benutzerApi.anlegen).mockResolvedValue({ benutzer: konto, startpasswort: 'NurEinmal-Testpasswort-23!' });
   vi.mocked(benutzerApi.startpasswort).mockResolvedValue({ benutzer: konto, startpasswort: 'NeuEinmal-Testpasswort-24!' });
@@ -34,15 +36,17 @@ describe('N3 und der Hebel in N1', () => {
     fireEvent.click(ausloeser);
     fireEvent.click(screen.getByRole('button', { name: 'Benutzer anlegen' }));
     expect(await screen.findByText(/Nach dem Schließen können Sie es nicht wieder anzeigen/)).toBeInTheDocument();
-    expect(erstellt).toHaveBeenCalledWith(konto);
+    expect(erstellt).not.toHaveBeenCalled();
     expect(benutzerApi.anlegen).toHaveBeenCalledWith(anlage);
     fireEvent.click(screen.getByRole('button', { name: 'Startpasswort kopieren' }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('Startpasswort kopiert.')).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Schließen' }).at(-1)!);
+    expect(erstellt).toHaveBeenCalledWith(konto);
     fireEvent.click(ausloeser);
     expect(screen.queryByLabelText('Startpasswort')).not.toBeInTheDocument();
-    expect(localStorage.length).toBe(0);
+    expect(localStorage.setItem).not.toHaveBeenCalled();
+    expect(sessionStorage.setItem).not.toHaveBeenCalled();
   });
 
   it('fragt vor der Neuvergabe; Escape verwirft auch deren Anzeige', async () => {

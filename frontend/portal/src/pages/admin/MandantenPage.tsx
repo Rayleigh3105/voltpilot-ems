@@ -284,9 +284,7 @@ function TenantDetailDrawer({
   // failed load shows a retryable ErrorState instead of permanent skeletons.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [userDrawer, setUserDrawer] = useState(false);
-  // Stufe 4 (F5): die Benutzer-Verwaltung ist hier VOLLSTÄNDIG - inklusive des
-  // Passwort-Resets, des einen Support-Hebels. Er lag bis dahin allein auf der
-  // eigenen Benutzer-Seite, während dieser Drawer die andere Hälfte trug.
+  // Profilpflege bleibt hier; Startpasswörter vergibt der Kundenadministrator.
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   const [confirmUser, setConfirmUser] = useState<{ user: AdminUser; kind: 'disable' | 'delete' } | null>(null);
   const [siteDrawer, setSiteDrawer] = useState(false);
@@ -483,7 +481,7 @@ function TenantDetailDrawer({
         <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
           <h2 style={{ fontSize: '1.05rem' }}>Benutzer {users ? `(${users.length})` : ''}</h2>
           <span className="actions">
-            <Button variant="outline" size="sm" disabled={!users || users.length > 0} iconLeft={<Icon name="plus" size={16} />} onClick={() => setUserDrawer(true)}>
+            <Button variant="outline" size="sm" disabled={!users || users.length > 0} iconLeft={<Icon name="plus" size={16} />} onClick={(event) => { event.currentTarget.focus(); setUserDrawer(true); }}>
               Benutzer anlegen
             </Button>
           </span>

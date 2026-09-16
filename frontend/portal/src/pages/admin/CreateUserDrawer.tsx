@@ -10,8 +10,7 @@ import { adminApi, type CreateUserInput, type Tenant } from '../../admin/adminAp
 
 /**
  * "Benutzer anlegen" drawer (platform-admin): provisions a customer user in
- * Keycloak with the tenant_id attribute + customer role, so the new login is
- * tenant-scoped by the existing OIDC + RLS spine.
+ * Keycloak with tenant_id, a Kundenadministrator assignment and mandatory password change.
  */
 export function CreateUserDrawer({
   open,

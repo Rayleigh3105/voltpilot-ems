@@ -3599,8 +3599,7 @@ class AdminApiTest {
             String email, String password) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("username", username, "email", email,
-                        "password", password, "temporaryPassword", false), bearer(token)),
+                new HttpEntity<>(Map.of("username", username, "email", email), bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         Map<String, Object> konto = (Map<String, Object>) res.getBody().get("benutzer");

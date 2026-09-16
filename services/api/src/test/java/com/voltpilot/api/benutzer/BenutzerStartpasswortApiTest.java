@@ -161,9 +161,30 @@ class BenutzerStartpasswortApiTest {
     }
 
     @Test void partnerNutztDenselbenPflichtwechselUndRealmPolicyGiltServerseitig() throws Exception {
-        StartpasswortKonten.Angelegt partner = new StartpasswortKonten(keycloak).partner("brunner@ip14.example");
-        assertThat(partner.konto().tenantId()).isNull();
-        keinTokenOhneWechsel("brunner@ip14.example", partner.startpasswort().wert());
+        UUID tenant = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID unternehmen = rootDb().queryForList("SELECT id FROM unternehmen WHERE tenant_id = ?", UUID.class, tenant)
+                .stream().findFirst().orElseGet(() -> rootDb().queryForObject("INSERT INTO unternehmen (tenant_id, name) "
+                        + "VALUES (?, 'Kunststoffwerk Ahrenberg GmbH') RETURNING id", UUID.class, tenant));
+        UUID standort = rootDb().queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, "
+                + "zeitzone, zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-IP14', 'Europe/Berlin', 'aktiv') RETURNING id",
+                UUID.class, tenant, unternehmen);
+        Antwort gewaehren = api("POST", "/api/v1/unterstuetzung", token("demo", "demo"), Map.of("art", "installateur",
+                "email", "brunner@ip14.example", "standorte", List.of(standort.toString()), "umfang", "einrichten",
+                "gueltig_bis", java.time.LocalDate.now().plusDays(7).toString()));
+        assertThat(gewaehren.status()).isEqualTo(201);
+        String pw = gewaehren.json().path("startpasswort").asText();
+        var partner = keycloak.findByEmail("brunner@ip14.example").orElseThrow();
+        assertThat(partner.tenantId()).isNull();
+        assertThat(zustand(tenant.toString(), partner.id())).isEqualTo("angelegt");
+        keinTokenOhneWechsel("brunner@ip14.example", pw);
+        keycloak.resetPassword(partner.id(), "Eigenes-Brunner-Passwort-24!", false);
+        String partnerToken = token("brunner@ip14.example", "Eigenes-Brunner-Passwort-24!");
+        HttpRequest me = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/me"))
+                .header("Authorization", "Bearer " + partnerToken).header("X-Kundenbereich", tenant.toString()).GET().build();
+        assertThat(send(me).status()).isEqualTo(200);
+        assertThat(zustand(tenant.toString(), partner.id())).isEqualTo("aktiv");
+        assertThat(protokoll(tenant.toString(), partner.id(), "erste_anmeldung")).isEqualTo(1);
+        assertThat(api("GET", "/api/v1/unterstuetzung", token("demo", "demo"), null).body().contains(pw)).isFalse();
         String master = form(KC.getAuthServerUrl() + "/realms/master/protocol/openid-connect/token",
                 Map.of("grant_type", "password", "client_id", "admin-cli", "username", KC.getAdminUsername(), "password", KC.getAdminPassword())).json().path("access_token").asText();
         String realm = KC.getAuthServerUrl() + "/admin/realms/voltpilot";

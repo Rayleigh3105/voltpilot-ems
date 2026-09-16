@@ -297,9 +297,8 @@ public class KeycloakAdminClient {
     }
 
     /**
-     * Set a new password for a user (the support lever - without SMTP there is
-     * no self-service reset, so this is how a customer who forgot their password
-     * gets back in). {@code temporary} forces a password change on the next
+     * Set a new password through the authorized customer-administrator flow.
+     * {@code temporary} forces a password change on the next
      * login. Also lifts any brute-force lockout so the new password works
      * immediately instead of being refused until the escalating wait expires.
      */

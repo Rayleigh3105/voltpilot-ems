@@ -161,7 +161,7 @@ public class UnterstuetzungService {
         Konto konto = art == Art.INSTALLATEUR ? Konto.PARTNER : Konto.PLATTFORM;
         Empfaenger e = art == Art.INSTALLATEUR ? partnerKonto(g.email()) : voltpilotKonto(anfrage);
         zugriffe.benutzerSpiegeln(new BenutzerSpiegel(e.sub(), konto, e.name(), e.email(),
-                e.startpasswort() == null ? KontoZustand.AKTIV : KontoZustand.ANGELEGT));
+                konto == Konto.PARTNER ? KontoZustand.ANGELEGT : KontoZustand.AKTIV));
 
         UUID griff = eintragen(standorte, e, art, urteil.umfang(), ab, bis, endeAm(bis, welt.zone()), welt.zone(),
                 akteur, grund);

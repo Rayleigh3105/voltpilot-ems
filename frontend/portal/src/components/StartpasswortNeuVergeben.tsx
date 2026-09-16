@@ -22,7 +22,7 @@ export function StartpasswortNeuVergeben({ sub, name }: { sub: string; name: str
     catch (e) { setFehler(benutzerFehler(e)); }
     finally { setBusy(false); }
   }
-  return <><Button variant="outline" size="sm" onClick={() => setOpen(true)}>Startpasswort neu vergeben</Button>
+  return <><Button variant="outline" size="sm" onClick={(event) => { event.currentTarget.focus(); setOpen(true); }}>Startpasswort neu vergeben</Button>
     <Modal open={open} onClose={schliessen} title="Startpasswort neu vergeben"
       footer={<><Button variant="ghost" onClick={schliessen} disabled={busy}>{antwort ? 'Schließen' : 'Abbrechen'}</Button>
         {!antwort && <Button variant="primary" onClick={() => void vergeben()} disabled={busy}>{busy ? 'Wird vergeben…' : 'Startpasswort vergeben'}</Button>}</>}>

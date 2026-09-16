@@ -336,8 +336,7 @@ class KeycloakPartnerRolleApiTest {
     private void createUser(String adminToken, String tenantId, String username, String email, String password) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("username", username, "email", email,
-                        "password", password, "temporaryPassword", false), bearer(adminToken)),
+                new HttpEntity<>(Map.of("username", username, "email", email), bearer(adminToken)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         @SuppressWarnings("unchecked")

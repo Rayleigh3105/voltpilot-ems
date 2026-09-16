@@ -16,14 +16,17 @@ export function BenutzerAnlegenDialog({ open, onClose, anlage, rollenname, stand
   const [fehler, setFehler] = useState('');
   useEffect(() => { if (!open) { setAntwort(null); setFehler(''); } }, [open]);
   const erlaubt = rechte.darf('benutzer.verwalten');
-  const schliessen = () => { if (!busy) { setAntwort(null); setFehler(''); onClose(); } };
+  const schliessen = () => { if (!busy) {
+    const konto = antwort?.benutzer;
+    setAntwort(null); setFehler(''); onClose();
+    if (konto) onCreated(konto);
+  } };
   async function anlegen() {
     if (!erlaubt || busy) return;
     setBusy(true); setFehler('');
     try {
       const neu = await benutzerApi.anlegen(anlage);
       setAntwort(neu);
-      onCreated(neu.benutzer);
     } catch (e) { setFehler(benutzerFehler(e)); }
     finally { setBusy(false); }
   }

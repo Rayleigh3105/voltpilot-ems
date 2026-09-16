@@ -79,14 +79,16 @@ public class BenutzerService {
         }
         Rolle rolle;
         try { rolle = Rolle.vonCode(a.rolle()); }
-        catch (RuntimeException ex) { throw new BenutzerFehler(400, "rolle_ungueltig", "Bitte wählen Sie eine Rolle."); }
+        catch (RuntimeException ex) { throw new BenutzerFehler(400, "anfrage_ungueltig", "Bitte wählen Sie eine Rolle."); }
         if (rolle == null || rolle == Rolle.UNTERSTUETZER || rolle == Rolle.VOLTPILOT_BETRIEB) {
-            throw new BenutzerFehler(400, "rolle_ungueltig", "Bitte wählen Sie eine Kundenrolle.");
+            throw new BenutzerFehler(400, "anfrage_ungueltig", "Bitte wählen Sie eine Kundenrolle.");
         }
         List<UUID> standorte = a.standorte() == null ? List.of() : a.standorte().stream().distinct().toList();
-        if (rolle.jeStandort() == standorte.isEmpty()) {
-            throw new BenutzerFehler(400, "standort_noetig", rolle.jeStandort()
-                    ? "Bitte wählen Sie mindestens einen Standort." : "Diese Rolle gilt im ganzen Unternehmen.");
+        if (rolle.jeStandort() && standorte.isEmpty()) {
+            throw new BenutzerFehler(422, "standort_fehlt", "Bitte wählen Sie mindestens einen Standort.");
+        }
+        if (!rolle.jeStandort() && !standorte.isEmpty()) {
+            throw new BenutzerFehler(400, "anfrage_ungueltig", "Diese Rolle gilt im ganzen Unternehmen.");
         }
         List<UUID> sichtbar = zugriffe.standorte().stream().map(ZugriffRepository.StandortEintrag::id).toList();
         if (!sichtbar.containsAll(standorte)) throw nichtGefunden();
