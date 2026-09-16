@@ -874,7 +874,8 @@ public final class EreignisVokabular {
         // AP-09 IP-7: eine Korrektur trifft die Reihe ODER die Bezugsgröße — was dem gewählten Bezug fehlt,
         // ist ein Pflichtfeld wie zuvor (ohne beide also weiter „Pflichtfeld komponente“).
         if (art == Art.DATA_GAP && !e.hasNonNull("box") && !(u == CLOUD
-                && e.hasNonNull("messstelle") && "kadenz".equals(e.path("erkannt_aus").asText()))) {
+                && e.hasNonNull("messstelle") && !e.has("komponente") && !e.has("messkanal")
+                && !e.has("datenquelle") && "kadenz".equals(e.path("erkannt_aus").asText()))) {
             throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld box");
         }
         if (art == Art.CORRECTION) {

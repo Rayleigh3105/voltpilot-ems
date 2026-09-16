@@ -77,6 +77,18 @@ class EreignisVokabularVectorsTest {
         return out;
     }
 
+    @Test
+    void dieBoxloseAblesungslueckeErlaubtKeineErfundeneKanalidentitaet() throws Exception {
+        JsonNode fall = java.util.stream.StreamSupport.stream(lies(VECTORS).path("cases").spliterator(), false)
+                .filter(c -> c.path("name").asText().equals("ablesung-ms21-ueberfaellig-cloud"))
+                .findFirst().orElseThrow();
+        for (String feld : List.of("komponente", "messkanal", "datenquelle")) {
+            ObjectNode ereignis = fall.path("input").path("ereignis").deepCopy();
+            ereignis.put(feld, "erfundene Identitaet");
+            assertThat(EreignisVokabular.pruefe(ereignis, Urheber.CLOUD).angenommen()).as(feld).isFalse();
+        }
+    }
+
     // ---------------------------------------------------------------- Form
 
     @Test

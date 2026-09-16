@@ -260,6 +260,29 @@ class AblesungApiTest {
         assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("1240");
     }
 
+    @Test
+    void standortrechtGiltAuchOhneAnlageUndBox() throws Exception {
+        Welt w=welt();
+        zuweisen(w.ines(), "bearbeiter", w.standort());
+        ok(ruf(w.ines(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ERSTE,"stand","48.211")),200);
+        UUID andererStandort=root.queryForObject("INSERT INTO standort (tenant_id,unternehmen_id,name,kurzzeichen,"
+                + "zeitzone,zustand) SELECT tenant_id,id,'Werk Lindach','ST-2','Europe/Berlin','aktiv' "
+                + "FROM unternehmen WHERE tenant_id=? RETURNING id",UUID.class,w.mandant());
+        zuweisen(w.jonas(), "bearbeiter", andererStandort);
+        assertThat(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ZWEITE,"stand","49.451")).status()).isEqualTo(404);
+        assertThat(ruf(w.jonas(),HttpMethod.GET,PFAD,null).status()).isEqualTo(404);
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle_ablesung_fassung WHERE tenant_id=?",
+                Integer.class,w.mandant())).isEqualTo(1);
+    }
+
+    private void zuweisen(Wer wer, String rolle, UUID standort) {
+        root.update("INSERT INTO benutzer(tenant_id,sub,konto,anzeigename,zustand) VALUES(?,?,'benutzer',?,'aktiv')",
+                wer.kundenbereich(),wer.sub(),wer.name());
+        root.update("INSERT INTO zugriff(tenant_id,benutzer_sub,rolle,standort_id,gueltig_ab,zeitzone) "
+                + "VALUES(?,?,?,?,?,'Europe/Berlin')",wer.kundenbereich(),wer.sub(),rolle,standort,
+                java.sql.Timestamp.from(java.time.Instant.parse("2026-01-01T00:00:00Z")));
+    }
+
     private int lueckenFuer(Welt w) { return root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap'",Integer.class,w.mandant()); }
     private void anfang(Welt w) throws Exception {
         ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ERSTE,"stand","48.211")),200);

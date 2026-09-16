@@ -35,6 +35,8 @@ class SiteScopeArchitekturTest {
     enum Grund {
         /** Der Einstieg prüft die Anlage vorher: {@link Geltungsbereich} oder ein Lesen über {@code site}, das 404 gibt. */
         ANLAGE_GEPRUEFT,
+        /** Komponentenlose Ablesung: RechtPruefung löst den Standort der Messstelle auf. */
+        MESSSTELLE_GEPRUEFT,
         /** Das Gerät kommt nur aus {@code device}, das {@code site_scope} trägt: ein fremdes Gerät ist nicht da. */
         UEBER_GERAET,
         /** Die Reihe kommt nur aus {@code measurement_point}, das {@code site_scope} trägt. */
@@ -60,6 +62,10 @@ class SiteScopeArchitekturTest {
     record Erlaubt(String datei, String tabelle, int anzahl, Grund grund, String beleg, String pruefzeichen) {}
 
     static final List<Erlaubt> LISTE = List.of(
+            // Ablesungen besitzen keine Anlage/Box; beide Schreibwege prüfen die Messstelle.
+            new Erlaubt("uems/AblesungRepository.java", "device_measurement_sample", 1,
+                    Grund.MESSSTELLE_GEPRUEFT, "web/AblesungController.java",
+                    "rechte.pruefen(aktion,RechtZiel.MESSSTELLE,m.id()"),
             // --- Einstieg prüft die Anlage
             new Erlaubt("measurement/MeasurementHistoryService.java", "device_measurement_sample", 3,
                     Grund.ANLAGE_GEPRUEFT, "measurement/MeasurementHistoryService.java",
