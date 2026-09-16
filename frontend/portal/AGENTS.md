@@ -43,6 +43,7 @@ Historische UI-Implementierungen nicht als aktuelle Architektur dokumentieren. D
 ## Regeln des aktuellen Portals
 
 - Aufgabenflächen verwenden das zentrierte `Modal`; keine Seitenleisten wieder einführen. Der Wächter `src/keineSeitenleisten.test.ts` prüft dies.
+- UEMS-Oberflächen (AP-13): Quelle je Fläche, Zone einmal im Kopf; Bestandsflächen behalten ihre Zahlen. Mengen nur über Vertrags-Zwillinge; Wächter und Orte: [Oberflächen-Abschluss](../../docs/agents/root/uems-oberflaechen-ebenen.md).
 - Fachableitungen bleiben reine Module; Komponenten rendern ihr Ergebnis. Tokens und `chartTheme()` verwenden, keine zweite Chart-Palette anlegen.
 - `VpPicker`, `VpDatePicker` und `VpTimePicker` statt nativer Auswahlfelder verwenden.
 - Kundenwörter zuerst im [Fachmodell-Glossar](../../docs/fachmodell/glossar.md) pflegen; Konstanten: `src/glossar.ts`, Textprüfung: `src/copy.test.ts`.

@@ -223,3 +223,23 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+$/);
   });
 });
+
+
+test('O18 · Betriebskunde: keine AP-13-Reiter oder Bausteine; alte Direktlinks landen auf der Übersicht', async ({ page }) => {
+  for (const breite of [1440, 375]) {
+    let uebersichtText = '';
+    for (const bereich of ['', '-gebaeude', '-anlagen', '-kennzahlen', '-berichte']) {
+      await oeffne(page, `bild=unternehmen&messen=bestand&ansicht=werk${bereich}`, breite);
+      const m = await messe(page);
+      ohneQuerlauf(m, `betrieb${bereich}-${breite}`);
+      expect(m.titel).toBe('Werk AhrenbergST-1');
+      if (!bereich) uebersichtText = m.text;
+      expect(m.text).toBe(uebersichtText);
+      expect(m.leiste).toBeNull();
+      expect(m.reiter).toEqual([]);
+      expect(m.einstiege).toEqual([]);
+      await expect(page.getByTestId('uebersicht-bausteine')).toHaveCount(0);
+      if (!bereich) await ablegen(page, `betrieb-${breite}`, m, true);
+    }
+  }
+});

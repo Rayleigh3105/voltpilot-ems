@@ -71,6 +71,7 @@ import {
   misstAnlage,
   resolveAnlage,
   standortEinstiege,
+  standortBereichFuer,
   type EbenenLesemodell,
 } from './ebenenNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
@@ -1096,12 +1097,13 @@ function UnifiedPortal() {
     kennzahlen: ebenenFakten?.kennzahlen ?? null,
   };
   const ebenenKacheln = ebenenOrtHier ? ebenenLeiste(ebenenOrtHier, ebenenLesemodell) : [];
+  const standortBereich = standortBereichFuer(route, ebenenLesemodell);
   const ebenenNav =
     ebenenOrtHier && ebenenKacheln.length > 0
       ? {
           titel: ebenenTitel(ebenenOrtHier, ebenenLesemodell, unternehmensEbene?.name ?? 'Ihr Unternehmen'),
           kacheln: ebenenKacheln,
-          aktiv: ebenenAktiv(page, route.standortBereich),
+          aktiv: ebenenAktiv(page, standortBereich),
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
@@ -1287,13 +1289,13 @@ function UnifiedPortal() {
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
             standortBereiche={standortObenReiter}
-            standortAktiv={ebenenAktiv(page, route.standortBereich)}
+            standortAktiv={ebenenAktiv(page, standortBereich)}
             onOpenBereich={navigate}
           />
           {standortReiter.length > 0 && ebenenOrtHier && (
             <EbenenTabs
               reiter={standortReiter}
-              aktiv={ebenenAktiv(page, route.standortBereich)}
+              aktiv={ebenenAktiv(page, standortBereich)}
               leiste={leisteHier}
               label={`Reiter des Standorts ${standortOffen?.name ?? ''}`.trim()}
               onOpen={navigate}
@@ -1397,7 +1399,7 @@ function UnifiedPortal() {
               }
             />
           )}
-          {page === 'standort' && standortOffen && !route.standortBereich && (
+          {page === 'standort' && standortOffen && !standortBereich && (
             <StandortUebersichtPage
               standort={standortOffen}
               sites={sites}
@@ -1409,7 +1411,7 @@ function UnifiedPortal() {
             />
           )}
           {/* UEMS AP-13 IP-2: „Standort › Gebäude“ (Ortsbaum + Stand am) und „Standort › Anlagen“ (die Tabelle). */}
-          {page === 'standort' && standortOffen && route.standortBereich === 'gebaeude' && (
+          {page === 'standort' && standortOffen && standortBereich === 'gebaeude' && (
             <StandortGebaeudePage
               key={standortOffen.id}
               standort={standortOffen}
@@ -1418,7 +1420,7 @@ function UnifiedPortal() {
               springe={springe}
             />
           )}
-          {page === 'standort' && standortOffen && route.standortBereich === 'anlagen' && (
+          {page === 'standort' && standortOffen && standortBereich === 'anlagen' && (
             <StandortAnlagenPage
               standort={standortOffen}
               sites={sites}
@@ -1429,7 +1431,7 @@ function UnifiedPortal() {
             />
           )}
           {/* UEMS AP-13 IP-2 (Ü8): „Kennzahlen dieses Standorts“ und „Berichte dieses Standorts“ — Seite und Rückweg bleiben im Standort. */}
-          {page === 'standort' && standortOffen && route.standortBereich === 'kennzahlen' && (
+          {page === 'standort' && standortOffen && standortBereich === 'kennzahlen' && (
             <KennzahlenPage
               key={standortOffen.id}
               standort={{ id: standortOffen.id, name: standortOffen.name }}
@@ -1439,7 +1441,7 @@ function UnifiedPortal() {
               onListe={() => navigate(standortBereichRoute(standortOffen.id, 'kennzahlen'))}
             />
           )}
-          {page === 'standort' && standortOffen && route.standortBereich === 'berichte' && (
+          {page === 'standort' && standortOffen && standortBereich === 'berichte' && (
             <BerichtePage
               key={standortOffen.id}
               standort={{ id: standortOffen.id, name: standortOffen.name }}

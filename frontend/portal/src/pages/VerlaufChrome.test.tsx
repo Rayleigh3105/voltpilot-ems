@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { PriceBucket, PriceHistory } from '../api';
@@ -124,6 +125,15 @@ afterEach(() => {
   vi.clearAllMocks();
   // @ts-expect-error — die Stellvertreter-Breite wieder abräumen
   delete window.matchMedia;
+});
+
+it('AP-13 Bestandsschutz · Verlauf Marktpreise ohne Messfunktion', async () => {
+  bestandsZeit();
+  priceHistoryMock.mockResolvedValue(historie());
+  setzeBreite(false);
+  const view = render(<MarktpreisePage sites={[SITE]} selectedSite="site-22" onSelectSite={() => {}} embedded />);
+  await screen.findByTestId('preis-chart');
+  await bestandSnapshot('verlauf-marktpreise', view);
 });
 
 describe('P1 · V1 — der Seitenkopf ist unsichtbar', () => {

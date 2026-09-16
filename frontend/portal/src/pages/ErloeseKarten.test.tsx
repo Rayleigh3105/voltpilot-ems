@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { ErloeseSection } from './ErloeseSection';
@@ -182,6 +183,13 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it('AP-13 Bestandsschutz · Verlauf Erlöse ohne Messfunktion', async () => {
+  stub();
+  const view = render(<ErloeseSection site={site()} surface={SURFACE('direktvermarktung')} onOpenWelt={() => {}} />);
+  await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+  await bestandSnapshot('verlauf-erloese', view);
 });
 
 describe('E1 · vier Karten in der Reihenfolge der Frage-Leiter', () => {

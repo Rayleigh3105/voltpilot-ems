@@ -91,7 +91,7 @@ export interface EbenenBild {
  * vier Kacheln, Werk Lindach drei; wer eine weitere Seite einhängt, trägt sie dort ein.
  */
 export function kacheln(ort: EbenenOrt, lm: EbenenLesemodell, seiten: EbenenSeiten = EBENEN_SEITEN): EbenenBild {
-  const ziele = seiten(ort);
+  const ziele = seiten(ort, lm);
   const bereiche = ebenenBereiche(ort, lm).map((b) => b.key);
   const mitSeite = bereiche.filter((key) => ziele[key] !== undefined);
   return { bereiche, kacheln: mitSeite, leiste: mitSeite.length >= EBENEN_LEISTE_AB };

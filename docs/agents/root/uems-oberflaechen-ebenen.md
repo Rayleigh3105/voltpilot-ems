@@ -29,9 +29,8 @@ Tests: `ebenenNav.test.ts` (Block „AP-13 IP-2“: O17 vier/drei Kacheln, O18, 
    macht, bricht O17 — das braucht einen Entscheid.
 2. **Als oberste Ebene trägt `PortfolioTabs` Gebäude · Anlagen** (`standortBereiche` aus `ebenenReiter`); unter einem
    Unternehmen trägt sie `EbenenTabs`. Am Rechner sind die Reiter der einzige Weg — die Leiste blendet CSS dort aus.
-3. **Die Karte je Gebäude ist nur eine Hülle.** `Ortsbaum.gebaeudeKarte` bekommt erst einen Aufklapper, wenn es Inhalt
-   zurückgibt; die Seite reicht heute nichts hinein (kein Knopf ohne Ziel). IP-10 legt Energie · Messstellen ·
-   Kennzahlen hinein.
+3. **Die Karte je Gebäude trägt seit IP-10 Energie · Messstellen · Kennzahlen.** `Ortsbaum.gebaeudeKarte`
+   bleibt ihr Wirt; Quellen und Grenzen: [Gebäude-Karte](uems-gebaeude-karte.md).
 4. **EIN Datumsfeld je Seite:** die Gebäude-Seite liest `GET /standorte?stichtag=` selbst („gab es noch nicht“,
    archiviert) und reicht den Stichtag an den Baum; mit Stichtag kein Schreibweg. Nach dem Speichern lädt
    `App.reload()` die Orte neu — das erste Gebäude lässt den Bereich „Gebäude“ erst entstehen.
@@ -44,9 +43,40 @@ Tests: `ebenenNav.test.ts` (Block „AP-13 IP-2“: O17 vier/drei Kacheln, O18, 
    `#/portfolio/messstellen[/{id}]` bleiben die Adressen des Unternehmens (Test „Adressen“). Eine Kennzahl oder ein
    Bericht aus der Standort-Liste öffnet sich IM Standort, der Rückweg heißt „… dieses Standorts“ (`zurListe`).
    `uemsOberflaechen.sprungziel` springt weiter in die Welt des Unternehmens.
-8. **Befund zu O18:** ein Betriebskunde MIT Gebäude-Objekten und zwei Anlagen bekommt die Leiste Übersicht · Gebäude ·
-   Anlagen — AP-01 §4.6 fragt beide Bereiche nicht nach „Messen“. Ohne Gebäude (O18) bleibt er ohne Leiste;
-   Einstiege gibt es nur mit Messen.
+8. **O18 gilt auch mit Gebäuden und mehreren Anlagen.** AP-13 E2/Q2 ist gegenüber AP-01 §4.6 die jüngere,
+   speziellere Bestandsregel (firstmate-Entscheid IP-14): `EBENEN_SEITEN(ort, lm)` gibt die vier AP-13-Seiten
+   Gebäude · Anlagen · Kennzahlen · Berichte nur mit Messfunktion dieses Standorts frei. Reiter, Telefon-Leiste,
+   `uemsOberflaechen.kacheln` und Einstiege reichen dasselbe Lesemodell durch. Unbekannt ist keine Freigabe.
+   Direkte Adressen zeigen über `standortBereichFuer` in `App.tsx` wie vor AP-13 die Standort-Übersicht;
+   Messstellen-Adressen bleiben unverändert. O17 bleibt vier/drei Kacheln. Der alte Befund ist damit aufgelöst.
+
+## Abschluss und Bestandsschutz (IP-14)
+
+Bezugsstand für Q2/O18 ist **84f8307ffbd668cf5dcd0cbb1f4ebfedf84062a3** (15.09.2026, AP-13 §8.4),
+der Konzeptstand vor AP-13; nicht der jeweils letzte Stand von `uems`. Die HTML-Aufnahmen wurden mit denselben
+Tests auf einem frischen `git archive` dieses Stands erzeugt. `src/uemsBestandsschutz.test.tsx` schützt
+Start-Ebene, sechs Verlauf-Reiter, Portfolio-Reiter und Standortnavigation; die mit „AP-13 Bestandsschutz“
+benannten Fälle in den bestehenden Komponententests vergleichen Cockpit, sechs Verlauf-Flächen, Portfolio
+und Geräteseite bytegenau. Aufnahme und Wiederholung: [Nachweis und Befehle](../../../frontend/portal/src/test/bestandsschutz/README.md).
+Die erlaubte Cockpit-Ergänzung prüft `CockpitMessstellenWeg.test.tsx`; leere UEMS-Bausteine prüft
+`UebersichtBausteine.test.tsx`. Keine Aufnahme am neuen Produktstand erneuern, um eine Abweichung zu übergehen.
+
+Quellen und Zone: [Werte und Verlauf](uems-oberflaechen-werte-verlauf.md),
+[Energiebilanz](uems-oberflaechen-energiebilanz.md), [Sprünge](uems-oberflaechen-spruenge.md).
+
+## Release-Note IP-7: Datenlage der Karte „Funktionen“
+
+> **„Messen & Auswerten“ zeigt dieselbe Datenlage wie das Messstellenregister.** Auch berechnete Messstellen
+> zählen mit; Messstellen ohne Datenquelle bleiben im Nenner. Manuell abgelesene Messstellen werden zusätzlich
+> genannt. Beim Referenzstandort Werk Ahrenberg heißt die Zeile jetzt „15 von 16 Messstellen liefern Daten ·
+> 1 manuell abgelesen“ statt „13 von 13 Messstellen liefern Daten“. Die Messwerte selbst ändern sich dadurch nicht.
+
+Ausgeliefert mit IP-7 (`52a54dcbd9174b4ad08980560033b81796e0d48c`); dies dokumentiert die vorhandene Änderung,
+keine neue Zählregel. Vorher „13 von 13“ ist die Portal-Fixture vor IP-7; ältere Ableitungsbeispiele enthalten
+auch „13 von 14“. Maßgeblich ist immer das Register-Aggregat, einschließlich archivierter Zeilen.
+Details: [eine Zählung](uems-uebersicht-bausteine.md#e13--die-datenlage-zeile-der-karte-funktionen).
+Es gibt keinen zentralen UEMS-Release-Notes-Ordner; wie beim [Berichte-Abschluss](uems-berichte-abschluss.md)
+liegt die Release-Note im fachlichen Wegweiser.
 
 ## Prüfen
 

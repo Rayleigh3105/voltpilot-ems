@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PortfolioMesswerte } from './PortfolioMesswerte';
@@ -158,6 +159,23 @@ beforeEach(() => {
   clearHistoryCache();
   clearPortfolioEarningsCache();
   vi.restoreAllMocks();
+});
+
+it('AP-13 Bestandsschutz · Portfolio Messwerte ohne Messfunktion', async () => {
+  bestandsZeit();
+  vi.spyOn(api, 'history').mockResolvedValue(history(16));
+  const view = render(<PortfolioMesswerte sites={[DACHAU, LINDENBERG]} />);
+  await screen.findByLabelText('Energiemengen aller Anlagen');
+  await bestandSnapshot('portfolio-messwerte', view);
+});
+
+it('AP-13 Bestandsschutz · Portfolio Erlöse ohne Messfunktion', async () => {
+  bestandsZeit();
+  window.location.hash = '#/portfolio/erloese?z=monat&at=2026-07-15';
+  vi.spyOn(api, 'earnings').mockResolvedValue(earnings);
+  const view = render(<PortfolioErloese sites={[DACHAU, LINDENBERG]} />);
+  await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+  await bestandSnapshot('portfolio-erloese', view);
 });
 
 describe('Portfolio · Welt A „Messwerte"', () => {

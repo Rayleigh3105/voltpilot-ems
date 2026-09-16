@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageSeite, AnlagenPage } from './AnlagenPage';
@@ -324,6 +325,16 @@ beforeEach(() => {
  * vorkommt, also war kein Reiter aktiv) und der Link "Zurueck zu den
  * Komponenten". Uebrig bleibt GENAU EINER: die Brotkrume im Seitenkopf.
  */
+it('AP-13 Bestandsschutz · Cockpit ohne Messfunktion', async () => {
+  bestandsZeit();
+  stubApi();
+  mockAdaptive(true, TOPO);
+  mockSurface(MULTI);
+  const view = renderSeite();
+  await waitFor(() => expect(view.container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+  await bestandSnapshot('cockpit', view);
+});
+
 describe('Stufe 0 · eine Geraeteseite traegt weder Bereichs-Reiter noch den Anlagen-Knopf', () => {
   function renderSub(sub: string, geraet: unknown = null) {
     return render(

@@ -17,6 +17,7 @@ import {
   STANDORT_BERICHTE,
   STANDORT_KENNZAHLEN,
   standortEinstiege,
+  standortBereichFuer,
   tabsFor,
   type AnlageBereich,
   type BereichId,
@@ -632,7 +633,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       berichte: pageRoute('portfolio-berichte'),
     });
     // AP-13 IP-2: der Standort hat jede Seite; Kennzahlen und Berichte stehen als Seiten da, sind aber kein Bereich.
-    expect(EBENEN_SEITEN(WERK)).toEqual({
+    expect(EBENEN_SEITEN(WERK, MESSKUNDE)).toEqual({
       uebersicht: standortRoute(FIXTURE_IDS.st1),
       gebaeude: standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude'),
       anlagen: standortBereichRoute(FIXTURE_IDS.st1, 'anlagen'),
@@ -719,7 +720,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     const mitGebaeude: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg()] };
     expect(ebenenBereiche(WERK, mitGebaeude)).toHaveLength(3);
     // Hätte „Gebäude“ keine Seite, blieben zwei Kacheln — und keine Leiste.
-    const ohneGebaeudeSeite: EbenenSeiten = (ort) => ({ ...EBENEN_SEITEN(ort), gebaeude: undefined });
+    const ohneGebaeudeSeite: EbenenSeiten = (ort, lm) => ({ ...EBENEN_SEITEN(ort, lm), gebaeude: undefined });
     expect(ebenenLeiste(WERK, mitGebaeude, ohneGebaeudeSeite)).toEqual([]);
   });
 });
@@ -791,11 +792,21 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
     expect(standortEinstiege(WERK, betrieb)).toEqual([]);
   });
 
-  it('Befund IP-1 · ein Betriebskunde MIT Gebäude-Objekten und zwei Anlagen bekommt die Leiste — AP-01 §4.6 fragt Gebäude und Anlagen nicht nach Messen', () => {
-    expect(labels(ebenenLeiste(WERK, BETRIEBSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Anlagen']);
-    // Keine Mess-Wörter: weder Messstellen noch Einstiege in Kennzahlen oder Berichte.
+  it('O18 · auch mit Gebäude-Objekten und zwei Anlagen bleiben Betriebskunden ohne neue Navigation', () => {
+    expect(ebenenLeiste(WERK, BETRIEBSKUNDE)).toEqual([]);
+    expect(ebenenReiter(WERK, BETRIEBSKUNDE)).toEqual([]);
     expect(standortEinstiege(WERK, BETRIEBSKUNDE)).toEqual([]);
   });
+
+  it.each(['gebaeude', 'anlagen', 'kennzahlen', 'berichte'] as const)(
+    'O18 · Direktadresse %s fällt ohne Messfunktion wie vor AP-13 auf die Übersicht zurück',
+    (bereich) => {
+      const route = standortBereichRoute(FIXTURE_IDS.st1, bereich);
+      expect(standortBereichFuer(route, BETRIEBSKUNDE)).toBeUndefined();
+      expect(standortBereichFuer(route, { ...MESSKUNDE, funktionen: null })).toBeUndefined();
+      expect(standortBereichFuer(route, MESSKUNDE)).toBe(bereich);
+    },
+  );
 
   it('Z4 · Werk Lindach mit einer Anlage hat keinen Bereich „Anlagen“; ohne Gebäude keinen Bereich „Gebäude“', () => {
     expect(keys(ebenenBereiche(LINDACH, MESSKUNDE))).not.toContain('anlagen');
