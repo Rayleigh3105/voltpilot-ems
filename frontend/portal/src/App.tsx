@@ -1386,7 +1386,13 @@ function UnifiedPortal() {
           )}
           {/* UEMS AP-13 IP-2: „Standort › Gebäude“ (Ortsbaum + Stand am) und „Standort › Anlagen“ (die Tabelle). */}
           {page === 'standort' && standortOffen && route.standortBereich === 'gebaeude' && (
-            <StandortGebaeudePage key={standortOffen.id} standort={standortOffen} onGeaendert={() => void reload()} />
+            <StandortGebaeudePage
+              key={standortOffen.id}
+              standort={standortOffen}
+              onGeaendert={() => void reload()}
+              onNavigate={navigate}
+              springe={springe}
+            />
           )}
           {page === 'standort' && standortOffen && route.standortBereich === 'anlagen' && (
             <StandortAnlagenPage

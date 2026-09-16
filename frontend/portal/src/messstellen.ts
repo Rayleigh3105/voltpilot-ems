@@ -350,6 +350,22 @@ export interface RegisterFilter {
 
 export const OHNE_FILTER: RegisterFilter = { standort: null, ort: null, anlage: null, zustand: null, ohneQuelle: false };
 
+/**
+ * UEMS AP-13 IP-10: der Ort-Filter aus der Adresse (`#/standort/{id}/messstellen?ort=G-2`) — damit springt die
+ * Gebäude-Karte in GENAU dieses gefilterte Register. In der Adresse steht das Kurzzeichen (lesbar, als Lesezeichen
+ * haltbar); die Auswahlliste der Filterleiste führt Orte über ihre ID — {@link ortSchluessel} bringt beides zusammen.
+ */
+export const ortAus = (hash: string): string | null =>
+  new URLSearchParams(hash.split('?').slice(1).join('?')).get('ort')?.trim() || null;
+
+/**
+ * Das Kurzzeichen aus der Adresse auf den Schlüssel der Auswahlliste bringen (die ID des Orts). Kennt die Antwort das
+ * Kurzzeichen nicht, bleibt es, wie es kam — die Route nimmt beides an, und ein unbekannter Ort liefert eine leere
+ * Liste statt einer stillen Vollansicht.
+ */
+export const ortSchluessel = (basis: MessstellenRegister, ort: string): string =>
+  basis.register.find((z) => z.ort.kennzeichen === ort)?.ort.id ?? ort;
+
 export function filterAktiv(f: RegisterFilter): boolean {
   return f.standort !== null || f.ort !== null || f.anlage !== null || f.zustand !== null || f.ohneQuelle;
 }

@@ -71,6 +71,7 @@ export function Ortsbaum({
   onAktionen,
   titelVersteckt = false,
   gebaeudeKarte,
+  onAntwort,
 }: {
   standort: StandortAmStichtag;
   /** „Stand am …“ (IP-13): `null` = heute, mit Schreibwegen. */
@@ -83,6 +84,11 @@ export function Ortsbaum({
   titelVersteckt?: boolean;
   /** AP-13 IP-2: der Inhalt der Karte eines Gebäudes; `null`/`undefined` = keine Karte, kein Aufklapper. */
   gebaeudeKarte?: (gebaeude: Knoten) => ReactNode;
+  /**
+   * AP-13 IP-10: die gelesene Antwort des Tages — der Wirt braucht die Gebäude (Kurzzeichen), um EINMAL für die
+   * Seite zu laden, statt je Karte. Wie `onAktionen`: nach dem Laden, nie während des Renderns.
+   */
+  onAntwort?: (antwort: OrtsbaumAmStichtag | null) => void;
 }) {
   const titelId = `vp-ob-${useId().replace(/:/g, '')}`;
   const [offen, setOffen] = useState<ReadonlySet<string>>(new Set());
@@ -120,6 +126,10 @@ export function Ortsbaum({
   useEffect(() => {
     if (antwort) onAktionen?.(antwort.aktionen ?? null);
   }, [antwort, onAktionen]);
+
+  useEffect(() => {
+    onAntwort?.(antwort);
+  }, [antwort, onAntwort]);
 
   useEffect(() => {
     void laden();

@@ -25,6 +25,8 @@ import {
   filterOptionen,
   kopfZeile,
   leerzustand,
+  ortAus,
+  ortSchluessel,
   registerAnfrage,
   registerEintraege,
   type FilterOption,
@@ -236,7 +238,9 @@ function RegisterFlaeche({
   const isPhone = useIsPhone();
   const [stichtag, setStichtag] = useState<string | null>(null);
   const [heute, setHeute] = useState<string | null>(null);
-  const [filter, setFilter] = useState<RegisterFilter>(OHNE_FILTER);
+  // AP-13 IP-10: der Sprung der Gebäude-Karte bringt seinen Ort als Kurzzeichen mit (`…/messstellen?ort=G-2`).
+  const [filter, setFilter] = useState<RegisterFilter>(() => ({ ...OHNE_FILTER, ort: ortAus(window.location.hash) }));
+  const ortAufgeloest = useRef(false);
   const [stand, setStand] = useState<{ schluessel: string; basis: MessstellenRegister; liste: MessstellenRegister } | null>(
     null,
   );
@@ -267,6 +271,13 @@ function RegisterFlaeche({
         basisMerker.current = { tag: tagSchluessel, antwort: b };
         if (!stichtag) setHeute(b.stichtag);
         setStand({ schluessel, basis: b, liste: l });
+        // Einmal: das Kurzzeichen der Adresse wird zum Schlüssel der Auswahlliste — sonst stünde die Filterleiste
+        // leer über einer gefilterten Tabelle. Danach führt allein die Leiste den Filter.
+        if (!ortAufgeloest.current && filter.ort) {
+          ortAufgeloest.current = true;
+          const schluesselOrt = ortSchluessel(b, filter.ort);
+          if (schluesselOrt !== filter.ort) setFilter((f) => ({ ...f, ort: schluesselOrt }));
+        }
       },
       () => {
         if (nummer === anfrage.current) setFehler(true);
