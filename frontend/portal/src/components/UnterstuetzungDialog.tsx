@@ -49,7 +49,7 @@ export function UnterstuetzungDialog({ onClose, onSaved, anfrage, verlaengern }:
     if (busy || orteLaden || !rechte.darf('unterstuetzung.verwalten', null)) return;
     const ungueltig = form.current?.querySelector<HTMLInputElement>('input:invalid');
     if (ungueltig) { setFehler('Bitte geben Sie eine gültige E-Mail-Adresse ein.'); ungueltig.focus(); return; }
-    const problem = verlaengern?.gueltig_bis && bis <= verlaengern.gueltig_bis ? 'Wählen Sie ein späteres Enddatum.' : pruefeUnterstuetzung(orte, bis, anfrage?.gueltig_ab.slice(0, 10) ?? heute());
+    const problem = verlaengern?.gueltig_bis && bis <= verlaengern.gueltig_bis ? 'Wählen Sie ein späteres Enddatum.' : pruefeUnterstuetzung(orte, bis);
     if (problem) { setFehler(problem); (orte.length ? datumRef : orteRef).current?.querySelector<HTMLElement>('button,[role="combobox"]')?.focus(); return; }
     setBusy(true); setFehler('');
     try {
@@ -67,11 +67,11 @@ export function UnterstuetzungDialog({ onClose, onSaved, anfrage, verlaengern }:
     {passwort ? <StartpasswortAnzeige passwort={passwort} /> : <form className="vp-unterstuetzung-form" ref={form} onSubmit={e => { e.preventDefault(); void speichern(); }}>
       {!anfrage && !verlaengern && <VpPicker label="Art" value={art} onChange={setArt} options={[{ value: 'installateur', label: 'Installateur' }, { value: 'voltpilot', label: 'VoltPilot-Support' }]} />}
       {art === 'voltpilot' && !anfrage && !verlaengern ? <p>VoltPilot-Support fragt Unterstützung an. Bestätigen oder ändern Sie die Anfrage in der Karte „Unterstützung“.</p> : <>
-        {anfrage ? <p>VoltPilot-Support · {anfrage.angefragt_von.name}<br />Gültig ab {datumZeit(anfrage.gueltig_ab)}</p> : verlaengern ? <p>{verlaengern.unterstuetzer.name} · bisher bis {enddatum(verlaengern)}</p>
+        {anfrage ? <p>VoltPilot-Support · {anfrage.angefragt_von.name}<br />Angefragt am {datumZeit(anfrage.angefragt_am)}</p> : verlaengern ? <p>{verlaengern.unterstuetzer.name} · bisher bis {enddatum(verlaengern)}</p>
           : <Input label="E-Mail-Adresse des Partners" type="email" required value={email} onChange={e => { setEmail(e.target.value); setFehler(''); }} />}
         {!verlaengern && <><div ref={orteRef}><VpPicker label="Standorte" disabled={orteLaden} values={orte} options={standorte.map(s => ({ value: s.id, label: s.name }))} onChangeMany={ids => { setOrte(ids); setFehler(''); }} error={fehler.includes('Standort') ? fehler : undefined} /></div>
           <VpPicker label="Umfang" value={umfang} onChange={v => setUmfang(v as typeof umfang)} options={Object.entries(UMFANG).map(([value, label]) => ({ value, label }))} /></>}
-        <div ref={datumRef}><VpDatePicker label="Gültig bis einschließlich" value={bis} onChange={v => { setBis(v); setFehler(''); }} error={fehler.includes('Enddatum') ? fehler : undefined} min={heute()} max={hoechstesEnde(anfrage?.gueltig_ab.slice(0, 10))} /></div>
+        <div ref={datumRef}><VpDatePicker label="Gültig bis einschließlich" value={bis} onChange={v => { setBis(v); setFehler(''); }} error={fehler.includes('Enddatum') ? fehler : undefined} min={heute()} max={hoechstesEnde()} /></div>
         <p className="vp-note">Vorgabe: 30 Tage · höchstens 12 Monate. Sie erhalten sieben Tage vor Ablauf eine Erinnerung.</p>
         {!verlaengern && <Input label="Grund (optional)" value={grund} onChange={e => setGrund(e.target.value)} />}
         <UnterstuetzungFolgen />

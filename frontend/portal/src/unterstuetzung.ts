@@ -40,7 +40,8 @@ export const unterstuetzungApi = {
   ablehnen: (id: string) => request<void>(`${pfad}/anfragen/${id}/ablehnen`, schreiben('POST')),
   gelesen: (id: string) => request<void>(`${pfad}/hinweise/${id}/gelesen`, schreiben('POST')),
   aktualisieren: async () => {
-    const vorher = selbstauskunft(); const neu = await api.selbstauskunft(); const aktuell = selbstauskunft();
+    const vorher = selbstauskunft(); if (!vorher?.kennung) return;
+    const neu = await api.selbstauskunft(); const aktuell = selbstauskunft();
     if (vorher?.kennung !== aktuell?.kennung || vorher?.kundenbereich?.id !== aktuell?.kundenbereich?.id) return;
     setSelbstauskunft(neu); window.dispatchEvent(new Event('vp-unterstuetzung-geaendert'));
   },
