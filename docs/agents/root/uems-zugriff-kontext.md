@@ -40,6 +40,20 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
   Plattform ohne Kopf. Die Policy liest leer als „kein Standort-Zaun" (nur Mandant). Ein Kundenkonto, das NIE eine
   Zuweisung hatte, trägt `unternehmen` (Bestandsregel E12 — seit 16.09.2026 nur ohne Stichtag des Kundenbereichs);
   eines mit nur beendeten oder künftigen `standorte` + `{}`.
+- ⚠ **Der Bestandsschutz-Vergleich in `ZugriffZaunApiTest` hat seit AP-03 IP-7 GENAU EINE Ausnahme:**
+  `GET /api/v1/sites/{siteId}/ocpp/action-permissions` nennt die OCPP-Stufe, und die kommt aus der
+  Zuweisung (E13, `uems-rechte-steuerung.md`). Der Test wertet sie nicht als Abweichung, sondern nagelt
+  sie als `stufenwechsel` auf `CUSTOMER → SITE_ADMIN` je Kundenkonto fest. **Wer eine weitere Route vom
+  Zugriff-Kontext abhängig macht, faellt hier auf und traegt sie ausdruecklich ein** — der Vergleich ist
+  die einzige Stelle, die den ganzen Routenbestand gegen „vorher“ haelt.
+- ⚠ **Die Steuerungs-Achse folgt erst einer ECHTEN Zuweisung** (firstmate 16.09.2026). E12 gibt einem
+  Bestandskonto in `RechtPruefung.benutzer` eine gedachte unternehmensweite Zuweisung `KUNDENADMINISTRATOR` —
+  das hält den GELTUNGSBEREICH weit, wie E12 es will. `ocppStufe` nimmt sie aber ausdrücklich NICHT an und gibt
+  für ein Bestandskonto leer zurück, so dass `OcppActionPolicy` auf die Realm-Rolle von vor IP-7 zurückfällt.
+  Sonst hätte das Ausrollen von IP-7 jedem bestehenden Kundenkonto still SoftReset, ChangeConfiguration,
+  ChangeAvailability, ClearCache und SendLocalList an echter Hardware gegeben — heute trägt im Feld noch KEIN
+  Konto eine Zuweisung. **Wer die Stufe will, gibt eine Zuweisung** (sich selbst oder einem anderen).
+  ⚠ Das ist die EINZIGE Achse mit dieser Ausnahme: Geltungsbereich, Lesen und Schreiben folgen E12 unverändert.
 - ⚠ Die Einstellungen gelten nur, wenn der `TenantContext` der Kundenbereich des Zugriffs ist. Ein Hörer, der im
   Anfrage-Thread umschaltet (`ZugriffBestand.beiAnlage`), bekommt sie leer.
 - ⚠ **Seit IP-5 liest ein angenommener Unterstützer nur seine Standorte; seit IP-6 schreibt er an den Routen mit

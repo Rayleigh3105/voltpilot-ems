@@ -304,10 +304,11 @@ class PortalApiTest {
         String permissions = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
                         + "/ocpp/action-permissions"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)), String.class).getBody();
-        // AP-03 IP-7 (E12/E13): die Stufe kommt aus der Zuweisung - das Bestandskonto ist Kundenadministrator und
-        // erreicht damit die Anlagen-Stufe; die Plattform-Aktionen bleiben VoltPilot vorbehalten.
+        // AP-03 IP-7 (E13) bindet die Stufe an die ZUWEISUNG - aber die Steuerungs-Achse folgt erst einer ECHTEN
+        // (firstmate 16.09.2026): demo traegt nur `operator` und ist ein Bestandskonto, also bleibt es bei der
+        // Realm-Rolle von vor IP-7. Anlagen- und Plattform-Aktionen braucht eine Zuweisung bzw. VoltPilot.
         assertThat(permissions).contains("\"RemoteStartTransaction\":true",
-                        "\"ChangeConfiguration\":true", "\"UpdateFirmware\":false",
+                        "\"ChangeConfiguration\":false", "\"UpdateFirmware\":false",
                         "\"SetChargingProfile\":false");
 
         ResponseEntity<String> crossTenant = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE

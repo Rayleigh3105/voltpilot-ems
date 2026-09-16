@@ -69,8 +69,9 @@ class KeycloakPartnerRolleApiTest {
 
     /**
      * OCPP levels (D4) - pinned action by action in OcppActionPolicyTest. Since AP-03 IP-7 (E13) the level comes
-     * from the ZUWEISUNG: every existing customer account is Kundenadministrator (E12), so it reaches ANLAGE where
-     * the realm role operator used to stop at KUNDE. Nobody loses an action; the customer set stays a subset.
+     * from the ZUWEISUNG - but the CONTROL axis only follows a REAL one (firstmate 16.09.2026): a Bestandskonto
+     * (E12) keeps the realm-role level it had before IP-7, so operator stays at KUNDE. A Kundenadministrator
+     * reaches ANLAGE by assigning a role - see RechtMatrixApiTest, where the assigned people do reach it.
      */
     private static final Set<String> KUNDE = new TreeSet<>(Set.of("RemoteStartTransaction",
             "RemoteStopTransaction", "UnlockConnector"));
@@ -161,8 +162,8 @@ class KeycloakPartnerRolleApiTest {
                 .as("X-Tenant-Id bleibt für Kunden wirkungslos")
                 .contains("Demo Site Berlin").doesNotContain("Nordwind Hamburg");
         assertThat(freigaben(bearer(demo), BERLIN_SITE))
-                .as("E12/E13: der Bestandsbenutzer ist Kundenadministrator und hat dessen Stufe")
-                .containsAll(KUNDE).isEqualTo(ANLAGE);
+                .as("E12/E13: der Bestandsbenutzer bleibt ohne echte Zuweisung auf seiner Realm-Rollen-Stufe")
+                .isEqualTo(KUNDE);
         assertThat(get("/api/v1/sites/" + BERLIN_SITE + "/ocpp/stations", bearer(demo)).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
         assertThat(get("/api/v1/admin/tenants", bearer(demo)).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -208,7 +209,8 @@ class KeycloakPartnerRolleApiTest {
         }
     }
 
-    // ---- (3) neues Kundenkonto: keine Realm-Rolle, dieselben Rechte -----------------------
+    // ---- (3) neues Kundenkonto: keine Realm-Rolle, dieselben Cloud-Rechte ------------------
+    // Auf der OCPP-Achse geht es seit IP-7 darueber hinaus, weil IP-2 ihm eine echte Zuweisung gibt.
 
     @Test
     void neuesKundenkontoHatKeineRealmRolleUndDieselbenRechteWieOperator() throws Exception {
@@ -231,10 +233,14 @@ class KeycloakPartnerRolleApiTest {
         String siteId = (String) anlage.getBody().get("id");
 
         assertThat(siteNamen(bearer(kunde))).containsExactly("IP-3 Probeanlage");
+        // Auf der OCPP-Achse geht dieses Konto seit IP-7 ueber demo hinaus - und zwar zu Recht: IP-2 gibt dem
+        // Anleger eines neuen Kundenbereichs eine ECHTE Zuweisung (Kundenadministrator, ZugriffBestand.beiAnlage),
+        // also greift E13. demo ist dagegen ein Bestandskonto ohne jede Zuweisung und bleibt auf seiner
+        // Realm-Rollen-Stufe. Niemand verliert dabei etwas: der Kundensatz bleibt Teilmenge.
         assertThat(freigaben(bearer(kunde), siteId))
-                .as("dieselbe OCPP-Stufe wie demo - beide sind Kundenadministrator (E12/E13)")
-                .isEqualTo(freigaben(bearer(token("demo", "demo")), BERLIN_SITE))
-                .isEqualTo(ANLAGE);
+                .as("echte Zuweisung aus IP-2 = Anlagen-Stufe, anders als beim Bestandskonto demo")
+                .isEqualTo(ANLAGE)
+                .containsAll(freigaben(bearer(token("demo", "demo")), BERLIN_SITE));
         assertThat(get("/api/v1/sites/" + siteId + "/ocpp/stations", bearer(kunde)).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
         assertThat(get("/api/v1/sites/" + BERLIN_SITE + "/ocpp/action-permissions", bearer(kunde))
