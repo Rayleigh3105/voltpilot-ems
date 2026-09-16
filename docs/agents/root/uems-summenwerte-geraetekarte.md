@@ -14,6 +14,8 @@ einmal auf der Karte. Box, Port und Transport sind dafür keine Identität.
   zum Entziehen. Der Netzwert-Konflikt verlangt ausdrückliches `ersetzen`. Größe
   und Richtung bestimmen die verfügbaren Rollen; der Server prüft sie erneut.
   Ein Entzug lässt die Messstelle und ihre Werte bestehen.
+- Die kleine Öffnen-Funktion kapselt bis zum gemeinsamen H-5-Hook den bestehenden
+  Assistenten. `onGespeichert` lädt nur neu und schließt den Fertig-Schritt nicht.
 - Anlegen/Formel brauchen `messstelle.formel`, Rolle `geraet.einrichten`,
   Umbenennen/Archivieren `messstelle.bearbeiten`, Protokoll
   `aenderungsprotokoll.lesen` über `rollen.ts`. Das Zeilenmenü ist ohne Schreibrecht
@@ -43,6 +45,7 @@ Prüfen: `MessstelleFormelApiTest`, `SiteRollenApiTest`,
 `EntityRegistryRoleAssignmentTest`, Rechte-/Scope-Wächter; Portal
 `geraetSeite.test.ts`, `GeraetSeiteSection.test.tsx`, neue Karten-/Dialogtests,
 `migration.test.ts`, `copy.test.ts`, `uemsKeineRechnung.test.ts`, Typecheck/Build.
-Browser: `e2e/summenwert.spec.ts` und `e2e/summenwert-geraetkarte.spec.ts`;
+Browser: `e2e/summenwert.spec.ts`, `e2e/summenwert-hybrid.spec.ts` und
+`e2e/summenwert-geraetkarte.spec.ts`;
 Screenshots mit abgeschlossenen Animationen bei 375/1440 px. Der AP-13-Geräte-
 Snapshot und der IP-12-Bedienelementbestand tragen explizit diese Fortschreibung.

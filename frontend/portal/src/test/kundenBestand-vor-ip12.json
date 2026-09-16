@@ -1254,7 +1254,7 @@
     {
       "datei": "components/GeraetPvProduktion.tsx",
       "vorher": "3d148c9dc15ffd98a32450cf0719e69d900e6e3debd41125235a7c1c76b68cb6",
-      "nachher": "fe47ea69f834337a58dc6a9fd6bdd29b1938c207222780579755c3f31be3d204",
+      "nachher": "0e6f032a9b5f3cc1aca22df74b2de3f4dbaa39110b7a09f0dc21a486abbb57ad",
       "nachher_datei": "components/GeraetSummenwerte.tsx",
       "grund": "H-7/E9: Die Gerätekarte zeigt alle Summenwerte; der Anlegeknopf verlangt messstelle.formel, der Rollenwechsel bleibt im Zeilenmenü."
     }

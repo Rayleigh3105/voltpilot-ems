@@ -229,7 +229,7 @@ test('SUN-30K: Gen-Port über „+ Beobachten" aufnehmen, als Erzeugung entschei
   // Deliverable A: die Ergebnis-Karte der Geräteseite (noch ohne Zuordnung).
   await page.goto('/e2e/summenwert.html');
   await expect(page.getByText('Summenwerte dieses Geräts')).toBeVisible();
-  await page.locator('.vp-summen-head').locator('..').screenshot({ path: 'e2e/shots/summenwert-geraetkarte.png' });
+  await page.locator('.vp-summen-head').locator('..').screenshot({ path: 'e2e/shots/summenwert-geraetkarte-leer-1440.png' });
 
   await page.getByRole('button', { name: /Summenwert anlegen/ }).click();
   const dialog = page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });

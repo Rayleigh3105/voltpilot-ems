@@ -83,6 +83,10 @@ export function GeraetSummenwerte({
       ladeVersion.current++;
     };
   }, [laden]);
+  // Bis der gemeinsame Öffnen-Hook auf uems liegt, bleibt der heutige Assistent gekapselt.
+  function oeffneSummenwertAssistent() {
+    setOffen(true);
+  }
   function geaendert() {
     void laden();
     onZuordnungGeaendert?.();
@@ -124,7 +128,7 @@ export function GeraetSummenwerte({
               size="sm"
               onClick={(e) => {
                 e.currentTarget.focus();
-                setOffen(true);
+                oeffneSummenwertAssistent();
               }}
             >
               {SUMMENWERT} anlegen

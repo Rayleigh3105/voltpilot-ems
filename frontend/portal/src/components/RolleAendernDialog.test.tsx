@@ -65,7 +65,9 @@ describe("Rolle ändern", () => {
     const uebernehmen = screen.getByRole("button", { name: "Übernehmen" });
     uebernehmen.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });
-    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Schließen" }));
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(uebernehmen);
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(start);
