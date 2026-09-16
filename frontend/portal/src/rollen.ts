@@ -73,11 +73,18 @@ export function ohneStandort(s = selbst): boolean {
   return s !== null && !s.unternehmensweit && s.standorte.length === 0;
 }
 
+/** Die Benutzerliste hat keine eigene Aktionskennung (AP-03 E2): Energiemanager lesen mit. */
+export function benutzerLesen(s = selbst): boolean {
+  return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto'
+    && (darf('benutzer.verwalten', null, s) || s.rollen.includes('energiemanager'));
+}
+
 export function useRollen() {
   const s = useSyncExternalStore(abonnieren, selbstauskunft, selbstauskunft);
   const standort = useContext(RechteStandort);
   return {
     selbst: s,
+    benutzerLesen: benutzerLesen(s),
     standort,
     darf: (aktion: string, ziel: string | null = standort) => darf(aktion, ziel, s),
     grund: grundUndWeg(s),

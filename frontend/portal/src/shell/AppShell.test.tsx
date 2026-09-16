@@ -1,3 +1,5 @@
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -828,4 +830,20 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
     expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 4');
     expect(bar.querySelector('[aria-current="page"]')?.textContent).toContain('Steuerung');
   });
+});
+
+
+describe('AP-03 IP-13 · Avatar-Menü Benutzer', () => {
+  for (const [person, sichtbar] of [['JW', true], ['IK', true], ['CB', false], ['MD', false]] as const) {
+    it(`Benutzer-Eintrag für ${person}: ${sichtbar}`, () => {
+      setSelbstauskunft(rechteSeed(person).me);
+      const onNavigate = vi.fn();
+      render(<AppShell {...baseProps} onNavigate={onNavigate}><div>Inhalt</div></AppShell>);
+      fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+      const eintrag = screen.queryByRole('menuitem', { name: 'Benutzer', exact: true });
+      expect(!!eintrag).toBe(sichtbar);
+      if (eintrag) { fireEvent.click(eintrag); expect(onNavigate).toHaveBeenCalledWith('kunden-benutzer'); }
+      cleanup(); setSelbstauskunft(null);
+    });
+  }
 });

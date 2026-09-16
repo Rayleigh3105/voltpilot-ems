@@ -1,3 +1,4 @@
+import { BenutzerPage } from './pages/BenutzerPage';
 import { darf, ohneStandort, RechteStandort, setSelbstauskunft, teilansichtKopf, useRollen } from './rollen';
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
@@ -1541,6 +1542,7 @@ function UnifiedPortal() {
               onListe={() => navigate(standortBereichRoute(standortOffen.id, 'berichte'))}
             />
           )}
+          {page === 'kunden-benutzer' && <BenutzerPage />}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}
           {page === 'portfolio-erloese' && <PortfolioErloese sites={geldSites} />}
           {page === 'uebersicht' && (

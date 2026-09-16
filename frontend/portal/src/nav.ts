@@ -18,6 +18,7 @@
 import type { IconName } from '../designsystem/components/core/Icon';
 
 export type PageId =
+  | 'kunden-benutzer'
   | 'hilfe'
   | 'portfolio'
   | 'portfolio-standorte'
@@ -415,6 +416,7 @@ export function anlagenLabel(siteCount: number | null): string {
 /** Every page def, wherever it is rendered (main nav, mode group, Plattform). */
 export const ALL_PAGES: PageDef[] = [
   { id: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle' },
+  { id: 'kunden-benutzer', label: 'Benutzer', icon: 'users' },
   PORTFOLIO_PAGE,
   ...PORTFOLIO_WELT_PAGES,
   STANDORT_PAGE,
@@ -621,6 +623,8 @@ export function parseRoute(hash: string): Route {
   // Die Portfolio-Ebene ist zweistufig: `#/portfolio` (Landung) und
   // `#/portfolio/{welt}`. Ein unbekannter zweiter Abschnitt landet auf der
   // Landung, statt ins Leere zu zeigen.
+  if (head === 'unternehmen' && segments[1] === 'einstellungen' && segments[2] === 'benutzer')
+    return pageRoute('kunden-benutzer');
   if (head === 'portfolio') {
     if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'berichte' && segments[2]) return berichtRoute(decodeURIComponent(segments[2]));
@@ -742,6 +746,7 @@ export function hashForRoute(route: Route): string {
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
     return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}`;
   }
+  if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
 }
 

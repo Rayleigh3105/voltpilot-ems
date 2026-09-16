@@ -74,7 +74,7 @@ import {
 } from './betriebsart';
 import type { OverviewSite, Site } from './api';
 import { anlagenOptionen } from './anlagenWahl';
-import { anlageRoute, hashForRoute, pageRoute, standortRoute, type Route } from './nav';
+import { anlageRoute, hashForRoute, parseRoute, pageRoute, standortRoute, type Route } from './nav';
 import { AppShell } from './shell/AppShell';
 import { ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS, halle1Entwurf } from './test/standorteFixtures';
 
@@ -1577,5 +1577,14 @@ describe('AP-09 IP-10 · additive Kundenhebel für Werte und Ablesungen', () => 
     expect(quelle).toContain('useRollen');
     expect(quelle).toContain(`darf('${recht}'`);
     expect(quelle).toContain('{erlaubt &&');
+  });
+});
+
+describe('AP-03 IP-13 · Benutzerverwaltung additiv', () => {
+  it('hängt die Kundenseite unter Unternehmen/Einstellungen ein und erhält den bisherigen Plattform-Link', () => {
+    expect(hashForRoute(pageRoute('kunden-benutzer'))).toBe('#/unternehmen/einstellungen/benutzer');
+    expect(parseRoute('#/unternehmen/einstellungen/benutzer').page).toBe('kunden-benutzer');
+    expect(parseRoute('#/benutzer').page).toBe('mandanten');
+
   });
 });

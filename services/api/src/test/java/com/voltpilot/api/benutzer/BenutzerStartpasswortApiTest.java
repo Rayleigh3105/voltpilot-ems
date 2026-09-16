@@ -112,6 +112,31 @@ class BenutzerStartpasswortApiTest {
             assertThat(zweitePlattform.json().path("code").asText()).isEqualTo("recht_fehlt");
             sonstigeAntworten.add(zweitePlattform.body());
 
+            // A9: Standortrolle verlangt einen Standort; mit zwei Standorten bleibt die Auswahl ausdrücklich.
+            Antwort ohneStandort = api("POST", "/api/v1/benutzer", jonas, Map.of("username", "ip13-claudia",
+                    "email", "claudia@ip13.example", "rolle", "leser", "standorte", List.of()));
+            assertThat(ohneStandort.status()).isEqualTo(422);
+            assertThat(ohneStandort.json().path("code").asText()).isEqualTo("standort_fehlt");
+            UUID unternehmen = rootDb().queryForObject("SELECT id FROM unternehmen WHERE tenant_id = ?::uuid", UUID.class, tenant);
+            UUID st1 = rootDb().queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
+                    + "VALUES (?::uuid, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class, tenant, unternehmen);
+            UUID st2 = rootDb().queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
+                    + "VALUES (?::uuid, ?, 'Werk Lindach', 'ST-2', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class, tenant, unternehmen);
+            Antwort claudia = api("POST", "/api/v1/benutzer", jonas, Map.of("username", "ip13-claudia",
+                    "email", "claudia@ip13.example", "rolle", "leser", "standorte", List.of(st1, st2)));
+            assertThat(claudia.status()).isEqualTo(201);
+            String claudiaSub = claudia.json().path("benutzer").path("sub").asText();
+            keinTokenOhneWechsel("ip13-claudia", einmal(claudia, geheimnisse));
+            keycloak.resetPassword(claudiaSub, "Eigenes-Claudia-Passwort-24!", false);
+            Antwort claudiaMe = api("GET", "/api/v1/me", token("ip13-claudia", "Eigenes-Claudia-Passwort-24!"), null);
+            assertThat(claudiaMe.json().path("standorte").size()).isEqualTo(2);
+            keycloak.createCustomerUser(UUID.fromString("10000000-0000-0000-0000-000000000001"), "ip13-fremd",
+                    "fremd@ip13.example", null, null, "Fremdes-Testpasswort-24!", true);
+            Antwort emailFremd = api("POST", "/api/v1/benutzer", jonas, Map.of("username", "anderer-name", "email", "fremd@ip13.example",
+                    "rolle", "energiemanager", "standorte", List.of()));
+            assertThat(emailFremd.status()).isEqualTo(409);
+            assertThat(emailFremd.json().path("code").asText()).isEqualTo("email_fremder_kundenbereich");
+
             Antwort erstellt = api("POST", "/api/v1/benutzer", jonas, Map.of("username", "ip14-ines", "email", "ines@ip14.example",
                     "vorname", "Ines", "nachname", "Kaltenbach", "rolle", "energiemanager", "standorte", List.of(),
                     "tenant_id", "10000000-0000-0000-0000-000000000001"));

@@ -13,7 +13,7 @@ export function StartpasswortNeuVergeben({ sub, name }: { sub: string; name: str
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState('');
   useEffect(() => { setOpen(false); setAntwort(null); setFehler(''); }, [sub]);
-  if (!rechte.darf('benutzer.verwalten')) return null;
+  if (!rechte.darf('benutzer.verwalten', null)) return null;
   const schliessen = () => { if (!busy) { setOpen(false); setAntwort(null); setFehler(''); } };
   async function vergeben() {
     if (busy) return;

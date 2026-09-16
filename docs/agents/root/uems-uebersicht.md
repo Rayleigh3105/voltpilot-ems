@@ -7,6 +7,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 ## Verträge
 
 - **Netzanschluss-Vorschlag für vorhandene Anlagen** — Anlage, Bindungsbeginn und Name vorausgewählt; Vertragsangaben ergänzen, Übernahme atomar bestätigen, Verwerfen merken; keine Preisübernahme · [Vorschlag und Grenzen](uems-netzanschluss-vorschlag.md)
+- **Benutzerverwaltung im Portal (AP-03 IP-13)** — Avatar → Unternehmen/Einstellungen/Benutzer; Energiemanager liest, Kundenadministrator verwaltet; N2 hängt N3/Startpasswort ein. Atomare Zuweisungswechsel, Sperren/Entfernen, Protokoll und Parallelitätsschutz · [Routen und Nachweise](uems-benutzerverwaltung.md)
 
 - **Netzanschlüsse im Portal (AP-10 IP-13)** — Standort-Reiter nur wenn er misst, Anlegen und Binden/Wechseln ab wählbarem Tag über IP-6; Rechte aus `rollen.ts`; Bilanzkopf mit ausgewiesenem Stichtag. Eine Formatierstelle: Vereinbartes ganzzahlig, echte Dezimalstellen bleiben (Ergebnis-Vertrag 1.12) · [Portal und Fallen](uems-netzanschluss-portal.md)
 
