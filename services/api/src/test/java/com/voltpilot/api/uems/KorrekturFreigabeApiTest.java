@@ -73,6 +73,10 @@ class KorrekturFreigabeApiTest {
         registry.add("spring.flyway.password", POSTGRES::getPassword);
         registry.add("spring.flyway.placeholders.appDbUser", () -> APP_USER);
         registry.add("spring.flyway.placeholders.appDbPassword", () -> APP_PW);
+        registry.add("voltpilot.admin-datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("voltpilot.admin-datasource.username", () -> "voltpilot_admin");
+        registry.add("voltpilot.admin-datasource.password", () -> "voltpilot_admin_test_pw");
+        registry.add("spring.flyway.placeholders.adminDbPassword", () -> "voltpilot_admin_test_pw");
         registry.add("voltpilot.security.oidc.enabled", () -> "true");
         registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri",
                 () -> "http://127.0.0.1:9/realms/voltpilot");
@@ -322,11 +326,18 @@ class KorrekturFreigabeApiTest {
 
     /** Ein Vorschlag, wie der Stundenlauf (ohne Person) oder ein Mensch (IP-16) ihn anlegt — Fassung 1. */
     private static void vorschlag(Welt w, String kennung, Wer ersteller) {
+        UUID u = root.queryForObject("SELECT id FROM unternehmen WHERE tenant_id = ?", UUID.class, w.mandant());
+        UUID st = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
+                + "VALUES (?, ?, 'Werk Ahrenberg', ?, 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class, w.mandant(), u, "ST-" + NR.incrementAndGet());
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, 'Werk Ahrenberg') RETURNING id", UUID.class, w.mandant());
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?, ?, '2024-01-01')", w.mandant(), site, st);
+        UUID entity = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type) "
+                + "VALUES (?, ?, 'grid-meter', 'Halle 2', 'grid-meter') RETURNING id", UUID.class, w.mandant(), site);
         root.update("INSERT INTO messreihe_korrektur (tenant_id, kennung, fassung, status, art, reihen, von, bis, "
                 + "begruendung, vorschau, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, 1, 'vorschlag', "
                 + "'nachlieferung_nach_endgueltigkeit', ?::jsonb, '2026-11-03T13:00:00Z', '2026-11-03T16:45:00Z', "
                 + "'Nachlieferung nach Endgültigkeit (Box Halle 2 repariert)', '[{}]', ?, ?, ?, ?)",
-                w.mandant(), kennung, "[{\"entity_id\": \"" + UUID.randomUUID() + "\", \"messkanal\": \"energy_import_kwh\"}]",
+                w.mandant(), kennung, "[{\"entity_id\": \"" + entity + "\", \"messkanal\": \"energy_import_kwh\"}]",
                 ersteller == null ? null : ersteller.sub(), ersteller == null ? "VoltPilot" : ersteller.name(),
                 ersteller == null ? "voltpilot_betrieb" : "kundenadministrator", ersteller == null ? "voltpilot" : "kunde");
     }

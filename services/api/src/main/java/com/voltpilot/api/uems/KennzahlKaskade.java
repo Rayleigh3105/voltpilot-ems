@@ -101,7 +101,7 @@ public class KennzahlKaskade implements KennzahlenNaht {
         Set<UUID> aus = new LinkedHashSet<>();
         for (KorrekturKaskade.Reihe r : b.reihen()) {
             try (PreparedStatement ps = con.prepareStatement("""
-                    SELECT DISTINCT q.messstelle_id
+                    SELECT q.messstelle_id
                       FROM messstelle_quelle q
                      WHERE q.tenant_id = ? AND q.entity_id = ? AND q.kanal = ? AND q.rolle = 'fuehrend'
                        AND q.gueltig_ab < ? AND (q.gueltig_bis IS NULL OR q.gueltig_bis > ?)

@@ -37,6 +37,40 @@ import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
 
+/** AP-08 IP-16: Prüfseite und Ersatzwerte; Werte entstehen erst nach Freigabe im Rechenlauf. */
+export type ErsatzwertMethode = 'gleichmaessig_verteilen' | 'profil_vorperiode' | 'profil_vergleichsquelle'
+  | 'ablesestand_nachtragen' | 'wert_eingeben' | 'vorperiode_uebernehmen' | 'vergleichsquelle_uebernehmen';
+export interface ErsatzwertLuecke { id: string; art: 'data_gap' | 'counter_reset' | 'device_boundary'; von: string; bis: string | null; zuwachs: number | null; einheit: string | null }
+export interface ErsatzwertEingabe {
+  quelle_id: string; methode: ErsatzwertMethode; von: string; bis: string; begruendung: string;
+  beleg?: string; luecke_ereignis_id?: string; vorperiode_von?: string; vergleich_quelle_id?: string;
+  zeitpunkt?: string; endstand?: number; anfangsstand?: number; betrag?: number; einheit?: string;
+}
+export interface KorrekturPeriodenStand {
+  menge: number | null; menge_zustand: string; kennzeichen?: string[];
+  erhalten?: number; erwartet?: number; abdeckung_prozent?: number | null;
+}
+export interface KorrekturPeriode {
+  periode: string; von: string; bis: string; version_alt?: number; version_neu?: number;
+  alt?: KorrekturPeriodenStand; neu: KorrekturPeriodenStand;
+}
+export interface KorrekturAuswirkungen {
+  perioden: string[]; berechnete_messstellen: string; kennzahlen: string; berichte: string;
+}
+export interface KorrekturAktion { erlaubt: boolean; grund: string | null }
+export interface KorrekturDetail {
+  kennung: string; art: string; status: 'vorschlag' | 'freigegeben' | 'abgelehnt' | 'zurueckgenommen';
+  fassung: number; von: string; bis: string; begruendung: string; beleg: string | null;
+  ersatzwert_kennung: string | null; methode: ErsatzwertMethode | null; einheit: string | null;
+  messstellen: { kennzeichen: string; name: string }[];
+  ersteller: { name: string; rolle: string; art: string }; erstellt_am: string; vieraugen: boolean;
+  vorschau: KorrekturPeriode[]; auswirkungen: KorrekturAuswirkungen;
+  freigeben: KorrekturAktion; zuruecknehmen: KorrekturAktion; ablehnen: KorrekturAktion;
+}
+export interface ErsatzwertVorschau {
+  perioden: KorrekturPeriode[]; auswirkungen: KorrekturAuswirkungen; vieraugen: boolean; freigabe_noetig: boolean;
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
 /**
@@ -6928,6 +6962,16 @@ function protokollFrage(f?: ProtokollAbfrage): string {
 }
 
 export const api = {
+  korrekturen: (standortId: string) => request<KorrekturDetail[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/korrekturen`),
+  korrektur: (kennung: string) => request<KorrekturDetail>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}`),
+  ersatzwertLuecken: (kennzeichen: string, quelle_id: string, von: string, bis: string) => request<ErsatzwertLuecke[]>(`/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/ersatzwerte/luecken?${new URLSearchParams({ quelle_id, von, bis })}`),
+  ersatzwertVorschau: (kennzeichen: string, eingabe: ErsatzwertEingabe) => request<ErsatzwertVorschau>(`/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/ersatzwerte/vorschau`, { method: 'POST', body: JSON.stringify(eingabe) }),
+  ersatzwertErfassen: (kennzeichen: string, eingabe: ErsatzwertEingabe) => request<KorrekturDetail>(`/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/ersatzwerte`, { method: 'POST', body: JSON.stringify(eingabe) }),
+  korrekturFreigeben: (kennung: string, begruendung: string) => request<unknown>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}/freigeben`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  korrekturAblehnen: (kennung: string, grund: string) => request<KorrekturDetail>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}/ablehnen`, { method: 'POST', body: JSON.stringify({ grund }) }),
+  korrekturZuruecknehmen: (kennung: string, grund: string) => request<unknown>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}/zuruecknehmen`, { method: 'POST', body: JSON.stringify({ grund }) }),
+  ersatzwertZuruecknehmen: (kennung: string, grund: string) => request<{ kennung: string; status: string; fassung: number; korrektur: string | null }>(`/api/v1/ersatzwerte/${encodeURIComponent(kennung)}/zuruecknehmen`, { method: 'POST', body: JSON.stringify({ grund }) }),
+
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
   /**

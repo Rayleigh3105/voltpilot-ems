@@ -53,6 +53,13 @@ class KorrekturFreigabeSchnittstelleVertragTest {
         formen.put("KorrekturZuruecknehmen", KorrekturFreigabeDto.Zuruecknehmen.class);
         formen.put("KorrekturUrheber", KorrekturFreigabeDto.Urheber.class);
         formen.put("KorrekturEntscheidung", KorrekturFreigabeDto.Entscheidung.class);
+        formen.put("ErsatzwertLuecke", KorrekturPortalService.Luecke.class);
+        formen.put("ErsatzwertEingabe", KorrekturPortalService.Eingabe.class);
+        formen.put("KorrekturPortalDetail", KorrekturPortalService.Detail.class);
+        formen.put("KorrekturPortalAktion", KorrekturPortalService.Aktion.class);
+        formen.put("KorrekturAuswirkungen", KorrekturPortalService.Auswirkungen.class);
+        formen.put("ErsatzwertVorschau", KorrekturPortalService.Vorschau.class);
+        formen.put("ErsatzwertStand", KorrekturPortalService.ErsatzwertStand.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -70,7 +77,9 @@ class KorrekturFreigabeSchnittstelleVertragTest {
         for (String p : List.of("/api/v1/korrekturen/{kennung}/freigeben", "/api/v1/korrekturen/{kennung}/zuruecknehmen")) {
             assertThat(((Map<String, Object>) pfade.get(p)).keySet()).as(p).containsExactlyInAnyOrder("parameters", "post");
         }
-        assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/korrekturen"))).hasSize(2);
+        assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/korrekturen"))).containsExactlyInAnyOrder(
+                "/api/v1/korrekturen/{kennung}", "/api/v1/korrekturen/{kennung}/freigeben",
+                "/api/v1/korrekturen/{kennung}/zuruecknehmen", "/api/v1/korrekturen/{kennung}/ablehnen");
     }
 
     @SuppressWarnings("unchecked")

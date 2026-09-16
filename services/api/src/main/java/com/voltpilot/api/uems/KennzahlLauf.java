@@ -234,7 +234,7 @@ public class KennzahlLauf {
      * Die Kanten der Ordnung: jede Kennzahl, die eine wirksame Fassung als Eingang nennt. Eine archivierte ist kein
      * Schlüssel — sie rechnet nicht mehr, ihre Werte werden gelesen (V5).
      */
-    private static Map<String, List<String>> kanten(Katalog kat) {
+    static Map<String, List<String>> kanten(Katalog kat) {
         Map<String, List<String>> lesen = new LinkedHashMap<>();
         for (Zeile k : kat.kennzahlen()) {
             if (k.archiviertAm() != null) {

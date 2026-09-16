@@ -57,7 +57,7 @@ class RechteKennungenDerRoutenTest {
             "DeviceMeasurementSelectionController", "BezugsgroesseController",
             "KostenstelleProzessController", "MessstelleWerteController", "VerteilungController",
             "NetzanschlussController", "BilanzController", "KostenstelleEnergieController",
-            "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController",
+            "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController", "KorrekturPortalController",
             "AnlageStandortController", "KennzahlController", "KennzahlWerteController",
             "KennzahlVorlagenController", "BerichtController", "MeController", "UnterstuetzungController",
             "AdminUnterstuetzungController", "OverviewController");
