@@ -97,6 +97,8 @@ public class OverviewController {
         this.teilansicht = teilansicht;
     }
 
+    // Rechte: lesendes Aggregat, keine eigene Kennung (AP-03 §4.5 R-A2, §6.2 IP-10).
+    // authenticated() plus Mandanten-/Standort-RLS: nur die sichtbare Menge, wie bei GET /standorte.
     @GetMapping
     public OverviewDto overview() {
         List<SiteDto> siteRows = sites.findAll();

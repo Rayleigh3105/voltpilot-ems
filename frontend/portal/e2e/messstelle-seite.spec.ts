@@ -28,6 +28,7 @@ import type { MessstelleWerte } from '../src/api';
 import { verschiebe } from '../src/picker/datum';
 import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
+import { quellenDerMessstellenBuehne } from '../src/test/messstelleQuellenFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../src/test/standorteFixtures';
 import {
@@ -243,6 +244,10 @@ async function cloud(
       const register = angelegt ? { ...ahrenbergRegister(), stichtag: EINFUEHRUNG_TAG } : heute ? ahrenbergRegister({ stichtag: heute }) : ahrenbergRegister();
       return route.fulfill(json(register));
     }
+    if (pfad.endsWith('/quellen') && methode === 'GET') {
+      const stichtag = url.searchParams.get('stichtag') ?? ahrenbergRegister({ stichtag: heute ?? SEITE_HEUTE }).zeitpunkt;
+      return route.fulfill(json(quellenDerMessstellenBuehne(messstelle.id, stichtag)));
+    }
     // Ohne Prozess und Kostenstelle: die Hauptzähler MS-10 und MS-16, und MS-21 (AP-13 IP-6) zeigt nichts Geliehenes.
     const hauptzaehler = ['MS-10', 'MS-16', 'MS-21'].includes(messstelle.kennzeichen);
     if (pfad.endsWith('/prozesse') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneProzesse(messstelle) : prozesseVon(messstelle)));
@@ -351,6 +356,7 @@ test('R2 · MS-06: drei Zuordnungs-Karten und das Protokoll nach der Eintragung,
   await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
 
   await expect(page.getByRole('heading', { level: 1, name: 'Spritzguss SG01–SG06' })).toBeVisible();
+  await expect(page.getByTestId('quelle-karte')).toContainText('Unterzähler Spritzguss SG01–SG06');
   const ort = page.getByTestId('karte-ort');
   await expect(ort.getByText('Halle 1 · Werk Ahrenberg · seit 12.03.2024')).toBeVisible();
   await expect(page.getByTestId('karte-elektrisch').getByText('Unterzähler von MS-01')).toBeVisible();

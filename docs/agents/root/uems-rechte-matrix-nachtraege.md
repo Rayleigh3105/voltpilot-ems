@@ -57,6 +57,11 @@ ihr Recht — so war `GET /standorte/{id}` nach dem Kurzzeichen-Vorschlag an `st
 geraten). Eine neue UEMS-Route: Kommentar nach demselben Muster; ein neuer UEMS-Controller ist
 über sein Klassen-Javadoc von selbst dabei.
 
+Auch ein vollständig lesender Controller wie `OverviewController` gehört dazu: jede Route nennt
+ausdrücklich „keine eigene Kennung“, wenn sie wie `GET /standorte` nur die sichtbare Menge liest
+(AP-03 §4.5 R-A2, §6.2 IP-10). Der Wächter verlangt Rechte-Kommentare, nicht mindestens eine
+Aktionskennung je Controller; jede tatsächlich genannte Kennung bleibt gegen die Matrix geprüft.
+
 ## Prüfen
 
 ```bash

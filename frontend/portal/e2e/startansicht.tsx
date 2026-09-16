@@ -76,6 +76,7 @@ import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
+import { quellenDerMessstellenBuehne } from '../src/test/messstelleQuellenFixtures';
 import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte } from '../src/test/kostenstellenFixtures';
 import {
   kostenstellenAhrenberg,
@@ -652,6 +653,8 @@ Object.assign(api, {
   },
   // AP-13 IP-13: was die Messstellen-Seite selbst liest — Stammdaten, Verteilung, Protokoll und die Versionen der Zahl.
   messstelle: async (id: string) => (id === MS_IDS.ms06 ? ms06() : ms10()),
+  messstelleQuellen: async (id: string, stichtag?: string | null) =>
+    quellenDerMessstellenBuehne(id, stichtag ?? iso(Date.now(), 'Europe/Berlin')),
   messstelleVerteilung: async (id: string) => ohneVerteilung(id === MS_IDS.ms06 ? ms06() : ms10()),
   messstelleAenderungen: async (id: string) => (id === MS_IDS.ms06 ? protokollMs06() : protokollMs10()),
   messstelleWerteVersionen: async () => f21Historie(),

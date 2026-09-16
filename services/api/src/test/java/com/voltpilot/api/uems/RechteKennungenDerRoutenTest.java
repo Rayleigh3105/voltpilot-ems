@@ -60,7 +60,7 @@ class RechteKennungenDerRoutenTest {
             "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController",
             "AnlageStandortController", "KennzahlController", "KennzahlWerteController",
             "KennzahlVorlagenController", "BerichtController", "MeController", "UnterstuetzungController",
-            "AdminUnterstuetzungController");
+            "AdminUnterstuetzungController", "OverviewController");
 
     private static final Pattern KLASSE = Pattern.compile("(?m)^public (?:final )?class ");
     private static final Pattern JAVADOC_BEGINN = Pattern.compile("(?m)^/\\*\\*");
@@ -151,7 +151,7 @@ class RechteKennungenDerRoutenTest {
 
     @Test
     void derSucherFindetDieUemsController() throws Exception {
-        assertThat(uemsController()).containsAll(MINDESTENS).doesNotContain("SiteController", "OverviewController");
+        assertThat(uemsController()).containsAll(MINDESTENS).doesNotContain("SiteController");
     }
 
     private static int routen(Path datei) throws Exception {
@@ -172,7 +172,10 @@ class RechteKennungenDerRoutenTest {
                         genannt.addAll(k.kennungen());
                     }
                 }
-                assertThat(genannt).as("%s nennt keine Kennung — liest der Test noch die Kommentare?", name)
+                // Ein rein lesender Controller darf an jeder Route ausdrücklich „keine eigene Kennung“
+                // nennen. Rechte-Kommentare bleiben Pflicht; ihre Kennungen prüft die Matrix darunter.
+                assertThat(alle).filteredOn(Kommentar::rechte)
+                        .as("%s nennt kein Recht — liest der Test noch die Kommentare?", name)
                         .isNotEmpty();
                 assertThat(matrix).as("%s: Kennung im Rechte-Kommentar, die nicht in rechte-matrix.json steht", name)
                         .containsAll(genannt);
