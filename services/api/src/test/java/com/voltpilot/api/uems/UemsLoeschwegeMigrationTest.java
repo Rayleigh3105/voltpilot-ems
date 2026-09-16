@@ -64,6 +64,9 @@ class UemsLoeschwegeMigrationTest {
             "device_measurement_selection_event_device_tenant_fk",
             "device_measurement_selection_event_site_tenant_fk", "device_measurement_selection_device_fk");
 
+    /** AP-09: neuer Quellenverweis der komponentenlosen Ablesung, keine Änderung eines Bestands-FK. */
+    private static final String ABLESUNG_QUELLE_FK = "device_measurement_sample_ablesung_quelle_fk";
+
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
             DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
@@ -131,9 +134,10 @@ class UemsLoeschwegeMigrationTest {
                 + "FROM pg_constraint WHERE contype = 'f' AND conrelid IN ('device_measurement_sample'::regclass, "
                 + "'device_measurement_event'::regclass, 'device_measurement_point_state'::regclass, "
                 + "'device_measurement_selection'::regclass, 'device_measurement_selection_event'::regclass)");
-        assertThat(regeln).extracting(r -> r.get("conname")).containsAll(RESTRICT);
+        assertThat(regeln).extracting(r -> r.get("conname")).containsAll(RESTRICT).contains(ABLESUNG_QUELLE_FK);
         for (Map<String, Object> r : regeln) {
-            String erwartet = RESTRICT.contains((String) r.get("conname")) ? "r" : "c";
+            String erwartet = RESTRICT.contains((String) r.get("conname"))
+                    || ABLESUNG_QUELLE_FK.equals(r.get("conname")) ? "r" : "c";
             assertThat(String.valueOf(r.get("confdeltype"))).as(r.get("conname") + " beim Löschen").isEqualTo(erwartet);
         }
         assertThat(regeln).filteredOn(r -> "device_measurement_selection_device_fk".equals(r.get("conname")))

@@ -154,6 +154,8 @@ class AblesungApiTest {
         assertThat(root.queryForObject("SELECT count(*) FROM messstelle_ablesung_fassung WHERE tenant_id=?",Integer.class,w.mandant())).isEqualTo(3);
         assertThatThrownBy(()->root.update("UPDATE device_measurement_sample SET ablesung_stand=0 WHERE tenant_id=?",w.mandant()))
                 .hasMessageContaining("nie überschrieben");
+        assertThatThrownBy(()->root.update("DELETE FROM messstelle_quelle WHERE tenant_id=? AND art='ablesung'",w.mandant()))
+                .hasMessageContaining("violates foreign key constraint");
         Antwort h=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen/MS-21/werte/versionen?raster=monat&von=2026-10-01&bis=2026-10-31",null),200);
         assertThat(h.body().toString()).contains("1289","1240",BEGRUENDUNG);
     }
