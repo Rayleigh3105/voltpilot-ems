@@ -30,6 +30,14 @@ public final class NetzanschlussDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Binden(String anlageId, String gueltigAb, String grund) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vorschlag(UUID anlageId, String anlageName, LocalDate bindungAb, String kennzeichen, String name) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Uebernehmen(String kennzeichen, String name, String malo, String netzbetreiber,
+            BigDecimal anschlussKva, BigDecimal vereinbartKw, String messung, String gueltigAb,
+            String gueltigBis, String bindungAb, String grund) {}
+
     /** Ein Verweis auf den Standort: ID und Kurzzeichen. */
     public record Standort(UUID id, String kurzzeichen) {}
 

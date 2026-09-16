@@ -60,6 +60,8 @@ class NetzanschlussSchnittstelleVertragTest {
     @Test
     void dieFormenSindZeichengleich() {
         Map<String, Class<? extends Record>> formen = new LinkedHashMap<>();
+        formen.put("NetzanschlussVorschlag", NetzanschlussDto.Vorschlag.class);
+        formen.put("NetzanschlussUebernehmen", NetzanschlussDto.Uebernehmen.class);
         formen.put("NetzanschlussAnschluss", NetzanschlussDto.Anschluss.class);
         formen.put("NetzanschlussBinden", NetzanschlussDto.Binden.class);
         formen.put("NetzanschlussStandort", NetzanschlussDto.Standort.class);
@@ -95,7 +97,7 @@ class NetzanschlussSchnittstelleVertragTest {
     void keineRouteLoescht() {
         List<String> eigene = pfade.keySet().stream()
                 .filter(p -> p.startsWith("/api/v1/standorte/{standortId}/netzanschluesse")).toList();
-        assertThat(eigene).hasSize(3);
+        assertThat(eigene).hasSize(6);
         for (String p : eigene) {
             assertThat(((Map<String, Object>) pfade.get(p)).keySet()).as(p).doesNotContain("delete");
         }

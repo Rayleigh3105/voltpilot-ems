@@ -5,7 +5,10 @@ const BILDER = process.env.NETZANSCHLUSS_BILDER;
 const ST1 = '5a1d0000-0000-4000-8000-000000000001';
 async function oeffne(page: Page, breite: number, zusatz = '') {
   await page.clock.setFixedTime(new Date('2026-10-20T08:15:30Z'));
-  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 1000 });
+  await page.setViewportSize({
+    width: breite,
+    height: breite === 375 ? 812 : 1000,
+  });
   await page.goto(`/e2e/startansicht.html?bild=unternehmen&ansicht=werk-netzanschluesse&${zusatz}`);
   await expect(page.getByTestId('netzanschluesse')).toBeVisible();
   await expect(page.getByText('Wird geladen …', { exact: true })).toHaveCount(0);
@@ -26,11 +29,16 @@ async function foto(page: Page, name: string) {
     )
     .toEqual([]);
   await expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth))
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+    )
     .toBe(0);
   if (BILDER) {
     mkdirSync(BILDER, { recursive: true });
-    await page.screenshot({ path: join(BILDER, `${name}.png`), fullPage: false });
+    await page.screenshot({
+      path: join(BILDER, `${name}.png`),
+      fullPage: false,
+    });
   }
 }
 async function waehleAnlage(page: Page) {
@@ -38,6 +46,54 @@ async function waehleAnlage(page: Page) {
   await page.getByRole('option', { name: /Halle 1/ }).click();
 }
 for (const breite of [375, 1440]) {
+  test(`Vorschlag ergänzen, atomar übernehmen und verwerfen ${breite}`, async ({ page }) => {
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') fehler.push(m.text());
+    });
+    await oeffne(page, breite, 'netz=vorschlag');
+    const karte = page.locator('[data-testid^="vorschlag-"]').first();
+    await expect(karte).toContainText('NA-0001');
+    await foto(page, `vorschlag-${breite}`);
+    await karte.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+    const d = page.getByRole('dialog');
+    await expect(d.getByLabel('Name', { exact: true })).toHaveValue(/Netzanschluss .*Halle 1/);
+    await expect(d.getByRole('combobox', { name: 'Anlage', exact: true })).toBeDisabled();
+    await expect(d.getByRole('combobox', { name: 'Gilt ab', exact: true })).toContainText('12.03.2024');
+    await foto(page, `vorschlag-dialog-beginn-${breite}`);
+    await expect(d.getByLabel('Netzbetreiber')).toHaveValue('');
+    await expect(d.getByLabel('Vereinbarte Leistung (kW)')).toHaveValue('');
+    await d.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+    await expect(d.getByRole('combobox', { name: 'Messung', exact: true })).toBeFocused();
+    await d.getByRole('combobox', { name: 'Messung', exact: true }).click();
+    await page.getByRole('option', { name: 'RLM', exact: true }).click();
+    await d.getByLabel('Begründung').fill('Vorhandene Anlage dem Anschluss zuordnen.');
+    await d.getByLabel('Netzbetreiber').fill('Netzgesellschaft Ahrental (fiktiv)');
+    await d.getByLabel('Marktlokation').fill('47110000001');
+    await d.getByLabel('Anschlussleistung (kVA)').fill('630');
+    await d.getByLabel('Vereinbarte Leistung (kW)').fill('550');
+    await expect(d.getByText('Bitte eine gültige Angabe eingeben.')).toHaveCount(0);
+    await expect(d.getByText('Bitte die rückwirkende Änderung begründen.')).toHaveCount(0);
+    await foto(page, `vorschlag-dialog-${breite}`);
+    await d.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+    await expect(d).toHaveCount(0);
+    await expect(page.getByTestId('netzanschluss-NA-0001')).toContainText('ab 12.03.2024');
+    await expect(page.getByRole('status')).toBeFocused();
+    await page.getByTestId('netzanschluss-NA-0001').scrollIntoViewIfNeeded();
+    await foto(page, `vorschlag-uebernommen-${breite}`);
+    await page.locator('[data-testid^="vorschlag-"]').getByRole('button', { name: 'Verwerfen' }).click();
+    await expect(page.locator('[data-testid^="vorschlag-"]')).toHaveCount(0);
+    const aufrufe = await page.evaluate(() => (window as any).naAufrufe);
+    expect(aufrufe.uebernehmen).toHaveLength(1);
+    expect(aufrufe.uebernehmen[0].bindung_ab).toBe('2024-03-12');
+    expect(aufrufe.anlegen).toHaveLength(0);
+    expect(aufrufe.binden).toHaveLength(0);
+    expect(aufrufe.verwerfen).toHaveLength(1);
+    expect(fehler).toEqual([]);
+    await oeffne(page, breite, 'netz=vorschlag&person=CB');
+    await expect(page.locator('[data-testid^="vorschlag-"]')).toHaveCount(0);
+  });
   test(`Liste, Anlegen und Wechsel mit Datum ${breite}`, async ({ page }) => {
     const fehler: string[] = [];
     page.on('pageerror', (e) => fehler.push(e.message));
@@ -77,14 +133,20 @@ for (const breite of [375, 1440]) {
     expect(aufrufe.anlegen).toHaveLength(1);
     expect(aufrufe.anlegen[0].vereinbart_kw).toBe('550.45');
     expect(aufrufe.binden).toEqual([
-      { anlage_id: 'a0000000-0000-4000-8000-000000000001', gueltig_ab: '2026-10-21', grund: null },
+      {
+        anlage_id: 'a0000000-0000-4000-8000-000000000001',
+        gueltig_ab: '2026-10-21',
+        grund: null,
+      },
     ]);
     await foto(page, `gebunden-${breite}`);
     expect(fehler).toEqual([]);
   });
   test(`Erstbindung, Rückwirkung, Picker-Escape und Fokus ${breite}`, async ({ page }) => {
     await oeffne(page, breite, 'netz=ungebunden');
-    const trigger = page.getByTestId('netzanschluss-NA-1').getByRole('button', { name: 'Anlage binden / wechseln' });
+    const trigger = page
+      .getByTestId('netzanschluss-NA-1')
+      .getByRole('button', { name: 'Anlage binden / wechseln' });
     await trigger.click();
     await waehleAnlage(page);
     const d = page.getByRole('dialog');
@@ -113,7 +175,10 @@ for (const breite of [375, 1440]) {
     await oeffne(page, breite, 'netz=fehler');
     await expect(page.getByRole('alert')).toContainText('konnten nicht geladen');
     await oeffne(page, breite, 'netz=konflikt');
-    await page.getByTestId('netzanschluss-NA-1').getByRole('button', { name: 'Anlage binden / wechseln' }).click();
+    await page
+      .getByTestId('netzanschluss-NA-1')
+      .getByRole('button', { name: 'Anlage binden / wechseln' })
+      .click();
     await waehleAnlage(page);
     await page.getByRole('dialog').getByRole('button', { name: 'Speichern', exact: true }).click();
     await expect(page.getByRole('dialog').getByRole('alert')).toContainText('überschneidet');

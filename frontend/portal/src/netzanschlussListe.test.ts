@@ -79,3 +79,13 @@ describe('Netzanschlüsse am Standort', () => {
     expect(standortBereichFuer(route, { ...lm, funktionen: null })).toBeUndefined();
   });
 });
+
+it('rät beim Anlegevorschlag keine Messung und verlangt ihre Ergänzung', () => {
+  const e = {
+    ...N.neuerEntwurf('NA-0001'),
+    name: 'Netzanschluss Halle 1',
+    messung: '' as const,
+  };
+  expect(N.pruefen(e, 'st').messung).toBeTruthy();
+  expect(() => N.anfrage(e)).toThrow('Bitte die Messung wählen.');
+});

@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.NetzanschlussAbgelehnt;
 import com.voltpilot.api.uems.NetzanschlussAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.NetzanschlussService;
+import com.voltpilot.api.uems.NetzanschlussVorschlagService;
+import java.util.List;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.NetzanschlussDto;
 import com.voltpilot.api.zugriff.Recht;
@@ -64,9 +66,11 @@ public class NetzanschlussController {
 
     private final NetzanschlussService dienst;
     private final ObjectMapper streng;
+    private final NetzanschlussVorschlagService vorschlaege;
 
-    public NetzanschlussController(NetzanschlussService dienst, ObjectMapper json) {
+    public NetzanschlussController(NetzanschlussService dienst, ObjectMapper json, NetzanschlussVorschlagService vorschlaege) {
         this.dienst = dienst;
+        this.vorschlaege = vorschlaege;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -111,6 +115,29 @@ public class NetzanschlussController {
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         dienst.binden(standortId, id, lies(body, NetzanschlussDto.Binden.class), akteur(auth));
         return ResponseEntity.created(URI.create(pfad(standortId, id))).body(dienst.netzanschluss(standortId, id));
+    }
+
+    /** Recht: {@code netzanschluss.verwalten}; liest nur, reserviert kein Kennzeichen. */
+    @GetMapping("/vorschlaege")
+    public List<NetzanschlussDto.Vorschlag> vorschlaege(@PathVariable UUID standortId) {
+        return vorschlaege.liste(standortId);
+    }
+
+    /** Recht: {@code netzanschluss.verwalten}; rückwirkend zusätzlich {@code aenderung.rueckwirkend}. */
+    @PostMapping("/vorschlaege/{anlageId}/uebernehmen")
+    @Recht(value = "netzanschluss.verwalten", ziel = RechtZiel.STANDORT)
+    public ResponseEntity<NetzanschlussDto.Netzanschluss> uebernehmen(@PathVariable UUID standortId,
+            @PathVariable UUID anlageId, @RequestBody(required = false) JsonNode body, Authentication auth) {
+        var n = vorschlaege.uebernehmen(standortId, anlageId, lies(body, NetzanschlussDto.Uebernehmen.class), akteur(auth));
+        return ResponseEntity.created(URI.create(pfad(standortId, n.id()))).body(n);
+    }
+
+    /** Recht: {@code netzanschluss.verwalten}; Entscheidung merken, ohne einen Anschluss anzulegen. */
+    @PostMapping("/vorschlaege/{anlageId}/verwerfen")
+    @Recht(value = "netzanschluss.verwalten", ziel = RechtZiel.STANDORT)
+    public ResponseEntity<Void> verwerfen(@PathVariable UUID standortId, @PathVariable UUID anlageId, Authentication auth) {
+        vorschlaege.verwerfen(standortId, anlageId, akteur(auth));
+        return ResponseEntity.noContent().build();
     }
 
     // ----------------------------------------------------------------------------- Gerüst
