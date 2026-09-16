@@ -119,7 +119,8 @@ public class DeviceRepository {
     public boolean ausbauen(UUID deviceId) {
         jdbc.queryForList("SELECT id FROM device WHERE id=? FOR UPDATE", UUID.class, deviceId);
         if (Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM data_source_assignment "
-                + "WHERE device_id = ? AND (effective_to IS NULL OR effective_to > now()))",
+                + "WHERE device_id = ? AND zurueckgenommen_am IS NULL "
+                + "AND (effective_to IS NULL OR effective_to > now()))",
                 Boolean.class, deviceId))) {
             throw new com.voltpilot.api.uems.BoxKonflikt("box_hat_zustaendigkeiten",
                     "Diese Box liest noch Datenquellen oder hat geplante Zuständigkeiten.");

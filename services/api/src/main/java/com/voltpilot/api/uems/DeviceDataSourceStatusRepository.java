@@ -62,7 +62,7 @@ public class DeviceDataSourceStatusRepository {
                             + "FROM data_source q WHERE q.tenant_id = ? AND q.kennzeichen = ? "
                             + "AND EXISTS (SELECT 1 FROM data_source_assignment a "
                             + "WHERE a.tenant_id = q.tenant_id AND a.data_source_id = q.id "
-                            + "AND a.device_id = ? AND a.effective_from <= ? "
+                            + "AND a.zurueckgenommen_am IS NULL AND a.device_id = ? AND a.effective_from <= ? "
                             + "AND (a.effective_to IS NULL OR a.effective_to > ?))",
                     deviceId, m.health(), m.errorClass(), timestamp(m.since()), timestamp(m.readAt()),
                     m.requestsPerMin(), m.samplesPerMin(), Timestamp.from(reportedAt), tenantId,

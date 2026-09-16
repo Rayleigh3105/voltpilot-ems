@@ -428,6 +428,37 @@ public class DatenquelleService {
         return e;
     }
 
+    /** Nimmt genau einen noch nicht begonnenen Zeitraum zurück; seine historische Zeile bleibt. */
+    public DatenquelleDto.Datenquelle geplanteZustaendigkeitZuruecknehmen(UUID siteId, UUID id,
+            UUID assignmentId, ProtokollAkteur wer) {
+        finde(siteId, id);
+        transaktion.executeWithoutResult(s -> {
+            Datenquelle q = quellen.sperren(id).orElseThrow(DatenquelleService::quelleFehlt);
+            nichtArchiviert(q);
+            var stand = zustaendigkeiten.ruecknahmeStand(id, assignmentId)
+                    .orElseThrow(DatenquelleService::quelleFehlt);
+            if (stand.zurueckgenommenAm() != null) {
+                throw DatenquelleAbgelehnt.konflikt("bereits_zurueckgenommen",
+                        "Dieser geplante Wechsel wurde bereits zurückgenommen.");
+            }
+            Instant jetzt = uhr.instant();
+            var plan = stand.zeitraum();
+            if (!plan.effectiveFrom().isAfter(jetzt)) {
+                throw DatenquelleAbgelehnt.konflikt("bereits_wirksam",
+                        "Dieser Wechsel ist bereits wirksam und kann nicht mehr zurückgenommen werden.");
+            }
+            if (!zustaendigkeiten.zuruecknehmen(plan.id(), jetzt, wer.sub())
+                    || !zustaendigkeiten.vorgaengerWiederOeffnen(id, plan.effectiveFrom())) {
+                throw DatenquelleAbgelehnt.konflikt("gleichzeitig_geaendert",
+                        "Die Zuständigkeit wurde inzwischen geändert. Bitte laden Sie die Seite neu.");
+            }
+            eintragen(mandant(), id, "zustaendigkeit_zurueckgenommen", plan.deviceId(), null,
+                    Map.of("assignment_id", plan.id(), "box", plan.deviceId(), "ab", plan.effectiveFrom()),
+                    Map.of("zustand", "zurueckgenommen"), minute(jetzt), wer);
+        });
+        return eine(siteId, id);
+    }
+
     /**
      * Das jüngste Prüfergebnis dieser Quelle von GENAU dieser Box — und nur, wenn es denselben
      * Weg geprüft hat, den die Quelle heute hat. Sonst keins ({@code pruefung_fehlt}).
@@ -499,7 +530,7 @@ public class DatenquelleService {
         return new DatenquelleDto.Datenquelle(q.id(), q.kennzeichen(), q.name(), q.siteId(), q.protokoll(),
                 q.adresse(), q.geraeteIds(), q.netz(), q.mehrereLeser(), q.steuerquelle(), q.vergleichsquelle(),
                 q.kadenzS(), q.archiviertAm(), box == null ? null : dto(box, lage.boxen()),
-                zs.stream().map(z -> new DatenquelleDto.Zeitraum(dto(z.deviceId(), lage.boxen()),
+                zs.stream().map(z -> new DatenquelleDto.Zeitraum(z.id(), dto(z.deviceId(), lage.boxen()),
                         z.effectiveFrom(), z.effectiveTo())).toList(), uebergabe(q.id(), lage),
                 rueckmeldung(box, q.id()));
     }

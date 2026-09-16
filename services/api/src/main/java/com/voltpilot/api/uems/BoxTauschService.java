@@ -93,7 +93,7 @@ public class BoxTauschService {
         }
         // Eine bereits eingesetzte Nachfolger-Box wird niemals still überschrieben.
         if (exists("SELECT EXISTS (SELECT 1 FROM data_source_assignment WHERE device_id=? "
-                + "AND (effective_to IS NULL OR effective_to>?))", newId, Timestamp.from(at))
+                + "AND zurueckgenommen_am IS NULL AND (effective_to IS NULL OR effective_to>?))", newId, Timestamp.from(at))
                 || exists("SELECT EXISTS (SELECT 1 FROM measurement_point WHERE device_id=?)", newId)
                 || exists("SELECT EXISTS (SELECT 1 FROM asset WHERE device_id=?)", newId)
                 || exists("SELECT EXISTS (SELECT 1 FROM site WHERE lead_device_id=?)", newId)

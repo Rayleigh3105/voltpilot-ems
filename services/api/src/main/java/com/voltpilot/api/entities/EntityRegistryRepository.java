@@ -519,7 +519,8 @@ public class EntityRegistryRepository {
      */
     public List<com.voltpilot.api.uems.ZustaendigkeitRepository.Zeitraum> zustaendigkeitenDerQuellen(UUID siteId) {
         return jdbc.query("SELECT a.id, a.data_source_id, a.device_id, a.effective_from, a.effective_to "
-                        + "FROM data_source_assignment a WHERE a.data_source_id IN (SELECT mp.data_source_id "
+                        + "FROM data_source_assignment a WHERE a.zurueckgenommen_am IS NULL "
+                        + "AND a.data_source_id IN (SELECT mp.data_source_id "
                         + "FROM measurement_point mp WHERE mp.site_id = ? AND mp.data_source_id IS NOT NULL) "
                         + "ORDER BY a.data_source_id, a.effective_from, a.id",
                 (rs, n) -> {

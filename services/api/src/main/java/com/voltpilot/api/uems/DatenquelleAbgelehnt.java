@@ -129,6 +129,11 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
         return schnittstelle(Schnittstelle.ANFRAGE_UNGUELTIG, satz, Map.of("feld", feld));
     }
 
+    /** Zustandskonflikte der Rücknahme tragen die vom Portal direkt sprechbaren Felder. */
+    public static DatenquelleAbgelehnt konflikt(String grund, String satz) {
+        return new DatenquelleAbgelehnt(grund, 409, satz, Map.of("grund", grund, "satz", satz));
+    }
+
     /** E6: die ganze Rechnung und beide Auswege reisen im 422-Körper; geschrieben ist noch nichts. */
     public static DatenquelleAbgelehnt budget(DatenquelleBudget.Ablehnung b) {
         Map<String, Object> fakten = new LinkedHashMap<>();
