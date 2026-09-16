@@ -116,6 +116,9 @@ class AenderungSatzTest {
                 "{\"einbau\":\"Z-5a\",\"seriennummer\":\"1EMH…\"}",
                 "{\"vorgaenger\":\"Z-5a\",\"einbau\":\"Z-5b\",\"geraet\":\"GR-4\"}"))
                 .isEqualTo("Zähler gewechselt: Z-5a → Z-5b");
+        assertThat(satz("messstelle", "zaehler_gewechselt", null,
+                "{\"anlass\":\"controllerwechsel\",\"vorgaenger\":\"C-1\",\"einbau\":\"C-1′\"}"))
+                .isEqualTo("Controller gewechselt: C-1 → C-1′");
     }
 
     // ---- Die Orts-Einträge (ort_aenderung) ----------------------------------------------------
