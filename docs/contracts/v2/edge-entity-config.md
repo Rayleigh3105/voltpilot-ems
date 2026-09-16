@@ -14,6 +14,12 @@ flowchart LR
 
 Topic: `ems/{tenant_id}/{site_id}/{device_id}/v2/entities`. Envelope: Identität, `revision`, `published_at`, vollständiges `entities`-Array.
 
+`revision` ist opak und wird von der Box unverändert quittiert. Der Cloud-Pfad mit Datenquellen
+verwendet `uems-registry:<sequence>` aus einer auch nach Rollback fortlaufenden DB-Sequenz;
+Wanduhrversatz zwischen Cloud-Knoten darf keine alte Fassung als Entzug bestätigen.
+Der Bestandsweg ohne Datenquellen behält seine Zeitstempel-Kennung. `published_at` bleibt der
+Zeitpunkt; Form und Grenzen des Revisionsfelds ändern sich nicht (AP-06 IP-7, kein Edge-Release).
+
 Neue/geänderte Deskriptoren erzeugen lokale retained Konfiguration. Entfernte Entitäten löschen lokale `config`- und `command`-Slots. Leeres Array bedeutet keine v2-Entitäten; eine leere Cloud-Payload löscht den retained Slot. Identität und zulässige Deskriptoren müssen geprüft werden.
 
 Die Registry-Speicherung ist nicht von erfolgreichem MQTT-Publish abhängig. Nach fehlgeschlagenem Publish den tatsächlichen Push-/Reconcile-Stand prüfen; Retained-Zustellung hilft erst, wenn der Broker den gewünschten Stand erhalten hat.

@@ -55,6 +55,28 @@ class EntityStatusListenerTest {
                 componentApply);
     }
 
+    @Test
+    void auchEineLeereRegistryQuittiertDieUebergabeUndEinZusatzfehlerSchadetDemBestandNicht() {
+        var repo = mock(com.voltpilot.api.uems.UebergabeRepository.class);
+        listener.uebergaben(repo);
+        ingest(null);
+        verify(repo).herzschlag(eq(TENANT), eq(DEVICE), eq("r9"), any());
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataAccessResourceFailureException("Probe"))
+                .when(repo).herzschlag(any(), any(), any(), any());
+        ingest(null);
+        verify(observed, org.mockito.Mockito.times(2)).replaceForDevice(eq(DEVICE), eq(TENANT), eq(SITE),
+                any(), anyList());
+    }
+
+    @Test
+    void unbekannteBoxDarfKeineUebergabeQuittieren() {
+        var repo = mock(com.voltpilot.api.uems.UebergabeRepository.class);
+        listener.uebergaben(repo);
+        when(devices.findById(DEVICE)).thenReturn(Optional.empty());
+        ingest(null);
+        verifyNoInteractions(repo);
+    }
+
     /** Ein Herzschlag mit dem gegebenen {@code component_apply}-Block. */
     private void ingest(String applyBlock) {
         String block = applyBlock == null ? "" : ",\"component_apply\":" + applyBlock;

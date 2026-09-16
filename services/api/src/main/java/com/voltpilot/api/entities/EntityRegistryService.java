@@ -146,6 +146,12 @@ public class EntityRegistryService {
     private final DeviceOverrideRepository overrides;
     private final LeadDeviceService leadDevices;
     private final Clock clock;
+    private com.voltpilot.api.uems.QuellenUebergabe uebergabe;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void uebergabe(com.voltpilot.api.uems.QuellenUebergabe uebergabe) {
+        this.uebergabe = uebergabe;
+    }
 
     /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
@@ -536,6 +542,11 @@ public class EntityRegistryService {
      * Bestandsanlage - bleibt es Zeile für Zeile der eine Push an die führende Box.
      */
     public PushOutcome pushRegistryBestEffort(UUID siteId) {
+        return pushRegistryBestEffort(siteId, clock.instant());
+    }
+
+    /** Der Zeitgeber reicht seine injizierbare Uhr bis in die Push-Revision durch. */
+    public PushOutcome pushRegistryBestEffort(UUID siteId, Instant now) {
         UUID tenantId = TenantContext.get();
         LeadDeviceService.FuehrendeBox lead = leadDevices.fuehrendeBox(siteId);
         UUID gateway = lead.box();
@@ -546,13 +557,18 @@ public class EntityRegistryService {
         }
         Map<UUID, UUID> quellen = repo.datenquelleJeEntitaet(siteId);
         if (!quellen.isEmpty()) {
-            return pushJeBox(tenantId, siteId, gateway, quellen);
+            var zeitraeume = repo.zustaendigkeitenDerQuellen(siteId);
+            if (uebergabe != null) {
+                return uebergabe.zustellen(siteId, now, zeitraeume,
+                        plan -> pushJeBox(tenantId, siteId, gateway, quellen, now,
+                                plan.zeitraeume(), plan.boxen(), plan.revision()));
+            }
+            return pushJeBox(tenantId, siteId, gateway, quellen, now, zeitraeume, List.of(), now.toString());
         }
         // The composed revision is the Soll the edge is expected to echo in
         // its heartbeat (E1b bidirectional sync) - recorded even when the
         // best-effort publish fails or MQTT is not configured (the Soll
         // changed regardless; retained delivery converges later).
-        Instant now = clock.instant();
         byte[] payload = composePush(tenantId, siteId, gateway, now, repo.entitiesForSite(siteId),
                 repo.componentAuthority(siteId));
         repo.upsertRegistryState(siteId, tenantId, gateway, now.toString());
@@ -574,8 +590,9 @@ public class EntityRegistryService {
      * Anweisung, und erst zuletzt wird zugestellt. Zugestellt heißt der Ausgang nur, wenn jede Box
      * ihren Push bekommen hat.
      */
-    private PushOutcome pushJeBox(UUID tenantId, UUID siteId, UUID fuehrend, Map<UUID, UUID> quellen) {
-        Instant now = clock.instant();
+    private PushOutcome pushJeBox(UUID tenantId, UUID siteId, UUID fuehrend, Map<UUID, UUID> quellen,
+            Instant now, List<com.voltpilot.api.uems.ZustaendigkeitRepository.Zeitraum> zeitraeume,
+            List<UUID> bisherigeBoxen, String revision) {
         List<EntityRow> rows = repo.entitiesForSite(siteId);
         List<PushJeBox.Entitaet> entitaeten = new ArrayList<>();
         Map<UUID, EntityRow> zeilen = new LinkedHashMap<>();
@@ -583,8 +600,10 @@ public class EntityRegistryService {
             entitaeten.add(new PushJeBox.Entitaet(row.id(), row.entityType(), quellen.get(row.id())));
             zeilen.put(row.id(), row);
         }
+        List<UUID> mitSoll = new ArrayList<>(repo.boxenMitSoll(siteId));
+        mitSoll.addAll(bisherigeBoxen);
         PushJeBox.Verteilung verteilung = PushJeBox.verteilen(entitaeten, fuehrend, repo.siteDeviceIds(siteId),
-                repo.zustaendigkeitenDerQuellen(siteId), now, repo.boxenMitSoll(siteId));
+                zeitraeume, now, mitSoll);
         for (PushJeBox.Auslass auslass : verteilung.ausgelassen()) {
             log.warn("v2 entity registry for site {}: entity {} is in no box push ({})", siteId,
                     auslass.entitaet(), auslass.grund().code());
@@ -592,8 +611,8 @@ public class EntityRegistryService {
         String authority = repo.componentAuthority(siteId);
         Map<UUID, byte[]> payloads = new LinkedHashMap<>();
         verteilung.boxen().forEach((box, ids) -> payloads.put(box, composePush(tenantId, siteId, box, now,
-                ids.stream().map(zeilen::get).toList(), authority)));
-        repo.upsertRegistryStates(siteId, tenantId, List.copyOf(payloads.keySet()), now.toString());
+                ids.stream().map(zeilen::get).toList(), authority, revision)));
+        repo.upsertRegistryStates(siteId, tenantId, List.copyOf(payloads.keySet()), revision);
         EntityRegistryPublisher pub = publisher.getIfAvailable();
         if (pub == null) {
             return PushOutcome.notConfigured();
@@ -1123,12 +1142,17 @@ public class EntityRegistryService {
 
     byte[] composePush(UUID tenantId, UUID siteId, UUID deviceId, Instant now,
             List<EntityRow> rows, String componentAuthority) {
+        return composePush(tenantId, siteId, deviceId, now, rows, componentAuthority, now.toString());
+    }
+
+    private byte[] composePush(UUID tenantId, UUID siteId, UUID deviceId, Instant now,
+            List<EntityRow> rows, String componentAuthority, String revision) {
         ObjectNode push = mapper.createObjectNode();
         push.put("schema_version", "1.0");
         push.put("tenant_id", tenantId.toString());
         push.put("site_id", siteId.toString());
         push.put("device_id", deviceId.toString());
-        push.put("revision", now.toString());
+        push.put("revision", revision);
         push.put("published_at", now.toString());
         // Einheitsmodell Stufe 1: WER die Geräte-Konfiguration dieser Anlage
         // besitzt. Nur ein ausdrückliches "portal" macht die Box zum Ausführenden

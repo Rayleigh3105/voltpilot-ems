@@ -23,7 +23,8 @@ kopierten Weg vor IP-6, Abbruch beim Bauen, Teilzustellung), `uems/RegistryPushJ
   falschen Box. `producer` und `user-defined-battery` folgen ihrer Quelle wie jede Komponente.
 - **Anlagen-übergreifend ist gesperrt:** liest eine Box außerhalb der Anlage die Quelle (A3: DQ-3 an
   Box Halle 2 (neu) ab 10.04.2027 07:30), steht die Komponente in keinem Push
-  (`box_ausserhalb_der_anlage`), bis IP-7 den Fall freischaltet.
+  (`box_ausserhalb_der_anlage`). IP-7 hat das Gate am Writer geprüft: es bleibt geschlossen
+  (`uems-quellen-uebergabe.md`).
 - **Soll je (Anlage, Box).** Schlüssel `(tenant_id, site_id, device_id)`; `registryState`,
   `registryRevision` und die Admin-Flotte lesen die JÜNGSTE Zeile (`composed_at`, bei Gleichstand die
   Box-Kennung) — ein Lauf schreibt alle Boxen mit derselben Revision, in EINER Anweisung. Abmelden setzt
@@ -37,7 +38,6 @@ kopierten Weg vor IP-6, Abbruch beim Bauen, Teilzustellung), `uems/RegistryPushJ
 - **Alles oder nichts je Box:** ERST alle Nutzlasten bauen, DANN das Soll aller Boxen, zuletzt zustellen.
   Wer an `pushJeBox` etwas zwischen Bauen und Schreiben einfügt, das werfen kann, bricht den
   Abbruch-Test in `RegistryPushJeBoxBestandTest`.
-- **Noch NICHT:** wer eine Zuständigkeit schreibt (Datenquellen-API, Vorschlagsliste), löst keinen Push
-  aus — die neue Verteilung erreicht die Boxen mit dem nächsten Registry-Push der Anlage; die Übergabe mit
-  Reihenfolge (alt ohne → neu mit) ist IP-7. Mess-Plan (`measurement-config`), Flow-Aktivierung und
-  Fahrplan bleiben an der führenden Box und unverändert.
+- **Seit IP-7:** der Zeitgeber prüft fällige Zuständigkeiten; jeder Registry-Push geht durch
+  die gespeicherte Übergabe (alt ohne → Quittung → neu mit). Siehe `uems-quellen-uebergabe.md`.
+  Mess-Plan (`measurement-config`), Flow-Aktivierung und Fahrplan bleiben unverändert.

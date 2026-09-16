@@ -311,6 +311,7 @@
                              ruft LueckenMelder.lauf() selbst; dass die
                              AUSGELIEFERTE Vorgabe AN ist, prueft
                              LueckenWiringTest an der echten application.yml. -->
+                        <voltpilot.uems.uebergabe.enabled>false</voltpilot.uems.uebergabe.enabled>
                         <voltpilot.uems.luecken.enabled>false</voltpilot.uems.luecken.enabled>
                         <!-- Der Ersatzwert-Lauf (AP-08 IP-13) ist dieselbe
                              @Scheduled-Falle: im Testlauf aus, in PRODUKTION an

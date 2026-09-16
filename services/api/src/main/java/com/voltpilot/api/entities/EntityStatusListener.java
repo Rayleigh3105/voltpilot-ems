@@ -48,6 +48,11 @@ import org.springframework.stereotype.Component;
 public class EntityStatusListener {
 
     private static final Logger log = LoggerFactory.getLogger(EntityStatusListener.class);
+    private com.voltpilot.api.uems.UebergabeRepository uebergaben;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void uebergaben(com.voltpilot.api.uems.UebergabeRepository repo) { this.uebergaben = repo; }
+
     private static final String STATUS_FILTER = "ems/+/+/+/status";
 
     private final String brokerUrl;
@@ -212,6 +217,15 @@ public class EntityStatusListener {
             observed.replaceForDevice(deviceId, tenantId, siteId, reportedAt, rows);
             ingestComponentApply(entities.get("component_apply"), deviceId, tenantId, siteId,
                     reportedAt);
+            if (uebergaben != null) {
+                try {
+                    uebergaben.herzschlag(tenantId, deviceId, revision, reportedAt);
+                } catch (RuntimeException e) {
+                    io.micrometer.core.instrument.Metrics.counter("voltpilot_uems_uebergabe_herzschlag",
+                            "ergebnis", "fehler").increment();
+                    log.warn("Übergabe-Herzschlag für {} nicht gespeichert: {}", deviceId, e.toString());
+                }
+            }
         } finally {
             TenantContext.clear();
         }

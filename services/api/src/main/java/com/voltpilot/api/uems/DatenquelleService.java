@@ -116,6 +116,10 @@ public class DatenquelleService {
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private final Clock uhr;
+    private UebergabeRepository uebergaben;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void uebergaben(UebergabeRepository repo) { this.uebergaben = repo; }
 
     /**
      * @param uhr die Uhr des Dienstes — ohne eigene {@link Clock}-Bean die Systemuhr (UTC);
@@ -480,7 +484,14 @@ public class DatenquelleService {
                 q.adresse(), q.geraeteIds(), q.netz(), q.mehrereLeser(), q.steuerquelle(), q.vergleichsquelle(),
                 q.kadenzS(), q.archiviertAm(), jetzt == null ? null : dto(UUID.fromString(jetzt), lage.boxen()),
                 zs.stream().map(z -> new DatenquelleDto.Zeitraum(dto(z.deviceId(), lage.boxen()),
-                        z.effectiveFrom(), z.effectiveTo())).toList());
+                        z.effectiveFrom(), z.effectiveTo())).toList(), uebergabe(q.id(), lage));
+    }
+
+    private DatenquelleDto.Uebergabe uebergabe(UUID quelle, Lage lage) {
+        var s = uebergaben == null ? null : uebergaben.stand(quelle);
+        if (s == null || s.phase().equals("active")) return null;
+        return new DatenquelleDto.Uebergabe("Übergabe ausstehend", s.faellig(),
+                dto(s.leser(), lage.boxen()), dto(s.ziel(), lage.boxen()));
     }
 
     private DatenquelleDto.ProtokollEintrag eintrag(Eintrag e, Map<UUID, Box> boxen) {
