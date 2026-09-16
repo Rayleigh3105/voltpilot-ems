@@ -1,6 +1,6 @@
 import ReactDOM from 'react-dom/client';
 import { keycloak } from '../src/auth';
-import { GeraetPvProduktion } from '../src/components/GeraetPvProduktion';
+import { GeraetSummenwerte } from '../src/components/GeraetSummenwerte';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -26,7 +26,7 @@ function Fixture() {
   return (
     <main style={{ maxWidth: 1180, margin: '0 auto', padding: 24, display: 'grid', gap: 16 }}>
       <h2>Deye SUN-30K</h2>
-      <GeraetPvProduktion siteId="site-e2e" deviceId="d1" entityId="inv" geraetName="Deye SUN-30K" />
+      <GeraetSummenwerte siteId="site-e2e" deviceId="d1" entityId="inv" geraetName="Deye SUN-30K" />
     </main>
   );
 }

@@ -1,5 +1,7 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.topology.RollenKonflikt;
+
 import com.voltpilot.api.uems.MessstelleFormelAbgelehnt;
 import com.voltpilot.api.uems.MessstelleFormelService;
 import com.voltpilot.api.uems.ProtokollAkteur;
@@ -103,7 +105,11 @@ public class MessstelleFormelController {
 
     /** 401/403/404: ein deutscher {@code {message}}-Körper wie überall in der API. */
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<Map<String, String>> status(ResponseStatusException e) {
+    public ResponseEntity<Map<String, Object>> status(ResponseStatusException e) {
+        if (e instanceof RollenKonflikt k) {
+            return ResponseEntity.status(k.getStatusCode()).body(Map.of(
+                    "code", k.code(), "message", k.getReason(), "halter", k.halter()));
+        }
         return ResponseEntity.status(e.getStatusCode()).body(
                 Map.of("message", e.getReason() == null ? "Anfrage abgelehnt." : e.getReason()));
     }

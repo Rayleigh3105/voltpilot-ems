@@ -4,6 +4,12 @@ Diese Seite sammelt die Wegweiser-Einträge aller Bau-Pakete des Programms Unter
 
 Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`). **Nicht ganze Dateien in den Kontext lesen — greppen.**
 
+## Summenwerte
+
+- [Helfer auf main](uems-summenwerte-abschluss.md): gemeinsamer Assistent, optionale
+  PV-/Verbrauchs-/Netzrolle, Live-Registerwerte, Gerätekarte und Cockpit; Grenzen
+  gegenüber UEMS stehen im Kapitel.
+
 ## Verträge
 
 - **UEMS-Zustandsvokabular „liefert Daten“ / „steuert“ als Vertrag mit Vektoren** — Toleranz `min(max(3 × Kadenz, 300 s), 86 400 s)`, Lücke ab 2 × Kadenz, GENAU EIN „steuert nicht“-Grund in fester Reihenfolge; Zwillinge Java `uems/ZustandAbleitung` ⟷ TS `uemsZustand.ts` gegen `docs/contracts/v2/uems-zustand-vectors.json` — „liefert Daten“ ruft seit AP-04 IP-15 das Messstellen-Register an (die bestehenden Live-Flächen behalten ihr 5-Minuten-Fenster), „steuert“ noch niemand · `uems-zustandsvokabular-liefert-daten-st.md`

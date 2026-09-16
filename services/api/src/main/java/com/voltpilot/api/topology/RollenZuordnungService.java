@@ -1,307 +1,337 @@
 package com.voltpilot.api.topology;
 
 import com.voltpilot.api.entities.EntityRegistryRepository;
-import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
-import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.topology.RollenZuordnungRepository.Zuordnung;
-import com.voltpilot.api.uems.MessstelleFormelService;
 import com.voltpilot.api.uems.MessstelleRegeln;
 import com.voltpilot.api.uems.MessstelleRepository;
 import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.uems.MessstelleService;
-import com.voltpilot.api.web.dto.MessstelleFormelDto;
+import com.voltpilot.api.uems.ProtokollAkteur;
+import com.voltpilot.api.uems.RollenZuordnungRegeln;
+import com.voltpilot.api.uems.RollenZuordnungRegeln.Quelle;
 import com.voltpilot.api.web.dto.RollenDto;
-import java.time.Duration;
+import com.voltpilot.api.repo.SiteRepository;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/**
- * Die geraeteseitige Rollen-Zuordnung als KUNDEN-Fläche (Konzept vp-agg-konzept2-f3 §2.3/§2.6.3,
- * vp-agg-konzept3-r8): lesen und schreiben, welcher Wert die (heute nur) PV-Produktion EINES
- * Geraets ist, und den kanonischen, ueber alle Geraete zusammengefassten Rollen-Wert der Anlage
- * lesen. Der zugeordnete Wert ist ENTWEDER ein nativer Kanal ODER ein Gesamtwert (berechnete
- * Messstelle) — dasselbe verallgemeinerte {@link RollenZuordnungRepository}, kein zweites Modell.
- *
- * <p><b>Sicherheit:</b> der Mandant ist die RLS (wie jede {@code /api/v1/sites/**}-Route). Eine
- * fremde Anlage/Komponente ist nicht sichtbar → 404, nie 403. Eine Rollen-Zuordnung ist
- * Praesentation und weitet keine Steuerung — der Box-Schutzpfad bleibt unberuehrt.
- *
- * <p><b>Konfliktfall (is_primary-Semantik):</b> das Zuordnen eines zweiten Werts auf dieselbe Rolle
- * ERSETZT den bisher massgeblichen; die Antwort nennt den abgeloesten Wert.
- *
- * <p><b>Rueckfall:</b> hat eine Anlage keine PV-Zuordnung, ist {@code zuordnung_vorhanden = false}
- * und der Wert {@code null} — die Cockpit-Scheibe bleibt dann bei {@code telemetry.pv_power_kw}
- * (Vertrag docs/contracts/v2/topology-read-model.md).
- */
+/** Live-Rollen der Anlage. Rechte/RLS vor Auflösung; H-1 entscheidet Zählung, Frische und Änderungen. */
 @Service
 public class RollenZuordnungService {
-
-    /** Ab wann ein nativer Live-Wert als „veraltet" gilt (dieselbe 5-Minuten-Sicht wie die Box). */
-    static final Duration FRISCHE = Duration.ofMinutes(5);
-
-    /** Die Rolle, deren Aggregation eine reine Summe ist — ab Tag 1 die einzige. */
     public static final String ROLLE_PV = "pv";
-
-    /**
-     * Die Rollen, die als massgeblicher Geraete-Wert zuordenbar sind. Ab Tag 1 nur {@code pv};
-     * die Struktur (rollen-generische Methoden) traegt {@code grid}/{@code storage}/{@code consumer}
-     * nach — sie tragen aber eigene Aggregationsgesetze (grid = keine Summe, storage = Summe + SoC),
-     * darum erst mit ihrer eigenen Scheibe.
-     */
-    private static final Set<String> ZUORDENBARE_ROLLEN = Set.of(ROLLE_PV);
-
     private static final String MESSKANAL = "messkanal";
-    private static final String GESAMTWERT = "gesamtwert";
-
+    private static final String GESAMTWERT = "gesamtwert"; // bestehendes API-Vokabular
     private final SiteRepository sites;
     private final EntityRegistryRepository registry;
     private final RollenZuordnungRepository repo;
-    private final TopologyRepository topology;
     private final MessstelleRepository messstellen;
-    private final MessstelleFormelService formeln;
+    private final RollenQuellen quellen;
+    private final RollenProtokoll protokoll;
 
     public RollenZuordnungService(SiteRepository sites, EntityRegistryRepository registry,
-            RollenZuordnungRepository repo, TopologyRepository topology,
-            MessstelleRepository messstellen, MessstelleFormelService formeln) {
+            RollenZuordnungRepository repo, MessstelleRepository messstellen,
+            RollenQuellen quellen, RollenProtokoll protokoll) {
         this.sites = sites;
         this.registry = registry;
         this.repo = repo;
-        this.topology = topology;
         this.messstellen = messstellen;
-        this.formeln = formeln;
+        this.quellen = quellen;
+        this.protokoll = protokoll;
     }
 
-    // ------------------------------------------------- lesen: Geraete-Zuordnung
-
-    /** Der massgebliche Rollen-Wert eines Geraets (oder {@code null}, wenn keiner zugeordnet ist). */
-    public RollenDto.GeraetRolle lies(UUID siteId, UUID entityId, String role) {
-        pruefeRolle(role);
-        pruefeGeraet(siteId, entityId);
-        return new RollenDto.GeraetRolle(entityId, role,
-                repo.primaer(entityId, role).map(this::alsWert).orElse(null));
+    public RollenDto.GeraetRolle lies(UUID site, UUID entity, String rolle) {
+        pruefeRolle(rolle);
+        pruefeGeraet(site, entity);
+        return new RollenDto.GeraetRolle(entity, rolle, repo.primaer(entity, rolle).map(this::alsWert).orElse(null));
     }
 
-    // ----------------------------------------------- schreiben: Geraete-Zuordnung
+    public java.util.Set<UUID> geleseneGeraete(UUID site, UUID messstelle) {
+        pruefeAnlage(site);
+        return quellen.herkunft(messstelle, site, Instant.now()).stream()
+                .filter(q -> q.entity_id() != null).map(q -> UUID.fromString(q.entity_id()))
+                .collect(java.util.stream.Collectors.toSet());
+    }
 
-    /**
-     * Ordnet einem Geraet den massgeblichen Wert der Rolle zu (nativer Kanal ODER Gesamtwert) und
-     * loest den bisher massgeblichen ab (is_primary-Semantik). Die Antwort nennt den abgeloesten Wert.
-     */
-    public RollenDto.ZuordnungAntwort zuordnen(UUID siteId, UUID entityId, String role,
-            RollenDto.Eingabe e) {
-        pruefeRolle(role);
-        pruefeGeraet(siteId, entityId);
-        if (e == null || e.art() == null) {
-            throw badRequest("Ein zugeordneter Wert braucht eine Art (messkanal oder gesamtwert).");
+    @Transactional
+    public RollenDto.ZuordnungAntwort zuordnen(UUID site, UUID entity, String rolle,
+            RollenDto.Eingabe eingabe, ProtokollAkteur wer) {
+        pruefeRolle(rolle);
+        pruefeGeraet(site, entity);
+        repo.sperreAnlage(site);
+        RollenDto.Wert wert = pruefeWert(site, rolle, eingabe);
+        if (wert.capability() != null && !quellen.leistungsKanal(site, entity, wert.capability())) {
+            throw badRequest("Die Rolle braucht einen Leistungskanal in W oder kW.");
         }
-        Zuordnung vorher = repo.primaer(entityId, role).orElse(null);
-        RollenDto.Wert zugeordnet;
+        return setzen(site, rolle, Map.of(entity, wert), false, wer).get(entity);
+    }
+
+    /** Dieselbe Zuordnung an jedem gelesenen Gerät; ein Netz-Austausch braucht ausdrückliches ersetzen. */
+    @Transactional
+    public RollenDto.AnlageAntwort zuordnenAnlage(UUID site, String rolle,
+            RollenDto.AnlageEingabe eingabe, ProtokollAkteur wer) {
+        pruefeRolle(rolle);
+        pruefeAnlage(site);
+        repo.sperreAnlage(site);
+        if (eingabe == null || !GESAMTWERT.equals(eingabe.art())) {
+            throw badRequest("Die Anlagen-Zuordnung braucht einen Summenwert.");
+        }
+        RollenDto.Wert wert = pruefeWert(site, rolle,
+                new RollenDto.Eingabe(eingabe.art(), null, eingabe.quellMessstelleId()));
+        Map<UUID, RollenDto.Wert> neu = new LinkedHashMap<>();
+        for (Quelle q : quellen.herkunft(wert.quellMessstelleId(), site, Instant.now())) {
+            if (q.entity_id() != null) neu.put(UUID.fromString(q.entity_id()), wert);
+        }
+        if (neu.isEmpty()) throw badRequest("Der Summenwert hat keine auflösbaren Geräte.");
+        setzen(site, rolle, neu, "grid".equals(rolle) && eingabe.ersetzen(), wer);
+        return new RollenDto.AnlageAntwort(neu.keySet().stream()
+                .map(id -> new RollenDto.GeraetRolle(id, rolle, wert)).toList());
+    }
+
+    @Transactional
+    public RollenDto.ZuordnungAntwort entziehen(UUID site, UUID entity, String rolle, ProtokollAkteur wer) {
+        pruefeRolle(rolle);
+        pruefeGeraet(site, entity);
+        repo.sperreAnlage(site);
+        Zuordnung alt = repo.primaer(entity, rolle).orElse(null);
+        // Ein Summenwert ist eine gemeinsame Quelle, auch wenn er an mehreren Geräten hängt.
+        // Sein Entzug muss denselben Umfang haben wie anlageZuordnen; sonst bleibt er im Cockpit.
+        List<Zuordnung> entziehen = alt != null && alt.quellMessstelleId() != null
+                ? repo.primaereDerAnlage(site, rolle).stream()
+                        .filter(z -> alt.quellMessstelleId().equals(z.quellMessstelleId())).toList()
+                : alt == null ? List.of() : List.of(alt);
+        if (alt == null) repo.entziehen(entity, rolle);
+        for (Zuordnung z : entziehen) {
+            repo.entziehen(z.entityId(), rolle);
+            protokolliere(site, z.entityId(), rolle, z, null, wer);
+        }
+        return new RollenDto.ZuordnungAntwort(null, alt == null ? null : alsWert(alt));
+    }
+
+    private Map<UUID, RollenDto.ZuordnungAntwort> setzen(UUID site, String rolle,
+            Map<UUID, RollenDto.Wert> neu, boolean netzErsetzen, ProtokollAkteur wer) {
+        List<Zuordnung> vorher = repo.primaereDerAnlage(site, rolle);
+        List<Zuordnung> danach = new ArrayList<>(vorher.stream()
+                .filter(z -> !neu.containsKey(z.entityId()) && !netzErsetzen).toList());
+        neu.forEach((id, wert) -> danach.add(zeile(id, rolle, wert)));
+        pruefeZaehlen(site, rolle, danach, vorher);
+        // Auch eine Rollenänderung derselben Quelle (Unique entity+Quelle) ist Entzug + Setzen.
+        for (String andere : List.of("pv", "consumer", "grid")) {
+            if (andere.equals(rolle)) continue;
+            for (UUID id : neu.keySet()) {
+                Zuordnung alt = repo.primaer(id, andere).orElse(null);
+                if (alt != null && derselbeWert(alt, neu.get(id))) {
+                    repo.entziehen(id, andere);
+                    protokolliere(site, id, andere, alt, null, wer);
+                }
+            }
+        }
+        if (netzErsetzen) {
+            for (Zuordnung alt : vorher) {
+                if (!neu.containsKey(alt.entityId())) {
+                    repo.entziehen(alt.entityId(), rolle);
+                    protokolliere(site, alt.entityId(), rolle, alt, null, wer);
+                }
+            }
+        }
+        Map<UUID, RollenDto.ZuordnungAntwort> antwort = new LinkedHashMap<>();
+        neu.forEach((id, wert) -> {
+            Zuordnung alt = vorher.stream().filter(z -> z.entityId().equals(id)).findFirst().orElse(null);
+            if (alt == null || !derselbeWert(alt, wert)) {
+                repo.primaerLoesen(id, rolle);
+                if (wert.capability() != null) repo.setzeKanal(site, id, wert.capability(), rolle);
+                else repo.setzeMessstelle(site, id, wert.quellMessstelleId(), rolle);
+                protokolliere(site, id, rolle, alt, wert, wer);
+            }
+            antwort.put(id, new RollenDto.ZuordnungAntwort(wert,
+                    alt == null || derselbeWert(alt, wert) ? null : alsWert(alt)));
+        });
+        return antwort;
+    }
+
+    /** Auch der bestehende Topologie-Schreibweg benutzt dieselbe Sperre und Netz-Regel. */
+    public void sperreAnlage(UUID site) { repo.sperreAnlage(site); }
+
+    public Map<String, List<Zuordnung>> protokollVorher(UUID site) {
+        Map<String, List<Zuordnung>> vorher = new LinkedHashMap<>();
+        for (String rolle : List.of("pv", "consumer", "grid")) vorher.put(rolle, repo.primaereDerAnlage(site, rolle));
+        return vorher;
+    }
+
+    /** Der ältere Topologie-Stapel schreibt dieselben maßgeblichen Werte; sein Push bleibt unverändert. */
+    public void protokollNachher(UUID site, Map<String, List<Zuordnung>> vorher, ProtokollAkteur wer) {
+        for (var entry : vorher.entrySet()) {
+            String rolle = entry.getKey();
+            var nachher = repo.primaereDerAnlage(site, rolle);
+            java.util.Set<UUID> geraete = new java.util.LinkedHashSet<>();
+            entry.getValue().forEach(z -> geraete.add(z.entityId()));
+            nachher.forEach(z -> geraete.add(z.entityId()));
+            for (UUID entity : geraete) {
+                var alt = entry.getValue().stream().filter(z -> z.entityId().equals(entity)).findFirst().orElse(null);
+                var neu = nachher.stream().filter(z -> z.entityId().equals(entity)).findFirst().orElse(null);
+                protokolliere(site, entity, rolle, alt, neu == null ? null : alsWert(neu), wer);
+            }
+        }
+    }
+
+    public void pruefeNetz(UUID site) {
+        var zeilen = repo.primaereDerAnlage(site, "grid");
+        pruefeZaehlen(site, "grid", zeilen, zeilen);
+    }
+
+    private void pruefeZaehlen(UUID site, String rolle, List<Zuordnung> zeilen, List<Zuordnung> vorher) {
+        Instant jetzt = Instant.now();
+        var eingang = quellen.aufloesen(site, rolle, zeilen, jetzt, false);
+        if ("grid".equals(rolle) && !RollenZuordnungRegeln.netz(site.toString(), eingang).erlaubt()) {
+            throw new RollenKonflikt("netz_mehrfach", "Der Netzwert ist bereits zugeordnet: "
+                    + vorher.stream().map(z -> geraetName(site, z.entityId())).distinct().toList(),
+                    vorher.stream().map(Zuordnung::entityId).distinct().toList());
+        }
         try {
-            if (MESSKANAL.equals(e.art())) {
-                String capability = e.capability() == null ? "" : e.capability().trim();
-                if (capability.isEmpty()) {
-                    throw badRequest("Ein Messkanal-Wert braucht einen Kanal (capability).");
-                }
-                repo.primaerLoesen(entityId, role);
-                repo.setzeKanal(siteId, entityId, capability, role);
-                zugeordnet = new RollenDto.Wert(MESSKANAL, capability, null, capability);
-            } else if (GESAMTWERT.equals(e.art())) {
-                UUID quell = e.quellMessstelleId();
-                if (quell == null) {
-                    throw badRequest("Ein Gesamtwert-Wert braucht eine Messstelle (quell_messstelle_id).");
-                }
-                Messstelle m = messstellen.finde(quell).orElseThrow(() ->
-                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
-                if (!MessstelleRegeln.BERECHNET.equals(m.art())) {
-                    throw badRequest("Nur ein Gesamtwert (berechnete Messstelle) kann einer Rolle "
-                            + "zugeordnet werden.");
-                }
-                if (m.archiviertAm() != null) {
-                    throw badRequest("Diese Messstelle ist archiviert und kann nicht zugeordnet werden.");
-                }
-                // Same-Site: der Gesamtwert muss zu DIESER Anlage gehoeren (Ableitung ueber seine
-                // Terme), sonst summierte sich ein fremd-anlagiger Wert unter den Gerätenamen dieser
-                // Anlage (Review vp-review-agg-r1 SOLLTE 2).
-                if (!repo.gehoertZuSite(quell, siteId)) {
-                    throw badRequest("Dieser Gesamtwert gehört zu einer anderen Anlage und kann "
-                            + "diesem Gerät nicht zugeordnet werden.");
-                }
-                repo.primaerLoesen(entityId, role);
-                repo.setzeMessstelle(siteId, entityId, quell, role);
-                zugeordnet = new RollenDto.Wert(GESAMTWERT, null, quell, m.name());
-            } else {
-                throw badRequest("Die Art ist 'messkanal' oder 'gesamtwert'.");
+            RollenZuordnungRegeln.zaehlung(site.toString(), rolle, jetzt.toString(), eingang);
+        } catch (IllegalArgumentException e) {
+            throw new RollenKonflikt(e.getMessage(), "Diese Summenwerte enthalten überlappende Quellen.", List.of());
+        }
+    }
+
+    private RollenDto.Wert pruefeWert(UUID site, String rolle, RollenDto.Eingabe e) {
+        if (e == null) throw badRequest("Ein zugeordneter Wert braucht eine Art.");
+        if (MESSKANAL.equals(e.art())) {
+            if (e.capability() == null || e.capability().isBlank() || e.quellMessstelleId() != null) {
+                throw badRequest("Ein Messkanal-Wert braucht genau einen Kanal (capability).");
             }
-        } catch (DuplicateKeyException konflikt) {
-            // Der partielle Unique-Index uq_entity_role_primary (V20260914100200) hat gegriffen:
-            // ein nebenlaeufiger zweiter Schreiber hat die Rolle gerade massgeblich belegt. Sauber
-            // in 409 statt eine zweite Wahrheit (stille Doppelzaehlung) - Review SOLLTE 1.
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Diese Rolle wird gerade anderweitig zugeordnet - bitte erneut versuchen.");
+            return new RollenDto.Wert(MESSKANAL, e.capability().trim(), null, e.capability().trim());
         }
-        RollenDto.Wert abgeloest = (vorher != null && !derselbeWert(vorher, zugeordnet))
-                ? alsWert(vorher) : null;
-        return new RollenDto.ZuordnungAntwort(zugeordnet, abgeloest);
+        if (!GESAMTWERT.equals(e.art()) || e.quellMessstelleId() == null || e.capability() != null) {
+            throw badRequest("Die Art ist 'messkanal' oder 'gesamtwert', mit genau einer Quelle.");
+        }
+        Messstelle m = messstellen.finde(e.quellMessstelleId()).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
+        if (!MessstelleRegeln.BERECHNET.equals(m.art()) || m.archiviertAm() != null) {
+            throw badRequest("Nur ein aktiver Summenwert kann einer Rolle zugeordnet werden.");
+        }
+        var g = m.hauptgroesse();
+        String richtung = switch (rolle) { case "pv" -> "Erzeugung"; case "consumer" -> "Bezug"; default -> "richtungslos"; };
+        if (!"Wirkleistung".equals(g.groesse()) || !"Momentanwert".equals(g.wertart())
+                || !"kW".equals(g.einheit()) || !richtung.equals(g.richtung())) {
+            throw badRequest("Die Rolle braucht eine Leistung in kW mit Richtung „" + richtung + "“.");
+        }
+        try {
+            quellen.herkunft(m.id(), site, Instant.now());
+        } catch (RollenKonflikt e1) {
+            throw badRequest("Dieser Summenwert gehört nicht vollständig zu dieser Anlage oder ist nicht auflösbar.");
+        }
+        return new RollenDto.Wert(GESAMTWERT, null, m.id(), m.name());
     }
 
-    // ---------------------------------------- lesen: kanonischer Rollen-Wert
-
-    /**
-     * Der kanonische Rollen-Wert der Anlage: die (benannte) Summe der massgeblichen Geraete-Werte
-     * dieser Rolle. Ehrlich — jedes Geraet ist benannt (liefernd mit Wert, oder stumm mit Grund),
-     * nie eine stille Teilsumme; innerhalb eines Geraets ist ein unvollstaendiger Wert {@code null}
-     * (die Regel des Gesamtwerts), nicht heimlich reduziert.
-     */
-    public RollenDto.KanonischerWert kanonisch(UUID siteId, String role) {
-        if (!ROLLE_PV.equals(role)) {
-            throw badRequest("Ein zusammengefasster Rollen-Wert gibt es bisher nur fuer 'pv'.");
-        }
-        pruefeAnlage(siteId);
-        return baueKanonisch(siteId, role, repo.primaereDerAnlage(siteId, role));
+    public RollenDto.KanonischerWert kanonisch(UUID site, String rolle) {
+        pruefeRolle(rolle);
+        pruefeAnlage(site);
+        return baueKanonisch(site, rolle, repo.primaereDerAnlage(site, rolle));
     }
 
-    /**
-     * Der kanonische PV-Rollen-Wert JE ANLAGE fuer die Cockpit-Uebersicht ({@code GET /api/v1/overview}):
-     * dieselbe ehrliche Aggregation wie {@link #kanonisch(UUID, String)}, nur flottenweit aus EINER
-     * Zuordnungs-Abfrage ({@link RollenZuordnungRepository#primaereJeAnlage}) statt einer je Anlage.
-     * Anlagen OHNE PV-Zuordnung sind ABWESEND — der Aufrufer faellt fuer sie auf
-     * {@code telemetry.pv_power_kw} zurueck. Kein {@code pruefeAnlage} je Anlage: die RLS-Abfrage
-     * liefert ohnehin nur die eigenen Anlagen des Mandanten.
-     */
+    /** Kompatibler PV-Einstieg; die Übersicht liest alle drei Rollen flottenweit. */
     public Map<UUID, RollenDto.KanonischerWert> pvJeAnlage() {
-        Map<UUID, List<Zuordnung>> jeAnlage = repo.primaereJeAnlage(ROLLE_PV);
-        Map<UUID, RollenDto.KanonischerWert> out = new HashMap<>();
-        for (Map.Entry<UUID, List<Zuordnung>> e : jeAnlage.entrySet()) {
-            out.put(e.getKey(), baueKanonisch(e.getKey(), ROLLE_PV, e.getValue()));
-        }
-        return out;
+        return rollenJeAnlage(ROLLE_PV);
     }
 
-    /**
-     * Baut den kanonischen Rollen-Wert aus den bereits gelesenen massgeblichen Zuordnungen — die
-     * gemeinsame ehrliche Aggregation von {@link #kanonisch} und {@link #pvJeAnlage}: jedes Geraet ist
-     * benannt (liefernd mit Wert, oder stumm mit Grund), die Summe ist die Teil-Summe der liefernden
-     * (nie eine stille Teilsumme), und ein unvollstaendiger Gesamtwert INNERHALB eines Geraets bleibt
-     * {@code null}.
-     */
-    private RollenDto.KanonischerWert baueKanonisch(UUID siteId, String role, List<Zuordnung> primaere) {
+    /** Eine Zuordnungs-Abfrage je Rolle; Anlagen ohne Zuordnung bleiben abwesend. */
+    public Map<UUID, RollenDto.KanonischerWert> rollenJeAnlage(String rolle) {
+        pruefeRolle(rolle);
+        Map<UUID, RollenDto.KanonischerWert> aus = new HashMap<>();
+        repo.primaereJeAnlage(rolle).forEach((site, zeilen) -> aus.put(site, baueKanonisch(site, rolle, zeilen)));
+        return aus;
+    }
+
+    private RollenDto.KanonischerWert baueKanonisch(UUID site, String rolle, List<Zuordnung> zeilen) {
+        String jetzt = Instant.now().truncatedTo(ChronoUnit.MILLIS).toString();
+        var eingang = quellen.aufloesen(site, rolle, zeilen, Instant.parse(jetzt), true);
+        RollenZuordnungRegeln.Ergebnis ergebnis;
+        try {
+            ergebnis = RollenZuordnungRegeln.zaehlung(site.toString(), rolle, jetzt, eingang);
+        } catch (IllegalArgumentException e) {
+            throw new RollenKonflikt(e.getMessage(), "Diese Summenwerte enthalten überlappende Quellen.", List.of());
+        }
+        if (ergebnis.fehler() != null) {
+            throw new RollenKonflikt(ergebnis.fehler(), "Der Anlage sind mehrere Netzwerte zugeordnet.",
+                    zeilen.stream().map(Zuordnung::entityId).toList());
+        }
         List<RollenDto.GeraetBeitrag> beitraege = new ArrayList<>();
-        Double summe = null;
-        boolean unvollstaendig = false;
-        Instant stand = null;
-        for (Zuordnung z : primaere) {
-            String name = geraetName(siteId, z.entityId());
-            Beitrag b = wertVon(siteId, z);
-            if (b.liefernd()) {
-                summe = (summe == null ? 0.0 : summe) + b.wert();
-                stand = juenger(stand, b.stand());
-            } else {
-                unvollstaendig = true;
-            }
-            beitraege.add(new RollenDto.GeraetBeitrag(z.entityId(), name,
-                    z.capability() != null ? MESSKANAL : GESAMTWERT,
-                    b.liefernd() ? b.wert() : null, b.liefernd(), b.grund()));
+        for (int i = 0; i < eingang.size(); i++) {
+            var z = eingang.get(i);
+            var massgeblich = eingang.stream().filter(a -> ergebnis.gezaehlt().contains(a.quelle())
+                    && (a.quelle().equals(z.quelle()) || a.enthaelt().contains(z.quelle()))).findFirst().orElseThrow();
+            var stand = RollenZuordnungRegeln.frische(jetzt, massgeblich.zustand());
+            var zeile = zeilen.get(i);
+            beitraege.add(new RollenDto.GeraetBeitrag(zeile.entityId(), geraetName(site, zeile.entityId()),
+                    zeile.capability() == null ? GESAMTWERT : MESSKANAL, stand.wert(), stand.wert() != null, stand.grund()));
         }
-        boolean vorhanden = !primaere.isEmpty();
-        OffsetDateTime standTz = stand == null ? null
-                : OffsetDateTime.ofInstant(stand, MessstelleService.ZEITZONE);
-        return new RollenDto.KanonischerWert(role, vorhanden, summe, "kW", unvollstaendig,
-                beitraege, standTz);
+        OffsetDateTime stand = ergebnis.stand() == null ? null
+                : Instant.parse(ergebnis.stand()).atZone(MessstelleService.ZEITZONE).toOffsetDateTime();
+        return new RollenDto.KanonischerWert(rolle, ergebnis.zuordnung_vorhanden(), ergebnis.wert(), "kW",
+                ergebnis.unvollstaendig(), beitraege, stand);
     }
 
-    // ------------------------------------------------------------------ Helfer
-
-    /** Das Zwischenergebnis eines Geraete-Beitrags. */
-    private record Beitrag(boolean liefernd, Double wert, Instant stand, String grund) {}
-
-    private Beitrag wertVon(UUID siteId, Zuordnung z) {
-        if (z.capability() != null) {
-            List<TopologyRepository.LatestValue> vals = topology.latestValues(siteId,
-                    List.of(new TopologyRepository.ChannelKey(z.entityId().toString(), z.capability())));
-            if (vals.isEmpty()) {
-                return new Beitrag(false, null, null, "kein_wert");
+    private void protokolliere(UUID site, UUID entity, String rolle, Zuordnung alt,
+            RollenDto.Wert neu, ProtokollAkteur wer) {
+        try {
+            Quelle vorher = alt == null ? null : quellen.quelle(alt, site);
+            Quelle nachher = neu == null ? null : quellen.quelle(zeile(entity, rolle, neu), site);
+            for (String art : RollenZuordnungRegeln.aenderung(vorher, nachher)) {
+                protokoll.schreiben(site, entity, rolle, art, alt == null ? null : alsWert(alt), neu, wer);
             }
-            TopologyRepository.LatestValue lv = vals.get(0);
-            if (lv.receivedAt().isBefore(Instant.now().minus(FRISCHE))) {
-                return new Beitrag(false, null, null, "veraltet");
-            }
-            return new Beitrag(true, lv.value(), lv.receivedAt(), null);
+        } catch (RuntimeException e) {
+            protokoll.fehlgeschlagen(site, e);
         }
-        // Ein Gesamtwert: seine eigene Ehrlichkeitsregel gilt (null statt Teilsumme innerhalb).
-        Optional<Messstelle> m = messstellen.finde(z.quellMessstelleId());
-        if (m.isEmpty() || !MessstelleRegeln.BERECHNET.equals(m.get().art())) {
-            return new Beitrag(false, null, null, "kein_geraet");
-        }
-        if (m.get().archiviertAm() != null) {
-            return new Beitrag(false, null, null, "archiviert");
-        }
-        MessstelleFormelDto.Wert w = formeln.wert(z.quellMessstelleId());
-        if (w.wert() == null) {
-            return new Beitrag(false, null, null, "unvollstaendig");
-        }
-        Instant stand = w.stand() == null ? null : w.stand().toInstant();
-        return new Beitrag(true, w.wert(), stand, null);
     }
 
     private RollenDto.Wert alsWert(Zuordnung z) {
-        if (z.capability() != null) {
-            return new RollenDto.Wert(MESSKANAL, z.capability(), null, z.capability());
-        }
-        String name = messstellen.finde(z.quellMessstelleId()).map(Messstelle::name).orElse(null);
-        return new RollenDto.Wert(GESAMTWERT, null, z.quellMessstelleId(), name);
+        return z.capability() != null ? new RollenDto.Wert(MESSKANAL, z.capability(), null, z.capability())
+                : new RollenDto.Wert(GESAMTWERT, null, z.quellMessstelleId(),
+                        messstellen.finde(z.quellMessstelleId()).map(Messstelle::name).orElse(null));
+    }
+
+    private static Zuordnung zeile(UUID entity, String rolle, RollenDto.Wert w) {
+        return new Zuordnung(null, entity, w.capability(), w.quellMessstelleId(), rolle, true);
     }
 
     private static boolean derselbeWert(Zuordnung a, RollenDto.Wert b) {
-        if (a.capability() != null) {
-            return MESSKANAL.equals(b.art()) && a.capability().equals(b.capability());
-        }
-        return GESAMTWERT.equals(b.art()) && Objects.equals(a.quellMessstelleId(), b.quellMessstelleId());
+        return Objects.equals(a.capability(), b.capability()) && Objects.equals(a.quellMessstelleId(), b.quellMessstelleId());
     }
 
-    private String geraetName(UUID siteId, UUID entityId) {
-        EntityRow row = registry.entityForSite(siteId, entityId);
-        if (row == null || row.label() == null || row.label().isBlank()) {
-            return "Gerät";
-        }
-        return row.label();
+    private String geraetName(UUID site, UUID entity) {
+        var row = registry.entityForSite(site, entity);
+        return row == null || row.label() == null || row.label().isBlank() ? "Gerät" : row.label();
     }
 
-    private void pruefeRolle(String role) {
-        if (role == null || !ZUORDENBARE_ROLLEN.contains(role)) {
-            throw badRequest("Diese Rolle ist noch nicht zuordenbar (bisher nur 'pv').");
-        }
-    }
-
-    private void pruefeAnlage(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
+    private void pruefeAnlage(UUID site) {
+        if (!sites.existsForCurrentTenant(site)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
     }
 
-    private void pruefeGeraet(UUID siteId, UUID entityId) {
-        pruefeAnlage(siteId);
-        if (registry.entityForSite(siteId, entityId) == null) {
+    private void pruefeGeraet(UUID site, UUID entity) {
+        pruefeAnlage(site);
+        if (registry.entityForSite(site, entity) == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
     }
 
-    private static ResponseStatusException badRequest(String satz) {
-        return new ResponseStatusException(HttpStatus.BAD_REQUEST, satz);
+    private static void pruefeRolle(String rolle) {
+        if (!RollenZuordnungRegeln.rolle(rolle).zuordnen()) throw badRequest("Diese Rolle ist nicht zuordenbar.");
     }
 
-    private static Instant juenger(Instant a, Instant b) {
-        return a == null || (b != null && b.isAfter(a)) ? b : a;
+    private static ResponseStatusException badRequest(String satz) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, satz);
     }
 }

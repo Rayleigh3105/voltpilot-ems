@@ -43,13 +43,16 @@ public class AenderungsprotokollService {
     private final MessstelleRepository messstellen;
     private final GeraetRepository geraete;
     private final ObjectMapper json;
+    private final com.voltpilot.api.repo.SiteRepository sites;
 
     public AenderungsprotokollService(AenderungsprotokollRepository protokolle,
-            MessstelleRepository messstellen, GeraetRepository geraete, ObjectMapper json) {
+            MessstelleRepository messstellen, GeraetRepository geraete, ObjectMapper json,
+            com.voltpilot.api.repo.SiteRepository sites) {
         this.protokolle = protokolle;
         this.messstellen = messstellen;
         this.geraete = geraete;
         this.json = json;
+        this.sites = sites;
     }
 
     /**
@@ -87,6 +90,13 @@ public class AenderungsprotokollService {
     /** Das Protokoll des ganzen Unternehmens — Messstellen, Quellen, Einstellungen, Orte, Anlagen. */
     public ProtokollDto.Protokoll unternehmen(Anfrage a) {
         return antwort(protokolle.fuerUnternehmen(a.von(), a.bis(), a.achse(), a.grenze() + 1, a.nach()), a);
+    }
+
+    public ProtokollDto.Protokoll anlage(UUID id, Anfrage a) {
+        if (!sites.existsForCurrentTenant(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        }
+        return antwort(protokolle.fuerAnlage(id, a.von(), a.bis(), a.achse(), a.grenze() + 1, a.nach()), a);
     }
 
     // ------------------------------------------------------------------ Die Antwort

@@ -11,7 +11,7 @@ export type HelpCategory = typeof HELP_CATEGORIES[number]['id'];
 export type HelpArticleId =
   | 'voltpilot' | 'energiefluesse' | 'beispieltag'
   | 'orientierung' | 'anlage-anlegen' | 'box-verbinden'
-  | 'cockpit' | 'fahrplan' | 'messwerte' | 'erloese' | 'marktpreise' | 'prognosen' | 'portfolio'
+  | 'summenwerte' | 'cockpit' | 'fahrplan' | 'messwerte' | 'erloese' | 'marktpreise' | 'prognosen' | 'portfolio'
   | 'betriebsmodelle' | 'regeln' | 'speicher' | 'lastspitzen' | 'ladepark' | 'ladevorgaenge'
   | 'anlagenmodell' | 'geraete' | 'einstellungen'
   | 'probleme' | 'glossar' | 'kontakt';

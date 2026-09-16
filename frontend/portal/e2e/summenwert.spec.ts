@@ -112,7 +112,7 @@ function stamp(p: ReturnType<typeof catPoint>, observed: Set<string>) {
     selected: sel,
     recorded: sel,
     decodedValue: sel ? LIVE[p.pointKey as string] ?? null : null,
-    lastReadAt: sel ? '2026-09-12T09:45:00Z' : null,
+    lastReadAt: sel ? new Date().toISOString() : null,
     selectedCadenceS: sel ? 5 : null,
   };
 }
@@ -129,6 +129,11 @@ async function mock(page: Page) {
     const path = url.pathname;
     const method = route.request().method();
 
+    if (path.endsWith('/summenwerte')) return route.fulfill({ json: [] });
+
+    if (path.endsWith('/entities')) return route.fulfill({ json: { entities: [{ id: 'inv', deviceId: 'd1', label: 'Deye SUN-30K' }] } });
+    if (path.endsWith('/measurement-selection/lesen')) return route.fulfill({ json: { wert: 2, einheit: 'kW', gelesen_am: new Date().toISOString(), grund: null } });
+    if (path.endsWith('/summenwert-quellen')) return route.fulfill({ json: [{ entityId: 'inv', deviceId: 'd1', name: 'Deye SUN-30K', grund: null }] });
     // Rollen-Zuordnung dieses Geräts
     if (/\/komponenten\/[^/]+\/rollen\/pv$/.test(path)) {
       if (method === 'PUT') {
@@ -147,7 +152,7 @@ async function mock(page: Page) {
         json: {
           catalogVersion: '2026.09.11.1', edgeMinVersion: '1.0',
           customPointActionLabel: 'Eigenen Messwert hinzufügen',
-          total: nurSelektiert ? points.length : 624, offset: 0, limit: 80,
+          total: points.length, offset: 0, limit: 80,
           groups: [], semanticStatuses: [], points,
         },
       });
@@ -165,10 +170,10 @@ async function mock(page: Page) {
 
     // Gesamtwert anlegen + Live-Wert
     if (path.endsWith('/messstellen/berechnet') && method === 'POST') {
-      return route.fulfill({ status: 201, json: { id: 'gw-1', kennzeichen: 'MS-0007', name: 'PV gesamt', art: 'berechnet', medium: 'Strom', lebenszyklus: 'aktiv', fehlt: [] } });
+      return route.fulfill({ status: 201, json: { id: 'gw-1', kennzeichen: 'MS-0007', name: route.request().postDataJSON().name, art: 'berechnet', medium: 'Strom', lebenszyklus: 'aktiv', fehlt: [] } });
     }
     if (/\/messstellen\/[^/]+\/wert$/.test(path)) {
-      return route.fulfill({ json: { wert: 15.5, einheit: 'kW', unvollstaendig: false, fehlende: [], stand: '2026-09-12T09:45:00Z' } });
+      return route.fulfill({ json: { wert: 15.5, einheit: 'kW', unvollstaendig: false, fehlende: [], stand: new Date().toISOString() } });
     }
 
     return route.fulfill({ json: {} });
@@ -190,149 +195,88 @@ function selektionsState(revision: number, enabled: number) {
 }
 
 /** Öffnet die Geräteseiten-Karte und ihren Assistenten. */
-async function assistentOeffnen(page: Page) {
-  await page.goto('/e2e/summenwert.html');
-  await page.getByRole('button', { name: /Summenwert anlegen/ }).click();
-  return page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
+
+for (const width of [375, 1440]) {
+  test(`Gen-Port antippen: fünf Schritte, Live-Wert und Rolle bei ${width} px`, async ({ page }, testInfo) => {
+    test.slow();
+    const errors: string[] = [];
+    const reads: string[] = [], selections: string[] = [], saves: Record<string, unknown>[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('request', (r) => {
+      if (r.url().includes('/measurement-selection/lesen')) reads.push(r.url());
+      if (r.url().includes('/measurement-selection/') && r.method() === 'PUT') selections.push(r.url());
+      if (r.url().endsWith('/messstellen/berechnet') && r.method() === 'POST') saves.push(r.postDataJSON());
+    });
+    await mock(page);
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto('/e2e/summenwert.html');
+    await page.getByRole('button', { name: 'Summenwert anlegen' }).click();
+    const dialog = page.getByRole('dialog', { name: /Summenwert/ });
+    await expect(dialog.getByRole('button', { name: 'PV 1 entfernen' })).toBeVisible();
+    await expect(dialog.locator('.vp-sw-sumline')).toContainText('12,4');
+    await dialog.locator('summary').filter({ hasText: 'Alle Register des Geräts' }).click();
+    await dialog.getByRole('button', { name: 'Gen-Port einmal lesen' }).click();
+    await expect(dialog.getByText(/jetzt gelesen/)).toBeVisible();
+    expect(reads).toHaveLength(1); expect(selections).toHaveLength(0);
+    await expect(dialog.locator('.vp-sw-sumline')).toContainText('12,4');
+    const gen = dialog.locator('.vp-sw-suggest', { hasText: 'Mikrowechselrichter' });
+    await gen.locator('label').click();
+    await expect(dialog.locator('.vp-sw-sumline')).toContainText('14,4');
+    await gen.locator('label').click(); await gen.locator('label').click();
+    expect(reads).toHaveLength(1);
+    async function shot(step: number) {
+      expect(await dialog.evaluate((e) => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+      if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/geraet-${width}-${step}.png` });
+    }
+    await shot(1);
+    await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
+    await dialog.getByRole('button', { name: /Feineinstellung/ }).click();
+    await expect(dialog.getByLabel('Faktor für PV 1')).toHaveValue('1'); await shot(2);
+    await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
+    await dialog.getByLabel('Name des Summenwerts').fill('PV mit Gen-Port'); await shot(3);
+    await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'keine Rolle', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await dialog.getByRole('button', { name: 'PV-Produktion', exact: true }).click(); await shot(4);
+    await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(dialog.getByText(/ist angelegt/)).toBeVisible();
+    await expect(page.locator('.vp-modal-scrim')).not.toHaveClass(/is-closing/);
+    expect(selections).toHaveLength(1); expect(saves).toHaveLength(1);
+    expect(saves[0]).toMatchObject({ rolle: { entity_id: 'inv', role: 'pv', ersetzen: false } });
+    await shot(5);
+    await dialog.getByRole('button', { name: 'Fertig', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Summenwert anlegen' })).toBeFocused();
+    expect(errors).toEqual([]);
+  });
 }
 
-test('Vorzeichen-Netzregister bleiben ohne Erzeugungs-Haken und ohne Aufnahme gesperrt', async ({ page }, testInfo) => {
-  test.skip(!['desktop-chromium', 'mobile-chromium'].includes(testInfo.project.name));
-  test.slow();
+test('Lesefehler bleibt fehlend, Abbrechen schreibt keine Beobachtung', async ({ page }) => {
   await mock(page);
-  const width = testInfo.project.name === 'mobile-chromium' ? 375 : 1440;
-  await page.setViewportSize({ width, height: 1000 });
-  const dialog = await assistentOeffnen(page);
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
+  await page.route('**/measurement-selection/lesen?*', (route) => route.fulfill({ json: { wert: null, einheit: 'kW', gelesen_am: null, grund: 'box_offline' } }));
+  const writes: string[] = [];
+  page.on('request', (r) => { if (r.method() === 'PUT') writes.push(r.url()); });
+  await page.goto('/e2e/summenwert.html');
+  await page.getByRole('button', { name: 'Summenwert anlegen' }).click();
+  const dialog = page.getByRole('dialog', { name: /Summenwert/ });
+  await dialog.locator('summary').filter({ hasText: 'Alle Register des Geräts' }).click();
+  await dialog.getByRole('button', { name: 'Gen-Port einmal lesen' }).click();
+  await expect(dialog.getByText(/die Box antwortet nicht/)).toBeVisible();
+  await dialog.locator('.vp-sw-suggest', { hasText: 'Mikrowechselrichter' }).locator('label').click();
+  await expect(dialog.locator('.vp-sw-sumline')).toContainText('unvollständig');
+  await page.keyboard.press('Escape'); await expect(dialog).toBeHidden(); expect(writes).toHaveLength(0);
+});
+
+
+test('Vorzeichen-Netzregister bleiben ohne Erzeugungs-Haken und ohne Aufnahme gesperrt', async ({ page }) => {
+  test.slow(); await mock(page); await page.goto('/e2e/summenwert.html');
+  await page.getByRole('button', { name: 'Summenwert anlegen' }).click();
+  const dialog = page.getByRole('dialog', { name: /Summenwert/ });
+  await dialog.locator('summary').filter({ hasText: 'Alle Register des Geräts' }).click();
   for (const name of ['Netzleistung', 'Netzleistung extern']) {
-    await expect(dialog.getByText(`Zählt „${name}" als Erzeugung?`)).toHaveCount(0);
     const button = dialog.getByRole('button', { name: `${name} mitzählen`, exact: true });
     await expect(button).toBeDisabled();
     await expect(button).toHaveAttribute('title', /Bezug und Abgabe gemeinsam/);
-    const row = dialog.locator('.vp-sw-row').filter({
-      has: page.getByRole('button', { name: `${name} mitzählen`, exact: true }),
-    });
-    await expect(row.getByRole('button', { name: /Beobachten/ })).toHaveCount(0);
-    await expect(row.getByText('Bezug und Abgabe trennen', { exact: true })).toBeVisible();
+    await expect(dialog.getByText(`Zählt „${name}“ als Erzeugung?`)).toHaveCount(0);
   }
-  await dialog.screenshot({ path: testInfo.outputPath(`import-export-${width}.png`) });
 });
-
-test('SUN-30K: Gen-Port über „+ Beobachten" aufnehmen, als Erzeugung entscheiden, speichern gelingt', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'Ankerlauf einmal (Logik ist engine-unabhängig)');
-  test.slow();
-  await mock(page);
-  await page.setViewportSize({ width: 1440, height: 1000 });
-
-  // Deliverable A: die Ergebnis-Karte der Geräteseite (noch ohne Zuordnung).
-  await page.goto('/e2e/summenwert.html');
-  await expect(page.getByText('PV-Produktion dieses Geräts')).toBeVisible();
-  await page.locator('.vp-geraet-pvp-card').screenshot({ path: 'e2e/shots/summenwert-geraetkarte.png' });
-
-  await page.getByRole('button', { name: /Summenwert anlegen/ }).click();
-  const dialog = page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
-
-  // Schritt 1: Name-Vorschlag „PV gesamt", nur die Erzeugungs-Stränge vorab an.
-  await expect(dialog.getByLabel('Name des Gesamtwerts')).toHaveValue('PV gesamt');
-  await expect(dialog.getByText('PV 1')).toBeVisible();
-
-  // B2 · der Gen-Port ist NICHT vorab dabei (recommended:false, unbeobachtet): die Summe
-  // trägt PV 1+2+3 = 12,4 kW, NICHT 15,5. Keine stille Gen-Port-Zählung.
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
-  await expect(dialog.getByText('Am Gen-Port hängt ein Mikrowechselrichter?')).toHaveCount(0);
-
-  // B2 · das beobachtete richtungslose Nicht-Erzeugungs-Register (Hausverbrauch) wird NICHT
-  // still mitgezählt und trägt die NEUTRALE Erzeugungs-Frage (kein Gen-Port-Wording).
-  await expect(dialog.getByText('Zählt „Hausverbrauch" als Erzeugung?')).toBeVisible();
-
-  // „Alle Register": der Gen-Port ist ein rohes summierbares Register mit „+ Beobachten";
-  // die nicht summierbaren erscheinen sichtbar, aber gesperrt MIT Grund.
-  await expect(dialog.getByText('Externe Erzeugung (CT-Klemme)')).toBeVisible();
-  await expect(dialog.getByText('keine Messgröße').first()).toBeVisible();
-  await expect(dialog.getByText('kein Zahlenwert').first()).toBeVisible();
-  await expect(dialog.getByText('andere Messgröße').first()).toBeVisible();
-  await dialog.screenshot({ path: 'e2e/shots/summenwert-desktop.png' });
-
-  // Der ECHTE Ankerpfad: den Gen-Port über „+ Beobachten" aufnehmen …
-  const genRow = dialog.locator('.vp-sw-row', { hasText: 'Gen-Port' });
-  await genRow.getByRole('button', { name: /Beobachten/ }).click();
-
-  // … jetzt erscheint er als erklärte Gen-Port-Frage (NICHT still gezählt: Summe noch 12,4) …
-  await expect(dialog.getByText('Am Gen-Port hängt ein Mikrowechselrichter?')).toBeVisible();
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
-
-  // … der Kunde entscheidet am Schalter, dass er als Erzeugung mitzählt → 15,5 kW.
-  const genSuggest = dialog.locator('.vp-sw-suggest', { hasText: 'Mikrowechselrichter' });
-  await genSuggest.locator('label').click();
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('15,5');
-  await dialog.getByText('Diesen Wert verwenden als …').scrollIntoViewIfNeeded();
-  await dialog.screenshot({ path: 'e2e/shots/summenwert-desktop-schritt2.png' });
-
-  // Speichern gelingt (früher: Server-400-Sackgasse) - der Summenwert ist die PV-Produktion.
-  await dialog.getByRole('button', { name: /Verwenden als PV-Produktion/ }).click();
-  await expect(dialog.getByText('ist die PV-Produktion dieses Geräts')).toBeVisible();
-});
-
-test('SUN-30K: ohne Erzeugungs-Entscheidung sperrt der Assistent nicht den PV-Grundfall', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'einmal');
-  test.slow();
-  await mock(page);
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  const dialog = await assistentOeffnen(page);
-
-  // Der PV-Grundfall (PV 1+2+3, ohne Gen-Port) ist speicherbar - der richtungslose Gen-Port
-  // ist gar kein Term, also keine offene Entscheidung, kein Riegel, keine Sackgasse.
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
-  await expect(dialog.getByRole('button', { name: /Verwenden als PV-Produktion/ })).toBeEnabled();
-
-  // Nimmt der Kunde den Gen-Port auf, ist er zunächst NICHT im Term (Summe bleibt 12,4) - der
-  // Speichern-Weg des Grundfalls bleibt offen, bis er sich für den Gen-Port entscheidet.
-  const genRow = dialog.locator('.vp-sw-row', { hasText: 'Gen-Port' });
-  await genRow.getByRole('button', { name: /Beobachten/ }).click();
-  await expect(dialog.getByText('Am Gen-Port hängt ein Mikrowechselrichter?')).toBeVisible();
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
-  await expect(dialog.getByRole('button', { name: /Verwenden als PV-Produktion/ })).toBeEnabled();
-});
-
-test('Handy 375: der Assistent als Vollbild-Schrittfolge, sauber und vollständig', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'einmal, mit gesetztem 375-Viewport');
-  test.slow();
-  await mock(page);
-  await page.setViewportSize({ width: 375, height: 812 });
-  const dialog = await assistentOeffnen(page);
-
-  await expect(dialog.getByText('Summenwert bauen - aus allen Registern')).toBeVisible();
-  // Der Default-Summenwert (PV 1+2+3, ohne Gen-Port) = 12,4 kW.
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
-  await expect(dialog.getByText('Diesen Wert verwenden als …')).toBeVisible();
-
-  // Das Vollbild-Sheet als Element aufnehmen (nicht fullPage - der fixe Sheet
-  // über der scrollenden Seite komponiert sonst durch).
-  await dialog.screenshot({ path: 'e2e/shots/summenwert-mobile.png' });
-});
-
-/**
- * Layout-Abnahme: bei 375 · 768 · 1440 läuft weder die Seite noch das Modal
- * waagerecht über (0 px) und kein Fehler landet in der Konsole. Der Bruch zur
- * Vollbild-Schrittfolge liegt bei 720 px.
- */
-for (const width of [375, 768, 1440]) {
-  test(`kein waagerechter Überlauf bei ${width} px`, async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'desktop-chromium', 'Layout-Abnahme läuft einmal');
-    test.slow();
-    const fehler: string[] = [];
-    page.on('pageerror', (e) => fehler.push(String(e)));
-    await mock(page);
-    await page.setViewportSize({ width, height: 900 });
-    const dialog = await assistentOeffnen(page);
-    await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
-
-    const seitenUeberlauf = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    const modalUeberlauf = await page.locator('.vp-modal').evaluate((el) => el.scrollWidth - el.clientWidth);
-    expect(seitenUeberlauf).toBeLessThanOrEqual(1);
-    expect(modalUeberlauf).toBeLessThanOrEqual(1);
-    expect(fehler, fehler.join('\n')).toEqual([]);
-  });
-}

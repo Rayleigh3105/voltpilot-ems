@@ -359,6 +359,7 @@ function stub(over: {
   vi.spyOn(api, 'schedule').mockResolvedValue(
     { slots: [], generatedAt: null } as never,
   );
+  vi.spyOn(api, 'geraetSummenwerte').mockResolvedValue([]);
   vi.spyOn(consumersApi, 'list').mockResolvedValue(over.consumers ?? []);
   vi.spyOn(consumersApi, 'overrides').mockResolvedValue([]);
   vi.spyOn(api, 'registerWriteTargets').mockResolvedValue(over.targets ?? targets());

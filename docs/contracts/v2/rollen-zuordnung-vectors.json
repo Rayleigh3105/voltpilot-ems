@@ -1,0 +1,2318 @@
+{
+  "schema_version": "1.0",
+  "familien": [
+    "rolle",
+    "wert",
+    "zaehlung",
+    "netz",
+    "frische",
+    "aenderung"
+  ],
+  "frische_sekunden": 300,
+  "rollen": {
+    "pv": "PV-Produktion",
+    "consumer": "Verbrauch",
+    "grid": "Netz",
+    "keine": "keine Rolle"
+  },
+  "gruende": [
+    "kein_wert",
+    "veraltet",
+    "kein_geraet",
+    "archiviert",
+    "unvollstaendig"
+  ],
+  "protokoll": [
+    "rolle_gesetzt",
+    "rolle_entzogen"
+  ],
+  "kundenwort": "Summenwert",
+  "verbotene_woerter": [
+    "Gesamtwert",
+    "PV gesamt",
+    "Helfer"
+  ],
+  "cases": {
+    "rolle": [
+      {
+        "name": "pv",
+        "input": {
+          "rolle": "pv"
+        },
+        "expected": {
+          "erlaubt": true,
+          "zuordnen": true,
+          "wort": "PV-Produktion",
+          "gesetz": "summe"
+        }
+      },
+      {
+        "name": "consumer",
+        "input": {
+          "rolle": "consumer"
+        },
+        "expected": {
+          "erlaubt": true,
+          "zuordnen": true,
+          "wort": "Verbrauch",
+          "gesetz": "summe"
+        }
+      },
+      {
+        "name": "grid",
+        "input": {
+          "rolle": "grid"
+        },
+        "expected": {
+          "erlaubt": true,
+          "zuordnen": true,
+          "wort": "Netz",
+          "gesetz": "einzelwert"
+        }
+      },
+      {
+        "name": "keine",
+        "input": {
+          "rolle": "keine"
+        },
+        "expected": {
+          "erlaubt": true,
+          "zuordnen": false,
+          "wort": "keine Rolle",
+          "gesetz": "keine"
+        }
+      },
+      {
+        "name": "abgelehnt-storage",
+        "input": {
+          "rolle": "storage"
+        },
+        "expected": {
+          "erlaubt": false,
+          "zuordnen": false,
+          "wort": null,
+          "gesetz": null
+        }
+      },
+      {
+        "name": "abgelehnt-charging",
+        "input": {
+          "rolle": "charging"
+        },
+        "expected": {
+          "erlaubt": false,
+          "zuordnen": false,
+          "wort": null,
+          "gesetz": null
+        }
+      },
+      {
+        "name": "abgelehnt-charging-own",
+        "input": {
+          "rolle": "charging-own"
+        },
+        "expected": {
+          "erlaubt": false,
+          "zuordnen": false,
+          "wort": null,
+          "gesetz": null
+        }
+      },
+      {
+        "name": "abgelehnt-PV",
+        "input": {
+          "rolle": "PV"
+        },
+        "expected": {
+          "erlaubt": false,
+          "zuordnen": false,
+          "wort": null,
+          "gesetz": null
+        }
+      },
+      {
+        "name": "abgelehnt-",
+        "input": {
+          "rolle": ""
+        },
+        "expected": {
+          "erlaubt": false,
+          "zuordnen": false,
+          "wort": null,
+          "gesetz": null
+        }
+      },
+      {
+        "name": "abgelehnt-None",
+        "input": {
+          "rolle": null
+        },
+        "expected": {
+          "erlaubt": false,
+          "zuordnen": false,
+          "wort": null,
+          "gesetz": null
+        }
+      },
+      {
+        "name": "Objekt-Prototyp ist keine Rolle",
+        "input": {
+          "rolle": "toString"
+        },
+        "expected": {
+          "erlaubt": false,
+          "zuordnen": false,
+          "wort": null,
+          "gesetz": null
+        }
+      }
+    ],
+    "wert": [
+      {
+        "name": "kanal",
+        "input": {
+          "quelle": {
+            "entity_id": "K-1",
+            "point_key": "power",
+            "quell_messstelle_id": null
+          }
+        },
+        "expected": true
+      },
+      {
+        "name": "summe",
+        "input": {
+          "quelle": {
+            "entity_id": null,
+            "point_key": null,
+            "quell_messstelle_id": "MS-S1"
+          }
+        },
+        "expected": true
+      },
+      {
+        "name": "beides",
+        "input": {
+          "quelle": {
+            "entity_id": "K-1",
+            "point_key": "power",
+            "quell_messstelle_id": "MS-S1"
+          }
+        },
+        "expected": false
+      },
+      {
+        "name": "nichts",
+        "input": {
+          "quelle": {
+            "entity_id": null,
+            "point_key": null,
+            "quell_messstelle_id": null
+          }
+        },
+        "expected": false
+      },
+      {
+        "name": "halber-kanal",
+        "input": {
+          "quelle": {
+            "entity_id": "K-1",
+            "point_key": null,
+            "quell_messstelle_id": null
+          }
+        },
+        "expected": false
+      },
+      {
+        "name": "leer",
+        "input": {
+          "quelle": {
+            "entity_id": "K-1",
+            "point_key": " ",
+            "quell_messstelle_id": null
+          }
+        },
+        "expected": false
+      }
+    ],
+    "zaehlung": [
+      {
+        "name": "PV-Bestand: ohne Zuordnung bleibt der Rückfall",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": []
+        },
+        "expected": {
+          "zuordnung_vorhanden": false,
+          "wert": null,
+          "unvollstaendig": false,
+          "stand": null,
+          "beitragend": 0,
+          "gesamt": 0,
+          "gezaehlt": [],
+          "fehler": null
+        }
+      },
+      {
+        "name": "PV-Bestand: zwei frische Geräte",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 5,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 15,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 2,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": "K-1",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            },
+            {
+              "entity_id": "K-2",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "PV-Bestand: benannte Teilsumme, kein Ersatz durch Null",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": null,
+                "stand": null,
+                "grund": "kein_wert"
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 10,
+          "unvollstaendig": true,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 1,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": "K-1",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            },
+            {
+              "entity_id": "K-2",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "PV-Bestand: alle stumm, keine Null",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": null,
+                "stand": null,
+                "grund": "kein_wert"
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": null,
+          "unvollstaendig": true,
+          "stand": null,
+          "beitragend": 0,
+          "gesamt": 1,
+          "gezaehlt": [
+            {
+              "entity_id": "K-1",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Null ist ein gelieferter Wert",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 0,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 0,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 1,
+          "gesamt": 1,
+          "gezaehlt": [
+            {
+              "entity_id": "K-1",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Ein Summenwert an zwei Geräten zählt einmal",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 15,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 2,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": null,
+              "point_key": null,
+              "quell_messstelle_id": "MS-S1"
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Ein Kanal im Summenwert zählt nicht zusätzlich",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 5,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 15,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 2,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": null,
+              "point_key": null,
+              "quell_messstelle_id": "MS-S1"
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Dedup ist unabhängig von der Reihenfolge",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 5,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 15,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 2,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": null,
+              "point_key": null,
+              "quell_messstelle_id": "MS-S1"
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Ein weiterer unabhängiger Kanal bleibt erhalten",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-3",
+              "quelle": {
+                "entity_id": "K-3",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 2,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 17,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 3,
+          "gesamt": 3,
+          "gezaehlt": [
+            {
+              "entity_id": null,
+              "point_key": null,
+              "quell_messstelle_id": "MS-S1"
+            },
+            {
+              "entity_id": "K-3",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Verschachtelte Summe unterdrückt innere Summe und Blatt",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": null,
+                  "point_key": null,
+                  "quell_messstelle_id": "MS-S2"
+                },
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S2"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 5,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-3",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 5,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 15,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 3,
+          "gesamt": 3,
+          "gezaehlt": [
+            {
+              "entity_id": null,
+              "point_key": null,
+              "quell_messstelle_id": "MS-S1"
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Stumme Summe fällt nicht auf ihren frischen Kanal zurück",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": null,
+                "stand": null,
+                "grund": "unvollstaendig"
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 5,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": null,
+          "unvollstaendig": true,
+          "stand": null,
+          "beitragend": 0,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": null,
+              "point_key": null,
+              "quell_messstelle_id": "MS-S1"
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Zweimal dieselbe Zuordnung erhöht keine Gerätezahl",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 10,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 1,
+          "gesamt": 1,
+          "gezaehlt": [
+            {
+              "entity_id": "K-1",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Anlage und Rolle begrenzen die Zählung",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-2",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 100,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "consumer",
+              "geraet": "GR-3",
+              "quelle": {
+                "entity_id": "K-3",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 50,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 10,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 1,
+          "gesamt": 1,
+          "gezaehlt": [
+            {
+              "entity_id": "K-1",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Verbrauch folgt derselben Zählregel",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "consumer",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "consumer",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "consumer",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 5,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 15,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 2,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": null,
+              "point_key": null,
+              "quell_messstelle_id": "MS-S1"
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Netzeinspeisung bleibt negativ",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "grid",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": -4,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": -4,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 1,
+          "gesamt": 1,
+          "gezaehlt": [
+            {
+              "entity_id": "K-1",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Netzkonflikt liefert keine erfundene Summe",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "grid",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 4,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 2,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": null,
+          "unvollstaendig": true,
+          "stand": null,
+          "beitragend": 0,
+          "gesamt": 2,
+          "gezaehlt": [],
+          "fehler": "netz_mehrfach"
+        }
+      },
+      {
+        "name": "Stand bleibt wie bei PV der jüngste liefernde Beitrag",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 5,
+                "stand": "2026-09-16T10:04:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 15,
+          "unvollstaendig": false,
+          "stand": "2026-09-16T10:04:00Z",
+          "beitragend": 2,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": "K-1",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            },
+            {
+              "entity_id": "K-2",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Veralteter Summenwert wird auch in der Summe geprüft",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 15,
+                "stand": "2026-09-16T09:59:59Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-3",
+              "quelle": {
+                "entity_id": "K-3",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 2,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "zuordnung_vorhanden": true,
+          "wert": 2,
+          "unvollstaendig": true,
+          "stand": "2026-09-16T10:00:00Z",
+          "beitragend": 1,
+          "gesamt": 2,
+          "gezaehlt": [
+            {
+              "entity_id": null,
+              "point_key": null,
+              "quell_messstelle_id": "MS-S1"
+            },
+            {
+              "entity_id": "K-3",
+              "point_key": "power",
+              "quell_messstelle_id": null
+            }
+          ],
+          "fehler": null
+        }
+      },
+      {
+        "name": "Unabhängige Summen mit gemeinsamem Blatt sind kein auswertbarer Eingang",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S2"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-3",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected_error": "ueberlappende_summenwerte"
+      },
+      {
+        "name": "Eine Quelle darf nicht zwei verschiedene Zustände tragen",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 11,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected_error": "eingang_ungueltig"
+      },
+      {
+        "name": "Kreis ohne äußeren Wert ist kein auswertbarer Eingang",
+        "input": {
+          "anlage": "AN-1",
+          "rolle": "pv",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": null,
+                  "point_key": null,
+                  "quell_messstelle_id": "MS-S2"
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S2"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": null,
+                  "point_key": null,
+                  "quell_messstelle_id": "MS-S1"
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected_error": "eingang_ungueltig"
+      }
+    ],
+    "netz": [
+      {
+        "name": "kein Netz",
+        "input": {
+          "anlage": "AN-1",
+          "zuordnungen": []
+        },
+        "expected": {
+          "erlaubt": true,
+          "code": null,
+          "status": null
+        }
+      },
+      {
+        "name": "ein Netz",
+        "input": {
+          "anlage": "AN-1",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "erlaubt": true,
+          "code": null,
+          "status": null
+        }
+      },
+      {
+        "name": "derselbe Summenwert an mehreren Geräten",
+        "input": {
+          "anlage": "AN-1",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "erlaubt": true,
+          "code": null,
+          "status": null
+        }
+      },
+      {
+        "name": "zwei verschiedene Netze",
+        "input": {
+          "anlage": "AN-1",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "erlaubt": false,
+          "code": "netz_mehrfach",
+          "status": 409
+        }
+      },
+      {
+        "name": "enthaltener Kanal ist kein zweiter Netzwert",
+        "input": {
+          "anlage": "AN-1",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "erlaubt": true,
+          "code": null,
+          "status": null
+        }
+      },
+      {
+        "name": "andere Anlage und andere Rolle zählen nicht",
+        "input": {
+          "anlage": "AN-1",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-2",
+              "rolle": "grid",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "pv",
+              "geraet": "GR-3",
+              "quelle": {
+                "entity_id": "K-3",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "erlaubt": true,
+          "code": null,
+          "status": null
+        }
+      },
+      {
+        "name": "Auch ein stummer erster Netzwert bleibt belegt",
+        "input": {
+          "anlage": "AN-1",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": "K-1",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": null,
+                "stand": null,
+                "grund": "kein_wert"
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": "K-2",
+                "point_key": "power",
+                "quell_messstelle_id": null
+              },
+              "enthaelt": [],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "erlaubt": false,
+          "code": "netz_mehrfach",
+          "status": 409
+        }
+      },
+      {
+        "name": "Zwei überlappende Summen sind ebenfalls ein zweiter Netzwert",
+        "input": {
+          "anlage": "AN-1",
+          "zuordnungen": [
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-1",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S1"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-1",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            },
+            {
+              "anlage": "AN-1",
+              "rolle": "grid",
+              "geraet": "GR-2",
+              "quelle": {
+                "entity_id": null,
+                "point_key": null,
+                "quell_messstelle_id": "MS-S2"
+              },
+              "enthaelt": [
+                {
+                  "entity_id": "K-2",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                },
+                {
+                  "entity_id": "K-3",
+                  "point_key": "power",
+                  "quell_messstelle_id": null
+                }
+              ],
+              "zustand": {
+                "wert": 10,
+                "stand": "2026-09-16T10:00:00Z",
+                "grund": null
+              }
+            }
+          ]
+        },
+        "expected": {
+          "erlaubt": false,
+          "code": "netz_mehrfach",
+          "status": 409
+        }
+      }
+    ],
+    "frische": [
+      {
+        "name": "messkanal: genau fünf Minuten",
+        "input": {
+          "art": "messkanal",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T10:00:00Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": 10,
+          "stand": "2026-09-16T10:00:00Z",
+          "grund": null
+        }
+      },
+      {
+        "name": "messkanal: eine Millisekunde zu alt",
+        "input": {
+          "art": "messkanal",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T09:59:59.999Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T09:59:59.999Z",
+          "grund": "veraltet"
+        }
+      },
+      {
+        "name": "messkanal: fehlender Stand",
+        "input": {
+          "art": "messkanal",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": null,
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": null,
+          "grund": "kein_wert"
+        }
+      },
+      {
+        "name": "messkanal: fehlender Wert",
+        "input": {
+          "art": "messkanal",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": null,
+            "stand": "2026-09-16T10:00:00Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T10:00:00Z",
+          "grund": "kein_wert"
+        }
+      },
+      {
+        "name": "messkanal: echte Null",
+        "input": {
+          "art": "messkanal",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 0,
+            "stand": "2026-09-16T10:00:00Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": 0,
+          "stand": "2026-09-16T10:00:00Z",
+          "grund": null
+        }
+      },
+      {
+        "name": "summenwert: genau fünf Minuten",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T10:00:00Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": 10,
+          "stand": "2026-09-16T10:00:00Z",
+          "grund": null
+        }
+      },
+      {
+        "name": "summenwert: eine Millisekunde zu alt",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T09:59:59.999Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T09:59:59.999Z",
+          "grund": "veraltet"
+        }
+      },
+      {
+        "name": "summenwert: fehlender Stand",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": null,
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": null,
+          "grund": "kein_wert"
+        }
+      },
+      {
+        "name": "summenwert: fehlender Wert",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": null,
+            "stand": "2026-09-16T10:00:00Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T10:00:00Z",
+          "grund": "kein_wert"
+        }
+      },
+      {
+        "name": "summenwert: echte Null",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 0,
+            "stand": "2026-09-16T10:00:00Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": 0,
+          "stand": "2026-09-16T10:00:00Z",
+          "grund": null
+        }
+      },
+      {
+        "name": "Grund bleibt: kein_wert",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T09:00:00Z",
+            "grund": "kein_wert"
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T09:00:00Z",
+          "grund": "kein_wert"
+        }
+      },
+      {
+        "name": "Grund bleibt: veraltet",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T09:00:00Z",
+            "grund": "veraltet"
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T09:00:00Z",
+          "grund": "veraltet"
+        }
+      },
+      {
+        "name": "Grund bleibt: kein_geraet",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T09:00:00Z",
+            "grund": "kein_geraet"
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T09:00:00Z",
+          "grund": "kein_geraet"
+        }
+      },
+      {
+        "name": "Grund bleibt: archiviert",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T09:00:00Z",
+            "grund": "archiviert"
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T09:00:00Z",
+          "grund": "archiviert"
+        }
+      },
+      {
+        "name": "Grund bleibt: unvollstaendig",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T09:00:00Z",
+            "grund": "unvollstaendig"
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T09:00:00Z",
+          "grund": "unvollstaendig"
+        }
+      },
+      {
+        "name": "Stand in der Zukunft",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "2026-09-16T10:05:00.001Z",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "2026-09-16T10:05:00.001Z",
+          "grund": "kein_wert"
+        }
+      },
+      {
+        "name": "Ungültiger Stand",
+        "input": {
+          "art": "summenwert",
+          "jetzt": "2026-09-16T10:05:00Z",
+          "zustand": {
+            "wert": 10,
+            "stand": "keine-zeit",
+            "grund": null
+          }
+        },
+        "expected": {
+          "wert": null,
+          "stand": "keine-zeit",
+          "grund": "kein_wert"
+        }
+      }
+    ],
+    "aenderung": [
+      {
+        "name": "setzen",
+        "input": {
+          "alt": null,
+          "neu": {
+            "entity_id": null,
+            "point_key": null,
+            "quell_messstelle_id": "MS-S1"
+          }
+        },
+        "expected": [
+          "rolle_gesetzt"
+        ]
+      },
+      {
+        "name": "ersetzen",
+        "input": {
+          "alt": {
+            "entity_id": "K-1",
+            "point_key": "power",
+            "quell_messstelle_id": null
+          },
+          "neu": {
+            "entity_id": null,
+            "point_key": null,
+            "quell_messstelle_id": "MS-S1"
+          }
+        },
+        "expected": [
+          "rolle_gesetzt"
+        ]
+      },
+      {
+        "name": "entziehen",
+        "input": {
+          "alt": {
+            "entity_id": null,
+            "point_key": null,
+            "quell_messstelle_id": "MS-S1"
+          },
+          "neu": null
+        },
+        "expected": [
+          "rolle_entzogen"
+        ]
+      },
+      {
+        "name": "identisch",
+        "input": {
+          "alt": {
+            "entity_id": null,
+            "point_key": null,
+            "quell_messstelle_id": "MS-S1"
+          },
+          "neu": {
+            "entity_id": null,
+            "point_key": null,
+            "quell_messstelle_id": "MS-S1"
+          }
+        },
+        "expected": []
+      },
+      {
+        "name": "bereits ohne Rolle",
+        "input": {
+          "alt": null,
+          "neu": null
+        },
+        "expected": []
+      }
+    ]
+  }
+}

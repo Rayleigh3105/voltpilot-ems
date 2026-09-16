@@ -13,6 +13,9 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -211,10 +214,267 @@ class SiteRollenApiTest {
     }
 
     @Test
-    void nurDieRollePvWirdBisherZusammengefasst() throws Exception {
+    void nurDieDreiVertragsrollenSindZuordenbar() throws Exception {
         Welt w = welt();
-        assertThat(ruf(w, HttpMethod.GET, "/api/v1/sites/" + w.anlage() + "/rollen/grid", null).status())
+        assertThat(ruf(w, HttpMethod.GET, "/api/v1/sites/" + w.anlage() + "/rollen/storage", null).status())
                 .isEqualTo(400);
+    }
+
+    @Test
+    void verbrauchAddiertUnabhaengigeGeraeteUndEineEchteNull() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "Verbrauch A"), b = komponente(w, "Verbrauch B");
+        for (UUID id : List.of(a, b)) ok(ruf(w, HttpMethod.PUT, rollenPfad(w, id, "consumer"), kanalWert(PV)), 200);
+        telemetrie(w, a, 7, 0);
+        telemetrie(w, b, 0, 0);
+        JsonNode k = rollenWert(w, "consumer");
+        assertThat(k.path("wert").asDouble()).isEqualTo(7);
+        assertThat(k.path("unvollstaendig").asBoolean()).isFalse();
+        assertThat(k.path("geraete")).hasSize(2);
+    }
+
+    @Test
+    void netzHatEinenVerschiedenenWertAuchWennDerBisherigeStummIst() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "Netzhalter"), b = komponente(w, "Zweiter Zähler");
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "grid"), kanalWert(PV)), 200);
+        JsonNode nein = ok(ruf(w, HttpMethod.PUT, rollenPfad(w, b, "grid"), kanalWert(PV)), 409);
+        assertThat(nein.path("code").asText()).isEqualTo("netz_mehrfach");
+        assertThat(nein.path("halter").get(0).asText()).isEqualTo(a.toString());
+        assertThat(nein.path("message").asText()).contains("Netzhalter");
+        telemetrie(w, a, -3, 0);
+        assertThat(rollenWert(w, "grid").path("wert").asDouble()).isEqualTo(-3);
+        assertThat(root.queryForObject("SELECT count(*) FROM entity_role_assignment WHERE site_id = ? AND is_primary",
+                Integer.class, w.anlage())).isOne();
+    }
+
+    @Test
+    void nebenlaeufigeNetzZuordnungenErzeugenGenauEinenHalter() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "Netz A"), b = komponente(w, "Netz B");
+        CountDownLatch start = new CountDownLatch(1);
+        var aufrufe = List.of(a, b).stream().map(id -> CompletableFuture.supplyAsync(() -> {
+            try {
+                start.await();
+                return ruf(w, HttpMethod.PUT, rollenPfad(w, id, "grid"), kanalWert(PV)).status();
+            } catch (Exception e) { throw new RuntimeException(e); }
+        })).toList();
+        start.countDown();
+        assertThat(aufrufe.stream().map(CompletableFuture::join)).containsExactlyInAnyOrder(200, 409);
+        assertThat(root.queryForObject("SELECT count(*) FROM entity_role_assignment WHERE site_id = ? AND is_primary",
+                Integer.class, w.anlage())).isOne();
+    }
+
+    @Test
+    void verbrauchsSummeHaengtAnAllenGeraetenUndZaehltNurEinmal() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "Verbrauch A"), b = komponente(w, "Verbrauch B");
+        UUID summe = summe(w, "Bezug", List.of(a, b), List.of(PV1, PV2));
+        probe(w, a, PV1, 4000, 0);
+        probe(w, b, PV2, 5000, 0);
+        ok(ruf(w, HttpMethod.PUT, "/api/v1/sites/" + w.anlage() + "/rollen/consumer", gesamtwertWert(summe)), 200);
+        JsonNode k = rollenWert(w, "consumer");
+        assertThat(k.path("wert").asDouble()).isEqualTo(9);
+        assertThat(k.path("geraete")).hasSize(2);
+        assertThat(k.path("unvollstaendig").asBoolean()).isFalse();
+        assertThat(root.queryForObject("SELECT count(*) FROM entity_role_assignment WHERE site_id = ? AND is_primary",
+                Integer.class, w.anlage())).isEqualTo(2);
+    }
+
+    @Test
+    void aeussereSummeVerdraengtInnerenSummenwertUndBlattAuchWennSieStummIst() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "Blatt"), b = komponente(w, "Innere Summe"), c = komponente(w, "Äußere Summe");
+        UUID innen = summe(w, "Erzeugung", List.of(a), List.of(PV1));
+        UUID aussen = messstelle(w, "berechnet");
+        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, eingang_art, "
+                + "quell_messstelle_id, vorzeichen, faktor) VALUES (?, ?, 0, 'messstelle', ?, '+', 1)",
+                w.mandant(), aussen, innen);
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), kanalWert(PV1)), 200);
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, b, "pv"), gesamtwertWert(innen)), 200);
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, c, "pv"), gesamtwertWert(aussen)), 200);
+        Instant zeit = Instant.now();
+        root.update("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, entity_id, channel, value) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, 99)", Timestamp.from(zeit), Timestamp.from(zeit), w.mandant(),
+                w.anlage(), w.box(), a.toString(), PV1);
+        assertThat(rollenWert(w, "pv").path("wert").isNull()).isTrue();
+        probe(w, a, PV1, 4000, 0);
+        JsonNode k = rollenWert(w, "pv");
+        assertThat(k.path("wert").asDouble()).isEqualTo(4);
+        assertThat(k.path("geraete")).hasSize(3);
+        assertThat(k.path("unvollstaendig").asBoolean()).isFalse();
+    }
+
+    @Test
+    void teilweiseUeberlappendeSummenWerdenVorDemSchreibenAbgelehnt() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "A"), b = komponente(w, "B"), c = komponente(w, "C");
+        UUID ab = summe(w, "Erzeugung", List.of(a, b), List.of(PV1, PV2));
+        UUID bc = summe(w, "Erzeugung", List.of(b, c), List.of(PV2, PV3));
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), gesamtwertWert(ab)), 200);
+        JsonNode nein = ok(ruf(w, HttpMethod.PUT, rollenPfad(w, c, "pv"), gesamtwertWert(bc)), 409);
+        assertThat(nein.path("code").asText()).isEqualTo("ueberlappende_summenwerte");
+        assertThat(root.queryForObject("SELECT count(*) FROM entity_role_assignment WHERE site_id = ? AND is_primary",
+                Integer.class, w.anlage())).isOne();
+    }
+
+    @Test
+    void netzSummeIstEinWertUndBestaetigtesErsetzenTauschtAlleZeilen() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "A"), b = komponente(w, "B"), c = komponente(w, "C");
+        UUID ab = summe(w, "richtungslos", List.of(a, b), List.of(PV1, PV2));
+        UUID neu = summe(w, "richtungslos", List.of(c), List.of(PV3));
+        String pfad = "/api/v1/sites/" + w.anlage() + "/rollen/grid";
+        ok(ruf(w, HttpMethod.PUT, pfad, gesamtwertWert(ab)), 200);
+        ok(ruf(w, HttpMethod.PUT, pfad, gesamtwertWert(neu)), 409);
+        Map<String, Object> eingabe = gesamtwertWert(neu);
+        eingabe.put("ersetzen", true);
+        ok(ruf(w, HttpMethod.PUT, pfad, eingabe), 200);
+        assertThat(root.queryForList("SELECT entity_id FROM entity_role_assignment WHERE site_id = ? AND is_primary",
+                UUID.class, w.anlage())).containsExactly(c);
+        assertThat(root.queryForObject("SELECT count(*) FROM ort_aenderung WHERE objekt_id = ? AND art = 'rolle_entzogen'",
+                Integer.class, w.anlage())).isEqualTo(2);
+    }
+
+    @Test
+    void summenwertIstNachFuenfMinutenVeraltetDieFormelBleibtFuenfzehnMinutenFrisch() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "A");
+        UUID ms = gesamtwert(w, a);
+        probe(w, a, PV1, 5000, 301);
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), gesamtwertWert(ms)), 200);
+        JsonNode k = rollenWert(w, "pv");
+        assertThat(k.path("wert").isNull()).isTrue();
+        assertThat(k.at("/geraete/0/grund").asText()).isEqualTo("veraltet");
+        JsonNode formel = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + ms + "/wert", null), 200);
+        assertThat(formel.path("wert").asDouble()).isEqualTo(5);
+    }
+
+    @Test
+    void entzugUndErsetzenProtokollierenAltNeuWerUndWannIdempotent() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "A");
+        UUID ms = gesamtwert(w, a);
+        String pfad = rollenPfad(w, a, "pv");
+        ok(ruf(w, HttpMethod.PUT, pfad, gesamtwertWert(ms)), 200);
+        ok(ruf(w, HttpMethod.PUT, pfad, gesamtwertWert(ms)), 200);
+        ok(ruf(w, HttpMethod.PUT, pfad, kanalWert(PV)), 200);
+        ok(ruf(w, HttpMethod.DELETE, pfad, null), 200);
+        ok(ruf(w, HttpMethod.DELETE, pfad, null), 200);
+        var zeilen = root.queryForList("SELECT art, alt::text, neu::text, akteur_sub, created_at, rueckwirkend "
+                + "FROM ort_aenderung WHERE objekt_id = ? ORDER BY id", w.anlage());
+        assertThat(zeilen).hasSize(3);
+        assertThat(zeilen.stream().map(z -> z.get("art"))).containsExactly("rolle_gesetzt", "rolle_gesetzt", "rolle_entzogen");
+        for (var z : zeilen) {
+            assertThat(z.get("akteur_sub")).isEqualTo("sub-" + w.mandant());
+            assertThat(z.get("created_at")).isNotNull();
+            assertThat(z.get("rueckwirkend")).isEqualTo(false);
+        }
+        assertThat(MAPPER.readTree((String) zeilen.get(1).get("alt")).at("/wert/quell_messstelle_id").asText()).isEqualTo(ms.toString());
+        assertThat(MAPPER.readTree((String) zeilen.get(1).get("neu")).at("/wert/capability").asText()).isEqualTo(PV);
+        assertThat(rollenWert(w, "pv").path("zuordnung_vorhanden").asBoolean()).isFalse();
+        telemetrieLegacy(w, 99);
+        assertThat(uebersichtPv(w, w.anlage())).isEqualTo(99);
+    }
+
+    @Test
+    void rollenwechselIstEntzugUndSetzenUndEineFremdeAnlageBleibt404() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "A");
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), kanalWert(PV)), 200);
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "consumer"), kanalWert(PV)), 200);
+        assertThat(rollenWert(w, "pv").path("zuordnung_vorhanden").asBoolean()).isFalse();
+        assertThat(root.queryForList("SELECT art FROM ort_aenderung WHERE objekt_id = ? ORDER BY id", String.class,
+                w.anlage())).containsExactly("rolle_gesetzt", "rolle_entzogen", "rolle_gesetzt");
+        Welt fremd = welt();
+        ok(ruf(fremd, HttpMethod.DELETE, rollenPfad(w, a, "consumer"), null), 404);
+        ok(ruf(fremd, HttpMethod.PUT, "/api/v1/sites/" + w.anlage() + "/rollen/consumer", gesamtwertWert(UUID.randomUUID())), 404);
+    }
+
+
+    @Test
+    void energieSummeKannNichtAlsLeistungZugeordnetWerden() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "A");
+        UUID ms = messstelle(w, "berechnet", "Erzeugung", "Wirkenergie", "kWh", "Zählerstand");
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), gesamtwertWert(ms)), 400);
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), kanalWert("soc_pct")), 400);
+        // Eine vor H-2 gespeicherte falsche Größe darf beim Lesen ebenfalls nie als kW erscheinen.
+        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, eingang_art, entity_id, "
+                + "point_key, vorzeichen, faktor) VALUES (?, ?, 0, 'messkanal', ?, ?, '+', 1)", w.mandant(), ms, a, PV1);
+        root.update("INSERT INTO entity_role_assignment (tenant_id, site_id, entity_id, quell_messstelle_id, role, is_primary) "
+                + "VALUES (?, ?, ?, ?, 'pv', true)", w.mandant(), w.anlage(), a, ms);
+        probe(w, a, PV1, 5000, 0);
+        JsonNode k = rollenWert(w, "pv");
+        assertThat(k.path("wert").isNull()).isTrue();
+        assertThat(k.at("/geraete/0/grund").asText()).isEqualTo("kein_wert");
+    }
+
+    @Test
+    void einProtokollFehlerRolltNurDenZusatzZurueck() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "A");
+        root.execute("ALTER TABLE ort_aenderung ADD CONSTRAINT rollen_test_fehler CHECK (objekt_id <> '" + w.anlage() + "'::uuid)");
+        try {
+            ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), kanalWert(PV)), 200);
+            assertThat(rollenWert(w, "pv").path("zuordnung_vorhanden").asBoolean()).isTrue();
+            assertThat(root.queryForObject("SELECT count(*) FROM ort_aenderung WHERE objekt_id = ?", Integer.class, w.anlage())).isZero();
+        } finally {
+            root.execute("ALTER TABLE ort_aenderung DROP CONSTRAINT rollen_test_fehler");
+        }
+    }
+
+    @Test
+    void auchDerAlteTopologieWegKannKeinenZweitenNetzwertSchreiben() throws Exception {
+        Welt w = welt();
+        UUID a = komponente(w, "Netz A"), b = komponente(w, "Netz B");
+        ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "grid"), kanalWert(PV)), 200);
+        var body = Map.of("assignments", List.of(Map.of("entityId", b.toString(), "channel", PV,
+                "role", "grid", "primary", true)));
+        ok(ruf(w, HttpMethod.PUT, "/api/v1/sites/" + w.anlage() + "/topology-roles", body), 409);
+        assertThat(root.queryForList("SELECT entity_id FROM entity_role_assignment WHERE site_id = ? AND is_primary",
+                UUID.class, w.anlage())).containsExactly(a);
+        // Auch der DB-harte Konflikt am selben Gerät bleibt 409 und rollt den Stapel zurück.
+        var gleicherHalter = Map.of("assignments", List.of(Map.of("entityId", a.toString(), "channel", "load_kw",
+                "role", "grid", "primary", true)));
+        ok(ruf(w, HttpMethod.PUT, "/api/v1/sites/" + w.anlage() + "/topology-roles", gleicherHalter), 409);
+        assertThat(root.queryForList("SELECT capability FROM entity_role_assignment WHERE site_id = ? AND is_primary",
+                String.class, w.anlage())).containsExactly(PV);
+    }
+
+    private static final String PV1 = "deye.hybrid_3p.pv.pv1-power";
+    private static final String PV2 = "deye.hybrid_3p.pv.pv2-power";
+    private static final String PV3 = "deye.hybrid_3p.pv.pv3-power";
+
+    private String rollenPfad(Welt w, UUID id, String rolle) {
+        return "/api/v1/sites/" + w.anlage() + "/komponenten/" + id + "/rollen/" + rolle;
+    }
+
+    private JsonNode rollenWert(Welt w, String rolle) throws Exception {
+        return ok(ruf(w, HttpMethod.GET, "/api/v1/sites/" + w.anlage() + "/rollen/" + rolle, null), 200);
+    }
+
+    private UUID summe(Welt w, String richtung, List<UUID> geraete, List<String> punkte) {
+        UUID ms = messstelle(w, "berechnet", richtung, "Wirkleistung", "kW", "Momentanwert");
+        for (int i = 0; i < geraete.size(); i++) {
+            root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, eingang_art, "
+                    + "entity_id, point_key, vorzeichen, faktor, gilt_als_erzeugung) VALUES (?, ?, ?, 'messkanal', ?, ?, '+', 1, false)",
+                    w.mandant(), ms, i, geraete.get(i), punkte.get(i));
+        }
+        return ms;
+    }
+
+    private void probe(Welt w, UUID entity, String punkt, double watt, long alter) {
+        root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 60, 1, now(), '2026.09.11.1', "
+                + "'test', 'pending_edge', 'energy_counter', 'fifteen_minute') ON CONFLICT DO NOTHING",
+                w.mandant(), w.anlage(), w.box(), entity, punkt);
+        Timestamp zeit = Timestamp.from(Instant.now().minusSeconds(alter));
+        root.update("INSERT INTO device_measurement_sample (time, received_at, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind, long_term_cadence_s) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'good', '2026.09.11.1', ?, 'gauge', 900)",
+                zeit, zeit, w.mandant(), w.anlage(), w.box(), punkt, watt, watt, NR.incrementAndGet());
     }
 
     // ================================================= Cockpit-Uebersicht: Umlenkung + Rueckfall
@@ -245,6 +505,35 @@ class SiteRollenApiTest {
 
         // Ehrlich: zugeordnet, aber stumm -> PV unbekannt (null), nie ein Rueckfall auf 99 und nie 0.
         assertThat(uebersichtPv(w, w.anlage())).as("null statt Rueckfall/0 bei stummer Zuordnung").isNull();
+    }
+
+    @Test
+    void jedeCockpitRolleLenktNurIhreZahlUmUndEntzugStelltDieAntwortZeichengleichWiederHer() throws Exception {
+        for (var rolle : Map.of("pv", "pvKw", "consumer", "loadKw", "grid", "gridKw").entrySet()) {
+            Welt w = welt();
+            UUID entity = komponente(w, "Rollenquelle");
+            telemetrieLegacy(w, 99);
+            root.update("UPDATE telemetry SET load_kw = 41, power_kw = -9, soc_pct = 63 WHERE site_id = ?", w.anlage());
+            String vorher = ruf(w, HttpMethod.GET, "/api/v1/overview", null).text();
+            JsonNode liveVorher = MAPPER.readTree(vorher).at("/sites/0/live");
+            ok(ruf(w, HttpMethod.PUT, rollenPfad(w, entity, rolle.getKey()), kanalWert(PV)), 200);
+            // Vorhandene Rohwerte dürfen eine stumme Zuordnung nicht verdecken.
+            JsonNode stumm = ok(ruf(w, HttpMethod.GET, "/api/v1/overview", null), 200).at("/sites/0/live");
+            assertThat(stumm.path(rolle.getValue()).isNull()).isTrue();
+            double kw = rolle.getKey().equals("grid") ? -3.5 : 7.25;
+            telemetrie(w, entity, kw, 0);
+            JsonNode live = ok(ruf(w, HttpMethod.GET, "/api/v1/overview", null), 200).at("/sites/0/live");
+            assertThat(live.path(rolle.getValue()).asDouble()).isEqualTo(kw);
+            for (String feld : List.of("ts", "pvKw", "loadKw", "gridKw", "socPct")) {
+                if (!feld.equals(rolle.getValue())) assertThat(live.path(feld)).isEqualTo(liveVorher.path(feld));
+            }
+            root.update("UPDATE telemetry_v2 SET time = time - interval '6 minutes', received_at = received_at - interval '6 minutes' WHERE entity_id = ?", entity.toString());
+            assertThat(ok(ruf(w, HttpMethod.GET, "/api/v1/overview", null), 200)
+                    .at("/sites/0/live/" + rolle.getValue()).isNull()).isTrue();
+            ok(ruf(w, HttpMethod.DELETE, rollenPfad(w, entity, rolle.getKey()), null), 200);
+            assertThat(ruf(w, HttpMethod.GET, "/api/v1/overview", null).text())
+                    .as("Keine Zuordnung: vollständige Antwort zeichengleich für " + rolle.getKey()).isEqualTo(vorher);
+        }
     }
 
     // ================================================================ die Welt
@@ -297,10 +586,13 @@ class SiteRollenApiTest {
     }
 
     private UUID messstelle(Welt w, String art) {
+        return messstelle(w, art, "Erzeugung", "Wirkleistung", "kW", "Momentanwert");
+    }
+
+    private UUID messstelle(Welt w, String art, String richtung, String groesse, String einheit, String wertart) {
         return root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, "
-                + "groesse, richtung, einheit, wertart) VALUES (?, ?, 'Gesamt-PV', ?, 'Strom', "
-                + "'Wirkleistung', 'Erzeugung', 'kW', 'Momentanwert') RETURNING id",
-                UUID.class, w.mandant(), String.format("MS-%05d", NR.incrementAndGet()), art);
+                + "groesse, richtung, einheit, wertart) VALUES (?, ?, 'Gesamt-PV', ?, 'Strom', ?, ?, ?, ?) RETURNING id",
+                UUID.class, w.mandant(), String.format("MS-%05d", NR.incrementAndGet()), art, groesse, richtung, einheit, wertart);
     }
 
     private void ordneKanalZu(Welt w, UUID entity) throws Exception {
@@ -355,7 +647,7 @@ class SiteRollenApiTest {
         return m;
     }
 
-    private record Antwort(int status, JsonNode body) {}
+    private record Antwort(int status, JsonNode body, String text) {}
 
     private static JsonNode ok(Antwort a, int status) {
         assertThat(a.status()).as("Antwort " + a.body()).isEqualTo(status);
@@ -363,12 +655,13 @@ class SiteRollenApiTest {
     }
 
     private Antwort ruf(Welt w, HttpMethod methode, String pfad, Object body) throws Exception {
+        var token = jwt().jwt(j -> {
+            j.subject("sub-" + w.mandant());
+            j.claim("name", "Test");
+            j.claim("tenant_id", w.mandant().toString());
+        });
         MockHttpServletRequestBuilder anfrage = request(methode, pfad)
-                .with(jwt().jwt(j -> {
-                    j.subject("sub-" + w.mandant());
-                    j.claim("name", "Test");
-                    j.claim("tenant_id", w.mandant().toString());
-                }))
+                .with(token)
                 .contentType(MediaType.APPLICATION_JSON);
         if (body != null) {
             anfrage.content(MAPPER.writeValueAsString(body));
@@ -376,6 +669,6 @@ class SiteRollenApiTest {
         MvcResult r = mvc.perform(anfrage).andReturn();
         String text = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
         return new Antwort(r.getResponse().getStatus(),
-                text.isEmpty() ? NullNode.getInstance() : MAPPER.readTree(text));
+                text.isEmpty() ? NullNode.getInstance() : MAPPER.readTree(text), text);
     }
 }

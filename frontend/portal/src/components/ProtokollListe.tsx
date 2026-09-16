@@ -22,6 +22,7 @@ import '../pages/Befehle.css';
 export type ProtokollZiel =
   | { art: 'messstelle'; id: string }
   | { art: 'geraet'; id: string }
+  | { art: 'anlage'; id: string }
   | { art: 'unternehmen' };
 
 /** Was der Haken einem Wirt gibt. */
@@ -39,6 +40,7 @@ export interface ProtokollState {
 function lade(ziel: ProtokollZiel, f: ProtokollAbfrage): Promise<Protokoll> {
   if (ziel.art === 'messstelle') return api.messstelleAenderungen(ziel.id, f);
   if (ziel.art === 'geraet') return api.geraetAenderungen(ziel.id, f);
+  if (ziel.art === 'anlage') return api.anlageAenderungen(ziel.id, f);
   return api.unternehmenAenderungen(f);
 }
 

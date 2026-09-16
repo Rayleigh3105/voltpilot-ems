@@ -13,6 +13,9 @@ const expect = baseExpect.configure({ timeout: 30_000 });
 // hebt. Der Assistent selbst ist warm sofort da (die 8–10-s-Läufe). Ein
 // Wiederholungslauf fährt gegen den dann warmen Server und ist grün — das ist
 // die dafür vorgesehene, dateilokale Stellschraube (kein globaler Eingriff).
+// ⚠ Die Wiederholung deckt NUR den Kaltstart. Die Ausfälle bis 15.09.2026 waren
+// ein Wirt, der den Assistenten schon beim Speichern schloss (siehe `stehtOffen`)
+// — die Wiederholungen hatten sie als „flaky" grün gefärbt.
 test.describe.configure({ retries: 2 });
 
 /**
@@ -33,6 +36,17 @@ function bucket(last: number) {
   return [{ start: '2026-09-12T09:45:00Z', avg: last, min: last, max: last, last, n: 1 }];
 }
 
+/**
+ * Der Abschluss-Schritt STEHT, bis der Kunde „Fertig" drückt. Schließt der Wirt das Modal
+ * schon beim Speichern, erscheint „ist angelegt" im selben Frame wie `is-closing` und ist
+ * nach ~180 ms weg — das war bis 15.09.2026 ein Zeitrennen, das die Wiederholungen still
+ * grün färbten. Diese Aussage macht daraus einen festen Befund: sie wartet nicht das
+ * Ausblenden ab, sondern scheitert daran (auch ein verschwundenes Modal erfüllt sie nie).
+ */
+async function stehtOffen(page: Page) {
+  await expect(page.locator('.vp-modal-scrim')).not.toHaveClass(/is-closing/);
+}
+
 async function mock(page: Page, vorzeichenNetz = false) {
   const state: { created: null | Record<string, unknown> } = { created: null };
 
@@ -41,6 +55,11 @@ async function mock(page: Page, vorzeichenNetz = false) {
     const path = url.pathname;
     const method = route.request().method();
 
+    if (path.endsWith('/measurement-selection/catalog')) return route.fulfill({ json: { total: KANAELE.length, points: KANAELE.map((k, i) => ({
+      pointKey: k.kanal, labelDe: ['PV 1', 'PV 2', 'PV 3', 'Mikrowechselrichter'][i], group: 'PV', quantity: 'active_power', direction: vorzeichenNetz && i === 0 ? 'import_export' : 'generation',
+      aggregationKind: 'gauge', unit: 'kW', selected: true, decodedValue: String(k.wert), lastReadAt: new Date().toISOString(), estimatedDataPerYearBytes: 0,
+    })) } });
+    if (path.endsWith('/summenwert-quellen')) return route.fulfill({ json: [{ entityId: 'inv', deviceId: 'd1', name: 'Deye SUN-30K', grund: null }] });
     // --- Assistent: Baum, Größen, Live-Werte, Kennzeichen ---
     if (path.endsWith('/entities')) {
       return route.fulfill({
@@ -145,148 +164,46 @@ async function mock(page: Page, vorzeichenNetz = false) {
   });
 }
 
-test('der Anlagen-Einstieg sperrt import_export vor der Auswahl', async ({ page }) => {
-  test.slow();
-  await mock(page, true);
-  await page.goto('/e2e/gesamtwert.html');
-  await page.getByRole('button', { name: 'Gesamtwert anlegen' }).click();
-  const dialog = page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
-  await dialog.getByRole('combobox', { name: /Messwerte/ }).click();
-  const option = page.getByRole('listbox', { name: 'Messwerte wählen' }).getByRole('option', { name: /PV 1/ });
-  await expect(option).toHaveAttribute('aria-disabled', 'true');
-  await expect(option).toContainText('Bezug und Abgabe gemeinsam');
-});
 
-test('SUN-30K: der Assistent stellt Gesamt-PV zusammen und der Wert erscheint in Übersicht + Verlauf', async ({ page }) => {
-  test.slow();
-  await mock(page);
-  await page.goto('/e2e/gesamtwert.html');
-
-  await page.getByRole('button', { name: 'Gesamtwert anlegen' }).click();
-  // Der Titel wechselt im letzten Schritt auf „Fertig" — beide Namen zulassen.
-  const dialog = page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
-
-  // Schritt 1: die vier PV-Werte wählen. Das Picker-Panel hängt am Body und
-  // trägt die Beschriftung „Messwerte wählen" — der Verlauf-Ast dahinter heißt
-  // nur „Messwerte", deshalb streng auf DIESE Liste eingegrenzt.
-  await dialog.getByRole('combobox', { name: /Messwerte/ }).click();
-  const panel = page.getByRole('listbox', { name: 'Messwerte wählen' });
-  for (const name of [/PV 1/, /PV 2/, /PV 3/, /Mikrowechselrichter/]) {
-    await panel.getByRole('option', { name }).click();
-  }
-  // Am Telefon liegt das Picker-Panel als Vollbild über der Fußzeile — Escape
-  // schließt NUR den Picker (nicht das Modal), dann ist „Weiter" erreichbar.
-  await page.keyboard.press('Escape');
-  await expect(panel).toBeHidden();
-  await dialog.getByRole('button', { name: /Weiter.*4 Werte/ }).click();
-
-  // Schritt 2: Rechnen (Standard +)
-  await expect(dialog.getByText('Wie zählen wir sie?')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Weiter' }).click();
-
-  // Schritt 3: Name-Vorschlag „Gesamt-PV" + Kennzeichen
-  await expect(dialog.getByLabel('Name')).toHaveValue('Gesamt-PV');
-  await expect(dialog.getByText('MS-0007')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Weiter' }).click();
-
-  // Schritt 4: Vorschau — die grosse Zahl ist 15,5 (kW), die Rechenzeile zeigt
-  // die Summanden.
-  await expect(dialog.locator('.vp-gw-big')).toHaveText('15,5');
-  await expect(dialog.getByText(/PV 1 5,20 \+ PV 2 4,10 \+ PV 3 3,10/)).toBeVisible();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
-
-  // Schritt 5: Fertig
-  await expect(dialog.getByText('ist angelegt')).toBeVisible();
-  // „Fertig" schließt das Modal (es blendet aus) — force überspringt die
-  // Stabilitätsprüfung, die sonst am Ausblenden scheitert.
-  await dialog.getByRole('button', { name: 'Fertig' }).click({ force: true });
-  await expect(dialog).toBeHidden();
-
-  // Übersicht: die Kachel „Gesamt-PV" mit „berechnet" + Live-Wert (dies beweist
-  // zugleich, dass der snake_case-Formel-Read die Site-Zuordnung findet — B1).
-  const uebersicht = page.getByRole('region', { name: 'Übersicht' });
-  await expect(uebersicht.getByText('Gesamt-PV')).toBeVisible();
-  await expect(uebersicht.getByText('berechnet')).toBeVisible();
-  await expect(uebersicht.locator('.vp-gwk-big')).toContainText('15,5');
-
-  // Verlauf: der eigene Ast „Berechnete Werte" mit dem wählbaren Gesamt-PV.
-  // Der Ast entsteht auf jedem Viewport; am Telefon wohnt die Auswahl im
-  // Bottom-Sheet (Schiene ausgeblendet), deshalb wird das Wählen + die Kurve
-  // nur dort geprüft, wo die Schiene sichtbar ist.
-  const verlauf = page.getByRole('region', { name: 'Verlauf' });
-  const ast = verlauf.getByText('Berechnete Werte').first();
-  await expect(ast).toBeAttached();
-  if (await ast.isVisible()) {
-    await verlauf.getByRole('option', { name: /Gesamt-PV/ }).first().click();
-    await expect(verlauf.getByText('Gesamt-PV').first()).toBeVisible();
-  }
-});
-
-/**
- * Layout-Abnahme: bei Handy-, Tablet- und Rechnerbreite läuft nichts über
- * (0 px waagerechter Überlauf) und kein Fehler landet in der Konsole — beim
- * Assistenten (jeder Schritt) UND bei der fertigen Kachel. Der Bruch zur
- * Vollbild-Schrittfolge liegt bei 720 px, deshalb 375 · 768 · 1440.
- */
-for (const width of [375, 768, 1440]) {
-  test(`kein waagerechter Überlauf bei ${width} px`, async ({ page }, testInfo) => {
-    // Layout ist von der Engine unabhängig — einmal auf Chromium (Viewport wird
-    // hier ohnehin gesetzt) genügt und hält den Testlauf leicht.
-    test.skip(testInfo.project.name !== 'desktop-chromium', 'Layout-Abnahme läuft einmal');
-    test.slow();
-    const fehler: string[] = [];
-    page.on('pageerror', (e) => fehler.push(String(e)));
-    await mock(page);
-    await page.setViewportSize({ width, height: 900 });
+for (const width of [375, 1440]) {
+  test(`Anlagen-Einstieg ohne Vorauswahl und ohne Rolle bei ${width} px`, async ({ page }, testInfo) => {
+    test.slow(); await mock(page); await page.setViewportSize({ width, height: 1000 });
+    const errors: string[] = []; page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/e2e/gesamtwert.html');
-
-    const seitenUeberlauf = () =>
-      page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    const modalUeberlauf = () =>
-      page.locator('.vp-modal').evaluate((el) => el.scrollWidth - el.clientWidth);
-    const ok = (n: number) => expect(n).toBeLessThanOrEqual(1);
-
-    await page.getByRole('button', { name: 'Gesamtwert anlegen' }).click();
-    const dialog = page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
-
-    // Schritt 1 (Picker)
-    await dialog.getByRole('combobox', { name: /Messwerte/ }).click();
-    const panel = page.getByRole('listbox', { name: 'Messwerte wählen' });
-    for (const name of [/PV 1/, /PV 2/, /PV 3/, /Mikrowechselrichter/]) {
-      await panel.getByRole('option', { name }).click();
+    await page.getByRole('button', { name: 'Summenwert anlegen', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: /Summenwert/ });
+    await expect(dialog.getByRole('button', { name: 'Weiter', exact: true })).toBeDisabled();
+    for (const name of ['PV 1', 'PV 2', 'PV 3', 'Mikrowechselrichter']) await dialog.getByRole('button', { name: `${name} mitzählen`, exact: true }).click();
+    await expect(dialog.locator('.vp-sw-sumline')).toContainText('15,5');
+    for (let step = 1; step <= 4; step++) {
+      expect(await dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+      if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/anlage-${width}-${step}.png` });
+      if (step < 4) await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
     }
-    await page.keyboard.press('Escape');
-    await expect(panel).toBeHidden();
-    ok(await seitenUeberlauf());
-    ok(await modalUeberlauf());
-    await dialog.getByRole('button', { name: /Weiter.*4 Werte/ }).click();
-
-    // Schritt 2 (Rechnen) + Feineinstellung aufklappen
-    await expect(dialog.getByText('Wie zählen wir sie?')).toBeVisible();
-    await dialog.getByRole('button', { name: /Feineinstellung/ }).click();
-    ok(await modalUeberlauf());
-    await dialog.getByRole('button', { name: 'Weiter' }).click();
-
-    // Schritt 3 (Name)
-    await expect(dialog.getByLabel('Name')).toBeVisible();
-    ok(await modalUeberlauf());
-    await dialog.getByRole('button', { name: 'Weiter' }).click();
-
-    // Schritt 4 (Vorschau mit Rechenzeile + Sparkline)
-    await expect(dialog.locator('.vp-gw-big')).toHaveText('15,5');
-    ok(await modalUeberlauf());
+    await expect(dialog.getByRole('button', { name: 'keine Rolle', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const request = page.waitForRequest((r) => r.url().endsWith('/messstellen/berechnet') && r.method() === 'POST');
     await dialog.getByRole('button', { name: 'Speichern' }).click();
-
-    // Schritt 5 + schließen
-    await expect(dialog.getByText('ist angelegt')).toBeVisible();
-    ok(await modalUeberlauf());
-    await dialog.getByRole('button', { name: 'Fertig' }).click({ force: true });
-    await expect(dialog).toBeHidden();
-
-    // Fertige Kachel im Cockpit
-    await expect(page.getByRole('region', { name: 'Übersicht' }).getByText('Gesamt-PV')).toBeVisible();
-    ok(await seitenUeberlauf());
-
-    expect(fehler, fehler.join('\n')).toEqual([]);
+    expect((await request).postDataJSON().rolle).toBeUndefined();
+    await expect(dialog.getByText(/ist angelegt/)).toBeVisible(); await stehtOffen(page);
+    if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/anlage-${width}-5.png` });
+    await dialog.getByRole('button', { name: 'Fertig' }).click(); await expect(dialog).toBeHidden();
+    const overview = page.getByRole('region', { name: 'Übersicht' });
+    await expect(overview.getByText('Gesamt-PV')).toBeVisible();
+    await expect(overview.locator('.vp-gwk-big')).toContainText('15,5');
+    const verlauf = page.getByRole('region', { name: 'Verlauf' });
+    await expect(verlauf.getByText('Berechnete Werte').first()).toBeAttached();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
   });
 }
+
+
+test('der Anlagen-Einstieg sperrt import_export vor der Auswahl', async ({ page }) => {
+  test.slow(); await mock(page, true); await page.goto('/e2e/gesamtwert.html');
+  await page.getByRole('button', { name: 'Summenwert anlegen', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: /Summenwert/ });
+  const button = dialog.getByRole('button', { name: 'PV 1 mitzählen', exact: true });
+  await expect(button).toBeDisabled();
+  await expect(button).toHaveAttribute('title', /Bezug und Abgabe gemeinsam/);
+  await expect(dialog.getByText(/Bezug und Abgabe trennen/)).toBeVisible();
+});

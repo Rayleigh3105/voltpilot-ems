@@ -17,6 +17,7 @@ export function ProtokollDialog({
   open,
   titel,
   ziel,
+  optionen,
   onClose,
 }: {
   open: boolean;
@@ -24,9 +25,10 @@ export function ProtokollDialog({
   titel: string;
   /** null, solange nichts gewählt ist; dann wird auch nichts geladen. */
   ziel: ProtokollZiel | null;
+  optionen?: Parameters<typeof useProtokoll>[1];
   onClose: () => void;
 }) {
-  const state = useProtokoll(open ? ziel : null);
+  const state = useProtokoll(open ? ziel : null, optionen);
   if (!open) return null;
   return (
     <Modal

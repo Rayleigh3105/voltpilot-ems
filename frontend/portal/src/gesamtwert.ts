@@ -23,10 +23,10 @@
  * Fehlt oder veraltet EIN Term, ist das Ergebnis `null` („unvollständig"), NIE
  * eine heimlich kleinere Teilsumme (`gewichteteSumme`). Eine Einheit kommt vom
  * Server bzw. dem Katalog, nie geraten. Das Kundenwort steht als EINE Konstante
- * in `glossar.ts` (`GESAMTWERT`).
+ * in `glossar.ts` (`SUMMENWERT`).
  */
 import { fmtNum } from './format';
-import { GESAMTWERT } from './glossar';
+import { SUMMENWERT } from './glossar';
 import type { Groesse } from './uemsMessstelle';
 import {
   erzeugungsHakenErlaubt,
@@ -38,7 +38,9 @@ import {
   type Term as FormelTerm,
 } from './uemsMessstelleFormel';
 
-export { GESAMTWERT };
+export { SUMMENWERT };
+// Übergang für die noch nicht umgestellten Karten.
+export { GESAMTWERT } from './glossar';
 
 /** Wie viele Werte ein Gesamtwert höchstens summiert — eine ehrliche Grenze. */
 export const MAX_TERME = 12;
@@ -54,7 +56,7 @@ export const VORZEICHEN_NETZ_GRUND =
   'Dieses Register misst Bezug und Abgabe gemeinsam. Für einen Summenwert müssen beide getrennt vorliegen.';
 
 /** Die fünf Schritte des Assistenten, in Reihenfolge — der Stepper liest sie. */
-export const SCHRITTE = ['Werte', 'Rechnen', 'Name', 'Vorschau', 'Fertig'] as const;
+export const SCHRITTE = ['Register wählen', 'Rechnen', 'Name', 'Rolle', 'Fertig'] as const;
 export type Schritt = 1 | 2 | 3 | 4 | 5;
 
 // ---------------------------------------------------------------------------
@@ -301,7 +303,7 @@ export function nameVorschlag(terme: TermEntwurf[]): string {
   if (terme.length === 0) return '';
   if (istPvErzeugung(terme)) return 'Gesamt-PV';
   const namen = terme.map((t) => t.quelle.name);
-  const roh = `${GESAMTWERT}: ${namen.slice(0, 3).join(' + ')}${namen.length > 3 ? ' …' : ''}`;
+  const roh = `${SUMMENWERT}: ${namen.slice(0, 3).join(' + ')}${namen.length > 3 ? ' …' : ''}`;
   return roh.length <= MAX_NAME ? roh : roh.slice(0, MAX_NAME).trimEnd();
 }
 
@@ -316,15 +318,15 @@ export function nameVorschlag(terme: TermEntwurf[]): string {
 export function entwurfFehler(entwurf: Entwurf): string | null {
   if (entwurf.terme.length === 0) return 'Wählen Sie mindestens einen Wert, der mitgezählt wird.';
   if (entwurf.terme.length > MAX_TERME) {
-    return `Ein ${GESAMTWERT} fasst höchstens ${MAX_TERME} Werte zusammen.`;
+    return `Ein ${SUMMENWERT} fasst höchstens ${MAX_TERME} Werte zusammen.`;
   }
   if (groessenGemischt(entwurf.terme)) {
     return 'Diese Werte haben unterschiedliche Messgrößen und lassen sich nicht zusammenzählen.';
   }
-  if (entwurf.terme.some((t) => t.faktor === 0)) {
-    return 'Ein Faktor darf nicht 0 sein — sonst zählt der Wert gar nicht mit.';
+  if (entwurf.terme.some((t) => !Number.isFinite(t.faktor) || t.faktor === 0)) {
+    return 'Ein Faktor muss eine Zahl ungleich 0 sein.';
   }
-  if (!entwurf.name.trim()) return `Geben Sie Ihrem ${GESAMTWERT} einen Namen.`;
+  if (!entwurf.name.trim()) return `Geben Sie Ihrem ${SUMMENWERT} einen Namen.`;
   if (entwurf.name.trim().length > MAX_NAME) return `Der Name ist länger als ${MAX_NAME} Zeichen.`;
   return null;
 }
@@ -371,6 +373,7 @@ export interface TermAnfrage {
 
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
 export interface AnlegenAnfrage {
+  rolle?: { entity_id: string; role: 'pv' | 'consumer' | 'grid'; ersetzen?: boolean };
   name: string;
   terme: TermAnfrage[];
 }
@@ -459,13 +462,13 @@ export const SCHRITT1_SUB = 'Wählen Sie die Messwerte, die zusammengezählt wer
 
 /** Der Satz, wenn die Anlage (noch) keine summierbaren Werte meldet. */
 export const KEINE_WERTE =
-  'Ihre Anlage meldet noch keine Messwerte, die sich zusammenzählen lassen. Sobald ein Gerät liefert, können Sie hier einen Gesamtwert anlegen.';
+  'Ihre Anlage meldet noch keine Messwerte, die sich zusammenzählen lassen. Sobald ein Gerät liefert, können Sie hier einen Summenwert anlegen.';
 
 /** Der Satz über der Vorschau, wenn ein Term gerade fehlt. */
 export function unvollstaendigSatz(fehlende: string[]): string {
   if (fehlende.length === 0) return '';
   const liste = fehlende.join(', ');
   return fehlende.length === 1
-    ? `Gerade unvollständig: „${liste}" liefert keinen aktuellen Wert. Der Gesamtwert bleibt so lange leer, statt eine zu kleine Summe zu zeigen.`
-    : `Gerade unvollständig: „${liste}" liefern keinen aktuellen Wert. Der Gesamtwert bleibt so lange leer, statt eine zu kleine Summe zu zeigen.`;
+    ? `Gerade unvollständig: „${liste}" liefert keinen aktuellen Wert. Der Summenwert bleibt so lange leer, statt eine zu kleine Summe zu zeigen.`
+    : `Gerade unvollständig: „${liste}" liefern keinen aktuellen Wert. Der Summenwert bleibt so lange leer, statt eine zu kleine Summe zu zeigen.`;
 }

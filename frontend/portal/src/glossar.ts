@@ -206,17 +206,12 @@ export const UEMS_HAUPTZAEHLER = 'Hauptzähler';
  */
 export const UEMS_UNTERZAEHLER_VON = 'Unterzähler von';
 
-/**
- * ⚠ Das EINE Kundenwort des berechneten Messwerts (Konzept `vp-helfer-konzept-h1`,
- * Captain-Rahmenentscheid): ein Wert, den der Kunde aus mehreren gemessenen
- * Werten als gewichtete Summe zusammenstellt. Im Datenmodell ist das eine
- * berechnete Messstelle (`art = berechnet`, Formel = AP-10) — aber der Kunde
- * liest davon nie ein Werkstatt-Wort. Diese Konstante ist die EINE Stelle, an
- * der das Wort steht; ein späterer Wortwechsel ist eine Zeile hier, kein Umbau.
- * Nie „Helfer" (interner Arbeitstitel) und nie „virtueller Messwert"
- * (Home-Assistant-Wort) in der Kundensicht.
- */
-export const GESAMTWERT = 'Gesamtwert';
+/** Das eine Kundenwort nach E10 (16.09.2026), rollen-zuordnung.md. */
+export const SUMMENWERT = 'Summenwert';
+/** Produkttexte, nicht freie Kundennamen; copy.test.ts prüft die Kundenflächen. */
+export const SUMMENWERT_VERBOTENE_WOERTER = ['Gesamtwert', 'PV gesamt', 'Helfer'] as const;
+/** @deprecated Kompatibler Exportname für bestehende Aufrufer; neue Flächen verwenden SUMMENWERT. */
+export const GESAMTWERT = SUMMENWERT;
 
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex

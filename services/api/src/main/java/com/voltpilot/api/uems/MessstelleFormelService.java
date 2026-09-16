@@ -6,6 +6,8 @@ import com.voltpilot.api.measurement.MeasurementCatalog.Point;
 import com.voltpilot.api.measurement.MeasurementCatalog.Semantik;
 import com.voltpilot.api.measurement.MesskanalAbbildung;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.topology.RollenZuordnungService;
+import com.voltpilot.api.web.dto.RollenDto;
 import com.voltpilot.api.uems.MessstelleAenderungRepository.NeuerEintrag;
 import com.voltpilot.api.uems.MessstelleFormelRegeln.SummeUrteil;
 import com.voltpilot.api.uems.MessstelleFormelRegeln.Summand;
@@ -73,13 +75,15 @@ public class MessstelleFormelService {
     private final MeasurementCatalog katalog;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
+    private final org.springframework.beans.factory.ObjectProvider<RollenZuordnungService> rollen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleFormelService(MessstelleRepository messstellen,
             MessstelleAenderungRepository aenderungen, MessstelleFormelTermRepository terme,
             MessstelleFormelWerteRepository werte, MessstelleQuelleRepository quellen,
             MessstelleService messstellenDienst, MeasurementCatalog katalog,
-            PlatformTransactionManager transactionManager, ObjectMapper json) {
+            PlatformTransactionManager transactionManager, ObjectMapper json,
+            org.springframework.beans.factory.ObjectProvider<RollenZuordnungService> rollen) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.terme = terme;
@@ -89,6 +93,7 @@ public class MessstelleFormelService {
         this.katalog = katalog;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
+        this.rollen = rollen;
     }
 
     /** Nur für Tests: die Uhr, an der „jetzt" (und die Frische-Grenze) hängt. */
@@ -115,6 +120,15 @@ public class MessstelleFormelService {
         if (a == null || a.terme() == null || a.terme().isEmpty()) {
             throw MessstelleFormelAbgelehnt.anfrage("terme", "Eine Formel braucht mindestens einen Term.");
         }
+        UUID rollenAnlage = null;
+        if (a.rolle() != null) {
+            if (a.rolle().entityId() == null || a.rolle().role() == null) {
+                throw MessstelleFormelAbgelehnt.anfrage("rolle", "Die Rolle braucht ein Gerät und eine Rollenart.");
+            }
+            rollenAnlage = werte.anlage(a.rolle().entityId()).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden."));
+        }
+        final UUID zielAnlage = rollenAnlage;
         List<Bindung> bindungen = new ArrayList<>();
         List<MessstelleFormelRegeln.Term> fuerAbleitung = new ArrayList<>();
         for (int i = 0; i < a.terme().size(); i++) {
@@ -143,6 +157,15 @@ public class MessstelleFormelService {
                         b.quellMessstelleId(), b.vorzeichen(), b.faktor(), b.giltAlsErzeugung());
             }
             protokoll(m.id(), name, medium, haupt, bindungen, notiz, jetzt, wer);
+            if (a.rolle() != null) {
+                // Mitgliedschaft prüfen; die Anlage ordnet anschließend ALLEN gelesenen Geräten zu.
+                if (!rollen.getObject().geleseneGeraete(zielAnlage, m.id()).contains(a.rolle().entityId())) {
+                    throw MessstelleFormelAbgelehnt.anfrage("rolle", "Der Summenwert liest dieses Gerät nicht.");
+                }
+                rollen.getObject().zuordnenAnlage(zielAnlage, a.rolle().role(),
+                        new RollenDto.AnlageEingabe("gesamtwert", m.id(),
+                                Boolean.TRUE.equals(a.rolle().ersetzen())), wer);
+            }
             return m.id();
         });
         return messstellenDienst.eine(id);
@@ -199,6 +222,34 @@ public class MessstelleFormelService {
         }
         throw MessstelleFormelAbgelehnt.anfrage(feld + ".eingang_art",
                 "Der Eingang ist „messkanal“ oder „messstelle“.");
+    }
+
+    /** Eine Liste pro Komponente, auch ohne Rolle und über verschachtelte Bausteine. */
+    public List<MessstelleFormelDto.GeraetSummenwert> summenwerte(UUID site, UUID entity) {
+        var zuordnungen = new java.util.HashMap<UUID, String>();
+        for (String rolle : List.of("pv", "consumer", "grid")) {
+            var z = rollen.getObject().lies(site, entity, rolle).zugeordnet();
+            if (z != null && z.quellMessstelleId() != null) zuordnungen.put(z.quellMessstelleId(), rolle);
+        }
+        List<MessstelleFormelDto.GeraetSummenwert> aus = new ArrayList<>();
+        for (UUID id : terme.summenwertKandidaten(entity)) {
+            if (liestGeraet(id, entity, new HashSet<>())) {
+                aus.add(new MessstelleFormelDto.GeraetSummenwert(messstellenDienst.eine(id),
+                        zuordnungen.get(id), wert(id)));
+            }
+        }
+        return aus;
+    }
+
+    private boolean liestGeraet(UUID id, UUID entity, Set<UUID> pfad) {
+        if (!pfad.add(id) || pfad.size() > MAX_TIEFE) return false;
+        try {
+            return formel(id).terme().stream().anyMatch(t -> entity.equals(t.entityId())
+                    || (MESSSTELLE.equals(t.eingangArt()) && t.quellMessstelleId() != null
+                        && liestGeraet(t.quellMessstelleId(), entity, pfad)));
+        } finally {
+            pfad.remove(id);
+        }
     }
 
     // ------------------------------------------------------------------ lesen

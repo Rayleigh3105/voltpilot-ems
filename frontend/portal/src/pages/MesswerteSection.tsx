@@ -33,7 +33,7 @@ import type { AnlageSurface } from '../surface';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 
 import { Icon } from '../../designsystem/components/core/Icon';
-import { GESAMTWERT } from '../glossar';
+import { SUMMENWERT } from '../glossar';
 import { GesamtwertDialog } from '../components/GesamtwertDialog';
 import { GesamtwertKarten } from '../components/GesamtwertKarten';
 import { ChartHeadline } from '../components/ChartExplain';
@@ -592,11 +592,11 @@ export function MesswerteSection({
           <div className="vp-gwk-head">
             <h3>Zusammengestellte Werte</h3>
             <button type="button" className="vp-gwk-neu" onClick={() => setGwOffen(true)}>
-              <Icon name="plus" size={15} /> {GESAMTWERT}
+              <Icon name="plus" size={15} /> {SUMMENWERT}
             </button>
           </div>
           <p className="vp-c-note">
-            Stellen Sie aus den Messwerten Ihrer Geräte einen eigenen Gesamtwert zusammen - er
+            Stellen Sie aus den Messwerten Ihrer Geräte einen eigenen Summenwert zusammen - er
             erscheint dann hier mit einem dezenten „berechnet".
           </p>
           <GesamtwertKarten siteId={site.id} version={gwVersion} eingebettet />

@@ -1,0 +1,614 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/rollen-zuordnung.schema.json",
+  "title": "Rollen-Zuordnung 1.0: gemeinsame Vektoren",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "familien",
+    "frische_sekunden",
+    "rollen",
+    "gruende",
+    "protokoll",
+    "kundenwort",
+    "verbotene_woerter",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "familien": {
+      "const": [
+        "rolle",
+        "wert",
+        "zaehlung",
+        "netz",
+        "frische",
+        "aenderung"
+      ]
+    },
+    "frische_sekunden": {
+      "const": 300
+    },
+    "rollen": {
+      "const": {
+        "pv": "PV-Produktion",
+        "consumer": "Verbrauch",
+        "grid": "Netz",
+        "keine": "keine Rolle"
+      }
+    },
+    "gruende": {
+      "const": [
+        "kein_wert",
+        "veraltet",
+        "kein_geraet",
+        "archiviert",
+        "unvollstaendig"
+      ]
+    },
+    "protokoll": {
+      "const": [
+        "rolle_gesetzt",
+        "rolle_entzogen"
+      ]
+    },
+    "kundenwort": {
+      "const": "Summenwert"
+    },
+    "verbotene_woerter": {
+      "const": [
+        "Gesamtwert",
+        "PV gesamt",
+        "Helfer"
+      ]
+    },
+    "cases": {
+      "type": "object",
+      "required": [
+        "rolle",
+        "wert",
+        "zaehlung",
+        "netz",
+        "frische",
+        "aenderung"
+      ],
+      "properties": {
+        "rolle": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/rolle"
+          }
+        },
+        "wert": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/wert"
+          }
+        },
+        "zaehlung": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/zaehlung"
+          }
+        },
+        "netz": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/netz"
+          }
+        },
+        "frische": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/frische"
+          }
+        },
+        "aenderung": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/aenderung"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "quelle": {
+      "type": "object",
+      "required": [
+        "entity_id",
+        "point_key",
+        "quell_messstelle_id"
+      ],
+      "properties": {
+        "entity_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "point_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "quell_messstelle_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "stand": {
+      "type": "object",
+      "required": [
+        "wert",
+        "stand",
+        "grund"
+      ],
+      "properties": {
+        "wert": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "stand": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grund": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "kein_wert",
+            "veraltet",
+            "kein_geraet",
+            "archiviert",
+            "unvollstaendig",
+            null
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "zuordnung": {
+      "type": "object",
+      "required": [
+        "anlage",
+        "rolle",
+        "geraet",
+        "quelle",
+        "enthaelt",
+        "zustand"
+      ],
+      "properties": {
+        "anlage": {
+          "type": "string"
+        },
+        "rolle": {
+          "type": "string"
+        },
+        "geraet": {
+          "type": "string"
+        },
+        "quelle": {
+          "$ref": "#/$defs/quelle"
+        },
+        "enthaelt": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/quelle"
+          }
+        },
+        "zustand": {
+          "$ref": "#/$defs/stand"
+        }
+      },
+      "additionalProperties": false
+    },
+    "rolle": {
+      "type": "object",
+      "required": [
+        "name",
+        "input",
+        "expected"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "rolle"
+          ],
+          "properties": {
+            "rolle": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "expected": {
+          "type": "object",
+          "required": [
+            "erlaubt",
+            "zuordnen",
+            "wort",
+            "gesetz"
+          ],
+          "properties": {
+            "erlaubt": {
+              "type": "boolean"
+            },
+            "zuordnen": {
+              "type": "boolean"
+            },
+            "wort": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "gesetz": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "wert": {
+      "type": "object",
+      "required": [
+        "name",
+        "input",
+        "expected"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "quelle"
+          ],
+          "properties": {
+            "quelle": {
+              "$ref": "#/$defs/quelle"
+            }
+          },
+          "additionalProperties": false
+        },
+        "expected": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "zaehlung": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "input",
+            "expected"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "input": {
+              "type": "object",
+              "required": [
+                "anlage",
+                "rolle",
+                "jetzt",
+                "zuordnungen"
+              ],
+              "properties": {
+                "anlage": {
+                  "type": "string"
+                },
+                "rolle": {
+                  "type": "string"
+                },
+                "jetzt": {
+                  "type": "string"
+                },
+                "zuordnungen": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/zuordnung"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "expected": {
+              "type": "object",
+              "required": [
+                "zuordnung_vorhanden",
+                "wert",
+                "unvollstaendig",
+                "stand",
+                "beitragend",
+                "gesamt",
+                "gezaehlt",
+                "fehler"
+              ],
+              "properties": {
+                "zuordnung_vorhanden": {
+                  "type": "boolean"
+                },
+                "wert": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "unvollstaendig": {
+                  "type": "boolean"
+                },
+                "stand": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "beitragend": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "gesamt": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "gezaehlt": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/quelle"
+                  }
+                },
+                "fehler": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "input",
+            "expected_error"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "input": {
+              "type": "object",
+              "required": [
+                "anlage",
+                "rolle",
+                "jetzt",
+                "zuordnungen"
+              ],
+              "properties": {
+                "anlage": {
+                  "type": "string"
+                },
+                "rolle": {
+                  "type": "string"
+                },
+                "jetzt": {
+                  "type": "string"
+                },
+                "zuordnungen": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/zuordnung"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "expected_error": {
+              "enum": [
+                "eingang_ungueltig",
+                "ueberlappende_summenwerte"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "netz": {
+      "type": "object",
+      "required": [
+        "name",
+        "input",
+        "expected"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "anlage",
+            "zuordnungen"
+          ],
+          "properties": {
+            "anlage": {
+              "type": "string"
+            },
+            "zuordnungen": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/zuordnung"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "expected": {
+          "type": "object",
+          "required": [
+            "erlaubt",
+            "code",
+            "status"
+          ],
+          "properties": {
+            "erlaubt": {
+              "type": "boolean"
+            },
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "frische": {
+      "type": "object",
+      "required": [
+        "name",
+        "input",
+        "expected"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "art",
+            "jetzt",
+            "zustand"
+          ],
+          "properties": {
+            "art": {
+              "enum": [
+                "messkanal",
+                "summenwert"
+              ]
+            },
+            "jetzt": {
+              "type": "string"
+            },
+            "zustand": {
+              "$ref": "#/$defs/stand"
+            }
+          },
+          "additionalProperties": false
+        },
+        "expected": {
+          "$ref": "#/$defs/stand"
+        }
+      },
+      "additionalProperties": false
+    },
+    "aenderung": {
+      "type": "object",
+      "required": [
+        "name",
+        "input",
+        "expected"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "alt",
+            "neu"
+          ],
+          "properties": {
+            "alt": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/quelle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "neu": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/quelle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "expected": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "rolle_gesetzt",
+              "rolle_entzogen"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

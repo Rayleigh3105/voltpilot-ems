@@ -1909,6 +1909,7 @@ export interface Messstelle {
   art: string;
   medium: string | null;
   lebenszyklus: string;
+  hauptgroesse?: MessstelleGroesse | null;
   fehlt: string[];
   notiz: string | null;
 }
@@ -2007,7 +2008,15 @@ export interface RollenKanonischerWert {
 }
 
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
+export type SummenwertRolle = 'pv' | 'consumer' | 'grid';
+export interface GeraetSummenwert {
+  messstelle: Messstelle;
+  rolle: SummenwertRolle | null;
+  wert: MessstelleWert;
+}
+
 export interface BerechneteMessstelleAnlegen {
+  rolle?: { entity_id: string; role: SummenwertRolle; ersetzen?: boolean };
   name: string;
   terme: Array<{
     eingang_art: 'messkanal' | 'messstelle';
@@ -4095,7 +4104,7 @@ export interface SiteEarnings extends CockpitMoney {
 }
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly body?: unknown) {
     super(message);
   }
 }
@@ -4187,13 +4196,15 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
       res.status === 403
         ? 'Dafür ist Ihr Konto nicht freigeschaltet. VoltPilot richtet das für Sie ein.'
         : 'Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.';
+    let errorBody: unknown;
     try {
       const body = await res.json();
+      errorBody = body;
       if (body && typeof body.message === 'string' && body.message) message = body.message;
     } catch {
       // non-JSON error body: keep the generic message
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, errorBody);
   }
   // 201 with body for claim; others JSON. 204 would be empty.
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
@@ -4437,6 +4448,16 @@ export const api = {
     request<MeasurementSelectionState>(
       `/api/v1/devices/${deviceId}/measurement-selection${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}`,
     ),
+  summenwertQuellen: (siteId: string) =>
+    request<Array<{ entityId: string; deviceId: string | null; name: string; grund: string | null }>>(`/api/v1/sites/${siteId}/summenwert-quellen`),
+
+  /** Flüchtige Katalog-Lesung; verändert weder Selektion noch Register. */
+  measurementLesen: (deviceId: string, entityId: string, pointKey: string) =>
+    request<import('./summenwertQuellen').Sitzungswert>(
+      `/api/v1/devices/${deviceId}/measurement-selection/lesen?${new URLSearchParams({ entityId, pointKey })}`,
+      { method: 'POST' },
+    ),
+
   measurementCatalog: (deviceId: string, params: URLSearchParams) =>
     request<MeasurementCatalogResult>(
       `/api/v1/devices/${deviceId}/measurement-selection/catalog?${params.toString()}`,
@@ -5502,6 +5523,17 @@ export const api = {
    * Der maßgebliche Rollen-Wert EINES Geräts (Konzept vp-agg „verwenden als",
    * PR 758); `zugeordnet == null` = keine Zuordnung.
    */
+  geraetSummenwerte: (siteId: string, entityId: string) =>
+    request<GeraetSummenwert[]>(`/api/v1/sites/${siteId}/komponenten/${entityId}/summenwerte`),
+  anlageRolleZuordnen: (siteId: string, role: SummenwertRolle, id: string, ersetzen = false) =>
+    request<{ geraete: GeraetRolle[] }>(`/api/v1/sites/${siteId}/rollen/${role}`, {
+      method: 'PUT', body: JSON.stringify({ art: 'gesamtwert', quell_messstelle_id: id, ersetzen }),
+    }),
+  rolleEntziehen: (siteId: string, entityId: string, role: SummenwertRolle) =>
+    request<RollenZuordnungAntwort>(`/api/v1/sites/${siteId}/komponenten/${entityId}/rollen/${role}`, { method: 'DELETE' }),
+  anlageAenderungen: (siteId: string, f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/sites/${siteId}/aenderungen${protokollFrage(f)}`),
+
   geraetRolle: (siteId: string, entityId: string, role: string) =>
     request<GeraetRolle>(`/api/v1/sites/${siteId}/komponenten/${entityId}/rollen/${role}`),
 

@@ -8,13 +8,14 @@ test.describe.configure({ retries: 2 });
 /**
  * Fix (b), Konzept vp-agg-konzept3-r8: ein Deye SUN-30K, dessen Speicher-Entität
  * KEINEN PV-Aspekt mehr bildet (fehlender `pv_power_kw`-Kanal), aber live PV
- * meldet, zeigt die Karte „PV-Produktion dieses Geräts" trotzdem - über den
+ * meldet, zeigt die Karte „Summenwerte dieses Geräts" trotzdem - über den
  * echten Wirt-Gate (`geraetSeite` + `pvEinstiegEntityId`), geseedet auf die
  * Träger-Entität. Nie „gar kein Knopf" für genau ein erzeugendes Gerät.
  */
 async function mock(page: Page) {
   await page.route('**/api/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/summenwerte')) return route.fulfill({ json: [] });
     // Die Karte lädt ihre (noch fehlende) Rollen-Zuordnung: unzugeordnet.
     if (/\/komponenten\/[^/]+\/rollen\/pv$/.test(path)) {
       return route.fulfill({ json: { entity_id: 'inv', role: 'pv', zugeordnet: null } });
@@ -34,7 +35,7 @@ test('Hybrid ohne PV-Aspekt, aber mit gemeldetem Solarstrom, sieht die Karte', a
   await expect(page.getByTestId('pv-aspekt')).toHaveText('ohne PV-Aspekt');
   // … und trotzdem erscheint die Karte samt Anlege-Einstieg (kein toter, aber
   // auch kein FEHLENDER Knopf).
-  await expect(page.getByText('PV-Produktion dieses Geräts')).toBeVisible();
+  await expect(page.getByText('Summenwerte dieses Geräts')).toBeVisible();
   await expect(page.getByRole('button', { name: /Summenwert anlegen/ })).toBeVisible();
   await expect(page.getByTestId('kein-einstieg')).toHaveCount(0);
 });
@@ -49,7 +50,7 @@ for (const width of [375, 1440]) {
     await mock(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/e2e/summenwert-hybrid.html');
-    await expect(page.getByText('PV-Produktion dieses Geräts')).toBeVisible();
+    await expect(page.getByText('Summenwerte dieses Geräts')).toBeVisible();
 
     const seitenUeberlauf = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

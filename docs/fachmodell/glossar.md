@@ -333,6 +333,22 @@ Die Messstelle ist das zentrale Objekt des Unternehmens-Energiemanagements. Sie 
 
 > **Verfeinert durch AP-04 IP-1:** Die Regeln der Messstelle sind ein Vertrag mit geteilten Vektoren: `docs/contracts/v2/messstelle.md` (Schema `messstelle.schema.json`, Vektoren `messstelle-vectors.json`). Ein Kennzeichen geht nie an eine ANDERE Messstelle — auch das frühere einer umbenannten bleibt belegt; „genau ein Hauptzähler je Anlage“ heißt: je Anlage und Richtung einer, alle am selben Zähler (MS-01 Bezug und MS-02 Abgabe an K-3); eine neue Quelle beendet die laufende genau zu ihrem Beginn, eine Lücke bleibt als Abschnitt ohne Quelle sichtbar; eine berechnete Messstelle braucht keinen Ort. Zwillinge: `services/api .../uems/MessstelleRegeln` und `frontend/portal/src/uemsMessstelle.ts` — noch ruft niemand an.
 
+## Summenwert
+
+Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
+aus Registern und anderen berechneten Messstellen derselben Anlage, mit
+Vorzeichen und Faktor. Kein eigenes drittes Objekt. Die Messstellen-Welt
+nennt sie weiterhin „berechnet (Summe)“ mit Kennzeichen; „Gesamt-PV“ bleibt
+Cockpit-Wort. „Gesamtwert“, „PV gesamt“ und „Helfer“ sind keine neuen
+Produkttexte (freie Kundennamen bleiben erhalten). Konstante `SUMMENWERT`
+in `frontend/portal/src/glossar.ts`; Bestandsflächen verwenden dasselbe Wort.
+
+Die Rolle ist eine gesonderte Zuordnung am Gerät: PV-Produktion, Verbrauch,
+Netz oder keine Rolle (Vorgabe). Sie wirkt ab jetzt auf die Anlagen-Anzeige,
+mit Änderungsprotokoll. Ein Wert zählt je Anlage und Rolle einmal, Netz hat
+höchstens einen maßgeblichen Wert. Vertrag und Zwillinge:
+[`rollen-zuordnung.md`](../contracts/v2/rollen-zuordnung.md).
+
 ## Messgröße, Medium, Einheit, Richtung, Wertart
 
 *Sicht: Zustand*
