@@ -224,10 +224,16 @@ public class RollenZuordnungService {
         return baueKanonisch(site, rolle, repo.primaereDerAnlage(site, rolle));
     }
 
-    /** Bestehender PV-Aufrufer im Overview bleibt unverändert; Verbrauch/Netz folgen in H-3. */
+    /** Kompatibler PV-Einstieg; die Übersicht liest alle drei Rollen flottenweit. */
     public Map<UUID, RollenDto.KanonischerWert> pvJeAnlage() {
+        return rollenJeAnlage(ROLLE_PV);
+    }
+
+    /** Eine Zuordnungs-Abfrage je Rolle; Anlagen ohne Zuordnung bleiben abwesend. */
+    public Map<UUID, RollenDto.KanonischerWert> rollenJeAnlage(String rolle) {
+        pruefeRolle(rolle);
         Map<UUID, RollenDto.KanonischerWert> aus = new HashMap<>();
-        repo.primaereJeAnlage(ROLLE_PV).forEach((site, zeilen) -> aus.put(site, baueKanonisch(site, ROLLE_PV, zeilen)));
+        repo.primaereJeAnlage(rolle).forEach((site, zeilen) -> aus.put(site, baueKanonisch(site, rolle, zeilen)));
         return aus;
     }
 

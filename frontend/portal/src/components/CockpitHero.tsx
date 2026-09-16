@@ -11,7 +11,8 @@ import type { ChargingNodeOpts } from '../adaptiveFlow';
 import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 import { EnergyFlow } from './EnergyFlow';
 import { PvBreakdownLine } from './PvBreakdown';
-import { PvRollenBreakdown } from './PvRollenBreakdown';
+import { RollenBreakdown } from './RollenBreakdown';
+import { cockpitRollenTopologie } from '../pvRolle';
 import { ConsumerStrip } from './ConsumerStrip';
 import { CockpitErgebnis, ErgebnisRing } from './erloese/CockpitErgebnis';
 import './CockpitBlocks.css';
@@ -70,6 +71,8 @@ export function CockpitHero({
   consumers = null,
   onOpenConsumers,
   pvRollen = null,
+  verbrauchRollen = null,
+  netzRollen = null,
 }: {
   view: CockpitHeroView;
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
@@ -149,8 +152,11 @@ export function CockpitHero({
    * `telemetry.pv_power_kw` und die Fläche rendert nichts.
    */
   pvRollen?: RollenKanonischerWert | null;
+  verbrauchRollen?: RollenKanonischerWert | null;
+  netzRollen?: RollenKanonischerWert | null;
 }) {
-  const hasFlow = flowHasValues(topology, snapshot);
+  const rollenTopologie = cockpitRollenTopologie(topology, [pvRollen, verbrauchRollen, netzRollen]);
+  const hasFlow = flowHasValues(rollenTopologie, snapshot);
   // Existiert eine kanonische PV-Zuordnung, ist SIE die Herkunft der Cockpit-Zahl - dann tritt die
   // rohe Quellen-Aufteilung (`PvBreakdownLine`) zurück, sie erklärte sonst eine andere Zahl.
   const pvRolleAktiv = pvRollen?.zuordnung_vorhanden === true;
@@ -177,7 +183,8 @@ export function CockpitHero({
         {hasFlow ? (
           topology ? (
             <AdaptiveEnergyFlow
-              topology={topology}
+              topology={rollenTopologie!}
+              kanonischePv={pvRolleAktiv}
               stale={stale}
               size="hero"
               sources={sources}
@@ -202,7 +209,9 @@ export function CockpitHero({
         {hasFlow && !topology && !pvRolleAktiv && <PvBreakdownLine sources={sources} />}
         {/* vp-agg §2.4/B: die kanonische PV-Rolle - „berechnet" + Aufschlüsselung
             je Gerät auf Tipp. Ohne Zuordnung rendert sie nichts. */}
-        {hasFlow && <PvRollenBreakdown wert={pvRollen ?? null} />}
+        <RollenBreakdown wert={pvRollen} />
+        <RollenBreakdown wert={verbrauchRollen} />
+        <RollenBreakdown wert={netzRollen} />
         <ConsumerStrip view={consumers} onOpen={onOpenConsumers} />
       </div>
 

@@ -1711,3 +1711,21 @@ describe('Anwendungs-Programm Stufe 5 · die eigene Auswertung im Cockpit', () =
     expect(getByText('+ Eigene Auswertung')).toBeTruthy();
   });
 });
+
+
+it('H-3 lädt alle drei Rollen und erhält Verbrauch/Netz auch bei fehlgeschlagenem PV-Leser', async () => {
+  mockAdaptive(true, TOPO);
+  mockSurface(MULTI);
+  const lesen = vi.spyOn(api, 'rollenWert').mockImplementation(async (_siteId, role) => {
+    if (role === 'pv') throw new Error('nicht erreichbar');
+    return { role, wert: role === 'grid' ? -3.5 : 213.5, einheit: 'kW', stand: '2026-09-16T10:15:00+02:00',
+      zuordnung_vorhanden: true, unvollstaendig: false,
+      geraete: [{ entity_id: role, name: 'Rollenquelle', art: 'gesamtwert', wert: role === 'grid' ? -3.5 : 213.5, liefernd: true, grund: null }] };
+  });
+  const { container } = renderSeite();
+  await waitFor(() => expect(container.querySelectorAll('.vp-pvrolle')).toHaveLength(2));
+  for (const role of ['pv', 'consumer', 'grid']) expect(lesen).toHaveBeenCalledWith('s-1', role);
+  expect(container.querySelector('.vp-rolle-pv')).toBeNull();
+  expect(container.querySelector('.vp-rolle-consumer')?.textContent).toContain('Stand 10:15 Uhr');
+  expect(container.querySelector('.vp-rolle-grid')?.textContent).toContain('3,50');
+});

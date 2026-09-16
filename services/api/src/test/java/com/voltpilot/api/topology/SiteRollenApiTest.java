@@ -527,6 +527,35 @@ class SiteRollenApiTest {
         assertThat(uebersichtPv(w, w.anlage())).as("null statt Rueckfall/0 bei stummer Zuordnung").isNull();
     }
 
+    @Test
+    void jedeCockpitRolleLenktNurIhreZahlUmUndEntzugStelltDieAntwortZeichengleichWiederHer() throws Exception {
+        for (var rolle : Map.of("pv", "pvKw", "consumer", "loadKw", "grid", "gridKw").entrySet()) {
+            Welt w = welt();
+            UUID entity = komponente(w, "Rollenquelle");
+            telemetrieLegacy(w, 99);
+            root.update("UPDATE telemetry SET load_kw = 41, power_kw = -9, soc_pct = 63 WHERE site_id = ?", w.anlage());
+            String vorher = ruf(w, HttpMethod.GET, "/api/v1/overview", null).text();
+            JsonNode liveVorher = MAPPER.readTree(vorher).at("/sites/0/live");
+            ok(ruf(w, HttpMethod.PUT, rollenPfad(w, entity, rolle.getKey()), kanalWert(PV)), 200);
+            // Vorhandene Rohwerte dürfen eine stumme Zuordnung nicht verdecken.
+            JsonNode stumm = ok(ruf(w, HttpMethod.GET, "/api/v1/overview", null), 200).at("/sites/0/live");
+            assertThat(stumm.path(rolle.getValue()).isNull()).isTrue();
+            double kw = rolle.getKey().equals("grid") ? -3.5 : 7.25;
+            telemetrie(w, entity, kw, 0);
+            JsonNode live = ok(ruf(w, HttpMethod.GET, "/api/v1/overview", null), 200).at("/sites/0/live");
+            assertThat(live.path(rolle.getValue()).asDouble()).isEqualTo(kw);
+            for (String feld : List.of("ts", "pvKw", "loadKw", "gridKw", "socPct")) {
+                if (!feld.equals(rolle.getValue())) assertThat(live.path(feld)).isEqualTo(liveVorher.path(feld));
+            }
+            root.update("UPDATE telemetry_v2 SET time = time - interval '6 minutes', received_at = received_at - interval '6 minutes' WHERE entity_id = ?", entity.toString());
+            assertThat(ok(ruf(w, HttpMethod.GET, "/api/v1/overview", null), 200)
+                    .at("/sites/0/live/" + rolle.getValue()).isNull()).isTrue();
+            ok(ruf(w, HttpMethod.DELETE, rollenPfad(w, entity, rolle.getKey()), null), 200);
+            assertThat(ruf(w, HttpMethod.GET, "/api/v1/overview", null).text())
+                    .as("Keine Zuordnung: vollständige Antwort zeichengleich für " + rolle.getKey()).isEqualTo(vorher);
+        }
+    }
+
     // ================================================================ die Welt
 
     private record Welt(UUID mandant, UUID anlage, UUID box) {}
@@ -638,7 +667,7 @@ class SiteRollenApiTest {
         return m;
     }
 
-    private record Antwort(int status, JsonNode body) {}
+    private record Antwort(int status, JsonNode body, String text) {}
 
     private static JsonNode ok(Antwort a, int status) {
         assertThat(a.status()).as("Antwort " + a.body()).isEqualTo(status);
@@ -670,6 +699,6 @@ class SiteRollenApiTest {
         MvcResult r = mvc.perform(anfrage).andReturn();
         String text = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
         return new Antwort(r.getResponse().getStatus(),
-                text.isEmpty() ? NullNode.getInstance() : MAPPER.readTree(text));
+                text.isEmpty() ? NullNode.getInstance() : MAPPER.readTree(text), text);
     }
 }
