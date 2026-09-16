@@ -1,3 +1,4 @@
+import type { BenutzerAngelegt } from '../benutzer';
 import {
   request,
   type CertSource,
@@ -48,16 +49,9 @@ export interface CreateTenantInput {
 
 export interface CreateUserInput {
   username: string;
-  email?: string;
+  email: string;
   firstName?: string;
   lastName?: string;
-  password?: string;
-  temporaryPassword?: boolean;
-}
-
-export interface ResetPasswordInput {
-  password: string;
-  temporary?: boolean;
 }
 
 export interface ProvisionedDevice {
@@ -299,7 +293,7 @@ export const adminApi = {
     request<AdminUser[]>(`/api/v1/admin/tenants/${tenantId}/users`),
 
   createUser: (tenantId: string, input: CreateUserInput) =>
-    request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users`, {
+    request<BenutzerAngelegt>(`/api/v1/admin/tenants/${tenantId}/users`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),
@@ -327,11 +321,7 @@ export const adminApi = {
 
   // Support lever: no SMTP means no self-service reset, so support sets a new
   // (default temporary) password here; any brute-force lockout is lifted too.
-  resetPassword: (tenantId: string, userId: string, input: ResetPasswordInput) =>
-    request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/reset-password`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
+
 
   listSites: (tenantId: string) =>
     request<Site[]>(`/api/v1/admin/tenants/${tenantId}/sites`),

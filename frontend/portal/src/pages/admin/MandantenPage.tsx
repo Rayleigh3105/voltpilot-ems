@@ -22,7 +22,7 @@ import { DangerZone } from '../../components/DangerZone';
 import { EmptyState, ErrorState, TextSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
 import { CreateUserDrawer } from './CreateUserDrawer';
-import { EditUserDrawer, ResetPasswordDrawer } from './UserDrawers';
+import { EditUserDrawer } from './UserDrawers';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { RowMenu } from '../../components/RowMenu';
 import type { PageId } from '../../nav';
@@ -284,11 +284,8 @@ function TenantDetailDrawer({
   // failed load shows a retryable ErrorState instead of permanent skeletons.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [userDrawer, setUserDrawer] = useState(false);
-  // Stufe 4 (F5): die Benutzer-Verwaltung ist hier VOLLSTÄNDIG - inklusive des
-  // Passwort-Resets, des einen Support-Hebels. Er lag bis dahin allein auf der
-  // eigenen Benutzer-Seite, während dieser Drawer die andere Hälfte trug.
+  // Profilpflege bleibt hier; Startpasswörter vergibt der Kundenadministrator.
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [resetUser, setResetUser] = useState<AdminUser | null>(null);
   const [confirmUser, setConfirmUser] = useState<{ user: AdminUser; kind: 'disable' | 'delete' } | null>(null);
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -484,7 +481,7 @@ function TenantDetailDrawer({
         <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
           <h2 style={{ fontSize: '1.05rem' }}>Benutzer {users ? `(${users.length})` : ''}</h2>
           <span className="actions">
-            <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setUserDrawer(true)}>
+            <Button variant="outline" size="sm" disabled={!users || users.length > 0} iconLeft={<Icon name="plus" size={16} />} onClick={(event) => { event.currentTarget.focus(); setUserDrawer(true); }}>
               Benutzer anlegen
             </Button>
           </span>
@@ -525,11 +522,6 @@ function TenantDetailDrawer({
                       label={`Aktionen für ${u.username}`}
                       items={[
                         { label: 'Bearbeiten', icon: 'pencil', onClick: () => setEditUser(u) },
-                        {
-                          label: 'Passwort zurücksetzen',
-                          icon: 'refresh-cw',
-                          onClick: () => setResetUser(u),
-                        },
                         u.enabled
                           ? {
                               label: 'Deaktivieren',
@@ -632,14 +624,6 @@ function TenantDetailDrawer({
             setEditUser(null);
             void reload();
           }}
-        />
-      )}
-      {resetUser && (
-        <ResetPasswordDrawer
-          key={resetUser.id}
-          tenant={tenant}
-          user={resetUser}
-          onClose={() => setResetUser(null)}
         />
       )}
       {/* Die zwei Rückfragen im HAUS-MUSTER statt eines nativen `confirm`:

@@ -1,6 +1,7 @@
 package com.voltpilot.api.admin;
 
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.benutzer.Startpasswort;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -46,7 +47,8 @@ public class KeycloakAdminClient {
 
     public KeycloakAdminClient(KeycloakAdminProperties props) {
         this.props = props;
-        this.http = RestClient.builder().baseUrl(props.getBaseUrl()).build();
+        this.http = RestClient.builder().baseUrl(props.getBaseUrl())
+                .requestFactory(new org.springframework.http.client.SimpleClientHttpRequestFactory()).build();
     }
 
     /** A provisioned/queried Keycloak user, projected to what the portal needs. */
@@ -59,8 +61,7 @@ public class KeycloakAdminClient {
      * controller). The message is always a FIXED string - controllers pass it
      * as a {@code ResponseStatusException} reason, which can surface in HTTP
      * responses (e.g. under {@code server.error.include-message: always}), so
-     * raw upstream Keycloak error bodies must never end up in it; they go to
-     * the server log only (see {@link #upstreamError}).
+     * raw upstream Keycloak error bodies must never end up in it or in logs.
      */
     public static class KeycloakAdminException extends RuntimeException {
         private final int status;
@@ -145,8 +146,9 @@ public class KeycloakAdminClient {
         if (password != null && !password.isBlank()) {
             body.put("credentials", List.of(Map.of(
                     "type", "password",
-                    "value", password,
+                    "value", new Startpasswort(password),
                     "temporary", temporaryPassword)));
+            if (temporaryPassword) body.put("requiredActions", List.of("UPDATE_PASSWORD"));
         }
         return body;
     }
@@ -180,8 +182,7 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RuntimeException cleanupEx) {
-            log.warn("Could not roll back partially provisioned user {}: {}", userId,
-                    cleanupEx.getMessage());
+            log.warn("Could not roll back partially provisioned user {}", userId);
         }
     }
 
@@ -296,9 +297,8 @@ public class KeycloakAdminClient {
     }
 
     /**
-     * Set a new password for a user (the support lever - without SMTP there is
-     * no self-service reset, so this is how a customer who forgot their password
-     * gets back in). {@code temporary} forces a password change on the next
+     * Set a new password through the authorized customer-administrator flow.
+     * {@code temporary} forces a password change on the next
      * login. Also lifts any brute-force lockout so the new password works
      * immediately instead of being refused until the escalating wait expires.
      */
@@ -307,7 +307,7 @@ public class KeycloakAdminClient {
             admin().put().uri("/admin/realms/{realm}/users/{id}/reset-password",
                             props.getRealm(), userId)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("type", "password", "value", password, "temporary", temporary))
+                    .body(Map.of("type", "password", "value", new Startpasswort(password), "temporary", temporary))
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientResponseException ex) {
@@ -329,7 +329,7 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RuntimeException ex) {
-            log.warn("Could not clear brute-force lockout for user {}: {}", userId, ex.getMessage());
+            log.warn("Could not clear brute-force lockout for user {}", userId);
         }
     }
 
@@ -389,15 +389,11 @@ public class KeycloakAdminClient {
 
     /**
      * Maps an upstream Keycloak error to a {@link KeycloakAdminException} with a
-     * FIXED message. The raw response body is kept in the server log only - it
-     * must never travel in the exception message, which controllers use as the
-     * customer-visible {@code ResponseStatusException} reason (latent leak once
-     * someone flips {@code server.error.include-message: always}).
+     * FIXED message. Upstream bodies can echo credentials and must never be logged or returned.
      */
     private static KeycloakAdminException upstreamError(String operation,
             RestClientResponseException ex) {
-        log.warn("Keycloak {} failed with status {}: {}", operation,
-                ex.getStatusCode().value(), ex.getResponseBodyAsString());
+        log.warn("Keycloak {} failed with status {}", operation, ex.getStatusCode().value());
         return new KeycloakAdminException(ex.getStatusCode().value(),
                 "Keycloak " + operation + " failed");
     }
@@ -456,8 +452,7 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .body(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {});
         } catch (RestClientResponseException ex) {
-            log.warn("Keycloak admin token request failed with status {}: {}",
-                    ex.getStatusCode().value(), ex.getResponseBodyAsString());
+            log.warn("Keycloak admin token request failed with status {}", ex.getStatusCode().value());
             throw new KeycloakAdminException(ex.getStatusCode().value(),
                     "Could not obtain Keycloak admin token (check the service-account roles)");
         }

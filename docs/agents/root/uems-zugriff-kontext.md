@@ -68,7 +68,7 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
   braucht dieselbe Zeile, sonst scheitert NUR `/me` (die Datei wird erst beim ersten Aufruf geladen). Die Routen mit
   wenigen Zeilen behalten ihre gepinnte Kopie.
 - ⚠ Name und Zustand kommen aus dem Spiegel `benutzer`; ohne Spiegel gelten der Token-Name und `aktiv`. `angelegt`
-  bleibt `angelegt` und hat in `/me` keine Rechte, bis IP-14 den Übergang bei der ersten Anmeldung schreibt.
+  wird seit IP-14 bei der ersten verifizierten `/me`-Anfrage atomar aktiviert und protokolliert; siehe `uems-startpasswort.md`.
 - ⚠ Archivierte Standorte zählen nicht, weder als sichtbar noch in `gesamt`.
 - ⚠ `eigene` Unterstützungen stehen nur im angenommenen Kundenbereich. Die Liste ALLER Kundenbereiche eines Partners
   (Wechsel) ist IP-8 und braucht einen eigenen, kontogebundenen Leseweg.

@@ -48,10 +48,10 @@ Migration `V20260916070000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14), `Unt
 
 ## Fallen
 
-- ⚠ **Ein frisch angelegtes Partner-Konto wird als `aktiv` gespiegelt, nicht als `angelegt`.**
-  `RechteAbleitung.darf` antwortet für jeden anderen Zustand 401 `konto_nicht_aktiv`, und den Übergang
-  `angelegt → aktiv` bei der ersten Anmeldung baut erst IP-14 — bis dahin wäre das Konto von seiner eigenen
-  Unterstützung ausgesperrt. **Wer IP-14 baut, dreht das hier mit.**
+- **IP-14:** Ein neuer Partner-Spiegel trägt `angelegt`, auch bei einem schon bekannten Realm-Konto.
+  Die erste verifizierte `/me`-Anfrage im angenommenen Kundenbereich aktiviert ihn und protokolliert die
+  erste Anmeldung. Bestehende Spiegel bleiben erhalten; gemeinsamer Passwortweg: `uems-startpasswort.md`.
+
 - ⚠ **Das Startpasswort steht GENAU EINMAL in der Antwort des Gewährens** (E14) und entsteht nur, wenn für die
   E-Mail-Adresse ein neues Partner-Konto angelegt wurde. Es darf in keine Liste, kein Protokoll, keinen Hinweis
   und keine E-Mail geraten; `UnterstuetzungApiTest` prüft das an Liste UND Postfach.

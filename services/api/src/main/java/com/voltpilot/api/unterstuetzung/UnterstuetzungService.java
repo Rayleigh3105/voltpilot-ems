@@ -25,7 +25,7 @@ import com.voltpilot.api.zugriff.ZugriffRepository.MitName;
 import com.voltpilot.api.zugriff.ZugriffRepository.NeueZuweisung;
 import com.voltpilot.api.zugriff.ZugriffRepository.StandortEintrag;
 import com.voltpilot.api.zugriff.ZugriffRepository.Zeile;
-import java.security.SecureRandom;
+import com.voltpilot.api.benutzer.StartpasswortKonten;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -82,14 +82,9 @@ public class UnterstuetzungService {
     static final String ANFRAGE_SATZ = "VoltPilot-Support bittet um Zugriff auf {standorte} bis {ende} — {umfang}.";
     static final String ERINNERUNG_SATZ = "{banner} — sie endet in {tage} Tagen.";
 
-    /** Zeichen des Startpassworts: keine Verwechslungspaare (0/O, 1/l/I), damit es am Telefon ankommt. */
-    private static final String PASSWORT_ZEICHEN = "abcdefghijkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static final int PASSWORT_LAENGE = 14;
-
     private final ZugriffRepository zugriffe;
     private final UnterstuetzungRepository unterstuetzungen;
     private final KeycloakAdminClient keycloak;
-    private final SecureRandom zufall = new SecureRandom();
     private volatile Clock uhr = Clock.systemUTC();
 
     public UnterstuetzungService(ZugriffRepository zugriffe, UnterstuetzungRepository unterstuetzungen,
@@ -119,7 +114,9 @@ public class UnterstuetzungService {
      * und nie in einem Protokoll, einem Hinweis oder einer E-Mail (E14) — es entsteht nur, wenn für die
      * E-Mail-Adresse ein neues Partner-Konto angelegt wurde.
      */
-    public record Gewaehrt(UUID id, String startpasswort) {}
+    public record Gewaehrt(UUID id, String startpasswort) {
+        @Override public String toString() { return "[Startpasswort geschützt]"; }
+    }
 
     /**
      * Gewähren (§4.6, E5/E6/E9) — eine Zeile je Standort, EINE Transaktion. Bei unbekannter E-Mail entsteht
@@ -163,7 +160,8 @@ public class UnterstuetzungService {
 
         Konto konto = art == Art.INSTALLATEUR ? Konto.PARTNER : Konto.PLATTFORM;
         Empfaenger e = art == Art.INSTALLATEUR ? partnerKonto(g.email()) : voltpilotKonto(anfrage);
-        zugriffe.benutzerSpiegeln(new BenutzerSpiegel(e.sub(), konto, e.name(), e.email(), KontoZustand.AKTIV));
+        zugriffe.benutzerSpiegeln(new BenutzerSpiegel(e.sub(), konto, e.name(), e.email(),
+                konto == Konto.PARTNER ? KontoZustand.ANGELEGT : KontoZustand.AKTIV));
 
         UUID griff = eintragen(standorte, e, art, urteil.umfang(), ab, bis, endeAm(bis, welt.zone()), welt.zone(),
                 akteur, grund);
@@ -420,7 +418,9 @@ public class UnterstuetzungService {
             new ProtokollAkteur(null, "Zeitablauf", Rolle.VOLTPILOT_BETRIEB.code(), "voltpilot");
 
     /** Das Konto, das die Unterstützung bekommt — mit Startpasswort, wenn es soeben entstanden ist. */
-    private record Empfaenger(String sub, String name, String email, String startpasswort) {}
+    private record Empfaenger(String sub, String name, String email, String startpasswort) {
+        @Override public String toString() { return "[Startpasswort geschützt]"; }
+    }
 
     /** Der Kundenbereich als Eingang des Vertrags, dazu die Kennzeichen-Übersetzung. */
     private record Welt(Kundenbereich k, ZoneId zone, Map<UUID, StandortEintrag> standorte) {
@@ -562,10 +562,7 @@ public class UnterstuetzungService {
      * Das Partner-Konto zur E-Mail-Adresse (E7): bekannt → dasselbe Konto, unbekannt → ein neues mit
      * Startpasswort und Pflichtwechsel bei der ersten Anmeldung (E14 = B).
      *
-     * <p><b>Der Spiegel trägt {@code aktiv}, nicht {@code angelegt}</b>, obwohl das Konto noch nie angemeldet
-     * war: {@code RechteAbleitung.darf} antwortet für jeden anderen Zustand 401 {@code konto_nicht_aktiv}, und
-     * den Übergang {@code angelegt → aktiv} bei der ersten Anmeldung baut erst IP-14. Bis dahin wäre ein frisch
-     * angelegtes Partner-Konto sonst von seiner eigenen Unterstützung ausgesperrt.
+     * <p>Neue Konten tragen angelegt; /me vermerkt erst die abgeschlossene Keycloak-Anmeldung.
      */
     private Empfaenger partnerKonto(String email) {
         if (email == null || email.isBlank()) {
@@ -585,14 +582,15 @@ public class UnterstuetzungService {
             KeycloakUser u = bekannt.get();
             return new Empfaenger(u.id(), anzeige(u, adresse), u.email(), null);
         }
-        String startpasswort = startpasswort();
+        StartpasswortKonten.Angelegt angelegt;
         KeycloakUser neu;
         try {
-            neu = keycloak.createPartnerUser(adresse, adresse, null, null, startpasswort, true);
+            angelegt = new StartpasswortKonten(keycloak).partner(adresse);
+            neu = angelegt.konto();
         } catch (KeycloakAdminException e) {
             throw UnterstuetzungAbgelehnt.von(Ablehnung.KONTO_NICHT_ERREICHBAR);
         }
-        return new Empfaenger(neu.id(), anzeige(neu, adresse), adresse, startpasswort);
+        return new Empfaenger(neu.id(), anzeige(neu, adresse), adresse, angelegt.startpasswort().wert());
     }
 
     /** Das VoltPilot-Konto, das angefragt hat — nie ein anderes: VoltPilot gewährt sich nichts selbst (E8). */
@@ -607,14 +605,6 @@ public class UnterstuetzungService {
             return voll;
         }
         return u.username() != null && !u.username().isBlank() ? u.username() : fallback;
-    }
-
-    private String startpasswort() {
-        StringBuilder sb = new StringBuilder(PASSWORT_LAENGE);
-        for (int i = 0; i < PASSWORT_LAENGE; i++) {
-            sb.append(PASSWORT_ZEICHEN.charAt(zufall.nextInt(PASSWORT_ZEICHEN.length())));
-        }
-        return sb.toString();
     }
 
     /** Ein Wort des Vertrags aus einem Anfragekörper; unbekannt ist {@code anfrage_ungueltig}. */

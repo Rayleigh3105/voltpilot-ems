@@ -151,7 +151,8 @@ class UnterstuetzungSchnittstelleVertragTest {
     @Test
     void dieZweiNeuenProtokollwoerterStehenUeberall() throws Exception {
         assertThat(Arrays.stream(AenderungsArt.values()).map(AenderungsArt::code))
-                .containsExactly("zuweisen", "entziehen", "sperren", "entfernen", "verlaengern", "ablaufen");
+                .containsExactly("zuweisen", "entziehen", "sperren", "entfernen", "verlaengern", "ablaufen",
+                        "erste_anmeldung", "startpasswort_neu");
         String vektoren = Files.readString(WURZEL.resolve(Path.of("docs", "contracts", "v2", "rechte-vectors.json")));
         String schema = Files.readString(WURZEL.resolve(Path.of("docs", "contracts", "v2", "rechte.schema.json")));
         String sql = Files.readString(MIGRATION);

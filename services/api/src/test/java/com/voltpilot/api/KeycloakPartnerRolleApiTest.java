@@ -336,10 +336,13 @@ class KeycloakPartnerRolleApiTest {
     private void createUser(String adminToken, String tenantId, String username, String email, String password) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("username", username, "email", email,
-                        "password", password, "temporaryPassword", false), bearer(adminToken)),
+                new HttpEntity<>(Map.of("username", username, "email", email), bearer(adminToken)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> konto = (Map<String, Object>) res.getBody().get("benutzer");
+        // IP-14: dieser Bestandsnachweis beginnt nach abgeschlossenem Pflichtwechsel.
+        keycloak.resetPassword((String) konto.get("sub"), password, false);
     }
 
     @SuppressWarnings("unchecked")

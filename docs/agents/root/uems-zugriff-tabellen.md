@@ -52,8 +52,8 @@ Neu angelegt am 15.09.2026. Migration
   `zugriff_rolle()` = Matrix `rollen` (Kennung, Geltungsbereich, zuweisbar). Nicht gespeichert: `ocpp_stufe`,
   `unterstuetzung_zustand`, `rolle_noetig_reihenfolge`. Weitet der Vertrag, druckt der Test den VALUES-Block —
   eine NEUE Migration ersetzt nur die Funktion; danach alle Leser von `rechte-vectors.json` laufen lassen.
-- Protokoll-Wörter = Vertrag: `zuweisen · entziehen · sperren · entfernen`. Gewähren, Verlängern, erste Anmeldung
-  → zuerst den Vertrag weiten.
+- Protokoll-Wörter = Vertrag: seit IP-8 auch `verlaengern · ablaufen`, seit IP-14
+  `erste_anmeldung · startpasswort_neu` (`uems-startpasswort.md`).
 
 ## ⚠ Bestandsübernahme (E12)
 
@@ -63,7 +63,8 @@ Neu angelegt am 15.09.2026. Migration
 - Zwei Wege:
   - `ZugriffBestandLaeufer`: `ApplicationReadyEvent`, eigener virtueller Thread, Schalter
     `voltpilot.uems.zugriff-bestand.enabled` (prod AN, surefire AUS).
-  - Ereignis `KundenbenutzerAngelegt` aus `RegistrationController` und `AdminController.createUser`. Der Hörer
+  - Ereignis `KundenbenutzerAngelegt` aus `RegistrationController`. Die Plattform- und Kundenanlage
+    schreiben seit IP-14 ihre Zuweisung ausdrücklich (`uems-startpasswort.md`). Der Hörer
     `ZugriffBestand.beiAnlage` ist isoliert: er wirft nie, zählt `voltpilot_zugriff_bestand_total{ergebnis="fehler"}`
     und stellt den `TenantContext` wieder her.
 - **Seit 16.09.2026 hat die Regel einen STICHTAG** (`uems-zugriff-stichtag.md`, `V20260916060000`): der Start-Lauf

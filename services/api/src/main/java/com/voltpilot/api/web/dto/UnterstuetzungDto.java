@@ -34,7 +34,9 @@ public final class UnterstuetzungDto {
     public record Unterstuetzung(UUID id, String art, String umfang, List<UUID> standorte,
             List<String> standortKennzeichen, Person unterstuetzer, OffsetDateTime gueltigAb, LocalDate gueltigBis,
             OffsetDateTime endet, String zustand, boolean erinnerung, String grund, String banner, String text,
-            String startpasswort) {}
+            String startpasswort) {
+        @Override public String toString() { return "Unterstuetzung[id=" + id + ", startpasswort=geschützt]"; }
+    }
 
     /** Der Körper von {@code POST /api/v1/unterstuetzung} (streng gelesen: ein unbekanntes Feld ist 400). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

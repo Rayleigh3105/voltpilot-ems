@@ -4,8 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
@@ -193,8 +192,11 @@ class UnterstuetzungApiTest {
 
         // Das Startpasswort: genau einmal, hier - und nirgends sonst.
         String startpasswort = gewaehrt.get("startpasswort").asText();
-        assertThat(startpasswort).hasSize(14);
-        verify(keycloak).createPartnerUser(eq(email), eq(email), any(), any(), eq(startpasswort), eq(true));
+        assertThat(startpasswort.length()).isEqualTo(24);
+        // Auch ein fehlgeschlagener Nachweis darf keine Mockito-Argumentliste mit Passwort ausgeben.
+        assertThat(mockingDetails(keycloak).getInvocations().stream().anyMatch(i ->
+                i.getMethod().getName().equals("createPartnerUser") && email.equals(i.getArgument(0))
+                        && startpasswort.equals(i.getArgument(4)) && Boolean.TRUE.equals(i.getArgument(5)))).isTrue();
         UUID griff = UUID.fromString(gewaehrt.get("id").asText());
         assertThat(gewaehrt.get("art").asText()).isEqualTo("installateur");
         assertThat(gewaehrt.get("zustand").asText()).isEqualTo("aktiv");
@@ -205,9 +207,9 @@ class UnterstuetzungApiTest {
         JsonNode liste = json(ruf(get("/api/v1/unterstuetzung"), konto(JONAS, DEMO), 200));
         JsonNode inDerListe = eintrag(liste, griff);
         assertThat(inDerListe.get("startpasswort").isNull()).as("nie ein zweites Mal").isTrue();
-        assertThat(liste.toString()).doesNotContain(startpasswort);
-        assertThat(json(ruf(get("/api/v1/unterstuetzung/hinweise"), konto(JONAS, DEMO), 200)).toString())
-                .doesNotContain(startpasswort);
+        assertThat(liste.toString().contains(startpasswort)).isFalse();
+        assertThat(json(ruf(get("/api/v1/unterstuetzung/hinweise"), konto(JONAS, DEMO), 200)).toString()
+                .contains(startpasswort)).isFalse();
         assertThat(protokoll(griff)).containsExactly("zuweisen");
 
         // Thomas kommt herein - und zwar NUR mit dem Kopf; ohne ihn ist der Kundenbereich für ihn nicht da.
@@ -251,7 +253,8 @@ class UnterstuetzungApiTest {
         assertThat(g.get("startpasswort").isNull()).isTrue();
         assertThat(g.get("unterstuetzer").get("kennung").asText()).isEqualTo(sub);
         assertThat(g.get("umfang").asText()).as("Vorgabe je Art (E9)").isEqualTo("einrichten_und_bedienen");
-        verify(keycloak, never()).createPartnerUser(eq(email), any(), any(), any(), any(), anyBoolean());
+        assertThat(mockingDetails(keycloak).getInvocations().stream().anyMatch(i ->
+                i.getMethod().getName().equals("createPartnerUser") && email.equals(i.getArgument(0)))).isFalse();
         ruf(delete("/api/v1/unterstuetzung/" + g.get("id").asText(), Map.of()), konto(JONAS, DEMO), 204);
     }
 

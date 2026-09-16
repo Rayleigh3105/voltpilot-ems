@@ -376,53 +376,18 @@ class AdminApiTest {
      * lockout. A user addressed under the wrong tenant's path is never touched.
      */
     @Test
-    void supportResetsAForgottenPasswordAndLiftsTheLockout() {
+    void startpasswortGehoertDemKundenadministratorUndNichtMehrDemSupport() {
         String admin = token("admin", "admin");
         String tenantId = (String) createTenant(admin, "Alpenstrom GmbH", "B2C").get("id");
-        Map<String, Object> user = createUser(admin, tenantId, "alpen-kunde",
-                "kunde@alpen.example", "vergessen-pw-1");
-        String userId = (String) user.get("id");
-
-        // Baseline: the customer can log in.
-        assertThat(tryToken("alpen-kunde", "vergessen-pw-1")).containsKey("access_token");
-
-        // They forgot the password; guessing locks the account...
-        for (int i = 0; i < 10; i++) {
-            assertThat(tryToken("alpen-kunde", "falsch-" + i)).doesNotContainKey("access_token");
-        }
-        // ...so even the correct password is refused now.
-        assertThat(tryToken("alpen-kunde", "vergessen-pw-1")).doesNotContainKey("access_token");
-
-        // A user addressed under the WRONG tenant's path is not found - never reset.
+        String userId = (String) createUser(admin, tenantId, "alpen-kunde", "kunde@alpen.example", "eigenes-passwort-1").get("id");
         String otherTenant = (String) createTenant(admin, "Fremdstrom AG", "B2C").get("id");
-        assertThat(rest.exchange(
-                url("/api/v1/admin/tenants/" + otherTenant + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("password", "neues-passwort-1", "temporary", false),
-                        bearer(admin)),
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + otherTenant + "/users/" + userId + "/reset-password"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("password", "unbenutzt"), bearer(admin)),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-
-        // A too-short password is refused (same rule as self-registration).
-        assertThat(rest.exchange(
-                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("password", "kurz"), bearer(admin)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-
-        // Support resets the password through the right tenant path.
-        ResponseEntity<Map<String, Object>> reset = rest.exchange(
-                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("password", "neues-passwort-1", "temporary", false),
-                        bearer(admin)),
-                new ParameterizedTypeReference<>() {});
-        assertThat(reset.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(reset.getBody()).containsEntry("username", "alpen-kunde");
-
-        // The new password works IMMEDIATELY (the reset lifted the lockout)...
-        assertThat(tryToken("alpen-kunde", "neues-passwort-1")).containsKey("access_token");
-        // ...and the old one no longer does.
-        assertThat(tryToken("alpen-kunde", "vergessen-pw-1")).doesNotContainKey("access_token");
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("password", "unbenutzt"), bearer(admin)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(tryToken("alpen-kunde", "eigenes-passwort-1")).containsKey("access_token");
     }
 
     // ---- (c) a Portal-User is forbidden from the admin API ------------------
@@ -3627,15 +3592,21 @@ class AdminApiTest {
         return res.getBody();
     }
 
+    @Autowired
+    com.voltpilot.api.admin.KeycloakAdminClient keycloakAdmin;
+
     private Map<String, Object> createUser(String token, String tenantId, String username,
             String email, String password) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("username", username, "email", email,
-                        "password", password, "temporaryPassword", false), bearer(token)),
+                new HttpEntity<>(Map.of("username", username, "email", email), bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        return res.getBody();
+        Map<String, Object> konto = (Map<String, Object>) res.getBody().get("benutzer");
+        String sub = (String) konto.get("sub");
+        // Bestandsprüfungen setzen nach dem Pflichtwechsel an; der volle Weg steht im IP-14-Test.
+        keycloakAdmin.resetPassword(sub, password, false);
+        return Map.of("id", sub, "username", username, "email", email, "tenantId", tenantId, "enabled", true);
     }
 
     /** Register a sticker Geräte-ID in the manufacturing registry. */
