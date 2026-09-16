@@ -214,8 +214,8 @@ class MesskanalApiTest {
                 "active_energy", "export");
         kanal(kanaele.get(1), "Total Watt-hours Imported", "Wh", "counter", "Wirkenergie", "Bezug",
                 "active_energy", "import");
-        // Der Vorzeichen-Wert am Zählpunkt: Größe Wirkleistung, aber keine EINE Vertrags-Richtung.
-        kanal(kanaele.get(2), "Wirkleistung", "W", "gauge", "Wirkleistung", null, "active_power",
+        // Der Vorzeichen-Wert trägt die Katalog-Richtung import_export (Vertragswort richtungslos).
+        kanal(kanaele.get(2), "Wirkleistung", "W", "gauge", "Wirkleistung", "richtungslos", "active_power",
                 "import_export");
         assertThat(kanaele).extracting(k -> k.get("wertart").asText()).containsExactlyInAnyOrder(
                 "counter", "counter", "gauge");

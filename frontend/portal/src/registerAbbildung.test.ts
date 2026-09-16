@@ -32,6 +32,7 @@ describe('registerAbbildung: die Katalogwörter in Vertragswörter', () => {
     expect(richtungAus('export')).toBe('Abgabe');
     expect(richtungAus('charge_discharge')).toBe('Laden / Entladen');
     expect(richtungAus('none')).toBe('richtungslos');
+    expect(richtungAus('import_export')).toBe('richtungslos');
     // Der Gen-Port: der Katalog gibt gar keine Richtung.
     expect(richtungAus(null)).toBeNull();
     expect(richtungAus('gibt_es_nicht')).toBeNull();

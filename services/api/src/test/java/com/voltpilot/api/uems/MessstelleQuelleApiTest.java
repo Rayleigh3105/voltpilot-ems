@@ -484,7 +484,7 @@ class MessstelleQuelleApiTest {
                 nebengroesse);
         passtNicht(r, vorzeichen.at("/expected/grund").asText());
         assertThat(r.getBody().at("/kanal/direction").asText()).isEqualTo("import_export");
-        assertThat(r.getBody().at("/kanal/richtung").isNull()).as("keine EINE Vertrags-Richtung").isTrue();
+        assertThat(r.getBody().at("/kanal/richtung").asText()).isEqualTo("richtungslos");
         assertThat(r.getBody().get("message").asText()).contains("Vorzeichen").contains("positiven Anteil")
                 .doesNotContain("noch nicht");
         // Ein Anteil an einem Zählerstand (Vektor anteil-nie-aus-zaehlerstand): Grund `anteil`.

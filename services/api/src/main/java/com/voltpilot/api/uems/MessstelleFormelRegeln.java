@@ -75,7 +75,7 @@ public final class MessstelleFormelRegeln {
      * Darf der per-Term-Haken „gilt als Erzeugung" gesetzt werden? NUR fuer einen Kanal OHNE
      * Vertrags-Richtung ({@code katalogRichtung == null} — der Katalog gibt keine, z. B. der
      * Gen-Port {@code direction: null}). Ein Kanal MIT Katalog-Richtung (auch {@code richtungslos}
-     * aus {@code direction: none}) traegt den Haken nicht — er waere ein wirkungsloser Schalter.
+     * aus {@code direction: none} oder {@code import_export}) traegt den Haken nicht.
      * Genau die in {@code messstelle-formel.md} §2 reservierte AP-08-Stelle.
      */
     public static boolean erzeugungsHakenErlaubt(String katalogRichtung) {

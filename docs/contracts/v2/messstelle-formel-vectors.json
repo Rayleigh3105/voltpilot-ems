@@ -288,6 +288,12 @@
         "expected": {"erlaubt": false, "richtung": "richtungslos"}
       },
       {
+        "name": "import-export-katalog-richtung-haken-abgelehnt",
+        "why": "import_export ist eine Katalog-Richtung, abgebildet als richtungslos. Der Haken darf am Vorzeichen-Netzkanal nicht gesetzt werden; er bleibt bis zum Anteil-Leseweg als neuer Term gesperrt.",
+        "input": {"direction": "import_export", "katalog_richtung": "richtungslos", "gilt_als_erzeugung": true},
+        "expected": {"erlaubt": false, "richtung": "richtungslos"}
+      },
+      {
         "name": "gerichteter-bezug-ohne-haken",
         "why": "Ein gerichteter Kanal ohne Haken: nicht erlaubt (waere wirkungslos), Richtung unveraendert.",
         "input": {"katalog_richtung": "Bezug", "gilt_als_erzeugung": false},

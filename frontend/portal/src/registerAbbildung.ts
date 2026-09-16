@@ -33,6 +33,7 @@ export const RICHTUNG: Record<string, string> = {
   charge: 'Laden',
   discharge: 'Entladen',
   charge_discharge: 'Laden / Entladen',
+  import_export: 'richtungslos',
   none: 'richtungslos',
 };
 
