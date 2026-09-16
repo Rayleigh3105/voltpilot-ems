@@ -17,7 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Die beiden Tabellen, die eine Unterstützung BEGLEITEN (UEMS AP-03 IP-8, {@code V20260916060000}): die
+ * Die beiden Tabellen, die eine Unterstützung BEGLEITEN (UEMS AP-03 IP-8, {@code V20260916070000}): die
  * Anfrage von VoltPilot ({@code unterstuetzung_anfrage} + ihre Standorte) und der Hinweis an die
  * Kundenadministratoren ({@code unterstuetzung_hinweis}).
  *

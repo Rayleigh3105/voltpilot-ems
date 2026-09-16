@@ -4,7 +4,7 @@ Neu angelegt am 16.09.2026. Spezifikation: AP-03 §4.6 (Unterstützungszugriff),
 A4/A5/A14, §8 IP-8. Code: `unterstuetzung/` (`UnterstuetzungService`, `UnterstuetzungRepository`,
 `UnterstuetzungAbgelehnt`, `AblaufLaeufer`, `UnterstuetzungSchedulingConfig`),
 `web/UnterstuetzungController`, `web/AdminUnterstuetzungController`, `web/dto/UnterstuetzungDto`,
-Migration `V20260916060000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14), `UnterstuetzungWiringTest`,
+Migration `V20260916070000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14), `UnterstuetzungWiringTest`,
 `UnterstuetzungSchnittstelleVertragTest`.
 
 ## Was gilt

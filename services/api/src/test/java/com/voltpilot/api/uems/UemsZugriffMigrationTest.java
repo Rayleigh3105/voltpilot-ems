@@ -86,7 +86,7 @@ class UemsZugriffMigrationTest {
      * {@code zugriff}, zwei Protokollwörtern und dem geschärften {@code zugriff_protokoll_zugriff_chk}) — ohne
      * diese Migration gibt es ihre Tabellen nicht; in der späten Ankunft kommen sie darum MIT ihr, nicht vor ihr.
      */
-    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260916060000");
+    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260916070000");
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");

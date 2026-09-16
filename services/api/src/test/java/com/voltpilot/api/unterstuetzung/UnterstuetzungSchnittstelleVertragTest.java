@@ -34,7 +34,7 @@ class UnterstuetzungSchnittstelleVertragTest {
     private static final Path OPENAPI = WURZEL.resolve(Path.of("docs", "contracts", "openapi.yaml"));
     private static final Path API_TS = WURZEL.resolve(Path.of("frontend", "portal", "src", "api.ts"));
     private static final Path MIGRATION = Path.of("src", "main", "resources", "db", "migration",
-            "V20260916060000__uems_unterstuetzung.sql");
+            "V20260916070000__uems_unterstuetzung.sql");
     private static final PropertyNamingStrategies.SnakeCaseStrategy SNAKE =
             new PropertyNamingStrategies.SnakeCaseStrategy();
 
