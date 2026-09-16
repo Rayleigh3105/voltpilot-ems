@@ -477,8 +477,10 @@ class ZaehlerwechselApiTest {
     void a3AngekuendigtenWechselzeitpunktKorrigieren() {
         Werk w = ahrenberg("A3"); String ms = messstelleMs06(w); UUID alt = einbau(w, "Z-5a");
         bindeMs06(w, ms); wandlerFassung(w, alt);
-        String vorher = "2026-11-18T10:00:00+01:00", nachher = WECHSEL;
-        uhr("2026-11-10T09:00:00+01:00");
+        // Die DB-Sperre nutzt die echte Uhr: dieser Fall bleibt auch nach dem Referenzjahr zukünftig.
+        int jahr = java.time.Year.now().getValue() + 1;
+        String vorher = jahr + "-11-18T10:00:00+01:00", nachher = jahr + "-11-18T10:40:00+01:00";
+        uhr(jahr + "-11-10T09:00:00+01:00");
         JsonNode v = erfolgreich(rufe(HttpMethod.POST, "/api/v1/geraete/" + alt + "/austausch", w.admin(),
                 wechselAnfrage(vorher, element(element(referenz.get("geraete"), "GR-4").get("einbauten"), "Z-5b"))));
         UUID neu = UUID.fromString(v.at("/geraet/neu/id").asText());
@@ -517,7 +519,7 @@ class ZaehlerwechselApiTest {
         berichtigung.uhrStellen(Clock.systemUTC());
         // Unplausible vorgezogene Messwerte sperren trotz Zukunft.
         root.update("INSERT INTO telemetry_v2 (time,received_at,tenant_id,site_id,device_id,entity_id,channel,value) VALUES (?,?,?,?,?,?,?,?)",
-                Timestamp.from(zeitpunkt("2026-11-18T10:20:00+01:00")), Timestamp.from(Instant.now()),
+                Timestamp.from(zeitpunkt(jahr + "-11-18T10:20:00+01:00")), Timestamp.from(Instant.now()),
                 w.tenant(), w.an1(), w.box(), w.k("K-5").toString(), ENERGIE_BEZUG, 123);
         var werte = rufe(HttpMethod.POST, pfad, w.admin(), body);
         assertThat(status(werte)).isEqualTo(409);
@@ -709,6 +711,7 @@ class ZaehlerwechselApiTest {
 
     @Test
     void a6ControllerWechseltVierKartenUndBindungenAtomarMitEigenenEndstaenden() {
+        int jahr = java.time.Year.now().getValue() + 1;
         Werk w = ahrenberg("A6 Controller");
         UUID controller = root.queryForObject("INSERT INTO geraet (tenant_id,site_id,kennzeichen,einbau_kennzeichen,"
                 + "geraeteart,hersteller,typ,seriennummer,eingebaut_am) "
@@ -737,13 +740,13 @@ class ZaehlerwechselApiTest {
             bindungen.add(q);
             staende.add(Map.of("bindung", q, "endstand", Map.of("wert", n * 1000, "einheit", "kWh")));
         }
-        uhr("2027-02-05T14:00:00+01:00");
+        uhr(jahr + "-02-05T14:00:00+01:00");
         String pfad = "/api/v1/geraete/" + controller + "/austausch";
-        JsonNode vorschau = ok(rufe(HttpMethod.GET, pfad + "/vorschau?zeitpunkt=2027-02-05T13:00:00Z", w.admin(), null));
+        JsonNode vorschau = ok(rufe(HttpMethod.GET, pfad + "/vorschau?zeitpunkt=" + jahr + "-02-05T13:00:00Z", w.admin(), null));
         assertThat(vorschau.get("folgen")).hasSize(4);
         assertThat(vorschau.get("karten")).hasSize(4);
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("zeitpunkt", "2027-02-05T14:00:00+01:00");
+        body.put("zeitpunkt", jahr + "-02-05T14:00:00+01:00");
         body.put("neues_geraet", Map.of("einbau_kennzeichen", "C-1′", "seriennummer", "C-neu"));
         body.put("karten_uebernommen", karten.subList(0, 3)); // EK-4 ebenfalls neu, Seriennummer unbekannt
         body.put("ablesestaende", staende);
@@ -765,8 +768,8 @@ class ZaehlerwechselApiTest {
         assertThat(antwort.get("bindungen")).hasSize(4);
         UUID neu = UUID.fromString(antwort.at("/geraet/neu/id").asText());
         for (JsonNode bindung : antwort.get("bindungen")) {
-            assertThat(zeitpunkt(bindung.at("/beendet/gueltig_bis").asText())).isEqualTo(zeitpunkt("2027-02-05T14:00:00+01:00"));
-            assertThat(zeitpunkt(bindung.at("/neu/gueltig_ab").asText())).isEqualTo(zeitpunkt("2027-02-05T14:00:00+01:00"));
+            assertThat(zeitpunkt(bindung.at("/beendet/gueltig_bis").asText())).isEqualTo(zeitpunkt(jahr + "-02-05T14:00:00+01:00"));
+            assertThat(zeitpunkt(bindung.at("/neu/gueltig_ab").asText())).isEqualTo(zeitpunkt(jahr + "-02-05T14:00:00+01:00"));
             int nummer = Integer.parseInt(bindung.get("kennzeichen").asText().substring(3)) - 9;
             assertThat(bindung.at("/beendet/endstand/wert").asInt()).isEqualTo(nummer * 1000);
         }
@@ -774,7 +777,7 @@ class ZaehlerwechselApiTest {
         assertThat(root.queryForList("SELECT seriennummer FROM geraet_teil WHERE geraet_id=? ORDER BY steckplatz", String.class, neu))
                 .containsExactly("EK-SN-1", "EK-SN-2", "EK-SN-3", null);
         assertThat(root.queryForObject("SELECT count(*) FROM messstelle_aenderung WHERE tenant_id=? AND art='zaehler_gewechselt'", Integer.class, w.tenant())).isEqualTo(4);
-        String berichtigt = "2027-02-05T14:40:00+01:00";
+        String berichtigt = jahr + "-02-05T14:40:00+01:00";
         ok(rufe(HttpMethod.POST, pfad + "/zeitpunkt", w.admin(),
                 Map.of("bisher", body.get("zeitpunkt"), "zeitpunkt", berichtigt)));
         assertThat(anzahl("SELECT count(*) FROM geraet_teil WHERE geraet_id=? AND eingebaut_am=?",

@@ -72,6 +72,7 @@ describe('Zählerwechsel als ein Vorgang', () => {
 });
 
 it('A3: geplanter Wechsel öffnet die Berichtigung und schreibt nur den neuen Zeitpunkt', async () => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-10T09:00:00+01:00'));
   const alt = { ...vorherGeraet(), ausgebaut_am: '2026-11-18T10:00:00+01:00' };
   const neu = { ...vorherGeraet(), id: 'g-z5b', eingebaut_am: alt.ausgebaut_am, ausgebaut_am: null };
   vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [alt, neu] });
