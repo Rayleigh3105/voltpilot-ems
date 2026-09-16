@@ -8,7 +8,7 @@
     "fehlbestand: true heißt, der Satz nennt einen nicht gezählten Teil. vollständig trägt keinen, unvollständig mindestens einen, keine Werte keinen.",
     "fruehere_fassungen (1.1): Wortlaute, die eine frühere Fassung sprach und die in kennzeichen der Speicherklassen gespeichert sein können. Sie werden als ihr heutiges Muster ERKANNT (fruehere_fassung = true), aber nie mehr gesprochen — keine Zeile wird umgeschrieben, keine wird unlesbar.",
     "kennzeichen_vorgesehen: Wörter des Vokabulars (verbrauch-vectors.json kennzeichen), deren Wortlaut das erzeugende Paket festlegt. Bis dahin sind sie kein Satz dieses Vertrags.",
-    "rundung (E11): gerechnet wird ungerundet, gerundet wird nur angezeigt; die Ebene bestimmt die Stellen, nie die Fläche. Kaufmännisch, Tausenderpunkt, Komma, geschütztes Leerzeichen vor der Einheit, Minus U+2212, kein Wert = „—“. Export ungerundet mit Punkt und ISO-8601-Offset.",
+    "rundung (E11): gerechnet wird ungerundet, gerundet wird nur angezeigt; Wertbezug und Ebene bestimmen die Stellen, nie die Fläche. Vereinbart (seit 1.12, Entscheid B vom 15.09.2026): ganze Werte ganzzahlig, echte Dezimalstellen bleiben exakt. Gemessen wie bisher kaufmännisch, Tausenderpunkt, Komma, geschütztes Leerzeichen vor der Einheit, Minus U+2212, kein Wert = „—“. Export ungerundet mit Punkt und ISO-8601-Offset.",
     "sommerzeit (E10): Ortszeit des Standorts; eine Beschriftung, die am Tag zweimal vorkommt, trägt MESZ/MEZ; die fehlende Stunde erscheint nicht; 23-/25-Stunden-Tage sagen es. Dieselbe Regel gilt für die Uhrzeit IN einem Kennzeichen (familie uhr, seit 1.1): „Rücksetzung 02:30 MEZ …“.",
     "1.2 (additiv): die Einheit kVA (Anschluss-Scheinleistung) mit der Stelle der Leistung; Bilanz- und Netzanschluss-Sätze rufen zahl() an, statt selbst zu formatieren.",
     "1.3: der Zuwachs-Satz trägt seine Einheit („Zuwachs 337,6 kWh“) — rundung.anzeige_einheiten (gespeichert bleibt die Zähler-Einheit, angezeigt kWh · kvarh · m³; Familie menge), rundung.kennzeichen_ebene (ein Satz rundet auf JEDER Ebene gleich), kvarh mit den Stellen von kWh, Platzhalter menge; ohne bekannte Einheit steht der Satz ohne Zahl (luecke_zuwachs_ohne_einheit). Die alte Form „Zuwachs 337.600“ lebt in fruehere_fassungen. Die Uhrzeiten sprechen in der Zone des Standorts, die der Träger ReihenKontext bis zur Rechenregel reicht — ohne neuen Wortlaut.",
@@ -21,7 +21,7 @@
     "Seit 1.9 (AP-11 IP-1): der Block `kennzahl_kennzeichen` — die Kennzeichen-Sätze eines KENNZAHL-Werts mit eigenem Rang und die Erbregeln ihrer Eingänge (kennzahl.md). Die Verbrauchs-Liste `kennzeichen` bleibt Satz für Satz, wie sie ist.",
     "Seit 1.11 (AP-13 IP-1, E11 = A): der Block `grund` — je Code des Feldes grund der Route „Werte je Messstelle“ genau EIN Kundensatz, warum eine Zahl fehlt; die Karte zeigt „—“ UND den Satz. Keine Regel: wann ein Grund gilt, entscheidet die Route. Gesprochen von ErgebnisZustand.grundSatz ⟷ uemsErgebnis.grundSatz; alle übrigen Blöcke bleiben Satz für Satz, wie sie sind."
   ],
-  "schema_version": "1.11",
+  "schema_version": "1.12",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -1028,6 +1028,7 @@
     "reihenfolge": ["zahl", "zustand", "abdeckung", "kennzeichen"]
   },
   "rundung": {
+    "wertbezug": {"gemessen": "Bestehende Stellen je Einheit und Ebene; Vorgabe bei fehlendem wertbezug, auch für abgeleitete Mengen. Keine Aussage über die fachliche Mengenherkunft.", "vereinbart": "Ganze Werte ganzzahlig; echte Dezimalstellen bleiben vollständig erhalten, nur nachgestellte Nullen entfallen. Keine Rundung des vereinbarten Betrags."},
     "gerechnet": "ungerundet; verglichen auf 3 Nachkommastellen (verbrauch-vectors.json regeln.vergleich_nachkommastellen)",
     "rundungsart": "kaufmännisch (halbe Stelle von der Null weg, BigDecimal HALF_UP)",
     "tausender": ".",
@@ -1173,6 +1174,198 @@
     }
   ],
   "cases": [
+    {
+      "name": "vereinbart: 550 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "550",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "550 kW"
+      }
+    },
+    {
+      "name": "vereinbart: 630.000 kVA",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "630.000",
+        "einheit": "kVA",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "630 kVA"
+      }
+    },
+    {
+      "name": "vereinbart: 27.6 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "27.6",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "27,6 kW"
+      }
+    },
+    {
+      "name": "vereinbart: 550.4500 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "550.4500",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "550,45 kW"
+      }
+    },
+    {
+      "name": "vereinbart: 27.625 kVA",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "27.625",
+        "einheit": "kVA",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "27,625 kVA"
+      }
+    },
+    {
+      "name": "vereinbart: 1200.00 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "1200.00",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "1.200 kW"
+      }
+    },
+    {
+      "name": "vereinbart: 0.000 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "0.000",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "0 kW"
+      }
+    },
+    {
+      "name": "vereinbart: None kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "—"
+      }
+    },
+    {
+      "name": "vereinbart: -27.600 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "-27.600",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "−27,6 kW"
+      }
+    },
+    {
+      "name": "gemessen: 550 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "550",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "gemessen"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "550,0 kW"
+      }
+    },
+    {
+      "name": "gemessen: 630 kVA",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "630",
+        "einheit": "kVA",
+        "ebene": null,
+        "wertbezug": "gemessen"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "630,0 kVA"
+      }
+    },
+    {
+      "name": "gemessen: 312.44 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "312.44",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "gemessen"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "312,4 kW"
+      }
+    },
     {
       "name": "Viertelstunde eine Nachkommastelle",
       "familie": "zahl",

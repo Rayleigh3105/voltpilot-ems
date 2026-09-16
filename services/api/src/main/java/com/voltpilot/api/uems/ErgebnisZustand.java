@@ -37,7 +37,7 @@ import java.util.regex.Pattern;
  *       {@link VerbrauchRegeln} formuliert keinen Satz mehr selbst, sie RUFT die Sprech-Funktionen
  *       dieser Klasse an ({@link #geraetegrenze}, {@link #neustart}, …). Die Reihenfolge ist
  *       Vertrag: der Rang steigt nie, die Sätze der Gerätegrenze stehen in fester Folge.
- *   <li><b>Die Rundung als Funktion des Vertrags (E11)</b> — die EBENE bestimmt die
+ *   <li><b>Die Rundung als Funktion des Vertrags (E11)</b> — Wertbezug und EBENE bestimmen die
  *       Nachkommastellen, nie die Fläche ({@link #zahl}). Gerechnet wird ungerundet; gerundet wird
  *       nur hier, beim Anzeigen. Eine Rundungsdifferenz wird genannt ({@link #rundungsdifferenz}).
  *   <li><b>Die Sommerzeit-Beschriftung (E10)</b> — Ortszeit des Standorts, die doppelte Stunde mit
@@ -698,7 +698,7 @@ public final class ErgebnisZustand {
     public static final String KW = "kW";
     public static final String PROZENT = "%";
     public static final String KUBIKMETER = "m³";
-    /** Scheinleistung (Anschlussleistung) — „Leistung eine Nachkommastelle“ wie kW (E11, seit 1.2). */
+    /** Scheinleistung — gemessen eine Nachkommastelle wie kW (E11, seit 1.2). */
     public static final String KVA = "kVA";
     /** Blindarbeit — Arbeit wie die Wirkarbeit, darum dieselben Stellen je Ebene wie kWh (seit 1.3). */
     public static final String KVARH = "kvarh";
@@ -772,8 +772,17 @@ public final class ErgebnisZustand {
      * ist „—“, nie 0. Gerechnet wird damit nie.
      */
     public static String zahl(BigDecimal wert, String einheit, String ebene) {
+        return zahl(wert, einheit, ebene, Wertbezug.GEMESSEN);
+    }
+
+    public enum Wertbezug { GEMESSEN, VEREINBART }
+
+    /** Vereinbarte Werte ohne angehängte Nullen; echte Dezimalstellen bleiben exakt (seit 1.12). */
+    public static String zahl(BigDecimal wert, String einheit, String ebene, Wertbezug wertbezug) {
         int stellen = stellen(einheit, ebene);
-        return wert == null ? OHNE_ZAHL : text(wert.setScale(stellen, RoundingMode.HALF_UP), einheit);
+        return wert == null ? OHNE_ZAHL : text(
+                wertbezug == Wertbezug.VEREINBART ? wert.stripTrailingZeros() : wert.setScale(stellen, RoundingMode.HALF_UP),
+                einheit);
     }
 
     /**

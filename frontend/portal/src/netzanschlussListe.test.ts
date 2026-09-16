@@ -12,6 +12,9 @@ describe('Netzanschlüsse am Standort', () => {
   it('F16: gleiche Formatierstelle für Liste und Bilanz, kein fehlender Wert als Null', () => {
     const liste = ahrenbergNetzanschluesse();
     expect(N.leistung(liste[0])).toBe(kopfzeile('NA-1', dez('550'), dez('630'), null).text);
+    expect(N.leistung(liste[0])).toBe('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA');
+    expect(N.leistung({ ...liste[0], vereinbart_kw: '550.450', anschluss_kva: '27.600' }))
+      .toBe('vereinbart 550,45\u00a0kW · Anschluss 27,6\u00a0kVA');
     expect(N.bilanzKopf(liste, I.an1, '2026-10-20')).toContain(N.leistung(liste[0]));
     expect(N.leistung({ ...liste[0], vereinbart_kw: null, anschluss_kva: null })).toBe('');
     expect(N.bilanzKopf(liste, I.an2, '2026-09-30')).toBe('Netzanschluss: nicht angelegt');

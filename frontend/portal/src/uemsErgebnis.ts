@@ -14,7 +14,7 @@
  *     keine Werte · mit Ersatzwert) mit seiner Regel für Zahl und Kennzeichen;
  *  2. die geschlossene Liste der Kennzeichen-Sätze mit Rang — die
  *     Reihenfolge ist Vertrag;
- *  3. die Rundung als Funktion des Vertrags (E11): die EBENE bestimmt die
+ *  3. die Rundung als Funktion des Vertrags (E11): Wertbezug und EBENE bestimmen die
  *     Nachkommastellen, nie die Fläche. Gerechnet wird ungerundet, gerundet
  *     nur beim Anzeigen, exakt als Dezimaltext (`dez.ts`) — `0.15` rundet wie
  *     `BigDecimal` auf `0,2`, nicht wie ein Binärbruch auf `0,1`;
@@ -527,7 +527,7 @@ export const KWH = 'kWh';
 export const KW = 'kW';
 export const PROZENT = '%';
 export const KUBIKMETER = 'm³';
-/** Scheinleistung (Anschlussleistung) — „Leistung eine Nachkommastelle“ wie kW (E11, seit 1.2). */
+/** Scheinleistung — gemessen eine Nachkommastelle wie kW (E11, seit 1.2). */
 export const KVA = 'kVA';
 /** Blindarbeit — Arbeit wie die Wirkarbeit, darum dieselben Stellen je Ebene wie kWh (seit 1.3). */
 export const KVARH = 'kvarh';
@@ -602,14 +602,27 @@ const text = (d: Dez, einheit: string): string => {
   return `${negativ ? MINUS : ''}${ganz}${bruch}${VOR_EINHEIT}${einheit}`;
 };
 
+/** Anzeige-Bezug; unabhängig von der fachlichen Mengenherkunft. */
+export type Wertbezug = 'gemessen' | 'vereinbart';
+
 /**
  * E11 — die angezeigte Zahl mit Einheit: kaufmännisch gerundet auf die Stellen
  * der Ebene, Tausenderpunkt, Komma, geschütztes Leerzeichen („2.304 kWh“,
  * „96,5 kW“, „85 %“). Kein Wert ist „—“, nie 0. Gerechnet wird damit nie.
+ * Vereinbarte Werte ohne angehängte Nullen; echte Dezimalstellen bleiben exakt (seit 1.12).
  */
-export const zahl = (wert: Betrag, einheit: string, ebene: string | null): string => {
+export const zahl = (wert: Betrag, einheit: string, ebene: string | null, wertbezug: Wertbezug = 'gemessen'): string => {
   const s = stellen(einheit, ebene);
-  return wert === null ? OHNE_ZAHL : text(dezRunde(zuDez(wert), s), einheit);
+  if (wert === null) return OHNE_ZAHL;
+  const d = zuDez(wert);
+  if (wertbezug === 'vereinbart') {
+    while (d.e > 0 && d.z % 10n === 0n) {
+      d.z /= 10n;
+      d.e--;
+    }
+    return text(d, einheit);
+  }
+  return text(dezRunde(d, s), einheit);
 };
 
 /**

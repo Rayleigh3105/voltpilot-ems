@@ -45,7 +45,7 @@ for (const breite of [375, 1440]) {
       if (m.type() === 'error') fehler.push(m.text());
     });
     await oeffne(page, breite);
-    await expect(page.getByTestId('netzanschluss-NA-1')).toContainText('630');
+    await expect(page.getByTestId('netzanschluss-NA-1')).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA');
     await expect(page.getByTestId('netzanschluss-NA-1')).toContainText('12.03.2024');
     await foto(page, `liste-${breite}`);
     await page.getByRole('button', { name: 'Netzanschluss anlegen', exact: true }).click();
@@ -62,6 +62,7 @@ for (const breite of [375, 1440]) {
     await expect(d).toHaveCount(0);
     const neu = page.getByTestId('netzanschluss-NA-0004');
     await expect(neu).toContainText('Noch keine Anlage gebunden');
+    await expect(neu).toContainText('vereinbart 550,45\u00a0kW · Anschluss 630\u00a0kVA');
     await neu.getByRole('button', { name: 'Anlage binden / wechseln', exact: true }).click();
     await waehleAnlage(page);
     await d.getByRole('combobox', { name: 'Gilt ab', exact: true }).click();
@@ -122,7 +123,7 @@ for (const breite of [375, 1440]) {
     await oeffne(page, breite);
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1');
     await expect(page.getByTestId('bilanz-netzanschluss')).toContainText('Netzanschluss NA-1');
-    await expect(page.getByTestId('bilanz-netzanschluss')).toContainText('550');
+    await expect(page.getByTestId('bilanz-netzanschluss')).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA');
     await foto(page, `bilanz-${breite}`);
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=werk-netzanschluesse&messen=bestand');
     await expect(page.getByTestId('netzanschluesse')).toHaveCount(0);

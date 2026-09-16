@@ -463,7 +463,7 @@ describe('Bilanz-Vertrag: Zahlform E11 aus dem Ergebnis-Zustand', () => {
     const s = summe('kWh', 'tag', [summand('MS-11', '740'), summand('MS-13', '315'), summand('MS-14', null)]);
     expect(s.anzeige).toBe('mindestens 1.055\u00a0kWh (MS-14 fehlt)');
     expect(s.anzeige).not.toContain('1 055');
-    expect(kopfzeile('NA-9', dez('1200'), null, null).text).toBe('vereinbart 1.200,0\u00a0kW');
+    expect(kopfzeile('NA-9', dez('1200'), null, null).text).toBe('vereinbart 1.200\u00a0kW');
   });
 
   it('feste Stellen je Ebene statt ungerundet („1 200,5“ ist die alte Form)', () => {
@@ -471,7 +471,7 @@ describe('Bilanz-Vertrag: Zahlform E11 aus dem Ergebnis-Zustand', () => {
     expect(rest('MS-16', 'kWh', 'monat', 1, [], e).kundensatz).toBe('1.201\u00a0kWh sind keiner Messstelle zugeordnet');
     expect(rest('MS-16', 'kWh', 'stunde', 1, [], e).kundensatz).toBe('1.200,5\u00a0kWh sind keiner Messstelle zugeordnet');
     expect(kopfzeile('NA-1', dez('550'), dez('630'), dez('312.44')).text).toBe(
-      'vereinbart 550,0\u00a0kW · Anschluss 630,0\u00a0kVA · Momentan 312,4\u00a0kW',
+      'vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA · Momentan 312,4\u00a0kW',
     );
     expect(() => rest('MS-16', 'kWh', null, 1, [], e), 'kWh ohne Ebene hat keine Anzeige').toThrow();
   });

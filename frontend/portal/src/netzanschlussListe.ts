@@ -23,7 +23,7 @@ export const giltAm = (b: { gueltig_ab: string | null; gueltig_bis: string | nul
 export const anschlussDerAnlage = (liste: Netzanschluss[], anlage: string, am: string) =>
   liste.find((n) => giltAm(n, am) && n.anlagen.some((b) => b.anlage.id === anlage && giltAm(b, am))) ?? null;
 
-/** EINE Formatierstelle für Liste und Bilanz: hier hängt das Paket „vereinbarte Werte“ ein. */
+/** EINE Formatierstelle für Liste und Bilanz; der Vertragszwilling kennzeichnet Vereinbartes. */
 export function leistung(n: Netzanschluss): string {
   return kopfzeile(
     n.kennzeichen,

@@ -40,7 +40,9 @@ mit `ergebnis-zustand-vectors.json` und Schema.
 
 ## Die Fallen
 
-1. **Gerechnet ungerundet, gerundet nur angezeigt (E11).** `zahl(wert, einheit, ebene)` — die
+1. **Gerechnet ungerundet, gerundet nur angezeigt (E11).** `zahl(wert, einheit, ebene, wertbezug)` —
+   seit 1.12 `vereinbart`: ganze Werte ganzzahlig, echte Dezimalstellen vollständig erhalten;
+   die kompatible Vorgabe `gemessen` verwendet unverändert die folgende Tabelle. Die
    EBENE bestimmt die Stellen, nie die Fläche: kWh Viertelstunde/Stunde 1, Tag/Monat/Jahr 0; kW 1;
    % 0; m³ 1; kVA 1 (seit 1.2). Bilanz und Netzanschluss rufen `zahl` an. Kaufmännisch, Tausenderpunkt, geschütztes Leerzeichen U+00A0, Minus U+2212, kein Wert
    „—“. TS rundet den Dezimaltext (`dez.ts`), nie den Binärbruch. Export bleibt ungerundet mit

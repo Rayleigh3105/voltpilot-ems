@@ -225,7 +225,7 @@ class BilanzVectorsTest {
                 List.of(summand("MS-11", "740"), summand("MS-13", "315"), summand("MS-14", null))).anzeige();
         assertThat(anzeige).isEqualTo("mindestens 1.055\u00A0kWh (MS-14 fehlt)").doesNotContain("1 055");
         assertThat(NetzanschlussRegeln.kopfzeile("NA-9", new BigDecimal("1200"), null, null).text())
-                .isEqualTo("vereinbart 1.200,0\u00A0kW").doesNotContain("1 200");
+                .isEqualTo("vereinbart 1.200\u00A0kW").doesNotContain("1 200");
     }
 
     /** Die alte Form war ungerundet („1 200,5“): die EBENE bestimmt die Stellen — Tag/Monat ganz, Leistung eine. */
@@ -239,7 +239,7 @@ class BilanzVectorsTest {
                 .isEqualTo("1.200,5\u00A0kWh sind keiner Messstelle zugeordnet");
         assertThat(NetzanschlussRegeln.kopfzeile("NA-1", new BigDecimal("550"), new BigDecimal("630"),
                 new BigDecimal("312.44")).text())
-                .isEqualTo("vereinbart 550,0\u00A0kW · Anschluss 630,0\u00A0kVA · Momentan 312,4\u00A0kW");
+                .isEqualTo("vereinbart 550\u00A0kW · Anschluss 630\u00A0kVA · Momentan 312,4\u00A0kW");
         assertThatThrownBy(() -> BilanzAbleitung.rest("MS-16", "kWh", null, 1, List.of(), e))
                 .as("kWh ohne Ebene hat keine Anzeige (ebene_fehlt)")
                 .isInstanceOf(IllegalArgumentException.class);

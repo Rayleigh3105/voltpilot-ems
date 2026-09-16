@@ -65,7 +65,7 @@
     ],
     "kopfzeile_trenner": " · ",
     "leistung_nachkommastellen": 1,
-    "zahlform": "ergebnis-zustand-vectors.json · rundung (E11): {wert} ist Zahl mit Einheit aus ErgebnisZustand.zahl ⟷ uemsErgebnis.zahl — kW und kVA eine Nachkommastelle"
+    "zahlform": "ergebnis-zustand-vectors.json · rundung (E11): {wert} ist Zahl mit Einheit aus ErgebnisZustand.zahl ⟷ uemsErgebnis.zahl — vereinbart_kw und anschluss_kva mit wertbezug vereinbart (ganzzahlig, echte Dezimalstellen bleiben); momentan_kw gemessen (eine Nachkommastelle)"
   },
   "saetze": {
     "kopfzeile_vereinbart": "vereinbart {wert}",
@@ -119,8 +119,8 @@
       "fall": "F16 · Kopfzeile",
       "feld": "pruefungen[kopfzeile].ergebnis.text",
       "vorlage": "„vereinbart 550 kW · Momentanleistung 312,4 kW“",
-      "statt": "„vereinbart 550,0 kW · Anschluss 630,0 kVA · Momentan 312,4 kW“ mit geschütztem Leerzeichen U+00A0 vor der Einheit",
-      "grund": "Entscheid E11: Leistung eine Nachkommastelle, Tausenderpunkt, U+00A0. kVA ist Anschluss-(Schein-)Leistung und folgt derselben Stelle; ergebnis-zustand-vectors.json führt kVA seit 1.2. Die beschreibenden `anzeige`-Texte bleiben im Wortlaut der Vorlage."
+      "statt": "„vereinbart 550 kW · Anschluss 630 kVA · Momentan 312,4 kW“ mit geschütztem Leerzeichen U+00A0 vor der Einheit",
+      "grund": "E11 ergänzt durch Entscheid B vom 15.09.2026: vereinbarte kW und Anschluss-kVA ganzzahlig, echte Dezimalstellen bleiben; gemessene Leistung eine Nachkommastelle. Tausenderpunkt und U+00A0 bleiben; ergebnis-zustand-vectors.json führt den Wertbezug seit 1.12. Die beschreibenden `anzeige`-Texte bleiben im Wortlaut der Vorlage."
     }
   ],
   "_nicht_geprueft": [
@@ -597,6 +597,20 @@
         },
         {
           "regel": "kopfzeile",
+          "name": "Vereinbarte Dezimalwerte bleiben exakt; die Momentanleistung behält eine Stelle",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550.4500",
+            "anschluss_kva": "630.625",
+            "momentan_kw": "312.44"
+          },
+          "ergebnis": {
+            "text": "vereinbart 550,45 kW · Anschluss 630,625 kVA · Momentan 312,4 kW",
+            "grenze_geprueft": false
+          }
+        },
+        {
+          "regel": "kopfzeile",
           "name": "Die Kopfzeile der Bilanz nennt Vereinbartes, Anschluss und Momentanleistung",
           "eingang": {
             "netzanschluss": "NA-1",
@@ -605,7 +619,7 @@
             "momentan_kw": "312.4"
           },
           "ergebnis": {
-            "text": "vereinbart 550,0 kW · Anschluss 630,0 kVA · Momentan 312,4 kW",
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Momentan 312,4 kW",
             "grenze_geprueft": false
           }
         },
@@ -619,7 +633,7 @@
             "momentan_kw": null
           },
           "ergebnis": {
-            "text": "vereinbart 550,0 kW · Anschluss 630,0 kVA",
+            "text": "vereinbart 550 kW · Anschluss 630 kVA",
             "grenze_geprueft": false
           }
         }
