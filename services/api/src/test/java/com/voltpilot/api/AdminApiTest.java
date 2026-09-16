@@ -755,6 +755,36 @@ class AdminApiTest {
     }
 
     @Test
+    void offboardingDeletionFailureLeavesEnabledOrphanOnBaseline() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Offboarding Fehlerfall", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "offboarding-fehler",
+                "offboarding@fehler.example", "offboarding-pw-123").get("id");
+        String before = token("offboarding-fehler", "offboarding-pw-123");
+        org.mockito.Mockito.doThrow(new IllegalStateException("simulated directory deletion failure"))
+                .when(keycloakAdmin).deleteUser(userId);
+
+        ResponseEntity<Map<String, Object>> report = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("confirmName", "Offboarding Fehlerfall"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(report.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(report.getBody().get("failedUsers")).isEqualTo(List.of("offboarding-fehler"));
+        assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isZero();
+        assertThat(keycloakAdmin.getUser(userId).enabled()).isTrue();
+        String after = token("offboarding-fehler", "offboarding-pw-123");
+        for (String accessToken : List.of(before, after)) {
+            ResponseEntity<Map<String, Object>> me = rest.exchange(url("/api/v1/me"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(accessToken)), new ParameterizedTypeReference<>() {});
+            assertThat(me.getStatusCode()).isEqualTo(HttpStatus.OK);
+            System.out.println("OFFBOARDING_BASELINE_ME=" + me.getBody());
+        }
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("confirmName", "Offboarding Fehlerfall"), bearer(admin)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
     void adminEditsEnablesAndDeletesUsersButNeverTheirOwnAccount() throws Exception {
         String admin = token("admin", "admin");
         String tenantId = (String) createTenant(admin, "Benutzerpflege AG", "CI").get("id");
@@ -3602,7 +3632,7 @@ class AdminApiTest {
         return res.getBody();
     }
 
-    @Autowired
+    @org.springframework.boot.test.mock.mockito.SpyBean
     com.voltpilot.api.admin.KeycloakAdminClient keycloakAdmin;
 
     private Map<String, Object> createUser(String token, String tenantId, String username,
