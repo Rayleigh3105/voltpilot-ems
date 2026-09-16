@@ -7,6 +7,8 @@ import com.voltpilot.api.verbraucher.SteuerartService;
 import com.voltpilot.api.verbraucher.SteuerartWunsch;
 import com.voltpilot.api.verbraucher.VerbraucherService;
 import com.voltpilot.api.web.dto.VerbraucherDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -108,6 +110,7 @@ public class SiteVerbraucherController {
      * Entwurf bleibt gespeichert.
      */
     @PutMapping("/verbraucher/{entityId}/steuerart")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public SteuerartService.Ergebnis setzeSteuerart(@PathVariable UUID siteId,
             @PathVariable UUID entityId, @RequestBody SteuerartWunsch wunsch,
             @AuthenticationPrincipal Jwt jwt) {
@@ -121,6 +124,7 @@ public class SiteVerbraucherController {
      * {@code RanglisteProjektion}).
      */
     @PutMapping("/rangliste")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public VerbraucherDto rangliste(@PathVariable UUID siteId,
             @Valid @RequestBody RanglisteRequest req, @AuthenticationPrincipal Jwt caller) {
         requireSite(siteId);

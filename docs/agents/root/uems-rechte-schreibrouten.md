@@ -8,8 +8,9 @@ Code: `zugriff/Recht`, `zugriff/RechtZiel`, `zugriff/RechtInterceptor` (über `z
 ## Was gilt
 
 - **Jede Kunden-Schreibroute** (POST, PUT, PATCH, DELETE unter `/api/v1/`, nicht `/api/v1/admin/**`) trägt `@Recht`
-  direkt UNTER der Mapping-Zeile oder steht mit Grund in `RechtRoutenArchitekturTest.OHNE_RECHT`. Heute 113 Routen mit
-  `@Recht`, 52 in der Liste (46 Steuerung = IP-7, 4 ohne Matrix-Zeile, 2 öffentlich). Beide Listen sind genau.
+  direkt UNTER der Mapping-Zeile oder steht mit Grund in `RechtRoutenArchitekturTest.OHNE_RECHT`. Seit AP-03 IP-7
+  (`uems-rechte-steuerung.md`) sind es 163 Routen mit `@Recht`; in der Liste stehen nur noch die zwei öffentlichen
+  (Registrierung, Enrollment). Beide Listen sind genau.
 - **`@Recht(value, ziel, variable)`**: die Kennung aus `rechte-matrix.json` (zur Laufzeit `RechteMatrixDatei`) und das
   Objekt, an dessen Standort HEUTE geprüft wird — `UNTERNEHMEN`, `ANLAGE` (`siteId`), `STANDORT` (`standortId`), `ORT`
   (`ortId`), `DEVICE` (`deviceId`), `GERAET` (`id`, Tabelle `geraet`), `MESSSTELLE` (`id`), `BEZUGSGROESSE` (`id`)
@@ -38,9 +39,10 @@ Code: `zugriff/Recht`, `zugriff/RechtZiel`, `zugriff/RechtInterceptor` (über `z
 
 - ⚠ **Neue Schreibroute:** `@Recht` unter die Mapping-Zeile, der Rechte-Kommentar bleibt darüber
   (`RechteKennungenDerRoutenTest` liest die Zeile direkt über dem Mapping). Kein `@Recht` an Lese- oder Admin-Routen.
-- ⚠ **IP-7:** die 46 Steuerungsrouten und die 4 ohne Matrix-Zeile (Simulation, Nutzungsprofil, Preisblatt,
-  Vorschlags-Gedächtnis) aus `OHNE_RECHT` nehmen und annotieren. Bis dahin schreibt ein angenommener Unterstützer dort
-  wie ein Kundenkonto — **IP-8 nicht vor IP-7 ausliefern.**
+- ⚠ **IP-7 ist gebaut** (`uems-rechte-steuerung.md`): die 46 Steuerungsrouten und die 4 ohne eigene Matrix-Zeile
+  (Simulation und Steuerungs-Vorschau = `messwerte.ansehen`, Nutzungsprofil und Vorschlags-Gedächtnis =
+  `betriebsweise.aendern`, Preisblatt = `anlage.verwalten`) tragen ihr Recht. Zwei Rechte in einem Aufruf lösen
+  `DIENST` plus genaue Prüfung im Handler.
 - ⚠ **IP-8:** der Umschalter wird ungeprüft durchgereicht (`Ergebnis.UMSCHALTER`). Stellt IP-8 ihn ab, fällt der Zweig
   in `RechtPruefung.ungeprueft` weg.
 - ⚠ **Neue 404 im Controller:** Wer an einer `MESSSTELLE`-, `BEZUGSGROESSE`- oder `GERAET`-Route die 404 für eine

@@ -149,6 +149,7 @@ public class SiteConsumerController {
 
     /** Store a NEW draft policy version (lifecycle stays draft in Increment 1). */
     @PutMapping("/consumers/{id}/policy")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public PolicyDto putPolicy(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody SavePolicyRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -167,6 +168,7 @@ public class SiteConsumerController {
      * the previously active version stays untouched.
      */
     @PostMapping("/consumers/{id}/policy/activate")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ConsumerPolicyActivationService.ActivationOutcome activatePolicy(
             @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -179,6 +181,7 @@ public class SiteConsumerController {
      * disabled flag must never leave a deployed rule looking stopped.
      */
     @PostMapping("/consumers/{id}/policy/deactivate")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ConsumerPolicyActivationService.StopOutcome deactivatePolicy(
             @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -187,6 +190,7 @@ public class SiteConsumerController {
 
     /** Pause = Gesamtschalter aus + Artefakt-Rückzug → the device failsafe (§11). */
     @PostMapping("/consumers/{id}/pause")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ConsumerPolicyActivationService.StopOutcome pause(
             @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -195,6 +199,7 @@ public class SiteConsumerController {
 
     /** Resume after a pause: re-enable + re-deploy the stored artifact (no compile). */
     @PostMapping("/consumers/{id}/resume")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ConsumerPolicyActivationService.ActivationOutcome resume(
             @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -283,6 +288,7 @@ public class SiteConsumerController {
      * the arbiter's bounded override TTL is the failsafe (§16).
      */
     @PostMapping("/consumers/{id}/override")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public OverrideOutcome startOverride(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody OverrideRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -291,6 +297,7 @@ public class SiteConsumerController {
 
     /** "Automatik fortsetzen" (§14.13): end the manual intervention now. */
     @DeleteMapping("/consumers/{id}/override")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public OverrideOutcome clearOverride(@PathVariable UUID siteId, @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);

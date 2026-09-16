@@ -309,6 +309,8 @@ export interface Intervention {
   endsAt: string;
   createdBy: string | null;
   createdAt: string;
+  /** AP-03 IP-7: wer den Eingriff gesetzt hat; null für einen Eingriff von vor dieser Fassung. */
+  urheber?: ProtokollUrheber | null;
 }
 
 /**
@@ -5185,6 +5187,9 @@ export interface RegisterWriteEvent {
   actorRole: string | null;
   viaTenantSwitcher: boolean;
   requestedAt: string;
+  /** AP-03 IP-7: das Akteur-Vokabular neben `origin`; null im Bestand und an Box-Meldungen. */
+  actorRolle?: string | null;
+  actorArt?: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall' | null;
   beforeRaw: number | null;
   afterRaw: number | null;
   /** DREIWERTIG: null = keine Aussage, false = nicht übernommen, true = übernommen. */
@@ -5319,6 +5324,8 @@ export interface CommandEntry {
    * Zeile ohnehin nicht (das Strom-Wort ist ihm auch unbekannt).
    */
   register?: RegisterWriteEvent | null;
+  /** AP-03 IP-7: wer die Zeile ausgelöst hat (Register-Vorgang, „Jetzt voll laden“); null an abgeleiteten Zeilen. */
+  urheber?: ProtokollUrheber | null;
 }
 
 export interface CommandDetail {

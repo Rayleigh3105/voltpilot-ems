@@ -229,8 +229,8 @@ class BestandsuebernahmeApiTest {
         List<Map<String, Object>> protokoll = protokoll(NORDWIND);
         assertThat(protokoll).hasSize(2);
         assertThat(protokoll).allSatisfy(e -> {
-            assertThat(e.get("akteur_name")).isEqualTo("VoltPilot (Bestandsübernahme)");
-            assertThat(e.get("akteur_sub")).isNull();
+            assertThat(e.get("actor_name")).isEqualTo("VoltPilot (Bestandsübernahme)");
+            assertThat(e.get("actor_sub")).isNull();
             assertThat(e.get("gilt_ab").toString()).isEqualTo(hamburgAb.toString());
         });
         Map<String, Object> standortEintrag = eintrag(protokoll, "standort");
@@ -266,7 +266,7 @@ class BestandsuebernahmeApiTest {
         // Die zwei Einträge der Übernahme (Standort und Zuordnung) gelten ab dem 12.03.2024 —
         // rückwirkend (E2); der dritte am Unternehmen stammt aus V20260911100000.
         assertThat(protokoll(ahrenbergTenant)).hasSize(2).allSatisfy(e -> {
-            assertThat(e.get("akteur_name")).isEqualTo("VoltPilot (Bestandsübernahme)");
+            assertThat(e.get("actor_name")).isEqualTo("VoltPilot (Bestandsübernahme)");
             assertThat(e.get("gilt_ab").toString()).isEqualTo("2024-03-12");
             assertThat(e.get("rueckwirkend")).as("die Übernahme trägt die Vergangenheit nach")
                     .isEqualTo(true);
@@ -367,11 +367,11 @@ class BestandsuebernahmeApiTest {
         JsonNode neu = ok(get("/api/v1/sites/" + site, token, null));
         assertThat(neu.path("standort").path("kurzzeichen").asText()).isEqualTo("ST-1");
         assertThat(neu.path("standort").path("gueltigAb").asText()).isEqualTo(heute.toString());
-        Map<String, Object> eintrag = admin.queryForMap("SELECT art, akteur_name, akteur_sub, gilt_ab, "
+        Map<String, Object> eintrag = admin.queryForMap("SELECT art, actor_name, actor_sub, gilt_ab, "
                 + "rueckwirkend FROM ort_aenderung WHERE objekt_art = 'anlage' AND objekt_id = ?::uuid", site);
         assertThat(eintrag.get("art")).isEqualTo("verschoben");
-        assertThat(eintrag.get("akteur_name")).as("die Person, nicht VoltPilot").isEqualTo("demo2");
-        assertThat(eintrag.get("akteur_sub")).isNotNull();
+        assertThat(eintrag.get("actor_name")).as("die Person, nicht VoltPilot").isEqualTo("demo2");
+        assertThat(eintrag.get("actor_sub")).isNotNull();
         assertThat(eintrag.get("rueckwirkend")).isEqualTo(false);
 
         // W5: löschen geht wie bisher — und die Zuordnung bleibt als beendetes Intervall.
@@ -384,7 +384,7 @@ class BestandsuebernahmeApiTest {
         assertThat(grabstein.get("gueltig_bis").toString()).isEqualTo(heute.toString());
         assertThat(grabstein.get("aufgehoben_am")).isNull();
         Map<String, Object> grabsteinEintrag = admin.queryForMap("SELECT art, alt::text AS alt, "
-                + "neu::text AS neu, akteur_name FROM ort_aenderung WHERE objekt_art = 'anlage' "
+                + "neu::text AS neu, actor_name FROM ort_aenderung WHERE objekt_art = 'anlage' "
                 + "AND objekt_id = ?::uuid AND art = 'geloescht'", site);
         JsonNode alt = json(grabsteinEintrag.get("alt"));
         assertThat(alt.path("anlage_name").asText()).isEqualTo("Nordwind Cuxhaven");
@@ -392,7 +392,7 @@ class BestandsuebernahmeApiTest {
         assertThat(alt.path("gueltig_bis").isNull()).isTrue();
         assertThat(json(grabsteinEintrag.get("neu")).path("gueltig_bis").asText())
                 .isEqualTo(heute.toString());
-        assertThat(grabsteinEintrag.get("akteur_name")).isEqualTo("demo2");
+        assertThat(grabsteinEintrag.get("actor_name")).isEqualTo("demo2");
     }
 
     /** Ohne Standort im Kundenbereich bleibt alles, wie es war: keine Zuordnung, kein Protokoll. */
@@ -526,7 +526,7 @@ class BestandsuebernahmeApiTest {
 
     private List<Map<String, Object>> protokoll(String tenant) {
         return admin.queryForList("SELECT objekt_art, objekt_id, art, alt::text AS alt, neu::text AS neu, "
-                + "gilt_ab, rueckwirkend, akteur_sub, akteur_name FROM ort_aenderung "
+                + "gilt_ab, rueckwirkend, actor_sub, actor_name FROM ort_aenderung "
                 + "WHERE tenant_id = ?::uuid AND objekt_art <> 'unternehmen' ORDER BY id", tenant);
     }
 

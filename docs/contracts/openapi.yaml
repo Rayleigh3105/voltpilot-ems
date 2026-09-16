@@ -2680,6 +2680,10 @@ paths:
                         endsAt: { type: string, format: date-time }
                         createdBy: { type: string, nullable: true }
                         createdAt: { type: string, format: date-time }
+                        urheber:
+                          allOf: [{ $ref: "#/components/schemas/ProtokollUrheber" }]
+                          nullable: true
+                          description: AP-03 IP-7 - wer den Eingriff gesetzt hat, im Akteur-Vokabular; null für einen Eingriff von vor dieser Fassung.
         "404": { description: Anlage nicht gefunden (auch bei fremdem Mandanten). }
   /api/v1/sites/{siteId}/battery-override:
     post:
@@ -12143,6 +12147,16 @@ components:
         outcome: { type: string, nullable: true }
         reason: { type: string, nullable: true, description: "Der deutsche Satz der Box, verbatim." }
         answeredAt: { type: string, format: date-time, nullable: true }
+        actorRolle:
+          type: string
+          nullable: true
+          enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser, unterstuetzer, voltpilot_betrieb, null]
+          description: "AP-03 IP-7: Rolle, unter der geschrieben wurde; null im Bestand und an Box-Meldungen."
+        actorArt:
+          type: string
+          nullable: true
+          enum: [kunde, unterstuetzung, voltpilot, notfall, null]
+          description: "AP-03 IP-7: Akteur-Vokabular neben `origin`; null im Bestand und an Box-Meldungen."
     SelfBuildChannel:
       type: object
       description: >
@@ -13507,6 +13521,13 @@ components:
           description: >
             NUR auf den Zeilen des Stroms `register` gesetzt: der gefaltete
             Vorgang aus dem Journal (Anforderung + Ergebnis).
+        urheber:
+          allOf: [{ $ref: "#/components/schemas/ProtokollUrheber" }]
+          nullable: true
+          description: >
+            AP-03 IP-7: wer die Zeile ausgelöst hat, im Akteur-Vokabular - nur an
+            Zeilen, die ein Mensch auslöst (Register-Vorgang, „Jetzt voll laden“ /
+            „Laden pausieren“). null an abgeleiteten Zeilen und im Bestand.
     RuleEvents:
       type: object
       description: >
@@ -22019,9 +22040,10 @@ components:
     ProtokollUrheber:
       type: object
       description: >
-        Wer den Eintrag geschrieben hat, im Akteur-Vokabular von AP-03. `rolle` und
-        `art` sind null, wo das Journal sie nicht festhaelt (die Eintraege der
-        Ortsstruktur, bis AP-03 IP-7 die Journale vereinheitlicht) - nie geraten.
+        Wer den Eintrag geschrieben hat, im Akteur-Vokabular von AP-03 - dasselbe in
+        Register-Journal, Handeingriff, Befehls-Verlauf und Aenderungsprotokoll (IP-7).
+        `rolle` ist null, wo das Journal sie nicht festhielt (Eintraege der Ortsstruktur
+        von vor IP-7) - nie geraten.
       required: [name, rolle, art]
       properties:
         name: { type: string, example: "Ines Kaltenbach" }

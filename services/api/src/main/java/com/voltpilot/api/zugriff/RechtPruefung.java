@@ -183,6 +183,30 @@ public class RechtPruefung {
     }
 
     /**
+     * Die OCPP-Stufe des Aufrufers an einer Anlage — aus der Zuweisung (AP-03 E13, IP-7): {@code SITE_ADMIN} für
+     * Kundenadministrator und Bedienberechtigt, {@code CUSTOMER} für den Unterstützer mit „Einrichten und Bedienen",
+     * {@code PLATFORM} für VoltPilot, sonst {@code KEINE}. Leer ohne Kontext und am Umschalter: dort gelten die
+     * Realm-Rollen wie vor IP-7 ({@code OcppActionPolicy}). Eine Anlage ohne Standort decken nur unternehmensweite
+     * Zuweisungen (wie {@link #route} sie auflöst).
+     */
+    public Optional<RechteAbleitung.OcppStufe> ocppStufe(UUID siteId) {
+        Zugriff z = ZugriffContext.get();
+        if (ungeprueft(z) != null || siteId == null) {
+            return Optional.empty();
+        }
+        if (!geltungsbereich.siteVisible(siteId)) {
+            return Optional.of(RechteAbleitung.OcppStufe.KEINE);
+        }
+        List<UUID> standorte = jdbc.queryForList(ANLAGE_STANDORT, UUID.class, siteId);
+        String standort = standorte.isEmpty() || standorte.get(0) == null ? OHNE_STANDORT : standorte.get(0).toString();
+        return Optional.of(RechteAbleitung.ocppStufe(benutzer(z), kundenbereich(standort, List.of()), standort,
+                z.stand()).stufe());
+    }
+
+    /** Der Platzhalter-Standort einer Anlage ohne Zuordnung: ihn deckt nur eine unternehmensweite Zuweisung. */
+    private static final String OHNE_STANDORT = "anlage-ohne-standort";
+
+    /**
      * Der Aufrufer als Benutzer der Rechte-Ableitung — für die Dienste, die ihr Urteil selbst sprechen (Kennzahlen,
      * Berichte, Korrekturen). Leer ohne Kontext und am Umschalter: dort bleibt die Festlegung von vor IP-6.
      */
@@ -234,6 +258,7 @@ public class RechtPruefung {
         DarfErgebnis d = RechteAbleitung.darf(RechteMatrixDatei.matrix(), b, kundenbereich(standort, List.of()), kennung,
                 ziel, z.stand());
         if (d.darf()) {
+            ZugriffContext.handelndeRolle(d.rolle());
             return new Urteil(Ergebnis.ERLAUBT, null);
         }
         if (!d.sichtbar()) {
@@ -259,6 +284,7 @@ public class RechtPruefung {
                 DarfErgebnis d = RechteAbleitung.darf(RechteMatrixDatei.matrix(), b, kundenbereich(s, List.of()),
                         kennung, s == null ? Ziel.unternehmen() : Ziel.standort(s), z.stand());
                 if (d.darf()) {
+                    ZugriffContext.handelndeRolle(d.rolle());
                     return new Urteil(Ergebnis.ERLAUBT, null);
                 }
                 if (s != null && standortNein == null) {

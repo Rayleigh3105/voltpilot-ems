@@ -176,12 +176,12 @@ class StandortLesemodellApiTest {
         assertThat(u.get("zeitzone")).isEqualTo("Europe/Berlin");
         assertThat(u.get("created_by")).isNull();
         Map<String, Object> eintrag = admin.queryForMap("SELECT art, gilt_ab, rueckwirkend, "
-                + "akteur_sub, akteur_name, neu::text AS neu FROM ort_aenderung "
+                + "actor_sub, actor_name, neu::text AS neu FROM ort_aenderung "
                 + "WHERE objekt_art = 'unternehmen' AND objekt_id = ?", u.get("id"));
         assertThat(eintrag.get("art")).isEqualTo("angelegt");
         assertThat(eintrag.get("rueckwirkend")).isEqualTo(false);
-        assertThat(eintrag.get("akteur_sub")).isNull();
-        assertThat(eintrag.get("akteur_name")).isEqualTo("VoltPilot");
+        assertThat(eintrag.get("actor_sub")).isNull();
+        assertThat(eintrag.get("actor_name")).isEqualTo("VoltPilot");
         assertThat(eintrag.get("gilt_ab").toString()).isEqualTo(LocalDate.now(BERLIN).toString());
         assertThat((String) eintrag.get("neu")).contains("Kunststoffwerk Ahrenberg GmbH");
 

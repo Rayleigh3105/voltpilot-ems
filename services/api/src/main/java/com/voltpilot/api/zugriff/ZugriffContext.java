@@ -1,9 +1,11 @@
 package com.voltpilot.api.zugriff;
 
+import com.voltpilot.api.uems.RechteAbleitung;
 import com.voltpilot.api.uems.RechteAbleitung.Konto;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -114,6 +116,12 @@ public final class ZugriffContext {
 
     private static final ThreadLocal<Zugriff> CURRENT = new ThreadLocal<>();
 
+    /**
+     * Die Rolle, unter der die Anfrage zuletzt ein Recht bekam (IP-7) — {@link RechtPruefung} setzt sie, der Urheber
+     * eines Protokolleintrags ({@code uems/ProtokollAkteur}) liest sie. Sie lebt und endet mit dem Zugriff.
+     */
+    private static final ThreadLocal<RechteAbleitung.Rolle> HANDELNDE_ROLLE = new ThreadLocal<>();
+
     private ZugriffContext() {
     }
 
@@ -125,7 +133,17 @@ public final class ZugriffContext {
         return CURRENT.get();
     }
 
+    /** {@code null} vergisst sie (ein Recht ohne Rolle: das eigene Konto). */
+    public static void handelndeRolle(RechteAbleitung.Rolle rolle) {
+        HANDELNDE_ROLLE.set(rolle);
+    }
+
+    public static Optional<RechteAbleitung.Rolle> handelndeRolle() {
+        return Optional.ofNullable(HANDELNDE_ROLLE.get());
+    }
+
     public static void clear() {
         CURRENT.remove();
+        HANDELNDE_ROLLE.remove();
     }
 }

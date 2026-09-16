@@ -450,8 +450,8 @@ class UemsStrukturAenderungTest {
     private static long ortAenderung(String objektArt, UUID objekt, String art, String alt, String neu, LocalDate giltAb,
             boolean rueckwirkend, Instant eingetragen) {
         return root.queryForObject("INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, alt, neu, gilt_ab, "
-                + "rueckwirkend, akteur_sub, akteur_name, created_at) VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, "
-                + "'kc-jonas-wendlinger', 'Jonas Wendlinger', ?) RETURNING id", Long.class, KB, objektArt, objekt, art, alt, neu,
+                + "rueckwirkend, actor_sub, actor_name, actor_art, created_at) VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, "
+                + "'kc-jonas-wendlinger', 'Jonas Wendlinger', 'kunde', ?) RETURNING id", Long.class, KB, objektArt, objekt, art, alt, neu,
                 Date.valueOf(giltAb), rueckwirkend, ts(eingetragen));
     }
 

@@ -12,6 +12,8 @@ import com.voltpilot.api.flows.FlowService.LayoutResponse;
 import com.voltpilot.api.flows.FlowService.SaveFlowRequest;
 import com.voltpilot.api.flows.FlowService.ValidationResponse;
 import com.voltpilot.api.flows.FlowTemplateService;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -103,6 +105,7 @@ public class SiteFlowController {
      * {@code gated_node_not_enabled}.
      */
     @PostMapping("/sites/{siteId}/flows/auto-start")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<FlowTemplateService.AutoStartOutcome> autoStart(
             @PathVariable UUID siteId) {
         FlowTemplateService.AutoStartOutcome outcome = flows.autoStart(siteId);
@@ -111,6 +114,7 @@ public class SiteFlowController {
     }
 
     @PostMapping("/sites/{siteId}/flows")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<FlowVersionDto> create(@PathVariable UUID siteId,
             @RequestBody SaveFlowRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(flows.create(siteId, request));
@@ -123,6 +127,7 @@ public class SiteFlowController {
     }
 
     @PutMapping("/sites/{siteId}/flows/{flowId}/versions/{version}")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public FlowVersionDto save(@PathVariable UUID siteId, @PathVariable UUID flowId,
             @PathVariable int version, @RequestBody SaveFlowRequest request) {
         return flows.save(siteId, flowId, version, request);
@@ -140,6 +145,7 @@ public class SiteFlowController {
     }
 
     @PutMapping("/sites/{siteId}/flows/{flowId}/layout")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public LayoutResponse saveLayout(@PathVariable UUID siteId, @PathVariable UUID flowId,
             @RequestBody LayoutRequest request) {
         return flows.saveLayout(siteId, flowId, request);
@@ -156,18 +162,21 @@ public class SiteFlowController {
     }
 
     @DeleteMapping("/sites/{siteId}/flows/{flowId}")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<Void> delete(@PathVariable UUID siteId, @PathVariable UUID flowId) {
         flows.delete(siteId, flowId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/sites/{siteId}/flows/{flowId}/versions/{version}/validate")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ValidationResponse validate(@PathVariable UUID siteId, @PathVariable UUID flowId,
             @PathVariable int version) {
         return flows.validate(siteId, flowId, version);
     }
 
     @PostMapping("/sites/{siteId}/flows/{flowId}/versions/{version}/simulate")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<Map<String, Object>> simulate(@PathVariable UUID siteId,
             @PathVariable UUID flowId, @PathVariable int version) {
         return ResponseEntity.accepted().body(flows.simulate(siteId, flowId, version));
@@ -181,6 +190,7 @@ public class SiteFlowController {
     }
 
     @PostMapping("/sites/{siteId}/flows/{flowId}/versions/{version}/activate")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<Map<String, Object>> activate(@PathVariable UUID siteId,
             @PathVariable UUID flowId, @PathVariable int version) {
         return flows.activate(siteId, flowId, version);
@@ -188,6 +198,7 @@ public class SiteFlowController {
 
     /** Stop a running flow: retire its active version + re-publish the set. */
     @PostMapping("/sites/{siteId}/flows/{flowId}/deactivate")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public Map<String, Object> deactivate(@PathVariable UUID siteId, @PathVariable UUID flowId) {
         return flows.deactivate(siteId, flowId);
     }

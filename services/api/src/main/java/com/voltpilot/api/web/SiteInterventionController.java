@@ -1,10 +1,13 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.web.dto.ProtokollDto;
 import com.voltpilot.api.interventions.DeviceOverrideService;
 import com.voltpilot.api.interventions.DeviceOverrideService.Outcome;
 import com.voltpilot.api.interventions.Handeingriff;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -49,8 +52,9 @@ public class SiteInterventionController {
             BigDecimal setpointKw) {}
 
     /** Eine laufende Handlung, wie die Jetzt-Zone sie rendert. */
+    /** {@code urheber} im Akteur-Vokabular (AP-03 IP-7); {@code null} für einen Eingriff von vor V20260916010000. */
     public record InterventionDto(String kind, UUID entityId, BigDecimal targetValueKw,
-            Instant endsAt, String createdBy, Instant createdAt) {}
+            Instant endsAt, String createdBy, Instant createdAt, ProtokollDto.Urheber urheber) {}
 
     /** Alles, was gerade von Hand gesetzt ist. */
     public record InterventionsDto(boolean automationPaused, Instant pausedUntil,
@@ -82,7 +86,8 @@ public class SiteInterventionController {
                 continue;
             }
             rows.add(new InterventionDto(row.kind(), row.entityId(), row.targetValue(),
-                    row.endsAt(), row.createdBy(), row.createdAt()));
+                    row.endsAt(), row.createdBy(), row.createdAt(), row.actorArt() == null ? null
+                            : new ProtokollDto.Urheber(row.actorName(), row.actorRolle(), row.actorArt())));
         }
         return new InterventionsDto(pausedUntil != null, pausedUntil, rows);
     }
@@ -93,6 +98,7 @@ public class SiteInterventionController {
      * die Box gegen ihre Registry-Guards - nicht diese Route.
      */
     @PostMapping("/battery-override")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public Outcome startBattery(@PathVariable UUID siteId,
             @RequestBody InterventionRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -101,6 +107,7 @@ public class SiteInterventionController {
 
     /** „Automatik fortsetzen" für den Speicher. */
     @DeleteMapping("/battery-override")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public Outcome clearBattery(@PathVariable UUID siteId, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
         return service.clearBattery(siteId, actor(jwt));
@@ -112,6 +119,7 @@ public class SiteInterventionController {
      * sie liegen unterhalb der Arbitrierung.
      */
     @PostMapping("/automation-pause")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public Outcome pause(@PathVariable UUID siteId, @RequestBody InterventionRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -120,6 +128,7 @@ public class SiteInterventionController {
 
     /** „Automatik fortsetzen" für die Anlage. */
     @DeleteMapping("/automation-pause")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public Outcome resume(@PathVariable UUID siteId, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
         return service.resume(siteId, actor(jwt));

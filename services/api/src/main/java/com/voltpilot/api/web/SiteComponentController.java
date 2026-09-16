@@ -271,6 +271,7 @@ public class SiteComponentController {
      * Freigabe - die entsteht erst mit der Bestaetigung des Kunden.
      */
     @PostMapping("/components/custom/{entityId}/switch-test")
+    @Recht(value = "schalttest.durchfuehren", ziel = RechtZiel.ANLAGE)
     public SelfBuildComponentService.SwitchTestResult switchTest(@PathVariable UUID siteId,
             @PathVariable UUID entityId,
             @RequestBody SelfBuildComponentService.SwitchTestRequest request,
@@ -280,6 +281,7 @@ public class SiteComponentController {
 
     /** Bricht den laufenden Test ab und schreibt den Sicherheitswert SOFORT. */
     @PostMapping("/components/custom/{entityId}/switch-test/cancel")
+    @Recht(value = "schalttest.durchfuehren", ziel = RechtZiel.ANLAGE)
     public SelfBuildComponentService.SwitchTestResult switchCancel(@PathVariable UUID siteId,
             @PathVariable UUID entityId,
             @RequestBody SelfBuildComponentService.SwitchTestRequest request,
@@ -289,6 +291,7 @@ public class SiteComponentController {
 
     /** Die Freigabe - nur mit bestandenem Test UND bestaetigter Wirkung. */
     @PostMapping("/components/custom/{entityId}/switch-release")
+    @Recht(value = "freigabe.erteilen", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto switchRelease(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @RequestBody SelfBuildComponentService.SwitchReleaseRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -297,6 +300,7 @@ public class SiteComponentController {
 
     /** Nimmt die Freigabe zurueck - das Geraet ist danach wieder ein Sensor. */
     @DeleteMapping("/components/custom/{entityId}/switch-release")
+    @Recht(value = "freigabe.erteilen", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto switchRevoke(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.switchRevoke(siteId, entityId, subject(jwt));

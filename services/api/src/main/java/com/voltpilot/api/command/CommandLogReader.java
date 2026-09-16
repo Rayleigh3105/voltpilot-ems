@@ -1,5 +1,6 @@
 package com.voltpilot.api.command;
 
+import com.voltpilot.api.web.dto.ProtokollDto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
@@ -268,7 +269,9 @@ public class CommandLogReader {
                         EVENT_REGISTER_WRITE, e.requestedAt(), e.answeredAt(), null, null, null,
                         null, null, null, null, null, null, null, null, null, null, null, null,
                         null, null, e.source(), null,
-                        RegisterWriteEvents.toDto(e)))
+                        RegisterWriteEvents.toDto(e),
+                        e.actorArt() == null ? null
+                                : new ProtokollDto.Urheber(e.actorName(), e.actorRolle(), e.actorArt())))
                 .toList();
     }
 
@@ -282,6 +285,7 @@ public class CommandLogReader {
                 r.entityId() == null ? null : r.entityId().toString(), r.source(),
                 d == null ? null : new CommandDetailDto(d.mismatchRoles(), d.certSource(),
                         d.units(), d.certifiedUnits(), d.state(), d.reasonCode()),
-                null);
+                null, r.actorArt() == null ? null
+                        : new ProtokollDto.Urheber(r.actorName(), r.actorRolle(), r.actorArt()));
     }
 }

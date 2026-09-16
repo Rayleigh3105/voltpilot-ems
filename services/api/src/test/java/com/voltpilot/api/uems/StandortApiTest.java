@@ -233,8 +233,8 @@ class StandortApiTest {
             assertThat(e.get("alt")).isNull();
             assertThat(json(e.get("neu")).get("kurzzeichen").asText()).isEqualTo(st.get("kurzzeichen").asText());
             assertThat(json(e.get("neu")).get("zustand").asText()).isEqualTo("aktiv");
-            assertThat(e.get("akteur_sub")).isEqualTo(adminSub);
-            assertThat(e.get("akteur_name")).isEqualTo("VoltPilot (admin)");
+            assertThat(e.get("actor_sub")).isEqualTo(adminSub);
+            assertThat(e.get("actor_name")).isEqualTo("VoltPilot (admin)");
             assertThat(e.get("rueckwirkend")).isEqualTo(false);
         }
         assertThat(eintraege.get(0).get("gilt_ab").toString()).isEqualTo("2026-10-01");
@@ -578,8 +578,8 @@ class StandortApiTest {
                 String.class, UUID.fromString(id)));
         // Ein Kundenbenutzer steht mit seinem Namen im Protokoll.
         Map<String, Object> e = letzter(mandantA, "standort");
-        assertThat(e.get("akteur_name")).isEqualTo("demo");
-        assertThat(e.get("akteur_sub")).isEqualTo(anspruch("demo").get("sub").asText());
+        assertThat(e.get("actor_name")).isEqualTo("demo");
+        assertThat(e.get("actor_sub")).isEqualTo(anspruch("demo").get("sub").asText());
         long vorher = eintraege(mandantA);
 
         Map<String, Object> b = ausReferenz("ST-1");
@@ -917,7 +917,7 @@ class StandortApiTest {
 
     private static List<Map<String, Object>> protokoll(UUID tenant, String objektArt) {
         return root.queryForList("SELECT objekt_id, art, alt::text AS alt, neu::text AS neu, gilt_ab, rueckwirkend, "
-                + "akteur_sub, akteur_name FROM ort_aenderung WHERE tenant_id = ? AND objekt_art = ? ORDER BY id",
+                + "actor_sub, actor_name FROM ort_aenderung WHERE tenant_id = ? AND objekt_art = ? ORDER BY id",
                 tenant, objektArt);
     }
 

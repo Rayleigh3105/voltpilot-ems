@@ -3,6 +3,7 @@ package com.voltpilot.api.ocpp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.uems.RechteAbleitung;
 import com.voltpilot.api.web.SiteOcppActionController;
 import com.voltpilot.api.web.SiteOcppControlController;
 import com.voltpilot.api.web.SiteOcppController;
@@ -84,16 +85,38 @@ class OcppActionPolicyTest {
         assertThat(neuesKonto).isEqualTo(operator);
     }
 
+    /** AP-03 E13, IP-7: die Stufe aus der Zuweisung ergibt genau die Freigaben der alten Realm-Stufen. */
+    @Test
+    void jedeStufeAusDerZuweisungGibtDieFreigabenIhrerAltenRealmStufe() {
+        assertThat(erlaubteDerStufe(RechteAbleitung.OcppStufe.KEINE)).isEmpty();
+        assertThat(erlaubteDerStufe(RechteAbleitung.OcppStufe.CUSTOMER)).isEqualTo(new TreeSet<>(KUNDE));
+        assertThat(erlaubteDerStufe(RechteAbleitung.OcppStufe.SITE_ADMIN)).isEqualTo(new TreeSet<>(ANLAGE));
+        assertThat(erlaubteDerStufe(RechteAbleitung.OcppStufe.PLATFORM)).isEqualTo(new TreeSet<>(PLATTFORM));
+        for (RechteAbleitung.OcppStufe stufe : RechteAbleitung.OcppStufe.values()) {
+            assertThat(OcppActionPolicy.permissions(stufe).actions().keySet()).as(stufe.name())
+                    .containsExactlyInAnyOrderElementsOf(OcppActionPolicy.ACTIONS);
+        }
+    }
+
+    private static TreeSet<String> erlaubteDerStufe(RechteAbleitung.OcppStufe stufe) {
+        return OcppActionPolicy.permissions(stufe).actions().entrySet().stream().filter(Map.Entry::getValue)
+                .map(Map.Entry::getKey).collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+    }
+
     @Test
     void partnerKontoHatKeineOcppFreigabe() {
         assertThat(erlaubt("ROLE_partner", "KONTO_partner")).isEmpty();
         assertThat(erlaubt()).isEmpty();
     }
 
+    /**
+     * AP-03 IP-7: der grobe Riegel lässt zusätzlich das Partner-Konto durch — in einer angenommenen Unterstützung
+     * entscheiden {@code @Recht} und die Stufe aus der Zuweisung; ohne Unterstützung weist schon der ZugriffFilter ab.
+     */
     @Test
-    void ocppRoutenLassenDasKundenkontoOhneRealmRolleDurchUndSonstNiemandenNeu() {
+    void ocppRoutenLassenKundenkontoUndPartnerKontoDurchUndSonstNiemandenNeu() {
         String erwartet = "hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('"
-                + KeycloakRealmRoleConverter.KONTO_BENUTZER + "')";
+                + KeycloakRealmRoleConverter.KONTO_BENUTZER + "') or hasAuthority('KONTO_partner')";
         assertThat(SiteOcppController.class.getAnnotation(PreAuthorize.class).value()).isEqualTo(erwartet);
         assertThat(SiteOcppControlController.class.getAnnotation(PreAuthorize.class).value()).isEqualTo(erwartet);
         assertThat(SiteOcppActionController.class.getAnnotation(PreAuthorize.class).value()).isEqualTo(erwartet);

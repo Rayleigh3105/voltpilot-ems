@@ -7,6 +7,10 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.uems.ProtokollAkteur;
+import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.repo.RegisterWriteEventRepository;
+import com.voltpilot.api.repo.CommandLogRepository;
 import jakarta.servlet.ServletException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -38,6 +42,8 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.Authentication;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -162,6 +168,15 @@ class RechtMatrixApiTest {
     @Qualifier("requestMappingHandlerMapping")
     RequestMappingHandlerMapping mapping;
 
+    @Autowired
+    ZugriffKontextLader lader;
+
+    @Autowired
+    RegisterWriteEventRepository journal;
+
+    @Autowired
+    CommandLogRepository befehle;
+
     private static JdbcTemplate root;
     private static boolean gesaet;
 
@@ -180,6 +195,12 @@ class RechtMatrixApiTest {
     private static final Person LV = new Person("LV", "Lena Voss", authentication(konto("sub-ahr-voss", null,
             "platform-admin")), KUNDENBEREICH, AHR.toString());
     private static final List<Person> ACHT = List.of(JW, IK, PH, SR, MD, CB, TB, LV);
+
+    /** Der Notfall-Zugriff (E8) und der Umschalter (W3) — für das Akteur-Vokabular der Journale (IP-7). */
+    private static final Person NF = new Person("NF", "VoltPilot-Support (Notfall-Zugriff)",
+            authentication(konto("sub-ahr-notfall", null, "platform-admin")), KUNDENBEREICH, AHR.toString());
+    private static final Person VP = new Person("VP", "VoltPilot am Umschalter",
+            authentication(konto("sub-ahr-plattform", null, "platform-admin")), "X-Tenant-Id", AHR.toString());
 
     /** Bearbeiter in Werk Lindach UND Leser in Werk Ahrenberg — für die genaue Prüfung im Körper. */
     private static final Person GEMISCHT = kunde("GM", "Bearbeiter ST-2 + Leser ST-1", "sub-ahr-gemischt");
@@ -282,9 +303,22 @@ class RechtMatrixApiTest {
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {
+        pruefeZeilen(zeilen(), "Gruppen 1–3");
+    }
+
+    /**
+     * Gruppe 4 — alles, was STEUERT (IP-7): Handeingriffe, Betriebsweise, Ladepunkt-Betrieb, Schalt-Test, Freigabe,
+     * Grenze, Register, Prognose. Dieselbe Mechanik wie die Gruppen 1–3, kein zweiter Weg.
+     */
+    @Test
+    void jeMatrixZeileDerGruppeVierUrteilenDieAchtPersonen() throws Exception {
+        pruefeZeilen(zeilenSteuerung(), "Gruppe 4 — Steuerung");
+    }
+
+    private void pruefeZeilen(List<Zeile> zeilen, String titel) throws Exception {
         List<String> abweichungen = new ArrayList<>();
         Map<String, String> tabelle = new LinkedHashMap<>();
-        for (Zeile z : zeilen()) {
+        for (Zeile z : zeilen) {
             StringBuilder ist = new StringBuilder();
             for (int i = 0; i < ACHT.size(); i++) {
                 Person p = ACHT.get(i);
@@ -300,7 +334,8 @@ class RechtMatrixApiTest {
             }
             tabelle.put(z.kennungen() + "  " + z.methode() + " " + z.pfad(), ist.toString());
         }
-        System.out.println("Rechte je Zeile (JW IK PH SR MD CB TB LV; e erlaubt · 3 recht_fehlt · 4 außerhalb):");
+        System.out.println("Rechte je Zeile " + titel + " (JW IK PH SR MD CB TB LV; e erlaubt · 3 recht_fehlt · "
+                + "4 außerhalb):");
         tabelle.forEach((k, v) -> System.out.println("  " + v + "  " + k));
         assertThat(abweichungen).as("Abweichungen von der Matrix").isEmpty();
     }
@@ -449,7 +484,7 @@ class RechtMatrixApiTest {
             }
         }
         System.out.println("Bestand: Routen mit @Recht = " + routen.size() + ", bis zum Handler je Konto: " + zaehler);
-        assertThat(routen).hasSizeGreaterThanOrEqualTo(113);
+        assertThat(routen).hasSizeGreaterThanOrEqualTo(163);
         assertThat(abweichungen).as("heutige Konten, die eine Route mit @Recht nicht mehr erreichen").isEmpty();
     }
 
@@ -484,6 +519,345 @@ class RechtMatrixApiTest {
                 .replace("{ortId}", G1.toString())
                 .replace("{deviceId}", d1.toString());
         return p.replaceAll("\\{[^}]+}", FREMD.toString());
+    }
+
+    // ------------------------------------------------------------------ 6. Gruppe 4 — die Steuerung (IP-7)
+
+    /**
+     * Die Zeilen der Gruppe 4 mit den Routen, die sie tragen — 50 Schreibwege, die an einer realen Anlage eingreifen.
+     * Muster der Erwartung (JW IK PH SR MD CB TB LV): {@code betrieb} = „Betrieb im Rahmen" (E4), {@code rahmen} =
+     * Sache des Kundenadministrators, {@code einrichten} = auch der Unterstützer ab „Einrichten".
+     */
+    private static List<Zeile> zeilenSteuerung() {
+        List<Zeile> z = new ArrayList<>();
+        String betrieb = "e344e3e3";            // U - - S - B -
+        String ladepunktBetrieb = "e344e3ee";   // U - - S - B P
+        String einrichten = "e34433e3";         // U - - - - Ei -
+        String einrichtenP = "e34433ee";        // U - - - - Ei P
+        String rahmen = "e344333e";             // U - - - - - P
+        String s1 = "/api/v1/sites/{A1}";
+        // Handeingriffe — Zone Jetzt (Dauer Pflicht, TTL ≤ 24 h)
+        z.add(new Zeile("handeingriff.setzen", HttpMethod.POST, s1 + "/automation-pause", betrieb));
+        z.add(new Zeile("handeingriff.setzen", HttpMethod.DELETE, s1 + "/automation-pause", betrieb));
+        z.add(new Zeile("handeingriff.setzen", HttpMethod.POST, s1 + "/battery-override", betrieb));
+        z.add(new Zeile("handeingriff.setzen", HttpMethod.DELETE, s1 + "/battery-override", betrieb));
+        z.add(new Zeile("handeingriff.setzen", HttpMethod.POST, s1 + "/consumers/{FREMD}/override", betrieb));
+        z.add(new Zeile("handeingriff.setzen", HttpMethod.DELETE, s1 + "/consumers/{FREMD}/override", betrieb));
+        z.add(new Zeile("handeingriff.setzen", HttpMethod.POST, s1 + "/charging-boost", betrieb));
+        // Betriebsweise — Betriebsmodell, Regeln, Steuerart, Rangliste
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/consumers/{FREMD}/pause", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/consumers/{FREMD}/resume", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/consumers/{FREMD}/policy/activate", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/consumers/{FREMD}/policy/deactivate", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/consumers/{FREMD}/policy", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/flows/auto-start", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/flows", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/flows/{FREMD}/versions/1", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/flows/{FREMD}/layout", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.DELETE, s1 + "/flows/{FREMD}", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/flows/{FREMD}/versions/1/validate", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/flows/{FREMD}/versions/1/simulate", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/flows/{FREMD}/versions/1/activate", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.POST, s1 + "/flows/{FREMD}/deactivate", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/charging-config/charge-points/cp-1/source",
+                betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/rangliste", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/verbraucher/{FREMD}/steuerart", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/profiles", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/anwendungs-preset", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/profile", betrieb));
+        z.add(new Zeile("betriebsweise.aendern", HttpMethod.PUT, s1 + "/suggestion-states/k-1", betrieb));
+        // Ladekarten, Fahrzeuge, OCPP-Betriebsaktionen — die Plattform behält ihre Stufe (P)
+        z.add(new Zeile("ladepunkt.betrieb", HttpMethod.PUT, s1 + "/fahrzeuge/t-1", ladepunktBetrieb));
+        z.add(new Zeile("ladepunkt.betrieb", HttpMethod.DELETE, s1 + "/fahrzeuge/t-1", ladepunktBetrieb));
+        z.add(new Zeile("ladepunkt.betrieb", HttpMethod.POST, s1 + "/ocpp/stations/cp-1/action-intents",
+                ladepunktBetrieb));
+        z.add(new Zeile("ladepunkt.betrieb", HttpMethod.POST, s1 + "/ocpp/stations/cp-1/actions", ladepunktBetrieb));
+        z.add(new Zeile("ladepunkt.betrieb", HttpMethod.DELETE, s1 + "/ocpp/actions/{FREMD}", ladepunktBetrieb));
+        // Anbinden, Schalt-Test, Messen einrichten — der Unterstützer bereitet vor
+        z.add(new Zeile("ladepunkt.anbinden", HttpMethod.POST, s1 + "/charging-config/charge-points", einrichten));
+        z.add(new Zeile("ladepunkt.anbinden", HttpMethod.DELETE, s1 + "/charging-config/charge-points/cp-1",
+                einrichten));
+        z.add(new Zeile("schalttest.durchfuehren", HttpMethod.POST, s1 + "/components/custom/{FREMD}/switch-test",
+                einrichten));
+        z.add(new Zeile("schalttest.durchfuehren", HttpMethod.POST,
+                s1 + "/components/custom/{FREMD}/switch-test/cancel", einrichten));
+        z.add(new Zeile("funktion.messen_einrichten", HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/messen",
+                "ee4433e3"));
+        // Register schreiben — Vorschau und Schreiben, beide mit Journal
+        z.add(new Zeile("register.schreiben", HttpMethod.POST, s1 + "/register-write", einrichtenP));
+        z.add(new Zeile("register.schreiben", HttpMethod.POST, s1 + "/register-write/preview", einrichtenP));
+        // Rahmen — Freigabe, OCPP-Regelung, Preisblatt
+        z.add(new Zeile("freigabe.erteilen", HttpMethod.POST, s1 + "/components/custom/{FREMD}/switch-release",
+                rahmen));
+        z.add(new Zeile("freigabe.erteilen", HttpMethod.DELETE, s1 + "/components/custom/{FREMD}/switch-release",
+                rahmen));
+        z.add(new Zeile("freigabe.erteilen", HttpMethod.PUT, s1 + "/ocpp/control", rahmen));
+        z.add(new Zeile("anlage.verwalten", HttpMethod.PUT, s1 + "/supply-price", rahmen));
+        z.add(new Zeile("prognose.befoerdern", HttpMethod.POST, s1 + "/forecast-models", "ee44333e"));
+        // Was nichts an der Anlage ändert, hängt am Lese-Recht (Vorschau und Ersparnis-Simulation)
+        z.add(new Zeile("messwerte.ansehen", HttpMethod.POST, s1 + "/steuerung-vorschau", "ee44eeee"));
+        z.add(new Zeile("messwerte.ansehen", HttpMethod.POST, s1 + "/simulation", "ee44eeee"));
+        // Zwei Rechte in einem Aufruf: die Vorprüfung „irgendwo", die genaue Prüfung im Handler
+        String steuern = "steuerung.starten_beenden|steuerung.anhalten_fortsetzen";
+        z.add(new Zeile(steuern, HttpMethod.PUT, s1 + "/funktionen/steuern", "e333e3e3"));
+        z.add(new Zeile(steuern, HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/steuern", "e333e3e3"));
+        z.add(new Zeile("grenze.eintragen|betriebsweise.aendern", HttpMethod.PUT, s1 + "/charging-config",
+                "e333e3ee"));
+        return z;
+    }
+
+    /** Zeilen der Gruppe 4 ohne eigene Route — und warum. */
+    private static final Map<String, String> OHNE_SCHREIBROUTE_STEUERUNG = Map.of(
+            "funktion.steuern_einrichten", "zusammengesetzt: Anlage aufnehmen = steuerung.starten_beenden, Freigeben "
+                    + "= freigabe.erteilen, Grenze = grenze.eintragen, Betriebsweise = betriebsweise.aendern",
+            "grenze.eintragen", "im Rumpf von PUT /charging-config (genaue Prüfung je Feld)",
+            "steuerung.starten_beenden", "im Rumpf von PUT …/funktionen/steuern (genaue Prüfung je Aktion)",
+            "steuerung.anhalten_fortsetzen", "im Rumpf von PUT …/funktionen/steuern (genaue Prüfung je Aktion)");
+
+    /** Jede Zeile der Gruppe 4 hat eine Route oben oder einen Grund. */
+    @Test
+    void jedeZeileDerGruppeVierIstAbgedeckt() throws Exception {
+        JsonNode datei = MAPPER.readTree(getClass().getClassLoader().getResourceAsStream(RechteMatrixDatei.PFAD));
+        Set<String> abgedeckt = new java.util.TreeSet<>();
+        zeilenSteuerung().forEach(z -> abgedeckt.addAll(List.of(z.kennungen().split("\\|"))));
+        List<String> offen = new ArrayList<>();
+        for (JsonNode a : datei.path("aktionen")) {
+            String k = a.path("kennung").asText();
+            if ("steuerung".equals(a.path("gruppe").asText()) && !abgedeckt.contains(k)
+                    && !OHNE_SCHREIBROUTE_STEUERUNG.containsKey(k)) {
+                offen.add(k);
+            }
+        }
+        assertThat(offen).as("Zeilen der Gruppe 4 ohne Route und ohne Grund").isEmpty();
+    }
+
+    /**
+     * Die andere Richtung des Bestandsnachweises: ein Konto, dessen Zelle in JEDER Kennung der Route „-" ist, kommt
+     * an KEINER Steuerungsroute durch — geprüft an allen Routen der Gruppe 4 aus dem Handler-Mapping, nicht an einer
+     * Liste von Hand.
+     */
+    @Test
+    void keinKontoOhneSteuerrechtKommtAnEinerSteuerungsrouteDurch() throws Exception {
+        JsonNode datei = MAPPER.readTree(getClass().getClassLoader().getResourceAsStream(RechteMatrixDatei.PFAD));
+        Map<String, JsonNode> aktionen = new HashMap<>();
+        for (JsonNode a : datei.path("aktionen")) {
+            aktionen.put(a.path("kennung").asText(), a);
+        }
+        record Ohne(Person person, String rolle) {}
+        List<Ohne> ohne = List.of(new Ohne(CB, "leser"), new Ohne(IK, "energiemanager"));
+        List<String> durch = new ArrayList<>();
+        int geprueft = 0;
+        for (Map.Entry<RequestMappingInfo, HandlerMethod> e : mapping.getHandlerMethods().entrySet()) {
+            Recht recht = e.getValue().getMethodAnnotation(Recht.class);
+            if (recht == null || !List.of(recht.value()).stream()
+                    .allMatch(k -> "steuerung".equals(aktionen.get(k).path("gruppe").asText()))) {
+                continue;
+            }
+            for (Ohne o : ohne) {
+                if (List.of(recht.value()).stream()
+                        .anyMatch(k -> !"-".equals(aktionen.get(k).path("zellen").path(o.rolle()).asText()))) {
+                    continue;
+                }
+                for (String muster : e.getKey().getPatternValues()) {
+                    for (RequestMethod m : e.getKey().getMethodsCondition().getMethods()) {
+                        String typ = e.getKey().getConsumesCondition().getConsumableMediaTypes().stream().findFirst()
+                                .map(Object::toString).orElse(MediaType.APPLICATION_JSON_VALUE);
+                        MvcResult r = ruf(HttpMethod.valueOf(m.name()), bestandPfad(muster), o.person(), true, "{}",
+                                typ);
+                        geprueft++;
+                        if (r.getResponse().getStatus() != 403
+                                || !"recht_fehlt".equals(r.getRequest().getAttribute(RechtInterceptor.URTEIL))) {
+                            durch.add(o.person().kurz() + " " + m + " " + muster + ": " + r.getResponse().getStatus()
+                                    + " " + r.getRequest().getAttribute(RechtInterceptor.URTEIL));
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println("Ohne Steuerrecht geprüft: " + geprueft + " Aufrufe");
+        assertThat(durch).as("Steuerungsrouten, an denen ein Konto ohne Steuerrecht durchkommt").isEmpty();
+        assertThat(geprueft).isGreaterThanOrEqualTo(80);
+    }
+
+    /**
+     * E13: die OCPP-Stufe kommt aus der Zuweisung, nicht mehr aus der Realm-Rolle. Bedienberechtigt hat dieselbe
+     * Stufe wie der Kundenadministrator (E4), der Unterstützer mit „Einrichten und Bedienen" die Kunden-Stufe,
+     * Energiemanager und Leser keine (Achsentrennung); die Plattform bleibt PLATTFORM.
+     */
+    @Test
+    void dieOcppStufeKommtAusDerZuweisungUndNichtMehrAusDerRealmRolle() throws Exception {
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, "
+                + "'aktiv') ON CONFLICT DO NOTHING", AHR, "sub-ahr-bestand-nie", "nie zugewiesen");
+        Set<String> kunde = Set.of("RemoteStartTransaction", "RemoteStopTransaction", "UnlockConnector");
+        Set<String> anlage = new java.util.TreeSet<>(kunde);
+        anlage.addAll(Set.of("ReserveNow", "CancelReservation", "GetCompositeSchedule", "ChangeAvailability",
+                "SoftReset", "GetConfiguration", "ChangeConfiguration", "ClearCache", "GetLocalListVersion",
+                "SendLocalList", "TriggerMessage"));
+        Set<String> plattform = new java.util.TreeSet<>(anlage);
+        plattform.addAll(Set.of("HardReset", "GetDiagnostics", "UpdateFirmware", "DataTransfer"));
+        record Stufe(Person person, Set<String> freigaben, int status) {}
+        List<Stufe> stufen = List.of(
+                new Stufe(JW, anlage, 200),
+                new Stufe(IK, Set.of(), 200),
+                new Stufe(PH, Set.of(), 404),
+                new Stufe(SR, Set.of(), 404),
+                new Stufe(MD, anlage, 200),
+                new Stufe(CB, Set.of(), 200),
+                new Stufe(TB, kunde, 200),
+                new Stufe(LV, plattform, 200),
+                new Stufe(VP, plattform, 200),
+                new Stufe(new Person("BN", "Kundenkonto ohne je eine Zuweisung",
+                        authentication(konto("sub-ahr-bestand-nie", AHR))), anlage, 200));
+        Map<String, String> tabelle = new LinkedHashMap<>();
+        for (Stufe s : stufen) {
+            MvcResult r = ruf(HttpMethod.GET, "/api/v1/sites/" + A1 + "/ocpp/action-permissions", s.person(), false,
+                    null);
+            assertThat(r.getResponse().getStatus()).as(s.person().kurz()).isEqualTo(s.status());
+            if (s.status() != 200) {
+                tabelle.put(s.person().kurz(), "404");
+                continue;
+            }
+            Set<String> erlaubt = new java.util.TreeSet<>();
+            MAPPER.readTree(r.getResponse().getContentAsString(StandardCharsets.UTF_8)).path("actions").fields()
+                    .forEachRemaining(f -> {
+                        if (f.getValue().asBoolean()) {
+                            erlaubt.add(f.getKey());
+                        }
+                    });
+            assertThat(erlaubt).as(s.person().kurz()).isEqualTo(new java.util.TreeSet<>(s.freigaben()));
+            tabelle.put(s.person().kurz(), erlaubt.size() + " Aktionen");
+        }
+        System.out.println("OCPP-Stufen je Person: " + tabelle);
+    }
+
+    /**
+     * A3 und A11: die Energiemanagerin pflegt Messdaten und steuert nicht; der Bedienberechtigte bedient und rahmt
+     * nicht. Mit echtem Handler — was 200 sagt, steht hinterher auch im Journal.
+     */
+    @Test
+    void a3UndA11BedienberechtigtBedientUndRahmtNicht() throws Exception {
+        String anlage = "/api/v1/sites/" + A1;
+        assertRechtFehlt(ruf(HttpMethod.POST, anlage + "/automation-pause", IK, false, "{\"durationMinutes\":30}"),
+                "handeingriff.setzen");
+        MvcResult pause = ruf(HttpMethod.POST, anlage + "/automation-pause", MD, false, "{\"durationMinutes\":30}");
+        assertThat(pause.getResponse().getStatus())
+                .as(pause.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo(200);
+        assertThat(root.queryForMap("SELECT actor_sub, actor_name, actor_rolle, actor_art FROM consumer_audit_event "
+                + "WHERE site_id = ? AND event_type = 'automation_paused' ORDER BY id DESC LIMIT 1", A1))
+                .containsEntry("actor_sub", "sub-ahr-murat").containsEntry("actor_rolle", "bedienberechtigt")
+                .containsEntry("actor_art", "kunde");
+        assertThat(ruf(HttpMethod.DELETE, anlage + "/automation-pause", MD, false, null).getResponse().getStatus())
+                .isEqualTo(200);
+
+        MvcResult freigabe = ruf(HttpMethod.POST, anlage + "/components/custom/" + FREMD + "/switch-release", MD,
+                false, "{}");
+        assertRechtFehlt(freigabe, "freigabe.erteilen");
+        assertThat(MAPPER.readTree(freigabe.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .path("rolle_noetig").asText()).isEqualTo("kundenadministrator");
+        assertRechtFehlt(ruf(HttpMethod.PUT, anlage + "/charging-config", MD, false, "{\"gridLimitKw\":200}"),
+                "grenze.eintragen");
+        assertRechtFehlt(ruf(HttpMethod.PUT, anlage + "/ocpp/control", MD, false, "{\"revision\":0}"),
+                "freigabe.erteilen");
+        assertRechtFehlt(ruf(HttpMethod.PUT, anlage + "/funktionen/steuern", MD, false, "{\"aktion\":\"starten\"}"),
+                "steuerung.starten_beenden");
+        assertThat(ruf(HttpMethod.PUT, anlage + "/funktionen/steuern", MD, false, "{\"aktion\":\"anhalten\"}")
+                .getResponse().getStatus()).as("anhalten ist Betrieb im Rahmen (E4)").isNotEqualTo(403);
+    }
+
+    /**
+     * Ein Eintrag je Art in allen vier Protokollen (IP-7): Änderungsprotokoll und Handeingriff über ihre Routen,
+     * Register-Journal und Befehls-Verlauf über ihren Schreibweg — beide reichen seit jeher nur das Subject weiter,
+     * der Urheber kommt aus dem Zugriff der Anfrage ({@code ProtokollAkteur.angemeldetAls}).
+     */
+    @Test
+    void jedesProtokollTraegtDenUrheberJeArt() throws Exception {
+        record Akteur(String art, Person person, Authentication auth, String kopf, UUID tenant, String rolle,
+                String origin, String rolleAlt) {}
+        List<Akteur> arten = List.of(
+                new Akteur("kunde", JW, konto("sub-ahr-jonas", AHR), null, AHR, "kundenadministrator", "kunde",
+                        "operator"),
+                new Akteur("unterstuetzung", TB, konto("sub-ahr-brunner", null, "partner"), AHR.toString(), null,
+                        "unterstuetzer", "kunde", "operator"),
+                new Akteur("voltpilot", VP, konto("sub-ahr-plattform", null, "platform-admin"), null, AHR,
+                        "voltpilot_betrieb", "voltpilot", "platform-admin"),
+                new Akteur("notfall", NF, konto("sub-ahr-notfall", null, "platform-admin"), AHR.toString(), null,
+                        "unterstuetzer", "voltpilot", "platform-admin"));
+        for (Akteur a : arten) {
+            MvcResult angelegt = ruf(HttpMethod.POST, "/api/v1/standorte/" + S1 + "/orte", a.person(), false,
+                    "{\"art\":\"gebaeude\",\"name\":\"Akteur " + a.art() + "\"}");
+            assertThat(angelegt.getResponse().getStatus())
+                    .as(a.art() + ": " + angelegt.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                    .isEqualTo(201);
+            String ort = MAPPER.readTree(angelegt.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                    .path("id").asText();
+            JsonNode protokoll = MAPPER.readTree(ruf(HttpMethod.GET, "/api/v1/orte/" + ort + "/aenderungen", JW,
+                    false, null).getResponse().getContentAsString(StandardCharsets.UTF_8));
+            assertThat(protokoll.at("/eintraege/0/urheber/art").asText()).as(a.art() + " Änderungsprotokoll")
+                    .isEqualTo(a.art());
+            assertThat(protokoll.at("/eintraege/0/urheber/rolle").asText()).as(a.art() + " Rolle")
+                    .isEqualTo(a.rolle());
+
+            MvcResult pause = ruf(HttpMethod.POST, "/api/v1/sites/" + A1 + "/automation-pause", a.person(), false,
+                    "{\"durationMinutes\":30}");
+            assertThat(pause.getResponse().getStatus())
+                    .as(a.art() + ": " + pause.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                    .isEqualTo(200);
+            assertThat(root.queryForMap("SELECT actor_rolle, actor_art FROM consumer_audit_event WHERE site_id = ? "
+                    + "AND event_type = 'automation_paused' ORDER BY id DESC LIMIT 1", A1))
+                    .as(a.art() + " Handeingriff-Journal")
+                    .containsEntry("actor_rolle", a.rolle()).containsEntry("actor_art", a.art());
+            assertThat(root.queryForMap("SELECT actor_rolle, actor_art FROM device_override WHERE site_id = ? "
+                    + "AND entity_id IS NULL", A1)).as(a.art() + " laufender Handeingriff")
+                    .containsEntry("actor_rolle", a.rolle()).containsEntry("actor_art", a.art());
+
+            alsAnfrage(a.auth(), a.kopf(), a.tenant(), () -> {
+                ProtokollAkteur wer = ProtokollAkteur.angemeldetAls(((Jwt) a.auth().getPrincipal()).getSubject())
+                        .orElseThrow();
+                assertThat(wer.art()).as(a.art() + " ProtokollAkteur").isEqualTo(a.art());
+                assertThat(wer.rolle()).as(a.art() + " Rolle").isEqualTo(a.rolle());
+                journal.recordRequest(new RegisterWriteEventRepository.Request("rw-" + a.art(), "portal", A1, d1,
+                        "ahr-box-1", "primaer", null, "Halle 1 · Register 40001", "holding", 40001, 6, "40001", "1",
+                        null, 1, null, null, "unbekannt", null, a.origin(), wer.sub(), wer.name(), a.rolleAlt(),
+                        false, Instant.now(), wer.rolle(), wer.art()));
+                befehle.appendEvent(A1, d1, null, "ladepunkt", "voll_laden_erteilt", Instant.now(), Instant.now(),
+                        wer);
+            });
+        }
+        JsonNode verlauf = MAPPER.readTree(ruf(HttpMethod.GET, "/api/v1/sites/" + A1 + "/command-history", JW, false,
+                null).getResponse().getContentAsString(StandardCharsets.UTF_8));
+        Set<String> imRegister = new java.util.TreeSet<>();
+        Set<String> imVerlauf = new java.util.TreeSet<>();
+        for (JsonNode e : verlauf.path("entries")) {
+            if (e.hasNonNull("register")) {
+                imRegister.add(e.at("/register/actorArt").asText());
+            } else if (e.hasNonNull("urheber")) {
+                imVerlauf.add(e.at("/urheber/art").asText());
+            }
+        }
+        assertThat(imRegister).as("Register-Journal")
+                .containsExactlyInAnyOrder("kunde", "unterstuetzung", "voltpilot", "notfall");
+        assertThat(imVerlauf).as("Befehls-Verlauf")
+                .containsExactlyInAnyOrder("kunde", "unterstuetzung", "voltpilot", "notfall");
+        ruf(HttpMethod.DELETE, "/api/v1/sites/" + A1 + "/automation-pause", JW, false, null);
+    }
+
+    /** Eine Anfrage wie im Filterlauf: Anmeldung, Kundenbereich, Zugriff — und hinterher alles wieder abgeräumt. */
+    private void alsAnfrage(Authentication auth, String kopf, UUID tenant, Runnable arbeit) {
+        SecurityContextHolder.getContext().setAuthentication(auth);
+        if (tenant != null) {
+            TenantContext.set(tenant);
+        }
+        try {
+            ZugriffKontextLader.Ergebnis e = lader.laden(auth, kopf);
+            assertThat(e.zugriff()).as("Zugriff der Anfrage").isNotNull();
+            ZugriffContext.set(e.zugriff());
+            arbeit.run();
+        } finally {
+            ZugriffContext.clear();
+            TenantContext.clear();
+            SecurityContextHolder.clearContext();
+        }
     }
 
     // ------------------------------------------------------------------ Anfragen
@@ -623,6 +997,12 @@ class RechtMatrixApiTest {
         unterstuetzung("sub-ahr-brunner", "installateur", "einrichten_und_bedienen");
         spiegel("sub-ahr-voss", "plattform", "Lena Voss");
         unterstuetzung("sub-ahr-voss", "voltpilot", "ansehen");
+        // Der Notfall-Zugriff (E8): 23 Stunden, ohne Enddatum-Tag, nur mit Zeitpunkt.
+        spiegel("sub-ahr-notfall", "plattform", "VoltPilot-Support");
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, art, umfang, gueltig_ab, "
+                + "endet_am, zeitzone) VALUES (?, 'sub-ahr-notfall', 'unterstuetzer', ?, 'notfall', "
+                + "'einrichten_und_bedienen', now() - interval '1 hour', now() + interval '23 hours', "
+                + "'Europe/Berlin')", AHR, S1);
         spiegel("sub-ahr-gemischt", "benutzer", "Gemischt");
         zuweisung("sub-ahr-gemischt", "bearbeiter", S2, frueher);
         zuweisung("sub-ahr-gemischt", "leser", S1, frueher);

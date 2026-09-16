@@ -96,7 +96,7 @@ public record CommandHistoryDto(Instant recordingSince, int accuracySeconds, Ins
             Double commandedKwMax, String verdict, Integer cycles, Integer cyclesConfirmed,
             Integer cyclesNoAnswer, Integer cyclesMismatch, Boolean controlEnabled,
             Boolean released, Boolean foreignInfluence, String entityId, String source,
-            CommandDetailDto detail, RegisterWriteEventDto register) {
+            CommandDetailDto detail, RegisterWriteEventDto register, ProtokollDto.Urheber urheber) {
     }
 
     /**

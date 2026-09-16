@@ -5,6 +5,9 @@ import com.voltpilot.api.uems.FunktionAbgelehnt;
 import com.voltpilot.api.uems.FunktionService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.FunktionDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
@@ -29,8 +32,11 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link FunktionService}, die Regel {@code FunktionZustandAbleitung}; Starten und Fortsetzen prüfen die Liste in
  * derselben Transaktion erneut (R1/R2).
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die Mandanten-RLS —
- * eine fremde Anlage und ein fremder Standort sind 404 {@code nicht_gefunden}, nie 403. Ein 409 nennt den Grund
+ * <p><b>Rechte (AP-03 IP-7):</b> {@code @Recht} an jeder Schreibroute — Starten und Beenden sind Rahmen
+ * (Kundenadministrator), Anhalten und Fortsetzen Betrieb (Bedienberechtigt je Standort, Unterstützer „Einrichten und
+ * Bedienen"). Welche der beiden Kennungen gilt, sagt erst die Aktion im Körper: der Interceptor prüft vor, ob der
+ * Aufrufer eine davon irgendwo hat, {@link RechtPruefung#pruefen} hier genau an der Anlage bzw. am Standort. Eine
+ * fremde Anlage und ein fremder Standort bleiben 404 {@code nicht_gefunden}, nie 403. Ein 409 nennt den Grund
  * des Vertrags (bei offener Prüfliste mit {@code fehlt} und {@code wege}); das ist keine Zugriffs-Ablehnung.
  * Jede Route nennt im Kommentar ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}.
  *
@@ -41,9 +47,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class FunktionController {
 
     private final FunktionService dienst;
+    private final RechtPruefung recht;
 
-    public FunktionController(FunktionService dienst) {
+    public FunktionController(FunktionService dienst, RechtPruefung recht) {
         this.dienst = dienst;
+        this.recht = recht;
     }
 
     /** Recht: heute lesend — keine eigene Kennung (wie das Standort-Lesemodell). */
@@ -54,32 +62,57 @@ public class FunktionController {
 
     /**
      * Recht: {@code steuerung.starten_beenden} für starten und beenden, {@code steuerung.anhalten_fortsetzen} für
-     * anhalten und fortsetzen — eingetragen, nicht durchgesetzt.
+     * anhalten und fortsetzen — durchgesetzt je Aktion an der Anlage (AP-03 IP-7).
      */
     @PutMapping("/api/v1/sites/{siteId}/funktionen/steuern")
+    @Recht(value = {STARTEN_BEENDEN, ANHALTEN_FORTSETZEN}, ziel = RechtZiel.DIENST)
     public FunktionDto.SteuernErgebnis steuernAnlage(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
-        return dienst.steuernAnlage(siteId, aktion(body), akteur(auth));
+        String aktion = aktion(body);
+        pruefeSteuern(aktion, RechtZiel.ANLAGE, siteId);
+        return dienst.steuernAnlage(siteId, aktion, akteur(auth));
     }
 
     /**
      * Recht: {@code steuerung.anhalten_fortsetzen} für anhalten und fortsetzen, {@code steuerung.starten_beenden}
-     * für beenden — eingetragen, nicht durchgesetzt.
+     * für beenden — durchgesetzt je Aktion am Standort (AP-03 IP-7).
      */
     @PutMapping("/api/v1/standorte/{standortId}/funktionen/steuern")
+    @Recht(value = {STARTEN_BEENDEN, ANHALTEN_FORTSETZEN}, ziel = RechtZiel.DIENST)
     public FunktionDto.SteuernErgebnis steuernStandort(@PathVariable UUID standortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
-        return dienst.steuernStandort(standortId, aktion(body), akteur(auth));
+        String aktion = aktion(body);
+        pruefeSteuern(aktion, RechtZiel.STANDORT, standortId);
+        return dienst.steuernStandort(standortId, aktion, akteur(auth));
     }
 
     /**
-     * Recht: {@code funktion.messen_einrichten} — eingetragen, nicht durchgesetzt. Legt „Messen &amp; Auswerten“ des
+     * Recht: {@code funktion.messen_einrichten} — durchgesetzt am Standort (AP-03 IP-7). Legt „Messen &amp; Auswerten“ des
      * Standorts im Entwurf an (AP-01 IP-9a, Schritt 1 des Assistenten); ein zweites Mal ist 409.
      */
     @PutMapping("/api/v1/standorte/{standortId}/funktionen/messen")
+    @Recht(value = "funktion.messen_einrichten", ziel = RechtZiel.STANDORT)
     public FunktionDto.MessenErgebnis messenStandort(@PathVariable UUID standortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return dienst.messenStandort(standortId, aktion(body), akteur(auth));
+    }
+
+    private static final String STARTEN_BEENDEN = "steuerung.starten_beenden";
+    private static final String ANHALTEN_FORTSETZEN = "steuerung.anhalten_fortsetzen";
+
+    /**
+     * Die genaue Prüfung je Aktion (AP-03 §4.3): starten/beenden = Rahmen, anhalten/fortsetzen = Betrieb. Eine
+     * unbekannte oder fehlende Aktion prüft nichts — der Dienst lehnt sie mit 400 ab, ohne zu schreiben.
+     */
+    private void pruefeSteuern(String aktion, RechtZiel ziel, UUID id) {
+        String kennung = aktion == null ? null : switch (aktion) {
+            case "starten", "beenden" -> STARTEN_BEENDEN;
+            case "anhalten", "fortsetzen" -> ANHALTEN_FORTSETZEN;
+            default -> null;
+        };
+        if (kennung != null) {
+            recht.pruefen(kennung, ziel, id, () -> FunktionAbgelehnt.nichtGefunden("Nicht gefunden."));
+        }
     }
 
     /** Die Aktion aus {@code {"aktion": "…"}}; {@code null}, wenn die Anfrage nicht genau so aussieht. */

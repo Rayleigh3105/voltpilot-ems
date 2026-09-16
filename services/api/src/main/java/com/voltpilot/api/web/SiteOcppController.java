@@ -23,8 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/ocpp")
-// AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter)
-@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer')")
+// AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter).
+// AP-03 IP-7: or a partner account in an accepted Unterstützung (KONTO_partner) — the gate is coarse; @Recht and the
+// level from the Zuweisung decide (a partner without Unterstützung never gets past ZugriffFilter: 404).
+@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer') "
+        + "or hasAuthority('KONTO_partner')")
 public class SiteOcppController {
     private final Geltungsbereich geltungsbereich;
     private final OcppRepository ocpp;
@@ -88,7 +91,7 @@ public class SiteOcppController {
     @GetMapping("/action-permissions")
     public OcppDto.ActionPermissions permissions(@PathVariable UUID siteId, Authentication auth) {
         requireSite(siteId);
-        return policy.permissions(auth);
+        return policy.permissions(auth, siteId);
     }
 
     private void requireSite(UUID siteId) {

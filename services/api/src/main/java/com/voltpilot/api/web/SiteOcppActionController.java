@@ -4,6 +4,8 @@ import com.voltpilot.api.ocpp.OcppActionPolicy;
 import com.voltpilot.api.ocpp.OcppActionService;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.OcppActionDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -25,8 +27,11 @@ import org.springframework.web.server.ResponseStatusException;
 /** Write boundary for the complete OCPP 1.6 CSMS action surface. */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/ocpp")
-// AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter)
-@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer')")
+// AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter).
+// AP-03 IP-7: or a partner account in an accepted Unterstützung (KONTO_partner) — the gate is coarse; @Recht and the
+// level from the Zuweisung decide (a partner without Unterstützung never gets past ZugriffFilter: 404).
+@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer') "
+        + "or hasAuthority('KONTO_partner')")
 public class SiteOcppActionController {
     private final Geltungsbereich geltungsbereich;
     private final OcppActionPolicy policy;
@@ -37,19 +42,21 @@ public class SiteOcppActionController {
     }
 
     @PostMapping("/stations/{chargePointId}/action-intents")
+    @Recht(value = "ladepunkt.betrieb", ziel = RechtZiel.ANLAGE)
     @ResponseStatus(HttpStatus.CREATED)
     public OcppActionDto.Intent intent(@PathVariable UUID siteId, @PathVariable String chargePointId,
             @Valid @RequestBody OcppActionDto.IntentRequest request, Authentication auth) {
-        requireSite(siteId); requireAllowed(auth, request.action());
+        requireSite(siteId); requireAllowed(auth, siteId, request.action());
         return service.intent(siteId, chargePointId, request, actor(auth));
     }
 
     @PostMapping("/stations/{chargePointId}/actions")
+    @Recht(value = "ladepunkt.betrieb", ziel = RechtZiel.ANLAGE)
     @ResponseStatus(HttpStatus.CREATED)
     public OcppActionDto.Action create(@PathVariable UUID siteId, @PathVariable String chargePointId,
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @Valid @RequestBody OcppActionDto.ActionRequest request, Authentication auth) {
-        requireSite(siteId); requireAllowed(auth, request.action());
+        requireSite(siteId); requireAllowed(auth, siteId, request.action());
         return service.create(siteId, chargePointId, request, key, actor(auth));
     }
 
@@ -71,6 +78,7 @@ public class SiteOcppActionController {
     }
 
     @DeleteMapping("/actions/{actionId}")
+    @Recht(value = "ladepunkt.betrieb", ziel = RechtZiel.ANLAGE)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancel(@PathVariable UUID siteId, @PathVariable UUID actionId, Authentication auth) {
         requireSite(siteId); service.cancel(siteId, actionId, actor(auth));
@@ -79,8 +87,9 @@ public class SiteOcppActionController {
     private void requireSite(UUID siteId) {
         geltungsbereich.requireSite(siteId);
     }
-    private void requireAllowed(Authentication auth, String action) {
-        if (!policy.allowed(auth, action)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+    /** The level from the Zuweisung at this site (AP-03 E13, IP-7); without access context the realm roles. */
+    private void requireAllowed(Authentication auth, UUID siteId, String action) {
+        if (!policy.allowed(auth, siteId, action)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                 "Für diese OCPP-Aktion fehlt die serverseitige Berechtigung.");
     }
     private static String actor(Authentication auth) { return auth == null ? "unknown" : auth.getName(); }

@@ -1,9 +1,11 @@
 package com.voltpilot.api.registerwrite;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.RegisterWriteEventRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
+import java.util.Optional;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
@@ -339,13 +341,16 @@ public class RegisterWriteService {
         }
         // ERST veröffentlichen, DANN protokollieren - ab hier ist der Vorgang
         // aktenkundig, auch wenn diese api gleich abstürzt.
+        Optional<ProtokollAkteur> urheber = ProtokollAkteur.angemeldetAls(actor.subject());
         journal.recordRequest(new RegisterWriteEventRepository.Request(
                 requestId, RegisterWriteEventRepository.SOURCE_PORTAL, siteId, device.id(),
                 device.externalRef(), lane, cmd.entityId(), targetLabel,
                 kind, address, cmd.writeFc(), cmd.addressInput().trim(), cmd.valueInput().trim(),
                 note, value, cmd.expectedBefore(), known.label(), known.clazz(),
                 known.scaleNote(value), actor.origin(), actor.subject(), actor.name(),
-                actor.role(), actor.platformAdmin(), requestedAt));
+                actor.role(), actor.platformAdmin(), requestedAt,
+                // Das Akteur-Vokabular (AP-03 IP-7) neben der bisherigen Herkunft.
+                urheber.map(ProtokollAkteur::rolle).orElse(null), urheber.map(ProtokollAkteur::art).orElse(null)));
 
         RegisterWriteResult result;
         try {
