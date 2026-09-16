@@ -326,6 +326,15 @@ public class TenantRepository {
                         if (result.next() && result.getObject(1) != null) deleteByTenant(con, "bezugsdaten_import_freigabe", tenantId);
                     }
                 }
+                // AP-09 IP-17: vor Komponenten/Bezugsgrößen, auch gegen ältere Migrationsstände aufrufbar.
+                for (String table : new String[] {"bezugsgroesse_kanallauf", "bezugsgroesse_kanalbindung"}) {
+                    try (var probe = con.prepareStatement("SELECT to_regclass(?)")) {
+                        probe.setString(1, "public." + table);
+                        try (var result = probe.executeQuery()) {
+                            if (result.next() && result.getObject(1) != null) deleteByTenant(con, table, tenantId);
+                        }
+                    }
+                }
                 for (String table : new String[] {
                         "bezugsdaten_import_zeile", "bezugsdaten_import", "bezugsdaten_vorlage_bezug",
                         "bezugsdaten_vorlage",

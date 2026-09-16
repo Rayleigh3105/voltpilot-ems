@@ -69,7 +69,7 @@ public class BezugsgroesseRepository {
             String freigeberName,
             String freigeberRolle,
             String freigeberArt,
-            Instant createdAt) {}
+            Instant createdAt, String kanalHerkunft) {}
 
     private static final String SPALTEN = "b.id, b.kennzeichen, b.name, b.wertart, b.einheit, b.periode_art, "
             + "b.geltung_art, coalesce(b.unternehmen_id, b.standort_id, b.ort_id, b.prozess_id, b.kostenstelle_id, "
@@ -278,7 +278,7 @@ public class BezugsgroesseRepository {
      * berührt; ein Stand, wenn sein Tag in SEINER Zone ({@code zeitzone}) darin liegt.
      */
     public List<WertZeile> werte(UUID id, LocalDate von, LocalDate bis) {
-        StringBuilder sql = new StringBuilder("SELECT w.* FROM bezugsgroesse_wert w WHERE w.bezugsgroesse_id = ?");
+        StringBuilder sql = new StringBuilder("SELECT w.*, to_jsonb(w)->>'kanal_herkunft' AS kanal_fakten FROM bezugsgroesse_wert w WHERE w.bezugsgroesse_id = ?");
         List<Object> args = new ArrayList<>(List.of(id));
         if (von != null) {
             sql.append(" AND coalesce(w.periode_bis, (w.zeitpunkt AT TIME ZONE w.zeitzone)::date) >= ?");
@@ -312,7 +312,7 @@ public class BezugsgroesseRepository {
                 rs.getString("freigeber_name"),
                 rs.getString("freigeber_rolle"),
                 rs.getString("freigeber_art"),
-                instant(rs, "created_at")), args.toArray());
+                instant(rs, "created_at"), rs.getString("kanal_fakten")), args.toArray());
     }
 
     /** Ein Protokolleintrag; {@code gilt_ab} und die Eintragszeit setzt die Datenbank (jetzt, nicht rückwirkend). */

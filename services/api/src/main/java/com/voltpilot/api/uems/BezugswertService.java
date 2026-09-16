@@ -81,6 +81,8 @@ public class BezugswertService {
     private final ObjectMapper json;
     @org.springframework.beans.factory.annotation.Autowired
     private ImportUebernahmeRepository importAuftraege;
+    @org.springframework.beans.factory.annotation.Autowired
+    private KanalbindungService kanalbindungen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public BezugswertService(BezugsgroesseRepository bezugsgroessen, BezugswertRepository werte,
@@ -196,6 +198,7 @@ public class BezugswertService {
         bezugsgroessen.kundenbereichSperren(tenant);
         Zeile b = bezugsgroessen.finde(v.bezugsgroesseId())
                 .orElseThrow(() -> KorrekturFreigabeAbgelehnt.von(KorrekturFreigabeAbgelehnt.Ablehnung.NICHT_GEFUNDEN));
+        if (kanalbindungen != null) kanalbindungen.eingabePruefen(b.id(), v.periodeVon(), v.periodeBis(), ZoneId.of(v.zeitzone()));
         Stand s = stand(b.id(), v.periodeVon());
         if (s.wirksamerBetrag() == null || !Objects.equals(s.wirksameFassung(), v.ersetztFassung())) {
             throw KorrekturFreigabeAbgelehnt.von(KorrekturFreigabeAbgelehnt.Ablehnung.GLEICHZEITIG);
@@ -223,6 +226,7 @@ public class BezugswertService {
                 : BezugsdatenRegeln.periode(periodeText, null, null, DEUTUNG, b.periodeArt(), zone, jetzt);
         LocalDate von = p == null || p.befund() != null ? null : LocalDate.ofInstant(p.von(), zone);
         LocalDate bis = von == null ? null : LocalDate.ofInstant(p.bis(), zone).minusDays(1);
+        if (kanalbindungen != null) kanalbindungen.eingabePruefen(b.id(), von, bis, zone);
         String text = wertText == null ? null : wertText.strip();
         return new Gelesen(zone, p, von, bis, BezugsdatenRegeln.zahl(text, FORMAT, ganzzahlig(b.einheit())), text);
     }

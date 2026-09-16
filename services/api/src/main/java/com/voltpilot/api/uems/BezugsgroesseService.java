@@ -54,6 +54,8 @@ public class BezugsgroesseService {
 
     private static final TypeReference<List<String>> TEXTE = new TypeReference<>() {};
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private KanalbindungService kanalbindungen;
     private final BezugsgroesseRepository repo;
     private final BezugsflaecheLesemodell bezugsflaechen;
     private final BezugswertRepository berichtigungen;
@@ -161,6 +163,16 @@ public class BezugsgroesseService {
         return true;
     }
 
+    private long bedeutungFest(UUID id) {
+        return Math.max(repo.werteZahl(id), kanalbindungen != null && kanalbindungen.hatBindungen(id) ? 1 : 0);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode kanalHerkunft(String text) {
+        if (text == null) return null;
+        try { return new com.fasterxml.jackson.databind.ObjectMapper().readTree(text); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException(e); }
+    }
+
     private BezugsgroesseDto.Fassung fassung(WertZeile w, String stand, ZoneId zone) {
         return new BezugsgroesseDto.Fassung(w.fassung(), w.vorgang(), w.status(), stand, text(w.betrag()),
                 w.ersetztFassung(), w.begruendung(), kennzeichen(w.kennzeichenJson()),
@@ -169,7 +181,7 @@ public class BezugsgroesseService {
                 new BezugsgroesseDto.Person(w.actorName(), w.actorRolle(), w.actorArt()),
                 w.freigeberName() == null ? null
                         : new BezugsgroesseDto.Person(w.freigeberName(), w.freigeberRolle(), w.freigeberArt()),
-                w.createdAt().atZone(zone).toOffsetDateTime());
+                w.createdAt().atZone(zone).toOffsetDateTime(), kanalHerkunft(w.kanalHerkunft()));
     }
 
     /** Die offene Berichtigung als Form — Betrag, Begründung, Ersteller und wann sie vorgeschlagen wurde. */
@@ -387,7 +399,7 @@ public class BezugsgroesseService {
             repo.kundenbereichSperren(tenant);
             Zeile b = repo.sperre(id).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
             Entwurf bestand = entwurf(b);
-            pruefe(BezugsgroesseRegeln.aendern(bestand, neu, b.archiviertAm() != null, repo.werteZahl(id),
+            pruefe(BezugsgroesseRegeln.aendern(bestand, neu, b.archiviertAm() != null, bedeutungFest(id),
                     repo.vokabular(), BezugsgroesseRegeln.GELTUNG_WAEHLBAR, repo.belegtVonAnderen(id)));
             UUID geltung = geltungDa(neu);
             Map<String, Object> alt = felder(bestand);
@@ -431,6 +443,8 @@ public class BezugsgroesseService {
         UUID tenant = TenantContext.get();
         schreibe(() -> transaktion.execute(s -> {
             Zeile b = repo.sperre(id).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+            if (kanalbindungen != null && kanalbindungen.hatBindungen(id))
+                throw new KanalbindungFehler(422,"kanalbindung_vorhanden","Die Bezugsgröße hat eine Kanalbindung. Sie kann archiviert werden.");
             pruefe(BezugsgroesseRegeln.loeschen(repo.werteZahl(id)));
             repo.loeschen(id);
             repo.protokoll(tenant, id, "geloescht", alsJson(felder(entwurf(b))), null, wer);

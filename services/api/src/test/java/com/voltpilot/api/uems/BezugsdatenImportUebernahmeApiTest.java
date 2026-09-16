@@ -291,6 +291,19 @@ class BezugsdatenImportUebernahmeApiTest {
         assertThat(status.at("/vorlage/name").asText()).isEqualTo("ERP-Export Spritzguss");
     }
 
+    @Test void kanalbindungSperrtAuchDieCsvUebernahmeMitBenanntemGrund() throws Exception {
+        Welt w=welt();
+        UUID b=root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id=?",UUID.class,w.mandant());
+        UUID site=root.queryForObject("INSERT INTO site(tenant_id,name) VALUES (?,'Werk') RETURNING id",UUID.class,w.mandant());
+        UUID entity=root.queryForObject("INSERT INTO measurement_point(tenant_id,site_id,role,label) VALUES (?,?,'grid-meter','Produktionszähler') RETURNING id",UUID.class,w.mandant(),site);
+        Instant von=java.time.YearMonth.parse(monat).atDay(1).atStartOfDay(java.time.ZoneId.of("Europe/Berlin")).toInstant();
+        root.update("INSERT INTO bezugsgroesse_kanalbindung (tenant_id,bezugsgroesse_id,entity_id,kanal,wertart,einheit,kadenz_s,von,actor_name,actor_art) VALUES (?,?,?,'produktion_kg','counter','kg',60,?,'Test','voltpilot')",w.mandant(),b,entity,java.sql.Timestamp.from(von));
+        JsonNode antwort=importieren(w,csv("312.400,0","kg"),Map.of(),null,null,422);
+        assertThat(antwort.path("code").asText()).isEqualTo("kanal_gebunden");
+        assertThat(anzahl(w,"bezugsgroesse_wert")).isZero();
+        assertThat(anzahl(w,"bezugsdaten_import")).isZero();
+    }
+
     private String csv(String betrag,String einheit) { return "Periode;Menge;Einheit\n"+monat+";"+betrag+";"+einheit+"\n"; }
     private Welt welt() {
         UUID t=root.queryForObject("INSERT INTO tenant(name) VALUES ('IP13') RETURNING id",UUID.class);
