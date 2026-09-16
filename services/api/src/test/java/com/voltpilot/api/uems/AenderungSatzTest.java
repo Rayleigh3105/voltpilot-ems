@@ -32,6 +32,15 @@ class AenderungSatzTest {
         return AenderungSatz.satz(bezugArt, art, j(alt), j(neu), null);
     }
 
+    @Test
+    void rollenProtokollNenntDenWertUndSeinenVorgaenger() {
+        String alt = "{\"rolle\":\"pv\",\"wert\":{\"art\":\"messkanal\",\"capability\":\"pv_power_kw\",\"name\":\"pv_power_kw\"}}";
+        String neu = "{\"rolle\":\"pv\",\"wert\":{\"art\":\"gesamtwert\",\"name\":\"Dach West\"}}";
+        assertThat(satz("anlage", "rolle_gesetzt", alt, neu)).isEqualTo("PV-Produktion: „Dach West“ statt „PV-Leistung“");
+        assertThat(satz("anlage", "rolle_gesetzt", null, neu)).isEqualTo("PV-Produktion: „Dach West“ zugeordnet");
+        assertThat(satz("anlage", "rolle_entzogen", neu, null)).isEqualTo("PV-Produktion entzogen: „Dach West“");
+    }
+
     // ---- Die Messstellen-Einträge (messstelle_aenderung) --------------------------------------
 
     @Test

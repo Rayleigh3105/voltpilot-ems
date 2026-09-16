@@ -1,0 +1,124 @@
+.vp-summen-head,
+.vp-summen-zeile {
+  display: flex;
+  gap: var(--vp-c-space-3);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+.vp-summen-head {
+  flex-wrap: wrap;
+  margin-bottom: var(--vp-c-space-4);
+}
+.vp-summen-head h3 {
+  font-size: 16px;
+  margin: 0;
+}
+.vp-summen-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.vp-summen-zeile {
+  padding: var(--vp-c-space-4) 0;
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-summen-inhalt {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.vp-summen-inhalt strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.vp-summen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--vp-c-muted-fg);
+  font-size: 12px;
+  margin-top: 8px;
+}
+.vp-summen-chip {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 99px;
+  padding: 2px 9px;
+  color: var(--vp-c-fg);
+}
+.vp-summen-dialog {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.vp-summen-dialog p {
+  margin: 0;
+}
+.vp-summen-rollen {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.vp-summen-rollen legend {
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.vp-summen-rollen label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius-sm);
+}
+.vp-summen-rollen label:has(input:checked) {
+  border-color: var(--vp-c-primary);
+  background: var(--vp-c-bg);
+}
+.vp-summen-rollen label:has(input:disabled) {
+  opacity: 0.65;
+}
+.vp-summen-rollen span {
+  min-width: 0;
+}
+.vp-summen-rollen span span,
+.vp-summen-rollen small {
+  display: block;
+  font-size: 13px;
+  margin-top: 4px;
+  color: var(--vp-c-muted-fg);
+}
+.vp-summen-ersatz {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.vp-summen-formelterm {
+  border: 1px solid var(--vp-c-border);
+  padding: 12px;
+  border-radius: var(--vp-c-radius-sm);
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-summen-formelterm > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.vp-summen-formelterm input {
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 480px) {
+  .vp-summen-head {
+    align-items: flex-start;
+  }
+  .vp-summen-zeile {
+    align-items: flex-start;
+  }
+}

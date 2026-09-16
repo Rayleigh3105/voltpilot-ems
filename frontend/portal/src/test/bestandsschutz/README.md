@@ -31,6 +31,11 @@ auf dem ursprünglichen UEMS-Bezugsstand fehlte dieser Fix noch. Diese eine Aufn
 die eingefügte PV-Karte; der übrige HTML-Inhalt und die zehn anderen Aufnahmen sind bytegleich
 zum ursprünglichen Bezugsstand. Dies ist ein Nachzug ausgelieferten Verhaltens, keine AP-13-Änderung.
 
+**H-7 (E9/E10, entschieden 16.09.2026):** Die Geräteaufnahme ersetzt die bisherige
+PV-Karte durch „Summenwerte dieses Geräts“. Der neue API-Leseweg ist in der Fixture
+explizit leer; Anlegen und Protokoll sind nach den wirksamen Rechten sichtbar. Das
+ist die beschlossene Änderung dieser Fläche, keine Neuaufnahme anderer Zahlen.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.

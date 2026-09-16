@@ -1507,7 +1507,9 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
     const verwendeteFortschreibungen = new Set<(typeof kundenBestand.fortschreibungen)[number]>();
     let zahl = 0;
     for (const [pfad, vorher] of Object.entries(kundenBestand.bedienelemente)) {
-      const datei = ts.createSourceFile(pfad, readFileSync(join(SRC, pfad), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const nachfolger = kundenBestand.fortschreibungen.find(f => f.datei === pfad && 'nachher_datei' in f);
+      const quellpfad = nachfolger && 'nachher_datei' in nachfolger ? String(nachfolger.nachher_datei) : pfad;
+      const datei = ts.createSourceFile(quellpfad, readFileSync(join(SRC, quellpfad), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
       const jetzt: string[] = [];
       const besuche = (knoten: ts.Node) => {
         if (ts.isJsxElement(knoten) || ts.isJsxSelfClosingElement(knoten)) {

@@ -23,6 +23,7 @@ export type ProtokollZiel =
   | { art: 'messstelle'; id: string }
   | { art: 'geraet'; id: string }
   | { art: 'ort'; id: string }
+  | { art: 'anlage'; id: string }
   | { art: 'standort'; id: string }
   | { art: 'unternehmen' };
 
@@ -51,6 +52,7 @@ export interface ProtokollState {
 function lade(ziel: ProtokollZiel, f: ProtokollAbfrage): Promise<Protokoll> {
   if (ziel.art === 'messstelle') return api.messstelleAenderungen(ziel.id, f);
   if (ziel.art === 'geraet') return api.geraetAenderungen(ziel.id, f);
+  if (ziel.art === 'anlage') return api.anlageAenderungen(ziel.id, f);
   if (ziel.art === 'ort') return api.ortAenderungen(ziel.id, f);
   if (ziel.art === 'standort') return api.standortAenderungen(ziel.id, f);
   return api.unternehmenAenderungen(f);

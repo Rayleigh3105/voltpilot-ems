@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Achse;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Filter;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Zeiger;
@@ -55,11 +56,12 @@ public class AenderungsprotokollService {
     private final OrtAenderungRepository ortAenderungen;
     private final StandortLesemodellService lesemodell;
     private final ObjectMapper json;
+    private final Geltungsbereich geltungsbereich;
 
     public AenderungsprotokollService(AenderungsprotokollRepository protokolle,
             MessstelleRepository messstellen, GeraetRepository geraete, OrtRepository orte,
             StandortRepository standorte, OrtAenderungRepository ortAenderungen,
-            StandortLesemodellService lesemodell, ObjectMapper json) {
+            StandortLesemodellService lesemodell, ObjectMapper json, Geltungsbereich geltungsbereich) {
         this.protokolle = protokolle;
         this.messstellen = messstellen;
         this.geraete = geraete;
@@ -68,6 +70,7 @@ public class AenderungsprotokollService {
         this.ortAenderungen = ortAenderungen;
         this.lesemodell = lesemodell;
         this.json = json;
+        this.geltungsbereich = geltungsbereich;
     }
 
     /**
@@ -107,6 +110,11 @@ public class AenderungsprotokollService {
     /** Das Protokoll des ganzen Unternehmens — Messstellen, Quellen, Einstellungen, Orte, Anlagen. */
     public ProtokollDto.Protokoll unternehmen(Anfrage a) {
         return antwort(protokolle.fuerUnternehmen(filter(a)), a);
+    }
+
+    public ProtokollDto.Protokoll anlage(UUID id, Anfrage a) {
+        geltungsbereich.requireSite(id);
+        return antwort(protokolle.fuerAnlage(id, filter(a)), a);
     }
 
     /** Das Protokoll EINES Gebäudes oder Bereichs (AP-02 IP-14, H2). Ein fremder Ort ist 404. */

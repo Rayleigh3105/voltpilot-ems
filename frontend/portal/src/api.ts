@@ -2238,7 +2238,15 @@ export interface RollenKanonischerWert {
 }
 
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
+export type SummenwertRolle = 'pv' | 'consumer' | 'grid';
+export interface GeraetSummenwert {
+  messstelle: Messstelle;
+  rolle: SummenwertRolle | null;
+  wert: MessstelleWert;
+}
+
 export interface BerechneteMessstelleAnlegen {
+  rolle?: { entity_id: string; role: SummenwertRolle; ersetzen?: boolean };
   name: string;
   terme: Array<{
     eingang_art: 'messkanal' | 'messstelle' | 'verteilung';
@@ -7809,6 +7817,17 @@ export const api = {
    * Der maßgebliche Rollen-Wert EINES Geräts (Konzept vp-agg „verwenden als",
    * PR 758); `zugeordnet == null` = keine Zuordnung.
    */
+  geraetSummenwerte: (siteId: string, entityId: string) =>
+    request<GeraetSummenwert[]>(`/api/v1/sites/${siteId}/komponenten/${entityId}/summenwerte`),
+  anlageRolleZuordnen: (siteId: string, role: SummenwertRolle, id: string, ersetzen = false) =>
+    request<{ geraete: GeraetRolle[] }>(`/api/v1/sites/${siteId}/rollen/${role}`, {
+      method: 'PUT', body: JSON.stringify({ art: 'gesamtwert', quell_messstelle_id: id, ersetzen }),
+    }),
+  rolleEntziehen: (siteId: string, entityId: string, role: SummenwertRolle) =>
+    request<RollenZuordnungAntwort>(`/api/v1/sites/${siteId}/komponenten/${entityId}/rollen/${role}`, { method: 'DELETE' }),
+  anlageAenderungen: (siteId: string, f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/sites/${siteId}/aenderungen${protokollFrage(f)}`),
+
   geraetRolle: (siteId: string, entityId: string, role: string) =>
     request<GeraetRolle>(`/api/v1/sites/${siteId}/komponenten/${entityId}/rollen/${role}`),
 

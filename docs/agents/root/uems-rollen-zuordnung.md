@@ -5,8 +5,9 @@ Autorität: [Vertrag](../../contracts/v2/rollen-zuordnung.md),
 [Schema](../../contracts/v2/rollen-zuordnung.schema.json).
 Zwillinge `services/api/.../uems/RollenZuordnungRegeln.java` und
 `frontend/portal/src/uemsRollen.ts`. Die API-Laufzeit ruft den Java-Zwilling über `topology/RollenZuordnungService`
-und `RollenQuellen` auf. H-3 liest die drei Rollen im Cockpit; H-5/H-7 ergänzen
-Assistent und Karten.
+und `RollenQuellen` auf. H-3 liest die drei Rollen im Cockpit; H-5 ergänzt den
+Assistenten. [H-7/H-8/H-10](uems-summenwerte-geraetekarte.md) bauen Gerätekarte,
+Rollen-Dialog und atomare Anlage.
 
 - Kanalidentität vor der Regel aus Capability/Formel-Term auf dieselbe
   Komponente + denselben Punkt auflösen; `enthaelt` rekursiv vollständig,

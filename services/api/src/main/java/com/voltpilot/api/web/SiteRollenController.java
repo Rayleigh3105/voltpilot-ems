@@ -2,6 +2,9 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.topology.RollenZuordnungService;
 import com.voltpilot.api.topology.RollenKonflikt;
+import com.voltpilot.api.uems.MessstelleFormelService;
+import com.voltpilot.api.web.dto.MessstelleFormelDto;
+import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import com.voltpilot.api.web.dto.RollenDto;
@@ -30,9 +33,18 @@ import org.springframework.web.server.ResponseStatusException;
 public class SiteRollenController {
 
     private final RollenZuordnungService rollen;
+    private final MessstelleFormelService formeln;
 
-    public SiteRollenController(RollenZuordnungService rollen) {
+    public SiteRollenController(RollenZuordnungService rollen, MessstelleFormelService formeln) {
         this.rollen = rollen;
+        this.formeln = formeln;
+    }
+
+    // Recht: keine eigene Kennung — lesend über RLS und Geltungsbereich.
+    @GetMapping("/komponenten/{entityId}/summenwerte")
+    public List<MessstelleFormelDto.GeraetSummenwert> summenwerte(
+            @PathVariable UUID siteId, @PathVariable UUID entityId) {
+        return formeln.summenwerte(siteId, entityId);
     }
 
     /** Der massgebliche Rollen-Wert eines Geraets ({@code zugeordnet == null} = keine Zuordnung). */

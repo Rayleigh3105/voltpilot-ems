@@ -105,6 +105,71 @@ class MessstelleFormelApiTest {
         TenantContext.clear();
     }
 
+    @Test
+    void anlegenMitRolleIstAtomarUndEinFehlerLaesstKeineMessstelleZurueck() throws Exception {
+        Welt w = welt();
+        var anfrage = anlegen("PV gemeinsam", term(w, PV1), term(w, PV2));
+        anfrage.put("rolle", Map.of("entity_id", w.komponente(), "role", "pv"));
+        JsonNode neu = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", anfrage), 201);
+        assertThat(root.queryForObject("SELECT count(*) FROM entity_role_assignment WHERE quell_messstelle_id = ?",
+                Integer.class, UUID.fromString(neu.path("id").asText()))).isEqualTo(1);
+        int vorher = root.queryForObject("SELECT count(*) FROM messstelle WHERE tenant_id = ?", Integer.class, w.mandant());
+        anfrage.put("rolle", Map.of("entity_id", w.komponente(), "role", "consumer"));
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", anfrage), 400);
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle WHERE tenant_id = ?", Integer.class, w.mandant())).isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT count(*) FROM entity_role_assignment WHERE quell_messstelle_id = ?",
+                Integer.class, UUID.fromString(neu.path("id").asText()))).isEqualTo(1);
+    }
+
+    @Test
+    void summenwerteStehenAnBeidenGelesenenGeraetenAuchOhneRolleUndMitProtokoll() throws Exception {
+        Welt w = welt();
+        UUID zweite = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, device_id, control, communication, created_at) "
+                + "VALUES (?, ?, 'pv-generation', 'Zweiter Wechselrichter', 'pv-inverter', ?, false, 'modbus_tcp', now()) RETURNING id",
+                UUID.class, w.mandant(), w.anlage(), w.box());
+        Welt b = new Welt(w.mandant(), w.anlage(), w.box(), zweite);
+        var anfrage = anlegen("Beide Wechselrichter", term(w, PV1), term(b, PV2));
+        JsonNode neu = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", anfrage), 201);
+        String basis = "/api/v1/sites/" + w.anlage();
+        for (UUID entity : List.of(w.komponente(), zweite)) {
+            JsonNode liste = ok(ruf(w, HttpMethod.GET, basis + "/komponenten/" + entity + "/summenwerte", null), 200);
+            assertThat(liste.size()).isEqualTo(1);
+            assertThat(liste.at("/0/messstelle/id").asText()).isEqualTo(neu.path("id").asText());
+            assertThat(liste.at("/0/rolle").isNull()).isTrue();
+            assertThat(liste.at("/0/wert/wert").isNull()).isTrue();
+        }
+        ok(ruf(w, HttpMethod.PUT, basis + "/rollen/pv", Map.of("art", "gesamtwert", "quell_messstelle_id", neu.path("id").asText())), 200);
+        assertThat(root.queryForObject("SELECT count(*) FROM entity_role_assignment WHERE quell_messstelle_id = ?",
+                Integer.class, UUID.fromString(neu.path("id").asText()))).isEqualTo(2);
+        JsonNode mitRolle = ok(ruf(w, HttpMethod.GET, basis + "/komponenten/" + zweite + "/summenwerte", null), 200);
+        assertThat(mitRolle.at("/0/rolle").asText()).isEqualTo("pv");
+        JsonNode protokoll = ok(ruf(w, HttpMethod.GET, basis + "/aenderungen", null), 200);
+        assertThat(protokoll.toString()).contains("rolle_gesetzt", "Beide Wechselrichter");
+        Welt fremd = welt();
+        ok(ruf(fremd, HttpMethod.GET, basis + "/komponenten/" + zweite + "/summenwerte", null), 404);
+        ok(ruf(fremd, HttpMethod.GET, basis + "/aenderungen", null), 404);
+    }
+
+    @Test
+    void geraetekarteVerwendetDieAktuelleFassungUndVerbirgtArchivierteSummen() throws Exception {
+        Welt w = welt();
+        UUID zweite = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, device_id, control, communication, created_at) "
+                + "VALUES (?, ?, 'pv-generation', 'Dach Ost', 'pv-inverter', ?, false, 'modbus_tcp', now()) RETURNING id",
+                UUID.class, w.mandant(), w.anlage(), w.box());
+        Welt b = new Welt(w.mandant(), w.anlage(), w.box(), zweite);
+        JsonNode neu = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Wechselnde Eingänge", term(w, PV1))), 201);
+        String id = neu.path("id").asText();
+        String heute = java.time.LocalDate.now(MessstelleService.ZEITZONE).toString();
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + id + "/formel/fassungen",
+                Map.of("gueltig_ab", heute, "terme", List.of(term(b, PV2)))), 201);
+        String basis = "/api/v1/sites/" + w.anlage() + "/komponenten/";
+        assertThat(ok(ruf(w, HttpMethod.GET, basis + w.komponente() + "/summenwerte", null), 200).size()).isZero();
+        assertThat(ok(ruf(w, HttpMethod.GET, basis + zweite + "/summenwerte", null), 200).size()).isEqualTo(1);
+        root.update("UPDATE messstelle SET archiviert_am = now() WHERE id = ?", UUID.fromString(id));
+        assertThat(ok(ruf(w, HttpMethod.GET, basis + zweite + "/summenwerte", null), 200).size()).isZero();
+    }
+
     // ================================================================ Anlegen + Wert
 
     @Test

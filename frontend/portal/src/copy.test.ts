@@ -2009,7 +2009,6 @@ describe('Summenwert: das eine Kundenwort', () => {
     "gesamtwert.ts": 5,
     "glossar.ts": 1,
     "components/GesamtwertDialog.tsx": 3,
-    "components/GeraetPvProduktion.tsx": 2,
     "components/GesamtwertKarten.tsx": 8,
     "components/SummenwertAssistent.tsx": 3,
     "pages/MesswerteSection.tsx": 2
