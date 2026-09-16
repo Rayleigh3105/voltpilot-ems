@@ -15,3 +15,18 @@ it('IP-9 verwendet die bestehenden Listen-, Anlege- und Archivierungsrouten', as
     [expect.stringContaining('/api/v1/bezugsgroessen/bezugs-id/archivieren'), { method: 'POST' }],
   ]);
 });
+it('IP-10 sendet Texte und eine ausdrückliche leere Monatszuordnung an die bestehenden Routen', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })); vi.stubGlobal('fetch', fetch);
+  await api.bezugswertEingeben('bz', { periode: '2026-10', wert: '48.200' });
+  await api.bezugswertBerichtigen('bz', '2026-10', { wert: '48.200', begruendung: 'Eine Null fehlte.' });
+  await api.ablesungen('MS/21');
+  await api.ablesungEintragen('MS/21', { zeitpunkt: '2026-10-25T02:30:00+01:00', stand: '49.451', zuordnung_monat: null });
+  await api.ablesungBerichtigen('MS/21', '2026-10-25T02:30:00+01:00', { stand: '49.451', zuordnung_monat: '2026-10', begruendung: 'Monat berichtigen.' });
+  expect(fetch.mock.calls).toMatchObject([
+    [expect.stringContaining('/bezugsgroessen/bz/werte'), { method: 'POST', body: '{"periode":"2026-10","wert":"48.200"}' }],
+    [expect.stringContaining('/bezugsgroessen/bz/werte/2026-10/berichtigung'), { method: 'POST' }],
+    [expect.stringContaining('/messstellen/MS%2F21/ablesungen'), expect.anything()],
+    [expect.stringContaining('/messstellen/MS%2F21/ablesungen'), { method: 'POST', body: expect.stringContaining('"zuordnung_monat":null') }],
+    [expect.stringContaining('/ablesungen/2026-10-25T02%3A30%3A00%2B01%3A00/berichtigung'), { method: 'POST' }],
+  ]);
+});

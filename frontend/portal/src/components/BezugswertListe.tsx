@@ -6,7 +6,7 @@ import { schluesselVon } from '../bezugsPeriode';
 import { betrag, periodenText, zeitText } from '../werteEingabe';
 import { BezugswertDialog } from './BezugswertDialog';
 import './WerteEingabe.css';
-export function BezugswertListe({ bezug, standort, zone }: { bezug: Bezugsgroesse; standort: string | null | undefined; zone: string }) {
+export function BezugswertListe({ bezug, standort, zone, onEingegeben }: { bezug: Bezugsgroesse; standort: string | null | undefined; zone: string; onEingegeben?: () => void }) {
   const [offen, setOffen] = useState(false), [neu, setNeu] = useState(0);
   const [werte, setWerte] = useState<BezugsgroesseWert[] | null>(null);
   const [fehler, setFehler] = useState(false), [meldung, setMeldung] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function BezugswertListe({ bezug, standort, zone }: { bezug: Bezugsgroess
         <p>{betrag(w.wirksamer_betrag)}{w.wirksamer_betrag !== null ? ` ${bezug.einheit} · Fassung ${w.wirksame_fassung}` : ''}</p>
         {w.vorschlag && <p>Vorschlag von {w.vorschlag.urheber.name}: {betrag(w.vorschlag.betrag)} {bezug.einheit}. Bis zur Freigabe gilt der bisherige Wert. {w.vorschlag.begruendung}</p>}
         <details><summary>Fassungen ansehen ({w.fassungen.length})</summary>{w.fassungen.map(f => <div className="vp-wert-fassung" key={f.fassung}>
-          <strong>Fassung {f.fassung} · {betrag(f.betrag)} {bezug.einheit}</strong>
+          <strong>Fassung {f.fassung} · {betrag(f.betrag)} {bezug.einheit}</strong><p>{f.fassung === w.wirksame_fassung ? 'Wirksame Fassung' : 'Frühere Fassung'}</p>
           <p>{f.herkunft.art === 'eingabe' ? 'Eingegeben' : f.herkunft.art === 'import' ? 'Importiert' : 'Messkanal'} · {f.urheber.name} · {zeitText(f.eingetragen_am, w.zeitzone)}</p>
           {f.herkunft.import_kennung && <p>{f.herkunft.import_kennung} · Zeile {f.herkunft.import_zeile} · {f.herkunft.geliefert_text} {f.herkunft.geliefert_einheit}</p>}
           {f.begruendung && <p>{f.begruendung}</p>}{f.freigeber && <p>Freigegeben von {f.freigeber.name}</p>}
@@ -37,6 +37,6 @@ export function BezugswertListe({ bezug, standort, zone }: { bezug: Bezugsgroess
       </div>)}
       {erlaubt && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setDialog({ alt: null }); }}>Wert eingeben</Button>}
     </>}
-    {dialog && werte && standort !== undefined && erlaubt && <BezugswertDialog bezug={bezug} werte={werte} alt={dialog.alt} standort={standort} zone={zone} onClose={schliessen} onSaved={a => { setMeldung([a.satz, ...a.hinweise.map(h => h.satz)].join(' ')); setWerte(ws => [...(ws ?? []).filter(w => w.periode_von !== a.wert.periode_von), a.wert]); schliessen(); }} />}
+    {dialog && werte && standort !== undefined && erlaubt && <BezugswertDialog key={dialog.alt?.periode_von ?? 'neu'} onBerichtigen={alt => setDialog({ alt })} bezug={bezug} werte={werte} alt={dialog.alt} standort={standort} zone={zone} onClose={schliessen} onSaved={a => { onEingegeben?.(); setMeldung([a.satz, ...a.hinweise.map(h => h.satz)].join(' ')); setWerte(ws => [...(ws ?? []).filter(w => w.periode_von !== a.wert.periode_von), a.wert]); schliessen(); }} />}
   </details>;
 }

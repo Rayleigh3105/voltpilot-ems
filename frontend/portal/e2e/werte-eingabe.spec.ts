@@ -11,7 +11,7 @@ async function start(page: Page, breite: number, query = '') {
 async function foto(page: Page, name: string) {
   await page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
-  if (BILDER) { mkdirSync(BILDER, { recursive: true }); await page.screenshot({ path: join(BILDER, `${name}.png`), fullPage: false }); }
+  if (BILDER) { mkdirSync(BILDER, { recursive: true }); await page.screenshot({ path: join(BILDER, `${name}.png`), fullPage: name.startsWith('fassungen-') }); }
 }
 async function waehle(page: Page, label: string, name: string) {
   await page.getByRole('combobox', { name: label, exact: true }).click();
@@ -84,9 +84,47 @@ for (const breite of [375, 1440]) {
     await expect(abs.getByRole('status')).toContainText('bis zur Freigabe gilt der bisherige Stand');
   });
   test(`${breite}: ohne Eingaberecht bleiben Werte lesbar`, async ({ page }) => {
-    await start(page, breite, 'person=LB');
+    await start(page, breite, 'person=CB');
     await page.getByText('Werte und Fassungen', { exact: true }).click();
     await expect(page.getByText(/4.820 Stück · Fassung 1/)).toBeVisible();
     await expect(page.getByRole('button', { name: /Wert eingeben|Berichtigen/ })).toHaveCount(0);
+  });
+}
+for (const breite of [375, 1440]) {
+  test(`${breite}: doppelte Stunde wird gewählt, fehlende Stunde und lange Zuordnung werden nicht geraten`, async ({ page }) => {
+    await start(page, breite, 'ablesung');
+    await page.clock.setFixedTime(new Date('2026-10-26T10:00:00Z'));
+    await page.getByRole('button', { name: 'Ablesung eintragen', exact: true }).click();
+    const d = page.getByRole('dialog', { name: 'Ablesung eintragen', exact: true });
+    await d.getByRole('combobox', { name: 'Datum', exact: true }).click();
+    await page.locator('[data-iso="2026-10-25"]:not(.is-rand)').click();
+    await d.getByRole('combobox', { name: 'Uhrzeit', exact: true }).fill('02:30');
+    await d.getByRole('combobox', { name: 'Uhrzeit', exact: true }).press('Tab');
+    await d.getByLabel('Zählerstand (m³)').fill('49.451');
+    await d.getByRole('button', { name: 'Speichern', exact: true }).click();
+    expect(await page.evaluate(() => (window as any).wertAufrufe)).toEqual([]);
+    await waehle(page, 'Welche Stunde?', 'MEZ (UTC+01:00)');
+    await foto(page, `zeitpunkt-${breite}`);
+    await d.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(d).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).wertAufrufe)).toMatchObject([{ zeitpunkt: '2026-10-25T02:30:00+01:00' }]);
+    await start(page, breite, 'ablesung');
+    await page.clock.setFixedTime(new Date('2027-03-28T10:00:00Z'));
+    await page.getByRole('button', { name: 'Ablesung eintragen', exact: true }).click();
+    await d.getByRole('combobox', { name: 'Uhrzeit', exact: true }).fill('02:30');
+    await d.getByRole('combobox', { name: 'Uhrzeit', exact: true }).press('Tab');
+    await d.getByLabel('Zählerstand (m³)').fill('49.451');
+    await d.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(d.getByRole('alert')).toContainText('gibt es an diesem Tag nicht');
+    expect(await page.evaluate(() => (window as any).wertAufrufe)).toEqual([]);
+    await d.getByRole('combobox', { name: 'Uhrzeit', exact: true }).fill('03:30');
+    await d.getByRole('combobox', { name: 'Uhrzeit', exact: true }).press('Tab');
+    await d.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(d).toContainText('drei oder mehr Monate');
+    expect(await page.evaluate(() => (window as any).wertAufrufe)).toEqual([]);
+    await waehle(page, 'Zuordnung', 'Keinem Monat zuordnen');
+    await d.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(d).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).wertAufrufe)).toMatchObject([{ zuordnung_monat: null }]);
   });
 }

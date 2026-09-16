@@ -35,7 +35,7 @@ Object.assign(api, {
   prozesse: async () => ({ prozesse: ahrenbergProzesse() }), kostenstellen: async () => ({ kostenstellen: ahrenbergKostenstellen() }),
   messstellenRegister: async () => ahrenbergRegister(),
   bezugsgroesseWerte: async () => ({ werte }),
-  bezugswertEingeben: async (id: string, body: { wert: string }) => { posts.push({ id, ...body }); const a = antwort(body.wert); a.wert.wirksame_fassung = 1; a.wert.fassungen[0].fassung = 1; return a; },
+  bezugswertEingeben: async (id: string, body: { wert: string }) => { posts.push({ id, ...body }); const w = bezugswert(body.wert.replaceAll('.', '').replace(',', '.')); werte = [w]; return { urteil: 'neu', satz: 'Wert gespeichert.', kennung: null, hinweise: [], wert: w }; },
   bezugswertBerichtigen: async (id: string, periode: string, body: { wert: string }) => { posts.push({ id, periode, ...body }); return antwort(body.wert); },
   messstelle: async () => ms21(), messstelleProzesse: async () => prozesseVon(ms21()), messstelleVerteilung: async () => verteilungVon(ms21()),
   messstelleQuellen: async () => quellenDerMessstellenBuehne(ms21().id, '2026-11-03T10:00:00Z'),

@@ -492,7 +492,7 @@
         "wechselPruefen: Number(e.geraeteId)",
         "wechselPruefen: Number.isInteger(geraeteId)"
       ],
-      "grund": "Eingabe Geräte-ID prüfen; Kalender und reine Darstellung, keine Rechnung mit Messwerten."
+      "grund": "Eingabe Geräte-ID prüfen; Kalender und reine Darstellung, keine Rechnung mit Messwerten. AP-09 IP-10 verschiebt die unveränderte Zahlendeutung in zahl.ts."
     },
     "netzanschlussListe.ts": {
       "importe": [
@@ -508,6 +508,36 @@
         "./uemsOrtsbaum:datumText"
       ],
       "operationen": []
+    },
+    "werteEingabe.ts": {
+      "importe": [
+        "./bezugsPeriode:schluesselVon",
+        "./bezugsPeriode:spanneVon",
+        "./bezugsPeriode:tagPlus",
+        "./bezugsdaten:istGanzzahlig",
+        "./bezugsdaten:zuordnung",
+        "./zahl:zahlText"
+      ],
+      "operationen": [
+        "betrag: g.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '\\u00a0') + (b ? `,${b}` : '')",
+        "letzteFreiePeriode: -1",
+        "monatsZuordnung: -1",
+        "periodenFehler: Number.isFinite(Date.parse(von))"
+      ],
+      "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung."
+    },
+    "picker/zeitpunkt.ts": {
+      "importe": [
+        "../bezugsPeriode:iso",
+        "../bezugsPeriode:satz",
+        "../bezugsPeriode:zeitpunkt",
+        "./zeit:zeitLesen"
+      ],
+      "operationen": [
+        "lesen: -6",
+        "lesen: Number.isFinite(Date.parse(`${e.tag}T00:00:00Z`))"
+      ],
+      "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung."
     }
   }
 }
