@@ -152,7 +152,7 @@ export function FlaecheDialog({
             <Button variant="ghost" onClick={onClose}>
               Abbrechen
             </Button>
-            <Recht aktion="gebaeude.pflegen"><Button type="submit" form={`${basis}-form`} disabled={busy}>
+            <Recht aktion="gebaeude.pflegen" rueckwirkend={!!form.gueltigAb && form.gueltigAb < heute}><Button type="submit" form={`${basis}-form`} disabled={busy}>
               {KNOPF_FLAECHE_SPEICHERN}
             </Button></Recht>
           </>

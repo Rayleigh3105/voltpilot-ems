@@ -176,7 +176,7 @@ export function AnlageStandortDialog({
             <Button variant="ghost" onClick={onClose}>
               Abbrechen
             </Button>
-            <Recht aktion="anlage.zuordnen"><Button type="submit" form={`${basis}-form`} disabled={busy}>
+            <Recht aktion="anlage.zuordnen" rueckwirkend={!!form.gueltigAb && form.gueltigAb < standorte.stichtag}><Button type="submit" form={`${basis}-form`} disabled={busy}>
               {KNOPF_ZUORDNEN}
             </Button></Recht>
           </>

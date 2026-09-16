@@ -205,7 +205,7 @@ export function OrtDialog({
           <Button variant="ghost" onClick={schliessen}>
             Abbrechen
           </Button>
-          <Recht aktion="gebaeude.pflegen"><Button type="submit" form={`${basis}-form`} disabled={busy}>
+          <Recht aktion="gebaeude.pflegen" rueckwirkend={flaecheEingabe && !!form.gueltigAb && form.gueltigAb < antwort.stichtag}><Button type="submit" form={`${basis}-form`} disabled={busy}>
             {ortDialogSenden(art, fassung)}
           </Button></Recht>
         </>

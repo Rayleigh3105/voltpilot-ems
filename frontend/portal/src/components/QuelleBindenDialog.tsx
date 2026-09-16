@@ -374,7 +374,7 @@ export function QuelleBindenDialog({ open, rolle, ziel, jetzt, onClose, onGebund
         <Button variant="ghost" onClick={onClose} disabled={busy}>
           Abbrechen
         </Button>
-        <Recht aktion="messstelle.quelle"><Button onClick={() => void binden()} disabled={busy}>
+        <Recht aktion="messstelle.quelle" rueckwirkend={Boolean(urteil.zeitpunkt && rueckwirkung(uhr, urteil.zeitpunkt).art === 'rueckwirkend')}><Button onClick={() => void binden()} disabled={busy}>
           {KNOPF[rolle]}
         </Button></Recht>
       </>

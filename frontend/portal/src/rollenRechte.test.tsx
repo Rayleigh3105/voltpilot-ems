@@ -78,3 +78,15 @@ it('Unerlaubte fremde Ziele verraten keinen Ort und keinen Hebel', () => {
   const markup = renderToStaticMarkup(createElement(Recht, { aktion: 'anlage.verwalten', standort: STANDORT_IDS['ST-1'], children: 'Werk Ahrenberg' }));
   expect(markup).toBe('');
 });
+
+
+it('W14: rückwirkend braucht eine eigene Erlaubnis; Thomas richtet nur ab heute ein', () => {
+  for (const person of ['JW', 'IK', 'TB']) {
+    const { me } = rechteSeed(person); setSelbstauskunft(me);
+    const heute = renderToStaticMarkup(createElement(Recht, { aktion: 'messstelle.bearbeiten', standort: STANDORT_IDS['ST-1'], children: createElement('button', null, 'Eintragen') }));
+    const frueher = renderToStaticMarkup(createElement(Recht, { aktion: 'messstelle.bearbeiten', standort: STANDORT_IDS['ST-1'], rueckwirkend: true, children: createElement('button', null, 'Eintragen') }));
+    expect(heute).toContain('<button>');
+    if (person === 'TB') { expect(frueher).not.toContain('<button>'); expect(frueher).toContain('Jonas Wendlinger'); }
+    else expect(frueher).toBe(heute);
+  }
+});

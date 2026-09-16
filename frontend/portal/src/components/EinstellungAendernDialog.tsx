@@ -1,3 +1,4 @@
+import { rueckwirkung } from '../uemsMessstelle';
 import { Recht } from './Recht';
 /**
  * „Ändern ab <Zeitpunkt>“ — eine Einstellung eines Geräts ab einem Zeitpunkt
@@ -142,7 +143,7 @@ export function EinstellungAendernDialog({
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Abbrechen
           </Button>
-          <Recht aktion="messstelle.quelle"><Button onClick={() => void eintragen()} disabled={busy}>
+          <Recht aktion="messstelle.quelle" rueckwirkend={Boolean(urteil.neu && rueckwirkung(jetzt, urteil.neu.gueltig_ab).art === 'rueckwirkend')}><Button onClick={() => void eintragen()} disabled={busy}>
             {busy ? 'Trage ein …' : eintragenText(eingabe.datum, eingabe.uhrzeit)}
           </Button></Recht>
         </>

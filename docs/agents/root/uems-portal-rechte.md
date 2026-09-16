@@ -22,7 +22,8 @@ bei fehlender Antwort.
 Gerätekatalog, Diagnose, Hersteller-/Registerausstattung und interne Verwaltung. Der gemeinsam genutzte
 `admin/FlowEditorPage` erhält vom Kunden-Wirt zusätzlich `recht="betriebsweise.aendern"`. OCPP schneidet
 Kundenaktionen mit den bestehenden serverseitigen OCPP-Freigaben; Plattformbefehle behalten deren Prüfung.
-Schalttest und physische Freigabe sind getrennte Aktionen.
+Schalttest und physische Freigabe sind getrennte Aktionen. Rückwirkende Eingaben brauchen zusätzlich
+`aenderung.rueckwirkend`; der Bearbeiter richtet gemäß W14 ab heute ein.
 
 ## Start und Verlust des Zugriffs
 

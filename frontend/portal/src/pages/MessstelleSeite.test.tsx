@@ -372,3 +372,16 @@ it('IP-12: Murat liest dieselbe Messstelle ohne Pflegeknöpfe, mit Jonas als Weg
   expect(screen.queryByRole('button', { name: 'Ort ändern ab …' })).toBeNull();
   expect(screen.getAllByRole('note').some(n => n.textContent?.includes('Jonas Wendlinger'))).toBe(true);
 });
+
+
+it('W14: eine rückwirkende Zuordnung zeigt Thomas den Weg statt des Eintragen-Knopfs', async () => {
+  setSelbstauskunft(rechteSeed('TB').me);
+  verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+  render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Ort ändern ab …' }, WARTEN));
+  const dialog = screen.getByRole('dialog', { name: 'Ort ändern' });
+  expect(dialog.querySelector('button[type="submit"]')).not.toBeNull();
+  waehleTag('Gilt ab *', '2026-10-19');
+  expect(dialog.querySelector('button[type="submit"]')).toBeNull();
+  expect(within(dialog).getByRole('note')).toHaveTextContent('Jonas Wendlinger');
+});

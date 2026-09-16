@@ -883,7 +883,7 @@ export function MessstelleDialog({
           </Button></Recht>
         )}
         {ansicht === 2 && (
-          <Recht aktion="messstelle.bearbeiten"><Button onClick={() => void weiterZuordnung()} disabled={busy}>
+          <Recht aktion="messstelle.bearbeiten" rueckwirkend={Boolean(zuordnung.gueltigAb) && zuordnung.gueltigAb < uhr.heute}><Button onClick={() => void weiterZuordnung()} disabled={busy}>
             {busy ? KNOPF.speichert : KNOPF.weiterQuelle}
           </Button></Recht>
         )}
@@ -892,7 +892,7 @@ export function MessstelleDialog({
             <Button variant="ghost" onClick={() => setAnsicht('fertig')} disabled={busy}>
               {KNOPF.spaeter}
             </Button>
-            <Recht aktion="messstelle.quelle"><Button onClick={() => void fertigstellen()} disabled={busy}>
+            <Recht aktion="messstelle.quelle" rueckwirkend={Boolean(quelle.datum) && quelle.datum < uhr.heute}><Button onClick={() => void fertigstellen()} disabled={busy}>
               {busy ? KNOPF.speichert : KNOPF.fertig}
             </Button></Recht>
           </>
