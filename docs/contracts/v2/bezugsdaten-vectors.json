@@ -2094,6 +2094,7 @@
     ]
   },
   "zwillinge": {
+    "gradtage": ["java", "ts"],
     "zahl": [
       "java",
       "ts"
@@ -5308,6 +5309,147 @@
           "ergebnis": {
             "ablehnung": null
           }
+        },
+        {
+          "regel": "gradtage",
+          "name": "Kalt, Heizgrenze und warm",
+          "eingang": {
+            "tage": [
+              {
+                "mittel": "10",
+                "zustand": "vollständig"
+              },
+              {
+                "mittel": "15",
+                "zustand": "vollständig"
+              },
+              {
+                "mittel": "18",
+                "zustand": "vollständig"
+              }
+            ],
+            "raumtemperatur": "20",
+            "heizgrenze": "15"
+          },
+          "ergebnis": {
+            "betrag": "10",
+            "zustand": "vollständig",
+            "kennzeichen": [
+              "Gradtage G20/15"
+            ]
+          }
+        },
+        {
+          "regel": "gradtage",
+          "name": "Fehlender Tag",
+          "eingang": {
+            "tage": [
+              {
+                "mittel": "10",
+                "zustand": "vollständig"
+              },
+              {
+                "mittel": null,
+                "zustand": "keine Werte"
+              }
+            ],
+            "raumtemperatur": "20",
+            "heizgrenze": "15"
+          },
+          "ergebnis": {
+            "betrag": "10",
+            "zustand": "unvollständig",
+            "kennzeichen": [
+              "Gradtage G20/15",
+              "Tagesmittel fehlen oder sind unvollständig"
+            ]
+          }
+        },
+        {
+          "regel": "gradtage",
+          "name": "Keine Tagesmittel",
+          "eingang": {
+            "tage": [
+              {
+                "mittel": null,
+                "zustand": "keine Werte"
+              }
+            ],
+            "raumtemperatur": "20",
+            "heizgrenze": "15"
+          },
+          "ergebnis": {
+            "betrag": null,
+            "zustand": "keine Werte",
+            "kennzeichen": [
+              "Gradtage G20/15",
+              "Tagesmittel fehlen oder sind unvollständig"
+            ]
+          }
+        },
+        {
+          "regel": "gradtage",
+          "name": "Unvollständiger warmer Tag",
+          "eingang": {
+            "tage": [
+              {
+                "mittel": "18",
+                "zustand": "unvollständig"
+              }
+            ],
+            "raumtemperatur": "20",
+            "heizgrenze": "15"
+          },
+          "ergebnis": {
+            "betrag": "0",
+            "zustand": "unvollständig",
+            "kennzeichen": [
+              "Gradtage G20/15",
+              "Tagesmittel fehlen oder sind unvollständig"
+            ]
+          }
+        },
+        {
+          "regel": "gradtage",
+          "name": "Eigene Grenzen",
+          "eingang": {
+            "tage": [
+              {
+                "mittel": "16",
+                "zustand": "vollständig"
+              }
+            ],
+            "raumtemperatur": "22",
+            "heizgrenze": "17"
+          },
+          "ergebnis": {
+            "betrag": "6",
+            "zustand": "vollständig",
+            "kennzeichen": [
+              "Gradtage G22/17"
+            ]
+          }
+        },
+        {
+          "regel": "gradtage",
+          "name": "Frost",
+          "eingang": {
+            "tage": [
+              {
+                "mittel": "-5.5",
+                "zustand": "vollständig"
+              }
+            ],
+            "raumtemperatur": "20",
+            "heizgrenze": "15"
+          },
+          "ergebnis": {
+            "betrag": "25.5",
+            "zustand": "vollständig",
+            "kennzeichen": [
+              "Gradtage G20/15"
+            ]
+          }
         }
       ],
       "beschreibend": {
@@ -5345,7 +5487,8 @@
       "annahmen": [
         "Alle Statuswechsel, die Lücke und der Ableitungszeitpunkt sind Annahmen; K-9/MS-14/Box Halle 2 sind Referenzobjekte.",
         "Der Zustand VOR dem ersten Wechsel („Available“) steht in der Vorlage nicht; ohne ihn wären die 298 min und die 23 von 24 gemessenen Stunden der Vorlage nicht nachrechenbar. Er ist deshalb ein ausdrücklicher Eingang und in _abweichungen genannt.",
-        "Die Einheit „min“ und die Periode „woche“ der Verwalten-Prüfung sind eine Gegenprobe zu M1 (AP-09 IP-5)."
+        "Die Einheit „min“ und die Periode „woche“ der Verwalten-Prüfung sind eine Gegenprobe zu M1 (AP-09 IP-5).",
+        "K7 Gradtage: sämtliche Tagesmittel und Temperaturgrenzen der zusätzlichen Prüfungen sind konstruierte Annahmen; Ahrenberg hat keinen Außentemperaturkanal."
       ]
     },
     {

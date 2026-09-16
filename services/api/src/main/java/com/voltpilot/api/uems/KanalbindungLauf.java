@@ -26,7 +26,7 @@ public class KanalbindungLauf {
     }
     public long fehlerAnzahl() { return fehler.get(); }
     record Bindung(UUID id,UUID tenant,UUID bezug,UUID entity,String kanal,String art,String zustand,
-            String einheit,String quellEinheit,String periode,int kadenz,Instant von,Instant bis,ZoneId zone) {}
+            String einheit,String quellEinheit,String periode,int kadenz,Instant von,Instant bis,ZoneId zone,BigDecimal raumtemperatur,BigDecimal heizgrenze) {}
     record Roh(Instant zeit,BigDecimal zahl,String wort,boolean gut,UUID einbau) {}
     record Ergebnis(BigDecimal betrag,String zustand,BigDecimal abdeckung,List<String> kennzeichen) {}
 
@@ -46,7 +46,7 @@ public class KanalbindungLauf {
             """,(r,n)->new Bindung(r.getObject("id",UUID.class),r.getObject("tenant_id",UUID.class),
                 r.getObject("bezugsgroesse_id",UUID.class),r.getObject("entity_id",UUID.class),r.getString("kanal"),
                 r.getString("wertart"),r.getString("zustand"),r.getString("ziel_einheit"),r.getString("einheit"),r.getString("periode_art"),
-                r.getInt("kadenz_s"),r.getTimestamp("von").toInstant(),instant(r,"bis"),ZoneId.of(r.getString("zone"))),ts(jetzt),tenant,tenant);
+                r.getInt("kadenz_s"),r.getTimestamp("von").toInstant(),instant(r,"bis"),ZoneId.of(r.getString("zone")),r.getBigDecimal("raumtemperatur"),r.getBigDecimal("heizgrenze")),ts(jetzt),tenant,tenant);
         int anzahl=0;
         for (Bindung b:bindungen) {
             Integer neu=admin.execute((Connection con)->{
@@ -101,15 +101,18 @@ public class KanalbindungLauf {
             Ergebnis e=periode(j,con,teile,von,bis,datenBis);
             Bindung quelle=teile.getFirst();
             List<String> kennzeichen=new ArrayList<>(e.kennzeichen());
-            for (Bindung k:teile) kennzeichen.add("aus Messkanal " + k.kanal() + ("state".equals(k.art()) ? " (Zustand = " + k.zustand() + ")" : " (Zähler)"));
+            for (Bindung k:teile) kennzeichen.add("aus Messkanal " + k.kanal() + (" (" + regel(k) + ")"));
             ObjectNode herkunft=json.createObjectNode().put("bindung",quelle.id().toString()).put("entity_id",quelle.entity().toString())
-                .put("kanal",quelle.kanal()).put("regel","state".equals(quelle.art()) ? "Zustand = " + quelle.zustand() : "Zähler")
+                .put("kanal",quelle.kanal()).put("regel",regel(quelle))
                 .put("zustand",e.zustand()).put("abdeckung_prozent",e.abdeckung()).put("endgueltig_ab",frist.toString())
                 .put("vorlaeufig",jetzt.isBefore(frist));
             if (teile.size()>1) {
                 var quellen=herkunft.putArray("bindungen");
-                for (Bindung k:teile) quellen.addObject().put("bindung",k.id().toString()).put("entity_id",k.entity().toString())
-                    .put("kanal",k.kanal()).put("zustand",k.zustand()).put("von",k.von().toString()).put("bis",k.bis()==null?null:k.bis().toString());
+                for (Bindung k:teile) {
+                    var teil=quellen.addObject().put("bindung",k.id().toString()).put("entity_id",k.entity().toString())
+                        .put("kanal",k.kanal()).put("zustand",k.zustand()).put("von",k.von().toString()).put("bis",k.bis()==null?null:k.bis().toString());
+                    if ("gauge".equals(k.art())) teil.put("regel",regel(k));
+                }
             }
             String kz=json.writeValueAsString(kennzeichen.stream().distinct().toList());
             if (!alt.isEmpty() && gleich((BigDecimal)alt.getFirst()[1],e.betrag())
@@ -158,6 +161,10 @@ public class KanalbindungLauf {
             kennzeichen.addAll(e.kennzeichen());
         }
         if (gebunden<laenge) { voll=false; kennzeichen.add("Kanalbindung gilt nur für einen Teil der Periode"); }
+        // Erst NACH der Heizgrenze und Summe auf die bestehende NUMERIC(18,6)-Speicherung runden.
+        // Sonst würde ein periodischer Bruch bei jedem Takt scheinbar eine neue Fassung verlangen.
+        if (betrag!=null && teile.stream().anyMatch(k->"gauge".equals(k.art())))
+            betrag=betrag.setScale(6,java.math.RoundingMode.HALF_UP);
         return new Ergebnis(betrag,betrag==null?VerbrauchRegeln.KEINE_WERTE:voll?VerbrauchRegeln.VOLLSTAENDIG:VerbrauchRegeln.UNVOLLSTAENDIG,
             abgedeckt.divide(BigDecimal.valueOf(laenge),1,java.math.RoundingMode.HALF_UP).min(BigDecimal.valueOf(100)),
             kennzeichen.stream().distinct().toList());
@@ -186,6 +193,32 @@ public class KanalbindungLauf {
             + "(SELECT DISTINCT device_id FROM device_measurement_sample WHERE tenant_id=? AND entity_id=? AND point_key=? AND time>=? AND time<=?)))",
             (r,n)->new BezugsdatenRegeln.Luecke(r.getTimestamp(1).toInstant(),r.getTimestamp(2).toInstant(),r.getString(3)),
             ts(a),ts(z),b.tenant(),ts(eingang),ts(z),ts(a),b.entity(),b.kanal(),b.tenant(),b.entity(),b.kanal(),ts(a),ts(z)));
+        if ("gauge".equals(b.art())) {
+            List<GradtagRegeln.Tag> tage=new ArrayList<>();
+            BigDecimal abgedeckt=BigDecimal.ZERO;
+            var werteJeTag=roh.stream().map(r->new VerbrauchRegeln.Rohwert(r.zeit(),r.zahl(),r.gut() && r.zahl()!=null
+                && luecken.stream().noneMatch(l->!r.zeit().isBefore(l.von()) && r.zeit().isBefore(l.bis()))))
+                .collect(java.util.stream.Collectors.groupingBy(r->r.zeit().atZone(b.zone()).toLocalDate()));
+            for (LocalDate tag=a.atZone(b.zone()).toLocalDate(); tag.atStartOfDay(b.zone()).toInstant().isBefore(z); tag=tag.plusDays(1)) {
+                Instant start=tag.atStartOfDay(b.zone()).toInstant(), ende=tag.plusDays(1).atStartOfDay(b.zone()).toInstant();
+                // Ein angeschnittener Kalendertag ist kein gemessener ganzer Tag.
+                if (start.isBefore(a) || ende.isAfter(z)) {
+                    tage.add(new GradtagRegeln.Tag(null,VerbrauchRegeln.KEINE_WERTE)); continue;
+                }
+                var tageswerte=werteJeTag.getOrDefault(tag,List.of());
+                var m=VerbrauchRegeln.momentanwerte(tageswerte,start,ende,Duration.ofSeconds(b.kadenz()),false);
+                // AP-08 rundet sein Anzeigemittel auf 0,1. Die Heizgrenze darf diese Rundung nicht verschieben.
+                var gute=tageswerte.stream().filter(VerbrauchRegeln.Rohwert::gut).map(VerbrauchRegeln.Rohwert::wert).toList();
+                BigDecimal mittel=gute.isEmpty()?null:gute.stream().reduce(BigDecimal.ZERO,BigDecimal::add)
+                    .divide(BigDecimal.valueOf(gute.size()),new java.math.MathContext(28,java.math.RoundingMode.HALF_EVEN));
+                boolean luecke=luecken.stream().anyMatch(l->l.von().isBefore(ende) && l.bis().isAfter(start));
+                tage.add(new GradtagRegeln.Tag(mittel,luecke && mittel!=null ? VerbrauchRegeln.UNVOLLSTAENDIG : m.zustand()));
+                abgedeckt=abgedeckt.add(BigDecimal.valueOf(m.abdeckungProzent()==null ? 0 : m.abdeckungProzent())
+                    .multiply(BigDecimal.valueOf(Duration.between(start,ende).toSeconds())));
+            }
+            var g=GradtagRegeln.gradtage(tage,b.raumtemperatur(),b.heizgrenze());
+            return new Ergebnis(g.betrag(),g.zustand(),abgedeckt.divide(BigDecimal.valueOf(Duration.between(a,z).toSeconds()),1,java.math.RoundingMode.HALF_UP),g.kennzeichen());
+        }
         if ("state".equals(b.art())) {
             String anfang=null;
             List<BezugsdatenRegeln.Zustandswechsel> wechsel=new ArrayList<>();
@@ -222,6 +255,10 @@ public class KanalbindungLauf {
         BigDecimal betrag=k.menge()==null ? null : BezugsEinheit.einheit(k.menge(),b.quellEinheit(),b.einheit(),
             new BezugsgroesseRepository(j).vokabular().einheiten(),BezugsEinheit.UMRECHNUNGEN).betrag();
         return new Ergebnis(betrag,teil && k.menge()!=null ? VerbrauchRegeln.UNVOLLSTAENDIG : k.zustand(),ab,kz);
+    }
+    private static String regel(Bindung b) {
+        return "gauge".equals(b.art()) ? GradtagRegeln.regel(b.raumtemperatur(),b.heizgrenze())
+            : "state".equals(b.art()) ? "Zustand = " + b.zustand() : "Zähler";
     }
     static LocalDate anfang(LocalDate tag,String art) {
         return switch(art) { case "woche" -> tag.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)); case "monat" -> tag.withDayOfMonth(1); case "jahr" -> tag.withDayOfYear(1); default -> tag; };

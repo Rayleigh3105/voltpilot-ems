@@ -1580,6 +1580,7 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
 // des Bestands oben bleibt unverändert: kein vorhandener Knopf wird ersetzt oder entfernt.
 describe('AP-09 IP-10 · additive Kundenhebel für Werte und Ablesungen', () => {
   it.each([
+    ['components/BezugsKanalbindung.tsx', 'bezugsgroesse.verwalten'],
     ['components/BezugswertDialog.tsx', 'bezugsgroesse.eingeben'],
     ['components/BezugswertListe.tsx', 'bezugsgroesse.eingeben'],
     ['components/AblesungDialog.tsx', 'ablesung.erfassen'],

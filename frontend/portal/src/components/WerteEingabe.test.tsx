@@ -54,3 +54,10 @@ it('unlesbare Uhrzeit sendet niemals den zuvor gültigen Zeitpunkt', async () =>
   expect(schreiben).not.toHaveBeenCalled();
   expect(screen.getAllByRole('alert').some(e => e.textContent?.includes('Datum und Uhrzeit'))).toBe(true);
 });
+it('K6 sperrt eine gebundene Periode, frühere Perioden bleiben eingebbar', async () => {
+  const speichern = vi.spyOn(api, 'bezugswertEingeben');
+  render(<BezugswertDialog bezug={bezug} werte={[]} alt={null} zone="Europe/Berlin" standort={null} onClose={() => {}} onSaved={() => {}} bindungen={[{ id: 'b', entity_id: 'e', kanal: 'Stückzähler', wertart: 'counter', von: '2026-09-30T22:00:00Z', bis: null }]} />);
+  expect(screen.getByText(/Für diesen Zeitraum liefert ein Messkanal/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Speichern', exact: true })).not.toBeInTheDocument();
+  expect(speichern).not.toHaveBeenCalled();
+});

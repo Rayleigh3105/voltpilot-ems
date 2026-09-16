@@ -165,10 +165,25 @@ GELESEN (E17) — `GET /api/v1/bezugsflaechen`.
 **„keine Werte“ ist nie 0.** Ein Tag ohne Werte am Zustands-Kanal hat keine Ladezeit — nicht
 0 h (K4, B7). Eine zurückgenommene Fassung hat keinen Betrag — nicht 0 (C7, B14).
 
-**Die Abdeckung eines Kanal-Werts ist ZEITBASIERT.** 23 von 24 gemessenen Stunden sind
+**Die Abdeckung eines Zustandskanal-Werts ist ZEITBASIERT.** 23 von 24 gemessenen Stunden sind
 95,8 %. Die Abdeckung der Verbrauchsregel ist *wertbasiert* und abgeschnitten (erhaltene ÷
 erwartete Werte, AP-08 Z9). Zwei verschiedene Zahlen mit demselben Namen — die Datei hält
 beide Nachkommastellen-Regeln getrennt (`abdeckung_nachkommastellen`).
+
+**Gradtage (K7, AP-09 IP-18).** Nur ein gemessener Temperaturkanal (`gauge`,
+`quantity=temperature`, °C) am Standort der Bezugsgröße liefert Gradtage in Kd.
+Vorhersage-Wetter ist keine Messquelle. AP-08 M1–M6 bildet das Tagesmittel über gute
+Rohwerte in der Ortszone einschließlich 23-/25-Stunden-Tagen. Die Heizgrenze wird gegen
+das ungerundete Mittel geprüft, nicht gegen AP-08s auf 0,1 gerundete Anzeige. Unterhalb der Heizgrenze
+zählt `Raumtemperatur − Tagesmittel`, an oder über der Heizgrenze 0 Kd. Vorgabe G20/15;
+Raumtemperatur und Heizgrenze werden je Bindung der Bezugsgröße dauerhaft gespeichert.
+Ein fehlendes Tagesmittel liefert keinen Betrag. Die Summe vorhandener Tage bleibt
+„unvollständig“, wenn ein Tagesmittel fehlt oder unvollständig ist; ohne Tagesmittel bleibt
+sie NULL. Die Abdeckung der Temperatur übernimmt AP-08s wertbasierte Tagesabdeckung,
+gewichtet nach tatsächlicher Tageslänge. Ein angeschnittener Kalendertag liefert keinen
+vollen Gradtag; das Kennzeichen nennt fehlende oder unvollständige Tagesmittel.
+`GradtagRegeln` und `gradtage.ts` prüfen die konstruierten Annahmen in B7 (`kanal`,
+Regel `gradtage`); das Portal zeigt gespeicherte Zahlen und rechnet keine Rohwerte.
 
 **Nichts wird gelöscht.** Jede Änderung ist eine Fassung n + 1 mit Begründung (≥ 10 Zeichen);
 Fassung n bleibt lesbar. Mit eingeschaltetem Vier-Augen-Prinzip (AP-08 E8, Vorgabe AUS) ist

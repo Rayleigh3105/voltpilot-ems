@@ -1,3 +1,4 @@
+import { BezugsKanalbindung } from '../components/BezugsKanalbindung';
 import { BezugswertListe } from '../components/BezugswertListe';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
@@ -29,6 +30,7 @@ export function BezugsgroessenPage() {
   const [ladefehler, setLadefehler] = useState(false);
   const [neu, setNeu] = useState(0);
   const [filter, setFilter] = useState({ standort: null as string | null, prozess: null as string | null, archiviert: false });
+  const [kanalRevision, setKanalRevision] = useState(0);
   const [anlegen, setAnlegen] = useState(false);
   const [importOffen, setImportOffen] = useState(false);
   const [protokoll, setProtokoll] = useState<string | null | undefined>(undefined);
@@ -83,7 +85,8 @@ export function BezugsgroessenPage() {
           <h2>{z.name}</h2><p className="vp-bz-einheit">{z.einheit}</p><p>{z.geltung}</p>
           {z.flaeche && <p className="vp-bz-hinweis">Flächen werden in der Ortsstruktur gepflegt.</p>}
           {z.flaeche && z.standort && <a className="vp-bz-weg" href={`#/standort/${encodeURIComponent(z.standort)}/gebaeude`}>Gebäude und Bereiche ansehen<Icon name="chevron-right" size={16} /></a>}
-          {z.original?.wertart === 'periodenwert' && <BezugswertListe onEingegeben={() => setStand(s => s ? { ...s, liste: { ...s.liste, bezugsgroessen: s.liste.bezugsgroessen.map(b => b.id === z.original?.id ? { ...b, hat_werte: true } : b) } } : s)} bezug={z.original} standort={z.standort} zone={stand.daten.standorte.find(s => s.id === z.standort)?.zeitzone ?? stand.daten.unternehmen?.zeitzone ?? VORGABE_ZEITZONE} />}
+          {z.original?.wertart === 'periodenwert' && <BezugsKanalbindung onChanged={() => setKanalRevision(n => n + 1)} bezug={z.original} standort={z.standort} zone={stand.daten.standorte.find(s => s.id === z.standort)?.zeitzone ?? stand.daten.unternehmen?.zeitzone ?? VORGABE_ZEITZONE} />}
+          {z.original?.wertart === 'periodenwert' && <BezugswertListe bindungRevision={kanalRevision} onEingegeben={() => setStand(s => s ? { ...s, liste: { ...s.liste, bezugsgroessen: s.liste.bezugsgroessen.map(b => b.id === z.original?.id ? { ...b, hat_werte: true } : b) } } : s)} bezug={z.original} standort={z.standort} zone={stand.daten.standorte.find(s => s.id === z.standort)?.zeitzone ?? stand.daten.unternehmen?.zeitzone ?? VORGABE_ZEITZONE} />}
           {z.original && !z.archiviert && z.standort !== undefined && verwalten(z.standort) && <Button variant="ghost" onClick={e => { ausloeser.current = e.currentTarget; setArchiv(z); setErfolg(null); }}>Archivieren</Button>}
         </li>)}
       </ul>}

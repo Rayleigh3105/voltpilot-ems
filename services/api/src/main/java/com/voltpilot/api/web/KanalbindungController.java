@@ -14,14 +14,14 @@ import org.springframework.web.bind.annotation.*;
 public class KanalbindungController {
     private final KanalbindungService service;
     public KanalbindungController(KanalbindungService service) { this.service=service; }
-    public record Anfrage(@JsonProperty("entity_id") UUID entityId, String kanal, String zustand, Instant von) {}
+    public record Anfrage(@JsonProperty("entity_id") UUID entityId, String kanal, String zustand, Instant von, java.math.BigDecimal raumtemperatur, java.math.BigDecimal heizgrenze) {}
     public record Ende(Instant bis) {}
 
     /** Recht: {@code bezugsgroesse.verwalten}. */
     @PostMapping
     @Recht(value="bezugsgroesse.verwalten",ziel=RechtZiel.BEZUGSGROESSE)
     public ResponseEntity<KanalbindungService.Bindung> binden(@PathVariable UUID id,@RequestBody Anfrage a,Authentication auth) {
-        return ResponseEntity.status(201).body(service.binden(id,a.entityId(),a.kanal(),a.zustand(),a.von(),ProtokollAkteur.aus(auth).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED,"Anmeldung fehlt."))));
+        return ResponseEntity.status(201).body(service.binden(id,a.entityId(),a.kanal(),a.zustand(),a.von(),a.raumtemperatur(),a.heizgrenze(),ProtokollAkteur.aus(auth).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED,"Anmeldung fehlt."))));
     }
     /** Recht: {@code bezugsgroesse.verwalten}. */
     @PostMapping("/{bindung}/beenden")
@@ -29,6 +29,10 @@ public class KanalbindungController {
     public KanalbindungService.Bindung beenden(@PathVariable UUID id,@PathVariable UUID bindung,@RequestBody Ende a,Authentication auth) {
         return service.beenden(id,bindung,a.bis(),ProtokollAkteur.aus(auth).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED,"Anmeldung fehlt.")));
     }
+    /** Recht: {@code bezugsgroesse.verwalten}. */
+    @GetMapping("/kanaele")
+    @Recht(value="bezugsgroesse.verwalten",ziel=RechtZiel.BEZUGSGROESSE)
+    public List<KanalbindungService.Auswahl> auswahl(@PathVariable UUID id) { return service.auswahl(id); }
     /** Recht: {@code messwerte.ansehen}. */
     @GetMapping
     public List<KanalbindungService.Bindung> liste(@PathVariable UUID id) { return service.liste(id); }

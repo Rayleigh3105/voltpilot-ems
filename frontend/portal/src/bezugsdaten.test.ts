@@ -1,3 +1,4 @@
+import { gradtage } from './gradtage';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -196,6 +197,13 @@ describe('Bezugsdaten-Vertrag: die Vektoren', () => {
     const soll = p.ergebnis;
 
     switch (p.regel) {
+      case 'gradtage': {
+        const ist = gradtage(ein.tage, ein.raumtemperatur, ein.heizgrenze);
+        betragGleich(ist.betrag, soll.betrag);
+        expect(ist.zustand).toBe(soll.zustand);
+        expect(ist.kennzeichen).toEqual(soll.kennzeichen);
+        break;
+      }
       case 'zahl': {
         const ist = zahl(ein.text, ein.format, ein.ganzzahlig);
         betragGleich(ist.betrag, soll.betrag);
