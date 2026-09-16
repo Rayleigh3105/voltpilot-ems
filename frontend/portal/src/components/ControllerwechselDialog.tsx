@@ -88,7 +88,7 @@ export function ControllerwechselDialog({ geraet, anlageId, jetzt, onClose, onGe
         }).catch(e => setFehler(e.message)).finally(() => setBusy(false));
       }}>Folgen erneut laden</Button>}
       {ergebnis && ort ? <section aria-label="Gespeicherte Folgen" role="status" className="vp-zw-folgen">
-        {wechselFolgen(ergebnis, ort.zone, 'Controller').map(s => <p key={s}>{s}</p>)}
+        {wechselFolgen(ergebnis, ort.zone, 'Controller').map((s, i) => <p key={`${i}:${s}`}>{s}</p>)}
       </section> : <>
         <p className="vp-zw-schritt" ref={schrittRef} tabIndex={-1}>Schritt {bestaetigung ? '2 von 2 · Folgen bestätigen' : '1 von 2 · Controller und Karten'}</p>
         {!bestaetigung && ort && zeit && <>

@@ -117,7 +117,9 @@ export function wechselFolgen(v: ZaehlerwechselVorgang, zone: string, art: 'Zäh
 
 /** Übersetzt ausschließlich device_replaced aus dem bestehenden Komponenten-Ereignispfad. */
 export function wechselMarken(ereignisse: readonly import('./api').KomponentenEreignis[], zone: string): string[] {
-  return [...new Set(ereignisse.filter(e => e.eventType === 'device_replaced' && e.fromValue && e.toValue)
+  const berichtigt = ereignisse.filter(e => e.eventType === 'edited' && e.note?.startsWith('Zeitpunkt berichtigt:') && e.fromValue && e.toValue)
+    .map(e => `Zeitpunkt berichtigt: ${zeitText(e.fromValue!, zone)} → ${zeitText(e.toValue!, zone)}`);
+  return [...berichtigt, ...new Set(ereignisse.filter(e => e.eventType === 'device_replaced' && e.fromValue && e.toValue)
     .map(e => ereignisSatz({ art: 'device_boundary', anlass: 'zaehlerwechsel', zeitpunkt: e.effectiveAt,
       einbau_alt: e.fromValue, einbau_neu: e.toValue }, {}, zone)))];
 }

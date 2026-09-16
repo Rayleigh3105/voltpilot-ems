@@ -21,7 +21,7 @@ const geraet = new URLSearchParams(location.search).get('einstieg') === 'geraet'
 ReactDOM.createRoot(document.getElementById('root')!).render(<div className="vp-content">
   <header className="vp-topbar"><div className="crumbs">Kunststoffwerk Ahrenberg · Werk Ahrenberg</div></header>
   <main className="vp-main"><RechteStandort.Provider value={FIXTURE_IDS.st1}>
-    {geraet ? <GeraetHerkunft siteId={FIXTURE_IDS.an1} komponenten={vorherGeraet().komponenten.map(k => ({ entityId: k.entity_id, label: 'Unterzähler Spritzguss SG01–SG06' }))} jetzt={WECHSEL_JETZT} />
+    {geraet ? <GeraetHerkunft siteId={FIXTURE_IDS.an1} komponenten={vorherGeraet().komponenten.map(k => ({ entityId: k.entity_id, label: 'Unterzähler Spritzguss SG01–SG06' }))} jetzt={new URLSearchParams(location.search).get('geplant') ? '2026-11-10T09:00:00+01:00' : WECHSEL_JETZT} />
       : <MessstelleSeite id={MS_IDS.ms06} onListe={() => undefined} />}
   </RechteStandort.Provider></main>
 </div>);

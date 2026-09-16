@@ -151,3 +151,41 @@ test('Escape und Fokus bleiben am auslösenden Knopf; Abbruch schreibt nichts', 
   await expect(knopf).toBeFocused();
   expect(posts).toHaveLength(0);
 });
+
+test('A3: angekündigten Wechsel im vorhandenen Dialog berichtigen', async ({ page }, info) => {
+  const breite = info.project.name.includes('mobile') ? 375 : 1440;
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 1000 });
+  const fehler: string[] = [];
+  page.on('pageerror', e => fehler.push(e.message));
+  page.on('console', m => { if (m.type() === 'error') fehler.push(m.text()); });
+  await cloud(page);
+  await page.clock.setFixedTime(new Date('2026-11-10T09:00:00+01:00'));
+  let bisher = '2026-11-18T10:00:00+01:00';
+  const posts: unknown[] = [];
+  await page.route('**/api/v1/sites/*/geraete', route => {
+    const alt = { ...vorherGeraet(), ausgebaut_am: bisher,
+      komponenten: vorherGeraet().komponenten.map(k => ({ ...k, gueltig_bis: bisher })) };
+    const neu = { ...gr4Z5b(), eingebaut_am: bisher,
+      komponenten: gr4Z5b().komponenten.map(k => ({ ...k, gueltig_ab: bisher })),
+      vorgaenger: [{ ...vorherGeraet(), ausgebaut_am: bisher }] };
+    return route.fulfill(json({ geraete: [alt, neu] }));
+  });
+  await page.route('**/api/v1/geraete/*/austausch/zeitpunkt', route => {
+    const body = route.request().postDataJSON();
+    posts.push(body); bisher = body.zeitpunkt;
+    return route.fulfill(json({ vorgaenger: 'g-z5a', nachfolger: 'g-z5b', ...body, satz: 'Zeitpunkt berichtigt' }));
+  });
+  await page.goto('/e2e/zaehlerwechsel.html?einstieg=geraet&geplant=1');
+  await page.getByRole('button', { name: 'Zeitpunkt berichtigen', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Zählerwechsel angekündigt');
+  await dialog.getByRole('combobox', { name: 'Uhrzeit', exact: true }).fill('10:40');
+  await dialog.getByRole('combobox', { name: 'Uhrzeit', exact: true }).press('Tab');
+  await dialog.getByLabel('Begründung (optional)').fill('Montage beginnt später');
+  await bild(page, 'a3-berichtigen', breite);
+  await dialog.getByRole('button', { name: 'Zeitpunkt berichtigen', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('Geändert:');
+  await bild(page, 'a3-gespeichert', breite);
+  expect(posts).toEqual([{ bisher: '2026-11-18T10:00:00+01:00', zeitpunkt: '2026-11-18T10:40:00+01:00', grund: 'Montage beginnt später' }]);
+  expect(fehler).toEqual([]);
+});
