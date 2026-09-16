@@ -108,6 +108,12 @@ public class KorrekturKaskade {
     static final String BERECHNUNG_GEAENDERT = "berechnung_geaendert";
     /** AP-11 IP-9: ein Stammdatum wurde rückwirkend eingetragen — Anlass das Kennzeichen der Bezugsgröße. */
     static final String STAMMDATUM_EINGETRAGEN = "stammdatum_eingetragen";
+    /**
+     * Die BEZUGSFLÄCHE eines Orts wurde rückwirkend geändert ({@code ort_aenderung} / {@code flaeche_geaendert}) —
+     * Anlass das Kurzzeichen des Orts. AP-11 IP-9 hat diesen Auslöser nicht gebaut, weil eine Fläche damals kein
+     * Kennzahl-Nenner sein konnte; seit dem Leseweg in die Ortsstruktur läuft er nicht mehr ins Leere.
+     */
+    static final String FLAECHE_GEAENDERT = "flaeche_geaendert";
 
     private static final String ART_NACHLIEFERUNG = "nachlieferung_nach_endgueltigkeit";
     private static final String ART_ABLESESTAENDE = "ablesestaende_nachgetragen";
@@ -252,10 +258,19 @@ public class KorrekturKaskade {
      * berühren keine Messreihe und rufen nur die Kennzahl- und die Berichts-Naht ({@link #ohneStufen}).
      */
     private enum Quelle {
-        KORREKTUR, ERSATZWERT, BEZUGSGROESSE, DEFINITION, STAMMDATUM;
+        KORREKTUR, ERSATZWERT, BEZUGSGROESSE, DEFINITION, STAMMDATUM, FLAECHE;
 
         boolean ohneStufen() {
             return this != KORREKTUR && this != ERSATZWERT;
+        }
+
+        /**
+         * Ob die Berichts-Naht diesen Anlass sehen soll. Eine rückwirkend geänderte FLÄCHE liest AP-12 IP-9 schon
+         * selbst ({@code StrukturAenderungLaeufer} über {@code ort_aenderung}, eigenes Wasserzeichen) — ein zweiter
+         * Anstoß desselben Vorgangs wäre eine zweite Revision für dieselbe Tatsache.
+         */
+        boolean anBerichte() {
+            return this != FLAECHE;
         }
     }
 
@@ -345,7 +360,20 @@ public class KorrekturKaskade {
                               FROM bezugsgroesse_aenderung WHERE art = 'stammdatum_eingetragen') s
                       LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = s.tenant_id
                                                            AND w.anlass_kennung = 'bezugsgroesse_stammdatum:' || s.bezugsgroesse_id
-                     WHERE s.rueckwirkend AND s.nr > coalesce(w.fassung, 0)) a
+                     WHERE s.rueckwirkend AND s.nr > coalesce(w.fassung, 0)
+                    UNION ALL
+                    SELECT o.tenant_id, 'ort_flaeche:' || o.objekt_id, 'FLAECHE', o.nr, 'flaeche_geaendert',
+                           o.objekt_id, o.created_at
+                      FROM (SELECT tenant_id, objekt_id, rueckwirkend, created_at,
+                                   row_number() OVER (PARTITION BY tenant_id, objekt_id ORDER BY id)::int AS nr
+                              FROM ort_aenderung WHERE art = 'flaeche_geaendert') o
+                      LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = o.tenant_id
+                                                           AND w.anlass_kennung = 'ort_flaeche:' || o.objekt_id
+                     WHERE o.rueckwirkend AND o.nr > coalesce(w.fassung, 0)
+                       AND EXISTS (SELECT 1 FROM bezugsgroesse b
+                                    WHERE b.tenant_id = o.tenant_id AND b.wertart = 'stammdatum'
+                                      AND (b.standort_id = o.objekt_id OR b.ort_id = o.objekt_id)
+                                      AND bezugsdaten_groesse(b.einheit) = 'flaeche')) a
                  ORDER BY created_at, kennung, fassung LIMIT ?
                 """)) {
             ps.setInt(1, KANDIDATEN);
@@ -379,11 +407,14 @@ public class KorrekturKaskade {
             case BEZUGSGROESSE -> nenner(con, a, zone, jetzt);
             case DEFINITION -> berechnung(con, a, zone, jetzt);
             case STAMMDATUM -> stammdatum(con, a, zone, jetzt);
+            case FLAECHE -> flaeche(con, a, zone, jetzt);
             case KORREKTUR, ERSATZWERT -> throw new IllegalStateException("UEMS Korrektur-Kaskade: " + a.kennung()
                     + " geht durch die Stufen der Messreihe");
         };
         kennzahlen.nachKorrektur(con, betroffen);
-        berichteBenachrichtigen(con, berichte, betroffen);
+        if (a.quelle().anBerichte()) {
+            berichteBenachrichtigen(con, berichte, betroffen);
+        }
         return new Verarbeitet(kennzahlWerte(con, a.tenant(), jetzt), List.of());
     }
 
@@ -492,6 +523,56 @@ public class KorrekturKaskade {
                         List.of(new Bezugsgroesse(a.objekt(), rs.getString(1), ab, bisTag, a.fassung(), a.status())));
             }
         }
+    }
+
+    /**
+     * Eine rückwirkend geänderte BEZUGSFLÄCHE (AP-02, die Fläche eines Orts): der Ort, ab dem Tag, ab dem die neue
+     * Fläche gilt, bis heute — und KEINEN Tag früher. Betroffen ist jede Kennzahl, die die Bezugsfläche dieses Orts als
+     * Nenner liest; sie hängt an der Bezugsgröße, die als Zeiger darauf gebunden ist.
+     *
+     * <p>Die Fläche selbst bleibt, wo sie ist: hier wird nur gelesen, welcher Tag sich geändert hat.
+     */
+    private static Betroffen flaeche(Connection con, Anlass a, ZoneId zone, Instant jetzt) throws SQLException {
+        LocalDate ab;
+        String kurzzeichen;
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT e.gilt_ab, coalesce(s.kurzzeichen, o.kurzzeichen) AS kurzzeichen "
+                + "FROM (SELECT objekt_id, gilt_ab, row_number() OVER (ORDER BY id)::int AS nr FROM ort_aenderung "
+                + "WHERE tenant_id = ? AND objekt_id = ? AND art = 'flaeche_geaendert') e "
+                + "LEFT JOIN standort s ON s.id = e.objekt_id AND s.tenant_id = ? "
+                + "LEFT JOIN ort o ON o.id = e.objekt_id AND o.tenant_id = ? WHERE e.nr = ?")) {
+            ps.setObject(1, a.tenant());
+            ps.setObject(2, a.objekt());
+            ps.setObject(3, a.tenant());
+            ps.setObject(4, a.tenant());
+            ps.setInt(5, a.fassung());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException("UEMS Korrektur-Kaskade: " + a.kennung() + " Eintrag " + a.fassung()
+                            + " nicht gefunden");
+                }
+                ab = rs.getObject(1, LocalDate.class);
+                kurzzeichen = rs.getString(2);
+            }
+        }
+        LocalDate bisTag = bisHeute(ab, null, zone, jetzt);
+        List<Bezugsgroesse> flaechen = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("SELECT b.id, b.kennzeichen FROM bezugsgroesse b "
+                + "WHERE b.tenant_id = ? AND b.wertart = 'stammdatum' AND (b.standort_id = ? OR b.ort_id = ?) "
+                + "AND bezugsdaten_groesse(b.einheit) = 'flaeche' ORDER BY b.kennzeichen, b.id")) {
+            ps.setObject(1, a.tenant());
+            ps.setObject(2, a.objekt());
+            ps.setObject(3, a.objekt());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    flaechen.add(new Bezugsgroesse(rs.getObject(1, UUID.class), rs.getString(2), ab, bisTag,
+                            a.fassung(), a.status()));
+                }
+            }
+        }
+        return new Betroffen(a.tenant(), kurzzeichen == null ? a.kennung() : kurzzeichen, a.fassung(), a.status(),
+                List.of(), ab.atStartOfDay(zone).toInstant(), bisTag.plusDays(1).atStartOfDay(zone).toInstant(), zone,
+                ab, bisTag, List.of(), List.of(), 0, jetzt, List.copyOf(flaechen));
     }
 
     /** Der letzte Tag einer Neubildung ab {@code ab}: heute — oder früher der letzte Tag der Fassung; nie vor {@code ab}. */

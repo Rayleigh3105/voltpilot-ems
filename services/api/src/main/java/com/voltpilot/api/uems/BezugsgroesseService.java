@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -198,15 +199,67 @@ public class BezugsgroesseService {
         List<String> perioden = mitPerioden
                 ? BezugsflaecheLesemodell.perioden(periodeArt, von, bis, repo.vokabular().periodeArten())
                 : List.of();
+        if (istBezugsflaeche(b)) {
+            return bezugsflaechen.stammdatum(b.geltungId(), b.id(), b.kennzeichen(),
+                    mitPerioden ? periodeArt : null, von, bis);
+        }
         return stammdatumDarstellung(b, perioden, mitPerioden ? periodeArt : null, von, bis);
+    }
+
+    /**
+     * Die Geltungsbereiche, an denen eine Bezugsfläche stehen kann — dieselben, an denen AP-02 eine Fläche kennt
+     * ({@code flaeche_gueltigkeit}: Standort, Gebäude, Bereich).
+     */
+    static final List<String> FLAECHE_GELTUNG = List.of("standort", "gebaeude", "bereich");
+
+    /**
+     * Ob die Bezugsgröße die BEZUGSFLÄCHE ihres Orts meint (E17): ein Stammdatum in einer Einheit der Größe
+     * {@code flaeche}, an einem Standort, Gebäude oder Bereich. Ihr Wert steht NICHT in
+     * {@code bezugsgroesse_stammdatum} — die Tabelle lehnt jede Fläche ab —, sondern in der Ortsstruktur; sie ist der
+     * Zeiger dorthin, nicht eine zweite Wahrheit.
+     */
+    boolean istBezugsflaeche(Zeile b) {
+        return BezugsgroesseRegeln.STAMMDATUM.equals(b.wertart())
+                && BezugsgroesseRegeln.GROESSE_FLAECHE.equals(
+                        BezugsEinheit.groesseVon(b.einheit(), repo.vokabular().einheiten()))
+                && b.geltungId() != null && FLAECHE_GELTUNG.contains(b.geltungArt());
+    }
+
+    /**
+     * Die Bezugsgröße, unter der die Bezugsfläche EINES Orts gelesen wird — gefunden, sonst angelegt (AP-11 §5.1:
+     * „Netzbezug je m²“ ist die erste Kennzahl eines Bestandskunden).
+     *
+     * <p><b>Warum der Server sie anlegt und nicht der Kunde.</b> Diese Zeile ist der ZEIGER in die Ortsstruktur, keine
+     * zweite Fläche: sie trägt nie einen eigenen Wert ({@code bezugsgroesse_stammdatum_keine_flaeche_chk} lehnt jede
+     * Fläche ab), ihre Zahlen kommen aus {@code flaeche_gueltigkeit}. Die Schreibroute lehnt eine Bezugsgröße in m²
+     * darum weiter ab (M4, {@code flaeche_aus_struktur}) — gebunden wird sie nur, wenn eine Kennzahl die Bezugsfläche
+     * eines Orts als Nenner nennt. Ein zweiter Aufruf findet dieselbe Zeile.
+     *
+     * @param anlegen {@code false} in der Vorschau (Nur-Lese-Transaktion): dann leer, wenn es sie noch nicht gibt
+     */
+    public Optional<Zeile> bezugsflaecheBinden(UUID objekt, String geltungArt, boolean anlegen) {
+        Optional<Zeile> da = repo.bezugsflaeche(geltungArt, objekt);
+        if (da.isPresent() || !anlegen) {
+            return da;
+        }
+        UUID tenant = TenantContext.get();
+        repo.kundenbereichSperren(tenant);
+        return repo.bezugsflaeche(geltungArt, objekt).or(() -> {
+            Entwurf e = new Entwurf(BezugsgroesseRegeln.kennzeichenVorschlag(repo.jeBelegt()),
+                    BezugsflaecheLesemodell.NAME, BezugsgroesseRegeln.STAMMDATUM, BezugsflaecheLesemodell.EINHEIT, null,
+                    geltungArt, objekt.toString());
+            UUID id = repo.anlegen(tenant, e, objekt);
+            return repo.finde(id);
+        });
     }
 
     /**
      * E15/S4: ein Wert ab einem Tag — die Mechanik der Bezugsfläche: das laufende Intervall endet am Vortag, ein
      * Wert am Beginntag eines Intervalls hebt es auf (Korrektur), derselbe Wert schreibt nichts. Erst beenden
      * bzw. aufheben, dann eintragen (die Exklusion sieht jeden Zwischenstand); GENAU EIN Protokolleintrag
-     * {@code stammdatum_eingetragen} mit „gilt ab“ und „rückwirkend“. Die Bezugsfläche kommt hier nie an: eine
-     * Bezugsgröße in m² gibt es nicht (M4), und die Tabelle lehnt sie zusätzlich ab.
+     * {@code stammdatum_eingetragen} mit „gilt ab“ und „rückwirkend“. Die Bezugsfläche kommt hier nie an: die Regel
+     * lehnt jede Fläche ab (M4 {@code flaeche_aus_struktur}), und die Tabelle zusätzlich — auch die Bezugsgröße, die
+     * als Zeiger auf eine Fläche gebunden ist ({@link #bezugsflaecheBinden}), bekommt hier nie eine Zeile.
      */
     public BezugsgroesseDto.Stammdatum stammdatumEintragen(UUID id, String wertText, LocalDate gueltigAb,
             ProtokollAkteur wer) {

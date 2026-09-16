@@ -35,7 +35,7 @@ export const ABLEHNUNGEN = {
     status: 422,
     satz: 'Nur ein Periodenwert hat eine Periode (Tag, Woche, Monat oder Jahr); ein Stand und ein Stammdatum haben keine.',
   },
-  flaeche_aus_struktur: { status: 422, satz: 'Flächen pflegen Sie am Gebäude.' },
+  flaeche_aus_struktur: { status: 422, satz: 'Flächen pflegen Sie am Gebäude. Als Nenner einer Kennzahl nehmen Sie die Bezugsfläche des Standorts, Gebäudes oder Bereichs.' },
   kein_stammdatum: {
     status: 422,
     satz: 'Eine Gültigkeit ab einem Tag hat nur ein Stammdatum. Periodenwerte und Stände werden als Werte eingetragen.',

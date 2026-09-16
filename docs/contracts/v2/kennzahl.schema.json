@@ -22,11 +22,12 @@
     "regeln_kurz": { "type": "array", "minItems": 1, "items": { "type": "string" } },
     "vokabulare": {
       "type": "object", "additionalProperties": false,
-      "required": ["rechenform", "rechenform_vorgesehen", "eingang_art", "eingang_rolle", "periode_art", "geltung_art", "zustand", "richtung_unsicherheit", "grund_ohne_zahl", "fehler", "sichtbarkeit", "protokoll", "ereignisse_reserviert", "rechte"],
+      "required": ["rechenform", "rechenform_vorgesehen", "eingang_art", "eingang_art_anfrage", "eingang_rolle", "periode_art", "geltung_art", "zustand", "richtung_unsicherheit", "grund_ohne_zahl", "fehler", "sichtbarkeit", "protokoll", "ereignisse_reserviert", "rechte"],
       "properties": {
         "rechenform": { "$ref": "#/$defs/woerter" },
         "rechenform_vorgesehen": { "$ref": "#/$defs/woerter" },
         "eingang_art": { "$ref": "#/$defs/woerter" },
+        "eingang_art_anfrage": { "$ref": "#/$defs/woerter" },
         "eingang_rolle": { "$ref": "#/$defs/woerter" },
         "periode_art": { "$ref": "#/$defs/woerter" },
         "geltung_art": { "$ref": "#/$defs/woerter" },

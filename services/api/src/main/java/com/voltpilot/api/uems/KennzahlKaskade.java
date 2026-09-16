@@ -78,14 +78,16 @@ public class KennzahlKaskade implements KennzahlenNaht {
     /**
      * Der Auslöser der Meldung {@code kennzahl_neu_gebildet}: die Kennung des Vorgangs ({@code K-…}, {@code EW-…},
      * {@code BK-…}); ohne Vorgang die Kennzahl mit der Nummer ihrer neuen Fassung ({@code KZ-0004/Fassung-2}) bzw. die
-     * Bezugsgröße mit dem Tag, ab dem das Stammdatum gilt ({@code BZ-8/ab-2027-01-01}) — ein bloßes Kennzeichen wäre eine
-     * Neubildung ohne Ursache.
+     * Bezugsgröße mit dem Tag, ab dem das Stammdatum gilt ({@code BZ-8/ab-2027-01-01}) bzw. der Ort mit dem Tag, ab dem
+     * die neue Bezugsfläche gilt ({@code G-2/ab-2027-01-01}) — ein bloßes Kennzeichen wäre eine Neubildung ohne
+     * Ursache.
      */
     static String ausloeser(KorrekturKaskade.Betroffen b) {
         if (KorrekturKaskade.BERECHNUNG_GEAENDERT.equals(b.status())) {
             return b.anlass() + "/Fassung-" + b.fassung();
         }
-        if (KorrekturKaskade.STAMMDATUM_EINGETRAGEN.equals(b.status())) {
+        if (KorrekturKaskade.STAMMDATUM_EINGETRAGEN.equals(b.status())
+                || KorrekturKaskade.FLAECHE_GEAENDERT.equals(b.status())) {
             return b.anlass() + "/ab-" + b.bezugsgroessen().get(0).periodeVon();
         }
         return b.anlass();
@@ -137,6 +139,9 @@ public class KennzahlKaskade implements KennzahlenNaht {
         }
         if (KorrekturKaskade.STAMMDATUM_EINGETRAGEN.equals(b.status())) {
             return stammdatum(con, b);
+        }
+        if (KorrekturKaskade.FLAECHE_GEAENDERT.equals(b.status())) {
+            return flaeche(con, b);
         }
         if (!b.bezugsgroessen().isEmpty()) {
             return nenner(con, b);
@@ -209,6 +214,32 @@ public class KennzahlKaskade implements KennzahlenNaht {
                             + b.fassung() + " nicht gefunden");
                 }
                 return "Stammdatum " + g.kennzeichen() + " ab " + TAG.format(g.periodeVon()) + " (eingetragen "
+                        + TAG.format(rs.getTimestamp(1).toInstant().atZone(b.zone())) + ")";
+            }
+        }
+    }
+
+    /**
+     * „Bezugsfläche G-2 ab 01.01.2027 (eingetragen 15.01.2027)“ — der Eintrag im Änderungsprotokoll des Orts
+     * ({@code ort_aenderung} / {@code flaeche_geaendert}). Den Ort findet der Beleg über den Geltungsbereich der
+     * Bezugsgröße, die als Zeiger auf seine Fläche gebunden ist.
+     */
+    static String flaeche(Connection con, KorrekturKaskade.Betroffen b) throws SQLException {
+        KorrekturKaskade.Bezugsgroesse g = b.bezugsgroessen().get(0);
+        try (PreparedStatement ps = con.prepareStatement("SELECT created_at FROM (SELECT created_at, "
+                + "row_number() OVER (ORDER BY id)::int AS nr FROM ort_aenderung WHERE tenant_id = ? "
+                + "AND art = 'flaeche_geaendert' AND objekt_id = (SELECT coalesce(standort_id, ort_id) "
+                + "FROM bezugsgroesse WHERE tenant_id = ? AND id = ?)) e WHERE e.nr = ?")) {
+            ps.setObject(1, b.tenant());
+            ps.setObject(2, b.tenant());
+            ps.setObject(3, g.id());
+            ps.setInt(4, b.fassung());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException("UEMS Kennzahl-Kaskade: Bezugsfläche " + b.anlass() + " Eintrag "
+                            + b.fassung() + " nicht gefunden");
+                }
+                return "Bezugsfläche " + b.anlass() + " ab " + TAG.format(g.periodeVon()) + " (eingetragen "
                         + TAG.format(rs.getTimestamp(1).toInstant().atZone(b.zone())) + ")";
             }
         }

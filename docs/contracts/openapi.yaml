@@ -21122,8 +21122,13 @@ components:
       required: [rolle, art, kennzeichen]
       properties:
         rolle: { type: string, enum: [zaehler, nenner, paar] }
-        art: { type: string, enum: [messstelle, bezugsgroesse, kennzahl] }
-        kennzeichen: { type: string, description: "Das Kennzeichen des Objekts (MS-12, BZ-6, KZ-0001)." }
+        art: { type: string, enum: [messstelle, bezugsgroesse, bezugsflaeche, kennzahl] }
+        kennzeichen:
+          type: string
+          description: >
+            Das Kennzeichen des Objekts (MS-12, BZ-6, KZ-0001) — bei `bezugsflaeche` das KURZZEICHEN des
+            Standorts, Gebäudes oder Bereichs (G-2), an dem die Fläche steht. Die Fläche wird aus der
+            Ortsstruktur gelesen; gespeichert wird der Eingang als `bezugsgroesse` (Stammdatum, m²).
     KennzahlAnfrage:
       type: object
       additionalProperties: false

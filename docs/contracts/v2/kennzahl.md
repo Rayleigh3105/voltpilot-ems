@@ -62,6 +62,17 @@ Nenners wird **abgeleitet**, nicht übergeben:
 Ein Messwert ohne Vertrags-Messgröße ist kein Eingang (`groesse_unbekannt`, B4); ein Momentanwert auch nicht (U3,
 `einheit_unpassend`), ebenso eine Bezugsgröße, die Stände führt.
 
+**Die Bezugsfläche eines Orts ist ein Nenner** (§5.1: „Netzbezug je m²“ ist die erste anlegbare Kennzahl eines
+Bestandskunden). Eine Anfrage nennt sie mit `art: "bezugsflaeche"` und dem **Kurzzeichen des Standorts, Gebäudes oder
+Bereichs** (`G-2`) — nicht dem einer Bezugsgröße, denn die Fläche steht in der Ortsstruktur (`flaeche_gueltigkeit`,
+AP-02) und wird von dort gelesen (AP-09 IP-6, E17). `bezugsflaeche` ist darum ein Wort der **Anfrage**
+(`eingang_art_anfrage`), nicht der Speicherung: gebunden wird eine Bezugsgröße mit Wertart `stammdatum` in m² und dem
+Ort als Geltungsbereich, die **keinen eigenen Wert trägt** — sie ist der Zeiger, die Zahl kommt aus der Ortsstruktur.
+Von da an ist sie ein Stammdatum-Nenner wie jeder andere: Wert am Stichtag, Übergang IN der Periode als Kennzeichen
+„Fläche geändert am … (3.100 → 3.400 m²)“, Herkunft „Stichtag 31.10.2026“ (K12). Ein Ort ohne Fläche ist kein Eingang
+(`eingang_unbekannt`) — „nicht erhoben“ ist keine Zahl. Eine Bezugsgröße in m² **anzulegen** bleibt abgelehnt
+(`flaeche_aus_struktur`, AP-09 M4); ihr Satz nennt diesen Weg.
+
 ## 4. Perioden (E3)
 
 - **P1** Grundperiode = die gröbste Periode, in der ALLE Periodenwert-Eingänge restlos aufgehen; eine Messstelle liefert
@@ -218,6 +229,16 @@ Assistenten die möglichen Paare einer Zusammenfassung: jede nicht archivierte K
 Gruppe ihrer Rechenform und Einheit — genau die Gleichheit, die das Anlegen verlangt (R4, sonst 422 `einheit_unpassend`).
 Gruppen nach Rechenform, dann Einheit; Kennzahlen nach Kennzeichen, in der Form von `GET /api/v1/kennzahlen`. Ein
 unbekannter oder leerer Parameter ist 400 `anfrage_ungueltig` mit `feld`. Die Route rechnet nichts und schreibt nichts.
+
+### Der Auslöser aus der Ortsstruktur (IP-9, nachgetragen)
+
+Ändert sich die **Bezugsfläche** eines Orts **rückwirkend** (`ort_aenderung` / `flaeche_geaendert`, `rueckwirkend`),
+bildet die Korrektur-Kaskade jede Kennzahl, die sie als Nenner liest, **ab `gilt ab` neu — und keinen Tag früher**;
+ihr endgültiger Wert wird Version n + 1 „korrigiert (Version n)“. Der Anlass heißt `ort_flaeche:<Ort-ID>`, die Fassung
+ist der wievielte solche Eintrag an diesem Ort, der Auslöser der Meldung nennt Ort und Tag (`G-2/ab-2027-01-01`).
+AP-11 IP-9 hatte diesen Auslöser bewusst nicht gebaut, weil eine Fläche damals kein Nenner sein konnte. Die **Berichte**
+bekommen ihn nicht von hier: sie lesen dieselbe Zeile über den Strukturänderungs-Läufer (AP-12 IP-9) mit eigenem
+Wasserzeichen — zweimal anstoßen wäre zwei Revisionen für eine Tatsache.
 
 ## 13. Wörter (E12)
 

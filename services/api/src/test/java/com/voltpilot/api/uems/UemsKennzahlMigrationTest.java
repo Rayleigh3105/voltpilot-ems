@@ -86,9 +86,13 @@ class UemsKennzahlMigrationTest {
     private static final List<String> LISTEN = List.of("rechenform", "eingang_art", "eingang_rolle", "periode_art",
             "geltung_art", "zustand", "richtung_unsicherheit", "grund_ohne_zahl", "protokoll");
 
-    /** Die Blöcke, die Wörter von Antworten und Rechten sind — keine Spalte. */
-    private static final List<String> NICHT_GESPEICHERT = List.of("rechenform_vorgesehen", "fehler", "sichtbarkeit",
-            "ereignisse_reserviert", "rechte");
+    /**
+     * Die Blöcke, die Wörter von Antworten und Rechten sind — keine Spalte. {@code eingang_art_anfrage} nennt zusätzlich
+     * {@code bezugsflaeche}: so heißt die Bezugsfläche eines Orts in einer ANFRAGE; gespeichert wird daraus eine
+     * Bezugsgröße, also ein Wort aus {@code eingang_art} (siehe {@code uems-flaeche-als-nenner.md}).
+     */
+    private static final List<String> NICHT_GESPEICHERT = List.of("rechenform_vorgesehen", "eingang_art_anfrage",
+            "fehler", "sichtbarkeit", "ereignisse_reserviert", "rechte");
 
     /** Jede Spalte, die ein Vertragswort trägt: Tabelle, Spalte, CHECK, Vokabular. */
     private static final List<List<String>> VOKABULAR_CHECKS = List.of(

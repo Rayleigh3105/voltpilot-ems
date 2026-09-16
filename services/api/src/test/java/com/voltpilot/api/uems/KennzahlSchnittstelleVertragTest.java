@@ -98,7 +98,11 @@ class KennzahlSchnittstelleVertragTest {
         assertThat(liste(eigenschaft("KennzahlAnfrage", "geltung_art"), "enum")).containsExactlyElementsOf(texte(vok.path("geltung_art")));
         assertThat(liste(eigenschaft("KennzahlAnfrage", "periode_art"), "enum")).containsExactlyElementsOf(texte(vok.path("periode_art")));
         assertThat(liste(eigenschaft("KennzahlEingang", "rolle"), "enum")).containsExactlyElementsOf(texte(vok.path("eingang_rolle")));
-        assertThat(liste(eigenschaft("KennzahlEingang", "art"), "enum")).containsExactlyElementsOf(texte(vok.path("eingang_art")));
+        // Die ANFRAGE darf die Bezugsfläche eines Orts nennen; was gespeichert und geantwortet wird, ist eine Bezugsgröße.
+        assertThat(liste(eigenschaft("KennzahlEingang", "art"), "enum"))
+                .containsExactlyElementsOf(texte(vok.path("eingang_art_anfrage")));
+        assertThat(liste(eigenschaft("KennzahlEingangAntwort", "art"), "enum"))
+                .containsExactlyElementsOf(texte(vok.path("eingang_art")));
         assertThat(liste(eigenschaft("Kennzahl", "rechenform"), "enum")).containsExactlyElementsOf(texte(vok.path("rechenform")));
         assertThat(liste(eigenschaft("Kennzahl", "geltung_art"), "enum")).containsExactlyElementsOf(texte(vok.path("geltung_art")));
         assertThat(liste(eigenschaft("Kennzahl", "kennung"), "enum"))

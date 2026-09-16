@@ -65,7 +65,7 @@ public class KennzahlVorschauService {
                 try {
                     String kennzeichen = KennzahlService.kennzeichenFuerNeue(e.kennzeichen(), repo.jeBelegt());
                     u = kennzahlen.berechnung(a.rechenform(), g, a.eingaenge(), a.komplement(), a.periodeArt(),
-                            kennzeichen, null, LocalDate.ofInstant(jetzt, g.zone()), kennzahlen.katalog());
+                            kennzeichen, null, LocalDate.ofInstant(jetzt, g.zone()), kennzahlen.katalog(), false);
                 } catch (KennzahlAbgelehnt x) {
                     befund(x, befunde);
                 }

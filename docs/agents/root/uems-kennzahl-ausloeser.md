@@ -26,11 +26,11 @@ Baut auf der Kennzahl-Kaskade (`uems-kennzahl-kaskade.md`, Reihen-Pfad), der Kor
 
 ## ⚠ Fallen
 
-- **Eine Fläche ist KEIN Kennzahl-Eingang.** `BezugsgroesseService.stammdatum` liest nur `bezugsgroesse_stammdatum`; Flächen-Werte
-  liefert `BezugsflaecheLesemodell.werte` allein an `GET /api/v1/bezugsflaechen`; eine Bezugsgröße in m² lehnt der Schreibweg ab
-  (`flaeche_aus_struktur`, dazu `bezugsgroesse_stammdatum_keine_flaeche_chk`); Kennzahl-Eingänge kommen nur aus `bezugsgroesse`.
-  Darum gibt es KEINEN Auslöser aus `ort_aenderung` `flaeche_geaendert` — er gehört in das Paket, das die Fläche als Eingang bringt
-  (Befund AP-11 IP-14). K12 ist mit einem Stammdatum in Personen und den Zahlen aus K12 geprüft.
+- **Eine Fläche IST seit dem 16.09.2026 ein Kennzahl-Eingang** (`uems-flaeche-als-nenner.md`): der vierte Auslöser
+  `ort_flaeche:<Ort-ID>` aus `ort_aenderung` `flaeche_geaendert` steht dort, ebenso der Leseweg. Diese Klasse prüft K12 weiter
+  mit einem Stammdatum in Personen und den Zahlen aus K12; die Fläche selbst prüft `UemsKennzahlFlaecheNennerTest`. Unverändert
+  gilt: eine Bezugsgröße in m² ANZULEGEN lehnt der Schreibweg ab (`flaeche_aus_struktur`, dazu
+  `bezugsgroesse_stammdatum_keine_flaeche_chk`) — die Zahlen kommen aus der Ortsstruktur, nie aus einer zweiten Tabelle.
 - **Die Wirkung trägt IDs, keine Kennzeichen.** Ein Kennzeichen kann wechseln (Verlauf) und die Form einer Korrektur-Kennung haben.
 - **Der Auslöser der Meldung ist nie ein bloßes Kennzeichen** (`MS-12` bleibt `regel_verletzt`, Fall
   `kennzahl-neu-gebildet-ohne-korrektur-kennung-verworfen`): Berechnung `KZ-…/Fassung-n`, Stammdatum `BZ-…/ab-JJJJ-MM-TT`.

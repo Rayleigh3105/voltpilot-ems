@@ -50,7 +50,16 @@ public final class KennzahlRegeln {
     public static final String MESSSTELLE = "messstelle";
     public static final String BEZUGSGROESSE = "bezugsgroesse";
     public static final String KENNZAHL = "kennzahl";
+    /**
+     * Wie eine BEZUGSFLÄCHE der Ortsstruktur in einer ANFRAGE genannt wird (AP-11 §5.1) — {@code kennzeichen} ist dann
+     * das Kurzzeichen des Standorts, Gebäudes oder Bereichs. Was daraus WIRD, ist eine Bezugsgröße mit Wertart
+     * {@code stammdatum} in m² (E17): kein Wort mehr in {@link #EINGANG_ARTEN}, keine zweite Rechenregel.
+     */
+    public static final String BEZUGSFLAECHE = "bezugsflaeche";
     public static final List<String> EINGANG_ARTEN = List.of(MESSSTELLE, BEZUGSGROESSE, KENNZAHL);
+    /** Die Arten, die eine Anfrage nennen darf — {@link #EINGANG_ARTEN} und die Bezugsfläche als ihr Name. */
+    public static final List<String> EINGANG_ARTEN_ANFRAGE =
+            List.of(MESSSTELLE, BEZUGSGROESSE, BEZUGSFLAECHE, KENNZAHL);
     public static final List<String> EINGANG_ROLLEN = List.of("zaehler", "nenner", "paar");
 
     /** Die Wertart einer Bezugsgröße als Nenner (Q1): eingegeben/importiert, Stammdatum, aus einem Messkanal. */
