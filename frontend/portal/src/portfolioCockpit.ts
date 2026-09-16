@@ -265,12 +265,15 @@ export interface PortfolioKennzahlen {
   ladestandAnlagen: number;
   /** Σ realisierter Erlös HEUTE (Berliner Tag). */
   erloesHeuteEur: number | null;
+  erloesHeuteAnlagen: number;
   /** Σ vermiedene Spitze (EUR) über die Anlagen mit Lastspitzenkappung. */
   vermiedeneSpitzeEur: number | null;
   /** Σ vermiedene Spitze (kW). */
   vermiedeneSpitzeKw: number | null;
+  vermiedeneSpitzeAnlagen: number;
   /** Σ Ladepunkte der Flotte. */
   ladepunkte: number | null;
+  ladepunkteAnlagen: number;
   /** Σ PV-Leistung JETZT (kW) — nur über Anlagen mit FRISCHEM Messwert. */
   pvJetztKw: number | null;
   /** Wie viele Anlagen dazu einen frischen Messwert hatten. */
@@ -283,12 +286,16 @@ export interface PortfolioKennzahlen {
   pvAnlagen: number;
   /** Σ Erzeugung heute (kWh). */
   erzeugungHeuteKwh: number | null;
+  erzeugungHeuteAnlagen: number;
   /** Σ Verbrauch heute (kWh). */
   verbrauchHeuteKwh: number | null;
+  verbrauchHeuteAnlagen: number;
   /** Σ Netzbezug heute (kWh). */
   bezugHeuteKwh: number | null;
+  bezugHeuteAnlagen: number;
   /** Σ Einspeisung heute (kWh). */
   einspeisungHeuteKwh: number | null;
+  einspeisungHeuteAnlagen: number;
   /** Σ Netzbezug JETZT (kW) — nur über Anlagen mit FRISCHEM Messwert; Einspeisung zählt 0. */
   netzbezugJetztKw: number | null;
   /** Wie viele Anlagen dazu einen frischen Netz-Messwert hatten. */
@@ -313,6 +320,10 @@ function summe(werte: (number | null | undefined)[]): number | null {
   return sum;
 }
 
+function anzahl(werte: (number | null | undefined)[]): number {
+  return werte.filter((v) => v != null && Number.isFinite(v)).length;
+}
+
 export function portfolioKennzahlen(
   overview: Overview | null,
   earnings: Earnings | null,
@@ -330,7 +341,8 @@ export function portfolioKennzahlen(
   // Geld-Regel: eine Anlage, die weder steuert noch Erzeuger/Speicher hat, trägt
   // kein Geld bei — auch wenn der Server für sie eine Zahl liefert.
   const geldSites = (earnings?.sites ?? []).filter((s) => geld == null || geld.has(s.id));
-  const erloesHeute = summe(geldSites.map((s: EarningsSite) => savedOnDay(s.dailySaved, heute)));
+  const erloesWerte = geldSites.map((s: EarningsSite) => savedOnDay(s.dailySaved, heute));
+  const erloesHeute = summe(erloesWerte);
 
   const peakSites = geldSites.filter((s) => s.peakShaving?.avoidedEur != null);
 
@@ -338,23 +350,35 @@ export function portfolioKennzahlen(
   // Anlage bezieht gerade 0 kW (gemessen), ihre Einspeisung wird nie verrechnet.
   const netzFrisch = sites.filter((s) => siteLiveFresh(s, now) && s.live?.gridKw != null);
 
-  const ladepunkte = summe(sites.map((s) => s.chargePointCount));
+  const ladepunktWerte = sites.map((s) => s.chargePointCount);
+  const ladepunkte = summe(ladepunktWerte);
+  const erzeugung = sites.map((s) => s.energyToday?.pvKwh ?? null);
+  const verbrauch = sites.map((s) => s.energyToday?.loadKwh ?? null);
+  const bezug = sites.map((s) => s.energyToday?.gridImportKwh ?? null);
+  const einspeisung = sites.map((s) => s.energyToday?.gridExportKwh ?? null);
 
   return {
     ladestandAnlagen: sites.filter((s) => siteSoc(s) != null).length,
     erloesHeuteEur: erloesHeute,
+    erloesHeuteAnlagen: anzahl(erloesWerte),
     vermiedeneSpitzeEur: summe(peakSites.map((s) => s.peakShaving?.avoidedEur ?? null)),
     vermiedeneSpitzeKw: summe(peakSites.map((s) => s.peakShaving?.avoidedKw ?? null)),
+    vermiedeneSpitzeAnlagen: peakSites.length,
     ladepunkte: ladepunkte != null && ladepunkte > 0 ? ladepunkte : null,
+    ladepunkteAnlagen: anzahl(ladepunktWerte),
     pvJetztKw: summe(pvFrisch.map((s) => s.live?.pvKw ?? null)),
     pvJetztAnlagen: pvFrisch.length,
     pvAnlagen: sites.filter(
       (s) => (s.roleCounts?.pv ?? 0) > 0 || s.live?.pvKw != null || s.energyToday?.pvKwh != null,
     ).length,
-    erzeugungHeuteKwh: summe(sites.map((s) => s.energyToday?.pvKwh ?? null)),
-    verbrauchHeuteKwh: summe(sites.map((s) => s.energyToday?.loadKwh ?? null)),
-    bezugHeuteKwh: summe(sites.map((s) => s.energyToday?.gridImportKwh ?? null)),
-    einspeisungHeuteKwh: summe(sites.map((s) => s.energyToday?.gridExportKwh ?? null)),
+    erzeugungHeuteKwh: summe(erzeugung),
+    erzeugungHeuteAnlagen: anzahl(erzeugung),
+    verbrauchHeuteKwh: summe(verbrauch),
+    verbrauchHeuteAnlagen: anzahl(verbrauch),
+    bezugHeuteKwh: summe(bezug),
+    bezugHeuteAnlagen: anzahl(bezug),
+    einspeisungHeuteKwh: summe(einspeisung),
+    einspeisungHeuteAnlagen: anzahl(einspeisung),
     netzbezugJetztKw: summe(netzFrisch.map((s) => Math.max(s.live?.gridKw ?? 0, 0))),
     netzbezugJetztAnlagen: netzFrisch.length,
     datenlage: sites.length > 0 ? datenlageAnlagen(sites) : null,
@@ -581,28 +605,37 @@ export function signiertesGeld(v: number): string {
  */
 export function vorteilUnterzeile(k: PortfolioKennzahlen, anlagen: number): string {
   const geld = k.geldNamen;
+  const deckung = anlagenText(k.erloesHeuteAnlagen, anlagen);
   if (geld != null && geld.length > 0 && geld.length < anlagen) {
     return geld.length <= 2
-      ? `${VORTEIL_BEZUG} · nur ${namenListe(geld)}`
-      : `${VORTEIL_BEZUG} · nur ${geld.length} von ${anlagen} Anlagen`;
+      ? `${VORTEIL_BEZUG} · ${deckung} · nur ${namenListe(geld)}`
+      : `${VORTEIL_BEZUG} · ${deckung}`;
   }
-  return anlagen > 1 ? `${VORTEIL_BEZUG} · ${anlagen} Anlagen` : VORTEIL_BEZUG;
+  return `${VORTEIL_BEZUG} · ${deckung}`;
 }
 
 /** Die Fussnote des Netzbezugs — die Summe nennt, über wie viele Anlagen sie geht. */
 export function netzbezugFussnote(k: PortfolioKennzahlen, anlagen: number): string | null {
   if (k.netzbezugJetztKw == null) return null;
-  if (k.netzbezugJetztAnlagen < anlagen) {
-    return `${k.netzbezugJetztAnlagen} von ${anlagen} Anlagen melden gerade`;
-  }
-  return anlagen > 1 ? `Summe über ${anlagen} Anlagen` : null;
+  return meldenGerade(k.netzbezugJetztAnlagen, anlagen);
 }
 
 /** Die Fussnote der PV-Zelle — „jetzt" gilt nur für Anlagen, die gerade melden. */
 export function pvJetztFussnote(k: PortfolioKennzahlen, anlagen: number): string | null {
   if (k.pvJetztKw == null) return null;
-  if (k.pvJetztAnlagen >= anlagen) return null;
-  return `${k.pvJetztAnlagen} von ${anlagen} Anlagen melden gerade`;
+  return meldenGerade(k.pvJetztAnlagen, anlagen);
+}
+
+function anlagenText(zaehler: number, nenner: number): string {
+  return `${zaehler} von ${nenner} ${nenner === 1 ? 'Anlage' : 'Anlagen'}`;
+}
+
+function meldenGerade(zaehler: number, nenner: number): string {
+  return `${anlagenText(zaehler, nenner)} ${nenner === 1 ? 'meldet' : 'melden'} gerade`;
+}
+
+function mitUntergrenze(wert: string, zaehler: number, nenner: number): string {
+  return zaehler < nenner ? `mindestens ${wert}` : wert;
 }
 
 /**
@@ -640,7 +673,7 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'Netzbezug jetzt',
-          wert: fmtNum(k.netzbezugJetztKw, ''),
+          wert: mitUntergrenze(fmtNum(k.netzbezugJetztKw, ''), k.netzbezugJetztAnlagen, anlagen),
           einheit: 'kW',
           unterzeile: netzbezugFussnote(k, anlagen),
           ton: k.netzbezugJetztAnlagen < anlagen ? 'warn' : 'ruhig',
@@ -651,12 +684,12 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'PV jetzt',
-          wert: fmtNum(k.pvJetztKw, ''),
+          wert: mitUntergrenze(fmtNum(k.pvJetztKw, ''), k.pvJetztAnlagen, k.pvAnlagen ?? anlagen),
           einheit: 'kW',
           // Der Nenner sind die Anlagen MIT PV (Befund UEMS AP-01 IP-6): Halle 2
           // ohne Erzeuger macht aus „PV jetzt" keinen Vorbehalt.
           unterzeile: pvJetztFussnote(k, k.pvAnlagen ?? anlagen),
-          ton: pvJetztFussnote(k, k.pvAnlagen ?? anlagen) ? 'warn' : 'ruhig',
+          ton: k.pvJetztAnlagen < (k.pvAnlagen ?? anlagen) ? 'warn' : 'ruhig',
         });
         break;
       case 'erzeugung-heute':
@@ -664,9 +697,9 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'Erzeugung heute',
-          wert: fmtNum(k.erzeugungHeuteKwh, '', 0),
+          wert: mitUntergrenze(fmtNum(k.erzeugungHeuteKwh, '', 0), k.erzeugungHeuteAnlagen, anlagen),
           einheit: 'kWh',
-          unterzeile: null,
+          unterzeile: anlagenText(k.erzeugungHeuteAnlagen, anlagen),
         });
         break;
       case 'verbrauch-heute':
@@ -674,25 +707,27 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'Verbrauch heute',
-          wert: fmtNum(k.verbrauchHeuteKwh, '', 0),
+          wert: mitUntergrenze(fmtNum(k.verbrauchHeuteKwh, '', 0), k.verbrauchHeuteAnlagen, anlagen),
           einheit: 'kWh',
-          unterzeile: null,
+          unterzeile: anlagenText(k.verbrauchHeuteAnlagen, anlagen),
         });
         break;
       case 'netz-heute': {
         // Bezug und Einspeisung stehen in EINER Zelle und werden nie saldiert
         // (die Katalog-Regel); eine fehlende Richtung wird ausgelassen, nie 0.
         const teile: string[] = [];
-        if (k.bezugHeuteKwh != null) teile.push(`↓ ${fmtNum(k.bezugHeuteKwh, '', 0)}`);
-        if (k.einspeisungHeuteKwh != null) teile.push(`↑ ${fmtNum(k.einspeisungHeuteKwh, '', 0)}`);
+        if (k.bezugHeuteKwh != null) teile.push(`↓ ${mitUntergrenze(fmtNum(k.bezugHeuteKwh, '', 0), k.bezugHeuteAnlagen, anlagen)}`);
+        if (k.einspeisungHeuteKwh != null) teile.push(`↑ ${mitUntergrenze(fmtNum(k.einspeisungHeuteKwh, '', 0), k.einspeisungHeuteAnlagen, anlagen)}`);
         if (teile.length === 0) break;
         out.push({
           id,
           label: 'Netz heute',
           wert: teile.join(' · '),
           einheit: 'kWh',
-          unterzeile:
-            teile.length === 2 ? 'Bezug · Einspeisung' : k.bezugHeuteKwh != null ? 'Bezug' : 'Einspeisung',
+          unterzeile: [
+            k.bezugHeuteKwh != null ? `Bezug: ${anlagenText(k.bezugHeuteAnlagen, anlagen)}` : null,
+            k.einspeisungHeuteKwh != null ? `Einspeisung: ${anlagenText(k.einspeisungHeuteAnlagen, anlagen)}` : null,
+          ].filter(Boolean).join(' · '),
         });
         break;
       }
@@ -704,7 +739,8 @@ export function leistenZellen(input: {
           wert: eur(k.vermiedeneSpitzeEur),
           einheit: '€',
           unterzeile:
-            k.vermiedeneSpitzeKw != null ? `${fmtNum(k.vermiedeneSpitzeKw, 'kW', 0)} gekappt` : null,
+            [k.vermiedeneSpitzeKw != null ? `${fmtNum(k.vermiedeneSpitzeKw, 'kW', 0)} gekappt` : null,
+              anlagenText(k.vermiedeneSpitzeAnlagen, anlagen)].filter(Boolean).join(' · '),
         });
         break;
       case 'ladepunkte':
@@ -712,9 +748,9 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'Ladepunkte',
-          wert: String(k.ladepunkte),
+          wert: mitUntergrenze(String(k.ladepunkte), k.ladepunkteAnlagen, anlagen),
           einheit: null,
-          unterzeile: null,
+          unterzeile: anlagenText(k.ladepunkteAnlagen, anlagen),
         });
         break;
       default:

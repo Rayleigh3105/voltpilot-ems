@@ -2,6 +2,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import type { Betriebsart, Site, StandortAmStichtag } from '../api';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
 import { StandortKopf } from '../components/StandortKopf';
+import { VersorgungKarte } from '../components/VersorgungKarte';
 import type { StandortEinstieg } from '../ebenenNav';
 import type { Route } from '../nav';
 import './StandortUebersichtPage.css';
@@ -65,6 +66,7 @@ export function StandortUebersichtPage({
           </nav>
         )}
       </div>
+      <VersorgungKarte standort={standort} />
       <PortfolioCockpit
         sites={sites}
         onNavigate={onNavigate}

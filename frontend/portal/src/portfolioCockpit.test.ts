@@ -597,12 +597,18 @@ describe('leistenZellen — die Zellen folgen der ANORDNUNG', () => {
   const K = {
     ...LEER,
     erloesHeuteEur: 33.13,
+    erloesHeuteAnlagen: 3,
     pvJetztKw: 41.2,
     pvJetztAnlagen: 3,
+    pvAnlagen: 3,
     erzeugungHeuteKwh: 312,
+    erzeugungHeuteAnlagen: 3,
     verbrauchHeuteKwh: 128,
+    verbrauchHeuteAnlagen: 3,
     bezugHeuteKwh: 14,
+    bezugHeuteAnlagen: 3,
     einspeisungHeuteKwh: 190,
+    einspeisungHeuteAnlagen: 3,
   };
 
   it('baut GENAU die Zellen, deren Baustein eine Leisten-Zelle IST', () => {
@@ -652,7 +658,17 @@ describe('leistenZellen — die Zellen folgen der ANORDNUNG', () => {
     });
     expect(netz.wert).toContain('14');
     expect(netz.wert).toContain('190');
-    expect(netz.unterzeile).toBe('Bezug · Einspeisung');
+    expect(netz.unterzeile).toBe('Bezug: 3 von 3 Anlagen · Einspeisung: 3 von 3 Anlagen');
+  });
+
+  it('E16: eine Teilsumme sagt „mindestens“ und nennt „3 von 4 Anlagen“', () => {
+    const [zelle] = leistenZellen({
+      order: ['erzeugung-heute'],
+      kennzahlen: { ...K, erzeugungHeuteAnlagen: 3 },
+      anlagen: 4,
+      tonalitaet: 'eigenverbrauch',
+    });
+    expect(zelle).toMatchObject({ wert: 'mindestens 312', unterzeile: '3 von 4 Anlagen' });
   });
 
   it('lässt eine Zelle ohne Wert GANZ weg, nie ein „—"', () => {
@@ -679,8 +695,10 @@ describe('leistenZellen — die Zellen folgen der ANORDNUNG', () => {
 });
 
 describe('die Fussnoten benennen die Grundlage', () => {
-  it('„PV jetzt" nennt die Zahl der meldenden Anlagen nur, wenn sie kleiner ist', () => {
-    expect(pvJetztFussnote({ ...LEER, pvJetztKw: 41.2, pvJetztAnlagen: 3 }, 3)).toBeNull();
+  it('„PV jetzt" nennt die Zahl der meldenden Anlagen immer', () => {
+    expect(pvJetztFussnote({ ...LEER, pvJetztKw: 41.2, pvJetztAnlagen: 3 }, 3)).toBe(
+      '3 von 3 Anlagen melden gerade',
+    );
     expect(pvJetztFussnote({ ...LEER, pvJetztKw: 41.2, pvJetztAnlagen: 1 }, 3)).toBe(
       '1 von 3 Anlagen melden gerade',
     );

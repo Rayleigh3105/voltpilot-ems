@@ -112,6 +112,48 @@ class NetzanschlussApiTest {
     // ======================================================================== F16: drei Anschlüsse
 
     @Test
+    void f15VersorgungFolgtDemStichtagUndEinFremderStandortIst404() throws Exception {
+        Welt w = welt();
+        UUID g1 = gebaeude(w, "G-1", "Halle 1");
+        UUID g2 = gebaeude(w, "G-2", "Halle 2");
+        gebaeude(w, "G-6", "Werkstatt");
+        UUID ms = messstelle(w, "MS-01", "Gebäudezähler");
+        UUID aussen = messstelle(w, "MS-14", "Ladepunkt Parkplatz");
+
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, ort_id, gueltig_ab, gueltig_bis) "
+                + "VALUES (?,?,?,DATE '2026-10-01',DATE '2026-12-31')", w.mandant(), ms, g1);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, ort_id, gueltig_ab) "
+                + "VALUES (?,?,?,DATE '2027-01-01')", w.mandant(), ms, g2);
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, gueltig_ab, gueltig_bis) "
+                + "VALUES (?,?,?,'Erzeuger',DATE '2026-10-01',DATE '2026-12-31')",
+                w.mandant(), ms, w.id("AN-1"));
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, gueltig_ab) "
+                + "VALUES (?,?,?,'Erzeuger',DATE '2027-01-01')", w.mandant(), ms, w.id("AN-2"));
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) "
+                + "VALUES (?,?,?,DATE '2026-10-01')", w.mandant(), aussen, w.id("ST-1"));
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, gueltig_ab) "
+                + "VALUES (?,?,?,'Erzeuger',DATE '2026-10-01')", w.mandant(), aussen, w.id("AN-2"));
+
+        JsonNode oktober = ok(ruf(w, HttpMethod.GET, versorgungPfad(w, "2026-10-20"), null), 200).body();
+        assertThat(oktober.get("stichtag").asText()).isEqualTo("2026-10-20");
+        assertThat(system(oktober, "G-1").at("/anlage/name").asText())
+                .isEqualTo("Werk Ahrenberg – Halle 1");
+        assertThat(gebaeude(oktober, "G-2").get("messbar").asBoolean()).isFalse();
+        assertThat(gebaeude(oktober, "G-6").get("messbar").asBoolean()).isFalse();
+        assertThat(oktober.at("/ausserhalbGebaeude/0/messstelle/kennzeichen").asText()).isEqualTo("MS-14");
+
+        JsonNode maerz = ok(ruf(w, HttpMethod.GET, versorgungPfad(w, "2027-03-01"), null), 200).body();
+        assertThat(gebaeude(maerz, "G-1").get("messbar").asBoolean()).isFalse();
+        assertThat(system(maerz, "G-2").at("/anlage/name").asText())
+                .isEqualTo("Werk Ahrenberg – Halle 2");
+
+        Welt fremd = welt();
+        assertThat(ruf(w, HttpMethod.GET,
+                "/api/v1/standorte/" + fremd.id("ST-1") + "/versorgung?stichtag=2026-10-20", null).status())
+                .isEqualTo(404);
+    }
+
+    @Test
     void f16DieDreiNetzanschluesseDesReferenzunternehmensUndDasLesemodellNenntSie() throws Exception {
         Welt w = welt();
         Map<String, UUID> na = new LinkedHashMap<>();
@@ -520,6 +562,40 @@ class NetzanschlussApiTest {
                     t, site, ids.get(an.path("standort").asText()), OKT_1);
         }
         return new Welt(t, ids);
+    }
+
+    private UUID gebaeude(Welt w, String kennzeichen, String name) {
+        UUID id = root.queryForObject("INSERT INTO ort (tenant_id, art, name, kurzzeichen, zustand) "
+                + "VALUES (?, 'gebaeude', ?, ?, 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), name, kennzeichen);
+        root.update("INSERT INTO ort_zuordnung (tenant_id, ort_id, eltern_standort_id, gueltig_ab) "
+                + "VALUES (?,?,?,DATE '2026-10-01')", w.mandant(), id, w.id("ST-1"));
+        return id;
+    }
+
+    private UUID messstelle(Welt w, String kennzeichen, String name) {
+        return root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, ?, ?, 'gemessen', 'Strom', 'Wirkenergie', 'Bezug', "
+                + "'kWh', 'Zählerstand') RETURNING id", UUID.class, w.mandant(), kennzeichen, name);
+    }
+
+    private static String versorgungPfad(Welt w, String tag) {
+        return "/api/v1/standorte/" + w.id("ST-1") + "/versorgung?stichtag=" + tag;
+    }
+
+    private static JsonNode gebaeude(JsonNode antwort, String kennzeichen) {
+        for (JsonNode g : antwort.get("gebaeude")) {
+            if (kennzeichen.equals(g.at("/gebaeude/kennzeichen").asText())) {
+                return g;
+            }
+        }
+        throw new AssertionError("kein Gebäude " + kennzeichen + " in " + antwort);
+    }
+
+    private static JsonNode system(JsonNode antwort, String gebaeude) {
+        JsonNode g = gebaeude(antwort, gebaeude);
+        assertThat(g.get("systeme")).hasSize(1);
+        return g.get("systeme").get(0);
     }
 
     private static String pfad(Welt w, String standort) {

@@ -8,6 +8,7 @@ import { berlinDay } from '../fleet';
 import { GELD_BAUSTEINE } from '../portfolioCockpit';
 import { ahrenbergFunktionen, funktionWerkLindach } from '../test/funktionenFixtures';
 import { FIXTURE_IDS, ahrenbergHeute, werkAhrenberg, werkLindach } from '../test/standorteFixtures';
+import { versorgungAhrenberg, versorgungLindach } from '../test/versorgungFixtures';
 import { standortRoute } from '../nav';
 
 /**
@@ -120,6 +121,9 @@ beforeEach(() => {
   vi.spyOn(api, 'tenantCockpitLayout').mockResolvedValue({ vorgabe: null, eigen: null } as never);
   vi.spyOn(api, 'schedule').mockResolvedValue({ slots: [], deviceId: null } as never);
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
+  vi.spyOn(api, 'versorgung').mockImplementation(async (id) =>
+    id === FIXTURE_IDS.st1 ? versorgungAhrenberg() : versorgungLindach(),
+  );
 });
 
 /** Die Funktionen unter der Kopfzeile der Standort-Übersicht (nicht die Karte „Funktionen"). */
@@ -210,6 +214,18 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
 });
 
 describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
+  it('F15 zeigt die abgeleitete Versorgung und nennt eine Messstelle außerhalb eines Gebäudes', async () => {
+    mocks({ overview: ahrenbergOverview() });
+    render(
+      <StandortUebersichtPage standort={werkAhrenberg()} sites={SITES} onNavigate={() => {}} onReload={() => {}} betriebsart="endkunde" />,
+    );
+    const karte = await screen.findByTestId('versorgung');
+    expect(within(karte).getByText('Halle 1 ← System Halle 1 (NA-1)')).toBeTruthy();
+    expect(within(karte).getByText('Verwaltung ← System Halle 1 (NA-1)')).toBeTruthy();
+    expect(within(karte).getByText('Halle 2 ← System Halle 2 (NA-2)')).toBeTruthy();
+    expect(within(karte).getByText('1 Messstelle außerhalb eines Gebäudes')).toBeTruthy();
+  });
+
   it('Werk Lindach: nur seine Anlage, nur ihre Zahlen, nur Messen unter der Kopfzeile', async () => {
     mocks({ overview: ahrenbergOverview() });
     render(
@@ -299,7 +315,7 @@ describe('A13 · Geld-Regel: ein Messkunde sieht NIRGENDS eine Geldzahl', () => 
     renderUnternehmen();
     const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
     await waitFor(() => expect(within(leiste).getByText('Vorteil heute')).toBeTruthy());
-    expect(within(leiste).getByText('gegenüber Speicher ohne Steuerung · nur Werk Ahrenberg – Halle 1')).toBeTruthy();
+    expect(within(leiste).getByText('gegenüber Speicher ohne Steuerung · 1 von 3 Anlagen · nur Werk Ahrenberg – Halle 1')).toBeTruthy();
     // 4.800 € vermiedene Spitze EINMAL (Halle 1), nicht dreimal.
     expect(within(leiste).getByText(/4\.800/)).toBeTruthy();
     expect(within(leiste).queryByText(/14\.400/)).toBeNull();

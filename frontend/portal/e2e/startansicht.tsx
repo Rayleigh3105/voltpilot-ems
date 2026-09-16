@@ -118,6 +118,7 @@ import {
   werkAhrenberg,
   werkLindach,
 } from '../src/test/standorteFixtures';
+import { versorgungAhrenberg, versorgungLindach } from '../src/test/versorgungFixtures';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
 import {
@@ -645,6 +646,7 @@ Object.assign(api, {
   ...netzanschlussBuehne(szene.liste),
   standortOrte: async (id: string) =>
     id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg(),
+  versorgung: async (id: string) => id === werkLindach().id ? versorgungLindach() : versorgungAhrenberg(),
   // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
   kennzahlen: async () => ({ kennzahlen: (messenArt === 'bestand' ? [] : kennzahlenDerBuehne()).filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
     || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id))) }),

@@ -3973,6 +3973,42 @@ export interface StandorteAmStichtag {
   teilansicht?: Teilansicht;
 }
 
+/** GET /api/v1/standorte/{id}/versorgung?stichtag= — F15, reine Sicht aus Ort × Stellung. */
+export interface Versorgung {
+  stichtag: string;
+  standort: VersorgungBezug;
+  gebaeude: GebaeudeVersorgung[];
+  ausserhalbGebaeude: VersorgungAusserhalb[];
+}
+
+export interface VersorgungBezug {
+  id: string;
+  kennzeichen: string;
+  name: string;
+}
+
+export interface VersorgungAnlage {
+  id: string;
+  name: string;
+  netzanschlussKennzeichen: string | null;
+}
+
+export interface VersorgungMessstelle {
+  kennzeichen: string;
+  name: string | null;
+}
+
+export interface GebaeudeVersorgung {
+  gebaeude: VersorgungBezug;
+  messbar: boolean;
+  systeme: { anlage: VersorgungAnlage; messstellen: VersorgungMessstelle[] }[];
+}
+
+export interface VersorgungAusserhalb {
+  messstelle: VersorgungMessstelle;
+  anlage: VersorgungAnlage;
+}
+
 /** Rein lesende Vorschau der Bestandsanlagen-Zuordnung (AP-02 IP-10). */
 export interface StandortZuordnungAnlage {
   vorschlagId: string;
@@ -8209,6 +8245,13 @@ export const api = {
   standorte: (stichtag?: string) =>
     request<StandorteAmStichtag>(
       `/api/v1/standorte${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+  /** AP-10 IP-17/F15: welches System welches Gebäude am Tag versorgt. */
+  versorgung: (standortId: string, stichtag?: string) =>
+    request<Versorgung>(
+      `/api/v1/standorte/${encodeURIComponent(standortId)}/versorgung${
+        stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''
+      }`,
     ),
   /** AP-02 IP-10: liest nur; vor der Bestätigung entsteht nichts. */
   standortZuordnungVorschlag: () =>

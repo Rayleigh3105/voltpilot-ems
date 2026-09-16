@@ -6,6 +6,8 @@ import com.voltpilot.api.uems.StandortLesemodell.StandorteAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.uems.StandortService;
 import com.voltpilot.api.uems.StandortVorschlagService;
+import com.voltpilot.api.uems.VersorgungService;
+import com.voltpilot.api.uems.VersorgungService.Versorgung;
 import com.voltpilot.api.web.dto.StandortDto;
 import com.voltpilot.api.web.dto.StandortVorschlagDto;
 import com.voltpilot.api.zugriff.Recht;
@@ -52,14 +54,17 @@ public class StandortController {
     private final OrtAnfrage anfrage;
     private final TeilansichtDienst teilansicht;
     private final StandortVorschlagService vorschlaege;
+    private final VersorgungService versorgung;
 
     public StandortController(StandortLesemodellService lesemodell, StandortService standorte,
-            OrtAnfrage anfrage, TeilansichtDienst teilansicht, StandortVorschlagService vorschlaege) {
+            OrtAnfrage anfrage, TeilansichtDienst teilansicht, StandortVorschlagService vorschlaege,
+            VersorgungService versorgung) {
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.anfrage = anfrage;
         this.teilansicht = teilansicht;
         this.vorschlaege = vorschlaege;
+        this.versorgung = versorgung;
     }
 
     // Rechte (rechte-matrix.json): heute lesend — keine eigene Kennung; die Sicht
@@ -102,6 +107,15 @@ public class StandortController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate stichtag) {
         return lesemodell.standort(standortId, stichtag).orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort not found"));
+    }
+
+    // Recht: `messstelle.ansehen` — reine Sicht aus Ort und Stellung; kein @Recht an einem GET.
+    @GetMapping("/{standortId}/versorgung")
+    public Versorgung versorgung(@PathVariable UUID standortId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate stichtag) {
+        return versorgung.versorgung(standortId, stichtag).orElseThrow(
                 () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort not found"));
     }
 
