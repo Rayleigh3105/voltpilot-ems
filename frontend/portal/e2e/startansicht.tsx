@@ -564,8 +564,6 @@ Object.assign(api, {
     if (!heuteB10) return r;
     return { ...r, register: r.register.map((z) => ({ ...z, name: nameHeuteAm(Date.now(), z.kennzeichen, z.name) })) };
   },
-  // Der Weg-Nachweis stellt keine Quellen-Karte: deren Ausfall ist eine API-Antwort, kein Live-Netzabruf.
-  messstelleQuellen: async () => { throw new ApiError(503, 'Die Quellen sind in dieser Prüfszene nicht verfügbar.'); },
   // AP-13 IP-12 (L6): die Zuständigkeiten der Datenquellen und der Weg Gerät → Quelle. ZWEI Aufrufe je
   // Anlage, weil `…/data-sources` ihre Geräte nicht nennt (Befund an AP-06, `boxAnQuelle.ts`).
   datenquellen: async (siteId: string) => ahrenbergDatenquellen(siteId, new Date(Date.now()).toISOString()),
