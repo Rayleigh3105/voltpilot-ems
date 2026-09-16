@@ -394,6 +394,12 @@ voltpilot:
       enabled: ${VOLTPILOT_UEMS_UEBERGABE_ENABLED:true}
       interval-ms: ${VOLTPILOT_UEMS_UEBERGABE_INTERVAL_MS:1000}
       initial-delay-ms: ${VOLTPILOT_UEMS_UEBERGABE_INITIAL_DELAY_MS:30000}
+    # UEMS AP-10 IP-18: sichtbare Historienquoten ausserhalb 0..100 % reisen
+    # ungeklemmt mit Unplausibel-Kennzeichen. Vorgabe AN; AUS stellt fuer den
+    # Rollback die alte sichtbare 0-/100-%-Klemme wieder her. Rollups und Exporte
+    # liegen vor dieser Darstellung und werden vom Schalter nicht beruehrt.
+    historie:
+      ungeklemmte-quoten-enabled: ${VOLTPILOT_UEMS_HISTORIE_UNGEKLEMMTE_QUOTEN_ENABLED:true}
     # UEMS AP-12 IP-5 (RW1): die Build-Kennung (Git-SHA) des Deployments für das
     # Regelwerk-Verzeichnis im Kopf jedes Berichts-Abzugs (BerichtRegelwerk). Ohne
     # sie nennt der Abzug Version und Build-Zeit aus build-info (pom.xml). Kein Flag.

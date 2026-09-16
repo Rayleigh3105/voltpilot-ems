@@ -127,6 +127,20 @@ class HistoryRangeTest {
         assertThat(above.eigenverbrauchUnplausibel()).isFalse();
     }
 
+    @Test
+    void totalsFeatureSwitchRestoresTheLegacyVisibleClamp() {
+        HistoryTotalsDto legacy = HistoryService.totals(
+                List.of(bucket(10, 8, 12, 10, null)),
+                new com.voltpilot.api.repo.HistoryRepository.PlannedSavings(null, null),
+                null,
+                false);
+
+        assertThat(legacy.autarkiePct()).isEqualTo(new BigDecimal("0.0"));
+        assertThat(legacy.eigenverbrauchPct()).isEqualTo(new BigDecimal("0.0"));
+        assertThat(legacy.autarkieUnplausibel()).isFalse();
+        assertThat(legacy.eigenverbrauchUnplausibel()).isFalse();
+    }
+
     /**
      * Audit V2/X1: a 0-bucket period must return "—" for EVERY aggregate, not a
      * confident 0,0 kWh next to an honest "noch keine Daten". Before the fix the

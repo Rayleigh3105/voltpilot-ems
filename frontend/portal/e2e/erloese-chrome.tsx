@@ -101,6 +101,28 @@ api.siteEarnings = (async () => ({
   monthlyStrip: null,
 })) as typeof api.siteEarnings;
 
+const quote = new URLSearchParams(window.location.search).get('quote');
+const quoteTotals = quote === 'ungeklemmt'
+  ? {
+      autarkiePct: -20,
+      eigenverbrauchPct: -25,
+      autarkieUnplausibel: true,
+      eigenverbrauchUnplausibel: true,
+    }
+  : quote === 'geklemmt'
+    ? {
+        autarkiePct: 0,
+        eigenverbrauchPct: 0,
+        autarkieUnplausibel: false,
+        eigenverbrauchUnplausibel: false,
+      }
+    : {
+        autarkiePct: 75,
+        eigenverbrauchPct: 57,
+        autarkieUnplausibel: false,
+        eigenverbrauchUnplausibel: false,
+      };
+
 const HISTORY = {
   range: 'month',
   from: '2026-09-01T00:00:00Z',
@@ -128,8 +150,7 @@ const HISTORY = {
     gridCostEur: 42.5,
     batterySavingsPlannedEur: 18.2,
     batterySavingsEur: 18.2,
-    autarkiegrad: 0.75,
-    eigenverbrauchsquote: 0.57,
+    ...quoteTotals,
     tarifArt: 'dynamisch',
     tarifPriced: true,
   },
