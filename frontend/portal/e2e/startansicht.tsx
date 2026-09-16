@@ -540,6 +540,7 @@ Object.assign(api, {
     throw new Error('Das Referenzunternehmen trägt keine Geldwerte.');
   },
   tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
+  cockpitLayout: async () => ({ vorgabe: null, eigen: null }),
   // AP-04 IP-5: das Messstellen-Register des Referenzunternehmens (heute = 20.10.2026, mit Stichtag und Filtern).
   // AP-11 IP-15: `welt=k17` stellt MS-24 dazu.
   messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => {
@@ -783,11 +784,12 @@ if (params.get('rechte') === 'leer') beendeZugriff();
   window.dispatchEvent(new CustomEvent('vp-zugriff-beendet', { detail: 'Ihr Zugriff auf Werk Lindach wurde beendet.' }));
 };
 
-// Die Regeln der Anlage: keine. Nur die zwei Flow-Routen gehen über `fetch`.
+// Die Regeln der Anlage: keine. Die Flow-Routen gehen über `fetch`.
 const echtesFetch = window.fetch.bind(window);
 window.fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
   if (/^\/api\/v1\/sites\/[^/]+\/flows$/.test(url.pathname)) return Response.json([]);
+  if (url.pathname.endsWith('/flow-node-status')) return Response.json({ acks: [], nodes: [] });
   if (url.pathname.endsWith('/flow-node-governance')) return Response.json({ gatedNodes: [] });
   return echtesFetch(input, init);
 };
