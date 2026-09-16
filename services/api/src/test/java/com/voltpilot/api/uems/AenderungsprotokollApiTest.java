@@ -332,6 +332,32 @@ class AenderungsprotokollApiTest {
     }
 
     /**
+     * A2 in seiner eigenen Zeitform: Der Wechsel gilt am 18.11. um 10:40, wird aber erst am
+     * 20.11. um 09:00 eingetragen. Der fachliche Zeitraum findet ihn trotzdem genau einmal und
+     * nennt beide Zeitpunkte; die Eintragsachse bleibt davon getrennt.
+     */
+    @Test
+    void a2DerAmZwanzigstenNachgetrageneWechselBleibtAmAchtzehntenAuffindbar() {
+        Werk w = ahrenberg("A2 zwei Tage später");
+        String ms06 = messstelleMs06(w);
+        bindeMs06(w, ms06);
+        String eingetragen = "2026-11-20T09:00:00+01:00";
+        zaehlerwechsel(w, ms06, eingetragen);
+
+        JsonNode wirkung = protokollDerMessstelle(w, ms06,
+                "?von=2026-11-18T00:00:00%2B01:00&bis=2026-11-21T00:00:00%2B01:00");
+        JsonNode eintrag = nurEins(wirkung, "zaehler_gewechselt");
+        assertThat(zeitpunkt(eintrag.get("gilt_ab"))).isEqualTo(zeitpunkt(WECHSEL));
+        assertThat(zeitpunkt(eintrag.get("eingetragen_am"))).isEqualTo(zeitpunkt(eingetragen));
+        assertThat(eintrag.get("zeitform").asText()).isEqualTo("rueckwirkend");
+
+        JsonNode nachEintrag = protokollDerMessstelle(w, ms06,
+                "?achse=eintrag&von=2026-11-20T00:00:00%2B01:00&bis=2026-11-21T00:00:00%2B01:00");
+        assertThat(nurEins(nachEintrag, "zaehler_gewechselt").get("zeitform").asText())
+                .isEqualTo("rueckwirkend");
+    }
+
+    /**
      * Die andere Hälfte derselben Regel: eine ANGEKÜNDIGTE Änderung gilt in der Zukunft. Sie
      * steht im Zeitraum, in dem sie GILT — nicht in dem, in dem sie eingetragen wurde; und
      * keiner der beiden Zeiträume zeigt sie zweimal.
@@ -740,7 +766,11 @@ class AenderungsprotokollApiTest {
 
     /** Der Wechsel des Zeitstrahls: gilt 10:40, eingetragen 11:05 — also rückwirkend. */
     private void zaehlerwechsel(Werk w, String messstelle) {
-        uhr(EINGETRAGEN);
+        zaehlerwechsel(w, messstelle, EINGETRAGEN);
+    }
+
+    private void zaehlerwechsel(Werk w, String messstelle, String eingetragen) {
+        uhr(eingetragen);
         Map<String, Object> anfrage = wechselAnfrage(WECHSEL, z5b());
         anfrage.put("grund", "Zähler defekt");
         erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + messstelle + "/quellen/wechsel",
