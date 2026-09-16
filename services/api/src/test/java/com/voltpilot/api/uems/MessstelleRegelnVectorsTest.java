@@ -341,6 +341,16 @@ class MessstelleRegelnVectorsTest {
             ObjectNode out = MAPPER.createObjectNode();
             out.put("fehler", u.fehler() == null ? null : u.fehler().code());
             out.put("ohne_geraet_ab", zeitText(u.ohneGeraetAb()));
+            if (in.has("karten")) {
+                JsonNode k = in.path("karten");
+                java.util.function.Function<JsonNode, List<String>> ids = n -> {
+                    List<String> values = new java.util.ArrayList<>();
+                    n.forEach(v -> values.add(v.asText()));
+                    return values;
+                };
+                out.put("karten_fehler", MessstelleRegeln.kartenWechselPruefen(ids.apply(k.path("vorhanden")),
+                        ids.apply(k.path("uebernommen")), ids.apply(k.path("fuehrende_bindungen")), ids.apply(k.path("ablesestaende"))));
+            }
             out.put("rueckwirkend", u.rueckwirkend());
             out.put("angekuendigt", u.angekuendigt());
             return out;

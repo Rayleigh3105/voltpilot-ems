@@ -6,13 +6,13 @@ und Satzfunktionen: `zaehlerwechsel.ts`. Zwei Einstiege, genau ein POST an die v
 Wechsel- bzw. Austauschroute; keine zusätzlichen Einstellungs-Schreibaufrufe.
 
 - Gerätekennung, physischer Einbau und Verbindung bleiben getrennt. Die Seriennummer des
-  Vorgängers wird nie übernommen. Energiekarten/Controller sind dem Folgepaket vorbehalten.
+  Vorgängers wird nie übernommen. Energiekarten/Controller verwenden den [eigenen Dialog C1](uems-controllerwechsel.md).
 - Die Zone stammt aus dem Standort der Anlage; ohne Zuordnung steht die Vorgabe ausdrücklich
   im Kopf. `VpDatePicker`/`VpTimePicker` liefern eine Minute; doppelte und fehlende Ortszeiten
   werden abgewiesen. Rückwirkung nutzt den bestehenden Vertragszwilling und verlangt das
   Zusatzrecht aus `rollen.ts`; der Geräteweg prüft auch `geraet.einrichten`.
 - Ablesestände sind optional. Nur genau eine führende Zählerstand-Bindung mit bekannter Einheit
-  öffnet die beiden Felder. Mehrere Zählwerke brauchen den erweiterten Auftrag des Folgepakets.
+  öffnet die beiden Felder. Mehrere Zählwerke unterstützt der erweiterte Auftrag aus IP-19; C1 zeigt je führender Bindung ein Feld.
   `ablesestandWert` kapselt ausschließlich die deutsche Gruppierung vor `anlageFlow.parseDecimal`;
   sie ist der Übergabepunkt an AP-09 IP-10 (`zahl.ts`), geprüft mit `1.234,5` → `1234.5`.
 - Nach 201 werden Quelle/Register/Protokoll und Werte neu gelesen. „Wartet auf erste Daten“

@@ -70,9 +70,9 @@ export function standText(stand: MessstelleQuelleStand | null): string | null {
   return stand?.wert == null ? null : `${zahlText(stand.wert)}${stand.einheit ? ` ${stand.einheit}` : ' (Einheit nicht erfasst)'}`;
 }
 /** Die bestätigte Folgen-Karte benutzt ausschließlich die Antwort des Schreibvorgangs. */
-export function wechselFolgen(v: ZaehlerwechselVorgang, zone: string): string[] {
+export function wechselFolgen(v: ZaehlerwechselVorgang, zone: string, art: 'Zähler' | 'Controller' = 'Zähler'): string[] {
   const { alt, neu } = v.geraet;
-  const saetze = [ereignisSatz({ art: 'device_boundary', anlass: 'zaehlerwechsel', zeitpunkt: neu.eingebaut_am,
+  const saetze = [art === 'Controller' ? `Controller gewechselt: ${alt.einbau} → ${neu.einbau} · ${zeitText(neu.eingebaut_am, zone)}.` : ereignisSatz({ art: 'device_boundary', anlass: 'zaehlerwechsel', zeitpunkt: neu.eingebaut_am,
     einbau_alt: alt.einbau, einbau_neu: neu.einbau }, {}, zone)];
   if (alt.ausgebaut_am) saetze.push(`${alt.einbau}: ausgebaut am ${zeitText(alt.ausgebaut_am, zone)}.`);
   saetze.push(`${neu.einbau}: eingebaut am ${zeitText(neu.eingebaut_am, zone)}.`);
@@ -86,8 +86,8 @@ export function wechselFolgen(v: ZaehlerwechselVorgang, zone: string): string[] 
   else if (v.rueckwirkung.art === 'angekuendigt') saetze.push('Eintrag: angekündigt.');
   if (v.geraet.verbindung_neu) saetze.push('Die Verbindung wurde geändert.');
   if (v.einstellungen.length) saetze.push('Die Einstellungen wurden übernommen.');
-  if (v.marken > 0) saetze.push('Der Zählerwechsel ist im Komponenten-Verlauf vermerkt.');
-  if (v.marken < v.komponenten.length) saetze.push('Die Marke konnte nicht in allen Komponenten-Verläufen eingetragen werden. Der Zählerwechsel ist gespeichert.');
+  if (v.marken > 0) saetze.push(`Der ${art === 'Controller' ? 'Controllerwechsel' : 'Zählerwechsel'} ist im Komponenten-Verlauf vermerkt.`);
+  if (v.marken < v.komponenten.length) saetze.push(`Die Marke konnte nicht in allen Komponenten-Verläufen eingetragen werden. Der ${art === 'Controller' ? 'Controllerwechsel' : 'Zählerwechsel'} ist gespeichert.`);
   if (v.hinweise.includes('ablesestand_pruefen')) saetze.push('Bitte prüfen Sie die Einheit der Ablesestände.');
   return saetze;
 }

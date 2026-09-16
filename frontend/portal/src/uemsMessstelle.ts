@@ -1685,3 +1685,11 @@ const ueberschneiden = (ab1: number, bis1: number | null, ab2: number, bis2: num
   ab1 < bis2 && ab2 < (bis1 ?? OFFEN);
 
 const leer = (s: string | null): boolean => s === null || s.trim() === '';
+
+/** AP-04 E10; Java-Zwilling MessstelleRegeln.kartenWechselPruefen. */
+export function kartenWechselPruefen(karten: string[], uebernommen: string[] | null,
+  fuehrendeBindungen: string[], ablesestaende: string[]): string | null {
+  if (!uebernommen || uebernommen.some(k => !karten.includes(k)) || new Set(uebernommen).size !== uebernommen.length) return 'karten_uebernommen';
+  if (ablesestaende.some(q => !fuehrendeBindungen.includes(q)) || new Set(ablesestaende).size !== ablesestaende.length) return 'ablesestaende';
+  return null;
+}

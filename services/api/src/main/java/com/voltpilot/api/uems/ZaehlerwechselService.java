@@ -196,12 +196,34 @@ public class ZaehlerwechselService {
         return transaktion.execute(s -> wechseln(geraetId, a, wer));
     }
 
+    /** Nur lesen: alle betroffenen Bindungen zum gewählten Zeitpunkt, einschließlich Vergleichsquellen. */
+    public ZaehlerwechselDto.Vorschau vorschau(UUID id, OffsetDateTime zeitpunkt) {
+        return transaktion.execute(status -> {
+            if (geraete.eines(id).isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
+            Instant am = aufDieMinute(zeitpunkt, uhr.instant().truncatedTo(ChronoUnit.MINUTES));
+            List<Speisung> speisungen = geraete.laufendeSpeisungenAm(id, am);
+            List<ZaehlerwechselDto.Folge> folgen = quellen.desEinbausAb(id, am).stream()
+                    .filter(q -> gilt(q, am)).map(q -> {
+                        UUID karte = speisungen.stream().filter(s -> s.entityId().equals(q.entityId()))
+                                .map(Speisung::teilId).filter(Objects::nonNull).findFirst().orElse(null);
+                        String einheit = messkanaele.kanal(q.entityId(), q.kanal()).map(MesskanalDto.Messkanal::einheit).orElse(null);
+                        return new ZaehlerwechselDto.Folge(q.id(), karte, q.entityId(), q.messstelleId(),
+                                q.messstelle(), q.groesse(), q.richtung(), q.rolle(), einheit,
+                                ZAEHLERSTAND.equals(q.herleitung()));
+                    }).toList();
+            return new ZaehlerwechselDto.Vorschau(zeit(am), geraete.teileAm(id, am).stream()
+                    .map(k -> new ZaehlerwechselDto.Karte(k.id(), k.steckplatz(), k.bezeichnung(), k.typ(), k.seriennummer())).toList(), folgen);
+        });
+    }
+
     // ----------------------------------------------------------- der eine Vorgang
 
     /** Die geprüfte Form der Anfrage — alles, was ohne einen Blick in die Datenbank feststeht. */
     private record Anfrage(Instant jetzt, Instant zeitpunkt, ZaehlerwechselDto.NeuesGeraet geraet,
             ZaehlerwechselDto.Verbindung verbindung, boolean verbindungGesetzt, Stand endstand,
-            Stand anfangsstand, boolean einstellungenUebernehmen, String grund) {}
+            Stand anfangsstand, boolean einstellungenUebernehmen, String grund,
+            List<UUID> kartenUebernommen, List<ZaehlerwechselDto.Ablesestand> ablesestaende,
+            List<UUID> bestaetigteBindungen) {}
 
     private Anfrage anfrage(ZaehlerwechselDto.Wechsel w) {
         if (w == null) {
@@ -225,7 +247,9 @@ public class ZaehlerwechselService {
                         text(g.seriennummer()), text(g.bezeichnung())),
                 v, v != null, stand(w.endstandVorgaenger(), "endstand_vorgaenger"),
                 stand(w.anfangsstand(), "anfangsstand"),
-                w.einstellungenUebernehmen() == null || w.einstellungenUebernehmen(), text(w.grund()));
+                w.einstellungenUebernehmen() == null || w.einstellungenUebernehmen(), text(w.grund()),
+                w.kartenUebernommen(), w.ablesestaende() == null ? List.of() : w.ablesestaende(),
+                w.bestaetigteBindungen());
     }
 
     /** Eine Bindung, die mitzieht: was endet, was beginnt, und mit welchem Urteil. */
@@ -252,9 +276,9 @@ public class ZaehlerwechselService {
             throw wechselAbgelehnt(u, alt);
         }
 
-        // 2. Karten gehören dem Controllerwechsel (IP-19) — dieser Schnitt entscheidet nicht über sie.
+        // 2. Karten brauchen die ausdrückliche Entscheidung des Controllerwechsels (IP-19).
         List<GeraetRepository.Teil> karten = geraete.teileAm(geraetId, a.zeitpunkt());
-        if (!karten.isEmpty()) {
+        if (!karten.isEmpty() && a.kartenUebernommen() == null) {
             Map<String, Object> fakten = new LinkedHashMap<>();
             fakten.put("karten", karten.size());
             throw MessstelleAbgelehnt.schnittstelle(Schnittstelle.ZUSTAND_PASST_NICHT, alt.einbauKennzeichen()
@@ -265,14 +289,17 @@ public class ZaehlerwechselService {
 
         // 3. Welche Komponenten speist er zum Zeitpunkt? Ohne eine gibt es nichts zu wechseln.
         List<Speisung> speisungen = geraete.laufendeSpeisungenAm(geraetId, a.zeitpunkt());
-        // Eine Speisung ÜBER EINE KARTE gehört ebenfalls dem Controllerwechsel: die Karte hängt am
-        // ALTEN Einbau (Fremdschlüssel teil_id + geraet_id), also könnte der neue sie nicht
-        // übernehmen — und still fallen lassen wäre eine verlorene Zuordnung, kein Wechsel.
-        if (speisungen.stream().anyMatch(x -> x.teilId() != null)) {
+        // Ohne Kartenentscheidung darf die Zuordnung zu einer Energiekarte nie verloren gehen.
+        if (a.kartenUebernommen() == null && speisungen.stream().anyMatch(x -> x.teilId() != null)) {
             throw MessstelleAbgelehnt.schnittstelle(Schnittstelle.ZUSTAND_PASST_NICHT, alt.einbauKennzeichen()
                     + " speist über eine Energiekarte. Ob die Karten übernommen werden oder ebenfalls neu "
                     + "sind, entscheidet der Controllerwechsel — er ist ein eigener Vorgang.",
                     Map.of("karten", speisungen.stream().filter(x -> x.teilId() != null).count()));
+        }
+        if (speisungen.stream().anyMatch(s -> s.teilId() != null
+                && karten.stream().noneMatch(k -> k.id().equals(s.teilId())))) {
+            throw MessstelleAbgelehnt.schnittstelle(Schnittstelle.ZUSTAND_PASST_NICHT,
+                    "Eine Komponente verweist auf eine zu diesem Zeitpunkt nicht eingebaute Karte.", Map.of());
         }
         if (speisungen.isEmpty()) {
             Map<String, Object> fakten = new LinkedHashMap<>();
@@ -306,6 +333,33 @@ public class ZaehlerwechselService {
         }
         List<Quelle> laufende = kandidaten.stream().filter(q -> q.gueltigBis() == null).toList();
 
+        if (a.kartenUebernommen() != null || !a.ablesestaende().isEmpty()) {
+            String feld = MessstelleRegeln.kartenWechselPruefen(
+                    karten.stream().map(k -> k.id().toString()).toList(),
+                    a.kartenUebernommen() == null ? List.of() : a.kartenUebernommen().stream()
+                            .map(k -> k == null ? null : k.toString()).toList(),
+                    laufende.stream().filter(q -> FUEHREND.equals(q.rolle()) && ZAEHLERSTAND.equals(q.herleitung()))
+                            .map(q -> q.id().toString()).toList(),
+                    a.ablesestaende().stream().map(x -> x == null || x.bindung() == null ? null : x.bindung().toString()).toList());
+            if (feld != null) throw MessstelleAbgelehnt.anfrage(feld,
+                    "Die Auswahl muss bekannte Karten bzw. führende Zählwerke genau einmal nennen.");
+            if (!a.ablesestaende().isEmpty() && (a.endstand() != null || a.anfangsstand() != null)) {
+                throw MessstelleAbgelehnt.anfrage("ablesestaende", "Geben Sie die Ablesestände je Zählwerk an.");
+            }
+        }
+        if (a.kartenUebernommen() != null && (a.bestaetigteBindungen() == null
+                || !new java.util.HashSet<>(a.bestaetigteBindungen()).equals(
+                        laufende.stream().map(Quelle::id).collect(java.util.stream.Collectors.toSet()))
+                || a.bestaetigteBindungen().size() != laufende.size())) {
+            throw MessstelleAbgelehnt.schnittstelle(Schnittstelle.ZUSTAND_PASST_NICHT,
+                    "Die betroffenen Messstellen haben sich geändert. Prüfen Sie die Folgen erneut.", Map.of());
+        }
+        for (GeraetRepository.Teil karte : karten) {
+            if (karte.ausgebautAm() != null || !a.zeitpunkt().isAfter(karte.eingebautAm())) {
+                throw MessstelleAbgelehnt.anfrage("zeitpunkt", "Der Wechsel muss nach dem Einbau aller Karten liegen.");
+            }
+        }
+
         // 6. Das Kennzeichen des neuen Einbaus: gewählt oder vergeben, in jedem Fall frei.
         String neuesKennzeichen = einbauKennzeichen(alt, a.geraet().einbauKennzeichen());
 
@@ -322,7 +376,7 @@ public class ZaehlerwechselService {
                             + " speist am " + anzeige(a.zeitpunkt()) + " keinen."
                     : "Dieser Wechsel betrifft " + zaehlerstaende.size() + " führende Zählerstände ("
                             + String.join(", ", zaehlerstaende.stream().map(Quelle::messstelle).distinct().toList())
-                            + "). Ablesestände je Messwert kommen mit dem Controllerwechsel.");
+                            + "). Geben Sie die Ablesestände je führender Bindung an.");
         }
         UUID standBindung = zaehlerstaende.size() == 1 ? zaehlerstaende.get(0).id() : null;
 
@@ -349,12 +403,17 @@ public class ZaehlerwechselService {
                 oder(a.geraet().bezeichnung(), alt.bezeichnung()), datenquelle, geraeteId, a.zeitpunkt(),
                 wer.sub()));
 
+        Map<UUID, UUID> neueKarten = new LinkedHashMap<>();
+        for (GeraetRepository.Teil karte : karten) {
+            neueKarten.put(karte.id(), geraete.karteWechseln(tenant, karte, neuId, a.zeitpunkt(),
+                    a.kartenUebernommen().contains(karte.id())));
+        }
         List<UUID> komponenten = new ArrayList<>();
         for (Speisung s : speisungen) {
             if (!geraete.speisungBeenden(geraetId, s.entityId(), a.zeitpunkt())) {
                 throw soebenVeraendert(alt);
             }
-            geraete.speisungAnlegen(tenant, neuId, s.entityId(), null, a.zeitpunkt());
+            geraete.speisungAnlegen(tenant, neuId, s.entityId(), neueKarten.get(s.teilId()), a.zeitpunkt());
             komponenten.add(s.entityId());
         }
 
@@ -420,6 +479,12 @@ public class ZaehlerwechselService {
         });
         Stand endstand = q.id().equals(standBindung) ? a.endstand() : null;
         Stand anfangsstand = q.id().equals(standBindung) ? a.anfangsstand() : null;
+        for (ZaehlerwechselDto.Ablesestand lesung : a.ablesestaende()) {
+            if (q.id().equals(lesung.bindung())) {
+                endstand = stand(lesung.endstand(), "ablesestaende.endstand");
+                anfangsstand = stand(lesung.anfangsstand(), "ablesestaende.anfangsstand");
+            }
+        }
         BindungUrteil u = MessstelleRegeln.bindungPruefen(new BindungEingang("wechsel", zeit(a.jetzt()),
                 m.medium(), zeit(beginn(m)), ziel,
                 quellen.derMessstelle(m.id()).stream().map(ZaehlerwechselService::bindung).toList(),
@@ -570,6 +635,10 @@ public class ZaehlerwechselService {
             neueQuellen.add(q);
         }
         neu.put("quellen", neueQuellen);
+        if (a.kartenUebernommen() != null) {
+            neu.put("anlass", "controllerwechsel");
+            neu.put("karten_uebernommen", a.kartenUebernommen());
+        }
 
         boolean rueckwirkend = a.zeitpunkt().isBefore(a.jetzt().truncatedTo(ChronoUnit.MINUTES));
         aenderungen.eintragen(new NeuerEintrag(TenantContext.get(), messstelleId, PROTOKOLL_ART,

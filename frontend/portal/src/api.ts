@@ -5067,9 +5067,19 @@ export interface Zaehlerwechsel {
   anfangsstand?: MessstelleStand | null;
   einstellungen_uebernehmen?: boolean | null;
   grund?: string | null;
+  karten_uebernommen?: string[];
+  ablesestaende?: { bindung: string; endstand?: MessstelleQuelleStand | null; anfangsstand?: MessstelleQuelleStand | null }[];
+  bestaetigte_bindungen?: string[];
 }
 
 /** Ein Einbau der Antwort: `geraet` ist die Stelle (GR-4), `einbau` das Kästchen (Z-5a). */
+export interface ControllerwechselVorschau {
+  zeitpunkt: string;
+  karten: { id: string; steckplatz: number | null; bezeichnung: string | null; typ: string | null; seriennummer: string | null }[];
+  folgen: { bindung: string; karte: string | null; komponente: string; messstelle: string; kennzeichen: string;
+    groesse: string; richtung: string; rolle: string; einheit: string | null; zaehlerstand: boolean }[];
+}
+
 export interface ZaehlerwechselEinbau {
   id: string;
   geraet: string;
@@ -8000,6 +8010,8 @@ export const api = {
     request<ZaehlerwechselVorgang>(`/api/v1/messstellen/${id}/quellen/wechsel`, {
       method: 'POST', body: JSON.stringify(body),
     }),
+  controllerwechselVorschau: (id: string, zeitpunkt: string) =>
+    request<ControllerwechselVorschau>(`/api/v1/geraete/${id}/austausch/vorschau?zeitpunkt=${encodeURIComponent(zeitpunkt)}`),
   geraetAustauschen: (id: string, body: Zaehlerwechsel) =>
     request<ZaehlerwechselVorgang>(`/api/v1/geraete/${id}/austausch`, {
       method: 'POST', body: JSON.stringify(body),

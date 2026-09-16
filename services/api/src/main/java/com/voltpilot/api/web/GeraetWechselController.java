@@ -15,6 +15,9 @@ import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.time.OffsetDateTime;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -67,6 +70,13 @@ public class GeraetWechselController {
     public ZaehlerwechselDto.Vorgang austausch(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return wechsel.amGeraet(id, lies(body), akteur(auth));
+    }
+
+    /** Recht: keine eigene Kennung — lesende Vorschau; derselbe Standort-Zaun wie am Gerät. */
+    @GetMapping("/api/v1/geraete/{id}/austausch/vorschau")
+    public ZaehlerwechselDto.Vorschau vorschau(@PathVariable UUID id,
+            @RequestParam(required = false) OffsetDateTime zeitpunkt) {
+        return wechsel.vorschau(id, zeitpunkt);
     }
 
     // ---------------------------------------------------------------- Gerüst

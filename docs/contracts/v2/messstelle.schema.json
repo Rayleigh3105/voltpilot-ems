@@ -634,6 +634,16 @@
           "properties": {
             "jetzt": { "$ref": "#/$defs/jetzt" },
             "alt": { "$ref": "#/$defs/einbauStand", "description": "Der Einbau, der geht — so, wie er gespeichert ist." },
+            "karten": {
+              "type": "object", "additionalProperties": false,
+              "required": ["vorhanden", "uebernommen", "fuehrende_bindungen", "ablesestaende"],
+              "properties": {
+                "vorhanden": { "type": "array", "items": { "type": "string" } },
+                "uebernommen": { "type": "array", "items": { "type": "string" } },
+                "fuehrende_bindungen": { "type": "array", "items": { "type": "string" } },
+                "ablesestaende": { "type": "array", "items": { "type": "string" } }
+              }
+            },
             "zeitpunkt": { "$ref": "#/$defs/zeitpunkt", "description": "Wann getauscht wird, auf die Minute — Vergangenheit und Zukunft erlaubt (E2)." }
           }
         },
@@ -641,6 +651,7 @@
           "type": "object", "additionalProperties": false, "required": ["fehler", "ohne_geraet_ab", "rueckwirkend", "angekuendigt"],
           "properties": {
             "fehler": { "anyOf": [{ "$ref": "#/$defs/fehlerCode" }, { "type": "null" }] },
+            "karten_fehler": { "type": ["string", "null"], "enum": [null, "karten_uebernommen", "ablesestaende"] },
             "ohne_geraet_ab": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bei kein_geraet_zum_zeitpunkt: ab wann der Vorgänger nicht mehr steckt (ausgebaut_am)." },
             "rueckwirkend": { "type": "boolean", "description": "Der Wechselzeitpunkt liegt vor der Minute von „jetzt“." },
             "angekuendigt": { "type": "boolean", "description": "Der Wechselzeitpunkt liegt nach der Minute von „jetzt“." }

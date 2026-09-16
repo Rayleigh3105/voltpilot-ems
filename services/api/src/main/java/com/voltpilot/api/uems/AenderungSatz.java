@@ -118,7 +118,8 @@ public final class AenderungSatz {
             case "quelle_gebunden" -> "Quelle gebunden" + quelle(neu);
             case "quelle_beendet" -> "Quelle beendet" + zusatz(text(neu, "einbau"));
             case "einstellung_geaendert" -> "Einstellung geändert" + einstellung(alt, neu);
-            case "zaehler_gewechselt" -> "Zähler gewechselt" + wechsel(text(neu, "vorgaenger"),
+            case "zaehler_gewechselt" -> ("controllerwechsel".equals(text(neu, "anlass"))
+                    ? "Controller gewechselt" : "Zähler gewechselt") + wechsel(text(neu, "vorgaenger"),
                     text(neu, "einbau"), "");
             case "formel_geaendert" -> "Formel geändert" + zusatz(text(neu, "fassung") == null ? null
                     : "Fassung " + text(neu, "fassung"));

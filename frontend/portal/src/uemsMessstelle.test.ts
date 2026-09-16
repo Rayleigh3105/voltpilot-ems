@@ -45,6 +45,7 @@ import {
   stellungPruefen,
   vorschlagsliste,
   wechselPruefen,
+  kartenWechselPruefen,
   zeitstrahlAus,
   type Abschnitt,
   type Bindung,
@@ -411,6 +412,10 @@ describe('Messstellen-Vertrag — die Fälle', () => {
 
   it.each(faelle('wechsel'))('Zählerwechsel: $name', (c) => {
     const a = c.input.alt;
+    if (c.input.karten) {
+      const k = c.input.karten;
+      expect(kartenWechselPruefen(k.vorhanden, k.uebernommen, k.fuehrende_bindungen, k.ablesestaende)).toBe(c.expected.karten_fehler);
+    }
     expect(
       wechselPruefen({
         jetzt: c.input.jetzt,

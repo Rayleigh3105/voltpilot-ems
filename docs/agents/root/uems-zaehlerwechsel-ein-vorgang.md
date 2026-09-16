@@ -42,14 +42,13 @@ bei wirklich neuer Verbindung · Marke `device_replaced` im Komponenten-Verlauf.
   Savepoint hätte jede Ausnahme die gemeinsame Transaktion rollback-only gemacht. Scheitert sie,
   zählt `voltpilot_zaehlerwechsel_marke_total{ergebnis="fehler"}` — der Wechsel steht trotzdem, und
   `marken` in der Antwort sagt ehrlich, wie viele Verläufe die Marke tragen.
-- **Der Controllerwechsel ist NICHT dieser Vorgang.** Ein Einbau mit Energiekarten
-  (`geraet_teil` zum Zeitpunkt) wird mit 409 `zustand_passt_nicht` abgelehnt: ob die Karten
-  übernommen werden oder ebenfalls neu sind, entscheidet IP-19 (`karten_uebernommen[]`, je Karte
-  ein Endstand). Dieser Schnitt nimmt die Entscheidung nicht vorweg.
-- **Der Ablesestand gehört zu GENAU EINER führenden Zählerstand-Bindung.** Eine Vergleichsquelle
-  liest denselben Zähler ein zweites Mal — der abgelesene Stand gehört der führenden. Betrifft der
-  Wechsel mehrere führende Zählerstände (MS-01 Bezug + MS-02 Abgabe an GR-2), ist 400 die ehrliche
-  Antwort: Ablesestände je Messwert kommen mit IP-19.
+- **Controller brauchen eine ausdrückliche Kartenentscheidung.** IP-19 ergänzt
+  `karten_uebernommen[]`, die zeitpunktgenaue Vorschau und bestätigte Bindungen;
+  ohne Kartenentscheidung bleibt die Ablehnung erhalten. Details und Objektwege:
+  [Controllerwechsel](uems-controllerwechsel.md).
+- **Ablesestände gehören zu führenden Zählerstand-Bindungen.** Die bisherigen
+  Einzelfelder verlangen genau eine solche Bindung. IP-19 ergänzt `ablesestaende[]`
+  mit Bindungs-ID für mehrere Zählwerke; Vergleichsquellen bekommen keinen Stand.
 - **Eine angekündigte Bindung am alten Einbau blockiert den Wechsel** (409): sie begänne nach dem
   Wechsel an einem Gerät, das dort nicht mehr steckt. Erst zurücknehmen (bzw. später wechseln).
 - **Vom Einstieg Messstelle aus wird das Gerät NACHGESCHLAGEN**, nie gewählt: es ist das, aus dem
@@ -75,5 +74,5 @@ bei wirklich neuer Verbindung · Marke `device_replaced` im Komponenten-Verlauf.
 
 ## Nicht dieses Paket
 
-Controllerwechsel (IP-19), Portal-Dialog (IP-18), Rechte-Durchsetzung (AP-03),
+Weitere Details: Controllerwechsel (IP-19), Portal-Dialog (IP-18), Rechte-Durchsetzung (AP-03),
 Änderungsprotokoll-Routen (IP-21), das Zustellen angewendeter Einstellungen an die Box (AP-06).
