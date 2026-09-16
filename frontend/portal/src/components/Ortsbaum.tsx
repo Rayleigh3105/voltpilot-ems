@@ -1,3 +1,4 @@
+import { RechteStandort } from '../rollen';
 import { Recht } from './Recht';
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
@@ -295,6 +296,7 @@ export function Ortsbaum({
   }
 
   return (
+    <RechteStandort.Provider value={standort.id}>
     <section className="vp-ob" aria-labelledby={titelId} data-testid="ortsbaum">
       <div className="vp-ob-kopf">
         <h3 id={titelId} className={titelVersteckt ? 'vp-ob-titel vp-sr-only' : 'vp-ob-titel'}>
@@ -534,5 +536,6 @@ export function Ortsbaum({
         />
       )}
     </section>
+    </RechteStandort.Provider>
   );
 }
