@@ -153,12 +153,12 @@ public class RegisterWriteTargets {
     }
 
     /**
-     * Der Endpunkt als Schlüssel - damit ein Gerät, das SCHON als Komponente
-     * angeboten wird, nicht ein zweites Mal als freie Adresse erscheint.
+     * Box und Endpunkt als Schlüssel: dieselbe Adresse an einer anderen Box
+     * darf weder aus der Auswahl noch aus der Adressierungsprüfung verschwinden.
      */
     private static String endpointKey(Target t) {
         return t.host() == null ? null
-                : t.host() + ":" + (t.port() == null ? 502 : t.port())
+                : t.deviceId() + "|" + t.host() + ":" + (t.port() == null ? 502 : t.port())
                         + "#" + (t.unitId() == null ? 1 : t.unitId());
     }
 

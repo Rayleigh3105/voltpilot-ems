@@ -369,6 +369,8 @@ export interface InterventionOutcome {
   applied: boolean;
   /** Ist der Wunsch wirklich hinausgegangen? Sonst sagt `message` das. */
   pushed: boolean;
+  /** Benannter Zustellgrund, wenn der Wunsch die Box noch nicht erreicht hat. */
+  pushReason?: string | null;
   kind: string;
   endsAt: string | null;
   effectivePowerKw: number | null;
@@ -7300,8 +7302,9 @@ export const api = {
       templateVersion?: number;
       role?: string;
       connection: Record<string, unknown>;
+      /** Gewählte Box für ein neues Gerät; ohne Wahl entscheidet die führende Box. */
       deviceId?: string;
-      /** Bestehende Komponente: der Server ergänzt unveränderte Secrets. */
+      /** Bestehende Komponente: der Server wählt die ausführende Box und ergänzt Secrets. */
       entityId?: string;
     },
   ) =>

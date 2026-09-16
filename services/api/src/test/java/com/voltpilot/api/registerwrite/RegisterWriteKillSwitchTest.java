@@ -55,8 +55,11 @@ class RegisterWriteKillSwitchTest {
     private final ObjectProvider<RegisterWritePublisher> publisher = mock(ObjectProvider.class);
 
     private RegisterWriteService service(boolean enabled) {
+        var target = mock(com.voltpilot.api.entities.EinmalAuftragZiel.class);
+        when(target.fuehrend(SITE)).thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                "Für diese Anlage ist keine führende Box bestimmt."));
         return new RegisterWriteService(devices, knowledge, targets, registry, journal, publisher,
-                Duration.ofSeconds(20), Duration.ofSeconds(45), enabled);
+                Duration.ofSeconds(20), Duration.ofSeconds(45), enabled, target);
     }
 
     private static RegisterWriteService.Command command() {

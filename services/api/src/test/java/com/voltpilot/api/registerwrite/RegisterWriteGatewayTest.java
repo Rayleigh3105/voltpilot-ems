@@ -128,12 +128,12 @@ class RegisterWriteGatewayTest {
     }
 
     @Test
-    @DisplayName("ein Ziel-Gerät, das gar nicht zur Anlage gehört, wird ignoriert statt befolgt")
-    void anOwnerOutsideThePlantIsIgnored() {
+    @DisplayName("ein nicht verfügbares Ziel-Gerät wird benannt abgelehnt, nie durch die Anfrage ersetzt")
+    void anOwnerOutsideThePlantIsRefused() {
         // Kann nur aus einer widersprüchlichen Ableitung kommen; sie darf den
         // Auftrag nie auf eine fremde Anlage schicken.
         RegisterWriteGateway.Choice c = RegisterWriteGateway.choose(herzogau(), FREMD, BOX, NOW);
-        assertThat(c.device().id()).isEqualTo(BOX);
-        assertThat(c.origin()).isEqualTo(RegisterWriteGateway.Origin.REQUESTED);
+        assertThat(c.ok()).isFalse();
+        assertThat(c.refusal()).contains("zuständige Box");
     }
 }

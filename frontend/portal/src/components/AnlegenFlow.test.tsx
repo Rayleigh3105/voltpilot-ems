@@ -839,6 +839,8 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
       <AnlegenFlow
         siteId="s1"
         siteName="Pilsting"
+        box={{ id: 'box-b', siteId: 's1', externalRef: 'edge-b', kind: 'gateway',
+          name: 'Box Halle 2', status: 'claimed', lastSeenAt: null, createdAt: null }}
         geraetKennung="inverter"
         bearbeiten={edit}
         inlineBearbeitung
@@ -888,6 +890,8 @@ describe('Gerät direkt auf seiner Seite bearbeiten', () => {
     expect(await screen.findByText(/Das Gerät antwortet/)).toBeVisible();
     expect(testComponentConnection).toHaveBeenCalledWith('s1', expect.objectContaining({
       templateVersion: 1,
+      deviceId: 'box-b',
+      entityId: 'wr-1',
     }));
     fireEvent.click(knopf('Änderungen speichern'));
 

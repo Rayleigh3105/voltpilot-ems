@@ -241,7 +241,7 @@ public class SiteComponentController {
             @RequestParam(name = "entityId", required = false) UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         Map<String, Object> connection = batteries.previewConnection(siteId, request, entityId);
-        return probes.testConnection(siteId, null, "batterie",
+        return probes.testConnection(siteId, null, entityId, "batterie",
                 UserDefinedBatteryDefinition.ENTITY_TYPE, null, null, null, connection,
                 subject(jwt));
     }
@@ -378,7 +378,7 @@ public class SiteComponentController {
         // dieselbe Auskunft bekommen wie beim Klick auf Speichern.
         components.requireUsableVoltageBounds(connection);
 
-        ProbeResult result = probes.testConnection(siteId, request.deviceId(), "verbindung",
+        ProbeResult result = probes.testConnection(siteId, request.deviceId(), request.entityId(), "verbindung",
                 template.brand(), template.model(), template.family(), request.role(), connection,
                 subject(jwt));
         if (passed(result)) {

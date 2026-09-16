@@ -58,12 +58,14 @@ public class ProbeService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final DeviceRepository devices;
+    private final com.voltpilot.api.entities.EinmalAuftragZiel ziel;
     private final ProbeRegistry registry;
     private final ObjectProvider<ProbePublisher> publisher;
 
     public ProbeService(DeviceRepository devices, ProbeRegistry registry,
-            ObjectProvider<ProbePublisher> publisher) {
+            ObjectProvider<ProbePublisher> publisher, com.voltpilot.api.entities.EinmalAuftragZiel ziel) {
         this.devices = devices;
+        this.ziel = ziel;
         this.registry = registry;
         this.publisher = publisher;
     }
@@ -80,7 +82,7 @@ public class ProbeService {
             // anyway, but a probe must never be published on a guessed topic.
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
-        DeviceDto device = resolveDevice(siteId, request.deviceId());
+        DeviceDto device = ziel.pruefung(siteId, request.deviceId(), request.entityId());
         ProbePublisher pub = publisher.getIfAvailable();
         if (pub == null) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -129,11 +131,17 @@ public class ProbeService {
     public ProbeResult testConnection(UUID siteId, UUID deviceId, String opId, String brand,
             String model, String family, String role, java.util.Map<String, Object> connection,
             String requestedBy) {
+        return testConnection(siteId, deviceId, null, opId, brand, model, family, role, connection, requestedBy);
+    }
+
+    public ProbeResult testConnection(UUID siteId, UUID deviceId, UUID entityId, String opId, String brand,
+            String model, String family, String role, java.util.Map<String, Object> connection,
+            String requestedBy) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
-        DeviceDto device = resolveDevice(siteId, deviceId);
+        DeviceDto device = ziel.pruefung(siteId, deviceId, entityId);
         ProbePublisher pub = publisher.getIfAvailable();
         if (pub == null) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -176,11 +184,16 @@ public class ProbeService {
      */
     public ProbeResult switchOp(UUID siteId, UUID deviceId, ProbePublisher.SwitchOp op,
             String requestedBy) {
+        return switchOp(siteId, deviceId, null, op, requestedBy);
+    }
+
+    public ProbeResult switchOp(UUID siteId, UUID deviceId, UUID entityId, ProbePublisher.SwitchOp op,
+            String requestedBy) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
-        DeviceDto device = resolveDevice(siteId, deviceId);
+        DeviceDto device = ziel.pruefung(siteId, deviceId, entityId);
         ProbePublisher pub = publisher.getIfAvailable();
         if (pub == null) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -215,10 +228,7 @@ public class ProbeService {
      * Ask EXACTLY this box - the reachability check of a data source (UEMS AP-06
      * IP-3, E11: a check only counts from EXACTLY the target box).
      *
-     * <p>Additive on purpose: {@link #probe} and the connection/switch tests keep
-     * resolving the box through the PLANT ({@link #resolveDevice} - the named
-     * device of the site, else its single device); replacing that switch is
-     * IP-5/IP-8. Here the caller NAMES the box, and it may have a different home
+     * <p>Here the caller NAMES the box, and it may have a different home
      * plant than the source it checks (a box may read a source of another plant
      * if it reaches it - contract {@code data-source-assignment.md} §1). So the
      * box is resolved by id inside the tenant fence (RLS: a foreign box is simply
@@ -259,32 +269,6 @@ public class ProbeService {
         } finally {
             registry.forget(requestId);
         }
-    }
-
-    /**
-     * Which box to ask. An explicit device must belong to the site; without one
-     * the site's SINGLE device is used, and a site with several is refused by
-     * name - guessing which box sits on the right LAN segment would be exactly
-     * the kind of invention this codebase avoids.
-     */
-    private DeviceDto resolveDevice(UUID siteId, UUID requested) {
-        List<DeviceDto> ofSite = devices.findAll().stream()
-                .filter(d -> siteId.equals(d.siteId()))
-                .toList();
-        if (requested != null) {
-            return ofSite.stream().filter(d -> requested.equals(d.id())).findFirst()
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                            "Gerät nicht gefunden."));
-        }
-        if (ofSite.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Diese Anlage hat noch kein verbundenes Gerät, das prüfen könnte.");
-        }
-        if (ofSite.size() > 1) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Diese Anlage hat mehrere Geräte. Bitte wählen Sie aus, welches prüfen soll.");
-        }
-        return ofSite.get(0);
     }
 
     /** A hex correlation id matching the contract's {@code request_id} pattern. */

@@ -67,14 +67,16 @@ public class MeasurementSelectionService {
             MeasurementBudget.Estimate volumeEstimate) {}
 
     private final MeasurementSelectionRepository repository;
+    private final com.voltpilot.api.entities.EinmalAuftragZiel ziel;
     private final MeasurementCatalog catalog;
     private final ObjectMapper mapper;
     private final MeasurementBudgetProperties budgetProperties;
 
     public MeasurementSelectionService(MeasurementSelectionRepository repository,
             MeasurementCatalog catalog, ObjectMapper mapper,
-            MeasurementBudgetProperties budgetProperties) {
+            MeasurementBudgetProperties budgetProperties, com.voltpilot.api.entities.EinmalAuftragZiel ziel) {
         this.repository = repository;
+        this.ziel = ziel;
         this.catalog = catalog;
         this.mapper = mapper;
         this.budgetProperties = budgetProperties;
@@ -108,17 +110,50 @@ public class MeasurementSelectionService {
         return entityId;
     }
 
+    /** Validate the requested box/site fence first, then follow the component's execution. */
+    public UUID deviceForEntity(UUID deviceId, UUID entityId) {
+        DeviceScope scope = requireDevice(deviceId);
+        requireEntity(scope, entityId);
+        return entityId == null ? deviceId : ziel.komponente(scope.siteId(), entityId).id();
+    }
+
+    /** Retained full plans must never re-enable a component on its former box. */
+    public State forPublishing(UUID deviceId) {
+        State state = state(deviceId);
+        Map<UUID, Boolean> owners = new java.util.HashMap<>();
+        List<SelectionPoint> points = state.selections().stream().filter(p -> p.entityId() == null
+                || owners.computeIfAbsent(p.entityId(), entity -> {
+                    try {
+                        return deviceId.equals(ziel.komponente(state.siteId(), entity).id());
+                    } catch (ResponseStatusException e) {
+                        if (e.getStatusCode().value() != 404 && e.getStatusCode().value() != 409) throw e;
+                        return false;
+                    }
+                })).toList();
+        return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
+                state.catalogVersion(), state.status(), state.statusReason(), state.activationNotice(),
+                state.disableNotice(), points, state.events(), state.volumeEstimate());
+    }
+
+    public static State notDelivered(State state, String reason) {
+        return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
+                state.catalogVersion(), state.status(), reason, state.activationNotice(),
+                state.disableNotice(), state.selections(), state.events(), state.volumeEstimate());
+    }
+
     /** The whole device (the pre-3b box semantics). */
     public State state(UUID deviceId) {
         return state(deviceId, null);
     }
 
     public State state(UUID deviceId, UUID entityId) {
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         return state(scope, requireEntity(scope, entityId));
     }
 
     public Set<String> availableFamilies(UUID deviceId, UUID entityId) {
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         return MeasurementCatalogFamilies.expand(
                 repository.availableFamilies(deviceId, requireEntity(scope, entityId)),
@@ -126,6 +161,7 @@ public class MeasurementSelectionService {
     }
 
     public Map<String, Integer> selectedCadences(UUID deviceId, UUID entityId) {
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         return repository.selectedCadences(deviceId, requireEntity(scope, entityId));
     }
@@ -152,6 +188,7 @@ public class MeasurementSelectionService {
      */
     public MeasurementBudget.Estimate preview(UUID deviceId, UUID entityId, String pointKey,
             boolean enabled, Integer cadenceS) {
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         UUID entity = requireEntity(scope, entityId);
         List<Row> current = repository.current(deviceId);
@@ -169,6 +206,7 @@ public class MeasurementSelectionService {
     /** Preview a free register with the exact same validation/budget as create. */
     public MeasurementBudget.Estimate previewCustom(UUID deviceId, UUID entityId,
             Definition definition) {
+        deviceId = deviceForEntity(deviceId, entityId);
         requireEntity(requireDevice(deviceId), entityId);
         Canonical custom;
         MeasurementRetention retention;
@@ -191,6 +229,7 @@ public class MeasurementSelectionService {
         if (request == null || request.idempotencyKey() == null) {
             throw bad("Für eine Auswahländerung fehlt der Idempotenzschlüssel.");
         }
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = lock(deviceId);
         UUID entity = requireEntity(scope, entityId);
         List<Row> current = repository.current(deviceId);
@@ -257,6 +296,7 @@ public class MeasurementSelectionService {
         } catch (IllegalArgumentException e) {
             throw bad(e.getMessage());
         }
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = lock(deviceId);
         UUID entity = requireEntity(scope, entityId);
         Event previous = repository.eventByRequest(deviceId, request.idempotencyKey());

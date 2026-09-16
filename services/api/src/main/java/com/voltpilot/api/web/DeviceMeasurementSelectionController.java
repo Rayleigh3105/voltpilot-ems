@@ -193,6 +193,7 @@ public class DeviceMeasurementSelectionController {
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "100") int limit) {
         try {
+            deviceId = selections.deviceForEntity(deviceId, entityId);
             return catalog.search(q, family, group, semanticStatus, recorded, availableOnly,
                     selectedOnly,
                     selections.availableFamilies(deviceId, entityId),
@@ -247,8 +248,7 @@ public class DeviceMeasurementSelectionController {
         State state = selections.change(deviceId, entityId, pointKey,
                 new Change(request.expectedRevision().longValue(), request.idempotencyKey(),
                         request.enabled().booleanValue(), request.cadenceS()), actor(caller));
-        publish(deviceId, state);
-        return state;
+        return publish(state);
     }
 
     /**
@@ -265,8 +265,7 @@ public class DeviceMeasurementSelectionController {
         State state = selections.addCustom(deviceId, entityId,
                 new CustomChange(request.expectedRevision(), request.idempotencyKey(),
                         request.definition()), actor(caller));
-        publish(deviceId, state);
-        return state;
+        return publish(state);
     }
 
     /**
@@ -274,11 +273,14 @@ public class DeviceMeasurementSelectionController {
      * publish the device's complete desired state, never the filtered view it
      * returned to the caller.
      */
-    private void publish(UUID deviceId, State state) {
+    private State publish(State state) {
         MeasurementConfigPublisher p = publisher.getIfAvailable();
-        if (p == null) return;
-        p.publish(selections.requireDevice(deviceId),
-                state.entityId() == null ? state : selections.state(deviceId));
+        if (p == null) return MeasurementSelectionService.notDelivered(state,
+                "Die Auswahl ist gespeichert. Die Zustellung an die Box ist derzeit nicht verfügbar.");
+        boolean sent = p.publish(selections.requireDevice(state.deviceId()),
+                selections.forPublishing(state.deviceId()));
+        return sent ? state : MeasurementSelectionService.notDelivered(state,
+                "Die Auswahl ist gespeichert. Die Zustellung an die Box ist fehlgeschlagen.");
     }
 
     private static Actor actor(Jwt caller) {

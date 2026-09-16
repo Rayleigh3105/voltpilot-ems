@@ -19,9 +19,9 @@ import org.springframework.stereotype.Service;
  * (kein Backfill, gesetzt wird es erst mit der Wahl im Portal); dann liefert der Dienst genau die
  * Box der alten Weiche (Speicher-Box, sonst einzige Box) und genau dort keine, wo sie keine hatte.
  *
- * <p>⚠ Nur Registry-Push und Flow-Aktivierung fragen hier. Probe, Register schreiben,
- * Handeingriffe, Fahrplan, Ladepark und OCPP wählen ihre Box weiter selbst (AP-06 §2.4,
- * IP-6/IP-8 ff.).
+ * <p>Einmal-Aufträge nutzen diesen Dienst über {@link EinmalAuftragZiel}, wenn keine
+ * Datenquelle an der Komponente hängt. Eine Quellenübergabe bestimmt dagegen die ausführende Box.
+ * Fahrplan, Ladepark und OCPP haben weiterhin eigene Wege.
  */
 @Service
 public class LeadDeviceService {

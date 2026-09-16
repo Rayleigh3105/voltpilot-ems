@@ -35,6 +35,8 @@ veröffentlichen gegen die wörtlich kopierte alte Weiche). Regeln: `uems-datenq
   Ein „ausgebaut“ gibt es in der DB noch nicht: Unclaim löscht die Zeile, `ON DELETE SET NULL`
   leert die Wahl. Führt AP-07 E8 „ausgebaut“ ein, muss die Box-Liste des Dienstes
   (`siteDeviceIds`) ausgebaute Boxen auslassen.
-- **Nicht umgestellt** (AP-06 §2.4, IP-6/IP-8 ff.): Probe, Register schreiben, Handeingriffe,
-  Fahrplan (Optimierer über `asset.device_id`), Ladepark, OCPP, Portal `boxOf`. Offen aus IP-5:
+- **Einmal-Aufträge seit IP-8:** Probe, Register schreiben, Handeingriffe und Mess-Selektion
+  nutzen `EinmalAuftragZiel` (Quellen-Ausführung, sonst führende Box); siehe
+  [Einmal-Aufträge](uems-einmalauftraege.md). Nicht umgestellt: Fahrplan (Optimierer über
+  `asset.device_id`), Ladepark, OCPP, Portal `boxOf`. Offen aus IP-5:
   Portal-Picker „Steuerndes Gerät“ → „Diese Box führt die Anlage“ samt Wahl-Route.

@@ -51,10 +51,11 @@ public class DeviceOverrideService {
 
     /** Was ein Aufruf bewirkt hat - die Fläche rendert es wörtlich. */
     public record Outcome(boolean applied, boolean pushed, String kind, Instant endsAt,
-            BigDecimal effectivePowerKw, boolean ttlRenewed, String message) {}
+            BigDecimal effectivePowerKw, boolean ttlRenewed, String message, String pushReason) {}
 
     private final DeviceOverrideRepository overrides;
     private final EntityRegistryRepository entities;
+    private final com.voltpilot.api.entities.EinmalAuftragZiel ziel;
     private final ConsumerAuditRepository audit;
     private final ObjectProvider<ConsumerOverridePublisher> publisher;
     private final ObjectProvider<EntityRegistryService> registry;
@@ -62,9 +63,10 @@ public class DeviceOverrideService {
     public DeviceOverrideService(DeviceOverrideRepository overrides,
             EntityRegistryRepository entities, ConsumerAuditRepository audit,
             ObjectProvider<ConsumerOverridePublisher> publisher,
-            ObjectProvider<EntityRegistryService> registry) {
+            ObjectProvider<EntityRegistryService> registry, com.voltpilot.api.entities.EinmalAuftragZiel ziel) {
         this.overrides = overrides;
         this.entities = entities;
+        this.ziel = ziel;
         this.audit = audit;
         this.publisher = publisher;
         this.registry = registry;
@@ -86,25 +88,30 @@ public class DeviceOverrideService {
         BigDecimal value = refuseTo(() -> Handeingriff.sollwert(kind, req.setpointKw(),
                 asset == null ? null : asset.maxChargeKw()));
 
+        UUID device = ziel.komponente(siteId, battery.id()).id();
         overrides.putForEntity(siteId, battery.id(), kind, value, endsAt, actor);
         audit.append(siteId, battery.id(), "device_override_started", null, null, actor,
                 kind + " bis " + endsAt);
 
-        boolean pushed = publishBattery(siteId, battery.id(), asset, value,
+        String reason = publishBattery(siteId, battery.id(), device, value,
                 Handeingriff.ttlSekunden(endsAt, now), now);
+        boolean pushed = reason == null;
         boolean renewed = endsAt.isAfter(now.plus(Handeingriff.TTL_KAPPE));
         return new Outcome(true, pushed, kind, endsAt, value, renewed,
-                message(kind, pushed, renewed));
+                message(kind, pushed, renewed) + deliveryMessage(reason), reason);
     }
 
     @Transactional
     public Outcome clearBattery(UUID siteId, String actor) {
         EntityRegistryRepository.EntityRow battery = batteryEntity(siteId);
+        UUID device = ziel.komponente(siteId, battery.id()).id();
         overrides.clearEntity(siteId, battery.id());
         audit.append(siteId, battery.id(), "device_override_cleared", null, null, actor, null);
-        boolean pushed = withdraw(siteId, battery.id());
+        String reason = withdraw(siteId, battery.id(), device);
+        boolean pushed = reason == null;
         return new Outcome(true, pushed, "resume", null, null, false,
-                "Der Eingriff ist beendet. Fahrplan und Regeln übernehmen wieder.");
+                pushed ? "Der Eingriff ist beendet. Fahrplan und Regeln übernehmen wieder."
+                        : "Das Beenden ist notiert." + deliveryMessage(reason), reason);
     }
 
     // -- Anlage: „Automatik pausieren" ---------------------------------------
@@ -138,13 +145,14 @@ public class DeviceOverrideService {
             throw inRuhe();
         }
         audit.append(siteId, null, "automation_paused", null, null, actor, "bis " + endsAt);
-        boolean pushed = pushRegistry(siteId);
+        String reason = pushRegistry(siteId);
+        boolean pushed = reason == null;
         return new Outcome(true, pushed, Handeingriff.PAUSE, endsAt, null, false,
                 pushed
                         ? "Die Automatik pausiert. Ihre Anlage versorgt sich weiter selbst, "
                                 + "Schutz und Netzvorgaben bleiben aktiv."
                         : "Die Pause ist notiert, konnte aber gerade nicht an Ihre Anlage "
-                                + "gesendet werden. VoltPilot versucht es weiter.");
+                                + "gesendet werden." + deliveryMessage(reason), reason);
     }
 
     /**
@@ -159,9 +167,11 @@ public class DeviceOverrideService {
             throw inRuhe();
         }
         audit.append(siteId, null, "automation_resumed", null, null, actor, null);
-        boolean pushed = pushRegistry(siteId);
+        String reason = pushRegistry(siteId);
+        boolean pushed = reason == null;
         return new Outcome(true, pushed, "resume", null, null, false,
-                "Die Automatik läuft wieder. Der nächste Fahrplan greift sofort.");
+                pushed ? "Die Automatik läuft wieder. Der nächste Fahrplan greift sofort."
+                        : "Das Fortsetzen ist notiert." + deliveryMessage(reason), reason);
     }
 
     // -- Lesepfad -------------------------------------------------------------
@@ -193,39 +203,39 @@ public class DeviceOverrideService {
                 "Diese Anlage hat keinen steuerbaren Speicher.");
     }
 
-    private boolean publishBattery(UUID siteId, UUID entityId,
-            EntityRegistryRepository.BatteryAsset asset, BigDecimal value, int ttlSeconds,
-            Instant now) {
+    private String publishBattery(UUID siteId, UUID entityId, UUID device,
+            BigDecimal value, int ttlSeconds, Instant now) {
         ConsumerOverridePublisher pub = publisher.getIfAvailable();
-        UUID device = asset == null ? null : asset.deviceId();
-        if (pub == null || device == null) {
-            return false;
-        }
+        if (pub == null) return "publisher_unavailable";
         return pub.publishOverride(TenantContext.get(), siteId, device, entityId, null, value,
-                ttlSeconds, now);
+                ttlSeconds, now) ? null : "publish_failed";
     }
 
-    private boolean withdraw(UUID siteId, UUID entityId) {
+    private String withdraw(UUID siteId, UUID entityId, UUID device) {
         ConsumerOverridePublisher pub = publisher.getIfAvailable();
-        EntityRegistryRepository.BatteryAsset asset = entities.batteryAsset(siteId);
-        UUID device = asset == null ? null : asset.deviceId();
-        if (pub == null || device == null) {
-            return false;
-        }
-        return pub.publishWithdraw(TenantContext.get(), siteId, device, entityId);
+        if (pub == null) return "publisher_unavailable";
+        return pub.publishWithdraw(TenantContext.get(), siteId, device, entityId)
+                ? null : "publish_failed";
     }
 
-    /** Die Sperre reist im Registry-Push - best-effort wie jeder andere Push. */
-    private boolean pushRegistry(UUID siteId) {
+    /** Die Sperre reist weiterhin an alle zuständigen Boxen im Registry-Push. */
+    private String pushRegistry(UUID siteId) {
+        ziel.fuehrend(siteId);
         EntityRegistryService svc = registry.getIfAvailable();
-        if (svc == null) {
-            return false;
-        }
+        if (svc == null) return "publisher_unavailable";
         EntityRegistryService.PushOutcome outcome = svc.pushRegistryBestEffort(siteId);
         if (!outcome.published()) {
             log.warn("device override for site {} not pushed: {}", siteId, outcome.reason());
+            return outcome.reason() == null ? "publish_failed" : outcome.reason();
         }
-        return outcome.published();
+        return null;
+    }
+
+    private static String deliveryMessage(String reason) {
+        if (reason == null) return "";
+        return "publisher_unavailable".equals(reason)
+                ? " Die Zustellung ist derzeit nicht verfügbar."
+                : " Die Zustellung an die Box ist fehlgeschlagen; die Ausführung ist nicht bestätigt.";
     }
 
     private static String message(String kind, boolean pushed, boolean renewed) {
