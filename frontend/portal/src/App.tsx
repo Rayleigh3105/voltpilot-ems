@@ -1577,6 +1577,7 @@ function UnifiedPortal() {
               // AP-13 IP-11 (E2 = A, O18): der EINE Weg „Messstellen dieser Anlage“ — nur, wenn der
               // Standort dieser Anlage misst. Sonst fragt das Cockpit nichts und zeigt nichts Neues.
               misstHier={route.siteId ? misstAnlage(ebenenLesemodell, route.siteId) : false}
+              standortId={orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null}
             />
           )}
           {page === 'plattform-uebersicht' && isAdmin && (

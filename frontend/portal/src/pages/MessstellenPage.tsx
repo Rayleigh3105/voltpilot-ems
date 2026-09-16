@@ -3,7 +3,7 @@ import { Recht } from '../components/Recht';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { zeitraumAus } from '../anlageEnergiebilanz';
-import { api, type Kostenstelle, type KostenstelleEnergiePeriode, type MessstellenRegister, type Prozess } from '../api';
+import { api, type Kostenstelle, type KostenstelleEnergiePeriode, type MessstellenRegister, type Prozess, type StandortAusfall } from '../api';
 import '../components/BereichTabs.css';
 import { MessstelleDialog } from '../components/MessstelleDialog';
 import { RowMenu } from '../components/RowMenu';
@@ -50,6 +50,7 @@ import { useIsPhone } from '../useIsPhone';
 import { KostenstellenReiter, ProzesseReiter } from './KostenstellenSection';
 import { MessstelleSeite } from './MessstelleSeite';
 import './MessstellenPage.css';
+import { ausfaelleJeMessstelle } from '../ausfallAnzeige';
 
 /**
  * „Unternehmen › Messstellen“ und „Standort › Messstellen“ (UEMS AP-04 IP-5):
@@ -259,6 +260,7 @@ function RegisterFlaeche({
   );
   const [fehler, setFehler] = useState(false);
   const [versuch, setVersuch] = useState(0);
+  const [ausfaelle, setAusfaelle] = useState<StandortAusfall[]>([]);
   const [anlegen, setAnlegen] = useState(false);
   const [korrekturen, setKorrekturen] = useState(false);
   const korrekturAusloeser = useRef<HTMLButtonElement | null>(null);
@@ -310,9 +312,22 @@ function RegisterFlaeche({
   // AP-13 IP-12 (L6): die Zuständigkeiten der Anlagen, die in den GEZEIGTEN Zeilen vorkommen — mehr
   // wird nicht gelesen. Ohne Antwort steht die Spalte „Quelle“ genau wie zuvor.
   const boxen = useBoxenAnQuellen((aktuell?.liste.register ?? []).map((z) => z.elektrische_stellung?.anlage));
+  useEffect(() => {
+    if (stichtag || !aktuell) {
+      setAusfaelle([]);
+      return;
+    }
+    const ids = [...new Set(aktuell.liste.register.map((z) => z.ort.standort_id).filter((id): id is string => Boolean(id)))];
+    let aktiv = true;
+    Promise.all(ids.map((id) => api.standortAusfall(id).catch(() => null))).then((antworten) => {
+      if (aktiv) setAusfaelle(antworten.filter((a): a is StandortAusfall => a !== null));
+    });
+    return () => { aktiv = false; };
+  }, [aktuell, stichtag]);
+  const ausfallKarte = ausfaelleJeMessstelle(ausfaelle);
   const eintraege =
     aktuell && !leer
-      ? registerEintraege(aktuell.liste, stichtag, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt, boxen: boxen.karte })
+      ? registerEintraege(aktuell.liste, stichtag, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt, boxen: boxen.karte, ausfaelle: ausfallKarte })
       : [];
   const unterzeile = [ebene.art === 'standort' ? ebene.name : null, kopfZeile(aktuell?.liste ?? null, stichtag)]
     .filter(Boolean)

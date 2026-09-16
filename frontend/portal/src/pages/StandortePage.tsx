@@ -2,7 +2,7 @@ import { Recht } from '../components/Recht';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type OrtAktionen, type StandortAmStichtag, type StandorteAmStichtag, type Unternehmen } from '../api';
+import { api, type OrtAktionen, type StandortAmStichtag, type StandorteAmStichtag, type StandortAusfall, type Unternehmen } from '../api';
 import { ArchivierenDialog, type ArchivAktion } from '../components/ArchivierenDialog';
 import { OrtAenderungen } from '../components/OrtAenderungen';
 import { Ortsbaum } from '../components/Ortsbaum';
@@ -42,6 +42,7 @@ export function StandortePage() {
   const [unternehmen, setUnternehmen] = useState<Unternehmen | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(true);
+  const [ausfaelle, setAusfaelle] = useState<Record<string, StandortAusfall>>({});
   /** Heute nach dem Server (die Antwort ohne Stichtag) — die Vorgabe des Datumsfelds. */
   const [heute, setHeute] = useState<string | null>(null);
   /** „Stand am …“: `null` = heute, mit Schreibwegen. */
@@ -78,6 +79,13 @@ export function StandortePage() {
       if (nummer !== anfrage.current) return;
       setListe(l);
       setUnternehmen(u);
+      if (!stichtag) {
+        const antworten = await Promise.all(l.standorte.map((s) => api.standortAusfall(s.id).catch(() => null)));
+        if (nummer !== anfrage.current) return;
+        setAusfaelle(Object.fromEntries(antworten.filter((a): a is StandortAusfall => a !== null).map((a) => [a.standort_id, a])));
+      } else {
+        setAusfaelle({});
+      }
       if (!stichtag) setHeute(l.stichtag);
     } catch (e) {
       if (nummer === anfrage.current)
@@ -181,6 +189,7 @@ export function StandortePage() {
                   <li key={e.standort.id} className="vp-st-karte">
                     <StandortKopf
                       standort={e.standort}
+                      ausfall={ausfaelle[e.standort.id] ?? null}
                       onBearbeiten={stichtag ? undefined : (st, von) => oeffne(st, von)}
                       aktionen={stichtag ? null : (aktionen[e.standort.id] ?? null)}
                       onAktion={(eintrag, von) => {

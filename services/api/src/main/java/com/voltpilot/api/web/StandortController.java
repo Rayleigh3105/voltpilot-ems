@@ -6,9 +6,11 @@ import com.voltpilot.api.uems.StandortLesemodell.StandorteAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.uems.StandortService;
 import com.voltpilot.api.uems.StandortVorschlagService;
+import com.voltpilot.api.uems.StandortAusfallService;
 import com.voltpilot.api.uems.VersorgungService;
 import com.voltpilot.api.uems.VersorgungService.Versorgung;
 import com.voltpilot.api.web.dto.StandortDto;
+import com.voltpilot.api.web.dto.StandortAusfallDto;
 import com.voltpilot.api.web.dto.StandortVorschlagDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -55,16 +57,18 @@ public class StandortController {
     private final TeilansichtDienst teilansicht;
     private final StandortVorschlagService vorschlaege;
     private final VersorgungService versorgung;
+    private final StandortAusfallService ausfaelle;
 
     public StandortController(StandortLesemodellService lesemodell, StandortService standorte,
             OrtAnfrage anfrage, TeilansichtDienst teilansicht, StandortVorschlagService vorschlaege,
-            VersorgungService versorgung) {
+            VersorgungService versorgung, StandortAusfallService ausfaelle) {
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.anfrage = anfrage;
         this.teilansicht = teilansicht;
         this.vorschlaege = vorschlaege;
         this.versorgung = versorgung;
+        this.ausfaelle = ausfaelle;
     }
 
     // Rechte (rechte-matrix.json): heute lesend — keine eigene Kennung; die Sicht
@@ -117,6 +121,12 @@ public class StandortController {
             LocalDate stichtag) {
         return versorgung.versorgung(standortId, stichtag).orElseThrow(
                 () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort not found"));
+    }
+
+    // Recht: `messstelle.ansehen` — reine Sicht aus festgehaltenen Lücken-Fakten; kein @Recht an einem GET.
+    @GetMapping("/{standortId}/ausfall")
+    public StandortAusfallDto.Ausfall ausfall(@PathVariable UUID standortId) {
+        return ausfaelle.ausfall(standortId);
     }
 
     // Rechte: `standort.verwalten`.
