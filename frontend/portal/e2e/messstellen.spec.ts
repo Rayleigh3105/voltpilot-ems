@@ -233,6 +233,8 @@ test.describe('Messstellen-Register', () => {
     await expect(page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: /^MS-20$/ }) }).locator('.vp-ms-box')).toHaveCount(0);
     const m = await messe(page);
     ohneQuerlauf(m, 'box-an-quelle-1440');
+    // Das Bild zeigt die Zeile, um die es geht — MS-10 am WAGO-Controller C-1.
+    await boxZeile('MS-10').scrollIntoViewIfNeeded();
     await ablegen(page, 'box-an-quelle-1440', m);
 
     // Nach dem Box-Tausch: dieselbe Zeile, dieselbe Messstelle — die Nachfolgerin, seit dem Augenblick des Tauschs.
@@ -242,6 +244,7 @@ test.describe('Messstellen-Register', () => {
     await expect(boxZeile('MS-01')).toHaveText('gelesen von Box Halle 1 seit 12.03.2024');
     const n = await messe(page);
     ohneQuerlauf(n, 'box-an-quelle-tausch-1440');
+    await boxZeile('MS-10').scrollIntoViewIfNeeded();
     await ablegen(page, 'box-an-quelle-tausch-1440', n);
 
     // Am Telefon trägt die Karte dieselbe Zeile in ihrem Feld „Quelle“.
@@ -251,6 +254,7 @@ test.describe('Messstellen-Register', () => {
     await expect(karte.locator('.vp-ms-box')).toHaveText('gelesen von Box Halle 2 seit 01.10.2026');
     const t = await messe(page);
     ohneQuerlauf(t, 'box-an-quelle-375');
+    await karte.scrollIntoViewIfNeeded();
     await ablegen(page, 'box-an-quelle-375', t);
   });
 });
