@@ -29,6 +29,25 @@ public final class AenderungSatz {
         return rolle == null ? "Rolle" : RollenZuordnungRegeln.ROLLEN.getOrDefault(rolle, "Rolle");
     }
 
+    private static boolean hatRollenwert(JsonNode seite) {
+        return seite != null && seite.hasNonNull("wert");
+    }
+
+    private static String rollenwert(JsonNode seite) {
+        if (!hatRollenwert(seite)) return "Wert";
+        JsonNode wert = seite.path("wert");
+        String name = text(wert, "name");
+        if ("messkanal".equals(text(wert, "art"))) {
+            name = switch (java.util.Objects.toString(text(wert, "capability"), "")) {
+                case "pv_power_kw" -> "PV-Leistung";
+                case "load_kw" -> "Verbrauch";
+                case "power_kw" -> "Leistung";
+                default -> "ursprünglicher Wert";
+            };
+        }
+        return name == null || name.isBlank() ? "Wert" : "„" + name + "“";
+    }
+
     /** Die Kundenwörter der Bezugsarten ({@code ort_aenderung.objekt_art} und die Messstelle). */
     private static final Map<String, String> BEZUG = Map.of(
             "messstelle", "Messstelle",
@@ -74,10 +93,9 @@ public final class AenderungSatz {
     public static String satz(String bezugArt, String art, JsonNode alt, JsonNode neu, String ergebnis) {
         String was = BEZUG.getOrDefault(bezugArt, "Eintrag");
         return switch (art) {
-            case "rolle_gesetzt" -> rollenwort(neu)
-                    + ": Wert zugeordnet";
-            case "rolle_entzogen" -> rollenwort(alt)
-                    + ": Zuordnung entzogen";
+            case "rolle_gesetzt" -> rollenwort(neu) + ": " + rollenwert(neu)
+                    + (hatRollenwert(alt) ? " statt " + rollenwert(alt) : " zugeordnet");
+            case "rolle_entzogen" -> rollenwort(alt) + " entzogen: " + rollenwert(alt);
             case "angelegt" -> mitName(was + " angelegt", neu);
             case "bearbeitet" -> was + " bearbeitet" + geaenderteFelder(alt, neu);
             case "angehalten" -> was + " angehalten";

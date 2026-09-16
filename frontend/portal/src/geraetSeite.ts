@@ -945,7 +945,8 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
 }
 
 /**
- * Mit WELCHER Entität startet der Summenwert-Assistent „PV-Produktion dieses
+ * PV-Träger für die Gefahrenzonen-Folge einer bestehenden Zuordnung.
+ * Mit WELCHER Entität startet der bisherige Summenwert-Assistent „PV-Produktion dieses
  * Geräts"? (vp-agg-konzept3-r8, Fix (b))
  *
  * <p>Erste Wahl ist der komponierte PV-Aspekt: trägt das Gerät ihn schon, wird
@@ -964,6 +965,13 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
  *
  * @returns die Entitäts-Kennung für den Einstieg, oder `null` (kein Knopf).
  */
+/** Geräte-Einstieg unabhängig von der Live-Rolle; der Assistent prüft das volle Inventar. */
+export function summenwertEinstieg(view: GeraetSeiteView): string | null {
+  if (!view.gefunden) return null;
+  return view.komponenten.find(c => c.aspect === 'main')?.entityId
+    ?? view.komponenten[0]?.entityId ?? null;
+}
+
 export function pvEinstiegEntityId(view: GeraetSeiteView): string | null {
   if (!view.gefunden) return null;
   const pv = view.komponenten.find((c) => c.role === 'pv');

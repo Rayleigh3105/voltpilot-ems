@@ -31,6 +31,7 @@ import {
   chargePointIdOf,
   geraetSeite,
   pvEinstiegEntityId,
+  summenwertEinstieg,
   type GeraetArt,
   type GeraetSeiteView,
   type Zeile,
@@ -52,7 +53,7 @@ import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { GeraetProtokoll } from '../components/GeraetProtokoll';
 import { GeraetGefahrenzone } from '../components/GeraetGefahrenzone';
-import { GeraetPvProduktion } from '../components/GeraetPvProduktion';
+import { GeraetSummenwerte } from '../components/GeraetSummenwerte';
 import { gefahrenzone } from '../geraetLoeschen';
 import {
   anlageRoute,
@@ -1315,16 +1316,13 @@ export function GeraetSeiteSection({
             )}
           </RahmenSektion>
 
-          {/* 1b · PV-Produktion dieses Geräts (vp-agg-konzept3-r8): die kompakte
-              Ergebnis-Karte + der Summenwert-Assistent. NACH „Jetzt", für jedes
-              erzeugende Gerät - auch ohne vorhandenen PV-Aspekt, dann geseedet auf
-              die Träger-Entität (Fix (b)); die Karte lädt ihre Zuordnung selbst
-              und öffnet den Assistenten. */}
-          {erzeugungEntityId && boxDevice?.id && (
-            <GeraetPvProduktion
+          {/* Alle Summenwerte, deren aktuelle Formel dieses physische Gerät liest. */}
+          {summenwertEinstieg(view) && boxDevice?.id && (
+            <GeraetSummenwerte
               siteId={site.id}
               deviceId={boxDevice.id}
-              entityId={erzeugungEntityId}
+              entityId={summenwertEinstieg(view)!}
+              entityIds={[...new Set(view.komponenten.map(k => k.entityId))]}
               geraetName={view.kopf.titel}
               onZuordnungGeaendert={() => setPvReload((x) => x + 1)}
             />

@@ -201,6 +201,13 @@ public class AenderungsprotokollRepository {
                 von, bis, achse, grenze, nach);
     }
 
+    /** Sofortige Rollenänderungen im vorhandenen Anlagenprotokoll. */
+    public List<Zeile> fuerAnlage(UUID siteId, Instant von, Instant bis, Achse achse,
+            int grenze, Zeiger nach) {
+        return lies(STROM_ORT, true, "bezug_art = 'anlage' AND bezug_id = ?", List.of(siteId),
+                von, bis, achse, grenze, nach);
+    }
+
     /** Das Protokoll des ganzen Unternehmens — alle drei Journale in EINER Abfrage. */
     public List<Zeile> fuerUnternehmen(Instant von, Instant bis, Achse achse, int grenze, Zeiger nach) {
         return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_ORT + "UNION ALL\n" + STROM_DATENQUELLE,

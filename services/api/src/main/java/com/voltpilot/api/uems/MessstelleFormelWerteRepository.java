@@ -42,6 +42,11 @@ public class MessstelleFormelWerteRepository {
         return Boolean.TRUE.equals(da);
     }
 
+    public Optional<UUID> anlage(UUID entityId) {
+        return jdbc.query("SELECT site_id FROM measurement_point WHERE id = ?",
+                (rs, n) -> rs.getObject("site_id", UUID.class), entityId).stream().findFirst();
+    }
+
     /** Ein frischester Wert mit seinem Messzeitpunkt. */
     public record Messwert(double wert, Instant zeit) {}
 

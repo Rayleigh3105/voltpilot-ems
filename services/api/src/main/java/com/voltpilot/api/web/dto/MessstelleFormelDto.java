@@ -37,7 +37,16 @@ public final class MessstelleFormelDto {
      * {@code name} leer = ein Entwurf. Die Hauptgröße wird aus den Termen abgeleitet, nie gewählt.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Anlegen(String name, String notiz, List<TermEingabe> terme) {}
+    public record Anlegen(String name, String notiz, List<TermEingabe> terme, RolleAnlegen rolle) {
+        public Anlegen(String name, String notiz, List<TermEingabe> terme) {
+            this(name, notiz, terme, null);
+        }
+    }
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RolleAnlegen(UUID entityId, String role, Boolean ersetzen) {}
+
+    public record GeraetSummenwert(MessstelleDto.Messstelle messstelle, String rolle, Wert wert) {}
 
     /** Eine Messgröße wie im Messstellen-Vertrag. */
     public record Groesse(String groesse, String richtung, String einheit, String wertart) {}

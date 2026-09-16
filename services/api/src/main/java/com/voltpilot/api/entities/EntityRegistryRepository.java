@@ -401,6 +401,11 @@ public class EntityRegistryRepository {
                 pointId);
     }
 
+    /** Auch beim Behalten des v1-Messpunkts endet seine Live-Zuordnung. */
+    public void deleteRoleAssignments(UUID pointId) {
+        jdbc.update("DELETE FROM entity_role_assignment WHERE entity_id = ?", pointId);
+    }
+
     /** Delete a v2-native entity row outright. */
     public boolean deletePoint(UUID pointId) {
         return jdbc.update("DELETE FROM measurement_point WHERE id = ?", pointId) > 0;

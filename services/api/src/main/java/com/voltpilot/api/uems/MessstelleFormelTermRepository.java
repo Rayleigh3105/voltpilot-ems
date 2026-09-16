@@ -15,6 +15,19 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class MessstelleFormelTermRepository {
 
+    /** Kandidaten einschließlich Bausteinen; die aktuelle Fassung prüft der Dienst. */
+    public List<UUID> summenwertKandidaten(UUID entityId) {
+        return jdbc.query("""
+                WITH RECURSIVE kandidaten(id) AS (
+                    SELECT messstelle_id FROM messstelle_formel_term WHERE entity_id = ?
+                    UNION
+                    SELECT t.messstelle_id FROM messstelle_formel_term t
+                    JOIN kandidaten k ON k.id = t.quell_messstelle_id
+                ) SELECT k.id FROM kandidaten k JOIN messstelle m ON m.id = k.id
+                  WHERE m.archiviert_am IS NULL ORDER BY m.kennzeichen
+                """, (rs, n) -> rs.getObject("id", UUID.class), entityId);
+    }
+
     private final JdbcTemplate jdbc;
 
     public MessstelleFormelTermRepository(JdbcTemplate jdbc) {
