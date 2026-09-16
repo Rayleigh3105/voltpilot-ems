@@ -1,3 +1,4 @@
+import { useRollen } from '../rollen';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
@@ -198,6 +199,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const user = currentUser();
+  const { benutzerLesen } = useRollen();
   const [menuOpen, setMenuOpen] = useState(false);
   /**
    * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
@@ -610,6 +612,10 @@ export function AppShell({
             </button>
             {menuOpen && (
               <div className="vp-avatarmenu" role="menu" aria-label="Konto-Menü">
+                {benutzerLesen && <button type="button" role="menuitem" className="vp-avatarmenu-item"
+                  onClick={() => openTarget({ kind: 'page', page: 'kunden-benutzer' })}>
+                  <Icon name="users" size={18} />Benutzer
+                </button>}
                 <button
                   type="button"
                   role="menuitem"

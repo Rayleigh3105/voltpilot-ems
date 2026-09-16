@@ -85,6 +85,7 @@ public class ZugriffAenderung {
      */
     @Transactional
     public void entziehen(UUID zugriffId, String grund, ProtokollAkteur akteur) {
+        sperreKundenbereich();
         Instant jetzt = Instant.now();
         Zeile z = kundenZuweisung(zugriffId);
         pruefen(AenderungsArt.ENTZIEHEN, z.benutzerSub(), z.rolle(), standorte(z), jetzt);
@@ -101,12 +102,15 @@ public class ZugriffAenderung {
      */
     @Transactional
     public UUID zuweisen(String benutzerSub, Rolle rolle, UUID standortId, String grund, ProtokollAkteur akteur) {
+        sperreKundenbereich();
         Instant jetzt = Instant.now();
         if (rolle == null || rolle == Rolle.UNTERSTUETZER || rolle == Rolle.VOLTPILOT_BETRIEB) {
             // Der Unterstützer entsteht allein über POST /api/v1/unterstuetzung (IP-8, mit Art, Umfang und Ende).
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rolle nicht zuweisbar.");
         }
-        String name = zugriffe.spiegel(benutzerSub).map(ZugriffRepository.BenutzerSpiegel::anzeigename)
+        String name = zugriffe.spiegel(benutzerSub).filter(b -> b.konto() == RechteAbleitung.Konto.BENUTZER
+                && b.zustand() != RechteAbleitung.KontoZustand.GESPERRT
+                && b.zustand() != RechteAbleitung.KontoZustand.ENTFERNT).map(ZugriffRepository.BenutzerSpiegel::anzeigename)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Benutzer nicht gefunden."));
         List<String> standorte = standortId == null ? List.of()
                 : List.of(kennzeichen(standortId).orElseThrow(
@@ -118,6 +122,61 @@ public class ZugriffAenderung {
                 zone, akteur.sub()), name, akteur, bereinigt);
         protokollieren(ART_ZUGEWIESEN, zugriffe.zeile(id).orElseThrow(), bereinigt, jetzt, akteur);
         return id;
+    }
+
+    /** Gemeinsame Transaktionssperre: auch parallele Entzüge dürfen nicht den letzten Administrator nehmen. */
+    private void sperreKundenbereich() {
+        jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(?))::text", String.class,
+                "uems-benutzerverwaltung:" + TenantContext.get());
+    }
+
+    /** Sperren/Entfernen behalten Identität und Historie; alle Zuweisungen enden sofort. */
+    @Transactional
+    public void kontoBeenden(String sub, boolean entfernen, ProtokollAkteur akteur) {
+        sperreKundenbereich();
+        var b = zugriffe.spiegel(sub).filter(x -> x.konto() == RechteAbleitung.Konto.BENUTZER
+                && x.zustand() != RechteAbleitung.KontoZustand.ENTFERNT)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        pruefen(entfernen ? AenderungsArt.ENTFERNEN : AenderungsArt.SPERREN, sub, null, List.of(), Instant.now());
+        for (Zeile z : zugriffe.zuweisungen(sub)) {
+            if (z.beendetAm() == null) entziehen(z.id(), null, akteur);
+        }
+        String zustand = entfernen ? "entfernt" : "gesperrt";
+        if (!b.zustand().code().equals(zustand)) {
+            jdbc.update("UPDATE benutzer SET zustand = ? WHERE tenant_id = ? AND sub = ?", zustand, TenantContext.get(), sub);
+            zugriffe.kontoProtokoll(entfernen ? "entfernen" : "sperren", sub, b.anzeigename(), akteur);
+        }
+    }
+
+    /** Ersetzt die angegebenen Zuweisungen atomar; andere Rollen und künftige Zuweisungen bleiben erhalten. */
+    @Transactional
+    public void ersetzen(String sub, List<UUID> bisher, Rolle rolle, List<UUID> standorte, ProtokollAkteur akteur) {
+        sperreKundenbereich();
+        zugriffe.spiegel(sub).filter(b -> b.konto() == RechteAbleitung.Konto.BENUTZER
+                && b.zustand() != RechteAbleitung.KontoZustand.GESPERRT
+                && b.zustand() != RechteAbleitung.KontoZustand.ENTFERNT)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        pruefen(AenderungsArt.ZUWEISEN, sub, rolle, standorte.stream().map(UUID::toString).toList(), Instant.now());
+        for (UUID id : bisher) {
+            if (!kundenZuweisung(id).benutzerSub().equals(sub)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        var verbleibend = zugriffe.zuweisungen(sub).stream().filter(z -> z.beendetAm() == null
+                && !bisher.contains(z.id()) && z.rolle() == rolle
+                && (z.endetAm() == null || z.endetAm().isAfter(Instant.now()))).toList();
+        if (verbleibend.stream().anyMatch(z -> rolle.jeStandort() ? standorte.contains(z.standortId()) : z.standortId() == null)) {
+            throw new com.voltpilot.api.benutzer.BenutzerFehler(409, "zuweisung_vorhanden",
+                    "Diese Rolle ist für den gewählten Geltungsbereich bereits zugewiesen. Ändern Sie den vorhandenen Eintrag.");
+        }
+        // Erst entziehen, dann zuweisen; jede Ablehnung rollt den gesamten Wechsel zurück.
+        for (UUID id : bisher) entziehen(id, null, akteur);
+        if (rolle.jeStandort()) {
+            if (standorte.isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Wählen Sie mindestens einen Standort.");
+            for (UUID id : standorte.stream().distinct().toList()) zuweisen(sub, rolle, id, null, akteur);
+        } else {
+            if (!standorte.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+            zuweisen(sub, rolle, null, null, akteur);
+        }
     }
 
     // ------------------------------------------------------------------ das Urteil

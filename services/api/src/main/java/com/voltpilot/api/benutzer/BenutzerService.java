@@ -92,8 +92,17 @@ public class BenutzerService {
         }
         List<UUID> sichtbar = zugriffe.standorte().stream().map(ZugriffRepository.StandortEintrag::id).toList();
         if (!sichtbar.containsAll(standorte)) throw nichtGefunden();
-        StartpasswortKonten.Angelegt neu = konten.kunde(TenantContext.get(), a.username().trim(), a.email().trim(),
-                a.vorname(), a.nachname());
+        StartpasswortKonten.Angelegt neu;
+        try {
+            neu = konten.kunde(TenantContext.get(), a.username().trim(), a.email().trim(), a.vorname(), a.nachname());
+        } catch (KeycloakAdminClient.KeycloakAdminException e) {
+            if (e.status() == 409 && keycloak.findByEmail(a.email()).filter(k ->
+                    !TenantContext.get().toString().equals(k.tenantId())).isPresent()) {
+                throw new BenutzerFehler(409, "email_fremder_kundenbereich",
+                        "Diese E-Mail-Adresse ist bereits einem anderen Kundenbereich zugeordnet. Als Unterstützung gewähren?");
+            }
+            throw e;
+        }
         KeycloakUser konto = neu.konto();
         String name = ((konto.firstName() == null ? "" : konto.firstName()) + " "
                 + (konto.lastName() == null ? "" : konto.lastName())).trim();

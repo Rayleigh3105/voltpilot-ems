@@ -129,6 +129,11 @@ public class ZugriffKontextLader {
             if (tenant == null) {
                 return Ergebnis.keiner();
             }
+            var spiegel = zugriffe.spiegel(sub);
+            if (spiegel.isPresent() && (spiegel.get().zustand() == com.voltpilot.api.uems.RechteAbleitung.KontoZustand.GESPERRT
+                    || spiegel.get().zustand() == com.voltpilot.api.uems.RechteAbleitung.KontoZustand.ENTFERNT)) {
+                return Ergebnis.abgewiesenWeilBeendet(ZugriffBeendet.standort(null));
+            }
             ZugriffRepository.Stand stand = stand(sub, jetzt);
             Zugriff z = new Zugriff(sub, konto, tenant, Zugang.KONTO, stand.wirksam(), jetzt,
                     stand.wirksam().isEmpty() && bestandskonto(sub), stand.vorbei());

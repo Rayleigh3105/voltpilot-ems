@@ -727,6 +727,8 @@ export function ebenenOrt(
  * ihr Einstieg ({@link standortEinstiege}).
  */
 export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBereich']): EbenenBereichId | null {
+  // Unternehmenseinstellungen werden über das Avatar-Menü geöffnet, ohne fachlichen Reiter.
+  if (page === 'kunden-benutzer') return null;
   if (page === 'portfolio-standorte') return 'standorte';
   if (page === 'standort' && (standortBereich === 'gebaeude' || standortBereich === 'anlagen' || standortBereich === 'netzanschluesse')) return standortBereich;
   if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';
