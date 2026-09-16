@@ -59,6 +59,8 @@ public class KorrekturFreigabeService {
     private final MessreiheKorrekturRepository korrekturen;
     private final OrtProtokoll protokoll;
     private final BezugswertService bezugswerte;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ImportUebernahmeService importe;
     private final TransactionTemplate transaktion;
     private AblesungService ablesungen;
 
@@ -154,6 +156,10 @@ public class KorrekturFreigabeService {
         Instant jetzt = uhr.instant();
         return entscheide(() -> transaktion.execute(tx -> {
             boolean an = einstellungGesperrt(tenant);
+            if (kennung.startsWith("I-")) {
+                Korrektur neu = importe.freigeben(tenant, kennung, begruendung, wer, an, jetzt);
+                return new Entscheidung(neu, letzte(neu), an);
+            }
             if (kennung.startsWith(BezugsgroesseRegeln.BERICHTIGUNG_PRAEFIX + "-")) {
                 return bezugswertFreigeben(tenant, kennung, begruendung, wer, an, jetzt);
             }
