@@ -54,6 +54,27 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
 - Kundenwort `SUMMENWERT`; `GESAMTWERT` ist nur noch ein gleichwertiger Alias für
   ältere Aufrufer. Seit H-9 hat der Textwächter keine Alttext-Ausnahmen mehr.
 
+## Formeltypen und Tagesfassungen (AP-10 IP-16, nur auf `uems`)
+
+- `formelAssistent.ts` ergänzt den vorhandenen Entwurf um Typ und Gültigkeitstag;
+  Ableitung/Rechnung bleiben in `uemsMessstelleFormel.ts` und `gesamtwert.ts`.
+  Summe und Saldo stehen zur Wahl, Rest verweist zur elektrischen Stellung.
+- `FormelMessstellen.tsx` ergänzt Anlegen und Formeländerung um Hauptzähler-Paare
+  bzw. Kostenstellen-Anteile gemessener Messstellen. Die führende Komponente muss
+  in der vorhandenen Quellenliste liegen; vom Gerät aus bleibt die Auswahl auf
+  dieses Gerät begrenzt. Der Anlagen-Einstieg darf mehrere Geräte verwenden.
+- Verteilungs-Terme speichern Messstelle, Ziel und `anteil: gesamt`, Faktor 1.
+  Der Hinweis bei Faktor 0,7 ersetzt keinen Term automatisch. Ohne vollständige
+  Intervallmengen bleiben Referenz-/Saldo-Vorschauen `null`; Zählerstände werden
+  nicht als Periodenmengen verrechnet. Saldo leitet `Wirkenergie · saldiert · kWh`
+  ab; Rollen für Momentanleistung bleiben ausgeschlossen.
+- `SummenwertRegisterEinstieg.tsx` öffnet vom Register aus denselben Hook.
+  `SummenwertFormelDialog.tsx` erhält vorhandene Referenzen beim Fortschreiben ab
+  Tag. Schreiben und Geräteprüfung: [Saldo-Schreibweg](uems-saldo-schreibweg.md).
+- Ergänzende Nachweise: `formelAssistent.test.ts`, `e2e/formel-assistent.spec.ts`
+  (Referenzunternehmen, Saldo/Anteil/Fassung, 375/1440). Die bestehenden Flüsse
+  `e2e/summenwert*.spec.ts`, `gesamtwert`, `kennzahl-anlegen` weiter mitfahren.
+
 Prüfen: `DeviceMeasurementSelectionApiTest`, `SummenwertQuellenServiceTest`,
 `RechtRoutenArchitekturTest`, `RechteKennungenDerRoutenTest`; Vitest
 `gesamtwert`, `summenwertQuellen`, `components/GesamtwertDialog`, `kennzahlAnlegen`,

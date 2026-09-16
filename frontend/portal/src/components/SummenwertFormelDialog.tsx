@@ -7,7 +7,11 @@ import {
   ApiError,
   type BerechneteMessstelleAnlegen,
   type Messstelle,
+  type MessstelleGroesse,
 } from "../api";
+import { alsAnfrage, FAKTOR_ANTEIL_HINWEIS, leererFormelEntwurf, type AssistentTyp } from '../formelAssistent';
+import { FormelMessstellen } from './FormelMessstellen';
+import { hauptgroesse } from '../uemsMessstelleFormel';
 import { SUMMENWERT } from "../glossar";
 import { useRollen } from "../rollen";
 import { VpDatePicker } from "./VpDatePicker";
@@ -33,6 +37,9 @@ export function SummenwertFormelDialog({
   }).format(new Date());
   const [ab, setAb] = useState(heute);
   const [terme, setTerme] = useState<Term[] | null>(null);
+  const [typ, setTyp] = useState<AssistentTyp>('gewichtete_summe');
+  const [komponenten, setKomponenten] = useState<string[]>([]);
+  const [groessen, setGroessen] = useState<Record<string, MessstelleGroesse>>({});
   const [quellen, setQuellen] = useState<
     Array<{ key: string; name: string; term: Term }>
   >([]);
@@ -49,7 +56,7 @@ export function SummenwertFormelDialog({
     void (async () => {
       try {
         const [f, geraete] = await Promise.all([
-          api.messstelleFormel(messstelle.id),
+          api.messstelleFormel(messstelle.id, heute),
           api.siteEntities(siteId),
         ]);
         const listen = await Promise.all(
@@ -65,6 +72,7 @@ export function SummenwertFormelDialog({
                 vorzeichen: "+",
                 faktor: 1,
               } as Term,
+              groesse: k,
               passt:
                 k.groesse === f.hauptgroesse?.groesse &&
                 k.wertart === f.hauptgroesse?.wertart &&
@@ -73,7 +81,9 @@ export function SummenwertFormelDialog({
           }),
         );
         if (!aktiv) return;
-        const ts = f.terme.map((t) => ({
+        setTyp(f.fassung_am?.fassung?.formel_typ === 'saldo' || f.hauptgroesse?.richtung === 'saldiert' ? 'saldo' : 'gewichtete_summe');
+        setKomponenten(geraete.entities.map(e => e.id));
+        const ts: Term[] = f.terme.map((t) => ({
           eingang_art: t.eingang_art as Term["eingang_art"],
           ...(t.entity_id
             ? { entity_id: t.entity_id, point_key: t.point_key! }
@@ -85,9 +95,23 @@ export function SummenwertFormelDialog({
           ...(t.anteil ? { anteil: t.anteil } : {}),
         }));
         const alle = listen.flat();
+        setGroessen(Object.fromEntries([
+          ...alle.filter(q => q.groesse.groesse && q.groesse.richtung && q.groesse.einheit && q.groesse.wertart).map(q => [q.key, q.groesse as MessstelleGroesse]),
+          ...f.terme.filter(t => t.groesse).map(t => [key(t as Term), t.groesse!]),
+        ]));
         setNamen(Object.fromEntries(alle.map((q) => [q.key, q.name])));
         setQuellen(alle.filter((q) => q.passt));
         setTerme(ts);
+        if (ts.some(t => t.quell_messstelle_id)) {
+          const register = await api.messstellenRegister({ anlage: siteId, stichtag: heute });
+          const refs = await Promise.all(ts.filter(t => t.quell_messstelle_id).map(async t => {
+            const m = register.register.find(m => m.id === t.quell_messstelle_id);
+            if (!m) return null;
+            const ziel = t.verteilung_ziel ? (await api.messstelleVerteilung(m.id, heute)).anteile.find(a => a.kostenstelle.id === t.verteilung_ziel) : null;
+            return [key(t), `${ziel ? `${ziel.kostenstelle.kennzeichen} von ` : ''}${m.kennzeichen} · ${m.name ?? ''}`] as const;
+          }));
+          if (aktiv) setNamen(n => ({ ...n, ...Object.fromEntries(refs.filter(r => r !== null)) }));
+        }
       } catch (e) {
         if (aktiv)
           setFehler(
@@ -101,13 +125,18 @@ export function SummenwertFormelDialog({
       aktiv = false;
     };
   }, [siteId, messstelle.id]);
+  const ableitung = terme?.length && terme.every(t => groessen[key(t)])
+    ? hauptgroesse(typ, 'berechnet', 'Intervallmenge', terme.map(t => ({ ...groessen[key(t)], vorzeichen: t.vorzeichen }))) : null;
+  const faktorFehler = terme?.some(t => !Number.isFinite(t.faktor) || t.faktor === 0 || ((typ === 'saldo' || t.eingang_art === 'verteilung') && t.faktor !== 1));
+  const saldoFehlt = typ === 'saldo' && (terme?.length !== 2 || !terme.some(t => t.vorzeichen === '+') || !terme.some(t => t.vorzeichen === '-'));
   async function speichern() {
-    if (!terme?.length || busy || !rechte.darf("messstelle.formel") || (ab < heute && !rechte.darf("aenderung.rueckwirkend"))) return;
+    if (!terme?.length || busy || faktorFehler || saldoFehlt || ableitung?.fehler || !rechte.darf("messstelle.formel") || (ab < heute && !rechte.darf("aenderung.rueckwirkend"))) return;
     setBusy(true);
     setFehler(null);
     try {
       await api.messstelleFormelFassungEintragen(messstelle.id, {
         gueltig_ab: ab,
+        ...(typ === 'saldo' ? { formel_typ: typ } : {}),
         terme,
         ...(begruendung.trim() ? { begruendung: begruendung.trim() } : {}),
       });
@@ -140,6 +169,7 @@ export function SummenwertFormelDialog({
               busy ||
               !terme?.length ||
               !ab ||
+              !!faktorFehler || saldoFehlt || !!ableitung?.fehler ||
               (ab < heute && (!begruendung.trim() || !rechte.darf("aenderung.rueckwirkend"))) ||
               !rechte.darf("messstelle.formel")
             }
@@ -161,6 +191,9 @@ export function SummenwertFormelDialog({
           Die bisherige Formel bleibt bis zum Vortag erhalten. Die Größe des
           Werts bleibt gleich.
         </p>
+        <p>{typ === 'saldo' ? 'Saldo · Bezug − Abgabe' : 'Summe'}{ableitung?.hauptgroesse && ` · ${ableitung.hauptgroesse.groesse} · ${ableitung.hauptgroesse.richtung} · ${ableitung.hauptgroesse.einheit}`}</p>
+        {ableitung?.fehler && <p role="alert">Die Messgrößen passen nicht zusammen ({ableitung.grund}).</p>}
+        {saldoFehlt && <p>Ein Saldo braucht beide Hauptzähler: Bezug plus, Abgabe minus.</p>}
         {ab < heute && (
           <Input
             label="Begründung für die rückwirkende Änderung"
@@ -175,6 +208,7 @@ export function SummenwertFormelDialog({
             <VpPicker
               label={`Rechenzeichen für Eingang ${i + 1}`}
               value={t.vorzeichen}
+              disabled={typ === 'saldo'}
               options={[
                 { value: "+", label: "plus" },
                 { value: "-", label: "minus" },
@@ -193,7 +227,7 @@ export function SummenwertFormelDialog({
               <Input
                 label={`Faktor für Eingang ${i + 1}`}
                 type="number"
-                min="0"
+                disabled={typ === 'saldo' || t.eingang_art === 'verteilung'}
                 step="any"
                 value={t.faktor}
                 onChange={(e) =>
@@ -214,7 +248,16 @@ export function SummenwertFormelDialog({
             </Button>
           </div>
         ))}
-        {terme && (
+        {terme?.some(t => t.eingang_art !== 'verteilung' && t.faktor === .7) && <p>{FAKTOR_ANTEIL_HINWEIS}</p>}
+        {terme && <FormelMessstellen siteId={siteId} komponenten={komponenten} typ={typ} ab={ab} terme={[]}
+          onRemove={() => {}} onAdd={t => {
+            const term = alsAnfrage({ ...leererFormelEntwurf(), terme: [t] }).terme[0];
+            if (terme.some(x => key(x) === key(term))) return;
+            setNamen(n => ({ ...n, [key(term)]: t.quelle.name }));
+            setGroessen(g => ({ ...g, [key(term)]: t.quelle as MessstelleGroesse }));
+            setTerme([...terme, term]);
+          }} />}
+        {terme && typ !== 'saldo' && (
           <VpPicker
             label="Register hinzufügen"
             value=""

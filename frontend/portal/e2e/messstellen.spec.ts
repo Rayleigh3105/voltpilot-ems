@@ -137,12 +137,25 @@ test.describe('Messstellen-Register', () => {
       expect(breite === 375 ? m.karten : m.zeilen).toBe(16);
       // AP-13 IP-2: Gebäude und Anlagen haben ihre Seite — vier Bereiche (O17). Am Rechner die Reiter, am
       // Telefon die Leiste; was die Leiste trägt, ist dort kein zweites Mal Reiter.
-      expect(m.reiter).toEqual(breite === 375 ? [] : ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
+      expect(m.reiter).toEqual(breite === 375 ? [] : ['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
       expect(m.reiterAktiv).toEqual(breite === 375 ? [] : ['Messstellen']);
-      expect(m.leiste).toEqual(breite === 375 ? ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'] : null);
+      expect(m.leiste).toEqual(breite === 375 ? ['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'] : null);
       if (breite === 375) expect(m.leisteAktiv).toBe('Messstellen');
       expect(m.kopf).toBe('Werk Ahrenberg · 15 von 16 Messstellen liefern Daten');
       await ablegen(page, `werk-${breite}`, m);
+    }
+  });
+
+  test('Summenwert-Einstieg aus dem Register verwendet den vorhandenen Assistenten', async ({ page }) => {
+    await page.route('**/summenwert-quellen*', route => route.fulfill({ json: [] }));
+    for (const breite of [1440, 375]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen', breite);
+      await warteAufRegister(page);
+      await page.getByRole('combobox', { name: 'Summenwert anlegen in', exact: true }).click();
+      await page.getByRole('option', { name: /Halle 1/ }).click();
+      await expect(page.getByRole('dialog', { name: 'Summenwert anlegen' })).toBeVisible();
+      await expect(page.getByRole('combobox', { name: 'Formel-Typ', exact: true })).toBeVisible();
+      await expect(page.getByText('Schritt 1 von 5')).toBeVisible();
     }
   });
 
@@ -317,7 +330,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await warteAufRegister(page);
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440);
     const m = await messe(page);
-    expect(m.reiter).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
+    expect(m.reiter).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
     await ablegen(page, 'werk-uebersicht-1440', m);
     await page.getByRole('tab', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st1}/messstellen`);
@@ -339,7 +352,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     const m = await messe(page);
     ohneQuerlauf(m, 'messkunde-375');
     // Drei Bereiche mit Seite — seit AP-13 IP-2 die Leiste (O17: Werk Lindach drei Kacheln).
-    expect(m.leiste).toEqual(['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(m.leiste).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st2}/messstellen`);
     await warteAufRegister(page);

@@ -8,11 +8,14 @@ import { fmtNum } from '../format';
 import { useRollen } from '../rollen';
 import { ROLLEN } from '../uemsRollen';
 import {
-  SUMMENWERT, SCHRITTE, MAX_NAME, MAX_TERME, abgeleiteteGroesse, alsAnfrage,
-  entwurfFehler, frischeVon, leererEntwurf, nameVorschlag,
-  punkt, rechenzeile, schluessel, schritt1Fertig, termAus, unvollstaendigSatz,
-  vorschau, wertText, type Entwurf, type Schritt,
+  SUMMENWERT, SCHRITTE, MAX_NAME, MAX_TERME, frischeVon, nameVorschlag,
+  punkt, rechenzeile, schluessel, termAus, unvollstaendigSatz, wertText, type Schritt,
 } from '../gesamtwert';
+import { abgeleiteteGroesse, alsAnfrage, entwurfFehler, faktorHinweis, heute, leererFormelEntwurf as leererEntwurf,
+  schritt1Fertig, vorschau, type FormelEntwurf as Entwurf, type AssistentTyp } from '../formelAssistent';
+import { FormelMessstellen } from './FormelMessstellen';
+import { VpPicker } from './VpPicker';
+import { VpDatePicker } from './VpDatePicker';
 import {
   ankerAus, anhakbar, kontextGrund, leseGrund, mitSitzungswert, sperrArt, sperrGrund, sperrKurz,
   standText, suchePasst, unterzeile, vorauswahl, zeileAus, zuQuellwert,
@@ -113,15 +116,15 @@ export function SummenwertAssistent({ open, siteId, kontext = { art: 'anlage' },
     const q = z ? zuQuellwert(z, z.geraetName) : t.quelle;
     return { ...t, quelle: { ...q, wert: frischeVon(q.stand, q.wert, jetzt) === 'frisch' ? q.wert : null } };
   });
-  const summe = vorschau(aktuelleTerme);
+  const summe = vorschau(aktuelleTerme, entwurf.typ);
   const anker = ankerAus(entwurf.terme.map((t) => t.quelle));
   const keys = new Set(entwurf.terme.map((t) => schluessel(t.quelle)));
-  const groesse = abgeleiteteGroesse(entwurf.terme);
+  const groesse = abgeleiteteGroesse(entwurf.terme, entwurf.typ);
   const stand = aktuelleTerme.map((t) => t.quelle.stand).filter((s): s is string => !!s).sort().slice(-1)[0] ?? null;
   const formFehler = entwurfFehler(entwurf);
   const unbeobachtet = alle.filter((z) => !z.beobachtet && keys.has(schluessel({ entityId: z.entityId, channel: z.pointKey })));
   const beobachtungErlaubt = unbeobachtet.length === 0 || darf('mess_selektion.bearbeiten');
-  const rolleErlaubt = (r: Rolle) => r === 'keine' || (darf('geraet.einrichten') && groesse?.groesse === 'Wirkleistung' && groesse.wertart === 'Momentanwert'
+  const rolleErlaubt = (r: Rolle) => r === 'keine' || (entwurf.gueltigAb <= heute() && darf('geraet.einrichten') && groesse?.groesse === 'Wirkleistung' && groesse.wertart === 'Momentanwert'
     && groesse.richtung === (r === 'pv' ? 'Erzeugung' : r === 'consumer' ? 'Bezug' : 'richtungslos'));
 
   async function einmalLesen(z: Zeile) {
@@ -180,7 +183,7 @@ export function SummenwertAssistent({ open, siteId, kontext = { art: 'anlage' },
   }
 
   function weiter() {
-    if (schritt === 1 && !schritt1Fertig(entwurf.terme)) { setFehler('Wählen Sie mindestens ein passendes Register.'); return; }
+    if (schritt === 1 && !schritt1Fertig(entwurf.terme, entwurf.typ)) { setFehler('Wählen Sie passende Eingänge.'); return; }
     if (schritt === 2 && entwurf.terme.some((t) => !Number.isFinite(t.faktor) || t.faktor === 0)) { setFehler('Ein Faktor muss eine Zahl ungleich 0 sein.'); return; }
     if (schritt === 3 && formFehler) { setFehler(formFehler); return; }
     setFehler(null);
@@ -231,7 +234,7 @@ export function SummenwertAssistent({ open, siteId, kontext = { art: 'anlage' },
     footer={<div className="vp-sw-foot">
       {schritt === 5 ? <Button onClick={onClose}>Fertig</Button> : <>
         <Button variant="ghost" disabled={busy} onClick={schritt === 1 ? onClose : () => { setFehler(null); setSchritt((s) => (s - 1) as Schritt); }}>{schritt === 1 ? 'Abbrechen' : 'Zurück'}</Button>
-        {schritt < 4 ? <Button onClick={weiter} disabled={zeilen === null || (schritt === 1 && (!schritt1Fertig(entwurf.terme) || lesend.size > 0))}>Weiter</Button>
+        {schritt < 4 ? <Button onClick={weiter} disabled={zeilen === null || (schritt === 1 && (!entwurf.gueltigAb || !schritt1Fertig(entwurf.terme, entwurf.typ) || lesend.size > 0))}>Weiter</Button>
           : darf('messstelle.formel') && <Button disabled={busy || !!formFehler || !rolleErlaubt(rolle) || !beobachtungErlaubt} onClick={() => void speichern()}>{busy ? 'Speichern …' : 'Speichern'}</Button>}
       </>}
     </div>}>
@@ -239,32 +242,41 @@ export function SummenwertAssistent({ open, siteId, kontext = { art: 'anlage' },
       <ol className="vp-steps" aria-label="Schritte">{SCHRITTE.map((label, i) => <li key={label} className={`vp-step vp-step-${i + 1 === schritt ? 'active' : i + 1 < schritt ? 'done' : 'todo'}`} aria-current={i + 1 === schritt ? 'step' : undefined}><span className="vp-step-num">{i + 1}</span><span className="vp-step-label">{label}</span></li>)}</ol>
       <p className="vp-gw-eyebrow">Schritt {schritt} von 5</p>
       {schritt === 1 && <>
+        <VpPicker label="Formel-Typ" value={entwurf.typ} options={[{ value: 'gewichtete_summe', label: 'Summe' }, { value: 'saldo', label: 'Saldo · Bezug − Abgabe' }]} onChange={typ => { setEntwurf(e => ({ ...e, typ: typ as AssistentTyp, terme: [], name: '' })); setRolle('keine'); }} />
+        <VpDatePicker label="Gültig ab" value={entwurf.gueltigAb} min={darf('aenderung.rueckwirkend') ? undefined : heute()} onChange={gueltigAb => setEntwurf(e => ({ ...e, gueltigAb, terme: e.terme.filter(t => !t.bezug) }))} />
+        <p className="vp-sw-sub">Der Rest entsteht aus der elektrischen Stellung. <a href={`#/portfolio/messstellen?anlage=${encodeURIComponent(siteId)}`} onClick={onClose}>Zur elektrischen Stellung</a></p>
+        {entwurf.typ === 'gewichtete_summe' && <>
         <h3 className="vp-sw-h">Welche Register gehören zusammen?</h3>
         <p className="vp-sw-sub">Wählen Sie Register {geraeteEinstieg ? 'von diesem Gerät' : 'dieser Anlage'}. Noch nicht beobachtete Register werden beim Antippen einmal gelesen.</p>
         <input className="vp-sw-search-in" type="search" aria-label="Register durchsuchen" placeholder="Register durchsuchen …" value={query} onChange={(e) => setQuery(e.target.value)} />
         {zeilen === null ? <p>Register werden geladen …</p> : geraete.length === 0 ? <p>{geraeteEinstieg ? 'Diesem Gerät sind noch keine lesbaren Komponenten zugeordnet.' : 'Diese Anlage meldet noch keine Geräte mit Registern.'}</p> : <>
           {geraete.map(gruppe)}
         </>}
+        </>}
+        <FormelMessstellen siteId={siteId} komponenten={geraete.map(g => g.entityId)} typ={entwurf.typ} ab={entwurf.gueltigAb} terme={entwurf.terme}
+          onAdd={t => setEntwurf(e => ({ ...e, terme: [...e.terme, t] }))} onRemove={t => setEntwurf(e => ({ ...e, terme: e.terme.filter(x => x !== t) }))} />
       </>}
       {schritt === 2 && <>
         <h3 className="vp-sw-h">Wie zählen wir sie?</h3>
         <p className="vp-sw-sub">Standard ist „plus“. Vorzeichen und Faktor gelten für jeden Eingang.</p>
         <div className="vp-gw-terms">{entwurf.terme.map((t, i) => <div className="vp-gw-term" key={schluessel(t.quelle)}>
           <span className="vp-gw-term-name">{t.quelle.name}<small>{t.quelle.geraet}</small></span>
-          <span className="vp-gw-seg" role="group" aria-label={`Vorzeichen für ${t.quelle.name}`}>{(['+', '-'] as const).map((v) => <button key={v} type="button" aria-pressed={t.vorzeichen === v} className={t.vorzeichen === v ? 'on' : ''} onClick={() => setEntwurf((e) => ({ ...e, terme: e.terme.map((x, n) => n === i ? { ...x, vorzeichen: v } : x) }))}>{v === '-' ? '−' : '+'}</button>)}</span>
-          {faktoren && <label className="vp-gw-factor">Faktor<input type="number" inputMode="decimal" step="any" aria-label={`Faktor für ${t.quelle.name}`} value={Number.isNaN(t.faktor) ? '' : t.faktor} onChange={(ev) => { const f = ev.target.value === '' ? NaN : Number(ev.target.value); setEntwurf((e) => ({ ...e, terme: e.terme.map((x, n) => n === i ? { ...x, faktor: f } : x) })); }} /></label>}
+          <span className="vp-gw-seg" role="group" aria-label={`Vorzeichen für ${t.quelle.name}`}>{(['+', '-'] as const).map((v) => <button key={v} type="button" disabled={entwurf.typ === 'saldo'} aria-pressed={t.vorzeichen === v} className={t.vorzeichen === v ? 'on' : ''} onClick={() => setEntwurf((e) => ({ ...e, terme: e.terme.map((x, n) => n === i ? { ...x, vorzeichen: v } : x) }))}>{v === '-' ? '−' : '+'}</button>)}</span>
+          {faktoren && <label className="vp-gw-factor">Faktor<input type="number" inputMode="decimal" step="any" disabled={entwurf.typ === 'saldo' || !!t.bezug?.ziel} aria-label={`Faktor für ${t.quelle.name}`} value={Number.isNaN(t.faktor) ? '' : t.faktor} onChange={(ev) => { const f = ev.target.value === '' ? NaN : Number(ev.target.value); setEntwurf((e) => ({ ...e, terme: e.terme.map((x, n) => n === i ? { ...x, faktor: f } : x) })); }} /></label>}
         </div>)}</div>
         <button type="button" className="vp-gw-fine" onClick={() => setFaktoren((f) => !f)}>Feineinstellung {faktoren ? 'ausblenden' : '(Faktor) anzeigen'}</button>
         {faktoren && <p className="vp-sw-warn">Ein Faktor verändert den gemessenen Wert. Ändern Sie ihn nur, wenn Sie die Umrechnung kennen.</p>}
+        {faktorHinweis(entwurf.terme) && <p className="vp-sw-warn">{faktorHinweis(entwurf.terme)}</p>}
       </>}
       {schritt === 3 && <><h3 className="vp-sw-h">Wie soll der Wert heißen?</h3><label>Name<input autoFocus className="vp-sw-name-in" aria-label={`Name des ${SUMMENWERT}s`} maxLength={MAX_NAME} value={entwurf.name} onChange={(e) => setEntwurf((s) => ({ ...s, name: e.target.value }))} /></label><p className="vp-sw-sub">Der Vorschlag ist frei änderbar.</p></>}
       {schritt === 4 && <><h3 className="vp-sw-h">Diesen Wert verwenden als …</h3><div className="vp-sw-role-options" role="group" aria-label="Rolle">{(Object.keys(ROLLEN) as Rolle[]).filter((r) => r === 'keine' || darf('geraet.einrichten')).map((r) => <button key={r} type="button" className={`vp-sw-role-option ${rolle === r ? 'on' : ''}`} aria-pressed={rolle === r} disabled={!rolleErlaubt(r)} onClick={() => setRolle(r)}>{ROLLEN[r]}</button>)}</div>
         {!beobachtungErlaubt && <p role="alert">Für das Beobachten weiterer Register fehlt Ihnen die Berechtigung. Entfernen Sie diese Register oder lassen Sie Ihren Zugang prüfen.</p>}
         {!darf('geraet.einrichten') && <p className="vp-sw-sub">Sie können diesen Wert ohne Rolle anlegen. Für eine Rolle fehlt das Einrichtungsrecht.</p>}
+        {entwurf.gueltigAb > heute() && <p className="vp-sw-sub">Die Formel gilt erst künftig. Eine Rolle können Sie ab diesem Tag zuordnen.</p>}
         <p>{folgen[rolle]}</p>{rolle !== 'keine' && <p>Die Zuordnung wirkt ab jetzt und steht im Änderungsprotokoll der Anlage. Der Wert hängt an jedem gelesenen Gerät und zählt in der Anlagen-Summe einmal.</p>}
         <p className="vp-sw-sub">Rollen benötigen Wirkleistung als Momentanwert: Erzeugung für PV-Produktion, Bezug für Verbrauch, richtungslos für Netz.</p>
       </>}
-      {schritt < 5 && <div aria-live="polite"><div className="vp-sw-sumline"><span>{SUMMENWERT}</span><strong>{summe.unvollstaendig ? 'unvollständig' : wertText(summe.wert, summe.einheit)}</strong></div><p className="vp-sw-sub">{standText(stand)}</p><p className="vp-sw-sub">{rechenzeile(aktuelleTerme)}</p>{summe.unvollstaendig && entwurf.terme.length > 0 && <p className="vp-sw-warn">{unvollstaendigSatz(summe.fehlende)}</p>}
+      {schritt < 5 && <div aria-live="polite"><p className="vp-sw-sub">{groesse ? `${groesse.groesse} · ${groesse.richtung} · ${groesse.einheit}` : entwurf.terme.length ? 'Die Messgrößen passen nicht zusammen.' : 'Die Hauptgröße ergibt sich aus den Eingängen.'}</p><div className="vp-sw-sumline"><span>{SUMMENWERT}</span><strong>{summe.unvollstaendig ? 'unvollständig' : wertText(summe.wert, summe.einheit)}</strong></div><p className="vp-sw-sub">{standText(stand)}</p><p className="vp-sw-sub">{rechenzeile(aktuelleTerme)}</p>{summe.unvollstaendig && entwurf.terme.length > 0 && <p className="vp-sw-warn">{unvollstaendigSatz(summe.fehlende)}</p>}
         {unbeobachtet.length > 0 && <p className="vp-sw-sub">Beim Speichern werden {unbeobachtet.length} weitere Register beobachtet · ≈ {fmtNum(unbeobachtet.reduce((s, z) => s + z.jahresBytes, 0) / 1e9, '', 1)} GB/Jahr.</p>}
       </div>}
       {schritt === 5 && <section className="vp-sw-done"><Icon name="check" size={30} /><h3>„{ergebnis?.name}“ ist angelegt</h3><p>{rolle === 'keine' ? 'ohne Rolle' : ROLLEN[rolle]}</p><p>{folgen[rolle]}</p><p>{summe.unvollstaendig ? 'unvollständig' : wertText(summe.wert, summe.einheit)} · {standText(stand)}</p>{bestaetigt.length > 0 && <p>Abgelöst: {bestaetigt.join(', ')}. Die bisherigen Werte bleiben bestehen.</p>}</section>}
