@@ -911,6 +911,20 @@ public final class MessstelleRegeln {
         return new WechselUrteil(null, null, t.isBefore(jetzt), t.isAfter(jetzt));
     }
 
+    /** AP-04 E10: Auswahl und Ablesestände dürfen ausschließlich bekannte, eindeutige Ziele nennen. */
+    public static String kartenWechselPruefen(List<String> karten, List<String> uebernommen,
+            List<String> fuehrendeBindungen, List<String> ablesestaende) {
+        if (uebernommen == null || uebernommen.stream().anyMatch(x -> x == null || !karten.contains(x))
+                || new java.util.HashSet<>(uebernommen).size() != uebernommen.size()) {
+            return "karten_uebernommen";
+        }
+        if (ablesestaende.stream().anyMatch(x -> x == null || !fuehrendeBindungen.contains(x))
+                || new java.util.HashSet<>(ablesestaende).size() != ablesestaende.size()) {
+            return "ablesestaende";
+        }
+        return null;
+    }
+
     /** Wie weit ein Zeitpunkt von „jetzt“ entfernt ist, auf die Minute (E2). */
     public record Rueckwirkung(String art, long minuten, String abzeichen) {}
 

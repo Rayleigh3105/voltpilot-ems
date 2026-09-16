@@ -44,6 +44,7 @@ import { geraetZuKomponenten } from '../uemsProtokoll';
 import { EinstellungAendernDialog, type AenderungZiel } from './EinstellungAendernDialog';
 import { ZaehlerwechselVerlauf } from './ZaehlerwechselVerlauf';
 import { ZaehlerwechselDialog } from './ZaehlerwechselDialog';
+import { ControllerwechselDialog } from './ControllerwechselDialog';
 import { QuelleBindenDialog, type QuelleBindenZiel } from './QuelleBindenDialog';
 import './GeraetHerkunft.css';
 
@@ -164,6 +165,9 @@ export function GeraetHerkunft({
         <Zeilen zeilen={karte.zeilen} />
         {geraet.geraeteart === 'zaehler' && !geraet.teile?.length && (
           <Recht aktion="geraet.einrichten"><Recht aktion="messstelle.quelle"><Button variant="ghost" size="sm" onClick={event => { event.currentTarget.focus(); setWechsel(geraet); }}>Zähler wechseln</Button></Recht></Recht>
+        )}
+        {geraet.geraeteart === 'controller' && !geraet.ausgebaut_am && (
+          <Recht aktion="geraet.einrichten"><Recht aktion="messstelle.quelle"><Button variant="ghost" size="sm" onClick={event => { event.currentTarget.focus(); setWechsel(geraet); }}>Controller austauschen</Button></Recht></Recht>
         )}
         {karte.karten.length > 0 && (
           <>
@@ -289,7 +293,9 @@ export function GeraetHerkunft({
         </section>
       )}
 
-      {wechsel && <ZaehlerwechselDialog ziel={{ art: 'geraet', geraet: wechsel, anlageId: siteId }} jetzt={jetzt}
+      {wechsel?.geraeteart === 'controller' && <ControllerwechselDialog geraet={wechsel} anlageId={siteId} jetzt={jetzt}
+        onClose={() => setWechsel(null)} onGewechselt={() => setStand(n => n + 1)} />}
+      {wechsel && wechsel.geraeteart !== 'controller' && <ZaehlerwechselDialog ziel={{ art: 'geraet', geraet: wechsel, anlageId: siteId }} jetzt={jetzt}
         onClose={() => setWechsel(null)} onGewechselt={() => setStand(n => n + 1)} />}
       {verwenden && (
         <QuelleBindenDialog

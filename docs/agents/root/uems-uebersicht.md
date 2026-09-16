@@ -245,3 +245,5 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 Neue UEMS-Pakete tragen ihren Eintrag HIER ein, nicht im Themen-Index von `AGENTS.md`.
 
 - **Ersatzwerte in gröberen Perioden (AP-08 IP-13/IP-17, E7/E9):** d–g ersetzen ihre bisherigen Beiträge; e bis Kalendermonat ohne erfundenes Viertelstundenprofil, Rücknahme aus der gemessenen Grundlage. Java-/TS-Regel, Vektoren und Nachweise: [Ersatzwert-Perioden](uems-ersatzwert-perioden.md).
+
+- **Controllerwechsel (AP-04 IP-19)** — Kartenentscheidung, je führender Bindung ein Ablesestand, zeitpunktgenaue Folgen-Vorschau und atomarer Tausch aller Komponenten; C1 mit bestätigter Folgen-Liste. Keine Migration; Boxzuständigkeit und Summenwert-Anker bleiben · [Wege und Abnahme](uems-controllerwechsel.md)

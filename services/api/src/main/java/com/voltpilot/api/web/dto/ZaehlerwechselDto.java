@@ -56,7 +56,25 @@ public final class ZaehlerwechselDto {
             MessstelleQuelleDto.Stand endstandVorgaenger,
             MessstelleQuelleDto.Stand anfangsstand,
             Boolean einstellungenUebernehmen,
-            String grund) {}
+            String grund,
+            List<UUID> kartenUebernommen,
+            List<Ablesestand> ablesestaende,
+            List<UUID> bestaetigteBindungen) {}
+
+    /** Optionaler Stand je führender Bindung; auch mehrere Zählwerke derselben Karte sind eindeutig. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Ablesestand(UUID bindung, MessstelleQuelleDto.Stand endstand,
+            MessstelleQuelleDto.Stand anfangsstand) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Karte(UUID id, Integer steckplatz, String bezeichnung, String typ, String seriennummer) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Folge(UUID bindung, UUID karte, UUID komponente, UUID messstelle, String kennzeichen,
+            String groesse, String richtung, String rolle, String einheit, boolean zaehlerstand) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vorschau(OffsetDateTime zeitpunkt, List<Karte> karten, List<Folge> folgen) {}
 
     /** Ein Einbau der Antwort: das Gerät an der Stelle (GR-4) und das konkrete Kästchen (Z-5a). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

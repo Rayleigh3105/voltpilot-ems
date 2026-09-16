@@ -626,11 +626,11 @@ class ZaehlerwechselApiTest {
         uhr(EINGETRAGEN);
 
         Map<String, Object> fremdesFeld = wechselAnfrage(WECHSEL, null);
-        fremdesFeld.put("karten_uebernommen", List.of());
+        fremdesFeld.put("unbekanntes_feld", List.of());
         ResponseEntity<JsonNode> r = rufe(HttpMethod.POST, "/api/v1/geraete/" + z5a + "/austausch", w.admin(),
                 fremdesFeld);
         abgelehnt(r, 400, "anfrage_ungueltig");
-        assertThat(r.getBody().get("feld").asText()).isEqualTo("karten_uebernommen");
+        assertThat(r.getBody().get("feld").asText()).isEqualTo("unbekanntes_feld");
 
         Map<String, Object> sekunden = wechselAnfrage("2026-11-18T10:40:30+01:00", null);
         anfrage(rufe(HttpMethod.POST, "/api/v1/geraete/" + z5a + "/austausch", w.admin(), sekunden), "zeitpunkt");
@@ -645,6 +645,80 @@ class ZaehlerwechselApiTest {
                 .containsExactlyInAnyOrderElementsOf(eigenschaften("ZaehlerwechselBindung"));
         assertThat(felder(v.get("rueckwirkung")))
                 .containsExactlyInAnyOrderElementsOf(eigenschaften("MessstelleQuelleRueckwirkung"));
+    }
+
+    @Test
+    void a6ControllerWechseltVierKartenUndBindungenAtomarMitEigenenEndstaenden() {
+        Werk w = ahrenberg("A6 Controller");
+        UUID controller = root.queryForObject("INSERT INTO geraet (tenant_id,site_id,kennzeichen,einbau_kennzeichen,"
+                + "geraeteart,hersteller,typ,seriennummer,eingebaut_am) "
+                + "VALUES (?,?,'GR-7','C-1','controller','WAGO','PFC200','C-alt',?) RETURNING id",
+                UUID.class, w.tenant(), w.an1(), Timestamp.from(zeitpunkt("2026-10-01T00:00:00+02:00")));
+        List<UUID> karten = new ArrayList<>();
+        List<String> bindungen = new ArrayList<>();
+        List<Map<String, Object>> staende = new ArrayList<>();
+        int n = 0;
+        for (String komponente : List.of("K-4", "K-5", "K-6", "K-7")) {
+            n++;
+            UUID karte = root.queryForObject("INSERT INTO geraet_teil (tenant_id,geraet_id,teilart,steckplatz,"
+                    + "bezeichnung,typ,seriennummer,eingebaut_am) VALUES (?,?,'energiekarte',?,?,'750-495',?,?) RETURNING id",
+                    UUID.class, w.tenant(), controller, n, "EK-" + n, "EK-SN-" + n, Timestamp.from(zeitpunkt("2026-10-01T00:00:00+02:00")));
+            karten.add(karte);
+            root.update("UPDATE geraet_komponente SET geraet_id=?,teil_id=?,gueltig_ab=? WHERE entity_id=?",
+                    controller, karte, Timestamp.from(zeitpunkt("2026-10-01T00:00:00+02:00")), w.k(komponente));
+            messkanalAuswahl(w, komponente, ENERGIE_BEZUG);
+            String ms = anlegen(w.admin(), wieReferenz("MS-" + (9 + n), referenzMessstelle("MS-" + (9 + n)))).get("id").asText();
+            uhr("2026-10-01T09:00:00+02:00");
+            String q = erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms + "/quellen", w.admin(),
+                    binden(w.k(komponente), ENERGIE_BEZUG, "fuehrend", null, "2026-10-01T00:00:00+02:00")))
+                    .at("/quelle/id").asText();
+            bindungen.add(q);
+            staende.add(Map.of("bindung", q, "endstand", Map.of("wert", n * 1000, "einheit", "kWh")));
+        }
+        uhr("2027-02-05T14:00:00+01:00");
+        String pfad = "/api/v1/geraete/" + controller + "/austausch";
+        JsonNode vorschau = ok(rufe(HttpMethod.GET, pfad + "/vorschau?zeitpunkt=2027-02-05T13:00:00Z", w.admin(), null));
+        assertThat(vorschau.get("folgen")).hasSize(4);
+        assertThat(vorschau.get("karten")).hasSize(4);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("zeitpunkt", "2027-02-05T14:00:00+01:00");
+        body.put("neues_geraet", Map.of("einbau_kennzeichen", "C-1′", "seriennummer", "C-neu"));
+        body.put("karten_uebernommen", karten.subList(0, 3)); // EK-4 ebenfalls neu, Seriennummer unbekannt
+        body.put("ablesestaende", staende);
+        body.put("bestaetigte_bindungen", bindungen);
+        int vorher = root.queryForObject("SELECT count(*) FROM geraet WHERE tenant_id=?", Integer.class, w.tenant());
+        letzterFehlerFuerController();
+        assertThat(status(rufe(HttpMethod.POST, pfad, w.admin(), body))).isEqualTo(500);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet WHERE tenant_id=?", Integer.class, w.tenant())).isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet_teil WHERE geraet_id=? AND ausgebaut_am IS NULL", Integer.class, controller)).isEqualTo(4);
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle_quelle WHERE geraet_id=? AND gueltig_bis IS NULL", Integer.class, controller)).isEqualTo(4);
+        wechsel.letzterSchritt(() -> { });
+        Map<String,Object> veraltet = new LinkedHashMap<>(body);
+        veraltet.put("bestaetigte_bindungen", bindungen.subList(0, 3));
+        abgelehnt(rufe(HttpMethod.POST, pfad, w.admin(), veraltet), 409, "zustand_passt_nicht");
+        Map<String,Object> fremderStand = new LinkedHashMap<>(body);
+        fremderStand.put("ablesestaende", List.of(Map.of("bindung", UUID.randomUUID(), "endstand", Map.of("wert", 1))));
+        anfrage(rufe(HttpMethod.POST, pfad, w.admin(), fremderStand), "ablesestaende");
+        JsonNode antwort = erfolgreich(rufe(HttpMethod.POST, pfad, w.admin(), body));
+        assertThat(antwort.get("bindungen")).hasSize(4);
+        UUID neu = UUID.fromString(antwort.at("/geraet/neu/id").asText());
+        for (JsonNode bindung : antwort.get("bindungen")) {
+            assertThat(zeitpunkt(bindung.at("/beendet/gueltig_bis").asText())).isEqualTo(zeitpunkt("2027-02-05T14:00:00+01:00"));
+            assertThat(zeitpunkt(bindung.at("/neu/gueltig_ab").asText())).isEqualTo(zeitpunkt("2027-02-05T14:00:00+01:00"));
+            int nummer = Integer.parseInt(bindung.get("kennzeichen").asText().substring(3)) - 9;
+            assertThat(bindung.at("/beendet/endstand/wert").asInt()).isEqualTo(nummer * 1000);
+        }
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet_komponente WHERE geraet_id=? AND teil_id IS NOT NULL", Integer.class, neu)).isEqualTo(4);
+        assertThat(root.queryForList("SELECT seriennummer FROM geraet_teil WHERE geraet_id=? ORDER BY steckplatz", String.class, neu))
+                .containsExactly("EK-SN-1", "EK-SN-2", "EK-SN-3", null);
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle_aenderung WHERE tenant_id=? AND art='zaehler_gewechselt'", Integer.class, w.tenant())).isEqualTo(4);
+        Werk fremd = ahrenberg("A6 fremd");
+        assertThat(status(rufe(HttpMethod.POST, pfad, fremd.admin(), body))).isEqualTo(404);
+        assertThat(status(rufe(HttpMethod.GET, pfad + "/vorschau", fremd.admin(), null))).isEqualTo(404);
+    }
+
+    private void letzterFehlerFuerController() {
+        wechsel.letzterSchritt(() -> { throw new IllegalStateException("A6 erzwungener letzter Fehler"); });
     }
 
     // ---- Gerüst: das Referenzunternehmen ----------------------------------------------------------

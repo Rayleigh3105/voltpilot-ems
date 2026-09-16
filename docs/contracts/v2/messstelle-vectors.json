@@ -3345,6 +3345,266 @@
     ],
     "wechsel": [
       {
+        "name": "gr-7-vier-karten",
+        "herkunft": "AP-04 E10 · A6",
+        "referenz": "GR-7",
+        "why": "Kartenwahl und Ablesestände sind eindeutig; je führende Bindung ein eigener optionaler Stand.",
+        "input": {
+          "jetzt": "2027-02-05T14:00:00+01:00",
+          "alt": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "eingebaut_am": "2026-10-01T00:00:00+02:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2027-02-05T14:00:00+01:00",
+          "karten": {
+            "vorhanden": [
+              "EK-1",
+              "EK-2",
+              "EK-3",
+              "EK-4"
+            ],
+            "uebernommen": [
+              "EK-1",
+              "EK-2",
+              "EK-3",
+              "EK-4"
+            ],
+            "fuehrende_bindungen": [
+              "Q-10",
+              "Q-11",
+              "Q-12",
+              "Q-13"
+            ],
+            "ablesestaende": [
+              "Q-10",
+              "Q-11",
+              "Q-12",
+              "Q-13"
+            ]
+          }
+        },
+        "expected": {
+          "fehler": null,
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "karten_fehler": null
+        }
+      },
+      {
+        "name": "gr-7-karte-ebenfalls-neu",
+        "herkunft": "AP-04 E10 · A6",
+        "referenz": "GR-7",
+        "why": "Kartenwahl und Ablesestände sind eindeutig; je führende Bindung ein eigener optionaler Stand.",
+        "input": {
+          "jetzt": "2027-02-05T14:00:00+01:00",
+          "alt": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "eingebaut_am": "2026-10-01T00:00:00+02:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2027-02-05T14:00:00+01:00",
+          "karten": {
+            "vorhanden": [
+              "EK-1",
+              "EK-2",
+              "EK-3",
+              "EK-4"
+            ],
+            "uebernommen": [
+              "EK-1",
+              "EK-3",
+              "EK-4"
+            ],
+            "fuehrende_bindungen": [
+              "Q-10",
+              "Q-11",
+              "Q-12",
+              "Q-13"
+            ],
+            "ablesestaende": [
+              "Q-10"
+            ]
+          }
+        },
+        "expected": {
+          "fehler": null,
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "karten_fehler": null
+        }
+      },
+      {
+        "name": "gr-7-fremde-karte",
+        "herkunft": "AP-04 E10 · A6",
+        "referenz": "GR-7",
+        "why": "Kartenwahl und Ablesestände sind eindeutig; je führende Bindung ein eigener optionaler Stand.",
+        "input": {
+          "jetzt": "2027-02-05T14:00:00+01:00",
+          "alt": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "eingebaut_am": "2026-10-01T00:00:00+02:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2027-02-05T14:00:00+01:00",
+          "karten": {
+            "vorhanden": [
+              "EK-1",
+              "EK-2",
+              "EK-3",
+              "EK-4"
+            ],
+            "uebernommen": [
+              "EK-5"
+            ],
+            "fuehrende_bindungen": [
+              "Q-10",
+              "Q-11",
+              "Q-12",
+              "Q-13"
+            ],
+            "ablesestaende": []
+          }
+        },
+        "expected": {
+          "fehler": null,
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "karten_fehler": "karten_uebernommen"
+        }
+      },
+      {
+        "name": "gr-7-doppelte-karte",
+        "herkunft": "AP-04 E10 · A6",
+        "referenz": "GR-7",
+        "why": "Kartenwahl und Ablesestände sind eindeutig; je führende Bindung ein eigener optionaler Stand.",
+        "input": {
+          "jetzt": "2027-02-05T14:00:00+01:00",
+          "alt": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "eingebaut_am": "2026-10-01T00:00:00+02:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2027-02-05T14:00:00+01:00",
+          "karten": {
+            "vorhanden": [
+              "EK-1",
+              "EK-2",
+              "EK-3",
+              "EK-4"
+            ],
+            "uebernommen": [
+              "EK-1",
+              "EK-1"
+            ],
+            "fuehrende_bindungen": [
+              "Q-10",
+              "Q-11",
+              "Q-12",
+              "Q-13"
+            ],
+            "ablesestaende": []
+          }
+        },
+        "expected": {
+          "fehler": null,
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "karten_fehler": "karten_uebernommen"
+        }
+      },
+      {
+        "name": "gr-7-fremdes-zaehlwerk",
+        "herkunft": "AP-04 E10 · A6",
+        "referenz": "GR-7",
+        "why": "Kartenwahl und Ablesestände sind eindeutig; je führende Bindung ein eigener optionaler Stand.",
+        "input": {
+          "jetzt": "2027-02-05T14:00:00+01:00",
+          "alt": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "eingebaut_am": "2026-10-01T00:00:00+02:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2027-02-05T14:00:00+01:00",
+          "karten": {
+            "vorhanden": [
+              "EK-1",
+              "EK-2",
+              "EK-3",
+              "EK-4"
+            ],
+            "uebernommen": [],
+            "fuehrende_bindungen": [
+              "Q-10",
+              "Q-11",
+              "Q-12",
+              "Q-13"
+            ],
+            "ablesestaende": [
+              "Q-fremd"
+            ]
+          }
+        },
+        "expected": {
+          "fehler": null,
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "karten_fehler": "ablesestaende"
+        }
+      },
+      {
+        "name": "gr-7-doppelter-stand",
+        "herkunft": "AP-04 E10 · A6",
+        "referenz": "GR-7",
+        "why": "Kartenwahl und Ablesestände sind eindeutig; je führende Bindung ein eigener optionaler Stand.",
+        "input": {
+          "jetzt": "2027-02-05T14:00:00+01:00",
+          "alt": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "eingebaut_am": "2026-10-01T00:00:00+02:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2027-02-05T14:00:00+01:00",
+          "karten": {
+            "vorhanden": [
+              "EK-1",
+              "EK-2",
+              "EK-3",
+              "EK-4"
+            ],
+            "uebernommen": [],
+            "fuehrende_bindungen": [
+              "Q-10",
+              "Q-11",
+              "Q-12",
+              "Q-13"
+            ],
+            "ablesestaende": [
+              "Q-10",
+              "Q-10"
+            ]
+          }
+        },
+        "expected": {
+          "fehler": null,
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "karten_fehler": "ablesestaende"
+        }
+      },
+      {
         "name": "ms-06-wechsel-am-18-11-2026",
         "herkunft": "AP-04 A1 · §5.13 · E2 · Regel 5",
         "referenz": "MS-06",

@@ -9807,6 +9807,19 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/EinstellungAbgelehnt" }
         "422": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+  /api/v1/geraete/{id}/austausch/vorschau:
+    get:
+      summary: Folgen des Controllerwechsels zum Zeitpunkt lesen (AP-04 E10)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: zeitpunkt, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Betroffene Karten und Bindungen zum Zeitpunkt; ausschließlich gelesen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControllerwechselVorschau" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/geraete/{id}/austausch:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -9830,7 +9843,7 @@ paths:
         den Wechsel nie scheitern lässt. Geprüft wird in dieser Reihenfolge: Zeitpunkt im
         laufenden Einbau des Vorgängers (422 `zeitpunkt_vor_vorgaenger` davor, 422
         `kein_geraet_zum_zeitpunkt` an einem schon ausgebauten) → Energiekarten (409
-        `zustand_passt_nicht`: über sie entscheidet der Controllerwechsel, IP-19) → speist
+        `zustand_passt_nicht`, falls die Kartenentscheidung fehlt; IP-19 übernimmt oder ersetzt jede Karte) → speist
         er überhaupt etwas (422 `kein_geraet_zum_zeitpunkt`) → angekündigte Quelle am alten
         Einbau (409 `zustand_passt_nicht`) → eine Bindung, die zum Zeitpunkt schon beendet
         ist (409 `bindung_bereits_beendet`) → freies Einbau-Kennzeichen (409
@@ -21037,6 +21050,57 @@ components:
         anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }], description: "Der Anfangsstand des neuen Zählers; er landet an der Bindung, die beginnt." }
         einstellungen_uebernehmen: { type: boolean, nullable: true, description: "Fehlend = true: jede Fassung, die am alten Einbau zum Wechselzeitpunkt gilt, steht danach auch am neuen." }
         grund: { type: string, nullable: true, description: "Frei; steht im Änderungsprotokoll." }
+        karten_uebernommen:
+          type: array
+          items: { type: string, format: uuid }
+          description: "Beim Controller Pflicht: übernommene Karten aus der Vorschau; leere Liste = alle ebenfalls neu. Neue Karten erhalten keine erfundene Seriennummer."
+        bestaetigte_bindungen:
+          type: array
+          items: { type: string, format: uuid }
+          description: "Beim Controller alle Bindungen aus der bestätigten Vorschau; veraltete Auswahl ergibt 409."
+        ablesestaende:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [bindung]
+            properties:
+              bindung: { type: string, format: uuid }
+              endstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+              anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+          description: "Optional je führender Zählerstand-Bindung; keine doppelten oder fremden Bindungen, nicht zusammen mit den einzelnen Ablesestand-Feldern."
+    ControllerwechselVorschau:
+      type: object
+      required: [zeitpunkt, karten, folgen]
+      properties:
+        zeitpunkt: { type: string, format: date-time }
+        karten:
+          type: array
+          items:
+            type: object
+            required: [id, steckplatz, bezeichnung, typ, seriennummer]
+            properties:
+              id: { type: string, format: uuid }
+              steckplatz: { type: integer, nullable: true }
+              bezeichnung: { type: string, nullable: true }
+              typ: { type: string, nullable: true }
+              seriennummer: { type: string, nullable: true }
+        folgen:
+          type: array
+          items:
+            type: object
+            required: [bindung, karte, komponente, messstelle, kennzeichen, groesse, richtung, rolle, einheit, zaehlerstand]
+            properties:
+              bindung: { type: string, format: uuid }
+              karte: { type: string, format: uuid, nullable: true }
+              komponente: { type: string, format: uuid }
+              messstelle: { type: string, format: uuid }
+              kennzeichen: { type: string }
+              groesse: { type: string }
+              richtung: { type: string }
+              rolle: { type: string, enum: [fuehrend, vergleich] }
+              einheit: { type: string, nullable: true }
+              zaehlerstand: { type: boolean }
     ZaehlerwechselEinbau:
       type: object
       required: [id, geraet, einbau, seriennummer, eingebaut_am, ausgebaut_am]
