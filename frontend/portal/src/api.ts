@@ -1977,6 +1977,10 @@ export interface Messkanal {
   groesse: string | null;
   richtung: string | null;
   aktiv: boolean;
+  /** Die Box, die den Kanal liest (AP-04-Read-Model); Kennung, nicht Anzeigename. */
+  lesende_box?: string | null;
+  /** Das zum Stichtag eingebaute Gerät; `null` heißt: nicht erfasst. */
+  geraet?: MesskanalGeraet | null;
   /**
    * Das KATALOGWORT der Richtung (`import_export`, `import`, …) — nicht das Kundenwort `richtung`.
    * Nur daran hängt der Anteil eines Vorzeichen-Werts (AP-08 IP-7, E15); fehlend = keiner.
@@ -1986,6 +1990,13 @@ export interface Messkanal {
   kadenz_s?: number | null;
   /** Welche Messstellen der Kanal jetzt speist (AP-04 IP-13) — leer ohne laufende Quellenbindung. */
   speist?: MesskanalSpeist[];
+}
+
+export interface MesskanalGeraet {
+  id: string;
+  geraet: string;
+  einbau: string | null;
+  seriennummer: string | null;
 }
 
 /** Eine laufende Quellenbindung des Kanals — genug für „speist MS-06 (führend)“. */
@@ -8079,8 +8090,8 @@ export const api = {
   // --- UEMS: Messkanäle + berechnete Messstelle („Gesamtwert") ---
 
   /** Die Messkanäle einer Komponente mit ihrer Vertrags-Größe (Read-Model AP-04). */
-  komponenteMesskanaele: (siteId: string, entityId: string) =>
-    request<MesskanalListe>(`/api/v1/sites/${siteId}/komponenten/${entityId}/messkanaele`),
+  komponenteMesskanaele: (siteId: string, entityId: string, stichtag?: string) =>
+    request<MesskanalListe>(`/api/v1/sites/${siteId}/komponenten/${entityId}/messkanaele${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`),
 
   /** Alle Messstellen des Kundenbereichs (für die Auswahl der berechneten). */
   messstellen: () => request<{ messstellen: Messstelle[] }>(`/api/v1/messstellen`),

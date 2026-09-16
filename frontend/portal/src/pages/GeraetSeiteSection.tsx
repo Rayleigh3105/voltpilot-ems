@@ -716,6 +716,7 @@ export function GeraetSeiteSection({
       eigeneErlaubt={geraetId === 'inverter'}
       registerFaehig={registerSektion}
       geraetName={view.kopf.titel}
+      boxNamen={Object.fromEntries((devices ?? []).map((d) => [d.id, d.name ?? d.externalRef]))}
       lesbar={beobachtenMoeglich({ geraetId, familien: messFamilien ?? [] })}
       bruecke={bruecke}
       onBrueckeVerbraucht={brueckeVerbraucht}

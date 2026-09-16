@@ -48,6 +48,7 @@ export function MessstellenVerlauf({
   kern,
   versionen,
   markerAktion,
+  herkunft,
   namen,
   eigenName,
   vergleich = null,
@@ -67,6 +68,8 @@ export function MessstellenVerlauf({
   /** Der Einstieg „Versionen“ an der Karte eines gewählten Schritts — nur, wo der Wirt die Historie öffnet. */
   versionen?: (s: Schritt) => ReactNode;
   markerAktion?: (kennung: string) => ReactNode;
+  /** Herkunft des gewählten Schritts aus dem AP-07-Lesepfad. */
+  herkunft?: (s: Schritt) => ReactNode;
   /** Die Namen der Bindungen aus dem Register — für den Grund-Satz der Schritt-Karte (AP-13 IP-6). */
   namen?: QuellenNamen;
   /**
@@ -294,7 +297,7 @@ export function MessstellenVerlauf({
               <Icon name="chevron-right" size={18} />
             </button>
           </div>
-          <SchrittKarte antwort={antwort} schritt={auswahl} versionen={versionen} namen={namen} />
+          <SchrittKarte antwort={antwort} schritt={auswahl} versionen={versionen} herkunft={herkunft} namen={namen} />
         </div>
       ) : (
         <p className="vp-mv-tipp">{wahl.tipp}</p>
@@ -307,13 +310,15 @@ function SchrittKarte({
   antwort,
   schritt,
   versionen,
+  herkunft,
   namen,
 }: {
   antwort: MessstelleWerte;
   schritt: Schritt;
   versionen?: (s: Schritt) => ReactNode;
+  herkunft?: (s: Schritt) => ReactNode;
   namen?: QuellenNamen;
 }) {
   const k = schrittKarte(antwort, schritt, namen);
-  return <WerteKarte karte={k} grund={k.grund} testId="verlauf-schritt-karte" versionen={versionen?.(schritt)} />;
+  return <><WerteKarte karte={k} grund={k.grund} testId="verlauf-schritt-karte" versionen={versionen?.(schritt)} />{herkunft?.(schritt)}</>;
 }
