@@ -67,7 +67,7 @@ export function UnterstuetzungDialog({ onClose, onSaved, anfrage, verlaengern }:
     {passwort ? <StartpasswortAnzeige passwort={passwort} /> : <form className="vp-unterstuetzung-form" ref={form} onSubmit={e => { e.preventDefault(); void speichern(); }}>
       {!anfrage && !verlaengern && <VpPicker label="Art" value={art} onChange={setArt} options={[{ value: 'installateur', label: 'Installateur' }, { value: 'voltpilot', label: 'VoltPilot-Support' }]} />}
       {art === 'voltpilot' && !anfrage && !verlaengern ? <p>VoltPilot-Support fragt Unterstützung an. Bestätigen oder ändern Sie die Anfrage in der Karte „Unterstützung“.</p> : <>
-        {anfrage ? <p>VoltPilot-Support · {anfrage.angefragt_von.name}<br />Angefragt am {datumZeit(anfrage.angefragt_am)}</p> : verlaengern ? <p>{verlaengern.unterstuetzer.name} · bisher bis {enddatum(verlaengern)}</p>
+        {anfrage ? <p>VoltPilot-Support · {anfrage.angefragt_von.name}<br />Anfrage vom {datumZeit(anfrage.angefragt_am)}</p> : verlaengern ? <p>{verlaengern.unterstuetzer.name} · bisher bis {enddatum(verlaengern)}</p>
           : <Input label="E-Mail-Adresse des Partners" type="email" required value={email} onChange={e => { setEmail(e.target.value); setFehler(''); }} />}
         {!verlaengern && <><div ref={orteRef}><VpPicker label="Standorte" disabled={orteLaden} values={orte} options={standorte.map(s => ({ value: s.id, label: s.name }))} onChangeMany={ids => { setOrte(ids); setFehler(''); }} error={fehler.includes('Standort') ? fehler : undefined} /></div>
           <VpPicker label="Umfang" value={umfang} onChange={v => setUmfang(v as typeof umfang)} options={Object.entries(UMFANG).map(([value, label]) => ({ value, label }))} /></>}
