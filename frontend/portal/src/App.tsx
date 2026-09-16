@@ -165,6 +165,9 @@ const StandortePage = lazy(() =>
 const MessstellenPage = lazy(() =>
   PAGE_CHUNK['portfolio-messstellen']().then((m) => ({ default: m.MessstellenPage })),
 );
+const BezugsgroessenPage = lazy(() =>
+  PAGE_CHUNK['portfolio-bezugsgroessen']().then((m) => ({ default: m.BezugsgroessenPage })),
+);
 const KennzahlenPage = lazy(() =>
   PAGE_CHUNK['portfolio-kennzahlen']().then((m) => ({ default: m.KennzahlenPage })),
 );
@@ -1172,7 +1175,9 @@ function UnifiedPortal() {
   // die Reiter dann nur noch, was zum offenen Bereich gehört.
   const bereicheHier = ebenenOrtHier ? ebenenBereiche(ebenenOrtHier, ebenenLesemodell).map((b) => b.key) : [];
   const messstellenDa = ebenenFakten ? bereicheHier.includes('messstellen') : null;
-  // AP-11 IP-13: der Reiter „Kennzahlen" nur, wo die Ebene den Bereich hat (misst UND eine Kennzahl).
+  // AP-09 IP-9: Unternehmenswelt auch ohne vorhandene Bezugsgröße, sobald ein Standort misst.
+  const bezugsgroessenDa = ebenenFakten ? ebenenBereiche({ art: 'unternehmen' }, ebenenLesemodell).some(b => b.key === 'bezugsgroessen') : null;
+  // AP-11 IP-13: Kennzahlen zusätzlich erst mit einer Kennzahl.
   const kennzahlenDa = ebenenFakten ? bereicheHier.includes('kennzahlen') : null;
   // AP-12 IP-13: der Reiter „Berichte" nur, wo die Ebene den Bereich hat (ein Standort misst).
   const berichteDa = ebenenFakten ? bereicheHier.includes('berichte') : null;
@@ -1358,6 +1363,7 @@ function UnifiedPortal() {
             }
             showErloese={hatGeldWelt(geldSites)}
             showMessstellen={messstellenDa === true}
+            showBezugsgroessen={bezugsgroessenDa === true}
             showKennzahlen={kennzahlenDa === true}
             showBerichte={berichteDa === true}
             leiste={leisteHier}
@@ -1390,7 +1396,13 @@ function UnifiedPortal() {
               Portfolio-EBENE, tragen also dieselben Anlagen wie die Landung. */}
           {/* UEMS AP-02 IP-6: „Unternehmen › Standorte“ als Reiter der Übersicht. */}
           {page === 'portfolio-standorte' && <StandortePage />}
-          {/* UEMS AP-11 IP-13: „Unternehmen › Kennzahlen" und die Kennzahl-Seite. */}
+          {/* AP-09 IP-9: Unternehmenswelt; Direktadressen beachten dieselbe Messkunden-Grenze. */}
+          {page === 'portfolio-bezugsgroessen' && (
+            bezugsgroessenDa === true ? <BezugsgroessenPage /> : (
+              <p>{bezugsgroessenDa === null ? 'Wird geladen …' : 'Bezugsgrößen stehen zur Verfügung, sobald ein Standort misst.'}</p>
+            )
+          )}
+          {/* UEMS AP-11 IP-13: „Unternehmen › Kennzahlen“ und die Kennzahl-Seite. */}
           {page === 'portfolio-kennzahlen' && (
             <KennzahlenPage
               kennzahlId={route.kennzahlId ?? null}

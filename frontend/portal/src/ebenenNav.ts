@@ -460,6 +460,7 @@ export type EbenenBereichId =
   | 'gebaeude'
   | 'anlagen'
   | 'messstellen'
+  | 'bezugsgroessen'
   | 'kennzahlen'
   | 'berichte';
 
@@ -497,6 +498,7 @@ const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
   gebaeude: { key: 'gebaeude', label: 'Gebäude', icon: 'building' },
   anlagen: { key: 'anlagen', label: 'Anlagen', icon: 'layers' },
   messstellen: { key: 'messstellen', label: 'Messstellen', icon: 'activity' },
+  bezugsgroessen: { key: 'bezugsgroessen', label: 'Bezugsgrößen', icon: 'layers' },
   kennzahlen: { key: 'kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
   berichte: { key: 'berichte', label: 'Berichte', icon: 'file-text' },
 };
@@ -528,7 +530,7 @@ const lebenderStandort = (lm: EbenenLesemodell, standortId: string) =>
  * Seite hat, entscheidet erst {@link ebenenLeiste}.
  *
  * - Unternehmen: Übersicht immer · Standorte ab 2 Standorten · Messstellen und
- *   Berichte, sobald ein Standort misst · Kennzahlen, sobald ein Standort misst
+ *   Bezugsgrößen und Berichte, sobald ein Standort misst · Kennzahlen, sobald ein Standort misst
  *   UND es eine Kennzahl gibt.
  * - Standort: Übersicht immer · Gebäude ab 1 Gebäude · Anlagen ab 2 Anlagen ·
  *   Messstellen, wenn DIESER Standort misst.
@@ -544,7 +546,7 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
     const lebend = (lm.standorte ?? []).filter((s) => s.zustand !== 'archiviert');
     const irgendwoGemessen = lebend.some((s) => misst(lm, s.id));
     if (lebend.length >= 2) out.push('standorte');
-    if (irgendwoGemessen) out.push('messstellen');
+    if (irgendwoGemessen) out.push('messstellen', 'bezugsgroessen');
     if (irgendwoGemessen && (lm.kennzahlen ?? []).some((k) => k.archiviert_am == null)) out.push('kennzahlen');
     if (irgendwoGemessen) out.push('berichte');
   } else {
@@ -572,7 +574,7 @@ export type EbenenSeiten = (ort: EbenenOrt, lm?: EbenenLesemodell) => Partial<Re
  * Referenzkunden steigt das Unternehmen damit auf drei Kacheln, und die Leiste
  * erscheint. Seit AP-11 IP-13 haben auch die Kennzahlen des Unternehmens ihre
  * Seite (`#/portfolio/kennzahlen`), seit AP-12 IP-13 die Berichte
- * (`#/portfolio/berichte`) — Ahrenberg hat damit FÜNF Kacheln.
+ * (`#/portfolio/berichte`). AP-09 IP-9 ergänzt Bezugsgrößen als sechste Unternehmenswelt.
  *
  * Seit AP-13 IP-2 hat auch der Standort jede Seite: Gebäude und Anlagen
  * (`#/standort/{id}/gebaeude`, `…/anlagen`) — Werk Ahrenberg bekommt damit VIER
@@ -587,6 +589,7 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
         uebersicht: pageRoute('portfolio'),
         standorte: pageRoute('portfolio-standorte'),
         messstellen: pageRoute('portfolio-messstellen'),
+        bezugsgroessen: pageRoute('portfolio-bezugsgroessen'),
         kennzahlen: pageRoute('portfolio-kennzahlen'),
         berichte: pageRoute('portfolio-berichte'),
       }
@@ -724,6 +727,7 @@ export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBerei
   if (page === 'portfolio-standorte') return 'standorte';
   if (page === 'standort' && (standortBereich === 'gebaeude' || standortBereich === 'anlagen')) return standortBereich;
   if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';
+  if (page === 'portfolio-bezugsgroessen') return 'bezugsgroessen';
   if (page === 'portfolio-kennzahlen') return 'kennzahlen';
   if (page === 'portfolio-berichte') return 'berichte';
   return page === 'standort' || isPortfolioPage(page) ? 'uebersicht' : null;

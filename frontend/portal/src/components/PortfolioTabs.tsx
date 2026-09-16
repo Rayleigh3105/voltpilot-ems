@@ -58,6 +58,7 @@ export function PortfolioTabs({
   page,
   showErloese,
   showMessstellen = false,
+  showBezugsgroessen = false,
   showKennzahlen = false,
   showBerichte = false,
   leiste = [],
@@ -71,6 +72,8 @@ export function PortfolioTabs({
   showErloese: boolean;
   /** Ein Standort misst — die Ebene hat den Bereich „Messstellen“. */
   showMessstellen?: boolean;
+  /** AP-09 IP-9: ein Standort misst; die Unternehmenswelt bleibt auch leer erreichbar. */
+  showBezugsgroessen?: boolean;
   /** Ein Standort misst UND es gibt eine Kennzahl — die Ebene hat den Bereich „Kennzahlen“ (AP-11 IP-13). */
   showKennzahlen?: boolean;
   /** Ein Standort misst — die Ebene hat den Bereich „Berichte“ (AP-12 IP-13). */
@@ -96,6 +99,7 @@ export function PortfolioTabs({
     (p) =>
       (p.id !== 'portfolio-erloese' || showErloese || page === p.id) &&
       (p.id !== 'portfolio-messstellen' || showMessstellen || page === p.id) &&
+      (p.id !== 'portfolio-bezugsgroessen' || showBezugsgroessen) &&
       (p.id !== 'portfolio-kennzahlen' || showKennzahlen || page === p.id) &&
       (p.id !== 'portfolio-berichte' || showBerichte || page === p.id),
   );

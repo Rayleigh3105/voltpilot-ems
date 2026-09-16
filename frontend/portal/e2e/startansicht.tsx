@@ -77,6 +77,8 @@ import { iso } from '../src/bezugsPeriode';
 import { ABLEHNUNG_SATZ, fassungEintrag, naechsteNummer, wirksame } from '../src/kennzahlAendern';
 import { AnlagenPage } from '../src/pages/AnlagenPage';
 import { BerichtePage } from '../src/pages/BerichtePage';
+import { BezugsgroessenPage } from '../src/pages/BezugsgroessenPage';
+import type { BezugsgroesseAnfrage } from '../src/api';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
@@ -422,6 +424,7 @@ const ALLE_SEITEN_KUENFTIG: EbenenSeiten = (ort) => {
     gebaeude: hier,
     anlagen: hier,
     messstellen: hier,
+    bezugsgroessen: hier,
     kennzahlen: hier,
     berichte: hier,
   };
@@ -530,6 +533,9 @@ const overview: Overview = {
   },
   dailySavings: [],
 };
+const bzListe = params.get('bezugs') === 'leer' ? { bezugsgroessen: [], bezugsflaechen: [] } : ahrenbergBezugsgroessen();
+const bzAufrufe = { anlegen: [] as BezugsgroesseAnfrage[], archivieren: [] as string[] };
+Object.assign(window, { bzAufrufe });
 Object.assign(api, {
   listSites: async () => sichtbareListe(sites),
   listDevices: async () => sichtbareListe(geraeteAhrenberg(new Date()).filter(d => siteIds.includes(d.siteId))),
@@ -601,7 +607,23 @@ Object.assign(api, {
   kennzahlWertVersionen: async (id: string, periode: KennzahlPeriodeArt, von: string) =>
     kennzahlWertVersionenAntwort(id, periode, von, Date.now()),
   // AP-11 IP-14: was der Assistent „Kennzahl anlegen“ liest — und seine zwei Aufrufe, gezählt.
-  bezugsgroessen: async () => ahrenbergBezugsgroessen(),
+  bezugsgroessen: async () => {
+    if (params.get('bezugs') === 'fehler') throw new ApiError(503, 'Nicht erreichbar');
+    return structuredClone(bzListe);
+  },
+  bezugsgroesseAnlegen: async (body: BezugsgroesseAnfrage) => {
+    bzAufrufe.anlegen.push(body);
+    if (params.get('bezugs') === 'konflikt') throw new ApiError(409, 'Belegt', { code: 'kennzeichen_belegt' });
+    const b = { ...body, id: `c0de0000-0000-4000-8000-00000000b0${bzAufrufe.anlegen.length}1`, kennzeichen: body.kennzeichen || 'BZ-0008', periode_art: body.periode_art ?? null, geltung_name: body.geltung_art === 'prozess' ? 'Spritzguss' : 'Werk Lindach', hat_werte: false, archiviert_am: null, angelegt_am: new Date().toISOString() };
+    bzListe.bezugsgroessen.push(b);
+    return structuredClone(b);
+  },
+  bezugsgroesseArchivieren: async (id: string) => {
+    bzAufrufe.archivieren.push(id);
+    const b = bzListe.bezugsgroessen.find(x => x.id === id)!;
+    b.archiviert_am = new Date().toISOString();
+    return structuredClone(b);
+  },
   unternehmen: async () => ahrenbergUnternehmen(),
   // AP-13 IP-9: in den Reitern gelten die Prozesse der Messstellen-Fixtures — dieselben Kennungen wie ihre Zuordnungen.
   prozesse: async () => ({
@@ -925,6 +947,8 @@ function Vorschau() {
                 ? standortMessstellenRoute(FIXTURE_IDS.st1)
                 : ansicht === 'lindach-messstellen'
                   ? standortMessstellenRoute(st2)
+                  : ansicht === 'bezugsgroessen' || ansicht === 'bezugsgroessen-b'
+                    ? pageRoute('portfolio-bezugsgroessen')
                   : ansicht === 'kennzahlen'
                     ? pageRoute('portfolio-kennzahlen')
                     : ansicht === 'kennzahl' && kzOffen
@@ -974,13 +998,13 @@ function Vorschau() {
   };
   const standortBereich = standortBereichFuer(route, lesemodell);
   const ort = site ? null : ebenenOrt(route, ebene);
-  const kacheln = ort ? ebenenLeiste(ort, lesemodell, KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined) : [];
+  const kacheln = (ort ? ebenenLeiste(ort, lesemodell, KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined) : []).filter(k => ansicht !== 'bezugsgroessen-b' || k.key !== 'bezugsgroessen');
   const ebenenNav =
     ort && kacheln.length > 0
       ? {
           titel: ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? ''),
           kacheln,
-          aktiv: ebenenAktiv(route.page, standortBereich),
+          aktiv: ansicht === 'bezugsgroessen-b' ? 'messstellen' as const : ebenenAktiv(route.page, standortBereich),
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
@@ -1002,6 +1026,7 @@ function Vorschau() {
       page={page}
       showErloese={false}
       showMessstellen={bereiche.includes('messstellen')}
+      showBezugsgroessen={ansicht !== 'bezugsgroessen-b' && ebenenBereiche({ art: 'unternehmen' }, lesemodell).some(b => b.key === 'bezugsgroessen')}
       showKennzahlen={bereiche.includes('kennzahlen')}
       showBerichte={bereiche.includes('berichte')}
       leiste={leiste}
@@ -1145,6 +1170,11 @@ function Vorschau() {
         </>
       )}
       {route.page === 'portfolio-messstellen' && portfolioReiter('portfolio-messstellen')}
+      {route.page === 'portfolio-bezugsgroessen' && <>
+        {portfolioReiter(ansicht === 'bezugsgroessen-b' ? 'portfolio-messstellen' : 'portfolio-bezugsgroessen')}
+        {ansicht === 'bezugsgroessen-b' && <div className="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Messstellen"><button className="vp-bereich-tab" role="tab" aria-selected={false}>Liste</button><button className="vp-bereich-tab" role="tab" aria-selected={false}>Kostenstellen</button><button className="vp-bereich-tab" role="tab" aria-selected={false}>Prozesse</button><button className="vp-bereich-tab active" role="tab" aria-selected={true}>Bezugsgrößen<span className="vp-tab-strich" /></button></div>}
+        {ebenenBereiche({ art: 'unternehmen' }, lesemodell).some(b => b.key === 'bezugsgroessen') ? <BezugsgroessenPage /> : <p>Bezugsgrößen stehen zur Verfügung, sobald ein Standort misst.</p>}
+      </>}
       {route.page === 'portfolio-kennzahlen' && (
         <>
           {portfolioReiter('portfolio-kennzahlen')}

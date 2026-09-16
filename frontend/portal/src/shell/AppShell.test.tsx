@@ -726,6 +726,7 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
       uebersicht: pageRoute('portfolio'),
       standorte: pageRoute('portfolio-standorte'),
       messstellen: pageRoute('portfolio'),
+      bezugsgroessen: pageRoute('portfolio-bezugsgroessen'),
       kennzahlen: pageRoute('portfolio'),
       berichte: pageRoute('portfolio'),
     }),
@@ -754,10 +755,11 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
       'Übersicht',
       'Standorte',
       'Messstellen',
+      'Bezugsgrößen',
       'Kennzahlen',
       'Berichte',
     ]);
-    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 5');
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 6');
     expect(bar.querySelector('[aria-current="page"]')?.textContent).toBe('Übersicht');
     expect(bar.textContent).not.toMatch(/Steuer/);
   });
