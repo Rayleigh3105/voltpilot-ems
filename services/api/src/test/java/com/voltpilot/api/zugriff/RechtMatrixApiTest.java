@@ -268,6 +268,9 @@ class RechtMatrixApiTest {
         z.add(new Zeile("messstelle.quelle", HttpMethod.POST, "/api/v1/geraete/{GR1}/austausch", "ee4433e3"));
         z.add(new Zeile("messstelle.formel", HttpMethod.POST, "/api/v1/sites/{A1}/bilanz/rest", "ee4433e3"));
         z.add(new Zeile("messstelle.verteilung", HttpMethod.PUT, "/api/v1/messstellen/{M1}/verteilung", "ee4433e3"));
+        z.add(new Zeile("ablesung.erfassen", HttpMethod.POST, "/api/v1/messstellen/MS-1/ablesungen", "eee33333"));
+        z.add(new Zeile("ablesung.erfassen", HttpMethod.POST,
+                "/api/v1/messstellen/MS-1/ablesungen/2026-09-16T12:00:00Z/berichtigung", "eee33333"));
         z.add(new Zeile("korrektur.freigeben", HttpMethod.POST, "/api/v1/korrekturen/K-1/freigeben", "eee33333"));
         z.add(new Zeile("korrektur.zuruecknehmen", HttpMethod.POST, "/api/v1/korrekturen/K-1/zuruecknehmen",
                 "eee33333"));
@@ -598,10 +601,11 @@ class RechtMatrixApiTest {
         // Was nichts an der Anlage ändert, hängt am Lese-Recht (Vorschau und Ersparnis-Simulation)
         z.add(new Zeile("messwerte.ansehen", HttpMethod.POST, s1 + "/steuerung-vorschau", "ee44eeee"));
         z.add(new Zeile("messwerte.ansehen", HttpMethod.POST, s1 + "/simulation", "ee44eeee"));
-        // Zwei Rechte in einem Aufruf: die Vorprüfung „irgendwo", die genaue Prüfung im Handler
-        String steuern = "steuerung.starten_beenden|steuerung.anhalten_fortsetzen";
-        z.add(new Zeile(steuern, HttpMethod.PUT, s1 + "/funktionen/steuern", "e333e3e3"));
-        z.add(new Zeile(steuern, HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/steuern", "e333e3e3"));
+        // Mehrere Rechte in einem Aufruf: die Vorprüfung „irgendwo", die genaue Prüfung im Handler
+        String steuernAnlage = "funktion.steuern_einrichten|steuerung.starten_beenden|steuerung.anhalten_fortsetzen";
+        String steuernStandort = "steuerung.starten_beenden|steuerung.anhalten_fortsetzen";
+        z.add(new Zeile(steuernAnlage, HttpMethod.PUT, s1 + "/funktionen/steuern", "e333e3e3"));
+        z.add(new Zeile(steuernStandort, HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/steuern", "e333e3e3"));
         z.add(new Zeile("grenze.eintragen|betriebsweise.aendern", HttpMethod.PUT, s1 + "/charging-config",
                 "e333e3ee"));
         return z;
@@ -609,8 +613,6 @@ class RechtMatrixApiTest {
 
     /** Zeilen der Gruppe 4 ohne eigene Route — und warum. */
     private static final Map<String, String> OHNE_SCHREIBROUTE_STEUERUNG = Map.of(
-            "funktion.steuern_einrichten", "zusammengesetzt: Anlage aufnehmen = steuerung.starten_beenden, Freigeben "
-                    + "= freigabe.erteilen, Grenze = grenze.eintragen, Betriebsweise = betriebsweise.aendern",
             "grenze.eintragen", "im Rumpf von PUT /charging-config (genaue Prüfung je Feld)",
             "steuerung.starten_beenden", "im Rumpf von PUT …/funktionen/steuern (genaue Prüfung je Aktion)",
             "steuerung.anhalten_fortsetzen", "im Rumpf von PUT …/funktionen/steuern (genaue Prüfung je Aktion)");
