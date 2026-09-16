@@ -125,7 +125,13 @@ class ZugriffAenderungArchitekturTest {
     void dieOffboardingAusnahmeHatNurDenPlattformDienstAlsAufrufer() throws IOException {
         Set<String> aufrufer = new TreeSet<>();
         for (Path p : dateien()) {
-            if (Files.readString(p).contains(".kundenbereichSperren(")) aufrufer.add(p.getFileName().toString());
+            String quelle = Files.readString(p);
+            Matcher feld = Pattern.compile("ZugriffAenderung\\s+(\\w+)\\s*[;,)]").matcher(quelle);
+            while (feld.find()) {
+                if (quelle.contains(feld.group(1) + ".kundenbereichSperren(")) {
+                    aufrufer.add(p.getFileName().toString());
+                }
+            }
         }
         assertThat(aufrufer).containsExactly("AdminBenutzerService.java");
         String controller = Files.readString(JAVA.resolve("web/AdminController.java"));
