@@ -237,3 +237,21 @@ describe('Der Bühnenfuß', () => {
     expect(container.querySelector('.vp-stage-foot')).toBeNull();
   });
 });
+
+
+describe('H-3: der adaptive Fluss liest dieselben Rollen wie die Aufschlüsselung', () => {
+  it('zeigt bei zugeordneter stummer PV nie wieder die rohe PV-Zahl', () => {
+    const topology: SiteTopology = { schemaVersion: '1.0', entities: [], topology: { schema_version: '1.0', nodes: [
+      { role: 'pv', value_kw: 99, flow_active: true, members: [{ entity_id: 'pv', label: 'Wechselrichter', primary: true, value_kw: 99 }] },
+      { role: 'grid', value_kw: 3.5, flow_active: true, members: [{ entity_id: 'netz', label: 'Netz', primary: true, value_kw: 3.5 }] },
+    ] } };
+    const { container } = render(<CockpitHero view={pilstingView()} topology={topology} snapshot={SNAP} onOpenSub={() => {}}
+      pvRollen={{ role: 'pv', wert: null, einheit: 'kW', stand: null, zuordnung_vorhanden: true, unvollstaendig: true,
+        geraete: [{ entity_id: 'pv', name: 'Wechselrichter', art: 'gesamtwert', wert: null, liefernd: false, grund: 'veraltet' }] }} />);
+    const fluss = container.querySelector('.vp-flow-wrap');
+    expect(fluss).not.toBeNull();
+    expect(fluss!.textContent).not.toContain('99');
+    expect(container.querySelector('.vp-rolle-pv')?.textContent).toContain('Stand unbekannt');
+    expect(topology.topology.nodes[0].value_kw).toBe(99);
+  });
+});

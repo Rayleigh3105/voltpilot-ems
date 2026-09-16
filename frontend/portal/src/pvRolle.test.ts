@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { RollenKanonischerWert } from './api';
-import { pvRolleView, teilSummeText } from './pvRolle';
+import type { RollenKanonischerWert, SiteTopology } from './api';
+import { pvRolleView, teilSummeText, rollenView, rollenStand, cockpitRollenTopologie } from './pvRolle';
 
 /**
  * vp-agg §2.4/B — die reine Ableitung der Cockpit-PV-Rolle. Sie entscheidet, ob das Cockpit ein
@@ -108,5 +108,41 @@ describe('teilSummeText: „aus N von M Geräten", nur wenn informativ', () => {
       }),
     )!;
     expect(teilSummeText(v)).toBe('aus 0 von 1 Geräten');
+  });
+});
+
+describe('H-3: alle drei Rollen bleiben Serverzahlen', () => {
+  it.each(['pv', 'consumer', 'grid'])('%s: Rückfall, null, Stand und ein mehrfach zugeordneter Summenwert', (role) => {
+    expect(rollenView(wert({ role, zuordnung_vorhanden: false }))).toBeNull();
+    expect(rollenView(wert({ role, wert: null }))?.summe).toBeNull();
+    const eingang = wert({ role, wert: -3.5, stand: '2026-09-16T10:15:00+02:00', geraete: ['a', 'b'].map(entity_id => ({
+      entity_id, name: entity_id, art: 'gesamtwert', wert: -3.5, liefernd: true, grund: null,
+    })) });
+    const view = rollenView(eingang)!;
+    expect(view.summe).toBe(-3.5); // niemals zwei Gerätebeiträge erneut addieren
+    expect(view.zeilen).toHaveLength(2);
+    expect(rollenStand(view.stand)).toBe('Stand 10:15 Uhr');
+  });
+
+  it('übernimmt nur zugeordnete Rollen in eine Kopie der Cockpit-Topologie', () => {
+    const raw: SiteTopology = { schemaVersion: '1.0', entities: [], topology: { schema_version: '1.0', nodes: [
+      { role: 'grid', value_kw: 99, flow_active: true, direction: 'in', members: [] },
+      { role: 'storage', soc_pct: 63, flow_active: false, members: [] },
+    ] } };
+    expect(cockpitRollenTopologie(raw, [null, wert({ zuordnung_vorhanden: false })])).toBe(raw);
+    const grid = wert({ role: 'grid', wert: -3.5, geraete: [{ entity_id: 'a', name: 'Netz', art: 'gesamtwert', wert: -3.5, liefernd: true, grund: null }] });
+    const neu = cockpitRollenTopologie(raw, [grid])!;
+    expect(neu.topology.nodes[0]).toMatchObject({ value_kw: 3.5, direction: 'out', flow_active: true });
+    expect(neu.topology.nodes[1]).toBe(raw.topology.nodes[1]);
+    expect(raw.topology.nodes[0].value_kw).toBe(99);
+    const stumm = cockpitRollenTopologie(raw, [{ ...grid, wert: null }])!.topology.nodes[0];
+    expect(stumm.value_kw).toBeUndefined();
+    expect(stumm.direction).toBeUndefined();
+    expect(stumm.flow_active).toBe(false);
+  });
+
+  it('erfindet keinen Stand', () => {
+    expect(rollenStand(null)).toBe('Stand unbekannt');
+    expect(rollenStand('kaputt')).toBe('Stand unbekannt');
   });
 });

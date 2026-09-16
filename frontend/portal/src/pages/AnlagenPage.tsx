@@ -1515,13 +1515,13 @@ export function AnlageSeite({
   const [eigenDialog, setEigenDialog] = useState<
     { offen: true; bearbeiten: EigeneAuswertungDef | null } | null
   >(null);
-  // vp-agg §2.4/B · die kanonische PV-ROLLE der Anlage: existiert eine
-  // Standort-PV-Zuordnung, trägt die Cockpit-Zahl ein dezentes „berechnet" und
-  // der Fluss zeigt die zusammengefasste Rolle statt telemetry.pv_power_kw. Der
-  // Abruf frischt mit dem Live-Schnappschuss auf (`ovSite.live.ts`), damit die
-  // Aufschlüsselung nicht neben der Flusszahl driftet. Fail-soft: ohne Antwort /
-  // ohne Zuordnung bleibt die Fläche stumm (der Rückfall ist unmarkiert).
-  const [pvRollen, setPvRollen] = useState<RollenKanonischerWert | null>(null);
+  // Der Rollenabruf frischt mit dem Schnappschuss auf; Antworten einer vorigen
+  // Anlage werden auch vor dem nächsten Effekt niemals am neuen Standort gezeigt.
+  const [rollenStand, setRollenStand] = useState<{
+    siteId: string; werte: (RollenKanonischerWert | null)[];
+  } | null>(null);
+  const [pvRollen, verbrauchRollen, netzRollen] = rollenStand?.siteId === site.id
+    ? rollenStand.werte : [null, null, null];
   // ⚠ Der Abruf hängt an den GESPEICHERTEN Auswertungen, nicht am Entwurf: der
   // Server beantwortet genau die gespeicherten, und der Schlüssel ändert sich
   // damit exakt dann, wenn ein Speichern gelandet ist. Am Entwurf zu hängen
@@ -1549,23 +1549,17 @@ export function AnlageSeite({
       aktiv = false;
     };
   }, [site.id, eigenIds, reloadKey]);
-  // vp-agg §2.4/B: die kanonische PV-Rolle der Anlage. Der Schlüssel schliesst
-  // `ovSite.live.ts` ein, damit die Aufschlüsselung mit dem Live-Fluss mitzieht
-  // statt bis zum nächsten Anlagenwechsel einzufrieren. Fail-soft.
+  // Drei unabhängige Lesewege, gemeinsam übernommen: ein fehlgeschlagener Abruf
+  // verbirgt nur seine Aufschlüsselung. Die Flottenzahl bleibt die aus /overview.
   const liveTs = ovSite?.live?.ts ?? null;
   useEffect(() => {
     let aktiv = true;
-    api.rollenWert(site.id, 'pv').then(
-      (r) => {
-        if (aktiv) setPvRollen(r);
-      },
-      () => {
-        if (aktiv) setPvRollen(null);
-      },
-    );
-    return () => {
-      aktiv = false;
-    };
+    Promise.all(['pv', 'consumer', 'grid'].map((rolle) =>
+      api.rollenWert(site.id, rolle).catch(() => null),
+    )).then((werte) => {
+      if (aktiv) setRollenStand({ siteId: site.id, werte });
+    });
+    return () => { aktiv = false; };
   }, [site.id, liveTs, reloadKey]);
   const eigenWerteById = useMemo(() => werteNachId(eigenWerte), [eigenWerte]);
   /**
@@ -1659,6 +1653,8 @@ export function AnlageSeite({
           sources={sources}
           pins={siteEntityPins}
           pvRollen={pvRollen}
+          verbrauchRollen={verbrauchRollen}
+          netzRollen={netzRollen}
           consumers={consumersView}
           onOpenConsumers={() => onOpenSub('steuerung')}
           onOpenSub={onOpenSub}

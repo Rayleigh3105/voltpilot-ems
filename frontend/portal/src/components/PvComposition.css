@@ -345,3 +345,9 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+/* Rollen-Aufschlüsselung: dieselben Flussfarben, auch auf schmalen Geräten. */
+.vp-rolle-consumer { --vp-flow-pv: var(--vp-flow-load); --vp-flow-pv-soft: var(--vp-flow-load-soft); }
+.vp-rolle-grid { --vp-flow-pv: var(--vp-flow-grid); --vp-flow-pv-soft: var(--vp-flow-grid-soft); }
+.vp-pvrolle-kopf { flex-wrap: wrap; min-height: 44px; }
+.vp-rolle-stand { margin: var(--vp-space-1) var(--vp-space-3); color: var(--vp-text-gray); font-size: .75rem; }
