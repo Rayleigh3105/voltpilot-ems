@@ -1,9 +1,9 @@
-# Bezugsgrößen im Portal (AP-09 IP-9)
+# Bezugsgrößen und Import-Assistent im Portal (AP-09 IP-9/IP-15)
 
 Die Unternehmenswelt `#/portfolio/bezugsgroessen` liest die vorhandene Liste einschließlich
 `bezugsflaechen`. Flächen bleiben Zeilen ohne Bezugsgrößen-ID; der Weg führt zum bestehenden
-Gebäude-/Bereichsbaum. Keine zusätzliche Flächenpflege oder CSV. Werteingabe und Ablesungen ergänzt
-[IP-10](uems-werte-portal.md).
+Gebäude-/Bereichsbaum. Es gibt keine zusätzliche Flächenpflege. Werteingabe und Ablesungen ergänzt
+[IP-10](uems-werte-portal.md); Dateiimporte laufen über den Vier-Schritt-Assistenten dieser Fläche.
 
 ## Navigation und Rechte
 
@@ -38,10 +38,25 @@ Der Standortfilter zählt unternehmensweite Objekte keinem Standort zu und erkl�
 - Die Clientmethoden aus IP-5/IP-6 werden unverändert verwendet; `BezugsgroessenListe` benennt
   ihren Umschlag. Backend und Vertragsdateien werden hier nicht geändert.
 
+## Dateiimport
+
+- `BezugsdatenImportDialog.tsx` führt durch Datei, Spaltenzuordnung, Vorschau und bestätigte
+  Übernahme. Die Tabelle scrollt in ihrem Rahmen; auf dem Telefon bleibt der Modal-Fuß erreichbar.
+- `api.ts` sendet Vorschau und Übernahme als `FormData`: Datei plus genau eine selbst gepflegte
+  Zuordnung oder `vorlage_id`; bei der Übernahme zusätzlich die Vorschau-Kennung und gegebenenfalls
+  den wortgleichen Teilübernahme-Satz des Servers.
+- Kodierung, Trennzeichen, Kopfzeile, Zähler, Urteile und Befund-Sätze kommen aus der Vorschauantwort.
+  `bezugsdatenVorschau.ts` leitet nur Anzeigezahlen und Knopftext ab und formuliert keinen Befund neu.
+- Vorlagen gehören dem Kundenbereich. Auswahl und Speichern verwenden die versionierten IP-14-Routen.
+- Konfliktentscheidung, Importprotokoll, Doppelimport-Banner und Rücknahme bleiben bei IP-16. Der
+  Assistent zeigt Konfliktzahlen, übernimmt sie aber nicht ohne die dort vorgesehene Entscheidung.
+
 ## Nachweise
 
 `bezugsgroesseListe.test.ts`, `apiBezugsgroessen.test.ts`, `copy.test.ts`, Navigation-/Shell- und
-Bestandsschutztests; `e2e/bezugsgroessen.spec.ts` bei 375/1440 px (Liste, Anlegen, Archivieren,
-Fokus, Modal/Picker, Rechte, Fehler, O18). `BEZUGSGROESSEN_BILDER` schreibt Screenshots aus der
+Bestandsschutztests; `bezugsdatenVorschau.test.ts` prüft Zähler und Vertragssätze;
+`e2e/bezugsgroessen.spec.ts` bei 375/1440 px (Liste, Anlegen, Archivieren, vier Importschritte,
+Fokus, Modal/Picker, Rechte, Fehler, O18). `BEZUGSGROESSEN_BILDER` und
+`BEZUGSDATEN_IMPORT_BILDER` schreiben Screenshots aus der
 Ahrenberg-Bühne. `ansicht=bezugsgroessen-b` ist ausschließlich eine E2E-Ansicht der Alternative
 „Reiter unter Messstellen“ für die Mitteilung an firstmate; kein Produktionspfad.

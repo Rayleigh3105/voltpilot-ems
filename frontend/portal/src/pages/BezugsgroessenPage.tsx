@@ -9,6 +9,7 @@ import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { VpPicker } from '../components/VpPicker';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { BezugsgroesseAnlegenDialog } from '../components/BezugsgroesseAnlegenDialog';
+import { BezugsdatenImportDialog } from '../components/BezugsdatenImportDialog';
 import * as B from '../bezugsgroesseListe';
 import './BezugsgroessenPage.css';
 
@@ -28,6 +29,7 @@ export function BezugsgroessenPage() {
   const [neu, setNeu] = useState(0);
   const [filter, setFilter] = useState({ standort: null as string | null, prozess: null as string | null, archiviert: false });
   const [anlegen, setAnlegen] = useState(false);
+  const [importOffen, setImportOffen] = useState(false);
   const [archiv, setArchiv] = useState<B.Zeile | null>(null);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -36,6 +38,7 @@ export function BezugsgroessenPage() {
   const kopf = useRef<HTMLHeadingElement>(null);
   const { darf } = useRollen();
   const verwalten = (standort: string | null) => darf('bezugsgroesse.verwalten', standort);
+  const darfImportieren = stand ? darf('bezugsgroesse.importieren', null) || stand.daten.standorte.some(s => darf('bezugsgroesse.importieren', s.id)) : false;
   useEffect(() => {
     let aktiv = true;
     setLadefehler(false);
@@ -58,7 +61,10 @@ export function BezugsgroessenPage() {
   return <section className="vp-bz" aria-label={B.TITEL}>
     <header className="vp-bz-kopf">
       <div><h1 tabIndex={-1} ref={kopf}>{B.TITEL}</h1><p>Die Grundlage für Kennzahlen je Kilogramm, Stunde oder Quadratmeter.</p></div>
-      {stand && stand.orte.some(o => o.waehlbar && verwalten(o.standort)) && <Button onClick={e => { ausloeser.current = e.currentTarget; setAnlegen(true); setErfolg(null); }}><Icon name="plus" size={16} />{B.ANLEGEN}</Button>}
+      {stand && <div className="vp-bz-aktionen">
+        {darfImportieren && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setImportOffen(true); setErfolg(null); }}>Werte importieren</Button>}
+        {stand.orte.some(o => o.waehlbar && verwalten(o.standort)) && <Button onClick={e => { ausloeser.current = e.currentTarget; setAnlegen(true); setErfolg(null); }}><Icon name="plus" size={16} />{B.ANLEGEN}</Button>}
+      </div>}
     </header>
     {erfolg && <p role="status" className="vp-bz-erfolg">{erfolg}</p>}
     {ladefehler ? <div role="alert"><p>Die Bezugsgrößen konnten nicht geladen werden.</p><Button variant="outline" onClick={() => setNeu(n => n + 1)}>Erneut versuchen</Button></div> : !stand ? <p role="status">Bezugsgrößen werden geladen …</p> : <>
@@ -80,6 +86,7 @@ export function BezugsgroessenPage() {
       </ul>}
     </>}
     {anlegen && stand && <BezugsgroesseAnlegenDialog orte={stand.orte} onClose={schliessen} onGespeichert={b => { setStand(s => s ? { ...s, liste: { ...s.liste, bezugsgroessen: [...s.liste.bezugsgroessen, b] } } : s); setFilter({ standort: null, prozess: null, archiviert: false }); setErfolg(`${b.kennzeichen} · ${b.name} ist angelegt.`); schliessen(); }} />}
+    {importOffen && stand && <BezugsdatenImportDialog bezugsgroessen={stand.liste.bezugsgroessen} onClose={() => { setImportOffen(false); requestAnimationFrame(() => ausloeser.current?.focus()); }} />}
     {archiv && archiv.standort !== undefined && verwalten(archiv.standort) && <ConfirmDialog open title="Bezugsgröße archivieren?" intro={`„${archiv.name}“ wird archiviert.`} consequences={B.ARCHIV_FOLGEN} confirmLabel="Archivieren" busy={busy} onConfirm={() => void archivieren()} onCancel={() => { if (!busy) schliessen(); }} extra={fehler ? <p role="alert">{fehler}</p> : undefined} />}
   </section>;
 }

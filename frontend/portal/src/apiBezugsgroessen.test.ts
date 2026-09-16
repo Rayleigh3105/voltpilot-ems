@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from './api';
+import { api, type BezugsdatenZuordnung } from './api';
 vi.mock('./auth', () => ({ freshToken: async () => 'test', AuthRedirectError: class extends Error {} }));
 afterEach(() => vi.unstubAllGlobals());
 it('IP-9 verwendet die bestehenden Listen-, Anlege- und Archivierungsrouten', async () => {
@@ -29,4 +29,23 @@ it('IP-10 sendet Texte und eine ausdrückliche leere Monatszuordnung an die best
     [expect.stringContaining('/messstellen/MS%2F21/ablesungen'), { method: 'POST', body: expect.stringContaining('"zuordnung_monat":null') }],
     [expect.stringContaining('/ablesungen/2026-10-25T02%3A30%3A00%2B01%3A00/berichtigung'), { method: 'POST' }],
   ]);
+});
+
+it('IP-15 sendet Datei, Zuordnung und Bestätigung als echtes Multipart ohne JSON-Kopf', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })); vi.stubGlobal('fetch', fetch);
+  const datei = new File(['Periode;Wert\n2026-10;12'], 'werte.csv', { type: 'text/csv' });
+  const zuordnung: BezugsdatenZuordnung = {
+    csv: null, spalten: { periode: 1, bis: null, wert: 2, einheit: null, bezug: null, bemerkung: null },
+    deutung: 'periode', zahlformat: 'auto', einheit: null, bezugsgroesse: 'BZ-1', bezug_tabelle: {}, synonyme: {},
+  };
+  await api.bezugsdatenVorschau(datei, zuordnung);
+  await api.bezugsdatenImportieren(datei, zuordnung, null, { vorschau: 'VS1.test', entscheidungen: {}, begruendung: null, teiluebernahme: '1 von 2 Zeilen übernehmen' });
+  const [vorschau, uebernahme] = fetch.mock.calls.map(([, init]) => init as RequestInit);
+  for (const init of [vorschau, uebernahme]) {
+    expect(init.body).toBeInstanceOf(FormData);
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    expect((init.body as FormData).get('datei')).toBe(datei);
+    expect((init.body as FormData).get('zuordnung')).toBe(JSON.stringify(zuordnung));
+  }
+  expect((uebernahme.body as FormData).get('bestaetigung')).toBe('{"vorschau":"VS1.test","entscheidungen":{},"begruendung":null,"teiluebernahme":"1 von 2 Zeilen übernehmen"}');
 });
