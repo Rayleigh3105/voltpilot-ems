@@ -58,7 +58,7 @@ import {
 } from '../messstelleZuordnung';
 import { quelleKarte, type BindungsRolle, type QuelleGroesseKarte } from '../quelleBinden';
 import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
-import { boxWechselAmGeraet } from '../boxAnQuelle';
+import { boxAmGeraet, boxWechselAmGeraet } from '../boxAnQuelle';
 import { useBoxenAnQuellen } from '../useBoxenAnQuellen';
 import { nebengroessen, periodeAus } from '../uemsWerteKarte';
 import './MessstelleSeite.css';
@@ -386,6 +386,22 @@ function MessstelleSeiteMitId({
           quelle={zeile?.quelle ?? null}
           korrekturKontext={quellen && zeile?.ort.standort_id && haupt?.einheit && m.art === 'gemessen' && m.lebenszyklus !== 'archiviert'
             ? { quellen, standort: zeile.ort.standort_id, einheit: haupt.einheit } : undefined}
+          herkunftKontext={zeile?.quelle.fuehrend && zeile.ort.standort_id ? {
+            deviceId: (zeitpunkt) => boxAmGeraet(boxen.karte, zeile.quelle.fuehrend?.geraet.id, zeitpunkt)?.boxId ?? null,
+            siteId: zeile.ort.standort_id,
+            entityId: zeile.quelle.fuehrend.komponente,
+            pointKey: zeile.quelle.fuehrend.kanal,
+            geraete: {
+              [zeile.quelle.fuehrend.geraet.id]: [
+                zeile.quelle.fuehrend.geraet.geraet,
+                zeile.quelle.fuehrend.geraet.einbau,
+                zeile.quelle.fuehrend.geraet.bezeichnung,
+              ].filter(Boolean).join(' · '),
+            },
+            boxen: Object.fromEntries(boxen.quellen.flatMap(q => (q.zeitraeume ?? [])
+              .filter(z => z.box.name)
+              .map(z => [z.box.id, z.box.name!] as const))),
+          } : undefined}
           // AP-13 IP-12 (L6): Übergabe und Box-Tausch im Verlauf sprechen aus der Zeitachse der Zuständigkeiten.
           boxWechsel={boxWechselAmGeraet(boxen.karte, zeile?.quelle.fuehrend?.geraet.id, boxen.quellen)}
           // AP-13 IP-5: der Vergleich braucht die Hauptgrößen der anderen Messstellen („passend“, O12).

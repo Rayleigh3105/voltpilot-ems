@@ -14,6 +14,7 @@ import {
   type MeasurementHistory,
   type MeasurementRange,
   type MeasurementSelectionState,
+  type MesskanalListe,
 } from '../api';
 import {
   HINZU,
@@ -33,6 +34,7 @@ import {
 import { BEOBACHTEN_HINWEIS } from '../registerFamilie';
 import { NO_DATA } from '../nodata';
 import type { MiniPoint } from '../miniChart';
+import { MesswertHerkunftKarte, nachlieferungMarker, rohwerteHinweis } from './MesswertHerkunftKarte';
 import { useEChart } from '../useEChart';
 import { ConfirmDialog } from './ConfirmDialog';
 import { MiniLineSpark } from './MiniChart';
@@ -103,14 +105,18 @@ interface Umschaltung {
   minCadence: number | null;
 }
 
-function HistoryChart({ history }: { history: MeasurementHistory }) {
+function HistoryChart({ history, onWaehlen }: { history: MeasurementHistory; onWaehlen: (index: number) => void }) {
   const ref = useEChart((chart, width) => {
     const numeric = history.data.some((d) => d.value != null);
-    const markerLines = history.markers.map((m) => ({
+    const markerLines = history.markers.filter((m) => !m.until).map((m) => ({
       xAxis: m.time,
       label: { formatter: width < 620 ? '' : m.label, color: '#52606d' },
       lineStyle: { color: '#8a94a3', type: 'dashed' as const },
     }));
+    const markerBands = history.markers.filter((m) => m.until).map((m) => ([
+      { xAxis: m.time, name: nachlieferungMarker(history, m) },
+      { xAxis: m.until },
+    ]));
     const gaps = history.data.filter((d) => d.gap).map((d) => ({
       coord: [d.time, d.value], name: 'Datenlücke', value: 'Lücke',
       itemStyle: { color: '#c25b26' },
@@ -131,11 +137,29 @@ function HistoryChart({ history }: { history: MeasurementHistory }) {
         lineStyle: { width: 2, color: '#1665d8' },
         itemStyle: { color: '#1665d8' },
         markLine: { silent: true, symbol: ['none', 'none'], data: markerLines },
+        markArea: {
+          silent: true,
+          label: { show: width >= 620, color: '#6b3a1e' },
+          itemStyle: { color: 'rgba(194, 91, 38, .12)' },
+          data: markerBands,
+        },
         markPoint: { data: gaps },
       }],
     }, true);
-  }, [history]);
-  return <div ref={ref} className="vp-measure-chart" role="img" aria-label={`Verlauf ${history.meta.label}`} />;
+    chart.off('click');
+    chart.on('click', (p: { dataIndex?: number }) => {
+      if (typeof p.dataIndex === 'number') onWaehlen(p.dataIndex);
+    });
+  }, [history, onWaehlen]);
+  const waehleAusBild = (e: React.MouseEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = Math.min(Math.max(0, e.clientX - r.left - 48), Math.max(1, r.width - 66));
+    const index = Math.min(history.data.length - 1, Math.floor((x / Math.max(1, r.width - 66)) * history.data.length));
+    if (index >= 0) onWaehlen(index);
+  };
+  return <div className="vp-measure-chart-wrap" onClick={waehleAusBild}>
+    <div ref={ref} className="vp-measure-chart" role="img" aria-label={`Verlauf ${history.meta.label}`} />
+  </div>;
 }
 
 /** Eine Zeile des Katalog-Einschubs (der technische Blick auf einen Punkt). */
@@ -264,7 +288,7 @@ function BeobZeile({ zeile, spark, onHistory, onStop }: {
  */
 export function BeobachteteRegister({
   deviceId, siteId, entityId, familien, eigeneErlaubt = true, registerFaehig = true,
-  geraetName = null, lesbar = true, bruecke = null, onBrueckeVerbraucht, onKurzfassung,
+  geraetName = null, boxNamen = {}, lesbar = true, bruecke = null, onBrueckeVerbraucht, onKurzfassung,
 }: {
   deviceId: string | null | undefined;
   siteId?: string;
@@ -282,6 +306,8 @@ export function BeobachteteRegister({
   registerFaehig?: boolean;
   /** Für den Titel des Katalog-Einschubs - er NENNT das Gerät. */
   geraetName?: string | null;
+  /** Box-Kennung → Kundenname; unbekannte Namen werden nie aus Kennungen geraten. */
+  boxNamen?: Readonly<Record<string, string>>;
   /** Kann die Box einen Punkt dieses Geräts heute lesen (Stufe 3c)? */
   lesbar?: boolean;
   /** Die Brücke aus einer Lesung: „gut gefunden, behalten". */
@@ -332,7 +358,9 @@ export function BeobachteteRegister({
   const [historyPoint, setHistoryPoint] = useState<{ pointKey: string; label: string } | null>(null);
   const [historyReturnToLibrary, setHistoryReturnToLibrary] = useState(false);
   const [history, setHistory] = useState<MeasurementHistory | null>(null);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [messkanaele, setMesskanaele] = useState<MesskanalListe | null>(null);
   const [range, setRange] = useState<MeasurementRange>('24h');
   const [freeFrom, setFreeFrom] = useState(() => new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 16));
   const [freeTo, setFreeTo] = useState(() => new Date().toISOString().slice(0, 16));
@@ -390,6 +418,7 @@ export function BeobachteteRegister({
   useEffect(() => {
     if (!historyPoint || !deviceId) return;
     setHistory(null);
+    setHistoryIndex(null);
     setHistoryError(null);
     const from = range === 'free' ? isoOrUndefined(freeFrom) : undefined;
     const to = range === 'free' ? isoOrUndefined(freeTo) : undefined;
@@ -397,6 +426,17 @@ export function BeobachteteRegister({
       siteId, entityId)
       .then(setHistory, (e) => setHistoryError(e instanceof Error ? e.message : 'Der Verlauf konnte nicht geladen werden.'));
   }, [historyPoint, range, representation, freeFrom, freeTo, deviceId, siteId, entityId]);
+
+  useEffect(() => {
+    if (!siteId || !entityId) return;
+    api.komponenteMesskanaele(siteId, entityId).then(setMesskanaele, () => setMesskanaele(null));
+  }, [siteId, entityId]);
+
+  const geraeteNamen = useMemo(() => Object.fromEntries(
+    (messkanaele?.messkanaele ?? []).flatMap((m) => m.geraet
+      ? [[m.geraet.id, [m.geraet.geraet, m.geraet.einbau, m.geraet.seriennummer].filter(Boolean).join(' · ')]]
+      : []),
+  ), [messkanaele]);
 
   // ⚠ Eigene Register tragen KEINE Katalog-Familie, lassen sich also nicht
   // schneiden. Sie werden gegen den primären Wechselrichter gelesen - deshalb
@@ -654,8 +694,8 @@ export function BeobachteteRegister({
       <Modal open={historyPoint != null} onClose={closeHistory} title={historyPoint ? `Verlauf · ${historyPoint.label}` : 'Verlauf'} footer={history && historyPoint ? <Recht aktion="export.standort"><Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined, siteId, entityId)}>CSV mit Metadaten exportieren</Button></Recht> : null}>
         <div className="vp-measure-range" aria-label="Zeitraum">{ranges.map(([key, label]) => <button type="button" key={key} aria-pressed={range === key} className={range === key ? 'is-active' : ''} onClick={() => setRange(key)}>{label}</button>)}</div>
         {range === 'free' && <div className="vp-measure-free"><div><VpDatePicker label="Von · Datum" value={freeFrom.split('T')[0]} onChange={(value) => setFreePart('from', 'date', value)} /><VpTimePicker label="Von · Uhrzeit" value={freeFrom.split('T')[1] ?? ''} onChange={(value) => setFreePart('from', 'time', value)} /></div><div><VpDatePicker label="Bis · Datum" value={freeTo.split('T')[0]} onChange={(value) => setFreePart('to', 'date', value)} /><VpTimePicker label="Bis · Uhrzeit" value={freeTo.split('T')[1] ?? ''} onChange={(value) => setFreePart('to', 'time', value)} /></div></div>}
-        {(history?.meta.rawAvailable || representation === 'raw') && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" aria-pressed={representation === 'decoded'} className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" aria-pressed={representation === 'raw'} className={representation === 'raw' ? 'is-active' : ''} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
-        {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} /><p className="vp-measure-hint">{history.meta.aggregationExplanation}</p><ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {m.label}</li>)}</ul></>}
+        {history && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" aria-pressed={representation === 'decoded'} className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" aria-pressed={representation === 'raw'} className={representation === 'raw' ? 'is-active' : ''} disabled={!history.meta.rawAvailable} title={!history.meta.rawAvailable ? 'Rohwerte nicht mehr verfügbar (älter als 90 Tage)' : undefined} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
+        {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} onWaehlen={setHistoryIndex} /><p className="vp-measure-hint">{rohwerteHinweis(history) ?? history.meta.aggregationExplanation}</p><p className="vp-measure-hint">Tippen Sie auf einen Messwert, um seine Herkunft zu sehen.</p>{historyIndex !== null && <MesswertHerkunftKarte history={history} index={historyIndex} namen={{ geraete: geraeteNamen, boxen: boxNamen }} />}<ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {nachlieferungMarker(history, m)}</li>)}</ul></>}
       </Modal>
 
       <Modal open={customOpen} onClose={() => setCustomOpen(false)} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Recht aktion="mess_selektion.bearbeiten"><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy}>Jetzt aufzeichnen</Button></Recht></>}>

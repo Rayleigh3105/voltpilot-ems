@@ -72,6 +72,7 @@ import { HerkunftsZeile } from './HerkunftsZeile';
 import { ZeitSegment } from './HistorieWelt';
 import type { BoxWechsel } from '../boxAnQuelle';
 import { MessstellenVerlauf } from './MessstellenVerlauf';
+import { HerkunftAmSchritt, type HerkunftKontext } from './MesswertHerkunftKarte';
 import { DeltaZeile, ReihenKarten, useVergleich, VergleichLeiste } from './WerteVergleich';
 import { ErrorState, Skeleton } from './States';
 import { VpDatePicker } from './VpDatePicker';
@@ -126,6 +127,7 @@ export function WerteSektion({
   onVergleich,
   onQuelleZuordnen,
   korrekturKontext,
+  herkunftKontext,
   onZeitraum,
   rahmen = (inhalt) => inhalt,
 }: {
@@ -149,6 +151,8 @@ export function WerteSektion({
   /** „Quelle zuordnen“ im Leerzustand — nur mit Recht; ohne steht der Satz, wer es kann. */
   onQuelleZuordnen?: () => void;
   korrekturKontext?: KorrekturKontext;
+  /** Geräte-/Kanaladresse für die Herkunfts-Karte des gewählten Verlaufswerts. */
+  herkunftKontext?: HerkunftKontext;
   /**
    * AP-13 IP-12 (L6): die Box-Wechsel der Datenquelle dieser Messstelle aus der Zeitachse — nur, wo der
    * Wirt sie kennt (die Messstellen-Seite). Mit ihnen sprechen Übergabe und Box-Tausch ihren vollen Satz.
@@ -404,6 +408,7 @@ export function WerteSektion({
                   if (!pruefen && (!ersatz || !rollen.darf('ersatzwert.erfassen', korrekturKontext.standort))) return null;
                   return <button type="button" className="vp-mv-korrektur" data-korrektur-fokus={`${kennzeichen}:${kennung}`} onClick={ev => oeffneKorrektur({ art: ersatz ? 'ersatzwert' : 'korrekturen', ereignis: kennung }, ev.currentTarget)}>{ersatz ? e.art === 'data_gap' ? 'Ersatzwert eintragen' : 'Ablesestand nachtragen' : 'Korrektur prüfen'}</button>;
                 } : undefined}
+                herkunft={herkunftKontext ? (s) => <HerkunftAmSchritt kontext={herkunftKontext} von={s.von} bis={s.bis} /> : undefined}
                 versionen={(s) => {
                   const se = einstieg({ ...verlaufAntwort, werte: [s.wert] });
                   return se && <VersionenEinstieg einstieg={se} onOeffnen={() => setVersionen({ einstieg: se, periode: s.titel })} />;

@@ -24,9 +24,9 @@ import {
   prozesseVon,
   verteilungVon,
 } from '../src/test/messstelleSeiteFixtures';
-import type { MessstelleVerteilung, MessstelleWerte } from '../src/api';
+import type { MeasurementHistory, MessstelleVerteilung, MessstelleWerte } from '../src/api';
 import { verschiebe } from '../src/picker/datum';
-import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
+import { ahrenbergDatenquellen, ahrenbergUemsGeraete, BOX_IDS, geraetId } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { quellenDerMessstellenBuehne } from '../src/test/messstelleQuellenFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
@@ -72,6 +72,31 @@ const expect = baseExpect.configure({ timeout: 30_000 });
 const BILDER = process.env.MESSSTELLE_SEITE_BILDER;
 
 const json = (body: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
+
+const herkunftsVerlauf = (url: URL): MeasurementHistory => ({
+  meta: {
+    pointKey: decodeURIComponent(url.pathname.split('/').at(-2) ?? 'energy-import'), label: 'Wirkenergie Bezug',
+    sourceLabel: 'Energy import', unit: 'kWh', aggregationKind: 'counter', semanticStatus: 'known',
+    catalogVersion: '2026.08.26.3', representation: 'decoded', rawAvailable: false,
+    from: url.searchParams.get('from') ?? '2026-11-03T16:30:00+01:00',
+    to: url.searchParams.get('to') ?? '2026-11-03T16:45:00+01:00', bucketSeconds: 900,
+    aggregationExplanation: 'Viertelstundenwerte.', siteId: FIXTURE_IDS.st1, entityId: 'entity',
+    quelle: 'viertelstunde', quelleErklaerung: 'Viertelstundenwerte.', rohGrenze: '2026-10-20T00:00:00+02:00',
+  },
+  data: [{
+    time: url.searchParams.get('from') ?? '2026-11-03T16:30:00+01:00', value: 22.4, minimum: 22.4,
+    maximum: 22.4, text: null, sampleCount: 15, gap: false,
+    herkunft: {
+      quelle: 'viertelstunde', wertart: 'counter', abdeckungProzent: 93, erhalten: 14, erwartet: 15,
+      nGood: 14, nUncertain: 0, nInvalid: 0, nStale: 0, nDeviceError: 0,
+      zustand: 'endgueltig', endgueltigAb: '2026-11-10T17:45:00+01:00', version: 1,
+      nachgeliefert: 14, zustellart: 'nachgeliefert', letzteEingangszeit: '2026-11-03T17:31:00+01:00',
+      geraetEinbau: geraetId('GR-7'), geraetEinbauZwei: null, box: BOX_IDS['E-2'], boxZwei: null,
+      fassung: 1, katalogVersion: '2026.08.26.3', rolle: 'fuehrend', standAnfang: 418800, standEnde: 419160,
+    },
+  }],
+  markers: [{ time: '2026-11-03T14:00:00+01:00', until: '2026-11-03T17:30:00+01:00', kind: 'data_gap', label: 'Datenlücke', count: 1 }],
+});
 
 interface Gesendet {
   methode: string;
@@ -233,6 +258,9 @@ async function cloud(
       return route.fulfill(json({ stichtag: null, kostenstellen: kostenstellenAhrenberg() }));
     }
     if (pfad === '/api/v1/standorte') return route.fulfill(json(ahrenbergHeute()));
+    if (/\/measurement-selection\/[^/]+\/history$/.test(pfad) && methode === 'GET') {
+      return route.fulfill(json(herkunftsVerlauf(url)));
+    }
     // AP-13 IP-12 (L6): die Zuständigkeiten der Datenquellen und der Weg Gerät → Quelle (zwei Aufrufe je Anlage).
     const anlage = /^\/api\/v1\/sites\/([^/]+)\/(data-sources|geraete)$/.exec(pfad);
     if (anlage && methode === 'GET') {
@@ -727,6 +755,13 @@ test('O1 · MS-10 am 04.11.2026: der Verlauf des 03.11. — die Lücke als Fläc
   await expect(schritt).toContainText('unvollständig (Menge aus Zählerständen)');
   await expect(schritt).toContainText(/Verlauf 93\s% · 14 von 15 Werten/);
   await expect(schritt).toContainText('Anfang nicht gemessen (kein Stand an der Periodengrenze)');
+  const herkunft = verlauf.getByTestId('herkunfts-karte');
+  await expect(herkunft).toContainText('Herkunft');
+  await expect(herkunft).toContainText('14 × gut');
+  await expect(herkunft).toContainText('14 von 15');
+  await expect(herkunft).toContainText('Box Halle 2');
+  await expect(verlauf).toContainText('Rohwerte (60 s) bis 20.10.2026 verfügbar — ab hier Viertelstundenwerte.');
+  await expect(verlauf.getByRole('button', { name: 'Rohwert' })).toBeDisabled();
   // Tippflächen: ‹ › je mindestens 44 px, das Bild selbst ist über seine volle Höhe Ziel.
   const vorher = verlauf.getByRole('button', { name: 'Vorherige Viertelstunde' });
   for (const knopf of [vorher, verlauf.getByRole('button', { name: 'Nächste Viertelstunde' })]) {
