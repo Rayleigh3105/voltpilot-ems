@@ -1,0 +1,28 @@
+.vp-sta-schritt { display: grid; gap: var(--vp-space-4, 16px); min-width: 0; }
+.vp-sta-schritt h3, .vp-sta-schritt h4, .vp-sta-schritt p { margin: 0; }
+.vp-sta-schritt h3 { color: var(--vp-navy-1, #1e3a5f); font-size: 1rem; }
+.vp-sta-schritt h4 { font-size: 0.9375rem; }
+.vp-sta-fuss { display: flex; align-items: center; justify-content: space-between; gap: var(--vp-space-3, 12px); width: 100%; }
+.vp-sta-fehler { color: var(--color-status-error-text, #9b1c1c); }
+.vp-sta-ok { color: var(--color-status-success-text, #166534); }
+.vp-sta-auswahl, .vp-sta-modelle { display: grid; gap: var(--vp-space-3, 12px); border: 0; padding: 0; margin: 0; }
+.vp-sta-modelle legend { margin-bottom: var(--vp-space-3, 12px); font-weight: 700; }
+.vp-sta-auswahl label, .vp-sta-modelle label { display: flex; gap: var(--vp-space-3, 12px); align-items: flex-start; padding: var(--vp-space-4, 16px); border: 1px solid var(--vp-border, #e2e8f0); border-radius: var(--vp-radius-md, 10px); background: var(--vp-surface, #fff); cursor: pointer; }
+.vp-sta-auswahl label.is-gewaehlt, .vp-sta-modelle label.is-gewaehlt { border-color: var(--vp-action, #2c5282); box-shadow: 0 0 0 1px var(--vp-action, #2c5282); }
+.vp-sta-auswahl label.is-teilnehmend { cursor: default; background: var(--vp-surface-alt, #f8fafc); }
+.vp-sta-auswahl span, .vp-sta-modelle span, .vp-sta-komponenten li > span, .vp-sta-steuerart > span { display: grid; gap: var(--vp-space-1, 4px); min-width: 0; }
+.vp-sta-auswahl small, .vp-sta-modelle small, .vp-sta-komponenten small, .vp-sta-steuerart small { color: var(--vp-text-muted, #64748b); }
+.vp-sta-hinweis, .vp-sta-ruhe, .vp-sta-fakt { padding: var(--vp-space-3, 12px); border-radius: var(--vp-radius-md, 10px); background: var(--vp-surface-alt, #f8fafc); }
+.vp-sta-komponenten { list-style: none; display: grid; gap: 0; padding: 0; margin: 0; border: 1px solid var(--vp-border, #e2e8f0); border-radius: var(--vp-radius-md, 10px); overflow: hidden; }
+.vp-sta-komponenten li, .vp-sta-steuerart { display: flex; justify-content: space-between; align-items: center; gap: var(--vp-space-4, 16px); padding: var(--vp-space-4, 16px); }
+.vp-sta-komponenten li + li, .vp-sta-steuerart + .vp-sta-steuerart { border-top: 1px solid var(--vp-border, #e2e8f0); }
+.vp-sta-weg { color: var(--vp-text-muted, #64748b); text-align: right; }
+.vp-sta-felder, .vp-sta-steuerarten { display: grid; gap: var(--vp-space-3, 12px); min-width: 0; }
+.vp-sta-fakt { display: flex; justify-content: space-between; gap: var(--vp-space-3, 12px); }
+.vp-sta-ruhe { border-left: 3px solid var(--vp-action, #2c5282); }
+@media (max-width: 600px) {
+  .vp-sta-komponenten li, .vp-sta-steuerart, .vp-sta-fakt { align-items: stretch; flex-direction: column; }
+  .vp-sta-weg { text-align: left; }
+  .vp-sta-fuss { align-items: stretch; flex-direction: column-reverse; }
+  .vp-sta-fuss button { width: 100%; min-height: 44px; }
+}

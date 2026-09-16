@@ -52,6 +52,7 @@ import { AddDeviceDrawer } from './DeviceDrawers';
 import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
 import { FunktionenKarte } from './FunktionenKarte';
+import { SteuernAssistent } from './SteuernAssistent';
 import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
 import { FunktionsZustaende, StandortGruppeKopf } from './StandortGruppeKopf';
 import { EmptyState, ErrorState, Skeleton } from './States';
@@ -150,6 +151,7 @@ export function PortfolioCockpit({
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [deviceDrawer, setDeviceDrawer] = useState(false);
+  const [steuernStandort, setSteuernStandort] = useState<string | null>(null);
   const [offen, setOffen] = useState<string | null>(null);
   /** `undefined` = lädt noch, `null` = nicht abrufbar (fail-soft). */
   const [funktionen, setFunktionen] = useState<Funktionen | null | undefined>(undefined);
@@ -583,7 +585,15 @@ export function PortfolioCockpit({
       {/* AP-01 IP-8: die Karte „Funktionen" — nur auf einer Ebene; das Portfolio
           eines Betreibers bleibt zeichengleich. */}
       {ebene && !nurAnlagen && (
-        <FunktionenKarte abschnitte={funktionenKarte(ebene, funktionen ?? null)} laedt={funktionen === undefined} />
+        <FunktionenKarte
+          abschnitte={funktionenKarte(ebene, funktionen ?? null)}
+          laedt={funktionen === undefined}
+          onSteuernEinrichten={setSteuernStandort}
+        />
+      )}
+
+      {steuernStandort && (
+        <SteuernAssistent standortId={steuernStandort} onClose={() => setSteuernStandort(null)} />
       )}
 
       {isPhone && (
