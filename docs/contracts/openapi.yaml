@@ -9192,6 +9192,11 @@ paths:
         Schreibvorgang), 409 `gleichzeitig_geaendert` mit `grund`. Die Steuerquelle
         wechselt ihre Box nicht (409 `steuerquelle`, A13). Eine bestätigte
         Vergleichsquelle wird gekennzeichnet (`vergleichsquelle`).
+        Unmittelbar vor dem Schreiben wird das physische Lesebudget der Ziel-Box aus den
+        Kanälen und Blockanfragen aller dort zum Zeitpunkt gelesenen Datenquellen vorgerechnet.
+        Eine Überschreitung ist 422 `budget_ueberschritten`; der Körper trägt Quelle, Summe,
+        Grenzen, freie Kapazität aller Boxen am Standort und die Auswege `Takt … s` und
+        `Box …`. Kein bestehender Zeitraum wird dabei verändert.
       requestBody:
         required: true
         content:
@@ -22912,7 +22917,8 @@ components:
         `pruefung_nicht_moeglich` 422 (`protokoll`), `gleichzeitig_geaendert` 409
         (`grund`), und für die Bestands-Übernahme (IP-4) `komponente_hat_quelle` 409
         (`komponenten`, `datenquellen`) und `vorschlag_geaendert` 409 (`device_id`,
-        `protokoll`, `adresse`).
+        `protokoll`, `adresse`). `budget_ueberschritten` ist 422 und trägt unter
+        `rechnung` Zahlen, freie Kapazität am Standort und beide konkrete Auswege.
       required: [code, message]
       properties:
         code:
@@ -22921,7 +22927,7 @@ components:
             spaeterer_wechsel_geplant, schon_zustaendig, ueberschneidung, adresse_an_box_vergeben,
             netzlage_fehlt, nur_ein_leser, vergleich_bestaetigen, pruefung_fehlt, pruefung_gescheitert,
             anfrage_ungueltig, weg_fest, quelle_archiviert, pruefung_nicht_moeglich, gleichzeitig_geaendert,
-            komponente_hat_quelle, vorschlag_geaendert]
+            komponente_hat_quelle, vorschlag_geaendert, budget_ueberschritten]
         message: { type: string }
         urteil: { type: string, enum: [abgelehnt, bestaetigung_noetig] }
         feld: { type: string, description: "anfrage_ungueltig: device_id, adresse, register …" }
@@ -22933,10 +22939,72 @@ components:
         datenquellen: { type: array, items: { type: string }, description: "komponente_hat_quelle: deren Kennzeichen." }
         device_id: { type: string, format: uuid, description: "vorschlag_geaendert / komponente_hat_quelle: die Box des bestätigten Vorschlags." }
         adresse: { type: string }
+        rechnung:
+          type: object
+          description: "budget_ueberschritten: serverseitige Vorrechnung; die Zahlen stammen nicht aus der Anfrage."
+          required: [code, kennzeichen, box, quelle, box_nachher, grenzen, freie_kapazitaet, auswege, gruende]
+          properties:
+            code: { type: string, enum: [budget_ueberschritten] }
+            kennzeichen: { type: string }
+            box: { type: string }
+            quelle: { $ref: "#/components/schemas/DatenquelleBudgetQuellenRechnung" }
+            box_nachher: { $ref: "#/components/schemas/DatenquelleBudgetZahlen" }
+            grenzen: { $ref: "#/components/schemas/DatenquelleBudgetGrenzen" }
+            freie_kapazitaet: { type: array, items: { $ref: "#/components/schemas/DatenquelleBudgetBox" } }
+            auswege: { $ref: "#/components/schemas/DatenquelleBudgetAuswege" }
+            gruende: { type: array, items: { type: string } }
       example:
         code: steuerquelle
         message: "Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Steuerung wechseln"
         urteil: abgelehnt
+    DatenquelleBudgetZahlen:
+      type: object
+      required: [channels, samples_per_minute, requests_per_minute, duty_cycle_percent]
+      properties:
+        channels: { type: integer, minimum: 0 }
+        samples_per_minute: { type: number, minimum: 0 }
+        requests_per_minute: { type: number, minimum: 0 }
+        duty_cycle_percent: { type: number, minimum: 0 }
+    DatenquelleBudgetQuellenRechnung:
+      type: object
+      required: [protokoll, channels, takt_s, anfragen, last]
+      properties:
+        protokoll: { type: string }
+        channels: { type: integer, minimum: 0 }
+        takt_s: { type: integer, minimum: 1, maximum: 86400 }
+        anfragen:
+          type: array
+          items:
+            type: object
+            required: [anfragen_je_takt, kosten_ms_je_anfrage]
+            properties:
+              anfragen_je_takt: { type: integer, minimum: 0 }
+              kosten_ms_je_anfrage: { type: integer, minimum: 0 }
+        last: { $ref: "#/components/schemas/DatenquelleBudgetZahlen" }
+    DatenquelleBudgetGrenzen:
+      type: object
+      required: [samples_per_minute, requests_per_minute, duty_cycle_percent]
+      properties:
+        samples_per_minute: { type: number, example: 600 }
+        requests_per_minute: { type: number, example: 30 }
+        duty_cycle_percent: { type: number, example: 20 }
+    DatenquelleBudgetBox:
+      type: object
+      required: [id, name, belegt, frei, quelle_passt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        belegt: { $ref: "#/components/schemas/DatenquelleBudgetZahlen" }
+        frei: { $ref: "#/components/schemas/DatenquelleBudgetZahlen" }
+        quelle_passt: { type: boolean }
+    DatenquelleBudgetAuswege:
+      type: object
+      required: [takt_s, takt, boxen, andere_box]
+      properties:
+        takt_s: { type: integer, nullable: true, minimum: 1, maximum: 86400 }
+        takt: { type: string, nullable: true, example: "Takt 60 s wählen" }
+        boxen: { type: array, items: { $ref: "#/components/schemas/DatenquelleBudgetBox" } }
+        andere_box: { type: string, nullable: true, example: "Box Halle 2 wählen (29 Anfragen/min frei)" }
     Geraet:
       type: object
       description: >

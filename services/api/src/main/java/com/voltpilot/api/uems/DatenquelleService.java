@@ -117,9 +117,13 @@ public class DatenquelleService {
     private final ObjectMapper json;
     private final Clock uhr;
     private UebergabeRepository uebergaben;
+    private DatenquelleBudgetService budget;
 
     @org.springframework.beans.factory.annotation.Autowired
     void uebergaben(UebergabeRepository repo) { this.uebergaben = repo; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void budget(DatenquelleBudgetService service) { this.budget = service; }
 
     /**
      * @param uhr die Uhr des Dienstes — ohne eigene {@link Clock}-Bean die Systemuhr (UTC);
@@ -357,6 +361,13 @@ public class DatenquelleService {
                 lage.boxNamen(), lage.jetzt(), ZONE);
         if (e.urteil() != Urteil.ERLAUBT) {
             throw DatenquelleAbgelehnt.regel(e);
+        }
+
+        // E6: erst vollständig vorrechnen, dann überhaupt einen Zeitraum anfassen. So kann eine
+        // neue Quelle nie die ganze bestehende Auswahl einer Box in den Edge-Deckel laufen lassen.
+        DatenquelleBudget.Ablehnung ueber = budget == null ? null : budget.pruefe(q.id(), box.id(), ab);
+        if (ueber != null) {
+            throw DatenquelleAbgelehnt.budget(ueber);
         }
 
         // Die Speicher-Regel (§4) über jeden Zeitraum, der sich ändert oder neu ist — dieselbe
