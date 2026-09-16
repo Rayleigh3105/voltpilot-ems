@@ -72,6 +72,8 @@ class BenutzerStartpasswortApiTest {
     @Autowired KeycloakAdminClient keycloak;
     static final ObjectMapper JSON = new ObjectMapper();
     static final HttpClient HTTP = HttpClient.newHttpClient();
+    // Sämtliche Antworten des Ablaufs erfassen, auch Token- und Fehlerantworten; niemals ausgeben.
+    static final List<String> HTTP_ANTWORTEN = new ArrayList<>();
     record Antwort(int status, String body, String cache) {
         JsonNode json() throws Exception { return JSON.readTree(body); }
         @Override public String toString() { return "Antwort[status=" + status + "]"; }
@@ -150,6 +152,8 @@ class BenutzerStartpasswortApiTest {
             sonstigeAntworten.add(rootDb().queryForList("SELECT row_to_json(b)::text FROM benutzer b WHERE tenant_id = ?::uuid", String.class, tenant).toString());
             for (String geheimnis : geheimnisse) {
                 // Absichtlich nur booleans prüfen: auch ein Fehlschlag darf kein Passwort drucken.
+                assertThat(HTTP_ANTWORTEN.stream().filter(a -> a.contains(geheimnis)).count())
+                        .as("genau eine HTTP-Antwort enthält das Startpasswort").isEqualTo(1);
                 assertThat(sonstigeAntworten.stream().noneMatch(a -> a.contains(geheimnis))).as("keine weitere Antwort oder DB-Zeile enthält das Passwort").isTrue();
                 assertThat(logs.list.stream().noneMatch(l -> (l.getFormattedMessage()
                         + (l.getThrowableProxy() == null ? "" : ch.qos.logback.classic.spi.ThrowableProxyUtil.asString(l.getThrowableProxy())))
@@ -201,6 +205,7 @@ class BenutzerStartpasswortApiTest {
         } finally {
             http("PUT", realm, master, Map.of("passwordPolicy", vorher.json().path("passwordPolicy").asText("")));
         }
+        assertThat(HTTP_ANTWORTEN.stream().filter(a -> a.contains(pw)).count()).isEqualTo(1);
     }
 
     private String einmal(Antwort a, List<String> geheimnisse) throws Exception {
@@ -235,6 +240,7 @@ class BenutzerStartpasswortApiTest {
     }
     private static Antwort send(HttpRequest req) throws Exception {
         HttpResponse<String> r = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        HTTP_ANTWORTEN.add(r.body());
         return new Antwort(r.statusCode(), r.body(), r.headers().firstValue("cache-control").orElse(""));
     }
 }
