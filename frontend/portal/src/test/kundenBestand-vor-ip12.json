@@ -1239,6 +1239,13 @@
   },
   "fortschreibungen": [
     {
+      "datei": "components/ZuordnungAendernDialog.tsx",
+      "vorher": "f82172e23790412b667c137c868ac4430f5db54b20789362f3f0759c6c1b614a",
+      "nachher": "5087915e57f49076e9e24fc9270a1d4e1b4c51b30a993bce7f530098ca030a05",
+      "commit": "dc57fc7b5e950a70c4644e7e331dbf4786705fbc",
+      "grund": "AP-10 IP-15 sperrt den bestehenden Übernehmen-Knopf bei einer nicht speicherbaren Verteilung; Beschriftung, Formularziel, Speichern-Zustand und Recht bleiben erhalten."
+    },
+    {
       "datei": "components/LadeparkRahmenKarte.tsx",
       "vorher": "c06cf6695903d88a151bcf89f0718b7f4bdea68a35ca8570c429a4629ff80239",
       "nachher": "a9b62b311d958d15436029ebec1e29a776e6619c2fe9deb9e5fb04f922fdb709",
