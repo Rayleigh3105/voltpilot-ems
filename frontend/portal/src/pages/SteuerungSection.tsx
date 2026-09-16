@@ -27,6 +27,7 @@ import {
   ApiError,
   api,
   type EarningsSite,
+  type Funktionen,
   type Site,
   type SiteAsset,
   type SiteCharging,
@@ -34,6 +35,7 @@ import {
 import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { JetztZone } from '../components/JetztZone';
+import { FunktionSteuerungAktion } from '../components/FunktionSteuerungAktion';
 import { SteuerungIntro } from '../components/SteuerungIntro';
 import { LadeparkRahmenKarte } from '../components/LadeparkRahmenKarte';
 import { RegelnKapsel } from '../components/RegelnKapsel';
@@ -62,6 +64,7 @@ import {
   PROFILE_CAPSULE_TITLE,
   PROTECTION_INTRO,
   protectionItems,
+  steuerungFunktionsAnzeige,
 } from '../steuerungArea';
 import {
   betriebsmodellZone,
@@ -128,6 +131,7 @@ export function SteuerungSection({
   const [earnings, setEarnings] = useState<EarningsSite | null>(null);
   const [profiles, setProfiles] = useState<SiteProfiles | null>(null);
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
+  const [funktionen, setFunktionen] = useState<Funktionen | null>(null);
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft: ein älteres Backend
   // kennt die Route nicht, dann gibt es die Ladepark-Kapsel schlicht nicht.
   const [charging, setCharging] = useState<SiteCharging | null>(null);
@@ -220,9 +224,12 @@ export function SteuerungSection({
       // wie der Rest - ein älteres Backend kennt die Route nicht, und dann
       // erscheint der Abschnitt gar nicht statt leer.
       api.siteFahrzeuge(site.id).catch(() => null),
+      // IP-11: dieselbe Funktionsantwort wie Karte und Assistent. Ohne Route
+      // bleibt die Bestandsfläche fail-soft und bietet keinen toten Knopf an.
+      api.funktionen().catch(() => null),
     ])
       .then(([list, entityList, gov, profile, money, shelf, siteAssets, chargePoints,
-        verbraucherZone, fahrzeugListe]) => {
+        verbraucherZone, fahrzeugListe, funktionsListe]) => {
         setFlows(list);
         setEntities(entityList);
         setGovernance(gov);
@@ -233,6 +240,7 @@ export function SteuerungSection({
         setCharging(chargePoints);
         setVerbraucher(verbraucherZone);
         setFahrzeuge(fahrzeugListe);
+        setFunktionen(funktionsListe);
         setZoneNow(new Date());
         setListState('idle');
       })
@@ -323,6 +331,24 @@ export function SteuerungSection({
     () => (assets ?? []).find((a) => a.type === 'battery') ?? null,
     [assets],
   );
+  const funktionsStandort = useMemo(
+    () => funktionen?.standorte.find((s) => s.steuern.anlagen.some((a) => a.id === site.id)) ?? null,
+    [funktionen, site.id],
+  );
+  const steuerTeilnahme = useMemo(
+    () => funktionsStandort?.steuern.anlagen.find((a) => a.id === site.id)?.teilnahme ?? null,
+    [funktionsStandort, site.id],
+  );
+  const funktionsAnzeige = useMemo(
+    () => steuerungFunktionsAnzeige(steuerTeilnahme, funktionsStandort?.zeitzone),
+    [steuerTeilnahme, funktionsStandort?.zeitzone],
+  );
+  const funktionsAktion = steuerTeilnahme?.aktionen.includes('anhalten')
+    ? 'anhalten' as const
+    : steuerTeilnahme?.aktionen.includes('fortsetzen')
+      ? 'fortsetzen' as const
+      : null;
+  const steuerungAngehalten = steuerTeilnahme?.zustand === 'angehalten';
 
   /** Ein Container-Save einer Site-Einstellung: lokal spiegeln + Seite nachladen. */
   const handleSiteSaved = useCallback(
@@ -665,6 +691,10 @@ export function SteuerungSection({
               gemerkt. Er steht ÜBER den Zonen, weil er sie erklärt - und er
               rendert sich selbst weg, sobald der Kunde ihn gesehen hat. */}
 
+          {funktionsAnzeige.kopf && (
+            <p className="vp-funktion-kopf" role="status">{funktionsAnzeige.kopf}</p>
+          )}
+
           <SteuerungIntro />
 
           {/* --- Zone ① · Jetzt (Konzept b3 §3.2, Stufe 1) ------------------
@@ -677,6 +707,19 @@ export function SteuerungSection({
             speicherName={speicherName}
             steuerart={steuerartVon}
             fahrzeug={fahrzeugVon}
+            eingriffeAngeboten={!steuerungAngehalten}
+            funktionsAktion={funktionsAktion && funktionsStandort ? (
+              <FunktionSteuerungAktion
+                art={funktionsAktion}
+                umfang="anlage"
+                standortId={funktionsStandort.id}
+                betroffen={[site.name]}
+                onBestaetigen={async () => {
+                  await api.funktionSteuern(site.id, funktionsAktion);
+                  reload();
+                }}
+              />
+            ) : undefined}
           />
 
           {/* --- Zone ② · Verbraucher (Verbrauchsmanagement v1 §6.1) -------
@@ -756,7 +799,10 @@ export function SteuerungSection({
           })()}
 
           {/* --- Kapsel ③ · Regeln (Naming Set A) -------------------------- */}
-          <div id="vp-regeln">
+          <div id="vp-regeln" className={steuerungAngehalten ? 'vp-funktion-ohne-wirkung' : undefined}>
+          {funktionsAnzeige.wirktNicht && (
+            <p className="vp-funktion-wirkung">Regeln: {funktionsAnzeige.wirktNicht}</p>
+          )}
           <RegelnKapsel
             site={site}
             flows={flows}
@@ -789,6 +835,10 @@ export function SteuerungSection({
               ⚠ Das Ladepark-Lastmanagement steht hier NICHT mehr (es ist
               Schutz, kein Betriebsmodell) — sein Platz ist der Ladepark-Rahmen
               im Kopf des Ladepunkt-Abschnitts von Zone ②. */}
+          <div className={steuerungAngehalten ? 'vp-funktion-ohne-wirkung' : undefined}>
+          {funktionsAnzeige.wirktNicht && (
+            <p className="vp-funktion-wirkung">Betriebsmodelle: {funktionsAnzeige.wirktNicht}</p>
+          )}
           <Betriebsmodelle
             zone={zone}
             title={PROFILE_CAPSULE_TITLE}
@@ -800,6 +850,7 @@ export function SteuerungSection({
             onOpen={setOpenContainer}
             onWeg={geheWeg}
           />
+          </div>
 
           {/* --- Der Ladepark-RAHMEN (nur mit Ladesäulen) ------------------
               ⚠ Er steht bewusst UNTER den vier Zonen: der Rahmen-Kopf von

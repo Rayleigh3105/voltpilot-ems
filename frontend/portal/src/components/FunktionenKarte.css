@@ -121,6 +121,15 @@
   font-weight: 600;
 }
 
+.vp-fk-aktion {
+  margin: 8px 0 0 16px;
+}
+
+.vp-fk-schritt .vp-btn,
+.vp-fk-aktion .vp-btn {
+  min-height: 44px;
+}
+
 /* Der Leerzustand der Standort-Übersicht spricht dieselbe Schritt-Sprache. */
 .vp-portfolio-schritt {
   display: block;

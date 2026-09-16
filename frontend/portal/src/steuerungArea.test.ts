@@ -12,6 +12,7 @@ import {
   peakContributionNote,
   profileRows,
   protectionItems,
+  steuerungFunktionsAnzeige,
   storageEntities,
 } from './steuerungArea';
 import type { SiteProfile } from './profiles';
@@ -166,6 +167,39 @@ describe('contributionRows', () => {
         peakShaving: { ...EARNINGS.peakShaving!, avoidedKw: null },
       } as EarningsSite),
     ).toBeNull();
+  });
+});
+
+describe('A4/A5 · Funktionszustand auf der Steuerungsseite', () => {
+  const teilnahme = (zustand: 'eingerichtet' | 'angehalten', seit: string) => ({
+    zustand,
+    seit,
+    text: '',
+    uebernommen: false,
+    pruefliste: [],
+    fehlt: [],
+    wege: [],
+    aktionen: zustand === 'angehalten' ? ['fortsetzen' as const] : ['starten' as const],
+  });
+
+  it('A3 nennt das Einrichten, ohne einen Start zu behaupten', () => {
+    expect(steuerungFunktionsAnzeige(
+      teilnahme('eingerichtet', '2026-12-01T00:00:00+01:00'),
+      'Europe/Berlin',
+    )).toEqual({
+      kopf: 'Eingerichtet am 01.12.2026 — Steuerung noch nicht gestartet',
+      wirktNicht: null,
+    });
+  });
+
+  it('A4 nennt Anhaltezeit und die ausbleibende Wirkung von Regeln und Betriebsmodell', () => {
+    expect(steuerungFunktionsAnzeige(
+      teilnahme('angehalten', '2026-11-03T14:10:00+01:00'),
+      'Europe/Berlin',
+    )).toEqual({
+      kopf: 'Angehalten seit 03.11.2026 14:10',
+      wirktNicht: 'wirkt nicht — angehalten seit 03.11.2026 14:10',
+    });
   });
 });
 

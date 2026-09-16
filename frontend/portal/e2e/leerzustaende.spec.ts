@@ -44,7 +44,7 @@ const FAELLE: Fall[] = [
     query: 'bild=unternehmen',
     ziel: '[data-testid="funktionen-karte"]',
     sichtbar: ['Läuft an 2 von 2 Standorten', 'Läuft an 1 von 2 Standorten', 'Werk Ahrenberg – Halle 2 aufnehmen'],
-    knoepfe: [],
+    knoepfe: ['Werk Ahrenberg – Halle 2 aufnehmen', 'Standort anhalten'],
     nie: ['Steuern & Optimieren für Werk Lindach einrichten', 'Noch nicht eingerichtet'],
     ohneGeld: false,
   },
@@ -53,7 +53,7 @@ const FAELLE: Fall[] = [
     query: 'bild=unternehmen&ansicht=werk',
     ziel: '[data-testid="funktionen-karte"]',
     sichtbar: ['Läuft mit Werk Ahrenberg – Halle 1', 'Werk Ahrenberg – Halle 2 aufnehmen'],
-    knoepfe: [],
+    knoepfe: ['Werk Ahrenberg – Halle 2 aufnehmen', 'Standort anhalten'],
     ohneGeld: false,
   },
   {

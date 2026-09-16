@@ -26,7 +26,7 @@
  *    nicht gibt.
  */
 
-import type { EarningsSite, EntityStrategy } from './api';
+import type { EarningsSite, EntityStrategy, FunktionTeilnahme } from './api';
 import { eurAmount, fmtNum } from './format';
 import { speicherAussage } from './speicherAussage';
 import {
@@ -498,3 +498,37 @@ export function protectionItems(site: { netzladenErlaubt?: boolean | null }): Pr
 }
 
 export const PROTECTION_INTRO = 'Läuft immer mit, ganz ohne Betriebsmodell:';
+
+export interface SteuerungFunktionsAnzeige {
+  kopf: string | null;
+  wirktNicht: string | null;
+}
+
+/** A4/A5-Kopf und Wirkhinweis aus dem gespeicherten Funktionszustand. */
+export function steuerungFunktionsAnzeige(
+  teilnahme: FunktionTeilnahme | null,
+  zeitzone = 'Europe/Berlin',
+): SteuerungFunktionsAnzeige {
+  if (!teilnahme || (teilnahme.zustand !== 'eingerichtet' && teilnahme.zustand !== 'angehalten')) {
+    return { kopf: null, wirktNicht: null };
+  }
+  if (!teilnahme.seit) {
+    return teilnahme.zustand === 'angehalten'
+      ? { kopf: 'Angehalten', wirktNicht: 'wirkt nicht — angehalten' }
+      : { kopf: 'Eingerichtet — Steuerung noch nicht gestartet', wirktNicht: null };
+  }
+  const zeit = new Date(teilnahme.seit);
+  const datum = new Intl.DateTimeFormat('de-DE', {
+    timeZone: zeitzone, day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(zeit);
+  if (teilnahme.zustand === 'eingerichtet') {
+    return { kopf: `Eingerichtet am ${datum} — Steuerung noch nicht gestartet`, wirktNicht: null };
+  }
+  const uhr = new Intl.DateTimeFormat('de-DE', {
+    timeZone: zeitzone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(zeit);
+  return {
+    kopf: `Angehalten seit ${datum} ${uhr}`,
+    wirktNicht: `wirkt nicht — angehalten seit ${datum} ${uhr}`,
+  };
+}
