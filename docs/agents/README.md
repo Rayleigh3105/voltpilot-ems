@@ -7,6 +7,8 @@ geloescht.** Die drei AGENTS.md sind seither Wegweiser mit einem Themen-Index.
 **Nicht ganze Dateien in den Kontext lesen — greppen.** Diese Sammlung ist die
 Projekt-Chronik; einzelne Dateien sind gross.
 
+`python3 tools/agents-md-split.py --verify` prueft den historischen Auslagerungsstand (Quelle/Ziel mit `--source-rev`/`--target-rev` waehlbar), nicht die seither weiterentwickelten Regeln im Arbeitsverzeichnis.
+
 ## `root/` — aus `AGENTS.md` (173 Einträge)
 
 - [Admin API & the Portal-Admin / Portal-User split (services/api + frontend)](root/admin-api-the-portal-admin-portal-user-s.md)
