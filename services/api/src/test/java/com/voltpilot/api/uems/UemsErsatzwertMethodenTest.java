@@ -399,7 +399,8 @@ class UemsErsatzwertMethodenTest {
         assertThat(wirkung(KB, kennungen.get("c ohne Vergleichsquelle"))).isEqualTo("vergleichsquelle_fehlt");
         assertThat(wirkung(KB, kennungen.get("d Endstand zu klein"))).isEqualTo("endstand_unter_letztem_wert");
         assertThat(wirkung(KB, kennungen.get("d ohne Rohwerte"))).isEqualTo("rohwerte_fehlen");
-        assertThat(wirkung(KB, kennungen.get("e über zwei Viertelstunden"))).isEqualTo("betrag_fuer_mehrere_viertelstunden");
+        // E7 (report.md:308): angenommen als Periodenbetrag, aber weiterhin KEINE Viertelstunden erfunden.
+        assertThat(wirkung(KB, kennungen.get("e über zwei Viertelstunden"))).isEqualTo("gebildet");
         Map<Instant, Map<String, Object>> z2 = neueste(KB, "Z2");
         for (String q : List.of("2026-11-10T09:00:00Z", "2026-11-10T09:15:00Z", "2026-11-10T09:30:00Z",
                 "2026-11-10T09:45:00Z", "2026-11-10T10:45:00Z", "2026-11-10T08:15:00Z", "2026-11-10T10:30:00Z")) {

@@ -135,6 +135,17 @@
       "description": "E7 (AP-08 IP-13): Versionen mit Ersatzwerten an den Reihen der Referenzfälle — F11 (Version 2), F21 (Widerruf, Version 3) und konstruierte Fälle je Methode und je benannter Ablehnung. Beide Zwillinge rechnen jede Erwartung per Pfad.",
       "items": { "$ref": "#/$defs/ersatzwert_fall" }
     },
+    "ersatzwert_perioden": {
+      "type": "array", "minItems": 1,
+      "description": "E7/E9: gröbere Perioden aus bereits geprüften Beiträgen, Java und TypeScript.",
+      "items": { "type": "object", "required": ["name", "why", "basis", "von", "bis", "beitraege", "expected"],
+        "additionalProperties": false,
+        "properties": { "name": {"type":"string"}, "why": {"type":"string"},
+          "basis": {"$ref":"#/$defs/ersatzwert_perioden_ergebnis"}, "von": {"$ref":"#/$defs/zeitpunkt"},
+          "bis": {"$ref":"#/$defs/zeitpunkt"}, "beitraege": {"type":"array", "items":{"$ref":"#/$defs/ersatzwert_perioden_beitrag"}},
+          "expected": {"$ref":"#/$defs/ersatzwert_perioden_ergebnis"} }
+      }
+    },
     "cases": {
       "type": "array",
       "minItems": 23,
@@ -144,6 +155,28 @@
   },
 
   "$defs": {
+    "ersatzwert_perioden_ergebnis": {
+      "type": "object", "additionalProperties": false,
+      "required": ["menge", "zustand", "kennzeichen", "abdeckung_prozent"],
+      "properties": {
+        "menge": {"type": ["number", "null"]},
+        "zustand": {"enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"]},
+        "kennzeichen": {"type":"array", "items":{"type":"string"}},
+        "abdeckung_prozent": {"type":["integer", "null"], "minimum":0, "maximum":100}
+      }
+    },
+    "ersatzwert_perioden_beitrag": {
+      "type":"object", "additionalProperties":false,
+      "required":["von", "bis", "vorher", "nachher", "vorher_kennzeichen", "nachher_kennzeichen", "kennung", "methode"],
+      "properties": {
+        "von":{"$ref":"#/$defs/zeitpunkt"}, "bis":{"$ref":"#/$defs/zeitpunkt"},
+        "vorher":{"type":["number", "null"]}, "nachher":{"type":["number", "null"]},
+        "vorher_kennzeichen":{"type":"array", "items":{"type":"string"}},
+        "nachher_kennzeichen":{"type":"array", "items":{"type":"string"}},
+        "kennung":{"type":"string", "pattern":"^EW-[0-9]{4}-[0-9]{4,}$"},
+        "methode":{"enum":["ablesestand_nachtragen", "wert_eingeben", "vorperiode_uebernehmen", "vergleichsquelle_uebernehmen"]}
+      }
+    },
     "zeitpunkt": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",

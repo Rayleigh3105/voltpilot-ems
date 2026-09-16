@@ -241,3 +241,5 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 ## Pflegeregel
 
 Neue UEMS-Pakete tragen ihren Eintrag HIER ein, nicht im Themen-Index von `AGENTS.md`.
+
+- **Ersatzwerte in gröberen Perioden (AP-08 IP-13/IP-17, E7/E9):** d–g ersetzen ihre bisherigen Beiträge; e bis Kalendermonat ohne erfundenes Viertelstundenprofil, Rücknahme aus der gemessenen Grundlage. Java-/TS-Regel, Vektoren und Nachweise: [Ersatzwert-Perioden](uems-ersatzwert-perioden.md).

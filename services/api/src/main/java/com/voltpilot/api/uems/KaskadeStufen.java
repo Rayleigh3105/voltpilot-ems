@@ -359,36 +359,63 @@ final class KaskadeStufen {
 
     /**
      * Die Ersatzwerte über der Grundlage — {@link VerbrauchRegeln#mitErsatzwerten}, die Regel von F11/F21. Über einer
-     * gröberen Periode als der Viertelstunde gibt es sie nur für a–c: für einen Ablesestand (d) und für e–g hat der
-     * Vertrag keine Periodenregel ({@code verbrauch-vectors.json} rechnet sie nur an der Viertelstunde), und eine eigene
-     * wäre ein Nachbau — benannt abgelehnt.
+     * gröberen Periode bleiben a–c unverändert; d–g ersetzen den Beitrag ihres Zeitraums über
+     * {@link ErsatzwertPerioden}. Ein Periodenbetrag wirkt erst, wenn sein ganzer Zeitraum enthalten ist.
      */
     Gebildet mitErsatzwerten(Connection con, Reihe r, ZoneId zone, Inhalt basis, Instant beginn, Instant ende,
             Set<String> korrekturen) throws SQLException {
-        String regel = ViertelstundeRegeln.regelWort(basis.wertart());
+        String wertart = basis.wertart() != null ? basis.wertart()
+                : ersatzwerte.wertart(con, r.tenant(), r.entity(), r.kanal(), ende);
+        String regel = ViertelstundeRegeln.regelWort(wertart);
         ReihenKontext reihe = ReihenKontext.aus(katalog, r.kanal(), zone);
         Geltende g = ersatzwerte.geltende(con, r.tenant(), r.entity(), r.kanal(), beginn, ende, regel, reihe);
         List<VerbrauchRegeln.Geltend> hier = g.gelten().stream()
                 .filter(x -> x.anteile().stream().anyMatch(a -> !a.beginn().isBefore(beginn) && a.beginn().isBefore(ende))
+                        || (ErsatzwertPerioden.periodenBetrag(x.ersatzwert(), zone)
+                            && !x.ersatzwert().von().isBefore(beginn) && !x.ersatzwert().bis().isAfter(ende))
                         || (VerbrauchRegeln.ABLESESTAND_NACHTRAGEN.equals(x.ersatzwert().methode())
                             && x.ersatzwert().zeitpunkt().isAfter(beginn) && !x.ersatzwert().zeitpunkt().isAfter(ende)))
                 .toList();
         if (hier.isEmpty()) {
             return new Gebildet(basis, List.copyOf(korrekturen), List.of());
         }
-        for (VerbrauchRegeln.Geltend x : hier) {
-            if (!VerbrauchRegeln.VERTEILEN.contains(x.ersatzwert().methode())) {
-                throw new Abgelehnt(KorrekturKaskade.ERSATZWERT_OHNE_PERIODENREGEL, x.ersatzwert().kennung() + " ("
-                        + x.ersatzwert().methode() + ") über " + beginn + "–" + ende);
-            }
-        }
         boolean zaehler = "zaehlerstand".equals(regel);
         Ergebnis e = VerbrauchRegeln.mitErsatzwerten(reihe,
                 new Ergebnis(basis.menge(), basis.mittel(), basis.min(), basis.max(), null, basis.mengeZustand(),
                         nullAlsNull(basis.erhalten()), nullAlsNull(basis.erwartet()), basis.abdeckung(),
                         basis.kennzeichen()),
-                !zaehler || basis.standAnfang() != null, !zaehler || basis.standEnde() != null, beginn, ende, hier);
-        Inhalt i = new Inhalt(basis.wertart(), e.menge(), e.zustand(), e.kennzeichen(), basis.erhalten(),
+                !zaehler || basis.standAnfang() != null, !zaehler || basis.standEnde() != null, beginn, ende,
+                hier.stream().filter(x -> VerbrauchRegeln.VERTEILEN.contains(x.ersatzwert().methode())).toList());
+        List<ErsatzwertPerioden.Beitrag> beitraege = new ArrayList<>();
+        for (VerbrauchRegeln.Geltend x : hier) {
+            VerbrauchRegeln.Ersatzwert ew = x.ersatzwert();
+            if (VerbrauchRegeln.VERTEILEN.contains(ew.methode())) continue;
+            if (VerbrauchRegeln.ABLESESTAND_NACHTRAGEN.equals(ew.methode())) {
+                // Der IP-13-Lauf hat Z4 bereits geprüft und gerechnet; keine zweite Rechnung aus einem Delta-Raten.
+                List<ViertelVersion> vs = viertelVersionen(con, r, ew.von(), ew.bis()).getOrDefault(ew.von(), List.of());
+                ViertelVersion v = vs.isEmpty() ? null : vs.get(vs.size() - 1);
+                if (v == null || !v.ersatzwerte().contains(ew.kennung())) {
+                    throw new Abgelehnt(KorrekturKaskade.ROHWERTE_FEHLEN, ew.kennung());
+                }
+                beitraege.add(beitrag(con, r, zone, ew, ew.von(), ew.bis(), v.inhalt().menge(),
+                        v.inhalt().aussage()));
+            } else if (ErsatzwertPerioden.periodenBetrag(ew, zone)) {
+                beitraege.add(beitrag(con, r, zone, ew, ew.von(), ew.bis(), ew.betrag(), List.of()));
+            } else {
+                // Ein Profil lädt seine Grundlage einmal, nicht mit einer SQL-Abfrage je Viertelstunde.
+                Map<Instant, Teilperiode> vorher = new TreeMap<>();
+                teile(con, r, ew.von(), ew.bis()).teile().forEach(t -> vorher.put(t.von(), t));
+                for (VerbrauchRegeln.Anteil anteil : x.anteile()) {
+                    if (anteil.beginn().isBefore(beginn) || !anteil.beginn().isBefore(ende)) continue;
+                    Teilperiode alt = vorher.get(anteil.beginn());
+                    beitraege.add(beitrag(ew, anteil.beginn(), anteil.beginn().plus(VIERTELSTUNDE),
+                            alt == null ? null : alt.ergebnis().menge(),
+                            alt == null ? List.of() : alt.ergebnis().kennzeichen(), anteil.menge(), List.of()));
+                }
+            }
+        }
+        e = ErsatzwertPerioden.anwenden(e, beginn, ende, beitraege);
+        Inhalt i = new Inhalt(wertart, e.menge(), e.zustand(), e.kennzeichen(), basis.erhalten(),
                 basis.erwartet(), basis.abdeckung(), basis.standAnfang(), basis.standEnde(), basis.erster(),
                 basis.letzter(), basis.summe(), basis.mittel(), basis.min(), basis.max(), basis.energie(),
                 basis.gemessenS(), basis.lueckeInnen(), basis.zustand());
@@ -397,16 +424,34 @@ final class KaskadeStufen {
 
     // ============================================================================ Tag, Monat, Jahr
 
-    /** Der TAG {@code tag} in {@code zone} — {@code null}, wenn er keinen einzigen Teil hat (wie die Verdichtung). */
+    private ErsatzwertPerioden.Beitrag beitrag(Connection con, Reihe r, ZoneId zone,
+            VerbrauchRegeln.Ersatzwert ew, Instant von, Instant bis, BigDecimal neu, List<String> kennzeichen)
+            throws SQLException {
+        Teile t = teile(con, r, von, bis);
+        ViertelstundenTeile.Geladen g = t.geladen();
+        Inhalt alt = grundlage(r, zone, t.teile(), t.innen(von, bis), t.werteteile(), g.ereignisse(),
+                g.deklaration(), g.wertart(), g.kadenzS(), von, bis, ViertelstundeRegeln.VORLAEUFIG);
+        return beitrag(ew, von, bis, alt.menge(), alt.aussage(), neu, kennzeichen);
+    }
+
+    private static ErsatzwertPerioden.Beitrag beitrag(VerbrauchRegeln.Ersatzwert ew, Instant von, Instant bis,
+            BigDecimal alt, List<String> alteKennzeichen, BigDecimal neu, List<String> kennzeichen) {
+        // Randhinweise eines inneren Teils beschreiben nicht den Rand der gröberen Periode.
+        List<String> neuInnen = kennzeichen.stream().filter(k -> !k.equals(VerbrauchRegeln.ANFANG_NICHT_GEMESSEN)
+                && !k.equals(VerbrauchRegeln.ENDE_NICHT_GEMESSEN)).toList();
+        List<String> altInnen = alteKennzeichen.stream().filter(k -> !k.equals(VerbrauchRegeln.ANFANG_NICHT_GEMESSEN)
+                && !k.equals(VerbrauchRegeln.ENDE_NICHT_GEMESSEN)).toList();
+        return new ErsatzwertPerioden.Beitrag(von, bis, alt, neu, altInnen, neuInnen,
+                ew.kennung(), ew.methode());
+    }
+
+    /** Der TAG in der Standort-Zone; auch eine Periode ohne Messwerte kann einen belegten Betrag tragen. */
     Gebildet tag(Connection con, Reihe r, LocalDate tag, ZoneId zone, Gespeichert v1, Instant jetzt)
             throws SQLException {
         Instant beginn = TagRegeln.beginn(tag, zone);
         Instant ende = TagRegeln.ende(tag, zone);
         Teile t = teile(con, r, beginn, ende);
         List<Teilperiode> innen = t.innen(beginn, ende);
-        if (innen.isEmpty()) {
-            return null;
-        }
         ViertelstundenTeile.Geladen g = t.geladen();
         String zustand = v1 != null ? v1.inhalt().zustand()
                 : TagRegeln.zustand(g.vorhanden(), g.endgueltig(), TagRegeln.endgueltigAb(ende), jetzt);
@@ -425,9 +470,6 @@ final class KaskadeStufen {
         Instant ende = TagRegeln.beginn(erster.plusMonths(1), zone);
         Teile t = teile(con, r, beginn, ende);
         List<Teilperiode> innen = t.innen(beginn, ende);
-        if (innen.isEmpty()) {
-            return null;
-        }
         ViertelstundenTeile.Geladen g = t.geladen();
         return new Monatsgrundlage(grundlage(r, zone, t.teile(), innen, t.werteteile(), g.ereignisse(),
                 g.deklaration(), g.wertart(), g.kadenzS(), beginn, ende, zustand), t);
@@ -497,9 +539,6 @@ final class KaskadeStufen {
         List<Teilperiode> alle = List.copyOf(teile.values());
         List<Teilperiode> innen = alle.stream().filter(t -> !t.von().isBefore(beginn) && !t.bis().isAfter(ende))
                 .toList();
-        if (innen.isEmpty()) {
-            return null;
-        }
         ZaehlerDeklaration deklaration = ZaehlerDeklaration.lesen(con, r.tenant(), r.entity(), r.kanal(), beginn);
         List<VerbrauchRegeln.Ereignis> ereignisse = ViertelstundenTeile.ereignisse(con, r.tenant(), r.entity(),
                 r.kanal(), beginn, ende, deklaration);

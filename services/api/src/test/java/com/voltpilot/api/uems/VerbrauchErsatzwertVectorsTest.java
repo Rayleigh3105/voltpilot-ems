@@ -211,7 +211,7 @@ class VerbrauchErsatzwertVectorsTest {
                 ersatzwerte);
     }
 
-    private static JsonNode reiheDesFalls(JsonNode datei, String fall) {
+    static JsonNode reiheDesFalls(JsonNode datei, String fall) {
         for (JsonNode c : datei.path("cases")) {
             if (c.path("name").asText().equals(fall)) {
                 return c.path("input").path("reihe");
@@ -224,7 +224,7 @@ class VerbrauchErsatzwertVectorsTest {
      * Die Ersatzwerte eines Eintrags mit ihrem Status ({@code nur} = nur diese Kennung). Die Lücke kommt aus den
      * Rohwerten: der Wert vor der ersten fehlenden Messzeit und sein direkter Nachfolger an der Messzeit danach.
      */
-    private static List<Ersatzwert> ersatzwerte(JsonNode reihe, JsonNode eintrag, String nur) {
+    static List<Ersatzwert> ersatzwerte(JsonNode reihe, JsonNode eintrag, String nur) {
         Duration kadenz = Duration.ofSeconds(reihe.path("kadenz_s").asLong());
         List<Rohwert> gut = rohwerte(reihe).stream().filter(Rohwert::gut).toList();
         List<Ersatzwert> out = new ArrayList<>();

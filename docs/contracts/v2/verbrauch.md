@@ -290,8 +290,9 @@ Ein Ersatzwert ist eine Zahl, die ein Mensch mit Begründung setzt (`messreihe_e
   gespeicherten Anteile ist darum **exakt** der Zuwachs (Methode b konstruiert: 26,742857186 statt
   26,742857142 in der letzten Viertelstunde).
 - **d** macht den Zeitpunkt zur Gerätegrenze mit Ableseständen; Z4 rechnet (F6 mit den Ständen von
-  F12: 14,81 kWh). **e** setzt den Betrag EINER Viertelstunde, **f/g** übernehmen die Werte ihres
-  Bezugs (gleiche Einheit) — ihr Wert ist die Menge der Viertelstunde.
+  F12: 14,81 kWh). **e** setzt einen belegten Betrag je Periode (Viertelstunde bis Kalendermonat),
+  **f/g** übernehmen die Werte ihres Bezugs (gleiche Einheit). Nur ein Viertelstundenbetrag
+  hat einen Viertelstundenanteil; ein gröberer Betrag bleibt ohne erfundenes Profil.
 - **Benannte Ablehnungen** (`regeln.ersatzwert_ablehnungen`, geschlossen): eine Methode, die nicht
   rechnen kann, lehnt mit ihrem Grund ab und weicht nie still auf eine andere aus — fehlt eine
   Viertelstunde der Vorperiode, ist das `vorperiode_fehlt`, nie „dann eben gleichmäßig“.
@@ -308,5 +309,21 @@ Ein Ersatzwert ist eine Zahl, die ein Mensch mit Begründung setzt (`messreihe_e
 
 Gebildet werden die Versionen der Viertelstunde (`messreihe_viertelstunde_version`, Lauf
 `ErsatzwertLauf`); Tag, Monat und Jahr mit Ersatzwert bildet die Kaskade (IP-17, `uems/KorrekturKaskade`) über dieselbe
-Regel `mitErsatzwerten` ⟷ `mit_ersatzwerten` — für a–c; d–g haben über gröberen Perioden keine Regel und werden dort
-benannt abgelehnt.
+Regel `mitErsatzwerten` ⟷ `mit_ersatzwerten` für a–c. Für d–g ergänzt
+`ErsatzwertPerioden` ⟷ `ersatzwertPerioden.ts` den Block **`ersatzwert_perioden`**:
+
+- Eine gröbere Periode ersetzt den bisherigen Beitrag der betroffenen Spanne durch den neuen:
+  `Menge = Grundlage − bisheriger Beitrag + neuer Beitrag`. Ist die Spanne die ganze Periode,
+  ist der neue Betrag ihre Menge. Fehlende gemessene Beiträge werden nie als gemessene Null ausgegeben.
+- Bei d kommt der neue Beitrag aus der von IP-13 geprüften Z4-Rechnung der Viertelstunde.
+  F12: 14,28 → 14,81 kWh, also +0,53 kWh in jeder gröberen Periode, ohne den alten Beitrag doppelt zu zählen.
+- e über mehrere Viertelstunden gilt höchstens bis `von + 1 Kalendermonat` in der Standort-Zone,
+  einschließlich Zeitumstellung. Der Betrag wirkt nur in Perioden, die seine ganze Spanne enthalten.
+  Angeschnittene Tage oder Viertelstunden bleiben unverteilt; keine kleinere Periode bekommt
+  einen geratenen Anteil. Die Verteilungsfunktion lehnt das weiterhin mit
+  `betrag_fuer_mehrere_viertelstunden` ab, der Periodenlauf nimmt den Betrag dagegen an.
+- f/g ersetzen je Viertelstunde den bisherigen Beitrag durch den übernommenen Profilwert.
+  Abdeckung bleibt gemessen; Kennzeichen und Bezug auf den Ersatzwert folgen der neuen Menge.
+- Rücknahme rechnet erneut aus der Grundlage ohne den zurückgenommenen Ersatzwert.
+  Die Kaskade erzeugt neue Versionen und benutzt danach dieselben Anschlüsse für berechnete
+  Messstellen, Kennzahlen und Berichtsrevisionen wie bei a–c.

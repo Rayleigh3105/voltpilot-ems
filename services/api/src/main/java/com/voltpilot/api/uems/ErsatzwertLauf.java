@@ -121,8 +121,8 @@ public class ErsatzwertLauf {
      * AP-08 IP-17: die Ersatzwerte einer Reihe, die {@code [von, bis)} berühren, geladen wie im Lauf und ausgewählt von
      * DERSELBEN Regel ({@link VerbrauchRegeln#geltende}) — die Kaskade bildet Tag, Monat und Jahr mit genau den
      * Ersatzwerten, mit denen dieser Lauf die Viertelstunden bildet, und wählt keine eigenen. Ein Ablesestand (d) wird
-     * hier nicht an den Rohwerten geprüft: über gröbere Perioden rechnet ihn keine Regel (die Kaskade lehnt ihn dort
-     * benannt ab).
+     * hier nicht erneut an den Rohwerten geprüft: die Kaskade liest seine von IP-13 gerechnete Viertelstunden-Version.
+     * Periodenbeträge (e) bleiben ohne Viertelstundenanteile.
      *
      * @param regel das Regelwort der Reihe ({@code zaehlerstand} …), {@code null} = keine Periodenregel
      * @return leer, wenn kein Ersatzwert den Zeitraum berührt
@@ -139,7 +139,11 @@ public class ErsatzwertLauf {
         if (ersatzwerte.isEmpty()) {
             return new Geltende(List.of(), Map.of());
         }
-        return VerbrauchRegeln.geltende(ersatzwerte, regel == null ? "" : regel, kontext.einheit(), Map.of());
+        return ErsatzwertPerioden.geltende(ersatzwerte, regel == null ? "" : regel, kontext.einheit(), Map.of(), kontext.zeitzone());
+    }
+
+    String wertart(Connection con, UUID tenant, UUID entity, String kanal, Instant bis) throws SQLException {
+        return wertart(con, new Kandidat(tenant, null, entity, kanal), bis);
     }
 
     // ------------------------------------------------------------------------------ Ein Ersatzwert
@@ -243,7 +247,7 @@ public class ErsatzwertLauf {
                 }
             }
         }
-        Geltende geltende = VerbrauchRegeln.geltende(ersatzwerte, regel == null ? "" : regel, kontext.einheit(), vorab);
+        Geltende geltende = ErsatzwertPerioden.geltende(ersatzwerte, regel == null ? "" : regel, kontext.einheit(), vorab, kontext.zeitzone());
         Map<Instant, Stand> neueste = neuesteVersionen(con, k, von, bis);
 
         int geschrieben = 0;

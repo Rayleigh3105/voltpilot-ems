@@ -100,6 +100,11 @@ class UemsKaskadeErsatzwertTest {
     private static KorrekturKaskade.Lauf laufA;
     private static KorrekturKaskade.Lauf laufE;
     private static List<String> viertelstundeA;
+    private static Map<String,Object> monatE, jahrE, monatRuecknahme, jahrRuecknahme;
+    private static List<Map<String,Object>> dStufen;
+    private static long qVorMonat, qNachMonat;
+    private static String ewD, ewMonat, ewF, ewG;
+    private static Map<String,Object> mitProfilen;
 
     @BeforeAll
     static void bauenUndFahren() throws Exception {
@@ -171,6 +176,44 @@ class UemsKaskadeErsatzwertTest {
                 new BigDecimal("20.0")));
         lauf.lauf(JETZT);
         laufE = kaskade.lauf(JETZT);
+
+        // Ein Monatsbetrag ohne Profil: keine Viertelstunde ändert sich, der ganze Monat und das Jahr schon.
+        qVorMonat = zahl("SELECT count(*) FROM messreihe_viertelstunde_version WHERE entity_id = ?",IDS.get("Z2"));
+        ewMonat = erfassen(new Anlage("wert_eingeben",IDS.get("Z2"),KANAL,null,
+                Instant.parse("2026-09-30T22:00:00Z"),Instant.parse("2026-10-31T23:00:00Z"),null,
+                "Netzrechnung Oktober ohne Lastgang übernommen", "Netzrechnung Oktober",null,null,null,null,
+                "kWh",null,null,null,null,new BigDecimal("2304")));
+        lauf.lauf(JETZT);
+        assertThat(kaskade.lauf(JETZT).abgelehnt()).isEmpty();
+        qNachMonat = zahl("SELECT count(*) FROM messreihe_viertelstunde_version WHERE entity_id = ?",IDS.get("Z2"));
+        monatE = neueste("Z2","monat",LocalDate.of(2026,10,1));
+        jahrE = neueste("Z2","jahr",LocalDate.of(2026,1,1));
+        zuruecknehmen(ewMonat,"Beleg durch freigegebene Abrechnung ersetzt");
+        lauf.lauf(JETZT);
+        assertThat(kaskade.lauf(JETZT).abgelehnt()).isEmpty();
+        monatRuecknahme = neueste("Z2","monat",LocalDate.of(2026,10,1));
+        jahrRuecknahme = neueste("Z2","jahr",LocalDate.of(2026,1,1));
+
+        ewD = erfassen(new Anlage("ablesestand_nachtragen",IDS.get("D"),KANAL,null,
+                Instant.parse("2026-11-10T08:00:00Z"),Instant.parse("2026-11-10T08:15:00Z"),
+                Instant.parse("2026-11-10T08:12:00Z"),"Ableseprotokoll von Elektro Brunner nachgetragen",null,
+                null,null,null,null,"kWh",null,null,new BigDecimal("6184.90"),BigDecimal.ZERO,null));
+        lauf.lauf(JETZT);
+        assertThat(kaskade.lauf(JETZT).abgelehnt()).isEmpty();
+        dStufen = List.of(neueste("D","tag",LocalDate.of(2026,11,10)),neueste("D","monat",NOVEMBER),
+                neueste("D","jahr",LocalDate.of(2026,1,1)));
+
+        ewF = erfassen(new Anlage("vorperiode_uebernehmen",IDS.get("Z2"),KANAL,null,
+                Instant.parse("2026-11-10T10:15:00Z"),Instant.parse("2026-11-10T10:30:00Z"),null,
+                "Vorperiode aus vollständiger Viertelstunde übernommen",null,null,null,null,null,null,
+                Instant.parse("2026-11-10T08:00:00Z"),null,null,null,null));
+        ewG = erfassen(new Anlage("vergleichsquelle_uebernehmen",IDS.get("Z2"),KANAL,null,
+                Instant.parse("2026-11-10T11:00:00Z"),Instant.parse("2026-11-10T11:15:00Z"),null,
+                "Bestätigte Vergleichsquelle mit vollständigen Werten übernommen",null,null,null,null,null,null,
+                null,IDS.get("Q-Z2"),null,null,null));
+        lauf.lauf(JETZT);
+        assertThat(kaskade.lauf(JETZT).abgelehnt()).isEmpty();
+        mitProfilen = neueste("Z2","jahr",LocalDate.of(2026,1,1));
     }
 
     @AfterEach
@@ -238,16 +281,51 @@ class UemsKaskadeErsatzwertTest {
         assertThat(n(nachC.get("jahr").get("version"))).isEqualTo(4);
     }
 
-    /**
-     * Ein eingegebener Wert (e) hat über einer gröberen Periode keine Regel im Vertrag: die Kaskade lehnt ihn benannt ab
-     * und schreibt an KEINER Stufe der zweiten Reihe eine Version — keine halbe Wahrheit.
-     */
+    /** E7/E9: die eingegebene Viertelstunde ersetzt ihren Beitrag, sie wird nicht doppelt addiert. */
     @Test
-    void einEingegebenerWertOhnePeriodenregelWirdBenanntAbgelehnt() {
-        assertThat(laufE.abgelehnt()).containsEntry(ewE, KorrekturKaskade.ERSATZWERT_OHNE_PERIODENREGEL);
+    void einEingegebenerWertZiehtBisZumJahrDurch() {
+        assertThat(laufE.abgelehnt()).isEmpty();
         assertThat(root.queryForObject("SELECT ergebnis FROM messreihe_kaskade_wirkung WHERE anlass_kennung = ?",
-                String.class, ewE)).isEqualTo(KorrekturKaskade.ERSATZWERT_OHNE_PERIODENREGEL);
-        assertThat(zahl("SELECT count(*) FROM messreihe_periode_version WHERE entity_id = ?", IDS.get("Z2"))).isZero();
+                String.class, ewE)).isEqualTo(KorrekturKaskade.GEBILDET);
+        for (String ebene : List.of("tag", "monat", "jahr")) {
+            BigDecimal menge = root.queryForObject("SELECT menge FROM messreihe_periode_version WHERE entity_id = ? "
+                    + "AND ebene = ? AND version = 2 AND tag = ?", BigDecimal.class, IDS.get("Z2"), ebene,
+                    switch(ebene) { case "tag" -> LocalDate.of(2026,11,10); case "monat" -> NOVEMBER;
+                        default -> LocalDate.of(2026,1,1); });
+            assertThat(menge).as(ebene + ": 240 gemessen − 15 ersetzt + 20 eingegeben").isEqualByComparingTo("245");
+        }
+    }
+
+    @Test
+    void monatsbetragBleibtUnverteiltUndIstAlsNeueVersionWiderrufbar() {
+        assertThat(qNachMonat).isEqualTo(qVorMonat);
+        assertThat((BigDecimal)monatE.get("menge")).isEqualByComparingTo("2304");
+        assertThat((BigDecimal)jahrE.get("menge")).isEqualByComparingTo("2549");
+        assertThat(monatRuecknahme.get("menge")).isNull();
+        assertThat((BigDecimal)jahrRuecknahme.get("menge")).isEqualByComparingTo("245");
+        assertThat(n(monatRuecknahme.get("version"))).isEqualTo(3);
+        assertThat(array(monatRuecknahme.get("ersatzwerte"))).doesNotContain(ewMonat);
+    }
+
+    @Test
+    void f12AblesestandErhoehtJedeGroebereStufeUm053() {
+        for (Map<String,Object> v : dStufen) {
+            assertThat((BigDecimal)v.get("menge")).isEqualByComparingTo("14.81");
+            assertThat(array(v.get("ersatzwerte"))).containsExactly(ewD);
+            assertThat(saetze(v.get("kennzeichen"))).noneMatch(k -> k.startsWith("Rücksetzung "))
+                    .contains("Gerätegrenze 09:12 mit Ableseständen");
+        }
+    }
+
+    @Test
+    void beideProfilMethodenErsetzenDenBeitragOhneIhnDoppeltZuZaehlen() {
+        assertThat((BigDecimal)mitProfilen.get("menge")).isEqualByComparingTo("245");
+        assertThat(array(mitProfilen.get("ersatzwerte"))).contains(ewE,ewF,ewG);
+    }
+
+    private static Map<String,Object> neueste(String reihe,String ebene,LocalDate tag) {
+        return root.queryForMap("SELECT * FROM messreihe_periode_version WHERE entity_id = ? AND ebene = ? AND tag = ? "
+                + "ORDER BY version DESC LIMIT 1",IDS.get(reihe),ebene,tag);
     }
 
     // =========================================================================== Hilfen
@@ -314,11 +392,13 @@ class UemsKaskadeErsatzwertTest {
         reihe("ZW", 60);
         reihe("VQ", 900);
         reihe("Z2", 60);
+        reihe("D", 60);
         UUID ms = uuid("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, richtung, einheit, "
                 + "wertart) VALUES (?, 'MS-10', 'Halle 2', 'gemessen', 'Strom', 'Wirkenergie', 'Bezug', 'kWh', "
                 + "'Zählerstand') RETURNING id", KB);
         bindung(ms, "ZW", "fuehrend", null);
         IDS.put("Q-VQ", bindung(ms, "VQ", "vergleich", "Abrechnungszähler"));
+        IDS.put("Q-Z2", bindung(ms, "Z2", "vergleich", "Abrechnungszähler"));
     }
 
     private static void reihe(String name, int kadenz) {
@@ -349,6 +429,14 @@ class UemsKaskadeErsatzwertTest {
 
     private static void rohwerte() throws Exception {
         for (JsonNode fall : VerbrauchVectorsTest.lies(VerbrauchVectorsTest.VECTORS).path("cases")) {
+            if (fall.path("name").asText().startsWith("f6-")) {
+                // Die F12-Rechnung bleibt exakt; nur das Datum liegt in der Uhr dieses Testlaufs.
+                var ursprung = Instant.parse("2027-01-15T08:00:00Z");
+                var ziel = Instant.parse("2026-11-10T08:00:00Z");
+                long versatz = java.time.Duration.between(ursprung,ziel).getSeconds();
+                saeen("D",VerbrauchVectorsTest.rohwerte(fall.path("input").path("reihe")).stream()
+                        .map(w -> new Rohwert(w.zeit().plusSeconds(versatz),w.wert())).toList());
+            }
             if (fall.path("name").asText().startsWith("f11-")) {
                 saeen("ZW", VerbrauchVectorsTest.rohwerte(fall.path("input").path("reihe")));
             }
