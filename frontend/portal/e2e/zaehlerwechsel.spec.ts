@@ -1,7 +1,7 @@
 import { test, expect as baseExpect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ms06, MS_IDS, prozesseAhrenberg, kostenstellenAhrenberg, protokollMs06 } from '../src/test/messstelleSeiteFixtures';
+import { ms06, MS_IDS, prozesseAhrenberg, kostenstellenAhrenberg, protokollMs06, prozesseVon, verteilungVon } from '../src/test/messstelleSeiteFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../src/test/standorteFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
@@ -45,9 +45,16 @@ async function cloud(page: Page) {
     }
     if (p === '/api/v1/unternehmen/prozesse') return route.fulfill(json({ prozesse: prozesseAhrenberg(), stichtag: null }));
     if (p === '/api/v1/unternehmen/kostenstellen') return route.fulfill(json({ kostenstellen: kostenstellenAhrenberg(), stichtag: null }));
-    if (p.endsWith('/prozesse')) return route.fulfill(json({ messstelle_id: MS_IDS.ms06, prozesse: [], stichtag: null }));
-    if (p.endsWith('/verteilung')) return route.fulfill(json({ messstelle_id: MS_IDS.ms06, anteile: [], stichtag: null }));
-    if (p.endsWith('/aenderungen')) return route.fulfill(json(protokollMs06()));
+    if (p.endsWith('/prozesse')) return route.fulfill(json(prozesseVon(ms06())));
+    if (p.endsWith('/verteilung')) return route.fulfill(json(verteilungVon(ms06())));
+    if (p.endsWith('/aenderungen')) {
+      const protokoll = protokollMs06();
+      if (nachher) protokoll.eintraege.unshift({ id: 'messstelle:wechsel', quelle: 'messstelle', art: 'zaehler_gewechselt',
+        text: 'Zähler gewechselt: Z-5a → Z-5b', bezug: { art: 'messstelle', id: MS_IDS.ms06, kennzeichen: 'MS-06', name: ms06().name },
+        gilt_ab: WECHSEL_AM, gilt_bis: null, eingetragen_am: WECHSEL_JETZT, zeitform: 'rueckwirkend', grund: null,
+        urheber: { name: 'Ines Kaltenbach', rolle: 'energiemanager', art: 'kunde' }, alt: null, neu: null });
+      return route.fulfill(json(protokoll));
+    }
     if (p === `/api/v1/messstellen/${MS_IDS.ms06}`) return route.fulfill(json(ms06()));
     return route.fulfill(json({ message: `Nicht gestellte Antwort: ${p}` }, 404));
   });
@@ -59,6 +66,7 @@ async function bild(page: Page, name: string, breite: number) {
   if (await dialog.count()) expect(await dialog.evaluate(e => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(1);
   if (process.env.ZAEHLER_BILDER) {
     mkdirSync(process.env.ZAEHLER_BILDER, { recursive: true });
+    if (!(await dialog.count())) await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: join(process.env.ZAEHLER_BILDER, `${name}-${breite}.png`), fullPage: !(await dialog.count()) });
   }
 }
@@ -98,6 +106,7 @@ for (const einstieg of ['messstelle', 'geraet'] as const) {
       await page.getByText('Historie (2)', { exact: true }).click();
       await expect(page.getByTestId('quelle-karte')).toContainText('Z-5a');
       await expect(page.getByTestId('quelle-karte')).toContainText('Z-5b');
+      await expect(page.getByText('Zähler gewechselt: Z-5a → Z-5b', { exact: true })).toBeVisible();
     } else {
       await expect(page.getByTestId('geraet-vorgaenger')).toContainText('Z-5a');
     }
