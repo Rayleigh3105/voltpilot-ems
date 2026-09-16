@@ -24,7 +24,8 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
 - **Sitzungs-Einstellungen** in derselben `set_config`-Anweisung wie `app.tenant_id`, beim Zurückgeben zusammen
   zurückgesetzt:
   - `app.zugriff` ist `unternehmen` bei einem Kundenkonto mit wirksamer mandantenweiter Zuweisung oder ganz ohne je
-    eine Zuweisung (E12, seit IP-5) und am Umschalter, sonst `standorte`.
+    eine Zuweisung (E12, seit IP-5; seit 16.09.2026 nur, solange der Kundenbereich keinen Stichtag hat —
+    `uems-zugriff-stichtag.md`) und am Umschalter, sonst `standorte`.
   - `app.standort_ids` ist das Array-Literal `{uuid,…}` der standortbezogenen Zuweisungen, sortiert, auch `{}`.
 - **`GET /api/v1/me`** (Recht `konto.eigenes`) leitet ausschließlich mit `RechteAbleitung` ab:
   - `sichtbareStandorte` liefert Standorte, künftige Zuweisungen, den Satz ohne Standort und die Teilansicht.
@@ -37,7 +38,8 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
 - ⚠ **`site_scope` (IP-5, `uems-standort-zaun.md`):** Ohne Zugriff sind beide Einstellungen LEER: `''` nach einem
   Zurücksetzen, NULL auf einer frischen Verbindung. Das betrifft Jobs, Takt, Bestandslauf, Admin-Routen und die
   Plattform ohne Kopf. Die Policy liest leer als „kein Standort-Zaun" (nur Mandant). Ein Kundenkonto, das NIE eine
-  Zuweisung hatte, trägt `unternehmen` (Bestandsregel E12); eines mit nur beendeten oder künftigen `standorte` + `{}`.
+  Zuweisung hatte, trägt `unternehmen` (Bestandsregel E12 — seit 16.09.2026 nur ohne Stichtag des Kundenbereichs);
+  eines mit nur beendeten oder künftigen `standorte` + `{}`.
 - ⚠ Die Einstellungen gelten nur, wenn der `TenantContext` der Kundenbereich des Zugriffs ist. Ein Hörer, der im
   Anfrage-Thread umschaltet (`ZugriffBestand.beiAnlage`), bekommt sie leer.
 - ⚠ **Seit IP-5 liest ein angenommener Unterstützer nur seine Standorte; seit IP-6 schreibt er an den Routen mit

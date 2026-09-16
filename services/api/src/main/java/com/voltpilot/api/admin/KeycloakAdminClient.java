@@ -210,6 +210,12 @@ public class KeycloakAdminClient {
 
     // ---- queries -------------------------------------------------------------
 
+    /**
+     * Wie viele Konten eine Abfrage je Kundenbereich höchstens holt. Meldet Keycloak so viele, kann die Liste
+     * abgeschnitten sein — {@code ZugriffBestandLaeufer} setzt dann KEINEN Stichtag (UEMS AP-03, Befund E12).
+     */
+    public static final int MAX_KONTEN_JE_KUNDENBEREICH = 1000;
+
     /** All users carrying the given {@code tenant_id} attribute. */
     public List<KeycloakUser> listUsersForTenant(UUID tenantId) {
         List<Map<String, Object>> users;
@@ -218,7 +224,7 @@ public class KeycloakAdminClient {
                     .uri(uriBuilder -> uriBuilder.path("/admin/realms/{realm}/users")
                             .queryParam("q", "tenant_id:" + tenantId)
                             .queryParam("briefRepresentation", false)
-                            .queryParam("max", 1000)
+                            .queryParam("max", MAX_KONTEN_JE_KUNDENBEREICH)
                             .build(props.getRealm()))
                     .retrieve()
                     .body(new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {});

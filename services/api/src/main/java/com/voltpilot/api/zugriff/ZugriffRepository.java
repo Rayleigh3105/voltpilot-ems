@@ -146,6 +146,43 @@ public class ZugriffRepository {
                 kundenbereich(), sub));
     }
 
+    // ------------------------------------------------------------------ Stichtag der Bestandsregel (E12)
+
+    /** Der Stichtag eines Kundenbereichs ({@code V20260916060000}); {@code herkunft} ist Betriebsauskunft. */
+    public record Stichtag(Instant stichtag, String herkunft, int konten) {}
+
+    /** Der Stichtag, ab dem die Bestandsregel E12 in diesem Kundenbereich nicht mehr gilt — sonst leer. */
+    public Optional<Stichtag> stichtag() {
+        return jdbc.query("SELECT stichtag, herkunft, konten FROM zugriff_bestand WHERE tenant_id = ?",
+                (rs, n) -> new Stichtag(instant(rs, "stichtag"), rs.getString("herkunft"), rs.getInt("konten")),
+                kundenbereich()).stream().findFirst();
+    }
+
+    /**
+     * Setzt den Stichtag EINMAL; {@code true} = geschrieben, {@code false} = es gab ihn schon (ein zweiter Lauf,
+     * ein Neustart). Er wird nie verschoben — die Tabelle gibt kein {@code UPDATE}-Recht.
+     */
+    public boolean stichtagSetzen(Instant stichtag, String herkunft, int konten) {
+        return jdbc.update("INSERT INTO zugriff_bestand (tenant_id, stichtag, herkunft, konten) VALUES (?, ?, ?, ?) "
+                + "ON CONFLICT (tenant_id) DO NOTHING", kundenbereich(), utc(stichtag), herkunft, konten) == 1;
+    }
+
+    /**
+     * Gilt die Bestandsregel E12 für dieses Kundenkonto — ist es also ein BESTANDSKONTO? Genau dann, wenn der
+     * Kundenbereich noch keinen Stichtag hat UND das Konto hier nie eine Zuweisung hatte.
+     *
+     * <p>Beide Hälften in EINER Anweisung: der Lesepfad je Anfrage fragt nur, wenn keine Zuweisung wirksam ist.
+     * Ohne Stichtag bleibt es bei der Regel von IP-2/IP-4 — eine Störung des Start-Laufs sperrt keinen Kunden aus.
+     * Mit Stichtag trägt jedes Bestandskonto eine Zeile in {@code zugriff}, „nie zugewiesen" heißt dann: nach dem
+     * Stichtag entstanden.
+     */
+    public boolean bestandskonto(String sub) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT NOT EXISTS (SELECT 1 FROM zugriff_bestand WHERE tenant_id = ?) "
+                        + "AND NOT EXISTS (SELECT 1 FROM zugriff WHERE tenant_id = ? AND benutzer_sub = ?)",
+                Boolean.class, kundenbereich(), kundenbereich(), sub));
+    }
+
     /** Jede Zuweisung des Kontos (wirksame, künftige, beendete), älteste zuerst. */
     public List<Zeile> zuweisungen(String sub) {
         return jdbc.query(SELECT + " WHERE z.tenant_id = ? AND z.benutzer_sub = ? ORDER BY z.gueltig_ab, z.created_at, z.id",

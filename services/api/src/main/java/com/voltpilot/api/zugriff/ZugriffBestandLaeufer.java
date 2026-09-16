@@ -17,8 +17,15 @@ import org.springframework.stereotype.Component;
 
 /**
  * Der Start-Lauf der Rechte-Bestandsübernahme (UEMS AP-03 IP-2, E12): je Kundenbereich die Konten aus Keycloak
- * holen und {@link ZugriffBestand#uebernehmen} geben — jeder Kundenbenutzer ohne je eine Zuweisung wird
+ * holen und {@link ZugriffBestand#bestandAbschliessen} geben — jeder Kundenbenutzer ohne je eine Zuweisung wird
  * Kundenadministrator.
+ *
+ * <p><b>Er setzt den STICHTAG</b> (Befund E12, {@code V20260916060000}): er ist der Einzige, der die VOLLSTÄNDIGE
+ * Kontenliste eines Kundenbereichs sieht, und darum der Einzige, der sagen darf „hier ist alles übernommen".
+ * Danach ist ein Kundenkonto ohne Zuweisung ein NEUES Konto und sieht nichts. Meldet Keycloak so viele Konten,
+ * wie die Abfrage höchstens holt ({@link KeycloakAdminClient#MAX_KONTEN_JE_KUNDENBEREICH}), kann die Liste
+ * abgeschnitten sein — dann übernimmt der Lauf, setzt aber KEINEN Stichtag: lieber die Regel einen Start länger
+ * als ein ausgesperrtes Bestandskonto.
  *
  * <p><b>Warum ein Start-Lauf und keine Flyway-Migration</b> (das Muster von {@code BestandsuebernahmeLaeufer}):
  * die Kundenbenutzer stehen in Keycloak, nicht in der Datenbank — eine Migration kennt sie nicht.
@@ -43,8 +50,17 @@ public class ZugriffBestandLaeufer {
 
     private static final Logger log = LoggerFactory.getLogger(ZugriffBestandLaeufer.class);
 
-    /** Was ein Lauf tat (für das Log und die Tests). */
-    public record Lauf(int kundenbereiche, int konten, int benutzerNeu, int zuweisungenNeu, int fehler) {
+    /**
+     * Was ein Lauf tat (für das Log und die Tests).
+     *
+     * @param stichtageNeu Kundenbereiche, deren Bestand dieser Lauf abgeschlossen hat (Befund E12)
+     */
+    public record Lauf(int kundenbereiche, int konten, int benutzerNeu, int zuweisungenNeu, int fehler,
+            int stichtageNeu) {
+
+        public Lauf(int kundenbereiche, int konten, int benutzerNeu, int zuweisungenNeu, int fehler) {
+            this(kundenbereiche, konten, benutzerNeu, zuweisungenNeu, fehler, 0);
+        }
 
         public boolean geaendert() {
             return benutzerNeu > 0 || zuweisungenNeu > 0;
@@ -76,10 +92,11 @@ public class ZugriffBestandLaeufer {
     private void imHintergrund() {
         try {
             Lauf l = lauf();
-            if (l.geaendert() || l.fehler() > 0) {
+            if (l.geaendert() || l.fehler() > 0 || l.stichtageNeu() > 0) {
                 log.info("UEMS-Bestandsübernahme der Zugriffe: {} Kundenbereich(e), {} Konto/Konten, {} Spiegel neu, "
-                        + "{} Kundenadministrator(en) zugewiesen, {} Fehler", l.kundenbereiche(), l.konten(),
-                        l.benutzerNeu(), l.zuweisungenNeu(), l.fehler());
+                        + "{} Kundenadministrator(en) zugewiesen, {} Bestand/Bestände abgeschlossen, {} Fehler",
+                        l.kundenbereiche(), l.konten(), l.benutzerNeu(), l.zuweisungenNeu(), l.stichtageNeu(),
+                        l.fehler());
             }
         } catch (RuntimeException e) {
             // Eine Übernahme darf die api nie am Dienen hindern.
@@ -94,6 +111,7 @@ public class ZugriffBestandLaeufer {
         int neu = 0;
         int zuweisungen = 0;
         int fehler = 0;
+        int stichtage = 0;
         for (UUID tenant : kundenbereiche) {
             List<KeycloakUser> liste;
             try {
@@ -108,12 +126,24 @@ public class ZugriffBestandLaeufer {
                         + "wieder: {}", e.toString());
                 break;
             }
+            // Der Stichtag (Befund E12) sagt: DIESER Bestand ist vollständig übernommen. Eine an der Obergrenze
+            // abgeschnittene Liste beweist das nicht — dann wird nur übernommen, und die Regel gilt weiter.
+            boolean vollstaendig = liste.size() < KeycloakAdminClient.MAX_KONTEN_JE_KUNDENBEREICH;
+            if (!vollstaendig) {
+                log.warn("UEMS-Zugriff: Keycloak meldet für Kundenbereich {} {} Konten - die Liste kann abgeschnitten "
+                        + "sein, der Bestand bleibt offen (kein Stichtag)", tenant, liste.size());
+            }
             try {
                 TenantContext.set(tenant);
-                ZugriffBestand.Ergebnis e = bestand.uebernehmen(liste);
+                ZugriffBestand.Ergebnis e = vollstaendig
+                        ? bestand.bestandAbschliessen(liste, ZugriffBestand.HERKUNFT_LAUF)
+                        : bestand.uebernehmen(liste);
                 konten += e.konten();
                 neu += e.benutzerNeu();
                 zuweisungen += e.zuweisungenNeu();
+                if (e.stichtagNeu()) {
+                    stichtage++;
+                }
             } catch (RuntimeException e) {
                 fehler++;
                 log.error("UEMS-Zugriff: Bestandsübernahme für Kundenbereich {} gescheitert, nichts übernommen: {}",
@@ -122,6 +152,6 @@ public class ZugriffBestandLaeufer {
                 TenantContext.clear();
             }
         }
-        return new Lauf(kundenbereiche.size(), konten, neu, zuweisungen, fehler);
+        return new Lauf(kundenbereiche.size(), konten, neu, zuweisungen, fehler, stichtage);
     }
 }

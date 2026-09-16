@@ -112,8 +112,10 @@ public class RegistrationController {
                     "Registration is temporarily unavailable, please try again later", ex);
         }
         // AP-03 IP-2 (E12): the new login is the customer administrator of its tenant - isolated
-        // listener, a failure there never fails the registration.
-        ereignisse.publishEvent(new KundenbenutzerAngelegt(tenant.id(), user));
+        // listener, a failure there never fails the registration. The tenant is BORN here, so it has no
+        // legacy stock: the listener also sets its Stichtag (Befund E12, V20260916060000), and from its
+        // first minute a further account gets rights only through an explicit Zuweisung.
+        ereignisse.publishEvent(new KundenbenutzerAngelegt(tenant.id(), user, true));
         log.info("Self-registered tenant '{}' ({}) with user '{}'", tenant.name(), tenant.id(),
                 user.username());
         return ResponseEntity.status(HttpStatus.CREATED)

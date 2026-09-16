@@ -66,6 +66,11 @@ Neu angelegt am 15.09.2026. Migration
   - Ereignis `KundenbenutzerAngelegt` aus `RegistrationController` und `AdminController.createUser`. Der Hörer
     `ZugriffBestand.beiAnlage` ist isoliert: er wirft nie, zählt `voltpilot_zugriff_bestand_total{ergebnis="fehler"}`
     und stellt den `TenantContext` wieder her.
+- **Seit 16.09.2026 hat die Regel einen STICHTAG** (`uems-zugriff-stichtag.md`, `V20260916060000`): der Start-Lauf
+  trägt je Kundenbereich EINE Zeile in `zugriff_bestand` ein, sobald er dessen VOLLSTÄNDIGE Kontenliste übernommen
+  hat (`ZugriffBestand.bestandAbschliessen`). Danach gilt E12 dort nicht mehr — ein Konto ohne Zuweisung ist ein
+  neues Konto und sieht nichts. `KundenbenutzerAngelegt` mit `neuerKundenbereich` (nur `RegistrationController`)
+  setzt ihn ebenfalls; ein einzeln nachgezogenes Konto nie.
 - ⚠ **Für IP-13/IP-14:** eine Kundenroute, die ein Konto anlegt, schreibt seine Zuweisung in DERSELBEN Handlung und
   veröffentlicht `KundenbenutzerAngelegt` nicht. Sonst macht der nächste Start das Konto zum Kundenadministrator,
   denn die Regel kennt nur „nie eine Zuweisung".

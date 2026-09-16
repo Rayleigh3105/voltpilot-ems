@@ -57,10 +57,12 @@ Kundenbereich und Tabelle), `ZugriffZaunApiTest` (157 lesende Routen gleich, sta
   `anlage_standort_site_fk`. Ein `INSERT … RETURNING` auf `site` oder `ort` scheitert im engen Zaun, weil die neue Zeile
   noch keine Zuordnung hat. Seit IP-6 vergibt `OrtRepository.anlegen` die Kennung selbst (ohne `RETURNING`). `site`
   legt nur der Kundenadministrator an (`anlage.verwalten`, unternehmensweit).
-- ⚠ **Bestandsregel E12 in der Anfrage:** ein Kundenkonto, das in diesem Kundenbereich NIE eine Zuweisung hatte, trägt
-  `unternehmen` (`ZugriffContext.Zugriff.nieZugewiesen`, eine Abfrage mehr nur ohne wirksame Zuweisung). Sonst sperrte der
-  Zaun jedes Konto aus, das der Start-Lauf noch nicht übernommen hat (Not-Aus, Keycloak nicht erreichbar, Testlauf). Mit
-  nur beendeten oder künftigen Zuweisungen trägt es `standorte` + `{}` und sieht keine Anlage (Entzug wirkt sofort).
+- ⚠ **Bestandsregel E12 in der Anfrage, seit 16.09.2026 MIT STICHTAG** (`uems-zugriff-stichtag.md`): ein Kundenkonto,
+  das in diesem Kundenbereich NIE eine Zuweisung hatte, trägt `unternehmen` (`ZugriffContext.Zugriff.bestandskonto`,
+  eine Abfrage mehr nur ohne wirksame Zuweisung) — **solange der Kundenbereich keine Zeile in `zugriff_bestand` hat**.
+  Sonst sperrte der Zaun jedes Konto aus, das der Start-Lauf noch nicht übernommen hat (Not-Aus, Keycloak nicht
+  erreichbar, Testlauf). Ist der Bestand übernommen, ist ein Konto ohne Zuweisung ein NEUES Konto: `standorte` + `{}`.
+  Mit nur beendeten oder künftigen Zuweisungen trägt es `standorte` + `{}` und sieht keine Anlage (Entzug wirkt sofort).
   ⚠ IP-13/IP-14: die Zuweisung eines neuen Kontos muss VOR seiner ersten Anfrage stehen.
 - ⚠ Jobs, Takt, Hörer und `/admin/**` laufen ohne Zugriff und sehen den ganzen Kundenbereich. Ein Hörer, der im
   Anfrage-Thread den Kundenbereich wechselt, bekommt leere Einstellungen, sieht also alles.
