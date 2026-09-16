@@ -26,11 +26,12 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["an_der_box", "family", "point_count", "template_count"],
+        "required": ["an_der_box", "family", "point_count", "single_reader", "template_count"],
         "properties": {
           "an_der_box": {"type": "boolean", "description": "false = die Familie steht nur im Inhaltsstand und geht an keine Box (cataloglib.NOCH_NICHT_AN_DER_BOX, README „Familien noch nicht an der Box“)"},
           "family": {"type": "string", "minLength": 1},
           "point_count": {"type": "integer", "minimum": 1},
+          "single_reader": {"type": "boolean", "description": "Cloud-Regel: Geräte dieser Vorlage vertragen nie zwei gleichzeitig lesende Boxen; das Feld geht nicht in den Box-Laufzeitkatalog."},
           "template_count": {"type": "integer", "minimum": 0}
         }
       }

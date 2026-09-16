@@ -23,7 +23,7 @@
              version; 1.19.x pins v1.32, which Docker 25+ (min API 1.40) rejects. -->
         <testcontainers.version>1.20.6</testcontainers.version>
         <docker.api.version>1.44</docker.api.version>
-        <measurement.catalog.version>2026.09.16.1</measurement.catalog.version>
+        <measurement.catalog.version>2026.09.17.1</measurement.catalog.version>
     </properties>
 
     <dependencies>

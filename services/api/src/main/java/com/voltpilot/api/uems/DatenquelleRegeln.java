@@ -907,7 +907,26 @@ public final class DatenquelleRegeln {
     public static Optional<AntragErgebnis> bestandWegVergeben(Vorschlag v, List<Quelle> quellen,
             Map<String, String> boxNamen) {
         Quelle q = new Quelle(null, v.protokoll(), v.adresse(), null, v.steuerquelle(), false, List.of());
-        return Optional.ofNullable(adresseAnBoxVergeben(q, v.box(), v.zeitraeume().get(0).von(), quellen, boxNamen));
+        Instant ab = v.zeitraeume().get(0).von();
+        AntragErgebnis selbeBox = adresseAnBoxVergeben(q, v.box(), ab, quellen, boxNamen);
+        if (selbeBox != null) {
+            return Optional.of(selbeBox);
+        }
+        // Der Bestands-Assistent kennt keine dokumentierte Netzlage. Eine gleiche Adresse an
+        // einer anderen Box darf er deshalb nicht still als „anderes Netz“ deuten: erst über den
+        // normalen Anlegeweg Netze eintragen und dort ggf. als Vergleichsquelle bestätigen.
+        for (Quelle andere : quellen) {
+            if (!andererGleicherWeg(andere, q)) {
+                continue;
+            }
+            for (Zeitraum z : andere.zeitraeume()) {
+                if (!z.box().equals(v.box()) && z.reichtUeber(ab)) {
+                    return Optional.of(abgelehnt(Grund.NETZLAGE_FEHLT,
+                            Map.of("kennzeichen", andere.kennzeichen(), "box", name(boxNamen, z.box()))));
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     /** Der Satz einer Zuständigkeit — „Ab 12.03.2024 00:00 liest Box Halle 1“ ({@code texte.erlaubt}). */

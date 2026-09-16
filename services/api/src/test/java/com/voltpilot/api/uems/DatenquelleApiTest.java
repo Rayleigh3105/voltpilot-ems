@@ -114,7 +114,7 @@ class DatenquelleApiTest {
             Map.entry("ueberschneidung", 409),
             Map.entry("adresse_an_box_vergeben", 409),
             Map.entry("netzlage_fehlt", 409),
-            Map.entry("nur_ein_leser", 409),
+            Map.entry("nur_ein_leser", 422),
             Map.entry("vergleich_bestaetigen", 409),
             Map.entry("pruefung_fehlt", 409),
             Map.entry("pruefung_gescheitert", 409));
@@ -312,6 +312,8 @@ class DatenquelleApiTest {
         assertThat(a.status()).as(a.body().toString()).isEqualTo(STATUS_JE_GRUND.get(grund));
         assertThat(a.body().get("code").asText()).isEqualTo(grund);
         assertThat(a.body().get("message").asText()).isEqualTo(e.get("text").asText());
+        assertThat(a.body().get("grund").asText()).isEqualTo(grund);
+        assertThat(a.body().get("satz").asText()).isEqualTo(e.get("text").asText());
         assertThat(a.body().get("urteil").asText()).isEqualTo(e.get("urteil").asText());
     }
 
@@ -447,6 +449,25 @@ class DatenquelleApiTest {
         assertThat(Instant.parse(begonnen.get("gilt_ab").asText())).isEqualTo(Instant.parse("2026-10-14T22:00:00Z"));
         assertThat(protokoll.at("/eintraege/1/ergebnis").asText()).isEqualTo("ok");
         assertThat(protokoll.at("/eintraege/2/neu/kennzeichen").asText()).isEqualTo("DQ-6");
+    }
+
+    @Test
+    void katalogEinLeserKannNichtVomClientGeoeffnetWerden() throws Exception {
+        Welt w = new Welt("Ein-Leser-Katalog");
+        UUID anlage = w.anlage("AN-1");
+        Wer kunde = kunde(w.mandant, "Ines Fischer");
+
+        for (Map<String, Object> body : List.of(
+                new LinkedHashMap<>(Map.of("name", "Solarman-Logger", "protokoll", "solarman_v5",
+                        "adresse", "192.168.10.20:8899/2985159064", "geraete_ids", List.of(1), "mehrere_leser", true,
+                        "steuerquelle", false, "kadenz_s", 60)),
+                new LinkedHashMap<>(Map.of("name", "WAGO-Steuerung", "protokoll", "modbus_tcp",
+                        "adresse", "192.168.10.21:502", "geraete_ids", List.of(1), "mehrere_leser", true,
+                        "steuerquelle", true, "kadenz_s", 60)))) {
+            Antwort angelegt = ruf(kunde, HttpMethod.POST, basis(anlage), body);
+            assertThat(angelegt.status()).as(angelegt.body().toString()).isEqualTo(201);
+            assertThat(angelegt.body().get("mehrere_leser").asBoolean()).isFalse();
+        }
     }
 
     // ============================================================ A3 · A11 · A13

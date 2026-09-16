@@ -106,6 +106,16 @@ class CatalogTest(unittest.TestCase):
         validated = validate_catalog(ARTIFACT)
         self.assertEqual(len(validated["points"]), EXPECTED["total_points"])
 
+    def test_single_reader_is_cloud_only_and_covers_solarman_and_wago(self) -> None:
+        families = {family["family"]: family["single_reader"] for family in self.catalog["families"]}
+        self.assertEqual(
+            {name for name, single_reader in families.items() if single_reader},
+            {"hybrid_1p", "hybrid_3p", "micro", "string", "wago.pm494", "wago.pm495"},
+        )
+        runtime = runtime_projection(self.catalog, self.catalog["runtime_catalog_version"])
+        self.assertTrue(runtime)
+        self.assertFalse(any("single_reader" in point for point in runtime))
+
     def test_json_schemas_reject_extras_and_nested_type_errors(self) -> None:
         catalog_schema = json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8"))
         manifest_schema = json.loads(MANIFEST_SCHEMA.read_text(encoding="utf-8"))

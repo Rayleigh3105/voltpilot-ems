@@ -86,15 +86,15 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
 
     /**
      * Der HTTP-Status je Grund des Vertrags: 400 für ein Wort außerhalb des Vokabulars, 422 für
-     * einen Zeitpunkt, der in sich nicht geht (Sekunden, rückwirkend, leer), 409 für alles, was
-     * am gespeicherten Stand scheitert — auch „erst bestätigen“ und „erst prüfen“.
+     * einen in sich ungültigen Wunsch (Zeitpunkt bzw. Ein-Leser-Vorlage), 409 für alles, was am
+     * gespeicherten Stand scheitert — auch „erst bestätigen“ und „erst prüfen“.
      */
     public static int status(Grund g) {
         return switch (g) {
             case PROTOKOLL_UNBEKANNT -> 400;
-            case KEINE_VOLLE_MINUTE, RUECKWIRKEND, LEERER_ZEITRAUM -> 422;
+            case KEINE_VOLLE_MINUTE, RUECKWIRKEND, LEERER_ZEITRAUM, NUR_EIN_LESER -> 422;
             case STEUERQUELLE, SPAETERER_WECHSEL_GEPLANT, SCHON_ZUSTAENDIG, UEBERSCHNEIDUNG,
-                    ADRESSE_AN_BOX_VERGEBEN, NETZLAGE_FEHLT, NUR_EIN_LESER, VERGLEICH_BESTAETIGEN,
+                    ADRESSE_AN_BOX_VERGEBEN, NETZLAGE_FEHLT, VERGLEICH_BESTAETIGEN,
                     PRUEFUNG_FEHLT, PRUEFUNG_GESCHEITERT -> 409;
         };
     }
@@ -103,19 +103,22 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
     public static DatenquelleAbgelehnt regel(AntragErgebnis e) {
         Map<String, Object> fakten = new LinkedHashMap<>();
         fakten.put("urteil", e.urteil().code());
+        fakten.put("grund", e.grund().code());
+        fakten.put("satz", e.text());
         return new DatenquelleAbgelehnt(e.grund().code(), status(e.grund()), e.text(), fakten);
     }
 
     /** Ein Urteil der Speicher-Regel {@link DatenquelleRegeln#pruefeZeitraum}. */
     public static DatenquelleAbgelehnt zeitraum(ZeitraumErgebnis e) {
-        return new DatenquelleAbgelehnt(e.grund().code(), status(e.grund()), e.text(),
-                Map.of("urteil", DatenquelleRegeln.Urteil.ABGELEHNT.code()));
+        return new DatenquelleAbgelehnt(e.grund().code(), status(e.grund()), e.text(), Map.of(
+                "urteil", DatenquelleRegeln.Urteil.ABGELEHNT.code(),
+                "grund", e.grund().code(), "satz", e.text()));
     }
 
     /** Ein Grund des Vertrags ohne Platzhalter im Satz (heute: {@code protokoll_unbekannt}). */
     public static DatenquelleAbgelehnt grund(Grund g) {
         return new DatenquelleAbgelehnt(g.code(), status(g), g.text(),
-                Map.of("urteil", g.urteil().code()));
+                Map.of("urteil", g.urteil().code(), "grund", g.code(), "satz", g.text()));
     }
 
     public static DatenquelleAbgelehnt schnittstelle(Schnittstelle s, String satz, Map<String, Object> fakten) {

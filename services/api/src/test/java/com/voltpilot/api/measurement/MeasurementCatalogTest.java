@@ -119,7 +119,7 @@ class MeasurementCatalogTest {
     @Test
     void theBoxKeepsItsRuntimeVersionWhileTheContentVersionCarriesQuantityAndDirection() {
         assertThat(catalog.version()).isEqualTo("2026.08.26.3");
-        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.16.1");
+        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.17.1");
 
         assertThat(catalog.semantik("sunspec.model_203.totwhimp"))
                 .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "import"));
