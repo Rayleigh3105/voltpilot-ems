@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -70,6 +71,8 @@ public class RechtPruefung {
         RECHT_FEHLT("recht_fehlt"),
         /** 404 aus dieser Stelle: sichtbar, nach dem Vertrag aber außerhalb des Geltungsbereichs. */
         AUSSERHALB("ausserhalb"),
+        /** 404 {@code zugriff_beendet}: der Aufrufer hatte diesen Standort, und die Zuweisung ist vorbei (IP-9). */
+        ZUGRIFF_BEENDET("zugriff_beendet"),
         /** Die Anfrage sieht das Objekt nicht (oder es gibt es nicht): die Route antwortet selbst. */
         UNSICHTBAR("unsichtbar"),
         /** Kein Zugriff-Kontext — nicht geprüft. */
@@ -261,10 +264,25 @@ public class RechtPruefung {
             ZugriffContext.handelndeRolle(d.rolle());
             return new Urteil(Ergebnis.ERLAUBT, null);
         }
+        if (d.grund() == RechteAbleitung.Grund.ZUGRIFF_BEENDET) {
+            // Nicht „gibt es nicht“, sondern „Sie hatten es“ (IP-9, §5.9): der Standort steht in der BEENDETEN
+            // Zuweisung des Aufrufers, die der Zugriff-Kontext mitführt — sein Name gehört ihm, nicht dem Zaun.
+            return new Urteil(Ergebnis.ZUGRIFF_BEENDET, ZugriffBeendet.standort(standortName(z, standort)));
+        }
         if (!d.sichtbar()) {
             return ausserhalb(nichtGefunden);
         }
         return rechtFehlt(z, b, kennung, ziel, standort);
+    }
+
+    /** Der Kundenname des Standorts aus den Zuweisungen des Aufrufers — {@code null}, wenn keine ihn nennt. */
+    private static String standortName(Zugriff z, String standortId) {
+        if (standortId == null) {
+            return null;
+        }
+        return Stream.concat(z.zuweisungen().stream(), z.beendete().stream())
+                .filter(x -> x.standortId() != null && standortId.equals(x.standortId().toString()))
+                .map(ZugriffRepository.Zeile::standortName).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
     /** Hat der Aufrufer eines der Rechte im Unternehmen oder an einem seiner Standorte? */
@@ -317,10 +335,17 @@ public class RechtPruefung {
                 kundenadministratoren);
     }
 
+    /**
+     * Der Aufrufer als Eingang des Vertrags. Er bekommt die wirksamen UND die beendeten Zuweisungen (IP-9): der
+     * Vertrag filtert selbst nach {@code wirksam(jetzt)} und braucht die beendeten allein, um eine Ablehnung
+     * {@code zugriff_beendet} statt {@code ausserhalb_geltungsbereich} zu nennen (§5.9). Ein Bestandskonto (E12)
+     * hat per Definition keine.
+     */
     static Benutzer benutzer(Zugriff z) {
         List<Zuweisung> zuweisungen = z.zugang() == Zugang.KONTO && z.bestandskonto()
                 ? List.of(new Zuweisung(Rolle.KUNDENADMINISTRATOR, null, null, null, IMMER, null, null))
-                : z.zuweisungen().stream().map(RechtPruefung::zuweisung).toList();
+                : Stream.concat(z.zuweisungen().stream(), z.beendete().stream())
+                        .map(RechtPruefung::zuweisung).toList();
         return new Benutzer(z.sub(), z.sub(), z.konto(), KontoZustand.AKTIV, zuweisungen);
     }
 

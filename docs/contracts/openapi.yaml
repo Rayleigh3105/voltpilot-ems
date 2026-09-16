@@ -2684,6 +2684,14 @@ paths:
                           allOf: [{ $ref: "#/components/schemas/ProtokollUrheber" }]
                           nullable: true
                           description: AP-03 IP-7 - wer den Eingriff gesetzt hat, im Akteur-Vokabular; null für einen Eingriff von vor dieser Fassung.
+                        etikett:
+                          type: string
+                          nullable: true
+                          description: >
+                            AP-03 IP-9 (E15) - der Satz der Jetzt-Zone: „gesetzt von Murat Demirci" und, wenn
+                            dessen Bedienrecht inzwischen endete, „… (Bedienrecht beendet am 14.11.2026 09:02)".
+                            Der Eingriff selbst bleibt davon unberührt und wirkt bis zu seinem Ende - ein Entzug
+                            schaltet nie. null ohne bekannten Urheber.
         "404": { description: Anlage nicht gefunden (auch bei fremdem Mandanten). }
   /api/v1/sites/{siteId}/battery-override:
     post:
@@ -11289,6 +11297,89 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Selbstauskunft" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/zugriff:
+    get:
+      tags: [zugriff]
+      summary: Die Zuweisungen EINER Person - wirksame, künftige und beendete.
+      description: >
+        UEMS AP-03 IP-9, Recht `zuweisung.verwalten` (Matrix-Zelle U - nur der Kundenadministrator, E2).
+        `benutzer` ist Pflicht (das Subject aus Keycloak); eine Zuweisung wird nie umgeschrieben, darum steht
+        eine beendete weiter in der Liste und trägt ihr `beendet_am`.
+      parameters:
+        - { name: benutzer, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Die Zuweisungen, älteste zuerst.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Zugriff" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [zugriff]
+      summary: Eine Rolle zuweisen (ab jetzt).
+      description: >
+        UEMS AP-03 IP-9 (§5.2), Recht `zuweisung.verwalten`. Eine Rolle je Standort braucht einen Standort
+        (422 `standort_fehlt`); niemand erweitert die EIGENE Zuweisung (409 `eigene_zuweisung`). Das Konto muss
+        im Kundenbereich schon gespiegelt sein - Konten legt `benutzer.verwalten` an (IP-13/IP-14). Der
+        Unterstützer entsteht allein über `POST /api/v1/unterstuetzung` (400 sonst).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [benutzer_sub, rolle]
+              properties:
+                benutzer_sub: { type: string }
+                rolle:
+                  type: string
+                  enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser]
+                standort_id: { type: string, format: uuid, nullable: true }
+                grund: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Die neue Zuweisung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Zugriff" }
+        "400": { description: Rumpf unvollständig, Rolle unbekannt oder nicht über diesen Weg zuweisbar. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Benutzer oder Standort nicht gefunden. }
+        "409": { $ref: "#/components/responses/ZugriffAbgelehnt" }
+        "422": { $ref: "#/components/responses/ZugriffAbgelehnt" }
+  /api/v1/zugriff/{id}:
+    delete:
+      tags: [zugriff]
+      summary: Eine Zuweisung entziehen - sofort.
+      description: >
+        UEMS AP-03 IP-9 (§4.7, A6/A8), Recht `zuweisung.verwalten`. Der Entzug wirkt mit der NÄCHSTEN Anfrage
+        des Betroffenen, nicht mit seiner nächsten Anmeldung: sie bekommt 404/403 `zugriff_beendet`. Gesetzte
+        Handeingriffe bleiben und laufen bis zu ihrem Ende (E15) - ein Entzug ist keine Steuerung; die Jetzt-Zone
+        trägt sie danach mit „(Bedienrecht beendet am …)". Zwei Regeln lehnen mit 409 ab: die eigene Zuweisung
+        ist unveränderlich (`eigene_zuweisung`) und der letzte Kundenadministrator ist geschützt
+        (`letzter_kundenadministrator`). Eine UNTERSTÜTZUNG endet über `DELETE /api/v1/unterstuetzung/{id}`
+        (hier 404). Protokolliert wird zweimal: im Zugriffsprotokoll des Kundenbereichs und als Zeile im
+        Änderungsprotokoll des Standorts (`zugriff_entzogen`, AP-02 §4.4).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grund: { type: string, nullable: true }
+      responses:
+        "204": { description: Entzogen. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Zuweisung nicht gefunden, schon beendet oder eine Unterstützung. }
+        "409": { $ref: "#/components/responses/ZugriffAbgelehnt" }
   /api/v1/unterstuetzung:
     get:
       tags: [zugriff]
@@ -11744,6 +11835,35 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/UnterstuetzungFehler" }
+    ZugriffAbgelehnt:
+      description: >
+        UEMS AP-03 IP-9 - abgelehnt, nichts geschrieben. `code` ist der Grund des Rechte-Vertrags
+        (`eigene_zuweisung`, `letzter_kundenadministrator`, `standort_fehlt`), `message` sein Kundensatz.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message]
+            properties:
+              code:
+                type: string
+                enum: [eigene_zuweisung, letzter_kundenadministrator, standort_fehlt]
+              message: { type: string }
+    ZugriffBeendet:
+      description: >
+        UEMS AP-03 IP-9 (§4.7, §5.9) - der Aufrufer HATTE diesen Zugang, und er ist vorbei: 404 mit `code`
+        `zugriff_beendet` und dem Satz „Ihr Zugriff auf … wurde beendet." bzw. „Ihre Unterstützung für … ist
+        beendet.". Wer den Zugang NIE hatte, bekommt weiter die stumme 404 - die Existenz wird nicht bestätigt.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string, enum: [zugriff_beendet] }
+              message: { type: string }
+              standort: { type: string, nullable: true }
+              kundenbereich: { type: string, nullable: true }
     MessstelleAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben. Der Körper trägt `code`, einen deutschen
@@ -11993,6 +12113,25 @@ components:
           type: string
           nullable: true
           description: Der Banner-Satz - beim Kunden „… hat Zugriff auf …“, beim Unterstützer „Sie arbeiten im Kundenbereich …“.
+    Zugriff:
+      type: object
+      description: >
+        UEMS AP-03 IP-9 - eine Zuweisung: Person x Rolle x Geltungsbereich x Zeit. `standort_id` null heißt
+        unternehmensweit. Eine Zuweisung wird nie umgeschrieben; `beendet_am` ist ihr Ende (der Entzug wirkt ab
+        diesem Zeitpunkt mit der nächsten Anfrage).
+      required: [id, benutzer_sub, rolle, gueltig_ab]
+      properties:
+        id: { type: string, format: uuid }
+        benutzer_sub: { type: string }
+        benutzer_name: { type: string, nullable: true }
+        rolle:
+          type: string
+          enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser, unterstuetzer]
+        standort_id: { type: string, format: uuid, nullable: true }
+        standort_kurzzeichen: { type: string, nullable: true }
+        standort_name: { type: string, nullable: true }
+        gueltig_ab: { type: string, format: date-time }
+        beendet_am: { type: string, format: date-time, nullable: true }
     Unterstuetzung:
       type: object
       description: >

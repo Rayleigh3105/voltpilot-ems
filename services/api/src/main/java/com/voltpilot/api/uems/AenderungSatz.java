@@ -102,8 +102,31 @@ public final class AenderungSatz {
             case "zustaendigkeit_begonnen" -> "Zuständigkeit begonnen";
             case "zustaendigkeit_gewechselt" -> "Zuständigkeit gewechselt";
             case "aus_bestand_uebernommen" -> was + " aus dem Bestand übernommen";
+            case "zugriff_zugewiesen" -> "Zugriff zugewiesen" + zugriff(neu);
+            case "zugriff_entzogen" -> "Zugriff entzogen" + zugriff(neu);
             default -> art;
         };
+    }
+
+    /**
+     * „: Sabine Rauch · Bearbeiter" — Person und Rolle einer Zuweisungs-Änderung (AP-03 IP-9). Die Rolle steht
+     * als Code im Eintrag und wird mit dem KUNDENWORT der Matrix gezeigt; ein unbekannter Code bleibt, wie er
+     * ist, statt zu verschwinden.
+     */
+    private static String zugriff(JsonNode neu) {
+        String name = text(neu, "benutzer_name");
+        String rolle = text(neu, "rolle");
+        if (rolle != null) {
+            try {
+                rolle = RechteAbleitung.Rolle.vonCode(rolle).kundenwort();
+            } catch (IllegalArgumentException e) {
+                // unbekannte Rolle: der Code ist ehrlicher als nichts
+            }
+        }
+        if (name == null) {
+            return zusatz(rolle);
+        }
+        return zusatz(rolle == null ? name : name + " · " + rolle);
     }
 
     // ---------------------------------------------------------------- Bausteine

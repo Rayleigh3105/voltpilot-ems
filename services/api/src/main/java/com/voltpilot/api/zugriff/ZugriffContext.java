@@ -69,19 +69,40 @@ public final class ZugriffContext {
      * @param stand der Zeitpunkt, zu dem „wirksam" gilt
      * @param bestandskonto ein Kundenkonto, für das die Bestandsregel E12 gilt: es hatte in diesem Kundenbereich nie
      *     eine Zuweisung UND der Kundenbereich hat noch keinen Stichtag ({@link ZugriffRepository#bestandskonto})
+     * @param beendete die Zuweisungen desselben Kontos, die zu {@code stand} VORBEI sind — entzogen oder
+     *     abgelaufen (IP-9). Sie geben nichts frei; sie sind der Grund, aus dem eine Ablehnung
+     *     {@code zugriff_beendet} heißt statt „gibt es nicht". Eine KÜNFTIGE Zuweisung steht in keiner der
+     *     beiden Listen: an ihr ist nichts beendet.
      */
     public record Zugriff(String sub, Konto konto, UUID kundenbereich, Zugang zugang,
-            List<ZugriffRepository.Zeile> zuweisungen, Instant stand, boolean bestandskonto) {
+            List<ZugriffRepository.Zeile> zuweisungen, Instant stand, boolean bestandskonto,
+            List<ZugriffRepository.Zeile> beendete) {
 
         public Zugriff {
             Objects.requireNonNull(kundenbereich, "kundenbereich");
             zuweisungen = List.copyOf(zuweisungen);
+            beendete = beendete == null ? List.of() : List.copyOf(beendete);
+        }
+
+        /** Ohne beendete Zuweisungen — der Zugang eines Dritten und jeder Aufbau vor IP-9. */
+        public Zugriff(String sub, Konto konto, UUID kundenbereich, Zugang zugang,
+                List<ZugriffRepository.Zeile> zuweisungen, Instant stand, boolean bestandskonto) {
+            this(sub, konto, kundenbereich, zugang, zuweisungen, stand, bestandskonto, List.of());
         }
 
         /** Ohne Bestandsregel: ein Konto, das schon einmal eine Zuweisung hatte, oder kein Kundenkonto. */
         public Zugriff(String sub, Konto konto, UUID kundenbereich, Zugang zugang,
                 List<ZugriffRepository.Zeile> zuweisungen, Instant stand) {
-            this(sub, konto, kundenbereich, zugang, zuweisungen, stand, false);
+            this(sub, konto, kundenbereich, zugang, zuweisungen, stand, false, List.of());
+        }
+
+        /**
+         * Hat der Aufrufer JEDE Zuweisung verloren, die er einmal hatte? Dann ist jede Kundenroute für ihn
+         * {@code zugriff_beendet} (A6) — der {@link ZugriffFilter} beantwortet sie, ohne den Handler zu rufen.
+         * Ein Bestandskonto (E12) und ein Konto mit einer künftigen Zuweisung sind es nie.
+         */
+        public boolean jederZugriffBeendet() {
+            return zuweisungen.isEmpty() && !bestandskonto && !beendete.isEmpty();
         }
 
         /**

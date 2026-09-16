@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -59,10 +60,18 @@ public class ZugriffRepository {
         }
     }
 
-    /** Eine gespeicherte Zuweisung; {@code standortKurzzeichen} ist das Kennzeichen des Vertrags (ST-1 …). */
+    /**
+     * Eine gespeicherte Zuweisung; {@code standortKurzzeichen} ist das Kennzeichen des Vertrags (ST-1 …),
+     * {@code standortName} der Kundenname desselben Standorts.
+     *
+     * <p>⚠ Beide kommen aus einem Unterabfrage-Join auf {@code standort} und tragen damit den Standort-Zaun
+     * (IP-5): wer den Standort NICHT (mehr) sieht, liest hier {@code null}. Der {@link ZugriffKontextLader}
+     * liest sie darum, BEVOR der Zaun der Anfrage steht — nur so trägt eine beendete Zuweisung den Namen, den
+     * der Satz „Ihr Zugriff auf … wurde beendet." braucht (IP-9).
+     */
     public record Zeile(UUID id, String benutzerSub, Rolle rolle, UUID standortId, String standortKurzzeichen,
-            Art art, Umfang umfang, Instant gueltigAb, LocalDate gueltigBis, Instant endetAm, ZoneId zeitzone,
-            String gewaehrtVon, Instant beendetAm, String beendetVon, String beendetGrund) {
+            String standortName, Art art, Umfang umfang, Instant gueltigAb, LocalDate gueltigBis, Instant endetAm,
+            ZoneId zeitzone, String gewaehrtVon, Instant beendetAm, String beendetVon, String beendetGrund) {
 
         /** Dieselbe Zuweisung als Eingang des Vertrags — eine Zeile, ein Standort (oder das Unternehmen). */
         public RechteAbleitung.Zuweisung alsZuweisung() {
@@ -190,10 +199,44 @@ public class ZugriffRepository {
                 Boolean.class, kundenbereich(), kundenbereich(), sub));
     }
 
+    /** EINE Zuweisung des Kundenbereichs — leer, wenn es sie hier nicht gibt (die Route antwortet 404). */
+    public Optional<Zeile> zeile(UUID zugriffId) {
+        return jdbc.query(SELECT + " WHERE z.tenant_id = ? AND z.id = ?", ZugriffRepository::zeile,
+                kundenbereich(), zugriffId).stream().findFirst();
+    }
+
     /** Jede Zuweisung des Kontos (wirksame, künftige, beendete), älteste zuerst. */
     public List<Zeile> zuweisungen(String sub) {
         return jdbc.query(SELECT + " WHERE z.tenant_id = ? AND z.benutzer_sub = ? ORDER BY z.gueltig_ab, z.created_at, z.id",
                 ZugriffRepository::zeile, kundenbereich(), sub);
+    }
+
+    /**
+     * Was eine Anfrage über den Aufrufer wissen muss (IP-9): seine WIRKSAMEN Zuweisungen und die, die VORBEI
+     * sind — beendet oder abgelaufen. In EINER Abfrage, weil jede Anfrage sie braucht; künftige Zuweisungen
+     * (Sabine ab 01.03.2027) fallen aus beiden Listen, denn nichts an ihnen ist beendet.
+     *
+     * <p>„Vorbei" ist die obere Grenze desselben {@code zugriff_zeitraum}, mit dem „wirksam" gefragt wird — nie
+     * eine zweite Rechnung in Java. Ein Zeitraum ohne Ende ({@code upper} = unendlich) ist nie vorbei.
+     */
+    public record Stand(List<Zeile> wirksam, List<Zeile> vorbei) {}
+
+    /** Wirksame und vorbeie Zuweisungen des Kontos zu {@code jetzt} — die Abfrage je Anfrage (IP-4/IP-9). */
+    public Stand stand(String sub, Instant jetzt) {
+        String zeitraum = "public.zugriff_zeitraum(z.gueltig_ab, z.endet_am, z.beendet_am)";
+        List<Object[]> zeilen = jdbc.query(SELECT.replace(" FROM zugriff z",
+                        ", " + zeitraum + " @> ?::timestamptz AS ist_wirksam FROM zugriff z")
+                        + " WHERE z.tenant_id = ? AND z.benutzer_sub = ? AND (" + zeitraum + " @> ?::timestamptz "
+                        + "OR upper(" + zeitraum + ") <= ?::timestamptz) "
+                        + "ORDER BY z.gueltig_ab, z.created_at, z.id",
+                (rs, n) -> new Object[] {zeile(rs, n), rs.getBoolean("ist_wirksam")},
+                utc(jetzt), kundenbereich(), sub, utc(jetzt), utc(jetzt));
+        List<Zeile> wirksam = new ArrayList<>();
+        List<Zeile> vorbei = new ArrayList<>();
+        for (Object[] z : zeilen) {
+            (((Boolean) z[1]) ? wirksam : vorbei).add((Zeile) z[0]);
+        }
+        return new Stand(List.copyOf(wirksam), List.copyOf(vorbei));
     }
 
     /** Die zu {@code jetzt} wirksamen Zuweisungen des Kontos. */
@@ -326,7 +369,9 @@ public class ZugriffRepository {
 
     private static final String SELECT = "SELECT z.id, z.benutzer_sub, z.rolle, z.standort_id, "
             + "(SELECT s.kurzzeichen FROM standort s WHERE s.id = z.standort_id AND s.tenant_id = z.tenant_id) "
-            + "AS standort_kurzzeichen, z.art, z.umfang, z.gueltig_ab, z.gueltig_bis, z.endet_am, z.zeitzone, "
+            + "AS standort_kurzzeichen, "
+            + "(SELECT s.name FROM standort s WHERE s.id = z.standort_id AND s.tenant_id = z.tenant_id) "
+            + "AS standort_name, z.art, z.umfang, z.gueltig_ab, z.gueltig_bis, z.endet_am, z.zeitzone, "
             + "z.gewaehrt_von, z.beendet_am, z.beendet_von, z.beendet_grund FROM zugriff z";
 
     private static final String SELECT_MIT_NAME = SELECT.replace(" FROM zugriff z", ", coalesce((SELECT b.anzeigename "
@@ -349,7 +394,8 @@ public class ZugriffRepository {
         String umfang = rs.getString("umfang");
         return new Zeile(rs.getObject("id", UUID.class), rs.getString("benutzer_sub"),
                 Rolle.vonCode(rs.getString("rolle")), rs.getObject("standort_id", UUID.class),
-                rs.getString("standort_kurzzeichen"), art == null ? null : Art.vonCode(art),
+                rs.getString("standort_kurzzeichen"), rs.getString("standort_name"),
+                art == null ? null : Art.vonCode(art),
                 umfang == null ? null : Umfang.vonCode(umfang), instant(rs, "gueltig_ab"),
                 rs.getObject("gueltig_bis", LocalDate.class), instant(rs, "endet_am"),
                 ZoneId.of(rs.getString("zeitzone")), rs.getString("gewaehrt_von"), instant(rs, "beendet_am"),
