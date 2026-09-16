@@ -140,6 +140,7 @@ describe('WerteSektion · warum eine Zahl fehlt: Auskunft statt Fehlermeldung, L
         anfang={{ art: 'tag', wert: '2026-11-03' }}
         heute="2026-11-04"
         quelle={OHNE_DATENQUELLE}
+        medium="Gas"
         {...props}
       />,
     );
@@ -151,7 +152,7 @@ describe('WerteSektion · warum eine Zahl fehlt: Auskunft statt Fehlermeldung, L
     zeige();
   };
 
-  it('Z4 · MS-21 ohne Datenquelle: statt 24 Strichen der Leerzustand — Titel, Satz des Grundes, „Quelle zuordnen“ mit Recht', async () => {
+  it('A10 · MS-21 Gas: statt Katalog-Quellenweg der fachliche Grund, auch mit Änderungsrecht', async () => {
     const onQuelleZuordnen = vi.fn();
     ms21({ onQuelleZuordnen });
     const leer = await screen.findByTestId('werte-leer', undefined, WARTEN);
@@ -163,17 +164,22 @@ describe('WerteSektion · warum eine Zahl fehlt: Auskunft statt Fehlermeldung, L
     expect(screen.queryByTestId('verlauf')).toBeNull();
     // Die Zeit-Leiste bleibt: ein anderer Zeitraum kann eine Quelle haben.
     expect(screen.getByRole('button', { name: 'Vorheriger Zeitraum' })).toBeInTheDocument();
-    fireEvent.click(within(leer).getByRole('button', { name: 'Quelle zuordnen' }));
-    expect(onQuelleZuordnen).toHaveBeenCalledTimes(1);
+    expect(within(leer).queryByRole('button', { name: 'Quelle zuordnen' })).toBeNull();
+    expect(within(leer).getByTestId('werte-leer-weg')).toHaveTextContent(
+      'Eine Messstelle mit Medium Gas kann keinen Messwert aus dem Katalog binden.',
+    );
+    expect(onQuelleZuordnen).not.toHaveBeenCalled();
     // „Ablesung eintragen“ (Z4) hat weder Route noch Fläche — kein Knopf ins Leere.
     expect(within(leer).queryByRole('button', { name: /Ablesung/ })).toBeNull();
   });
 
-  it('Z4 · ohne das Recht: kein Knopf — der Satz sagt, wer eine Datenquelle zuordnen kann', async () => {
+  it('A10 · ohne Recht bleibt derselbe Medium-Grund — kein vorgetäuschter Rechte-Ausweg', async () => {
     ms21();
     const leer = await screen.findByTestId('werte-leer', undefined, WARTEN);
     expect(within(leer).queryAllByRole('button')).toHaveLength(0);
-    expect(within(leer).getByTestId('werte-leer-weg')).toHaveTextContent('Eine Datenquelle ordnet zu, wer diese Messstelle bearbeiten darf.');
+    expect(within(leer).getByTestId('werte-leer-weg')).toHaveTextContent(
+      'Eine Messstelle mit Medium Gas kann keinen Messwert aus dem Katalog binden.',
+    );
   });
 
   it('Z2 · 400: der Satz des Grundes (§5.8) — ohne „Erneut versuchen“, die Zeit-Leiste bleibt der Weg', async () => {

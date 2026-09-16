@@ -451,6 +451,8 @@ export const DIE_DATENQUELLE = 'Die Datenquelle';
 export const QUELLE_AB_ZEIGEN = 'Ab {datum} zeigen';
 export const QUELLE_ZUORDNEN = 'Quelle zuordnen';
 export const QUELLE_OHNE_RECHT = 'Eine Datenquelle ordnet zu, wer diese Messstelle bearbeiten darf.';
+export const MEDIUM_OHNE_KATALOGQUELLE = (medium: string) =>
+  `Eine Messstelle mit Medium ${medium} kann keinen Messwert aus dem Katalog binden.`;
 
 /**
  * Der nächste Schritt aus einem Zeitraum ohne Datenquelle (Z4: benannt, kein Knopf ohne Ziel), aus dem Register von heute:
@@ -472,9 +474,11 @@ export const ohneQuelleWeg = (
   bis: Tag,
   heute: Tag,
   darfZuordnen: boolean,
+  medium?: string | null,
 ): OhneQuelleWeg | null => {
   if (!quelle || quelle.stand === 'berechnet') return null;
   if (quelle.stand === 'keine_datenquelle') {
+    if (medium && medium !== 'Strom') return { art: 'hinweis', satz: MEDIUM_OHNE_KATALOGQUELLE(medium) };
     return darfZuordnen ? { art: 'zuordnen', knopf: QUELLE_ZUORDNEN } : { art: 'hinweis', satz: QUELLE_OHNE_RECHT };
   }
   const b = quelle.fuehrend;

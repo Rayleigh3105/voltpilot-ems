@@ -4,6 +4,7 @@ import com.voltpilot.api.measurement.MesskanalService;
 import com.voltpilot.api.uems.MessstelleQuelleRepository.Quelle;
 import com.voltpilot.api.uems.MessstelleRegeln.Groesse;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Bestand;
+import com.voltpilot.api.uems.MessstelleRegisterRepository.Fakt;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Messwert;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.QuelleZeile;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Werte;
@@ -212,14 +213,23 @@ public class MessstelleRegisterService {
                 ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt),
                 voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(),
                 haupt == null ? null : haupt.beobachtung(), haupt == null ? null : haupt.letzterWert(),
-                List.copyOf(neben), null);
+                List.copyOf(neben), fakten(b.fakten(), zeitpunkt), null);
     }
 
     private static MessstelleDto.RegisterZeile mitBerechnung(MessstelleDto.RegisterZeile z,
             MessstelleDto.RegisterBerechnung b) {
         return b == null ? z : new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
                 z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
-                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), b);
+                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(), b);
+    }
+
+    private static List<MessstelleDto.RegisterFakt> fakten(List<Fakt> fakten, Instant zeitpunkt) {
+        return fakten.stream().filter(f -> !f.giltAb().isAfter(zeitpunkt))
+                .collect(Collectors.toMap(Fakt::art, Function.identity(),
+                        (a, b) -> a.giltAb().isAfter(b.giltAb()) ? a : b, LinkedHashMap::new))
+                .values().stream()
+                .map(f -> new MessstelleDto.RegisterFakt(f.art(), MessstelleService.zeit(f.giltAb())))
+                .toList();
     }
 
     /**

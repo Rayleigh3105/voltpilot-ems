@@ -670,15 +670,17 @@ describe('uemsWerteKarte — Z4 · Werte ohne Datenquelle und ihr nächster Schr
     expect(ohneQuelle(null)).toBeNull();
   });
 
-  it('MS-21 heute ohne Datenquelle: „Quelle zuordnen“ nur mit Recht, sonst der Satz, wer es kann — nie „Ablesung eintragen“', () => {
+  it('A10 · MS-21 Gas: kein Katalog-Quellenweg, unabhängig vom Recht — nie „Ablesung eintragen“', () => {
     const q = zeileVon('MS-21').quelle;
     expect(q.stand).toBe('keine_datenquelle');
-    expect(ohneQuelleWeg(q, '2026-10-19', '2026-10-20', true)).toEqual({ art: 'zuordnen', knopf: 'Quelle zuordnen' });
-    expect(ohneQuelleWeg(q, '2026-10-19', '2026-10-20', false)).toEqual({
+    expect(ohneQuelleWeg(q, '2026-10-19', '2026-10-20', true, 'Gas')).toEqual({
       art: 'hinweis',
-      satz: 'Eine Datenquelle ordnet zu, wer diese Messstelle bearbeiten darf.',
+      satz: 'Eine Messstelle mit Medium Gas kann keinen Messwert aus dem Katalog binden.',
     });
-    expect(JSON.stringify([ohneQuelleWeg(q, '2026-10-19', '2026-10-20', true), ohneQuelleWeg(q, '2026-10-19', '2026-10-20', false)])).not.toMatch(/Ablesung/);
+    expect(ohneQuelleWeg(q, '2026-10-19', '2026-10-20', false, 'Gas')).toEqual(
+      ohneQuelleWeg(q, '2026-10-19', '2026-10-20', true, 'Gas'),
+    );
+    expect(JSON.stringify(ohneQuelleWeg(q, '2026-10-19', '2026-10-20', true, 'Gas'))).not.toMatch(/Ablesung|zuordnen/i);
   });
 
   it('MS-16 im September 2026: die Quelle beginnt NACH dem Zeitraum — der Satz nennt sie, der Knopf blättert zum 15.10.2026', () => {

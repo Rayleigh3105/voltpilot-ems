@@ -126,6 +126,7 @@ export function WerteSektion({
   vergleich = null,
   onVergleich,
   onQuelleZuordnen,
+  medium = null,
   korrekturKontext,
   herkunftKontext,
   onZeitraum,
@@ -150,6 +151,8 @@ export function WerteSektion({
   quelle?: MessstelleRegisterZeile['quelle'] | null;
   /** „Quelle zuordnen“ im Leerzustand — nur mit Recht; ohne steht der Satz, wer es kann. */
   onQuelleZuordnen?: () => void;
+  /** Das Medium aus dem Register; nur Strom kann einen Katalog-Messwert binden. */
+  medium?: string | null;
   korrekturKontext?: KorrekturKontext;
   /** Geräte-/Kanaladresse für die Herkunfts-Karte des gewählten Verlaufswerts. */
   herkunftKontext?: HerkunftKontext;
@@ -250,7 +253,7 @@ export function WerteSektion({
   const k = aktuell?.karte ? karte(aktuell.karte, namen) : null;
   // Z4: der ganze Zeitraum ohne Datenquelle — Karte (falls der Zeitraum eine hat) UND Liste.
   const leer = aktuell && (aktuell.karte === null || ohneQuelle(aktuell.karte)) ? ohneQuelle(aktuell.liste) : null;
-  const weg = leer ? ohneQuelleWeg(quelle, anfragen.liste.bis, heute, onQuelleZuordnen !== undefined) : null;
+  const weg = leer ? ohneQuelleWeg(quelle, anfragen.liste.bis, heute, onQuelleZuordnen !== undefined, medium) : null;
   const e = aktuell?.karte ? einstieg(aktuell.karte) : null;
   const hinweis = aktuell?.karte ? versionHinweis(aktuell.karte, gewaehlt) : null;
   const frueher = hinweis !== null && gewaehlt !== aktuell?.karte?.werte[0]?.versionen;

@@ -5026,7 +5026,14 @@ export interface MessstelleRegisterZeile {
   beobachtung: MessstelleRegisterBeobachtung | null;
   letzter_wert: MessstelleRegisterWert | null;
   nebengroessen: MessstelleRegisterNebengroesse[];
+  /** Wirksame, append-only protokollierte Tatsachen an dieser Messstelle. */
+  fakten?: MessstelleRegisterFakt[];
   berechnung: MessstelleRegisterBerechnung | null;
+}
+
+export interface MessstelleRegisterFakt {
+  art: 'einstellung_geaendert';
+  gilt_ab: string;
 }
 
 /** Nur berechnet (AP-10 IP-9): vollständig nur, wenn ALLE Eingänge der Formel des Tages liefern. */

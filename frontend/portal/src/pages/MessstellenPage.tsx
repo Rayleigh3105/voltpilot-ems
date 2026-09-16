@@ -651,6 +651,7 @@ function Quelle({ w }: { w: ZeileWoerter }) {
       )}
       <span className="vp-ms-neben">{q.messwert}</span>
       <span className="vp-ms-neben">{[q.seit, q.davor, q.vergleich].filter(Boolean).join(' · ')}</span>
+      {w.fakten.map((f) => <span key={f} className="vp-ms-neben vp-ms-fakt">{f}</span>)}
       {/* AP-13 IP-12 (L6): die Box, die dieses Gerät liest — aus der Zuständigkeit der Datenquelle,
           nie geraten. Ohne bekannte Zuständigkeit steht hier nichts. */}
       {q.box && <span className="vp-ms-neben vp-ms-box">{q.box}</span>}

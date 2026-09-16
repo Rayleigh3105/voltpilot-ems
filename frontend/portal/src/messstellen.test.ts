@@ -79,7 +79,17 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
       // Der Zählerstand der Hauptgröße steht nicht in der Referenzdatei — „—“, nie eine 0.
       wert: null,
       nebenwerte: [{ groesse: 'Wirkleistung', text: '312,4 kW', zeit: '10:15 Uhr' }],
+      fakten: [],
     });
+  });
+
+  it('A4: die Einstellungsänderung steht an beiden gespeisten Messstellen als wirksamer Fakt', () => {
+    const antwort = ahrenbergRegister();
+    for (const kz of ['MS-01', 'MS-02']) {
+      zeile(antwort, kz).fakten = [{ art: 'einstellung_geaendert', gilt_ab: '2027-01-15T09:00:00+01:00' }];
+      expect(zeileWoerter(zeile(antwort, kz), { ...kontext(antwort), zeitpunkt: '2027-01-15T10:00:00+01:00' }).fakten)
+        .toEqual(['Einstellung geändert ab 15.01.2027 09:00']);
+    }
   });
 
   it('MS-06 im Unternehmen: Bereich mit seinem Standort, „Unterzähler von MS-01“, Gerät mit Einbau Z-5a', () => {
