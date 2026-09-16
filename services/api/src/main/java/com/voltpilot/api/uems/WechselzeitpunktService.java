@@ -114,17 +114,17 @@ public class WechselzeitpunktService {
     }
 
     private void anfang(UUID id, Instant alt, Instant neu) {
-        jdbc.update("UPDATE geraet SET eingebaut_am=? WHERE id=? AND eingebaut_am=?", ts(neu), id, ts(alt));
         jdbc.update("UPDATE geraet_teil SET eingebaut_am=? WHERE geraet_id=? AND eingebaut_am=?", ts(neu), id, ts(alt));
         for (String t : List.of("geraet_komponente", "messstelle_quelle", "quelle_einstellung"))
             jdbc.update("UPDATE " + t + " SET gueltig_ab=? WHERE geraet_id=? AND gueltig_ab=?", ts(neu), id, ts(alt));
+        jdbc.update("UPDATE geraet SET eingebaut_am=? WHERE id=? AND eingebaut_am=?", ts(neu), id, ts(alt));
     }
 
     private void ende(UUID id, Instant alt, Instant neu) {
-        jdbc.update("UPDATE geraet SET ausgebaut_am=? WHERE id=? AND ausgebaut_am=?", ts(neu), id, ts(alt));
         jdbc.update("UPDATE geraet_teil SET ausgebaut_am=? WHERE geraet_id=? AND ausgebaut_am=?", ts(neu), id, ts(alt));
         for (String t : List.of("geraet_komponente", "messstelle_quelle"))
             jdbc.update("UPDATE " + t + " SET gueltig_bis=? WHERE geraet_id=? AND gueltig_bis=?", ts(neu), id, ts(alt));
+        jdbc.update("UPDATE geraet SET ausgebaut_am=? WHERE id=? AND ausgebaut_am=?", ts(neu), id, ts(alt));
     }
 
     private static Timestamp ts(Instant t) { return Timestamp.from(t); }

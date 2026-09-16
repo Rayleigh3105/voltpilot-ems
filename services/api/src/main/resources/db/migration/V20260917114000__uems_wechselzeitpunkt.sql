@@ -29,7 +29,7 @@ DECLARE
  alt JSONB := to_jsonb(OLD); neu JSONB := to_jsonb(NEW);
  startfeld TEXT := CASE WHEN TG_TABLE_NAME IN ('geraet','geraet_teil') THEN 'eingebaut_am' ELSE 'gueltig_ab' END;
  endfeld TEXT := CASE WHEN TG_TABLE_NAME IN ('geraet','geraet_teil') THEN 'ausgebaut_am' ELSE 'gueltig_bis' END;
- feld TEXT; vorher TIMESTAMPTZ; nachher TIMESTAMPTZ; gid UUID;
+ feld TEXT; vorher TIMESTAMPTZ; nachher TIMESTAMPTZ; gid UUID; geraetegrenze TIMESTAMPTZ;
 BEGIN
  gid := CASE WHEN TG_TABLE_NAME='geraet' THEN (alt->>'id')::uuid ELSE (alt->>'geraet_id')::uuid END;
  FOREACH feld IN ARRAY ARRAY[startfeld,endfeld] LOOP
@@ -37,6 +37,16 @@ BEGIN
    -- Erstmaliges Beenden bleibt der bestehende Schreibweg.
    IF feld=endfeld AND alt->>feld IS NULL THEN CONTINUE; END IF;
    vorher := (alt->>feld)::timestamptz; nachher := (neu->>feld)::timestamptz;
+   -- Nur die gemeinsame Wechselgrenze, keine separat angekündigte spätere Fassung.
+   -- Deshalb ändert der Dienst die Kinder vor dem zugehörigen Gerät.
+   IF TG_TABLE_NAME<>'geraet' THEN
+     SELECT CASE WHEN feld=startfeld THEN eingebaut_am ELSE ausgebaut_am END
+       INTO geraetegrenze FROM geraet WHERE id=gid;
+     IF vorher IS DISTINCT FROM geraetegrenze THEN
+       RAISE EXCEPTION 'Nur die gemeinsame Wechselgrenze darf berichtigt werden'
+         USING ERRCODE='check_violation', CONSTRAINT='uems_wechsel_gemeinsame_grenze';
+     END IF;
+   END IF;
    IF vorher IS NULL OR nachher IS NULL OR vorher<=clock_timestamp() OR nachher<=clock_timestamp()
       OR uems_wechsel_partner(gid,feld=startfeld) IS NULL THEN
      RAISE EXCEPTION 'Nur ein noch nicht wirksamer Wechsel darf berichtigt werden'
