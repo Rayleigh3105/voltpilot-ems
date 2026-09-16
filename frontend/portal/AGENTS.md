@@ -43,6 +43,7 @@ Historische UI-Implementierungen nicht als aktuelle Architektur dokumentieren. D
 ## Regeln des aktuellen Portals
 
 - Aufgabenflächen verwenden das zentrierte `Modal`; keine Seitenleisten wieder einführen. Der Wächter `src/keineSeitenleisten.test.ts` prüft dies.
+- UEMS-Zahlenformat (AP-08 E11): nur zur Anzeige runden — kWh je Viertelstunde/Stunde 1 Stelle, Tag/Monat/Jahr 0; kW und m³ 1, Prozent 0. `de-DE`-Tausenderpunkt, geschütztes Leerzeichen vor der Einheit und echtes Minus verwenden; CSV bleibt ungerundet mit Dezimalpunkt und ISO-Zeit. Vertragswerte rechnen ungerundet, Rundungsdifferenzen nie verstecken.
 - UEMS-Oberflächen (AP-13): Quelle je Fläche, Zone einmal im Kopf; Bestandsflächen behalten ihre Zahlen. Mengen nur über Vertrags-Zwillinge; Wächter und Orte: [Oberflächen-Abschluss](../../docs/agents/root/uems-oberflaechen-ebenen.md).
 - Bezugsgrößen (UEMS AP-09): deutsche Zahleneingaben ausschließlich über `zahl.ts` (`zahlText`, keine lokalen Komma-Parser); Datum plus Uhrzeit und sichtbare Standortzone über `VpZeitpunktPicker`/`picker/zeitpunkt.ts`, mehrdeutige Stunden ausdrücklich wählen und fehlende nie verschieben. Stand und Import-Fallen: [Bezugsgrößen-Abschluss](../../docs/agents/root/uems-bezugsgroessen-abschluss.md).
 - Fachableitungen bleiben reine Module; Komponenten rendern ihr Ergebnis. Tokens und `chartTheme()` verwenden, keine zweite Chart-Palette anlegen.
