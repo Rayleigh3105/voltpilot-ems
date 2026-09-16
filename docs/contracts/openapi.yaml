@@ -6230,7 +6230,7 @@ paths:
         schema: { type: string, format: uuid }
     get:
       tags: [components]
-      summary: Effective edit, family-change and rollback markers for a stable component id.
+      summary: Effective edit, family-change, rollback and device-replacement markers for a stable component id.
       responses:
         "200":
           description: Append-only change markers, newest first.
@@ -13884,7 +13884,7 @@ components:
       required: [revision, eventType, effectiveAt, createdAt]
       properties:
         revision: { type: integer, minimum: 1 }
-        eventType: { type: string, enum: [edited, family_changed, rolled_back] }
+        eventType: { type: string, enum: [edited, family_changed, rolled_back, device_replaced] }
         effectiveAt: { type: string, format: date-time }
         fromValue: { type: string, nullable: true }
         toValue: { type: string, nullable: true }
