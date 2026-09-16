@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { api, request, setTenantOverride } from './api';
+import { api, request, setKundenbereich, setTenantOverride } from './api';
 import { sichtbareListe } from './test/rollenFixtures';
 vi.mock('./auth', () => ({ freshToken: async () => 'test', AuthRedirectError: class extends Error {} }));
-afterEach(() => { vi.unstubAllGlobals(); setTenantOverride(null); });
+afterEach(() => { vi.unstubAllGlobals(); setTenantOverride(null); setKundenbereich(null); });
 
 it.each(['listSites', 'listDevices', 'edgeVersions'] as const)('%s liest den Umschlag einschließlich Teilansicht unverändert', async (name) => {
   const antwort = sichtbareListe([{ id: 'sichtbar' }]);
@@ -39,4 +39,17 @@ it('Eine verspätete Antwort des vorherigen Mandanten beendet nicht den neuen Zu
     await expect(alt).rejects.toMatchObject({ status: 404 });
     expect(entzogen).not.toHaveBeenCalled();
   } finally { window.removeEventListener('vp-zugriff-beendet', entzogen); }
+});
+
+
+it('IP-15: Kundenbereich und Admin-Kontext sind getrennt; keine Antwortbündelung über den Wechsel', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })); vi.stubGlobal('fetch', fetch);
+  setTenantOverride('admin-kontext'); setKundenbereich('erster');
+  await request('/api/v1/me'); await request('/api/v1/admin/fleet');
+  expect(fetch.mock.calls[0][1].headers['X-Kundenbereich']).toBe('erster');
+  expect(fetch.mock.calls[0][1].headers['X-Tenant-Id']).toBeUndefined();
+  expect(fetch.mock.calls[1][1].headers['X-Tenant-Id']).toBe('admin-kontext');
+  expect(fetch.mock.calls[1][1].headers['X-Kundenbereich']).toBeUndefined();
+  setKundenbereich('zweiter'); await request('/api/v1/me');
+  expect(fetch.mock.calls[2][1].headers['X-Kundenbereich']).toBe('zweiter');
 });

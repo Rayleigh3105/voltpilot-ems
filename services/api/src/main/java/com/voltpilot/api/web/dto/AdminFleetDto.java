@@ -28,7 +28,12 @@ import java.util.UUID;
  * ausdrücklich nicht „veraltet". Leere Liste = kein Maßstab, also wird nichts
  * als veraltet behauptet.
  */
-public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> releases) {
+public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> releases,
+        java.util.Map<UUID, Instant> unterstuetzungBis,
+        List<com.voltpilot.api.repo.AdminFleetRepository.UnterstuetzungStandort> unterstuetzungStandorte) {
+    public AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> releases) {
+        this(sites, releases, java.util.Map.of(), List.of());
+    }
 
     /**
      * Eine Anlage der Flotte.

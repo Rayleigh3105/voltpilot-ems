@@ -83,7 +83,10 @@ import org.testcontainers.utility.DockerImageName;
  * </ul>
  */
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// Diese Bestandsvorrichtung legt Orte mit dem alten Plattform-Testkonto an.
+// Der Produktionsstandard bleibt geschlossen; UnterstuetzungApiTest prüft ihn ohne Ausnahme.
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "voltpilot.uems.unterstuetzung.umschalter-enabled=true")
 class OrtVerschiebenApiTest {
 
     private static final String APP_USER = "voltpilot_app";

@@ -55,6 +55,24 @@ public class AdminFleetRepository {
         this.jdbc = adminJdbcTemplate;
     }
 
+    /** IP-15: gültige Unterstützungen, nicht offene Anfragen oder künftige Gewährungen. */
+    public Map<UUID, Instant> unterstuetzungBis() {
+        Map<UUID, Instant> aus = new HashMap<>();
+        jdbc.query("SELECT tenant_id, max(endet_am) AS ende FROM zugriff WHERE rolle = 'unterstuetzer' "
+                + "AND public.zugriff_zeitraum(gueltig_ab, endet_am, beendet_am) @> now() GROUP BY tenant_id",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> aus.put(rs.getObject("tenant_id", UUID.class),
+                        rs.getTimestamp("ende").toInstant()));
+        return aus;
+    }
+
+    /** Bestehender Admin-Zaun; nur Auswahlfakten für Anfrage/Notfall vor der Gewährung. */
+    public record UnterstuetzungStandort(UUID id, UUID tenantId, String name) {}
+    public List<UnterstuetzungStandort> unterstuetzungStandorte() {
+        return jdbc.query("SELECT id, tenant_id, name FROM standort WHERE zustand <> 'archiviert' ORDER BY name, id",
+                (rs, n) -> new UnterstuetzungStandort(rs.getObject("id", UUID.class),
+                        rs.getObject("tenant_id", UUID.class), rs.getString("name")));
+    }
+
     /** Eine Anlage samt ihrem Mandanten - die Zeilenbasis des Pulses. */
     public record FleetSiteRow(UUID siteId, String siteName, UUID tenantId, String tenantName,
             String plantKind, boolean netzladenErlaubt, String tarifArt) {

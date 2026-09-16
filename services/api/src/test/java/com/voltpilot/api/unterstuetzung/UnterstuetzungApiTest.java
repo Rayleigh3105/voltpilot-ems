@@ -73,7 +73,7 @@ import org.testcontainers.utility.DockerImageName;
  * ein Test, der am 16.12.2026 rot wird, misst den Kalender, nicht den Code.
  */
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
+@SpringBootTest(properties = "voltpilot.uems.unterstuetzung.umschalter-enabled=false")
 @AutoConfigureMockMvc
 @ActiveProfiles("local")
 class UnterstuetzungApiTest {
@@ -214,6 +214,20 @@ class UnterstuetzungApiTest {
 
         // Thomas kommt herein - und zwar NUR mit dem Kopf; ohne ihn ist der Kundenbereich für ihn nicht da.
         Authentication tb = partner(thomas);
+        JsonNode eigene = json(ruf(get("/api/v1/me"), tb, 200)).get("kundenbereiche");
+        assertThat(eigene.size()).isEqualTo(1);
+        assertThat(MAPPER.convertValue(eigene.get(0), Map.class).keySet()).containsExactlyInAnyOrder("id", "name", "umfang", "endet");
+        assertThat(eigene.get(0).get("id").asText()).isEqualTo(DEMO.toString());
+        assertThat(eigene.get(0).get("umfang").asText()).isEqualTo("einrichten_und_bedienen");
+        assertThat(json(ruf(get("/api/v1/me"), partner("fremder-partner"), 200)).get("kundenbereiche").isEmpty()).isTrue();
+        assertThat(json(ruf(get("/api/v1/me"), konto(JONAS, DEMO), 200)).get("kundenbereiche").isEmpty()).isTrue();
+        ruf(get("/api/v1/sites"), tb, 404, KUNDENBEREICH, UUID.randomUUID().toString());
+        JsonNode flottenDaten = json(ruf(get("/api/v1/admin/fleet"), plattform("flotten-leser"), 200));
+        assertThat(flottenDaten.get("unterstuetzungBis").has(DEMO.toString())).isTrue();
+        assertThat(flottenDaten.get("unterstuetzungStandorte").toString()).contains(standort.toString());
+        ruf(get("/api/v1/admin/fleet"), tb, 403);
+        assertThat(json(ruf(get("/api/v1/standorte"), konto(JONAS, DEMO), 200)).get("standorte").toString())
+                .contains(standort.toString());
         assertThat(ruf(get("/api/v1/sites"), tb, 200, KUNDENBEREICH, DEMO.toString())).isNotNull();
         ruf(get("/api/v1/sites"), tb, 404);
         // Was seine Zelle nicht hergibt, bleibt 403 - auch mit „Einrichten und Bedienen" (A4: keine Exporte,
@@ -230,6 +244,7 @@ class UnterstuetzungApiTest {
         // ENTZUG WIRKT SOFORT: dieselbe Sitzung, dieselbe Anfrage, kein Token-Ablauf.
         ruf(delete("/api/v1/unterstuetzung/" + griff, Map.of("grund", "Arbeit erledigt")), konto(JONAS, DEMO), 204);
         ruf(get("/api/v1/sites"), tb, 404, KUNDENBEREICH, DEMO.toString());
+        assertThat(json(ruf(get("/api/v1/me"), tb, 200)).get("kundenbereiche").isEmpty()).isTrue();
         assertThat(protokoll(griff)).containsExactly("zuweisen", "entziehen");
         // Ein zweites Ende gibt es nicht.
         assertThat(json(ruf(delete("/api/v1/unterstuetzung/" + griff, Map.of()), konto(JONAS, DEMO), 409))
@@ -429,6 +444,7 @@ class UnterstuetzungApiTest {
                 .isEqualTo("Endete am " + deutsch(heute().minusDays(1)) + " durch Zeitablauf");
 
         ruf(get("/api/v1/sites"), partner(sub), 404, KUNDENBEREICH, DEMO.toString());
+        assertThat(json(ruf(get("/api/v1/me"), partner(sub), 200)).get("kundenbereiche").isEmpty()).isTrue();
         assertThat(protokoll(griff)).as("noch trug niemand den Ablauf nach").containsExactly("zuweisen");
         // Und verlängert wird sie nicht mehr - sie ist vorbei, eine neue Gewährung wäre ein neuer Eintrag.
         assertThat(json(ruf(put("/api/v1/unterstuetzung/" + griff,
@@ -535,16 +551,15 @@ class UnterstuetzungApiTest {
     }
 
     /**
-     * <b>Bestand:</b> der Mandanten-Umschalter der Plattform ({@code X-Tenant-Id}) ist unverändert — mit der
-     * ausgelieferten Vorgabe sieht ein Plattform-Konto den Kundenbereich wie vor diesem Paket. Der Schalter aus
-     * W3 liegt bereit und BEISST: mit {@code umschalter-enabled=false} wird dieselbe Anfrage abgewiesen (der
+     * <b>IP-15:</b> der Mandanten-Umschalter der Plattform ({@code X-Tenant-Id}) ist in Produktion geschlossen.
+     * Mit {@code umschalter-enabled=false} wird eine Anfrage ohne Gewährung abgewiesen (der
      * {@code ZugriffFilter} macht daraus die 404 jeder Kundenroute, wie für einen Partner ohne Gewährung),
      * während eine gewährte Unterstützung sie weiterhin hereinlässt.
      */
     @Test
-    void derMandantenUmschalterBleibtWieErWarUndDerSchalterAusW3Beisst() throws Exception {
+    void derMandantenUmschalterIstSeitIp15Geschlossen() throws Exception {
         Authentication support = plattform("sub-u8-umschalter");
-        assertThat(ruf(get("/api/v1/sites"), support, 200, TENANT, DEMO.toString())).as("wie heute").isNotNull();
+        assertThat(ruf(get("/api/v1/sites"), support, 404, TENANT, DEMO.toString())).as("IP-15: ohne Unterstützung kein Kundenweg").isNotNull();
 
         String sub = "sub-u8-umschalter-gewaehrt";
         gewaehreDirekt(sub, "Umschalter-Probe", vorTagen(1), heute().plusDays(10));

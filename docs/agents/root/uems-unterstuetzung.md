@@ -57,12 +57,11 @@ Migration `V20260916070000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14), `Unt
   und keine E-Mail geraten; `UnterstuetzungApiTest` prüft das an Liste UND Postfach.
 - ⚠ **Ist Keycloak nicht erreichbar, wird NICHTS gewährt** (502 `konto_nicht_erreichbar`) — sonst entstünde für
   dieselbe Person ein zweites Konto, sobald die Suche nach der Adresse still leer zurückkäme.
-- ⚠ **Der Mandanten-Umschalter `X-Tenant-Id` gilt weiter** (`voltpilot.uems.unterstuetzung.umschalter-enabled`,
-  Vorgabe AN = das heutige Verhalten). AUS ist der Satz aus A5 („nicht der heutige `X-Tenant-Id`-Vollzugriff“):
-  VoltPilot erreicht einen Kundenbereich dann nur noch über eine gewährte Unterstützung oder den Notfall-Zugriff,
-  sonst 404 wie ein Partner ohne Gewährung. **Umgelegt wird er mit der Portal-Umstellung (IP-15)**, sonst würde
-  die Admin-Konsole („Zur Anlage (Kundensicht)“) blind, bevor das Portal den neuen Weg anbietet.
-  `/api/v1/admin/**` ist davon nie betroffen.
+- **Der alte Mandanten-Umschalter ist seit IP-15 in Produktion geschlossen**
+  (`voltpilot.uems.unterstuetzung.umschalter-enabled`, Vorgabe AUS; local für Kompatibilität explizit AN).
+  VoltPilot erreicht Kundenflächen nur mit gewährter Unterstützung oder Notfall-Zugriff über
+  `X-Kundenbereich`, sonst 404. `/api/v1/admin/**` bleibt am eigenen Plattform-Zaun.
+  [Portal-Wege und Konfiguration](uems-unterstuetzung-portal.md).
 - ⚠ **Die Migration BAUT AUF `V20260915030000` AUF** (Fremdschlüssel auf `zugriff`, das geschärfte
   `zugriff_protokoll_zugriff_chk`, das erweiterte Vokabular). In der späten Ankunft der IP-2-Migration kommt sie
   darum MIT ihr: `UemsZugriffMigrationTest.BAUEN_DARAUF_AUF`. Wer eine weitere Migration auf `zugriff` setzt,
@@ -75,8 +74,7 @@ Migration `V20260916070000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14), `Unt
 - ⚠ **Die Ende-Sätze nennen das ENDDATUM, nicht den Zeitpunkt danach.** „bis 15.12.2026“ heißt `endet_am` =
   16.12.2026 00:00 in der Zeitzone des Kundenbereichs. Sätze holt man bei `RechteAbleitung.unterstuetzung`, nie
   selbst gebaut — sonst steht im Hinweis ein anderer Tag als an der Gewährung.
-- ⚠ **Es gibt noch keine Fläche im Portal** (IP-15) und keinen Eintrag im Dev-Seed (IP-16). `api.ts` trägt die
-  Typen, niemand ruft sie. Die Karten-Wortlaute für Anfrage und Erinnerung stehen bis dahin im Dienst
+- **Portal seit IP-15:** [Unterstützung im Portal](uems-unterstuetzung-portal.md). Der Dev-Seed bleibt IP-16. Die Karten-Wortlaute für Anfrage und Erinnerung stehen bis dahin im Dienst
   (`ANFRAGE_SATZ`, `ERINNERUNG_SATZ`) — der Rechte-Vertrag führt für sie keinen Text.
 
 ## Prüfen

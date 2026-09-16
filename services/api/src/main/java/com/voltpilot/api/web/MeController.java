@@ -21,14 +21,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeController {
 
     private final Selbstauskunft selbstauskunft;
+    private final com.voltpilot.api.zugriff.EigeneKundenbereiche kundenbereiche;
 
-    public MeController(Selbstauskunft selbstauskunft) {
+    public MeController(Selbstauskunft selbstauskunft, com.voltpilot.api.zugriff.EigeneKundenbereiche kundenbereiche) {
+        this.kundenbereiche = kundenbereiche;
         this.selbstauskunft = selbstauskunft;
     }
 
-    /** Recht {@code konto.eigenes} — jede Person liest nur sich selbst. */
+    /** Recht {@code konto.eigenes} — jede Person liest nur sich selbst; die additive Kundenbereichsliste ist
+     * lesend ohne eigene Kennung, ausschließlich für das authentifizierte Unterstützerkonto. */
     @GetMapping
     public SelbstauskunftDto me(Authentication auth) {
-        return selbstauskunft.fuer(auth);
+        var selbst = selbstauskunft.fuer(auth);
+        return "partner".equals(selbst.konto()) || "plattform".equals(selbst.konto())
+                ? selbst.mitKundenbereichen(kundenbereiche.lesen()) : selbst;
     }
 }

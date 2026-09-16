@@ -36,11 +36,9 @@ import org.springframework.stereotype.Component;
  *   <li><b>Partner ohne den Kopf</b>: abgewiesen.</li>
  *   <li><b>Plattform ohne den Kopf</b>: der Mandanten-Umschalter {@code X-Tenant-Id} — mit ihm der Kundenbereich,
  *       ohne ihn keiner. <b>Er ist seit IP-8 abschaltbar</b> ({@code voltpilot.uems.unterstuetzung.umschalter-enabled},
- *       Vorgabe AN = das heutige Verhalten): AUS wird eine Plattform ohne wirksame Unterstützung auf jeder
+ *       Vorgabe AUS seit IP-15): AUS wird eine Plattform ohne wirksame Unterstützung auf jeder
  *       Kundenroute abgewiesen wie ein Partner ohne Gewährung — das ist der Satz aus A5 („nicht der heutige
- *       {@code X-Tenant-Id}-Vollzugriff"). Umgelegt wird der Schalter mit der Portal-Umstellung (IP-15), damit die
- *       Admin-Konsole nicht vor ihr blind wird; bis dahin ist der Weg über Anfrage und Notfall-Zugriff der
- *       sichtbare, nicht der einzige (AP-03 W3).</li>
+ *       {@code X-Tenant-Id}-Vollzugriff"). Die Portal-Umstellung (IP-15) verwendet diesen Weg auch für die Plattform.</li>
  * </ul>
  *
  * <p>Die Kontoart kommt allein aus {@code KONTO_*} des {@link KeycloakRealmRoleConverter}. Ein Lesefehler bei der
@@ -61,7 +59,7 @@ public class ZugriffKontextLader {
     private volatile Clock uhr = Clock.systemUTC();
 
     public ZugriffKontextLader(ZugriffRepository zugriffe, MeterRegistry metriken,
-            @Value("${voltpilot.uems.unterstuetzung.umschalter-enabled:true}") boolean umschalter) {
+            @Value("${voltpilot.uems.unterstuetzung.umschalter-enabled:false}") boolean umschalter) {
         this.zugriffe = zugriffe;
         this.metriken = metriken;
         this.umschalter = umschalter;

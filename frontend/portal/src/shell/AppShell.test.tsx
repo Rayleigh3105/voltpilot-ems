@@ -847,3 +847,25 @@ describe('AP-03 IP-13 · Avatar-Menü Benutzer', () => {
     });
   }
 });
+
+
+describe('IP-15: Kundenbereich-Wechsel des Partners', () => {
+  it('bietet nur gültige eigene Bereiche an, ohne doppelte Einträge je Umfang', () => {
+    const me = rechteSeed().me;
+    const zukunft = new Date(Date.now() + 86400000).toISOString();
+    setSelbstauskunft({ ...me, konto: 'partner', zugang: 'unterstuetzung', unternehmen_rechte: [],
+      kundenbereiche: [
+        { id: 'a', name: 'Werk Ahrenberg', umfang: 'ansehen', endet: zukunft },
+        { id: 'a', name: 'Werk Ahrenberg', umfang: 'einrichten', endet: zukunft },
+        { id: 'alt', name: 'Abgelaufener Kundenbereich', umfang: 'ansehen', endet: '2020-01-01T00:00:00Z' },
+      ] });
+    const wechsel = vi.fn();
+    render(<AppShell {...baseProps} onTenantChange={wechsel}><div>Unveränderter Inhalt</div></AppShell>);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Kundenbereich' }));
+    expect(screen.queryByRole('option', { name: 'Abgelaufener Kundenbereich' })).toBeNull();
+    const optionen = screen.getAllByRole('option', { name: 'Werk Ahrenberg' });
+    expect(optionen).toHaveLength(1); fireEvent.click(optionen[0]);
+    expect(wechsel).toHaveBeenCalledWith('a'); expect(screen.getByText('Unveränderter Inhalt')).toBeVisible();
+    setSelbstauskunft(null);
+  });
+});

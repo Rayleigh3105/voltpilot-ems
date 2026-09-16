@@ -34,7 +34,13 @@ public record SelbstauskunftDto(
         String text,
         Teilansicht teilansicht,
         Unterstuetzungen unterstuetzungen,
-        List<Person> kundenadministratoren) {
+        List<Person> kundenadministratoren,
+        List<com.voltpilot.api.zugriff.EigeneKundenbereiche.Eintrag> kundenbereiche) {
+
+    public SelbstauskunftDto mitKundenbereichen(List<com.voltpilot.api.zugriff.EigeneKundenbereiche.Eintrag> eigene) {
+        return new SelbstauskunftDto(kennung, name, konto, zustand, kundenbereich, zugang, rollen, unternehmensweit,
+                standorte, unternehmenRechte, kuenftig, text, teilansicht, unterstuetzungen, kundenadministratoren, eigene);
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Kundenbereich(UUID id, String name) {}

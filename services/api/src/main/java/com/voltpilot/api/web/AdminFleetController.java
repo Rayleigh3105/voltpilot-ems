@@ -103,6 +103,7 @@ public class AdminFleetController {
         this.forecastModels = forecastModels;
     }
 
+    // Lesend ohne eigene Kennung: bestehender Plattform-Zaun, einschließlich Unterstützungsauswahl und Ende.
     @GetMapping
     public AdminFleetDto fleet() {
         Instant now = Instant.now();
@@ -186,7 +187,7 @@ public class AdminFleetController {
         List<AdminFleetDto.FleetReleaseDto> register = releases.stream()
                 .map(r -> new AdminFleetDto.FleetReleaseDto(r.releaseSeq(), r.version()))
                 .toList();
-        return new AdminFleetDto(out, register);
+        return new AdminFleetDto(out, register, fleet.unterstuetzungBis(), fleet.unterstuetzungStandorte());
     }
 
     /**

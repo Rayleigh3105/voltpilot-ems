@@ -1,3 +1,4 @@
+import { unterstuetzungApi } from '../src/unterstuetzung';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BenutzerPage } from '../src/pages/BenutzerPage';
@@ -21,6 +22,9 @@ const person = new URLSearchParams(location.search).get('person') ?? 'JW';
 const me = rechteSeed(person).me;
 setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
+unterstuetzungApi.liste = async () => [];
+unterstuetzungApi.anfragen = async () => [];
+unterstuetzungApi.hinweise = async () => [];
 let liste = benutzerFixture();
 benutzerApi.liste = async () => liste;
 declare global { interface Window { benutzerProtokollAnfragen: string[][] } }

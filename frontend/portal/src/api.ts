@@ -2346,6 +2346,7 @@ export interface Selbstauskunft {
   teilansicht: SelbstauskunftTeilansicht | null;
   unterstuetzungen: SelbstauskunftUnterstuetzungen;
   kundenadministratoren: SelbstauskunftPerson[];
+  kundenbereiche?: { id: string; name: string; umfang: SelbstauskunftUmfang; endet: string }[];
 }
 
 export type SelbstauskunftUmfang = 'ansehen' | 'einrichten' | 'einrichten_und_bedienen';
@@ -6188,6 +6189,8 @@ export class ApiError extends Error {
  * tenant's data through the same RLS scoping the customer gets.
  */
 let tenantOverride: string | null = null;
+let kundenbereich: string | null = null;
+export function setKundenbereich(id: string | null): void { kundenbereich = id; }
 
 export function setTenantOverride(tenantId: string | null): void {
   tenantOverride = tenantId;
@@ -6219,7 +6222,7 @@ function coalesceKey(path: string, init: RequestInit): string | null {
   const method = (init.method ?? 'GET').toUpperCase();
   if (method !== 'GET') return null;
   if (init.body != null || init.signal != null) return null;
-  return `${tenantOverride ?? ''}|${path}`;
+  return `${tenantOverride ?? ''}|${kundenbereich ?? ''}|${path}`;
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -6249,7 +6252,7 @@ export const GEMERKT_MS = 120_000;
 const gemerkt = new Map<string, { seit: number; antwort: Promise<unknown> }>();
 
 function gemerkteAnfrage<T>(path: string): Promise<T> {
-  const key = `${tenantOverride ?? ''}|${path}`;
+  const key = `${tenantOverride ?? ''}|${kundenbereich ?? ''}|${path}`;
   const jetzt = Date.now();
   const da = gemerkt.get(key);
   if (da && jetzt - da.seit < GEMERKT_MS) return da.antwort as Promise<T>;
@@ -6268,6 +6271,7 @@ export function vergissGemerkte(): void {
 
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
   const angefragterMandant = tenantOverride;
+  const angefragterKundenbereich = kundenbereich;
   let token: string | undefined;
   try {
     token = await freshToken();
@@ -6283,7 +6287,8 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     headers: {
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(angefragterMandant ? { 'X-Tenant-Id': angefragterMandant } : {}),
+      ...(angefragterKundenbereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': angefragterKundenbereich }
+        : angefragterMandant ? { 'X-Tenant-Id': angefragterMandant } : {}),
       ...(init.headers ?? {}),
     },
   });
@@ -6309,7 +6314,7 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     }
     if ((res.status === 404 || res.status === 403) && errorBody && typeof errorBody === 'object'
       && 'code' in errorBody && errorBody.code === 'zugriff_beendet'
-      && angefragterMandant === tenantOverride) {
+      && angefragterMandant === tenantOverride && angefragterKundenbereich === kundenbereich) {
       window.dispatchEvent(new CustomEvent('vp-zugriff-beendet', { detail: message }));
     }
     throw new ApiError(res.status, message, errorBody);

@@ -88,7 +88,7 @@ public class Selbstauskunft {
             Benutzer b = new Benutzer(sub, tokenName, konto, KontoZustand.AKTIV, List.of());
             return new SelbstauskunftDto(sub, tokenName, code(konto), KontoZustand.AKTIV.code(), null, null, List.of(),
                     false, List.of(), rechte(b, OHNE_KUNDENBEREICH, Ziel.unternehmen(), jetzt), List.of(), null, null,
-                    SelbstauskunftDto.Unterstuetzungen.KEINE, List.of());
+                    SelbstauskunftDto.Unterstuetzungen.KEINE, List.of(), List.of());
         }
 
         if (jwt != null && sub != null && sub.equals(z.sub()) && z.zugang() != Zugang.UMSCHALTER) {
@@ -144,7 +144,7 @@ public class Selbstauskunft {
                 sicht.text(),
                 teilansicht(sicht.teilansicht()),
                 new SelbstauskunftDto.Unterstuetzungen(eigene, gewaehrte),
-                kundenadministratoren.stream().map(p -> new SelbstauskunftDto.Person(p.kennung(), p.name())).toList());
+                kundenadministratoren.stream().map(p -> new SelbstauskunftDto.Person(p.kennung(), p.name())).toList(), List.of());
     }
 
     private Benutzer benutzer(Zugriff z, String sub, String tokenName, Konto konto) {

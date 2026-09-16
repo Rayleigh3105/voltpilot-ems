@@ -11777,7 +11777,7 @@ paths:
         Installateur, Plattform: VoltPilot oder Notfall-Zugriff). Ohne sie antwortet diese Route mit dem eigenen Konto
         allein (`kundenbereich` null), jede andere Kundenroute mit 404. Die Plattform erreicht Kundenbereiche
         weiterhin über `X-Tenant-Id` (`zugang` = `umschalter`), solange
-        `voltpilot.uems.unterstuetzung.umschalter-enabled` an ist (AP-03 W3, umgelegt mit IP-15); ist er aus,
+        `voltpilot.uems.unterstuetzung.umschalter-enabled` an ist (nur lokale Kompatibilität; Produktionsvorgabe AUS seit IP-15); ist er aus,
         gilt für sie dasselbe wie für einen Partner ohne Gewährung.
       parameters:
         - $ref: "#/components/parameters/Kundenbereich"
@@ -12548,7 +12548,7 @@ components:
       type: object
       description: UEMS AP-03 IP-4 - die Selbstauskunft (`GET /api/v1/me`).
       required: [kennung, name, konto, zustand, kundenbereich, zugang, rollen, unternehmensweit, standorte,
-        unternehmen_rechte, kuenftig, text, teilansicht, unterstuetzungen, kundenadministratoren]
+        unternehmen_rechte, kuenftig, text, teilansicht, unterstuetzungen, kundenadministratoren, kundenbereiche]
       properties:
         kennung: { type: string, nullable: true, description: Das Subject des Kontos. }
         name: { type: string, nullable: true, description: "Anzeigename aus dem Benutzer-Spiegel, sonst aus dem Token." }
@@ -12589,6 +12589,17 @@ components:
         kundenadministratoren:
           type: array
           items: { $ref: "#/components/schemas/SelbstauskunftPerson" }
+        kundenbereiche:
+          type: array
+          description: Nur eigene aktuell gültige Unterstützungen des verifizierten Partner-/Plattformkontos; Kundenkonten erhalten eine leere Liste. Ende exklusiv.
+          items:
+            type: object
+            required: [id, name, umfang, endet]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              umfang: { type: string, enum: [ansehen, einrichten, einrichten_und_bedienen] }
+              endet: { type: string, format: date-time }
     SelbstauskunftKundenbereich:
       type: object
       required: [id, name]
@@ -15677,6 +15688,20 @@ components:
       type: object
       description: The platform-wide fleet aggregate (see GET /api/v1/admin/fleet).
       properties:
+        unterstuetzungBis:
+          type: object
+          description: Latest exclusive end of currently active support per tenant; absent key means no active support.
+          additionalProperties: { type: string, format: date-time }
+        unterstuetzungStandorte:
+          type: array
+          description: Standort selection for the existing platform request/emergency actions; admin-only, no customer authorization.
+          items:
+            type: object
+            required: [id, tenantId, name]
+            properties:
+              id: { type: string, format: uuid }
+              tenantId: { type: string, format: uuid }
+              name: { type: string }
         sites:
           type: array
           items: { $ref: "#/components/schemas/AdminFleetSite" }
