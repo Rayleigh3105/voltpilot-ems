@@ -26,7 +26,7 @@ function Fixture() {
   return (
     <main style={{ maxWidth: 1180, margin: '0 auto', padding: 24, display: 'grid', gap: 16 }}>
       <h2>Deye SUN-30K</h2>
-      <GeraetSummenwerte siteId="site-e2e" deviceId="d1" entityId="inv" geraetName="Deye SUN-30K" />
+      <GeraetSummenwerte geraetId="inverter" siteId="site-e2e" deviceId="d1" entityId="inv" geraetName="Deye SUN-30K" />
     </main>
   );
 }

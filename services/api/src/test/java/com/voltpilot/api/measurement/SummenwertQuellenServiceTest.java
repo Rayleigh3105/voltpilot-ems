@@ -12,7 +12,8 @@ import org.junit.jupiter.api.Test;
 class SummenwertQuellenServiceTest {
     private final EntityRegistryRepository registry = mock(EntityRegistryRepository.class);
     private final LeadDeviceService lead = mock(LeadDeviceService.class);
-    private final SummenwertQuellenService service = new SummenwertQuellenService(registry, lead);
+    private final MeasurementSelectionRepository components = mock(MeasurementSelectionRepository.class);
+    private final SummenwertQuellenService service = new SummenwertQuellenService(registry, lead, components);
     private final UUID site = UUID.randomUUID(), box = UUID.randomUUID(), entity = UUID.randomUUID();
 
     private void setup() {
@@ -35,5 +36,19 @@ class SummenwertQuellenServiceTest {
         assertThat(service.sources(site).getFirst()).satisfies(q -> {
             assertThat(q.deviceId()).isNull(); assertThat(q.grund()).isNotBlank();
         });
+    }
+    @Test void deviceSourcesResolveTheStableReferenceAndExcludeAnotherDeviceOnTheSameBox() {
+        setup();
+        UUID second = UUID.randomUUID(), other = UUID.randomUUID();
+        when(components.deviceScope(box)).thenReturn(new MeasurementSelectionRepository.DeviceScope(UUID.randomUUID(), site, box));
+        when(components.geraeteKomponenten(site, box)).thenReturn(List.of(
+                new MeasurementSelectionRepository.GeraeteKomponente(entity, "inverter", "hybrid_3p"),
+                new MeasurementSelectionRepository.GeraeteKomponente(second, "inverter", "hybrid_3p"),
+                new MeasurementSelectionRepository.GeraeteKomponente(other, "src-other", "hybrid_3p")));
+        assertThat(service.geraet(site, box, "inverter")).containsExactlyInAnyOrder(entity, second);
+        assertThat(service.sources(site, box, "inverter")).extracting(SummenwertQuellenService.Quelle::entityId).containsExactly(entity);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.geraet(UUID.randomUUID(), box, "inverter"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .satisfies(e -> assertThat(((org.springframework.web.server.ResponseStatusException) e).getStatusCode().value()).isEqualTo(404));
     }
 }

@@ -109,20 +109,61 @@ public class MeasurementSelectionRepository {
         return out;
     }
 
+    /** Eine physische Zuordnung, unabhängig von Transport und Anzeigename. */
+    public record GeraeteKomponente(UUID entityId, String geraetId, String family) {}
+
     /**
-     * The binding families a catalog view may offer. With a component the
-     * answer is ITS family; without one it stays the pre-3b union over the
-     * points that carry this device_id - which on a multi-component box is the
-     * composed hybrid's family and therefore the wrong question per component.
+     * Dieselben stabilen Kennungen wie die Geräteseite: Quellen-Pin, OCPP-Kennung oder
+     * die ausdrücklich komponierte Grundausstattung des primären Wechselrichters.
+     * Ein beliebiger ungebundener Punkt an derselben Box ist KEIN Gerätenachweis.
+     * Gespeichertes Soll führt; nur die Meldung genau dieser Bindung darf ergänzen.
      */
+    public List<GeraeteKomponente> geraeteKomponenten(UUID siteId, UUID boxId) {
+        return jdbc.query("""
+                SELECT mp.id, binding.geraet_id,
+                       COALESCE(mp.family, observed.edge_family,
+                                CASE WHEN cp.entity_id IS NOT NULL THEN 'ocpp' END) AS family
+                  FROM measurement_point mp
+                  LEFT JOIN device_charge_point cp
+                    ON cp.entity_id = mp.id AND cp.site_id = mp.site_id AND cp.device_id = ?
+                  CROSS JOIN LATERAL (
+                    SELECT CASE
+                      WHEN cp.entity_id IS NOT NULL THEN 'cp-' || cp.charge_point_id
+                      WHEN NULLIF(mp.edge_source_id, '') IS NOT NULL THEN mp.edge_source_id
+                      WHEN mp.device_id = ?
+                       AND mp.role IN ('battery-hybrid', 'grid-meter', 'house-load')
+                       AND (mp.source_kind = 'composed' OR (mp.source_kind IS NULL
+                            AND mp.communication IS NULL AND mp.connection_json IS NULL))
+                        THEN 'inverter'
+                      END AS geraet_id
+                  ) binding
+                  LEFT JOIN entity_observed_state observed
+                    ON observed.site_id = mp.site_id AND observed.device_id = ?
+                   AND observed.source = 'local'
+                   AND observed.entity_id = 'local:' || binding.geraet_id
+                 WHERE mp.site_id = ? AND mp.entity_type IS NOT NULL
+                   AND (mp.device_id IS NULL OR mp.device_id = ?)
+                 ORDER BY mp.id
+                """, (rs, n) -> new GeraeteKomponente(rs.getObject("id", UUID.class),
+                        rs.getString("geraet_id"), rs.getString("family")),
+                boxId, boxId, boxId, siteId, boxId);
+    }
+
+    /** Komponentenfamilie: gespeichertes Soll, sonst das eindeutig zugeordnete Ist. */
     public Set<String> availableFamilies(UUID deviceId, UUID entityId) {
         Set<String> out = new LinkedHashSet<>();
         if (entityId != null) {
             jdbc.query("SELECT family FROM measurement_point WHERE id = ? AND family IS NOT NULL",
                     (org.springframework.jdbc.core.RowCallbackHandler) rs ->
                             out.add(rs.getString(1)), entityId);
+            if (!out.isEmpty()) return Set.copyOf(out);
+            var scope = deviceScope(deviceId);
+            if (scope != null) geraeteKomponenten(scope.siteId(), deviceId).stream()
+                    .filter(r -> entityId.equals(r.entityId()) && r.family() != null)
+                    .forEach(r -> out.add(r.family()));
             return Set.copyOf(out);
         }
+        // Alte Box-Abfrage bleibt unverändert; sie ist keine physische Gerätegrenze.
         jdbc.query("SELECT DISTINCT family FROM measurement_point "
                         + "WHERE device_id = ? AND family IS NOT NULL ORDER BY family",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs ->

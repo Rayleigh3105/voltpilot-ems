@@ -970,6 +970,7 @@ export interface MeasurementCatalogPoint {
 }
 
 export interface MeasurementCatalogResult {
+  availabilityReason?: 'registerfamilie_nicht_zugeordnet' | null;
   catalogVersion: string;
   edgeMinVersion: string;
   customPointActionLabel: 'Eigenen Messwert hinzufügen';
@@ -2015,7 +2016,10 @@ export interface GeraetSummenwert {
   wert: MessstelleWert;
 }
 
+export type SummenwertKontext = { art: 'anlage' } | { art: 'geraet'; boxId: string; geraetId: string };
+
 export interface BerechneteMessstelleAnlegen {
+  kontext?: { art: 'anlage' | 'geraet'; site_id: string; box_id?: string; geraet_id?: string };
   rolle?: { entity_id: string; role: SummenwertRolle; ersetzen?: boolean };
   name: string;
   terme: Array<{
@@ -4448,8 +4452,8 @@ export const api = {
     request<MeasurementSelectionState>(
       `/api/v1/devices/${deviceId}/measurement-selection${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}`,
     ),
-  summenwertQuellen: (siteId: string) =>
-    request<Array<{ entityId: string; deviceId: string | null; name: string; grund: string | null }>>(`/api/v1/sites/${siteId}/summenwert-quellen`),
+  summenwertQuellen: (siteId: string, kontext: SummenwertKontext = { art: 'anlage' }) =>
+    request<Array<{ entityId: string; deviceId: string | null; name: string; grund: string | null }>>(`/api/v1/sites/${siteId}/summenwert-quellen${kontext.art === 'geraet' ? `?${new URLSearchParams({ boxId: kontext.boxId, geraetId: kontext.geraetId })}` : ''}`),
 
   /** Flüchtige Katalog-Lesung; verändert weder Selektion noch Register. */
   measurementLesen: (deviceId: string, entityId: string, pointKey: string) =>

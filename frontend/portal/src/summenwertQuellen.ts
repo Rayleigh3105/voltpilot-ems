@@ -301,3 +301,8 @@ export function standText(stand: string | null, jetztGelesen = false): string {
 export function leseGrund(grund: string | null | undefined): string {
   return grund === 'box_offline' ? 'nicht gelesen (die Box antwortet nicht)' : 'nicht gelesen (dieses Register ist gerade nicht lesbar)';
 }
+
+/** Zwilling von SummenwertKontextRegeln: nur die serverseitig aufgelösten Komponenten. */
+export function kontextGrund(erlaubt: readonly string[] | null, gelesen: readonly string[]): string | null {
+  return erlaubt !== null && gelesen.some(id => !erlaubt.includes(id)) ? 'anderes_geraet' : null;
+}

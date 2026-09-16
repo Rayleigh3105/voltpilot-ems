@@ -23,7 +23,7 @@ function stub(points = [point('PV 1', 5.2), point('PV 2', 4.1), point('PV 3', 3.
 }
 function mount(device = false, onGespeichert = vi.fn()) {
   const common = { open: true, siteId: 's1', onClose: vi.fn(), onGespeichert };
-  return device ? render(<SummenwertAssistent {...common} deviceId="d1" entityId="inv" geraetName="Deye SUN-30K" />) : render(<GesamtwertDialog {...common} />);
+  return device ? render(<SummenwertAssistent {...common} kontext={{ art: 'geraet', boxId: 'd1', geraetId: 'inverter' }} deviceId="d1" entityId="inv" geraetName="Deye SUN-30K" />) : render(<GesamtwertDialog {...common} />);
 }
 function next() { fireEvent.click(screen.getByRole('button', { name: 'Weiter', exact: true })); }
 async function rolle() { next(); await screen.findByText('Wie zählen wir sie?'); next(); await screen.findByLabelText('Name des Summenwerts'); next(); }
@@ -44,6 +44,44 @@ describe('ein Summenwert-Assistent für Gerät und Anlage', () => {
     expect(cb).toHaveBeenCalledOnce();
     expect(screen.getByRole('button', { name: 'Fertig', exact: true })).toBeVisible();
     expect(screen.getByRole('dialog')).toBeVisible();
+  });
+
+  it('Geräte-Kontext lädt nur die aufgelösten Komponenten, auch mehrere am selben Gerät', async () => {
+    const { save } = stub();
+    vi.mocked(api.summenwertQuellen).mockImplementation(async (_site, context) => context?.art === 'geraet'
+      ? [{ entityId: 'inv', deviceId: 'd1', name: 'Deye', grund: null }, { entityId: 'haus', deviceId: 'd1', name: 'Haus', grund: null }]
+      : [{ entityId: 'other', deviceId: 'd1', name: 'Anderes Gerät', grund: null }]);
+    mount(true); await screen.findByRole('button', { name: 'PV 1 entfernen' });
+    expect(api.summenwertQuellen).toHaveBeenCalledWith('s1', { art: 'geraet', boxId: 'd1', geraetId: 'inverter' });
+    expect(vi.mocked(api.measurementCatalog).mock.calls.map(c => c[1].get('entityId'))).toEqual(['inv', 'haus']);
+    expect(screen.queryByText('Weitere Geräte dieser Anlage')).not.toBeInTheDocument();
+    expect(screen.getByText(/Wählen Sie Register von diesem Gerät/)).toBeVisible();
+    await rolle(); fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save.mock.calls[0][0].kontext).toEqual({ art: 'geraet', site_id: 's1', box_id: 'd1', geraet_id: 'inverter' });
+  });
+
+  it('fehlende Familie nennt die Zuordnung statt einer ergebnislosen Suche', async () => {
+    stub([]); vi.mocked(api.measurementCatalog).mockResolvedValue({ points: [], total: 0, availabilityReason: 'registerfamilie_nicht_zugeordnet' } as never);
+    mount(true);
+    expect(await screen.findByText(/Registerfamilie nicht zugeordnet/)).toBeVisible();
+    expect(screen.queryByText('Keine passenden Register.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Weiter' })).toBeDisabled();
+  });
+
+  it('ein verweigerter Quellenabruf bleibt ein Ladefehler und lädt keinen Katalog', async () => {
+    stub(); vi.mocked(api.summenwertQuellen).mockRejectedValue(new Error('403'));
+    mount(true);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Die Register konnten nicht geladen werden.');
+    expect(api.measurementCatalog).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Weiter' })).toBeDisabled();
+  });
+
+  it('ohne lesende Box benennt der Dialog die fehlende Zuordnung', async () => {
+    stub(); vi.mocked(api.summenwertQuellen).mockResolvedValue([{ entityId: 'inv', deviceId: null, name: 'Deye', grund: 'keine_wahl' }]);
+    mount(true);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Keine lesende Box zugeordnet: Deye.');
+    expect(api.measurementCatalog).not.toHaveBeenCalled();
   });
 
   it('Gen-Port: ein Lesen je Sitzung, keine Beobachtung vor Speichern, atomar mit PV-Rolle', async () => {

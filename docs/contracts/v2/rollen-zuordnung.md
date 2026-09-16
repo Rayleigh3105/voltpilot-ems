@@ -56,6 +56,12 @@ unabhängig von Listen-Reihenfolge, Vorzeichen und Faktoren. Es wird nichts
 nachträglich aus einer Summe herausgerechnet. Unabhängige Beiträge bleiben.
 Die Zuordnung anderer Anlagen oder anderer Rollen berührt diese Zählung nicht.
 
+Neue Summen aus dem Geräte-Einstieg sind auf dieses physische Gerät begrenzt
+([Formelvertrag §1.2](messstelle-formel.md#12-einstiegskontext-für-neue-summenwerte-additiv-16092026)).
+Der Anlagen-Einstieg bleibt geräteübergreifend. Bestehende gemeinsame Summen
+erscheinen weiterhin an allen beteiligten Geräten und zählen genau einmal.
+
+
 Die reine Regel bekommt vollständig aufgelöste Zuordnungen: `enthaelt` ist die
 rekursive Menge aller enthaltenen Kanal- und Messstellen-Identitäten der
 **jetzt wirksamen Formel-Fassung**. Auch ein nicht liefernder Eingang muss in

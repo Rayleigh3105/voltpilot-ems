@@ -16,11 +16,12 @@ public class SummenwertQuellenController {
     }
     /** Keine eigene Kennung: reine Leseliste, RLS und Anlagen-Geltungsbereich wie der Registerkatalog. */
     @GetMapping
-    public List<SummenwertQuellenService.Quelle> sources(@PathVariable UUID siteId) {
+    public List<SummenwertQuellenService.Quelle> sources(@PathVariable UUID siteId,
+            @RequestParam(required = false) UUID boxId, @RequestParam(required = false) String geraetId) {
         if (!scope.existsForCurrentTenant(siteId)) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
-        return sources.sources(siteId);
+        return sources.sources(siteId, boxId, geraetId);
     }
 }

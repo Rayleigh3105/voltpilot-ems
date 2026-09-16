@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Switch } from '../../designsystem/components/forms/Switch';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type GeraetRolle, type Messstelle } from '../api';
+import { api, type GeraetRolle, type Messstelle, type SummenwertKontext } from '../api';
 import { fmtNum } from '../format';
 import { ROLLEN } from '../uemsRollen';
 import {
@@ -13,7 +13,7 @@ import {
   vorschau, wertText, type Entwurf, type Schritt,
 } from '../gesamtwert';
 import {
-  ankerAus, anhakbar, leseGrund, mitSitzungswert, sperrArt, sperrGrund, sperrKurz,
+  ankerAus, anhakbar, kontextGrund, leseGrund, mitSitzungswert, sperrArt, sperrGrund, sperrKurz,
   standText, suchePasst, unterzeile, vorauswahl, zeileAus, zuQuellwert,
   type RegisterZeile, type Sitzungswert,
 } from '../summenwertQuellen';
@@ -22,10 +22,11 @@ import './Gesamtwert.css';
 import './SummenwertAssistent.css';
 
 type Rolle = keyof typeof ROLLEN;
-type Geraet = { deviceId: string; entityId: string; name: string };
+type Geraet = { deviceId: string; entityId: string; name: string; familieFehlt?: boolean };
 type Zeile = RegisterZeile & { deviceId: string; geraetName: string };
 export interface SummenwertEinstieg {
   siteId: string;
+  kontext?: SummenwertKontext;
   deviceId?: string;
   entityId?: string;
   geraetName?: string;
@@ -43,8 +44,11 @@ export function useSummenwertAssistent() {
   };
 }
 
-/** EIN Assistent, optional mit Geräte-Vorauswahl; alle Quellen bleiben in derselben Anlage. */
-export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetName, onClose, onGespeichert }: SummenwertEinstieg & { open: boolean; onClose: () => void }) {
+/** EIN Assistent mit expliziter Gerätegrenze oder anlagenweiter Auswahl. */
+export function SummenwertAssistent({ open, siteId, kontext = { art: 'anlage' }, deviceId, entityId, geraetName, onClose, onGespeichert }: SummenwertEinstieg & { open: boolean; onClose: () => void }) {
+  const geraeteEinstieg = kontext.art === 'geraet';
+  const boxId = kontext.art === 'geraet' ? kontext.boxId : undefined;
+  const geraetId = kontext.art === 'geraet' ? kontext.geraetId : undefined;
   const [schritt, setSchritt] = useState<Schritt>(1);
   const [entwurf, setEntwurf] = useState<Entwurf>(leererEntwurf);
   const [zeilen, setZeilen] = useState<Zeile[] | null>(null);
@@ -65,12 +69,12 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
   useEffect(() => {
     const lauf = ++generation.current;
     if (!open) return;
-    setSchritt(1); setEntwurf(leererEntwurf()); setZeilen(null); setQuery('');
+    setSchritt(1); setEntwurf(leererEntwurf()); setZeilen(null); setGeraete([]); setQuery('');
     setRolle('keine'); setFaktoren(false); setSitzung({}); setLesend(new Set());
     setFehler(null); setErgebnis(null); setErsetzt(null); setBestaetigt([]); gelesen.current.clear();
     void (async () => {
       try {
-        const res = await api.summenwertQuellen(siteId);
+        const res = await api.summenwertQuellen(siteId, kontext);
         const gs: Geraet[] = res.filter((g) => g.deviceId).map((g) => ({ deviceId: g.deviceId!, entityId: g.entityId, name: g.name }));
         const fehlend = res.filter((g) => !g.deviceId);
         if (fehlend.length && lauf === generation.current) setFehler(`Keine lesende Box zugeordnet: ${fehlend.map((g) => g.name).join(', ')}.`);
@@ -79,6 +83,7 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
           let offset = 0;
           for (;;) {
             const katalog = await api.measurementCatalog(g.deviceId, new URLSearchParams({ entityId: g.entityId, availableOnly: 'true', offset: String(offset), limit: '250' }));
+            g.familieFehlt = katalog.availabilityReason === 'registerfamilie_nicht_zugeordnet';
             out.push(...katalog.points.map((p) => ({ ...zeileAus(p, g.entityId), deviceId: g.deviceId, geraetName: g.name })));
             offset += katalog.points.length;
             if (!katalog.points.length || offset >= katalog.total) break;
@@ -87,7 +92,7 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
         }))).flat();
         if (lauf !== generation.current) return;
         setGeraete(gs); setZeilen(zs);
-        const vorab = entityId ? vorauswahl(zs.filter((z) => z.entityId === entityId && z.beobachtet)) : [];
+        const vorab = geraeteEinstieg && entityId ? vorauswahl(zs.filter((z) => z.entityId === entityId && z.beobachtet)) : [];
         const terme = vorab.slice(0, MAX_TERME).map((z) => termAus(zuQuellwert(z, geraetName ?? null)));
         setEntwurf({ ...leererEntwurf(), terme, name: terme.length ? nameVorschlag(terme) : '' });
       } catch {
@@ -95,7 +100,7 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
       }
     })();
     return () => { generation.current++; };
-  }, [open, siteId, deviceId, entityId, geraetName]);
+  }, [open, siteId, deviceId, entityId, geraetName, geraeteEinstieg, boxId, geraetId]);
 
   // Laufende Frische wird auch dann geprüft, wenn der Kunde einen Schritt länger offen lässt.
   const [jetzt, setJetzt] = useState(Date.now);
@@ -140,6 +145,9 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
 
   async function speichern(ersetzen = false) {
     if (busy || formFehler || !rolleErlaubt(rolle)) return;
+    if (kontextGrund(geraeteEinstieg ? geraete.map(g => g.entityId) : null, entwurf.terme.map(t => t.quelle.entityId))) {
+      setFehler('Wählen Sie nur Register von diesem Gerät.'); return;
+    }
     setBusy(true); setFehler(null); setErsetzt(null);
     try {
       if (rolle !== 'keine' && !ersetzen) {
@@ -158,6 +166,8 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
         setZeilen((zs) => zs?.map((q) => q.entityId === z.entityId && q.pointKey === z.pointKey ? { ...q, beobachtet: true } : q) ?? null);
       }
       const neu = await api.berechneteMessstelleAnlegen({ ...alsAnfrage(entwurf),
+        kontext: geraeteEinstieg ? { art: 'geraet', site_id: siteId, box_id: boxId, geraet_id: geraetId }
+          : { art: 'anlage', site_id: siteId },
         ...(rolle === 'keine' ? {} : { rolle: { entity_id: entwurf.terme[0].quelle.entityId, role: rolle, ersetzen } }),
       });
       setErgebnis(neu); setSchritt(5); onGespeichert?.(neu);
@@ -204,8 +214,8 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
     const zs = alle.filter((z) => z.entityId === g.entityId && suchePasst(z, query));
     return <section className="vp-sw-group" key={g.entityId}><h3 className="vp-sw-group-h">{g.name}</h3>
       {zs.filter((z) => z.beobachtet).map(register)}
-      <details open={!!query}><summary>Alle Register des Geräts · {zs.filter((z) => !z.beobachtet).length} weitere</summary>{zs.filter((z) => !z.beobachtet).map(register)}</details>
-      {!zs.length && <p className="vp-sw-hint">Keine passenden Register.</p>}
+      {!g.familieFehlt && <details open={!!query}><summary>Alle Register des Geräts · {zs.filter((z) => !z.beobachtet).length} weitere</summary>{zs.filter((z) => !z.beobachtet).map(register)}</details>}
+      {!zs.length && <p className="vp-sw-hint">{g.familieFehlt ? 'Registerfamilie nicht zugeordnet. Prüfen Sie die Anbindung dieses Geräts.' : 'Keine passenden Register.'}</p>}
     </section>;
   }
   const folgen = {
@@ -227,11 +237,10 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
       <p className="vp-gw-eyebrow">Schritt {schritt} von 5</p>
       {schritt === 1 && <>
         <h3 className="vp-sw-h">Welche Register gehören zusammen?</h3>
-        <p className="vp-sw-sub">Wählen Sie Register dieser Anlage. Noch nicht beobachtete Register werden beim Antippen einmal gelesen.</p>
+        <p className="vp-sw-sub">Wählen Sie Register {geraeteEinstieg ? 'von diesem Gerät' : 'dieser Anlage'}. Noch nicht beobachtete Register werden beim Antippen einmal gelesen.</p>
         <input className="vp-sw-search-in" type="search" aria-label="Register durchsuchen" placeholder="Register durchsuchen …" value={query} onChange={(e) => setQuery(e.target.value)} />
-        {zeilen === null ? <p>Register werden geladen …</p> : geraete.length === 0 ? <p>Diese Anlage meldet noch keine Geräte mit Registern.</p> : <>
-          {geraete.filter((g) => !entityId || g.entityId === entityId).map(gruppe)}
-          {entityId && geraete.some((g) => g.entityId !== entityId) && <details open={!!query}><summary>Weitere Geräte dieser Anlage</summary>{geraete.filter((g) => g.entityId !== entityId).map(gruppe)}</details>}
+        {zeilen === null ? <p>Register werden geladen …</p> : geraete.length === 0 ? <p>{geraeteEinstieg ? 'Diesem Gerät sind noch keine lesbaren Komponenten zugeordnet.' : 'Diese Anlage meldet noch keine Geräte mit Registern.'}</p> : <>
+          {geraete.map(gruppe)}
         </>}
       </>}
       {schritt === 2 && <>
