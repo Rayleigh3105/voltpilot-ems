@@ -743,6 +743,15 @@ Object.assign(api, {
   siteEntities: async (id: string) => ({ registry: null, localSetup: [], staleOnDevice: [], entities: komponentenVon(id) }),
   siteVerbraucher: async (id: string) => verbraucherVon(id),
   entityStrategies: async () => ({}),
+  // Der Einstieg mit nur einer Anlage kann deren Cockpit vor der E1-Weiche laden.
+  // Die Standort-Bühne liefert diese Zusatzdaten nicht; auch dieser Pfad bleibt isoliert.
+  topology: nichtGestellt,
+  siteEarnings: nichtGestellt,
+  controlStatus: nichtGestellt,
+  siteSources: nichtGestellt,
+  weather: nichtGestellt,
+  schedule: nichtGestellt,
+  rollenWert: nichtGestellt,
   usageProfile: nichtGestellt,
   siteProfiles: nichtGestellt,
   siteAssets: nichtGestellt,
