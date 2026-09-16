@@ -105,7 +105,7 @@ test.describe('Messstellen-Register', () => {
       'Aktionen',
     ]);
     // AP-11 IP-13: „Kennzahlen“ steht als Reiter neben „Messstellen“ (Ahrenberg misst und hat Kennzahlen).
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte', 'Messwerte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Messwerte']);
     expect(m.reiterAktiv).toEqual(['Messstellen']);
     expect(m.leiste).toBeNull();
     expect(m.kopf).toBe('21 von 22 Messstellen liefern Daten');
@@ -120,7 +120,7 @@ test.describe('Messstellen-Register', () => {
     ohneQuerlauf(m, 'unternehmen-375');
     expect(m.karten).toBe(22);
     expect(m.zeilen).toBe(0);
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
+    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
     expect(m.leisteAktiv).toBe('Messstellen');
     // Variante B: was die Leiste trägt, ist am Telefon kein zweites Mal Reiter.
     expect(m.reiter).toEqual([]);
@@ -137,9 +137,9 @@ test.describe('Messstellen-Register', () => {
       expect(breite === 375 ? m.karten : m.zeilen).toBe(16);
       // AP-13 IP-2: Gebäude und Anlagen haben ihre Seite — vier Bereiche (O17). Am Rechner die Reiter, am
       // Telefon die Leiste; was die Leiste trägt, ist dort kein zweites Mal Reiter.
-      expect(m.reiter).toEqual(breite === 375 ? [] : ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen']);
+      expect(m.reiter).toEqual(breite === 375 ? [] : ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
       expect(m.reiterAktiv).toEqual(breite === 375 ? [] : ['Messstellen']);
-      expect(m.leiste).toEqual(breite === 375 ? ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'] : null);
+      expect(m.leiste).toEqual(breite === 375 ? ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'] : null);
       if (breite === 375) expect(m.leisteAktiv).toBe('Messstellen');
       expect(m.kopf).toBe('Werk Ahrenberg · 15 von 16 Messstellen liefern Daten');
       await ablegen(page, `werk-${breite}`, m);
@@ -225,10 +225,10 @@ test.describe('Messstellen-Register', () => {
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 1440);
     await warteAufRegister(page);
     // MS-10 liest über den WAGO-Controller C-1 (GR-7, DQ-4); am 20.10.2026 ist Box Halle 2 zuständig.
-    await expect(boxZeile('MS-10')).toHaveText('gelesen von Box Halle 2 seit 01.10.2026');
+    await expect(boxZeile('MS-10')).toHaveText('zuständig: Box Halle 2 seit 01.10.2026');
     // MS-01 hängt an Box Halle 1, MS-16 an Box Lindach — jede Anlage ihre eigene Box (W10).
-    await expect(boxZeile('MS-01')).toHaveText('gelesen von Box Halle 1 seit 12.03.2024');
-    await expect(boxZeile('MS-16')).toHaveText('gelesen von Box Lindach seit 15.10.2026');
+    await expect(boxZeile('MS-01')).toHaveText('zuständig: Box Halle 1 seit 12.03.2024');
+    await expect(boxZeile('MS-16')).toHaveText('zuständig: Box Lindach seit 15.10.2026');
     // Eine BERECHNETE Messstelle hat keine Quelle und darum keine Box — nie eine geratene.
     await expect(page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: /^MS-20$/ }) }).locator('.vp-ms-box')).toHaveCount(0);
     const m = await messe(page);
@@ -240,8 +240,8 @@ test.describe('Messstellen-Register', () => {
     // Nach dem Box-Tausch: dieselbe Zeile, dieselbe Messstelle — die Nachfolgerin, seit dem Augenblick des Tauschs.
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen&stand=2026-11-05', 1440);
     await warteAufRegister(page);
-    await expect(boxZeile('MS-10')).toHaveText('gelesen von Box Halle 2 (neu) seit 04.11.2026 09:38');
-    await expect(boxZeile('MS-01')).toHaveText('gelesen von Box Halle 1 seit 12.03.2024');
+    await expect(boxZeile('MS-10')).toHaveText('zuständig: Box Halle 2 (neu) seit 04.11.2026 09:38');
+    await expect(boxZeile('MS-01')).toHaveText('zuständig: Box Halle 1 seit 12.03.2024');
     const n = await messe(page);
     ohneQuerlauf(n, 'box-an-quelle-tausch-1440');
     await boxZeile('MS-10').scrollIntoViewIfNeeded();
@@ -251,7 +251,7 @@ test.describe('Messstellen-Register', () => {
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 375);
     await warteAufRegister(page);
     const karte = page.locator('.vp-ms-karte', { has: page.locator('.vp-ms-kz', { hasText: /^MS-10$/ }) });
-    await expect(karte.locator('.vp-ms-box')).toHaveText('gelesen von Box Halle 2 seit 01.10.2026');
+    await expect(karte.locator('.vp-ms-box')).toHaveText('zuständig: Box Halle 2 seit 01.10.2026');
     const t = await messe(page);
     ohneQuerlauf(t, 'box-an-quelle-375');
     await karte.scrollIntoViewIfNeeded();
@@ -265,7 +265,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375');
     expect(m.route).toBe('#/portfolio');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
+    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
     expect(m.leisteAktiv).toBe('Übersicht');
     expect(m.reiter).toEqual(['Übersicht', 'Messwerte']);
     await ablegen(page, 'leiste-uebersicht-375', m);
@@ -278,8 +278,8 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await oeffne(page, 'bild=unternehmen&reiter=alle', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375-alle-reiter');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte', 'Messwerte']);
+    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Messwerte']);
     await ablegen(page, 'leiste-uebersicht-375-alle-reiter', m);
   });
 
@@ -290,7 +290,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await warteAufRegister(page);
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440);
     const m = await messe(page);
-    expect(m.reiter).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen']);
+    expect(m.reiter).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
     await ablegen(page, 'werk-uebersicht-1440', m);
     await page.getByRole('tab', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st1}/messstellen`);
@@ -312,7 +312,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     const m = await messe(page);
     ohneQuerlauf(m, 'messkunde-375');
     // Drei Bereiche mit Seite — seit AP-13 IP-2 die Leiste (O17: Werk Lindach drei Kacheln).
-    expect(m.leiste).toEqual(['Übersicht', 'Gebäude', 'Messstellen']);
+    expect(m.leiste).toEqual(['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st2}/messstellen`);
     await warteAufRegister(page);

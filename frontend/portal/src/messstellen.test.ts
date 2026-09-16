@@ -182,7 +182,7 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
     const ohne = zeileWoerter(zeile(a, 'MS-10'), kontext(a));
     const mit = zeileWoerter(zeile(a, 'MS-10'), { ...kontext(a), boxen });
     expect(ohne.quelle).toMatchObject({ art: 'gebunden', box: null });
-    expect(mit.quelle).toMatchObject({ art: 'gebunden', box: `gelesen von ${BOX_NAMEN['E-2']} seit 01.10.2026` });
+    expect(mit.quelle).toMatchObject({ art: 'gebunden', box: `zuständig: ${BOX_NAMEN['E-2']} seit 01.10.2026` });
   });
 
   it('AP-13 IP-12: nach dem Box-Tausch am 04.11.2026 09:38 nennt dieselbe Zeile die Nachfolgerin', () => {
@@ -193,7 +193,7 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
       ahrenbergDatenquellen(FIXTURE_IDS.an2, nachher).datenquellen,
     );
     const w = zeileWoerter(zeile(a, 'MS-10'), { ...kontext(a), zeitpunkt: nachher, boxen });
-    expect(w.quelle).toMatchObject({ box: `gelesen von ${BOX_NAMEN['E-2′']} seit 04.11.2026 09:38` });
+    expect(w.quelle).toMatchObject({ box: `zuständig: ${BOX_NAMEN['E-2′']} seit 04.11.2026 09:38` });
   });
 
   it('AP-13 IP-12: eine Anlage ohne gelesene Zuständigkeit bekommt KEINEN Satz — nie eine geratene Box', () => {

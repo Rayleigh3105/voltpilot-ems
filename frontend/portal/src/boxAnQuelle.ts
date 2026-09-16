@@ -36,6 +36,9 @@ import { zustaendigeBox } from './uemsDatenquelle';
 /** L6 — der ganze Satz steht an EINER Stelle; die Flächen setzen nur ihren Zeitpunkt-Text ein. */
 export const GELESEN_VON = 'gelesen von {box} seit {zeitpunkt}';
 
+/** AP-04 A7: der Fakt im Messstellenregister, bewusst nicht als Tätigkeit formuliert. */
+export const ZUSTAENDIG = 'zuständig: {box} seit {zeitpunkt}';
+
 /** Die Überschrift der Zeile, wo die Fläche eine braucht (Karte am Telefon). */
 export const GELESEN_VON_TITEL = `Gelesen von ${UEMS_BOX}`;
 
@@ -130,6 +133,12 @@ export function boxAmGeraet(
 export function boxSatz(z: BoxZuordnung | null, zeit: (iso: string) => string): string | null {
   if (z === null) return null;
   return GELESEN_VON.split('{box}').join(z.name).split('{zeitpunkt}').join(zeit(z.seit));
+}
+
+/** A7 — derselbe Zuständigkeitsfakt wie {@link boxSatz}, in der Wortform des Registers. */
+export function zustaendigSatz(z: BoxZuordnung | null, zeit: (iso: string) => string): string | null {
+  if (z === null) return null;
+  return ZUSTAENDIG.split('{box}').join(z.name).split('{zeitpunkt}').join(zeit(z.seit));
 }
 
 // ───────────────────────────────────────────────────── Box-Tausch und Übergabe (V5)
