@@ -23,7 +23,7 @@ import type {
   MesskanalSpeist,
   UemsGeraet,
 } from './api';
-import { parseDecimal } from './anlageFlow';
+import { parseDecimal } from './zahl';
 import { iso, zeitpunkteVon } from './bezugsPeriode';
 import { channelLabel } from './channels';
 import {

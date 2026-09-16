@@ -1,0 +1,7 @@
+.vp-wert-liste { width: 100%; min-width: 0; display: block; overflow-wrap: anywhere; }
+.vp-wert-liste > *, .vp-wert-zeitpunkt > * { margin-block: var(--vp-c-space-3); }
+.vp-wert-liste summary { cursor: pointer; min-height: 44px; padding-block: var(--vp-c-space-3); }
+.vp-wert-zeile { border-top: 1px solid var(--vp-c-border); padding-block: var(--vp-c-space-3); display: flex; flex-direction: column; gap: var(--vp-c-space-2); min-width: 0; }
+.vp-wert-fassung { border-left: 2px solid var(--vp-c-border); padding: var(--vp-c-space-2) var(--vp-c-space-3); margin-bottom: var(--vp-c-space-2); font-size: var(--vp-c-fs-14); }
+.vp-wert-zeitpunkt { min-width: 0; }
+@media (max-width: 419px) { .vp-wert-zeitpunkt .vp-bz-felder { grid-template-columns: minmax(0, 1fr); } }

@@ -3023,6 +3023,20 @@ export interface BezugsgroesseWert {
   wirksame_fassung: number | null;
   stand_offen: boolean;
   fassungen: BezugsgroesseFassung[];
+  vorschlag?: { kennung: string; betrag: string; ersetzt_fassung: number; begruendung: string; urheber: BezugsgroessePerson; eingetragen_am: string } | null;
+}
+
+export interface BezugswertAntwort {
+  urteil: string; satz: string; kennung: string | null;
+  hinweise: { code: string; satz: string }[]; wert: BezugsgroesseWert;
+}
+export interface Ablesung {
+  quelle: string; zeitpunkt: string; fassung: number; stand: number; monat: string | null;
+  woher: string; urheber: { name: string; rolle: string | null }; korrektur: string | null; eingetragen_am: string;
+}
+export interface AblesungAntwort {
+  urteil: string; korrektur: string | null; ablesung: Ablesung;
+  ablesezeitraum: { menge: number | null; zustand: string; kennzeichen: string } | null;
 }
 
 /**
@@ -8190,6 +8204,16 @@ export const api = {
    * Die Werte mit ihren Fassungen und der Herkunft je Fassung. `von`/`bis` sind Tage
    * (JJJJ-MM-TT, der letzte einschließlich); `fassungen` `wirksam` (Vorgabe) oder `alle`.
    */
+  bezugswertEingeben: (id: string, body: { periode: string; wert: string }) =>
+    request<BezugswertAntwort>(`/api/v1/bezugsgroessen/${encodeURIComponent(id)}/werte`, { method: 'POST', body: JSON.stringify(body) }),
+  bezugswertBerichtigen: (id: string, periode: string, body: { wert: string; begruendung: string }) =>
+    request<BezugswertAntwort>(`/api/v1/bezugsgroessen/${encodeURIComponent(id)}/werte/${encodeURIComponent(periode)}/berichtigung`, { method: 'POST', body: JSON.stringify(body) }),
+  ablesungen: (kz: string) => request<Ablesung[]>(`/api/v1/messstellen/${encodeURIComponent(kz)}/ablesungen`),
+  ablesungEintragen: (kz: string, body: { zeitpunkt: string; stand: string; zuordnung_monat: string | null }) =>
+    request<AblesungAntwort>(`/api/v1/messstellen/${encodeURIComponent(kz)}/ablesungen`, { method: 'POST', body: JSON.stringify(body) }),
+  ablesungBerichtigen: (kz: string, zeitpunkt: string, body: { stand: string; zuordnung_monat: string | null; begruendung: string }) =>
+    request<AblesungAntwort>(`/api/v1/messstellen/${encodeURIComponent(kz)}/ablesungen/${encodeURIComponent(zeitpunkt)}/berichtigung`, { method: 'POST', body: JSON.stringify(body) }),
+
   bezugsgroesseWerte: (id: string, abfrage: { von?: string; bis?: string; fassungen?: BezugsgroesseLesart } = {}) => {
     const q = new URLSearchParams();
     if (abfrage.von) q.set('von', abfrage.von);

@@ -477,7 +477,6 @@
     },
     "zaehlerwechsel.ts": {
       "importe": [
-        "./anlageFlow:parseDecimal",
         "./bezugsPeriode:iso",
         "./bezugsPeriode:zeitpunkteVon",
         "./geraetEinstellungen:ZEIT_SAETZE",
@@ -485,7 +484,9 @@
         "./uemsEreignis:zahlText",
         "./uemsEreignis:zeitText",
         "./uemsMessstelle:rueckwirkung",
-        "./uemsZustand:teile"
+        "./uemsZustand:teile",
+        "./zahl:ablesestandWert",
+        "export:export { ablesestandWert } from './zahl';"
       ],
       "operationen": [
         "wechselPruefen: Number(e.geraeteId)",
