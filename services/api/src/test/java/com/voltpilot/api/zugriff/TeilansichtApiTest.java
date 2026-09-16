@@ -229,6 +229,37 @@ class TeilansichtApiTest {
         }
     }
 
+    // ------------------------------------------- die Reichweite JEDER der sechs Routen
+
+    /**
+     * Was JEDE der sechs Routen zeigt — die Zeile, an der sich „vorher wie weit, jetzt wie weit" ablesen
+     * lässt. Fünf der sechs schneidet schon der Standort-Zaun (IP-5), weil ihre Liste über {@code site},
+     * {@code device} oder {@code standort} läuft; {@code /overview} kam als einzige mit einer Summe daher,
+     * die an ihm vorbeilief (siehe {@link #keinAntwortfeldTraegtDieGesamtsumme()}).
+     */
+    @Test
+    void jedeDerSechsRoutenZeigtNurDieSichtbarenAnlagen() throws Exception {
+        assertThat(namen(json(PETER, "/api/v1/sites"))).containsExactly("AN-3 Werk Lindach");
+        assertThat(namen(json(CLAUDIA_SUB, "/api/v1/sites")))
+                .containsExactlyInAnyOrder("AN-1 Halle 1", "AN-2 Halle 2", "AN-3 Werk Lindach");
+        assertThat(namen(json(JONAS, "/api/v1/sites"))).hasSize(4);
+
+        assertThat(anlagenKennungen(json(PETER, "/api/v1/devices"), "siteId")).containsExactly(AN_3.toString());
+        assertThat(anlagenKennungen(json(CLAUDIA_SUB, "/api/v1/devices"), "siteId"))
+                .containsExactlyInAnyOrder(AN_1.toString(), AN_2.toString(), AN_3.toString());
+        assertThat(anlagenKennungen(json(JONAS, "/api/v1/devices"), "siteId")).hasSize(4);
+
+        assertThat(anlagenKennungen(json(PETER, "/api/v1/edge-versions"), "siteId"))
+                .containsExactly(AN_3.toString());
+        assertThat(anlagenKennungen(json(CLAUDIA_SUB, "/api/v1/edge-versions"), "siteId"))
+                .containsExactlyInAnyOrder(AN_1.toString(), AN_2.toString(), AN_3.toString());
+        assertThat(anlagenKennungen(json(JONAS, "/api/v1/edge-versions"), "siteId")).hasSize(4);
+
+        assertThat(namen(json(PETER, "/api/v1/earnings").get("sites"))).containsExactly("AN-3 Werk Lindach");
+        assertThat(namen(json(PETER, "/api/v1/overview").get("sites"))).containsExactly("AN-3 Werk Lindach");
+        assertThat(namen(json(PETER, "/api/v1/standorte").get("standorte"))).containsExactly("Werk Lindach");
+    }
+
     // ------------------------------- „Totals minus eigene ≠ fremde"
 
     /**
@@ -353,6 +384,12 @@ class TeilansichtApiTest {
         ObjectNode kopie = (ObjectNode) antwort.deepCopy();
         kopie.remove("teilansicht");
         return kopie;
+    }
+
+    private static List<String> anlagenKennungen(JsonNode liste, String feld) {
+        List<String> ids = new ArrayList<>();
+        liste.forEach(n -> ids.add(n.get(feld).asText()));
+        return ids;
     }
 
     private static List<String> namen(JsonNode liste) {

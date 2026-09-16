@@ -380,7 +380,9 @@ class StandortLesemodellApiTest {
             assertThat(feldnamen(zeile)).containsExactlyElementsOf(erwartet);
             assertThat(zeile.path("standort").isNull()).isTrue();
         }
-        assertThat(feldnamen(overview)).containsExactly("sites", "totals", "dailySavings");
+        // `teilansicht` ist das additive Feld aus AP-03 IP-10 - wie `standort` hier: ans Ende, nichts
+        // Bestehendes umbenannt oder umgedeutet.
+        assertThat(feldnamen(overview)).containsExactly("sites", "totals", "dailySavings", "teilansicht");
 
         // /sites/{id}: die Listen-Zeile, zeichengleich, plus standort am Ende.
         JsonNode liste = ok(get("/api/v1/sites", demo, null));
