@@ -504,7 +504,7 @@ const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
 /** Ein Standort misst: „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv — ein Entwurf misst noch nicht. */
 const MISST: ReadonlySet<FunktionZustand> = new Set<FunktionZustand>(['eingerichtet', 'angehalten', 'aktiv']);
 
-const misst = (lm: EbenenLesemodell, standortId: string) =>
+export const misst = (lm: EbenenLesemodell, standortId: string) =>
   MISST.has(lm.funktionen?.standorte.find((f) => f.id === standortId)?.messen.zustand ?? 'kein_objekt');
 
 /**

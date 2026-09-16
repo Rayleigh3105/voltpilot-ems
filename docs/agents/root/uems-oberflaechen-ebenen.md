@@ -48,7 +48,10 @@ Tests: `ebenenNav.test.ts` (Block „AP-13 IP-2“: O17 vier/drei Kacheln, O18, 
    Gebäude · Anlagen · Kennzahlen · Berichte nur mit Messfunktion dieses Standorts frei. Reiter, Telefon-Leiste,
    `uemsOberflaechen.kacheln` und Einstiege reichen dasselbe Lesemodell durch. Unbekannt ist keine Freigabe.
    Direkte Adressen zeigen über `standortBereichFuer` in `App.tsx` wie vor AP-13 die Standort-Übersicht;
-   Messstellen-Adressen bleiben unverändert. O17 bleibt vier/drei Kacheln. Der alte Befund ist damit aufgelöst.
+   Messstellen-Adressen bleiben unverändert. O17 bleibt vier/drei Kacheln.
+   Auch `useUebersichtBausteine` bindet alle Abfragen und die Anzeige an `misst` (Unternehmen: ein lebender
+   Standort misst; Standort: dieser Standort misst). Ohne diese Grenze erzeugten schon Gebäude ohne Messstellen
+   den Energiebilanz-Baustein. Beide O18-Befunde sind durch den IP-14-Entscheid aufgelöst.
 
 ## Abschluss und Bestandsschutz (IP-14)
 

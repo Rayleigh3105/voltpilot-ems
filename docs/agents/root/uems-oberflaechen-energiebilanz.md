@@ -19,4 +19,6 @@ Die Balkenbreite `menge / zufluss` in `teilBild` ist ausschließlich Zeichnungsg
 Die Beschriftung bleibt die gelieferte Menge, keine neue Prozentzahl. Diese einzelne Operation und die SVG-Geometrie
 sind im [Q5-Wächter](uems-oberflaechen-werte-verlauf.md#wächter-q5) benannt; jede neue Mengenrechnung wird rot.
 Der Energiebilanz-Reiter erscheint nur mit Hauptzähler-Fakt. Ohne Messfunktion erscheinen keine neuen
-Standortseiten oder leeren Bausteine; [O18 und die IP-7-Release-Note](uems-oberflaechen-ebenen.md).
+Standortseiten oder leeren Bausteine. `useUebersichtBausteine` lädt und zeigt erst, wenn die bestehende
+`ebenenNav.misst`-Ableitung die Ebene freigibt; Gebäude allein reichen nicht. Die Prüfung gilt auch für
+Messstellen- und Kennzahlen-Bausteine; unbekannt und Entwurf geben nichts frei. Siehe [O18 und die IP-7-Release-Note](uems-oberflaechen-ebenen.md).
