@@ -31,6 +31,5 @@ public class KanalbindungController {
     }
     /** Recht: {@code messwerte.ansehen}. */
     @GetMapping
-    @Recht(value="messwerte.ansehen",ziel=RechtZiel.BEZUGSGROESSE)
     public List<KanalbindungService.Bindung> liste(@PathVariable UUID id) { return service.liste(id); }
 }
