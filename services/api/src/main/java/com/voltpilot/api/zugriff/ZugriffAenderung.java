@@ -133,13 +133,33 @@ public class ZugriffAenderung {
     /** Ein Konto sperren oder entfernen: derselbe Vertragsentscheid wie beim Zuweisungsentzug. */
     @Transactional
     public void kontoBeenden(String sub, boolean entfernen, ProtokollAkteur akteur) {
+        kontoBeenden(sub, entfernen, akteur, false);
+    }
+
+    /**
+     * Ausschließlich vollständiges Plattform-Offboarding: der Kundenbereich endet, deshalb bleibt kein
+     * letzter Administrator zurück. Schreibt dieselbe Sperre und dieselben Protokolle wie der Einzelweg.
+     * Die vollständige Kontenliste kommt aus AdminBenutzerService, niemals aus einem Kunden-Request.
+     */
+    @Transactional
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('platform-admin')")
+    public void kundenbereichSperren(List<String> konten, ProtokollAkteur akteur) {
+        Zugriff kontext = ZugriffContext.get();
+        if (kontext == null || kontext.konto() != Konto.PLATTFORM || kontext.zugang() != Zugang.UMSCHALTER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+        sperreKundenbereich();
+        for (String sub : konten) kontoBeenden(sub, false, akteur, true);
+    }
+
+    private void kontoBeenden(String sub, boolean entfernen, ProtokollAkteur akteur, boolean offboarding) {
         AenderungsArt art = entfernen ? AenderungsArt.ENTFERNEN : AenderungsArt.SPERREN;
         sperreKundenbereich();
         Instant jetzt = Instant.now();
         var konto = zugriffe.spiegel(sub).filter(b -> b.konto() == Konto.BENUTZER
-                && b.zustand() != KontoZustand.ENTFERNT).orElseThrow(
+                && (offboarding || b.zustand() != KontoZustand.ENTFERNT)).orElseThrow(
                         () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Benutzer nicht gefunden."));
-        pruefen(art, sub, null, List.of(), jetzt);
+        if (!offboarding) pruefen(art, sub, null, List.of(), jetzt);
         KontoZustand zustand = art == AenderungsArt.SPERREN ? KontoZustand.GESPERRT : KontoZustand.ENTFERNT;
         if (konto.zustand() == zustand) return;
         var zeilen = zugriffe.zuweisungen(sub).stream().filter(z -> z.beendetAm() == null).toList();

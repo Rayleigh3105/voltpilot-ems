@@ -79,25 +79,29 @@ public class ZugriffKontextLader {
      *     und der ist vorbei. Dann sagt die 404 das auch — {@code zugriff_beendet} mit dem Satz des Vertrags,
      *     statt schweigend die Existenz zu verneinen. Ohne frühere Zuweisung bleibt es bei der stummen 404.
      */
-    public record Ergebnis(Zugriff zugriff, boolean abgewiesen, ZugriffBeendet beendet) {
+    public record Ergebnis(Zugriff zugriff, boolean abgewiesen, ZugriffBeendet beendet, boolean kontoUngueltig) {
+        static Ergebnis entferntesKonto() {
+            return new Ergebnis(null, true, null, true);
+        }
+
         static Ergebnis keiner() {
-            return new Ergebnis(null, false, null);
+            return new Ergebnis(null, false, null, false);
         }
 
         static Ergebnis abgewiesenOhneZugriff() {
-            return new Ergebnis(null, true, null);
+            return new Ergebnis(null, true, null, false);
         }
 
         static Ergebnis abgewiesenWeilBeendet(ZugriffBeendet b) {
-            return new Ergebnis(null, true, b);
+            return new Ergebnis(null, true, b, false);
         }
 
         static Ergebnis mit(Zugriff z) {
-            return new Ergebnis(z, false, null);
+            return new Ergebnis(z, false, null, false);
         }
 
         static Ergebnis mit(Zugriff z, ZugriffBeendet b) {
-            return new Ergebnis(z, false, b);
+            return new Ergebnis(z, false, b, false);
         }
     }
 
@@ -129,6 +133,9 @@ public class ZugriffKontextLader {
             UUID tenant = TenantContext.get();
             if (tenant == null) {
                 return Ergebnis.keiner();
+            }
+            if (!zugriffe.kundenbereichVorhanden()) {
+                return Ergebnis.entferntesKonto();
             }
             var spiegel = zugriffe.spiegel(sub);
             if (spiegel.filter(b -> b.zustand() == KontoZustand.GESPERRT

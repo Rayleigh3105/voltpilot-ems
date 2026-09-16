@@ -141,15 +141,25 @@ public class TenantRepository {
      * carry no FKs; {@code messreihe_ereignis} holds a RESTRICT one to the
      * tenant, so it must go first) and then the tenant row itself, whose FKs cascade
      * site/device/asset - all in ONE database transaction, so a failure leaves
-     * the tenant fully intact. Keycloak cleanup is separate and best-effort
-     * (see the controller): the directory is another system and must not be
-     * able to roll back the data deletion the operator confirmed.
+     * the tenant fully intact. The controller must first commit account blocking through
+     * AdminBenutzerService. Final Keycloak deletion is separate and best-effort; a failure
+     * leaves disabled accounts for the repeatable cleanup route.
      */
     public OffboardCounts offboard(UUID tenantId) {
+        return offboard(tenantId, () -> {});
+    }
+
+    /** Recheck directory blocking under the same tenant lock as account administration, before any DELETE. */
+    public OffboardCounts offboard(UUID tenantId, Runnable beforeTeardown) {
         return jdbc.execute((java.sql.Connection con) -> {
             boolean autoCommit = con.getAutoCommit();
             con.setAutoCommit(false);
             try {
+                try (var lock = con.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
+                    lock.setString(1, "uems-benutzerverwaltung:" + tenantId);
+                    lock.execute();
+                }
+                beforeTeardown.run();
                 for (String table : new String[] {
                         "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
                         "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",

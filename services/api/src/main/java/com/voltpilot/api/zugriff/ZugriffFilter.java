@@ -61,6 +61,11 @@ public class ZugriffFilter extends OncePerRequestFilter {
         try {
             ZugriffKontextLader.Ergebnis e = lader.laden(SecurityContextHolder.getContext().getAuthentication(),
                     request.getHeader(ZugriffKontextLader.KUNDENBEREICH_HEADER));
+            if (e.kontoUngueltig()) {
+                TenantContext.clear();
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                return;
+            }
             boolean selbstauskunft = SELBSTAUSKUNFT.equals(pfad(request));
             if (e.abgewiesen()) {
                 TenantContext.clear();
