@@ -15592,10 +15592,10 @@ components:
         deviceCount: { type: integer }
         onlineCount:
           type: integer
-          description: Devices whose newest telemetry ARRIVED within 5 minutes.
+          description: Boxes whose newest status heartbeat ARRIVED within 5 minutes (telemetry fallback until the first heartbeat after migration).
         waitingCount:
           type: integer
-          description: Devices that never sent data ("wartet auf erste Daten").
+          description: Boxes without a status heartbeat or legacy telemetry arrival.
         worstStatus:
           type: string
           nullable: true
@@ -15607,7 +15607,7 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: Newest telemetry arrival over the site's devices.
+          description: Newest status-heartbeat arrival over the site's boxes (legacy telemetry fallback until their first heartbeat).
         live:
           nullable: true
           description: The site's newest telemetry observation; null when none.
@@ -15732,8 +15732,8 @@ components:
         netzladenErlaubt: { type: boolean }
         tarifArt: { type: string, enum: [dynamisch, fest, ohne] }
         deviceCount: { type: integer }
-        onlineCount: { type: integer, description: "Devices whose newest telemetry ARRIVED within 5 minutes." }
-        waitingCount: { type: integer, description: "Devices that never sent data." }
+        onlineCount: { type: integer, description: "Boxes whose newest status heartbeat ARRIVED within 5 minutes (legacy telemetry fallback until their first heartbeat)." }
+        waitingCount: { type: integer, description: "Boxes without a status heartbeat or legacy telemetry arrival." }
         worstStatus:
           type: string
           nullable: true
@@ -16773,9 +16773,9 @@ components:
           format: date-time
           nullable: true
           description: >
-            Newest telemetry timestamp for the device; null until the first data
-            arrives. The portal derives the onboarding state from it ("wartet auf
-            erste Daten" -> online).
+            Newest status-heartbeat arrival for the box; legacy telemetry is the
+            compatibility fallback until its first heartbeat after migration.
+            The portal derives waiting/connected from it.
         createdAt:
           type: string
           format: date-time

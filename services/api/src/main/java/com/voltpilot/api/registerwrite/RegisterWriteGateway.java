@@ -34,12 +34,13 @@ import java.util.UUID;
  *       Schweige-Grund, falls nichts zurückkommt.</li>
  * </ol>
  *
- * <p><b>⚠ WARUM DIE LEBENDIGKEIT KEIN TOR IST.</b> {@code lastSeenAt} ist
- * {@code max(received_at)} der TELEMETRIE - eine ganz andere Kette als das
- * MQTT-Abonnement des Cores. Eine frisch eingerichtete Box, deren Layer 1 noch
- * keinen Wechselrichter kennt, sendet keine einzige Telemetrie-Zeile und hört
- * trotzdem zu; sie abzuweisen wäre genau die Art Fehlurteil, gegen die dieser
- * Pfad sonst überall argumentiert („Schweigen ist eine Lücke, kein Beweis").
+ * <p><b>⚠ WARUM DIE LEBENDIGKEIT KEIN TOR IST.</b> {@code lastSeenAt} ist die
+ * Cloud-Ankunft des Status-Herzschlags (mit Telemetrie-Fallback fuer den
+ * Migrationsbestand), aber noch immer kein Beweis für das MQTT-Abonnement in
+ * genau diesem Moment. Eine frisch eingerichtete oder kurz getrennte Box darf
+ * deshalb nicht vorab abgewiesen werden; das wäre genau die Art Fehlurteil,
+ * gegen die dieser Pfad sonst überall argumentiert („Schweigen ist eine Lücke,
+ * kein Beweis").
  * Der Auftrag geht deshalb hinaus, und die drei Schweige-Gründe
  * ({@link RegisterWriteSilence}) benennen den Ausgang hinterher - jetzt mit dem
  * Verwechslungs-Verdacht darin.

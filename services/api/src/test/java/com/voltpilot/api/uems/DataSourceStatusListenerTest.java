@@ -48,6 +48,7 @@ class DataSourceStatusListenerTest {
     void neuerHerzschlagSchreibtDieFaktenJeQuelle() throws Exception {
         listener.handle(TOPIC, fixture("data-source-status-heartbeat-new.json"));
 
+        verify(devices).markStatusSeen(DEVICE);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Meldung>> rows = ArgumentCaptor.forClass(List.class);
         verify(statuses).replaceForDevice(eq(DEVICE), eq(TENANT),
@@ -63,6 +64,7 @@ class DataSourceStatusListenerTest {
     @Test
     void alterHerzschlagErfindetKeinenQuellstatus() throws Exception {
         listener.handle(TOPIC, fixture("data-source-status-heartbeat-old.json"));
+        verify(devices).markStatusSeen(DEVICE);
         verifyNoInteractions(statuses);
 
         Ableitung abgeleitet = DeviceDataSourceStatusRepository.ableiten(null);

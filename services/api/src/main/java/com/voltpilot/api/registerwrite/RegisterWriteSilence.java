@@ -44,9 +44,8 @@ public final class RegisterWriteSilence {
     /**
      * Das Fenster, ab dem ein Gerät als „meldet sich nicht" gilt - dieselben
      * fünf Minuten, mit denen das Portal überall Lebendigkeit beurteilt
-     * (`deviceLiveStatus`), gemessen an {@code lastSeenAt} = {@code
-     * max(received_at)} (die Store-and-forward-Regel: ANKUNFT, nicht
-     * Beobachtungszeit).
+     * (`deviceLiveStatus`), gemessen an {@code lastSeenAt}: Ankunft des
+     * Status-Herzschlags, mit Telemetrie-Ankunft nur als Migrations-Fallback.
      */
     public static final Duration LIVE_WINDOW = Duration.ofMinutes(5);
 
@@ -75,8 +74,8 @@ public final class RegisterWriteSilence {
                 : "";
         // ⚠ DIE REIHENFOLGE IST EINE AUSSAGE, KEIN STIL: eine verspätet
         // eingetroffene Antwort ist der STÄRKERE Lebensbeweis als die
-        // Telemetrie-Frische - sie kommt aus GENAU diesem Pfad, während
-        // `lastSeenAt` eine ganz andere Kette misst. Ein Gerät, das nachweislich
+        // Herzschlag-Frische - sie kommt aus GENAU diesem Pfad, während
+        // `lastSeenAt` eine andere Kette misst. Ein Gerät, das nachweislich
         // geantwortet hat, darf nie „meldet sich nicht" heißen; und nur hier
         // hilft „erneut versuchen" wirklich.
         if (late.isPresent()) {

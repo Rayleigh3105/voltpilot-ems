@@ -294,7 +294,7 @@ public class RolloutRepository {
                        u.reason, u.blocker, u.reported_at,
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
                        u.trust_set_error,
-                       ls.last_seen,
+                       coalesce(d.device_status_seen_at, ls.last_seen) AS last_seen,
                        c.checked_at AS control_checked_at, c.all_match AS control_confirmed,
                        c.certified AS control_certified
                   FROM device d

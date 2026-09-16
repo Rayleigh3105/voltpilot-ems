@@ -91,7 +91,7 @@ export interface GeraetKopf {
   typ: string | null;
   /** „Demo Site Berlin · Tenant A"; leer, solange nichts verbunden ist. */
   kontext: string;
-  /** Die Lebendigkeit aus der Telemetrie - der Zustands-Pill. */
+  /** Die Lebendigkeit aus dem Status-Herzschlag - der Zustands-Pill. */
   lebendigkeit: { label: string; tone: Tone; detail: string };
   /** „Zur Anlage (Mandanten-Ansicht)" - null, solange kein Mandant/keine Anlage feststeht. */
   sprungAnlage: { tenantId: string; siteId: string } | null;

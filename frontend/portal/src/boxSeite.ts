@@ -22,7 +22,7 @@
  * 2. **Jede leere Fläche nennt ihren Grund** - nie ein leerer Kasten.
  * 3. **Die zwei D5-Belege bleiben getrennt** (`erreicht` ⟷ `schnittstelle`) -
  *    eine Adresse, unter der nur GEMELDET wurde, verspricht keine Antwort.
- * 4. **Die Box altert gegen ihre Telemetrie** (`Device.lastSeenAt` gegen die
+ * 4. **Die Box altert gegen ihren Status-Herzschlag** (`Device.lastSeenAt` gegen die
  *    Bezugszeit der Geräteliste, die `liveness.ts`-Lehre) - nie gegen eine
  *    weiterlaufende Uhr über einem stehenden Schnappschuss.
  *

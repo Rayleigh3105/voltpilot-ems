@@ -52,21 +52,26 @@ export interface HealthInput {
 export function healthChecklist(input: HealthInput): HealthItem[] {
   const items: HealthItem[] = [];
 
-  // 1 · Gerät online.
+  // 1 · Box verbunden. Der Ein-Box-Wortlaut bleibt als Bestandsschutz
+  // zeichengleich; mehrere Boxen nennen die sichtbare n-von-m-Aussage.
   if (input.deviceCount === 0) {
     items.push({ key: 'device', label: 'Gerät', state: 'off', detail: 'noch nicht verbunden' });
   } else {
     const stale = input.deviceCount - input.onlineCount - input.waitingCount;
     if (stale > 0) {
-      items.push({ key: 'device', label: 'Gerät', state: 'warn', detail: 'meldet sich nicht' });
-    } else if (input.waitingCount > 0 && input.onlineCount === 0) {
-      items.push({ key: 'device', label: 'Gerät', state: 'warn', detail: 'wartet auf erste Daten' });
+      items.push(input.deviceCount === 1
+        ? { key: 'device', label: 'Gerät', state: 'warn', detail: 'meldet sich nicht' }
+        : { key: 'device', label: 'Boxen', state: 'warn', detail: `${input.onlineCount} von ${input.deviceCount} Boxen verbunden` });
+    } else if (input.waitingCount > 0) {
+      items.push(input.deviceCount === 1
+        ? { key: 'device', label: 'Gerät', state: 'warn', detail: 'wartet auf erste Daten' }
+        : { key: 'device', label: 'Boxen', state: 'warn', detail: `${input.onlineCount} von ${input.deviceCount} Boxen verbunden` });
     } else {
       items.push({
         key: 'device',
-        label: input.deviceCount === 1 ? 'Gerät online' : 'Geräte online',
+        label: input.deviceCount === 1 ? 'Gerät online' : 'Boxen',
         state: 'ok',
-        detail: input.deviceCount === 1 ? 'verbunden' : `${input.onlineCount}/${input.deviceCount} verbunden`,
+        detail: input.deviceCount === 1 ? 'verbunden' : `${input.onlineCount} von ${input.deviceCount} Boxen verbunden`,
       });
     }
   }
@@ -168,6 +173,15 @@ export function zustandView(items: HealthItem[]): ZustandView | null {
   if (items.length === 0) return null;
   const findings = items.filter((i) => i.state !== 'ok');
   if (findings.length === 0) {
+    const boxen = items.find((i) => i.key === 'device' && i.label === 'Boxen');
+    if (boxen) {
+      const rest = items.filter((i) => i !== boxen);
+      const restWords = joinDe(rest.map((i) => KEY_WORD[i.key]));
+      const line = restWords
+        ? `Alles in Ordnung — ${boxen.detail}; ${restWords} ${rest.length === 1 ? 'läuft' : 'arbeiten zusammen'}.`
+        : `Alles in Ordnung — ${boxen.detail}.`;
+      return { state: 'ok', line, findings: [], okSummary: null, toneWord: null };
+    }
     const words = joinDe(items.map((i) => KEY_WORD[i.key]));
     const line =
       items.length === 1

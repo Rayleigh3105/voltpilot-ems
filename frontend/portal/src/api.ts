@@ -919,7 +919,7 @@ export interface Device {
   /** Optional customer-facing label (Bezeichnung); externalRef stays the identity. */
   name: string | null;
   status: string;
-  /** Newest telemetry timestamp; null until the first data arrives. */
+  /** Newest status-heartbeat arrival; legacy telemetry is the migration fallback. */
   lastSeenAt: string | null;
   /** When the device was claimed; drives the waiting-too-long escalation. */
   createdAt: string | null;
@@ -1311,7 +1311,7 @@ export interface SiteDeletionPreview {
 /** Portal onboarding state derived from telemetry recency. */
 export type DeviceLiveStatus = 'online' | 'stale' | 'waiting';
 
-/** A device counts as online when telemetry arrived within this window. */
+/** A box counts as connected when its status heartbeat arrived within this window. */
 export const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 export function deviceLiveStatus(d: Device, now: Date = new Date()): DeviceLiveStatus {

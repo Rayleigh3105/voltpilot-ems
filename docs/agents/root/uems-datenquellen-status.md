@@ -6,7 +6,9 @@ der diesen Block erzeugt, ist ein getrenntes Paket; bestehende Boxen senden ihn 
 ## Schreibweg und Senke
 
 - `uems/DataSourceStatusListener` hört wie seine Geschwister auf `ems/+/+/+/status`. Er prüft die
-  drei Topic-UUIDs gegen den Payload und löst das Gerät unter dem Topic-Mandanten auf.
+  drei Topic-UUIDs gegen den Payload und löst das Gerät unter dem Topic-Mandanten auf. Seit
+  AP-06 IP-15 schreibt er bei jedem gültigen Herzschlag außerdem die Cloud-Ankunft nach
+  `device.device_status_seen_at`, auch wenn der Block `data_sources[]` fehlt.
 - Der Block ist eine vollständige Liste. `DeviceDataSourceStatusRepository.replaceForDevice`
   ersetzt deshalb die Zeilen der Box. Ältere als bereits gespeicherte Meldungen werden verworfen.
 - Die Drahtkennung ist das stabile `DQ-*`-Kennzeichen. Geschrieben wird nur, wenn die Quelle im

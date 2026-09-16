@@ -30,10 +30,11 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Ingests the additive {@code data_sources[]} block of a status heartbeat into the UEMS sink.
- * Old boxes omit the block and are left untouched; callers then derive the explicit legacy state
- * „Box meldet noch nicht je Quelle“. Topic and payload identity are checked like in all sibling
- * status listeners.
+ * Records every valid status-heartbeat arrival for box liveness and ingests the
+ * additive {@code data_sources[]} block into the UEMS sink. Old boxes omit the
+ * block: their arrival is still recorded, while source callers derive the
+ * explicit legacy state „Box meldet noch nicht je Quelle“. Topic and payload
+ * identity are checked like in all sibling status listeners.
  *
  * <p>Replica-singleton assumption: like the sibling listeners, this uses one independent MQTT
  * client and relies on the current production topology having exactly one API replica. More API
@@ -134,8 +135,7 @@ public class DataSourceStatusListener {
         } catch (Exception e) {
             return;
         }
-        JsonNode block = json == null ? null : json.get("data_sources");
-        if (block == null || !block.isArray()) {
+        if (json == null || !json.isObject()) {
             return;
         }
         String[] parts = topic.split("/");
@@ -151,17 +151,22 @@ public class DataSourceStatusListener {
                 || !deviceId.toString().equals(json.path("device_id").asText())) {
             return;
         }
-        Instant reportedAt = instant(json.get("ts"));
-        if (reportedAt == null) {
-            reportedAt = Instant.now();
-        }
-        List<Meldung> rows = parse(block);
         TenantContext.set(tenantId);
         try {
             Optional<DeviceDto> device = devices.findById(deviceId);
             if (device.isEmpty() || !siteId.equals(device.get().siteId())) {
                 return;
             }
+            devices.markStatusSeen(deviceId);
+            JsonNode block = json.get("data_sources");
+            if (block == null || !block.isArray()) {
+                return;
+            }
+            Instant reportedAt = instant(json.get("ts"));
+            if (reportedAt == null) {
+                reportedAt = Instant.now();
+            }
+            List<Meldung> rows = parse(block);
             statuses.replaceForDevice(deviceId, tenantId, reportedAt, rows);
         } finally {
             TenantContext.clear();
