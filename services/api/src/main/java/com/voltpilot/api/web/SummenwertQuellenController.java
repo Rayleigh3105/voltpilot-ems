@@ -16,8 +16,9 @@ public class SummenwertQuellenController {
     }
     /** Keine eigene Kennung: reine Leseliste, RLS und Anlagen-Geltungsbereich wie der Registerkatalog. */
     @GetMapping
-    public List<SummenwertQuellenService.Quelle> sources(@PathVariable UUID siteId) {
+    public List<SummenwertQuellenService.Quelle> sources(@PathVariable UUID siteId,
+            @RequestParam(required = false) UUID boxId, @RequestParam(required = false) String geraetId) {
         scope.requireSite(siteId);
-        return sources.sources(siteId);
+        return sources.sources(siteId, boxId, geraetId);
     }
 }

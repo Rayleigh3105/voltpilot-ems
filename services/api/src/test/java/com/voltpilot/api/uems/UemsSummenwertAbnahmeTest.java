@@ -42,7 +42,11 @@ import org.testcontainers.utility.DockerImageName;
 /** H-11: echte API/DB-Kette vom Summenwert über Karte und Cockpit bis zum Entzug.
  * Deye A1 und angenommener Netzfall A5; keine Hardware- oder Echtkunden-Nachweise. */
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest
+@SpringBootTest(properties = {
+        "voltpilot.uems.viertelstunde.enabled=false", "voltpilot.uems.endgueltigkeit.enabled=false",
+        "voltpilot.interventions.renewal-enabled=false", "voltpilot.entities.backfill.reconcile-enabled=false",
+        "voltpilot.ota.mqtt-listener-enabled=false", "voltpilot.components.adoption.reconcile-enabled=false",
+        "voltpilot.metrics.fleet.enabled=false", "voltpilot.metrics.db.enabled=false" })
 @AutoConfigureMockMvc
 @ActiveProfiles("local")
 class UemsSummenwertAbnahmeTest {
@@ -63,7 +67,9 @@ class UemsSummenwertAbnahmeTest {
             DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("voltpilot")
             .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+            .withPassword("voltpilot_dev_pw")
+            // Die Abnahme startet keine Timescale-Jobs parallel zu Flyway.
+            .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -185,6 +191,88 @@ class UemsSummenwertAbnahmeTest {
     private void roh(Welt w) {
         root.update("INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, pv_power_kw, load_kw, power_kw, soc_pct) "
                 + "VALUES (now(), now(), ?, ?, ?, 12.4, 234.8, 6, 62)", w.mandant(), w.anlage(), w.box());
+    }
+
+    @Test
+    void geraeteKontextMitGemeldeterDeyeFamilieOhneTelemetrieUndOhneFremdeQuellen() throws Exception {
+        Welt basis = welt();
+        root.update("DELETE FROM device_measurement_selection WHERE entity_id = ?", basis.komponente());
+        root.update("DELETE FROM measurement_point WHERE id = ?", basis.komponente());
+        // Genau der Kompositionspfad: keine gespeicherte Familie, kein Alias.
+        var registry = new com.voltpilot.api.entities.EntityRegistryRepository(root);
+        UUID hybrid = registry.createBatteryHybridPoint(basis.mandant(), basis.anlage(), null, basis.box());
+        registry.setEntityConfig(hybrid, "battery-hybrid", "{\"measure\":[]}", "{}");
+        Welt w = new Welt(basis.mandant(), basis.anlage(), basis.box(), hybrid);
+        UUID haus = registry.createComposedPoint(w.mandant(), w.anlage(), "house-load", null, w.box());
+        registry.setEntityConfig(haus, "house-load", "{\"measure\":[]}", "{}");
+        UUID fremd = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, device_id, edge_source_id) "
+                + "VALUES (?, ?, 'pv-generation', 'producer', ?, 'src-other') RETURNING id", UUID.class, w.mandant(), w.anlage(), w.box());
+        meldung(w, "inverter", "hybrid_3p");
+        meldung(w, "src-other", "string");
+        var quellen = ok(ruf(w, HttpMethod.GET, basis(w) + "/summenwert-quellen?boxId=" + w.box() + "&geraetId=inverter", null), 200);
+        assertThat(quellen).hasSize(2);
+        assertThat(quellen.toString()).contains(hybrid.toString(), haus.toString()).doesNotContain(fremd.toString());
+        assertThat(ok(ruf(w, HttpMethod.GET, basis(w) + "/summenwert-quellen", null), 200)).hasSize(3);
+        var pages = new ArrayList<JsonNode>();
+        for (int offset = 0; ; ) {
+            var page = ok(ruf(w, HttpMethod.GET, katalog(w, hybrid) + "&offset=" + offset, null), 200);
+            assertThat(page.path("availabilityReason").isNull()).isTrue();
+            pages.add(page); offset += page.path("points").size();
+            if (offset >= page.path("total").asInt()) break;
+            assertThat(page.path("points")).isNotEmpty();
+        }
+        assertThat(pages).hasSize(3);
+        assertThat(pages.getFirst().path("total").asInt()).isEqualTo(624);
+        assertThat(pages.toString()).contains(PV1);
+        for (var page : pages) for (var point : page.path("points")) {
+            assertThat(point.path("family").asText()).isEqualTo("hybrid_3p");
+            assertThat(point.path("selected").asBoolean()).isFalse();
+            assertThat(point.path("lastReadAt").isNull()).isTrue();
+        }
+        assertThat(ok(ruf(w, HttpMethod.GET, katalog(w, fremd), null), 200).at("/points/0/family").asText()).isEqualTo("string");
+        // Reale API-Seiten für die fiktive Browser-Bühne; keine Kundenwerte.
+        String evidence = System.getProperty("summenwert.evidence");
+        if (evidence != null) {
+            var out = java.nio.file.Path.of(evidence); java.nio.file.Files.createDirectories(out);
+            java.nio.file.Files.writeString(out.resolve("pages.json"), MAPPER.writeValueAsString(pages));
+        }
+        var kontext = Map.of("art", "geraet", "site_id", w.anlage(), "box_id", w.box(), "geraet_id", "inverter");
+        var erlaubt = anlegen("Eigener Hybrid", term(w, PV1), term(new Welt(w.mandant(), w.anlage(), w.box(), haus), PV2));
+        erlaubt.put("kontext", kontext);
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", erlaubt), 201);
+        var manipuliert = anlegen("Anderes Gerät", term(w, PV1), term(new Welt(w.mandant(), w.anlage(), w.box(), fremd), PV2));
+        manipuliert.put("kontext", kontext);
+        assertThat(ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", manipuliert), 422).toString())
+                .contains("summenwert_kontext_verletzt", "anderes_geraet");
+        manipuliert.put("kontext", Map.of("art", "anlage", "site_id", w.anlage()));
+        UUID gemeinsame = UUID.fromString(ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", manipuliert), 201).path("id").asText());
+        var rekursiv = anlegen("Verschachtelt", mterm(gemeinsame));
+        rekursiv.put("kontext", kontext);
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", rekursiv), 422);
+        Welt fremdeAnlage = welt();
+        var crossSite = anlegen("Fremd", term(fremdeAnlage, PV1)); crossSite.put("kontext", kontext);
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", crossSite), 404);
+        ok(ruf(w, HttpMethod.GET, basis(w) + "/summenwert-quellen?boxId=" + fremdeAnlage.box() + "&geraetId=inverter", null), 404);
+        root.update("UPDATE measurement_point SET family = 'unknown-family' WHERE id = ?", hybrid);
+        var unbekannt = ok(ruf(w, HttpMethod.GET, katalog(w, hybrid), null), 200);
+        assertThat(unbekannt.path("total").asInt()).isZero();
+        assertThat(unbekannt.path("availabilityReason").asText()).isEqualTo("registerfamilie_nicht_zugeordnet");
+        root.update("UPDATE measurement_point SET family = 'hybrid_1p' WHERE id = ?", hybrid);
+        assertThat(ok(ruf(w, HttpMethod.GET, katalog(w, hybrid), null), 200).at("/points/0/family").asText()).isEqualTo("hybrid_1p");
+        root.update("UPDATE measurement_point SET family = NULL WHERE id = ?", hybrid);
+        root.update("DELETE FROM entity_observed_state WHERE device_id = ? AND entity_id = 'local:inverter'", w.box());
+        assertThat(ok(ruf(w, HttpMethod.GET, katalog(w, hybrid), null), 200).path("availabilityReason").asText())
+                .isEqualTo("registerfamilie_nicht_zugeordnet"); // keine Familie vom zweiten Gerät übernehmen
+    }
+
+    private static String katalog(Welt w, UUID entity) {
+        return "/api/v1/devices/" + w.box() + "/measurement-selection/catalog?entityId=" + entity + "&availableOnly=true&limit=250";
+    }
+
+    private void meldung(Welt w, String id, String familie) {
+        root.update("INSERT INTO entity_observed_state (tenant_id, site_id, device_id, entity_id, source, entity_type, "
+                + "reported_at, edge_communication, edge_connection, edge_family) VALUES (?, ?, ?, ?, 'local', ?, now(), 'modbus_tcp', '{\"ip\":\"192.0.2.10\",\"unit_id\":1}'::jsonb, ?)",
+                w.mandant(), w.anlage(), w.box(), "local:" + id, "inverter".equals(id) ? "inverter" : "source", familie);
     }
 
     private record Welt(UUID mandant, UUID anlage, UUID box, UUID komponente) {}

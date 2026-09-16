@@ -87,6 +87,47 @@ Die Schreibweise ist die von `MessstelleFormelDto`: **snake_case in der Schnitts
 `terme[].gilt_als_erzeugung`, neu `terme[].verteilung_ziel` und `terme[].anteil`), camelCase nur im Java-Record. Das Portal wandelt
 nichts um — ein camelCase-Feld wäre dort still `undefined`.
 
+### 1.2 Einstiegskontext für neue Summenwerte (additiv, 16.09.2026)
+
+`POST /api/v1/messstellen/berechnet` nimmt optional `kontext` entgegen:
+
+- Anlage: `{ "art": "anlage", "site_id": "…" }` erlaubt mehrere Geräte der Anlage.
+- Gerät: `{ "art": "geraet", "site_id": "…", "box_id": "…", "geraet_id": "inverter" }`
+  begrenzt alle Eingänge auf dieses physische Gerät. `geraet_id` ist die stabile Kennung
+  der Geräteseite (`inverter`, Quellen-Pin oder `cp-<charge_point_id>`). Box-ID und
+  Gerätekennung bilden zusammen die Referenz; die Box allein ist keine Gerätegrenze.
+- Ohne Kontext bleiben bestehende Anlagen-Aufrufer kompatibel. Neue Portal-Aufrufe
+  senden ihren Kontext ausdrücklich. Diese Anlegeregel verändert keine Bestandsformel.
+
+`GET /api/v1/sites/{siteId}/summenwert-quellen?boxId=…&geraetId=…` verwendet dieselbe
+serverseitige Auflösung wie das Anlegen. Ohne beide Parameter bleibt die Liste anlagenweit.
+Komponentenlisten aus dem Client, Namen, Modellbezeichnungen oder Transportadressen sind
+kein Nachweis. Zugeordnet wird über `edge_source_id`, `device_charge_point.entity_id`
+oder die ausdrücklich komponierte Grundausstattung (`battery-hybrid`, `grid-meter`,
+`house-load`) des primären Wechselrichters. Für ältere Grundausstattung ohne
+`source_kind` gilt nur die ungebundene Form ohne eigene Kommunikation/Verbindung.
+Unzugeordnete sonstige Komponenten werden keinem Gerät zugeschlagen.
+
+Der Server prüft sämtliche direkt und rekursiv gelesenen Komponenten. Bei gemessenen
+Quellmessstellen zählt die aktuell gültige führende Quelle der Hauptgröße; Grenzen
+sind minutengenau halboffen. Nicht auflösbare, leere, archivierte oder zyklische
+Quellen werden abgelehnt. Eine andere Anlage bzw. unsichtbare Quelle ergibt **404**.
+Ein anderes Gerät derselben Anlage ergibt **422**, Code `summenwert_kontext_verletzt`,
+`grund: anderes_geraet`; eine unauflösbare Herkunft denselben Code mit
+`grund: quelle_nicht_aufloesbar`. Eine unvollständige Kontextform ergibt **400**.
+
+Der verfügbare Registerkatalog bleibt gefiltert: gespeicherte Komponentenfamilie
+führt, andernfalls die Familie der exakt zugeordneten `local_setup`-Meldung derselben
+Box. OCPP-Komponenten tragen ihre Protokollfamilie aus der OCPP-Zuordnung. Unbekannte
+Familien erweitern den Katalog nicht. Ohne bekannte Familie trägt die Katalogantwort
+`availabilityReason: registerfamilie_nicht_zugeordnet`; das Portal nennt
+„Registerfamilie nicht zugeordnet“. Verfügbarkeit benötigt keine Telemetrie.
+
+Gemeinsame Java-/TS-Prüffälle: [summenwert-kontext-vectors.json](summenwert-kontext-vectors.json),
+`SummenwertKontextVectorsTest` und `summenwertQuellen.test.ts`. Die API-Abnahme
+`UemsSummenwertAbnahmeTest` prüft die tatsächliche Auflösung, rekursive Eingänge,
+RLS, Familien-Vorrang und den unveränderten Mehrgeräte-Bestand.
+
 ## 2. Die abgeleitete Hauptgröße (`formelGroesse`)
 
 Die Hauptgröße der berechneten Messstelle wird aus den Termen **abgeleitet**, nie gewählt — so

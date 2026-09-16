@@ -44,7 +44,7 @@ for (const width of [375, 1440]) {
       const cockpit = page.getByRole('region', { name: 'Anlagen-Übersicht' });
       await expect(cockpit.getByRole('group', { name: 'Energiefluss Ihrer Anlage' })).toBeVisible();
       const vorher = await cockpit.getByRole('group', { name: 'Energiefluss Ihrer Anlage' }).textContent();
-      await page.getByRole('button', { name: 'Summenwert anlegen' }).click();
+      await page.getByRole('button', { name: fall === 'ahrenberg' ? 'Summenwert der Anlage anlegen' : 'Summenwert anlegen' }).click();
       const dialog = page.getByRole('dialog', { name: /Summenwert/ });
       await expect(dialog.getByText('Welche Register gehören zusammen?')).toBeVisible();
       if (fall === 'deye') {
@@ -76,6 +76,7 @@ for (const width of [375, 1440]) {
       await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
       await expect(dialog.getByText(/ist angelegt/)).toBeVisible();
       expect(state.body.terme).toHaveLength(f.register.length);
+      expect(state.body.kontext.art).toBe(fall === 'ahrenberg' ? 'anlage' : 'geraet');
       if (fall === 'deye') expect(state.body.terme.at(-1).gilt_als_erzeugung).toBe(true);
       if (fall === 'netz') expect(state.body.terme[1].vorzeichen).toBe('-');
       await dialog.getByRole('button', { name: 'Fertig', exact: true }).click();

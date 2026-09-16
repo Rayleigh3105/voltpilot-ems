@@ -141,7 +141,7 @@ public class MeasurementCatalog {
 
     public record SearchResult(String catalogVersion, String edgeMinVersion,
             String customPointActionLabel, long total, int offset, int limit,
-            List<Facet> groups, List<Facet> semanticStatuses, List<Point> points) {}
+            List<Facet> groups, List<Facet> semanticStatuses, List<Point> points, String availabilityReason) {}
 
     private final String version;
     private final String inhaltsstand;
@@ -331,7 +331,8 @@ public class MeasurementCatalog {
                 .map(p -> p.view(selected.get(p.pointKey()), recordedPointKeys.contains(p.pointKey()),
                         availableFamilies.contains(p.family()), observations.get(p.pointKey()))).toList();
         return new SearchResult(version, edgeMinVersion, CUSTOM_ACTION_LABEL, filtered.size(),
-                safeOffset, safeLimit, groups, semantics, page);
+                safeOffset, safeLimit, groups, semantics, page,
+                availableOnly && availableFamilies.isEmpty() ? "registerfamilie_nicht_zugeordnet" : null);
     }
 
     private static List<Facet> facets(List<Point> source,

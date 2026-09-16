@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.MeasurementCatalog;
+import com.voltpilot.api.measurement.SummenwertQuellenService;
 import com.voltpilot.api.measurement.MeasurementCatalog.Point;
 import com.voltpilot.api.measurement.MeasurementCatalog.Semantik;
 import com.voltpilot.api.measurement.MesskanalAbbildung;
@@ -108,6 +109,8 @@ public class MessstelleFormelService {
     private final BilanzStellungen stellungen;
     private final ObjectProvider<RollenZuordnungService> rollen;
     private final RechtPruefung rechte;
+    private final SummenwertQuellenService geraete;
+    private final com.voltpilot.api.zugriff.Geltungsbereich scope;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleFormelService(MessstelleRepository messstellen,
@@ -118,7 +121,8 @@ public class MessstelleFormelService {
             PlatformTransactionManager transactionManager, ObjectMapper json, AnteilLeseweg leseweg,
             KostenstelleProzessRepository kostenstellen, BilanzRestRepository reste, BilanzStellungen stellungen,
             ObjectProvider<RollenZuordnungService> rollen,
-            RechtPruefung rechte) {
+            RechtPruefung rechte, SummenwertQuellenService geraete,
+            com.voltpilot.api.zugriff.Geltungsbereich scope) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.terme = terme;
@@ -136,6 +140,8 @@ public class MessstelleFormelService {
         this.stellungen = stellungen;
         this.rollen = rollen;
         this.rechte = rechte;
+        this.geraete = geraete;
+        this.scope = scope;
     }
 
     /** Nur für Tests: die Uhr, an der „jetzt" (und die Frische-Grenze) hängt. */
@@ -160,6 +166,7 @@ public class MessstelleFormelService {
      * Die Terme sind Fassung 1 (Herkunft {@code anlage}) OHNE ersten Tag — sie gilt wie vor AP-10
      * IP-3 für jeden Tag, bis eine Fassung 2 sie ablöst.
      */
+    @org.springframework.transaction.annotation.Transactional
     public MessstelleDto.Messstelle anlegen(MessstelleFormelDto.Anlegen a, ProtokollAkteur wer) {
         UUID tenant = TenantContext.get();
         if (tenant == null) {
@@ -189,6 +196,7 @@ public class MessstelleFormelService {
             fuerAbleitung.add(new MessstelleFormelRegeln.Term(b.groesse().groesse(), b.groesse().richtung(),
                     b.groesse().einheit(), b.groesse().wertart(), b.vorzeichen()));
         }
+        pruefeKontext(a.kontext(), bindungen);
         MessstelleFormelRegeln.GroesseUrteil urteil = MessstelleFormelRegeln.formelGroesse(fuerAbleitung);
         if (urteil.fehler() != null) {
             throw MessstelleFormelAbgelehnt.regel(urteil.fehler(),
@@ -219,6 +227,63 @@ public class MessstelleFormelService {
             return m.id();
         });
         return messstellenDienst.eine(id);
+    }
+
+    /** Prüft jede tatsächlich gelesene Komponente, auch hinter verschachtelten Messstellen. */
+    private void pruefeKontext(MessstelleFormelDto.Kontext k, List<Bindung> bindungen) {
+        if (k == null) return; // additive Schnittstelle für bestehende Anlagen-Aufrufer
+        if (!("geraet".equals(k.art()) || "anlage".equals(k.art())) || k.siteId() == null
+                || ("anlage".equals(k.art()) && (k.boxId() != null || k.geraetId() != null))) {
+            throw MessstelleFormelAbgelehnt.anfrage("kontext", "Der Einstieg braucht Gerät oder Anlage.");
+        }
+        scope.requireSite(k.siteId());
+        rechte.pruefen("messstelle.formel", RechtZiel.ANLAGE,
+                k.siteId(), () -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        Set<String> erlaubt = "geraet".equals(k.art())
+                ? geraete.geraet(k.siteId(), k.boxId(), k.geraetId()).stream()
+                        .map(UUID::toString).collect(java.util.stream.Collectors.toSet()) : null;
+        Set<UUID> gelesen = new HashSet<>();
+        for (Bindung b : bindungen) {
+            if (MESSKANAL.equals(b.eingangArt())) gelesen.add(b.entityId());
+            else quellKomponenten(b.quellMessstelleId(), gelesen, new HashSet<>());
+        }
+        for (UUID entity : gelesen) {
+            if (werte.anlage(entity).filter(k.siteId()::equals).isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
+            }
+        }
+        String grund = SummenwertKontextRegeln.grund(erlaubt,
+                gelesen.stream().map(UUID::toString).toList());
+        if (grund != null) throw MessstelleFormelAbgelehnt.kontext(grund);
+    }
+
+    private void quellKomponenten(UUID id, Set<UUID> aus, Set<UUID> pfad) {
+        if (id == null || !pfad.add(id) || pfad.size() > MAX_TIEFE)
+            throw MessstelleFormelAbgelehnt.kontext("quelle_nicht_aufloesbar");
+        try {
+            var m = messstellen.finde(id).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
+            if (m.archiviertAm() != null) throw MessstelleFormelAbgelehnt.kontext("quelle_nicht_aufloesbar");
+            if (MessstelleRegeln.BERECHNET.equals(m.art())) {
+                var ts = termeAm(id, heute(zone()));
+                if (ts.isEmpty()) throw MessstelleFormelAbgelehnt.kontext("quelle_nicht_aufloesbar");
+                for (var t : ts) {
+                    if (MESSKANAL.equals(t.eingangArt()) && t.entityId() != null) aus.add(t.entityId());
+                    else if (MESSSTELLE.equals(t.eingangArt()) || VERTEILUNG.equals(t.eingangArt())) quellKomponenten(t.quellMessstelleId(), aus, pfad);
+                    else throw MessstelleFormelAbgelehnt.kontext("quelle_nicht_aufloesbar");
+                }
+            } else {
+                Instant jetzt = uhr.instant();
+                var bs = quellen.derMessstelle(id).stream().filter(b -> FUEHREND.equals(b.rolle())
+                        && m.hauptgroesse().groesse().equals(b.groesse())
+                        && m.hauptgroesse().richtung().equals(b.richtung())
+                        && !b.gueltigAb().isAfter(jetzt)
+                        && (b.gueltigBis() == null || b.gueltigBis().isAfter(jetzt))).toList();
+                if (bs.size() != 1 || bs.getFirst().entityId() == null)
+                    throw MessstelleFormelAbgelehnt.kontext("quelle_nicht_aufloesbar");
+                aus.add(bs.getFirst().entityId());
+            }
+        } finally { pfad.remove(id); }
     }
 
     /**
