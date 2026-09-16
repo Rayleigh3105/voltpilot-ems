@@ -70,7 +70,7 @@ class EndgueltigkeitWiringTest {
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
             .withUserConfiguration(Nachbarn.class, EndgueltigkeitLauf.class, TagVerdichter.class,
-                    PeriodeVerdichter.class, KorrekturVorschlagLauf.class, EndgueltigkeitLaeufer.class,
+                    PeriodeVerdichter.class, KorrekturVorschlagLauf.class, AblesungLueckenLauf.class, EndgueltigkeitLaeufer.class,
                     EndgueltigkeitSchedulingConfig.class);
 
     @Test
@@ -81,6 +81,7 @@ class EndgueltigkeitWiringTest {
             assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
             assertThat(context).hasSingleBean(TagVerdichter.class);
             assertThat(context).hasSingleBean(PeriodeVerdichter.class);
+            assertThat(context).hasSingleBean(AblesungLueckenLauf.class);
             assertThat(context).hasSingleBean(KorrekturVorschlagLauf.class);
             assertThat(context).hasSingleBean(EndgueltigkeitSchedulingConfig.class);
         });
@@ -96,6 +97,7 @@ class EndgueltigkeitWiringTest {
             assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
             assertThat(context).hasSingleBean(TagVerdichter.class);
             assertThat(context).hasSingleBean(PeriodeVerdichter.class);
+            assertThat(context).hasSingleBean(AblesungLueckenLauf.class);
             assertThat(context).hasSingleBean(KorrekturVorschlagLauf.class);
         });
     }

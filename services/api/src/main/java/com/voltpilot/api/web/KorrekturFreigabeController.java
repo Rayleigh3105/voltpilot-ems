@@ -158,6 +158,14 @@ public class KorrekturFreigabeController {
         return ResponseEntity.status(e.status()).body(body);
     }
 
+    @ExceptionHandler(com.voltpilot.api.uems.AblesungAbgelehnt.class)
+    public ResponseEntity<Map<String, Object>> ablesungAbgelehnt(com.voltpilot.api.uems.AblesungAbgelehnt e) {
+        Map<String, Object> body = new LinkedHashMap<>(e.fakten);
+        body.put("code", e.grund.name().toLowerCase(java.util.Locale.ROOT));
+        body.put("message", e.getMessage());
+        return ResponseEntity.status(e.grund.status).body(body);
+    }
+
     /** Kein lesbares JSON: dieselbe Form wie jede andere Ablehnung der Anfrage. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> unlesbar(HttpMessageNotReadableException e) {

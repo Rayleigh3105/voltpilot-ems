@@ -169,6 +169,17 @@ public class TenantRepository {
                 // purge or site deletion; it carries no FK to anything deletable. The
                 // offboarding is its ONE deletion path (tenant FK RESTRICT; the admin
                 // role holds DELETE only for this).
+                // Older migration fixtures intentionally run this code before the Ablesungs migration.
+                try (var probe = con.prepareStatement("SELECT to_regprocedure('uems_ablesungen_entfernen(uuid)') IS NOT NULL");
+                        var vorhanden = probe.executeQuery()) {
+                    vorhanden.next();
+                    if (vorhanden.getBoolean(1)) {
+                        try (var ps = con.prepareStatement("SELECT uems_ablesungen_entfernen(?)")) {
+                            ps.setObject(1, tenantId);
+                            ps.executeQuery().close();
+                        }
+                    }
+                }
                 deleteByTenant(con, "messreihe_ereignis", tenantId);
                 // The quarter-hour storage class (AP-07 IP-12) and its work list carry no FK
                 // either (hypertable + operational queue); offboarding is the ONE way out, like

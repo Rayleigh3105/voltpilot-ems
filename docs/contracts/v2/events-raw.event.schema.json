@@ -475,7 +475,6 @@
         "art",
         "von",
         "bis",
-        "box",
         "erkannt_aus"
       ],
       "properties": {
@@ -491,11 +490,11 @@
         "bis": {
           "$ref": "#/$defs/zeit_utc_oder_leer"
         },
-        "box": {
-          "$ref": "#/$defs/kennung"
-        },
         "erkannt_aus": {
           "$ref": "#/$defs/erkannt_aus"
+        },
+        "box": {
+          "$ref": "#/$defs/kennung"
         },
         "datenquelle": {
           "$ref": "#/$defs/kennung"
@@ -533,7 +532,24 @@
         "stand_nach": {
           "$ref": "#/$defs/stand"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "box"
+          ]
+        },
+        {
+          "required": [
+            "messstelle"
+          ],
+          "properties": {
+            "erkannt_aus": {
+              "const": "kadenz"
+            }
+          }
+        }
+      ]
     },
     "art_backfill": {
       "type": "object",
@@ -1572,7 +1588,7 @@
         }
       }
     },
-        "art_correction": {
+    "art_correction": {
       "type": "object",
       "description": "correction — Korrektur. Urheber: cloud, kunde. Seit AP-09 IP-7 GENAU EIN Bezug: die Reihe (komponente + messkanal) oder die Bezugsgröße (bezugsgroesse + fassung_alt + fassung_neu); beides zugleich prüft die Regel.",
       "additionalProperties": false,
@@ -1645,6 +1661,16 @@
             "fassung_alt",
             "fassung_neu"
           ]
+        },
+        {
+          "required": [
+            "messstelle"
+          ],
+          "properties": {
+            "korrektur_art": {
+              "const": "ablesestaende_nachgetragen"
+            }
+          }
         }
       ]
     },

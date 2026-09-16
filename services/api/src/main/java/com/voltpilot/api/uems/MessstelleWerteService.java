@@ -297,7 +297,8 @@ public class MessstelleWerteService {
     private record Lesung(UUID tenant, Messstelle m, MessstelleRegeln.Groesse haupt, Zone zone, Zeitraum z,
             Instant jetzt, List<Quelle> imZeitraum, Map<Schritt, Deckung> deckung, Map<Reihe, Gelesen> gelesen,
             Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur,
-            Map<Instant, List<WertVersionenLeser.Version>> spurVersionen, Beschriftung beschriftung) {}
+            Map<Instant, List<WertVersionenLeser.Version>> spurVersionen, Beschriftung beschriftung, UUID ablesung,
+            List<AblesungRepository.Wert> ablesewerte) {}
 
     private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen) {
         UUID tenant = TenantContext.get();
@@ -309,8 +310,17 @@ public class MessstelleWerteService {
     private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen) {
         MessstelleRegeln.Groesse haupt = m.hauptgroesse();
         List<Quelle> fuehrend = fuehrend(m);
+        AblesungRepository ablesungen = new AblesungRepository(jdbc);
+        UUID ablesung = ablesungen.quelle(tenant, m.id());
         Zone zone = zone(tenant, fuehrend, form);
-        Zeitraum z = pruefe(() -> MessstelleWerteRegeln.zeitraum(form, zone.id()));
+        if (ablesung != null) {
+            Instant t = form.von().zeitpunkt() != null ? form.von().zeitpunkt()
+                    : form.von().tag().atStartOfDay(zone.id()).toInstant();
+            var az = ablesungen.zone(tenant, m.id(), t);
+            zone = new Zone(az.id(), az.herkunft());
+        }
+        Zone gewaehlteZone = zone;
+        Zeitraum z = pruefe(() -> MessstelleWerteRegeln.zeitraum(form, gewaehlteZone.id()));
         Instant jetzt = uhr.instant();
 
         List<Bindung> bindungen = bindungen(fuehrend);
@@ -327,11 +337,11 @@ public class MessstelleWerteService {
                         Collectors.mapping(Map.Entry::getKey, Collectors.toList())))
                 .forEach((reihe, schritte) -> gelesen.put(reihe, lies(tenant, reihe, z, schritte, versionen)));
 
-        Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z);
+        Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z, ablesung != null);
         Map<Instant, List<WertVersionenLeser.Version>> spurVersionen = spur == null ? Map.of()
                 : versionen.perioden(tenant, z.raster().wort(), null, null, m.id(), z.von(), z.bis());
         return new Lesung(tenant, m, haupt, zone, z, jetzt, imZeitraum, deckung, gelesen, spur, spurVersionen,
-                new Beschriftung(z));
+                new Beschriftung(z), ablesung, ablesung == null ? List.of() : ablesungen.werte(tenant, ablesung));
     }
 
     private static List<MessstelleWerteDto.Quelle> quellen(Lesung l) {
@@ -487,7 +497,9 @@ public class MessstelleWerteService {
      * {@code null}, wo es keine Spur gibt: eine gemessene Messstelle, eine berechnete mit Momentanwert (nur live)
      * und die Stunde (keine Speicherklasse; dort bleibt der Grund {@code berechnet}).
      */
-    private Map<Instant, BerechnetePeriodenRepository.Gespeichert> gespeicherteSpur(Messstelle m, Zeitraum z) {
+    private Map<Instant, BerechnetePeriodenRepository.Gespeichert> gespeicherteSpur(Messstelle m, Zeitraum z, boolean ablesung) {
+        if (ablesung) return z.raster() == Raster.MONAT || z.raster() == Raster.JAHR
+                ? berechnete.gespeichert(m.id(), z.raster().wort(), z.von(), z.bis()) : null;
         if (!MessstelleRegeln.BERECHNET.equals(m.art()) || "Momentanwert".equals(m.hauptgroesse().wertart())
                 || z.raster() == Raster.STUNDE) {
             return null;
@@ -500,7 +512,7 @@ public class MessstelleWerteService {
      * Beginn, {@code null} = keine Zahl): ab Version 2 mit den Eingängen DIESER Version und ihrem Anlass.
      */
     private Map<Instant, Map<String, Object>> herkuenfte(Lesung l, Function<Instant, Integer> version) {
-        if (l.spur() == null || (l.spur().isEmpty() && l.spurVersionen().isEmpty())) {
+        if (l.ablesung() != null || l.spur() == null || (l.spur().isEmpty() && l.spurVersionen().isEmpty())) {
             return Map.of();
         }
         return herkunft.umschlaege(l.m().id(), l.m().kennzeichen(), l.z().raster().wort(), l.z().von(), l.z().bis(),
@@ -571,6 +583,21 @@ public class MessstelleWerteService {
         Rahmen r = new Rahmen(MessstelleWerteRegeln.iso(s.von(), zone), MessstelleWerteRegeln.iso(s.bis(), zone),
                 l.beschriftung().von(s), stunden(z, s),
                 z.raster() == Raster.TAG ? ErgebnisZustand.tagesdauer(TagRegeln.tag(s.von(), zone), zone) : null);
+        if (l.ablesung() != null && l.spur() != null && !l.spur().containsKey(s.von())
+                && l.spurVersionen().getOrDefault(s.von(), List.of()).isEmpty()) {
+            if (d.reihe() != null) return wert(r, s, d, l.gelesen().get(d.reihe()), z, version, l.jetzt());
+            boolean ohneZuordnung = false;
+            for (int i = 1; i < l.ablesewerte().size(); i++) {
+                var a = l.ablesewerte().get(i - 1);
+                var b = l.ablesewerte().get(i);
+                if (b.monat() == null && a.zeitpunkt().isBefore(s.bis()) && b.zeitpunkt().isAfter(s.von())) {
+                    ohneZuordnung = true;
+                    break;
+                }
+            }
+            return ohneReihe(r, OhneZahl.KEINE_QUELLE, ohneZuordnung
+                    ? List.of("Ablesezeitraum ohne Monatszuordnung") : List.of());
+        }
         if (l.spur() != null) {
             return berechnet(r, l.spur().get(s.von()), l.spurVersionen().getOrDefault(s.von(), List.of()), z, version,
                     herkuenfte.get(s.von()));
@@ -796,9 +823,13 @@ public class MessstelleWerteService {
 
     /** Ein Schritt ohne Reihe: keine Quelle („keine Werte“) oder ein benannter Grund ohne Zustand — ohne Versionen. */
     private static MessstelleWerteDto.Wert ohneReihe(Rahmen r, OhneZahl grund) {
+        return ohneReihe(r, grund, List.of());
+    }
+
+    private static MessstelleWerteDto.Wert ohneReihe(Rahmen r, OhneZahl grund, List<String> kennzeichen) {
         String zustand = grund == OhneZahl.KEINE_QUELLE ? ErgebnisZustand.KEINE_WERTE : null;
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
-                null, null, null, null, zustand, List.of(), null, null, null, null, null, null, null, null,
+                null, null, null, null, zustand, kennzeichen, null, null, null, null, null, null, null, null,
                 grund.wort(), List.of(), null, null);
     }
 

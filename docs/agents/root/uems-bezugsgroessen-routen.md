@@ -50,7 +50,7 @@ Unterbau: `uems-bezugsgroessen-tabellen.md`; Vertrag: `docs/contracts/v2/bezugsd
   `begruendung`, `ersetzt_fassung`.
 - **Rechte:** `bezugsgroesse.verwalten` (Nachtrag AP-09 §4.11 / W8, `U U S - - - -`, darf-Fälle in
   `rechte-vectors.json`) für die Schreibwege, `messwerte.ansehen` fürs Lesen — keine Durchsetzung,
-  fremd = 404 `nicht_gefunden`. `ablesung.erfassen` bekommt seine Zeile erst mit IP-8.
+  fremd = 404 `nicht_gefunden`. `ablesung.erfassen` und seine Durchsetzung stehen seit IP-8 in `uems-ablesungen.md`.
 - **Seit IP-6:** `bezugsflaechen` an der Liste, `GET/PUT …/{id}/stammdatum` und zwei weitere Ablehnungen
   (`wert_ungueltig`, `kein_stammdatum`) — `uems-bezugsflaechen-stammdaten.md`.
 - **Werte schreiben seit IP-7:** `uems-bezugswert-eingeben.md` (die Lesemodell-Tests schreiben weiter direkt).

@@ -412,7 +412,7 @@ public final class EreignisVokabular {
     /** Die Ereignisarten — geschlossen. */
     public enum Art {
         DATA_GAP("data_gap", EnumSet.of(WRITER, BOX, CLOUD), ZEITRAUM, HALBOFFEN, true, MESSZEIT,
-                List.of("box"), List.of("datenquelle", "komponente", "messkanal", "messstelle"),
+                List.of(), List.of("box", "datenquelle", "komponente", "messkanal", "messstelle"),
                 List.of("erkannt_aus"),
                 List.of("erwartet_fehlend", "nachgeliefert_am", "fehlerklasse", "ursache_ereignis",
                         "zuwachs", "einheit", "stand_vor", "stand_nach"),
@@ -879,8 +879,14 @@ public final class EreignisVokabular {
         }
         // AP-09 IP-7: eine Korrektur trifft die Reihe ODER die Bezugsgröße — was dem gewählten Bezug fehlt,
         // ist ein Pflichtfeld wie zuvor (ohne beide also weiter „Pflichtfeld komponente“).
+        if (art == Art.DATA_GAP && !e.hasNonNull("box") && !(u == CLOUD
+                && e.hasNonNull("messstelle") && !e.has("komponente") && !e.has("messkanal")
+                && !e.has("datenquelle") && "kadenz".equals(e.path("erkannt_aus").asText()))) {
+            throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld box");
+        }
         if (art == Art.CORRECTION) {
-            for (String p : e.has("bezugsgroesse") ? KORREKTUR_BEZUG_BEZUGSGROESSE : KORREKTUR_BEZUG_REIHE) {
+            for (String p : e.has("bezugsgroesse") ? KORREKTUR_BEZUG_BEZUGSGROESSE
+                    : e.has("messstelle") && !e.has("komponente") ? List.of("messstelle") : KORREKTUR_BEZUG_REIHE) {
                 if (!e.hasNonNull(p)) {
                     throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld " + p);
                 }
@@ -1024,8 +1030,13 @@ public final class EreignisVokabular {
     private static void pruefeRegeln(JsonNode e, Art art, Urheber u) {
         // Eine Messstelle an einer Reihe braucht die ganze Reihe — außer die Art bezieht sich auf
         // die Messstelle selbst (AP-10 IP-8: verteilung_geaendert).
+        boolean ablesung = e.hasNonNull("messstelle") && !e.has("komponente") && !e.has("messkanal")
+                && ((art == Art.DATA_GAP && u == CLOUD && !e.has("box")
+                        && "kadenz".equals(e.path("erkannt_aus").asText()))
+                    || (art == Art.CORRECTION
+                        && "ablesestaende_nachgetragen".equals(e.path("korrektur_art").asText())));
         if ((e.has("messkanal") && !e.has("komponente"))
-                || (e.has("messstelle") && !art.bezugPflicht().contains("messstelle")
+                || (e.has("messstelle") && !ablesung && !art.bezugPflicht().contains("messstelle")
                         && !(e.has("komponente") && e.has("messkanal")))) {
             throw nein(Grund.REGEL_VERLETZT, "Reihe unvollständig");
         }
@@ -1144,10 +1155,17 @@ public final class EreignisVokabular {
             case CORRECTION -> {
                 // AP-09 IP-7: nicht beides — und Fassungen und Import gibt es nur an einer Bezugsgröße.
                 boolean anBezugsgroesse = e.has("bezugsgroesse");
+                boolean anAblesung = !anBezugsgroesse && e.has("messstelle") && !e.has("komponente");
+                if (anAblesung && (e.has("messkanal") || e.has("import")
+                        || !"ablesestaende_nachgetragen".equals(e.path("korrektur_art").asText())
+                        || (e.has("fassung_alt") != e.has("fassung_neu"))
+                        || (e.has("fassung_neu") && e.path("fassung_neu").asInt() <= e.path("fassung_alt").asInt()))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Ablesungs-Korrektur passt nicht zur Messstelle");
+                }
                 if (anBezugsgroesse && (e.has("komponente") || e.has("messkanal"))) {
                     throw nein(Grund.REGEL_VERLETZT, "Reihe oder Bezugsgröße, nicht beides");
                 }
-                if (!anBezugsgroesse && (e.has("fassung_alt") || e.has("fassung_neu") || e.has("import"))) {
+                if (!anBezugsgroesse && !anAblesung && (e.has("fassung_alt") || e.has("fassung_neu") || e.has("import"))) {
                     throw nein(Grund.REGEL_VERLETZT, "Fassungen und Import nur an einer Bezugsgröße");
                 }
                 Pattern kennung = anBezugsgroesse ? BERICHTIGUNG_KENNUNG : KORREKTUR_KENNUNG;

@@ -74,6 +74,23 @@ class EndgueltigkeitLaeuferReihenfolgeTest {
         verify(vorschlaege).lauf(any());
     }
 
+    @Test
+    void ablesungslueckenLaufenAuchNachFehlerDerMonatsstufeUndHaltenDenRestNichtAuf() {
+        AblesungLueckenLauf ablesungen = mock(AblesungLueckenLauf.class);
+        EndgueltigkeitLaeufer takt = new EndgueltigkeitLaeufer(
+                endgueltigkeit, tage, perioden, berechnete, kennzahlen, vorschlaege);
+        takt.ablesungen(ablesungen);
+        when(perioden.lauf(any())).thenThrow(new IllegalStateException("Monatslauf kaputt"));
+        when(ablesungen.lauf(any())).thenThrow(new IllegalStateException("Ablesungslücken kaputt"));
+        takt.takt();
+        InOrder reihenfolge = inOrder(perioden, ablesungen, berechnete, kennzahlen, vorschlaege);
+        reihenfolge.verify(perioden).lauf(any());
+        reihenfolge.verify(ablesungen).lauf(any());
+        reihenfolge.verify(berechnete).lauf(any());
+        reihenfolge.verify(kennzahlen).lauf(any());
+        reihenfolge.verify(vorschlaege).lauf(any());
+    }
+
     /** Der Takt ohne Kennzahl-Schritt (die Tests der Stufen davor bauen ihn so) ruft keine Kennzahl. */
     @Test
     void ohneKennzahlSchrittBleibtDerTaktWieVorher() {

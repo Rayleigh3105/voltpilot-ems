@@ -501,3 +501,16 @@ Edge-Release). Die Kern-Telemetrie 2.0 und `measurement-samples` 2.0 bleiben unv
 (cd services/ingest && ./mvnw test -Dtest='EventsContractSchemaTest,BoxEventsValidatorTest,DatenannahmeTest')  # rein
 (cd frontend/portal && npx vitest run src/uemsEreignis.test.ts)
 ```
+
+### Ablesungen: Lücke und Berichtigung (AP-09 IP-8)
+
+`data_gap` darf bei einer manuell abgelesenen Messstelle ohne Box, Komponente und
+Messkanal stehen: Urheber ausschließlich `cloud`, Bezug `messstelle`, `erkannt_aus = kadenz`.
+Die monatliche Ablesung wird strikt nach zwei Kalendermonaten überfällig. Eine spätere
+Ablesung schließt dasselbe Ereignis; es entstehen keine Nullwerte oder Tagesmengen.
+Kanalgebundene Lücken behalten ihre bisherigen Pflichtbezüge und Urheberregeln.
+
+`correction` erlaubt zusätzlich den Bezug `messstelle` ohne Komponente/Messkanal,
+wenn `korrektur_art = ablesestaende_nachgetragen` ist. Die Kennung bleibt `K-…`;
+`fassung_alt` und `fassung_neu` dürfen gemeinsam die Rohwertfassungen nennen.
+Die bestehende Freigabe-/Rücknahmekette und ihre nachgelagerten Periodenversionen gelten.

@@ -740,10 +740,9 @@
           "offen_erlaubt": true,
           "achse": "messzeit"
         },
-        "bezug_pflicht": [
-          "box"
-        ],
+        "bezug_pflicht": [],
         "bezug_erlaubt": [
+          "box",
           "datenquelle",
           "komponente",
           "messkanal",
@@ -808,7 +807,8 @@
           "`fehlerklasse` `box_meldet_sich_nicht` nur mit `erkannt_aus` herzschlag; eine Herzschlag-Lücke trägt keine andere Klasse — solange die Box schweigt, kennt niemand ihren Grund.",
           "`nachgeliefert_am` erst, wenn die Lücke geschlossen ist; ein Box-Tausch liefert nie nach (§4.5 Nachlieferung Nr. 6).",
           "`zuwachs`, `einheit`, `stand_vor` und `stand_nach` (AP-08 IP-6, E2) stehen nur ZUSAMMEN, nur an einer geschlossenen Lücke EINER Reihe (`komponente` + `messkanal`) und nie von einer Box: `zuwachs` = `stand_nach` − `stand_vor` ≥ 0, `einheit` aus `einheit_zuwachs` (die Zählerstand-Einheiten des Größen-Katalogs der Messstellen mit ihren umrechenbaren Einheiten).",
-          "Der Zuwachs ist GEMESSEN, aber NICHT VERTEILBAR: er zählt im kleinsten Zeitraum, der die Lücke ganz enthält (verbrauch-vectors.json `regeln.luecke_zuwachs`), die Viertelstunden der Lücke bleiben „keine Werte“. Die Meldung ist die Rechnung zum Nachlesen, nie die Quelle der Menge — die bildet der Verdichtungs-Lauf aus den Werten."
+          "Der Zuwachs ist GEMESSEN, aber NICHT VERTEILBAR: er zählt im kleinsten Zeitraum, der die Lücke ganz enthält (verbrauch-vectors.json `regeln.luecke_zuwachs`), die Viertelstunden der Lücke bleiben „keine Werte“. Die Meldung ist die Rechnung zum Nachlesen, nie die Quelle der Menge — die bildet der Verdichtungs-Lauf aus den Werten.",
+          "AP-09 IP-8: ohne Box nur cloud + erkannt_aus kadenz + messstelle (Ablesung überfällig); die übrigen Lücken verlangen weiterhin die Box."
         ],
         "bestand": true,
         "nie_geloescht": true,
@@ -1896,7 +1896,8 @@
           "Nie automatisch (E14): die Cloud meldet nur `vorschlag`; freigegeben, abgelehnt und zurueckgenommen meldet ein Mensch (kunde).",
           "`ersatzwert` steht genau bei korrektur_art ersatzwert.",
           "freigegeben und zurueckgenommen lösen die Neuberechnung (E9) und die Revision freigegebener Berichte (AP-12) aus — die Kaskade selbst ist AP-08 IP-17.",
-          "AP-09 IP-7 (additiv): GENAU EIN Bezug — die Reihe (komponente + messkanal) ODER die Bezugsgröße (bezugsgroesse + fassung_alt + fassung_neu, optional import I-<Jahr>-<lfd. Nr.>). Was dem gewählten Bezug fehlt, ist schema_verletzt (wie vorher); beides zugleich oder Fassungen und Import an einer Reihe sind regel_verletzt. An einer Bezugsgröße ist die Art wert_berichtigt und fassung_neu größer als fassung_alt; gemeldet wird nur die wirksame Fassung ≥ 2 (F4), nie ein Erstwert oder ein offener Vorschlag."
+          "AP-09 IP-7 (additiv): GENAU EIN Bezug — die Reihe (komponente + messkanal) ODER die Bezugsgröße (bezugsgroesse + fassung_alt + fassung_neu, optional import I-<Jahr>-<lfd. Nr.>). Was dem gewählten Bezug fehlt, ist schema_verletzt (wie vorher); beides zugleich oder Fassungen und Import an einer Reihe sind regel_verletzt. An einer Bezugsgröße ist die Art wert_berichtigt und fassung_neu größer als fassung_alt; gemeldet wird nur die wirksame Fassung ≥ 2 (F4), nie ein Erstwert oder ein offener Vorschlag.",
+          "AP-09 IP-8: eine Ablesungs-Berichtigung nennt nur messstelle, Art ablesestaende_nachgetragen, Kennung K-…; fassung_alt/neu, sofern ein bisheriger Stand berichtigt wird. Keine Komponente erfunden."
         ],
         "bestand": false,
         "nie_geloescht": true,
@@ -6053,6 +6054,56 @@
         "schema": true,
         "urteil": "verworfen",
         "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ablesung-ms21-ueberfaellig-cloud",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-8 Z7",
+      "why": "Mehr als zwei Kalendermonate seit 02.11.2026 07:40: Cloud meldet die Ablesung, ohne Box zu erfinden.",
+      "annahme": "Keine weitere Ablesung seit B8.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000981",
+          "art": "data_gap",
+          "von": "2027-01-02T06:40:00Z",
+          "bis": null,
+          "erkannt_aus": "kadenz",
+          "messstelle": "MS-21"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke seit 02.01.2027 07:40 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "ablesung-ohne-box-nicht-vom-writer",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-8 Z7",
+      "why": "Mehr als zwei Kalendermonate seit 02.11.2026 07:40: Cloud meldet die Ablesung, ohne Box zu erfinden.",
+      "annahme": "Keine weitere Ablesung seit B8.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000981",
+          "art": "data_gap",
+          "von": "2027-01-02T06:40:00Z",
+          "bis": null,
+          "erkannt_aus": "kadenz",
+          "messstelle": "MS-21"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
         "saetze": []
       }
     }
