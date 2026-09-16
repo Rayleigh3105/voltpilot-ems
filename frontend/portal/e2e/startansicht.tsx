@@ -4,6 +4,7 @@ import {
   api,
   type FunktionStandort,
   type MessstellenRegisterAnfrage,
+  type MessstelleWerte,
   type MessstelleWerteRaster,
   type Overview,
   type OverviewSite,
@@ -48,6 +49,7 @@ import {
   berichtRoute,
   hashForRoute,
   kennzahlRoute,
+  messstelleRoute,
   pageRoute,
   standortBereichRoute,
   standortMessstellenRoute,
@@ -73,7 +75,19 @@ import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte } from '../src/test/kostenstellenFixtures';
-import { kostenstellenAhrenberg, prozesseAhrenberg } from '../src/test/messstelleSeiteFixtures';
+import {
+  kostenstellenAhrenberg,
+  ms06,
+  ms10,
+  MS_IDS,
+  ohneVerteilung,
+  protokollMs06,
+  protokollMs10,
+  prozesseAhrenberg,
+} from '../src/test/messstelleSeiteFixtures';
+import { f16Monat, f16Tage, f8Viertelstunden, MS_06, MS_10 } from '../src/test/werteKarteFixtures';
+import { f21Historie, f21Stunden, f21Tag, f21TagWert } from '../src/test/wertVersionenFixtures';
+import { monatKarte, monatOhneQuelle, monatTage, MS_11 } from '../src/test/vergleichFixtures';
 import { mitEnergiebilanz } from '../src/anlageEnergiebilanz';
 import { ahrenbergBilanz } from '../src/test/bilanzFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach, ortsbaumLindachOhneGebaeude } from '../src/test/ortsbaumFixtures';
@@ -190,6 +204,87 @@ const bilanzDerBuehne = (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?
     ohneHauptzaehler: params.get('bilanz') === 'ohne-hz',
     restVorschlag,
   });
+
+/**
+ * AP-13 IP-13 (E14, M1–M4): die Stationen des GEMESSENEN Wegs — Ebene → Welt → Zahl → Nachweis in EINEM Lauf.
+ *
+ * `&ansicht=werte&ms=MS-10&tag=2026-11-03` öffnet die Messstellen-Seite im Abschnitt „Werte“ für diesen Tag (F21 —
+ * die Zahl, die drei Versionen hat, also den Nachweis trägt); `&ansicht=verlauf` denselben Abschnitt im Monat (der
+ * Verlauf in Tagen), `&ansicht=vergleich` dazu den Umschalter (`&v=vorperiode`, O11). `&mon=` wählt den Monat,
+ * `&version=` die Fassung der Karte.
+ *
+ * `&stand=2026-11-21` ist der Stichtag, den das Register als „heute“ ausgibt; ohne Angabe bleibt es auf seinem
+ * eigenen Stand (20.10.2026). Er entscheidet, wohin der Einstieg „Werte“ des Registers führt: auf den Vortag, oder —
+ * sobald „Stand am …“ einen früheren Tag zeigt — auf diesen Stichtag selbst (AP-13 IP-3). So erreicht der Weg den
+ * 03.11.2026, ohne sich durch die Zeit-Leiste zu blättern.
+ */
+const WEG_ANSICHT = ansicht === 'werte' || ansicht === 'verlauf' || ansicht === 'vergleich';
+const WEG_MS = params.get('ms') ?? 'MS-10';
+/** Vorgabe: der Tag des Box-Ausfalls für `werte`, sonst der Monat, in dem er liegt. */
+const WEG_PERIODE = params.get('tag') ?? params.get('mon') ?? (ansicht === 'werte' ? '2026-11-03' : '2026-11');
+const WEG_VERSION = /^[1-9]\d{0,5}$/.test(params.get('version') ?? '') ? Number(params.get('version')) : null;
+const WEG_V = params.get('v') ?? (ansicht === 'vergleich' ? 'vorperiode' : null);
+const REGISTER_STAND = params.get('stand');
+/**
+ * Nur im Weg-Bild antwortet die Werte-Route der Bühne. In jedem anderen Bild fragt allein der Bericht-Nachweis
+ * nach einem Wert („heutigen Wert zeigen“, AP-12 IP-13) — der bekommt weiter seine eigene Antwort.
+ */
+const WEG_BUEHNE = WEG_ANSICHT || REGISTER_STAND !== null;
+/** Die Zeile des Registers, die `&ms=` meint — die Seite lebt unter der ID des Registers, nicht unter dem Kennzeichen. */
+const wegMessstelleId = () =>
+  ahrenbergRegister({ stichtag: REGISTER_STAND ?? undefined }).register.find((z) => z.kennzeichen === WEG_MS)?.id ?? MS_IDS.ms10;
+
+/**
+ * Die Werte-Route der Bühne. Gestellt ist nur, was der Weg braucht — alles andere antwortet 404, damit eine
+ * stillschweigend falsche Zahl gar nicht erst entstehen kann. Jede Zahl steht in den Referenzfällen
+ * (`oberflaechenFaelle.json` über die Fixtures): MS-10 am 03.11.2026 ist F21 (Karte je Version, Stunden als Liste),
+ * seine VIERTELSTUNDEN sind die gemessenen des Box-Ausfalls (F8/O1 — die Referenzdatei trägt keine ersetzten
+ * Viertelstunden); die Monate sind O11 (MS-10 November 35 800 gegen Oktober 36 900) und die zweite passende Reihe
+ * MS-11 (22 400 · 21 500); MS-06 trägt den Oktober F16.
+ */
+function werteDerBuehne(
+  kennzeichen: string,
+  raster: MessstelleWerteRaster,
+  von: string,
+  bis: string,
+  version?: number | null,
+): MessstelleWerte | null {
+  if (kennzeichen === 'MS-10' && von === '2026-11-03' && bis === von) {
+    if (raster === 'tag') {
+      const v = version ?? 3;
+      return v === 1 || v === 2 || v === 3 ? { ...f21Tag(), version: version ?? null, werte: [f21TagWert(v)] } : null;
+    }
+    if (raster === 'stunde') return f21Stunden();
+    if (raster === 'viertelstunde') return f8Viertelstunden();
+    return null;
+  }
+  if (kennzeichen === 'MS-06' && von === '2026-10-01' && bis === '2026-10-31') {
+    return raster === 'monat' ? f16Monat() : raster === 'tag' ? f16Tage() : null;
+  }
+  return monatDerBuehne(kennzeichen, raster, von, bis);
+}
+
+/** Die Monate, die Karte, Verlauf und Vergleich lesen (O11/O12) — `null` heißt „nicht gestellt“. */
+function monatDerBuehne(kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string): MessstelleWerte | null {
+  const mengen: Record<string, Record<string, number>> = {
+    'MS-10': { '2026-11': 35800, '2026-10': 36900 },
+    'MS-11': { '2026-11': 21500, '2026-10': 22400 },
+  };
+  const messstelle = kennzeichen === 'MS-10' ? MS_10 : kennzeichen === 'MS-11' ? MS_11 : kennzeichen === 'MS-06' ? MS_06 : null;
+  if (!messstelle) return null;
+  const monat = von.slice(0, 7);
+  if (von !== `${monat}-01` || bis.slice(0, 7) !== monat) return null;
+  // Vor dem Beginn des Energiemanagements (01.10.2026) antwortet die Route ohne Bindung — nie mit einer 0.
+  if (monat < '2026-10') return raster === 'monat' ? monatOhneQuelle(messstelle, monat) : null;
+  const menge = mengen[kennzeichen]?.[monat];
+  if (menge === undefined) return null;
+  const wochenende = kennzeichen === 'MS-11' ? 0.3 : monat === '2026-10' ? 0.5 : 0.65;
+  return raster === 'monat'
+    ? monatKarte(messstelle, monat, menge)
+    : raster === 'tag'
+      ? monatTage(messstelle, monat, menge, wochenende)
+      : null;
+}
 /** Die Zellen von `messstelle.formel`/`messstelle.bearbeiten` (KA U · EM U, Rechte-Matrix) — die Berichts-Fixture stellt nur ihre. */
 const mitMessstellenRechten = (s: ReturnType<typeof selbstauskunftFuer>): ReturnType<typeof selbstauskunftFuer> =>
   s.rollen.some((r) => r === 'kundenadministrator' || r === 'energiemanager')
@@ -435,7 +530,9 @@ Object.assign(api, {
   // AP-04 IP-5: das Messstellen-Register des Referenzunternehmens (heute = 20.10.2026, mit Stichtag und Filtern).
   // AP-11 IP-15: `welt=k17` stellt MS-24 dazu.
   messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => {
-    const r = k17 ? mitMs24(ahrenbergRegister(a)) : ahrenbergRegister(a);
+    // AP-13 IP-13: `&stand=` verschiebt den Stand des Registers — und mit ihm den Tag, auf dem der Einstieg „Werte“ landet.
+    const anfrage = REGISTER_STAND && !a.stichtag ? { ...a, stichtag: REGISTER_STAND } : a;
+    const r = k17 ? mitMs24(ahrenbergRegister(anfrage)) : ahrenbergRegister(anfrage);
     if (!heuteB10) return r;
     return { ...r, register: r.register.map((z) => ({ ...z, name: nameHeuteAm(Date.now(), z.kennzeichen, z.name) })) };
   },
@@ -526,10 +623,28 @@ Object.assign(api, {
     return anstoss;
   },
   // AP-13 IP-9: im Reiter „Prozesse“ fragt die Fläche den Wert der Prozess-Summe für ihren Zeitraum.
-  messstelleWerte: async (kennzeichen: string, raster?: MessstelleWerteRaster, von?: string, bis?: string) =>
-    ORGANISATION_REITER && raster && von && bis
-      ? ahrenbergProzessSummeWerte(kennzeichen, raster, von, bis)
-      : heutigeWerteAm(kennzeichen, Date.now()),
+  // AP-13 IP-13: im Weg-Bild antwortet die Werte-Route der Bühne (Karte, Liste, Verlauf, Vergleich); was sie nicht
+  // gestellt hat, ist ein 404 — nie eine erfundene Zahl.
+  messstelleWerte: async (
+    kennzeichen: string,
+    raster?: MessstelleWerteRaster,
+    von?: string,
+    bis?: string,
+    version?: number | null,
+  ) => {
+    if (ORGANISATION_REITER && raster && von && bis) return ahrenbergProzessSummeWerte(kennzeichen, raster, von, bis);
+    if (WEG_BUEHNE && raster && von && bis) {
+      const antwort = werteDerBuehne(kennzeichen, raster, von, bis, version);
+      if (antwort) return antwort;
+      throw new ApiError(404, 'Diese Messstelle gibt es nicht.');
+    }
+    return heutigeWerteAm(kennzeichen, Date.now());
+  },
+  // AP-13 IP-13: was die Messstellen-Seite selbst liest — Stammdaten, Verteilung, Protokoll und die Versionen der Zahl.
+  messstelle: async (id: string) => (id === MS_IDS.ms06 ? ms06() : ms10()),
+  messstelleVerteilung: async (id: string) => ohneVerteilung(id === MS_IDS.ms06 ? ms06() : ms10()),
+  messstelleAenderungen: async (id: string) => (id === MS_IDS.ms06 ? protokollMs06() : protokollMs10()),
+  messstelleWerteVersionen: async () => f21Historie(),
   // AP-11 IP-15: die vier schreibenden Wege der Kennzahl-Seite — sie ändern die Bühne und werden gezählt.
   kennzahlFassungEintragen: async (
     id: string,
@@ -694,6 +809,17 @@ function Vorschau() {
   const ebene = startEbene({ ...rahmen, siteIds, orte });
   const shell: ShellInput = { ...rahmen, siteCount: siteIds.length, ebene };
   const kanonisch = (r: Route) => canonicalShellRoute({ shell, route: r, siteIds }) ?? r;
+  /**
+   * AP-13 IP-13: Periode, Version und Vergleich des Abschnitts „Werte“ (AP-13 IP-3/IP-5). `App.tsx` hält sie in der
+   * Adresse; die Bühne führt ihre Adresse als `data-route` und hält die drei deshalb hier — dieselben Wege, dieselben
+   * Regeln: ein Einstieg aus dem Register setzt die Periode, ein Zeitraum-Wechsel lässt den Vergleich stehen und
+   * vergisst die Version, der Weg zurück in die Liste räumt alles ab.
+   */
+  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null }>(() => ({
+    periode: WEG_ANSICHT ? WEG_PERIODE : null,
+    version: WEG_ANSICHT ? WEG_VERSION : null,
+    vergleich: WEG_ANSICHT ? WEG_V : null,
+  }));
   const [route, setRoute] = useState<Route>(() =>
     kanonisch(
       ansicht === 'bilanz'
@@ -721,6 +847,9 @@ function Vorschau() {
               ? standortBereichRoute(st2, 'gebaeude')
             : ansicht === 'lindach-anlagen'
               ? standortBereichRoute(st2, 'anlagen')
+            // AP-13 IP-13: die Stationen Zahl · Verlauf · Vergleich stehen auf der Messstellen-Seite.
+            : WEG_ANSICHT
+              ? messstelleRoute(wegMessstelleId())
             : ansicht === 'messstellen' || ORGANISATION_REITER
               ? pageRoute('portfolio-messstellen')
               : ansicht === 'werk-messstellen'
@@ -739,8 +868,14 @@ function Vorschau() {
     ),
   );
   useEffect(() => {
-    document.body.dataset.route = hashForRoute(route);
-  }, [route]);
+    // Die Adresse der Bühne — mit dem, was `App.tsx` an die Messstellen-Seite hängt (AP-13 IP-3/IP-5).
+    const anhang = new URLSearchParams();
+    if (route.messstelleId && werte.periode) anhang.set('periode', werte.periode);
+    if (route.messstelleId && werte.version != null) anhang.set('version', String(werte.version));
+    if (route.messstelleId && werte.vergleich) anhang.set('v', werte.vergleich);
+    const frage = anhang.toString();
+    document.body.dataset.route = hashForRoute(route) + (frage ? `?${frage}` : '');
+  }, [route, werte]);
 
   const navigate = (ziel: Route | PageId) => setRoute(kanonisch(typeof ziel === 'string' ? pageRoute(ziel) : ziel));
   const navigateSchale = (ziel: Route | PageId) => {
@@ -969,6 +1104,28 @@ function Vorschau() {
           onUebersicht={() =>
             navigate(messstellenEbene.art === 'standort' ? standortRoute(messstellenEbene.id) : pageRoute('portfolio'))
           }
+          // AP-13 IP-13, wie `App.tsx`: aus dem Register führt der Weg auf die Messstellen-Seite — mit Periode.
+          messstelleId={route.messstelleId ?? null}
+          onOeffnen={(id) => {
+            setWerte({ periode: null, version: null, vergleich: null });
+            navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
+          }}
+          werte={werte}
+          onWerte={(id, periode) => {
+            setWerte({ periode, version: null, vergleich: null });
+            navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
+          }}
+          // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht.
+          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich }))}
+          onWerteVergleich={(v) => setWerte((w) => ({ ...w, vergleich: v }))}
+          onListe={() => {
+            setWerte({ periode: null, version: null, vergleich: null });
+            navigate(
+              messstellenEbene.art === 'standort'
+                ? standortMessstellenRoute(messstellenEbene.id)
+                : pageRoute('portfolio-messstellen'),
+            );
+          }}
         />
       )}
       {route.page === 'portfolio' && (

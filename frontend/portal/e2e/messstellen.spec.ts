@@ -92,7 +92,18 @@ test.describe('Messstellen-Register', () => {
     expect(m.route).toBe('#/portfolio/messstellen');
     expect(m.zeilen).toBe(22);
     expect(m.karten).toBe(0);
-    expect(m.spalten).toEqual(['Kennzeichen', 'Name', 'Ort', 'Elektrische Stellung', 'Quelle (führend)', 'Zustand', 'Letzter Wert']);
+    // AP-13 IP-13: die Bühne stellt das Register jetzt mit seinem Wirt wie `App.tsx` — mit dem Einstieg in die Werte
+    // („Letzter Wert“ und das Zeilenmenü, AP-13 IP-3) und damit mit der Spalte „Aktionen“.
+    expect(m.spalten).toEqual([
+      'Kennzeichen',
+      'Name',
+      'Ort',
+      'Elektrische Stellung',
+      'Quelle (führend)',
+      'Zustand',
+      'Letzter Wert',
+      'Aktionen',
+    ]);
     // AP-11 IP-13: „Kennzahlen“ steht als Reiter neben „Messstellen“ (Ahrenberg misst und hat Kennzahlen).
     expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte', 'Messwerte']);
     expect(m.reiterAktiv).toEqual(['Messstellen']);
