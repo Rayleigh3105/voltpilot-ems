@@ -305,12 +305,19 @@ public final class RechteAbleitung {
         }
     }
 
-    /** Was an einer Zuweisung geändert wird (§4.7, §5.2). */
+    /**
+     * Was an einer Zuweisung geändert wird (§4.7, §5.2) — und seit AP-03 IP-8 die beiden Wörter,
+     * die eine Unterstützung braucht: {@code verlaengern} (ein neues Enddatum, §4.6) und
+     * {@code ablaufen} (das Ende durch Zeitablauf, A4 „endete durch Zeitablauf"). Beide sind
+     * Protokollwörter — {@link #zuweisungAendern} urteilt weiterhin nur über die ersten vier.
+     */
     public enum AenderungsArt implements Code {
         ZUWEISEN("zuweisen"),
         ENTZIEHEN("entziehen"),
         SPERREN("sperren"),
-        ENTFERNEN("entfernen");
+        ENTFERNEN("entfernen"),
+        VERLAENGERN("verlaengern"),
+        ABLAUFEN("ablaufen");
 
         private final String code;
 

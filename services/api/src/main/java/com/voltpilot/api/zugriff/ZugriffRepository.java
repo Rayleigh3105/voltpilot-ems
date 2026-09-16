@@ -218,6 +218,15 @@ public class ZugriffRepository {
      * wenn es sie im Kundenbereich nicht gibt oder sie schon beendet ist. Die handelnde Person trägt ein Subject.
      */
     public boolean beenden(UUID zugriffId, Instant am, ProtokollAkteur von, String grund) {
+        return beenden(zugriffId, am, von, grund, "entziehen");
+    }
+
+    /**
+     * Dasselbe Ende mit einem anderen Protokollwort — {@code verlaengern}, wenn dieselbe Gewährung im selben
+     * Zug mit einem späteren Ende neu beginnt (AP-03 IP-8, §4.6). Es steht dann EIN Wort im Protokoll, und
+     * niemand liest später einen Entzug, wo verlängert wurde.
+     */
+    public boolean beenden(UUID zugriffId, Instant am, ProtokollAkteur von, String grund, String aktion) {
         if (von.sub() == null) {
             throw new IllegalArgumentException("Ein Zugriff wird von einer Person beendet");
         }
@@ -230,11 +239,80 @@ public class ZugriffRepository {
             return false;
         }
         Zeile z = beendet.get(0);
-        String name = jdbc.queryForObject("SELECT coalesce((SELECT anzeigename FROM benutzer WHERE tenant_id = ? "
-                + "AND sub = ?), ?)", String.class, tenant, z.benutzerSub(), z.benutzerSub());
-        protokoll(tenant, "entziehen", z.benutzerSub(), name, z.id(), z.rolle(), z.standortId(), z.art(), z.umfang(),
+        String name = anzeigename(z.benutzerSub());
+        protokoll(tenant, aktion, z.benutzerSub(), name, z.id(), z.rolle(), z.standortId(), z.art(), z.umfang(),
                 z.gueltigAb(), z.gueltigBis(), z.endetAm(), grund, von);
         return true;
+    }
+
+    // ------------------------------------------------------------------ Unterstützung (IP-8)
+
+    /**
+     * Die Zeilen EINER Gewährung (UEMS AP-03 IP-8). Eine Unterstützung wird je Standort als eigene Zeile
+     * eingetragen; zusammen gehören die Zeilen, die Person, Art, Umfang und Zeit teilen — dieselbe Gruppierung,
+     * mit der {@link Selbstauskunft} seit IP-4 ihre Banner baut. Ihr GRIFF ist die kleinste {@code id} der Gruppe;
+     * weil eine Zeile nie umgeschrieben wird, ist er stabil, auch nachdem die Gewährung beendet wurde.
+     *
+     * <p>Leer, wenn es {@code griff} im Kundenbereich nicht gibt oder er keine Unterstützung ist — die Route
+     * antwortet dann 404, genau wie für eine Kennung, die es nicht gibt.
+     */
+    public List<Zeile> gewaehrung(UUID griff) {
+        return jdbc.query(SELECT + " JOIN zugriff g ON g.tenant_id = z.tenant_id AND g.id = ? "
+                + "WHERE z.tenant_id = ? AND z.rolle = 'unterstuetzer' AND g.rolle = 'unterstuetzer' "
+                + "AND z.benutzer_sub = g.benutzer_sub AND z.art = g.art AND z.umfang = g.umfang "
+                + "AND z.gueltig_ab = g.gueltig_ab AND z.endet_am = g.endet_am "
+                + "AND z.gueltig_bis IS NOT DISTINCT FROM g.gueltig_bis "
+                + "AND z.beendet_am IS NOT DISTINCT FROM g.beendet_am ORDER BY z.id",
+                ZugriffRepository::zeile, griff, kundenbereich());
+    }
+
+    /** Jede Gewährung des Kundenbereichs, jüngste zuerst — je Zeile eine (der Aufrufer fasst sie zusammen). */
+    public List<MitName> alleUnterstuetzungen() {
+        return jdbc.query(SELECT_MIT_NAME + " WHERE z.tenant_id = ? AND z.rolle = 'unterstuetzer' "
+                + "ORDER BY z.gueltig_ab DESC, z.created_at DESC, z.id",
+                (rs, n) -> new MitName(zeile(rs, n), rs.getString("name")), kundenbereich());
+    }
+
+    /**
+     * Die Gewährungen, deren Ende {@code endet_am} erreicht ist und für die noch kein {@code ablaufen} im
+     * Protokoll steht — was der Ablauf-Läufer nachzutragen hat. <b>Sie sind zu diesem Zeitpunkt längst
+     * unwirksam:</b> {@code zugriff_zeitraum} schließt sie mit ihrem {@code endet_am}, ohne dass jemand läuft.
+     * Vorzeitig Beendete lässt die Abfrage aus — deren Ende steht schon als {@code entziehen} im Protokoll.
+     */
+    public List<Zeile> abgelaufeneUnterstuetzungen(Instant jetzt) {
+        return jdbc.query(SELECT + " WHERE z.tenant_id = ? AND z.rolle = 'unterstuetzer' AND z.beendet_am IS NULL "
+                + "AND z.endet_am IS NOT NULL AND z.endet_am <= ? "
+                + "AND NOT EXISTS (SELECT 1 FROM zugriff_protokoll p WHERE p.tenant_id = z.tenant_id "
+                + "AND p.zugriff_id = z.id AND p.aktion = 'ablaufen') ORDER BY z.endet_am, z.id",
+                ZugriffRepository::zeile, kundenbereich(), utc(jetzt));
+    }
+
+    /**
+     * Die wirksamen Gewährungen, deren Ende innerhalb von {@code frist} liegt — die Erinnerung 7 Tage vorher
+     * (E6). Der Notfall-Zugriff bleibt außen vor: 24 h sind kürzer als die Frist, eine Erinnerung wäre nur
+     * Lärm (dieselbe Regel wie {@code RechteAbleitung.unterstuetzung}).
+     */
+    public List<Zeile> baldEndendeUnterstuetzungen(Instant jetzt, Instant grenze) {
+        return jdbc.query(SELECT + " WHERE z.tenant_id = ? AND z.rolle = 'unterstuetzer' AND z.beendet_am IS NULL "
+                + "AND z.art <> 'notfall' AND z.gueltig_ab <= ? AND z.endet_am > ? AND z.endet_am <= ? "
+                + "ORDER BY z.endet_am, z.id",
+                ZugriffRepository::zeile, kundenbereich(), utc(jetzt), utc(jetzt), utc(grenze));
+    }
+
+    /**
+     * Schreibt EINEN Protokolleintrag zu einer bestehenden Zeile — für die Wörter, die keine Spalte ändern:
+     * {@code verlaengern} (das neue Enddatum steht an der neuen Zeile) und {@code ablaufen} (das Ende kam von
+     * der Uhr, nicht von einer Person). {@code zuweisen} und {@code entziehen} schreiben ihre Einträge selbst.
+     */
+    public void protokollieren(String aktion, Zeile z, ProtokollAkteur akteur, String grund) {
+        protokoll(kundenbereich(), aktion, z.benutzerSub(), anzeigename(z.benutzerSub()), z.id(), z.rolle(),
+                z.standortId(), z.art(), z.umfang(), z.gueltigAb(), z.gueltigBis(), z.endetAm(), grund, akteur);
+    }
+
+    /** Der Anzeigename des Kontos im Spiegel; ohne Spiegel das Subject (ein Eintrag trägt immer einen Namen). */
+    public String anzeigename(String sub) {
+        return jdbc.queryForObject("SELECT coalesce((SELECT anzeigename FROM benutzer WHERE tenant_id = ? "
+                + "AND sub = ?), ?)", String.class, kundenbereich(), sub, sub);
     }
 
     // ------------------------------------------------------------------ intern

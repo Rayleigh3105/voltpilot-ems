@@ -250,7 +250,11 @@ public class TenantRepository {
                 // The Zugriffe (V20260915030000, AP-03 IP-2) go before the Standort they name and the
                 // Benutzer they belong to; the protocol names its Zugriff (RESTRICT), so it goes first.
                 // The Stichtag (V20260916060000) holds only the tenant (RESTRICT) and goes with them.
-                for (String table : new String[] {"zugriff_protokoll", "zugriff", "benutzer", "zugriff_bestand"}) {
+                // Ahead of them all: the Unterstuetzung's companions (V20260916070000, AP-03 IP-8) - a Hinweis
+                // names its Zugriff and its Anfrage, an Anfrage names its Zugriff and its Standorte, all
+                // RESTRICT.
+                for (String table : new String[] {"unterstuetzung_hinweis", "unterstuetzung_anfrage_standort",
+                    "unterstuetzung_anfrage", "zugriff_protokoll", "zugriff", "benutzer", "zugriff_bestand"}) {
                     deleteByTenant(con, table, tenantId);
                 }
                 // The Berichte (V20260915050000) go before the Standort or Unternehmen their Geltung

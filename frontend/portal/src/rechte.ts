@@ -96,8 +96,19 @@ export type OcppStufe = (typeof OCPP_STUFEN)[number];
 export const UNTERSTUETZUNG_ZUSTAENDE = ['entwurf', 'eingerichtet', 'aktiv', 'archiviert'] as const;
 export type UnterstuetzungsZustand = (typeof UNTERSTUETZUNG_ZUSTAENDE)[number];
 
-/** Was an den Rechten einer Person geändert wird (§4.7, §5.2). */
-export const AENDERUNGEN = ['zuweisen', 'entziehen', 'sperren', 'entfernen'] as const;
+/**
+ * Was an den Rechten einer Person geändert wird (§4.7, §5.2) — dazu seit AP-03 IP-8 die zwei
+ * Protokollwörter der Unterstützung: `verlaengern` (neues Enddatum, §4.6) und `ablaufen`
+ * (Ende durch Zeitablauf, A4). Über sie urteilt `zuweisungAendern` nicht.
+ */
+export const AENDERUNGEN = [
+  'zuweisen',
+  'entziehen',
+  'sperren',
+  'entfernen',
+  'verlaengern',
+  'ablaufen',
+] as const;
 export type AenderungsArt = (typeof AENDERUNGEN)[number];
 
 /** Das Grund-Vokabular mit seinem HTTP-Status — die Fehlerkörper des API (§6.2). */
