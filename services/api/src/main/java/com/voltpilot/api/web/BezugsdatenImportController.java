@@ -9,6 +9,7 @@ import com.voltpilot.api.uems.BezugsgroesseAbgelehnt;
 import com.voltpilot.api.uems.CsvLeser;
 import com.voltpilot.api.uems.ImportVorschau;
 import com.voltpilot.api.uems.ImportVorschauService;
+import com.voltpilot.api.uems.BezugsdatenZuordnung;
 import com.voltpilot.api.web.dto.BezugsdatenImportDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -16,6 +17,7 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -65,9 +67,20 @@ public class BezugsdatenImportController {
     @PostMapping(path = "/vorschau", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Recht(value = "bezugsgroesse.importieren", ziel = RechtZiel.DIENST)
     public BezugsdatenImportDto.Vorschau vorschau(
-            @RequestPart("datei") MultipartFile datei, @RequestPart("zuordnung") String zuordnung) throws IOException {
-        ImportVorschau.Zuordnung z = zuordnung(zuordnung);
-        return vorschauen.vorschau(datei.getBytes(), datei.getOriginalFilename(), z);
+            @RequestPart("datei") MultipartFile datei,
+            @RequestPart(value = "zuordnung", required = false) String zuordnung,
+            @RequestPart(value = "vorlage_id", required = false) String vorlageIdText) throws IOException {
+        UUID vorlageId;
+        try {
+            vorlageId = vorlageIdText == null ? null : UUID.fromString(vorlageIdText);
+        } catch (IllegalArgumentException e) {
+            throw BezugsgroesseAbgelehnt.anfrage("vorlage_id");
+        }
+        if (vorlageId != null && zuordnung != null) {
+            throw BezugsgroesseAbgelehnt.anfrage("zuordnung");
+        }
+        ImportVorschau.Zuordnung z = vorlageId == null ? zuordnung(zuordnung) : null;
+        return vorschauen.vorschau(datei.getBytes(), datei.getOriginalFilename(), z, vorlageId);
     }
 
     private ImportVorschau.Zuordnung zuordnung(String json) {
@@ -81,37 +94,13 @@ public class BezugsdatenImportController {
         } catch (JsonProcessingException e) {
             throw BezugsgroesseAbgelehnt.anfrage("zuordnung");
         }
-        if (a == null) {
-            throw BezugsgroesseAbgelehnt.anfrage("zuordnung");
-        }
-        BezugsdatenImportDto.Csv c = a.csv();
-        if (c != null && c.kodierung() != null && !CsvLeser.KODIERUNGEN.contains(c.kodierung())) {
-            throw BezugsgroesseAbgelehnt.anfrage("csv.kodierung");
-        }
-        if (c != null && c.trennzeichen() != null && !CsvLeser.TRENNZEICHEN.contains(c.trennzeichen())) {
-            throw BezugsgroesseAbgelehnt.anfrage("csv.trennzeichen");
-        }
-        BezugsdatenImportDto.Spalten s = a.spalten();
-        ImportVorschau.Zuordnung z = new ImportVorschau.Zuordnung(
-                c == null ? CsvLeser.Vorgabe.ERKENNEN : new CsvLeser.Vorgabe(c.kodierung(), c.trennzeichen(), c.kopfzeile()),
-                s == null ? null : new ImportVorschau.Spalten(s.periode(), s.bis(), s.wert(), s.einheit(), s.bezug(), s.bemerkung()),
-                a.deutung(), a.zahlformat(), leer(a.einheit()), leer(a.bezugsgroesse()),
-                a.bezugTabelle() == null ? Map.of() : a.bezugTabelle(), a.synonyme() == null ? Map.of() : a.synonyme());
-        String fehler = ImportVorschau.zuordnungFehler(z);
-        if (fehler != null) {
-            throw BezugsgroesseAbgelehnt.anfrage(fehler);
-        }
-        return z;
+        return BezugsdatenZuordnung.aus(a);
     }
 
     private static String pfad(JsonMappingException e) {
         List<String> teile = e.getPath().stream()
                 .map(r -> r.getFieldName() != null ? r.getFieldName() : String.valueOf(r.getIndex())).toList();
         return teile.isEmpty() ? "zuordnung" : String.join(".", teile);
-    }
-
-    private static String leer(String text) {
-        return text == null || text.isBlank() ? null : text;
     }
 
     /** {@code {code, message, feld}} — dieselbe Form wie jede Ablehnung der Bezugsgrößen-Routen. */

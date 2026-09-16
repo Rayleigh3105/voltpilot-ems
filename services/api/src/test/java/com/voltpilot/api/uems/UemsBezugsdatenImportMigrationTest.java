@@ -338,8 +338,8 @@ class UemsBezugsdatenImportMigrationTest {
 
         new TenantRepository(new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW))).offboard(k.tenant());
 
-        for (String tabelle : List.of("bezugsdaten_import_zeile", "bezugsdaten_import", "bezugsdaten_vorlage", "bezugsgroesse",
-                "tenant")) {
+        for (String tabelle : List.of("bezugsdaten_import_zeile", "bezugsdaten_import", "bezugsdaten_vorlage_bezug",
+                "bezugsdaten_vorlage", "bezugsgroesse", "tenant")) {
             String spalte = tabelle.equals("tenant") ? "id" : "tenant_id";
             assertThat(root.queryForObject("SELECT count(*) FROM " + tabelle + " WHERE " + spalte + " = ?", Long.class,
                     k.tenant())).as(tabelle).isZero();
