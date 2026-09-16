@@ -41,7 +41,14 @@ export const RECHENFORMEN_VORGESEHEN = ['produkt'];
 export const MESSSTELLE = 'messstelle';
 export const BEZUGSGROESSE = 'bezugsgroesse';
 export const KENNZAHL = 'kennzahl';
+/**
+ * Wie eine BEZUGSFLÄCHE der Ortsstruktur in einer ANFRAGE genannt wird (§3): `kennzeichen` ist dann das
+ * Kurzzeichen des Standorts, Gebäudes oder Bereichs. Gespeichert wird daraus eine Bezugsgröße mit Wertart
+ * `stammdatum` in m² — darum kein Wort in `EINGANG_ARTEN`, sondern nur in `EINGANG_ARTEN_ANFRAGE`.
+ */
+export const BEZUGSFLAECHE = 'bezugsflaeche';
 export const EINGANG_ARTEN = [MESSSTELLE, BEZUGSGROESSE, KENNZAHL];
+export const EINGANG_ARTEN_ANFRAGE = [MESSSTELLE, BEZUGSGROESSE, BEZUGSFLAECHE, KENNZAHL];
 export const EINGANG_ROLLEN = ['zaehler', 'nenner', 'paar'];
 export const PERIODENWERT = 'periodenwert';
 export const STAMMDATUM = 'stammdatum';

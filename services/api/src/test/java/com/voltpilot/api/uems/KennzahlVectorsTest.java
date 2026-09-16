@@ -186,6 +186,7 @@ class KennzahlVectorsTest {
         assertThat(texte(vok.path("rechenform"))).isEqualTo(KennzahlRegeln.RECHENFORMEN);
         assertThat(texte(vok.path("rechenform_vorgesehen"))).isEqualTo(KennzahlRegeln.RECHENFORMEN_VORGESEHEN);
         assertThat(texte(vok.path("eingang_art"))).isEqualTo(KennzahlRegeln.EINGANG_ARTEN);
+        assertThat(texte(vok.path("eingang_art_anfrage"))).isEqualTo(KennzahlRegeln.EINGANG_ARTEN_ANFRAGE);
         assertThat(texte(vok.path("eingang_rolle"))).isEqualTo(KennzahlRegeln.EINGANG_ROLLEN);
         assertThat(texte(vok.path("periode_art"))).isEqualTo(KennzahlRegeln.PERIODEN);
         assertThat(texte(vok.path("geltung_art"))).isEqualTo(KennzahlRegeln.GELTUNG_ARTEN);

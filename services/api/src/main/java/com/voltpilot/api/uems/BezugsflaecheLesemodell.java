@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -26,9 +27,13 @@ import org.springframework.stereotype.Service;
  * ({@code flaeche_gueltigkeit}, AP-02), nie kopiert und nie hier geschrieben.
  *
  * <p><b>Eine Wahrheit.</b> Wer die Hallenfläche einmal an Halle 2 einträgt, sieht sie hier sofort —
- * es gibt keine zweite Zeile, die auseinanderlaufen könnte. Darum hat eine Bezugsfläche keine ID und
- * kein Kennzeichen einer Bezugsgröße, und {@code schreibbar} ist {@code false}: geändert wird sie am
- * Gebäude ({@code PUT /api/v1/orte/{id}/flaeche}).
+ * es gibt keine zweite Zeile, die auseinanderlaufen könnte. Darum trägt eine Bezugsfläche in der Liste
+ * keine ID und kein Kennzeichen einer Bezugsgröße, und {@code schreibbar} ist {@code false}: geändert
+ * wird sie am Gebäude ({@code PUT /api/v1/orte/{id}/flaeche}).
+ *
+ * <p><b>Als NENNER einer Kennzahl</b> (AP-11 §5.1) bekommt sie eine Bezugsgröße als ZEIGER — Wertart
+ * {@code stammdatum}, Einheit m², Geltungsbereich der Ort, ohne eine einzige eigene Wert-Zeile. Auch
+ * dann kommt jede Zahl von hier ({@link #stammdatum}); die Zeile sagt nur, WELCHE Fläche gemeint ist.
  *
  * <p><b>Keine zweite Regel-Logik.</b> Welche Fläche an welchem Tag gilt (eigene oder aus den Gebäuden
  * summiert, ob der Ort an dem Tag besteht), sagt {@link OrtsbaumAbleitung#flaecheZeitraum} am Baum
@@ -51,6 +56,9 @@ public class BezugsflaecheLesemodell {
 
     static final String HERKUNFT = "stammdatum_ap02";
 
+    /** Nur, um „heute“ überhaupt zu fragen — die wirkliche Zone kommt danach vom Standort des Objekts (Regel 11). */
+    private static final ZoneId VORGABE_ZONE = ZoneId.of("Europe/Berlin");
+
     private final StandortLesemodellService lesemodell;
     private final BezugsgroesseRepository bezugsgroessen;
 
@@ -62,6 +70,20 @@ public class BezugsflaecheLesemodell {
     /** Die Bezugsflächen ohne Werte — für die Liste der Bezugsgrößen. */
     public List<BezugsgroesseDto.Bezugsflaeche> alle() {
         return objekte(lesemodell.zeilen()).stream().map(Objekt::darstellung).toList();
+    }
+
+    /** Ein Objekt der Ortsstruktur mit einer Bezugsfläche — das Ziel eines Kennzahl-Nenners. */
+    public record Ziel(UUID id, String art, String kurzzeichen, String name) {}
+
+    /**
+     * Das Objekt, das dieses Kurzzeichen trägt UND eine Bezugsfläche hat — leer, wenn es keines gibt („nicht erhoben“
+     * ist keine Bezugsfläche). Kurzzeichen sind im Kundenbereich je Art eindeutig; der Standort geht vor (AP-02 §4.1).
+     */
+    public Optional<Ziel> ziel(String kurzzeichen) {
+        return objekte(lesemodell.zeilen()).stream()
+                .filter(o -> kurzzeichen != null && kurzzeichen.equals(o.kurzzeichen()))
+                .findFirst()
+                .map(o -> new Ziel(o.id(), o.art(), o.kurzzeichen(), o.name()));
     }
 
     /**
@@ -77,40 +99,132 @@ public class BezugsflaecheLesemodell {
         List<BezugsgroesseDto.BezugsflaecheWerte> aus = new ArrayList<>();
         for (Objekt o : objekte(z)) {
             List<FlaechenTeil> teile = OrtsbaumAbleitung.flaecheZeitraum(baum, o.id().toString(), erster, letzter);
-            List<Intervall> intervalle = teile.stream()
-                    .filter(t -> t.flaecheM2() != null)
-                    .map(t -> new Intervall(BigDecimal.valueOf(t.flaecheM2()), t.von(), t.bis(), null))
-                    .toList();
+            List<Intervall> intervalle = intervalle(teile);
             Stammdatenstand stand = BezugsdatenRegeln.stammdatum(intervalle, perioden, periodeArt, BEZEICHNUNG, EINHEIT);
-            List<BezugsgroesseDto.Stichtagwert> werte = new ArrayList<>();
-            for (String p : perioden) {
-                LocalDate stichtag = stand.stichtage().get(p);
-                FlaechenTeil teil = teile.stream()
-                        .filter(t -> !stichtag.isBefore(t.von()) && !stichtag.isAfter(t.bis()))
-                        .findFirst()
-                        .orElse(null);
-                FlaecheRepository.Flaeche eigene = teil != null && teil.flaecheQuelle() == OrtsbaumAbleitung.FlaecheQuelle.EIGEN
-                        ? eigeneAm(z, o.id(), stichtag)
-                        : null;
-                String abzeichen = null;
-                LocalDate eingetragen = null;
-                if (eigene != null && eigene.createdAt() != null) {
-                    ZoneId zone = zone(baum, o.id(), stichtag);
-                    OrtsbaumAbleitung.RueckwirkungErgebnis r = OrtsbaumAbleitung.rueckwirkung(
-                            new OrtsbaumAbleitung.RueckwirkungEingang(eigene.createdAt().atZone(zone).toOffsetDateTime(),
-                                    eigene.gueltigAb(), eigene.gueltigBis(), zone, null));
-                    abzeichen = r.abzeichen();
-                    eingetragen = r.eintragstag();
-                }
-                BigDecimal betrag = stand.jePeriode().get(p);
-                werte.add(new BezugsgroesseDto.Stichtagwert(p, BezugsPeriode.spanneVon(p, periodeArt)[0], stichtag,
-                        betrag == null ? null : betrag.toPlainString(),
-                        betrag == null || teil.flaecheQuelle() == null ? null : teil.flaecheQuelle().name().toLowerCase(Locale.ROOT),
-                        eigene == null ? null : eigene.gueltigAb(), eingetragen, abzeichen, stand.kennzeichen().get(p)));
-            }
-            aus.add(new BezugsgroesseDto.BezugsflaecheWerte(o.darstellung(), werte));
+            aus.add(new BezugsgroesseDto.BezugsflaecheWerte(o.darstellung(),
+                    stichtagwerte(z, baum, o.id(), teile, stand, perioden, periodeArt)));
         }
         return new BezugsgroesseDto.Bezugsflaechen(periodeArt, von, bis, aus);
+    }
+
+    /** Die Flächen-Teile mit einer Fläche als Intervalle der Bezugsdaten-Regel — ein Teil ohne Fläche ist keine Zeile. */
+    private static List<Intervall> intervalle(List<FlaechenTeil> teile) {
+        return teile.stream()
+                .filter(t -> t.flaecheM2() != null)
+                .map(t -> new Intervall(BigDecimal.valueOf(t.flaecheM2()), t.von(), t.bis(), null))
+                .toList();
+    }
+
+    /** Der Wert je Periode am Stichtag mit Quelle, Eintragstag und Abzeichen — die EINE Stelle (werte und stammdatum). */
+    private List<BezugsgroesseDto.Stichtagwert> stichtagwerte(Zeilen z, Ortsbaum baum, UUID objekt,
+            List<FlaechenTeil> teile, Stammdatenstand stand, List<String> perioden, String periodeArt) {
+        List<BezugsgroesseDto.Stichtagwert> werte = new ArrayList<>();
+        for (String p : perioden) {
+            LocalDate stichtag = stand.stichtage().get(p);
+            FlaechenTeil teil = teile.stream()
+                    .filter(t -> !stichtag.isBefore(t.von()) && !stichtag.isAfter(t.bis()))
+                    .findFirst()
+                    .orElse(null);
+            FlaecheRepository.Flaeche eigene = teil != null && teil.flaecheQuelle() == OrtsbaumAbleitung.FlaecheQuelle.EIGEN
+                    ? eigeneAm(z, objekt, stichtag)
+                    : null;
+            String abzeichen = null;
+            LocalDate eingetragen = null;
+            if (eigene != null && eigene.createdAt() != null) {
+                ZoneId zone = zone(baum, objekt, stichtag);
+                OrtsbaumAbleitung.RueckwirkungErgebnis r = OrtsbaumAbleitung.rueckwirkung(
+                        new OrtsbaumAbleitung.RueckwirkungEingang(eigene.createdAt().atZone(zone).toOffsetDateTime(),
+                                eigene.gueltigAb(), eigene.gueltigBis(), zone, null));
+                abzeichen = r.abzeichen();
+                eingetragen = r.eintragstag();
+            }
+            BigDecimal betrag = stand.jePeriode().get(p);
+            werte.add(new BezugsgroesseDto.Stichtagwert(p, BezugsPeriode.spanneVon(p, periodeArt)[0], stichtag,
+                    betrag == null ? null : betrag.toPlainString(),
+                    betrag == null || teil.flaecheQuelle() == null ? null : teil.flaecheQuelle().name().toLowerCase(Locale.ROOT),
+                    eigene == null ? null : eigene.gueltigAb(), eingetragen, abzeichen, stand.kennzeichen().get(p)));
+        }
+        return werte;
+    }
+
+    // ------------------------------------------------------------ die Fläche EINES Objekts als Stammdatum (Nenner)
+
+    /**
+     * Die Bezugsfläche EINES Objekts (Standort, Gebäude, Bereich) in der Form eines Stammdatums — der Leseweg, über den
+     * eine Kennzahl eine Fläche als NENNER liest (AP-11 §5.1 „Netzbezug je m²“).
+     *
+     * <p>Gelesen wird ausschließlich die Ortsstruktur: {@link OrtsbaumAbleitung#flaecheZeitraum} sagt, welche Fläche an
+     * welchem Tag gilt (eigen oder aus den Gebäuden summiert), {@link BezugsdatenRegeln#stammdatum} den Wert am Stichtag
+     * (letzter Tag der Periode, E17) und die Übergänge IN der Periode (S3). Es entsteht keine Zeile — die Fläche bleibt
+     * dort, wo sie gepflegt wird ({@code PUT /api/v1/orte/{id}/flaeche}).
+     *
+     * @param bezugsgroesse die Bezugsgröße, die als Zeiger auf diese Fläche gebunden ist ({@code null}: noch keine)
+     * @param periodeArt {@code null} (und {@code von}/{@code bis} leer) = nur die Intervalle, ohne Werte je Periode
+     */
+    public BezugsgroesseDto.Stammdatum stammdatum(UUID objekt, UUID bezugsgroesse, String kennzeichen,
+            String periodeArt, LocalDate von, LocalDate bis) {
+        boolean mitPerioden = periodeArt != null || von != null || bis != null;
+        List<String> perioden = mitPerioden
+                ? perioden(periodeArt, von, bis, bezugsgroessen.vokabular().periodeArten())
+                : List.of();
+        Zeilen z = lesemodell.zeilen();
+        Ortsbaum baum = StandortLesemodell.baum(z);
+        ZoneId zone = zone(baum, objekt, LocalDate.now(VORGABE_ZONE));
+        LocalDate heute = LocalDate.now(zone);
+        LocalDate[] fenster = fenster(z, perioden, periodeArt, heute);
+        List<FlaechenTeil> teile = OrtsbaumAbleitung.flaecheZeitraum(baum, objekt.toString(), fenster[0], fenster[1]);
+        boolean offen = OrtsbaumAbleitung.flaecheAm(baum, objekt.toString(), fenster[1].plusYears(20)).flaecheM2() != null;
+        List<BezugsgroesseDto.StammdatumIntervall> intervalle = new ArrayList<>();
+        List<FlaechenTeil> mitFlaeche = teile.stream().filter(t -> t.flaecheM2() != null).toList();
+        for (int i = 0; i < mitFlaeche.size(); i++) {
+            FlaechenTeil t = mitFlaeche.get(i);
+            // Nur der letzte Teil kann offen sein — und nur, wenn das Fenster ihn abschneidet, nicht die Gültigkeit.
+            boolean letzter = i == mitFlaeche.size() - 1 && t.bis().equals(fenster[1]) && offen;
+            FlaecheRepository.Flaeche eigene = t.flaecheQuelle() == OrtsbaumAbleitung.FlaecheQuelle.EIGEN
+                    ? eigeneAm(z, objekt, t.von()) : null;
+            String abzeichen = null;
+            LocalDate eingetragen = null;
+            if (eigene != null && eigene.createdAt() != null) {
+                OrtsbaumAbleitung.RueckwirkungErgebnis r = OrtsbaumAbleitung.rueckwirkung(
+                        new OrtsbaumAbleitung.RueckwirkungEingang(eigene.createdAt().atZone(zone).toOffsetDateTime(),
+                                eigene.gueltigAb(), eigene.gueltigBis(), zone, null));
+                abzeichen = r.abzeichen();
+                eingetragen = r.eintragstag();
+            }
+            intervalle.add(new BezugsgroesseDto.StammdatumIntervall(String.valueOf(t.flaecheM2()), t.von(),
+                    letzter ? null : t.bis(), null,
+                    eingetragen == null ? null : eingetragen.atStartOfDay(zone).toOffsetDateTime(), abzeichen));
+
+        }
+        Stammdatenstand stand = perioden.isEmpty() ? null
+                : BezugsdatenRegeln.stammdatum(intervalle(teile), perioden, periodeArt, BEZEICHNUNG, EINHEIT);
+        List<BezugsgroesseDto.Stichtagwert> werte = stand == null ? List.of()
+                : stichtagwerte(z, baum, objekt, teile, stand, perioden, periodeArt);
+        return new BezugsgroesseDto.Stammdatum(bezugsgroesse, kennzeichen, NAME, EINHEIT,
+                zone.getId(), false, List.copyOf(intervalle),
+                perioden.isEmpty() ? null : periodeArt, von, bis, werte);
+    }
+
+    /**
+     * Das Fenster, über das die Ortsstruktur gelesen wird: die gefragten Perioden — sonst vom ersten Tag, an dem im
+     * Kundenbereich je eine Fläche galt, bis heute. {@link OrtsbaumAbleitung#flaecheZeitraum} geht Tag für Tag; ein
+     * offenes Fenster wäre kein Lesemodell, sondern eine Endlosschleife.
+     */
+    private static LocalDate[] fenster(Zeilen z, List<String> perioden, String periodeArt, LocalDate heute) {
+        if (!perioden.isEmpty()) {
+            return new LocalDate[] {BezugsPeriode.spanneVon(perioden.get(0), periodeArt)[0],
+                    BezugsPeriode.spanneVon(perioden.get(perioden.size() - 1), periodeArt)[1]};
+        }
+        LocalDate erster = heute;
+        LocalDate letzter = heute;
+        for (FlaecheRepository.Flaeche f : z.flaechen()) {
+            if (f.aufgehoben()) {
+                continue;
+            }
+            erster = f.gueltigAb().isBefore(erster) ? f.gueltigAb() : erster;
+            letzter = f.gueltigBis() != null && f.gueltigBis().isAfter(letzter) ? f.gueltigBis() : letzter;
+        }
+        return new LocalDate[] {erster, letzter};
     }
 
     /**

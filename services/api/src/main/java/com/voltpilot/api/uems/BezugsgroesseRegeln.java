@@ -48,7 +48,7 @@ public final class BezugsgroesseRegeln {
                 "Bitte geben Sie den Wert als Zahl größer als 0 an, mit Punkt und höchstens sechs Nachkommastellen, z. B. 180."),
         PERIODE_PASST_NICHT_ZUR_WERTART("periode_passt_nicht_zur_wertart", 422,
                 "Nur ein Periodenwert hat eine Periode (Tag, Woche, Monat oder Jahr); ein Stand und ein Stammdatum haben keine."),
-        FLAECHE_AUS_STRUKTUR("flaeche_aus_struktur", 422, "Flächen pflegen Sie am Gebäude."),
+        FLAECHE_AUS_STRUKTUR("flaeche_aus_struktur", 422, "Flächen pflegen Sie am Gebäude. Als Nenner einer Kennzahl nehmen Sie die Bezugsfläche des Standorts, Gebäudes oder Bereichs."),
         KEIN_STAMMDATUM("kein_stammdatum", 422,
                 "Eine Gültigkeit ab einem Tag hat nur ein Stammdatum. Periodenwerte und Stände werden als Werte eingetragen."),
         KEIN_PERIODENWERT("kein_periodenwert", 422, "Werte je Periode gibt es nur für eine Bezugsgröße mit Periodenwerten."),

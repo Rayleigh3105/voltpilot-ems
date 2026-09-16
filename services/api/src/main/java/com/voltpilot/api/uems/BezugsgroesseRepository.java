@@ -124,6 +124,28 @@ public class BezugsgroesseRepository {
         return jdbc.query("SELECT " + SPALTEN + "WHERE b.id = ?", ZEILE, id).stream().findFirst();
     }
 
+    /**
+     * Die Bezugsgröße, die die BEZUGSFLÄCHE genau dieses Objekts meint (E17): ein Stammdatum in einer Einheit der
+     * Größe {@code flaeche} am Standort, Gebäude oder Bereich. Die Größe kommt aus der EINEN Vokabular-Stelle
+     * ({@code bezugsdaten_groesse()}), nicht aus einer zweiten Liste hier.
+     */
+    public Optional<Zeile> bezugsflaeche(String geltungArt, UUID objekt) {
+        String spalte = "standort".equals(geltungArt) ? "b.standort_id" : "b.ort_id";
+        return jdbc.query("SELECT " + SPALTEN + "WHERE b.wertart = 'stammdatum' AND b.geltung_art = ? AND "
+                + spalte + " = ? AND bezugsdaten_groesse(b.einheit) = 'flaeche' ORDER BY b.kennzeichen, b.id LIMIT 1",
+                ZEILE, geltungArt, objekt).stream().findFirst();
+    }
+
+    /**
+     * Jede Bezugsfläche-Bezugsgröße eines Objekts — der Auslöser einer rückwirkend geänderten Fläche fragt danach
+     * ({@code ort_aenderung} / {@code flaeche_geaendert}).
+     */
+    public List<Zeile> bezugsflaechenVon(UUID objekt) {
+        return jdbc.query("SELECT " + SPALTEN + "WHERE b.wertart = 'stammdatum' "
+                + "AND (b.standort_id = ? OR b.ort_id = ?) AND bezugsdaten_groesse(b.einheit) = 'flaeche' "
+                + "ORDER BY b.kennzeichen, b.id", ZEILE, objekt, objekt);
+    }
+
     /** Wie {@link #finde}, aber unter der Zeilensperre FOR UPDATE — ein gleichzeitig entstehender erster Wert wartet. */
     public Optional<Zeile> sperre(UUID id) {
         List<UUID> da = jdbc.queryForList("SELECT id FROM bezugsgroesse WHERE id = ? FOR UPDATE", UUID.class, id);

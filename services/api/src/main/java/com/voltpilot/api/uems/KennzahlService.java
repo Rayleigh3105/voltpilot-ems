@@ -69,14 +69,20 @@ public class KennzahlService {
 
     private final KennzahlRepository repo;
     private final KennzahlAufrufer aufrufer;
+    /** Die Bezugsflächen der Ortsstruktur — ein Nenner kann eine davon sein (AP-11 §5.1). */
+    private final BezugsflaecheLesemodell bezugsflaechen;
+    /** Bindet die Bezugsfläche eines Orts an ihre Bezugsgröße (den Zeiger, ohne eigene Werte). */
+    private final BezugsgroesseService bezugsgroessen;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private volatile Clock uhr = Clock.systemUTC();
 
-    public KennzahlService(KennzahlRepository repo, KennzahlAufrufer aufrufer,
-            PlatformTransactionManager transactionManager, ObjectMapper json) {
+    public KennzahlService(KennzahlRepository repo, KennzahlAufrufer aufrufer, BezugsflaecheLesemodell bezugsflaechen,
+            BezugsgroesseService bezugsgroessen, PlatformTransactionManager transactionManager, ObjectMapper json) {
         this.repo = repo;
         this.aufrufer = aufrufer;
+        this.bezugsflaechen = bezugsflaechen;
+        this.bezugsgroessen = bezugsgroessen;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
     }
@@ -179,7 +185,7 @@ public class KennzahlService {
             String kennzeichen = kennzeichenFuerNeue(e.kennzeichen(), repo.jeBelegt());
             Katalog kat = katalog();
             Urteil u = berechnung(a.rechenform(), g, a.eingaenge(), a.komplement(), a.periodeArt(), kennzeichen, null,
-                    LocalDate.ofInstant(jetzt, g.zone()), kat);
+                    LocalDate.ofInstant(jetzt, g.zone()), kat, true);
             UUID neu = repo.anlegen(tenant, kennzeichen, e.name(), u.rechenform(), g.art(), g.id(), e.verantwortlichSub(),
                     e.verantwortlichName(), e.zweck());
             UUID fassung = repo.fassungAnlegen(tenant, neu, 1, u.rechenform(), null, HERKUNFT_ANLAGE, false, null, jetzt,
@@ -312,7 +318,7 @@ public class KennzahlService {
             }
             Katalog kat = katalog();
             Urteil u = berechnung(k.rechenform(), g, a.eingaenge(), a.komplement(), a.periodeArt(), k.kennzeichen(),
-                    k.id(), ab, kat);
+                    k.id(), ab, kat, true);
             List<FassungZeile> wirksam = kat.fassungen(id).stream().filter(FassungZeile::wirksam).toList();
             KennzahlRegeln.FassungsUrteil fu = KennzahlRegeln.fassung(wirksam.stream().map(FassungZeile::alsRegel).toList(),
                     ab, OffsetDateTime.ofInstant(jetzt, g.zone()), g.zone());
@@ -352,9 +358,24 @@ public class KennzahlService {
     record Geltung(String art, UUID id, String name, String rechteGeltung, UUID standort, String standortName,
             String kennung, ZoneId zone) {}
 
-    /** Ein aufgelöster Eingang. {@code rechenform}/{@code einheit} bei einer Kennzahl die ihrer Fassung am Tag. */
+    /**
+     * Ein aufgelöster Eingang. {@code rechenform}/{@code einheit} bei einer Kennzahl die ihrer Fassung am Tag.
+     *
+     * <p>{@code flaecheObjekt} ist gesetzt, wenn der Eingang die BEZUGSFLÄCHE eines Orts meint (AP-11 §5.1): das
+     * Objekt der Ortsstruktur, an dem die Fläche steht. {@code id} ist dann die Bezugsgröße, die als Zeiger darauf
+     * gebunden wurde — in der Vorschau vor dem ersten Anlegen {@code null}; gelesen wird so oder so die Ortsstruktur.
+     */
     record Aufgeloest(String rolle, String art, UUID id, String kennzeichen, String name, String einheit, String groesse,
-            String wertart, String periodeArt, String rechenform, BezugsgroesseZeile bezugsgroesse, Zeile kennzahl) {}
+            String wertart, String periodeArt, String rechenform, BezugsgroesseZeile bezugsgroesse, Zeile kennzahl,
+            UUID flaecheObjekt) {
+
+        /** Ein Eingang, der keine Bezugsfläche ist — die Form vor der Fläche als Nenner. */
+        Aufgeloest(String rolle, String art, UUID id, String kennzeichen, String name, String einheit, String groesse,
+                String wertart, String periodeArt, String rechenform, BezugsgroesseZeile bezugsgroesse, Zeile kennzahl) {
+            this(rolle, art, id, kennzeichen, name, einheit, groesse, wertart, periodeArt, rechenform, bezugsgroesse,
+                    kennzahl, null);
+        }
+    }
 
     /** Die geprüfte Berechnung. */
     record Urteil(String rechenform, boolean komplement, List<Aufgeloest> eingaenge, String einheit, String einheitAnzeige,
@@ -435,8 +456,8 @@ public class KennzahlService {
      * am Tag (Q10), G3 am Tag. {@code tag} ist beim Anlegen heute, bei einer Fassung ihr erster Tag.
      */
     Urteil berechnung(String rechenform, Geltung g, List<KennzahlDto.Eingang> anfrage, Boolean komplement,
-            String wunsch, String eigenesKennzeichen, UUID eigeneId, LocalDate tag, Katalog kat) {
-        Urteil u = rechnung(rechenform, anfrage, komplement, wunsch, tag, kat);
+            String wunsch, String eigenesKennzeichen, UUID eigeneId, LocalDate tag, Katalog kat, boolean binden) {
+        Urteil u = rechnung(rechenform, anfrage, komplement, wunsch, tag, kat, binden);
         List<Aufgeloest> aufgeloest = u.eingaenge();
 
         // Q10: der Kreis über Kennzahl-Verweise, am Tag
@@ -486,6 +507,16 @@ public class KennzahlService {
      */
     Urteil rechnung(String rechenform, List<KennzahlDto.Eingang> anfrage, Boolean komplement, String wunsch,
             LocalDate tag, Katalog kat) {
+        return rechnung(rechenform, anfrage, komplement, wunsch, tag, kat, false);
+    }
+
+    /**
+     * Dieselbe Prüfung; {@code binden} {@code true} nur auf einem Schreibweg: nennt ein Eingang die Bezugsfläche eines
+     * Orts, wird sie dabei an ihre Bezugsgröße gebunden (der Zeiger entsteht). Die Vorschau bindet nie — sie läuft in
+     * einer Nur-Lese-Transaktion und liest die Fläche unmittelbar aus der Ortsstruktur.
+     */
+    Urteil rechnung(String rechenform, List<KennzahlDto.Eingang> anfrage, Boolean komplement, String wunsch,
+            LocalDate tag, Katalog kat, boolean binden) {
         if (rechenform == null || rechenform.isBlank()) {
             throw KennzahlAbgelehnt.anfrage("rechenform");
         }
@@ -502,7 +533,7 @@ public class KennzahlService {
 
         List<Aufgeloest> aufgeloest = new ArrayList<>();
         for (KennzahlDto.Eingang e : eingaenge) {
-            aufgeloest.add(aufloesen(e, tag, kat));
+            aufgeloest.add(aufloesen(e, tag, kat, binden));
         }
 
         // U1–U3
@@ -551,7 +582,7 @@ public class KennzahlService {
     private static void formPruefen(String rechenform, List<KennzahlDto.Eingang> eingaenge) {
         for (KennzahlDto.Eingang e : eingaenge) {
             if (e == null || e.rolle() == null || !KennzahlRegeln.EINGANG_ROLLEN.contains(e.rolle()) || e.art() == null
-                    || !KennzahlRegeln.EINGANG_ARTEN.contains(e.art()) || e.kennzeichen() == null
+                    || !KennzahlRegeln.EINGANG_ARTEN_ANFRAGE.contains(e.art()) || e.kennzeichen() == null
                     || e.kennzeichen().isBlank()) {
                 throw KennzahlAbgelehnt.anfrage("eingaenge");
             }
@@ -570,9 +601,12 @@ public class KennzahlService {
         }
     }
 
-    private Aufgeloest aufloesen(KennzahlDto.Eingang e, LocalDate tag, Katalog kat) {
+    private Aufgeloest aufloesen(KennzahlDto.Eingang e, LocalDate tag, Katalog kat, boolean binden) {
         String kz = e.kennzeichen();
         switch (e.art()) {
+            case KennzahlRegeln.BEZUGSFLAECHE -> {
+                return bezugsflaeche(e, binden);
+            }
             case KennzahlRegeln.MESSSTELLE -> {
                 MessstelleZeile m = repo.messstelle(kz).orElseThrow(() -> eingangUnbekannt(e));
                 return new Aufgeloest(e.rolle(), e.art(), m.id(), m.kennzeichen(), m.name(), m.einheit(), m.groesse(),
@@ -591,6 +625,23 @@ public class KennzahlService {
                         grundperiode(k.id(), tag, kat, 0), k.rechenform(), null, k);
             }
         }
+    }
+
+    /**
+     * Die BEZUGSFLÄCHE eines Orts als Eingang (AP-11 §5.1, „Netzbezug je m²“): {@code kennzeichen} ist das Kurzzeichen
+     * des Standorts, Gebäudes oder Bereichs, an dem die Fläche steht — nicht das einer Bezugsgröße. Gelesen wird sie
+     * immer aus der Ortsstruktur; gespeichert wird sie als Bezugsgröße, die als ZEIGER darauf gebunden ist (Stammdatum,
+     * m², Geltung = der Ort, ohne eigene Werte). Ein Ort ohne Fläche ist kein Eingang — „nicht erhoben“ ist keine Zahl.
+     */
+    private Aufgeloest bezugsflaeche(KennzahlDto.Eingang e, boolean binden) {
+        BezugsflaecheLesemodell.Ziel ziel = bezugsflaechen.ziel(e.kennzeichen()).orElseThrow(() -> eingangUnbekannt(e));
+        BezugsgroesseRepository.Zeile zeile = bezugsgroessen.bezugsflaecheBinden(ziel.id(), ziel.art(), binden)
+                .orElse(null);
+        BezugsgroesseZeile b = new BezugsgroesseZeile(zeile == null ? null : zeile.id(),
+                zeile == null ? ziel.kurzzeichen() : zeile.kennzeichen(), BezugsflaecheLesemodell.NAME,
+                KennzahlRegeln.STAMMDATUM, BezugsflaecheLesemodell.EINHEIT, null, ziel.art(), ziel.id(), null);
+        return new Aufgeloest(e.rolle(), KennzahlRegeln.BEZUGSGROESSE, b.id(), b.kennzeichen(), b.name(), b.einheit(),
+                null, b.wertart(), null, null, b, null, ziel.id());
     }
 
     private static KennzahlAbgelehnt eingangUnbekannt(KennzahlDto.Eingang e) {

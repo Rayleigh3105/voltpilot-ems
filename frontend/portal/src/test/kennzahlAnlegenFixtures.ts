@@ -80,7 +80,7 @@ export function ahrenbergBezugsgroessen(): { bezugsgroessen: Bezugsgroesse[]; be
       geltung_kennzeichen: kennzeichen,
       geltung_name: name,
       schreibbar: false,
-      pflegen: 'Flächen pflegen Sie am Gebäude.',
+      pflegen: 'Flächen pflegen Sie am Gebäude. Als Nenner einer Kennzahl nehmen Sie die Bezugsfläche des Standorts, Gebäudes oder Bereichs.',
     })),
   };
 }

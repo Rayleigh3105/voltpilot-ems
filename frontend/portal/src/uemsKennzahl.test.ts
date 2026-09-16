@@ -226,8 +226,10 @@ describe('Kennzahl-Vertrag: Form der Vektor-Datei', () => {
 describe('Kennzahl-Vertrag: Vokabulare, Sätze und Kennzeichen sind die des Moduls', () => {
   it('Vokabulare, Perioden, Rechte und Regeln', () => {
     const v = vektoren.vokabulare;
-    expect([v.rechenform, v.rechenform_vorgesehen, v.eingang_art, v.eingang_rolle, v.periode_art, v.geltung_art])
-      .toEqual([K.RECHENFORMEN, K.RECHENFORMEN_VORGESEHEN, K.EINGANG_ARTEN, K.EINGANG_ROLLEN, K.PERIODEN, K.GELTUNG_ARTEN]);
+    expect([v.rechenform, v.rechenform_vorgesehen, v.eingang_art, v.eingang_art_anfrage, v.eingang_rolle, v.periode_art,
+      v.geltung_art])
+      .toEqual([K.RECHENFORMEN, K.RECHENFORMEN_VORGESEHEN, K.EINGANG_ARTEN, K.EINGANG_ARTEN_ANFRAGE, K.EINGANG_ROLLEN,
+        K.PERIODEN, K.GELTUNG_ARTEN]);
     expect([...v.zustand].sort()).toEqual([...K.ZUSTAND_RANG].sort());
     expect([v.richtung_unsicherheit, v.grund_ohne_zahl, v.fehler, v.sichtbarkeit, v.protokoll, v.ereignisse_reserviert, v.rechte])
       .toEqual([K.RICHTUNGEN, K.GRUENDE_OHNE_ZAHL, K.FEHLER, K.SICHTBARKEIT, K.PROTOKOLL, K.EREIGNISSE_RESERVIERT, K.RECHTE]);

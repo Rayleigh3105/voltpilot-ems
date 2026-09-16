@@ -40,8 +40,11 @@ import org.springframework.web.server.ResponseStatusException;
  * Den Zustand eines Bezugsgrößen-Nenners setzt nicht der Leser, er wird in {@link KennzahlRegeln#wert} abgeleitet (Q1).
  *
  * <p><b>Feinere Bezugsgrößen-Perioden</b> zählen nur, wenn JEDE einen wirksamen Betrag hat — sonst fehlt der Nenner; nie
- * verteilt, nie geschätzt (P3). Eine Bezugsfläche der Ortsstruktur ist keine Bezugsgröße mit Kennzeichen und darum kein
- * Eingang (AP-09 IP-6: „Flächen pflegen Sie am Gebäude“).
+ * verteilt, nie geschätzt (P3).
+ *
+ * <p><b>Eine BEZUGSFLÄCHE ist ein Nenner</b> (AP-11 §5.1 „Netzbezug je m²“) — als Stammdatum am Stichtag wie jedes
+ * andere, nur aus einer anderen Quelle: gelesen wird {@code flaeche_gueltigkeit} der Ortsstruktur über
+ * {@link BezugsflaecheLesemodell}, nie eine zweite Flächen-Tabelle. Geändert wird sie weiterhin am Gebäude.
  */
 @Component
 public class KennzahlEingangLeser {
@@ -69,20 +72,23 @@ public class KennzahlEingangLeser {
     private final KennzahlRepository repo;
     private final MessstelleWerteService messwerte;
     private final BezugsgroesseService bezugswerte;
+    /** Die Bezugsflächen der Ortsstruktur — für einen Nenner, der noch keine gebundene Bezugsgröße hat (Vorschau). */
+    private final BezugsflaecheLesemodell bezugsflaechen;
     /** Die Versionen ab 2 der Messstellen — {@code null}: die des Lesemodells (gespeichert, Kundenbereich). */
     private final WertVersionenLeser versionen;
 
     @Autowired
     public KennzahlEingangLeser(KennzahlRepository repo, MessstelleWerteService messwerte,
-            BezugsgroesseService bezugswerte) {
-        this(repo, messwerte, bezugswerte, null);
+            BezugsgroesseService bezugswerte, BezugsflaecheLesemodell bezugsflaechen) {
+        this(repo, messwerte, bezugswerte, bezugsflaechen, null);
     }
 
     private KennzahlEingangLeser(KennzahlRepository repo, MessstelleWerteService messwerte,
-            BezugsgroesseService bezugswerte, WertVersionenLeser versionen) {
+            BezugsgroesseService bezugswerte, BezugsflaecheLesemodell bezugsflaechen, WertVersionenLeser versionen) {
         this.repo = repo;
         this.messwerte = messwerte;
         this.bezugswerte = bezugswerte;
+        this.bezugsflaechen = bezugsflaechen;
         this.versionen = versionen;
     }
 
@@ -92,7 +98,7 @@ public class KennzahlEingangLeser {
      * Stufen und die Kennzahl davor eben schrieben. Bezugsgrößen, Version 1 und Quellen ändert die Kaskade nicht.
      */
     KennzahlEingangLeser mit(KennzahlRepository repo, WertVersionenLeser versionen) {
-        return new KennzahlEingangLeser(repo, messwerte, bezugswerte, versionen);
+        return new KennzahlEingangLeser(repo, messwerte, bezugswerte, bezugsflaechen, versionen);
     }
 
     // ------------------------------------------------------------------------------ je Zeitraum
@@ -302,9 +308,16 @@ public class KennzahlEingangLeser {
                 .max((a, b) -> Integer.compare(a.fassung(), b.fassung())).orElse(null);
     }
 
-    /** E17: der Wert am letzten Tag der Periode; die Herkunft nennt den Stichtag („Stichtag 31.10.2026“, K12). */
+    /**
+     * E17: der Wert am letzten Tag der Periode; die Herkunft nennt den Stichtag („Stichtag 31.10.2026“, K12).
+     *
+     * <p>Meint der Eingang die BEZUGSFLÄCHE eines Orts, kommt der Wert aus der Ortsstruktur — unmittelbar, solange die
+     * Bezugsgröße als Zeiger noch nicht gebunden ist (Vorschau), sonst über sie (sie liest dieselbe Stelle).
+     */
     private Map<String, Gelesen> stammdatum(Aufgeloest x, String art, LocalDate von, LocalDate bis) {
-        BezugsgroesseDto.Stammdatum sd = bezugswerte.stammdatum(x.id(), art, von, bis);
+        BezugsgroesseDto.Stammdatum sd = x.id() == null && x.flaecheObjekt() != null
+                ? bezugsflaechen.stammdatum(x.flaecheObjekt(), null, x.kennzeichen(), art, von, bis)
+                : bezugswerte.stammdatum(x.id(), art, von, bis);
         Map<String, Gelesen> aus = new HashMap<>();
         if (sd.perioden() == null) {
             return aus;

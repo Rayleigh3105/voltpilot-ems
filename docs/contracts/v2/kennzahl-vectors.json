@@ -29,6 +29,7 @@
     "Eine Kennzahl ist ein EIGENES Objekt neben der Messstelle (E1): Kennzeichen KZ-0001 …, Name, Geltungsbereich (eines von sieben Fachobjekten), Verantwortlicher, Zweck; ihre Berechnung ist eine tagesgültige Fassung (Muster der Formel-Fassung), ihr Wert je Periode trägt Zustand, Abdeckung, Kennzeichen, Fassung (vorläufig/endgültig), Version und Herkunft (AP-08-Trägerform).",
     "Rechenformen sind ein geschlossener Satz (E2): quotient (Menge ÷ Bezugsgröße, Einheit als Paar kWh/Stück), anteil (Teil ÷ Ganzes gleicher Größe in %, optional Komplement), zusammenfassung (Σ Zähler ÷ Σ Nenner über Kennzahlen gleicher Form); produkt (× Faktor mit Einheit) ist vorgesehen, nicht im ersten Ausbau. Summen und Differenzen sind Gesamtwerte (berechnete Messstellen, AP-10), keine Kennzahlen.",
     "Eingänge sind Messstellen (gemessen oder berechnet, mit ihren Periodenwerten), Bezugsgrößen (wirksame Fassung; Stammdaten zum Stichtag letzter Tag der Periode) oder Kennzahlen; jeder Eingang wird ausdrücklich gebunden — nie aus dem Ortsbaum abgeleitet (G3, K22).",
+    "Die BEZUGSFLÄCHE eines Orts ist ein Nenner (§5.1: „Netzbezug je m²“ ist die erste anlegbare Kennzahl eines Bestandskunden). Eine Anfrage nennt sie mit art `bezugsflaeche` und dem Kurzzeichen des Standorts, Gebäudes oder Bereichs (`eingang_art_anfrage`); gebunden wird eine Bezugsgröße mit Wertart `stammdatum` in m² am Ort, die keinen eigenen Wert trägt — die Zahl kommt aus der Ortsstruktur (AP-02 `flaeche_gueltigkeit`, AP-09 E17), es gibt keine zweite Flächen-Tabelle. Danach rechnet sie wie jedes Stammdatum (K12). Eine Bezugsgröße in m² anzulegen bleibt abgelehnt (`flaeche_aus_struktur`). Ändert sich die Fläche rückwirkend, bildet die Kaskade jede Kennzahl, die sie liest, ab `gilt ab` neu — keinen Tag früher (Anlass `ort_flaeche:<Ort-ID>`).",
     "Perioden (E3): Grundperiode = gröbste Periode der Periodenwert-Eingänge; gebildet für die Grundperiode und alle gröberen aufgehenden Perioden (Tag → Woche/Monat/Jahr, Monat → Jahr); feinere Eingänge werden verdichtet (AP-08 §4.5), gröbere nie verteilt (422 `periode_passt_nicht`); eine Woche geht in nichts auf. Perioden vor dem Bestehen eines Eingangs sind kein Fehlbestand („ab TT.MM.JJJJ“).",
     "Qualität (E4): Zustand = schlechtester von Zähler und Nenner (Nenner-Status → Zustand: wirksam = vollständig, kein wirksamer Wert = keine Werte, Kanal-Nenner trägt AP-08-Zustand); Zahl nur mit beiden Eingängen und Nenner ≠ 0 (sonst „keine Werte“ mit Grund `nenner_fehlt` / `nenner_null`); bei unvollständig gibt es eine Zahl MIT Richtung (Zähler unvollständig = Untergrenze, Nenner unvollständig = Obergrenze, beide = Richtung unbestimmt); Abdeckung = min; Kennzeichen erben nach den AP-10-Erbregeln; unplausibel (über 100 %, negativ) wird ausgewiesen, nie geklemmt.",
     "Ebenen (E5): eine Unternehmens-, Standort- oder Prozess-Kennzahl aus Gebäude-Kennzahlen ist Σ Zähler ÷ Σ Nenner über die Paare mit Zahl („gewichtet (Summe ÷ Summe) · x von y“); ein Mittel der Quotienten gibt es nicht. Dasselbe gilt über die Zeit: Jahr = Σ Monate ÷ Σ Monate (K14).",
@@ -47,6 +48,12 @@
     "eingang_art": [
       "messstelle",
       "bezugsgroesse",
+      "kennzahl"
+    ],
+    "eingang_art_anfrage": [
+      "messstelle",
+      "bezugsgroesse",
+      "bezugsflaeche",
       "kennzahl"
     ],
     "eingang_rolle": [
