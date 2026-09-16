@@ -82,6 +82,7 @@ DO $$ DECLARE t TEXT; BEGIN
  END LOOP;
 END $$;
 
+-- Vollständiger aktueller Wächter aus V20260913180000, einschließlich Herkunft und Anteil.
 CREATE OR REPLACE FUNCTION messstelle_quelle_pruefen() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   -- Zusätzliche Trigger prüfen Zukunft, Wechselbeleg und gemeinsame Grenze.
@@ -91,6 +92,7 @@ BEGIN
     RETURN NEW;
   END IF;
 
+
   IF TG_OP = 'UPDATE' THEN
     -- Nie überschrieben, nur beendet (Regel 2): genau EINMAL von offen auf
     -- einen Zeitpunkt, der Endstand darf dabei mitkommen — sonst nichts.
@@ -98,14 +100,14 @@ BEGIN
        OR (NEW.id, NEW.tenant_id, NEW.messstelle_id, NEW.groesse, NEW.richtung, NEW.entity_id,
            NEW.geraet_id, NEW.kanal, NEW.kanal_wertart, NEW.herleitung, NEW.rolle, NEW.zweck,
            NEW.gueltig_ab, NEW.anfangsstand, NEW.anfangsstand_einheit, NEW.rueckwirkend,
-           NEW.eingetragen_am, NEW.actor_sub, NEW.actor_name, NEW.actor_rolle, NEW.actor_art,
-           NEW.created_at)
+           NEW.herkunft, NEW.anteil, NEW.eingetragen_am, NEW.actor_sub, NEW.actor_name,
+           NEW.actor_rolle, NEW.actor_art, NEW.created_at)
           IS DISTINCT FROM
           (OLD.id, OLD.tenant_id, OLD.messstelle_id, OLD.groesse, OLD.richtung, OLD.entity_id,
            OLD.geraet_id, OLD.kanal, OLD.kanal_wertart, OLD.herleitung, OLD.rolle, OLD.zweck,
            OLD.gueltig_ab, OLD.anfangsstand, OLD.anfangsstand_einheit, OLD.rueckwirkend,
-           OLD.eingetragen_am, OLD.actor_sub, OLD.actor_name, OLD.actor_rolle, OLD.actor_art,
-           OLD.created_at) THEN
+           OLD.herkunft, OLD.anteil, OLD.eingetragen_am, OLD.actor_sub, OLD.actor_name,
+           OLD.actor_rolle, OLD.actor_art, OLD.created_at) THEN
       RAISE EXCEPTION 'Eine Quellenbindung wird nie ueberschrieben, nur einmal beendet (%)', OLD.id
         USING ERRCODE = 'check_violation', CONSTRAINT = 'messstelle_quelle_nie_ueberschrieben';
     END IF;
