@@ -31,6 +31,26 @@ Der Test beweist die Kompressionstransparenz ausdrücklich (Prüfsummen über ko
 Zusatznutzen des WAL-Archivs: **Point-in-Time-Recovery**.
 Ein "oops, Tabelle geleert um 14:32" ist auf den Stand 14:31 wiederherstellbar, nicht nur auf das letzte nächtliche Backup.
 
+## UEMS-Speicherklassen im Backup
+
+Alle UEMS-Klassen liegen im selben physischen TimescaleDB-Cluster und reisen deshalb gemeinsam
+mit Basis-Backup und WAL: Rohwerte `device_measurement_sample` (90 Tage),
+`messreihe_viertelstunde`, `messreihe_tag` und `messreihe_periode` (je 3 653 Tage) sowie die
+append-only Ereignisse `messreihe_ereignis` ohne Retention
+(`services/api/src/main/resources/db/migration/V20260848000000__additional_measurement_pipeline.sql:198-202`,
+`services/api/src/main/resources/db/migration/V20260912170000__uems_messreihe_viertelstunde.sql:239-258`,
+`services/api/src/main/resources/db/migration/V20260912190000__uems_endgueltigkeit_tageswerte.sql:328-344`,
+`services/api/src/main/resources/db/migration/V20260912205000__uems_periodenmengen.sql:171-188`,
+`services/api/src/main/resources/db/migration/V20260911260000__uems_messreihe_ereignis.sql:324-373`). Die RLS-geschützten UEMS-Klassen sind
+nicht komprimiert; ihre Verdichtungen sind Anwendungs-Jobs mit dauerhaften Arbeitslisten, keine
+Continuous Aggregates. Ein physischer Restore stellt Tabellen, Arbeitslisten, Laufzeiger,
+Timescale-Retention-Jobs, Policies und Rollen zusammen auf denselben Datenstand zurück
+(`services/api/src/main/resources/db/migration/V20260912170000__uems_messreihe_viertelstunde.sql:293-374`,
+`services/api/src/main/java/com/voltpilot/api/uems/ViertelstundeLaeufer.java:29-42`).
+
+Der zusammenfassende Betriebsweg steht unter
+[Messwert-Strecke, Herkunft und Speicherklassen](agents/root/messwert-strecke-herkunft-speicherklassen.md).
+
 ## Aufbewahrung: 7 tägliche + 4 wöchentliche
 
 - **7 tägliche** decken die Klasse "gestern/diese Woche ist etwas kaputtgegangen und wir haben es binnen Tagen gemerkt" mit Tages-Granularität - zusammen mit dem WAL-Archiv sogar minutengenau innerhalb der 7 Tage.
@@ -119,6 +139,16 @@ Vorab-Fakten, die man im Ernstfall nicht suchen will:
 - `vp-db-restore.sh` stellt in ein **leeres** Ziel her, niemals über Bestehendes.
 - Das Backup-Verzeichnis wird beim Restore **read-only** gemountet - die Wiederherstellung kann die Backups nicht beschädigen.
 - Ohne `--target-time` wird bis zum Ende des WAL-Archivs wiederhergestellt (= Verlust höchstens der letzten ~5 min, siehe RPO unten); mit `--target-time` bis zu einem Zeitpunkt (PITR).
+
+**Kein fachliches `restore`-Ereignis behaupten:** Der gebaute Ereignisvertrag und seine Schreiber
+kennen derzeit keine Art `restore`; die Datenannahme erzeugt nur ihre drei eigenen Arten und der
+Cloud-Schreibweg akzeptiert nur das geschlossene Vokabular
+(`services/ingest/src/main/java/com/voltpilot/ingest/Ereignisart.java:3-12`,
+`services/api/src/main/java/com/voltpilot/api/uems/EreignisVokabular.java:414-550`). Der Restore ist
+heute im Betriebsprotokoll des Skripts und der systemd-Unit zu dokumentieren. Nach dem Start sind
+Datenstand, Arbeitslistenrückstand und Lücken/Nachlieferungen zu prüfen; ein vorhandenes
+`data_gap` oder `backfill` bleibt ein Messdatenfakt, ist aber kein Ersatz für ein nicht gebautes
+`restore`-Ereignis (`services/api/src/main/java/com/voltpilot/api/uems/LueckenMelder.java:35-62`).
 
 ### Fall A: TimescaleDB kaputt/verloren, VM lebt
 
