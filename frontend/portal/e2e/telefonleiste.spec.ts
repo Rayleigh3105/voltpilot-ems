@@ -33,8 +33,8 @@ interface Fall {
 const FAELLE: Fall[] = [
   { name: 'betriebskunde-standort', query: 'bild=unternehmen&messen=bestand&ansicht=werk', leiste: null },
   { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte'], aktiv: 'Übersicht' },
-  { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'], aktiv: 'Übersicht' },
-  { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Gebäude', 'Messstellen'], aktiv: 'Übersicht' },
+  { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'], aktiv: 'Übersicht' },
+  { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse'], aktiv: 'Übersicht' },
   { name: 'anlage-halle1', query: 'bild=unternehmen&ansicht=anlage', leiste: ['Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Cockpit' },
   { name: 'anlage-lindach-steuerung', query: 'bild=unternehmen&ansicht=steuerung-lindach', leiste: ['Cockpit', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Steuerung' },
   {
@@ -43,8 +43,8 @@ const FAELLE: Fall[] = [
     leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte'],
     aktiv: 'Übersicht',
   },
-  { name: 'standort-kuenftig', query: 'bild=unternehmen&ansicht=werk&seiten=kuenftig', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'], aktiv: 'Übersicht' },
-  { name: 'lindach-kuenftig', query: 'bild=unternehmen&ansicht=lindach&seiten=kuenftig', leiste: ['Übersicht', 'Gebäude', 'Messstellen'], aktiv: 'Übersicht' },
+  { name: 'standort-kuenftig', query: 'bild=unternehmen&ansicht=werk&seiten=kuenftig', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'], aktiv: 'Übersicht' },
+  { name: 'lindach-kuenftig', query: 'bild=unternehmen&ansicht=lindach&seiten=kuenftig', leiste: ['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse'], aktiv: 'Übersicht' },
   // Der Betriebskunde ohne „Messen": auch mit allen Seiten nur Übersicht · Standorte — keine Leiste.
   { name: 'betriebskunde-kuenftig', query: 'bild=unternehmen&messen=bestand&seiten=kuenftig', leiste: null },
 ];

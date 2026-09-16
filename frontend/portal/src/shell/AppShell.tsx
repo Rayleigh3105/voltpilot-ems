@@ -677,7 +677,7 @@ export function AppShell({
               <button
                 key={item.key}
                 type="button"
-                className={`vp-bottombar-item${active ? ' active' : ''}`}
+                className={`vp-bottombar-item${item.key === 'netzanschluesse' ? ' vp-bottombar-netzanschluesse' : ''}${active ? ' active' : ''}`}
                 aria-current={active ? 'page' : undefined}
                 onClick={item.oeffnen}
               >

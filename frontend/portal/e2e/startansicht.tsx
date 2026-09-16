@@ -1,3 +1,5 @@
+import { netzanschlussBuehne } from './netzanschluss-buehne';
+import { StandortNetzanschluessePage } from '../src/pages/StandortNetzanschluessePage';
 import App from '../src/App';
 import { RechteStandort, teilansichtKopf } from '../src/rollen';
 import { rollenMoment } from './rollen-fixture';
@@ -421,6 +423,7 @@ const ALLE_SEITEN_KUENFTIG: EbenenSeiten = (ort) => {
   return {
     uebersicht: hier,
     standorte: pageRoute('portfolio-standorte'),
+    netzanschluesse: hier,
     gebaeude: hier,
     anlagen: hier,
     messstellen: hier,
@@ -586,7 +589,7 @@ Object.assign(api, {
   },
   // AP-04 IP-6: was der Messstellen-Dialog beim Öffnen liest (Vorschlag, Standorte, Ortsbäume).
   kennzeichenVorschlag: async () => ({ kennzeichen: 'MS-0023' }),
-  standorte: async () => structuredClone(szene.liste),
+  ...netzanschlussBuehne(szene.liste),
   standortOrte: async (id: string) =>
     id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg(),
   // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
@@ -928,6 +931,8 @@ function Vorschau() {
             // AP-13 IP-2: die Seiten des Standorts.
             : ansicht === 'werk-gebaeude'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude')
+            : ansicht === 'werk-netzanschluesse'
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'netzanschluesse')
             : ansicht === 'werk-anlagen'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'anlagen')
             : ansicht === 'werk-kennzahlen'
@@ -1145,6 +1150,7 @@ function Vorschau() {
               }}
             />
           )}
+          {standortBereich === 'netzanschluesse' && <StandortNetzanschluessePage key={standort.id} standort={standort} onGeaendert={() => undefined} />}
           {standortBereich === 'anlagen' && (
             <StandortAnlagenPage standort={standort} sites={sites} onNavigate={navigate} onReload={() => undefined} betriebsart="endkunde" />
           )}

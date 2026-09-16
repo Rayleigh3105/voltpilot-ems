@@ -1,3 +1,4 @@
+import { NetzanschlussBilanzKopf } from '../components/NetzanschlussBilanzKopf';
 import { Recht } from '../components/Recht';
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -150,6 +151,8 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
           </div>
         </div>
       </div>
+
+      {bilanz && bilanz !== 'fehler' && <NetzanschlussBilanzKopf anlage={site.id} am={bilanz.am} />}
 
       {rueckmeldung && (
         <p className={`vp-eb-rueckmeldung is-${rueckmeldung.ton}`} role="status" data-testid="energiebilanz-rueckmeldung">

@@ -61,4 +61,6 @@ KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsp
 - Vektor-Familie: liegt seit IP-1 in `netzanschluss-vectors.json`, nicht in `ortsbaum-vectors.json`
   (`_abweichungen`); `ortsbaum-vectors.json` bleibt unverändert, ihr Anlagen-Feld wird jetzt gefüllt.
 
-**Nicht gebaut:** Preis-Umzug (W9), Bilanz-Lesemodell (IP-9), Portal-Reiter (IP-13), Durchsetzung (AP-03).
+**Portal:** [Reiter, Dialoge und Bilanzkopf (IP-13)](uems-netzanschluss-portal.md).
+
+Preis-Umzug (W9) bleibt ein eigenes Paket. Aktuelle Routenrechte stehen an `NetzanschlussController` (`@Recht`, AP-03).

@@ -15,7 +15,7 @@ import { expect, test, type Page } from '@playwright/test';
 const BILDER = process.env.STANDORT_EBENEN_BILDER;
 const JETZT = new Date('2026-10-20T08:15:30Z');
 const AM_20_11 = new Date('2026-11-20T08:00:00Z');
-const VIER = ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'];
+const STANDORT_REITER = ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'];
 
 async function oeffne(page: Page, query: string, breite: number, jetzt = JETZT) {
   await page.clock.setFixedTime(jetzt);
@@ -80,13 +80,13 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 function leisteOderReiter(m: Awaited<ReturnType<typeof messe>>, breite: number, aktiv: string, fall: string) {
   if (breite === 375) {
     // Am Telefon trägt die Leiste die vier Bereiche — was sie trägt, ist kein zweites Mal Reiter.
-    expect(m.leiste, `${fall}: Kacheln`).toEqual(VIER);
+    expect(m.leiste, `${fall}: Kacheln`).toEqual(STANDORT_REITER);
     expect(m.leisteAktiv, `${fall}: offene Kachel`).toBe(aktiv);
     expect(m.reiter, `${fall}: Reiter am Telefon`).toEqual([]);
     for (const h of m.tippflaechen) expect(h, `${fall}: Tippfläche`).toBeGreaterThanOrEqual(44);
   } else {
     expect(m.leiste, `${fall}: keine Leiste am Rechner`).toBeNull();
-    expect(m.reiter, `${fall}: Reiter`).toEqual(VIER);
+    expect(m.reiter, `${fall}: Reiter`).toEqual(STANDORT_REITER);
     expect(m.reiterAktiv, `${fall}: offener Reiter`).toEqual([aktiv]);
   }
 }
@@ -136,12 +136,12 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     }
   });
 
-  test('Z4 · Werk Lindach: eine Anlage — keine Kachel „Anlagen“, die Adresse zeigt trotzdem ihre Zeile; ohne Gebäude L1 und keine Leiste', async ({ page }) => {
+  test('Z4 · Werk Lindach: eine Anlage — keine Kachel „Anlagen“, die Adresse zeigt trotzdem ihre Zeile; ohne Gebäude L1 und die Messbereiche', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=lindach-anlagen', 375);
     await expect(page.locator('.vp-at-karte').first()).toBeVisible();
     const a = await messe(page);
     ohneQuerlauf(a, 'lindach-anlagen-375');
-    expect(a.leiste).toEqual(['Übersicht', 'Gebäude', 'Messstellen']);
+    expect(a.leiste).toEqual(['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     expect(a.anlagen).toHaveLength(1);
     await ablegen(page, 'lindach-anlagen-375', a);
 
@@ -152,9 +152,9 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       const m = await messe(page);
       ohneQuerlauf(m, `lindach-leer-${breite}`);
       expect(m.titel).toBe('Gebäude');
-      // Übersicht · Messstellen — zwei Bereiche, keine Leiste; die Reiter bleiben der Weg.
-      expect(m.leiste).toBeNull();
-      expect(m.reiter).toEqual(['Übersicht', 'Messstellen']);
+      // AP-10 IP-13: Übersicht · Messstellen · Netzanschlüsse tragen jetzt auch ohne Gebäude die Leiste.
+      expect(m.leiste).toEqual(breite < 721 ? ['Übersicht', 'Messstellen', 'Netzanschlüsse'] : null);
+      expect(m.reiter).toEqual(breite < 721 ? [] : ['Übersicht', 'Messstellen', 'Netzanschlüsse']);
       await ablegen(page, `lindach-leer-${breite}`, m);
     }
   });
