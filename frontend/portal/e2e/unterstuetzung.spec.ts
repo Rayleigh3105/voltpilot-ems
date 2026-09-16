@@ -21,9 +21,14 @@ for (const breite of [375, 1440]) {
     await dialog.getByRole('button', { name: 'Unterstützung gewähren', exact: true }).click();
     await expect(page.getByLabel('Startpasswort', { exact: true })).toBeVisible(); await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).not.toBeVisible(); await expect(ausloeser).toBeFocused();
+    await page.goto('/e2e/unterstuetzung.html');
     await karte.getByRole('button', { name: 'Beenden', exact: true }).first().click(); dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('Gesetzte Handeingriffe bleiben'); await foto('N6');
-    await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).not.toBeVisible();
+    await dialog.getByLabel('Grund (optional)').fill('Arbeit erledigt');
+    await dialog.getByRole('button', { name: 'Zugriff beenden' }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Elektro Brunner (Installateur)' })).toHaveCount(0);
+    await expect(karte.getByRole('heading', { name: 'Unterstützung', exact: true })).toBeFocused();
     await page.goto('/e2e/unterstuetzung.html?modus=partner');
     await expect(page.getByRole('status')).toContainText('Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH');
     await expect(page.getByRole('status')).toContainText('Einrichten und Bedienen');
@@ -33,15 +38,20 @@ for (const breite of [375, 1440]) {
     await expect(page.getByRole('region', { name: 'Unterstützung', exact: true }).getByRole('button', { name: 'Verlängern' })).toHaveCount(0);
     await page.goto('/e2e/unterstuetzung.html?modus=anfrage');
     await page.getByRole('button', { name: 'Bestätigen oder ändern' }).click(); dialog = page.getByRole('dialog');
-    await expect(dialog).toContainText('Lena Voß'); await foto('Anfrage');
+    await expect(dialog).toContainText('Lena Voss'); await foto('Anfrage');
     await dialog.getByRole('button', { name: 'Unterstützung bestätigen' }).click(); await expect(dialog).not.toBeVisible();
     expect(await page.evaluate(() => window.letzteGewaehrung?.anfrage_id)).toBe('22222222-2222-4222-8222-222222222222');
     await page.goto('/e2e/unterstuetzung.html?modus=admin');
-    await page.getByRole('button', { name: 'Notfall-Zugriff', exact: true }).click(); dialog = page.getByRole('dialog');
+    await page.getByRole('button', { name: 'Details zu Kunststoffwerk Ahrenberg GmbH' }).click();
+    await page.getByRole('button', { name: 'Notfall-Zugriff', exact: true }).click(); dialog = page.getByRole('dialog', { name: 'Notfall-Zugriff', exact: true });
     await dialog.getByRole('combobox', { name: 'Standorte' }).click(); await page.getByRole('option', { name: 'Werk Ahrenberg', exact: true }).click(); await page.keyboard.press('Escape');
     await dialog.getByRole('button', { name: 'Notfall-Zugriff gewähren' }).click();
     await expect(dialog.getByLabel('Grund (Pflicht)')).toBeFocused(); await expect(dialog).toContainText('genau 24 Stunden');
     await dialog.getByLabel('Grund (Pflicht)').fill('Wechselrichter meldet Fehler F42'); await foto('Admin-Notfall');
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Kunststoffwerk Ahrenberg GmbH', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Notfall-Zugriff', exact: true })).toBeFocused();
     expect(fehler).toEqual([]);
     async function foto(name: string) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

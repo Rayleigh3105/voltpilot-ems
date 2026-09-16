@@ -30,6 +30,7 @@ export function bannerTexte(me: Selbstauskunft | null, standort: string | null, 
 const pfad = '/api/v1/unterstuetzung';
 const schreiben = (method: string, body?: unknown) => ({ method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 export const unterstuetzungApi = {
+  standorte: () => api.standorte().then(a => a.standorte.filter(s => s.zustand !== 'archiviert').map(s => ({ id: s.id, name: s.name }))),
   liste: () => request<Unterstuetzung[]>(pfad),
   anfragen: () => request<UnterstuetzungAnfrage[]>(`${pfad}/anfragen`),
   hinweise: () => request<UnterstuetzungHinweis[]>(`${pfad}/hinweise`),

@@ -2,8 +2,8 @@
 
 `UnterstuetzungKarte` hängt an `BenutzerPage`, die Dialoge verwenden das gemeinsame Modal,
 Picker und die einmalige `StartpasswortAnzeige`. Verwaltung allein über
-`rollen.darf('unterstuetzung.verwalten', null)`. Die Kundenstandorte stammen aus `/me`, dessen
-Standortleser dieselbe RLS-Verbindung und Standortgrenze wie der bestehende Standortweg verwendet.
+`rollen.darf('unterstuetzung.verwalten', null)`. Die Kundenstandorte liest der Dialog über den bestehenden `/api/v1/standorte`-Weg mit
+RLS-Verbindung und Standortgrenze.
 VoltPilot wird ausschließlich durch eine Anfrage bestätigt; es gibt keine freie VoltPilot-Gewährung.
 
 `UnterstuetzungBanner` steht additiv in `AppShell`: Kunden sehen den Serversatz ihrer betroffenen
@@ -32,6 +32,7 @@ Prüfungen verspäteter Entzugsantworten. Beim Bereichswechsel verwirft `App` Da
 
 Die Produktionsvorgabe `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED` ist seit IP-15 **false**.
 Das Profil `local` hält die alte Vorgabe explizit für die bisherigen Kompatibilitätsnachweise;
+Die beiden Ortsstruktur-Bestandstests ohne dieses Profil wählen die Kompatibilität ebenfalls explizit.
 `UnterstuetzungApiTest` setzt **false** und prüft den geschlossenen Kundenweg. Ein extern gesetztes
 Deployment-Override kann die Vorgabe übersteuern; bei der UEMS-Auslieferung darf es nicht auf true stehen.
 Keine Migration, keine Änderung der Rechte-Matrix oder der Rechte-Architekturwächter.

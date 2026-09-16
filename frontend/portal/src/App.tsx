@@ -745,6 +745,7 @@ function UnifiedPortal() {
       const nummer = ++ladeNummer.current;
       if (!tenantReady) {
         try { const me = await api.selbstauskunft(); if (nummer === ladeNummer.current) setSelbstauskunft(me); } catch { if (nummer === ladeNummer.current) setSelbstauskunft(null); }
+        if (nummer !== ladeNummer.current) return;
         setOrteQuelle(null);
         setSites([]);
         setDevices([]);
@@ -967,11 +968,15 @@ function UnifiedPortal() {
   }, [route]);
 
   const changeTenant = (id: string | null) => {
+    ++ladeNummer.current;
+    setSelbstauskunft(null);
+    setLoaded(false);
+    setSites([]); setDevices([]); setOrteQuelle(null);
     setTenantId(id);
     if (!isAdmin) { if (id) sessionStorage.setItem('vp-kundenbereich', id); else sessionStorage.removeItem('vp-kundenbereich'); }
     setSelectedSite(null);
     if (isAdmin) { if (id) sessionStorage.setItem('vp-tenant-override', id); else sessionStorage.removeItem('vp-tenant-override'); }
-    if (!isAdmin) replaceCurrentNavigation('#/uebersicht');
+    if (!isAdmin) { replaceCurrentNavigation('#/uebersicht'); setRoute(pageRoute('uebersicht')); }
   };
 
   // Der Sprung in einen Mandanten-Kontext. `target` ist bewusst eine ganze

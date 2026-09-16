@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -20,7 +20,8 @@ export function UnterstuetzungDialog({ onClose, onSaved, anfrage, verlaengern }:
   onClose: () => void; onSaved: () => void; anfrage?: UnterstuetzungAnfrage; verlaengern?: Unterstuetzung;
 }) {
   const rechte = useRollen();
-  const standorte = rechte.selbst?.standorte ?? [];
+  const [standorte, setStandorte] = useState<{ id: string; name: string }[]>([]);
+  const [orteLaden, setOrteLaden] = useState(true);
   const [art, setArt] = useState('installateur');
   const [email, setEmail] = useState('');
   const [orte, setOrte] = useState(anfrage?.standorte ?? verlaengern?.standorte ?? (standorte.length === 1 ? [standorte[0].id] : []));
@@ -34,13 +35,21 @@ export function UnterstuetzungDialog({ onClose, onSaved, anfrage, verlaengern }:
   const orteRef = useRef<HTMLDivElement>(null);
   const datumRef = useRef<HTMLDivElement>(null);
   const trigger = useRef(document.activeElement as HTMLElement | null);
+  useEffect(() => {
+    let aktiv = true; setOrteLaden(true);
+    void unterstuetzungApi.standorte().then(orte => {
+      if (!aktiv) return; setStandorte(orte); setOrteLaden(false);
+      if (!anfrage && !verlaengern && orte.length === 1) setOrte([orte[0].id]);
+    }).catch(() => { if (aktiv) { setOrteLaden(false); setFehler('Die Standorte konnten nicht geladen werden. Schließen Sie den Dialog und versuchen Sie es erneut.'); } });
+    return () => { aktiv = false; };
+  }, [rechte.selbst?.kundenbereich?.id]);
   const schliessen = () => { if (!busy) { setPasswort(null); onClose(); requestAnimationFrame(() => trigger.current?.focus()); } };
   const titel = verlaengern ? 'Unterstützung verlängern' : anfrage ? 'Anfrage bestätigen oder ändern' : 'Unterstützung gewähren';
   async function speichern() {
-    if (busy || !rechte.darf('unterstuetzung.verwalten', null)) return;
+    if (busy || orteLaden || !rechte.darf('unterstuetzung.verwalten', null)) return;
     const ungueltig = form.current?.querySelector<HTMLInputElement>('input:invalid');
     if (ungueltig) { setFehler('Bitte geben Sie eine gültige E-Mail-Adresse ein.'); ungueltig.focus(); return; }
-    const problem = pruefeUnterstuetzung(orte, bis, anfrage?.gueltig_ab.slice(0, 10) ?? heute());
+    const problem = verlaengern?.gueltig_bis && bis <= verlaengern.gueltig_bis ? 'Wählen Sie ein späteres Enddatum.' : pruefeUnterstuetzung(orte, bis, anfrage?.gueltig_ab.slice(0, 10) ?? heute());
     if (problem) { setFehler(problem); (orte.length ? datumRef : orteRef).current?.querySelector<HTMLElement>('button,[role="combobox"]')?.focus(); return; }
     setBusy(true); setFehler('');
     try {
@@ -53,14 +62,14 @@ export function UnterstuetzungDialog({ onClose, onSaved, anfrage, verlaengern }:
   }
   return <Modal open onClose={schliessen} title={passwort ? 'Unterstützung gewährt' : titel} footer={<>
     <Button variant="ghost" disabled={busy} onClick={schliessen}>{passwort ? 'Schließen' : 'Abbrechen'}</Button>
-    {!passwort && (art !== 'voltpilot' || anfrage || verlaengern) && <Button disabled={busy} onClick={() => void speichern()}>{busy ? 'Wird gespeichert…' : verlaengern ? 'Verlängern' : anfrage ? 'Unterstützung bestätigen' : 'Unterstützung gewähren'}</Button>}
+    {!passwort && (art !== 'voltpilot' || anfrage || verlaengern) && <Button disabled={busy || orteLaden} onClick={() => void speichern()}>{busy ? 'Wird gespeichert…' : verlaengern ? 'Verlängern' : anfrage ? 'Unterstützung bestätigen' : 'Unterstützung gewähren'}</Button>}
   </>}>
     {passwort ? <StartpasswortAnzeige passwort={passwort} /> : <form className="vp-unterstuetzung-form" ref={form} onSubmit={e => { e.preventDefault(); void speichern(); }}>
       {!anfrage && !verlaengern && <VpPicker label="Art" value={art} onChange={setArt} options={[{ value: 'installateur', label: 'Installateur' }, { value: 'voltpilot', label: 'VoltPilot-Support' }]} />}
       {art === 'voltpilot' && !anfrage && !verlaengern ? <p>VoltPilot-Support fragt Unterstützung an. Bestätigen oder ändern Sie die Anfrage in der Karte „Unterstützung“.</p> : <>
         {anfrage ? <p>VoltPilot-Support · {anfrage.angefragt_von.name}<br />Gültig ab {datumZeit(anfrage.gueltig_ab)}</p> : verlaengern ? <p>{verlaengern.unterstuetzer.name} · bisher bis {enddatum(verlaengern)}</p>
           : <Input label="E-Mail-Adresse des Partners" type="email" required value={email} onChange={e => { setEmail(e.target.value); setFehler(''); }} />}
-        {!verlaengern && <><div ref={orteRef}><VpPicker label="Standorte" values={orte} options={standorte.map(s => ({ value: s.id, label: s.name }))} onChangeMany={ids => { setOrte(ids); setFehler(''); }} error={fehler.includes('Standort') ? fehler : undefined} /></div>
+        {!verlaengern && <><div ref={orteRef}><VpPicker label="Standorte" disabled={orteLaden} values={orte} options={standorte.map(s => ({ value: s.id, label: s.name }))} onChangeMany={ids => { setOrte(ids); setFehler(''); }} error={fehler.includes('Standort') ? fehler : undefined} /></div>
           <VpPicker label="Umfang" value={umfang} onChange={v => setUmfang(v as typeof umfang)} options={Object.entries(UMFANG).map(([value, label]) => ({ value, label }))} /></>}
         <div ref={datumRef}><VpDatePicker label="Gültig bis einschließlich" value={bis} onChange={v => { setBis(v); setFehler(''); }} error={fehler.includes('Enddatum') ? fehler : undefined} min={heute()} max={hoechstesEnde(anfrage?.gueltig_ab.slice(0, 10))} /></div>
         <p className="vp-note">Vorgabe: 30 Tage · höchstens 12 Monate. Sie erhalten sieben Tage vor Ablauf eine Erinnerung.</p>

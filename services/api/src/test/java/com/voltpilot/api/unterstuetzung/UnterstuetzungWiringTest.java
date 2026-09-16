@@ -123,7 +123,7 @@ class UnterstuetzungWiringTest {
     }
 
     /**
-     * <b>Der Mandanten-Umschalter bleibt AN</b> (AP-03 W3): dieses Paket baut den sichtbaren Weg (Anfrage,
+     * <b>Der Mandanten-Umschalter ist AUS</b> (AP-03 W3): dieses Paket baut den sichtbaren Weg (Anfrage,
      * Notfall-Zugriff). Seit IP-15 ist die Produktionsvorgabe AUS; das lokale Profil behält die alte
      * Vorgabe ausdrücklich für Kompatibilitätsnachweise.
      * Dass er BEISST, prüft {@code UnterstuetzungApiTest} an der Datenbank.

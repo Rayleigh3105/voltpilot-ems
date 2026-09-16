@@ -57,12 +57,11 @@ Migration `V20260916070000`. Beweis: `UnterstuetzungApiTest` (A4, A5, A14), `Unt
   und keine E-Mail geraten; `UnterstuetzungApiTest` prüft das an Liste UND Postfach.
 - ⚠ **Ist Keycloak nicht erreichbar, wird NICHTS gewährt** (502 `konto_nicht_erreichbar`) — sonst entstünde für
   dieselbe Person ein zweites Konto, sobald die Suche nach der Adresse still leer zurückkäme.
-- ⚠ **Der Mandanten-Umschalter `X-Tenant-Id` gilt weiter** (`voltpilot.uems.unterstuetzung.umschalter-enabled`,
-  Produktionsvorgabe AUS seit IP-15; local explizit AN). AUS ist der Satz aus A5 („nicht der heutige `X-Tenant-Id`-Vollzugriff“):
-  VoltPilot erreicht einen Kundenbereich dann nur noch über eine gewährte Unterstützung oder den Notfall-Zugriff,
-  sonst 404 wie ein Partner ohne Gewährung. **Umgelegt seit der Portal-Umstellung (IP-15)**, sonst würde
-  die Admin-Konsole („Zur Anlage (Kundensicht)“) blind, bevor das Portal den neuen Weg anbietet.
-  `/api/v1/admin/**` ist davon nie betroffen.
+- **Der alte Mandanten-Umschalter ist seit IP-15 in Produktion geschlossen**
+  (`voltpilot.uems.unterstuetzung.umschalter-enabled`, Vorgabe AUS; local für Kompatibilität explizit AN).
+  VoltPilot erreicht Kundenflächen nur mit gewährter Unterstützung oder Notfall-Zugriff über
+  `X-Kundenbereich`, sonst 404. `/api/v1/admin/**` bleibt am eigenen Plattform-Zaun.
+  [Portal-Wege und Konfiguration](uems-unterstuetzung-portal.md).
 - ⚠ **Die Migration BAUT AUF `V20260915030000` AUF** (Fremdschlüssel auf `zugriff`, das geschärfte
   `zugriff_protokoll_zugriff_chk`, das erweiterte Vokabular). In der späten Ankunft der IP-2-Migration kommt sie
   darum MIT ihr: `UemsZugriffMigrationTest.BAUEN_DARAUF_AUF`. Wer eine weitere Migration auf `zugriff` setzt,

@@ -24,6 +24,7 @@ sequenceDiagram
 - Der öffentliche Issuer und die interne JWKS-Adresse dürfen unterschiedliche Hosts verwenden. Der erwartete Issuer muss zum Token passen.
 - `voltpilot_app` ist weder Superuser noch `BYPASSRLS`; ohne gesetzten Mandanten liefern geschützte Tabellen keine Kundenzeilen.
 - Plattformverwaltung verwendet `voltpilot_admin` mit `BYPASSRLS` hinter einem Rollencheck. Kundenpfade verwenden diese Verbindung nicht.
+- Die Selbst-Liste externer Konten (`/me.kundenbereiche`) ist die schmale Ausnahme für eigene Zugangsmetadaten: rollenbewacht, ausschließlich das verifizierte Subject, keine Kundendaten oder Freigabe. [Leser und Nachweise](agents/root/uems-unterstuetzung-portal.md).
 - Standort-/Gerätebesitz wird aus dem authentifizierten Kontext bestimmt. Fremde, durch RLS unsichtbare Objekte erscheinen als 404.
 
 Quellen: `TenantFilter`, `TenantAwareDataSource`, `SecurityConfig`, Migrationen und `PortalApiTest` im [API-Service](../services/api/).
