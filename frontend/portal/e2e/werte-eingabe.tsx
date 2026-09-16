@@ -22,7 +22,7 @@ import '../src/index.css';
 const params = new URLSearchParams(location.search);
 let werte = params.has('leer') ? [] : [bezugswert()];
 let ablesungen = gasAblesungen().slice(0, 1);
-const posts: unknown[] = []; Object.assign(window, { wertAufrufe: posts });
+const posts: unknown[] = []; Object.assign(window, { wertAufrufe: posts, wertAbfragen: 0 });
 const antwort = (wert: string) => {
   const w = bezugswert(wert.replaceAll('.', '').replace(',', '.'), 2); w.fassungen.unshift(...werte.flatMap(w => w.fassungen));
   if (params.has('vier')) { const alt = werte[0]; alt.vorschlag = { kennung: 'BK-2026-0001', betrag: w.wirksamer_betrag!, ersetzt_fassung: 1, begruendung: 'Tippfehler — eine Null fehlte', urheber: BEZUG_PERSON, eingetragen_am: '2026-11-03T10:00:00Z' }; return { urteil: 'vorschlag', satz: 'Vorschlag gesendet — bis zur Freigabe gilt der bisherige Wert.', kennung: alt.vorschlag.kennung, hinweise: [], wert: alt }; }
@@ -41,7 +41,7 @@ Object.assign(api, {
   messstelleQuellen: async () => quellenDerMessstellenBuehne(ms21().id, '2026-11-03T10:00:00Z'),
   messstelleAenderungen: async () => ({ ...protokollMs06(), eintraege: [] }),
   uemsGeraete: async () => ({ geraete: [] }), datenquellen: async () => ({ datenquellen: [] }),
-  messstelleWerte: async () => { throw new ApiError(404, 'Keine Datenquelle', { code: 'keine_quelle' }); },
+  messstelleWerte: async () => { (window as unknown as { wertAbfragen: number }).wertAbfragen++; throw new ApiError(404, 'Keine Datenquelle', { code: 'keine_quelle' }); },
   ablesungen: async () => ablesungen,
   ablesungEintragen: async (kz: string, body: { zeitpunkt: string; stand: string; zuordnung_monat: string | null }) => {
     posts.push({ kz, ...body }); const a = { ...gasAblesungen()[1], zeitpunkt: body.zeitpunkt, stand: Number(body.stand.replaceAll('.', '').replace(',', '.')), monat: body.zuordnung_monat ? `${body.zuordnung_monat}-01` : null }; ablesungen = [...ablesungen, a];

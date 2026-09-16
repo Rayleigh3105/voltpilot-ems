@@ -6,7 +6,7 @@ import { betrag, periodenText, zeitText, wirksameAblesungen } from '../werteEing
 import { AblesungDialog } from './AblesungDialog';
 import '../pages/BezugsgroessenPage.css';
 import './WerteEingabe.css';
-export function Ablesungen({ kennzeichen, einheit, zone, archiviert = false }: { kennzeichen: string; einheit: string; zone: string; archiviert?: boolean }) {
+export function Ablesungen({ kennzeichen, einheit, zone, archiviert = false, onWirksam }: { kennzeichen: string; einheit: string; zone: string; archiviert?: boolean; onWirksam?: () => void }) {
   const [alle, setAlle] = useState<Ablesung[] | null>(null), [neu, setNeu] = useState(0);
   const [fehler, setFehler] = useState(false), [antwort, setAntwort] = useState<AblesungAntwort | null>(null);
   const [dialog, setDialog] = useState<{ alt: Ablesung | null } | null>(null);
@@ -28,6 +28,6 @@ export function Ablesungen({ kennzeichen, einheit, zone, archiviert = false }: {
       </div>)}
       {erlaubt && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setDialog({ alt: null }); }}>Ablesung eintragen</Button>}
     </>}
-    {dialog && alle && erlaubt && <AblesungDialog key={dialog.alt?.zeitpunkt ?? 'neu'} onBerichtigen={alt => setDialog({ alt })} kennzeichen={kennzeichen} einheit={einheit} zone={zone} alle={alle} alt={dialog.alt} onClose={schliessen} onSaved={a => { setAntwort(a); setNeu(n => n + 1); schliessen(); }} />}
+    {dialog && alle && erlaubt && <AblesungDialog key={dialog.alt?.zeitpunkt ?? 'neu'} onBerichtigen={alt => setDialog({ alt })} kennzeichen={kennzeichen} einheit={einheit} zone={zone} alle={alle} alt={dialog.alt} onClose={schliessen} onSaved={a => { if (a.urteil !== 'vorschlag' && a.urteil !== 'wiederholung') onWirksam?.(); setAntwort(a); setNeu(n => n + 1); schliessen(); }} />}
   </section>;
 }

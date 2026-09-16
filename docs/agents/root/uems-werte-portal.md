@@ -11,7 +11,9 @@ im bestehenden Prüfungsweg. Archivierte Bezugsgrößen bleiben lesbar.
 Die erfolgreiche Quellenantwort ist Voraussetzung; eine fehlgeschlagene Abfrage öffnet keinen
 Eingabeweg. Auch beendete Kanalquellen sperren entsprechend `AblesungService.hatKanal`.
 IP-8 liefert die Ablesungsfassungen getrennt von komponentengebundenen Quellen.
-`AblesungDialog` verwendet die IP-8-Routen einschließlich ihrer bestehenden Korrekturstrecke.
+`AblesungDialog` verwendet die IP-8-Routen einschließlich ihrer bestehenden Korrekturstrecke. Wirksame Eingaben leeren
+den Werte-Zwischenspeicher und laden Werte, Register und Protokoll neu; offene Vorschläge
+ändern die wirksame Anzeige nicht.
 
 ## Eingabe und Zeit
 
