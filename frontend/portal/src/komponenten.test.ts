@@ -199,6 +199,56 @@ describe('plantModel - hybrid only', () => {
   });
 });
 
+// Regression vp-geraete-triage-t2 (Befund 1): der PV-Aspekt eines Hybriden hängt
+// GENAU am Kanal `pv_power_kw` der `battery-hybrid`-Entität. Verliert die Entität
+// diesen Kanal, entsteht kein `role: 'pv'` mehr - und die Karte „PV-Produktion
+// dieses Geräts" (die daran hängt) verschwindet, obwohl der Speicher bleibt.
+describe('plantModel - Hybrid und der pv_power_kw-Kanal (Befund 1)', () => {
+  const localSetup = [inverter('inv', 'deye', 'SUN-30K-SG01HP3-EU')];
+
+  it('MIT pv_power_kw entsteht der PV-Aspekt (role pv)', () => {
+    const m = plantModel(
+      [
+        entity('batt', 'battery-hybrid', {
+          capabilities: {
+            measure: [
+              { channel: 'pv_power_kw', unit: 'kW' },
+              { channel: 'battery_power_kw', unit: 'kW' },
+              { channel: 'soc_pct', unit: '%' },
+            ],
+          },
+        }),
+      ],
+      null,
+      localSetup,
+    );
+    expect(m.components.map((c) => c.role)).toContain('pv');
+    expect(m.components.find((c) => c.role === 'pv')?.label).toBe(
+      'Solarmodule am SUN-30K-SG01HP3-EU',
+    );
+  });
+
+  it('OHNE pv_power_kw entsteht KEIN PV-Aspekt - der Speicher bleibt', () => {
+    const m = plantModel(
+      [
+        entity('batt', 'battery-hybrid', {
+          capabilities: {
+            measure: [
+              { channel: 'battery_power_kw', unit: 'kW' },
+              { channel: 'soc_pct', unit: '%' },
+            ],
+          },
+        }),
+      ],
+      null,
+      localSetup,
+    );
+    const roles = m.components.map((c) => c.role);
+    expect(roles).not.toContain('pv');
+    expect(roles).toContain('storage');
+  });
+});
+
 describe('plantModel - hybrid + a second producer', () => {
   const entities = [
     entity('batt', 'battery-hybrid', { label: 'Speicher', control: true }),
