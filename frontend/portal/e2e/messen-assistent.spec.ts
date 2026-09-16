@@ -18,6 +18,7 @@ import {
 } from '../src/test/funktionenFixtures';
 import {
   ahrenbergMessen,
+  C1_IDS,
   ENERGIEKARTEN,
   geraeteAhrenberg,
   registerNachUebernahme,
@@ -59,6 +60,7 @@ interface Cloud {
   register?: MessstelleRegisterZeile[];
   uebernahmen?: MessstelleVorschlagUebernehmen[];
   orte?: { messstelle: string; anfrage: MessstelleOrtAendern }[];
+  budgetAblehnung?: boolean;
 }
 
 const ohneMessen = (): Cloud => ({
@@ -130,6 +132,10 @@ async function verdrahte(page: Page, cloud: Cloud) {
       });
     }
     if (pfad === '/api/v1/devices') return json(sichtbareListe(geraeteAhrenberg(new Date())));
+    if (pfad === '/api/v1/edge-versions') return json(sichtbareListe([
+      { deviceId: C1_IDS.boxHalle1, siteId: FIXTURE_IDS.an1, coreVersion: '2.8.0', paletteVersion: '1.14.0', reportedAt: new Date().toISOString() },
+      { deviceId: C1_IDS.boxHalle2, siteId: FIXTURE_IDS.an2, coreVersion: '2.8.0', paletteVersion: '1.14.0', reportedAt: new Date().toISOString() },
+    ]));
     if (pfad === '/api/v1/sites') {
       return json(sichtbareListe(cloud.standorte.standorte.flatMap((s) => s.anlagen).map((a) => ({ id: a.id, name: a.name }))));
     }
@@ -139,6 +145,46 @@ async function verdrahte(page: Page, cloud: Cloud) {
       return json({ componentAuthority: 'cloud', components: Array.from({ length: n }, (_, i) => ({ id: `k-${i + 1}` })) });
     }
     if (pfad === '/api/v1/component-templates') return json([]);
+    const quelle = /^\/api\/v1\/sites\/([^/]+)\/data-sources(?:\/([^/]+))?(?:\/(reachability-check|assignments))?$/.exec(pfad);
+    if (quelle) {
+      const body = methode === 'GET' ? {} : r.request().postDataJSON() as Record<string, unknown>;
+      const boxId = String(body.device_id ?? C1_IDS.boxHalle2);
+      const boxName = boxId === C1_IDS.boxHalle1 ? 'Box Halle 1' : 'Box Halle 2';
+      const datenquelle = {
+        id: 'd0000000-0000-4000-8000-000000000004', kennzeichen: 'DQ-4',
+        name: body.name ?? 'WAGO-Steuerung Halle 2', anlage: quelle[1],
+        protokoll: body.protokoll ?? 'modbus_tcp', adresse: body.adresse ?? '192.168.20.10:502',
+        geraete_ids: body.geraete_ids ?? [1], netz: body.netz ?? 'VLAN 20 „Produktion“',
+        mehrere_leser: false, steuerquelle: false, vergleichsquelle: false,
+        kadenz_s: body.kadenz_s ?? 60, archiviert_am: null, zustaendige_box: null, zeitraeume: [],
+      };
+      if (!quelle[2] && methode === 'POST') return json(datenquelle, 201);
+      if (quelle[2] && !quelle[3] && methode === 'PUT') return json(datenquelle);
+      if (quelle[3] === 'reachability-check') return json({
+        box: { id: boxId, name: boxName, heimat_anlage: FIXTURE_IDS.an2 },
+        adresse: datenquelle.adresse, ergebnis: 'ok', gewertet: true,
+        text: `${boxName} erreicht ${datenquelle.adresse}.`, zeitpunkt: new Date().toISOString(), dauer_ms: 184, antwort: {},
+      });
+      if (quelle[3] === 'assignments' && cloud.budgetAblehnung) return json({
+        code: 'budget_ueberschritten', urteil: 'abgelehnt',
+        message: `Diese Quelle passt nicht mehr in das Lesebudget von ${boxName} — Takt strecken oder andere Box wählen.`,
+        rechnung: {
+          code: 'budget_ueberschritten', kennzeichen: 'DQ-4', box: boxName,
+          quelle: { protokoll: 'modbus_tcp', channels: 8, takt_s: 10,
+            anfragen: [{ anfragen_je_takt: 4, kosten_ms_je_anfrage: 400 }],
+            last: { channels: 8, samples_per_minute: 48, requests_per_minute: 24, duty_cycle_percent: 16 } },
+          box_nachher: { channels: 74, samples_per_minute: 114, requests_per_minute: 46, duty_cycle_percent: 30.667 },
+          grenzen: { samples_per_minute: 600, requests_per_minute: 30, duty_cycle_percent: 20 },
+          freie_kapazitaet: [
+            { id: C1_IDS.boxHalle1, name: 'Box Halle 1', belegt: { channels: 66, samples_per_minute: 66, requests_per_minute: 22, duty_cycle_percent: 14.7 }, frei: { channels: 0, samples_per_minute: 534, requests_per_minute: 8, duty_cycle_percent: 5.3 }, quelle_passt: false },
+            { id: C1_IDS.boxHalle2, name: 'Box Halle 2', belegt: { channels: 55, samples_per_minute: 55, requests_per_minute: 1, duty_cycle_percent: 0.7 }, frei: { channels: 0, samples_per_minute: 545, requests_per_minute: 29, duty_cycle_percent: 19.3 }, quelle_passt: true },
+          ],
+          auswege: { takt_s: 60, takt: 'Takt 60 s wählen', boxen: [{ id: C1_IDS.boxHalle2, name: 'Box Halle 2', belegt: { channels: 55, samples_per_minute: 55, requests_per_minute: 1, duty_cycle_percent: 0.7 }, frei: { channels: 0, samples_per_minute: 545, requests_per_minute: 29, duty_cycle_percent: 19.3 }, quelle_passt: true }], andere_box: 'Box Halle 2 wählen (29 Anfragen/min frei)' },
+          gruende: ['Mehr als 30 Leseanfragen pro Minute.'],
+        },
+      }, 422);
+      if (quelle[3] === 'assignments') return json({ urteil: 'erlaubt', text: `Ab jetzt liest ${boxName}`, hinweis: null, vergleichsquelle: false, datenquelle }, 201);
+    }
     return json({ code: 'nicht_gefunden', message: 'Nicht gefunden.' }, 404);
   });
   return einrichten;
@@ -288,6 +334,43 @@ for (const breite of BREITEN) {
       await page.getByRole('button', { name: 'Gerät anbinden für Werk Lindach', exact: true }).click();
       await expect(page.getByRole('dialog', { name: 'Gerät anbinden' })).toBeVisible();
       await messeUndFotografiere(page, breite, 'geraet-anbinden');
+    });
+
+    test('Datenquelle anlegen: Box-Wahl, Prüfung und Budget-Ablehnung mit zwei Auswegen', async ({ page }) => {
+      const cloud: Cloud = {
+        standorte: ahrenbergHeute(),
+        funktionen: ahrenbergFunktionen({
+          standorte: [funktionMessenEntwurf(funktionWerkAhrenberg('bestand')), funktionWerkLindach('bestand')],
+        }),
+        budgetAblehnung: true,
+      };
+      await verdrahte(page, cloud);
+      await oeffne(page, breite, `?standort=${FIXTURE_IDS.st1}`);
+      await schritt2(page);
+      await page.getByRole('button', { name: 'Datenquelle anlegen für Werk Ahrenberg – Halle 2', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Datenquelle anlegen' });
+      await expect(dialog).toBeVisible();
+      await expect(page.getByRole('dialog', { name: /^Messen & Auswerten/ })).toHaveCount(0);
+      await dialog.getByLabel('Name').fill('WAGO-Steuerung Halle 2');
+      await dialog.getByLabel('Adresse').fill('192.168.20.10:502');
+      await dialog.getByLabel('Netzlage').fill('VLAN 20 „Produktion“');
+      await dialog.getByLabel('Takt in Sekunden').fill('10');
+      await dialog.getByRole('radio', { name: /Box Halle 1/ }).check();
+      await expect(dialog.getByText('Box Halle 2').first()).toBeVisible();
+      await expect(dialog.getByText('Software 2.8.0')).toHaveCount(2);
+      await expect(dialog.getByText('Freies Lesebudget: wird beim Einrichten geprüft')).toHaveCount(2);
+      await dialog.getByRole('button', { name: 'Entwurf anlegen' }).click();
+      await expect(dialog.getByText(/DQ-4 ist als Entwurf angelegt/)).toBeVisible();
+      await dialog.getByRole('button', { name: 'Von Box Halle 1 prüfen' }).click();
+      await expect(dialog.getByText(/Erreichbar · 184 ms/)).toBeVisible();
+      await dialog.getByRole('button', { name: 'Einrichtung abschließen' }).click();
+      const ablehnung = dialog.getByRole('alert');
+      await expect(ablehnung).toContainText('Takt strecken oder andere Box wählen');
+      await expect(dialog.getByRole('button', { name: 'Takt 60 s wählen' })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'Box Halle 2 wählen (29 Anfragen/min frei)' })).toBeVisible();
+      await expect(dialog.getByText('Frei: 545 Messwerte/min · 29 Anfragen/min · 19,3 % Buszeit')).toBeVisible();
+      await ablehnung.scrollIntoViewIfNeeded();
+      await messeUndFotografiere(page, breite, 'datenquelle-budget');
     });
 
     test('ohne Standort legt Schritt 1 ihn im Standort-Dialog aus AP-02 an', async ({ page }) => {

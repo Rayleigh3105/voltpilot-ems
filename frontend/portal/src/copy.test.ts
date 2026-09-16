@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import { SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
+import { budgetFreiText, folgenSaetze } from './datenquelle';
 import { rechteSeed } from './test/rollenFixtures';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -774,6 +775,19 @@ describe('AP-01 IP-13 · Kundenwörter im Grenze-Schritt', () => {
     expect(quelle).toContain('Hausreserve');
     expect(quelle).toContain('Ladebudget');
     expect(quelle.replace(/\.vereinbart_kw/g, '')).not.toMatch(/grid_limit_kw|max_house_load_kw/);
+  });
+});
+
+describe('AP-06 IP-11 · Datenquelle anlegen spricht mit Kundenwörtern in Sie-Form', () => {
+  it('nennt Box, Netzlage, Prüfung und Lesebudget — keine internen Transportwörter', () => {
+    const quelle = readFileSync(join(process.cwd(), 'src/components/DatenquelleAnlegen.tsx'), 'utf8');
+    for (const wort of ['Datenquelle anlegen', 'Netzlage', 'Zuständige Box', 'Lesebudget', 'Was danach gilt']) {
+      expect(quelle).toContain(wort);
+    }
+    expect(`${budgetFreiText(null)} ${folgenSaetze('Halle 2', 'Box Halle 2').join(' ')}`)
+      .toContain('Liegt die Quelle in einem anderen Netz, brauchen Sie eine Box dort oder eine Route der Kunden-IT.');
+    expect(quelle).not.toMatch(/\b(?:Gateway-ID|Device-ID|Duty Cycle|Payload|Topic)\b/);
+    expect(quelle).not.toMatch(/\b(?:du|dein(?:e|en|em|er|es)?|euch)\b/i);
   });
 });
 
