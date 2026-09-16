@@ -1,3 +1,5 @@
+import { clearWerteCache } from '../uemsWerteCache';
+import { Ablesungen } from '../components/Ablesungen';
 import { RechteStandort } from '../rollen';
 import { Recht } from '../components/Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -405,6 +407,7 @@ function MessstelleSeiteMitId({
         )}
       </section>
 
+      {quellen && m.art === 'gemessen' && haupt?.wertart === 'Zählerstand' && !quellen.quellen.some(q => q.rolle === 'fuehrend') && <Ablesungen onWirksam={() => { clearWerteCache(); setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }} kennzeichen={m.kennzeichen} einheit={haupt.einheit} zone={standorte?.standorte.find(s => s.id === zeile?.ort.standort_id)?.zeitzone ?? zone} archiviert={m.lebenszyklus === 'archiviert'} />}
       {quelleKarten.length > 0 && (
         <QuelleKarte
           karten={quelleKarten}

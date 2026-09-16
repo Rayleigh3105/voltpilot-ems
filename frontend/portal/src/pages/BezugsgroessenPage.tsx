@@ -1,3 +1,4 @@
+import { BezugswertListe } from '../components/BezugswertListe';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -73,6 +74,7 @@ export function BezugsgroessenPage() {
           <h2>{z.name}</h2><p className="vp-bz-einheit">{z.einheit}</p><p>{z.geltung}</p>
           {z.flaeche && <p className="vp-bz-hinweis">Flächen werden in der Ortsstruktur gepflegt.</p>}
           {z.flaeche && z.standort && <a className="vp-bz-weg" href={`#/standort/${encodeURIComponent(z.standort)}/gebaeude`}>Gebäude und Bereiche ansehen<Icon name="chevron-right" size={16} /></a>}
+          {z.original?.wertart === 'periodenwert' && <BezugswertListe onEingegeben={() => setStand(s => s ? { ...s, liste: { ...s.liste, bezugsgroessen: s.liste.bezugsgroessen.map(b => b.id === z.original?.id ? { ...b, hat_werte: true } : b) } } : s)} bezug={z.original} standort={z.standort} zone={stand.daten.standorte.find(s => s.id === z.standort)?.zeitzone ?? stand.daten.unternehmen?.zeitzone ?? VORGABE_ZEITZONE} />}
           {z.original && !z.archiviert && z.standort !== undefined && verwalten(z.standort) && <Button variant="ghost" onClick={e => { ausloeser.current = e.currentTarget; setArchiv(z); setErfolg(null); }}>Archivieren</Button>}
         </li>)}
       </ul>}

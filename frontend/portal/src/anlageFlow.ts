@@ -1,3 +1,4 @@
+import { parseDecimal } from './zahl';
 import type { MastrApplyInput, MastrPreview, SaveBatteryInput } from './api';
 import { fmtNum } from './format';
 
@@ -103,13 +104,7 @@ export const DEVICE_ID_FIELD = {
 export const DEVICE_ID_UNKNOWN_MSG =
   'Diese Geräte-ID kennen wir nicht. Bitte vergleichen Sie Ihre Eingabe Zeichen für Zeichen mit der ID, die Ihr Gerät anzeigt - schon ein Tippfehler verhindert die Verbindung.';
 
-/** Parse a German-or-plain decimal; null when empty or not a finite number. */
-export function parseDecimal(text: string): number | null {
-  const normalized = text.trim().replace(/\s/g, '').replace(',', '.');
-  if (normalized === '') return null;
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : null;
-}
+export { parseDecimal } from './zahl';
 
 export type BatteryFormResult =
   | { ok: true; value: SaveBatteryInput }

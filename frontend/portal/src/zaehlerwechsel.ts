@@ -1,6 +1,7 @@
 /** AP-04 IP-18: Eingaben prüfen, gespeicherte Fakten sprechen; keine Verbrauchsrechnung. */
 import type { Messkanal, MessstelleQuelleStand, UemsGeraet, Zaehlerwechsel, ZaehlerwechselVorgang } from './api';
-import { parseDecimal } from './anlageFlow';
+import { ablesestandWert } from './zahl';
+export { ablesestandWert } from './zahl';
 import { iso, zeitpunkteVon } from './bezugsPeriode';
 import { ZEIT_SAETZE } from './geraetEinstellungen';
 import { ereignisSatz, zeitText, zahlText } from './uemsEreignis';
@@ -36,11 +37,7 @@ export function ableseEinheit(kanaele: readonly Messkanal[]): string | null {
     (k.speist ?? []).filter(s => s.rolle === 'fuehrend').map(() => k.einheit));
   return fuehrend.length === 1 ? fuehrend[0] : null;
 }
-/** Übergabe an AP-09 IP-10 (zahl.ts): Gruppierung nur hier, Dezimalteil über parseDecimal. */
-export function ablesestandWert(text: string): number | null {
-  const wert = text.trim();
-  return parseDecimal(/^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(wert) ? wert.replace(/\./g, '') : wert);
-}
+
 export function wechselPruefen(e: WechselEingabe, zone: string, einheit: string | null) {
   const fehler: Partial<Record<keyof WechselEingabe, string>> = {};
   const zeit = wechselZeit(e.datum, e.uhrzeit, zone);

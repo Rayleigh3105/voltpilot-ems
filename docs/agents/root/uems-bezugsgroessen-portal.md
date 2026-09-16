@@ -2,7 +2,8 @@
 
 Die Unternehmenswelt `#/portfolio/bezugsgroessen` liest die vorhandene Liste einschließlich
 `bezugsflaechen`. Flächen bleiben Zeilen ohne Bezugsgrößen-ID; der Weg führt zum bestehenden
-Gebäude-/Bereichsbaum. Keine zusätzliche Flächenpflege, keine Werteingabe, Ablesung oder CSV.
+Gebäude-/Bereichsbaum. Keine zusätzliche Flächenpflege oder CSV. Werteingabe und Ablesungen ergänzt
+[IP-10](uems-werte-portal.md).
 
 ## Navigation und Rechte
 

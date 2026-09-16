@@ -18,7 +18,7 @@
  */
 
 import type { PeakShaving, PlantKind, TarifArt } from './api';
-import { parseDecimal } from './anlageFlow';
+import { parseDecimal } from './zahl';
 import { eur, eurAmount, fmtNum, NBSP } from './format';
 import { speicherschonungLabel } from './speicherschonung';
 import type {

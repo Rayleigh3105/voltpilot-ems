@@ -1561,3 +1561,19 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
     }
   });
 });
+
+// AP-09 IP-10 ergänzt Kundenhebel für bereits vorhandene Schreibrouten. Der Fingerabdruck
+// des Bestands oben bleibt unverändert: kein vorhandener Knopf wird ersetzt oder entfernt.
+describe('AP-09 IP-10 · additive Kundenhebel für Werte und Ablesungen', () => {
+  it.each([
+    ['components/BezugswertDialog.tsx', 'bezugsgroesse.eingeben'],
+    ['components/BezugswertListe.tsx', 'bezugsgroesse.eingeben'],
+    ['components/AblesungDialog.tsx', 'ablesung.erfassen'],
+    ['components/Ablesungen.tsx', 'ablesung.erfassen'],
+  ])('%s verwendet die bestehende Rechte-Weiche für %s', (pfad, recht) => {
+    const quelle = readFileSync(join(SRC, pfad), 'utf8');
+    expect(quelle).toContain('useRollen');
+    expect(quelle).toContain(`darf('${recht}'`);
+    expect(quelle).toContain('{erlaubt &&');
+  });
+});
