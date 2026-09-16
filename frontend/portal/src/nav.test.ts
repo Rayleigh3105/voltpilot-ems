@@ -44,6 +44,7 @@ import {
   boxSeiteHash,
 } from './nav';
 import { anlageSidebar } from './ebenenNav';
+import { sprungziel } from './uemsOberflaechen';
 import { anlageSurface } from './surface';
 
 /** Every AnlagenSub route that exists. */
@@ -749,18 +750,36 @@ describe('Bewegung P5 · die Richtung eines Seitenwechsels', () => {
   });
 });
 
-describe('parseMessstelleWerte — Periode und Version der Werte einer Messstelle (UEMS AP-13 IP-3)', () => {
+describe('parseMessstelleWerte — Periode, Version und Vergleich der Werte einer Messstelle (UEMS AP-13 IP-3/IP-5)', () => {
   it('liest, was `sprungziel` schreibt; die Route bleibt die Messstellen-Seite', () => {
     const hash = '#/portfolio/messstellen/MS-12?periode=2026-10&version=2';
-    expect(parseMessstelleWerte(hash)).toEqual({ periode: '2026-10', version: 2 });
+    expect(parseMessstelleWerte(hash)).toEqual({ periode: '2026-10', version: 2, vergleich: null });
     expect(parseRoute(hash)).toEqual(messstelleRoute('MS-12'));
-    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-06?periode=2026-10-25')).toEqual({ periode: '2026-10-25', version: null });
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-06?periode=2026-10-25')).toEqual({
+      periode: '2026-10-25',
+      version: null,
+      vergleich: null,
+    });
   });
 
   it('ohne Parameter nichts; eine Version, die keine ganze Zahl ab 1 ist, gilt nicht', () => {
-    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12')).toEqual({ periode: null, version: null });
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12')).toEqual({ periode: null, version: null, vergleich: null });
     for (const v of ['0', '-1', '2.5', 'zwei', '']) {
       expect(parseMessstelleWerte(`#/portfolio/messstellen/MS-12?periode=2026-10&version=${v}`).version, v).toBeNull();
     }
+  });
+
+  // AP-13 IP-5: `v=` kommt ROH aus der Adresse — welche Wahl ein Zeitraum anbietet, entscheidet `uemsVergleich.wahlAus`.
+  it('trägt die Wahl des Vergleichs als `v=` — und `sprungziel` schreibt sie zurück', () => {
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12?periode=2026-11&v=vorperiode')).toEqual({
+      periode: '2026-11',
+      version: null,
+      vergleich: 'vorperiode',
+    });
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12?v=').vergleich).toBeNull();
+    const s = sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2026-11', vergleich: 'vorjahr' });
+    expect(s?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-11&v=vorjahr');
+    // „aus“ ist die Vorgabe: ohne Wahl steht nichts in der Adresse.
+    expect(sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2026-11' })?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-11');
   });
 });

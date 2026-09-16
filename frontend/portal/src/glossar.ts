@@ -360,6 +360,31 @@ export const UEMS_VERLAUF_WAHL = {
 } as const;
 export const UEMS_VERLAUF_EREIGNISSE = 'Ereignisse im Verlauf';
 
+/**
+ * UEMS AP-13 IP-5 (E6 = A, VG1–VG5) — der VERGLEICH einer Messstelle (`uemsVergleich.ts`). Der Umschalter
+ * `aus · Vorperiode · Vorjahr` (im Jahr fallen beide zusammen, dort steht nur `aus · Vorjahr`); die Δ-Zeile nennt die
+ * Vergleichsperiode und, wo sie eine trägt, ihre Fassung — gerechnet wird sie im Zwilling `uemsBericht` (AP-12 IP-3),
+ * nie hier. Fehlt der Vergleichswert, steht der GRUND aus dem AP-12-Vokabular `grund_ohne_vergleich` (VG2), nie eine 0
+ * und nie ein Strich ohne Erklärung. Zwischen zwei Messstellen gibt es keinen Unterschied (VG4) — der Umschalter
+ * vergleicht eine Reihe mit ihrer eigenen Vergangenheit.
+ */
+export const UEMS_VERGLEICH_WAHL = { aus: 'aus', vorperiode: 'Vorperiode', vorjahr: 'Vorjahr' } as const;
+export const UEMS_VERGLEICH_GEGENUEBER = 'gegenüber {periode}';
+export const UEMS_VERGLEICH_OHNE_ZAHL = '{periode}: {zustand}';
+export const UEMS_VERGLEICH_GRUND = {
+  vor_bestehen: 'vor Beginn',
+  quelle_beendet: 'Quelle beendet',
+  keine_werte: 'keine Werte in diesem Zeitraum',
+} as const;
+export const UEMS_VERGLEICH_LAEUFT = '{periode} läuft — der Vergleich gilt für den bisherigen Zeitraum.';
+export const UEMS_VERGLEICH_WOCHE = 'Für eine Woche wird keine eigene Zahl gebildet — deshalb steht hier kein Unterschied.';
+export const UEMS_VERGLEICH_KEIN_DELTA = 'Zwischen zwei Messstellen wird kein Unterschied gebildet — jede Reihe vergleicht sich mit ihrer eigenen Vergangenheit.';
+export const UEMS_VERGLEICH_NUR_EINE_REIHE = 'Die Vergleichsperiode wird nur bei einer Messstelle gezeichnet — die Zeilen unten gelten weiter.';
+export const UEMS_VERGLEICH_WEITERE = 'Weitere Messstelle';
+export const UEMS_VERGLEICH_WEITERE_VOLL = 'Mehr als {n} Reihen liegen nicht in einem Bild.';
+export const UEMS_VERGLEICH_ENTFERNEN = '{messstelle} aus dem Bild nehmen';
+export const UEMS_VERGLEICH_NICHT_ABRUFBAR = 'Der Vergleich ist gerade nicht abrufbar.';
+
 /** Nur mit Präfix: „Bilanz“ allein ist auf Kundenflächen verboten, „Erlösbilanz“ ist etwas anderes (AP-10 E14). */
 export const UEMS_ENERGIEBILANZ = 'Energiebilanz';
 

@@ -51,6 +51,8 @@ import {
   ohneQuelleViertelstunden,
 } from '../src/test/werteKarteFixtures';
 import { f21Stunden, f21Tag, f21TagWert } from '../src/test/wertVersionenFixtures';
+import { MS_11, monatKarte, monatOhneQuelle, monatTage } from '../src/test/vergleichFixtures';
+import { MS_10 } from '../src/test/werteKarteFixtures';
 
 // Der Vite-Dev-Server kompiliert den Modulgraphen beim ersten Zugriff kalt — großzügige Frist.
 const expect = baseExpect.configure({ timeout: 30_000 });
@@ -102,6 +104,11 @@ function werteAntwort(kz: string, p: URLSearchParams, heute: string, f8 = false)
     return nach({ tag: ohneQuelleTag, stunde: ohneQuelleStunden, viertelstunde: ohneQuelleViertelstunden });
   }
   if (kz === 'MS-16' && von === '2026-10-01' && bis === '2026-10-31') return nach({ monat: ms16Oktober, tag: ms16OktoberTage });
+  // AP-13 IP-5 (O11/O12): die Monate des Vergleichs. MS-10 November 35 800 gegen Oktober 36 900; der
+  // Vorjahresmonat November 2025 liegt vor dem Bestehen (Einführung 01.10.2026) — die Route antwortet ohne
+  // Bindung. MS-11 liegt als zweite Reihe daneben (Oktober 22 400, November 21 500).
+  const vergleich = vergleichsMonat(kz, raster, von, bis);
+  if (vergleich) return vergleich;
   if (kz === 'MS-10' && von === '2026-11-03' && bis === von) {
     // O1: die Lücke des Box-Ausfalls (F8) — sonst derselbe Tag nach Ersatzwert und Korrektur (F21).
     if (f8) return nach({ tag: f8Tag, stunde: f8Stunden, viertelstunde: f8Viertelstunden });
@@ -111,6 +118,29 @@ function werteAntwort(kz: string, p: URLSearchParams, heute: string, f8 = false)
     return v === 1 || v === 2 || v === 3 ? { ...f21Tag(), version: p.get('version') ? v : null, werte: [f21TagWert(v)] } : null;
   }
   return null;
+}
+
+
+/** Die Monatsantworten, die nur der Vergleich braucht (AP-13 IP-5, O11/O12) — `null` = nicht gestellt. */
+function vergleichsMonat(kz: string, raster: string | null, von: string, bis: string): MessstelleWerte | null {
+  const mengen: Record<string, Record<string, number>> = {
+    'MS-10': { '2026-11': 35800, '2026-10': 36900 },
+    'MS-11': { '2026-11': 21500, '2026-10': 22400 },
+  };
+  const messstelle = kz === 'MS-10' ? MS_10 : kz === 'MS-11' ? MS_11 : null;
+  if (!messstelle) return null;
+  const monat = von.slice(0, 7);
+  if (von !== `${monat}-01` || bis.slice(0, 7) !== monat) return null;
+  if (monat === '2025-11') return raster === 'monat' ? monatOhneQuelle(messstelle, monat) : null;
+  const menge = mengen[kz]?.[monat];
+  if (menge === undefined) return null;
+  // Der Wochen-Gang trennt die Reihen sichtbar: MS-10 fährt am Wochenende gedrosselt, MS-11 fast gar nicht.
+  const wochenende = kz === 'MS-11' ? 0.3 : monat === '2026-10' ? 0.5 : 0.65;
+  return raster === 'monat'
+    ? monatKarte(messstelle, monat, menge)
+    : raster === 'tag'
+      ? monatTage(messstelle, monat, menge, wochenende)
+      : null;
 }
 
 /**
@@ -707,4 +737,131 @@ test('V8 · MS-06 am 20.10.2026: die Nebengröße unter den Werten — Wirkleist
   await page.mouse.move(0, 0);
   await messeUndFotografiere(page, breite, 'v8-nebengroessen-seite');
   await elementBild(neben, breite, 'v8-nebengroessen');
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * UEMS AP-13 IP-5 · der Vergleich (E6 = A, VG1–VG5): O11 (Δ-Zeile gegen die eigene Vorperiode, Grund statt 0) und
+ * O12 (weitere passende Messstellen nebeneinander, kein Δ dazwischen). Gelesen am 10.12.2026 an MS-10.
+ * ---------------------------------------------------------------------------
+ */
+
+const MS10_HASH = `/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms10}?periode=2026-11`;
+
+test('O11 · MS-10 November 2026: „Vorperiode“ legt den Oktober als zweite Reihe ins Bild, die Δ-Zeile steht unter der Karte, `v=` steht in der Adresse', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-12-10' });
+  await page.goto(MS10_HASH);
+
+  const werte = page.getByTestId('werte');
+  const vergleich = werte.getByTestId('vergleich');
+  await expect(werte.getByTestId('werte-karte')).toContainText(/35\.800\skWh/);
+  // „aus“ ist die Vorgabe: eine Reihe, keine Δ-Zeile.
+  await expect(vergleich.getByRole('tab', { name: 'aus' })).toHaveAttribute('aria-selected', 'true');
+  await expect(werte.getByTestId('vergleich-delta')).toHaveCount(0);
+  await messeUndFotografiere(page, breite, 'o11-aus-seite');
+
+  await vergleich.getByRole('tab', { name: 'Vorperiode' }).click();
+  await expect(page).toHaveURL(adresse('?periode=2026-11&v=vorperiode'));
+  const delta = werte.getByTestId('vergleich-delta');
+  await expect(delta).toHaveText(/^−1\.100\skWh \(−3,0\s%\) gegenüber Oktober 2026$/);
+
+  // Zwei Reihen im Bild; die zweite trägt ihren Namen in der Legende.
+  const balken = werte.getByTestId('verlauf-balken');
+  await expect(balken.filter({ has: page.locator(':scope[data-reihe="1"]') }).first()).toBeAttached();
+  await expect(werte.getByTestId('verlauf-reihe')).toHaveText(['MS-10 · Netzbezug Halle 2', 'Oktober 2026']);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'o11-vorperiode-seite');
+  await werteBild(werte, breite, 'o11-vorperiode');
+});
+
+test('O11 · „Vorjahr“ ohne Basis: November 2025 liegt vor dem Beginn — der Grund statt einer 0, und keine leere Kurve', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-12-10' });
+  await page.goto(MS10_HASH);
+
+  const werte = page.getByTestId('werte');
+  await werte.getByTestId('vergleich').getByRole('tab', { name: 'Vorjahr' }).click();
+  const delta = werte.getByTestId('vergleich-delta');
+  await expect(delta).toHaveText('November 2025: keine Werte — vor Beginn');
+  await expect(delta).toHaveAttribute('data-grund', 'vor_bestehen');
+  // Nur die eigene Reihe steht im Bild — eine datenlose Vergleichsperiode wird gesagt, nicht gezeichnet (VG5).
+  await expect(werte.getByTestId('verlauf-balken').filter({ has: page.locator(':scope[data-reihe="1"]') })).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'o11-vorjahr-seite');
+  await werteBild(werte, breite, 'o11-vorjahr');
+});
+
+test('O11 · der laufende Monat sagt es: Dezember 2026 gegen den vollen November', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-11-20' });
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms10}?periode=2026-11&v=vorperiode`);
+
+  const werte = page.getByTestId('werte');
+  await expect(werte.getByTestId('vergleich-laufend')).toHaveText('November 2026 läuft — der Vergleich gilt für den bisherigen Zeitraum.');
+  await page.mouse.move(0, 0);
+  await werteBild(werte, breite, 'o11-laufend');
+});
+
+test('O12 · „Weitere Messstelle“: MS-11 daneben, die anderen mit ihrem Grund — zwei Reihen, zwei Karten, KEIN Δ dazwischen', async ({ page }, info) => {
+  test.slow();
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-12-10' });
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms10}?periode=2026-10`);
+
+  const werte = page.getByTestId('werte');
+  await expect(werte.getByTestId('werte-karte')).toContainText(/36\.900\skWh/);
+
+  const liste = await listeVon(page, werte.getByRole('combobox', { name: 'Weitere Messstelle' }));
+  await expect(liste.getByRole('option', { name: /MS-11/ })).toBeVisible();
+  await expect(liste.getByRole('option', { name: /MS-04/ })).toContainText('nicht passend: Laden / Entladen');
+  await expect(liste.getByRole('option', { name: /MS-21/ })).toContainText('nicht passend: Volumen in m³');
+  await expect(liste.getByRole('option', { name: /MS-03/ })).toContainText('nicht passend: Erzeugung');
+  // Die eigene Messstelle steht nicht in der Liste — sie liegt schon im Bild.
+  await expect(liste.getByRole('option', { name: /MS-10/ })).toHaveCount(0);
+  await messeUndFotografiere(page, breite, 'o12-picker-seite');
+
+  await liste.getByRole('option', { name: /MS-11/ }).click();
+  await expect(werte.getByTestId('verlauf-reihe')).toHaveText(['MS-10 · Netzbezug Halle 2', 'MS-11 · Spritzguss SG07–SG10']);
+  const karte = werte.getByTestId('vergleich-reihe-karte');
+  await expect(karte).toHaveCount(1);
+  await expect(karte).toContainText(/22\.400\skWh/);
+  // VG4: keine Differenz zwischen zwei Messstellen — und die Fläche sagt, warum.
+  await expect(werte.getByTestId('vergleich-kein-delta')).toContainText('Zwischen zwei Messstellen wird kein Unterschied gebildet');
+  await expect(werte).not.toContainText('14.500');
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'o12-zwei-reihen-seite');
+  await werteBild(werte, breite, 'o12-zwei-reihen');
+
+  // Wieder heraus: eine Reihe, und das Bild trägt nur noch die eigene.
+  await werte.getByRole('button', { name: 'MS-11 · Spritzguss SG07–SG10 aus dem Bild nehmen' }).click();
+  await expect(werte.getByTestId('vergleich-reihe-karte')).toHaveCount(0);
+  await expect(werte.getByTestId('verlauf-balken').filter({ has: page.locator(':scope[data-reihe="1"]') })).toHaveCount(0);
+});
+
+test('VG1 · Umschalter UND weitere Reihe: das Bild zeigt die Messstellen, die Δ-Zeile jeder Reihe gilt gegen IHRE Vorperiode', async ({ page }, info) => {
+  test.slow();
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-12-10' });
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms10}?periode=2026-11&v=vorperiode`);
+
+  const werte = page.getByTestId('werte');
+  await expect(werte.getByTestId('vergleich-delta')).toHaveText(/^−1\.100\skWh/);
+
+  const liste = await listeVon(page, werte.getByRole('combobox', { name: 'Weitere Messstelle' }));
+  await liste.getByRole('option', { name: /MS-11/ }).click();
+
+  // Zwei Reihen — die Vergleichsperiode wird NICHT zusätzlich gezeichnet, und die Fläche sagt es.
+  await expect(werte.getByTestId('verlauf-reihe')).toHaveText(['MS-10 · Netzbezug Halle 2', 'MS-11 · Spritzguss SG07–SG10']);
+  await expect(werte.getByTestId('vergleich-nur-eine-reihe')).toContainText('nur bei einer Messstelle gezeichnet');
+  // Beide Δ-Zeilen stehen weiter: MS-10 gegen ihren Oktober, MS-11 gegen ihren.
+  await expect(werte.getByTestId('vergleich-reihe-delta')).toHaveText(/^−900\skWh \(−4,0\s%\) gegenüber Oktober 2026$/);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'vg1-beides-seite');
+  await werteBild(werte, breite, 'vg1-beides');
 });

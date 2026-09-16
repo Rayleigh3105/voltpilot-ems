@@ -27,6 +27,12 @@
  * Dialog (`WertVersionen`, AP-08 IP-18) — NEBEN dem Rahmen gerendert, nicht darin: React-Ereignisse
  * blubbern durch Portale, Escape und Klicks gehören dem oberen.
  *
+ * Seit AP-13 IP-5 (E6 = A) trägt sie den VERGLEICH: der Umschalter `aus · Vorperiode · Vorjahr` (Adresse `v=`) legt die
+ * eigene Vergangenheit blass hinter die Reihe und setzt die Δ-Zeile unter die Karte; „Weitere Messstelle“ legt bis zwei
+ * PASSENDE Reihen daneben, jede mit ihrer eigenen Karte. Zwischen zwei Messstellen steht nie eine Differenz (VG4);
+ * gerechnet wird ausschließlich im Zwilling `uemsBericht` (AP-12 IP-3). Ohne Register (der Dialog an den
+ * Gesamtwert-Karten) gibt es den Vergleich nicht — „passend“ braucht die Hauptgrößen der anderen Messstellen.
+ *
  * Seit AP-13 IP-6 sagt die Sektion, WARUM eine Zahl fehlt: unter dem Strich der Karte der Satz des Grundes (mit den
  * Namen der Bindungen aus dem Register des Wirts, `quelle`); eine abgelehnte Anfrage (400), eine Messstelle, die es
  * nicht gibt (404), und ein nicht mehr gespeicherter Wert sind AUSKÜNFTE ohne „Erneut versuchen“ — nur eine Route, die
@@ -54,8 +60,10 @@ import {
   type OhneQuelle,
   type OhneQuelleWeg,
 } from '../uemsWerteKarte';
+import { bestehenAus, VERGLEICH_AUS, wahlAus, type ReihenWahl, type VergleichWahl } from '../uemsVergleich';
 import { ZeitSegment } from './HistorieWelt';
 import { MessstellenVerlauf } from './MessstellenVerlauf';
+import { DeltaZeile, ReihenKarten, useVergleich, VergleichLeiste } from './WerteVergleich';
 import { ErrorState, Skeleton } from './States';
 import { VpDatePicker } from './VpDatePicker';
 import { VersionenDialog, VersionenEinstieg } from './WertVersionen';
@@ -103,10 +111,25 @@ export function WerteSektion({
   heute = isoTag(new Date()),
   standortName = null,
   quelle = null,
+  register = [],
+  vergleich = null,
+  onVergleich,
   onQuelleZuordnen,
   onZeitraum,
   rahmen = (inhalt) => inhalt,
 }: {
+  /**
+   * Das Register von heute — die Hauptgrößen der anderen Messstellen. Nur damit kann der Picker „Weitere Messstelle“
+   * sagen, WELCHE passt und warum die anderen nicht (AP-13 IP-5, O12); ohne Register gibt es keinen Vergleich.
+   */
+  register?: readonly MessstelleRegisterZeile[];
+  /**
+   * Die Wahl des Umschalters aus der Adresse (`v=`), ROH — welche Wahl ein Zeitraum anbietet, entscheidet
+   * `uemsVergleich.wahlAus`: im Jahr gibt es keine eigene „Vorperiode“ (AP-13 IP-5).
+   */
+  vergleich?: string | null;
+  /** Eine neue Wahl des Umschalters; der Wirt schreibt sie in die Adresse. */
+  onVergleich?: (w: VergleichWahl) => void;
   /**
    * Die Quelle der Messstelle im Register von heute — nur, wo der Wirt das Register kennt (die Messstellen-Seite). Sie
    * gibt dem Grund-Satz die Namen der Bindungen und dem Leerzustand ohne Datenquelle seinen nächsten Schritt.
@@ -146,6 +169,8 @@ export function WerteSektion({
   const [verlaufFehler, setVerlaufFehler] = useState<Auskunft | null>(null);
   const [verlaufNeu, setVerlaufNeu] = useState(0);
   const [versionen, setVersionen] = useState<{ einstieg: Einstieg; periode: string } | null>(null);
+  // AP-13 IP-5: die gewählten weiteren Reihen leben auf der Fläche; in der Adresse steht nur die Wahl des Umschalters.
+  const [reihen, setReihen] = useState<ReihenWahl[]>([]);
 
   const anfragen = zeitraumAnfragen(art, wert);
   const verlaufIstListe = gleicheAnfrage(anfragen.liste, anfragen.verlauf);
@@ -203,6 +228,22 @@ export function WerteSektion({
   const frueher = hinweis !== null && gewaehlt !== aktuell?.karte?.werte[0]?.versionen;
   // Die Zone steht, sobald EINE Antwort da ist; beim Blättern bleibt die Zeile stehen, statt zu springen.
   const zone = geladen ? zeitenKopf(geladen.karte ?? geladen.liste, standortName) : null;
+  // AP-13 IP-5: die Vergleichsperiode und die weiteren Reihen — nur mit Register (der Dialog hat keines).
+  // Die Hauptgröße für „passend“ kommt aus dem REGISTER — dort steht sie für jede Messstelle in derselben Schreibweise.
+  const eigeneZeile = register.find((z) => z.kennzeichen === kennzeichen) ?? null;
+  const vergleichbar = register.length > 0 && eigeneZeile !== null;
+  const wahl = wahlAus(vergleich, art);
+  const vg = useVergleich({
+    kennzeichen: vergleichbar ? kennzeichen : null,
+    zeitraum: art,
+    wert,
+    heute,
+    wahl: vergleichbar ? wahl : VERGLEICH_AUS,
+    reihen: vergleichbar ? reihen : [],
+    eigenKarte: aktuell?.karte ?? null,
+    bestehen: bestehenAus(quelle),
+    register,
+  });
   const verlaufAntwort = verlaufIstListe
     ? (aktuell?.liste ?? null)
     : verlauf?.schluessel === verlaufSchluessel
@@ -285,6 +326,23 @@ export function WerteSektion({
                 }
               />
             )}
+            {/* O11: die Δ-Zeile steht DIREKT unter der Karte — die Zahl und ihre Einordnung gehören zusammen. */}
+            {vergleichbar && <DeltaZeile delta={vg.eigenDelta} />}
+            {vergleichbar && (
+              <VergleichLeiste
+                zeitraum={art}
+                wahl={wahl}
+                onWahl={(w) => onVergleich?.(w)}
+                basis={eigeneZeile?.hauptgroesse ?? null}
+                eigenKennzeichen={kennzeichen}
+                register={register}
+                reihen={reihen}
+                onReihen={setReihen}
+                laufend={vg.laufend}
+                fehler={vg.fehler}
+                onErneut={vg.erneut}
+              />
+            )}
             {verlaufFehler && !verlaufIstListe ? (
               <WerteAuskunft auskunft={verlaufFehler} stoerung={VERLAUF_NICHT_ABRUFBAR} onRetry={() => setVerlaufNeu((n) => n + 1)} />
             ) : verlaufAntwort ? (
@@ -292,6 +350,9 @@ export function WerteSektion({
                 key={`${art}|${wert}`}
                 antwort={verlaufAntwort}
                 namen={namen}
+                eigenName={messstelle}
+                vergleich={vg.ueberlagerung}
+                weitere={vg.reihenImBild}
                 kern={kernaussage(art, aktuell.karte)}
                 versionen={(s) => {
                   const se = einstieg({ ...verlaufAntwort, werte: [s.wert] });
@@ -303,6 +364,8 @@ export function WerteSektion({
                 <Skeleton height={190} />
               </div>
             )}
+            {/* O12: jede weitere Reihe hat ihre EIGENE Karte und ihre eigene Δ-Zeile — nie eine Differenz dazwischen. */}
+            {vergleichbar && <ReihenKarten reihen={vg.weitere} />}
           </>
         )}
       </div>

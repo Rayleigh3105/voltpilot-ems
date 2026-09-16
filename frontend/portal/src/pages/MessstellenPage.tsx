@@ -68,6 +68,7 @@ export function MessstellenPage({
   werte = null,
   onOeffnen,
   onWerteZeitraum,
+  onWerteVergleich,
   onListe,
   organisation = false,
   ...register
@@ -75,9 +76,11 @@ export function MessstellenPage({
   /** Die Messstelle der Adresse (AP-04 IP-8) — dann steht ihre Seite statt des Registers. */
   messstelleId?: string | null;
   /** Periode und Version der Adresse für den Abschnitt „Werte“ der Seite (AP-13 IP-3). */
-  werte?: { periode: string | null; version: number | null } | null;
+  werte?: { periode: string | null; version: number | null; vergleich: string | null } | null;
   /** Die neu gewählte Periode im Abschnitt „Werte“ — der Wirt schreibt die Adresse nach. */
   onWerteZeitraum?: (periode: string) => void;
+  /** AP-13 IP-5: eine neue Wahl des Vergleichs-Umschalters (`v=` der Adresse). */
+  onWerteVergleich?: (v: string | null) => void;
   /** Der Weg zurück ins Register der Ebene. */
   onListe?: () => void;
   /**
@@ -95,6 +98,7 @@ export function MessstellenPage({
         zone={register.zone}
         werte={werte}
         onWerteZeitraum={onWerteZeitraum}
+        onWerteVergleich={onWerteVergleich}
         onListe={onListe}
       />
     );

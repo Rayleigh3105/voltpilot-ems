@@ -13,12 +13,19 @@
  * - Tipp statt Hover (M2): jeder Schritt ist über die volle Höhe ein Ziel; die Karte des gewählten Schritts steht
  *   unter dem Bild, ‹ › wandert zum Nachbarn (44 px), am Rechner auch die Pfeiltasten. Der Tooltip (K7, ein Satz)
  *   kommt nur mit der Maus.
+ *
+ * Seit AP-13 IP-5 (E6 = A) trägt dasselbe Bild den VERGLEICH — und nur eine der beiden Formen (VG1):
+ *  - `vergleich`: dieselbe Messstelle in ihrer Vorperiode bzw. ihrem Vorjahr, blass im SELBEN Schlitz hinter der
+ *    eigenen Reihe (die Überlagerung des Bestands). Die Zustandsfarben bleiben — es ist dieselbe Reihe.
+ *  - `weitere`: bis zwei weitere PASSENDE Messstellen, nebeneinander im Schlitz. Dann trägt die Farbe die REIHE
+ *    (Legende mit Namen, jede Reihe hat unten ihre eigene Karte), nicht mehr den Zustand: zwei Bedeutungen auf einer
+ *    Farbe wären keine. Zwischen den Reihen steht nie eine Differenz (VG4).
  */
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { MessstelleWerte } from '../api';
 import type { Kernaussage } from '../chartKopf';
-import { UEMS_VERLAUF, UEMS_VERLAUF_EREIGNISSE, UEMS_VERLAUF_WAHL } from '../glossar';
+import { UEMS_VERGLEICH, UEMS_VERLAUF, UEMS_VERLAUF_EREIGNISSE, UEMS_VERLAUF_WAHL } from '../glossar';
 import { useContainerWidth } from '../useContainerWidth';
 import { ZUSTAND_WORT, bild, luecken, marker, schrittKarte, schritte, tooltipSatz, type Schritt } from '../uemsVerlauf';
 import { ChartHeadline } from './ChartExplain';
@@ -26,14 +33,32 @@ import type { QuellenNamen } from '../uemsWerteKarte';
 import { WerteKarte } from './WerteKarte';
 import './MessstellenVerlauf.css';
 
+/** Eine weitere Reihe im Bild (AP-13 IP-5): ihr Name in der Legende und ihre Antwort im Raster des Zeitraums. */
+export interface VerlaufReihe {
+  name: string;
+  antwort: MessstelleWerte;
+}
+
+/** Die Namen der Reihen-Farben in der Reihenfolge des Bildes — mehr als drei Reihen gibt es nicht (VG1). */
+export const REIHEN_FARBE = ['eigen', 'zwei', 'drei'] as const;
+
 export function MessstellenVerlauf({
   antwort,
   kern,
   versionen,
   namen,
+  eigenName,
+  vergleich = null,
+  weitere = [],
 }: {
   /** Die Antwort der Werte-Route im Raster des Zeitraums (V1). */
   antwort: MessstelleWerte;
+  /** Der Name der eigenen Reihe in der Legende — nur nötig, wo mehr als eine Reihe liegt. */
+  eigenName?: string;
+  /** AP-13 IP-5: die Vergleichsperiode DERSELBEN Messstelle, blass im selben Schlitz (VG1a). */
+  vergleich?: VerlaufReihe | null;
+  /** AP-13 IP-5: bis zwei weitere passende Messstellen, nebeneinander im Schlitz (VG1b) — dann ohne Überlagerung. */
+  weitere?: readonly VerlaufReihe[];
   /** Der Kernaussage-Satz aus der Karte der Periode (`uemsVerlauf.kernaussage`). */
   kern: Kernaussage | null;
   /** Der Einstieg „Versionen“ an der Karte eines gewählten Schritts — nur, wo der Wirt die Historie öffnet. */
@@ -49,9 +74,15 @@ export function MessstellenVerlauf({
   const s = useMemo(() => schritte(antwort), [antwort]);
   const l = useMemo(() => luecken(s), [s]);
   const m = useMemo(() => marker(antwort, s, l), [antwort, s, l]);
-  const b = bild(antwort, s, l, m, breite);
+  // VG1: entweder die Überlagerung der eigenen Vergangenheit ODER weitere Messstellen — nie beides im selben Bild.
+  const gruppiert = weitere.length > 0;
+  const reihen: VerlaufReihe[] = gruppiert ? [...weitere] : vergleich ? [vergleich] : [];
+  const weitereSchritte = reihen.map((r) => schritte(r.antwort));
+  const b = bild(antwort, s, l, m, breite, weitereSchritte, gruppiert);
   const wahl = UEMS_VERLAUF_WAHL[antwort.raster as keyof typeof UEMS_VERLAUF_WAHL] ?? UEMS_VERLAUF_WAHL.tag;
-  const arten = ZUSTAND_WORT.filter((z) => s.some((x) => x.art === z.art));
+  // Mit mehreren Messstellen trägt die Farbe die REIHE; die Zustände stehen dann an den Karten, nicht in der Legende.
+  const arten = gruppiert ? [] : ZUSTAND_WORT.filter((z) => s.some((x) => x.art === z.art));
+  const reihenLegende = reihen.length > 0 ? [{ name: eigenName ?? UEMS_VERLAUF, art: gruppiert ? 'reihe' : 'eigen' }, ...reihen.map((r) => ({ name: r.name, art: gruppiert ? 'reihe' : 'vergleich' }))] : [];
   // Eine neue Antwort (anderer Zeitraum) hebt die Wahl auf, statt einen fremden Schritt zu zeigen.
   const auswahl = gewaehlt !== null && gewaehlt < s.length ? s[gewaehlt] : null;
   const hervor = zeiger ?? auswahl?.index ?? null;
@@ -81,6 +112,17 @@ export function MessstellenVerlauf({
             <li key={z.art}>
               <span className={`vp-mv-farbe is-${z.art}`} aria-hidden="true" />
               {z.wort}
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* VG1: die Legende nennt jede Reihe beim Namen — die Farbe allein sagt nie, welche Messstelle gemeint ist. */}
+      {reihenLegende.length > 0 && (
+        <ul className="vp-mv-legende vp-mv-reihen" data-testid="verlauf-reihen" aria-label={UEMS_VERGLEICH}>
+          {reihenLegende.map((r, i) => (
+            <li key={r.name} data-testid="verlauf-reihe" data-reihe={i}>
+              <span className={`vp-mv-farbe is-${r.art} is-r${i}`} aria-hidden="true" />
+              {r.name}
             </li>
           ))}
         </ul>
@@ -126,15 +168,22 @@ export function MessstellenVerlauf({
             />
           ))}
 
-          {b.balken.map((x) => (
+          {/* Die blasse Vergleichsreihe liegt HINTER der eigenen — sonst verdeckte die Vergangenheit die Gegenwart. */}
+          {[...b.balken].sort((a, z) => (gruppiert ? 0 : z.reihe - a.reihe)).map((x) => (
             <rect
-              key={x.index}
-              className={`vp-mv-balken is-${x.art}`}
+              key={`${x.reihe}-${x.index}`}
+              data-testid="verlauf-balken"
+              data-reihe={x.reihe}
+              className={
+                gruppiert
+                  ? `vp-mv-balken is-reihe is-r${x.reihe}`
+                  : `vp-mv-balken is-${x.art}${x.reihe > 0 ? ' is-vergleich' : ''}`
+              }
               x={x.x}
               y={x.y}
               width={x.w}
               height={x.h}
-              fill={x.art === 'ersatzwert' ? `url(#${muster}-ersatz)` : undefined}
+              fill={!gruppiert && x.art === 'ersatzwert' ? `url(#${muster}-ersatz)` : undefined}
             />
           ))}
 

@@ -48,6 +48,15 @@ import {
   UEMS_ZEITRAEUME,
 } from './glossar';
 import * as OF from './uemsOberflaechen';
+import * as VG from './uemsVergleich';
+import {
+  UEMS_VERGLEICH_KEIN_DELTA,
+  UEMS_VERGLEICH_NICHT_ABRUFBAR,
+  UEMS_VERGLEICH_NUR_EINE_REIHE,
+  UEMS_VERGLEICH_WEITERE,
+} from './glossar';
+import { GRUENDE_OHNE_VERGLEICH } from './uemsBericht';
+import { ms12November, ms12Oktober, ms12Vorjahr } from './test/vergleichFixtures';
 import * as VL from './uemsVerlauf';
 import * as EB from './anlageEnergiebilanz';
 import { ahrenbergBilanz } from './test/bilanzFixtures';
@@ -1540,6 +1549,9 @@ const CHART_FILES_OBERFLAECHEN: string[] = [
   // AP-13 IP-4 (= AP-08 IP-10): der Verlauf einer Messstelle — Render und Regel gleichberechtigt, wie beim Tagesbild.
   'components/MessstellenVerlauf.tsx',
   'uemsVerlauf.ts',
+  // AP-13 IP-5: der Vergleich legt die zweite Reihe in DASSELBE Bild — reines Modul und Render gehören dazu.
+  'uemsVergleich.ts',
+  'components/WerteVergleich.tsx',
   // AP-11 IP-13: der Kennzahl-Balken (Funktion `Verlauf` der Kennzahl-Seite) und seine Ableitung `kennzahlKarte.verlauf`.
   'pages/KennzahlSeite.tsx',
   'kennzahlKarte.ts',
@@ -1557,6 +1569,9 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     'components/WerteSektion.tsx',
     'uemsVerlauf.ts',
     'components/MessstellenVerlauf.tsx',
+    // AP-13 IP-5: der Vergleich (reines Modul und Render).
+    'uemsVergleich.ts',
+    'components/WerteVergleich.tsx',
     'uebersichtBausteine.ts',
     'components/UebersichtBausteine.tsx',
     // AP-13 IP-8: die Energiebilanz je Anlage (reines Modul und Render).
@@ -1621,6 +1636,26 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       out.push({ wo: 'Verlauf', text: ohnePlatz(t) });
     }
     out.push({ wo: 'Verlauf', text: VL.markerSatz({ art: 'handover', von: '2026-11-04T09:38:00+01:00', bis: '2026-11-04T09:40:00+01:00' }, 'Europe/Berlin') ?? '' });
+    // AP-13 IP-5: der Umschalter, die Δ-Zeile in allen Formen, die Gründe und die Sätze der Leiste.
+    for (const o of VG.wahlOptionen('monat')) out.push({ wo: 'Vergleich', text: o.label });
+    for (const [z, w] of [['tag', '2026-11-03'], ['woche', '2026-W45'], ['monat', '2026-10'], ['jahr', '2025']] as const) {
+      out.push({ wo: 'Vergleich', text: VG.periodeTitel(z, w) });
+    }
+    for (const g of GRUENDE_OHNE_VERGLEICH) out.push({ wo: `Vergleich ${g}`, text: VG.grundSatz(g) ?? '' });
+    out.push({ wo: 'Vergleich', text: VG.grundSatz('vor_bestehen', '2026-10-01') ?? '' });
+    out.push({ wo: 'Vergleich', text: VG.laufendSatz('monat', '2026-11', '2026-11-20') ?? '' });
+    out.push({ wo: 'Vergleich', text: VG.WOCHE_OHNE_DELTA });
+    out.push({ wo: 'Vergleich', text: VG.VOLL_SATZ });
+    out.push({ wo: 'Vergleich', text: VG.entfernenName({ id: 'x', kennzeichen: 'MS-11', name: 'Spritzguss SG07–SG10' }) });
+    for (const t of [UEMS_VERGLEICH, UEMS_VERGLEICH_KEIN_DELTA, UEMS_VERGLEICH_NUR_EINE_REIHE, UEMS_VERGLEICH_WEITERE, UEMS_VERGLEICH_NICHT_ABRUFBAR]) {
+      out.push({ wo: 'Vergleich', text: t });
+    }
+    for (const d of [
+      VG.delta({ zeitraum: 'monat', aktuell: ms12November(), vergleich: ms12Oktober(), periode: '2026-10', bestehen: { seit: '2026-10-01', beendet: null } }),
+      VG.delta({ zeitraum: 'monat', aktuell: ms12November(), vergleich: ms12Vorjahr(), periode: '2025-11', bestehen: { seit: '2026-10-01', beendet: null } }),
+    ]) {
+      for (const t of [d?.satz, d?.ohne]) if (t) out.push({ wo: 'Vergleich Δ', text: t });
+    }
     // AP-13 IP-6: die Sätze der Ablehnungen je Grund und Feld, die Auskünfte, die Leerzustände und die Nebengrößen.
     for (const g of OF.ABLEHNUNG_GRUENDE) {
       for (const feld of ['von', 'bis', 'raster', 'version']) out.push({ wo: `Ablehnung ${g}`, text: OF.ablehnungSatz(g, feld, 'tag') });
