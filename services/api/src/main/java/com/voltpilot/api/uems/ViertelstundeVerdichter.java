@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Savepoint;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,6 +151,7 @@ public class ViertelstundeVerdichter {
     private final int stapelGroesse;
     private final int stapelJeLauf;
     private final int arbeitHochwasser;
+    private final AtomicLong spaetankunftFehler = new AtomicLong();
 
     public ViertelstundeVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -171,6 +174,11 @@ public class ViertelstundeVerdichter {
     public record Lauf(int eingetragen, int rueckgerechnet, int scheiben, boolean rueckrechnungFertig,
             int verdichtet, int geschrieben, int spaetankuenfte) {}
 
+    /** Fehlgeschlagene Zusatz-Stapel; der Betriebszähler bleibt auch ohne Metrik-Backend prüfbar. */
+    public long spaetankunftFehlerAnzahl() {
+        return spaetankunftFehler.get();
+    }
+
     /**
      * Ein ganzer Takt: eintragen → eine Scheibe zurückrechnen → verdichten, bis die Arbeitsliste
      * leer ist oder {@code stapel-je-lauf} Stapel abgearbeitet sind.
@@ -189,6 +197,11 @@ public class ViertelstundeVerdichter {
             verdichtet += ergebnis[0];
             geschrieben += ergebnis[1];
             spaet += ergebnis[2];
+            if (ergebnis[3] > 0) {
+                // Der Zusatz wird beim nächsten Takt erneut versucht. Ohne Abbruch würde derselbe
+                // wieder eingereihte Stapel in diesem Takt bis zur Stapelgrenze heiß laufen.
+                break;
+            }
         }
         Lauf l = new Lauf(eingetragen, s.eingetragen(), s.gefahren() ? 1 : 0, s.fertig(),
                 verdichtet, geschrieben, spaet);
@@ -345,16 +358,17 @@ public class ViertelstundeVerdichter {
     }
 
     /**
-     * Entnimmt EINEN Stapel und schreibt seine Intervalle in derselben Transaktion — und meldet
-     * in DERSELBEN Transaktion, was zu spät kam.
+     * Entnimmt EINEN Stapel und schreibt seine Intervalle in derselben Transaktion. Die zusätzliche
+     * Spätankunft-Meldung liegt in einem Savepoint: ihr Fehler hält die normale Verdichtung nicht auf,
+     * der betroffene Auftrag wird aber wieder eingereiht und deshalb niemals still neu gebildet.
      *
-     * @return {@code [entnommene Intervalle, geschriebene Zeilen, gemeldete Spätankünfte]}
+     * @return {@code [entnommene Intervalle, geschriebene Zeilen, gemeldete Spätankünfte, Zusatzfehler]}
      */
     int[] verdichteEinenStapel(Instant jetzt) {
         return inTransaktion(con -> {
             List<Auftrag> stapel = entnehmen(con, stapelGroesse);
             if (stapel.isEmpty()) {
-                return new int[] {0, 0, 0};
+                return new int[] {0, 0, 0, 0};
             }
             // AP-07 IP-13, E5: ein Rohwert für ein GESCHLOSSENES Intervall wird gespeichert,
             // gemeldet und vorgeschlagen — nie angewendet. Aussortiert wird deshalb VOR dem
@@ -376,19 +390,65 @@ public class ViertelstundeVerdichter {
                     .map(Auftrag::intervall)
                     .toList());
             List<Auftrag> offen = new ArrayList<>();
-            int spaet = 0;
+            List<Auftrag> spaet = new ArrayList<>();
             for (Auftrag a : stapel) {
-                if (mitNachzueglern.contains(a.intervall())
-                        && melder.melden(con, a.tenant(), a.entity(), a.kanal(), a.beginn())
-                                .vorgeschlagen()) {
-                    spaet++;
+                if (mitNachzueglern.contains(a.intervall())) {
+                    spaet.add(a);
                 } else {
                     offen.add(a);
                 }
             }
+            int[] meldung = spaet.isEmpty() ? new int[] {0, 0} : spaetankuenfteMelden(con, spaet);
             int geschrieben = offen.isEmpty() ? 0 : bilden(con, offen, jetzt);
-            return new int[] {stapel.size(), geschrieben, spaet};
+            return new int[] {stapel.size(), geschrieben, meldung[0], meldung[1]};
         });
+    }
+
+    /**
+     * Der Zusatzschreibweg des bestehenden Verdichtungsstapels. Scheitert eine Meldung, fällt der
+     * gesamte Zusatz-Stapel bis zum Savepoint zurück; alle betroffenen Aufträge bleiben für den
+     * nächsten Takt liegen. Die normale Verdichtung der übrigen Aufträge darf trotzdem festschreiben.
+     */
+    private int[] spaetankuenfteMelden(Connection con, List<Auftrag> auftraege) throws SQLException {
+        Savepoint punkt = con.setSavepoint();
+        try {
+            for (Auftrag a : auftraege) {
+                if (!melder.melden(con, a.tenant(), a.entity(), a.kanal(), a.beginn()).vorgeschlagen()) {
+                    throw new SQLException("erkannte Spätankunft wurde nicht vorgeschlagen");
+                }
+            }
+            con.releaseSavepoint(punkt);
+            return new int[] {auftraege.size(), 0};
+        } catch (SQLException | RuntimeException e) {
+            con.rollback(punkt);
+            con.releaseSavepoint(punkt);
+            wiedereinreihen(con, auftraege);
+            spaetankunftFehler.incrementAndGet();
+            io.micrometer.core.instrument.Metrics.counter(
+                    "voltpilot_uems_spaetankunft_total", "ergebnis", "fehler").increment();
+            log.warn("UEMS Spätankunft: Zusatz-Stapel mit {} Intervallen zurückgerollt — später erneut: {}",
+                    auftraege.size(), e.toString());
+            return new int[] {0, 1};
+        }
+    }
+
+    private static void wiedereinreihen(Connection con, List<Auftrag> auftraege) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
+                INSERT INTO messreihe_viertelstunde_arbeit
+                       (tenant_id, entity_id, messkanal, intervall_beginn, grund)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
+                """)) {
+            for (Auftrag a : auftraege) {
+                ps.setObject(1, a.tenant());
+                ps.setObject(2, a.entity());
+                ps.setString(3, a.kanal());
+                ps.setTimestamp(4, Timestamp.from(a.beginn()));
+                ps.setString(5, a.grund());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
     }
 
     /**

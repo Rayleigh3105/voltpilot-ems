@@ -128,7 +128,8 @@ class UemsFristVorschlagTest {
     private static Map<String, Object> letzterOktobertagNachher;
     private static List<Map<String, Object>> f10VorDerNachlieferung;
     private static Map<String, String> vorDerNachlieferung;
-    private static boolean abbruchWarf;
+    private static boolean zusatzfehlerBliebIsoliert;
+    private static long zusatzfehler;
     private static int arbeitNachAbbruch;
     private static int meldungenNachAbbruch;
     private static int erkennungNachAbbruch;
@@ -210,13 +211,15 @@ class UemsFristVorschlagTest {
         rueckrechnungEintragen("RUECK");
         vorDerNachlieferung = Bestandsschutz.fingerabdruck(root, VORGANG);
 
-        // Abbruchsicher: das Vorschlagen scheitert mitten im Stapel — nichts Halbes bleibt liegen.
+        // Isoliert: das Vorschlagen scheitert mitten im Zusatz-Stapel — nichts Halbes bleibt liegen,
+        // und der bestehende Verdichtungslauf darf trotzdem abschließen.
         root.execute("REVOKE INSERT ON messreihe_korrektur_vorschlag FROM " + ADMIN_USER);
         try {
             verdichter.lauf(T_F10);
-            abbruchWarf = false;
+            zusatzfehlerBliebIsoliert = true;
+            zusatzfehler = verdichter.spaetankunftFehlerAnzahl();
         } catch (RuntimeException e) {
-            abbruchWarf = true;
+            zusatzfehlerBliebIsoliert = false;
         } finally {
             root.execute("GRANT INSERT ON messreihe_korrektur_vorschlag TO " + ADMIN_USER);
         }
@@ -423,13 +426,15 @@ class UemsFristVorschlagTest {
     }
 
     /**
-     * Scheitert das Vorschlagen mitten im Stapel, rollt ALLES mit zurück: keine Meldung ohne Erkennung, keine Zeile,
-     * und die Einträge stehen wieder in der Arbeitsliste — der nächste Lauf meldet genau einmal.
+     * Scheitert das Vorschlagen mitten im Zusatz-Stapel, rollt der Savepoint nur diesen Zusatz zurück: keine Meldung
+     * ohne Erkennung, keine Zahl und keine Version. Der bestehende Verdichtungslauf schließt ab, die Einträge stehen
+     * für den nächsten Takt wieder in der Arbeitsliste und werden danach genau einmal gemeldet.
      */
     @Test
-    void einAbgebrochenerLaufHinterlaesstNichtsHalbes() {
-        assertThat(abbruchWarf).as("der Abbruch wird nicht verschwiegen").isTrue();
-        assertThat(arbeitNachAbbruch).as("die Entnahme rollt mit zurück").isEqualTo(45);
+    void einFehlerImZusatzwegLaesstDenVerdichtungslaufWeiterlaufenUndNichtsHalbesZurueck() {
+        assertThat(zusatzfehlerBliebIsoliert).as("der bestehende Lauf schließt ab").isTrue();
+        assertThat(zusatzfehler).as("der Zusatzfehler wird gezählt").isOne();
+        assertThat(arbeitNachAbbruch).as("die Nachzügler werden erneut eingereiht").isEqualTo(45);
         assertThat(meldungenNachAbbruch).isZero();
         assertThat(erkennungNachAbbruch).isZero();
         assertThat(meldungenNachDemTakt).isEqualTo(45);

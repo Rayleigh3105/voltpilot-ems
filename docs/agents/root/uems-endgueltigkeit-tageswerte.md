@@ -58,8 +58,12 @@ Frist** liegt. Findet der Verdichtungs-Lauf für einen `eingang`-Eintrag welche,
    Intervall, Nutzlast `eingangszeit` + `anzahl`,
 3. **schreibt einen Vorschlag** in `messreihe_korrektur_vorschlag`,
 
-und zwar alles **in DERSELBEN Transaktion**, in der der Eintrag aus der Arbeitsliste entnommen
-wird — sonst gäbe es einen Augenblick, in dem der Wert abgelehnt, aber noch nicht gemeldet ist.
+und zwar in der Transaktion, in der der Eintrag aus der Arbeitsliste entnommen wird. Der Zusatz liegt
+in einem eigenen **Savepoint**: scheitert eine Meldung oder ein Vorschlag, werden alle Nachzügler des
+Stapels erneut eingereiht, aber die normale Verdichtung der übrigen Intervalle darf festschreiben.
+Fang, Warn-Log, `spaetankunftFehlerAnzahl()` und
+`voltpilot_uems_spaetankunft_total{ergebnis="fehler"}` machen den Fehler laut. Der nächste Takt
+versucht den Zusatz erneut; ein Nachzügler gelangt auch in diesem Fehlerfall nie in die Neubildung.
 
 ⚠ **Nur bei einem WIRKLICHEN Nachzügler.** Ein geschlossenes Intervall kann auch ohne einen wieder
 in der Arbeitsliste landen (die Überlappung des Zeigers, ein Betriebs-Anstoß, die Rückrechnung);
