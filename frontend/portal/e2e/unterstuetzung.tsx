@@ -25,7 +25,7 @@ const modus = new URLSearchParams(location.search).get('modus');
 let me = rechteSeed().me;
 let liste: Unterstuetzung[] = [modus === 'notfall' ? notfallFixture() : unterstuetzungFixture()];
 let anfragen = modus === 'anfrage' ? [anfrageFixture()] : [];
-if (modus === 'partner') { me = { ...me, kennung: 'TB', name: 'Thomas Brunner', konto: 'partner', zugang: 'unterstuetzung', rollen: ['unterstuetzer'], unternehmen_rechte: [], unternehmensweit: false, kundenbereiche: [{ id: me.kundenbereich!.id, name: me.kundenbereich!.name, umfang: 'einrichten_und_bedienen', endet: '2026-12-15T23:00:00Z' }], standorte: me.standorte.slice(0, 1) }; }
+if (modus === 'partner') { me = { ...rechteSeed('TB').me, kundenbereiche: [{ id: me.kundenbereich!.id, name: me.kundenbereich!.name, umfang: 'einrichten_und_bedienen', endet: '2026-12-15T23:00:00Z' }] }; }
 if (modus === 'leser') me = rechteSeed('IK').me;
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id, realm_access: { roles: modus === 'admin' ? ['platform-admin'] : modus === 'partner' ? ['partner'] : [] } };
 function aktuell() { me = { ...me, unterstuetzungen: modus === 'partner' ? { eigene: liste, gewaehrte: [] } : { eigene: [], gewaehrte: liste.filter(u => u.zustand === 'aktiv') } }; setSelbstauskunft(me); }

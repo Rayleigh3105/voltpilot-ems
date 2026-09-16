@@ -30,8 +30,9 @@ for (const breite of [375, 1440]) {
     await expect(page.getByRole('status').filter({ hasText: 'Elektro Brunner (Installateur)' })).toHaveCount(0);
     await expect(karte.getByRole('heading', { name: 'Unterstützung', exact: true })).toBeFocused();
     await page.goto('/e2e/unterstuetzung.html?modus=partner');
-    await expect(page.getByRole('status')).toContainText('Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH');
-    await expect(page.getByRole('status')).toContainText('Einrichten und Bedienen');
+    const partnerBanner = page.getByRole('status').filter({ hasText: 'Sie arbeiten im Kundenbereich' });
+    await expect(partnerBanner).toContainText('Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH');
+    await expect(partnerBanner).toContainText('Einrichten und Bedienen');
     await expect(page.getByRole('combobox', { name: 'Kundenbereich' })).toBeVisible(); await foto('N5b');
     await page.goto('/e2e/unterstuetzung.html?modus=notfall');
     await expect(page.getByRole('status')).toContainText('VoltPilot-Support hat Notfall-Zugriff'); await foto('A14');
