@@ -73,14 +73,20 @@ public class BezugsdatenImportController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Recht(value = "bezugsgroesse.importieren", ziel = RechtZiel.DIENST)
     public ImportUebernahmeService.Ergebnis uebernehmen(
-            @RequestPart("datei") MultipartFile datei, @RequestPart("zuordnung") String zuordnung,
+            @RequestPart("datei") MultipartFile datei,
+            @RequestPart(value = "zuordnung", required = false) String zuordnung,
+            @RequestPart(value = "vorlage_id", required = false) String vorlageIdText,
             @RequestPart("bestaetigung") String bestaetigung,
             Authentication auth) throws IOException {
         ImportUebernahmeService.Bestaetigung b;
         try { b = streng.readValue(bestaetigung, ImportUebernahmeService.Bestaetigung.class); }
         catch (JsonProcessingException e) { throw BezugsgroesseAbgelehnt.anfrage("bestaetigung"); }
-        return uebernahme.uebernehmen(datei.getBytes(), datei.getOriginalFilename(), zuordnung(zuordnung), b,
-                OrtAnfrage.akteur(auth));
+        UUID vorlageId;
+        try { vorlageId = vorlageIdText == null ? null : UUID.fromString(vorlageIdText); }
+        catch (IllegalArgumentException e) { throw BezugsgroesseAbgelehnt.anfrage("vorlage_id"); }
+        if ((vorlageId == null) == (zuordnung == null)) throw BezugsgroesseAbgelehnt.anfrage("zuordnung");
+        return uebernahme.uebernehmen(datei.getBytes(), datei.getOriginalFilename(),
+                vorlageId == null ? zuordnung(zuordnung) : null, b, OrtAnfrage.akteur(auth), vorlageId);
     }
 
     public record Ruecknahme(String begruendung) {}
@@ -175,10 +181,6 @@ public class BezugsdatenImportController {
         List<String> teile = e.getPath().stream()
                 .map(r -> r.getFieldName() != null ? r.getFieldName() : String.valueOf(r.getIndex())).toList();
         return teile.isEmpty() ? "zuordnung" : String.join(".", teile);
-    }
-
-    private static String leer(String text) {
-        return text == null || text.isBlank() ? null : text;
     }
 
     @ExceptionHandler(KorrekturFreigabeAbgelehnt.class)

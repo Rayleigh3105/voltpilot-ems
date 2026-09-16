@@ -10822,10 +10822,11 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [datei, zuordnung, bestaetigung]
+              required: [datei, bestaetigung]
               properties:
                 datei: { type: string, format: binary }
-                zuordnung: { type: string, description: JSON der Form BezugsdatenZuordnung. }
+                zuordnung: { type: string, description: JSON der Form BezugsdatenZuordnung; genau eines aus zuordnung und vorlage_id. }
+                vorlage_id: { type: string, format: uuid, description: Verwendet die aktuelle unveränderliche Vorlagenfassung. }
                 bestaetigung: { type: string, description: JSON der Form BezugsdatenImportBestaetigung. }
             encoding:
               zuordnung: { contentType: application/json }
@@ -12469,6 +12470,10 @@ components:
         aenderungen: { type: integer, minimum: 0 }
         vorschlaege: { type: integer, minimum: 0, description: Offene Wertvorschläge. Eine vorgeschlagene Rücknahme ändert den Import-Status erst nach Freigabe. }
         zaehler: { type: object, nullable: true, description: Import-Zähler der gemeinsamen Bezugsdaten-Regel. }
+        vorlage:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/BezugsdatenVorlageVerweis" }]
+          description: Die beim Import tatsächlich verwendete Vorlage und Fassung; spätere Vorlagenänderungen ändern diesen Beleg nicht.
     Ablesung:
       type: object
       required: [quelle, zeitpunkt, fassung, stand, monat, woher, urheber, korrektur, eingetragen_am]

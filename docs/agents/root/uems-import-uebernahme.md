@@ -1,11 +1,13 @@
 # Bezugsdaten übernehmen und zurücknehmen (AP-09 IP-13)
 
 `ImportUebernahmeService` führt C6/C7 aus. Multipart `POST /api/v1/bezugsdaten/importe`
-übermittelt `datei`, `zuordnung` wie die Vorschau sowie `bestaetigung` als JSON:
+übermittelt `datei`, wahlweise `zuordnung` oder `vorlage_id` wie die Vorschau sowie `bestaetigung` als JSON:
 `vorschau` (kurzlebige Kennung), `entscheidungen` (Zeilennummer → behalten/ersetzen),
 `begruendung` und bei Teilübernahme den exakten `teiluebernahme`-Satz der Regel.
 Die Vorschau wird unter der IP-7-Mandantensperre erneut gerechnet. Ein veränderter
 Bestand oder eine abgelaufene Kennung verlangt eine neue Vorschau.
+Vorlage und verwendete Fassung werden am Import gespeichert und im Status ausgegeben;
+eine spätere Vorlagenfassung ändert diesen Beleg nicht.
 
 - `POST …/{kennung}/ruecknahme` mit `begruendung`: neue Wert-Fassungen, nie DELETE.
   Eine spätere fremde Berichtigung wird nicht überschrieben (409 gleichzeitig).
@@ -18,7 +20,7 @@ Bestand oder eine abgelaufene Kennung verlangt eine neue Vorschau.
 - `correction` nennt `import=I-…` und als Korrektur-Anlass
   `I-…/Zeile-n/Fassung-m`. Das ist absichtlich je Wert eindeutig: die Kaskade führt
   ihren Fortschritt pro Anlass, nicht pro Import-Datei.
-- `V20260916223000`: leeres, RLS-geschütztes Freigabe-Journal; append-only,
+- `V20260916225000`: leeres, RLS-geschütztes Freigabe-Journal; append-only,
   Folgefassungen und zweite Person zusätzlich in der DB. Offboarding räumt es mit auf.
   Keine neue Spalte wird in Abfragen gegen alte Migrationsstände vorausgesetzt.
 

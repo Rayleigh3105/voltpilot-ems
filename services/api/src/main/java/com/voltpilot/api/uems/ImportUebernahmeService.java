@@ -5,6 +5,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.ImportUebernahmeRepository.Aenderung;
 import com.voltpilot.api.uems.BezugsgroesseRegeln.Ablehnung;
 import com.voltpilot.api.web.dto.BezugsdatenImportDto;
+import com.voltpilot.api.web.dto.BezugsdatenVorlageDto;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.math.BigDecimal;
@@ -42,16 +43,25 @@ public class ImportUebernahmeService {
 
     public record Bestaetigung(String vorschau, Map<Integer,String> entscheidungen, String begruendung, String teiluebernahme) {}
     public record Ergebnis(String kennung, String status, int aenderungen, int vorschlaege,
-            BezugsdatenRegeln.Zaehler zaehler) {}
+            BezugsdatenRegeln.Zaehler zaehler, BezugsdatenVorlageDto.Verweis vorlage) {
+        public Ergebnis(String kennung, String status, int aenderungen, int vorschlaege, BezugsdatenRegeln.Zaehler zaehler) {
+            this(kennung,status,aenderungen,vorschlaege,zaehler,null);
+        }
+    }
 
     public Ergebnis uebernehmen(byte[] datei, String name, ImportVorschau.Zuordnung zuordnung,
             Bestaetigung anfrage, ProtokollAkteur wer) {
+        return uebernehmen(datei,name,zuordnung,anfrage,wer,null);
+    }
+
+    public Ergebnis uebernehmen(byte[] datei, String name, ImportVorschau.Zuordnung zuordnung,
+            Bestaetigung anfrage, ProtokollAkteur wer, UUID vorlageId) {
         if (anfrage == null) throw BezugsgroesseAbgelehnt.anfrage("bestaetigung");
         return tx.execute(t -> {
             UUID tenant=TenantContext.get();
             boolean vier=werte.vierAugenGesperrt(tenant);
             bezuege.kundenbereichSperren(tenant);
-            var v=vorschauen.vorschau(datei,name,zuordnung);
+            var v=vorschauen.vorschau(datei,name,zuordnung,vorlageId);
             if (!ImportVorschau.KENNUNG_GUELTIG.equals(ImportVorschau.kennungPruefen(anfrage.vorschau(),tenant,
                     v.vorschau().ergebnisFingerabdruck(),Instant.now()))) {
                 throw BezugsgroesseAbgelehnt.anfrage("vorschau");
@@ -95,10 +105,10 @@ public class ImportUebernahmeService {
             }
             String grund=anfrage.begruendung()==null || anfrage.begruendung().isBlank() ? null : begruendung(anfrage.begruendung());
             String kennung=repo.kennung(tenant);
-            repo.importSchreiben(tenant,kennung,v,e,grund,wer,urteile,CsvLeser.lies(datei,zuordnung.csv()).zeilen());
+            repo.importSchreiben(tenant,kennung,v,e,grund,wer,urteile,CsvLeser.lies(datei,new CsvLeser.Vorgabe(v.datei().kodierung(),v.datei().trennzeichen(),v.datei().kopfzeile())).zeilen());
             anwenden(tenant,kennung,sofort,grund,wer,null);
             if (!vorschlaege.isEmpty()) repo.vorschlag(tenant,kennung,grund,false,vorschlaege,wer);
-            return new Ergebnis(kennung,e.status(),sofort.size(),vorschlaege.size(),e.zaehler());
+            return new Ergebnis(kennung,e.status(),sofort.size(),vorschlaege.size(),e.zaehler(),v.vorlage());
         });
     }
 
@@ -110,7 +120,7 @@ public class ImportUebernahmeService {
             var offen=repo.freigabe(kennung);
             int v=offen!=null && "vorschlag".equals(offen.status()) ? offen.auftrag().size() : 0;
             int a=((Number)f.getFirst().get("aenderungen")).intValue();
-            return new Ergebnis(kennung,(String)f.getLast().get("status"),a-(offen!=null && !offen.ruecknahme() ? v : 0),v,null);
+            return new Ergebnis(kennung,(String)f.getLast().get("status"),a-(offen!=null && !offen.ruecknahme() ? v : 0),v,null,repo.vorlage(kennung));
         });
     }
 
@@ -123,7 +133,7 @@ public class ImportUebernahmeService {
             var f=repo.importFassungen(kennung);
             if (f.isEmpty()) throw BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
             for (UUID id:repo.importZiele(kennung)) recht(id,"bezugsgroesse.importieren");
-            if ("zurueckgenommen".equals(f.getLast().get("status"))) return new Ergebnis(kennung,"zurueckgenommen",0,0,null);
+            if ("zurueckgenommen".equals(f.getLast().get("status"))) return new Ergebnis(kennung,"zurueckgenommen",0,0,null,repo.vorlage(kennung));
             var offen=repo.freigabe(kennung);
             if (offen!=null && "vorschlag".equals(offen.status())) gleichzeitig();
             List<Aenderung> a=new ArrayList<>();
@@ -147,7 +157,7 @@ public class ImportUebernahmeService {
                 repo.zurueckgenommen(tenant,kennung,grund,wer);
             }
             return new Ergebnis(kennung,vier && !a.isEmpty() ? (String) f.getLast().get("status") : "zurueckgenommen",
-                    vier ? 0 : a.size(),vier ? a.size() : 0,null);
+                    vier ? 0 : a.size(),vier ? a.size() : 0,null,repo.vorlage(kennung));
         });
     }
 

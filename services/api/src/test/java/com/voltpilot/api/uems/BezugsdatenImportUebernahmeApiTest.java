@@ -260,6 +260,37 @@ class BezugsdatenImportUebernahmeApiTest {
         assertThat(repo.freigabe(i).status()).isEqualTo("vorschlag");
     }
 
+    @Test void importBehaeltDieVerwendeteVorlagenFassung() throws Exception {
+        Welt w=welt();
+        var anfrage=MAPPER.createObjectNode().put("name","ERP-Export Spritzguss");
+        anfrage.set("zuordnung",MAPPER.readTree(ZUORDNUNG));
+        var vorlage=antwort(mvc.perform(post("/api/v1/bezugsdaten/vorlagen").contentType("application/json")
+                .content(anfrage.toString()).with(person(w,"ines"))).andReturn(),201);
+        String id=vorlage.path("vorlage_id").asText();
+        byte[] datei=csv("312.400,0","kg").getBytes(StandardCharsets.UTF_8);
+        var v=antwort(mvc.perform(multipart(PFAD+"/vorschau")
+                .file(new MockMultipartFile("datei","ERP.csv","text/csv",datei))
+                .file(new MockMultipartFile("vorlage_id","","text/plain",id.getBytes(StandardCharsets.UTF_8)))
+                .with(person(w,"ines"))).andReturn(),200);
+        var bestaetigung=MAPPER.createObjectNode().put("vorschau",v.at("/vorschau/kennung").asText());
+        var i=antwort(mvc.perform(multipart(PFAD)
+                .file(new MockMultipartFile("datei","ERP.csv","text/csv",datei))
+                .file(new MockMultipartFile("vorlage_id","","text/plain",id.getBytes(StandardCharsets.UTF_8)))
+                .file(new MockMultipartFile("bestaetigung","","application/json",bestaetigung.toString().getBytes(StandardCharsets.UTF_8)))
+                .with(person(w,"ines"))).andReturn(),200);
+        assertThat(i.at("/vorlage/vorlage_id").asText()).isEqualTo(id);
+        assertThat(i.at("/vorlage/fassung").asInt()).isOne();
+        assertThat(wert(w)).isEqualByComparingTo("312400");
+        assertThat(root.queryForObject("SELECT vorlage_fassung FROM bezugsdaten_import WHERE tenant_id=?",Integer.class,w.mandant())).isOne();
+        anfrage.put("vorlage_id",id).put("name","ERP-Export geändert");
+        antwort(mvc.perform(post("/api/v1/bezugsdaten/vorlagen").contentType("application/json")
+                .content(anfrage.toString()).with(person(w,"ines"))).andReturn(),201);
+        var status=antwort(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(PFAD+"/"+i.path("kennung").asText())
+                .with(person(w,"ines"))).andReturn(),200);
+        assertThat(status.at("/vorlage/fassung").asInt()).isOne();
+        assertThat(status.at("/vorlage/name").asText()).isEqualTo("ERP-Export Spritzguss");
+    }
+
     private String csv(String betrag,String einheit) { return "Periode;Menge;Einheit\n"+monat+";"+betrag+";"+einheit+"\n"; }
     private Welt welt() {
         UUID t=root.queryForObject("INSERT INTO tenant(name) VALUES ('IP13') RETURNING id",UUID.class);

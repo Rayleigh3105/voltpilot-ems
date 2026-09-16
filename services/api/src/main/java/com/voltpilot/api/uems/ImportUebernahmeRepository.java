@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.web.dto.BezugsdatenImportDto;
+import com.voltpilot.api.web.dto.BezugsdatenVorlageDto;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -44,12 +45,13 @@ public class ImportUebernahmeRepository {
         var z = e.zaehler();
         jdbc.update("INSERT INTO bezugsdaten_import (tenant_id,kennung,fassung,status,datei_name,datei_bytes,"
                 + "datei_sha256,kodierung,trennzeichen,kopfzeile,zeilen,neu,wiederholung,konflikt,berichtigung,"
-                + "uebersprungen,abgelehnt,mit_hinweis,aenderungen,befunde,begruendung,actor_sub,actor_name,actor_rolle,actor_art) "
-                + "VALUES (?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,?,?)",
+                + "uebersprungen,abgelehnt,mit_hinweis,aenderungen,befunde,begruendung,actor_sub,actor_name,actor_rolle,actor_art,vorlage_id,vorlage_fassung) "
+                + "VALUES (?,?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?)",
                 tenant, kennung, e.status(), d.name() == null || d.name().isBlank() ? "Import.csv" : d.name(), d.bytes(), d.sha256(),
                 d.kodierung(), d.trennzeichen(), d.kopfzeile(), z.zeilen(), z.neu(), z.wiederholung(), z.konflikt(),
                 z.berichtigung(), z.uebersprungen(), z.abgelehnt(), z.mitHinweis(), e.aenderungen(),
-                json(e.befunde()), grund, wer.sub(), wer.name(), wer.rolle(), wer.art());
+                json(e.befunde()), grund, wer.sub(), wer.name(), wer.rolle(), wer.art(),
+                v.vorlage()==null ? null : v.vorlage().vorlageId(), v.vorlage()==null ? null : v.vorlage().fassung());
         Map<Integer,String> zeilentexte=roh.stream().collect(java.util.stream.Collectors.toMap(CsvLeser.Zeile::nr,CsvLeser.Zeile::text));
         for (int i = 0; i < v.zeilen().size(); i++) {
             var r = v.zeilen().get(i);
@@ -86,6 +88,14 @@ public class ImportUebernahmeRepository {
                 wer.sub(),wer.name(),wer.rolle(),wer.art(),freigeber == null ? null : freigeber.sub(),
                 freigeber == null ? null : freigeber.name(),freigeber == null ? null : freigeber.rolle(),
                 freigeber == null ? null : freigeber.art());
+    }
+
+    public BezugsdatenVorlageDto.Verweis vorlage(String kennung) {
+        return jdbc.query("SELECT i.vorlage_id,i.vorlage_fassung,v.name FROM bezugsdaten_import i "
+                + "JOIN bezugsdaten_vorlage v ON v.tenant_id=i.tenant_id AND v.vorlage_id=i.vorlage_id "
+                + "AND v.fassung=i.vorlage_fassung WHERE i.kennung=? AND i.fassung=1",
+                (r,n) -> new BezugsdatenVorlageDto.Verweis(r.getObject(1,UUID.class),r.getInt(2),r.getString(3)),kennung)
+                .stream().findFirst().orElse(null);
     }
 
     public List<Map<String,Object>> importFassungen(String kennung) {
