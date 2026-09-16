@@ -92,6 +92,7 @@ public class MessstelleQuelleService {
     private final MessstelleZuordnungRepository zuordnungen;
     private final GeraetRepository geraete;
     private final MesskanalService messkanaele;
+    private final MessstelleRegisterRepository register;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
@@ -99,14 +100,15 @@ public class MessstelleQuelleService {
 
     public MessstelleQuelleService(MessstelleRepository messstellen, MessstelleQuelleRepository quellen,
             MessstelleAenderungRepository aenderungen, MessstelleZuordnungRepository zuordnungen,
-            GeraetRepository geraete, MesskanalService messkanaele, JdbcTemplate jdbc,
-            PlatformTransactionManager transactionManager, ObjectMapper json) {
+            GeraetRepository geraete, MesskanalService messkanaele, MessstelleRegisterRepository register,
+            JdbcTemplate jdbc, PlatformTransactionManager transactionManager, ObjectMapper json) {
         this.messstellen = messstellen;
         this.quellen = quellen;
         this.aenderungen = aenderungen;
         this.zuordnungen = zuordnungen;
         this.geraete = geraete;
         this.messkanaele = messkanaele;
+        this.register = register;
         this.jdbc = jdbc;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
@@ -150,6 +152,7 @@ public class MessstelleQuelleService {
         List<Quelle> alle = quellen.derMessstelle(m.id());
         Instant jetzt = uhr.instant();
         Instant stichtag = am == null ? jetzt : am;
+        Messwerte messwerte = messwerte(alle, stichtag);
         OffsetDateTime beginn = zeit(beginn(m));
         List<MessstelleQuelleDto.GroesseAmStichtag> groessen = new ArrayList<>();
         for (Ziel z : ziele(m, neben)) {
@@ -158,7 +161,7 @@ public class MessstelleQuelleService {
             Quelle fuehrend = fuehrende.stream().filter(q -> gilt(q, stichtag)).findFirst().orElse(null);
             List<MessstelleQuelleDto.Quelle> vergleich = derGroesse.stream()
                     .filter(q -> VERGLEICH.equals(q.rolle()) && gilt(q, stichtag))
-                    .map(q -> darstellung(q, jetzt)).toList();
+                    .map(q -> messwerte.an(darstellung(q, jetzt), q, stichtag)).toList();
             List<MessstelleQuelleDto.Abschnitt> strahl = new ArrayList<>();
             for (Abschnitt a : MessstelleRegeln.zeitstrahl(beginn, fuehrende.stream()
                     .map(MessstelleQuelleService::zeitraum).toList())) {
@@ -169,10 +172,50 @@ public class MessstelleQuelleService {
             Groesse g = z.groesse();
             groessen.add(new MessstelleQuelleDto.GroesseAmStichtag(g.groesse(), g.richtung(), g.einheit(),
                     g.wertart(), z.haupt(), z.archiviert() || m.archiviertAm() != null ? "archiviert" : "aktiv",
-                    fuehrend == null ? null : darstellung(fuehrend, jetzt), vergleich, strahl));
+                    fuehrend == null ? null : messwerte.an(darstellung(fuehrend, jetzt), fuehrend, stichtag),
+                    vergleich, strahl));
         }
         return new MessstelleQuelleDto.Liste(m.id(), m.kennzeichen(), zeit(stichtag), groessen,
-                alle.stream().map(q -> darstellung(q, jetzt)).toList());
+                alle.stream().map(q -> messwerte.an(darstellung(q, jetzt), q, stichtag)).toList());
+    }
+
+    /**
+     * Der Anzeigename JEDER Bindung und der letzte gute Wert der Bindungen, die zum Stichtag gelten
+     * (AP-04 IP-14, E3 · A8) — in EINEM Zug für die ganze Messstelle, nicht je Zeile.
+     *
+     * <p>Die Zahl ist die der Beobachtung: derselbe Werte-Zug des Registers
+     * ({@link MessstelleRegisterRepository#werte}), dieselbe Einheit des Messkanals ohne Umrechnung
+     * und derselbe Anteil-Schnitt ({@link MessstelleBeobachtung#letzterWert}). Die Quelle-Karte stellt
+     * die führende und die Vergleichsquelle nebeneinander — sie müssen auf dieselbe Weise entstanden
+     * sein, sonst vergleicht der Kunde zwei verschiedene Rechnungen.
+     */
+    private Messwerte messwerte(List<Quelle> alle, Instant stichtag) {
+        Map<String, MesskanalDto.Messkanal> kanaele = new LinkedHashMap<>();
+        List<MessstelleRegisterRepository.Messwert> gefragt = new ArrayList<>();
+        for (Quelle q : alle) {
+            kanaele.computeIfAbsent(q.entityId() + "|" + q.kanal(),
+                    x -> messkanaele.kanal(q.entityId(), q.kanal()).orElse(null));
+            if (gilt(q, stichtag)) {
+                gefragt.add(new MessstelleRegisterRepository.Messwert(q.entityId(), q.kanal(), q.gueltigAb()));
+            }
+        }
+        return new Messwerte(kanaele, gefragt.isEmpty() ? Map.of() : register.werte(gefragt, stichtag));
+    }
+
+    /** Die Messkanäle und die Werte-Fakten EINER Messstelle — gelesen, nicht gerechnet. */
+    private record Messwerte(Map<String, MesskanalDto.Messkanal> kanaele,
+            Map<MessstelleRegisterRepository.Messwert, MessstelleRegisterRepository.Werte> werte) {
+
+        MessstelleQuelleDto.Quelle an(MessstelleQuelleDto.Quelle dto, Quelle q, Instant stichtag) {
+            MesskanalDto.Messkanal k = kanaele.get(q.entityId() + "|" + q.kanal());
+            if (!gilt(q, stichtag)) {
+                return dto.mitMesswert(k == null ? null : k.anzeigename(), null);
+            }
+            MessstelleRegisterRepository.Werte w = werte
+                    .get(new MessstelleRegisterRepository.Messwert(q.entityId(), q.kanal(), q.gueltigAb()));
+            return dto.mitMesswert(k == null ? null : k.anzeigename(),
+                    MessstelleBeobachtung.letzterWert(w, k == null ? null : k.einheit(), q.anteil()));
+        }
     }
 
     public MessstelleQuelleDto.Quelle eine(UUID messstelleId, UUID quelleId) {

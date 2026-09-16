@@ -557,6 +557,90 @@ class MessstelleQuelleApiTest {
         assertThat(quellenDer(ms06)).isZero();
     }
 
+    /**
+     * AP-04 IP-14 (E3, Abnahmefall A8): Die Quelle-Karte stellt die führende und die Vergleichsquelle
+     * NEBENEINANDER — also muss {@code GET …/quellen} je Bindung ihren eigenen letzten Wert nennen.
+     * MS-01 liest die Wirkleistung führend aus dem Netzzähler K-3 (312,4 kW) und vergleicht sie mit der
+     * Netzmessung des Wechselrichters K-1 (309,8 kW, Zweck Plausibilität).
+     *
+     * <p>Geprüft wird genau das, was die Fläche braucht: der Wert je Bindung in der Einheit ihres
+     * Messkanals, der Anteil-Schnitt (AP-08 IP-7) und der Anzeigename. Eine BEENDETE oder geplante
+     * Bindung trägt keinen Wert — ein alter Wert neben einem laufenden sähe aus wie ein zweiter Zustand.
+     * Bewertet wird nichts: die Antwort nennt keine Abweichung und keinen Prozentwert.
+     */
+    @Test
+    void jedeLaufendeQuelleNenntIhrenEigenenLetztenWertUndIhrenAnzeigenamen() {
+        Werk w = ahrenberg("A8");
+        // K-1 misst am Wechselrichter ebenfalls einen Vorzeichen-Wert (Referenzdatei: „Einspeise-/
+        // Bezugsleistung am Wechselrichter“) — im Katalog ein eigener Punkt, damit die Reihen sich
+        // nicht überlagern: beide Komponenten hängen an derselben Box.
+        String wechselrichterLeistung = "sunspec.model_211.w";
+        messkanalAuswahl(w, "K-1", wechselrichterLeistung);
+        uhr("2026-10-20T10:15:00+02:00");
+        String ms01 = anlegen(w.admin(), wieReferenz("MS-01", referenzMessstelle("MS-01"))).get("id").asText();
+
+        Map<String, Object> fuehrend = binden(w.k("K-3"), LEISTUNG_VORZEICHEN, "fuehrend", null,
+                "2024-03-12T00:00:00+01:00");
+        fuehrend.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Bezug"));
+        fuehrend.put("anteil", "positiv");
+        erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), fuehrend));
+
+        Map<String, Object> vergleich = binden(w.k("K-1"), wechselrichterLeistung, "vergleich", "Plausibilität",
+                "2026-10-15T09:00:00+02:00");
+        vergleich.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Bezug"));
+        vergleich.put("anteil", "positiv");
+        erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), vergleich));
+
+        // Die Werte, wie der Writer sie ablegt: je Box und Kanal, nie je Messstelle.
+        wert(w, LEISTUNG_VORZEICHEN, "2026-10-20T08:14:00Z", 312.4);
+        wert(w, wechselrichterLeistung, "2026-10-20T08:14:00Z", 309.8);
+
+        JsonNode liste = ok(rufe(HttpMethod.GET, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), null));
+        JsonNode leistung = element(liste.get("groessen"), null, g -> "Wirkleistung".equals(g.get("groesse").asText()));
+        assertThat(leistung.at("/fuehrend/letzter_wert/wert").asDouble()).isEqualTo(312.4);
+        assertThat(leistung.at("/fuehrend/letzter_wert/einheit").asText()).isEqualTo("W");
+        assertThat(leistung.at("/fuehrend/kanal_name").asText()).isNotBlank();
+        assertThat(leistung.at("/vergleich/0/letzter_wert/wert").asDouble()).isEqualTo(309.8);
+        assertThat(leistung.at("/vergleich/0/zweck").asText()).isEqualTo("Plausibilität");
+        assertThat(leistung.at("/vergleich/0/anteil").asText()).isEqualTo("positiv");
+
+        // Die Hauptgröße hat keine Quelle — dann gibt es keinen Wert, nie eine 0.
+        JsonNode haupt = element(liste.get("groessen"), null, g -> g.get("hauptgroesse").asBoolean());
+        assertThat(haupt.get("fuehrend").isNull()).isTrue();
+
+        // E3: nichts bewertet — die Antwort kennt weder Abweichung noch Prozent.
+        assertThat(liste.toString()).doesNotContain("abweichung").doesNotContain("prozent");
+
+        // Eine BEENDETE Bindung trägt keinen Wert mehr.
+        String quelleId = leistung.at("/vergleich/0/id").asText();
+        ok(rufe(HttpMethod.PUT, "/api/v1/messstellen/" + ms01 + "/quellen/" + quelleId + "/beenden", w.admin(),
+                Map.of("gueltig_bis", "2026-10-20T10:00:00+02:00")));
+        JsonNode danach = ok(rufe(HttpMethod.GET, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), null));
+        JsonNode beendet = element(danach.get("quellen"), null, q -> quelleId.equals(q.get("id").asText()));
+        assertThat(beendet.get("status").asText()).isEqualTo("beendet");
+        assertThat(beendet.get("letzter_wert").isNull()).as("ein alter Wert steht nie neben einem laufenden").isTrue();
+        assertThat(beendet.get("kanal_name").isNull()).as("der Name bleibt — er gehört dem Messwert").isFalse();
+    }
+
+    /** EIN Messwert, wie ihn der Writer ablegt — je Box und Kanal (AP-04 IP-14). */
+    private void wert(Werk w, String kanal, String zeit, double zahl) {
+        root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
+                + "VALUES (?,?,?,?,?,?,?,'good','2026.08.26.3',?,'gauge')",
+                Timestamp.from(Instant.parse(zeit)), w.tenant(), w.an1(), w.box(), kanal, zahl, zahl,
+                Math.abs((kanal + zeit).hashCode()) % 100000);
+    }
+
+    /** Das erste Element, das die Bedingung erfüllt — mit dem Namen im Fehlerfall. */
+    private static JsonNode element(JsonNode liste, String was, java.util.function.Predicate<JsonNode> passt) {
+        for (JsonNode n : liste) {
+            if (passt.test(n)) {
+                return n;
+            }
+        }
+        throw new AssertionError("kein Element " + (was == null ? "" : was) + " in " + liste);
+    }
+
     // ---- Lücke erlaubt; Beenden ---------------------------------------------------------------
 
     /**

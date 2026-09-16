@@ -9,12 +9,15 @@ import {
   type Messstelle,
   type MessstelleProzessZuordnung,
   type MessstellenRegister,
+  type MessstelleQuellenListe,
   type MessstelleVerteilungAnteil,
   type OrtsbaumAmStichtag,
   type Prozess,
   type StandorteAmStichtag,
 } from '../api';
 import { MessstelleDialog } from '../components/MessstelleDialog';
+import { QuelleBindenDialog, type QuelleBindenZiel } from '../components/QuelleBindenDialog';
+import { QuelleKarte } from '../components/QuelleKarte';
 import type { Schritt } from '../messstelleDialog';
 import { PROTOKOLL_LABEL } from '../components/ProtokollDialog';
 import { ProtokollListe, useProtokoll } from '../components/ProtokollListe';
@@ -46,6 +49,7 @@ import {
   type KartenZeile,
   type ZuordnungsKarte,
 } from '../messstelleZuordnung';
+import { quelleKarte, type BindungsRolle, type QuelleGroesseKarte } from '../quelleBinden';
 import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
 import { nebengroessen, periodeAus } from '../uemsWerteKarte';
 import './MessstelleSeite.css';
@@ -69,7 +73,11 @@ interface Stamm {
  * die Seite neu — Karten, Historie und Protokoll zeigen dann den Stand des Servers.
  *
  * Das Ziel des Registers (`#/portfolio/messstellen/{id}`, `#/standort/{sid}/messstellen/{id}`).
- * Die Quelle-Karte mit ihrer Historie kommt mit AP-04 IP-14; hier steht nur die führende Quelle.
+ *
+ * Über den Zuordnungs-Karten steht seit AP-04 IP-14 die QUELLE-KARTE (`components/QuelleKarte.tsx`,
+ * abgeleitet in `quelleBinden.ts` aus `GET …/quellen`): je Messgröße die führende Quelle und jede
+ * Vergleichsquelle mit ihren Werten NEBENEINANDER (E3), die Historie der führenden Quellen mit jeder
+ * Lücke, und die Einstiege „Quelle binden“ · „Vergleichsquelle hinzufügen“ (`QuelleBindenDialog`).
  *
  * Direkt unter dem Kopf steht der Abschnitt „Werte“ (UEMS AP-13 IP-3, E9 = A): die `WerteSektion`, die
  * auch der Dialog an den Gesamtwert-Karten öffnet — hier wohnt die Zahl einer Messstelle. Periode und
@@ -163,6 +171,9 @@ function MessstelleSeiteMitId({
   // „Bearbeiten“ öffnet Schritt 1, „Quelle zuordnen“ aus den Werten Schritt 3 (AP-13 IP-6).
   const [bearbeitenAb, setBearbeitenAb] = useState<Schritt>(1);
   const [bearbeitet, setBearbeitet] = useState(false);
+  // UEMS AP-04 IP-14: die Quelle-Karte liest ihre eigene Route; `binden` ist der offene Dialog.
+  const [quellen, setQuellen] = useState<MessstelleQuellenListe | null>(null);
+  const [binden, setBinden] = useState<{ rolle: BindungsRolle; ziel: QuelleBindenZiel } | null>(null);
   const protokoll = useProtokoll({ art: 'messstelle', id }, { achse: MESSSTELLE_PROTOKOLL_ACHSE, anlegeSatz: true });
 
   useEffect(() => {
@@ -190,6 +201,11 @@ function MessstelleSeiteMitId({
       },
       // Ohne Register fehlen Zustand und Quelle im Kopf — die Karten stehen trotzdem.
       () => aktiv && setRegisterGelesen(true),
+    );
+    // Die Quellen je Größe (AP-04 IP-14): ohne sie steht die Quelle-Karte nicht — der Rest schon.
+    api.messstelleQuellen(id).then(
+      (q) => aktiv && setQuellen(q),
+      () => aktiv && setQuellen(null),
     );
     return () => {
       aktiv = false;
@@ -298,6 +314,22 @@ function MessstelleSeiteMitId({
     setBearbeitenAb(ab);
     setBearbeiten(true);
   };
+  // UEMS AP-04 IP-14: die Karten der Quelle-Karte; die Uhr ist der Zeitpunkt des Registers.
+  const jetzt = register?.zeitpunkt ?? new Date().toISOString();
+  const quelleKarten: QuelleGroesseKarte[] = quellen ? quelleKarte(quellen, jetzt) : [];
+  const oeffneBinden = (rolle: BindungsRolle) => (karte: QuelleGroesseKarte) =>
+    setBinden({
+      rolle,
+      ziel: {
+        art: 'messstelle',
+        messstelleId: m.id,
+        kennzeichen: m.kennzeichen,
+        groesse: karte.groesse,
+        hauptgroesse: karte.hauptgroesse,
+        // Die Anlage ihrer elektrischen Stellung am Stichtag — ohne sie stehen alle offen.
+        anlageId: zeile?.elektrische_stellung?.anlage ?? null,
+      },
+    });
 
   return (
     <div className="vp-mss" data-testid="messstelle-seite">
@@ -355,6 +387,15 @@ function MessstelleSeiteMitId({
         )}
       </section>
 
+      {quelleKarten.length > 0 && (
+        <QuelleKarte
+          karten={quelleKarten}
+          darfBinden={darfAendern}
+          onBinden={oeffneBinden('fuehrend')}
+          onVergleich={oeffneBinden('vergleich')}
+        />
+      )}
+
       <div className="vp-mss-karten">
         {karten.map((karte) => (
           <Karte
@@ -390,6 +431,19 @@ function MessstelleSeiteMitId({
           onGespeichert={(art, tag) => {
             setAendern(null);
             setGespeichert({ art, satz: gespeichertSatz(art, tag, heute, zone) });
+            setVersuch((v) => v + 1);
+            protokoll.reload();
+          }}
+        />
+      )}
+      {binden && (
+        <QuelleBindenDialog
+          open
+          rolle={binden.rolle}
+          ziel={binden.ziel}
+          jetzt={jetzt}
+          onClose={() => setBinden(null)}
+          onGebunden={() => {
             setVersuch((v) => v + 1);
             protokoll.reload();
           }}

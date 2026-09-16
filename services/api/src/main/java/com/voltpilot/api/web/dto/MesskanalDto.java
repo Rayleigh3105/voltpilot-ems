@@ -66,6 +66,11 @@ public final class MesskanalDto {
      * @param messstelle das Kennzeichen der Messstelle (MS-06)
      * @param rolle      {@code fuehrend} oder {@code vergleich}
      * @param zweck      nur bei {@code vergleich} (Plausibilität · Ersatz bei Ausfall · Abrechnungszähler)
+     * @param anteil     additiv seit AP-04 IP-14: welchen Teil eines Vorzeichen-Werts die Bindung
+     *                   liest ({@code positiv} · {@code negativ}, AP-08 IP-7 E15); {@code null} =
+     *                   der ganze Wert. Erst damit kann „Quelle binden“ richtig ausgrauen: EIN
+     *                   Vorzeichen-Kanal führt den Bezug der einen und die Abgabe der anderen
+     *                   Messstelle — ohne den Anteil sähe die zweite Bindung wie eine Doppelung aus.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Speist(
@@ -76,7 +81,8 @@ public final class MesskanalDto {
             String rolle,
             String zweck,
             OffsetDateTime gueltigAb,
-            OffsetDateTime gueltigBis) {}
+            OffsetDateTime gueltigBis,
+            String anteil) {}
 
     /**
      * Das eingebaute Gerät eines Messkanals (UEMS AP-04 IP-10) — in der Form von

@@ -19,6 +19,7 @@ import {
   SITE_HALLE_1,
   SITE_HALLE_2,
 } from '../src/test/geraetHerkunftFixtures';
+import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -178,6 +179,10 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   komponenteMesskanaele: ok(F.kanaele()),
   geraetEinstellungen: ok(F.einstellungen()),
   geraetAenderungen: ok({ eintraege: [], achse: 'wirkung', von: null, bis: null, weiter: null }),
+  // UEMS AP-04 IP-14: „Als Messstelle verwenden“ fragt, WELCHE Messstellen-Größe diesen Messwert
+  // lesen kann — dafür braucht der Dialog das Register des Kundenbereichs.
+  messstellenRegister: ok(ahrenbergRegister()),
+  messstelleQuelleBinden: ok({ quelle: null, beendet: null, rueckwirkung: { art: 'ab_jetzt', minuten: 0, abzeichen: null }, hinweise: [] }),
 };
 
 const offen = api as unknown as Record<string, unknown>;

@@ -335,3 +335,26 @@
   padding-left: 18px;
   line-height: 1.5;
 }
+
+/* --- „Als Messstelle verwenden“ (UEMS AP-04 IP-14, §5.2) --------------------- */
+
+.vp-gh-verwenden {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+
+.vp-gh-verwenden:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}

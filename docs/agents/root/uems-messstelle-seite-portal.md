@@ -44,8 +44,12 @@ Geschrieben wird über die bestehenden Routen: `PUT …/messstellen/{id}/ort|ste
    Überlappung urteilt der Server.
 7. **Testing Library normalisiert U+00A0 zu einem Leerzeichen** — `getByText('… 100 %')` mit
    normalem Leerzeichen; die reinen Tests pinnen das geschützte Leerzeichen.
-8. **Die Quelle-Karte mit Historie ist IP-14.** Die Seite nennt nur die führende Quelle im Kopf
-   (aus `zeileWoerter`), kein „Zähler wechseln“ ohne Ziel.
+8. **Die Quelle-Karte steht seit AP-04 IP-14 über den Zuordnungs-Karten** (`components/QuelleKarte.tsx`,
+   abgeleitet in `quelleBinden.ts` aus `GET …/quellen` — die Seite liest sie selbst): je Messgröße die
+   führende Quelle und jede Vergleichsquelle mit ihren Werten NEBENEINANDER (E3), die Historie mit jeder
+   Lücke und die Einstiege „Quelle binden“ · „Vergleichsquelle hinzufügen“. Der Kopf nennt weiterhin nur
+   die führende Quelle (aus `zeileWoerter`); ein „Zähler wechseln“ gibt es erst mit IP-18.
+   Siehe `uems-quelle-binden-portal.md`.
 
 9. **Die Werte stehen oben, die Adresse trägt Periode und Version (AP-13 IP-3).** Mit `periode=` holt die Seite den
    Abschnitt nach dem Laden in den Blick (`scrollIntoView({ block: 'nearest' })` — steht er schon im Bild, bleibt die

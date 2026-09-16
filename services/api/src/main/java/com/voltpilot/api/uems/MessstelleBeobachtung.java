@@ -56,7 +56,7 @@ final class MessstelleBeobachtung {
         MessstelleDto.RegisterBeobachtung b = new MessstelleDto.RegisterBeobachtung(
                 e.zustand().code(), satz(e, einbau), MessstelleService.zeit(e.seit()),
                 fuehrend == null ? null : e.toleranzS(), fuehrend == null ? null : kadenzS, einbau);
-        return new Ergebnis(b, wert(werte, einheit, fuehrend == null ? null : fuehrend.quelle().anteil()));
+        return new Ergebnis(b, letzterWert(werte, einheit, fuehrend == null ? null : fuehrend.quelle().anteil()));
     }
 
     /**
@@ -75,8 +75,12 @@ final class MessstelleBeobachtung {
      * Der letzte gute Wert; {@code null}, solange es keinen gibt — nie eine 0. Liest die Bindung einen
      * Anteil (AP-08 IP-7), ist der Wert der Anteil DIESES Rohwerts ({@link VerbrauchRegeln#anteilDesWerts}):
      * −10,0 kW an K-3 zeigt MS-01 als 0,0 kW Bezug und MS-02 als 10,0 kW Abgabe.
+     *
+     * <p>Seit AP-04 IP-14 liest auch die Quelle-Karte ({@code GET …/quellen}) hier — die führende und
+     * die Vergleichsquelle nennen ihren Wert nach DERSELBEN Regel, sonst stünden zwei Zahlen
+     * nebeneinander, die verschieden gebildet wurden (E3).
      */
-    private static MessstelleDto.RegisterWert wert(Werte werte, String einheit, String anteil) {
+    static MessstelleDto.RegisterWert letzterWert(Werte werte, String einheit, String anteil) {
         if (werte == null || werte.letzterGuterWert() == null) {
             return null;
         }

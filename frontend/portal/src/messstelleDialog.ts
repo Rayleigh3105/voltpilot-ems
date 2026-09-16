@@ -34,6 +34,8 @@ import { UEMS_HAUPTGROESSE, UEMS_HAUPTZAEHLER, UEMS_NEBENGROESSE, UEMS_UNTERZAEH
 import type { VpOption } from './picker/optionen';
 import { zeitpunktText } from './uemsEinstellung';
 import {
+  ANTEIL_RICHTUNGEN,
+  ANTEILE,
   GROESSEN_KATALOG,
   MEDIEN_WAEHLBAR,
   STELLUNGEN,
@@ -41,6 +43,7 @@ import {
   kennzeichenFormatGueltig,
   passung,
   rueckwirkung,
+  type Anteil,
   type Groesse,
   type Herleitung,
   type PassungGrund,
@@ -730,23 +733,94 @@ export function komponenteOptionen(liste: KomponenteWahl[]): VpOption[] {
   }));
 }
 
+/** Die Rolle, in der ein Messwert gebunden werden soll (AP-04 §4.3): führend oder Vergleich. */
+export type BindungsRolle = 'fuehrend' | 'vergleich';
+
 /**
- * Die Messwerte einer Komponente für EINE Größe (D3): wählbar nur, was nach Regel 7 passt und
- * keine andere Messstelle schon führend speist — beides AUSGEGRAUT MIT GRUND (FEHLER-Tabelle:
- * „Kanal nicht wählbar (ausgegraut mit Grund) statt Fehler nach dem Klick“). Wählbare zuerst.
+ * EIN Messwert, an der Zielgröße gemessen (Regel 7) — die Zeile, aus der jede Fläche ihre Liste
+ * baut. `passend` ist das Urteil, `grund` der Satz der FEHLER-Tabelle, wenn es „nein“ lautet:
+ * eine Zeile VERSCHWINDET nie, sie steht grau da und sagt warum.
  */
-export function kanalOptionen(
-  kanaele: Messkanal[],
-  ziel: Groesse,
-  eigenesKennzeichen: string | null,
-  rolle: 'haupt' | 'neben',
-): VpOption[] {
-  const passt = (k: Messkanal) => passung(MEDIUM, ziel, k.groesse, k.richtung, k.einheit, k.wertart);
-  const fremd = (k: Messkanal) =>
-    (k.speist ?? []).find((s) => s.rolle === 'fuehrend' && s.messstelle !== eigenesKennzeichen) ?? null;
+export interface MesswertZeile {
+  kanal: string;
+  name: string;
+  /** Wertart · Einheit · Kadenz. */
+  detail: string | null;
+  passend: boolean;
+  /** Mit welchem Teil eines Vorzeichen-Werts er passt (AP-08 IP-7, E15); `null` = der ganze Wert. */
+  anteil: Anteil | null;
+  herleitung: Herleitung | null;
+  /** Warum er nicht wählbar ist; `null`, wenn er passt. */
+  grund: string | null;
+}
+
+export interface MesswertWahl {
+  /** In welcher Rolle gebunden wird — „schon führend gebunden“ sperrt nur die führende (E3). */
+  rolle: BindungsRolle;
+  /** Das eigene Kennzeichen: was diese Messstelle selbst liest, ist kein fremder Griff. */
+  eigenesKennzeichen: string | null;
+  /**
+   * Darf ein Vorzeichen-Wert über einen ANTEIL passen (AP-08 IP-7, E15)? Der Anteil wird nie
+   * geraten: er folgt aus der Richtung der Zielgröße. Der Messstellen-Dialog (IP-6) kennt ihn
+   * nicht und lässt ihn aus — „Quelle binden“ (IP-14) bietet ihn an.
+   */
+  anteil?: boolean;
+}
+
+/**
+ * Der Anteil, mit dem ein Vorzeichen-Wert die Zielgröße liefert (AP-08 IP-7, E15) — oder `null`,
+ * wenn keiner passt. Nicht gewählt, sondern ABGELEITET: die Richtung der Größe bestimmt ihn.
+ */
+function anteilFuer(k: Messkanal, ziel: Groesse): Anteil | null {
+  const richtungen = ANTEIL_RICHTUNGEN[k.direction ?? ''];
+  if (!richtungen) return null;
+  return (ANTEILE.find((a) => richtungen[a] === ziel.richtung) as Anteil | undefined) ?? null;
+}
+
+/**
+ * Die Messwerte einer Komponente an EINER Zielgröße (D3 · V1): wählbar nur, was nach Regel 7 passt
+ * und — in der führenden Rolle — keine andere Messstelle schon mit demselben Teil des Werts liest.
+ * Beides AUSGEGRAUT MIT GRUND (FEHLER-Tabelle: „Kanal nicht wählbar (ausgegraut mit Grund) statt
+ * Fehler nach dem Klick“). Wählbare zuerst, sonst in der Reihenfolge der Liste.
+ *
+ * ⚠ EINE Regel-Stelle: geurteilt wird ausschließlich von {@link passung} (Vertrags-Zwilling), die
+ * Sätze kommen aus {@link passtNichtSatz} und {@link kanalBereitsFuehrendSatz}.
+ */
+export function messwertZeilen(kanaele: Messkanal[], ziel: Groesse, w: MesswertWahl): MesswertZeile[] {
+  const anteilVon = (k: Messkanal) => (w.anteil ? anteilFuer(k, ziel) : null);
+  const passt = (k: Messkanal) => {
+    const ganz = passung(MEDIUM, ziel, k.groesse, k.richtung, k.einheit, k.wertart);
+    if (!ganz.fehler || !w.anteil) return ganz;
+    const a = anteilVon(k);
+    if (a === null) return ganz;
+    const teil = passung(
+      MEDIUM,
+      ziel,
+      k.groesse,
+      k.richtung,
+      k.einheit,
+      k.wertart,
+      k.direction ?? null,
+      a,
+    );
+    return teil.fehler ? ganz : teil;
+  };
+  // Regel 7 · Ausnahme Anteil: ein Vorzeichen-Wert speist Bezug UND Abgabe — nur nie denselben
+  // Teil zweimal führend. Ohne Anteil bleibt es der ganze Wert, und der schließt jeden anderen aus.
+  const fremd = (k: Messkanal) => {
+    if (w.rolle !== 'fuehrend') return null;
+    const a = anteilVon(k);
+    return (
+      (k.speist ?? []).find(
+        (s) =>
+          s.rolle === 'fuehrend' &&
+          s.messstelle !== w.eigenesKennzeichen &&
+          !(a !== null && (s.anteil ?? null) !== null && s.anteil !== a),
+      ) ?? null
+    );
+  };
   const waehlbar = (k: Messkanal) => !passt(k).fehler && !fremd(k);
   const passend = kanaele.find(waehlbar) ?? null;
-  const wort = rolle === 'haupt' ? UEMS_HAUPTGROESSE : UEMS_NEBENGROESSE;
   return [...kanaele]
     .sort((a, b) => Number(waehlbar(b)) - Number(waehlbar(a)))
     .map((k) => {
@@ -760,13 +834,35 @@ export function kanalOptionen(
             ? kanalBereitsFuehrendSatz(f.messstelle)
             : null;
       return {
-        value: k.kanal,
-        label: z.name,
-        sub: grund ? z.detail || null : [z.detail, `passt zur ${wort}`].filter(Boolean).join(' · '),
-        disabled: grund !== null,
-        disabledHint: grund,
+        kanal: k.kanal,
+        name: z.name,
+        detail: z.detail || null,
+        passend: grund === null,
+        anteil: grund === null ? anteilVon(k) : null,
+        herleitung: p.herleitung,
+        grund,
       };
     });
+}
+
+/**
+ * Dieselben Messwerte als Auswahl des Messstellen-Dialogs (D3) — er bindet je Größe eine FÜHRENDE
+ * Quelle und kennt den Anteil (noch) nicht.
+ */
+export function kanalOptionen(
+  kanaele: Messkanal[],
+  ziel: Groesse,
+  eigenesKennzeichen: string | null,
+  rolle: 'haupt' | 'neben',
+): VpOption[] {
+  const wort = rolle === 'haupt' ? UEMS_HAUPTGROESSE : UEMS_NEBENGROESSE;
+  return messwertZeilen(kanaele, ziel, { rolle: 'fuehrend', eigenesKennzeichen }).map((z) => ({
+    value: z.kanal,
+    label: z.name,
+    sub: z.grund ? z.detail : [z.detail, `passt zur ${wort}`].filter(Boolean).join(' · '),
+    disabled: z.grund !== null,
+    disabledHint: z.grund,
+  }));
 }
 
 export interface QuelleUrteil {
