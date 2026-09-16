@@ -19,10 +19,12 @@ import org.springframework.stereotype.Repository;
 public class ImportUebernahmeRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final BezugsgroesseRepository zones;
 
-    public ImportUebernahmeRepository(JdbcTemplate jdbc, ObjectMapper json) {
+    public ImportUebernahmeRepository(JdbcTemplate jdbc, ObjectMapper json, BezugsgroesseRepository zones) {
         this.jdbc = jdbc;
         this.json = json;
+        this.zones = zones;
     }
 
     /** Ein normalisierter Auftrag mit dem erwarteten Stand; keine gelieferte Datei. */
@@ -69,8 +71,6 @@ public class ImportUebernahmeRepository {
         // The caller supplies the actual zone for values. This archive column also uses the authoritative resolver.
         return zones.zeitzone(id);
     }
-    @org.springframework.beans.factory.annotation.Autowired
-    private BezugsgroesseRepository zones;
 
     public void wert(UUID tenant, String kennung, Aenderung a, String grund, ProtokollAkteur wer,
             ProtokollAkteur freigeber, BezugsgroesseRepository.Zeile b) {

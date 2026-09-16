@@ -40,8 +40,9 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 /**
- * Die Import-VORSCHAU der Bezugsdaten (UEMS AP-09 IP-12, Vertrag {@code docs/contracts/v2/bezugsdaten.md} §10 —
- * Regel {@code vorschau}). Die Arbeit macht {@link ImportVorschauService}, die Regeln {@link ImportVorschau}.
+ * Die Importschnittstelle der Bezugsdaten (UEMS AP-09 IP-12/IP-13, Vertrag {@code docs/contracts/v2/bezugsdaten.md} §10 —
+ * Regel {@code vorschau}). Vorschau: {@link ImportVorschauService}; Übernahme, Rücknahme und Status:
+ * {@link ImportUebernahmeService}. Die Vorschau-Regeln stehen in {@link ImportVorschau}.
  *
  * <p><b>Die Vorschau zeigt alles und schreibt nichts:</b> keinen Wert, keinen Import, keine Vorlage — und nicht die
  * Datei (E14). Zweimal dieselbe Datei mit derselben Zuordnung und demselben Bestand ergibt dieselbe Antwort. Die
