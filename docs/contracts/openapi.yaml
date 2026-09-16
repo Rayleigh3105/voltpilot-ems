@@ -9367,6 +9367,28 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
         "422": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+  /api/v1/sites/{siteId}/data-sources/{id}/assignments/{assignmentId}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [datenquellen]
+      summary: Einen noch nicht wirksamen Zuständigkeitswechsel zurücknehmen.
+      description: >
+        Recht `datenquelle.zustaendigkeit`. Die geplante Anweisung bleibt historisch als
+        zurückgenommen erhalten; der Vorgängerzeitraum wird wieder geöffnet und das Protokoll
+        ergänzt. Fremde Quelle oder Zeitraum 404. Bereits wirksam oder bereits zurückgenommen
+        ist 409 mit `grund` und dem Kundensatz in `satz`.
+      responses:
+        "200":
+          description: Die Datenquelle ohne den zurückgenommenen Plan.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datenquelle" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
   /api/v1/sites/{siteId}/data-sources/{id}/history:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -9378,7 +9400,8 @@ paths:
         Recht lesend (`aenderungsprotokoll.lesen`). Append-only (data_source_aenderung):
         angelegt · bearbeitet (nur die geänderten Felder) · erreichbarkeit_geprueft
         (Box, Ergebnis) · zustaendigkeit_begonnen · zustaendigkeit_gewechselt (alt:
-        die bisherige Box) · aus_bestand_uebernommen (IP-4: neu = Kennzeichen, Weg,
+        die bisherige Box) · zustaendigkeit_zurueckgenommen · aus_bestand_uebernommen
+        (IP-4: neu = Kennzeichen, Weg,
         Takt, Box, Beginn, Komponenten; `gilt_ab` = Reihenbeginn), jeder Eintrag mit Urheber (Kundenbenutzer =
         kundenadministrator/kunde, Plattform-Admin = voltpilot_betrieb/voltpilot).
       responses:
@@ -23781,8 +23804,9 @@ components:
     DatenquelleZeitraum:
       type: object
       description: Box · ab · bis, halboffen auf die Minute; `effective_to` null = offen.
-      required: [box, effective_from, effective_to]
+      required: [id, box, effective_from, effective_to]
       properties:
+        id: { type: string, format: uuid, description: Kennung für die Rücknahme eines noch nicht wirksamen Plans. }
         box: { $ref: "#/components/schemas/DatenquelleBox" }
         effective_from: { type: string, format: date-time }
         effective_to: { type: string, format: date-time, nullable: true }

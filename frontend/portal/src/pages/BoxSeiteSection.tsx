@@ -20,6 +20,9 @@ import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import { GeraetRahmen, RahmenSektion } from '../components/GeraetRahmen';
 import { DangerZone } from '../components/DangerZone';
 import { unclaimConsequences } from '../components/DeviceDrawers';
+import { AddDeviceDrawer } from '../components/DeviceDrawers';
+import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
+import { Recht } from '../components/Recht';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, boxSeiteHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
 import {
@@ -94,6 +97,8 @@ export function BoxSeiteSection({
   const [adminFehler, setAdminFehler] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [wechselQuelle, setWechselQuelle] = useState<UemsDatenquelle | null>(null);
+  const [tauschOffen, setTauschOffen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -345,6 +350,13 @@ export function BoxSeiteSection({
                 )}
               </div>
             )}
+            {boxDevice && <div className="vp-box-aktionen">
+              <Recht aktion="datenquelle.zustaendigkeit">
+                <button className="vp-geraet-komp-link" type="button" onClick={() => setTauschOffen(true)}>
+                  Box tauschen <Icon name="chevron-right" size={14} />
+                </button>
+              </Recht>
+            </div>}
           </RahmenSektion>
 
           {/* 2 · Befehle - was die Box ÜBERBRINGT (die anlagenweiten). */}
@@ -394,6 +406,14 @@ export function BoxSeiteSection({
                           <b>{q.kennzeichen} · {q.name}</b>
                           <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
                           <small>{q.budget}</small>
+                          {datenquellen?.find((d) => d.id === q.id)?.steuerquelle ? (
+                            <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>
+                          ) : (
+                            <Recht aktion="datenquelle.zustaendigkeit"><button type="button" className="vp-box-quellen-aktion"
+                              onClick={() => setWechselQuelle(datenquellen?.find((d) => d.id === q.id) ?? null)}>
+                              Zuständige Box wechseln
+                            </button></Recht>
+                          )}
                         </div>
                       </li>
                     ))}
@@ -462,6 +482,13 @@ export function BoxSeiteSection({
           )}
         </GeraetRahmen>
       )}
+      {wechselQuelle && <DatenquelleWechselDialog quelle={wechselQuelle} devices={devices ?? []}
+        onClose={() => setWechselQuelle(null)} onChanged={(neu) => {
+          setDatenquellen((alt) => alt?.map((q) => q.id === neu.id ? neu : q) ?? [neu]);
+          setWechselQuelle(neu);
+        }} />}
+      {tauschOffen && boxDevice && <AddDeviceDrawer open onClose={() => setTauschOffen(false)}
+        sites={[site]} onClaimed={() => {}} nachfolgerVon={boxDevice} datenquellen={datenquellen ?? []} />}
     </div>
   );
 }

@@ -69,6 +69,14 @@ UEMS-Auslieferungsschalter (Zusammenführungs-Checkliste Punkt 1/2).
 
 ## Migration und Prüfungen
 
+Ein noch nicht begonnener Plan kann über
+`DELETE …/data-sources/{id}/assignments/{assignmentId}` zurückgenommen werden. Die Anweisung
+bleibt mit `zurueckgenommen_am` erhalten, der unmittelbar davor liegende Zeitraum wird wieder
+geöffnet und das Quellenprotokoll erhält `zustaendigkeit_zurueckgenommen`. Alle aktiven Leser
+filtern zurückgenommene Zeilen; bereits wirksam oder bereits zurückgenommen ist 409 mit
+`grund`/`satz`, ein fremdes Objekt 404. Migration `V20260917109000` macht dafür die beiden
+Exklusions-Constraints partiell auf nicht zurückgenommene Zeilen.
+
 `V20260916170000`: zwei anfangs leere Tabellen, FORCE RLS und SELECT/INSERT/UPDATE für die App;
 die Revisionssequenz hat einen eigenen USAGE-Grant.
 Nur tenant-CASCADE: Offboarding räumt sie mit dem Mandanten ab; keine neue Einschränkung an

@@ -97,4 +97,8 @@
 .vp-box-quellen li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 10px 0; border-top: 1px solid var(--vp-border); }
 .vp-box-quellen li > div { display: grid; gap: 2px; min-width: 0; }
 .vp-box-quellen li span, .vp-box-quellen li small { color: var(--vp-text-muted); overflow-wrap: anywhere; }
+.vp-box-aktionen { display: flex; justify-content: flex-end; margin-top: 12px; }
+.vp-box-aktionen button, .vp-box-quellen-aktion { border: 0; background: transparent; color: var(--vp-link); font: inherit; font-weight: 700; cursor: pointer; padding: 10px 0; text-align: left; }
+.vp-box-quellen-aktion { justify-self: start; min-height: 44px; }
+.vp-box-aktionen button:hover, .vp-box-quellen-aktion:hover { text-decoration: underline; }
 @media (max-width: 720px) { .vp-box-faehigkeiten, .vp-box-quellen-kopf { align-items: flex-start; flex-direction: column; } }

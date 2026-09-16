@@ -996,6 +996,18 @@ export interface Device {
   fuehrtAnlage?: boolean | null;
 }
 
+/** AP-06 IP-19: Ergebnis der Nachfolger-Anmeldung; `zugestellt=false` ist erst vorbereitet. */
+export interface BoxTauschAntwort {
+  tausch: {
+    oldDeviceId: string;
+    newDeviceId: string;
+    siteId: string;
+    effectiveAt: string;
+    transferred: Record<string, number>;
+  };
+  zugestellt: boolean;
+}
+
 export interface MeasurementCatalogPoint {
   family: string;
   pointKey: string;
@@ -6754,6 +6766,8 @@ export interface UemsDatenquelleBox {
 
 /** Ein Zuständigkeits-Zeitraum, halboffen auf die Minute: `effective_to` gehört NICHT dazu. */
 export interface UemsDatenquelleZeitraum {
+  /** Seit AP-06 IP-12; bei älteren Antworten fehlt die Kennung und damit die Rücknahme-Aktion. */
+  id?: string;
   box: UemsDatenquelleBox;
   effective_from: string;
   effective_to: string | null;
@@ -6782,6 +6796,12 @@ export interface UemsDatenquelle {
   zustaendige_box: UemsDatenquelleBox | null;
   zeitraeume: UemsDatenquelleZeitraum[];
   rueckmeldung?: UemsDatenquelleRueckmeldung | null;
+  uebergabe?: {
+    zustand: string;
+    seit: string;
+    box_alt: UemsDatenquelleBox | null;
+    box_neu: UemsDatenquelleBox | null;
+  } | null;
 }
 
 export interface UemsDatenquelleRueckmeldung {
@@ -7549,6 +7569,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ siteId, externalRef }),
     }),
+  boxTauschen: (newId: string, oldId: string) =>
+    request<BoxTauschAntwort>(`/api/v1/devices/${newId}/succeed/${oldId}`, { method: 'POST' }),
   updateDevice: (deviceId: string, input: UpdateDeviceInput) =>
     request<Device>(`/api/v1/devices/${deviceId}`, {
       method: 'PUT',
@@ -8139,6 +8161,12 @@ export const api = {
     `/api/v1/sites/${siteId}/data-sources/${id}/assignments`,
     { method: 'POST', body: JSON.stringify(body) },
   ),
+
+  datenquelleZuweisungZuruecknehmen: (siteId: string, id: string, assignmentId: string) =>
+    request<UemsDatenquelle>(
+      `/api/v1/sites/${siteId}/data-sources/${id}/assignments/${assignmentId}`,
+      { method: 'DELETE' },
+    ),
 
   /** Die Einstellungs-Fassungen eines Einbaus (AP-04 IP-11) — gültig jetzt und die Historie. */
   geraetEinstellungen: (id: string) =>
