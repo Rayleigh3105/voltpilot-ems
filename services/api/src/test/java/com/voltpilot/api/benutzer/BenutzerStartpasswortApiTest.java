@@ -151,7 +151,9 @@ class BenutzerStartpasswortApiTest {
             for (String geheimnis : geheimnisse) {
                 // Absichtlich nur booleans prüfen: auch ein Fehlschlag darf kein Passwort drucken.
                 assertThat(sonstigeAntworten.stream().noneMatch(a -> a.contains(geheimnis))).as("keine weitere Antwort oder DB-Zeile enthält das Passwort").isTrue();
-                assertThat(logs.list.stream().noneMatch(l -> l.getFormattedMessage().contains(geheimnis))).as("auch DEBUG protokolliert kein Startpasswort").isTrue();
+                assertThat(logs.list.stream().noneMatch(l -> (l.getFormattedMessage()
+                        + (l.getThrowableProxy() == null ? "" : ch.qos.logback.classic.spi.ThrowableProxyUtil.asString(l.getThrowableProxy())))
+                        .contains(geheimnis))).as("auch DEBUG und Exception-Stacks protokollieren kein Startpasswort").isTrue();
             }
         } finally {
             root.detachAppender(logs);

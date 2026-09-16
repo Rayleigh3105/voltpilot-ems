@@ -63,7 +63,9 @@ class StartpasswortGeheimhaltungTest {
                 }
                 assertThat(abgelehnt).isTrue(); assertThat(temporary.get()).isTrue(); assertThat(wertStimmt.get()).isTrue();
             }
-            assertThat(logs.list.stream().noneMatch(e -> e.getFormattedMessage().contains(passwort.wert()))).isTrue();
+            assertThat(logs.list.stream().noneMatch(e -> (e.getFormattedMessage()
+                    + (e.getThrowableProxy() == null ? "" : ch.qos.logback.classic.spi.ThrowableProxyUtil.asString(e.getThrowableProxy())))
+                    .contains(passwort.wert()))).isTrue();
             assertThat(passwort.toString().contains(passwort.wert())).isFalse();
             assertThat(json.readTree(json.writeValueAsString(passwort)).asText().equals(passwort.wert())).isTrue();
         } finally {
