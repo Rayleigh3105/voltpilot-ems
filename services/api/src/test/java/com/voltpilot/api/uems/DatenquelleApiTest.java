@@ -459,7 +459,7 @@ class DatenquelleApiTest {
      * Datenbank, und das Protokoll der Quelle trägt beide Wechsel.
      */
     @Test
-    void a3HinUndZurueckWieDieReferenzUndBeideWechselImProtokoll() throws Exception {
+    void a7EdgeWechselLaesstMessstellenGebundenUndTraegtDieBoxJeMesszeit() throws Exception {
         Welt w = new Welt("Ahrenberg A3");
         UUID dq3 = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
         UUID halle1 = w.anlage("AN-1");
@@ -467,6 +467,38 @@ class DatenquelleApiTest {
         UUID e2neu = w.box("E-2′");
         Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
         String pfad = basis(halle1) + "/" + dq3;
+
+        // A7 beginnt mit vier Messstellen an DQ-3. Der Box-Wechsel darf weder diese Bindungen
+        // anfassen noch einen Messstellen-Eintrag erzeugen. Die Writer-Abnahme
+        // WriterPipeTest#derNachzueglerIstFuehrendUndDerSpaetereEinSpiegel beweist separat, dass
+        // der Writer dieselbe Zuständigkeit zur Messzeit nachschlägt; hier läuft ihre echte
+        // AP-06-Schreibroute und die gemeinsame Datenbankform zusammen.
+        UUID komponente = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                + "entity_type, device_id, control, communication, connection_json, created_at) VALUES "
+                + "(?, ?, 'modbus-generic', 'DQ-3 Zähler', 'modbus-generic', ?, false, true, '{}'::jsonb, now()) "
+                + "RETURNING id", UUID.class, w.mandant, halle1, e1);
+        // Der Bestands-Trigger leitet aus der Komponente bereits Gerät und Speisung ab; A7 hängt
+        // nur die vorhandene DQ-3 daran, statt einen zweiten Geräteweg zu erfinden.
+        UUID geraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE tenant_id = ? "
+                + "AND entity_id = ? AND gueltig_bis IS NULL", UUID.class, w.mandant, komponente);
+        root.update("UPDATE geraet SET data_source_id = ?, geraete_id = 1 WHERE id = ?", dq3, geraet);
+        for (int n = 5; n <= 8; n++) {
+            UUID messstelle = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, "
+                    + "medium, groesse, richtung, einheit, wertart) VALUES (?, ?, ?, 'gemessen', 'Strom', "
+                    + "'Wirkenergie', 'Bezug', 'kWh', 'Zählerstand') RETURNING id", UUID.class,
+                    w.mandant, "MS-0" + n, "Messstelle " + n);
+            root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, "
+                    + "geraet_id, kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, "
+                    + "eingetragen_am, actor_name, actor_art) VALUES (?, ?, 'Wirkenergie', 'Bezug', ?, ?, ?, "
+                    + "'counter', 'zaehlerstand', 'fuehrend', '2024-03-12T00:00:00Z', true, "
+                    + "'2027-04-09T07:00:00Z', 'Bestandsübernahme', 'voltpilot')",
+                    w.mandant, messstelle, komponente, geraet, "energy_kwh_ms0" + n);
+        }
+        List<Map<String, Object>> bindungenVorher = root.queryForList("SELECT id, messstelle_id, entity_id, "
+                + "geraet_id, kanal, gueltig_ab, gueltig_bis FROM messstelle_quelle WHERE tenant_id = ? "
+                + "ORDER BY messstelle_id", w.mandant);
+        assertThat(bindungenVorher).hasSize(4);
+        assertThat(anzahl(w, "messstelle_aenderung")).isZero();
 
         // A11: vor der Route.
         UHR.stelle("2027-04-09T09:00:00+02:00");
@@ -527,6 +559,42 @@ class DatenquelleApiTest {
         assertThat(erster.at("/alt/box_name").asText()).isEqualTo("Box Halle 1");
         assertThat(erster.at("/neu/box_name").asText()).isEqualTo("Box Halle 2 (neu)");
         assertThat(erster.at("/neu/ab").asText()).isEqualTo("2027-04-10T05:30:00Z");
+
+        assertThat(root.queryForList("SELECT id, messstelle_id, entity_id, geraet_id, kanal, gueltig_ab, "
+                + "gueltig_bis FROM messstelle_quelle WHERE tenant_id = ? ORDER BY messstelle_id", w.mandant))
+                .as("A7: alle vier Quellenbindungen bleiben bytegleich").isEqualTo(bindungenVorher);
+        assertThat(anzahl(w, "messstelle_aenderung"))
+                .as("A7: ein Box-Wechsel ist kein Ereignis der Messstelle").isZero();
+
+        Instant vorWechsel = OffsetDateTime.parse("2027-04-10T07:29:00+02:00").toInstant();
+        Instant nachWechsel = OffsetDateTime.parse("2027-04-10T07:31:00+02:00").toInstant();
+        UUID boxVorher = zustaendigeBox(dq3, vorWechsel);
+        UUID boxNachher = zustaendigeBox(dq3, nachWechsel);
+        assertThat(boxVorher).isEqualTo(e1);
+        assertThat(boxNachher).isEqualTo(e2neu);
+        for (Object[] wert : List.of(
+                new Object[] {vorWechsel, boxVorher, 1001L, 312400.0},
+                new Object[] {nachWechsel, boxNachher, 1002L, 312401.0})) {
+            root.update("INSERT INTO device_measurement_sample (time, received_at, tenant_id, site_id, device_id, "
+                    + "point_key, raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, "
+                    + "aggregation_kind, entity_id, applied_revision, value_kind, role, delivery, delay_s, "
+                    + "device_install_id) VALUES (?, ?, ?, ?, ?, 'energy_kwh_ms05', ?, ?, 'good', '2026.09.11.1', ?, "
+                    + "'counter', ?, 1, 'counter', 'fuehrend', 'direkt', 0, ?)",
+                    java.sql.Timestamp.from((Instant) wert[0]), java.sql.Timestamp.from((Instant) wert[0]),
+                    w.mandant, halle1, wert[1], wert[3], wert[3], wert[2], komponente, geraet);
+        }
+        assertThat(root.queryForList("SELECT s.time, d.name AS box FROM device_measurement_sample s "
+                + "JOIN device d ON d.id = s.device_id WHERE s.tenant_id = ? AND s.entity_id = ? "
+                + "ORDER BY s.time", w.mandant, komponente))
+                .extracting(z -> z.get("box"))
+                .as("A7: eine box-unabhängige Reihe, Herkunft je Wert aus der Zuständigkeit zur Messzeit")
+                .containsExactly("Box Halle 1", "Box Halle 2 (neu)");
+    }
+
+    private static UUID zustaendigeBox(UUID datenquelle, Instant messzeit) {
+        return root.queryForObject("SELECT device_id FROM data_source_assignment WHERE data_source_id = ? "
+                + "AND effective_from <= ? AND (effective_to IS NULL OR ? < effective_to)", UUID.class,
+                datenquelle, java.sql.Timestamp.from(messzeit), java.sql.Timestamp.from(messzeit));
     }
 
     /**

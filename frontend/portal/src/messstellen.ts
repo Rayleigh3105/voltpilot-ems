@@ -7,7 +7,7 @@ import type {
   MessstelleVertragsform,
   UemsDatenquelle,
 } from './api';
-import { boxAmGeraet, boxSatz } from './boxAnQuelle';
+import { boxAmGeraet, zustaendigSatz } from './boxAnQuelle';
 import {
   UEMS_FUEHREND,
   UEMS_FUNKTION_MESSEN,
@@ -123,7 +123,7 @@ export interface ZeileWoerter {
         davor: string | null;
         vergleich: string | null;
         /**
-         * AP-13 IP-12 (L6): „gelesen von Box Halle 2 (neu) seit 04.11.2026 09:38“ aus der
+         * AP-04 A7: „zuständig: Box Halle 2 (neu) seit 04.11.2026 09:38“ aus der
          * Zuständigkeit der Datenquelle dieses Geräts. `null` = keine bekannt — dann steht
          * nichts, nie eine geratene Box.
          */
@@ -300,7 +300,7 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
             davor: q.davor ? `davor ${q.davor.geraet.einbau}` : null,
             vergleich: vergleichText(q.vergleichsquellen),
             // AP-13 IP-12 (L6): die Box, die dieses Gerät zum Augenblick der Antwort liest.
-            box: boxSatz(boxAmGeraet(k.boxen ?? OHNE_BOXEN, q.fuehrend.geraet.id, k.zeitpunkt), (iso) =>
+            box: zustaendigSatz(boxAmGeraet(k.boxen ?? OHNE_BOXEN, q.fuehrend.geraet.id, k.zeitpunkt), (iso) =>
               zeitpunktText(iso, k.zone),
             ),
             sprung: komponenteSprung(z, q.fuehrend),
