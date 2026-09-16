@@ -187,6 +187,10 @@ voltpilot:
       enabled: ${VOLTPILOT_METRICS_DB_ENABLED:true}
       interval-ms: ${VOLTPILOT_METRICS_DB_INTERVAL_MS:60000}
       initial-delay-ms: ${VOLTPILOT_METRICS_DB_INITIAL_DELAY_MS:15000}
+      # Mandantenanteile brauchen vier Vollscans. Einmal taeglich sammeln und
+      # dazwischen fuer beliebig viele Prometheus-Scrapes im Prozess cachen.
+      storage-interval-ms: ${VOLTPILOT_METRICS_DB_STORAGE_INTERVAL_MS:86400000}
+      storage-initial-delay-ms: ${VOLTPILOT_METRICS_DB_STORAGE_INITIAL_DELAY_MS:300000}
   security:
     oidc:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:true}

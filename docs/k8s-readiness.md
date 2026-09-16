@@ -111,6 +111,8 @@ API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API 
 | Metrikfamilie | Bedeutung |
 |---|---|
 | `voltpilot_db_total_bytes{table}` | Größe je Hypertable |
+| `voltpilot_db_table_bytes{class,tenant}` | Täglich gecachter physischer Anteil der AP-07-Speicherklasse je interner Mandantenkennung |
+| `voltpilot_db_table_plan_fraction{class,tenant}`, `…_warning` | Anteil am 100-Messstellen-Plan; Warnung `1` ab einschließlich 70 % |
 | `voltpilot_db_job_last_run_failed`, `voltpilot_db_job_total_failures` | Status/Fehlerzahl der Timescale-Jobs; `policy_telemetry` wird ausgeblendet |
 | `voltpilot_optimizer_cycle_seconds`, `…_sites_planned`, `…_sites_skipped`, `…_age_seconds` | Persistierter Optimierer-Zyklus; ohne Lauf `NaN` |
 | `voltpilot_db_metrics_collect_age_seconds`, `…_duration_seconds` | Gesundheit des DB-Sammlers |
@@ -118,3 +120,10 @@ API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API 
 | `voltpilot_kafka_consumer_lag_collect_age_seconds` | Alter der letzten Lag-Abfrage |
 
 Ein nie gelaufener Job hat keinen erfundenen Erfolgsstatus. Altersmetriken wachsen bei ausgefallenem Sammler weiter. Für Betriebsalarme Größen summieren, Zyklus-/Lag-Alter überwachen und Label-Duplikate über Instanzen aggregieren. Nachweise: `DbHealthMetricsScrapeTest`, `DbHealthMetricsDbTest`, `KafkaConsumerLagScrapeTest`, `KafkaLagProbeTest`.
+
+Der Mandanten-Wächter läuft über die Admin-Datenquelle außerhalb eines
+Kundenkontexts und standardmäßig nur einmal täglich
+(`VOLTPILOT_METRICS_DB_STORAGE_INTERVAL_MS`), weil seine vier Abfragen die
+Speicherklassen vollständig lesen. Scrapes lesen ausschließlich den Cache. Die
+Planwerte und die Abgrenzung zum bestehenden 0,5-TB-Flottenalarm stehen unter
+[Speicherplanung](performance/speicherplanung.md).
