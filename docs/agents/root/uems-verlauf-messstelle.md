@@ -54,7 +54,8 @@ Kunde, was gemessen wurde, welchen Zeitraum er betrachtet und warum eine Zahl fe
   Feld nicht gebaut.
 - O1 schreibt „unvollständig (14 von 15)“; die Karte sagt „unvollständig (Menge aus Zählerständen)“ (Vertrag 1.6) und
   „Verlauf 93 % · 14 von 15 Werten“.
-- Vergleich (IP-5) folgt. Grund- und Ablehnungssätze, Leerzustände und Nebengrößen (V8): `uems-werte-gruende.md` (IP-6).
+- Der Vergleich (IP-5) legt eine ZWEITE Reihe in dasselbe Bild: `uems-vergleich-messstelle.md`. Grund- und
+  Ablehnungssätze, Leerzustände und Nebengrößen (V8): `uems-werte-gruende.md` (IP-6).
 
 ## Prüfen
 

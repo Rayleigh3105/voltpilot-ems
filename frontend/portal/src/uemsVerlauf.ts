@@ -378,7 +378,11 @@ export interface Bild {
   flaeche: { x: number; y: number; w: number; h: number };
   /** Breite je Schritt. */
   schritt: number;
-  balken: Array<{ index: number; x: number; y: number; w: number; h: number; art: SchrittArt }>;
+  /**
+   * Die Balken ALLER Reihen; `reihe` ist 0 für die eigene und ab 1 für jede weitere (AP-13 IP-5): die
+   * Vergleichsperiode liegt im selben Schlitz (blass dahinter), weitere Messstellen stehen nebeneinander darin.
+   */
+  balken: Array<{ index: number; x: number; y: number; w: number; h: number; art: SchrittArt; reihe: number }>;
   luecken: Array<{ x: number; w: number }>;
   marken: Array<{ nummer: number; x1: number; x2: number; y: number }>;
   /** Die oberste Linie der Skala mit ihrer Zahl (über `menge`, gerundet nur zur Anzeige) und die Nulllinie. */
@@ -411,8 +415,24 @@ const tickText = (raster: MessstelleWerteRaster, x: Schritt, breit: boolean): st
   return x.kurz;
 };
 
-/** Die Geometrie des Bildes in Pixeln der gemessenen Breite. */
-export const bild = (antwort: MessstelleWerte, s: readonly Schritt[], l: readonly Luecke[], m: readonly Marker[], breite: number): Bild => {
+/**
+ * Die Geometrie des Bildes in Pixeln der gemessenen Breite.
+ *
+ * `weitere` sind die Reihen, die AP-13 IP-5 überlagert: die Vergleichsperiode derselben Messstelle (`gruppiert`
+ * false — sie liegt blass im selben Schlitz) bzw. bis zwei weitere passende Messstellen (`gruppiert` true — der
+ * Schlitz wird geteilt, jede Reihe hat ihre eigene Farbe). Die SKALA umfasst immer alle Reihen; eine Reihe, die über
+ * den Rand ragte, wäre eine Lüge. Schritte jenseits der eigenen Reihe (ein längerer Vormonat) fallen weg — verglichen
+ * wird Stelle für Stelle.
+ */
+export const bild = (
+  antwort: MessstelleWerte,
+  s: readonly Schritt[],
+  l: readonly Luecke[],
+  m: readonly Marker[],
+  breite: number,
+  weitere: ReadonlyArray<readonly Schritt[]> = [],
+  gruppiert = false,
+): Bild => {
   const b = breite > 0 ? breite : BILD.vorgabeBreite;
   const breit = b >= BILD.breit;
   const n = Math.max(1, s.length);
@@ -435,7 +455,8 @@ export const bild = (antwort: MessstelleWerte, s: readonly Schritt[], l: readonl
   const y = BILD.oben + zeilen * BILD.markenZeile;
   const flaeche = { x: BILD.rand, y, w, h: BILD.flaeche };
 
-  const hoehen = s.map((x) => x.hoehe).filter((h): h is number => h !== null);
+  const reihen = [s, ...weitere];
+  const hoehen = reihen.flatMap((r) => r.map((x) => x.hoehe)).filter((h): h is number => h !== null);
   const oben = skalaOben(Math.max(0, ...hoehen));
   const unten = -skalaOben(-Math.min(0, ...hoehen));
   const spanne = oben - unten || 1;
@@ -457,13 +478,25 @@ export const bild = (antwort: MessstelleWerte, s: readonly Schritt[], l: readonl
     hoehe: y + BILD.flaeche + BILD.achse,
     flaeche,
     schritt,
-    balken: s
-      .filter((x) => x.hoehe !== null)
-      .map((x) => {
-        const hoch = yVon(Math.max(0, x.hoehe!));
-        const tief = yVon(Math.min(0, x.hoehe!));
-        return { index: x.index, x: xVon(x.index) + luft / 2, y: hoch, w: Math.max(1, schritt - luft), h: Math.max(1, tief - hoch), art: x.art };
-      }),
+    balken: reihen.flatMap((reihe, r) =>
+      reihe
+        .filter((x) => x.hoehe !== null && x.index < n)
+        .map((x) => {
+          const hoch = yVon(Math.max(0, x.hoehe!));
+          const tief = yVon(Math.min(0, x.hoehe!));
+          const voll = Math.max(1, schritt - luft);
+          const w = gruppiert ? Math.max(1, voll / reihen.length) : voll;
+          return {
+            index: x.index,
+            x: xVon(x.index) + luft / 2 + (gruppiert ? r * w : 0),
+            y: hoch,
+            w,
+            h: Math.max(1, tief - hoch),
+            art: x.art,
+            reihe: r,
+          };
+        }),
+    ),
     luecken: l.map((x) => ({ x: xVon(x.erster), w: (x.letzter - x.erster + 1) * schritt })),
     // Die Marken stehen ÜBER der Skala-Beschriftung: Zeile 0 ganz oben.
     marken: marken.map(({ nummer, x1, x2, zeile }) => ({ nummer, x1, x2, y: BILD.markenZeile / 2 + zeile * BILD.markenZeile })),

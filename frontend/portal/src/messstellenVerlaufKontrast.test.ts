@@ -65,7 +65,7 @@ describe('Messstellen-Verlauf · Kontrast der Zustände, der Schraffur und der M
   const karte = farbe('vp-surface');
 
   it('die Namen des Verlaufs zeigen auf Haus-Tokens — keine zweite Palette', () => {
-    for (const name of ['voll', 'teil', 'ersatz', 'luecke-strich', 'luecke-grund', 'marke']) {
+    for (const name of ['voll', 'teil', 'ersatz', 'luecke-strich', 'luecke-grund', 'marke', 'reihe-eigen', 'reihe-zwei', 'reihe-drei']) {
       expect(verlauf, name).toMatch(new RegExp(`--vp-mv-${name}:\\s*var\\(--vp-[\\w-]+\\);`));
     }
     expect(verlauf).not.toMatch(/#[0-9a-fA-F]{3,6}\b/);
@@ -86,6 +86,27 @@ describe('Messstellen-Verlauf · Kontrast der Zustände, der Schraffur und der M
 
   it('vollständig und unvollständig sind nicht dieselbe Helligkeit allein — sie trennen sich im Farbton (dataviz-Prüfer), und beide tragen ihr Wort', () => {
     expect(farbe('vp-mv-voll')).not.toEqual(farbe('vp-mv-teil'));
+  });
+
+  // AP-13 IP-5: liegen mehrere Messstellen in einem Bild, trägt die Farbe die REIHE (O12) — jede muss für sich lesbar
+  // sein UND sich von den anderen trennen. Der Name in der Legende bleibt der zweite Kanal.
+  it.each([
+    ['Reihe 1 (eigen)', 'vp-mv-reihe-eigen'],
+    ['Reihe 2', 'vp-mv-reihe-zwei'],
+    ['Reihe 3', 'vp-mv-reihe-drei'],
+  ])('%s: Grafik ≥ 3:1 auf der Karte', (_wort, name) => {
+    expect(kontrast(farbe(name), karte)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('die drei Reihen-Farben sind drei verschiedene Töne und trennen sich auch in der Helligkeit (≥ 1,25:1)', () => {
+    const namen = ['vp-mv-reihe-eigen', 'vp-mv-reihe-zwei', 'vp-mv-reihe-drei'];
+    const toene = namen.map((n) => farbe(n));
+    expect(new Set(toene.map((t) => t.join(','))).size).toBe(3);
+    for (let i = 0; i < toene.length; i += 1) {
+      for (let j = i + 1; j < toene.length; j += 1) {
+        expect(kontrast(toene[i], toene[j]), `${namen[i]} / ${namen[j]}`).toBeGreaterThanOrEqual(1.25);
+      }
+    }
   });
 
   it('Marke und ihre Nummer, Skala, Zeitachse und Legende: Text ≥ 4,5:1', () => {

@@ -14,6 +14,16 @@
   --vp-mv-luecke-strich: var(--vp-chart-axis);
   --vp-mv-luecke-grund: var(--vp-chart-idle);
   --vp-mv-marke: var(--vp-chart-ink);
+  /*
+   * AP-13 IP-5: die Farben der REIHEN, wenn mehrere Messstellen in einem Bild liegen (O12). Blau · Bernstein ·
+   * Violett — das erste Paar ist das schon gemessene (Rot-Grün-Schwäche ΔE 28); der dritte Ton trennt sich von beiden
+   * zusätzlich in der HELLIGKEIT (nachgerechnet in `messstellenVerlaufKontrast.test.ts`), denn ein Farbton allein
+   * trägt keine Aussage. Und die Farbe ist nie der einzige Kanal: jede Reihe steht mit NAMEN in der Legende und hat
+   * unten ihre eigene Karte.
+   */
+  --vp-mv-reihe-eigen: var(--vp-chart-load-line);
+  --vp-mv-reihe-zwei: var(--vp-chart-pv-line);
+  --vp-mv-reihe-drei: var(--vp-chart-soc);
   display: grid;
   gap: var(--vp-c-space-3, 12px);
   min-width: 0;
@@ -265,4 +275,54 @@
 .vp-mv-blaettern:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------------- AP-13 IP-5 · der Vergleich im selben Bild */
+
+/*
+ * Die Überlagerung (VG1a): dieselbe Messstelle in ihrer Vorperiode, blass im selben Schlitz und HINTER der eigenen
+ * Reihe. Kein zweiter Farbton — es ist dieselbe Reihe zu einer anderen Zeit; der Name steht in der Legende.
+ */
+.vp-mv-balken.is-vergleich {
+  fill-opacity: 0.28;
+  stroke: none;
+}
+
+/* Mehrere Messstellen (VG1b): die Farbe trägt die Reihe; die Zustände stehen an den Karten, nicht im Bild. */
+.vp-mv-balken.is-reihe.is-r0 {
+  fill: var(--vp-mv-reihe-eigen);
+}
+
+.vp-mv-balken.is-reihe.is-r1 {
+  fill: var(--vp-mv-reihe-zwei);
+}
+
+.vp-mv-balken.is-reihe.is-r2 {
+  fill: var(--vp-mv-reihe-drei);
+}
+
+.vp-mv-reihen {
+  color: var(--vp-c-fg);
+}
+
+.vp-mv-farbe.is-reihe.is-r0 {
+  background: var(--vp-mv-reihe-eigen);
+}
+
+.vp-mv-farbe.is-reihe.is-r1 {
+  background: var(--vp-mv-reihe-zwei);
+}
+
+.vp-mv-farbe.is-reihe.is-r2 {
+  background: var(--vp-mv-reihe-drei);
+}
+
+/* Die Überlagerung: derselbe Ton, blass — genau so, wie sie im Bild liegt. */
+.vp-mv-farbe.is-eigen {
+  background: var(--vp-mv-reihe-eigen);
+}
+
+.vp-mv-farbe.is-vergleich {
+  background: var(--vp-mv-reihe-eigen);
+  opacity: 0.28;
 }

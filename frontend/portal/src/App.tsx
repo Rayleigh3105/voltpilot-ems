@@ -1359,8 +1359,31 @@ function UnifiedPortal() {
                 if (s) springe(s);
               }}
               onWerteZeitraum={(periode) => {
+                // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht (neue Periode, neue Zahl).
+                const jetzt = parseMessstelleWerte(window.location.hash);
                 const s = route.messstelleId
-                  ? sprungziel({ art: 'messstelle', id: route.messstelleId, standortId: page === 'standort' ? route.standortId : null, periode })
+                  ? sprungziel({
+                      art: 'messstelle',
+                      id: route.messstelleId,
+                      standortId: page === 'standort' ? route.standortId : null,
+                      periode,
+                      vergleich: jetzt.vergleich,
+                    })
+                  : null;
+                if (s) replaceCurrentNavigation(s.hash);
+              }}
+              // AP-13 IP-5: die Wahl des Umschalters als `v=`; Periode und Version der Adresse bleiben stehen.
+              onWerteVergleich={(v) => {
+                const jetzt = parseMessstelleWerte(window.location.hash);
+                const s = route.messstelleId
+                  ? sprungziel({
+                      art: 'messstelle',
+                      id: route.messstelleId,
+                      standortId: page === 'standort' ? route.standortId : null,
+                      periode: jetzt.periode,
+                      version: jetzt.version,
+                      vergleich: v,
+                    })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
               }}

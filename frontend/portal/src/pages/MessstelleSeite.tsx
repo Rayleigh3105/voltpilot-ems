@@ -20,6 +20,7 @@ import { PROTOKOLL_LABEL } from '../components/ProtokollDialog';
 import { ProtokollListe, useProtokoll } from '../components/ProtokollListe';
 import { ErrorState, Skeleton } from '../components/States';
 import { WerteSektion } from '../components/WerteSektion';
+import { wahlHash } from '../uemsVergleich';
 import { ZuordnungAendernDialog } from '../components/ZuordnungAendernDialog';
 import { UEMS_WERTE } from '../glossar';
 import { lebenszyklusWort, zeileWoerter, type Lebenszyklus } from '../messstellen';
@@ -80,14 +81,17 @@ export function MessstelleSeite({
   zone = VORGABE_ZEITZONE,
   werte = null,
   onWerteZeitraum,
+  onWerteVergleich,
   onListe,
 }: {
   id: string;
   zone?: string;
   /** Periode und Version der Adresse für den Abschnitt „Werte“. */
-  werte?: { periode: string | null; version: number | null } | null;
+  werte?: { periode: string | null; version: number | null; vergleich: string | null } | null;
   /** Die neu gewählte Periode der Werte (`JJJJ-MM-TT` bzw. `JJJJ-MM`). */
   onWerteZeitraum?: (periode: string) => void;
+  /** AP-13 IP-5: eine neue Wahl des Vergleichs-Umschalters — der Wirt schreibt sie als `v=` in die Adresse. */
+  onWerteVergleich?: (v: string | null) => void;
   onListe: () => void;
 }) {
   const [stamm, setStamm] = useState<Stamm | null>(null);
@@ -276,6 +280,10 @@ export function MessstelleSeite({
           heute={heute}
           standortName={zeile?.ort.standort_name ?? null}
           quelle={zeile?.quelle ?? null}
+          // AP-13 IP-5: der Vergleich braucht die Hauptgrößen der anderen Messstellen („passend“, O12).
+          register={zeilen}
+          vergleich={werte?.vergleich ?? null}
+          onVergleich={(w) => onWerteVergleich?.(wahlHash(w))}
           onQuelleZuordnen={darfAendern ? () => oeffneBearbeiten(3) : undefined}
           onZeitraum={onWerteZeitraum}
         />

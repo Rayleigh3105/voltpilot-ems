@@ -28,6 +28,9 @@ import '../src/index.css';
  * Register oder Seite (`#/portfolio/messstellen[/{id}]`), `periode=`/`version=` gehen an den Abschnitt
  * „Werte“. Ein Einstieg aus dem Register schreibt den Sprung (`sprungziel`), eine neue Wahl auf der
  * Seite ersetzt die Adresse ohne Verlaufseintrag.
+ *
+ * UEMS AP-13 IP-5: dazu `v=` — die Wahl des Vergleichs-Umschalters. Sie überlebt einen Zeitraum-Wechsel
+ * (wie in `App.tsx`); die Version tut es nicht.
  */
 const q = new URLSearchParams(window.location.search);
 const id = q.get('id') ?? '';
@@ -52,7 +55,20 @@ function Wirt() {
       onOeffnen={(m) => zu(hashForRoute(messstelleRoute(m)))}
       onWerte={(m, periode) => zu(sprungziel({ art: 'messstelle', id: m, periode })!.hash)}
       onWerteZeitraum={(periode) => {
-        if (route.messstelleId) window.history.replaceState(null, '', sprungziel({ art: 'messstelle', id: route.messstelleId, periode })!.hash);
+        if (!route.messstelleId) return;
+        const jetzt = parseMessstelleWerte(window.location.hash);
+        window.history.replaceState(
+          null,
+          '',
+          sprungziel({ art: 'messstelle', id: route.messstelleId, periode, vergleich: jetzt.vergleich })!.hash,
+        );
+      }}
+      onWerteVergleich={(v) => {
+        if (!route.messstelleId) return;
+        const jetzt = parseMessstelleWerte(window.location.hash);
+        const ziel = sprungziel({ art: 'messstelle', id: route.messstelleId, periode: jetzt.periode, version: jetzt.version, vergleich: v })!.hash;
+        window.history.replaceState(null, '', ziel);
+        setHash(ziel);
       }}
       onListe={() => zu('#/portfolio/messstellen')}
     />
