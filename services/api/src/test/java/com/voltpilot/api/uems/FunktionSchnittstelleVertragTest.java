@@ -55,6 +55,8 @@ class FunktionSchnittstelleVertragTest {
         formen.put("FunktionSteuernErgebnis", FunktionDto.SteuernErgebnis.class);
         formen.put("FunktionSteuernPruefung", FunktionDto.SteuernPruefung.class);
         formen.put("FunktionSteuernPruefZeile", FunktionDto.SteuernPruefZeile.class);
+        formen.put("FunktionFreigabeStand", FunktionDto.FreigabeStand.class);
+        formen.put("FunktionFreigabeZeile", FunktionDto.FreigabeZeile.class);
         formen.put("FunktionAnlageRef", FunktionDto.AnlageRef.class);
         formen.put("FunktionMessenAnfrage", FunktionDto.MessenAnfrage.class);
         formen.put("FunktionMessenErgebnis", FunktionDto.MessenErgebnis.class);

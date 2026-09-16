@@ -25,6 +25,17 @@ async function cloud(page: Page) {
         { pruefung: 'hauptzaehler', bestanden: true, fakt: 'Hauptzähler MS-10 liefert Daten', grund: null, weg: null },
         { pruefung: 'betriebsweise', bestanden: true, fakt: 'Betriebsweise Netzschonend laden gesetzt', grund: null, weg: null },
       ],
+      freigaben: {
+        freigegeben: 2, gesamt: 3, text: '2 von 3 freigegeben',
+        komponenten: [
+          { entity_id: 'S-1', name: 'Abluft Wärmepumpe', weg: 'selbstbau', freigegeben: false,
+            status: 'Schalt-Test und Freigabe erforderlich', station_verbunden: null, steuerart_gesetzt: null },
+          { entity_id: 'K-9', name: 'Parkplatz Halle 2', weg: 'ocpp', freigegeben: true,
+            status: 'Station verbunden · Steuerart gesetzt', station_verbunden: true, steuerart_gesetzt: true },
+          { entity_id: 'W-1', name: 'Batteriespeicher', weg: 'wechselrichter', freigegeben: true,
+            status: 'Von VoltPilot freigegeben', station_verbunden: null, steuerart_gesetzt: null },
+        ],
+      },
       folgen: 'Ab dem nächsten Fahrplan, spätestens in 15 Minuten, lädt VoltPilot den Ladepunkt netzschonend innerhalb 200 kW abzüglich Hauslast und Reserve. Nichts anderes ändert sich. Sie können jederzeit anhalten.',
     });
     if (pfad.endsWith(`/sites/${FIXTURE_IDS.an2}/funktionen/steuern`) && req.method() === 'PUT') {
@@ -88,8 +99,16 @@ for (const breite of [375, 1440] as const) {
       await page.getByRole('button', { name: 'Weiter' }).click();
 
       await expect(page.getByText('Was darf VoltPilot steuern?')).toBeVisible();
+      await expect(page.getByText('2 von 3 freigegeben')).toBeVisible();
+      await expect(page.getByText('Wir schalten die Steuerung für Ihren Wechselrichter frei — VoltPilot')).toBeVisible();
       await expect(page.getByText('Energiekarte EK-1')).toBeVisible();
       await bild(page, `schritt-2-${breite}-r${runde}`);
+      await page.getByRole('button', { name: 'Schalt-Test und Freigabe' }).click();
+      await expect(page.getByRole('heading', { name: 'Steuern freigeben' })).toBeVisible();
+      await expect(page.getByText('Wie wird geschaltet?')).toBeVisible();
+      await bild(page, `schaltfreigabe-${breite}-r${runde}`);
+      await page.getByRole('button', { name: 'Schließen' }).click();
+      await expect(page.getByText('Was darf VoltPilot steuern?')).toBeVisible();
       await page.getByRole('button', { name: 'Weiter' }).click();
 
       await page.getByLabel('Anschlussgrenze (kW)').fill('200');

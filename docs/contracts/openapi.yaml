@@ -9546,7 +9546,9 @@ paths:
       description: >
         Recht `steuerung.starten_beenden`, mit RechtPruefung an der Anlage durchgesetzt. Liefert für Box,
         Freigabe, Verbindungstest, Grenze, Hauptzähler und Betriebsweise den Fakt; rote Zeilen zusätzlich mit
-        Grund und Weg. Fremde Anlage = 404. Liest nur; der Start prüft dieselben Fakten in seiner Transaktion erneut.
+        Grund und Weg. `freigaben` ergänzt komponentengenau die bestehenden Wege Selbstbau, OCPP und
+        Wechselrichter samt Zählung. Fremde Anlage = 404. Liest nur; der Start prüft dieselben Fakten in seiner
+        Transaktion erneut.
       responses:
         "200":
           description: Prüfliste und Folgen des Starts.
@@ -21880,7 +21882,7 @@ components:
         standort: { $ref: "#/components/schemas/FunktionStandort" }
     FunktionSteuernPruefung:
       type: object
-      required: [anlage_id, anlage, standort_id, standort, bereit, zeilen, folgen]
+      required: [anlage_id, anlage, standort_id, standort, bereit, zeilen, freigaben, folgen]
       properties:
         anlage_id: { type: string, format: uuid }
         anlage: { type: string }
@@ -21888,7 +21890,27 @@ components:
         standort: { type: string }
         bereit: { type: boolean }
         zeilen: { type: array, items: { $ref: "#/components/schemas/FunktionSteuernPruefZeile" } }
+        freigaben: { $ref: "#/components/schemas/FunktionFreigabeStand" }
         folgen: { type: string }
+    FunktionFreigabeStand:
+      type: object
+      required: [freigegeben, gesamt, text, komponenten]
+      properties:
+        freigegeben: { type: integer, minimum: 0 }
+        gesamt: { type: integer, minimum: 0 }
+        text: { type: string }
+        komponenten: { type: array, items: { $ref: "#/components/schemas/FunktionFreigabeZeile" } }
+    FunktionFreigabeZeile:
+      type: object
+      required: [entity_id, name, weg, freigegeben, status, station_verbunden, steuerart_gesetzt]
+      properties:
+        entity_id: { type: string, format: uuid }
+        name: { type: string }
+        weg: { type: string, enum: [selbstbau, ocpp, wechselrichter] }
+        freigegeben: { type: boolean }
+        status: { type: string }
+        station_verbunden: { type: boolean, nullable: true }
+        steuerart_gesetzt: { type: boolean, nullable: true }
     FunktionSteuernPruefZeile:
       type: object
       required: [pruefung, bestanden, fakt, grund, weg]

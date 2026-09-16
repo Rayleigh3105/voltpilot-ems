@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.chargers.ChargingConfigRepository;
+import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.profile.AnwendungKatalog;
 import com.voltpilot.api.profile.SiteProfileService;
@@ -102,7 +103,13 @@ public class FunktionFakten {
 
     /** Was die Prüfliste über EINE Anlage weiß. */
     public record Anlage(List<BoxZustand> boxen, Hauptzaehler hauptzaehler, List<Komponente> komponenten,
-            String betriebsmodell, Grenze grenze) {}
+            String betriebsmodell, Grenze grenze, List<Freigabe> freigaben) {}
+
+    /** Der bestehende Freigabe-Weg und sein aktueller, rein gelesener Stand je Komponente. */
+    public record Freigabe(UUID entityId, String name, String weg, boolean freigegeben, String status,
+            Boolean stationVerbunden, Boolean steuerartGesetzt) {}
+
+    private record SteuerFakten(List<Komponente> komponenten, List<Freigabe> freigaben) {}
 
     private final JdbcTemplate jdbc;
     private final JdbcTemplate adminJdbc;
@@ -135,8 +142,9 @@ public class FunktionFakten {
      * @param register die Zeilen des Messstellen-Registers, wenn der Aufrufer sie schon hat; {@code null} = hier lesen
      */
     public Anlage anlage(UUID tenantId, UUID siteId, Instant jetzt, ZoneId zone, List<MessstelleDto.RegisterZeile> register) {
-        return new Anlage(boxen(siteId, jetzt), hauptzaehler(siteId, register), komponenten(tenantId, siteId, jetzt),
-                betriebsmodell(siteId), grenze(siteId, LocalDate.ofInstant(jetzt, zone)));
+        SteuerFakten steuer = steuerFakten(tenantId, siteId, jetzt);
+        return new Anlage(boxen(siteId, jetzt), hauptzaehler(siteId, register), steuer.komponenten(),
+                betriebsmodell(siteId), grenze(siteId, LocalDate.ofInstant(jetzt, zone)), steuer.freigaben());
     }
 
     /** Die Boxen der Anlage — ohne Box eine leere Liste (der Vertrag sagt dann „es fehlt: Box …“). */
@@ -177,10 +185,12 @@ public class FunktionFakten {
         return null;
     }
 
-    private List<Komponente> komponenten(UUID tenantId, UUID siteId, Instant jetzt) {
+    private SteuerFakten steuerFakten(UUID tenantId, UUID siteId, Instant jetzt) {
         List<Komponente> out = new ArrayList<>();
+        List<Freigabe> freigaben = new ArrayList<>();
         List<EntityRegistryRepository.EntityRow> zeilen = entities.entitiesForSite(siteId);
         Map<UUID, EntityRegistryRepository.EntityRow> jeId = new HashMap<>();
+        Map<UUID, Boolean> ocppVerbunden = ocppVerbunden(siteId);
         boolean scharf = false;
         boolean scharfGelesen = false;
         for (EntityRegistryRepository.EntityRow r : zeilen) {
@@ -191,6 +201,14 @@ public class FunktionFakten {
                     scharfGelesen = true;
                 }
                 out.add(new Komponente(name(r.label(), "Speicher"), KomponentenArt.SPEICHER, scharf, scharf, null));
+                freigaben.add(new Freigabe(r.id(), name(r.label(), "Wechselrichter"), "wechselrichter", scharf,
+                        scharf ? "Von VoltPilot freigegeben" : "Freischaltung durch VoltPilot steht aus",
+                        null, null));
+            } else if ("custom".equals(r.sourceKind())
+                    && ("modbus-generic".equals(r.entityType()) || "modbus-load".equals(r.entityType()))) {
+                boolean frei = selbstbauFreigabe(r.connectionJson()) != null && "modbus-load".equals(r.entityType());
+                freigaben.add(new Freigabe(r.id(), name(r.label(), "Eigenes Gerät"), "selbstbau", frei,
+                        frei ? "Von Ihnen freigegeben" : "Schalt-Test und Freigabe erforderlich", null, null));
             }
         }
         VerbraucherDto liste = verbraucher.forSite(siteId);
@@ -202,7 +220,41 @@ public class FunktionFakten {
             String steuerart = e.steuerart() == null || SteuerartProjektion.HERKUNFT_OHNE.equals(e.steuerart().herkunft())
                     ? null : e.steuerart().quelle();
             out.add(new Komponente(name(e.name(), e.typLabel()), KomponentenArt.VERBRAUCHER, true, test, steuerart));
+            if (r != null && ChargerComponentComposer.TYPE_EV_CHARGER.equals(r.entityType())) {
+                boolean verbunden = Boolean.TRUE.equals(ocppVerbunden.get(e.entityId()));
+                boolean steuerartGesetzt = steuerart != null;
+                boolean frei = verbunden && steuerartGesetzt;
+                String status = !verbunden ? "Station nicht verbunden"
+                        : !steuerartGesetzt ? "Station verbunden · Steuerart fehlt"
+                        : "Station verbunden · Steuerart gesetzt";
+                freigaben.add(new Freigabe(e.entityId(), name(e.name(), e.typLabel()), "ocpp", frei, status,
+                        verbunden, steuerartGesetzt));
+            }
         }
+        freigaben.sort(Comparator.comparingInt((Freigabe k) -> freigabeRang(k.weg()))
+                .thenComparing(Freigabe::name));
+        return new SteuerFakten(List.copyOf(out), List.copyOf(freigaben));
+    }
+
+    private static int freigabeRang(String weg) {
+        return switch (weg) {
+            case "selbstbau" -> 0;
+            case "ocpp" -> 1;
+            case "wechselrichter" -> 2;
+            default -> 3;
+        };
+    }
+
+    /** Verbindungsstand der echten OCPP-Station je komponierter Ladepunkt-Komponente. */
+    private Map<UUID, Boolean> ocppVerbunden(UUID siteId) {
+        Map<UUID, Boolean> out = new HashMap<>();
+        jdbc.query("SELECT c.entity_id, bool_or(s.connected) AS verbunden FROM device_charge_point c "
+                        + "JOIN ocpp_station s ON s.device_id = c.device_id "
+                        + "AND s.charge_point_id = c.charge_point_id AND s.site_id = c.site_id "
+                        + "WHERE c.site_id = ? AND c.entity_id IS NOT NULL AND EXISTS (SELECT 1 FROM device d "
+                        + "WHERE d.id = c.device_id AND d.ausgebaut_am IS NULL) GROUP BY c.entity_id",
+                (rs, n) -> Map.entry(rs.getObject("entity_id", UUID.class), rs.getBoolean("verbunden")), siteId)
+                .forEach(e -> out.put(e.getKey(), e.getValue()));
         return out;
     }
 
