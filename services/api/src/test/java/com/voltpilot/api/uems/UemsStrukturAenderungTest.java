@@ -437,6 +437,39 @@ class UemsStrukturAenderungTest {
         assertThat(berichtsTabellen()).isEqualTo(vorher);
     }
 
+    /**
+     * AP-04 A2: Der am 20.11. nachgetragene Zählerwechsel gilt seit dem 18.11. Der November-Stand bleibt Byte für Byte
+     * stehen und erhält über den vorhandenen AP-12-Pfad genau einen Revisions-Anstoß.
+     */
+    @Test
+    @Order(10)
+    void a2EinSpaeterZaehlerwechselStoesstBetroffeneBerichteAnUndAendertKeinenStand() {
+        UUID bericht = root.queryForObject("INSERT INTO bericht (tenant_id, kennung, vorlage, vorlage_fassung, "
+                + "geltung_art, unternehmen_id, zeitraum_art, zeitraum_schluessel, zeitzone, angelegt_von_name) "
+                + "VALUES (?, 'BR-2026-0099', 'monatsbericht_unternehmen', 1, 'unternehmen', ?, 'monat', '2026-11', "
+                + "'Europe/Berlin', 'Jonas Wendlinger') RETURNING id", UUID.class, KB, IDS.get("U"));
+        root.update("INSERT INTO bericht_stand (tenant_id, bericht_id, nr, abzug, pruefsumme, datenstand, freigegeben_am, "
+                + "freigeber_sub, freigeber_name, freigeber_rolle, darstellung, regelwerk, vorlage_fassung) "
+                + "SELECT ?, ?, 1, abzug, pruefsumme, '2026-11-19T08:00:00Z', '2026-11-19T08:05:00Z', "
+                + "'kc-jonas-wendlinger', 'Jonas Wendlinger', 'kundenadministrator', darstellung, regelwerk, 1 "
+                + "FROM bericht_stand WHERE bericht_id = ? AND nr = 1", KB, bericht, uOktober);
+        root.update("INSERT INTO bericht_quelle (tenant_id, bericht_id, stand_nr, art, kennzeichen, objekt_id, bezug, "
+                + "erster_tag, letzter_tag, version, fassung, name_zum_datenstand) VALUES (?, ?, 1, 'messstelle', "
+                + "'MS-06', ?, 'unmittelbar', '2026-11-18', '2026-11-19', 1, NULL, 'Spritzguss SG01–SG06')",
+                KB, bericht, IDS.get("MS-06"));
+        String vorher = stand(bericht, 1);
+        long zeile = messstelleAenderung("MS-06", "zaehler_gewechselt", "{}", "{}",
+                Instant.parse("2026-11-18T09:40:00Z"), true, Instant.parse("2026-11-20T08:00:00Z"));
+
+        assertThat(laeufer.lauf(Instant.parse("2026-11-20T08:05:00Z")).gescheitert()).isEmpty();
+
+        String anlass = "zuordnung_rueckwirkend/MS-06/2026-11-18/2026-11-20/messstelle_aenderung-" + zeile;
+        assertThat(gelesen(MESSSTELLE, zeile)).isEqualTo("zuordnung_rueckwirkend · 1");
+        assertThat(anstoesse(anlass))
+                .containsExactly("BR-2026-0099 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -");
+        assertThat(stand(bericht, 1)).as("der freigegebene Stand bleibt byte-gleich").isEqualTo(vorher);
+    }
+
     // ============================================================================================ Hilfen: Protokolle
 
     private static long messstelleAenderung(String kz, String art, String alt, String neu, Instant giltAb,

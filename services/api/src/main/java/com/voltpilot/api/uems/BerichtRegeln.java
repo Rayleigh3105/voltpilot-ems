@@ -563,7 +563,8 @@ public final class BerichtRegeln {
             anstoss = "anlage".equals(objektArt) ? ANLAGE_UMZUG_RUECKWIRKEND : ZUORDNUNG_RUECKWIRKEND;
         } else if (ORT_AENDERUNG.equals(protokoll) && "flaeche_geaendert".equals(art)) {
             anstoss = FLAECHE_RUECKWIRKEND;
-        } else if (MESSSTELLE_AENDERUNG.equals(protokoll) && ("ort_zugeordnet".equals(art) || "ort_korrigiert".equals(art))) {
+        } else if (MESSSTELLE_AENDERUNG.equals(protokoll) && ("ort_zugeordnet".equals(art)
+                || "ort_korrigiert".equals(art) || "zaehler_gewechselt".equals(art))) {
             anstoss = ZUORDNUNG_RUECKWIRKEND;
         } else if (MESSSTELLE_AENDERUNG.equals(protokoll) && "verteilung_geaendert".equals(art)) {
             anstoss = VERTEILUNG_RUECKWIRKEND;

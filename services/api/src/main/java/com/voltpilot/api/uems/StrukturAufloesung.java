@@ -53,7 +53,8 @@ final class StrukturAufloesung {
 
     /** Die Arten, die ein Urteil bekommen — jede andere Art ist nie ein Anstoß (bericht.md B4, Tabelle der Regel struktur). */
     static final List<String> ORT_ARTEN = List.of("verschoben", "korrigiert", "flaeche_geaendert");
-    static final List<String> MESSSTELLE_ARTEN = List.of("ort_zugeordnet", "ort_korrigiert", "verteilung_geaendert");
+    static final List<String> MESSSTELLE_ARTEN = List.of("ort_zugeordnet", "ort_korrigiert", "verteilung_geaendert",
+            "zaehler_gewechselt");
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final ZoneId VORGABE_ZONE = ZoneId.of("Europe/Berlin");

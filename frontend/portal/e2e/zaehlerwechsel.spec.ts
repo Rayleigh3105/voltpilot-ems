@@ -10,10 +10,10 @@ import { grundlastTag, grundlastViertelstunden } from '../src/test/werteKarteFix
 import { gr4Z5b } from '../src/test/geraetHerkunftFixtures';
 const expect = baseExpect.configure({ timeout: 30_000 });
 const json = (body: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
-async function cloud(page: Page) {
+async function cloud(page: Page, jetzt = WECHSEL_JETZT) {
   let nachher = false;
   const posts: { pfad: string; body: any }[] = [];
-  await page.clock.setFixedTime(new Date(WECHSEL_JETZT));
+  await page.clock.setFixedTime(new Date(jetzt));
   await page.route('**/api/v1/**', async route => {
     const req = route.request(), url = new URL(req.url()), p = url.pathname;
     if (req.method() === 'POST') {
@@ -29,6 +29,8 @@ async function cloud(page: Page) {
     if (p.endsWith('/events')) return route.fulfill(json(nachher ? [{ revision: 1, eventType: 'device_replaced', effectiveAt: WECHSEL_AM,
       fromValue: 'Z-5a', toValue: 'Z-5b', createdAt: WECHSEL_JETZT, createdBy: 'IK' }] : []));
     if (p.endsWith('/quellen')) return route.fulfill(json(wechselQuellen(nachher)));
+    if (p === '/api/v1/berichte/betroffen') return route.fulfill(json({ anlass: 'zuordnung_rueckwirkend',
+      gilt_ab: '2026-11-18', berichte_vorhanden: true, betroffen: [{ kennung: 'BR-2026-0099', nr: 1 }], zitieren: [] }));
     if (p === '/api/v1/messstellen') {
       const r = ahrenbergRegister({ stichtag: '2026-11-18' }); r.zeitpunkt = WECHSEL_JETZT;
       const z = r.register.find(z => z.kennzeichen === 'MS-06')!;
@@ -60,6 +62,23 @@ async function cloud(page: Page) {
   });
   return posts;
 }
+
+test('A2: die Folgen-Karte nennt Berichtstage und Revisionsbedarf', async ({ page }, info) => {
+  const breite = info.project.name.includes('mobile') ? 375 : 1440;
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 1000 });
+  await cloud(page, '2026-11-20T09:00:00+01:00');
+  await page.goto('/e2e/zaehlerwechsel.html?einstieg=messstelle');
+  await page.getByRole('button', { name: 'Zähler wechseln', exact: true }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('combobox', { name: 'Datum', exact: true }).click();
+  await page.locator('[role="gridcell"][data-iso="2026-11-18"]').click();
+  await dialog.getByRole('combobox', { name: 'Uhrzeit', exact: true }).fill('10:40');
+  await dialog.getByRole('combobox', { name: 'Uhrzeit', exact: true }).press('Tab');
+  await dialog.getByRole('button', { name: 'Folgen prüfen' }).click();
+  await expect(dialog).toContainText('Berichte mit dem 18.–20.11.: Tagesberichte 18./19.11. (Berichtsentwurf).');
+  await expect(dialog).toContainText('Freigegebene Berichte: BR-2026-0099 Nr. 1 bekommt den Vermerk „Revision nötig“.');
+  await bild(page, 'a2-berichtsfolgen', breite);
+});
 async function bild(page: Page, name: string, breite: number) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
   const dialog = page.getByRole('dialog');

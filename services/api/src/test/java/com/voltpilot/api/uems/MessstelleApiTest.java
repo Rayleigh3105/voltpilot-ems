@@ -13,6 +13,7 @@ import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -137,6 +138,9 @@ class MessstelleApiTest {
 
     @Autowired
     TestRestTemplate rest;
+
+    @Autowired
+    MessstelleService messstelleService;
 
     private static JsonNode referenz;
     private static JsonNode vektoren;
@@ -623,6 +627,45 @@ class MessstelleApiTest {
         assertThat(archiviert.get("archiviert_am").asText()).isEqualTo(zeit(umbau.plus(10, MINUTES)));
         assertThat(letzter(id).get("rueckwirkend")).isEqualTo(true);
         assertThat(letzter(id).get("grund")).isEqualTo("Bereich aufgelöst");
+    }
+
+    /** A13 / AP-12: Der Archivweg beendet nur die lebende Messstelle; der freigegebene Juni-Abzug bleibt byte-gleich. */
+    @Test
+    void a13ArchivierenLaesstDenFreigegebenenJuniBerichtByteGleich() {
+        UUID t = neuerKundenbereich("A13 Berichtsschutz");
+        Anrufer wer = admin(t);
+        UUID unternehmen = root.queryForObject("INSERT INTO unternehmen (tenant_id, name, zeitzone) "
+                + "VALUES (?, 'Kunststoffwerk Ahrenberg GmbH', 'Europe/Berlin') RETURNING id", UUID.class, t);
+        String id = anlegen(wer, wieReferenz("MS-13", referenzMessstelle("MS-13"))).get("id").asText();
+        String abzug = "{\"bericht\":\"BR-2027-0006\",\"zeitraum\":\"2027-06\",\"messstelle\":\"MS-13\"}";
+        UUID bericht = root.queryForObject("INSERT INTO bericht (tenant_id, kennung, vorlage, vorlage_fassung, "
+                + "geltung_art, unternehmen_id, zeitraum_art, zeitraum_schluessel, zeitzone, angelegt_von_name) "
+                + "VALUES (?, 'BR-2027-0006', 'monatsbericht_unternehmen', 1, 'unternehmen', ?, 'monat', '2027-06', "
+                + "'Europe/Berlin', 'Ines Kaltenbach') RETURNING id", UUID.class, t, unternehmen);
+        root.update("INSERT INTO bericht_stand (tenant_id, bericht_id, nr, abzug, pruefsumme, datenstand, freigegeben_am, "
+                + "freigeber_sub, freigeber_name, freigeber_rolle, darstellung, regelwerk, vorlage_fassung) VALUES "
+                + "(?, ?, 1, ?, ?, '2027-06-30T14:00:00Z', '2027-06-30T14:05:00Z', 'kc-ines-kaltenbach', "
+                + "'Ines Kaltenbach', 'energiemanager', '{}'::jsonb, '{}'::jsonb, 1)", t, bericht, abzug,
+                BerichtRegeln.pruefsumme(abzug));
+        root.update("INSERT INTO bericht_quelle (tenant_id, bericht_id, stand_nr, art, kennzeichen, objekt_id, bezug, "
+                + "erster_tag, letzter_tag, version, fassung, name_zum_datenstand) VALUES (?, ?, 1, 'messstelle', "
+                + "'MS-13', ?, 'unmittelbar', '2027-06-01', '2027-06-30', 1, NULL, 'Lager Halle 2')", t, bericht,
+                UUID.fromString(id));
+        byte[] vorher = root.queryForObject("SELECT convert_to(abzug, 'UTF8') FROM bericht_stand WHERE bericht_id = ?",
+                byte[].class, bericht);
+
+        messstelleService.uhrStellen(Clock.fixed(Instant.parse("2027-06-30T14:30:00Z"), BERLIN));
+        try {
+            JsonNode archiviert = rufe(HttpMethod.POST, "/" + id + "/archivieren", wer, null).getBody();
+            assertThat(archiviert.get("archiviert_am").asText()).isEqualTo("2027-06-30T16:30:00+02:00");
+        } finally {
+            messstelleService.uhrStellen(Clock.systemUTC());
+        }
+
+        assertThat(root.queryForObject("SELECT convert_to(abzug, 'UTF8') FROM bericht_stand WHERE bericht_id = ?",
+                byte[].class, bericht)).as("Juni-Bericht nach dem Messstellen-Archivweg").isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT pruefsumme FROM bericht_stand WHERE bericht_id = ?", String.class, bericht))
+                .isEqualTo(BerichtRegeln.pruefsumme(abzug));
     }
 
     // ---- Mandanten-Zaun und Urheber --------------------------------------------

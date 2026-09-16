@@ -185,6 +185,7 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
   | `ort_aenderung` | `verschoben`, `korrigiert` (Gebäude, Bereich) | `zuordnung_rueckwirkend` | `nicht_rueckwirkend` |
   | `ort_aenderung` | `flaeche_geaendert` | `flaeche_rueckwirkend` | `nicht_rueckwirkend` |
   | `messstelle_aenderung` | `ort_zugeordnet`, `ort_korrigiert` | `zuordnung_rueckwirkend` | `nicht_rueckwirkend` |
+  | `messstelle_aenderung` | `zaehler_gewechselt` | `zuordnung_rueckwirkend` | `nicht_rueckwirkend` |
   | `messstelle_aenderung` | `verteilung_geaendert` mit `korrektur` | `verteilung_rueckwirkend` | `nicht_rueckwirkend` |
   | beide | `bearbeitet` | — | `umbenennung` |
   | beide | jede andere Art | — | `keine_strukturaenderung` |

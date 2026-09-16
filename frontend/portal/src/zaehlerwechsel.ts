@@ -6,6 +6,7 @@ import { iso, zeitpunkteVon } from './bezugsPeriode';
 import { ZEIT_SAETZE } from './geraetEinstellungen';
 import { ereignisSatz, zeitText, zahlText } from './uemsEreignis';
 import { rueckwirkung } from './uemsMessstelle';
+import { datumText, lokalerTag, plusTage, tageZwischen } from './uemsOrtsbaum';
 import { teile } from './uemsZustand';
 
 export type WechselZiel = { art: 'messstelle'; id: string; kennzeichen: string; geraetId: string; anlageId: string }
@@ -65,6 +66,28 @@ export function wechselPruefen(e: WechselEingabe, zone: string, einheit: string 
 export function wechselAbzeichen(zeitpunkt: string, jetzt: string) {
   const r = rueckwirkung(jetzt, zeitpunkt);
   return r.art === 'angekuendigt' ? 'angekündigt' : r.abzeichen;
+}
+
+/** A2: abgeschlossene Berichtstage zwischen Wirkung und Eintrag eines rückwirkenden Wechsels. */
+export function wechselBerichtsfolge(zeitpunkt: string, eingetragen: string, zone: string): string | null {
+  const ab = lokalerTag(zeitpunkt, zone), am = lokalerTag(eingetragen, zone);
+  const anzahl = tageZwischen(ab, am);
+  if (anzahl <= 0) return null;
+  const letzter = plusTage(am, -1);
+  const zeitraum = kurzZeitraum(ab, am);
+  const tage = anzahl === 1 ? kurzTag(ab) : anzahl === 2 && ab.slice(0, 7) === letzter.slice(0, 7)
+    ? `${ab.slice(8, 10)}./${kurzTag(letzter)}` : kurzZeitraum(ab, letzter);
+  return `Berichte mit dem ${zeitraum}: Tagesberichte ${tage} (Berichtsentwurf).`;
+}
+
+function kurzTag(tag: string): string {
+  return `${tag.slice(8, 10)}.${tag.slice(5, 7)}.`;
+}
+
+function kurzZeitraum(von: string, bis: string): string {
+  return von.slice(0, 7) === bis.slice(0, 7)
+    ? `${von.slice(8, 10)}.–${kurzTag(bis)}`
+    : `${datumText(von)}–${datumText(bis)}`;
 }
 export function standText(stand: MessstelleQuelleStand | null): string | null {
   return stand?.wert == null ? null : `${zahlText(stand.wert)}${stand.einheit ? ` ${stand.einheit}` : ' (Einheit nicht erfasst)'}`;
