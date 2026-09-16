@@ -38,6 +38,12 @@ public final class ProvisioningTopics {
         return "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/schedule";
     }
 
+    /** The additive v2 plan has its own retained slot; clearing v1 never clears it. */
+    public static String planV2Topic(java.util.UUID tenantId, java.util.UUID siteId,
+            java.util.UUID deviceId) {
+        return "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/v2/plan";
+    }
+
     /**
      * The ad-hoc Cloud -> Edge command topic of a claimed device (down-only in
      * the broker ACL, like schedule/config). Used for the retained

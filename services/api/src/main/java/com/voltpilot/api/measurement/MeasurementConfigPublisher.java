@@ -70,6 +70,17 @@ public class MeasurementConfigPublisher {
         }
     }
 
+    /** Clear the retired box's desired plan through the same retained transport. */
+    public synchronized boolean clear(UUID tenantId, UUID siteId, UUID deviceId) {
+        try {
+            connected().publish(topic(tenantId, siteId, deviceId), new byte[0], 1, true);
+            return true;
+        } catch (Exception e) {
+            log.warn("Could not clear measurement config for {}: {}", deviceId, e.getMessage());
+            return false;
+        }
+    }
+
     /**
      * One entry per POINT KEY, in the order the state lists them.
      *

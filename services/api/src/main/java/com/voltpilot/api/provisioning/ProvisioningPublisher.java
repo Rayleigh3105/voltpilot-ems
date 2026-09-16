@@ -86,6 +86,12 @@ public class ProvisioningPublisher {
      * block the unclaim; a failure is logged for the operator.
      */
     public boolean clearRetained(String externalRef, UUID tenantId, UUID siteId, UUID deviceId) {
+        return clearRetained(externalRef, tenantId, siteId, deviceId, true);
+    }
+
+    /** A reused sticker's provisioning slot belongs to its new claim; old device topics do not. */
+    public boolean clearRetained(String externalRef, UUID tenantId, UUID siteId, UUID deviceId,
+            boolean clearProvisioning) {
         if (!ProvisioningTopics.isValidRef(externalRef)) {
             return false;
         }
@@ -93,8 +99,10 @@ public class ProvisioningPublisher {
             synchronized (lock) {
                 MqttClient c = connected();
                 // An empty retained publish deletes the retained message (MQTT 3.1.1 §3.3.1.3).
-                c.publish(ProvisioningTopics.configTopic(externalRef), new byte[0], 1, true);
+                if (clearProvisioning) c.publish(ProvisioningTopics.configTopic(externalRef), new byte[0], 1, true);
                 c.publish(ProvisioningTopics.scheduleTopic(tenantId, siteId, deviceId),
+                        new byte[0], 1, true);
+                c.publish(ProvisioningTopics.planV2Topic(tenantId, siteId, deviceId),
                         new byte[0], 1, true);
                 c.publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
                         new byte[0], 1, true);

@@ -327,7 +327,7 @@ public class TenantRepository {
                     }
                 }
                 // AP-09 IP-17: vor Komponenten/Bezugsgrößen, auch gegen ältere Migrationsstände aufrufbar.
-                for (String table : new String[] {"bezugsgroesse_kanallauf", "bezugsgroesse_kanalbindung"}) {
+                for (String table : new String[] {"bezugsgroesse_kanallauf", "bezugsgroesse_kanalbindung", "device_succession"}) {
                     try (var probe = con.prepareStatement("SELECT to_regclass(?)")) {
                         probe.setString(1, "public." + table);
                         try (var result = probe.executeQuery()) {

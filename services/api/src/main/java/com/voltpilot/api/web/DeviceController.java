@@ -358,4 +358,9 @@ public class DeviceController {
         }
         return trimmed;
     }
+    @org.springframework.web.bind.annotation.ExceptionHandler(com.voltpilot.api.uems.BoxKonflikt.class)
+    public ResponseEntity<java.util.Map<String, String>> boxKonflikt(com.voltpilot.api.uems.BoxKonflikt e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
 }
