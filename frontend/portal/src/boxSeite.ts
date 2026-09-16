@@ -28,7 +28,7 @@
  *
  * Rein + framework-frei; `pages/BoxSeiteSection.tsx` rendert nur.
  */
-import type { ControlStatus, CurtailmentStatus, Device, EdgeVersion } from './api';
+import type { ControlStatus, CurtailmentStatus, Device, EdgeVersion, UemsDatenquelle } from './api';
 import { fmtRelative } from './format';
 import { NO_DATA } from './nodata';
 import { versionLabel } from './edgeVersionLabel';
@@ -47,6 +47,7 @@ import {
 import { technicalDeviceName } from './entityLabel';
 import { abregelZiel, releaseNote } from './curtailment';
 import { chargerName, type ChargePoint } from './ladepunkte';
+import { boxUebersicht, type BoxQuelleZeile } from './boxUebersicht';
 
 /** Eine der drei Kacheln des Kopfes. */
 export interface BoxKachel {
@@ -82,6 +83,12 @@ export interface BoxSeiteView {
   grenzenLeer: string | null;
   /** Technik-Aufklapper. */
   technik: Zeile[];
+  auswahl: { ref: string; name: string }[];
+  quellen: BoxQuelleZeile[];
+  quellenSatz: string | null;
+  budgetSumme: string | null;
+  faehigkeiten: string | null;
+  updateNoetig: boolean;
 }
 
 export interface BoxSeiteInput {
@@ -102,12 +109,13 @@ export interface BoxSeiteInput {
    * Abregel-Ziele (R4a). Die Geräte-Liste selbst kommt fertig als `geraete`.
    */
   localSetup?: EntityLocalSetup[] | null;
+  datenquellen?: UemsDatenquelle[] | null;
   now?: number;
 }
 
-/** Der Satz, der eine Box-lose Adresse ehrlich beendet. */
-export const KEINE_BOX =
-  'Diese Adresse nennt keine VoltPilot-Box dieser Anlage. Vielleicht wurde sie entfernt.';
+/** Die beiden ehrlichen Gründe einer Box-losen Adresse: falsche Kennung oder noch keine Wahl. */
+export const KEINE_BOX = 'Diese Adresse nennt keine VoltPilot-Box dieser Anlage.';
+export const BOX_WAEHLEN = 'Wählen Sie die VoltPilot-Box, deren Seite Sie öffnen möchten.';
 
 /** Der Satz unter der Geräte-Liste, solange sich nichts gemeldet hat. */
 export const KEINE_GERAETE = 'An dieser Box meldet sich noch kein Gerät.';
@@ -349,7 +357,7 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
   if (!box) {
     return {
       gefunden: false,
-      grund: KEINE_BOX,
+      grund: input.ref ? KEINE_BOX : BOX_WAEHLEN,
       titel: 'VoltPilot-Box',
       unterzeile: `${BOX_ROLLE} · Anlage ${input.siteName}`,
       kennung: input.ref ?? NO_DATA,
@@ -360,6 +368,12 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
       grenzen: [],
       grenzenLeer: null,
       technik: [],
+      auswahl: eigene.map((d) => ({ ref: d.externalRef, name: d.name?.trim() || d.externalRef })),
+      quellen: [],
+      quellenSatz: null,
+      budgetSumme: null,
+      faehigkeiten: null,
+      updateNoetig: false,
     };
   }
 
@@ -386,6 +400,10 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
   // zweite Lesehöhe zu sein.
 
   const grenzen = grenzenZeilen(input.control, input.curtailment, box.id, input.localSetup);
+  const uebersicht = boxUebersicht(
+    [box], input.edgeVersions ?? [], input.datenquellen ?? [], new Map([[box.siteId, input.siteName]]),
+    new Date(now),
+  )[0];
   return {
     gefunden: true,
     grund: null,
@@ -401,6 +419,12 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
       ? 'Zu den Grenzen Ihrer Anlage meldet die Box gerade nichts.'
       : null,
     technik,
+    auswahl: [],
+    quellen: uebersicht?.quellen ?? [],
+    quellenSatz: uebersicht?.quellenSatz ?? null,
+    budgetSumme: uebersicht?.budgetSumme ?? null,
+    faehigkeiten: uebersicht?.faehigkeiten ?? null,
+    updateNoetig: uebersicht?.updateNoetig ?? false,
   };
 }
 

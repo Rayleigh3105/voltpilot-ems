@@ -132,6 +132,9 @@ const PortfolioPage = lazy(() =>
 const StandortGebaeudePage = lazy(() =>
   PAGE_CHUNK.standort().then((m) => ({ default: m.StandortGebaeudePage })),
 );
+const StandortBoxenPage = lazy(() =>
+  PAGE_CHUNK.standort().then((m) => ({ default: m.StandortBoxenPage })),
+);
 const StandortNetzanschluessePage = lazy(() => import('./pages/StandortNetzanschluessePage').then(m => ({ default: m.StandortNetzanschluessePage })));
 const StandortAnlagenPage = lazy(() =>
   PAGE_CHUNK.standort().then((m) => ({ default: m.StandortAnlagenPage })),
@@ -1203,7 +1206,8 @@ function UnifiedPortal() {
   // AP-13 IP-2: als oberste Ebene bringt der Standort Gebäude · Anlagen in `PortfolioTabs` mit.
   const standortObenReiter =
     ebene.art === 'standort' && ebenenOrtHier?.art === 'standort'
-      ? ebenenReiter(ebenenOrtHier, ebenenLesemodell).filter((r) => r.key === 'gebaeude' || r.key === 'anlagen')
+      ? ebenenReiter(ebenenOrtHier, ebenenLesemodell)
+          .filter((r) => r.key === 'boxen' || r.key === 'gebaeude' || r.key === 'anlagen')
       : [];
   // AP-13 IP-2 (Ü8): die Einstiege der Standort-Übersicht in „Kennzahlen/Berichte dieses Standorts“.
   const einstiegeHier = ebenenOrtHier?.art === 'standort' ? standortEinstiege(ebenenOrtHier, ebenenLesemodell) : [];
@@ -1510,6 +1514,14 @@ function UnifiedPortal() {
             />
           )}
           {/* UEMS AP-13 IP-2: „Standort › Gebäude“ (Ortsbaum + Stand am) und „Standort › Anlagen“ (die Tabelle). */}
+          {page === 'standort' && standortOffen && standortBereich === 'boxen' && (
+            <StandortBoxenPage
+              key={standortOffen.id}
+              standort={standortOffen}
+              sites={sites}
+              devices={devices}
+            />
+          )}
           {page === 'standort' && standortOffen && standortBereich === 'gebaeude' && (
             <StandortGebaeudePage
               key={standortOffen.id}

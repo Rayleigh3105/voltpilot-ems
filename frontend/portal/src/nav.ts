@@ -653,7 +653,7 @@ export function parseRoute(hash: string): Route {
         ? berichtRoute(decodeURIComponent(segments[3]), segments[1])
         : standortBereichRoute(segments[1], 'berichte');
     }
-    if (segments[1] && (segments[2] === 'gebaeude' || segments[2] === 'anlagen' || segments[2] === 'netzanschluesse')) {
+    if (segments[1] && (segments[2] === 'boxen' || segments[2] === 'gebaeude' || segments[2] === 'anlagen' || segments[2] === 'netzanschluesse')) {
       return standortBereichRoute(segments[1], segments[2]);
     }
     return segments[1]
@@ -770,7 +770,7 @@ export function standortRoute(standortId: string): Route {
  * ⚠ Kennzahlen und Berichte sind hier SEITEN, aber keine Bereiche der Ebene (AP-01 §4.6, O17): sie haben keine
  * Kachel, man erreicht sie von der Standort-Übersicht (`ebenenNav.standortEinstiege`).
  */
-export type StandortBereich = 'netzanschluesse' | 'gebaeude' | 'anlagen' | 'messstellen' | 'kennzahlen' | 'berichte';
+export type StandortBereich = 'boxen' | 'netzanschluesse' | 'gebaeude' | 'anlagen' | 'messstellen' | 'kennzahlen' | 'berichte';
 
 /** Route einer Seite des Standorts (UEMS AP-13 IP-2): `#/standort/{id}/{bereich}`. */
 export function standortBereichRoute(standortId: string, standortBereich: StandortBereich): Route {

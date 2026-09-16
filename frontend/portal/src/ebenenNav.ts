@@ -457,6 +457,7 @@ export function resolveAnlage<T extends { id: string }>(
 export type EbenenBereichId =
   | 'uebersicht'
   | 'standorte'
+  | 'boxen'
   | 'netzanschluesse'
   | 'gebaeude'
   | 'anlagen'
@@ -496,6 +497,7 @@ export interface EbenenLesemodell {
 const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
   uebersicht: { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard' },
   standorte: { key: 'standorte', label: 'Standorte', icon: 'map-pin' },
+  boxen: { key: 'boxen', label: 'Boxen', icon: 'cpu' },
   netzanschluesse: { key: 'netzanschluesse', label: 'Netzanschlüsse', icon: 'zap' },
   gebaeude: { key: 'gebaeude', label: 'Gebäude', icon: 'building' },
   anlagen: { key: 'anlagen', label: 'Anlagen', icon: 'layers' },
@@ -554,6 +556,7 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
   } else {
     const standort = lebenderStandort(lm, ort.standortId);
     if (standort) {
+      out.push('boxen');
       if ((standort.gebaeudeZahl ?? 0) >= 1) out.push('gebaeude');
       if (standort.anlagen.length >= 2) out.push('anlagen');
       if (misst(lm, standort.id)) out.push('messstellen', 'netzanschluesse');
@@ -597,6 +600,7 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
       }
     : {
         uebersicht: standortRoute(ort.standortId),
+        boxen: standortBereichRoute(ort.standortId, 'boxen'),
         messstellen: standortMessstellenRoute(ort.standortId),
         // AP-13 E2/Q2/O18 und AP-10 IP-13: diese Seiten nur mit Messfunktion.
         // Auch vorhandene Gebäude und Anlagen ändern den Betriebskunden nicht.
@@ -730,7 +734,7 @@ export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBerei
   // Unternehmenseinstellungen werden über das Avatar-Menü geöffnet, ohne fachlichen Reiter.
   if (page === 'kunden-benutzer') return null;
   if (page === 'portfolio-standorte') return 'standorte';
-  if (page === 'standort' && (standortBereich === 'gebaeude' || standortBereich === 'anlagen' || standortBereich === 'netzanschluesse')) return standortBereich;
+  if (page === 'standort' && (standortBereich === 'boxen' || standortBereich === 'gebaeude' || standortBereich === 'anlagen' || standortBereich === 'netzanschluesse')) return standortBereich;
   if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';
   if (page === 'portfolio-bezugsgroessen') return 'bezugsgroessen';
   if (page === 'portfolio-kennzahlen') return 'kennzahlen';

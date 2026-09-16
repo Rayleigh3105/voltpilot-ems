@@ -36,8 +36,8 @@ const HEUTE = '2026-11-21';
 const JETZT = new Date('2026-11-21T08:20:00Z');
 /** Der Tag, dessen Zahl der Weg liest: der Ausfall der Box Halle 2 (O1/F21). Er wird über „Stand am …“ erreicht. */
 const GESUCHTER_TAG = '2026-11-03';
-const STANDORT_LEISTE = ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'];
-const STANDORT_REITER = ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'];
+const STANDORT_LEISTE = ['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'];
+const STANDORT_REITER = ['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen'];
 
 /** Jede Station des Wegs: was gemessen wurde. Wird je Breite gesammelt und am Ende als eine Datei abgelegt. */
 interface Station {

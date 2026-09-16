@@ -536,7 +536,7 @@ const BETRIEBSKUNDE: EbenenLesemodell = {
  */
 const ALLE_SEITEN: EbenenSeiten = (ort) => {
   const hier = ort.art === 'unternehmen' ? pageRoute('portfolio') : standortRoute(ort.standortId);
-  return { uebersicht: hier, standorte: hier, netzanschluesse: hier, gebaeude: hier, anlagen: hier, messstellen: hier, bezugsgroessen: hier, kennzahlen: hier, berichte: hier };
+  return { uebersicht: hier, standorte: hier, boxen: hier, netzanschluesse: hier, gebaeude: hier, anlagen: hier, messstellen: hier, bezugsgroessen: hier, kennzahlen: hier, berichte: hier };
 };
 
 const labels = (liste: { label: string }[]) => liste.map((b) => b.label);
@@ -554,11 +554,11 @@ describe('ebenenBereiche - die Bereiche der Ebene kommen aus dem Read-Model, nic
   });
 
   it('Standort Werk Ahrenberg (3 Gebäude, 2 Anlagen, misst): Übersicht · Gebäude · Anlagen · Messstellen', () => {
-    expect(labels(ebenenBereiche(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenBereiche(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
   });
 
   it('Werk Lindach hat EINE Anlage: kein Bereich „Anlagen"', () => {
-    expect(labels(ebenenBereiche(LINDACH, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenBereiche(LINDACH, MESSKUNDE))).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
   });
 
   it('Standorte erst ab zwei — ein archivierter zählt nicht', () => {
@@ -583,10 +583,10 @@ describe('ebenenBereiche - die Bereiche der Ebene kommen aus dem Read-Model, nic
       f.standorte[1].messen = { ...f.standorte[1].messen, zustand };
       return { ...BETRIEBSKUNDE, funktionen: f };
     };
-    expect(labels(ebenenBereiche(LINDACH, mit('entwurf')))).toEqual(['Übersicht', 'Gebäude']);
-    expect(labels(ebenenBereiche(LINDACH, mit('eingerichtet')))).toEqual(['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenBereiche(LINDACH, mit('entwurf')))).toEqual(['Übersicht', 'Boxen', 'Gebäude']);
+    expect(labels(ebenenBereiche(LINDACH, mit('eingerichtet')))).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     // Am Standort zählt NUR er selbst: Werk Ahrenberg misst hier nicht.
-    expect(labels(ebenenBereiche(WERK, mit('eingerichtet')))).toEqual(['Übersicht', 'Gebäude', 'Anlagen']);
+    expect(labels(ebenenBereiche(WERK, mit('eingerichtet')))).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen']);
   });
 
   it('unbekannt ist nie vorhanden: ohne Funktionen und Kennzahlen nur, was die Standorte selbst tragen', () => {
@@ -620,8 +620,8 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     // Ohne eine lebende Kennzahl gibt es den Bereich „Kennzahlen“ nicht — die Berichte bleiben (ein Standort misst).
     expect(labels(ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Berichte']);
     // Seit AP-13 IP-2 haben auch Gebäude und Anlagen des Standorts ihre Seite: Werk Ahrenberg vier, Werk Lindach drei (O17).
-    expect(labels(ebenenLeiste(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
-    expect(labels(ebenenLeiste(LINDACH, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenLeiste(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenLeiste(LINDACH, MESSKUNDE))).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     // Wer nicht misst, bekommt die Messstellen gar nicht: Übersicht · Standorte bleibt unter der Schwelle.
     expect(ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE)).toEqual([]);
   });
@@ -638,6 +638,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     // AP-13 IP-2: der Standort hat jede Seite; Kennzahlen und Berichte stehen als Seiten da, sind aber kein Bereich.
     expect(EBENEN_SEITEN(WERK, MESSKUNDE)).toEqual({
       uebersicht: standortRoute(FIXTURE_IDS.st1),
+      boxen: standortBereichRoute(FIXTURE_IDS.st1, 'boxen'),
       netzanschluesse: standortBereichRoute(FIXTURE_IDS.st1, 'netzanschluesse'),
       gebaeude: standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude'),
       anlagen: standortBereichRoute(FIXTURE_IDS.st1, 'anlagen'),
@@ -648,17 +649,17 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
   });
 
   it('AP-04 IP-5 · die Reiter einer Ebene: dieselben Bereiche mit Seite, schon ab zwei — der Weg am Rechner', () => {
-    expect(labels(ebenenReiter(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
-    expect(ebenenReiter(LINDACH, MESSKUNDE)[2].ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st2));
+    expect(labels(ebenenReiter(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
+    expect(ebenenReiter(LINDACH, MESSKUNDE)[3].ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st2));
     expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
-    // Ein einzelner Reiter ist keine Wahl: ein Standort ohne Gebäude, mit einer Anlage und ohne Messen hat nur die Übersicht.
+    // Die Boxen-Seite ist auch ohne Messen die eine Standort-Wahl neben der Übersicht.
     const ohneMessen = structuredClone(MESSKUNDE);
     for (const st of ohneMessen.funktionen!.standorte) st.messen.zustand = 'kein_objekt';
     const einzeln: EbenenLesemodell = {
       ...ohneMessen,
       standorte: [werkAhrenberg({ gebaeudeZahl: 0, anlagen: werkAhrenberg().anlagen.slice(0, 1) }), werkLindach()],
     };
-    expect(ebenenReiter(WERK, einzeln)).toEqual([]);
+    expect(labels(ebenenReiter(WERK, einzeln))).toEqual(['Übersicht', 'Boxen']);
   });
 
   it('AP-04 IP-5 · „Standort › Messstellen“ hat eine eigene Adresse und hebt die Kachel „Messstellen“ hervor', () => {
@@ -714,16 +715,16 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
 
   it('5 · Schwelle: bei zwei Bereichen keine Leiste, bei drei eine', () => {
     const ohneGebaeude: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg({ gebaeudeZahl: 0 })] };
-    expect(labels(ebenenBereiche(WERK, ohneGebaeude))).toEqual(['Übersicht', 'Anlagen']);
-    expect(ebenenLeiste(WERK, ohneGebaeude, ALLE_SEITEN)).toEqual([]);
+    expect(labels(ebenenBereiche(WERK, ohneGebaeude))).toEqual(['Übersicht', 'Boxen', 'Anlagen']);
+    expect(labels(ebenenLeiste(WERK, ohneGebaeude, ALLE_SEITEN))).toEqual(['Übersicht', 'Boxen', 'Anlagen']);
     const mitGebaeude: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg()] };
-    expect(labels(ebenenLeiste(WERK, mitGebaeude, ALLE_SEITEN))).toEqual(['Übersicht', 'Gebäude', 'Anlagen']);
+    expect(labels(ebenenLeiste(WERK, mitGebaeude, ALLE_SEITEN))).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen']);
   });
 
   it('5 · die Schwelle zählt nur Kacheln MIT Seite', () => {
     const mitGebaeude: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg()] };
-    expect(ebenenBereiche(WERK, mitGebaeude)).toHaveLength(3);
-    // Hätte „Gebäude“ keine Seite, blieben zwei Kacheln — und keine Leiste.
+    expect(ebenenBereiche(WERK, mitGebaeude)).toHaveLength(4);
+    // Ohne Gebäude-Seite bleiben in der echten Betriebskunden-Navigation nur Übersicht und Boxen.
     const ohneGebaeudeSeite: EbenenSeiten = (ort, lm) => ({ ...EBENEN_SEITEN(ort, lm), gebaeude: undefined });
     expect(ebenenLeiste(WERK, mitGebaeude, ohneGebaeudeSeite)).toEqual([]);
   });
@@ -763,23 +764,24 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
 
   it('O17 · Werk Ahrenberg vier Kacheln, Werk Lindach drei — beide mit Leiste, aus den Seiten von heute', () => {
     const werk = ebenenLeiste(WERK, MESSKUNDE);
-    expect(keys(werk)).toEqual([...O17.gegeben.kacheln_st1_nach_ip2 as string[], 'netzanschluesse']);
-    expect(werk).toHaveLength(5);
-    expect(labels(werk)).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
+    expect(keys(werk)).toEqual(['uebersicht', 'boxen', ...(O17.gegeben.kacheln_st1_nach_ip2 as string[]).slice(1), 'netzanschluesse']);
+    expect(werk).toHaveLength(6);
+    expect(labels(werk)).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
     const lindach = ebenenLeiste(LINDACH, MESSKUNDE);
-    expect(keys(lindach)).toEqual([...O17.gegeben.kacheln_st2_nach_ip2 as string[], 'netzanschluesse']);
-    expect(labels(lindach)).toEqual(['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(keys(lindach)).toEqual(['uebersicht', 'boxen', ...(O17.gegeben.kacheln_st2_nach_ip2 as string[]).slice(1), 'netzanschluesse']);
+    expect(labels(lindach)).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     // Der AP-09-Nachtrag ergänzt ausschließlich am Unternehmen eine Welt.
     expect(ebenenLeiste(UNTERNEHMEN, MESSKUNDE).filter(k => k.key !== 'bezugsgroessen')).toHaveLength(O17.erwartet.kacheln_u as number);
   });
 
   it('O17 · die Kacheln führen auf die Seiten des Standorts und heben ihren Bereich hervor', () => {
-    const [, gebaeude, anlagen, messstellen] = ebenenLeiste(WERK, MESSKUNDE);
+    const [, , gebaeude, anlagen, messstellen] = ebenenLeiste(WERK, MESSKUNDE);
     expect(hashForRoute(gebaeude.ziel)).toBe(`#/standort/${FIXTURE_IDS.st1}/gebaeude`);
     expect(hashForRoute(anlagen.ziel)).toBe(`#/standort/${FIXTURE_IDS.st1}/anlagen`);
     expect(messstellen.ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st1));
     expect(ebenenAktiv('standort', 'gebaeude')).toBe('gebaeude');
     expect(ebenenAktiv('standort', 'anlagen')).toBe('anlagen');
+    expect(ebenenAktiv('standort', 'boxen')).toBe('boxen');
     expect(ebenenOrt(standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude'), { art: 'unternehmen' })).toEqual(WERK);
   });
 
@@ -790,7 +792,7 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
       kennzahlen: [],
     };
     expect(keys(ebenenBereiche(UNTERNEHMEN, betrieb))).toEqual(O18.gegeben.betriebskunde_bereiche_u);
-    expect(keys(ebenenBereiche(WERK, betrieb))).toEqual(O18.gegeben.betriebskunde_bereiche_st);
+    expect(keys(ebenenBereiche(WERK, betrieb))).toEqual(['uebersicht', 'boxen', ...(O18.gegeben.betriebskunde_bereiche_st as string[]).slice(1)]);
     expect(O18.gegeben.betriebskunde_leiste).toBe(false);
     for (const ort of [UNTERNEHMEN, WERK]) expect(ebenenLeiste(ort, betrieb)).toEqual([]);
     expect(standortEinstiege(WERK, betrieb)).toEqual([]);
@@ -798,7 +800,7 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
 
   it('O18 · auch mit Gebäude-Objekten und zwei Anlagen bleiben Betriebskunden ohne neue Navigation', () => {
     expect(ebenenLeiste(WERK, BETRIEBSKUNDE)).toEqual([]);
-    expect(ebenenReiter(WERK, BETRIEBSKUNDE)).toEqual([]);
+    expect(labels(ebenenReiter(WERK, BETRIEBSKUNDE))).toEqual(['Übersicht', 'Boxen']);
     expect(standortEinstiege(WERK, BETRIEBSKUNDE)).toEqual([]);
   });
 
@@ -815,8 +817,8 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
   it('Z4 · Werk Lindach mit einer Anlage hat keinen Bereich „Anlagen“; ohne Gebäude keinen Bereich „Gebäude“', () => {
     expect(keys(ebenenBereiche(LINDACH, MESSKUNDE))).not.toContain('anlagen');
     const ohneGebaeude: EbenenLesemodell = { ...MESSKUNDE, standorte: [werkAhrenberg(), werkLindach({ gebaeudeZahl: 0 })] };
-    expect(labels(ebenenBereiche(LINDACH, ohneGebaeude))).toEqual(['Übersicht', 'Messstellen', 'Netzanschlüsse']);
-    expect(labels(ebenenLeiste(LINDACH, ohneGebaeude))).toEqual(['Übersicht', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenBereiche(LINDACH, ohneGebaeude))).toEqual(['Übersicht', 'Boxen', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenLeiste(LINDACH, ohneGebaeude))).toEqual(['Übersicht', 'Boxen', 'Messstellen', 'Netzanschlüsse']);
   });
 
   it('Ü8 · Kennzahlen und Berichte des Standorts sind Seiten, aber keine Kachel — ihr Einstieg steht auf der Übersicht', () => {

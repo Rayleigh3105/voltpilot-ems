@@ -685,11 +685,12 @@ export function fuehrendeBox(
   speicherBox: string | null,
   gespeichert: string | null,
 ): FuehrungsErgebnis {
+  const [erste] = boxen;
   let box: string | null;
   let grund: FuehrungsGrund;
   if (gespeichert !== null) [box, grund] = [gespeichert, 'gespeichert'];
   else if (speicherBox !== null) [box, grund] = [speicherBox, 'speicher'];
-  else if (boxen.length === 1) [box, grund] = [boxen[0].kennzeichen, 'einzige'];
+  else if (boxen.length === 1) [box, grund] = [erste.kennzeichen, 'einzige'];
   else [box, grund] = [null, 'keine_wahl'];
   const rollen = boxen.map((b) => ({
     box: b.kennzeichen,

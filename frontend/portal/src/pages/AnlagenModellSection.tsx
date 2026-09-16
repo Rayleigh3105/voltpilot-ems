@@ -27,7 +27,7 @@ import {
   type PlantComponent,
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
-import { boxOf, boxRefOf } from '../geraetSeite';
+import { fuehrendeBoxOf, boxRefOf } from '../geraetSeite';
 import {
   HINZUFUEGEN_LABEL,
   LISTE_TITEL,
@@ -354,7 +354,7 @@ export function AnlagenModellSection({
    */
   const boxRef = useMemo(() => boxRefOf(devices, site.id), [devices, site.id]);
   /** Die EINDEUTIGE Box + ihr Software-Stand für die Datenverbindungs-Karte. */
-  const boxDevice = useMemo(() => boxOf(devices, site.id), [devices, site.id]);
+  const boxDevice = useMemo(() => fuehrendeBoxOf(devices, site.id), [devices, site.id]);
   const boxEdge = useMemo(
     () => edgeVersions?.find((v) => v.deviceId === boxDevice?.id) ?? null,
     [edgeVersions, boxDevice],
@@ -774,7 +774,7 @@ export function AnlagenModellSection({
       {(addOpen || vorlage) && (
         <AnlegenFlow
           siteId={site.id}
-          box={boxOf(devices, site.id) ?? undefined}
+          box={fuehrendeBoxOf(devices, site.id) ?? undefined}
           vorlage={vorlage}
           initialTyp={vorlage ? null : addTyp}
           initialRolle={vorlage ? null : addRolle}

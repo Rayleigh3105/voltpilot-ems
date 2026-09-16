@@ -15,7 +15,7 @@ import { expect, test, type Page } from '@playwright/test';
 const BILDER = process.env.STANDORT_EBENEN_BILDER;
 const JETZT = new Date('2026-10-20T08:15:30Z');
 const AM_20_11 = new Date('2026-11-20T08:00:00Z');
-const STANDORT_REITER = ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'];
+const STANDORT_REITER = ['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'];
 
 async function oeffne(page: Page, query: string, breite: number, jetzt = JETZT) {
   await page.clock.setFixedTime(jetzt);
@@ -136,12 +136,48 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     }
   });
 
+  test('AP-06 IP-16 · Standort › Boxen bei 1440 und 375 px: Rolle, Rückmeldung, Budget und Software je Box', async ({ page }) => {
+    for (const breite of [1440, 375]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=werk-boxen', breite);
+      const flaeche = page.getByTestId('standort-boxen');
+      await expect(flaeche).toBeVisible();
+      await expect(flaeche.locator('.vp-boxen-karte')).toHaveCount(2);
+      await expect(flaeche).toContainText('Führt Werk Ahrenberg – Halle 1');
+      await expect(flaeche).toContainText('Liefert Daten');
+      await expect(flaeche).toContainText('Budget-Anteil');
+      await expect(flaeche).toContainText('Update nötig für: Rückmeldung je Datenquelle');
+      await expect(flaeche.getByRole('link', { name: 'Update planen' }).first()).toHaveAttribute('href', '#/edge-updates');
+      const m = await messe(page);
+      ohneQuerlauf(m, `boxen-${breite}`);
+      expect(m.route).toMatch(/^#\/standort\/[^/]+\/boxen$/);
+      expect(m.titel).toBe('Boxen');
+      leisteOderReiter(m, breite, 'Boxen', `boxen-${breite}`);
+      await ablegen(page, `boxen-${breite}`, m, true);
+    }
+  });
+
+  test('AP-06 IP-16 · Box-Seite bei 1440 und 375 px: Datenquellen ersetzen die alte reine Geräteliste', async ({ page }) => {
+    for (const breite of [1440, 375]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
+      await expect(page.getByRole('heading', { name: 'Box Halle 1', level: 1 })).toBeVisible();
+      await page.getByRole('button', { name: 'Datenquellen und Geräte' }).click();
+      await expect(page.locator('.vp-box-quellen')).toContainText('DQ-1');
+      await expect(page.locator('.vp-box-quellen')).toContainText('Liefert Daten');
+      await expect(page.locator('.vp-box-quellen')).toContainText('Budget-Anteil');
+      await expect(page.getByRole('link', { name: 'Update planen' })).toHaveAttribute('href', '#/edge-updates');
+      const m = await messe(page);
+      expect(m.dokument, `box-seite-${breite}: Querlauf des Dokuments`).toBe(0);
+      expect(m.route).toMatch(/^#\/anlage\/[^/]+\/box\/VP-BOX-2024-0117$/);
+      await ablegen(page, `box-seite-${breite}`, m, true);
+    }
+  });
+
   test('Z4 · Werk Lindach: eine Anlage — keine Kachel „Anlagen“, die Adresse zeigt trotzdem ihre Zeile; ohne Gebäude L1 und die Messbereiche', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=lindach-anlagen', 375);
     await expect(page.locator('.vp-at-karte').first()).toBeVisible();
     const a = await messe(page);
     ohneQuerlauf(a, 'lindach-anlagen-375');
-    expect(a.leiste).toEqual(['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(a.leiste).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     expect(a.anlagen).toHaveLength(1);
     await ablegen(page, 'lindach-anlagen-375', a);
 
@@ -153,8 +189,8 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       ohneQuerlauf(m, `lindach-leer-${breite}`);
       expect(m.titel).toBe('Gebäude');
       // AP-10 IP-13: Übersicht · Messstellen · Netzanschlüsse tragen jetzt auch ohne Gebäude die Leiste.
-      expect(m.leiste).toEqual(breite < 721 ? ['Übersicht', 'Messstellen', 'Netzanschlüsse'] : null);
-      expect(m.reiter).toEqual(breite < 721 ? [] : ['Übersicht', 'Messstellen', 'Netzanschlüsse']);
+      expect(m.leiste).toEqual(breite < 721 ? ['Übersicht', 'Boxen', 'Messstellen', 'Netzanschlüsse'] : null);
+      expect(m.reiter).toEqual(breite < 721 ? [] : ['Übersicht', 'Boxen', 'Messstellen', 'Netzanschlüsse']);
       await ablegen(page, `lindach-leer-${breite}`, m);
     }
   });
@@ -206,11 +242,11 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     expect(betrieb.einstiege).toEqual([]);
   });
 
-  test('oberste Ebene (nur Werk Ahrenberg) bei 1440 px: die Reiter tragen Gebäude und Anlagen — auf ihrer Seite ist „Übersicht“ nicht gewählt', async ({ page }) => {
+  test('oberste Ebene (nur Werk Ahrenberg) bei 1440 px: die Reiter tragen Boxen, Gebäude und Anlagen — auf ihrer Seite ist „Übersicht“ nicht gewählt', async ({ page }) => {
     await oeffne(page, 'bild=standort', 1440);
     const m = await messe(page);
     ohneQuerlauf(m, 'oben-1440');
-    expect(m.reiter.slice(0, 3)).toEqual(['Übersicht', 'Gebäude', 'Anlagen']);
+    expect(m.reiter.slice(0, 4)).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen']);
     expect(m.reiterAktiv).toEqual(['Übersicht']);
     await page.getByRole('tab', { name: 'Gebäude' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/gebaeude$/);
@@ -225,7 +261,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 });
 
 
-test('O18 · Betriebskunde: keine AP-13-Reiter oder Bausteine; alte Direktlinks landen auf der Übersicht', async ({ page }) => {
+test('O18 · Betriebskunde: nur Übersicht und Boxen; alte AP-13-Direktlinks landen auf der Übersicht', async ({ page }) => {
   for (const breite of [1440, 375]) {
     let uebersichtText = '';
     for (const bereich of ['', '-gebaeude', '-anlagen', '-kennzahlen', '-berichte']) {
@@ -236,7 +272,7 @@ test('O18 · Betriebskunde: keine AP-13-Reiter oder Bausteine; alte Direktlinks 
       if (!bereich) uebersichtText = m.text;
       expect(m.text).toBe(uebersichtText);
       expect(m.leiste).toBeNull();
-      expect(m.reiter).toEqual([]);
+      expect(m.reiter).toEqual(['Übersicht', 'Boxen']);
       expect(m.einstiege).toEqual([]);
       await expect(page.getByTestId('uebersicht-bausteine')).toHaveCount(0);
       if (!bereich) await ablegen(page, `betrieb-${breite}`, m, true);

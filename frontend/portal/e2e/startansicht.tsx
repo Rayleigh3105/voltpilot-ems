@@ -4,7 +4,7 @@ import App from '../src/App';
 import { RechteStandort, teilansichtKopf } from '../src/rollen';
 import { rollenMoment } from './rollen-fixture';
 import { sichtbareListe } from '../src/test/rollenFixtures';
-import { geraeteAhrenberg } from '../src/test/messenAssistentFixtures';
+import { C1_IDS, geraeteAhrenberg } from '../src/test/messenAssistentFixtures';
 import './rollen-fixture';
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
@@ -110,6 +110,7 @@ import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
 import { StandortAnlagenPage } from '../src/pages/StandortAnlagenPage';
 import { StandortGebaeudePage } from '../src/pages/StandortGebaeudePage';
 import { StandortePage } from '../src/pages/StandortePage';
+import { StandortBoxenPage } from '../src/pages/StandortBoxenPage';
 import { AppShell } from '../src/shell/AppShell';
 import { anlageSurface } from '../src/surface';
 import {
@@ -592,7 +593,10 @@ Object.assign(window, { bzAufrufe });
 Object.assign(api, {
   listSites: async () => sichtbareListe(sites),
   listDevices: async () => sichtbareListe(geraeteAhrenberg(new Date()).filter(d => siteIds.includes(d.siteId))),
-  edgeVersions: async () => sichtbareListe([]),
+  edgeVersions: async () => sichtbareListe([
+    { deviceId: C1_IDS.boxHalle1, siteId: FIXTURE_IDS.an1, coreVersion: '2.7.1', paletteVersion: '1.14.0', reportedAt: new Date().toISOString() },
+    { deviceId: C1_IDS.boxHalle2, siteId: FIXTURE_IDS.an2, coreVersion: '2.5.0', paletteVersion: '1.12.0', reportedAt: new Date().toISOString() },
+  ]),
   tenantContext: async () => ({ tenantId: FIXTURE_IDS.u, name: 'Kunststoffwerk Ahrenberg GmbH', betriebsart: 'endkunde' }),
   overview: async () => structuredClone(overview),
   standortZuordnungVorschlag: async () => standortVorschlagOffen
@@ -641,7 +645,17 @@ Object.assign(api, {
   },
   // AP-13 IP-12 (L6): die Zuständigkeiten der Datenquellen und der Weg Gerät → Quelle. ZWEI Aufrufe je
   // Anlage, weil `…/data-sources` ihre Geräte nicht nennt (Befund an AP-06, `boxAnQuelle.ts`).
-  datenquellen: async (siteId: string) => ahrenbergDatenquellen(siteId, new Date(Date.now()).toISOString()),
+  datenquellen: async (siteId: string) => {
+    const antwort = ahrenbergDatenquellen(siteId, new Date(Date.now()).toISOString());
+    const boxId = siteId === FIXTURE_IDS.an1 ? C1_IDS.boxHalle1
+      : siteId === FIXTURE_IDS.an2 ? C1_IDS.boxHalle2 : null;
+    return {
+      datenquellen: antwort.datenquellen.map((q) => ({
+        ...q,
+        zustaendige_box: q.zustaendige_box && boxId ? { ...q.zustaendige_box, id: boxId } : q.zustaendige_box,
+      })),
+    };
+  },
   uemsGeraete: async (siteId: string) => ahrenbergUemsGeraete(siteId),
   // AP-13 IP-7: die Energiebilanz je Anlage (O2 Oktober 2026, O4 Halle 2, O3 Lindach am 18.10.2026) — sonst ohne Werte.
   anlageBilanz: async (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?: string) => bilanzDerBuehne(siteId, periode, am),
@@ -1024,6 +1038,8 @@ function Vorschau() {
     kanonisch(
       ansicht === 'bilanz'
         ? anlageRoute(bilanzAn, 'energiebilanz')
+        : ansicht === 'box-halle1'
+          ? { ...anlageRoute(an1, 'box'), geraet: { ref: 'VP-BOX-2024-0117', geraetId: null } }
         : ansicht === 'anlage'
         ? anlageRoute(an1)
         : ansicht === 'steuerung-halle2'
@@ -1037,6 +1053,8 @@ function Vorschau() {
             // AP-13 IP-2: die Seiten des Standorts.
             : ansicht === 'werk-gebaeude'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude')
+            : ansicht === 'werk-boxen'
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'boxen')
             : ansicht === 'werk-netzanschluesse'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'netzanschluesse')
             : ansicht === 'werk-anlagen'
@@ -1131,7 +1149,8 @@ function Vorschau() {
   // seine Übersicht bekommt die Einstiege „Kennzahlen/Berichte dieses Standorts“.
   const standortObenReiter =
     ebene.art === 'standort' && ort?.art === 'standort'
-      ? ebenenReiter(ort, lesemodell).filter((r) => r.key === 'gebaeude' || r.key === 'anlagen')
+      ? ebenenReiter(ort, lesemodell)
+          .filter((r) => r.key === 'boxen' || r.key === 'gebaeude' || r.key === 'anlagen')
       : [];
   const einstiege = ort?.art === 'standort' ? standortEinstiege(ort, lesemodell) : [];
   const portfolioReiter = (page: PageId) => (
@@ -1204,8 +1223,8 @@ function Vorschau() {
       {site && route.sub && (
         <AnlagenPage
           sites={sites}
-          devices={[]}
-          devicesFetchedAt={null}
+          devices={route.sub === 'box' ? geraeteAhrenberg(new Date(Date.now())) : []}
+          devicesFetchedAt={route.sub === 'box' ? Date.now() : null}
           route={route}
           onNavigate={navigate}
           onReload={() => undefined}
@@ -1243,6 +1262,14 @@ function Vorschau() {
               onReload={() => undefined}
               betriebsart="endkunde"
               einstiege={einstiege}
+            />
+          )}
+          {standortBereich === 'boxen' && (
+            <StandortBoxenPage
+              key={standort.id}
+              standort={standort}
+              sites={sites}
+              devices={geraeteAhrenberg(new Date(Date.now()))}
             />
           )}
           {standortBereich === 'gebaeude' && (

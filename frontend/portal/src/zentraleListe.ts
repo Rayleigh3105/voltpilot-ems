@@ -162,10 +162,11 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
   // --- Die EINE VoltPilot-Box ------------------------------------------------
   const boxen = input.devices ?? [];
   if (boxen.length > 0) {
-    const box = boxen.find((d) => d.externalRef === boxRef) ?? boxen[0];
-    const health = boxHealth(boxen, input.devicesFetchedAt, now);
-    const n = model.devices.length;
-    karten.push({
+    const box = boxen.find((d) => d.externalRef === boxRef);
+    if (box) {
+      const health = boxHealth([box], input.devicesFetchedAt, now);
+      const n = model.devices.length;
+      karten.push({
       id: `box:${box.externalRef}`,
       art: 'box',
       titel: `VoltPilot-Box ${deviceName({ storedLabel: box.name }) || box.externalRef}`,
@@ -180,7 +181,8 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
           : `Vermittelt zwischen Ihren Geräten und VoltPilot — ${n} ${
               n === 1 ? 'Gerät' : 'Geräte'
             } angebunden.`,
-    });
+      });
+    }
   }
 
   // --- Die Geräte AN der Box -------------------------------------------------
