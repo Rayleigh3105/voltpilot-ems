@@ -163,9 +163,12 @@ class SemanticsTest(unittest.TestCase):
         for field in ("quantity", "direction"):
             words = [word for f, word, _ in rows if f == field]
             images = [image for f, _, image in rows if f == field and image is not None]
-            # Eindeutig: jedes Katalogwort genau einmal, kein Vertragswort doppelt …
+            # Jedes Katalogwort genau einmal. Nur none/import_export teilen ein Vertragswort.
             self.assertEqual(sorted(words), sorted(vocabulary[field]), field)
-            self.assertEqual(len(images), len(set(images)), field)
+            duplicates = {image: [word for f, word, target in rows if f == field and target == image]
+                          for image, count in collections.Counter(images).items() if count > 1}
+            self.assertEqual(duplicates, {"richtungslos": ["none", "import_export"]}
+                             if field == "direction" else {}, field)
             # … und nur Wörter, die der Vertrag kennt.
             self.assertLessEqual(set(images), set(contract[field]), field)
             # Jedes Vertragswort ist erreichbar — über ein Wort, das im Katalog vorkommt —,

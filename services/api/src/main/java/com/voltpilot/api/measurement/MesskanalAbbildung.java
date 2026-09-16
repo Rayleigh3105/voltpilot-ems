@@ -35,6 +35,7 @@ public final class MesskanalAbbildung {
             "charge", "Laden",
             "discharge", "Entladen",
             "charge_discharge", "Laden / Entladen",
+            "import_export", "richtungslos",
             "none", "richtungslos");
 
     /**

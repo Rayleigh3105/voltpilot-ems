@@ -1881,6 +1881,8 @@ export interface Messkanal {
   wertart: string | null;
   groesse: string | null;
   richtung: string | null;
+  /** Rohe Katalog-Richtung, bereits Teil von MesskanalDto (z. B. import_export). */
+  direction: string | null;
   aktiv: boolean;
 }
 

@@ -73,6 +73,15 @@ describe('gesamtwert · Größen-Verträglichkeit (keine Äpfel + Birnen)', () =
     expect(summierbar(q({ groesse: null }))).toBe(false);
     expect(summierbar(q())).toBe(true);
   });
+  it('import_export bleibt auch im Anlagen-Einstieg ohne Haken und nicht auswählbar', () => {
+    const netz = q({ richtung: 'richtungslos', vorzeichenNetz: true });
+    expect(summierbar(netz)).toBe(false);
+    expect(passt(netz, [])).toBe(false);
+    expect(hakenAnwendbar(netz)).toBe(false);
+    expect(sperrgrund(netz, [])).toContain('Bezug und Abgabe gemeinsam');
+    // direction:none trägt dasselbe Vertragswort, bleibt aber zulässig.
+    expect(summierbar(q({ richtung: 'richtungslos' }))).toBe(true);
+  });
   it('ohne Auswahl passt jeder summierbare Wert', () => {
     expect(passt(q(), [])).toBe(true);
   });

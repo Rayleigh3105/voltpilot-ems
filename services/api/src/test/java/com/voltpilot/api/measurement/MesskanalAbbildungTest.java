@@ -78,9 +78,11 @@ class MesskanalAbbildungTest {
         Map<String, Map<String, String>> t = tabelle();
         assertThat(nurAbgebildete(t.get("quantity"))).isEqualTo(MesskanalAbbildung.GROESSE);
         assertThat(nurAbgebildete(t.get("direction"))).isEqualTo(MesskanalAbbildung.RICHTUNG);
-        // Eindeutig: kein Vertragswort doppelt.
+        // Größen bleiben eindeutig; none und import_export teilen die Vertrags-Richtung.
         assertThat(new HashSet<>(MesskanalAbbildung.GROESSE.values())).hasSize(MesskanalAbbildung.GROESSE.size());
-        assertThat(new HashSet<>(MesskanalAbbildung.RICHTUNG.values())).hasSize(MesskanalAbbildung.RICHTUNG.size());
+        assertThat(MesskanalAbbildung.RICHTUNG).containsEntry("none", "richtungslos")
+                .containsEntry("import_export", "richtungslos");
+        assertThat(new HashSet<>(MesskanalAbbildung.RICHTUNG.values())).hasSize(MesskanalAbbildung.RICHTUNG.size() - 1);
     }
 
     @Test
@@ -108,13 +110,13 @@ class MesskanalAbbildungTest {
         assertThat(MessstelleRegeln.KANAL_EINHEITEN.keySet())
                 .containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.GROESSE.values());
         assertThat(texte(schema.at("/$defs/richtung/enum")))
-                .containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.RICHTUNG.values());
+                .containsExactlyInAnyOrderElementsOf(new HashSet<>(MesskanalAbbildung.RICHTUNG.values()));
         assertThat(texte(lies("docs/contracts/v2/messwert-herkunft.schema.json").at("/$defs/wertart/enum")))
                 .containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.WERTARTEN);
         assertThat(MesskanalAbbildung.wertart("event")).isNull();
         assertThat(MesskanalAbbildung.wertart("none")).isNull();
         assertThat(MesskanalAbbildung.groesse("voltage")).isNull();
-        assertThat(MesskanalAbbildung.richtung("import_export")).isNull();
+        assertThat(MesskanalAbbildung.richtung("import_export")).isEqualTo("richtungslos");
     }
 
     @Test
@@ -140,7 +142,8 @@ class MesskanalAbbildungTest {
         Map<String, Object> kanal = (Map<String, Object>) ((Map<String, Object>) schemas.get("Messkanal"))
                 .get("properties");
         assertThat(enumOhneNull(kanal, "groesse")).containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.GROESSE.values());
-        assertThat(enumOhneNull(kanal, "richtung")).containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.RICHTUNG.values());
+        assertThat(enumOhneNull(kanal, "richtung"))
+                .containsExactlyInAnyOrderElementsOf(new HashSet<>(MesskanalAbbildung.RICHTUNG.values()));
         assertThat(enumOhneNull(kanal, "wertart")).containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.WERTARTEN);
 
         // Das Gerät (IP-10) hat die Form von `geraet_einbau` des Herkunftsvertrags — plus `id`.
@@ -216,7 +219,7 @@ class MesskanalAbbildungTest {
     /**
      * ⚠ Befund für IP-13: die Referenz speist die Nebengröße „Wirkleistung · Bezug“ von MS-01 aus
      * der Wirkleistung von K-3. Ein Zweirichtungszähler liefert aber EINEN Vorzeichen-Wert
-     * ({@code import_export}, im Vertrag ohne Gegenstück, weil Bezug und Abgabe zwei Messstellen
+     * ({@code import_export}, abgebildet als richtungslos, weil Bezug und Abgabe zwei Messstellen
      * sind) — ohne eine Vorzeichen-Aufteilung passt er ehrlich nicht.
      */
     @Test
@@ -226,7 +229,7 @@ class MesskanalAbbildungTest {
         assertThat(neben.at("/fuehrende_quelle/0/kanal").asText()).isEqualTo("Wirkleistung");
 
         Kanal leistung = kanal("sunspec.model_203.w");
-        assertThat(leistung).isEqualTo(new Kanal("Wirkleistung", null, "W", "gauge"));
+        assertThat(leistung).isEqualTo(new Kanal("Wirkleistung", "richtungslos", "W", "gauge"));
         MessstelleRegeln.Passung p = passung(ms01, groesse(neben), leistung);
         assertThat(p.fehler()).isEqualTo(MessstelleRegeln.Fehler.QUELLE_PASST_NICHT);
         assertThat(p.grund()).isEqualTo("richtung");
