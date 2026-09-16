@@ -520,4 +520,28 @@ public final class MesswertHerkunft {
         w.put("qualitaet", qualitaet);
         return w;
     }
+
+    /** AP-09 W2/W3: zweite Reihengattung. Eine manuelle Ablesung erfindet keine Box oder Komponente. */
+    public static Map<String, Object> ablesung(String tenant, String messstelle, String groesse,
+            Instant messzeit, Instant eingangszeit, BigDecimal stand, String einheit, String woher,
+            Map<String, String> urheber) {
+        if (tenant == null || tenant.isBlank() || messstelle == null || messstelle.isBlank()
+                || groesse == null || groesse.isBlank() || einheit == null || einheit.isBlank()
+                || messzeit == null || eingangszeit == null || stand == null || stand.signum() < 0
+                || !List.of("eingabe", "import").contains(woher == null ? "" : woher)
+                || urheber == null || urheber.size() != 4
+                || !List.of("kunde", "unterstuetzung", "voltpilot", "notfall").contains(urheber.getOrDefault("art", ""))
+                || !List.of("kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser",
+                    "unterstuetzer", "voltpilot_betrieb").contains(urheber.getOrDefault("rolle", ""))
+                || urheber.getOrDefault("sub", "").isBlank() || urheber.getOrDefault("name", "").isBlank()) {
+            throw new IllegalArgumentException("herkunft_unvollstaendig");
+        }
+        Map<String, Object> h = new LinkedHashMap<>();
+        h.put("kundenbereich", tenant); h.put("messstelle", messstelle); h.put("groesse", groesse);
+        h.put("spur", "ablesung"); h.put("messzeit", messzeit.toString()); h.put("eingangszeit", eingangszeit.toString());
+        h.put("wert", Map.of("raw", stand, "decoded", stand, "einheit", einheit));
+        h.put("qualitaet", "good"); h.put("wertart", "counter"); h.put("woher", woher);
+        h.put("urheber", Map.copyOf(urheber));
+        return java.util.Collections.unmodifiableMap(h);
+    }
 }

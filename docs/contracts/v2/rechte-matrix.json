@@ -725,7 +725,7 @@
         "unterstuetzer": "B",
         "voltpilot_betrieb": "-"
       },
-      "anmerkung": "Dauer Pflicht, TTL ≤ 24\u00a0h — bleibt beim Entzug bis zum Ablauf (E15)."
+      "anmerkung": "Dauer Pflicht, TTL ≤ 24 h — bleibt beim Entzug bis zum Ablauf (E15)."
     },
     {
       "kennung": "betriebsweise.aendern",
@@ -1260,6 +1260,23 @@
         "voltpilot_betrieb": "-"
       },
       "anmerkung": "E8: „Konfigurierbar je Unternehmen durch den Kundenadministrator: ‚Freigabe durch eine zweite Person‘ aus (Vorgabe) oder an“. Seit AP-08 IP-15 nennt `PUT /api/v1/unternehmen/vieraugen` die Kennung und setzt sie durch; gelesen wird ohne eigene Kennung (`GET /api/v1/unternehmen/vieraugen`, wie das Unternehmen-Lesemodell)."
+    },
+    {
+      "kennung": "ablesung.erfassen",
+      "gruppe": "messdaten",
+      "kundenwort": "Ablesung an einer Messstelle erfassen / berichtigen",
+      "herkunft": "AP-09 §4.11 (W8)",
+      "nachtrag": "AP-09 §4.11",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-09 IP-8: Erstwert und Berichtigung an der Messstelle; U U S - - - -, nie Unterstützer."
     }
   ],
   "nachtraege": [
@@ -1575,12 +1592,22 @@
           ],
           "zuordnung": "zugeordnet",
           "anmerkung": "W8: Rücknahme und Vorlagen gehören zur bestehenden Zeile; die Routen kommen mit AP-09 IP-12 ff."
+        },
+        {
+          "handlung": "Ablesung an einer Messstelle erfassen · berichtigen",
+          "wer": "KA · EM (U) · Bearbeiter (S) — nie Unterstützer",
+          "recht": "`ablesung.erfassen` (Nachtrag W8)",
+          "kennungen": [
+            "ablesung.erfassen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "AP-09 IP-8: POST …/messstellen/{kennzeichen}/ablesungen und Berichtigung."
         }
       ],
       "regeln": [
         {
           "wortlaut": "Ablesung an einer Messstelle erfassen · berichtigen — `ablesung.erfassen` (Nachtrag, W8: „U U S - - - -“)",
-          "wo": "noch keine Zeile — sie entsteht mit dem Bau-Paket, das ihre Route baut: AP-09 IP-8"
+          "wo": "Seit AP-09 IP-8 Zeile und Schreibrouten `ablesung.erfassen`."
         },
         {
           "wortlaut": "Berichtigung / Rücknahme freigeben (Vier-Augen an) — `korrektur.freigeben` (AP-08 IP-15), Ersteller ≠ Freigeber; Vier-Augen-Einstellung — `vieraugen.einstellen` (AP-08)",

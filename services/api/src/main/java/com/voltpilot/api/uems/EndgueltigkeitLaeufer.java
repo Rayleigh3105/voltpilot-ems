@@ -55,6 +55,10 @@ public class EndgueltigkeitLaeufer {
     private final BerechnetePeriodenLauf berechnete;
     private final KennzahlLauf kennzahlen;
     private final KorrekturVorschlagLauf vorschlaege;
+    private AblesungLueckenLauf ablesungen;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void ablesungen(AblesungLueckenLauf lauf) { this.ablesungen = lauf; }
 
     /** Der Takt OHNE Kennzahl-Schritt — so bauen ihn die Tests der Stufen davor (AP-08, AP-10) weiterhin. */
     public EndgueltigkeitLaeufer(EndgueltigkeitLauf endgueltigkeit, TagVerdichter tage,
@@ -99,6 +103,11 @@ public class EndgueltigkeitLaeufer {
             perioden.lauf(jetzt);
         } catch (RuntimeException e) {
             log.warn("UEMS Monats-/Jahreslauf übersprungen: {}", e.toString());
+        }
+        try {
+            if (ablesungen != null) ablesungen.lauf(jetzt);
+        } catch (RuntimeException e) {
+            log.warn("UEMS Ablesungslücken übersprungen: {}", e.toString());
         }
         // Nach ALLEN gemessenen Stufen: die berechneten Messstellen lesen, was gerade gebildet wurde.
         try {

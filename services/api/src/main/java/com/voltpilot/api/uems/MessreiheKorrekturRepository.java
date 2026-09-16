@@ -49,7 +49,9 @@ public class MessreiheKorrekturRepository {
     }
 
     /** Eine Reihe (AP-07 E2): Komponente + Messkanal. */
-    public record Reihe(UUID entityId, String messkanal) {
+    public record Reihe(UUID entityId, String messkanal, UUID messstelleId) {
+        public Reihe(UUID entityId, String messkanal) { this(entityId, messkanal, null); }
+        public static Reihe ablesung(UUID messstelle, String groesse) { return new Reihe(null, groesse, messstelle); }
     }
 
     /**
@@ -87,8 +89,11 @@ public class MessreiheKorrekturRepository {
     public Korrektur vorschlagen(UUID tenantId, Anlage a, ProtokollAkteur akteur, ZoneId zone) {
         String kennung = MessreiheFassungen.naechsteKennung(jdbc, TABELLE, "K", tenantId, zone);
         ArrayNode reihen = JSON.createArrayNode();
-        a.reihen().forEach(r -> reihen.addObject().put("entity_id", r.entityId().toString())
-                .put("messkanal", r.messkanal()));
+        a.reihen().forEach(r -> {
+            if (r.messstelleId() != null) reihen.addObject().put("messstelle_id", r.messstelleId().toString())
+                    .put("groesse", r.messkanal()).put("spur", "ablesung");
+            else reihen.addObject().put("entity_id", r.entityId().toString()).put("messkanal", r.messkanal());
+        });
         jdbc.update("INSERT INTO messreihe_korrektur (tenant_id, kennung, fassung, status, art, reihen, von, bis, "
                 + "begruendung, beleg, ersatzwert_kennung, vorschau, actor_sub, actor_name, actor_rolle, actor_art) "
                 + "VALUES (?,?,1,?,?,?::jsonb,?,?,?,?,?,?::jsonb,?,?,?,?)",
@@ -170,7 +175,9 @@ public class MessreiheKorrekturRepository {
         try {
             List<Reihe> reihen = new ArrayList<>();
             for (JsonNode r : JSON.readTree(rs.getString("reihen"))) {
-                reihen.add(new Reihe(UUID.fromString(r.get("entity_id").asText()), r.get("messkanal").asText()));
+                reihen.add(r.has("messstelle_id") ? Reihe.ablesung(UUID.fromString(r.get("messstelle_id").asText()),
+                        r.get("groesse").asText()) : new Reihe(UUID.fromString(r.get("entity_id").asText()),
+                        r.get("messkanal").asText()));
             }
             return new Anlage(rs.getString("art"), List.copyOf(reihen), zeit(rs, "von"), zeit(rs, "bis"),
                     rs.getString("begruendung"), rs.getString("beleg"), rs.getString("ersatzwert_kennung"),

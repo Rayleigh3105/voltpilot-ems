@@ -60,6 +60,11 @@ public class KorrekturFreigabeService {
     private final OrtProtokoll protokoll;
     private final BezugswertService bezugswerte;
     private final TransactionTemplate transaktion;
+    private AblesungService ablesungen;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void ablesungen(AblesungService service) { this.ablesungen = service; }
+
     private volatile Clock uhr = Clock.systemUTC();
 
     public KorrekturFreigabeService(JdbcTemplate jdbc, MessreiheKorrekturRepository korrekturen,
@@ -160,7 +165,9 @@ public class KorrekturFreigabeService {
             }
             pruefeBegruendung(begruendung, "begruendung");
             pruefeStand(k, EreignisVokabular.KORREKTUR_STATUS.get(0));
+            if (ablesungen != null) ablesungen.entscheidungPruefen(k, "korrektur.freigeben");
             Korrektur neu = korrekturen.freigeben(tenant, kennung, begruendung, wer, an);
+            if (ablesungen != null) ablesungen.anwenden(tenant, neu, false, jetzt);
             return new Entscheidung(neu, letzte(neu), an);
         }));
     }
@@ -179,7 +186,9 @@ public class KorrekturFreigabeService {
             }
             pruefeBegruendung(grund, "grund");
             pruefeStand(k, EreignisVokabular.KORREKTUR_STATUS.get(1));
+            if (ablesungen != null) ablesungen.entscheidungPruefen(k, "korrektur.zuruecknehmen");
             Korrektur neu = korrekturen.zuruecknehmen(tenant, kennung, grund, wer);
+            if (ablesungen != null) ablesungen.anwenden(tenant, neu, true, jetzt);
             return new Entscheidung(neu, letzte(neu), null);
         }));
     }

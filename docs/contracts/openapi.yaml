@@ -11139,6 +11139,89 @@ paths:
         "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
         "409": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
         "422": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+  /api/v1/messstellen/{kennzeichen}/ablesungen:
+    parameters:
+      - { name: kennzeichen, in: path, required: true, schema: { type: string, example: MS-21 } }
+    get:
+      tags: [messstellen]
+      summary: Ablesungen mit allen Fassungen und Herkunft lesen.
+      description: Recht `messwerte.ansehen`, einschließlich Standortumfang. Erhalten auch nach Rohwertaufbewahrung.
+      responses:
+        '200':
+          description: Nach Messzeit und Fassung geordnet.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Ablesung' } }
+        '403': { description: Recht fehlt. }
+        '404': { description: Messstelle fehlt oder liegt außerhalb des Kundenbereichs bzw. Umfangs. }
+    post:
+      tags: [messstellen]
+      summary: Gemessenen Zählerstand an einer manuell abgelesenen Messstelle erfassen.
+      description: >
+        Recht `ablesung.erfassen` (KA/EM unternehmensweit, Bearbeiter im Standort; kein Unterstützer).
+        Zeitpunkt mit Versatz und voller Minute, nicht in der Zukunft. Keine Box/Komponente.
+        Gleicher Stand und gleiche Zuordnung sind eine Wiederholung ohne Schreibwirkung.
+        Monatsvorgabe = größter Zeitanteil, nur bei höchstens zwei berührten Kalendermonaten.
+        Ein zugeordneter Monat summiert ganze Ablesezeiträume, Tageswerte werden nie interpoliert.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [zeitpunkt, stand]
+              properties:
+                zeitpunkt: { type: string, format: date-time, example: '2026-11-02T07:40:00+01:00' }
+                stand: { type: string, example: '49.451', description: Nicht negativer deutscher Zahltext. }
+                zuordnung_monat: { type: [string, 'null'], pattern: '^[0-9]{4}-[0-9]{2}$', description: 'Weggelassen = Vorgabe; null = keinem Monat zuordnen.' }
+      responses:
+        '200':
+          description: Eingetragen oder unveränderte Wiederholung.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AblesungAntwort' }
+        '400': { description: Unlesbare Anfrage oder unbekanntes Feld. }
+        '403': { description: Recht fehlt. }
+        '404': { description: Messstelle fehlt oder ist nicht sichtbar. }
+        '409': { description: Anderer Stand bereits vorhanden; Berichtigung verwenden. }
+        '422': { description: Quelle passt nicht, Zeitpunkt oder Zählerstand ungültig, Rücksprung. }
+  /api/v1/messstellen/{kennzeichen}/ablesungen/{zeitpunkt}/berichtigung:
+    parameters:
+      - { name: kennzeichen, in: path, required: true, schema: { type: string, example: MS-21 } }
+      - { name: zeitpunkt, in: path, required: true, schema: { type: string, format: date-time } }
+    post:
+      tags: [messstellen]
+      summary: Stand oder Monatszuordnung versioniert berichtigen.
+      description: >
+        Recht `ablesung.erfassen`. Die gemeinsame Vier-Augen-Einstellung des Unternehmens gilt.
+        Bei aktiver Einstellung entsteht ein K-Vorschlag; Freigabe über die vorhandene Korrekturroute
+        durch eine zweite Person. Sonst sofort neue Fassung. Alte Rohwerte und Periodenversionen bleiben.
+        Rücknahme einer Berichtigung über die vorhandene Korrekturroute stellt den vorherigen Stand
+        als weitere Fassung wieder her. Erstwerte werden nicht zurückgenommen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [stand, begruendung]
+              properties:
+                stand: { type: string, example: '49.451' }
+                zuordnung_monat: { type: [string, 'null'], pattern: '^[0-9]{4}-[0-9]{2}$', description: Weggelassen bewahrt die bisherige Zuordnung. }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200':
+          description: Berichtigt, Vorschlag oder unveränderte Wiederholung.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AblesungAntwort' }
+        '400': { description: Unlesbare Anfrage oder unbekanntes Feld. }
+        '403': { description: Recht fehlt. }
+        '404': { description: Messstelle oder Ablesung fehlt oder ist nicht sichtbar. }
+        '409': { description: Vorschlag offen oder Fassung inzwischen geändert. }
+        '422': { description: Ungültiger Stand oder Begründung; Rücksprung. }
   /api/v1/messstellen/{kennzeichen}/werte:
     parameters:
       - { name: kennzeichen, in: path, required: true, schema: { type: string, example: MS-10 }, description: "Das Kennzeichen, das die Messstelle HEUTE trägt." }
@@ -12054,6 +12137,36 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    Ablesung:
+      type: object
+      required: [quelle, zeitpunkt, fassung, stand, monat, woher, urheber, korrektur, eingetragen_am]
+      properties:
+        quelle: { type: string, format: uuid }
+        zeitpunkt: { type: string, format: date-time }
+        fassung: { type: integer, minimum: 1 }
+        stand: { type: number }
+        monat: { type: [string, 'null'], format: date }
+        woher: { type: string, enum: [eingabe, import] }
+        urheber:
+          type: object
+          required: [sub, name, rolle, art]
+          properties:
+            sub: { type: string }
+            name: { type: string }
+            rolle: { type: string }
+            art: { type: string }
+        korrektur: { type: [string, 'null'] }
+        eingetragen_am: { type: string, format: date-time }
+    AblesungAntwort:
+      type: object
+      required: [urteil, korrektur, ablesung, ablesezeitraum]
+      properties:
+        urteil: { type: string, enum: [eingetragen, wiederholung, berichtigung, vorschlag] }
+        korrektur: { type: [string, 'null'] }
+        ablesung: { $ref: '#/components/schemas/Ablesung' }
+        ablesezeitraum:
+          type: [object, 'null']
+          description: Menge, Zustand, Ablesezeitraum-Kennzeichen und Zuordnungshilfe mit Zeitanteilen; keine Interpolation.
     Selbstauskunft:
       type: object
       description: UEMS AP-03 IP-4 - die Selbstauskunft (`GET /api/v1/me`).

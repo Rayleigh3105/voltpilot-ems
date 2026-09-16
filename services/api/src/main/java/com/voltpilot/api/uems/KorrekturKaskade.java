@@ -621,6 +621,9 @@ public class KorrekturKaskade {
         Korrektur k = null;
         if (a.korrektur()) {
             k = korrektur(con, a.tenant(), a.kennung());
+            if ("ablesung".equals(k.vorschau().path(0).path("spur").asText())) {
+                return ablesungWeiter(con, a, k, jetzt);
+            }
             reihen = k.reihen();
             von = k.von();
             bis = k.bis();
@@ -688,6 +691,33 @@ public class KorrekturKaskade {
         kennzahlen.nachKorrektur(con, betroffen);
         berichteBenachrichtigen(con, berichte, betroffen);
         return new Verarbeitet(versionen, b.kreise());
+    }
+
+    /** Ablesungen haben ihre Fassungen schon; die vorhandene Kaskade bildet alle abhängigen Werte. */
+    private Verarbeitet ablesungWeiter(Connection con, Anlass a, Korrektur k, Instant jetzt) throws SQLException {
+        UUID id = UUID.fromString(k.vorschau().get(0).path("messstelle_id").asText());
+        String kennzeichen;
+        try (PreparedStatement ps = con.prepareStatement("SELECT kennzeichen FROM messstelle WHERE tenant_id=? AND id=?")) {
+            ps.setObject(1, a.tenant()); ps.setObject(2, id);
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); kennzeichen = rs.getString(1); }
+        }
+        ZoneId zone = berechnete.zoneDesKundenbereichs(a.tenant());
+        LocalDate von = TagRegeln.tag(k.von(), zone);
+        LocalDate bis = TagRegeln.tag(k.bis().minusNanos(1), zone);
+        Berechnet b = berechneteStufen(con, a.tenant(), a.kennung(), a.fassung(), von, bis, ALLE_EBENEN, jetzt, Modus.ANLASS);
+        List<String> messstellen = new ArrayList<>(b.messstellen());
+        messstellen.add(kennzeichen);
+        List<UUID> ereignisse = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("SELECT DISTINCT ereignis_id FROM messreihe_ereignis "
+                + "WHERE tenant_id=? AND art='correction' AND nutzlast->>'korrektur'=?")) {
+            ps.setObject(1,a.tenant()); ps.setString(2,a.kennung());
+            try (ResultSet rs=ps.executeQuery()) { while (rs.next()) ereignisse.add(rs.getObject(1,UUID.class)); }
+        }
+        Betroffen betroffen = new Betroffen(a.tenant(),a.kennung(),a.fassung(),a.status(),List.of(),k.von(),k.bis(),
+                zone,von,bis,List.copyOf(messstellen),List.copyOf(ereignisse),b.versionen(),jetzt);
+        kennzahlen.nachKorrektur(con, betroffen);
+        berichteBenachrichtigen(con, berichte, betroffen);
+        return new Verarbeitet(b.versionen(), b.kreise());
     }
 
     /**
@@ -1367,6 +1397,7 @@ public class KorrekturKaskade {
                     if (rs.getInt(1) == 1) {
                         art = rs.getString(3);
                         for (JsonNode n : JSON.readTree(rs.getString(4))) {
+                            if (n.has("messstelle_id")) continue;
                             reihen.add(new Reihe(UUID.fromString(n.path("entity_id").asText()),
                                     n.path("messkanal").asText()));
                         }

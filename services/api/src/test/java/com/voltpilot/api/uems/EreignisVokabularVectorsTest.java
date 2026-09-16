@@ -725,7 +725,12 @@ class EreignisVokabularVectorsTest {
             // Eine Art, deren Bezug die Messstelle SELBST ist (AP-10 IP-8: verteilung_geaendert), hängt an
             // keiner Reihe — ihre Existenz prüft existenz(), eine führende Quelle braucht sie nicht.
             Art dieArt = Art.vonCode(art);
-            if (ms != null && !(dieArt != null && dieArt.bezugPflicht().contains("messstelle"))) {
+            boolean ablesung = ms != null && messstellen.containsKey(ms)
+                    && !messstellen.get(ms).path("ablesungen").isEmpty()
+                    && !e.has("komponente") && !e.has("messkanal")
+                    && ("data_gap".equals(art) || ("correction".equals(art)
+                        && "ablesestaende_nachgetragen".equals(e.path("korrektur_art").asText())));
+            if (ms != null && !ablesung && !(dieArt != null && dieArt.bezugPflicht().contains("messstelle"))) {
                 JsonNode q = fuehrend(ms, t);
                 if (q == null) {
                     fehler.add(ms + " hat zum Zeitpunkt keine führende Quelle");
