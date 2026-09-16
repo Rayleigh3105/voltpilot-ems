@@ -281,6 +281,56 @@ class UemsViertelstundeMengeTest {
 
     // ==================================================================== Die Vektoren
 
+    /** IP-17: historical roles remain unknown; leading source bindings govern consumption. */
+    @Test
+    void ip17BestandOhneDoppelwegHatAuchOhneRohwertRolleEineMenge() {
+        String kanal = "energy_kwh_ip17_bestand";
+        UUID entity = reihe("IP17 Bestand ohne Doppelweg", kanal, 60);
+        reiheSaeen(kanal, entity, "2026-10-20T08:00:00Z", 16, "1000.0", "2.4", List.of());
+        root.update("UPDATE device_measurement_sample SET role = NULL WHERE entity_id = ?", entity);
+        assertThat(root.queryForObject("SELECT count(*) FROM telemetry_v2 WHERE entity_id = ?",
+                Long.class, entity.toString())).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM device_measurement_sample "
+                + "WHERE entity_id = ? AND role IS DISTINCT FROM 'spiegel'", Long.class, entity)).isEqualTo(16L);
+        assertThat(root.queryForObject("SELECT count(*) FROM device_measurement_sample "
+                + "WHERE entity_id = ? AND role = 'fuehrend'", Long.class, entity)).isZero();
+        arbeitFuellen();
+        verdichtenBisLeer();
+        BigDecimal menge = root.queryForObject("SELECT menge FROM messreihe_viertelstunde "
+                + "WHERE entity_id = ? AND messkanal = ? AND intervall_beginn = '2026-10-20T08:00:00Z'",
+                BigDecimal.class, entity, kanal);
+        assertThat(menge).isEqualByComparingTo("36.000");
+    }
+
+    @Test
+    void a10KernSpiegelAendertDieKatalogVerdichtungNicht() {
+        String kanal = "sunspec.model_213.w";
+        UUID entity = reihe("IP17 K-3 Register mit zwei Wegen", kanal, 60);
+        for (int minute = 0; minute <= 15; minute++) {
+            einzeln(kanal, entity, Instant.parse("2026-10-20T08:00:00Z").plusSeconds(60L * minute).toString(),
+                    new BigDecimal("1000"), "gauge");
+        }
+        arbeitFuellen();
+        verdichtenBisLeer();
+        String vorher = Bestandsschutz.inhalt(root, "messreihe_viertelstunde", "entity_id = ?", entity);
+        assertThat(root.queryForObject("SELECT mittel FROM messreihe_viertelstunde WHERE entity_id=? "
+                + "AND intervall_beginn='2026-10-20T08:00:00Z'", BigDecimal.class, entity))
+                .isEqualByComparingTo("1000");
+        assertThat(root.queryForObject("SELECT energie FROM messreihe_viertelstunde WHERE entity_id=? "
+                + "AND intervall_beginn='2026-10-20T08:00:00Z'", BigDecimal.class, entity))
+                .as("ohne ausdrueckliche Integrationsbindung bleibt Wirkleistung eine Leistung").isNull();
+        root.update("INSERT INTO telemetry_v2(time,received_at,tenant_id,site_id,device_id,entity_id,channel,value,"
+                + "role,spiegel_point_key) VALUES ('2026-10-20T08:00:00Z','2026-10-20T08:00:02Z',"
+                + "?,?,?,?,'power_kw',1,'spiegel',?)", KB, IDS.get("AN2"), IDS.get("BOX"), entity.toString(), kanal);
+        arbeitFuellen();
+        verdichtenBisLeer();
+        assertThat(Bestandsschutz.inhalt(root, "messreihe_viertelstunde", "entity_id = ?", entity))
+                .as("gleicher Registerwert im Kern verdoppelt weder Menge noch Qualitaetszaehler")
+                .isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT value FROM telemetry_v2 WHERE entity_id=?", BigDecimal.class,
+                entity.toString())).as("Kernwert fuer bestehendes Cockpit bleibt erhalten").isEqualByComparingTo("1");
+    }
+
     /** F1 — die Grundregel: Menge = Stand(Ende) − Stand(Anfang), 15 von 15, 100 %. */
     @Test
     void f1DerNormalfallZaehlerstand() {

@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Kern-/Katalog-Spiegel (AP-07 IP-17)** — geprüfte Cloud-Registerpaare, Writer-Kennzeichnung zur Messzeit für beide Kern-Schreibwege; führende Quellenbindung und NULL-Rollenbestand bleiben erhalten · [Zuordnung, Grenzen und Nachweise](uems-kern-spiegel.md)
+
 - **Speicher-Wächter und gemessene VM-Kompression (AP-07 IP-16)** — täglich gecachte physische Tabellenanteile je interner Mandantenkennung und Klasse, 70-%-Planwarnung, bestehender 0,5-TB-Flottenalarm unverändert; lokale synthetische Nicht-RLS-Kompressionsmessung · [Wächter, Grenzen und Nachweise](uems-speicher-waechter.md)
 
 - **UEMS-Verbrauchsbildung abgeschlossen (AP-08 IP-1 bis IP-20)** — Vertrag und Rechenwege, Mengen je Viertelstunde bis Jahr, Zustand, Lesen, Ersatzwerte, Korrekturen und Versionen; Abschlusswächter pinnt die drei Kern-Rollup-Prozeduren und eine plausible Historienantwort, Cockpit-/Erlös-Bestandsmuster bleiben zuständig · [Abschluss und Bestandsschutz](uems-verbrauchsbildung-abschluss.md)

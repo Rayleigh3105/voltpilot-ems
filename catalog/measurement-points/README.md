@@ -24,6 +24,15 @@ Jede Familie trägt außerdem `single_reader`. Das ist eine reine Cloud-Regel f�
 von Datenquellen: `true` bedeutet, dass niemals zwei Boxen dasselbe physische Gerät gleichzeitig
 lesen dürfen (Solarman-Logger, WAGO-Koppler-Weg). Das Feld gehört bewusst nicht zu `EDGE_FIELDS`.
 
+`core-channel-mirrors.json` ist die gesonderte Cloud-Zuordnung von Kern-Kanal und Katalogpunkt
+am selben Register (AP-07 IP-17). Sie nennt Registry-Familie, Komponententyp, Kanal, Point-Key,
+Register/Selektor und den geprüften Kern-Decoder. `python3 tools/check_core_mirrors.py` listet
+die belegten Doppelwege und prüft Register sowie Decoder-Fingerabdruck; `--write` verpackt
+dieselben Bytes ausschließlich für den Cloud-Writer. Die Box-Sicht, `EDGE_FIELDS`, der
+Laufzeitstand und die bisherige SQL-Metadatenableitung bleiben unverändert. Der Prüfer listet
+mögliche Registerwege, keine produktiven Messstellen oder Doppelzählungen. Grenzen und
+Leser: [Kernspiegel](../../docs/agents/root/uems-kern-spiegel.md).
+
 Jeder Eintrag besitzt mindestens:
 
 - Identität: `family`, stabiler `point_key`, dessen `point_key_aliases`,
