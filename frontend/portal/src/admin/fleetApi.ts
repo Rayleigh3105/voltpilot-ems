@@ -140,6 +140,8 @@ export interface AdminFleetSite {
 }
 
 export interface AdminFleet {
+  unterstuetzungBis?: Record<string, string>;
+  unterstuetzungStandorte?: { id: string; tenantId: string; name: string }[];
   sites: AdminFleetSite[];
   /**
    * Das Release-Register, NEUESTE zuerst - der erste Eintrag ist der

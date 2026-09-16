@@ -1,3 +1,4 @@
+import { UnterstuetzungKarte } from '../components/UnterstuetzungKarte';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
@@ -93,6 +94,7 @@ export function BenutzerPage() {
         </div>}
       </article>)}
     </>}
+    <UnterstuetzungKarte />
     {protokoll && <section aria-label="Zugriffsprotokoll"><h2>Zugriffsprotokoll</h2>
       <p className="vp-note">Zeiten in {VORGABE_ZEITZONE} (Zeitzone des Unternehmens).</p>
       <div className="vp-benutzer-zwei"><VpDatePicker label="Von" value={von} onChange={setVon} /><VpDatePicker label="Bis einschließlich" value={bis} onChange={setBis} /></div>

@@ -1,3 +1,4 @@
+import { UnterstuetzungAdmin } from './UnterstuetzungAdmin';
 import { useEffect, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
@@ -443,6 +444,7 @@ function TenantDetailDrawer({
           </>
         }
       >
+        <UnterstuetzungAdmin tenantId={tenant.id} name={tenant.name} />
         <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
           <Badge variant="tint">{segmentLabel(tenant.segment)}</Badge>
           <Badge variant="tint">

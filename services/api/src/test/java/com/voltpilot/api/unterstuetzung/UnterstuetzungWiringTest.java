@@ -124,19 +124,19 @@ class UnterstuetzungWiringTest {
 
     /**
      * <b>Der Mandanten-Umschalter bleibt AN</b> (AP-03 W3): dieses Paket baut den sichtbaren Weg (Anfrage,
-     * Notfall-Zugriff) und legt den Schalter bereit, umgelegt wird er mit der Portal-Umstellung (IP-15) — sonst
-     * würde die Admin-Konsole („Zur Anlage (Kundensicht)") blind, bevor das Portal den neuen Weg anbietet.
+     * Notfall-Zugriff). Seit IP-15 ist die Produktionsvorgabe AUS; das lokale Profil behält die alte
+     * Vorgabe ausdrücklich für Kompatibilitätsnachweise.
      * Dass er BEISST, prüft {@code UnterstuetzungApiTest} an der Datenbank.
      */
     @Test
     @SuppressWarnings("unchecked")
-    void derMandantenUmschalterIstAusgeliefertNochAn() throws Exception {
+    void derMandantenUmschalterIstInProduktionSeitIp15Aus() throws Exception {
         Map<String, Object> yml;
         try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
             yml = (Map<String, Object>) new Yaml().loadAll(in).iterator().next();
         }
         assertThat(at(yml, "voltpilot", "uems", "unterstuetzung", "umschalter-enabled"))
-                .isEqualTo("${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}");
+                .isEqualTo("${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:false}");
         assertThat(Files.readString(Path.of("pom.xml"))).as("im Testlauf NICHT übersteuert")
                 .doesNotContain(UMSCHALTER);
     }

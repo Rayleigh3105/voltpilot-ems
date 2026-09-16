@@ -1,0 +1,12 @@
+.vp-unterstuetzung { margin: var(--vp-space-5) 0; border: 1px solid var(--vp-border); border-radius: var(--vp-radius-lg); padding: var(--vp-space-5); background: var(--vp-surface); min-width: 0; overflow-wrap: anywhere; }
+.vp-unterstuetzung h2 { margin-top: 0; }
+.vp-unterstuetzung-form { display: grid; gap: var(--vp-space-4); min-width: 0; }
+.vp-unterstuetzung-form > * { min-width: 0; }
+.vp-unterstuetzung-folgen { padding: var(--vp-space-4); background: var(--vp-bg-light); border: 1px solid var(--vp-border); border-radius: var(--vp-radius-md); overflow-wrap: anywhere; }
+.vp-unterstuetzung-zeile { padding: var(--vp-space-4) 0; border-top: 1px solid var(--vp-border); }
+.vp-unterstuetzung-aktionen { display: flex; gap: var(--vp-space-2); flex-wrap: wrap; }
+.vp-unterstuetzung-banner { display: flex; align-items: center; gap: var(--vp-space-3); flex-wrap: wrap; padding: var(--vp-space-3) var(--vp-space-4); margin-bottom: var(--vp-space-3); border: 1px solid var(--vp-border); border-radius: var(--vp-radius-md); background: var(--vp-bg-light); overflow-wrap: anywhere; }
+.vp-unterstuetzung-banner p { flex: 1 1 220px; min-width: 0; margin: 0; }
+.vp-kundenbereich-wechsel { max-width: 360px; margin-bottom: var(--vp-space-4); }
+
+.vp-unterstuetzung-banner[data-notfall="true"] { border-color: var(--vp-warn-ink); border-left-width: 4px; }

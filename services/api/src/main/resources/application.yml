@@ -438,12 +438,11 @@ voltpilot:
     unterstuetzung:
       enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED:true}
       # AP-03 W3: gilt der Mandanten-Umschalter X-Tenant-Id auf KUNDENrouten noch?
-      # Vorgabe AN = das heutige Verhalten, damit die Admin-Konsole („Zur Anlage
-      # (Kundensicht)") weiterarbeitet. AUS ist der Satz aus A5: VoltPilot erreicht
-      # einen Kundenbereich nur noch ueber eine gewaehrte Unterstuetzung oder den
-      # Notfall-Zugriff, sonst 404 - umzulegen mit der Portal-Umstellung (IP-15).
+      # IP-15: Produktion AUS. Kundenflächen verlangen gewährte Unterstützung oder
+      # Notfall-Zugriff über X-Kundenbereich. Nur das lokale Kompatibilitätsprofil
+      # behält den alten Umschalter ausdrücklich für Bestandsnachweise.
       # /api/v1/admin/** (Plattform-Betrieb) ist davon nie betroffen.
-      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}
+      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:false}
     # UEMS AP-07 IP-12: der VERDICHTUNGS-LAUF der Speicherklasse Viertelstunden-
     # werte - alle fuenf Minuten bildet er aus der Menge der Rohwerte der
     # Arbeitsliste die vorlaeufigen Intervalle (E6: JEDE Reihe) und faehrt

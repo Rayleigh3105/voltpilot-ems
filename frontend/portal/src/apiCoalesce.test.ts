@@ -5,7 +5,7 @@ vi.mock('./auth', () => ({
   AuthRedirectError: class AuthRedirectError extends Error {},
 }));
 
-import { request, setTenantOverride } from './api';
+import { request, setKundenbereich, setTenantOverride } from './api';
 
 /** `request` wartet zuerst auf ein frisches Token - erst danach fliegt fetch. */
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -25,7 +25,7 @@ describe('request: In-flight-Bündelung', () => {
   beforeEach(() => {
     calls = [];
     release = [];
-    setTenantOverride(null);
+    setTenantOverride(null); setKundenbereich(null);
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
@@ -46,7 +46,7 @@ describe('request: In-flight-Bündelung', () => {
     // ist reine Test-Hygiene.)
     release.forEach((r) => r());
     await flush();
-    setTenantOverride(null);
+    setTenantOverride(null); setKundenbereich(null);
     vi.unstubAllGlobals();
   });
 
@@ -93,4 +93,11 @@ describe('request: In-flight-Bündelung', () => {
     await expect(request('/api/v1/overview')).rejects.toThrow('offline');
     expect(failing).toHaveBeenCalledTimes(2);
   });
+  it('bündelt keine Antworten über einen Unterstützer-Kundenbereich-Wechsel', async () => {
+    setKundenbereich('ahrenberg'); const a = request('/api/v1/me');
+    setKundenbereich('lindach'); const b = request('/api/v1/me');
+    await flush(); expect(calls).toHaveLength(2);
+    release.forEach(r => r()); await Promise.all([a, b]);
+  });
+
 });

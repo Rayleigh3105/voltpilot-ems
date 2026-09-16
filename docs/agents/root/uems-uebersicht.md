@@ -10,6 +10,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 - **Plattform-Kontenentzug am IP-9-Prüfpunkt** — `disable`/`delete` mit Sofortwirkung, letztem Kundenadministrator und beiden Protokollen; `enable` erhält frühere Entzüge; E12 und parallele Entzüge geprüft · [Wege und Grenzen](uems-admin-kontoentzug.md)
 - **Summenwerte mit Rolle — Abschluss H-0 bis H-11** — gemeinsame Geräte-/Verlauf-/Kennzahl-Einstiege, Stand, Rollen/Cockpit, Rechte und Steuern-Wächter ohne Alttext-Ausnahmen; Entzug derselben Mehrgeräte-Summe gemeinsam. Abnahme A1–A5, echte Aufnahmen 375/1440 und alle Teilkapitel · [Gesamtwegweiser](uems-summenwerte-abschluss.md)
+- **Unterstützung im Portal (AP-03 IP-15)** — Gewähren/Anfrage, Verlängern/Beenden, Kunden-/Unterstützer-/Notfallbanner, Partner-Wechsel, Admin-Anfrage/Notfall und Flottenende; schmale Selbst-Liste, Produktions-Vollzugriff geschlossen · [Flächen, Lesewege und Nachweise](uems-unterstuetzung-portal.md)
 
 - **Netzanschluss-Vorschlag für vorhandene Anlagen** — Anlage, Bindungsbeginn und Name vorausgewählt; Vertragsangaben ergänzen, Übernahme atomar bestätigen, Verwerfen merken; keine Preisübernahme · [Vorschlag und Grenzen](uems-netzanschluss-vorschlag.md)
 - **Benutzerverwaltung im Portal (AP-03 IP-13)** — Avatar → Unternehmen/Einstellungen/Benutzer; Energiemanager liest, Kundenadministrator verwaltet; N2 hängt N3/Startpasswort ein. Atomare Zuweisungswechsel, Sperren/Entfernen, Protokoll und Parallelitätsschutz · [Routen und Nachweise](uems-benutzerverwaltung.md)

@@ -6,12 +6,13 @@ import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
 import { Input } from '../designsystem/components/forms/Input';
 import { AuthScreen, TrustRow } from './components/AuthScreen';
-import { isPlatformAdmin, login, loginWithCredentials } from './auth';
+import { currentRoles, isPlatformAdmin, login, loginWithCredentials } from './auth';
 import {
   api,
   ApiError,
   register,
   setTenantOverride,
+  setKundenbereich,
   type Betriebsart,
   type Device,
   type Site,
@@ -573,7 +574,7 @@ function UnifiedPortal() {
   // The selection survives a reload (sessionStorage) so an admin does not
   // land back on "Mandanten-Kontext wählen" after every refresh.
   const [tenantId, setTenantId] = useState<string | null>(() =>
-    isAdmin ? sessionStorage.getItem('vp-tenant-override') : null,
+    isAdmin ? sessionStorage.getItem('vp-tenant-override') : currentRoles().includes('partner') ? sessionStorage.getItem('vp-kundenbereich') : null,
   );
   const [tenants, setTenants] = useState<Tenant[]>([]);
 
@@ -727,11 +728,11 @@ function UnifiedPortal() {
 
   // A restored override may point at a meanwhile-deleted tenant - drop it.
   useEffect(() => {
-    if (tenantId && tenants.length > 0 && !tenants.some((t) => t.id === tenantId)) {
+    if (isAdmin && tenantId && tenants.length > 0 && !tenants.some((t) => t.id === tenantId)) {
       setTenantId(null);
       sessionStorage.removeItem('vp-tenant-override');
     }
-  }, [tenants, tenantId]);
+  }, [isAdmin, tenants, tenantId]);
 
   // Tenant-scoped data. For an admin without a selected tenant this yields
   // empty lists (backend default-deny) - the pages show a pick-a-tenant hint.
@@ -743,7 +744,7 @@ function UnifiedPortal() {
     async (selectSiteId?: string, opts?: { background?: boolean }) => {
       const nummer = ++ladeNummer.current;
       if (!tenantReady) {
-        setSelbstauskunft(null);
+        try { const me = await api.selbstauskunft(); if (nummer === ladeNummer.current) setSelbstauskunft(me); } catch { if (nummer === ladeNummer.current) setSelbstauskunft(null); }
         setOrteQuelle(null);
         setSites([]);
         setDevices([]);
@@ -820,11 +821,14 @@ function UnifiedPortal() {
     setDevices([]);
     setOrteQuelle(null);
     setTenantOverride(isAdmin ? tenantId : null);
+    setKundenbereich(tenantId);
   }, [isAdmin, tenantId]);
 
   useEffect(() => {
     void reload();
   }, [reload, tenantId]);
+
+  useEffect(() => { const neu = () => void reload(); window.addEventListener('vp-unterstuetzung-geaendert', neu); return () => window.removeEventListener('vp-unterstuetzung-geaendert', neu); }, [reload]);
 
   useEffect(() => {
     let laedt = false;
@@ -964,9 +968,10 @@ function UnifiedPortal() {
 
   const changeTenant = (id: string | null) => {
     setTenantId(id);
+    if (!isAdmin) { if (id) sessionStorage.setItem('vp-kundenbereich', id); else sessionStorage.removeItem('vp-kundenbereich'); }
     setSelectedSite(null);
-    if (id) sessionStorage.setItem('vp-tenant-override', id);
-    else sessionStorage.removeItem('vp-tenant-override');
+    if (isAdmin) { if (id) sessionStorage.setItem('vp-tenant-override', id); else sessionStorage.removeItem('vp-tenant-override'); }
+    if (!isAdmin) replaceCurrentNavigation('#/uebersicht');
   };
 
   // Der Sprung in einen Mandanten-Kontext. `target` ist bewusst eine ganze

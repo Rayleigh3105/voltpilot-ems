@@ -1,3 +1,4 @@
+import { UnterstuetzungBanner } from '../components/UnterstuetzungBanner';
 import { useRollen } from '../rollen';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
@@ -199,7 +200,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const user = currentUser();
-  const { benutzerLesen } = useRollen();
+  const { benutzerLesen, selbst } = useRollen();
   const [menuOpen, setMenuOpen] = useState(false);
   /**
    * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
@@ -662,6 +663,12 @@ export function AppShell({
         <main className="vp-main has-bottombar">
           {helpArticle && <div className="vp-context-help"><HelpLink article={helpArticle} /></div>}
           {teilansicht && <p className="vp-alert" role="status">{teilansicht}</p>}
+          {selbst?.konto === 'partner' && <div className="vp-kundenbereich-wechsel"><VpPicker label="Kundenbereich"
+            value={tenantOverride ?? ''} onChange={v => onTenantChange(v || null)} options={[
+              { value: '', label: 'Kundenbereich wählen' },
+              ...[...new Map((selbst.kundenbereiche ?? []).filter(k => Date.parse(k.endet) > Date.now()).map(k => [k.id, k])).values()].map(k => ({ value: k.id, label: k.name })),
+            ]} /></div>}
+          <UnterstuetzungBanner />
           {children}
         </main>
       </div>

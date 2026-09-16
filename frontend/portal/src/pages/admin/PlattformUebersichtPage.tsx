@@ -55,6 +55,7 @@ export function PlattformUebersichtPage({
   // umstellen, und ein leerer Mandant löschte die Auswahl des Betreibers).
   onNavigate?: (target: Route) => void;
 }) {
+  const [unterstuetzungBis, setUnterstuetzungBis] = useState<Record<string, string> | null>(null);
   const [sites, setSites] = useState<AdminFleetSite[] | null>(null);
   // Das Release-Register aus derselben Antwort - der Maßstab für „veraltet".
   // Leer heißt kein Maßstab, und dann wird nichts als veraltet behauptet.
@@ -71,6 +72,7 @@ export function PlattformUebersichtPage({
     try {
       const fleet = await fleetApi.fleet();
       setSites(fleet.sites);
+      setUnterstuetzungBis(fleet.unterstuetzungBis ?? null);
       setReleases(fleet.releases ?? []);
       setFetchedAt(Date.now());
       setLoadError(null);
@@ -205,6 +207,7 @@ export function PlattformUebersichtPage({
               <thead>
                 <tr>
                   <th>Anlage</th>
+                  <th>Unterstützung bis</th>
                   <th>Geräte</th>
                   <th>Letzte Daten</th>
                   <th>Quellen</th>
@@ -218,7 +221,7 @@ export function PlattformUebersichtPage({
                   // Mandant + Anlage als Schlüssel: Anlagen-Ids sind global
                   // eindeutig, aber der Schlüssel soll auch dann tragen, wenn
                   // dieselbe Anlage je unter zwei Mandanten stünde.
-                  <FleetTableRow key={`${r.tenantId}:${r.siteId}`} row={r} onOpen={onJumpToTenant} />
+                  <FleetTableRow key={`${r.tenantId}:${r.siteId}`} row={r} unterstuetzungBis={unterstuetzungBis === null ? undefined : unterstuetzungBis[r.tenantId] ?? null} onOpen={onJumpToTenant} />
                 ))}
               </tbody>
             </table>
@@ -236,10 +239,12 @@ export function PlattformUebersichtPage({
 }
 
 function FleetTableRow({
+  unterstuetzungBis,
   row,
   onOpen,
 }: {
   row: FleetRow;
+  unterstuetzungBis?: string | null;
   onOpen: (tenantId: string, target: Route) => void;
 }) {
   const open = () => onOpen(row.tenantId, anlageRoute(row.siteId));
@@ -260,6 +265,7 @@ function FleetTableRow({
           <span className="vp-cell-sub">{row.tenantName}</span>
         </div>
       </td>
+      <td data-label="Unterstützung bis">{unterstuetzungBis === undefined ? 'Nicht verfügbar' : unterstuetzungBis === null ? 'Keine aktive Unterstützung' : new Date(unterstuetzungBis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}</td>
       <td data-label="Geräte">
         <Badge variant={row.deviceTone} dot>
           {row.deviceText}

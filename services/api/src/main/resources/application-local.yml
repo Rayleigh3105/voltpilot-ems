@@ -5,3 +5,9 @@
 spring:
   flyway:
     locations: classpath:db/migration,classpath:db/dev
+
+# Legacy local fixtures retain the old admin switcher explicitly; production defaults to false.
+voltpilot:
+  uems:
+    unterstuetzung:
+      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}
