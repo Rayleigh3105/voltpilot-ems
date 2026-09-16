@@ -221,10 +221,10 @@ class BezugsdatenImportUebernahmeApiTest {
         assertThat(importieren(w,datei,Map.of(),null,null,200).path("aenderungen").asInt()).isZero();
         ruecknahme(w,i,200);
         assertThat(wert(w)).isNull();
-        assertThat(root.queryForObject("SELECT nutzlast->>'von' FROM messreihe_ereignis WHERE tenant_id=?",String.class,w.mandant()))
-                .isEqualTo("2025-08-01T10:00:00Z");
-        assertThat(root.queryForObject("SELECT nutzlast->>'bis' FROM messreihe_ereignis WHERE tenant_id=?",String.class,w.mandant()))
-                .isEqualTo("2025-08-01T10:15:00Z");
+        assertThat(root.queryForObject("SELECT von FROM messreihe_ereignis WHERE tenant_id=?",(r,n) -> r.getTimestamp(1).toInstant(),w.mandant()))
+                .isEqualTo(Instant.parse("2025-08-01T10:00:00Z"));
+        assertThat(root.queryForObject("SELECT bis FROM messreihe_ereignis WHERE tenant_id=?",(r,n) -> r.getTimestamp(1).toInstant(),w.mandant()))
+                .isEqualTo(Instant.parse("2025-08-01T10:15:00Z"));
     }
 
     @Test void zweiBerichtigteZeilenHabenUnterschiedlicheKaskadenAnlaesse() throws Exception {
