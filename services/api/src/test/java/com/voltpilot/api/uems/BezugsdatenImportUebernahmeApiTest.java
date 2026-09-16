@@ -182,7 +182,8 @@ class BezugsdatenImportUebernahmeApiTest {
         freigeben(w,i,"jonas",200);
         assertThat(wert(w)).isEqualByComparingTo("312900");
         JsonNode rueck=ruecknahme(w,i,200);
-        assertThat(rueck.path("status").asText()).isEqualTo("vorschlag");
+        assertThat(rueck.path("status").asText()).isEqualTo("uebernommen");
+        assertThat(rueck.path("vorschlaege").asInt()).isOne();
         assertThat(wert(w)).isEqualByComparingTo("312900");
         freigeben(w,i,"ines",403);
         freigeben(w,i,"jonas",200);

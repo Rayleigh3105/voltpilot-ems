@@ -12465,9 +12465,9 @@ components:
       required: [kennung, status, aenderungen, vorschlaege, zaehler]
       properties:
         kennung: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' }
-        status: { type: string, enum: [uebernommen, teilweise_uebernommen, wiederholt, verworfen, zurueckgenommen, vorschlag] }
+        status: { type: string, enum: [uebernommen, teilweise_uebernommen, wiederholt, verworfen, zurueckgenommen] }
         aenderungen: { type: integer, minimum: 0 }
-        vorschlaege: { type: integer, minimum: 0 }
+        vorschlaege: { type: integer, minimum: 0, description: Offene Wertvorschläge. Eine vorgeschlagene Rücknahme ändert den Import-Status erst nach Freigabe. }
         zaehler: { type: object, nullable: true, description: Import-Zähler der gemeinsamen Bezugsdaten-Regel. }
     Ablesung:
       type: object

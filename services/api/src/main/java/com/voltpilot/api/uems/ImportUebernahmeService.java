@@ -146,7 +146,8 @@ public class ImportUebernahmeService {
                 anwenden(tenant,kennung,a,grund,wer,null);
                 repo.zurueckgenommen(tenant,kennung,grund,wer);
             }
-            return new Ergebnis(kennung,vier && !a.isEmpty() ? "vorschlag" : "zurueckgenommen",vier ? 0 : a.size(),vier ? a.size() : 0,null);
+            return new Ergebnis(kennung,vier && !a.isEmpty() ? (String) f.getLast().get("status") : "zurueckgenommen",
+                    vier ? 0 : a.size(),vier ? a.size() : 0,null);
         });
     }
 
