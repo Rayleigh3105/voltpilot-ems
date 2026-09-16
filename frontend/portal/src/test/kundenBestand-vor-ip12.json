@@ -1300,7 +1300,7 @@
     }
   ],
   "assistentZusammenfuehrung": {
-    "entscheid": "H-5, E1/E7/E10: zwei Assistenten werden ein fünfstufiger Summenwert-Assistent; Bestandsfingerabdrücke bleiben unverändert. H-9: Speichern verlangt zusätzlich das Messauswahlrecht für unbeobachtete Eingänge.",
+    "entscheid": "H-5, E1/E7/E10: zwei Assistenten werden ein fünfstufiger Summenwert-Assistent; Bestandsfingerabdrücke bleiben unverändert. H-9: Speichern verlangt zusätzlich das Messauswahlrecht für unbeobachtete Eingänge. AP-10 IP-16: Typ- und Tageswahl, Verteilungs-Anteil und feste Saldo-Vorzeichen ergänzen denselben Assistenten; Geräte-Kontext und Rollenrechte bleiben geschützt.",
     "dateien": {
       "components/GesamtwertDialog.tsx": [],
       "components/SummenwertAssistent.tsx": [
@@ -1308,11 +1308,11 @@
         "0c194234e77accb62233eca4aeee38bd564204bf2426be1065c574ddc77a772e",
         "c34bee95f805e5a42a8358d61213f729900e5dcdc4f877a85983dfd8fd01b4e3",
         "1381fa8aa6fa54e75627b4f0df6d31c351f77962509c7f77b8bbfe20baba7f6d",
-        "69bc59084a8e36e5ecd10719e88033c44d7d265052276732a7f89ae02e483e7b",
+        "d24d43b7e0c2cc92060e97404b43ce8a1376639a720bb2f88c21e8ea0b2585bc",
         "458ecbf848e426442e7348d692f8d9b939bebfa659e1d32d3002eafea09fe66a",
         "bfc88aea8cf9d7d3665760aa5b07c5c28bcf73f80e7d76198546bced5c8de42c",
-        "262834d4e9487dcfa595ad899c69cfacab05adf7554b361ac811c378e2ffb16e",
-        "4cbbf914241c0f08513ca47030e49f0adb9ae6e6922c33b0183c864b9a9c16fb",
+        "dde325ffebfa0dc1d7c154bca0eaa8477967b8b87db4e68c3010e0a95c1f7b51",
+        "adeb532ae550a36239d533d2e4d0e9395af9c93388dd1b22293febe32a82760d",
         "661d8cbc37a103b4440311179fa56bf512e1f30935cd852eedf7117c26269f4f",
         "431fb1cc3097bb5f2efe0dd097035fd3ffae0115ac5a33fab135c82a6fe3d120",
         "8ed6153fbded51f2e0d2525db76ad278d20e679d5f3513c69accfa05f2a1cc01"

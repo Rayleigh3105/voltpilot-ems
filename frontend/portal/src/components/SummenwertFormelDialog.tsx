@@ -83,7 +83,7 @@ export function SummenwertFormelDialog({
         if (!aktiv) return;
         setTyp(f.fassung_am?.fassung?.formel_typ === 'saldo' || f.hauptgroesse?.richtung === 'saldiert' ? 'saldo' : 'gewichtete_summe');
         setKomponenten(geraete.entities.map(e => e.id));
-        const ts = f.terme.map((t) => ({
+        const ts: Term[] = f.terme.map((t) => ({
           eingang_art: t.eingang_art as Term["eingang_art"],
           ...(t.entity_id
             ? { entity_id: t.entity_id, point_key: t.point_key! }
@@ -102,6 +102,16 @@ export function SummenwertFormelDialog({
         setNamen(Object.fromEntries(alle.map((q) => [q.key, q.name])));
         setQuellen(alle.filter((q) => q.passt));
         setTerme(ts);
+        if (ts.some(t => t.quell_messstelle_id)) {
+          const register = await api.messstellenRegister({ anlage: siteId, stichtag: heute });
+          const refs = await Promise.all(ts.filter(t => t.quell_messstelle_id).map(async t => {
+            const m = register.register.find(m => m.id === t.quell_messstelle_id);
+            if (!m) return null;
+            const ziel = t.verteilung_ziel ? (await api.messstelleVerteilung(m.id, heute)).anteile.find(a => a.kostenstelle.id === t.verteilung_ziel) : null;
+            return [key(t), `${ziel ? `${ziel.kostenstelle.kennzeichen} von ` : ''}${m.kennzeichen} · ${m.name ?? ''}`] as const;
+          }));
+          if (aktiv) setNamen(n => ({ ...n, ...Object.fromEntries(refs.filter(r => r !== null)) }));
+        }
       } catch (e) {
         if (aktiv)
           setFehler(
@@ -118,8 +128,9 @@ export function SummenwertFormelDialog({
   const ableitung = terme?.length && terme.every(t => groessen[key(t)])
     ? hauptgroesse(typ, 'berechnet', 'Intervallmenge', terme.map(t => ({ ...groessen[key(t)], vorzeichen: t.vorzeichen }))) : null;
   const faktorFehler = terme?.some(t => !Number.isFinite(t.faktor) || t.faktor === 0 || ((typ === 'saldo' || t.eingang_art === 'verteilung') && t.faktor !== 1));
+  const saldoFehlt = typ === 'saldo' && (terme?.length !== 2 || !terme.some(t => t.vorzeichen === '+') || !terme.some(t => t.vorzeichen === '-'));
   async function speichern() {
-    if (!terme?.length || busy || faktorFehler || ableitung?.fehler || !rechte.darf("messstelle.formel") || (ab < heute && !rechte.darf("aenderung.rueckwirkend"))) return;
+    if (!terme?.length || busy || faktorFehler || saldoFehlt || ableitung?.fehler || !rechte.darf("messstelle.formel") || (ab < heute && !rechte.darf("aenderung.rueckwirkend"))) return;
     setBusy(true);
     setFehler(null);
     try {
@@ -158,7 +169,7 @@ export function SummenwertFormelDialog({
               busy ||
               !terme?.length ||
               !ab ||
-              !!faktorFehler || !!ableitung?.fehler ||
+              !!faktorFehler || saldoFehlt || !!ableitung?.fehler ||
               (ab < heute && (!begruendung.trim() || !rechte.darf("aenderung.rueckwirkend"))) ||
               !rechte.darf("messstelle.formel")
             }
@@ -182,6 +193,7 @@ export function SummenwertFormelDialog({
         </p>
         <p>{typ === 'saldo' ? 'Saldo · Bezug − Abgabe' : 'Summe'}{ableitung?.hauptgroesse && ` · ${ableitung.hauptgroesse.groesse} · ${ableitung.hauptgroesse.richtung} · ${ableitung.hauptgroesse.einheit}`}</p>
         {ableitung?.fehler && <p role="alert">Die Messgrößen passen nicht zusammen ({ableitung.grund}).</p>}
+        {saldoFehlt && <p>Ein Saldo braucht beide Hauptzähler: Bezug plus, Abgabe minus.</p>}
         {ab < heute && (
           <Input
             label="Begründung für die rückwirkende Änderung"

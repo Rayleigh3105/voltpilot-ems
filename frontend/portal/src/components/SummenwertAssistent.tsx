@@ -124,7 +124,7 @@ export function SummenwertAssistent({ open, siteId, kontext = { art: 'anlage' },
   const formFehler = entwurfFehler(entwurf);
   const unbeobachtet = alle.filter((z) => !z.beobachtet && keys.has(schluessel({ entityId: z.entityId, channel: z.pointKey })));
   const beobachtungErlaubt = unbeobachtet.length === 0 || darf('mess_selektion.bearbeiten');
-  const rolleErlaubt = (r: Rolle) => r === 'keine' || (darf('geraet.einrichten') && groesse?.groesse === 'Wirkleistung' && groesse.wertart === 'Momentanwert'
+  const rolleErlaubt = (r: Rolle) => r === 'keine' || (entwurf.gueltigAb <= heute() && darf('geraet.einrichten') && groesse?.groesse === 'Wirkleistung' && groesse.wertart === 'Momentanwert'
     && groesse.richtung === (r === 'pv' ? 'Erzeugung' : r === 'consumer' ? 'Bezug' : 'richtungslos'));
 
   async function einmalLesen(z: Zeile) {
@@ -272,6 +272,7 @@ export function SummenwertAssistent({ open, siteId, kontext = { art: 'anlage' },
       {schritt === 4 && <><h3 className="vp-sw-h">Diesen Wert verwenden als …</h3><div className="vp-sw-role-options" role="group" aria-label="Rolle">{(Object.keys(ROLLEN) as Rolle[]).filter((r) => r === 'keine' || darf('geraet.einrichten')).map((r) => <button key={r} type="button" className={`vp-sw-role-option ${rolle === r ? 'on' : ''}`} aria-pressed={rolle === r} disabled={!rolleErlaubt(r)} onClick={() => setRolle(r)}>{ROLLEN[r]}</button>)}</div>
         {!beobachtungErlaubt && <p role="alert">Für das Beobachten weiterer Register fehlt Ihnen die Berechtigung. Entfernen Sie diese Register oder lassen Sie Ihren Zugang prüfen.</p>}
         {!darf('geraet.einrichten') && <p className="vp-sw-sub">Sie können diesen Wert ohne Rolle anlegen. Für eine Rolle fehlt das Einrichtungsrecht.</p>}
+        {entwurf.gueltigAb > heute() && <p className="vp-sw-sub">Die Formel gilt erst künftig. Eine Rolle können Sie ab diesem Tag zuordnen.</p>}
         <p>{folgen[rolle]}</p>{rolle !== 'keine' && <p>Die Zuordnung wirkt ab jetzt und steht im Änderungsprotokoll der Anlage. Der Wert hängt an jedem gelesenen Gerät und zählt in der Anlagen-Summe einmal.</p>}
         <p className="vp-sw-sub">Rollen benötigen Wirkleistung als Momentanwert: Erzeugung für PV-Produktion, Bezug für Verbrauch, richtungslos für Netz.</p>
       </>}

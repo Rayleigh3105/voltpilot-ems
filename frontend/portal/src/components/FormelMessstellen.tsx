@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type MessstelleRegisterZeile, type MessstelleVerteilungAnteil } from '../api';
+import { MAX_TERME } from '../gesamtwert';
 import { messstellenImKontext, messstellenTerm, type AssistentTyp, type FormelTerm } from '../formelAssistent';
 import { VpPicker } from './VpPicker';
 
@@ -49,7 +50,7 @@ export function FormelMessstellen({ siteId, komponenten, typ, ab, terme, onAdd, 
         {typ === 'gewichtete_summe' && id && (anteile === null ? <p>Verteilung wird geladen …</p>
           : anteile.length ? <VpPicker label="Kostenstellen-Anteil" value={ziel} options={anteile.map(a => ({ value: a.kostenstelle.id, label: `${a.kostenstelle.kennzeichen} · ${a.name} · ${a.anteil_prozent} %` }))} onChange={setZiel} />
             : <p>Für diesen Tag ist keine Verteilung eingerichtet.</p>)}
-        <Button variant="outline" disabled={!bereit || terme.length >= 12} onClick={() => {
+        <Button variant="outline" disabled={!bereit || terme.length >= MAX_TERME} onClick={() => {
           if (bereit && m) { onAdd(messstellenTerm(m, typ === 'saldo' ? undefined : a)); setId(''); }
         }}>Eingang aufnehmen</Button>
       </> : <p>Keine passenden Messstellen mit führender Quelle in diesem Geräte- oder Anlagenbereich.</p>}
