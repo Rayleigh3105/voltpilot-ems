@@ -11,6 +11,7 @@ import ReactDOM from 'react-dom/client';
 import {
   api,
   type FunktionStandort,
+  type BezugsdatenZuordnung,
   type MessstellenRegisterAnfrage,
   type MessstelleWerte,
   type MessstelleWerteRaster,
@@ -547,7 +548,19 @@ const overview: Overview = {
   dailySavings: [],
 };
 const bzListe = params.get('bezugs') === 'leer' ? { bezugsgroessen: [], bezugsflaechen: [] } : ahrenbergBezugsgroessen();
-const bzAufrufe = { anlegen: [] as BezugsgroesseAnfrage[], archivieren: [] as string[] };
+const bzAufrufe = { anlegen: [] as BezugsgroesseAnfrage[], archivieren: [] as string[], vorschau: [] as string[], importe: [] as string[], vorlagen: [] as string[] };
+const importZuordnung: BezugsdatenZuordnung = { csv: null, spalten: { periode: 1, bis: null, wert: 3, einheit: 4, bezug: 2, bemerkung: null }, deutung: 'periode', zahlformat: 'auto', einheit: null, bezugsgroesse: null, bezug_tabelle: { 'Spritzguss gesamt': 'BZ-1', 'Spritzguss Export': 'BZ-1', Montage: 'BZ-2' }, synonyme: {} };
+const importVorlagen = [{ vorlage_id: 'c0de0000-0000-4000-8000-00000000f001', fassung: 1, name: 'ERP-Export Spritzguss', zuordnung: importZuordnung, urheber: { name: 'Ines Kaltenbach', rolle: 'Energiemanager', art: 'konto' }, erstellt_am: '2026-10-01T09:00:00+02:00' }];
+const importVorschau = () => ({
+  vorschau: { kennung: 'VS1.1792484000.0123456789abcdef0123456789abcdef', status: 'vorschau' as const, ausgestellt_am: '2026-10-20T12:00:00+02:00', gueltig_bis: '2026-10-20T12:30:00+02:00', ergebnis_fingerabdruck: 'abcdef' },
+  vorlage: null, datei: { name: 'produktion-oktober.csv', bytes: 155, sha256: '012345', befund: null, zusatz: null, zusatz_satz: null, zeile: null, kodierung: 'utf-8', bom: false, trennzeichen: ';', kopfzeile: true, kopf: ['Periode', 'Artikelgruppe', 'Menge', 'Einheit'], spalten: 4, datenzeilen: 3 }, frueherer_import: null,
+  zeilen: [
+    { nr: 2, felder: ['2026-10', 'Spritzguss gesamt', '312.400,0', 'kg'], bezugsgroesse: 'BZ-1', bezugsgroesse_id: bzListe.bezugsgroessen[0]?.id ?? null, schluessel: 'BZ-1 · 2026-10', periode_von: '2026-10-01', periode_bis: '2026-10-31', zeitpunkt: null, betrag: '312400.0', einheit: 'kg', geliefert: { wert: '312.400,0', einheit: 'kg' }, urteil: 'neu', befunde: [], fingerabdruck: 'a', bestand: null },
+    { nr: 3, felder: ['2026-10', 'Spritzguss Export', '688.720', 'lbs'], bezugsgroesse: 'BZ-1', bezugsgroesse_id: bzListe.bezugsgroessen[0]?.id ?? null, schluessel: null, periode_von: null, periode_bis: null, zeitpunkt: null, betrag: null, einheit: null, geliefert: { wert: '688.720', einheit: 'lbs' }, urteil: 'abgelehnt', befunde: [{ befund: 'einheit_unbekannt', satz: 'Unbekannte Einheit — erlaubt sind die Einheiten dieser Größe.', hinweis: false }], fingerabdruck: null, bestand: null },
+    { nr: 4, felder: ['2026-10', 'Montage', '96', 'Paletten'], bezugsgroesse: 'BZ-2', bezugsgroesse_id: bzListe.bezugsgroessen[1]?.id ?? null, schluessel: null, periode_von: null, periode_bis: null, zeitpunkt: null, betrag: null, einheit: null, geliefert: { wert: '96', einheit: 'Paletten' }, urteil: 'abgelehnt', befunde: [{ befund: 'einheit_unbekannt', satz: 'Unbekannte Einheit — erlaubt sind die Einheiten dieser Größe.', hinweis: false }], fingerabdruck: null, bestand: null },
+  ],
+  import: { status: 'teilweise_uebernommen', zaehler: { zeilen: 3, neu: 1, wiederholung: 0, konflikt: 0, berichtigung: 0, uebersprungen: 0, abgelehnt: 2, mit_hinweis: 0 }, uebernahme_moeglich: true, import_datensatz: true, bestaetigung: '1 von 3 Zeilen übernehmen', aenderungen: 1, befunde: [] },
+});
 Object.assign(window, { bzAufrufe });
 Object.assign(api, {
   listSites: async () => sichtbareListe(sites),
@@ -644,6 +657,14 @@ Object.assign(api, {
     b.archiviert_am = new Date().toISOString();
     return structuredClone(b);
   },
+  bezugsdatenVorlagen: async () => ({ vorlagen: structuredClone(importVorlagen) }),
+  bezugsdatenVorlageSpeichern: async (body: { name: string; zuordnung: BezugsdatenZuordnung }) => {
+    bzAufrufe.vorlagen.push(body.name);
+    const v = { ...importVorlagen[0], vorlage_id: `c0de0000-0000-4000-8000-00000000f00${importVorlagen.length + 1}`, name: body.name, zuordnung: body.zuordnung };
+    importVorlagen.push(v); return structuredClone(v);
+  },
+  bezugsdatenVorschau: async (datei: File) => { bzAufrufe.vorschau.push(datei.name); return structuredClone(importVorschau()); },
+  bezugsdatenImportieren: async (datei: File) => { bzAufrufe.importe.push(datei.name); return { kennung: 'I-2026-0015', status: 'teilweise_uebernommen', aenderungen: 1, vorschlaege: 0, zaehler: importVorschau().import.zaehler, vorlage: null }; },
   unternehmen: async () => ahrenbergUnternehmen(),
   // AP-13 IP-9: in den Reitern gelten die Prozesse der Messstellen-Fixtures — dieselben Kennungen wie ihre Zuordnungen.
   prozesse: async () => ({

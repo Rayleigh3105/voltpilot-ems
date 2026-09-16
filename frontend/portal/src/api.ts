@@ -2319,6 +2319,54 @@ export interface BezugsgroesseAnfrage {
   geltung_id: string;
 }
 
+/** Spaltenzuordnung eines Bezugsdaten-Imports (AP-09 IP-15, C3). Spalten sind 1-basiert. */
+export interface BezugsdatenZuordnung {
+  csv: { kodierung: string | null; trennzeichen: string | null; kopfzeile: boolean | null } | null;
+  spalten: { periode: number | null; bis: number | null; wert: number | null; einheit: number | null; bezug: number | null; bemerkung: number | null };
+  deutung: 'periode' | 'periodenbeginn' | 'periodenende' | 'von_bis' | 'zeitpunkt';
+  zahlformat: 'de' | 'en' | 'auto';
+  einheit: string | null;
+  bezugsgroesse: string | null;
+  bezug_tabelle: Record<string, string>;
+  synonyme: Record<string, string>;
+}
+
+export interface BezugsdatenBefund { befund: string; satz: string; hinweis: boolean }
+export interface BezugsdatenZaehler {
+  zeilen: number; neu: number; wiederholung: number; konflikt: number; berichtigung: number;
+  uebersprungen: number; abgelehnt: number; mit_hinweis: number;
+}
+export interface BezugsdatenVorschau {
+  vorschau: { kennung: string; status: 'vorschau'; ausgestellt_am: string; gueltig_bis: string; ergebnis_fingerabdruck: string };
+  vorlage: { vorlage_id: string; fassung: number; name: string } | null;
+  datei: {
+    name: string; bytes: number; sha256: string; befund: BezugsdatenBefund | null; zusatz: string | null;
+    zusatz_satz: string | null; zeile: number | null; kodierung: string | null; bom: boolean | null;
+    trennzeichen: string | null; kopfzeile: boolean | null; kopf: string[] | null; spalten: number | null; datenzeilen: number | null;
+  };
+  frueherer_import: { kennung: string; status: string; am: string } | null;
+  zeilen: Array<{
+    nr: number; felder: string[]; bezugsgroesse: string | null; bezugsgroesse_id: string | null; schluessel: string | null;
+    periode_von: string | null; periode_bis: string | null; zeitpunkt: string | null; betrag: string | null; einheit: string | null;
+    geliefert: { wert: string; einheit: string | null } | null; urteil: string; befunde: BezugsdatenBefund[];
+    fingerabdruck: string | null; bestand: { betrag: string; fassung: number; import_kennung: string | null } | null;
+  }>;
+  import: {
+    status: string | null; zaehler: BezugsdatenZaehler; uebernahme_moeglich: boolean; import_datensatz: boolean;
+    bestaetigung: string | null; aenderungen: number; befunde: BezugsdatenBefund[];
+  };
+}
+
+export interface BezugsdatenVorlage {
+  vorlage_id: string; fassung: number; name: string; zuordnung: BezugsdatenZuordnung;
+  urheber: { name: string; rolle: string; art: string }; erstellt_am: string;
+}
+
+export interface BezugsdatenImportErgebnis {
+  kennung: string; status: string; aenderungen: number; vorschlaege: number;
+  zaehler: BezugsdatenZaehler | null; vorlage: { vorlage_id: string; fassung: number; name: string } | null;
+}
+
 /**
  * UEMS AP-03 IP-4: die Selbstauskunft `GET /api/v1/me` (OpenAPI `Selbstauskunft`) - wer fragt und was er darf.
  * Rollen, Umfänge und Aktionen sind Kennungen der Rechte-Matrix (`docs/contracts/v2/rechte-matrix.json`);
@@ -6285,7 +6333,7 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(angefragterKundenbereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': angefragterKundenbereich }
         : angefragterMandant ? { 'X-Tenant-Id': angefragterMandant } : {}),
@@ -8350,6 +8398,22 @@ export const api = {
   /** Löscht eine Bezugsgröße ohne einen einzigen Wert (sonst 409 `hat_werte`). */
   bezugsgroesseLoeschen: (id: string) =>
     request<void>(`/api/v1/bezugsgroessen/${id}`, { method: 'DELETE' }),
+
+  /** Vorschau und Übernahme schicken die Datei erneut; der Browser setzt die Multipart-Grenze. */
+  bezugsdatenVorschau: (datei: File, zuordnung: BezugsdatenZuordnung | null, vorlageId: string | null = null) => {
+    const body = new FormData(); body.append('datei', datei);
+    if (vorlageId) body.append('vorlage_id', vorlageId); else body.append('zuordnung', JSON.stringify(zuordnung));
+    return request<BezugsdatenVorschau>('/api/v1/bezugsdaten/importe/vorschau', { method: 'POST', body });
+  },
+  bezugsdatenImportieren: (datei: File, zuordnung: BezugsdatenZuordnung | null, vorlageId: string | null, bestaetigung: { vorschau: string; entscheidungen: Record<number, string>; begruendung: string | null; teiluebernahme: string | null }) => {
+    const body = new FormData(); body.append('datei', datei);
+    if (vorlageId) body.append('vorlage_id', vorlageId); else body.append('zuordnung', JSON.stringify(zuordnung));
+    body.append('bestaetigung', JSON.stringify(bestaetigung));
+    return request<BezugsdatenImportErgebnis>('/api/v1/bezugsdaten/importe', { method: 'POST', body });
+  },
+  bezugsdatenVorlagen: () => request<{ vorlagen: BezugsdatenVorlage[] }>('/api/v1/bezugsdaten/vorlagen'),
+  bezugsdatenVorlageSpeichern: (body: { vorlage_id?: string; name: string; zuordnung: BezugsdatenZuordnung }) =>
+    request<BezugsdatenVorlage>('/api/v1/bezugsdaten/vorlagen', { method: 'POST', body: JSON.stringify(body) }),
 
   /** Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen (AP-11 IP-5); Ablehnungen tragen `KennzahlFehlerCode`. */
   kennzahlen: () => request<{ kennzahlen: Kennzahl[]; ausserhalb_zugriff?: { anzahl: number; text: string } }>(`/api/v1/kennzahlen`),

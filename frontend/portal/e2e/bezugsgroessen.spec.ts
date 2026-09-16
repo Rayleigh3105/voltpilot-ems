@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 const BILDER = process.env.BEZUGSGROESSEN_BILDER;
+const IMPORT_BILDER = process.env.BEZUGSDATEN_IMPORT_BILDER;
 async function oeffne(page: Page, breite: number, zusatz = '') {
   await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 1000 });
@@ -17,6 +18,12 @@ async function foto(page: Page, name: string) {
   const ueber = await page.locator('.vp-bz, .vp-bz-form').evaluateAll(elements => elements.flatMap(e => [...e.querySelectorAll<HTMLElement>('*')]).filter(e => e.getClientRects().length && !e.closest('.vp-picker-panel') && e.getBoundingClientRect().right > document.documentElement.clientWidth + 1).map(e => e.className));
   expect(ueber).toEqual([]);
   if (BILDER) { mkdirSync(BILDER, { recursive: true }); await page.screenshot({ path: join(BILDER, `${name}.png`), fullPage: !name.startsWith('anlegen-') && !name.startsWith('archivieren-') }); }
+}
+async function importFoto(page: Page, name: string) {
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+  if (IMPORT_BILDER) { mkdirSync(IMPORT_BILDER, { recursive: true }); await page.screenshot({ path: join(IMPORT_BILDER, `${name}.png`), fullPage: false }); }
 }
 async function waehle(page: Page, label: string, option: string) {
   await page.getByRole('combobox', { name: label, exact: true }).click();
@@ -91,6 +98,38 @@ for (const breite of [375, 1440]) {
     await oeffne(page, breite, '-b');
     await expect(page.getByRole('tab', { name: 'Bezugsgrößen', exact: true })).toHaveAttribute('aria-selected', 'true');
     await foto(page, `b-liste-${breite}`);
+  });
+  test(`${breite}: Import-Assistent führt durch Datei, Zuordnung, Vorschau und Übernahme`, async ({ page }) => {
+    const fehler: string[] = []; page.on('pageerror', e => fehler.push(e.message)); page.on('console', m => { if (m.type() === 'error') fehler.push(m.text()); });
+    await oeffne(page, breite);
+    await page.getByRole('button', { name: 'Werte importieren', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Werte aus Datei übernehmen', exact: true });
+    await expect(dialog.getByText('Schritt 1 von 4')).toBeVisible();
+    await importFoto(page, `import-1-datei-${breite}`);
+    await dialog.getByLabel('CSV-Datei').setInputFiles({
+      name: 'produktion-oktober.csv', mimeType: 'text/csv',
+      buffer: Buffer.from('Periode;Artikelgruppe;Menge;Einheit\n2026-10;Spritzguss gesamt;312.400,0;kg\n2026-10;Spritzguss Export;688.720;lbs\n2026-10;Montage;96;Paletten'),
+    });
+    await dialog.getByRole('button', { name: 'Weiter zur Zuordnung' }).click();
+    await expect(dialog.getByText('Schritt 2 von 4')).toBeVisible();
+    await dialog.getByRole('combobox', { name: 'Gespeicherte Vorlage' }).click();
+    await page.getByRole('option', { name: /ERP-Export Spritzguss/ }).click();
+    await importFoto(page, `import-2-zuordnung-${breite}`);
+    await dialog.getByRole('button', { name: 'Vorschau erstellen' }).click();
+    await expect(dialog.getByText('Schritt 3 von 4')).toBeVisible();
+    await expect(dialog.getByText('UTF-8', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('2 abgelehnt', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('region', { name: 'Vorschau der Datenzeilen' })).toContainText('Unbekannte Einheit — erlaubt sind die Einheiten dieser Größe.');
+    await importFoto(page, `import-3-vorschau-${breite}`);
+    await dialog.getByRole('button', { name: '1 Zeile übernehmen' }).click();
+    await expect(dialog.getByText('Schritt 4 von 4')).toBeVisible();
+    await expect(dialog.getByText('1 von 3 Zeilen', { exact: true })).toBeVisible();
+    await importFoto(page, `import-4-uebernahme-${breite}`);
+    await dialog.getByRole('checkbox').check();
+    await dialog.getByRole('button', { name: '1 Zeile übernehmen' }).click();
+    await expect(dialog.getByRole('heading', { name: 'I-2026-0015 ist übernommen' })).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { bzAufrufe: { vorschau: string[]; importe: string[] } }).bzAufrufe)).toMatchObject({ vorschau: ['produktion-oktober.csv'], importe: ['produktion-oktober.csv'] });
+    expect(fehler).toEqual([]);
   });
 }
 test('Bearbeiter kann nur im eigenen Standort anlegen; Serverfehler erhält die Eingabe', async ({ page }) => {
