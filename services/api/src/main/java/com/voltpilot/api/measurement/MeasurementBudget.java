@@ -37,6 +37,21 @@ public final class MeasurementBudget {
     public record PollGroupLoad(String pollGroup, double requestsPerMinute,
             int serverRequestCostMs, double dutyCyclePercent) {}
 
+    /** Eine oder mehrere Leseanfragen, die je Takt einer Datenquelle anfallen. */
+    public record SourceRequest(int requestsPerCadence, int requestCostMs) {}
+
+    /**
+     * Die physische Last EINER Datenquelle. Anders als {@link Candidate} zählt sie Kanäle und
+     * Blockanfragen getrennt: mehrere Kanäle können mit einer einzigen Anfrage gelesen werden.
+     */
+    public record SourceCandidate(String source, String protocol, int channels, int cadenceS,
+            List<SourceRequest> requests) {}
+
+    /** Die vorrechenbare Last einer Datenquelle oder Summe mehrerer Quellen. */
+    public record SourceEstimate(int channels, double samplesPerMinute,
+            double requestsPerMinute, double dutyCyclePercent, boolean softWarning,
+            boolean hardRejected, List<String> reasons) {}
+
     public record Estimate(int enabledPointCount, double samplesPerMinute,
             double requestsPerMinute, double dutyCyclePercent, boolean softWarning,
             double hardSamplesPerMinute, List<String> limitingDriverFamilies,
@@ -48,6 +63,61 @@ public final class MeasurementBudget {
 
     public static Estimate estimate(List<Candidate> candidates) {
         return estimate(candidates, Map.of());
+    }
+
+    /**
+     * Rechnet Kanäle × Takt, Anfragen je Takt und die serverseitigen Kosten je Protokoll. Diese
+     * Form ist der UEMS-Deckel je Datenquelle/Box; sie verändert keinen Takt und schreibt nichts.
+     */
+    public static SourceEstimate estimateSources(List<SourceCandidate> candidates) {
+        List<SourceCandidate> all = candidates == null ? List.of() : candidates;
+        int channels = 0;
+        double samples = 0;
+        double requests = 0;
+        double duty = 0;
+        for (SourceCandidate source : all) {
+            if (source == null || source.channels() < 0 || source.cadenceS() <= 0
+                    || source.cadenceS() > MAX_CADENCE_S || source.requests() == null) {
+                return rejectedSource("Das Lesebudget enthält eine ungültige Datenquelle.");
+            }
+            channels += source.channels();
+            double cycles = 60.0 / source.cadenceS();
+            samples += source.channels() * cycles;
+            for (SourceRequest request : source.requests()) {
+                if (request == null || request.requestsPerCadence() < 0
+                        || request.requestCostMs() < 0
+                        || request.requestCostMs() > MAX_REQUEST_COST_MS) {
+                    return rejectedSource("Das Lesebudget enthält ungültige Anfragekosten.");
+                }
+                requests += request.requestsPerCadence() * cycles;
+                duty += request.requestsPerCadence() * cycles * request.requestCostMs()
+                        / 60_000.0 * 100.0;
+            }
+        }
+        if (!finiteNonNegative(samples) || !finiteNonNegative(requests)
+                || !finiteNonNegative(duty)) {
+            return rejectedSource("Das Lesebudget konnte wegen eines numerischen Überlaufs nicht sicher berechnet werden.");
+        }
+        List<String> reasons = new ArrayList<>();
+        if (samples > HARD_SAMPLES_PER_MINUTE + 1e-9) {
+            reasons.add("Mehr als 600 gespeicherte Messwerte pro Minute.");
+        }
+        if (requests > HARD_REQUESTS_PER_MINUTE + 1e-9) {
+            reasons.add("Mehr als 30 Leseanfragen pro Minute.");
+        }
+        if (duty > HARD_DUTY_CYCLE_PERCENT + 1e-9) {
+            reasons.add("Die geschätzte Bus-Auslastung überschreitet 20 %.");
+        }
+        return new SourceEstimate(channels, round(samples), round(requests), round(duty),
+                samples >= SOFT_SAMPLES_PER_MINUTE - 1e-9, !reasons.isEmpty(),
+                List.copyOf(reasons));
+    }
+
+    /** Die heutige Java-Kostentabelle; AP-07 IP-4 baut später den Edge-Vertragszwilling. */
+    public static int requestCostMsForProtocol(String protocol) {
+        if ("ocpp".equals(protocol)) return 0;
+        if ("modbus_tcp".equals(protocol) || "sunspec_modbus".equals(protocol)) return 400;
+        return 250;
     }
 
     /** Family values may only tighten the global 600-sample ceiling. */
@@ -203,6 +273,10 @@ public final class MeasurementBudget {
                 BYTES_PER_SAMPLE, 64, 128, 0.0, 0.0, 0.0, true,
                 "Keine sichere Schätzung wegen ungültiger Eingabedaten.",
                 "Ungültige Budgeteingabe wird aus Sicherheitsgründen hart abgelehnt.");
+    }
+
+    private static SourceEstimate rejectedSource(String reason) {
+        return new SourceEstimate(0, 0, 0, 0, false, true, List.of(reason));
     }
 
     private static boolean finiteNonNegative(double value) {

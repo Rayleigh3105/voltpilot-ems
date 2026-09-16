@@ -182,6 +182,9 @@ class DatenquelleApiTest {
     @MockBean
     ProbeService probes;
 
+    @MockBean
+    DatenquelleBudgetService budgets;
+
     @Autowired
     MockMvc mvc;
 
@@ -200,7 +203,7 @@ class DatenquelleApiTest {
 
     @AfterEach
     void aufraeumen() {
-        reset(probes);
+        reset(probes, budgets);
         TenantContext.clear();
     }
 
@@ -319,6 +322,53 @@ class DatenquelleApiTest {
         for (Grund g : Grund.values()) {
             assertThat(DatenquelleAbgelehnt.status(g)).as(g.code()).isEqualTo(STATUS_JE_GRUND.get(g.code()));
         }
+    }
+
+    @Test
+    void a10Budget422TraegtRechnungUndZweiAuswegeUndLaesstDenBestandUnberuehrt() throws Exception {
+        Welt w = new Welt("Ahrenberg A10");
+        JsonNode ref = referenzQuelle("DQ-3");
+        UUID dq3 = w.saeen("DQ-3", ref.get("anlage").asText(), ref.get("protokoll").asText(),
+                adresseAusReferenz(ref), ganzzahlen(ref.get("geraete_ids")), ref.get("netz").asText(),
+                false, ref.get("steuerquelle").asBoolean(), 10, List.of());
+        UUID e1 = w.box("E-1");
+        UUID e2 = w.box("E-2");
+        UUID halle1 = w.anlage("AN-1");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        UHR.stelle("2026-10-01T00:00:00+02:00");
+        antwortet(e1, "ok");
+        assertThat(ruf(jonas, HttpMethod.POST, basis(halle1) + "/" + dq3 + "/reachability-check",
+                Map.of("device_id", e1, "unit_id", 1, "register", 0)).status()).isEqualTo(200);
+
+        var source = new com.voltpilot.api.measurement.MeasurementBudget.SourceCandidate("DQ-3", "modbus_tcp", 8, 10,
+                List.of(new com.voltpilot.api.measurement.MeasurementBudget.SourceRequest(4, 400)));
+        var belegt = new com.voltpilot.api.measurement.MeasurementBudget.SourceCandidate("Bestand", "modbus_tcp", 66, 60,
+                List.of(new com.voltpilot.api.measurement.MeasurementBudget.SourceRequest(22, 400)));
+        var e2Belegt = new com.voltpilot.api.measurement.MeasurementBudget.SourceCandidate("Bestand E2", "modbus_tcp", 3, 60,
+                List.of(new com.voltpilot.api.measurement.MeasurementBudget.SourceRequest(1, 400)));
+        DatenquelleBudget.Ablehnung rechnung = DatenquelleBudget.pruefe("DQ-3", source, e1, List.of(
+                new DatenquelleBudget.BoxStand(e1, "Box Halle 1", List.of(belegt)),
+                new DatenquelleBudget.BoxStand(e2, "Box Halle 2", List.of(e2Belegt))));
+        when(budgets.pruefe(eq(dq3), eq(e1), any(Instant.class))).thenReturn(rechnung);
+        int quellenVorher = anzahl(w, "data_source");
+        int zeitraeumeVorher = anzahl(w, "data_source_assignment");
+
+        Antwort ab = ruf(jonas, HttpMethod.POST, basis(halle1) + "/" + dq3 + "/assignments",
+                Map.of("device_id", e1));
+
+        assertThat(ab.status()).as(ab.body().toString()).isEqualTo(422);
+        assertThat(ab.body().get("code").asText()).isEqualTo("budget_ueberschritten");
+        assertThat(ab.body().at("/rechnung/quelle/last/requests_per_minute").asDouble()).isEqualTo(24);
+        assertThat(ab.body().at("/rechnung/quelle/takt_s").asInt()).isEqualTo(10);
+        assertThat(ab.body().at("/rechnung/quelle/anfragen/0/anfragen_je_takt").asInt()).isEqualTo(4);
+        assertThat(ab.body().at("/rechnung/quelle/anfragen/0/kosten_ms_je_anfrage").asInt()).isEqualTo(400);
+        assertThat(ab.body().at("/rechnung/box_nachher/requests_per_minute").asDouble()).isEqualTo(46);
+        assertThat(ab.body().at("/rechnung/auswege/takt_s").asInt()).isEqualTo(60);
+        assertThat(ab.body().at("/rechnung/auswege/takt").asText()).isEqualTo("Takt 60 s wählen");
+        assertThat(ab.body().at("/rechnung/auswege/andere_box").asText())
+                .isEqualTo("Box Halle 2 wählen (29 Anfragen/min frei)");
+        assertThat(anzahl(w, "data_source")).isEqualTo(quellenVorher);
+        assertThat(anzahl(w, "data_source_assignment")).isEqualTo(zeitraeumeVorher);
     }
 
     // ============================================================ Anlegen (Lindach)

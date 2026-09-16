@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "herkunft": "AP-06 §4.6 k_budget.py; heutige Java-Kostentabelle, AP-07 IP-4 noch nicht gebaut",
+  "limits": { "samples_soft": 120, "samples_hard": 600, "requests": 30, "duty_pct": 20 },
+  "cases": [
+    {
+      "name": "S1 · 100 Energiekarten an einer Box",
+      "input": { "channels": 1300, "cadence_s": 60, "requests_per_cadence": 20, "request_cost_ms": 400 },
+      "expected": { "samples_per_minute": 1300, "requests_per_minute": 20, "duty_cycle_percent": 13.333, "soft_warning": true, "hard_rejected": true }
+    },
+    {
+      "name": "S2 · 100 Energiekarten auf drei Boxen, je Box",
+      "input": { "channels": 442, "cadence_s": 60, "requests_per_cadence": 7, "request_cost_ms": 400 },
+      "expected": { "samples_per_minute": 442, "requests_per_minute": 7, "duty_cycle_percent": 4.667, "soft_warning": true, "hard_rejected": false }
+    },
+    {
+      "name": "S3 · 100 Energiekarten an einer Box mit 180 Sekunden",
+      "input": { "channels": 1300, "cadence_s": 180, "requests_per_cadence": 20, "request_cost_ms": 400 },
+      "expected": { "samples_per_minute": 433.333, "requests_per_minute": 6.667, "duty_cycle_percent": 4.444, "soft_warning": true, "hard_rejected": false }
+    },
+    {
+      "name": "S4 · 100 einzelne Modbus-Zähler an einer Box",
+      "input": { "channels": 200, "cadence_s": 60, "requests_per_cadence": 100, "request_cost_ms": 400 },
+      "expected": { "samples_per_minute": 200, "requests_per_minute": 100, "duty_cycle_percent": 66.667, "soft_warning": true, "hard_rejected": true }
+    },
+    {
+      "name": "S5 · 100 einzelne Zähler auf vier Boxen, je Box",
+      "input": { "channels": 50, "cadence_s": 60, "requests_per_cadence": 25, "request_cost_ms": 400 },
+      "expected": { "samples_per_minute": 50, "requests_per_minute": 25, "duty_cycle_percent": 16.667, "soft_warning": false, "hard_rejected": false }
+    },
+    {
+      "name": "S6 · 100 einzelne Zähler an einer Box mit 240 Sekunden",
+      "input": { "channels": 200, "cadence_s": 240, "requests_per_cadence": 100, "request_cost_ms": 400 },
+      "expected": { "samples_per_minute": 50, "requests_per_minute": 25, "duty_cycle_percent": 16.667, "soft_warning": false, "hard_rejected": false }
+    },
+    {
+      "name": "S7 · 100 freie Register an einer Box",
+      "input": { "channels": 100, "cadence_s": 60, "requests_per_cadence": 100, "request_cost_ms": 2000 },
+      "expected": { "samples_per_minute": 100, "requests_per_minute": 100, "duty_cycle_percent": 333.333, "soft_warning": false, "hard_rejected": true }
+    }
+  ],
+  "a10": {
+    "target_before": { "samples_per_minute": 66, "requests_per_minute": 22, "duty_cycle_percent": 14.667 },
+    "source": { "channels": 8, "cadence_s": 10, "requests_per_cadence": 4, "request_cost_ms": 400 },
+    "expected_cadence_s": 60,
+    "other_box_free_requests_per_minute": 29
+  }
+}

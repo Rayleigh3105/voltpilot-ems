@@ -6538,6 +6538,50 @@ export interface UemsDatenquellenListe {
   datenquellen: UemsDatenquelle[];
 }
 
+export interface DatenquelleBudgetZahlen {
+  channels: number;
+  samples_per_minute: number;
+  requests_per_minute: number;
+  duty_cycle_percent: number;
+}
+
+export interface DatenquelleBudgetBox {
+  id: string;
+  name: string;
+  belegt: DatenquelleBudgetZahlen;
+  frei: DatenquelleBudgetZahlen;
+  quelle_passt: boolean;
+}
+
+/** Der strukturierte 422-Satz von `POST …/assignments` (AP-06 IP-10). */
+export interface DatenquelleBudgetFehler {
+  code: 'budget_ueberschritten';
+  message: string;
+  urteil: 'abgelehnt';
+  rechnung: {
+    code: 'budget_ueberschritten';
+    kennzeichen: string;
+    box: string;
+    quelle: {
+      protokoll: string;
+      channels: number;
+      takt_s: number;
+      anfragen: Array<{ anfragen_je_takt: number; kosten_ms_je_anfrage: number }>;
+      last: DatenquelleBudgetZahlen;
+    };
+    box_nachher: DatenquelleBudgetZahlen;
+    grenzen: Omit<DatenquelleBudgetZahlen, 'channels'>;
+    freie_kapazitaet: DatenquelleBudgetBox[];
+    auswege: {
+      takt_s: number | null;
+      takt: string | null;
+      boxen: DatenquelleBudgetBox[];
+      andere_box: string | null;
+    };
+    gruende: string[];
+  };
+}
+
 /**
  * Eine Einstellungs-Fassung (`GET /api/v1/geraete/{id}/einstellungen`, AP-04
  * IP-11, `EinstellungDto.Fassung`). Die Quelle ist der Einbau (`entity_id`
@@ -7749,6 +7793,15 @@ export const api = {
    */
   datenquellen: (siteId: string) =>
     request<UemsDatenquellenListe>(`/api/v1/sites/${siteId}/data-sources`),
+
+  /** Eine 422-Ablehnung trägt {@link DatenquelleBudgetFehler} in `ApiError.body`. */
+  datenquelleZuweisen: (siteId: string, id: string, body: {
+    device_id: string; effective_from?: string; vergleich_bestaetigt?: boolean;
+  }) => request<{ urteil: 'erlaubt'; text: string; hinweis: string | null;
+    vergleichsquelle: boolean; datenquelle: UemsDatenquelle }>(
+    `/api/v1/sites/${siteId}/data-sources/${id}/assignments`,
+    { method: 'POST', body: JSON.stringify(body) },
+  ),
 
   /** Die Einstellungs-Fassungen eines Einbaus (AP-04 IP-11) — gültig jetzt und die Historie. */
   geraetEinstellungen: (id: string) =>

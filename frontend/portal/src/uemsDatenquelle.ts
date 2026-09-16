@@ -17,6 +17,7 @@
  * die Liste im Übernahme-Assistenten kommt mit einem Portal-Paket.
  */
 import { VORGABE_ZEITZONE, teile } from './uemsZustand';
+import type { DatenquelleBudgetFehler } from './api';
 
 // ───────────────────────────────────────────────────────────────────── Vokabular
 
@@ -194,6 +195,36 @@ export type Fehlerklasse = (typeof FEHLERKLASSEN)[number];
  */
 export function fehlerklasse(code: string, von: Herkunft): Fehlerklasse | null {
   return FEHLERKLASSEN.find((k) => k.code === code && k.von === von) ?? null;
+}
+
+export interface BudgetAblehnungAnzeige {
+  titel: string;
+  quelle: string;
+  anfragen: string;
+  box: string;
+  auswege: string[];
+}
+
+/**
+ * Übersetzt den strukturierten 422-Körper in Kundensätze. IP-11/IP-12 können diese Funktion im
+ * Anlege-/Wechsel-Dialog direkt rendern; bis dahin bleibt die API-Ablehnung trotzdem vollständig.
+ */
+export function budgetAblehnungAnzeige(body: unknown): BudgetAblehnungAnzeige | null {
+  const fehler = body as Partial<DatenquelleBudgetFehler> | null;
+  if (!fehler || fehler.code !== 'budget_ueberschritten' || !fehler.rechnung?.quelle) return null;
+  const r = fehler.rechnung;
+  const q = r.quelle;
+  const n = (wert: number): string => Number.isFinite(wert)
+    ? wert.toLocaleString('de-DE', { maximumFractionDigits: 3 }) : '—';
+  const jeTakt = q.anfragen.reduce((summe, a) => summe + a.anfragen_je_takt, 0);
+  const kosten = q.anfragen.map((a) => `${n(a.anfragen_je_takt)} × ${n(a.kosten_ms_je_anfrage)} ms`).join(' + ');
+  return {
+    titel: fehler.message ?? `Diese Quelle passt nicht mehr in das Lesebudget von ${r.box}.`,
+    quelle: `${n(q.channels)} Kanäle × alle ${n(q.takt_s)} s = ${n(q.last.samples_per_minute)} Messwerte/min`,
+    anfragen: `${n(jeTakt)} Anfragen je Takt (${kosten || 'keine Busanfrage'}) = ${n(q.last.requests_per_minute)} Anfragen/min · ${n(q.last.duty_cycle_percent)} % Buszeit`,
+    box: `${r.box} danach: ${n(r.box_nachher.samples_per_minute)} von ${n(r.grenzen.samples_per_minute)} Messwerten/min · ${n(r.box_nachher.requests_per_minute)} von ${n(r.grenzen.requests_per_minute)} Anfragen/min · ${n(r.box_nachher.duty_cycle_percent)} von ${n(r.grenzen.duty_cycle_percent)} % Buszeit`,
+    auswege: [r.auswege.takt, r.auswege.andere_box].filter((satz): satz is string => Boolean(satz)),
+  };
 }
 
 /** Woher die führende Box einer Anlage kommt, in Vorrang-Reihenfolge (E3). */

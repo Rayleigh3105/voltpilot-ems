@@ -52,7 +52,9 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
          * Bestands-Übernahme (IP-4): den bestätigten Vorschlag gibt es so nicht mehr (andere Box,
          * anderer Weg, andere Komponenten) — bestätigt wird nur, was gezeigt wurde.
          */
-        VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409);
+        VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409),
+        /** Das physische Lesebudget der Ziel-Box wäre nach dieser Quelle überschritten. */
+        BUDGET_UEBERSCHRITTEN("budget_ueberschritten", 422);
 
         private final String code;
         private final int status;
@@ -122,6 +124,17 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
 
     public static DatenquelleAbgelehnt anfrage(String feld, String satz) {
         return schnittstelle(Schnittstelle.ANFRAGE_UNGUELTIG, satz, Map.of("feld", feld));
+    }
+
+    /** E6: die ganze Rechnung und beide Auswege reisen im 422-Körper; geschrieben ist noch nichts. */
+    public static DatenquelleAbgelehnt budget(DatenquelleBudget.Ablehnung b) {
+        Map<String, Object> fakten = new LinkedHashMap<>();
+        fakten.put("urteil", "abgelehnt");
+        fakten.put("rechnung", b);
+        return new DatenquelleAbgelehnt(Schnittstelle.BUDGET_UEBERSCHRITTEN.code(),
+                Schnittstelle.BUDGET_UEBERSCHRITTEN.status(),
+                "Diese Quelle passt nicht mehr in das Lesebudget von " + b.box()
+                        + " — Takt strecken oder andere Box wählen.", fakten);
     }
 
     public String code() {
