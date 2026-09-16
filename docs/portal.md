@@ -22,6 +22,18 @@ Leere Bereiche werden nicht angeboten. Eine reine Ladeanlage kann Ladevorgänge 
 
 Quellen: [Navigation](../frontend/portal/src/ebenenNav.ts), [Router](../frontend/portal/src/nav.ts), [Anlagenprojektion](../frontend/portal/src/surface.ts).
 
+### UEMS-Flächen im Portal
+
+| Welt / Einstieg | Fachlicher Wegweiser |
+|---|---|
+| Standorte und Ortsstruktur | [Standort-Dialog](agents/root/uems-standort-dialog.md), [Ortsbaum](agents/root/uems-ortsbaum-portal.md) |
+| Messstellen, Werte und Versionen | [Messstellenregister](agents/root/uems-messstellen-register-portal.md), [Tageskarte](agents/root/uems-tageskarte.md) |
+| Bezugsgrößen, Eingabe, Ablesungen und CSV | [Bezugsgrößen-Abschluss](agents/root/uems-bezugsgroessen-abschluss.md) |
+| Kennzahlen | [Kennzahlen-Abschluss](agents/root/uems-kennzahlen-abschluss.md) |
+| Berichte | [Berichte-Abschluss](agents/root/uems-berichte-abschluss.md) |
+
+Die vollständige, paketweise Übersicht steht im [UEMS-Wegweiser](agents/root/uems-uebersicht.md).
+
 ## Fachliche Grenzen
 
 | Anzeige | Bedeutung |

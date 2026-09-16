@@ -57,6 +57,16 @@ DSN-Verbindungen verwenden `POSTGRES_CONNECT_TIMEOUT` (Vorgabe 10 s). Der Optimi
 
 `flowc` und Frontend haben eigene Health-Pfade gemäß Tabelle. Config-/Quellcode sind die Referenz für optionale Port-Overrides.
 
+## Upload-Grenzen am Portalweg
+
+Jede Schicht des öffentlichen Wegs muss die fachlich zulässige Anfrage durchlassen. Für den
+Bezugsdaten-CSV-Import gilt: `CsvLeser` und Spring erlauben 5 MiB Datei (5 242 880 Bytes), Spring
+erlaubt 6 MB Multipart-Anfrage. Der GitOps-Ingress setzt `proxy-body-size: 8m`. Der Frontend-nginx
+proxyt `/api/`, setzt im aktuellen Stand jedoch kein `client_max_body_size`; damit gilt dort die
+nginx-Vorgabe von 1 MiB. Das ist ein Freigabebefund: vor `uems` → `main` auf mindestens die
+6-MB-Anfrage anheben und einen Upload über den echten Ingress- und Proxyweg prüfen. Readiness allein
+belegt diese Grenze nicht. Quelle und Abschlussnachweis: [AP-09](agents/root/uems-bezugsgroessen-abschluss.md).
+
 ## Metriken
 
 API: `GET /metrics`, intern ohne Token. Frontend-nginx veröffentlicht diesen internen Endpunkt nicht als API-Route. Keine Kundennamen/Adressen als Labels hinzufügen.
