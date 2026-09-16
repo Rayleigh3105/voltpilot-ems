@@ -105,7 +105,8 @@ describe('MessenAssistent — Schritt 3 · Messstellen (WAGO C-1)', () => {
   it('übernimmt über die AP-04-Routen: die Zeilen wie gezeigt mit neuem Namen, danach das Gebäude als Korrektur', async () => {
     zeige(3);
     await schritt3();
-    const erste = (await within(assistent()).findAllByRole('listitem')).find((k) => k.getAttribute('data-vorschlag') === 'MS-0001')!;
+    await within(assistent()).findByText('4 von 4 Vorschlägen gewählt');
+    const erste = within(vorschlaege()).getAllByRole('listitem').find((k) => k.getAttribute('data-vorschlag') === 'MS-0001')!;
     fireEvent.change(within(erste).getByLabelText('Name'), { target: { value: 'Netzbezug Halle 2' } });
     fireEvent.click(within(erste).getByRole('combobox', { name: 'Ort' }));
     fireEvent.click(await screen.findByRole('option', { name: /^Halle 2\s*Gebäude/ }));
