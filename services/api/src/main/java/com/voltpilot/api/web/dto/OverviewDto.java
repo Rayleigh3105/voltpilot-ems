@@ -38,7 +38,9 @@ public record OverviewDto(
      * {@code waiting} (a device never sent) beats {@code online}; {@code null}
      * for a site without devices.
      *
-     * <p>{@code live} is the site's newest telemetry OBSERVATION (one row); the
+     * <p>{@code live} is the site's newest telemetry OBSERVATION (one row), with
+     * PV/load/grid replaced by their canonical display role only where explicitly assigned
+     * (an assigned but silent role remains null). Storage and timestamp retain raw telemetry. The
      * portal decides freshness from its {@code ts}. {@code plannedSavingsTodayEur}
      * is the ex-ante optimizer number for today's Europe/Berlin day (latest run
      * per 15-min slot, the HistoryRepository.savings semantics); {@code null}

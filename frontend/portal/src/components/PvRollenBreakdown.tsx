@@ -2,38 +2,30 @@ import { useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { RollenKanonischerWert } from '../api';
 import { fmtNum } from '../format';
-import { pvRolleView, teilSummeText } from '../pvRolle';
+import { SUMMENWERT } from '../glossar';
+import { rollenView, rollenStand, ROLLEN_WOERTER, teilSummeText } from '../pvRolle';
 import './PvComposition.css';
 
-/**
- * Die kanonische PV-ROLLE unter dem Cockpit-Fluss (vp-agg §2.4/B, Mockup „2 · Das Cockpit"):
- * existiert eine Standort-PV-Zuordnung, trägt die Cockpit-Zahl ein dezentes „berechnet" - und ein
- * Tipp öffnet „So setzt sich Ihre PV-Produktion zusammen": eine Zeile je zugeordnetem Gerät (ein
- * stummes Gerät ist BENANNT mit „liefert gerade nicht"), darunter die ehrliche Teil-Summe „aus N
- * von M Geräten".
- *
- * Ohne Zuordnung rendert die Fläche NICHTS - der Rückfall `telemetry.pv_power_kw` bleibt
- * unmarkiert, nichts ändert sich für Anlagen ohne Zuordnung. Render-only; die Ableitung liegt rein
- * in `pvRolle.ts`.
- */
-export function PvRollenBreakdown({ wert }: { wert: RollenKanonischerWert | null }) {
-  const view = pvRolleView(wert);
+/** Aufschlüsselung einer ausdrücklich zugeordneten Live-Rolle. Ohne Zuordnung keine Fläche. */
+export function RollenBreakdown({ wert }: { wert: RollenKanonischerWert | null }) {
+  const view = rollenView(wert);
+  const wort = ROLLEN_WOERTER[wert?.role as keyof typeof ROLLEN_WOERTER];
   const [offen, setOffen] = useState(false);
-  if (!view) return null;
+  if (!view || !wort) return null;
 
   const summe = view.summe == null ? '–' : fmtNum(view.summe, view.einheit, stellen(view.summe));
   const teil = teilSummeText(view);
 
   return (
-    <div className="vp-pvrolle">
+    <div className={`vp-pvrolle vp-rolle-${wert?.role}`}>
       <button
         type="button"
         className="vp-pvrolle-kopf"
         aria-expanded={offen}
         onClick={() => setOffen((o) => !o)}
       >
-        <Icon name="sun" size={14} />
-        <span className="vp-pvrolle-label">Gesamt-PV</span>
+        <Icon name={wort.icon} size={14} />
+        <span className="vp-pvrolle-label">{wort.label}</span>
         <span className="vp-pvrolle-calc">berechnet</span>
         <span className="vp-pvrolle-wert">{summe}</span>
         <span className="vp-pvrolle-chevron" aria-hidden="true">
@@ -41,9 +33,10 @@ export function PvRollenBreakdown({ wert }: { wert: RollenKanonischerWert | null
         </span>
       </button>
 
+      <p className="vp-rolle-stand">{rollenStand(view.stand)}</p>
       {offen && (
         <div className="vp-pvrolle-auf">
-          <p className="vp-pvrolle-sub">So setzt sich Ihre PV-Produktion zusammen</p>
+          <p className="vp-pvrolle-sub">{wort.erklaerung}</p>
           <ul className="vp-pvrolle-zeilen">
             {view.zeilen.map((z) => (
               <li key={z.entityId} className={`vp-pvrolle-zeile${z.liefernd ? '' : ' stumm'}`}>
@@ -58,9 +51,12 @@ export function PvRollenBreakdown({ wert }: { wert: RollenKanonischerWert | null
               </li>
             ))}
           </ul>
+          {view.summenwertHinweis && <p className="vp-pvrolle-sub">
+            Ein {SUMMENWERT} kann mehreren Geräten zugeordnet sein. Er zählt in der Anlagenzahl einmal.
+          </p>}
           <div className="vp-pvrolle-summe">
             <span className="vp-pvrolle-summe-k">
-              Gesamt-PV{teil ? <span className="vp-pvrolle-teil"> · {teil}</span> : null}
+              {wort.label}{teil ? <span className="vp-pvrolle-teil"> · {teil}</span> : null}
             </span>
             <span className="vp-pvrolle-summe-v">{summe}</span>
           </div>
@@ -76,3 +72,6 @@ function stellen(wert: number | null): number {
   const a = Math.abs(wert);
   return a >= 100 ? 0 : a >= 10 ? 1 : 2;
 }
+
+/** Kompatibler Name für bestehende PV-Aufrufer. */
+export const PvRollenBreakdown = RollenBreakdown;

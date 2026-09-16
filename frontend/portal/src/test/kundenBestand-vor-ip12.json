@@ -1244,6 +1244,12 @@
       "nachher": "0289724397148b719bc555a44596e9d7c5a362e989985663745bdb4e2068b83f",
       "commit": "97762c3ddd13da59a96941a37ed70b67ba6e49b1",
       "grund": "AP-10 IP-13 ergänzt nur für die neue Netzanschlüsse-Kachel die CSS-Klasse vp-bottombar-netzanschluesse. Bestehende Kacheln rendern unverändert; Anlegen und Binden/Wechseln prüfen netzanschluss.verwalten am Standort über rollen.ts."
+    },
+    {
+      "datei": "components/PvRollenBreakdown.tsx",
+      "vorher": "0f4c7c6ff44db6afd1f6904f202de92349dfca880e1c826f6342fd87903f10ba",
+      "nachher": "eb1bc42f3a1b395443ed7e9efb22dc0fc6f5fe175532b6d075f6e58fea6d566f",
+      "grund": "H-3: dieselbe Aufschlüsselung für PV, Verbrauch und Netz; Rollenwort und Symbol aus der kanonischen Rolle."
     }
   ]
 }

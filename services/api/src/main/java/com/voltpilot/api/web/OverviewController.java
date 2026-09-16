@@ -127,11 +127,11 @@ public class OverviewController {
         // UEMS AP-02 IP-3: der Standort je Anlage heute - additiv, null solange
         // eine Anlage keinem Standort zugeordnet ist (heute: jede).
         Map<UUID, StandortBezug> standortJeAnlage = standortLesemodell.bezugJeAnlage();
-        // vp-agg §2.4: die KANONISCHE PV-Rolle je Anlage - eine flottenweite
-        // Zuordnungs-Abfrage. Anlagen mit einer Standort-PV-Zuordnung bekommen ihren
-        // (ehrlich benannten) Summenwert statt telemetry.pv_power_kw beigemischt;
-        // Anlagen ohne Zuordnung sind ABWESEND und bleiben bei der Roh-Telemetrie.
-        Map<UUID, RollenDto.KanonischerWert> pvKanonisch = rollen.pvJeAnlage();
+        // Nur die Live-Anzeige liest die kanonischen Rollen, je Rolle eine Flotten-Abfrage.
+        // Ohne Zuordnung bleibt die Roh-Telemetrie unverändert.
+        Map<UUID, RollenDto.KanonischerWert> pvKanonisch = rollen.rollenJeAnlage("pv");
+        Map<UUID, RollenDto.KanonischerWert> verbrauchKanonisch = rollen.rollenJeAnlage("consumer");
+        Map<UUID, RollenDto.KanonischerWert> netzKanonisch = rollen.rollenJeAnlage("grid");
 
         Instant freshnessCutoff = Instant.now().minus(ONLINE_WINDOW);
         int totalDevices = 0;
@@ -149,7 +149,8 @@ public class OverviewController {
             totalOnline += onlineCount;
 
             OverviewRepository.LiveRow liveRow = livePerSite.get(site.id());
-            OverviewLiveDto live = liveDto(liveRow, pvKanonisch.get(site.id()));
+            OverviewLiveDto live = liveDto(liveRow, pvKanonisch.get(site.id()),
+                    verbrauchKanonisch.get(site.id()), netzKanonisch.get(site.id()));
             if (liveRow != null && !liveRow.ts().isBefore(freshnessCutoff)) {
                 liveSitesCovered++;
             }
@@ -210,26 +211,18 @@ public class OverviewController {
                 teilansichtDto);
     }
 
-    /**
-     * Der Live-Schnappschuss einer Anlage — mit der KANONISCHEN PV-Rolle beigemischt (vp-agg §2.4):
-     * existiert eine Standort-PV-Zuordnung ({@code zuordnungVorhanden}), ersetzt ihr ehrlich benannter
-     * Summenwert den rohen {@code telemetry.pv_power_kw}; sonst RUECKFALL auf die Roh-Telemetrie — fuer
-     * Anlagen ohne Zuordnung aendert sich nichts. Die kanonische Summe darf {@code null} sein
-     * (zugeordnet, aber gerade kein Geraet liefernd) — dann bleibt PV UNBEKANNT (—), nie eine erfundene
-     * 0. Haus/Netz/Ladestand und der Zeitstempel bleiben die Roh-Telemetrie; ohne Roh-Zeile bleibt der
-     * Schnappschuss {@code null} wie bisher.
-     */
+    /** Rollen lenken ausschließlich die Live-Anzeige um; null bleibt unbekannt, nie Rohwert/0. */
     private static OverviewLiveDto liveDto(OverviewRepository.LiveRow liveRow,
-            RollenDto.KanonischerWert pvRolle) {
-        if (liveRow == null) {
-            return null;
-        }
-        BigDecimal pvKw = liveRow.pvKw();
-        if (pvRolle != null && pvRolle.zuordnungVorhanden()) {
-            pvKw = pvRolle.wert() == null ? null : BigDecimal.valueOf(pvRolle.wert());
-        }
-        return new OverviewLiveDto(liveRow.ts(), pvKw, liveRow.loadKw(), liveRow.gridKw(),
-                liveRow.socPct());
+            RollenDto.KanonischerWert pv, RollenDto.KanonischerWert verbrauch,
+            RollenDto.KanonischerWert netz) {
+        if (liveRow == null) return null;
+        return new OverviewLiveDto(liveRow.ts(), rollenWert(pv, liveRow.pvKw()),
+                rollenWert(verbrauch, liveRow.loadKw()), rollenWert(netz, liveRow.gridKw()), liveRow.socPct());
+    }
+
+    private static BigDecimal rollenWert(RollenDto.KanonischerWert rolle, BigDecimal rohwert) {
+        if (rolle == null || !rolle.zuordnungVorhanden()) return rohwert;
+        return rolle.wert() == null ? null : BigDecimal.valueOf(rolle.wert());
     }
 
     /**

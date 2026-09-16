@@ -1,11 +1,11 @@
-# Rollen-Zuordnung (H-1/H-2)
+# Rollen-Zuordnung (H-1/H-2/H-3)
 
 Autorität: [Vertrag](../../contracts/v2/rollen-zuordnung.md),
 [Vektoren](../../contracts/v2/rollen-zuordnung-vectors.json),
 [Schema](../../contracts/v2/rollen-zuordnung.schema.json).
 Zwillinge `services/api/.../uems/RollenZuordnungRegeln.java` und
 `frontend/portal/src/uemsRollen.ts`. Die API-Laufzeit ruft den Java-Zwilling über `topology/RollenZuordnungService`
-und `RollenQuellen` auf. H-3 schließt Verbrauch/Netz im Cockpit an, H-5/H-7
+und `RollenQuellen` auf. H-3 liest die drei Rollen im Cockpit; H-5/H-7 ergänzen
 Assistent und Karten.
 
 - Kanalidentität vor der Regel aus Capability/Formel-Term auf dieselbe
@@ -57,8 +57,7 @@ Keine Testcontainers für diese reine Schicht.
   nötig (TEXT ohne CHECK), keine neue Tabelle/Spalte. Protokoll-Lesemodell
   behandelt Rollen wie Zugriffsereignisse als Punkte, nicht rückwirkende Fassungen.
 - GET bleibt ohne `@Recht` (RLS/Geltungsbereich, „keine eigene Kennung“);
-  PUT/DELETE tragen `geraet.einrichten`. Der `OverviewController` und sein
-  `pvJeAnlage`-Aufruf bleiben bytegleich; Verbrauch-/Netz-Umlenkung gehört H-3.
+  PUT/DELETE tragen `geraet.einrichten`. Die Cockpit-Umlenkung steht unten (H-3).
 
 Prüfen: `SiteRollenApiTest`, `RollenZuordnungRegelnVectorsTest`,
 `TopologyRolePushTest`, `RechtRoutenArchitekturTest`, `RechteKennungenDerRoutenTest`,
@@ -66,3 +65,30 @@ Prüfen: `SiteRollenApiTest`, `RollenZuordnungRegelnVectorsTest`,
 Migration außerdem die sechs UEMS-Nachbarklassen, `EntityRoleAssignmentQuellMigrationTest`,
 `MigrationHygieneTest`, `DevSeedGuardTest`. Zweite Falle: nach Änderungen an
 Repository-Abfragen alle `*MigrationTest`-Leser mit `rg -l` suchen.
+
+
+## Cockpit und Flotte (H-3)
+
+- `OverviewController.liveDto` liest `rollenJeAnlage` je `pv`/`consumer`/`grid`:
+  genau eine flottenweite Zuordnungs-Abfrage je Rolle. Ohne Zuordnung bleibt
+  die Rohzahl, mit stummer/veralteter Zuordnung bleibt `null` (kein Rohwert/0).
+  Ohne Roh-Schnappschuss bleibt `live = null`; Ladestand/Zeitstempel unverändert.
+  `fleet.ts` übernimmt weiter den Snapshot ohne zweite Rollenrechnung.
+- `AnlagenPage` lädt die drei Rollen gemeinsam mit dem Live-Takt. Antworten
+  sind an die Anlagen-ID gebunden; fehlgeschlagene Rollenleser verbergen nur
+  ihre Aufschlüsselung. `RollenBreakdown` nutzt das bisherige PV-Markup und
+  zeigt je Rolle Stand, Geräte und benannte Ausfälle. Mehrfach zugeordnete
+  Summenwerte werden im Portal nie erneut addiert; Hinweis an der Aufschlüsselung.
+- Zweiter Anzeigeweg: `CockpitHero` zeichnet bei v2 aus der Topologie, nicht
+  aus `/overview`. `cockpitRollenTopologie` kopiert deshalb ausschließlich für
+  diesen Aufrufer die Server-Rollenwerte in die Flussknoten (Netzvorzeichen
+  bestimmt die Richtung). Ohne Zuordnung bleibt dieselbe Topologie-Referenz.
+  `AdaptiveEnergyFlow.kanonischePv` unterdrückt dabei die alte PV-Quellenrechnung
+  und ihr zweites Detailpanel. Keine Änderung an Optimierer-Nowcast, Box,
+  Steuerpfad oder dem gemeinsamen Topologie-Zwilling.
+- Prüfen: `SiteRollenApiTest` (je Rolle Umlenkung, null, Alter, Entzug und
+  vollständige `/overview`-Antwort zeichengleich), `pvRolle.test.ts`,
+  `RollenBreakdown.test.tsx`, `CockpitHero`/`AdaptiveEnergyFlow`/`AnlagenPage`,
+  `fleet.test.ts`, `copy.test.ts`, `migration.test.ts`, `uemsKeineRechnung.test.ts`.
+  Browser: `e2e/cockpit-rollen.spec.ts` (375/1440, `ROLLEN_BILDER=<Ordner>`)
+  plus `e2e/gesamtwert.spec.ts`; Bühne mit Werten des Referenzunternehmens.

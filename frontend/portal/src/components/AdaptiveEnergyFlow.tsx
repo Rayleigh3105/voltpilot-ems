@@ -49,8 +49,11 @@ export function AdaptiveEnergyFlow({
   charging = null,
   chargingOwn = null,
   rename = null,
+  kanonischePv = false,
 }: {
   topology: SiteTopology;
+  /** Cockpit: die Rollen-Aufschlüsselung erklärt bereits den kanonischen PV-Wert. */
+  kanonischePv?: boolean;
   stale?: boolean;
   /**
    * Portal v3 · M2: `'compact'` (default) keeps today's `maxWidth: L.W` cap
@@ -125,7 +128,7 @@ export function AdaptiveEnergyFlow({
   const narrow = width > 0 && width < NARROW_MAX_PX;
   // The ONE derivation of what the PV role is made of - it feeds both the number
   // in the circle and the rows behind the click, so they cannot disagree.
-  const composition = pvComposition(topology, sources, pins);
+  const composition = kanonischePv ? null : pvComposition(topology, sources, pins);
   const L = layoutFlow(topology.topology, topology.entities, {
     narrow,
     pvTotalKw: composition?.totalKw,
