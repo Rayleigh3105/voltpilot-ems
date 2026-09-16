@@ -25,7 +25,8 @@ class MeasurementSelectionRoutingTest {
         when(service.requireDevice(actual)).thenReturn(scope);
         when(service.forPublishing(actual)).thenReturn(full);
         var controller = new DeviceMeasurementSelectionController(service, mock(MeasurementCatalog.class),
-                provider, mock(MeasurementHistoryService.class), mock(com.voltpilot.api.uems.BestandGeraeteCsv.class));
+                provider, mock(MeasurementHistoryService.class), mock(com.voltpilot.api.uems.BestandGeraeteCsv.class),
+                mock(MeasurementPointReadService.class));
         var request = new DeviceMeasurementSelectionController.SelectionChangeRequest(0L, UUID.randomUUID(), true, 60);
         var failed = controller.change(old, "point", entity, request, null);
         assertThat(failed.deviceId()).isEqualTo(actual);
