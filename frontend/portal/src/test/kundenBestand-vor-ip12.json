@@ -1270,10 +1270,16 @@
       "vorher": "e39bdcffda2c2340f6bec399d99af1f14dcb6f1424162950726b113617c2241a",
       "nachher": "d2c8692c925fe968fcc97779def27d07f78d79978749e8474e94779e572362d6",
       "grund": "H-5/E10: Einstieg heißt Summenwert und öffnet den gemeinsamen Assistenten."
+    },
+    {
+      "datei": "components/GesamtwertKarten.tsx",
+      "vorher": "7a72b8053e042bca7a6dacc76898539571f65e1f99c8ddef2876f4ed0f3cef85",
+      "nachher": "f5d49ac016558e3b8655ecde804ae798183986b61c56e00bfd586ed4f2f5dad6",
+      "grund": "H-9/E10: alter Wortexport durch SUMMENWERT ersetzt; sichtbarer Knopf und Aktion unverändert."
     }
   ],
   "assistentZusammenfuehrung": {
-    "entscheid": "H-5, E1/E7/E10: zwei Assistenten werden ein fünfstufiger Summenwert-Assistent; Bestandsfingerabdrücke bleiben unverändert.",
+    "entscheid": "H-5, E1/E7/E10: zwei Assistenten werden ein fünfstufiger Summenwert-Assistent; Bestandsfingerabdrücke bleiben unverändert. H-9: Speichern verlangt zusätzlich das Messauswahlrecht für unbeobachtete Eingänge.",
     "dateien": {
       "components/GesamtwertDialog.tsx": [],
       "components/SummenwertAssistent.tsx": [
@@ -1282,7 +1288,7 @@
         "c34bee95f805e5a42a8358d61213f729900e5dcdc4f877a85983dfd8fd01b4e3",
         "1381fa8aa6fa54e75627b4f0df6d31c351f77962509c7f77b8bbfe20baba7f6d",
         "69bc59084a8e36e5ecd10719e88033c44d7d265052276732a7f89ae02e483e7b",
-        "10aaaf6b2799a85431c1bf85742c5819a203a64491ea9b1af779464af61da5cb",
+        "458ecbf848e426442e7348d692f8d9b939bebfa659e1d32d3002eafea09fe66a",
         "bfc88aea8cf9d7d3665760aa5b07c5c28bcf73f80e7d76198546bced5c8de42c",
         "262834d4e9487dcfa595ad899c69cfacab05adf7554b361ac811c378e2ffb16e",
         "4cbbf914241c0f08513ca47030e49f0adb9ae6e6922c33b0183c864b9a9c16fb",

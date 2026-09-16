@@ -17,7 +17,7 @@ const FOLGEN = {
   consumer:
     "Ersetzt in der Anlagen-Übersicht die Verbrauchszahl der beteiligten Geräte. Ein Teilverbrauch enthält nicht den gesamten Verbrauch der Anlage.",
   grid: "Wird der Netzwert dieser Anlage. Es gibt genau einen maßgeblichen Netzwert.",
-  keine: `Die Anlagen-Übersicht verwendet für dieses Gerät wieder den ursprünglichen Wert. Der ${SUMMENWERT} bleibt bestehen.`,
+  keine: `Die Anlagen-Übersicht verwendet für die beteiligten Geräte wieder den ursprünglichen Wert. Der ${SUMMENWERT} bleibt bestehen.`,
 };
 
 export function RolleAendernDialog({

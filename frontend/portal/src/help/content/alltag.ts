@@ -2,6 +2,24 @@ import type { HelpArticle } from '../model';
 
 export const everydayArticles: HelpArticle[] = [
   {
+    id: 'summenwerte', category: 'alltag', title: 'Summenwerte bilden und verwenden',
+    summary: 'Register zusammenzählen, den Stand prüfen und eine Rolle in der Anlagen-Übersicht wählen.',
+    keywords: ['Summenwert', 'Register', 'Summe', 'Rolle', 'PV-Produktion', 'Verbrauch', 'Netz'],
+    sections: [
+      { id: 'anlegen', title: 'Von den Registern zum Summenwert', paragraphs: [
+        'Öffnen Sie „Summenwert anlegen“ am Gerät, unter Verlauf → Messwerte oder beim Zusammenstellen einer Kennzahl. Wählen Sie passende Register derselben Anlage, prüfen Sie Plus, Minus und Faktoren und geben Sie dem Wert einen Namen.',
+        'Jeder Live-Wert trägt seinen Stand. Noch nicht beobachtete Register werden einmal gelesen und erst beim Speichern beobachtet; die zusätzliche Datenmenge steht dabei. Fehlt ein aktueller Eingang, bleibt die Summe unvollständig.',
+      ] },
+      { id: 'rolle', title: 'Eine Rolle wirkt ab jetzt', paragraphs: [
+        'Ohne Rolle bleibt die Anlagen-Übersicht unverändert. PV-Produktion, Verbrauch oder Netz verwenden den Summenwert als Anlagenzahl. Prüfen Sie beim Verbrauch, ob alle Verbraucher enthalten sind. Für das Netz kann genau ein Wert maßgeblich sein; ein vorhandener Wert wird nur nach Bestätigung ersetzt.',
+        'Die Gerätekarte nennt Wert, Stand und Rolle. Über „Rolle ändern“ können Sie die Rolle entziehen. Der Summenwert bleibt erhalten, die Anlagen-Übersicht verwendet wieder den ursprünglichen Wert. Die Aufschlüsselung zählt dieselbe Summe auch bei mehreren beteiligten Geräten einmal.',
+      ] },
+      { id: 'rechte', title: 'Welche Änderungen sind möglich?', paragraphs: [
+        'Leser sehen die Werte. Zum Anlegen und Ändern der Formel brauchen Sie das Formelrecht, für eine Rolle das Einrichtungsrecht und für weitere beobachtete Register die Berechtigung zur Messauswahl. Fehlt ein Knopf, lassen Sie Ihren Zugang prüfen.',
+      ] },
+    ], related: ['messwerte', 'cockpit'],
+  },
+  {
     id: 'cockpit', category: 'alltag', title: 'Das Cockpit lesen',
     summary: 'Zustand, Energieflüsse und aktuelle Messwerte Ihrer Anlage auf einen Blick.',
     keywords: ['Dashboard', 'Übersicht', 'Live', 'Energiefluss', 'Status', 'Warnung', 'Anpassen'],
@@ -10,7 +28,7 @@ export const everydayArticles: HelpArticle[] = [
         "Prüfen Sie zuerst Zustand und Datenstand. Die Bausteine folgen Ihrer Ausstattung; unter Anpassen können Sie die angebotenen Bausteine ordnen oder ausblenden. Alte Messwerte beschreiben einen früheren Zustand.",
       ], figure: 'cockpit' },
       { id: 'lesen', title: 'Von den Flüssen zu den Einzelwerten', paragraphs: [
-        "Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, den Gesamtwert einzuordnen.",
+        "Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, die Anlagenzahl einzuordnen.",
       ] },
       { id: 'weiter', title: 'Was tun bei einem Hinweis?', paragraphs: [
         "Öffnen Sie einen Hinweis für seine Ursache. Geplante Aktionen stehen im Fahrplan, vergangene Messungen unter Verlauf → Messwerte und Geräteverbindungen unter Anlage. Prüfen Sie bei fehlenden Zahlen zuerst Quelle und Datenstand.",
@@ -48,7 +66,7 @@ export const everydayArticles: HelpArticle[] = [
       { id: 'luecken', title: 'Lücken und Datenstand beachten', paragraphs: [
         "Eine Lücke ist keine gemessene Null; Daten können fehlen oder später eintreffen. Prüfen Sie Verbindung und Abdeckung. Fehlt eine auswählbare Größe, prüfen Sie Komponente und Zuordnung unter Anlage.",
       ] },
-    ], related: ['glossar', 'anlagenmodell', 'probleme'],
+    ], related: ['summenwerte', 'glossar', 'anlagenmodell', 'probleme'],
   },
   {
     id: 'erloese', category: 'alltag', title: 'Erlöse und Einsparungen einordnen',
@@ -109,8 +127,8 @@ export const everydayArticles: HelpArticle[] = [
       { id: 'ueberblick', title: 'Die gemeinsame Übersicht', paragraphs: [
         "Portfolio beziehungsweise Meine Anlagen zeigt Ihre zugänglichen Standorte. Öffnen Sie eine Anlage für Details; der Name im Kopf zeigt den aktuellen Standort. Über den Anlagenwechsler gelangen Sie zu einem anderen.",
       ], figure: 'portfolio' },
-      { id: 'auswertung', title: 'Gesamtwerte und einzelne Anlagen', paragraphs: [
-        "Gesamtwerte und einzelne Anlagen haben unterschiedliche Geltungsbereiche. Prüfen Sie Auswahl und Zeitraum. Andere Geräte oder Betriebsmodelle erklären, warum Ansichten zwischen Anlagen abweichen.",
+      { id: 'auswertung', title: 'Anlagenübergreifende Zahlen und einzelne Anlagen', paragraphs: [
+        "Anlagenübergreifende Zahlen und einzelne Anlagen haben unterschiedliche Geltungsbereiche. Prüfen Sie Auswahl und Zeitraum. Andere Geräte oder Betriebsmodelle erklären, warum Ansichten zwischen Anlagen abweichen.",
       ] },
       { id: 'kontrolle', title: 'Vor Änderungen den Namen prüfen', paragraphs: [
         "Vor Änderungen Anlagenname und Geltungsbereich im Dialog prüfen. Ein Endkundenkonto mit nur einer Anlage kann direkt im Cockpit starten.",

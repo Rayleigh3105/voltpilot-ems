@@ -512,9 +512,9 @@ export function KennzahlAnlegenDialog({
               {anlage ? (
                 <>
                   {A.hebelOrt(anlage) && <p>{A.hebelOrt(anlage)}</p>}
-                  <Button variant="outline" size="sm" onClick={() => setGesamtwertAn(anlage)}>
+                  <Recht aktion="messstelle.formel"><Button variant="outline" size="sm" onClick={() => setGesamtwertAn(anlage)}>
                     {A.HEBEL_KNOPF}
-                  </Button>
+                  </Button></Recht>
                 </>
               ) : (
                 <p>{A.HEBEL_OHNE_ANLAGE}</p>

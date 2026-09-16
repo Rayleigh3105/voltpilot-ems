@@ -102,7 +102,7 @@ export function SummenwertFormelDialog({
     };
   }, [siteId, messstelle.id]);
   async function speichern() {
-    if (!terme?.length || busy || !rechte.darf("messstelle.formel")) return;
+    if (!terme?.length || busy || !rechte.darf("messstelle.formel") || (ab < heute && !rechte.darf("aenderung.rueckwirkend"))) return;
     setBusy(true);
     setFehler(null);
     try {
@@ -135,18 +135,18 @@ export function SummenwertFormelDialog({
           <Button variant="ghost" disabled={busy} onClick={onClose}>
             Abbrechen
           </Button>
-          <Button
+          {rechte.darf("messstelle.formel") && <Button
             disabled={
               busy ||
               !terme?.length ||
               !ab ||
-              (ab < heute && !begruendung.trim()) ||
+              (ab < heute && (!begruendung.trim() || !rechte.darf("aenderung.rueckwirkend"))) ||
               !rechte.darf("messstelle.formel")
             }
             onClick={() => void speichern()}
           >
             Übernehmen
-          </Button>
+          </Button>}
         </>
       }
     >

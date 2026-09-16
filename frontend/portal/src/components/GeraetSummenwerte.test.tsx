@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { api, type GeraetSummenwert } from "../api";
 import { setSelbstauskunft } from "../rollen";
@@ -116,4 +116,18 @@ it("Umbenennen erhält Kennzeichen, Notiz und Anschlussleistung", async () => {
       anschlussleistung_kw: 30,
     }),
   );
+});
+
+it.each(['Umbenennen', 'Archivieren'])('Entzug schließt den offenen Schreibweg %s', async (aktion) => {
+  vi.spyOn(api, 'geraetSummenwerte').mockResolvedValue([z]);
+  const put = vi.spyOn(api, 'messstelleBearbeiten');
+  const archiv = vi.spyOn(api, 'messstelleArchivieren');
+  render(<GeraetSummenwerte siteId="s1" deviceId="d1" entityId="e1" geraetName="Wechselrichter" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für Dach West' }));
+  fireEvent.click(screen.getByText(aktion));
+  expect(screen.getByRole('dialog')).toBeVisible();
+  act(() => setSelbstauskunft(rechteSeed('CB').me));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.queryByRole('button', { name: 'Aktionen für Dach West' })).toBeNull();
+  expect(put).not.toHaveBeenCalled(); expect(archiv).not.toHaveBeenCalled();
 });

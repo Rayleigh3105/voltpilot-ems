@@ -1,9 +1,8 @@
-# Gesamtwert / berechnete Messstelle (UEMS AP-10, Formel-Typ „gewichtete Summe")
+# Summenwert / berechnete Messstelle (UEMS AP-10, Formel-Typ „gewichtete Summe")
 
-Der „Gesamtwert" (Kundenwort erst im Frontend) IST eine Messstelle mit `art = berechnet`, deren
+Der Summenwert IST eine Messstelle mit `art = berechnet`, deren
 **Formel** eine **gewichtete Summe** ihrer **Terme** ist — die im Messstellen-Vertrag
-reservierte AP-10-Stelle, kein zweites Modell. Backend-Fundament (12.09.2026); der
-Kunden-Assistent folgt als eigene Aufgabe.
+reservierte AP-10-Stelle, kein zweites Modell. Gesamtweg und fertiger Kunden-Assistent: [H-0 bis H-11](uems-summenwerte-abschluss.md).
 
 **Vertrag + Zwillinge:** `docs/contracts/v2/messstelle-formel.md` mit den geteilten Vektoren
 `messstelle-formel-vectors.json` (Familien `groesse` · `zyklus` · `summe`), dem Java-Zwilling
@@ -20,12 +19,14 @@ sich selbst; `→ messstelle` RESTRICT, `→ measurement_point` CASCADE.
 **Ableitung (`formelGroesse`):** die Hauptgröße kommt aus den Termen (alle dieselbe
 Vertrags-Größe, sonst `groessen_gemischt`); Richtung = gemeinsame Richtung bei allen `+`, sonst
 `richtungslos`. ⚠ Ein Kanal OHNE Vertrags-Richtung (`generator-power` im Katalog `direction:
-null`, oder ein `import_export`-Vorzeichen-Wert) ist KEIN Term — ES SEI DENN, der Messkanal-Term
+null`) ist KEIN Term — ES SEI DENN, der Messkanal-Term
 trägt den AP-08-Haken `gilt_als_erzeugung` (Migration `V20260914100000`, Vertrag
 `messstelle-formel.md` §2.2, Regeln `MessstelleFormelRegeln.erzeugungsHakenErlaubt`/
 `richtungMitErzeugungsHaken` + TS-Zwilling + Vektoren `cases.haken`). Der Haken macht den
 richtungslosen Kanal als Term zulässig und lässt ihn als `Erzeugung` zählen — nur an einem Kanal
-OHNE Katalog-Richtung (der Server lehnt ihn auf einem gerichteten Kanal ab). So bleibt der
+OHNE Katalog-Richtung (der Server lehnt ihn auf einem gerichteten Kanal ab).
+`import_export` ist eine eigene Katalog-Richtung und als vorzeichenbehafteter
+Netzwert zulässig; dort ist der Erzeugungs-Haken gesperrt (H-4/W1). So bleibt der
 Ankerfall `PV1+PV2+PV3+Gen-Port` eine reine `Erzeugung`-Summe statt zu `richtungslos` zu
 degradieren.
 

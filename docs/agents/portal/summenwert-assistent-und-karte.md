@@ -1,4 +1,7 @@
-# Der Summenwert-Assistent und seine Anzeige
+# Summenwert-Assistent und Gerätekarte
+
+Gesamtwegweiser: [H-0 bis H-11](../root/uems-summenwerte-abschluss.md).
+Gerätekarte und Rollen-Dialog: [H-7/H-8/H-10](../root/uems-summenwerte-geraetekarte.md).
 
 Der aktuelle gemeinsame Geräte-/Anlagen-Assistent ist unter
 [H-5/H-6](../root/uems-summenwert-assistent.md) dokumentiert.
@@ -7,7 +10,7 @@ Kundenwort: `SUMMENWERT`; Live-Rollen: [H-1/H-2](../root/uems-rollen-zuordnung.m
 
 ## Die Anzeige danach
 
-- **Gesamtwert-Anzeige + Einstieg** `src/components/GesamtwertKarten.tsx`: seit vp-agg (Konzept
+- **Summenwert-Anzeige + Einstieg** `src/components/GesamtwertKarten.tsx`: seit vp-agg (Konzept
   `data/vp-agg-konzept3-r8` §2.5) **nicht mehr auf der Cockpit-Bühne**, sondern in
   **„Verlauf › Messwerte"** (`pages/MesswerteSection.tsx`) — dort leben Einstieg (der
   „+ Summenwert"-Knopf öffnet denselben `SummenwertAssistent`) UND Anzeige gemeinsam (Prop `eingebettet` =
@@ -15,22 +18,10 @@ Kundenwort: `SUMMENWERT`; Live-Rollen: [H-1/H-2](../root/uems-rollen-zuordnung.m
   Summenwert gehört zu den Auswertungen, nicht auf die Bühne. Live-Wert aus `GET …/{id}/wert`,
   dezentes „berechnet", Lebenszyklus über `RowMenu` (umbenennen via `PUT …/{id}` mit Kennzeichen +
   Notiz; anhalten/fortsetzen; archivieren statt hartem Löschen via `ConfirmDialog`).
-- **Cockpit-PV = kanonische Rolle mit Rückfall (GEBAUT, vp-agg §2.4).** Die frühere Notiz „gilt als
-  Gesamt-PV ist nicht gebaut" gilt NICHT mehr. Forgejo-PR #758 baute die verallgemeinerte
-  Rollen-Zuordnung (`entity_role_assignment`: je (Gerät, Rolle=pv) EIN Kanal ODER EIN Gesamtwert) +
-  die Kunden-PV-API `GET /api/v1/sites/{id}/rollen/pv` (`RollenZuordnungService.kanonisch` →
-  `RollenDto.KanonischerWert`: ehrliche Teil-Summe, jedes Gerät benannt — liefernd mit Wert oder
-  stumm mit Grund, nie eine stille Teilsumme). Das Cockpit liest die PV nun von dort:
-  **`OverviewController` mischt je Anlage die kanonische PV in `OverviewLiveDto.pvKw` ein** (statt
-  `telemetry.pv_power_kw`), WENN eine Standort-PV-Zuordnung existiert — sonst RÜCKFALL auf die
-  Roh-Telemetrie (`RollenZuordnungService.pvJeAnlage`, flottenweit in EINER Abfrage; die kanonische
-  Summe darf `null` sein → PV „unbekannt", nie eine 0). Das Frontend liest weiter `snap.pvKw`
-  (`fleet.ts`), Portfolio-Summen bleiben dadurch konsistent. Unter dem Fluss zeigt der Cockpit-Hero
-  die Herkunft: `src/components/PvRollenBreakdown.tsx` (reine Ableitung `src/pvRolle.ts`, gated auf
-  `hasFlow`) — dezentes „berechnet" + auf Tipp „So setzt sich Ihre PV-Produktion zusammen" je Gerät
-  (stummes Gerät „liefert gerade nicht", Teil-Summe „aus N von M Geräten"). Ohne Zuordnung rendert
-  sie nichts (Rückfall bleibt unmarkiert) und die rohe Quellen-Aufteilung (`PvBreakdownLine`) bleibt.
-  ⚠ NICHT umgelenkt: der Optimizer-Nowcast (separater Folgeschritt) und der Box-Steuerpfad.
+- **Cockpit-Rollen**: PV, Verbrauch und Netz aus derselben serverseitigen Ableitung;
+  Mehrgeräte-Summen einmal, stumme Zuordnung unbekannt, ohne Zuordnung Rohwert-Rückfall.
+  `RollenBreakdown` zeigt Stand und Herkunft, schreibt nichts. Details und Grenzen:
+  [Rollen-Kapitel](../root/uems-rollen-zuordnung.md).
 - **Verlauf-Ast** in `src/components/VerlaufExplorer.tsx`: ein eigener Ast „Berechnete Werte"
   neben den gemessenen Komponenten; die synthetische `entityId` `berechnet-<uuid>` trägt KEINEN
   Doppelpunkt (Deep-Link `m={entityId}:{channel}` trennt am ersten). Reine Helfer in

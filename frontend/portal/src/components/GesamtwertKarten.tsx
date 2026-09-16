@@ -1,9 +1,10 @@
+import { useRollen } from '../rollen';
 import { Recht } from './Recht';
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Messstelle, type MessstelleFormel, type MessstelleWert } from '../api';
 import { fmtNum } from '../format';
-import { GESAMTWERT } from '../gesamtwert';
+import { SUMMENWERT } from '../gesamtwert';
 import { ladeSiteGesamtwerte as ladeQuellen } from '../gesamtwertQuelle';
 import { ConfirmDialog } from './ConfirmDialog';
 import { PROTOKOLL_LABEL, ProtokollDialog } from './ProtokollDialog';
@@ -47,6 +48,7 @@ export function GesamtwertKarten({
    */
   eingebettet?: boolean;
 }) {
+  const rechte = useRollen();
   const [zeilen, setZeilen] = useState<GwZeile[] | null>(null);
   const [umbenennen, setUmbenennen] = useState<{ id: string; name: string } | null>(null);
   const [archivieren, setArchivieren] = useState<GwZeile | null>(null);
@@ -71,6 +73,7 @@ export function GesamtwertKarten({
   const auffrischen = () => setNeuLaden((n) => n + 1);
 
   const anhalten = async (z: GwZeile, an: boolean) => {
+    if (busy || !rechte.darf("messstelle.bearbeiten")) return;
     setBusy(true);
     try {
       if (an) await api.messstelleAnhalten(z.messstelle.id);
@@ -82,7 +85,7 @@ export function GesamtwertKarten({
   };
 
   const speichereName = async () => {
-    if (!umbenennen) return;
+    if (!umbenennen || busy || !rechte.darf("messstelle.bearbeiten")) return;
     setBusy(true);
     try {
       const z = zeilen?.find((x) => x.messstelle.id === umbenennen.id);
@@ -101,7 +104,7 @@ export function GesamtwertKarten({
   };
 
   const bestaetigeArchiv = async () => {
-    if (!archivieren) return;
+    if (!archivieren || busy || !rechte.darf("messstelle.bearbeiten")) return;
     setBusy(true);
     try {
       await api.messstelleArchivieren(archivieren.messstelle.id);
@@ -116,13 +119,13 @@ export function GesamtwertKarten({
   if (zeilen == null || zeilen.length === 0) return null;
 
   return (
-    <section className="vp-gwk" aria-label={`${GESAMTWERT}e`}>
+    <section className="vp-gwk" aria-label={`${SUMMENWERT}e`}>
       {!eingebettet && (
         <div className="vp-gwk-head">
           <h3>Zusammengestellte Werte</h3>
           {onNeu && (
             <Recht aktion="messstelle.formel"><button type="button" className="vp-gwk-neu" onClick={onNeu}>
-              <Icon name="plus" size={15} /> {GESAMTWERT}
+              <Icon name="plus" size={15} /> {SUMMENWERT}
             </button></Recht>
           )}
         </div>
@@ -148,7 +151,7 @@ export function GesamtwertKarten({
 
       <ProtokollDialog
         open={protokoll != null}
-        titel={protokoll?.messstelle.name || GESAMTWERT}
+        titel={protokoll?.messstelle.name || SUMMENWERT}
         ziel={protokoll ? { art: 'messstelle', id: protokoll.messstelle.id } : null}
         onClose={() => setProtokoll(null)}
       />
@@ -157,17 +160,17 @@ export function GesamtwertKarten({
         key={werte?.messstelle.id ?? 'zu'}
         open={werte != null}
         kennzeichen={werte?.messstelle.kennzeichen ?? null}
-        titel={werte ? `${werte.messstelle.kennzeichen} · ${werte.messstelle.name || GESAMTWERT}` : GESAMTWERT}
+        titel={werte ? `${werte.messstelle.kennzeichen} · ${werte.messstelle.name || SUMMENWERT}` : SUMMENWERT}
         onClose={() => setWerte(null)}
       />
 
       <ConfirmDialog
-        open={archivieren != null}
-        title={`„${archivieren?.messstelle.name ?? GESAMTWERT}" archivieren?`}
+        open={archivieren != null && rechte.darf("messstelle.bearbeiten")}
+        title={`„${archivieren?.messstelle.name ?? SUMMENWERT}" archivieren?`}
         intro="Der Wert verschwindet aus Übersicht und Verlauf — seine bisherige Definition und sein Verlauf bleiben aber erhalten."
         consequences={[
           'Das Kennzeichen bleibt belegt und wird nie neu vergeben.',
-          'Sie können jederzeit einen neuen Gesamtwert zusammenstellen.',
+          'Sie können jederzeit einen neuen Summenwert zusammenstellen.',
         ]}
         confirmLabel="Archivieren"
         tone="danger"
@@ -241,7 +244,7 @@ function Karte({
             </button>
           </span>
         ) : (
-          <span className="vp-gwk-name">{m.name || GESAMTWERT}</span>
+          <span className="vp-gwk-name">{m.name || SUMMENWERT}</span>
         )}
         {!bearbeiten && <span className="vp-gwk-chip calc">berechnet</span>}
         {!bearbeiten && (
@@ -262,7 +265,7 @@ function Karte({
         )}
       </div>
       {!angehalten && wert?.unvollstaendig && (
-        <p className="vp-gwk-note">Ein Wert fehlt gerade — der Gesamtwert bleibt leer statt zu klein.</p>
+        <p className="vp-gwk-note">Ein Wert fehlt gerade — der Summenwert bleibt leer statt zu klein.</p>
       )}
     </div>
   );

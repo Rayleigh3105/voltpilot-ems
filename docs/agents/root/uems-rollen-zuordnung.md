@@ -5,8 +5,8 @@ Autorität: [Vertrag](../../contracts/v2/rollen-zuordnung.md),
 [Schema](../../contracts/v2/rollen-zuordnung.schema.json).
 Zwillinge `services/api/.../uems/RollenZuordnungRegeln.java` und
 `frontend/portal/src/uemsRollen.ts`. Die API-Laufzeit ruft den Java-Zwilling über `topology/RollenZuordnungService`
-und `RollenQuellen` auf. H-3 liest die drei Rollen im Cockpit; H-5 ergänzt den
-Assistenten. [H-7/H-8/H-10](uems-summenwerte-geraetekarte.md) bauen Gerätekarte,
+und `RollenQuellen` auf. H-3 liest die drei Rollen im Cockpit; H-5/H-6 liefern den
+[gemeinsamen Assistenten](uems-summenwert-assistent.md). [H-7/H-8/H-10](uems-summenwerte-geraetekarte.md) bauen Gerätekarte,
 Rollen-Dialog und atomare Anlage.
 
 - Kanalidentität vor der Regel aus Capability/Formel-Term auf dieselbe
@@ -21,9 +21,9 @@ Rollen-Dialog und atomare Anlage.
   Formel-Route bleibt bei 15 min. Stand je Quelle prüfen, niemals null als 0.
 - Rolle ab jetzt, `rolle_gesetzt`/`rolle_entzogen`; keine Rollen-Zeitreise.
   Formel-Fassungen, Größen, Rechte und Steuerpfade bleiben eigene Verträge.
-- Neues Kundenwort ausschließlich `SUMMENWERT`. `GESAMTWERT` ist bis H-5/H-7
-  eingefrorener Bestandsexport. Text-Ausnahmen stehen einzeln in
-  `copy.test.ts` und dürfen nur schrumpfen; bestehende Kundennamen bleiben.
+- Neues Kundenwort ausschließlich `SUMMENWERT`. `GESAMTWERT` bleibt ein
+  technischer Alias für ältere Aufrufer. Seit H-9 hat `copy.test.ts` keine
+  Alttext-Ausnahmen mehr; bestehende Kundennamen bleiben unverändert.
 
 Prüfen: `RollenZuordnungRegelnVectorsTest`, `uemsRollen.test.ts`,
 `copy.test.ts`, Portal-Typecheck/-Build, `bash tools/agents-md-budget.sh`.
@@ -93,3 +93,7 @@ Repository-Abfragen alle `*MigrationTest`-Leser mit `rg -l` suchen.
   `fleet.test.ts`, `copy.test.ts`, `migration.test.ts`, `uemsKeineRechnung.test.ts`.
   Browser: `e2e/cockpit-rollen.spec.ts` (375/1440, `ROLLEN_BILDER=<Ordner>`)
   plus `e2e/gesamtwert.spec.ts`; Bühne mit Werten des Referenzunternehmens.
+
+H-9/H-11: [Gesamtwegweiser und Abnahme](uems-summenwerte-abschluss.md).
+Der Entzug eines Summenwerts entfernt gemeinsam alle Halter derselben Quelle
+in dieser Anlage/Rolle; Kanal-Entzug bleibt gerätebezogen.

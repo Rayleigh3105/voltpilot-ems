@@ -43,7 +43,7 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
 - Speichern verwendet H-10: **ein** `POST …/messstellen/berechnet` mit optionalem
   `rolle: {entity_id, role, ersetzen}`. Keine zweistufige Rollen-Kompensation.
 - Kundenwort `SUMMENWERT`; `GESAMTWERT` ist nur noch ein gleichwertiger Alias für
-  ältere Aufrufer. Textwächter-Ausnahmen dürfen weiterhin nur schrumpfen.
+  ältere Aufrufer. Seit H-9 hat der Textwächter keine Alttext-Ausnahmen mehr.
 
 Prüfen: `DeviceMeasurementSelectionApiTest`, `SummenwertQuellenServiceTest`,
 `RechtRoutenArchitekturTest`, `RechteKennungenDerRoutenTest`; Vitest
