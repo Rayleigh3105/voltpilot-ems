@@ -21544,6 +21544,15 @@ components:
       required: [kennzahlen]
       properties:
         kennzahlen: { type: array, items: { $ref: "#/components/schemas/Kennzahl" } }
+        ausserhalb_zugriff:
+          $ref: "#/components/schemas/KennzahlZugriffHinweis"
+    KennzahlZugriffHinweis:
+      type: object
+      description: "Nur die Anzahl unsichtbarer standortübergreifender Kennzahlen; niemals Kennung, Name, Formel oder Wert. Fehlt bei voller Sicht (AP-03 IP-11, R-A1 und R-A6)."
+      required: [anzahl, text]
+      properties:
+        anzahl: { type: integer, minimum: 1 }
+        text: { type: string, example: "1 Kennzahl umfasst Standorte außerhalb Ihres Zugriffs" }
     KennzahlPaare:
       type: object
       required: [gruppen]

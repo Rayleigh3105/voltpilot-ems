@@ -3,6 +3,8 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import org.springframework.security.core.context.SecurityContextHolder;
 import com.voltpilot.api.uems.KennzahlAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.KennzahlRepository.BezugsgroesseZeile;
 import com.voltpilot.api.uems.KennzahlRepository.EingangZeile;
@@ -69,6 +71,7 @@ public class KennzahlService {
 
     private final KennzahlRepository repo;
     private final KennzahlAufrufer aufrufer;
+    private final KennzahlUmfang umfang;
     /** Die Bezugsflächen der Ortsstruktur — ein Nenner kann eine davon sein (AP-11 §5.1). */
     private final BezugsflaecheLesemodell bezugsflaechen;
     /** Bindet die Bezugsfläche eines Orts an ihre Bezugsgröße (den Zeiger, ohne eigene Werte). */
@@ -78,9 +81,11 @@ public class KennzahlService {
     private volatile Clock uhr = Clock.systemUTC();
 
     public KennzahlService(KennzahlRepository repo, KennzahlAufrufer aufrufer, BezugsflaecheLesemodell bezugsflaechen,
-            BezugsgroesseService bezugsgroessen, PlatformTransactionManager transactionManager, ObjectMapper json) {
+            BezugsgroesseService bezugsgroessen, PlatformTransactionManager transactionManager, ObjectMapper json,
+            KennzahlUmfang umfang) {
         this.repo = repo;
         this.aufrufer = aufrufer;
+        this.umfang = umfang;
         this.bezugsflaechen = bezugsflaechen;
         this.bezugsgroessen = bezugsgroessen;
         this.transaktion = new TransactionTemplate(transactionManager);
@@ -101,7 +106,20 @@ public class KennzahlService {
     public KennzahlDto.Liste liste() {
         Katalog kat = katalog();
         Instant jetzt = jetzt();
-        return new KennzahlDto.Liste(kat.kennzahlen().stream().map(k -> darstellung(k, kat, jetzt)).toList());
+        List<KennzahlDto.Kennzahl> sichtbar = new ArrayList<>();
+        int verborgen = 0;
+        for (Zeile k : kat.kennzahlen()) {
+            var sicht = sicht(k, jetzt);
+            if (sicht.sichtbar()) {
+                sichtbar.add(darstellung(k, kat, jetzt));
+            } else if (sicht.hinweis()) {
+                verborgen++;
+            }
+        }
+        return new KennzahlDto.Liste(List.copyOf(sichtbar), verborgen == 0 ? null
+                : new KennzahlDto.ZugriffHinweis(verborgen, verborgen == 1
+                        ? "1 Kennzahl umfasst Standorte außerhalb Ihres Zugriffs"
+                        : verborgen + " Kennzahlen umfassen Standorte außerhalb Ihres Zugriffs"));
     }
 
     /** Die Parameter von {@code GET …/paare} — jeder andere ist 400 (streng wie die Werte-Route). */
@@ -150,12 +168,13 @@ public class KennzahlService {
 
     public KennzahlDto.Kennzahl eine(UUID id) {
         Katalog kat = katalog();
-        return darstellung(kat.zeile(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN)), kat, jetzt());
+        Zeile k = lesbar(kat, id);
+        return darstellung(k, kat, jetzt());
     }
 
     public KennzahlDto.Fassungen fassungen(UUID id) {
         Katalog kat = katalog();
-        Zeile k = kat.zeile(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        Zeile k = lesbar(kat, id);
         ZoneId zone = zone(k, jetzt());
         return new KennzahlDto.Fassungen(k.id(), k.kennzeichen(),
                 kat.fassungen(id).stream().map(f -> fassungDarstellung(f, kat, zone)).toList());
@@ -164,7 +183,7 @@ public class KennzahlService {
     /** Welche Fassung galt am Tag {@code am} ({@code null} = heute in der Zeitzone der Kennzahl)? */
     public KennzahlDto.Berechnung berechnung(UUID id, LocalDate am) {
         Katalog kat = katalog();
-        Zeile k = kat.zeile(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        Zeile k = lesbar(kat, id);
         ZoneId zone = zone(k, jetzt());
         LocalDate tag = am != null ? am : LocalDate.ofInstant(jetzt(), zone);
         FassungZeile f = kat.fassungAm(id, tag).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
@@ -216,6 +235,7 @@ public class KennzahlService {
         schreibe(() -> transaktion.execute(s -> {
             Zeile k = repo.sperre(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
             darf(wer, geltungVon(k, jetzt), jetzt);
+            requireLesbar(k, jetzt);
             if (k.archiviertAm() != null) {
                 throw KennzahlAbgelehnt.von(Ablehnung.ARCHIVIERT);
             }
@@ -251,6 +271,7 @@ public class KennzahlService {
         transaktion.executeWithoutResult(s -> {
             Zeile k = repo.sperre(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
             darf(wer, geltungVon(k, jetzt), jetzt);
+            requireLesbar(k, jetzt);
             if (k.archiviertAm() != null) {
                 throw KennzahlAbgelehnt.von(Ablehnung.ARCHIVIERT);
             }
@@ -269,6 +290,7 @@ public class KennzahlService {
             transaktion.executeWithoutResult(s -> {
                 Zeile k = repo.sperre(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
                 darf(wer, geltungVon(k, jetzt), jetzt);
+                requireLesbar(k, jetzt);
                 long werte = repo.werteZahl(id);
                 if (werte > 0) {
                     throw KennzahlAbgelehnt.hatWerte(k.kennzeichen(), werte);
@@ -313,6 +335,7 @@ public class KennzahlService {
             Zeile k = repo.sperre(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
             Geltung g = geltungVon(k, jetzt);
             darf(wer, g, jetzt);
+            requireLesbar(k, jetzt);
             if (k.archiviertAm() != null) {
                 throw KennzahlAbgelehnt.von(Ablehnung.ARCHIVIERT);
             }
@@ -444,10 +467,46 @@ public class KennzahlService {
         RechteAbleitung.Kundenbereich k = new RechteAbleitung.Kundenbereich("Kundenbereich",
                 repo.standorte().stream().map(s -> new RechteAbleitung.Standort(s.id().toString(), s.name())).toList(),
                 List.of());
-        RechteAbleitung.DarfErgebnis d = KennzahlRechte.darf(aufrufer.benutzer(wer), k, g.kennung(),
-                g.standort() == null ? null : g.standort().toString(), jetzt);
-        if (!d.darf()) {
-            throw KennzahlAbgelehnt.rechte(d);
+        Geltungsbereich.requireScope(aufrufer.benutzer(wer), k, g.kennung(),
+                g.standort() == null ? null : g.standort().toString(), jetzt, KennzahlAbgelehnt::rechte);
+    }
+
+    private Zeile lesbar(Katalog kat, UUID id) {
+        Zeile k = kat.zeile(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        requireLesbar(k, jetzt());
+        return k;
+    }
+
+    private void requireLesbar(Zeile kennzahl, Instant jetzt) {
+        Geltungsbereich.requireScope(sicht(kennzahl, jetzt), () -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+    }
+
+    private Geltungsbereich.KennzahlSicht sicht(Zeile kennzahl, Instant jetzt) {
+        ProtokollAkteur wer = ProtokollAkteur.aus(SecurityContextHolder.getContext().getAuthentication())
+                .orElseGet(() -> ProtokollAkteur.fuer("system", "System", false));
+        var b = aufrufer.benutzer(wer);
+        var k = new RechteAbleitung.Kundenbereich("Kundenbereich", repo.standorte().stream()
+                .map(s -> new RechteAbleitung.Standort(s.id().toString(), s.name())).toList(), List.of());
+        // U-Rollen sehen unverändert den gesamten Kundenbereich, auch ältere Fassungen ohne heutigen Ort.
+        if (Geltungsbereich.scope(b, k, KennzahlRegeln.ANSEHEN, null, jetzt).darf()) {
+            return new Geltungsbereich.KennzahlSicht(true, false);
+        }
+        Geltung g = geltungVon(kennzahl, jetzt);
+        boolean eigene = (KennzahlRegeln.UNTERNEHMEN.equals(g.rechteGeltung()) || g.standort() != null)
+                && Geltungsbereich.scope(b, k, KennzahlRegeln.ANSEHEN,
+                        g.standort() == null ? null : g.standort().toString(), jetzt).darf();
+        return Geltungsbereich.scope(b, k, eigene, umfang.eingaenge(kennzahl.id()), jetzt);
+    }
+
+    private void requireEingang(KennzahlDto.Eingang eingang, UUID id) {
+        var wer = ProtokollAkteur.aus(SecurityContextHolder.getContext().getAuthentication())
+                .orElseGet(() -> ProtokollAkteur.fuer("system", "System", false));
+        var b = aufrufer.benutzer(wer);
+        var k = new RechteAbleitung.Kundenbereich("Kundenbereich", repo.standorte().stream()
+                .map(s -> new RechteAbleitung.Standort(s.id().toString(), s.name())).toList(), List.of());
+        if (!Geltungsbereich.scope(b, k, KennzahlRegeln.ANSEHEN, null, jetzt()).darf()) {
+            Geltungsbereich.requireScope(Geltungsbereich.scope(b, k, true, umfang.objekt(eingang.art(), id), jetzt()),
+                    () -> eingangUnbekannt(eingang));
         }
     }
 
@@ -457,6 +516,23 @@ public class KennzahlService {
      */
     Urteil berechnung(String rechenform, Geltung g, List<KennzahlDto.Eingang> anfrage, Boolean komplement,
             String wunsch, String eigenesKennzeichen, UUID eigeneId, LocalDate tag, Katalog kat, boolean binden) {
+        // Auch die Vorschau liefert Werte. Prüfen vor Einheit-/Periodenbefunden, die sonst fremde Namen nennen.
+        if (anfrage != null) {
+            formPruefen(rechenform, anfrage);
+            for (KennzahlDto.Eingang e : anfrage) {
+                if (KennzahlRegeln.BEZUGSFLAECHE.equals(e.art())) {
+                    continue; // ihr gezäuntes Orts-Lesemodell prüft beim Auflösen
+                }
+                UUID id = switch (e.art()) {
+                    case KennzahlRegeln.MESSSTELLE -> repo.messstelle(e.kennzeichen()).map(MessstelleZeile::id).orElse(null);
+                    case KennzahlRegeln.BEZUGSGROESSE -> repo.bezugsgroesse(e.kennzeichen()).map(BezugsgroesseZeile::id).orElse(null);
+                    default -> kat.nachKennzeichen(e.kennzeichen()).map(Zeile::id).orElse(null);
+                };
+                if (id != null) {
+                    requireEingang(e, id);
+                }
+            }
+        }
         Urteil u = rechnung(rechenform, anfrage, komplement, wunsch, tag, kat, binden);
         List<Aufgeloest> aufgeloest = u.eingaenge();
 

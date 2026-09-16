@@ -1,6 +1,10 @@
 package com.voltpilot.api.zugriff;
 
 import com.voltpilot.api.web.dto.TeilansichtDto;
+import com.voltpilot.api.uems.RechteAbleitung.Benutzer;
+import com.voltpilot.api.uems.RechteAbleitung.Kundenbereich;
+import java.time.Instant;
+import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -55,6 +59,20 @@ public class TeilansichtDienst {
      */
     public TeilansichtDto ueber(int sichtbar) {
         return bilden(sichtbar);
+    }
+
+    /** R-A4: Namen nur aus der sichtbaren Menge; für U-Rollen weder Zusatzzeile noch Zusatzabfrage. */
+    public String exportKopf(Benutzer wer, Kundenbereich kundenbereich, Instant jetzt) {
+        if (Geltungsbereich.scope(wer, kundenbereich, "export.unternehmen", null, jetzt).darf()) {
+            return null;
+        }
+        // Gleiche Grundmenge wie jetzt(): archivierte Standorte sind weiter abrufbar, zählen aber nicht im Kopf.
+        List<String> aktive = jdbc.queryForList("SELECT id::text FROM standort WHERE zustand <> 'archiviert'", String.class);
+        List<String> namen = kundenbereich.standorte().stream()
+                .filter(s -> aktive.contains(s.kennzeichen()))
+                .filter(s -> Geltungsbereich.scope(wer, kundenbereich, "export.standort", s.kennzeichen(), jetzt).darf())
+                .map(s -> s.name().replace('\r', ' ').replace('\n', ' ')).toList();
+        return Geltungsbereich.exportKopf(namen, jetzt().gesamt());
     }
 
     private TeilansichtDto bilden(Integer vorgabe) {

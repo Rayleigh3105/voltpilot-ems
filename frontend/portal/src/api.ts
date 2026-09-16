@@ -8073,7 +8073,7 @@ export const api = {
     request<void>(`/api/v1/bezugsgroessen/${id}`, { method: 'DELETE' }),
 
   /** Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen (AP-11 IP-5); Ablehnungen tragen `KennzahlFehlerCode`. */
-  kennzahlen: () => request<{ kennzahlen: Kennzahl[] }>(`/api/v1/kennzahlen`),
+  kennzahlen: () => request<{ kennzahlen: Kennzahl[]; ausserhalb_zugriff?: { anzahl: number; text: string } }>(`/api/v1/kennzahlen`),
   kennzahl: (id: string) => request<Kennzahl>(`/api/v1/kennzahlen/${id}`),
   /** Legt die Kennzahl mit Fassung 1 „gilt seit Beginn“ an. */
   kennzahlAnlegen: (body: KennzahlAnfrage) =>

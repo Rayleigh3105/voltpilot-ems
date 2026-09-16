@@ -373,8 +373,10 @@ class UemsLesepfadTest {
      * keins von beiden, statt zu raten.
      */
     @Test
-    void derExportGehoertZuExportStandort_dieUnterstuetzungBekommt403() {
+    void derExportOhneStandortBrauchtUnternehmensrecht_dieUnterstuetzungBekommt403() {
         BestandGeraeteCsv recht = new BestandGeraeteCsv(app, new KennzahlAufrufer(),
+                new com.voltpilot.api.zugriff.TeilansichtDienst(app, new com.voltpilot.api.zugriff.Geltungsbereich(app),
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(app.getDataSource())),
                 Clock.fixed(JETZT, ZoneOffset.UTC));
         MeasurementHistoryService.Erzeugung kunde = recht.erzeugung(
                 ProtokollAkteur.fuer("kc-jw", "Jonas Wendlinger", false), IDS.get("AN2"));
@@ -386,8 +388,10 @@ class UemsLesepfadTest {
 
         assertThatThrownBy(() -> recht.erzeugung(ProtokollAkteur.fuer("kc-voss", "Lena Voss", true),
                 IDS.get("AN2")))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        e -> assertThat(e.getStatusCode().value()).isEqualTo(403));
+                .isInstanceOfSatisfying(com.voltpilot.api.zugriff.RechtFehlt.class, e -> {
+                    assertThat(e.darf().http()).isEqualTo(403);
+                    assertThat(e.koerper()).containsEntry("code", "recht_fehlt").containsEntry("recht", "export.unternehmen");
+                });
     }
 
     // ============================================== Der Bestandsschutz der Kundenfläche

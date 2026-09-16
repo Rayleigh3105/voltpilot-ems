@@ -2,9 +2,9 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.measurement.MeasurementHistoryService;
 import com.voltpilot.api.tenant.TenantContext;
-import com.voltpilot.api.uems.RechteAbleitung.DarfErgebnis;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
 import com.voltpilot.api.uems.RechteAbleitung.Kundenbereich;
-import com.voltpilot.api.uems.RechteAbleitung.Ziel;
 import java.sql.Date;
 import java.time.Clock;
 import java.time.Instant;
@@ -15,10 +15,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Der Bestand-Geräte-CSV (AP-07 IP-14) unter dem Recht {@code export.standort} und mit seinen neun Kopfzeilen (UEMS AP-12
@@ -42,16 +40,18 @@ public class BestandGeraeteCsv {
     private final JdbcTemplate jdbc;
     private final KennzahlAufrufer aufrufer;
     private final Clock uhr;
+    private final TeilansichtDienst teilansicht;
 
     @Autowired
-    public BestandGeraeteCsv(JdbcTemplate jdbc, KennzahlAufrufer aufrufer) {
-        this(jdbc, aufrufer, Clock.systemUTC());
+    public BestandGeraeteCsv(JdbcTemplate jdbc, KennzahlAufrufer aufrufer, TeilansichtDienst teilansicht) {
+        this(jdbc, aufrufer, teilansicht, Clock.systemUTC());
     }
 
-    public BestandGeraeteCsv(JdbcTemplate jdbc, KennzahlAufrufer aufrufer, Clock uhr) {
+    public BestandGeraeteCsv(JdbcTemplate jdbc, KennzahlAufrufer aufrufer, TeilansichtDienst teilansicht, Clock uhr) {
         this.jdbc = jdbc;
         this.aufrufer = aufrufer;
         this.uhr = uhr;
+        this.teilansicht = teilansicht;
     }
 
     /**
@@ -75,17 +75,16 @@ public class BestandGeraeteCsv {
 
         List<RechteAbleitung.Standort> standorte = jdbc.query("SELECT id, name FROM standort WHERE tenant_id = ? "
                 + "ORDER BY name, id", (rs, i) -> new RechteAbleitung.Standort(rs.getString("id"), rs.getString("name")), tenant);
-        DarfErgebnis d = RechteAbleitung.darf(BerichtRechte.MATRIX, aufrufer.benutzer(wer),
-                new Kundenbereich("Kundenbereich", standorte, List.of()), BerichtRechte.EXPORT_STANDORT,
-                ort.map(o -> Ziel.standort(o.id().toString())).orElse(Ziel.unternehmen()), jetzt);
-        if (!d.darf()) {
-            throw d.http() == 403 ? new ResponseStatusException(HttpStatus.FORBIDDEN, d.text())
-                    : new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
-        }
+        var benutzer = aufrufer.benutzer(wer);
+        var kundenbereich = new Kundenbereich("Kundenbereich", standorte, List.of());
+        Geltungsbereich.requireScope(benutzer, kundenbereich,
+                ort.isPresent() ? BerichtRechte.EXPORT_STANDORT : BerichtRechte.EXPORT_UNTERNEHMEN,
+                ort.map(o -> o.id().toString()).orElse(null), jetzt);
         String unternehmen = ort.map(Ort::unternehmen).orElseGet(() -> jdbc.query("SELECT name FROM unternehmen "
                 + "WHERE tenant_id = ? ORDER BY created_at, id LIMIT 1", (rs, i) -> rs.getString(1), tenant)
                 .stream().findFirst().orElse(null));
         return new MeasurementHistoryService.Erzeugung(jetzt, wer.name(),
-                ort.map(o -> o.kurzzeichen() + " " + o.name()).orElse(null), unternehmen);
+                ort.map(o -> o.kurzzeichen() + " " + o.name()).orElse(null), unternehmen,
+                teilansicht.exportKopf(benutzer, kundenbereich, jetzt));
     }
 }

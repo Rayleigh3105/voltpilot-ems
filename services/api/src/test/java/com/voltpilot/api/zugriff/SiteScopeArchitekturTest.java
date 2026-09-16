@@ -253,6 +253,19 @@ class SiteScopeArchitekturTest {
         assertThat(aufrufer).containsExactly("zugriff/Selbstauskunft.java", "zugriff/TeilansichtDienst.java");
     }
 
+    @Test
+    void kennzahlenBerichteUndExporteFuehrenZumSelbenPruefpunkt() throws IOException {
+        for (String dienst : List.of("uems/KennzahlService.java", "uems/BerichtService.java", "uems/BestandGeraeteCsv.java")) {
+            assertThat(Files.readString(QUELLE.resolve(dienst))).as(dienst).contains("Geltungsbereich.requireScope(");
+        }
+        assertThat(Files.readString(QUELLE.resolve("uems/KennzahlWerteService.java")))
+                .contains("kennzahlen.eine(id)", "kennzahlen.fassungen(id)");
+        assertThat(Files.readString(QUELLE.resolve("cockpit/EigeneAuswertungService.java")))
+                .contains("geltungsbereich.requireSite(siteId)");
+        assertThat(Files.readString(QUELLE.resolve("measurement/MeasurementHistoryService.java")))
+                .contains("geltungsbereich.requireSite(scope.siteId())", "geltungsbereich.requireSite(siteId)");
+    }
+
     // ------------------------------------------------------------------ woran der Scanner anschlägt
 
     @Test

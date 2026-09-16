@@ -428,6 +428,39 @@ class TeilansichtApiTest {
         return wert.stripTrailingZeros().toPlainString();
     }
 
+    @Test
+    void a12GeraeteCsvUndEigeneAuswertungPruefenDenStandort() throws Exception {
+        UUID c2 = root.queryForObject("SELECT id FROM device WHERE site_id = ?", UUID.class, AN_3);
+        UUID verwaltung = root.queryForObject("SELECT id FROM device WHERE site_id = ?", UUID.class, AN_1);
+        String kanal = "wago.pm494.karte[0].energy_import_total";
+        // Der WAGO-Kanal ist noch nicht runtime-freigegeben; vorhandene Beobachtungen bleiben lesbar.
+        root.update("INSERT INTO device_measurement_point_state (tenant_id, site_id, device_id, point_key, "
+                + "first_read_at, last_read_at, edge_sequence, raw_numeric, decoded_numeric, quality, catalog_version) "
+                + "VALUES (?, ?, ?, ?, now(), now(), 1, 4300, 4300, 'good', '2026.09.16.1')",
+                KUNDENBEREICH, AN_3, c2, kanal);
+        root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
+                + "VALUES (now() - interval '1 minute', ?, ?, ?, ?, 4300, 4300, 'good', '2026.09.16.1', 1, 'counter')",
+                KUNDENBEREICH, AN_3, c2, kanal);
+        // MS-17 liest WAGO C-2 in ST-2; MS-05 gehört zur Verwaltung in ST-1 (Referenzunternehmen).
+        String messwert = "/measurement-selection/wago.pm494.karte[0].energy_import_total/export?range=24h";
+        MvcResult erlaubt = mvc.perform(MockMvcRequestBuilders.get("/api/v1/devices/" + c2 + messwert)
+                .with(authentication(konto(PETER)))).andReturn();
+        assertThat(erlaubt.getResponse().getStatus()).as(erlaubt.getResponse().getContentAsString()).isEqualTo(200);
+        assertThat(erlaubt.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .startsWith("# Teilansicht: Werk Lindach (1 von 3 Standorten)\n")
+                .contains(",4300,")
+                .doesNotContain("Werk Ahrenberg", "Nordhalle");
+        status(PETER, "/api/v1/devices/" + verwaltung + messwert).isEqualTo(404);
+        status(PETER, "/api/v1/devices/" + verwaltung + messwert + "&siteId=" + AN_3).isEqualTo(404);
+        status(PETER, "/api/v1/devices/" + c2 + messwert + "&siteId=" + AN_1).isEqualTo(404);
+        status(PETER, "/api/v1/sites/" + AN_3 + "/eigene-auswertung").isEqualTo(200);
+        status(PETER, "/api/v1/sites/" + AN_1 + "/eigene-auswertung").isEqualTo(404);
+        String voll = mvc.perform(MockMvcRequestBuilders.get("/api/v1/devices/" + c2 + messwert)
+                .with(authentication(konto(JONAS)))).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(voll).startsWith("# point_key=").doesNotContain("Teilansicht:");
+    }
+
     private static Authentication konto(String sub) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("sub", sub);

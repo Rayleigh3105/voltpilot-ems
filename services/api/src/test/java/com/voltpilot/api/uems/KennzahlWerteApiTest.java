@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
@@ -18,6 +19,9 @@ import java.nio.file.Path;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -107,6 +111,9 @@ class KennzahlWerteApiTest {
     @MockBean
     KennzahlAufrufer aufrufer;
 
+    @Autowired
+    KennzahlService kennzahlen;
+
     private static JdbcTemplate root;
     private static JsonNode vertrag;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -130,6 +137,95 @@ class KennzahlWerteApiTest {
     @AfterEach
     void aufraeumen() {
         TenantContext.clear();
+        kennzahlen.uhrStellen(Clock.systemUTC());
+    }
+
+    @Test
+    void a15W3UndRa6SchuetzenAlleKennzahlLesewegeOhneTeilrechnung() throws Exception {
+        kennzahlen.uhrStellen(Clock.fixed(Instant.parse("2026-11-20T12:00:00Z"), ZoneOffset.UTC));
+        Welt w = welt();
+        zeile(w, eingang("K3", 0), "vorlaeufig", null);
+        UUID st1 = root.queryForObject("SELECT id FROM standort WHERE tenant_id = ? AND kurzzeichen = 'ST-1'",
+                UUID.class, w.mandant());
+        UUID st2 = root.queryForObject("SELECT id FROM standort WHERE tenant_id = ? AND kurzzeichen = 'ST-2'",
+                UUID.class, w.mandant());
+        String basis = PFAD + "/" + w.kz().get("KZ-0003");
+        String werte = basis + "/werte?periode=monat&von=2026-10-01&bis=2026-10-31";
+        for (var rolle : List.of(RechteAbleitung.Rolle.KUNDENADMINISTRATOR, RechteAbleitung.Rolle.ENERGIEMANAGER)) {
+            doReturn(person(rolle, null)).when(aufrufer).benutzer(any());
+            JsonNode wert = einziger(ok(ruf(w, werte)));
+            assertThat(new BigDecimal(wert.path("wert").asText()).setScale(2, java.math.RoundingMode.HALF_UP))
+                    .isEqualByComparingTo("0.20");
+            assertThat(ok(ruf(w, PFAD)).has("ausserhalb_zugriff")).isFalse();
+        }
+        String vorher = root.queryForObject("SELECT jsonb_agg(to_jsonb(k) ORDER BY id)::text FROM kennzahl_wert k "
+                + "WHERE tenant_id = ?", String.class, w.mandant());
+        for (var person : List.of(person(RechteAbleitung.Rolle.BEARBEITER, List.of(st2.toString())),
+                person(RechteAbleitung.Rolle.LESER, List.of(st1.toString(), st2.toString())))) {
+            doReturn(person).when(aufrufer).benutzer(any());
+            JsonNode liste = ok(ruf(w, PFAD));
+            assertThat(liste.path("ausserhalb_zugriff").path("anzahl").asInt()).isEqualTo(1);
+            assertThat(liste.path("ausserhalb_zugriff").path("text").asText())
+                    .isEqualTo("1 Kennzahl umfasst Standorte außerhalb Ihres Zugriffs");
+            assertThat(liste.toString()).doesNotContain("KZ-0003", w.kz().get("KZ-0003").toString(), "0.2012");
+            assertThat(ok(ruf(w, PFAD + "/paare")).toString()).doesNotContain("KZ-0003");
+            for (String weg : List.of(basis, basis + "/fassungen", basis + "/berechnung", werte,
+                    basis + "/werte/versionen?periode=monat&von=2026-10-01")) {
+                Antwort a = ruf(w, weg);
+                assertThat(a.status()).as(weg + " " + a.body()).isEqualTo(404);
+                assertThat(a.body().toString()).doesNotContain("KZ-0003", "6100", "3600", "48200");
+            }
+        }
+        assertThat(root.queryForObject("SELECT jsonb_agg(to_jsonb(k) ORDER BY id)::text FROM kennzahl_wert k "
+                + "WHERE tenant_id = ?", String.class, w.mandant())).as("kein Aufruf rechnet 3600 geteilt durch irgendetwas")
+                .isEqualTo(vorher);
+    }
+
+    private static RechteAbleitung.Benutzer person(RechteAbleitung.Rolle rolle, List<String> standorte) {
+        return new RechteAbleitung.Benutzer("ip11", "Ahrenberg", RechteAbleitung.Konto.BENUTZER,
+                RechteAbleitung.KontoZustand.AKTIV, List.of(new RechteAbleitung.Zuweisung(rolle, standorte, null, null,
+                        Instant.parse("2020-01-01T00:00:00Z"), null, null)));
+    }
+
+    @Test
+    void ra6VerbirgtAuchStandortKennzahlMitSpaeterFremdemEingang() throws Exception {
+        kennzahlen.uhrStellen(Clock.fixed(Instant.parse("2026-11-20T12:00:00Z"), ZoneOffset.UTC));
+        Welt w = welt();
+        UUID st2 = root.queryForObject("SELECT id FROM standort WHERE tenant_id = ? AND kurzzeichen = 'ST-2'",
+                UUID.class, w.mandant());
+        doReturn(person(RechteAbleitung.Rolle.BEARBEITER, List.of(st2.toString()))).when(aufrufer).benutzer(any());
+        String kz2 = PFAD + "/" + w.kz().get("KZ-0002");
+        assertThat(ruf(w, kz2).status()).isEqualTo(200);
+        UUID ms18 = objektId(w, "messstelle", "MS-18", "MS-18");
+        root.update("UPDATE messstelle_ort SET gueltig_bis = '2026-10-31' WHERE messstelle_id = ?", ms18);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, ort_id, gueltig_ab) "
+                + "VALUES (?, ?, ?, '2026-11-01')", w.mandant(), ms18, w.g2());
+        for (String suffix : List.of("", "/fassungen", "/berechnung",
+                "/werte?periode=monat&von=2026-10-01&bis=2026-10-31",
+                "/werte/versionen?periode=monat&von=2026-10-01")) {
+            assertThat(ruf(w, kz2 + suffix).status()).as(suffix).isEqualTo(404);
+        }
+        assertThat(ok(ruf(w, PFAD)).path("kennzahlen").toString()).doesNotContain("KZ-0002");
+        String vorher = root.queryForObject("SELECT to_jsonb(k)::text FROM kennzahl k WHERE id = ?", String.class,
+                w.kz().get("KZ-0002"));
+        String fassungenVorher = root.queryForObject("SELECT jsonb_agg(to_jsonb(f) ORDER BY id)::text "
+                + "FROM kennzahl_fassung f WHERE kennzahl_id = ?", String.class, w.kz().get("KZ-0002"));
+        Map<String, Object> aenderung = Map.of("kennzeichen", "KZ-0002", "name", "Verdeckte Änderung",
+                "verantwortlich_name", "Peter Hollerbach");
+        Map<String, Object> fassung = Map.of("gueltig_ab", "2026-11-21", "begruendung", "Versuch", "eingaenge", List.of(
+                Map.of("rolle", "zaehler", "art", "messstelle", "kennzeichen", "MS-18"),
+                Map.of("rolle", "nenner", "art", "bezugsgroesse", "kennzeichen", "BZ-7")));
+        for (Object[] weg : new Object[][] {{HttpMethod.PUT, "", aenderung}, {HttpMethod.POST, "/archivieren", null},
+                {HttpMethod.DELETE, "", null}, {HttpMethod.POST, "/fassungen", fassung}}) {
+            Antwort a = ruf(w, (HttpMethod) weg[0], kz2 + weg[1], weg[2]);
+            assertThat(a.status()).as(weg[0] + " " + weg[1] + " " + a.body()).isEqualTo(404);
+            assertThat(a.body().toString()).doesNotContain("KZ-0002", "MS-18", "BZ-7");
+        }
+        assertThat(root.queryForObject("SELECT to_jsonb(k)::text FROM kennzahl k WHERE id = ?", String.class,
+                w.kz().get("KZ-0002"))).isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT jsonb_agg(to_jsonb(f) ORDER BY id)::text "
+                + "FROM kennzahl_fassung f WHERE kennzahl_id = ?", String.class, w.kz().get("KZ-0002")))
+                .isEqualTo(fassungenVorher);
     }
 
     // ================================================================ §7: jeder Fall mit Herkunft, byte-gleich

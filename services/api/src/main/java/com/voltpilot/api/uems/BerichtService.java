@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
 import com.voltpilot.api.uems.BerichtAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.BerichtRepository.AnstossZeile;
 import com.voltpilot.api.uems.BerichtRepository.EntwurfZeile;
@@ -101,11 +103,12 @@ public class BerichtService {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
+    private final TeilansichtDienst umfang;
     private volatile Clock uhr = Clock.systemUTC();
 
     public BerichtService(BerichtRepository repo, KennzahlAufrufer aufrufer, BerichtAbzugBildung bildung,
             MessreiheEreignisRepository ereignisse, JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
-            ObjectMapper json) {
+            ObjectMapper json, TeilansichtDienst umfang) {
         this.repo = repo;
         this.aufrufer = aufrufer;
         this.bildung = bildung;
@@ -113,6 +116,7 @@ public class BerichtService {
         this.jdbc = jdbc;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
+        this.umfang = umfang;
     }
 
     /** Für Tests: die Uhr, an der Datenstand, Freigabe, Fristen und Rechte hängen. */
@@ -301,6 +305,14 @@ public class BerichtService {
         List<String> teilansicht = teilansicht(z);
         byte[] inhalt = ausgabe.bauen(baum(s.abzug()), new BerichtCsv.Stand(s.nr(), s.freigegebenAm(), s.freigeberName(),
                 s.pruefsumme(), s.ersetztDurchNr(), ersetztAm), z.jetzt(), teilansicht);
+        if (FORMAT_CSV.equals(format)) {
+            String kopfzeile = umfang.exportKopf(z.benutzer(), z.kundenbereich(), z.jetzt());
+            if (kopfzeile != null) {
+                // Der Abzug bleibt unberührt. Nur der Abruf-Umschlag des CSV nennt die Teilansicht (R-A4).
+                String csv = new String(inhalt, StandardCharsets.UTF_8);
+                inhalt = ("\uFEFF# " + kopfzeile + "\r\n" + csv.substring(1)).getBytes(StandardCharsets.UTF_8);
+            }
+        }
         transaktion.executeWithoutResult(tx -> {
             UUID abruf = repo.abruf(kopf.tenant(), s.id(), format, teilansicht != null, wer, rolle(z.darf(), wer),
                     z.jetzt());
@@ -331,11 +343,9 @@ public class BerichtService {
         boolean standort = BerichtRegeln.STANDORT.equals(v.geltungArt());
         Geltung g = geltung(standort, geltungId);
         Benutzer b = aufrufer.benutzer(wer);
-        DarfErgebnis d = BerichtRechte.darf(b, rechteKundenbereich(), BerichtRechte.ANLEGEN, v.geltungArt(),
-                standort ? g.id().toString() : null, jetzt);
-        if (!d.darf()) {
-            throw BerichtAbgelehnt.rechte(d);
-        }
+        DarfErgebnis d = Geltungsbereich.requireScope(b, rechteKundenbereich(),
+                BerichtRegeln.kennung(BerichtRechte.ANLEGEN, v.geltungArt()),
+                standort ? g.id().toString() : null, jetzt, BerichtAbgelehnt::rechte);
         ZoneId zone = repo.zeitzone(standort ? g.id() : null);
         BerichtRegeln.Zeitraum zr = BerichtRegeln.zeitraum(v.zeitraumArt(), zeitraum, zone);
         Optional<Kopf> schon = repo.berichtZu(v.schluessel(), v.geltungArt(), g.id(), zeitraum);
@@ -571,26 +581,24 @@ public class BerichtService {
         Kopf kopf = repo.bericht(kennung).orElseThrow(() -> BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
         Benutzer b = aufrufer.benutzer(wer);
         Kundenbereich k = rechteKundenbereich();
-        DarfErgebnis d = darf(b, k, handlung, kopf, jetzt);
-        if (!d.darf()) {
-            throw BerichtAbgelehnt.rechte(d);
-        }
+        DarfErgebnis d = Geltungsbereich.requireScope(b, k, BerichtRegeln.kennung(handlung, kopf.geltungArt()),
+                kopf.standortId() == null ? null : kopf.standortId().toString(), jetzt, BerichtAbgelehnt::rechte);
         return new Zugriff(kopf, d, b, k, jetzt);
     }
 
     private static DarfErgebnis darf(Benutzer b, Kundenbereich k, String handlung, Kopf kopf, Instant jetzt) {
-        return BerichtRechte.darf(b, k, handlung, kopf.geltungArt(),
+        return Geltungsbereich.scope(b, k, BerichtRegeln.kennung(handlung, kopf.geltungArt()),
                 kopf.standortId() == null ? null : kopf.standortId().toString(), jetzt);
     }
 
     /** Darf die Person irgendeinen Bericht lesen — am Unternehmen oder an einem Standort? Sonst das Nein (403 vor 404). */
     private static void irgendwoLesbar(Benutzer b, Kundenbereich k, Instant jetzt) {
-        DarfErgebnis nein = BerichtRechte.darf(b, k, BerichtRechte.ABRUFEN, BerichtRegeln.UNTERNEHMEN, null, jetzt);
+        DarfErgebnis nein = Geltungsbereich.scope(b, k, BerichtRechte.UNTERNEHMEN, null, jetzt);
         if (nein.darf()) {
             return;
         }
         for (RechteAbleitung.Standort s : k.standorte()) {
-            DarfErgebnis d = BerichtRechte.darf(b, k, BerichtRechte.ABRUFEN, BerichtRegeln.STANDORT, s.kennzeichen(), jetzt);
+            DarfErgebnis d = Geltungsbereich.scope(b, k, BerichtRechte.STANDORT_ABRUFEN, s.kennzeichen(), jetzt);
             if (d.darf()) {
                 return;
             }

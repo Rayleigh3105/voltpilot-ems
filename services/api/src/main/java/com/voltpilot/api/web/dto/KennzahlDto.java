@@ -118,9 +118,13 @@ public final class KennzahlDto {
             OffsetDateTime archiviertAm,
             OffsetDateTime angelegtAm) {}
 
+    /** Nur Anzahl und Kundensatz, keine Identität einer verborgenen Kennzahl. */
+    public record ZugriffHinweis(int anzahl, String text) {}
+
     /** {@code GET /api/v1/kennzahlen}: archivierte eingeschlossen, nach Kennzeichen (ein Objekt, additiv erweiterbar). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Liste(List<Kennzahl> kennzahlen) {}
+    public record Liste(List<Kennzahl> kennzahlen,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ZugriffHinweis ausserhalbZugriff) {}
 
     /**
      * {@code GET /api/v1/kennzahlen/paare}: die möglichen Paare einer Zusammenfassung (AP-11 IP-11, R4) — gruppiert nach

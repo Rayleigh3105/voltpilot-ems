@@ -151,6 +151,7 @@ class KennzahlSchnittstelleVertragTest {
                 Map.entry("KennzahlFassung", KennzahlDto.Fassung.class),
                 Map.entry("Kennzahl", KennzahlDto.Kennzahl.class),
                 Map.entry("KennzahlListe", KennzahlDto.Liste.class),
+                Map.entry("KennzahlZugriffHinweis", KennzahlDto.ZugriffHinweis.class),
                 Map.entry("KennzahlPaare", KennzahlDto.Paare.class),
                 Map.entry("KennzahlPaarGruppe", KennzahlDto.PaarGruppe.class),
                 Map.entry("KennzahlFassungen", KennzahlDto.Fassungen.class),

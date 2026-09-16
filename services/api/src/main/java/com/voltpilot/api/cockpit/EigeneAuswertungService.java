@@ -84,6 +84,7 @@ public class EigeneAuswertungService {
      * @param at der Anker-Tag (Europe/Berlin); null = heute
      */
     public EigeneAuswertungDto forSite(UUID siteId, LocalDate at) {
+        geltungsbereich.requireSite(siteId);
         LocalDate anchor = at != null ? at : LocalDate.now(HistoryRange.ZONE);
         HistoryRange.Window window = HistoryRange.DAY.window(anchor);
 
@@ -109,11 +110,6 @@ public class EigeneAuswertungService {
         }
         return new EigeneAuswertungDto(anchor.toString(), window.from(), window.to(),
                 HistoryRange.DAY.bucketMinutes(), List.copyOf(werte));
-    }
-
-    /** Existiert diese Anlage im Mandanten des Aufrufers? (RLS ist der Zaun.) */
-    public boolean siteVisible(UUID siteId) {
-        return geltungsbereich.siteVisible(siteId);
     }
 
     /**

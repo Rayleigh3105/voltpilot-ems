@@ -1,6 +1,18 @@
 package com.voltpilot.api.zugriff;
 
+import com.voltpilot.api.uems.RechteAbleitung;
+import com.voltpilot.api.uems.KennzahlRegeln;
+import com.voltpilot.api.uems.KennzahlUmfang;
+import com.voltpilot.api.uems.RechteAbleitung.Benutzer;
+import com.voltpilot.api.uems.RechteAbleitung.Kundenbereich;
+import com.voltpilot.api.uems.RechteAbleitung.DarfErgebnis;
+import com.voltpilot.api.uems.RechteAbleitung.Ziel;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -65,6 +77,61 @@ public class Geltungsbereich {
         if (!standortVisible(standortId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort nicht gefunden.");
         }
+    }
+
+    /**
+     * R-A1/R-A5: der gemeinsame Prüfpunkt für Kennzahlen, Berichte und Exporte. {@code null} bedeutet
+     * Unternehmens-Geltung, nicht „alle sichtbaren Standorte“. Die Matrix gewährt sie ausschließlich U-Rollen,
+     * nie einer Unterstützung. Die Standortliste kommt aus der mandanten- und standortgezäunten Verbindung.
+     */
+    public static DarfErgebnis scope(Benutzer wer, Kundenbereich kundenbereich, String recht, String standort,
+            Instant jetzt) {
+        return RechteAbleitung.darf(RechteMatrixDatei.matrix(), wer, kundenbereich, recht,
+                standort == null ? Ziel.unternehmen() : Ziel.standort(standort), jetzt);
+    }
+
+    /** Bestehende Routen behalten ihr Fehlerformat: fremdes Objekt 404, fehlendes Unternehmensrecht 403. */
+    public static DarfErgebnis requireScope(Benutzer wer, Kundenbereich kundenbereich, String recht, String standort,
+            Instant jetzt, Function<DarfErgebnis, ? extends RuntimeException> ablehnung) {
+        DarfErgebnis d = scope(wer, kundenbereich, recht, standort, jetzt);
+        if (!d.darf()) {
+            throw ablehnung.apply(d);
+        }
+        return d;
+    }
+
+    /** Keine Metadaten im Nein: die Liste darf ausschließlich einen ANZAHL-Hinweis bilden. */
+    public record KennzahlSicht(boolean sichtbar, boolean hinweis) {}
+
+    public static KennzahlSicht scope(Benutzer wer, Kundenbereich kundenbereich, boolean eigeneGeltung,
+            Set<String> eingaenge, Instant jetzt) {
+        List<Boolean> sichtbar = eingaenge.stream().map(s -> !KennzahlUmfang.UNBEKANNT.equals(s)
+                && scope(wer, kundenbereich, KennzahlRegeln.ANSEHEN,
+                        KennzahlUmfang.UNTERNEHMEN.equals(s) ? null : s, jetzt).darf()).toList();
+        boolean dritter = wer.konto() != RechteAbleitung.Konto.BENUTZER;
+        boolean wert = KennzahlRegeln.MIT_WERT.equals(KennzahlRegeln.sichtbarkeit(eigeneGeltung, sichtbar, dritter));
+        // W3 bleibt bestehen. Auch bei allen Eingangs-Standorten im Zugriff gibt ein fehlendes
+        // Unternehmensrecht keinen Namen preis (korrigierte A15-Abnahme, Firstmate 16.09.2026).
+        return new KennzahlSicht(wert, !wert && !dritter && sichtbar.stream().anyMatch(Boolean::booleanValue));
+    }
+
+    public static void requireScope(KennzahlSicht sicht, Supplier<? extends RuntimeException> nichtGefunden) {
+        if (!sicht.sichtbar()) {
+            throw nichtGefunden.get();
+        }
+    }
+
+    public static DarfErgebnis requireScope(Benutzer wer, Kundenbereich kundenbereich, String recht, String standort,
+            Instant jetzt) {
+        return requireScope(wer, kundenbereich, recht, standort, jetzt, d -> d.http() == 403
+                ? new RechtFehlt(recht, d)
+                : new ResponseStatusException(HttpStatus.NOT_FOUND, "Nicht gefunden."));
+    }
+
+    /** R-A4/R-A7: ausschließlich sichtbare Namen und die erlaubte Gesamt-ANZAHL; volle Sicht bleibt zeichengleich. */
+    public static String exportKopf(List<String> namen, int gesamt) {
+        return namen.size() >= gesamt ? null
+                : "Teilansicht: " + String.join(", ", namen) + " (" + namen.size() + " von " + gesamt + " Standorten)";
     }
 
     /**
