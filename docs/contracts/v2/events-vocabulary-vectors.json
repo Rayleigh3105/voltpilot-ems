@@ -6168,7 +6168,7 @@
       }
     },
     {
-      "name": "import-anlass-fassung_neu-widerspricht",
+      "name": "import-anlass-fassung-neu-widerspricht",
       "pruefung": "ereignis",
       "bezug": "AP-09 IP-13 C6/C7; B3/B14",
       "why": "Import und Fassung im Anlass müssen zur Meldung passen.",
