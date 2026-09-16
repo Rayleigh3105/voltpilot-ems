@@ -70,6 +70,20 @@ Eine bestätigte Nachricht ist noch kein physischer Wirkungsnachweis. Das Portal
 
 v1 und v2 koexistieren auf getrennten MQTT-Topics. v2 verwendet mehrere Entitäten pro Box, Flow-Wünsche und einen lokalen Arbiter. Der Go-Core bleibt für die Ausführung zuständig. Verträge: [v1/v2](contracts/README.md), [Ausführungsverantwortung](contracts/v2/plan-execution-ownership.md).
 
+Die UEMS-Messwert-Strecke ergänzt den Bestandsweg um eine Reihe je Komponente und Messkanal sowie
+um die zur Messzeit aufgelöste Herkunft. Originalwerte liegen 90 Tage in
+`device_measurement_sample`; Viertelstunden-, Tages- und Periodenwerte liegen 3 653 Tage in
+eigenen Hypertables, Ereignisse ohne Retention in `messreihe_ereignis`
+(`services/api/src/main/resources/db/migration/V20260848000000__additional_measurement_pipeline.sql:198-202`,
+`services/api/src/main/resources/db/migration/V20260912170000__uems_messreihe_viertelstunde.sql:239-258`,
+`services/api/src/main/resources/db/migration/V20260912190000__uems_endgueltigkeit_tageswerte.sql:328-344`,
+`services/api/src/main/resources/db/migration/V20260912205000__uems_periodenmengen.sql:171-188`). Alle mandanteneigenen Langzeitklassen
+verwenden RLS + FORCE und deshalb keine Timescale-Kompression. Ihre Verdichtung sind
+flag-gesteuerte Spring-Jobs im Fünf-Minuten- beziehungsweise Stundentakt, **keine Continuous
+Aggregates** (`services/api/src/main/java/com/voltpilot/api/uems/ViertelstundeLaeufer.java:29-42`,
+`services/api/src/main/java/com/voltpilot/api/uems/EndgueltigkeitLaeufer.java:46-86`). Wegweiser:
+[Messwert-Strecke, Herkunft und Speicherklassen](agents/root/messwert-strecke-herkunft-speicherklassen.md).
+
 ## Daten und Mandanten
 
 ```mermaid
@@ -91,6 +105,10 @@ Keycloak liefert den Mandanten im JWT. Die API verwendet eine RLS-gebundene Date
 - Lokal: Docker Compose, optional mit `edge`, `feeds` und `optimize`; das Portal läuft über Vite.
 - Cloud-Release: Forgejo baut Images und aktualisiert das separate GitOps-Repository. Argo CD übernimmt den gewünschten Stand in den Cluster. Die tatsächliche Sync-Einstellung steht im GitOps-Repository.
 - Datenebene: Die Compose-Konfiguration unterstützt separat betriebene Datenbanken, EMQX und Redpanda mit begrenztem LAN-Zugriff für den Cluster.
+- UEMS-Verdichtungen laufen in der singleton betriebenen API über dauerhafte Arbeitslisten. Ein
+  wachsender Rückstand ist ein Betriebsalarm, kein Readiness-Neustartgrund; der konkrete Stand
+  steht im [Kubernetes-Betriebsvertrag](k8s-readiness.md)
+  (`services/api/src/main/java/com/voltpilot/api/uems/ViertelstundeVerdichter.java:360-405`).
 - Edge-Release: eigener signierter OTA-Pfad mit Verifikation, Selbsttest und Rücknahme. Kein Mender-Abhängigkeitspfad.
 - Nicht alle Dienste sind beliebig replizierbar; API, Ingest und periodische Jobs haben Singleton-Grenzen. Siehe [Kubernetes-Betriebsvertrag](k8s-readiness.md).
 

@@ -94,6 +94,29 @@ max(voltpilot_metrics_collect_age_seconds) > 300
 
 Diese Ausdrücke sind Ausgangspunkte der vorhandenen Betriebslogik; Alert-Dauer und Empfänger gehören in die tatsächliche Monitoringkonfiguration. Verbraucher-Metriken stehen im [Verbraucherhandbuch](verbrauchssteuerung-betrieb.md).
 
+### UEMS-Arbeitslisten
+
+Die UEMS-Verdichter entnehmen Viertelstunden und Tage unter `FOR UPDATE SKIP LOCKED` und schreiben
+das Ergebnis in derselben Transaktion. Ein wachsender Rückstand bedeutet daher „Arbeit wird nicht
+abgebaut“, nicht „der HTTP-Prozess ist nicht bereit“
+(`services/api/src/main/java/com/voltpilot/api/uems/ViertelstundeVerdichter.java:360-405`,
+`services/api/src/main/java/com/voltpilot/api/uems/TagVerdichter.java:350-389`). **Arbeitslistenrückstand darf die Readiness nicht rot schalten**;
+sonst würde Kubernetes gerade den Prozess neu starten, der den Rückstand abbauen soll.
+
+Im Stand dieses Dokuments veröffentlichen `DbHealthMetricsCollector` und der tägliche
+`DbStorageMetricsCollector` Größen, Planverbrauch, Timescale-Jobfehler, Optimierer-Zyklus und
+Sammler-Alter, aber noch keine UEMS-Arbeitslisten-Metrik
+(`services/api/src/main/java/com/voltpilot/api/metrics/DbHealthMetricsCollector.java:45-84`,
+`services/api/src/main/java/com/voltpilot/api/metrics/DbStorageMetricsCollector.java:39-88`). Damit
+ist auch noch kein belastbarer PromQL-Arbeitslisten-Alarm im separaten GitOps-Repository belegbar.
+Das ist ein **Betriebsbefund**, keine Readiness-Zusage: bis die Metrik gebaut und ausgerollt ist,
+müssen Betreiber die Tabellen `messreihe_viertelstunde_arbeit`, `messreihe_tag_arbeit` und
+`messreihe_periode_arbeit` nach Anzahl und ältestem `eingetragen_am` beobachten. Der Alarm soll
+auf anhaltendes Alter beziehungsweise Wachstum gehen und den API-Job prüfen lassen; Schwellen und
+Empfänger gehören ins GitOps-Repository, nicht in dieses Produkt-Repository.
+Der gebaute Kapazitätswächter ist davon getrennt; Details stehen unter
+[UEMS-Speicher-Wächter](agents/root/uems-speicher-waechter.md).
+
 ## Migrationen und Rollouts
 
 Expand-Contract: Während eines Rollouts kann alter Code bereits das neue Schema sehen. Neue Felder zunächst kompatibel ergänzen, Leser/Schreiber umstellen und erst später entfernen. Flyway-Dateien nicht nachträglich ändern oder umnummerieren.
