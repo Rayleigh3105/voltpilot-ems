@@ -1655,6 +1655,7 @@ const OBERFLAECHEN_VERBOTEN = new RegExp(
   '(^|[^\\p{L}])(Dashboards?|Widgets?|KPIs?|Drilldowns?|Timelines?|Sankey|Charts?|Zeitreihen?|Rollups?|Buckets?|Raster|Provenienz|Aggregat(?:e|en)?|Snapshots?)([^\\p{L}]|$)',
   'u',
 );
+const BILANZ_URSACHE_VERBOTEN = /(^|[^\p{L}])(Verlust(?:e|en)?|Schwund)([^\p{L}]|$)/iu;
 
 /** Kundenflächen, die „Abdeckung“ HEUTE sagen (Bestand, W7) — sortiert wie der Vergleich. Eine neue Stelle wird rot. */
 const ABDECKUNG_BESTAND: string[] = [
@@ -1870,6 +1871,19 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       }
     }
     expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('die Energiebilanz behauptet weder Verlust noch Schwund als Ursache', () => {
+    const texte = [
+      ...flaechenTexte().filter(({ wo }) => wo === 'anlageEnergiebilanz.ts' || wo === 'pages/EnergiebilanzSection.tsx'),
+      ...laufzeit().filter(({ wo }) => wo.startsWith('Energiebilanz')),
+    ];
+    expect(texte.length).toBeGreaterThan(20);
+    expect(
+      texte.filter(({ text }) => BILANZ_URSACHE_VERBOTEN.test(text)).map(({ wo, text }) => `${wo}: ${text}`),
+    ).toEqual([]);
+    expect(BILANZ_URSACHE_VERBOTEN.test('10 kWh Verlust')).toBe(true);
+    expect(BILANZ_URSACHE_VERBOTEN.test('Schwund: 10 kWh')).toBe(true);
   });
 
   it('„Abdeckung“ steht nur auf den Flächen des Bestands — die Oberflächen sagen „Verlauf n %“ (W7)', () => {

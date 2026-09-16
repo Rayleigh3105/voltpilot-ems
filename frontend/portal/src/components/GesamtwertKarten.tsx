@@ -209,6 +209,13 @@ function Karte({
 }) {
   const { messstelle: m, wert } = zeile;
   const angehalten = m.lebenszyklus === 'angehalten';
+  const chipZustand = angehalten
+    ? 'angehalten'
+    : wert == null
+      ? 'nicht abrufbar'
+      : wert.unvollstaendig
+        ? 'unvollständig'
+        : 'vollständig';
   const menu: RowMenuItem[] = [
     { recht: 'messstelle.bearbeiten', label: 'Umbenennen', icon: 'pencil', onClick: onUmbenennen },
     { recht: 'messstelle.bearbeiten', label: angehalten ? 'Fortsetzen' : 'Anhalten', icon: angehalten ? 'refresh-cw' : 'eye-off', onClick: onAnhalten },
@@ -246,7 +253,17 @@ function Karte({
         ) : (
           <span className="vp-gwk-name">{m.name || SUMMENWERT}</span>
         )}
-        {!bearbeiten && <span className="vp-gwk-chip calc">berechnet</span>}
+        {!bearbeiten && (
+          <button
+            type="button"
+            className="vp-gwk-chip calc"
+            data-zustand={chipZustand}
+            aria-label={`${m.name || SUMMENWERT}: Herkunft und Werte öffnen (${chipZustand})`}
+            onClick={onWerte}
+          >
+            berechnet · {chipZustand}
+          </button>
+        )}
         {!bearbeiten && (
           <span className="vp-gwk-menu">
             <RowMenu items={menu} />

@@ -18,11 +18,19 @@ function mount() {
 it('Leser sehen im Verlauf Werte und lesende Menüpunkte, keine Schreibhebel', async () => {
   setSelbstauskunft(rechteSeed('CB').me); mount();
   await screen.findByText('Produktion');
+  const herkunft = screen.getByRole('button', { name: 'Produktion: Herkunft und Werte öffnen (vollständig)' });
+  expect(herkunft).toHaveTextContent('berechnet · vollständig');
+  expect(herkunft).toHaveAttribute('data-zustand', 'vollständig');
   expect(screen.queryByRole('button', { name: /Summenwert/ })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Aktionen/ }));
   for (const name of ['Umbenennen', 'Anhalten', 'Fortsetzen', 'Archivieren']) {
     expect(screen.queryByRole('menuitem', { name })).toBeNull();
   }
+});
+it('der Berechnet-Chip öffnet für Leser die Werte mit ihrer Herkunft', async () => {
+  setSelbstauskunft(rechteSeed('CB').me); mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Produktion: Herkunft und Werte öffnen (vollständig)' }));
+  expect(screen.getByRole('dialog', { name: 'Tages- und Monatswerte' })).toBeVisible();
 });
 it('der Enter-Schreibweg eines geöffneten Namensfelds bleibt nach Rechteentzug gesperrt', async () => {
   const put = vi.spyOn(api, 'messstelleBearbeiten'); mount();
