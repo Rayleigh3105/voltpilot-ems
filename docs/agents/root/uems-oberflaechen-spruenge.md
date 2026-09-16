@@ -22,3 +22,8 @@ Nachweise: `uemsOberflaechen.test.ts`, `CockpitMessstellenWeg.test.tsx`, `Messst
 `e2e/weg.spec.ts` (Ebene → Welt → Zahl → Nachweis, 375/1440 px),
 `src/uemsBestandsschutz.test.tsx` und [Q5-Wächter](uems-oberflaechen-werte-verlauf.md#wächter-q5).
 Bestandsaufnahmen niemals erneuern, um eine echte Abweichung zu verschlucken.
+
+Die Wirte `e2e/startansicht.tsx` und `e2e/messstelle-seite.spec.ts` beantworten auch
+`GET /messstellen/{id}/quellen` aus `src/test/messstelleQuellenFixtures.ts` (Register-Hauptgröße,
+MS-06-Wechsel aus `quelleBindenFixtures.ts`). Fehlende Antworten erzeugen trotz abgefangenem
+Promise Konsolenfehler; eine pauschale 404 oder leere Quellenliste ersetzt die Fixture nicht.

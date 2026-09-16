@@ -220,6 +220,7 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       const werte = page.getByTestId('werte');
       await expect(werte.getByTestId('werte-karte')).toContainText('2.354 kWh');
       await expect(werte.getByTestId('werte-karte')).toContainText('3 Versionen');
+      await expect(page.getByTestId('quelle-karte')).toContainText('Zähler Energiekarte EK-1');
       const zahl = await station(page, breite, '05-zahl', gesammelt);
       expect(zahl.route).toMatch(/\?periode=2026-11-03$/);
 
