@@ -31,7 +31,6 @@ public class KanalbindungController {
     }
     /** Recht: {@code bezugsgroesse.verwalten}. */
     @GetMapping("/kanaele")
-    @Recht(value="bezugsgroesse.verwalten",ziel=RechtZiel.BEZUGSGROESSE)
     public List<KanalbindungService.Auswahl> auswahl(@PathVariable UUID id) { return service.auswahl(id); }
     /** Recht: {@code messwerte.ansehen}. */
     @GetMapping
