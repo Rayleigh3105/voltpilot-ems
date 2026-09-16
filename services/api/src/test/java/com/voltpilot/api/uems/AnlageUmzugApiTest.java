@@ -346,7 +346,10 @@ class AnlageUmzugApiTest {
     @Test
     void jeEinEintragAnDerAnlageUndAnJedemStandortMitUrheberUndBegruendung() {
         // Ein Kunde selbst (demo2, eine Anlage ohne Standort): erst zuordnen, dann umziehen.
-        String anlage = rufe(HttpMethod.GET, "/sites", DEMO2, null).getBody().get(0).get("id").asText();
+        JsonNode anlagen = rufe(HttpMethod.GET, "/sites", DEMO2, null).getBody().path("eintraege");
+        assertThat(anlagen.isArray()).as("Die Anlagenliste trägt den Teilansicht-Umschlag").isTrue();
+        assertThat(anlagen).isNotEmpty();
+        String anlage = anlagen.get(0).get("id").asText();
         UUID tenant = UUID.fromString(anspruch("demo2").get("tenant_id").asText());
         String werk = neuerStandort(DEMO2, "Hof Sonnenfeld");
         String scheune = neuerStandort(DEMO2, "Hof Sonnenfeld Scheune");
