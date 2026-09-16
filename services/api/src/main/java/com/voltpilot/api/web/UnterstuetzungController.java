@@ -180,8 +180,12 @@ public class UnterstuetzungController {
                 .map(UnterstuetzungController::dto).toList();
     }
 
-    /** Recht: {@code konto.eigenes} — der Aufrufer schließt nur seine eigenen Hinweise. */
+    /**
+     * Recht: {@code konto.eigenes} — die Matrix erlaubt jedem sein eigenes Konto; WESSEN Postfach gemeint ist,
+     * entscheidet nicht der Pfad, sondern das Subject des Aufrufers (ein fremder Hinweis ist 404).
+     */
     @PostMapping("/hinweise/{id}/gelesen")
+    @Recht(value = "konto.eigenes", ziel = RechtZiel.UNTERNEHMEN)
     public ResponseEntity<Void> gelesen(@PathVariable UUID id, Authentication auth) {
         dienst.hinweisGelesen(id, akteur(auth).sub());
         return ResponseEntity.noContent().build();

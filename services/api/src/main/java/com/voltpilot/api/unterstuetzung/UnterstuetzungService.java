@@ -329,8 +329,12 @@ public class UnterstuetzungService {
             for (Zeile z : gruppe) {
                 zugriffe.protokollieren(RechteAbleitung.AenderungsArt.ABLAUFEN.code(), z, ZEITABLAUF, null);
             }
-            hinweisen(Anlass.ABGELAUFEN, welt, erste.id(), null, RechteAbleitung.TEXTE.get("endete_zeitablauf")
-                    .replace("{datum}", RechteAbleitung.datum(erste.endetAm(), welt.zone())) + " · " + name);
+            // Denselben Satz spricht der Vertrag auch an der Gewährung selbst („Endete am … durch Zeitablauf"),
+            // und er nennt das ENDDATUM, nicht den Zeitpunkt danach - der Hinweis holt ihn dort, nie selbst gebaut.
+            List<UUID> orte = gruppe.stream().map(Zeile::standortId).toList();
+            String satz = ergebnis(welt, name, erste.art(), erste.umfang(), orte, erste.gueltigAb(),
+                    erste.gueltigBis(), null, null, null, jetzt).text();
+            hinweisen(Anlass.ABGELAUFEN, welt, erste.id(), null, satz + " · " + name);
             abgelaufen++;
         }
         int erinnert = 0;

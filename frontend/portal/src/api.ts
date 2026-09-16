@@ -2373,6 +2373,102 @@ export interface SelbstauskunftPerson {
   name: string;
 }
 
+/**
+ * UEMS AP-03 IP-8: die Unterstützung (`/api/v1/unterstuetzung`, OpenAPI `Unterstuetzung`) - gewähren,
+ * verlängern, beenden, die Anfragen von VoltPilot und das Hinweis-Postfach. Die Wörter `art`, `umfang` und
+ * `zustand` sind die des Rechte-Vertrags; `anlass` ist das geschlossene Vokabular dieses Pakets (Zwilling des
+ * CHECK `unterstuetzung_hinweis_anlass_chk`). Noch liest das Portal sie nicht (AP-03 IP-15).
+ */
+export type UnterstuetzungArt = 'installateur' | 'voltpilot' | 'notfall';
+export type UnterstuetzungAnlass =
+  | 'anfrage'
+  | 'gewaehrt'
+  | 'notfall'
+  | 'erinnerung'
+  | 'abgelaufen'
+  | 'beendet';
+
+export interface Unterstuetzung {
+  /** Der Griff der Gewährung - die kleinste Kennung ihrer Zeilen; er bleibt, auch nachdem sie endete. */
+  id: string;
+  art: UnterstuetzungArt;
+  umfang: SelbstauskunftUmfang | null;
+  standorte: string[];
+  /** Dieselben Standorte als Kennzeichen des Vertrags (ST-1 …). */
+  standort_kennzeichen: string[];
+  unterstuetzer: SelbstauskunftPerson;
+  gueltig_ab: string;
+  /** Enddatum einschließlich; der Notfall-Zugriff hat keins, nur `endet`. */
+  gueltig_bis: string | null;
+  endet: string | null;
+  zustand: 'entwurf' | 'eingerichtet' | 'aktiv' | 'archiviert';
+  erinnerung: boolean;
+  grund: string | null;
+  /** Der Banner-Satz, solange sie wirkt. */
+  banner: string | null;
+  /** Der Satz danach („Endete am … durch Zeitablauf“, „Beendet am … durch …“, „Wirkt ab …“). */
+  text: string | null;
+  /** GENAU EINMAL in der Antwort des Gewährens, wenn dafür ein Partner-Konto entstand (E14). */
+  startpasswort: string | null;
+}
+
+/** Der Körper von `POST /api/v1/unterstuetzung` (streng gelesen, snake_case). */
+export interface UnterstuetzungGewaehren {
+  art?: 'installateur' | 'voltpilot';
+  email?: string | null;
+  standorte?: string[];
+  umfang?: SelbstauskunftUmfang | null;
+  gueltig_ab?: string | null;
+  gueltig_bis?: string | null;
+  grund?: string | null;
+  anfrage_id?: string | null;
+}
+
+/** Ein Wunsch von VoltPilot (E8, A5) - er gewährt nichts, bis der Kundenadministrator bestätigt. */
+export interface UnterstuetzungAnfrage {
+  id: string;
+  art: 'voltpilot';
+  umfang: SelbstauskunftUmfang;
+  standorte: string[];
+  angefragt_von: SelbstauskunftPerson;
+  gueltig_ab: string;
+  gueltig_bis: string;
+  grund: string | null;
+  /** Abgeleitet, nie gespeichert. */
+  zustand: 'offen' | 'bestaetigt' | 'abgelehnt';
+  entschieden_am: string | null;
+  /** Der Griff der gewährten Unterstützung, sonst `null`. */
+  unterstuetzung: string | null;
+  angefragt_am: string;
+}
+
+/** Ein Hinweis im Postfach eines Kundenadministrators - Karte im Portal, mit SMTP zusätzlich eine E-Mail. */
+export interface UnterstuetzungHinweis {
+  id: string;
+  anlass: UnterstuetzungAnlass;
+  text: string;
+  unterstuetzung: string | null;
+  anfrage: string | null;
+  erzeugt_am: string;
+  gelesen_am: string | null;
+  /** `null`, solange kein SMTP steht - dann ist das Portal der Weg. */
+  email_versandt_am: string | null;
+}
+
+/** Der geschlossene Satz der Ablehnungen (OpenAPI `UnterstuetzungFehler`). */
+export type UnterstuetzungFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'bereits_beendet'
+  | 'anfrage_entschieden'
+  | 'standort_fehlt'
+  | 'standort_unbekannt'
+  | 'hoechstens_12_monate'
+  | 'grund_fehlt'
+  | 'ende_nicht_spaeter'
+  | 'notfall_nicht_verlaengerbar'
+  | 'konto_nicht_erreichbar';
+
 /** UEMS AP-11: die Wörter des Kennzahl-Vertrags (`docs/contracts/v2/kennzahl-vectors.json`). */
 export type KennzahlRechenform = 'quotient' | 'anteil' | 'zusammenfassung';
 export type KennzahlPeriodeArt = 'tag' | 'woche' | 'monat' | 'jahr';

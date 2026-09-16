@@ -84,7 +84,9 @@ class MetricsEndpointSecurityTest {
          */
         @Bean
         ZugriffKontextLader zugriffKontextLader() {
-            return new ZugriffKontextLader(Mockito.mock(ZugriffRepository.class), new SimpleMeterRegistry());
+            // true = der Mandanten-Umschalter gilt (die ausgelieferte Vorgabe, AP-03 IP-8).
+            return new ZugriffKontextLader(Mockito.mock(ZugriffRepository.class), new SimpleMeterRegistry(),
+                    true);
         }
     }
 

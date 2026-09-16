@@ -130,11 +130,18 @@ public class ZugriffRepository {
                 (rs, n) -> new MitName(zeile(rs, n), rs.getString("name")), kundenbereich(), rolle.code(), utc(jetzt));
     }
 
-    /** Der Grund, mit dem eine Zuweisung eingetragen wurde (der Notfall-Zugriff trägt ihn), sonst {@code null}. */
+    /**
+     * Der Grund, mit dem eine Zuweisung eingetragen wurde (der Notfall-Zugriff trägt ihn), sonst {@code null}.
+     *
+     * <p>⚠ Es GIBT die Protokollzeile fast immer, nur ihr {@code grund} ist meist leer — {@code findFirst} auf
+     * einer Liste mit {@code null} darin wirft ({@code Optional.of}). Bis IP-8 fiel das nicht auf, weil die
+     * Selbstauskunft nur für den Notfall-Zugriff fragte und der seinen Grund immer trägt.
+     */
     public String grundDerZuweisung(UUID zugriffId) {
-        return jdbc.query("SELECT grund FROM zugriff_protokoll WHERE tenant_id = ? AND zugriff_id = ? "
-                + "AND aktion = 'zuweisen' ORDER BY id LIMIT 1", (rs, n) -> rs.getString("grund"), kundenbereich(),
-                zugriffId).stream().findFirst().orElse(null);
+        List<String> gruende = jdbc.query("SELECT grund FROM zugriff_protokoll WHERE tenant_id = ? "
+                + "AND zugriff_id = ? AND aktion = 'zuweisen' ORDER BY id LIMIT 1",
+                (rs, n) -> rs.getString("grund"), kundenbereich(), zugriffId);
+        return gruende.isEmpty() ? null : gruende.get(0);
     }
 
     // ------------------------------------------------------------------ Zuweisungen
