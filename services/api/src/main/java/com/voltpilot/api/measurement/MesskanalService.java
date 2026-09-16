@@ -92,7 +92,7 @@ public class MesskanalService {
         for (MessstelleQuelleRepository.Quelle q : quellen.derKomponenteAm(komponente, stichtag)) {
             speist.computeIfAbsent(q.kanal(), k -> new ArrayList<>()).add(new MesskanalDto.Speist(
                     q.messstelleId(), q.messstelle(), q.groesse(), q.richtung(), q.rolle(), q.zweck(),
-                    zeit(q.gueltigAb()), zeit(q.gueltigBis())));
+                    zeit(q.gueltigAb()), zeit(q.gueltigBis()), q.anteil()));
         }
         return new MesskanalDto.Liste(siteId, komponente, catalog.inhaltsstand(),
                 zeilen.stream().map(z -> kanal(z, geraet, speist.getOrDefault(z.pointKey(), List.of()))).toList());

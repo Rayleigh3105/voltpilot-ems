@@ -18,6 +18,8 @@ import {
   leerzustand as messstellenLeer,
 } from './messstellen';
 import { ahrenbergRegister, leeresRegister } from './test/messstellenRegisterFixtures';
+import * as QB from './quelleBinden';
+import { JETZT as QB_JETZT, kanaeleK3, quellenMs01 } from './test/quelleBindenFixtures';
 import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SAETZE as KENNZAHL_SAETZE, VERBOTENE_WOERTER as KENNZAHL_VERBOTEN } from './uemsKennzahl';
 import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
@@ -1194,6 +1196,94 @@ describe('UEMS AP-04 IP-5 · das Messstellen-Register spricht Messstelle · Quel
     }
     for (const richtig of ['Quelle (führend)', 'führend seit 18.11.2026 10:40 · davor Z-5a', '1 Vergleichsquelle', 'Keine Datenquelle', 'Messstellen']) {
       expect(beisst(richtig), richtig).toBe(false);
+    }
+  });
+});
+
+/**
+ * UEMS AP-04 IP-14 — „Quelle binden“ und die Quelle-Karte sprechen dieselben Wörter wie das Register: Quelle ·
+ * führend · Vergleichsquelle. Nie „Quellenbindung“ (das Vertragswort der Werkstatt), nie „Primär-“ oder
+ * „Referenzquelle“. Gelesen werden die festen Sätze UND die, die die Fläche aus den Ahrenberg-Fixturen bildet —
+ * die Gründe der ausgegrauten Messwerte eingeschlossen, denn genau sie liest der Kunde am häufigsten.
+ */
+describe('UEMS AP-04 IP-14 · „Quelle binden“ spricht Quelle · führend · Vergleichsquelle (E3)', () => {
+  const saetze = (): string[] => {
+    const karten = QB.quelleKarte(quellenMs01(), QB_JETZT);
+    const gruende = QB.messwertZeilen(
+      kanaeleK3(),
+      { groesse: 'Wirkleistung', richtung: 'Bezug', einheit: 'kW', wertart: 'Momentanwert' },
+      { rolle: 'fuehrend', eigenesKennzeichen: 'MS-01', anteil: true },
+    );
+    return [
+      QB.QUELLE_TITEL,
+      QB.QUELLE_BINDEN,
+      QB.VERGLEICHSQUELLE,
+      QB.VERGLEICHSQUELLE_HINZUFUEGEN,
+      QB.ALS_MESSSTELLE_VERWENDEN,
+      QB.KEINE_DATENQUELLE,
+      QB.KEINE_VERGLEICHSQUELLE,
+      QB.OHNE_BEWERTUNG,
+      QB.HISTORIE,
+      QB.WAS_GESCHIEHT,
+      QB.LUECKE,
+      ...Object.values(QB.PFLICHT),
+      ...Object.values(QB.TITEL),
+      ...Object.values(QB.KNOPF),
+      ...QB.ZWECKE,
+      ...Object.values(QB.ZWECK_SUB),
+      QB.keinZielSatz([], 'Ladestand'),
+      ...karten.flatMap((k) => [
+        k.titel,
+        ...k.werte.flatMap((w) => [w.rolle, w.quelle, w.zeitraum, w.anteil, w.ohneWert]),
+        ...k.historie.flatMap((h) => [h.wert, h.zeitraum, h.marke]),
+        k.leerFuehrend,
+        k.leerVergleich,
+      ]),
+      ...gruende.map((g) => g.grund),
+      QB.folgenSatz({
+        rolle: 'vergleich',
+        kennzeichen: 'MS-01',
+        zeitpunkt: QB_JETZT,
+        jetzt: QB_JETZT,
+        komponente: 'Netzzähler Halle 1',
+        messwert: 'Wirkleistung',
+        zweck: 'Plausibilität',
+        anteil: 'positiv',
+        richtung: 'Bezug',
+        rueckwirkendAbzeichen: null,
+      }),
+    ].filter((x): x is string => typeof x === 'string' && x.length > 0);
+  };
+
+  it('die Wörter kommen aus dem Glossar', () => {
+    expect(QB.QUELLE_TITEL).toBe(UEMS_QUELLE);
+    expect(QB.QUELLE_BINDEN).toBe(`${UEMS_QUELLE} binden`);
+    expect(QB.VERGLEICHSQUELLE).toBe(`${UEMS_VERGLEICH}squelle`);
+    expect(QB.ALS_MESSSTELLE_VERWENDEN).toBe(`Als ${UEMS_MESSSTELLE} verwenden`);
+    expect(QB.quelleKarte(quellenMs01(), QB_JETZT)[1].werte[0].rolle).toBe(UEMS_FUEHREND);
+  });
+
+  it('liest wirklich die Sätze — und kein Satz trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const alle = saetze();
+    expect(alle.length).toBeGreaterThan(40);
+    expect(alle).toContain('Beide Werte stehen nebeneinander; bewertet wird nichts.');
+    const violations = alle.flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('die Fläche und ihr Modul stehen im Bestand des Wächters', () => {
+    const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
+    expect(dateien).toContain('quelleBinden.ts');
+    expect(dateien).toContain('components/QuelleKarte.tsx');
+    expect(dateien).toContain('components/QuelleBindenDialog.tsx');
+  });
+
+  it('E3: keine Fläche der Quelle bewertet — kein Delta, keine Ampel, kein stiller Ersatz', () => {
+    const alle = saetze().join(' | ');
+    for (const verboten of ['Abweichung', 'Ampel', 'plausibel', 'Toleranz', 'ersetzt', 'Delta']) {
+      expect(alle, verboten).not.toContain(verboten);
     }
   });
 });

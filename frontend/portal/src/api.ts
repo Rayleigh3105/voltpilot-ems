@@ -1906,6 +1906,11 @@ export interface Messkanal {
   groesse: string | null;
   richtung: string | null;
   aktiv: boolean;
+  /**
+   * Das KATALOGWORT der Richtung (`import_export`, `import`, …) — nicht das Kundenwort `richtung`.
+   * Nur daran hängt der Anteil eines Vorzeichen-Werts (AP-08 IP-7, E15); fehlend = keiner.
+   */
+  direction?: string | null;
   /** Die gewünschte Kadenz der Mess-Selektion in Sekunden; `null` = nicht festgelegt. */
   kadenz_s?: number | null;
   /** Welche Messstellen der Kanal jetzt speist (AP-04 IP-13) — leer ohne laufende Quellenbindung. */
@@ -1923,6 +1928,12 @@ export interface MesskanalSpeist {
   zweck: string | null;
   gueltig_ab: string;
   gueltig_bis: string | null;
+  /**
+   * Additiv (AP-04 IP-14): welchen Teil eines Vorzeichen-Werts die Bindung liest (AP-08 IP-7,
+   * E15); fehlend/`null` = der ganze Wert. Erst damit graut „Quelle binden“ richtig aus — EIN
+   * Vorzeichen-Kanal führt den Bezug der einen und die Abgabe der anderen Messstelle.
+   */
+  anteil?: 'positiv' | 'negativ' | null;
 }
 
 export interface MesskanalListe {
@@ -4422,13 +4433,123 @@ export interface MessstelleAnlegen {
 /**
  * POST /api/v1/messstellen/{id}/quellen (IP-13) — ohne `groesse` die Hauptgröße, sonst Größe +
  * Richtung einer Nebengröße; `gueltig_ab` auf die Minute mit Versatz.
+ *
+ * `rolle: 'vergleich'` braucht IMMER einen `zweck` (E3); `anteil` liest nur einen Teil eines
+ * Vorzeichen-Werts (AP-08 IP-7) — fehlend = der ganze Wert.
  */
 export interface MessstelleQuelleBinden {
   groesse?: { groesse: string; richtung: string };
   komponente: string;
   kanal: string;
-  rolle: 'fuehrend';
+  rolle: 'fuehrend' | 'vergleich';
+  zweck?: string;
+  anteil?: 'positiv' | 'negativ';
   gueltig_ab: string;
+}
+
+// ---- Quelle binden (UEMS AP-04 IP-14): GET/POST …/quellen, PUT …/quellen/{qid}/beenden ------
+// Die Formen von `GET /api/v1/messstellen/{id}/quellen?stichtag=` (OpenAPI `MessstelleQuellenListe`,
+// snake_case wie das echte Backend). Je Größe der Stand zum Stichtag, dazu die ganze Historie.
+
+/** Die drei Zwecke einer Vergleichsquelle (E3) — eine Vergleichsquelle gibt es nie ohne Zweck. */
+export type MessstelleQuelleZweck = 'Plausibilität' | 'Ersatz bei Ausfall' | 'Abrechnungszähler';
+
+/** Das Gerät des Messwerts: `geraet` das Kennzeichen (GR-4), `einbau` der Einbau (Z-5b). */
+export interface MessstelleQuelleGeraet {
+  id: string | null;
+  geraet: string | null;
+  einbau: string | null;
+}
+
+/** Ein abgelesener Zählerstand an einer Bindung. */
+export interface MessstelleQuelleStand {
+  wert: number | null;
+  einheit: string | null;
+}
+
+/**
+ * Eine Quellenbindung, wie sie gespeichert ist. `letzter_wert` trägt nur, was zum Stichtag GILT
+ * (AP-04 IP-14, E3): so stehen der Wert der führenden und der der Vergleichsquelle nebeneinander,
+ * beide nach derselben Regel gebildet. `null` heißt „nichts bekannt“, nie eine 0.
+ */
+export interface MessstelleQuelle {
+  id: string;
+  messstelle_id: string;
+  groesse: string;
+  richtung: string;
+  rolle: 'fuehrend' | 'vergleich';
+  zweck: string | null;
+  komponente: string;
+  komponente_name: string | null;
+  anlage: string;
+  kanal: string;
+  /** Additiv (IP-14): der Anzeigename des Messwerts; `null`, wenn keiner bekannt ist. */
+  kanal_name?: string | null;
+  kanal_wertart: string;
+  herleitung: 'zaehlerstand' | 'differenzen' | 'integration' | 'momentanwert';
+  geraet: MessstelleQuelleGeraet;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  status: 'geplant' | 'gilt' | 'beendet';
+  anfangsstand: MessstelleQuelleStand | null;
+  endstand: MessstelleQuelleStand | null;
+  rueckwirkend: boolean;
+  herkunft: string | null;
+  eingetragen_am: string;
+  eingetragen_von: string;
+  anteil: 'positiv' | 'negativ' | null;
+  /** Additiv (IP-14): der letzte gute Wert DIESER Bindung — nur an einer, die zum Stichtag gilt. */
+  letzter_wert?: MessstelleRegisterWert | null;
+}
+
+/** Ein Abschnitt des Zeitstrahls der führenden Quellen; `quelle === null` ist eine sichtbare Lücke. */
+export interface MessstelleQuelleAbschnitt {
+  von: string;
+  bis: string | null;
+  quelle: string | null;
+}
+
+/** Eine Größe der Messstelle zum Stichtag: ihre führende Quelle, die Vergleichsquellen, der Zeitstrahl. */
+export interface MessstelleQuelleGroesse {
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  wertart: string;
+  hauptgroesse: boolean;
+  lebenszyklus: string;
+  fuehrend: MessstelleQuelle | null;
+  vergleich: MessstelleQuelle[];
+  zeitstrahl: MessstelleQuelleAbschnitt[];
+}
+
+export interface MessstelleQuellenListe {
+  messstelle_id: string;
+  kennzeichen: string;
+  stichtag: string;
+  /** Hauptgröße zuerst, dann die Nebengrößen. */
+  groessen: MessstelleQuelleGroesse[];
+  /** Die ganze Historie, beendete eingeschlossen. */
+  quellen: MessstelleQuelle[];
+}
+
+/** Wie weit ein eingetragenes „gültig ab“ von jetzt entfernt ist (E2). */
+export interface MessstelleQuelleRueckwirkung {
+  art: 'rueckwirkend' | 'ab_jetzt' | 'angekuendigt';
+  minuten: number;
+  abzeichen: string | null;
+}
+
+/** Die Antwort auf Binden und Beenden; `beendet` ist die laufende Quelle, die die neue beendet hat. */
+export interface MessstelleQuelleVorgang {
+  quelle: MessstelleQuelle;
+  beendet: MessstelleQuelle | null;
+  rueckwirkung: MessstelleQuelleRueckwirkung;
+  hinweise: string[];
+}
+
+/** PUT …/quellen/{qid}/beenden — ohne Inhalt endet die Quelle jetzt. Gelöscht wird nie. */
+export interface MessstelleQuelleBeenden {
+  gueltig_bis?: string;
 }
 
 /**
@@ -7609,9 +7730,23 @@ export const api = {
   messstelleStellungAendern: (id: string, body: MessstelleStellungAendern) =>
     request<Messstelle>(`/api/v1/messstellen/${id}/stellung`, { method: 'PUT', body: JSON.stringify(body) }),
 
-  /** Bindet eine führende Quelle (IP-13) — nie überschreibend. */
+  /** Bindet eine führende Quelle oder eine Vergleichsquelle (IP-13) — nie überschreibend. */
   messstelleQuelleBinden: (id: string, body: MessstelleQuelleBinden) =>
-    request<unknown>(`/api/v1/messstellen/${id}/quellen`, { method: 'POST', body: JSON.stringify(body) }),
+    request<MessstelleQuelleVorgang>(`/api/v1/messstellen/${id}/quellen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** UEMS AP-04 IP-14: je Größe die Quellen zum Stichtag (mit ihrem letzten Wert) und die Historie. */
+  messstelleQuellen: (id: string, stichtag?: string | null) =>
+    request<MessstelleQuellenListe>(
+      `/api/v1/messstellen/${id}/quellen` + (stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''),
+    ),
+  /** Beendet eine Quelle (IP-13) — eine Quelle wird nie gelöscht, sie endet. */
+  messstelleQuelleBeenden: (id: string, quelleId: string, body: MessstelleQuelleBeenden = {}) =>
+    request<MessstelleQuelleVorgang>(`/api/v1/messstellen/${id}/quellen/${quelleId}/beenden`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   // ---- Ortsstruktur: Unternehmen und Standorte (UEMS AP-02 IP-3/IP-4; Fläche dazu IP-6)
   /** Das Unternehmen des Kundenbereichs — die Zeitzonen-Vorgabe eines neuen Standorts. */

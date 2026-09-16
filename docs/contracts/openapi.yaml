@@ -19841,6 +19841,7 @@ components:
         zweck: { type: string, nullable: true, enum: [Plausibilität, Ersatz bei Ausfall, Abrechnungszähler, null] }
         gueltig_ab: { type: string, format: date-time }
         gueltig_bis: { type: string, format: date-time, nullable: true }
+        anteil: { type: string, nullable: true, enum: [positiv, negativ, null], description: "Additiv (AP-04 IP-14): welchen Teil eines Vorzeichen-Werts die Bindung liest (AP-08 IP-7, E15); leer = der ganze Wert. „Quelle binden“ graut einen Messwert nur dann aus, wenn der GLEICHE Teil schon führend gelesen wird." }
     MesskanalGeraet:
       type: object
       description: >
@@ -19958,6 +19959,16 @@ components:
         eingetragen_am: { type: string, format: date-time }
         eingetragen_von: { type: string }
         anteil: { type: string, nullable: true, enum: [positiv, negativ, null], description: "Additiv (AP-08 IP-7): der Teil des Vorzeichen-Werts, den die Bindung liest; leer = der ganze Wert." }
+        kanal_name: { type: string, nullable: true, description: "Additiv (AP-04 IP-14): der Anzeigename des Messwerts, dieselbe Regel wie im Messkanal-Read-Model; leer, wenn weder Katalog noch Selbstbau einen nennt." }
+        letzter_wert:
+          nullable: true
+          description: >
+            Additiv (AP-04 IP-14, E3): der letzte gute Wert DIESER Bindung — dieselbe Ableitung wie
+            der letzte Wert des Registers (Einheit des Messkanals ohne Umrechnung, Anteil-Schnitt
+            nach AP-08 IP-7). Nur an einer Bindung gesetzt, die zum Stichtag GILT; leer heißt
+            „nichts bekannt“, nie eine 0. Die Quelle-Karte stellt damit die führende und die
+            Vergleichsquelle nebeneinander — ohne jede Bewertung.
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterWert" }]
     MessstelleQuelleRueckwirkung:
       type: object
       description: "Wie weit das eingetragene „gültig ab“ bzw. „gültig bis“ von jetzt entfernt ist, auf die Minute (E2)."

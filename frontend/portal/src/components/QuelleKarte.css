@@ -1,0 +1,233 @@
+/*
+ * Die Quelle-Karte der Messstellen-Seite (UEMS AP-04 IP-14, R2 · V1, E3).
+ * ⚠ Die Werte stehen NEBENEINANDER — auch bei 375 px. `auto-fit` mit 9 rem lässt zwei Spalten
+ *   auf dem Telefon zu; erst wenn nicht einmal 9 rem bleiben, stapelt das Raster von selbst.
+ *   Gestapelt wäre der Vergleich, für den die zweite Quelle da ist, keiner mehr.
+ * ⚠ Lange Namen („Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a“) brechen um; nichts läuft quer.
+ */
+
+.vp-qk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-qk h2 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700, 700);
+}
+
+.vp-qk-groesse {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-qk-groesse + .vp-qk-groesse {
+  padding-top: var(--vp-c-space-4);
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-qk-groesse h3 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+
+/* --- Die Werte nebeneinander (E3) ------------------------------------------ */
+
+.vp-qk-werte {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  list-style: none;
+}
+
+.vp-qk-wert {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-qk-wert.is-fuehrend {
+  border-color: var(--vp-c-primary);
+}
+
+.vp-qk-rolle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+
+.vp-qk-wert.is-fuehrend .vp-qk-rolle {
+  color: var(--vp-c-primary);
+}
+
+.vp-qk-quelle {
+  overflow-wrap: break-word;
+}
+
+.vp-qk-zahl {
+  font-size: var(--vp-c-fs-20, 20px);
+  font-weight: var(--vp-c-fw-700, 700);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+}
+
+.vp-qk-stand,
+.vp-qk-anteil,
+.vp-qk-zeitraum,
+.vp-qk-ohne {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12, 12px);
+  overflow-wrap: break-word;
+}
+
+.vp-qk-leer,
+.vp-qk-hinweis {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+/* --- Knöpfe ----------------------------------------------------------------- */
+
+.vp-qk-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-qk-knopf {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  cursor: pointer;
+  overflow-wrap: break-word;
+  text-align: left;
+}
+
+.vp-qk-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* --- Historie --------------------------------------------------------------- */
+
+.vp-qk-historie {
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-qk-historie summary {
+  cursor: pointer;
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-qk-historie ol {
+  display: flex;
+  flex-direction: column;
+  margin: var(--vp-c-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-qk-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px var(--vp-c-space-2);
+  padding: var(--vp-c-space-2) 0;
+  border-top: 1px solid var(--vp-c-border);
+  min-width: 0;
+}
+
+.vp-qk-h:first-child {
+  border-top: 0;
+}
+
+.vp-qk-punkt {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--vp-c-muted-fg);
+  opacity: 0.45;
+}
+
+.vp-qk-h.is-gueltig .vp-qk-punkt,
+.vp-qk-h.is-geplant .vp-qk-punkt {
+  background: var(--vp-c-primary);
+  opacity: 1;
+}
+
+.vp-qk-h.is-geplant .vp-qk-punkt {
+  background: transparent;
+  border: 2px solid var(--vp-c-primary);
+  box-sizing: border-box;
+}
+
+.vp-qk-h.is-luecke .vp-qk-punkt {
+  background: transparent;
+  border: 2px dashed var(--vp-c-muted-fg);
+  box-sizing: border-box;
+  opacity: 0.8;
+}
+
+.vp-qk-h-text {
+  display: flex;
+  flex: 1 1 10rem;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vp-qk-h-wert {
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: break-word;
+}
+
+.vp-qk-h-zeit {
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}

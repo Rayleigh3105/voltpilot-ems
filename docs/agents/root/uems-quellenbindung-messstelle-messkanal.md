@@ -57,3 +57,21 @@ CHECKs, „nur einmal beendet“, Offboarding), `MessstelleRegelnVectorsTest`,
   Anlage bleibt), `→ messstelle`/`→ tenant` RESTRICT; `TenantRepository.offboard` räumt
   `messstelle_quelle` zuerst ab. Der CHECK `messstelle_aenderung_art_chk` wurde geweitet, indem der
   Stand von IP-7 (`V20260911230000`) abgeschrieben wurde — wer ihn weitet, schreibt DIESEN ab.
+
+## Additiv seit AP-04 IP-14 (Portal-Fläche „Quelle binden“)
+
+`GET …/quellen` trägt je Bindung zwei weitere Felder (OpenAPI `MessstelleQuelle`, beide optional):
+
+- `kanal_name` — der Anzeigename des Messwerts, dieselbe Regel wie im Messkanal-Read-Model.
+- `letzter_wert` — der letzte gute Wert DIESER Bindung, in der Form von `MessstelleRegisterWert`.
+  ⚠ Nur an einer Bindung, die zum Stichtag GILT (geplant und beendet bekommen `null`); `null` heißt
+  „nichts bekannt“, nie eine 0. Gebildet von `MessstelleBeobachtung.letzterWert` — DERSELBEN Stelle
+  wie der letzte Wert des Registers (Werte-Zug `MessstelleRegisterRepository.werte`, Einheit des
+  Messkanals ohne Umrechnung, Anteil-Schnitt nach AP-08 IP-7). Die Quelle-Karte stellt die führende
+  und die Vergleichsquelle nebeneinander (E3) — beide Zahlen müssen gleich entstanden sein.
+
+Dazu trägt `MesskanalDto.Speist` (`…/messkanaele`) das Feld `anteil`: erst damit kann die Auswahl
+richtig ausgrauen — EIN Vorzeichen-Kanal führt den Bezug der einen und die Abgabe der anderen
+Messstelle, verboten ist nur derselbe Teil zweimal führend.
+
+Beweis: `MessstelleQuelleApiTest#jedeLaufendeQuelleNenntIhrenEigenenLetztenWertUndIhrenAnzeigenamen`.

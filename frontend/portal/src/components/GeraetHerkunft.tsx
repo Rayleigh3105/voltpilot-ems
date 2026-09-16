@@ -5,6 +5,12 @@
  * (Mockup K1). Sie steht in der Sektion „Komponenten — Was misst und steuert
  * es?“, direkt über dem Änderungsprotokoll desselben Geräts.
  *
+ * Seit AP-04 IP-14 trägt jeder Messwert, den noch keine Messstelle FÜHREND liest,
+ * den Einstieg „Als Messstelle verwenden“ (§5.2): er öffnet denselben Dialog wie
+ * die Messstellen-Seite — nur andersherum, mit vorbelegtem Messwert. Gewählt wird
+ * dann die Messstellen-Größe, die ihn lesen soll; was ihn nicht lesen kann, steht
+ * grau in der Liste und sagt warum.
+ *
  * Die Geräteseite kennt ihre KOMPONENTEN; Gerät, Einstellungen und Protokoll
  * hängen am GERÄT — der Weg dazwischen ist derselbe wie beim Protokoll
  * (`geraetZuKomponenten`). Gleichzeitige gleiche Abrufe teilt `request`.
@@ -32,8 +38,10 @@ import {
   type EinstellungGruppe,
   type Zeile,
 } from '../geraetEinstellungen';
+import { ALS_MESSSTELLE_VERWENDEN } from '../quelleBinden';
 import { geraetZuKomponenten } from '../uemsProtokoll';
 import { EinstellungAendernDialog, type AenderungZiel } from './EinstellungAendernDialog';
+import { QuelleBindenDialog, type QuelleBindenZiel } from './QuelleBindenDialog';
 import './GeraetHerkunft.css';
 
 export interface HerkunftKomponente {
@@ -64,6 +72,8 @@ export function GeraetHerkunft({
   const [stand, setStand] = useState(0);
   const [ziel, setZiel] = useState<AenderungZiel | null>(null);
   const [notiz, setNotiz] = useState<string | null>(null);
+  // UEMS AP-04 IP-14: „Als Messstelle verwenden“ öffnet denselben Dialog mit vorbelegtem Messwert.
+  const [verwenden, setVerwenden] = useState<QuelleBindenZiel | null>(null);
   const schluessel = komponenten.map((k) => k.entityId).join(',');
 
   useEffect(() => {
@@ -86,9 +96,10 @@ export function GeraetHerkunft({
     return () => {
       aktiv = false;
     };
-    // `komponenten` wechselt mit `schluessel`; die Namen allein laden nicht neu.
+    // `komponenten` wechselt mit `schluessel`; die Namen allein laden nicht neu. `stand` steigt
+    // nach einem Eintrag — dann sagt „speist …“ wieder, was der Server weiß (AP-04 IP-14).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteId, schluessel]);
+  }, [siteId, schluessel, stand]);
 
   const geraet = geraetZuKomponenten(geraete, komponenten.map((k) => k.entityId));
   const geraetId = geraet?.id ?? null;
@@ -248,6 +259,19 @@ export function GeraetHerkunft({
                           ))
                         )}
                       </p>
+                      {/* §5.2: „dieselbe Bindung kann von der Komponente aus angestoßen werden“ —
+                          angeboten nur, wo noch keine Messstelle FÜHREND liest; ein zweiter
+                          führender Griff wäre ein Zählerwechsel (IP-18), kein Binden. */}
+                      {!k.speist?.some((sp) => sp.rolle === 'fuehrend') && (
+                        <button
+                          type="button"
+                          className="vp-gh-verwenden"
+                          data-testid="als-messstelle-verwenden"
+                          onClick={() => setVerwenden({ art: 'messwert', anlageId: siteId, entityId: l.entityId, kanal: k })}
+                        >
+                          {ALS_MESSSTELLE_VERWENDEN}
+                        </button>
+                      )}
                     </li>
                   );
                 })}
@@ -257,6 +281,16 @@ export function GeraetHerkunft({
         </section>
       )}
 
+      {verwenden && (
+        <QuelleBindenDialog
+          open
+          rolle="fuehrend"
+          ziel={verwenden}
+          jetzt={jetzt}
+          onClose={() => setVerwenden(null)}
+          onGebunden={() => setStand((n) => n + 1)}
+        />
+      )}
       <EinstellungAendernDialog
         geraetId={geraet.id}
         ziel={ziel}

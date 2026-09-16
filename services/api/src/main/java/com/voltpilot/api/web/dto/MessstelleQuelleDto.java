@@ -65,6 +65,15 @@ public final class MessstelleQuelleDto {
      * woher sie stammt: {@code null} = von Hand gebunden, {@code bestandsuebernahme} = aus der
      * Vorschlagsliste des Standorts übernommen (IP-16, E6). {@code anteil}: {@code null} = der ganze
      * Wert, sonst der Teil eines Vorzeichen-Werts, den die Bindung liest (AP-08 IP-7).
+     *
+     * <p>Additiv seit AP-04 IP-14 (E3, Abnahmefall A8): {@code kanalName} ist der Anzeigename des
+     * Messwerts (dieselbe Regel wie das Messkanal-Read-Model), {@code letzterWert} der letzte gute
+     * Wert DIESER Bindung in der Einheit ihres Messkanals — damit die Quelle-Karte den Wert der
+     * führenden und den der Vergleichsquelle NEBENEINANDER zeigen kann, ohne etwas zu bewerten.
+     *
+     * <p><b>{@code letzterWert} trägt nur, was JETZT gilt.</b> Eine geplante oder beendete Bindung
+     * bekommt {@code null} — ein alter Wert neben einem laufenden sähe aus wie ein zweiter Zustand.
+     * {@code null} heißt „nichts bekannt“, nie eine 0.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Quelle(
@@ -78,6 +87,7 @@ public final class MessstelleQuelleDto {
             String komponenteName,
             UUID anlage,
             String kanal,
+            String kanalName,
             String kanalWertart,
             String herleitung,
             Geraet geraet,
@@ -90,7 +100,27 @@ public final class MessstelleQuelleDto {
             String herkunft,
             OffsetDateTime eingetragenAm,
             String eingetragenVon,
-            String anteil) {}
+            String anteil,
+            MessstelleDto.RegisterWert letzterWert) {
+
+        /** Eine Bindung ohne Anzeigename und ohne Wert — die Form von vor AP-04 IP-14. */
+        public Quelle(UUID id, UUID messstelleId, String groesse, String richtung, String rolle, String zweck,
+                UUID komponente, String komponenteName, UUID anlage, String kanal, String kanalWertart,
+                String herleitung, Geraet geraet, OffsetDateTime gueltigAb, OffsetDateTime gueltigBis, String status,
+                Stand anfangsstand, Stand endstand, boolean rueckwirkend, String herkunft,
+                OffsetDateTime eingetragenAm, String eingetragenVon, String anteil) {
+            this(id, messstelleId, groesse, richtung, rolle, zweck, komponente, komponenteName, anlage, kanal, null,
+                    kanalWertart, herleitung, geraet, gueltigAb, gueltigBis, status, anfangsstand, endstand,
+                    rueckwirkend, herkunft, eingetragenAm, eingetragenVon, anteil, null);
+        }
+
+        /** Dieselbe Bindung mit ihrem Anzeigenamen und ihrem letzten Wert (IP-14). */
+        public Quelle mitMesswert(String kanalName, MessstelleDto.RegisterWert letzterWert) {
+            return new Quelle(id, messstelleId, groesse, richtung, rolle, zweck, komponente, komponenteName, anlage,
+                    kanal, kanalName, kanalWertart, herleitung, geraet, gueltigAb, gueltigBis, status, anfangsstand,
+                    endstand, rueckwirkend, herkunft, eingetragenAm, eingetragenVon, anteil, letzterWert);
+        }
+    }
 
     /**
      * Wie weit das eingetragene „gültig ab“ bzw. „gültig bis“ von jetzt entfernt ist (E2), auf die
