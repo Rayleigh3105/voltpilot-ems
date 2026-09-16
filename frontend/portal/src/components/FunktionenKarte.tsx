@@ -1,4 +1,5 @@
 import { Recht } from './Recht';
+import { Button } from '../../designsystem/components/core/Button';
 import { FUNKTIONEN_UNBEKANNT, type FunktionenKarteAbschnitt } from '../uebersicht';
 import './FunktionenKarte.css';
 
@@ -19,10 +20,13 @@ import './FunktionenKarte.css';
 export function FunktionenKarte({
   abschnitte,
   laedt = false,
+  onSteuernEinrichten,
 }: {
   /** `null` = die Funktionen sind nicht abrufbar. */
   abschnitte: FunktionenKarteAbschnitt[] | null;
   laedt?: boolean;
+  /** IP-10a: der bewusste Einstieg; ohne Ziel bleibt der bisherige Hinweis. */
+  onSteuernEinrichten?: (standortId: string) => void;
 }) {
   return (
     <section className="vp-funktionen-karte" aria-labelledby="vp-funktionen-karte-titel" data-testid="funktionen-karte">
@@ -50,7 +54,15 @@ export function FunktionenKarte({
                         <span className="vp-fk-satz">{z.satz}</span>
                       </span>
                     </p>
-                    {z.schritt && (
+                    {z.schritt && a.funktion === 'steuern' && onSteuernEinrichten ? (
+                      <p className="vp-fk-schritt">
+                        <Recht standort={z.standortId} aktion="funktion.steuern_einrichten">
+                          <Button variant="outline" size="sm" onClick={() => onSteuernEinrichten(z.standortId)}>
+                            {z.schritt}
+                          </Button>
+                        </Recht>
+                      </p>
+                    ) : z.schritt && (
                       <p className="vp-fk-schritt">
                         <Recht standort={z.standortId} aktion={a.funktion === 'messen' ? 'funktion.messen_einrichten' : 'funktion.steuern_einrichten'}><span className="vp-fk-schritt-wort">Nächster Schritt:</span> {z.schritt}</Recht>
                       </p>
