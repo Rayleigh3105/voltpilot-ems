@@ -26,6 +26,7 @@ Reines Modul `frontend/portal/src/uemsOberflaechen.ts` (Abschnitte 3b/3c), Rende
 | Kennzahl-Seite (`kennzahlKarte.herkunftAnzeige`) | `eingaengeStuecke`, `paareStuecke` | MS-… › Werte (Periode des Satzes, Version des Eingangs) · KZ-… |
 | Berichtsseite (`berichtSeite`, `QuellenZahl.sprung`) | „Zur Messstelle“ / „Zur Kennzahl“ neben „heutigen Wert zeigen“ | Periode = **Zeitraum des Berichts** |
 | Bericht-Nachweis einer Kennzahl | `Nachweis.herkunftStuecke` | je Eingang mit der Version des Abzugs |
+| Bericht-Quellenverzeichnis | `QuellenEintrag.sprung` | **zusätzlich gefunden** — §8 nennt es nicht; dieselbe Zeile führt zu denselben Objekten |
 | Energiebilanz (`anlageEnergiebilanz`) | `TeilBild.sprung`, `HerkunftBild.zeilenStuecke`/`eingaengeStuecke` | Messstelle · **Kostenstelle** der Verteilung |
 | Kostenstellen-Reiter (IP-9, schon gebaut) | `posten[].sprung` | Messstelle mit Periode |
 | Register (`messstellen.zeileWoerter`) | `quelle.sprung` | Geräte-Seite › Komponente (`#/anlage/{id}/modell?komponente=`) |
@@ -53,6 +54,10 @@ Reines Modul `frontend/portal/src/uemsOberflaechen.ts` (Abschnitte 3b/3c), Rende
    Kostenstelle 4300“ — eine Prozentzahl, die der B2-Wächter verbietet, solange sie sichtbar ist. Erst messen, dann
    aufklappen (so hält es auch der O5-Test).
 7. **Ein Kennzeichen wird als GANZES Wort erkannt.** „MS-1“ in „MS-12“ ist kein Treffer, „MS-12-alt“ ist keiner.
+8. **`berechneteHerkunft` nennt die MENGE eines Eingangs nicht.** Die Hülle trägt sie als Dezimaltext ohne Einheit;
+   die Einheit des Eingangs steht nirgends, und die der Karte ist nicht seine (eine Messstelle misst auch m³). Eine
+   Zahl ohne Einheit wäre geraten — die Zeile nennt Kennzeichen, Zustand, Version und Kennzeichen des Eingangs.
+   An der Bilanz steht sie, weil eine Energiebilanz per Vertrag in kWh rechnet.
 
 ## Was NICHT gebaut ist
 

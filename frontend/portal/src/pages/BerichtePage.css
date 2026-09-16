@@ -607,3 +607,24 @@
   outline: 2px solid var(--vp-action);
   outline-offset: 2px;
 }
+
+/* UEMS AP-13 IP-11: das Kennzeichen im Quellenverzeichnis führt zu seinem Objekt. Am Telefon gibt der
+   senkrechte Innenabstand die Tippfläche, ohne die Zeile auseinanderzuziehen (E14). */
+a.vp-br-kz-sprung {
+  color: var(--vp-action);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a.vp-br-kz-sprung:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (max-width: 720px) {
+  a.vp-br-kz-sprung {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+}

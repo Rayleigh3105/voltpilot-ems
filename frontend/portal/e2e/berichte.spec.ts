@@ -199,6 +199,12 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await expect(sprung).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10');
     expect(Math.round((await sprung.boundingBox())!.height)).toBeGreaterThanOrEqual(44);
 
+    // Auch das Quellenverzeichnis führt zu seinen Objekten — BZ-6 bleibt Text (D3).
+    await page.getByTestId('bericht-quellen').locator('summary').click();
+    const quelle = page.getByTestId('bericht-quellen').locator('a', { hasText: /^MS-12$/ });
+    await expect(quelle).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=1');
+    await expect(page.getByTestId('bericht-quellen').locator('a', { hasText: /^BZ-6$/ })).toHaveCount(0);
+
     // „heutigen Wert zeigen“: heute steht Version 2 — Nr. 1 bleibt, wie er ist.
     await n.zeile.getByRole('button', { name: 'heutigen Wert zeigen' }).click();
     await expect(n.zeile.getByTestId('bericht-heutiger-wert')).toHaveText(`heute: 6.040${NB}kWh · vollständig · Version 2 · korrigiert (Version 2)`);

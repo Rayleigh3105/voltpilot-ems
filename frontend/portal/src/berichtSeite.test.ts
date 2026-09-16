@@ -181,7 +181,14 @@ describe('B1 Nr. 1 — der Berichtsstand vom 10.11.2026, gelesen am 20.11.2026',
     expect(quellen.anzahl).toBe('19 Quellen');
     expect(quellen.zeilen.map((x) => x.kennzeichen)).toEqual(vektoren.abzuege['BR-2026-0001/1'].kopf.quellenverzeichnis);
     expect(quellen.zeilen.find((x) => x.kennzeichen === 'BZ-6')?.stand).toBe('Fassung 1');
-    expect(quellen.zeilen.find((x) => x.kennzeichen === 'MS-12')).toEqual({ kennzeichen: 'MS-12', name: 'Montage Linie M1', heute: null, stand: 'Version 1' });
+    expect(quellen.zeilen.find((x) => x.kennzeichen === 'MS-12')).toEqual({
+      kennzeichen: 'MS-12',
+      name: 'Montage Linie M1',
+      heute: null,
+      stand: 'Version 1',
+      // AP-13 IP-11: der Weg zu dieser Quelle trägt den Zeitraum des Berichts und ihre Version.
+      sprung: { route: expect.anything(), hash: '#/portfolio/messstellen/MS-12?periode=2026-10&version=1' },
+    });
   });
 
   it('Verlauf der Stände: Nr. 2 mit Anlass K-2026-0007, Nr. 1 ersetzt durch Nr. 2 (16.11.2026)', () => {
@@ -363,6 +370,14 @@ describe('AP-13 IP-11 — vom Nachweis zur Zahl (K4, O10)', () => {
   it('eine Bezugsgröße im Nachweis bleibt Text — AP-09 hat keine Kundenfläche (D3)', () => {
     const kz = teil(liste, 'kennzahlen').zeilen[0];
     expect(kz.nachweis.herkunftStuecke.flat().some((t) => t.text.startsWith('BZ-') && t.sprung !== null)).toBe(false);
+  });
+
+  it('auch das Quellenverzeichnis führt zu seinen Objekten — mit dem Zeitraum des Berichts, BZ-6 nicht', () => {
+    const quellen = teil(liste, 'quellen').zeilen;
+    const ms = quellen.filter((q) => q.kennzeichen.startsWith('MS-'));
+    expect(ms.length).toBeGreaterThan(0);
+    for (const q of ms) expect(q.sprung?.hash).toMatch(/^#\/portfolio\/messstellen\/MS-\d+\?periode=2026-10(&version=\d+)?$/);
+    for (const q of quellen.filter((x) => x.kennzeichen.startsWith('BZ-'))) expect(q.sprung).toBeNull();
   });
 
   it('eine Speicher-Mengenart hat keinen Weg — den heutigen Leseweg trennt der Bericht nicht (Folgepaket)', () => {

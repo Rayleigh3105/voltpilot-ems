@@ -443,7 +443,14 @@ function AbschnittBlock({
           <ul>
             {a.zeilen.map((q) => (
               <li key={q.kennzeichen}>
-                <span className="vp-br-kz">{q.kennzeichen}</span>
+                {/* AP-13 IP-11: auch das Quellenverzeichnis führt zu seinen Objekten — im Zeitraum des Berichts. */}
+                {q.sprung ? (
+                  <a className="vp-br-kz vp-br-kz-sprung" href={q.sprung.hash}>
+                    {q.kennzeichen}
+                  </a>
+                ) : (
+                  <span className="vp-br-kz">{q.kennzeichen}</span>
+                )}
                 <span className="vp-br-quelle-text">
                   {[q.name, q.stand].filter((t): t is string => t !== null).join(TRENNER)}
                   {q.heute && <span className="vp-br-heute">{q.heute}</span>}

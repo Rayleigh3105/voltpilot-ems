@@ -387,6 +387,11 @@ export interface QuellenEintrag {
   heute: string | null;
   /** „Version 2“, „Fassung 1“, „Stichtag 31.10.2026“ — was der Abzug an der Quelle festhält. */
   stand: string | null;
+  /**
+   * AP-13 IP-11 (D1/D2): auch das Quellenverzeichnis ist ein Weg zu seinen Objekten — mit dem Zeitraum des
+   * Berichts und der Version, die der Abzug festhält. Eine Bezugsgröße bleibt Text (D3).
+   */
+  sprung: Sprung | null;
 }
 
 /** Den heutigen Namen einer Quelle — `null`, wo er nicht bekannt ist (kein Hinweis). */
@@ -620,7 +625,13 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
               : eingang?.stichtag !== undefined
                 ? `Stichtag ${datumText(eingang.stichtag)}`
                 : null;
-        return { kennzeichen, name, heute: name === null ? null : heuteHinweis(heuteName, kennzeichen, name), stand };
+        return {
+          kennzeichen,
+          name,
+          heute: name === null ? null : heuteHinweis(heuteName, kennzeichen, name),
+          stand,
+          sprung: kennzeichenSprung(kennzeichen, { periode: kopf.zeitraum.schluessel, version }),
+        };
       });
       out.push({ art: 'quellen', schluessel, titel, anzahl: QUELLEN_ANZAHL(zeilen.length), zeilen });
     } else {
