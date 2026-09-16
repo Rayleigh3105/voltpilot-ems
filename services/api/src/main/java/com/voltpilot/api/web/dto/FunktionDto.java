@@ -74,7 +74,16 @@ public final class FunktionDto {
     /** {@code GET …/funktionen/steuern/pruefung} — die Startprüfung einer Anlage aus frischen Fakten. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record SteuernPruefung(UUID anlageId, String anlage, UUID standortId, String standort, boolean bereit,
-            List<SteuernPruefZeile> zeilen, String folgen) {}
+            List<SteuernPruefZeile> zeilen, FreigabeStand freigaben, String folgen) {}
+
+    /** Der komponentengenaue Freigabe-Stand; die Zählung umfasst nur die drei bestehenden Wege. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record FreigabeStand(int freigegeben, int gesamt, String text, List<FreigabeZeile> komponenten) {}
+
+    /** Selbstbau, OCPP und Wechselrichter behalten ihre getrennten Tatsachen und Zuständigkeiten. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record FreigabeZeile(UUID entityId, String name, String weg, boolean freigegeben, String status,
+            Boolean stationVerbunden, Boolean steuerartGesetzt) {}
 
     /** Eine Zeile nennt den Fakt; nur eine rote Zeile trägt zusätzlich Grund und Weg. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

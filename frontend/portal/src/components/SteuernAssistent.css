@@ -17,6 +17,13 @@
 .vp-sta-komponenten li, .vp-sta-steuerart { display: flex; justify-content: space-between; align-items: center; gap: var(--vp-space-4, 16px); padding: var(--vp-space-4, 16px); }
 .vp-sta-komponenten li + li, .vp-sta-steuerart + .vp-sta-steuerart { border-top: 1px solid var(--vp-border, #e2e8f0); }
 .vp-sta-weg { color: var(--vp-text-muted, #64748b); text-align: right; }
+.vp-sta-freigabe-kopf { display: grid; gap: var(--vp-space-1, 4px); padding: var(--vp-space-4, 16px); border-radius: var(--vp-radius-md, 10px); background: var(--vp-surface-alt, #f8fafc); }
+.vp-sta-freigabe-kopf span { color: var(--vp-text-muted, #64748b); }
+.vp-sta-freigaben { list-style: none; display: grid; gap: var(--vp-space-3, 12px); padding: 0; margin: 0; }
+.vp-sta-freigaben li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--vp-space-3, 12px); padding: var(--vp-space-4, 16px); border: 1px solid var(--vp-border, #e2e8f0); border-radius: var(--vp-radius-md, 10px); }
+.vp-sta-freigaben li[data-freigegeben="nein"] { border-color: var(--color-status-warning-text, #92400e); }
+.vp-sta-freigaben li > div { display: grid; gap: var(--vp-space-1, 4px); min-width: 0; }
+.vp-sta-freigaben li > div > span, .vp-sta-freigaben small { color: var(--vp-text-muted, #64748b); }
 .vp-sta-felder, .vp-sta-steuerarten { display: grid; gap: var(--vp-space-3, 12px); min-width: 0; }
 .vp-sta-fakt { display: flex; justify-content: space-between; gap: var(--vp-space-3, 12px); }
 .vp-sta-ruhe { border-left: 3px solid var(--vp-action, #2c5282); }
@@ -36,4 +43,7 @@
   .vp-sta-weg { text-align: left; }
   .vp-sta-fuss { align-items: stretch; flex-direction: column-reverse; }
   .vp-sta-fuss button { width: 100%; min-height: 44px; }
+  .vp-sta-freigaben li { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .vp-sta-freigaben li > :last-child:not(div) { grid-column: 1 / -1; }
+  .vp-sta-freigaben button { width: 100%; min-height: 44px; }
 }

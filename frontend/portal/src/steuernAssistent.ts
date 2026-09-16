@@ -1,9 +1,11 @@
 import type {
+  FunktionFreigabeZeile,
   FunktionStandort,
   Netzanschluss,
   SiteEntity,
   StandortAmStichtag,
 } from './api';
+import { freigabeZustand } from './schaltFreigabe';
 import type { VerbraucherEintrag } from './verbraucherZone';
 import type { SteuerartWunsch } from './steuerartDialog';
 
@@ -59,6 +61,44 @@ export interface KomponentenZeile {
   steuerbar: boolean;
   status: string;
   weg: string | null;
+}
+
+export interface FreigabeDarstellung {
+  titel: string;
+  status: string;
+  hinweis: string;
+  aktion: string | null;
+}
+
+/** Die drei bestehenden Wege sprechen bewusst verschieden: Kunde, OCPP-Fakten und VoltPilot. */
+export function freigabeDarstellung(zeile: FunktionFreigabeZeile): FreigabeDarstellung {
+  if (zeile.weg === 'selbstbau') {
+    const zustand = freigabeZustand({ schaltbar: zeile.freigegeben, quelle: 'selbst' });
+    return {
+      titel: zeile.name,
+      status: zeile.freigegeben ? zustand.wort : zeile.status,
+      hinweis: zeile.freigegeben
+        ? zustand.satz
+        : 'Vor der Freigabe führt der Assistent den Schalt-Test durch und fragt „Steuern freigeben?“.',
+      aktion: zeile.freigegeben ? 'Freigabe ansehen' : 'Schalt-Test und Freigabe',
+    };
+  }
+  if (zeile.weg === 'ocpp') {
+    return {
+      titel: zeile.name,
+      status: zeile.status,
+      hinweis: zeile.steuerart_gesetzt
+        ? 'Die Steuerart des Ladepunkts ist gesetzt.'
+        : 'Die Steuerart wählen Sie in Schritt 4 „Betriebsweise“.',
+      aktion: null,
+    };
+  }
+  return {
+    titel: 'Wir schalten die Steuerung für Ihren Wechselrichter frei — VoltPilot',
+    status: zeile.status,
+    hinweis: zeile.name,
+    aktion: null,
+  };
 }
 
 /** Die API sagt mit `control`, was steuerbar ist. Ein Messkanal wird nie erraten. */

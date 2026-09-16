@@ -153,6 +153,48 @@ class FunktionApiTest {
     }
 
     @Test
+    void freigabeStandDerSeedAnlageLiestDreiBestehendeWegeUndZaehltZweiVonDrei() throws Exception {
+        Welt w = welt();
+        UUID site = w.id("AN-2");
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, name) VALUES (?,?,?,?) "
+                + "RETURNING id", UUID.class, w.mandant(), site, "VP-FREIGABE-" + UUID.randomUUID(), "Box Halle 2");
+
+        root.update("INSERT INTO measurement_point (tenant_id, site_id, role, label, control, device_id, entity_type, "
+                + "capabilities, guard_config) VALUES (?,?,'battery-hybrid','Batteriespeicher',false,?,"
+                + "'battery-hybrid','{\"actuate\":[{\"command\":\"setpoint_kw\"}]}'::jsonb,'{}'::jsonb)",
+                w.mandant(), site, box);
+        root.update("INSERT INTO device_control_activation (device_id, activated_by, note) "
+                + "VALUES (?,'betrieb','Seed-Scharfschaltung')", box);
+
+        root.update("INSERT INTO measurement_point (tenant_id, site_id, role, label, control, device_id, entity_type, "
+                + "source_kind, capabilities, guard_config, connection_json) VALUES (?,?,'consumer','Abluft "
+                + "Wärmepumpe',true,?,'modbus-load','custom','{\"actuate\":[{\"command\":\"on_off\"}]}'::jsonb,"
+                + "'{}'::jsonb,'{\"switch\":{\"freigabe\":{\"released_at\":\"2026-09-01T08:00:00Z\"}}}'::jsonb)",
+                w.mandant(), site, box);
+
+        UUID ladepunkt = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, control, "
+                + "device_id, entity_type, source_kind, capabilities, guard_config) VALUES (?,?,'consumer',"
+                + "'Parkplatz Halle 2',true,?,'ev-charger','composed',"
+                + "'{\"actuate\":[{\"command\":\"setpoint_kw\"}]}'::jsonb,'{}'::jsonb) RETURNING id",
+                UUID.class, w.mandant(), site, box);
+        root.update("INSERT INTO device_charge_point (device_id, charge_point_id, tenant_id, site_id, label, connected, "
+                + "ready, entity_id, reported_at) VALUES (?,'AHR-LP-01',?,?,'Parkplatz Halle 2',false,true,?,now())",
+                box, w.mandant(), site, ladepunkt);
+        root.update("INSERT INTO ocpp_station (device_id, charge_point_id, tenant_id, site_id, connected, last_seen, "
+                + "updated_at) VALUES (?,'AHR-LP-01',?,?,false,now(),now())", box, w.mandant(), site);
+
+        JsonNode p = ok(ruf(w, HttpMethod.GET, pruefung(w, "AN-2"), null), 200).body();
+        JsonNode stand = p.path("freigaben");
+        assertThat(stand.path("text").asText()).isEqualTo("2 von 3 freigegeben");
+        assertThat(stand.path("freigegeben").asInt()).isEqualTo(2);
+        assertThat(stand.path("gesamt").asInt()).isEqualTo(3);
+        assertThat(texte(stand.path("komponenten"), "weg"))
+                .containsExactly("selbstbau", "ocpp", "wechselrichter");
+        assertThat(texte(stand.path("komponenten"), "status")).containsExactly(
+                "Von Ihnen freigegeben", "Station nicht verbunden", "Von VoltPilot freigegeben");
+    }
+
+    @Test
     void dieListeLaeuftInDerTransaktionErneutUndErstEineGrueneGrenzeStartet() throws Exception {
         Welt w = welt();
         UUID funktion = funktion(w, "ST-1", "eingerichtet");

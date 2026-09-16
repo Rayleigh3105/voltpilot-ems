@@ -4547,7 +4547,25 @@ export interface FunktionSteuernPruefung {
   standort: string;
   bereit: boolean;
   zeilen: FunktionSteuernPruefZeile[];
+  freigaben: FunktionFreigabeStand;
   folgen: string;
+}
+
+export interface FunktionFreigabeStand {
+  freigegeben: number;
+  gesamt: number;
+  text: string;
+  komponenten: FunktionFreigabeZeile[];
+}
+
+export interface FunktionFreigabeZeile {
+  entity_id: string;
+  name: string;
+  weg: 'selbstbau' | 'ocpp' | 'wechselrichter';
+  freigegeben: boolean;
+  status: string;
+  station_verbunden: boolean | null;
+  steuerart_gesetzt: boolean | null;
 }
 
 export interface FunktionSteuernPruefZeile {

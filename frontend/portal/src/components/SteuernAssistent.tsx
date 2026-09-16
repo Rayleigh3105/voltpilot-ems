@@ -3,6 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import {
   api,
+  type FunktionFreigabeZeile,
   type Funktionen,
   type FunktionSteuernErgebnis,
   type FunktionSteuernPruefung,
@@ -19,6 +20,7 @@ import {
   anlagenDesStandorts,
   browserSpeicher,
   entwurfSpeichern,
+  freigabeDarstellung,
   grenzeFehler,
   hatSpeicher,
   komponentenZeilen,
@@ -35,6 +37,7 @@ import type { SiteVerbraucher, VerbraucherEintrag } from '../verbraucherZone';
 import { useIsPhone } from '../useIsPhone';
 import { AnlegenDialog } from './AnlegenDialog';
 import { Recht } from './Recht';
+import { SchaltFreigabeDrawer } from './SchaltFreigabeDrawer';
 import { SteuerartDialog } from './SteuerartDialog';
 import { VpPicker } from './VpPicker';
 import './SteuernAssistent.css';
@@ -72,6 +75,7 @@ export function SteuernAssistent({
   const [vereinbartUebergang, setVereinbartUebergang] = useState('');
   const [steuerarten, setSteuerarten] = useState<Record<string, SteuerartEntwurf>>({});
   const [steuerartDialog, setSteuerartDialog] = useState<VerbraucherEintrag | null>(null);
+  const [schaltFreigabe, setSchaltFreigabe] = useState<FunktionFreigabeZeile | null>(null);
   const [betriebsmodell, setBetriebsmodell] = useState('');
   const [fehler, setFehler] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -128,9 +132,11 @@ export function SteuernAssistent({
     }
   }
 
-  useEffect(() => { if (schritt === 5) void pruefungLaden(); }, [schritt, anlageId]);
+  useEffect(() => { if (schritt === 2 || schritt === 5) void pruefungLaden(); }, [schritt, anlageId]);
 
   const zeilen = komponentenZeilen(entities);
+  const freigabeIds = new Set(pruefung?.freigaben.komponenten.map((k) => k.entity_id) ?? []);
+  const uebrigeZeilen = zeilen.filter((z) => !freigabeIds.has(z.id));
   const anschluss = netzanschlussDerAnlage(netzanschluesse, anlageId ?? '');
   const vereinbart = kw(anschluss?.vereinbart_kw) ?? kw(vereinbartUebergang);
   const grenzeEinwand = !anschluss && (vereinbart == null || vereinbart <= 0)
@@ -234,7 +240,7 @@ export function SteuernAssistent({
 
   return (
     <>
-      {!steuerartDialog && (
+      {!steuerartDialog && !schaltFreigabe && (
         <AnlegenDialog
           titel={isPhone ? STEUERN_TITEL_KURZ : STEUERN_TITEL}
           schritte={[...STEUERN_SCHRITTE]}
@@ -274,8 +280,29 @@ export function SteuernAssistent({
             <section className="vp-sta-schritt" data-schritt="freigeben">
               <h3>Was darf VoltPilot steuern?</h3>
               <p>Messende Komponenten bleiben unverändert. Steuerbare Komponenten folgen ihren vorhandenen Freigabe-Wegen.</p>
+              {pruefung?.freigaben && (
+                <div className="vp-sta-freigabe-kopf" aria-live="polite">
+                  <strong>{pruefung.freigaben.text}</strong>
+                  <span>Selbstbau, OCPP und Wechselrichter werden getrennt geprüft.</span>
+                </div>
+              )}
+              {pruefung?.freigaben && (
+                <ul className="vp-sta-freigaben" aria-label="Freigabe-Wege">
+                  {pruefung.freigaben.komponenten.map((k) => {
+                    const d = freigabeDarstellung(k);
+                    return (
+                      <li key={k.entity_id} data-weg={k.weg} data-freigegeben={k.freigegeben ? 'ja' : 'nein'}>
+                        <span className="vp-sta-pruefmarke" aria-hidden="true">{k.freigegeben ? '✓' : '!'}</span>
+                        <div><strong>{d.titel}</strong><span>{d.status}</span><small>{d.hinweis}</small></div>
+                        {d.aktion && <Recht standort={standortId} aktion="freigabe.erteilen"><Button
+                          variant="outline" onClick={() => setSchaltFreigabe(k)}>{d.aktion}</Button></Recht>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
               <ul className="vp-sta-komponenten">
-                {zeilen.map((z) => (
+                {uebrigeZeilen.map((z) => (
                   <li key={z.id}>
                     <span><strong>{z.name}</strong><small>{z.status}</small></span>
                     {z.weg && <Recht standort={standortId} aktion="freigabe.erteilen"><span className="vp-sta-weg">{z.weg}</span></Recht>}
@@ -378,6 +405,29 @@ export function SteuernAssistent({
             // Nur Entwurf: kein PUT und damit keine aktive Steuerart vor Schritt 6.
             setSteuerarten((alt) => ({ ...alt, [steuerartDialog.entityId]: { eintrag: steuerartDialog, wunsch } }));
             setSteuerartDialog(null);
+          }}
+        />
+      )}
+
+      {schaltFreigabe && anlageId && (
+        <SchaltFreigabeDrawer
+          open
+          siteId={anlageId}
+          entityId={schaltFreigabe.entity_id}
+          komponentenName={schaltFreigabe.name}
+          bereitsFreigegeben={schaltFreigabe.freigegeben}
+          onClose={() => setSchaltFreigabe(null)}
+          onChanged={() => {
+            setSchaltFreigabe(null);
+            void Promise.all([
+              api.siteEntities(anlageId),
+              api.siteVerbraucher(anlageId),
+              api.funktionSteuernPruefung(anlageId),
+            ]).then(([e, v, p]) => {
+              setEntities(e.entities);
+              setVerbraucher(v);
+              setPruefung(p);
+            }).catch(() => setFehler('Der neue Freigabe-Stand konnte nicht geladen werden.'));
           }}
         />
       )}

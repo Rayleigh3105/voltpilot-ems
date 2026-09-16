@@ -148,7 +148,14 @@ public class FunktionService {
                 .map(z -> pruefZeile(z, f, wegJePruefung.get(z.pruefung().code()))).toList();
         boolean bereit = zeilen.size() == FunktionZustandAbleitung.Pruefung.values().length
                 && zeilen.stream().allMatch(z -> Boolean.TRUE.equals(z.bestanden()));
-        return new FunktionDto.SteuernPruefung(siteId, w.name(siteId), st.id(), st.name(), bereit, zeilen,
+        List<FunktionDto.FreigabeZeile> freigabeZeilen = f.freigaben().stream()
+                .map(k -> new FunktionDto.FreigabeZeile(k.entityId(), k.name(), k.weg(), k.freigegeben(), k.status(),
+                        k.stationVerbunden(), k.steuerartGesetzt()))
+                .toList();
+        int freigegeben = (int) freigabeZeilen.stream().filter(FunktionDto.FreigabeZeile::freigegeben).count();
+        FunktionDto.FreigabeStand freigabeStand = new FunktionDto.FreigabeStand(freigegeben,
+                freigabeZeilen.size(), freigegeben + " von " + freigabeZeilen.size() + " freigegeben", freigabeZeilen);
+        return new FunktionDto.SteuernPruefung(siteId, w.name(siteId), st.id(), st.name(), bereit, zeilen, freigabeStand,
                 "Ab dem nächsten Fahrplan, spätestens in 15 Minuten, steuert VoltPilot " + w.name(siteId)
                         + " innerhalb der vereinbarten Grenzen. Nichts anderes ändert sich. Sie können jederzeit anhalten.");
     }

@@ -56,6 +56,17 @@ beforeEach(() => {
       { pruefung: 'hauptzaehler', bestanden: true, fakt: 'Hauptzähler MS-10 liefert Daten', grund: null, weg: null },
       { pruefung: 'betriebsweise', bestanden: true, fakt: 'Betriebsweise gesetzt', grund: null, weg: null },
     ],
+    freigaben: {
+      freigegeben: 2, gesamt: 3, text: '2 von 3 freigegeben',
+      komponenten: [
+        { entity_id: 'S-1', name: 'Wärmepumpe', weg: 'selbstbau', freigegeben: true,
+          status: 'Von Ihnen freigegeben', station_verbunden: null, steuerart_gesetzt: null },
+        { entity_id: 'K-9', name: 'Parkplatz Halle 2', weg: 'ocpp', freigegeben: true,
+          status: 'Station verbunden · Steuerart gesetzt', station_verbunden: true, steuerart_gesetzt: true },
+        { entity_id: 'W-1', name: 'Batteriespeicher', weg: 'wechselrichter', freigegeben: false,
+          status: 'Freischaltung durch VoltPilot steht aus', station_verbunden: null, steuerart_gesetzt: null },
+      ],
+    },
     folgen: 'Ab dem nächsten Fahrplan, spätestens in 15 Minuten, lädt VoltPilot den Ladepunkt netzschonend.',
   });
 });
@@ -67,6 +78,12 @@ describe('SteuernAssistent — Referenzfall 5 bis Schritt 4', () => {
 
     expect(await screen.findByText('Welche Anlage wird aufgenommen?')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    expect(await screen.findByText('Was darf VoltPilot steuern?')).toBeInTheDocument();
+    expect(await screen.findByText('2 von 3 freigegeben')).toBeInTheDocument();
+    expect(screen.getByText('Wir schalten die Steuerung für Ihren Wechselrichter frei — VoltPilot')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Freigabe ansehen' }));
+    expect(await screen.findByRole('heading', { name: 'Steuerung dieses Geräts' })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Schließen' })[0]);
     expect(await screen.findByText('Was darf VoltPilot steuern?')).toBeInTheDocument();
     expect(screen.getByText('Parkplatz Halle 2')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
@@ -100,12 +117,15 @@ describe('SteuernAssistent — Referenzfall 5 bis Schritt 4', () => {
   });
 
   it('zeigt bei einer roten Zeile Grund und Weg, aber keinen Start-Knopf', async () => {
-    vi.mocked(api.funktionSteuernPruefung).mockResolvedValueOnce({
+    const gruen = await api.funktionSteuernPruefung(FIXTURE_IDS.an2);
+    vi.mocked(api.funktionSteuernPruefung).mockResolvedValueOnce(gruen).mockResolvedValueOnce({
       anlage_id: FIXTURE_IDS.an2, anlage: 'Werk Ahrenberg – Halle 2', standort_id: FIXTURE_IDS.st1,
       standort: 'Werk Ahrenberg', bereit: false,
       zeilen: [{ pruefung: 'hauptzaehler', bestanden: false, fakt: 'Hauptzähler MS-10 liefert keine aktuellen Daten',
         grund: 'Diese Voraussetzung für den sicheren Start ist noch nicht erfüllt.',
-        weg: 'Prüfen Sie die Datenquelle des Hauptzählers MS-10.' }], folgen: 'Wird nicht gezeigt.',
+        weg: 'Prüfen Sie die Datenquelle des Hauptzählers MS-10.' }],
+      freigaben: { freigegeben: 0, gesamt: 0, text: '0 von 0 freigegeben', komponenten: [] },
+      folgen: 'Wird nicht gezeigt.',
     });
     render(<SteuernAssistent standortId={FIXTURE_IDS.st1} anlageId={FIXTURE_IDS.an2} onClose={vi.fn()} />);
     await screen.findByText('Welche Anlage wird aufgenommen?');
