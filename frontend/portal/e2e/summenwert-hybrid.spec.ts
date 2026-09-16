@@ -39,6 +39,18 @@ test('Hybrid ohne PV-Aspekt, aber mit gemeldetem Solarstrom, sieht die Karte', a
   await expect(page.getByTestId('kein-einstieg')).toHaveCount(0);
 });
 
+test('Leserin sieht die PV-Karte am beschädigten Hybrid, aber keinen Summenwert-Knopf', async ({ page }) => {
+  await mock(page);
+  await page.goto('/e2e/summenwert-hybrid.html?person=CB');
+
+  await expect(page.getByTestId('pv-aspekt')).toHaveText('ohne PV-Aspekt');
+  const karte = page.locator('.vp-geraet-pvp-card');
+  await expect(karte.getByText('PV-Produktion dieses Geräts')).toBeVisible();
+  await expect(karte.getByRole('note')).toContainText('Jonas Wendlinger');
+  await expect(karte.getByRole('button', { name: /Summenwert anlegen|Bearbeiten/ })).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
 /** Layout-Abnahme: bei 375 und 1440 px läuft die Seite nicht waagerecht über. */
 for (const width of [375, 1440]) {
   test(`kein waagerechter Überlauf bei ${width} px`, async ({ page }, testInfo) => {
