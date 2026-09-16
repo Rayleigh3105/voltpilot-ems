@@ -551,9 +551,8 @@ class UnterstuetzungApiTest {
     }
 
     /**
-     * <b>Bestand:</b> der Mandanten-Umschalter der Plattform ({@code X-Tenant-Id}) ist unverändert — mit der
-     * ausgelieferten Vorgabe sieht ein Plattform-Konto den Kundenbereich wie vor diesem Paket. Der Schalter aus
-     * W3 liegt bereit und BEISST: mit {@code umschalter-enabled=false} wird dieselbe Anfrage abgewiesen (der
+     * <b>IP-15:</b> der Mandanten-Umschalter der Plattform ({@code X-Tenant-Id}) ist in Produktion geschlossen.
+     * Mit {@code umschalter-enabled=false} wird eine Anfrage ohne Gewährung abgewiesen (der
      * {@code ZugriffFilter} macht daraus die 404 jeder Kundenroute, wie für einen Partner ohne Gewährung),
      * während eine gewährte Unterstützung sie weiterhin hereinlässt.
      */
