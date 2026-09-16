@@ -51,6 +51,8 @@ import {
 } from '../messstelleZuordnung';
 import { quelleKarte, type BindungsRolle, type QuelleGroesseKarte } from '../quelleBinden';
 import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
+import { boxWechselAmGeraet } from '../boxAnQuelle';
+import { useBoxenAnQuellen } from '../useBoxenAnQuellen';
 import { nebengroessen, periodeAus } from '../uemsWerteKarte';
 import './MessstelleSeite.css';
 
@@ -259,6 +261,10 @@ function MessstelleSeiteMitId({
     werteRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [werte, geladen]);
 
+  // AP-13 IP-12 (L6): die Zuständigkeiten der Anlage dieser Messstelle — VOR den Leerbildern
+  // gelesen, damit der Hook-Aufruf unbedingt bleibt. Ohne Anlage wird nichts gefragt.
+  const boxen = useBoxenAnQuellen([zeilen.find((r) => r.id === id)?.elektrische_stellung?.anlage]);
+
   const zurueck = (
     <button type="button" className="vp-mss-zurueck" onClick={onListe}>
       <Icon name="chevron-left" size={18} />
@@ -316,7 +322,8 @@ function MessstelleSeiteMitId({
   };
   // UEMS AP-04 IP-14: die Karten der Quelle-Karte; die Uhr ist der Zeitpunkt des Registers.
   const jetzt = register?.zeitpunkt ?? new Date().toISOString();
-  const quelleKarten: QuelleGroesseKarte[] = quellen ? quelleKarte(quellen, jetzt) : [];
+  // AP-13 IP-12 (L6): die Zuständigkeiten der Anlage dieser Messstelle — daraus nennt die Karte die Box.
+  const quelleKarten: QuelleGroesseKarte[] = quellen ? quelleKarte(quellen, jetzt, boxen.karte) : [];
   const oeffneBinden = (rolle: BindungsRolle) => (karte: QuelleGroesseKarte) =>
     setBinden({
       rolle,
@@ -366,6 +373,8 @@ function MessstelleSeiteMitId({
           heute={heute}
           standortName={zeile?.ort.standort_name ?? null}
           quelle={zeile?.quelle ?? null}
+          // AP-13 IP-12 (L6): Übergabe und Box-Tausch im Verlauf sprechen aus der Zeitachse der Zuständigkeiten.
+          boxWechsel={boxWechselAmGeraet(boxen.karte, zeile?.quelle.fuehrend?.geraet.id, boxen.quellen)}
           // AP-13 IP-5: der Vergleich braucht die Hauptgrößen der anderen Messstellen („passend“, O12).
           register={zeilen}
           vergleich={werte?.vergleich ?? null}

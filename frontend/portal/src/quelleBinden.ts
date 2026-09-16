@@ -25,7 +25,9 @@ import type {
   MessstelleQuellenListe,
   MessstelleRegisterZeile,
   SiteEntity,
+  UemsDatenquelle,
 } from './api';
+import { boxAmGeraet, boxSatz } from './boxAnQuelle';
 import { kanalZeile } from './geraetEinstellungen';
 import {
   UEMS_FUEHREND,
@@ -351,6 +353,11 @@ export interface QuelleWort {
   zeitraum: string;
   /** „liest den Bezugs-Teil des Werts“ — `null` beim ganzen Wert. */
   anteil: string | null;
+  /**
+   * AP-13 IP-12 (L6): „gelesen von Box Halle 2 (neu) seit 04.11.2026, 09:38 Uhr“ aus der
+   * Zuständigkeit der Datenquelle dieses Geräts — `null`, solange keine bekannt ist.
+   */
+  box: string | null;
   geplant: boolean;
 }
 
@@ -383,6 +390,8 @@ export interface QuelleGroesseKarte {
   fuehrendMoeglich: boolean;
 }
 
+const OHNE_BOXEN: ReadonlyMap<string, UemsDatenquelle> = new Map();
+
 const MARKE_GILT = 'gilt heute';
 const MARKE_GEPLANT = 'geplant';
 
@@ -401,10 +410,12 @@ const zeitraumText = (von: string, bis: string | null, jetzt: string): string =>
       ? `seit ${zeitpunktText(von)}`
       : `${zeitpunktText(von)} bis ${zeitpunktText(bis)}`;
 
-function wortVon(q: MessstelleQuelle, jetzt: string): QuelleWort {
+function wortVon(q: MessstelleQuelle, jetzt: string, boxen: ReadonlyMap<string, UemsDatenquelle>): QuelleWort {
   const w = q.letzter_wert ?? null;
   const text = w ? wertText(w) : null;
   const geplant = q.status === 'geplant';
+  // Eine laufende Bindung fragt nach der Box von JETZT, eine geplante nach der ihres ersten Tages.
+  const wann = Date.parse(q.gueltig_ab) > Date.parse(jetzt) ? q.gueltig_ab : jetzt;
   return {
     id: q.id,
     rolle: q.rolle === 'fuehrend' ? UEMS_FUEHREND : [UEMS_VERGLEICH, q.zweck].filter(Boolean).join(' · '),
@@ -415,6 +426,7 @@ function wortVon(q: MessstelleQuelle, jetzt: string): QuelleWort {
     ohneWert: text !== null ? null : geplant ? 'Beginnt erst.' : 'Wartet auf erste Daten.',
     zeitraum: zeitraumText(q.gueltig_ab, q.gueltig_bis, jetzt),
     anteil: anteilSatz(q.anteil, q.richtung),
+    box: boxSatz(boxAmGeraet(boxen, q.geraet.id, wann), zeitpunktText),
     geplant,
   };
 }
@@ -447,10 +459,14 @@ function historieVon(g: MessstelleQuelleGroesse, alle: readonly MessstelleQuelle
  * und was jede Vergleichsquelle sagt, NEBENEINANDER und ohne jede Bewertung (E3), dazu die Historie
  * der führenden Quellen mit jeder Lücke.
  */
-export function quelleKarte(liste: MessstelleQuellenListe, jetzt: string): QuelleGroesseKarte[] {
+export function quelleKarte(
+  liste: MessstelleQuellenListe,
+  jetzt: string,
+  boxen: ReadonlyMap<string, UemsDatenquelle> = OHNE_BOXEN,
+): QuelleGroesseKarte[] {
   return liste.groessen.map((g) => {
     const groesse: Groesse = { groesse: g.groesse, richtung: g.richtung, einheit: g.einheit, wertart: g.wertart };
-    const werte = [...(g.fuehrend ? [g.fuehrend] : []), ...g.vergleich].map((q) => wortVon(q, jetzt));
+    const werte = [...(g.fuehrend ? [g.fuehrend] : []), ...g.vergleich].map((q) => wortVon(q, jetzt, boxen));
     return {
       schluessel: `${g.groesse}|${g.richtung}`,
       titel: `${g.hauptgroesse ? UEMS_HAUPTGROESSE : UEMS_NEBENGROESSE} · ${g.groesse} · ${g.richtung}`,

@@ -13,6 +13,11 @@
  *  - V5: Marker aus `ereignisse[]` mit dem Satz des Ereignis-Vokabulars (`uemsEreignis.ereignisSatz`) — höchstens
  *    drei im Bild (K6), jeder in der Liste darunter. Eine Lücke ohne verwiesenes Ereignis sagt „keine Werte von …
  *    bis …“ aus den Schritten selbst, ohne Ursache.
+ *  - AP-13 IP-12 (L6): die Werte-Route liefert an einem Ereignis nur `{id, art, von, bis}`. Die Übergabe
+ *    (`handover`) braucht darüber hinaus `anlass`, `box_alt` und `box_neu` — sie stehen in der ZEITACHSE der
+ *    Zuständigkeiten (`boxAnQuelle.boxWechsel`). Reicht der Aufrufer sie herein, spricht der Marker den vollen
+ *    IP-4-Satz („Box-Tausch: Box Halle 2 (neu) ersetzt Box Halle 2 — keine Werte von … bis …“); ohne sie bleibt
+ *    es beim Kurz-Satz der Art. Geraten wird keine Box.
  *  - V6/K1: der Kernaussage-Satz ist abgeleitet — aus der Karte der Periode, nie handgeschrieben.
  *  - K7: der Tooltip ist ein Satz (`chartTooltip.ableseSatz`).
  *
@@ -22,6 +27,7 @@
  */
 
 import type { MessstelleWerte, MessstelleWerteRaster, MessstelleWerteWert } from './api';
+import { wechselFelder, wechselZu, type BoxWechsel } from './boxAnQuelle';
 import type { Kernaussage } from './chartKopf';
 import { ableseSatz } from './chartTooltip';
 import {
@@ -252,9 +258,19 @@ const fuelle = (vorlage: string, werte: Record<string, string>): string =>
  * ihn das Vokabular selbst. Braucht er Felder, die die Route nicht liefert (Zählerwechsel, Übergabe …), steht der
  * Name der Art mit ihrer Zeit — nie ein geratenes Feld. Eine Art außerhalb des Vokabulars: `null` (nicht gesprochen).
  */
-export const markerSatz = (e: { art: string; von: string; bis: string | null }, zone: string): string | null => {
+export const markerSatz = (
+  e: { art: string; von: string; bis: string | null },
+  zone: string,
+  wechsel: readonly BoxWechsel[] = [],
+): string | null => {
   const text = (EREIGNIS_TEXTE as Record<string, ArtText | undefined>)[e.art];
   if (text === undefined) return null;
+  // AP-13 IP-12 (L6): eine Übergabe kennt ihre Boxen aus der Zeitachse, nicht aus der Werte-Route.
+  if (e.art === 'handover') {
+    const w = wechselZu(wechsel, e.von);
+    const f = w === null ? null : wechselFelder(w);
+    if (f !== null) return ereignisSatz({ art: e.art, von: e.von, bis: e.bis, ...f.felder }, f.namen, zone);
+  }
   const offen = text.zeitraum && e.bis === null;
   const vorlage = text.varianteNach === null ? text.saetze[offen ? 'standard_offen' : 'standard'] : undefined;
   if (vorlage !== undefined && [...vorlage.matchAll(PLATZHALTER)].every((m) => FELDER_DER_ROUTE.has(m[1]))) {
@@ -278,7 +294,12 @@ const lueckenSatz = (raster: MessstelleWerteRaster, s: readonly Schritt[], l: Lu
 };
 
 /** Die Marker des Bildes: jedes Ereignis EINMAL (Kennung), dazu jede Lücke ohne verwiesenes Ereignis — nach Beginn. */
-export const marker = (antwort: MessstelleWerte, s: readonly Schritt[], l: readonly Luecke[]): Marker[] => {
+export const marker = (
+  antwort: MessstelleWerte,
+  s: readonly Schritt[],
+  l: readonly Luecke[],
+  wechsel: readonly BoxWechsel[] = [],
+): Marker[] => {
   const zone = antwort.zeitzone;
   const ereignisse = new Map<string, { von: string; satz: string; erster: number; letzter: number }>();
   for (const x of s) {
@@ -288,7 +309,7 @@ export const marker = (antwort: MessstelleWerte, s: readonly Schritt[], l: reado
         da.letzter = x.index;
         continue;
       }
-      const satz = markerSatz(e, zone);
+      const satz = markerSatz(e, zone, wechsel);
       if (satz !== null) ereignisse.set(e.id, { von: e.von, satz, erster: x.index, letzter: x.index });
     }
   }

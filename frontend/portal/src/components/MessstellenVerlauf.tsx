@@ -28,6 +28,7 @@ import type { Kernaussage } from '../chartKopf';
 import { UEMS_VERGLEICH, UEMS_VERLAUF, UEMS_VERLAUF_EREIGNISSE, UEMS_VERLAUF_WAHL } from '../glossar';
 import { useContainerWidth } from '../useContainerWidth';
 import { ZUSTAND_WORT, bild, luecken, marker, schrittKarte, schritte, tooltipSatz, type Schritt } from '../uemsVerlauf';
+import type { BoxWechsel } from '../boxAnQuelle';
 import { ChartHeadline } from './ChartExplain';
 import type { QuellenNamen } from '../uemsWerteKarte';
 import { WerteKarte } from './WerteKarte';
@@ -50,6 +51,7 @@ export function MessstellenVerlauf({
   eigenName,
   vergleich = null,
   weitere = [],
+  boxWechsel = [],
 }: {
   /** Die Antwort der Werte-Route im Raster des Zeitraums (V1). */
   antwort: MessstelleWerte;
@@ -65,6 +67,11 @@ export function MessstellenVerlauf({
   versionen?: (s: Schritt) => ReactNode;
   /** Die Namen der Bindungen aus dem Register — für den Grund-Satz der Schritt-Karte (AP-13 IP-6). */
   namen?: QuellenNamen;
+  /**
+   * AP-13 IP-12 (L6): die Box-Wechsel der Datenquelle dieser Messstelle aus der Zeitachse — mit ihnen
+   * sprechen Übergabe und Box-Tausch ihren vollen Satz. Ohne sie bleibt der Kurz-Satz der Art.
+   */
+  boxWechsel?: readonly BoxWechsel[];
 }) {
   const [ref, breite] = useContainerWidth<HTMLDivElement>();
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
@@ -73,7 +80,7 @@ export function MessstellenVerlauf({
 
   const s = useMemo(() => schritte(antwort), [antwort]);
   const l = useMemo(() => luecken(s), [s]);
-  const m = useMemo(() => marker(antwort, s, l), [antwort, s, l]);
+  const m = useMemo(() => marker(antwort, s, l, boxWechsel), [antwort, s, l, boxWechsel]);
   // VG1: entweder die Überlagerung der eigenen Vergangenheit ODER weitere Messstellen — nie beides im selben Bild.
   const gruppiert = weitere.length > 0;
   const reihen: VerlaufReihe[] = gruppiert ? [...weitere] : vergleich ? [vergleich] : [];

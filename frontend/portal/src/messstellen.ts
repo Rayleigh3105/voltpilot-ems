@@ -5,7 +5,9 @@ import type {
   MessstellenRegister,
   MessstellenRegisterAnfrage,
   MessstelleVertragsform,
+  UemsDatenquelle,
 } from './api';
+import { boxAmGeraet, boxSatz } from './boxAnQuelle';
 import {
   UEMS_FUEHREND,
   UEMS_FUNKTION_MESSEN,
@@ -121,6 +123,12 @@ export interface ZeileWoerter {
         davor: string | null;
         vergleich: string | null;
         /**
+         * AP-13 IP-12 (L6): „gelesen von Box Halle 2 (neu) seit 04.11.2026 09:38“ aus der
+         * Zuständigkeit der Datenquelle dieses Geräts. `null` = keine bekannt — dann steht
+         * nichts, nie eine geratene Box.
+         */
+        box: string | null;
+        /**
          * AP-13 IP-11 (D1): der Weg von der Quelle zu ihrer KOMPONENTE auf der Anlagen-Seite. Er braucht die
          * Anlage — die Zeile kennt sie aus ihrer elektrischen Stellung; eine Messstelle ohne Stellung an dem
          * Tag hat keinen Weg (`null`), und keine Anlage wird dafür geraten.
@@ -148,7 +156,14 @@ export interface WortKontext {
   zone: string;
   /** Der Augenblick der Antwort — liegt der letzte Wert am selben Tag, steht nur die Uhrzeit. */
   zeitpunkt: string;
+  /**
+   * AP-13 IP-12: Gerät → Datenquelle (`quellenJeGeraet`). Aus ihrer Zuständigkeit zum
+   * `zeitpunkt` spricht die Spalte „Quelle“ die Box. Ohne Karte bleibt die Spalte wie zuvor.
+   */
+  boxen?: ReadonlyMap<string, UemsDatenquelle>;
 }
+
+const OHNE_BOXEN: ReadonlyMap<string, UemsDatenquelle> = new Map();
 
 /** „18.11.2026 10:40“ — um 00:00 Uhr nur der Tag („12.03.2024“). */
 export function zeitpunktText(iso: string, zone: string, bezug?: string): string {
@@ -284,6 +299,10 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
             seit: `${UEMS_FUEHREND} seit ${zeitpunktText(q.fuehrend.gueltig_ab, k.zone)}`,
             davor: q.davor ? `davor ${q.davor.geraet.einbau}` : null,
             vergleich: vergleichText(q.vergleichsquellen),
+            // AP-13 IP-12 (L6): die Box, die dieses Gerät zum Augenblick der Antwort liest.
+            box: boxSatz(boxAmGeraet(k.boxen ?? OHNE_BOXEN, q.fuehrend.geraet.id, k.zeitpunkt), (iso) =>
+              zeitpunktText(iso, k.zone),
+            ),
             sprung: komponenteSprung(z, q.fuehrend),
           }
         : { art: 'keine_datenquelle', text: KEINE_DATENQUELLE };

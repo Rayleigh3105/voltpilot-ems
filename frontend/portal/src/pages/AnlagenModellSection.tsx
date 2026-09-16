@@ -343,11 +343,16 @@ export function AnlagenModellSection({
   }, [model, renameEntry]);
 
   /**
-   * Die Referenz der EINEN Box - der Schlüssel jeder Geräteseite. Ohne sie
+   * Die Referenz der EINDEUTIGEN Box - der Schlüssel jeder Geräteseite. Ohne sie
    * (keine oder mehrere Boxen) wird KEIN Weg angeboten, statt einen zu raten.
+   *
+   * UEMS AP-13 IP-12 (W10): „genau EINE Box" gilt hier nur als Bedingung für den
+   * WEG, nicht als Aussage über die Anlage - es gibt eine Box je Datenquelle.
+   * Welche Box eine einzelne Quelle liest, sagt die Zuständigkeit der Datenquelle
+   * (`boxAnQuelle.ts`); die Box-Seite selbst bleibt AP-06 IP-16.
    */
   const boxRef = useMemo(() => boxRefOf(devices, site.id), [devices, site.id]);
-  /** Die EINE Box + ihr Software-Stand für die Datenverbindungs-Karte. */
+  /** Die EINDEUTIGE Box + ihr Software-Stand für die Datenverbindungs-Karte. */
   const boxDevice = useMemo(() => boxOf(devices, site.id), [devices, site.id]);
   const boxEdge = useMemo(
     () => edgeVersions?.find((v) => v.deviceId === boxDevice?.id) ?? null,

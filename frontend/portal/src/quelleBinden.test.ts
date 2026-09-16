@@ -27,6 +27,9 @@ import {
   type BindenEingabe,
 } from './quelleBinden';
 import type { Messkanal } from './api';
+import { quellenJeGeraet } from './boxAnQuelle';
+import { ahrenbergDatenquellen, BOX_NAMEN, geraetId } from './test/datenquellenFixtures';
+import { FIXTURE_IDS } from './test/standorteFixtures';
 import type { Groesse } from './uemsMessstelle';
 
 /** Zahl und Einheit trennt ein GESCHÜTZTES Leerzeichen (`wertText`) — nie ein gewöhnliches. */
@@ -326,6 +329,23 @@ describe('UEMS AP-04 IP-14 · die Quelle-Karte: beide Werte nebeneinander (E3, A
         null,
       ],
     ]);
+  });
+
+  it('AP-13 IP-12 (L6): die Karte nennt die Box der Datenquelle — und ohne Zuständigkeit gar nichts', () => {
+    const quellen = ahrenbergDatenquellen(FIXTURE_IDS.an1, JETZT).datenquellen;
+    // Der Weg der Fläche: Gerät der Bindung → `data_source_id` → Zuständigkeit (Befund an AP-06).
+    const dq2 = quellen.find((q) => q.kennzeichen === 'DQ-2')!;
+    const karte = quellenJeGeraet(
+      [{ id: geraetId('GR-2'), kennzeichen: 'GR-2', einbau_kennzeichen: 'GR-2', ausgebaut_am: null, komponenten: [], data_source_id: dq2.id }],
+      quellen,
+    );
+    expect(quelleKarte(quellenMs01(), JETZT, karte)[1].werte[0]).toMatchObject({
+      quelle: 'Netzzähler Halle 1 · GR-2 · Wirkleistung',
+      box: `gelesen von ${BOX_NAMEN['E-1']} seit 12.03.2024`,
+    });
+    // Ohne gelesene Zuständigkeit bleibt die Zeile weg — die Vergleichsquelle hängt an GR-1.
+    expect(quelleKarte(quellenMs01(), JETZT, karte)[1].werte[1]).toMatchObject({ box: null });
+    expect(quelleKarte(quellenMs01(), JETZT)[1].werte[0]).toMatchObject({ box: null });
   });
 
   it('eine Quelle ohne Werte sagt, dass sie wartet — nie eine 0', () => {

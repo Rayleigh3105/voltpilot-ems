@@ -66,6 +66,7 @@ import {
 import { bestehenAus, VERGLEICH_AUS, wahlAus, type ReihenWahl, type VergleichWahl } from '../uemsVergleich';
 import { HerkunftsZeile } from './HerkunftsZeile';
 import { ZeitSegment } from './HistorieWelt';
+import type { BoxWechsel } from '../boxAnQuelle';
 import { MessstellenVerlauf } from './MessstellenVerlauf';
 import { DeltaZeile, ReihenKarten, useVergleich, VergleichLeiste } from './WerteVergleich';
 import { ErrorState, Skeleton } from './States';
@@ -115,6 +116,7 @@ export function WerteSektion({
   heute = isoTag(new Date()),
   standortName = null,
   quelle = null,
+  boxWechsel = [],
   register = [],
   vergleich = null,
   onVergleich,
@@ -141,6 +143,11 @@ export function WerteSektion({
   quelle?: MessstelleRegisterZeile['quelle'] | null;
   /** „Quelle zuordnen“ im Leerzustand — nur mit Recht; ohne steht der Satz, wer es kann. */
   onQuelleZuordnen?: () => void;
+  /**
+   * AP-13 IP-12 (L6): die Box-Wechsel der Datenquelle dieser Messstelle aus der Zeitachse — nur, wo der
+   * Wirt sie kennt (die Messstellen-Seite). Mit ihnen sprechen Übergabe und Box-Tausch ihren vollen Satz.
+   */
+  boxWechsel?: readonly BoxWechsel[];
   /** Das Kennzeichen, das die Messstelle HEUTE trägt; null = nichts gewählt, nichts geladen. */
   kennzeichen: string | null;
   /** Die Messstelle („MS-10 · Netzbezug Halle 2“) — für den Kopf der Versionen. */
@@ -363,6 +370,7 @@ export function WerteSektion({
                 key={`${art}|${wert}`}
                 antwort={verlaufAntwort}
                 namen={namen}
+                boxWechsel={boxWechsel}
                 eigenName={messstelle}
                 vergleich={vg.ueberlagerung}
                 weitere={vg.reihenImBild}

@@ -5,6 +5,7 @@ import type {
   MessstelleQuelleGroesse,
   MessstelleQuellenListe,
 } from '../api';
+import { geraetId } from './datenquellenFixtures';
 import { KOMPONENTE_IDS } from './messstelleDialogFixtures';
 import { FIXTURE_IDS } from './standorteFixtures';
 
@@ -178,7 +179,9 @@ export function quelle(e: QuelleEingabe): MessstelleQuelle {
     kanal_name: e.kanalName,
     kanal_wertart: e.wertart ?? 'gauge',
     herleitung: e.herleitung ?? 'momentanwert',
-    geraet: { id: `g-${e.geraet}`, geraet: e.geraet, einbau: e.einbau ?? e.geraet },
+    // AP-13 IP-12: DIESELBE Gerät-Kennung wie Register und Datenquellen-Fixtures — sonst fände die
+    // Quelle-Karte die Datenquelle ihres Geräts nicht (`datenquellenFixtures.geraetId`).
+    geraet: { id: geraetId(e.geraet), geraet: e.geraet, einbau: e.einbau ?? e.geraet },
     gueltig_ab: e.ab,
     gueltig_bis: e.bis ?? null,
     status: e.status ?? (e.bis ? 'beendet' : 'gilt'),
