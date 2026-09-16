@@ -63,6 +63,10 @@ public class KorrekturFreigabeService {
     private ImportUebernahmeService importe;
     private final TransactionTemplate transaktion;
     private AblesungService ablesungen;
+    private KorrekturPortalService portal;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void portal(KorrekturPortalService service) { this.portal = service; }
 
     @org.springframework.beans.factory.annotation.Autowired
     void ablesungen(AblesungService service) { this.ablesungen = service; }
@@ -164,14 +168,17 @@ public class KorrekturFreigabeService {
                 return bezugswertFreigeben(tenant, kennung, begruendung, wer, an, jetzt);
             }
             Korrektur k = korrektur(tenant, kennung);
-            DarfErgebnis d = KorrekturRechte.entscheiden(wer, KorrekturRechte.KORREKTUR_FREIGEBEN,
-                    k.ersteller().sub(), an, jetzt);
-            if (!d.darf()) {
-                throw KorrekturFreigabeAbgelehnt.rechte(d);
+            if (portal != null && k.anlage().reihen().stream().allMatch(r -> r.messstelleId() == null)) {
+                portal.entscheidungPruefen(k, wer, KorrekturRechte.KORREKTUR_FREIGEBEN, an);
+            } else {
+                DarfErgebnis d = KorrekturRechte.entscheiden(wer, KorrekturRechte.KORREKTUR_FREIGEBEN,
+                        k.ersteller().sub(), an, jetzt);
+                if (!d.darf()) throw KorrekturFreigabeAbgelehnt.rechte(d);
             }
             pruefeBegruendung(begruendung, "begruendung");
             pruefeStand(k, EreignisVokabular.KORREKTUR_STATUS.get(0));
             if (ablesungen != null) ablesungen.entscheidungPruefen(k, "korrektur.freigeben");
+            if (portal != null) portal.freigabePruefen(k);
             Korrektur neu = korrekturen.freigeben(tenant, kennung, begruendung, wer, an);
             if (ablesungen != null) ablesungen.anwenden(tenant, neu, false, jetzt);
             return new Entscheidung(neu, letzte(neu), an);
@@ -185,15 +192,18 @@ public class KorrekturFreigabeService {
         return entscheide(() -> transaktion.execute(tx -> {
             boolean an = einstellungGesperrt(tenant);
             Korrektur k = korrektur(tenant, kennung);
-            DarfErgebnis d = KorrekturRechte.entscheiden(wer, KorrekturRechte.KORREKTUR_ZURUECKNEHMEN,
-                    k.ersteller().sub(), an, jetzt);
-            if (!d.darf()) {
-                throw KorrekturFreigabeAbgelehnt.rechte(d);
+            if (portal != null && k.anlage().reihen().stream().allMatch(r -> r.messstelleId() == null)) {
+                portal.entscheidungPruefen(k, wer, KorrekturRechte.KORREKTUR_ZURUECKNEHMEN, an);
+            } else {
+                DarfErgebnis d = KorrekturRechte.entscheiden(wer, KorrekturRechte.KORREKTUR_ZURUECKNEHMEN,
+                        k.ersteller().sub(), an, jetzt);
+                if (!d.darf()) throw KorrekturFreigabeAbgelehnt.rechte(d);
             }
             pruefeBegruendung(grund, "grund");
             pruefeStand(k, EreignisVokabular.KORREKTUR_STATUS.get(1));
             if (ablesungen != null) ablesungen.entscheidungPruefen(k, "korrektur.zuruecknehmen");
             Korrektur neu = korrekturen.zuruecknehmen(tenant, kennung, grund, wer);
+            if (portal != null) portal.ersatzwertRuecknahme(k, grund, wer);
             if (ablesungen != null) ablesungen.anwenden(tenant, neu, true, jetzt);
             return new Entscheidung(neu, letzte(neu), null);
         }));

@@ -143,10 +143,21 @@ final class KaskadeStufen {
 
     private final MeasurementCatalog katalog;
     private final ErsatzwertLauf ersatzwerte;
+    record PreviewStand(BigDecimal menge, List<String> kennzeichen) {}
+    private final VerbrauchRegeln.Ersatzwert vorschau;
+    private final Map<Instant, PreviewStand> vorschauStaende;
 
     KaskadeStufen(MeasurementCatalog katalog, ErsatzwertLauf ersatzwerte) {
+        this(katalog, ersatzwerte, null, Map.of());
+    }
+
+    /** Nur gelesene Vorschau-Eingänge: identische Periodenrechnung wie nach dem Ersatzwert-Lauf. */
+    KaskadeStufen(MeasurementCatalog katalog, ErsatzwertLauf ersatzwerte, VerbrauchRegeln.Ersatzwert vorschau,
+            Map<Instant, PreviewStand> vorschauStaende) {
         this.katalog = katalog;
         this.ersatzwerte = ersatzwerte;
+        this.vorschau = vorschau;
+        this.vorschauStaende = vorschauStaende;
     }
 
     // ============================================================================ Viertelstunden
@@ -368,7 +379,7 @@ final class KaskadeStufen {
                 : ersatzwerte.wertart(con, r.tenant(), r.entity(), r.kanal(), ende);
         String regel = ViertelstundeRegeln.regelWort(wertart);
         ReihenKontext reihe = ReihenKontext.aus(katalog, r.kanal(), zone);
-        Geltende g = ersatzwerte.geltende(con, r.tenant(), r.entity(), r.kanal(), beginn, ende, regel, reihe);
+        Geltende g = ersatzwerte.geltende(con, r.tenant(), r.entity(), r.kanal(), beginn, ende, regel, reihe, vorschau);
         List<VerbrauchRegeln.Geltend> hier = g.gelten().stream()
                 .filter(x -> x.anteile().stream().anyMatch(a -> !a.beginn().isBefore(beginn) && a.beginn().isBefore(ende))
                         || (ErsatzwertPerioden.periodenBetrag(x.ersatzwert(), zone)
@@ -392,6 +403,12 @@ final class KaskadeStufen {
             if (VerbrauchRegeln.VERTEILEN.contains(ew.methode())) continue;
             if (VerbrauchRegeln.ABLESESTAND_NACHTRAGEN.equals(ew.methode())) {
                 // Der IP-13-Lauf hat Z4 bereits geprüft und gerechnet; keine zweite Rechnung aus einem Delta-Raten.
+                PreviewStand geplant = vorschau != null && vorschau.kennung().equals(ew.kennung())
+                        ? vorschauStaende.get(ew.von()) : null;
+                if (geplant != null) {
+                    beitraege.add(beitrag(con, r, zone, ew, ew.von(), ew.bis(), geplant.menge(), geplant.kennzeichen()));
+                    continue;
+                }
                 List<ViertelVersion> vs = viertelVersionen(con, r, ew.von(), ew.bis()).getOrDefault(ew.von(), List.of());
                 ViertelVersion v = vs.isEmpty() ? null : vs.get(vs.size() - 1);
                 if (v == null || !v.ersatzwerte().contains(ew.kennung())) {
@@ -496,6 +513,9 @@ final class KaskadeStufen {
         Instant ende = TagRegeln.beginn(erster.plusYears(1), zone);
         Set<LocalDate> mitVersion = monateMitViertelVersion(con, r, erster.minusMonths(1), erster.plusYears(1)
                 .plusMonths(1), zone);
+        vorschauStaende.keySet().stream().map(t -> t.atZone(zone).toLocalDate().withDayOfMonth(1))
+                .filter(t -> !t.isBefore(erster.minusMonths(1)) && t.isBefore(erster.plusYears(1).plusMonths(1)))
+                .forEach(mitVersion::add);
         Map<LocalDate, Teilperiode> teile = new TreeMap<>();
         Map<LocalDate, Werteteil> werteteile = new TreeMap<>();
         Set<String> korrekturen = new LinkedHashSet<>();
@@ -592,7 +612,7 @@ final class KaskadeStufen {
     private static Set<LocalDate> monateMitViertelVersion(Connection con, Reihe r, LocalDate von, LocalDate bis,
             ZoneId zone) throws SQLException {
         Set<LocalDate> aus = new java.util.TreeSet<>();
-        try (PreparedStatement ps = con.prepareStatement("SELECT DISTINCT intervall_beginn "
+        try (PreparedStatement ps = con.prepareStatement("SELECT intervall_beginn "
                 + "FROM messreihe_viertelstunde_version WHERE tenant_id = ? AND entity_id = ? AND messkanal = ? "
                 + "AND intervall_beginn >= ? AND intervall_beginn < ?")) {
             ps.setObject(1, r.tenant());

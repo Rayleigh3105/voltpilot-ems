@@ -329,6 +329,15 @@ public class KorrekturKaskade {
                               FROM messreihe_korrektur ORDER BY tenant_id, kennung, fassung DESC) n
                       LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = n.tenant_id AND w.anlass_kennung = n.kennung
                      WHERE n.status IN ('freigegeben', 'zurueckgenommen') AND n.fassung > coalesce(w.fassung, 0)
+                       AND NOT EXISTS (
+                           SELECT 1 FROM messreihe_korrektur k
+                            WHERE k.tenant_id = n.tenant_id AND k.kennung = n.kennung AND k.fassung = 1
+                              AND k.ersatzwert_kennung IS NOT NULL AND NOT EXISTS (
+                                  SELECT 1 FROM messreihe_ersatzwert_wirkung ew
+                                   WHERE ew.tenant_id = k.tenant_id AND ew.kennung = k.ersatzwert_kennung
+                                     AND ew.ergebnis IN ('gebildet', 'ohne_wirkung')
+                                     AND ew.fassung = (SELECT max(fassung) FROM messreihe_ersatzwert e
+                                                        WHERE e.tenant_id = k.tenant_id AND e.kennung = ew.kennung)))
                     UNION ALL
                     SELECT n.tenant_id, n.kennung, 'ERSATZWERT', n.fassung, n.status, NULL::uuid, n.created_at
                       FROM (SELECT DISTINCT ON (tenant_id, kennung) tenant_id, kennung, fassung, status, created_at
@@ -337,6 +346,8 @@ public class KorrekturKaskade {
                                                           AND ew.fassung >= n.fassung
                       LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = n.tenant_id AND w.anlass_kennung = n.kennung
                      WHERE n.fassung > coalesce(w.fassung, 0)
+                       AND NOT EXISTS (SELECT 1 FROM messreihe_korrektur k WHERE k.tenant_id = n.tenant_id
+                                        AND k.fassung = 1 AND k.ersatzwert_kennung = n.kennung)
                     UNION ALL
                     SELECT e.tenant_id, e.kennung, 'BEZUGSGROESSE', e.fassung, e.status, NULL::uuid, e.eingang
                       FROM (SELECT tenant_id, nutzlast ->> 'korrektur' AS kennung, nutzlast ->> 'status' AS status,
@@ -609,7 +620,7 @@ public class KorrekturKaskade {
 
     /** Eine Korrektur (Fassung 1) mit ihren Entscheidungen. */
     private record Korrektur(String kennung, String art, List<Reihe> reihen, Instant von, Instant bis, JsonNode vorschau,
-            List<Entscheidung> entscheidungen) {}
+            List<Entscheidung> entscheidungen, String ersatzwert) {}
 
     private record Entscheidung(int fassung, String status) {}
 
@@ -1359,6 +1370,7 @@ public class KorrekturKaskade {
         e.put("messkanal", r.kanal());
         e.put("korrektur", k.kennung());
         e.put("korrektur_art", k.art());
+        if (k.ersatzwert() != null) e.put("ersatzwert", k.ersatzwert());
         e.put("status", status);
         Urteil urteil = EreignisVokabular.pruefe(e, Urheber.KUNDE);
         if (!urteil.angenommen()) {
@@ -1367,6 +1379,7 @@ public class KorrekturKaskade {
         ObjectNode kennungen = JSON.createObjectNode().put("komponente", r.entity().toString());
         ObjectNode nutzlast = JSON.createObjectNode().put("korrektur", k.kennung()).put("korrektur_art", k.art())
                 .put("status", status);
+        if (k.ersatzwert() != null) nutzlast.put("ersatzwert", k.ersatzwert());
         try (PreparedStatement ps = con.prepareStatement("""
                 INSERT INTO messreihe_ereignis (zeit, tenant_id, ereignis_id, art, urheber, von, bis, kennungen,
                        entity_id, messkanal, nutzlast, eingang)
@@ -1396,9 +1409,10 @@ public class KorrekturKaskade {
         Instant von = null;
         Instant bis = null;
         JsonNode vorschau = null;
+        String ersatzwert = null;
         List<Entscheidung> entscheidungen = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("SELECT fassung, status, art, reihen::text, von, bis, "
-                + "vorschau::text FROM messreihe_korrektur WHERE tenant_id = ? AND kennung = ? ORDER BY fassung")) {
+                + "vorschau::text, ersatzwert_kennung FROM messreihe_korrektur WHERE tenant_id = ? AND kennung = ? ORDER BY fassung")) {
             ps.setObject(1, tenant);
             ps.setString(2, kennung);
             try (ResultSet rs = ps.executeQuery()) {
@@ -1413,6 +1427,7 @@ public class KorrekturKaskade {
                         von = ViertelstundenTeile.zeit(rs, 5);
                         bis = ViertelstundenTeile.zeit(rs, 6);
                         vorschau = JSON.readTree(rs.getString(7));
+                        ersatzwert = rs.getString(8);
                     } else if (FREIGEGEBEN.equals(rs.getString(2)) || ZURUECKGENOMMEN.equals(rs.getString(2))) {
                         entscheidungen.add(new Entscheidung(rs.getInt(1), rs.getString(2)));
                     }
@@ -1421,7 +1436,7 @@ public class KorrekturKaskade {
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalStateException("Korrektur " + kennung + " nicht lesbar", e);
         }
-        return new Korrektur(kennung, art, List.copyOf(reihen), von, bis, vorschau, List.copyOf(entscheidungen));
+        return new Korrektur(kennung, art, List.copyOf(reihen), von, bis, vorschau, List.copyOf(entscheidungen), ersatzwert);
     }
 
     /** Die Vorschau „neu“ je Viertelstunde — älteste zuerst. */

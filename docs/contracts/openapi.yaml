@@ -12418,6 +12418,188 @@ paths:
         "404": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
         "409": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
         "422": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+  /api/v1/standorte/{standortId}/korrekturen:
+    get:
+      tags: [UEMS]
+      summary: "Korrekturen im sichtbaren Standort"
+      description: >-
+        Mandant aus dem Anmeldekontext; alle betroffenen Standorte müssen sichtbar sein, sonst 404.
+        Schreibwege prüfen die Rechte aus AP-08 IP-15. Vorschau und Job teilen denselben Rechenplan.
+        Vorschläge verändern keine Werte. Bei Vier-Augen darf der Ersteller nicht selbst freigeben.
+      parameters:
+        - name: standortId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: "Korrekturen im sichtbaren Standort"
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/KorrekturPortalDetail' } }
+        '400': { description: Unlesbare Anfrage oder unbekanntes Feld }
+        '403': { description: Recht fehlt oder zweite Person nötig }
+        '404': { description: Nicht sichtbar oder nicht vorhanden }
+        '409': { description: Bereits entschieden oder gleichzeitig geändert }
+        '422': { description: Methode, Zeitraum, Begründung oder Beleg passen nicht }
+  /api/v1/korrekturen/{kennung}:
+    get:
+      tags: [UEMS]
+      summary: "Korrektur prüfen: gespeicherte Vorschau und Auswirkungen"
+      description: >-
+        Mandant aus dem Anmeldekontext; alle betroffenen Standorte müssen sichtbar sein, sonst 404.
+        Schreibwege prüfen die Rechte aus AP-08 IP-15. Vorschau und Job teilen denselben Rechenplan.
+        Vorschläge verändern keine Werte. Bei Vier-Augen darf der Ersteller nicht selbst freigeben.
+      parameters:
+        - name: kennung
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: "Korrektur prüfen: gespeicherte Vorschau und Auswirkungen"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KorrekturPortalDetail' }
+        '400': { description: Unlesbare Anfrage oder unbekanntes Feld }
+        '403': { description: Recht fehlt oder zweite Person nötig }
+        '404': { description: Nicht sichtbar oder nicht vorhanden }
+        '409': { description: Bereits entschieden oder gleichzeitig geändert }
+        '422': { description: Methode, Zeitraum, Begründung oder Beleg passen nicht }
+  /api/v1/messstellen/{kennzeichen}/ersatzwerte/luecken:
+    get:
+      tags: [UEMS]
+      summary: Lücken und Zählerbrüche für die Ersatzwert-Methodenwahl
+      description: Lesend, neueste Ereignisfortschreibung je Kennung. Sichtbare Quelle und Standort erforderlich, sonst 404. Zeitraum höchstens 366 Tage.
+      parameters:
+        - { name: kennzeichen, in: path, required: true, schema: { type: string } }
+        - { name: quelle_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: von, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: bis, in: query, required: true, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Tatsächliche Lücken ohne geschätzten Zuwachs
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ErsatzwertLuecke' } }
+        '404': { description: Nicht sichtbar oder nicht vorhanden }
+        '422': { description: Ungültiger Zeitraum }
+  /api/v1/messstellen/{kennzeichen}/ersatzwerte/vorschau:
+    post:
+      tags: [UEMS]
+      summary: "Ersatzwert ohne Schreibvorgang berechnen"
+      description: >-
+        Mandant aus dem Anmeldekontext; alle betroffenen Standorte müssen sichtbar sein, sonst 404.
+        Schreibwege prüfen die Rechte aus AP-08 IP-15. Vorschau und Job teilen denselben Rechenplan.
+        Vorschläge verändern keine Werte. Bei Vier-Augen darf der Ersteller nicht selbst freigeben.
+      parameters:
+        - name: kennzeichen
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ErsatzwertEingabe' }
+      responses:
+        '200':
+          description: "Ersatzwert ohne Schreibvorgang berechnen"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErsatzwertVorschau' }
+        '400': { description: Unlesbare Anfrage oder unbekanntes Feld }
+        '403': { description: Recht fehlt oder zweite Person nötig }
+        '404': { description: Nicht sichtbar oder nicht vorhanden }
+        '409': { description: Bereits entschieden oder gleichzeitig geändert }
+        '422': { description: Methode, Zeitraum, Begründung oder Beleg passen nicht }
+  /api/v1/messstellen/{kennzeichen}/ersatzwerte:
+    post:
+      tags: [UEMS]
+      summary: "Ersatzwert erfassen; bei Vier-Augen als Vorschlag"
+      description: >-
+        Mandant aus dem Anmeldekontext; alle betroffenen Standorte müssen sichtbar sein, sonst 404.
+        Schreibwege prüfen die Rechte aus AP-08 IP-15. Vorschau und Job teilen denselben Rechenplan.
+        Vorschläge verändern keine Werte. Bei Vier-Augen darf der Ersteller nicht selbst freigeben.
+      parameters:
+        - name: kennzeichen
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ErsatzwertEingabe' }
+      responses:
+        '200':
+          description: "Ersatzwert erfassen; bei Vier-Augen als Vorschlag"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KorrekturPortalDetail' }
+        '400': { description: Unlesbare Anfrage oder unbekanntes Feld }
+        '403': { description: Recht fehlt oder zweite Person nötig }
+        '404': { description: Nicht sichtbar oder nicht vorhanden }
+        '409': { description: Bereits entschieden oder gleichzeitig geändert }
+        '422': { description: Methode, Zeitraum, Begründung oder Beleg passen nicht }
+  /api/v1/korrekturen/{kennung}/ablehnen:
+    post:
+      tags: [UEMS]
+      summary: "Vorschlag mit Begründung ablehnen"
+      description: >-
+        Mandant aus dem Anmeldekontext; alle betroffenen Standorte müssen sichtbar sein, sonst 404.
+        Schreibwege prüfen die Rechte aus AP-08 IP-15. Vorschau und Job teilen denselben Rechenplan.
+        Vorschläge verändern keine Werte. Bei Vier-Augen darf der Ersteller nicht selbst freigeben.
+      parameters:
+        - name: kennung
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KorrekturZuruecknehmen' }
+      responses:
+        '200':
+          description: "Vorschlag mit Begründung ablehnen"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KorrekturPortalDetail' }
+        '400': { description: Unlesbare Anfrage oder unbekanntes Feld }
+        '403': { description: Recht fehlt oder zweite Person nötig }
+        '404': { description: Nicht sichtbar oder nicht vorhanden }
+        '409': { description: Bereits entschieden oder gleichzeitig geändert }
+        '422': { description: Methode, Zeitraum, Begründung oder Beleg passen nicht }
+  /api/v1/ersatzwerte/{kennung}/zuruecknehmen:
+    post:
+      tags: [UEMS]
+      summary: "Ersatzwert append-only zurücknehmen"
+      description: >-
+        Mandant aus dem Anmeldekontext; alle betroffenen Standorte müssen sichtbar sein, sonst 404.
+        Schreibwege prüfen die Rechte aus AP-08 IP-15. Vorschau und Job teilen denselben Rechenplan.
+        Vorschläge verändern keine Werte. Bei Vier-Augen darf der Ersteller nicht selbst freigeben.
+      parameters:
+        - name: kennung
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KorrekturZuruecknehmen' }
+      responses:
+        '200':
+          description: "Ersatzwert append-only zurücknehmen"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErsatzwertStand' }
+        '400': { description: Unlesbare Anfrage oder unbekanntes Feld }
+        '403': { description: Recht fehlt oder zweite Person nötig }
+        '404': { description: Nicht sichtbar oder nicht vorhanden }
+        '409': { description: Bereits entschieden oder gleichzeitig geändert }
+        '422': { description: Methode, Zeitraum, Begründung oder Beleg passen nicht }
 components:
   securitySchemes:
     bearerAuth:
@@ -24155,6 +24337,119 @@ components:
       additionalProperties: false
       properties:
         vieraugen: { type: boolean }
+    ErsatzwertStand:
+      type: object
+      required: [kennung, status, fassung, korrektur]
+      properties:
+        kennung: { type: string }
+        status: { type: string, enum: [zurueckgenommen] }
+        fassung: { type: integer }
+        korrektur: { type: string, nullable: true }
+    ErsatzwertLuecke:
+      type: object
+      required: [id, art, von, bis, zuwachs, einheit]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [data_gap, counter_reset, device_boundary] }
+        von: { type: string, format: date-time }
+        bis: { type: string, format: date-time, nullable: true }
+        zuwachs: { type: number, nullable: true }
+        einheit: { type: string, nullable: true }
+    ErsatzwertEingabe:
+      type: object
+      additionalProperties: false
+      required: [quelle_id, methode, von, bis, begruendung]
+      properties:
+        quelle_id: { type: string, format: uuid }
+        methode:
+          type: string
+          enum: [gleichmaessig_verteilen, profil_vorperiode, profil_vergleichsquelle, ablesestand_nachtragen, wert_eingeben, vorperiode_uebernehmen, vergleichsquelle_uebernehmen]
+        von: { type: string, format: date-time, description: Viertelstundenraster, einschließlich }
+        bis: { type: string, format: date-time, description: Viertelstundenraster, ausschließlich; Methode e höchstens ein Kalendermonat in Standort-Zeitzone }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+        beleg: { type: string, minLength: 10, maxLength: 500 }
+        luecke_ereignis_id: { type: string, format: uuid, description: Pflicht bei a–c; Zuwachs und Stände kommen ausschließlich aus diesem Ereignis }
+        vorperiode_von: { type: string, format: date-time, description: Nur b/f; Vorgabe sieben örtliche Tage vorher }
+        vergleich_quelle_id: { type: string, format: uuid, description: Nur c/g; markierte Vergleichsquelle derselben Messstelle und Größe }
+        zeitpunkt: { type: string, format: date-time, description: Nur d; volle Minute in der Viertelstunde }
+        endstand: { type: number }
+        anfangsstand: { type: number }
+        betrag: { type: number, description: Nur e; Beleg ist Pflicht }
+        einheit: { type: string, description: Pflicht bei d/e; a–c lesen sie aus dem Lückenereignis }
+    KorrekturPeriodenStand:
+      type: object
+      required: [menge, menge_zustand]
+      properties:
+        menge: { type: number, nullable: true }
+        menge_zustand: { type: string }
+        kennzeichen: { type: array, items: { type: string } }
+        erhalten: { type: integer, nullable: true }
+        erwartet: { type: integer, nullable: true }
+        abdeckung_prozent: { type: integer, nullable: true }
+    KorrekturPortalPeriode:
+      type: object
+      required: [periode, von, bis, neu]
+      properties:
+        periode: { type: string }
+        von: { type: string, format: date-time }
+        bis: { type: string, format: date-time }
+        version_alt: { type: integer }
+        version_neu: { type: integer }
+        alt: { $ref: '#/components/schemas/KorrekturPeriodenStand' }
+        neu: { $ref: '#/components/schemas/KorrekturPeriodenStand' }
+    KorrekturPortalAktion:
+      type: object
+      required: [erlaubt, grund]
+      properties:
+        erlaubt: { type: boolean }
+        grund: { type: string, nullable: true, description: Zustand statt eines nicht ausführbaren Knopfs }
+    KorrekturAuswirkungen:
+      type: object
+      required: [perioden, berechnete_messstellen, kennzahlen, berichte]
+      properties:
+        perioden: { type: array, items: { type: string } }
+        berechnete_messstellen: { type: string }
+        kennzahlen: { type: string }
+        berichte: { type: string }
+    ErsatzwertVorschau:
+      type: object
+      required: [perioden, auswirkungen, vieraugen, freigabe_noetig]
+      properties:
+        perioden: { type: array, items: { $ref: '#/components/schemas/KorrekturPortalPeriode' } }
+        auswirkungen: { $ref: '#/components/schemas/KorrekturAuswirkungen' }
+        vieraugen: { type: boolean }
+        freigabe_noetig: { type: boolean, description: Vier-Augen oder nachgetragener Ablesestand nach Endgültigkeit (F12) }
+    KorrekturPortalDetail:
+      type: object
+      required: [kennung, art, status, fassung, von, bis, begruendung, beleg, ersatzwert_kennung, methode, einheit, messstellen, ersteller, erstellt_am, vieraugen, vorschau, auswirkungen, freigeben, zuruecknehmen, ablehnen]
+      properties:
+        kennung: { type: string }
+        art: { type: string }
+        status: { type: string, enum: [vorschlag, freigegeben, abgelehnt, zurueckgenommen] }
+        fassung: { type: integer }
+        von: { type: string, format: date-time }
+        bis: { type: string, format: date-time }
+        begruendung: { type: string }
+        beleg: { type: string, nullable: true }
+        ersatzwert_kennung: { type: string, nullable: true }
+        methode: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+        messstellen:
+          type: array
+          items:
+            type: object
+            required: [kennzeichen, name]
+            properties:
+              kennzeichen: { type: string }
+              name: { type: string }
+        ersteller: { $ref: '#/components/schemas/KorrekturUrheber' }
+        erstellt_am: { type: string, format: date-time }
+        vieraugen: { type: boolean }
+        vorschau: { type: array, items: { $ref: '#/components/schemas/KorrekturPortalPeriode' } }
+        auswirkungen: { $ref: '#/components/schemas/KorrekturAuswirkungen' }
+        freigeben: { $ref: '#/components/schemas/KorrekturPortalAktion' }
+        zuruecknehmen: { $ref: '#/components/schemas/KorrekturPortalAktion' }
+        ablehnen: { $ref: '#/components/schemas/KorrekturPortalAktion' }
     KorrekturFreigeben:
       type: object
       required: [begruendung]

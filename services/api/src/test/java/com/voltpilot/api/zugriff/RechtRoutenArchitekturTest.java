@@ -62,6 +62,10 @@ class RechtRoutenArchitekturTest {
         for (String r : List.of("anlegen", "freigeben", "archivieren", "verwerfen")) {
             m.put("BerichtController#" + r, bericht);
         }
+        for (String r : List.of("erfassen", "ablehnen", "zuruecknehmen")) {
+            m.put("KorrekturPortalController#" + r, "KorrekturPortalService — Standort jeder Reihe, RechteAbleitung und Vier-Augen");
+        }
+        m.put("KorrekturPortalController#vorschau", "KorrekturPortalService — lesende Vorschau ohne Schreibvorgang");
         String korrektur = "KorrekturFreigabeService über KorrekturRechte.aufrufer — Ziel Unternehmen (schließt S)";
         m.put("KorrekturFreigabeController#freigeben", korrektur);
         m.put("KorrekturFreigabeController#zuruecknehmen", korrektur);

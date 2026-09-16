@@ -115,6 +115,8 @@ public class ErsatzwertLauf {
         return new Lauf(ersatzwerte, versionen);
     }
 
+    public String einheit(String kanal) { return katalog.einheit(kanal); }
+
     // ------------------------------------------------------------------------------ Für die Kaskade (IP-17)
 
     /**
@@ -129,12 +131,21 @@ public class ErsatzwertLauf {
      */
     Geltende geltende(Connection con, UUID tenant, UUID entity, String kanal, Instant von, Instant bis, String regel,
             ReihenKontext kontext) throws SQLException {
+        return geltende(con, tenant, entity, kanal, von, bis, regel, kontext, null);
+    }
+
+    Geltende geltende(Connection con, UUID tenant, UUID entity, String kanal, Instant von, Instant bis, String regel,
+            ReihenKontext kontext, Ersatzwert vorschau) throws SQLException {
         Kandidat k = new Kandidat(tenant, null, entity, kanal);
         List<Ersatzwert> ersatzwerte = new ArrayList<>();
         for (Zeile z : zeilenDerReihe(con, tenant, entity, kanal)) {
             if (z.von().isBefore(bis) && von.isBefore(z.bis())) {
                 ersatzwerte.add(ersatzwert(con, k, z));
             }
+        }
+        if (vorschau != null && vorschau.von().isBefore(bis) && von.isBefore(vorschau.bis())) {
+            ersatzwerte.removeIf(e -> e.kennung().equals(vorschau.kennung()));
+            ersatzwerte.add(vorschau);
         }
         if (ersatzwerte.isEmpty()) {
             return new Geltende(List.of(), Map.of());
@@ -194,7 +205,98 @@ public class ErsatzwertLauf {
         return null;
     }
 
+    private record Aenderung(Instant von, int version, Stand alt, Stand neu, Bestand basis) {}
+    private record Plan(List<Aenderung> aenderungen, List<Zeile> umfang, Map<String, String> abgelehnt) {}
+
+    /** Die Vorschau liest denselben Plan, den der Job anschließend unverändert schreibt. Keine Probe-Inserts. */
+    public record Vorschau(com.fasterxml.jackson.databind.JsonNode perioden, String ablehnung) {}
+
+    public Vorschau vorschau(Connection con, UUID tenant, String kennung,
+            MessreiheErsatzwertRepository.Anlage a) throws SQLException {
+        Kandidat k = new Kandidat(tenant, kennung, a.entityId(), a.messkanal());
+        Zeile neu = new Zeile(kennung, a.methode(), a.von(), a.bis(), "wirksam", 1, a.lueckeEreignisId(),
+                a.einheit(), a.vorperiodeVon(), a.vergleichQuelleId(), a.betrag(), a.zeitpunkt(), a.endstand(), a.anfangsstand());
+        List<Zeile> alle = new ArrayList<>(zeilenDerReihe(con, tenant, a.entityId(), a.messkanal()));
+        alle.removeIf(z -> z.kennung().equals(kennung));
+        alle.add(neu);
+        Plan plan = planen(con, k, alle, neu);
+        var perioden = JSON.createArrayNode();
+        for (Aenderung x : plan.aenderungen()) {
+            var zeile = perioden.addObject().put("periode", "viertelstunde").put("von", x.von().toString())
+                    .put("bis", x.von().plus(VIERTELSTUNDE).toString()).put("version_alt", x.version() - 1)
+                    .put("version_neu", x.version());
+            zeile.set("alt", vorschauStand(x.alt()));
+            zeile.set("neu", vorschauStand(x.neu()));
+        }
+        if (!plan.abgelehnt().containsKey(kennung)) {
+            java.time.ZoneId zone = ReihenKontext.zeitzonen(con,
+                    List.of(new ReihenKontext.Frage(tenant, a.entityId(), LocalDate.ofInstant(a.von(), ZoneOffset.UTC))))
+                    .get(0).zone();
+            Map<Instant, KaskadeStufen.PreviewStand> staende = new HashMap<>();
+            plan.aenderungen().forEach(x -> staende.put(x.von(), new KaskadeStufen.PreviewStand(x.neu().menge(), x.neu().kennzeichen())));
+            KaskadeStufen stufen = new KaskadeStufen(katalog, this, ersatzwert(con, k, neu), staende);
+            KaskadeStufen.Reihe r = new KaskadeStufen.Reihe(tenant, a.entityId(), a.messkanal());
+            for (String ebene : List.of("tag", "monat", "jahr")) {
+                LocalDate erster = a.von().atZone(zone).toLocalDate();
+                if (ebene.equals("monat")) erster = erster.withDayOfMonth(1);
+                if (ebene.equals("jahr")) erster = erster.withDayOfYear(1);
+                for (LocalDate t = erster; t.atStartOfDay(zone).toInstant().isBefore(a.bis());
+                        t = ebene.equals("tag") ? t.plusDays(1) : ebene.equals("monat") ? t.plusMonths(1) : t.plusYears(1)) {
+                    Instant von = t.atStartOfDay(zone).toInstant();
+                    Instant bis = (ebene.equals("tag") ? t.plusDays(1) : ebene.equals("monat") ? t.plusMonths(1) : t.plusYears(1)).atStartOfDay(zone).toInstant();
+                    var basis = KaskadeStufen.bestand(con, r, ebene, t);
+                    var alt = KaskadeStufen.neuesteVersion(con, tenant, a.entityId(), a.messkanal(), null, ebene, von);
+                    if (alt == null) alt = basis;
+                    var gebildet = switch (ebene) {
+                        case "tag" -> stufen.tag(con, r, t, zone, basis, Instant.now());
+                        case "monat" -> stufen.monat(con, r, t, zone, basis);
+                        default -> stufen.jahr(con, r, t, zone, basis);
+                    };
+                    if (gebildet == null || gebildet.inhalt().leer()
+                            || alt != null && gebildet.inhalt().gleich(alt.inhalt())) continue;
+                    int vorher = alt == null ? 1 : alt.version();
+                    var zeile = perioden.addObject().put("periode", ebene).put("von", von.toString()).put("bis", bis.toString())
+                            .put("version_alt", vorher).put("version_neu", vorher + 1);
+                    zeile.set("alt", periodenStand(alt == null ? null : alt.inhalt()));
+                    zeile.set("neu", periodenStand(gebildet.inhalt()));
+                }
+            }
+        }
+        return new Vorschau(perioden, plan.abgelehnt().get(kennung));
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode periodenStand(KaskadeStufen.Inhalt i) {
+        var n = JSON.createObjectNode().put("menge", i == null ? null : i.menge())
+                .put("menge_zustand", i == null ? VerbrauchRegeln.KEINE_WERTE : i.mengeZustand());
+        n.set("kennzeichen", JSON.valueToTree(i == null ? List.of() : i.aussage()));
+        if (i != null) n.put("erhalten", i.erhalten()).put("erwartet", i.erwartet()).put("abdeckung_prozent", i.abdeckung());
+        return n;
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode vorschauStand(Stand s) {
+        var n = JSON.createObjectNode().put("menge", s.menge()).put("menge_zustand", s.zustand());
+        n.set("kennzeichen", JSON.valueToTree(s.kennzeichen()));
+        return n;
+    }
+
     private int rechnen(Connection con, Kandidat k, List<Zeile> alle, Zeile diese, Instant jetzt) throws SQLException {
+        Plan plan = planen(con, k, alle, diese);
+        Map<String, Integer> jeKennung = new HashMap<>();
+        for (Aenderung x : plan.aenderungen()) {
+            versionSchreiben(con, k, x.von(), x.version(), x.neu(), diese, x.basis());
+            for (Zeile z : plan.umfang()) {
+                if (!z.von().isAfter(x.von()) && z.bis().isAfter(x.von())) jeKennung.merge(z.kennung(), 1, Integer::sum);
+            }
+        }
+        for (Zeile z : plan.umfang()) {
+            String ergebnis = !VerbrauchRegeln.WIRKSAM.equals(z.status()) ? OHNE_WIRKUNG
+                    : plan.abgelehnt().getOrDefault(z.kennung(), GEBILDET);
+            wirkungSchreiben(con, k.tenant(), z, ergebnis, jeKennung.getOrDefault(z.kennung(), 0), jetzt);
+        }
+        return plan.aenderungen().size();
+    }
+
+    private Plan planen(Connection con, Kandidat k, List<Zeile> alle, Zeile diese) throws SQLException {
         // Der Umfang: alle Ersatzwerte der Reihe, die mit diesem Viertelstunden teilen — transitiv.
         Instant von = diese.von();
         Instant bis = diese.bis();
@@ -250,8 +352,7 @@ public class ErsatzwertLauf {
         Geltende geltende = ErsatzwertPerioden.geltende(ersatzwerte, regel == null ? "" : regel, kontext.einheit(), vorab, kontext.zeitzone());
         Map<Instant, Stand> neueste = neuesteVersionen(con, k, von, bis);
 
-        int geschrieben = 0;
-        Map<String, Integer> jeKennung = new HashMap<>();
+        List<Aenderung> aenderungen = new ArrayList<>();
         for (Instant q : VerbrauchRegeln.viertelstunden(von, bis)) {
             Bestand b = bestand.get(q);
             List<Geltend> hier = new ArrayList<>();
@@ -274,20 +375,9 @@ public class ErsatzwertLauf {
                 continue;
             }
             int version = neueste.containsKey(q) ? versionVon(con, k, q) + 1 : 2;
-            versionSchreiben(con, k, q, version, soll, diese, b);
-            geschrieben++;
-            for (Zeile z : umfang) {
-                if (!z.von().isAfter(q) && z.bis().isAfter(q)) {
-                    jeKennung.merge(z.kennung(), 1, Integer::sum);
-                }
-            }
+            aenderungen.add(new Aenderung(q, version, ist, soll, b));
         }
-        for (Zeile z : umfang) {
-            String ergebnis = !VerbrauchRegeln.WIRKSAM.equals(z.status()) ? OHNE_WIRKUNG
-                    : geltende.abgelehnt().getOrDefault(z.kennung(), GEBILDET);
-            wirkungSchreiben(con, k.tenant(), z, ergebnis, jeKennung.getOrDefault(z.kennung(), 0), jetzt);
-        }
-        return geschrieben;
+        return new Plan(List.copyOf(aenderungen), List.copyOf(umfang), geltende.abgelehnt());
     }
 
     /**
@@ -445,6 +535,14 @@ public class ErsatzwertLauf {
                   FROM messreihe_ersatzwert e
                   JOIN messreihe_ersatzwert a ON a.tenant_id = e.tenant_id AND a.kennung = e.kennung AND a.fassung = 1
                   LEFT JOIN messreihe_ersatzwert_wirkung w ON w.tenant_id = e.tenant_id AND w.kennung = e.kennung
+                 WHERE true
+                   AND NOT EXISTS (
+                       SELECT 1 FROM messreihe_korrektur k
+                       JOIN LATERAL (SELECT status FROM messreihe_korrektur f
+                                      WHERE f.tenant_id = k.tenant_id AND f.kennung = k.kennung
+                                      ORDER BY fassung DESC LIMIT 1) ks ON true
+                        WHERE k.tenant_id = a.tenant_id AND k.fassung = 1 AND k.ersatzwert_kennung = a.kennung
+                          AND ks.status IN ('vorschlag', 'abgelehnt'))
                  GROUP BY e.tenant_id, e.kennung, a.entity_id, a.messkanal, w.fassung
                 HAVING max(e.fassung) > coalesce(w.fassung, 0)
                  ORDER BY max(e.created_at), e.kennung
@@ -483,6 +581,14 @@ public class ErsatzwertLauf {
                                  WHERE f.tenant_id = a.tenant_id AND f.kennung = a.kennung
                                  ORDER BY f.fassung DESC LIMIT 1) s ON true
                  WHERE a.tenant_id = ? AND a.fassung = 1 AND a.entity_id = ? AND a.messkanal = ?
+
+                   AND NOT EXISTS (
+                       SELECT 1 FROM messreihe_korrektur k
+                       JOIN LATERAL (SELECT status FROM messreihe_korrektur f
+                                      WHERE f.tenant_id = k.tenant_id AND f.kennung = k.kennung
+                                      ORDER BY fassung DESC LIMIT 1) ks ON true
+                        WHERE k.tenant_id = a.tenant_id AND k.fassung = 1 AND k.ersatzwert_kennung = a.kennung
+                          AND ks.status IN ('vorschlag', 'abgelehnt'))
                  ORDER BY a.von, a.kennung
                 """)) {
             ps.setObject(1, tenant);
@@ -560,7 +666,7 @@ public class ErsatzwertLauf {
             throws SQLException {
         Map<Instant, Stand> out = new HashMap<>();
         try (PreparedStatement ps = con.prepareStatement("""
-                SELECT DISTINCT ON (intervall_beginn) intervall_beginn, menge, menge_zustand, kennzeichen::text, anteil,
+                SELECT intervall_beginn, menge, menge_zustand, kennzeichen::text, anteil,
                        ersatzwerte
                   FROM messreihe_viertelstunde_version
                  WHERE tenant_id = ? AND entity_id = ? AND messkanal = ? AND intervall_beginn >= ? AND intervall_beginn < ?
@@ -577,7 +683,7 @@ public class ErsatzwertLauf {
                     // Verglichen wird die Aussage, nicht die Nummer: „korrigiert (Version n)“ sagt nur, WO sie steht.
                     List<String> saetze = saetze(rs.getString(4)).stream()
                             .filter(x -> !ErgebnisZustand.istKorrigiert(x)).toList();
-                    out.put(zeit(rs, 1), new Stand(rs.getBigDecimal(2), rs.getString(3), saetze,
+                    out.putIfAbsent(zeit(rs, 1), new Stand(rs.getBigDecimal(2), rs.getString(3), saetze,
                             rs.getBigDecimal(5), Arrays.asList((String[]) a.getArray())));
                 }
             }
