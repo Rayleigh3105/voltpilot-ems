@@ -330,6 +330,7 @@ it('AP-13 Bestandsschutz · Verlauf Messwerte ohne Messfunktion', async () => {
   vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
   const view = render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
   await screen.findByLabelText('Energiemengen im Zeitraum');
+  await screen.findByText('Vergleich: Juni 2026');
   await bestandSnapshot('verlauf-messwerte', view);
 });
 
