@@ -46,7 +46,7 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
   sie als `stufenwechsel` auf `CUSTOMER → SITE_ADMIN` je Kundenkonto fest. **Wer eine weitere Route vom
   Zugriff-Kontext abhängig macht, faellt hier auf und traegt sie ausdruecklich ein** — der Vergleich ist
   die einzige Stelle, die den ganzen Routenbestand gegen „vorher“ haelt.
-- ⚠ **Die Steuerungs-Achse folgt erst einer ECHTEN Zuweisung** (firstmate 16.09.2026, PR #845). E12 gibt einem
+- ⚠ **Die Steuerungs-Achse folgt erst einer ECHTEN Zuweisung** (firstmate 16.09.2026). E12 gibt einem
   Bestandskonto in `RechtPruefung.benutzer` eine gedachte unternehmensweite Zuweisung `KUNDENADMINISTRATOR` —
   das hält den GELTUNGSBEREICH weit, wie E12 es will. `ocppStufe` nimmt sie aber ausdrücklich NICHT an und gibt
   für ein Bestandskonto leer zurück, so dass `OcppActionPolicy` auf die Realm-Rolle von vor IP-7 zurückfällt.
