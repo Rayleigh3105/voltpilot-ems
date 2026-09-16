@@ -60,6 +60,18 @@ export interface AdminFleetUpdate {
   reportedAt: string;
 }
 
+/** Eine Box innerhalb ihrer Anlagen-Gruppe im Flotten-Puls. */
+export interface AdminFleetBox {
+  deviceId: string;
+  externalRef: string;
+  name: string | null;
+  /** `null`: keine führende Box bestimmt; `false`: belegte weitere Box. */
+  fuehrtAnlage: boolean | null;
+  lastSeenAt: string | null;
+  edge: AdminFleetEdge | null;
+  update: AdminFleetUpdate | null;
+}
+
 /**
  * Ein Eintrag des Release-Registers. `releaseSeq` ist DIE Ordnung - eine
  * monotone Ganzzahl, nie ein String- oder SHA-Vergleich (Entscheid D5).
@@ -110,7 +122,7 @@ export interface AdminFleetPflege {
   detail: string | null;
 }
 
-/** Eine Zeile des Pulses = eine Anlage, über alle Mandanten. */
+/** Eine Gruppe des Pulses = eine Anlage, darin eine Zeile je Box. */
 export interface AdminFleetSite {
   siteId: string;
   siteName: string;
@@ -119,6 +131,8 @@ export interface AdminFleetSite {
   plantKind: string;
   netzladenErlaubt: boolean;
   tarifArt: string | null;
+  /** Additiv; fehlt nur bei einem älteren Backend. */
+  boxes?: AdminFleetBox[];
   deviceCount: number;
   onlineCount: number;
   waitingCount: number;

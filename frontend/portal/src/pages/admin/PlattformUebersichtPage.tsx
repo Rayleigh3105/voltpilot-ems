@@ -16,9 +16,9 @@ import {
 import {
   controlMatrixInputs,
   controlMatrixRows,
+  fleetBoxGroups,
   fleetPulse,
-  fleetRows,
-  type FleetRow,
+  type FleetBoxGroup,
 } from '../../adminFleet';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
@@ -33,8 +33,8 @@ import { LIST_POLL_MS } from '../../pollCadence';
  * Die tägliche erste Frage eines EMS-Betreibers - „welche Anlage braucht heute
  * meine Aufmerksamkeit?" - hatte im Portal keinen Ort: alles Operative lag
  * hinter dem Mandanten-Umschalter, ein Mandant nach dem anderen. Diese Seite
- * ist genau dieser Ort: eine Zeile je Anlage über ALLE Mandanten, Störungen
- * zuerst, ein Klick springt in den Mandanten-Kontext dieser Anlage.
+ * ist genau dieser Ort: Anlagen gruppieren je eine Zeile pro Box über ALLE
+ * Mandanten, Störungen zuerst; eine Box-Zeile öffnet genau diese Box.
  *
  * **Bewusst ohne Geld** (Captain-Entscheid Q2): reiner Technik-Blick. Eine
  * Plattform-Summe über die absichtlich hold-last-veränderte Messreihe und eine
@@ -100,10 +100,11 @@ export function PlattformUebersichtPage({
   // ein Fehlschlag lässt beides unberührt (er kann den Zustand nicht kippen).
   useFreshnessPoll(() => void load(), LIST_POLL_MS, true);
 
-  const rows = useMemo(
-    () => (sites ? fleetRows(sites, new Date(fetchedAt), releases) : null),
+  const groups = useMemo(
+    () => (sites ? fleetBoxGroups(sites, new Date(fetchedAt), releases) : null),
     [sites, fetchedAt, releases],
   );
+  const rows = groups?.map((group) => group.site) ?? null;
 
   const pulse = rows ? fleetPulse(rows) : null;
   const updateBanner = updates ? loudBanner(updates.fleet) : null;
@@ -114,7 +115,7 @@ export function PlattformUebersichtPage({
         icon="dashboard"
         category="primary"
         title="Plattform-Übersicht"
-        description="Alle Anlagen aller Mandanten - Störungen zuerst. Eine Zeile öffnet die Anlage im Kontext ihres Mandanten."
+        description="Alle Boxen aller Mandanten - nach Anlage gruppiert, Störungen zuerst. Eine Box-Zeile öffnet genau diese Box."
         actions={
           <Button
             variant="ghost"
@@ -203,27 +204,25 @@ export function PlattformUebersichtPage({
       ) : (
         <>
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="vp-table responsive vp-fleetpuls">
+            <table className="vp-table responsive vp-fleetpuls" data-testid="admin-fleet">
               <thead>
                 <tr>
-                  <th>Anlage</th>
-                  <th>Unterstützung bis</th>
-                  <th>Geräte</th>
-                  <th>Letzte Daten</th>
-                  <th>Quellen</th>
-                  <th>Plan</th>
-                  <th>Edge-Stand</th>
-                  <th>Signale</th>
+                  <th>Box</th>
+                  <th>Rolle</th>
+                  <th>Verbindung</th>
+                  <th>Letzte Meldung</th>
+                  <th>Software</th>
+                  <th>Fähigkeiten</th>
                 </tr>
               </thead>
-              <tbody>
-                {rows.map((r) => (
-                  // Mandant + Anlage als Schlüssel: Anlagen-Ids sind global
-                  // eindeutig, aber der Schlüssel soll auch dann tragen, wenn
-                  // dieselbe Anlage je unter zwei Mandanten stünde.
-                  <FleetTableRow key={`${r.tenantId}:${r.siteId}`} row={r} unterstuetzungBis={unterstuetzungBis === null ? undefined : unterstuetzungBis[r.tenantId] ?? null} onOpen={onJumpToTenant} />
-                ))}
-              </tbody>
+              {groups?.map((group) => (
+                <FleetSiteGroup
+                  key={`${group.site.tenantId}:${group.site.siteId}`}
+                  group={group}
+                  unterstuetzungBis={unterstuetzungBis === null ? undefined : unterstuetzungBis[group.site.tenantId] ?? null}
+                  onOpen={onJumpToTenant}
+                />
+              ))}
             </table>
           </Card>
 
@@ -238,87 +237,92 @@ export function PlattformUebersichtPage({
   );
 }
 
-function FleetTableRow({
+function FleetSiteGroup({
   unterstuetzungBis,
-  row,
+  group,
   onOpen,
 }: {
-  row: FleetRow;
+  group: FleetBoxGroup;
   unterstuetzungBis?: string | null;
   onOpen: (tenantId: string, target: Route) => void;
 }) {
-  const open = () => onOpen(row.tenantId, anlageRoute(row.siteId));
+  const { site, boxes } = group;
+  const openSite = () => onOpen(site.tenantId, anlageRoute(site.siteId));
+  const support = unterstuetzungBis === undefined
+    ? 'Unterstützung nicht verfügbar'
+    : unterstuetzungBis === null
+      ? 'Keine aktive Unterstützung'
+      : `Unterstützung bis ${new Date(unterstuetzungBis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`;
   return (
-    <tr className="clickable" onClick={open}>
-      <td data-label="Anlage">
-        <div className="vp-cell-main">
-          <button
-            type="button"
-            className="vp-linklike"
-            onClick={(e) => {
-              e.stopPropagation();
-              open();
-            }}
-          >
-            {row.siteName}
-          </button>
-          <span className="vp-cell-sub">{row.tenantName}</span>
-        </div>
-      </td>
-      <td data-label="Unterstützung bis">{unterstuetzungBis === undefined ? 'Nicht verfügbar' : unterstuetzungBis === null ? 'Keine aktive Unterstützung' : new Date(unterstuetzungBis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}</td>
-      <td data-label="Geräte">
-        <Badge variant={row.deviceTone} dot>
-          {row.deviceText}
-        </Badge>
-      </td>
-      <td data-label="Letzte Daten">
-        <span className={row.liveTone === 'ok' ? undefined : 'vp-muted'}>{row.liveText}</span>
-      </td>
-      <td data-label="Quellen">
-        {row.sources ? (
-          <Badge variant={row.sources.tone} dot>
-            {row.sources.text}
-          </Badge>
-        ) : (
-          <span className="vp-muted">—</span>
-        )}
-      </td>
-      <td data-label="Plan">
-        <span className={row.planTone === 'ok' ? undefined : 'vp-muted'}>{row.planText}</span>
-      </td>
-      <td data-label="Edge-Stand">
-        {/*
-          Soll-gegen-Ist (OTA Stufe 0): `<soll> ✓` wenn der gemeldete Stand DER
-          Soll-Stand ist, `<ist> → <soll>` wenn er im Register davor liegt.
-          „unbekannt" und „nicht registriert" sind eigene, ruhige Zustände - sie
-          werden nie als veraltet gefärbt. Die Begründung reist als `title` mit;
-          die Palette-Version bleibt daneben stehen, wo es eine gibt.
-        */}
-        <span
-          className={row.edge.tone === 'warn' ? 'vp-mono vp-edge-stand-warn' : 'vp-mono vp-muted'}
-          title={
-            row.edge.paletteVersion
-              ? `${row.edge.title} · Palette ${row.edge.paletteVersion}`
-              : row.edge.title
-          }
-        >
-          {row.edge.text}
-        </span>
-      </td>
-      <td data-label="Signale">
-        <div className="vp-fleet-signals">
-          {row.signals.map((s) => (
-            // Die Begründung reist am Chip mit (`title`) - ein Signal, das
-            // seinen Grund nicht nennen kann, wäre nur ein Alarm.
-            <span key={s.id} title={s.title}>
-              <Badge variant={s.tone} dot>
-                {s.label}
-              </Badge>
-            </span>
-          ))}
-        </div>
-      </td>
-    </tr>
+    <tbody className="vp-fleet-group">
+      <tr className="vp-fleet-group-head">
+        <td colSpan={6} data-label="Anlage">
+          <div className="vp-fleet-group-title">
+            <button
+              type="button"
+              className="vp-linklike"
+              onClick={openSite}
+            >
+              {site.siteName}
+            </button>
+            <span>{site.tenantName}</span>
+          </div>
+          <div className="vp-fleet-group-facts">
+            <span>{support}</span>
+            <Badge variant={site.deviceTone} dot>{site.deviceText}</Badge>
+            <span>Plan {site.planText}</span>
+            <span>Quellen {site.sources?.text ?? '—'}</span>
+            <div className="vp-fleet-signals">
+              {site.signals.map((signal) => (
+                <span key={signal.id} title={signal.title}>
+                  <Badge variant={signal.tone} dot>{signal.label}</Badge>
+                </span>
+              ))}
+            </div>
+          </div>
+        </td>
+      </tr>
+      {boxes.length === 0 ? (
+        <tr className="vp-fleet-box-empty">
+          <td colSpan={6} data-label="Box">Keine Box angemeldet</td>
+        </tr>
+      ) : boxes.map((box) => {
+        const openBox = () => onOpen(site.tenantId, {
+          page: 'anlagen', siteId: site.siteId, sub: 'box',
+          geraet: { ref: box.externalRef, geraetId: null },
+        });
+        return (
+          <tr className="clickable vp-fleet-box" key={box.deviceId} onClick={openBox}>
+            <td data-label="Box">
+              <div className="vp-cell-main">
+                <button type="button" className="vp-linklike" onClick={(event) => {
+                  event.stopPropagation();
+                  openBox();
+                }}>{box.name}</button>
+                <span className="vp-cell-sub vp-mono">{box.externalRef}</span>
+              </div>
+            </td>
+            <td data-label="Rolle">{box.roleText}</td>
+            <td data-label="Verbindung"><Badge variant={box.connectionTone} dot>{box.connectionText}</Badge></td>
+            <td data-label="Letzte Meldung"><span className={box.connectionTone === 'ok' ? undefined : 'vp-muted'}>{box.lastSeenText}</span></td>
+            <td data-label="Software">
+              <span className={box.software.tone === 'warn' ? 'vp-mono vp-edge-stand-warn' : 'vp-mono vp-muted'} title={box.software.title}>
+                {box.software.text}
+              </span>
+            </td>
+            <td data-label="Fähigkeiten">
+              <div className="vp-fleet-capabilities">
+                {box.capabilities.map((capability) => (
+                  <Badge key={capability.code} variant={capability.status === 'vorhanden' ? 'ok' : 'warn'} dot>
+                    {capability.name}: {capability.status === 'vorhanden' ? 'vorhanden' : 'fehlt'}
+                  </Badge>
+                ))}
+              </div>
+            </td>
+          </tr>
+        );
+      })}
+    </tbody>
   );
 }
 

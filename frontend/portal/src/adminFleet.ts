@@ -2,6 +2,7 @@ import type { ControlStatus, CurtailmentStatus } from './api';
 import { ONLINE_WINDOW_MS } from './api';
 import type {
   AdminFleetEdge,
+  AdminFleetBox,
   AdminFleetForecast,
   AdminFleetKwp,
   AdminFleetPflege,
@@ -10,8 +11,10 @@ import type {
   AdminFleetSources,
   AdminFleetUpdate,
 } from './admin/fleetApi';
+import { BOX_FAEHIGKEITEN } from './boxUebersicht';
 import { CONTROL_STALE_MS, EXECUTION_MODE_LABEL } from './control';
 import { curtailTruth, releaseNote, type CurtailTruth } from './curtailment';
+import { faehigkeiten } from './uemsDatenquelle';
 
 /**
  * Der Flotten-Puls der Plattform-Übersicht (Baustein B1) - die Antwort auf die
@@ -23,10 +26,10 @@ import { curtailTruth, releaseNote, type CurtailTruth } from './curtailment';
  * es fehlte die Sichtachse.
  *
  * Dieses Modul ist REIN: es macht aus der EINEN Flotten-Antwort
- * (`GET /api/v1/admin/fleet`, Stufe 2) eine Zeile je Anlage - und sortiert
- * Aufmerksamkeit nach oben. **Die Ableitungen sind dieselben wie in Stufe 1;
- * nur die Datenquelle hat gewechselt** (die Mandanten-Schleife ist entfallen,
- * und die Pflege-Punkte kommen jetzt server-abgeleitet an - eine Wahrheit).
+ * (`GET /api/v1/admin/fleet`, Stufe 2) Anlagen nach Aufmerksamkeit sortiert;
+ * `fleetBoxGroups` bildet darin genau eine Zeile je Box. Die Mandanten-Schleife
+ * ist entfallen, und die Pflege-Punkte kommen server-abgeleitet an - eine
+ * Wahrheit.
  *
  * Drei Ehrlichkeitsregeln gelten überall:
  *
@@ -133,6 +136,30 @@ export interface FleetRow {
   attention: number;
   /** Hat die Anlage einen Speicher? Nur diese Zeilen tragen die B2-Matrix. */
   hasStorage: boolean;
+}
+
+export interface FleetBoxCapability {
+  code: string;
+  name: string;
+  status: 'vorhanden' | 'fehlt';
+}
+
+/** Eine sichtbare Box-Zeile innerhalb ihrer Anlagen-Gruppe. */
+export interface FleetBoxRow {
+  deviceId: string;
+  externalRef: string;
+  name: string;
+  roleText: string;
+  connectionText: string;
+  connectionTone: Tone;
+  lastSeenText: string;
+  software: EdgeStand;
+  capabilities: FleetBoxCapability[];
+}
+
+export interface FleetBoxGroup {
+  site: FleetRow;
+  boxes: FleetBoxRow[];
 }
 
 /** Die Quellen-Gesundheit einer Anlage. */
@@ -351,6 +378,75 @@ export function fleetRows(
       a.tenantName.localeCompare(b.tenantName, 'de') ||
       a.siteName.localeCompare(b.siteName, 'de'),
   );
+}
+
+/**
+ * Anlagen bleiben die Sortier- und Aufmerksamkeitseinheit; innerhalb jeder
+ * Gruppe entsteht genau eine Zeile je Box. Version und Lebendigkeit werden
+ * dabei nie von einer anderen Box derselben Anlage übernommen.
+ */
+export function fleetBoxGroups(
+  sites: AdminFleetSite[],
+  now: Date = new Date(),
+  releases: AdminFleetRelease[] = [],
+): FleetBoxGroup[] {
+  const siteRows = fleetRows(sites, now, releases);
+  const byId = new Map(sites.map((site) => [site.siteId, site]));
+  return siteRows.map((site) => ({
+    site,
+    boxes: (byId.get(site.siteId)?.boxes ?? [])
+      .map((box) => fleetBoxRow(box, now, releases))
+      .sort((a, b) => {
+        const aLead = a.roleText === 'Führende Box' ? 0 : 1;
+        const bLead = b.roleText === 'Führende Box' ? 0 : 1;
+        return aLead - bLead || a.name.localeCompare(b.name, 'de');
+      }),
+  }));
+}
+
+function fleetBoxRow(
+  box: AdminFleetBox,
+  now: Date,
+  releases: AdminFleetRelease[],
+): FleetBoxRow {
+  const lastSeen = box.lastSeenAt ? Date.parse(box.lastSeenAt) : Number.NaN;
+  const age = Number.isFinite(lastSeen) ? now.getTime() - lastSeen : null;
+  const connectionTone: Tone = age === null ? 'off' : age <= ONLINE_WINDOW_MS ? 'ok' : 'warn';
+  const version = box.update?.version ?? box.edge?.coreVersion ?? null;
+  const release = version === null
+    ? null
+    : releases.find((entry) => releaseIsRunning(entry.version, version))?.version ?? null;
+  const register = [...releases]
+    .sort((a, b) => a.releaseSeq - b.releaseSeq)
+    .map((entry) => entry.version);
+  const capabilityResult = faehigkeiten(
+    { version, release, supports: null },
+    BOX_FAEHIGKEITEN,
+    register,
+  );
+  return {
+    deviceId: box.deviceId,
+    externalRef: box.externalRef,
+    name: box.name?.trim() || box.externalRef,
+    roleText: box.fuehrtAnlage === true
+      ? 'Führende Box'
+      : box.fuehrtAnlage === false
+        ? 'Weitere Box'
+        : 'Führende Box nicht festgelegt',
+    connectionText: age === null
+      ? 'Wartet auf erste Meldung'
+      : connectionTone === 'ok'
+        ? 'Verbunden'
+        : 'Meldet sich nicht',
+    connectionTone,
+    lastSeenText: age === null ? DASH : relAge(age),
+    software: edgeStand(box.edge, box.update, releases),
+    capabilities: capabilityResult.faehigkeiten.map((capability, index) => ({
+      code: capability.code,
+      name: BOX_FAEHIGKEITEN[index].name,
+      status: capability.status,
+    })),
+  };
 }
 
 /**

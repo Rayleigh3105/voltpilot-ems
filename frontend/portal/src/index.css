@@ -3738,12 +3738,74 @@ button.vp-tech-card-h.toggle {
 .vp-fleetpuls td {
   vertical-align: top;
 }
+.vp-fleet-group + .vp-fleet-group .vp-fleet-group-head td {
+  border-top: 2px solid var(--vp-border);
+}
+.vp-fleet-group-head td {
+  background: var(--vp-surface-soft, #f7f9fc);
+  padding-block: var(--vp-space-3);
+}
+.vp-fleet-group-title,
+.vp-fleet-group-facts,
+.vp-fleet-capabilities {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-fleet-group-title {
+  gap: var(--vp-space-3);
+  font-weight: 650;
+}
+.vp-fleet-group-title > span,
+.vp-fleet-group-facts {
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-meta);
+}
+.vp-fleet-group-facts {
+  margin-top: var(--vp-space-2);
+  gap: var(--vp-space-3);
+}
+.vp-fleet-box td:first-child {
+  padding-left: var(--vp-space-6);
+}
+.vp-fleet-capabilities {
+  align-items: flex-start;
+}
+.vp-fleet-box-empty td {
+  color: var(--vp-text-muted);
+  padding-left: var(--vp-space-6);
+}
 /* Edge-Stand (OTA Stufe 0): nur ein durch das Release-Register BELEGTES
    „veraltet" bekommt die Warnfarbe (dasselbe Amber wie Badge variant="warn").
    „unbekannt" und „nicht registriert" bleiben ruhig gedämpft - sie sind
    Lücken, keine Alters-Aussagen. */
 .vp-edge-stand-warn {
   color: var(--vp-warn-ink, #b45309);
+}
+
+@media (max-width: 720px) {
+  .vp-table.responsive .vp-fleet-group-head td {
+    display: block;
+  }
+  .vp-table.responsive .vp-fleet-group-head td::before {
+    display: none;
+  }
+  .vp-fleet-group-head {
+    background: var(--vp-surface-soft, #f7f9fc);
+  }
+  .vp-fleet-group-facts {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .vp-fleet-box td:first-child,
+  .vp-fleet-box-empty td {
+    padding-left: 0;
+  }
+  .vp-fleet-capabilities {
+    justify-content: flex-end;
+  }
 }
 
 /* ============================================================================

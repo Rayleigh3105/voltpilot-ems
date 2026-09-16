@@ -5,6 +5,7 @@ import {
   controlMatrixInputs,
   controlMatrixRows,
   edgeStand,
+  fleetBoxGroups,
   fleetPulse,
   fleetRows,
   releaseIsRunning,
@@ -59,6 +60,43 @@ describe('fleetRows', () => {
     );
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.tenantName).sort()).toEqual(['Demo C&I', 'Nordwind']);
+  });
+
+  it('groups one independent row per box below its site', () => {
+    const groups = fleetBoxGroups(
+      [site({
+        boxes: [
+          {
+            deviceId: 'd2', externalRef: 'VP-BOX-0002', name: 'Nebenbox', fuehrtAnlage: false,
+            lastSeenAt: ago(10 * 60_000), edge: { coreVersion: 'edge-2026.08.0', paletteVersion: null, reportedAt: ago(60_000) }, update: null,
+          },
+          {
+            deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Leitbox', fuehrtAnlage: true,
+            lastSeenAt: ago(20_000), edge: null,
+            update: { version: 'edge-2026.09.0', backend: 'compose', current: null, target: null, state: 'idle', reason: null, lastKnownGood: null, reportedAt: ago(20_000) },
+          },
+        ],
+      })],
+      NOW,
+      [
+        { releaseSeq: 2, version: 'edge-2026.09.0' },
+        { releaseSeq: 1, version: 'edge-2026.08.0' },
+      ],
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].boxes.map((box) => box.name)).toEqual(['Leitbox', 'Nebenbox']);
+    expect(groups[0].boxes[0]).toMatchObject({
+      roleText: 'Führende Box', connectionText: 'Verbunden', lastSeenText: 'vor 20 Sek.',
+    });
+    expect(groups[0].boxes[1]).toMatchObject({
+      roleText: 'Weitere Box', connectionText: 'Meldet sich nicht',
+    });
+    expect(groups[0].boxes[0].software.text).toBe('edge-2026.09.0 ✓');
+    expect(groups[0].boxes[0].capabilities.map((capability) => capability.name)).toEqual([
+      'Rückmeldung je Datenquelle', 'Zuständigkeit ab Zeitpunkt',
+    ]);
+    expect(groups[0].boxes[0].capabilities.every((capability) => capability.status === 'fehlt')).toBe(true);
   });
 
   it('sorts attention first - a silent device beats a healthy plant', () => {

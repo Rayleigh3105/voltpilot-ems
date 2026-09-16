@@ -82,7 +82,7 @@ erDiagram
     SITE ||--o{ SCHEDULE : plant
 ```
 
-Das Diagramm zeigt fachliche Beziehungen, kein vollständiges SQL-Schema. `site` ist die Anlage, `device` die registrierte Box; Komponenten und Messpunkte verfeinern das Anlagenmodell.
+Das Diagramm zeigt fachliche Beziehungen, kein vollständiges SQL-Schema. `site` ist die Anlage, `device` die registrierte Box; Komponenten und Messpunkte verfeinern das Anlagenmodell. Ein Standort und eine Anlage können mehrere Boxen haben; für anlagenweite Aufgaben ist genau eine führende Box bestimmt, während Datenquellen ihrer jeweils zuständigen Box zugeordnet bleiben.
 
 Keycloak liefert den Mandanten im JWT. Die API verwendet eine RLS-gebundene Datenbankrolle; administrative Zugriffe laufen getrennt. Flyway in der API besitzt das Anwendungsschema. Gemeinsame Markt-/Herstellerdaten haben andere Zugriffsregeln als Kundendaten. Details: [API und Datenbank](api.md).
 

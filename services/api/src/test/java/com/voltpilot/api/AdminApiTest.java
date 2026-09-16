@@ -2985,6 +2985,11 @@ class AdminApiTest {
         UUID nordDevice = UUID.randomUUID();
         exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind) VALUES ('"
                 + nordDevice + "', '" + tenantId + "', '" + nord + "', 'fleet-nord-01', 'inverter')");
+        UUID nordSecondary = UUID.randomUUID();
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind, name, device_status_seen_at) VALUES ('"
+                + nordSecondary + "', '" + tenantId + "', '" + nord
+                + "', 'fleet-nord-02', 'gateway', 'Box Nord 2', now())");
+        exec("UPDATE site SET lead_device_id = '" + nordDevice + "' WHERE id = '" + nord + "'");
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, received_at, pv_power_kw) "
                 + "VALUES (now(), '" + tenantId + "', '" + nord + "', '" + nordDevice + "', now(), 3.2)");
         UUID leserDevice = UUID.randomUUID();
@@ -3003,6 +3008,9 @@ class AdminApiTest {
         exec("INSERT INTO device_edge_version (device_id, tenant_id, site_id, core_version, "
                 + "palette_version, reported_at) VALUES ('" + nordDevice + "', '" + tenantId + "', '"
                 + nord + "', '1.4.0', '0.3.0', now())");
+        exec("INSERT INTO device_edge_version (device_id, tenant_id, site_id, core_version, "
+                + "palette_version, reported_at) VALUES ('" + nordSecondary + "', '" + tenantId + "', '"
+                + nord + "', '1.3.0', '0.2.0', now() - interval '1 minute')");
         exec("INSERT INTO device_source_status (device_id, source_id, tenant_id, site_id, kind, "
                 + "health, reported_at) VALUES ('" + nordDevice + "', 'primary', '" + tenantId + "', '"
                 + nord + "', 'primary', 'ok', now())");
@@ -3040,7 +3048,7 @@ class AdminApiTest {
 
         // (2) Nord: Overview-Kernfelder + Plan-Alter + die drei Kurzbelege.
         Map<String, Object> n = bySite.get("Puls Nord");
-        assertThat(n).containsEntry("deviceCount", 1).containsEntry("onlineCount", 1)
+        assertThat(n).containsEntry("deviceCount", 2).containsEntry("onlineCount", 2)
                 .containsEntry("waitingCount", 0).containsEntry("worstStatus", "online")
                 .containsEntry("hasStorage", true).containsEntry("batteryWithoutDevice", true);
         assertThat(n.get("lastSeenAt")).isNotNull();
@@ -3053,18 +3061,27 @@ class AdminApiTest {
                 .containsEntry("paletteVersion", "0.3.0");
         assertThat((Map<String, Object>) n.get("sources")).containsEntry("total", 2)
                 .containsEntry("ok", 1).containsEntry("stale", 1);
+        List<Map<String, Object>> nordBoxes = (List<Map<String, Object>>) n.get("boxes");
+        assertThat(nordBoxes).hasSize(2);
+        Map<String, Object> leadingBox = nordBoxes.stream()
+                .filter(box -> "fleet-nord-01".equals(box.get("externalRef"))).findFirst().orElseThrow();
+        Map<String, Object> secondaryBox = nordBoxes.stream()
+                .filter(box -> "fleet-nord-02".equals(box.get("externalRef"))).findFirst().orElseThrow();
+        assertThat(leadingBox).containsEntry("fuehrtAnlage", true);
+        assertThat((Map<String, Object>) leadingBox.get("edge")).containsEntry("coreVersion", "1.4.0");
+        assertThat(secondaryBox).containsEntry("fuehrtAnlage", false).containsEntry("name", "Box Nord 2");
+        assertThat((Map<String, Object>) secondaryBox.get("edge")).containsEntry("coreVersion", "1.3.0");
 
         // Zeichengleicher API-Zustand: die bestehende Ein-Box-Anlage Nord
         // (nur Telemetrie-Fallback) und die reine Lese-Box (nur Herzschlag,
         // keine v1-Telemetrie) sind beide verbunden.
         Map<String, Object> l = bySite.get("Puls Lese-Box");
-        for (Map<String, Object> oneBox : List.of(n, l)) {
-            assertThat(oneBox).containsEntry("deviceCount", 1)
-                    .containsEntry("onlineCount", 1)
-                    .containsEntry("waitingCount", 0)
-                    .containsEntry("worstStatus", "online");
-            assertThat(oneBox.get("lastSeenAt")).isNotNull();
-        }
+        assertThat(l).containsEntry("deviceCount", 1)
+                .containsEntry("onlineCount", 1)
+                .containsEntry("waitingCount", 0)
+                .containsEntry("worstStatus", "online");
+        assertThat(n.get("lastSeenAt")).isNotNull();
+        assertThat(l.get("lastSeenAt")).isNotNull();
 
         // (3) die Pflege-Flags sind SERVER-abgeleitet (Stufe-1-Regeln + B4).
         assertThat((List<Map<String, Object>>) n.get("pflege"))
