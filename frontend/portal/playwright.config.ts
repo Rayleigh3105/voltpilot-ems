@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // Waermt den Entwicklungsserver einmal vor, damit nicht die erste
+  // Zusicherung des Laufs die Vite-Uebersetzung bezahlt (siehe Datei).
+  globalSetup: './playwright.global-setup.ts',
   fullyParallel: true,
   reporter: 'line',
   use: {

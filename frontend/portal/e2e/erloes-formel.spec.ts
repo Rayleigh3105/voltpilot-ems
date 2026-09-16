@@ -42,7 +42,13 @@ test('aufgeklappt trägt sie die ganze Rechnung', async ({ page }) => {
   const body = details.locator('.vp-formel-body');
   await expect(body).toBeVisible();
   await expect(body).toContainText('Wir vergleichen jede Viertelstunde');
-  await expect(body).toContainText('Ohne Steuerung');
+  // ⚠ „Ohne SMARTE Steuerung" — nicht „Ohne Steuerung". #626 hat die Messlatte
+  // umbenannt, weil die Vergleichs-Anlage DENSELBEN Speicher hat und ihn nur
+  // stur fährt; „Ohne Steuerung" las sich wie „ohne Speicher" und wäre eine
+  // andere Zahl. Die jsdom-Zwillinge (`src/steuerungFormel.test.ts`,
+  // `src/components/SteuerungFormel.test.tsx`) wurden damals mitgezogen, diese
+  // Zeile nicht — sie stand seither rot.
+  await expect(body).toContainText('Ohne smarte Steuerung');
   await expect(body).toContainText('Mit Steuerung');
   await expect(body).toContainText('Beitrag der Steuerung');
   await expect(body).toContainText('Bezugspreis');

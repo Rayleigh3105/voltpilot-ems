@@ -298,7 +298,7 @@ export function steeringChip(
 
 /** Eine Zeile der Formel-Box: die Seite der Rechnung und ihr Wortlaut. */
 export interface FormelZeile {
-  /** „Ohne Steuerung" / „Mit Steuerung" / „Beitrag der Steuerung". */
+  /** „Ohne smarte Steuerung" / „Mit Steuerung" / „Beitrag der Steuerung". */
   label: string;
   /** Der Satz dahinter — Kundenworte, keine Symbole ausser × und −. */
   text: string;
