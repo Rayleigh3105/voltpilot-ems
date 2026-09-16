@@ -29,7 +29,9 @@ Die Folgenvorschau ruft `rechte.darf` mit `rechte-matrix.json` auf. Sie gibt kei
   bestehendem Token. Die bisherigen Entzugs- und Handeingriffsregeln bleiben bestehen.
 - `GET /api/v1/benutzer/protokoll?von=…&bis=…`: `zugriffsprotokoll.lesen`, Kundenadministrator,
   Zeitpunkte halboffen, höchstens 366 Tage, absteigend höchstens 1001 Einträge. Das Portal zeigt
-  1000 und fordert bei weiteren einen kürzeren Zeitraum; Datumsauswahl und Anzeige sind ausdrücklich UTC.
+  1000 und fordert bei weiteren einen kürzeren Zeitraum; Datumsauswahl und Anzeige folgen Europe/Berlin, mit der Zone einmal im Kopf.
+  Kalendergrenzen werden über `bezugsPeriode.mitternacht/tagPlus` in API-Zeitpunkte umgerechnet;
+  auch Tage mit 23 oder 25 Stunden schließen den gewählten letzten Tag vollständig ein.
 
 Die Routen verwenden bestehende Tabellen und Grants; keine Migration. `BenutzerService` unterscheidet
 bei einer Keycloak-Kollision eine E-Mail in einem fremden Kundenbereich (409 mit Weg zur Unterstützung).

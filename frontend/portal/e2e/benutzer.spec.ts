@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 const bilder = process.env.BENUTZER_BILDER;
 for (const breite of [375, 1440]) {
-  test(`N1–N3, N8 und Entzug · ${breite}px`, async ({ page, browserName }, info) => {
+  test(`N1–N3 und Entzug · ${breite}px`, async ({ page, browserName }, info) => {
     const fehler: string[] = [];
     page.on('pageerror', e => fehler.push(e.message));
     await page.clock.setFixedTime(new Date('2026-10-20T08:15:30Z'));
@@ -35,11 +35,6 @@ for (const breite of [375, 1440]) {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).not.toBeVisible();
     await expect(ausloeser).toBeFocused();
-    await page.getByRole('button', { name: 'Zugriffsprotokoll', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Zugriffsprotokoll' })).toBeVisible();
-    await expect(page.getByText('Zugriff gewährt · Leser')).toBeVisible();
-    await foto('N8');
-    await page.getByRole('button', { name: 'Benutzerliste', exact: true }).click();
     await page.getByRole('button', { name: 'Sperren', exact: true }).first().click();
     dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('Gesetzte Handeingriffe bleiben');
@@ -66,3 +61,43 @@ for (const breite of [375, 1440]) {
     await expect(page.getByRole('alert')).toHaveText('Diese Seite gibt es für Sie nicht.');
   });
 }
+
+
+test.describe('N8 · Zeitzone des Unternehmens', () => {
+  test.use({ timezoneId: 'America/Los_Angeles' });
+  for (const breite of [375, 1440]) {
+    test(`Datumsauswahl, Sommerzeit und Berliner Anzeige · ${breite}px`, async ({ page, browserName }, info) => {
+      const fehler: string[] = [];
+      page.on('pageerror', e => fehler.push(e.message));
+      await page.clock.setFixedTime(new Date('2026-10-20T22:15:30Z'));
+      await page.setViewportSize({ width: breite, height: 1000 });
+      await page.goto('/e2e/benutzer.html');
+      await page.getByRole('button', { name: 'Zugriffsprotokoll', exact: true }).click();
+      const protokoll = page.getByRole('region', { name: 'Zugriffsprotokoll' });
+      await expect(protokoll.getByText(/Zeiten in Europe\/Berlin/)).toHaveCount(1);
+      await expect(protokoll).not.toContainText('UTC');
+      await expect(protokoll.getByText('20.10.2026 10:10', { exact: true })).toBeVisible();
+      await expect(protokoll.getByRole('combobox', { name: 'Bis einschließlich' })).toContainText('21.10.2026');
+      await expect.poll(() => page.evaluate(() => window.benutzerProtokollAnfragen.at(-1))).toEqual([
+        '2026-09-20T22:00:00.000Z', '2026-10-21T22:00:00.000Z',
+      ]);
+      await page.evaluate(() => document.fonts.ready);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+      if (bilder && info.repeatEachIndex === 1) {
+        mkdirSync(bilder, { recursive: true });
+        await page.screenshot({ path: `${bilder}/N8-${breite}-${browserName}.png`, animations: 'disabled', fullPage: true });
+      }
+      await protokoll.getByRole('combobox', { name: 'Von', exact: true }).click();
+      await page.getByRole('button', { name: 'Nächster Monat' }).click();
+      await page.getByRole('gridcell', { name: '25', exact: true }).click();
+      await expect(page.getByRole('grid')).toHaveCount(0);
+      await protokoll.getByRole('combobox', { name: 'Bis einschließlich' }).click();
+      await page.getByRole('gridcell', { name: '25', exact: true }).click();
+      await expect.poll(() => page.evaluate(() => window.benutzerProtokollAnfragen.at(-1))).toEqual([
+        '2026-10-24T22:00:00.000Z', '2026-10-25T23:00:00.000Z',
+      ]);
+      await expect(protokoll.getByText('In diesem Zeitraum gibt es keine Einträge.')).toBeVisible();
+      expect(fehler).toEqual([]);
+    });
+  }
+});

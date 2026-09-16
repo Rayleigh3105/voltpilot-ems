@@ -7,10 +7,12 @@ import { datumZeit, ROLLE_KUNDENWORT } from '../rechte';
 import { BenutzerEinladen } from '../components/BenutzerEinladen';
 import { StartpasswortNeuVergeben } from '../components/StartpasswortNeuVergeben';
 import { VpDatePicker } from '../components/VpDatePicker';
+import { iso, mitternacht, tagPlus } from '../bezugsPeriode';
+import { VORGABE_ZEITZONE } from '../uemsZustand';
 import './BenutzerPage.css';
 
 const vorgang: Record<string, string> = { zuweisen: 'Zugriff gewährt', entziehen: 'Zugriff beendet', sperren: 'Benutzer gesperrt', entfernen: 'Benutzer entfernt', erste_anmeldung: 'Erste Anmeldung', startpasswort_neu: 'Startpasswort neu vergeben', gewaehren: 'Unterstützung gewährt', verlaengern: 'Unterstützung verlängert', beenden: 'Unterstützung beendet', ablaufen: 'Unterstützung abgelaufen', anfragen: 'Anfrage zur Unterstützung', notfall: 'Notfall-Zugriff' };
-const tag = (zeit: number) => new Date(zeit).toISOString().slice(0, 10);
+const tag = (zeit: number) => iso(zeit, VORGABE_ZEITZONE).slice(0, 10);
 export function BenutzerPage() {
   const rechte = useRollen();
   const schreiben = rechte.darf('benutzer.verwalten', null);
@@ -23,8 +25,8 @@ export function BenutzerPage() {
   const [busy, setBusy] = useState(false);
   const [protokoll, setProtokoll] = useState(false);
   const [eintraege, setEintraege] = useState<ZugriffProtokoll[] | null>(null);
-  const [von, setVon] = useState(tag(Date.now() - 30 * 86400000));
-  const [bis, setBis] = useState(tag(Date.now()));
+  const [von, setVon] = useState(() => tagPlus(tag(Date.now()), -30));
+  const [bis, setBis] = useState(() => tag(Date.now()));
   const kopf = useRef<HTMLHeadingElement>(null);
   const ausloeser = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -41,7 +43,8 @@ export function BenutzerPage() {
         setFehler('Bitte wählen Sie einen Zeitraum von höchstens einem Jahr.');
       } else {
         setFehler('');
-        benutzerApi.protokoll(`${von}T00:00:00Z`, new Date(Date.parse(bis) + 86400000).toISOString())
+        benutzerApi.protokoll(new Date(mitternacht(von, VORGABE_ZEITZONE)).toISOString(),
+          new Date(mitternacht(tagPlus(bis, 1), VORGABE_ZEITZONE)).toISOString())
           .then(x => { if (aktiv) setEintraege(x); }, e => { if (aktiv) setFehler(benutzerFehler(e, 'Das Zugriffsprotokoll konnte nicht geladen werden. Bitte versuchen Sie es erneut.')); });
       }
     }
@@ -91,12 +94,13 @@ export function BenutzerPage() {
       </article>)}
     </>}
     {protokoll && <section aria-label="Zugriffsprotokoll"><h2>Zugriffsprotokoll</h2>
+      <p className="vp-note">Zeiten in {VORGABE_ZEITZONE} (Zeitzone des Unternehmens).</p>
       <div className="vp-benutzer-zwei"><VpDatePicker label="Von" value={von} onChange={setVon} /><VpDatePicker label="Bis einschließlich" value={bis} onChange={setBis} /></div>
-      <p className="vp-note">Tage und Uhrzeiten im Protokoll: UTC. Wählen Sie höchstens ein Jahr.</p>
+      <p className="vp-note">Wählen Sie höchstens ein Jahr.</p>
       {eintraege?.length === 0 && <p>In diesem Zeitraum gibt es keine Einträge.</p>}
       {eintraege && eintraege.length > 1000 && <p role="status">Es gibt weitere Einträge. Wählen Sie einen kürzeren Zeitraum.</p>}
       <div className="vp-benutzer-protokoll">{eintraege?.slice(0, 1000).map(e => <article className="vp-benutzer-karte" key={e.id}>
-        <time>{datumZeit(e.zeit, 'UTC')} UTC</time><h3>{e.betroffener}</h3><p>{vorgang[e.aktion] ?? 'Zugriff geändert'}{e.rolle ? ` · ${ROLLE_KUNDENWORT[e.rolle]}` : ''}</p>
+        <time dateTime={e.zeit}>{datumZeit(e.zeit, VORGABE_ZEITZONE)}</time><h3>{e.betroffener}</h3><p>{vorgang[e.aktion] ?? 'Zugriff geändert'}{e.rolle ? ` · ${ROLLE_KUNDENWORT[e.rolle]}` : ''}</p>
         <p>{e.standort ?? 'Unternehmen'} · von {e.urheber}</p>{e.grund && <p>{e.grund}</p>}
       </article>)}</div>
     </section>}

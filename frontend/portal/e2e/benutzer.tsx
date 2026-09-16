@@ -23,8 +23,14 @@ setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 let liste = benutzerFixture();
 benutzerApi.liste = async () => liste;
-benutzerApi.protokoll = async () => [{ id: 1, zeit: '2026-10-20T08:10:00Z', betroffener: liste[5].anzeigename,
-  aktion: 'zuweisen', rolle: 'leser', standort: 'Werk Lindach', urheber: liste[0].anzeigename, grund: null }];
+declare global { interface Window { benutzerProtokollAnfragen: string[][] } }
+window.benutzerProtokollAnfragen = [];
+benutzerApi.protokoll = async (von, bis) => {
+  window.benutzerProtokollAnfragen.push([von, bis]);
+  return [{ id: 1, zeit: '2026-10-20T08:10:00Z', betroffener: liste[5].anzeigename,
+  aktion: 'zuweisen', rolle: 'leser' as const, standort: 'Werk Lindach', urheber: liste[0].anzeigename, grund: null }]
+    .filter(e => Date.parse(e.zeit) >= Date.parse(von) && Date.parse(e.zeit) < Date.parse(bis));
+};
 benutzerApi.anlegen = async a => {
   const konto = { sub: 'neu', anzeigename: `${a.vorname} ${a.nachname}`.trim() || a.username, email: a.email, zustand: 'angelegt' as const };
   liste = [...liste, { ...konto, zuweisungen: [] }];

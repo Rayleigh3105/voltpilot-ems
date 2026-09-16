@@ -91,3 +91,25 @@ it('entzieht eine einzelne Zuweisung über den vorhandenen Weg und erhält das K
   await waitFor(() => expect(benutzerApi.entziehen).toHaveBeenCalledWith(benutzerFixture()[1].zuweisungen[0].id));
   expect(benutzerApi.sperren).not.toHaveBeenCalled(); expect(benutzerApi.entfernen).not.toHaveBeenCalled();
 });
+
+
+it.each([
+  ['2026-03-28T23:30:00Z', '29', '2026-03-28T23:00:00.000Z', '2026-03-29T22:00:00.000Z', '2026-03-29T01:15:00Z', '29.03.2026 03:15'],
+  ['2026-10-24T22:30:00Z', '25', '2026-10-24T22:00:00.000Z', '2026-10-25T23:00:00.000Z', '2026-10-25T02:15:00Z', '25.10.2026 03:15'],
+  ['2027-01-14T23:30:00Z', '15', '2027-01-14T23:00:00.000Z', '2027-01-15T23:00:00.000Z', '2027-01-15T09:15:00Z', '15.01.2027 10:15'],
+])('N8: Berliner Kalendertag und Zeitgrenzen bei %s, unabhängig von der Browserzone', async (jetzt, tag, von, bis, zeit, anzeige) => {
+  vi.setSystemTime(new Date(jetzt));
+  vi.mocked(benutzerApi.protokoll).mockResolvedValue([{ id: 1, zeit, betroffener: 'Claudia Berger', aktion: 'zuweisen', rolle: 'leser', standort: 'Werk Lindach', urheber: 'Jonas Wendlinger', grund: null }]);
+  render(<BenutzerPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Zugriffsprotokoll', exact: true }));
+  await screen.findByText(anzeige);
+  expect(benutzerApi.protokoll).toHaveBeenLastCalledWith(expect.any(String), bis);
+  fireEvent.click(screen.getByRole('combobox', { name: 'Von', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }));
+  fireEvent.click(screen.getByRole('gridcell', { name: tag, exact: true }));
+  await waitFor(() => expect(benutzerApi.protokoll).toHaveBeenLastCalledWith(von, bis));
+  const protokoll = screen.getByRole('region', { name: 'Zugriffsprotokoll' });
+  expect(within(protokoll).getAllByText(/Europe\/Berlin/)).toHaveLength(1);
+  expect(protokoll).not.toHaveTextContent('UTC');
+  expect(within(protokoll).getByText(anzeige)).toHaveAttribute('datetime', zeit);
+});
