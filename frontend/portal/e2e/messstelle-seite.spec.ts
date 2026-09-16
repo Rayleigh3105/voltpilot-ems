@@ -833,7 +833,7 @@ async function elementBild(ziel: Locator, breite: number, name: string) {
   await ziel.screenshot({ path: join(BILDER, `${name}-${breite}.png`) });
 }
 
-test('Z4 · MS-21 am 04.11.2026 ohne Datenquelle: der Leerzustand statt 24 Strichen — „Quelle zuordnen“ öffnet den Dialog bei „Quelle“', async ({ page }, info) => {
+test('A10 · MS-21 Gas ohne Datenquelle: der Leerzustand bietet keinen Katalog-Quellenweg', async ({ page }, info) => {
   const breite = breiteFuer(info.project.name);
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await cloud(page, { heute: '2026-11-04' });
@@ -848,18 +848,13 @@ test('Z4 · MS-21 am 04.11.2026 ohne Datenquelle: der Leerzustand statt 24 Stric
   await expect(werte.getByTestId('werte-karte')).toHaveCount(0);
   await expect(werte.getByTestId('werte-zeile')).toHaveCount(0);
   await expect(werte.getByTestId('verlauf')).toHaveCount(0);
-  // „Ablesung eintragen“ hat weder Route noch Fläche — kein Knopf ins Leere.
-  await expect(leer.getByRole('button', { name: /Ablesung/ })).toHaveCount(0);
-  const zuordnen = leer.getByRole('button', { name: 'Quelle zuordnen' });
-  expect((await zuordnen.boundingBox())!.height).toBeGreaterThanOrEqual(breite === 375 ? 44 : 32);
+  await expect(leer.getByTestId('werte-leer-weg')).toContainText(
+    'Eine Messstelle mit Medium Gas kann keinen Messwert aus dem Katalog binden.',
+  );
+  await expect(leer.getByRole('button')).toHaveCount(0);
   await page.mouse.move(0, 0);
   await messeUndFotografiere(page, breite, 'z4-ms21-seite');
   await werteBild(werte, breite, 'z4-ms21-ohne-quelle');
-
-  await zuordnen.click();
-  const dialog = page.getByRole('dialog', { name: 'Messstelle bearbeiten' });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator('.vp-step-active .vp-step-label')).toHaveText('Quelle');
 });
 
 test('O16 · MS-16 im Oktober 2026 (W5): „—“ mit dem Satz der Route, darunter die 17 Tage ab 15.10. — die Fläche summiert nichts', async ({ page }, info) => {

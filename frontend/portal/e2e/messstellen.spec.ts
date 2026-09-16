@@ -127,6 +127,22 @@ test.describe('Messstellen-Register', () => {
     await ablegen(page, 'unternehmen-375', m);
   });
 
+  test('A4 · Einstellungsänderung steht an MS-01 und MS-02 bei 1440 und 375 px als Fakt', async ({ page }) => {
+    for (const breite of [1440, 375]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=messstellen&stand=2027-01-15', breite);
+      await warteAufRegister(page);
+      for (const kz of ['MS-01', 'MS-02']) {
+        const zeile = breite === 375
+          ? page.locator('.vp-ms-karte', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) })
+          : page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) });
+        await expect(zeile.locator('.vp-ms-fakt')).toHaveText('Einstellung geändert ab 15.01.2027 09:00');
+      }
+      const m = await messe(page);
+      ohneQuerlauf(m, `einstellungsfakt-${breite}`);
+      await ablegen(page, `einstellungsfakt-${breite}`, m);
+    }
+  });
+
   test('Standort › Messstellen (Werk Ahrenberg) bei 1440 und 375 px: Übersicht · Gebäude · Anlagen · Messstellen, 16 Messstellen', async ({ page }) => {
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen', breite);

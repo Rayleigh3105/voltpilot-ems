@@ -267,6 +267,22 @@ class UemsZaehlerbruecheTest {
         pruefeTagGegenDatei("F4", "f4", LocalDate.of(2026, 11, 18), "Tag 18.11.2026");
     }
 
+    /** A16: die 5-/2-Minuten-Lücke am Wechsel bleibt in beiden Viertelstunden und im Tag sichtbar. */
+    @Test
+    void a16DieWechsellueckeBleibtBisZumTagesurteilSichtbar() {
+        Map<String, Object> vor = viertelstunde("F4", "2026-11-18T10:30:00+01:00");
+        Map<String, Object> nach = viertelstunde("F4", "2026-11-18T10:45:00+01:00");
+        assertThat(List.of(vor.get("erhalten"), vor.get("erwartet"))).containsExactly(10, 15);
+        assertThat(List.of(nach.get("erhalten"), nach.get("erwartet"))).containsExactly(13, 15);
+        assertThat(vor.get("menge_zustand")).isEqualTo(VerbrauchRegeln.UNVOLLSTAENDIG);
+        assertThat(nach.get("menge_zustand")).isEqualTo(VerbrauchRegeln.UNVOLLSTAENDIG);
+        assertThat(kennzeichen(vor)).contains("Ende nicht gemessen (kein Stand an der Periodengrenze)");
+        assertThat(kennzeichen(nach)).contains("Anfang nicht gemessen (kein Stand an der Periodengrenze)");
+
+        Map<String, Object> tag = tag("F4", LocalDate.of(2026, 11, 18));
+        assertThat(kennzeichen(tag)).contains("Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)");
+    }
+
     /** F5: ohne Ablesestände — der Zuwachs am Wechsel wird nicht erfunden, Stunde und Tag sind unvollständig. */
     @Test
     void f5GeraetegrenzeOhneAblesestaendeErfindetKeinenZuwachs() {

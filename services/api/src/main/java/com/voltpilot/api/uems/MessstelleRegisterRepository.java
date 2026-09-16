@@ -49,9 +49,12 @@ public class MessstelleRegisterRepository {
      */
     public record QuelleZeile(Quelle quelle, String geraetBezeichnung, JsonNode kanalDefinition) {}
 
+    /** Ein wirksamer Fakt, den das Register unmittelbar an der Messstelle zeigt. */
+    public record Fakt(String art, Instant giltAb) {}
+
     /** Eine Messstelle mit allem, woraus ihre Register-Zeile und ihre Vertrags-Form entstehen. */
     public record Bestand(Messstelle messstelle, List<Nebengroesse> nebengroessen, List<OrtZeile> orte,
-            List<StellungZeile> stellungen, List<QuelleZeile> quellen) {}
+            List<StellungZeile> stellungen, List<QuelleZeile> quellen, List<Fakt> fakten) {}
 
     /**
      * Der Messwert EINER führenden Bindung: Komponente + Kanal (unter diesem Paar kommen die Werte
@@ -145,17 +148,26 @@ public class MessstelleRegisterRepository {
                   JOIN messstelle m ON m.id = q.messstelle_id
                   JOIN geraet g ON g.id = q.geraet_id
                   JOIN measurement_point p ON p.id = q.entity_id
-                 GROUP BY q.messstelle_id)
+                 GROUP BY q.messstelle_id),
+            fakten AS (
+                SELECT a.messstelle_id, json_agg(json_build_object(
+                           'art', a.art, 'giltAb', a.gilt_ab)
+                           ORDER BY a.gilt_ab, a.id) AS j
+                  FROM messstelle_aenderung a
+                 WHERE a.art = 'einstellung_geaendert'
+                 GROUP BY a.messstelle_id)
             SELECT m.id, m.kennzeichen, m.name, m.art, m.medium, m.groesse, m.richtung, m.einheit,
                    m.wertart, m.notiz, m.angehalten_ab, m.archiviert_am,
                    (to_jsonb(m) ->> 'anschlussleistung_kw')::numeric AS anschlussleistung_kw,
                    coalesce(n.j, '[]') AS neben, coalesce(o.j, '[]') AS orte,
-                   coalesce(s.j, '[]') AS stellungen, coalesce(q.j, '[]') AS quellen
+                   coalesce(s.j, '[]') AS stellungen, coalesce(q.j, '[]') AS quellen,
+                   coalesce(f.j, '[]') AS fakten
               FROM messstelle m
               LEFT JOIN neben n ON n.messstelle_id = m.id
               LEFT JOIN orte o ON o.messstelle_id = m.id
               LEFT JOIN stellungen s ON s.messstelle_id = m.id
               LEFT JOIN quellen q ON q.messstelle_id = m.id
+              LEFT JOIN fakten f ON f.messstelle_id = m.id
              ORDER BY m.kennzeichen
             """;
 
@@ -163,6 +175,7 @@ public class MessstelleRegisterRepository {
     private static final TypeReference<List<OrtZeile>> ORTE = new TypeReference<>() {};
     private static final TypeReference<List<StellungZeile>> STELLUNGEN = new TypeReference<>() {};
     private static final TypeReference<List<QuelleZeile>> QUELLEN = new TypeReference<>() {};
+    private static final TypeReference<List<Fakt>> FAKTEN = new TypeReference<>() {};
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper streng;
@@ -270,7 +283,7 @@ public class MessstelleRegisterRepository {
 
     private Bestand bestand(ResultSet rs, int n) throws SQLException {
         return new Bestand(MessstelleRepository.map(rs, n), lesen(rs, "neben", NEBEN), lesen(rs, "orte", ORTE),
-                lesen(rs, "stellungen", STELLUNGEN), lesen(rs, "quellen", QUELLEN));
+                lesen(rs, "stellungen", STELLUNGEN), lesen(rs, "quellen", QUELLEN), lesen(rs, "fakten", FAKTEN));
     }
 
     private <T> List<T> lesen(ResultSet rs, String spalte, TypeReference<List<T>> typ) throws SQLException {

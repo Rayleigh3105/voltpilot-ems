@@ -62,6 +62,7 @@ export const VERGLEICHSQUELLE = `${UEMS_VERGLEICH}squelle`;
 export const KEINE_DATENQUELLE = 'Keine Datenquelle';
 export const BERECHNET_AUS = `Berechnet aus anderen ${TITEL}`;
 export const KEIN_ORT = 'Kein Ort zugeordnet';
+export const EINSTELLUNG_GEAENDERT = 'Einstellung geändert ab';
 
 export const FILTER = {
   standort: 'Standort',
@@ -150,6 +151,8 @@ export interface ZeileWoerter {
    * steht als Nebengröße daneben. Ohne Wert keine Zeile.
    */
   nebenwerte: { groesse: string; text: string; zeit: string }[];
+  /** Wirksame Fakten aus dem append-only Änderungsprotokoll. */
+  fakten: string[];
 }
 
 export interface WortKontext {
@@ -330,6 +333,11 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
         ? [{ groesse: n.groesse.groesse, text: nt, zeit: `${zeitpunktText(n.letzter_wert.zeitpunkt, k.zone, k.zeitpunkt)} Uhr` }]
         : [];
     }),
+    fakten: (z.fakten ?? []).map((f) =>
+      f.art === 'einstellung_geaendert'
+        ? `${EINSTELLUNG_GEAENDERT} ${zeitpunktText(f.gilt_ab, k.zone)}`
+        : f.art,
+    ),
   };
 }
 

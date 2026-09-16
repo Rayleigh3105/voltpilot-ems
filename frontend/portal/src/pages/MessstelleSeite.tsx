@@ -406,6 +406,7 @@ function MessstelleSeiteMitId({
           boxWechsel={boxWechselAmGeraet(boxen.karte, zeile?.quelle.fuehrend?.geraet.id, boxen.quellen)}
           // AP-13 IP-5: der Vergleich braucht die Hauptgrößen der anderen Messstellen („passend“, O12).
           register={zeilen}
+          medium={zeile?.medium}
           vergleich={werte?.vergleich ?? null}
           onVergleich={(w) => onWerteVergleich?.(wahlHash(w))}
           onQuelleZuordnen={darfAendern ? () => oeffneBearbeiten(3) : undefined}

@@ -196,6 +196,9 @@ function zeile(d: Def, tag: string): MessstelleRegisterZeile {
       ...(heute && d.kw !== undefined ? [neben('Wirkleistung', richtung, 'kW', 'Momentanwert', d.kw)] : []),
       ...(heute && d.ladestand !== undefined ? [neben('Ladestand', 'richtungslos', '%', 'Momentanwert', d.ladestand)] : []),
     ],
+    fakten: ['MS-01', 'MS-02'].includes(d.kz) && tag >= '2027-01-15'
+      ? [{ art: 'einstellung_geaendert', gilt_ab: '2027-01-15T09:00:00+01:00' }]
+      : [],
     berechnung: d.berechnet && (d.ab === null || tag >= d.ab)
       ? { zustand: 'vollstaendig', fehlend: [], seit: null, text: 'Vollständig' }
       : null,

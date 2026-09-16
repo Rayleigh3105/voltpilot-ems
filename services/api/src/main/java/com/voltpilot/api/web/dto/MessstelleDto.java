@@ -159,7 +159,12 @@ public final class MessstelleDto {
             RegisterBeobachtung beobachtung,
             RegisterWert letzterWert,
             List<RegisterNebengroesse> nebengroessen,
+            List<RegisterFakt> fakten,
             RegisterBerechnung berechnung) {}
+
+    /** Ein wirksamer, append-only protokollierter Fakt an der Messstelle. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterFakt(String art, OffsetDateTime giltAb) {}
 
     /**
      * Die Vollständigkeit einer BERECHNETEN Messstelle zum Zeitpunkt (AP-10 IP-9) — abgeleitet von
