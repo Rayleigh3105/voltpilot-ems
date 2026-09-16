@@ -107,37 +107,13 @@ public class RollenZuordnungRepository {
                 TenantContext.get(), siteId, entityId, quellMessstelleId, role);
     }
 
-    /**
-     * Gehoert die (berechnete) Messstelle zur Anlage {@code siteId}? Ja, wenn JEDER ihrer
-     * Messkanal-Terme — transitiv ueber verkettete Messstellen-Terme (Bausteine) — an einer
-     * Komponente DIESER Anlage haengt. Das ist die vorhandene Ableitung Messstelle→Gerät→Anlage
-     * ueber ihre Terme (Zwilling {@code gesamtwertQuelle.ts}), hier fuer die Same-Site-Bindung der
-     * Zuordnung (Review vp-review-agg-r1 SOLLTE 2). Eine Messstelle ohne auflösbaren
-     * Messkanal-Term gehoert zu keiner Anlage → {@code false}. {@code UNION} (nicht {@code ALL})
-     * macht die Rekursion zyklussicher. Mandant/Anlage sind die RLS.
-     */
-    public boolean gehoertZuSite(UUID messstelleId, UUID siteId) {
-        Boolean ja = jdbc.query("""
-                WITH RECURSIVE kette AS (
-                    SELECT eingang_art, entity_id, quell_messstelle_id
-                      FROM messstelle_formel_term WHERE messstelle_id = ?
-                    UNION
-                    SELECT t.eingang_art, t.entity_id, t.quell_messstelle_id
-                      FROM messstelle_formel_term t
-                      JOIN kette k ON k.eingang_art = 'messstelle'
-                                  AND t.messstelle_id = k.quell_messstelle_id)
-                SELECT count(*) FILTER (WHERE eingang_art = 'messkanal') AS kanal,
-                       count(*) FILTER (WHERE eingang_art = 'messkanal' AND entity_id NOT IN (
-                           SELECT id FROM measurement_point WHERE site_id = ?)) AS fremd
-                  FROM kette
-                """, rs -> {
-            if (!rs.next()) {
-                return false;
-            }
-            long kanal = rs.getLong("kanal");
-            long fremd = rs.getLong("fremd");
-            return kanal > 0 && fremd == 0;
-        }, messstelleId, siteId);
-        return Boolean.TRUE.equals(ja);
+    /** Serialisiert alle Änderungen der maßgeblichen Werte einer Anlage, auch bei leerer Rolle. */
+    public void sperreAnlage(UUID siteId) {
+        jdbc.query("SELECT id FROM site WHERE id = ? FOR UPDATE", (rs, n) -> rs.getObject(1), siteId);
+    }
+
+    /** Entfernt die Zuordnung vollständig: auch das native Topologie-Override ist danach weg. */
+    public void entziehen(UUID entityId, String role) {
+        jdbc.update("DELETE FROM entity_role_assignment WHERE entity_id = ? AND role = ?", entityId, role);
     }
 }

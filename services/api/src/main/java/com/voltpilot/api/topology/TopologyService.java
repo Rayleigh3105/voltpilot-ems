@@ -75,16 +75,18 @@ public class TopologyService {
     private final ObjectMapper mapper;
     private final DeviceChargerStatusRepository chargers;
     private final EntityRegistryService push;
+    private final RollenZuordnungService rollen;
 
     public TopologyService(EntityRegistryRepository registry, TopologyRepository repo,
             EntityTypeCatalog catalog, ObjectMapper mapper,
-            DeviceChargerStatusRepository chargers, EntityRegistryService push) {
+            DeviceChargerStatusRepository chargers, EntityRegistryService push, RollenZuordnungService rollen) {
         this.registry = registry;
         this.repo = repo;
         this.catalog = catalog;
         this.mapper = mapper;
         this.chargers = chargers;
         this.push = push;
+        this.rollen = rollen;
     }
 
     /**
@@ -107,6 +109,9 @@ public class TopologyService {
     public TopologyResponse applyAssignments(UUID siteId, List<Assignment> assignments) {
         List<Assignment> batch = assignments == null ? List.of() : assignments;
         UUID tenantId = TenantContext.get();
+        if (!batch.isEmpty()) rollen.sperreAnlage(siteId);
+        var vorher = batch.isEmpty() ? Map.<String, List<RollenZuordnungRepository.Zuordnung>>of()
+                : rollen.protokollVorher(siteId);
         for (Assignment a : batch) {
             if (a.entityId() == null || a.channel() == null || a.channel().isBlank()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -130,6 +135,10 @@ public class TopologyService {
             repo.upsertOverride(tenantId, siteId, a.entityId(), a.channel(), role, a.primary());
         }
         if (!batch.isEmpty()) {
+            rollen.pruefeNetz(siteId);
+            com.voltpilot.api.uems.ProtokollAkteur.aus(
+                    org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication())
+                    .ifPresent(wer -> rollen.protokollNachher(siteId, vorher, wer));
             pushToDevice(siteId, tenantId);
         }
         return topology(siteId);

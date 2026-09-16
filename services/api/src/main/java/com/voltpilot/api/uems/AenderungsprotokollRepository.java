@@ -213,7 +213,7 @@ public class AenderungsprotokollRepository {
                    o.actor_art AS urheber_art,
                    NULL AS einbau, NULL AS einbau_zweit,
                    o.gilt_ab AS gilt_ab_tag,
-                   CASE WHEN o.art IN ('zugriff_zugewiesen', 'zugriff_entzogen')
+                   CASE WHEN o.art IN ('zugriff_zugewiesen', 'zugriff_entzogen', 'rolle_gesetzt', 'rolle_entzogen')
                              OR (o.art = 'geloescht' AND jsonb_exists(coalesce(o.alt, '{}'::jsonb), 'id'))
                         THEN o.gilt_ab
                         ELSE least(
