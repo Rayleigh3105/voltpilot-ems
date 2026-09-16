@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { kontextGrund } from './summenwertQuellen';
 import { describe, expect, it } from 'vitest';
 import type { MeasurementCatalogPoint } from './api';
 import {
@@ -295,4 +298,9 @@ describe('Einmal-Lesung und Stand-Text', () => {
     expect(mitSitzungswert(z, { wert: null, einheit: 'kW', gelesen_am: null, grund: 'box_offline' })).toMatchObject({ wert: null, stand: null });
     expect(mitSitzungswert(z, { wert: 0, einheit: 'kW', gelesen_am: '2026-09-16T10:15:40Z' }).wert).toBe(0);
   });
+});
+
+describe('gemeinsame Geräte- und Anlagen-Kontextvektoren', () => {
+  const faelle = JSON.parse(readFileSync(resolve(process.cwd(), '../../docs/contracts/v2/summenwert-kontext-vectors.json'), 'utf8'));
+  for (const f of faelle) it(f.name, () => expect(kontextGrund(f.erlaubt, f.gelesen)).toBe(f.grund));
 });

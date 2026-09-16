@@ -9,7 +9,7 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
   `GesamtwertDialog.tsx` ist nur noch ein kompatibler Einstieg ohne Vorauswahl;
   auch der Kennzahlen-Dialog verwendet ihn. Keine zweite Quellen-/Speicherlogik.
 - Karten verwenden `useSummenwertAssistent()`: der Hook liefert
-  `oeffneSummenwertAssistent({siteId, deviceId?, entityId?, geraetName?, onGespeichert?})`
+  `oeffneSummenwertAssistent({siteId, kontext, deviceId?, entityId?, geraetName?, onGespeichert?})`
   und `assistent` zum Rendern. `onGespeichert` lädt die Anzeige neu und schließt
   **nicht**; „Fertig“ bleibt bis zur ausdrücklichen Bestätigung sichtbar.
 - Quellenliste: `GET /api/v1/sites/{siteId}/summenwert-quellen` ordnet Komponenten
@@ -18,7 +18,16 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
   Quellenliste. Ohne zuständige Box bleibt das Gerät mit Grund sichtbar.
 - Je gebundener Komponente wird der volle verfügbare Registerkatalog paginiert
   gelesen. Die Geräte-Vorauswahl betrifft nur beobachtete Erzeugungsregister;
-  die Anlage startet leer. Weitere Geräte bleiben innerhalb derselben Anlage.
+  die Anlage startet leer. Der Geräte-Einstieg übergibt `kontext: {art: 'geraet',
+  boxId, geraetId}` und bietet ausschließlich serverseitig zugeordnete Komponenten
+  dieses physischen Geräts an. Nur der Anlagen-Einstieg darf mehrere Geräte summieren.
+  Quellenliste und Anlegen prüfen dieselbe stabile Referenz; rekursive Quellen gehören
+  zur Grenze. Auf `uems` liest die Prüfung die heute gültige Formel-Fassung einschließlich
+  Verteilungs-Termen; Standort-Zaun, `messstelle.formel` und lesende Box aus
+  `PushJeBox` bleiben maßgeblich. Vertrag und gemeinsame Vektoren: [Formelvertrag §1.2](../../contracts/v2/messstelle-formel.md).
+- Die verfügbare Familie führt gespeichertes Soll vor eindeutig zugeordnetem Ist
+  (`MeasurementSelectionRepository.geraeteKomponenten`). Keine Modell-/Box-Vermutung;
+  fehlt eine bekannte Familie, zeigt der Assistent „Registerfamilie nicht zugeordnet“.
 - `summenwertQuellen.ts` enthält den Guard, Sitzungswerte und Stand-Text.
   Ein Sitzungswert überstimmt den Katalogzustand, auch bei einem Lese-Fehler.
   Fehlende/veraltete Eingänge ergeben keine Teilsumme; gerechnet wird nur durch

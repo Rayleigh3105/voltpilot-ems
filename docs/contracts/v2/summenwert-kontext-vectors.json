@@ -1,0 +1,56 @@
+[
+  {
+    "name": "Ein Gerät, eine Komponente",
+    "erlaubt": [
+      "a"
+    ],
+    "gelesen": [
+      "a"
+    ],
+    "grund": null
+  },
+  {
+    "name": "Mehrere Komponenten desselben Geräts",
+    "erlaubt": [
+      "a",
+      "b"
+    ],
+    "gelesen": [
+      "a",
+      "b"
+    ],
+    "grund": null
+  },
+  {
+    "name": "Anderes Gerät an derselben Box",
+    "erlaubt": [
+      "a",
+      "b"
+    ],
+    "gelesen": [
+      "a",
+      "c"
+    ],
+    "grund": "anderes_geraet"
+  },
+  {
+    "name": "Rekursiv gelesene Fremdkomponente",
+    "erlaubt": [
+      "a"
+    ],
+    "gelesen": [
+      "a",
+      "b"
+    ],
+    "grund": "anderes_geraet"
+  },
+  {
+    "name": "Anlagen-Einstieg erlaubt mehrere Geräte",
+    "erlaubt": null,
+    "gelesen": [
+      "a",
+      "c"
+    ],
+    "grund": null
+  }
+]

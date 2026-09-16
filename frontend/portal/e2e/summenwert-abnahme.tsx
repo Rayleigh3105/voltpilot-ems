@@ -5,6 +5,8 @@ import { api, type RollenKanonischerWert, type SiteTopology } from '../src/api';
 import { keycloak } from '../src/auth';
 import { RechteStandort } from '../src/rollen';
 import { STANDORT_IDS } from '../src/test/rollenFixtures';
+import { Button } from '../designsystem/components/core/Button';
+import { GesamtwertDialog } from '../src/components/GesamtwertDialog';
 import { GeraetSummenwerte } from '../src/components/GeraetSummenwerte';
 import { CockpitHero } from '../src/components/CockpitHero';
 import { FAELLE, ahrenbergRoh, type Fall } from './summenwert-abnahme-faelle';
@@ -31,6 +33,8 @@ const topology: SiteTopology = { schemaVersion: '1.0', entities: [], topology: {
 
 /** Echte Komponenten, Cloud per page.route; keine nachgezeichneten Produktflächen. */
 function Fixture() {
+  const [karteVersion, setKarteVersion] = useState(0);
+  const [anlagenDialog, setAnlagenDialog] = useState(false);
   const [version, setVersion] = useState(0);
   const [werte, setWerte] = useState<RollenKanonischerWert[]>([]);
   const sichtbar = rollenMoment.standorte.some((s) => s.id === standort);
@@ -40,7 +44,10 @@ function Fixture() {
   if (!sichtbar) return <main>Dieser Standort gehört nicht zu Ihrem Zugriff.</main>;
   return <RechteStandort.Provider value={standort}><main style={{ maxWidth: 1120, margin: '0 auto', padding: 16, display: 'grid', gap: 24 }}>
     <h1>{fall.titel}</h1>
-    <section aria-label="Gerätekarte"><GeraetSummenwerte siteId="site-abnahme" deviceId="box"
+    {fall === FAELLE.ahrenberg && <><Button onClick={() => setAnlagenDialog(true)}>Summenwert der Anlage anlegen</Button>
+      <GesamtwertDialog open={anlagenDialog} onClose={() => setAnlagenDialog(false)} siteId="site-abnahme"
+        onGespeichert={() => { setVersion(v => v + 1); setKarteVersion(v => v + 1); }} /></>}
+    <section aria-label="Gerätekarte"><GeraetSummenwerte key={karteVersion} geraetId="inverter" siteId="site-abnahme" deviceId="box"
       entityId={fall.register[0].entityId} entityIds={lindach ? [...new Set(fall.register.map((r) => r.entityId))] : [fall.register[0].entityId]}
       geraetName={fall.register[0].name} onZuordnungGeaendert={() => setVersion((v) => v + 1)} /></section>
     <section aria-label="Anlagen-Übersicht"><CockpitHero topology={topology} snapshot={snapshot}

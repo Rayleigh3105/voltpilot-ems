@@ -93,7 +93,7 @@ function Fixture() {
       {/* Kein PV-Aspekt in den Komponenten (der Schaden), aber der Einstieg bleibt. */}
       <p data-testid="pv-aspekt">{view.komponenten.some((c) => c.role === 'pv') ? 'mit PV-Aspekt' : 'ohne PV-Aspekt'}</p>
       {entityId ? (
-        <GeraetSummenwerte siteId="site-e2e" deviceId={BOX.id} entityId={entityId} geraetName={view.kopf.titel} />
+        <GeraetSummenwerte geraetId="inverter" siteId="site-e2e" deviceId={BOX.id} entityId={entityId} geraetName={view.kopf.titel} />
       ) : (
         <p data-testid="kein-einstieg">kein Einstieg</p>
       )}

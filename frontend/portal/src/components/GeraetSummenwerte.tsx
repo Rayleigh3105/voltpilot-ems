@@ -24,6 +24,7 @@ export function GeraetSummenwerte({
   entityId,
   entityIds,
   geraetName,
+  geraetId,
   onZuordnungGeaendert,
 }: {
   siteId: string;
@@ -31,6 +32,7 @@ export function GeraetSummenwerte({
   entityId: string;
   entityIds?: string[];
   geraetName: string;
+  geraetId: string;
   onZuordnungGeaendert?: () => void;
 }) {
   const rechte = useRollen();
@@ -84,7 +86,7 @@ export function GeraetSummenwerte({
     };
   }, [laden]);
   function oeffneSummenwertAssistent() {
-    oeffneAssistent({ siteId, deviceId, entityId, geraetName, onGespeichert: geaendert });
+    oeffneAssistent({ siteId, deviceId, entityId, geraetName, kontext: { art: 'geraet', boxId: deviceId, geraetId }, onGespeichert: geaendert });
   }
   function geaendert() {
     void laden();

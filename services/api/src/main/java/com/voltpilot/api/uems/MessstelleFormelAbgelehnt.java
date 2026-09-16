@@ -53,6 +53,11 @@ public final class MessstelleFormelAbgelehnt extends RuntimeException {
         return new MessstelleFormelAbgelehnt("anfrage_ungueltig", 400, satz, Map.of("feld", feld));
     }
 
+    public static MessstelleFormelAbgelehnt kontext(String grund) {
+        return new MessstelleFormelAbgelehnt("summenwert_kontext_verletzt", 422,
+                "Die Quellen gehören nicht vollständig zu diesem Gerät.", Map.of("grund", grund));
+    }
+
     public String code() {
         return code;
     }

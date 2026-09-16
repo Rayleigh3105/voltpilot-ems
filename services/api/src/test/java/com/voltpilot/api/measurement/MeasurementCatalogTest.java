@@ -186,4 +186,15 @@ class MeasurementCatalogTest {
                 Set.of("wago.pm494", "wago.pm495"), Map.of(), Set.of(), Map.of(), 0, 250).total()).isZero();
         assertThat(catalog.version()).isEqualTo("2026.08.26.3");
     }
+
+    @Test void missingOrUnknownFamilyIsNamedInsteadOfAnUnexplainedEmptyCatalog() {
+        var missing = catalog.search(null, Set.of(), null, null, null, true, false,
+                Set.of(), Map.of(), Set.of(), Map.of(), 0, 250);
+        assertThat(missing.total()).isZero();
+        assertThat(missing.availabilityReason()).isEqualTo("registerfamilie_nicht_zugeordnet");
+        var available = catalog.search(null, Set.of(), null, null, null, true, false,
+                Set.of("hybrid_3p"), Map.of(), Set.of(), Map.of(), 0, 250);
+        assertThat(available.total()).isGreaterThan(250);
+        assertThat(available.availabilityReason()).isNull();
+    }
 }

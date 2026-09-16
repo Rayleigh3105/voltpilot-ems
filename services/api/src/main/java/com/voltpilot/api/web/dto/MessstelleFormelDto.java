@@ -44,11 +44,18 @@ public final class MessstelleFormelDto {
      * {@code name} leer = ein Entwurf. Die Hauptgröße wird aus den Termen abgeleitet, nie gewählt.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Anlegen(String name, String notiz, List<TermEingabe> terme, RolleAnlegen rolle) {
+    public record Anlegen(String name, String notiz, List<TermEingabe> terme, RolleAnlegen rolle, Kontext kontext) {
+        public Anlegen(String name, String notiz, List<TermEingabe> terme, RolleAnlegen rolle) {
+            this(name, notiz, terme, rolle, null);
+        }
         public Anlegen(String name, String notiz, List<TermEingabe> terme) {
             this(name, notiz, terme, null);
         }
     }
+
+    /** Additiver Einstieg; ohne Kontext bleiben bestehende Anlagen-Aufrufer gültig. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Kontext(String art, UUID siteId, UUID boxId, String geraetId) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RolleAnlegen(UUID entityId, String role, Boolean ersetzen) {}

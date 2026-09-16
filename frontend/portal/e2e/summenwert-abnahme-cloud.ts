@@ -14,7 +14,7 @@ export async function cloud(page: Page, fallName: Fall, vorhanden = false) {
     const u = new URL(route.request().url()), p = u.pathname, method = route.request().method();
     if (method !== 'GET') state.writes.push(`${method} ${p}`);
     if (p.endsWith('/summenwerte')) return route.fulfill({ json: state.angelegt ? [{ messstelle: messstelle(), rolle: state.rolle, wert }] : [] });
-    if (p.endsWith('/summenwert-quellen')) return route.fulfill({ json: ids.map((id) => ({ entityId: id, deviceId: 'box', name: f.register.find((r) => r.entityId === id)!.name, grund: null })) });
+    if (p.endsWith('/summenwert-quellen')) return route.fulfill({ json: ids.filter(id => !u.searchParams.has('geraetId') || fallName !== 'ahrenberg' || id === ids[0]).map((id) => ({ entityId: id, deviceId: 'box', name: f.register.find((r) => r.entityId === id)!.name, grund: null })) });
     if (p.endsWith('/measurement-selection/catalog')) {
       const points = f.register.filter((r) => r.entityId === u.searchParams.get('entityId')).map((r) => ({
         family: 'abnahme', pointKey: r.punkt, labelDe: r.label, group: 'Leistung', quantity: 'active_power', direction: r.direction,
