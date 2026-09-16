@@ -138,6 +138,25 @@ class EnrollmentServiceStartupReloadTest {
         // No exception; the actionable log is the only effect.
     }
 
+    @Test
+    void successionRemovesGrantAndRequiresConfirmedBrokerReload() throws Exception {
+        Path acl = writeAclWithDeviceGrant();
+        BrokerAuthzReloader reloader = mockReloader(true);
+        EnrollmentService service = newService(acl, reloader, List.of());
+        assertThat(service.blockSucceededDevice("test-ref", DEVICE)).isTrue();
+        assertThat(Files.readString(acl)).doesNotContain(DEVICE.toString());
+        verify(reloader).reloadNowBlocking(1, java.time.Duration.ZERO);
+    }
+
+    @Test
+    void successionRemainsPendingWithoutConfirmedReload() throws Exception {
+        Path acl = writeAclWithDeviceGrant();
+        assertThat(newService(acl, mockReloader(false), List.of())
+                .blockSucceededDevice("test-ref", DEVICE)).isFalse();
+        assertThat(Files.readString(acl)).doesNotContain(DEVICE.toString());
+        assertThat(newService(acl, null, List.of()).blockSucceededDevice("test-ref", DEVICE)).isFalse();
+    }
+
     // --- helpers -----------------------------------------------------------
 
     private EnrollmentService newService(Path acl, BrokerAuthzReloader reloader,

@@ -171,7 +171,9 @@ class SiteScopeArchitekturTest {
                     "consumers/ConsumerRuntimeStatusListener.java", "client.subscribe(STATUS_FILTER"),
 
             // --- Plattform
-            new Erlaubt("repo/AdminFleetRepository.java", "telemetry", 1, Grund.PLATTFORM,
+            // boxes() und deviceStatsPerSite(): ausschließlich der plattformweiten Admin-Flotte
+            // übergeben; der Controller trägt den belegten platform-admin-Zaun.
+            new Erlaubt("repo/AdminFleetRepository.java", "telemetry", 2, Grund.PLATTFORM,
                     "web/AdminFleetController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("repo/AdminFleetRepository.java", "telemetry_rollup_15m", 2, Grund.PLATTFORM,
                     "web/AdminFleetController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),

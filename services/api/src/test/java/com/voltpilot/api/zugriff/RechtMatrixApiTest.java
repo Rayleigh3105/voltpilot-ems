@@ -520,7 +520,8 @@ class RechtMatrixApiTest {
                 .replace("{siteId}", A1.toString())
                 .replace("{standortId}", S1.toString())
                 .replace("{ortId}", G1.toString())
-                .replace("{deviceId}", d1.toString());
+                .replace("{deviceId}", d1.toString())
+                .replace("{newId}", d1.toString()).replace("{oldId}", d1.toString());
         return p.replaceAll("\\{[^}]+}", FREMD.toString());
     }
 

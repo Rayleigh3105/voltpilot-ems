@@ -69,6 +69,7 @@ public class DeviceRepository {
      * with a duplicate-key error (surfaced as HTTP 409).
      */
     public DeviceDto claim(UUID tenantId, UUID siteId, String externalRef, String kind) {
+        lockReference(externalRef);
         lockTopology(siteId);
         jdbc.query("SELECT id FROM site WHERE id = ? FOR UPDATE", (rs, n) -> rs.getObject(1), siteId);
         return jdbc.queryForObject(
@@ -102,6 +103,12 @@ public class DeviceRepository {
                 "site-topology:" + siteId);
     }
 
+    /** Global ref scope, shared with delayed provisioning cleanup after a box succession. */
+    public void lockReference(String externalRef) {
+        jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", (rs, n) -> null,
+                "device-ref:" + externalRef);
+    }
+
     /**
      * Unclaim = the box is ausgebaut (UEMS AP-07 E8, AP-06 E7): the row stays with its
      * identity, so every recording keeps naming the box that read it; the sticker ref is
@@ -110,6 +117,13 @@ public class DeviceRepository {
      * (=> 404).
      */
     public boolean ausbauen(UUID deviceId) {
+        jdbc.queryForList("SELECT id FROM device WHERE id=? FOR UPDATE", UUID.class, deviceId);
+        if (Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM data_source_assignment "
+                + "WHERE device_id = ? AND (effective_to IS NULL OR effective_to > now()))",
+                Boolean.class, deviceId))) {
+            throw new com.voltpilot.api.uems.BoxKonflikt("box_hat_zustaendigkeiten",
+                    "Diese Box liest noch Datenquellen oder hat geplante Zuständigkeiten.");
+        }
         return jdbc.update("UPDATE device SET status = 'ausgebaut', ausgebaut_am = now() "
                 + "WHERE id = ? AND ausgebaut_am IS NULL", deviceId) > 0;
     }

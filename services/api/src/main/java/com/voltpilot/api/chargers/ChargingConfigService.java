@@ -326,11 +326,20 @@ public class ChargingConfigService {
     }
 
     void push(UUID tenantId, UUID siteId, ChargingConfigDto config) {
+        pushResult(tenantId, siteId, config);
+    }
+
+    /** Repeated delivery after a box succession must retain a failed transport as pending. */
+    public boolean republishForSite(UUID tenantId, UUID siteId) {
+        return pushResult(tenantId, siteId, configs.forSite(siteId));
+    }
+
+    private boolean pushResult(UUID tenantId, UUID siteId, ChargingConfigDto config) {
         ChargingConfigPublisher pub = publisher.getIfAvailable();
         if (pub == null) {
             log.debug("no charging-config publisher configured - nothing pushed for site {}",
                     siteId);
-            return;
+            return false;
         }
         Instant now = Instant.now();
         // ⚠ Die FAHRZEUG-PROFILE (P7) werden hier GELESEN, nicht durchgereicht:
@@ -341,19 +350,21 @@ public class ChargingConfigService {
         // Rücknahme bei einer Box an, die gerade offline war.
         List<VehicleProfileDto> vehicles = vehicleProfiles(siteId);
         String control = configs.ocppControl(siteId);
+        boolean delivered = true;
         for (UUID deviceId : configs.deviceIds(siteId)) {
             if (control != null) {
-                pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(), config.priorityChargePointIds(),
+                delivered &= pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(), config.priorityChargePointIds(),
                         config.surplusPolicy(), config.storagePriority(), config.chargePoints(), config.removedChargePointIds(),
                         config.frame(), config.storageRank(), config.wallboxes(), vehicles, control, now);
                 continue;
             }
-            pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
+            delivered &= pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
                     config.priorityChargePointIds(), config.surplusPolicy(),
                     config.storagePriority(), config.chargePoints(),
                     config.removedChargePointIds(), config.frame(), config.storageRank(),
                     config.wallboxes(), vehicles, now);
         }
+        return delivered;
     }
 
     /**

@@ -543,13 +543,14 @@ class UemsDatenquelleMigrationTest {
                 + "VALUES (?, ?, 'dq-9', 'modbus_tcp', '192.168.10.41:502', 10)", p.tenant, p.site));
     }
 
-    // ---- (c) das Unclaim läuft wie heute ------------------------------------------
+    // ---- (c) Unclaim erhält die Geschichte und verlangt beendete Zuständigkeiten ---
 
     @Test
-    void einUnclaimLaeuftWieHeuteDieFuehrendeBoxWirdNullUndDieZustaendigkeitBleibt() {
+    void einUnclaimVerlangtBeendeteZustaendigkeitUndBehaeltIhreGeschichte() {
         Probe p = new Probe(boxen("E-1"));
         UUID box = p.boxen.get("E-1");
-        Instant ab = Instant.parse("2026-10-01T06:00:00Z");
+        Instant ab = Instant.now().minusSeconds(86400).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        Instant uebergabe = ab.plusSeconds(3600);
         UUID quelle = als(p.tenant, () -> p.quelle("modbus_tcp", "192.168.10.21:502"));
         UUID zeitraum = als(p.tenant, () -> zustaendigkeiten.eintragen(p.tenant, quelle, box, ab,
                 null, null)).orElseThrow();
@@ -561,6 +562,13 @@ class UemsDatenquelleMigrationTest {
         // Der Datenbank-Schritt des Unclaim (DeviceController#unclaim): seit AP-07 IP-11 wird die
         // Box ausgebaut statt gelöscht, und die Verweise, die das FK-SET-NULL löste, löst der Weg.
         DeviceRepository boxen = new DeviceRepository(app);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> als(p.tenant, () -> boxen.ausbauen(box)))
+                .isInstanceOf(BoxKonflikt.class)
+                .hasMessageContaining("409");
+        UUID neueBox = p.box("E-1 (neu)");
+        abgelehnt("23P01", "data_source_assignment_eine_box_je_zeitpunkt", () -> als(p.tenant, () ->
+                zustaendigkeiten.eintragen(p.tenant, quelle, neueBox, uebergabe, null, null)));
+        assertThat(als(p.tenant, () -> zustaendigkeiten.beenden(zeitraum, uebergabe))).isTrue();
         assertThat(als(p.tenant, () -> boxen.ausbauen(box))).isTrue();
         alsTue(p.tenant, () -> boxen.ausDerTopologieLoesen(box));
 
@@ -574,16 +582,12 @@ class UemsDatenquelleMigrationTest {
                 .containsEntry("data_source_id", quelle);
         // Die Zuständigkeit überlebt ihre Box: sie sagt weiter, wer gelesen hat.
         assertThat(als(p.tenant, () -> zustaendigkeiten.fuerQuelle(quelle))).singleElement()
-                .isEqualTo(new ZustaendigkeitRepository.Zeitraum(zeitraum, quelle, box, ab, null));
+                .isEqualTo(new ZustaendigkeitRepository.Zeitraum(zeitraum, quelle, box, ab, uebergabe));
 
         // Die neue Box (ein Re-Claim ist eine neue Kennung) liest erst, wenn der offene
         // Zeitraum der alten beendet ist — Ende alt = Beginn neu, nie still.
-        UUID neueBox = p.box("E-1 (neu)");
-        abgelehnt("23P01", "data_source_assignment_eine_box_je_zeitpunkt", () -> als(p.tenant, () ->
-                zustaendigkeiten.eintragen(p.tenant, quelle, neueBox, SPAETER, null, null)));
         alsTue(p.tenant, () -> {
-            assertThat(zustaendigkeiten.beenden(zeitraum, SPAETER)).isTrue();
-            assertThat(zustaendigkeiten.eintragen(p.tenant, quelle, neueBox, SPAETER, null, null))
+            assertThat(zustaendigkeiten.eintragen(p.tenant, quelle, neueBox, uebergabe, null, null))
                     .isPresent();
         });
         // Und die Adresse der Quelle bleibt änderbar, obwohl eine Box ihrer Geschichte fehlt.
