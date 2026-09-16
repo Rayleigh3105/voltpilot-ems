@@ -475,10 +475,21 @@
   font-size: var(--vp-c-fs-12);
   font-weight: var(--vp-c-fw-700);
   padding: 3px 8px;
+  border: 0;
   border-radius: 999px;
   background: #eef2ff;
   color: #4338ca;
   white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+}
+.vp-gwk-chip:hover,
+.vp-gwk-chip:focus-visible {
+  background: #e0e7ff;
+}
+.vp-gwk-chip:focus-visible {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: 2px;
 }
 .vp-gwk-menu {
   margin-left: auto;

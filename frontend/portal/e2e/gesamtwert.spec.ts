@@ -192,6 +192,8 @@ for (const width of [375, 1440]) {
     await expect(overview.locator('.vp-gwk-big')).toContainText('15,5');
     const verlauf = page.getByRole('region', { name: 'Verlauf' });
     await expect(verlauf.getByText('Berechnete Werte').first()).toBeAttached();
+    // AP-10 IP-10 hat das befristete Kennzeichen aus der Verlauf-Route entfernt.
+    await expect(verlauf).not.toContainText('vorläufig (Geräte-Verdichtung)');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
     expect(errors).toEqual([]);
   });

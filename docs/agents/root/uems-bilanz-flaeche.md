@@ -38,6 +38,10 @@ Balken (B2): `MiniShareBar` je Unterzähler, Länge = kWh ÷ Zufluss (Zeichnung)
 - ⚠ **Zweite Tablist:** das `ZeitSegment` ist `role="tablist"` — eine Reiter-Messung einer Spec auf der Anlagen-Seite schließt `.vp-seg` aus (Falle aus IP-7).
 - ⚠ **Bühne:** `test/bilanzFixtures.ts` rechnet Summe/Rest/Herkunft/Live mit den Zwillingen; Halle 1 trägt seit IP-8 alle O6-Terme (Oktober), Halle 2 den 04.11.2026 (O7); die Live-Momentaufnahme O8 steht eine Minute vor der Uhr der Bühne. Die Rechte `messstelle.*` ergänzt die Bühne für KA/EM (die Berichts-Fixture stellt sie nicht).
 
+## Anschluss an die Gesamtwert-Karte
+
+Der Chip „berechnet · Zustand“ in `GesamtwertKarten` öffnet dieselben Tages- und Monatswerte wie der Menüpunkt; dort ist die Herkunft der gewählten gespeicherten Zahl erreichbar. Der Zustand am Chip stammt nur aus dem Live-Wert (`vollständig`/`unvollständig`), nie aus einer geratenen Periodenlage. Das befristete Kennzeichen „vorläufig (Geräte-Verdichtung)“ bleibt entfallen, weil AP-10 IP-10 es aus Live- und Verlauf-Antwort entfernt hat.
+
 ## Nicht gebaut
 
-`GesamtwertKarten`-Chip „berechnet“ mit Zustand (Zelle IP-8, PR-689-Berührung): der Live-Wert trägt keinen Zustand (F18), das befristete Kennzeichen ist mit AP-10 IP-10 entfallen, „Meine Anlage“ bleibt Bestand (E2) — die Herkunft einer berechneten Zahl liest IP-11 an der Messstellen-Karte. Sprünge je Zeile zur Messstelle/Kostenstelle (IP-11). Zeitraum-Übergabe aus dem Übersichts-Baustein (der Sprung landet auf dem letzten gebildeten Monat).
+Zeitraum-Übergabe aus dem Übersichts-Baustein (der Sprung landet auf dem letzten gebildeten Monat).
