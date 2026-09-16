@@ -195,7 +195,7 @@ async function assistentOeffnen(page: Page) {
 }
 
 test('SUN-30K: Gen-Port über „+ Beobachten" aufnehmen, als Erzeugung entscheiden, speichern gelingt', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'Ankerlauf einmal (Logik ist engine-unabhängig)');
+  test.skip(testInfo.project.name !== 'desktop-chromium' && testInfo.project.use.browserName !== 'webkit', 'Ankerlauf einmal (Logik ist engine-unabhängig)');
   test.slow();
   await mock(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -250,7 +250,7 @@ test('SUN-30K: Gen-Port über „+ Beobachten" aufnehmen, als Erzeugung entschei
 });
 
 test('SUN-30K: ohne Erzeugungs-Entscheidung sperrt der Assistent nicht den PV-Grundfall', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'einmal');
+  test.skip(testInfo.project.name !== 'desktop-chromium' && testInfo.project.use.browserName !== 'webkit', 'einmal');
   test.slow();
   await mock(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -271,7 +271,7 @@ test('SUN-30K: ohne Erzeugungs-Entscheidung sperrt der Assistent nicht den PV-Gr
 });
 
 test('Handy 375: der Assistent als Vollbild-Schrittfolge, sauber und vollständig', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'einmal, mit gesetztem 375-Viewport');
+  test.skip(testInfo.project.name !== 'desktop-chromium' && testInfo.project.use.browserName !== 'webkit', 'einmal, mit gesetztem 375-Viewport');
   test.slow();
   await mock(page);
   await page.setViewportSize({ width: 375, height: 812 });
@@ -294,7 +294,7 @@ test('Handy 375: der Assistent als Vollbild-Schrittfolge, sauber und vollständi
  */
 for (const width of [375, 768, 1440]) {
   test(`kein waagerechter Überlauf bei ${width} px`, async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'desktop-chromium', 'Layout-Abnahme läuft einmal');
+    test.skip(testInfo.project.name !== 'desktop-chromium' && testInfo.project.use.browserName !== 'webkit', 'Layout-Abnahme läuft einmal');
     test.slow();
     const fehler: string[] = [];
     page.on('pageerror', (e) => fehler.push(String(e)));
