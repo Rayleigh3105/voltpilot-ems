@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -43,10 +44,13 @@ public class HistoryService {
      * selbst bleibt unangetastet.
      */
     private final OptimizerDiagnosticsService diagnostics;
+    private final boolean ungeklemmteQuoten;
 
-    public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics) {
+    public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics,
+            @Value("${voltpilot.uems.historie.ungeklemmte-quoten-enabled:true}") boolean ungeklemmteQuoten) {
         this.repo = repo;
         this.diagnostics = diagnostics;
+        this.ungeklemmteQuoten = ungeklemmteQuoten;
     }
 
     public HistoryDto history(UUID siteId, String biddingZone, HistoryRange range, LocalDate at) {
@@ -63,7 +67,7 @@ public class HistoryService {
 
         HistoryTotalsDto totals = totals(buckets,
                 repo.plannedSavings(siteId, window.from(), window.to()),
-                repo.tariffContext(siteId));
+                repo.tariffContext(siteId), ungeklemmteQuoten);
 
         List<ProtocolEventDto> protocol = range == HistoryRange.DAY
                 ? Tagesprotokoll.build(buckets)
@@ -376,6 +380,18 @@ public class HistoryService {
     static HistoryTotalsDto totals(List<HistoryBucketDto> buckets,
             HistoryRepository.PlannedSavings planned,
             HistoryRepository.TariffContext tariff) {
+        return totals(buckets, planned, tariff, true);
+    }
+
+    /**
+     * Der Auslieferungsschalter gilt nur fuer die sichtbare Bestandsaenderung der
+     * beiden Historienquoten. AUS stellt die alte Klemme wieder her; Rollups,
+     * Summen und Exporte liegen vor dieser Darstellung und bleiben unberuehrt.
+     */
+    static HistoryTotalsDto totals(List<HistoryBucketDto> buckets,
+            HistoryRepository.PlannedSavings planned,
+            HistoryRepository.TariffContext tariff,
+            boolean ungeklemmteQuoten) {
         BigDecimal savings = planned.batteryEur();
         BigDecimal consumption = sum(buckets, HistoryBucketDto::loadKwh);
         BigDecimal pv = sum(buckets, HistoryBucketDto::pvKwh);
@@ -406,6 +422,10 @@ public class HistoryService {
             eigenverbrauch = pct(pv.subtract(gridExport)
                     .divide(pv, MathContext.DECIMAL64)
                     .multiply(BigDecimal.valueOf(100)));
+        }
+        if (!ungeklemmteQuoten) {
+            autarkie = clampPct(autarkie);
+            eigenverbrauch = clampPct(eigenverbrauch);
         }
 
         return HistoryTotalsDto.of(
@@ -449,6 +469,11 @@ public class HistoryService {
 
     private static BigDecimal pct(BigDecimal pct) {
         return pct.setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal clampPct(BigDecimal pct) {
+        return pct == null ? null : pct.max(BigDecimal.ZERO).min(BigDecimal.valueOf(100))
+                .setScale(1, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal round(BigDecimal v) {

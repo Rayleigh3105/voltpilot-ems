@@ -8,6 +8,26 @@ Der aktuelle gemeinsame Geräte-/Anlagen-Assistent ist unter
 `GesamtwertDialog.tsx` ist nur noch ein Einstieg in `SummenwertAssistent.tsx`.
 Kundenwort: `SUMMENWERT`; Live-Rollen: [H-1/H-2](../root/uems-rollen-zuordnung.md).
 
+## Typen, Fassungen, Kennzeichen und Rechte
+
+- `SummenwertAssistent.tsx` ist auch nach AP-10 IP-16 der einzige Anlegefluss.
+  `formelAssistent.ts` ergänzt seinen Entwurf um `formel_typ` und `gueltig_ab`:
+  Summe und Saldo sind wählbar, Rest verweist auf die elektrische Stellung.
+- Eine Änderung läuft über `SummenwertFormelDialog.tsx` und `POST
+  …/{id}/formel/fassungen`; sie schreibt eine neue Tagesfassung, nie bestehende
+  Terme um. Rückwirkende Tage brauchen zusätzlich `aenderung.rueckwirkend`.
+- Karte und Verlauf zeigen Kennzeichen und Zustand aus der Antwort: `berechnet`,
+  `saldiert`, Fassung und Herkunft werden nicht clientseitig geraten. Der
+  Verlauf liest die Messstellen-Perioden; das frühere Kennzeichen „vorläufig
+  (Geräte-Verdichtung)“ ist seit AP-10 IP-10 entfallen.
+- Anlegen und neue Formel-Fassung brauchen `messstelle.formel`; Einmal-Lesen
+  `messwerte.ansehen`, neue Beobachtung `mess_selektion.bearbeiten`, Rollenwahl
+  `geraet.einrichten`, Lebenszyklus/Name `messstelle.bearbeiten`. Die Weichen
+  kommen ausschließlich aus `rollen.ts`.
+- Kundenwort ist `SUMMENWERT`. `GESAMTWERT` bleibt nur der gleichwertige
+  Übergangs-Alias in `glossar.ts`; `copy.test.ts` hält Alias und Altwort-Bestand
+  fest und lässt ihn nur schrumpfen.
+
 ## Die Anzeige danach
 
 - **Summenwert-Anzeige + Einstieg** `src/components/GesamtwertKarten.tsx`: seit vp-agg (Konzept
@@ -36,7 +56,7 @@ Kundenwort: `SUMMENWERT`; Live-Rollen: [H-1/H-2](../root/uems-rollen-zuordnung.m
 
 ```bash
 npx vitest run src/gesamtwert.test.ts src/gesamtwertQuelle.test.ts src/verlauf.test.ts src/pvRolle.test.ts src/components/GesamtwertDialog.test.tsx src/copy.test.ts
-npx playwright test e2e/gesamtwert.spec.ts   # SUN-30K durchspielen + Anzeige, Layout 375/768/1440
+npx playwright test e2e/formel-assistent.spec.ts e2e/gesamtwert.spec.ts   # Typ/Fassung + SUN-30K, 375/768/1440
 ```
 
 Backend-Seite der Cockpit-Umlenkung (vp-agg §2.4): `SiteRollenApiTest` (Umlenkung + Rückfall +

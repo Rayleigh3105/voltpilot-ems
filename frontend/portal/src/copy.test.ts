@@ -1,7 +1,7 @@
 import ts from 'typescript';
 import { steuerGeldWoerter } from './anlegeNurMessen';
 import { everydayArticles } from './help/content/alltag';
-import { SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
+import { GESAMTWERT, SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
 import { budgetFreiText, folgenSaetze } from './datenquelle';
 import { rechteSeed } from './test/rollenFixtures';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -2040,6 +2040,7 @@ describe('Summenwert: das eine Kundenwort', () => {
   it('Konstante und Wortverbote entsprechen dem Vertrag', () => {
     const v = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/rollen-zuordnung-vectors.json'), 'utf8'));
     expect(SUMMENWERT).toBe(v.kundenwort);
+    expect(GESAMTWERT).toBe(SUMMENWERT);
     expect(SUMMENWERT_VERBOTENE_WOERTER).toEqual(v.verbotene_woerter);
     expect(altwort.test(SUMMENWERT)).toBe(false);
     expect(altwort.test('Gesamt-PV')).toBe(false);
