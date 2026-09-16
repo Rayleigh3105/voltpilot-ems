@@ -104,8 +104,17 @@ public class RollenZuordnungService {
         pruefeGeraet(site, entity);
         repo.sperreAnlage(site);
         Zuordnung alt = repo.primaer(entity, rolle).orElse(null);
-        repo.entziehen(entity, rolle);
-        protokolliere(site, entity, rolle, alt, null, wer);
+        // Ein Summenwert ist eine gemeinsame Quelle, auch wenn er an mehreren Geräten hängt.
+        // Sein Entzug muss denselben Umfang haben wie anlageZuordnen; sonst bleibt er im Cockpit.
+        List<Zuordnung> entziehen = alt != null && alt.quellMessstelleId() != null
+                ? repo.primaereDerAnlage(site, rolle).stream()
+                        .filter(z -> alt.quellMessstelleId().equals(z.quellMessstelleId())).toList()
+                : alt == null ? List.of() : List.of(alt);
+        if (alt == null) repo.entziehen(entity, rolle);
+        for (Zuordnung z : entziehen) {
+            repo.entziehen(z.entityId(), rolle);
+            protokolliere(site, z.entityId(), rolle, z, null, wer);
+        }
         return new RollenDto.ZuordnungAntwort(null, alt == null ? null : alsWert(alt));
     }
 

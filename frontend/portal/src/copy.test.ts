@@ -781,15 +781,7 @@ describe('Summenwert: das eine Kundenwort', () => {
     return out.filter((t) => !/^[./]/.test(t)).map((t) => t.trim().replace(/\s+/g, ' '));
   };
   // EXAKTER Satz, Datei und Höchstzahl. Entfernen ist erlaubt; neue/duplizierte Alttexte sind rot.
-  const bestand: Record<string, number> = {
-    "components/GesamtwertKarten.tsx · Sie können jederzeit einen neuen Gesamtwert zusammenstellen.": 1,
-    "components/GesamtwertKarten.tsx · Ein Wert fehlt gerade — der Gesamtwert bleibt leer statt zu klein.": 1,
-    "components/VerlaufExplorer.tsx · Gesamtwert": 1,
-    "components/VerlaufExplorer.tsx · Diese Werte werden über den Wechselrichter gemessen und stecken in „PV gesamt“. Einen eigenen Verlauf hat dieser Erzeuger nicht — die Gesamt-PV finden Sie im Cockpit und in der Historie.": 1,
-    "help/content/alltag.ts · Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, den Gesamtwert einzuordnen.": 1,
-    "help/content/alltag.ts · Gesamtwerte und einzelne Anlagen": 1,
-    "help/content/alltag.ts · Gesamtwerte und einzelne Anlagen haben unterschiedliche Geltungsbereiche. Prüfen Sie Auswahl und Zeitraum. Andere Geräte oder Betriebsmodelle erklären, warum Ansichten zwischen Anlagen abweichen.": 1,
-  };
+  const bestand: Record<string, number> = {};
   it('Konstante und Wortverbote entsprechen dem Vertrag', () => {
     const v = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/rollen-zuordnung-vectors.json'), 'utf8'));
     expect(SUMMENWERT).toBe(v.kundenwort);
@@ -806,7 +798,6 @@ describe('Summenwert: das eine Kundenwort', () => {
     "gesamtwert.ts": 5,
     "glossar.ts": 1,
     "components/GesamtwertDialog.tsx": 3,
-    "components/GesamtwertKarten.tsx": 8,
     "components/SummenwertAssistent.tsx": 3,
     "pages/MesswerteSection.tsx": 2
   };

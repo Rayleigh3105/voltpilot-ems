@@ -14,6 +14,7 @@ import {
   type Site,
 } from '../api';
 import { fmtNum } from '../format';
+import { SUMMENWERT } from '../glossar';
 import { ladeSiteGesamtwerte } from '../gesamtwertQuelle';
 import type { ComponentRole } from '../komponenten';
 import { isoDate } from '../periodNav';
@@ -229,7 +230,7 @@ export function VerlaufExplorer({
               const gruppe = berechneteGruppe(
                 quellen.map((q) => ({
                   id: q.messstelle.id,
-                  name: q.messstelle.name || 'Gesamtwert',
+                  name: q.messstelle.name || SUMMENWERT,
                   einheit: q.formel?.hauptgroesse?.einheit ?? '',
                   role: rolleVon(q.formel),
                 })),
@@ -472,7 +473,7 @@ export function VerlaufExplorer({
                 icon="sun"
                 category="dynamic"
                 title="Wird über den Wechselrichter gemessen"
-                description="Diese Werte werden über den Wechselrichter gemessen und stecken in „PV gesamt“. Einen eigenen Verlauf hat dieser Erzeuger nicht — die Gesamt-PV finden Sie im Cockpit und in der Historie."
+                description="Diese Werte werden über den Wechselrichter gemessen und sind in der PV-Produktion enthalten. Einen eigenen Verlauf hat dieser Erzeuger nicht — die Gesamt-PV finden Sie im Cockpit und in der Historie."
               />
             ) : (
               <EmptyState

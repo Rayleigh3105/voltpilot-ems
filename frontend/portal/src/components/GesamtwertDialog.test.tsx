@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, type MeasurementCatalogPoint } from '../api';
 import { GesamtwertDialog } from './GesamtwertDialog';
@@ -139,4 +139,19 @@ describe('ein Summenwert-Assistent für Gerät und Anlage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Netzwert schon vorhanden.');
     expect(screen.getByRole('button', { name: 'Speichern' })).toBeEnabled();
   });
+});
+
+it('ein Entzug des Messauswahlrechts vor Speichern schreibt weder Auswahl noch Summe', async () => {
+  const { observe, save } = stub(); mount(true);
+  fireEvent.click(await screen.findByRole('button', { name: 'Gen-Port einmal lesen', hidden: true }));
+  await screen.findByText(/jetzt gelesen/);
+  const entscheid = screen.getByText('Am Gen-Port hängt ein Mikrowechselrichter?').closest('.vp-sw-suggest')!;
+  fireEvent.click(within(entscheid as HTMLElement).getByRole('checkbox', { hidden: true }));
+  await rolle();
+  const me = rechteSeed().me;
+  act(() => setSelbstauskunft({ ...me, unternehmen_rechte: me.unternehmen_rechte.filter((r) => r !== 'mess_selektion.bearbeiten') }));
+  expect(screen.getByRole('button', { name: 'Speichern' })).toBeDisabled();
+  expect(screen.getByRole('alert')).toHaveTextContent('Beobachten weiterer Register');
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  expect(observe).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
 });
