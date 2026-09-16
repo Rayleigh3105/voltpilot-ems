@@ -78,6 +78,15 @@ public class AdminFleetRepository {
             String plantKind, boolean netzladenErlaubt, String tarifArt) {
     }
 
+    /** Eine aktive Box mit ihren eigenen, nie anlagenweit geratenen Ständen. */
+    public record FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
+            Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update) {
+    }
+
+    /** Eingänge der gemeinsamen {@code FuehrendeBoxAbleitung}, je Anlage. */
+    public record LeadFacts(UUID storedDeviceId, UUID batteryDeviceId) {
+    }
+
     /** Geräte-Zustand einer Anlage (identische Semantik wie im Overview). */
     public record DeviceStats(int deviceCount, int onlineCount, int waitingCount,
             Instant lastSeenAt) {
@@ -135,6 +144,87 @@ public class AdminFleetRepository {
                         rs.getString("plant_kind"),
                         rs.getBoolean("netzladen_erlaubt"),
                         rs.getString("tarif_art")));
+    }
+
+    /**
+     * Alle aktiven Boxen der Plattform. Versions- und Lebendigkeitsstand bleiben
+     * je Box; ein {@code LEFT JOIN LATERAL} hält auch eine noch nie meldende Box
+     * sichtbar. Damit kann die Admin-Flotte Anlagen nur gruppieren, ohne ihre
+     * Boxen wieder zu einer vermeintlichen Anlagen-Version zusammenzufalten.
+     */
+    public List<FleetBoxRow> boxes() {
+        return jdbc.query("""
+                SELECT d.id AS device_id, d.site_id, d.external_ref, d.name,
+                       coalesce(d.device_status_seen_at, telemetry.last_seen) AS last_seen,
+                       edge.core_version, edge.palette_version,
+                       edge.reported_at AS edge_reported_at,
+                       update.version, update.backend, update.current_version,
+                       update.target_version, update.state, update.reason,
+                       update.last_known_good, update.reported_at AS update_reported_at
+                  FROM device d
+                  LEFT JOIN LATERAL (
+                       SELECT max(t.received_at) AS last_seen
+                         FROM telemetry t WHERE t.device_id = d.id
+                  ) telemetry ON true
+                  LEFT JOIN LATERAL (
+                       SELECT e.core_version, e.palette_version, e.reported_at
+                         FROM device_edge_version e WHERE e.device_id = d.id
+                        ORDER BY e.reported_at DESC LIMIT 1
+                  ) edge ON true
+                  LEFT JOIN LATERAL (
+                       SELECT u.version, u.backend, u.current_version, u.target_version,
+                              u.state, u.reason, u.last_known_good, u.reported_at
+                         FROM device_update_status u WHERE u.device_id = d.id
+                        ORDER BY u.reported_at DESC LIMIT 1
+                  ) update ON true
+                 WHERE d.ausgebaut_am IS NULL
+                 ORDER BY d.site_id, d.created_at, d.id
+                """, (rs, i) -> {
+                    Timestamp lastSeen = rs.getTimestamp("last_seen");
+                    Timestamp edgeReported = rs.getTimestamp("edge_reported_at");
+                    Timestamp updateReported = rs.getTimestamp("update_reported_at");
+                    return new FleetBoxRow(
+                            rs.getObject("device_id", UUID.class),
+                            rs.getObject("site_id", UUID.class),
+                            rs.getString("external_ref"),
+                            rs.getString("name"),
+                            lastSeen == null ? null : lastSeen.toInstant(),
+                            edgeReported == null ? null : new EdgeVersionRow(
+                                    rs.getString("core_version"),
+                                    rs.getString("palette_version"),
+                                    edgeReported.toInstant()),
+                            updateReported == null ? null : new UpdateStatusRow(
+                                    rs.getString("version"),
+                                    rs.getString("backend"),
+                                    rs.getString("current_version"),
+                                    rs.getString("target_version"),
+                                    rs.getString("state"),
+                                    rs.getString("reason"),
+                                    rs.getString("last_known_good"),
+                                    updateReported.toInstant()));
+                });
+    }
+
+    /**
+     * Gespeicherte Wahl und primäre Speicher-Box je Anlage. Die eigentliche
+     * Vorrang-Regel bleibt in {@code FuehrendeBoxAbleitung}; dieses Admin-Read
+     * liefert nur deren Cross-Tenant-Eingänge.
+     */
+    public Map<UUID, LeadFacts> leadFactsPerSite() {
+        Map<UUID, LeadFacts> out = new HashMap<>();
+        jdbc.query("""
+                SELECT s.id AS site_id, s.lead_device_id, battery.device_id AS battery_device_id
+                  FROM site s
+                  LEFT JOIN LATERAL (
+                       SELECT a.device_id FROM asset a
+                        WHERE a.site_id = s.id AND a.type = 'battery' AND a.is_primary
+                        ORDER BY a.created_at, a.id LIMIT 1
+                  ) battery ON true
+                """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(
+                        rs.getObject("site_id", UUID.class), new LeadFacts(
+                        rs.getObject("lead_device_id", UUID.class),
+                        rs.getObject("battery_device_id", UUID.class))));
+        return out;
     }
 
     /**

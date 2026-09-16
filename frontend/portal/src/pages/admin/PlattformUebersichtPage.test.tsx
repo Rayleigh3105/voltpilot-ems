@@ -61,6 +61,43 @@ describe('PlattformUebersichtPage', () => {
     expect(fleet).toHaveBeenCalledTimes(1);
   });
 
+  it('shows one row per box, grouped by site, with role, version and capabilities', async () => {
+    fleet.mockResolvedValue({
+      releases: [{ releaseSeq: 1, version: 'edge-2026.09.0' }],
+      sites: [site('s1', 'Werk Ahrenberg', {
+        deviceCount: 2,
+        onlineCount: 1,
+        boxes: [
+          {
+            deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box Leitstand', fuehrtAnlage: true,
+            lastSeenAt: new Date().toISOString(), edge: null,
+            update: { version: 'edge-2026.09.0', backend: 'compose', current: null, target: null, state: 'idle', reason: null, lastKnownGood: null, reportedAt: new Date().toISOString() },
+          },
+          {
+            deviceId: 'd2', externalRef: 'VP-BOX-0002', name: 'Box Halle 2', fuehrtAnlage: false,
+            lastSeenAt: null, edge: null, update: null,
+          },
+        ],
+      })],
+    });
+    const jump = vi.fn();
+    render(<PlattformUebersichtPage onJumpToTenant={jump} />);
+
+    const table = await screen.findByTestId('admin-fleet');
+    expect(table).toHaveTextContent('Werk Ahrenberg');
+    expect(table).toHaveTextContent('Box Leitstand');
+    expect(table).toHaveTextContent('Box Halle 2');
+    expect(table).toHaveTextContent('Führende Box');
+    expect(table).toHaveTextContent('Weitere Box');
+    expect(table).toHaveTextContent('edge-2026.09.0');
+    expect(table).toHaveTextContent('Rückmeldung je Datenquelle: fehlt');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Box Halle 2' }));
+    expect(jump).toHaveBeenCalledWith('t1', {
+      page: 'anlagen', siteId: 's1', sub: 'box', geraet: { ref: 'VP-BOX-0002', geraetId: null },
+    });
+  });
+
   it('carries NO money at all - a pure technical view (Captain Q2)', async () => {
     fleet.mockResolvedValue({ sites: [site('s1', 'Anlage A')] });
     const { container } = render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
@@ -164,13 +201,24 @@ describe('PlattformUebersichtPage', () => {
     });
     fleet.mockResolvedValue({
       sites: [
-        site('s1', 'Aktuell', { update: ota('edge-2026.08.0') }),
-        site('s2', 'Hinterher', { update: ota('edge-2026.07.2') }),
+        site('s1', 'Aktuell', {
+          update: ota('edge-2026.08.0'),
+          boxes: [{ deviceId: 'd1', externalRef: 'box-1', name: null, fuehrtAnlage: true, lastSeenAt: null, edge: null, update: ota('edge-2026.08.0') }],
+        }),
+        site('s2', 'Hinterher', {
+          update: ota('edge-2026.07.2'),
+          boxes: [{ deviceId: 'd2', externalRef: 'box-2', name: null, fuehrtAnlage: true, lastSeenAt: null, edge: null, update: ota('edge-2026.07.2') }],
+        }),
         // Nur eine SHA gemeldet: nicht im Register - und deshalb ausdrücklich
         // nicht veraltet.
-        site('s3', 'Bestandsbau', { update: ota('665d59b80000') }),
+        site('s3', 'Bestandsbau', {
+          update: ota('665d59b80000'),
+          boxes: [{ deviceId: 'd3', externalRef: 'box-3', name: null, fuehrtAnlage: true, lastSeenAt: null, edge: null, update: ota('665d59b80000') }],
+        }),
         // Nie gemeldet.
-        site('s4', 'Stumm'),
+        site('s4', 'Stumm', {
+          boxes: [{ deviceId: 'd4', externalRef: 'box-4', name: null, fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null }],
+        }),
       ],
       releases: [
         { releaseSeq: 12, version: 'edge-2026.08.0' },
@@ -205,6 +253,15 @@ describe('PlattformUebersichtPage', () => {
             lastKnownGood: null,
             reportedAt: new Date().toISOString(),
           },
+          boxes: [{
+            deviceId: 'd1', externalRef: 'box-1', name: null, fuehrtAnlage: true,
+            lastSeenAt: null, edge: null,
+            update: {
+              version: 'edge-2026.07.2', backend: 'compose', current: 'edge-2026.07.2',
+              target: null, state: 'idle', reason: null, lastKnownGood: null,
+              reportedAt: new Date().toISOString(),
+            },
+          }],
         }),
       ],
       releases: [],
