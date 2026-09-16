@@ -1009,18 +1009,19 @@ function UnifiedPortal() {
   const tenantRef = useRef(tenantId);
   tenantRef.current = tenantId;
   const refreshDevices = useCallback(() => {
-    if (!tenantReady) return;
+    if (!tenantReady || !selbst || ohneStandort(selbst)) return;
     const forTenant = tenantRef.current;
+    const nummer = ladeNummer.current;
     api.listDevices().then((antwort) => antwort.eintraege).then(
       (d) => {
-        if (tenantRef.current !== forTenant) return;
+        if (tenantRef.current !== forTenant || nummer !== ladeNummer.current) return;
         setDevices(d);
         setDevicesAt(Date.now());
       },
       () => {},
     );
-  }, [tenantReady]);
-  useFreshnessPoll(refreshDevices, LIVENESS_POLL_MS, tenantReady);
+  }, [tenantReady, selbst]);
+  useFreshnessPoll(refreshDevices, LIVENESS_POLL_MS, tenantReady && selbst !== null && !ohneStandort(selbst));
 
   // Device liveness of the Anlage in scope, judged against the moment the
   // server answered - never against a clock that ran past a snapshot we could
