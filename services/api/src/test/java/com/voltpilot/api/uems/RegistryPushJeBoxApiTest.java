@@ -298,7 +298,13 @@ class RegistryPushJeBoxApiTest {
         w.beendet("DQ-3", morgen);
         w.liest("DQ-3", "Lese", morgen);
 
-        push(w, "AN-1");
+        com.voltpilot.api.uems.UebergabeRepository rueck = new com.voltpilot.api.uems.UebergabeRepository(root);
+        rueck.herzschlag(w.mandant, lese, null, Instant.now());
+        push(w, "AN-1"); // zuerst alt-ohne, neue Box noch ohne Quelle
+        Map<UUID, JsonNode> entzogen = amBroker(w, "AN-1", 2);
+        assertThat(entitaeten(entzogen.get(e1))).doesNotContain(w.komponenten.get("K-96"));
+        rueck.herzschlag(w.mandant, e1, entzogen.get(e1).get("revision").asText(), Instant.now());
+        push(w, "AN-1"); // die alte Box hat genau den Entzug quittiert
         Map<UUID, JsonNode> nachher = amBroker(w, "AN-1", 2);
         assertThat(entitaeten(nachher.get(e1))).hasSize(8).doesNotContain(w.komponenten.get("K-96"))
                 .containsAll(w.ids(UNTERZAEHLER.toArray(String[]::new)));

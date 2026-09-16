@@ -22431,7 +22431,7 @@ components:
     Datenquelle:
       type: object
       required: [id, kennzeichen, name, anlage, protokoll, adresse, geraete_ids, netz, mehrere_leser,
-        steuerquelle, vergleichsquelle, kadenz_s, archiviert_am, zustaendige_box, zeitraeume]
+        steuerquelle, vergleichsquelle, kadenz_s, archiviert_am, zustaendige_box, zeitraeume, uebergabe]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$", example: DQ-6 }
@@ -22451,6 +22451,18 @@ components:
           nullable: true
           description: Die Box, deren Zeitraum JETZT läuft; null ohne (Entwurf, Lücke, erst geplant).
         zeitraeume: { type: array, items: { $ref: "#/components/schemas/DatenquelleZeitraum" } }
+        uebergabe:
+          allOf: [{ $ref: "#/components/schemas/DatenquelleUebergabe" }]
+          nullable: true
+          description: Ausführung getrennt vom Zeitraum; null ohne ausstehende Übergabe.
+    DatenquelleUebergabe:
+      type: object
+      required: [zustand, seit, box_alt, box_neu]
+      properties:
+        zustand: { type: string, enum: [Übergabe ausstehend] }
+        seit: { type: string, format: date-time }
+        box_alt: { $ref: "#/components/schemas/DatenquelleBox" }
+        box_neu: { $ref: "#/components/schemas/DatenquelleBox" }
     DatenquelleListe:
       type: object
       required: [datenquellen]

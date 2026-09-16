@@ -390,6 +390,10 @@ voltpilot:
   # Idempotent; ändert keine Anlage, keinen Push, kein Kommando. `enabled` ist
   # der Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
   uems:
+    uebergabe:
+      enabled: ${VOLTPILOT_UEMS_UEBERGABE_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_UEBERGABE_INTERVAL_MS:1000}
+      initial-delay-ms: ${VOLTPILOT_UEMS_UEBERGABE_INITIAL_DELAY_MS:30000}
     # UEMS AP-12 IP-5 (RW1): die Build-Kennung (Git-SHA) des Deployments für das
     # Regelwerk-Verzeichnis im Kopf jedes Berichts-Abzugs (BerichtRegelwerk). Ohne
     # sie nennt der Abzug Version und Build-Zeit aus build-info (pom.xml). Kein Flag.

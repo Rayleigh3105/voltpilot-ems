@@ -53,7 +53,11 @@ public final class DatenquelleDto {
             Integer kadenzS,
             Instant archiviertAm,
             Box zustaendigeBox,
-            List<Zeitraum> zeitraeume) {}
+            List<Zeitraum> zeitraeume,
+            Uebergabe uebergabe) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Uebergabe(String zustand, Instant seit, Box boxAlt, Box boxNeu) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Liste(List<Datenquelle> datenquellen) {}

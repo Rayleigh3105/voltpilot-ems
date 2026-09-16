@@ -557,7 +557,7 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 128,
-          "description": "Opaque registry revision (the api uses the push's published_at instant). The edge echoes the applied revision in its status heartbeat 'entities' block, so the cloud can verify convergence."
+          "description": "Opaque registry revision (legacy API pushes use published_at; source-aware API pushes use uems-registry:<sequence>). The edge echoes the applied revision in its status heartbeat 'entities' block, so the cloud can verify convergence."
         },
         "published_at": {
           "type": "string",
