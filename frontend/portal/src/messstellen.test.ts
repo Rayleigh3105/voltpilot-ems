@@ -18,6 +18,8 @@ import {
   zeileWoerter,
   type MessstellenEbene,
 } from './messstellen';
+import { quellenJeGeraet } from './boxAnQuelle';
+import { ahrenbergDatenquellen, ahrenbergUemsGeraete, BOX_NAMEN, BOX_TAUSCH } from './test/datenquellenFixtures';
 import { ahrenbergRegister, leeresRegister, REGISTER_ZEITPUNKT } from './test/messstellenRegisterFixtures';
 import { FIXTURE_IDS } from './test/standorteFixtures';
 
@@ -64,6 +66,8 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
         seit: 'führend seit 12.03.2024',
         davor: null,
         vergleich: null,
+        // AP-13 IP-12 (L6): ohne gelesene Zuständigkeit steht KEIN Box-Satz — nie eine geratene Box.
+        box: null,
         // AP-13 IP-11 (D1): der Weg zur Komponente auf der Geräte-Seite der Anlage aus der Stellung.
         sprung: {
           route: { page: 'anlagen', siteId: FIXTURE_IDS.an1, sub: 'modell' },
@@ -166,6 +170,40 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
     expect(zeileWoerter(eine, kontext(a)).quelle).toMatchObject({ vergleich: '1 Vergleichsquelle' });
     eine.quelle.vergleichsquellen = 2;
     expect(zeileWoerter(eine, kontext(a)).quelle).toMatchObject({ vergleich: '2 Vergleichsquellen' });
+  });
+
+  it('AP-13 IP-12 (L6): die Spalte „Quelle“ nennt die Box aus der Zuständigkeit der Datenquelle', () => {
+    const a = ahrenbergRegister();
+    const boxen = quellenJeGeraet(
+      ahrenbergUemsGeraete(FIXTURE_IDS.an2).geraete,
+      ahrenbergDatenquellen(FIXTURE_IDS.an2, a.zeitpunkt).datenquellen,
+    );
+    // MS-10 liest über GR-7 „C-1“; am 20.10.2026 ist noch Box Halle 2 zuständig, seit dem 01.10.2026.
+    const ohne = zeileWoerter(zeile(a, 'MS-10'), kontext(a));
+    const mit = zeileWoerter(zeile(a, 'MS-10'), { ...kontext(a), boxen });
+    expect(ohne.quelle).toMatchObject({ art: 'gebunden', box: null });
+    expect(mit.quelle).toMatchObject({ art: 'gebunden', box: `gelesen von ${BOX_NAMEN['E-2']} seit 01.10.2026` });
+  });
+
+  it('AP-13 IP-12: nach dem Box-Tausch am 04.11.2026 09:38 nennt dieselbe Zeile die Nachfolgerin', () => {
+    const a = ahrenbergRegister();
+    const nachher = new Date(Date.parse(BOX_TAUSCH) + 60_000).toISOString();
+    const boxen = quellenJeGeraet(
+      ahrenbergUemsGeraete(FIXTURE_IDS.an2).geraete,
+      ahrenbergDatenquellen(FIXTURE_IDS.an2, nachher).datenquellen,
+    );
+    const w = zeileWoerter(zeile(a, 'MS-10'), { ...kontext(a), zeitpunkt: nachher, boxen });
+    expect(w.quelle).toMatchObject({ box: `gelesen von ${BOX_NAMEN['E-2′']} seit 04.11.2026 09:38` });
+  });
+
+  it('AP-13 IP-12: eine Anlage ohne gelesene Zuständigkeit bekommt KEINEN Satz — nie eine geratene Box', () => {
+    const a = ahrenbergRegister();
+    // Die Karte kennt nur Halle 2; MS-01 (Halle 1, GR-2) bleibt deshalb ohne Box-Zeile.
+    const boxen = quellenJeGeraet(
+      ahrenbergUemsGeraete(FIXTURE_IDS.an2).geraete,
+      ahrenbergDatenquellen(FIXTURE_IDS.an2, a.zeitpunkt).datenquellen,
+    );
+    expect(zeileWoerter(zeile(a, 'MS-01'), { ...kontext(a), boxen }).quelle).toMatchObject({ box: null });
   });
 
   it('Werte: Stellen je Einheit, Tausenderpunkt, U+2212, geschütztes Leerzeichen, Text-Wert, ein anderer Tag mit Datum', () => {

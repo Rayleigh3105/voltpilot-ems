@@ -26,6 +26,7 @@ import {
 } from '../src/test/messstelleSeiteFixtures';
 import type { MessstelleWerte } from '../src/api';
 import { verschiebe } from '../src/picker/datum';
+import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../src/test/standorteFixtures';
@@ -230,6 +231,13 @@ async function cloud(
       return route.fulfill(json({ stichtag: null, kostenstellen: kostenstellenAhrenberg() }));
     }
     if (pfad === '/api/v1/standorte') return route.fulfill(json(ahrenbergHeute()));
+    // AP-13 IP-12 (L6): die Zuständigkeiten der Datenquellen und der Weg Gerät → Quelle (zwei Aufrufe je Anlage).
+    const anlage = /^\/api\/v1\/sites\/([^/]+)\/(data-sources|geraete)$/.exec(pfad);
+    if (anlage && methode === 'GET') {
+      return route.fulfill(
+        json(anlage[2] === 'data-sources' ? ahrenbergDatenquellen(anlage[1], new Date().toISOString()) : ahrenbergUemsGeraete(anlage[1])),
+      );
+    }
     if (pfad.endsWith('/orte')) return route.fulfill(json(pfad.includes(FIXTURE_IDS.st1) ? ortsbaumAhrenberg() : ortsbaumLindach()));
     if (pfad === '/api/v1/messstellen' && methode === 'GET') {
       const register = angelegt ? { ...ahrenbergRegister(), stichtag: EINFUEHRUNG_TAG } : heute ? ahrenbergRegister({ stichtag: heute }) : ahrenbergRegister();

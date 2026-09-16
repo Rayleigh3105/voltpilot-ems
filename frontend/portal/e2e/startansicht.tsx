@@ -73,6 +73,7 @@ import { BerichtePage } from '../src/pages/BerichtePage';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
+import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte } from '../src/test/kostenstellenFixtures';
 import {
@@ -536,6 +537,10 @@ Object.assign(api, {
     if (!heuteB10) return r;
     return { ...r, register: r.register.map((z) => ({ ...z, name: nameHeuteAm(Date.now(), z.kennzeichen, z.name) })) };
   },
+  // AP-13 IP-12 (L6): die Zuständigkeiten der Datenquellen und der Weg Gerät → Quelle. ZWEI Aufrufe je
+  // Anlage, weil `…/data-sources` ihre Geräte nicht nennt (Befund an AP-06, `boxAnQuelle.ts`).
+  datenquellen: async (siteId: string) => ahrenbergDatenquellen(siteId, new Date(Date.now()).toISOString()),
+  uemsGeraete: async (siteId: string) => ahrenbergUemsGeraete(siteId),
   // AP-13 IP-7: die Energiebilanz je Anlage (O2 Oktober 2026, O4 Halle 2, O3 Lindach am 18.10.2026) — sonst ohne Werte.
   anlageBilanz: async (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?: string) => bilanzDerBuehne(siteId, periode, am),
   // AP-13 IP-8: „Rest anlegen“ — nie zweimal: nach dem ersten Klick hat der Hauptzähler seinen Rest (`neu` = false).

@@ -103,8 +103,10 @@
   overflow-wrap: break-word;
 }
 
+/* AP-13 IP-12 (L6): „gelesen von Box … seit …“ steht wie Anteil und Zeitraum leise unter dem Wert. */
 .vp-qk-stand,
 .vp-qk-anteil,
+.vp-qk-box,
 .vp-qk-zeitraum,
 .vp-qk-ohne {
   color: var(--vp-c-muted-fg);

@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { komponentenHalle1 } from '../src/test/messstelleDialogFixtures';
 import { kostenstellenAhrenberg, prozesseAhrenberg, protokollMs06 } from '../src/test/messstelleSeiteFixtures';
+import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
 import {
@@ -62,6 +63,13 @@ async function cloud(page: Page, { nachWechsel = false } = {}): Promise<Gesendet
       return route.fulfill(json({ stichtag: null, kostenstellen: kostenstellenAhrenberg() }));
     }
     if (pfad === '/api/v1/standorte') return route.fulfill(json(ahrenbergHeute()));
+    // AP-13 IP-12 (L6): die Zuständigkeiten der Datenquellen und der Weg Gerät → Quelle (zwei Aufrufe je Anlage).
+    const anlage = /^\/api\/v1\/sites\/([^/]+)\/(data-sources|geraete)$/.exec(pfad);
+    if (anlage && methode === 'GET') {
+      return route.fulfill(
+        json(anlage[2] === 'data-sources' ? ahrenbergDatenquellen(anlage[1], new Date().toISOString()) : ahrenbergUemsGeraete(anlage[1])),
+      );
+    }
     if (pfad.endsWith('/orte')) return route.fulfill(json(pfad.includes(FIXTURE_IDS.st1) ? ortsbaumAhrenberg() : ortsbaumLindach()));
     if (pfad === '/api/v1/messstellen' && methode === 'GET') {
       return route.fulfill(json(ahrenbergRegister({ stichtag: nachWechsel ? '2026-11-20' : '2026-10-20' })));
@@ -230,6 +238,13 @@ test('Q1 · A8 — die Quelle-Karte zeigt beide Werte NEBENEINANDER, ohne jede B
   const haupt = karte.getByTestId('quelle-groesse-Wirkenergie|Bezug');
   await expect(haupt).toContainText('Keine Vergleichsquelle.');
   await expect(haupt.getByRole('button', { name: 'Vergleichsquelle hinzufügen' })).toBeVisible();
+
+  // AP-13 IP-12 (L6): die führende Quelle nennt die Box, die ihr Gerät liest — aus der Zuständigkeit
+  // der Datenquelle (GR-2 → DQ-2 → Box Halle 1). Die Vergleichsquelle hängt an GR-1 (DQ-1, dieselbe Box).
+  await expect(werte.nth(0).locator('.vp-qk-box')).toHaveText('gelesen von Box Halle 1 seit 12.03.2024');
+  await expect(haupt.getByTestId('quelle-werte').locator('li').first().locator('.vp-qk-box')).toHaveText(
+    'gelesen von Box Halle 1 seit 12.03.2024',
+  );
   await messeUndFotografiere(page, breite, 'q1-quelle-karte');
 });
 

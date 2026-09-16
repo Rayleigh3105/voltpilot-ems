@@ -7,7 +7,7 @@
  * jede Zahl?" — in this order:
  *
  *   1. ein Kopfsatz (Zustand in einem Satz),
- *   2. die EINE VoltPilot-Box als Vermittler, darunter die Geräte, die ihr die
+ *   2. die VoltPilot-Box(en) als Vermittler, darunter die Geräte, die ihnen die
  *      Messwerte liefern,
  *   3. die Komponenten in Rollen-Gruppen, **mit Live-Werten und Herkunft**,
  *   4. eine Fußzeile (Schutz-Satz + wo die Komponenten wieder auftauchen).
@@ -16,11 +16,21 @@
  * ersatzlos aufgelöst: ihr Inhalt steckt jetzt im Kopfsatz (Zustand), im
  * Steuer-Abzeichen (Rechte) und in der Fußzeile (Verweise).
  *
- * **Captain-Korrektur (verbindlich):** eine Anlage hat genau EINE VoltPilot-Box.
- * Deye-Hybrid und die zwei Fronius sind Geräte DAHINTER, die ihr Messwerte
- * liefern - die Seite darf nie so aussehen, als gäbe es mehrere Boxen. Deshalb
- * trägt {@link edgeBoxLine} die Box als Vermittler-Zeile über der Geräte-Leiste,
- * und die Geräte hängen sichtbar an ihr.
+ * **Captain-Korrektur (verbindlich):** Deye-Hybrid und die zwei Fronius sind
+ * Geräte DAHINTER, die der Box Messwerte liefern - die Seite darf nie so
+ * aussehen, als wären sie selbst Boxen. Deshalb trägt {@link edgeBoxLine} die
+ * Box als Vermittler-Zeile über der Geräte-Leiste, und die Geräte hängen
+ * sichtbar an ihr.
+ *
+ * **UEMS AP-13 IP-12 (W10) berichtigt den Satz „eine Anlage hat genau EINE
+ * Box":** es ist eine Box **je Datenquelle**, und sie wechselt mit der Zeit
+ * (das Referenzunternehmen führt vier Boxen und sieben Datenquellen; ein
+ * Box-Tausch hängt am 04.11.2026 09:38 alle Zuständigkeiten um). Diese Zeile
+ * bleibt trotzdem EINE Zeile: {@link edgeBoxLine} fasst mehrere Boxen zu
+ * „N VoltPilot-Boxen" zusammen, und WELCHE Box eine einzelne Quelle liest,
+ * beantwortet nicht das Anlagen-Modell, sondern die Zuständigkeit der
+ * Datenquelle (`boxAnQuelle.ts`, an der Quelle-Karte und im Register). Die
+ * Box-Seite selbst und die Box-Übersicht je Standort bleiben AP-06 IP-16.
  *
  * The customer dictionary is locked (D3): **Gerät / Komponente / Messwert**.
  * The words Entität · Messpunkt · Quelle · Mess-Einheit · Kanal never appear in

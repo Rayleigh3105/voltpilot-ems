@@ -18,6 +18,9 @@ import './QuelleKarte.css';
  * ⚠ E3: hier wird nichts bewertet. Kein Prozentwert, keine Abweichung, keine Ampel, kein stiller
  * Ersatz. Der Kunde sieht, was die eine und was die andere Quelle sagt — das ist der ganze Gewinn.
  *
+ * ⚠ AP-13 IP-12 (L6): unter dem Wert steht, welche BOX die Quelle liest („gelesen von Box Halle 2
+ * (neu) seit …“) — aus der Zuständigkeit der Datenquelle (AP-06), nie aus der Anlage geraten.
+ *
  * ⚠ Die Werte stehen auch bei 375 px NEBENEINANDER (`auto-fit`, 9 rem): gestapelt wären es zwei
  * Zahlen untereinander, und genau der Vergleich, für den die zweite Quelle da ist, ginge verloren.
  */
@@ -56,6 +59,9 @@ export function QuelleKarte({
                     <span className="vp-qk-ohne">{w.ohneWert}</span>
                   )}
                   {w.anteil && <span className="vp-qk-anteil">{w.anteil}</span>}
+                  {/* AP-13 IP-12 (L6): welche Box dieses Gerät liest — aus der Zuständigkeit der
+                      Datenquelle. Ohne bekannte Zuständigkeit steht die Zeile nicht da. */}
+                  {w.box && <span className="vp-qk-box">{w.box}</span>}
                   <span className="vp-qk-zeitraum">{w.zeitraum}</span>
                 </li>
               ))}

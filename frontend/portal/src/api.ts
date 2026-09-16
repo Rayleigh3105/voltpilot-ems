@@ -6342,6 +6342,13 @@ export interface UemsGeraet {
   einbau_kennzeichen: string;
   ausgebaut_am: string | null;
   komponenten: Array<{ entity_id: string; gueltig_ab: string; gueltig_bis: string | null }>;
+  /**
+   * Die Datenquelle, aus der die Box dieses Gerät liest (`geraet.data_source_id`) — der EINZIGE
+   * Weg von einer Komponente zu ihrer Datenquelle, den die Schnittstellen heute anbieten
+   * (AP-13 IP-12, Befund: `…/data-sources` nennt ihre Geräte und Komponenten nicht). `null` =
+   * nicht erhoben; dann steht kein Box-Satz, nie eine geratene Box.
+   */
+  data_source_id?: string | null;
   /*
    * Die übrigen Felder von `GeraetDto.Geraet` — die Geräteseite (AP-04 IP-12)
    * braucht sie für die Karte „Gerät“. Optional, weil das Protokoll und seine
@@ -6381,6 +6388,57 @@ export interface UemsGeraetVorgaenger {
   seriennummer: string | null;
   eingebaut_am: string;
   ausgebaut_am: string | null;
+}
+
+// ---- Datenquellen (UEMS AP-06 IP-3): GET /api/v1/sites/{siteId}/data-sources ----
+// Die Formen von `DatenquelleDto` — `snake_case` wie das echte Backend. AP-13 IP-12 ist der
+// ERSTE Aufrufer dieser Routen im Portal; gelesen wird nur, wer wann liest (die Zuständigkeit).
+//
+// ⚠ BEFUND (AP-13 IP-12 an AP-06): eine `UemsDatenquelle` nennt WEDER ihre Geräte NOCH ihre
+// Komponenten — `geraete_ids` sind Modbus-Geräte-IDs, keine Kennungen des Portals. Der Weg
+// „Komponente → ihre Datenquelle“, den AP-13 §8 voraussetzt, geht deshalb über
+// `GET …/sites/{id}/geraete` und dessen `data_source_id`. Zwei Aufrufe je Anlage statt einem.
+
+/** Eine Box, wie ein Satz sie nennt; `name` ist `null`, wenn es die Box nicht mehr gibt. */
+export interface UemsDatenquelleBox {
+  id: string;
+  name: string | null;
+  heimat_anlage: string | null;
+}
+
+/** Ein Zuständigkeits-Zeitraum, halboffen auf die Minute: `effective_to` gehört NICHT dazu. */
+export interface UemsDatenquelleZeitraum {
+  box: UemsDatenquelleBox;
+  effective_from: string;
+  effective_to: string | null;
+}
+
+/**
+ * Eine Datenquelle. `zustaendige_box` ist die Box, deren Zeitraum JETZT läuft — `null`, wenn
+ * keine liest (Entwurf, Lücke oder erst geplant); „aktiv“ und „liefert Daten“ sind bewusst keine
+ * Felder. Das Portal liest heute nur `id`, `kennzeichen` und `zeitraeume`; die übrigen Felder
+ * stehen für den nächsten Aufrufer.
+ */
+export interface UemsDatenquelle {
+  id: string;
+  kennzeichen: string;
+  name: string | null;
+  anlage: string;
+  protokoll: string;
+  adresse: string;
+  geraete_ids: number[];
+  netz: string | null;
+  mehrere_leser: boolean;
+  steuerquelle: boolean;
+  vergleichsquelle: boolean;
+  kadenz_s: number | null;
+  archiviert_am: string | null;
+  zustaendige_box: UemsDatenquelleBox | null;
+  zeitraeume: UemsDatenquelleZeitraum[];
+}
+
+export interface UemsDatenquellenListe {
+  datenquellen: UemsDatenquelle[];
 }
 
 /**
@@ -7565,6 +7623,13 @@ export const api = {
   /** Die UEMS-Geräte einer Anlage (AP-04 IP-10) — der Weg von der Komponente zum Gerät. */
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
+
+  /**
+   * Die Datenquellen EINER Anlage (AP-06 IP-3) — AP-13 IP-12 ist ihr erster Aufrufer im Portal.
+   * Gelesen wird daraus allein die Zuständigkeit: welche Box liest die Quelle, seit wann.
+   */
+  datenquellen: (siteId: string) =>
+    request<UemsDatenquellenListe>(`/api/v1/sites/${siteId}/data-sources`),
 
   /** Die Einstellungs-Fassungen eines Einbaus (AP-04 IP-11) — gültig jetzt und die Historie. */
   geraetEinstellungen: (id: string) =>

@@ -212,6 +212,47 @@ test.describe('Messstellen-Register', () => {
     ohneQuerlauf(m, 'ohne-quelle-375');
     await ablegen(page, 'ohne-quelle-375', m);
   });
+
+  /**
+   * AP-13 IP-12 (L6 · W10): die Spalte „Quelle“ nennt die BOX, die das Gerät liest — aus der
+   * Zuständigkeit der Datenquelle (AP-06 IP-3), nicht aus der Anlage. Der Box-Tausch der Zeitachse
+   * (04.11.2026 09:38, E-2 → E-2′) ist am Stand danach an derselben Zeile zu sehen.
+   */
+  test('die Spalte „Quelle“ trägt die Box — und nach dem Box-Tausch die Nachfolgerin (1440 und 375 px)', async ({ page }) => {
+    const boxZeile = (kz: string) =>
+      page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) }).locator('.vp-ms-box');
+
+    await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 1440);
+    await warteAufRegister(page);
+    // MS-10 liest über den WAGO-Controller C-1 (GR-7, DQ-4); am 20.10.2026 ist Box Halle 2 zuständig.
+    await expect(boxZeile('MS-10')).toHaveText('gelesen von Box Halle 2 seit 01.10.2026');
+    // MS-01 hängt an Box Halle 1, MS-16 an Box Lindach — jede Anlage ihre eigene Box (W10).
+    await expect(boxZeile('MS-01')).toHaveText('gelesen von Box Halle 1 seit 12.03.2024');
+    await expect(boxZeile('MS-16')).toHaveText('gelesen von Box Lindach seit 15.10.2026');
+    // Eine BERECHNETE Messstelle hat keine Quelle und darum keine Box — nie eine geratene.
+    await expect(page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: /^MS-20$/ }) }).locator('.vp-ms-box')).toHaveCount(0);
+    const m = await messe(page);
+    ohneQuerlauf(m, 'box-an-quelle-1440');
+    await ablegen(page, 'box-an-quelle-1440', m);
+
+    // Nach dem Box-Tausch: dieselbe Zeile, dieselbe Messstelle — die Nachfolgerin, seit dem Augenblick des Tauschs.
+    await oeffne(page, 'bild=unternehmen&ansicht=messstellen&stand=2026-11-05', 1440);
+    await warteAufRegister(page);
+    await expect(boxZeile('MS-10')).toHaveText('gelesen von Box Halle 2 (neu) seit 04.11.2026 09:38');
+    await expect(boxZeile('MS-01')).toHaveText('gelesen von Box Halle 1 seit 12.03.2024');
+    const n = await messe(page);
+    ohneQuerlauf(n, 'box-an-quelle-tausch-1440');
+    await ablegen(page, 'box-an-quelle-tausch-1440', n);
+
+    // Am Telefon trägt die Karte dieselbe Zeile in ihrem Feld „Quelle“.
+    await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 375);
+    await warteAufRegister(page);
+    const karte = page.locator('.vp-ms-karte', { has: page.locator('.vp-ms-kz', { hasText: /^MS-10$/ }) });
+    await expect(karte.locator('.vp-ms-box')).toHaveText('gelesen von Box Halle 2 seit 01.10.2026');
+    const t = await messe(page);
+    ohneQuerlauf(t, 'box-an-quelle-375');
+    await ablegen(page, 'box-an-quelle-375', t);
+  });
 });
 
 test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich die Leiste des Unternehmens zu', () => {

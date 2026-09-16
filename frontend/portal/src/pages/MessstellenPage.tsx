@@ -43,6 +43,7 @@ import { DIALOG_TITEL } from '../messstelleDialog';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { verschiebe } from '../picker/datum';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
+import { useBoxenAnQuellen } from '../useBoxenAnQuellen';
 import { useIsPhone } from '../useIsPhone';
 import { KostenstellenReiter, ProzesseReiter } from './KostenstellenSection';
 import { MessstelleSeite } from './MessstelleSeite';
@@ -302,8 +303,13 @@ function RegisterFlaeche({
   const ohneRegister = leer?.art === 'bereich_fehlt' || leer?.art === 'keine_messstelle';
   // Anlegen gibt es heute (kein Stichtag) und nur mit „Messen & Auswerten“ — erst, wenn die Antwort da ist.
   const anlegbar = aktuell !== null && !stichtag && bereichDa !== false && leer?.art !== 'bereich_fehlt';
+  // AP-13 IP-12 (L6): die Zuständigkeiten der Anlagen, die in den GEZEIGTEN Zeilen vorkommen — mehr
+  // wird nicht gelesen. Ohne Antwort steht die Spalte „Quelle“ genau wie zuvor.
+  const boxen = useBoxenAnQuellen((aktuell?.liste.register ?? []).map((z) => z.elektrische_stellung?.anlage));
   const eintraege =
-    aktuell && !leer ? registerEintraege(aktuell.liste, stichtag, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt }) : [];
+    aktuell && !leer
+      ? registerEintraege(aktuell.liste, stichtag, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt, boxen: boxen.karte })
+      : [];
   const unterzeile = [ebene.art === 'standort' ? ebene.name : null, kopfZeile(aktuell?.liste ?? null, stichtag)]
     .filter(Boolean)
     .join(' · ');
@@ -618,6 +624,9 @@ function Quelle({ w }: { w: ZeileWoerter }) {
       )}
       <span className="vp-ms-neben">{q.messwert}</span>
       <span className="vp-ms-neben">{[q.seit, q.davor, q.vergleich].filter(Boolean).join(' · ')}</span>
+      {/* AP-13 IP-12 (L6): die Box, die dieses Gerät liest — aus der Zuständigkeit der Datenquelle,
+          nie geraten. Ohne bekannte Zuständigkeit steht hier nichts. */}
+      {q.box && <span className="vp-ms-neben vp-ms-box">{q.box}</span>}
     </>
   );
 }
