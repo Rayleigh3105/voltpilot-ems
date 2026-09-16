@@ -34,13 +34,13 @@ export function CreateUserDrawer({
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function submit() {
-    if (!form.username.trim()) return;
+    if (!form.username.trim() || !form.email.trim()) return;
     setBusy(true);
     setError(null);
     try {
       const u = await adminApi.createUser(tenant.id, {
         username: form.username.trim(),
-        email: form.email?.trim() || undefined,
+        email: form.email.trim(),
         firstName: form.firstName?.trim() || undefined,
         lastName: form.lastName?.trim() || undefined,
       });

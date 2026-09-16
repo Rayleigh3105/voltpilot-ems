@@ -49,12 +49,10 @@ export interface CreateTenantInput {
 
 export interface CreateUserInput {
   username: string;
-  email?: string;
+  email: string;
   firstName?: string;
   lastName?: string;
 }
-
-
 
 export interface ProvisionedDevice {
   externalRef: string;
