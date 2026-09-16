@@ -80,9 +80,8 @@ public class StandortController {
         return standorte.vorschlag();
     }
 
-    // Rechte: `standort.verwalten` — die Vorschau schreibt nichts und erzeugt keinen Standort.
+    // Recht: lesend — keine eigene Kennung; die Vorschau schreibt nichts und erzeugt keinen Standort.
     @GetMapping("/vorschlag")
-    @Recht(value = "standort.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     public StandortVorschlagDto.Vorschau zuordnungVorschlag() {
         return vorschlaege.vorschau();
     }

@@ -69,7 +69,11 @@ class BezugsdatenImportSchnittstelleVertragTest {
         assertThat(bestaetigung.get("additionalProperties")).isEqualTo(false);
         Map<String,Object> ergebnis=(Map<String,Object>)schemas.get("BezugsdatenImportErgebnis");
         assertThat((Map<String,Object>)ergebnis.get("properties"))
-                .containsOnlyKeys("kennung","status","aenderungen","vorschlaege","zaehler");
+                .containsOnlyKeys("kennung","status","aenderungen","vorschlaege","zaehler","vorlage");
+        assertThat((List<String>)ergebnis.get("required")).contains("vorlage");
+        Map<String,Object> vorlage=(Map<String,Object>)schemas.get("BezugsdatenVorlageVerweis");
+        assertThat((Map<String,Object>)vorlage.get("properties"))
+                .containsOnlyKeys("vorlage_id","fassung","name");
     }
 
     /** Die Wörter der Antwort sind die Vokabulare des Vertrags. */

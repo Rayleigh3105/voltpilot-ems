@@ -117,9 +117,8 @@ public class BezugsdatenImportController {
         }
     }
 
-    /** Recht: {@code bezugsgroesse.importieren}, Import-Status ohne fremde Ziele. */
+    /** Recht: lesend — keine eigene Kennung; der Dienst prüft alle Ziele und verbirgt fremde Importe. */
     @GetMapping("/{kennung}")
-    @Recht(value = "bezugsgroesse.importieren", ziel = RechtZiel.DIENST)
     public ImportUebernahmeService.Ergebnis status(
             @PathVariable String kennung) {
         return uebernahme.status(kennung);
