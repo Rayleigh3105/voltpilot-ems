@@ -57,3 +57,22 @@ Bei Änderungen am Freigabedienst zusätzlich Ablesung und Bezugswert-Eingabe pr
 TimescaleDB 2.17 kann `DISTINCT ON` unter den RLS-Unterplänen mit SkipScan ablehnen.
 `ErsatzwertLauf.neuesteVersionen` liest darum geordnet und entdoppelt in Java; die
 Mengenbildung und Auswahl der neuesten Version bleiben identisch.
+
+## Portal (IP-16)
+
+Am Standort öffnet `MessstellenPage` die Korrektur-Liste. Auf der Messstellen-Seite
+bindet `WerteSektion` die `KorrekturWerkzeuge` ein: dieselbe Liste für die Messstelle,
+Ersatzwerte sowie Einstiege an Lücken-, Zählerbruch- und Korrektur-Markern. Ohne den
+Kontext bleiben andere Wirte der Werte-Sektion unverändert. Die Rechte kommen aus
+`rollen.ts`, die einzelne Freigabe zusätzlich aus dem aktuellen Server-Urteil.
+
+`korrekturen.ts` bestimmt Methoden nach Lückenart und bildet Eingaben ab. Es rechnet
+keinen Verbrauch. Geschlossene Lücken werden auf die einschließenden Viertelstunden
+bezogen, wie der bestehende Ersatzwert-Vertrag es verlangt. Vorschau und Auswirkungen
+kommen vom Server; `KorrekturVorschau` skaliert diese Werte ausschließlich für das Bild.
+`ErsatzwertDialog` schreibt erst nach Vorschau, `KorrekturenDialog` begründet jede
+Entscheidung. Nach Neuladen eines Verlaufs wird der neue Auslöser fokussiert.
+
+Prüfen: `korrekturen.test.ts`, `KorrekturenDialog.test.tsx`, `copy.test.ts` und die
+Tests der geänderten Wirte. `e2e/korrekturen.spec.ts` nimmt bei 375/1440 px auf;
+`KORREKTUR_BILDER` legt die echten Bildschirmfotos außerhalb des Repos ab.

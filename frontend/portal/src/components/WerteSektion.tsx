@@ -1,3 +1,6 @@
+import { KorrekturWerkzeuge, type KorrekturKontext, type KorrekturWahl } from './KorrekturWerkzeuge';
+import { useRollen } from '../rollen';
+import { clearWerteCache } from '../uemsWerteCache';
 import { Recht } from './Recht';
 /**
  * Die WERTE einer Messstelle als EINE Sektion (UEMS AP-13 IP-3, E9 = A): der Kopf „Zeiten in … (Zeitzone
@@ -40,7 +43,7 @@ import { Recht } from './Recht';
  * nicht antwortet, ist eine Störung. Hat der ganze Zeitraum keine Datenquelle, steht statt Karte, Verlauf und Liste der
  * Leerzustand mit seinem nächsten Schritt (Z4).
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type MessstelleRegisterZeile, type MessstelleWerte } from '../api';
@@ -122,6 +125,7 @@ export function WerteSektion({
   vergleich = null,
   onVergleich,
   onQuelleZuordnen,
+  korrekturKontext,
   onZeitraum,
   rahmen = (inhalt) => inhalt,
 }: {
@@ -144,6 +148,7 @@ export function WerteSektion({
   quelle?: MessstelleRegisterZeile['quelle'] | null;
   /** „Quelle zuordnen“ im Leerzustand — nur mit Recht; ohne steht der Satz, wer es kann. */
   onQuelleZuordnen?: () => void;
+  korrekturKontext?: KorrekturKontext;
   /**
    * AP-13 IP-12 (L6): die Box-Wechsel der Datenquelle dieser Messstelle aus der Zeitachse — nur, wo der
    * Wirt sie kennt (die Messstellen-Seite). Mit ihnen sprechen Übergabe und Box-Tausch ihren vollen Satz.
@@ -168,6 +173,13 @@ export function WerteSektion({
   /** Der Rahmen um den Inhalt (der Dialog: sein `Modal`); die Versionen stehen daneben. */
   rahmen?: (inhalt: ReactNode) => ReactNode;
 }) {
+  const rollen = useRollen();
+  const [korrekturWahl, setKorrekturWahl] = useState<KorrekturWahl | null>(null);
+  const korrekturAusloeser = useRef<HTMLElement | null>(null);
+  const korrekturGeaendert = useRef(false);
+  const korrekturFokusId = useRef('');
+  const [korrekturRueckkehr, setKorrekturRueckkehr] = useState(false);
+  const oeffneKorrektur = (wahl: KorrekturWahl, ausloeser: HTMLElement) => { korrekturAusloeser.current = ausloeser; korrekturFokusId.current = ausloeser.dataset.korrekturFokus ?? ''; ausloeser.focus(); setKorrekturWahl(wahl); };
   const start = anfang ?? { art: 'tag' as Zeitraum, wert: verschiebe(heute, -1) };
   const [art, setArt] = useState<Zeitraum>(start.art);
   const [wert, setWert] = useState(start.wert);
@@ -266,6 +278,15 @@ export function WerteSektion({
     : verlauf?.schluessel === verlaufSchluessel
       ? verlauf.antwort
       : null;
+
+  // Ein nachgelesener Verlauf ersetzt seinen Auslöser. Rückkehr erst, wenn dessen neuer Knoten da ist.
+  useEffect(() => {
+    if (!korrekturRueckkehr || !aktuell || !verlaufAntwort) return;
+    const knoepfe = [...document.querySelectorAll<HTMLElement>('[data-korrektur-fokus]')];
+    const ziel = knoepfe.find(e => e.dataset.korrekturFokus === korrekturFokusId.current)
+      ?? knoepfe.find(e => e.dataset.korrekturFokus === `${kennzeichen}:korrekturen`);
+    if (ziel) { ziel.focus(); setKorrekturRueckkehr(false); }
+  }, [korrekturRueckkehr, aktuell, verlaufAntwort, kennzeichen]);
 
   // Oben Kopf, Zone, Zeit-Leiste, Karte und Verlauf; die Liste darunter — auf der Seite am Rechner daneben.
   const inhalt = (
@@ -376,6 +397,13 @@ export function WerteSektion({
                 vergleich={vg.ueberlagerung}
                 weitere={vg.reihenImBild}
                 kern={kernaussage(art, aktuell.karte)}
+                markerAktion={korrekturKontext ? (kennung) => {
+                  const e = verlaufAntwort.werte.flatMap(w => w.ereignisse).find(e => e.id === kennung);
+                  const ersatz = e && ['data_gap', 'counter_reset', 'device_boundary'].includes(e.art);
+                  const pruefen = e && ['late_arrival', 'correction'].includes(e.art);
+                  if (!pruefen && (!ersatz || !rollen.darf('ersatzwert.erfassen', korrekturKontext.standort))) return null;
+                  return <button type="button" className="vp-mv-korrektur" data-korrektur-fokus={`${kennzeichen}:${kennung}`} onClick={ev => oeffneKorrektur({ art: ersatz ? 'ersatzwert' : 'korrekturen', ereignis: kennung }, ev.currentTarget)}>{ersatz ? e.art === 'data_gap' ? 'Ersatzwert eintragen' : 'Ablesestand nachtragen' : 'Korrektur prüfen'}</button>;
+                } : undefined}
                 versionen={(s) => {
                   const se = einstieg({ ...verlaufAntwort, werte: [s.wert] });
                   return se && <VersionenEinstieg einstieg={se} onOeffnen={() => setVersionen({ einstieg: se, periode: s.titel })} />;
@@ -398,6 +426,12 @@ export function WerteSektion({
   return (
     <>
       {rahmen(inhalt)}
+      {korrekturKontext && verlaufAntwort && <KorrekturWerkzeuge kontext={korrekturKontext} werte={verlaufAntwort} wahl={korrekturWahl}
+        onOeffnen={oeffneKorrektur} onGespeichert={() => { korrekturGeaendert.current = true; }} onClose={() => {
+          setKorrekturWahl(null);
+          if (korrekturGeaendert.current) { clearWerteCache(); setNeu(n => n + 1); setVerlaufNeu(n => n + 1); korrekturGeaendert.current = false; setKorrekturRueckkehr(true); }
+          else requestAnimationFrame(() => korrekturAusloeser.current?.focus());
+        }} /> }
       {/* Neben dem Rahmen, nicht darin: React-Ereignisse blubbern durch Portale — Escape und Klicks gehören dem oberen. */}
       {kennzeichen && (
         <VersionenDialog

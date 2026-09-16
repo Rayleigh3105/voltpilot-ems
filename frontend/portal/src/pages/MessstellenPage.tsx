@@ -1,3 +1,4 @@
+import { KorrekturenDialog } from '../components/KorrekturenDialog';
 import { Recht } from '../components/Recht';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
@@ -259,6 +260,8 @@ function RegisterFlaeche({
   const [fehler, setFehler] = useState(false);
   const [versuch, setVersuch] = useState(0);
   const [anlegen, setAnlegen] = useState(false);
+  const [korrekturen, setKorrekturen] = useState(false);
+  const korrekturAusloeser = useRef<HTMLButtonElement | null>(null);
   const angelegt = useRef(false);
   const anfrage = useRef(0);
   const basisMerker = useRef<{ tag: string; antwort: MessstellenRegister } | null>(null);
@@ -325,6 +328,7 @@ function RegisterFlaeche({
           <h1>{TITEL}</h1>
           {unterzeile && <p>{unterzeile}</p>}
         </div>
+        {aktuell && !ohneRegister && ebene.art === 'standort' && bereichDa !== false && <Button variant="outline" onClick={e => { korrekturAusloeser.current = e.currentTarget; e.currentTarget.focus(); setKorrekturen(true); }}>Korrekturen</Button>}
         {anlegbar && leer?.art !== 'keine_messstelle' && (
           <Recht aktion="messstelle.bearbeiten"><Button onClick={() => setAnlegen(true)}>{DIALOG_TITEL.anlegen}</Button></Recht>
         )}
@@ -356,6 +360,9 @@ function RegisterFlaeche({
           )}
         </>
       )}
+      {korrekturen && ebene.art === 'standort' && <KorrekturenDialog standort={ebene.id} zone={zone} onClose={() => {
+        setKorrekturen(false); requestAnimationFrame(() => korrekturAusloeser.current?.focus());
+      }} />}
       <MessstelleDialog
         open={anlegen}
         standortId={ebeneId}
