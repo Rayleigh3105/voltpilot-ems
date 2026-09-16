@@ -10806,6 +10806,104 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsdaten/importe:
+    post:
+      tags: [bezugsgroessen]
+      summary: Einen geprüften CSV-Import atomar übernehmen (AP-09 IP-13).
+      description: >
+        Recht `bezugsgroesse.importieren`, zusätzlich je Bezugsgrößen-Ziel geprüft.
+        Datei und Zuordnung werden unter der Mandantensperre erneut geprüft. Die Vorschau-Kennung
+        muss noch gelten. Konflikte bleiben ohne Entscheidung erhalten; ersetzen braucht eine
+        Begründung. Teilübernahme braucht den exakten Bestätigungssatz. Bei Vier-Augen entstehen
+        Berichtigungs-Vorschläge; Erstwerte wirken sofort. Abbruch schreibt weder Werte noch Import-Zeilen.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [datei, zuordnung, bestaetigung]
+              properties:
+                datei: { type: string, format: binary }
+                zuordnung: { type: string, description: JSON der Form BezugsdatenZuordnung. }
+                bestaetigung: { type: string, description: JSON der Form BezugsdatenImportBestaetigung. }
+            encoding:
+              zuordnung: { contentType: application/json }
+              bestaetigung: { contentType: application/json }
+      responses:
+        "200":
+          description: Übernahme, Wiederholung oder protokollierter verworfener Import ohne gültige Zeile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenImportErgebnis" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Offener Vorschlag oder gleichzeitig veränderter Wert. }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsdaten/importe/{kennung}:
+    get:
+      tags: [bezugsgroessen]
+      summary: Status und offene Vorschläge eines Imports.
+      description: Recht `bezugsgroesse.importieren`, je Ziel; fremder Import ist 404.
+      parameters:
+        - { name: kennung, in: path, required: true, schema: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' } }
+      responses:
+        "200":
+          description: Der jüngste Import-Status, wirksame Änderungen und offene Vorschläge.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenImportErgebnis" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/bezugsdaten/importe/{kennung}/ruecknahme:
+    post:
+      tags: [bezugsgroessen]
+      summary: Einen Import durch Folgefassungen zurücknehmen.
+      description: >
+        Recht `bezugsgroesse.importieren`. Neue Erstwerte werden ohne Betrag zurückgenommen,
+        Berichtigungen stellen den vorherigen Betrag wieder her. Eine spätere Änderung sperrt
+        die gesamte Rücknahme mit 409. Bei Vier-Augen wird ein gemeinsamer Vorschlag angelegt.
+      parameters:
+        - { name: kennung, in: path, required: true, schema: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsdatenImportGrund" }
+      responses:
+        "200":
+          description: Zurückgenommen oder zur Freigabe vorgeschlagen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenImportErgebnis" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Der betroffene Wert wurde inzwischen geändert oder ein Vorschlag ist offen. }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsdaten/importe/{kennung}/freigeben:
+    post:
+      tags: [bezugsgroessen]
+      summary: Alle Berichtigungen oder die Rücknahme eines Imports gemeinsam freigeben.
+      description: >
+        Recht `korrektur.freigeben`; dieselbe Freigabeprüfung wie Einzelberichtigungen.
+        Bei Vier-Augen darf der Ersteller nicht selbst freigeben, ein Unterstützer nie.
+        Alle erwarteten Wert-Fassungen müssen noch gelten, sonst schreibt die Freigabe nichts.
+      parameters:
+        - { name: kennung, in: path, required: true, schema: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsdatenImportGrund" }
+      responses:
+        "200":
+          description: Freigegeben; der aktuelle Import-Status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenImportErgebnis" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Kein offener Vorschlag oder gleichzeitig veränderter Wert. }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
   /api/v1/bezugsdaten/importe/vorschau:
     post:
       tags: [bezugsgroessen]
@@ -12344,6 +12442,33 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    BezugsdatenImportBestaetigung:
+      type: object
+      additionalProperties: false
+      required: [vorschau]
+      properties:
+        vorschau: { type: string, description: Kennung der höchstens 30 Minuten alten unveränderten Vorschau. }
+        entscheidungen:
+          type: object
+          description: Datenzeilennummer als Schlüssel; fehlende Konfliktentscheidung bedeutet behalten.
+          additionalProperties: { type: string, enum: [behalten, ersetzen] }
+        begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500 }
+        teiluebernahme: { type: string, nullable: true, description: Exakter Bestätigungssatz der Import-Regel. }
+    BezugsdatenImportGrund:
+      type: object
+      additionalProperties: false
+      required: [begruendung]
+      properties:
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    BezugsdatenImportErgebnis:
+      type: object
+      required: [kennung, status, aenderungen, vorschlaege, zaehler]
+      properties:
+        kennung: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' }
+        status: { type: string, enum: [uebernommen, teilweise_uebernommen, wiederholt, verworfen, zurueckgenommen, vorschlag] }
+        aenderungen: { type: integer, minimum: 0 }
+        vorschlaege: { type: integer, minimum: 0 }
+        zaehler: { type: object, nullable: true, description: Import-Zähler der gemeinsamen Bezugsdaten-Regel. }
     Ablesung:
       type: object
       required: [quelle, zeitpunkt, fassung, stand, monat, woher, urheber, korrektur, eingetragen_am]

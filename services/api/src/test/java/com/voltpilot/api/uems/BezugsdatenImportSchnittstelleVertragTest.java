@@ -56,6 +56,22 @@ class BezugsdatenImportSchnittstelleVertragTest {
         assertThat(((Map<String, Object>) post.get("responses")).keySet()).contains("200", "400", "413");
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void uebernahmeRuecknahmeStatusUndFreigabeSindBeschrieben() {
+        assertThat(pfade).containsKeys("/api/v1/bezugsdaten/importe",
+                "/api/v1/bezugsdaten/importe/{kennung}",
+                "/api/v1/bezugsdaten/importe/{kennung}/ruecknahme",
+                "/api/v1/bezugsdaten/importe/{kennung}/freigeben");
+        Map<String,Object> bestaetigung=(Map<String,Object>)schemas.get("BezugsdatenImportBestaetigung");
+        assertThat((Map<String,Object>)bestaetigung.get("properties"))
+                .containsOnlyKeys("vorschau","entscheidungen","begruendung","teiluebernahme");
+        assertThat(bestaetigung.get("additionalProperties")).isEqualTo(false);
+        Map<String,Object> ergebnis=(Map<String,Object>)schemas.get("BezugsdatenImportErgebnis");
+        assertThat((Map<String,Object>)ergebnis.get("properties"))
+                .containsOnlyKeys("kennung","status","aenderungen","vorschlaege","zaehler");
+    }
+
     /** Die Wörter der Antwort sind die Vokabulare des Vertrags. */
     @Test
     void dieWoerterSindDieDesVertrags() {

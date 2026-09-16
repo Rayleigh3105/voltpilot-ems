@@ -1163,7 +1163,11 @@ public final class EreignisVokabular {
                     throw nein(Grund.REGEL_VERLETZT, "Fassungen und Import nur an einer Bezugsgröße");
                 }
                 Pattern kennung = anBezugsgroesse ? BERICHTIGUNG_KENNUNG : KORREKTUR_KENNUNG;
-                if (!kennung.matcher(e.get("korrektur").asText()).matches()) {
+                boolean importKorrektur = anBezugsgroesse && e.has("import")
+                        && e.path("korrektur").asText().matches("^I-[0-9]{4}-[0-9]{4,}/Zeile-[1-9][0-9]*/Fassung-[1-9][0-9]*$")
+                        && e.path("korrektur").asText().startsWith(e.path("import").asText()+"/Zeile-")
+                        && e.path("korrektur").asText().endsWith("/Fassung-"+e.path("fassung_neu").asInt());
+                if (!importKorrektur && !kennung.matcher(e.get("korrektur").asText()).matches()) {
                     throw nein(Grund.REGEL_VERLETZT, "keine Korrektur-Kennung");
                 }
                 // E14: nie automatisch — über Freigabe, Ablehnung und Rücknahme entscheidet ein Mensch.

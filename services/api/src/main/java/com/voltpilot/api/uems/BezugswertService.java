@@ -79,6 +79,8 @@ public class BezugswertService {
     private final BezugsgroesseService lesemodell;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ImportUebernahmeRepository importAuftraege;
     private volatile Clock uhr = Clock.systemUTC();
 
     public BezugswertService(BezugsgroesseRepository bezugsgroessen, BezugswertRepository werte,
@@ -151,7 +153,8 @@ public class BezugswertService {
             bezugsgroessen.kundenbereichSperren(tenant);
             Gelesen g = lies(b, periodeText, wertText, jetzt);
             Stand s = stand(id, g.periodeVon());
-            boolean offen = g.periodeVon() != null && werte.offen(tenant, id, g.periodeVon()).isPresent();
+            boolean offen = g.periodeVon() != null && (werte.offen(tenant, id, g.periodeVon()).isPresent()
+                    || (importAuftraege != null && importAuftraege.offen(id, g.periodeVon(), null)));
             pruefe(BezugsgroesseRegeln.berichtigen(eingang(b, g, s, begruendung, offen)), b, g);
             List<BezugsgroesseDto.Hinweis> hinweise = hinweise(b, g);
             if (wiederholung(b, g, s, ERSETZEN)) {

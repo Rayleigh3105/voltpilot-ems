@@ -320,6 +320,12 @@ public class TenantRepository {
                 // Bezugsdaten (V20260914173000) go before everything: a row before its
                 // import (RESTRICT), an import before the template version it names. The correction processes of
                 // Bezugsgroessen values (V20260915010000) point at their Bezugsgroesse: before it (RESTRICT).
+                // Older migration fixtures use the current offboarding code too.
+                try (java.sql.PreparedStatement exists = con.prepareStatement("SELECT to_regclass('public.bezugsdaten_import_freigabe')")) {
+                    try (java.sql.ResultSet result = exists.executeQuery()) {
+                        if (result.next() && result.getObject(1) != null) deleteByTenant(con, "bezugsdaten_import_freigabe", tenantId);
+                    }
+                }
                 for (String table : new String[] {
                         "bezugsdaten_import_zeile", "bezugsdaten_import", "bezugsdaten_vorlage_bezug",
                         "bezugsdaten_vorlage",

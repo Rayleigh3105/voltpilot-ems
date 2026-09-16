@@ -1,5 +1,14 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.uems.ImportUebernahmeService;
+import com.voltpilot.api.uems.KorrekturFreigabeService;
+import com.voltpilot.api.uems.KorrekturFreigabeAbgelehnt;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.GetMapping;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -56,6 +65,70 @@ public class BezugsdatenImportController {
 
     private final ImportVorschauService vorschauen;
     private final ObjectMapper streng;
+    @Autowired
+    private ImportUebernahmeService uebernahme;
+
+    /** Recht: {@code bezugsgroesse.importieren}, jedes Ziel wird im Dienst geprüft. */
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Recht(value = "bezugsgroesse.importieren", ziel = RechtZiel.DIENST)
+    public ImportUebernahmeService.Ergebnis uebernehmen(
+            @RequestPart("datei") MultipartFile datei, @RequestPart("zuordnung") String zuordnung,
+            @RequestPart("bestaetigung") String bestaetigung,
+            Authentication auth) throws IOException {
+        ImportUebernahmeService.Bestaetigung b;
+        try { b = streng.readValue(bestaetigung, ImportUebernahmeService.Bestaetigung.class); }
+        catch (JsonProcessingException e) { throw BezugsgroesseAbgelehnt.anfrage("bestaetigung"); }
+        return uebernahme.uebernehmen(datei.getBytes(), datei.getOriginalFilename(), zuordnung(zuordnung), b,
+                OrtAnfrage.akteur(auth));
+    }
+
+    public record Ruecknahme(String begruendung) {}
+
+    @Autowired
+    private KorrekturFreigabeService freigaben;
+
+    /** Recht: {@code korrektur.freigeben}, mit derselben Vier-Augen-Prüfung wie Einzelberichtigungen. */
+    @PostMapping("/{kennung}/freigeben")
+    @Recht(value = "korrektur.freigeben", ziel = RechtZiel.DIENST)
+    public ImportUebernahmeService.Ergebnis freigeben(
+            @PathVariable String kennung,
+            @RequestBody String body,
+            Authentication auth) {
+        if (!kennung.matches("^I-[0-9]{4}-[0-9]{4,}$")) throw BezugsgroesseAbgelehnt.von(
+                com.voltpilot.api.uems.BezugsgroesseRegeln.Ablehnung.NICHT_GEFUNDEN);
+        freigaben.freigeben(kennung, grund(body).begruendung(), OrtAnfrage.akteur(auth));
+        return uebernahme.status(kennung);
+    }
+
+    private Ruecknahme grund(String body) {
+        try {
+            Ruecknahme a = streng.readValue(body, Ruecknahme.class);
+            if (a == null) throw BezugsgroesseAbgelehnt.anfrage("begruendung");
+            return a;
+        } catch (JsonProcessingException e) {
+            throw BezugsgroesseAbgelehnt.anfrage("begruendung");
+        }
+    }
+
+    /** Recht: {@code bezugsgroesse.importieren}, Import-Status ohne fremde Ziele. */
+    @GetMapping("/{kennung}")
+    @Recht(value = "bezugsgroesse.importieren", ziel = RechtZiel.DIENST)
+    public ImportUebernahmeService.Ergebnis status(
+            @PathVariable String kennung) {
+        return uebernahme.status(kennung);
+    }
+
+    /** Recht: {@code bezugsgroesse.importieren}, jedes Ziel wird im Dienst geprüft. */
+    @PostMapping("/{kennung}/ruecknahme")
+    @Recht(value = "bezugsgroesse.importieren", ziel = RechtZiel.DIENST)
+    public ImportUebernahmeService.Ergebnis ruecknahme(
+            @PathVariable String kennung,
+            @RequestBody String body,
+            Authentication auth) {
+        return uebernahme.ruecknahme(kennung, grund(body).begruendung(),
+                OrtAnfrage.akteur(auth));
+    }
+
 
     public BezugsdatenImportController(ImportVorschauService vorschauen, ObjectMapper json) {
         this.vorschauen = vorschauen;
@@ -101,6 +174,17 @@ public class BezugsdatenImportController {
         List<String> teile = e.getPath().stream()
                 .map(r -> r.getFieldName() != null ? r.getFieldName() : String.valueOf(r.getIndex())).toList();
         return teile.isEmpty() ? "zuordnung" : String.join(".", teile);
+    }
+
+    private static String leer(String text) {
+        return text == null || text.isBlank() ? null : text;
+    }
+
+    @ExceptionHandler(KorrekturFreigabeAbgelehnt.class)
+    public ResponseEntity<Map<String, Object>> korrekturAbgelehnt(KorrekturFreigabeAbgelehnt e) {
+        Map<String,Object> body = new LinkedHashMap<>(e.fakten());
+        body.put("code", e.code()); body.put("message", e.getMessage());
+        return ResponseEntity.status(e.status()).body(body);
     }
 
     /** {@code {code, message, feld}} — dieselbe Form wie jede Ablehnung der Bezugsgrößen-Routen. */

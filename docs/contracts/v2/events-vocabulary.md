@@ -514,3 +514,14 @@ Kanalgebundene Lücken behalten ihre bisherigen Pflichtbezüge und Urheberregeln
 wenn `korrektur_art = ablesestaende_nachgetragen` ist. Die Kennung bleibt `K-…`;
 `fassung_alt` und `fassung_neu` dürfen gemeinsam die Rohwertfassungen nennen.
 Die bestehende Freigabe-/Rücknahmekette und ihre nachgelagerten Periodenversionen gelten.
+
+### Import-Korrekturen (AP-09 IP-13)
+
+Bei einer Bezugsgröße darf `korrektur` zusätzlich
+`I-<Jahr>-<Nr.>/Zeile-<n>/Fassung-<m>` tragen. `import` muss dieselbe
+Import-Kennung und `fassung_neu` dieselbe Fassung nennen. Jede Zeile ist damit
+für die Kaskade ein eigener Anlass; Import, Wert-Fassung und Ereignis werden
+in einer Transaktion geschrieben. Bestehende `BK-…`-Meldungen bleiben unverändert.
+Die Fälle `import-zeile-eigener-korrektur-anlass` und `import-anlass-…-widerspricht`
+pinnen die Annahme und beide Identitätswidersprüche für API und Writer; der
+Portal-Zwilling prüft den vorhandenen Kundensatz mit Import-Zusatz.

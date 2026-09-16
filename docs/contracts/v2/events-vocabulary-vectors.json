@@ -658,7 +658,7 @@
       },
       "korrektur": {
         "typ": "kennung",
-        "beschreibung": "Die Kennung der Korrektur: K-<Jahr>-<lfd. Nr.> je Kundenbereich (AP-08 §4.6); an einer Bezugsgröße der Vorgang der Berichtigung BK-<Jahr>-<lfd. Nr.> (AP-09 IP-7)."
+        "beschreibung": "Die Kennung der Korrektur: K-<Jahr>-<lfd. Nr.> je Kundenbereich (AP-08 §4.6); an einer Bezugsgröße der Vorgang der Berichtigung BK-<Jahr>-<lfd. Nr.> (AP-09 IP-7), bei Importen I-<Jahr>-<Nr.>/Zeile-<n>/Fassung-<m> mit passender import- und fassung_neu-Angabe (IP-13)."
       },
       "korrektur_art": {
         "typ": "wort",
@@ -6104,6 +6104,95 @@
         "schema": true,
         "urteil": "verworfen",
         "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "import-zeile-eigener-korrektur-anlass",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-13 C6/C7; B3/B14",
+      "why": "Jede Importzeile hat ihren eigenen Anlass; zwei Fassungen 2 desselben Imports dürfen sich in der Kaskade nicht übergehen.",
+      "annahme": "Import-Kennung und Zeilennummer sind angenommene technische Belege; BZ-2 und Oktober stammen aus dem Referenzfall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000971",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "I-2026-0003/Zeile-2/Fassung-2",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2,
+          "import": "I-2026-0003"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur I-2026-0003/Zeile-2/Fassung-2 freigegeben für 01.10.2026 00:00 bis 01.11.2026 00:00: Wert berichtigt (mit Beleg) · Bezugsgröße BZ-2, Fassung 1 → 2 · Import I-2026-0003"
+        ]
+      }
+    },
+    {
+      "name": "import-anlass-import-widerspricht",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-13 C6/C7; B3/B14",
+      "why": "Import und Fassung im Anlass müssen zur Meldung passen.",
+      "annahme": "Import-Kennung und Zeilennummer sind angenommene technische Belege; BZ-2 und Oktober stammen aus dem Referenzfall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000972",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "I-2026-0003/Zeile-2/Fassung-2",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2,
+          "import": "I-2026-0004"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "import-anlass-fassung_neu-widerspricht",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-13 C6/C7; B3/B14",
+      "why": "Import und Fassung im Anlass müssen zur Meldung passen.",
+      "annahme": "Import-Kennung und Zeilennummer sind angenommene technische Belege; BZ-2 und Oktober stammen aus dem Referenzfall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000973",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "I-2026-0003/Zeile-2/Fassung-2",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 3,
+          "import": "I-2026-0003"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
         "saetze": []
       }
     }
