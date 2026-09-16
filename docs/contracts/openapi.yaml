@@ -10886,7 +10886,7 @@ paths:
     get:
       tags: [bezugsgroessen]
       summary: Status und offene Vorschläge eines Imports.
-      description: Recht `bezugsgroesse.importieren`, je Ziel; fremder Import ist 404.
+      description: Lesend keine eigene Kennung; der Dienst prüft jedes Ziel, ein fremder Import ist 404.
       parameters:
         - { name: kennung, in: path, required: true, schema: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' } }
       responses:
@@ -12503,7 +12503,7 @@ components:
         begruendung: { type: string, minLength: 10, maxLength: 500 }
     BezugsdatenImportErgebnis:
       type: object
-      required: [kennung, status, aenderungen, vorschlaege, zaehler]
+      required: [kennung, status, aenderungen, vorschlaege, zaehler, vorlage]
       properties:
         kennung: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' }
         status: { type: string, enum: [uebernommen, teilweise_uebernommen, wiederholt, verworfen, zurueckgenommen] }
