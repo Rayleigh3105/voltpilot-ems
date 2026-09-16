@@ -252,9 +252,9 @@ class AblesungApiTest {
     void archivierenBeendetAuchDieQuelleOhneKomponente() throws Exception {
         Welt w=welt(); anfang(w);
         ok(ruf(w.jonas(),HttpMethod.POST,"/api/v1/messstellen/"+w.messstelle()+"/archivieren",
-                Map.of("zeitpunkt","2027-02-01T12:00:00+01:00","grund","Zähler ist außer Betrieb.")),200);
+                Map.of("zeitpunkt","2027-02-10T13:00:00+01:00","grund","Zähler ist außer Betrieb.")),200);
         assertThat(root.queryForObject("SELECT gueltig_bis FROM messstelle_quelle WHERE tenant_id=? AND art='ablesung'",
-                java.sql.Timestamp.class,w.mandant()).toInstant()).isEqualTo(java.time.Instant.parse("2027-02-01T11:00:00Z"));
+                java.sql.Timestamp.class,w.mandant()).toInstant()).isEqualTo(java.time.Instant.parse("2027-02-10T12:00:00Z"));
         assertThat(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt","2027-02-02T07:00:00+01:00",
                 "stand","50.000")).status()).isEqualTo(422);
         assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("1240");
@@ -321,7 +321,7 @@ class AblesungApiTest {
                     j.subject(wer.sub());
                     j.claim("preferred_username", wer.name());
                     j.claim("tenant_id", wer.kundenbereich().toString());
-                }))
+                }).authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("KONTO_benutzer")))
                 .contentType(MediaType.APPLICATION_JSON);
         if (body != null) {
             anfrage.content(MAPPER.writeValueAsString(body));
