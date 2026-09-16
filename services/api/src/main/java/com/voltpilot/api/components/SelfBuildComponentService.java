@@ -468,7 +468,7 @@ public class SelfBuildComponentService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, valueError);
         }
         int raw = SwitchDefinition.testRaw(sw, req.testValue());
-        ProbeResult res = probes.switchOp(siteId, null,
+        ProbeResult res = probes.switchOp(siteId, null, entityId,
                 new ProbePublisher.SwitchOp("switch_test", "schalten", transport.host(),
                         transport.effectivePort(), transport.effectiveUnitId(), sw.registerKind(),
                         sw.address(), sw.writeFc(), raw, sw.safeRaw(),
@@ -497,7 +497,7 @@ public class SelfBuildComponentService {
         EntityRow row = requireSelfBuilt(siteId, entityId);
         SwitchDefinition.NormalizedSwitch sw = requireValidSwitch(req.switchDef());
         Transport transport = storedTransport(row);
-        ProbeResult res = probes.switchOp(siteId, null,
+        ProbeResult res = probes.switchOp(siteId, null, entityId,
                 new ProbePublisher.SwitchOp("switch_cancel", "schalten", transport.host(),
                         transport.effectivePort(), transport.effectiveUnitId(), sw.registerKind(),
                         sw.address(), sw.writeFc(), null, sw.safeRaw(), null,

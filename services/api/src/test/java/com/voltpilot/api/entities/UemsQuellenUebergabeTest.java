@@ -202,6 +202,25 @@ class UemsQuellenUebergabeTest {
         assertThat(antwort.zustaendigeBox().id()).isEqualTo(b); // Plan bleibt separat sichtbar
         assertThat(antwort.zeitraeume()).hasSize(3);
     }
+    @Test void einmalAuftragFolgtAusfuehrungStattPlanBisDieUebergabeVersandtIst() {
+        var echteEntitaeten = new EntityRegistryRepository(app);
+        var ziel = new EinmalAuftragZiel(echteEntitaeten, new LeadDeviceService(echteEntitaeten),
+                new com.voltpilot.api.repo.DeviceRepository(app), repo);
+        assertThat(ziel.komponente(site, entity, uhr.instant()).id()).isEqualTo(a);
+        uhr.zeit = HIN.plusSeconds(301); bestaetigen(a); push();
+        assertThat(repo.stand(quelle).phase()).isEqualTo("pending");
+        assertThat(ziel.komponente(site, entity, uhr.instant()).id()).isEqualTo(a);
+        bestaetigen(b); push();
+        assertThat(repo.stand(quelle).phase()).isEqualTo("removing");
+        assertThatThrownBy(() -> ziel.komponente(site, entity, uhr.instant()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        bestaetigen(a); push();
+        assertThat(repo.stand(quelle).phase()).isEqualTo("receiving");
+        assertThat(ziel.komponente(site, entity, uhr.instant()).id()).isEqualTo(b);
+        bestaetigen(b); push();
+        assertThat(ziel.komponente(site, entity, uhr.instant()).id()).isEqualTo(b);
+    }
+
     @Test void upgradeOhneAusfuehrungsstandSchaltetNichtBlindDenVorherigenLeserEin() {
         // Der alte Cloud-Stand kann bereits an B zugestellt haben; die neue Tabelle ist leer.
         root.update("DELETE FROM data_source_handover WHERE tenant_id=?",tenant);

@@ -41,7 +41,7 @@ public class MeasurementConfigReconciler {
         for (DeviceScope scope : pending()) {
             TenantContext.set(scope.tenantId());
             try {
-                publisher.publish(scope, selections.state(scope.deviceId()));
+                publisher.publish(scope, selections.forPublishing(scope.deviceId()));
             } catch (Exception e) {
                 log.warn("measurement desired-state reconciliation failed for device {}: {}",
                         scope.deviceId(), e.getMessage());

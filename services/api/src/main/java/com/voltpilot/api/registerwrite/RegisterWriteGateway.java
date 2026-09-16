@@ -83,7 +83,9 @@ public final class RegisterWriteGateway {
         /** Vom Aufrufer benannt (primäre Lane, freie Adresse). */
         REQUESTED,
         /** Die einzige Box der Anlage. */
-        ONLY
+        ONLY,
+        /** Aus dem gemeinsamen Dienst für die führende Box. */
+        LEAD
     }
 
     /**
@@ -113,6 +115,10 @@ public final class RegisterWriteGateway {
      * @param requested die vom Aufrufer benannte Geräte-Zeile, oder {@code null}.
      */
     public static Choice choose(List<Device> devices, UUID owner, UUID requested, Instant now) {
+        return choose(devices, owner, requested, null, now);
+    }
+
+    public static Choice choose(List<Device> devices, UUID owner, UUID requested, UUID lead, Instant now) {
         if (devices == null || devices.isEmpty()) {
             return refused("Diese Anlage hat noch kein verbundenes Gerät.");
         }
@@ -124,6 +130,7 @@ public final class RegisterWriteGateway {
                 return chosen(byOwner.get(), Origin.TARGET,
                         requested != null && !requested.equals(owner), devices, now);
             }
+            return refused("Die zuständige Box ist in dieser Anlage nicht verfügbar.");
         }
         if (requested != null) {
             Optional<Device> byId = find(devices, requested);
@@ -131,6 +138,10 @@ public final class RegisterWriteGateway {
                 return refused(DEVICE_NOT_FOUND);
             }
             return chosen(byId.get(), Origin.REQUESTED, false, devices, now);
+        }
+        if (lead != null) {
+            return find(devices, lead).map(d -> chosen(d, Origin.LEAD, false, devices, now))
+                    .orElseGet(() -> refused("Die führende Box ist in dieser Anlage nicht verfügbar."));
         }
         if (devices.size() > 1) {
             return refused("Diese Anlage hat mehrere Geräte. Bitte wählen Sie aus, "

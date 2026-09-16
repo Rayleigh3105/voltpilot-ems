@@ -502,6 +502,7 @@ export function AnlegenFlow({
     setOhneKanal(null);
     try {
       const antwort = await api.testComponentConnection(siteId, {
+        deviceId: box?.id,
         templateRef: template.templateRef,
         templateVersion: templateVersion ?? undefined,
         role: rolle ?? undefined,

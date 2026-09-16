@@ -6,11 +6,9 @@ import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -39,24 +37,24 @@ public class ConsumerOverrideService {
 
     public record OverrideOutcome(boolean applied, boolean pushed, String kind, Instant endsAt,
             BigDecimal effectivePowerKw, boolean gridImportPossible, boolean ttlCapped,
-            String message) {}
+            String message, String pushReason) {}
 
     private final ConsumerRepository consumers;
     private final ConsumerOverrideRepository overrides;
     private final ConsumerAuditRepository audit;
     private final ConsumerPolicyActivationService activation;
     private final ObjectProvider<ConsumerOverridePublisher> publisher;
-    private final JdbcTemplate jdbc;
+    private final com.voltpilot.api.entities.EinmalAuftragZiel ziel;
 
     public ConsumerOverrideService(ConsumerRepository consumers, ConsumerOverrideRepository overrides,
             ConsumerAuditRepository audit, ConsumerPolicyActivationService activation,
-            ObjectProvider<ConsumerOverridePublisher> publisher, JdbcTemplate jdbc) {
+            ObjectProvider<ConsumerOverridePublisher> publisher, com.voltpilot.api.entities.EinmalAuftragZiel ziel) {
         this.consumers = consumers;
         this.overrides = overrides;
         this.audit = audit;
         this.activation = activation;
         this.publisher = publisher;
-        this.jdbc = jdbc;
+        this.ziel = ziel;
     }
 
     @Transactional
@@ -99,45 +97,41 @@ public class ConsumerOverrideService {
             effectivePower = value;
         }
 
+        boolean flagOn = activation.activationAvailable();
+        UUID deviceId = flagOn ? ziel.komponente(siteId, entityId).id() : null;
         overrides.put(siteId, entityId, stop ? "stop" : "start", command, value, endsAt, actor);
         audit.append(siteId, entityId, stop ? "override_stopped" : "override_started", null, null,
                 actor, "ends_at=" + endsAt);
-
-        boolean pushed = false;
-        boolean flagOn = activation.activationAvailable();
-        if (flagOn) {
-            ConsumerOverridePublisher pub = publisher.getIfAvailable();
-            if (pub != null) {
-                UUID deviceId = resolveDevice(siteId, entityId, row);
-                if (deviceId != null) {
-                    pushed = pub.publishOverride(TenantContext.get(), siteId, deviceId, entityId,
-                            onOff, value, ttlSeconds, now);
-                }
-            }
-        }
+        ConsumerOverridePublisher pub = flagOn ? publisher.getIfAvailable() : null;
+        boolean pushed = pub != null && pub.publishOverride(TenantContext.get(), siteId, deviceId,
+                entityId, onOff, value, ttlSeconds, now);
+        String reason = !flagOn ? "control_disabled" : pub == null ? "publisher_unavailable"
+                : pushed ? null : "publish_failed";
         boolean grid = !stop; // a manual run may draw grid power (the §14.13 hint)
-        String msg = message(stop, flagOn, pushed);
+        String msg = message(stop, flagOn, pushed)
+                + ("publisher_unavailable".equals(reason) ? " Die Zustellung ist derzeit nicht verfügbar."
+                        : "publish_failed".equals(reason) ? " Die Zustellung an die Box ist fehlgeschlagen." : "");
         return new OverrideOutcome(true, pushed, stop ? "stop" : "start", endsAt, effectivePower,
-                grid, capped, msg);
+                grid, capped, msg, reason);
     }
 
     @Transactional
     public OverrideOutcome clear(UUID siteId, UUID entityId, String actor) {
-        ConsumerRow row = requireConsumer(siteId, entityId);
+        requireConsumer(siteId, entityId);
+        boolean flagOn = activation.activationAvailable();
+        UUID deviceId = flagOn ? ziel.komponente(siteId, entityId).id() : null;
         overrides.clear(siteId, entityId);
         audit.append(siteId, entityId, "override_cleared", null, null, actor, null);
-        boolean pushed = false;
-        if (activation.activationAvailable()) {
-            ConsumerOverridePublisher pub = publisher.getIfAvailable();
-            if (pub != null) {
-                UUID deviceId = resolveDevice(siteId, entityId, row);
-                if (deviceId != null) {
-                    pushed = pub.publishWithdraw(TenantContext.get(), siteId, deviceId, entityId);
-                }
-            }
-        }
+        ConsumerOverridePublisher pub = flagOn ? publisher.getIfAvailable() : null;
+        boolean pushed = pub != null && pub.publishWithdraw(TenantContext.get(), siteId, deviceId, entityId);
+        String reason = !flagOn ? "control_disabled" : pub == null ? "publisher_unavailable"
+                : pushed ? null : "publish_failed";
         return new OverrideOutcome(true, pushed, "resume", null, null, false, false,
-                "Der manuelle Eingriff wurde beendet. Die Automatik übernimmt wieder.");
+                pushed ? "Der manuelle Eingriff wurde beendet. Die Automatik übernimmt wieder."
+                        : "Das Beenden ist notiert, wurde aber noch nicht an die Box gesendet. "
+                                + (!flagOn ? "Die Steuerung ist noch nicht aktiviert."
+                                        : pub == null ? "Die Zustellung ist derzeit nicht verfügbar."
+                                                : "Die Zustellung an die Box ist fehlgeschlagen."), reason);
     }
 
     // --- helpers -------------------------------------------------------------
@@ -184,21 +178,11 @@ public class ConsumerOverrideService {
 
     private ConsumerRow requireConnected(UUID siteId, UUID entityId) {
         ConsumerRow row = requireConsumer(siteId, entityId);
-        if (row.deviceId() == null && row.edgeSourceId() == null) {
+        if (row.deviceId() == null && row.edgeSourceId() == null && !ziel.hatQuelle(siteId, entityId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Dieser Verbraucher ist noch nicht verbunden.");
         }
         return row;
-    }
-
-    /** The gateway device: the entity's own device_id, else the site's single device. */
-    private UUID resolveDevice(UUID siteId, UUID entityId, ConsumerRow row) {
-        if (row.deviceId() != null) {
-            return row.deviceId();
-        }
-        List<UUID> devices = jdbc.queryForList(
-                "SELECT id FROM device WHERE site_id = ? AND ausgebaut_am IS NULL ORDER BY id LIMIT 2", UUID.class, siteId);
-        return devices.size() == 1 ? devices.get(0) : null; // never guess on a multi-device site
     }
 
     private static ResponseStatusException badRequest(String msg) {

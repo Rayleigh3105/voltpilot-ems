@@ -268,7 +268,7 @@ class MeasurementContractsTest {
         State state = new State(DEVICE, SITE, null, 9, "2026.08.25.1", "pending_edge", null,
                 null, null, List.of(), List.of(), null);
         when(admin.query(anyString(), any(RowMapper.class))).thenReturn(List.of(scope));
-        when(service.state(DEVICE)).thenReturn(state);
+        when(service.forPublishing(DEVICE)).thenReturn(state);
         new MeasurementConfigReconciler(admin, service, publisher).reconcile();
         verify(publisher).publish(scope, state);
         assertThat(TenantContext.get()).isNull();
