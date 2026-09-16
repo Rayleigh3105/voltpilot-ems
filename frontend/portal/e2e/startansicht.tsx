@@ -523,6 +523,16 @@ if (rechteAnsicht) {
 }
 const sites = szene.sites as Site[];
 const siteIds = sites.map((s) => s.id);
+let standortVorschlagOffen = params.get('vorschlag') === 'offen';
+const standortVorschlag = {
+  anlagenZahl: 2,
+  gruppen: [
+    { name: 'Werk Ahrenberg – Halle 1', zeitzone: 'Europe/Berlin', adresse: null,
+      anlagen: [{ vorschlagId: 'aa020000-0000-4000-8000-000000000001', anlageId: an1, anlageName: 'Werk Ahrenberg – Halle 1', gueltigAb: '2026-09-12' }] },
+    { name: 'Werk Ahrenberg – Halle 2', zeitzone: 'Europe/Berlin', adresse: null,
+      anlagen: [{ vorschlagId: 'aa020000-0000-4000-8000-000000000002', anlageId: an2, anlageName: 'Werk Ahrenberg – Halle 2', gueltigAb: '2026-09-14' }] },
+  ],
+};
 
 // Die gestellte Cloud: nur, was die Flotten-Fläche liest.
 const overview: Overview = {
@@ -545,6 +555,13 @@ Object.assign(api, {
   edgeVersions: async () => sichtbareListe([]),
   tenantContext: async () => ({ tenantId: FIXTURE_IDS.u, name: 'Kunststoffwerk Ahrenberg GmbH', betriebsart: 'endkunde' }),
   overview: async () => structuredClone(overview),
+  standortZuordnungVorschlag: async () => standortVorschlagOffen
+    ? structuredClone(standortVorschlag)
+    : { gruppen: [], anlagenZahl: 0 },
+  standortZuordnungBestaetigen: async () => {
+    standortVorschlagOffen = false;
+    return { standortIds: ['aa020000-0000-4000-8000-000000000010'], zuordnungen: 2 };
+  },
   earnings: async () => {
     throw new Error('Das Referenzunternehmen trägt keine Geldwerte.');
   },

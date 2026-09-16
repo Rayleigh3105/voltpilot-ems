@@ -13,6 +13,7 @@ import {
   type Overview,
   type SchedulePlan,
   type Site,
+  type StandortZuordnungVorschau as StandortZuordnungVorschauDaten,
 } from '../api';
 import { fleetTonalitaet } from '../fleet';
 import { ortsHinweis } from '../cockpitLayout';
@@ -53,6 +54,8 @@ import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
 import { FunktionenKarte } from './FunktionenKarte';
 import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
+import { useRollen } from '../rollen';
+import { NochNichtZugeordnetKarte, StandortVorschau } from './StandortVorschau';
 import { FunktionsZustaende, StandortGruppeKopf } from './StandortGruppeKopf';
 import { EmptyState, ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
@@ -153,8 +156,12 @@ export function PortfolioCockpit({
   const [offen, setOffen] = useState<string | null>(null);
   /** `undefined` = lädt noch, `null` = nicht abrufbar (fail-soft). */
   const [funktionen, setFunktionen] = useState<Funktionen | null | undefined>(undefined);
+  const [standortVorschlag, setStandortVorschlag] = useState<StandortZuordnungVorschauDaten | null>(null);
+  const [standortVorschauOffen, setStandortVorschauOffen] = useState(false);
   const isPhone = useIsPhone();
   const mitEbene = ebene != null;
+  const rollen = useRollen();
+  const darfStandorteEinrichten = ebene?.art === 'unternehmen' && rollen.darf('standort.verwalten', null);
 
   useEffect(() => {
     let active = true;
@@ -209,6 +216,21 @@ export function PortfolioCockpit({
       active = false;
     };
   }, [reloadKey, mitEbene]);
+
+  // AP-02 IP-10/O18: nur ein berechtigter Kunde auf der Unternehmensebene
+  // lädt und sieht die neue Fläche. Ein reiner Betriebskunde bleibt zeichengleich.
+  useEffect(() => {
+    if (!darfStandorteEinrichten || nurAnlagen) {
+      setStandortVorschlag(null);
+      return;
+    }
+    let aktiv = true;
+    api.standortZuordnungVorschlag().then(
+      (v) => aktiv && setStandortVorschlag(v.anlagenZahl > 0 ? v : null),
+      () => aktiv && setStandortVorschlag(null),
+    );
+    return () => { aktiv = false; };
+  }, [darfStandorteEinrichten, nurAnlagen, reloadKey]);
 
   useFreshnessPoll(() => {
     setNow(new Date());
@@ -504,6 +526,9 @@ export function PortfolioCockpit({
   return (
     <>
       {head}
+      {standortVorschlag && (
+        <NochNichtZugeordnetKarte vorschau={standortVorschlag} onOeffnen={() => setStandortVorschauOffen(true)} />
+      )}
       {layout.anpassen && (
         <>
           <AnpassenLeiste
@@ -573,6 +598,7 @@ export function PortfolioCockpit({
             vorschau={vorschau}
             energiebilanz={mitBilanzWeg ? energiebilanz : null}
             onEnergiebilanz={mitBilanzWeg ? (id) => onNavigate(anlageRoute(id, 'energiebilanz')) : undefined}
+            nichtZugeordnet={new Set(standortVorschlag?.gruppen.flatMap((g) => g.anlagen.map((a) => a.anlageId)) ?? [])}
           />
         )}
       </section>
@@ -604,6 +630,17 @@ export function PortfolioCockpit({
           </Button></Recht>
         </div>
       )}
+      <StandortVorschau
+        open={standortVorschauOffen}
+        vorschau={standortVorschlag}
+        onClose={() => setStandortVorschauOffen(false)}
+        onBestaetigt={() => {
+          setStandortVorschauOffen(false);
+          setStandortVorschlag(null);
+          setReloadKey((k) => k + 1);
+          onReload();
+        }}
+      />
       {drawers}
     </>
   );

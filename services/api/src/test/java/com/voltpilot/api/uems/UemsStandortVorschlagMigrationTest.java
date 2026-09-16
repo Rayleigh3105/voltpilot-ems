@@ -179,12 +179,19 @@ class UemsStandortVorschlagMigrationTest {
     // ---- (c) Rechte und Regeln der Vorschlagszeile ---------------------------
 
     @Test
-    void dieAppRolleLiestUndLegtAnUndSchreibtNieUmUndLoeschtNie() {
+    void dieAppRolleLiestLegtAnUndLoeschtNachBestaetigungAberSchreibtNieUm() {
+        UUID anlage = neueAnlage(AHRENBERG, "Vorschlag zum Bestätigen");
         alsTue(AHRENBERG, () -> {
+            assertThat(vorschlaege.anlegen(AHRENBERG, anlage, "Vorschlag zum Bestätigen",
+                    "Europe/Berlin", LocalDate.parse("2026-09-16"))).isTrue();
+            UUID id = vorschlaege.alle().stream().filter(v -> v.siteId().equals(anlage))
+                    .findFirst().orElseThrow().id();
             abgelehntWegen("42501", "permission denied",
                     () -> app.update("UPDATE standort_vorschlag SET name = 'X'"));
-            abgelehntWegen("42501", "permission denied",
-                    () -> app.update("DELETE FROM standort_vorschlag"));
+            // IP-10: erst die Bestätigung räumt genau ihre eigenen Vorschlagszeilen ab.
+            assertThat(vorschlaege.entfernen(List.of(id))).isTrue();
+            assertThat(root.queryForObject("SELECT count(*) FROM standort_vorschlag WHERE id = ?",
+                    Long.class, id)).isZero();
         });
     }
 

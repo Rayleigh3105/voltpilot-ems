@@ -5,7 +5,9 @@ import com.voltpilot.api.uems.StandortLesemodell.StandortAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodell.StandorteAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.uems.StandortService;
+import com.voltpilot.api.uems.StandortVorschlagService;
 import com.voltpilot.api.web.dto.StandortDto;
+import com.voltpilot.api.web.dto.StandortVorschlagDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
 import com.voltpilot.api.zugriff.TeilansichtDienst;
@@ -49,13 +51,15 @@ public class StandortController {
     private final StandortService standorte;
     private final OrtAnfrage anfrage;
     private final TeilansichtDienst teilansicht;
+    private final StandortVorschlagService vorschlaege;
 
     public StandortController(StandortLesemodellService lesemodell, StandortService standorte,
-            OrtAnfrage anfrage, TeilansichtDienst teilansicht) {
+            OrtAnfrage anfrage, TeilansichtDienst teilansicht, StandortVorschlagService vorschlaege) {
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.anfrage = anfrage;
         this.teilansicht = teilansicht;
+        this.vorschlaege = vorschlaege;
     }
 
     // Rechte (rechte-matrix.json): heute lesend — keine eigene Kennung; die Sicht
@@ -74,6 +78,22 @@ public class StandortController {
     @GetMapping("/kurzzeichen-vorschlag")
     public StandortDto.Vorschlag vorschlag() {
         return standorte.vorschlag();
+    }
+
+    // Rechte: `standort.verwalten` — die Vorschau schreibt nichts und erzeugt keinen Standort.
+    @GetMapping("/vorschlag")
+    @Recht(value = "standort.verwalten", ziel = RechtZiel.UNTERNEHMEN)
+    public StandortVorschlagDto.Vorschau zuordnungVorschlag() {
+        return vorschlaege.vorschau();
+    }
+
+    // Rechte: `standort.verwalten` — erst Bestätigen legt Standorte, Zuordnungen und Protokolle an.
+    @PostMapping("/vorschlag/bestaetigen")
+    @Recht(value = "standort.verwalten", ziel = RechtZiel.UNTERNEHMEN)
+    public StandortVorschlagDto.Ergebnis zuordnungBestaetigen(@RequestBody(required = false) JsonNode body,
+            Authentication auth) {
+        return vorschlaege.bestaetigen(anfrage.lies(body, StandortVorschlagDto.Bestaetigen.class, false),
+                OrtAnfrage.akteur(auth));
     }
 
     // Rechte: wie die Liste — heute lesend, keine eigene Kennung; ein Stichtag in der

@@ -155,6 +155,9 @@ class BestandsuebernahmeApiTest {
     BestandsuebernahmeLaeufer laeufer;
 
     @Autowired
+    BestandsuebernahmeService bestandsuebernahme;
+
+    @Autowired
     StandortVorschlagRepository vorschlaege;
 
     @Autowired
@@ -293,7 +296,8 @@ class BestandsuebernahmeApiTest {
         // ---- Die Anlage bleibt unverändert (A5) -----------------------------
         assertThat(ok(get("/api/v1/overview", adminToken, DEMO))).isEqualTo(overviewDemoVorher);
         assertThat(ok(get("/api/v1/sites", adminToken, DEMO))).isEqualTo(sitesDemoVorher);
-        assertThat(ok(get("/api/v1/sites", adminToken, NORDWIND))).isEqualTo(sitesNordwindVorher);
+        assertThat(ohneStandort(ok(get("/api/v1/sites", adminToken, NORDWIND))))
+                .isEqualTo(ohneStandort(sitesNordwindVorher));
         assertThat(ok(get("/api/v1/sites/" + NORDWIND_SITE + "/cockpit-layout", adminToken, NORDWIND)))
                 .isEqualTo(cockpitVorher);
         // … bis auf das EINE additive Feld der zugeordneten Anlage.
@@ -323,6 +327,49 @@ class BestandsuebernahmeApiTest {
         JdbcTemplate root = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),
                 POSTGRES.getUsername(), POSTGRES.getPassword()));
         Bestandsschutz.mutationsprobe(root, SCHREIBT_IN, "site", "UPDATE site SET name = name || ' (Probe)'");
+    }
+
+    /** A6/A15: Lesen schreibt nichts; Bestätigen legt zwei Anlagen auf EINEN Standort und räumt die Karte ab. */
+    @Test
+    @Order(7)
+    void vorschauZusammenlegenUndBestaetigen() {
+        String adminToken = token("admin", "admin");
+        String tenant = neuerKundenbereich(adminToken, "Vorschau Kunststoff GmbH");
+        String halle1 = neueAnlage(adminToken, tenant, "Werk Ahrenberg – Halle 1");
+        String halle2 = neueAnlage(adminToken, tenant, "Werk Ahrenberg – Halle 2");
+        admin.update("UPDATE site SET created_at = '2025-01-03T09:00:00Z' WHERE id = ?::uuid", halle1);
+        admin.update("UPDATE site SET created_at = '2025-06-04T09:00:00Z' WHERE id = ?::uuid", halle2);
+        alsMandant(tenant, () -> bestandsuebernahme.uebernehmen());
+
+        long standorteVorher = anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant);
+        long zuordnungenVorher = anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant);
+        JsonNode vorschau = ok(get("/api/v1/standorte/vorschlag", adminToken, tenant));
+        assertThat(vorschau.path("anlagenZahl").asInt()).isEqualTo(2);
+        assertThat(vorschau.path("gruppen")).hasSize(2);
+        assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(standorteVorher);
+        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(zuordnungenVorher);
+        assertThat(protokoll(tenant)).isEmpty();
+
+        List<String> ids = new java.util.ArrayList<>();
+        vorschau.path("gruppen").forEach(g -> ids.add(g.path("anlagen").get(0).path("vorschlagId").asText()));
+        Map<String, Object> gruppe = new LinkedHashMap<>();
+        gruppe.put("name", "Werk Ahrenberg");
+        gruppe.put("zeitzone", "Europe/Berlin");
+        gruppe.put("adresse", Map.of("strasse", "Gewerbering 7", "plz", "84123", "ort", "Ahrenberg", "land", "DE"));
+        gruppe.put("vorschlagIds", ids);
+        JsonNode ergebnis = ok(exchange("/api/v1/standorte/vorschlag/bestaetigen", HttpMethod.POST,
+                adminToken, tenant, Map.of("gruppen", List.of(gruppe))));
+        assertThat(ergebnis.path("standortIds")).hasSize(1);
+        assertThat(ergebnis.path("zuordnungen").asInt()).isEqualTo(2);
+        assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isOne();
+        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(2);
+        assertThat(anzahl("SELECT count(*) FROM standort_vorschlag WHERE tenant_id = ?::uuid", tenant)).isZero();
+        assertThat(admin.queryForList("SELECT gueltig_ab FROM anlage_standort WHERE tenant_id = ?::uuid ORDER BY gueltig_ab", tenant))
+                .extracting(x -> x.get("gueltig_ab").toString()).containsExactly("2025-01-03", "2025-06-04");
+        assertThat(protokoll(tenant)).extracting(x -> x.get("objekt_art") + "/" + x.get("art"))
+                .containsExactly("standort/angelegt", "anlage/verschoben", "anlage/verschoben");
+        assertThat(ok(get("/api/v1/standorte", adminToken, tenant)).path("nochNichtZugeordnet").isNull()).isTrue();
+        assertThat(ok(get("/api/v1/standorte/vorschlag", adminToken, tenant)).path("gruppen")).isEmpty();
     }
 
     /** Die Übernahme kennt keinen Publisher — sie KANN nichts an eine Box schicken. */

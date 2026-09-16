@@ -521,3 +521,15 @@
   align-items: center;
   gap: 16px;
 }
+.vp-at-unzugeordnet {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--vp-warn-soft, #fff7ed);
+  color: var(--vp-warn-ink, #b45309);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
