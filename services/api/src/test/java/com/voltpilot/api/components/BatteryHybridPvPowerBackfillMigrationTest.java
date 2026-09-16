@@ -2,6 +2,8 @@ package com.voltpilot.api.components;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -9,7 +11,9 @@ import java.sql.Statement;
 import java.util.Map;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -33,8 +37,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class BatteryHybridPvPowerBackfillMigrationTest {
 
-    /** Die Fassung unmittelbar VOR dem Backfill. */
+    /** Der ausgelieferte main-Stand vor dem Backfill. */
     private static final String VOR_DEM_BACKFILL = "20260914100200";
+    private static final String BACKFILL = "20260915120000";
 
     private static final String TENANT = "31000000-0000-0000-0000-000000000001";
     private static final String SITE = "31000000-0000-0000-0000-000000000002";
@@ -50,16 +55,32 @@ class BatteryHybridPvPowerBackfillMigrationTest {
                     + "{\"channel\": \"pv_power_kw\", \"unit\": \"kW\"}]}";
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
+    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
             DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
                     .asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("voltpilot")
             .withUsername("voltpilot")
             .withPassword("voltpilot_dev_pw");
 
-    @Test
-    void derBackfillHebtJedeBatterieOhnePvPowerAufDenKanonischenStand() throws Exception {
-        flyway().target(VOR_DEM_BACKFILL).load().migrate();
+    @ParameterizedTest(name = "verspaetet nach UEMS: {0}")
+    @ValueSource(booleans = {false, true})
+    void derBackfillHebtJedeBatterieOhnePvPowerAufDenKanonischenStand(
+            boolean verspaetet, @TempDir Path migrationen) throws Exception {
+        if (verspaetet) {
+            // Der Sammelzweig kennt schon höhere Versionen. Nur der ausgelieferte
+            // main-Backfill fehlt; er muss danach mit unveränderter Nummer heilen.
+            Path quelle = Path.of(getClass().getResource("/db/migration").toURI());
+            try (var dateien = Files.list(quelle)) {
+                for (Path datei : dateien.filter(p -> p.getFileName().toString().endsWith(".sql"))
+                        .filter(p -> !p.getFileName().toString().startsWith("V" + BACKFILL + "__"))
+                        .toList()) {
+                    Files.copy(datei, migrationen.resolve(datei.getFileName()));
+                }
+            }
+            flyway().locations("filesystem:" + migrationen).load().migrate();
+        } else {
+            flyway().target(VOR_DEM_BACKFILL).load().migrate();
+        }
         execute("INSERT INTO tenant(id,name) VALUES ('" + TENANT + "','Backfill-Mandant')");
         execute("INSERT INTO site(id,tenant_id,name) VALUES ('" + SITE + "','" + TENANT
                 + "','Backfill-Anlage')");
@@ -88,6 +109,13 @@ class BatteryHybridPvPowerBackfillMigrationTest {
                 "SELECT capabilities::text FROM measurement_point WHERE id='" + HYBRID_GESUND + "'");
 
         flyway().load().migrate();
+        if (verspaetet) {
+            assertThat(text("SELECT (installed_rank = (SELECT max(installed_rank) "
+                    + "FROM flyway_schema_history))::text FROM flyway_schema_history "
+                    + "WHERE version='" + BACKFILL + "'"))
+                    .as("der unveränderte Backfill kam nach allen UEMS-Migrationen an")
+                    .isEqualTo("true");
+        }
 
         // Der Captain-Fall trägt jetzt den PV-Kanal - der PV-Knoten entsteht wieder.
         assertThat(channels(HYBRID_CAPTAIN))
@@ -154,6 +182,7 @@ class BatteryHybridPvPowerBackfillMigrationTest {
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
+                .outOfOrder(true)
                 .placeholders(Map.of(
                         "appDbUser", "voltpilot_app", "appDbPassword", "voltpilot_app_test_pw",
                         "adminDbUser", "voltpilot_admin",
