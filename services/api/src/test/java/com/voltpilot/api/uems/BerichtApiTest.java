@@ -788,6 +788,38 @@ class BerichtApiTest {
 
     // =========================================================================== Archivieren, Anlegen
 
+    @Test
+    void ip11ExportUmfangStehtImCsvUndUnternehmensExportBleibt403() throws Exception {
+        Welt w = welt();
+        root.update("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
+                + "VALUES (?, ?, 'Werk Ahrenberg Nord', 'ST-3', 'Europe/Berlin', 'aktiv')", w.mandant(), w.unternehmen());
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        UUID u = bericht(w, "BR-2026-0002", "monatsbericht_unternehmen", null, "2026-10");
+        for (UUID b : List.of(st, u)) {
+            entwurf(w, b, nummerEins, "2026-11-10T08:55:00+01:00");
+        }
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, PFAD + "/BR-2026-0001/freigeben",
+                datenstand("2026-11-10T08:55:00+01:00")), 201);
+        for (String suffix : List.of("", "/entwurf", "/entwurf/vergleich?gegen=1", "/staende/1",
+                "/staende/1/csv", "/staende/1/pdf")) {
+            verboten(ruf(w.peter(), HttpMethod.GET, PFAD + "/BR-2026-0002" + suffix, null));
+            verboten(ruf(w.thomas(), HttpMethod.GET, PFAD + "/BR-2026-0002" + suffix, null));
+            abgelehnt(ruf(w.peter(), HttpMethod.GET, PFAD + "/BR-2026-0001" + suffix, null), 404, "nicht_gefunden");
+        }
+        String abzug = root.queryForObject("SELECT abzug FROM bericht_stand WHERE bericht_id = ?", String.class, st);
+        String csv = datei(w.claudia(), PFAD + "/BR-2026-0001/staende/1/csv").getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("\uFEFF# Teilansicht: Werk Ahrenberg, Werk Lindach (2 von 3 Standorten)\r\n")
+                .doesNotContain("Werk Ahrenberg Nord");
+        assertThat(datei(w.jonas(), PFAD + "/BR-2026-0001/staende/1/csv").getResponse()
+                .getContentAsString(StandardCharsets.UTF_8)).doesNotContain("# Teilansicht:");
+        assertThat(datei(w.claudia(), PFAD + "/BR-2026-0001/staende/1/pdf").getResponse().getContentAsByteArray())
+                .isEqualTo(datei(w.jonas(), PFAD + "/BR-2026-0001/staende/1/pdf").getResponse().getContentAsByteArray());
+        assertThat(root.queryForObject("SELECT abzug FROM bericht_stand WHERE bericht_id = ?", String.class, st))
+                .as("ein freigegebener Stand wird nie für die Teilansicht gefiltert oder neu gerechnet").isEqualTo(abzug);
+    }
+
     /** V4: Archivieren verbirgt den Bericht in der Liste, der Bericht bleibt lesbar; ein zweites Mal ändert nichts. */
     @Test
     void archivierenVerbirgtInDerListeUndIstEinmalig() throws Exception {

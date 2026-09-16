@@ -5,13 +5,11 @@ import com.voltpilot.api.web.dto.EigeneAuswertungDto;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Die Werte der eigenen Auswertungen EINER Anlage (Anwendungs-Programm
@@ -40,9 +38,6 @@ public class SiteEigeneAuswertungController {
     public EigeneAuswertungDto werte(@PathVariable UUID siteId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate at) {
-        if (!service.siteVisible(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
         return service.forSite(siteId, at);
     }
 }

@@ -530,7 +530,11 @@ public class MeasurementHistoryService {
      * und {@code unternehmen} sind {@code null}, wo es kein Objekt dafür gibt — nie geraten.
      */
     public record Erzeugung(Instant erzeugtAm, String erzeugtVon, String standort,
-            String unternehmen) {}
+            String unternehmen, String teilansicht) {
+        public Erzeugung(Instant erzeugtAm, String erzeugtVon, String standort, String unternehmen) {
+            this(erzeugtAm, erzeugtVon, standort, unternehmen, null);
+        }
+    }
 
     /**
      * Der Export — ADDITIV erweitert (UEMS AP-07 IP-14).
@@ -552,6 +556,9 @@ public class MeasurementHistoryService {
      */
     public byte[] csv(History history, Erzeugung erzeugung) {
         StringBuilder out = new StringBuilder();
+        if (erzeugung.teilansicht() != null) {
+            out.append("# ").append(erzeugung.teilansicht().replace('\r', ' ').replace('\n', ' ')).append('\n');
+        }
         Meta m = history.meta();
         out.append("# point_key=").append(csv(m.pointKey())).append('\n')
                 .append("# label=").append(csv(m.label())).append('\n')
@@ -628,11 +635,7 @@ public class MeasurementHistoryService {
 
     /** A deliberately small, recent, semantically known site picker; never a catalog wall. */
     public List<ComparisonOption> comparisonOptions(UUID siteId) {
-        Boolean visible = jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM site WHERE id=?)",
-                Boolean.class, siteId);
-        if (!Boolean.TRUE.equals(visible)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
         record Seen(UUID deviceId, String deviceLabel, String pointKey, Instant lastReadAt) {}
         List<Seen> seen = jdbc.query("SELECT d.id device_id, COALESCE(d.name,d.external_ref) device_label,"
                         + "s.point_key,s.last_read_at last_read FROM device_measurement_point_state s "

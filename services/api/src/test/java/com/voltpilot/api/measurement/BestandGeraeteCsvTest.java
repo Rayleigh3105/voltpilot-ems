@@ -33,6 +33,24 @@ class BestandGeraeteCsvTest {
 
     private final MeasurementHistoryService dienst = new MeasurementHistoryService(null, null, null);
 
+    /** Auf origin/uems 01c6d166 mit clean test aufgenommen, einschließlich aller AP-12-Kopfzeilen. */
+    @Test
+    void ip11VolleSichtIstZeichengleichZuOriginUems() throws Exception {
+        assertThat(dienst.csv(beispiel(), erzeugung())).isEqualTo(Files.readAllBytes(
+                Path.of("src/test/resources/measurement/geraete-csv-origin-uems-ip11.csv")));
+    }
+
+    @Test
+    void ip11TeilansichtErgaenztNurIhreKopfzeile() {
+        Erzeugung e = erzeugung();
+        byte[] teil = dienst.csv(beispiel(), new Erzeugung(e.erzeugtAm(), e.erzeugtVon(), e.standort(), e.unternehmen(),
+                "Teilansicht: Werk Lindach (1 von 3 Standorten)"));
+        String csv = new String(teil, StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("# Teilansicht: Werk Lindach (1 von 3 Standorten)\n");
+        assertThat(csv.substring(csv.indexOf('\n') + 1).getBytes(StandardCharsets.UTF_8))
+                .isEqualTo(dienst.csv(beispiel(), e));
+    }
+
     @Test
     void ohneDieNeunKopfzeilenIstDerExportByteGleichZuVorher() throws Exception {
         byte[] heute = dienst.csv(beispiel(), erzeugung());

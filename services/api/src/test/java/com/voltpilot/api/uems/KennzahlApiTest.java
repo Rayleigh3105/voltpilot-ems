@@ -334,6 +334,18 @@ class KennzahlApiTest {
                 w.unternehmen(), e("zaehler", "messstelle", "MS-18"), e("nenner", "bezugsgroesse", "BZ-7")), "recht_fehlt",
                 RechteAbleitung.TEXTE.get("recht_fehlt")).status()).isEqualTo(403);
 
+        // Ein eigener Zielort erlaubt keine Vorschau fremder Eingänge. Fremd und unbekannt sind gleich.
+        for (String quelle : List.of("MS-12", "MS-999999")) {
+            var a = anfrage(null, "Versuch", "quotient", "gebaeude", w.g5(),
+                    e("zaehler", "messstelle", quelle), e("nenner", "bezugsgroesse", "BZ-7"));
+            Antwort v = ruf(w, HttpMethod.POST, PFAD + "/vorschau", a);
+            assertThat(v.status()).isEqualTo(200);
+            assertThat(v.body().get("befunde").findValuesAsText("code")).containsExactly("eingang_unbekannt");
+            assertThat(v.body().get("letzte_perioden")).isEmpty();
+            assertThat(v.body().toString()).doesNotContain("Montage Linie M1", "kWh", "6100");
+            assertThat(abgelehnt(w, HttpMethod.POST, PFAD, a, "eingang_unbekannt", null).status()).isEqualTo(422);
+        }
+
         // Murat (Bedienberechtigt, Werk Ahrenberg) definiert nichts: im eigenen Standort fehlt die Rolle Bearbeiter.
         doReturn(person("MD", "Murat Demirci", RechteAbleitung.Rolle.BEDIENBERECHTIGT, w.st1())).when(aufrufer).benutzer(any());
         assertThat(abgelehnt(w, HttpMethod.POST, PFAD, anfrage(null, "Halle 2", "quotient", "gebaeude", w.g2(),
