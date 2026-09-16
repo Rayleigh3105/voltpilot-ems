@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -62,8 +63,8 @@ public class FunktionService {
 
     private static final Logger log = LoggerFactory.getLogger(FunktionService.class);
 
-    static final List<Aktion> ANLAGEN_AKTIONEN = List.of(Aktion.STARTEN, Aktion.ANHALTEN, Aktion.FORTSETZEN,
-            Aktion.BEENDEN);
+    static final List<Aktion> ANLAGEN_AKTIONEN = List.of(Aktion.AUFNEHMEN, Aktion.STARTEN, Aktion.ANHALTEN,
+            Aktion.FORTSETZEN, Aktion.BEENDEN);
     static final List<Aktion> STANDORT_AKTIONEN = List.of(Aktion.ANHALTEN, Aktion.FORTSETZEN, Aktion.BEENDEN);
     /** „Messen &amp; Auswerten“ kennt nur das Einrichten — es startet damit von selbst (AP-01 IP-9a). */
     static final List<Aktion> MESSEN_AKTIONEN = List.of(Aktion.EINRICHTEN);
@@ -124,6 +125,34 @@ public class FunktionService {
                 verbreitung(Funktion.STEUERN, steuern, out.size())), List.copyOf(out));
     }
 
+    /** Die sechs Start-Fakten der Anlage; Grund und Weg stehen ausschließlich an roten Zeilen. */
+    @Transactional(readOnly = true)
+    public FunktionDto.SteuernPruefung steuernPruefung(UUID siteId) {
+        if (!geltungsbereich.siteVisible(siteId)) {
+            throw FunktionAbgelehnt.nichtGefunden("Anlage nicht gefunden.");
+        }
+        Instant jetzt = uhr.instant();
+        Welt w = welt();
+        StandortRepository.Standort st = w.heutigerStandortDerAnlage(siteId, jetzt);
+        if (st == null) {
+            throw FunktionAbgelehnt.nichtGefunden("Standort nicht gefunden.");
+        }
+        ZoneId zone = ZoneId.of(st.zeitzone());
+        FunktionFakten.Anlage f = fakten.anlage(TenantContext.get(), siteId, jetzt, zone, w.register().get());
+        FunktionTeilnahmeRepository.Teilnahme t = w.teilnahmeDerAnlage(siteId);
+        TeilnahmeErgebnis r = pruefergebnis(w.name(siteId), t, f, jetzt, zone);
+        List<FunktionDto.Weg> wege = wege(w.name(siteId), r.pruefliste(), f);
+        Map<String, String> wegJePruefung = new HashMap<>();
+        wege.forEach(weg -> wegJePruefung.put(weg.pruefung(), weg.satz()));
+        List<FunktionDto.SteuernPruefZeile> zeilen = r.pruefliste().stream()
+                .map(z -> pruefZeile(z, f, wegJePruefung.get(z.pruefung().code()))).toList();
+        boolean bereit = zeilen.size() == FunktionZustandAbleitung.Pruefung.values().length
+                && zeilen.stream().allMatch(z -> Boolean.TRUE.equals(z.bestanden()));
+        return new FunktionDto.SteuernPruefung(siteId, w.name(siteId), st.id(), st.name(), bereit, zeilen,
+                "Ab dem nächsten Fahrplan, spätestens in 15 Minuten, steuert VoltPilot " + w.name(siteId)
+                        + " innerhalb der vereinbarten Grenzen. Nichts anderes ändert sich. Sie können jederzeit anhalten.");
+    }
+
     /** „Steuern &amp; Optimieren läuft an 1 von 2 Standorten“ — ohne Standort kein Satz. */
     static FunktionDto.Verbreitung verbreitung(Funktion f, int laeuftAn, int standorte) {
         return new FunktionDto.Verbreitung(laeuftAn, standorte, standorte == 0 ? null
@@ -139,11 +168,36 @@ public class FunktionService {
             throw FunktionAbgelehnt.nichtGefunden("Anlage nicht gefunden.");
         }
         Aktion aktion = aktion(aktionCode, ANLAGEN_AKTIONEN,
-                "Für eine Anlage gibt es starten, anhalten, fortsetzen und beenden.");
+                "Für eine Anlage gibt es aufnehmen, starten, anhalten, fortsetzen und beenden.");
         unternehmen.sperren();
         Instant jetzt = uhr.instant();
         Welt w = welt();
         FunktionTeilnahmeRepository.Teilnahme t = w.teilnahmeDerAnlage(siteId);
+        if (aktion == Aktion.AUFNEHMEN) {
+            StandortRepository.Standort ziel = w.heutigerStandortDerAnlage(siteId, jetzt);
+            if (ziel == null) {
+                throw FunktionAbgelehnt.nichtGefunden("Standort nicht gefunden.");
+            }
+            UebergangErgebnis u = FunktionZustandAbleitung.uebergangAnlage(aktion,
+                    ableiten(siteId, w.name(siteId), t, ZoneId.of(ziel.zeitzone()), jetzt, w.register()).stand());
+            if (!u.erlaubt()) {
+                throw FunktionAbgelehnt.uebergang(u, List.of(), List.of());
+            }
+            FunktionRepository.Funktion f = w.funktionDerArt(ziel.id(), Funktion.STEUERN);
+            if (f == null || f.zustand() == Zustand.ARCHIVIERT) {
+                UUID id = funktionen.anlegen(TenantContext.get(), ziel.id(), Funktion.STEUERN,
+                        new FunktionRepository.Stand(Zustand.ENTWURF, null, null, null, null),
+                        OrtProtokoll.akteurName(wer), jetzt);
+                f = funktionen.finde(id).orElseThrow();
+            }
+            teilnahmen.anlegen(TenantContext.get(), f.id(), siteId,
+                    new FunktionTeilnahmeRepository.Stand(Zustand.ENTWURF, null, null, null, null), false, jetzt)
+                    .orElseThrow(() -> new IllegalStateException("Teilnahme wurde nicht angelegt"));
+            overrides.putRuhe(siteId, wer.sub() != null ? wer.sub() : OrtProtokoll.akteurName(wer));
+            nachDemCommitPushen(List.of(siteId));
+            return new FunktionDto.SteuernErgebnis(aktion.code(),
+                    List.of(new FunktionDto.AnlageRef(siteId, w.name(siteId))), standortBlock(ziel, welt(), jetzt));
+        }
         FunktionRepository.Funktion f = t == null ? null : w.funktion(t.funktionId());
         StandortRepository.Standort st = f == null ? null : w.standort(f.standortId());
         ZoneId zone = st == null ? ZustandAbleitung.VORGABE_ZEITZONE : ZoneId.of(st.zeitzone());
@@ -407,6 +461,73 @@ public class FunktionService {
                 f == null ? List.of() : wege(name, r.pruefliste(), f));
     }
 
+    private static TeilnahmeErgebnis pruefergebnis(String name, FunktionTeilnahmeRepository.Teilnahme t,
+            FunktionFakten.Anlage f, Instant jetzt, ZoneId zone) {
+        boolean gestartet = t != null && (t.zustand() == Zustand.AKTIV || t.zustand() == Zustand.ANGEHALTEN);
+        Instant gestartetAm = !gestartet ? null : t.gestartetAm() != null ? t.gestartetAm() : t.createdAt();
+        return FunktionZustandAbleitung.teilnahme(new FunktionZustandAbleitung.TeilnahmeEingang(name, true,
+                t == null ? null : t.eingerichtetAm(), gestartetAm, t != null && t.uebernommen(),
+                t != null && t.zustand() == Zustand.ANGEHALTEN
+                        ? new FunktionZustandAbleitung.RuheEintrag(t.angehaltenSeit(), null) : null,
+                t == null ? null : t.beendetAm(), f.boxen(), f.hauptzaehler(), f.komponenten(), f.betriebsmodell(),
+                f.grenze().plausibel(), null, jetzt, zone));
+    }
+
+    private static FunktionDto.SteuernPruefZeile pruefZeile(FunktionZustandAbleitung.PruefZeile z,
+            FunktionFakten.Anlage f, String weg) {
+        boolean rot = Boolean.FALSE.equals(z.bestanden());
+        String fakt = switch (z.pruefung()) {
+            case BOX -> f.boxen().isEmpty() ? "Keine Box verbunden" : f.boxen().stream()
+                    .map(b -> b.name() + (b.verbunden() ? " verbunden" : " nicht verbunden"))
+                    .collect(Collectors.joining(" · "));
+            case FREIGABE -> f.komponenten().isEmpty() ? "Keine steuerbare Komponente" : f.komponenten().stream()
+                    .map(k -> k.name() + (k.freigegeben() ? " freigegeben" : " nicht freigegeben"))
+                    .collect(Collectors.joining(" · "));
+            case VERBINDUNGSTEST -> f.komponenten().isEmpty() ? "Kein Verbindungstest vorhanden"
+                    : f.komponenten().stream()
+                            .map(k -> "Verbindungstest " + k.name()
+                                    + (k.verbindungstestBestanden() ? " bestanden" : " nicht bestanden"))
+                            .collect(Collectors.joining(" · "));
+            case GRENZE -> grenzeFakt(f.grenze());
+            case HAUPTZAEHLER -> f.hauptzaehler() == null ? "Kein Hauptzähler zugeordnet"
+                    : "Hauptzähler " + f.hauptzaehler().kennzeichen()
+                            + (f.hauptzaehler().zustand() == ZustandAbleitung.LiefertDaten.LIEFERT
+                                    ? " liefert Daten" : " liefert keine aktuellen Daten");
+            case BETRIEBSWEISE -> "Betriebsweise " + (f.betriebsmodell() != null || f.komponenten().stream()
+                    .filter(k -> k.art() == FunktionZustandAbleitung.KomponentenArt.VERBRAUCHER && k.freigegeben())
+                    .allMatch(k -> k.steuerart() != null) ? "gesetzt" : "nicht vollständig gesetzt");
+        };
+        return new FunktionDto.SteuernPruefZeile(z.pruefung().code(), z.bestanden(), fakt,
+                rot ? pruefGrund(z.pruefung(), f) : null, rot ? weg : null);
+    }
+
+    private static String pruefGrund(FunktionZustandAbleitung.Pruefung p, FunktionFakten.Anlage f) {
+        return switch (p) {
+            case BOX -> f.boxen().isEmpty() ? "Für die Anlage ist keine Box verbunden."
+                    : "Mindestens eine Box hat sich seit mehr als 5 Minuten nicht gemeldet.";
+            case FREIGABE -> "Keine steuerbare Komponente trägt die erforderliche Freigabe.";
+            case VERBINDUNGSTEST -> "Mindestens ein erforderlicher Verbindungstest fehlt oder ist älter als 90 Tage.";
+            case GRENZE -> "Die Grenze ist nicht durch eine passende vereinbarte Leistung belegt.";
+            case HAUPTZAEHLER -> f.hauptzaehler() == null ? "Es ist kein Hauptzähler für Netzbezug zugeordnet."
+                    : "Der Hauptzähler liefert keine aktuellen Daten.";
+            case BETRIEBSWEISE -> "Für eine freigegebene Komponente fehlt die Steuerart oder für den Speicher "
+                    + "das Betriebsmodell.";
+        };
+    }
+
+    private static String grenzeFakt(FunktionFakten.Grenze g) {
+        if (g.befund() == FunktionFakten.GrenzeBefund.PLAUSIBEL) {
+            return g.netzgrenzeKw() == null ? "Grenze innerhalb der vereinbarten Leistung"
+                    : "Grenze " + kw(g.netzgrenzeKw()) + " kW ≤ " + kw(g.vereinbartKw()) + " kW vereinbart";
+        }
+        return switch (g.befund()) {
+            case KEIN_NETZANSCHLUSS -> "Kein Netzanschluss zugeordnet";
+            case OHNE_VEREINBARTE_LEISTUNG -> "Vereinbarte Leistung am Netzanschluss " + g.netzanschluss() + " fehlt";
+            case UEBER_VEREINBARTER_LEISTUNG -> "Grenze " + kw(g.netzgrenzeKw()) + " kW > " + kw(g.vereinbartKw()) + " kW vereinbart";
+            case PLAUSIBEL -> throw new IllegalStateException();
+        };
+    }
+
     /** Je roter Zeile der Weg — was der Kunde tun muss, damit sie grün wird. */
     static List<FunktionDto.Weg> wege(String anlage, List<FunktionZustandAbleitung.PruefZeile> pruefliste,
             FunktionFakten.Anlage f) {
@@ -648,6 +769,16 @@ public class FunktionService {
                         }
                     });
             return out;
+        }
+
+        StandortRepository.Standort heutigerStandortDerAnlage(UUID siteId, Instant jetzt) {
+            for (StandortRepository.Standort st : standorte) {
+                LocalDate heute = LocalDate.ofInstant(jetzt, ZoneId.of(st.zeitzone()));
+                if (heuteZugeordnet(st.id(), heute).contains(siteId)) {
+                    return st;
+                }
+            }
+            return null;
         }
     }
 }

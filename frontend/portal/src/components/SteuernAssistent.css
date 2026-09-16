@@ -20,8 +20,19 @@
 .vp-sta-felder, .vp-sta-steuerarten { display: grid; gap: var(--vp-space-3, 12px); min-width: 0; }
 .vp-sta-fakt { display: flex; justify-content: space-between; gap: var(--vp-space-3, 12px); }
 .vp-sta-ruhe { border-left: 3px solid var(--vp-action, #2c5282); }
+.vp-sta-pruefliste { list-style: none; display: grid; gap: var(--vp-space-3, 12px); padding: 0; margin: 0; }
+.vp-sta-pruefliste li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--vp-space-3, 12px); padding: var(--vp-space-4, 16px); border: 1px solid var(--vp-border, #e2e8f0); border-radius: var(--vp-radius-md, 10px); }
+.vp-sta-pruefliste li[data-bestanden="nein"] { border-color: var(--color-status-error-text, #9b1c1c); background: var(--vp-surface-alt, #f8fafc); }
+.vp-sta-pruefliste li > div, .vp-sta-anlagenzeile > span { display: grid; gap: var(--vp-space-1, 4px); min-width: 0; }
+.vp-sta-pruefliste small, .vp-sta-pruefliste span, .vp-sta-anlagenzeile small { color: var(--vp-text-muted, #64748b); }
+.vp-sta-pruefmarke { font-weight: 800; color: var(--vp-action, #2c5282) !important; }
+.vp-sta-pruefliste li[data-bestanden="nein"] .vp-sta-pruefmarke { color: var(--color-status-error-text, #9b1c1c) !important; }
+.vp-sta-folgen { display: grid; gap: var(--vp-space-2, 8px); padding: var(--vp-space-4, 16px); border-left: 3px solid var(--vp-action, #2c5282); border-radius: var(--vp-radius-md, 10px); background: var(--vp-surface-alt, #f8fafc); }
+.vp-sta-folgen p { margin: 0; }
+.vp-sta-anlagenzeile { display: flex; justify-content: space-between; gap: var(--vp-space-4, 16px); padding: var(--vp-space-4, 16px); border: 1px solid var(--vp-border, #e2e8f0); border-radius: var(--vp-radius-md, 10px); }
+.vp-sta-fuss-fertig { justify-content: flex-end; }
 @media (max-width: 600px) {
-  .vp-sta-komponenten li, .vp-sta-steuerart, .vp-sta-fakt { align-items: stretch; flex-direction: column; }
+  .vp-sta-komponenten li, .vp-sta-steuerart, .vp-sta-fakt, .vp-sta-anlagenzeile { align-items: stretch; flex-direction: column; }
   .vp-sta-weg { text-align: left; }
   .vp-sta-fuss { align-items: stretch; flex-direction: column-reverse; }
   .vp-sta-fuss button { width: 100%; min-height: 44px; }

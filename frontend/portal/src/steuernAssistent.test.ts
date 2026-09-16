@@ -9,7 +9,7 @@ const entity = (p: Partial<SiteEntity>): SiteEntity => ({
 });
 
 describe('SteuernAssistent — reine Regeln', () => {
-  it('zeigt sechs Schritte, baut in IP-10a aber nur die ersten vier', () => {
+  it('zeigt sechs Schritte', () => {
     expect(schrittZaehler(4)).toBe('Schritt 4 von 6');
   });
 

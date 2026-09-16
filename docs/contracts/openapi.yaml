@@ -9488,10 +9488,11 @@ paths:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
     put:
       tags: [funktionen]
-      summary: Steuern & Optimieren einer Anlage starten, anhalten, fortsetzen oder beenden.
+      summary: Anlage aufnehmen oder Steuern & Optimieren starten, anhalten, fortsetzen oder beenden.
       description: >
-        Recht `steuerung.starten_beenden` (starten, beenden) bzw. `steuerung.anhalten_fortsetzen`
-        (anhalten, fortsetzen). Starten und Fortsetzen prüfen die Liste IN der Transaktion erneut (R1/R2);
+        Recht `funktion.steuern_einrichten` (aufnehmen), `steuerung.starten_beenden` (starten, beenden) bzw.
+        `steuerung.anhalten_fortsetzen` (anhalten, fortsetzen). Aufnehmen legt nur Teilnahme und Ruhe an.
+        Starten und Fortsetzen prüfen die Liste IN der Transaktion erneut (R1/R2);
         ist sie rot, antwortet 409 `pruefliste_offen` mit `fehlt` und `wege`, und nichts ist geschrieben.
         Starten/Fortsetzen heben die Ruhe auf, Anhalten/Beenden setzen sie (ohne Ende); der Registry-Push
         folgt nach dem Commit. Die Funktion des Standorts zieht nach.
@@ -9510,6 +9511,24 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/FunktionAbgelehnt" }
         "409": { $ref: "#/components/responses/FunktionAbgelehnt" }
+  /api/v1/sites/{siteId}/funktionen/steuern/pruefung:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [funktionen]
+      summary: Frische Startprüfung für Steuern & Optimieren an einer Anlage.
+      description: >
+        Recht `steuerung.starten_beenden`, mit RechtPruefung an der Anlage durchgesetzt. Liefert für Box,
+        Freigabe, Verbindungstest, Grenze, Hauptzähler und Betriebsweise den Fakt; rote Zeilen zusätzlich mit
+        Grund und Weg. Fremde Anlage = 404. Liest nur; der Start prüft dieselben Fakten in seiner Transaktion erneut.
+      responses:
+        "200":
+          description: Prüfliste und Folgen des Starts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FunktionSteuernPruefung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/FunktionAbgelehnt" }
   /api/v1/standorte/{standortId}/funktionen/steuern:
     parameters:
       - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -21560,7 +21579,7 @@ components:
         pruefliste: { type: array, items: { $ref: "#/components/schemas/FunktionPruefZeile" } }
         fehlt: { type: array, items: { type: string } }
         wege: { type: array, items: { $ref: "#/components/schemas/FunktionWeg" } }
-        aktionen: { type: array, items: { type: string, enum: [starten, anhalten, fortsetzen, beenden] } }
+        aktionen: { type: array, items: { type: string, enum: [aufnehmen, starten, anhalten, fortsetzen, beenden] } }
     FunktionPruefZeile:
       type: object
       required: [pruefung, bestanden]
@@ -21578,14 +21597,34 @@ components:
       additionalProperties: false
       required: [aktion]
       properties:
-        aktion: { type: string, enum: [starten, anhalten, fortsetzen, beenden] }
+        aktion: { type: string, enum: [aufnehmen, starten, anhalten, fortsetzen, beenden] }
     FunktionSteuernErgebnis:
       type: object
       required: [aktion, betroffen, standort]
       properties:
-        aktion: { type: string, enum: [starten, anhalten, fortsetzen, beenden] }
+        aktion: { type: string, enum: [aufnehmen, starten, anhalten, fortsetzen, beenden] }
         betroffen: { type: array, items: { $ref: "#/components/schemas/FunktionAnlageRef" } }
         standort: { $ref: "#/components/schemas/FunktionStandort" }
+    FunktionSteuernPruefung:
+      type: object
+      required: [anlage_id, anlage, standort_id, standort, bereit, zeilen, folgen]
+      properties:
+        anlage_id: { type: string, format: uuid }
+        anlage: { type: string }
+        standort_id: { type: string, format: uuid }
+        standort: { type: string }
+        bereit: { type: boolean }
+        zeilen: { type: array, items: { $ref: "#/components/schemas/FunktionSteuernPruefZeile" } }
+        folgen: { type: string }
+    FunktionSteuernPruefZeile:
+      type: object
+      required: [pruefung, bestanden, fakt, grund, weg]
+      properties:
+        pruefung: { type: string, enum: [box, freigabe, verbindungstest, grenze, hauptzaehler, betriebsweise] }
+        bestanden: { type: boolean, nullable: true }
+        fakt: { type: string }
+        grund: { type: string, nullable: true }
+        weg: { type: string, nullable: true }
     FunktionAnlageRef:
       type: object
       required: [id, name]

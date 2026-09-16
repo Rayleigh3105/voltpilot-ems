@@ -71,6 +71,15 @@ public final class FunktionDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Weg(String pruefung, String satz) {}
 
+    /** {@code GET …/funktionen/steuern/pruefung} — die Startprüfung einer Anlage aus frischen Fakten. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record SteuernPruefung(UUID anlageId, String anlage, UUID standortId, String standort, boolean bereit,
+            List<SteuernPruefZeile> zeilen, String folgen) {}
+
+    /** Eine Zeile nennt den Fakt; nur eine rote Zeile trägt zusätzlich Grund und Weg. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record SteuernPruefZeile(String pruefung, Boolean bestanden, String fakt, String grund, String weg) {}
+
     /** {@code PUT …/funktionen/steuern} — genau ein Feld. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record SteuernAnfrage(String aktion) {}

@@ -4474,13 +4474,32 @@ export interface FunktionWeg {
 
 /** `PUT /api/v1/sites/{id}/funktionen/steuern` bzw. `/api/v1/standorte/{id}/funktionen/steuern`. */
 export interface FunktionSteuernAnfrage {
-  aktion: 'starten' | 'anhalten' | 'fortsetzen' | 'beenden';
+  aktion: 'aufnehmen' | 'starten' | 'anhalten' | 'fortsetzen' | 'beenden';
 }
 
 export interface FunktionSteuernErgebnis {
   aktion: FunktionSteuernAnfrage['aktion'];
   betroffen: FunktionAnlageRef[];
   standort: FunktionStandort;
+}
+
+/** `GET /api/v1/sites/{id}/funktionen/steuern/pruefung` — frische Fakten für Schritt 5. */
+export interface FunktionSteuernPruefung {
+  anlage_id: string;
+  anlage: string;
+  standort_id: string;
+  standort: string;
+  bereit: boolean;
+  zeilen: FunktionSteuernPruefZeile[];
+  folgen: string;
+}
+
+export interface FunktionSteuernPruefZeile {
+  pruefung: FunktionPruefung;
+  bestanden: boolean | null;
+  fakt: string;
+  grund: string | null;
+  weg: string | null;
 }
 
 export interface FunktionAnlageRef {
@@ -8144,6 +8163,14 @@ export const api = {
   unternehmen: () => request<Unternehmen>('/api/v1/unternehmen'),
   /** UEMS AP-01 IP-6: beide Funktionen je Standort (`GET /api/v1/funktionen`, Routen aus IP-3). */
   funktionen: () => request<Funktionen>('/api/v1/funktionen'),
+  /** AP-01 IP-10b: Startprüfung aus frischen Fakten; fremde Anlage = 404. */
+  funktionSteuernPruefung: (siteId: string) =>
+    request<FunktionSteuernPruefung>(`/api/v1/sites/${encodeURIComponent(siteId)}/funktionen/steuern/pruefung`),
+  /** AP-01 IP-3/IP-10b: Anlage aufnehmen bzw. Steuerung starten. */
+  funktionSteuern: (siteId: string, aktion: FunktionSteuernAnfrage['aktion']) =>
+    request<FunktionSteuernErgebnis>(`/api/v1/sites/${encodeURIComponent(siteId)}/funktionen/steuern`, {
+      method: 'PUT', body: JSON.stringify({ aktion }),
+    }),
   /** UEMS AP-01 IP-9a: „Messen & Auswerten“ für einen Standort einrichten (Entwurf); ein zweites Mal ist 409 `bereits_angelegt`. */
   funktionMessenEinrichten: (standortId: string) =>
     request<FunktionMessenErgebnis>(`/api/v1/standorte/${encodeURIComponent(standortId)}/funktionen/messen`, {

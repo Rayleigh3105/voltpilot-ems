@@ -53,6 +53,8 @@ class FunktionSchnittstelleVertragTest {
         formen.put("FunktionWeg", FunktionDto.Weg.class);
         formen.put("FunktionSteuernAnfrage", FunktionDto.SteuernAnfrage.class);
         formen.put("FunktionSteuernErgebnis", FunktionDto.SteuernErgebnis.class);
+        formen.put("FunktionSteuernPruefung", FunktionDto.SteuernPruefung.class);
+        formen.put("FunktionSteuernPruefZeile", FunktionDto.SteuernPruefZeile.class);
         formen.put("FunktionAnlageRef", FunktionDto.AnlageRef.class);
         formen.put("FunktionMessenAnfrage", FunktionDto.MessenAnfrage.class);
         formen.put("FunktionMessenErgebnis", FunktionDto.MessenErgebnis.class);
@@ -111,11 +113,14 @@ class FunktionSchnittstelleVertragTest {
     void dieRoutenNennenIhreRechte() {
         Map<String, Object> lesen = (Map<String, Object>) pfade.get("/api/v1/funktionen");
         Map<String, Object> anlage = (Map<String, Object>) pfade.get("/api/v1/sites/{siteId}/funktionen/steuern");
+        Map<String, Object> pruefung = (Map<String, Object>) pfade.get("/api/v1/sites/{siteId}/funktionen/steuern/pruefung");
         Map<String, Object> standort = (Map<String, Object>) pfade.get("/api/v1/standorte/{standortId}/funktionen/steuern");
         assertThat(lesen.keySet()).containsExactly("get");
         assertThat(anlage.keySet()).containsExactlyInAnyOrder("parameters", "put");
+        assertThat(pruefung.keySet()).containsExactlyInAnyOrder("parameters", "get");
         assertThat(standort.keySet()).containsExactlyInAnyOrder("parameters", "put");
         assertThat(String.valueOf(lesen.get("get"))).contains("keine eigene Kennung");
+        assertThat(String.valueOf(pruefung.get("get"))).contains("steuerung.starten_beenden", "Fremde Anlage = 404");
         for (Map<String, Object> p : List.of(anlage, standort)) {
             assertThat(String.valueOf(p.get("put"))).contains("steuerung.starten_beenden", "steuerung.anhalten_fortsetzen");
             assertThat(((Map<String, Object>) ((Map<String, Object>) p.get("put")).get("responses")).keySet())
