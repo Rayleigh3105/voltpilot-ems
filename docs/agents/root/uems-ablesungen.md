@@ -13,6 +13,9 @@ Einstieg: `docs/contracts/v2/messwert-herkunft.md` → Ablesungen; Code `Ablesun
   Rücknahmerouten. `Reihe.ablesung` ist eine eigene Identitätsform; kanalgebundene
   Aufrufer behalten ihren bisherigen Konstruktor. Die Kaskade darf daraus keine
   Komponentenreihe machen.
+- Die App behält SELECT auf den Periodenklassen. Neue Perioden/Fassungen schreibt
+  ausschließlich `uems_ablesungsperiode_speichern`: Mandant, Quellenbeleg, nächste
+  Version und freigegebene K-Fassung werden in der Datenbank geprüft.
 - Die Rohwertklasse hat 90 Tage Aufbewahrung: Herkunft und Fassungen werden beim
   INSERT dauerhaft in `messstelle_ablesung_fassung` belegt, ohne zweiten Schreibweg.
   Keine Updates; Entfernung ausschließlich beim Offboarding vor der Quellenbindung.

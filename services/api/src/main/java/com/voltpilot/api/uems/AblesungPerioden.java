@@ -2,8 +2,6 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
-import java.sql.Timestamp;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -64,8 +62,6 @@ public class AblesungPerioden {
 
     private void speichern(UUID tenant, UUID m, String art, LocalDate tag, AblesungRepository.Zone zone,
             Summe s, String zustand, String korrektur, int korrekturFassung, Instant jetzt) {
-        Instant von = tag.atStartOfDay(zone.id()).toInstant();
-        Instant bis = (art.equals("monat") ? tag.plusMonths(1) : tag.plusYears(1)).atStartOfDay(zone.id()).toInstant();
         List<Map<String, Object>> bisher = jdbc.queryForList("SELECT menge,menge_zustand,kennzeichen::text,version "
                 + "FROM (SELECT menge,menge_zustand,kennzeichen,version FROM messreihe_periode "
                 + "WHERE tenant_id = ? AND messstelle_id = ? AND art = ? AND tag = ? "
@@ -74,11 +70,7 @@ public class AblesungPerioden {
                 tenant, m, art, tag, tenant, m, art, tag);
         String k = JSON.valueToTree(s.kennzeichen()).toString();
         if (bisher.isEmpty()) {
-            jdbc.update("INSERT INTO messreihe_periode (tenant_id,messstelle_id,art,tag,zeitzone,zeitzone_herkunft,"
-                    + "beginn,ende,stunden,wertart,menge,menge_zustand,kennzeichen,zustand,endgueltig_ab,ablesung) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,'counter',?,?,?::jsonb,'endgueltig',?,true)",
-                    tenant,m,art,tag,zone.id().getId(),zone.herkunft(),Timestamp.from(von),Timestamp.from(bis),
-                    Duration.between(von,bis).toHours(),s.menge(),zustand,k,Timestamp.from(TagRegeln.endgueltigAb(bis)));
+            einfuegen(tenant, m, art, tag, zone, s, zustand, k, 1, korrektur, korrekturFassung);
             return;
         }
         var alt = bisher.get(0);
@@ -87,10 +79,14 @@ public class AblesungPerioden {
                 && Objects.equals(alt.get("menge_zustand"), zustand)
                 && AblesungRepository.json(alt.get("kennzeichen").toString()).equals(AblesungRepository.json(k))) return;
         if (korrektur == null) throw new IllegalStateException("Eine bestehende Ablesungsperiode braucht eine Korrektur");
-        jdbc.update("INSERT INTO messreihe_periode_version (tenant_id,messstelle_id,ebene,tag,periode_beginn,"
-                + "periode_ende,zeitzone,version,wertart,menge,menge_zustand,kennzeichen,zustand,korrekturen,ersatzwerte,"
-                + "anlass_kennung,anlass_fassung) VALUES (?,?,?,?,?,?,?,?,'counter',?,?,?::jsonb,'endgueltig',"
-                + "ARRAY[?]::text[],'{}'::text[],?,?)",tenant,m,art,tag,Timestamp.from(von),Timestamp.from(bis),
-                zone.id().getId(),((Number) alt.get("version")).intValue()+1,s.menge(),zustand,k,korrektur,korrektur,korrekturFassung);
+        einfuegen(tenant, m, art, tag, zone, s, zustand, k, ((Number) alt.get("version")).intValue()+1,
+                korrektur, korrekturFassung);
+    }
+
+    private void einfuegen(UUID tenant, UUID messstelle, String art, LocalDate tag, AblesungRepository.Zone zone,
+            Summe summe, String zustand, String kennzeichen, int version, String korrektur, int korrekturFassung) {
+        jdbc.queryForList("SELECT uems_ablesungsperiode_speichern(?,?,?,?,?,?,?, ?,?::jsonb,?,?,?)",
+                tenant, messstelle, art, tag, zone.id().getId(), zone.herkunft(), summe.menge(), zustand,
+                kennzeichen, version, korrektur, korrekturFassung);
     }
 }

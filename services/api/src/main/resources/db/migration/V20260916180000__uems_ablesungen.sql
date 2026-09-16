@@ -186,21 +186,52 @@ ALTER TABLE messreihe_periode
             AND entity_id IS NULL AND messkanal IS NULL AND wertart = 'counter'
             AND teile_erwartet IS NULL AND teile_vorhanden IS NULL AND teile_endgueltig IS NULL
             AND erhalten IS NULL AND erwartet IS NULL AND energie IS NULL AND summe IS NULL));
-GRANT INSERT ON messreihe_periode, messreihe_periode_version TO ${appDbUser};
-CREATE FUNCTION uems_ablesung_perioden_schreibgrenze() RETURNS trigger LANGUAGE plpgsql AS $$
+-- Die App-Rolle behält ihre bisherigen SELECT-Rechte auf den Periodenklassen.
+-- Der einzige zusätzliche Schreibweg prüft Mandant, Ablesungsquelle und K-Fassung.
+CREATE FUNCTION uems_ablesungsperiode_speichern(p_tenant UUID, p_messstelle UUID, p_art TEXT,
+    p_tag DATE, p_zone TEXT, p_zone_herkunft TEXT, p_menge NUMERIC, p_zustand TEXT,
+    p_kennzeichen JSONB, p_version INTEGER, p_korrektur TEXT, p_korrektur_fassung INTEGER)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE a TIMESTAMPTZ; b TIMESTAMPTZ; letzte INTEGER;
 BEGIN
-  IF current_user = '${appDbUser}' AND (NEW.entity_id IS NOT NULL OR NEW.wertart IS DISTINCT FROM 'counter'
-      OR NOT EXISTS (
-      SELECT 1 FROM messstelle_quelle q WHERE q.tenant_id = NEW.tenant_id AND q.messstelle_id = NEW.messstelle_id
-      AND q.art = 'ablesung' AND q.rolle = 'fuehrend')) THEN
-    RAISE EXCEPTION 'Der Eingabeweg schreibt nur Ablesungsperioden' USING ERRCODE = 'insufficient_privilege';
+  IF p_tenant IS DISTINCT FROM NULLIF(current_setting('app.tenant_id', true), '')::uuid
+     OR NOT EXISTS (SELECT 1 FROM public.messstelle_quelle q
+                    JOIN public.messstelle_ablesung_fassung f ON f.quelle_id=q.id AND f.tenant_id=q.tenant_id
+                    WHERE q.tenant_id=p_tenant AND q.messstelle_id=p_messstelle AND q.art='ablesung') THEN
+    RAISE EXCEPTION 'Nur Ablesungsperioden des eigenen Kundenbereichs' USING ERRCODE='insufficient_privilege';
   END IF;
-  RETURN NEW;
+  IF p_art NOT IN ('monat','jahr') OR p_version < 1 THEN
+    RAISE EXCEPTION 'Ungültige Ablesungsperiode' USING ERRCODE='check_violation';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('ablesungen:' || p_tenant || ':' || p_messstelle, 0));
+  SELECT max(version) INTO letzte FROM (
+    SELECT version FROM public.messreihe_periode WHERE tenant_id=p_tenant AND messstelle_id=p_messstelle
+      AND art=p_art AND tag=p_tag
+    UNION ALL SELECT version FROM public.messreihe_periode_version WHERE tenant_id=p_tenant
+      AND messstelle_id=p_messstelle AND ebene=p_art AND tag=p_tag) v;
+  IF p_version <> coalesce(letzte,0)+1 OR (p_version>1 AND NOT EXISTS (
+      SELECT 1 FROM public.messreihe_korrektur k WHERE k.tenant_id=p_tenant AND k.kennung=p_korrektur
+        AND k.fassung=p_korrektur_fassung AND k.status IN ('freigegeben','zurueckgenommen')
+        AND k.reihen->0->>'messstelle_id'=p_messstelle::text AND k.reihen->0->>'spur'='ablesung')) THEN
+    RAISE EXCEPTION 'Ablesungsperiode braucht die nächste freigegebene Fassung' USING ERRCODE='check_violation';
+  END IF;
+  a := p_tag::timestamp AT TIME ZONE p_zone;
+  b := (p_tag + CASE p_art WHEN 'monat' THEN INTERVAL '1 month' ELSE INTERVAL '1 year' END) AT TIME ZONE p_zone;
+  IF p_version=1 THEN
+    INSERT INTO public.messreihe_periode (tenant_id,messstelle_id,art,tag,zeitzone,zeitzone_herkunft,
+        beginn,ende,stunden,wertart,menge,menge_zustand,kennzeichen,zustand,endgueltig_ab,ablesung)
+    VALUES (p_tenant,p_messstelle,p_art,p_tag,p_zone,p_zone_herkunft,a,b,extract(epoch FROM b-a)/3600,
+        'counter',p_menge,p_zustand,p_kennzeichen,'endgueltig',b+INTERVAL '168 hours',true);
+  ELSE
+    INSERT INTO public.messreihe_periode_version (tenant_id,messstelle_id,ebene,tag,periode_beginn,
+        periode_ende,zeitzone,version,wertart,menge,menge_zustand,kennzeichen,zustand,korrekturen,ersatzwerte,
+        anlass_kennung,anlass_fassung)
+    VALUES (p_tenant,p_messstelle,p_art,p_tag,a,b,p_zone,p_version,'counter',p_menge,p_zustand,p_kennzeichen,
+        'endgueltig',ARRAY[p_korrektur]::text[],'{}'::text[],p_korrektur,p_korrektur_fassung);
+  END IF;
 END $$;
-CREATE TRIGGER uems_ablesung_perioden_schreibgrenze BEFORE INSERT ON messreihe_periode
-FOR EACH ROW EXECUTE FUNCTION uems_ablesung_perioden_schreibgrenze();
-CREATE TRIGGER uems_ablesung_perioden_schreibgrenze BEFORE INSERT ON messreihe_periode_version
-FOR EACH ROW EXECUTE FUNCTION uems_ablesung_perioden_schreibgrenze();
+REVOKE ALL ON FUNCTION uems_ablesungsperiode_speichern(UUID,UUID,TEXT,DATE,TEXT,TEXT,NUMERIC,TEXT,JSONB,INTEGER,TEXT,INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION uems_ablesungsperiode_speichern(UUID,UUID,TEXT,DATE,TEXT,TEXT,NUMERIC,TEXT,JSONB,INTEGER,TEXT,INTEGER) TO ${appDbUser};
 
 CREATE OR REPLACE FUNCTION messreihe_ereignis_vokabular()
 RETURNS TABLE (art TEXT, urheber TEXT[], zeitform TEXT, grenzen TEXT, offen_erlaubt BOOLEAN,
