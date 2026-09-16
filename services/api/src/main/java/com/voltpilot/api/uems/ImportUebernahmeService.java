@@ -122,8 +122,8 @@ public class ImportUebernahmeService {
             bezuege.kundenbereichSperren(tenant);
             var f=repo.importFassungen(kennung);
             if (f.isEmpty()) throw BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
-            if ("zurueckgenommen".equals(f.getLast().get("status"))) return new Ergebnis(kennung,"zurueckgenommen",0,0,null);
             for (UUID id:repo.importZiele(kennung)) recht(id,"bezugsgroesse.importieren");
+            if ("zurueckgenommen".equals(f.getLast().get("status"))) return new Ergebnis(kennung,"zurueckgenommen",0,0,null);
             var offen=repo.freigabe(kennung);
             if (offen!=null && "vorschlag".equals(offen.status())) gleichzeitig();
             List<Aenderung> a=new ArrayList<>();
