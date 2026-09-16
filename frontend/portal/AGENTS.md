@@ -44,6 +44,7 @@ Historische UI-Implementierungen nicht als aktuelle Architektur dokumentieren. D
 
 - Aufgabenflächen verwenden das zentrierte `Modal`; keine Seitenleisten wieder einführen. Der Wächter `src/keineSeitenleisten.test.ts` prüft dies.
 - UEMS-Oberflächen (AP-13): Quelle je Fläche, Zone einmal im Kopf; Bestandsflächen behalten ihre Zahlen. Mengen nur über Vertrags-Zwillinge; Wächter und Orte: [Oberflächen-Abschluss](../../docs/agents/root/uems-oberflaechen-ebenen.md).
+- Bezugsgrößen (UEMS AP-09): deutsche Zahleneingaben ausschließlich über `zahl.ts` (`zahlText`, keine lokalen Komma-Parser); Datum plus Uhrzeit und sichtbare Standortzone über `VpZeitpunktPicker`/`picker/zeitpunkt.ts`, mehrdeutige Stunden ausdrücklich wählen und fehlende nie verschieben. Stand und Import-Fallen: [Bezugsgrößen-Abschluss](../../docs/agents/root/uems-bezugsgroessen-abschluss.md).
 - Fachableitungen bleiben reine Module; Komponenten rendern ihr Ergebnis. Tokens und `chartTheme()` verwenden, keine zweite Chart-Palette anlegen.
 - `VpPicker`, `VpDatePicker` und `VpTimePicker` statt nativer Auswahlfelder verwenden.
 - Kundenwörter zuerst im [Fachmodell-Glossar](../../docs/fachmodell/glossar.md) pflegen; Konstanten: `src/glossar.ts`, Textprüfung: `src/copy.test.ts`.
