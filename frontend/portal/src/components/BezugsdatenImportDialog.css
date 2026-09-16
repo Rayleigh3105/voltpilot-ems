@@ -26,6 +26,17 @@
 .vp-import-check { display: flex; gap: var(--vp-c-space-3); align-items: flex-start; padding: var(--vp-c-space-4); border: 1px solid var(--vp-c-border); border-radius: var(--vp-c-radius); }
 .vp-import-check input { width: 20px; height: 20px; flex: 0 0 auto; }
 .vp-import-fertig { display: flex; flex-direction: column; gap: var(--vp-c-space-3); padding: var(--vp-c-space-4); background: var(--vp-c-muted); border-radius: var(--vp-c-radius); }
+.vp-import-protokoll, .vp-import-folgen { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--vp-c-space-2); }
+.vp-import-protokoll button { width: 100%; display: flex; justify-content: space-between; gap: var(--vp-c-space-3); padding: var(--vp-c-space-3); border: 1px solid var(--vp-c-border); border-radius: var(--vp-c-radius-sm); background: var(--vp-c-card); color: inherit; text-align: left; cursor: pointer; }
+.vp-import-protokoll button:hover { border-color: var(--vp-c-primary); }
+.vp-import-protokoll button > span { display: flex; flex-direction: column; min-width: 0; }
+.vp-import-protokoll button > span:last-child { text-align: right; }
+.vp-import-protokoll small { color: var(--vp-c-muted-fg); overflow-wrap: anywhere; }
+.vp-import-folgen li { padding: var(--vp-c-space-3); border-left: 3px solid var(--vp-c-border); background: var(--vp-c-muted); }
+.vp-import-konflikt { display: flex; flex-direction: column; gap: var(--vp-c-space-2); min-width: 14rem; }
+.vp-import-konfliktwahl { display: flex; flex-wrap: wrap; gap: var(--vp-c-space-2); }
+.vp-import-konfliktwahl label { display: inline-flex; align-items: center; gap: var(--vp-c-space-1); }
+.vp-import-banner { padding: var(--vp-c-space-4); border-left: 4px solid var(--vp-c-primary); border-radius: var(--vp-c-radius-sm); background: var(--vp-c-muted); }
 .vp-import-foot { display: flex; justify-content: flex-end; gap: var(--vp-c-space-2); flex-wrap: wrap; }
 @media (max-width: 719px) {
   .vp-import-spalten, .vp-import-bezuege, .vp-import-erkennung, .vp-import-vorlage { grid-template-columns: minmax(0, 1fr); }

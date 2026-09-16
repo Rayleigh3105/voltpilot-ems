@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -167,6 +168,12 @@ class BezugsdatenImportUebernahmeApiTest {
         assertThat(r.path("status").asText()).isEqualTo("teilweise_uebernommen");
         assertThat(anzahl(w,"bezugsgroesse_wert")).isOne();
         assertThat(root.queryForObject("SELECT count(*) FROM bezugsdaten_import_zeile WHERE tenant_id=? AND urteil='abgelehnt'",Integer.class,w.mandant())).isEqualTo(2);
+        JsonNode liste=antwort(mvc.perform(get(PFAD).with(person(w,"ines"))).andReturn(),200);
+        assertThat(liste.at("/importe/0/kennung").asText()).isEqualTo(r.path("kennung").asText());
+        JsonNode detail=antwort(mvc.perform(get(PFAD+"/"+r.path("kennung").asText()).with(person(w,"ines"))).andReturn(),200);
+        assertThat(detail.path("zeilen").size()).isEqualTo(3);
+        assertThat(detail.at("/zeilen/1/befunde/0/satz").asText())
+                .isEqualTo(vertrag.at("/befund_saetze/einheit_unbekannt").asText());
     }
 
     @Test void vierAugenFuerBerichtigungUndRuecknahme() throws Exception {
@@ -210,8 +217,24 @@ class BezugsdatenImportUebernahmeApiTest {
         String v=vorschau(a,datei).at("/vorschau/kennung").asText();
         String i=importieren(a,datei,Map.of(),null,null,200).path("kennung").asText();
         ruecknahme(b,i,404);
+        antwort(mvc.perform(get(PFAD+"/"+i).with(person(b,"ines"))).andReturn(),404);
+        antwort(mvc.perform(get(PFAD+"/"+i+"/ruecknahme/vorschau").with(person(b,"ines"))).andReturn(),404);
         uebernehmen(a,datei,v,Map.of(),null,null,400);
         assertThat(anzahl(a,"bezugsgroesse_wert")).isOne();
+    }
+
+    @Test void b14RuecknahmeVorschauIstDerTatsaechlicheAuftragUndSchreibtNichts() throws Exception {
+        Welt w=welt();
+        String i=importieren(w,csv("312.400,0","kg"),Map.of(),null,null,200).path("kennung").asText();
+        int vorher=anzahl(w,"bezugsgroesse_wert");
+        JsonNode v=antwort(mvc.perform(get(PFAD+"/"+i+"/ruecknahme/vorschau").with(person(w,"ines"))).andReturn(),200);
+        assertThat(v.path("aenderungen").asInt()).isOne();
+        assertThat(v.at("/werte/0/bisheriger_betrag").asText()).isEqualTo("312400.000000");
+        assertThat(v.at("/werte/0/neuer_betrag").isNull()).isTrue();
+        assertThat(anzahl(w,"bezugsgroesse_wert")).isEqualTo(vorher);
+        JsonNode rueck=ruecknahme(w,i,200);
+        assertThat(rueck.path("aenderungen").asInt()).isEqualTo(v.path("aenderungen").asInt());
+        assertThat(wert(w)).isNull();
     }
 
     @Test void standWirdNachZeitpunktImportiertUndZurueckgenommen() throws Exception {

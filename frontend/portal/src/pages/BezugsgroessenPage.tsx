@@ -10,6 +10,7 @@ import { VpPicker } from '../components/VpPicker';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { BezugsgroesseAnlegenDialog } from '../components/BezugsgroesseAnlegenDialog';
 import { BezugsdatenImportDialog } from '../components/BezugsdatenImportDialog';
+import { BezugsdatenImportProtokollDialog } from '../components/BezugsdatenImportProtokollDialog';
 import * as B from '../bezugsgroesseListe';
 import './BezugsgroessenPage.css';
 
@@ -30,6 +31,7 @@ export function BezugsgroessenPage() {
   const [filter, setFilter] = useState({ standort: null as string | null, prozess: null as string | null, archiviert: false });
   const [anlegen, setAnlegen] = useState(false);
   const [importOffen, setImportOffen] = useState(false);
+  const [protokoll, setProtokoll] = useState<string | null | undefined>(undefined);
   const [archiv, setArchiv] = useState<B.Zeile | null>(null);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export function BezugsgroessenPage() {
     <header className="vp-bz-kopf">
       <div><h1 tabIndex={-1} ref={kopf}>{B.TITEL}</h1><p>Die Grundlage für Kennzahlen je Kilogramm, Stunde oder Quadratmeter.</p></div>
       {stand && <div className="vp-bz-aktionen">
+        {darfImportieren && <Button variant="ghost" onClick={e => { ausloeser.current = e.currentTarget; setProtokoll(null); setErfolg(null); }}>Import-Protokoll</Button>}
         {darfImportieren && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setImportOffen(true); setErfolg(null); }}>Werte importieren</Button>}
         {stand.orte.some(o => o.waehlbar && verwalten(o.standort)) && <Button onClick={e => { ausloeser.current = e.currentTarget; setAnlegen(true); setErfolg(null); }}><Icon name="plus" size={16} />{B.ANLEGEN}</Button>}
       </div>}
@@ -86,7 +89,8 @@ export function BezugsgroessenPage() {
       </ul>}
     </>}
     {anlegen && stand && <BezugsgroesseAnlegenDialog orte={stand.orte} onClose={schliessen} onGespeichert={b => { setStand(s => s ? { ...s, liste: { ...s.liste, bezugsgroessen: [...s.liste.bezugsgroessen, b] } } : s); setFilter({ standort: null, prozess: null, archiviert: false }); setErfolg(`${b.kennzeichen} · ${b.name} ist angelegt.`); schliessen(); }} />}
-    {importOffen && stand && <BezugsdatenImportDialog bezugsgroessen={stand.liste.bezugsgroessen} onClose={() => { setImportOffen(false); requestAnimationFrame(() => ausloeser.current?.focus()); }} />}
+    {importOffen && stand && <BezugsdatenImportDialog bezugsgroessen={stand.liste.bezugsgroessen} onImportAnsehen={(kennung) => { setImportOffen(false); setProtokoll(kennung); }} onClose={() => { setImportOffen(false); requestAnimationFrame(() => ausloeser.current?.focus()); }} />}
+    {protokoll !== undefined && <BezugsdatenImportProtokollDialog startKennung={protokoll} onClose={() => { setProtokoll(undefined); requestAnimationFrame(() => ausloeser.current?.focus()); }} />}
     {archiv && archiv.standort !== undefined && verwalten(archiv.standort) && <ConfirmDialog open title="Bezugsgröße archivieren?" intro={`„${archiv.name}“ wird archiviert.`} consequences={B.ARCHIV_FOLGEN} confirmLabel="Archivieren" busy={busy} onConfirm={() => void archivieren()} onCancel={() => { if (!busy) schliessen(); }} extra={fehler ? <p role="alert">{fehler}</p> : undefined} />}
   </section>;
 }

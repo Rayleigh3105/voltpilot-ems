@@ -62,6 +62,7 @@ class BezugsdatenImportSchnittstelleVertragTest {
         assertThat(pfade).containsKeys("/api/v1/bezugsdaten/importe",
                 "/api/v1/bezugsdaten/importe/{kennung}",
                 "/api/v1/bezugsdaten/importe/{kennung}/ruecknahme",
+                "/api/v1/bezugsdaten/importe/{kennung}/ruecknahme/vorschau",
                 "/api/v1/bezugsdaten/importe/{kennung}/freigeben");
         Map<String,Object> bestaetigung=(Map<String,Object>)schemas.get("BezugsdatenImportBestaetigung");
         assertThat((Map<String,Object>)bestaetigung.get("properties"))

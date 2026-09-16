@@ -12,6 +12,7 @@ import {
   type Bezugsgroesse,
 } from '../api';
 import { URTEIL_LABEL, trennzeichenText, vorschauAbleitung } from '../bezugsdatenVorschau';
+import { doppelimportBanner, konfliktAbleitung, type KonfliktEntscheidung } from '../bezugsdatenImportProtokoll';
 import { VpPicker } from './VpPicker';
 import './BezugsdatenImportDialog.css';
 
@@ -66,7 +67,7 @@ function rollenVorschlag(kopf: string[]): Rolle[] {
 
 const fehlertext = (e: unknown): string => e instanceof ApiError ? e.message : 'Das hat nicht geklappt. Bitte versuchen Sie es erneut.';
 
-export function BezugsdatenImportDialog({ bezugsgroessen, onClose }: { bezugsgroessen: Bezugsgroesse[]; onClose: () => void }) {
+export function BezugsdatenImportDialog({ bezugsgroessen, onClose, onImportAnsehen }: { bezugsgroessen: Bezugsgroesse[]; onClose: () => void; onImportAnsehen?: (kennung: string) => void }) {
   const [schritt, setSchritt] = useState(1);
   const [datei, setDatei] = useState<File | null>(null);
   const [bild, setBild] = useState<DateiBild | null>(null);
@@ -79,6 +80,8 @@ export function BezugsdatenImportDialog({ bezugsgroessen, onClose }: { bezugsgro
   const [vorschau, setVorschau] = useState<BezugsdatenVorschau | null>(null);
   const [ergebnis, setErgebnis] = useState<BezugsdatenImportErgebnis | null>(null);
   const [teilBestaetigt, setTeilBestaetigt] = useState(false);
+  const [entscheidungen, setEntscheidungen] = useState<Record<number, KonfliktEntscheidung>>({});
+  const [begruendung, setBegruendung] = useState('');
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const fehlerRef = useRef<HTMLParagraphElement>(null);
@@ -102,11 +105,13 @@ export function BezugsdatenImportDialog({ bezugsgroessen, onClose }: { bezugsgro
     };
   }, [rollen, ziele, festerBezug, bezugSpalte, bezugTabelle]);
   const modell = vorschau ? vorschauAbleitung(vorschau) : null;
+  const konflikt = vorschau ? konfliktAbleitung(vorschau, entscheidungen) : null;
+  const doppelimport = vorschau ? doppelimportBanner(vorschau) : null;
   const zuordnungFertig = zuordnung.spalten.periode !== null && zuordnung.spalten.wert !== null
     && (bezugSpalte < 0 ? !!festerBezug : bezugTexte.length > 0 && bezugTexte.every((x) => !!bezugTabelle[x]));
 
   const dateiWaehlen = async (neu: File | null) => {
-    setDatei(neu); setVorschau(null); setErgebnis(null); setFehler(null); setVorlageId(null);
+    setDatei(neu); setVorschau(null); setErgebnis(null); setFehler(null); setVorlageId(null); setEntscheidungen({}); setBegruendung('');
     if (!neu) { setBild(null); setRollen([]); return; }
     try {
       const b = await dateiBild(neu); setBild(b); setRollen(rollenVorschlag(b.kopf));
@@ -148,7 +153,7 @@ export function BezugsdatenImportDialog({ bezugsgroessen, onClose }: { bezugsgro
     setBusy(true); setFehler(null);
     try {
       setErgebnis(await api.bezugsdatenImportieren(datei, vorlageId ? null : zuordnung, vorlageId, {
-        vorschau: vorschau.vorschau.kennung, entscheidungen: {}, begruendung: null,
+        vorschau: vorschau.vorschau.kennung, entscheidungen, begruendung: konflikt?.begruendungNoetig ? begruendung.trim() : null,
         teiluebernahme: modell.bestaetigung,
       }));
     } catch (e) { setFehler(fehlertext(e)); }
@@ -159,8 +164,8 @@ export function BezugsdatenImportDialog({ bezugsgroessen, onClose }: { bezugsgro
     <Button variant="ghost" disabled={busy} onClick={schritt === 1 ? onClose : () => { setFehler(null); setSchritt((s) => s - 1); }}>{schritt === 1 ? 'Abbrechen' : 'Zurück'}</Button>
     {schritt === 1 && <Button disabled={!datei || !bild} onClick={() => setSchritt(2)}>Weiter zur Zuordnung</Button>}
     {schritt === 2 && <Button disabled={busy || (!vorlageId && !zuordnungFertig)} onClick={() => void vorschauen()}>{busy ? 'Vorschau wird erstellt …' : 'Vorschau erstellen'}</Button>}
-    {schritt === 3 && modell && <Button disabled={!vorschau?.import.uebernahme_moeglich || vorschau.import.zaehler.konflikt > 0} onClick={() => setSchritt(4)}>{modell.knopf}</Button>}
-    {schritt === 4 && modell && <Button disabled={busy || (modell.teiluebernahme && !teilBestaetigt)} onClick={() => void importieren()}>{busy ? 'Wird übernommen …' : modell.knopf}</Button>}
+    {schritt === 3 && modell && konflikt && <Button disabled={!vorschau?.import.import_datensatz || (konflikt.begruendungNoetig && begruendung.trim().length < 10)} onClick={() => setSchritt(4)}>{konflikt.konflikte > 0 ? 'Entscheidung prüfen' : modell.knopf}</Button>}
+    {schritt === 4 && modell && konflikt && <Button disabled={busy || (modell.teiluebernahme && !teilBestaetigt) || (konflikt.begruendungNoetig && begruendung.trim().length < 10)} onClick={() => void importieren()}>{busy ? 'Wird übernommen …' : konflikt.konflikte > 0 ? `${konflikt.aenderungen} ${konflikt.aenderungen === 1 ? 'Zeile' : 'Zeilen'} übernehmen` : modell.knopf}</Button>}
   </>;
 
   return <Modal open title="Werte aus Datei übernehmen" onClose={busy ? () => undefined : onClose} footer={<div className="vp-import-foot">{footer}</div>}>
@@ -181,15 +186,17 @@ export function BezugsdatenImportDialog({ bezugsgroessen, onClose }: { bezugsgro
       </section>}
       {schritt === 3 && vorschau && modell && <section className="vp-import-panel">
         <h3>Vorschau prüfen</h3>
+        {doppelimport && <div className="vp-import-banner" role="status"><strong>{doppelimport.satz}</strong>{onImportAnsehen && <div><Button variant="ghost" onClick={() => onImportAnsehen(doppelimport.kennung)}>Import {doppelimport.kennung} ansehen</Button></div>}</div>}
         <dl className="vp-import-erkennung"><div><dt>Kodierung</dt><dd>{vorschau.datei.kodierung?.toUpperCase() ?? 'Nicht erkannt'}</dd></div><div><dt>Trennzeichen</dt><dd>{trennzeichenText(vorschau.datei.trennzeichen)}</dd></div><div><dt>Kopfzeile</dt><dd>{vorschau.datei.kopfzeile ? 'Ja' : 'Nein'}</dd></div><div><dt>Datei</dt><dd>{vorschau.datei.name}</dd></div></dl>
         <div className="vp-import-zaehler"><span><strong>{vorschau.import.zaehler.neu}</strong> neu</span><span><strong>{vorschau.import.zaehler.wiederholung}</strong> schon vorhanden</span><span><strong>{vorschau.import.zaehler.abgelehnt}</strong> abgelehnt</span><span><strong>{vorschau.import.zaehler.mit_hinweis}</strong> mit Hinweis</span></div>
-        {vorschau.import.zaehler.konflikt > 0 && <p role="alert">{vorschau.import.zaehler.konflikt} abweichende Werte brauchen vor der Übernahme eine Entscheidung. Sie können in diesem Schritt noch nicht übernommen werden.</p>}
-        {modell.befunde.map((b) => <p className={b.hinweis ? 'vp-import-hinweis' : 'vp-import-fehler'} key={b.befund}>{b.satz}</p>)}
-        <div className="vp-import-tabelle" tabIndex={0} role="region" aria-label="Vorschau der Datenzeilen"><table><thead><tr><th>Zeile</th>{(vorschau.datei.kopf ?? bild?.kopf ?? []).map((x, i) => <th key={`${x}-${i}`}>{x || `Spalte ${i + 1}`}</th>)}<th>Ergebnis</th></tr></thead><tbody>{vorschau.zeilen.map((z) => <tr key={z.nr}><td>{z.nr}</td>{z.felder.map((x, i) => <td key={i}>{x}</td>)}<td><strong>{URTEIL_LABEL[z.urteil] ?? z.urteil}</strong>{z.befunde.map((b) => <small key={b.befund}>{b.satz}</small>)}</td></tr>)}</tbody></table></div>
+        {vorschau.import.zaehler.konflikt > 0 && <><div className="vp-import-konflikt"><p>{vorschau.import.zaehler.konflikt} abweichende Werte brauchen eine Entscheidung. Vorgabe ist „behalten“.</p><div className="vp-import-konfliktwahl"><Button variant="outline" onClick={() => setEntscheidungen(Object.fromEntries(vorschau.zeilen.filter(z => z.urteil === 'konflikt').map(z => [z.nr, 'ersetzen'])))}>Alle Konflikte ersetzen</Button><Button variant="ghost" onClick={() => setEntscheidungen({})}>Alle behalten</Button></div></div>{konflikt?.begruendungNoetig && <Input label="Eine Begründung für alle ersetzten Zeilen" value={begruendung} onChange={(e) => setBegruendung(e.target.value)} hint="Mindestens 10 Zeichen" />}</>}
+        {modell.befunde.filter((b) => !(doppelimport && b.befund === 'datei_bekannt')).map((b) => <p className={b.hinweis ? 'vp-import-hinweis' : 'vp-import-fehler'} key={b.befund}>{b.satz}</p>)}
+        <div className="vp-import-tabelle" tabIndex={0} role="region" aria-label="Vorschau der Datenzeilen"><table><thead><tr><th>Zeile</th>{(vorschau.datei.kopf ?? bild?.kopf ?? []).map((x, i) => <th key={`${x}-${i}`}>{x || `Spalte ${i + 1}`}</th>)}<th>Ergebnis</th></tr></thead><tbody>{vorschau.zeilen.map((z) => <tr key={z.nr}><td>{z.nr}</td>{z.felder.map((x, i) => <td key={i}>{x}</td>)}<td>{z.urteil === 'konflikt' ? <div className="vp-import-konflikt"><strong>Abweichender Wert</strong>{z.bestand && <small>Vorhanden: {z.bestand.betrag} {z.einheit} · Fassung {z.bestand.fassung}{z.bestand.import_kennung ? ` · ${z.bestand.import_kennung}` : ''}</small>}{z.betrag && <small>In der Datei: {z.betrag} {z.einheit}</small>}<div className="vp-import-konfliktwahl" role="radiogroup" aria-label={`Entscheidung für Zeile ${z.nr}`}><label><input type="radio" name={`konflikt-${z.nr}`} checked={entscheidungen[z.nr] !== 'ersetzen'} onChange={() => setEntscheidungen(a => { const n = { ...a }; delete n[z.nr]; return n; })} />Behalten</label><label><input type="radio" name={`konflikt-${z.nr}`} checked={entscheidungen[z.nr] === 'ersetzen'} onChange={() => setEntscheidungen(a => ({ ...a, [z.nr]: 'ersetzen' }))} />Ersetzen</label></div>{z.befunde.map((b) => <small key={b.befund}>{b.satz}</small>)}</div> : <><strong>{URTEIL_LABEL[z.urteil] ?? z.urteil}</strong>{z.befunde.map((b) => <small key={b.befund}>{b.satz}</small>)}</>}</td></tr>)}</tbody></table></div>
       </section>}
-      {schritt === 4 && modell && <section className="vp-import-panel">
+      {schritt === 4 && modell && konflikt && <section className="vp-import-panel">
         {ergebnis ? <div className="vp-import-fertig" role="status"><h3>{ergebnis.kennung} ist übernommen</h3><p>{ergebnis.aenderungen} {ergebnis.aenderungen === 1 ? 'Wert wurde' : 'Werte wurden'} gespeichert.</p>{ergebnis.vorschlaege > 0 && <p>{ergebnis.vorschlaege} Berichtigungen warten auf Freigabe.</p>}</div> : <>
-          <h3>Übernahme bestätigen</h3><p><strong>{modell.uebernehmen} von {modell.zeilen} Zeilen</strong> werden übernommen. Die Vorschau selbst hat noch nichts gespeichert.</p>
+          <h3>Übernahme bestätigen</h3><p><strong>{konflikt.aenderungen} von {modell.zeilen} Zeilen</strong> werden übernommen. Die Vorschau selbst hat noch nichts gespeichert.</p>
+          {konflikt.konflikte > 0 && <p>{konflikt.ersetzen} ersetzen · {konflikt.behalten} behalten{konflikt.begruendungNoetig ? ` · Begründung: ${begruendung.trim()}` : ''}</p>}
           {modell.teiluebernahme && <label className="vp-import-check"><input type="checkbox" checked={teilBestaetigt} onChange={(e) => setTeilBestaetigt(e.target.checked)} /><span>Ich bestätige: {modell.bestaetigung}.</span></label>}
           {modell.nichtUebernehmen > 0 && <p className="vp-import-hinweis">{modell.nichtUebernehmen} {modell.nichtUebernehmen === 1 ? 'Zeile wird' : 'Zeilen werden'} nicht übernommen. Die Befunde bleiben beim Import nachvollziehbar.</p>}
         </>}

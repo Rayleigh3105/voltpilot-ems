@@ -1,6 +1,9 @@
 package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.ImportUebernahmeRepository.Aenderung;
 import com.voltpilot.api.uems.BezugsgroesseRegeln.Ablehnung;
@@ -50,6 +53,29 @@ public class ImportUebernahmeService {
             this(kennung,status,aenderungen,vorschlaege,zaehler,null);
         }
     }
+
+    public record Akteur(String name, String rolle, String art) {}
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record ProtokollZeile(int nr, String urteil, List<BezugsdatenImportDto.Befund> befunde,
+            String bezugsgroesse, LocalDate periodeVon, LocalDate periodeBis, Instant zeitpunkt,
+            String betrag, String einheit, String geliefertWert, String geliefertEinheit) {}
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record ProtokollEintrag(String kennung, String status, String dateiName, long dateiBytes,
+            Instant erstelltAm, Instant geaendertAm, int aenderungen, int vorschlaege, BezugsdatenRegeln.Zaehler zaehler,
+            BezugsdatenVorlageDto.Verweis vorlage,
+            String begruendung, Akteur urheber, List<ProtokollZeile> zeilen) {}
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Protokoll(List<ProtokollEintrag> importe) {}
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RuecknahmeWert(UUID bezugsgroesseId, String kennzeichen, String name,
+            LocalDate periodeVon, LocalDate periodeBis, Instant zeitpunkt, String bisherigerBetrag,
+            String neuerBetrag, String einheit, String vorgang) {}
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RuecknahmeVorschau(String kennung, int aenderungen, boolean vieraugen,
+            List<RuecknahmeWert> werte) {}
+
+    private record RuecknahmePlan(List<Aenderung> aenderungen, List<RuecknahmeWert> werte,
+            List<Map<String,Object>> fassungen, boolean schonZurueckgenommen) {}
 
     public Ergebnis uebernehmen(byte[] datei, String name, ImportVorschau.Zuordnung zuordnung,
             Bestaetigung anfrage, ProtokollAkteur wer) {
@@ -127,33 +153,49 @@ public class ImportUebernahmeService {
         });
     }
 
+    public Protokoll protokoll() {
+        return tx.execute(t -> {
+            UUID tenant = TenantContext.get();
+            List<ProtokollEintrag> aus = new ArrayList<>();
+            for (Map<String,Object> i : repo.importe(tenant)) {
+                for (UUID id : repo.importZiele((String)i.get("kennung"))) recht(id,"bezugsgroesse.importieren");
+                aus.add(protokollEintrag(i, false));
+            }
+            return new Protokoll(aus);
+        });
+    }
+
+    public ProtokollEintrag detail(String kennung) {
+        return tx.execute(t -> {
+            UUID tenant = TenantContext.get();
+            Map<String,Object> i = repo.importe(tenant).stream()
+                    .filter(x -> kennung.equals(x.get("kennung"))).findFirst()
+                    .orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+            for (UUID id : repo.importZiele(kennung)) recht(id,"bezugsgroesse.importieren");
+            return protokollEintrag(i, true);
+        });
+    }
+
+    public RuecknahmeVorschau ruecknahmeVorschau(String kennung) {
+        return tx.execute(t -> {
+            UUID tenant=TenantContext.get();
+            boolean vier=werte.vierAugenGesperrt(tenant);
+            bezuege.kundenbereichSperren(tenant);
+            RuecknahmePlan plan=ruecknahmePlan(tenant,kennung);
+            return new RuecknahmeVorschau(kennung,plan.aenderungen().size(),vier,plan.werte());
+        });
+    }
+
     public Ergebnis ruecknahme(String kennung,String begruendung,ProtokollAkteur wer) {
         String grund=begruendung(begruendung);
         return tx.execute(t -> {
             UUID tenant=TenantContext.get();
             boolean vier=werte.vierAugenGesperrt(tenant);
             bezuege.kundenbereichSperren(tenant);
-            var f=repo.importFassungen(kennung);
-            if (f.isEmpty()) throw BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
-            for (UUID id:repo.importZiele(kennung)) recht(id,"bezugsgroesse.importieren");
-            if ("zurueckgenommen".equals(f.getLast().get("status"))) return new Ergebnis(kennung,"zurueckgenommen",0,0,null,repo.vorlage(kennung));
-            var offen=repo.freigabe(kennung);
-            if (offen!=null && "vorschlag".equals(offen.status())) gleichzeitig();
-            List<Aenderung> a=new ArrayList<>();
-            for (UUID id:repo.ziele(kennung)) {
-                recht(id,"bezugsgroesse.importieren");
-                for (var w:bezuege.werte(id,null,null)) {
-                    if (!kennung.equals(w.importKennung()) || "ruecknahme".equals(w.vorgang())) continue;
-                    var k=kette(id,w.periodeVon(),w.zeitpunkt());
-                    if (k.getLast().fassung()!=w.fassung() || repo.offen(id,w.periodeVon(),w.zeitpunkt())
-                            || (w.periodeVon()!=null && werte.offen(tenant,id,w.periodeVon()).isPresent())) gleichzeitig();
-                    BigDecimal betrag="berichtigung".equals(w.vorgang()) ? k.stream()
-                            .filter(p -> p.fassung()==w.ersetztFassung()).findFirst().orElseThrow().betrag() : null;
-                    a.add(new Aenderung(id,w.periodeVon(),w.periodeBis(),w.zeitpunkt(),w.zeitzone(),w.fassung(),betrag,
-                            "ruecknahme",w.importZeile(),w.geliefertText(),w.geliefertEinheit(),
-                            List.of(betrag==null ? "Import " + kennung + " zurückgenommen" : "Rücknahme der Berichtigung aus " + kennung)));
-                }
-            }
+            RuecknahmePlan plan=ruecknahmePlan(tenant,kennung);
+            var f=plan.fassungen();
+            if (plan.schonZurueckgenommen()) return new Ergebnis(kennung,"zurueckgenommen",0,0,null,repo.vorlage(kennung));
+            List<Aenderung> a=plan.aenderungen();
             if (vier && !a.isEmpty()) repo.vorschlag(tenant,kennung,grund,true,a,wer);
             else {
                 anwenden(tenant,kennung,a,grund,wer,null);
@@ -163,6 +205,66 @@ public class ImportUebernahmeService {
                     vier ? 0 : a.size(),vier ? a.size() : 0,null,repo.vorlage(kennung));
         });
     }
+
+    private RuecknahmePlan ruecknahmePlan(UUID tenant,String kennung) {
+        var f=repo.importFassungen(kennung);
+        if (f.isEmpty()) throw BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
+        for (UUID id:repo.importZiele(kennung)) recht(id,"bezugsgroesse.importieren");
+        if ("zurueckgenommen".equals(f.getLast().get("status"))) return new RuecknahmePlan(List.of(),List.of(),f,true);
+        var offen=repo.freigabe(kennung);
+        if (offen!=null && "vorschlag".equals(offen.status())) gleichzeitig();
+        List<Aenderung> a=new ArrayList<>();
+        List<RuecknahmeWert> v=new ArrayList<>();
+        for (UUID id:repo.ziele(kennung)) {
+            recht(id,"bezugsgroesse.importieren");
+            var bezug=bezuege.sperre(id).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+            for (var w:bezuege.werte(id,null,null)) {
+                if (!kennung.equals(w.importKennung()) || "ruecknahme".equals(w.vorgang())) continue;
+                var k=kette(id,w.periodeVon(),w.zeitpunkt());
+                if (k.getLast().fassung()!=w.fassung() || repo.offen(id,w.periodeVon(),w.zeitpunkt())
+                        || (w.periodeVon()!=null && werte.offen(tenant,id,w.periodeVon()).isPresent())) gleichzeitig();
+                BigDecimal betrag="berichtigung".equals(w.vorgang()) ? k.stream()
+                        .filter(p -> p.fassung()==w.ersetztFassung()).findFirst().orElseThrow().betrag() : null;
+                a.add(new Aenderung(id,w.periodeVon(),w.periodeBis(),w.zeitpunkt(),w.zeitzone(),w.fassung(),betrag,
+                        "ruecknahme",w.importZeile(),w.geliefertText(),w.geliefertEinheit(),
+                        List.of(betrag==null ? "Import " + kennung + " zurückgenommen" : "Rücknahme der Berichtigung aus " + kennung)));
+                v.add(new RuecknahmeWert(id,bezug.kennzeichen(),bezug.name(),w.periodeVon(),w.periodeBis(),w.zeitpunkt(),
+                        w.betrag()==null ? null : w.betrag().toPlainString(),betrag==null ? null : betrag.toPlainString(),
+                        bezug.einheit(),betrag==null ? "zurueckgenommen" : "vorfassung_wiederhergestellt"));
+            }
+        }
+        return new RuecknahmePlan(a,v,f,false);
+    }
+
+    private ProtokollEintrag protokollEintrag(Map<String,Object> i, boolean mitZeilen) {
+        String kennung=(String)i.get("kennung");
+        List<ProtokollZeile> zeilen=mitZeilen ? repo.importZeilen(kennung).stream().map(z -> new ProtokollZeile(
+                ((Number)z.get("nr")).intValue(),(String)z.get("urteil"),befunde(z.get("befunde")),
+                (String)z.get("bezugsgroesse_kennzeichen"),datum(z.get("periode_von")),datum(z.get("periode_bis")),
+                instant(z.get("zeitpunkt")),text(z.get("betrag")),(String)z.get("einheit"),
+                (String)z.get("geliefert_wert"),(String)z.get("geliefert_einheit"))).toList() : List.of();
+        var z=new BezugsdatenRegeln.Zaehler(n(i,"zeilen"),n(i,"neu"),n(i,"wiederholung"),n(i,"konflikt"),
+                n(i,"berichtigung"),n(i,"uebersprungen"),n(i,"abgelehnt"),n(i,"mit_hinweis"));
+        var offen=repo.freigabe(kennung);
+        int v=offen!=null && "vorschlag".equals(offen.status()) ? offen.auftrag().size() : 0;
+        int a=n(i,"aenderungen")-(offen!=null && !offen.ruecknahme() ? v : 0);
+        return new ProtokollEintrag(kennung,(String)i.get("aktueller_status"),(String)i.get("datei_name"),
+                ((Number)i.get("datei_bytes")).longValue(),instant(i.get("created_at")),instant(i.get("geaendert_am")),
+                a,v,z,repo.vorlage(kennung),(String)i.get("aktuelle_begruendung"),
+                new Akteur((String)i.get("actor_name"),(String)i.get("actor_rolle"),(String)i.get("actor_art")),zeilen);
+    }
+
+    private List<BezugsdatenImportDto.Befund> befunde(Object value) {
+        try {
+            List<String> codes=json.readValue(String.valueOf(value),new TypeReference<List<String>>() {});
+            return codes.stream().map(c -> new BezugsdatenImportDto.Befund(c,ImportVorschau.satz(c),
+                    BezugsdatenRegeln.HINWEIS_BEFUNDE.contains(c))).toList();
+        } catch (Exception e) { throw new IllegalStateException(e); }
+    }
+    private static int n(Map<String,Object> m,String key) { return m.get(key)==null ? 0 : ((Number)m.get(key)).intValue(); }
+    private static String text(Object v) { return v==null ? null : v.toString(); }
+    private static LocalDate datum(Object v) { return v==null ? null : ((java.sql.Date)v).toLocalDate(); }
+    private static Instant instant(Object v) { return v==null ? null : ((java.sql.Timestamp)v).toInstant(); }
 
     /** Called inside the existing correction approval transaction, after locking its company setting. */
     public MessreiheKorrekturRepository.Korrektur freigeben(UUID tenant,String kennung,String grund,

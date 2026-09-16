@@ -2367,6 +2367,24 @@ export interface BezugsdatenImportErgebnis {
   zaehler: BezugsdatenZaehler | null; vorlage: { vorlage_id: string; fassung: number; name: string } | null;
 }
 
+export interface BezugsdatenImportZeile {
+  nr: number; urteil: string; befunde: BezugsdatenBefund[]; bezugsgroesse: string | null;
+  periode_von: string | null; periode_bis: string | null; zeitpunkt: string | null;
+  betrag: string | null; einheit: string | null; geliefert_wert: string | null; geliefert_einheit: string | null;
+}
+export interface BezugsdatenImportProtokollEintrag {
+  kennung: string; status: string; datei_name: string; datei_bytes: number; erstellt_am: string; geaendert_am: string;
+  aenderungen: number; vorschlaege: number; zaehler: BezugsdatenZaehler; vorlage: { vorlage_id: string; fassung: number; name: string } | null; begruendung: string | null;
+  urheber: { name: string; rolle: string; art: string }; zeilen: BezugsdatenImportZeile[];
+}
+export interface BezugsdatenRuecknahmeVorschau {
+  kennung: string; aenderungen: number; vieraugen: boolean; werte: Array<{
+    bezugsgroesse_id: string; kennzeichen: string; name: string; periode_von: string | null; periode_bis: string | null;
+    zeitpunkt: string | null; bisheriger_betrag: string | null; neuer_betrag: string | null; einheit: string;
+    vorgang: 'zurueckgenommen' | 'vorfassung_wiederhergestellt';
+  }>;
+}
+
 /**
  * UEMS AP-03 IP-4: die Selbstauskunft `GET /api/v1/me` (OpenAPI `Selbstauskunft`) - wer fragt und was er darf.
  * Rollen, Umfänge und Aktionen sind Kennungen der Rechte-Matrix (`docs/contracts/v2/rechte-matrix.json`);
@@ -8438,6 +8456,10 @@ export const api = {
     body.append('bestaetigung', JSON.stringify(bestaetigung));
     return request<BezugsdatenImportErgebnis>('/api/v1/bezugsdaten/importe', { method: 'POST', body });
   },
+  bezugsdatenImporte: () => request<{ importe: BezugsdatenImportProtokollEintrag[] }>('/api/v1/bezugsdaten/importe'),
+  bezugsdatenImport: (kennung: string) => request<BezugsdatenImportProtokollEintrag>(`/api/v1/bezugsdaten/importe/${encodeURIComponent(kennung)}`),
+  bezugsdatenRuecknahmeVorschau: (kennung: string) => request<BezugsdatenRuecknahmeVorschau>(`/api/v1/bezugsdaten/importe/${encodeURIComponent(kennung)}/ruecknahme/vorschau`),
+  bezugsdatenImportZuruecknehmen: (kennung: string, begruendung: string) => request<BezugsdatenImportErgebnis>(`/api/v1/bezugsdaten/importe/${encodeURIComponent(kennung)}/ruecknahme`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
   bezugsdatenVorlagen: () => request<{ vorlagen: BezugsdatenVorlage[] }>('/api/v1/bezugsdaten/vorlagen'),
   bezugsdatenVorlageSpeichern: (body: { vorlage_id?: string; name: string; zuordnung: BezugsdatenZuordnung }) =>
     request<BezugsdatenVorlage>('/api/v1/bezugsdaten/vorlagen', { method: 'POST', body: JSON.stringify(body) }),
