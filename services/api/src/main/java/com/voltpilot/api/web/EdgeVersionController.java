@@ -32,6 +32,14 @@ import org.springframework.web.bind.annotation.RestController;
  * gebildet von {@link EdgeStandVerdict}) - der Maßstab erreichte den Kunden bis
  * dahin überhaupt nicht, seine Box zeigte also eine Version, die niemand
  * einordnen konnte. Es reist das Urteil, NIE das Register.
+ *
+ * <p><b>Ohne {@code teilansicht} — die benannte Lücke von AP-03 IP-10.</b> Diese Route antwortet mit einer
+ * NACKTEN LISTE und kann das additive Feld {@code teilansicht {sichtbar, gesamt}} darum nicht im Körper
+ * tragen; ein Umschlag {@code {eintraege, teilansicht}} wäre ein Bruch des Vertrags an einer Kernroute.
+ * <b>Einzulösen mit AP-03 IP-12</b> (Portal-Rechte-Weiche): dort werden {@code api.ts} und die
+ * Kundenflächen ohnehin umgestellt, und der Umschlag ist dann billig. Die Sicherheitszusage hängt nicht
+ * daran — die Liste zeigt ausschließlich Sichtbares (Standort-Zaun {@code site_scope}, IP-5) —, und den
+ * Satz „Teilansicht: n von m Standorten" zeichnet das Portal aus {@code GET /api/v1/me}.
  */
 @RestController
 @RequestMapping("/api/v1/edge-versions")

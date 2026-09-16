@@ -47,6 +47,14 @@ import org.springframework.web.server.ResponseStatusException;
  * Devices for the caller's tenant, and the claim endpoint. Claiming is a single
  * insert scoped to the tenant; RLS plus the global unique {@code external_ref}
  * index make cross-tenant claiming impossible.
+ *
+ * <p><b>Ohne {@code teilansicht} — die benannte Lücke von AP-03 IP-10.</b> Diese Route antwortet mit einer
+ * NACKTEN LISTE und kann das additive Feld {@code teilansicht {sichtbar, gesamt}} darum nicht im Körper
+ * tragen; ein Umschlag {@code {eintraege, teilansicht}} wäre ein Bruch des Vertrags an einer Kernroute.
+ * <b>Einzulösen mit AP-03 IP-12</b> (Portal-Rechte-Weiche): dort werden {@code api.ts} und die
+ * Kundenflächen ohnehin umgestellt, und der Umschlag ist dann billig. Die Sicherheitszusage hängt nicht
+ * daran — die Liste zeigt ausschließlich Sichtbares (Standort-Zaun {@code site_scope}, IP-5) —, und den
+ * Satz „Teilansicht: n von m Standorten" zeichnet das Portal aus {@code GET /api/v1/me}.
  */
 @RestController
 @RequestMapping("/api/v1/devices")

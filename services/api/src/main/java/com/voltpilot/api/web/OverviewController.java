@@ -21,6 +21,8 @@ import com.voltpilot.api.web.dto.OverviewDto.OverviewTotalsDto;
 import com.voltpilot.api.web.dto.OverviewDto.RoleCountsDto;
 import com.voltpilot.api.web.dto.RollenDto;
 import com.voltpilot.api.web.dto.SiteDto;
+import com.voltpilot.api.web.dto.TeilansichtDto;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
@@ -39,10 +41,14 @@ import org.springframework.web.bind.annotation.RestController;
  * snapshot and today's planned savings, plus fleet totals and the 14-day
  * savings series for the hero. One request instead of 4-per-site polling.
  *
- * <p>Everything reads through the RLS-scoped app datasource - the aggregation
- * deliberately has NO site filter, so RLS is the only (and sufficient) fence:
- * the fleet is exactly the caller's tenant. Admins get another tenant's fleet
- * via the {@code X-Tenant-Id} switcher like every customer endpoint.
+ * <p>Everything reads through the RLS-scoped app datasource - die Aggregation
+ * hat bewusst KEIN eigenes Anlagen-Prädikat, RLS ist der Zaun: der Mandant
+ * (V2) und seit UEMS AP-03 IP-5 der Standort ({@code site_scope}). Die Flotte
+ * ist damit genau die Menge der SICHTBAREN Anlagen des Aufrufers, und
+ * {@code totals} summiert über genau diese Menge - nie mandantenweit (IP-10,
+ * Regel R-A2). Additiv trägt die Antwort {@code teilansicht {sichtbar,
+ * gesamt}}. Admins get another tenant's fleet via the {@code X-Tenant-Id}
+ * switcher like every customer endpoint.
  *
  * <p>The savings windows are Europe/Berlin days ({@link HistoryRange}) computed
  * server-side - this replaces the portal's former client-side slot summing and
@@ -73,12 +79,14 @@ public class OverviewController {
     private final SiteProfileStateRepository profileStates;
     private final StandortLesemodellService standortLesemodell;
     private final RollenZuordnungService rollen;
+    private final TeilansichtDienst teilansicht;
 
     public OverviewController(SiteRepository sites, OverviewRepository overview,
             EntityTypeCatalog catalog, AnwendungKatalog anwendungen,
             SiteProfileStateRepository profileStates,
             StandortLesemodellService standortLesemodell,
-            RollenZuordnungService rollen) {
+            RollenZuordnungService rollen,
+            TeilansichtDienst teilansicht) {
         this.sites = sites;
         this.overview = overview;
         this.catalog = catalog;
@@ -86,6 +94,7 @@ public class OverviewController {
         this.profileStates = profileStates;
         this.standortLesemodell = standortLesemodell;
         this.rollen = rollen;
+        this.teilansicht = teilansicht;
     }
 
     @GetMapping
@@ -185,12 +194,18 @@ public class OverviewController {
                 .map(d -> new OverviewDailySavingsDto(d.day(), d.savingsEur()))
                 .toList();
 
+        // Die Teilansicht (IP-10): über wie viele Standorte diese Antwort entstand und wie viele der
+        // Kundenbereich hat - eine ANZAHL, keine Summe. Jede Zahl darüber steht in `totals`, und die entsteht
+        // über `fleet` und sonst nichts.
+        TeilansichtDto teilansichtDto = teilansicht.jetzt();
+
         return new OverviewDto(
                 fleet,
                 new OverviewTotalsDto(
                         siteRows.size(), totalDevices, totalOnline, totalSavings, liveSitesCovered,
                         storage.capacityKwh(), storage.powerKw()),
-                dailySavings);
+                dailySavings,
+                teilansichtDto);
     }
 
     /**

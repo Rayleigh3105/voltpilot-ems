@@ -4,6 +4,8 @@ import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EarningsRepository;
 import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.StandortLesemodell.StandortBezug;
+import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.web.dto.EarningsDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsDailyDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsMonthDto;
@@ -14,15 +16,20 @@ import com.voltpilot.api.web.dto.EarningsDto.EarningsVergleichDto;
 import com.voltpilot.api.web.dto.EarningsDto.PeakPeriodDto;
 import com.voltpilot.api.web.dto.EarningsDto.PeakShavingDto;
 import com.voltpilot.api.web.dto.SiteDto;
+import com.voltpilot.api.web.dto.TeilansichtDto;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -64,23 +71,38 @@ public class EarningsController {
     private final SiteRepository sites;
     private final EarningsRepository earnings;
     private final PeakShavingRepository peaks;
+    private final StandortLesemodellService standortLesemodell;
+    private final Geltungsbereich geltungsbereich;
+    private final TeilansichtDienst teilansicht;
     private final String activePvModel;
 
     public EarningsController(SiteRepository sites, EarningsRepository earnings,
-            PeakShavingRepository peaks,
+            PeakShavingRepository peaks, StandortLesemodellService standortLesemodell,
+            Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht,
             @org.springframework.beans.factory.annotation.Value(
                     "${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.earnings = earnings;
         this.peaks = peaks;
+        this.standortLesemodell = standortLesemodell;
+        this.geltungsbereich = geltungsbereich;
+        this.teilansicht = teilansicht;
         this.activePvModel = activePvModel;
     }
 
+    /**
+     * @param standortIds die STANDORT-MENGE (UEMS AP-03 IP-10): wiederholbar ({@code ?standort=…&standort=…}).
+     *     Ohne sie antwortet die Route über ALLE sichtbaren Anlagen - zeichengleich zu heute. Mit ihr über die
+     *     Anlagen, die HEUTE an einem der genannten Standorte hängen; ein Standort außerhalb des Zugriffs ist
+     *     404, nie 403 (A14), damit der Aufruf die Existenz eines fremden Standorts nicht bestätigt. Sie ersetzt
+     *     das heutige „eine ({@code /sites/{id}/earnings}) oder alle" durch eine echte Menge.
+     */
     @GetMapping
     public EarningsDto earnings(
             @RequestParam(defaultValue = "month") String range,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at,
-            @RequestParam(name = "strip", defaultValue = "false") boolean stripRequested) {
+            @RequestParam(name = "strip", defaultValue = "false") boolean stripRequested,
+            @RequestParam(name = "standort", required = false) List<UUID> standortIds) {
         String normalized = range == null ? "" : range.trim().toLowerCase(Locale.ROOT);
         boolean all = "all".equals(normalized);
         HistoryRange parsed = all ? null : HistoryRange.parse(normalized);
@@ -163,7 +185,10 @@ public class EarningsController {
         long totalCovered = 0;
         LocalDate firstCovered = null;
 
-        List<SiteDto> siteRows = sites.findAll();
+        // Die Standort-Menge (IP-10) schneidet die SICHTBARE Flotte weiter ein; ohne sie bleibt sie, wie sie
+        // ist. Die Sichtbarkeit selbst prüft der Zaun, nicht dieser Filter: `sites.findAll()` sieht schon nur
+        // die eigenen Anlagen, und `requireStandort` beantwortet einen fremden Standort mit 404.
+        List<SiteDto> siteRows = gewaehlteAnlagen(sites.findAll(), standortIds);
         List<EarningsSiteDto> fleet = new ArrayList<>(siteRows.size());
         for (SiteDto site : siteRows) {
             EarningsRepository.SiteAggregate agg = aggregates.get(site.id());
@@ -289,6 +314,11 @@ public class EarningsController {
         // saved at fleet level too. A split site is always covered, so
         // totalSaved is non-null whenever totalArbitrage is.
         BigDecimal totalSaved = totalBaseline != null ? totalBaseline.subtract(totalActual) : null;
+        // `teilansicht.sichtbar` beschreibt IMMER die Menge, über die diese Antwort entstand: ohne Auswahl
+        // alle sichtbaren Standorte, mit Auswahl deren Anzahl.
+        TeilansichtDto teilansichtDto = standortIds == null || standortIds.isEmpty()
+                ? teilansicht.jetzt()
+                : teilansicht.ueber(new LinkedHashSet<>(standortIds).size());
         return new EarningsDto(
                 normalized,
                 reportedFrom,
@@ -302,7 +332,32 @@ public class EarningsController {
                         totalArbitrage != null ? totalSaved.subtract(totalArbitrage) : null,
                         totalCovered,
                         firstCovered),
-                vergleich(parsed, effectiveAt, today));
+                vergleich(parsed, effectiveAt, today, siteRows),
+                teilansichtDto);
+    }
+
+    /**
+     * Die Anlagen dieser Antwort: ohne gewählte Standorte alle SICHTBAREN, sonst die, die HEUTE an einem der
+     * gewählten Standorte hängen (UEMS AP-03 IP-10).
+     *
+     * <p>Jeder genannte Standort wird zuerst am {@link Geltungsbereich} geprüft — ein Standort, den die Anfrage
+     * nicht sieht (fremder Kundenbereich, außerhalb des Zugriffs, gibt es nicht), ist 404, nie 403 (A14). Erst
+     * danach entscheidet das Standort-Lesemodell (AP-02 IP-3) je Anlage über die HEUTE gültige Zuordnung;
+     * eine Anlage ohne Zuordnung gehört zu keinem gewählten Standort und fällt heraus.
+     */
+    private List<SiteDto> gewaehlteAnlagen(List<SiteDto> sichtbare, List<UUID> standortIds) {
+        if (standortIds == null || standortIds.isEmpty()) {
+            return sichtbare;
+        }
+        Set<UUID> gewaehlt = new LinkedHashSet<>(standortIds);
+        gewaehlt.forEach(geltungsbereich::requireStandort);
+        Map<UUID, StandortBezug> jeAnlage = standortLesemodell.bezugJeAnlage();
+        return sichtbare.stream()
+                .filter(s -> {
+                    StandortBezug bezug = jeAnlage.get(s.id());
+                    return bezug != null && gewaehlt.contains(bezug.id());
+                })
+                .toList();
     }
 
     /**
@@ -324,7 +379,8 @@ public class EarningsController {
      * Portal-Zwilling {@code vergleichLaufend.summeBisStunde} je Eimer aus
      * seinem Zeitstempel liest.
      */
-    private EarningsVergleichDto vergleich(HistoryRange parsed, LocalDate at, LocalDate today) {
+    private EarningsVergleichDto vergleich(HistoryRange parsed, LocalDate at, LocalDate today,
+            List<SiteDto> siteRows) {
         if (parsed != HistoryRange.DAY) {
             return null;
         }
@@ -349,8 +405,8 @@ public class EarningsController {
             jetztBis = HistoryRange.DAY.window(at).to();
             vorherBis = HistoryRange.DAY.window(vortag).to();
         }
-        BigDecimal jetzt = flottenNetto(jetztVon, jetztBis);
-        BigDecimal vorher = flottenNetto(vorherVon, vorherBis);
+        BigDecimal jetzt = flottenNetto(jetztVon, jetztBis, siteRows);
+        BigDecimal vorher = flottenNetto(vorherVon, vorherBis, siteRows);
         if (jetzt == null || vorher == null) {
             return null;
         }
@@ -370,9 +426,14 @@ public class EarningsController {
      * Viertelstunde trägt. Eine Anlage ohne bewertete Viertelstunde zählt
      * nicht als 0, sie fehlt schlicht - dieselbe Regel wie in der Summenkarte.
      */
-    private BigDecimal flottenNetto(Instant from, Instant to) {
+    private BigDecimal flottenNetto(Instant from, Instant to, List<SiteDto> siteRows) {
         BigDecimal summe = null;
-        for (EarningsRepository.SiteAggregate agg : earnings.aggregate(from, to).values()) {
+        // ÜBER DIE ZEILEN DIESER ANTWORT, nicht über alles, was die Abfrage zurückgab (AP-03 IP-10): der
+        // Standort-Zaun schneidet `aggregate` schon auf die sichtbaren Anlagen, aber eine gewählte
+        // Standort-Menge tut er nicht - und die Vergleichszahl darf keine Anlage tragen, die in `sites` fehlt.
+        Map<UUID, EarningsRepository.SiteAggregate> aggregate = earnings.aggregate(from, to);
+        for (SiteDto site : siteRows) {
+            EarningsRepository.SiteAggregate agg = aggregate.get(site.id());
             if (agg == null || agg.coveredSlots() <= 0 || agg.actualEur() == null) {
                 continue;
             }

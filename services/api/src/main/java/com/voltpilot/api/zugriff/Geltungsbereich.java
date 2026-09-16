@@ -45,6 +45,29 @@ public class Geltungsbereich {
     }
 
     /**
+     * Sieht die Anfrage diesen Standort? Dieselbe Antwort aus der Datenbank wie bei der Anlage: {@code standort}
+     * trägt {@code site_scope} mit {@code id = ANY (app.standort_ids)} (IP-5).
+     */
+    public boolean standortVisible(UUID standortId) {
+        if (standortId == null) {
+            return false;
+        }
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM standort WHERE id = ?)", Boolean.class, standortId));
+    }
+
+    /**
+     * 404 „Standort nicht gefunden.", wenn die Anfrage den Standort nicht sieht — der Prüfpunkt der
+     * Standort-Menge an {@code /earnings} (IP-10). Ein fremder Standort ist 404, nie 403: die Existenz wird
+     * nicht bestätigt (AP-03 A14).
+     */
+    public void requireStandort(UUID standortId) {
+        if (!standortVisible(standortId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort nicht gefunden.");
+        }
+    }
+
+    /**
      * Hebt den Standort-Zaun für den REST DER LAUFENDEN TRANSAKTION auf ({@code set_config(…, true)}); der
      * Mandanten-Zaun bleibt. Nur für Ableitungen, die die Sichtbarkeit selbst nach dem Rechte-Vertrag rechnen und
      * nichts Unsichtbares ausgeben — heute allein die Selbstauskunft ({@code n von m Standorten}, Zuweisungen an

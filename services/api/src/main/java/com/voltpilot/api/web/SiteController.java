@@ -76,6 +76,14 @@ import org.springframework.web.server.ResponseStatusException;
  * Sites and their telemetry for the caller's tenant. Results are transparently
  * scoped by Postgres Row-Level-Security via the {@code tenant_id} JWT claim, so
  * one tenant can never read another's sites or telemetry.
+ *
+ * <p><b>Ohne {@code teilansicht} — die benannte Lücke von AP-03 IP-10.</b> Diese Route antwortet mit einer
+ * NACKTEN LISTE und kann das additive Feld {@code teilansicht {sichtbar, gesamt}} darum nicht im Körper
+ * tragen; ein Umschlag {@code {eintraege, teilansicht}} wäre ein Bruch des Vertrags an einer Kernroute.
+ * <b>Einzulösen mit AP-03 IP-12</b> (Portal-Rechte-Weiche): dort werden {@code api.ts} und die
+ * Kundenflächen ohnehin umgestellt, und der Umschlag ist dann billig. Die Sicherheitszusage hängt nicht
+ * daran — die Liste zeigt ausschließlich Sichtbares (Standort-Zaun {@code site_scope}, IP-5) —, und den
+ * Satz „Teilansicht: n von m Standorten" zeichnet das Portal aus {@code GET /api/v1/me}.
  */
 @RestController
 @RequestMapping("/api/v1/sites")
@@ -178,7 +186,7 @@ public class SiteController {
      * guarantees the row lands in that tenant, so a customer can only ever create a
      * site for themselves. This unblocks the device-claim flow: a fresh customer
      * makes a site here, then claims devices into it.
-     *
+ *
      * <p>Additively (Bestandsübernahme der Standorte, AP-02 IP-9) the new site
      * gets its Standort in the SAME transaction: the given {@code standortId}, or
      * the one Standort of the Kundenbereich when there is exactly one; none when
@@ -256,7 +264,7 @@ public class SiteController {
      * schedule/weather/quality rows) is removed in the same transaction. All
      * through the RLS-scoped datasource: a foreign site is a 404 and the
      * cascade can never touch another tenant's rows.
-     *
+ *
      * <p>Its Standort assignment is NOT deleted (AP-02 W5, the Grabstein): it ends
      * today and stays as an ended interval with a "geloescht" log entry, in the
      * same transaction (V20260911290000 let the row outlive the site).
@@ -520,7 +528,7 @@ public class SiteController {
      * The latest FEED-IN CURTAILMENT truth this site's device(s) reported: does
      * the plant actually throttle its PV in an "Abregeln" slot, or is the plan
      * a plan because the curtailment actor is not released yet?
-     *
+ *
      * <p>Deliberately its OWN read next to {@code control-status} rather than
      * extra fields there - the two heartbeat blocks arrive independently and
      * each carries its own freshness (see {@link CurtailmentStatusDto}).
@@ -542,7 +550,7 @@ public class SiteController {
      * The portal turns this into the calm PV breakdown under the live PV figure
      * ("39,0 kW = Deye 8,3 + Fronius 21,3 + …"), so a multi-inverter site's
      * composite number is explainable without opening the device's own page.
-     *
+ *
      * <p>Empty list while no device has reported the block (an older edge, or a
      * device that has not yet sent a heartbeat) - the portal then simply keeps
      * the single PV number.

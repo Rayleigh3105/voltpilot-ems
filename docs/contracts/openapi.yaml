@@ -641,7 +641,8 @@ paths:
         Liste. Name, Adresse, Zustand sind einfache Felder und stehen wie heute.
         Rechte (rechte-matrix.json): heute lesend ohne eigene Kennung; ein
         Stichtag in der Vergangenheit ("Stand am") ist `aenderungsprotokoll.lesen`.
-        Additiv vorgesehen: `teilansicht` (AP-03 IP-10).
+        Die gezeigte Menge schneidet der Standort-Zaun (AP-03 IP-5); additiv
+        traegt die Antwort `teilansicht {sichtbar, gesamt}` (AP-03 IP-10).
       parameters:
         - name: stichtag
           in: query
@@ -1240,6 +1241,18 @@ paths:
         release register (`newestRelease`/`upToDate`) - the yardstick never
         reached the customer before, so their box showed a version nobody could
         place. The judgement travels, NEVER the register.
+
+        Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
+        die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
+
+        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
+        antwortet mit einer NACKTEN LISTE und kann das additive Feld
+        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
+        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
+        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
+        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
+        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
+        zeichnet das Portal aus GET /api/v1/me.
       responses:
         "200":
           description: One entry per device that reported a version.
@@ -1267,6 +1280,12 @@ paths:
         periods containing `at`; range=all starts at the fleet's first covered
         slot and the response's `from` says so. RLS-scoped like every customer
         endpoint; admins use the X-Tenant-Id switcher.
+
+        Die MENGE ist die Standort-Menge des Aufrufers (UEMS AP-03 IP-10):
+        `sites` sind die SICHTBAREN Anlagen (Standort-Zaun `site_scope`, IP-5)
+        und, wenn `standort` genannt ist, nur die an diesen Standorten.
+        `totals` und `vergleich` summieren ueber genau diese Liste - nie
+        mandantenweit (Regel R-A2). Additiv: `teilansicht {sichtbar, gesamt}`.
       parameters:
         - name: range
           in: query
@@ -1283,6 +1302,24 @@ paths:
             values today, so it is computed ONLY on demand (audit
             vp-portal-perf-a4, finding B5); `monthlyStrip` is [] when omitted.
           schema: { type: boolean, default: false }
+        - name: standort
+          in: query
+          required: false
+          description: >
+            Die STANDORT-MENGE (UEMS AP-03 IP-10): wiederholbar
+            (?standort=...&standort=...). Ohne sie antwortet die Route ueber
+            ALLE sichtbaren Anlagen - zeichengleich zu heute. Mit ihr ueber die
+            Anlagen, die HEUTE an einem der genannten Standorte haengen (AP-02
+            IP-3, Zuordnung zum heutigen Tag); eine Anlage ohne gueltige
+            Zuordnung gehoert zu keinem gewaehlten Standort. Sie ersetzt das
+            heutige "eine (/sites/{id}/earnings) oder alle" durch eine echte
+            Menge. Ein Standort ausserhalb des Zugriffs ist 404, nie 403 (A14).
+            `teilansicht.sichtbar` ist dann die Anzahl der gewaehlten Standorte.
+          schema:
+            type: array
+            items: { type: string, format: uuid }
+          style: form
+          explode: true
       responses:
         "200":
           description: The caller's realized earnings.
@@ -1290,14 +1327,30 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Earnings" }
         "400": { description: Unknown range. }
+        "404":
+          description: >
+            Ein genannter Standort ist fuer diese Anfrage nicht sichtbar (AP-03
+            IP-10) - nie 403, die Existenz wird nicht bestaetigt (A14).
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/sites:
     get:
       tags: [sites]
       summary: List sites for the caller's tenant (tenant_id from OIDC token).
+      description: >
+        Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
+        die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
+
+        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
+        antwortet mit einer NACKTEN LISTE und kann das additive Feld
+        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
+        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
+        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
+        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
+        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
+        zeichnet das Portal aus GET /api/v1/me.
       responses:
         "200":
-          description: Sites (only the caller's tenant, via RLS).
+          description: Sites (only the caller's VISIBLE sites, via RLS).
           content:
             application/json:
               schema:
@@ -1522,9 +1575,21 @@ paths:
     get:
       tags: [devices]
       summary: List devices for the caller's tenant.
+      description: >
+        Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
+        die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
+
+        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
+        antwortet mit einer NACKTEN LISTE und kann das additive Feld
+        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
+        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
+        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
+        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
+        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
+        zeichnet das Portal aus GET /api/v1/me.
       responses:
         "200":
-          description: Devices (only the caller's tenant, via RLS).
+          description: Devices (only the caller's VISIBLE sites, via RLS).
           content:
             application/json:
               schema:
@@ -14957,9 +15022,42 @@ components:
             maxChargeKw: { type: number, nullable: true }
             maxDischargeKw: { type: number, nullable: true }
             commissionedOn: { type: string, format: date, nullable: true }
+    Teilansicht:
+      type: object
+      description: >
+        UEMS AP-03 IP-10 (Regel R-A2): ueber WIE VIELE Standorte diese Antwort
+        gebildet wurde (`sichtbar`) und wie viele der Kundenbereich hat
+        (`gesamt`). Das Portal zeigt daraus "Teilansicht: n von m Standorten",
+        sobald sichtbar < gesamt - denselben Satz, den GET /api/v1/me aus dem
+        Rechte-Vertrag bildet (SelbstauskunftTeilansicht.kopfzeile). Beide
+        zaehlen Standorte OHNE archivierte, damit Kopfzeile und Antwort nie
+        Verschiedenes behaupten.
+
+        `gesamt` ist eine ANZAHL VON STANDORTEN - keine Energie- und keine
+        Geldsumme. Es ist die einzige Zahl dieser Antworten, die ueber die
+        sichtbare Menge hinausweist, und bewusst nur eine Kardinalzahl: aus "3"
+        laesst sich kein fremder Verbrauch, kein fremder Erloes und kein fremder
+        Name ableiten. Jedes andere Feld - Liste wie Summe - entsteht
+        ausschliesslich ueber die `sichtbar` Standorte (AP-03 Paragraf 6.2
+        Punkt 6: kein Feld enthaelt eine Gesamtsumme, aus der sich ein fremder
+        Standort ableiten liesse).
+
+        Unternehmensweiter Zugriff: sichtbar == gesamt. Kundenbereich ohne
+        Standorte: {0, 0}.
+      required: [sichtbar, gesamt]
+      properties:
+        sichtbar:
+          type: integer
+          description: Die Standorte, ueber die diese Antwort gebildet wurde.
+        gesamt:
+          type: integer
+          description: Die Standorte des Kundenbereichs - eine Anzahl, nie eine Summe.
     Overview:
       type: object
-      description: Tenant-wide fleet overview (see GET /api/v1/overview).
+      description: >
+        Fleet overview ueber die SICHTBAREN Anlagen (see GET /api/v1/overview).
+        Liste und Summen entstehen ueber genau diese Menge - nie mandantenweit
+        (UEMS AP-03 IP-10, Regel R-A2).
       properties:
         sites:
           type: array
@@ -14975,6 +15073,9 @@ components:
             properties:
               day: { type: string, format: date }
               savingsEur: { type: number }
+        teilansicht:
+          description: Additiv (AP-03 IP-10).
+          allOf: [{ $ref: "#/components/schemas/Teilansicht" }]
     OverviewSite:
       type: object
       properties:
@@ -15362,7 +15463,11 @@ components:
           description: Σ battery discharge power (kW) over the fleet; null when none.
     Earnings:
       type: object
-      description: Realized earnings (see GET /api/v1/earnings).
+      description: >
+        Realized earnings (see GET /api/v1/earnings) ueber die SICHTBAREN
+        Anlagen - und, wenn der Aufruf `standort` nennt, ueber genau die Anlagen
+        an diesen Standorten. `totals` und `vergleich` summieren ueber `sites`
+        und ueber nichts sonst (UEMS AP-03 IP-10, Regel R-A2).
       properties:
         range: { type: string, enum: [day, month, year, all] }
         from:
@@ -15389,6 +15494,11 @@ components:
             per E3 ohnehin verboten, und eine zweite Monats-Aggregation auf
             jedem Aufruf ist die Verschwendung, die Audit vp-portal-perf-a4 B5
             abgestellt hat).
+            Sie summiert ueber DIE ZEILEN DIESER ANTWORT, nicht ueber alles,
+            was die Abfrage zurueckgibt (AP-03 IP-10).
+        teilansicht:
+          description: Additiv (AP-03 IP-10).
+          allOf: [{ $ref: "#/components/schemas/Teilansicht" }]
     EarningsVergleich:
       type: object
       description: >
@@ -18303,9 +18413,12 @@ components:
     StandorteAmStichtag:
       type: object
       description: >
-        GET /api/v1/standorte (UEMS AP-02 IP-3). Additiv vorgesehen:
-        `teilansicht {sichtbar, gesamt}` (AP-03 IP-10).
-      required: [stichtag, standorte, nichtGezeigt]
+        GET /api/v1/standorte (UEMS AP-02 IP-3). Die Liste schneidet der
+        Standort-Zaun (AP-03 IP-5, `site_scope` auf `standort`): ein Standort
+        ausserhalb des Zugriffs steht weder unter `standorte` noch unter
+        `nichtGezeigt`. `teilansicht {sichtbar, gesamt}` ist additiv (AP-03
+        IP-10).
+      required: [stichtag, standorte, nichtGezeigt, teilansicht]
       properties:
         stichtag: { type: string, format: date }
         standorte:
@@ -18325,6 +18438,9 @@ components:
             Die Gruppe "Noch nicht zugeordnet" - null, sobald jede Anlage am
             Stichtag einem Standort zugeordnet ist (kein "0 nicht zugeordnet", A15).
           allOf: [{ $ref: "#/components/schemas/NochNichtZugeordnet" }]
+        teilansicht:
+          description: Additiv (AP-03 IP-10).
+          allOf: [{ $ref: "#/components/schemas/Teilansicht" }]
     StandortAmStichtag:
       type: object
       description: >

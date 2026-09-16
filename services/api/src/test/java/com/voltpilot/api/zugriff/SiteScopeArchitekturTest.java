@@ -230,9 +230,16 @@ class SiteScopeArchitekturTest {
         }
     }
 
-    /** Die Aufhebung des Standort-Zauns bleibt die Ausnahme: genau diese Dateien rufen sie. */
+    /**
+     * Die Aufhebung des Standort-Zauns bleibt die Ausnahme: genau diese Dateien rufen sie.
+     *
+     * <p>Beide geben daraus nichts Unsichtbares aus: die Selbstauskunft rechnet die Sichtbarkeit selbst nach
+     * dem Rechte-Vertrag, und {@code TeilansichtDienst} liest ausschließlich eine KARDINALZAHL — wie viele
+     * Standorte der Kundenbereich hat (AP-03 IP-10). Beide halten die Aufhebung in einer eigenen Transaktion,
+     * damit sie mit der Abfrage endet.
+     */
     @Test
-    void denGanzenKundenbereichLiestNurDieSelbstauskunft() throws IOException {
+    void denGanzenKundenbereichLesenNurZweiStellen() throws IOException {
         List<String> aufrufer = new ArrayList<>();
         try (Stream<Path> dateien = Files.walk(QUELLE)) {
             for (Path p : dateien.filter(x -> x.toString().endsWith(".java")).sorted().toList()) {
@@ -243,7 +250,7 @@ class SiteScopeArchitekturTest {
                 }
             }
         }
-        assertThat(aufrufer).containsExactly("zugriff/Selbstauskunft.java");
+        assertThat(aufrufer).containsExactly("zugriff/Selbstauskunft.java", "zugriff/TeilansichtDienst.java");
     }
 
     // ------------------------------------------------------------------ woran der Scanner anschlägt
