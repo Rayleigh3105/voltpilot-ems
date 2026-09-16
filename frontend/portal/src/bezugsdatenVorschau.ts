@@ -29,7 +29,7 @@ export function vorschauAbleitung(v: BezugsdatenVorschau): VorschauAbleitung {
     uebernehmen: n,
     nichtUebernehmen: v.import.zaehler.zeilen - n,
     teiluebernahme: v.import.bestaetigung !== null,
-    knopf: `${n} ${n === 1 ? 'Zeile' : 'Zeilen'} übernehmen`,
+    knopf: n === 0 ? 'Nichts zu übernehmen' : `${n} ${n === 1 ? 'Zeile' : 'Zeilen'} übernehmen`,
     bestaetigung: v.import.bestaetigung,
     befunde,
   };
@@ -37,4 +37,3 @@ export function vorschauAbleitung(v: BezugsdatenVorschau): VorschauAbleitung {
 
 export const trennzeichenText = (wert: string | null): string =>
   wert === '\t' ? 'Tabulator' : wert === ';' ? 'Semikolon' : wert === ',' ? 'Komma' : wert ?? 'Nicht erkannt';
-

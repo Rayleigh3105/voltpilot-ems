@@ -102,6 +102,20 @@ public class ImportUebernahmeRepository {
         return jdbc.queryForList("SELECT * FROM bezugsdaten_import WHERE kennung=? ORDER BY fassung", kennung);
     }
 
+    /** Erstfassung mit Dateibeleg und jüngster Statusfassung, mandantenweit für das Import-Protokoll. */
+    public List<Map<String,Object>> importe(UUID tenant) {
+        return jdbc.queryForList("SELECT e.*,l.status AS aktueller_status,l.begruendung AS aktuelle_begruendung,"+
+                "l.actor_name AS aktueller_actor_name,l.created_at AS geaendert_am FROM bezugsdaten_import e " +
+                "JOIN LATERAL (SELECT status,begruendung,actor_name,created_at FROM bezugsdaten_import l " +
+                "WHERE l.tenant_id=e.tenant_id AND l.kennung=e.kennung ORDER BY fassung DESC LIMIT 1) l ON true " +
+                "WHERE e.tenant_id=? AND e.fassung=1 ORDER BY e.created_at DESC,e.kennung DESC", tenant);
+    }
+
+    /** Die unveränderlichen Urteile und Befunde der Datenzeilen eines Imports. */
+    public List<Map<String,Object>> importZeilen(String kennung) {
+        return jdbc.queryForList("SELECT * FROM bezugsdaten_import_zeile WHERE import_kennung=? ORDER BY nr", kennung);
+    }
+
     public void zurueckgenommen(UUID tenant, String kennung, String grund, ProtokollAkteur wer) {
         jdbc.update("INSERT INTO bezugsdaten_import (tenant_id,kennung,fassung,status,begruendung,actor_sub,actor_name,actor_rolle,actor_art) "
                 + "VALUES (?,?,(SELECT max(fassung)+1 FROM bezugsdaten_import WHERE kennung=?),'zurueckgenommen',?,?,?,?,?)",

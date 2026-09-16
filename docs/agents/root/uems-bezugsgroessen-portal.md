@@ -1,4 +1,4 @@
-# Bezugsgrößen und Import-Assistent im Portal (AP-09 IP-9/IP-15)
+# Bezugsgrößen, Import-Assistent und Import-Protokoll im Portal (AP-09 IP-9/IP-15/IP-16)
 
 Die Unternehmenswelt `#/portfolio/bezugsgroessen` liest die vorhandene Liste einschließlich
 `bezugsflaechen`. Flächen bleiben Zeilen ohne Bezugsgrößen-ID; der Weg führt zum bestehenden
@@ -48,14 +48,18 @@ Der Standortfilter zählt unternehmensweite Objekte keinem Standort zu und erkl�
 - Kodierung, Trennzeichen, Kopfzeile, Zähler, Urteile und Befund-Sätze kommen aus der Vorschauantwort.
   `bezugsdatenVorschau.ts` leitet nur Anzeigezahlen und Knopftext ab und formuliert keinen Befund neu.
 - Vorlagen gehören dem Kundenbereich. Auswahl und Speichern verwenden die versionierten IP-14-Routen.
-- Konfliktentscheidung, Importprotokoll, Doppelimport-Banner und Rücknahme bleiben bei IP-16. Der
-  Assistent zeigt Konfliktzahlen, übernimmt sie aber nicht ohne die dort vorgesehene Entscheidung.
+- IP-16 ergänzt den Doppelimport-Banner aus dem unveränderten `datei_bekannt`-Serversatz,
+  Konfliktentscheidungen je Zeile (Vorgabe behalten), den Sammelhebel „alle ersetzen“ und genau eine
+  Begründung. `bezugsdatenImportProtokoll.ts` hält ausschließlich reine Anzeigeableitungen.
+- `GET /api/v1/bezugsdaten/importe` liest den Beleg je Kundenbereich, das Detail liefert Zeilen samt
+  Befunden. `GET …/{kennung}/ruecknahme/vorschau` und die schreibende Rücknahme verwenden dieselbe
+  Planung im Dienst; erst der bestätigte Dialog mit Begründung ruft den POST-Weg auf.
 
 ## Nachweise
 
 `bezugsgroesseListe.test.ts`, `apiBezugsgroessen.test.ts`, `copy.test.ts`, Navigation-/Shell- und
 Bestandsschutztests; `bezugsdatenVorschau.test.ts` prüft Zähler und Vertragssätze;
-`e2e/bezugsgroessen.spec.ts` bei 375/1440 px (Liste, Anlegen, Archivieren, vier Importschritte,
+`e2e/bezugsgroessen.spec.ts` bei 375/1440 px (Liste, Anlegen, Archivieren, vier Importschritte, B2/B3/B14,
 Fokus, Modal/Picker, Rechte, Fehler, O18). `BEZUGSGROESSEN_BILDER` und
 `BEZUGSDATEN_IMPORT_BILDER` schreiben Screenshots aus der
 Ahrenberg-Bühne. `ansicht=bezugsgroessen-b` ist ausschließlich eine E2E-Ansicht der Alternative

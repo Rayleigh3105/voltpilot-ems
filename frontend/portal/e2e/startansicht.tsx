@@ -548,10 +548,11 @@ const overview: Overview = {
   dailySavings: [],
 };
 const bzListe = params.get('bezugs') === 'leer' ? { bezugsgroessen: [], bezugsflaechen: [] } : ahrenbergBezugsgroessen();
-const bzAufrufe = { anlegen: [] as BezugsgroesseAnfrage[], archivieren: [] as string[], vorschau: [] as string[], importe: [] as string[], vorlagen: [] as string[] };
+const bzAufrufe = { anlegen: [] as BezugsgroesseAnfrage[], archivieren: [] as string[], vorschau: [] as string[], importe: [] as string[], vorlagen: [] as string[], ruecknahmen: [] as string[] };
 const importZuordnung: BezugsdatenZuordnung = { csv: null, spalten: { periode: 1, bis: null, wert: 3, einheit: 4, bezug: 2, bemerkung: null }, deutung: 'periode', zahlformat: 'auto', einheit: null, bezugsgroesse: null, bezug_tabelle: { 'Spritzguss gesamt': 'BZ-1', 'Spritzguss Export': 'BZ-1', Montage: 'BZ-2' }, synonyme: {} };
 const importVorlagen = [{ vorlage_id: 'c0de0000-0000-4000-8000-00000000f001', fassung: 1, name: 'ERP-Export Spritzguss', zuordnung: importZuordnung, urheber: { name: 'Ines Kaltenbach', rolle: 'Energiemanager', art: 'konto' }, erstellt_am: '2026-10-01T09:00:00+02:00' }];
-const importVorschau = () => ({
+const importVorschau = () => {
+  const basis: any = ({
   vorschau: { kennung: 'VS1.1792484000.0123456789abcdef0123456789abcdef', status: 'vorschau' as const, ausgestellt_am: '2026-10-20T12:00:00+02:00', gueltig_bis: '2026-10-20T12:30:00+02:00', ergebnis_fingerabdruck: 'abcdef' },
   vorlage: null, datei: { name: 'produktion-oktober.csv', bytes: 155, sha256: '012345', befund: null, zusatz: null, zusatz_satz: null, zeile: null, kodierung: 'utf-8', bom: false, trennzeichen: ';', kopfzeile: true, kopf: ['Periode', 'Artikelgruppe', 'Menge', 'Einheit'], spalten: 4, datenzeilen: 3 }, frueherer_import: null,
   zeilen: [
@@ -560,6 +561,28 @@ const importVorschau = () => ({
     { nr: 4, felder: ['2026-10', 'Montage', '96', 'Paletten'], bezugsgroesse: 'BZ-2', bezugsgroesse_id: bzListe.bezugsgroessen[1]?.id ?? null, schluessel: null, periode_von: null, periode_bis: null, zeitpunkt: null, betrag: null, einheit: null, geliefert: { wert: '96', einheit: 'Paletten' }, urteil: 'abgelehnt', befunde: [{ befund: 'einheit_unbekannt', satz: 'Unbekannte Einheit — erlaubt sind die Einheiten dieser Größe.', hinweis: false }], fingerabdruck: null, bestand: null },
   ],
   import: { status: 'teilweise_uebernommen', zaehler: { zeilen: 3, neu: 1, wiederholung: 0, konflikt: 0, berichtigung: 0, uebersprungen: 0, abgelehnt: 2, mit_hinweis: 0 }, uebernahme_moeglich: true, import_datensatz: true, bestaetigung: '1 von 3 Zeilen übernehmen', aenderungen: 1, befunde: [] },
+  });
+  if (params.get('importfall') === 'B2') {
+    basis.datei.befund = { befund: 'datei_bekannt', satz: 'Diese Datei wurde schon übernommen.', hinweis: true };
+    basis.frueherer_import = { kennung: 'I-2026-0001', status: 'uebernommen', am: '2026-11-03T09:12:00+01:00' };
+    basis.zeilen = [{ ...basis.zeilen[0], urteil: 'wiederholung', befunde: [] }];
+    basis.import = { status: 'wiederholt', zaehler: { zeilen: 1, neu: 0, wiederholung: 1, konflikt: 0, berichtigung: 0, uebersprungen: 0, abgelehnt: 0, mit_hinweis: 1 }, uebernahme_moeglich: false, import_datensatz: true, bestaetigung: null, aenderungen: 0, befunde: [basis.datei.befund] };
+  }
+  if (params.get('importfall') === 'B3') {
+    basis.datei.name = 'ERP_Spritzguss_Produktion_2026-10_korr.csv';
+    basis.zeilen = [{ ...basis.zeilen[0], felder: ['2026-10', 'Spritzguss gesamt', '312.900,0', 'kg'], betrag: '312900', geliefert: { wert: '312.900,0', einheit: 'kg' }, urteil: 'konflikt', befunde: [{ befund: 'konflikt_anderer_wert', satz: 'Für diesen Zeitraum gibt es schon einen anderen Wert.', hinweis: false }], bestand: { betrag: '312400', fassung: 1, import_kennung: 'I-2026-0001' } }];
+    basis.import = { status: 'verworfen', zaehler: { zeilen: 1, neu: 0, wiederholung: 0, konflikt: 1, berichtigung: 0, uebersprungen: 0, abgelehnt: 0, mit_hinweis: 0 }, uebernahme_moeglich: false, import_datensatz: true, bestaetigung: null, aenderungen: 0, befunde: [] };
+  }
+  return basis;
+};
+let importStatus = 'uebernommen';
+const importProtokoll = () => ({
+  kennung: 'I-2026-0001', status: importStatus, datei_name: 'ERP_Spritzguss_Produktion_2026-10.csv', datei_bytes: 96,
+  erstellt_am: '2026-11-03T09:12:00+01:00', geaendert_am: '2026-11-03T09:12:00+01:00', aenderungen: 1, vorschlaege: 0, vorlage: null,
+  zaehler: { zeilen: 1, neu: 1, wiederholung: 0, konflikt: 0, berichtigung: 0, uebersprungen: 0, abgelehnt: 0, mit_hinweis: 0 },
+  begruendung: importStatus === 'zurueckgenommen' ? 'Falsche Artikelgruppe exportiert — Datei war ein Testexport' : null,
+  urheber: { name: 'Ines Kaltenbach', rolle: 'Energiemanager', art: 'konto' },
+  zeilen: [{ nr: 2, urteil: 'neu', befunde: [], bezugsgroesse: 'BZ-1', periode_von: '2026-10-01', periode_bis: '2026-10-31', zeitpunkt: null, betrag: '312400', einheit: 'kg', geliefert_wert: '312.400,0', geliefert_einheit: 'kg' }],
 });
 Object.assign(window, { bzAufrufe });
 Object.assign(api, {
@@ -665,6 +688,10 @@ Object.assign(api, {
   },
   bezugsdatenVorschau: async (datei: File) => { bzAufrufe.vorschau.push(datei.name); return structuredClone(importVorschau()); },
   bezugsdatenImportieren: async (datei: File) => { bzAufrufe.importe.push(datei.name); return { kennung: 'I-2026-0015', status: 'teilweise_uebernommen', aenderungen: 1, vorschlaege: 0, zaehler: importVorschau().import.zaehler, vorlage: null }; },
+  bezugsdatenImporte: async () => ({ importe: [structuredClone(importProtokoll())] }),
+  bezugsdatenImport: async () => structuredClone(importProtokoll()),
+  bezugsdatenRuecknahmeVorschau: async () => ({ kennung: 'I-2026-0001', aenderungen: 1, vieraugen: false, werte: [{ bezugsgroesse_id: bzListe.bezugsgroessen[0]?.id ?? '', kennzeichen: 'BZ-1', name: 'Produktionsmenge', periode_von: '2026-10-01', periode_bis: '2026-10-31', zeitpunkt: null, bisheriger_betrag: '312400', neuer_betrag: null, einheit: 'kg', vorgang: 'zurueckgenommen' as const }] }),
+  bezugsdatenImportZuruecknehmen: async (_kennung: string, begruendung: string) => { bzAufrufe.ruecknahmen.push(begruendung); importStatus = 'zurueckgenommen'; return { kennung: 'I-2026-0001', status: importStatus, aenderungen: 1, vorschlaege: 0, zaehler: null, vorlage: null }; },
   unternehmen: async () => ahrenbergUnternehmen(),
   // AP-13 IP-9: in den Reitern gelten die Prozesse der Messstellen-Fixtures — dieselben Kennungen wie ihre Zuordnungen.
   prozesse: async () => ({

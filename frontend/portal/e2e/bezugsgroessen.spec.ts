@@ -29,6 +29,18 @@ async function waehle(page: Page, label: string, option: string) {
   await page.getByRole('combobox', { name: label, exact: true }).click();
   await page.getByRole('option', { name: option, exact: false }).first().click();
 }
+async function importVorschauOeffnen(page: Page, breite: number, fall: 'B2' | 'B3') {
+  await oeffne(page, breite, `&importfall=${fall}`);
+  await page.getByRole('button', { name: 'Werte importieren', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Werte aus Datei übernehmen', exact: true });
+  await dialog.getByLabel('CSV-Datei').setInputFiles({ name: 'produktion-oktober.csv', mimeType: 'text/csv', buffer: Buffer.from('Periode;Artikelgruppe;Menge;Einheit\n2026-10;Spritzguss gesamt;312.900,0;kg') });
+  await dialog.getByRole('button', { name: 'Weiter zur Zuordnung' }).click();
+  await dialog.getByRole('combobox', { name: 'Gespeicherte Vorlage' }).click();
+  await page.getByRole('option', { name: /ERP-Export Spritzguss/ }).click();
+  await dialog.getByRole('button', { name: 'Vorschau erstellen' }).click();
+  await expect(dialog.getByText('Schritt 3 von 4')).toBeVisible();
+  return dialog;
+}
 for (const breite of [375, 1440]) {
   test(`${breite}: Liste, Art/Einheit/Geltung, Fokus, Anlegen und Archivieren`, async ({ page }) => {
     const fehler: string[] = []; page.on('pageerror', e => fehler.push(e.message)); page.on('console', m => { if (m.type() === 'error') fehler.push(m.text()); });
@@ -130,6 +142,43 @@ for (const breite of [375, 1440]) {
     await expect(dialog.getByRole('heading', { name: 'I-2026-0015 ist übernommen' })).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { bzAufrufe: { vorschau: string[]; importe: string[] } }).bzAufrufe)).toMatchObject({ vorschau: ['produktion-oktober.csv'], importe: ['produktion-oktober.csv'] });
     expect(fehler).toEqual([]);
+  });
+  test(`${breite}: B2 Doppelimport zeigt den bekannten Import und schreibt keine zweite Menge`, async ({ page }) => {
+    const dialog = await importVorschauOeffnen(page, breite, 'B2');
+    await expect(dialog.getByText('Diese Datei wurde schon übernommen.', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Import I-2026-0001 ansehen' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Nichts zu übernehmen' })).toBeVisible();
+    await importFoto(page, `b2-doppelimport-${breite}`);
+  });
+  test(`${breite}: B3 Konflikt hat Einzelwahl, Sammelhebel und eine Begründung`, async ({ page }) => {
+    const dialog = await importVorschauOeffnen(page, breite, 'B3');
+    await expect(dialog).toContainText('Vorhanden: 312400 kg · Fassung 1 · I-2026-0001');
+    await expect(dialog).toContainText('In der Datei: 312900 kg');
+    await expect(dialog.getByRole('radio', { name: 'Behalten' })).toBeChecked();
+    await dialog.getByRole('button', { name: 'Alle Konflikte ersetzen' }).click();
+    await expect(dialog.getByRole('radio', { name: 'Ersetzen' })).toBeChecked();
+    await dialog.getByLabel('Eine Begründung für alle ersetzten Zeilen').fill('ERP-Nachbuchung vom 05.11.2026');
+    await importFoto(page, `b3-konflikt-${breite}`);
+    await dialog.getByRole('button', { name: 'Entscheidung prüfen' }).click();
+    await expect(dialog).toContainText('1 ersetzen · 0 behalten · Begründung: ERP-Nachbuchung vom 05.11.2026');
+  });
+  test(`${breite}: B14 Rücknahme zeigt Folgen und schreibt erst nach Bestätigung`, async ({ page }) => {
+    await oeffne(page, breite);
+    await page.getByRole('button', { name: 'Import-Protokoll', exact: true }).click();
+    const liste = page.getByRole('dialog', { name: 'Import-Protokoll', exact: true });
+    await liste.getByRole('button', { name: /I-2026-0001/ }).click();
+    const detail = page.getByRole('dialog', { name: 'I-2026-0001', exact: true });
+    await expect(detail.getByRole('region', { name: 'Zeilen und Befunde des Imports' })).toContainText('BZ-1');
+    await detail.getByRole('button', { name: 'Import zurücknehmen' }).click();
+    const ruecknahme = page.getByRole('dialog', { name: 'I-2026-0001 zurücknehmen?', exact: true });
+    await expect(ruecknahme).toContainText('BZ-1 · Oktober 2026: 312.400 kg wird zurückgenommen.');
+    expect(await page.evaluate(() => (window as unknown as { bzAufrufe: { ruecknahmen: string[] } }).bzAufrufe.ruecknahmen)).toEqual([]);
+    await ruecknahme.getByLabel('Begründung').fill('Falsche Artikelgruppe exportiert — Datei war ein Testexport');
+    await ruecknahme.getByLabel('Begründung').evaluate((e: HTMLInputElement) => { e.setSelectionRange(0, 0); e.scrollLeft = 0; e.blur(); });
+    await importFoto(page, `b14-ruecknahme-${breite}`);
+    await ruecknahme.getByRole('button', { name: 'Import zurücknehmen' }).click();
+    await expect(page.getByRole('dialog', { name: 'Import-Protokoll', exact: true })).toContainText('Zurückgenommen');
+    expect(await page.evaluate(() => (window as unknown as { bzAufrufe: { ruecknahmen: string[] } }).bzAufrufe.ruecknahmen)).toHaveLength(1);
   });
 }
 test('Bearbeiter kann nur im eigenen Standort anlegen; Serverfehler erhält die Eingabe', async ({ page }) => {

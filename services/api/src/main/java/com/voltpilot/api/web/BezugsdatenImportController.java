@@ -119,9 +119,21 @@ public class BezugsdatenImportController {
 
     /** Recht: lesend — keine eigene Kennung; der Dienst prüft alle Ziele und verbirgt fremde Importe. */
     @GetMapping("/{kennung}")
-    public ImportUebernahmeService.Ergebnis status(
+    public ImportUebernahmeService.ProtokollEintrag status(
             @PathVariable String kennung) {
-        return uebernahme.status(kennung);
+        return uebernahme.detail(kennung);
+    }
+
+    /** Recht: {@code bezugsgroesse.importieren}; je Eintrag werden zusätzlich alle Ziele geprüft. */
+    @GetMapping
+    public ImportUebernahmeService.Protokoll importe() {
+        return uebernahme.protokoll();
+    }
+
+    /** Recht: {@code bezugsgroesse.importieren}; reine Vorschau, dieselbe Planung wie die Rücknahme. */
+    @GetMapping("/{kennung}/ruecknahme/vorschau")
+    public ImportUebernahmeService.RuecknahmeVorschau ruecknahmeVorschau(@PathVariable String kennung) {
+        return uebernahme.ruecknahmeVorschau(kennung);
     }
 
     /** Recht: {@code bezugsgroesse.importieren}, jedes Ziel wird im Dienst geprüft. */

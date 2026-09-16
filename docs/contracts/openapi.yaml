@@ -10942,6 +10942,17 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
   /api/v1/bezugsdaten/importe:
+    get:
+      tags: [bezugsgroessen]
+      summary: Import-Protokoll des Kundenbereichs lesen.
+      description: Recht `bezugsgroesse.importieren`; jeder Eintrag wird zusätzlich an seinen Bezugsgrößen-Zielen geprüft.
+      responses:
+        "200":
+          description: Jüngster Status und unveränderlicher Dateibeleg aller sichtbaren Importe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenImportProtokoll" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [bezugsgroessen]
       summary: Einen geprüften CSV-Import atomar übernehmen (AP-09 IP-13).
@@ -10989,7 +11000,7 @@ paths:
           description: Der jüngste Import-Status, wirksame Änderungen und offene Vorschläge.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BezugsdatenImportErgebnis" }
+              schema: { $ref: "#/components/schemas/BezugsdatenImportProtokollEintrag" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/bezugsdaten/importe/{kennung}/ruecknahme:
     post:
@@ -11015,6 +11026,22 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Der betroffene Wert wurde inzwischen geändert oder ein Vorschlag ist offen. }
         "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsdaten/importe/{kennung}/ruecknahme/vorschau:
+    get:
+      tags: [bezugsgroessen]
+      summary: Folgen einer Import-Rücknahme zeigen, ohne zu schreiben.
+      description: Recht `bezugsgroesse.importieren`; verwendet dieselbe Planung wie die schreibende Rücknahme und schreibt nichts.
+      parameters:
+        - { name: kennung, in: path, required: true, schema: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' } }
+      responses:
+        "200":
+          description: Jeder Wert und die Folgefassung, welche die Rücknahme erzeugen würde.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenRuecknahmeVorschau" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Der betroffene Wert wurde inzwischen geändert oder ein Vorschlag ist offen. }
   /api/v1/bezugsdaten/importe/{kennung}/freigeben:
     post:
       tags: [bezugsgroessen]
@@ -12609,6 +12636,65 @@ components:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/BezugsdatenVorlageVerweis" }]
           description: Die beim Import tatsächlich verwendete Vorlage und Fassung; spätere Vorlagenänderungen ändern diesen Beleg nicht.
+    BezugsdatenImportProtokoll:
+      type: object
+      required: [importe]
+      properties:
+        importe:
+          type: array
+          items: { $ref: "#/components/schemas/BezugsdatenImportProtokollEintrag" }
+    BezugsdatenImportProtokollEintrag:
+      type: object
+      required: [kennung, status, datei_name, datei_bytes, erstellt_am, geaendert_am, aenderungen, vorschlaege, zaehler, vorlage, urheber, zeilen]
+      properties:
+        kennung: { type: string, pattern: '^I-[0-9]{4}-[0-9]{4,}$' }
+        status: { type: string, enum: [uebernommen, teilweise_uebernommen, wiederholt, verworfen, zurueckgenommen] }
+        datei_name: { type: string }
+        datei_bytes: { type: integer, minimum: 0 }
+        erstellt_am: { type: string, format: date-time }
+        geaendert_am: { type: string, format: date-time }
+        aenderungen: { type: integer, minimum: 0 }
+        vorschlaege: { type: integer, minimum: 0 }
+        zaehler: { type: object }
+        vorlage:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/BezugsdatenVorlageVerweis" }]
+        begruendung: { type: [string, 'null'] }
+        urheber: { type: object }
+        zeilen:
+          type: array
+          items:
+            type: object
+            required: [nr, urteil, befunde]
+            properties:
+              nr: { type: integer }
+              urteil: { type: string }
+              befunde:
+                type: array
+                items: { $ref: "#/components/schemas/BezugsdatenBefund" }
+    BezugsdatenRuecknahmeVorschau:
+      type: object
+      required: [kennung, aenderungen, vieraugen, werte]
+      properties:
+        kennung: { type: string }
+        aenderungen: { type: integer, minimum: 0 }
+        vieraugen: { type: boolean }
+        werte:
+          type: array
+          items:
+            type: object
+            required: [bezugsgroesse_id, kennzeichen, name, einheit, vorgang]
+            properties:
+              bezugsgroesse_id: { type: string, format: uuid }
+              kennzeichen: { type: string }
+              name: { type: string }
+              periode_von: { type: [string, 'null'], format: date }
+              periode_bis: { type: [string, 'null'], format: date }
+              zeitpunkt: { type: [string, 'null'], format: date-time }
+              bisheriger_betrag: { type: [string, 'null'] }
+              neuer_betrag: { type: [string, 'null'] }
+              einheit: { type: string }
+              vorgang: { type: string, enum: [zurueckgenommen, vorfassung_wiederhergestellt] }
     Ablesung:
       type: object
       required: [quelle, zeitpunkt, fassung, stand, monat, woher, urheber, korrektur, eingetragen_am]

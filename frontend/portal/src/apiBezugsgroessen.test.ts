@@ -49,3 +49,17 @@ it('IP-15 sendet Datei, Zuordnung und Bestätigung als echtes Multipart ohne JSO
   }
   expect((uebernahme.body as FormData).get('bestaetigung')).toBe('{"vorschau":"VS1.test","entscheidungen":{},"begruendung":null,"teiluebernahme":"1 von 2 Zeilen übernehmen"}');
 });
+
+it('IP-16 liest Protokoll und Vorschau, bevor die bestätigte Rücknahme schreibt', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ importe: [] }) })); vi.stubGlobal('fetch', fetch);
+  await api.bezugsdatenImporte();
+  await api.bezugsdatenImport('I-2026-0001');
+  await api.bezugsdatenRuecknahmeVorschau('I-2026-0001');
+  await api.bezugsdatenImportZuruecknehmen('I-2026-0001', 'Falsche Artikelgruppe exportiert');
+  expect(fetch.mock.calls).toMatchObject([
+    [expect.stringMatching(/\/bezugsdaten\/importe$/), expect.anything()],
+    [expect.stringMatching(/\/bezugsdaten\/importe\/I-2026-0001$/), expect.anything()],
+    [expect.stringContaining('/I-2026-0001/ruecknahme/vorschau'), expect.anything()],
+    [expect.stringContaining('/I-2026-0001/ruecknahme'), { method: 'POST', body: '{"begruendung":"Falsche Artikelgruppe exportiert"}' }],
+  ]);
+});
