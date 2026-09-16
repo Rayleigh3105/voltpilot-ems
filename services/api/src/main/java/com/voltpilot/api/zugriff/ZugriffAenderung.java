@@ -1,0 +1,207 @@
+package com.voltpilot.api.zugriff;
+
+import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.OrtProtokoll;
+import com.voltpilot.api.uems.ProtokollAkteur;
+import com.voltpilot.api.uems.RechteAbleitung;
+import com.voltpilot.api.uems.RechteAbleitung.Aenderung;
+import com.voltpilot.api.uems.RechteAbleitung.AenderungErgebnis;
+import com.voltpilot.api.uems.RechteAbleitung.AenderungsArt;
+import com.voltpilot.api.uems.RechteAbleitung.Benutzer;
+import com.voltpilot.api.uems.RechteAbleitung.Kundenbereich;
+import com.voltpilot.api.uems.RechteAbleitung.Person;
+import com.voltpilot.api.uems.RechteAbleitung.Rolle;
+import com.voltpilot.api.uems.RechteAbleitung.Standort;
+import com.voltpilot.api.zugriff.ZugriffContext.Zugriff;
+import com.voltpilot.api.zugriff.ZugriffRepository.NeueZuweisung;
+import com.voltpilot.api.zugriff.ZugriffRepository.StandortEintrag;
+import com.voltpilot.api.zugriff.ZugriffRepository.Zeile;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
+
+/**
+ * Der EINE Prüfpunkt für jede Änderung an einer Zuweisung (UEMS AP-03 IP-9, §4.7, A8).
+ *
+ * <p><b>Warum genau eine Stelle.</b> Zwei Regeln sind nur dann Regeln, wenn kein Weg an ihnen vorbeiführt:
+ * <ul>
+ *   <li><b>Der letzte Kundenadministrator ist geschützt</b> (409 {@code letzter_kundenadministrator}). Ein
+ *       Kundenbereich ohne Kundenadministrator wäre ein Kunde, der sich selbst ausgesperrt hat — und niemand
+ *       außer VoltPilot könnte ihn wieder hineinlassen.</li>
+ *   <li><b>Die eigene Zuweisung ist unveränderlich</b> (409 {@code eigene_zuweisung}, W12). Niemand entzieht
+ *       sich selbst und niemand erweitert sich selbst; dafür braucht es eine zweite Person.</li>
+ * </ul>
+ * Das URTEIL fällt der Vertrag ({@link RechteAbleitung#zuweisungAendern}) — hier steht nur, WOMIT gefragt wird
+ * und was danach geschrieben wird. {@code ZugriffAenderungArchitekturTest} hält fest, dass
+ * {@link ZugriffRepository#zuweisen} und {@link ZugriffRepository#beenden} außerhalb dieser Klasse nur dort
+ * gerufen werden, wo der Vertrag einen EIGENEN Prüfpunkt führt (die Unterstützung, IP-8) oder noch niemand da
+ * ist, den man schützen könnte (die Bestandsübernahme, IP-2).
+ *
+ * <p><b>Der Entzug wirkt sofort und schaltet nie.</b> Geschrieben wird allein {@code beendet_am}; ein gesetzter
+ * Handeingriff bleibt unverändert in {@code device_override} und läuft bis zu seinem Ende (E15) — er bekommt nur
+ * ein Etikett ({@code SiteInterventionController}). Die nächste Anfrage des Betroffenen liest die Zuweisung neu
+ * ({@link ZugriffKontextLader}) und bekommt {@code zugriff_beendet}; es gibt keinen Zwischenspeicher dazwischen.
+ *
+ * <p><b>Zwei Protokolle, ein Vorgang.</b> {@code zugriff_protokoll} trägt den Entzug für den Kundenbereich
+ * (IP-2); zusätzlich bekommt der STANDORT eine Zeile in seinem Änderungsprotokoll ({@code ort_aenderung},
+ * AP-02 §4.4) — damit AP-12 später erklären kann, wer im Berichtszeitraum handeln durfte. Eine
+ * unternehmensweite Zuweisung schreibt diese Zeile am Unternehmen.
+ */
+@Service
+public class ZugriffAenderung {
+
+    /** Der Eintrag im Änderungsprotokoll des Standorts (AP-02 §4.4) — Wort des CHECKs von V20260916150000. */
+    public static final String ART_ENTZOGEN = "zugriff_entzogen";
+
+    /** Dasselbe für eine neue Zuweisung: der Standort hält fest, wer an ihm handeln darf. */
+    public static final String ART_ZUGEWIESEN = "zugriff_zugewiesen";
+
+    private final ZugriffRepository zugriffe;
+    private final OrtProtokoll ortProtokoll;
+    private final JdbcTemplate jdbc;
+
+    public ZugriffAenderung(ZugriffRepository zugriffe, OrtProtokoll ortProtokoll, JdbcTemplate jdbc) {
+        this.zugriffe = zugriffe;
+        this.ortProtokoll = ortProtokoll;
+        this.jdbc = jdbc;
+    }
+
+    /**
+     * Entzieht EINE Zuweisung — sofort, einmal, mit beiden Protokollzeilen.
+     *
+     * @throws ResponseStatusException 404, wenn es die Zuweisung im Kundenbereich nicht gibt, sie schon beendet
+     *     ist oder sie eine UNTERSTÜTZUNG ist (die hat ihren eigenen Weg, IP-8)
+     * @throws ZugriffAbgelehnt 409 nach {@link RechteAbleitung#zuweisungAendern}
+     */
+    @Transactional
+    public void entziehen(UUID zugriffId, String grund, ProtokollAkteur akteur) {
+        Instant jetzt = Instant.now();
+        Zeile z = kundenZuweisung(zugriffId);
+        pruefen(AenderungsArt.ENTZIEHEN, z.benutzerSub(), z.rolle(), standorte(z), jetzt);
+        String bereinigt = grund == null || grund.isBlank() ? null : grund.trim();
+        if (!zugriffe.beenden(zugriffId, jetzt, akteur, bereinigt)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Zuweisung nicht gefunden.");
+        }
+        protokollieren(ART_ENTZOGEN, z, bereinigt, jetzt, akteur);
+    }
+
+    /**
+     * Trägt eine Zuweisung ein (Rolle × Geltungsbereich, ab jetzt). Das Konto muss im Kundenbereich schon
+     * gespiegelt sein — Konten legt der Kundenadministrator an (IP-13/IP-14), nicht dieser Weg.
+     */
+    @Transactional
+    public UUID zuweisen(String benutzerSub, Rolle rolle, UUID standortId, String grund, ProtokollAkteur akteur) {
+        Instant jetzt = Instant.now();
+        if (rolle == null || rolle == Rolle.UNTERSTUETZER || rolle == Rolle.VOLTPILOT_BETRIEB) {
+            // Der Unterstützer entsteht allein über POST /api/v1/unterstuetzung (IP-8, mit Art, Umfang und Ende).
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rolle nicht zuweisbar.");
+        }
+        String name = zugriffe.spiegel(benutzerSub).map(ZugriffRepository.BenutzerSpiegel::anzeigename)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Benutzer nicht gefunden."));
+        List<String> standorte = standortId == null ? List.of()
+                : List.of(kennzeichen(standortId).orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort nicht gefunden.")));
+        pruefen(AenderungsArt.ZUWEISEN, benutzerSub, rolle, standorte, jetzt);
+        String bereinigt = grund == null || grund.isBlank() ? null : grund.trim();
+        ZoneId zone = zugriffe.kundenbereichKopf().zeitzone();
+        UUID id = zugriffe.zuweisen(new NeueZuweisung(benutzerSub, rolle, standortId, null, null, jetzt, null, null,
+                zone, akteur.sub()), name, akteur, bereinigt);
+        protokollieren(ART_ZUGEWIESEN, zugriffe.zeile(id).orElseThrow(), bereinigt, jetzt, akteur);
+        return id;
+    }
+
+    // ------------------------------------------------------------------ das Urteil
+
+    /**
+     * Die Frage an den Vertrag. Der Aufrufer kommt aus dem {@link ZugriffContext} der Anfrage, nie aus einem
+     * Anfragekörper; die Kundenadministratoren sind die zu {@code jetzt} WIRKSAMEN.
+     *
+     * <p>⚠ Ein BESTANDSKONTO (E12) hat keine Zeile in {@code zugriff} und steht darum nicht in dieser Liste. Der
+     * Schutz fällt dadurch nur STRENGER aus (weniger bekannte Kundenadministratoren = eher 409), nie lockerer —
+     * und der Start-Lauf legt die Zeilen ohnehin an ({@code ZugriffBestandLaeufer}).
+     */
+    private void pruefen(AenderungsArt art, String betroffenerSub, Rolle rolle, List<String> standorte,
+            Instant jetzt) {
+        Zugriff z = ZugriffContext.get();
+        if (z == null) {
+            // Ohne Zugriff-Kontext gibt es keinen Handelnden, dessen eigene Zuweisung man schützen könnte.
+            throw new IllegalStateException("Eine Zuweisung ändert nur eine angemeldete Person");
+        }
+        Benutzer handelnder = RechtPruefung.benutzer(z);
+        List<Person> admins = zugriffe.wirksamImKundenbereich(Rolle.KUNDENADMINISTRATOR, jetzt).stream()
+                .map(a -> new Person(a.zeile().benutzerSub(), a.name())).distinct().toList();
+        Kundenbereich k = new Kundenbereich(zugriffe.kundenbereichKopf().name(),
+                zugriffe.standorte().stream().map(s -> new Standort(s.kurzzeichen(), s.name())).toList(), admins);
+        AenderungErgebnis u = RechteAbleitung.zuweisungAendern(RechteMatrixDatei.matrix(), handelnder,
+                new Person(betroffenerSub, zugriffe.anzeigename(betroffenerSub)),
+                new Aenderung(art, rolle, standorte), k, jetzt);
+        if (!u.erlaubt()) {
+            throw new ZugriffAbgelehnt(u.http(), u.grund(), u.text());
+        }
+    }
+
+    // ------------------------------------------------------------------ Protokoll des Standorts
+
+    /**
+     * Die Zeile im Änderungsprotokoll (AP-02 §4.4): am STANDORT, wenn die Zuweisung einen trägt, sonst am
+     * Unternehmen. Sie gilt ab heute in der Zeitzone des Kundenbereichs und ist nie rückwirkend — ein Entzug
+     * wirkt jetzt, nicht in der Vergangenheit.
+     *
+     * <p>Fehlt das Unternehmen (ein Kundenbereich vor der Bestandsübernahme von AP-02), bleibt es bei der Zeile
+     * im Zugriffsprotokoll: ein fehlender Ort ist kein Grund, einen Entzug scheitern zu lassen.
+     */
+    private void protokollieren(String art, Zeile z, String grund, Instant jetzt, ProtokollAkteur akteur) {
+        ZoneId zone = z.zeitzone() == null ? zugriffe.kundenbereichKopf().zeitzone() : z.zeitzone();
+        UUID tenant = TenantContext.get();
+        String objektArt = z.standortId() != null ? "standort" : "unternehmen";
+        UUID objektId = z.standortId() != null ? z.standortId() : unternehmen(tenant);
+        if (objektId == null) {
+            return;
+        }
+        Map<String, Object> neu = new LinkedHashMap<>();
+        neu.put("benutzer_sub", z.benutzerSub());
+        neu.put("benutzer_name", zugriffe.anzeigename(z.benutzerSub()));
+        neu.put("rolle", z.rolle().code());
+        if (grund != null) {
+            neu.put("begruendung", grund);
+        }
+        ortProtokoll.eintragen(tenant, objektArt, objektId, art, null, neu,
+                LocalDate.ofInstant(jetzt, zone), zone, jetzt, akteur);
+    }
+
+    private UUID unternehmen(UUID tenant) {
+        return jdbc.query("SELECT id FROM unternehmen WHERE tenant_id = ?", (rs, n) -> rs.getObject("id", UUID.class),
+                tenant).stream().findFirst().orElse(null);
+    }
+
+    private Zeile kundenZuweisung(UUID zugriffId) {
+        Zeile z = zugriffe.zeile(zugriffId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Zuweisung nicht gefunden."));
+        if (z.rolle() == Rolle.UNTERSTUETZER) {
+            // Eine Unterstützung endet über DELETE /api/v1/unterstuetzung/{griff} — dort mit ihrem Griff,
+            // ihren Hinweisen und ihrem eigenen Vertrags-Urteil (IP-8).
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Zuweisung nicht gefunden.");
+        }
+        return z;
+    }
+
+    private List<String> standorte(Zeile z) {
+        return z.standortId() == null ? List.of()
+                : kennzeichen(z.standortId()).map(List::of).orElseGet(List::of);
+    }
+
+    private Optional<String> kennzeichen(UUID standortId) {
+        return zugriffe.standorte().stream().filter(s -> s.id().equals(standortId))
+                .map(StandortEintrag::kurzzeichen).findFirst();
+    }
+}

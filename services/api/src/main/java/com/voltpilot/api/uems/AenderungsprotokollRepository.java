@@ -191,6 +191,9 @@ public class AenderungsprotokollRepository {
      *   <li>Bestehen: {@code angelegt} · {@code archiviert} · {@code wiederhergestellt}.</li>
      *   <li>Felder: ein {@code bearbeitet} endet erst, wenn EIN späterer {@code bearbeitet} ALLE
      *       seine Felder neu setzt.</li>
+     *   <li>Zugriff ({@code zugriff_zugewiesen} · {@code zugriff_entzogen}, AP-03 IP-9): ein PUNKT — er gilt
+     *       an seinem Tag und wird von nichts abgelöst. Ohne diese Ausnahme bliebe er offen und stünde in
+     *       jedem späteren Zeitraum.</li>
      * </ul>
      * Ein geplantes Ende des Eintrags selbst ({@code neu.gueltig_bis}) kürzt zusätzlich. Das
      * Löschen eines Kindes (steht am Elternknoten und nennt {@code alt.id}) gilt nur an seinem Tag.
@@ -210,7 +213,8 @@ public class AenderungsprotokollRepository {
                    o.actor_art AS urheber_art,
                    NULL AS einbau, NULL AS einbau_zweit,
                    o.gilt_ab AS gilt_ab_tag,
-                   CASE WHEN o.art = 'geloescht' AND jsonb_exists(coalesce(o.alt, '{}'::jsonb), 'id')
+                   CASE WHEN o.art IN ('zugriff_zugewiesen', 'zugriff_entzogen')
+                             OR (o.art = 'geloescht' AND jsonb_exists(coalesce(o.alt, '{}'::jsonb), 'id'))
                         THEN o.gilt_ab
                         ELSE least(
                             (SELECT min(n.gilt_ab) FROM ort_aenderung n

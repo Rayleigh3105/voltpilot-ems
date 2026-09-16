@@ -71,18 +71,32 @@ public class ZugriffKontextLader {
         return umschalter;
     }
 
-    /** Ein Zugriff, keiner (kein Kundenbereich im Spiel) oder abgewiesen (404 auf jeder Kundenroute). */
-    public record Ergebnis(Zugriff zugriff, boolean abgewiesen) {
+    /**
+     * Ein Zugriff, keiner (kein Kundenbereich im Spiel) oder abgewiesen (404 auf jeder Kundenroute).
+     *
+     * @param beendet gesetzt, wenn die Abweisung ein ENTZUG ist (IP-9): der Aufrufer hatte hier einmal Zugang,
+     *     und der ist vorbei. Dann sagt die 404 das auch — {@code zugriff_beendet} mit dem Satz des Vertrags,
+     *     statt schweigend die Existenz zu verneinen. Ohne frühere Zuweisung bleibt es bei der stummen 404.
+     */
+    public record Ergebnis(Zugriff zugriff, boolean abgewiesen, ZugriffBeendet beendet) {
         static Ergebnis keiner() {
-            return new Ergebnis(null, false);
+            return new Ergebnis(null, false, null);
         }
 
         static Ergebnis abgewiesenOhneZugriff() {
-            return new Ergebnis(null, true);
+            return new Ergebnis(null, true, null);
+        }
+
+        static Ergebnis abgewiesenWeilBeendet(ZugriffBeendet b) {
+            return new Ergebnis(null, true, b);
         }
 
         static Ergebnis mit(Zugriff z) {
-            return new Ergebnis(z, false);
+            return new Ergebnis(z, false, null);
+        }
+
+        static Ergebnis mit(Zugriff z, ZugriffBeendet b) {
+            return new Ergebnis(z, false, b);
         }
     }
 
@@ -115,9 +129,12 @@ public class ZugriffKontextLader {
             if (tenant == null) {
                 return Ergebnis.keiner();
             }
-            List<Zeile> zeilen = zuweisungen(sub, jetzt);
-            return Ergebnis.mit(new Zugriff(sub, konto, tenant, Zugang.KONTO, zeilen, jetzt,
-                    zeilen.isEmpty() && bestandskonto(sub)));
+            ZugriffRepository.Stand stand = stand(sub, jetzt);
+            Zugriff z = new Zugriff(sub, konto, tenant, Zugang.KONTO, stand.wirksam(), jetzt,
+                    stand.wirksam().isEmpty() && bestandskonto(sub), stand.vorbei());
+            // A6: kein wirksamer Zugriff mehr, aber einmal einer da gewesen — der Entzug wirkt mit DIESER Anfrage.
+            return z.jederZugriffBeendet() ? Ergebnis.mit(z, ZugriffBeendet.standort(letzterStandort(stand.vorbei())))
+                    : Ergebnis.mit(z);
         }
         if (kundenbereichKopf != null && !kundenbereichKopf.isBlank()) {
             return unterstuetzung(sub, konto, kundenbereichKopf.trim(), jetzt);
@@ -180,14 +197,32 @@ public class ZugriffKontextLader {
         }
     }
 
-    private List<Zeile> zuweisungen(String sub, Instant jetzt) {
+    private ZugriffRepository.Stand stand(String sub, Instant jetzt) {
         try {
-            return zugriffe.wirksam(sub, jetzt);
+            return zugriffe.stand(sub, jetzt);
         } catch (RuntimeException e) {
             log.warn("Zuweisungen von {} nicht lesbar - Kontext ohne Zuweisung: {}", sub, e.toString());
             zaehle("fehler");
-            return List.of();
+            return new ZugriffRepository.Stand(List.of(), List.of());
         }
+    }
+
+    /**
+     * Der Standort, den der Satz „Ihr Zugriff auf … wurde beendet." nennt: der Name aus der ZULETZT beendeten
+     * Zuweisung. Eine unternehmensweite Zuweisung trägt keinen — dann bleibt der Satz ohne Standort
+     * ({@link ZugriffBeendet#standort}).
+     */
+    private static String letzterStandort(List<Zeile> vorbei) {
+        String name = null;
+        Instant spaetestes = null;
+        for (Zeile z : vorbei) {
+            Instant ende = z.beendetAm() != null ? z.beendetAm() : z.endetAm();
+            if (z.standortName() != null && (spaetestes == null || ende == null || ende.isAfter(spaetestes))) {
+                name = z.standortName();
+                spaetestes = ende;
+            }
+        }
+        return name;
     }
 
     private Ergebnis unterstuetzung(String sub, Konto konto, String kopf, Instant jetzt) {
@@ -200,13 +235,21 @@ public class ZugriffKontextLader {
         }
         UUID vorher = TenantContext.get();
         List<Zeile> zeilen;
+        List<Zeile> vorbei;
+        String kundenbereichName = null;
         TenantContext.set(kandidat);
         try {
-            zeilen = zugriffe.wirksam(sub, jetzt).stream().filter(z -> gilt(konto, z)).toList();
+            ZugriffRepository.Stand stand = zugriffe.stand(sub, jetzt);
+            zeilen = stand.wirksam().stream().filter(z -> gilt(konto, z)).toList();
+            vorbei = stand.vorbei().stream().filter(z -> gilt(konto, z)).toList();
+            if (zeilen.isEmpty() && !vorbei.isEmpty()) {
+                kundenbereichName = zugriffe.kundenbereichKopf().name();
+            }
         } catch (RuntimeException e) {
             log.warn("Unterstützung von {} nicht lesbar - {} abgewiesen: {}", sub, KUNDENBEREICH_HEADER, e.toString());
             zaehle("fehler");
             zeilen = List.of();
+            vorbei = List.of();
         } finally {
             if (vorher == null) {
                 TenantContext.clear();
@@ -216,7 +259,11 @@ public class ZugriffKontextLader {
         }
         if (zeilen.isEmpty()) {
             zaehle("abgewiesen");
-            return Ergebnis.abgewiesenOhneZugriff();
+            // Wer hier NIE eine Unterstützung hatte, erfährt nichts — auch nicht, dass es den Kundenbereich gibt
+            // (W2). Wer eine HATTE, kennt ihn längst; ihm sagt die 404, dass sie beendet ist (§4.7, A4).
+            return vorbei.isEmpty() || kundenbereichName == null
+                    ? Ergebnis.abgewiesenOhneZugriff()
+                    : Ergebnis.abgewiesenWeilBeendet(ZugriffBeendet.unterstuetzung(kundenbereichName));
         }
         TenantContext.set(kandidat);
         zaehle("unterstuetzung");

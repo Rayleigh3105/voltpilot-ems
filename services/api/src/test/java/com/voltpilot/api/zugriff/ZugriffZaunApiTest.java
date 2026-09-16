@@ -239,7 +239,9 @@ class ZugriffZaunApiTest {
             assertThat(sitzung(partner)).isEqualTo(List.of(DEMO.toString(), "standorte", ids));
             assertThat(sitzung(leser)).isEqualTo(List.of(DEMO.toString(), "standorte", ids));
             assertThat(sitzung(umschalter)).isEqualTo(List.of(DEMO.toString(), "unternehmen", "{}"));
-            assertThat(sitzung(ohne)).isEqualTo(List.of(DEMO.toString(), "standorte", "{}"));
+            // AP-03 IP-9: ein Konto, dessen einzige Zuweisung vorbei ist, kommt gar nicht mehr bis zur Route —
+            // der Entzug wirkt mit der nächsten Anfrage, und sie sagt auch, warum (A6).
+            assertThat(beendet(ohne)).isEqualTo("zugriff_beendet");
             assertThat(sitzung(nie)).isEqualTo(List.of(DEMO.toString(), "unternehmen", "{}"));
             assertThat(sitzung(plattformOhne)).isEqualTo(List.of("", "", ""));
         }
@@ -341,8 +343,15 @@ class ZugriffZaunApiTest {
                 + "ORDER BY id LIMIT 1", String.class, DEMO, BERLIN_SITE);
         assertThat(ruf(MockMvcRequestBuilders.delete(URI.create("/api/v1/devices/" + fremdesGeraet)), leser).status())
                 .as("ein Gerät einer fremden Anlage ist 404, auch zum Löschen").isEqualTo(404);
-        assertThat(anlagen(ohne)).isEmpty();
-        assertThat(ruf(get("/api/v1/sites/" + BERLIN_SITE), ohne).status()).isEqualTo(404);
+        // AP-03 IP-9: der Entzug beantwortet jede Kundenroute selbst — 404 mit `zugriff_beendet` und dem Satz
+        // aus §4.7, nicht eine leere Liste, die für den Kunden wie „Sie haben keine Anlagen" aussähe (A6).
+        for (String route : List.of("/api/v1/sites", "/api/v1/sites/" + BERLIN_SITE)) {
+            Antwort a = ruf(get(route), ohne);
+            assertThat(a.status()).as(route).isEqualTo(404);
+            JsonNode n = MAPPER.readTree(a.body());
+            assertThat(n.path("code").asText()).as(route).isEqualTo("zugriff_beendet");
+            assertThat(n.path("message").asText()).as(route).startsWith("Ihr Zugriff auf ").endsWith("wurde beendet.");
+        }
     }
 
     private int anzahl(MockHttpServletRequestBuilder anfrage, Konto k) throws Exception {
@@ -442,6 +451,13 @@ class ZugriffZaunApiTest {
 
     private static MockHttpServletRequestBuilder get(String pfad) {
         return MockMvcRequestBuilders.get(URI.create(pfad));
+    }
+
+    /** Der Fehlercode einer Kundenroute für ein Konto, das keinen wirksamen Zugriff mehr hat (IP-9). */
+    private String beendet(Konto k) throws Exception {
+        Antwort a = ruf(get(SITZUNG), k);
+        assertThat(a.status()).as(k.name()).isEqualTo(404);
+        return MAPPER.readTree(a.body()).path("code").asText();
     }
 
     private List<String> sitzung(Konto k) throws Exception {

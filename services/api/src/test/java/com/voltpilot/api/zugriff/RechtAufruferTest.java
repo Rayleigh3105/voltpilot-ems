@@ -123,7 +123,8 @@ class RechtAufruferTest {
 
     private static ZugriffRepository.Zeile zeile(String sub, Rolle rolle, UUID standort) {
         return new ZugriffRepository.Zeile(UUID.randomUUID(), sub, rolle, standort,
-                standort == null ? null : "ST-x", null, null, Instant.parse("2024-03-12T00:00:00Z"), null, null,
+                standort == null ? null : "ST-x", standort == null ? null : "Werk X", null, null,
+                Instant.parse("2024-03-12T00:00:00Z"), null, null,
                 ZoneId.of("Europe/Berlin"), null, null, null, null);
     }
 }

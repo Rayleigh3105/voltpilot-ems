@@ -79,7 +79,8 @@ public final class KorrekturRechte {
     }
 
     /**
-     * Der Aufrufer, seit AP-03 IP-6: die wirksamen Zuweisungen aus dem Zugriff-Kontext ({@link RechtPruefung#aufrufer}) —
+     * Der Aufrufer, seit AP-03 IP-6: die Zuweisungen aus dem Zugriff-Kontext ({@link RechtPruefung#aufrufer};
+     * seit IP-9 auch die BEENDETEN, die nichts freigeben und nur die Ablehnung benennen) —
      * ohne Kontext und am Plattform-Umschalter bleibt es bei {@link #benutzer} (W3, bis IP-8). Das Ziel bleibt das
      * Unternehmen: ein Bearbeiter je Standort wird abgewiesen, bis die Korrektur ihren Standort nennt.
      */

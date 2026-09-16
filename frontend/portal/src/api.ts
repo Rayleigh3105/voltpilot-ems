@@ -311,6 +311,12 @@ export interface Intervention {
   createdAt: string;
   /** AP-03 IP-7: wer den Eingriff gesetzt hat; null für einen Eingriff von vor dieser Fassung. */
   urheber?: ProtokollUrheber | null;
+  /**
+   * AP-03 IP-9 (E15): der Satz der Jetzt-Zone — „gesetzt von Murat Demirci" und, wenn dessen Bedienrecht
+   * inzwischen endete, „… (Bedienrecht beendet am 14.11.2026 09:02)". Der Eingriff selbst bleibt und wirkt
+   * bis zu seinem Ende; ein Entzug schaltet nie. null ohne bekannten Urheber.
+   */
+  etikett?: string | null;
 }
 
 /**
