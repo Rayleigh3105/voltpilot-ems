@@ -1419,7 +1419,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
 
   it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
     // Die Wörter-Quellen (Glossar, Vertrags-Zwilling) und die Navigation dürfen es; jede ANDERE Kundenfläche nicht.
-    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'uemsKennzahl.ts', 'test/kennzahlWerteFixtures.ts', 'test/kennzahlAendernFixtures.ts']);
+    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'uemsKennzahl.ts', 'test/kennzahlWerteFixtures.ts', 'test/kennzahlAendernFixtures.ts', 'test/korrekturFixtures.ts']);
     const treffer = new Set<string>();
     for (const file of customerFiles()) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
@@ -2070,5 +2070,21 @@ describe('Summenwert: das eine Kundenwort', () => {
     }
     const neu = Object.entries(gefunden).filter(([key, n]) => n > (bestand[key] ?? 0));
     expect(neu, JSON.stringify(neu, null, 2)).toEqual([]);
+  });
+});
+
+
+describe('AP-08 IP-16 · Ersatzwerte und Korrekturen', () => {
+  const dateien = ['korrekturen.ts', 'components/ErsatzwertDialog.tsx', 'components/KorrekturenDialog.tsx', 'components/KorrekturVorschau.tsx'];
+  const texte = dateien.flatMap(f => visibleTexts(readFileSync(join(SRC, f), 'utf8')));
+  it('spricht in Kundenwörtern und benennt die zweite Person', () => {
+    expect(texte.some(t => t.includes('zweite Person'))).toBe(true);
+    const falsch = texte.filter(isKundentext).flatMap(t => [...FORBIDDEN, ...FORBIDDEN_INTERN].filter(({ re }) => re.test(ohneAusnahmen(t))).map(({ why }) => `${t}: ${why}`));
+    expect(falsch).toEqual([]);
+  });
+  it('Widerruf und Vorschlag behaupten keine abgeschlossene Neuberechnung', () => {
+    expect(texte.some(t => t.includes('weitere Version'))).toBe(true);
+    expect(texte.some(t => t.includes('bisherigen Werte bleiben unverändert'))).toBe(true);
+    expect(texte.some(t => t.includes('werden neu berechnet'))).toBe(true);
   });
 });

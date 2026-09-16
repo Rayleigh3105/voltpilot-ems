@@ -384,6 +384,8 @@ function MessstelleSeiteMitId({
           heute={heute}
           standortName={zeile?.ort.standort_name ?? null}
           quelle={zeile?.quelle ?? null}
+          korrekturKontext={quellen && zeile?.ort.standort_id && haupt?.einheit && m.art === 'gemessen' && m.lebenszyklus !== 'archiviert'
+            ? { quellen, standort: zeile.ort.standort_id, einheit: haupt.einheit } : undefined}
           // AP-13 IP-12 (L6): Übergabe und Box-Tausch im Verlauf sprechen aus der Zeitachse der Zuständigkeiten.
           boxWechsel={boxWechselAmGeraet(boxen.karte, zeile?.quelle.fuehrend?.geraet.id, boxen.quellen)}
           // AP-13 IP-5: der Vergleich braucht die Hauptgrößen der anderen Messstellen („passend“, O12).

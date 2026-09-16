@@ -47,6 +47,7 @@ export function MessstellenVerlauf({
   antwort,
   kern,
   versionen,
+  markerAktion,
   namen,
   eigenName,
   vergleich = null,
@@ -65,6 +66,7 @@ export function MessstellenVerlauf({
   kern: Kernaussage | null;
   /** Der Einstieg „Versionen“ an der Karte eines gewählten Schritts — nur, wo der Wirt die Historie öffnet. */
   versionen?: (s: Schritt) => ReactNode;
+  markerAktion?: (kennung: string) => ReactNode;
   /** Die Namen der Bindungen aus dem Register — für den Grund-Satz der Schritt-Karte (AP-13 IP-6). */
   namen?: QuellenNamen;
   /**
@@ -264,7 +266,7 @@ export function MessstellenVerlauf({
               ) : (
                 <span className="vp-mv-nummer is-leer" aria-hidden="true" />
               )}
-              <span>{x.satz}</span>
+              <span>{x.satz}{markerAktion?.(x.schluessel)}</span>
             </li>
           ))}
         </ol>

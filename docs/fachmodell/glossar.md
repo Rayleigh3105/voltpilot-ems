@@ -873,3 +873,18 @@ Die Karte zeigt den Strich UND den Satz. Der Satz nennt nur, was das System wei�
 **Heute im Code.** Acht Sätze als Vertrag: `docs/contracts/v2/ergebnis-zustand.md` §9 (Block `grund`, 1.11), gesprochen von `frontend/portal/src/uemsErgebnis.ts` und `services/api/src/main/java/com/voltpilot/api/uems/ErgebnisZustand.java` (`grundSatz`). An der Karte sprechen sie mit AP-13 IP-6.
 
 **Abgrenzung.** Nicht ein Fehler oder eine Störung, nicht der Zustand „keine Werte“ (der sagt, DASS keine Zahl da ist), nicht die Gründe einer Kennzahl (eigener Vertrag).
+
+### Ersatzwert, Korrektur und Widerruf
+
+Ein **Ersatzwert** füllt oder verteilt fehlende Messwerte mit einer benannten Methode
+und einer Begründung. Bei gemessenem Zuwachs wird dessen Menge verteilt; ohne
+Zuwachs kann eine belegte Menge, eine Vorperiode oder eine Vergleichsquelle helfen.
+Ein nachgetragener Ablesestand bleibt als solcher erkennbar.
+
+Eine **Korrektur** bewahrt den bisherigen Wert und erzeugt nach der Freigabe eine neue
+Version. Ein Vorschlag verändert noch keinen Wert. Bei eingeschalteter Prüfung durch
+eine zweite Person kann der Ersteller nicht selbst freigeben.
+
+Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
+eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
+Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md).
