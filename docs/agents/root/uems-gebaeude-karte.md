@@ -15,7 +15,7 @@ Gebäude-Zeilen der Übersicht aus IP-7 (`uems-uebersicht-bausteine.md`), die Bi
 | Hülle | `components/Ortsbaum.tsx`, Prop `gebaeudeKarte` (IP-2) und neu `onAntwort` — der Baum meldet die gelesene Antwort, statt dass die Seite dieselbe zweimal holt |
 | Wirt | `pages/StandortGebaeudePage.tsx` mit `onNavigate` + `springe`; ohne beide bleibt die Hülle leer (kein Aufklapper ohne Ziel) |
 | Gelesen | `api.anlageBilanz` je Anlage des Standorts, `api.messstellenRegister({ort})` heute (Datenlage) und `{ort, stichtag}` am letzten Tag des Zeitraums (wer im Gebäude misst), `api.kennzahlen`, `api.selbstauskunft` |
-| Tests | `gebaeudeKarte.test.ts` (O4, B4, Rechte, Versorgungs-Fall), `components/GebaeudeKarte.test.tsx` (gerenderte Fläche), `copy.test.ts` (Welt Oberflächen), `e2e/gebaeude-karte.spec.ts` (`GEBAEUDE_BILDER=<Ordner>`) |
+| Tests | `gebaeudeKarte.test.ts` (O4, B4, Rechte), `versorgung.test.ts` (F15), `components/GebaeudeKarte.test.tsx` (gerenderte Fläche), `copy.test.ts` (Welt Oberflächen), `e2e/gebaeude-karte.spec.ts` (`GEBAEUDE_BILDER=<Ordner>`) |
 | Bühne | `e2e/startansicht.html?bild=unternehmen&ansicht=werk-gebaeude&person=IK` (Energiemanager) · `&person=CB` (Leser, ohne Recht) · `&ansicht=lindach-gebaeude&orte=leer` (Z4) |
 
 ## Die Regel dieser Fläche: ein Gebäude ist eine Sicht, keine Bilanzgrenze
@@ -67,13 +67,10 @@ prüft das ausdrücklich.
   `messstellenRegisterFixtures.REGISTER_ORT_IDS` sind verschieden. Deshalb filtert diese Fläche (wie IP-7) mit dem
   KURZZEICHEN; wer mit einer Ort-ID filtert, sieht auf der Bühne nichts.
 
-## Die Zeile „Versorgung“ — benannt, nicht gebaut
+## Die Zeile „Versorgung“
 
-B4 verlangt die Zeile „Versorgung“ („Halle 1 ← System Halle 1“) auf der Standort-Übersicht, **sobald**
-`GET /api/v1/standorte/{id}/versorgung?stichtag=` (AP-10 IP-17) antwortet. Die Route gibt es heute nicht — weder im
-`StandortController` noch als Aufrufer in `api.ts`. Der Zwilling `uemsBilanz.versorgung` steht bereit, ihm fehlen nur
-die Verortungen je Tag samt Stellung, die keine gebaute Antwort liefert; eine Zeile daraus wäre eine Behauptung.
-
-`gebaeudeKarte.ts` hält den Fall mit `VERSORGUNG_ROUTE` und `VERSORGUNG_MUSTER` fest,
-`gebaeudeKarte.test.ts` prüft ihn als **benannten Test**: er wird rot, sobald die Route da ist — dann ist die Zeile zu
-bauen.
+B4 ist mit AP-10 IP-17 gebaut: `GET /api/v1/standorte/{id}/versorgung?stichtag=` leitet Gebäude × System aus den
+wirksamen Orten und Stellungen ab; der Standort zeigt „Halle 1 ← System Halle 1 (NA-1)“. Ein Gebäude ohne belegendes
+System heißt „nicht messbar“, und Messstellen direkt am Standort stehen als „außerhalb eines Gebäudes“ getrennt.
+`VersorgungKarte` rechnet keine zweite Wahrheit, sondern formuliert nur diese Antwort; der GET trägt bewusst kein
+`@Recht`, sondern den Rechte-Kommentar `messstelle.ansehen` direkt über der Route.

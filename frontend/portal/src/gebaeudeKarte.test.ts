@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Bilanz } from './api';
 import {
   NICHT_MESSBAR,
@@ -29,6 +27,8 @@ import { ORT_IDS } from './test/ortsbaumFixtures';
 import faelle from './test/oberflaechenFaelle.json';
 import { FIXTURE_IDS } from './test/standorteFixtures';
 import { gebaeude as gebaeudeSicht } from './uemsBilanz';
+import { versorgungAhrenberg } from './test/versorgungFixtures';
+import { versorgungZeilen } from './versorgung';
 import type { AnlageBilanz, BilanzPeriode } from './uebersichtBausteine';
 
 /**
@@ -281,40 +281,11 @@ describe('UEMS AP-13 IP-10 · wenn es nichts zu zeigen gibt: Gründe statt Zahle
   });
 });
 
-/**
- * Der benannte Fall zu AP-10 IP-17: die Zeile „Versorgung“ der Standort-Übersicht wird erst gebaut, wenn die Route
- * antwortet. Dieser Test hält fest, DASS sie fehlt — kommt sie, wird er rot, und die Zeile ist fällig (B4).
- */
-describe('UEMS AP-13 IP-10 · die Zeile „Versorgung“ wartet auf AP-10 IP-17 — benannt, nicht ins Leere gebaut', () => {
-  const SRC = join(process.cwd(), 'src');
-  const API_ROOT = join(process.cwd(), '..', '..', 'services', 'api', 'src', 'main', 'java', 'com', 'voltpilot', 'api', 'web');
-
-  it(`\`GET ${VERSORGUNG_ROUTE}?stichtag=\` gibt es heute nicht — weder im Portal-Client noch im StandortController`, () => {
-    const client = readFileSync(join(SRC, 'api.ts'), 'utf8');
-    expect(client).not.toContain('/versorgung');
-    expect(readFileSync(join(API_ROOT, 'StandortController.java'), 'utf8')).not.toContain('versorgung');
-  });
-
-  it('deshalb baut IP-10 die Zeile NICHT: keine Fläche spricht heute das Muster der Versorgung', () => {
+describe('UEMS AP-10 IP-17 · die Zeile „Versorgung“ ist nach der Route gebaut', () => {
+  it(`spricht das Muster aus der Antwort von \`GET ${VERSORGUNG_ROUTE}?stichtag=\``, () => {
     expect(VERSORGUNG_MUSTER).toBe('{gebaeude} ← System {anlage}');
-    // Das Muster ist festgehalten, aber nirgends gerendert — weder als Baustein noch als Zeile einer Übersicht.
-    for (const datei of ['components/GebaeudeKarte.tsx', 'pages/StandortUebersichtPage.tsx', 'uebersichtBausteine.ts', 'components/UebersichtBausteine.tsx']) {
-      const text = readFileSync(join(SRC, datei), 'utf8');
-      expect(text).not.toContain('VERSORGUNG_MUSTER');
-      expect(text).not.toContain('System {anlage}');
-    }
-    // Und das reine Modul rechnet keine Versorgung: es hält nur fest, WORAUF gewartet wird.
-    expect(readFileSync(join(SRC, 'gebaeudeKarte.ts'), 'utf8')).not.toMatch(/export (const|function) versorgung/);
-  });
-
-  it('der Zwilling `uemsBilanz.versorgung` steht bereit — ihm fehlen nur die Verortungen, die keine Route liefert', async () => {
-    const { versorgung } = await import('./uemsBilanz');
-    const urteil = versorgung('2026-10-31', ['G-1', 'G-2'], [
-      { messstelle: 'MS-11', anlage: 'AN-2', stellung: 'Unterzähler', ort_pfad: ['B-4', 'G-2', 'ST-1'] },
-      { messstelle: 'MS-14', anlage: 'AN-2', stellung: 'Unterzähler', ort_pfad: ['ST-1'] },
-    ]);
-    expect(urteil.versorgt).toEqual({ 'AN-2': ['G-2'] });
-    expect(urteil.nicht_messbar).toEqual(['G-1']);
-    expect(urteil.ausserhalb_gebaeude).toEqual(['MS-14']);
+    expect(versorgungZeilen(versorgungAhrenberg()).map((z) => z.text)).toContain(
+      'Halle 2 ← System Halle 2 (NA-2)',
+    );
   });
 });

@@ -131,7 +131,7 @@ describe('Netzbezug gesamt und Datenlage (die zwei Katalog-Bausteine der Funktio
     expect(k.netzbezugJetztAnlagen).toBe(3);
     const zelle = leistenZellen({ order: ['netzbezug-gesamt'], kennzahlen: k, anlagen: 3, tonalitaet: 'eigenverbrauch' });
     expect(zelle).toEqual([
-      expect.objectContaining({ label: 'Netzbezug jetzt', wert: '447,6', einheit: 'kW', unterzeile: 'Summe über 3 Anlagen' }),
+      expect.objectContaining({ label: 'Netzbezug jetzt', wert: '447,6', einheit: 'kW', unterzeile: '3 von 3 Anlagen melden gerade' }),
     ]);
   });
 
@@ -168,7 +168,7 @@ describe('Netzbezug gesamt und Datenlage (die zwei Katalog-Bausteine der Funktio
     const k = portfolioKennzahlen({ sites: AHRENBERG } as never, null, JETZT);
     expect(k.pvAnlagen).toBe(1);
     const [zelle] = leistenZellen({ order: ['pv-jetzt'], kennzahlen: k, anlagen: 3, tonalitaet: 'eigenverbrauch' });
-    expect(zelle).toMatchObject({ wert: '168,2', unterzeile: null, ton: 'ruhig' });
+    expect(zelle).toMatchObject({ wert: '168,2', unterzeile: '1 von 1 Anlage meldet gerade', ton: 'ruhig' });
     // Meldet eine Anlage MIT PV gerade nicht, bleibt der Vorbehalt wie bisher.
     const alt = { ...HALLE1, id: 'alt', live: { ...live(10, 20), ts: new Date(JETZT.getTime() - 3_600_000).toISOString() } };
     const k2 = portfolioKennzahlen({ sites: [...AHRENBERG, alt] } as never, null, JETZT);
@@ -427,7 +427,7 @@ describe('A13 · Geld-Regel: „Die Messdatenkunden brauchen keine Geldanzeige."
     const k = portfolioKennzahlen({ sites: AHRENBERG } as never, geldFuerAlle(), JETZT, geld);
     expect(k.erloesHeuteEur).toBeCloseTo(12.5, 5);
     expect(k.vermiedeneSpitzeEur).toBe(4800);
-    expect(vorteilUnterzeile(k, 3)).toBe('gegenüber Speicher ohne Steuerung · nur Werk Ahrenberg – Halle 1');
+    expect(vorteilUnterzeile(k, 3)).toBe('gegenüber Speicher ohne Steuerung · 1 von 3 Anlagen · nur Werk Ahrenberg – Halle 1');
     const z = anlagenZeilen({ overview: { sites: AHRENBERG } as never, earnings: geldFuerAlle(), dichte: 'komfortabel', now: JETZT, geld });
     expect(Object.fromEntries(z.map((r) => [r.id, r.heuteEur]))).toEqual({ [an1]: 12.5, [an2]: null, [an3]: null });
     // Ohne Regel (jede andere Flotte) zählt wie bisher jede Anlage.
@@ -442,7 +442,7 @@ describe('A13 · Geld-Regel: „Die Messdatenkunden brauchen keine Geldanzeige."
     const k = portfolioKennzahlen({ sites: AHRENBERG } as never, geldFuerAlle(), JETZT, geld);
     expect(k.erloesHeuteEur).toBeCloseTo(25, 5);
     expect(vorteilUnterzeile(k, 3)).toBe(
-      'gegenüber Speicher ohne Steuerung · nur Werk Ahrenberg – Halle 1 und Werk Ahrenberg – Halle 2',
+      'gegenüber Speicher ohne Steuerung · 2 von 3 Anlagen · nur Werk Ahrenberg – Halle 1 und Werk Ahrenberg – Halle 2',
     );
   });
 });

@@ -840,6 +840,32 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/{standortId}/versorgung:
+    get:
+      tags: [ortsstruktur, messstellen]
+      summary: Versorgung der Gebäude am Standort zum Stichtag (AP-10 IP-17/F15).
+      description: >
+        Reine Sicht aus den am Stichtag wirksamen Orten und elektrischen Stellungen der Messstellen:
+        Ein System versorgt ein Gebäude genau dann, wenn eine seiner Messstellen mit Stellung ungleich
+        `keine` im Gebäude oder einem seiner Bereiche liegt. Messstellen direkt am Standort bzw. in einem
+        Bereich ohne Gebäude stehen unter `ausserhalbGebaeude`; ein Gebäude ohne zugeordnetes System ist
+        `messbar: false`, nie vermeintlich mit 0 versorgt. Ein fremder Standort ist 404, nie 403.
+        Recht: `messstelle.ansehen`.
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: stichtag
+          in: query
+          required: false
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Die aus Ort und Stellung abgeleitete Versorgung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Versorgung" }
+        "400": { description: stichtag ist kein ISO-Tag. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Standort not found for this tenant. }
   /api/v1/standorte/{standortId}/wiederherstellen:
     post:
       tags: [ortsstruktur]
@@ -19251,6 +19277,61 @@ components:
           format: date-time
           nullable: true
           description: Additiv (IP-4) - wann er archiviert wurde; null, solange er es nicht ist.
+    Versorgung:
+      type: object
+      required: [stichtag, standort, gebaeude, ausserhalbGebaeude]
+      properties:
+        stichtag: { type: string, format: date }
+        standort: { $ref: "#/components/schemas/VersorgungBezug" }
+        gebaeude:
+          type: array
+          items: { $ref: "#/components/schemas/GebaeudeVersorgung" }
+        ausserhalbGebaeude:
+          type: array
+          description: Messstellen am Standort, aber außerhalb jedes Gebäudes; keine davon wird still zugeschlagen.
+          items: { $ref: "#/components/schemas/VersorgungAusserhalb" }
+    VersorgungBezug:
+      type: object
+      required: [id, kennzeichen, name]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: G-2 }
+        name: { type: string, example: Halle 2 }
+    VersorgungAnlage:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: Werk Ahrenberg – Halle 2 }
+        netzanschlussKennzeichen: { type: string, nullable: true, example: NA-2 }
+    VersorgungMessstelle:
+      type: object
+      required: [kennzeichen]
+      properties:
+        kennzeichen: { type: string, example: MS-11 }
+        name: { type: string, nullable: true, example: Spritzguss Halle 2 }
+    GebaeudeVersorgung:
+      type: object
+      required: [gebaeude, messbar, systeme]
+      properties:
+        gebaeude: { $ref: "#/components/schemas/VersorgungBezug" }
+        messbar: { type: boolean, description: false, wenn kein System durch eine wirksame Messstelle belegt ist. }
+        systeme:
+          type: array
+          items:
+            type: object
+            required: [anlage, messstellen]
+            properties:
+              anlage: { $ref: "#/components/schemas/VersorgungAnlage" }
+              messstellen:
+                type: array
+                items: { $ref: "#/components/schemas/VersorgungMessstelle" }
+    VersorgungAusserhalb:
+      type: object
+      required: [messstelle, anlage]
+      properties:
+        messstelle: { $ref: "#/components/schemas/VersorgungMessstelle" }
+        anlage: { $ref: "#/components/schemas/VersorgungAnlage" }
     OrtsbaumAmStichtag:
       type: object
       description: >
