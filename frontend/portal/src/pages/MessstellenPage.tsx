@@ -6,6 +6,7 @@ import { zeitraumAus } from '../anlageEnergiebilanz';
 import { api, type Kostenstelle, type KostenstelleEnergiePeriode, type MessstellenRegister, type Prozess, type StandortAusfall } from '../api';
 import '../components/BereichTabs.css';
 import { MessstelleDialog } from '../components/MessstelleDialog';
+import { SummenwertRegisterEinstieg } from '../components/SummenwertRegisterEinstieg';
 import { RowMenu } from '../components/RowMenu';
 import { StandAm } from '../components/StandAm';
 import { VpPicker } from '../components/VpPicker';
@@ -347,6 +348,9 @@ function RegisterFlaeche({
         {anlegbar && leer?.art !== 'keine_messstelle' && (
           <Recht aktion="messstelle.bearbeiten"><Button onClick={() => setAnlegen(true)}>{DIALOG_TITEL.anlegen}</Button></Recht>
         )}
+        {anlegbar && optionen && <SummenwertRegisterEinstieg anlagen={optionen.anlagen} gewaehlt={filter.anlage} onGespeichert={() => {
+          basisMerker.current = null; setVersuch(v => v + 1);
+        }} />}
       </header>
       {leiste}
       {fehler ? (
