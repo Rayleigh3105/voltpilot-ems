@@ -10748,6 +10748,40 @@ paths:
         "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/bezugsdaten/vorlagen:
+    get:
+      tags: [bezugsgroessen]
+      summary: Die aktuellen Fassungen der Zuordnungs-Vorlagen des Kundenbereichs (AP-09 IP-14).
+      description: Lesend - keine eigene Kennung. Die Mandanten-RLS begrenzt die Liste auf den Kundenbereich.
+      responses:
+        "200":
+          description: Je Vorlage die aktuelle Fassung mit Zuordnung, Urheber und Zeitpunkt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenVorlageListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [bezugsgroessen]
+      summary: Legt eine Vorlage oder die nächste Fassung einer Vorlage an.
+      description: >
+        Recht `bezugsgroesse.importieren`. Ohne `vorlage_id` entsteht eine neue Vorlage mit Fassung 1;
+        mit `vorlage_id` die nächste Fassung. Keine Fassung wird überschrieben. Ein Import behält den
+        Verweis auf die beim Import benutzte Fassung.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsdatenVorlageAnfrage" }
+      responses:
+        "201":
+          description: Die angelegte Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenVorlage" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
   /api/v1/bezugsdaten/importe/vorschau:
     post:
       tags: [bezugsgroessen]
@@ -10771,12 +10805,19 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [datei, zuordnung]
+              required: [datei]
+              oneOf:
+                - required: [zuordnung]
+                - required: [vorlage_id]
               properties:
                 datei: { type: string, format: binary, description: "Die CSV-Datei (C1)." }
                 zuordnung:
                   type: string
                   description: "JSON der Form BezugsdatenZuordnung (C3)."
+                vorlage_id:
+                  type: string
+                  format: uuid
+                  description: "Statt `zuordnung`: verwendet die aktuelle Fassung dieser Vorlage und nennt sie in der Antwort."
             encoding:
               zuordnung: { contentType: application/json }
       responses:
@@ -22303,9 +22344,46 @@ components:
         befund: { type: string, enum: [datei_bekannt, zeile_bekannt, konflikt_anderer_wert, einheit_unbekannt, einheit_umgerechnet, periode_passt_nicht, periode_nicht_zu_ende, zeit_mehrdeutig, zeit_nicht_vorhanden, zahl_unlesbar, datum_unlesbar, bezug_unbekannt, wert_negativ, wert_unplausibel, keine_datenzeilen, datei_zu_gross, kodierung_unlesbar] }
         satz: { type: string }
         hinweis: { type: boolean, description: "Ein Hinweis verhindert die Zeile nicht." }
+    BezugsdatenVorlageAnfrage:
+      type: object
+      additionalProperties: false
+      required: [vorlage_id, name, zuordnung]
+      properties:
+        vorlage_id: { type: string, format: uuid, nullable: true, description: "Leer für Fassung 1; gesetzt für die nächste Fassung." }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        zuordnung: { $ref: "#/components/schemas/BezugsdatenZuordnung" }
+    BezugsdatenVorlageUrheber:
+      type: object
+      required: [name, rolle, art]
+      properties:
+        name: { type: string }
+        rolle: { type: string, nullable: true }
+        art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+    BezugsdatenVorlage:
+      type: object
+      required: [vorlage_id, fassung, name, zuordnung, urheber, erstellt_am]
+      properties:
+        vorlage_id: { type: string, format: uuid }
+        fassung: { type: integer, minimum: 1 }
+        name: { type: string }
+        zuordnung: { $ref: "#/components/schemas/BezugsdatenZuordnung" }
+        urheber: { $ref: "#/components/schemas/BezugsdatenVorlageUrheber" }
+        erstellt_am: { type: string, format: date-time }
+    BezugsdatenVorlageListe:
+      type: object
+      required: [vorlagen]
+      properties:
+        vorlagen: { type: array, items: { $ref: "#/components/schemas/BezugsdatenVorlage" } }
+    BezugsdatenVorlageVerweis:
+      type: object
+      required: [vorlage_id, fassung, name]
+      properties:
+        vorlage_id: { type: string, format: uuid }
+        fassung: { type: integer, minimum: 1 }
+        name: { type: string }
     BezugsdatenImportVorschau:
       type: object
-      required: [vorschau, datei, frueherer_import, zeilen, import]
+      required: [vorschau, vorlage, datei, frueherer_import, zeilen, import]
       properties:
         vorschau:
           type: object
@@ -22316,6 +22394,10 @@ components:
             ausgestellt_am: { type: string, format: date-time }
             gueltig_bis: { type: string, format: date-time, description: "ausgestellt_am + 30 Minuten." }
             ergebnis_fingerabdruck: { type: string }
+        vorlage:
+          allOf: [{ $ref: "#/components/schemas/BezugsdatenVorlageVerweis" }]
+          nullable: true
+          description: "Die benutzte Fassung; ohne `vorlage_id` null. Ein Import speichert genau diesen Verweis."
         datei:
           type: object
           required: [name, bytes, sha256, befund, zusatz, zusatz_satz, zeile, kodierung, bom, trennzeichen, kopfzeile, kopf, spalten, datenzeilen]

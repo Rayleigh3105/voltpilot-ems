@@ -3,6 +3,8 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,6 +37,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -178,6 +181,69 @@ class BezugsdatenImportVorschauApiTest {
         assertThat(Bestandsschutz.abweichungen(mitBestand, Bestandsschutz.fingerabdruck(root, List.of()))).isEmpty();
         assertThat(root.queryForObject("SELECT count(*) FROM bezugsgroesse_wert WHERE tenant_id = ?", Long.class,
                 bekannt.mandant())).as("nur der Bestand, kein zweiter Wert — 312 400 kg, nicht 624 800").isOne();
+    }
+
+    @Test
+    void vorlageAendernIstNeueFassungUndAlterImportBleibtBeiFassungEins() throws Exception {
+        JsonNode b1 = pruefung("B1", "ERP-Datei").path("eingang").path("vorschau");
+        Welt w = welt();
+        bezugsgroessen(w, b1.path("bezugsgroessen"));
+
+        ObjectNode neu = MAPPER.createObjectNode();
+        neu.putNull("vorlage_id");
+        neu.put("name", "ERP-Export Spritzguss");
+        neu.set("zuordnung", b1.path("zuordnung"));
+        MvcResult angelegt = mvc.perform(post("/api/v1/bezugsdaten/vorlagen")
+                .contentType(MediaType.APPLICATION_JSON).content(neu.toString()).with(ines(w))).andReturn();
+        assertThat(angelegt.getResponse().getStatus()).as(angelegt.getResponse().getContentAsString()).isEqualTo(201);
+        JsonNode fassung1 = MAPPER.readTree(angelegt.getResponse().getContentAsString());
+        UUID vorlage = UUID.fromString(fassung1.path("vorlage_id").asText());
+        assertThat(fassung1.path("fassung").asInt()).isOne();
+        assertThat(fassung1.at("/urheber/name").asText()).isEqualTo("Ines Kaltenbach");
+
+        root.update("INSERT INTO bezugsdaten_import (tenant_id, kennung, fassung, status, datei_name, datei_bytes, "
+                + "datei_sha256, kodierung, trennzeichen, kopfzeile, vorlage_id, vorlage_fassung, zeilen, neu, "
+                + "wiederholung, konflikt, berichtigung, uebersprungen, abgelehnt, mit_hinweis, aenderungen, "
+                + "befunde, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, 'I-2026-0001', 1, "
+                + "'uebernommen', 'alt.csv', 12, ?, 'utf-8', ';', true, ?, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, "
+                + "'[]', 'sub-ines', 'Ines Kaltenbach', 'energiemanager', 'kunde')",
+                w.mandant(), "0".repeat(64), vorlage);
+
+        ObjectNode geaendert = neu.deepCopy();
+        geaendert.put("vorlage_id", vorlage.toString());
+        geaendert.put("name", "ERP-Export Spritzguss neu");
+        MvcResult zweite = mvc.perform(post("/api/v1/bezugsdaten/vorlagen")
+                .contentType(MediaType.APPLICATION_JSON).content(geaendert.toString()).with(ines(w))).andReturn();
+        assertThat(zweite.getResponse().getStatus()).as(zweite.getResponse().getContentAsString()).isEqualTo(201);
+        assertThat(MAPPER.readTree(zweite.getResponse().getContentAsString()).path("fassung").asInt()).isEqualTo(2);
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsdaten_vorlage WHERE tenant_id = ? AND vorlage_id = ?",
+                Integer.class, w.mandant(), vorlage)).isEqualTo(2);
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsdaten_vorlage_bezug WHERE tenant_id = ? "
+                + "AND vorlage_id = ?", Integer.class, w.mandant(), vorlage)).as("ein Bezug je Fassung").isEqualTo(2);
+        TenantContext.clear();
+        assertThat(app.queryForObject("SELECT count(*) FROM bezugsdaten_vorlage_bezug", Integer.class))
+                .as("ohne Mandant ist kein Vorlagen-Bezug sichtbar").isZero();
+
+        MvcResult liste = mvc.perform(get("/api/v1/bezugsdaten/vorlagen").with(ines(w))).andReturn();
+        JsonNode gelistet = MAPPER.readTree(liste.getResponse().getContentAsString());
+        assertThat(liste.getResponse().getStatus()).isEqualTo(200);
+        assertThat(gelistet.path("vorlagen").size()).isOne();
+        assertThat(gelistet.at("/vorlagen/0/fassung").asInt()).isEqualTo(2);
+        assertThat(gelistet.at("/vorlagen/0/name").asText()).isEqualTo("ERP-Export Spritzguss neu");
+
+        Integer importFassung = root.queryForObject("SELECT vorlage_fassung FROM bezugsdaten_import "
+                + "WHERE tenant_id = ? AND kennung = 'I-2026-0001' AND fassung = 1", Integer.class, w.mandant());
+        assertThat(importFassung).as("alter Import nennt weiterhin die damalige Fassung").isOne();
+
+        MvcResult vorschau = mvc.perform(multipart(PFAD)
+                .file(new MockMultipartFile("datei", "neu.csv", "text/csv", CsvVektoren.datei(b1.path("datei"))))
+                .file(new MockMultipartFile("vorlage_id", "", "text/plain",
+                        vorlage.toString().getBytes(StandardCharsets.UTF_8)))
+                .with(ines(w))).andReturn();
+        assertThat(vorschau.getResponse().getStatus()).as(vorschau.getResponse().getContentAsString()).isEqualTo(200);
+        JsonNode mitVorlage = MAPPER.readTree(vorschau.getResponse().getContentAsString());
+        assertThat(mitVorlage.at("/vorlage/vorlage_id").asText()).isEqualTo(vorlage.toString());
+        assertThat(mitVorlage.at("/vorlage/fassung").asInt()).isEqualTo(2);
     }
 
     /**

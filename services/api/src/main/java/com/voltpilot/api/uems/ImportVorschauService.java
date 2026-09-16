@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.BezugsdatenImportDto;
 import com.voltpilot.api.web.dto.BezugsgroesseDto;
+import com.voltpilot.api.web.dto.BezugsdatenVorlageDto;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -41,14 +42,17 @@ public class ImportVorschauService {
     private final BezugsgroesseRepository bezugsgroessen;
     private final BezugsgroesseService werte;
     private final BezugsdatenImportRepository importe;
+    private final BezugsdatenVorlageService vorlagen;
     private final TransactionTemplate lesen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public ImportVorschauService(BezugsgroesseRepository bezugsgroessen, BezugsgroesseService werte,
-            BezugsdatenImportRepository importe, PlatformTransactionManager transactionManager) {
+            BezugsdatenImportRepository importe, BezugsdatenVorlageService vorlagen,
+            PlatformTransactionManager transactionManager) {
         this.bezugsgroessen = bezugsgroessen;
         this.werte = werte;
         this.importe = importe;
+        this.vorlagen = vorlagen;
         this.lesen = new TransactionTemplate(transactionManager);
         this.lesen.setReadOnly(true);
     }
@@ -59,9 +63,16 @@ public class ImportVorschauService {
     }
 
     public BezugsdatenImportDto.Vorschau vorschau(byte[] datei, String dateiName, ImportVorschau.Zuordnung zuordnung) {
+        return vorschau(datei, dateiName, zuordnung, null);
+    }
+
+    public BezugsdatenImportDto.Vorschau vorschau(byte[] datei, String dateiName, ImportVorschau.Zuordnung zuordnung,
+            UUID vorlageId) {
         Instant jetzt = uhr.instant();
         UUID kundenbereich = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
         return lesen.execute(status -> {
+            BezugsdatenVorlageRepository.Zeile vorlage = vorlageId == null ? null : vorlagen.aktuell(vorlageId);
+            ImportVorschau.Zuordnung wirksam = vorlage == null ? zuordnung : BezugsdatenZuordnung.aus(vorlage.zuordnung());
             Map<String, ImportVorschau.Ziel> ziele = ImportVorschau.nachKennzeichen(bezugsgroessen.alle().stream()
                     .filter(b -> b.archiviertAm() == null)
                     .filter(b -> "periodenwert".equals(b.wertart()) || "stand".equals(b.wertart()))
@@ -71,10 +82,12 @@ public class ImportVorschauService {
             Map<UUID, Map<String, BezugsdatenRegeln.Bestand>> bestand = new HashMap<>();
             ImportVorschau.Grundlagen grundlagen =
                     new ImportVorschau.Grundlagen(bezugsgroessen.vokabular().einheiten(), BezugsEinheit.UMRECHNUNGEN);
-            ImportVorschau.Ergebnis e = ImportVorschau.vorschau(datei, zuordnung, ziele,
+            ImportVorschau.Ergebnis e = ImportVorschau.vorschau(datei, wirksam, ziele,
                     (ziel, schluessel) -> bestand.computeIfAbsent(ziel.id(), id -> staende(ziel)).get(schluessel),
                     importe::mitFingerabdruck, grundlagen, jetzt);
-            return antwort(e, ziele, dateiName, kundenbereich, jetzt);
+            BezugsdatenVorlageDto.Verweis verweis = vorlage == null ? null
+                    : new BezugsdatenVorlageDto.Verweis(vorlage.id(), vorlage.fassung(), vorlage.name());
+            return antwort(e, ziele, dateiName, kundenbereich, jetzt, verweis);
         });
     }
 
@@ -101,7 +114,7 @@ public class ImportVorschauService {
     }
 
     private static BezugsdatenImportDto.Vorschau antwort(ImportVorschau.Ergebnis e, Map<String, ImportVorschau.Ziel> ziele,
-            String dateiName, UUID kundenbereich, Instant jetzt) {
+            String dateiName, UUID kundenbereich, Instant jetzt, BezugsdatenVorlageDto.Verweis vorlage) {
         Instant ausgestellt = Instant.ofEpochSecond(jetzt.getEpochSecond());
         ZoneId anzeige = BezugsdatenRegeln.ANZEIGE_ZEITZONE;
         BezugsdatenImportDto.Kennung kennung = new BezugsdatenImportDto.Kennung(
@@ -134,7 +147,7 @@ public class ImportVorschauService {
                         n.uebersprungen(), n.abgelehnt(), n.mitHinweis()),
                 i.uebernahmeMoeglich(), i.importDatensatz(), i.bestaetigung(), i.aenderungen(),
                 i.befunde().stream().map(ImportVorschauService::befund).toList());
-        return new BezugsdatenImportDto.Vorschau(kennung, datei, frueher, zeilen, imp);
+        return new BezugsdatenImportDto.Vorschau(kennung, vorlage, datei, frueher, zeilen, imp);
     }
 
     private static BezugsdatenImportDto.Befund befund(String befund) {

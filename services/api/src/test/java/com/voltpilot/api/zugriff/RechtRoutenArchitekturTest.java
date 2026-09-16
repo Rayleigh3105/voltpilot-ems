@@ -72,6 +72,8 @@ class RechtRoutenArchitekturTest {
         m.put("MessstelleController#anlegen", "keine — eine neue Messstelle hängt an keinem Standort (Ort erst danach)");
         m.put("MessstelleFormelController#anlegen", "keine — eine neue berechnete Messstelle hängt an keinem Standort");
         m.put("BezugsdatenImportController#vorschau", "keine — die Vorschau schreibt nichts");
+        m.put("BezugsdatenVorlageController#speichern",
+                "BezugsdatenVorlageService.speichern — RechtPruefung je genannter Bezugsgröße an ihrer Geltung");
         // AP-03 IP-7: zwei Rechte in einem Rumpf bzw. je Aktion.
         String steuern = "FunktionController.pruefeSteuern — RechtPruefung.pruefen je Aktion (starten/beenden · anhalten/"
                 + "fortsetzen)";

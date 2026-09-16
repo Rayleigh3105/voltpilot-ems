@@ -311,7 +311,8 @@ public class TenantRepository {
                 // import (RESTRICT), an import before the template version it names. The correction processes of
                 // Bezugsgroessen values (V20260915010000) point at their Bezugsgroesse: before it (RESTRICT).
                 for (String table : new String[] {
-                        "bezugsdaten_import_zeile", "bezugsdaten_import", "bezugsdaten_vorlage",
+                        "bezugsdaten_import_zeile", "bezugsdaten_import", "bezugsdaten_vorlage_bezug",
+                        "bezugsdaten_vorlage",
                         "bezugsgroesse_berichtigung",
                         "bezugsgroesse_wert", "bezugsgroesse_stammdatum", "bezugsgroesse_kennzeichen_verlauf",
                         "bezugsgroesse",

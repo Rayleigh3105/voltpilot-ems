@@ -51,6 +51,7 @@ public final class BezugsdatenImportDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Vorschau(
             Kennung vorschau,
+            BezugsdatenVorlageDto.Verweis vorlage,
             Datei datei,
             FruehererImport fruehererImport,
             List<Zeile> zeilen,
