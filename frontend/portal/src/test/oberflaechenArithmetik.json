@@ -474,6 +474,24 @@
         "standWahl: a.nr - b.nr",
         "verlaufDerStaende: b.nr - a.nr"
       ]
+    },
+    "zaehlerwechsel.ts": {
+      "importe": [
+        "./anlageFlow:parseDecimal",
+        "./bezugsPeriode:iso",
+        "./bezugsPeriode:zeitpunkteVon",
+        "./geraetEinstellungen:ZEIT_SAETZE",
+        "./uemsEreignis:ereignisSatz",
+        "./uemsEreignis:zahlText",
+        "./uemsEreignis:zeitText",
+        "./uemsMessstelle:rueckwirkung",
+        "./uemsZustand:teile"
+      ],
+      "operationen": [
+        "wechselPruefen: Number(e.geraeteId)",
+        "wechselPruefen: Number.isInteger(geraeteId)"
+      ],
+      "grund": "Eingabe Geräte-ID prüfen; Kalender und reine Darstellung, keine Rechnung mit Messwerten."
     }
   }
 }

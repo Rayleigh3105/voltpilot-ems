@@ -42,6 +42,8 @@ import {
 import { ALS_MESSSTELLE_VERWENDEN } from '../quelleBinden';
 import { geraetZuKomponenten } from '../uemsProtokoll';
 import { EinstellungAendernDialog, type AenderungZiel } from './EinstellungAendernDialog';
+import { ZaehlerwechselVerlauf } from './ZaehlerwechselVerlauf';
+import { ZaehlerwechselDialog } from './ZaehlerwechselDialog';
 import { QuelleBindenDialog, type QuelleBindenZiel } from './QuelleBindenDialog';
 import './GeraetHerkunft.css';
 
@@ -74,6 +76,7 @@ export function GeraetHerkunft({
   const [ziel, setZiel] = useState<AenderungZiel | null>(null);
   const [notiz, setNotiz] = useState<string | null>(null);
   // UEMS AP-04 IP-14: „Als Messstelle verwenden“ öffnet denselben Dialog mit vorbelegtem Messwert.
+  const [wechsel, setWechsel] = useState<UemsGeraet | null>(null);
   const [verwenden, setVerwenden] = useState<QuelleBindenZiel | null>(null);
   const schluessel = komponenten.map((k) => k.entityId).join(',');
 
@@ -102,7 +105,7 @@ export function GeraetHerkunft({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId, schluessel, stand]);
 
-  const geraet = geraetZuKomponenten(geraete, komponenten.map((k) => k.entityId));
+  const geraet = geraetZuKomponenten(geraete, komponenten.map((k) => k.entityId)) ?? wechsel;
   const geraetId = geraet?.id ?? null;
 
   useEffect(() => {
@@ -159,12 +162,16 @@ export function GeraetHerkunft({
           {karte.kennzeichen && <span className="vp-pill vp-pill-info">{karte.kennzeichen}</span>}
         </p>
         <Zeilen zeilen={karte.zeilen} />
+        {geraet.geraeteart === 'zaehler' && !geraet.teile?.length && (
+          <Recht aktion="geraet.einrichten"><Recht aktion="messstelle.quelle"><Button variant="ghost" size="sm" onClick={event => { event.currentTarget.focus(); setWechsel(geraet); }}>Zähler wechseln</Button></Recht></Recht>
+        )}
         {karte.karten.length > 0 && (
           <>
             <h4 className="vp-gh-unter">Energiekarten</h4>
             <Zeilen zeilen={karte.karten} />
           </>
         )}
+        {geraet.geraeteart === 'zaehler' && <ZaehlerwechselVerlauf anlageId={siteId} komponenten={komponenten.map(k => k.entityId)} stand={stand} />}
         {karte.vorgaenger.length > 0 && (
           <>
             <h4 className="vp-gh-unter">Vorgänger</h4>
@@ -282,6 +289,8 @@ export function GeraetHerkunft({
         </section>
       )}
 
+      {wechsel && <ZaehlerwechselDialog ziel={{ art: 'geraet', geraet: wechsel, anlageId: siteId }} jetzt={jetzt}
+        onClose={() => setWechsel(null)} onGewechselt={() => setStand(n => n + 1)} />}
       {verwenden && (
         <QuelleBindenDialog
           open
