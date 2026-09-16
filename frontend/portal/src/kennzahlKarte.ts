@@ -78,6 +78,7 @@ import {
   UNTERGRENZE,
   VERGLEICH_NACHKOMMASTELLEN,
 } from './uemsKennzahl';
+import { herkunftsZeile, kennzeichenSprung, type Stueck } from './uemsOberflaechen';
 import { datumText } from './uemsOrtsbaum';
 import type { Karte, Ton } from './uemsWerteKarte';
 import {
@@ -402,6 +403,13 @@ export interface HerkunftAnzeige {
   eingaenge: string | null;
   /** Bei einer Zusammenfassung die Paare als Zeilen (K3). */
   paare: string[];
+  /**
+   * AP-13 IP-11 (D1/D2): DIESELBEN Sätze in Stücken — jedes Kennzeichen, dessen Objekt eine Seite hat,
+   * ist ein Sprung MIT der Periode des Werts und der Version des Eingangs. Eine Bezugsgröße bleibt Text
+   * (D3, AP-09 hat keine Kundenfläche). Zusammengefügt ergeben die Stücke wieder `eingaenge` bzw. `paare`.
+   */
+  eingaengeStuecke: Stueck[];
+  paareStuecke: Stueck[][];
   /** „Berechnung Fassung 1 · gerechnet 01.11.2026 00:20“ (mit „Anlass …“ ab Version 2). */
   gebildet: string | null;
   /** „Nicht gespeichert: Eingänge.“ — nie eine halbe Herkunft ohne diesen Satz. */
@@ -432,12 +440,29 @@ const paarText = (e: KennzahlwertHerkunftEingang): string => {
   return `${e.objekt} ${wertText(e.wert, e.einheit, null)} (${teile.join(', ')})`;
 };
 
+/**
+ * AP-13 IP-11 (D1/D2): wohin ein Kennzeichen dieser Herkunft springt. Gefragt wird zuerst das, was die
+ * Antwort STRUKTURIERT sagt — `eingaenge[]` mit Art und Version —, und die Periode des Satzes reist mit;
+ * ein Kennzeichen, das nur im Satz steht, springt im selben Rahmen ohne Version.
+ */
+const herkunftsZiel = (s: NonNullable<KennzahlwertHerkunft['satz']>) => {
+  const rahmen = new Map(s.eingaenge.map((e) => [e.objekt, { periode: s.periode.schluessel, version: e.version }]));
+  return (kennzeichen: string) => kennzeichenSprung(kennzeichen, rahmen.get(kennzeichen) ?? { periode: s.periode.schluessel });
+};
+
 /** Die Herkunfts-Karte eines Schritts; `null` ohne Version (K8: noch nie eine Zahl — dort sagt der Grund das Warum). */
 export const herkunftAnzeige = (antwort: KennzahlWerte, w: KennzahlWert): HerkunftAnzeige | null => {
   const h = w.herkunft;
   if (h === null) return null;
   if (h.satz === null) {
-    return { eingaenge: null, paare: [], gebildet: null, fehlt: `${HERKUNFT_FEHLT}${h.fehlt.map((f) => FEHLT_WORT[f]).join(', ')}.` };
+    return {
+      eingaenge: null,
+      paare: [],
+      eingaengeStuecke: [],
+      paareStuecke: [],
+      gebildet: null,
+      fehlt: `${HERKUNFT_FEHLT}${h.fehlt.map((f) => FEHLT_WORT[f]).join(', ')}.`,
+    };
   }
   const s = h.satz;
   const zaehler = s.eingaenge.find((e) => e.rolle === 'zaehler');
@@ -453,9 +478,13 @@ export const herkunftAnzeige = (antwort: KennzahlWerte, w: KennzahlWert): Herkun
     `gerechnet ${zeitText(s.berechnet_am, antwort.zeitzone)}`,
     ...(s.anlass ? [`Anlass ${s.anlass}`] : []),
   ].join(TRENNER);
+  const paare = s.eingaenge.filter((e) => e.rolle === 'paar').map(paarText);
+  const ziel = herkunftsZiel(s);
   return {
     eingaenge,
-    paare: s.eingaenge.filter((e) => e.rolle === 'paar').map(paarText),
+    paare,
+    eingaengeStuecke: eingaenge === null ? [] : herkunftsZeile(eingaenge, ziel),
+    paareStuecke: paare.map((t) => herkunftsZeile(t, ziel)),
     gebildet,
     fehlt: null,
   };

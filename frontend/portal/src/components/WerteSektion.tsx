@@ -49,6 +49,8 @@ import { VERLAUF_NICHT_ABRUFBAR, WERTE_NICHT_ABRUFBAR, ZEITRAEUME, auskunft, typ
 import { LISTE_TITEL, blaettere, ersterTag, gleicheAnfrage, heuteOderSpaeter, kernaussage, wertAm, zeitraumAnfragen } from '../uemsVerlauf';
 import { einstieg, type Einstieg } from '../uemsWertVersionen';
 import {
+  berechneteHerkunft,
+  HERKUNFT_TITEL,
   karte,
   liste,
   ohneQuelle,
@@ -57,10 +59,12 @@ import {
   versionHinweis,
   zeitenKopf,
   type Anfrage,
+  type BerechneteHerkunft,
   type OhneQuelle,
   type OhneQuelleWeg,
 } from '../uemsWerteKarte';
 import { bestehenAus, VERGLEICH_AUS, wahlAus, type ReihenWahl, type VergleichWahl } from '../uemsVergleich';
+import { HerkunftsZeile } from './HerkunftsZeile';
 import { ZeitSegment } from './HistorieWelt';
 import { MessstellenVerlauf } from './MessstellenVerlauf';
 import { DeltaZeile, ReihenKarten, useVergleich, VergleichLeiste } from './WerteVergleich';
@@ -228,6 +232,11 @@ export function WerteSektion({
   const frueher = hinweis !== null && gewaehlt !== aktuell?.karte?.werte[0]?.versionen;
   // Die Zone steht, sobald EINE Antwort da ist; beim Blättern bleibt die Zeile stehen, statt zu springen.
   const zone = geladen ? zeitenKopf(geladen.karte ?? geladen.liste, standortName) : null;
+  // AP-13 IP-11 (D4): die Herkunfts-Hülle des Schritts, den die Karte zeigt — die Periode der Sprünge ist
+  // die der ADRESSE (`wert`), nicht die der Liste darunter.
+  const herkunft = aktuell?.karte?.werte[0]
+    ? berechneteHerkunft(aktuell.karte.werte[0], aktuell.karte.zeitzone, wert)
+    : null;
   // AP-13 IP-5: die Vergleichsperiode und die weiteren Reihen — nur mit Register (der Dialog hat keines).
   // Die Hauptgröße für „passend“ kommt aus dem REGISTER — dort steht sie für jede Messstelle in derselben Schreibweise.
   const eigeneZeile = register.find((z) => z.kennzeichen === kennzeichen) ?? null;
@@ -328,6 +337,10 @@ export function WerteSektion({
             )}
             {/* O11: die Δ-Zeile steht DIREKT unter der Karte — die Zahl und ihre Einordnung gehören zusammen. */}
             {vergleichbar && <DeltaZeile delta={vg.eigenDelta} />}
+            {/* AP-13 IP-11 (D4): eine BERECHNETE Zahl spricht ihre Herkunft — Formel, Zeitpunkt, Version und je
+                Eingang eine Zeile, die auf ihre Messstelle springt (mit dieser Periode und SEINER Version).
+                An einer gemessenen Zahl trägt die Route die Hülle nicht, und dann steht hier nichts. */}
+            {herkunft && <BerechneteHerkunftBlock herkunft={herkunft} />}
             {vergleichbar && (
               <VergleichLeiste
                 zeitraum={art}
@@ -447,5 +460,34 @@ function WerteLeer({
         </Button>
       )}
     </section>
+  );
+}
+
+/**
+ * AP-13 IP-11 (D4) — die Herkunft einer berechneten Zahl unter der Karte: die Kopfzeilen (Formel,
+ * Zeitpunkt, Version), je Eingang eine Zeile mit seinem Sprung, und „ohne Angabe: …“, wo die Hülle
+ * eine Lücke meldet. Ohne Satz UND ohne Lücke steht nichts — eine leere Karte ist keine Auskunft.
+ */
+function BerechneteHerkunftBlock({ herkunft }: { herkunft: BerechneteHerkunft }) {
+  if (herkunft.zeilen.length === 0 && herkunft.eingaenge.length === 0 && herkunft.fehlt === null) return null;
+  return (
+    <details className="vp-wk-herkunft" data-testid="werte-herkunft">
+      <summary>{HERKUNFT_TITEL}</summary>
+      {herkunft.zeilen.map((z) => (
+        <p key={z} className="vp-wk-herkunft-zeile">
+          {z}
+        </p>
+      ))}
+      {herkunft.eingaenge.length > 0 && (
+        <ul className="vp-wk-herkunft-eingaenge">
+          {herkunft.eingaenge.map((stuecke, i) => (
+            <li key={stuecke.map((t) => t.text).join('') || i}>
+              <HerkunftsZeile stuecke={stuecke} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {herkunft.fehlt && <p className="vp-wk-herkunft-fehlt">{herkunft.fehlt}</p>}
+    </details>
   );
 }

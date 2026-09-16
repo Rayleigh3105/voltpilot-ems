@@ -224,6 +224,43 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     await expect(dialog).toBeHidden();
   });
 
+  /**
+   * UEMS AP-13 IP-11 (O10): „Die Kette bricht am Text ab“ war der Befund, mit dem AP-13 anfing. Hier ist
+   * gemessen, dass sie es nicht mehr tut: die Herkunfts-Zeile von KZ-0001 Oktober Version 2 ist ein LINK
+   * auf MS-12 › Werte, und er trägt die Periode UND die Version — die Bezugsgröße BZ-6 bleibt Text (D3).
+   */
+  test('O10 bei 375 px: die Herkunfts-Zeile springt zu MS-12 › Werte › Oktober mit Version 2; BZ-6 bleibt Text', async ({ page }) => {
+    await oeffne(page, 'ansicht=kennzahl&kz=KZ-0001', 375, DEZEMBER);
+    await warteAufKarte(page);
+    // Der Oktober ist nach der Korrektur K-2026-0007 Version 2 (K7) — der Balken öffnet ihn.
+    await page.getByTestId('verlauf-balken').first().click();
+    await expect(page.getByTestId('werte-versionen')).toContainText('2 Versionen');
+    const herkunft = page.getByTestId('kennzahl-herkunft');
+    const spruenge = herkunft.locator('a');
+    await expect(spruenge).toHaveCount(1);
+    await expect(spruenge).toHaveText('MS-12');
+    await expect(spruenge).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=2');
+    // Die Bezugsgröße steht im selben Satz und ist KEIN Link — AP-09 hat keine Kundenfläche.
+    await expect(herkunft).toContainText('BZ-6');
+    const m = await messe(page);
+    ohneQuerlauf(m, 'o10-375');
+    // Der Satz ist zeichengleich der von vorher: die Zeile bekam Kanten, keinen neuen Wortlaut.
+    expect(m.herkunft[0]).toBe(`Menge 6.040${NB}kWh (MS-12, vollständig, Version 2, korrigiert (Version 2)) je 41.000${NB}Stück (BZ-6, Fassung 1)`);
+    await page.getByTestId('kennzahl-herkunft').evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    await ablegen(page, 'o10-375', m);
+  });
+
+  test('O10 bei 1440 px: derselbe Sprung am Rechner, mit Tippfläche', async ({ page }) => {
+    await oeffne(page, 'ansicht=kennzahl&kz=KZ-0001', 1440, DEZEMBER);
+    await warteAufKarte(page);
+    await page.getByTestId('verlauf-balken').first().click();
+    const sprung = page.getByTestId('kennzahl-herkunft').locator('a');
+    await expect(sprung).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=2');
+    const kasten = await sprung.boundingBox();
+    expect(kasten!.width).toBeGreaterThan(0);
+    await ablegen(page, 'o10-1440', await messe(page));
+  });
+
   test('K10 bei 375 px: mindestens 30,83 kWh je Person · unvollständig · Untergrenze — Menge unvollständig (MS-16 fehlt)', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0007', 375, DEZEMBER);
     await warteAufKarte(page);

@@ -75,15 +75,60 @@ interface Stamm {
  * auch der Dialog an den Gesamtwert-Karten öffnet — hier wohnt die Zahl einer Messstelle. Periode und
  * Version kommen aus der Adresse (`?periode=2026-10-25&version=2`); mit einer Periode holt die Seite den
  * Abschnitt in den Blick, und jede neue Wahl meldet sie dem Wirt, der die Adresse nachschreibt.
+ *
+ * Eine Adresse darf seit AP-13 IP-11 auch das KENNZEICHEN nennen — siehe {@link KENNZEICHEN_ADRESSE}.
  */
-export function MessstelleSeite({
-  id,
-  zone = VORGABE_ZEITZONE,
-  werte = null,
-  onWerteZeitraum,
-  onWerteVergleich,
-  onListe,
-}: {
+
+/**
+ * Eine Adresse, die ein KENNZEICHEN nennt statt der ID (`#/portfolio/messstellen/MS-12`). Die Sprünge der
+ * Kette (AP-13 IP-11, D1) kennen nur das Kennzeichen — es steht in jeder Herkunfts-Zeile, nie eine UUID —,
+ * die Routen der Seite brauchen aber die ID. Genau hier, an EINER Stelle, wird es aufgelöst.
+ */
+const KENNZEICHEN_ADRESSE = /^MS-[0-9A-Za-z]+$/;
+
+export function MessstelleSeite(props: MessstelleSeiteProps) {
+  const alsKennzeichen = KENNZEICHEN_ADRESSE.test(props.id);
+  const [id, setId] = useState<string | 'fehlt' | null>(alsKennzeichen ? null : props.id);
+
+  useEffect(() => {
+    if (!alsKennzeichen) {
+      setId(props.id);
+      return;
+    }
+    let aktiv = true;
+    setId(null);
+    api.messstellenRegister().then(
+      (r) => aktiv && setId(r.register.find((z) => z.kennzeichen === props.id)?.id ?? 'fehlt'),
+      // Ohne Register ist das Kennzeichen nicht aufzulösen — dann sagt die Seite das, statt leer zu bleiben.
+      () => aktiv && setId('fehlt'),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [props.id, alsKennzeichen]);
+
+  if (id === null) {
+    return (
+      <div className="vp-mss" data-testid="messstelle-seite" aria-busy="true">
+        <Skeleton height={220} />
+      </div>
+    );
+  }
+  if (id === 'fehlt') {
+    return (
+      <div className="vp-mss" data-testid="messstelle-seite">
+        <button type="button" className="vp-mss-zurueck" onClick={props.onListe}>
+          <Icon name="chevron-left" size={18} />
+          {ZUR_LISTE}
+        </button>
+        <p className="vp-mss-leer">{NICHT_GEFUNDEN}</p>
+      </div>
+    );
+  }
+  return <MessstelleSeiteMitId {...props} key={id} id={id} />;
+}
+
+interface MessstelleSeiteProps {
   id: string;
   zone?: string;
   /** Periode und Version der Adresse für den Abschnitt „Werte“. */
@@ -93,7 +138,16 @@ export function MessstelleSeite({
   /** AP-13 IP-5: eine neue Wahl des Vergleichs-Umschalters — der Wirt schreibt sie als `v=` in die Adresse. */
   onWerteVergleich?: (v: string | null) => void;
   onListe: () => void;
-}) {
+}
+
+function MessstelleSeiteMitId({
+  id,
+  zone = VORGABE_ZEITZONE,
+  werte = null,
+  onWerteZeitraum,
+  onWerteVergleich,
+  onListe,
+}: MessstelleSeiteProps) {
   const [stamm, setStamm] = useState<Stamm | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
   const [register, setRegister] = useState<MessstellenRegister | null>(null);

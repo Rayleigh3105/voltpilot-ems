@@ -1,0 +1,29 @@
+/* UEMS AP-13 IP-11: der Sprung IN einer Herkunfts-Zeile — ein Wort im Satz, kein Knopf daneben. */
+.vp-herkunft-sprung {
+  color: var(--vp-color-accent, #1d6fd0);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  /* Ein Kennzeichen bricht nie über zwei Zeilen — sonst steht „MS-“ oben und „12“ unten. */
+  white-space: nowrap;
+}
+
+.vp-herkunft-sprung:hover,
+.vp-herkunft-sprung:focus-visible {
+  text-decoration-thickness: 2px;
+}
+
+.vp-herkunft-sprung:focus-visible {
+  outline: 2px solid var(--vp-color-accent, #1d6fd0);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* E14 — die Tippfläche am Telefon. Ein Sprung IN einem Satz darf die Zeile nicht auseinanderziehen:
+   senkrechte Innenabstände an einem Inline-Element vergrößern die TREFFERFLÄCHE (≥ 44 px), ohne die
+   Zeilenhöhe zu ändern — der Satz bleibt ein Satz. */
+@media (max-width: 720px) {
+  .vp-herkunft-sprung {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+}

@@ -18,7 +18,16 @@ import type { AnlageSurface } from './surface';
 import { beginn, laeuftNoch, letzterGebildeter, zeitraumText, type BilanzPeriode } from './uebersichtBausteine';
 import { BERECHNET_DIFFERENZ, BERECHNET_SUMME, NICHT_ZUGEORDNET, VOLLSTAENDIG } from './uemsBilanz';
 import { zahl } from './uemsErgebnis';
-import { OHNE_HAUPTZAEHLER, type Leerzustand } from './uemsOberflaechen';
+import {
+  herkunftsZeile,
+  kennzeichenSprung,
+  OHNE_HAUPTZAEHLER,
+  periodeSchluessel,
+  sprungziel,
+  type Leerzustand,
+  type Sprung,
+  type Stueck,
+} from './uemsOberflaechen';
 
 /**
  * Die Energiebilanz je Anlage (UEMS AP-13 IP-8 = AP-10 IP-14, E7 = A, B1/B2) — der Reiter „Energiebilanz“ im Bereich
@@ -165,12 +174,21 @@ export interface TeilBild {
   keineWerte: boolean;
   /** B2: Länge gegen den Zufluss (0 … 1) — nur zugeordnet, nur mit Werten; `null` = kein Balken, sondern das Wort. */
   balken: number | null;
+  /** AP-13 IP-11 (D1): der Weg zu dieser Messstelle, mit der Periode der Bilanz (D2). */
+  sprung: Sprung | null;
 }
 
 /** Die Herkunfts-Karte einer Zeile (AP-10 §5.6): Kopfzeilen und je Eingang eine Zeile mit Version. */
 export interface HerkunftBild {
   zeilen: string[];
   eingaenge: string[];
+  /**
+   * AP-13 IP-11 (D1/D2): dieselben Zeilen in Stücken — die Messstelle eines Eingangs springt auf ihre
+   * Seite MIT der Periode der Bilanz und der Version DIESES Eingangs, die Kostenstelle einer Verteilung
+   * auf ihre Karte. Zusammengefügt ergeben die Stücke wieder `zeilen` bzw. `eingaenge`.
+   */
+  zeilenStuecke: Stueck[][];
+  eingaengeStuecke: Stueck[][];
 }
 
 export interface ZeileBild {
@@ -234,7 +252,21 @@ export interface BilanzKontext {
   heute: string;
   /** Die Herkunfts-Art je Kennzeichen aus dem Register — fehlt eine, steht kein Wort (nie geraten). */
   arten: ReadonlyMap<string, MessstellenArt>;
+  /**
+   * AP-13 IP-11 (D2): die Periode DIESER Fläche. Jeder Sprung einer Zeile nimmt sie mit — ohne sie
+   * landet der Kunde auf der Messstelle bei einer anderen Zahl als der, auf die er geklickt hat.
+   * `energiebilanzBild` setzt sie aus der Antwort; fehlt sie, springt die Zeile ohne Periode.
+   */
+  periode?: { art: 'tag' | 'monat' | 'jahr'; am: string } | null;
 }
+
+/**
+ * AP-13 IP-11 (D1/D2): wohin ein Kennzeichen einer Bilanz-Zeile springt — eine Messstelle auf ihre Seite
+ * im Abschnitt „Werte“ mit der Periode der Bilanz. Eine VERSION steht an einer Bilanz-Zeile nur in der
+ * Herkunft je Eingang; der Sprung nimmt sie dort mit ({@link eingangsZiel}).
+ */
+const zielDerZeile = (ctx: BilanzKontext) => (kennzeichen: string) =>
+  kennzeichenSprung(kennzeichen, { periode: ctx.periode ? periodeSchluessel(ctx.periode.art, ctx.periode.am) : null });
 
 type Terme = BilanzAbschnitt['terme'];
 
@@ -337,17 +369,20 @@ export function restHerkunft(
 ): HerkunftBild {
   const satz = herkunft?.satz ?? null;
   if (!satz) {
-    return {
-      zeilen: ohneLeere([BERECHNET_DIFFERENZ, herkunft && herkunft.fehlt.length > 0 ? HERKUNFT_UNVOLLSTAENDIG : null]),
-      eingaenge: eingaenge.map((e) => eingangText(e, terme, ebene, ctx)),
-    };
+    return herkunftMitStuecken(
+      ohneLeere([BERECHNET_DIFFERENZ, herkunft && herkunft.fehlt.length > 0 ? HERKUNFT_UNVOLLSTAENDIG : null]),
+      eingaenge.map((e) => eingangText(e, terme, ebene, ctx)),
+      ctx,
+      new Map(eingaenge.map((e) => [e.messstelle, e.version])),
+    );
   }
   const formel = satz.formel_fassung;
   const berechnetAm = typeof satz.berechnet_am === 'string' && !Number.isNaN(Date.parse(satz.berechnet_am)) ? satz.berechnet_am : null;
   const version = typeof satz.version === 'number' ? satz.version : 1;
   const quelle = Array.isArray(satz.eingaenge) ? (satz.eingaenge as Array<Record<string, unknown>>) : [];
-  return {
-    zeilen: ohneLeere([
+  const ausSatz = quelle.map(eingangDesSatzes);
+  return herkunftMitStuecken(
+    ohneLeere([
       ohneLeere([
         BERECHNET_DIFFERENZ,
         typeof formel === 'number'
@@ -360,23 +395,67 @@ export function restHerkunft(
       berechnetAm ? fuelle(HERKUNFT_BERECHNET_AM, { am: datumZeit(berechnetAm, zone) }) : null,
       ohneLeere([fuelle(HERKUNFT_VERSION, { n: version }), ausloeserText(typeof satz.ausloeser === 'string' ? satz.ausloeser : null)]).join(' · '),
     ]),
-    eingaenge: quelle.map((e) =>
-      eingangText(
-        {
-          messstelle: String(e.messstelle),
-          rolle: typeof e.bilanz_rolle === 'string' ? e.bilanz_rolle : null,
-          anteil: typeof e.anteil === 'string' ? e.anteil : null,
-          menge: typeof e.menge === 'string' || typeof e.menge === 'number' ? e.menge : null,
-          zustand: String(e.zustand),
-          version: typeof e.version === 'number' ? e.version : 1,
-          kennzeichen: Array.isArray(e.kennzeichen) ? e.kennzeichen.map(String) : [],
-        },
-        terme,
-        ebene,
-        ctx,
-      ),
-    ),
+    ausSatz.map((e) => eingangText(e, terme, ebene, ctx)),
+    ctx,
+    new Map(ausSatz.map((e) => [e.messstelle, e.version])),
+    kostenstelleDerVerteilung(satz.verteilung),
+  );
+}
+
+/** Ein Eingang des Herkunfts-Satzes in der Form, die {@link eingangText} liest — jedes Feld geprüft, nie geraten. */
+function eingangDesSatzes(e: Record<string, unknown>): EingangZeile {
+  return {
+    messstelle: String(e.messstelle),
+    rolle: typeof e.bilanz_rolle === 'string' ? e.bilanz_rolle : null,
+    anteil: typeof e.anteil === 'string' ? e.anteil : null,
+    menge: typeof e.menge === 'string' || typeof e.menge === 'number' ? e.menge : null,
+    zustand: String(e.zustand),
+    version: typeof e.version === 'number' ? e.version : 1,
+    kennzeichen: Array.isArray(e.kennzeichen) ? e.kennzeichen.map(String) : [],
   };
+}
+
+/** Das Ziel einer Verteilung (`verteilung.ziel`) — die Kostenstelle, auf deren Karte die Zeile springt (D1). */
+function kostenstelleDerVerteilung(v: unknown): string | null {
+  if (v === null || typeof v !== 'object') return null;
+  const ziel = (v as { ziel?: unknown }).ziel;
+  return typeof ziel === 'string' && ziel.length > 0 ? ziel : null;
+}
+
+/**
+ * AP-13 IP-11 (D1/D2): dieselben Zeilen mit ihren Kanten. Eine Messstelle springt mit der Periode der
+ * Bilanz und ihrer eigenen Version; die Kostenstelle einer Verteilung steht als Zahl im Satz — sie hat
+ * kein MS-/KZ-Kennzeichen und bekommt darum ihr Ziel gesagt, statt es aus dem Text zu lesen.
+ */
+function herkunftMitStuecken(
+  zeilen: string[],
+  eingaenge: string[],
+  ctx: BilanzKontext,
+  versionen: ReadonlyMap<string, number>,
+  kostenstelle: string | null = null,
+): HerkunftBild {
+  const periode = ctx.periode ? periodeSchluessel(ctx.periode.art, ctx.periode.am) : null;
+  const ziel = (kennzeichen: string) => kennzeichenSprung(kennzeichen, { periode, version: versionen.get(kennzeichen) ?? null });
+  const ksSprung = kostenstelle
+    ? sprungziel({ art: 'kostenstelle', kennzeichen: kostenstelle, periode: ctx.periode?.art ?? null, am: ctx.periode?.am ?? null })
+    : null;
+  return {
+    zeilen,
+    eingaenge,
+    zeilenStuecke: zeilen.map((t) => (ksSprung ? mitKostenstelle(t, kostenstelle as string, ksSprung, ziel) : herkunftsZeile(t, ziel))),
+    eingaengeStuecke: eingaenge.map((t) => herkunftsZeile(t, ziel)),
+  };
+}
+
+/** Die Verteilungs-Zeile: ihre Kostenstellen-Nummer wird der Sprung, der Rest bleibt Satz. */
+function mitKostenstelle(text: string, kennzeichen: string, sprung: Sprung, ziel: (k: string) => Sprung | null): Stueck[] {
+  const von = text.lastIndexOf(kennzeichen);
+  if (von < 0) return herkunftsZeile(text, ziel);
+  return ohneLeere([
+    von > 0 ? { text: text.slice(0, von), sprung: null } : null,
+    { text: kennzeichen, sprung },
+    von + kennzeichen.length < text.length ? { text: text.slice(von + kennzeichen.length), sprung: null } : null,
+  ]);
 }
 
 function teilBild(e: BilanzEingang, terme: Terme, hauptzaehler: string, zufluss: number | null, ebene: string, ctx: BilanzKontext): TeilBild {
@@ -392,6 +471,8 @@ function teilBild(e: BilanzEingang, terme: Terme, hauptzaehler: string, zufluss:
     keineWerte,
     // B2: Zeichnung gegen den Zufluss — ein negativer oder übergroßer Wert füllt höchstens die Bahn (MiniShareBar klemmt).
     balken: e.rolle === 'zugeordnet' && e.menge !== null && zufluss !== null && zufluss > 0 ? Math.max(0, e.menge) / zufluss : null,
+    // AP-13 IP-11 (D1/D2): der Unterzähler führt auf seine Seite — im Zeitraum, den die Bilanz-Leiste zeigt.
+    sprung: zielDerZeile(ctx)(e.messstelle),
   };
 }
 
@@ -405,7 +486,13 @@ function summenZeile(
   ctx: BilanzKontext,
 ): ZeileBild | null {
   const teile = w.eingaenge.filter((e) => e.rolle === art).map((e) => teilBild(e, terme, hauptzaehler, w.zufluss.menge, ebene, ctx));
-  const herkunft: HerkunftBild = { zeilen: [], eingaenge: w.eingaenge.filter((e) => e.rolle === art).map((e) => eingangText(e, terme, ebene, ctx)) };
+  const eigene = w.eingaenge.filter((e) => e.rolle === art);
+  const herkunft: HerkunftBild = herkunftMitStuecken(
+    [],
+    eigene.map((e) => eingangText(e, terme, ebene, ctx)),
+    ctx,
+    new Map(eigene.map((e) => [e.messstelle, e.version])),
+  );
   if (teile.length === 0) {
     // Ein Abfluss ohne Messstelle in der Stellung existiert nicht (Halle 2 hat keinen) — er FEHLT nicht, er ist keiner.
     if (art === 'abfluss') return null;
@@ -506,12 +593,15 @@ function hauptzaehlerBild(h: BilanzHauptzaehler, zone: string, ctx: BilanzKontex
 
 /** Die ganze Fläche einer Antwort: Kopf, Leerzustand ohne Hauptzähler, je Hauptzähler Live-Zeile, Vorschlag, Abschnitte. */
 export function energiebilanzBild(b: Bilanz, ctx: BilanzKontext): EnergiebilanzBild {
+  // AP-13 IP-11 (D2): die Periode der ANTWORT — nicht die der Leiste, die schon weitergeklickt sein kann.
+  // Sie hängt an jedem Sprung dieser Fläche, damit die Messstelle dieselbe Zahl zeigt wie die Zeile.
+  const mitPeriode: BilanzKontext = { ...ctx, periode: { art: b.periode, am: b.am } };
   return {
     zeitraum: zeitraumText(b.periode, b.von),
     zone: fuelle(ZONE_SATZ, { zone: b.zeitzone }),
     laeuft: laeuftNoch(b.periode, b.von, ctx.heute) ? UEMS_NOCH_NICHT_GERECHNET_SATZ : null,
     leer: b.hauptzaehler.length === 0 ? OHNE_HAUPTZAEHLER : null,
-    hauptzaehler: b.hauptzaehler.map((h) => hauptzaehlerBild(h, b.zeitzone, ctx)),
+    hauptzaehler: b.hauptzaehler.map((h) => hauptzaehlerBild(h, b.zeitzone, mitPeriode)),
   };
 }
 

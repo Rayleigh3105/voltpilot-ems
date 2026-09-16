@@ -22,6 +22,7 @@ import {
   type VorschlagBild,
   type ZeileBild,
 } from '../anlageEnergiebilanz';
+import { HerkunftsZeile } from '../components/HerkunftsZeile';
 import { MiniShareBar } from '../components/MiniChart';
 import { ZeitSegment } from '../components/HistorieWelt';
 import { UEMS_ENERGIEBILANZ } from '../glossar';
@@ -276,7 +277,14 @@ function Zeile({ z, kompakt }: { z: ZeileBild; kompakt: boolean }) {
             const eigene = t.woerter.filter((w) => !z.woerter.includes(w) && !(z.art === 'zugeordnet' && w === KEINE_WERTE));
             return (
               <li key={t.key} className={`vp-eb-teil${t.keineWerte ? ' is-off' : ''}`} data-testid={`teil-${t.kennzeichen}`}>
-                <span className="vp-eb-teil-name">{t.name}</span>
+                {/* AP-13 IP-11 (D1/D2): der Unterzähler führt auf seine Seite, mit der Periode der Bilanz. */}
+                {t.sprung ? (
+                  <a className="vp-eb-teil-name vp-eb-teil-sprung" href={t.sprung.hash}>
+                    {t.name}
+                  </a>
+                ) : (
+                  <span className="vp-eb-teil-name">{t.name}</span>
+                )}
                 {z.art === 'zugeordnet' &&
                   (t.balken !== null ? (
                     <MiniShareBar fraction={t.balken} className="vp-eb-balken" />
@@ -293,17 +301,21 @@ function Zeile({ z, kompakt }: { z: ZeileBild; kompakt: boolean }) {
       {(z.herkunft.zeilen.length > 0 || z.herkunft.eingaenge.length > 0) && (
         <details className="vp-eb-herkunft" data-testid={`herkunft-${z.art}`}>
           <summary>{HERKUNFT}</summary>
-          {z.herkunft.zeilen.map((l) => (
+          {/* AP-13 IP-11 (D1): die Kostenstelle einer Verteilung führt auf ihre Karte. */}
+          {z.herkunft.zeilen.map((l, i) => (
             <p key={l} className="vp-eb-herkunft-zeile">
-              {l}
+              <HerkunftsZeile stuecke={z.herkunft.zeilenStuecke[i] ?? [{ text: l, sprung: null }]} />
             </p>
           ))}
           {z.herkunft.eingaenge.length > 0 && (
             <>
               <p className="vp-eb-herkunft-titel">{HERKUNFT_EINGAENGE}</p>
               <ul className="vp-eb-herkunft-eingaenge">
-                {z.herkunft.eingaenge.map((e) => (
-                  <li key={e}>{e}</li>
+                {/* AP-13 IP-11 (D2): jeder Eingang mit SEINER Version — nicht mit der der Zeile. */}
+                {z.herkunft.eingaenge.map((e, i) => (
+                  <li key={e}>
+                    <HerkunftsZeile stuecke={z.herkunft.eingaengeStuecke[i] ?? [{ text: e, sprung: null }]} />
+                  </li>
                 ))}
               </ul>
             </>

@@ -5,6 +5,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl, type KennzahlFassung, type KennzahlPeriodeArt, type KennzahlWerte } from '../api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DangerZone } from '../components/DangerZone';
+import { HerkunftsZeile } from '../components/HerkunftsZeile';
 import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
@@ -275,11 +276,18 @@ export function KennzahlSeite({
           {herkunft && (
             <section className="vp-kz-block" aria-label={KARTE_HERKUNFT} data-testid="kennzahl-herkunft">
               <h2>{KARTE_HERKUNFT}</h2>
-              {herkunft.eingaenge && <p>{herkunft.eingaenge}</p>}
+              {/* AP-13 IP-11 (D1/D2): derselbe Satz — die Kennzeichen mit Seite sind Sprünge MIT Periode und Version. */}
+              {herkunft.eingaenge && (
+                <p>
+                  <HerkunftsZeile stuecke={herkunft.eingaengeStuecke} />
+                </p>
+              )}
               {herkunft.paare.length > 0 && (
                 <ul className="vp-kz-paare">
-                  {herkunft.paare.map((p) => (
-                    <li key={p}>{p}</li>
+                  {herkunft.paare.map((p, i) => (
+                    <li key={p}>
+                      <HerkunftsZeile stuecke={herkunft.paareStuecke[i] ?? [{ text: p, sprung: null }]} />
+                    </li>
                   ))}
                 </ul>
               )}

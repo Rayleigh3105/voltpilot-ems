@@ -40,7 +40,7 @@ import { hashForRoute, pageRoute } from './nav';
 import { datumZeit } from './rechte';
 import { ende, zeitraumText } from './uebersichtBausteine';
 import { KWH, zahl } from './uemsErgebnis';
-import { sprungziel, type Sprung } from './uemsOberflaechen';
+import { periodeSchluessel, sprungziel, type Sprung } from './uemsOberflaechen';
 import { NICHT_VERTEILT } from './uemsVerteilung';
 
 // ------------------------------------------------------------------------------------------------ Wörter
@@ -183,8 +183,7 @@ function vorherBeendetText(katalog: Array<{ kennzeichen: string; name: string; g
 }
 
 /** Die Periode der Werte-Seite einer Messstelle (`2026-10-15` · `2026-10` · `2026`) — der Sprung eines Postens. */
-export const werteperiode = (periode: KostenstelleEnergiePeriode, am: string): string =>
-  periode === 'jahr' ? am.slice(0, 4) : periode === 'monat' ? am.slice(0, 7) : am;
+export const werteperiode = (periode: KostenstelleEnergiePeriode, am: string): string => periodeSchluessel(periode, am);
 
 // ------------------------------------------------------------------------------------------------ Zahl
 

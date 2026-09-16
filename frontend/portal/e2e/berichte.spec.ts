@@ -173,6 +173,13 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     ohneQuerlauf(offen, 'nachweis-375');
     await n.zeile.scrollIntoViewIfNeeded();
     await ablegen(page, 'nachweis-ms12-375', offen);
+    // AP-13 IP-11: am Telefon stehen „heutigen Wert zeigen“ und der Weg zur Messstelle untereinander.
+    const aktionen = n.zeile.locator('.vp-br-aktionen');
+    await expect(n.zeile.getByTestId('bericht-sprung')).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10');
+    // Die Leiste am unteren Rand liegt über dem Fuß der Seite — die Zeile gehört in die MITTE des Bildes.
+    await aktionen.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+    if (BILDER) await aktionen.screenshot({ path: join(BILDER, 'ip11-bericht-aktionen-375.png') });
   });
 
   test('bei 1440 px: Nr. 1 ist „ersetzt durch Nr. 2“ und nennt 6.100 kWh; der Entwurf trägt keine Prüfsumme', async ({ page }) => {
@@ -191,6 +198,19 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     expect(n.zahl).toBe(`6.100${NB}kWh`);
     await n.zeile.evaluate((e) => e.scrollIntoView({ block: 'center' }));
     await ablegen(page, 'nachweis-ms12-1440', await messe(page));
+
+    // AP-13 IP-11 (K4, O10 Schritt 6): NEBEN „heutigen Wert zeigen“ steht der Weg zur Messstelle — mit dem
+    // ZEITRAUM DES BERICHTS. Der eine Satz ist der des Stands, der andere der von heute; keiner ersetzt den anderen.
+    const sprung = n.zeile.getByTestId('bericht-sprung');
+    await expect(sprung).toHaveText('Zur Messstelle');
+    await expect(sprung).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10');
+    expect(Math.round((await sprung.boundingBox())!.height)).toBeGreaterThanOrEqual(44);
+
+    // Auch das Quellenverzeichnis führt zu seinen Objekten — BZ-6 bleibt Text (D3).
+    await page.getByTestId('bericht-quellen').locator('summary').click();
+    const quelle = page.getByTestId('bericht-quellen').locator('a', { hasText: /^MS-12$/ });
+    await expect(quelle).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=1');
+    await expect(page.getByTestId('bericht-quellen').locator('a', { hasText: /^BZ-6$/ })).toHaveCount(0);
 
     // „heutigen Wert zeigen“: heute steht Version 2 — Nr. 1 bleibt, wie er ist.
     await n.zeile.getByRole('button', { name: 'heutigen Wert zeigen' }).click();

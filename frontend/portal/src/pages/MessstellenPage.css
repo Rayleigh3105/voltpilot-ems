@@ -414,3 +414,16 @@
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
 }
+
+/* UEMS AP-13 IP-11 (D1): die Quelle im Register führt zur Komponente auf der Geräte-Seite. */
+a.vp-ms-quelle-sprung {
+  color: var(--vp-action);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a.vp-ms-quelle-sprung:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

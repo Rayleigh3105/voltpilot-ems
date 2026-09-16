@@ -37,6 +37,7 @@ import {
 import { AnstossVerwerfenDialog } from '../components/AnstossVerwerfenDialog';
 import { BerichtFreigebenDialog } from '../components/BerichtFreigebenDialog';
 import { BerichtVergleichDialog } from '../components/BerichtVergleichDialog';
+import { HerkunftsZeile } from '../components/HerkunftsZeile';
 import { ZeitSegment } from '../components/HistorieWelt';
 import { ErrorState, Skeleton } from '../components/States';
 import { WerteKarte } from '../components/WerteKarte';
@@ -442,7 +443,14 @@ function AbschnittBlock({
           <ul>
             {a.zeilen.map((q) => (
               <li key={q.kennzeichen}>
-                <span className="vp-br-kz">{q.kennzeichen}</span>
+                {/* AP-13 IP-11: auch das Quellenverzeichnis führt zu seinen Objekten — im Zeitraum des Berichts. */}
+                {q.sprung ? (
+                  <a className="vp-br-kz vp-br-kz-sprung" href={q.sprung.hash}>
+                    {q.kennzeichen}
+                  </a>
+                ) : (
+                  <span className="vp-br-kz">{q.kennzeichen}</span>
+                )}
                 <span className="vp-br-quelle-text">
                   {[q.name, q.stand].filter((t): t is string => t !== null).join(TRENNER)}
                   {q.heute && <span className="vp-br-heute">{q.heute}</span>}
@@ -501,15 +509,29 @@ function ZahlZeile({ zahl: z, heuteLaden }: { zahl: QuellenZahl; heuteLaden: ((k
       <div className="vp-br-nachweis" aria-label={`${NACHWEIS} ${z.kennzeichen}`} data-testid="bericht-nachweis">
         <WerteKarte karte={z.nachweis.karte} />
         <ul className="vp-br-herkunft">
-          {z.nachweis.herkunft.map((h) => (
-            <li key={h}>{h}</li>
+          {/* AP-13 IP-11 (D1/D2): die Eingänge einer Kennzahl springen in ihre Messstelle — mit dem
+              ZEITRAUM DES BERICHTS und der Version, die der Abzug festhält. */}
+          {z.nachweis.herkunft.map((h, i) => (
+            <li key={h}>
+              <HerkunftsZeile stuecke={z.nachweis.herkunftStuecke[i] ?? [{ text: h, sprung: null }]} />
+            </li>
           ))}
         </ul>
-        {heuteLaden && z.messstelle && heute === null && (
-          <button type="button" className="vp-br-hebel" onClick={zeigen}>
-            {HEUTIGEN_WERT}
-          </button>
-        )}
+        {/* AP-13 IP-11 (K4, O10 Schritt 6): derselbe Weg wie von der Kennzahl — der Nachweis führt auf die
+            Seite seines Objekts, im Zeitraum des Berichts. Er steht neben „heutigen Wert zeigen“, nicht
+            statt dessen: die eine Angabe ist die des Stands, die andere die von heute. */}
+        <div className="vp-br-aktionen">
+          {heuteLaden && z.messstelle && heute === null && (
+            <button type="button" className="vp-br-hebel" onClick={zeigen}>
+              {HEUTIGEN_WERT}
+            </button>
+          )}
+          {z.sprung && (
+            <a className="vp-br-sprung" href={z.sprung.hash} data-testid="bericht-sprung">
+              {z.sprungWort}
+            </a>
+          )}
+        </div>
         {heute === 'laedt' && <p className="vp-br-unter">{HEUTIGER_WERT_LAEDT}</p>}
         {heute !== null && heute !== 'laedt' && (
           <p className={`vp-br-heutiger is-${heute.art}`} data-testid="bericht-heutiger-wert">

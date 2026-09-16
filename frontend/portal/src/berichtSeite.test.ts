@@ -181,7 +181,14 @@ describe('B1 Nr. 1 — der Berichtsstand vom 10.11.2026, gelesen am 20.11.2026',
     expect(quellen.anzahl).toBe('19 Quellen');
     expect(quellen.zeilen.map((x) => x.kennzeichen)).toEqual(vektoren.abzuege['BR-2026-0001/1'].kopf.quellenverzeichnis);
     expect(quellen.zeilen.find((x) => x.kennzeichen === 'BZ-6')?.stand).toBe('Fassung 1');
-    expect(quellen.zeilen.find((x) => x.kennzeichen === 'MS-12')).toEqual({ kennzeichen: 'MS-12', name: 'Montage Linie M1', heute: null, stand: 'Version 1' });
+    expect(quellen.zeilen.find((x) => x.kennzeichen === 'MS-12')).toEqual({
+      kennzeichen: 'MS-12',
+      name: 'Montage Linie M1',
+      heute: null,
+      stand: 'Version 1',
+      // AP-13 IP-11: der Weg zu dieser Quelle trägt den Zeitraum des Berichts und ihre Version.
+      sprung: { route: expect.anything(), hash: '#/portfolio/messstellen/MS-12?periode=2026-10&version=1' },
+    });
   });
 
   it('Verlauf der Stände: Nr. 2 mit Anlass K-2026-0007, Nr. 1 ersetzt durch Nr. 2 (16.11.2026)', () => {
@@ -330,6 +337,55 @@ describe('B10 — „heute: …“ (A5) und B16 — nach den Fristen', () => {
     expect(zeile(teil(abschnitte(abzugAus(nr1.abzug)).abschnitte, 'messstellen').zeilen, 'MS-12').zahl).toBe(nb('6.100 kWh'));
     // Eine andere Ablehnung ist kein „nicht mehr gespeichert“.
     expect(heutigerWert({ fehler: new ApiError(500, 'weg') }, b, nr1).art).toBe('fehler');
+  });
+});
+
+/**
+ * UEMS AP-13 IP-11 (K4, O10 Schritt 6): „Vom Bericht aus derselbe Weg“ — der Nachweis führt auf die Seite
+ * seines Objekts, im ZEITRAUM DES BERICHTS. Ein Sprung ohne Periode zeigte die heutige Zahl statt der, die
+ * im Stand steht.
+ */
+describe('AP-13 IP-11 — vom Nachweis zur Zahl (K4, O10)', () => {
+  const liste = abschnitte(abzugAus(stand(1, AM_20_11).stand.abzug)).abschnitte;
+
+  it('MS-12 im Bericht springt auf die Messstellen-Seite mit der Periode des Berichts (Oktober 2026)', () => {
+    const ms12 = zeile(teil(liste, 'messstellen').zeilen, 'MS-12');
+    expect(ms12.sprung?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-10');
+    expect(ms12.sprungWort).toBe('Zur Messstelle');
+    // Der Weg steht NEBEN „heutigen Wert zeigen“, nicht statt dessen — die Messstelle bleibt gefragt.
+    expect(ms12.messstelle).toBe('MS-12');
+  });
+
+  it('eine Kennzahl des Berichts springt auf ihre Kennzahl-Seite; ihre Eingänge auf ihre Messstellen', () => {
+    const kz = teil(liste, 'kennzahlen').zeilen[0];
+    expect(kz.sprung?.hash).toBe(`#/portfolio/kennzahlen/${kz.kennzeichen}`);
+    expect(kz.sprungWort).toBe('Zur Kennzahl');
+    const mitSprung = kz.nachweis.herkunftStuecke.flat().filter((t) => t.sprung !== null);
+    expect(mitSprung.length).toBeGreaterThan(0);
+    for (const t of mitSprung) expect(t.sprung?.hash).toContain('periode=2026-10');
+    // Jede Zeile bleibt zeichengleich der Satz, den sie war (D1).
+    expect(kz.nachweis.herkunftStuecke.map((z) => z.map((t) => t.text).join(''))).toEqual(kz.nachweis.herkunft);
+  });
+
+  it('eine Bezugsgröße im Nachweis bleibt Text — AP-09 hat keine Kundenfläche (D3)', () => {
+    const kz = teil(liste, 'kennzahlen').zeilen[0];
+    expect(kz.nachweis.herkunftStuecke.flat().some((t) => t.text.startsWith('BZ-') && t.sprung !== null)).toBe(false);
+  });
+
+  it('auch das Quellenverzeichnis führt zu seinen Objekten — mit dem Zeitraum des Berichts, BZ-6 nicht', () => {
+    const quellen = teil(liste, 'quellen').zeilen;
+    const ms = quellen.filter((q) => q.kennzeichen.startsWith('MS-'));
+    expect(ms.length).toBeGreaterThan(0);
+    for (const q of ms) expect(q.sprung?.hash).toMatch(/^#\/portfolio\/messstellen\/MS-\d+\?periode=2026-10(&version=\d+)?$/);
+    for (const q of quellen.filter((x) => x.kennzeichen.startsWith('BZ-'))) expect(q.sprung).toBeNull();
+  });
+
+  it('eine Speicher-Mengenart hat keinen Weg — den heutigen Leseweg trennt der Bericht nicht (Folgepaket)', () => {
+    const speicher = teil(liste, 'messstellen').zeilen.filter((z) => z.schluessel.includes('/'));
+    for (const z of speicher) {
+      expect(z.sprung).toBeNull();
+      expect(z.sprungWort).toBeNull();
+    }
   });
 });
 
