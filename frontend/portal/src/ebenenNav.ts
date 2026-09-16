@@ -457,6 +457,7 @@ export function resolveAnlage<T extends { id: string }>(
 export type EbenenBereichId =
   | 'uebersicht'
   | 'standorte'
+  | 'netzanschluesse'
   | 'gebaeude'
   | 'anlagen'
   | 'messstellen'
@@ -495,6 +496,7 @@ export interface EbenenLesemodell {
 const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
   uebersicht: { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard' },
   standorte: { key: 'standorte', label: 'Standorte', icon: 'map-pin' },
+  netzanschluesse: { key: 'netzanschluesse', label: 'Netzanschlüsse', icon: 'zap' },
   gebaeude: { key: 'gebaeude', label: 'Gebäude', icon: 'building' },
   anlagen: { key: 'anlagen', label: 'Anlagen', icon: 'layers' },
   messstellen: { key: 'messstellen', label: 'Messstellen', icon: 'activity' },
@@ -554,7 +556,7 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
     if (standort) {
       if ((standort.gebaeudeZahl ?? 0) >= 1) out.push('gebaeude');
       if (standort.anlagen.length >= 2) out.push('anlagen');
-      if (misst(lm, standort.id)) out.push('messstellen');
+      if (misst(lm, standort.id)) out.push('messstellen', 'netzanschluesse');
     }
   }
   return out.map((key) => EBENEN_BEREICH[key]);
@@ -596,9 +598,10 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
     : {
         uebersicht: standortRoute(ort.standortId),
         messstellen: standortMessstellenRoute(ort.standortId),
-        // AP-13 E2/Q2/O18: die vier neuen Seiten nur mit Messfunktion.
+        // AP-13 E2/Q2/O18 und AP-10 IP-13: diese Seiten nur mit Messfunktion.
         // Auch vorhandene Gebäude und Anlagen ändern den Betriebskunden nicht.
         ...(lm && misst(lm, ort.standortId) ? {
+          netzanschluesse: standortBereichRoute(ort.standortId, 'netzanschluesse'),
           gebaeude: standortBereichRoute(ort.standortId, 'gebaeude'),
           anlagen: standortBereichRoute(ort.standortId, 'anlagen'),
           kennzahlen: standortBereichRoute(ort.standortId, 'kennzahlen'),
@@ -725,7 +728,7 @@ export function ebenenOrt(
  */
 export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBereich']): EbenenBereichId | null {
   if (page === 'portfolio-standorte') return 'standorte';
-  if (page === 'standort' && (standortBereich === 'gebaeude' || standortBereich === 'anlagen')) return standortBereich;
+  if (page === 'standort' && (standortBereich === 'gebaeude' || standortBereich === 'anlagen' || standortBereich === 'netzanschluesse')) return standortBereich;
   if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';
   if (page === 'portfolio-bezugsgroessen') return 'bezugsgroessen';
   if (page === 'portfolio-kennzahlen') return 'kennzahlen';

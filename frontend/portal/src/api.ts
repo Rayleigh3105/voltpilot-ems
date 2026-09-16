@@ -3744,9 +3744,30 @@ export interface StandortAdresse {
 export interface StandortAnlage {
   id: string;
   name: string;
+  /** IP-6: Bindung am Stichtag, auch wenn die Anlage inzwischen den Standort gewechselt hat. */
+  netzanschluss?: { id: string; kennzeichen: string; gueltigAb: string; gueltigBis: string | null } | null;
   gueltigAb: string;
   gueltigBis: string | null;
 }
+
+/** AP-10 IP-6: Tage einschließlich Endtag; Preise bleiben an der Anlage. */
+export interface NetzanschlussAnfrage {
+  kennzeichen: string | null; name: string; malo: string | null; netzbetreiber: string | null;
+  anschluss_kva: string | number | null; vereinbart_kw: string | number | null;
+  messung: 'RLM' | 'SLP'; gueltig_ab: string | null; gueltig_bis: string | null;
+}
+export interface NetzanschlussBindung {
+  id: string; anlage: { id: string; name: string | null }; gueltig_ab: string; gueltig_bis: string | null;
+}
+export interface Netzanschluss extends NetzanschlussAnfrage {
+  id: string; kennzeichen: string; standort: { id: string; kurzzeichen: string };
+  hinweise: string[]; anlagen: NetzanschlussBindung[]; angelegt_am: string;
+}
+export interface Netzanschluesse {
+  standort: { id: string; kurzzeichen: string }; stichtag: string | null;
+  kennzeichen_vorschlag: string; netzanschluesse: Netzanschluss[];
+}
+export interface NetzanschlussBinden { anlage_id: string; gueltig_ab: string; grund: string | null }
 
 // ---- UEMS AP-02 IP-11: Anlage einem Standort zuordnen oder umziehen
 
@@ -7901,6 +7922,13 @@ export const api = {
     request<StandorteAmStichtag>(
       `/api/v1/standorte${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
     ),
+
+  netzanschluesse: (standortId: string, stichtag?: string) =>
+    request<Netzanschluesse>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`),
+  netzanschlussAnlegen: (standortId: string, body: NetzanschlussAnfrage) =>
+    request<Netzanschluss>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse`, { method: 'POST', body: JSON.stringify(body) }),
+  netzanschlussBinden: (standortId: string, id: string, body: NetzanschlussBinden) =>
+    request<Netzanschluss>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/${encodeURIComponent(id)}/anlagen`, { method: 'POST', body: JSON.stringify(body) }),
 
   /** Das Kurzzeichen, das ein neuer Standort bekäme — bewegt den Zähler nicht. */
   standortKurzzeichenVorschlag: () =>

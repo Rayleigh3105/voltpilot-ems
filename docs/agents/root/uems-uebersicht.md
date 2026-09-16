@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Netzanschlüsse im Portal (AP-10 IP-13)** — Standort-Reiter nur wenn er misst, Anlegen und Binden/Wechseln ab wählbarem Tag über IP-6; Rechte aus `rollen.ts`; Bilanzkopf mit ausgewiesenem Stichtag. Eine Formatierstelle für vereinbarte Werte, keine eigene Rechnung · [Portal und Fallen](uems-netzanschluss-portal.md)
+
 - **Bezugsgrößen im Portal (AP-09 IP-9)** — Unternehmenswelt für Messkunden, Strukturflächen als eigene Zeilen, Anlegen mit Arten-Vokabular und `VpPicker`, Standort-/Prozessfilter, Archivieren und Rechte über `rollen.ts`; keine Wert-Eingabe. Navigation ersetzt den überholten Konzeptort „Struktur“ · [Portal und Fallen](uems-bezugsgroessen-portal.md)
 - **Rollen-Zuordnung (H-1): Summenwert mit PV-Produktion/Verbrauch/Netz/keine** — ein Wert je Anlage und Rolle einmal, enthaltene Kanäle/innere Summen nicht zusätzlich; Netz höchstens ein Wert (409), Frische überall 300 s; Java `RollenZuordnungRegeln` ⟷ TS `uemsRollen.ts`, gemeinsame Vektoren. Noch keine Laufzeit-Aufrufer; `SUMMENWERT` und Textwächter mit engem Übergangsbestand für H-5/H-7 · `uems-rollen-zuordnung.md`
 

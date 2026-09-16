@@ -492,6 +492,21 @@
         "wechselPruefen: Number.isInteger(geraeteId)"
       ],
       "grund": "Eingabe Geräte-ID prüfen; Kalender und reine Darstellung, keine Rechnung mit Messwerten."
+    },
+    "netzanschlussListe.ts": {
+      "importe": [
+        "./api:ApiError",
+        "./bezugsdaten:dez",
+        "./bezugsdaten:dezText",
+        "./glossar:UEMS_NETZANSCHLUSS",
+        "./picker/datum:datumVon",
+        "./uemsNetzanschluss:bindung",
+        "./uemsNetzanschluss:felder",
+        "./uemsNetzanschluss:kennzeichen",
+        "./uemsNetzanschluss:kopfzeile",
+        "./uemsOrtsbaum:datumText"
+      ],
+      "operationen": []
     }
   }
 }

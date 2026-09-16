@@ -19,6 +19,10 @@ Tests: `ebenenNav.test.ts` (Block „AP-13 IP-2“: O17 vier/drei Kacheln, O18, 
 `ansicht=werk-gebaeude|werk-anlagen|werk-kennzahlen|werk-berichte|lindach-gebaeude|lindach-anlagen`, `&orte=leer`
 (Werk Lindach ohne Gebäude).
 
+Seit AP-10 IP-13 ergänzt der [Reiter Netzanschlüsse](uems-netzanschluss-portal.md) diese
+Standort-Navigation unter derselben Messfunktions-Regel. O17 hat damit fünf/vier Kacheln;
+die unten beschriebenen vier/drei sind der historische Stand von IP-2. O18 bleibt unverändert.
+
 ## Die Fallen
 
 1. **Kennzahlen und Berichte sind am Standort SEITEN, aber keine BEREICHE.** AP-01 §4.6 und O17 zählen am Standort

@@ -818,8 +818,9 @@
   }
 }
 
-/* AP-09: sechs Unternehmenswelten. Namen bleiben vollständig, Bestandsleisten bis fünf unverändert. */
-.vp-bottombar:has(> .vp-bottombar-item:nth-child(6)) .lbl {
+/* AP-09: sechs Unternehmenswelten; AP-10: langer Netzanschluss-Reiter. Andere Bestandsleisten bleiben unverändert. */
+.vp-bottombar:has(> .vp-bottombar-item:nth-child(6)) .lbl,
+.vp-bottombar:has(> .vp-bottombar-netzanschluesse) .lbl {
   white-space: normal;
   overflow: visible;
   overflow-wrap: anywhere;

@@ -130,6 +130,7 @@ const PortfolioPage = lazy(() =>
 const StandortGebaeudePage = lazy(() =>
   PAGE_CHUNK.standort().then((m) => ({ default: m.StandortGebaeudePage })),
 );
+const StandortNetzanschluessePage = lazy(() => import('./pages/StandortNetzanschluessePage').then(m => ({ default: m.StandortNetzanschluessePage })));
 const StandortAnlagenPage = lazy(() =>
   PAGE_CHUNK.standort().then((m) => ({ default: m.StandortAnlagenPage })),
 );
@@ -1506,6 +1507,9 @@ function UnifiedPortal() {
               onNavigate={navigate}
               springe={springe}
             />
+          )}
+          {page === 'standort' && standortOffen && standortBereich === 'netzanschluesse' && (
+            <StandortNetzanschluessePage key={standortOffen.id} standort={standortOffen} onGeaendert={() => void reload()} />
           )}
           {page === 'standort' && standortOffen && standortBereich === 'anlagen' && (
             <StandortAnlagenPage
