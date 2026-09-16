@@ -3,7 +3,7 @@ import { expect, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-/** Q2: HTML auf 84f8307ffbd668cf5dcd0cbb1f4ebfedf84062a3 erzeugt, nie am neuen Stand erneuern. */
+/** Q2: historischer HTML-Bestand; Bezugsstand und main-Nachzüge stehen in bestandsschutz/README.md. */
 export function bestandsZeit(): void {
   vi.setSystemTime(new Date('2026-09-02T10:19:00Z'));
 }

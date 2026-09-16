@@ -22,6 +22,15 @@ Die Fixtures stammen aus den vorhandenen Bestands-Komponententests; keine neue B
 | Portfolio Übersicht | `components/PortfolioCockpit.test.tsx` |
 | Geräteseite | `pages/GeraetSeiteSection.test.tsx` |
 
+**Nachgezogener main-Bestand an der Geräteseite:** `geraeteseite.html` enthält seit
+dem Merge von [PV-Einstieg ohne PV-Aspekt](https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/810)
+zusätzlich die Karte „PV-Produktion dieses Geräts“. Die Hybrid-Fixture meldet Solarstrom,
+hat aber keinen PV-Aspekt. Der ausgelieferte main-Fix zeigt die Karte dann an der Speicher-Entität;
+auf dem ursprünglichen UEMS-Bezugsstand fehlte dieser Fix noch. Diese eine Aufnahme wurde auf
+`0881ef92` (UEMS) plus `e3f000a2` (main) neu erzeugt. Der Vergleich belegt ausschließlich
+die eingefügte PV-Karte; der übrige HTML-Inhalt und die zehn anderen Aufnahmen sind bytegleich
+zum ursprünglichen Bezugsstand. Dies ist ein Nachzug ausgelieferten Verhaltens, keine AP-13-Änderung.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.
