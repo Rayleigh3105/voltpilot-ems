@@ -63,6 +63,19 @@ function pt(over: Partial<MeasurementCatalogPoint> = {}): MeasurementCatalogPoin
 }
 
 describe('summenwertQuellen: zeileAus leitet Guard, Kategorie und Live-Wert ab', () => {
+  it.each([true, false])('import_export ist mit selected=%s gesperrt und bietet keinen Erzeugungs-Haken', (selected) => {
+    const z = zeileAus(pt({ direction: 'import_export', selected }), 'ent-1');
+    expect(z.richtung).toBe('richtungslos');
+    expect(z.richtungslos).toBe(false);
+    expect(z.genPort).toBe(false);
+    expect(z.summierbar).toBe(false);
+    expect(sperrArt(z, null)).toBe('vorzeichen_netz');
+    expect(anhakbar(z, null)).toBe(false);
+    expect(vorauswahl([z])).toEqual([]);
+    expect(sperrKurz(sperrArt(z, null))).toBe('Bezug und Abgabe trennen');
+    expect(sperrGrund(sperrArt(z, null))).toContain('Bezug und Abgabe gemeinsam');
+  });
+
   it('ein beobachteter PV-Strang ist summierbar mit Live-Wert und Größe/Richtung', () => {
     const z = zeileAus(pt(), 'ent-1');
     expect(z.summierbar).toBe(true);

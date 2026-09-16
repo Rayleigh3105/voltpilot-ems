@@ -489,7 +489,7 @@ public class MessstelleQuelleService {
                     + ", nicht " + ziel.groesse() + ".";
             case "einheit" -> "seine Einheit " + kanal.einheit() + " lässt sich nicht in " + ziel.einheit()
                     + " umrechnen.";
-            case "richtung" -> kanal.richtung() == null
+            case "richtung" -> kanal.richtung() == null || "import_export".equals(kanal.direction())
                     ? "er misst Bezug und Abgabe in einem Wert mit Vorzeichen. Getrennt nach Richtung lässt er "
                             + "sich noch nicht binden."
                     : "er misst " + kanal.richtung() + ", nicht " + ziel.richtung() + ".";

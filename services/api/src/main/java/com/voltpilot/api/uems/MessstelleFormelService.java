@@ -177,7 +177,7 @@ public class MessstelleFormelService {
                         "„Gilt als Erzeugung“ ist nur für einen Kanal ohne eigene Richtung — "
                                 + "dieser Kanal trägt schon eine.");
             }
-            Groesse g = kanalGroesse(t.pointKey(), haken);
+            Groesse g = kanalGroesse(t.pointKey(), haken, false);
             if (g == null) {
                 throw MessstelleFormelAbgelehnt.anfrage(feld,
                         "Dieser Messwert hat keine Vertrags-Messgröße — er kann kein Term sein.");
@@ -433,22 +433,29 @@ public class MessstelleFormelService {
     }
 
     /**
-     * Die Vertrags-Größe eines Messwerts aus dem Katalog; {@code null}, wenn er keine trägt
-     * (keine Größe, keine Richtung — z. B. ein Vorzeichen-Wert wartet auf AP-08). Die Wertart ist
+     * Die Vertrags-Größe eines Formel-Eingangs; {@code null}, wenn er nicht zulässig ist
+     * (keine Größe/Richtung oder neuer Vorzeichen-Netzterm, der auf AP-08 wartet). Die Wertart ist
      * die VERTRAGS-Wertart (Momentanwert · Zählerstand · Intervallmenge), abgeleitet aus der Größe
      * und der Wertart des KANALS ({@code gauge}/{@code counter}) — nicht die des Kanals selbst.
      */
-    private Groesse kanalGroesse(String pointKey, boolean giltAlsErzeugung) {
+    private Groesse kanalGroesse(String pointKey, boolean giltAlsErzeugung, boolean gespeicherterTerm) {
         Point p = katalog.resolve(pointKey);
         Semantik s = katalog.semantik(pointKey);
         if (p == null || s == null) {
+            return null;
+        }
+        // W1: Vorzeichen-Netzkanäle warten auf den Anteil-Leseweg. Nur ein bereits
+        // gespeicherter Term mit Haken behält seine bisherige Erzeugungs-Richtung.
+        // Keine Umdeutung beim GET, keine Bestandsmigration; neue Terme bleiben gesperrt.
+        boolean vorzeichenNetz = "import_export".equals(s.direction());
+        if (vorzeichenNetz && !(gespeicherterTerm && giltAlsErzeugung)) {
             return null;
         }
         String groesse = MesskanalAbbildung.groesse(s.quantity());
         // AP-08: ein richtungsloser Kanal (Katalog ohne Richtung) traegt mit gesetztem Haken die
         // Richtung Erzeugung — sonst bleibt er ohne Richtung und kann kein Term sein.
         String richtung = MessstelleFormelRegeln.richtungMitErzeugungsHaken(
-                MesskanalAbbildung.richtung(s.direction()), giltAlsErzeugung);
+                vorzeichenNetz ? null : MesskanalAbbildung.richtung(s.direction()), giltAlsErzeugung);
         String kanalWertart = MesskanalAbbildung.wertart(p.aggregationKind());
         if (groesse == null || richtung == null || kanalWertart == null || p.unit() == null) {
             return null;
@@ -488,7 +495,7 @@ public class MessstelleFormelService {
 
     private Groesse groesse(TermZeile t) {
         if (MESSKANAL.equals(t.eingangArt())) {
-            return kanalGroesse(t.pointKey(), t.giltAlsErzeugung());
+            return kanalGroesse(t.pointKey(), t.giltAlsErzeugung(), true);
         }
         return messstellen.finde(t.quellMessstelleId()).map(Messstelle::hauptgroesse).orElse(null);
     }

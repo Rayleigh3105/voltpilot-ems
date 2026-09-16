@@ -164,6 +164,10 @@ class MessstelleFormelRegelnVectorsTest {
                 JsonNode in = c.path("input");
                 String katalogRichtung = in.path("katalog_richtung").isNull()
                         ? null : in.path("katalog_richtung").asText();
+                if (in.has("direction")) {
+                    assertThat(com.voltpilot.api.measurement.MesskanalAbbildung.richtung(
+                            in.path("direction").asText())).isEqualTo(katalogRichtung);
+                }
                 boolean haken = in.path("gilt_als_erzeugung").asBoolean();
                 boolean erlaubt = MessstelleFormelRegeln.erzeugungsHakenErlaubt(katalogRichtung);
                 String richtung = MessstelleFormelRegeln.richtungMitErzeugungsHaken(katalogRichtung, haken);

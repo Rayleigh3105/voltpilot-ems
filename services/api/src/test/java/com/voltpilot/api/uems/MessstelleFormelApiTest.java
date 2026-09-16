@@ -59,6 +59,7 @@ class MessstelleFormelApiTest {
     private static final String PV2 = "deye.hybrid_3p.pv.pv2-power";
     private static final String PV3 = "deye.hybrid_3p.pv.pv3-power";
     private static final String ENERGIE = "sunspec.model_203.totwhimp";       // Wirkenergie (Zähler)
+    private static final String NETZ = "sunspec.model_203.w";               // import_export
     private static final String OHNE_RICHTUNG = "deye.hybrid_3p.generator-smartload-microinverter.generator-power";
 
     @Container
@@ -260,6 +261,59 @@ class MessstelleFormelApiTest {
     }
 
     // ================================================================ RLS
+
+    @Test
+    void neuerVorzeichenNetzTermWirdMitUndOhneHakenAbgelehnt() throws Exception {
+        Welt w = welt();
+        for (boolean haken : List.of(true, false)) {
+            Antwort a = ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                    anlegen("Netz", haken ? termHaken(w, NETZ) : term(w, NETZ)));
+            assertThat(a.status()).isEqualTo(400);
+            assertThat(a.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
+            assertThat(a.body().get("feld").asText())
+                    .isEqualTo(haken ? "terme[0].gilt_als_erzeugung" : "terme[0]");
+        }
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle WHERE tenant_id = ?",
+                Integer.class, w.mandant())).isZero();
+    }
+
+    @Test
+    void gespeicherterVorzeichenNetzTermMitHakenBleibtBeimLesenUnveraendert() throws Exception {
+        Welt w = welt();
+        selektion(w, NETZ);
+        UUID id = UUID.fromString(ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Bestand", term(w, PV1))), 201).get("id").asText());
+        // Altbestand direkt herstellen: dieser Term konnte vor W1 über die API entstehen.
+        root.update("DELETE FROM messstelle_formel_term WHERE messstelle_id = ?", id);
+        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, "
+                + "eingang_art, entity_id, point_key, vorzeichen, faktor, gilt_als_erzeugung) "
+                + "VALUES (?, ?, 0, 'messkanal', ?, ?, '+', 1.5, true)",
+                w.mandant(), id, w.komponente(), NETZ);
+        var alteTerme = root.queryForList("SELECT * FROM messstelle_formel_term WHERE messstelle_id = ?", id);
+        var alteMessstelle = root.queryForList("SELECT * FROM messstelle WHERE id = ?", id);
+        probe(w, NETZ, -2000);
+        Instant bucket = Instant.ofEpochSecond(Instant.now().getEpochSecond() / 900 * 900 - 900);
+        rollup(w, NETZ, bucket, 4000);
+
+        JsonNode formel = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/formel", null), 200);
+        assertThat(formel.at("/terme/0/gilt_als_erzeugung").asBoolean()).isTrue();
+        assertThat(formel.at("/terme/0/groesse/richtung").asText()).isEqualTo("Erzeugung");
+        assertThat(formel.at("/hauptgroesse/richtung").asText()).isEqualTo("Erzeugung");
+        assertThat(formel.get("eingaenge_eingerichtet").asBoolean()).isTrue();
+        JsonNode wert = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/wert", null), 200);
+        assertThat(wert.get("wert").asDouble()).isEqualTo(-3.0);
+        assertThat(wert.get("unvollstaendig").asBoolean()).isFalse();
+        JsonNode verlauf = ok(ruf(w, HttpMethod.GET,
+                "/api/v1/messstellen/" + id + "/verlauf?range=24h", null), 200);
+        List<Double> werte = new ArrayList<>();
+        for (JsonNode punkt : verlauf.get("punkte")) {
+            if (!punkt.get("wert").isNull()) werte.add(punkt.get("wert").asDouble());
+        }
+        assertThat(werte).containsExactly(6.0);
+        assertThat(root.queryForList("SELECT * FROM messstelle_formel_term WHERE messstelle_id = ?", id))
+                .isEqualTo(alteTerme);
+        assertThat(root.queryForList("SELECT * FROM messstelle WHERE id = ?", id)).isEqualTo(alteMessstelle);
+    }
 
     @Test
     void eineFremdeBerechneteMessstelleIst404NieEine403() throws Exception {

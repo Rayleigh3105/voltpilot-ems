@@ -482,7 +482,7 @@ class MessstelleQuelleApiTest {
                 nebengroesse);
         passtNicht(r, vorzeichen.at("/expected/grund").asText());
         assertThat(r.getBody().at("/kanal/direction").asText()).isEqualTo("import_export");
-        assertThat(r.getBody().at("/kanal/richtung").isNull()).as("keine EINE Vertrags-Richtung").isTrue();
+        assertThat(r.getBody().at("/kanal/richtung").asText()).isEqualTo("richtungslos");
         assertThat(r.getBody().get("message").asText()).contains("Vorzeichen");
 
         assertThat(eintraege(w.tenant())).as("abgelehnt schreibt nichts").isEqualTo(vorher);

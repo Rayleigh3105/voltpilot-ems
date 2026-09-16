@@ -75,7 +75,8 @@ Einheit ohne Größe.
 
 Die Wörter bilden sich eindeutig auf den Messstellen-Vertrag
 ([`docs/contracts/v2/messstelle.md`](../../docs/contracts/v2/messstelle.md) §2) ab — Größe auf
-Größe, Richtung auf Richtung, je Wort höchstens ein Vertragswort und keines doppelt. „—“ heißt:
+Größe, Richtung auf Richtung, je Wort höchstens ein Vertragswort. Nur `none` und
+`import_export` teilen sich `richtungslos`. „—“ heißt:
 der Vertrag kennt dieses Wort (noch) nicht, ein solcher Messwert speist keine Messstelle. Die
 Vertrags-Größe „Volumen“ (Gas) erreicht der Katalog nicht, weil er keine Gaszähler führt.
 `tests/test_semantics.py` und `MesskanalAbbildungTest` (api) lesen DIESE Tabelle:
@@ -102,7 +103,7 @@ Vertrags-Größe „Volumen“ (Gas) erreicht der Katalog nicht, weil er keine G
 | `direction` | `discharge` | Entladen | |
 | `direction` | `charge_discharge` | Laden / Entladen | Speicherleistung mit Vorzeichen |
 | `direction` | `none` | richtungslos | |
-| `direction` | `import_export` | — | Vorzeichen-Wert am Netzpunkt; Bezug und Abgabe sind zwei Messstellen |
+| `direction` | `import_export` | richtungslos | Katalog-Richtung vorhanden; Vorzeichen-Wert am Netzpunkt, kein neuer Formel-Term bis zum Anteil-Leseweg; Bezug und Abgabe sind zwei Messstellen |
 
 ## Inhaltsstand und Laufzeitstand
 
