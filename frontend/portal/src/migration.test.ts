@@ -1498,12 +1498,13 @@ describe('UEMS AP-01 IP-5 — die Startansicht-Weiche lässt den Einzel-Anlagen-
 
 
 describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
-  it('alle 913 bestehenden Bedienelemente in den 161 Kundendateien behalten Inhalt und Attribute des Ausgangsstands', () => {
+  it('alle 913 bestehenden Bedienelemente in den 161 Kundendateien entsprechen dem Ausgangsstand mit einzeln belegten Fortschreibungen', () => {
     // Vor IP-12 aus origin/uems aufgenommen: sämtliche Kunden-TSX, nicht nur die angefassten Dateien.
     // Der Schlüssel wandert beim Einklammern vom Knopf zum Recht; React rendert ihn nie ins DOM.
     // Leerraum normalisiert nur die TSX-Schreibweise, niemals Texte/Handler/Attribute.
     const drucker = ts.createPrinter({ removeComments: true });
     const tags = new Set(['Button', 'button', 'Switch', 'Input', 'input', 'select', 'textarea']);
+    const verwendeteFortschreibungen = new Set<(typeof kundenBestand.fortschreibungen)[number]>();
     let zahl = 0;
     for (const [pfad, vorher] of Object.entries(kundenBestand.bedienelemente)) {
       const datei = ts.createSourceFile(pfad, readFileSync(join(SRC, pfad), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -1521,13 +1522,18 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
       };
       besuche(datei);
       for (const fingerabdruck of vorher) {
-        const stelle = jetzt.indexOf(fingerabdruck);
+        // Der ursprüngliche Bestand bleibt erhalten. Nur ein ausdrücklich belegter Nachfolger
+        // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
+        const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
+        if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
+        const stelle = jetzt.indexOf(fortschreibung?.nachher ?? fingerabdruck);
         expect(stelle, `${pfad}: Bedienelement aus ${kundenBestand.basis}`).toBeGreaterThanOrEqual(0);
         jetzt.splice(stelle, 1);
         zahl++;
       }
     }
     expect(zahl).toBe(913);
+    expect(verwendeteFortschreibungen).toEqual(new Set(kundenBestand.fortschreibungen));
   });
   it('jeder Rechte-Hebel aller Kundenflächen erhält das bisherige Markup ohne zusätzliche Hülle', () => {
     setSelbstauskunft(rechteSeed('JW').me);

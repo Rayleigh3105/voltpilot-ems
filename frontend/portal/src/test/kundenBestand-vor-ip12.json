@@ -1236,5 +1236,14 @@
       "1d3d9644b287f7592d2da3a9c80560b4c6b4548e8fca70419597c5061cd7c4a7",
       "a8f9a82f8fd4f242e9008121a30da54567d94829e59db0bf2fd0ee4656092ff7"
     ]
-  }
+  },
+  "fortschreibungen": [
+    {
+      "datei": "shell/AppShell.tsx",
+      "vorher": "74df2d1b0d2202fe3a6cb16f0ad991f81a9df25b4b796e45cf6ba076b0c07595",
+      "nachher": "0289724397148b719bc555a44596e9d7c5a362e989985663745bdb4e2068b83f",
+      "commit": "97762c3ddd13da59a96941a37ed70b67ba6e49b1",
+      "grund": "AP-10 IP-13 ergänzt nur für die neue Netzanschlüsse-Kachel die CSS-Klasse vp-bottombar-netzanschluesse. Bestehende Kacheln rendern unverändert; Anlegen und Binden/Wechseln prüfen netzanschluss.verwalten am Standort über rollen.ts."
+    }
+  ]
 }
