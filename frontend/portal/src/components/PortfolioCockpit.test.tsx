@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PortfolioCockpit } from './PortfolioCockpit';
@@ -129,6 +130,16 @@ function renderCockpit(
     />,
   );
 }
+
+it('AP-13 Bestandsschutz · Portfolio Übersicht ohne Messfunktion', async () => {
+  bestandsZeit();
+  const fest = <T,>(daten: T): T => JSON.parse(JSON.stringify(daten).replaceAll(JETZT.toISOString(), '2026-09-02T10:19:00Z'));
+  vi.spyOn(api, 'overview').mockResolvedValue(fest(MONITORING_OVERVIEW));
+  const view = renderCockpit();
+  await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
+  expect(view.container.querySelector('[data-testid="uebersicht-bausteine"]')).toBeNull();
+  await bestandSnapshot('portfolio-uebersicht', view);
+});
 
 describe('§4.3 C: der Nur-Monitoring-Kunde sieht ECHTE Zahlen statt „—, —, —"', () => {
   it('zeigt PV jetzt, Erzeugung, Verbrauch und Netz - summiert über die Filialen', async () => {

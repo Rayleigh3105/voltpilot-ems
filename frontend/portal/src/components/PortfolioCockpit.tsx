@@ -229,7 +229,7 @@ export function PortfolioCockpit({
   const configById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
   // UEMS AP-13 IP-7: die Bausteine der Messstellen-Welt — nur auf einer Übersicht, nicht auf „Standort › Anlagen“.
   const anlagenDerSicht = useMemo(() => anlagenDerEbene(sites, ebene).map((s) => ({ id: s.id, name: s.name })), [sites, ebene]);
-  const uems = useUebersichtBausteine(ebene && !nurAnlagen ? ebene : null, anlagenDerSicht);
+  const uems = useUebersichtBausteine(ebene && !nurAnlagen ? ebene : null, anlagenDerSicht, funktionen ?? null);
   // UEMS AP-13 IP-8 (Ü7, versprochen von IP-2): „Standort › Anlagen“ trägt je Zeile den Weg „Energiebilanz“ — nur für eine
   // Anlage mit Hauptzähler in der Stellung (dieselbe Frage wie der Reiter). Die Übersicht fragt nichts und bleibt gleich.
   const mitBilanzWeg = nurAnlagen && ebene?.art === 'standort';

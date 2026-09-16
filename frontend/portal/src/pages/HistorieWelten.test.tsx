@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MesswerteSection } from './MesswerteSection';
@@ -323,6 +324,15 @@ beforeEach(() => {
  * Captain-Struktur H1): zwei Routen, ein Skelett, ein Ehrlichkeits-Abzeichen je
  * Karte - und der frühere dritte Umschalter ist ersatzlos weg.
  */
+it('AP-13 Bestandsschutz · Verlauf Messwerte ohne Messfunktion', async () => {
+  bestandsZeit();
+  window.location.hash = '#/anlage/s-1/messwerte?z=monat&at=2026-07-15';
+  vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+  const view = render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+  await screen.findByLabelText('Energiemengen im Zeitraum');
+  await bestandSnapshot('verlauf-messwerte', view);
+});
+
 describe('Welt A · Messwerte', () => {
   it('führt mit ihrem Welt-Kopf statt mit drei gestapelten Umschaltern', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);

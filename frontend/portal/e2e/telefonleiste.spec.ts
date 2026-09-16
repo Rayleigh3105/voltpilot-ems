@@ -31,6 +31,7 @@ interface Fall {
 }
 
 const FAELLE: Fall[] = [
+  { name: 'betriebskunde-standort', query: 'bild=unternehmen&messen=bestand&ansicht=werk', leiste: null },
   { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte'], aktiv: 'Übersicht' },
   { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'], aktiv: 'Übersicht' },
   { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Gebäude', 'Messstellen'], aktiv: 'Übersicht' },

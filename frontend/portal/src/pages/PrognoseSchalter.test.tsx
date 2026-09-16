@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ForecastQuality } from '../api';
@@ -139,6 +140,17 @@ function desktop() {
 function rendere() {
   return render(<PrognosePage sites={[SITE]} selectedSite="site-1" onSelectSite={() => {}} />);
 }
+
+it('AP-13 Bestandsschutz · Verlauf Prognose ohne Messfunktion', async () => {
+  bestandsZeit();
+  desktop();
+  forecastQualityMock.mockResolvedValue(QUALITY);
+  forecastModelsMock.mockResolvedValue(WAHL);
+  technicalLayer.mockReturnValue(false);
+  const view = render(<PrognosePage sites={[SITE]} selectedSite="site-1" onSelectSite={() => {}} embedded />);
+  await screen.findByText('Lernende Kandidaten');
+  await bestandSnapshot('verlauf-prognose', view);
+});
 
 describe('Prognosequalität - der Schalter', () => {
   beforeEach(() => {

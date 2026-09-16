@@ -1,0 +1,800 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AP-13 Bestandsschutz · Betriebskunde ohne Messfunktion > O18 · zwei Anlagen, 0 Gebäude: keine Telefon-Kachel 1`] = `[]`;
+
+exports[`AP-13 Bestandsschutz · Betriebskunde ohne Messfunktion > O18 · zwei Anlagen, 3 Gebäude: keine Telefon-Kachel 1`] = `[]`;
+
+exports[`AP-13 Bestandsschutz · Betriebskunde ohne Messfunktion > Q2 · zwei Anlagen, 0 Gebäude: Standort-Reiter zeichengleich 1`] = `""`;
+
+exports[`AP-13 Bestandsschutz · Betriebskunde ohne Messfunktion > Q2 · zwei Anlagen, 3 Gebäude: Standort-Reiter zeichengleich 1`] = `""`;
+
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Übersicht<span class="vp-welt-strich" aria-hidden="true"></span></button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Messwerte</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Erlöse</button></div>"`;
+
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio-erloese ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Übersicht</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Messwerte</button><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Erlöse<span class="vp-welt-strich" aria-hidden="true"></span></button></div>"`;
+
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio-messwerte ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Übersicht</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Messwerte<span class="vp-welt-strich" aria-hidden="true"></span></button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Erlöse</button></div>"`;
+
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > sechs Verlauf-Reiter ohne neue Energiebilanz 1`] = `
+{
+  "badge": null,
+  "badgeTitel": null,
+  "icon": "history",
+  "key": "verlauf",
+  "label": "Verlauf",
+  "tabs": [
+    {
+      "key": "messwerte",
+      "label": "Messwerte",
+      "sub": "messwerte",
+    },
+    {
+      "key": "erloese",
+      "label": "Erlöse",
+      "sub": "erloese",
+    },
+    {
+      "key": "marktpreise",
+      "label": "Marktpreise",
+      "sub": "marktpreise",
+    },
+    {
+      "key": "lastspitzen",
+      "label": "Lastspitzen",
+      "sub": "lastspitzen",
+    },
+    {
+      "key": "prognose",
+      "label": "Prognose",
+      "sub": "prognose",
+    },
+    {
+      "key": "wetter",
+      "label": "Wetter",
+      "sub": "wetter",
+    },
+  ],
+  "target": {
+    "kind": "sub",
+    "sub": "messwerte",
+  },
+}
+`;
+
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > startEbene bleibt für Bestand, Einzelanlage, Standort, Unternehmen, Betreiber und Admin unverändert 1`] = `
+[
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "standort",
+      "standort": {
+        "anlagen": [
+          "a0000000-0000-4000-8000-000000000001",
+        ],
+        "id": "5a1d0000-0000-4000-8000-000000000001",
+        "name": "Werk Ahrenberg – Halle 1",
+      },
+      "teilansicht": true,
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "standort",
+      "standort": {
+        "anlagen": [
+          "a0000000-0000-4000-8000-000000000001",
+        ],
+        "id": "5a1d0000-0000-4000-8000-000000000001",
+        "name": "Werk Ahrenberg – Halle 1",
+      },
+      "teilansicht": true,
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "standort",
+      "standort": {
+        "anlagen": [
+          "a0000000-0000-4000-8000-000000000001",
+        ],
+        "id": "5a1d0000-0000-4000-8000-000000000001",
+        "name": "Werk Ahrenberg – Halle 1",
+      },
+      "teilansicht": true,
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "unternehmen",
+      "name": "Ahrenberg",
+      "standorte": [
+        {
+          "anlagen": [
+            "a0000000-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000002",
+          ],
+          "id": "5a1d0000-0000-4000-8000-000000000001",
+          "name": "Werk Ahrenberg",
+        },
+        {
+          "anlagen": [
+            "a0000000-0000-4000-8000-000000000003",
+          ],
+          "id": "5a1d0000-0000-4000-8000-000000000002",
+          "name": "Werk Lindach",
+        },
+      ],
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "unternehmen",
+      "name": "Ahrenberg",
+      "standorte": [
+        {
+          "anlagen": [
+            "a0000000-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000002",
+          ],
+          "id": "5a1d0000-0000-4000-8000-000000000001",
+          "name": "Werk Ahrenberg",
+        },
+        {
+          "anlagen": [
+            "a0000000-0000-4000-8000-000000000003",
+          ],
+          "id": "5a1d0000-0000-4000-8000-000000000002",
+          "name": "Werk Lindach",
+        },
+      ],
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "unternehmen",
+      "name": "Ahrenberg",
+      "standorte": [
+        {
+          "anlagen": [
+            "a0000000-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000002",
+          ],
+          "id": "5a1d0000-0000-4000-8000-000000000001",
+          "name": "Werk Ahrenberg",
+        },
+        {
+          "anlagen": [
+            "a0000000-0000-4000-8000-000000000003",
+          ],
+          "id": "5a1d0000-0000-4000-8000-000000000002",
+          "name": "Werk Lindach",
+        },
+      ],
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "endkunde",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": false,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+  {
+    "betriebsart": "betreiber",
+    "ebene": {
+      "art": "heute",
+    },
+    "isAdmin": true,
+    "siteIds": [
+      "a0000000-0000-4000-8000-000000000001",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000003",
+    ],
+  },
+]
+`;

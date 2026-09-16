@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type MessstellenRegister } from '../api';
+import { api, type Funktionen, type MessstellenRegister } from '../api';
+import { misst } from '../ebenenNav';
 import { UEMS_ENERGIEBILANZ, UEMS_GEBAEUDE, UEMS_KENNZAHLEN } from '../glossar';
 import { heuteIn, listenKarte, ZUR_LISTE } from '../kennzahlKarte';
 import { kennzahlRoute, pageRoute, standortBereichRoute, type Route } from '../nav';
@@ -54,16 +55,20 @@ export interface UebersichtDaten {
 }
 
 /**
- * Lädt, was die Bausteine brauchen — nur mit einer Ebene (`null` = die Flotte wie bisher, sie fragt nichts Neues ab):
+ * Lädt, was die Bausteine brauchen — nur mit einer messenden Ebene (`null`/ohne Messfunktion fragt nichts Neues ab):
  * das Register, je Anlage ihre Bilanz im Zeitraum der Leiste, am Standort Ortsbaum und Register je Gebäude (heute für
  * die Datenlage, am letzten Tag des Zeitraums für „im Gebäude“), und die Kennzahlen.
  */
 export function useUebersichtBausteine(
   ebene: UebersichtEbene | null,
   anlagen: readonly { id: string; name: string }[],
+  funktionen: Funktionen | null,
 ): UebersichtDaten | null {
-  const an = ebene !== null;
-  const standortId = ebene?.art === 'standort' ? ebene.standort.id : null;
+  // E2/Q2/O18: auch vorhandene Gebäude begründen keinen Messdaten-Baustein.
+  const standorte = ebene?.art === 'standort' ? [ebene.standort] : ebene?.standorte ?? [];
+  const lm = { standorte, funktionen, kennzahlen: null };
+  const an = standorte.some((s) => s.zustand !== 'archiviert' && misst(lm, s.id));
+  const standortId = an && ebene?.art === 'standort' ? ebene.standort.id : null;
   const zone = ebene?.art === 'standort' ? ebene.standort.zeitzone : VORGABE_ZEITZONE;
   const heute = heuteIn(zone, Date.now());
   const [wahl, setWahl] = useState<{ periode: BilanzPeriode; am: string }>(() => ({
@@ -160,7 +165,7 @@ export function useUebersichtBausteine(
 
   const kennzahlen = useKennzahlenListe(zone, standortId, 0, an);
 
-  if (!ebene) return null;
+  if (!ebene || !an) return null;
   const gebaeude: GebaeudeEingang[] = gebaeudeListe.map((g) => ({
     ...g,
     heute: gebaeudeHeute?.schluessel === orteSchluessel ? (gebaeudeHeute.je[g.id] ?? null) : null,

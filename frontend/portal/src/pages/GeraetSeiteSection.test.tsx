@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { GeraetSeiteSection } from './GeraetSeiteSection';
@@ -374,6 +375,17 @@ function stub(over: {
     },
   ]);
 }
+
+it('AP-13 Bestandsschutz · Geräteseite ohne Messfunktion', async () => {
+  bestandsZeit();
+  const fest = <T,>(daten: T): T => JSON.parse(JSON.stringify(daten).replaceAll(FRISCH, '2026-09-02T10:19:00Z'));
+  stub({ sources: fest(sources), entities: async () => fest(entities) });
+  vi.spyOn(api, 'topology').mockResolvedValue(fest(topology));
+  const view = render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[fest(box)]} />);
+  await screen.findByRole('heading', { name: 'Deye SUN-30K' });
+  await bestandSnapshot('geraeteseite', view);
+  vi.restoreAllMocks();
+});
 
 describe('GeraetSeiteSection', () => {
   afterEach(() => {

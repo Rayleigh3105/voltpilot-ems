@@ -504,7 +504,7 @@ const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
 /** Ein Standort misst: „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv — ein Entwurf misst noch nicht. */
 const MISST: ReadonlySet<FunktionZustand> = new Set<FunktionZustand>(['eingerichtet', 'angehalten', 'aktiv']);
 
-const misst = (lm: EbenenLesemodell, standortId: string) =>
+export const misst = (lm: EbenenLesemodell, standortId: string) =>
   MISST.has(lm.funktionen?.standorte.find((f) => f.id === standortId)?.messen.zustand ?? 'kein_objekt');
 
 /**
@@ -559,7 +559,7 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
 }
 
 /** Welche Seite ein Bereich im Portal hat; ein fehlender Eintrag = noch keine. */
-export type EbenenSeiten = (ort: EbenenOrt) => Partial<Record<EbenenBereichId, Route>>;
+export type EbenenSeiten = (ort: EbenenOrt, lm?: EbenenLesemodell) => Partial<Record<EbenenBereichId, Route>>;
 
 /**
  * Die Seiten, die das Portal HEUTE für die Bereiche hat.
@@ -581,7 +581,7 @@ export type EbenenSeiten = (ort: EbenenOrt) => Partial<Record<EbenenBereichId, R
  * Seiten, sind aber kein Bereich der Ebene (AP-01 §4.6) und werden darum nie
  * eine Kachel — ihr Einstieg ist {@link standortEinstiege}.
  */
-export const EBENEN_SEITEN: EbenenSeiten = (ort) =>
+export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
   ort.art === 'unternehmen'
     ? {
         uebersicht: pageRoute('portfolio'),
@@ -592,12 +592,23 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort) =>
       }
     : {
         uebersicht: standortRoute(ort.standortId),
-        gebaeude: standortBereichRoute(ort.standortId, 'gebaeude'),
-        anlagen: standortBereichRoute(ort.standortId, 'anlagen'),
         messstellen: standortMessstellenRoute(ort.standortId),
-        kennzahlen: standortBereichRoute(ort.standortId, 'kennzahlen'),
-        berichte: standortBereichRoute(ort.standortId, 'berichte'),
+        // AP-13 E2/Q2/O18: die vier neuen Seiten nur mit Messfunktion.
+        // Auch vorhandene Gebäude und Anlagen ändern den Betriebskunden nicht.
+        ...(lm && misst(lm, ort.standortId) ? {
+          gebaeude: standortBereichRoute(ort.standortId, 'gebaeude'),
+          anlagen: standortBereichRoute(ort.standortId, 'anlagen'),
+          kennzahlen: standortBereichRoute(ort.standortId, 'kennzahlen'),
+          berichte: standortBereichRoute(ort.standortId, 'berichte'),
+        } : {}),
       };
+
+/** Direkte AP-13-Adressen fallen ohne Messfunktion wie vor AP-13 auf die Übersicht zurück. */
+export function standortBereichFuer(route: Route, lm: EbenenLesemodell): Route['standortBereich'] {
+  const bereich = route.standortBereich;
+  if (route.page !== 'standort' || !route.standortId || !bereich || bereich === 'messstellen') return bereich;
+  return EBENEN_SEITEN({ art: 'standort', standortId: route.standortId }, lm)[bereich] ? bereich : undefined;
+}
 
 /** Ein Einstieg der Standort-Übersicht in eine Welt, die am Standort keine Kachel hat (AP-13 IP-2). */
 export interface StandortEinstieg {
@@ -635,7 +646,7 @@ export function standortEinstiege(
   if (ort.art !== 'standort') return [];
   const standort = lebenderStandort(lm, ort.standortId);
   if (!standort || !misst(lm, standort.id)) return [];
-  const ziele = seiten(ort);
+  const ziele = seiten(ort, lm);
   const out: StandortEinstieg[] = [];
   const hierGilt = (lm.kennzahlen ?? []).some((k) => k.archiviert_am == null && k.standort_id === standort.id);
   if (hierGilt && ziele.kennzahlen) {
@@ -659,7 +670,7 @@ export function ebenenReiter(
   lm: EbenenLesemodell,
   seiten: EbenenSeiten = EBENEN_SEITEN,
 ): EbenenKachel[] {
-  const ziele = seiten(ort);
+  const ziele = seiten(ort, lm);
   const reiter = ebenenBereiche(ort, lm).flatMap((b) => {
     const ziel = ziele[b.key];
     return ziel ? [{ ...b, ziel }] : [];
@@ -677,7 +688,7 @@ export function ebenenLeiste(
   lm: EbenenLesemodell,
   seiten: EbenenSeiten = EBENEN_SEITEN,
 ): EbenenKachel[] {
-  const ziele = seiten(ort);
+  const ziele = seiten(ort, lm);
   const kacheln = ebenenBereiche(ort, lm).flatMap((b) => {
     const ziel = ziele[b.key];
     return ziel ? [{ ...b, ziel }] : [];

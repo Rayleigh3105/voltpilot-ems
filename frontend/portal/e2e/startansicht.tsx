@@ -25,6 +25,7 @@ import {
   type EbenenLesemodell,
   type EbenenSeiten,
   standortEinstiege,
+  standortBereichFuer,
 } from '../src/ebenenNav';
 import { anlagenOptionen } from '../src/anlagenWahl';
 import {
@@ -202,7 +203,7 @@ const bilanzDerBuehne = (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?
   ahrenbergBilanz(siteId, periode, am, {
     jetzt: Date.now(),
     live: params.get('live') === 'veraltet' ? 'veraltet' : 'frisch',
-    ohneHauptzaehler: params.get('bilanz') === 'ohne-hz',
+    ohneHauptzaehler: messenArt === 'bestand' || params.get('bilanz') === 'ohne-hz',
     restVorschlag,
   });
 
@@ -534,6 +535,10 @@ Object.assign(api, {
     // AP-13 IP-13: `&stand=` verschiebt den Stand des Registers — und mit ihm den Tag, auf dem der Einstieg „Werte“ landet.
     const anfrage = REGISTER_STAND && !a.stichtag ? { ...a, stichtag: REGISTER_STAND } : a;
     const r = k17 ? mitMs24(ahrenbergRegister(anfrage)) : ahrenbergRegister(anfrage);
+    if (messenArt === 'bestand') {
+      const leer = { erfuellt: 0, gesamt: 0, text: 'Noch keine Messstellen' };
+      return { ...r, register: [], aggregat: { ...r.aggregat, unternehmen: leer, standorte: r.aggregat.standorte.map((st) => ({ ...st, ...leer })) } };
+    }
     if (!heuteB10) return r;
     return { ...r, register: r.register.map((z) => ({ ...z, name: nameHeuteAm(Date.now(), z.kennzeichen, z.name) })) };
   },
@@ -557,7 +562,7 @@ Object.assign(api, {
   standortOrte: async (id: string) =>
     id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg(),
   // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
-  kennzahlen: async () => ({ kennzahlen: kennzahlenDerBuehne() }),
+  kennzahlen: async () => ({ kennzahlen: messenArt === 'bestand' ? [] : kennzahlenDerBuehne() }),
   kennzahl: async (id: string) => kennzahlDerBuehne(id),
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,
@@ -908,6 +913,7 @@ function Vorschau() {
     funktionen: funktionenDerSzene(),
     kennzahlen: ahrenbergKennzahlen(),
   };
+  const standortBereich = standortBereichFuer(route, lesemodell);
   const ort = site ? null : ebenenOrt(route, ebene);
   const kacheln = ort ? ebenenLeiste(ort, lesemodell, KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined) : [];
   const ebenenNav =
@@ -915,7 +921,7 @@ function Vorschau() {
       ? {
           titel: ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? ''),
           kacheln,
-          aktiv: ebenenAktiv(route.page, route.standortBereich),
+          aktiv: ebenenAktiv(route.page, standortBereich),
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
@@ -943,7 +949,7 @@ function Vorschau() {
       fleetLabel={FLOTTE}
       onNavigate={navigateSchale}
       standortBereiche={standortObenReiter}
-      standortAktiv={ebenenAktiv(route.page, route.standortBereich)}
+      standortAktiv={ebenenAktiv(route.page, standortBereich)}
       onOpenBereich={navigate}
     />
   );
@@ -1024,13 +1030,13 @@ function Vorschau() {
           {standortReiter.length > 0 && (
             <EbenenTabs
               reiter={standortReiter}
-              aktiv={ebenenAktiv(route.page, route.standortBereich)}
+              aktiv={ebenenAktiv(route.page, standortBereich)}
               leiste={leiste}
               label={`Reiter des Standorts ${standort.name}`}
               onOpen={navigate}
             />
           )}
-          {!route.standortBereich && (
+          {!standortBereich && (
             <StandortUebersichtPage
               standort={standort}
               sites={sites}
@@ -1040,7 +1046,7 @@ function Vorschau() {
               einstiege={einstiege}
             />
           )}
-          {route.standortBereich === 'gebaeude' && (
+          {standortBereich === 'gebaeude' && (
             <StandortGebaeudePage
               key={standort.id}
               standort={standort}
@@ -1054,10 +1060,10 @@ function Vorschau() {
               }}
             />
           )}
-          {route.standortBereich === 'anlagen' && (
+          {standortBereich === 'anlagen' && (
             <StandortAnlagenPage standort={standort} sites={sites} onNavigate={navigate} onReload={() => undefined} betriebsart="endkunde" />
           )}
-          {route.standortBereich === 'kennzahlen' && (
+          {standortBereich === 'kennzahlen' && (
             <KennzahlenPage
               key={standort.id}
               standort={{ id: standort.id, name: standort.name }}
@@ -1067,7 +1073,7 @@ function Vorschau() {
               onListe={() => navigate(standortBereichRoute(standort.id, 'kennzahlen'))}
             />
           )}
-          {route.standortBereich === 'berichte' && (
+          {standortBereich === 'berichte' && (
             <BerichtePage
               key={standort.id}
               standort={{ id: standort.id, name: standort.name }}
