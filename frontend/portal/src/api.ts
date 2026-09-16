@@ -992,6 +992,8 @@ export interface Device {
    * aus einem Browser-Aufruf (der auch über ein Service-VPN erfolgt sein kann).
    */
   lanSource?: 'erreicht' | 'schnittstelle' | null;
+  /** Server-derived role; absent on older backends. Never infer it from list order. */
+  fuehrtAnlage?: boolean | null;
 }
 
 export interface MeasurementCatalogPoint {
@@ -6777,6 +6779,18 @@ export interface UemsDatenquelle {
   archiviert_am: string | null;
   zustaendige_box: UemsDatenquelleBox | null;
   zeitraeume: UemsDatenquelleZeitraum[];
+  rueckmeldung?: UemsDatenquelleRueckmeldung | null;
+}
+
+export interface UemsDatenquelleRueckmeldung {
+  zustand: 'liefert' | 'liefert_nicht' | 'meldet_noch_nicht_je_quelle';
+  fehlerklasse: string | null;
+  seit: string | null;
+  gelesen_am: string | null;
+  anfragen_pro_minute: number | null;
+  messwerte_pro_minute: number | null;
+  gemeldet_am: string | null;
+  text: string;
 }
 
 export interface UemsDatenquellenListe {

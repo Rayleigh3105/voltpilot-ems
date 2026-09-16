@@ -293,7 +293,7 @@ type BoxStand = 'online' | 'offline' | 'wartet';
 export function geraeteAhrenberg(jetzt: Date, halle2: BoxStand = 'online'): Device[] {
   const vor = (s: number) => new Date(jetzt.getTime() - s * 1000).toISOString();
   const box = (id: string, siteId: string, externalRef: string, name: string, lastSeenAt: string | null): Device =>
-    ({ id, siteId, externalRef, kind: 'edge', name, status: 'claimed', lastSeenAt, createdAt: '2026-09-30T08:00:00Z' }) as Device;
+    ({ id, siteId, externalRef, kind: 'edge', name, status: 'claimed', lastSeenAt, createdAt: '2026-09-30T08:00:00Z', fuehrtAnlage: true }) as Device;
   return [
     box(C1_IDS.boxHalle1, FIXTURE_IDS.an1, 'VP-BOX-2024-0117', 'Box Halle 1', vor(40)),
     box(

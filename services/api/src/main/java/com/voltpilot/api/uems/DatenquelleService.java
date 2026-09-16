@@ -118,12 +118,16 @@ public class DatenquelleService {
     private final Clock uhr;
     private UebergabeRepository uebergaben;
     private DatenquelleBudgetService budget;
+    private DeviceDataSourceStatusRepository quellstatus;
 
     @org.springframework.beans.factory.annotation.Autowired
     void uebergaben(UebergabeRepository repo) { this.uebergaben = repo; }
 
     @org.springframework.beans.factory.annotation.Autowired
     void budget(DatenquelleBudgetService service) { this.budget = service; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void quellstatus(DeviceDataSourceStatusRepository repo) { this.quellstatus = repo; }
 
     /**
      * @param uhr die Uhr des Dienstes — ohne eigene {@link Clock}-Bean die Systemuhr (UTC);
@@ -491,11 +495,27 @@ public class DatenquelleService {
     private DatenquelleDto.Datenquelle darstellung(Datenquelle q, Lage lage) {
         List<ZustaendigkeitRepository.Zeitraum> zs = lage.von(q.id());
         String jetzt = DatenquelleRegeln.zustaendigeBox(regelZeitraeume(zs), lage.jetzt());
+        UUID box = jetzt == null ? null : UUID.fromString(jetzt);
         return new DatenquelleDto.Datenquelle(q.id(), q.kennzeichen(), q.name(), q.siteId(), q.protokoll(),
                 q.adresse(), q.geraeteIds(), q.netz(), q.mehrereLeser(), q.steuerquelle(), q.vergleichsquelle(),
-                q.kadenzS(), q.archiviertAm(), jetzt == null ? null : dto(UUID.fromString(jetzt), lage.boxen()),
+                q.kadenzS(), q.archiviertAm(), box == null ? null : dto(box, lage.boxen()),
                 zs.stream().map(z -> new DatenquelleDto.Zeitraum(dto(z.deviceId(), lage.boxen()),
-                        z.effectiveFrom(), z.effectiveTo())).toList(), uebergabe(q.id(), lage));
+                        z.effectiveFrom(), z.effectiveTo())).toList(), uebergabe(q.id(), lage),
+                rueckmeldung(box, q.id()));
+    }
+
+    private DatenquelleDto.Rueckmeldung rueckmeldung(UUID box, UUID quelle) {
+        if (box == null || quellstatus == null) return null;
+        DeviceDataSourceStatusRepository.Status status = quellstatus.find(box, quelle);
+        DeviceDataSourceStatusRepository.Ableitung ableitung =
+                DeviceDataSourceStatusRepository.ableiten(status);
+        return new DatenquelleDto.Rueckmeldung(
+                ableitung.zustand().name().toLowerCase(java.util.Locale.ROOT),
+                status == null ? null : status.errorClass(), ableitung.seit(),
+                status == null ? null : status.readAt(),
+                status == null ? null : status.requestsPerMin(),
+                status == null ? null : status.samplesPerMin(),
+                status == null ? null : status.reportedAt(), ableitung.text());
     }
 
     private DatenquelleDto.Uebergabe uebergabe(UUID quelle, Lage lage) {

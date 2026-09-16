@@ -93,6 +93,7 @@ class DatenquelleSchnittstelleVertragTest {
                 Map.entry("DatenquelleBox", DatenquelleDto.Box.class),
                 Map.entry("DatenquelleZeitraum", DatenquelleDto.Zeitraum.class),
                 Map.entry("Datenquelle", DatenquelleDto.Datenquelle.class),
+                Map.entry("DatenquelleRueckmeldung", DatenquelleDto.Rueckmeldung.class),
                 Map.entry("DatenquelleListe", DatenquelleDto.Liste.class),
                 Map.entry("DatenquelleAnlegen", DatenquelleDto.Anlegen.class),
                 Map.entry("DatenquelleBearbeiten", DatenquelleDto.Bearbeiten.class),

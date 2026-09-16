@@ -8,6 +8,7 @@ import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
+import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
@@ -80,6 +81,12 @@ public class DeviceController {
     private final com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides;
     private final CommandLogRepository commandLog;
     private final RechtPruefung rechte;
+    private LeadDeviceService leadDevices;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void leadDevices(LeadDeviceService service) {
+        this.leadDevices = service;
+    }
 
     public DeviceController(DeviceRepository devices, Geltungsbereich geltungsbereich, RechtPruefung rechte,
             AssetRepository assets,
@@ -114,7 +121,19 @@ public class DeviceController {
 
     @GetMapping
     public SichtbareListe<DeviceDto> listDevices() {
-        return new SichtbareListe<>(devices.findAll(), teilansicht.jetzt());
+        var liste = devices.findAll();
+        var fuehrend = new java.util.HashMap<java.util.UUID, java.util.UUID>();
+        if (leadDevices != null) {
+            liste.stream().map(DeviceDto::siteId).distinct().forEach(site -> {
+                java.util.UUID box = leadDevices.fuehrendeBox(site).box();
+                if (box != null) fuehrend.put(site, box);
+            });
+        }
+        return new SichtbareListe<>(liste.stream().map(d -> new DeviceDto(
+                d.id(), d.siteId(), d.externalRef(), d.kind(), d.name(), d.status(),
+                d.lastSeenAt(), d.createdAt(), d.lanHost(), d.lanSeenAt(), d.lanSource(),
+                fuehrend.get(d.siteId()) == null ? null : d.id().equals(fuehrend.get(d.siteId()))))
+                .toList(), teilansicht.jetzt());
     }
 
     @PostMapping("/claim")

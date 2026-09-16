@@ -29,13 +29,25 @@ public final class DatenquelleDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Zeitraum(Box box, Instant effectiveFrom, Instant effectiveTo) {}
 
+    /** Latest source-specific feedback from the responsible box; missing only without a box. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Rueckmeldung(
+            String zustand,
+            String fehlerklasse,
+            Instant seit,
+            Instant gelesenAm,
+            Double anfragenProMinute,
+            Double messwerteProMinute,
+            Instant gemeldetAm,
+            String text) {}
+
     /**
      * Eine Datenquelle. {@code zustaendige_box} ist die Box, deren Zeitraum JETZT läuft —
      * {@code null}, wenn keine liest (Entwurf, Lücke oder erst geplant). Lebenszyklus und
-     * „liefert Daten“ sind bewusst KEINE Felder: „aktiv“ ist eine Beobachtung aus dem
-     * Herzschlag (IP-14) und wird hier nicht geraten. {@code kadenz_s} ist {@code null}, wo der
-     * Takt nicht erhoben ist — eine aus dem Bestand übernommene Quelle, deren Komponenten keinen
-     * nennen (IP-4).
+     * {@code rueckmeldung} ist die jüngste Beobachtung der zuständigen Box aus dem Herzschlag
+     * (IP-14), nie aus Lebenszyklus oder Messwerten geraten. {@code kadenz_s} ist {@code null}, wo
+     * der Takt nicht erhoben ist — eine aus dem Bestand übernommene Quelle, deren Komponenten
+     * keinen nennen (IP-4).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Datenquelle(
@@ -54,7 +66,8 @@ public final class DatenquelleDto {
             Instant archiviertAm,
             Box zustaendigeBox,
             List<Zeitraum> zeitraeume,
-            Uebergabe uebergabe) {}
+            Uebergabe uebergabe,
+            Rueckmeldung rueckmeldung) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Uebergabe(String zustand, Instant seit, Box boxAlt, Box boxNeu) {}

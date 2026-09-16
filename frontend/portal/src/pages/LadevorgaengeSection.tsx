@@ -32,7 +32,7 @@ import {
 import { LadesaeuleAnbindenDrawer } from '../components/LadesaeuleAnbinden';
 import { FahrzeugDialog } from '../components/FahrzeugDialog';
 import { verlaufFahrzeug, type FahrzeugWunsch, type SiteFahrzeuge } from '../fahrzeugProfile';
-import { boxOf, boxRefOf, chargerGeraetId } from '../geraetSeite';
+import { fuehrendeBoxOf, boxRefOf, chargerGeraetId } from '../geraetSeite';
 import { anlageRoute, geraetSeiteHash, hashForRoute } from '../nav';
 import { Icon } from '../../designsystem/components/core/Icon';
 import './Ladevorgaenge.css';
@@ -68,7 +68,7 @@ export function LadevorgaengeSection({
   const boxRef = boxRefOf(devices, site.id);
   // Die Box kennt ihre eigene Adresse (D5) - der Assistent baut daraus den
   // `ws://`-Endpunkt. Ohne EINE eindeutige Box nennt er ehrlich den Weg.
-  const box = boxOf(devices, site.id);
+  const box = fuehrendeBoxOf(devices, site.id);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [error, setError] = useState<string | null>(null);
   // „Jetzt voll laden": die EINE Aktion dieser Seite. Sie setzt keine Grenze -

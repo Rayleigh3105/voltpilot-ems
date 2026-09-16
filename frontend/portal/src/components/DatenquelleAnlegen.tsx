@@ -79,8 +79,9 @@ export function DatenquelleAnlegen({
   );
   useEffect(() => {
     if (!boxId && boxen.length) {
+      const [ersteBox] = boxen;
       const heim = geraete?.find((g) => g.kind === 'edge' && g.siteId === anlage.id && boxen.some((b) => b.id === g.id));
-      setBoxId(heim?.id ?? boxen.find((b) => b.verbunden === 'Verbunden')?.id ?? boxen[0].id);
+      setBoxId(heim?.id ?? boxen.find((b) => b.verbunden === 'Verbunden')?.id ?? ersteBox.id);
     }
   }, [boxen, boxId, geraete, anlage.id]);
   const box = boxen.find((b) => b.id === boxId) ?? null;
@@ -217,8 +218,9 @@ export function DatenquelleAnlegen({
               {budgetFehler?.rechnung.auswege.takt && budgetFehler.rechnung.auswege.takt_s && <Button variant="outline" onClick={() => {
                 setFormular((f) => ({ ...f, kadenz: String(budgetFehler.rechnung.auswege.takt_s) })); setPruefung(null); setBudgetFehler(null);
               }}>{budgetFehler.rechnung.auswege.takt}</Button>}
-              {budgetFehler?.rechnung.auswege.andere_box && budgetFehler.rechnung.auswege.boxen[0] && <Button variant="outline" onClick={() => {
-                setBoxId(budgetFehler.rechnung.auswege.boxen[0].id); setPruefung(null); setBudgetFehler(null);
+              {budgetFehler?.rechnung.auswege.andere_box && budgetFehler.rechnung.auswege.boxen.length > 0 && <Button variant="outline" onClick={() => {
+                const [alternative] = budgetFehler.rechnung.auswege.boxen;
+                setBoxId(alternative.id); setPruefung(null); setBudgetFehler(null);
               }}>{budgetFehler.rechnung.auswege.andere_box}</Button>}
             </div>
           </section>

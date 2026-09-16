@@ -11,6 +11,7 @@ import {
   type Site,
   type SiteEntities,
   type SiteSource,
+  type UemsDatenquelle,
 } from '../api';
 import type { SiteCharging } from '../ladepunkte';
 import { boxGeraeteListe, boxSeite, GERAETE_HINWEIS, type BoxSeiteView } from '../boxSeite';
@@ -20,7 +21,7 @@ import { GeraetRahmen, RahmenSektion } from '../components/GeraetRahmen';
 import { DangerZone } from '../components/DangerZone';
 import { unclaimConsequences } from '../components/DeviceDrawers';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
+import { anlageRoute, boxSeiteHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
 import {
   aufzeichnungSeit,
   genauigkeitsSatz,
@@ -87,6 +88,7 @@ export function BoxSeiteSection({
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
+  const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminFehler, setAdminFehler] = useState<string | null>(null);
@@ -118,6 +120,7 @@ export function BoxSeiteSection({
     soft(api.curtailmentStatus(site.id), setCurtailment);
     soft(api.edgeVersions().then((antwort) => antwort.eintraege), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
+    soft(api.datenquellen(site.id).then((a) => a.datenquellen), setDatenquellen);
     setNow(Date.now());
     if (showTechnicalLayer() && boxDevice) {
       void Promise.all([
@@ -190,11 +193,12 @@ export function BoxSeiteSection({
       curtailment,
       geraete: boxGeraeteListe(data.localSetup, sources, charging?.chargers ?? null, now),
       localSetup: data.localSetup,
+      datenquellen,
       now,
     });
   }, [
     data, boxRef, site.name, site.id, devices, devicesFetchedAt, edgeVersions, control,
-    curtailment, sources, charging, now,
+    curtailment, sources, charging, datenquellen, now,
   ]);
 
   // Geräteseiten Stufe 2: DERSELBE Verlauf wie überall - neueste Zeile oben,
@@ -236,7 +240,7 @@ export function BoxSeiteSection({
       view?.gefunden
         ? {
           id: 'komponenten',
-          titel: 'Geräte an dieser Box',
+          titel: 'Datenquellen und Geräte',
           kurzfassung: kurz(view.geraete.length > 0
             ? `${view.geraete.length} ${view.geraete.length === 1 ? 'Gerät' : 'Geräte'}`
             : null),
@@ -283,6 +287,15 @@ export function BoxSeiteSection({
             title="Diese Box ist hier nicht (mehr) zu finden"
             description={view.grund ?? ''}
           />
+          {view.auswahl.length > 0 && (
+            <div className="vp-box-auswahl" aria-label="VoltPilot-Box wählen">
+              {view.auswahl.map((b) => (
+                <a key={b.ref} href={boxSeiteHash(site.id, b.ref)}>
+                  {b.name}<Icon name="chevron-right" size={14} />
+                </a>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
@@ -322,6 +335,16 @@ export function BoxSeiteSection({
                 </Card>
               ))}
             </div>
+            {view.faehigkeiten && (
+              <div className="vp-box-faehigkeiten" data-testid="box-faehigkeiten">
+                <b>{view.faehigkeiten}</b>
+                {view.updateNoetig && (
+                  <a href={hashForRoute(pageRoute('edge-updates'))}>
+                    Update planen <Icon name="chevron-right" size={14} />
+                  </a>
+                )}
+              </div>
+            )}
           </RahmenSektion>
 
           {/* 2 · Befehle - was die Box ÜBERBRINGT (die anlagenweiten). */}
@@ -354,8 +377,30 @@ export function BoxSeiteSection({
             <ZeilenListe zeilen={view.grenzen} />
           </RahmenSektion>
 
-          {/* 4 · Komponenten - die GERÄTE sind hier die Absprungliste. */}
+          {/* 4 · Komponenten - zuerst die Quellen der Box, dann ihre Geräte. */}
           <RahmenSektion id="komponenten">
+            {view.quellenSatz && (
+              <div className="vp-box-quellen" data-testid="box-quellen">
+                <div className="vp-box-quellen-kopf">
+                  <h3>{view.quellenSatz}</h3>
+                  {view.budgetSumme && <span>{view.budgetSumme}</span>}
+                </div>
+                {view.quellen.length === 0 ? <p className="vp-note">Datenquelle anlegen</p> : (
+                  <ul>
+                    {view.quellen.map((q) => (
+                      <li key={q.id}>
+                        <span className={`vp-health-dot vp-health-${q.ton}`} />
+                        <div>
+                          <b>{q.kennzeichen} · {q.name}</b>
+                          <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
+                          <small>{q.budget}</small>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {view.geraeteLeer && <p className="vp-note">{view.geraeteLeer}</p>}
             {view.geraete.length > 0 && (
               <>

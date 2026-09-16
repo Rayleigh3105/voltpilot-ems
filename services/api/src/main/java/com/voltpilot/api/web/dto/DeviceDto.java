@@ -28,7 +28,17 @@ import java.util.UUID;
  */
 public record DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
         String status, Instant lastSeenAt, Instant createdAt,
-        String lanHost, Instant lanSeenAt, String lanSource) {
+        String lanHost, Instant lanSeenAt, String lanSource,
+        /** Additive portal fact: this is the one box that currently leads its Anlage. */
+        Boolean fuehrtAnlage) {
+
+    /** The pre-UEMS-box-overview shape, without the derived leading-box fact. */
+    public DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
+            String status, Instant lastSeenAt, Instant createdAt,
+            String lanHost, Instant lanSeenAt, String lanSource) {
+        this(id, siteId, externalRef, kind, name, status, lastSeenAt, createdAt,
+                lanHost, lanSeenAt, lanSource, null);
+    }
 
     /**
      * The pre-D5 shape - a device whose reachability is simply not reported.
@@ -38,6 +48,7 @@ public record DeviceDto(UUID id, UUID siteId, String externalRef, String kind, S
      */
     public DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
             String status, Instant lastSeenAt, Instant createdAt) {
-        this(id, siteId, externalRef, kind, name, status, lastSeenAt, createdAt, null, null, null);
+        this(id, siteId, externalRef, kind, name, status, lastSeenAt, createdAt,
+                null, null, null, null);
     }
 }

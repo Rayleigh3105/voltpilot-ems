@@ -116,7 +116,8 @@ const EINBAU: Record<string, string> = { 'GR-7': 'C-1', 'GR-8': 'AHR-LP-01', 'GR
 
 function zeitraeume(d: Def): UemsDatenquelleZeitraum[] {
   if (d.boxen.length === 1) {
-    return [{ box: box(d.boxen[0]), effective_from: BOX_AB[d.boxen[0]], effective_to: null }];
+    const [einzige] = d.boxen;
+    return [{ box: box(einzige), effective_from: BOX_AB[einzige], effective_to: null }];
   }
   const [alt, neu] = d.boxen;
   return [
@@ -146,6 +147,16 @@ function datenquelle(d: Def, jetzt: string): UemsDatenquelle {
     archiviert_am: null,
     zustaendige_box: laufend ? laufend.box : null,
     zeitraeume: zs,
+    rueckmeldung: d.boxen.includes('E-3') ? null : {
+      zustand: 'liefert',
+      fehlerklasse: null,
+      seit: null,
+      gelesen_am: new Date(Date.parse(jetzt) - 30_000).toISOString(),
+      anfragen_pro_minute: d.kadenz_s === 10 ? 6 : 1,
+      messwerte_pro_minute: d.geraete_ids.length * (60 / d.kadenz_s),
+      gemeldet_am: jetzt,
+      text: 'Liefert Daten',
+    },
   };
 }
 
@@ -167,7 +178,7 @@ export function ahrenbergUemsGeraete(anlage: string): { geraete: UemsGeraet[] } 
       data_source_id: quelleId(quellen.get(dq)!.nr),
       komponenten: (GERAET_KOMPONENTEN[kz] ?? []).map((k) => ({
         entity_id: komponenteId(k),
-        gueltig_ab: BOX_AB[quellen.get(dq)!.boxen[0]],
+        gueltig_ab: BOX_AB[quellen.get(dq)!.boxen.find(() => true)!],
         gueltig_bis: null,
       })),
     }));
