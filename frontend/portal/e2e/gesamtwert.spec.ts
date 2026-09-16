@@ -232,7 +232,7 @@ for (const width of [375, 768, 1440]) {
   test(`kein waagerechter Überlauf bei ${width} px`, async ({ page }, testInfo) => {
     // Layout ist von der Engine unabhängig — einmal auf Chromium (Viewport wird
     // hier ohnehin gesetzt) genügt und hält den Testlauf leicht.
-    test.skip(testInfo.project.name !== 'desktop-chromium', 'Layout-Abnahme läuft einmal');
+    test.skip(testInfo.project.name !== 'desktop-chromium' && testInfo.project.use.browserName !== 'webkit', 'Layout-Abnahme läuft einmal');
     test.slow();
     const fehler: string[] = [];
     page.on('pageerror', (e) => fehler.push(String(e)));
