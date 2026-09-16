@@ -1,3 +1,5 @@
+import ts from 'typescript';
+import { SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
 import { rechteSeed } from './test/rollenFixtures';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -1949,5 +1951,78 @@ describe('UEMS AP-12 IP-14 · die Berichts-Dialoge sprechen Bericht · Entwurf �
     const texte = laufzeit();
     expect(texte.filter((t) => BERICHT_VERBOTEN.some((w) => t.includes(w)))).toEqual([]);
     expect(texte.filter((t) => /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u.test(t))).toEqual([]);
+  });
+});
+
+/** H-1/E10: nur der bestehende Wortbestand wartet auf H-5/H-7, kein neuer Satz darf hinzukommen. */
+describe('Summenwert: das eine Kundenwort', () => {
+  const altwort = new RegExp(`\\b(?:${SUMMENWERT_VERBOTENE_WOERTER.map((w) => w === 'Gesamtwert' ? `${w}(?:e|en|s)?` : w).join('|')})\\b`);
+  // AST statt Quelltext: JSX-Text vor einem Ausdruck und Template-Sätze werden vollständig erfasst.
+  const texte = (code: string): string[] => {
+    const out: string[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isTemplateExpression(node)) {
+        out.push(node.head.text + node.templateSpans.map((s) => ` ${s.literal.text}`).join(''));
+        return;
+      }
+      if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isJsxText(node)) out.push(node.text);
+      ts.forEachChild(node, visit);
+    };
+    visit(ts.createSourceFile('surface.tsx', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+    return out.filter((t) => !/^[./]/.test(t)).map((t) => t.trim().replace(/\s+/g, ' '));
+  };
+  // EXAKTER Satz, Datei und Höchstzahl. Entfernen ist erlaubt; neue/duplizierte Alttexte sind rot.
+  const bestand: Record<string, number> = {
+    "components/GesamtwertKarten.tsx · Sie können jederzeit einen neuen Gesamtwert zusammenstellen.": 1,
+    "components/GesamtwertKarten.tsx · Ein Wert fehlt gerade — der Gesamtwert bleibt leer statt zu klein.": 1,
+    "components/KennzahlAnlegenDialog.tsx · Messstelle oder Gesamtwert wählen …": 2,
+    "components/SummenwertAssistent.tsx · PV gesamt": 4,
+    "components/SummenwertAssistent.tsx · Name des Gesamtwerts": 1,
+    "components/VerlaufExplorer.tsx · Gesamtwert": 1,
+    "components/VerlaufExplorer.tsx · Diese Werte werden über den Wechselrichter gemessen und stecken in „PV gesamt“. Einen eigenen Verlauf hat dieser Erzeuger nicht — die Gesamt-PV finden Sie im Cockpit und in der Historie.": 1,
+    "gesamtwert.ts · Ihre Anlage meldet noch keine Messwerte, die sich zusammenzählen lassen. Sobald ein Gerät liefert, können Sie hier einen Gesamtwert anlegen.": 1,
+    "gesamtwert.ts · Gerade unvollständig: „ \" liefert keinen aktuellen Wert. Der Gesamtwert bleibt so lange leer, statt eine zu kleine Summe zu zeigen.": 1,
+    "gesamtwert.ts · Gerade unvollständig: „ \" liefern keinen aktuellen Wert. Der Gesamtwert bleibt so lange leer, statt eine zu kleine Summe zu zeigen.": 1,
+    "glossar.ts · Gesamtwert": 1,
+    "help/content/alltag.ts · Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, den Gesamtwert einzuordnen.": 1,
+    "help/content/alltag.ts · Gesamtwerte und einzelne Anlagen": 1,
+    "help/content/alltag.ts · Gesamtwerte und einzelne Anlagen haben unterschiedliche Geltungsbereiche. Prüfen Sie Auswahl und Zeitraum. Andere Geräte oder Betriebsmodelle erklären, warum Ansichten zwischen Anlagen abweichen.": 1,
+    "pages/MesswerteSection.tsx · Stellen Sie aus den Messwerten Ihrer Geräte einen eigenen Gesamtwert zusammen - er erscheint dann hier mit einem dezenten „berechnet\".": 1
+  };
+  it('Konstante und Wortverbote entsprechen dem Vertrag', () => {
+    const v = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/rollen-zuordnung-vectors.json'), 'utf8'));
+    expect(SUMMENWERT).toBe(v.kundenwort);
+    expect(SUMMENWERT_VERBOTENE_WOERTER).toEqual(v.verbotene_woerter);
+    expect(altwort.test(SUMMENWERT)).toBe(false);
+    expect(altwort.test('Gesamt-PV')).toBe(false);
+    for (const wort of SUMMENWERT_VERBOTENE_WOERTER) expect(altwort.test(wort)).toBe(true);
+    expect(texte('<p>Neuer Gesamtwert {name}</p>')).toContain('Neuer Gesamtwert');
+    expect(texte('const s = `Ein Gesamtwert ${name} fehlt`;')).toContain('Ein Gesamtwert fehlt');
+    expect(texte('// Gesamtwert\nimport { Gesamtwert } from "./Gesamtwert";')).toEqual([]);
+  });
+  const alteKonstante: Record<string, number> = {
+    "kennzahlAnlegen.ts": 8,
+    "gesamtwert.ts": 5,
+    "glossar.ts": 1,
+    "components/GesamtwertDialog.tsx": 3,
+    "components/GeraetPvProduktion.tsx": 2,
+    "components/GesamtwertKarten.tsx": 8,
+    "components/SummenwertAssistent.tsx": 3,
+    "pages/MesswerteSection.tsx": 2
+  };
+  it('lässt den Übergangsbestand nur schrumpfen', () => {
+    const gefunden: Record<string, number> = {};
+    for (const file of customerFiles().filter((f) => !f.includes('/test/'))) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      const code = readFileSync(file, 'utf8').replace(/export const SUMMENWERT_VERBOTENE_WOERTER = \[[^;]+;/, '');
+      expect((stripComments(code).match(/\bGESAMTWERT\b/g) ?? []).length, `${rel}: neue Nutzung des alten Wortexports`)
+        .toBeLessThanOrEqual(alteKonstante[rel] ?? 0);
+      for (const text of texte(code).filter((t) => altwort.test(t))) {
+        const key = `${rel} · ${text}`;
+        gefunden[key] = (gefunden[key] ?? 0) + 1;
+      }
+    }
+    const neu = Object.entries(gefunden).filter(([key, n]) => n > (bestand[key] ?? 0));
+    expect(neu, JSON.stringify(neu, null, 2)).toEqual([]);
   });
 });
