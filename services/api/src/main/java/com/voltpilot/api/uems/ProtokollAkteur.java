@@ -113,7 +113,7 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
 
     /** Nie zugewiesen = Kundenadministrator (E12); sonst die erste wirksame Rolle in der Reihenfolge der Matrix. */
     private static Optional<Rolle> hoechsteRolle(Zugriff z) {
-        if (z.zugang() == Zugang.KONTO && z.nieZugewiesen()) {
+        if (z.zugang() == Zugang.KONTO && z.bestandskonto()) {
             return Optional.of(Rolle.KUNDENADMINISTRATOR);
         }
         return Arrays.stream(Rolle.values())

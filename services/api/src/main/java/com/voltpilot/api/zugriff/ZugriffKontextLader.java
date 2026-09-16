@@ -103,7 +103,7 @@ public class ZugriffKontextLader {
             }
             List<Zeile> zeilen = zuweisungen(sub, jetzt);
             return Ergebnis.mit(new Zugriff(sub, konto, tenant, Zugang.KONTO, zeilen, jetzt,
-                    zeilen.isEmpty() && nieZugewiesen(sub)));
+                    zeilen.isEmpty() && bestandskonto(sub)));
         }
         if (kundenbereichKopf != null && !kundenbereichKopf.isBlank()) {
             return unterstuetzung(sub, konto, kundenbereichKopf.trim(), jetzt);
@@ -142,12 +142,15 @@ public class ZugriffKontextLader {
     }
 
     /**
-     * Die Bestandsregel E12 in der Anfrage: hatte das Kundenkonto in diesem Kundenbereich NIE eine Zuweisung — auch
-     * keine beendete oder künftige? Ein Lesefehler heißt nein, also der enge Zaun.
+     * Die Bestandsregel E12 in der Anfrage — jetzt mit STICHTAG ({@code V20260916060000}): ein Bestandskonto hatte in
+     * diesem Kundenbereich NIE eine Zuweisung (auch keine beendete oder künftige) UND der Kundenbereich ist noch nicht
+     * übernommen. Nach der Übernahme ist ein Konto ohne Zuweisung ein NEUES Konto und bekommt den engsten Zaun.
+     *
+     * <p>Ein Lesefehler heißt nein, also der enge Zaun.
      */
-    private boolean nieZugewiesen(String sub) {
+    private boolean bestandskonto(String sub) {
         try {
-            return !zugriffe.hatJeEineZuweisung(sub);
+            return zugriffe.bestandskonto(sub);
         } catch (RuntimeException e) {
             log.warn("Zuweisungs-Geschichte von {} nicht lesbar - enger Zaun: {}", sub, e.toString());
             zaehle("fehler");

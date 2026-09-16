@@ -60,6 +60,10 @@ import org.testcontainers.utility.DockerImageName;
  * (Testcontainers, Docker nötig, sonst übersprungen) — Keycloak als Attrappe, der Rest echt: RLS-Verbindung,
  * Transaktion, Tabellen aus {@code V20260915030000}.
  *
+ * <p><b>Der STICHTAG</b> (Befund E12, {@code V20260916060000}): der Start-Lauf schliesst den Bestand EINES
+ * Kundenbereichs ab, ein einzeln nachgezogenes Konto nie — und ein Kundenbereich, der mit seinem ersten Konto
+ * entsteht, beginnt sofort ohne die Regel. Ein zweiter Lauf verschiebt ihn nicht.
+ *
  * <p><b>Die wichtigste Eigenschaft des Pakets: niemand verliert Zugriff.</b> Ein Bestandsmandant mit mehreren
  * Konten — darunter die Träger der Realm-Rollen {@code admin} und {@code site-admin} und ein deaktiviertes Konto —
  * hat danach für JEDES Konto genau eine wirksame, unbefristete, mandantenweite Zuweisung als Kundenadministrator,
@@ -217,6 +221,18 @@ class ZugriffBestandTest {
             }
         }
         assertThat(erlaubt).as("3 aktive Konten × Zeilen × 2 Ziele").isGreaterThan(3 * 20 * 2);
+
+        // Befund E12: der Lauf hat den Bestand BEIDER Kundenbereiche abgeschlossen - je EINE Zeile, `bestandslauf`,
+        // zum selben Zeitpunkt wie die Zuweisungen, mit der Zahl der betrachteten Konten.
+        assertThat(lauf.stichtageNeu()).as("beide Kundenbereiche dieses Tests, mindestens").isGreaterThanOrEqualTo(2);
+        assertThat(als(ahrenberg, () -> zugriffe.stichtag()))
+                .contains(new ZugriffRepository.Stichtag(JETZT, ZugriffBestand.HERKUNFT_LAUF, 4));
+        assertThat(als(nordwind, () -> zugriffe.stichtag()))
+                .contains(new ZugriffRepository.Stichtag(JETZT, ZugriffBestand.HERKUNFT_LAUF, 1));
+        assertThat(als(ahrenberg, () -> zugriffe.bestandskonto("kc-jonas")))
+                .as("mit Stichtag ist kein Konto mehr Bestandskonto in der Anfrage").isFalse();
+        assertThat(als(ahrenberg, () -> zugriffe.bestandskonto("kc-gibt-es-nicht")))
+                .as("auch ein Konto ohne jede Zuweisung nicht").isFalse();
     }
 
     @Test
@@ -230,8 +246,11 @@ class ZugriffBestandTest {
 
         assertThat(laeufer.lauf().zuweisungenNeu()).isEqualTo(2);
         List<Long> vorher = zahlen(wien);
+        ZugriffRepository.Stichtag ersterStichtag = als(wien, () -> zugriffe.stichtag()).orElseThrow();
         ZugriffBestandLaeufer.Lauf zweiter = laeufer.lauf();
         assertThat(zweiter.geaendert()).as("ein zweiter Lauf schreibt nichts").isFalse();
+        assertThat(zweiter.stichtageNeu()).as("und verschiebt keinen Stichtag").isZero();
+        assertThat(als(wien, () -> zugriffe.stichtag())).contains(ersterStichtag);
         assertThat(zweiter.konten()).isEqualTo(2);
         assertThat(zahlen(wien)).isEqualTo(vorher);
         assertThat(als(wien, () -> zugriffe.zuweisungen("kc-w-ines")).get(0).zeitzone())
@@ -261,6 +280,9 @@ class ZugriffBestandTest {
         bestand.beiAnlage(new KundenbenutzerAngelegt(selbst, konto("kc-neu", "neu@example.de", null, null, true, selbst)));
         assertThat(TenantContext.get()).isEqualTo(umschalter);
         TenantContext.clear();
+        // Befund E12: ein einzeln nachgezogenes Konto sagt NICHTS ueber die Vollstaendigkeit des Bestands -
+        // der Kundenbereich bleibt ohne Stichtag, die Regel gilt dort weiter.
+        assertThat(als(selbst, () -> zugriffe.stichtag())).as("kein Stichtag aus einem einzelnen Konto").isEmpty();
         assertThat(als(selbst, () -> zugriffe.wirksam("kc-neu", JETZT.plusSeconds(1))))
                 .extracting(Zeile::rolle).containsExactly(Rolle.KUNDENADMINISTRATOR);
         assertThat(root.queryForObject("SELECT anzeigename FROM benutzer WHERE tenant_id = ? AND sub = 'kc-neu'",
@@ -278,6 +300,28 @@ class ZugriffBestandTest {
         assertThat(fehler()).isEqualTo(fehlerVorher + 1);
         assertThat(TenantContext.get()).isNull();
         assertThat(root.queryForObject("SELECT count(*) FROM benutzer WHERE sub = 'kc-x'", Long.class)).isZero();
+    }
+
+    /**
+     * Befund E12: ein Kundenbereich, der mit seinem ersten Konto ENTSTEHT (Selbstregistrierung), hat keinen
+     * Bestand — er bekommt sofort seinen Stichtag und beginnt ohne die Regel. Sein erstes Konto ist trotzdem
+     * Kundenadministrator, aber ueber eine AUSDRUECKLICHE Zuweisung, nicht ueber die Regel in der Anfrage.
+     */
+    @Test
+    void einNeuerKundenbereichBekommtSeinenStichtagSofortUndSeinErstesKontoEineAusdrueckicheZuweisung() {
+        UUID frisch = kunde("Hofmann Solar Neu", "Europe/Berlin");
+        KeycloakUser erstes = konto("kc-frisch", "inhaber@example.de", "Ida", "Hofmann", true, frisch);
+
+        bestand.beiAnlage(new KundenbenutzerAngelegt(frisch, erstes, true));
+
+        assertThat(als(frisch, () -> zugriffe.stichtag()))
+                .contains(new ZugriffRepository.Stichtag(JETZT, ZugriffBestand.HERKUNFT_NEU, 1));
+        assertThat(als(frisch, () -> zugriffe.wirksam("kc-frisch", JETZT.plusSeconds(1))))
+                .extracting(Zeile::rolle).containsExactly(Rolle.KUNDENADMINISTRATOR);
+        assertThat(als(frisch, () -> zugriffe.bestandskonto("kc-frisch"))).isFalse();
+        // Ein ZWEITES Konto in diesem Kundenbereich ist kein Bestandskonto mehr: ohne Zuweisung sieht es nichts.
+        assertThat(als(frisch, () -> zugriffe.bestandskonto("kc-frisch-zwei")))
+                .as("neu angelegt heisst nicht unternehmensweit").isFalse();
     }
 
     @Test
@@ -321,7 +365,7 @@ class ZugriffBestandTest {
 
     private static List<Long> zahlen(UUID tenant) {
         List<Long> z = new ArrayList<>();
-        for (String tabelle : List.of("benutzer", "zugriff", "zugriff_protokoll")) {
+        for (String tabelle : List.of("benutzer", "zugriff", "zugriff_protokoll", "zugriff_bestand")) {
             z.add(root.queryForObject("SELECT count(*) FROM " + tabelle + " WHERE tenant_id = ?", Long.class, tenant));
         }
         return z;

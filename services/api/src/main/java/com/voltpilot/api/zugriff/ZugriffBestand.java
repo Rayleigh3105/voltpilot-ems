@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,8 +48,18 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Fehler hier wird geloggt und gezählt ({@value #ZAEHLER}{@code {ergebnis="fehler"}}), die Anlage des Kontos
  * gelingt wie vorher, und der nächste Start holt die Zuweisung nach.
  *
+ * <p><b>Der STICHTAG</b> ({@code V20260916060000}, Befund aus IP-5). Die Regel E12 gilt seit IP-4 auch IN DER
+ * ANFRAGE ({@code ZugriffContext.Zugriff#modus}), damit eine Störung dieses Laufs keinen Kunden aussperrt. Ohne
+ * Stichtag wäre aber auch ein im Portal frisch angelegtes Konto unternehmensweit (AP-03 IP-13/IP-14). Darum hält
+ * {@link #bestandAbschliessen} fest, dass der Bestand EINES Kundenbereichs übernommen ist: danach trägt jedes
+ * Bestandskonto eine echte Zeile in {@code zugriff}, und „nie zugewiesen" kann nur noch „nach dem Stichtag
+ * entstanden" heißen. Den Stichtag setzt nur, wer die VOLLSTÄNDIGE Kontenliste des Kundenbereichs übernimmt
+ * ({@link ZugriffBestandLaeufer}) — oder ein Kundenbereich, der mit seinem ersten Konto entsteht
+ * ({@link KundenbenutzerAngelegt#neuerKundenbereich}). Ein einzeln nachgezogenes Konto setzt ihn NIE.
+ *
  * <p>Je Kundenbereich EINE Transaktion unter einer Beratungssperre, damit Start-Lauf und Anlage-Ereignis
- * dasselbe Konto nicht zweimal zuweisen (die Exklusion der Tabelle wäre die Wand dahinter).
+ * dasselbe Konto nicht zweimal zuweisen (die Exklusion der Tabelle wäre die Wand dahinter). Der Stichtag entsteht
+ * in derselben Transaktion wie die Zuweisungen: es gibt ihn nie ohne sie.
  */
 @Service
 public class ZugriffBestand {
@@ -60,6 +71,12 @@ public class ZugriffBestand {
 
     /** Prometheus: {@code voltpilot_zugriff_bestand_total}, Tag {@code ergebnis} = zugewiesen | fehler. */
     public static final String ZAEHLER = "voltpilot_zugriff_bestand";
+
+    /** Die Herkunft eines Stichtags in {@code zugriff_bestand} (Betriebsauskunft, kein Vertragswort). */
+    public static final String HERKUNFT_LAUF = "bestandslauf";
+
+    /** Der Kundenbereich ist mit seinem ersten Konto entstanden — er hatte nie einen Bestand. */
+    public static final String HERKUNFT_NEU = "neuer_kundenbereich";
 
     /** Die Zone des Vertrags, wenn der Kundenbereich (noch) kein Unternehmen hat. */
     private static final ZoneId VORGABE_ZONE = ZoneId.of("Europe/Berlin");
@@ -89,8 +106,17 @@ public class ZugriffBestand {
         this.uhr = uhr;
     }
 
-    /** Was eine Übernahme tat. Ein zweiter Lauf: {@link #geaendert()} {@code false}. */
-    public record Ergebnis(int konten, int benutzerNeu, int zuweisungenNeu) {
+    /**
+     * Was eine Übernahme tat. Ein zweiter Lauf: {@link #geaendert()} {@code false}.
+     *
+     * @param stichtagNeu die Übernahme hat den Stichtag des Kundenbereichs gesetzt (es gab ihn noch nicht)
+     */
+    public record Ergebnis(int konten, int benutzerNeu, int zuweisungenNeu, boolean stichtagNeu) {
+
+        /** Ohne Stichtag: ein einzeln nachgezogenes Konto. */
+        public Ergebnis(int konten, int benutzerNeu, int zuweisungenNeu) {
+            this(konten, benutzerNeu, zuweisungenNeu, false);
+        }
 
         public boolean geaendert() {
             return benutzerNeu > 0 || zuweisungenNeu > 0;
@@ -98,10 +124,29 @@ public class ZugriffBestand {
     }
 
     /**
-     * Übernimmt die Konten in den Kundenbereich des {@link TenantContext} — in EINER Transaktion. Ein Konto
-     * eines anderen Kundenbereichs wird übergangen, nie hier eingetragen.
+     * Übernimmt EINZELNE Konten in den Kundenbereich des {@link TenantContext} — in EINER Transaktion. Ein Konto
+     * eines anderen Kundenbereichs wird übergangen, nie hier eingetragen. Der Stichtag bleibt unberührt: wer nur
+     * ein Konto nachzieht, weiß nicht, ob der Bestand vollständig ist.
      */
     public Ergebnis uebernehmen(List<KeycloakUser> konten) {
+        return uebernehmen(konten, null);
+    }
+
+    /**
+     * Übernimmt die VOLLSTÄNDIGE Kontenliste des Kundenbereichs und setzt damit seinen Stichtag: ab jetzt gilt die
+     * Bestandsregel E12 hier nicht mehr, ein Konto ohne Zuweisung ist ein neues Konto.
+     *
+     * <p>Nur aufrufen, wenn die Liste wirklich vollständig ist — eine abgeschnittene Liste würde Bestandskonten
+     * aussperren. {@link ZugriffBestandLaeufer} prüft das.
+     *
+     * @param herkunft {@link #HERKUNFT_LAUF} oder {@link #HERKUNFT_NEU}
+     */
+    public Ergebnis bestandAbschliessen(List<KeycloakUser> konten, String herkunft) {
+        return uebernehmen(konten, Objects.requireNonNull(herkunft, "herkunft"));
+    }
+
+    /** @param stichtagHerkunft {@code null} = kein Stichtag (nachgezogenes Konto). */
+    private Ergebnis uebernehmen(List<KeycloakUser> konten, String stichtagHerkunft) {
         UUID tenant = TenantContext.get();
         if (tenant == null) {
             throw new IllegalStateException("Die Bestandsübernahme braucht einen Kundenbereich (TenantContext)");
@@ -131,7 +176,10 @@ public class ZugriffBestand {
                     zuweisungen++;
                 }
             }
-            return new Ergebnis(betrachtet, neu, zuweisungen);
+            // Der Stichtag zuletzt: es gibt ihn nie ohne die Zuweisungen derselben Transaktion.
+            boolean stichtag = stichtagHerkunft != null
+                    && zugriffe.stichtagSetzen(jetzt, stichtagHerkunft, betrachtet);
+            return new Ergebnis(betrachtet, neu, zuweisungen, stichtag);
         });
         zugewiesen.increment(e.zuweisungenNeu());
         return e;
@@ -141,13 +189,17 @@ public class ZugriffBestand {
      * Das neu angelegte Konto sofort übernehmen — isoliert: wirft nie, der Anlageweg bleibt, wie er war.
      * Der {@link TenantContext} des Aufrufers (etwa der Mandanten-Umschalter des Plattform-Admins) wird
      * danach wiederhergestellt.
+     *
+     * <p>Ist der Kundenbereich mit diesem Konto ENTSTANDEN (Selbstregistrierung), ist sein Bestand damit
+     * vollständig — er bekommt sofort seinen Stichtag und beginnt ohne die Regel E12. In einem bestehenden
+     * Kundenbereich bleibt der Stichtag unberührt; dort entscheidet allein der Start-Lauf.
      */
     @EventListener
     public void beiAnlage(KundenbenutzerAngelegt ereignis) {
         UUID vorher = TenantContext.get();
         try {
             TenantContext.set(ereignis.tenantId());
-            uebernehmen(List.of(ereignis.konto()));
+            uebernehmen(List.of(ereignis.konto()), ereignis.neuerKundenbereich() ? HERKUNFT_NEU : null);
         } catch (RuntimeException ex) {
             fehler.increment();
             log.error("UEMS-Zugriff: das neue Konto im Kundenbereich {} blieb ohne Zuweisung; der nächste Start "

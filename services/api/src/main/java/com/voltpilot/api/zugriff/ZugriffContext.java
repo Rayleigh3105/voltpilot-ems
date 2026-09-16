@@ -67,9 +67,11 @@ public final class ZugriffContext {
      * @param zuweisungen die zu {@code stand} wirksamen Zuweisungen des Aufrufers in diesem Kundenbereich; für
      *     Partner und Plattform nur ihre Unterstützungen, am Umschalter keine
      * @param stand der Zeitpunkt, zu dem „wirksam" gilt
+     * @param bestandskonto ein Kundenkonto, für das die Bestandsregel E12 gilt: es hatte in diesem Kundenbereich nie
+     *     eine Zuweisung UND der Kundenbereich hat noch keinen Stichtag ({@link ZugriffRepository#bestandskonto})
      */
     public record Zugriff(String sub, Konto konto, UUID kundenbereich, Zugang zugang,
-            List<ZugriffRepository.Zeile> zuweisungen, Instant stand, boolean nieZugewiesen) {
+            List<ZugriffRepository.Zeile> zuweisungen, Instant stand, boolean bestandskonto) {
 
         public Zugriff {
             Objects.requireNonNull(kundenbereich, "kundenbereich");
@@ -86,10 +88,15 @@ public final class ZugriffContext {
          * {@code unternehmen}, wenn das Kundenkonto eine wirksame mandantenweite Zuweisung hat — und am Umschalter,
          * der heute den ganzen Kundenbereich sieht (W3).
          *
-         * <p>Ebenso ein Kundenkonto, das in diesem Kundenbereich NIE eine Zuweisung hatte ({@code nieZugewiesen}): die
-         * Bestandsregel E12 („wer noch nie eine Zuweisung hatte, wird Kundenadministrator"), die
-         * {@code ZugriffBestandLaeufer} beim Start schreibt, gilt schon in der Anfrage — der Standort-Zaun (IP-5) sperrt
-         * kein Bestandskonto aus, nur weil der Start-Lauf aus ist, noch nicht lief oder Keycloak nicht erreichte.
+         * <p>Ebenso ein BESTANDSKONTO: die Bestandsregel E12 („wer noch nie eine Zuweisung hatte, wird
+         * Kundenadministrator"), die {@code ZugriffBestandLaeufer} beim Start schreibt, gilt schon in der Anfrage — der
+         * Standort-Zaun (IP-5) sperrt kein Bestandskonto aus, nur weil der Start-Lauf aus ist, noch nicht lief oder
+         * Keycloak nicht erreichte.
+         *
+         * <p><b>Der Stichtag begrenzt sie</b> ({@code V20260916060000}): sobald der Bestand eines Kundenbereichs
+         * übernommen ist, trägt jedes Bestandskonto eine echte Zeile in {@code zugriff} — ein Konto ohne Zuweisung ist
+         * dann NEU und bekommt den engsten Zaun. Ohne Stichtag bleibt es bei der Regel, damit eine Störung des
+         * Start-Laufs keinen Kunden aussperrt.
          *
          * <p>Sonst {@code standorte}: auch ein Kundenkonto, dessen Zuweisungen beendet oder erst künftig sind — der
          * engste Zaun, ein Entzug wirkt sofort.
@@ -99,7 +106,7 @@ public final class ZugriffContext {
                 return Modus.UNTERNEHMEN;
             }
             boolean mandantenweit = zuweisungen.stream().anyMatch(z -> z.standortId() == null);
-            return zugang == Zugang.KONTO && (mandantenweit || nieZugewiesen) ? Modus.UNTERNEHMEN : Modus.STANDORTE;
+            return zugang == Zugang.KONTO && (mandantenweit || bestandskonto) ? Modus.UNTERNEHMEN : Modus.STANDORTE;
         }
 
         /** Die Standorte der standortbezogenen Zuweisungen, ohne Doppel und sortiert. */

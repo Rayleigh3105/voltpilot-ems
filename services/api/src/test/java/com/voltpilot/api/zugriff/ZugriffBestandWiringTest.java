@@ -16,6 +16,7 @@ import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -79,11 +80,38 @@ class ZugriffBestandWiringTest {
         List<KeycloakUser> konten = List.of(new KeycloakUser("kc-1", "demo", "demo@voltpilot.local", "Demo",
                 "Operator", true, Nachbarn.KUNDENBEREICH.toString()));
         when(Nachbarn.KEYCLOAK.listUsersForTenant(Nachbarn.KUNDENBEREICH)).thenReturn(konten);
-        when(Nachbarn.BESTAND.uebernehmen(anyList())).thenReturn(new ZugriffBestand.Ergebnis(1, 1, 1));
+        when(Nachbarn.BESTAND.bestandAbschliessen(anyList(), any(String.class)))
+                .thenReturn(new ZugriffBestand.Ergebnis(1, 1, 1, true));
         runner.withPropertyValues(SCHALTER + "=true").run(context -> {
             assertThat(context).hasNotFailed();
             context.getBean(ZugriffBestandLaeufer.class).beimStart();
-            verify(Nachbarn.BESTAND, timeout(5000)).uebernehmen(konten);
+            // Eine vollstaendige Liste schliesst den Bestand ab und setzt den Stichtag (Befund E12).
+            verify(Nachbarn.BESTAND, timeout(5000)).bestandAbschliessen(konten, ZugriffBestand.HERKUNFT_LAUF);
+            verify(Nachbarn.BESTAND, never()).uebernehmen(anyList());
+        });
+    }
+
+    /**
+     * Befund E12: der Stichtag sagt „dieser Bestand ist VOLLSTAENDIG uebernommen". Meldet Keycloak so viele Konten,
+     * wie die Abfrage hoechstens holt, kann die Liste abgeschnitten sein — dann wird uebernommen, aber kein Stichtag
+     * gesetzt: lieber die Regel einen Start laenger als ein ausgesperrtes Bestandskonto.
+     */
+    @Test
+    void eineMoeglicherweiseAbgeschnitteneKontenlisteSetztKeinenStichtag() {
+        reset(Nachbarn.BESTAND, Nachbarn.KEYCLOAK);
+        List<KeycloakUser> randvoll = new ArrayList<>();
+        for (int i = 0; i < KeycloakAdminClient.MAX_KONTEN_JE_KUNDENBEREICH; i++) {
+            randvoll.add(new KeycloakUser("kc-" + i, "u" + i, "u" + i + "@voltpilot.local", "U", String.valueOf(i),
+                    true, Nachbarn.KUNDENBEREICH.toString()));
+        }
+        when(Nachbarn.KEYCLOAK.listUsersForTenant(Nachbarn.KUNDENBEREICH)).thenReturn(randvoll);
+        when(Nachbarn.BESTAND.uebernehmen(anyList()))
+                .thenReturn(new ZugriffBestand.Ergebnis(randvoll.size(), 0, 0));
+        runner.withPropertyValues(SCHALTER + "=true").run(context -> {
+            assertThat(context).hasNotFailed();
+            context.getBean(ZugriffBestandLaeufer.class).beimStart();
+            verify(Nachbarn.BESTAND, timeout(5000)).uebernehmen(randvoll);
+            verify(Nachbarn.BESTAND, never()).bestandAbschliessen(anyList(), any(String.class));
         });
     }
 
@@ -97,6 +125,7 @@ class ZugriffBestandWiringTest {
             context.getBean(ZugriffBestandLaeufer.class).beimStart();
             verify(Nachbarn.KEYCLOAK, after(300).never()).listUsersForTenant(any());
             verify(Nachbarn.BESTAND, never()).uebernehmen(anyList());
+            verify(Nachbarn.BESTAND, never()).bestandAbschliessen(anyList(), any(String.class));
 
             KundenbenutzerAngelegt ereignis = new KundenbenutzerAngelegt(Nachbarn.KUNDENBEREICH, new KeycloakUser(
                     "kc-2", "neu@example.de", "neu@example.de", null, null, true, Nachbarn.KUNDENBEREICH.toString()));

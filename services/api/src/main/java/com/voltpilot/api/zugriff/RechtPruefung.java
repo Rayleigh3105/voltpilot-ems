@@ -318,7 +318,7 @@ public class RechtPruefung {
     }
 
     static Benutzer benutzer(Zugriff z) {
-        List<Zuweisung> zuweisungen = z.zugang() == Zugang.KONTO && z.nieZugewiesen()
+        List<Zuweisung> zuweisungen = z.zugang() == Zugang.KONTO && z.bestandskonto()
                 ? List.of(new Zuweisung(Rolle.KUNDENADMINISTRATOR, null, null, null, IMMER, null, null))
                 : z.zuweisungen().stream().map(RechtPruefung::zuweisung).toList();
         return new Benutzer(z.sub(), z.sub(), z.konto(), KontoZustand.AKTIV, zuweisungen);
