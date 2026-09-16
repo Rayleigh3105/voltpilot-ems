@@ -454,6 +454,12 @@ class SiteRollenApiTest {
         ok(ruf(w, HttpMethod.PUT, "/api/v1/sites/" + w.anlage() + "/topology-roles", body), 409);
         assertThat(root.queryForList("SELECT entity_id FROM entity_role_assignment WHERE site_id = ? AND is_primary",
                 UUID.class, w.anlage())).containsExactly(a);
+        // Auch der DB-harte Konflikt am selben Gerät bleibt 409 und rollt den Stapel zurück.
+        var gleicherHalter = Map.of("assignments", List.of(Map.of("entityId", a.toString(), "channel", "load_kw",
+                "role", "grid", "primary", true)));
+        ok(ruf(w, HttpMethod.PUT, "/api/v1/sites/" + w.anlage() + "/topology-roles", gleicherHalter), 409);
+        assertThat(root.queryForList("SELECT capability FROM entity_role_assignment WHERE site_id = ? AND is_primary",
+                String.class, w.anlage())).containsExactly(PV);
     }
 
     private static final String PV1 = "deye.hybrid_3p.pv.pv1-power";

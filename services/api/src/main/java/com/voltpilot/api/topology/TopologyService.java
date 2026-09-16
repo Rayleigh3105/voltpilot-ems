@@ -132,7 +132,12 @@ public class TopologyService {
                                 + "\" (erlaubt: pv, storage, grid, consumer, charging, "
                                 + "charging-own).");
             }
-            repo.upsertOverride(tenantId, siteId, a.entityId(), a.channel(), role, a.primary());
+            try {
+                repo.upsertOverride(tenantId, siteId, a.entityId(), a.channel(), role, a.primary());
+            } catch (org.springframework.dao.DuplicateKeyException e) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Für dieses Gerät ist bereits ein maßgeblicher Wert der Rolle zugeordnet.");
+            }
         }
         if (!batch.isEmpty()) {
             rollen.pruefeNetz(siteId);
