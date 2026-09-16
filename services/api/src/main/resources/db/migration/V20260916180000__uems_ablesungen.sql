@@ -164,8 +164,16 @@ RETURNS BOOLEAN LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
       AND p_reihen -> 0 ->> 'messstelle_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     ELSE false END, false)
 $$;
-ALTER TABLE messreihe_korrektur ADD CONSTRAINT messreihe_korrektur_ablesung_art_chk CHECK (
-    NOT coalesce(reihen -> 0 ->> 'spur' = 'ablesung', false) OR art = 'ablesestaende_nachgetragen');
+CREATE FUNCTION messreihe_korrektur_reihe_art_gueltig(p_reihen JSONB, p_art TEXT)
+RETURNS BOOLEAN LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  -- Fachliche Einschränkung dieser Reihen-Gattung; das geschlossene Vokabular
+  -- bleibt bei messreihe_korrektur_wort, nicht als zweite Liste im Tabellen-CHECK.
+  SELECT NOT coalesce(p_reihen -> 0 ->> 'spur' = 'ablesung', false)
+      OR (coalesce(messreihe_korrektur_wort('korrektur_art', p_art), false)
+          AND p_art = 'ablesestaende_nachgetragen')
+$$;
+ALTER TABLE messreihe_korrektur ADD CONSTRAINT messreihe_korrektur_ablesung_art_chk
+    CHECK (messreihe_korrektur_reihe_art_gueltig(reihen, art));
 
 ALTER TABLE messreihe_periode ADD COLUMN ablesung BOOLEAN;
 ALTER TABLE messreihe_periode DROP CONSTRAINT messreihe_periode_spur_chk;
