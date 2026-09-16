@@ -6540,6 +6540,32 @@ export interface UemsDatenquellenListe {
   datenquellen: UemsDatenquelle[];
 }
 
+export interface UemsDatenquelleAnlegen {
+  name: string;
+  protokoll: string;
+  adresse: string;
+  geraete_ids: number[];
+  netz: string;
+  mehrere_leser: boolean;
+  steuerquelle: boolean;
+  kadenz_s: number;
+  device_id: string;
+  vergleich_bestaetigt?: boolean;
+}
+
+export type UemsDatenquelleBearbeiten = Omit<UemsDatenquelleAnlegen, 'device_id' | 'vergleich_bestaetigt'>;
+
+export interface UemsDatenquellePruefergebnis {
+  box: UemsDatenquelleBox;
+  adresse: string;
+  ergebnis: string;
+  gewertet: boolean;
+  text: string;
+  zeitpunkt: string;
+  dauer_ms: number;
+  antwort: unknown | null;
+}
+
 export interface DatenquelleBudgetZahlen {
   channels: number;
   samples_per_minute: number;
@@ -7809,6 +7835,24 @@ export const api = {
    */
   datenquellen: (siteId: string) =>
     request<UemsDatenquellenListe>(`/api/v1/sites/${siteId}/data-sources`),
+
+  datenquelleAnlegen: (siteId: string, body: UemsDatenquelleAnlegen) =>
+    request<UemsDatenquelle>(`/api/v1/sites/${siteId}/data-sources`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+
+  datenquelleBearbeiten: (siteId: string, id: string, body: UemsDatenquelleBearbeiten) =>
+    request<UemsDatenquelle>(`/api/v1/sites/${siteId}/data-sources/${id}`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+
+  datenquellePruefen: (siteId: string, id: string, body: {
+    device_id: string; unit_id: number; register: number;
+    register_kind?: string; data_type?: string; word_order?: string;
+  }) => request<UemsDatenquellePruefergebnis>(
+    `/api/v1/sites/${siteId}/data-sources/${id}/reachability-check`,
+    { method: 'POST', body: JSON.stringify(body) },
+  ),
 
   /** Eine 422-Ablehnung trägt {@link DatenquelleBudgetFehler} in `ApiError.body`. */
   datenquelleZuweisen: (siteId: string, id: string, body: {

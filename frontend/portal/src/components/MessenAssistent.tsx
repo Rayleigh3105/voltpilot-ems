@@ -91,6 +91,7 @@ import { useIsPhone } from '../useIsPhone';
 import { AnlegenDialog } from './AnlegenDialog';
 import { AnlegenFlow } from './AnlegenFlow';
 import { AddDeviceDrawer } from './DeviceDrawers';
+import { DatenquelleAnlegen } from './DatenquelleAnlegen';
 import { StandortDialog } from './StandortDialog';
 import { VpPicker } from './VpPicker';
 import './MessenAssistent.css';
@@ -108,9 +109,10 @@ import './MessenAssistent.css';
  * (`AnlegenDialog`: Schrittleiste am Rechner, „Schritt n von 5" plus Balken am
  * Telefon, Fokusfalle, klebender Fuß). Schritt 1 wählt über `VpPicker` und legt
  * über den Standort-Dialog aus AP-02 an; „Weiter" erzeugt die Standort-Funktion
- * (`PUT …/funktionen/messen`). Schritt 2 öffnet je Anlage die bestehenden Wege
- * „Gerät verbinden" (`AddDeviceDrawer`) und „Gerät anbinden" (der
- * Komponenten-Assistent `AnlegenFlow`). Solange ein Unterablauf offen ist,
+ * (`PUT …/funktionen/messen`). Schritt 2 öffnet je Anlage „Datenquelle anlegen"
+ * (`DatenquelleAnlegen`) sowie die bestehenden Wege „Gerät verbinden"
+ * (`AddDeviceDrawer`) und „Gerät anbinden" (der Komponenten-Assistent
+ * `AnlegenFlow`). Solange ein Unterablauf offen ist,
  * ERSETZT er die Schale: das Haus-`Modal` liegt mit seinem Schleier auf Ebene 60,
  * die Schale auf 61 — gestapelt stünde „Gerät hinzufügen" UNTER dem Assistenten
  * (im Browser-Durchstich bei 1440 px gefunden). Zustand, Wahl und Schritt leben
@@ -134,7 +136,8 @@ import './MessenAssistent.css';
 type Unterfluss =
   | { art: 'standort'; standort: StandortAmStichtag | null }
   | { art: 'geraet'; site: Site }
-  | { art: 'komponente'; siteId: string };
+  | { art: 'komponente'; siteId: string }
+  | { art: 'datenquelle'; anlage: { id: string; name: string } };
 
 const LADEFEHLER = 'Die Standorte konnten nicht geladen werden.';
 const EINRICHTEN_FEHLER = 'Messen & Auswerten konnte nicht angelegt werden. Bitte versuchen Sie es erneut.';
@@ -540,6 +543,18 @@ export function MessenAssistent({
                       {zahl && <span className="vp-ma-anlage-zahl">{zahl}</span>}
                     </div>
                     <div className="vp-ma-wege">
+                      <Recht aktion="datenquelle.bearbeiten"><button
+                        type="button"
+                        className="vp-ma-weg"
+                        aria-label={`Datenquelle anlegen für ${a.name}`}
+                        onClick={() => {
+                          setFehler(null);
+                          setUnterfluss({ art: 'datenquelle', anlage: { id: a.id, name: a.name } });
+                        }}
+                      >
+                        <span className="vp-ma-weg-titel">Datenquelle anlegen</span>
+                        <span className="vp-ma-weg-satz">Adresse, Netzlage und zuständige Box festlegen</span>
+                      </button></Recht>
                       <Recht aktion="geraet.einrichten"><button
                         type="button"
                         className="vp-ma-weg"
@@ -952,6 +967,14 @@ export function MessenAssistent({
           siteId={unterfluss.siteId}
           onClose={zurueckAusUnterfluss}
           onSaved={(r) => setKomponenten((k) => ({ ...k, [unterfluss.siteId]: r.components.length }))}
+        />
+      )}
+      {unterfluss?.art === 'datenquelle' && standortId && (
+        <DatenquelleAnlegen
+          anlage={unterfluss.anlage}
+          standortId={standortId}
+          anlagenAmStandort={anlagen.map((a) => a.id)}
+          onClose={zurueckAusUnterfluss}
         />
       )}
     </>
