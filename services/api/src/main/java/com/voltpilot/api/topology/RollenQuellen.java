@@ -166,6 +166,9 @@ public class RollenQuellen {
         var m = messstellen.finde(z.quellMessstelleId());
         if (m.isEmpty()) return new Stand(null, null, "kein_geraet");
         if (m.get().archiviertAm() != null) return new Stand(null, null, "archiviert");
+        var groesse = m.get().hauptgroesse();
+        if (!"Wirkleistung".equals(groesse.groesse()) || !"Momentanwert".equals(groesse.wertart())
+                || !"kW".equals(groesse.einheit())) return new Stand(null, null, "kein_wert");
         MessstelleFormelDto.Wert w = formeln.wert(z.quellMessstelleId());
         return new Stand(w.wert(), w.stand() == null ? null : zeit(w.stand().toInstant()),
                 w.wert() == null ? "unvollstaendig" : null);

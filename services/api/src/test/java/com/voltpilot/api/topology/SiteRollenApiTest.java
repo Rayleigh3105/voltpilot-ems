@@ -419,6 +419,15 @@ class SiteRollenApiTest {
         UUID ms = messstelle(w, "berechnet", "Erzeugung", "Wirkenergie", "kWh", "Zählerstand");
         ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), gesamtwertWert(ms)), 400);
         ok(ruf(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), kanalWert("soc_pct")), 400);
+        // Eine vor H-2 gespeicherte falsche Größe darf beim Lesen ebenfalls nie als kW erscheinen.
+        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, eingang_art, entity_id, "
+                + "point_key, vorzeichen, faktor) VALUES (?, ?, 0, 'messkanal', ?, ?, '+', 1)", w.mandant(), ms, a, PV1);
+        root.update("INSERT INTO entity_role_assignment (tenant_id, site_id, entity_id, quell_messstelle_id, role, is_primary) "
+                + "VALUES (?, ?, ?, ?, 'pv', true)", w.mandant(), w.anlage(), a, ms);
+        probe(w, a, PV1, 5000, 0);
+        JsonNode k = rollenWert(w, "pv");
+        assertThat(k.path("wert").isNull()).isTrue();
+        assertThat(k.at("/geraete/0/grund").asText()).isEqualTo("kein_wert");
     }
 
     @Test
