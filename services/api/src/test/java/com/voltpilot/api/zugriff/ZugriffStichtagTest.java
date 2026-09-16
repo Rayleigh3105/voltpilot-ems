@@ -127,7 +127,8 @@ class ZugriffStichtagTest {
         JdbcTemplate app = new JdbcTemplate(rls);
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         zugriffe = new ZugriffRepository(app);
-        lader = new ZugriffKontextLader(zugriffe, new SimpleMeterRegistry());
+        // true = der Mandanten-Umschalter gilt (die ausgelieferte Vorgabe, AP-03 IP-8).
+        lader = new ZugriffKontextLader(zugriffe, new SimpleMeterRegistry(), true);
         lader.uhrStellen(Clock.fixed(JETZT, ZoneOffset.UTC));
 
         // „Vorher" ist die Regel dieses Standes: nie eine Zuweisung = unternehmensweit, ohne jeden Stichtag.

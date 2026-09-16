@@ -81,6 +81,13 @@ class UemsZugriffMigrationTest {
     private static final Path MIGRATIONEN = Path.of("src", "main", "resources", "db", "migration");
     private static final List<String> TABELLEN = List.of("benutzer", "zugriff", "zugriff_protokoll");
 
+    /**
+     * Migrationen, die auf diesen Tabellen AUFBAUEN (AP-03 IP-8: die Unterstützung mit Fremdschlüsseln auf
+     * {@code zugriff}, zwei Protokollwörtern und dem geschärften {@code zugriff_protokoll_zugriff_chk}) — ohne
+     * diese Migration gibt es ihre Tabellen nicht; in der späten Ankunft kommen sie darum MIT ihr, nicht vor ihr.
+     */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260916070000");
+
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");
 
@@ -655,8 +662,9 @@ class UemsZugriffMigrationTest {
     }
 
     /**
-     * Out-of-order: eine Datenbank, auf der ALLE anderen Migrationen schon liegen, bekommt diese als späte Ankunft —
-     * und hat danach dieselben Tabellen, Constraints, Funktionen und Vokabulare wie die frische Datenbank.
+     * Out-of-order: eine Datenbank, auf der ALLE anderen Migrationen schon liegen (außer denen, die auf ihr
+     * aufbauen — {@link #BAUEN_DARAUF_AUF}), bekommt diese als späte Ankunft — und hat danach dieselben Tabellen,
+     * Constraints, Funktionen und Vokabulare wie die frische Datenbank in Versionsreihenfolge.
      */
     @Test
     void dieMigrationTraegtAuchAlsSpaeteAnkunft() throws IOException {
@@ -664,7 +672,9 @@ class UemsZugriffMigrationTest {
         Path ohneDiese = Files.createTempDirectory("migrationen-ohne-zugriff");
         try (var dateien = Files.list(MIGRATIONEN)) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__")
+                        && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
@@ -672,7 +682,9 @@ class UemsZugriffMigrationTest {
         String url = POSTGRES.getJdbcUrl().replaceFirst("/voltpilot(?=\\?|$)", "/voltpilot_spaet");
         flyway(url).locations("filesystem:" + ohneDiese.toAbsolutePath()).load().migrate();
         MigrateResult spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
 
         JdbcTemplate db = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         String tabellen = "('benutzer', 'zugriff', 'zugriff_protokoll')";

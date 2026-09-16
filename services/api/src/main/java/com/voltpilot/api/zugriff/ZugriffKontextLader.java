@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -32,8 +33,13 @@ import org.springframework.stereotype.Component;
  *       des Kontos in genau diesem Kundenbereich — Partner: Installateur; Plattform: VoltPilot oder Notfall-Zugriff.
  *       Dann ist er der Kundenbereich der Anfrage ({@code TenantContext}); sonst abgewiesen.</li>
  *   <li><b>Partner ohne den Kopf</b>: abgewiesen.</li>
- *   <li><b>Plattform ohne den Kopf</b>: der heutige Umschalter gilt unverändert — mit {@code X-Tenant-Id} der
- *       Kundenbereich, ohne ihn keiner. Die Umstellung auf die Unterstützung ist IP-8 (AP-03 W3).</li>
+ *   <li><b>Plattform ohne den Kopf</b>: der Mandanten-Umschalter {@code X-Tenant-Id} — mit ihm der Kundenbereich,
+ *       ohne ihn keiner. <b>Er ist seit IP-8 abschaltbar</b> ({@code voltpilot.uems.unterstuetzung.umschalter-enabled},
+ *       Vorgabe AN = das heutige Verhalten): AUS wird eine Plattform ohne wirksame Unterstützung auf jeder
+ *       Kundenroute abgewiesen wie ein Partner ohne Gewährung — das ist der Satz aus A5 („nicht der heutige
+ *       {@code X-Tenant-Id}-Vollzugriff"). Umgelegt wird der Schalter mit der Portal-Umstellung (IP-15), damit die
+ *       Admin-Konsole nicht vor ihr blind wird; bis dahin ist der Weg über Anfrage und Notfall-Zugriff der
+ *       sichtbare, nicht der einzige (AP-03 W3).</li>
  * </ul>
  *
  * <p>Die Kontoart kommt allein aus {@code KONTO_*} des {@link KeycloakRealmRoleConverter}. Ein Lesefehler bei der
@@ -50,11 +56,19 @@ public class ZugriffKontextLader {
 
     private final ZugriffRepository zugriffe;
     private final MeterRegistry metriken;
+    private final boolean umschalter;
     private volatile Clock uhr = Clock.systemUTC();
 
-    public ZugriffKontextLader(ZugriffRepository zugriffe, MeterRegistry metriken) {
+    public ZugriffKontextLader(ZugriffRepository zugriffe, MeterRegistry metriken,
+            @Value("${voltpilot.uems.unterstuetzung.umschalter-enabled:true}") boolean umschalter) {
         this.zugriffe = zugriffe;
         this.metriken = metriken;
+        this.umschalter = umschalter;
+    }
+
+    /** Gilt der Mandanten-Umschalter {@code X-Tenant-Id} auf Kundenrouten noch? (AP-03 W3, IP-8) */
+    public boolean umschalterGilt() {
+        return umschalter;
     }
 
     /** Ein Zugriff, keiner (kein Kundenbereich im Spiel) oder abgewiesen (404 auf jeder Kundenroute). */
@@ -109,10 +123,18 @@ public class ZugriffKontextLader {
             return unterstuetzung(sub, konto, kundenbereichKopf.trim(), jetzt);
         }
         if (konto == Konto.PLATTFORM) {
-            UUID umschalter = TenantContext.get();
-            return umschalter == null
-                    ? Ergebnis.keiner()
-                    : Ergebnis.mit(new Zugriff(sub, konto, umschalter, Zugang.UMSCHALTER, List.of(), jetzt));
+            UUID gewaehlt = TenantContext.get();
+            if (gewaehlt == null) {
+                return Ergebnis.keiner();
+            }
+            if (!umschalter) {
+                // A5: ohne gewährte Unterstützung oder Notfall-Zugriff ist ein Kundenbereich für VoltPilot
+                // nicht da - dieselbe 404 wie für einen Partner ohne Gewährung. /api/v1/admin/** bleibt
+                // unberührt, dort filtert der ZugriffFilter gar nicht.
+                zaehle("abgewiesen");
+                return Ergebnis.abgewiesenOhneZugriff();
+            }
+            return Ergebnis.mit(new Zugriff(sub, konto, gewaehlt, Zugang.UMSCHALTER, List.of(), jetzt));
         }
         zaehle("abgewiesen");
         return Ergebnis.abgewiesenOhneZugriff();

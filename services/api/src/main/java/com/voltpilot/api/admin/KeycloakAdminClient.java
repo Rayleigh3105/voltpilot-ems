@@ -244,6 +244,43 @@ public class KeycloakAdminClient {
         return result;
     }
 
+    /**
+     * The account with exactly this e-mail address, if the realm has one (AP-03 IP-8): granting an
+     * Unterstützung looks the installer up by e-mail and only creates a partner account when the
+     * realm does not know the address yet. Empty is a clear "unknown" - a realm that cannot be
+     * reached throws, so an outage never silently creates a second account for the same person.
+     */
+    public java.util.Optional<KeycloakUser> findByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        String wanted = email.trim().toLowerCase(java.util.Locale.ROOT);
+        List<Map<String, Object>> users;
+        try {
+            users = admin().get()
+                    .uri(uriBuilder -> uriBuilder.path("/admin/realms/{realm}/users")
+                            .queryParam("email", wanted)
+                            .queryParam("exact", true)
+                            .queryParam("briefRepresentation", false)
+                            .queryParam("max", 2)
+                            .build(props.getRealm()))
+                    .retrieve()
+                    .body(new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        } catch (RestClientResponseException ex) {
+            throw upstreamError("user lookup", ex);
+        }
+        if (users == null) {
+            return java.util.Optional.empty();
+        }
+        // `exact` is honoured by Keycloak, but the comparison is ours: an account we would hand a
+        // customer's data to is never chosen by a fuzzy match.
+        return users.stream()
+                .filter(u -> u.get("email") != null
+                        && wanted.equals(u.get("email").toString().trim().toLowerCase(java.util.Locale.ROOT)))
+                .map(this::project)
+                .findFirst();
+    }
+
     /** Fetch a single user by id. */
     public KeycloakUser getUser(String userId) {
         try {

@@ -217,7 +217,9 @@
       "zuweisen",
       "entziehen",
       "sperren",
-      "entfernen"
+      "entfernen",
+      "verlaengern",
+      "ablaufen"
     ],
     "rolle_noetig_reihenfolge": [
       "leser",

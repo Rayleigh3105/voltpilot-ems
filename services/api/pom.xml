@@ -344,6 +344,12 @@
                              ZugriffBestandLaeufer.lauf() selbst;
                              ZugriffBestandWiringTest prueft die ausgelieferte Vorgabe. -->
                         <voltpilot.uems.zugriff-bestand.enabled>false</voltpilot.uems.zugriff-bestand.enabled>
+                        <!-- Der Takt der Unterstuetzung (AP-03 IP-8): dieselbe
+                             @Scheduled-Falle, im Testlauf aus, in PRODUKTION an.
+                             UnterstuetzungWiringTest prueft die ausgelieferte Vorgabe;
+                             UnterstuetzungApiTest ruft lauf() mit gestellter Uhr selbst.
+                             Der Zugang endet auch ohne ihn (endet_am). -->
+                        <voltpilot.uems.unterstuetzung.enabled>false</voltpilot.uems.unterstuetzung.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

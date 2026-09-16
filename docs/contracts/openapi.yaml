@@ -11276,8 +11276,10 @@ paths:
         aus `rechte-vectors.json`. Der Kundenbereich des Kundenkontos kommt aus dem Token; Partner- und
         Plattform-Konten wählen ihn mit `X-Kundenbereich`, der nur gegen eine wirksame Unterstützung gilt (Partner:
         Installateur, Plattform: VoltPilot oder Notfall-Zugriff). Ohne sie antwortet diese Route mit dem eigenen Konto
-        allein (`kundenbereich` null), jede andere Kundenroute mit 404. Die Plattform erreicht Kundenbereiche bis
-        AP-03 IP-8 weiter über `X-Tenant-Id` (`zugang` = `umschalter`).
+        allein (`kundenbereich` null), jede andere Kundenroute mit 404. Die Plattform erreicht Kundenbereiche
+        weiterhin über `X-Tenant-Id` (`zugang` = `umschalter`), solange
+        `voltpilot.uems.unterstuetzung.umschalter-enabled` an ist (AP-03 W3, umgelegt mit IP-15); ist er aus,
+        gilt für sie dasselbe wie für einen Partner ohne Gewährung.
       parameters:
         - $ref: "#/components/parameters/Kundenbereich"
       responses:
@@ -11287,6 +11289,254 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Selbstauskunft" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/unterstuetzung:
+    get:
+      tags: [zugriff]
+      summary: Die Unterstützungen des Kundenbereichs - gewährte, künftige und archivierte.
+      description: >
+        UEMS AP-03 IP-8, Recht `unterstuetzung.verwalten` (Matrix-Zelle U - nur der Kundenadministrator, E2).
+        Eine Gewährung wird je Standort als eigene Zuweisung eingetragen; diese Route fasst sie wieder zusammen.
+        Ihre `id` ist der Griff der Gewährung - die kleinste Kennung ihrer Zeilen - und bleibt, auch nachdem sie
+        endete. Den BANNER sieht jeder Benutzer des Kundenbereichs, er steht in `GET /api/v1/me`.
+      responses:
+        "200":
+          description: Die Unterstützungen, jüngste zuerst.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Unterstuetzung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [zugriff]
+      summary: Eine Unterstützung gewähren.
+      description: >
+        UEMS AP-03 IP-8 (§4.6, E5/E6/E7/E9), Recht `unterstuetzung.verwalten`. Enddatum Pflicht, Vorgabe 30 Tage,
+        höchstens 12 Monate; mindestens ein Standort; ohne `umfang` gilt die Vorgabe je Art (Installateur
+        „Einrichten und Bedienen“, VoltPilot „Ansehen“). Ist die `email` im Realm unbekannt, entsteht ein
+        Partner-Konto, und `startpasswort` steht GENAU EINMAL in dieser Antwort - nie in einer Liste, einem
+        Protokoll, einem Hinweis oder einer E-Mail (E14). Eine Unterstützung für VoltPilot gewährt der
+        Kundenadministrator nur mit `anfrage_id` (E8): VoltPilot fragt an, gewährt sich aber nichts selbst.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnterstuetzungGewaehren" }
+      responses:
+        "201":
+          description: Die gewährte Unterstützung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unterstuetzung" }
+        "400": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "422": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "502": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+  /api/v1/unterstuetzung/anfragen:
+    get:
+      tags: [zugriff]
+      summary: Die Anfragen von VoltPilot.
+      description: >
+        UEMS AP-03 IP-8 (E8, A5), Recht `unterstuetzung.verwalten`. Ohne `offen=false` nur die unentschiedenen.
+        Eine Anfrage gewährt NICHTS; bestätigt wird sie über `POST /api/v1/unterstuetzung` mit `anfrage_id`
+        (auch mit geändertem Umfang oder anderer Dauer).
+      parameters:
+        - name: offen
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Die Anfragen, jüngste zuerst.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UnterstuetzungAnfrage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/unterstuetzung/anfragen/{id}/ablehnen:
+    post:
+      tags: [zugriff]
+      summary: Eine Anfrage ablehnen.
+      description: >
+        UEMS AP-03 IP-8, Recht `unterstuetzung.verwalten`. Die Anfrage bleibt sichtbar und gewährt nie etwas;
+        eine schon entschiedene ist 409 `anfrage_entschieden`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Abgelehnt. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "409": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+  /api/v1/unterstuetzung/hinweise:
+    get:
+      tags: [zugriff]
+      summary: Das eigene Hinweis-Postfach.
+      description: >
+        UEMS AP-03 IP-8 (E8), Recht `konto.eigenes` - der Aufrufer liest nur seine eigenen Hinweise, die Route
+        nennt kein fremdes Subject. Solange kein SMTP steht (`vp-login-smtp-reset-d6`), ist dies der Weg, auf dem
+        ein Kundenadministrator von einer Anfrage, einem Notfall-Zugriff, einer Erinnerung oder einem Ablauf
+        erfährt; mit SMTP geht dieselbe Zeile zusätzlich als E-Mail hinaus (`email_versandt_am`).
+      parameters:
+        - name: offen
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Die Hinweise, jüngster zuerst.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UnterstuetzungHinweis" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/unterstuetzung/hinweise/{id}/gelesen:
+    post:
+      tags: [zugriff]
+      summary: Einen eigenen Hinweis schließen.
+      description: UEMS AP-03 IP-8, Recht `konto.eigenes` - ein fremder Hinweis ist 404, nie 403.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Gelesen. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+  /api/v1/unterstuetzung/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+        description: Der Griff der Gewährung (die kleinste Kennung ihrer Zeilen).
+    get:
+      tags: [zugriff]
+      summary: Eine Unterstützung.
+      description: UEMS AP-03 IP-8, Recht `unterstuetzung.verwalten`.
+      responses:
+        "200":
+          description: Die Unterstützung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unterstuetzung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+    put:
+      tags: [zugriff]
+      summary: Eine Unterstützung verlängern.
+      description: >
+        UEMS AP-03 IP-8 (§4.6, E6), Recht `unterstuetzung.verwalten`. Verlängern ist ein NEUES Enddatum: die
+        laufende Gewährung endet jetzt und eine neue beginnt lückenlos (eine Zuweisung wird nie umgeschrieben,
+        AP-00 Invariante 4) - die Antwort trägt darum einen neuen Griff. Ein früheres Enddatum ist 422
+        `ende_nicht_spaeter`; ein Notfall-Zugriff wird nicht verlängert (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnterstuetzungVerlaengern" }
+      responses:
+        "200":
+          description: Die verlängerte Unterstützung (neuer Griff).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unterstuetzung" }
+        "400": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "409": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "422": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+    delete:
+      tags: [zugriff]
+      summary: Eine Unterstützung beenden.
+      description: >
+        UEMS AP-03 IP-8 (§4.7), Recht `unterstuetzung.verwalten`. Wirkt SOFORT: die nächste Anfrage des
+        Unterstützers findet keine wirksame Zuweisung mehr und bekommt 404 auf jeder Kundenroute - kein Abwarten
+        eines Token-Ablaufs. Eine schon beendete oder abgelaufene Gewährung ist 409 `bereits_beendet`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnterstuetzungBeenden" }
+      responses:
+        "204": { description: Beendet. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "409": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+  /api/v1/admin/tenants/{tenantId}/unterstuetzung/anfrage:
+    post:
+      tags: [admin, zugriff]
+      summary: VoltPilot fragt eine Unterstützung an.
+      description: >
+        UEMS AP-03 IP-8 (E8, A5), Plattform-Betrieb (`platform-admin`). Die Anfrage gewährt NICHTS: sie legt
+        einen Wunsch an und einen Hinweis für jeden Kundenadministrator. Erst dessen Bestätigung über
+        `POST /api/v1/unterstuetzung` mit `anfrage_id` macht daraus einen Zugang.
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnterstuetzungPlattformAntrag" }
+      responses:
+        "201":
+          description: Die Anfrage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UnterstuetzungAnfrage" }
+        "400": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Den Kundenbereich gibt es nicht. }
+        "422": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+  /api/v1/admin/tenants/{tenantId}/unterstuetzung/notfall:
+    post:
+      tags: [admin, zugriff]
+      summary: Notfall-Zugriff - 24 Stunden, Grund Pflicht, der Kunde erfährt davon.
+      description: >
+        UEMS AP-03 IP-8 (E8, A14), Plattform-Betrieb (`platform-admin`). VoltPilot gewährt ihn sich selbst, und
+        genau deshalb ist er eng und laut: genau 24 Stunden ab jetzt (`gueltig_bis` gibt es hier nicht), der
+        `grund` ist PFLICHT - ohne ihn 422 `grund_fehlt`, und es wird nichts angelegt -, jeder Benutzer des
+        Kundenbereichs sieht den Banner „VoltPilot-Support hat Notfall-Zugriff auf … bis … - Grund: …“, und jeder
+        Kundenadministrator bekommt einen Hinweis (E-Mail, sobald SMTP steht). Der Kundenadministrator kann ihn
+        jederzeit beenden wie jede Unterstützung.
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnterstuetzungPlattformAntrag" }
+      responses:
+        "201":
+          description: Der Notfall-Zugriff.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unterstuetzung" }
+        "400": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Den Kundenbereich gibt es nicht. }
+        "422": { $ref: "#/components/responses/UnterstuetzungAbgelehnt" }
   /api/v1/unternehmen/vieraugen:
     get:
       tags: [korrekturen]
@@ -11487,6 +11737,13 @@ components:
       description: >
         Rejected before anything was written; the body carries a German
         `message`.
+    UnterstuetzungAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - kein Zugriff, kein Protokoll, kein Hinweis. Der Körper trägt `code`,
+        einen deutschen `message`-Satz und die Fakten des Urteils (siehe UnterstuetzungFehler).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/UnterstuetzungFehler" }
     MessstelleAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben. Der Körper trägt `code`, einen deutschen
@@ -11736,6 +11993,175 @@ components:
           type: string
           nullable: true
           description: Der Banner-Satz - beim Kunden „… hat Zugriff auf …“, beim Unterstützer „Sie arbeiten im Kundenbereich …“.
+    Unterstuetzung:
+      type: object
+      description: >
+        Eine gewährte Unterstützung (UEMS AP-03 IP-8) - die Zeilen einer Gewährung zusammengefasst. Die Wörter
+        `art`, `umfang` und `zustand` sind die des Rechte-Vertrags (docs/contracts/v2/rechte-vectors.json).
+      required: [id, art, umfang, standorte, standort_kennzeichen, unterstuetzer, gueltig_ab, gueltig_bis, endet,
+        zustand, erinnerung, grund, banner, text, startpasswort]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Der Griff der Gewährung - die kleinste Kennung ihrer Zeilen; er bleibt, auch nachdem sie endete.
+        art: { type: string, enum: [installateur, voltpilot, notfall] }
+        umfang: { type: string, nullable: true, enum: [ansehen, einrichten, einrichten_und_bedienen] }
+        standorte: { type: array, items: { type: string, format: uuid } }
+        standort_kennzeichen:
+          type: array
+          items: { type: string }
+          description: Dieselben Standorte als Kennzeichen des Vertrags (ST-1 …).
+        unterstuetzer: { $ref: "#/components/schemas/UnterstuetzungPerson" }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis:
+          type: string
+          format: date
+          nullable: true
+          description: Das Enddatum (einschließlich); der Notfall-Zugriff hat keins, nur `endet`.
+        endet: { type: string, format: date-time, nullable: true }
+        zustand: { type: string, enum: [entwurf, eingerichtet, aktiv, archiviert] }
+        erinnerung: { type: boolean, description: true in den letzten sieben Tagen (nie beim Notfall-Zugriff). }
+        grund: { type: string, nullable: true }
+        banner:
+          type: string
+          nullable: true
+          description: Der Banner-Satz, solange sie wirkt; sonst null.
+        text:
+          type: string
+          nullable: true
+          description: Der Satz danach („Endete am … durch Zeitablauf“, „Beendet am … durch …“, „Wirkt ab …“).
+        startpasswort:
+          type: string
+          nullable: true
+          description: >
+            GENAU EINMAL in der Antwort des Gewährens, wenn dafür ein Partner-Konto entstand (E14) - nie in
+            einer Liste, einem Protokoll, einem Hinweis oder einer E-Mail.
+    UnterstuetzungGewaehren:
+      type: object
+      description: Streng gelesen - ein unbekanntes Feld (auch camelCase) ist 400 `anfrage_ungueltig` mit `feld`.
+      properties:
+        art:
+          type: string
+          enum: [installateur, voltpilot]
+          description: Ohne `anfrage_id` Pflicht; mit ihr gilt `voltpilot`.
+        email:
+          type: string
+          nullable: true
+          description: >
+            Die Adresse des Partner-Kontos (Installateur, E7). Unbekannt im Realm → ein neues Konto mit
+            Startpasswort; bekannt → dasselbe Konto, nie eine zweite Identität für dieselbe Person.
+        standorte:
+          type: array
+          items: { type: string, format: uuid }
+          description: Mindestens einer (E5); leer ist 422 `standort_fehlt`. Mit `anfrage_id` sonst die der Anfrage.
+        umfang: { type: string, nullable: true, enum: [ansehen, einrichten, einrichten_und_bedienen] }
+        gueltig_ab: { type: string, format: date-time, nullable: true, description: Vorgabe jetzt. }
+        gueltig_bis:
+          type: string
+          format: date
+          nullable: true
+          description: Enddatum einschließlich; Vorgabe 30 Tage, höchstens 12 Monate (422 `hoechstens_12_monate`).
+        grund: { type: string, nullable: true, description: Freitext; erscheint im Banner-Detail und im Protokoll. }
+        anfrage_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Bestätigt eine Anfrage von VoltPilot (E8) - Umfang und Dauer dürfen dabei abweichen.
+    UnterstuetzungVerlaengern:
+      type: object
+      required: [gueltig_bis]
+      properties:
+        gueltig_bis: { type: string, format: date, description: Das NEUE Enddatum (einschließlich), später als das alte. }
+    UnterstuetzungBeenden:
+      type: object
+      properties:
+        grund: { type: string, nullable: true }
+    UnterstuetzungAnfrage:
+      type: object
+      description: Ein Wunsch von VoltPilot (E8, A5) - er gewährt nichts.
+      required: [id, art, umfang, standorte, angefragt_von, gueltig_ab, gueltig_bis, grund, zustand,
+        entschieden_am, unterstuetzung, angefragt_am]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [voltpilot] }
+        umfang: { type: string, enum: [ansehen, einrichten, einrichten_und_bedienen] }
+        standorte: { type: array, items: { type: string, format: uuid } }
+        angefragt_von: { $ref: "#/components/schemas/UnterstuetzungPerson" }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date }
+        grund: { type: string, nullable: true }
+        zustand:
+          type: string
+          enum: [offen, bestaetigt, abgelehnt]
+          description: Abgeleitet, nie gespeichert - aus Entscheidung und gewährter Unterstützung.
+        entschieden_am: { type: string, format: date-time, nullable: true }
+        unterstuetzung:
+          type: string
+          format: uuid
+          nullable: true
+          description: Der Griff der gewährten Unterstützung, sonst null.
+        angefragt_am: { type: string, format: date-time }
+    UnterstuetzungPlattformAntrag:
+      type: object
+      description: Der Körper beider Plattform-Routen (Anfrage und Notfall-Zugriff).
+      properties:
+        standorte:
+          type: array
+          items: { type: string, format: uuid }
+          description: Mindestens einer (E5).
+        umfang: { type: string, nullable: true, enum: [ansehen, einrichten, einrichten_und_bedienen] }
+        gueltig_ab: { type: string, format: date-time, nullable: true, description: Vorgabe jetzt. }
+        gueltig_bis:
+          type: string
+          format: date
+          nullable: true
+          description: Nur bei der Anfrage; der Notfall-Zugriff gilt immer genau 24 Stunden.
+        grund:
+          type: string
+          nullable: true
+          description: Beim Notfall-Zugriff PFLICHT (422 `grund_fehlt`), bei der Anfrage frei.
+    UnterstuetzungHinweis:
+      type: object
+      description: >
+        Ein Hinweis im Postfach eines Kundenadministrators - heute die Karte im Portal, mit SMTP dieselbe Zeile
+        als E-Mail.
+      required: [id, anlass, text, unterstuetzung, anfrage, erzeugt_am, gelesen_am, email_versandt_am]
+      properties:
+        id: { type: string, format: uuid }
+        anlass: { type: string, enum: [anfrage, gewaehrt, notfall, erinnerung, abgelaufen, beendet] }
+        text: { type: string }
+        unterstuetzung: { type: string, format: uuid, nullable: true }
+        anfrage: { type: string, format: uuid, nullable: true }
+        erzeugt_am: { type: string, format: date-time }
+        gelesen_am: { type: string, format: date-time, nullable: true }
+        email_versandt_am:
+          type: string
+          format: date-time
+          nullable: true
+          description: null, solange kein SMTP steht - dann ist das Portal der Weg.
+    UnterstuetzungPerson:
+      type: object
+      required: [kennung, name]
+      properties:
+        kennung: { type: string, description: Das Subject des Kontos. }
+        name: { type: string }
+    UnterstuetzungFehler:
+      type: object
+      description: >
+        Der GESCHLOSSENE Satz der Ablehnungen (UEMS AP-03 IP-8). Zwilling von
+        `unterstuetzung/UnterstuetzungAbgelehnt.Ablehnung`; `standort_fehlt`, `hoechstens_12_monate` und
+        `grund_fehlt` sind die Wörter des Rechte-Vertrags (rechte-vectors.json → gruende).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, nicht_gefunden, bereits_beendet, anfrage_entschieden, standort_fehlt,
+            standort_unbekannt, hoechstens_12_monate, grund_fehlt, ende_nicht_spaeter,
+            notfall_nicht_verlaengerbar, konto_nicht_erreichbar]
+        message: { type: string }
+        feld: { type: string, description: Nur bei `anfrage_ungueltig`. }
+        standort_id: { type: string, format: uuid, description: Nur bei `standort_unbekannt`. }
     SelbstauskunftPerson:
       type: object
       required: [kennung, name]

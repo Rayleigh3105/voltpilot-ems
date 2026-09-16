@@ -426,6 +426,20 @@ voltpilot:
     # der Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
     zugriff-bestand:
       enabled: ${VOLTPILOT_UEMS_ZUGRIFF_BESTAND_ENABLED:true}
+    # UEMS AP-03 IP-8: der TAKT der Unterstuetzung - minuetlich traegt AblaufLaeufer
+    # abgelaufene Gewaehrungen ins Zugriffsprotokoll ein (ablaufen) und erinnert 7 Tage
+    # vor dem Ende. Er BEENDET nichts: der Zugang endet mit endet_am von selbst
+    # (zugriff_zeitraum, bei jeder Anfrage neu gefragt) - der Takt macht es sichtbar.
+    # `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
+    unterstuetzung:
+      enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED:true}
+      # AP-03 W3: gilt der Mandanten-Umschalter X-Tenant-Id auf KUNDENrouten noch?
+      # Vorgabe AN = das heutige Verhalten, damit die Admin-Konsole („Zur Anlage
+      # (Kundensicht)") weiterarbeitet. AUS ist der Satz aus A5: VoltPilot erreicht
+      # einen Kundenbereich nur noch ueber eine gewaehrte Unterstuetzung oder den
+      # Notfall-Zugriff, sonst 404 - umzulegen mit der Portal-Umstellung (IP-15).
+      # /api/v1/admin/** (Plattform-Betrieb) ist davon nie betroffen.
+      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}
     # UEMS AP-07 IP-12: der VERDICHTUNGS-LAUF der Speicherklasse Viertelstunden-
     # werte - alle fuenf Minuten bildet er aus der Menge der Rohwerte der
     # Arbeitsliste die vorlaeufigen Intervalle (E6: JEDE Reihe) und faehrt

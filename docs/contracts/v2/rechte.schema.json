@@ -196,7 +196,8 @@
     "art": { "enum": ["installateur", "voltpilot", "notfall"] },
     "ocpp_stufe": { "enum": ["keine", "CUSTOMER", "SITE_ADMIN", "PLATFORM"] },
     "unterstuetzung_zustand": { "enum": ["entwurf", "eingerichtet", "aktiv", "archiviert"] },
-    "aenderung_art": { "enum": ["zuweisen", "entziehen", "sperren", "entfernen"] },
+    "_aenderung_art": "AP-03 IP-8: verlaengern und ablaufen sind PROTOKOLLwoerter der Unterstuetzung (\u00a74.6, A4); ueber sie urteilt zuweisungAendern nicht.",
+    "aenderung_art": { "enum": ["zuweisen", "entziehen", "sperren", "entfernen", "verlaengern", "ablaufen"] },
     "grund": {
       "enum": [
         "erlaubt",
