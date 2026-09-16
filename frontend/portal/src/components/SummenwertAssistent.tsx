@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -429,7 +430,7 @@ export function SummenwertAssistent({
           <span className="vp-sw-rv">{wertText(zeile.wert, zeile.einheit ?? '')}</span>
         )}
         {rohSummierbar && (
-          <button
+          <Recht aktion="mess_selektion.bearbeiten"><button
             type="button"
             className="vp-sw-obs"
             disabled={beobachteBusy != null}
@@ -438,7 +439,7 @@ export function SummenwertAssistent({
             <Icon name="plus" size={12} strokeWidth={2.6} />
             {beobachteBusy === zeile.pointKey ? 'Beobachten …' : 'Beobachten'}
             <span className="vp-sw-obs-cost">· ≈ {fmtNum(zeile.jahresBytes / 1e9, '', 1)} GB/Jahr</span>
-          </button>
+          </button></Recht>
         )}
         {gesperrt && <span className="vp-sw-lockr">{sperrKurz(art)}</span>}
       </div>
@@ -549,9 +550,9 @@ export function SummenwertAssistent({
     return (
       <div className="vp-sw-foot">
         <Button variant="ghost" onClick={onClose}>Abbrechen</Button>
-        <Button onClick={() => void verwenden()} disabled={!kannSpeichern || speichern}>
+        <Recht aktion="geraet.einrichten"><Button onClick={() => void verwenden()} disabled={!kannSpeichern || speichern}>
           {speichern ? 'Speichern …' : `Verwenden als ${ROLLE_PV}`}
-        </Button>
+        </Button></Recht>
       </div>
     );
   }

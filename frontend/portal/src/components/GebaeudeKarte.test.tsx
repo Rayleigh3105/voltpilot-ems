@@ -1,10 +1,12 @@
+import { setSelbstauskunft } from '../rollen';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, type MessstellenRegisterAnfrage } from '../api';
 import { KNOPF_KENNZAHL_ANLEGEN } from '../gebaeudeKarte';
 import { StandortGebaeudePage } from '../pages/StandortGebaeudePage';
 import { ahrenbergBilanz } from '../test/bilanzFixtures';
-import { selbstauskunftFuer } from '../test/berichtFixtures';
+import { rechteSeed, STANDORT_IDS } from '../test/rollenFixtures';
+import { RechteStandort } from '../rollen';
 import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg } from '../test/ortsbaumFixtures';
@@ -34,8 +36,8 @@ function stelle(person: string) {
   vi.spyOn(api, 'anlageBilanz').mockImplementation(async (id: string, periode = 'monat', am = '2026-10-01') => ahrenbergBilanz(id, periode, am));
   vi.spyOn(api, 'kennzahlen').mockResolvedValue({ kennzahlen: ahrenbergKennzahlen() });
   vi.spyOn(api, 'kennzahlWerte').mockRejectedValue(new Error('in diesem Test ohne Werte'));
-  vi.spyOn(api, 'selbstauskunft').mockResolvedValue(selbstauskunftFuer(person));
-  render(<StandortGebaeudePage standort={werkAhrenberg()} onNavigate={() => undefined} springe={() => undefined} />);
+  setSelbstauskunft(rechteSeed(person === 'Claudia Berger' ? 'CB' : 'IK').me);
+  render(<RechteStandort.Provider value={STANDORT_IDS['ST-1']}><StandortGebaeudePage standort={werkAhrenberg()} onNavigate={() => undefined} springe={() => undefined} /></RechteStandort.Provider>);
 }
 
 /** Die aufgeklappte Karte eines Gebäudes. */

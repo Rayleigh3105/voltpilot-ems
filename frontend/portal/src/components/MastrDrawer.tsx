@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -232,9 +233,9 @@ export function MastrDrawer({
             <Button variant="ghost" onClick={reset} disabled={busy}>
               Zurück
             </Button>
-            <Button variant="primary" onClick={apply} disabled={busy}>
+            <Recht aktion="anlage.verwalten"><Button variant="primary" onClick={apply} disabled={busy}>
               {busy ? 'Wird übernommen…' : 'Übernehmen'}
-            </Button>
+            </Button></Recht>
           </>
         ) : (
           <>

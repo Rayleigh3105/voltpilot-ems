@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -157,7 +158,7 @@ export function GeraetGefahrenzone({
               ihn. Deshalb lässt er sich nicht einzeln entfernen. Um ihn wirklich loszuwerden,
               melden Sie die Batterie am Standort ab.
             </p>
-            <Button
+            <Recht aktion="komponente.loeschen"><Button
               variant="outline"
               size="sm"
               className="vp-btn-danger"
@@ -165,7 +166,7 @@ export function GeraetGefahrenzone({
               onClick={() => setOffen(true)}
             >
               {aktionLabel}
-            </Button>
+            </Button></Recht>
           </div>
         </div>
       ) : (
@@ -174,7 +175,7 @@ export function GeraetGefahrenzone({
             Diese Komponente aus Ihrer Anlage entfernen. Ihre aufgezeichneten Messwerte und Erlöse
             bleiben in der Historie erhalten.
           </p>
-          <Button
+          <Recht aktion="komponente.loeschen"><Button
             variant="outline"
             size="sm"
             className="vp-btn-danger"
@@ -182,7 +183,7 @@ export function GeraetGefahrenzone({
             onClick={() => setOffen(true)}
           >
             {aktionLabel}
-          </Button>
+          </Button></Recht>
         </div>
       )}
 
@@ -292,14 +293,14 @@ function GefahrBestaetigung({
       <Button variant="ghost" onClick={onCancel} disabled={busy}>
         Abbrechen
       </Button>
-      <Button
+      <Recht aktion="komponente.loeschen"><Button
         variant="primary"
         className="vp-gz-danger-fill"
         onClick={onConfirm}
         disabled={busy || gesperrt}
       >
         {busy ? 'Wird entfernt…' : confirmLabel}
-      </Button>
+      </Button></Recht>
     </>
   );
 

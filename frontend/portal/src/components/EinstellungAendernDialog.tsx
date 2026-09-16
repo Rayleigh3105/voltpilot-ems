@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * „Ändern ab <Zeitpunkt>“ — eine Einstellung eines Geräts ab einem Zeitpunkt
  * (UEMS AP-04 IP-12, §5.7, Mockup W1). Zentriertes Modal wie jede
@@ -141,9 +142,9 @@ export function EinstellungAendernDialog({
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Abbrechen
           </Button>
-          <Button onClick={() => void eintragen()} disabled={busy}>
+          <Recht aktion="messstelle.quelle"><Button onClick={() => void eintragen()} disabled={busy}>
             {busy ? 'Trage ein …' : eintragenText(eingabe.datum, eingabe.uhrzeit)}
-          </Button>
+          </Button></Recht>
         </>
       }
     >

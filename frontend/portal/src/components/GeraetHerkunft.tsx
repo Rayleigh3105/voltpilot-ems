@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die GERÄTESEITE ergänzt (UEMS AP-04 IP-12): Karte „Gerät“, Karte
  * „Einstellungen“ mit „Ändern ab <Zeitpunkt>“ und die Messkanäle mit
@@ -205,14 +206,14 @@ export function GeraetHerkunft({
         )}
         {einstellungen !== null && einstellungen !== 'fehler' && (
           <div className="vp-gh-fuss">
-            <Button
+            <Recht aktion="messstelle.quelle"><Button
               variant="ghost"
               size="sm"
               iconLeft={<Icon name="plus" size={14} />}
               onClick={() => setZiel({ art: null, entityId: null, kanal: null, bezug: `Für ${karte.titel}` })}
             >
               {gruppen.length === 0 ? 'Einstellung eintragen' : 'Weitere Einstellung eintragen'}
-            </Button>
+            </Button></Recht>
           </div>
         )}
         {notiz && (
@@ -263,14 +264,14 @@ export function GeraetHerkunft({
                           angeboten nur, wo noch keine Messstelle FÜHREND liest; ein zweiter
                           führender Griff wäre ein Zählerwechsel (IP-18), kein Binden. */}
                       {!k.speist?.some((sp) => sp.rolle === 'fuehrend') && (
-                        <button
+                        <Recht aktion="messstelle.bearbeiten"><button
                           type="button"
                           className="vp-gh-verwenden"
                           data-testid="als-messstelle-verwenden"
                           onClick={() => setVerwenden({ art: 'messwert', anlageId: siteId, entityId: l.entityId, kanal: k })}
                         >
                           {ALS_MESSSTELLE_VERWENDEN}
-                        </button>
+                        </button></Recht>
                       )}
                     </li>
                   );
@@ -335,9 +336,9 @@ function EinstellungZeile({ gruppe: g, onAendern }: { gruppe: EinstellungGruppe;
         <span className="val">{g.wert}</span>
       </div>
       <div className="vp-gh-akt">
-        <Button variant="outline" size="sm" onClick={onAendern}>
+        <Recht aktion="messstelle.quelle"><Button variant="outline" size="sm" onClick={onAendern}>
           Ändern ab …
-        </Button>
+        </Button></Recht>
       </div>
       <details className="vp-gh-historie">
         <summary>

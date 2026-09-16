@@ -116,7 +116,7 @@ export function BoxSeiteSection({
     soft(api.siteSources(site.id), setSources);
     soft(api.controlStatus(site.id), setControl);
     soft(api.curtailmentStatus(site.id), setCurtailment);
-    soft(api.edgeVersions(), setEdgeVersions);
+    soft(api.edgeVersions().then((antwort) => antwort.eintraege), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
     setNow(Date.now());
     if (showTechnicalLayer() && boxDevice) {
@@ -490,6 +490,7 @@ function GefahrenZone({
         </div>
       ) : (
         <DangerZone
+          recht="aufzeichnungen.loeschen"
           actionLabel="Datenaufzeichnungen löschen"
           description="Löscht alle bisher aufgezeichneten Messdaten dieses Geräts unwiderruflich. Das Gerät bleibt verbunden und zeichnet ab sofort wieder neu auf."
           consequences={[
@@ -517,7 +518,8 @@ function GefahrenZone({
         />
       )}
       <DangerZone
-        actionLabel="Gerät entfernen"
+        recht="komponente.loeschen"
+          actionLabel="Gerät entfernen"
         description="Entfernt dieses Gerät aus Ihrer Anlage."
         consequences={unclaimConsequences(device)}
         confirmLabel="Gerät endgültig entfernen"

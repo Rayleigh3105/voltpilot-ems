@@ -113,18 +113,8 @@ class TeilansichtApiTest {
             "/api/v1/overview", "/api/v1/earnings", "/api/v1/sites", "/api/v1/devices",
             "/api/v1/edge-versions", "/api/v1/standorte");
 
-    /**
-     * Die Routen, deren Antwort ein OBJEKT ist und das additive Feld darum im Körper tragen kann.
-     *
-     * <p>Die drei übrigen ({@code /sites}, {@code /devices}, {@code /edge-versions}) antworten mit einer
-     * nackten Liste und tragen {@code teilansicht} NICHT — eine benannte Abweichung von der Abnahmezeile
-     * „in allen sechs Antworten belegt" (firstmate-Entscheid 16.09.2026, Option C), einzulösen mit
-     * <b>AP-03 IP-12</b>. Ihre REICHWEITE prüft dieser Test trotzdem, für alle sechs: siehe
-     * {@link #jedeDerSechsRoutenZeigtNurDieSichtbarenAnlagen()} und
-     * {@link #keinAntwortfeldTraegtDieGesamtsumme()}.
-     */
-    private static final List<String> ROUTEN_MIT_FELD =
-            List.of("/api/v1/overview", "/api/v1/earnings", "/api/v1/standorte");
+    /** Seit IP-12 tragen auch die drei Listen den Umfang im Umschlag. */
+    private static final List<String> ROUTEN_MIT_FELD = ROUTEN;
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -244,21 +234,21 @@ class TeilansichtApiTest {
      */
     @Test
     void jedeDerSechsRoutenZeigtNurDieSichtbarenAnlagen() throws Exception {
-        assertThat(namen(json(PETER, "/api/v1/sites"))).containsExactly("AN-3 Werk Lindach");
-        assertThat(namen(json(CLAUDIA_SUB, "/api/v1/sites")))
+        assertThat(namen(json(PETER, "/api/v1/sites").get("eintraege"))).containsExactly("AN-3 Werk Lindach");
+        assertThat(namen(json(CLAUDIA_SUB, "/api/v1/sites").get("eintraege")))
                 .containsExactlyInAnyOrder("AN-1 Halle 1", "AN-2 Halle 2", "AN-3 Werk Lindach");
-        assertThat(namen(json(JONAS, "/api/v1/sites"))).hasSize(4);
+        assertThat(namen(json(JONAS, "/api/v1/sites").get("eintraege"))).hasSize(4);
 
-        assertThat(anlagenKennungen(json(PETER, "/api/v1/devices"), "siteId")).containsExactly(AN_3.toString());
-        assertThat(anlagenKennungen(json(CLAUDIA_SUB, "/api/v1/devices"), "siteId"))
+        assertThat(anlagenKennungen(json(PETER, "/api/v1/devices").get("eintraege"), "siteId")).containsExactly(AN_3.toString());
+        assertThat(anlagenKennungen(json(CLAUDIA_SUB, "/api/v1/devices").get("eintraege"), "siteId"))
                 .containsExactlyInAnyOrder(AN_1.toString(), AN_2.toString(), AN_3.toString());
-        assertThat(anlagenKennungen(json(JONAS, "/api/v1/devices"), "siteId")).hasSize(4);
+        assertThat(anlagenKennungen(json(JONAS, "/api/v1/devices").get("eintraege"), "siteId")).hasSize(4);
 
-        assertThat(anlagenKennungen(json(PETER, "/api/v1/edge-versions"), "siteId"))
+        assertThat(anlagenKennungen(json(PETER, "/api/v1/edge-versions").get("eintraege"), "siteId"))
                 .containsExactly(AN_3.toString());
-        assertThat(anlagenKennungen(json(CLAUDIA_SUB, "/api/v1/edge-versions"), "siteId"))
+        assertThat(anlagenKennungen(json(CLAUDIA_SUB, "/api/v1/edge-versions").get("eintraege"), "siteId"))
                 .containsExactlyInAnyOrder(AN_1.toString(), AN_2.toString(), AN_3.toString());
-        assertThat(anlagenKennungen(json(JONAS, "/api/v1/edge-versions"), "siteId")).hasSize(4);
+        assertThat(anlagenKennungen(json(JONAS, "/api/v1/edge-versions").get("eintraege"), "siteId")).hasSize(4);
 
         assertThat(namen(json(PETER, "/api/v1/earnings").get("sites"))).containsExactly("AN-3 Werk Lindach");
         assertThat(namen(json(PETER, "/api/v1/overview").get("sites"))).containsExactly("AN-3 Werk Lindach");

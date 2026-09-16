@@ -1,3 +1,4 @@
+import { useRollen } from '../rollen';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -14,6 +15,8 @@ const DANGER = 'var(--vp-industry-end)';
  */
 export function DangerZone({
   actionLabel,
+  recht,
+  standort,
   description,
   consequences,
   confirmLabel,
@@ -26,6 +29,9 @@ export function DangerZone({
 }: {
   /** The collapsed button text, e.g. "Standort löschen". */
   actionLabel: string;
+  /** Recht am aktuellen Standort; Plattform-Verwaltung hat ihren eigenen Zaun. */
+  recht?: string;
+  standort?: string | null;
   /**
    * One German sentence saying what this does. Omit it in the `inline`
    * variant when the surrounding text already says it - repeating it there
@@ -57,6 +63,8 @@ export function DangerZone({
 
   const confirmBlocked = typeToConfirm != null && typed.trim() !== typeToConfirm;
   const inline = variant === 'inline';
+  const rollen = useRollen();
+  if (recht && !rollen.darf(recht, standort)) return <p className="vp-muted">{rollen.grund}</p>;
 
   return (
     <div

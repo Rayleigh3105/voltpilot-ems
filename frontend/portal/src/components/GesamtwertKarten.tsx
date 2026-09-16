@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Messstelle, type MessstelleFormel, type MessstelleWert } from '../api';
@@ -120,9 +121,9 @@ export function GesamtwertKarten({
         <div className="vp-gwk-head">
           <h3>Zusammengestellte Werte</h3>
           {onNeu && (
-            <button type="button" className="vp-gwk-neu" onClick={onNeu}>
+            <Recht aktion="messstelle.formel"><button type="button" className="vp-gwk-neu" onClick={onNeu}>
               <Icon name="plus" size={15} /> {GESAMTWERT}
-            </button>
+            </button></Recht>
           )}
         </div>
       )}
@@ -206,11 +207,11 @@ function Karte({
   const { messstelle: m, wert } = zeile;
   const angehalten = m.lebenszyklus === 'angehalten';
   const menu: RowMenuItem[] = [
-    { label: 'Umbenennen', icon: 'pencil', onClick: onUmbenennen },
-    { label: angehalten ? 'Fortsetzen' : 'Anhalten', icon: angehalten ? 'refresh-cw' : 'eye-off', onClick: onAnhalten },
+    { recht: 'messstelle.bearbeiten', label: 'Umbenennen', icon: 'pencil', onClick: onUmbenennen },
+    { recht: 'messstelle.bearbeiten', label: angehalten ? 'Fortsetzen' : 'Anhalten', icon: angehalten ? 'refresh-cw' : 'eye-off', onClick: onAnhalten },
     { label: WERTE_LABEL, icon: 'calendar', onClick: onWerte },
     { label: PROTOKOLL_LABEL, icon: 'history', onClick: onProtokoll },
-    { label: 'Archivieren', icon: 'trash', danger: true, onClick: onArchivieren },
+    { recht: 'messstelle.bearbeiten', label: 'Archivieren', icon: 'trash', danger: true, onClick: onArchivieren },
   ];
 
   return (
@@ -232,9 +233,9 @@ function Karte({
               }}
               aria-label="Name"
             />
-            <button type="button" aria-label="Speichern" disabled={busy || !bearbeiten.name.trim()} onClick={onNameSpeichern}>
+            <Recht aktion="messstelle.bearbeiten"><button type="button" aria-label="Speichern" disabled={busy || !bearbeiten.name.trim()} onClick={onNameSpeichern}>
               <Icon name="check" size={16} />
-            </button>
+            </button></Recht>
             <button type="button" aria-label="Abbrechen" onClick={onNameAbbrechen}>
               <Icon name="x" size={16} />
             </button>

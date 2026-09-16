@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -303,12 +304,12 @@ export function PortfolioCockpit({
 
   const aktionen = [
     {
-      label: 'Anlage anlegen',
+      label: 'Anlage anlegen', recht: 'anlage.verwalten',
       icon: 'plus' as const,
       onClick: () => setSiteDrawer(true),
     },
     {
-      label: 'Gerät hinzufügen',
+      label: 'Gerät hinzufügen', recht: 'geraet.einrichten',
       icon: 'cpu' as const,
       onClick: () => setDeviceDrawer(true),
     },
@@ -369,13 +370,13 @@ export function PortfolioCockpit({
       </div>
       <div className="vp-portfolio-aktionen">
         {overview != null && !layout.anpassen && !nurAnlagen && (
-          <Button
+          <Recht aktion="cockpit.anpassen"><Button
             variant="ghost"
             iconLeft={<Icon name="sliders" size={18} />}
             onClick={layout.start}
           >
             Anpassen
-          </Button>
+          </Button></Recht>
         )}
         <RowMenu items={aktionen} label="Weitere Aktionen" />
       </div>
@@ -420,13 +421,13 @@ export function PortfolioCockpit({
                 ? 'Sobald für diesen Mandanten eine Anlage angelegt ist, erscheint sie hier.'
                 : 'Legen Sie Ihre erste Anlage an — danach sehen Sie hier alle Ihre Anlagen mit ihren Kennzahlen und ihrem Zustand.'}
             </p>
-            <Button
+            <Recht aktion="anlage.verwalten"><Button
               variant="primary"
               iconLeft={<Icon name="plus" size={18} />}
               onClick={() => setSiteDrawer(true)}
             >
               {isAdmin ? 'Anlage anlegen' : 'Erste Anlage anlegen'}
-            </Button>
+            </Button></Recht>
           </div>
         </Card>
         {drawers}
@@ -587,20 +588,20 @@ export function PortfolioCockpit({
 
       {isPhone && (
         <div className="vp-portfolio-fuss">
-          <Button
+          <Recht aktion="anlage.verwalten"><Button
             variant="outline"
             iconLeft={<Icon name="plus" size={18} />}
             onClick={() => setSiteDrawer(true)}
           >
             Anlage anlegen
-          </Button>
-          <Button
+          </Button></Recht>
+          <Recht aktion="geraet.einrichten"><Button
             variant="primary"
             iconLeft={<Icon name="plus" size={18} />}
             onClick={() => setDeviceDrawer(true)}
           >
             Gerät hinzufügen
-          </Button>
+          </Button></Recht>
         </div>
       )}
       {drawers}

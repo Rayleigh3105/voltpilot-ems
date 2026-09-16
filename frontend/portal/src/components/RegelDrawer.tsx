@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die REGEL-KARTE IM DETAIL als EINSCHUB (Einheitsmodell Stufe 5a, Konzept
  * `vp-komponenten-einheit-h2` Teil 5b.5) — keine eigene Seite: das Haus-Muster
@@ -97,19 +98,19 @@ export function RegelDrawer({
 
         <div className="vp-regeld-aktionen">
           {onBearbeiten && view.bearbeiten && (
-            <Button size="sm" disabled={busy} onClick={onBearbeiten}>{view.bearbeiten}</Button>
+            <Recht aktion="betriebsweise.aendern"><Button size="sm" disabled={busy} onClick={onBearbeiten}>{view.bearbeiten}</Button></Recht>
           )}
-          <Button
+          <Recht aktion="betriebsweise.aendern"><Button
             variant="outline"
             size="sm"
             disabled={busy}
             onClick={() => onToggle(!karte.an)}
           >
             {view.schalter}
-          </Button>
+          </Button></Recht>
         </div>
 
-        <DangerZone
+        <DangerZone recht="betriebsweise.aendern"
           actionLabel="Regel löschen"
           confirmLabel="Endgültig löschen"
           consequences={loeschFolgen}

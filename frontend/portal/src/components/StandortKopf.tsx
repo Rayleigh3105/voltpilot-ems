@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { OrtAktionen, StandortAmStichtag } from '../api';
@@ -45,7 +46,7 @@ export function StandortKopf({
         {fehlt && <p className="vp-st-fehlt">{fehlt}</p>}
       </div>
       {onBearbeiten && (
-        <Button
+        <Recht aktion="standort.verwalten"><Button
           variant={fehlt ? 'primary' : 'outline'}
           size="sm"
           iconLeft={<Icon name={fehlt ? 'map-pin' : 'pencil'} size={16} />}
@@ -53,10 +54,10 @@ export function StandortKopf({
           aria-label={fehlt ? `Adresse nachtragen: ${standort.name}` : `${standort.name} bearbeiten`}
         >
           {fehlt ? 'Adresse nachtragen' : 'Bearbeiten'}
-        </Button>
+        </Button></Recht>
       )}
       {onAktion && aktionen && (
-        <OrtMenue name={standort.name} eintraege={mitAenderungen(menueEintraege(aktionen))} onWahl={onAktion} />
+        <OrtMenue recht="standort.verwalten" name={standort.name} eintraege={mitAenderungen(menueEintraege(aktionen))} onWahl={onAktion} />
       )}
     </div>
   );

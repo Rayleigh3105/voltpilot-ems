@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { FUNKTIONEN_UNBEKANNT, type FunktionenKarteAbschnitt } from '../uebersicht';
 import './FunktionenKarte.css';
 
@@ -51,7 +52,7 @@ export function FunktionenKarte({
                     </p>
                     {z.schritt && (
                       <p className="vp-fk-schritt">
-                        <span className="vp-fk-schritt-wort">Nächster Schritt:</span> {z.schritt}
+                        <Recht standort={z.standortId} aktion={a.funktion === 'messen' ? 'funktion.messen_einrichten' : 'funktion.steuern_einrichten'}><span className="vp-fk-schritt-wort">Nächster Schritt:</span> {z.schritt}</Recht>
                       </p>
                     )}
                   </li>

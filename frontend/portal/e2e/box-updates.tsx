@@ -1,3 +1,4 @@
+import './rollen-fixture';
 /** Real admin components with fictional data; all API calls stay in memory. */
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';

@@ -1,3 +1,4 @@
+import { useRollen } from '../../rollen';
 /**
  * Plattform → Flows → Editor (E3a MVP, admin-only): build → validate →
  * simulate → roll out. Three panes per the EMS-v2 mockup (palette | canvas |
@@ -94,6 +95,8 @@ const GROUP_SWATCH: Record<string, string> = {
 };
 
 interface FlowEditorPageProps {
+  /** Kunden-Wirt: auch dieser gemeinsam genutzte Editor liest rollen.ts. */
+  recht?: string;
   /** The site-bound flow API (admin or customer surface, see flowsApi factories). */
   api: BoundFlowApi;
   site: Site;
@@ -126,6 +129,7 @@ interface FlowEditorPageProps {
 }
 
 export function FlowEditorPage({
+  recht,
   api: flowApi,
   site,
   flowId,
@@ -137,6 +141,8 @@ export function FlowEditorPage({
   backLabel = 'Alle Flows',
   initialView = 'editor',
 }: FlowEditorPageProps) {
+  const rollen = useRollen();
+  const darfSchreiben = recht === undefined || rollen.darf(recht);
   const [version, setVersion] = useState(initialVersion);
   const [name, setName] = useState('');
   const [lifecycle, setLifecycle] = useState('draft');
@@ -607,14 +613,14 @@ export function FlowEditorPage({
             {rollout.phase === 'fertig' ? (
               <Button size="sm" onClick={onClose}>Fertig</Button>
             ) : (
-              <Button
+              <>{darfSchreiben ? <Button
                 size="sm"
                 onClick={rolloutNow}
                 disabled={busy || rolloutRunning}
                 title="Prüfen, simulieren und auf das Gerät ausrollen - in einem Schritt."
               >
                 Ausrollen
-              </Button>
+              </Button> : <span className="vp-muted" role="note">{rollen.grund}</span>}</>
             )}
             <Button
               variant="outline"
@@ -691,7 +697,7 @@ export function FlowEditorPage({
           <Button variant="outline" size="sm" onClick={check} disabled={busy}>
             Prüfen
           </Button>
-          <Button
+          <>{darfSchreiben ? <Button
             variant="outline"
             size="sm"
             onClick={simulate}
@@ -699,9 +705,9 @@ export function FlowEditorPage({
             title={valid ? undefined : 'Bitte zuerst die Validierungsfehler beheben.'}
           >
             Simulieren
-          </Button>
+          </Button> : <span className="vp-muted" role="note">{rollen.grund}</span>}</>
           {lifecycle === 'active' ? (
-            <Button
+            <>{darfSchreiben ? <Button
               variant="outline"
               size="sm"
               onClick={deactivate}
@@ -709,9 +715,9 @@ export function FlowEditorPage({
               title="Diesen Flow anhalten - das Gerät fällt auf die sichere Grundregelung zurück."
             >
               Stilllegen
-            </Button>
+            </Button> : <span className="vp-muted" role="note">{rollen.grund}</span>}</>
           ) : (
-            <Button
+            <>{darfSchreiben ? <Button
               variant="outline"
               size="sm"
               onClick={rolloutNow}
@@ -719,11 +725,11 @@ export function FlowEditorPage({
               title="Prüfen, simulieren und auf das Gerät ausrollen - in einem Schritt."
             >
               Ausrollen
-            </Button>
+            </Button> : <span className="vp-muted" role="note">{rollen.grund}</span>}</>
           )}
-          <Button size="sm" onClick={save} disabled={busy || !dirty}>
+          <>{darfSchreiben ? <Button size="sm" onClick={save} disabled={busy || !dirty}>
             Speichern
-          </Button>
+          </Button> : <span className="vp-muted" role="note">{rollen.grund}</span>}</>
         </span>
       </div>
 

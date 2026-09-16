@@ -1,3 +1,4 @@
+import './rollen-fixture';
 /** Real shared shell, deterministic names and states; no API or device writes. */
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';

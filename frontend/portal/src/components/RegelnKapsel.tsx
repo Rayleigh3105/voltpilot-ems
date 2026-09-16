@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die Kapsel **„Regeln"** der Steuerung (Einheitsmodell Stufe 5a, Konzept
  * `vp-komponenten-einheit-h2` Teil 5 + 5b; Naming Set A).
@@ -627,7 +628,7 @@ export function RegelnKapsel({
       <PartHead title={REGEL_CAPSULE_TITLE} intro={REGEL_CAPSULE_INTRO}>
         <span className="vp-capsule-action">
           {steuerbare.length > 0 && (
-            <Button
+            <Recht aktion="handeingriff.setzen"><Button
               size="sm"
               variant="outline"
               disabled={busy}
@@ -635,11 +636,11 @@ export function RegelnKapsel({
               aria-expanded={eingreifen}
             >
               Eingreifen
-            </Button>
+            </Button></Recht>
           )}
-          <Button size="sm" disabled={busy} onClick={() => setCreating(true)}>
+          <Recht aktion="betriebsweise.aendern"><Button size="sm" disabled={busy} onClick={() => setCreating(true)}>
             {NEUE_REGEL_LABEL}
-          </Button>
+          </Button></Recht>
         </span>
       </PartHead>
 
@@ -667,7 +668,7 @@ export function RegelnKapsel({
             </p>
             <div className="vp-regeld-aktionen">
               {steuerbare.map((c) => (
-                <Button
+                <Recht aktion="handeingriff.setzen" key={c.id}><Button
                   key={c.id}
                   size="sm"
                   variant="outline"
@@ -678,7 +679,7 @@ export function RegelnKapsel({
                   }}
                 >
                   {`„${c.name}" jetzt starten`}
-                </Button>
+                </Button></Recht>
               ))}
             </div>
           </div>
@@ -692,9 +693,9 @@ export function RegelnKapsel({
             {start.brauchtKomponente ? (
               <>
                 <p>{KOMPONENTE_ANLEGEN}</p>
-                <Button size="sm" disabled={busy} onClick={() => setWizard(true)}>
+                <Recht aktion="geraet.einrichten"><Button size="sm" disabled={busy} onClick={() => setWizard(true)}>
                   Komponente anlegen
-                </Button>
+                </Button></Recht>
               </>
             ) : (
               <>
@@ -703,9 +704,9 @@ export function RegelnKapsel({
                     : 'Noch keine Regel. Im Baukasten sagen Sie in Ihren Worten, was '
                       + 'passieren soll — vor dem Aktivieren zeigt VoltPilot die Folgen.'}
                 </p>
-                <Button size="sm" disabled={busy} onClick={() => setCreating(true)}>
+                <Recht aktion="betriebsweise.aendern"><Button size="sm" disabled={busy} onClick={() => setCreating(true)}>
                   Regel erstellen
-                </Button>
+                </Button></Recht>
               </>
             )}
           </div>

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die Render-Bausteine der Steuerungs-Fläche (Modus-Karte, Schutzfunktionen,
  * Kopfzeile).
@@ -122,9 +123,9 @@ export function ModeCard({
           </Button>
         )}
         {actions.canPause && (
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => onPause(mode)}>
+          <Recht aktion="betriebsweise.aendern"><Button variant="ghost" size="sm" disabled={busy} onClick={() => onPause(mode)}>
             Pausieren
-          </Button>
+          </Button></Recht>
         )}
       </div>
     </Card>

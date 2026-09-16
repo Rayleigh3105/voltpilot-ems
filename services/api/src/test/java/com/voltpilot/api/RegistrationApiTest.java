@@ -137,7 +137,7 @@ class RegistrationApiTest {
         String token = publicClientToken("erika@sonnenhof-kaiser.example", "sonne-123");
 
         // Their world starts empty (tenant-scoped, not an error)...
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);

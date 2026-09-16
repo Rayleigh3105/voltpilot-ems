@@ -1,3 +1,5 @@
+import { useRollen } from '../rollen';
+import { Recht } from '../components/Recht';
 import { useEffect, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -96,6 +98,10 @@ export function OcppWallboxPage({
 }) {
   const [data, setData] = useState<OcppData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const rollen = useRollen();
+  // Plattformbefehle behalten die bestehende serverseitige OCPP-Freigabe.
+  const darfOcpp = (d: OcppActionDefinition) => d.role === 'platform-admin'
+    ? true : rollen.darf(d.role === 'operator' ? 'handeingriff.setzen' : 'ladepunkt.betrieb');
   const [reload, setReload] = useState(0);
   const [actionOpen, setActionOpen] = useState<OcppActionDefinition | null>(null);
   const [meterSearch, setMeterSearch] = useState('');
@@ -211,8 +217,8 @@ export function OcppWallboxPage({
     || state.action === 'UnlockConnector'
     ? state.action
     : null;
-  const actionAllowed = remoteAction ? data.permissions.actions[remoteAction] === true : true;
-  const allowedActions = OCPP_ACTIONS.filter((definition) => data.permissions.actions[definition.action] === true);
+  const actionAllowed = remoteAction ? data.permissions.actions[remoteAction] === true && darfOcpp(findAction(remoteAction)) : true;
+  const allowedActions = OCPP_ACTIONS.filter((definition) => data.permissions.actions[definition.action] === true && darfOcpp(definition));
   const showCommandCenter = allowedActions.some((definition) => definition.role !== 'operator');
 
   const searchedMeter = meter.filter((row) => contains(row, meterSearch));
@@ -283,9 +289,9 @@ export function OcppWallboxPage({
           ),
         }}
         aktionen={onRename ? (
-          <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onRename}>
+          <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onRename}>
             <Icon name="pencil" size={15} /> Anzeigename ändern
-          </button>
+          </button></Recht>
         ) : null}
         unterKopf={(
           <>
@@ -314,7 +320,7 @@ export function OcppWallboxPage({
               )}
               {remoteAction && state.actionLabel && (
                 <div className="vp-ocpp-primary-action">
-                  <button
+                  {actionAllowed && <button
                     type="button"
                     className="vp-btn vp-btn--primary vp-btn--md"
                     disabled={!connection.sendable || !actionAllowed}
@@ -322,9 +328,9 @@ export function OcppWallboxPage({
                     onClick={() => setActionOpen(findAction(remoteAction))}
                   >
                     {state.actionLabel}
-                  </button>
+                  </button>}
                   {!actionAllowed && (
-                    <small id="ocpp-primary-action-help">Diese Fernaktion ist für Ihr Konto nicht freigegeben.</small>
+                    <small id="ocpp-primary-action-help">{rollen.grund}</small>
                   )}
                 </div>
               )}
@@ -400,7 +406,7 @@ export function OcppWallboxPage({
         {/* 3 · Steuerung & Grenzen - was diese Säule darf. */}
         <RahmenSektion id="steuerung">
           <OcppControlPanel siteId={siteId} stationId={chargePointId} deviceId={station?.deviceId}
-            canEdit={data.permissions.actions.ChangeConfiguration === true} />
+            canEdit={data.permissions.actions.ChangeConfiguration === true && rollen.darf('ladepunkt.betrieb')} />
           {charger && (
             <>
               <dl className="vp-ocpp-compact-kv">

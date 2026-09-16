@@ -1,3 +1,4 @@
+import { sichtbareListe } from '../src/test/rollenFixtures';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
@@ -128,9 +129,9 @@ async function verdrahte(page: Page, cloud: Cloud) {
         aggregat: { unternehmen: { erfuellt: 0, gesamt: 0, text: '' }, standorte: [] },
       });
     }
-    if (pfad === '/api/v1/devices') return json(geraeteAhrenberg(new Date()));
+    if (pfad === '/api/v1/devices') return json(sichtbareListe(geraeteAhrenberg(new Date())));
     if (pfad === '/api/v1/sites') {
-      return json(cloud.standorte.standorte.flatMap((s) => s.anlagen).map((a) => ({ id: a.id, name: a.name })));
+      return json(sichtbareListe(cloud.standorte.standorte.flatMap((s) => s.anlagen).map((a) => ({ id: a.id, name: a.name }))));
     }
     const komponenten = /^\/api\/v1\/sites\/([^/]+)\/components$/.exec(pfad);
     if (komponenten) {

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -75,16 +76,16 @@ export function QuelleKarte({
 
           <p className="vp-qk-knoepfe">
             {darfBinden && k.fuehrendMoeglich && (
-              <button type="button" className="vp-qk-knopf" onClick={() => onBinden(k)}>
+              <Recht aktion="messstelle.quelle"><button type="button" className="vp-qk-knopf" onClick={() => onBinden(k)}>
                 <Icon name="activity" size={14} />
                 {QUELLE_BINDEN}
-              </button>
+              </button></Recht>
             )}
             {darfBinden && (
-              <button type="button" className="vp-qk-knopf" onClick={() => onVergleich(k)}>
+              <Recht aktion="messstelle.quelle"><button type="button" className="vp-qk-knopf" onClick={() => onVergleich(k)}>
                 <Icon name="activity" size={14} />
                 {VERGLEICHSQUELLE_HINZUFUEGEN}
-              </button>
+              </button></Recht>
             )}
           </p>
 

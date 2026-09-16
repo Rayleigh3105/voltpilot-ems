@@ -1,3 +1,4 @@
+import { darf, ohneStandort, RechteStandort, setSelbstauskunft, teilansichtKopf, useRollen } from './rollen';
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
@@ -549,6 +550,9 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
 
 function UnifiedPortal() {
   const isAdmin = useMemo(() => isPlatformAdmin(), []);
+  const { selbst } = useRollen();
+  const [zugriffBeendet, setZugriffBeendet] = useState<string | null>(null);
+  const ladeNummer = useRef(0);
   const [route, setRoute] = useState<Route>(() => {
     const r = routeFromHash();
     return !isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r;
@@ -732,7 +736,9 @@ function UnifiedPortal() {
   const [orteQuelle, setOrteQuelle] = useState<OrteQuelle | null>(null);
   const reload = useCallback(
     async (selectSiteId?: string, opts?: { background?: boolean }) => {
+      const nummer = ++ladeNummer.current;
       if (!tenantReady) {
+        setSelbstauskunft(null);
         setOrteQuelle(null);
         setSites([]);
         setDevices([]);
@@ -742,6 +748,17 @@ function UnifiedPortal() {
         return;
       }
       try {
+        const me = await api.selbstauskunft();
+        if (nummer !== ladeNummer.current) return;
+        setSelbstauskunft(me);
+        if (ohneStandort(me)) {
+          setSites([]);
+          setDevices([]);
+          setOrteQuelle(null);
+          setSelectedSite(null);
+          setError(null);
+          return;
+        }
         // The tenant-context read is fail-soft: an older backend (or a
         // transient blip) leaves the frame on its last known value - never a
         // broken portal, and never a mid-session shell flip from one failed
@@ -752,13 +769,17 @@ function UnifiedPortal() {
         // Fail-soft wie der Kontext; eine Hintergrund-Auffrischung behält den
         // letzten Stand.
         const [s, d, ctx, orte] = await Promise.all([
-          api.listSites(),
-          api.listDevices(),
+          api.listSites().then((antwort) => antwort.eintraege),
+          api.listDevices().then((antwort) => antwort.eintraege),
           api.tenantContext().catch(() => null),
           opts?.background ? Promise.resolve(undefined) : orteLaden(),
         ]);
+        if (nummer !== ladeNummer.current) return;
         setSites(s);
-        if (orte !== undefined) setOrteQuelle(orte);
+        if (orte !== undefined) setOrteQuelle(orte ? {
+          ...orte,
+          liste: { ...orte.liste, standorte: orte.liste.standorte.filter((ort) => me.standorte.some((x) => x.id === ort.id)) },
+        } : null);
         setDevices(d);
         setDevicesAt(Date.now());
         if (ctx) setBetriebsart(ctx.betriebsart);
@@ -770,11 +791,11 @@ function UnifiedPortal() {
         // A background poll (Geräte-Seite alle 30 s) must not raise the app-wide
         // red banner on a momentary blip - it keeps the last good data and
         // fails silently; only a user-triggered/initial load surfaces the error.
-        if (!opts?.background) {
+        if (nummer === ladeNummer.current && !opts?.background) {
           setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
         }
       } finally {
-        setLoaded(true);
+        if (nummer === ladeNummer.current) setLoaded(true);
       }
     },
     [tenantReady],
@@ -787,12 +808,39 @@ function UnifiedPortal() {
   // effect so it runs first (effects fire in declaration order), guaranteeing
   // the header is set before any listSites/listDevices call.
   useEffect(() => {
+    ++ladeNummer.current;
+    setSelbstauskunft(null);
+    setLoaded(false);
+    setSites([]);
+    setDevices([]);
+    setOrteQuelle(null);
     setTenantOverride(isAdmin ? tenantId : null);
   }, [isAdmin, tenantId]);
 
   useEffect(() => {
     void reload();
   }, [reload, tenantId]);
+
+  useEffect(() => {
+    let laedt = false;
+    const entzogen = (event: Event) => {
+      if (laedt) return;
+      laedt = true;
+      setZugriffBeendet((event as CustomEvent<string>).detail);
+      setLoaded(false);
+      setSelbstauskunft(null);
+      setSites([]);
+      setDevices([]);
+      setOrteQuelle(null);
+      setSelectedSite(null);
+      setAddAnlageOpen(false);
+      replaceCurrentNavigation('#/uebersicht');
+      setRoute(pageRoute('uebersicht'));
+      void reload().finally(() => { laedt = false; });
+    };
+    window.addEventListener('vp-zugriff-beendet', entzogen);
+    return () => window.removeEventListener('vp-zugriff-beendet', entzogen);
+  }, [reload]);
 
   // Admin-Umbau Stufe 1 (Captain-Entscheid F1): ein Admin-Boot OHNE Ziel
   // landet auf der PLATTFORM-ÜBERSICHT statt auf der Kunden-Übersicht, die
@@ -819,12 +867,22 @@ function UnifiedPortal() {
   // UEMS AP-01 IP-5 (E1): die Ebene, auf der der Kunde landet, EINMAL aus
   // Anlagen und Standorten abgeleitet — Weiche, Seitenleiste und Pfad lesen sie.
   const orte = useMemo(
-    () => (orteQuelle ? orteAus(orteQuelle.liste, orteQuelle.unternehmen) : null),
-    [orteQuelle],
+    () => {
+      const basis = orteQuelle ? orteAus(orteQuelle.liste, orteQuelle.unternehmen) : null;
+      if (!selbst) return null;
+      if (selbst.standorte.length === 0) return basis;
+      return {
+        standorte: selbst.standorte.map((s) => ({ id: s.id, name: s.name,
+          anlagen: basis?.standorte.find((o) => o.id === s.id)?.anlagen ?? [] })),
+        standorteGesamt: selbst.teilansicht?.gesamt ?? null,
+        unternehmen: basis?.unternehmen ?? selbst.kundenbereich?.name ?? null,
+      };
+    },
+    [orteQuelle, selbst],
   );
   const ebene = useMemo(
-    () => startEbene({ isAdmin, betriebsart, siteIds: sites.map((site) => site.id), orte }),
-    [isAdmin, betriebsart, sites, orte],
+    () => startEbene({ isAdmin, betriebsart, siteIds: sites.map((site) => site.id), orte, eingeschraenkt: selbst != null && !selbst.unternehmensweit }),
+    [isAdmin, betriebsart, sites, orte, selbst],
   );
 
   // UEMS AP-01 IP-6, Geld-Regel: auf der Unternehmens- und der Standort-Ebene
@@ -871,7 +929,7 @@ function UnifiedPortal() {
   // for a one-site customer. The pure decision below sees one shell snapshot,
   // chooses the final target directly and performs at most one replacement.
   useEffect(() => {
-    if (error != null) return;
+    if (error != null || !selbst || ohneStandort(selbst)) return;
     const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length, ebene };
     const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
     if (!target) return;
@@ -883,6 +941,7 @@ function UnifiedPortal() {
     tenantReady,
     betriebsart,
     error,
+    selbst,
     sites,
     ebene,
     route.page,
@@ -952,7 +1011,7 @@ function UnifiedPortal() {
   const refreshDevices = useCallback(() => {
     if (!tenantReady) return;
     const forTenant = tenantRef.current;
-    api.listDevices().then(
+    api.listDevices().then((antwort) => antwort.eintraege).then(
       (d) => {
         if (tenantRef.current !== forTenant) return;
         setDevices(d);
@@ -1152,11 +1211,11 @@ function UnifiedPortal() {
   // portal IS the onboarding. No empty dashboard with disconnected forms.
   // Customers only - an admin browsing an empty tenant keeps the normal pages.
   const showOnboarding =
-    !isAdmin && loaded && !error && devices.length === 0 && !onboardingDismissed;
+    !isAdmin && loaded && !error && devices.length === 0 && !onboardingDismissed && darf('anlage.verwalten');
 
   // The always-visible shell action for the one case with no obvious entry
   // point: a customer with exactly one Anlage (no Übersicht, no Anlagen-Liste).
-  const showAddAnlage = showAddAnlageButton({
+  const showAddAnlage = darf('anlage.verwalten') && showAddAnlageButton({
     isAdmin,
     loaded,
     tenantReady,
@@ -1171,7 +1230,10 @@ function UnifiedPortal() {
     if (ziel) navigate(ziel);
   }
 
+  const leer = ohneStandort(selbst);
+  const rechteStandort = route.standortId ?? orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null;
   return (
+    <RechteStandort.Provider value={rechteStandort}>
     <AppShell
       page={page}
       onNavigate={navigateSchale}
@@ -1180,9 +1242,9 @@ function UnifiedPortal() {
       // (betreiber = always the fleet level; endkunde = only from the second
       // Anlage on, where it renders the calm card overview), not the raw site
       // count. Unknown frame falls back to the v1 heuristic.
-      showOverview={overviewNav}
+      showOverview={!leer && overviewNav}
       // U5: a betreiber frame swaps "Übersicht" for the "Portfolio" landing.
-      showPortfolio={portfolioNav}
+      showPortfolio={!leer && portfolioNav}
       fleetLabel={fleetLabel(betriebsart)}
       showAddAnlage={showAddAnlage}
       onAddAnlage={() => setAddAnlageOpen(true)}
@@ -1193,11 +1255,17 @@ function UnifiedPortal() {
       tenants={tenants}
       tenantOverride={tenantId}
       onTenantChange={changeTenant}
-      anlage={anlageNav}
-      ebenen={ebenenNav}
+      anlage={leer ? null : anlageNav}
+      ebenen={leer ? null : ebenenNav}
+      ohneStandort={leer}
+      teilansicht={teilansichtKopf(selbst)}
       ortsPfad={!anlageNav && pfad.hier ? { vor: pfad.vor.map(pfadEintrag), hier: pfad.hier } : null}
       helpArticle={page === 'hilfe' ? null : loadFailed ? 'probleme' : showOnboarding ? null : helpForRoute(route)}
     >
+      {zugriffBeendet && <div className="vp-alert" role="alert">
+        <strong>Zugriff beendet</strong><p>{zugriffBeendet}</p>
+        <Button variant="outline" onClick={() => setZugriffBeendet(null)}>Verstanden</Button>
+      </div>}
       {updateAvailable && (
         // Der Server liefert einen neueren Stand als den, den dieser Tab
         // ausführt (useDeployWatch). Sichtbar = dezenter Hinweis, nie ein
@@ -1238,6 +1306,12 @@ function UnifiedPortal() {
         <PickTenantNotice tenants={tenants} onPick={changeTenant} />
       ) : loadFailed ? (
         <LoadErrorNotice onRetry={() => void reload()} />
+      ) : tenantReady && !selbst && !PLATFORM_PAGES.some((p) => p.id === page) ? (
+        <Card padding="lg" radius="lg"><p>Wird geladen …</p></Card>
+      ) : leer ? (
+        <Card padding="lg" radius="lg"><h1>Kein Standort zugewiesen</h1><p>{selbst?.text}</p>
+          {selbst?.kuenftig.map((z) => <p key={`${z.standort}-${z.ab}`}>{z.text}</p>)}
+        </Card>
       ) : showOnboarding ? (
         <LazyBoundary fallback={null}>
           <OnboardingWizard sites={sites} onDone={(ziel) => finishOnboarding(ziel)} onSkip={() => finishOnboarding()} />
@@ -1248,7 +1322,7 @@ function UnifiedPortal() {
             !isAdmin &&
             loaded &&
             !error &&
-            devices.length === 0 && (
+            devices.length === 0 && darf('anlage.verwalten') && (
               // The customer skipped the guided setup ("Später einrichten"):
               // keep one clear way back in, instead of a dead-end dashboard.
               <Card padding="lg" radius="lg" accent="primary" className="vp-resume-banner">
@@ -1512,6 +1586,7 @@ function UnifiedPortal() {
         }}
       />
     </AppShell>
+    </RechteStandort.Provider>
   );
 }
 

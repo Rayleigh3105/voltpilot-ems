@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useMemo } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -269,7 +270,7 @@ function Knoten({
   }
   if (knoten.quelle) {
     return (
-      <button
+      <Recht aktion="geraet.einrichten"><button
         type="button"
         className={cls}
         style={style}
@@ -279,7 +280,7 @@ function Knoten({
         onClick={() => onAssign(knoten.quelle as AdoptableSource)}
       >
         {inhalt}
-      </button>
+      </button></Recht>
     );
   }
   // Weder Detailseite noch Übernahme (selten): eine ruhige, nicht-interaktive

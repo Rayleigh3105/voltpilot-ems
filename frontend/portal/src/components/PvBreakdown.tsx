@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { SiteSource } from '../api';
 import { standLabel } from '../datenAlter';
@@ -182,14 +183,14 @@ function Row({
           <Icon name="pencil" size={14} />
         </a>
       ) : renameable ? (
-        <button
+        <Recht aktion="geraet.einrichten"><button
           type="button"
           className="vp-pvcomp-pencil"
           aria-label={`„${row.label}“ umbenennen`}
           onClick={() => onRename!(row)}
         >
           <Icon name="pencil" size={14} />
-        </button>
+        </button></Recht>
       ) : null}
       {row.kw == null ? (
         <span className="vp-pvcomp-note">{row.note}</span>

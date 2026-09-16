@@ -1,3 +1,4 @@
+import { useRollen } from '../rollen';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -5,6 +6,8 @@ import type { IconName } from '../../designsystem/components/core/Icon';
 
 export type RowMenuItem = {
   label: string;
+  recht?: string;
+  standort?: string | null;
   icon?: IconName;
   onClick: () => void;
   /** Renders the item in the destructive style and after a separator. */
@@ -29,8 +32,11 @@ export function RowMenu({ items, label = 'Aktionen' }: { items: RowMenuItem[]; l
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
 
-  const routine = items.filter((i) => !i.danger);
-  const danger = items.filter((i) => i.danger);
+  const rollen = useRollen();
+  const erlaubt = items.filter((i) => !i.recht || rollen.darf(i.recht, i.standort));
+  const abgewiesen = erlaubt.length < items.length;
+  const routine = erlaubt.filter((i) => !i.danger);
+  const danger = erlaubt.filter((i) => i.danger);
 
   const place = useCallback(() => {
     const btn = btnRef.current;
@@ -115,6 +121,7 @@ export function RowMenu({ items, label = 'Aktionen' }: { items: RowMenuItem[]; l
                 if (e.key === 'Escape') setOpen(false);
               }}
             >
+              {abgewiesen && <p className="vp-muted">{rollen.grund}</p>}
               {routine.map((it) => (
                 <button
                   key={it.label}

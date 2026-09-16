@@ -78,6 +78,12 @@
   flex: 0 0 auto;
 }
 
+/* Ein verweigerter Hebel ist ein Satz; er darf die Telefonbreite nicht aufspannen. */
+.vp-portfolio-aktionen:has(.vp-recht-hinweis) {
+  max-width: 100%;
+  min-width: 0;
+}
+
 /*
  * ⚠ Das „···"-Menü ist hier die PRIMÄRE Aktion der Seite, nicht die Zeilen-
  * Aktion einer Tabelle: seine 36 px sind am Telefon unter der Haus-Grenze von

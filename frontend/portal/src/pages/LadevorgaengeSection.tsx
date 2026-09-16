@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -209,13 +210,13 @@ export function LadevorgaengeSection({
                   return (
                     <span className="vp-lade-row-fahrzeug">
                       <span className="vp-lade-row-fahrzeug-text">{v.text}</span>
-                      <Button
+                      <Recht aktion="ladepunkt.betrieb"><Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setBenennen(v.zeile.tagRef)}
                       >
                         {v.aktion}
-                      </Button>
+                      </Button></Recht>
                     </span>
                   );
                 })()}
@@ -226,24 +227,24 @@ export function LadevorgaengeSection({
                     `ladepunktAktionen` - hier und in der Jetzt-Zone. Es gibt
                     keine Kopie, die auseinanderlaufen könnte. */}
                 {ladepunktAktionen(charging.budget, r).includes('voll_laden') && (
-                  <Button
+                  <Recht aktion="handeingriff.setzen"><Button
                     variant="outline"
                     size="sm"
                     disabled={busy}
                     onClick={() => setDialog(r)}
                   >
                     Jetzt voll laden
-                  </Button>
+                  </Button></Recht>
                 )}
                 {ladepunktAktionen(charging.budget, r).includes('resume') && (
-                  <Button
+                  <Recht aktion="handeingriff.setzen"><Button
                     variant="ghost"
                     size="sm"
                     disabled={busy}
                     onClick={() => void boost(r, true)}
                   >
                     {r.handeingriff ? 'Automatik fortsetzen' : 'Wieder Ihre Priorität'}
-                  </Button>
+                  </Button></Recht>
                 )}
               </li>
             ))}
@@ -296,9 +297,9 @@ export function LadevorgaengeSection({
         <p className="vp-lade-note">{ANBINDEN_EINSTIEG}</p>
         <p className="vp-lade-note">{ANBINDEN_ALLOWLIST}</p>
         <div className="vp-lade-anbinden-actions">
-          <Button size="sm" onClick={() => setAnbinden(true)}>
+          <Recht aktion="ladepunkt.anbinden"><Button size="sm" onClick={() => setAnbinden(true)}>
             Ladesäule anbinden
-          </Button>
+          </Button></Recht>
           <a className="vp-lade-note" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
             Alle Geräte dieser Anlage ansehen →
           </a>

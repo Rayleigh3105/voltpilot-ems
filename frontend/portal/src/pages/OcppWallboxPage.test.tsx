@@ -284,8 +284,8 @@ describe('OcppWallboxPage integration', () => {
     }]);
     vi.mocked(api.ocppActionPermissions).mockResolvedValue({ actions: {} });
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
-    expect(await screen.findByRole('button', { name: 'Laden starten' })).toBeDisabled();
-    expect(screen.getByText(/Fernaktion ist für Ihr Konto nicht freigegeben/)).toBeVisible();
+    expect(await screen.findByText(/Ihr Kundenadministrator: Jonas Wendlinger/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Laden starten' })).toBeNull();
     expect(screen.queryByTestId('sektion-befehle')).toBeNull();
     expect(screen.queryByRole('button', { name: /Firmware aktualisieren/ })).toBeNull();
     expect(screen.queryByText(/NotSupported möglich/)).toBeNull();

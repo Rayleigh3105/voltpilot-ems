@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -255,16 +256,16 @@ export function LadesaeuleAnbinden({
                 eingetragenen Kennung - dafür braucht es einen Knopf, sonst
                 verschluckt die Fläche die Wahl, die der Kunde gerade traf. */}
             {anschlussZumSenden(wahl, soll) !== undefined && (
-              <Button size="sm" disabled={busy} onClick={() => void eintragen()}>
+              <Recht aktion="ladepunkt.anbinden"><Button size="sm" disabled={busy} onClick={() => void eintragen()}>
                 {busy ? 'Wird gespeichert …' : 'Anschluss speichern'}
-              </Button>
+              </Button></Recht>
             )}
           </div>
         ) : (
           <div className="vp-anbinden-actions">
-            <Button size="sm" disabled={!!mangel || busy} onClick={() => void eintragen()}>
+            <Recht aktion="ladepunkt.anbinden"><Button size="sm" disabled={!!mangel || busy} onClick={() => void eintragen()}>
               {busy ? 'Wird eingetragen …' : 'Kennung eintragen'}
-            </Button>
+            </Button></Recht>
           </div>
         )}
         {fehler && (
@@ -343,7 +344,7 @@ export function LadesaeuleAnbinden({
                 </span>
                 {/* Die Rücknahme ist eine ausdrückliche Handlung mit Folgen -
                     deshalb der Haus-Dialog, nie ein Klick, der sofort wirkt. */}
-                <button
+                <Recht aktion="ladepunkt.anbinden"><button
                   type="button"
                   className="vp-anbinden-remove"
                   aria-label={`Ladesäule „${z.name}" entfernen`}
@@ -351,7 +352,7 @@ export function LadesaeuleAnbinden({
                   onClick={() => setEntfernenZiel({ kennung: z.kennung, name: z.name })}
                 >
                   <Icon name="trash" size={16} />
-                </button>
+                </button></Recht>
               </li>
             ))}
           </ul>

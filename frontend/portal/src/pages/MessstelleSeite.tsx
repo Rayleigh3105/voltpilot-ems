@@ -1,3 +1,5 @@
+import { RechteStandort } from '../rollen';
+import { Recht } from '../components/Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -339,6 +341,7 @@ function MessstelleSeiteMitId({
     });
 
   return (
+    <RechteStandort.Provider value={zeile?.ort.standort_id ?? null}>
     <div className="vp-mss" data-testid="messstelle-seite">
       {zurueck}
       <header className="vp-mss-kopf">
@@ -356,9 +359,9 @@ function MessstelleSeiteMitId({
           )}
         </div>
         {darfAendern && (
-          <Button variant="outline" onClick={() => oeffneBearbeiten(1)}>
+          <Recht aktion="messstelle.bearbeiten"><Button variant="outline" onClick={() => oeffneBearbeiten(1)}>
             {BEARBEITEN}
-          </Button>
+          </Button></Recht>
         )}
       </header>
 
@@ -473,6 +476,7 @@ function MessstelleSeiteMitId({
         onGespeichert={() => setBearbeitet(true)}
       />
     </div>
+    </RechteStandort.Provider>
   );
 }
 
@@ -538,9 +542,9 @@ function Zeile({
         </p>
       )}
       {z.geladen && darfAendern && (
-        <button type="button" className="vp-mss-aendern" aria-label={`${AENDERN_TITEL[z.art]} ab …`} onClick={onAendern}>
+        <Recht aktion={z.art === 'verteilung' ? 'messstelle.verteilung' : 'messstelle.bearbeiten'}><button type="button" className="vp-mss-aendern" aria-label={`${AENDERN_TITEL[z.art]} ab …`} onClick={onAendern}>
           {AENDERN_AB}
-        </button>
+        </button></Recht>
       )}
       {z.historie.length > 1 && (
         <details className="vp-mss-historie">

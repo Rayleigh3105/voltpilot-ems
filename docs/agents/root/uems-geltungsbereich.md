@@ -23,7 +23,7 @@ abschließende 404-Antwort niemals eine bereits ausgeführte Änderung verdeckt.
 
 Unsichtbare Einzelkennzahlen: 404. Die Liste liefert nur `ausserhalb_zugriff {anzahl, text}`, wenn mindestens ein
 Eingang sichtbar ist; niemals ID, Name, Formel oder Wert der verborgenen Kennzahl. Ohne Hinweis fehlt das neue Feld,
-damit die volle Sicht ihre Antwortform behält. Das Portal nutzt dieses additive Feld erst in IP-12.
+damit die volle Sicht ihre Antwortform behält. Seit IP-12 zeigt `KennzahlListe`/`KennzahlenPage` den gelieferten Hinweis ohne Nachrechnung.
 
 **Korrigierte A15-Abnahme (Firstmate 16.09.2026):** W3 wurde am 14.09.2026 entschieden und ist jünger als A15.
 KZ-0003 gehört zum Unternehmen: Jonas/Ines sehen 0,20 kWh/Stück; Claudia und Peter erhalten nur den Anzahl-Hinweis.

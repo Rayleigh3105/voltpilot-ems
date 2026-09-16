@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -505,17 +506,17 @@ export function GesamtwertDialog({
           <Button variant="ghost" onClick={() => setSchritt(3)}>
             Zurück
           </Button>
-          <Button onClick={speichereJetzt} disabled={fehler != null || speichern}>
+          <Recht aktion="messstelle.formel"><Button onClick={speichereJetzt} disabled={fehler != null || speichern}>
             {speichern ? 'Speichern …' : 'Speichern'}
-          </Button>
+          </Button></Recht>
         </div>
       );
     }
     return (
       <div className="vp-gw-foot">
-        <Button variant="ghost" onClick={neuAnlegen}>
+        <Recht aktion="messstelle.formel"><Button variant="ghost" onClick={neuAnlegen}>
           Weiteren anlegen
-        </Button>
+        </Button></Recht>
         <Button onClick={onClose}>Fertig</Button>
       </div>
     );

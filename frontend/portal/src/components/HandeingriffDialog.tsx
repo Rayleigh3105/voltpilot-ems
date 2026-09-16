@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die FOLGEN-KARTE eines Handeingriffs am Speicher oder an der ganzen Anlage
  * (Steuerung Stufe 4, Konzept `vp-steuerung-konzept-b3` §3.5 + §3.2) — das
@@ -72,12 +73,12 @@ export function HandeingriffDialog({
         )}
         <div className="vp-vb-dialog-actions">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>Abbrechen</Button>
-          <Button
+          <Recht aktion="handeingriff.setzen"><Button
             onClick={() => onConfirm(withDuration ? gewaehlt.minutes : 0)}
             disabled={busy}
           >
             {busy ? 'Wird gesendet…' : folgen.bestaetigen}
-          </Button>
+          </Button></Recht>
         </div>
       </div>
     </Modal>

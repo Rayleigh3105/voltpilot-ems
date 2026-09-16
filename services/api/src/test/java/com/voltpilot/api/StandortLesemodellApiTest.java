@@ -385,7 +385,7 @@ class StandortLesemodellApiTest {
         assertThat(feldnamen(overview)).containsExactly("sites", "totals", "dailySavings", "teilansicht");
 
         // /sites/{id}: die Listen-Zeile, zeichengleich, plus standort am Ende.
-        JsonNode liste = ok(get("/api/v1/sites", demo, null));
+        JsonNode liste = ok(get("/api/v1/sites", demo, null)).get("eintraege");
         JsonNode ausListe = null;
         for (JsonNode s : liste) {
             if (BERLIN_SITE.equals(s.path("id").asText())) {

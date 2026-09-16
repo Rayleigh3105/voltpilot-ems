@@ -298,7 +298,7 @@ class UsageProfileApiTest {
     }
 
     private String siteDtoField(String token, String siteId, String field) {
-        JsonNode sites = exchange("/api/v1/sites", HttpMethod.GET, token, null, null).getBody();
+        JsonNode sites = exchange("/api/v1/sites", HttpMethod.GET, token, null, null).getBody().get("eintraege");
         for (JsonNode s : sites) {
             if (siteId.equals(s.path("id").asText())) {
                 return s.path(field).asText();

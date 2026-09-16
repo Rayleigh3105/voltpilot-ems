@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import type { ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -85,20 +86,20 @@ export function AnpassenLeiste({
               Als Vorgabe speichern
             </label>
           )}
-          <button type="button" className="vp-anpassen-btn" onClick={onZuruecksetzen}>
+          <Recht aktion="cockpit.anpassen"><button type="button" className="vp-anpassen-btn" onClick={onZuruecksetzen}>
             Zurücksetzen
-          </button>
+          </button></Recht>
           <button type="button" className="vp-anpassen-btn" onClick={onAbbrechen}>
             Abbrechen
           </button>
-          <button
+          <Recht aktion="cockpit.anpassen"><button
             type="button"
             className="vp-anpassen-btn is-primary"
             onClick={onFertig}
             disabled={saving}
           >
             {saving ? 'Wird gespeichert …' : 'Fertig'}
-          </button>
+          </button></Recht>
         </div>
       </div>
       <p className="vp-anpassen-reset-note">{resetSatz}</p>
@@ -145,7 +146,7 @@ export function AnpassenSteuerung<T extends string = BausteinId>({
       <span className="vp-anpassen-name">{zeile.label}</span>
       {zeile.beweglich ? (
         <>
-          <button
+          <Recht aktion="cockpit.anpassen"><button
             type="button"
             className="vp-anpassen-icon"
             onClick={() => onVerschieben(zeile.id, 'hoch')}
@@ -154,8 +155,8 @@ export function AnpassenSteuerung<T extends string = BausteinId>({
             title="Nach oben"
           >
             <Icon name="arrow-up" size={16} />
-          </button>
-          <button
+          </button></Recht>
+          <Recht aktion="cockpit.anpassen"><button
             type="button"
             className="vp-anpassen-icon"
             onClick={() => onVerschieben(zeile.id, 'runter')}
@@ -164,7 +165,7 @@ export function AnpassenSteuerung<T extends string = BausteinId>({
             title="Nach unten"
           >
             <Icon name="arrow-down" size={16} />
-          </button>
+          </button></Recht>
         </>
       ) : (
         <span className="vp-anpassen-fest" title="Bleibt an seinem Platz">
@@ -172,7 +173,7 @@ export function AnpassenSteuerung<T extends string = BausteinId>({
         </span>
       )}
       {zeile.leadBlock && (
-        <button
+        <Recht aktion="cockpit.anpassen"><button
           type="button"
           className={`vp-anpassen-icon${zeile.lead ? ' is-on' : ''}`}
           onClick={() => onLead(zeile.leadBlock as CockpitBlockId)}
@@ -185,14 +186,14 @@ export function AnpassenSteuerung<T extends string = BausteinId>({
           title={zeile.lead ? 'Hervorhebung aufheben (wieder automatisch)' : 'Hervorheben'}
         >
           <Icon name="star" size={16} />
-        </button>
+        </button></Recht>
       )}
       {zeile.pflicht ? (
         <span className="vp-anpassen-fest" title="Gehört zur Grundausstattung">
           immer sichtbar
         </span>
       ) : (
-        <button
+        <Recht aktion="cockpit.anpassen"><button
           type="button"
           className="vp-anpassen-icon"
           onClick={() => onSichtbar(zeile.id, !zeile.sichtbar)}
@@ -201,7 +202,7 @@ export function AnpassenSteuerung<T extends string = BausteinId>({
           title={zeile.sichtbar ? 'Ausblenden' : 'Einblenden'}
         >
           <Icon name={zeile.sichtbar ? 'eye' : 'eye-off'} size={16} />
-        </button>
+        </button></Recht>
       )}
       {extra}
     </div>

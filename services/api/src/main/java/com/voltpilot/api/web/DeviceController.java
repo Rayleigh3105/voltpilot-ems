@@ -1,5 +1,8 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.web.dto.SichtbareListe;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
+
 import com.voltpilot.api.control.ControlCertificationService;
 import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.chargers.ChargingConfigPublisher;
@@ -48,17 +51,14 @@ import org.springframework.web.server.ResponseStatusException;
  * insert scoped to the tenant; RLS plus the global unique {@code external_ref}
  * index make cross-tenant claiming impossible.
  *
- * <p><b>Ohne {@code teilansicht} — die benannte Lücke von AP-03 IP-10.</b> Diese Route antwortet mit einer
- * NACKTEN LISTE und kann das additive Feld {@code teilansicht {sichtbar, gesamt}} darum nicht im Körper
- * tragen; ein Umschlag {@code {eintraege, teilansicht}} wäre ein Bruch des Vertrags an einer Kernroute.
- * <b>Einzulösen mit AP-03 IP-12</b> (Portal-Rechte-Weiche): dort werden {@code api.ts} und die
- * Kundenflächen ohnehin umgestellt, und der Umschlag ist dann billig. Die Sicherheitszusage hängt nicht
- * daran — die Liste zeigt ausschließlich Sichtbares (Standort-Zaun {@code site_scope}, IP-5) —, und den
- * Satz „Teilansicht: n von m Standorten" zeichnet das Portal aus {@code GET /api/v1/me}.
+ * <p>AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
+ * {@code teilansicht} den Umfang derselben Antwort. Der Standort-Zaun bleibt erhalten.
  */
 @RestController
 @RequestMapping("/api/v1/devices")
 public class DeviceController {
+
+    private final TeilansichtDienst teilansicht;
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DeviceController.class);
 
@@ -93,8 +93,9 @@ public class DeviceController {
             ControlCertificationService controlCertification,
             ObjectProvider<ChargingConfigPublisher> chargingConfig,
             com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides,
-            CommandLogRepository commandLog) {
+            CommandLogRepository commandLog, TeilansichtDienst teilansicht) {
         this.devices = devices;
+        this.teilansicht = teilansicht;
         this.geltungsbereich = geltungsbereich;
         this.rechte = rechte;
         this.assets = assets;
@@ -112,8 +113,8 @@ public class DeviceController {
     }
 
     @GetMapping
-    public List<DeviceDto> listDevices() {
-        return devices.findAll();
+    public SichtbareListe<DeviceDto> listDevices() {
+        return new SichtbareListe<>(devices.findAll(), teilansicht.jetzt());
     }
 
     @PostMapping("/claim")

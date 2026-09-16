@@ -1,3 +1,5 @@
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, type Messstelle, type MessstelleWerte, type Protokoll } from '../api';
@@ -349,4 +351,24 @@ describe('MessstelleSeite · Nebengrößen unter den Werten (UEMS AP-13 IP-6, V8
     expect(within(neben).queryAllByRole('link')).toHaveLength(0);
     expect(within(neben).queryAllByRole('button')).toHaveLength(0);
   });
+});
+
+
+it('IP-12: der Standort des Registers trägt auch auf einer Unternehmensadresse das Bearbeitungsrecht', async () => {
+  // Thomas richtet ST-1 ein; er hat kein unternehmensweites Bearbeitungsrecht.
+  setSelbstauskunft(rechteSeed('TB').me);
+  verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+  render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
+  expect(await screen.findByRole('button', { name: 'Bearbeiten', exact: true }, WARTEN)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Ort ändern ab …' })).toBeInTheDocument();
+});
+
+it('IP-12: Murat liest dieselbe Messstelle ohne Pflegeknöpfe, mit Jonas als Weg', async () => {
+  setSelbstauskunft(rechteSeed('MD').me);
+  verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+  render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
+  await screen.findByRole('heading', { level: 1, name: 'Spritzguss SG01–SG06' }, WARTEN);
+  expect(screen.queryByRole('button', { name: 'Bearbeiten', exact: true })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Ort ändern ab …' })).toBeNull();
+  expect(screen.getAllByRole('note').some(n => n.textContent?.includes('Jonas Wendlinger'))).toBe(true);
 });

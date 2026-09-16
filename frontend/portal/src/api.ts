@@ -2307,7 +2307,7 @@ export interface BezugsgroesseAnfrage {
  * UEMS AP-03 IP-4: die Selbstauskunft `GET /api/v1/me` (OpenAPI `Selbstauskunft`) - wer fragt und was er darf.
  * Rollen, Umfänge und Aktionen sind Kennungen der Rechte-Matrix (`docs/contracts/v2/rechte-matrix.json`);
  * `standorte`, `kuenftig`, `text` und `teilansicht` sind die Ableitung `sichtbare_standorte` aus
- * `rechte-vectors.json`. Noch liest das Portal sie nicht (AP-03 IP-12).
+ * `rechte-vectors.json`. `rollen.ts` liest sie als einzige Rechte-Quelle (AP-03 IP-12).
  */
 export interface Selbstauskunft {
   /** Das Subject des Kontos. */
@@ -3673,6 +3673,11 @@ export interface OverviewDailySavings {
  * Der Satz „Teilansicht: n von m Standorten" kommt fertig aus `GET /api/v1/me`
  * (`teilansicht.kopfzeile`); dieses Feld sagt je Antwort, worüber sie gebildet wurde.
  */
+export interface SichtbareListe<T> {
+  eintraege: T[];
+  teilansicht: Teilansicht;
+}
+
 export interface Teilansicht {
   sichtbar: number;
   gesamt: number;
@@ -6165,6 +6170,7 @@ export function vergissGemerkte(): void {
 }
 
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const angefragterMandant = tenantOverride;
   let token: string | undefined;
   try {
     token = await freshToken();
@@ -6180,7 +6186,7 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     headers: {
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...(angefragterMandant ? { 'X-Tenant-Id': angefragterMandant } : {}),
       ...(init.headers ?? {}),
     },
   });
@@ -6203,6 +6209,11 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
       if (body && typeof body.message === 'string' && body.message) message = body.message;
     } catch {
       // non-JSON error body: keep the generic message
+    }
+    if ((res.status === 404 || res.status === 403) && errorBody && typeof errorBody === 'object'
+      && 'code' in errorBody && errorBody.code === 'zugriff_beendet'
+      && angefragterMandant === tenantOverride) {
+      window.dispatchEvent(new CustomEvent('vp-zugriff-beendet', { detail: message }));
     }
     throw new ApiError(res.status, message, errorBody);
   }
@@ -6600,7 +6611,7 @@ export const api = {
    * Der gemeldete Edge-Stand aller Geräte des Mandanten (Plattform-Übersicht).
    * Eine leere Liste heißt „kein Gerät hat je gemeldet", nicht „alle aktuell".
    */
-  edgeVersions: () => request<EdgeVersion[]>('/api/v1/edge-versions'),
+  edgeVersions: () => request<SichtbareListe<EdgeVersion>>('/api/v1/edge-versions'),
   /**
    * ⚠ `entityId` schneidet Auswahl und Papier-Spur auf EINE Komponente dieses
    * Geraets (Stufe 3b). Es ist ueberall OPTIONAL: ohne es antwortet der Server
@@ -7076,7 +7087,7 @@ export const api = {
    * admin without a selected tenant (RLS default-deny).
    */
   tenantContext: () => request<TenantContext>('/api/v1/tenant-context'),
-  listSites: () => request<Site[]>('/api/v1/sites'),
+  listSites: () => request<SichtbareListe<Site>>('/api/v1/sites'),
   createSite: (input: NeueAnlageInput) =>
     request<Site>('/api/v1/sites', {
       method: 'POST',
@@ -7101,7 +7112,7 @@ export const api = {
     request<void>(`/api/v1/sites/${siteId}`, { method: 'DELETE' }),
   siteDeletionPreview: (siteId: string) =>
     request<SiteDeletionPreview>(`/api/v1/sites/${siteId}/deletion-preview`),
-  listDevices: () => request<Device[]>('/api/v1/devices'),
+  listDevices: () => request<SichtbareListe<Device>>('/api/v1/devices'),
   claimDevice: (siteId: string, externalRef: string) =>
     request<Device>('/api/v1/devices/claim', {
       method: 'POST',

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * **Zone ③ · Betriebsmodelle** — die Render-Hälfte (Steuerung Stufe 5).
  *
@@ -85,7 +86,7 @@ export function Betriebsmodelle({
               <ul className="vp-bm-list" role="radiogroup" aria-label={title}>
                 {/* Der Grundmodus ist eine vollwertige Wahl, kein Leer-Zustand. */}
                 <li className={`vp-bm-card${zone.aktiv == null && zone.altbestand.length === 0 ? ' on' : ''}`}>
-                  <button
+                  <Recht aktion="betriebsweise.aendern"><button
                     type="button"
                     role="radio"
                     aria-checked={zone.aktiv == null && zone.altbestand.length === 0}
@@ -98,7 +99,7 @@ export function Betriebsmodelle({
                       <strong>{GRUNDMODUS_TITEL}</strong>
                       <span className="vp-bm-nutzen">{GRUNDMODUS_SATZ}</span>
                     </span>
-                  </button>
+                  </button></Recht>
                 </li>
                 {zone.radio.map((k) => (
                   <ModellKarte
@@ -168,7 +169,7 @@ function ModellKarte({
 }) {
   return (
     <li className={`vp-bm-card${karte.aktiv ? ' on' : ''}`}>
-      <button
+      <Recht aktion="betriebsweise.aendern"><button
         type="button"
         {...(radio
           ? { role: 'radio' as const, 'aria-checked': karte.aktiv }
@@ -191,7 +192,7 @@ function ModellKarte({
             <span className="vp-bm-blocked">{karte.blockedReason}</span>
           )}
         </span>
-      </button>
+      </button></Recht>
 
       <button
         type="button"

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die Rückfrage für eine SOFORTAKTION (§14.13 "Jetzt starten"/"Jetzt stoppen"/
  * "Automatik fortsetzen") - das Haus-Muster von ConfirmDialog (ein Drawer mit
@@ -70,12 +71,12 @@ export function ConsumerOverrideDialog({
         )}
         <div className="vp-vb-dialog-actions">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>Abbrechen</Button>
-          <Button
+          <Recht aktion="handeingriff.setzen"><Button
             onClick={() => onConfirm(needsDuration ? minutes : undefined)}
             disabled={busy}
           >
             {busy ? 'Wird gesendet…' : 'Bestätigen'}
-          </Button>
+          </Button></Recht>
         </div>
       </div>
     </Modal>

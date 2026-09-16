@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -145,15 +146,15 @@ export function FlaecheDialog({
       title={ergebnis ? FLAECHE_GESPEICHERT_TITEL : FLAECHE_AENDERN_TITEL}
       footer={
         ergebnis ? (
-          <Button onClick={fertig}>{KNOPF_FERTIG}</Button>
+          <Recht aktion="gebaeude.pflegen"><Button onClick={fertig}>{KNOPF_FERTIG}</Button></Recht>
         ) : (
           <>
             <Button variant="ghost" onClick={onClose}>
               Abbrechen
             </Button>
-            <Button type="submit" form={`${basis}-form`} disabled={busy}>
+            <Recht aktion="gebaeude.pflegen"><Button type="submit" form={`${basis}-form`} disabled={busy}>
               {KNOPF_FLAECHE_SPEICHERN}
-            </Button>
+            </Button></Recht>
           </>
         )
       }

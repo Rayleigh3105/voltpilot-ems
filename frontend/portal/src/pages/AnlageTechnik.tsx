@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -490,7 +491,7 @@ export function TechnikSection({
       deepLinked={opened('anlage')}
       explain="Die Grunddaten Ihrer Anlage - Name, Standort, Veräußerungsform und Netzanschluss."
       summary={site.name}
-      action={anlageEditing ? undefined : <EditPencil onClick={() => setEditSection('anlage')} />}
+      action={anlageEditing ? undefined : <Recht aktion="anlage.verwalten"><EditPencil onClick={() => setEditSection('anlage')} /></Recht>}
     >
       {anlageEditing ? (
         <StammdatenEditForm
@@ -679,13 +680,13 @@ export function TechnikSection({
             Noch kein Gerät verbunden. Fügen Sie Ihr Gerät mit seiner Geräte-ID hinzu -
             es verbindet sich selbst, sobald es eingeschaltet ist.
           </p>
-          <Button
+          <Recht aktion="geraet.einrichten"><Button
             variant="outline"
             iconLeft={<Icon name="plus" size={16} />}
             onClick={() => setAddDeviceOpen(true)}
           >
             Gerät hinzufügen
-          </Button>
+          </Button></Recht>
         </>
       ) : (
         <>
@@ -721,14 +722,14 @@ export function TechnikSection({
             <p className="vp-note">
               Tippen Sie ein Gerät oben an, um Typ, Verlauf und weitere Aktionen zu öffnen.
             </p>
-            <Button
+            <Recht aktion="geraet.einrichten"><Button
               variant="outline"
               size="sm"
               iconLeft={<Icon name="plus" size={16} />}
               onClick={() => setAddDeviceOpen(true)}
             >
               Weiteres Gerät hinzufügen
-            </Button>
+            </Button></Recht>
           </TechnischeDetails>
         </>
       )}
@@ -871,13 +872,13 @@ export function TechnikSection({
             Marktstammdatenregister, damit Prognose und Optimierung mit den amtlich
             registrierten Werten rechnen.
           </p>
-          <Button
+          <Recht aktion="anlage.verwalten"><Button
             variant="outline"
             iconLeft={<Icon name="sun" size={16} />}
             onClick={() => setMastrOpen(true)}
           >
             Anlage verknüpfen
-          </Button>
+          </Button></Recht>
         </>
       ) : (
         <>
@@ -915,14 +916,14 @@ export function TechnikSection({
                 </>
               )}
             </dl>
-            <Button
+            <Recht aktion="anlage.verwalten"><Button
               variant="ghost"
               size="sm"
               iconLeft={<Icon name="refresh-cw" size={16} />}
               onClick={() => setMastrOpen(true)}
             >
               Neu aus dem Register abrufen
-            </Button>
+            </Button></Recht>
           </TechnischeDetails>
         </>
       )}
@@ -956,7 +957,7 @@ export function TechnikSection({
       explain="Entfernt die Anlage und alle ihre Daten unwiderruflich."
       summary="Unwiderruflich"
     >
-      <DangerZone
+      <DangerZone recht="anlage.verwalten"
         actionLabel="Anlage löschen"
         description="Eine gelöschte Anlage kann nicht wiederhergestellt werden."
         consequences={deleteConsequences()}
@@ -1084,7 +1085,7 @@ function ProfilZeile({ site, onSaved }: { site: Site; onSaved: (s: Site) => void
   return (
     <>
       <span>{profilLabel(site.profil)}</span>{' '}
-      <button
+      <Recht aktion="betriebsweise.aendern"><button
         type="button"
         className="vp-linklike"
         onClick={() => {
@@ -1094,7 +1095,7 @@ function ProfilZeile({ site, onSaved }: { site: Site; onSaved: (s: Site) => void
         }}
       >
         Ändern
-      </button>
+      </button></Recht>
       {err && (
         <div className="vp-alert vp-alert-err" style={{ marginTop: 8 }}>
           {err}
@@ -1249,9 +1250,9 @@ export function StammdatenEditForm({
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
+        <Recht aktion="anlage.verwalten"><Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
           {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
-        </Button>
+        </Button></Recht>
       </div>
     </div>
   );
@@ -1317,13 +1318,13 @@ export function BatteryControlSection({
           Kein Speicher hinterlegt. Tragen Sie die Speicherdaten ein, damit der
           Fahrplan Ihren Speicher optimal lädt und entlädt.
         </p>
-        <Button
+        <Recht aktion="geraet.einrichten"><Button
           variant="outline"
           iconLeft={<Icon name="battery" size={16} />}
           onClick={() => setEditing(true)}
         >
           Speicher hinzufügen
-        </Button>
+        </Button></Recht>
       </>
     );
   }
@@ -1387,14 +1388,14 @@ export function BatteryControlSection({
         <p className="vp-note" style={{ marginTop: 0 }}>
           Ihr Wechselrichter steuert diesen Speicher - er führt den Fahrplan aus.
         </p>
-        <Button
+        <Recht aktion="geraet.einrichten"><Button
           variant="ghost"
           size="sm"
           iconLeft={<Icon name="pencil" size={16} />}
           onClick={() => setEditing(true)}
         >
           Speicher bearbeiten
-        </Button>
+        </Button></Recht>
       </TechnischeDetails>
     </>
   );
@@ -1519,9 +1520,9 @@ function BatteryEditForm({
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+        <Recht aktion="geraet.einrichten"><Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Wird gespeichert…' : 'Speicher speichern'}
-        </Button>
+        </Button></Recht>
       </div>
     </div>
   );

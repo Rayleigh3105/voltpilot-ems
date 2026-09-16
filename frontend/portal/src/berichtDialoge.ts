@@ -1,3 +1,4 @@
+import { darfInListen } from './rollen';
 /**
  * Die Dialoge der Welt „Berichte“ (UEMS AP-12 IP-14, §5.1–§5.3) als reine Ableitung: „Bericht anlegen“,
  * „Berichtsstand freigeben“, der Vergleich Entwurf gegen Berichtsstand, „Anstoß verwerfen“ und das Banner
@@ -8,8 +9,7 @@
  * das, was ein Dialog zeigt — es erfindet keine zweite Prüfung und keinen eigenen Satz über dieselbe Lage.
  *
  * RECHTE kommen aus der Selbstauskunft (`GET /api/v1/me`: `standorte[].rechte`, `unternehmen_rechte`) über die Kennungen
- * von `uemsBericht.kennung` (G1). Ist sie nicht zu haben (`null`), zeigt die Fläche den Hebel und der Server entscheidet
- * mit seinem Satz — geraten wird nie. Wer eine Handlung nicht darf, sieht ihren Hebel nicht (§5.4, §5.5: nicht
+ * von `uemsBericht.kennung` (G1). Ist sie nicht zu haben (`null`), bleibt der Hebel geschlossen. Wer eine Handlung nicht darf, sieht ihren Hebel nicht (§5.4, §5.5: nicht
  * „ausgegraut mit Erklärung“, sondern gar nicht da).
  *
  * REIN: kein Netz, kein Zustand, keine Uhr (wer „jetzt“ braucht, bekommt es übergeben).
@@ -109,15 +109,14 @@ export const KEINE_RECHTE: BerichtRechte = { standorte: new Map(), unternehmen: 
 export type Handlung = 'anlegen' | 'freigeben' | 'verwerfen';
 
 /**
- * Darf die Person die Handlung an dieser Geltung? `rechte = null` heißt: unbekannt — der Hebel steht da, der Server
- * antwortet. `geltungId = null` am Standort fragt „an irgendeinem Standort“.
+ * Darf die Person die Handlung an dieser Geltung? `rechte = null` heißt: unbekannt — es gibt noch keinen schreibenden Hebel. `geltungId = null` am Standort fragt „an irgendeinem Standort“.
  */
 export const darf = (rechte: BerichtRechte | null, handlung: Handlung, geltungArt: Bericht['geltung_art'], geltungId: string | null): boolean => {
-  if (rechte === null) return true;
+  if (rechte === null) return false;
   const kennung = B.kennung(handlung, geltungArt);
-  if (geltungArt === 'unternehmen') return rechte.unternehmen.includes(kennung);
-  if (geltungId !== null) return rechte.standorte.get(geltungId)?.includes(kennung) ?? false;
-  return [...rechte.standorte.values()].some((r) => r.includes(kennung));
+  if (geltungArt === 'unternehmen') return darfInListen(rechte, kennung, null);
+  if (geltungId !== null) return darfInListen(rechte, kennung, geltungId);
+  return [...rechte.standorte.keys()].some((id) => darfInListen(rechte, kennung, id));
 };
 
 // ------------------------------------------------------------------ Bericht anlegen (§5.1)
@@ -151,7 +150,7 @@ export const vorlageKarten = (rechte: BerichtRechte | null, standortIds: readonl
   VORLAGEN.filter((v) =>
     v.geltung_art === 'unternehmen'
       ? darf(rechte, 'anlegen', 'unternehmen', null)
-      : rechte === null || standortIds.some((id) => darf(rechte, 'anlegen', 'standort', id)),
+      : standortIds.some((id) => darf(rechte, 'anlegen', 'standort', id)),
   ).map((v) => ({
     schluessel: v.schluessel,
     name: v.name,

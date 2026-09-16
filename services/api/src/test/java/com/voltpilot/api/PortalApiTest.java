@@ -372,7 +372,7 @@ class PortalApiTest {
         spoofed.set("X-Tenant-Id", "10000000-0000-0000-0000-000000000001"); // tenant B
 
         // The site list is still exactly tenant A's own data.
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(spoofed),
                 new ParameterizedTypeReference<>() {});
         assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -387,7 +387,7 @@ class PortalApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         // Same for the device list: only tenant A's devices, none of tenant B's.
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(spoofed),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody()).extracting(d -> d.get("externalRef"))
@@ -415,7 +415,7 @@ class PortalApiTest {
 
         // The device list carries lastSeenAt: null for the fresh device, the
         // newest telemetry timestamp for the seeded one (which has demo data).
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo", "demo"))),
                 new ParameterizedTypeReference<>() {});
@@ -489,7 +489,7 @@ class PortalApiTest {
         assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
         // No ghost device row was created.
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody())
@@ -526,7 +526,7 @@ class PortalApiTest {
                 String.class);
         assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
-        ResponseEntity<List<Map<String, Object>>> afterTypo = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> afterTypo = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(afterTypo.getBody())
@@ -560,7 +560,7 @@ class PortalApiTest {
                     .isEqualTo(HttpStatus.BAD_REQUEST);
         }
         // Nothing was stored for any of them.
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody())
@@ -589,7 +589,7 @@ class PortalApiTest {
                 + BERLIN_SITE + "', '" + newDeviceId + "', 1.5, "
                 + "jsonb_build_object('schema_version', 1, 'source', 'test'))");
 
-        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -632,7 +632,7 @@ class PortalApiTest {
                 + "'00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', '" + newDeviceId + "', 1.5, "
                 + "jsonb_build_object('schema_version', 1, 'source', 'test'))");
 
-        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> mine = res.getBody().stream()
@@ -1038,7 +1038,7 @@ class PortalApiTest {
 
         // The device is NOT unclaimed: still listed, still updatable, and new
         // data recorded after the purge is visible again.
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody()).extracting(d -> d.get("id")).contains(purged);
@@ -2966,7 +2966,7 @@ class PortalApiTest {
         String deviceId = claimDeviceInto(demo, siteId, "edge-lan-01");
 
         java.util.function.Function<String, Map<String, Object>> device = id -> {
-            ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+            ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                     url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                     new ParameterizedTypeReference<>() {});
             assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -3012,7 +3012,7 @@ class PortalApiTest {
                 .containsEntry("lanSource", "schnittstelle");
 
         // Ein fremder Mandant sieht das Gerät gar nicht (RLS).
-        ResponseEntity<List<Map<String, Object>>> fremd = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> fremd = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))),
                 new ParameterizedTypeReference<>() {});
@@ -6661,14 +6661,14 @@ class PortalApiTest {
         // aber es entsteht keine Versionszeile - „unbekannt" bleibt unbekannt.
         listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:00:00Z\","
                 + "\"flows\":{\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
-        ResponseEntity<List> none = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        ResponseEntity<List> none = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class);
         assertThat(none.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(edgeVersionFor(none.getBody(), deviceId)).isNull();
 
         listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:15:00Z\","
                 + "\"flows\":{\"core_version\":\"1.4.2\",\"palette_version\":\"0.3.0\","
                 + "\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
-        ResponseEntity<List> reported = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        ResponseEntity<List> reported = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class);
         Map<String, Object> row = edgeVersionFor(reported.getBody(), deviceId);
         assertThat(row).isNotNull();
         assertThat(row.get("deviceId")).isEqualTo("00000000-0000-0000-0000-000000000003");
@@ -6677,7 +6677,7 @@ class PortalApiTest {
         assertThat(row.get("paletteVersion")).isEqualTo("0.3.0");
 
         // Der andere Mandant sieht davon nichts (RLS).
-        assertThat(rest.exchange(versionsUrl, HttpMethod.GET,
+        assertThat(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))), List.class).getBody())
                 .isEmpty();
 
@@ -6686,7 +6686,7 @@ class PortalApiTest {
         listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:30:00Z\","
                 + "\"flows\":{\"core_version\":\"1.5.0\",\"applied\":[]}}")
                 .getBytes(StandardCharsets.UTF_8));
-        ResponseEntity<List> updated = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        ResponseEntity<List> updated = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class);
         Map<String, Object> after = edgeVersionFor(updated.getBody(), deviceId);
         assertThat(after).isNotNull();
         assertThat(after.get("coreVersion")).isEqualTo("1.5.0");
@@ -6703,8 +6703,7 @@ class PortalApiTest {
         exec("INSERT INTO edge_release (release_seq, version, target_commit, created_by) "
                 + "VALUES (4200, 'edge-2099.01.1', 'deadbeef', 'test')");
         try {
-            Map<String, Object> judged = edgeVersionFor(rest
-                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            Map<String, Object> judged = edgeVersionFor(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
             assertThat(judged).isNotNull();
             assertThat(judged.get("newestRelease")).isEqualTo("edge-2099.01.1");
             assertThat(judged.get("upToDate")).as("nicht registriert ist NIE veraltet").isNull();
@@ -6714,8 +6713,7 @@ class PortalApiTest {
             listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:45:00Z\","
                     + "\"flows\":{\"core_version\":\"edge-2099.01.1-9b37439a02c1\","
                     + "\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
-            Map<String, Object> current = edgeVersionFor(rest
-                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            Map<String, Object> current = edgeVersionFor(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
             assertThat(current).isNotNull();
             assertThat(current.get("upToDate")).isEqualTo(Boolean.TRUE);
 
@@ -6729,8 +6727,7 @@ class PortalApiTest {
                     + "\"version\":\"edge-2099.01.1-cafebabefeed\","
                     + "\"update\":{\"backend\":\"compose\",\"state\":\"idle\"}}")
                     .getBytes(StandardCharsets.UTF_8));
-            Map<String, Object> installed = edgeVersionFor(rest
-                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            Map<String, Object> installed = edgeVersionFor(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
             assertThat(installed).isNotNull();
             assertThat(installed.get("coreVersion"))
                     .isEqualTo("edge-2099.01.1-cafebabefeed");
@@ -7857,7 +7854,7 @@ class PortalApiTest {
     }
 
     private List<Map<String, Object>> sites(String token) {
-        return rest.exchange(url("/api/v1/sites"), HttpMethod.GET,
+        return com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token)),
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody();
     }

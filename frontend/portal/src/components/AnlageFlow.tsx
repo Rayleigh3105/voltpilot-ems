@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -19,7 +20,7 @@ import {
 import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
 import { standortWaehlenSatz, standortWahl, standortWahlHinweis, type StandortWahl } from '../anlageStandort';
 import { alsOrtFehler } from '../standorte';
-import { isPlatformAdmin } from '../auth';
+import { showTechnicalLayer } from '../rollen';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import {
   creatableConsumerTypes,
@@ -781,7 +782,7 @@ function AnlageStep({
           </>
         )}
       </div>
-      <Button
+      <Recht aktion="anlage.verwalten"><Button
         variant="primary"
         size="lg"
         fullWidth
@@ -790,7 +791,7 @@ function AnlageStep({
         style={{ marginTop: 20 }}
       >
         {busy ? 'Lege Anlage an…' : 'Weiter'}
-      </Button>
+      </Button></Recht>
       {lat == null && (
         <p className="vp-note" style={{ marginTop: 8 }}>
           Ohne Standort geht es auch - dann allerdings ohne Wetterprognose.
@@ -921,7 +922,7 @@ function RegisterStep({
           Datenquelle: Marktstammdatenregister der Bundesnetzagentur (dl-de/by-2-0). Straße und
           Koordinaten sind für private Betreiber nicht öffentlich - Ihren Standort setzen Sie selbst.
         </p>
-        <Button
+        <Recht aktion="anlage.verwalten"><Button
           variant="primary"
           size="lg"
           fullWidth
@@ -930,7 +931,7 @@ function RegisterStep({
           style={{ marginTop: 8 }}
         >
           {busy ? 'Wird übernommen…' : 'Übernehmen & weiter'}
-        </Button>
+        </Button></Recht>
         <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
           <button
             type="button"
@@ -1164,7 +1165,7 @@ function ManualBatteryStep({
           onChange={(e) => setMaxDischarge((e.target as HTMLInputElement).value)}
         />
       </div>
-      <Button
+      <Recht aktion="geraet.einrichten"><Button
         variant="primary"
         size="lg"
         fullWidth
@@ -1173,7 +1174,7 @@ function ManualBatteryStep({
         style={{ marginTop: 20 }}
       >
         {busy ? 'Speichere…' : 'Speicher speichern'}
-      </Button>
+      </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={onSkip}>
           Kein Speicher oder später eintragen
@@ -1274,7 +1275,7 @@ function AnwendungenStep({
   // - „Später entscheiden" ist eine Wahl, ein unberührter Schritt nicht.
   const profilBeruehrt = useRef(false);
 
-  const admin = isPlatformAdmin();
+  const admin = showTechnicalLayer();
 
   // Die Batterie, die Register-/Handeingabe gerade angelegt hat (oder keine).
   useEffect(() => {
@@ -1481,7 +1482,7 @@ function AnwendungenStep({
             onClick={() => waehleModell(id)}
           />
         ) : (
-          <button
+          <Recht aktion="betriebsweise.aendern"><button
             type="button"
             role="switch"
             aria-checked={an}
@@ -1490,7 +1491,7 @@ function AnwendungenStep({
             onClick={() => toggle(id)}
           >
             <span className="vp-switch-knob" aria-hidden="true" />
-          </button>
+          </button></Recht>
         )}
       </li>
     );
@@ -1645,7 +1646,7 @@ function AnwendungenStep({
         </section>
       )}
 
-      <Button
+      <Recht aktion="betriebsweise.aendern"><Button
         variant="primary"
         size="lg"
         fullWidth
@@ -1654,7 +1655,7 @@ function AnwendungenStep({
         style={{ marginTop: 20 }}
       >
         {busy ? 'Speichere…' : 'Weiter'}
-      </Button>
+      </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={() => onNext([])}>
           Überspringen - später festlegen
@@ -1862,7 +1863,7 @@ function GeraetStep({
           }}
         />
       </div>
-      <Button
+      <Recht aktion="geraet.einrichten"><Button
         variant="primary"
         size="lg"
         fullWidth
@@ -1871,7 +1872,7 @@ function GeraetStep({
         style={{ marginTop: 20 }}
       >
         {busy ? 'Verbinde…' : 'Anlage anlegen'}
-      </Button>
+      </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={onSkip}>
           Gerät habe ich noch nicht - später

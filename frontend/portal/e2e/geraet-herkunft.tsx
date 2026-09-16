@@ -1,3 +1,5 @@
+import { sichtbareListe } from '../src/test/rollenFixtures';
+import './rollen-fixture';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { api, type Device, type Site } from '../src/api';
@@ -155,7 +157,7 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   siteComponents: ok({ componentAuthority: 'portal', components: [] }),
   controlStatus: ok(null),
   curtailmentStatus: ok(null),
-  edgeVersions: ok([{ deviceId: box.id, siteId: site.id, coreVersion: 'edge-2026.09.10', paletteVersion: '0.9.0', reportedAt: JETZT }]),
+  edgeVersions: ok(sichtbareListe([{ deviceId: box.id, siteId: site.id, coreVersion: 'edge-2026.09.10', paletteVersion: '0.9.0', reportedAt: JETZT }])),
   siteChargers: ok({ budget: null, chargers: [] }),
   entityStrategies: ok({}),
   siteInterventions: ok({ automationPaused: false, pausedUntil: null, interventions: [] }),

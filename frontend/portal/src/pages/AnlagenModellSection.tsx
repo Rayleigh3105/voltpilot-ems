@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -247,7 +248,7 @@ export function AnlagenModellSection({
       () => active && setConsumers([]),
     );
     // Der Software-Stand der Box für die Datenverbindungs-Karte, fail-soft.
-    api.edgeVersions().then(
+    api.edgeVersions().then((antwort) => antwort.eintraege).then(
       (v) => active && setEdgeVersions(v),
       () => active && setEdgeVersions(null),
     );
@@ -522,7 +523,7 @@ export function AnlagenModellSection({
                 <span>{satz.text}</span>
               </p>
               {portalManaged && (
-                <button
+                <Recht aktion="geraet.einrichten"><button
                   type="button"
                   className="vp-btn vp-btn--primary vp-btn--sm vp-am-global-add"
                   onClick={() => {
@@ -532,7 +533,7 @@ export function AnlagenModellSection({
                   }}
                 >
                   <Icon name="plus" size={14} /> {HINZUFUEGEN_LABEL}
-                </button>
+                </button></Recht>
               )}
               {/* Anlagen-Zentrale Stufe 3 (§6.4): die ADMIN-Tür desselben
                   Knopfs. Sie steht bewusst NEBEN dem Assistenten und nicht
@@ -959,13 +960,13 @@ function GeraeteKarteView({
           </a>
         )}
         {k.art === 'neu' && k.quelle && (
-          <button
+          <Recht aktion="geraet.einrichten"><button
             type="button"
             className="vp-am-karte-go"
             onClick={() => onAssign(k.quelle as AdoptableSource)}
           >
             Übernehmen <Icon name="chevron-right" size={14} />
-          </button>
+          </button></Recht>
         )}
         {/* Der dritte Wohnort (§6.4): die TECHNISCHE Übernahme. Sie steht NEBEN
             der geführten - die eine legt in einem Zug an, was der Kunde sieht,
@@ -1128,18 +1129,18 @@ function ComponentRow({
                 „Wieder verbinden"-Dialog eines NEU gemeldeten Geräts, den es auf
                 einer voll zugeordneten Anlage gar nicht gibt. */}
             {actions.canRepin && (
-              <button type="button" className="vp-am-orphan-btn" onClick={() => onRepin(c)}>
+              <Recht aktion="geraet.einrichten"><button type="button" className="vp-am-orphan-btn" onClick={() => onRepin(c)}>
                 wieder verbinden
-              </button>
+              </button></Recht>
             )}
             {actions.canDelete && (
-              <button
+              <Recht aktion="komponente.loeschen"><button
                 type="button"
                 className="vp-am-orphan-btn danger"
                 onClick={() => onRemove(c)}
               >
                 löschen
-              </button>
+              </button></Recht>
             )}
           </span>
         )}
@@ -1190,14 +1191,14 @@ function ComponentRow({
           {sofort && (
             <span className="vp-am-actions">
               {sofortAktionen({ connected: true, hasOverride: false }).map((a) => (
-                <button
+                <Recht aktion="handeingriff.setzen" key={a}><button
                   key={a}
                   type="button"
                   className="vp-am-action"
                   onClick={() => onSofort(sofort, a)}
                 >
                   <Icon name="zap" size={13} /> {SOFORT_LABEL[a]}
-                </button>
+                </button></Recht>
               ))}
             </span>
           )}
@@ -1205,10 +1206,10 @@ function ComponentRow({
               fertigen Komponente - nie ein fünfter Schritt des Anlege-Wegs. */}
           {c.freigabeFaehig && onFreigabe && (
             <span className="vp-am-actions">
-              <button type="button" className="vp-am-action" onClick={() => onFreigabe(c)}>
+              <Recht aktion={['freigabe.erteilen', 'schalttest.durchfuehren']}><button type="button" className="vp-am-action" onClick={() => onFreigabe(c)}>
                 <Icon name="zap" size={13} />
                 {c.schaltbar ? 'Steuerung dieses Geräts' : 'Steuern freigeben'}
-              </button>
+              </button></Recht>
             </span>
           )}
           {/* Die BRÜCKE (Stufe 4, Anforderung 9): ein freigegebener Schalter ist
@@ -1221,13 +1222,13 @@ function ComponentRow({
             channels: c.channels.map((m) => ({ channel: m.raw })),
           }) && (
             <span className="vp-am-actions">
-              <button
+              <Recht aktion="betriebsweise.aendern"><button
                 type="button"
                 className="vp-am-action"
                 onClick={() => onRegelBruecke(c)}
               >
                 <Icon name="zap" size={13} /> {REGEL_BRUECKE_LABEL}
-              </button>
+              </button></Recht>
             </span>
           )}
           {/* Der BEFEHLS-VERLAUF (Kommando-Transparenz V1, F2/F4): an JEDER
@@ -1259,18 +1260,18 @@ function ComponentRow({
           {!c.orphaned && (actions.canRepin || actions.canDelete) && (
             <span className="vp-am-actions">
               {actions.canRepin && (
-                <button type="button" className="vp-am-action" onClick={() => onRepin(c)}>
+                <Recht aktion="geraet.einrichten"><button type="button" className="vp-am-action" onClick={() => onRepin(c)}>
                   <Icon name="link" size={13} /> Zuordnung ändern
-                </button>
+                </button></Recht>
               )}
               {actions.canDelete && (
-                <button
+                <Recht aktion="komponente.loeschen"><button
                   type="button"
                   className="vp-am-action danger"
                   onClick={() => onRemove(c)}
                 >
                   <Icon name="trash" size={13} /> Komponente löschen
-                </button>
+                </button></Recht>
               )}
             </span>
           )}

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * **Zone ② · Verbraucher** — die Render-Hälfte (Verbrauchsmanagement v1,
  * Paket P1: LESEND).
@@ -281,10 +282,10 @@ function Zeile({ z, onRegeln, onSteuerart }: {
           Bedienelemente (ein Klickziel in einem anderen ist die
           Doppeldeutigkeit, die das Haus verbietet). */}
       {oeffnen ? (
-        <button type="button" className="vp-vz-text is-klick" onClick={oeffnen}>
+        <Recht aktion="betriebsweise.aendern"><button type="button" className="vp-vz-text is-klick" onClick={oeffnen}>
           {inhalt}
           <Icon name="chevron-right" size={16} />
-        </button>
+        </button></Recht>
       ) : (
         <span className="vp-vz-text">
           {inhalt}

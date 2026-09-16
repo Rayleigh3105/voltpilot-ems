@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -71,14 +72,14 @@ export function GeraetPvProduktion({
         </div>
         {rolle !== undefined && (
           <div className="vp-pvp-act">
-            <Button
+            <Recht aktion="geraet.einrichten"><Button
               variant="outline"
               size="sm"
               iconLeft={zugeordnet ? undefined : <Icon name="plus" size={15} strokeWidth={2.6} />}
               onClick={() => setOffen(true)}
             >
               {zugeordnet ? 'Bearbeiten' : 'Summenwert anlegen'}
-            </Button>
+            </Button></Recht>
           </div>
         )}
       </div>

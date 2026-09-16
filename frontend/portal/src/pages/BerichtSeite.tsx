@@ -1,3 +1,4 @@
+import { useRollen } from '../rollen';
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -87,6 +88,7 @@ export function BerichtSeite({
   const [versuch, setVersuch] = useState(0);
   // AP-12 IP-14: was die Person darf, und welcher Dialog offen ist.
   const rechte = useBerichtRechte();
+  const rollen = useRollen();
   const [dialog, setDialog] = useState<
     | { art: 'freigeben'; entwurf: BerichtEntwurf }
     | { art: 'vergleich'; gegen: number }
@@ -185,7 +187,7 @@ export function BerichtSeite({
     : null;
   const knoepfe = onAbruf ? ausgabeKnoepfe(b, aktuell, darfNachLesen(b)) : [];
   const verlauf = verlaufDerStaende(detail);
-  // Solange die Selbstauskunft fehlt, keine schreibenden Hebel; ist sie nicht zu haben (`null`), entscheidet die Route.
+  // Solange die Selbstauskunft fehlt, keine schreibenden Hebel; unbekannte Rechte geben keine Handlung frei.
   const rechteJetzt = rechte === undefined ? KEINE_RECHTE : rechte;
   const banner = revisionBanner(detail);
   const hebel = seitenHebel(detail, aktuell?.art === 'entwurf' ? aktuell.entwurf : null, rechteJetzt, jetzt());
@@ -282,6 +284,7 @@ export function BerichtSeite({
               </p>
             )}
             {kopf.teilansicht && <p className="vp-br-teilansicht">{kopf.teilansicht}</p>}
+            {!hebel.freigeben && rollen.selbst && <p className="vp-muted" role="note">{rollen.grund}</p>}
             {(hebel.freigeben || vergleichen) && (
               <div className="vp-br-aktionen" data-testid="bericht-hebel">
                 {hebel.freigeben && (

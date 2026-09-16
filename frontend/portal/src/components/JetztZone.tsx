@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Zone ① **„Jetzt"** der Steuerung (Konzept `vp-steuerung-konzept-b3` §3.2,
  * Stufe 1) — die erste Zone der Seite, weil sie die häufigste Frage
@@ -339,7 +340,7 @@ export function JetztZone({
             <Icon name="alert-triangle" size={16} />
             <span>{view.banner.text}</span>
             {view.banner.entityId === LADEPUNKT_BANNER_ID && view.banner.ladepunkt ? (
-              <button
+              <Recht aktion="handeingriff.setzen"><button
                 type="button"
                 className="vp-jetzt-banner-act"
                 disabled={busy}
@@ -348,18 +349,18 @@ export function JetztZone({
                 })}
               >
                 {view.banner.aktion}
-              </button>
+              </button></Recht>
             ) : view.banner.entityId !== PAUSE_BANNER_ID && bannerGeraet ? (
-              <button
+              <Recht aktion="handeingriff.setzen"><button
                 type="button"
                 className="vp-jetzt-banner-act"
                 disabled={busy}
                 onClick={() => setEingriff({ consumer: bannerGeraet, aktion: 'resume' })}
               >
                 {view.banner.aktion}
-              </button>
+              </button></Recht>
             ) : (
-              <button
+              <Recht aktion="handeingriff.setzen"><button
                 type="button"
                 className="vp-jetzt-banner-act"
                 disabled={busy}
@@ -371,7 +372,7 @@ export function JetztZone({
                 })}
               >
                 {view.banner.aktion}
-              </button>
+              </button></Recht>
             )}
           </p>
         )}
@@ -418,7 +419,7 @@ export function JetztZone({
       {/* Die ANLAGEN-Pause ist keine Zeile: sie gilt allen. */}
       {!view.leer && !interventions?.automationPaused && (
         <p className="vp-jetzt-pausezeile">
-          <button
+          <Recht aktion="handeingriff.setzen"><button
             type="button"
             className="vp-jetzt-pausebtn"
             disabled={busy}
@@ -428,7 +429,7 @@ export function JetztZone({
             }}
           >
             {HANDEINGRIFF_LABEL.pause}
-          </button>
+          </button></Recht>
         </p>
       )}
 
@@ -503,7 +504,7 @@ function JetztZeileView({
       </span>
       {zeile.aktionen.length > 0 ? (
         <span className="vp-jetztrow-act">
-          <button
+          <Recht aktion="handeingriff.setzen"><button
             type="button"
             className="vp-jetzt-menu"
             aria-expanded={offen}
@@ -513,7 +514,7 @@ function JetztZeileView({
           >
             Eingreifen
             <Icon name="chevron-right" size={14} />
-          </button>
+          </button></Recht>
           {offen && (
             <span className="vp-jetzt-menulist" role="menu">
               {/* Am Telefon ist die Liste ein Bottom-Sheet - dort fehlt der
@@ -522,8 +523,7 @@ function JetztZeileView({
                 Eingreifen · {zeile.name}
               </span>
               {zeile.aktionen.map((a) => (
-                <button
-                  key={a}
+                <Recht aktion="handeingriff.setzen" key={a}><button
                   type="button"
                   role="menuitem"
                   className="vp-jetzt-menuitem"
@@ -533,7 +533,7 @@ function JetztZeileView({
                   {menuHinweis(zeile, a) && (
                     <small className="vp-jetzt-menuhint">{menuHinweis(zeile, a)}</small>
                   )}
-                </button>
+                </button></Recht>
               ))}
             </span>
           )}

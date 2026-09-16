@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { History, HistoryRange, Site } from '../api';
 import { isoDate, periodLabel } from '../periodNav';
@@ -597,9 +598,9 @@ export function MesswerteSection({
         <div className="vp-c-card">
           <div className="vp-gwk-head">
             <h3>Zusammengestellte Werte</h3>
-            <button type="button" className="vp-gwk-neu" onClick={() => setGwOffen(true)}>
+            <Recht aktion="messstelle.formel"><button type="button" className="vp-gwk-neu" onClick={() => setGwOffen(true)}>
               <Icon name="plus" size={15} /> {GESAMTWERT}
-            </button>
+            </button></Recht>
           </div>
           <p className="vp-c-note">
             Stellen Sie aus den Messwerten Ihrer Geräte einen eigenen Gesamtwert zusammen - er

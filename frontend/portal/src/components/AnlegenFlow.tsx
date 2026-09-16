@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -748,13 +749,13 @@ export function AnlegenFlow({
           <Button variant="ghost" onClick={zurueck}>
             Zurück
           </Button>
-          <Button
+          <Recht aktion="geraet.einrichten"><Button
             onClick={anlegen}
             disabled={speichern || (testNoetig && testZustand !== 'bestanden' && !ohneKanal)
               || !rolle || (Boolean(edit) && aenderungen.length === 0)}
           >
             {speichern ? 'Speichere …' : edit ? 'Änderungen speichern' : 'Komponente anlegen'}
-          </Button>
+          </Button></Recht>
         </>
       );
     }
@@ -999,9 +1000,9 @@ export function AnlegenFlow({
                   </div>
                 )}
                 {testNoetig && testZustand !== 'laeuft' && (
-                  <Button id="geraet-edit-test" variant="outline" onClick={testen} disabled={editorBusy || fehlend.length > 0 || !template}>
+                  <Recht aktion="geraet.einrichten"><Button id="geraet-edit-test" variant="outline" onClick={testen} disabled={editorBusy || fehlend.length > 0 || !template}>
                     {testZustand === 'ungeprueft' ? 'Verbindung prüfen' : 'Erneut prüfen'}
-                  </Button>
+                  </Button></Recht>
                 )}
 
                 {hebelListe.length > 0 && (
@@ -1083,9 +1084,9 @@ export function AnlegenFlow({
           </p>
           <div>
             <Button variant="ghost" onClick={inlineSchliessen} disabled={speichern}>Abbrechen</Button>
-            <Button onClick={inlineSpeichern} disabled={speichern || !hatAenderungen}>
+            <Recht aktion="geraet.einrichten"><Button onClick={inlineSpeichern} disabled={speichern || !hatAenderungen}>
               {speichern ? 'Speichere …' : 'Änderungen speichern'}
-            </Button>
+            </Button></Recht>
           </div>
         </div>
 
@@ -1367,9 +1368,9 @@ export function AnlegenFlow({
               </div>
             )}
             {testNoetig && testZustand !== 'laeuft' && (
-              <Button variant="outline" className="vp-anlegen-nochmal" onClick={testen}>
+              <Recht aktion="geraet.einrichten"><Button variant="outline" className="vp-anlegen-nochmal" onClick={testen}>
                 Erneut testen
-              </Button>
+              </Button></Recht>
             )}
             {/* Die HEBEL: konkrete Wege statt eines Fließtexts. Sie erscheinen
                 auch neben einem BESTANDENEN Test - der Faktor-10-Fall verletzt

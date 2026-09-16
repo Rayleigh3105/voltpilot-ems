@@ -399,14 +399,14 @@ class ZugriffZaunApiTest {
     private int anzahl(MockHttpServletRequestBuilder anfrage, Konto k) throws Exception {
         Antwort a = ruf(anfrage, k);
         assertThat(a.status()).as(k.name()).isEqualTo(200);
-        return MAPPER.readTree(a.body()).size();
+        return MAPPER.readTree(a.body()).get("eintraege").size();
     }
 
     private List<String> anlagen(Konto k) throws Exception {
         Antwort a = ruf(get("/api/v1/sites"), k);
         assertThat(a.status()).as(k.name()).isEqualTo(200);
         List<String> ids = new ArrayList<>();
-        MAPPER.readTree(a.body()).forEach(n -> ids.add(n.path("id").asText()));
+        MAPPER.readTree(a.body()).get("eintraege").forEach(n -> ids.add(n.path("id").asText()));
         return ids;
     }
 

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -62,9 +63,9 @@ export function KennzahlStammdatenDialog({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button onClick={speichern} disabled={!speicherbar || laeuft}>
+          <Recht aktion={kennzahl.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={kennzahl.standort_id}><Button onClick={speichern} disabled={!speicherbar || laeuft}>
             {laeuft ? E.SPEICHERN_LAEUFT : E.SPEICHERN}
-          </Button>
+          </Button></Recht>
         </div>
       }
     >

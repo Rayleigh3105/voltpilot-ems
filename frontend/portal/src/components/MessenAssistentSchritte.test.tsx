@@ -1,3 +1,4 @@
+import { sichtbareListe } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, type FunktionStandort, type Messstelle, type MessstellenRegister } from '../api';
@@ -60,7 +61,7 @@ beforeEach(() => {
     .mockImplementation(async (_id, anfrage) => uebernommen(vorschlagHalle2(), anfrage));
   ortAendern = vi.spyOn(api, 'messstelleOrtAendern').mockImplementation(async (id) => ({ id }) as Messstelle);
   vi.spyOn(api, 'messstellenRegister').mockResolvedValue(registerAntwort(wartet));
-  vi.spyOn(api, 'listDevices').mockResolvedValue(geraeteAhrenberg(new Date()));
+  vi.spyOn(api, 'listDevices').mockResolvedValue(sichtbareListe(geraeteAhrenberg(new Date())));
 });
 
 afterEach(() => {

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die FAHRZEUGE eines Ladeparks (Verbrauchsmanagement v1 / P7) — die
  * Render-Hälfte. Jede Regel und jeder Satz liegt rein in `src/fahrzeugProfile.ts`
@@ -86,14 +87,14 @@ export function FahrzeugeKarte({
                   return (
                     <li className="vp-vz-row" key={z.key}>
                       {onSpeichern ? (
-                        <button
+                        <Recht aktion="ladepunkt.betrieb"><button
                           type="button"
                           className="vp-vz-text is-klick"
                           onClick={() => setDialog(z.tagRef)}
                         >
                           {inhalt}
                           <Icon name="chevron-right" size={16} />
-                        </button>
+                        </button></Recht>
                       ) : (
                         <span className="vp-vz-text">{inhalt}</span>
                       )}

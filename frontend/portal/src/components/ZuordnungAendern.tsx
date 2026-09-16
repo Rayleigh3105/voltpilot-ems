@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -107,9 +108,9 @@ export function ZuordnungAendernDialog({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button onClick={save} disabled={busy || !chosen || chosen.current}>
+          <Recht aktion="geraet.einrichten"><Button onClick={save} disabled={busy || !chosen || chosen.current}>
             Übernehmen
-          </Button>
+          </Button></Recht>
         </>
       }
     >
@@ -217,9 +218,9 @@ export function KomponenteLoeschenDialog({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button variant="ghost" className="vp-btn-danger" onClick={remove} disabled={busy}>
+          <Recht aktion="komponente.loeschen"><Button variant="ghost" className="vp-btn-danger" onClick={remove} disabled={busy}>
             Endgültig löschen
-          </Button>
+          </Button></Recht>
         </>
       }
     >

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -204,9 +205,9 @@ export function OrtDialog({
           <Button variant="ghost" onClick={schliessen}>
             Abbrechen
           </Button>
-          <Button type="submit" form={`${basis}-form`} disabled={busy}>
+          <Recht aktion="gebaeude.pflegen"><Button type="submit" form={`${basis}-form`} disabled={busy}>
             {ortDialogSenden(art, fassung)}
-          </Button>
+          </Button></Recht>
         </>
       }
     >
@@ -304,7 +305,7 @@ export function OrtDialog({
                 <span className="vp-sd-flaeche-wert">{m2Text(flaecheAnzeige)}</span>
               </div>
               {knoten?.id && (
-                <button
+                <Recht aktion="gebaeude.pflegen"><button
                   ref={flaecheKnopf}
                   type="button"
                   className="vp-sd-verweis"
@@ -312,7 +313,7 @@ export function OrtDialog({
                   onClick={() => setFlaecheOffen(true)}
                 >
                   {KNOPF_FLAECHE_AENDERN}
-                </button>
+                </button></Recht>
               )}
             </>
           )
