@@ -50,7 +50,8 @@ A13, Bestand), `ZugriffAenderungArchitekturTest`.
 - ⚠ **Ein Bestandskonto (E12) kann `letzter_kundenadministrator` auslösen.** Es handelt nach der Regel als
   Kundenadministrator, steht aber in KEINER Zuweisung und darum nicht in der Liste, die der Vertrag zählt.
   Der Schutz fällt dadurch nur strenger aus, nie lockerer. Das ist zugleich der einzige Weg, auf dem die 409
-  heute erreichbar ist — `sperren`/`entfernen` (die anderen beiden Auslöser) baut erst IP-13/IP-14.
+  für den Zuweisungsentzug erreichbar ist. Plattform-Sperren/-Entfernen verwendet inzwischen denselben
+  Prüfpunkt: [Kontenwege und Grenzen](uems-admin-kontoentzug.md).
 - ⚠ **Die Unterstützung geht NICHT durch diesen Prüfpunkt** und darf es nicht: der Notfall-Zugriff gewährt
   sich mit Absicht selbst (E8), `eigene_zuweisung` würde ihn verbieten. Ihr Urteil spricht
   `RechteAbleitung.gewaehren` (IP-8); `DELETE /api/v1/zugriff/{id}` antwortet auf eine Unterstützer-Zeile 404.

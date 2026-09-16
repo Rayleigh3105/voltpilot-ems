@@ -9,10 +9,14 @@ import com.voltpilot.api.uems.RechteAbleitung.AenderungErgebnis;
 import com.voltpilot.api.uems.RechteAbleitung.AenderungsArt;
 import com.voltpilot.api.uems.RechteAbleitung.Benutzer;
 import com.voltpilot.api.uems.RechteAbleitung.Kundenbereich;
+import com.voltpilot.api.uems.RechteAbleitung.Konto;
+import com.voltpilot.api.uems.RechteAbleitung.KontoZustand;
+import java.util.ArrayList;
 import com.voltpilot.api.uems.RechteAbleitung.Person;
 import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.uems.RechteAbleitung.Standort;
 import com.voltpilot.api.zugriff.ZugriffContext.Zugriff;
+import com.voltpilot.api.zugriff.ZugriffContext.Zugang;
 import com.voltpilot.api.zugriff.ZugriffRepository.NeueZuweisung;
 import com.voltpilot.api.zugriff.ZugriffRepository.StandortEintrag;
 import com.voltpilot.api.zugriff.ZugriffRepository.Zeile;
@@ -27,6 +31,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
@@ -47,7 +52,8 @@ import org.springframework.http.HttpStatus;
  * gerufen werden, wo der Vertrag einen EIGENEN Prüfpunkt führt (die Unterstützung, IP-8) oder noch niemand da
  * ist, den man schützen könnte (die Bestandsübernahme, IP-2).
  *
- * <p><b>Der Entzug wirkt sofort und schaltet nie.</b> Geschrieben wird allein {@code beendet_am}; ein gesetzter
+ * <p><b>Der Entzug wirkt sofort und schaltet nie.</b> Zuweisungsentzug schreibt {@code beendet_am},
+ * Kontosperren ändern den Spiegel; ein gesetzter
  * Handeingriff bleibt unverändert in {@code device_override} und läuft bis zu seinem Ende (E15) — er bekommt nur
  * ein Etikett ({@code SiteInterventionController}). Die nächste Anfrage des Betroffenen liest die Zuweisung neu
  * ({@link ZugriffKontextLader}) und bekommt {@code zugriff_beendet}; es gibt keinen Zwischenspeicher dazwischen.
@@ -108,9 +114,9 @@ public class ZugriffAenderung {
             // Der Unterstützer entsteht allein über POST /api/v1/unterstuetzung (IP-8, mit Art, Umfang und Ende).
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rolle nicht zuweisbar.");
         }
-        String name = zugriffe.spiegel(benutzerSub).filter(b -> b.konto() == RechteAbleitung.Konto.BENUTZER
-                && b.zustand() != RechteAbleitung.KontoZustand.GESPERRT
-                && b.zustand() != RechteAbleitung.KontoZustand.ENTFERNT).map(ZugriffRepository.BenutzerSpiegel::anzeigename)
+        String name = zugriffe.spiegel(benutzerSub).filter(b -> b.konto() == Konto.BENUTZER
+                && b.zustand() != KontoZustand.GESPERRT && b.zustand() != KontoZustand.ENTFERNT)
+                .map(ZugriffRepository.BenutzerSpiegel::anzeigename)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Benutzer nicht gefunden."));
         List<String> standorte = standortId == null ? List.of()
                 : List.of(kennzeichen(standortId).orElseThrow(
@@ -124,28 +130,57 @@ public class ZugriffAenderung {
         return id;
     }
 
-    /** Gemeinsame Transaktionssperre: auch parallele Entzüge dürfen nicht den letzten Administrator nehmen. */
-    private void sperreKundenbereich() {
-        jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(?))::text", String.class,
-                "uems-benutzerverwaltung:" + TenantContext.get());
-    }
-
-    /** Sperren/Entfernen behalten Identität und Historie; alle Zuweisungen enden sofort. */
+    /** Ein Konto sperren oder entfernen: derselbe Vertragsentscheid wie beim Zuweisungsentzug. */
     @Transactional
     public void kontoBeenden(String sub, boolean entfernen, ProtokollAkteur akteur) {
+        AenderungsArt art = entfernen ? AenderungsArt.ENTFERNEN : AenderungsArt.SPERREN;
         sperreKundenbereich();
-        var b = zugriffe.spiegel(sub).filter(x -> x.konto() == RechteAbleitung.Konto.BENUTZER
-                && x.zustand() != RechteAbleitung.KontoZustand.ENTFERNT)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        pruefen(entfernen ? AenderungsArt.ENTFERNEN : AenderungsArt.SPERREN, sub, null, List.of(), Instant.now());
+        Instant jetzt = Instant.now();
+        var konto = zugriffe.spiegel(sub).filter(b -> b.konto() == Konto.BENUTZER
+                && b.zustand() != KontoZustand.ENTFERNT).orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Benutzer nicht gefunden."));
+        pruefen(art, sub, null, List.of(), jetzt);
+        KontoZustand zustand = art == AenderungsArt.SPERREN ? KontoZustand.GESPERRT : KontoZustand.ENTFERNT;
+        if (konto.zustand() == zustand) return;
+        var zeilen = zugriffe.zuweisungen(sub).stream().filter(z -> z.beendetAm() == null).toList();
+        for (Zeile z : zeilen) {
+            if (art == AenderungsArt.ENTFERNEN) zugriffe.beenden(z.id(), jetzt, akteur, null, art.code());
+            else zugriffe.kontoZuweisungProtokoll(art.code(), z, akteur, null);
+            protokollieren(ART_ENTZOGEN, z, null, jetzt, akteur);
+        }
+        if (zeilen.isEmpty()) {
+            zugriffe.kontoProtokoll(art.code(), sub, konto.anzeigename(), akteur);
+            protokollieren(ART_ENTZOGEN, sub, null, null, null, null, jetzt, akteur);
+        }
+        zugriffe.kontoZustandSetzen(sub, zustand);
+    }
+
+    /** Plattform-Gegenweg zum Sperren: vorhandene Zuweisungen wirken wieder, entzogene bleiben beendet. */
+    @Transactional
+    public void kontoAktivieren(String sub, ProtokollAkteur akteur) {
+        sperreKundenbereich();
+        Zugriff kontext = ZugriffContext.get();
+        if (kontext == null || kontext.konto() != Konto.PLATTFORM || kontext.zugang() != Zugang.UMSCHALTER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+        var konto = zugriffe.spiegel(sub).filter(b -> b.konto() == Konto.BENUTZER
+                && b.zustand() != KontoZustand.ENTFERNT).orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Benutzer nicht gefunden."));
+        if (konto.zustand() != KontoZustand.GESPERRT) return;
+        Instant jetzt = Instant.now();
+        zugriffe.kontoZustandSetzen(sub, KontoZustand.AKTIV);
         for (Zeile z : zugriffe.zuweisungen(sub)) {
-            if (z.beendetAm() == null) entziehen(z.id(), null, akteur);
+            if (z.beendetAm() != null) continue;
+            zugriffe.kontoZuweisungProtokoll("zuweisen", z, akteur, "Konto entsperrt.");
+            protokollieren(ART_ZUGEWIESEN, z, "Konto entsperrt.", jetzt, akteur);
         }
-        String zustand = entfernen ? "entfernt" : "gesperrt";
-        if (!b.zustand().code().equals(zustand)) {
-            jdbc.update("UPDATE benutzer SET zustand = ? WHERE tenant_id = ? AND sub = ?", zustand, TenantContext.get(), sub);
-            zugriffe.kontoProtokoll(entfernen ? "entfernen" : "sperren", sub, b.anzeigename(), akteur);
-        }
+    }
+
+    /** Serialisiert auch parallele Entzüge verschiedener Administratoren im selben Kundenbereich. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void sperreKundenbereich() {
+        jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtext(?))", Object.class,
+                "uems-benutzerverwaltung:" + TenantContext.get());
     }
 
     /** Ersetzt die angegebenen Zuweisungen atomar; andere Rollen und künftige Zuweisungen bleiben erhalten. */
@@ -185,9 +220,9 @@ public class ZugriffAenderung {
      * Die Frage an den Vertrag. Der Aufrufer kommt aus dem {@link ZugriffContext} der Anfrage, nie aus einem
      * Anfragekörper; die Kundenadministratoren sind die zu {@code jetzt} WIRKSAMEN.
      *
-     * <p>⚠ Ein BESTANDSKONTO (E12) hat keine Zeile in {@code zugriff} und steht darum nicht in dieser Liste. Der
-     * Schutz fällt dadurch nur STRENGER aus (weniger bekannte Kundenadministratoren = eher 409), nie lockerer —
-     * und der Start-Lauf legt die Zeilen ohnehin an ({@code ZugriffBestandLaeufer}).
+     * <p>Ein betroffenes BESTANDSKONTO (E12) wird als Kundenadministrator mitgezählt. Weitere unbekannte
+     * Bestandskonten zählen konservativ nicht als Ersatz; gesperrte und entfernte Konten ebenso wenig.
+     * Der Start-Lauf übernimmt die übrigen Konten ({@code ZugriffBestandLaeufer}).
      */
     private void pruefen(AenderungsArt art, String betroffenerSub, Rolle rolle, List<String> standorte,
             Instant jetzt) {
@@ -197,8 +232,15 @@ public class ZugriffAenderung {
             throw new IllegalStateException("Eine Zuweisung ändert nur eine angemeldete Person");
         }
         Benutzer handelnder = RechtPruefung.benutzer(z);
-        List<Person> admins = zugriffe.wirksamImKundenbereich(Rolle.KUNDENADMINISTRATOR, jetzt).stream()
-                .map(a -> new Person(a.zeile().benutzerSub(), a.name())).distinct().toList();
+        List<Person> admins = new ArrayList<>(zugriffe.wirksamImKundenbereich(Rolle.KUNDENADMINISTRATOR, jetzt).stream()
+                .filter(a -> zugriffe.spiegel(a.zeile().benutzerSub()).map(b -> b.zustand() != KontoZustand.GESPERRT
+                        && b.zustand() != KontoZustand.ENTFERNT).orElse(false))
+                .map(a -> new Person(a.zeile().benutzerSub(), a.name())).distinct().toList());
+        // E12: ein noch nicht übernommenes Konto ist ebenfalls Kundenadministrator.
+        // Unbekannte weitere Bestandskonten zählen konservativ nicht als Ersatz.
+        if (zugriffe.bestandskonto(betroffenerSub)) {
+            admins.add(new Person(betroffenerSub, zugriffe.anzeigename(betroffenerSub)));
+        }
         Kundenbereich k = new Kundenbereich(zugriffe.kundenbereichKopf().name(),
                 zugriffe.standorte().stream().map(s -> new Standort(s.kurzzeichen(), s.name())).toList(), admins);
         AenderungErgebnis u = RechteAbleitung.zuweisungAendern(RechteMatrixDatei.matrix(), handelnder,
@@ -220,17 +262,22 @@ public class ZugriffAenderung {
      * im Zugriffsprotokoll: ein fehlender Ort ist kein Grund, einen Entzug scheitern zu lassen.
      */
     private void protokollieren(String art, Zeile z, String grund, Instant jetzt, ProtokollAkteur akteur) {
-        ZoneId zone = z.zeitzone() == null ? zugriffe.kundenbereichKopf().zeitzone() : z.zeitzone();
+        protokollieren(art, z.benutzerSub(), z.rolle(), z.standortId(), z.zeitzone(), grund, jetzt, akteur);
+    }
+
+    private void protokollieren(String art, String sub, Rolle rolle, UUID standort, ZoneId zeitzone,
+            String grund, Instant jetzt, ProtokollAkteur akteur) {
+        ZoneId zone = zeitzone == null ? zugriffe.kundenbereichKopf().zeitzone() : zeitzone;
         UUID tenant = TenantContext.get();
-        String objektArt = z.standortId() != null ? "standort" : "unternehmen";
-        UUID objektId = z.standortId() != null ? z.standortId() : unternehmen(tenant);
+        String objektArt = standort != null ? "standort" : "unternehmen";
+        UUID objektId = standort != null ? standort : unternehmen(tenant);
         if (objektId == null) {
             return;
         }
         Map<String, Object> neu = new LinkedHashMap<>();
-        neu.put("benutzer_sub", z.benutzerSub());
-        neu.put("benutzer_name", zugriffe.anzeigename(z.benutzerSub()));
-        neu.put("rolle", z.rolle().code());
+        neu.put("benutzer_sub", sub);
+        neu.put("benutzer_name", zugriffe.anzeigename(sub));
+        if (rolle != null) neu.put("rolle", rolle.code());
         if (grund != null) {
             neu.put("begruendung", grund);
         }

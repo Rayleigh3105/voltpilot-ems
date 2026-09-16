@@ -760,6 +760,16 @@ class AdminApiTest {
         String tenantId = (String) createTenant(admin, "Benutzerpflege AG", "CI").get("id");
         String userId = (String) createUser(admin, tenantId, "pflege-operator",
                 "alt@pflege.example", "pflege-pw").get("id");
+        // Der Entzugsprüfpunkt schützt jetzt auch am Plattformweg den letzten Kundenadministrator.
+        // Ein zweiter aktiver Administrator bleibt beim Sperren/Löschen des Testkontos erhalten.
+        var zweiter = keycloakAdmin.createCustomerUser(UUID.fromString(tenantId), "pflege-admin",
+                "admin@pflege.example", "Ines", "Kaltenbach", "pflege-admin-pw", false);
+        var seed = new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        seed.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?::uuid, ?, 'benutzer', ?, 'aktiv')",
+                tenantId, zweiter.id(), zweiter.username());
+        seed.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, gueltig_ab, zeitzone) "
+                + "VALUES (?::uuid, ?, 'kundenadministrator', now(), 'Europe/Berlin')", tenantId, zweiter.id());
 
         // Edit email + name; the username is immutable and stays.
         ResponseEntity<Map<String, Object>> updated = rest.exchange(
@@ -780,8 +790,8 @@ class AdminApiTest {
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         // Disable blocks the login; enable (the new counterpart) restores it.
-        rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/disable"),
-                HttpMethod.POST, new HttpEntity<>(bearer(admin)), String.class);
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/disable"),
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)), String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(tryToken("pflege-operator", "pflege-pw")).doesNotContainKey("access_token");
         ResponseEntity<Map<String, Object>> enabled = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/enable"),
