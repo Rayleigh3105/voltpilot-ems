@@ -349,8 +349,10 @@ describe('AP-01 IP-8 · die Karte „Funktionen" und der Leerzustand der Standor
     // Steuern-Regel: Werk Lindach steht nicht im Abschnitt „Steuern & Optimieren“ — kein „einrichten“.
     expect(within(karte).queryByText(/Werk Lindach einrichten/)).toBeNull();
     expect(karte.querySelector('[data-funktion="steuern"]')?.textContent).not.toContain('Werk Lindach');
-    expect(within(karte).getAllByRole('button')).toHaveLength(1);
-    expect(within(karte).getByRole('button', { name: 'Werk Ahrenberg – Halle 2 aufnehmen' })).toBeTruthy();
+    expect(within(karte).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Werk Ahrenberg – Halle 2 aufnehmen',
+      'Standort anhalten',
+    ]);
     expect(within(karte).queryAllByRole('link')).toHaveLength(0);
   });
 
@@ -365,8 +367,10 @@ describe('AP-01 IP-8 · die Karte „Funktionen" und der Leerzustand der Standor
     await waitFor(() => expect(within(karte).getByText('Werk Ahrenberg – Halle 2 aufnehmen')).toBeTruthy());
     expect(within(karte).queryByText('Werk Lindach')).toBeNull();
     expect(within(karte).queryByText(/^Läuft an \d/)).toBeNull();
-    expect(within(karte).getAllByRole('button')).toHaveLength(1);
-    expect(within(karte).getByRole('button', { name: 'Werk Ahrenberg – Halle 2 aufnehmen' })).toBeTruthy();
+    expect(within(karte).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Werk Ahrenberg – Halle 2 aufnehmen',
+      'Standort anhalten',
+    ]);
   });
 
   it('Leerzustand: ein Standort ohne Anlage nennt Grund und Schritt — kein Knopf, keine leere Tabelle', async () => {
