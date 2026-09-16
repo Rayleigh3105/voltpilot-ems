@@ -1597,6 +1597,17 @@ describe('AP-03 IP-13 · Benutzerverwaltung additiv', () => {
     expect(hashForRoute(pageRoute('kunden-benutzer'))).toBe('#/unternehmen/einstellungen/benutzer');
     expect(parseRoute('#/unternehmen/einstellungen/benutzer').page).toBe('kunden-benutzer');
     expect(parseRoute('#/benutzer').page).toBe('mandanten');
+  });
+});
 
+describe('AP-01 IP-13 · Ladegrenze bleibt eine additive Bestandsfläche', () => {
+  it('verwendet die Rechte-Weiche und fügt für O18 weder Seite noch Navigation hinzu', () => {
+    const karte = readFileSync(join(SRC, 'components/LadeparkRahmenKarte.tsx'), 'utf8');
+    const api = readFileSync(join(SRC, 'api.ts'), 'utf8');
+    const nav = readFileSync(join(SRC, 'ebenenNav.ts'), 'utf8') + readFileSync(join(SRC, 'nav.ts'), 'utf8');
+    expect(karte).toContain('<Recht aktion="grenze.eintragen">');
+    expect(api).toContain('/api/v1/sites/${siteId}/charging-frame');
+    expect(nav).not.toContain('charging-frame');
+    expect(nav).not.toContain('ladegrenze');
   });
 });

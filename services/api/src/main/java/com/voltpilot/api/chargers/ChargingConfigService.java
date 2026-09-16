@@ -1,12 +1,19 @@
 package com.voltpilot.api.chargers;
 
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
+import com.voltpilot.api.uems.AnlageStandortRepository;
+import com.voltpilot.api.uems.NetzanschlussRepository;
+import com.voltpilot.api.uems.StandortRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.FahrzeugDto.VehicleProfileDto;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -82,6 +89,9 @@ public class ChargingConfigService {
     private final ChargingConfigRepository configs;
     private final DeviceChargerStatusRepository chargers;
     private final ObjectProvider<ChargingConfigPublisher> publisher;
+    private final NetzanschlussRepository netzanschluesse;
+    private final AnlageStandortRepository anlageStandorte;
+    private final StandortRepository standorte;
     /**
      * Die Fahrzeug-Profile (P7). Als {@link ObjectProvider}, damit ein
      * Deployment ohne diese Bohne (ein Test-Kontext etwa) hier nichts anderes
@@ -92,12 +102,18 @@ public class ChargingConfigService {
     public ChargingConfigService(Geltungsbereich geltungsbereich, ChargingConfigRepository configs,
             DeviceChargerStatusRepository chargers,
             ObjectProvider<ChargingConfigPublisher> publisher,
-            ObjectProvider<SiteVehicleRepository> vehicles) {
+            ObjectProvider<SiteVehicleRepository> vehicles,
+            NetzanschlussRepository netzanschluesse,
+            AnlageStandortRepository anlageStandorte,
+            StandortRepository standorte) {
         this.geltungsbereich = geltungsbereich;
         this.configs = configs;
         this.chargers = chargers;
         this.publisher = publisher;
         this.vehicles = vehicles;
+        this.netzanschluesse = netzanschluesse;
+        this.anlageStandorte = anlageStandorte;
+        this.standorte = standorte;
     }
 
     /** Die gepflegte Konfiguration (leer = noch nichts gepflegt). */
@@ -149,6 +165,108 @@ public class ChargingConfigService {
         ChargingConfigDto saved = configs.forSite(siteId);
         push(tenantId, siteId, saved);
         return saved;
+    }
+
+    /**
+     * Setzt die Anschlussgrenze über den Kunden-Schritt (AP-01 IP-13). Anders als der ältere,
+     * allgemeine Konfigurationsweg prüft dieser Weg den Netzanschluss und das verbleibende
+     * Ladebudget, bevor derselbe gespeicherte Wunsch zur Box reist.
+     *
+     * <p>Ist heute kein Netzanschluss gebunden, gilt der beschlossene Übergang: die vereinbarte
+     * Leistung kommt ausdrücklich aus dem Dialog. Sobald eine Bindung besteht, ist ausschließlich
+     * deren {@code vereinbart_kw} maßgeblich; ein mitgesendeter Übergangswert kann sie nie ersetzen.
+     */
+    @Transactional
+    public ChargingConfigDto saveCustomerFrame(UUID siteId, Double gridLimitKw,
+            Double vereinbartKwDialog, String actor) {
+        requireSite(siteId);
+        pruefeNetzgrenze(gridLimitKw);
+
+        LocalDate heute = heuteAmStandort(siteId);
+        NetzanschlussRepository.Bindung bindung = netzanschluesse.bindungenDerAnlage(siteId).stream()
+                .filter(b -> b.laeuftAm(heute)).findFirst().orElse(null);
+        BigDecimal vereinbart;
+        String herkunft;
+        if (bindung == null) {
+            if (vereinbartKwDialog == null || vereinbartKwDialog.isNaN()
+                    || !(vereinbartKwDialog > 0) || vereinbartKwDialog > MAX_GRID_LIMIT_KW) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "An diese Anlage ist heute kein Netzanschluss gebunden. Tragen Sie die vereinbarte Leistung im Dialog ein.");
+            }
+            vereinbart = BigDecimal.valueOf(vereinbartKwDialog);
+            herkunft = "Ihrer Eingabe";
+        } else {
+            var anschluss = netzanschluesse.finde(bindung.netzanschlussId()).orElse(null);
+            vereinbart = anschluss == null ? null : anschluss.vereinbartKw();
+            herkunft = "Netzanschluss " + bindung.netzanschlussKennzeichen();
+            if (vereinbart == null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Beim Netzanschluss " + bindung.netzanschlussKennzeichen()
+                                + " ist keine vereinbarte Leistung hinterlegt.");
+            }
+        }
+
+        BigDecimal grenze = BigDecimal.valueOf(gridLimitKw);
+        if (grenze.compareTo(vereinbart) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    kw(grenze) + " kW liegen über " + kw(vereinbart)
+                            + " kW vereinbarter Leistung (" + herkunft + ") — bitte prüfen.");
+        }
+
+        ChargingConfigDto vorhanden = configs.forSite(siteId);
+        var rahmen = vorhanden.frame();
+        Double grundlast = rahmen == null ? null : rahmen.maxHouseLoadKw();
+        Double reserve = rahmen == null ? null : rahmen.houseReserveKw();
+        if (grundlast == null || reserve == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Für die Plausibilitätsprüfung fehlen die Grundlast der letzten 7 Tage oder die Hausreserve. VoltPilot richtet diese Werte ein.");
+        }
+        BigDecimal budget = grenze.subtract(BigDecimal.valueOf(grundlast))
+                .subtract(BigDecimal.valueOf(reserve));
+        if (budget.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Grundlast der letzten 7 Tage (" + kw(BigDecimal.valueOf(grundlast))
+                            + " kW) und die Hausreserve (" + kw(BigDecimal.valueOf(reserve))
+                            + " kW) lassen innerhalb von " + kw(grenze)
+                            + " kW kein Ladebudget übrig.");
+        }
+
+        UUID tenantId = TenantContext.get();
+        configs.saveGridLimit(tenantId, siteId, gridLimitKw, actor);
+        ChargingConfigDto saved = configs.forSite(siteId);
+        push(tenantId, siteId, saved);
+        return saved;
+    }
+
+    private void pruefeNetzgrenze(Double gridLimitKw) {
+        if (gridLimitKw == null || gridLimitKw.isNaN() || !(gridLimitKw > 0)
+                || gridLimitKw > MAX_GRID_LIMIT_KW) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Die Anschlussgrenze muss eine Leistung größer 0 kW sein.");
+        }
+    }
+
+    /** Tagesbindungen gelten in der Zeitzone des zugeordneten Standorts, nie nach Server-Mitternacht. */
+    private LocalDate heuteAmStandort(UUID siteId) {
+        Instant jetzt = Instant.now();
+        for (AnlageStandortRepository.Zuordnung z : anlageStandorte.fuerAnlage(siteId)) {
+            if (z.aufgehoben()) {
+                continue;
+            }
+            var standort = standorte.finde(z.standortId()).orElse(null);
+            if (standort == null) {
+                continue;
+            }
+            LocalDate tag = LocalDate.ofInstant(jetzt, ZoneId.of(standort.zeitzone()));
+            if (!tag.isBefore(z.gueltigAb()) && (z.gueltigBis() == null || !tag.isAfter(z.gueltigBis()))) {
+                return tag;
+            }
+        }
+        return LocalDate.ofInstant(jetzt, ZoneOffset.UTC);
+    }
+
+    private static String kw(BigDecimal wert) {
+        return wert.stripTrailingZeros().toPlainString().replace('.', ',');
     }
 
     /**

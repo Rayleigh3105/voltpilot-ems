@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Ladegrenze E2E</title>
+    <style>
+      body { margin: 0; background: var(--vp-color-bg, #f4f6f4); }
+      .vp-ladegrenze-buehne { width: min(100% - 24px, 960px); margin: 0 auto; padding: 24px 0 48px; }
+      @media (max-width: 480px) { .vp-ladegrenze-buehne { width: calc(100% - 16px); padding-top: 8px; } }
+    </style>
+  </head>
+  <body><div id="root"></div><script type="module" src="/e2e/ladegrenze.tsx"></script></body>
+</html>

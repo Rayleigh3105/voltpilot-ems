@@ -7034,6 +7034,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
   /**
+   * Kunden-Schritt „Grenze“ (AP-01 IP-13): der Server prüft die heute
+   * gebundene vereinbarte Leistung und das verbleibende Ladebudget. Der
+   * Übergangswert ist nur nötig, solange kein Netzanschluss gebunden ist.
+   */
+  saveCustomerChargingFrame: (
+    siteId: string,
+    body: { gridLimitKw: number; vereinbartKw?: number },
+  ) => request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-frame`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  }),
+  /**
    * Speichert den Ladepark-RAHMEN (P5/E10) — Plattform-Admin only.
    *
    * ⚠ PATCH-Semantik in BEIDE Richtungen: ein NICHT übergebenes Feld behält
@@ -7207,6 +7219,7 @@ export const api = {
    */
   tenantContext: () => request<TenantContext>('/api/v1/tenant-context'),
   listSites: () => request<SichtbareListe<Site>>('/api/v1/sites'),
+  siteDetail: (siteId: string) => request<SiteDetail>(`/api/v1/sites/${siteId}`),
   createSite: (input: NeueAnlageInput) =>
     request<Site>('/api/v1/sites', {
       method: 'POST',
