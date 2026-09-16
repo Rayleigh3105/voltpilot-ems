@@ -28,8 +28,9 @@ Der Standort trägt den Reiter `#/standort/{id}/netzanschluesse`, mit Liste, Anl
   Netzanschlusses; der Kopf deutet ihn deshalb nicht als Anschlussleistung um. Ein solcher
   Momentanwert steht mangels Fakt im verwendeten Lesemodell nicht im Kopf.
 - **Eine Formatierstelle:** `netzanschlussListe.leistung` ruft `uemsNetzanschluss.kopfzeile`
-  und damit `uemsErgebnis.zahl` auf. Liste und Bilanz teilen sie. Das eigene Paket zur Rundung
-  vereinbarter Werte muss dort bzw. im Vertragszwilling ansetzen; IP-13 rundet nicht selbst.
+  und damit `uemsErgebnis.zahl` auf. Liste und Bilanz teilen sie. Seit Ergebnis-Vertrag 1.12
+  tragen vereinbarte kW und Anschluss-kVA den Wertbezug `vereinbart`: ganze Werte ohne
+  Nachkommastellen, echte Dezimalstellen vollständig. Momentanleistung bleibt `gemessen`.
 - **Verträge:** ausschließlich vorhandene IP-6-Routen, snake_case, Dezimalwerte ungerundet.
   Kein Preisumzug, keine Versorgung-Route und kein Formel-Assistent.
 

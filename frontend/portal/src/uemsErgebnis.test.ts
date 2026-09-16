@@ -201,8 +201,8 @@ describe('uemsErgebnis — die Fälle der Vektor-Datei', () => {
       switch (fall.familie) {
         case 'zahl': {
           expect(pruefeZahl(ein.einheit, ein.ebene)).toEqual(erw.verstoesse);
-          if (erw.verstoesse.length === 0) expect(zahl(ein.wert, ein.einheit, ein.ebene)).toBe(erw.text);
-          else expect(() => zahl(ein.wert, ein.einheit, ein.ebene)).toThrow();
+          if (erw.verstoesse.length === 0) expect(zahl(ein.wert, ein.einheit, ein.ebene, ein.wertbezug)).toBe(erw.text);
+          else expect(() => zahl(ein.wert, ein.einheit, ein.ebene, ein.wertbezug)).toThrow();
           break;
         }
         case 'menge': {
@@ -293,7 +293,7 @@ describe('uemsErgebnis — was nur der TS-Zwilling braucht', () => {
     expect(zahl(0.15, 'kW', null)).toBe(`0,2${VOR_EINHEIT}kW`);
     expect(zahl(0.35, 'm³', null)).toBe(`0,4${VOR_EINHEIT}m³`);
     for (const f of faelle.filter((x) => x.familie === 'zahl' && x.erwartet.text !== null && x.eingang.wert !== null)) {
-      expect(zahl(Number(f.eingang.wert), f.eingang.einheit, f.eingang.ebene), f.name).toBe(f.erwartet.text);
+      expect(zahl(Number(f.eingang.wert), f.eingang.einheit, f.eingang.ebene, f.eingang.wertbezug), f.name).toBe(f.erwartet.text);
     }
   });
 

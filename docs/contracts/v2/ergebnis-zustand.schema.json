@@ -8,7 +8,7 @@
   "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "fruehere_fassungen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "mengen_herkunft", "fassung", "befunde", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in ergebnis-zustand.md." },
-    "schema_version": { "type": "string", "const": "1.11", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
+    "schema_version": { "type": "string", "const": "1.12", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
     "$schema_datei": { "type": "string", "const": "./ergebnis-zustand.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt Ahrenberg; die Regeln selbst nehmen die Zone des Standorts." },
@@ -272,8 +272,15 @@
     "rundung": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["gerechnet", "rundungsart", "tausender", "dezimal", "vor_einheit", "minus", "ebenen", "stellen", "anzeige_einheiten", "anzeige_einheit_warum", "kennzeichen_ebene", "kennzeichen_ebene_warum", "differenz_satz", "export"],
+      "required": ["gerechnet", "rundungsart", "tausender", "dezimal", "vor_einheit", "minus", "ebenen", "stellen", "anzeige_einheiten", "anzeige_einheit_warum", "kennzeichen_ebene", "kennzeichen_ebene_warum", "differenz_satz", "export", "wertbezug"],
       "properties": {
+        "wertbezug": {
+          "type": "object", "additionalProperties": false, "required": ["gemessen", "vereinbart"],
+          "properties": {
+            "gemessen": { "type": "string", "minLength": 1 },
+            "vereinbart": { "type": "string", "minLength": 1 }
+          }
+        },
         "gerechnet": { "type": "string", "minLength": 1 },
         "rundungsart": { "type": "string", "minLength": 1 },
         "tausender": { "type": "string", "const": "." },
@@ -458,7 +465,8 @@
           "properties": {
             "wert": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimaltext" }] },
             "einheit": { "type": "string", "minLength": 1 },
-            "ebene": { "type": ["string", "null"] }
+            "ebene": { "type": ["string", "null"] },
+            "wertbezug": { "type": "string", "enum": ["gemessen", "vereinbart"], "default": "gemessen", "description": "Seit 1.12: vereinbart erhält echte Dezimalstellen, ganze Werte stehen ganzzahlig." }
           }
         },
         "erwartet": {

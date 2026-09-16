@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 15.09.2026 · Vertrag 1.11 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 16.09.2026 · Vertrag 1.12 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -96,7 +96,19 @@ sie liegen im Rechenweg der Verdichtung, und ein Satz darf dort nie eine Menge k
 
 ## 3. Rundung (E11): gerechnet ungerundet, gerundet nur angezeigt
 
-Die **Ebene** bestimmt die Nachkommastellen, nie die Fläche: `zahl(wert, einheit, ebene)`.
+**Wertbezug**, Einheit und **Ebene** bestimmen die Zahlform, nie die Fläche:
+`zahl(wert, einheit, ebene, wertbezug = gemessen)`.
+
+Seit 1.12 (Entscheid B vom 15.09.2026) unterscheidet die Anzeige **vereinbart** und
+**gemessen**. Vereinbarte ganze Werte stehen ganzzahlig: „vereinbart 550 kW · Anschluss
+630 kVA“. Echte Dezimalstellen bleiben vollständig erhalten („27,6 kW“, „550,45 kW“);
+nur nachgestellte Nullen entfallen. Es wird kein vereinbarter Betrag auf ganze Zahlen
+gerundet. Der bestehende Eingabeweg erlaubt solche Dezimalwerte bereits.
+
+`gemessen` ist die kompatible Vorgabe für die bisherigen Aufrufe und folgt der Tabelle
+unten („Momentan 312,4 kW“, auch „550,0 kW“). Der Wertbezug ist eine **Anzeige-Regel**;
+er ersetzt keine fachliche Mengenherkunft und bezeichnet abgeleitete Mengen nicht als
+Messung. Fehlende Werte, Einheiten-/Ebenenprüfung und ungerundete Speicherung bleiben gleich.
 
 | Einheit | Viertelstunde | Stunde | Tag | Monat | Jahr |
 |---|---|---|---|---|---|
@@ -104,7 +116,7 @@ Die **Ebene** bestimmt die Nachkommastellen, nie die Fläche: `zahl(wert, einhei
 | kW | 1 („96,5 kW“) — jede Ebene | | | | |
 | % | 0 („85 %“) — jede Ebene | | | | |
 | m³ | 1 („1.240,0 m³“) — jede Ebene | | | | |
-| kVA | 1 („630,0 kVA“) — jede Ebene; Anschluss-Scheinleistung = „Leistung“ in E11 (seit 1.2) | | | | |
+| kVA | 1 („630,0 kVA“) — jede Ebene; gemessene Scheinleistung (seit 1.2) | | | | |
 | kvarh | 1 | 1 | 0 | 0 | 0 — Blindarbeit ist Arbeit und rundet wie kWh (seit 1.3) |
 | kVAh | 1 | 1 | 0 | 0 | 0 — Scheinarbeit ist Arbeit und rundet wie kWh, bleibt aber kVAh (seit 1.8) |
 

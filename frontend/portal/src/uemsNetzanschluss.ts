@@ -221,7 +221,8 @@ export interface KopfzeileUrteil {
 
 /**
  * Die Kopfzeile der Bilanz-Seite. Was fehlt, steht nicht da — ein fehlender Momentanwert wird nie
- * zu „0 kW". Die Zahlen schreibt `uemsErgebnis.zahl` (E11: Leistung eine Stelle). `grenze_geprueft` ist immer `false`: hier wird GEZEIGT, nicht geprüft (AP-15).
+ * zu „0 kW". `uemsErgebnis.zahl` unterscheidet vereinbarte Angaben und gemessene Leistung (E11).
+ * `grenze_geprueft` ist immer `false`: hier wird GEZEIGT, nicht geprüft (AP-15).
  */
 export function kopfzeile(
   // Die Kennung steht am Kopf der Seite, nicht in dieser Zeile.
@@ -231,8 +232,8 @@ export function kopfzeile(
   momentanKw: Dez | null,
 ): KopfzeileUrteil {
   const teile: string[] = [];
-  if (vereinbartKw !== null) teile.push(`vereinbart ${zahl(dezText(vereinbartKw), KW, null)}`);
-  if (anschlussKva !== null) teile.push(`Anschluss ${zahl(dezText(anschlussKva), KVA, null)}`);
+  if (vereinbartKw !== null) teile.push(`vereinbart ${zahl(dezText(vereinbartKw), KW, null, 'vereinbart')}`);
+  if (anschlussKva !== null) teile.push(`Anschluss ${zahl(dezText(anschlussKva), KVA, null, 'vereinbart')}`);
   if (momentanKw !== null) teile.push(`Momentan ${zahl(dezText(momentanKw), KW, null)}`);
   return { text: teile.join(KOPFZEILE_TRENNER), grenze_geprueft: false };
 }

@@ -216,7 +216,7 @@ public final class NetzanschlussRegeln {
 
     /**
      * Die Kopfzeile der Bilanz-Seite. Was fehlt, steht nicht da — ein fehlender Momentanwert wird
-     * nie zu „0 kW“. Die Zahlen schreibt {@link ErgebnisZustand#zahl} (E11: Leistung eine Stelle).
+     * nie zu „0 kW“. {@link ErgebnisZustand#zahl} unterscheidet vereinbarte Angaben und Messung (E11).
      * {@code grenzeGeprueft} ist immer {@code false}: hier wird GEZEIGT, nicht
      * geprüft (AP-15).
      */
@@ -224,10 +224,12 @@ public final class NetzanschlussRegeln {
             String netzanschluss, BigDecimal vereinbartKw, BigDecimal anschlussKva, BigDecimal momentanKw) {
         List<String> teile = new ArrayList<>();
         if (vereinbartKw != null) {
-            teile.add("vereinbart " + ErgebnisZustand.zahl(vereinbartKw, ErgebnisZustand.KW, null));
+            teile.add("vereinbart " + ErgebnisZustand.zahl(vereinbartKw, ErgebnisZustand.KW, null,
+                    ErgebnisZustand.Wertbezug.VEREINBART));
         }
         if (anschlussKva != null) {
-            teile.add("Anschluss " + ErgebnisZustand.zahl(anschlussKva, ErgebnisZustand.KVA, null));
+            teile.add("Anschluss " + ErgebnisZustand.zahl(anschlussKva, ErgebnisZustand.KVA, null,
+                    ErgebnisZustand.Wertbezug.VEREINBART));
         }
         if (momentanKw != null) {
             teile.add("Momentan " + ErgebnisZustand.zahl(momentanKw, ErgebnisZustand.KW, null));

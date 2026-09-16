@@ -260,13 +260,15 @@ class ErgebnisZustandVectorsTest {
             case "zahl" -> {
                 String einheit = ein.path("einheit").asText();
                 String ebene = textOderNull(ein.get("ebene"));
+                var wertbezug = ErgebnisZustand.Wertbezug.valueOf(
+                        ein.path("wertbezug").asText("gemessen").toUpperCase(java.util.Locale.ROOT));
                 List<String> verstoesse = texte(erw.path("verstoesse"));
                 assertThat(ErgebnisZustand.pruefeZahl(einheit, ebene)).containsExactlyElementsOf(verstoesse);
                 if (verstoesse.isEmpty()) {
-                    assertThat(ErgebnisZustand.zahl(dezimal(ein.get("wert")), einheit, ebene))
+                    assertThat(ErgebnisZustand.zahl(dezimal(ein.get("wert")), einheit, ebene, wertbezug))
                             .isEqualTo(erw.path("text").asText());
                 } else {
-                    assertThatThrownBy(() -> ErgebnisZustand.zahl(dezimal(ein.get("wert")), einheit, ebene))
+                    assertThatThrownBy(() -> ErgebnisZustand.zahl(dezimal(ein.get("wert")), einheit, ebene, wertbezug))
                             .isInstanceOf(IllegalArgumentException.class);
                 }
             }
