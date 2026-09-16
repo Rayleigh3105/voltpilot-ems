@@ -31,9 +31,10 @@ public record OverviewDto(
      * One site of the fleet.
      *
      * <p>{@code onlineCount}/{@code waitingCount}/{@code worstStatus} derive from
-     * each device's newest telemetry ARRIVAL ({@code max(received_at)} - the
-     * store-and-forward liveness rule, see migration V20260703000000), with the
-     * same 5-minute window the portal uses ({@code api.ts ONLINE_WINDOW_MS}).
+     * each box's newest status-heartbeat ARRIVAL, with the same 5-minute window
+     * the portal uses ({@code api.ts ONLINE_WINDOW_MS}). Before the first status
+     * heartbeat of a pre-existing box, its telemetry arrival is the compatibility
+     * fallback.
      * {@code worstStatus}: {@code stale} (a device went silent) beats
      * {@code waiting} (a device never sent) beats {@code online}; {@code null}
      * for a site without devices.

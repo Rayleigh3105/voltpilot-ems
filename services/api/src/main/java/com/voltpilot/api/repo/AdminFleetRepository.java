@@ -138,10 +138,9 @@ public class AdminFleetRepository {
     }
 
     /**
-     * Geräte-Zahlen je Anlage. Lebendigkeit hängt an {@code max(received_at)} -
-     * der ANKUNFT, nie am Beobachtungszeitpunkt: eine Edge, die ihren Puffer
-     * nachspielt, trägt stundenalte Beobachtungszeiten und ist trotzdem online
-     * (Migration V20260703000000). Wortgleich mit
+     * Geräte-Zahlen je Anlage. Verbunden folgt der Status-Ankunft je Box; bis
+     * zum ersten Status-Herzschlag einer Bestandsbox bleibt deren jüngste
+     * Telemetrie-Ankunft der Bestandsschutz. Wortgleich mit
      * {@link OverviewRepository#deviceStatsPerSite()} - dieselbe Frage, dieselbe
      * Antwort, nur ohne Mandanten-Zaun.
      */
@@ -149,10 +148,12 @@ public class AdminFleetRepository {
         Map<UUID, DeviceStats> stats = new HashMap<>();
         jdbc.query(
                 "SELECT d.site_id, count(*) AS device_count,"
-                        + " count(*) FILTER (WHERE ls.last_seen >= now() - interval '" + ONLINE_WINDOW + "')"
+                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen)"
+                        + " >= now() - interval '" + ONLINE_WINDOW + "')"
                         + "   AS online_count,"
-                        + " count(*) FILTER (WHERE ls.last_seen IS NULL) AS waiting_count,"
-                        + " max(ls.last_seen) AS last_seen "
+                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen) IS NULL)"
+                        + " AS waiting_count,"
+                        + " max(coalesce(d.device_status_seen_at, ls.last_seen)) AS last_seen "
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen"
                         + "  FROM telemetry t WHERE t.device_id = d.id) ls ON true "

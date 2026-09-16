@@ -3,11 +3,12 @@ import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { MobileStickyHead } from '../src/components/CockpitBlocks';
+import { ZustandCard } from '../src/components/ZustandCard';
 import { AppShell } from '../src/shell/AppShell';
 import { anlageSidebar } from '../src/ebenenNav';
 import { anlageSurface } from '../src/surface';
 import { keycloak } from '../src/auth';
-import { healthBadge } from '../src/health';
+import { healthBadge, healthChecklist } from '../src/health';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -26,7 +27,12 @@ const sites = [
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: [isAdmin ? 'platform-admin' : 'operator'] } } });
 const surface = anlageSurface({ entities: [{ id: 'battery', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } }], config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' } });
 const tenants = [{ id: 'beispiel', name: 'Stadtwerke Musterstadt Energieversorgung', segment: 'CI', plan: 'basic', betriebsart: null, betriebsartEffective: 'betreiber' as const, createdAt: '2026-01-01T00:00:00Z' }];
-const health = params.has('unknown') ? null : healthBadge({ devices: { deviceCount: 1, onlineCount: params.has('ok') ? 1 : 0, waitingCount: 0 } });
+const health = params.has('unknown') ? null : healthBadge({ devices: params.has('multi')
+  ? { deviceCount: 2, onlineCount: 2, waitingCount: 0 }
+  : { deviceCount: 1, onlineCount: params.has('ok') ? 1 : 0, waitingCount: 0 } });
+const multiHealth = healthChecklist({ deviceCount: 2, onlineCount: 2, waitingCount: 0,
+  hasPlanToday: true, hasAnyPlan: true, controlState: null,
+  batteryWithoutDevice: false, batteryLinked: false });
 
 function Fixture() {
   const [selected, setSelected] = useState(sites[0].id);
@@ -40,6 +46,7 @@ function Fixture() {
       activeKey: 'cockpit', onSelectSite: setSelected, onOpenSub: () => {}, onOpenPage: () => setFleet(true),
       onOpenFleet: () => setFleet(true), health }}>
     <div className="vp-page-head"><div className="titles"><h1>{fleet ? 'Portfolio' : site.name}</h1><p>Ihre Energie im Überblick</p></div></div>
+    {params.has('multi') && <ZustandCard items={multiHealth} onOpenSub={() => {}} onOpenModus={() => {}} />}
     <div className="vp-card"><h2>Layoutprüfung</h2><p>Die Kopfzeile und Navigation sind die Original-Komponenten des Portals.</p></div>
     <MobileStickyHead head={{ value: '2,40 €', label: 'heute', status: 'Offline', tone: 'warn' }} shown />
     <div style={{ height: '120vh' }} />

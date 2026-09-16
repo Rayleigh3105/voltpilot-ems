@@ -140,7 +140,7 @@ export interface ZentraleListeInput {
   /**
    * Der gemeldete Ist-Stand je Gerät (`/sources`) - er trägt den ZWEITEN
    * Frische-Anker: ein Gerät hinter der Box altert gegen `readAt`, nie gegen
-   * die Telemetrie der Box.
+   * den Status-Herzschlag der Box.
    */
   sources: SiteSource[] | null;
   /** `GET /sites/{id}/chargers`, fail-soft geholt; null = nicht gemeldet. */
@@ -279,7 +279,7 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
   return karten;
 }
 
-/** Die Lebendigkeit der Box - der Anker ist ihre Telemetrie (`liveness.ts`). */
+/** Die Lebendigkeit der Box - der Anker ist ihr Status-Herzschlag (`liveness.ts`). */
 function boxHealth(
   devices: Device[],
   fetchedAt: number | null | undefined,

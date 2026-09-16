@@ -2964,10 +2964,12 @@ class AdminApiTest {
         UUID sued = UUID.randomUUID();
         UUID ost = UUID.randomUUID();
         UUID west = UUID.randomUUID();
+        UUID leser = UUID.randomUUID();
         seedSite(nord, UUID.fromString(tenantId), "Puls Nord");
         seedSite(sued, UUID.fromString(tenantId), "Puls Sued");
         seedSite(ost, UUID.fromString(tenantId), "Puls Ost");
         seedSite(west, UUID.fromString(tenantId), "Puls West");
+        seedSite(leser, UUID.fromString(tenantId), "Puls Lese-Box");
 
         // Nord: der Sorgenfall. Tarifart 'ohne' (rechnet mit Standard-Komponenten),
         // ein Speicher OHNE steuerndes Gerät, ein Gerät das gerade gemeldet hat,
@@ -2985,6 +2987,10 @@ class AdminApiTest {
                 + nordDevice + "', '" + tenantId + "', '" + nord + "', 'fleet-nord-01', 'inverter')");
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, received_at, pv_power_kw) "
                 + "VALUES (now(), '" + tenantId + "', '" + nord + "', '" + nordDevice + "', now(), 3.2)");
+        UUID leserDevice = UUID.randomUUID();
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind, device_status_seen_at) VALUES ('"
+                + leserDevice + "', '" + tenantId + "', '" + leser
+                + "', 'fleet-reader-01', 'gateway', now())");
         exec("INSERT INTO schedule (site_id, tenant_id, plan_id, generated_at, time, battery_kw) "
                 + "VALUES ('" + nord + "', '" + tenantId + "', gen_random_uuid(), "
                 + "now() - interval '10 minutes', now(), 1.0)");
@@ -3028,7 +3034,7 @@ class AdminApiTest {
         }
 
         // (1) cross-tenant: der neue Mandant UND der Demo-Mandant stehen drin.
-        assertThat(bySite).containsKeys("Puls Nord", "Puls Sued", "Puls Ost", "Puls West");
+        assertThat(bySite).containsKeys("Puls Nord", "Puls Sued", "Puls Ost", "Puls West", "Puls Lese-Box");
         assertThat(fleet).extracting(r -> r.get("tenantName")).contains("Demo C&I Tenant");
         assertThat(bySite.get("Puls Nord")).containsEntry("tenantName", "Flottenpuls GmbH");
 
@@ -3047,6 +3053,18 @@ class AdminApiTest {
                 .containsEntry("paletteVersion", "0.3.0");
         assertThat((Map<String, Object>) n.get("sources")).containsEntry("total", 2)
                 .containsEntry("ok", 1).containsEntry("stale", 1);
+
+        // Zeichengleicher API-Zustand: die bestehende Ein-Box-Anlage Nord
+        // (nur Telemetrie-Fallback) und die reine Lese-Box (nur Herzschlag,
+        // keine v1-Telemetrie) sind beide verbunden.
+        Map<String, Object> l = bySite.get("Puls Lese-Box");
+        for (Map<String, Object> oneBox : List.of(n, l)) {
+            assertThat(oneBox).containsEntry("deviceCount", 1)
+                    .containsEntry("onlineCount", 1)
+                    .containsEntry("waitingCount", 0)
+                    .containsEntry("worstStatus", "online");
+            assertThat(oneBox.get("lastSeenAt")).isNotNull();
+        }
 
         // (3) die Pflege-Flags sind SERVER-abgeleitet (Stufe-1-Regeln + B4).
         assertThat((List<Map<String, Object>>) n.get("pflege"))

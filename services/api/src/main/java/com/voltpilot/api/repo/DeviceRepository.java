@@ -21,15 +21,14 @@ public class DeviceRepository {
         // Only boxes that take part in operation: an ausgebaut box (UEMS AP-07
         // IP-11) keeps its row and its recordings, but is no device of the
         // tenant anymore - no list, no scope, no route reaches it.
-        // last_seen = newest telemetry ARRIVAL per device (received_at, not the
-        // observation time: a reconnecting edge replays buffered samples with old
-        // observation timestamps, so arrival is the only correct liveness signal -
-        // see migration V20260703000000). RLS-scoped like the device rows; null
-        // until the first sample arrives.
+        // last_seen = newest status-heartbeat ARRIVAL. Until an existing box has
+        // sent its first heartbeat after AP-06 IP-15, telemetry arrival remains
+        // the compatibility fallback, preserving the former one-box result.
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
+                        + "coalesce(d.device_status_seen_at, (SELECT max(t.received_at) FROM telemetry t "
+                        + "WHERE t.device_id = d.id)) AS last_seen "
                         + "FROM device d WHERE d.ausgebaut_am IS NULL ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
     }
@@ -39,7 +38,8 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
+                        + "coalesce(d.device_status_seen_at, (SELECT max(t.received_at) FROM telemetry t "
+                        + "WHERE t.device_id = d.id)) AS last_seen "
                         + "FROM device d WHERE d.id = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
     }
@@ -52,7 +52,8 @@ public class DeviceRepository {
     public Optional<DeviceDto> findByExternalRef(String externalRef) {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
-                        + "d.lan_host, d.lan_seen_at, d.lan_source, t.last_seen "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, "
+                        + "coalesce(d.device_status_seen_at, t.last_seen) AS last_seen "
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT received_at AS last_seen FROM telemetry "
                         + "  WHERE device_id = d.id ORDER BY received_at DESC LIMIT 1) t ON true "
@@ -90,7 +91,8 @@ public class DeviceRepository {
                 "UPDATE device SET kind = ?, name = ? WHERE id = ? AND ausgebaut_am IS NULL "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
-                        + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = device.id) AS last_seen",
+                        + "coalesce(device.device_status_seen_at, (SELECT max(t.received_at) FROM telemetry t "
+                        + "WHERE t.device_id = device.id)) AS last_seen",
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
 
@@ -167,6 +169,17 @@ public class DeviceRepository {
                 "UPDATE device SET lan_host = ?, lan_seen_at = ?, lan_source = ? WHERE id = ?",
                 host, seenAt == null ? null : java.sql.Timestamp.from(seenAt), source,
                 deviceId) > 0;
+    }
+
+    /**
+     * Records the cloud ARRIVAL of a valid status heartbeat. The listener has
+     * already checked topic/payload identity and selected the tenant in
+     * {@link com.voltpilot.api.tenant.TenantContext}; RLS therefore keeps a
+     * forged or cross-tenant id from refreshing another box.
+     */
+    public boolean markStatusSeen(UUID deviceId) {
+        return jdbc.update("UPDATE device SET device_status_seen_at = now() "
+                + "WHERE id = ? AND ausgebaut_am IS NULL", deviceId) > 0;
     }
 
     /** Active devices at a site (for the site-delete guard/preview), RLS-scoped; an ausgebaut box does not count. */

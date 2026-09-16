@@ -35,10 +35,11 @@ still), und umgekehrt (Tageszähler nach 30 h). Die Schwelle steht NICHT im Meld
    (Bezug nur `box` — **der Kern-Pfad**) und EINE je Datenquelle, für die die Box zu `von`
    zuständig war (`data_source_assignment` — der UEMS-Pfad), `von` = letzter Eingang,
    `erkannt_aus = herzschlag`, `fehlerklasse = box_meldet_sich_nicht`. ⚠ „Eingang“ = die
-   Ankunft von Daten: `telemetry.received_at` (dieselbe Grundlage wie die Live-Flächen) und
-   `device_measurement_sample.received_at`. Ein eigener Herzschlag-Speicher (AP-06 IP-15
-   `device_status_seen_at`) und der Block `data_sources[]` (AP-06 E5) sind nicht gebaut — kommt
-   einer, ist er eine weitere Eingangsquelle, keine neue Regel. `telemetry_v2` wird nicht gelesen.
+   Ankunft von Daten: `telemetry.received_at` und `device_measurement_sample.received_at`.
+   `device_status_seen_at` (AP-06 IP-15) und `data_sources[]` (AP-06 IP-14) sind inzwischen gebaut;
+   die Live-Flächen lesen den Herzschlag bereits, der Lücken-Melder ist noch nicht darauf
+   umgestellt. Beim Anschluss sind sie weitere Eingangsquellen, keine neue Regel.
+   `telemetry_v2` wird nicht gelesen.
 
 „Eine statt einer Flut“: je Einheit höchstens EINE offene Lücke (`luecke_seit` im Stand); die
 Kennungen sind abgeleitet (`LueckenRegeln.*Kennung`, auf die Sekunde von `von`).

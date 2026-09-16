@@ -237,20 +237,22 @@ public class OverviewRepository {
     }
 
     /**
-     * Device count / online count / never-seen count / newest arrival per site.
-     * Liveness derives from {@code max(received_at)} per device - the ARRIVAL
-     * time, never the observation time: a store-and-forward edge replays old
-     * observation timestamps while being perfectly online (migration
-     * V20260703000000).
+     * Device count / connected count / never-seen count / newest status arrival
+     * per site. A box is connected when its status heartbeat arrived within the
+     * five-minute window (2 x 15 seconds, raised to the existing five-minute
+     * minimum). Until a pre-existing box sends its first status heartbeat, its
+     * newest telemetry arrival is the compatibility fallback.
      */
     public Map<UUID, DeviceStats> deviceStatsPerSite() {
         Map<UUID, DeviceStats> stats = new HashMap<>();
         jdbc.query(
                 "SELECT d.site_id, count(*) AS device_count,"
-                        + " count(*) FILTER (WHERE ls.last_seen >= now() - interval '" + ONLINE_WINDOW + "')"
+                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen)"
+                        + " >= now() - interval '" + ONLINE_WINDOW + "')"
                         + "   AS online_count,"
-                        + " count(*) FILTER (WHERE ls.last_seen IS NULL) AS waiting_count,"
-                        + " max(ls.last_seen) AS last_seen "
+                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen) IS NULL)"
+                        + " AS waiting_count,"
+                        + " max(coalesce(d.device_status_seen_at, ls.last_seen)) AS last_seen "
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen"
                         + "  FROM telemetry t WHERE t.device_id = d.id) ls ON true "

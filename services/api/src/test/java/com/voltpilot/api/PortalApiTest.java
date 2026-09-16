@@ -646,6 +646,39 @@ class PortalApiTest {
                 .isAfter(java.time.Instant.now().minusSeconds(120));
     }
 
+    @Test
+    void overviewTreatsAHeartbeatOnlyReadBoxAsConnectedAndPreservesOneBoxTelemetryFallback() {
+        String demo = token("demo", "demo");
+        String tenant = "00000000-0000-0000-0000-000000000001";
+
+        String heartbeatSite = createSite(demo, "Overview Lese-Box", "DE-LU", "eigenverbrauch");
+        String heartbeatDevice = claimDeviceInto(demo, heartbeatSite, "overview-reader-heartbeat");
+        exec("UPDATE device SET device_status_seen_at = now() WHERE id = '" + heartbeatDevice + "'");
+
+        String bestandSite = createSite(demo, "Overview Bestand Ein-Box", "DE-LU", "eigenverbrauch");
+        String bestandDevice = claimDeviceInto(demo, bestandSite, "overview-existing-single");
+        exec("INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, power_kw) "
+                + "VALUES (now(), now(), '" + tenant + "', '" + bestandSite + "', '"
+                + bestandDevice + "', 1.0)");
+
+        ResponseEntity<Map<String, Object>> response = rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> heartbeat = list(response.getBody(), "sites").stream()
+                .filter(s -> heartbeatSite.equals(s.get("id"))).findFirst().orElseThrow();
+        Map<String, Object> bestand = list(response.getBody(), "sites").stream()
+                .filter(s -> bestandSite.equals(s.get("id"))).findFirst().orElseThrow();
+
+        for (Map<String, Object> site : List.of(heartbeat, bestand)) {
+            assertThat(site).containsEntry("deviceCount", 1)
+                    .containsEntry("onlineCount", 1)
+                    .containsEntry("waitingCount", 0)
+                    .containsEntry("worstStatus", "online");
+            assertThat(site.get("lastSeenAt")).isNotNull();
+        }
+    }
+
     // ---- site creation (customer self-service, tenant-bound) ----------------
 
     /**

@@ -3,6 +3,9 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.voltpilot.api.repo.AdminFleetRepository;
+import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.repo.OverviewRepository;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
@@ -49,6 +52,7 @@ class DataSourceStatusMigrationTest {
     private static UUID tenant;
     private static UUID fremd;
     private static UUID device;
+    private static UUID site;
     private static UUID quelle;
     private static UUID fremdeQuelle;
 
@@ -69,7 +73,7 @@ class DataSourceStatusMigrationTest {
 
         tenant = root.queryForObject("INSERT INTO tenant (name) VALUES ('Status A') RETURNING id", UUID.class);
         fremd = root.queryForObject("INSERT INTO tenant (name) VALUES ('Status B') RETURNING id", UUID.class);
-        UUID site = root.queryForObject(
+        site = root.queryForObject(
                 "INSERT INTO site (tenant_id, name) VALUES (?, 'Halle 2') RETURNING id", UUID.class, tenant);
         UUID fremderSite = root.queryForObject(
                 "INSERT INTO site (tenant_id, name) VALUES (?, 'Fremd') RETURNING id", UUID.class, fremd);
@@ -94,6 +98,28 @@ class DataSourceStatusMigrationTest {
                 + "FROM pg_class WHERE relname = 'device_data_source_status'", Boolean.class)).isTrue();
         assertThat(root.queryForObject("SELECT count(*) FROM pg_policies "
                 + "WHERE tablename = 'device_data_source_status'", Integer.class)).isOne();
+
+        // IP-15: a valid heartbeat writes the cloud arrival on the RLS-fenced
+        // device row. The read-only box has NO telemetry and nevertheless has
+        // exactly the same connected aggregate in customer and admin reads.
+        assertThat(root.queryForObject("SELECT device_status_seen_at IS NULL FROM device WHERE id = ?",
+                Boolean.class, device)).isTrue();
+        TenantContext.set(tenant);
+        DeviceRepository devices = new DeviceRepository(app);
+        assertThat(devices.markStatusSeen(device)).isTrue();
+        OverviewRepository.DeviceStats customerStats =
+                new OverviewRepository(app).deviceStatsPerSite().get(site);
+        AdminFleetRepository.DeviceStats adminStats =
+                new AdminFleetRepository(admin).deviceStatsPerSite().get(site);
+        assertThat(customerStats).isEqualTo(new OverviewRepository.DeviceStats(1, 1, 0,
+                customerStats.lastSeenAt()));
+        assertThat(adminStats).isEqualTo(new AdminFleetRepository.DeviceStats(1, 1, 0,
+                adminStats.lastSeenAt()));
+        assertThat(customerStats.lastSeenAt()).isNotNull();
+        assertThat(adminStats.lastSeenAt()).isEqualTo(customerStats.lastSeenAt());
+
+        TenantContext.set(fremd);
+        assertThat(devices.markStatusSeen(device)).as("RLS schützt den Herzschlag-Anker").isFalse();
 
         TenantContext.set(tenant);
         repository.replaceForDevice(device, tenant, REPORTED, List.of(

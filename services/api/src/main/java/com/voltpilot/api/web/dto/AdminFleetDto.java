@@ -39,8 +39,8 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
      * Eine Anlage der Flotte.
      *
      * <p>Die Geräte-Felder tragen exakt die Semantik von
-     * {@link OverviewDto.OverviewSiteDto} (Lebendigkeit aus der ANKUNFT der
-     * Telemetrie, 5-Minuten-Fenster; {@code worstStatus} = {@code stale} schlägt
+     * {@link OverviewDto.OverviewSiteDto} (Lebendigkeit aus der ANKUNFT des
+     * Status-Herzschlags, 5-Minuten-Fenster; {@code worstStatus} = {@code stale} schlägt
      * {@code waiting} schlägt {@code online}, {@code null} ohne Gerät).
      *
      * <p>{@code lastPlanGeneratedAt} ist der jüngste Optimierer-Lauf im

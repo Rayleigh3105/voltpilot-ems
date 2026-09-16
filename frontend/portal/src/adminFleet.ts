@@ -386,11 +386,7 @@ function deviceCell(site: AdminFleetSite): { text: string; tone: Tone } {
   return { text: `${site.onlineCount}/${site.deviceCount} online`, tone: 'ok' };
 }
 
-/**
- * Das Alter der jüngsten MESSUNG. Es hängt an `lastSeenAt` (der ANKUNFT der
- * Telemetrie, die Store-and-Forward-Regel), nicht am Beobachtungszeitpunkt -
- * eine wiedereinspielende Edge liest sonst fälschlich als offline.
- */
+/** Das Alter des jüngsten Status-Herzschlags der Box (Cloud-Ankunft). */
 function liveCell(site: AdminFleetSite, now: Date): { text: string; tone: Tone } {
   if (!site.lastSeenAt) return { text: DASH, tone: 'off' };
   const age = now.getTime() - Date.parse(site.lastSeenAt);
