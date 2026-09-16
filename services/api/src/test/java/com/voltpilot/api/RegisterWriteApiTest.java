@@ -536,7 +536,7 @@ class RegisterWriteApiTest {
                 "/api/v1/sites/" + site + "/register-write/preview", customer,
                 Map.of("address", "0x00E7"));
         assertThat(ambiguous.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(ambiguous.getBody().get("message").toString()).contains("mehrere Geräte");
+        assertThat(ambiguous.getBody().get("message").toString()).contains("keine führende Box");
 
         // Eine unlesbare Adresse fällt sofort, ohne Broker-Runde.
         ResponseEntity<Map<String, Object>> garbage = post(
@@ -623,7 +623,12 @@ class RegisterWriteApiTest {
         String customer = token("demo", "demo");
         UUID site = createSite(customer, "Register-Anlage Lanes");
         UUID device = claim(customer, site, "edge-regwrite-s2-02");
-        UUID entity = UUID.randomUUID();
+        ResponseEntity<Map<String, Object>> created = post(
+                "/api/v1/sites/" + site + "/consumers", customer,
+                Map.of("type", "generic-load", "name", "Register-Verbraucher",
+                        "ratedPowerKw", 2.0, "controlKind", "on_off"));
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        UUID entity = UUID.fromString(created.getBody().get("id").toString());
 
         try (DeviceStub stub = new DeviceStub()) {
             stub.answerWith(req -> ok(site, device, req, 0, 1));
