@@ -62,3 +62,23 @@ CLI-Werte gehen vor Umgebung/`.env` und Defaults. Vollständige Optionen: `--hel
 ```
 
 Die Tests prüfen Modell, MQTT-Austausch und Vertragsform ohne einen externen Broker. Sie ersetzen nicht den Nachweis des vollständigen Cloud-Pfads.
+
+## UEMS: zwei Boxen im Werk Ahrenberg
+
+`uems_ahrenberg.py` liest ausschließlich das Referenzunternehmen
+`docs/contracts/v2/uems-referenzunternehmen.json`. Es löst die zeitgültigen
+Zuständigkeiten von DQ-1…DQ-5 auf zwei getrennte Box-Identitäten auf und gibt
+deren Herzschläge samt `data_sources[]` als JSON aus. Der Lauf ist offline und
+benötigt weder Broker noch Zugangsdaten:
+
+```bash
+python3 uems_ahrenberg.py
+python3 uems_ahrenberg.py --at 2027-04-10T07:30:00+02:00
+python3 uems_ahrenberg.py --offline-box E-2
+python3 -m pytest test_edge_sim.py test_uems_ahrenberg.py -q
+```
+
+Der Zeitpunkt ist halboffen ausgewertet. Dadurch liest DQ-3 beim Wechsel um
+07:30 Uhr nie auf beiden Boxen. `--offline-box` unterdrückt nur die
+Quellmeldungen dieser Box; die andere Identität und ihre Quellen bleiben
+unverändert.
