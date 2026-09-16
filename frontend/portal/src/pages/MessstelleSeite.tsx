@@ -568,13 +568,14 @@ function Zeile({
       {z.historie.length > 1 && (
         <details className="vp-mss-historie">
           <summary>
-            {HISTORIE} ({z.historie.length})
+            {z.art === 'verteilung' ? 'Fassungen' : HISTORIE} ({z.historie.length})
           </summary>
           <ol>
-            {z.historie.map((h) => (
+            {z.historie.map((h, i) => (
               <li key={h.schluessel} className={`vp-mss-h is-${h.zustand}`}>
                 <span className="vp-mss-punkt" aria-hidden="true" />
                 <span className="vp-mss-h-text">
+                  {z.art === 'verteilung' && <span className="vp-mss-h-neben">Fassung {z.historie.length - i}</span>}
                   <span className="vp-mss-h-wert">{h.wert}</span>
                   {h.neben && <span className="vp-mss-h-neben">{h.neben}</span>}
                   <span className="vp-mss-h-zeit">{h.zeitraum}</span>

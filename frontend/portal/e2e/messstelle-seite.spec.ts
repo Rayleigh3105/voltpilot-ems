@@ -24,7 +24,7 @@ import {
   prozesseVon,
   verteilungVon,
 } from '../src/test/messstelleSeiteFixtures';
-import type { MessstelleWerte } from '../src/api';
+import type { MessstelleVerteilung, MessstelleWerte } from '../src/api';
 import { verschiebe } from '../src/picker/datum';
 import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
@@ -209,6 +209,7 @@ async function cloud(
 ): Promise<Gesendet[]> {
   const gesendet: Gesendet[] = [];
   let gespeichert = false;
+  let verteilungGespeichert: MessstelleVerteilung | null = null;
   await page.route('**/api/v1/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -251,7 +252,40 @@ async function cloud(
     // Ohne Prozess und Kostenstelle: die Hauptzähler MS-10 und MS-16, und MS-21 (AP-13 IP-6) zeigt nichts Geliehenes.
     const hauptzaehler = ['MS-10', 'MS-16', 'MS-21'].includes(messstelle.kennzeichen);
     if (pfad.endsWith('/prozesse') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneProzesse(messstelle) : prozesseVon(messstelle)));
-    if (pfad.endsWith('/verteilung') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneVerteilung(messstelle) : verteilungVon(messstelle)));
+    if (pfad.endsWith('/verteilung') && methode === 'GET') {
+      return route.fulfill(json(verteilungGespeichert ?? (hauptzaehler ? ohneVerteilung(messstelle) : verteilungVon(messstelle))));
+    }
+    if (pfad.endsWith('/verteilung') && methode === 'PUT') {
+      const body = req.postDataJSON() as { gueltig_ab: string; zeilen: { kostenstelle_id: string; anteil_prozent: string }[] };
+      const alt = verteilungVon(messstelle).anteile.map((a) => {
+        const d = new Date(`${body.gueltig_ab}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() - 1);
+        return { ...a, gueltig_bis: d.toISOString().slice(0, 10) };
+      });
+      const katalog = kostenstellenAhrenberg();
+      verteilungGespeichert = {
+        messstelle_id: messstelle.id,
+        kennzeichen: messstelle.kennzeichen,
+        am: null,
+        zustand: null,
+        anteile: [
+          ...alt,
+          ...body.zeilen.map((z, i) => {
+            const k = katalog.find((x) => x.id === z.kostenstelle_id)!;
+            return {
+              id: `${messstelle.kennzeichen}-anteil-neu-${i + 1}`,
+              kostenstelle: { id: k.id, kennzeichen: k.kennzeichen },
+              name: k.name,
+              anteil_prozent: z.anteil_prozent,
+              gueltig_ab: body.gueltig_ab,
+              gueltig_bis: k.gueltig_bis,
+              endet_mit_kostenstelle: k.gueltig_bis !== null,
+            };
+          }),
+        ],
+      };
+      return route.fulfill(json(verteilungGespeichert));
+    }
     if (pfad.endsWith('/aenderungen')) {
       const protokoll = pfad.includes(MS_IDS.ms10) || pfad.includes(MS_IDS.ms16) || pfad.includes(MS_IDS.ms21)
         ? protokollMs10()
@@ -364,6 +398,78 @@ test('R2 · MS-06: drei Zuordnungs-Karten und das Protokoll nach der Eintragung,
   await expect(page.getByText('Sortiert danach, wann die Änderung eingetragen wurde.')).toBeVisible();
   await expect(page.locator('.vp-befehl').first()).toContainText('Quelle gebunden: Z-5a');
   await messeUndFotografiere(page, breite, 'r2-ms06');
+});
+
+test('F10 · Verteilen: 70/30 ergibt live 100 %, 90 % sperrt das Eintragen mit dem Fehlersatz', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  const gesendet = await cloud(page);
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+
+  await page.getByRole('button', { name: 'Kostenstellen ändern ab …' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Kostenstellen ändern' });
+  await dialog.getByLabel('Anteil (%)').first().fill('70');
+  await dialog.getByRole('button', { name: 'Kostenstelle hinzufügen' }).click();
+  const liste = await listeVon(page, dialog.getByRole('combobox', { name: 'Kostenstelle 2' }));
+  await liste.getByRole('option', { name: /^4200 Montage/ }).click();
+
+  await expect(dialog.getByTestId('zuordnung-summe')).toHaveText('Summe: 100 % ✔');
+  await expect(dialog.getByRole('button', { name: 'Verteilung ab 20.10.2026 eintragen' })).toBeEnabled();
+  await messeUndFotografiere(page, breite, 'f10-verteilung-70-30', { dialog: true });
+
+  await dialog.getByLabel('Anteil (%)').nth(1).fill('20');
+  await expect(dialog.getByTestId('zuordnung-summe')).toHaveText(
+    'Summe: 90 % · 10 % fehlen — eine Verteilung ist vollständig oder existiert nicht.',
+  );
+  await expect(dialog.getByRole('button', { name: 'Verteilung ab 20.10.2026 eintragen' })).toBeDisabled();
+  await messeUndFotografiere(page, breite, 'f10-verteilung-90-gesperrt', { dialog: true });
+  expect(gesendet).toEqual([]);
+});
+
+test('F12 · das Ziel 9000 zeigt sein gemeinsames Ende mit der Kostenstelle', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page);
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+
+  await page.getByRole('button', { name: 'Kostenstellen ändern ab …' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Kostenstellen ändern' });
+  const liste = await listeVon(page, dialog.getByRole('combobox', { name: 'Kostenstelle 1' }));
+  await liste.getByRole('option', { name: /^9000 Infrastruktur/ }).click();
+  await expect(dialog.getByText('endet mit Kostenstelle 9000 am 31.12.2026')).toBeVisible();
+  await expect(dialog.getByTestId('zuordnung-summe')).toHaveText('Summe: 100 % ✔');
+  await messeUndFotografiere(page, breite, 'f12-ziel-endet', { dialog: true });
+});
+
+test('F13 · neue Verteilung ab 15.01.2027: rückwirkend fünf Tage, danach zwei Fassungen', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  const gesendet = await cloud(page, { heute: '2027-01-20' });
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+
+  await page.getByRole('button', { name: 'Kostenstellen ändern ab …' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Kostenstellen ändern' });
+  await dialog.getByLabel('Anteil (%)').first().fill('60');
+  await dialog.getByRole('button', { name: 'Kostenstelle hinzufügen' }).click();
+  const liste = await listeVon(page, dialog.getByRole('combobox', { name: 'Kostenstelle 2' }));
+  await liste.getByRole('option', { name: /^4200 Montage/ }).click();
+  await waehleTag(page, dialog, '2027-01-15');
+
+  await expect(dialog.getByTestId('zuordnung-summe')).toHaveText('Summe: 100 % ✔');
+  await expect(dialog.getByTestId('zuordnung-folgen')).toContainText('rückwirkend (5 Tage)');
+  await expect(dialog.getByTestId('zuordnung-folgen')).toContainText('Für die Tage vom 15.01.2027 bis 19.01.2027 gilt das nachträglich.');
+  await messeUndFotografiere(page, breite, 'f13-verteilung-neu', { dialog: true });
+
+  await dialog.getByRole('button', { name: 'Verteilung ab 15.01.2027 eintragen' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const organisation = page.getByTestId('karte-organisation');
+  await expect(organisation.getByText('Fassungen (2)')).toBeVisible();
+  await organisation.getByText('Fassungen (2)').click();
+  await expect(organisation).toContainText('Fassung 2');
+  await expect(organisation).toContainText('Fassung 1');
+  await expect(organisation).toContainText('01.10.2026 bis 14.01.2027');
+  await messeUndFotografiere(page, breite, 'f13-fassungen');
+  expect(gesendet.map((g) => `${g.methode} ${g.pfad}`)).toEqual([`PUT /api/v1/messstellen/${MS_IDS.ms06}/verteilung`]);
 });
 
 test('Z4 · MS-08: Ort ändern ab 01.03.2027 → geplant → gespeichert, Historie aus der Antwort', async ({ page }, info) => {

@@ -27,7 +27,6 @@ import {
   AENDERN_TITEL,
   aendernAblehnung,
   aendernPruefen,
-  anteileSumme,
   bisherAm,
   BISHER,
   eintragenKnopf,
@@ -35,15 +34,17 @@ import {
   formularAus,
   GILT_AB,
   hatAendernFehler,
+  kostenstelleEndeSatz,
   kostenstelleOptionen,
   ortAbTagAnfrage,
-  prozentText,
   prozessOptionen,
   prozesseAbTagAnfrage,
   restAnteil,
   stellungAbTagAnfrage,
   unveraendertFehler,
   verteilungAbTagAnfrage,
+  verteilungSpeicherbar,
+  verteilungSummeSatz,
   zeitformAm,
   type AendernArt,
   type AendernFeld,
@@ -185,8 +186,6 @@ export function ZuordnungAendernDialog({
       'anteile',
       form.anteile.map((a, j) => (j === i ? { ...a, ...teil } : a)),
     );
-  const summe = anteileSumme(form.anteile);
-
   return (
     <Modal
       open
@@ -197,7 +196,7 @@ export function ZuordnungAendernDialog({
           <Button variant="ghost" onClick={onClose}>
             {KNOPF.abbrechen}
           </Button>
-          <Recht rueckwirkend={zf?.art === 'rueckwirkend'} aktion={art === 'verteilung' ? 'messstelle.verteilung' : 'messstelle.bearbeiten'}><Button type="submit" form={`${basis}-form`} disabled={busy}>
+          <Recht rueckwirkend={zf?.art === 'rueckwirkend'} aktion={art === 'verteilung' ? 'messstelle.verteilung' : 'messstelle.bearbeiten'}><Button type="submit" form={`${basis}-form`} disabled={busy || (art === 'verteilung' && !verteilungSpeicherbar(form.anteile))}>
             {busy ? KNOPF.speichert : eintragenKnopf(art, form.tag)}
           </Button></Recht>
         </>
@@ -278,6 +277,7 @@ export function ZuordnungAendernDialog({
                     options={kostenstelleOptionen(kataloge.kostenstellen, form.tag)}
                     value={a.kostenstelle || null}
                     onChange={(v) => anteil(i, { kostenstelle: v })}
+                    hint={kostenstelleEndeSatz(kataloge.kostenstellen, a.kostenstelle, form.tag) ?? undefined}
                   />
                 </div>
                 <div className="vp-za-anteil-wert">
@@ -299,8 +299,8 @@ export function ZuordnungAendernDialog({
               </div>
             ))}
             {form.anteile.length > 0 && (
-              <p className="vp-za-summe" data-testid="zuordnung-summe">
-                Summe: {summe === null ? '—' : prozentText(summe)}
+              <p className="vp-za-summe" data-testid="zuordnung-summe" aria-live="polite">
+                {verteilungSummeSatz(form.anteile)}
               </p>
             )}
             {fehler.anteile && (
