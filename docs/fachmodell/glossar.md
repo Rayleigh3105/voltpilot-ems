@@ -341,7 +341,7 @@ Vorzeichen und Faktor. Kein eigenes drittes Objekt. Die Messstellen-Welt
 nennt sie weiterhin „berechnet (Summe)“ mit Kennzeichen; „Gesamt-PV“ bleibt
 Cockpit-Wort. „Gesamtwert“, „PV gesamt“ und „Helfer“ sind keine neuen
 Produkttexte (freie Kundennamen bleiben erhalten). Konstante `SUMMENWERT`
-in `frontend/portal/src/glossar.ts`; Umstellung der Bestandsflächen H-5/H-7.
+in `frontend/portal/src/glossar.ts`; Bestandsflächen verwenden dasselbe Wort.
 
 Die Rolle ist eine gesonderte Zuordnung am Gerät: PV-Produktion, Verbrauch,
 Netz oder keine Rolle (Vorgabe). Sie wirkt ab jetzt auf die Anlagen-Anzeige,

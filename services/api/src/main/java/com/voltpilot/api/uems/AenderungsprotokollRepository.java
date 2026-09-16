@@ -142,15 +142,17 @@ public class AenderungsprotokollRepository {
 
     /** Der Zweig der Orts-Einträge — mit den drei Überbrückungen aus dem Kopf dieser Klasse. */
     private static final String STROM_ORT = """
-            SELECT 'ort', o.id, o.art,
-                   o.objekt_id, o.objekt_art,
-                   coalesce(s.kurzzeichen, ok.kurzzeichen), coalesce(u.name, s.name, ok.name, si.name),
-                   (o.gilt_ab::timestamp AT TIME ZONE ?::text), o.created_at, o.rueckwirkend, NULL,
-                   NULL, o.alt::text, o.neu::text,
-                   o.akteur_name,
-                   NULL,
-                   CASE WHEN o.akteur_name LIKE 'VoltPilot (%' THEN 'voltpilot' END,
-                   NULL, NULL
+            SELECT 'ort' AS quelle, o.id, o.art,
+                   o.objekt_id AS bezug_id, o.objekt_art AS bezug_art,
+                   coalesce(s.kurzzeichen, ok.kurzzeichen) AS bezug_kennzeichen,
+                   coalesce(u.name, s.name, ok.name, si.name) AS bezug_name,
+                   (o.gilt_ab::timestamp AT TIME ZONE ?::text) AS gilt_ab,
+                   o.created_at AS eingetragen_am, o.rueckwirkend, NULL AS grund,
+                   NULL AS ergebnis, o.alt::text AS alt, o.neu::text AS neu,
+                   o.akteur_name AS urheber_name,
+                   NULL AS urheber_rolle,
+                   CASE WHEN o.akteur_name LIKE 'VoltPilot (%' THEN 'voltpilot' END AS urheber_art,
+                   NULL AS einbau, NULL AS einbau_zweit
               FROM ort_aenderung o
               LEFT JOIN unternehmen u ON o.objekt_art = 'unternehmen' AND u.id = o.objekt_id
               LEFT JOIN standort s ON o.objekt_art = 'standort' AND s.id = o.objekt_id

@@ -1,8 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { api, type GeraetSummenwert } from "../api";
-import { setSelbstauskunft } from "../rollen";
-import { rechteSeed } from "../test/rollenFixtures";
 import { GeraetSummenwerte } from "./GeraetSummenwerte";
 vi.mock("./SummenwertAssistent", () => ({ useSummenwertAssistent: () => ({ oeffneSummenwertAssistent: vi.fn(), assistent: null }) }));
 const z: GeraetSummenwert = {
@@ -51,25 +49,6 @@ it("zeigt rollenlose Summenwerte einmal über alle Komponenten des physischen Ge
   );
   expect(get).toHaveBeenCalledWith("s1", "e2");
 });
-it("Leser sehen Werte ohne Anlegeknopf und Zeilenmenü", async () => {
-  const me = rechteSeed().me;
-  setSelbstauskunft({
-    ...me,
-    unternehmen_rechte: [],
-    standorte: me.standorte.map((s) => ({ ...s, rechte: [] })),
-  });
-  vi.spyOn(api, "geraetSummenwerte").mockResolvedValue([z]);
-  render(
-    <GeraetSummenwerte
-      siteId="s1"
-      deviceId="d1"
-      entityId="e1"
-      geraetName="Wechselrichter"
-    />,
-  );
-  await screen.findByText("Dach West");
-  expect(screen.queryByRole("button")).toBeNull();
-});
 it("fehlende Werte werden keine Null und fehlgeschlagenes Laden kein Leerzustand", async () => {
   vi.spyOn(api, "geraetSummenwerte").mockRejectedValue(new Error("offline"));
   render(
@@ -85,9 +64,9 @@ it("fehlende Werte werden keine Null und fehlgeschlagenes Laden kein Leerzustand
   );
   expect(screen.queryByText(/Aus den Registern/)).toBeNull();
 });
-it("Umbenennen erhält Kennzeichen, Notiz und Anschlussleistung", async () => {
+it("Umbenennen erhält Kennzeichen, Notiz", async () => {
   vi.spyOn(api, "geraetSummenwerte").mockResolvedValue([
-    { ...z, messstelle: { ...z.messstelle, anschlussleistung_kw: 30 } },
+    { ...z, messstelle: { ...z.messstelle } },
   ]);
   const put = vi
     .spyOn(api, "messstelleBearbeiten")
@@ -113,21 +92,7 @@ it("Umbenennen erhält Kennzeichen, Notiz und Anschlussleistung", async () => {
       kennzeichen: "MS-0042",
       name: "Dach Ost",
       notiz: "bleibt",
-      anschlussleistung_kw: 30,
+
     }),
   );
-});
-
-it.each(['Umbenennen', 'Archivieren'])('Entzug schließt den offenen Schreibweg %s', async (aktion) => {
-  vi.spyOn(api, 'geraetSummenwerte').mockResolvedValue([z]);
-  const put = vi.spyOn(api, 'messstelleBearbeiten');
-  const archiv = vi.spyOn(api, 'messstelleArchivieren');
-  render(<GeraetSummenwerte siteId="s1" deviceId="d1" entityId="e1" geraetName="Wechselrichter" />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für Dach West' }));
-  fireEvent.click(screen.getByText(aktion));
-  expect(screen.getByRole('dialog')).toBeVisible();
-  act(() => setSelbstauskunft(rechteSeed('CB').me));
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(screen.queryByRole('button', { name: 'Aktionen für Dach West' })).toBeNull();
-  expect(put).not.toHaveBeenCalled(); expect(archiv).not.toHaveBeenCalled();
 });

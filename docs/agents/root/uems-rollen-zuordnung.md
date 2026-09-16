@@ -35,7 +35,7 @@ Keine Testcontainers für diese reine Schicht.
 - Geräteweg: `GET/PUT/DELETE /api/v1/sites/{siteId}/komponenten/{entityId}/rollen/{role}`.
   Anlagenweg: `GET/PUT …/rollen/{role}`. PUT an der Anlage nimmt
   `{art: "gesamtwert", quell_messstelle_id, ersetzen?: boolean}` und ordnet
-  dieselbe Quelle allen Geräten der **heute wirksamen** rekursiven Herkunft zu.
+  dieselbe Quelle allen Geräten der auf main gespeicherten rekursiven Herkunft zu.
   `ersetzen: true` bestätigt beim Netz das atomare Ablösen aller bisherigen Halter.
 - Vor jedem Schreiben Sperre auf `site`, auch im vorhandenen Kunden-/Admin-Weg
   `topology-roles`; danach dieselbe Netz-Regel. `netz_mehrfach` liefert 409 mit
@@ -55,18 +55,15 @@ Keine Testcontainers für diese reine Schicht.
   Eigener NESTED-Savepoint, Fang/Log/Zähler `voltpilot_rollen_protokoll`: ein
   Zusatzfehler bricht den bestehenden Rollen-Schreibweg nicht ab.
 - Migration `V20260916203000` weitet nur den Protokoll-CHECK. Kein Rollen-CHECK
-  nötig (TEXT ohne CHECK), keine neue Tabelle/Spalte. Protokoll-Lesemodell
-  behandelt Rollen wie Zugriffsereignisse als Punkte, nicht rückwirkende Fassungen.
-- GET bleibt ohne `@Recht` (RLS/Geltungsbereich, „keine eigene Kennung“);
-  PUT/DELETE tragen `geraet.einrichten`. Die Cockpit-Umlenkung steht unten (H-3).
+  nötig (TEXT ohne CHECK), keine neue Tabelle/Spalte. Das vorhandene
+  Tagesjournal bleibt erhalten; die Karte liest nach dem Eintragszeitpunkt.
+- Auf main bleiben Anmeldung, Mandanten-RLS und `SiteRepository` der Zugriffszaun.
+  Die Kennung `geraet.einrichten` ist dokumentiert, die AP-03-Annotation wird nicht
+  portiert. Die Cockpit-Umlenkung steht unten (H-3).
 
 Prüfen: `SiteRollenApiTest`, `RollenZuordnungRegelnVectorsTest`,
-`TopologyRolePushTest`, `RechtRoutenArchitekturTest`, `RechteKennungenDerRoutenTest`,
-`AenderungSatzTest`, `AenderungsprotokollApiTest`, `AnlageUmzugApiTest`; bei der
-Migration außerdem die sechs UEMS-Nachbarklassen, `EntityRoleAssignmentQuellMigrationTest`,
-`MigrationHygieneTest`, `DevSeedGuardTest`. Zweite Falle: nach Änderungen an
-Repository-Abfragen alle `*MigrationTest`-Leser mit `rg -l` suchen.
-
+`TopologyRolePushTest`, `AenderungSatzTest`, `AenderungsprotokollApiTest`;
+Migration: `MigrationHygieneTest`, `DevSeedGuardTest`.
 
 ## Cockpit und Flotte (H-3)
 

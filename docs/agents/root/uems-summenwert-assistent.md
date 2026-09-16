@@ -7,13 +7,13 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
 - `frontend/portal/src/components/SummenwertAssistent.tsx` implementiert den einen
   Fluss: Register wählen → Rechnen → Name → Rolle → Fertig. Der frühere
   `GesamtwertDialog.tsx` ist nur noch ein kompatibler Einstieg ohne Vorauswahl;
-  auch der Kennzahlen-Dialog verwendet ihn. Keine zweite Quellen-/Speicherlogik.
+  Keine zweite Quellen-/Speicherlogik.
 - Karten verwenden `useSummenwertAssistent()`: der Hook liefert
   `oeffneSummenwertAssistent({siteId, deviceId?, entityId?, geraetName?, onGespeichert?})`
   und `assistent` zum Rendern. `onGespeichert` lädt die Anzeige neu und schließt
   **nicht**; „Fertig“ bleibt bis zur ausdrücklichen Bestätigung sichtbar.
 - Quellenliste: `GET /api/v1/sites/{siteId}/summenwert-quellen` ordnet Komponenten
-  ihrer lesenden Box über **dieselbe `PushJeBox`-Regel wie der Registry-Push** zu.
+  ihrer lesenden Box über **dieselbe `LeadDeviceService`-Regel wie der Registry-Push auf main** zu.
   `measurement_point.device_id` darf null sein und ist deshalb keine vollständige
   Quellenliste. Ohne zuständige Box bleibt das Gerät mit Grund sichtbar.
 - Je gebundener Komponente wird der volle verfügbare Registerkatalog paginiert
@@ -37,8 +37,8 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
   Beobachten erfolgt erst beim Speichern, mit frischer Revision je Box und UUID
   als Idempotenzschlüssel. Die Budgetzeile bleibt sichtbar.
 - Rollen-Vorgabe: keine. PV benötigt Erzeugungsleistung, Verbrauch Bezugsleistung,
-  Netz richtungslose Leistung (z.B. Bezug minus Abgabe). Rolle nur mit
-  `geraet.einrichten`, Anlegen nur mit `messstelle.formel` aus `rollen.ts`.
+  Netz richtungslose Leistung (z.B. Bezug minus Abgabe). Zugriff wie die vorhandenen
+  Kundenpfade auf main: Anmeldung und Mandanten-RLS, keine AP-03-Rechte-Weiche.
   Vor Ersetzen werden die aktuellen Halter gelesen und ausdrücklich bestätigt.
 - Speichern verwendet H-10: **ein** `POST …/messstellen/berechnet` mit optionalem
   `rolle: {entity_id, role, ersetzen}`. Keine zweistufige Rollen-Kompensation.
@@ -46,8 +46,6 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
   ältere Aufrufer. Seit H-9 hat der Textwächter keine Alttext-Ausnahmen mehr.
 
 Prüfen: `DeviceMeasurementSelectionApiTest`, `SummenwertQuellenServiceTest`,
-`RechtRoutenArchitekturTest`, `RechteKennungenDerRoutenTest`; Vitest
-`gesamtwert`, `summenwertQuellen`, `components/GesamtwertDialog`, `kennzahlAnlegen`,
-`components/KennzahlAnlegenDialog`, `copy`, `migration`, `uemsKeineRechnung`;
-Playwright `summenwert`, `gesamtwert`, `summenwert-hybrid`, `kennzahl-anlegen`.
+`RechteKennungenDerRoutenTest`; Vitest `gesamtwert`, `summenwertQuellen`,
+`components/GesamtwertDialog`, `copy`; Playwright `summenwert`, `gesamtwert`.
 Die E2E-Bühnen stellen Uhr/Cloud; keine echten Kundenwerte fotografieren.

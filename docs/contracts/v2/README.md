@@ -72,6 +72,7 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`events-vocabulary.md`](./events-vocabulary.md) + [`mqtt-events-2.1.schema.json`](./mqtt-events-2.1.schema.json) + [`events-raw.event.schema.json`](./events-raw.event.schema.json) + [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) + [`events-vocabulary.schema.json`](./events-vocabulary.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`datenannahme-events-vectors.json`](./datenannahme-events-vectors.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`verbrauch.md`](./verbrauch.md) + [`verbrauch-vectors.json`](./verbrauch-vectors.json) + [`verbrauch.schema.json`](./verbrauch.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
+| [`rollen-zuordnung.md`](./rollen-zuordnung.md) + [`rollen-zuordnung-vectors.json`](./rollen-zuordnung-vectors.json) + [`rollen-zuordnung.schema.json`](./rollen-zuordnung.schema.json) | H-1: Rollen, Zählregel, Netz-Eindeutigkeit und ein Frische-Fenster; Java-/TS-Zwillinge für API und Cockpit. |
 | [`bezugsdaten.md`](./bezugsdaten.md) + [`bezugsdaten-vectors.json`](./bezugsdaten-vectors.json) + [`bezugsdaten.schema.json`](./bezugsdaten.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`bezugsdaten.md`](./bezugsdaten.md) + [`bezugsdaten-vectors.json`](./bezugsdaten-vectors.json) + [`bezugsdaten.schema.json`](./bezugsdaten.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`bilanz.md`](./bilanz.md) + [`bilanz-vectors.json`](./bilanz-vectors.json) + [`bilanz.schema.json`](./bilanz.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
@@ -90,5 +91,3 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | D-25 | `vp.bms.limit` begrenzt Wünsche anhand aktueller Batteriegrenzen; ein Autor je Kanal, kein direkter Register-Schreibpfad. |
 
 Details zu D-22–25: [Entity-Konfiguration](edge-entity-config.md#selbst-angebundene-batterien-und-schutzgrenzen). Fehlende optionale Felder erhalten das bisherige Verhalten; neue Leser zuerst auf der Box ausrollen.
-
-| [`rollen-zuordnung.md`](./rollen-zuordnung.md) + [`rollen-zuordnung-vectors.json`](./rollen-zuordnung-vectors.json) + [`rollen-zuordnung.schema.json`](./rollen-zuordnung.schema.json) | H-1: Rollen, Zählregel, Netz-Eindeutigkeit und ein Frische-Fenster; reine Java-/TS-Zwillinge, noch ohne Laufzeit-Aufrufer. |

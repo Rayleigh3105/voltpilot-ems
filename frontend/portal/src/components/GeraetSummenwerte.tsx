@@ -6,13 +6,11 @@ import { Modal } from "../../designsystem/components/shell/Modal";
 import { api, ApiError, type GeraetSummenwert } from "../api";
 import { SUMMENWERT } from "../glossar";
 import { wertText } from "../gesamtwert";
-import { useRollen } from "../rollen";
 import { ROLLEN } from "../uemsRollen";
 import { RowMenu } from "./RowMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ProtokollDialog, PROTOKOLL_LABEL } from "./ProtokollDialog";
 import { RolleAendernDialog } from "./RolleAendernDialog";
-import { SummenwertFormelDialog } from "./SummenwertFormelDialog";
 import { useSummenwertAssistent } from "./SummenwertAssistent";
 import "./GeraetSummenwerte.css";
 
@@ -33,12 +31,10 @@ export function GeraetSummenwerte({
   geraetName: string;
   onZuordnungGeaendert?: () => void;
 }) {
-  const rechte = useRollen();
   const [zeilen, setZeilen] = useState<Zeile[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const { oeffneSummenwertAssistent: oeffneAssistent, assistent } = useSummenwertAssistent();
   const [rolle, setRolle] = useState<Zeile | null>(null);
-  const [formel, setFormel] = useState<Zeile | null>(null);
   const [name, setName] = useState<{ zeile: Zeile; name: string } | null>(null);
   const [archiv, setArchiv] = useState<Zeile | null>(null);
   const [protokoll, setProtokoll] = useState(false);
@@ -100,7 +96,7 @@ export function GeraetSummenwerte({
     aktion();
   }
   async function speichern(aktion: () => Promise<unknown>, danach: () => void) {
-    if (busy || !rechte.darf("messstelle.bearbeiten")) return;
+    if (busy) return;
     setBusy(true);
     setFehler(null);
     try {
@@ -122,7 +118,7 @@ export function GeraetSummenwerte({
       <Card padding="md" radius="md">
         <div className="vp-summen-head">
           <h3>Summenwerte dieses Geräts</h3>
-          {rechte.darf("messstelle.formel") && (
+          {(
             <Button
               variant="outline"
               size="sm"
@@ -171,28 +167,16 @@ export function GeraetSummenwerte({
                   <span>{z.messstelle.kennzeichen}</span>
                 </div>
               </div>
-              {[
-                "geraet.einrichten",
-                "messstelle.formel",
-                "messstelle.bearbeiten",
-              ].some((a) => rechte.darf(a)) && (
+              {(
                 <RowMenu
                   label={`Aktionen für ${z.messstelle.name || SUMMENWERT}`}
                   items={[
                     {
-                      recht: "geraet.einrichten",
                       label: "Rolle ändern",
                       icon: "sliders",
                       onClick: () => oeffne(z, () => setRolle(z)),
                     },
                     {
-                      recht: "messstelle.formel",
-                      label: "Formel ändern ab Tag",
-                      icon: "calendar",
-                      onClick: () => oeffne(z, () => setFormel(z)),
-                    },
-                    {
-                      recht: "messstelle.bearbeiten",
                       label: "Umbenennen",
                       icon: "pencil",
                       onClick: () =>
@@ -201,7 +185,6 @@ export function GeraetSummenwerte({
                         ),
                     },
                     {
-                      recht: "messstelle.bearbeiten",
                       label: "Archivieren",
                       icon: "trash",
                       danger: true,
@@ -213,7 +196,7 @@ export function GeraetSummenwerte({
             </li>
           ))}
         </ul>
-        {rechte.darf("aenderungsprotokoll.lesen") && (
+        {(
           <Button
             variant="ghost"
             size="sm"
@@ -225,7 +208,7 @@ export function GeraetSummenwerte({
             {PROTOKOLL_LABEL} der Anlage
           </Button>
         )}
-        {rolle && rechte.darf("geraet.einrichten") && (
+        {rolle && (
           <RolleAendernDialog
             key={rolle.messstelle.id}
             siteId={siteId}
@@ -235,15 +218,7 @@ export function GeraetSummenwerte({
             onGespeichert={geaendert}
           />
         )}
-        {formel && rechte.darf("messstelle.formel") && (
-          <SummenwertFormelDialog
-            siteId={siteId}
-            messstelle={formel.messstelle}
-            onClose={() => setFormel(null)}
-            onGespeichert={geaendert}
-          />
-        )}
-        {name && rechte.darf("messstelle.bearbeiten") && (
+        {name && (
           <Modal
             open
             title={`${SUMMENWERT} umbenennen`}
@@ -268,8 +243,6 @@ export function GeraetSummenwerte({
                           kennzeichen: name.zeile.messstelle.kennzeichen,
                           name: name.name.trim(),
                           notiz: name.zeile.messstelle.notiz ?? undefined,
-                          anschlussleistung_kw:
-                            name.zeile.messstelle.anschlussleistung_kw,
                         }),
                       () => setName(null),
                     )
@@ -289,7 +262,7 @@ export function GeraetSummenwerte({
           </Modal>
         )}
         <ConfirmDialog
-          open={!!archiv && rechte.darf("messstelle.bearbeiten")}
+          open={!!archiv}
           title={`„${archiv?.messstelle.name || SUMMENWERT}“ archivieren?`}
           intro="Der Wert verschwindet aus der Liste. Seine bisherigen Werte bleiben erhalten."
           consequences={[

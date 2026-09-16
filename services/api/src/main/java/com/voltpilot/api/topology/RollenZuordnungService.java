@@ -57,7 +57,7 @@ public class RollenZuordnungService {
     }
 
     public java.util.Set<UUID> geleseneGeraete(UUID site, UUID messstelle) {
-        geltungsbereich.requireSite(site);
+        pruefeAnlage(site);
         return quellen.herkunft(messstelle, site, Instant.now()).stream()
                 .filter(q -> q.entity_id() != null).map(q -> UUID.fromString(q.entity_id()))
                 .collect(java.util.stream.Collectors.toSet());

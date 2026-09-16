@@ -58,7 +58,6 @@ function Fixture() {
         siteId={site.id}
         onClose={() => setOpen(false)}
         onGespeichert={() => {
-          setOpen(false);
           setVersion((v) => v + 1);
         }}
       />

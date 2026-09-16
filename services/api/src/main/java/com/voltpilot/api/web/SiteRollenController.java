@@ -23,8 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * UEMS Live-Rollen: Gerät/Anlage setzen, lesen und entziehen. Die Zuordnung wirkt ab jetzt
- * auf die Cloud-Anzeige. Lesende Wege bleiben RLS-/Geltungsbereich-geschützt, Schreibwege
- * verlangen das Einrichtungsrecht. Fremde Anlagen/Komponenten bleiben 404.
+ * auf die Cloud-Anzeige. Wie die vorhandenen Kundenpfade auf main verwenden alle Wege
+ * Authentifizierung und Mandanten-RLS. Fremde Anlagen/Komponenten bleiben 404.
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}")

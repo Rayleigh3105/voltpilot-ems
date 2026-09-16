@@ -177,7 +177,7 @@ for (const width of [375, 1440]) {
     await expect(dialog.locator('.vp-sw-sumline')).toContainText('15,5');
     for (let step = 1; step <= 4; step++) {
       expect(await dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
-      if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `/tmp/vp-helfer-ansicht/anlage-${width}-${step}.png` });
+      if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/anlage-${width}-${step}.png` });
       if (step < 4) await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
     }
     await expect(dialog.getByRole('button', { name: 'keine Rolle', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -185,7 +185,7 @@ for (const width of [375, 1440]) {
     await dialog.getByRole('button', { name: 'Speichern' }).click();
     expect((await request).postDataJSON().rolle).toBeUndefined();
     await expect(dialog.getByText(/ist angelegt/)).toBeVisible(); await stehtOffen(page);
-    if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `/tmp/vp-helfer-ansicht/anlage-${width}-5.png` });
+    if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/anlage-${width}-5.png` });
     await dialog.getByRole('button', { name: 'Fertig' }).click(); await expect(dialog).toBeHidden();
     const overview = page.getByRole('region', { name: 'Übersicht' });
     await expect(overview.getByText('Gesamt-PV')).toBeVisible();

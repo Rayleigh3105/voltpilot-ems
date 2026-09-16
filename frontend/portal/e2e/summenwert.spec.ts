@@ -227,7 +227,7 @@ for (const width of [375, 1440]) {
     async function shot(step: number) {
       expect(await dialog.evaluate((e) => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
-      if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `/tmp/vp-helfer-ansicht/geraet-${width}-${step}.png` });
+      if (testInfo.project.name === 'desktop-chromium') await dialog.screenshot({ path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/geraet-${width}-${step}.png` });
     }
     await shot(1);
     await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();

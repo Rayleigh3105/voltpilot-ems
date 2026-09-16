@@ -3,8 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, type MeasurementCatalogPoint } from '../api';
 import { GesamtwertDialog } from './GesamtwertDialog';
 import { SummenwertAssistent } from './SummenwertAssistent';
-import { setSelbstauskunft } from '../rollen';
-import { rechteSeed } from '../test/rollenFixtures';
 
 const gen = 'deye.hybrid_3p.generator-smartload-microinverter.generator-power';
 function point(key: string, value: number | null, extra = {}): MeasurementCatalogPoint {
@@ -95,13 +93,6 @@ describe('ein Summenwert-Assistent für Gerät und Anlage', () => {
     await screen.findByText(/die Box antwortet nicht/); expect(observe).not.toHaveBeenCalled();
   });
 
-  it('ohne Einrichtungsrecht kann ein Summenwert nur ohne Rolle gespeichert werden', async () => {
-    stub(); const me = rechteSeed().me; me.unternehmen_rechte = me.unternehmen_rechte.filter((r) => r !== 'geraet.einrichten');
-    setSelbstauskunft(me); mount(true); await screen.findByRole('button', { name: 'PV 1 entfernen' }); await rolle();
-    expect(screen.queryByRole('button', { name: 'PV-Produktion', exact: true })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Speichern' })).toBeEnabled();
-  });
-
   it('weitere Geräte der Anlage bilden einen Verbrauch mit einer atomaren Rollenwahl', async () => {
     const { save } = stub([point('Wirkleistung', 148.6, { direction: 'import' })]);
     vi.mocked(api.summenwertQuellen).mockResolvedValue([
@@ -139,19 +130,4 @@ describe('ein Summenwert-Assistent für Gerät und Anlage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Netzwert schon vorhanden.');
     expect(screen.getByRole('button', { name: 'Speichern' })).toBeEnabled();
   });
-});
-
-it('ein Entzug des Messauswahlrechts vor Speichern schreibt weder Auswahl noch Summe', async () => {
-  const { observe, save } = stub(); mount(true);
-  fireEvent.click(await screen.findByRole('button', { name: 'Gen-Port einmal lesen', hidden: true }));
-  await screen.findByText(/jetzt gelesen/);
-  const entscheid = screen.getByText('Am Gen-Port hängt ein Mikrowechselrichter?').closest('.vp-sw-suggest')!;
-  fireEvent.click(within(entscheid as HTMLElement).getByRole('checkbox', { hidden: true }));
-  await rolle();
-  const me = rechteSeed().me;
-  act(() => setSelbstauskunft({ ...me, unternehmen_rechte: me.unternehmen_rechte.filter((r) => r !== 'mess_selektion.bearbeiten') }));
-  expect(screen.getByRole('button', { name: 'Speichern' })).toBeDisabled();
-  expect(screen.getByRole('alert')).toHaveTextContent('Beobachten weiterer Register');
-  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
-  expect(observe).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
 });

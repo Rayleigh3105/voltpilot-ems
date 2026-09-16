@@ -1,5 +1,7 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.topology.RollenKonflikt;
+
 import com.voltpilot.api.uems.MessstelleFormelAbgelehnt;
 import com.voltpilot.api.uems.MessstelleFormelService;
 import com.voltpilot.api.uems.ProtokollAkteur;

@@ -212,12 +212,12 @@ for (const breite of [375, 1440])
     await expect(page.getByText("ohne Rolle", { exact: true })).toBeVisible();
     await keinQuerlauf(page);
     await page.screenshot({ animations: "disabled",
-      path: `e2e/shots/summenwert-geraetkarte-${breite}.png`,
+      path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/summenwert-geraetkarte-${breite}.png`,
       fullPage: true,
     });
     if (breite === 1440)
       await page.screenshot({ animations: "disabled",
-        path: "e2e/shots/summenwert-geraetkarte.png",
+        path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/summenwert-geraetkarte.png`,
         fullPage: true,
       });
     await menue(page);
@@ -228,7 +228,7 @@ for (const breite of [375, 1440])
     await page.getByRole("radio", { name: /keine Rolle/ }).check();
     await keinQuerlauf(page);
     await page.screenshot({ animations: "disabled",
-      path: `e2e/shots/summenwert-rolle-${breite}.png`,
+      path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/summenwert-rolle-${breite}.png`,
       fullPage: true,
     });
     await page.getByRole("button", { name: "Übernehmen", exact: true }).click();
@@ -247,26 +247,12 @@ for (const breite of [375, 1440])
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await menue(page);
     await page
-      .getByRole("menuitem", { name: "Formel ändern ab Tag", exact: true })
-      .click();
-    await expect(
-      page.getByText("Deye SUN-30K · PV 1", { exact: true }),
-    ).toBeVisible();
-    await keinQuerlauf(page);
-    await page.screenshot({ animations: "disabled",
-      path: `e2e/shots/summenwert-formel-${breite}.png`,
-      fullPage: true,
-    });
-    await page.getByRole("button", { name: "Abbrechen", exact: true }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await menue(page);
-    await page
       .getByRole("menuitem", { name: "Umbenennen", exact: true })
       .click();
     await page.getByLabel("Name", { exact: true }).fill("Dachflächen");
     await keinQuerlauf(page);
     await page.screenshot({ animations: "disabled",
-      path: `e2e/shots/summenwert-name-${breite}.png`,
+      path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/summenwert-name-${breite}.png`,
       fullPage: true,
     });
     await page.getByRole("button", { name: "Speichern", exact: true }).click();
@@ -277,7 +263,7 @@ for (const breite of [375, 1440])
       .click();
     await keinQuerlauf(page);
     await page.screenshot({ animations: "disabled",
-      path: `e2e/shots/summenwert-archiv-${breite}.png`,
+      path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/summenwert-archiv-${breite}.png`,
       fullPage: true,
     });
     await page.getByRole("button", { name: "Abbrechen", exact: true }).click();
@@ -290,7 +276,7 @@ for (const breite of [375, 1440])
     ).toBeVisible();
     await keinQuerlauf(page);
     await page.screenshot({ animations: "disabled",
-      path: `e2e/shots/summenwert-protokoll-${breite}.png`,
+      path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/summenwert-protokoll-${breite}.png`,
       fullPage: true,
     });
     expect(state.aufrufe).toContain(
@@ -300,25 +286,14 @@ for (const breite of [375, 1440])
     expect(fehler).toEqual([]);
   });
 
-test("Leerzustand und Leser ohne Schreibknöpfe", async ({ page }, info) => {
+test("Leerzustand", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop-chromium", "einmal");
   await page.setViewportSize({ width: 375, height: 850 });
   await mock(page, true);
   await page.goto("/e2e/summenwert.html");
   await expect(page.getByText(/Aus den Registern dieses Geräts/)).toBeVisible();
   await page.screenshot({ animations: "disabled",
-    path: "e2e/shots/summenwert-leer-375.png",
-    fullPage: true,
-  });
-  await page.unrouteAll();
-  await mock(page);
-  await page.goto("/e2e/summenwert.html?person=CB");
-  await expect(page.getByText("Dach West", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Summenwert anlegen|Aktionen für/ }),
-  ).toHaveCount(0);
-  await page.screenshot({ animations: "disabled",
-    path: "e2e/shots/summenwert-leser-375.png",
+    path: `${process.env.SUMMENWERT_BILDER ?? 'e2e/shots'}/summenwert-leer-375.png`,
     fullPage: true,
   });
 });

@@ -361,12 +361,12 @@ class SiteRollenApiTest {
         ok(ruf(w, HttpMethod.PUT, pfad, kanalWert(PV)), 200);
         ok(ruf(w, HttpMethod.DELETE, pfad, null), 200);
         ok(ruf(w, HttpMethod.DELETE, pfad, null), 200);
-        var zeilen = root.queryForList("SELECT art, alt::text, neu::text, actor_sub, created_at, rueckwirkend "
+        var zeilen = root.queryForList("SELECT art, alt::text, neu::text, akteur_sub, created_at, rueckwirkend "
                 + "FROM ort_aenderung WHERE objekt_id = ? ORDER BY id", w.anlage());
         assertThat(zeilen).hasSize(3);
         assertThat(zeilen.stream().map(z -> z.get("art"))).containsExactly("rolle_gesetzt", "rolle_gesetzt", "rolle_entzogen");
         for (var z : zeilen) {
-            assertThat(z.get("actor_sub")).isEqualTo("sub-" + w.mandant());
+            assertThat(z.get("akteur_sub")).isEqualTo("sub-" + w.mandant());
             assertThat(z.get("created_at")).isNotNull();
             assertThat(z.get("rueckwirkend")).isEqualTo(false);
         }
@@ -391,26 +391,6 @@ class SiteRollenApiTest {
         ok(ruf(fremd, HttpMethod.PUT, "/api/v1/sites/" + w.anlage() + "/rollen/consumer", gesamtwertWert(UUID.randomUUID())), 404);
     }
 
-    @Test
-    void leserDarfLesenAberKeineRolleSetzenOderEntziehen() throws Exception {
-        Welt w = welt();
-        UUID a = komponente(w, "A");
-        String sub = "sub-" + w.mandant();
-        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', 'Leser', 'aktiv')",
-                w.mandant(), sub);
-        UUID u = root.queryForObject("INSERT INTO unternehmen (tenant_id, name) VALUES (?, 'Test') RETURNING id", UUID.class, w.mandant());
-        UUID standort = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
-                + "VALUES (?, ?, 'Test', 'ST-01', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class, w.mandant(), u);
-        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?, ?, '2026-01-01')",
-                w.mandant(), w.anlage(), standort);
-        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) "
-                + "VALUES (?, ?, 'leser', ?, '2026-01-01 00:00:00+01', 'Europe/Berlin')", w.mandant(), sub, standort);
-        ok(rufLeser(w, HttpMethod.GET, rollenPfad(w, a, "pv"), null), 200);
-        ok(rufLeser(w, HttpMethod.PUT, rollenPfad(w, a, "pv"), kanalWert(PV)), 403);
-        ok(rufLeser(w, HttpMethod.DELETE, rollenPfad(w, a, "pv"), null), 403);
-        ok(rufLeser(w, HttpMethod.PUT, "/api/v1/sites/" + w.anlage() + "/rollen/pv", gesamtwertWert(UUID.randomUUID())), 403);
-        assertThat(root.queryForObject("SELECT count(*) FROM ort_aenderung WHERE objekt_id = ?", Integer.class, w.anlage())).isZero();
-    }
 
     @Test
     void energieSummeKannNichtAlsLeistungZugeordnetWerden() throws Exception {
@@ -675,21 +655,11 @@ class SiteRollenApiTest {
     }
 
     private Antwort ruf(Welt w, HttpMethod methode, String pfad, Object body) throws Exception {
-        return ruf(w, methode, pfad, body, false);
-    }
-
-    private Antwort rufLeser(Welt w, HttpMethod methode, String pfad, Object body) throws Exception {
-        return ruf(w, methode, pfad, body, true);
-    }
-
-    private Antwort ruf(Welt w, HttpMethod methode, String pfad, Object body, boolean konto) throws Exception {
         var token = jwt().jwt(j -> {
             j.subject("sub-" + w.mandant());
             j.claim("name", "Test");
             j.claim("tenant_id", w.mandant().toString());
         });
-        if (konto) token.authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority(
-                com.voltpilot.api.config.KeycloakRealmRoleConverter.KONTO_BENUTZER));
         MockHttpServletRequestBuilder anfrage = request(methode, pfad)
                 .with(token)
                 .contentType(MediaType.APPLICATION_JSON);

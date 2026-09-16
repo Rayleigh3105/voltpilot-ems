@@ -7,7 +7,7 @@ export const everydayArticles: HelpArticle[] = [
     keywords: ['Summenwert', 'Register', 'Summe', 'Rolle', 'PV-Produktion', 'Verbrauch', 'Netz'],
     sections: [
       { id: 'anlegen', title: 'Von den Registern zum Summenwert', paragraphs: [
-        'Öffnen Sie „Summenwert anlegen“ am Gerät, unter Verlauf → Messwerte oder beim Zusammenstellen einer Kennzahl. Wählen Sie passende Register derselben Anlage, prüfen Sie Plus, Minus und Faktoren und geben Sie dem Wert einen Namen.',
+        'Öffnen Sie „Summenwert anlegen“ am Gerät oder unter Verlauf → Messwerte. Wählen Sie passende Register derselben Anlage, prüfen Sie Plus, Minus und Faktoren und geben Sie dem Wert einen Namen.',
         'Jeder Live-Wert trägt seinen Stand. Noch nicht beobachtete Register werden einmal gelesen und erst beim Speichern beobachtet; die zusätzliche Datenmenge steht dabei. Fehlt ein aktueller Eingang, bleibt die Summe unvollständig.',
       ] },
       { id: 'rolle', title: 'Eine Rolle wirkt ab jetzt', paragraphs: [
@@ -15,7 +15,7 @@ export const everydayArticles: HelpArticle[] = [
         'Die Gerätekarte nennt Wert, Stand und Rolle. Über „Rolle ändern“ können Sie die Rolle entziehen. Der Summenwert bleibt erhalten, die Anlagen-Übersicht verwendet wieder den ursprünglichen Wert. Die Aufschlüsselung zählt dieselbe Summe auch bei mehreren beteiligten Geräten einmal.',
       ] },
       { id: 'rechte', title: 'Welche Änderungen sind möglich?', paragraphs: [
-        'Leser sehen die Werte. Zum Anlegen und Ändern der Formel brauchen Sie das Formelrecht, für eine Rolle das Einrichtungsrecht und für weitere beobachtete Register die Berechtigung zur Messauswahl. Fehlt ein Knopf, lassen Sie Ihren Zugang prüfen.',
+        'Sie können einen Summenwert umbenennen, seine Rolle ändern oder ihn archivieren. Beim Archivieren bleiben die bisherigen Werte erhalten. Für eine andere Zusammenstellung legen Sie einen neuen Summenwert an.',
       ] },
     ], related: ['messwerte', 'cockpit'],
   },

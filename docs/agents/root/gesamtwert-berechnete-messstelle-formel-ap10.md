@@ -25,8 +25,8 @@ trägt den AP-08-Haken `gilt_als_erzeugung` (Migration `V20260914100000`, Vertra
 `richtungMitErzeugungsHaken` + TS-Zwilling + Vektoren `cases.haken`). Der Haken macht den
 richtungslosen Kanal als Term zulässig und lässt ihn als `Erzeugung` zählen — nur an einem Kanal
 OHNE Katalog-Richtung (der Server lehnt ihn auf einem gerichteten Kanal ab).
-`import_export` ist eine eigene Katalog-Richtung und als vorzeichenbehafteter
-Netzwert zulässig; dort ist der Erzeugungs-Haken gesperrt (H-4/W1). So bleibt der
+`import_export` trägt eine eigene Richtung: neue Terme und der Erzeugungs-Haken
+sind dafür auf main gesperrt (H-4/W1); gespeicherte Altterme bleiben lesbar. So bleibt der
 Ankerfall `PV1+PV2+PV3+Gen-Port` eine reine `Erzeugung`-Summe statt zu `richtungslos` zu
 degradieren.
 

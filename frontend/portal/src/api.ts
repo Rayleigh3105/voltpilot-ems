@@ -1909,6 +1909,7 @@ export interface Messstelle {
   art: string;
   medium: string | null;
   lebenszyklus: string;
+  hauptgroesse?: MessstelleGroesse | null;
   fehlt: string[];
   notiz: string | null;
 }
@@ -4103,7 +4104,7 @@ export interface SiteEarnings extends CockpitMoney {
 }
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly body?: unknown) {
     super(message);
   }
 }
@@ -4195,13 +4196,15 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
       res.status === 403
         ? 'Dafür ist Ihr Konto nicht freigeschaltet. VoltPilot richtet das für Sie ein.'
         : 'Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.';
+    let errorBody: unknown;
     try {
       const body = await res.json();
+      errorBody = body;
       if (body && typeof body.message === 'string' && body.message) message = body.message;
     } catch {
       // non-JSON error body: keep the generic message
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, errorBody);
   }
   // 201 with body for claim; others JSON. 204 would be empty.
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);

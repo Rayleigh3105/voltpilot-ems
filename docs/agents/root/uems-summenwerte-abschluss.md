@@ -1,77 +1,55 @@
-# Summenwerte mit Rolle — H-0 bis H-11
+# Summenwerte mit Rolle auf main
 
-Ein Summenwert ist eine berechnete Messstelle, kein eigenes Objekt. Eine optionale
-Rolle wirkt ab jetzt auf PV-Produktion, Verbrauch oder Netz in der Anlagen-Übersicht.
-Der rollenlose Wert bleibt an seinen Geräten und unter Verlauf › Messwerte sichtbar.
+Ein Summenwert bleibt eine berechnete Messstelle. Die optionale Rolle wirkt ab
+jetzt auf PV-Produktion, Verbrauch oder Netz im Cockpit; ohne Rolle bleibt der
+Wert am Gerät und unter Verlauf › Messwerte sichtbar.
 
 ## Zuständige Kapitel
 
-- [Formel-Fundament](gesamtwert-berechnete-messstelle-formel-ap10.md): Quellen,
-  Einheiten, Vorzeichen, Faktoren, Nullregel; [Fassungen](uems-formel-fassungen-je-tag.md).
-- [Rollen und Cockpit](uems-rollen-zuordnung.md): H-1/H-2/H-3, eine Summe zählt
-  einmal, Netz-Eindeutigkeit, Frische 300 s, Protokoll und Rohwert-Rückfall.
-- [Gemeinsamer Assistent](uems-summenwert-assistent.md): H-5/H-6, fünf Schritte,
-  Einmal-Lesen mit Stand, Beobachtung erst beim Speichern, Box über PushJeBox.
-- [Gerätekarte und Rollen-Dialog](uems-summenwerte-geraetekarte.md): H-7/H-8/H-10,
-  atomar Anlegen + Rolle, Geräte-Löschwege, Umbenennen/Formel/Archiv/Protokoll.
-- [Portal-Einstiege und Anzeige](../portal/summenwert-assistent-und-karte.md).
-- [Steuern-Regel](uems-steuern-still.md) und [Portal-Rechte](uems-portal-rechte.md).
+- [Formel-Fundament](gesamtwert-berechnete-messstelle-formel-ap10.md): Einheiten,
+  Vorzeichen, Faktoren und keine Teilsumme bei fehlenden Eingängen.
+- [Rollen und Cockpit](uems-rollen-zuordnung.md): Zählregel, Netz-Eindeutigkeit,
+  Frische, Protokoll und Rückfall auf die bisherige Telemetrie.
+- [Assistent](uems-summenwert-assistent.md): Register → Rechnen → Name → Rolle → Fertig.
+- [Gerätekarte](uems-summenwerte-geraetekarte.md): Rollenwechsel, Umbenennen,
+  Archivieren und atomar Anlegen + Rolle.
+- [Portal-Einstiege](../portal/summenwert-assistent-und-karte.md).
 
-## Rechte und Wörter (H-9)
+## Grenzen des Ports
 
-Alle Schreibhebel lesen `rollen.ts`, die Kennungen kommen aus `rechte-matrix.json`:
-Anlegen/Formel `messstelle.formel`, Rolle `geraet.einrichten`, Beobachtung weiterer
-Register `mess_selektion.bearbeiten`, Umbenennen/Anhalten/Archivieren
-`messstelle.bearbeiten`. Einmal-Lesen benötigt `messwerte.ansehen`; die Cockpit-
-Aufschlüsselung liest nur. Der Kennzahl-Einstieg benötigt ebenfalls das Formelrecht.
-Bereits geöffnete Geräte- und Verlauf-Dialoge dürfen nach Entzug nicht schreiben;
-der Assistent prüft vor Speichern auch das Recht der zusätzlichen Beobachtung.
+Die sechs Helfer-Commits werden auf die vorhandenen main-Schnittstellen angepasst.
+Es kommen keine weiteren UEMS-Pakete hinzu:
 
-`copy.test.ts` hat keine Alttext-Ausnahmen für Gesamtwert/PV gesamt/Helfer mehr.
-Technische Export-/API-Namen bleiben kompatibel; Kundennamen werden nicht geändert.
-Die Summenwert-Flächen einschließlich Rollen-Folgensätzen und Alltag-Hilfe werden
-gegen `STEUER_GELD_WOERTER` geprüft. IANA-Zeitzonen sind technische Optionen.
-`migration.test.ts` erhält die alten Fingerabdrücke mit einzeln erklärten Nachfolgern.
+- Zugriff wie bisher über Anmeldung und Mandanten-RLS. Individuelle AP-03-Rechte,
+  Leserrollen und standortbezogene Unterstützung sind nicht Teil dieses Ports.
+- Kein zeitgültiges Ändern einer Formel; die erforderlichen Fassungs-Tabellen
+  fehlen auf main. Bestehende Formeln, PV-Zuordnungen und Historien bleiben erhalten.
+- Quellen verwenden die bestehende führende Box (`LeadDeviceService`) wie der
+  Registry-Push auf main. Keine UEMS-Verteilung nach `PushJeBox` oder Zuständigkeiten.
+- Listen verwenden das bestehende main-Format; keine AP-13-Werterouten und keine
+  neuen Kennzahl- oder Standortflächen.
 
-## Entzug einer geräteübergreifenden Summe
+Die einzige neue Migration ist `V20260916203000__rollen_zuordnung_protokoll.sql`,
+inhaltlich und in der Version gleich dem Helfer-Stand auf uems. Sie erweitert nur
+den vorhandenen Protokoll-CHECK und ändert keine Bestandswerte.
 
-Das Anlegen ordnet dieselbe Quelle jedem beteiligten Gerät zu. Beim Entziehen an
-einem dieser Geräte entfernt `RollenZuordnungService.entziehen` unter derselben
-Anlagensperre alle primären Zuordnungen **derselben Messstelle, Anlage und Rolle**.
-Sonst blieb die Summe über das nächste Gerät im Cockpit aktiv. Kanal-Zuordnungen
-und andere Summen bleiben unberührt; Protokoll je entferntem Gerät, Wiederholung
-idempotent. Der Summenwert selbst wird weder archiviert noch gelöscht.
+## Gemeinsame Summe entziehen
 
-## Abnahme (H-11)
+`RollenZuordnungService.entziehen` entfernt unter der Anlagensperre alle primären
+Zuordnungen derselben Messstelle, Anlage und Rolle. Andere Quellen und Rollen
+bleiben bestehen. Der Vorgang ist idempotent und löscht den Summenwert nicht.
 
-`e2e/summenwert-abnahme.spec.ts` verbindet die echten Komponenten Gerätekarte,
-Assistent, Rollen-Dialog und Cockpit gegen zustandsabhängige API-Antworten:
+## Prüfen
 
-- A1 Deye: 5,2 + 4,1 + 3,1 + Gen-Port 2 = 14,4 kW; Einmal-Lesen,
-  Erzeugungsentscheidung, atomare Anfrage, Karte, Cockpit, Entzug und Rückfall.
-- A2/A3 Ahrenberg: MS-06/07/08 = 213,5 kW; zuerst ohne Rolle (Cockpit gleich),
-  danach Verbrauch zuordnen und entziehen. Nicht als vollständigen Verbrauch ausgeben.
-- A4 Lindach: MS-17/18 = 32,3 kW; Peter darf anlegen, Claudia sieht keine
-  Schreibhebel, Unterstützung ST-1 sieht ST-2 nicht; keine Steuer-/Geldwörter.
-- A5 angenommener Zähler: Bezug 8 minus Abgabe 10 = −2 kW; Netz zeigt Abgabe.
+API: `RollenZuordnungRegelnVectorsTest`, `SiteRollenApiTest`,
+`MessstelleFormelApiTest`, `EntityRegistryServiceTest`, `TopologyRolePushTest`,
+`AenderungSatzTest`, `DeviceMeasurementSelectionApiTest`,
+`SummenwertQuellenServiceTest`, `UemsSummenwertAbnahmeTest`,
+`MigrationHygieneTest`, `DevSeedGuardTest`.
 
-Referenzzahlen werden aus `uems-referenzunternehmen.json` gelesen. Deye und A5
-sind ausdrücklich zusätzliche Ankerfälle. API/DB separat:
-`UemsSummenwertAbnahmeTest`, `SiteRollenApiTest`, `MessstelleFormelApiTest`.
-Ergänzende Konzeptnachweise: `RollenZuordnungRegelnVectorsTest`,
-`MessstelleFormelRegelnVectorsTest`, `DeviceMeasurementSelectionApiTest`
-(Einmal-Lesen mit Probe-Stub) und `EntityRegistryServiceTest` (Löschwege).
-Die neue Abnahme prüft Anlegen → Live-Stand → Karte → Cockpit → Entzug,
-Netz-409, Mehrgeräte-Dedup, Protokoll und zeichengleichen Rohwert-Rückfall.
-Keine Hardwarefreigabe, keine Änderung an Optimierer, Fahrplan oder Erlösen.
-
-Portal-Pflichtläufe: `copy`, `migration`, `rechte`, `rollenRechte`,
-`gesamtwert`, `gesamtwertQuelle`, `summenwertQuellen`, `uemsRollen`, `pvRolle`,
-`verlauf`, `kennzahlAnlegen`, `uemsKeineRechnung`, `geraetSeite`, `komponenten`,
-`registerAbbildung`, `uemsMessstelleFormel` und betroffene Komponententests;
-Typecheck und Build. Fluss-Specs: `summenwert`, `summenwert-hybrid`,
-`summenwert-geraetkarte`, `gesamtwert`, `cockpit-rollen`, `kennzahl-anlegen`,
-`kennzahl-aendern`, `summenwert-abnahme`. Letztere zweimal mit 375/1440 px;
-`SUMMENWERT_BILDER=<externer Ordner>` erzeugt echte Aufnahmen. Im Ansichts-HTML
-als Data-URLs einbetten. Ein eigener temporärer Testport vermeidet Portkollisionen;
-keinen fremden Server wiederverwenden oder beenden.
+Portal: `uemsRollen`, `pvRolle`, `summenwertQuellen`, `gesamtwert`, `geraetSeite`,
+`copy` und betroffene Komponenten; Typecheck und Build. Playwright prüft
+`summenwert`, `gesamtwert`, `summenwert-geraetkarte`, `cockpit-rollen` und
+`summenwert-abnahme` bei 375/1440 px. `SUMMENWERT_BILDER=<externer Ordner>`
+schreibt echte Aufnahmen für eine lokale HTML-Ansicht. Fixtures ersetzen keine
+Hardware-Abnahme. Rechte- und Formel-Fassungstests entfallen mit ihren Funktionen.

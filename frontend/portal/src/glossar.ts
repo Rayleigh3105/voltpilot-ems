@@ -208,9 +208,9 @@ export const UEMS_UNTERZAEHLER_VON = 'Unterzähler von';
 
 /** Das eine Kundenwort nach E10 (16.09.2026), rollen-zuordnung.md. */
 export const SUMMENWERT = 'Summenwert';
-/** Produkttexte, nicht freie Kundennamen; copy.test.ts hält den Übergangsbestand fest. */
+/** Produkttexte, nicht freie Kundennamen; copy.test.ts prüft die Kundenflächen. */
 export const SUMMENWERT_VERBOTENE_WOERTER = ['Gesamtwert', 'PV gesamt', 'Helfer'] as const;
-/** @deprecated Nur Übergangsbestand bis H-5/H-7; keine neuen Importe. Keine Flächenänderung in H-1. */
+/** @deprecated Kompatibler Exportname für bestehende Aufrufer; neue Flächen verwenden SUMMENWERT. */
 export const GESAMTWERT = SUMMENWERT;
 
 // ---------------------------------------------------------------------------

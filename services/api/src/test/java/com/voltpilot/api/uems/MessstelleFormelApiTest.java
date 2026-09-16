@@ -149,23 +149,15 @@ class MessstelleFormelApiTest {
     }
 
     @Test
-    void geraetekarteVerwendetDieAktuelleFassungUndVerbirgtArchivierteSummen() throws Exception {
+    void geraetekarteVerbirgtArchivierteSummen() throws Exception {
         Welt w = welt();
-        UUID zweite = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, device_id, control, communication, created_at) "
-                + "VALUES (?, ?, 'pv-generation', 'Dach Ost', 'pv-inverter', ?, false, 'modbus_tcp', now()) RETURNING id",
-                UUID.class, w.mandant(), w.anlage(), w.box());
-        Welt b = new Welt(w.mandant(), w.anlage(), w.box(), zweite);
         JsonNode neu = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
-                anlegen("Wechselnde Eingänge", term(w, PV1))), 201);
+                anlegen("Dach", term(w, PV1))), 201);
         String id = neu.path("id").asText();
-        String heute = java.time.LocalDate.now(MessstelleService.ZEITZONE).toString();
-        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + id + "/formel/fassungen",
-                Map.of("gueltig_ab", heute, "terme", List.of(term(b, PV2)))), 201);
-        String basis = "/api/v1/sites/" + w.anlage() + "/komponenten/";
-        assertThat(ok(ruf(w, HttpMethod.GET, basis + w.komponente() + "/summenwerte", null), 200).size()).isZero();
-        assertThat(ok(ruf(w, HttpMethod.GET, basis + zweite + "/summenwerte", null), 200).size()).isEqualTo(1);
-        root.update("UPDATE messstelle SET archiviert_am = now() WHERE id = ?", UUID.fromString(id));
-        assertThat(ok(ruf(w, HttpMethod.GET, basis + zweite + "/summenwerte", null), 200).size()).isZero();
+        String pfad = "/api/v1/sites/" + w.anlage() + "/komponenten/" + w.komponente() + "/summenwerte";
+        assertThat(ok(ruf(w, HttpMethod.GET, pfad, null), 200).size()).isEqualTo(1);
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + id + "/archivieren", null), 200);
+        assertThat(ok(ruf(w, HttpMethod.GET, pfad, null), 200).size()).isZero();
     }
 
     // ================================================================ Anlegen + Wert

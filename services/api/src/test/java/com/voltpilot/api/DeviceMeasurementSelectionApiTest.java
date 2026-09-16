@@ -44,7 +44,7 @@ class DeviceMeasurementSelectionApiTest {
                 "Deye", "Deye", "SUN-30K", "hybrid_3p", "solarman_v5", "192.168.1.10", 8899, 1, true, null, true)));
         when(sources.sources(SITE)).thenReturn(List.of(new SummenwertQuellenService.Quelle(ENTITY, DEVICE, "Deye", null)));
         var reads = new MeasurementPointReadService(selections, catalog, targets, preview, sources);
-        var controller = new DeviceMeasurementSelectionController(selections, catalog, null, null, null, reads);
+        var controller = new DeviceMeasurementSelectionController(selections, catalog, null, null, reads);
         http = MockMvcBuilders.standaloneSetup(controller)
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver()).build();
     }

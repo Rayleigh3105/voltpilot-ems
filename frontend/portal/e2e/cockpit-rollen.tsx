@@ -1,4 +1,3 @@
-import './rollen-fixture';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { CockpitHero } from '../src/components/CockpitHero';

@@ -5,7 +5,6 @@ import { Switch } from '../../designsystem/components/forms/Switch';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type GeraetRolle, type Messstelle } from '../api';
 import { fmtNum } from '../format';
-import { useRollen } from '../rollen';
 import { ROLLEN } from '../uemsRollen';
 import {
   SUMMENWERT, SCHRITTE, MAX_NAME, MAX_TERME, abgeleiteteGroesse, alsAnfrage,
@@ -46,7 +45,6 @@ export function useSummenwertAssistent() {
 
 /** EIN Assistent, optional mit Geräte-Vorauswahl; alle Quellen bleiben in derselben Anlage. */
 export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetName, onClose, onGespeichert }: SummenwertEinstieg & { open: boolean; onClose: () => void }) {
-  const { darf } = useRollen();
   const [schritt, setSchritt] = useState<Schritt>(1);
   const [entwurf, setEntwurf] = useState<Entwurf>(leererEntwurf);
   const [zeilen, setZeilen] = useState<Zeile[] | null>(null);
@@ -115,13 +113,12 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
   const stand = aktuelleTerme.map((t) => t.quelle.stand).filter((s): s is string => !!s).sort().slice(-1)[0] ?? null;
   const formFehler = entwurfFehler(entwurf);
   const unbeobachtet = alle.filter((z) => !z.beobachtet && keys.has(schluessel({ entityId: z.entityId, channel: z.pointKey })));
-  const beobachtungErlaubt = unbeobachtet.length === 0 || darf('mess_selektion.bearbeiten');
-  const rolleErlaubt = (r: Rolle) => r === 'keine' || (darf('geraet.einrichten') && groesse?.groesse === 'Wirkleistung' && groesse.wertart === 'Momentanwert'
+  const rolleErlaubt = (r: Rolle) => r === 'keine' || (groesse?.groesse === 'Wirkleistung' && groesse.wertart === 'Momentanwert'
     && groesse.richtung === (r === 'pv' ? 'Erzeugung' : r === 'consumer' ? 'Bezug' : 'richtungslos'));
 
   async function einmalLesen(z: Zeile) {
     const key = schluessel({ entityId: z.entityId, channel: z.pointKey });
-    if (z.beobachtet || gelesen.current.has(key) || !darf('messwerte.ansehen')) return;
+    if (z.beobachtet || gelesen.current.has(key)) return;
     gelesen.current.add(key);
     const lauf = generation.current;
     setLesend((s) => new Set(s).add(key));
@@ -142,7 +139,7 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
   }
 
   async function speichern(ersetzen = false) {
-    if (busy || formFehler || !rolleErlaubt(rolle) || !darf('messstelle.formel') || !beobachtungErlaubt) return;
+    if (busy || formFehler || !rolleErlaubt(rolle)) return;
     setBusy(true); setFehler(null); setErsetzt(null);
     try {
       if (rolle !== 'keine' && !ersetzen) {
@@ -181,7 +178,7 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
   function register(z: Zeile) {
     const key = schluessel({ entityId: z.entityId, channel: z.pointKey });
     const art = sperrArt(z, anker), an = keys.has(key);
-    const kann = an || (anhakbar(z, anker) && keys.size < MAX_TERME && (z.beobachtet || darf('mess_selektion.bearbeiten')));
+    const kann = an || (anhakbar(z, anker) && keys.size < MAX_TERME);
     const gelesenWert = sitzung[key];
     return <div key={key} className={`vp-sw-row${art !== 'summierbar' ? ' locked' : ''}`}>
       <button type="button" className={`vp-sw-chk ${an ? 'on' : 'off'}`} aria-pressed={an}
@@ -222,7 +219,7 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
       {schritt === 5 ? <Button onClick={onClose}>Fertig</Button> : <>
         <Button variant="ghost" disabled={busy} onClick={schritt === 1 ? onClose : () => { setFehler(null); setSchritt((s) => (s - 1) as Schritt); }}>{schritt === 1 ? 'Abbrechen' : 'Zurück'}</Button>
         {schritt < 4 ? <Button onClick={weiter} disabled={zeilen === null || (schritt === 1 && (!schritt1Fertig(entwurf.terme) || lesend.size > 0))}>Weiter</Button>
-          : darf('messstelle.formel') && <Button disabled={busy || !!formFehler || !rolleErlaubt(rolle) || !beobachtungErlaubt} onClick={() => void speichern()}>{busy ? 'Speichern …' : 'Speichern'}</Button>}
+          : <Button disabled={busy || !!formFehler || !rolleErlaubt(rolle)} onClick={() => void speichern()}>{busy ? 'Speichern …' : 'Speichern'}</Button>}
       </>}
     </div>}>
     <div className="vp-sw vp-gw">
@@ -249,9 +246,7 @@ export function SummenwertAssistent({ open, siteId, deviceId, entityId, geraetNa
         {faktoren && <p className="vp-sw-warn">Ein Faktor verändert den gemessenen Wert. Ändern Sie ihn nur, wenn Sie die Umrechnung kennen.</p>}
       </>}
       {schritt === 3 && <><h3 className="vp-sw-h">Wie soll der Wert heißen?</h3><label>Name<input autoFocus className="vp-sw-name-in" aria-label={`Name des ${SUMMENWERT}s`} maxLength={MAX_NAME} value={entwurf.name} onChange={(e) => setEntwurf((s) => ({ ...s, name: e.target.value }))} /></label><p className="vp-sw-sub">Der Vorschlag ist frei änderbar.</p></>}
-      {schritt === 4 && <><h3 className="vp-sw-h">Diesen Wert verwenden als …</h3><div className="vp-sw-role-options" role="group" aria-label="Rolle">{(Object.keys(ROLLEN) as Rolle[]).filter((r) => r === 'keine' || darf('geraet.einrichten')).map((r) => <button key={r} type="button" className={`vp-sw-role-option ${rolle === r ? 'on' : ''}`} aria-pressed={rolle === r} disabled={!rolleErlaubt(r)} onClick={() => setRolle(r)}>{ROLLEN[r]}</button>)}</div>
-        {!beobachtungErlaubt && <p role="alert">Für das Beobachten weiterer Register fehlt Ihnen die Berechtigung. Entfernen Sie diese Register oder lassen Sie Ihren Zugang prüfen.</p>}
-        {!darf('geraet.einrichten') && <p className="vp-sw-sub">Sie können diesen Wert ohne Rolle anlegen. Für eine Rolle fehlt das Einrichtungsrecht.</p>}
+      {schritt === 4 && <><h3 className="vp-sw-h">Diesen Wert verwenden als …</h3><div className="vp-sw-role-options" role="group" aria-label="Rolle">{(Object.keys(ROLLEN) as Rolle[]).map((r) => <button key={r} type="button" className={`vp-sw-role-option ${rolle === r ? 'on' : ''}`} aria-pressed={rolle === r} disabled={!rolleErlaubt(r)} onClick={() => setRolle(r)}>{ROLLEN[r]}</button>)}</div>
         <p>{folgen[rolle]}</p>{rolle !== 'keine' && <p>Die Zuordnung wirkt ab jetzt und steht im Änderungsprotokoll der Anlage. Der Wert hängt an jedem gelesenen Gerät und zählt in der Anlagen-Summe einmal.</p>}
         <p className="vp-sw-sub">Rollen benötigen Wirkleistung als Momentanwert: Erzeugung für PV-Produktion, Bezug für Verbrauch, richtungslos für Netz.</p>
       </>}

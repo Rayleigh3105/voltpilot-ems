@@ -45,7 +45,6 @@ export function GesamtwertKarten({
    */
   eingebettet?: boolean;
 }) {
-  const rechte = useRollen();
   const [zeilen, setZeilen] = useState<GwZeile[] | null>(null);
   const [umbenennen, setUmbenennen] = useState<{ id: string; name: string } | null>(null);
   const [archivieren, setArchivieren] = useState<GwZeile | null>(null);
@@ -68,7 +67,7 @@ export function GesamtwertKarten({
   const auffrischen = () => setNeuLaden((n) => n + 1);
 
   const anhalten = async (z: GwZeile, an: boolean) => {
-    if (busy || !rechte.darf("messstelle.bearbeiten")) return;
+    if (busy) return;
     setBusy(true);
     try {
       if (an) await api.messstelleAnhalten(z.messstelle.id);
@@ -80,7 +79,7 @@ export function GesamtwertKarten({
   };
 
   const speichereName = async () => {
-    if (!umbenennen || busy || !rechte.darf("messstelle.bearbeiten")) return;
+    if (!umbenennen || busy) return;
     setBusy(true);
     try {
       const z = zeilen?.find((x) => x.messstelle.id === umbenennen.id);
@@ -99,7 +98,7 @@ export function GesamtwertKarten({
   };
 
   const bestaetigeArchiv = async () => {
-    if (!archivieren || busy || !rechte.darf("messstelle.bearbeiten")) return;
+    if (!archivieren || busy) return;
     setBusy(true);
     try {
       await api.messstelleArchivieren(archivieren.messstelle.id);
@@ -151,7 +150,7 @@ export function GesamtwertKarten({
       />
 
       <ConfirmDialog
-        open={archivieren != null && rechte.darf("messstelle.bearbeiten")}
+        open={archivieren != null}
         title={`„${archivieren?.messstelle.name ?? SUMMENWERT}" archivieren?`}
         intro="Der Wert verschwindet aus Übersicht und Verlauf — seine bisherige Definition und sein Verlauf bleiben aber erhalten."
         consequences={[

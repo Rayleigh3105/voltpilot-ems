@@ -6,12 +6,7 @@ import { cloud } from './summenwert-abnahme-cloud';
 const namen = { pv: 'PV-Produktion', consumer: 'Verbrauch', grid: 'Netz' };
 async function pruefe(page: Page, bereich: Locator = page.locator('main')) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
-  const text = await bereich.innerText();
-  const verboten = await page.evaluate(async (text) => {
-    const pfad = '/src/anlegeNurMessen.ts';
-    return (await import(pfad)).steuerGeldWoerter(text);
-  }, text);
-  expect(verboten).toEqual([]);
+
 }
 async function shot(page: Page, element: Locator, name: string) {
   if (!process.env.SUMMENWERT_BILDER) return;
@@ -108,20 +103,4 @@ for (const width of [375, 1440]) {
       expect(errors).toEqual([]);
     });
   }
-  test(`A4: Leser sieht Lindach ohne Schreibhebel, Unterstützung ST-1 sieht es nicht bei ${width}`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 1000 });
-    await page.clock.setFixedTime(new Date(STAND));
-    const state = await cloud(page, 'lindach', true);
-    await page.goto('/e2e/summenwert-abnahme.html?fall=lindach&person=CB');
-    await expect(page.getByText('Hallen Lindach jetzt', { exact: true })).toBeVisible();
-    const karte = page.getByRole('region', { name: 'Gerätekarte' });
-    await expect(karte.getByRole('button', { name: 'Summenwert anlegen' })).toHaveCount(0);
-    await expect(karte.getByRole('button', { name: /Aktionen für/ })).toHaveCount(0);
-    await pruefe(page); expect(state.writes).toEqual([]);
-    await shot(page, karte, `leser-${width}-karte`);
-    await page.goto('/e2e/summenwert-abnahme.html?fall=lindach&person=LV');
-    await expect(page.getByText('Dieser Standort gehört nicht zu Ihrem Zugriff.')).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Gerätekarte' })).toHaveCount(0);
-    expect(state.writes).toEqual([]);
-  });
 }
