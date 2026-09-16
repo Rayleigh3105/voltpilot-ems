@@ -24,6 +24,11 @@ public final class AenderungSatz {
 
     private AenderungSatz() {}
 
+    private static String rollenwort(JsonNode seite) {
+        String rolle = text(seite, "rolle");
+        return rolle == null ? "Rolle" : RollenZuordnungRegeln.ROLLEN.getOrDefault(rolle, "Rolle");
+    }
+
     /** Die Kundenwörter der Bezugsarten ({@code ort_aenderung.objekt_art} und die Messstelle). */
     private static final Map<String, String> BEZUG = Map.of(
             "messstelle", "Messstelle",
@@ -69,6 +74,10 @@ public final class AenderungSatz {
     public static String satz(String bezugArt, String art, JsonNode alt, JsonNode neu, String ergebnis) {
         String was = BEZUG.getOrDefault(bezugArt, "Eintrag");
         return switch (art) {
+            case "rolle_gesetzt" -> rollenwort(neu)
+                    + ": Wert zugeordnet";
+            case "rolle_entzogen" -> rollenwort(alt)
+                    + ": Zuordnung entzogen";
             case "angelegt" -> mitName(was + " angelegt", neu);
             case "bearbeitet" -> was + " bearbeitet" + geaenderteFelder(alt, neu);
             case "angehalten" -> was + " angehalten";

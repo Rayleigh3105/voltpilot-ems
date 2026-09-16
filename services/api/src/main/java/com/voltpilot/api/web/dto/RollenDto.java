@@ -8,7 +8,7 @@ import java.util.UUID;
 
 /**
  * Die DTOs der geraeteseitigen Rollen-Zuordnung (Konzept vp-agg-konzept2-f3 §2.3 „verwenden als",
- * vp-agg-konzept3-r8): der massgebliche Wert einer Geraete-Rolle (heute nur {@code pv}) und der
+ * vp-agg-konzept3-r8): der massgebliche Wert einer Geraete-Rolle ({@code pv}, {@code consumer}, {@code grid}) und der
  * kanonische, ueber alle Geraete zusammengefasste Rollen-Wert der Anlage. Kundentexte kommen erst
  * im Frontend — hier keine. snake_case in der Schnittstelle wie {@code MessstelleFormelDto}.
  */
@@ -27,6 +27,13 @@ public final class RollenDto {
     /** Der Anfrage-Koerper von {@code PUT …/komponenten/{entityId}/rollen/{role}}. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Eingabe(String art, String capability, UUID quellMessstelleId) {}
+
+    /** Anlage: Summenwert an allen gelesenen Geräten; ersetzen bestätigt den Austausch des Netzwerts. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AnlageEingabe(String art, UUID quellMessstelleId, boolean ersetzen) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AnlageAntwort(List<GeraetRolle> geraete) {}
 
     /**
      * Der massgebliche Rollen-Wert eines Geraets ({@code zugeordnet == null} = keine Zuordnung, das

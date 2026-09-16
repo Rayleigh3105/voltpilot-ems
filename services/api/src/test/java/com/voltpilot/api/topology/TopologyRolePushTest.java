@@ -58,7 +58,7 @@ class TopologyRolePushTest {
         when(repo.overrides(eq(SITE))).thenReturn(List.of());
         when(repo.latestValues(any(), any())).thenReturn(List.of());
         when(chargers.connectionsByEntity(eq(SITE))).thenReturn(Map.of());
-        service = new TopologyService(registry, repo, catalog, new ObjectMapper(), chargers, push);
+        service = new TopologyService(registry, repo, catalog, new ObjectMapper(), chargers, push, mock(RollenZuordnungService.class));
         TenantContext.set(TENANT);
     }
 
