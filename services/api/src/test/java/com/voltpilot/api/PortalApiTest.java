@@ -304,8 +304,11 @@ class PortalApiTest {
         String permissions = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
                         + "/ocpp/action-permissions"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)), String.class).getBody();
+        // AP-03 IP-7 (E12/E13): die Stufe kommt aus der Zuweisung - das Bestandskonto ist Kundenadministrator und
+        // erreicht damit die Anlagen-Stufe; die Plattform-Aktionen bleiben VoltPilot vorbehalten.
         assertThat(permissions).contains("\"RemoteStartTransaction\":true",
-                        "\"ChangeConfiguration\":false", "\"UpdateFirmware\":false");
+                        "\"ChangeConfiguration\":true", "\"UpdateFirmware\":false",
+                        "\"SetChargingProfile\":false");
 
         ResponseEntity<String> crossTenant = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
                         + "/ocpp/stations"), HttpMethod.GET,
