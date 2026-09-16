@@ -86,7 +86,7 @@ async function bild(page: Page, name: string, breite: number) {
   if (process.env.ZAEHLER_BILDER) {
     mkdirSync(process.env.ZAEHLER_BILDER, { recursive: true });
     if (!(await dialog.count())) await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: join(process.env.ZAEHLER_BILDER, `${name}-${breite}.png`), fullPage: !(await dialog.count()) });
+    await page.screenshot({ animations: 'disabled', path: join(process.env.ZAEHLER_BILDER, `${name}-${breite}.png`), fullPage: !(await dialog.count()) });
   }
 }
 for (const einstieg of ['messstelle', 'geraet'] as const) {
