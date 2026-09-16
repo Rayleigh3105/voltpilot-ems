@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
@@ -351,6 +352,83 @@ class MessstelleFormelFassungApiTest {
         ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + b + "/formel/fassungen",
                 fassung(heute().plusDays(1), mterm(a))), 201);
         assertThat(fassungen(b)).isEqualTo(2);
+    }
+
+    @Test
+    void saldoHatFesteRichtungUndTagesgueltigeFassungen() throws Exception {
+        Welt w = welt();
+        UUID bezug = hauptzaehler(w, "MS-B", "Bezug");
+        UUID abgabe = hauptzaehler(w, "MS-A", "Abgabe");
+        var plus = mterm(bezug);
+        var minus = new LinkedHashMap<>(mterm(abgabe));
+        minus.put("vorzeichen", "-");
+        var eingabe = Map.of("name", "Netz-Saldo", "formel_typ", "saldo", "gueltig_ab", heute().toString(),
+                "terme", List.of(plus, minus));
+        JsonNode neu = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet", eingabe), 201);
+        String id = neu.path("id").asText();
+        assertThatThrownBy(() -> root.update("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, richtung, einheit, wertart) "
+                + "VALUES (?, 'MS-FALSCH', 'Kein Messkanal', 'gemessen', 'Strom', 'Wirkenergie', 'saldiert', 'kWh', 'Intervallmenge')", w.mandant()))
+                .hasMessageContaining("messstelle_hauptgroesse_katalog");
+        JsonNode formel = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/formel?am=" + heute(), null), 200);
+        assertThat(formel.path("hauptgroesse").path("richtung").asText()).isEqualTo("saldiert");
+        assertThat(formel.path("hauptgroesse").path("wertart").asText()).isEqualTo("Intervallmenge");
+        assertThat(formel.path("fassung_am").path("fassung").path("formel_typ").asText()).isEqualTo("saldo");
+        JsonNode live = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/wert", null), 200);
+        assertThat(live.path("wert").isNull()).isTrue();
+        assertThat(live.path("unvollstaendig").asBoolean()).isTrue();
+        JsonNode davor = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/formel?am=" + heute().minusDays(1), null), 200);
+        assertThat(davor.path("terme")).isEmpty();
+        Map<String, Object> f = new LinkedHashMap<>(fassung(heute().plusDays(2), plus, minus));
+        f.put("formel_typ", "saldo");
+        JsonNode zweite = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + id + "/formel/fassungen", f), 201);
+        assertThat(zweite.path("fassung_am").path("fassung").path("nummer").asInt()).isEqualTo(2);
+        assertThat(root.queryForObject("SELECT gueltig_bis FROM messstelle_formel_fassung WHERE messstelle_id=? AND nummer=1",
+                LocalDate.class, UUID.fromString(id))).isEqualTo(heute().plusDays(1));
+    }
+
+    @Test
+    void saldoVerweigertGewichtungFalscheRichtungUndAndereGrenze() throws Exception {
+        Welt w = welt();
+        UUID bezug = hauptzaehler(w, "MS-B", "Bezug");
+        UUID abgabe = hauptzaehler(w, "MS-A", "Abgabe");
+        var plus = mterm(bezug);
+        var minus = new LinkedHashMap<>(mterm(abgabe));
+        minus.put("vorzeichen", "-");
+        for (Map<String, Object> falsch : List.of(Map.<String, Object>of("vorzeichen", "+"), Map.<String, Object>of("faktor", .7))) {
+            var term = new LinkedHashMap<>(minus); term.putAll(falsch);
+            Antwort a = ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                    Map.of("formel_typ", "saldo", "terme", List.of(plus, term)));
+            assertThat(a.status()).isEqualTo(422);
+            assertThat(a.body().path("grund").asText()).isEqualTo("saldo_braucht_zwei");
+        }
+        UUID andereAnlage = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, 'Andere Grenze') RETURNING id",
+                UUID.class, w.mandant());
+        UUID andererZaehler = hauptzaehler(new Welt(w.mandant(), andereAnlage, w.box(), w.komponente()), "MS-X", "Abgabe");
+        minus.put("quell_messstelle_id", andererZaehler.toString());
+        assertThat(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                Map.of("formel_typ", "saldo", "terme", List.of(plus, minus))).status()).isEqualTo(422);
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle WHERE tenant_id=? AND art='berechnet'",
+                Integer.class, w.mandant())).isZero();
+    }
+
+    @Test
+    void ausdruecklichSpaeterBeginnendeSummeIstHeuteUnbekannt() throws Exception {
+        Welt w = welt();
+        JsonNode neu = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                Map.of("name", "Später", "gueltig_ab", heute().plusDays(1).toString(), "terme", List.of(term(w, PV1, "+")))), 201);
+        String id = neu.path("id").asText();
+        JsonNode wert = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/wert", null), 200);
+        assertThat(wert.path("wert").isNull()).isTrue();
+        assertThat(wert.path("unvollstaendig").asBoolean()).isTrue();
+    }
+
+    private UUID hauptzaehler(Welt w, String kennzeichen, String richtung) {
+        UUID id = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, richtung, einheit, wertart) "
+                + "VALUES (?, ?, ?, 'gemessen', 'Strom', 'Wirkenergie', ?, 'kWh', 'Zählerstand') RETURNING id",
+                UUID.class, w.mandant(), kennzeichen, kennzeichen, richtung);
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, gueltig_ab) "
+                + "VALUES (?, ?, ?, 'Hauptzähler', ?)", w.mandant(), id, w.anlage(), heute().minusDays(10));
+        return id;
     }
 
     // ================================================================ die Welt

@@ -594,8 +594,8 @@ public class BerechnetePeriodenLauf {
     /**
      * Die Formel am Tag: die wirksame Fassung des Tages, und beim {@code rest} die Terme aus der Stellung
      * ({@link BilanzAbleitung#restAusStellung}). {@code null}, wenn an dem Tag keine Fassung gilt, der
-     * Hauptzähler an dem Tag keiner ist oder der Typ hier nicht gerechnet wird ({@code saldo}: noch kein
-     * Schreibweg, AP-10 IP-16).
+     * Hauptzähler an dem Tag keiner ist oder der Typ hier nicht gerechnet wird. Ein Saldo liest
+     * die gespeicherten Mengen seiner beiden Eingänge derselben Periode (AP-10 IP-16).
      */
     private TagesFormel formel(Kontext k, Messstelle m, LocalDate tag) {
         FassungMitRest fassung = null;
@@ -622,6 +622,14 @@ public class BerechnetePeriodenLauf {
                 refs.add(new TermRef(q == null ? null : q.id(), t.messstelle(),
                         q != null && MessstelleRegeln.BERECHNET.equals(q.art()), null, null, t.rolle(), t.anteil(), null,
                         null, q == null ? NICHT_LESBAR : anteilGrund(t.anteil()), null));
+            }
+        } else if (MessstelleFormelRegeln.SALDO.equals(fassung.formelTyp())) {
+            // F9: aus den gespeicherten Mengen derselben Periode, nie aus Zählerständen.
+            for (TermZeile t : k.termeJeFassung().getOrDefault(fassung.id(), List.of())) {
+                Messstelle q = k.nachId().get(t.quellMessstelleId());
+                refs.add(new TermRef(t.quellMessstelleId(), q == null ? String.valueOf(t.quellMessstelleId()) : q.kennzeichen(),
+                        false, null, null, "+".equals(t.vorzeichen()) ? BilanzAbleitung.ZUFLUSS : BilanzAbleitung.ABFLUSS,
+                        "gesamt", t.vorzeichen(), BigDecimal.ONE, q == null ? NICHT_LESBAR : null, null));
             }
         } else if (MessstelleFormelRegeln.GEWICHTETE_SUMME.equals(fassung.formelTyp())) {
             for (TermZeile t : k.termeJeFassung().getOrDefault(fassung.id(), List.of())) {

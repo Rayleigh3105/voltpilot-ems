@@ -34,7 +34,7 @@ import org.testcontainers.utility.DockerImageName;
  * <ul>
  *   <li>Bestandsschutz über den gemeinsamen Vergleich ({@link Bestandsschutz}) — die neue Spalte ist in jeder
  *       Bestandszeile NULL;</li>
- *   <li>ein Rest trägt genau einen Hauptzähler, eine gewichtete Summe keinen, {@code saldo} bleibt draußen;</li>
+ *   <li>ein Rest trägt genau einen Hauptzähler, eine gewichtete Summe keinen, unbekannte Typen bleiben draußen;</li>
  *   <li>NIE ZWEI Reste je Hauptzähler (auch nicht am Schreibweg vorbei), eine aufgehobene Fassung gibt ihn frei;</li>
  *   <li>ein Rest speichert KEINE Terme (E3) — auch nicht über den Rückweg „Term ohne Fassung“;</li>
  *   <li>Zaun, Rechte (der Hauptzähler eines Rests ändert sich nie) und Offboarding.</li>
@@ -122,9 +122,9 @@ class UemsBilanzRestMigrationTest {
                 + "(?, ?, 1, 'gewichtete_summe', 'anlage', 'sub-test', 'Test', 'kunde', ?)", k.tenant(), zweiter, k.hauptzaehler())))
                 .getServerErrorMessage().getConstraint()).isEqualTo("messstelle_formel_fassung_rest_hauptzaehler_chk");
         assertThat(psql(() -> alsTue(k.tenant(), () -> app.update("INSERT INTO messstelle_formel_fassung (tenant_id, "
-                + "messstelle_id, nummer, formel_typ, herkunft, actor_sub, actor_name, actor_art) VALUES (?, ?, 1, 'saldo', 'anlage', "
+                + "messstelle_id, nummer, formel_typ, herkunft, actor_sub, actor_name, actor_art) VALUES (?, ?, 1, 'unbekannt', 'anlage', "
                 + "'sub-test', 'Test', 'kunde')", k.tenant(), zweiter))).getServerErrorMessage().getConstraint())
-                .as("saldo kommt mit seinem Schreibweg").isEqualTo("messstelle_formel_fassung_typ_chk");
+                .as("unbekannte Formel-Typen bleiben gesperrt").isEqualTo("messstelle_formel_fassung_typ_chk");
         assertThat(psql(() -> alsTue(k.tenant(), () -> restFassung(app, k.tenant(), zweiter, zweiter)))
                 .getServerErrorMessage().getConstraint()).isEqualTo("messstelle_formel_fassung_rest_nicht_selbst");
         // Der Hauptzähler eines anderen Kundenbereichs ist nicht da — der Mandant reist im Verweis mit.

@@ -85,6 +85,16 @@ class SummenwertKontextServiceTest {
         });
         verify(messstellen, never()).anlegen(any());
     }
+    @Test void saldoUeberspringtDenGeraeteKontextNicht() {
+        doReturn(List.of(quelle(other, null))).when(quellen).derMessstelle(measured);
+        assertThatThrownBy(() -> service.anlegen(new MessstelleFormelDto.Anlegen("Saldo", null,
+                List.of(new MessstelleFormelDto.TermEingabe("messstelle", null, null, measured, "+", 1.0, false, null, null)),
+                null, new MessstelleFormelDto.Kontext("geraet", site, box, "inverter"), "saldo", LocalDate.of(2026, 9, 16)),
+                new ProtokollAkteur("test", "Test", null, "kunde")))
+                .isInstanceOf(MessstelleFormelAbgelehnt.class).satisfies(e ->
+                        assertThat(((MessstelleFormelAbgelehnt) e).fakten()).containsEntry("grund", "anderes_geraet"));
+        verify(messstellen, never()).anlegen(any());
+    }
     @Test void amEndzeitpunktZaehltNurDieNeueEigeneFuehrendeQuelle() {
         doReturn(List.of(quelle(other, now), quelle(own, null))).when(quellen).derMessstelle(measured);
         anlegen();

@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Saldo-Schreibweg (AP-10 IP-16)** — optionale Typ-/Tagesangaben, Hauptzähler-Paar, berechnete Richtung `saldiert`, vorhandener Geräte-Zaun und Periodenmengen statt Zählerstand-Differenzen · [Wege und Nachweise](uems-saldo-schreibweg.md)
+
 - **Bezugsgrößen aus Messkanälen (AP-09 IP-17/IP-18)** — minutenweise Bindung von Zähler/Zustand/Temperatur, Gradtage G20/15 mit gespeicherten Parametern und Portal-Dialog, M5/K6-Sperre mit 422, Periodenfassungen mit Zustand/Abdeckung, isolierter Schritt im AP-08-Stundenlauf und Spätankunft-Vorschlag · [Kanalbindung und Nachweise](uems-bezugsgroesse-kanalbindung.md)
 
 - **Mandanten-Offboarding mit vorheriger Kontensperre** — gemeinsamer IP-9-Sperrweg, wiederholbares Keycloak-Cleanup, fehlender Mandant sperrt auch alte JWTs bei `/me` · [Reihenfolge und Fehlerfälle](uems-offboarding-kontensperre.md)

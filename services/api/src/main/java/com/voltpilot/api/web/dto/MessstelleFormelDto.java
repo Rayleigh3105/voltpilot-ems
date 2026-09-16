@@ -44,7 +44,11 @@ public final class MessstelleFormelDto {
      * {@code name} leer = ein Entwurf. Die Hauptgröße wird aus den Termen abgeleitet, nie gewählt.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Anlegen(String name, String notiz, List<TermEingabe> terme, RolleAnlegen rolle, Kontext kontext) {
+    public record Anlegen(String name, String notiz, List<TermEingabe> terme, RolleAnlegen rolle, Kontext kontext,
+            String formelTyp, LocalDate gueltigAb) {
+        public Anlegen(String name, String notiz, List<TermEingabe> terme, RolleAnlegen rolle, Kontext kontext) {
+            this(name, notiz, terme, rolle, kontext, null, null);
+        }
         public Anlegen(String name, String notiz, List<TermEingabe> terme, RolleAnlegen rolle) {
             this(name, notiz, terme, rolle, null);
         }
