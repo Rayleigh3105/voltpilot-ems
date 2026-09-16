@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { Fragment, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { SUB_CHUNK } from '../pageChunks';
@@ -309,9 +310,9 @@ function AnlagenEmpty({
               ? 'Sobald für diesen Mandanten eine Anlage angelegt ist, erscheint sie hier. Sie können im Namen des Mandanten eine Anlage anlegen.'
               : 'Legen Sie Ihre Anlage an - danach verbinden Sie Ihr Gerät und sehen Live-Daten, Fahrplan und Erlöse.'}
           </p>
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
+          <Recht aktion="anlage.verwalten"><Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
             Anlage anlegen
-          </Button>
+          </Button></Recht>
         </div>
       </Card>
       <AnlageAnlegenDrawer
@@ -379,9 +380,9 @@ function AnlagenListe({
           <p>Wählen Sie eine Anlage - jede hat ihre eigene Seite.</p>
         </div>
         <div className="actions">
-          <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
+          <Recht aktion="anlage.verwalten"><Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
             Anlage anlegen
-          </Button>
+          </Button></Recht>
         </div>
       </div>
 
@@ -1577,7 +1578,7 @@ export function AnlageSeite({
     const def = layout.eigene.find((d) => d.id === zeile.id);
     if (!def) return null;
     return (
-      <button
+      <Recht aktion="auswertung.anlegen"><button
         type="button"
         className="vp-anpassen-icon"
         onClick={() => setEigenDialog({ offen: true, bearbeiten: def })}
@@ -1585,7 +1586,7 @@ export function AnlageSeite({
         title="Ändern"
       >
         <Icon name="pencil" size={16} />
-      </button>
+      </button></Recht>
     );
   };
   const eigenEinheiten = useMemo(() => {
@@ -1879,7 +1880,7 @@ export function AnlageSeite({
                 Kunde auf das Cockpit schaut, das er anordnen will. Er erscheint
                 nur, wenn es einen Stapel zum Anordnen gibt. */}
             {showStack && !layout.anpassen && (
-              <button
+              <Recht aktion="cockpit.anpassen"><button
                 type="button"
                 className="vp-gear-btn"
                 onClick={layout.start}
@@ -1887,7 +1888,7 @@ export function AnlageSeite({
                 title="Cockpit anpassen"
               >
                 <Icon name="sliders" size={18} />
-              </button>
+              </button></Recht>
             )}
             <button
               type="button"
@@ -1991,13 +1992,13 @@ export function AnlageSeite({
               (Captain 25.08.2026: „Beobachten/Auswertung nur im Cockpit"). */}
           {layout.anpassen && (
             <div className="vp-eigen-neu">
-              <Button
+              <Recht aktion="auswertung.anlegen"><Button
                 variant="ghost"
                 onClick={() => setEigenDialog({ offen: true, bearbeiten: null })}
                 disabled={eigenDeckelSatz(layout.eigene.length) != null}
               >
                 + Eigene Auswertung
-              </Button>
+              </Button></Recht>
               {/* vp-agg §2.5/C: „+ Gesamtwert" ist aus der Cockpit-Bühne entfernt
                   und lebt jetzt in „Verlauf › Messwerte" (der gerätefreie
                   Summenwert gehört zu den Auswertungen, nicht auf die Bühne). */}

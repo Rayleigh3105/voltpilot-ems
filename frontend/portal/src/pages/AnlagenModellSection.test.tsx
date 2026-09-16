@@ -1,3 +1,4 @@
+import { sichtbareListe } from '../test/rollenFixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AnlagenModellSection } from './AnlagenModellSection';
@@ -181,7 +182,7 @@ function stub() {
   // Die Säulen der vereinten Liste (§13 R7) - fail-soft, aber gestubbt, damit
   // ein Render nicht auf einen echten Abruf wartet.
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
-  vi.spyOn(api, 'edgeVersions').mockResolvedValue([]);
+  vi.spyOn(api, 'edgeVersions').mockResolvedValue(sichtbareListe([]));
   vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue({
     catalog_version: '1.0.0',
     types: [
@@ -1088,7 +1089,7 @@ describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
       newestRelease: 'edge-2026.08.1',
       upToDate: true,
     };
-    vi.mocked(api.edgeVersions).mockResolvedValue([edge]);
+    vi.mocked(api.edgeVersions).mockResolvedValue(sichtbareListe([edge]));
     render(
       <AnlagenModellSection
         site={site}

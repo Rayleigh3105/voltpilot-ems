@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -187,15 +188,15 @@ export function VerschiebenDialog({
       title={ergebnis ? ERGEBNIS_TITEL : verschiebenTitel(ort.name)}
       footer={
         ergebnis ? (
-          <Button onClick={fertig}>{KNOPF_FERTIG}</Button>
+          <Recht aktion="gebaeude.pflegen"><Button onClick={fertig}>{KNOPF_FERTIG}</Button></Recht>
         ) : (
           <>
             <Button variant="ghost" onClick={onClose}>
               Abbrechen
             </Button>
-            <Button type="submit" form={`${basis}-form`} disabled={busy}>
+            <Recht aktion="gebaeude.pflegen" rueckwirkend={!!form.gueltigAb && form.gueltigAb < heute}><Button type="submit" form={`${basis}-form`} disabled={busy}>
               {KNOPF_SPEICHERN}
-            </Button>
+            </Button></Recht>
           </>
         )
       }

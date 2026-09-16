@@ -146,7 +146,11 @@ export function AppShell({
   ortsPfad = null,
   helpArticle = null,
   children,
+  ohneStandort = false,
+  teilansicht = null,
 }: {
+  ohneStandort?: boolean;
+  teilansicht?: string | null;
   page: PageId;
   onNavigate: (page: PageId) => void;
   isAdmin: boolean;
@@ -384,7 +388,7 @@ export function AppShell({
             onClick={() => onNavigate(PORTFOLIO_PAGE.id)}
           />
         )}
-        {MAIN_PAGES.filter((p) => p.id !== 'uebersicht' || showOverview).map((p) => (
+        {MAIN_PAGES.filter((p) => !ohneStandort && (p.id !== 'uebersicht' || showOverview)).map((p) => (
           <NavItem
             key={p.id}
             icon={<Icon name={p.icon} size={18} />}
@@ -651,6 +655,7 @@ export function AppShell({
 
         <main className="vp-main has-bottombar">
           {helpArticle && <div className="vp-context-help"><HelpLink article={helpArticle} /></div>}
+          {teilansicht && <p className="vp-alert" role="status">{teilansicht}</p>}
           {children}
         </main>
       </div>

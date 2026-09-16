@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -173,9 +174,9 @@ export function StandortDialog({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button type="submit" form={`${basis}-form`} disabled={busy}>
+          <Recht aktion="standort.verwalten"><Button type="submit" form={`${basis}-form`} disabled={busy}>
             {DIALOG_SENDEN[fassung]}
-          </Button>
+          </Button></Recht>
         </>
       }
     >

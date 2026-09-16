@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die **VORSCHLÄGE** am Kopf der Regel-Kapsel (Steuerung Stufe 6, Konzept
  * `vp-steuerung-konzept-b3` §3.3; Leitprinzip Regel 1 „Vorschlag vor Regel").
@@ -76,9 +77,9 @@ export function VorschlagsKarten({
               </p>
             )}
             <div className="vp-vorschlag-aktionen">
-              <Button size="sm" disabled={busy} onClick={() => onUebernehmen(v)}>
+              <Recht aktion="betriebsweise.aendern"><Button size="sm" disabled={busy} onClick={() => onUebernehmen(v)}>
                 {UEBERNEHMEN}
-              </Button>
+              </Button></Recht>
               {onVorschau && vorschauFuer !== v.key && (
                 <Button
                   size="sm"
@@ -92,7 +93,7 @@ export function VorschlagsKarten({
                   {WAS_BRINGT}
                 </Button>
               )}
-              <Button
+              <Recht aktion="betriebsweise.aendern"><Button
                 size="sm"
                 variant="outline"
                 disabled={busy}
@@ -100,8 +101,8 @@ export function VorschlagsKarten({
                 onClick={() => onStumm(v, 'spaeter')}
               >
                 {SPAETER}
-              </Button>
-              <Button
+              </Button></Recht>
+              <Recht aktion="betriebsweise.aendern"><Button
                 size="sm"
                 variant="ghost"
                 disabled={busy}
@@ -109,7 +110,7 @@ export function VorschlagsKarten({
                 onClick={() => onStumm(v, 'abgelehnt')}
               >
                 {ABLEHNEN}
-              </Button>
+              </Button></Recht>
             </div>
           </li>
         ))}

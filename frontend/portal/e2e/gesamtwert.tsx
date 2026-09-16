@@ -1,3 +1,4 @@
+import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import type { Site } from '../src/api';

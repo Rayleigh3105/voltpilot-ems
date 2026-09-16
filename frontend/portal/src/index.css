@@ -6457,3 +6457,11 @@ span.vp-swap-out {
     opacity: 1;
   }
 }
+
+/* AP-03: Grund und Weg ersetzen einen Hebel, auch in einer engen Aktionszeile. */
+.vp-recht-hinweis {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -225,11 +225,11 @@ describe('Hebel der Berichtsseite und Rechte (G1, §5.4, §5.5)', () => {
     expect(seitenHebel(detailAm(jetzt), entwurfAm(jetzt), PETER, jetzt)).toMatchObject({ freigeben: null, verwerfen: false });
   });
 
-  it('am Stand (ohne Entwurf) kein Freigeben; unbekannte Rechte zeigen den Hebel, die Route entscheidet', () => {
+  it('am Stand (ohne Entwurf) kein Freigeben; unbekannte Rechte zeigen keinen schreibenden Hebel', () => {
     const jetzt = am('2026-11-13T08:00:00Z');
     expect(seitenHebel(detailAm(jetzt), null, INES, jetzt)).toMatchObject({ freigeben: null, vergleichen: null });
-    expect(seitenHebel(detailAm(jetzt), entwurfAm(jetzt), null, jetzt).freigeben?.knopf).toBe('Als Berichtsstand Nr. 2 freigeben');
-    expect(darf(null, 'anlegen', 'unternehmen', null)).toBe(true);
+    expect(seitenHebel(detailAm(jetzt), entwurfAm(jetzt), null, jetzt).freigeben).toBeNull();
+    expect(darf(null, 'anlegen', 'unternehmen', null)).toBe(false);
   });
 
   it('ein archivierter Bericht hat keinen schreibenden Hebel', () => {
@@ -266,7 +266,7 @@ describe('Bericht anlegen (§5.1, V1–V5, Q4)', () => {
     expect(ines[0].abschnitte).toContain('Quellenverzeichnis');
     expect(vorlageKarten(PETER, ids).map((k) => k.geltungArt)).toEqual(['standort', 'standort']);
     expect(vorlageKarten(CLAUDIA, ids)).toEqual([]);
-    expect(vorlageKarten(null, ids)).toHaveLength(4);
+    expect(vorlageKarten(null, ids)).toEqual([]);
   });
 
   it('Geltung: Peter nur Werk Lindach, Ines beide aktiven Werke, das Unternehmen nur mit `bericht.unternehmen`', () => {

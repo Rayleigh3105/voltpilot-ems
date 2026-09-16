@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -146,7 +147,7 @@ function PointRow({ point, onToggle, onHistory }: {
   return (
     <article className="vp-measure-row" data-semantic={point.semanticStatus}>
       <div className="vp-measure-row__main">
-        <Switch
+        <Recht aktion="mess_selektion.bearbeiten"><Switch
           checked={point.selected}
           onChange={() => onToggle({
             pointKey: point.pointKey,
@@ -157,7 +158,7 @@ function PointRow({ point, onToggle, onHistory }: {
           })}
           label={<span className="vp-measure-row__title">{pointLabel(point)}</span>}
           aria-label={`${pointLabel(point)} ${point.selected ? 'abwählen' : 'aufzeichnen'}`}
-        />
+        /></Recht>
         <div className="vp-measure-badges">
           <span className={`vp-measure-badge vp-measure-badge--${point.availabilityStatus}`}>{statusLabel(point)}</span>
           {point.recommended && <span className="vp-measure-badge">Empfohlen</span>}
@@ -233,9 +234,9 @@ function BeobZeile({ zeile, spark, onHistory, onStop }: {
         >
           Verlauf
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => onStop(zeile)}>
+        <Recht aktion="mess_selektion.bearbeiten"><Button variant="ghost" size="sm" onClick={() => onStop(zeile)}>
           Nicht mehr beobachten
-        </Button>
+        </Button></Recht>
       </div>
     </li>
   );
@@ -596,18 +597,18 @@ export function BeobachteteRegister({
         </ul>
       )}
       <div className="vp-beob-hinzu">
-        <Button variant="outline" onClick={() => setOpen(true)} iconLeft={<Icon name="plus" size={16} />}>
+        <Recht aktion="mess_selektion.bearbeiten"><Button variant="outline" onClick={() => setOpen(true)} iconLeft={<Icon name="plus" size={16} />}>
           {HINZU[wahl]}
-        </Button>
+        </Button></Recht>
         {/* „Eigenes Register" gibt es nur, wo die Box eines lesen KANN. */}
         {eigeneErlaubt && registerFaehig && (
-          <Button variant="ghost" onClick={() => setCustomOpen(true)}>Eigenes Register</Button>
+          <Recht aktion="mess_selektion.bearbeiten"><Button variant="ghost" onClick={() => setCustomOpen(true)}>Eigenes Register</Button></Recht>
         )}
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title={katalogTitel(wahl, geraetName)} footer={
         eigeneErlaubt && registerFaehig
-          ? <Button variant="outline" onClick={() => setCustomOpen(true)}>Eigenen Messwert hinzufügen</Button>
+          ? <Recht aktion="mess_selektion.bearbeiten"><Button variant="outline" onClick={() => setCustomOpen(true)}>Eigenen Messwert hinzufügen</Button></Recht>
           : null
       }>
         <p className="vp-measure-drawer-intro">Alle bekannten Punkte dieses Geräts. Suche umfasst deutschen und originalen Namen, Registeradresse, API-Key oder OCPP-Measurand sowie Einheit.</p>
@@ -650,14 +651,14 @@ export function BeobachteteRegister({
         extra={pending?.enabled ? <Input label="Kadenz in Sekunden" type="number" min={pending?.minCadence ?? 1} max={86400} value={pendingCadence} onChange={(e) => setPendingCadence(Number(e.target.value))} error={estimate?.hardRejected ? estimate.reasons.join(' ') : null} /> : null}
       />
 
-      <Modal open={historyPoint != null} onClose={closeHistory} title={historyPoint ? `Verlauf · ${historyPoint.label}` : 'Verlauf'} footer={history && historyPoint ? <Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined, siteId, entityId)}>CSV mit Metadaten exportieren</Button> : null}>
+      <Modal open={historyPoint != null} onClose={closeHistory} title={historyPoint ? `Verlauf · ${historyPoint.label}` : 'Verlauf'} footer={history && historyPoint ? <Recht aktion="export.standort"><Button variant="outline" onClick={() => void downloadMeasurementExport(deviceId, historyPoint.pointKey, range, representation, range === 'free' ? isoOrUndefined(freeFrom) : undefined, range === 'free' ? isoOrUndefined(freeTo) : undefined, siteId, entityId)}>CSV mit Metadaten exportieren</Button></Recht> : null}>
         <div className="vp-measure-range" aria-label="Zeitraum">{ranges.map(([key, label]) => <button type="button" key={key} aria-pressed={range === key} className={range === key ? 'is-active' : ''} onClick={() => setRange(key)}>{label}</button>)}</div>
         {range === 'free' && <div className="vp-measure-free"><div><VpDatePicker label="Von · Datum" value={freeFrom.split('T')[0]} onChange={(value) => setFreePart('from', 'date', value)} /><VpTimePicker label="Von · Uhrzeit" value={freeFrom.split('T')[1] ?? ''} onChange={(value) => setFreePart('from', 'time', value)} /></div><div><VpDatePicker label="Bis · Datum" value={freeTo.split('T')[0]} onChange={(value) => setFreePart('to', 'date', value)} /><VpTimePicker label="Bis · Uhrzeit" value={freeTo.split('T')[1] ?? ''} onChange={(value) => setFreePart('to', 'time', value)} /></div></div>}
         {(history?.meta.rawAvailable || representation === 'raw') && <div className="vp-measure-range" aria-label="Wertdarstellung"><button type="button" aria-pressed={representation === 'decoded'} className={representation === 'decoded' ? 'is-active' : ''} onClick={() => setRepresentation('decoded')}>Dekodiert</button><button type="button" aria-pressed={representation === 'raw'} className={representation === 'raw' ? 'is-active' : ''} onClick={() => setRepresentation('raw')}>Rohwert</button></div>}
         {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} /><p className="vp-measure-hint">{history.meta.aggregationExplanation}</p><ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {m.label}</li>)}</ul></>}
       </Modal>
 
-      <Modal open={customOpen} onClose={() => setCustomOpen(false)} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy}>Jetzt aufzeichnen</Button></>}>
+      <Modal open={customOpen} onClose={() => setCustomOpen(false)} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Recht aktion="mess_selektion.bearbeiten"><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy}>Jetzt aufzeichnen</Button></Recht></>}>
         <p>Nur lesbare Modbus-Register. VoltPilot erfindet keine Semantik: Name, Einheit, Datentyp und Skala stammen aus Ihrer Gerätedokumentation.</p>
         <div className="vp-measure-custom">
           <Input label="Bezeichnung" value={custom.label} onChange={(e) => { setCustom({ ...custom, label: e.target.value }); setCustomEstimate(null); }} />

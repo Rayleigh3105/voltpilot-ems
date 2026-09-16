@@ -1,3 +1,4 @@
+import { sichtbareListe } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, type ComponentTemplate, type Site, type SiteComponents } from '../api';
@@ -54,7 +55,7 @@ beforeEach(() => {
     aktion: 'einrichten',
     standort: funktionMessenEntwurf(funktionWerkLindach('bestand')),
   });
-  vi.spyOn(api, 'listSites').mockResolvedValue([{ id: FIXTURE_IDS.an3, name: 'Werk Lindach' } as Site]);
+  vi.spyOn(api, 'listSites').mockResolvedValue(sichtbareListe([{ id: FIXTURE_IDS.an3, name: 'Werk Lindach' } as Site]));
   vi.spyOn(api, 'siteComponents').mockResolvedValue({
     componentAuthority: 'cloud',
     components: [{ id: 'k-1' }, { id: 'k-2' }],

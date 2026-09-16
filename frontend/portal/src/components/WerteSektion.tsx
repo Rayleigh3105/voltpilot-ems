@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die WERTE einer Messstelle als EINE Sektion (UEMS AP-13 IP-3, E9 = A): der Kopf „Zeiten in … (Zeitzone
  * des …)“ (E12 = A), die Zeit-Leiste, darunter die Karte der Periode und ihre Liste — am Tag die Stunden,
@@ -463,9 +464,9 @@ function WerteLeer({
         </Button>
       )}
       {weg?.art === 'zuordnen' && onQuelleZuordnen && (
-        <Button variant="outline" onClick={onQuelleZuordnen}>
+        <Recht aktion="messstelle.quelle"><Button variant="outline" onClick={onQuelleZuordnen}>
           {weg.knopf}
-        </Button>
+        </Button></Recht>
       )}
     </section>
   );

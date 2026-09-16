@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die REGEL-LISTE als KARTEN (Einheitsmodell Stufe 5a, Konzept
  * `vp-komponenten-einheit-h2` Teil 5b.2) — reiner Renderer.
@@ -79,7 +80,7 @@ export function RegelKarteView({
         )}
       </div>
       <div className="vp-regel-actions">
-        <button
+        <Recht aktion="betriebsweise.aendern"><button
           type="button"
           role="switch"
           aria-checked={karte.an}
@@ -89,7 +90,7 @@ export function RegelKarteView({
           onClick={() => onToggle(karte, !karte.an)}
         >
           <span className="vp-switch-knob" aria-hidden="true" />
-        </button>
+        </button></Recht>
         <Button variant="outline" size="sm" disabled={busy} onClick={() => onOpen(karte)}>
           Öffnen
         </Button>
@@ -120,9 +121,9 @@ export function SofortBanner({
         <strong>{text}</strong>
         <p>{hinweis}</p>
       </div>
-      <Button variant="outline" size="sm" disabled={busy} onClick={onBeenden}>
+      <Recht aktion="handeingriff.setzen"><Button variant="outline" size="sm" disabled={busy} onClick={onBeenden}>
         Jetzt beenden
-      </Button>
+      </Button></Recht>
     </div>
   );
 }

@@ -179,7 +179,7 @@ class AdminApiTest {
         String customer = token("nordsee-operator", "nordsee-pw");
 
         // They see exactly their own site - not the seeded demo tenant's Berlin.
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
                 new ParameterizedTypeReference<>() {});
         assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -219,7 +219,7 @@ class AdminApiTest {
 
         // And the tenant's own customer, through the RLS-scoped portal, sees it too.
         String customer = token("rhein-operator", "rhein-pw");
-        ResponseEntity<List<Map<String, Object>>> customerSites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> customerSites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
                 new ParameterizedTypeReference<>() {});
         assertThat(customerSites.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -240,7 +240,7 @@ class AdminApiTest {
         String admin = token("admin", "admin");
 
         // Tenant A selected: the admin sees exactly what `demo` sees.
-        ResponseEntity<List<Map<String, Object>>> tenantA = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> tenantA = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
                 new ParameterizedTypeReference<>() {});
@@ -248,7 +248,7 @@ class AdminApiTest {
         assertThat(tenantA.getBody()).extracting(s -> s.get("name")).contains("Demo Site Berlin");
 
         // Switch to tenant B: now exactly what `demo2` sees - never both at once.
-        ResponseEntity<List<Map<String, Object>>> tenantB = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> tenantB = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(admin), "10000000-0000-0000-0000-000000000001")),
                 new ParameterizedTypeReference<>() {});
@@ -256,14 +256,14 @@ class AdminApiTest {
         assertThat(tenantB.getBody()).extracting(s -> s.get("name")).doesNotContain("Demo Site Berlin");
 
         // Devices follow the same context (RLS on the same app datasource).
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody()).extracting(d -> d.get("externalRef")).contains("demo-inverter-01");
 
         // No tenant selected ("Alle Mandanten"): default-deny, zero rows.
-        ResponseEntity<List<Map<String, Object>>> none = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> none = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(admin)),
                 new ParameterizedTypeReference<>() {});
         assertThat(none.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -275,7 +275,7 @@ class AdminApiTest {
     void customerCannotSwitchTenantsViaHeader() {
         String operator = token("demo", "demo"); // tenant A
 
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(operator), "10000000-0000-0000-0000-000000000001")),
                 new ParameterizedTypeReference<>() {});
@@ -1468,7 +1468,7 @@ class AdminApiTest {
                 + "AND peak_reserve_soc_pct = 40")).isEqualTo(1);
 
         // The customer-facing SiteDto echoes the module READ-ONLY...
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(adminTenant),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> siteDto = sites.getBody().stream()
@@ -3396,13 +3396,13 @@ class AdminApiTest {
         // Mandanten-Kontext leer -> RLS ist default-deny. Der
         // Umschalter-Header hilft ihm nicht: den ehrt TenantFilter NUR fuer
         // platform-admin-Token.
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(publisher)),
                 new ParameterizedTypeReference<>() {});
         assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(sites.getBody()).as("kein Mandant => keine Zeilen").isEmpty();
 
-        ResponseEntity<List<Map<String, Object>>> switched = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> switched = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(publisher),
                         "00000000-0000-0000-0000-000000000001")),

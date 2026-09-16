@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -112,7 +113,7 @@ export function LadeparkRahmenKarte({
               {limit == null ? GRENZE_FEHLT : `${fmtNum(limit, 'kW')} am Netzverknüpfungspunkt.`}
             </p>
           </div>
-          <div className="vp-ladepark-edit">
+          <Recht aktion="grenze.eintragen"><div className="vp-ladepark-edit">
             <label htmlFor="vp-grenze">kW</label>
             <input
               id="vp-grenze"
@@ -128,7 +129,7 @@ export function LadeparkRahmenKarte({
             >
               Übernehmen
             </Button>
-          </div>
+          </div></Recht>
         </div>
         {inputError && <p className="vp-ladepark-error">{inputError}</p>}
         {error && <p className="vp-ladepark-error">{error}</p>}

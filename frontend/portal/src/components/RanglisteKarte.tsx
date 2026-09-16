@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * **Die Rangliste** — „Reihenfolge bei knapper Leistung" (Verbrauchsmanagement
  * v1 §5, Paket P4).
@@ -88,13 +89,13 @@ export function RanglisteKarte({ liste, onSpeichern }: RanglisteKarteProps) {
     <div className="vp-vz-rankbox">
       {onSpeichern && (
         <div className="vp-vz-rankhead">
-          <button
+          <Recht aktion="betriebsweise.aendern"><button
             type="button"
             className="vp-vz-linkbtn"
             onClick={() => (bearbeiten ? beenden() : setBearbeiten(true))}
           >
             {bearbeiten ? RANGLISTE_ABBRECHEN : RANGLISTE_AENDERN}
-          </button>
+          </button></Recht>
         </div>
       )}
       {bearbeiten && <p className="vp-vz-quiet">{RANGLISTE_HINWEIS}</p>}
@@ -122,22 +123,22 @@ export function RanglisteKarte({ liste, onSpeichern }: RanglisteKarteProps) {
             {zeilenTag(e) && <span className="vp-vz-sub">{zeilenTag(e)}</span>}
             {bearbeiten && (
               <span className="vp-vz-move">
-                <button
+                <Recht aktion="betriebsweise.aendern"><button
                   type="button"
                   aria-label={`${RANGLISTE_HOCH}: ${zeilenTitel(e)}`}
                   disabled={i === 0}
                   onClick={() => setEntwurf((l) => verschiebe(l, i, -1))}
                 >
                   <Icon name="arrow-up" size={14} />
-                </button>
-                <button
+                </button></Recht>
+                <Recht aktion="betriebsweise.aendern"><button
                   type="button"
                   aria-label={`${RANGLISTE_RUNTER}: ${zeilenTitel(e)}`}
                   disabled={i === zeilen.length - 1}
                   onClick={() => setEntwurf((l) => verschiebe(l, i, 1))}
                 >
                   <Icon name="arrow-down" size={14} />
-                </button>
+                </button></Recht>
               </span>
             )}
           </li>
@@ -159,9 +160,9 @@ export function RanglisteKarte({ liste, onSpeichern }: RanglisteKarteProps) {
               demselben Zustand, die verschieden heissen, sind eine Frage mehr,
               als die Fläche stellen muss. */}
           <div className="vp-vz-rankact">
-            <button type="button" className="vp-vz-primary" disabled={busy} onClick={speichern}>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="vp-vz-primary" disabled={busy} onClick={speichern}>
               {busy ? RANGLISTE_SPEICHERT : RANGLISTE_SPEICHERN}
-            </button>
+            </button></Recht>
           </div>
         </>
       )}

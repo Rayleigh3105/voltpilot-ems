@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useId, useMemo, useState, type FormEvent } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -196,9 +197,9 @@ export function ZuordnungAendernDialog({
           <Button variant="ghost" onClick={onClose}>
             {KNOPF.abbrechen}
           </Button>
-          <Button type="submit" form={`${basis}-form`} disabled={busy}>
+          <Recht rueckwirkend={zf?.art === 'rueckwirkend'} aktion={art === 'verteilung' ? 'messstelle.verteilung' : 'messstelle.bearbeiten'}><Button type="submit" form={`${basis}-form`} disabled={busy}>
             {busy ? KNOPF.speichert : eintragenKnopf(art, form.tag)}
-          </Button>
+          </Button></Recht>
         </>
       }
     >

@@ -1,3 +1,4 @@
+import { rechteSeed, sichtbareListe } from '../src/test/rollenFixtures';
 /**
  * Fictional, frozen teaching data. Imported ONLY by /e2e/help.tsx.
  * No production API/auth fallback: the application bundle never imports this.
@@ -134,8 +135,9 @@ export function installHelpFixtures() {
   for (const key of Object.keys(api)) (api as Record<string, unknown>)[key] = async () => { throw new Error('Missing help fixture: ' + key); };
   const result = (value: unknown) => async () => structuredClone(value);
   Object.assign(api, {
-    listSites: error ? async () => { throw new Error('Demo data unavailable'); } : result(empty || admin ? [] : single ? [site] : sites),
-    listDevices: result(empty || admin ? [] : single ? [devices[0]] : devices),
+    selbstauskunft: result({ ...rechteSeed().me, standorte: [] }),
+    listSites: error ? async () => { throw new Error('Demo data unavailable'); } : result(sichtbareListe(empty || admin ? [] : single ? [site] : sites)),
+    listDevices: result(sichtbareListe(empty || admin ? [] : single ? [devices[0]] : devices)),
     tenantContext: result({ tenantId: 'help-tenant', name: 'Beispielbetrieb', betriebsart: single || empty ? 'endkunde' : 'betreiber' }),
     overview: result(overview), earnings: result({ range: 'month', from: DAY, to: NOW, sites: sites.map((s) => ({ ...money, id: s.id, siteId: s.id, name: s.name })), totals: { ...money, coveredSlots: 98 } }),
     siteEarnings: result(money), history: result(history), schedule: result(plan), siteAssets: result([asset, { ...asset, id: 'help-pv', type: 'pv', capacityKwh: null, pvCapacityKwp: 10, moduleCount: 25 }]),
@@ -148,7 +150,7 @@ export function installHelpFixtures() {
     siteRuleEvents: result([]), commandHistory: result({ entries: [], commands: [], total: 0 }), measurementPoints: result([]), componentTemplates: result([]), siteComponentTemplates: result([]),
     siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
       communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
-    siteSources: result([]), edgeVersions: result([]), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
+    siteSources: result([]), edgeVersions: result(sichtbareListe([])), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
     controlStatus: result({ deviceId: 'help-box', commandedKw: 2.2, confirmedKw: 2.2, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'plan', executionPlannedKw: 2.2 }), curtailmentStatus: result(null), eigeneAuswertung: result(null), autoStart: result(null),
     siteChargers: result(charging), chargingConfig: result({ siteId: site.id, gridLimitKw: 22, marginPct: 10, surplusPolicy: 'sonne_zuerst', storagePriority: 'speicher_vor_auto', priorityChargePointIds: ['CP-CARPORT'], chargePoints: [] }),
     siteVerbraucher: result({

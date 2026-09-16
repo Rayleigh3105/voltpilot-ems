@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die EINE Tür zu einer neuen REGEL — seit Steuerung Stufe 2 der BAUKASTEN
  * selbst (Konzept `vp-steuerung-konzept-b3` §3.3 „Der Builder (die EINE
@@ -130,9 +131,9 @@ export function NeueRegelDialog({
         {start.brauchtKomponente && (
           <div className="vp-neuregel-bridge">
             <p>{KOMPONENTE_ANLEGEN}</p>
-            <Button size="sm" disabled={busy} onClick={onKomponenteAnlegen}>
+            <Recht aktion="geraet.einrichten"><Button size="sm" disabled={busy} onClick={onKomponenteAnlegen}>
               Komponente anlegen
-            </Button>
+            </Button></Recht>
           </div>
         )}
 
@@ -154,9 +155,9 @@ export function NeueRegelDialog({
                 Die freie Fläche: Bausteine verbinden, wie Sie wollen. Vor jeder
                 Aktivierung wird die Regel geprüft und simuliert.
               </p>
-              <Button size="sm" variant="outline" disabled={busy} onClick={onOpenEditor}>
+              <Recht aktion="betriebsweise.aendern"><Button size="sm" variant="outline" disabled={busy} onClick={onOpenEditor}>
                 Editor öffnen
-              </Button>
+              </Button></Recht>
             </>
           )}
         </div>

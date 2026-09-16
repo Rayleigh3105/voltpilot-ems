@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -169,15 +170,15 @@ export function AnlageStandortDialog({
       title={ergebnis ? UMZUG_GESPEICHERT_TITEL : UMZUG_TITEL}
       footer={
         ergebnis ? (
-          <Button onClick={fertig}>{KNOPF_FERTIG}</Button>
+          <Recht aktion="anlage.zuordnen"><Button onClick={fertig}>{KNOPF_FERTIG}</Button></Recht>
         ) : (
           <>
             <Button variant="ghost" onClick={onClose}>
               Abbrechen
             </Button>
-            <Button type="submit" form={`${basis}-form`} disabled={busy}>
+            <Recht aktion="anlage.zuordnen" rueckwirkend={!!form.gueltigAb && form.gueltigAb < standorte.stichtag}><Button type="submit" form={`${basis}-form`} disabled={busy}>
               {KNOPF_ZUORDNEN}
-            </Button>
+            </Button></Recht>
           </>
         )
       }

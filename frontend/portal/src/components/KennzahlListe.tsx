@@ -17,6 +17,7 @@ import '../pages/KennzahlenPage.css';
 export function useKennzahlenListe(zone: string, standortId: string | null, versuch = 0, an = true) {
   const [liste, setListe] = useState<Kennzahl[] | null>(null);
   const [werte, setWerte] = useState<Record<string, ListenWerte>>({});
+  const [ausserhalb, setAusserhalb] = useState<string | null>(null);
   const [fehler, setFehler] = useState(false);
 
   useEffect(() => {
@@ -24,11 +25,12 @@ export function useKennzahlenListe(zone: string, standortId: string | null, vers
     let aktiv = true;
     setFehler(false);
     api.kennzahlen().then(
-      ({ kennzahlen: alle }) => {
+      ({ kennzahlen: alle, ausserhalb_zugriff }) => {
         if (!aktiv) return;
         // Am Standort nur, was dort gilt — und nur deren Werte werden gelesen.
         const kennzahlen = standortId ? amStandort(alle, standortId) : alle;
         setListe(kennzahlen);
+        setAusserhalb(ausserhalb_zugriff?.text ?? null);
         setWerte({});
         const heute = heuteIn(zone, Date.now());
         const setze = (id: string, w: ListenWerte) => aktiv && setWerte((alt) => ({ ...alt, [id]: w }));
@@ -51,7 +53,7 @@ export function useKennzahlenListe(zone: string, standortId: string | null, vers
       aktiv = false;
     };
   }, [zone, versuch, standortId, an]);
-  return { liste, werte, fehler };
+  return { liste, werte, fehler, ausserhalb };
 }
 
 export function KennzahlKarte({ karte, onOeffnen }: { karte: ListenKarte; onOeffnen: () => void }) {

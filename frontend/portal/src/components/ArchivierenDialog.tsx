@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -137,9 +138,9 @@ export function ArchivierenDialog({
         <Button variant="ghost" onClick={onClose}>
           Abbrechen
         </Button>
-        <Button type="submit" form={`${basis}-form`} disabled={busy}>
+        <Recht aktion={objekt.art === 'standort' ? 'standort.verwalten' : 'gebaeude.pflegen'}><Button type="submit" form={`${basis}-form`} disabled={busy}>
           {aktion === 'archivieren' ? 'Archivieren' : aktion === 'wiederherstellen' ? 'Wiederherstellen' : 'Endgültig löschen'}
-        </Button>
+        </Button></Recht>
       </>
     );
 

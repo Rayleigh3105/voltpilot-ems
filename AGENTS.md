@@ -53,7 +53,7 @@ Mandantenfähiges EMS für PV, Speicher und Verbraucher. Einstieg: [Dokumentatio
 
 ## Maintaining this file
 
-Nur Regeln behalten, die künftige Arbeit beeinflussen. Bestehende Einträge überarbeiten statt neue Vorfallchroniken anzuhängen. Fachwissen knapp am zuständigen Thema dokumentieren und hier verlinken. `CLAUDE.md` bleibt ein Symlink auf diese Datei.
+Nur Regeln behalten, die künftige Arbeit beeinflussen. Bestehende Einträge überarbeiten statt neue Vorfallchroniken anzuhängen. Fachwissen knapp am zuständigen Thema dokumentieren und hier verlinken. `CLAUDE.md` bindet diese Datei über `@AGENTS.md` ein; Arbeitsregeln bleiben hier.
 
 ## Weiterführende Arbeitsregeln
 

@@ -1,3 +1,5 @@
+import { RechteStandort } from '../rollen';
+import { Recht } from './Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -218,6 +220,7 @@ export function GebaeudeKarte({
   const zurueck = () => ausloeser.current?.focus();
 
   return (
+    <RechteStandort.Provider value={standort.id}>
     <div className="vp-gk" data-testid={`gebaeude-karte-${knoten.kurzzeichen ?? knoten.schluessel}`}>
       <section className="vp-gk-block" aria-label={`${ENERGIE_TITEL} · ${knoten.name}`}>
         <h4 className="vp-gk-titel">{ENERGIE_TITEL}</h4>
@@ -275,7 +278,7 @@ export function GebaeudeKarte({
           <>
             <p className="vp-gk-hinweis">{`Noch keine ${UEMS_MESSSTELLE} in diesem Gebäude.`}</p>
             {messstellen.anlegen && (
-              <Button
+              <Recht aktion="messstelle.bearbeiten"><Button
                 variant="outline"
                 size="sm"
                 onClick={(e) => {
@@ -284,7 +287,7 @@ export function GebaeudeKarte({
                 }}
               >
                 {KNOPF_MESSSTELLE_ANLEGEN}
-              </Button>
+              </Button></Recht>
             )}
           </>
         )}
@@ -307,7 +310,7 @@ export function GebaeudeKarte({
           <p className="vp-gk-hinweis">{`Für dieses Gebäude gibt es noch keine ${KENNZAHLEN_TITEL.toLowerCase()}.`}</p>
         )}
         {darfAnlegen && (
-          <Button
+          <Recht aktion="kennzahl.standort_definieren"><Button
             variant="outline"
             size="sm"
             onClick={(e) => {
@@ -316,7 +319,7 @@ export function GebaeudeKarte({
             }}
           >
             {KNOPF_KENNZAHL_ANLEGEN}
-          </Button>
+          </Button></Recht>
         )}
       </section>
 
@@ -347,5 +350,6 @@ export function GebaeudeKarte({
         />
       )}
     </div>
+    </RechteStandort.Provider>
   );
 }

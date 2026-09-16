@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Der STEUERART-DIALOG (Verbrauchsmanagement v1, Paket P2; Konzept
  * `vp-verbrauchsmgmt-konzept-v1` §6.2, Mockup „Steuerart-Dialog Schritt 1–4").
@@ -121,12 +122,12 @@ export function SteuerartDialog({
             <Button variant="ghost" onClick={zurueck} disabled={busy}>{ZURUECK}</Button>
           )}
           {marke === SCHRITT_FOLGEN ? (
-            <Button
+            <Recht aktion="betriebsweise.aendern"><Button
               onClick={() => onSpeichern(wunschAus(entwurf, ladepunkt))}
               disabled={busy || einwand != null}
             >
               {SPEICHERN}
-            </Button>
+            </Button></Recht>
           ) : (
             <Button onClick={weiter} disabled={busy || (aktiv === 1 && !entwurf.quelle)}>
               {WEITER}

@@ -1,3 +1,10 @@
+import ts from 'typescript';
+import { createHash } from 'node:crypto';
+import kundenBestand from './test/kundenBestand-vor-ip12.json';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { Recht } from './components/Recht';
+import { darf, setSelbstauskunft } from './rollen';
+import { rechteSeed, RECHTE_MATRIX } from './test/rollenFixtures';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createElement } from 'react';
@@ -1485,6 +1492,66 @@ describe('UEMS AP-01 IP-5 — die Startansicht-Weiche lässt den Einzel-Anlagen-
         pfad: p.vor.map((g) => ({ wert: pfadWert(g), label: g.label, onOpen: () => {} })),
       });
       expect(nachher, form).toBe(vorher);
+    }
+  });
+});
+
+
+describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
+  it('alle 913 bestehenden Bedienelemente in den 161 Kundendateien behalten Inhalt und Attribute des Ausgangsstands', () => {
+    // Vor IP-12 aus origin/uems aufgenommen: sämtliche Kunden-TSX, nicht nur die angefassten Dateien.
+    // Der Schlüssel wandert beim Einklammern vom Knopf zum Recht; React rendert ihn nie ins DOM.
+    // Leerraum normalisiert nur die TSX-Schreibweise, niemals Texte/Handler/Attribute.
+    const drucker = ts.createPrinter({ removeComments: true });
+    const tags = new Set(['Button', 'button', 'Switch', 'Input', 'input', 'select', 'textarea']);
+    let zahl = 0;
+    for (const [pfad, vorher] of Object.entries(kundenBestand.bedienelemente)) {
+      const datei = ts.createSourceFile(pfad, readFileSync(join(SRC, pfad), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const jetzt: string[] = [];
+      const besuche = (knoten: ts.Node) => {
+        if (ts.isJsxElement(knoten) || ts.isJsxSelfClosingElement(knoten)) {
+          const auf = ts.isJsxElement(knoten) ? knoten.openingElement : knoten;
+          if (tags.has(auf.tagName.getText(datei))) {
+            const text = drucker.printNode(ts.EmitHint.Unspecified, knoten, datei)
+              .replace(/\s+/g, ' ').replace(/\bkey=\{[^}]*\} /g, '').trim();
+            jetzt.push(createHash('sha256').update(text).digest('hex'));
+          }
+        }
+        ts.forEachChild(knoten, besuche);
+      };
+      besuche(datei);
+      for (const fingerabdruck of vorher) {
+        const stelle = jetzt.indexOf(fingerabdruck);
+        expect(stelle, `${pfad}: Bedienelement aus ${kundenBestand.basis}`).toBeGreaterThanOrEqual(0);
+        jetzt.splice(stelle, 1);
+        zahl++;
+      }
+    }
+    expect(zahl).toBe(913);
+  });
+  it('jeder Rechte-Hebel aller Kundenflächen erhält das bisherige Markup ohne zusätzliche Hülle', () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    const hebel = sourceFiles().filter(f => !f.includes('/admin/') && !f.includes('/test/'))
+      .flatMap(f => [...readFileSync(f, 'utf8').matchAll(/(?:aktion|recht)=["']([a-z_]+\.[a-z_]+)["']/g)]
+        .map(m => ({ f, aktion: m[1] })));
+    expect(hebel.length).toBeGreaterThan(180);
+    for (const { f, aktion } of hebel) {
+      expect(RECHTE_MATRIX.has(aktion), f + ': ' + aktion).toBe(true);
+      expect(darf(aktion), f + ': ' + aktion).toBe(true);
+      const vorher = createElement('button', { type: 'button', className: 'vp-btn', disabled: true }, 'Bestehender Knopf');
+      expect(renderToStaticMarkup(createElement(Recht, { aktion, children: vorher })), f)
+        .toBe(renderToStaticMarkup(vorher));
+    }
+  });
+  it('auch dynamische Aktionen behalten für Jonas an jedem sichtbaren Standort das Markup', () => {
+    const { me } = rechteSeed('JW'); setSelbstauskunft(me);
+    for (const aktion of RECHTE_MATRIX.keys()) {
+      for (const standort of [null, ...me.standorte.map(s => s.id)]) {
+        if (!darf(aktion, standort)) continue;
+        const vorher = createElement('section', { 'aria-label': 'Bestandsfläche' }, createElement('button', null, 'Speichern'));
+        expect(renderToStaticMarkup(createElement(Recht, { aktion, standort, children: vorher })))
+          .toBe(renderToStaticMarkup(vorher));
+      }
     }
   });
 });

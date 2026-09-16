@@ -1,3 +1,4 @@
+import { sichtbareListe } from '../test/rollenFixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BoxSeiteSection } from './BoxSeiteSection';
@@ -250,7 +251,7 @@ function stub(over: {
   });
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null);
   vi.spyOn(api, 'curtailmentStatus').mockResolvedValue(null);
-  vi.spyOn(api, 'edgeVersions').mockResolvedValue([
+  vi.spyOn(api, 'edgeVersions').mockResolvedValue(sichtbareListe([
     {
       deviceId: 'gw',
       siteId: 's-1',
@@ -258,7 +259,7 @@ function stub(over: {
       paletteVersion: '0.9.0',
       reportedAt: FRISCH,
     },
-  ]);
+  ]));
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());

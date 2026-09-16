@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useEffect, useMemo, useState } from 'react';
 import {
   api,
@@ -779,9 +780,9 @@ function UebernahmeAktion({
   const knopf = uebernahmeKnopf(state, bewertet);
   return (
     <div className="vp-pq-aktion">
-      <Button variant="outline" size="sm" onClick={onClick} disabled={knopf.grund != null}>
+      <Recht aktion="prognose.befoerdern"><Button variant="outline" size="sm" onClick={onClick} disabled={knopf.grund != null}>
         {knopf.label}
-      </Button>
+      </Button></Recht>
       {knopf.grund && <span className="vp-c-note">{knopf.grund}</span>}
     </div>
   );

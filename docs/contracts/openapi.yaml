@@ -1245,22 +1245,21 @@ paths:
         Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
         die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
 
-        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
-        antwortet mit einer NACKTEN LISTE und kann das additive Feld
-        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
-        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
-        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
-        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
-        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
-        zeichnet das Portal aus GET /api/v1/me.
+        AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
+        `teilansicht {sichtbar, gesamt}` den Umfang dieser Antwort.
       responses:
         "200":
           description: One entry per device that reported a version.
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: "#/components/schemas/EdgeVersion" }
+                type: object
+                required: [eintraege, teilansicht]
+                properties:
+                  eintraege:
+                    type: array
+                    items: { $ref: "#/components/schemas/EdgeVersion" }
+                  teilansicht: { $ref: "#/components/schemas/Teilansicht" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/earnings:
     get:
@@ -1340,22 +1339,21 @@ paths:
         Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
         die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
 
-        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
-        antwortet mit einer NACKTEN LISTE und kann das additive Feld
-        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
-        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
-        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
-        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
-        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
-        zeichnet das Portal aus GET /api/v1/me.
+        AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
+        `teilansicht {sichtbar, gesamt}` den Umfang dieser Antwort.
       responses:
         "200":
           description: Sites (only the caller's VISIBLE sites, via RLS).
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: "#/components/schemas/Site" }
+                type: object
+                required: [eintraege, teilansicht]
+                properties:
+                  eintraege:
+                    type: array
+                    items: { $ref: "#/components/schemas/Site" }
+                  teilansicht: { $ref: "#/components/schemas/Teilansicht" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [sites]
@@ -1579,22 +1577,21 @@ paths:
         Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
         die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
 
-        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
-        antwortet mit einer NACKTEN LISTE und kann das additive Feld
-        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
-        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
-        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
-        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
-        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
-        zeichnet das Portal aus GET /api/v1/me.
+        AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
+        `teilansicht {sichtbar, gesamt}` den Umfang dieser Antwort.
       responses:
         "200":
           description: Devices (only the caller's VISIBLE sites, via RLS).
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: "#/components/schemas/Device" }
+                type: object
+                required: [eintraege, teilansicht]
+                properties:
+                  eintraege:
+                    type: array
+                    items: { $ref: "#/components/schemas/Device" }
+                  teilansicht: { $ref: "#/components/schemas/Teilansicht" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/devices/{deviceId}:
     put:

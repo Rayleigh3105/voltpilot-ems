@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -144,12 +145,12 @@ export function StandortePage() {
           <p>Ihre Orte mit Adresse, Gebäuden und Anlagen.</p>
         </div>
         {kannAnlegen && (
-          <Button
+          <Recht aktion="standort.verwalten"><Button
             iconLeft={<Icon name="plus" size={18} />}
             onClick={(e) => oeffne(null, e.currentTarget)}
           >
             Standort anlegen
-          </Button>
+          </Button></Recht>
         )}
       </div>
 
@@ -227,7 +228,7 @@ export function StandortePage() {
                     {/* IP-15 (Z3): ein archivierter Standort kommt zurück — ein neues Bestehen ab heute. */}
                     {!stichtag && (
                       <div className="vp-st-archiv-knoepfe">
-                        <Button
+                        <Recht aktion="standort.verwalten"><Button
                           variant="outline"
                           size="sm"
                           iconLeft={<Icon name="refresh-cw" size={16} />}
@@ -235,7 +236,7 @@ export function StandortePage() {
                           onClick={(ev) => oeffneArchiv('wiederherstellen', s, ev.currentTarget)}
                         >
                           Wiederherstellen …
-                        </Button>
+                        </Button></Recht>
                       </div>
                     )}
                   </li>

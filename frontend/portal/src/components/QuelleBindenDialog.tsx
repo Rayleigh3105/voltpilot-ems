@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -373,9 +374,9 @@ export function QuelleBindenDialog({ open, rolle, ziel, jetzt, onClose, onGebund
         <Button variant="ghost" onClick={onClose} disabled={busy}>
           Abbrechen
         </Button>
-        <Button onClick={() => void binden()} disabled={busy}>
+        <Recht aktion="messstelle.quelle" rueckwirkend={Boolean(urteil.zeitpunkt && rueckwirkung(uhr, urteil.zeitpunkt).art === 'rueckwirkend')}><Button onClick={() => void binden()} disabled={busy}>
           {KNOPF[rolle]}
-        </Button>
+        </Button></Recht>
       </>
     );
   }

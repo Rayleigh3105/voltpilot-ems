@@ -222,14 +222,15 @@ export function startEbene(i: {
   betriebsart: Betriebsart | null;
   siteIds: string[];
   orte: Orte | null | undefined;
+  eingeschraenkt?: boolean;
 }): Ebene {
   const { orte } = i;
   // Ohne Standorte, als Admin (behält seine Übersicht) und als Betreiber
   // („Übersicht ab der ersten Anlage — unverändert") entscheidet die Weiche von heute.
-  if (i.isAdmin || !orte || orte.standorte.length === 0) return EBENE_HEUTE;
-  if (isBetreiberShell(i.betriebsart)) return EBENE_HEUTE;
+  if ((!i.eingeschraenkt && i.isAdmin) || !orte || orte.standorte.length === 0) return EBENE_HEUTE;
+  if (!i.eingeschraenkt && isBetreiberShell(i.betriebsart)) return EBENE_HEUTE;
   // 0 Anlagen: der Leerzustand der Übersicht ist die Landung — wie heute.
-  if (i.siteIds.length === 0) return EBENE_HEUTE;
+  if (!i.eingeschraenkt && i.siteIds.length === 0) return EBENE_HEUTE;
   if (orte.standorte.length >= 2) {
     return { art: 'unternehmen', name: orte.unternehmen, standorte: orte.standorte };
   }

@@ -1,3 +1,4 @@
+import { rechteSeed } from './test/rollenFixtures';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -1892,7 +1893,7 @@ describe('UEMS AP-12 IP-14 · die Berichts-Dialoge sprechen Bericht · Entwurf �
     for (const tag of ['2026-10-20T10:00:00+02:00', '2026-11-10T09:00:00+01:00', '2026-11-13T09:00:00+01:00']) {
       const jetzt = Date.parse(tag);
       const detail = detailAm(jetzt);
-      const h = BD.seitenHebel(detail, entwurfAm(jetzt), null, jetzt);
+      const h = BD.seitenHebel(detail, entwurfAm(jetzt), BD.rechteAus(rechteSeed().me), jetzt);
       if (h.freigeben) {
         const v = h.freigeben.vorschau;
         out.push(h.freigeben.knopf, v.knopf, v.festgehalten, ...v.punkte.map((p) => p.text), ...[v.satz, v.ersetzt].filter(da));

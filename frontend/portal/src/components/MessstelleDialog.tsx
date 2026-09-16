@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -877,23 +878,23 @@ export function MessstelleDialog({
       <>
         {zurueck}
         {ansicht === 1 && (
-          <Button onClick={() => void weiterIdentitaet()} disabled={busy || ladend || ladeFehler !== null}>
+          <Recht aktion="messstelle.bearbeiten"><Button onClick={() => void weiterIdentitaet()} disabled={busy || ladend || ladeFehler !== null}>
             {busy ? KNOPF.speichert : KNOPF.weiterZuordnung}
-          </Button>
+          </Button></Recht>
         )}
         {ansicht === 2 && (
-          <Button onClick={() => void weiterZuordnung()} disabled={busy}>
+          <Recht aktion="messstelle.bearbeiten" rueckwirkend={Boolean(zuordnung.gueltigAb) && zuordnung.gueltigAb < uhr.heute}><Button onClick={() => void weiterZuordnung()} disabled={busy}>
             {busy ? KNOPF.speichert : KNOPF.weiterQuelle}
-          </Button>
+          </Button></Recht>
         )}
         {ansicht === 3 && (
           <>
             <Button variant="ghost" onClick={() => setAnsicht('fertig')} disabled={busy}>
               {KNOPF.spaeter}
             </Button>
-            <Button onClick={() => void fertigstellen()} disabled={busy}>
+            <Recht aktion="messstelle.quelle" rueckwirkend={Boolean(quelle.datum) && quelle.datum < uhr.heute}><Button onClick={() => void fertigstellen()} disabled={busy}>
               {busy ? KNOPF.speichert : KNOPF.fertig}
-            </Button>
+            </Button></Recht>
           </>
         )}
       </>

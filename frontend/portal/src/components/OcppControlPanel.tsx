@@ -1,3 +1,5 @@
+import { useRollen } from '../rollen';
+import { Recht } from './Recht';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { LIVE_POLL_MS } from '../pollCadence';
@@ -9,6 +11,8 @@ import './OcppControlPanel.css';
 export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
   siteId: string; stationId: string; deviceId?: string; canEdit: boolean;
 }) {
+  const rollen = useRollen();
+  const bearbeitbar = canEdit && rollen.darf('freigabe.erteilen');
   const [view, setView] = useState<OcppControlView | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,7 +37,7 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
   }, [siteId]);
 
   async function save(change: (p: OcppControlPolicy) => OcppControlPolicy) {
-    if (!view || busy) return;
+    if (!view || busy || !bearbeitbar) return;
     setBusy(true); setError('');
     try { setView(await api.saveOcppControl(siteId, change(view.desired ?? initialOcppControl()))); setNow(Date.now()); }
     catch (e) { setError(e instanceof Error ? e.message : 'Einstellungen konnten nicht gespeichert werden.'); }
@@ -54,20 +58,21 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
   return <div className="vp-ocpp-control">
     <h3>OCPP einrichten und prüfen</h3>
     <p>Die Box verteilt das Ladebudget. Manuelle Grenzen gelten zusätzlich zu Anschlussgrenze, Phasengrenzen und Sicherheitsprofil.</p>
+    {canEdit && !bearbeitbar && <p className="vp-muted" role="note">{rollen.grund}</p>}
     {error && <p role="alert">{error}</p>}
     {!view ? <p role="status">Einrichtung wird geladen …</p> : <>
       <VpPicker label="Stecker für Grenze und Prüfung" value={connector} options={options.map((id) => ({ value: String(id), label: `Stecker ${id}` }))} onChange={setConnector} />
       <dl className="vp-ocpp-control-facts">{ocppReadiness(view, stationId, connectorId, now, deviceId).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-      {canEdit && <fieldset disabled={busy}>
+      {bearbeitbar && <fieldset disabled={busy}>
         <legend>Freigabe für die OCPP-Säulen dieser Anlage</legend>
         <p>Der Not-Aus der Box bleibt wirksam. Diese Freigabe schaltet ausschließlich die OCPP-Regelung frei.</p>
         <div className="vp-ocpp-control-buttons">
-          <button type="button" onClick={() => void save((p) => ({ ...p, enabled: true }))}>OCPP-Regelung freigeben</button>
-          <button type="button" onClick={() => void save((p) => ({ ...p, enabled: false }))}>Regelung abschalten</button>
+          <Recht aktion="freigabe.erteilen"><button type="button" onClick={() => void save((p) => ({ ...p, enabled: true }))}>OCPP-Regelung freigeben</button></Recht>
+          <Recht aktion="freigabe.erteilen"><button type="button" onClick={() => void save((p) => ({ ...p, enabled: false }))}>Regelung abschalten</button></Recht>
         </div>
         <p>Gespeichert: {desired.enabled == null ? 'bisherige Box-Einstellung' : desired.enabled ? 'freigegeben' : 'abgeschaltet'}. Maßgeblich ist die Bestätigung der Box oben.</p>
       </fieldset>}
-      {canEdit && <fieldset disabled={busy}>
+      {bearbeitbar && <fieldset disabled={busy}>
         <legend>Zeitlich begrenzte Ladegrenze</legend>
         <div className="vp-ocpp-control-inputs">
           <label>Ladegrenze in kW<input inputMode="decimal" value={kw} onChange={(e) => setKw(e.target.value)} placeholder="z. B. 11" /></label>
@@ -75,12 +80,12 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
         </div>
         <p>0 kW pausiert den gewählten Stecker. Höchstens 24 Stunden; die Grenze erhöht kein verfügbares Ladebudget. Fällt die Box aus, läuft die aktuelle Vorgabe spätestens nach zwei Minuten aus; dann gilt das Sicherheitsprofil der Säule.</p>
         <div className="vp-ocpp-control-buttons">
-          <button type="button" onClick={() => void save((p) => withOcppLimit(p, stationId, connectorId, kw, minutes, Date.now()))}>Ladegrenze speichern</button>
-          {limit && <button type="button" onClick={() => void save((p) => ({ ...p, limits: p.limits.filter((l) => l !== limit) }))}>Ladegrenze aufheben</button>}
+          <Recht aktion="freigabe.erteilen"><button type="button" onClick={() => void save((p) => withOcppLimit(p, stationId, connectorId, kw, minutes, Date.now()))}>Ladegrenze speichern</button></Recht>
+          {limit && <Recht aktion="freigabe.erteilen"><button type="button" onClick={() => void save((p) => ({ ...p, limits: p.limits.filter((l) => l !== limit) }))}>Ladegrenze aufheben</button></Recht>}
         </div>
         {limit && <p>{Date.parse(limit.expires_at) > now ? 'Angefordert' : 'Abgelaufen'}: {limit.limit_kw} kW bis {new Date(limit.expires_at).toLocaleString('de-DE')}.</p>}
       </fieldset>}
-      {canEdit && <details>
+      {bearbeitbar && <details>
         <summary>AC-Anschluss und Phasengrenzen</summary>
         <p>Von der Elektrofachkraft bestätigte Verdrahtung eintragen. Die Spannung ist die obere Betriebsspannung zwischen Phase und Neutralleiter. Alle Säulen mit gemeinsamen Phasengrenzen müssen an derselben Box hängen. Die Strombudgets müssen für den Ladepark verfügbar sein und Reserven für andere Verbraucher bereits enthalten.</p>
         <p>Phasengrenzen lassen sich nur übernehmen, wenn alle Säulen verbunden und alle Stecker frei sind. Nach einer Ablehnung erneut speichern, sobald diese Bedingungen erfüllt sind.</p>
@@ -93,18 +98,18 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
           </div>
           <div className="vp-ocpp-control-buttons">{[1, 2, 3].map((phase) => <label key={phase}><input type="checkbox" checked={phases.includes(phase)} onChange={(e) => setPhases(e.target.checked ? [...phases, phase].sort() : phases.filter((p) => p !== phase))} />Phase L{phase}</label>)}</div>
           <div className="vp-ocpp-control-inputs">{circuits.map((value, index) => <label key={index}>Ladepark-Budget L{index + 1} in A<input inputMode="decimal" value={value} onChange={(e) => setCircuits(circuits.map((v, i) => i === index ? e.target.value : v))} /></label>)}</div>
-          <button type="button" onClick={() => void save((p) => {
+          <Recht aktion="freigabe.erteilen"><button type="button" onClick={() => void save((p) => {
             if (!phases.length) throw new Error('Bitte die tatsächlich angeschlossenen Phasen wählen.');
             return { ...p, phase_limits_a: circuits.map((v) => finiteInput(v, 0, 2000, 'Phasenbudget')),
               electrical: [...p.electrical.filter((e) => e.charge_point_id !== stationId || e.connector_id !== connectorId), {
                 charge_point_id: stationId, connector_id: connectorId, voltage_v: finiteInput(voltage, 100, 300, 'Spannung'),
                 max_current_a: finiteInput(current, 1, 2000, 'Stromgrenze'), phases,
               }] };
-          })}>Bestätigte Anschlussdaten speichern</button>
+          })}>Bestätigte Anschlussdaten speichern</button></Recht>
           <p>Alle Stecker benötigen eine Zuordnung. Die Box reserviert je Phase feste Anteile auch für getrennte Säulen. Eine Phasenumschaltung wird dadurch nicht ausgelöst.</p>
         </fieldset>
       </details>}
-      {canEdit && <details>
+      {bearbeitbar && <details>
         <summary>Ladekarten und Zugang</summary>
         <p>Gilt für neue Ladevorgänge an den OCPP-Säulen dieser Anlage. Eine Rücknahme beendet keinen bereits laufenden Ladevorgang. Fahrzeugprofile für Stromquelle und Priorität bleiben davon unabhängig.</p>
         <fieldset disabled={busy}>
@@ -120,13 +125,13 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
       <fieldset disabled={busy}>
         <legend>Beaufsichtigte Regelprüfung</legend>
         <p>Mit einem ladenden Fahrzeug: 60 Sekunden begrenzen, 60 Sekunden pausieren, 60 Sekunden wieder laden. Die Ausgangsleistung muss über der Prüfgrenze liegen. Die Prüfgrenze muss über der Mindestladeleistung des Fahrzeugs liegen. Eine Bestätigung erfordert Rücklesung und passende frische Leistungsmessungen in allen drei Schritten.</p>
-        {canEdit && <>
+        {bearbeitbar && <>
           <label>Prüfgrenze in kW<input inputMode="decimal" value={testKw} onChange={(e) => setTestKw(e.target.value)} /></label>
           <label className="vp-ocpp-card-choice"><input type="checkbox" checked={supervised} onChange={(e) => setSupervised(e.target.checked)} />Ich beaufsichtige den Ladevorgang während der Prüfung.</label>
           <div className="vp-ocpp-control-buttons">
-            <button type="button" disabled={!supervised} onClick={() => void save((p) => ({ ...p, test: { charge_point_id: stationId, connector_id: connectorId,
-              limit_kw: finiteInput(testKw, 0.1, 1000, 'Prüfgrenze'), requested_at: new Date().toISOString() } }))}>Dreiminütige Prüfung anfordern</button>
-            {requestedTest && (pendingTest || test?.state === 'running') && <button type="button" onClick={() => void save((p) => ({ ...p, test: null }))}>Prüfung abbrechen</button>}
+            <Recht aktion="freigabe.erteilen"><button type="button" disabled={!supervised} onClick={() => void save((p) => ({ ...p, test: { charge_point_id: stationId, connector_id: connectorId,
+              limit_kw: finiteInput(testKw, 0.1, 1000, 'Prüfgrenze'), requested_at: new Date().toISOString() } }))}>Dreiminütige Prüfung anfordern</button></Recht>
+            {requestedTest && (pendingTest || test?.state === 'running') && <Recht aktion="freigabe.erteilen"><button type="button" onClick={() => void save((p) => ({ ...p, test: null }))}>Prüfung abbrechen</button></Recht>}
           </div>
         </>}
         {pendingTest && <p role="status">Prüfung angefordert. Die Übernahme durch die Box ist noch nicht bestätigt.</p>}

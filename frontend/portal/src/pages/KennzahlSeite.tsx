@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -225,9 +226,9 @@ export function KennzahlSeite({
         )}
         {onKopieren && (
           <div className="vp-kz-aktionen">
-            <Button variant="outline" size="sm" onClick={() => onKopieren({ kennzahl: k, fassungen: stamm.fassungen })}>
+            <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button variant="outline" size="sm" onClick={() => onKopieren({ kennzahl: k, fassungen: stamm.fassungen })}>
               {KNOPF_KOPIEREN}
-            </Button>
+            </Button></Recht>
           </div>
         )}
       </header>
@@ -319,14 +320,14 @@ export function KennzahlSeite({
               )}
               {onBerechnungAendern && aenderbar && (
                 <div className="vp-kz-aktionen">
-                  <Button
+                  <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button
                     variant="outline"
                     size="sm"
                     data-testid="berechnung-aendern-knopf"
                     onClick={() => onBerechnungAendern({ kennzahl: k, fassungen: stamm.fassungen })}
                   >
                     {E.KNOPF_BERECHNUNG_AENDERN}
-                  </Button>
+                  </Button></Recht>
                 </div>
               )}
               {b.fassungen.length > 0 && (
@@ -367,9 +368,9 @@ export function KennzahlSeite({
             </dl>
             {aenderbar && (
               <div className="vp-kz-aktionen">
-                <Button variant="outline" size="sm" data-testid="stammdaten-aendern-knopf" onClick={() => setStammdatenOffen(true)}>
+                <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button variant="outline" size="sm" data-testid="stammdaten-aendern-knopf" onClick={() => setStammdatenOffen(true)}>
                   {E.KNOPF_STAMMDATEN}
-                </Button>
+                </Button></Recht>
               </div>
             )}
           </section>
@@ -379,7 +380,7 @@ export function KennzahlSeite({
               <>
                 <p>{E.ARCHIVIEREN_SATZ}</p>
                 <div className="vp-kz-aktionen">
-                  <Button
+                  <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button
                     variant="outline"
                     size="sm"
                     data-testid="archivieren-knopf"
@@ -389,13 +390,13 @@ export function KennzahlSeite({
                     }}
                   >
                     {E.KNOPF_ARCHIVIEREN}
-                  </Button>
+                  </Button></Recht>
                 </div>
               </>
             ) : (
               <p className="vp-kz-leise">{archiviertSatz}</p>
             )}
-            <DangerZone
+            <DangerZone recht={k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren'} standort={k.standort_id}
               actionLabel={E.KNOPF_LOESCHEN}
               description={E.LOESCHEN_SATZ}
               consequences={E.loeschenFolgen(k)}

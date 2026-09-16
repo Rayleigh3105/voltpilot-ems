@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -171,9 +172,9 @@ export function ZuordnenDialog({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button onClick={submit} disabled={busy || (mode === 'new' && !guided)}>
+          <Recht aktion="geraet.einrichten"><Button onClick={submit} disabled={busy || (mode === 'new' && !guided)}>
             Fertig
-          </Button>
+          </Button></Recht>
         </>
       }
     >

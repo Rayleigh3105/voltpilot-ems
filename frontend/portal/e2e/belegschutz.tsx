@@ -1,3 +1,4 @@
+import './rollen-fixture';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ApiError, type SiteEntity } from '../src/api';

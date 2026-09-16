@@ -1,3 +1,4 @@
+import { useRollen } from '../rollen';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -31,13 +32,16 @@ export function OrtMenue({
   name,
   eintraege,
   onWahl,
+  recht,
 }: {
+  recht: string;
   name: string;
   eintraege: MenueEintrag[];
   /** Der Auslöser kommt mit, damit der Fokus nach dem Dialog dorthin zurückkehrt. */
   onWahl: (eintrag: MenueEintrag, ausloeser: HTMLElement) => void;
 }) {
   const [offen, setOffen] = useState(false);
+  const rollen = useRollen();
   const [lage, setLage] = useState<{ top: number; left: number } | null>(null);
   const knopf = useRef<HTMLButtonElement>(null);
   const gruppe = useRef<HTMLDivElement>(null);
@@ -113,7 +117,7 @@ export function OrtMenue({
               style={lage ? { top: lage.top, left: lage.left, visibility: 'visible' } : { top: 0, left: 0, visibility: 'hidden' }}
             >
               {eintraege.map((e) =>
-                e.knopf ? (
+                e.knopf && (e.art === 'aenderungen' || rollen.darf(recht)) ? (
                   <button
                     key={e.art}
                     type="button"
@@ -133,7 +137,7 @@ export function OrtMenue({
                 ) : (
                   <p key={e.art} className="vp-om-hinweis" data-testid={`hinweis-${e.art}`}>
                     <Icon name={ICON[e.art]} size={16} />
-                    <span>{e.text}</span>
+                    <span>{e.knopf ? rollen.grund : e.text}</span>
                   </p>
                 ),
               )}

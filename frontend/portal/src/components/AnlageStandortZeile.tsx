@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type StandorteAmStichtag, type Unternehmen } from '../api';
 import {
@@ -130,7 +131,7 @@ export function AnlageStandortZeile({
         {geplant && <span className="vp-as-zeile vp-as-geplant">{geplant}</span>}
         {z.fehlt && <span className="vp-as-zeile">{z.fehlt}</span>}
         {z.fehlt && standort.zustand !== 'archiviert' && (
-          <button
+          <Recht aktion="anlage.zuordnen"><button
             ref={ausloeser}
             type="button"
             className="vp-as-verweis"
@@ -138,9 +139,9 @@ export function AnlageStandortZeile({
             onClick={() => void oeffne()}
           >
             {KNOPF_ADRESSE_NACHTRAGEN}
-          </button>
+          </button></Recht>
         )}
-        <button
+        <Recht aktion="anlage.zuordnen"><button
           ref={umzugAusloeser}
           type="button"
           className="vp-as-verweis"
@@ -148,7 +149,7 @@ export function AnlageStandortZeile({
           onClick={() => setUmzug(true)}
         >
           {KNOPF_ANDEREM_STANDORT}
-        </button>
+        </button></Recht>
         {dialog && (
           <StandortDialog
             open

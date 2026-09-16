@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { zeitraumAus } from '../anlageEnergiebilanz';
@@ -325,7 +326,7 @@ function RegisterFlaeche({
           {unterzeile && <p>{unterzeile}</p>}
         </div>
         {anlegbar && leer?.art !== 'keine_messstelle' && (
-          <Button onClick={() => setAnlegen(true)}>{DIALOG_TITEL.anlegen}</Button>
+          <Recht aktion="messstelle.bearbeiten"><Button onClick={() => setAnlegen(true)}>{DIALOG_TITEL.anlegen}</Button></Recht>
         )}
       </header>
       {leiste}
@@ -442,7 +443,7 @@ function Leer({
           {ZUR_UEBERSICHT}
         </Button>
       )}
-      {leer.art === 'keine_messstelle' && onAnlegen && <Button onClick={onAnlegen}>{DIALOG_TITEL.anlegen}</Button>}
+      {leer.art === 'keine_messstelle' && onAnlegen && <Recht aktion="messstelle.bearbeiten"><Button onClick={onAnlegen}>{DIALOG_TITEL.anlegen}</Button></Recht>}
     </div>
   );
 }

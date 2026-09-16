@@ -1,3 +1,5 @@
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
@@ -150,4 +152,11 @@ describe('Ortsbaum · AP-13 IP-2: die Hülle der Karte je Gebäude', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Halle 2: Karte zuklappen' }));
     expect(screen.queryByTestId('gebaeude-karte')).toBeNull();
   });
+});
+
+it('IP-12: Peter pflegt den sichtbaren Ortsbaum auch ohne Standort in der übergeordneten Schale', async () => {
+  setSelbstauskunft(rechteSeed('PH').me);
+  vi.spyOn(api, 'standortOrte').mockResolvedValue(ortsbaumLindachOhneGebaeude());
+  render(<Ortsbaum standort={werkLindach()} />);
+  expect(await screen.findByRole('button', { name: 'Gebäude anlegen' })).toBeInTheDocument();
 });

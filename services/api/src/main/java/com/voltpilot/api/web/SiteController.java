@@ -1,5 +1,8 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.web.dto.SichtbareListe;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
+
 import com.voltpilot.api.forecast.ForecastModelService;
 import com.voltpilot.api.forecast.ForecastModels;
 import com.voltpilot.api.history.HistoryRange;
@@ -77,17 +80,14 @@ import org.springframework.web.server.ResponseStatusException;
  * scoped by Postgres Row-Level-Security via the {@code tenant_id} JWT claim, so
  * one tenant can never read another's sites or telemetry.
  *
- * <p><b>Ohne {@code teilansicht} — die benannte Lücke von AP-03 IP-10.</b> Diese Route antwortet mit einer
- * NACKTEN LISTE und kann das additive Feld {@code teilansicht {sichtbar, gesamt}} darum nicht im Körper
- * tragen; ein Umschlag {@code {eintraege, teilansicht}} wäre ein Bruch des Vertrags an einer Kernroute.
- * <b>Einzulösen mit AP-03 IP-12</b> (Portal-Rechte-Weiche): dort werden {@code api.ts} und die
- * Kundenflächen ohnehin umgestellt, und der Umschlag ist dann billig. Die Sicherheitszusage hängt nicht
- * daran — die Liste zeigt ausschließlich Sichtbares (Standort-Zaun {@code site_scope}, IP-5) —, und den
- * Satz „Teilansicht: n von m Standorten" zeichnet das Portal aus {@code GET /api/v1/me}.
+ * <p>AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
+ * {@code teilansicht} den Umfang derselben Antwort. Der Standort-Zaun bleibt erhalten.
  */
 @RestController
 @RequestMapping("/api/v1/sites")
 public class SiteController {
+
+    private final TeilansichtDienst teilansicht;
 
     private static final int MAX_POINTS = 5000;
     private static final int MAX_PRICE_POINTS = 1000;
@@ -135,8 +135,9 @@ public class SiteController {
             MessreihenBelege belege,
             NetzanschlussService netzanschluesse,
             BerichtsBelege berichtsBelege,
-            Geltungsbereich geltungsbereich) {
+            Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht) {
         this.sites = sites;
+        this.teilansicht = teilansicht;
         this.geltungsbereich = geltungsbereich;
         this.devices = devices;
         this.series = series;
@@ -160,8 +161,8 @@ public class SiteController {
     }
 
     @GetMapping
-    public List<SiteDto> listSites() {
-        return sites.findAll();
+    public SichtbareListe<SiteDto> listSites() {
+        return new SichtbareListe<>(sites.findAll(), teilansicht.jetzt());
     }
 
     /**

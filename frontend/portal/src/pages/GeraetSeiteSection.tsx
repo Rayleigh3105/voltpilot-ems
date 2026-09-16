@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -337,7 +338,7 @@ export function GeraetSeiteSection({
     );
     soft(api.controlStatus(site.id), setControl);
     soft(api.curtailmentStatus(site.id), setCurtailment);
-    soft(api.edgeVersions(), setEdgeVersions);
+    soft(api.edgeVersions().then((antwort) => antwort.eintraege), setEdgeVersions);
     void api.siteChargers(site.id).then(
       (value) => {
         if (!active) return;
@@ -1265,13 +1266,13 @@ export function GeraetSeiteSection({
           aktionen={(
             <>
               {components?.componentAuthority === 'portal' && editRow && (
-                <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => {
+                <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => {
                   setEditNotice(null);
                   setEditError(null);
                   setEditOpen(true);
                 }}>
                   <Icon name="pencil" size={15} /> Bearbeiten
-                </button>
+                </button></Recht>
               )}
             </>
           )}
@@ -1292,9 +1293,9 @@ export function GeraetSeiteSection({
               <p>Jede Änderung ist eine neue Fassung. Eine Rückkehr schreibt wiederum eine neue Fassung; nichts wird gelöscht.</p>
               <div className="vp-geraet-version-list">
                 {versions.filter((version) => version.version < editRow.definitionVersion).slice(0, 4).map((version) => (
-                  <button key={version.version} type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => setRollbackTarget(version)}>
+                  <Recht aktion="geraet.einrichten" key={version.version}><button key={version.version} type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => setRollbackTarget(version)}>
                     Fassung {version.version} zurückholen
-                  </button>
+                  </button></Recht>
                 ))}
               </div>
               {editError && <p className="vp-assist-error" role="alert">{editError}</p>}
@@ -1908,14 +1909,14 @@ function GeleseneRegisterTabelle({
                   {/* Die Brücke: lesen, gut finden, behalten (§7.2 Teil 3). */}
                   {bruecken && z.key in bruecken && (
                     bruecken[z.key] ? (
-                      <button
+                      <Recht aktion="mess_selektion.bearbeiten"><button
                         type="button"
                         className="vp-geraet-btn vp-beob-bruecke"
                         data-testid={`beob-bruecke-${z.key}`}
                         onClick={() => onBeobachten?.(bruecken[z.key]!)}
                       >
                         <Icon name="plus" size={12} /> {BRUECKE_LABEL}
-                      </button>
+                      </button></Recht>
                     ) : (
                       <span className="vp-muted vp-text-sm">{BRUECKE_NICHT_MOEGLICH}</span>
                     )
@@ -2125,14 +2126,14 @@ function RegisterSektion({
             <p>Mit Vorschau, einmaliger Ausführung und dauerhaftem Protokoll.</p>
           </div>
           {zugang.moeglich ? (
-            <button
+            <Recht aktion="register.schreiben"><button
               type="button"
               className="vp-geraet-btn"
               onClick={() => setOffen(true)}
               data-testid="geraet-regwrite"
             >
               <Icon name="pencil" size={13} /> Schreiben vorbereiten
-            </button>
+            </button></Recht>
           ) : (
             <p className="vp-muted vp-text-sm" data-testid="geraet-regwrite-grund">
               {zugang.grund ?? 'Die Ziele dieses Geräts werden geladen …'}

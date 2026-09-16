@@ -1,3 +1,4 @@
+import { useRollen } from '../rollen';
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -68,6 +69,7 @@ function BerichteListe({
   const [versuch, setVersuch] = useState(0);
   const standortId = standort?.id ?? null;
   const rechte = useBerichtRechte();
+  const rollen = useRollen();
   const [anlegen, setAnlegen] = useState(false);
   // Der Knopf erst mit Antwort der Selbstauskunft; eine 403 der Liste (Unterstützung) hat keinen.
   const darfAnlegen =
@@ -96,6 +98,7 @@ function BerichteListe({
           <h1>{standort ? STANDORT_BERICHTE : TITEL}</h1>
           {standort && <p className="vp-br-kopf-ort">{standort.name}</p>}
         </div>
+        {!darfAnlegen && rollen.selbst && <p className="vp-muted" role="note">{rollen.grund}</p>}
         {darfAnlegen && (
           <Button size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setAnlegen(true)} data-testid="bericht-anlegen-knopf">
             {ANLEGEN_KNOPF}

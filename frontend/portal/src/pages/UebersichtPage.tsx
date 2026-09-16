@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -104,9 +105,9 @@ function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
               ? 'Sobald für diesen Mandanten eine Anlage angelegt ist, erscheinen hier ihre Live-Daten, Marktpreise, Wetter und der Batterie-Fahrplan. Sie können im Namen des Mandanten eine Anlage anlegen.'
               : 'Eine Anlage bündelt Ihr Gerät, Live-Daten, Marktpreise, Wetter und den Batterie-Fahrplan. Danach verbinden Sie Ihr Gerät in wenigen Schritten.'}
           </p>
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
+          <Recht aktion="anlage.verwalten"><Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
             {isAdmin ? 'Anlage anlegen' : 'Erste Anlage anlegen'}
-          </Button>
+          </Button></Recht>
         </div>
       </Card>
       <AnlageAnlegenDrawer

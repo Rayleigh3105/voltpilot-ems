@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Bilanz, type Funktionen, type Site } from '../api';
@@ -215,9 +216,9 @@ function Hauptzaehler({
         <div className="vp-eb-vorschlag" data-testid="rest-vorschlag">
           <p className="vp-eb-satz">{hz.vorschlag.satz}</p>
           {darfAnlegen ? (
-            <button type="button" className="vp-eb-knopf" disabled={legtAn} onClick={() => hz.vorschlag && onAnlegen(hz.vorschlag)}>
+            <Recht aktion="messstelle.formel"><button type="button" className="vp-eb-knopf" disabled={legtAn} onClick={() => hz.vorschlag && onAnlegen(hz.vorschlag)}>
               {REST_ANLEGEN}
-            </button>
+            </button></Recht>
           ) : (
             <p className="vp-eb-hinweis">{REST_OHNE_RECHT}</p>
           )}

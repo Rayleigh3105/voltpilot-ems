@@ -581,6 +581,7 @@ export function SteuerungSection({
   if (editing) {
     return (
       <FlowEditorPage
+        recht="betriebsweise.aendern"
         api={flowApi}
         site={site}
         flowId={editing.flowId}

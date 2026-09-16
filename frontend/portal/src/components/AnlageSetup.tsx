@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -160,9 +161,9 @@ export function AnlageSetup({
                           <span className="vp-setup-source-name">{plan.summary}</span>
                           <span className="vp-setup-source-sub">{plan.roleLabel}</span>
                         </span>
-                        <Button variant="outline" size="sm" onClick={() => setAdopting(plan)}>
+                        <Recht aktion="geraet.einrichten"><Button variant="outline" size="sm" onClick={() => setAdopting(plan)}>
                           {plan.actionLabel}
-                        </Button>
+                        </Button></Recht>
                       </li>
                     ))}
                   </ul>
@@ -174,9 +175,9 @@ export function AnlageSetup({
 
                 {step.action && (
                   <div className="vp-setup-action">
-                    <Button variant="primary" onClick={() => runAction(step)}>
+                    <Recht aktion="geraet.einrichten"><Button variant="primary" onClick={() => runAction(step)}>
                       {step.action.label}
-                    </Button>
+                    </Button></Recht>
                   </div>
                 )}
               </div>
@@ -327,9 +328,9 @@ function GuidedAdoptDrawer({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button onClick={submit} disabled={busy}>
+          <Recht aktion="geraet.einrichten"><Button onClick={submit} disabled={busy}>
             Übernehmen
-          </Button>
+          </Button></Recht>
         </>
       }
     >

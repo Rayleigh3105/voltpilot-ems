@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Portal-Rechte-Weiche (AP-03 IP-12)** — `rollen.ts` liest die wirksamen Aktionen und sichtbaren Standorte aus `/me`; alle Kunden-Hebel fragen diese Quelle. Teilansicht, L3 und Entzug bestimmen Schale/Startansicht. `/sites`, `/devices`, `/edge-versions` liefern `{eintraege, teilansicht}`; Tests müssen den Umschlag stellen · `uems-portal-rechte.md`
+
 - **UEMS-Geltungsbereich für Kennzahlen, Berichte und Exporte (AP-03 IP-11)** — `zugriff/Geltungsbereich.requireScope` prüft R-A1 plus R-A6 vor Detail, Fassungen, Paar-Auswahl, Werten/Versionen, Vorschau und Berichtsausgaben; `KennzahlUmfang` löst alle Eingänge rekursiv auf, ohne Werte zu rechnen. Die Liste trägt nur `ausserhalb_zugriff {anzahl, text}`; kein Name/keine Kennung einer unsichtbaren Kennzahl. ⚠ W3 bleibt: auch Claudia sieht KZ-0003 nicht (korrigierte A15-Abnahme); CSV-Teilansicht nennt sichtbare Namen + Anzahl, volle Sicht und freigegebene Abzüge bleiben gleich; keine Migration · `uems-geltungsbereich.md`
 
 - **UEMS-Zustandsvokabular „liefert Daten“ / „steuert“ als Vertrag mit Vektoren** — Toleranz `min(max(3 × Kadenz, 300 s), 86 400 s)`, Lücke ab 2 × Kadenz, GENAU EIN „steuert nicht“-Grund in fester Reihenfolge; Zwillinge Java `uems/ZustandAbleitung` ⟷ TS `uemsZustand.ts` gegen `docs/contracts/v2/uems-zustand-vectors.json` — „liefert Daten“ ruft seit AP-04 IP-15 das Messstellen-Register an (die bestehenden Live-Flächen behalten ihr 5-Minuten-Fenster), „steuert“ noch niemand · `uems-zustandsvokabular-liefert-daten-st.md`

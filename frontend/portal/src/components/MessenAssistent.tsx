@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -237,7 +238,7 @@ export function MessenAssistent({
   useEffect(() => {
     if (schritt !== 2 || !anlagenKennung) return;
     let aktiv = true;
-    api.listSites().then(
+    api.listSites().then((antwort) => antwort.eintraege).then(
       (s) => {
         if (aktiv) setSites(s);
       },
@@ -304,7 +305,7 @@ export function MessenAssistent({
         (r) => r.register,
         () => null,
       ),
-      api.listDevices().catch(() => null),
+      api.listDevices().then((antwort) => antwort.eintraege).catch(() => null),
     ]).then(([f, l, r, d]) => {
       if (!aktiv) return;
       if (f) setFunktionen(f);
@@ -481,17 +482,17 @@ export function MessenAssistent({
         ) : (
           <div className="vp-ma-leer">
             <p>{STANDORT_KEINER}</p>
-            <Button variant="outline" onClick={() => setUnterfluss({ art: 'standort', standort: null })}>
+            <Recht aktion="standort.verwalten"><Button variant="outline" onClick={() => setUnterfluss({ art: 'standort', standort: null })}>
               {STANDORT_ANLEGEN}
-            </Button>
+            </Button></Recht>
           </div>
         )}
         {st && adresseFehlt(st) && (
           <p className="vp-ma-hinweis">
             <span>{adresseFehltSatz(st.name)}</span>
-            <Button variant="ghost" size="sm" onClick={() => setUnterfluss({ art: 'standort', standort: st })}>
+            <Recht aktion="standort.verwalten"><Button variant="ghost" size="sm" onClick={() => setUnterfluss({ art: 'standort', standort: st })}>
               Adresse nachtragen
-            </Button>
+            </Button></Recht>
           </p>
         )}
         {fehlerZeile}
@@ -539,7 +540,7 @@ export function MessenAssistent({
                       {zahl && <span className="vp-ma-anlage-zahl">{zahl}</span>}
                     </div>
                     <div className="vp-ma-wege">
-                      <button
+                      <Recht aktion="geraet.einrichten"><button
                         type="button"
                         className="vp-ma-weg"
                         aria-label={`${GERAET_VERBINDEN} für ${a.name}`}
@@ -547,8 +548,8 @@ export function MessenAssistent({
                       >
                         <span className="vp-ma-weg-titel">{GERAET_VERBINDEN}</span>
                         <span className="vp-ma-weg-satz">{GERAET_VERBINDEN_SATZ}</span>
-                      </button>
-                      <button
+                      </button></Recht>
+                      <Recht aktion="geraet.einrichten"><button
                         type="button"
                         className="vp-ma-weg"
                         aria-label={`${GERAET_ANBINDEN} für ${a.name}`}
@@ -559,7 +560,7 @@ export function MessenAssistent({
                       >
                         <span className="vp-ma-weg-titel">{GERAET_ANBINDEN}</span>
                         <span className="vp-ma-weg-satz">{GERAET_ANBINDEN_SATZ}</span>
-                      </button>
+                      </button></Recht>
                     </div>
                   </li>
                 );
@@ -828,9 +829,9 @@ export function MessenAssistent({
         <Button variant="ghost" onClick={onClose}>
           Abbrechen
         </Button>
-        <Button variant="primary" onClick={() => void weiterAusStandort()} aria-busy={busy || undefined}>
+        <Recht aktion="funktion.messen_einrichten"><Button variant="primary" onClick={() => void weiterAusStandort()} aria-busy={busy || undefined}>
           {busy ? 'Wird angelegt …' : 'Weiter'}
-        </Button>
+        </Button></Recht>
       </>
     );
   } else if (schritt === 2) {
@@ -860,9 +861,9 @@ export function MessenAssistent({
           Zurück
         </Button>
         {uebernehmbar ? (
-          <Button variant="primary" onClick={() => void uebernehmen()} aria-busy={busy || undefined}>
+          <Recht aktion="messstelle.bearbeiten"><Button variant="primary" onClick={() => void uebernehmen()} aria-busy={busy || undefined}>
             {busy ? 'Wird übernommen …' : UEBERNEHMEN}
-          </Button>
+          </Button></Recht>
         ) : (
           <Button
             variant="primary"

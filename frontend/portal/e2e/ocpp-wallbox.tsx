@@ -1,3 +1,4 @@
+import './rollen-fixture';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { OcppWallboxPage } from '../src/pages/OcppWallboxPage';

@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -109,7 +110,7 @@ function KennzahlenListe({
 }) {
   const [versuch, setVersuch] = useState(0);
   const standortId = standort?.id ?? null;
-  const { liste, werte, fehler } = useKennzahlenListe(zone, standortId, versuch);
+  const { liste, werte, fehler, ausserhalb } = useKennzahlenListe(zone, standortId, versuch);
 
   // Archivierte stehen hinten — sonst die Reihenfolge der Route.
   const sortiert = liste ? [...liste].sort((a, b) => Number(a.archiviert_am !== null) - Number(b.archiviert_am !== null)) : [];
@@ -125,10 +126,11 @@ function KennzahlenListe({
         ) : (
           <h1>{TITEL}</h1>
         )}
-        <Button size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={onAnlegen} data-testid="kennzahl-anlegen-knopf">
+        <Recht aktion={standortId ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren'} standort={standortId}><Button size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={onAnlegen} data-testid="kennzahl-anlegen-knopf">
           {KNOPF_ANLEGEN}
-        </Button>
+        </Button></Recht>
       </header>
+      {ausserhalb && <p className="vp-kz-hinweis" role="note">{ausserhalb}</p>}
       {fehler ? (
         <ErrorState message={LADEFEHLER} onRetry={() => setVersuch((v) => v + 1)} />
       ) : !liste ? (

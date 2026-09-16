@@ -1,3 +1,4 @@
+import './rollen-fixture';
 import { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { keycloak } from '../src/auth';

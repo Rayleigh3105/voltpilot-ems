@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -132,9 +133,9 @@ export function AddDeviceDrawer({
             <Button variant="ghost" onClick={close}>
               Abbrechen
             </Button>
-            <Button variant="primary" onClick={claim} disabled={busy || !siteId}>
+            <Recht aktion="geraet.einrichten"><Button variant="primary" onClick={claim} disabled={busy || !siteId}>
               {busy ? 'Wird hinzugefügt…' : 'Gerät hinzufügen'}
-            </Button>
+            </Button></Recht>
           </>
         )
       }
@@ -336,7 +337,7 @@ export function DeviceDetailDrawer({
         <Badge variant="tint">{deviceKindLabel(device.kind)}</Badge>
         {site && <Badge variant="tint">{site.name}</Badge>}
         {!editing && (
-          <Button
+          <Recht aktion="geraet.einrichten"><Button
             variant="ghost"
             size="sm"
             iconLeft={<Icon name="pencil" size={16} />}
@@ -344,7 +345,7 @@ export function DeviceDetailDrawer({
             style={{ marginLeft: 'auto' }}
           >
             Bearbeiten
-          </Button>
+          </Button></Recht>
         )}
       </div>
 
@@ -414,7 +415,8 @@ export function DeviceDetailDrawer({
               */}
               <DangerZone
                 variant="inline"
-                actionLabel="Gerät entfernen und neu verbinden"
+                recht="komponente.loeschen"
+          actionLabel="Gerät entfernen und neu verbinden"
                 consequences={unclaimConsequences(device)}
                 confirmLabel="Gerät endgültig entfernen"
                 busy={deleteBusy}
@@ -443,7 +445,8 @@ export function DeviceDetailDrawer({
             </div>
           ) : (
             <DangerZone
-              actionLabel="Datenaufzeichnungen löschen"
+              recht="aufzeichnungen.loeschen"
+          actionLabel="Datenaufzeichnungen löschen"
               description="Löscht alle bisher aufgezeichneten Messdaten dieses Geräts unwiderruflich. Das Gerät bleibt verbunden und zeichnet ab sofort wieder neu auf."
               consequences={[
                 `Alle Messdaten von „${device.name || device.externalRef}" werden endgültig gelöscht - auch aus Verlauf, Historie und Statistiken`,
@@ -459,7 +462,8 @@ export function DeviceDetailDrawer({
           )}
 
           <DangerZone
-            actionLabel="Gerät entfernen"
+            recht="komponente.loeschen"
+          actionLabel="Gerät entfernen"
             description="Falsches Gerät verbunden? Entfernen macht die Geräte-ID wieder frei - sie kann danach erneut (auch von einem anderen Konto) verbunden werden."
             consequences={unclaimConsequences(device)}
             confirmLabel="Gerät endgültig entfernen"
@@ -533,9 +537,9 @@ function DeviceEditForm({
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+        <Recht aktion="geraet.einrichten"><Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
-        </Button>
+        </Button></Recht>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * **Die EINE Wahrheit je Geld-/Verhaltens-Einstellung** — Lese-Wert, Zeile und
  * Inline-Formular (E1, Konzept `data/vp-settings-ux-konzept/report.md` §7 P2).
@@ -199,6 +200,7 @@ export function SettingRow({
 }) {
   const [editing, setEditing] = useState(false);
 
+  const recht = setting.id === 'speicherschonung' ? 'geraet.einrichten' : 'anlage.verwalten';
   const editable = canEditSetting(setting, battery);
   // Eine von-VoltPilot-eingerichtete Einstellung zeigt ihren WERT (read-only,
   // fail-soft „—") plus die Notiz — der Kunde SIEHT sie, bearbeitet sie nicht.
@@ -216,10 +218,10 @@ export function SettingRow({
           <span className="vp-setting-val">{settingReadValue(setting.id, site, battery)}</span>
         )}
         {!editing && action.kind === 'edit' && editable ? (
-          <button type="button" className="vp-setting-btn" onClick={() => setEditing(true)}>
+          <Recht aktion={recht}><button type="button" className="vp-setting-btn" onClick={() => setEditing(true)}>
             <Icon name="pencil" size={14} />
             Bearbeiten
-          </button>
+          </button></Recht>
         ) : null}
         {!editing && action.kind === 'link' && editable ? (
           <a className="vp-setting-btn" href={action.href}>
@@ -254,7 +256,7 @@ export function SettingRow({
       ) : null}
       {!editing && preview ? preview : null}
       {editing ? (
-        <SettingEditForm
+        <Recht aktion={recht}><SettingEditForm
           setting={setting}
           site={site}
           battery={battery}
@@ -267,7 +269,7 @@ export function SettingRow({
             setEditing(false);
             onBatterySaved(assets);
           }}
-        />
+        /></Recht>
       ) : null}
     </li>
   );

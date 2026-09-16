@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../../designsystem/components/core/Button';
@@ -486,9 +487,9 @@ export function SelbstbauAssistent({
             <Button variant="ghost" onClick={() => setSchritt(3)}>
               Zurück
             </Button>
-            <Button onClick={anlegen} disabled={speichern}>
+            <Recht aktion="geraet.einrichten"><Button onClick={anlegen} disabled={speichern}>
               {speichern ? 'Speichere …' : 'Komponente anlegen'}
-            </Button>
+            </Button></Recht>
           </Nav>
         </>
       )}

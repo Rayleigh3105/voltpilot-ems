@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Die zwei EINSCHÜBE der steuerbaren Verbraucher (docs/verbrauchssteuerung.md
  * §14; Einheitsmodell Stufe 5a).
@@ -202,9 +203,9 @@ export function VerbraucherAnlegenDrawer({
             </fieldset>
           )}
 
-          <Button onClick={submit} disabled={busy}>
+          <Recht aktion="geraet.einrichten"><Button onClick={submit} disabled={busy}>
             {busy ? 'Wird angelegt …' : 'Speichern'}
-          </Button>
+          </Button></Recht>
         </div>
       )}
     </Modal>
@@ -336,16 +337,16 @@ export function VerbraucherRegelDrawer({
     <>
       <Button variant="ghost" onClick={() => setReview(false)}>Zurück</Button>
       {activationEnabled && (
-        <Button variant="ghost" onClick={save} disabled={busy || !valid}>
+        <Recht aktion="betriebsweise.aendern"><Button variant="ghost" onClick={save} disabled={busy || !valid}>
           Als Entwurf speichern
-        </Button>
+        </Button></Recht>
       )}
-      <Button
+      <Recht aktion="betriebsweise.aendern"><Button
         onClick={() => (activationEnabled ? void saveAndActivate() : save())}
         disabled={busy || !valid}
       >
         {busy ? 'Wird gespeichert …' : saveButtonLabel(activationEnabled)}
-      </Button>
+      </Button></Recht>
     </>
   ) : (
     <Button onClick={() => setReview(true)} disabled={!valid}>Prüfen</Button>
@@ -354,9 +355,9 @@ export function VerbraucherRegelDrawer({
   // The stop path must be reachable WITHOUT building a new rule: the intent
   // screen of an activated consumer carries "Regel deaktivieren" as its footer.
   const intentFooter = consumer.controlActivation !== 'not_activated' ? (
-    <Button variant="ghost" onClick={() => void deactivate()} disabled={busy}>
+    <Recht aktion="betriebsweise.aendern"><Button variant="ghost" onClick={() => void deactivate()} disabled={busy}>
       Regel deaktivieren
-    </Button>
+    </Button></Recht>
   ) : undefined;
 
   return (

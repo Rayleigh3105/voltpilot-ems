@@ -315,7 +315,7 @@ class KeycloakPartnerRolleApiTest {
     }
 
     private List<Object> siteNamen(HttpHeaders headers) {
-        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(url("/api/v1/sites"), HttpMethod.GET,
+        ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(headers), new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         return res.getBody().stream().map(s -> s.get("name")).toList();

@@ -1,3 +1,5 @@
+import { RechteStandort } from '../rollen';
+import { Recht } from './Recht';
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -234,7 +236,7 @@ export function Ortsbaum({
               {bearbeiten && (
                 <>
                   {' — '}
-                  <button
+                  <Recht aktion="gebaeude.pflegen"><button
                     type="button"
                     className="vp-ob-verweis"
                     aria-label={`${KNOPF_FLAECHE_EINTRAGEN}: ${k.name}`}
@@ -251,14 +253,14 @@ export function Ortsbaum({
                     }
                   >
                     {KNOPF_FLAECHE_EINTRAGEN}
-                  </button>
+                  </button></Recht>
                 </>
               )}
             </p>
           )}
         </div>
         {bearbeiten && (
-          <button
+          <Recht aktion="gebaeude.pflegen"><button
             type="button"
             className="vp-ob-bearbeiten"
             aria-label={`${k.name} bearbeiten`}
@@ -275,7 +277,7 @@ export function Ortsbaum({
             }
           >
             <Icon name="pencil" size={16} />
-          </button>
+          </button></Recht>
         )}
         {/* „Direkt am Standort“ hat keinen Stift — der Platz bleibt, damit die Spalte der Datenlage bündig steht. */}
         {/* Ein archivierter Knoten hat weder Stift noch Datenlage-Spalte — sein Platz ginge dem Archivtag verloren. */}
@@ -285,7 +287,7 @@ export function Ortsbaum({
         {/* IP-15: das Menü je Knoten; wo keins ist („Direkt am Standort“), hält der Platz die Spalte bündig. */}
         {mitMenue &&
           (k.aktionen ? (
-            <OrtMenue name={k.name} eintraege={mitAenderungen(menueEintraege(k.aktionen))} onWahl={(e, von) => waehle(e, k, von)} />
+            <OrtMenue recht="gebaeude.pflegen" name={k.name} eintraege={mitAenderungen(menueEintraege(k.aktionen))} onWahl={(e, von) => waehle(e, k, von)} />
           ) : (
             <span className="vp-ob-bearbeiten-platz" aria-hidden="true" />
           ))}
@@ -294,6 +296,7 @@ export function Ortsbaum({
   }
 
   return (
+    <RechteStandort.Provider value={standort.id}>
     <section className="vp-ob" aria-labelledby={titelId} data-testid="ortsbaum">
       <div className="vp-ob-kopf">
         <h3 id={titelId} className={titelVersteckt ? 'vp-ob-titel vp-sr-only' : 'vp-ob-titel'}>
@@ -301,7 +304,7 @@ export function Ortsbaum({
         </h3>
         {sicht && !sicht.leer && kannSchreiben && (
           <div className="vp-ob-knoepfe">
-            <Button
+            <Recht aktion="gebaeude.pflegen"><Button
               variant="outline"
               size="sm"
               iconLeft={<Icon name="plus" size={16} />}
@@ -318,8 +321,8 @@ export function Ortsbaum({
               }
             >
               {KNOPF_GEBAEUDE_ANLEGEN}
-            </Button>
-            <Button
+            </Button></Recht>
+            <Recht aktion="gebaeude.pflegen"><Button
               variant="outline"
               size="sm"
               iconLeft={<Icon name="plus" size={16} />}
@@ -336,7 +339,7 @@ export function Ortsbaum({
               }
             >
               {KNOPF_BEREICH_ANLEGEN}
-            </Button>
+            </Button></Recht>
           </div>
         )}
       </div>
@@ -360,7 +363,7 @@ export function Ortsbaum({
           <p className="vp-ob-leer-satz">{LEER_SATZ}</p>
           {kannSchreiben && (
             <div className="vp-ob-knoepfe">
-              <Button
+              <Recht aktion="gebaeude.pflegen"><Button
                 size="sm"
                 iconLeft={<Icon name="plus" size={16} />}
                 onClick={(e) =>
@@ -376,8 +379,8 @@ export function Ortsbaum({
                 }
               >
                 {KNOPF_GEBAEUDE_ANLEGEN}
-              </Button>
-              <Button
+              </Button></Recht>
+              <Recht aktion="gebaeude.pflegen"><Button
                 variant="outline"
                 size="sm"
                 iconLeft={<Icon name="plus" size={16} />}
@@ -394,7 +397,7 @@ export function Ortsbaum({
                 }
               >
                 {KNOPF_BEREICH_DIREKT}
-              </Button>
+              </Button></Recht>
             </div>
           )}
         </div>
@@ -533,5 +536,6 @@ export function Ortsbaum({
         />
       )}
     </section>
+    </RechteStandort.Provider>
   );
 }

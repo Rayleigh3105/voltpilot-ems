@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -950,13 +951,13 @@ export function KennzahlAnlegenDialog({
           </Button>
         )}
         {schritt === 5 && modus === 'aendern' ? (
-          <Button onClick={speichern} disabled={!speichernMoeglich || laeuft}>
+          <Recht aktion={ort?.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={ort?.standort_id ?? null}><Button onClick={speichern} disabled={!speichernMoeglich || laeuft}>
             {laeuft ? E.SPEICHERN_LAEUFT : E.SPEICHERN}
-          </Button>
+          </Button></Recht>
         ) : schritt === 5 ? (
-          <Button onClick={anlegen} disabled={!A.anlegenMoeglich(vorschauAntwort) || laeuft}>
+          <Recht aktion={ort?.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={ort?.standort_id ?? null}><Button onClick={anlegen} disabled={!A.anlegenMoeglich(vorschauAntwort) || laeuft}>
             {laeuft ? A.ANLEGEN_LAEUFT : A.ANLEGEN}
-          </Button>
+          </Button></Recht>
         ) : (
           <Button
             onClick={() => setSchritt((s) => A.naechster(s, form, modus))}

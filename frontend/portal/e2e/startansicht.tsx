@@ -1,3 +1,9 @@
+import App from '../src/App';
+import { RechteStandort, teilansichtKopf } from '../src/rollen';
+import { rollenMoment } from './rollen-fixture';
+import { sichtbareListe } from '../src/test/rollenFixtures';
+import { geraeteAhrenberg } from '../src/test/messenAssistentFixtures';
+import './rollen-fixture';
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
@@ -131,7 +137,6 @@ import {
   heutigeWerteAm,
   mitVerworfen,
   nameHeuteAm,
-  selbstauskunftFuer,
   standAm,
   vergleichAm,
   type Verworfen,
@@ -288,11 +293,6 @@ function monatDerBuehne(kennzeichen: string, raster: MessstelleWerteRaster, von:
       ? monatTage(messstelle, monat, menge, wochenende)
       : null;
 }
-/** Die Zellen von `messstelle.formel`/`messstelle.bearbeiten` (KA U · EM U, Rechte-Matrix) — die Berichts-Fixture stellt nur ihre. */
-const mitMessstellenRechten = (s: ReturnType<typeof selbstauskunftFuer>): ReturnType<typeof selbstauskunftFuer> =>
-  s.rollen.some((r) => r === 'kundenadministrator' || r === 'energiemanager')
-    ? { ...s, standorte: s.standorte.map((st) => ({ ...st, rechte: [...st.rechte, 'messstelle.bearbeiten', 'messstelle.formel'] })) }
-    : s;
 /**
  * AP-11 IP-13: `&ansicht=kennzahlen` öffnet „Unternehmen › Kennzahlen“, `&ansicht=kennzahl&kz=KZ-0001` eine
  * Kennzahl-Seite; `&ausserhalb=KZ-0003` lässt die Werte-Route für diese Kennzahl mit 404 antworten (R-A7). Die
@@ -307,7 +307,7 @@ const kzAusserhalb = kennzahlId(params.get('ausserhalb'));
  * Peter Hollerbach; `&welt=leer` beginnt ohne Kennzahl (Neukunde). Was der Assistent anlegt, bleibt in der Bühne;
  * `window.__kennzahlAufrufe` zählt jede Vorschau und jedes Anlegen — der Nachweis „vor Anlegen nichts gespeichert“.
  */
-const PERSONEN: Record<string, string> = { IK: 'Ines Kaltenbach', PH: 'Peter Hollerbach', CB: 'Claudia Berger' };
+const PERSONEN: Record<string, string> = { IK: 'Ines Kaltenbach', PH: 'Peter Hollerbach', CB: 'Claudia Berger', MD: 'Murat Demirci' };
 const person = PERSONEN[params.get('person') ?? ''] ?? null;
 const weltLeer = params.get('welt') === 'leer';
 /**
@@ -431,7 +431,7 @@ Object.assign(keycloak, {
   token: 'e2e-token',
   authenticated: true,
   updateToken: async () => false,
-  tokenParsed: { name: person ?? 'Jonas Wendlinger', email: 'jonas.wendlinger@example.test', realm_access: { roles: ['operator'] } },
+  tokenParsed: { name: person ?? 'Jonas Wendlinger', email: person ? undefined : 'jonas.wendlinger@example.test', realm_access: { roles: ['operator'] } },
 });
 
 const halle1 = { id: an1, name: 'Werk Ahrenberg – Halle 1', biddingZone: 'DE-LU' };
@@ -509,6 +509,12 @@ if (ORTE_LEER) {
   const liste = szene.liste as { standorte: { id: string; gebaeudeZahl: number | null }[] };
   liste.standorte = liste.standorte.map((s) => (s.id === werkLindach().id ? { ...s, gebaeudeZahl: 0 } : s));
 }
+const rechteAnsicht = params.has('rechte');
+if (rechteAnsicht) {
+  szene.liste.standorte = szene.liste.standorte.filter(s => rollenMoment.standorte.some(r => r.id === s.id));
+  const sichtbar = new Set(szene.liste.standorte.flatMap(s => s.anlagen.map(a => a.id)));
+  szene.sites = szene.sites.filter(s => sichtbar.has(s.id));
+}
 const sites = szene.sites as Site[];
 const siteIds = sites.map((s) => s.id);
 
@@ -525,11 +531,16 @@ const overview: Overview = {
   dailySavings: [],
 };
 Object.assign(api, {
+  listSites: async () => sichtbareListe(sites),
+  listDevices: async () => sichtbareListe(geraeteAhrenberg(new Date()).filter(d => siteIds.includes(d.siteId))),
+  edgeVersions: async () => sichtbareListe([]),
+  tenantContext: async () => ({ tenantId: FIXTURE_IDS.u, name: 'Kunststoffwerk Ahrenberg GmbH', betriebsart: 'endkunde' }),
   overview: async () => structuredClone(overview),
   earnings: async () => {
     throw new Error('Das Referenzunternehmen trägt keine Geldwerte.');
   },
   tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
+  cockpitLayout: async () => ({ vorgabe: null, eigen: null }),
   // AP-04 IP-5: das Messstellen-Register des Referenzunternehmens (heute = 20.10.2026, mit Stichtag und Filtern).
   // AP-11 IP-15: `welt=k17` stellt MS-24 dazu.
   messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => {
@@ -539,6 +550,16 @@ Object.assign(api, {
     if (messenArt === 'bestand') {
       const leer = { erfuellt: 0, gesamt: 0, text: 'Noch keine Messstellen' };
       return { ...r, register: [], aggregat: { ...r.aggregat, unternehmen: leer, standorte: r.aggregat.standorte.map((st) => ({ ...st, ...leer })) } };
+    }
+    if (rechteAnsicht && !rollenMoment.unternehmensweit) {
+      const ids = new Set(rollenMoment.standorte.map(st => st.id));
+      const register = r.register.filter(z => z.ort.standort_id !== null && ids.has(z.ort.standort_id));
+      const sichtbar = new Set(register.map(z => z.id));
+      const standorte = r.aggregat.standorte.filter(st => st.id !== null && ids.has(st.id));
+      const erfuellt = standorte.reduce((summe, st) => summe + st.erfuellt, 0);
+      const gesamt = standorte.reduce((summe, st) => summe + st.gesamt, 0);
+      return { ...r, register, messstellen: r.messstellen.filter(m => sichtbar.has(m.id)), teilansicht: true,
+        aggregat: { standorte, unternehmen: { erfuellt, gesamt, text: `${erfuellt} von ${gesamt} Messstellen liefern Daten` } } };
     }
     if (!heuteB10) return r;
     return { ...r, register: r.register.map((z) => ({ ...z, name: nameHeuteAm(Date.now(), z.kennzeichen, z.name) })) };
@@ -563,7 +584,8 @@ Object.assign(api, {
   standortOrte: async (id: string) =>
     id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg(),
   // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
-  kennzahlen: async () => ({ kennzahlen: messenArt === 'bestand' ? [] : kennzahlenDerBuehne() }),
+  kennzahlen: async () => ({ kennzahlen: (messenArt === 'bestand' ? [] : kennzahlenDerBuehne()).filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
+    || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id))) }),
   kennzahl: async (id: string) => kennzahlDerBuehne(id),
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,
@@ -607,7 +629,7 @@ Object.assign(api, {
   },
   // AP-12 IP-13: die Berichte der Referenzdatei (BR-2026-0001) — gelesen zur Uhr der Bühne.
   // AP-12 IP-14: dazu die Selbstauskunft (B13 je Person) und die schreibenden Wege Anlegen, Freigeben, Verwerfen.
-  selbstauskunft: async () => mitMessstellenRechten(selbstauskunftFuer(person ?? 'Jonas Wendlinger')),
+  selbstauskunft: async () => structuredClone(rollenMoment),
   berichte: async () => ({ berichte: berichtDa ? [mitVerworfen(detailAm(Date.now()), verworfen).bericht] : [] }),
   bericht: async (kennung: string) => {
     if (kennung !== 'BR-2026-0001' || !berichtDa) throw new ApiError(404, 'Diesen Bericht gibt es nicht.');
@@ -719,6 +741,15 @@ Object.assign(api, {
   siteEntities: async (id: string) => ({ registry: null, localSetup: [], staleOnDevice: [], entities: komponentenVon(id) }),
   siteVerbraucher: async (id: string) => verbraucherVon(id),
   entityStrategies: async () => ({}),
+  // Der Einstieg mit nur einer Anlage kann deren Cockpit vor der E1-Weiche laden.
+  // Die Standort-Bühne liefert diese Zusatzdaten nicht; auch dieser Pfad bleibt isoliert.
+  topology: nichtGestellt,
+  siteEarnings: nichtGestellt,
+  controlStatus: nichtGestellt,
+  siteSources: nichtGestellt,
+  weather: nichtGestellt,
+  schedule: nichtGestellt,
+  rollenWert: nichtGestellt,
   usageProfile: nichtGestellt,
   siteProfiles: nichtGestellt,
   siteAssets: nichtGestellt,
@@ -736,11 +767,36 @@ Object.assign(consumersApi, {
   overrides: async () => [],
   fulfillment: async () => ({ tasks: [] }),
 });
-// Die Regeln der Anlage: keine. Nur die zwei Flow-Routen gehen über `fetch`.
+// IP-12: die echte Anwendung mit den drei Rechte-Momentaufnahmen R1/T1/T3.
+// Steuerungs-Schnappschuss zur Referenz-Momentaufnahme MS-04: −40 kW, Entladen.
+if (rechteAnsicht && params.get('person') === 'MD') {
+  Object.assign(api, {
+    schedule: async () => ({ deviceId: 'E-1', slots: [] }),
+    controlStatus: async () => ({ deviceId: 'E-1', certified: true, controlEnabled: true,
+      commandedKw: -40, confirmedKw: -40, allMatch: true, checkedAt: STAND, mismatchRoles: null }),
+    siteInterventions: async () => ({ automationPaused: false, pausedUntil: null, interventions: [] }),
+  });
+  window.history.replaceState(null, '', hashForRoute(anlageRoute(an1, 'steuerung')));
+}
+const beendeZugriff = () => {
+  rollenMoment.standorte = [];
+  rollenMoment.unternehmensweit = false;
+  rollenMoment.unternehmen_rechte = [];
+  rollenMoment.text = 'Ihnen ist derzeit kein Standort zugewiesen. Ihr Kundenadministrator Jonas Wendlinger kann das ändern.';
+  rollenMoment.teilansicht = null;
+};
+if (params.get('rechte') === 'leer') beendeZugriff();
+(window as unknown as Record<string, unknown>).__beendeZugriff = () => {
+  beendeZugriff();
+  window.dispatchEvent(new CustomEvent('vp-zugriff-beendet', { detail: 'Ihr Zugriff auf Werk Lindach wurde beendet.' }));
+};
+
+// Die Regeln der Anlage: keine. Die Flow-Routen gehen über `fetch`.
 const echtesFetch = window.fetch.bind(window);
 window.fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
   if (/^\/api\/v1\/sites\/[^/]+\/flows$/.test(url.pathname)) return Response.json([]);
+  if (url.pathname.endsWith('/flow-node-status')) return Response.json({ acks: [], nodes: [] });
   if (url.pathname.endsWith('/flow-node-governance')) return Response.json({ gatedNodes: [] });
   return echtesFetch(input, init);
 };
@@ -819,7 +875,7 @@ const FLOTTE = 'Meine Anlagen';
 function Vorschau() {
   const rahmen = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde' as const };
   const orte = orteAus(szene.liste, szene.unternehmen);
-  const ebene = startEbene({ ...rahmen, siteIds, orte });
+  const ebene = startEbene({ ...rahmen, siteIds, orte, eingeschraenkt: !rollenMoment.unternehmensweit });
   const shell: ShellInput = { ...rahmen, siteCount: siteIds.length, ebene };
   const kanonisch = (r: Route) => canonicalShellRoute({ shell, route: r, siteIds }) ?? r;
   /**
@@ -966,7 +1022,8 @@ function Vorschau() {
           : null;
 
   return (
-    <AppShell
+    <RechteStandort.Provider value={route.standortId ?? szene.liste.standorte.find(s => s.anlagen.some(a => a.id === site?.id))?.id ?? null}><AppShell
+      teilansicht={teilansichtKopf(rollenMoment)}
       ebenen={ebenenNav}
       page={route.page}
       onNavigate={navigateSchale}
@@ -1154,12 +1211,12 @@ function Vorschau() {
           />
         </>
       )}
-    </AppShell>
+    </AppShell></RechteStandort.Provider>
   );
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Vorschau />
+    {rechteAnsicht ? <App initialAuth /> : <Vorschau />}
   </React.StrictMode>,
 );

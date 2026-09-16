@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Der **Anwendungs-Container** (report `data/vp-portal-v31-design/` §3).
  *
@@ -175,7 +176,7 @@ export function ModusContainer({
           <span className={`vp-modus-dot ${tone}`} aria-hidden="true" />
           <h2 className="vp-modus-title">{profile.label}</h2>
           <Badge variant={status.variant}>{status.label}</Badge>
-          <button
+          <Recht aktion="betriebsweise.aendern"><button
             type="button"
             role="switch"
             aria-checked={on}
@@ -185,7 +186,7 @@ export function ModusContainer({
             onClick={() => onToggle(profile.id, on ? 'aus' : 'an')}
           >
             <span className="vp-switch-knob" aria-hidden="true" />
-          </button>
+          </button></Recht>
         </div>
 
         {/* --- Nutzen + Beitrag --------------------------------------------- */}
