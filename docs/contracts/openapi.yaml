@@ -9241,6 +9241,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
   /api/v1/sites/{siteId}/data-sources/{id}:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -24020,9 +24021,9 @@ components:
         (docs/contracts/v2/data-source-assignment.md §4/§5) mit ihrem Satz und `urteil`;
         der Vertrag nennt keinen HTTP-Status, die Schnittstelle genau einen je Grund:
         400 `protokoll_unbekannt`; 422 `keine_volle_minute`, `rueckwirkend`,
-        `leerer_zeitraum`; 409 `steuerquelle`, `spaeterer_wechsel_geplant`,
+        `leerer_zeitraum`, `nur_ein_leser`; 409 `steuerquelle`, `spaeterer_wechsel_geplant`,
         `schon_zustaendig`, `ueberschneidung`, `adresse_an_box_vergeben`,
-        `netzlage_fehlt`, `nur_ein_leser`, `vergleich_bestaetigen` (urteil
+        `netzlage_fehlt`, `vergleich_bestaetigen` (urteil
         `bestaetigung_noetig`), `pruefung_fehlt`, `pruefung_gescheitert`. Dazu die
         Codes der Schnittstelle: `anfrage_ungueltig` 400 (`feld`), `weg_fest` 409
         (`felder`), `quelle_archiviert` 409 (`kennzeichen`),
@@ -24041,6 +24042,8 @@ components:
             anfrage_ungueltig, weg_fest, quelle_archiviert, pruefung_nicht_moeglich, gleichzeitig_geaendert,
             komponente_hat_quelle, vorschlag_geaendert, budget_ueberschritten]
         message: { type: string }
+        grund: { type: string, description: "Bei Vertragsgründen identisch zu `code`." }
+        satz: { type: string, description: "Bei Vertragsgründen identisch zu `message`; stabiler Kundensatz des Vertrags." }
         urteil: { type: string, enum: [abgelehnt, bestaetigung_noetig] }
         feld: { type: string, description: "anfrage_ungueltig: device_id, adresse, register …" }
         felder: { type: array, items: { type: string }, description: "weg_fest: die festen Felder, die sich ändern sollten." }

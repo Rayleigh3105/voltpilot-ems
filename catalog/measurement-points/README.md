@@ -12,13 +12,17 @@ flowchart LR
 ```
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.09.16.1.json`](dist/measurement-point-catalog-2026.09.16.1.json).
+[`dist/measurement-point-catalog-2026.09.17.1.json`](dist/measurement-point-catalog-2026.09.17.1.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
 gleicher Checkout und gleiche Python-Standardbibliothek ergeben dieselben Bytes.
 
 ## Modell
+
+Jede Familie trägt außerdem `single_reader`. Das ist eine reine Cloud-Regel für das Anlegen
+von Datenquellen: `true` bedeutet, dass niemals zwei Boxen dasselbe physische Gerät gleichzeitig
+lesen dürfen (Solarman-Logger, WAGO-Koppler-Weg). Das Feld gehört bewusst nicht zu `EDGE_FIELDS`.
 
 Jeder Eintrag besitzt mindestens:
 
@@ -196,7 +200,7 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
   (`RUNTIME_FIELDS` in `tools/cataloglib.py`: Zugriff, Dekodierung, Kadenz, Aggregation,
   Punktbestand). `validate.py` beweist es: die Box-Sicht des Inhaltsstands ist gleich der des
   ausgelieferten Laufzeitstand-Artefakts — sonst schlägt er fehl.
-- Eine rein cloud-seitige Version (wie 2026.09.11.1: nur `quantity`/`direction`) lässt
+- Eine rein cloud-seitige Version (wie 2026.09.17.1: `families[].single_reader`) lässt
   `edge-app/nodered/measurements/catalog.json` und die Metadaten-Migration BYTE-GLEICH
   (`tools/package_edge_runtime.py --check`, Test `test_runtime_derivatives_are_byte_identical`).
   Keine Box sieht einen fremden Stand, kein Edge-Release ist nötig.

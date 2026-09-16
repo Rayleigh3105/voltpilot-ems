@@ -14,6 +14,7 @@ from cataloglib import (
     CATALOG_VERSION,
     EDGE_MIN_VERSION,
     NOCH_NICHT_AN_DER_BOX,
+    SINGLE_READER_FAMILIES,
     ROOT,
     RUNTIME_CATALOG_VERSION,
     ZAEHLER_DEKLARATION_FIELDS,
@@ -863,6 +864,7 @@ def build_catalog() -> dict[str, Any]:
             "an_der_box": family not in NOCH_NICHT_AN_DER_BOX,
             "family": family,
             "point_count": family_counts[family],
+            "single_reader": family in SINGLE_READER_FAMILIES,
             "template_count": sum(bool(point.get("dynamic")) for point in points if point["family"] == family),
         }
         for family in sorted(family_counts)

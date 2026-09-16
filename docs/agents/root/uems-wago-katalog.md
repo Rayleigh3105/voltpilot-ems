@@ -1,7 +1,8 @@
 # UEMS-WAGO: Katalog-Quelle `wago` und Schema `modbus_input` / `range` (AP-05 IP-4 + IP-5)
 
 Neu am 16.09.2026, drittes Bau-Paket von AP-05 (Konzept `vp-uems-ap05-wago/report.md` §8 IP-4/IP-5,
-Fundament PR 831). Katalog-Inhaltsstand **2026.09.16.1**, der Laufzeitstand bleibt **2026.08.26.3**.
+Fundament PR 831). Katalog-Inhaltsstand seit AP-06 IP-21 **2026.09.17.1**, der Laufzeitstand bleibt
+**2026.08.26.3**.
 
 - `catalog/measurement-points/sources/wago/registerbild-v1.json` — Normalform des Vertrags
   [`wago-registerbild.md`](../../contracts/v2/wago-registerbild.md): Familien `wago.pm494` und `wago.pm495`
@@ -9,7 +10,8 @@ Fundament PR 831). Katalog-Inhaltsstand **2026.09.16.1**, der Laufzeitstand blei
   Rohwert). Adapter `generate_wago` in `tools/generate.py`, Manifest-Adapter `wago`.
 - Schema `catalog.schema.json`: Quellenarten `modbus_input` und `wago_registerbild`, Adress-Art
   `registerbild_relative` (`12+index*42+<offset>`, `base: parameter`), `scale.kind: unknown`, optional
-  `range {min,max,invalid}` und `angaben` (Herkunft je Zahl), `families[].an_der_box`. `validate.py` prüft
+  `range {min,max,invalid}` und `angaben` (Herkunft je Zahl), `families[].an_der_box` sowie das
+  cloud-seitige `families[].single_reader: true`. `validate.py` prüft
   jedes davon; `tests/test_catalog.py` `WagoQuelleTest` hält es gegen `wago-registerbild-vectors.json`.
 - Katalog-README: „Wertebereich eines Rohwerts“, „WAGO-Energiekarten“, „Familien noch nicht an der Box“.
 - api: `MeasurementCatalog.familienNochNichtAnDerBox` lässt die Punkte beim Laden aus (keine Suche, keine

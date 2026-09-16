@@ -40,6 +40,14 @@ NOCH_NICHT_AN_DER_BOX = {
     "wago.pm494": "UEMS AP-05 IP-6 (Edge-Treiber wago.registerbild) ist nicht ausgeliefert",
     "wago.pm495": "UEMS AP-05 IP-6 (Edge-Treiber wago.registerbild) ist nicht ausgeliefert",
 }
+
+# Cloud-only fact for UEMS AP-06 IP-21.  Family metadata is deliberately not part of
+# EDGE_FIELDS/runtime_projection: deciding whether two boxes may read the same physical device is
+# a cloud-side creation rule, not a decoder concern and therefore needs no Edge release.
+SINGLE_READER_FAMILIES = {
+    "hybrid_1p", "hybrid_3p", "micro", "string",  # Solarman data logger
+    "wago.pm494", "wago.pm495",                    # WAGO coupler mailbox
+}
 # Z6-Deklaration eines Zählers (AP-08 IP-7, README „Wertebereich eines Zählers“): optional, nur
 # am Zähler, nur aus einer Quelle übernommen. Fehlt ein Feld, ist nichts deklariert — der
 # Generator schreibt nie null oder einen Vorgabewert.

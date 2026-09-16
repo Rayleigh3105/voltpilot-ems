@@ -616,8 +616,14 @@ public class DatenquelleService {
         if (kadenzS < 1 || kadenzS > 86_400) {
             throw DatenquelleAbgelehnt.anfrage("kadenz_s", "Der Lesetakt liegt zwischen einer Sekunde und einem Tag.");
         }
-        return new Felder(n, protokoll, a, List.copyOf(ids), text(netz), Boolean.TRUE.equals(mehrereLeser),
-                Boolean.TRUE.equals(steuerquelle), kadenzS);
+        boolean steuert = Boolean.TRUE.equals(steuerquelle);
+        // Das Eingabefeld ist die aufgelöste Vorlagen-Eigenschaft. Zwei katalogseitige
+        // Ein-Leser-Wege bleiben zusätzlich serverseitig unverhandelbar: Solarman-Logger und
+        // jede Steuerquelle (darunter der WAGO-Koppler-Weg). Ein Client kann sie nicht mit
+        // mehrere_leser=true öffnen.
+        boolean katalogEinLeser = Protokoll.SOLARMAN_V5.code().equals(protokoll) || steuert;
+        return new Felder(n, protokoll, a, List.copyOf(ids), text(netz),
+                Boolean.TRUE.equals(mehrereLeser) && !katalogEinLeser, steuert, kadenzS);
     }
 
     /**

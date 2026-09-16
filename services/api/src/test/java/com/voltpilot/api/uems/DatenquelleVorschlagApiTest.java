@@ -357,6 +357,30 @@ class DatenquelleVorschlagApiTest {
         assertThat(fingerabdruck()).isEqualTo(abdruck);
     }
 
+    @Test
+    void gleicheAdresseAnAndererBoxBrauchtAusserhalbDesBestandsAssistentenEineNetzlage() throws Exception {
+        Welt w = halle1("Halle 1 · Doppel-Lesen");
+        UUID an1 = w.anlagen.get("AN-1");
+        UUID andereBox = w.boxErfunden("Vergleichs-Box", an1, "2026-08-01T08:00:00+02:00");
+        UUID bestehend = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, protokoll, "
+                + "adresse, netz, mehrere_leser, kadenz_s) VALUES (?, ?, 'DQ-41', 'modbus_tcp', "
+                + "'192.168.10.30:502', '192.168.10.0/24', true, 10) RETURNING id",
+                UUID.class, w.mandant, an1);
+        root.update("INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, protokoll, adresse, "
+                + "effective_from) VALUES (?, ?, ?, 'modbus_tcp', '192.168.10.30:502', '2026-09-01T08:00:00Z')",
+                w.mandant, bestehend, andereBox);
+
+        JsonNode liste = ruf(w.jonas, HttpMethod.GET, basis(an1) + "/vorschlag", null).body();
+        JsonNode dq2 = liste.at("/vorschlaege/1");
+        assertThat(dq2.get("grund").asText()).isEqualTo("netzlage_fehlt");
+        assertThat(dq2.get("text").asText()).contains("erst das Netz beider Quellen eintragen");
+
+        Antwort uebernahme = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen", alle(liste));
+        assertThat(uebernahme.status()).isEqualTo(409);
+        assertThat(uebernahme.body().get("grund").asText()).isEqualTo("netzlage_fehlt");
+        assertThat(uebernahme.body().get("satz").asText()).contains("erst das Netz beider Quellen eintragen");
+    }
+
     // ================================================================ A9: zweite Box
 
     /**
