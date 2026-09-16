@@ -2289,6 +2289,12 @@ export interface Bezugsgroesse {
   angelegt_am: string;
 }
 
+/** Listenumschlag einschließlich der nur gelesenen Flächen aus der Struktur (IP-9). */
+export interface BezugsgroessenListe {
+  bezugsgroessen: Bezugsgroesse[];
+  bezugsflaechen: Bezugsflaeche[];
+}
+
 /**
  * Der Körper von `POST /api/v1/bezugsgroessen` (ohne `kennzeichen` vergibt der Server
  * BZ-0001 …) und `PUT …/{id}` (die GANZE Bezugsgröße, mit Kennzeichen). Streng gelesen.
@@ -8041,7 +8047,7 @@ export const api = {
 
   /** Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen (AP-09 IP-5) — daneben die Bezugsflächen der Ortsstruktur (IP-6). */
   bezugsgroessen: () =>
-    request<{ bezugsgroessen: Bezugsgroesse[]; bezugsflaechen: Bezugsflaeche[] }>(`/api/v1/bezugsgroessen`),
+    request<BezugsgroessenListe>(`/api/v1/bezugsgroessen`),
 
   /** Die Bezugsflächen mit ihrem Wert je Periode am Stichtag (E17, S3) — nur lesen, es gibt keinen Schreibweg. */
   bezugsflaechen: (periodeArt: 'tag' | 'woche' | 'monat' | 'jahr', von: string, bis: string) =>

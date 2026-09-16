@@ -32,7 +32,7 @@ interface Fall {
 
 const FAELLE: Fall[] = [
   { name: 'betriebskunde-standort', query: 'bild=unternehmen&messen=bestand&ansicht=werk', leiste: null },
-  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte'], aktiv: 'Übersicht' },
+  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte'], aktiv: 'Übersicht' },
   { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'], aktiv: 'Übersicht' },
   { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Gebäude', 'Messstellen'], aktiv: 'Übersicht' },
   { name: 'anlage-halle1', query: 'bild=unternehmen&ansicht=anlage', leiste: ['Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Cockpit' },
@@ -40,7 +40,7 @@ const FAELLE: Fall[] = [
   {
     name: 'unternehmen-kuenftig',
     query: 'bild=unternehmen&seiten=kuenftig',
-    leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte'],
+    leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte'],
     aktiv: 'Übersicht',
   },
   { name: 'standort-kuenftig', query: 'bild=unternehmen&ansicht=werk&seiten=kuenftig', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'], aktiv: 'Übersicht' },

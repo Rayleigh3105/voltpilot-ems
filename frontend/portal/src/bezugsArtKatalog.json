@@ -1,0 +1,241 @@
+{
+  "arten": {
+    "produktionsmenge": {
+      "name": "Produktionsmenge",
+      "einheiten": [
+        "kg",
+        "t",
+        "Stück",
+        "m³",
+        "l"
+      ],
+      "wertart": "periodenwert",
+      "perioden": [
+        "tag",
+        "woche",
+        "monat"
+      ],
+      "geltung": [
+        "prozess",
+        "bereich",
+        "gebaeude",
+        "standort",
+        "unternehmen",
+        "kostenstelle"
+      ],
+      "herkunft": [
+        "eingabe",
+        "import",
+        "messkanal"
+      ]
+    },
+    "gutteile": {
+      "name": "Gutteile",
+      "einheiten": [
+        "Stück"
+      ],
+      "wertart": "periodenwert",
+      "perioden": [
+        "tag",
+        "woche",
+        "monat"
+      ],
+      "geltung": [
+        "prozess",
+        "bereich",
+        "gebaeude",
+        "standort",
+        "unternehmen",
+        "kostenstelle"
+      ],
+      "herkunft": [
+        "eingabe",
+        "import",
+        "messkanal"
+      ]
+    },
+    "betriebszeit": {
+      "name": "Betriebszeit",
+      "einheiten": [
+        "h",
+        "min"
+      ],
+      "wertart": "periodenwert",
+      "perioden": [
+        "tag",
+        "woche",
+        "monat"
+      ],
+      "geltung": [
+        "prozess",
+        "bereich",
+        "messstelle"
+      ],
+      "herkunft": [
+        "eingabe",
+        "import",
+        "messkanal"
+      ]
+    },
+    "schichten": {
+      "name": "Schichten",
+      "einheiten": [
+        "Schichten"
+      ],
+      "wertart": "periodenwert",
+      "perioden": [
+        "tag",
+        "woche",
+        "monat"
+      ],
+      "geltung": [
+        "standort",
+        "prozess",
+        "bereich"
+      ],
+      "herkunft": [
+        "eingabe",
+        "import"
+      ]
+    },
+    "bezugsflaeche": {
+      "name": "Bezugsfläche",
+      "einheiten": [
+        "m²"
+      ],
+      "wertart": "stammdatum",
+      "perioden": [],
+      "geltung": [
+        "standort",
+        "gebaeude",
+        "bereich"
+      ],
+      "herkunft": [
+        "stammdatum_ap02"
+      ]
+    },
+    "mitarbeitende": {
+      "name": "Mitarbeitende",
+      "einheiten": [
+        "Personen"
+      ],
+      "wertart": "stammdatum",
+      "perioden": [],
+      "geltung": [
+        "unternehmen",
+        "standort"
+      ],
+      "herkunft": [
+        "eingabe",
+        "import"
+      ]
+    },
+    "gradtagzahl": {
+      "name": "Gradtagzahl",
+      "einheiten": [
+        "Kd"
+      ],
+      "wertart": "periodenwert",
+      "perioden": [
+        "tag",
+        "monat"
+      ],
+      "geltung": [
+        "standort"
+      ],
+      "herkunft": [
+        "messkanal",
+        "import"
+      ]
+    },
+    "zaehlerstand": {
+      "name": "Zählerstand (Ablesung)",
+      "einheiten": "messstelle",
+      "wertart": "stand",
+      "perioden": [],
+      "geltung": [
+        "messstelle"
+      ],
+      "herkunft": [
+        "eingabe",
+        "import"
+      ]
+    },
+    "sonstige_menge": {
+      "name": "Sonstige Menge",
+      "einheiten": "alle",
+      "wertart": "periodenwert",
+      "perioden": [
+        "tag",
+        "woche",
+        "monat",
+        "jahr"
+      ],
+      "geltung": "alle",
+      "herkunft": [
+        "eingabe",
+        "import"
+      ]
+    }
+  },
+  "vokabular": {
+    "wertart": [
+      "periodenwert",
+      "stand",
+      "stammdatum"
+    ],
+    "geltung_art": [
+      "unternehmen",
+      "standort",
+      "gebaeude",
+      "bereich",
+      "prozess",
+      "kostenstelle",
+      "messstelle"
+    ],
+    "periode_art": [
+      "tag",
+      "woche",
+      "monat",
+      "jahr"
+    ],
+    "herkunft_art": [
+      "eingabe",
+      "import",
+      "messkanal",
+      "stammdatum_ap02"
+    ],
+    "einheiten": {
+      "masse": [
+        "kg",
+        "t"
+      ],
+      "stueckzahl": [
+        "Stück"
+      ],
+      "zeit": [
+        "h",
+        "min"
+      ],
+      "flaeche": [
+        "m²"
+      ],
+      "volumen": [
+        "m³",
+        "l"
+      ],
+      "personen": [
+        "Personen"
+      ],
+      "schichten": [
+        "Schichten"
+      ],
+      "gradtage": [
+        "Kd"
+      ],
+      "temperatur": [
+        "°C"
+      ]
+    }
+  }
+}

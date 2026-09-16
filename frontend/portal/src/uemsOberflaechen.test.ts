@@ -162,11 +162,13 @@ describe('uemsOberflaechen · Kacheln je Lesemodell über ebenenBereiche — O17
       ? { uebersicht: EBENEN_SEITEN(ort).uebersicht, messstellen: EBENEN_SEITEN(ort).messstellen }
       : EBENEN_SEITEN(ort);
 
-  it('Unternehmen: fünf Bereiche, fünf Kacheln, Leiste', () => {
+  it('Unternehmen: O17 bleibt unter dem expliziten AP-09-Nachtrag erhalten', () => {
     const g = fall('O17').gegeben;
     const u = kacheln(UNTERNEHMEN, MESSKUNDE);
-    expect(u).toEqual({ bereiche: g.bereiche_u, kacheln: g.kacheln_u, leiste: g.leiste_u });
-    expect(u.kacheln).toHaveLength(fall('O17').erwartet.kacheln_u);
+    expect(u.bereiche).toContain('bezugsgroessen');
+    expect(u.kacheln).toContain('bezugsgroessen');
+    expect({ ...u, bereiche: u.bereiche.filter(k => k !== 'bezugsgroessen'), kacheln: u.kacheln.filter(k => k !== 'bezugsgroessen') }).toEqual({ bereiche: g.bereiche_u, kacheln: g.kacheln_u, leiste: g.leiste_u });
+    expect(u.kacheln.filter(k => k !== 'bezugsgroessen')).toHaveLength(fall('O17').erwartet.kacheln_u);
   });
 
   it('Werk Ahrenberg vor IP-2: vier Bereiche, zwei Kacheln (Reiter), keine Leiste', () => {

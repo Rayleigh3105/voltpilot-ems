@@ -536,7 +536,7 @@ const BETRIEBSKUNDE: EbenenLesemodell = {
  */
 const ALLE_SEITEN: EbenenSeiten = (ort) => {
   const hier = ort.art === 'unternehmen' ? pageRoute('portfolio') : standortRoute(ort.standortId);
-  return { uebersicht: hier, standorte: hier, gebaeude: hier, anlagen: hier, messstellen: hier, kennzahlen: hier, berichte: hier };
+  return { uebersicht: hier, standorte: hier, gebaeude: hier, anlagen: hier, messstellen: hier, bezugsgroessen: hier, kennzahlen: hier, berichte: hier };
 };
 
 const labels = (liste: { label: string }[]) => liste.map((b) => b.label);
@@ -547,6 +547,7 @@ describe('ebenenBereiche - die Bereiche der Ebene kommen aus dem Read-Model, nic
       'Übersicht',
       'Standorte',
       'Messstellen',
+      'Bezugsgrößen',
       'Kennzahlen',
       'Berichte',
     ]);
@@ -601,22 +602,23 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE, ALLE_SEITEN)).toEqual([]);
   });
 
-  it('2 · ein Messkunde bekommt fünf Kacheln, in der Reihenfolge der Tabelle', () => {
+  it('2 · ein Messkunde bekommt sechs Kacheln, in der Reihenfolge der Tabelle', () => {
     const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE, ALLE_SEITEN);
-    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
-    expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'map-pin', 'activity', 'trending-up', 'file-text']);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
+    expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'map-pin', 'activity', 'layers', 'trending-up', 'file-text']);
   });
 
-  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — seit AP-12 IP-13 hat Ahrenberg FÜNF', () => {
-    expect(ebenenBereiche(UNTERNEHMEN, MESSKUNDE)).toHaveLength(5);
+  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — seit AP-12 IP-13 hat Ahrenberg mit AP-09 SECHS', () => {
+    expect(ebenenBereiche(UNTERNEHMEN, MESSKUNDE)).toHaveLength(6);
     // Übersicht · Standorte · Messstellen · Kennzahlen · Berichte — jeder Bereich des Unternehmens hat seine Seite.
     const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE);
-    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
     expect(leiste[2].ziel).toEqual(pageRoute('portfolio-messstellen'));
-    expect(leiste[3].ziel).toEqual(pageRoute('portfolio-kennzahlen'));
-    expect(leiste[4].ziel).toEqual(pageRoute('portfolio-berichte'));
+    expect(leiste[3].ziel).toEqual(pageRoute('portfolio-bezugsgroessen'));
+    expect(leiste[4].ziel).toEqual(pageRoute('portfolio-kennzahlen'));
+    expect(leiste[5].ziel).toEqual(pageRoute('portfolio-berichte'));
     // Ohne eine lebende Kennzahl gibt es den Bereich „Kennzahlen“ nicht — die Berichte bleiben (ein Standort misst).
-    expect(labels(ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Berichte']);
+    expect(labels(ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Berichte']);
     // Seit AP-13 IP-2 haben auch Gebäude und Anlagen des Standorts ihre Seite: Werk Ahrenberg vier, Werk Lindach drei (O17).
     expect(labels(ebenenLeiste(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen']);
     expect(labels(ebenenLeiste(LINDACH, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Messstellen']);
@@ -629,6 +631,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       uebersicht: pageRoute('portfolio'),
       standorte: pageRoute('portfolio-standorte'),
       messstellen: pageRoute('portfolio-messstellen'),
+      bezugsgroessen: pageRoute('portfolio-bezugsgroessen'),
       kennzahlen: pageRoute('portfolio-kennzahlen'),
       berichte: pageRoute('portfolio-berichte'),
     });
@@ -646,7 +649,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
   it('AP-04 IP-5 · die Reiter einer Ebene: dieselben Bereiche mit Seite, schon ab zwei — der Weg am Rechner', () => {
     expect(labels(ebenenReiter(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen']);
     expect(ebenenReiter(LINDACH, MESSKUNDE)[2].ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st2));
-    expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
+    expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
     // Ein einzelner Reiter ist keine Wahl: ein Standort ohne Gebäude, mit einer Anlage und ohne Messen hat nur die Übersicht.
     const ohneMessen = structuredClone(MESSKUNDE);
     for (const st of ohneMessen.funktionen!.standorte) st.messen.zustand = 'kein_objekt';
@@ -765,8 +768,8 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
     const lindach = ebenenLeiste(LINDACH, MESSKUNDE);
     expect(keys(lindach)).toEqual(O17.gegeben.kacheln_st2_nach_ip2);
     expect(labels(lindach)).toEqual(['Übersicht', 'Gebäude', 'Messstellen']);
-    // Das Unternehmen bleibt bei fünf.
-    expect(ebenenLeiste(UNTERNEHMEN, MESSKUNDE)).toHaveLength(O17.erwartet.kacheln_u as number);
+    // Der AP-09-Nachtrag ergänzt ausschließlich am Unternehmen eine Welt.
+    expect(ebenenLeiste(UNTERNEHMEN, MESSKUNDE).filter(k => k.key !== 'bezugsgroessen')).toHaveLength(O17.erwartet.kacheln_u as number);
   });
 
   it('O17 · die Kacheln führen auf die Seiten des Standorts und heben ihren Bereich hervor', () => {
@@ -868,5 +871,16 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
     }
     // Ein unbekannter Bereich führt auf die Übersicht, nie ins Leere.
     expect(parseRoute(`#/standort/${st}/unbekannt`)).toEqual(standortRoute(st));
+  });
+});
+
+// Firstmate 001 (16.09.2026): Bezugsgrößen sind eine Unternehmenswelt für Messkunden.
+describe('AP-09 IP-9 · Bezugsgrößen', () => {
+  it('öffnet den Leerzustand ohne Kennzahl, aber nie ohne Messfunktion oder am Standort', () => {
+    expect(ebenenBereiche(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }).map(b => b.key)).toContain('bezugsgroessen');
+    expect(ebenenBereiche(UNTERNEHMEN, BETRIEBSKUNDE).map(b => b.key)).not.toContain('bezugsgroessen');
+    expect(ebenenBereiche(WERK, MESSKUNDE).map(b => b.key)).not.toContain('bezugsgroessen');
+    expect(EBENEN_SEITEN(WERK, MESSKUNDE).bezugsgroessen).toBeUndefined();
+    expect(ebenenAktiv('portfolio-bezugsgroessen')).toBe('bezugsgroessen');
   });
 });

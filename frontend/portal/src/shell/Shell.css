@@ -817,3 +817,14 @@
     display: inline;
   }
 }
+
+/* AP-09: sechs Unternehmenswelten. Namen bleiben vollständig, Bestandsleisten bis fünf unverändert. */
+.vp-bottombar:has(> .vp-bottombar-item:nth-child(6)) .lbl {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  text-align: center;
+  line-height: 1.2;
+  min-height: 2.4em;
+}

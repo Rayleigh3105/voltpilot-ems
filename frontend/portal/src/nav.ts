@@ -22,6 +22,7 @@ export type PageId =
   | 'portfolio'
   | 'portfolio-standorte'
   | 'portfolio-messstellen'
+  | 'portfolio-bezugsgroessen'
   | 'portfolio-kennzahlen'
   | 'portfolio-berichte'
   | 'portfolio-messwerte'
@@ -239,6 +240,7 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // UEMS AP-11 IP-13: „Unternehmen › Kennzahlen“ (`#/portfolio/kennzahlen`, eine
   // Kennzahl unter `…/kennzahlen/{id}`), bis AP-13 die Ebenen-Navigation bringt.
   // Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showKennzahlen`).
+  { id: 'portfolio-bezugsgroessen', label: 'Bezugsgrößen', icon: 'layers' },
   { id: 'portfolio-kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
   // UEMS AP-12 IP-13: „Unternehmen › Berichte“ (`#/portfolio/berichte`, ein Bericht unter
   // `…/berichte/{kennung}`), bis AP-13 die Ebenen-Navigation bringt. Der Reiter steht
