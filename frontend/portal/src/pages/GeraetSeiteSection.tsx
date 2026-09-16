@@ -1317,13 +1317,14 @@ export function GeraetSeiteSection({
           </RahmenSektion>
 
           {/* Alle Summenwerte, deren aktuelle Formel dieses physische Gerät liest. */}
-          {summenwertEinstieg(view) && boxDevice?.id && (
+          {summenwertEinstieg(view) && boxDevice?.id && geraetId && (
             <GeraetSummenwerte
               siteId={site.id}
               deviceId={boxDevice.id}
               entityId={summenwertEinstieg(view)!}
               entityIds={[...new Set(view.komponenten.map(k => k.entityId))]}
               geraetName={view.kopf.titel}
+              geraetId={geraetId}
               onZuordnungGeaendert={() => setPvReload((x) => x + 1)}
             />
           )}

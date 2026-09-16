@@ -34,6 +34,7 @@ it("zeigt rollenlose Summenwerte einmal über alle Komponenten des physischen Ge
   const get = vi.spyOn(api, "geraetSummenwerte").mockResolvedValue([z]);
   render(
     <GeraetSummenwerte
+              geraetId="inverter"
       siteId="s1"
       deviceId="d1"
       entityId="e1"
@@ -53,6 +54,7 @@ it("fehlende Werte werden keine Null und fehlgeschlagenes Laden kein Leerzustand
   vi.spyOn(api, "geraetSummenwerte").mockRejectedValue(new Error("offline"));
   render(
     <GeraetSummenwerte
+              geraetId="inverter"
       siteId="s1"
       deviceId="d1"
       entityId="e1"
@@ -73,6 +75,7 @@ it("Umbenennen erhält Kennzeichen, Notiz", async () => {
     .mockResolvedValue(z.messstelle);
   render(
     <GeraetSummenwerte
+              geraetId="inverter"
       siteId="s1"
       deviceId="d1"
       entityId="e1"
