@@ -39,7 +39,7 @@ Lauf kennt dazu `rohwerte_fehlen` (d rechnet Z4 aus Rohwerten, Aufbewahrung 90 T
 
 - b/f brauchen für JEDE Viertelstunde eine `vollständig`e Menge der Vorperiode, c/g der Vergleichsquelle
   (`messstelle_quelle` mit `rolle = 'vergleich'` desselben Kundenbereichs). Profil gelesen aus Version 1.
-- e setzt den Betrag EINER Viertelstunde; über mehrere wäre es der Wert einer gröberen Periode (IP-17).
+- e setzt den Betrag EINER Viertelstunde oder einer gröberen Periode bis zum Kalendermonat; ein gröberer Betrag bleibt ohne Viertelstundenprofil ([Periodenregel](uems-ersatzwert-perioden.md)).
 - Die Ablehnung steht in `messreihe_ersatzwert_wirkung.ergebnis` — die Fläche (IP-16) liest sie dort.
 
 ## ⚠ Die Versionsregel
@@ -68,8 +68,7 @@ Lauf kennt dazu `rohwerte_fehlen` (d rechnet Z4 aus Rohwerten, Aufbewahrung 90 T
 ## Grenzen
 
 Nur die Viertelstunde: Tag, Monat, Jahr und berechnete Messstellen mit Ersatzwert bildet seit 14.09.2026 die Kaskade
-(`uems-korrektur-kaskade.md`) über dieselbe Regel — a–c; d–g haben über gröberen Perioden keine Vertragsregel
-(`ersatzwert_ohne_periodenregel`). Jede Version trägt seit IP-17 zuletzt „korrigiert (Version n)“. Keine Vorschläge (IP-14), keine
+(`uems-korrektur-kaskade.md`) über dieselbe Regel — a–c; d–g folgen inzwischen der [Periodenregel](uems-ersatzwert-perioden.md); e darf dort einen ungeteilten Betrag bis zum Kalendermonat tragen. Jede Version trägt seit IP-17 zuletzt „korrigiert (Version n)“. Keine Vorschläge (IP-14), keine
 Vier-Augen-Prüfung (seit IP-15 nur an Korrekturen: `uems-vieraugen-freigabe.md`), keine Route/kein Portal (IP-16), keine automatische
 Auffüllung. Eine spätere Neuverdichtung einer vorläufigen Version-1-Zeile löst keine Neubildung aus
 (`basis_berechnet_am` hält fest, worauf gerechnet wurde).

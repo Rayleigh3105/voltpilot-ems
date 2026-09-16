@@ -78,8 +78,8 @@ Wirkung (`messreihe_kaskade_woerter()` = `KorrekturKaskade.WOERTER`).
 
 ## Befunde (benannt, nicht still gelöst)
 
-- **Ersatzwert d–g über gröberen Perioden:** der Vertrag rechnet sie nur an der Viertelstunde (`mitErsatzwerten` wirft
-  bei e–g) → `ersatzwert_ohne_periodenregel`, keine Stufe bekommt eine Version. Braucht eine Vertragsregel (Python-Zwilling).
+- **Ersatzwert d–g über gröberen Perioden:** ergänzt über `ErsatzwertPerioden` (Java/TS), einschließlich
+  ungeteilter Eingabe bis Monat. Die Viertelstunden-Verteilungsfunktion bleibt unverändert; [Regel und Nachweise](uems-ersatzwert-perioden.md).
 - **Korrektur auf einer Viertelstunde mit geltendem Ersatzwert** → `ueberschneidet_ersatzwert`. Umgekehrt rechnet
   `ErsatzwertLauf` ohne Korrekturen (Befund IP-13): ein später erfasster Ersatzwert überschreibt eine korrigierte
   Viertelstunde; die Kaskade folgt dem neuesten Stand, damit keine zwei Wahrheiten entstehen.

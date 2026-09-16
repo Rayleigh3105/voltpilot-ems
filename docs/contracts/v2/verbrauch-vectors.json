@@ -3387,5 +3387,301 @@
     }
    ]
   }
- ]
+ ],
+ "ersatzwert_perioden": [
+  {
+    "name": "F12: Tag übernimmt +0,53 kWh",
+    "why": "AP-08 F12, report.md:998: Z4 14,28 → 14,81; gleicher Mehrbetrag an jeder gröberen Stufe. Hier nur die im Referenzfall belegte Viertelstunde als Eingang, keine erfundenen übrigen Tageswerte.",
+    "basis": {
+      "menge": 14.28,
+      "zustand": "unvollständig",
+      "kennzeichen": [
+        "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+      ],
+      "abdeckung_prozent": 100
+    },
+    "von": "2027-01-15T00:00:00+01:00",
+    "bis": "2027-01-16T00:00:00+01:00",
+    "beitraege": [
+      {
+        "von": "2027-01-15T09:00:00+01:00",
+        "bis": "2027-01-15T09:15:00+01:00",
+        "vorher": 14.28,
+        "nachher": 14.81,
+        "vorher_kennzeichen": [
+          "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+        ],
+        "nachher_kennzeichen": [
+          "Gerätegrenze 09:12 mit Ableseständen"
+        ],
+        "kennung": "EW-2027-0001",
+        "methode": "ablesestand_nachtragen"
+      }
+    ],
+    "expected": {
+      "menge": 14.81,
+      "zustand": "mit Ersatzwert",
+      "kennzeichen": [
+        "Gerätegrenze 09:12 mit Ableseständen",
+        "mit Ersatzwert (Methode „Ablesestand nachtragen“, EW-2027-0001)"
+      ],
+      "abdeckung_prozent": 100
+    }
+  },
+  {
+    "name": "F12: Monat übernimmt +0,53 kWh",
+    "why": "AP-08 F12, report.md:998: Z4 14,28 → 14,81; gleicher Mehrbetrag an jeder gröberen Stufe. Hier nur die im Referenzfall belegte Viertelstunde als Eingang, keine erfundenen übrigen Tageswerte.",
+    "basis": {
+      "menge": 14.28,
+      "zustand": "unvollständig",
+      "kennzeichen": [
+        "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+      ],
+      "abdeckung_prozent": 100
+    },
+    "von": "2027-01-01T00:00:00+01:00",
+    "bis": "2027-02-01T00:00:00+01:00",
+    "beitraege": [
+      {
+        "von": "2027-01-15T09:00:00+01:00",
+        "bis": "2027-01-15T09:15:00+01:00",
+        "vorher": 14.28,
+        "nachher": 14.81,
+        "vorher_kennzeichen": [
+          "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+        ],
+        "nachher_kennzeichen": [
+          "Gerätegrenze 09:12 mit Ableseständen"
+        ],
+        "kennung": "EW-2027-0001",
+        "methode": "ablesestand_nachtragen"
+      }
+    ],
+    "expected": {
+      "menge": 14.81,
+      "zustand": "mit Ersatzwert",
+      "kennzeichen": [
+        "Gerätegrenze 09:12 mit Ableseständen",
+        "mit Ersatzwert (Methode „Ablesestand nachtragen“, EW-2027-0001)"
+      ],
+      "abdeckung_prozent": 100
+    }
+  },
+  {
+    "name": "F12: Jahr übernimmt +0,53 kWh",
+    "why": "AP-08 F12, report.md:998: Z4 14,28 → 14,81; gleicher Mehrbetrag an jeder gröberen Stufe. Hier nur die im Referenzfall belegte Viertelstunde als Eingang, keine erfundenen übrigen Tageswerte.",
+    "basis": {
+      "menge": 14.28,
+      "zustand": "unvollständig",
+      "kennzeichen": [
+        "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+      ],
+      "abdeckung_prozent": 100
+    },
+    "von": "2027-01-01T00:00:00+01:00",
+    "bis": "2028-01-01T00:00:00+01:00",
+    "beitraege": [
+      {
+        "von": "2027-01-15T09:00:00+01:00",
+        "bis": "2027-01-15T09:15:00+01:00",
+        "vorher": 14.28,
+        "nachher": 14.81,
+        "vorher_kennzeichen": [
+          "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+        ],
+        "nachher_kennzeichen": [
+          "Gerätegrenze 09:12 mit Ableseständen"
+        ],
+        "kennung": "EW-2027-0001",
+        "methode": "ablesestand_nachtragen"
+      }
+    ],
+    "expected": {
+      "menge": 14.81,
+      "zustand": "mit Ersatzwert",
+      "kennzeichen": [
+        "Gerätegrenze 09:12 mit Ableseständen",
+        "mit Ersatzwert (Methode „Ablesestand nachtragen“, EW-2027-0001)"
+      ],
+      "abdeckung_prozent": 100
+    }
+  },
+  {
+    "name": "E7 e: Halbstundenbetrag ohne erfundenes Profil",
+    "why": "report.md:308: eingegebener Wert je Periode; die Menge ersetzt den bisherigen Beitrag dieses Zeitraums.",
+    "basis": {
+      "menge": 5.502,
+      "zustand": "unvollständig",
+      "kennzeichen": [],
+      "abdeckung_prozent": 100
+    },
+    "von": "2026-10-20T10:00:00+02:00",
+    "bis": "2026-10-20T10:30:00+02:00",
+    "beitraege": [
+      {
+        "von": "2026-10-20T10:00:00+02:00",
+        "bis": "2026-10-20T10:30:00+02:00",
+        "vorher": 5.502,
+        "nachher": 2.75,
+        "vorher_kennzeichen": [],
+        "nachher_kennzeichen": [],
+        "kennung": "EW-2027-0001",
+        "methode": "wert_eingeben"
+      }
+    ],
+    "expected": {
+      "menge": 2.75,
+      "zustand": "mit Ersatzwert",
+      "kennzeichen": [
+        "mit Ersatzwert (Methode „Wert eingeben (mit Beleg)“, EW-2027-0001)"
+      ],
+      "abdeckung_prozent": 100
+    }
+  },
+  {
+    "name": "E7 e: Viertelstunde bleibt unverändert",
+    "why": "Keine Verteilung der Halbstundenmenge auf Viertelstunden; die bisherige Ablehnung in ersatzwerte bleibt für die Verteilungsfunktion richtig.",
+    "basis": {
+      "menge": 2.751,
+      "zustand": "unvollständig",
+      "kennzeichen": [],
+      "abdeckung_prozent": 100
+    },
+    "von": "2026-10-20T10:00:00+02:00",
+    "bis": "2026-10-20T10:15:00+02:00",
+    "beitraege": [
+      {
+        "von": "2026-10-20T10:00:00+02:00",
+        "bis": "2026-10-20T10:30:00+02:00",
+        "vorher": 5.502,
+        "nachher": 2.75,
+        "vorher_kennzeichen": [],
+        "nachher_kennzeichen": [],
+        "kennung": "EW-2027-0001",
+        "methode": "wert_eingeben"
+      }
+    ],
+    "expected": {
+      "menge": 2.751,
+      "zustand": "unvollständig",
+      "kennzeichen": [],
+      "abdeckung_prozent": 100
+    }
+  },
+  {
+    "name": "E7 e: Monat ersetzt seinen Betrag",
+    "why": "report.md:308 und P3: ein Kalendermonat mit Zeitumstellung bleibt eine ungeteilte Eingabe; Abdeckung bleibt unbekannt.",
+    "basis": {
+      "menge": null,
+      "zustand": "keine Werte",
+      "kennzeichen": [],
+      "abdeckung_prozent": null
+    },
+    "von": "2026-10-01T00:00:00+02:00",
+    "bis": "2026-11-01T00:00:00+01:00",
+    "beitraege": [
+      {
+        "von": "2026-10-01T00:00:00+02:00",
+        "bis": "2026-11-01T00:00:00+01:00",
+        "vorher": null,
+        "nachher": 2304,
+        "vorher_kennzeichen": [],
+        "nachher_kennzeichen": [],
+        "kennung": "EW-2027-0001",
+        "methode": "wert_eingeben"
+      }
+    ],
+    "expected": {
+      "menge": 2304,
+      "zustand": "mit Ersatzwert",
+      "kennzeichen": [
+        "mit Ersatzwert (Methode „Wert eingeben (mit Beleg)“, EW-2027-0001)"
+      ],
+      "abdeckung_prozent": null
+    }
+  },
+  {
+    "name": "E7 vorperiode_uebernehmen: kein doppelter Beitrag",
+    "why": "report.md:309–310,354: Basis − ersetzter Beitrag + übernommener Beitrag, gemessene Abdeckung unverändert.",
+    "basis": {
+      "menge": 100,
+      "zustand": "unvollständig",
+      "kennzeichen": [],
+      "abdeckung_prozent": 85
+    },
+    "von": "2027-01-15T00:00:00+01:00",
+    "bis": "2027-01-16T00:00:00+01:00",
+    "beitraege": [
+      {
+        "von": "2027-01-15T09:00:00+01:00",
+        "bis": "2027-01-15T09:15:00+01:00",
+        "vorher": 14.28,
+        "nachher": 14.81,
+        "vorher_kennzeichen": [],
+        "nachher_kennzeichen": [],
+        "kennung": "EW-2027-0001",
+        "methode": "vorperiode_uebernehmen"
+      }
+    ],
+    "expected": {
+      "menge": 100.53,
+      "zustand": "mit Ersatzwert",
+      "kennzeichen": [
+        "mit Ersatzwert (Methode „Vorperiode übernehmen“, EW-2027-0001)"
+      ],
+      "abdeckung_prozent": 85
+    }
+  },
+  {
+    "name": "E7 vergleichsquelle_uebernehmen: kein doppelter Beitrag",
+    "why": "report.md:309–310,354: Basis − ersetzter Beitrag + übernommener Beitrag, gemessene Abdeckung unverändert.",
+    "basis": {
+      "menge": 100,
+      "zustand": "unvollständig",
+      "kennzeichen": [],
+      "abdeckung_prozent": 85
+    },
+    "von": "2027-01-15T00:00:00+01:00",
+    "bis": "2027-01-16T00:00:00+01:00",
+    "beitraege": [
+      {
+        "von": "2027-01-15T09:00:00+01:00",
+        "bis": "2027-01-15T09:15:00+01:00",
+        "vorher": 14.28,
+        "nachher": 14.81,
+        "vorher_kennzeichen": [],
+        "nachher_kennzeichen": [],
+        "kennung": "EW-2027-0001",
+        "methode": "vergleichsquelle_uebernehmen"
+      }
+    ],
+    "expected": {
+      "menge": 100.53,
+      "zustand": "mit Ersatzwert",
+      "kennzeichen": [
+        "mit Ersatzwert (Methode „Vergleichsquelle übernehmen“, EW-2027-0001)"
+      ],
+      "abdeckung_prozent": 85
+    }
+  },
+  {
+    "name": "F21: Rücknahme hinterlässt keinen Ersatzwert",
+    "why": "F21: immer aus dem gemessenen Bestand rechnen, nie eine vorherige Ersatzwert-Version weiteraddieren.",
+    "basis": {
+      "menge": 4608,
+      "zustand": "vollständig",
+      "kennzeichen": [],
+      "abdeckung_prozent": 58
+    },
+    "von": "2026-11-03T00:00:00+01:00",
+    "bis": "2026-11-05T00:00:00+01:00",
+    "beitraege": [],
+    "expected": {
+      "menge": 4608,
+      "zustand": "vollständig",
+      "kennzeichen": [],
+      "abdeckung_prozent": 58
+    }
+  }
+]
 }
