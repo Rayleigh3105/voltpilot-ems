@@ -15,8 +15,10 @@
 -- der Anfrage). Diese Migration bringt die vier Protokolle auf dieselben Spalten:
 --
 --   1. ort_aenderung          akteur_sub/akteur_name HEISSEN jetzt actor_sub/actor_name;
---                             actor_rolle, actor_art neu. Bestand: Rolle NULL (nie
---                             geraten), Art aus dem, was die Zeile schon sagt.
+--                             actor_rolle, actor_art neu und NULLBAR: der Bestand hat keine
+--                             Rolle und — außer bei VoltPilot, das der Name sagt — keine Art.
+--                             Für ihn wird keine erfunden; das Lesemodell antwortet für ihn
+--                             Zeichen für Zeichen wie vorher.
 --   2. register_write_event   actor_sub/actor_name gab es; actor_rolle, actor_art neu,
 --                             im Bestand leer. actor_role/origin bleiben (Altbestand).
 --   3. device_override,       Handeingriffe: created_by bleibt (das Subject, wie heute);
@@ -51,19 +53,18 @@ END $$;
 ALTER TABLE ort_aenderung ADD COLUMN IF NOT EXISTS actor_rolle TEXT;
 ALTER TABLE ort_aenderung ADD COLUMN IF NOT EXISTS actor_art TEXT;
 
--- Die Art des Bestands: VoltPilot ohne Person (Subject NULL: Bestandsübernahme, Anlegen
--- des Kundenbereichs) und die Plattform am Umschalter (OrtProtokoll schrieb sie als
--- „VoltPilot (…)") — sonst ein Kundenkonto: vor AP-03 IP-8 gab es keine Unterstützung und
--- keinen Notfall-Zugriff. Die ROLLE bleibt NULL: sie wurde nicht festgehalten.
--- Das Protokoll ist append-only (Trigger); die Nachtragung ist die EINE Ausnahme.
+-- Die Art des Bestands steht nur dort, wo die Zeile sie schon SAGT: VoltPilot ohne Person
+-- (Subject NULL: Bestandsübernahme, Anlegen des Kundenbereichs) und die Plattform am
+-- Umschalter, die OrtProtokoll als „VoltPilot (…)" schreibt — genau die Ableitung, die das
+-- Lesemodell bis heute zur Lesezeit macht. Jede andere Zeile behält KEINE Art und KEINE
+-- Rolle: beides wurde nicht festgehalten, und geraten wird nichts.
+-- Das Protokoll ist append-only (Trigger); diese Nachtragung ist die EINE Ausnahme.
 ALTER TABLE ort_aenderung DISABLE TRIGGER ort_aenderung_append_only;
 UPDATE ort_aenderung
-   SET actor_art = CASE WHEN actor_sub IS NULL OR actor_name LIKE 'VoltPilot (%' THEN 'voltpilot'
-                        ELSE 'kunde' END
- WHERE actor_art IS NULL;
+   SET actor_art = 'voltpilot'
+ WHERE actor_art IS NULL
+   AND (actor_sub IS NULL OR actor_name LIKE 'VoltPilot (%');
 ALTER TABLE ort_aenderung ENABLE TRIGGER ort_aenderung_append_only;
-
-ALTER TABLE ort_aenderung ALTER COLUMN actor_art SET NOT NULL;
 
 ALTER TABLE ort_aenderung DROP CONSTRAINT IF EXISTS ort_aenderung_actor_art_chk;
 ALTER TABLE ort_aenderung ADD CONSTRAINT ort_aenderung_actor_art_chk
@@ -72,18 +73,17 @@ ALTER TABLE ort_aenderung DROP CONSTRAINT IF EXISTS ort_aenderung_actor_rolle_ch
 ALTER TABLE ort_aenderung ADD CONSTRAINT ort_aenderung_actor_rolle_chk
     CHECK (actor_rolle IS NULL OR actor_rolle IN ('kundenadministrator', 'energiemanager',
            'bearbeiter', 'bedienberechtigt', 'leser', 'unterstuetzer', 'voltpilot_betrieb'));
--- Der Name des Constraints bleibt (Tests und Fehlermeldungen kennen ihn); sein Inhalt wird
--- der der übrigen Protokolle: ohne Subject nur VoltPilot.
-ALTER TABLE ort_aenderung DROP CONSTRAINT IF EXISTS ort_aenderung_akteur_chk;
-ALTER TABLE ort_aenderung ADD CONSTRAINT ort_aenderung_akteur_chk
-    CHECK (btrim(actor_name) <> ''
-           AND (actor_sub IS NULL OR actor_sub <> '')
-           AND (actor_sub IS NOT NULL OR actor_art = 'voltpilot'));
+-- Der bestehende CHECK ort_aenderung_akteur_chk bleibt, wie er ist (die Umbenennung zieht
+-- seinen Ausdruck mit): Name nicht leer, Subject nicht leer. Dazu die Regel der übrigen
+-- Protokolle, aber nur für Zeilen, die eine Art TRAGEN — der Bestand hat keine.
+ALTER TABLE ort_aenderung DROP CONSTRAINT IF EXISTS ort_aenderung_actor_voltpilot_chk;
+ALTER TABLE ort_aenderung ADD CONSTRAINT ort_aenderung_actor_voltpilot_chk
+    CHECK (actor_art IS NULL OR actor_sub IS NOT NULL OR actor_art = 'voltpilot');
 
 COMMENT ON COLUMN ort_aenderung.actor_rolle IS
     'AP-03 IP-7: Rolle, unter der gehandelt wurde; NULL = nicht festgehalten (Bestand vor V20260916010000).';
 COMMENT ON COLUMN ort_aenderung.actor_art IS
-    'AP-03 IP-7: kunde | unterstuetzung | voltpilot | notfall (uems/ProtokollAkteur).';
+    'AP-03 IP-7: kunde | unterstuetzung | voltpilot | notfall (uems/ProtokollAkteur); NULL nur im Bestand.';
 
 -- -----------------------------------------------------------------------------
 -- 2. register_write_event — Rolle und Art neben der bisherigen Herkunft

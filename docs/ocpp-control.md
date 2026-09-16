@@ -34,10 +34,21 @@ Einstellungen und zeigt die Meldungen der Box. Ein Speichern beweist weder die
    Modell, Firmware und Zeitpunkt bleiben im Ergebnis sichtbar. Fehlende Belege
    heißen „nicht vollständig nachgewiesen“, nicht „Säule defekt“.
 
-Einrichtung, Freigabe und Änderungen benötigen Anlagenverwaltung (`site-admin`),
-Mandantenverwaltung (`admin`) oder Plattformverwaltung mit gewähltem Mandanten.
-Operatoren können den Zustand lesen. Die bestehenden betrieblichen OCPP-Aktionen
-behalten ihre jeweiligen Berechtigungen.
+Einrichtung, Freigabe und Änderungen (`PUT …/ocpp/control`) sind Sache des
+Kundenadministrators — das Recht `freigabe.erteilen` der Rechte-Matrix (UEMS AP-03
+IP-7); der VoltPilot-Betrieb behält seine Plattform-Zeile. Jeder Benutzer mit
+Zugriff auf den Standort liest den Zustand.
+
+Die betrieblichen OCPP-Aktionen hängen an der Zuweisung, nicht mehr an einer
+Realm-Rolle (Entscheid E13): Kundenadministrator und Bedienberechtigt erreichen die
+Anlagen-Stufe (Reservieren, Verfügbarkeit, sanft neu starten, Konfiguration lesen
+und schreiben, lokale Liste), ein Unterstützer mit „Einrichten und Bedienen“ die
+Kunden-Stufe (Starten, Beenden, Stecker entriegeln), VoltPilot die Plattform-Stufe
+(HardReset, Firmware, Diagnose). Energiemanager und Leser steuern nicht — sie haben
+keine Stufe. Die Realm-Rollen `operator`, `admin` und `site-admin` bedeuten nichts
+mehr; sie gelten nur noch, wo es keinen Zugriff-Kontext gibt (abgeschaltetes OIDC)
+und am Mandanten-Umschalter der Plattform. `SetChargingProfile` und
+`ClearChargingProfile` bleiben für jede Stufe gesperrt (Profil-Eigentümerschaft).
 
 ## Durchsetzung auf der Box
 

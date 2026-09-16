@@ -131,12 +131,13 @@ class ChargerApiTest {
                 {"revision":0,"enabled":true,"authorization":{"mode":"allowlist","allowed_tags":[]},
                  "electrical":[],"phase_limits_a":[],"limits":[]}
                 """);
-            // An operator can read, but cannot enable physical regulation.
-            assertThat(rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, bearer(customer)), String.class)
-                    .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+            // AP-03 IP-7 (E12/E13): die Realm-Rolle entscheidet hier nichts mehr - das Bestandskonto IST
+            // Kundenadministrator und gibt die Regelung selbst frei. Wer das Recht NICHT hat (Energiemanager,
+            // Bedienberechtigt, Leser, Unterstuetzer), bekommt 403 recht_fehlt - siehe RechtMatrixApiTest.
             HttpHeaders admin = bearer(token("admin", "admin"));
             admin.set("X-Tenant-Id", TENANT_A);
-            var saved = rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, admin), String.class);
+            var saved = rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(policy, bearer(customer)),
+                    String.class);
             assertThat(saved.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(json.readTree(saved.getBody()).path("desired").path("revision").asLong()).isEqualTo(1);
             assertThat(json.readTree(saved.getBody()).path("observed")).isEmpty();
