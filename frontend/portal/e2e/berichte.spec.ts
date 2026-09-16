@@ -173,6 +173,13 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     ohneQuerlauf(offen, 'nachweis-375');
     await n.zeile.scrollIntoViewIfNeeded();
     await ablegen(page, 'nachweis-ms12-375', offen);
+    // AP-13 IP-11: am Telefon stehen „heutigen Wert zeigen“ und der Weg zur Messstelle untereinander.
+    const aktionen = n.zeile.locator('.vp-br-aktionen');
+    await expect(n.zeile.getByTestId('bericht-sprung')).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10');
+    // Die Leiste am unteren Rand liegt über dem Fuß der Seite — die Zeile gehört in die MITTE des Bildes.
+    await aktionen.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+    if (BILDER) await aktionen.screenshot({ path: join(BILDER, 'ip11-bericht-aktionen-375.png') });
   });
 
   test('bei 1440 px: Nr. 1 ist „ersetzt durch Nr. 2“ und nennt 6.100 kWh; der Entwurf trägt keine Prüfsumme', async ({ page }) => {
