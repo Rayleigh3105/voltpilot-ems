@@ -46,6 +46,12 @@ Lokale Standardableitung und Cloud-Overrides nicht gleichsetzen. Quellen: Go-`in
 
 ## Geräteseitiger Rollen-Wert („verwenden als")
 
+**Verbindliche Erweiterung H-1:** [Rollen-Zuordnung](./rollen-zuordnung.md)
+legt PV-Produktion/Verbrauch/Netz/keine, Zählung ohne doppelte Quellen,
+Netz-Eindeutigkeit, 300 Sekunden Frische und Protokoll-Wörter fest. Die reinen
+Zwillinge sind vorbereitet; die folgenden Routen beschreiben weiterhin den
+PV-Bestand. H-2/H-3 schließen sie an, H-1 verändert keine Laufzeit.
+
 Die Rollen-Zuordnung `entity_role_assignment` ist verallgemeinert (`V20260914100100`): der maßgebliche Wert einer Rolle je Gerät ist ENTWEDER ein nativer Kanal (`capability`) ODER ein Gesamtwert / eine berechnete Messstelle (`quell_messstelle_id`) — genau eines von beiden (CHECK), der Mandant reist im zusammengesetzten Fremdschlüssel mit. Kein zweites Modell.
 
 - **Kunden-Fläche** (`SiteRollenController`, RLS wie jede `/api/v1/sites/**`-Route, fremde Anlage → 404):

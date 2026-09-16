@@ -72,3 +72,5 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 ## Pflegeregel
 
 Neue UEMS-Pakete tragen ihren Eintrag HIER ein, nicht im Themen-Index von `AGENTS.md`.
+
+- **Rollen-Zuordnung (H-1): Summenwert mit PV-Produktion/Verbrauch/Netz/keine** — ein Wert je Anlage und Rolle einmal, enthaltene Kanäle/innere Summen nicht zusätzlich; Netz höchstens ein Wert (409), Frische überall 300 s; Java `RollenZuordnungRegeln` ⟷ TS `uemsRollen.ts`, gemeinsame Vektoren. Noch keine Laufzeit-Aufrufer; `SUMMENWERT` und Textwächter mit engem Übergangsbestand für H-5/H-7 · `uems-rollen-zuordnung.md`

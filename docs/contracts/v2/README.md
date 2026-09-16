@@ -90,3 +90,5 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | D-25 | `vp.bms.limit` begrenzt Wünsche anhand aktueller Batteriegrenzen; ein Autor je Kanal, kein direkter Register-Schreibpfad. |
 
 Details zu D-22–25: [Entity-Konfiguration](edge-entity-config.md#selbst-angebundene-batterien-und-schutzgrenzen). Fehlende optionale Felder erhalten das bisherige Verhalten; neue Leser zuerst auf der Box ausrollen.
+
+| [`rollen-zuordnung.md`](./rollen-zuordnung.md) + [`rollen-zuordnung-vectors.json`](./rollen-zuordnung-vectors.json) + [`rollen-zuordnung.schema.json`](./rollen-zuordnung.schema.json) | H-1: Rollen, Zählregel, Netz-Eindeutigkeit und ein Frische-Fenster; reine Java-/TS-Zwillinge, noch ohne Laufzeit-Aufrufer. |
