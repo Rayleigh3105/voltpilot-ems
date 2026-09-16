@@ -56,6 +56,10 @@ public class EndgueltigkeitLaeufer {
     private final KennzahlLauf kennzahlen;
     private final KorrekturVorschlagLauf vorschlaege;
     private AblesungLueckenLauf ablesungen;
+    private KanalbindungLauf kanalbindungen;
+
+    @Autowired
+    void kanalbindungen(KanalbindungLauf lauf) { this.kanalbindungen = lauf; }
 
     @org.springframework.beans.factory.annotation.Autowired
     void ablesungen(AblesungLueckenLauf lauf) { this.ablesungen = lauf; }
@@ -114,6 +118,11 @@ public class EndgueltigkeitLaeufer {
             berechnete.lauf(jetzt);
         } catch (RuntimeException e) {
             log.warn("UEMS berechnete Periodenwerte übersprungen: {}", e.toString());
+        }
+        try {
+            if (kanalbindungen != null) kanalbindungen.lauf(jetzt);
+        } catch (RuntimeException e) {
+            log.warn("UEMS Kanalbindung übersprungen: {}", e.toString());
         }
         // Nach den berechneten Messstellen: die Kennzahlen lesen gemessene UND berechnete Periodenwerte (AP-11 IP-6).
         if (kennzahlen != null) {

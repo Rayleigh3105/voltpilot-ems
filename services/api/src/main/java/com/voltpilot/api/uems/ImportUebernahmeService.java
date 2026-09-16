@@ -32,6 +32,8 @@ public class ImportUebernahmeService {
     private final MessreiheEreignisRepository ereignisse;
     private final RechtPruefung rechte;
     private final ObjectMapper json;
+    @org.springframework.beans.factory.annotation.Autowired
+    private KanalbindungService kanalbindungen;
     private final TransactionTemplate tx;
 
     public ImportUebernahmeService(ImportVorschauService vorschauen, BezugsgroesseRepository bezuege,
@@ -85,6 +87,7 @@ public class ImportUebernahmeService {
                 geurteilt.add(new BezugsdatenRegeln.Zeilenurteil(urteil,z.befunde().stream().map(BezugsdatenImportDto.Befund::befund).toList()));
                 if (!List.of("neu","berichtigung").contains(urteil)) continue;
                 UUID id=z.bezugsgroesseId();
+                if (kanalbindungen != null) kanalbindungen.eingabePruefen(id,z.periodeVon(),z.periodeBis(),java.time.ZoneId.of(bezuege.zeitzone(id)));
                 Instant zeit=z.zeitpunkt()==null ? null : z.zeitpunkt().toInstant();
                 if (repo.offen(id,z.periodeVon(),zeit) || (z.periodeVon()!=null && werte.offen(tenant,id,z.periodeVon()).isPresent())) gleichzeitig();
                 var k=kette(id,z.periodeVon(),zeit);
@@ -183,6 +186,7 @@ public class ImportUebernahmeService {
     private void anwenden(UUID tenant,String kennung,List<Aenderung> auftrag,String grund,ProtokollAkteur wer,ProtokollAkteur freigeber) {
         for (var a:auftrag) {
             var b=bezuege.sperre(a.id()).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+            if (kanalbindungen != null) kanalbindungen.eingabePruefen(a.id(),a.von(),a.bis(),ZoneId.of(a.zone()));
             var k=kette(a.id(),a.von(),a.zeitpunkt());
             if ((k.isEmpty() ? 0 : k.getLast().fassung())!=a.vorher() || b.archiviertAm()!=null) gleichzeitig();
             repo.wert(tenant,kennung,a,grund,wer,freigeber,b);

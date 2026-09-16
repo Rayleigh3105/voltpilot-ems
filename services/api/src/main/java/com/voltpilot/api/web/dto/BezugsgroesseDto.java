@@ -171,7 +171,9 @@ public final class BezugsgroesseDto {
             Herkunft herkunft,
             Person urheber,
             Person freigeber,
-            OffsetDateTime eingetragenAm) {}
+            OffsetDateTime eingetragenAm,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            com.fasterxml.jackson.databind.JsonNode kanal) {}
 
     /**
      * Ein Wert = ein Schlüssel (Periode bzw. Zeitpunkt) mit seinen Fassungen. {@code wirksamer_betrag}

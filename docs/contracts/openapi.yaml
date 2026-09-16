@@ -9935,6 +9935,82 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsgroessen/{id}/kanalbindung:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bezugsgroessen]
+      summary: Liest die zeitgültigen Kanalbindungen einer Bezugsgröße.
+      description: Recht `messwerte.ansehen`; fremde Bezugsgröße ist 404.
+      responses:
+        "200":
+          description: Bindungen in zeitlicher Reihenfolge.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseKanalbindung" } }
+        "404": { description: Bezugsgröße nicht gefunden. }
+    post:
+      tags: [bezugsgroessen]
+      summary: Bindet einen Zähler- oder Zustandskanal an Periodenwerte (K1–K6).
+      description: >
+        Recht `bezugsgroesse.verwalten`. Minutenweise, halboffen; frühestens ab dem ersten
+        gespeicherten Rohwert. Der Kanal muss Daten liefern. Ein Zustandskanal braucht einen
+        gewählten Zustand; ein Zähler eine passende Einheit. Im gebundenen Zeitraum sind
+        Eingabe, Berichtigung und Import mit 422 `kanal_gebunden` gesperrt. Archivieren erhält
+        die Historie; eine Bezugsgröße mit Bindung kann nicht gelöscht werden.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_id, kanal, von]
+              properties:
+                entity_id: { type: string, format: uuid }
+                kanal: { type: string }
+                zustand: { type: string, nullable: true }
+                von: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Bindung und Protokolleintrag angelegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseKanalbindung" }
+        "404": { description: Bezugsgröße oder Kanal nicht gefunden. }
+        "422":
+          description: Bindung abgelehnt; Code und Kundensatz nennen den Grund.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseKanalfehler" }
+  /api/v1/bezugsgroessen/{id}/kanalbindung/{bindung}/beenden:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bindung, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [bezugsgroessen]
+      summary: Beendet eine Kanalbindung einmalig ab jetzt oder später.
+      description: Recht `bezugsgroesse.verwalten`. `bis` ist minutengenau und ausschließlich.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bis]
+              properties:
+                bis: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Beendet und protokolliert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseKanalbindung" }
+        "404": { description: Bezugsgröße oder Bindung nicht gefunden. }
+        "422":
+          description: Ende ungültig oder Bindung bereits beendet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseKanalfehler" }
   /api/v1/bezugsgroessen/{id}/archivieren:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -22557,6 +22633,41 @@ components:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/BezugsgroessePerson" }]
         eingetragen_am: { type: string, format: date-time }
+        kanal: { $ref: "#/components/schemas/BezugsgroesseKanalherkunft" }
+    BezugsgroesseKanalherkunft:
+      type: object
+      description: Nur bei Herkunft messkanal vorhanden; zusammen mit der Fassung unveränderlich.
+      required: [bindung, entity_id, kanal, regel, zustand, abdeckung_prozent, endgueltig_ab, vorlaeufig]
+      properties:
+        bindung: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        kanal: { type: string }
+        regel: { type: string }
+        zustand: { type: string, enum: [vollständig, unvollständig, keine Werte] }
+        abdeckung_prozent: { type: number, minimum: 0, maximum: 100 }
+        endgueltig_ab: { type: string, format: date-time }
+        vorlaeufig: { type: boolean }
+        bindungen:
+          type: array
+          description: Bei einem Wechsel innerhalb der Periode alle zeitlich disjunkten Quellen; die einzelnen Quellangaben oben nennen die erste.
+          items: { type: object, additionalProperties: true }
+    BezugsgroesseKanalbindung:
+      type: object
+      required: [id, entity_id, kanal, wertart, zustand, von, bis]
+      properties:
+        id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        kanal: { type: string }
+        wertart: { type: string, enum: [counter, state] }
+        zustand: { type: string, nullable: true }
+        von: { type: string, format: date-time }
+        bis: { type: string, format: date-time, nullable: true }
+    BezugsgroesseKanalfehler:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, description: "Benannter Grund, u. a. kanal_gebunden, bindung_ueberlappt, kanal_liefert_nicht, vor_erster_messung, zeitraum_hat_werte, ende_ungueltig." }
+        message: { type: string }
     BezugsgroesseWert:
       type: object
       required: [periode_von, periode_bis, zeitpunkt, zeitzone, wirksamer_betrag, wirksame_fassung, stand_offen, fassungen, vorschlag]

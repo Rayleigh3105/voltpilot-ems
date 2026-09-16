@@ -58,6 +58,11 @@ class EndgueltigkeitWiringTest {
             return mock(SpaetankunftMelder.class);
         }
 
+        @Bean
+        KanalbindungLauf kanalbindungLauf() {
+            return mock(KanalbindungLauf.class);
+        }
+
         /** Die berechneten Messstellen (AP-10 IP-10) rechnen im selben Takt nach den gemessenen. */
         @Bean
         BerechnetePeriodenLauf berechnetePeriodenLauf() {

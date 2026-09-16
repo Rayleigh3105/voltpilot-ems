@@ -98,4 +98,18 @@ class EndgueltigkeitLaeuferReihenfolgeTest {
         verifyNoInteractions(kennzahlen);
         verify(vorschlaege).lauf(any());
     }
+    @Test
+    void kanalbindungNachGemessenenUndVorKennzahlenAuchBeiFehlerIsoliert() {
+        KanalbindungLauf kanal = mock(KanalbindungLauf.class);
+        EndgueltigkeitLaeufer takt = new EndgueltigkeitLaeufer(endgueltigkeit,tage,perioden,berechnete,kennzahlen,vorschlaege);
+        takt.kanalbindungen(kanal);
+        when(kanal.lauf(any())).thenThrow(new IllegalStateException("Zusatz kaputt"));
+        takt.takt();
+        InOrder folge = inOrder(perioden,berechnete,kanal,kennzahlen,vorschlaege);
+        folge.verify(perioden).lauf(any());
+        folge.verify(berechnete).lauf(any());
+        folge.verify(kanal).lauf(any());
+        folge.verify(kennzahlen).lauf(any());
+        folge.verify(vorschlaege).lauf(any());
+    }
 }
