@@ -236,8 +236,8 @@ class UemsKorrekturErsatzwertMigrationTest {
         }
         assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id = ? "
                 + "AND art IN ('substitute', 'correction')", Integer.class, kb.tenant())).isEqualTo(angehaengt)
-                // AP-09 IP-7: dazu die Berichtigung des Bezugsgrößen-Werts BK-2026-0001 (Bezug bezugsgroesse).
-                .isEqualTo(8);
+                // AP-09 IP-7: Bezugswert-Berichtigung; IP-13 ergänzt einen gültigen Import-Zeilen-Anlass.
+                .isEqualTo(9);
     }
 
     // ============================================================ E7 in der Datenbank
