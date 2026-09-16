@@ -126,6 +126,14 @@ public class DatenquelleController {
         return ResponseEntity.status(HttpStatus.CREATED).body(z);
     }
 
+    /** Recht: {@code datenquelle.zustaendigkeit}; nur ein noch nicht wirksamer Plan. */
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}/assignments/{assignmentId}")
+    @Recht(value = "datenquelle.zustaendigkeit", ziel = RechtZiel.ANLAGE)
+    public DatenquelleDto.Datenquelle geplanteZustaendigkeitZuruecknehmen(@PathVariable UUID siteId,
+            @PathVariable UUID id, @PathVariable UUID assignmentId, Authentication auth) {
+        return datenquellen.geplanteZustaendigkeitZuruecknehmen(siteId, id, assignmentId, akteur(auth));
+    }
+
     /**
      * Recht: {@code datenquelle.ansehen} — die Vorschlagsliste der Bestands-Übernahme (IP-4): die
      * vorhandenen Komponenten, gruppiert zu Quellen je Box. Liest nur; bis zur Bestätigung

@@ -45,7 +45,8 @@ public class DatenquelleBudgetService {
 
         Map<UUID, UUID> boxJeQuelle = new LinkedHashMap<>();
         jdbc.query("SELECT data_source_id, device_id FROM data_source_assignment "
-                        + "WHERE effective_from <= ? AND (effective_to IS NULL OR effective_to > ?)",
+                        + "WHERE zurueckgenommen_am IS NULL AND effective_from <= ? "
+                        + "AND (effective_to IS NULL OR effective_to > ?)",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> boxJeQuelle.put(
                         rs.getObject("data_source_id", UUID.class),
                         rs.getObject("device_id", UUID.class)),

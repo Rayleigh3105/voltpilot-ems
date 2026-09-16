@@ -531,6 +531,7 @@ public class LueckenMelder {
                 SELECT data_source_id, effective_to
                   FROM data_source_assignment
                  WHERE tenant_id = ? AND device_id = ? AND effective_from <= ?
+                   AND zurueckgenommen_am IS NULL
                    AND (effective_to IS NULL OR effective_to > ?)
                  ORDER BY data_source_id
                 """)) {

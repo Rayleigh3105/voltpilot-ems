@@ -172,6 +172,50 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     }
   });
 
+  test('AP-06 IP-12 · Quellenübergabe: Prüfung, Folgen, geplanter Wechsel und Rücknahme bei 375/1440', async ({ page }) => {
+    for (const breite of [375, 1440]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
+      await page.getByRole('button', { name: 'Datenquellen und Geräte' }).click();
+      await page.getByRole('button', { name: 'Zuständige Box wechseln' }).first().click();
+      const dialog = page.getByRole('dialog', { name: 'Zuständige Box wechseln' });
+      await expect(dialog).toBeVisible();
+      await dialog.getByLabel('Geplant').check();
+      await dialog.getByRole('button', { name: 'Von Box Halle 2 prüfen' }).click();
+      await expect(dialog).toContainText('Erreichbar · 38 ms');
+      await dialog.getByRole('button', { name: 'Folgen prüfen' }).click();
+      await expect(dialog).toContainText('Die Messstellen an DQ-2 behalten ihre Quelle.');
+      await expect(dialog).toContainText('kurzen Lücke (unter 1 Minute), sichtbar im Verlauf');
+      expect((await messe(page)).dokument).toBe(0);
+      if (BILDER) await page.screenshot({ path: join(BILDER, `quellenwechsel-folgen-${breite}.png`), fullPage: true });
+      await dialog.getByRole('button', { name: 'Wechsel bestätigen' }).click();
+      const aktualisiert = page.getByRole('dialog', { name: 'Zuständigkeit aktualisiert' });
+      await expect(aktualisiert).toContainText('Der Wechsel ist geplant.');
+      await aktualisiert.getByRole('button', { name: 'Schließen' }).last().click();
+
+      await page.getByRole('button', { name: 'Zuständige Box wechseln' }).first().click();
+      const erneut = page.getByRole('dialog', { name: 'Zuständige Box wechseln' });
+      await erneut.getByRole('button', { name: 'Geplanten Wechsel zurücknehmen' }).click();
+      await expect(erneut).toContainText('bleibt zuständig');
+      await erneut.getByRole('button', { name: 'Rücknahme bestätigen' }).click();
+      await expect(page.getByRole('dialog', { name: 'Zuständigkeit aktualisiert' }))
+        .toContainText('Der geplante Wechsel wurde zurückgenommen.');
+    }
+  });
+
+  test('AP-06 IP-12 · Box-Tausch beim Claim bleibt bei ausstehender Zustellung ehrlich (375)', async ({ page }) => {
+    await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', 375);
+    await page.getByRole('button', { name: 'Box tauschen' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Box tauschen' });
+    await dialog.getByLabel('Geräte-ID *').fill('VP-BOX-2027-0090');
+    await dialog.getByRole('button', { name: 'Gerät hinzufügen' }).click();
+    await expect(dialog).toContainText('Der Tausch ist noch nicht bestätigt.');
+    await expect(dialog).toContainText('Heimat-Anlage, Rolle führende Box');
+    await expect(dialog).toContainText('Werte und Protokolle bleiben');
+    if (BILDER) await page.screenshot({ path: join(BILDER, 'box-tausch-folgen-375.png'), fullPage: true });
+    await dialog.getByRole('button', { name: 'Box-Tausch bestätigen' }).click();
+    await expect(dialog).toContainText('wird zugestellt, sobald die Box erreichbar ist');
+  });
+
   test('Z4 · Werk Lindach: eine Anlage — keine Kachel „Anlagen“, die Adresse zeigt trotzdem ihre Zeile; ohne Gebäude L1 und die Messbereiche', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=lindach-anlagen', 375);
     await expect(page.locator('.vp-at-karte').first()).toBeVisible();

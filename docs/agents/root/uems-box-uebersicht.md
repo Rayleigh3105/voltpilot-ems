@@ -15,3 +15,10 @@ Der Software-Hinweis folgt der Fähigkeitstabelle `docs/contracts/v2/edge-capabi
 führt zur bestehenden Seite `edge-updates`. Die neue Fläche liegt in `boxUebersicht.ts`,
 `pages/StandortBoxenPage.tsx` und `boxSeite.ts`; ihre reine Abnahme steht in
 `boxUebersicht.test.ts`, die 375/1440-Abnahme in `e2e/standort-ebenen.spec.ts`.
+
+AP-06 IP-12 ergänzt auf derselben Box-Seite den bestätigten Quellenwechsel und den Box-Tausch.
+`DatenquelleWechselDialog` prüft die Ziel-Box, plant auf die Minute, zeigt Budgetablehnungen und
+Folgen vor dem Schreiben und nimmt einen noch nicht wirksamen Plan über dessen Zeitraum-Kennung
+zurück. `AddDeviceDrawer` bleibt der einzige Claim-Weg; von „Box tauschen“ aus folgt nach dem
+Claim eine zweite Folgen-Bestätigung für `POST …/succeed/…`. `zugestellt=false` heißt dort
+„vorbereitet“, nie abgeschlossen. Steuerquellen zeigen nur den AP-15-Hinweis.

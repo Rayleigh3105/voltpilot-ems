@@ -27,7 +27,7 @@ public final class DatenquelleDto {
     public record Box(UUID id, String name, UUID heimatAnlage) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Zeitraum(Box box, Instant effectiveFrom, Instant effectiveTo) {}
+    public record Zeitraum(UUID id, Box box, Instant effectiveFrom, Instant effectiveTo) {}
 
     /** Latest source-specific feedback from the responsible box; missing only without a box. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

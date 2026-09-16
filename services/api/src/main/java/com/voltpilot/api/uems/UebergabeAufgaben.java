@@ -20,7 +20,7 @@ public class UebergabeAufgaben {
                 SELECT DISTINCT q.tenant_id, q.site_id
                 FROM data_source q JOIN data_source_assignment a ON a.data_source_id=q.id
                 LEFT JOIN data_source_handover h ON h.tenant_id=q.tenant_id AND h.data_source_id=q.id
-                WHERE q.archiviert_am IS NULL AND a.effective_from<=?
+                WHERE q.archiviert_am IS NULL AND a.zurueckgenommen_am IS NULL AND a.effective_from<=?
                   AND (a.effective_to IS NULL OR a.effective_to>?)
                   AND (h.assignment_id IS DISTINCT FROM a.id OR h.phase<>'active')
                   AND EXISTS (SELECT 1 FROM measurement_point m WHERE m.data_source_id=q.id

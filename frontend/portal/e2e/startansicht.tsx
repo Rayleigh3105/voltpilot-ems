@@ -19,6 +19,7 @@ import {
   type OverviewSite,
   type Site,
   type StandortAusfall,
+  type UemsDatenquelle,
 } from '../src/api';
 import { keycloak } from '../src/auth';
 import { showAddAnlageButton } from '../src/addAnlage';
@@ -652,10 +653,35 @@ Object.assign(api, {
     return {
       datenquellen: antwort.datenquellen.map((q) => ({
         ...q,
+        zeitraeume: q.zeitraeume.map((z, i) => ({ ...z, id: `${q.id}-z${i + 1}` })),
         zustaendige_box: q.zustaendige_box && boxId ? { ...q.zustaendige_box, id: boxId } : q.zustaendige_box,
       })),
     };
   },
+  datenquellePruefen: async (_siteId: string, id: string, body: { device_id: string }) => {
+    const device = geraeteAhrenberg(new Date(Date.now())).find((d) => d.id === body.device_id)!;
+    return { box: { id: device.id, name: device.name, heimat_anlage: device.siteId }, adresse: '192.168.10.31:502',
+      ergebnis: 'ok', gewertet: true, text: `${device.name} erreicht die Quelle`, zeitpunkt: new Date().toISOString(), dauer_ms: 38, antwort: {} };
+  },
+  datenquelleZuweisen: async (siteId: string, id: string, body: { device_id: string; effective_from?: string }) => {
+    const q = (await (api.datenquellen as (siteId: string) => Promise<{ datenquellen: UemsDatenquelle[] }>)(siteId)).datenquellen.find((x) => x.id === id)!;
+    const device = geraeteAhrenberg(new Date(Date.now())).find((d) => d.id === body.device_id)!;
+    const ab = body.effective_from ?? new Date().toISOString();
+    const neu = { ...q, zeitraeume: [
+      ...q.zeitraeume.slice(0, -1),
+      { ...q.zeitraeume.at(-1)!, effective_to: ab },
+      { id: `${q.id}-plan`, box: { id: device.id, name: device.name, heimat_anlage: device.siteId }, effective_from: ab, effective_to: null },
+    ] };
+    return { urteil: 'erlaubt' as const, text: `Ab dann liest ${device.name}`, hinweis: null, vergleichsquelle: false, datenquelle: neu };
+  },
+  datenquelleZuweisungZuruecknehmen: async (siteId: string, id: string) => {
+    const q = (await (api.datenquellen as (siteId: string) => Promise<{ datenquellen: UemsDatenquelle[] }>)(siteId)).datenquellen.find((x) => x.id === id)!;
+    return { ...q, zeitraeume: [{ ...q.zeitraeume[0], effective_to: null }] };
+  },
+  claimDevice: async (siteId: string, externalRef: string) => ({ id: 'e0000000-0000-4000-8000-000000000099', siteId,
+    externalRef, kind: 'edge', name: 'Box Halle 1 (neu)', status: 'claimed', lastSeenAt: null, createdAt: new Date().toISOString() }),
+  boxTauschen: async (newId: string, oldId: string) => ({ tausch: { oldDeviceId: oldId, newDeviceId: newId,
+    siteId: FIXTURE_IDS.an1, effectiveAt: new Date().toISOString(), transferred: { datenquellen: 3 } }, zugestellt: false }),
   uemsGeraete: async (siteId: string) => ahrenbergUemsGeraete(siteId),
   // AP-13 IP-7: die Energiebilanz je Anlage (O2 Oktober 2026, O4 Halle 2, O3 Lindach am 18.10.2026) — sonst ohne Werte.
   anlageBilanz: async (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?: string) => bilanzDerBuehne(siteId, periode, am),

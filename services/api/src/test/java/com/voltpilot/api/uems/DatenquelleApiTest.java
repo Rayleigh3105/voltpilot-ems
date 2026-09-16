@@ -890,6 +890,63 @@ class DatenquelleApiTest {
                 .rootCause().hasMessageContaining("audit rows are append-only");
     }
 
+    @Test
+    void geplanterWechselBleibtAlsZurueckgenommenErhaltenUndIstDanach409Fremd404() throws Exception {
+        Welt w = new Welt("Ahrenberg Rücknahme");
+        UUID quelle = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID anlage = w.anlage("AN-1");
+        UUID ziel = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(anlage) + "/" + quelle;
+        UHR.stelle("2027-04-09T15:10:00+02:00");
+        antwortet(ziel, "ok");
+        assertThat(ruf(jonas, HttpMethod.POST, pfad + "/reachability-check",
+                Map.of("device_id", ziel, "unit_id", 1, "register", 0)).status()).isEqualTo(200);
+        JsonNode geplant = ruf(jonas, HttpMethod.POST, pfad + "/assignments",
+                Map.of("device_id", ziel, "effective_from", "2027-04-10T07:30:00+02:00")).body();
+        UUID assignment = UUID.fromString(geplant.at("/datenquelle/zeitraeume/1/id").asText());
+
+        Welt fremd = new Welt("Fremder Kunde");
+        assertThat(ruf(kunde(fremd.mandant, "Fremd"), HttpMethod.DELETE,
+                pfad + "/assignments/" + assignment, null).status()).isEqualTo(404);
+
+        UHR.stelle("2027-04-09T16:00:00+02:00");
+        Antwort zurueck = ruf(jonas, HttpMethod.DELETE, pfad + "/assignments/" + assignment, null);
+        assertThat(zurueck.status()).isEqualTo(200);
+        assertThat(zurueck.body().get("zeitraeume").size()).isEqualTo(1);
+        assertThat(zurueck.body().at("/zeitraeume/0/effective_to").isNull()).isTrue();
+        assertThat(root.queryForObject("SELECT zurueckgenommen_am IS NOT NULL FROM data_source_assignment WHERE id=?",
+                Boolean.class, assignment)).isTrue();
+        assertThat(root.queryForObject("SELECT art FROM data_source_aenderung WHERE data_source_id=? ORDER BY id DESC LIMIT 1",
+                String.class, quelle)).isEqualTo("zustaendigkeit_zurueckgenommen");
+
+        Antwort nochmal = ruf(jonas, HttpMethod.DELETE, pfad + "/assignments/" + assignment, null);
+        assertThat(nochmal.status()).isEqualTo(409);
+        assertThat(nochmal.body().get("grund").asText()).isEqualTo("bereits_zurueckgenommen");
+        assertThat(nochmal.body().get("satz").asText()).contains("bereits zurückgenommen");
+    }
+
+    @Test
+    void bereitsWirksamerWechselKannNichtZurueckgenommenWerden() throws Exception {
+        Welt w = new Welt("Ahrenberg wirksamer Wechsel");
+        UUID quelle = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID anlage = w.anlage("AN-1"), ziel = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(anlage) + "/" + quelle;
+        UHR.stelle("2027-04-09T15:10:00+02:00");
+        antwortet(ziel, "ok");
+        ruf(jonas, HttpMethod.POST, pfad + "/reachability-check",
+                Map.of("device_id", ziel, "unit_id", 1, "register", 0));
+        JsonNode geplant = ruf(jonas, HttpMethod.POST, pfad + "/assignments",
+                Map.of("device_id", ziel, "effective_from", "2027-04-10T07:30:00+02:00")).body();
+        UUID assignment = UUID.fromString(geplant.at("/datenquelle/zeitraeume/1/id").asText());
+        UHR.stelle("2027-04-10T07:30:00+02:00");
+        Antwort antwort = ruf(jonas, HttpMethod.DELETE, pfad + "/assignments/" + assignment, null);
+        assertThat(antwort.status()).isEqualTo(409);
+        assertThat(antwort.body().get("grund").asText()).isEqualTo("bereits_wirksam");
+        assertThat(antwort.body().get("satz").asText()).contains("bereits wirksam");
+    }
+
     // ============================================================ Gerüst
 
     /** Wer ruft: Kunde (Mandant im Token) oder Plattform-Admin mit gewähltem Kundenbereich. */

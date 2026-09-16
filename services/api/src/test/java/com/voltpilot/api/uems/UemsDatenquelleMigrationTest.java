@@ -84,6 +84,8 @@ class UemsDatenquelleMigrationTest {
     /** Diese Fassung. Die davor wird aus dem Klassenpfad bestimmt, nicht hart verdrahtet. */
     private static final String DIESE = "20260911150000";
     private static final String DATEI = "V20260911150000__uems_datenquelle_zustaendigkeit.sql";
+    private static final String RUECKNAHME_DATEI =
+            "V20260917109000__uems_geplante_zustaendigkeit_zuruecknehmen.sql";
 
     private static final Path V2 = Path.of("..", "..", "docs", "contracts", "v2");
     private static final Path REFERENZ = V2.resolve("uems-referenzunternehmen.json");
@@ -755,13 +757,22 @@ class UemsDatenquelleMigrationTest {
 
     @Test
     void einErneuterLaufAendertNichts() throws IOException {
-        Map<String, Map<String, String>> vorher = new LinkedHashMap<>();
-        for (String t : alleBeruehrtenTabellen()) {
-            vorher.put(t, schnappschuss(t, "", ""));
-        }
-        fuehreDieseMigrationErneutAus();
-        for (String t : alleBeruehrtenTabellen()) {
-            assertThat(schnappschuss(t, "", "")).as(t).isEqualTo(vorher.get(t));
+        // Spätere Migrationen dürfen Constraints und Spaltenrechte dieser Tabelle
+        // erweitern. Deshalb stellt der erste Lauf hier bewusst den Stand DIESER
+        // Migration her; der zweite muss dann zeichengleich bleiben. Anschließend
+        // wird der aktuelle Endstand für die übrigen Tests wiederhergestellt.
+        try {
+            fuehreDieseMigrationErneutAus();
+            Map<String, Map<String, String>> vorher = new LinkedHashMap<>();
+            for (String t : alleBeruehrtenTabellen()) {
+                vorher.put(t, schnappschuss(t, "", ""));
+            }
+            fuehreDieseMigrationErneutAus();
+            for (String t : alleBeruehrtenTabellen()) {
+                assertThat(schnappschuss(t, "", "")).as(t).isEqualTo(vorher.get(t));
+            }
+        } finally {
+            fuehreMigrationErneutAus(RUECKNAHME_DATEI);
         }
     }
 
@@ -1162,10 +1173,14 @@ class UemsDatenquelleMigrationTest {
 
     /** Dieselbe Datei noch einmal, wie Flyway sie ausführt (Platzhalter ersetzt). */
     private static void fuehreDieseMigrationErneutAus() throws IOException {
+        fuehreMigrationErneutAus(DATEI);
+    }
+
+    private static void fuehreMigrationErneutAus(String datei) throws IOException {
         String sql;
         try (InputStream in = UemsDatenquelleMigrationTest.class
-                .getResourceAsStream("/db/migration/" + DATEI)) {
-            sql = new String(Objects.requireNonNull(in, DATEI).readAllBytes(),
+                .getResourceAsStream("/db/migration/" + datei)) {
+            sql = new String(Objects.requireNonNull(in, datei).readAllBytes(),
                     StandardCharsets.UTF_8);
         }
         root.execute(sql.replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER));
