@@ -69,6 +69,32 @@ class TeilansichtSchnittstelleVertragTest {
     }
 
     /**
+     * Die BENANNTE LÜCKE: {@code /sites}, {@code /devices} und {@code /edge-versions} antworten mit einer
+     * nackten Liste und tragen {@code teilansicht} darum NICHT. Das ist eine bewusste Abweichung von der
+     * Abnahmezeile „in allen sechs Antworten belegt" (firstmate-Entscheid 16.09.2026, Option C): ein Umschlag
+     * {@code {eintraege, teilansicht}} wäre ein Bruch des Vertrags an drei Kernrouten.
+     *
+     * <p>Dieser Test hält beides fest — dass die Form eine Liste GEBLIEBEN ist (kein stiller Umschlag) und
+     * dass der Vertrag die Adresse der Einlösung nennt. Wer den Umschlag mit <b>AP-03 IP-12</b> baut, macht
+     * diesen Test rot und liest hier, warum er rot ist.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void dieDreiListenRoutenTragenDasFeldNichtUndNennenIhreAdresse() {
+        for (String route : List.of("/api/v1/sites", "/api/v1/devices", "/api/v1/edge-versions")) {
+            Map<String, Object> get = (Map<String, Object>) ((Map<String, Object>) pfade.get(route)).get("get");
+            Map<String, Object> schema = (Map<String, Object>) ((Map<String, Object>)
+                    ((Map<String, Object>) ((Map<String, Object>) get.get("responses")).get("200"))
+                            .get("content")).get("application/json");
+            assertThat(((Map<String, Object>) schema.get("schema")).get("type"))
+                    .as(route + " antwortet mit einer nackten Liste — kein stiller Umschlag").isEqualTo("array");
+            assertThat((String) get.get("description"))
+                    .as(route + " nennt die Lücke und ihre Adresse")
+                    .contains("teilansicht").contains("AP-03 IP-12");
+        }
+    }
+
+    /**
      * Die Standort-MENGE an {@code /earnings} (IP-10, „eine Standort-Menge statt eine oder alle"): ein
      * wiederholbarer Abfrageparameter aus Standort-Kennungen, dazu die 404-Antwort für einen Standort
      * außerhalb des Zugriffs (A14 — nie 403).

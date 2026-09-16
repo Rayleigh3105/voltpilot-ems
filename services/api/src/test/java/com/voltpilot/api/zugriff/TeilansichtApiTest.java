@@ -114,9 +114,14 @@ class TeilansichtApiTest {
             "/api/v1/edge-versions", "/api/v1/standorte");
 
     /**
-     * Die Routen, deren Antwort ein OBJEKT ist und das additive Feld darum im Körper tragen kann. Die drei
-     * übrigen ({@code /sites}, {@code /devices}, {@code /edge-versions}) antworten mit einer nackten Liste;
-     * wie sie {@code teilansicht} tragen, steht im PR-Text.
+     * Die Routen, deren Antwort ein OBJEKT ist und das additive Feld darum im Körper tragen kann.
+     *
+     * <p>Die drei übrigen ({@code /sites}, {@code /devices}, {@code /edge-versions}) antworten mit einer
+     * nackten Liste und tragen {@code teilansicht} NICHT — eine benannte Abweichung von der Abnahmezeile
+     * „in allen sechs Antworten belegt" (firstmate-Entscheid 16.09.2026, Option C), einzulösen mit
+     * <b>AP-03 IP-12</b>. Ihre REICHWEITE prüft dieser Test trotzdem, für alle sechs: siehe
+     * {@link #jedeDerSechsRoutenZeigtNurDieSichtbarenAnlagen()} und
+     * {@link #keinAntwortfeldTraegtDieGesamtsumme()}.
      */
     private static final List<String> ROUTEN_MIT_FELD =
             List.of("/api/v1/overview", "/api/v1/earnings", "/api/v1/standorte");

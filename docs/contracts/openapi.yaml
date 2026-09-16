@@ -1241,6 +1241,18 @@ paths:
         release register (`newestRelease`/`upToDate`) - the yardstick never
         reached the customer before, so their box showed a version nobody could
         place. The judgement travels, NEVER the register.
+
+        Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
+        die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
+
+        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
+        antwortet mit einer NACKTEN LISTE und kann das additive Feld
+        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
+        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
+        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
+        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
+        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
+        zeichnet das Portal aus GET /api/v1/me.
       responses:
         "200":
           description: One entry per device that reported a version.
@@ -1324,9 +1336,21 @@ paths:
     get:
       tags: [sites]
       summary: List sites for the caller's tenant (tenant_id from OIDC token).
+      description: >
+        Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
+        die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
+
+        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
+        antwortet mit einer NACKTEN LISTE und kann das additive Feld
+        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
+        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
+        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
+        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
+        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
+        zeichnet das Portal aus GET /api/v1/me.
       responses:
         "200":
-          description: Sites (only the caller's tenant, via RLS).
+          description: Sites (only the caller's VISIBLE sites, via RLS).
           content:
             application/json:
               schema:
@@ -1551,9 +1575,21 @@ paths:
     get:
       tags: [devices]
       summary: List devices for the caller's tenant.
+      description: >
+        Die Menge schneidet der Standort-Zaun (UEMS AP-03 IP-5, `site_scope`):
+        die Liste zeigt ausschliesslich die SICHTBAREN Anlagen des Aufrufers.
+
+        OHNE `teilansicht` - die benannte Luecke von AP-03 IP-10. Diese Route
+        antwortet mit einer NACKTEN LISTE und kann das additive Feld
+        `teilansicht {sichtbar, gesamt}` darum nicht im Koerper tragen; ein
+        Umschlag {eintraege, teilansicht} waere ein Bruch des Vertrags an einer
+        Kernroute. EINZULOESEN MIT AP-03 IP-12 (Portal-Rechte-Weiche), wo api.ts
+        und die Kundenflaechen ohnehin umgestellt werden. Die Sicherheitszusage
+        haengt nicht daran, und den Satz "Teilansicht: n von m Standorten"
+        zeichnet das Portal aus GET /api/v1/me.
       responses:
         "200":
-          description: Devices (only the caller's tenant, via RLS).
+          description: Devices (only the caller's VISIBLE sites, via RLS).
           content:
             application/json:
               schema:
