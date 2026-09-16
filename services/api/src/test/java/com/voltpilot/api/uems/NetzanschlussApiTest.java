@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
@@ -363,6 +364,138 @@ class NetzanschlussApiTest {
                 String.class, w.mandant())).containsExactly("angelegt", "gebunden", "anlage_entfernt");
         // Ab morgen hängt der Anschluss an einer anderen Anlage.
         ok(ruf(w, HttpMethod.POST, pfad(w, "ST-1") + "/" + na + "/anlagen", binden(w.id("AN-1"), heute.plusDays(1))), 201);
+    }
+
+    @Test
+    void vorschlagLiestNurUndUebernahmeBindetAtomarOhneSiteAenderung() throws Exception {
+        Welt w = vorschlagswelt();
+        root.update("UPDATE site SET max_feed_in_kw = 75, leistungspreis_eur_kw = 120, "
+                + "tarif_art = 'fest', tarif_param_ct_kwh = 32, netzladen_erlaubt = true, "
+                + "anzulegender_wert_ct_kwh = 8, marktpraemie_ct_kwh = 2 WHERE tenant_id = ?", w.mandant());
+        List<String> vorher = siteZeilen(w);
+        String p = pfad(w, "ST-1") + "/vorschlaege";
+        Antwort liste = ok(ruf(w, HttpMethod.GET, p, null), 200);
+        assertThat(liste.body()).hasSize(2);
+        JsonNode v = liste.body().get(0);
+        assertThat(v.path("kennzeichen").asText()).isEqualTo("NA-0001");
+        assertThat(liste.body().get(1).path("kennzeichen").asText()).isEqualTo("NA-0002");
+        assertThat(v.path("name").asText()).isEqualTo("Netzanschluss " + v.path("anlage_name").asText());
+        assertThat(v.path("bindung_ab").asText()).isEqualTo("2024-03-12");
+        assertThat(v.has("vereinbart_kw")).isFalse();
+        assertThat(v.has("netzbetreiber")).isFalse();
+        assertThat(zahl("netzanschluss", w)).isZero();
+        assertThat(zahl("netzanschluss_vorschlag_entscheidung", w)).isZero();
+        Map<String, Object> a = anschluss(referenz.path("netzanschluesse").get(0));
+        a.put("kennzeichen", v.path("kennzeichen").asText());
+        a.put("bindung_ab", v.path("bindung_ab").asText());
+        a.put("grund", "Vorhandene Anlage zugeordnet.");
+        String uebernehmen = p + "/" + v.path("anlage_id").asText() + "/uebernehmen";
+        Antwort neu = ok(ruf(w, HttpMethod.POST, uebernehmen, a), 201);
+        assertThat(neu.body().at("/anlagen/0/anlage/id").asText()).isEqualTo(v.path("anlage_id").asText());
+        assertThat(neu.body().at("/anlagen/0/gueltig_ab").asText()).isEqualTo("2024-03-12");
+        assertThat(neu.body().path("vereinbart_kw").decimalValue()).isEqualByComparingTo("550");
+        ok(ruf(w, HttpMethod.POST, uebernehmen, a), 409);
+        assertThat(zahl("netzanschluss", w)).isEqualTo(1);
+        assertThat(zahl("anlage_netzanschluss", w)).isEqualTo(1);
+        assertThat(zahl("netzanschluss_vorschlag_entscheidung", w)).isEqualTo(1);
+        assertThat(siteZeilen(w)).isEqualTo(vorher);
+        assertThat(ok(ruf(w, HttpMethod.GET, p, null), 200).body()).hasSize(1);
+    }
+
+    @Test
+    void verwerfenBleibtGemerktUndBetriebskundeHatKeineVorschlaege() throws Exception {
+        Welt w = vorschlagswelt();
+        String p = pfad(w, "ST-1") + "/vorschlaege";
+        List<String> vorher = siteZeilen(w);
+        ok(ruf(w, HttpMethod.POST, p + "/" + w.id("AN-1") + "/verwerfen", null), 204);
+        ok(ruf(w, HttpMethod.POST, p + "/" + w.id("AN-1") + "/verwerfen", null), 409);
+        assertThat(ok(ruf(w, HttpMethod.GET, p, null), 200).body()).hasSize(1);
+        assertThat(root.queryForObject("SELECT entscheidung FROM netzanschluss_vorschlag_entscheidung WHERE tenant_id = ?",
+                String.class, w.mandant())).isEqualTo("verworfen");
+        assertThat(zahl("netzanschluss", w)).isZero();
+        assertThat(siteZeilen(w)).isEqualTo(vorher);
+        Welt betrieb = welt();
+        assertThat(ok(ruf(betrieb, HttpMethod.GET, pfad(betrieb, "ST-1") + "/vorschlaege", null), 200).body()).isEmpty();
+        ok(ruf(betrieb, HttpMethod.GET, p, null), 404);
+        ok(ruf(w, HttpMethod.POST, p + "/" + betrieb.id("AN-1") + "/verwerfen", null), 404);
+    }
+
+    @Test
+    void fehlgeschlageneBindungRolltAnschlussKennzeichenUndEntscheidungZurueck() throws Exception {
+        Welt w = vorschlagswelt();
+        Map<String, Object> a = anschluss("NA-0001", "Netzanschluss Halle 1");
+        a.put("gueltig_ab", "2025-01-01");
+        a.put("bindung_ab", "2024-03-12");
+        a.put("grund", "Zuordnung des Bestands.");
+        String p = pfad(w, "ST-1") + "/vorschlaege/" + w.id("AN-1") + "/uebernehmen";
+        ok(ruf(w, HttpMethod.POST, p, a), 422);
+        assertThat(zahl("netzanschluss", w)).isZero();
+        assertThat(zahl("netzanschluss_kennzeichen", w)).isZero();
+        assertThat(zahl("netzanschluss_aenderung", w)).isZero();
+        assertThat(zahl("netzanschluss_vorschlag_entscheidung", w)).isZero();
+        a.remove("gueltig_ab");
+        a.put("bindung_ab", "2024-04-01");
+        Antwort neu = ok(ruf(w, HttpMethod.POST, p, a), 201);
+        assertThat(neu.body().at("/anlagen/0/gueltig_ab").asText()).isEqualTo("2024-04-01");
+    }
+
+    @Test
+    void bestehendeBindungUndFehlendePflichtfelderWerdenNichtUmgangen() throws Exception {
+        Welt w = vorschlagswelt();
+        String p = pfad(w, "ST-1") + "/vorschlaege/" + w.id("AN-1") + "/uebernehmen";
+        Map<String, Object> a = anschluss("NA-0001", "Netzanschluss Halle 1");
+        a.put("bindung_ab", "2024-03-12");
+        ok(ruf(w, HttpMethod.POST, p, a), 400); // Rückwirkung braucht Begründung.
+        a.put("grund", "Zuordnung des Bestands.");
+        a.remove("messung");
+        ok(ruf(w, HttpMethod.POST, p, a), 400);
+        a.put("messung", "RLM");
+        UUID id = id(ok(ruf(w, HttpMethod.POST, pfad(w, "ST-1"), anschluss("NA-9", "Anschluss")), 201));
+        ok(ruf(w, HttpMethod.POST, pfad(w, "ST-1") + "/" + id + "/anlagen",
+                binden(w.id("AN-1"), LocalDate.of(2024, 3, 12))), 201);
+        ok(ruf(w, HttpMethod.POST, p, a), 409);
+        assertThat(zahl("netzanschluss", w)).isEqualTo(1);
+        assertThat(zahl("netzanschluss_vorschlag_entscheidung", w)).isZero();
+    }
+
+    @Test
+    void entscheidungHatErzwungeneRlsUndNurLesenEintragenRechte() throws Exception {
+        Welt w = vorschlagswelt();
+        ok(ruf(w, HttpMethod.POST, pfad(w, "ST-1") + "/vorschlaege/" + w.id("AN-1") + "/verwerfen", null), 204);
+        assertThat(root.queryForObject("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
+                + "WHERE relname = 'netzanschluss_vorschlag_entscheidung'", Boolean.class)).isTrue();
+        assertThat(root.queryForObject("SELECT has_table_privilege(?, 'netzanschluss_vorschlag_entscheidung', 'UPDATE,DELETE')",
+                Boolean.class, APP_USER)).isFalse();
+        Welt fremd = vorschlagswelt();
+        try (var c = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW).getConnection()) {
+            try (var st = c.prepareStatement("SELECT set_config('app.tenant_id', ?, false)")) {
+                st.setString(1, fremd.mandant().toString());
+                st.execute();
+            }
+            try (var st = c.createStatement(); var rs = st.executeQuery("SELECT count(*) FROM netzanschluss_vorschlag_entscheidung")) {
+                rs.next();
+                assertThat(rs.getInt(1)).isZero();
+            }
+            try (var st = c.prepareStatement("INSERT INTO netzanschluss_vorschlag_entscheidung "
+                    + "(tenant_id, site_id, entscheidung, entschieden_von) VALUES (?, ?, 'verworfen', 'Test')")) {
+                st.setObject(1, w.mandant());
+                st.setObject(2, w.id("AN-2"));
+                assertThatThrownBy(st::executeUpdate).hasMessageContaining("row-level security");
+            }
+        }
+    }
+
+    private Welt vorschlagswelt() {
+        Welt w = welt();
+        root.update("UPDATE anlage_standort SET gueltig_ab = DATE '2024-03-12' WHERE tenant_id = ?", w.mandant());
+        root.update("INSERT INTO funktion (tenant_id, standort_id, funktion, zustand, geaendert_von) "
+                + "VALUES (?, ?, 'messen', 'aktiv', 'Test')", w.mandant(), w.id("ST-1"));
+        return w;
+    }
+
+    private List<String> siteZeilen(Welt w) {
+        return root.queryForList("SELECT row_to_json(s)::text FROM site s WHERE tenant_id = ? ORDER BY id",
+                String.class, w.mandant());
     }
 
     // ============================================================================== Gerüst

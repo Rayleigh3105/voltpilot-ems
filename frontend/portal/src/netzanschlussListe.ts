@@ -53,7 +53,7 @@ export interface Entwurf {
   netzbetreiber: string;
   anschluss_kva: string;
   vereinbart_kw: string;
-  messung: 'RLM' | 'SLP';
+  messung: 'RLM' | 'SLP' | '';
 }
 export type Feld = keyof Entwurf;
 export const neuerEntwurf = (vorschlag: string): Entwurf => ({
@@ -106,10 +106,12 @@ export function pruefen(e: Entwurf, standort: string): Partial<Record<Feld, stri
   return f;
 }
 export function anfrage(e: Entwurf): NetzanschlussAnfrage {
+  if (!e.messung) throw new Error('Bitte die Messung wählen.');
   const kva = betrag(e.anschluss_kva),
     kw = betrag(e.vereinbart_kw);
   return {
     ...e,
+    messung: e.messung,
     kennzeichen: e.kennzeichen.trim() || null,
     name: e.name.trim(),
     malo: e.malo.trim() || null,

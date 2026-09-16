@@ -1,4 +1,10 @@
-import { ApiError, type NetzanschlussAnfrage, type NetzanschlussBinden, type StandorteAmStichtag } from '../src/api';
+import {
+  ApiError,
+  type NetzanschlussAnfrage,
+  type NetzanschlussBinden,
+  type NetzanschlussUebernehmen,
+  type StandorteAmStichtag,
+} from '../src/api';
 import { ahrenbergNetzanschluesse } from '../src/test/netzanschlussFixtures';
 import { FIXTURE_IDS, werkAhrenberg, werkLindach } from '../src/test/standorteFixtures';
 import { anschlussDerAnlage, bindungPruefen, giltAm } from '../src/netzanschlussListe';
@@ -6,14 +12,23 @@ import { minusTage } from '../src/uemsBilanz';
 
 export function netzanschlussBuehne(standorte: StandorteAmStichtag) {
   const params = new URLSearchParams(location.search);
-  const liste = params.get('netz') === 'leer' ? [] : ahrenbergNetzanschluesse();
+  const liste = ['leer', 'vorschlag'].includes(params.get('netz') ?? '') ? [] : ahrenbergNetzanschluesse();
   if (params.get('netz') === 'ungebunden')
     liste.forEach((n) => {
       n.anlagen = [];
     });
-  const aufrufe = { anlegen: [] as NetzanschlussAnfrage[], binden: [] as NetzanschlussBinden[] };
+  const entschieden = new Set<string>();
+  const aufrufe = {
+    uebernehmen: [] as NetzanschlussUebernehmen[],
+    verwerfen: [] as string[],
+    anlegen: [] as NetzanschlussAnfrage[],
+    binden: [] as NetzanschlussBinden[],
+  };
   Object.assign(window, { naAufrufe: aufrufe });
-  const standort = (id: string) => ({ id, kurzzeichen: id === FIXTURE_IDS.st1 ? 'ST-1' : 'ST-2' });
+  const standort = (id: string) => ({
+    id,
+    kurzzeichen: id === FIXTURE_IDS.st1 ? 'ST-1' : 'ST-2',
+  });
   return {
     standorte: async (am = '2026-10-20') => ({
       ...structuredClone(standorte),
@@ -27,12 +42,65 @@ export function netzanschlussBuehne(standorte: StandorteAmStichtag) {
             ...a,
             netzanschluss:
               n && b
-                ? { id: n.id, kennzeichen: n.kennzeichen, gueltigAb: b.gueltig_ab, gueltigBis: b.gueltig_bis }
+                ? {
+                    id: n.id,
+                    kennzeichen: n.kennzeichen,
+                    gueltigAb: b.gueltig_ab,
+                    gueltigBis: b.gueltig_bis,
+                  }
                 : null,
           };
         }),
       })),
     }),
+    netzanschlussVorschlaege: async (id: string) =>
+      params.get('netz') !== 'vorschlag'
+        ? []
+        : standorte.standorte
+            .find((s) => s.id === id)!
+            .anlagen.filter(
+              (a) =>
+                !entschieden.has(a.id) && !liste.some((n) => n.anlagen.some((b) => b.anlage.id === a.id)),
+            )
+            .map((a, i) => ({
+              anlage_id: a.id,
+              anlage_name: a.name,
+              bindung_ab: a.gueltigAb,
+              kennzeichen: `NA-000${liste.length + i + 1}`,
+              name: `Netzanschluss ${a.name}`,
+            })),
+    netzanschlussVerwerfen: async (_id: string, anlage: string) => {
+      entschieden.add(anlage);
+      aufrufe.verwerfen.push(anlage);
+    },
+    netzanschlussUebernehmen: async (id: string, anlage: string, body: NetzanschlussUebernehmen) => {
+      if (entschieden.has(anlage))
+        throw new ApiError(409, 'Nicht mehr verfügbar', {
+          message: 'Dieser Vorschlag ist nicht mehr verfügbar.',
+        });
+      const a = standorte.standorte.find((s) => s.id === id)!.anlagen.find((a) => a.id === anlage)!;
+      const { bindung_ab, grund: _grund, ...felder } = body;
+      const n = {
+        ...felder,
+        id: `na-${anlage}`,
+        kennzeichen: body.kennzeichen ?? 'NA-0001',
+        standort: standort(id),
+        hinweise: [],
+        angelegt_am: new Date().toISOString(),
+        anlagen: [
+          {
+            id: `bindung-${anlage}`,
+            anlage: { id: anlage, name: a.name },
+            gueltig_ab: bindung_ab,
+            gueltig_bis: null,
+          },
+        ],
+      };
+      liste.push(n);
+      entschieden.add(anlage);
+      aufrufe.uebernehmen.push(body);
+      return structuredClone(n);
+    },
     netzanschluesse: async (id: string, am?: string) => {
       if (params.get('netz') === 'fehler') throw new Error('Lesefehler der Bühne');
       return structuredClone({
@@ -41,7 +109,10 @@ export function netzanschlussBuehne(standorte: StandorteAmStichtag) {
         kennzeichen_vorschlag: 'NA-0004',
         netzanschluesse: liste
           .filter((n) => n.standort.id === id && (!am || giltAm(n, am)))
-          .map((n) => ({ ...n, anlagen: n.anlagen.filter((b) => !am || giltAm(b, am)) })),
+          .map((n) => ({
+            ...n,
+            anlagen: n.anlagen.filter((b) => !am || giltAm(b, am)),
+          })),
       });
     },
     netzanschlussAnlegen: async (id: string, body: NetzanschlussAnfrage) => {

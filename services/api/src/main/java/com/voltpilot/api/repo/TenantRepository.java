@@ -337,7 +337,7 @@ public class TenantRepository {
                         // The Netzanschluss (V20260913235000): its bindings and Kennzeichen
                         // occupancy before it, it before its Standort; counter and protocol hold
                         // only the tenant (RESTRICT).
-                        "anlage_netzanschluss", "netzanschluss_kennzeichen", "netzanschluss",
+                        "netzanschluss_vorschlag_entscheidung", "anlage_netzanschluss", "netzanschluss_kennzeichen", "netzanschluss",
                         "netzanschluss_kennzeichen_seq", "netzanschluss_aenderung",
                         // The Funktionen (V20260914190000): a Teilnahme before its Funktion
                         // (RESTRICT), the Funktion before its Standort.

@@ -3781,6 +3781,10 @@ export interface Netzanschluesse {
   standort: { id: string; kurzzeichen: string }; stichtag: string | null;
   kennzeichen_vorschlag: string; netzanschluesse: Netzanschluss[];
 }
+export interface NetzanschlussVorschlag {
+  anlage_id: string; anlage_name: string; bindung_ab: string; kennzeichen: string; name: string;
+}
+export interface NetzanschlussUebernehmen extends NetzanschlussAnfrage { bindung_ab: string; grund: string | null }
 export interface NetzanschlussBinden { anlage_id: string; gueltig_ab: string; grund: string | null }
 
 // ---- UEMS AP-02 IP-11: Anlage einem Standort zuordnen oder umziehen
@@ -7939,6 +7943,12 @@ export const api = {
 
   netzanschluesse: (standortId: string, stichtag?: string) =>
     request<Netzanschluesse>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`),
+  netzanschlussVorschlaege: (standortId: string) =>
+    request<NetzanschlussVorschlag[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/vorschlaege`),
+  netzanschlussUebernehmen: (standortId: string, anlageId: string, body: NetzanschlussUebernehmen) =>
+    request<Netzanschluss>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/vorschlaege/${encodeURIComponent(anlageId)}/uebernehmen`, { method: 'POST', body: JSON.stringify(body) }),
+  netzanschlussVerwerfen: (standortId: string, anlageId: string) =>
+    request<void>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/vorschlaege/${encodeURIComponent(anlageId)}/verwerfen`, { method: 'POST' }),
   netzanschlussAnlegen: (standortId: string, body: NetzanschlussAnfrage) =>
     request<Netzanschluss>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse`, { method: 'POST', body: JSON.stringify(body) }),
   netzanschlussBinden: (standortId: string, id: string, body: NetzanschlussBinden) =>

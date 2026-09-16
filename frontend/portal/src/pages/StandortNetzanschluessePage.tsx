@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type Netzanschluss, type Netzanschluesse, type StandortAmStichtag } from '../api';
+import { NetzanschlussVorschlaege } from '../components/NetzanschlussVorschlaege';
 import { NetzanschlussDialog } from '../components/NetzanschlussDialog';
 import { Recht } from '../components/Recht';
 import { heuteIn } from '../kennzahlKarte';
 import * as N from '../netzanschlussListe';
+import { useRollen } from '../rollen';
 import './StandortBereichPage.css';
 import './StandortNetzanschluessePage.css';
 
@@ -15,6 +17,7 @@ export function StandortNetzanschluessePage({
   standort: StandortAmStichtag;
   onGeaendert: () => void;
 }) {
+  const rollen = useRollen();
   const [liste, setListe] = useState<Netzanschluesse | null>(null);
   const [fehler, setFehler] = useState(false);
   const [lauf, setLauf] = useState(0);
@@ -73,7 +76,23 @@ export function StandortNetzanschluessePage({
           </Recht>
         )}
       </header>
-      {meldung && <p role="status">{meldung}</p>}
+      {meldung && (
+        <p role="status" tabIndex={-1} id="na-meldung">
+          {meldung}
+        </p>
+      )}
+      {liste && standort.zustand !== 'archiviert' && rollen.darf(N.RECHT, standort.id) && (
+        <NetzanschlussVorschlaege
+          key={lauf}
+          standort={standort}
+          liste={liste.netzanschluesse}
+          heute={heute}
+          onGespeichert={(n) => {
+            gespeichert(n);
+            requestAnimationFrame(() => document.getElementById('na-meldung')?.focus());
+          }}
+        />
+      )}
       {fehler ? (
         <div role="alert" className="vp-sb-karte">
           <p>{N.NICHT_ABRUFBAR}</p>
@@ -86,7 +105,9 @@ export function StandortNetzanschluessePage({
       ) : liste.netzanschluesse.length === 0 ? (
         <div className="vp-sb-karte">
           <h2>Noch kein Netzanschluss</h2>
-          <p>Legen Sie den Netzanschluss an und binden Sie anschließend eine Anlage ab dem gewünschten Tag.</p>
+          <p>
+            Legen Sie den Netzanschluss an und binden Sie anschließend eine Anlage ab dem gewünschten Tag.
+          </p>
         </div>
       ) : (
         <ul className="vp-na-liste">
