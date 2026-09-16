@@ -171,7 +171,7 @@ public class ImportUebernahmeService {
 
     private void anwenden(UUID tenant,String kennung,List<Aenderung> auftrag,String grund,ProtokollAkteur wer,ProtokollAkteur freigeber) {
         for (var a:auftrag) {
-            var b=bezuege.finde(a.id()).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+            var b=bezuege.sperre(a.id()).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
             var k=kette(a.id(),a.von(),a.zeitpunkt());
             if ((k.isEmpty() ? 0 : k.getLast().fassung())!=a.vorher() || b.archiviertAm()!=null) gleichzeitig();
             repo.wert(tenant,kennung,a,grund,wer,freigeber,b);
