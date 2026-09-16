@@ -221,6 +221,18 @@ class UemsQuellenUebergabeTest {
         assertThat(ziel.komponente(site, entity, uhr.instant()).id()).isEqualTo(b);
     }
 
+    @Test void alterMesspunktOhneV2KonfigurationBleibtAdressierbarUndQuelleGehtVor() {
+        UUID alt = root.queryForObject("INSERT INTO measurement_point(tenant_id,site_id,role) "
+                + "VALUES (?,?,'pv-inverter') RETURNING id", UUID.class, tenant, site);
+        root.update("UPDATE site SET lead_device_id=? WHERE id=?", b, site);
+        var echteEntitaeten = new EntityRegistryRepository(app);
+        var ziel = new EinmalAuftragZiel(echteEntitaeten, new LeadDeviceService(echteEntitaeten),
+                new com.voltpilot.api.repo.DeviceRepository(app), repo);
+        assertThat(ziel.komponente(site, alt, uhr.instant()).id()).isEqualTo(b);
+        root.update("UPDATE measurement_point SET data_source_id=? WHERE id=?", quelle, alt);
+        assertThat(ziel.komponente(site, alt, uhr.instant()).id()).isEqualTo(a);
+    }
+
     @Test void upgradeOhneAusfuehrungsstandSchaltetNichtBlindDenVorherigenLeserEin() {
         // Der alte Cloud-Stand kann bereits an B zugestellt haben; die neue Tabelle ist leer.
         root.update("DELETE FROM data_source_handover WHERE tenant_id=?",tenant);

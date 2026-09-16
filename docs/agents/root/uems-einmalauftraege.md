@@ -4,6 +4,7 @@
 Register-Schreiben, Verbraucher- und Speicher-Handeingriff sowie komponentenbezogene
 Mess-Selektion. Ohne Datenquelle gilt `LeadDeviceService`: auch eine Bestandsanlage mit genau
 einer Box sendet weiter. Eine vorhandene Quellenzuständigkeit überstimmt eine alte `deviceId`.
+Auch alte Messpunkte ohne v2-Konfiguration bleiben über diese Zuständigkeit adressierbar.
 Explizite Box-Wahl bleibt für noch ungebundene Prüfziele und freie Registeradressen möglich.
 
 Der Ausführungsstand aus `data_source_handover` geht vor dem Plan: `active`/`pending` → bisheriger

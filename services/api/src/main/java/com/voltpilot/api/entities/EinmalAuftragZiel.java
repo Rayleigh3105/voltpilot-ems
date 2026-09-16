@@ -41,7 +41,8 @@ public class EinmalAuftragZiel {
     }
 
     public boolean hatQuelle(UUID siteId, UUID entityId) {
-        return entities.datenquelleJeEntitaet(siteId).containsKey(entityId);
+        var bindung = entities.auftragsQuelle(siteId, entityId);
+        return bindung != null && bindung.dataSourceId() != null;
     }
 
     public DeviceDto komponente(UUID siteId, UUID entityId) {
@@ -49,10 +50,11 @@ public class EinmalAuftragZiel {
     }
 
     DeviceDto komponente(UUID siteId, UUID entityId, Instant jetzt) {
-        if (entities.entityForSite(siteId, entityId) == null) {
+        var bindung = entities.auftragsQuelle(siteId, entityId);
+        if (bindung == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
-        UUID quelle = entities.datenquelleJeEntitaet(siteId).get(entityId);
+        UUID quelle = bindung.dataSourceId();
         if (quelle == null) return fuehrend(siteId);
         var stand = uebergaben.stand(quelle);
         UUID leser;

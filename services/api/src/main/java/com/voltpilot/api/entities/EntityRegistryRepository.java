@@ -293,6 +293,17 @@ public class EntityRegistryRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    public record AuftragsQuelle(UUID dataSourceId) {}
+
+    /** Includes legacy measurement points; null means absent, not merely unconfigured for v2. */
+    public AuftragsQuelle auftragsQuelle(UUID siteId, UUID pointId) {
+        List<AuftragsQuelle> rows = jdbc.query(
+                "SELECT data_source_id FROM measurement_point WHERE site_id = ? AND id = ?",
+                (rs, n) -> new AuftragsQuelle(rs.getObject("data_source_id", UUID.class)),
+                siteId, pointId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /**
      * Create a v2-native entity row (E1b admin CRUD: the open catalog types -
      * wallbox/heating-rod/generic-load/...). role mirrors the entity type;

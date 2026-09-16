@@ -115,7 +115,7 @@ class MeasurementSelectionApiTest {
         assertThat(enabled.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(enabled.getBody()).containsEntry("desiredRevision", 1);
         assertThat(enabled.getBody()).containsEntry("status", "pending_edge");
-        assertThat((String) enabled.getBody().get("statusReason")).contains("wartet");
+        assertThat((String) enabled.getBody().get("statusReason")).contains("Zustellung", "nicht verfügbar");
         Map<String, Object> selected = first(enabled, "selections");
         assertThat(selected).containsEntry("enabled", true)
                 .containsEntry("applyStatus", "pending_edge")
@@ -629,6 +629,7 @@ class MeasurementSelectionApiTest {
     @Test
     void selectionsAreScopedPerComponentWhileTheDeviceKeepsOnePlanAndOneBudget()
             throws Exception {
+        UUID site = UUID.fromString("00000000-0000-0000-0000-0000000000b6");
         UUID device = UUID.fromString("00000000-0000-0000-0000-0000000000b0");
         UUID left = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
         UUID right = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
@@ -638,9 +639,13 @@ class MeasurementSelectionApiTest {
         String goePoint = null;
         try (Connection connection = POSTGRES.createConnection("");
                 Statement statement = connection.createStatement()) {
+            // A dedicated one-box legacy site has an unambiguous leading box.
+            statement.execute("INSERT INTO site(id,tenant_id,name,bidding_zone) VALUES ('"
+                    + site + "','00000000-0000-0000-0000-000000000001',"
+                    + "'Stufe3b Einzelbox','DE-LU') ON CONFLICT DO NOTHING");
             statement.execute("INSERT INTO device(id,tenant_id,site_id,external_ref,kind,status) "
                     + "VALUES ('" + device + "','00000000-0000-0000-0000-000000000001',"
-                    + "'00000000-0000-0000-0000-000000000002','stufe3b-box','inverter','claimed') "
+                    + "'" + site + "','stufe3b-box','inverter','claimed') "
                     + "ON CONFLICT DO NOTHING");
             statement.execute("INSERT INTO site(id,tenant_id,name,bidding_zone) VALUES ('"
                     + otherSite + "','00000000-0000-0000-0000-000000000001',"
@@ -650,11 +655,11 @@ class MeasurementSelectionApiTest {
             // page has to be able to observe.
             statement.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,label,"
                     + "family) VALUES ('" + left + "','00000000-0000-0000-0000-000000000001',"
-                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Fronius Eco 1',"
+                    + "'" + site + "','pv-inverter','Fronius Eco 1',"
                     + "'hybrid_1p'),('" + right + "','00000000-0000-0000-0000-000000000001',"
-                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Fronius Eco 2',"
+                    + "'" + site + "','pv-inverter','Fronius Eco 2',"
                     + "'hybrid_1p'),('" + wallbox + "','00000000-0000-0000-0000-000000000001',"
-                    + "'00000000-0000-0000-0000-000000000002','consumer','Wallbox',"
+                    + "'" + site + "','consumer','Wallbox',"
                     + "'goe_http_api'),('" + otherSiteEntity
                     + "','00000000-0000-0000-0000-000000000001','" + otherSite
                     + "','pv-inverter','Fremde Anlage','hybrid_1p') ON CONFLICT DO NOTHING");

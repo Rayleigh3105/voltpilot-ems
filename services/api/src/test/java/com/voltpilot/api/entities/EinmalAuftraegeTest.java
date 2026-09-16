@@ -46,6 +46,7 @@ class EinmalAuftraegeTest {
         when(component.id()).thenReturn(entity);
         when(component.entityType()).thenReturn("battery-hybrid");
         when(entities.entityForSite(site, entity)).thenReturn(component);
+        when(entities.auftragsQuelle(site, entity)).thenReturn(new EntityRegistryRepository.AuftragsQuelle(null));
         when(entities.entitiesForSite(site)).thenReturn(List.of(component));
         when(lead.fuehrendeBox(site)).thenReturn(new LeadDeviceService.FuehrendeBox(a, Grund.EINZIGE));
         when(devices.findById(a)).thenReturn(Optional.of(box(a)));
@@ -65,6 +66,7 @@ class EinmalAuftraegeTest {
         when(devices.findAll()).thenReturn("single".equals(scenario) ? List.of(box(a)) : List.of(box(a), box(b)));
         if ("single".equals(scenario) || "lead".equals(scenario)) return;
         when(entities.datenquelleJeEntitaet(site)).thenReturn(Map.of(entity, source));
+        when(entities.auftragsQuelle(site, entity)).thenReturn(new EntityRegistryRepository.AuftragsQuelle(source));
         when(entities.zustaendigkeitenDerQuellen(site)).thenReturn(List.of(
                 new Zeitraum(assignment, source, b, now.minusSeconds(60), null)));
         when(transfers.stand(source)).thenReturn(new UebergabeRepository.Stand(source, site, assignment,
@@ -210,6 +212,12 @@ class EinmalAuftraegeTest {
         when(devices.findById(a)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> target.komponente(site, entity)).isInstanceOfSatisfying(ResponseStatusException.class,
                 e -> assertThat(e.getStatusCode().value()).isEqualTo(409));
+    }
+
+    @Test void legacyMeasurementPointWithoutV2ConfigStillUsesLead() {
+        when(entities.entityForSite(site, entity)).thenReturn(null);
+        assertThat(target.komponente(site, entity).id()).isEqualTo(a);
+        assertThat(target.hatQuelle(site, entity)).isFalse();
     }
     @Test void initialAssignmentNeedsNoHandoverButPastChangesNeedExecutionEvidence() {
         world("assigned");
