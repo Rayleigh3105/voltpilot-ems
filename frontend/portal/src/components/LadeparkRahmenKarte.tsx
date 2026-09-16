@@ -5,6 +5,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { api, ApiError, type Site } from '../api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { fmtNum } from '../format';
+import { KW, zahl as ergebnisZahl } from '../uemsErgebnis';
 import {
   aktivierenFolgen,
   GRENZE_FEHLT,
@@ -57,16 +58,47 @@ export function LadeparkRahmenKarte({
   const [draft, setDraft] = useState('');
   const [dialog, setDialog] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [vereinbartDraft, setVereinbartDraft] = useState('');
+  const [vereinbartTouched, setVereinbartTouched] = useState(false);
+  const [anschluss, setAnschluss] = useState<{
+    zustand: 'laden' | 'gebunden' | 'ungebunden' | 'fehler';
+    kennzeichen?: string;
+    vereinbartKw?: number | null;
+  }>({ zustand: 'laden' });
 
   useEffect(() => {
     let active = true;
-    api.chargingConfig(site.id).then(
-      (c) => {
+    Promise.all([api.chargingConfig(site.id), api.siteDetail(site.id)]).then(
+      async ([c, detail]) => {
         if (!active) return;
         setConfig(c);
         setDraft(c.gridLimitKw == null ? '' : String(c.gridLimitKw));
+        if (!detail.standort) {
+          setAnschluss({ zustand: 'ungebunden' });
+          return;
+        }
+        const heute = lokalesDatum(new Date());
+        try {
+          const liste = await api.netzanschluesse(detail.standort.id, heute);
+          if (!active) return;
+          const gebunden = liste.netzanschluesse.find((n) => n.anlagen.some((b) =>
+            b.anlage.id === site.id && b.gueltig_ab <= heute
+              && (b.gueltig_bis == null || b.gueltig_bis >= heute)));
+          if (!gebunden) setAnschluss({ zustand: 'ungebunden' });
+          else setAnschluss({
+            zustand: 'gebunden',
+            kennzeichen: gebunden.kennzeichen,
+            vereinbartKw: nummer(gebunden.vereinbart_kw),
+          });
+        } catch {
+          if (active) setAnschluss({ zustand: 'fehler' });
+        }
       },
-      () => active && setConfig(null),
+      () => {
+        if (!active) return;
+        setConfig(null);
+        setAnschluss({ zustand: 'fehler' });
+      },
     );
     return () => {
       active = false;
@@ -74,16 +106,38 @@ export function LadeparkRahmenKarte({
   }, [site.id]);
 
   const limit = config?.gridLimitKw ?? null;
-  const inputError = draft.trim() === '' ? null : grenzeFehler(draft);
+  const parsedVereinbart = Number(vereinbartDraft.replace(',', '.').trim());
   const parsed = Number(draft.replace(',', '.').trim());
+  const basisFehler = draft.trim() === '' ? null : grenzeFehler(draft);
+  const anschlussFehler = anschluss.zustand === 'fehler'
+    ? 'Der Netzanschluss konnte nicht geprüft werden. Versuchen Sie es erneut.'
+    : anschluss.zustand === 'gebunden' && anschluss.vereinbartKw == null
+      ? `Beim Netzanschluss ${anschluss.kennzeichen ?? ''} ist keine vereinbarte Leistung hinterlegt.`
+      : null;
+  const inputError = draft.trim() === '' ? null : basisFehler ?? anschlussFehler ?? plausibilitaetsFehler(
+    parsed,
+    anschluss.zustand === 'gebunden' ? anschluss.vereinbartKw ?? null
+      : anschluss.zustand === 'ungebunden' && vereinbartDraft.trim() !== ''
+        && Number.isFinite(parsedVereinbart) ? parsedVereinbart : null,
+    config?.frame?.maxHouseLoadKw ?? null,
+    config?.frame?.houseReserveKw ?? null,
+  );
   const zeilen = rahmenZeilen(rahmen, config?.frame ?? null);
   const stumm = ohneMeldung(rahmen);
 
   async function save(gridLimitKw: number) {
+    if (anschluss.zustand === 'ungebunden'
+        && (!Number.isFinite(parsedVereinbart) || parsedVereinbart <= 0)) {
+      setVereinbartTouched(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const next = await api.saveChargingConfig(site.id, { gridLimitKw });
+      const next = await api.saveCustomerChargingFrame(site.id, {
+        gridLimitKw,
+        ...(anschluss.zustand === 'ungebunden' ? { vereinbartKw: parsedVereinbart } : {}),
+      });
       setConfig(next);
       setDraft(next.gridLimitKw == null ? '' : String(next.gridLimitKw));
       onSaved?.();
@@ -124,13 +178,19 @@ export function LadeparkRahmenKarte({
             />
             <Button
               variant="outline"
-              disabled={busy || draft.trim() === '' || inputError != null}
+              disabled={busy || draft.trim() === '' || anschluss.zustand === 'laden' || inputError != null}
               onClick={() => setDialog(true)}
             >
               Übernehmen
             </Button>
           </div></Recht>
         </div>
+        <AnschlussPlausibilitaet
+          anschluss={anschluss}
+          grenzeKw={Number.isFinite(parsed) ? parsed : null}
+          grundlastKw={config?.frame?.maxHouseLoadKw ?? null}
+          reserveKw={config?.frame?.houseReserveKw ?? null}
+        />
         {inputError && <p className="vp-ladepark-error">{inputError}</p>}
         {error && <p className="vp-ladepark-error">{error}</p>}
 
@@ -161,16 +221,112 @@ export function LadeparkRahmenKarte({
       </Card>
 
       <ConfirmDialog
-        open={dialog}
+        open={dialog && inputError == null}
         title="Anschlussgrenze übernehmen"
         intro={`VoltPilot rechnet ab sofort mit ${fmtNum(parsed, 'kW')} als Grenze Ihres Netzanschlusses.`}
         consequences={aktivierenFolgen(Number.isFinite(parsed) ? parsed : null)}
         confirmLabel="Übernehmen"
         busy={busy}
         onConfirm={() => void save(parsed)}
-        onCancel={() => setDialog(false)}
+        onCancel={() => { setDialog(false); setVereinbartTouched(false); }}
+        extra={anschluss.zustand === 'ungebunden' ? (
+          <div className="vp-ladepark-edit vp-ladepark-dialogfeld">
+            <label htmlFor="vp-vereinbart">Vereinbarte Leistung (kW)</label>
+            <input
+              id="vp-vereinbart"
+              inputMode="decimal"
+              value={vereinbartDraft}
+              onChange={(e) => { setVereinbartDraft(e.target.value); setVereinbartTouched(true); }}
+              aria-invalid={vereinbartTouched && (!Number.isFinite(parsedVereinbart) || parsedVereinbart <= 0)}
+            />
+            {vereinbartTouched && (!Number.isFinite(parsedVereinbart) || parsedVereinbart <= 0) && (
+              <p className="vp-ladepark-error">Tragen Sie die vereinbarte Leistung ein.</p>
+            )}
+          </div>
+        ) : undefined}
       />
     </section>
+  );
+}
+
+type AnschlussStand = {
+  zustand: 'laden' | 'gebunden' | 'ungebunden' | 'fehler';
+  kennzeichen?: string;
+  vereinbartKw?: number | null;
+};
+
+function lokalesDatum(datum: Date): string {
+  const jahr = datum.getFullYear();
+  const monat = String(datum.getMonth() + 1).padStart(2, '0');
+  const tag = String(datum.getDate()).padStart(2, '0');
+  return `${jahr}-${monat}-${tag}`;
+}
+
+function nummer(wert: string | number | null): number | null {
+  if (wert == null || wert === '') return null;
+  const n = Number(wert);
+  return Number.isFinite(n) ? n : null;
+}
+
+const kw = (wert: number) => ergebnisZahl(wert, KW, null, 'vereinbart');
+
+function plausibilitaetsFehler(
+  grenzeKw: number,
+  vereinbartKw: number | null,
+  grundlastKw: number | null,
+  reserveKw: number | null,
+): string | null {
+  if (!Number.isFinite(grenzeKw) || vereinbartKw == null) return null;
+  if (grenzeKw > vereinbartKw) {
+    return `${kw(grenzeKw)} liegen über ${kw(vereinbartKw)} vereinbarter Leistung — bitte prüfen.`;
+  }
+  if (grundlastKw == null || reserveKw == null) {
+    return 'Für die Prüfung fehlen die Grundlast der letzten 7 Tage oder die Hausreserve.';
+  }
+  if (grenzeKw - grundlastKw - reserveKw <= 0) {
+    return 'Grundlast und Hausreserve lassen innerhalb der Anschlussgrenze kein Ladebudget übrig.';
+  }
+  return null;
+}
+
+function AnschlussPlausibilitaet({
+  anschluss,
+  grenzeKw,
+  grundlastKw,
+  reserveKw,
+}: {
+  anschluss: AnschlussStand;
+  grenzeKw: number | null;
+  grundlastKw: number | null;
+  reserveKw: number | null;
+}) {
+  const budget = grenzeKw != null && grundlastKw != null && reserveKw != null
+    ? grenzeKw - grundlastKw - reserveKw : null;
+  return (
+    <div className="vp-ladepark-pruefung" aria-label="Plausibilitätsprüfung der Anschlussgrenze">
+      {anschluss.zustand === 'laden' && <p className="vp-ladepark-hint">Netzanschluss wird geprüft …</p>}
+      {anschluss.zustand === 'fehler' && (
+        <p className="vp-ladepark-error">Der Netzanschluss konnte nicht geladen werden.</p>
+      )}
+      {anschluss.zustand === 'gebunden' && (
+        <p className="vp-ladepark-hint">
+          {anschluss.vereinbartKw == null
+            ? `Netzanschluss ${anschluss.kennzeichen}: vereinbarte Leistung fehlt.`
+            : `Netzanschluss ${anschluss.kennzeichen}: ${kw(anschluss.vereinbartKw)} vereinbart.`}
+        </p>
+      )}
+      {anschluss.zustand === 'ungebunden' && (
+        <p className="vp-ladepark-hint">
+          Heute ist kein Netzanschluss gebunden. Tragen Sie für den Übergang die vereinbarte Leistung im Dialog ein.
+        </p>
+      )}
+      {grundlastKw != null && reserveKw != null && (
+        <p className="vp-ladepark-hint">
+          Grundlast der letzten 7 Tage {kw(grundlastKw)} · Hausreserve {kw(reserveKw)}
+          {budget != null && budget > 0 ? ` · Ladebudget ${kw(budget)}` : ''}
+        </p>
+      )}
+    </div>
   );
 }
 

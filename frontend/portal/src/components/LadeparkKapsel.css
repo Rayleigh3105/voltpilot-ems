@@ -33,7 +33,7 @@
 .vp-ladepark-hint { margin: 8px 0 0; font-size: 0.9rem; color: var(--vp-muted, #64748b); max-width: 62ch; }
 .vp-ladepark-error { margin: 8px 0 0; color: var(--vp-danger, #dc2626); }
 
-.vp-ladepark-edit { display: flex; align-items: center; gap: 8px; }
+.vp-ladepark-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .vp-ladepark-edit input {
   width: 8ch;
   padding: 6px 8px;
@@ -41,6 +41,18 @@
   border-radius: 8px;
   font: inherit;
 }
+.vp-ladepark-pruefung {
+  min-width: 0;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-sm, 8px);
+  background: var(--vp-surface-2, #f8fafc);
+}
+
+.vp-ladepark-dialogfeld {
+  margin-top: var(--vp-space-4);
+}
+.vp-ladepark-pruefung .vp-ladepark-hint:first-child { margin-top: 0; }
 
 .vp-ladepark-chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 8px 0 0; padding: 0; }
 .vp-ladepark-chip {

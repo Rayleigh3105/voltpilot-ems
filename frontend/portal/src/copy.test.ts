@@ -766,6 +766,17 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
   });
 });
 
+describe('AP-01 IP-13 · Kundenwörter im Grenze-Schritt', () => {
+  it('nennt Anschluss, Übergang und Rechengrundlage ohne interne Felder', () => {
+    const quelle = readFileSync(join(SRC, 'components/LadeparkRahmenKarte.tsx'), 'utf8');
+    expect(quelle).toContain('Heute ist kein Netzanschluss gebunden. Tragen Sie für den Übergang die vereinbarte Leistung im Dialog ein.');
+    expect(quelle).toContain('Grundlast der letzten 7 Tage');
+    expect(quelle).toContain('Hausreserve');
+    expect(quelle).toContain('Ladebudget');
+    expect(quelle.replace(/\.vereinbart_kw/g, '')).not.toMatch(/grid_limit_kw|max_house_load_kw/);
+  });
+});
+
 /* ---------------------------------------------------------------------------
  * K4 · Der Klartext-Wächter über den CHART-Beschriftungen
  *

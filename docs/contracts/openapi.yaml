@@ -2597,6 +2597,45 @@ paths:
         "400": { description: Unbekannte Quelle, unplausible Mindestleistung oder ein leerer Rumpf (deutscher Grund im Körper). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage unbekannt, oder diese Kennung ist hier nicht eingetragen. }
+  /api/v1/sites/{siteId}/charging-frame:
+    put:
+      tags: [sites]
+      summary: Die Anschlussgrenze mit Netzanschluss-Plausibilität setzen (AP-01 IP-13).
+      description: >
+        Setzt die Anschlussgrenze erst, wenn sie die heute am Netzanschluss
+        vereinbarte Leistung nicht überschreitet und Grundlast der letzten
+        sieben Tage plus Hausreserve ein positives Ladebudget lassen. Der
+        Ladepark-Rahmen der Box bleibt unverändert.
+
+
+        Ist heute kein Netzanschluss gebunden, muss `vereinbartKw` als
+        Übergang im Dialog angegeben werden. Bei einer Bindung wird dieser
+        Eingabewert ignoriert und ausschließlich `vereinbart_kw` des
+        gebundenen Netzanschlusses verwendet. Recht `grenze.eintragen`,
+        RLS-gefenced; eine fremde Anlage ist 404.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gridLimitKw]
+              properties:
+                gridLimitKw: { type: number, exclusiveMinimum: 0, description: "Anschlussgrenze des Ladeparks in kW." }
+                vereinbartKw: { type: number, nullable: true, exclusiveMinimum: 0, description: "Nur ohne gebundenen Netzanschluss: vereinbarte Leistung aus dem Dialog." }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration; der Box-Push verwendet unverändert den bestehenden Vertrag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "400": { description: Anschlussgrenze oder Übergangswert sind keine positive Leistung. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Das Recht `grenze.eintragen` fehlt. }
+        "404": { description: Anlage unbekannt oder außerhalb des Kundenbereichs. }
+        "422": { description: Grenze über vereinbarter Leistung, fehlende Anschlussdaten oder kein verbleibendes Ladebudget; deutscher Grund im Körper. }
   /api/v1/admin/sites/{siteId}/charging-frame:
     put:
       tags: [admin]

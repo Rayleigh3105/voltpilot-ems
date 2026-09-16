@@ -183,6 +183,30 @@ class FunktionApiTest {
         assertThat(st1.at("/steuern/text").asText()).isEqualTo("Läuft mit " + w.name("AN-2"));
     }
 
+    /** AP-01 IP-13: die neue Kunden-Route prüft NA-2, bevor sie denselben Box-Wunsch speichert. */
+    @Test
+    void kundenGrenze220Bei200VereinbartIst422MitGrundUndSchreibtNichts() throws Exception {
+        Welt w = welt();
+        gruen(w, "AN-2", "ST-1", "NA-2");
+        root.update("INSERT INTO site_charging_config (site_id, tenant_id, house_reserve_kw, "
+                + "max_house_load_kw, updated_at, updated_by) VALUES (?, ?, 30, 96.5, now(), 'test')",
+                w.id("AN-2"), w.mandant());
+
+        Antwort zuHoch = ruf(w, HttpMethod.PUT, "/api/v1/sites/" + w.id("AN-2") + "/charging-frame",
+                Map.of("gridLimitKw", 220));
+
+        assertThat(zuHoch.status()).as(zuHoch.body().toString()).isEqualTo(422);
+        assertThat(zuHoch.body().path("message").asText())
+                .isEqualTo("220 kW liegen über 200 kW vereinbarter Leistung (Netzanschluss NA-2) — bitte prüfen.");
+        assertThat(root.queryForObject("SELECT grid_limit_kw IS NULL FROM site_charging_config WHERE site_id = ?",
+                Boolean.class, w.id("AN-2"))).isTrue();
+
+        Antwort passend = ok(ruf(w, HttpMethod.PUT, "/api/v1/sites/" + w.id("AN-2") + "/charging-frame",
+                Map.of("gridLimitKw", 200)), 200);
+        assertThat(passend.body().path("gridLimitKw").decimalValue()).isEqualByComparingTo("200");
+        assertThat(passend.body().at("/frame/houseReserveKw").decimalValue()).isEqualByComparingTo("30");
+    }
+
     // ============================================================================ Nachweis 2
 
     @Test

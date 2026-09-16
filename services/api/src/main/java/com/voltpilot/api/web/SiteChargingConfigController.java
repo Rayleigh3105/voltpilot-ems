@@ -59,6 +59,9 @@ public class SiteChargingConfigController {
              */
             @Size(max = 32) String surplusPolicy, @Size(max = 32) String storagePriority) {}
 
+    /** Der Kunden-Schritt „Grenze": die zweite Zahl gilt nur ohne gebundenen Netzanschluss. */
+    public record SaveChargingFrameRequest(Double gridLimitKw, Double vereinbartKw) {}
+
     /**
      * Der Rumpf des Anbinde-Assistenten: nur die Kennung ist Pflicht, alles
      * Weitere ist das, was der Betreiber zufällig schon weiß.
@@ -118,6 +121,19 @@ public class SiteChargingConfigController {
         }
         return service.save(siteId, req.gridLimitKw(), req.priorityChargePointIds(),
                 req.surplusPolicy(), req.storagePriority(),
+                caller == null ? "unbekannt" : caller.getSubject());
+    }
+
+    /**
+     * Recht {@code grenze.eintragen}: setzt die Anschlussgrenze erst nach der Plausibilitätsprüfung
+     * gegen den heute gebundenen Netzanschluss und das verbleibende Ladebudget.
+     */
+    @PutMapping("/charging-frame")
+    @Recht(value = "grenze.eintragen", ziel = RechtZiel.ANLAGE)
+    public ChargingConfigDto saveCustomerFrame(@PathVariable UUID siteId,
+            @Valid @RequestBody SaveChargingFrameRequest req,
+            @AuthenticationPrincipal Jwt caller) {
+        return service.saveCustomerFrame(siteId, req.gridLimitKw(), req.vereinbartKw(),
                 caller == null ? "unbekannt" : caller.getSubject());
     }
 
