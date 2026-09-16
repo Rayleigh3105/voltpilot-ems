@@ -100,12 +100,13 @@ ist sie sofort katalogkonform:
   eingehen; sonst `richtungslos` (ein Netto). Ergibt sich eine Größe, die der Katalog nicht
   kennt (z. B. ein Netto einer Größe ohne `richtungslos`), ist das ebenfalls `groessen_gemischt`
   (Grund `richtung`).
-- Ein Messwert **ohne Vertrags-Richtung** (ein Vorzeichen-Wert `import_export`, oder ein Kanal,
-  dem der Katalog keine Richtung gibt) ist kein Term — es sei denn, der Term trägt den
-  **AP-08-Haken `gilt_als_erzeugung`** (§2.2). Ohne Haken bleibt ein solcher Messwert
-  richtungslos und darf nicht summiert werden (wie im Messstellen-Vertrag §5). Sein Anteil
-  (Messstellen-Vertrag §5, seit AP-08 IP-7 an der Quellenbindung) ist als Term-Feld `anteil`
-  noch benannt abgelehnt (§1.1).
+- Ein Messwert **ohne Katalog-Richtung** (`direction: null`) ist kein Term — es sei denn,
+  der Term trägt den **AP-08-Haken `gilt_als_erzeugung`** (§2.2).
+- Ein Vorzeichen-Wert `import_export` hat eine Katalog-Richtung (abgebildet als
+  `richtungslos`). Als neuer Formel-Term bleibt er mit und ohne Haken gesperrt.
+  Sein Anteil ist seit AP-08 IP-7 an der **Quellenbindung** zulässig
+  (Messstellen-Vertrag §5); als Term-Feld `anteil` bleibt er benannt abgelehnt (§1.1).
+  Ein Netz-Summenwert aus getrennten Bezugs-/Abgaberegistern braucht den Erzeugungs-Haken nie.
 
 ### 2.1 Die Ergebnis-Richtung je Typ (AP-10 E1)
 
@@ -133,12 +134,17 @@ Diese Stelle löst die in §2 reservierte AP-08-Frage ein — additiv, ein optio
 | `gilt_als_erzeugung` | boolean, Vorgabe `false`. Nur an einem **Messkanal**-Term und nur an einem Kanal **ohne Katalog-Richtung** (der Katalog gibt keine, z. B. der Deye Gen-Port `generator-power`, `direction: null`). Mit gesetztem Haken ist der richtungslose Kanal als Term **zulässig** und zählt in der Richtungs-Ableitung (§2) als **Erzeugung** — so bleibt eine Summe aus lauter `+`-Erzeugungs-Termen `Erzeugung`, statt an dem einen richtungslosen Gen-Port zu `richtungslos` zu degradieren. |
 
 Der Haken gilt **nur für einen richtungslosen Kanal**: an einem Kanal **mit** Katalog-Richtung
-(auch der Katalog-Richtung `richtungslos` aus `direction: none`) weist der Dienst ihn ab
+(auch `richtungslos` aus `direction: none` oder `import_export`) weist der Dienst ihn ab
 (`anfrage_ungueltig`, Feld `terme[i].gilt_als_erzeugung`) — ein wirkungsloser Schalter wäre
 unehrlich. An einem `messstelle`- und an einem `verteilung`-Term (§1.1) ist er ebenfalls unzulässig. Die Regel steht rein in beiden
 Zwillingen (`MessstelleFormelRegeln.erzeugungsHakenErlaubt` / `richtungMitErzeugungsHaken`,
 `uemsMessstelleFormel.ts`) und in den Vektoren (`cases.haken`); der normale Erzeugungs-Kanal
 (PV 1/2/3, Katalog-Richtung `generation`) braucht den Haken nie.
+
+**Bestandsschutz (W1):** Die Ablehnung gilt beim Setzen. Bereits gespeicherte
+`import_export`-Terme mit Haken werden beim Lesen der Formel weiterhin wie bisher als
+`Erzeugung` dargestellt. Live-Wert, Verlauf und gespeicherte Zeilen bleiben unverändert;
+es gibt keine Datenmigration.
 
 ## 3. Die Berechnung (Cloud, `MessstelleFormelBerechnung`/`gewichteteSumme`)
 

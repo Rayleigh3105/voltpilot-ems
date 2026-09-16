@@ -17,7 +17,7 @@
  */
 import type { MeasurementCatalogPoint } from './api';
 import { normalizeTerm } from './glossar';
-import type { Quellwert } from './gesamtwert';
+import { VORZEICHEN_NETZ_GRUND, type Quellwert } from './gesamtwert';
 import { groesseAus, kategorieWort, richtungAus, wertartAus } from './registerAbbildung';
 
 /** Der Guard-Zustand einer Register-Zeile - warum sie (nicht) in die Summe darf. */
@@ -26,6 +26,8 @@ export type SperrArt =
   | 'summierbar'
   /** Summierbar, aber ANDERE Größe/Wertart als der Anker (kW ≠ kWh) - gesperrt. */
   | 'andere_groesse'
+  /** Bezug und Abgabe in EINEM Vorzeichen-Wert: ohne Anteil-Leseweg kein Term. */
+  | 'vorzeichen_netz'
   /** Ein Zahlenwert OHNE Vertrags-Größe (Spannung, Temperatur, Strom …) - gesperrt. */
   | 'keine_groesse'
   /** Kein Zahlenwert (Zustand, Text, Ereignis) - gesperrt. */
@@ -64,8 +66,10 @@ export interface RegisterZeile {
   standardKadenzS: number | null;
   langzeitKadenzS: number | null;
   jahresBytes: number;
-  /** Summierbar = trägt Vertrags-Größe UND Wertart (der Guard aus `gesamtwert.ts`). */
+  /** Vertrags-Größe und Wertart vorhanden; Vorzeichen-Netzkanäle bleiben gesperrt. */
   summierbar: boolean;
+  /** Katalog-Richtung import_export; bleibt bis zum Anteil-Leseweg gesperrt. */
+  vorzeichenNetz: boolean;
   /**
    * Summierbar, aber ohne Katalog-Richtung (`direction: null`) - trägt deshalb nur mit der
    * per-Term-Entscheidung „gilt als Erzeugung" (AP-08) zur Summe bei. Gilt für JEDES
@@ -104,9 +108,10 @@ export function zeileAus(
   const groesse = groesseAus(point.quantity);
   const richtung = richtungAus(point.direction);
   const wertart = wertartAus(point.aggregationKind);
+  const vorzeichenNetz = point.direction === 'import_export';
   const richtungslos = !!groesse && !!wertart && richtung == null;
   const numerisch = point.aggregationKind === 'gauge' || point.aggregationKind === 'counter';
-  const summierbar = !!groesse && !!wertart;
+  const summierbar = !!groesse && !!wertart && !vorzeichenNetz;
   const beobachtet = point.selected;
   const roh = beobachtet ? point.decodedValue : null;
   const zahl = roh == null || roh === '' ? NaN : Number(roh);
@@ -131,6 +136,7 @@ export function zeileAus(
     langzeitKadenzS: point.longTermCadenceS,
     jahresBytes: point.estimatedDataPerYearBytes,
     summierbar,
+    vorzeichenNetz,
     richtungslos,
     genPort: richtungslos && istGenPort(point.pointKey),
     kategorie,
@@ -150,6 +156,7 @@ export function ankerAus(gewaehlt: Quellwert[]): Anker | null {
  * (Zahlenwert, aber keine Größe); summierbar-aber-anders ist „andere Messgröße".
  */
 export function sperrArt(zeile: RegisterZeile, anker: Anker | null): SperrArt {
+  if (zeile.vorzeichenNetz) return 'vorzeichen_netz';
   if (!zeile.summierbar) {
     // Ein nicht-numerisches Register (Zustand/Text/Ereignis) trägt gar keinen
     // Zahlenwert; ein numerisches ohne Vertrags-Größe (Spannung/Temperatur) schon.
@@ -169,6 +176,8 @@ export function anhakbar(zeile: RegisterZeile, anker: Anker | null): boolean {
 /** Das KURZE Sperr-Wort am rechten Rand der Zeile (nie eine stumme Sperre). */
 export function sperrKurz(art: SperrArt): string | null {
   switch (art) {
+    case 'vorzeichen_netz':
+      return 'Bezug und Abgabe trennen';
     case 'andere_groesse':
       return 'andere Messgröße';
     case 'keine_groesse':
@@ -183,6 +192,8 @@ export function sperrKurz(art: SperrArt): string | null {
 /** Der ausführliche, ehrliche Sperr-Grund (für Titel/Tooltip). */
 export function sperrGrund(art: SperrArt): string | null {
   switch (art) {
+    case 'vorzeichen_netz':
+      return VORZEICHEN_NETZ_GRUND;
     case 'andere_groesse':
       return 'Andere Messgröße - passt nicht in dieselbe Summe.';
     case 'keine_groesse':
@@ -218,6 +229,7 @@ export function zuQuellwert(zeile: RegisterZeile, geraet: string | null): Quellw
     richtung: zeile.richtung,
     einheit: zeile.einheit,
     wertart: zeile.wertart,
+    vorzeichenNetz: zeile.vorzeichenNetz,
     wert: zeile.wert,
     stand: zeile.stand,
   };

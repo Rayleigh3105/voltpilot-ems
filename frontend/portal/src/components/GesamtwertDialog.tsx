@@ -637,6 +637,7 @@ async function ladeQuellen(
         richtung: kanal?.richtung ?? null,
         einheit: kanal?.einheit ?? it.unit ?? null,
         wertart: kanal?.wertart ?? null,
+        vorzeichenNetz: kanal?.direction === 'import_export',
         wert: letzter ? letzter.last ?? letzter.avg : null,
         stand: letzter ? letzter.start : null,
       });

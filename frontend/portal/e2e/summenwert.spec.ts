@@ -92,6 +92,8 @@ const P: Record<string, ReturnType<typeof catPoint>> = {
   temp: catPoint({ pointKey: 'temp', labelDe: 'Modultemperatur', group: 'Temperaturen', quantity: 'temperature', direction: null, unit: '°C' }),
   state: catPoint({ pointKey: 'state', labelDe: 'Betriebszustand', group: 'Zustände', quantity: null, direction: null, aggregationKind: 'text', unit: null }),
   netzE: catPoint({ pointKey: 'netz-e', labelDe: 'Netzarbeit', group: 'Netz', quantity: 'active_energy', direction: 'import', aggregationKind: 'counter', unit: 'kWh' }),
+  netz: catPoint({ pointKey: 'sunspec.model_203.w', labelDe: 'Netzleistung', group: 'Netz', direction: 'import_export' }),
+  netzRoh: catPoint({ pointKey: 'deye.hybrid_3p.grid.external-ct-total-power', labelDe: 'Netzleistung extern', group: 'Netz', direction: 'import_export' }),
 };
 const ALLE_PUNKTE = Object.values(P);
 
@@ -119,7 +121,7 @@ async function mock(page: Page) {
   const state: { assigned: null | Record<string, unknown> } = { assigned: null };
   // Der Beobachtungs-Zustand ist ECHT veränderlich: PV 1/2/3 + Hausverbrauch stehen (der
   // Gen-Port NICHT); „+ Beobachten" schaltet weitere Register frei.
-  const observed = new Set<string>(['pv1', 'pv2', 'pv3', 'deye.hybrid_3p.load.load-consumption-power']);
+  const observed = new Set<string>(['pv1', 'pv2', 'pv3', 'deye.hybrid_3p.load.load-consumption-power', 'sunspec.model_203.w']);
   let revision = 1;
 
   await page.route('**/api/v1/**', async (route) => {
@@ -193,6 +195,28 @@ async function assistentOeffnen(page: Page) {
   await page.getByRole('button', { name: /Summenwert anlegen/ }).click();
   return page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
 }
+
+test('Vorzeichen-Netzregister bleiben ohne Erzeugungs-Haken und ohne Aufnahme gesperrt', async ({ page }, testInfo) => {
+  test.skip(!['desktop-chromium', 'mobile-chromium'].includes(testInfo.project.name));
+  test.slow();
+  await mock(page);
+  const width = testInfo.project.name === 'mobile-chromium' ? 375 : 1440;
+  await page.setViewportSize({ width, height: 1000 });
+  const dialog = await assistentOeffnen(page);
+  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
+  for (const name of ['Netzleistung', 'Netzleistung extern']) {
+    await expect(dialog.getByText(`Zählt „${name}" als Erzeugung?`)).toHaveCount(0);
+    const button = dialog.getByRole('button', { name: `${name} mitzählen`, exact: true });
+    await expect(button).toBeDisabled();
+    await expect(button).toHaveAttribute('title', /Bezug und Abgabe gemeinsam/);
+    const row = dialog.locator('.vp-sw-row').filter({
+      has: page.getByRole('button', { name: `${name} mitzählen`, exact: true }),
+    });
+    await expect(row.getByRole('button', { name: /Beobachten/ })).toHaveCount(0);
+    await expect(row.getByText('Bezug und Abgabe trennen', { exact: true })).toBeVisible();
+  }
+  await dialog.screenshot({ path: testInfo.outputPath(`import-export-${width}.png`) });
+});
 
 test('SUN-30K: Gen-Port über „+ Beobachten" aufnehmen, als Erzeugung entscheiden, speichern gelingt', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium' && testInfo.project.use.browserName !== 'webkit', 'Ankerlauf einmal (Logik ist engine-unabhängig)');

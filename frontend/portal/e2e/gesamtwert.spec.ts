@@ -47,7 +47,7 @@ async function stehtOffen(page: Page) {
   await expect(page.locator('.vp-modal-scrim')).not.toHaveClass(/is-closing/);
 }
 
-async function mock(page: Page) {
+async function mock(page: Page, vorzeichenNetz = false) {
   const state: { created: null | Record<string, unknown> } = { created: null };
 
   await page.route('**/api/v1/**', async (route) => {
@@ -100,7 +100,9 @@ async function mock(page: Page) {
           inhaltsstand: '2026.09.11.1',
           messkanaele: KANAELE.map((k) => ({
             kanal: k.kanal, anzeigename: null, einheit: 'kW', wertart: 'Momentanwert',
-            groesse: 'Wirkleistung', richtung: 'Erzeugung', quantity: 'Power', direction: 'Generation',
+            groesse: 'Wirkleistung', quantity: 'active_power',
+            richtung: vorzeichenNetz && k === KANAELE[0] ? 'richtungslos' : 'Erzeugung',
+            direction: vorzeichenNetz && k === KANAELE[0] ? 'import_export' : 'generation',
             kadenz_s: 5, aktiv: true, lesende_box: null, geraet: null, speist: [],
           })),
         },
@@ -156,6 +158,18 @@ async function mock(page: Page) {
     return route.fulfill({ json: {} });
   });
 }
+
+test('der Anlagen-Einstieg sperrt import_export vor der Auswahl', async ({ page }) => {
+  test.slow();
+  await mock(page, true);
+  await page.goto('/e2e/gesamtwert.html');
+  await page.getByRole('button', { name: 'Gesamtwert anlegen' }).click();
+  const dialog = page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
+  await dialog.getByRole('combobox', { name: /Messwerte/ }).click();
+  const option = page.getByRole('listbox', { name: 'Messwerte wählen' }).getByRole('option', { name: /PV 1/ });
+  await expect(option).toHaveAttribute('aria-disabled', 'true');
+  await expect(option).toContainText('Bezug und Abgabe gemeinsam');
+});
 
 test('SUN-30K: der Assistent stellt Gesamt-PV zusammen und der Wert erscheint in Übersicht + Verlauf', async ({ page }) => {
   test.slow();

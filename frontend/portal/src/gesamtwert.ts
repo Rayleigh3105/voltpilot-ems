@@ -49,6 +49,10 @@ export const MAX_NAME = 80;
 /** Ab wann ein gemessener Wert als „veraltet" gilt (dieselbe 5-Minuten-Sicht wie die Box). */
 export const FRISCH_MS = 5 * 60 * 1000;
 
+/** W1: derselbe Sperrgrund in beiden bestehenden Summenwert-Einstiegen. */
+export const VORZEICHEN_NETZ_GRUND =
+  'Dieses Register misst Bezug und Abgabe gemeinsam. Für einen Summenwert müssen beide getrennt vorliegen.';
+
 /** Die fünf Schritte des Assistenten, in Reihenfolge — der Stepper liest sie. */
 export const SCHRITTE = ['Werte', 'Rechnen', 'Name', 'Vorschau', 'Fertig'] as const;
 export type Schritt = 1 | 2 | 3 | 4 | 5;
@@ -79,6 +83,8 @@ export interface Quellwert {
   richtung: string | null;
   einheit: string | null;
   wertart: string | null;
+  /** Aus der rohen Katalog-Richtung import_export, nicht aus dem Vertragswort richtungslos. */
+  vorzeichenNetz?: boolean;
   /** Der zuletzt gemessene Wert, oder null (nie eine erfundene 0). */
   wert: number | null;
   /** Der Zeitpunkt dieses Werts (ISO), für die Frische — oder null. */
@@ -100,7 +106,7 @@ export function punkt(frische: Frische): 'ok' | 'warn' | 'off' {
 
 /** Trägt dieser Quell-Wert überhaupt eine Vertrags-Größe? Nur dann ist er summierbar. */
 export function summierbar(q: Quellwert): boolean {
-  return !!q.groesse && !!q.wertart;
+  return !!q.groesse && !!q.wertart && !q.vorzeichenNetz;
 }
 
 /**
@@ -118,6 +124,7 @@ export function passt(q: Quellwert, gewaehlt: Quellwert[]): boolean {
 
 /** Der Grund, warum ein Wert gerade nicht summierbar ist — nie eine stumme Sperre. */
 export function sperrgrund(q: Quellwert, gewaehlt: Quellwert[]): string | null {
+  if (q.vorzeichenNetz) return VORZEICHEN_NETZ_GRUND;
   if (passt(q, gewaehlt)) return null;
   if (!summierbar(q)) return 'Für diesen Wert steht noch keine Messgröße fest.';
   return 'Andere Messgröße — passt nicht in dieselbe Summe.';

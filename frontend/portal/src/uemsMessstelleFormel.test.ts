@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { richtungAus } from './registerAbbildung';
 import {
   EINHEITEN_NORMIERUNG,
   erzeugungsHakenErlaubt,
@@ -55,6 +56,7 @@ describe('gewichteteSumme — der Wert, und null statt Teilsumme', () => {
 describe('AP-08 „gilt als Erzeugung"-Haken — nur am richtungslosen Kanal', () => {
   it.each(faelle('haken'))('Haken: $name', (c) => {
     const richtung: string | null = c.input.katalog_richtung ?? null;
+    if ('direction' in c.input) expect(richtungAus(c.input.direction)).toBe(richtung);
     expect({
       erlaubt: erzeugungsHakenErlaubt(richtung),
       richtung: richtungMitErzeugungsHaken(richtung, c.input.gilt_als_erzeugung),
