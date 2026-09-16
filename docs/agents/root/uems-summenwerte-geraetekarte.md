@@ -13,7 +13,8 @@ einmal auf der Karte. Box, Port und Transport sind dafür keine Identität.
 - `RolleAendernDialog` nutzt den Anlagen-PUT zum Setzen/Wechseln und den Geräte-DELETE
   zum Entziehen. Der Netzwert-Konflikt verlangt ausdrückliches `ersetzen`. Größe
   und Richtung bestimmen die verfügbaren Rollen; der Server prüft sie erneut.
-  Ein Entzug lässt die Messstelle und ihre Werte bestehen.
+  Ein Entzug entfernt seit H-11 alle Halter derselben Summe in der Anlage/Rolle
+  gemeinsam; die Messstelle und ihre Werte bleiben bestehen.
 - Die Öffnen-Funktion verwendet `useSummenwertAssistent` aus dem
   [gemeinsamen H-5/H-6-Assistenten](uems-summenwert-assistent.md).
   `onGespeichert` lädt nur neu und schließt den Fertig-Schritt nicht.

@@ -100,6 +100,7 @@ export function GeraetSummenwerte({
     aktion();
   }
   async function speichern(aktion: () => Promise<unknown>, danach: () => void) {
+    if (busy || !rechte.darf("messstelle.bearbeiten")) return;
     setBusy(true);
     setFehler(null);
     try {
@@ -224,7 +225,7 @@ export function GeraetSummenwerte({
             {PROTOKOLL_LABEL} der Anlage
           </Button>
         )}
-        {rolle && (
+        {rolle && rechte.darf("geraet.einrichten") && (
           <RolleAendernDialog
             key={rolle.messstelle.id}
             siteId={siteId}
@@ -234,7 +235,7 @@ export function GeraetSummenwerte({
             onGespeichert={geaendert}
           />
         )}
-        {formel && (
+        {formel && rechte.darf("messstelle.formel") && (
           <SummenwertFormelDialog
             siteId={siteId}
             messstelle={formel.messstelle}
@@ -242,7 +243,7 @@ export function GeraetSummenwerte({
             onGespeichert={geaendert}
           />
         )}
-        {name && (
+        {name && rechte.darf("messstelle.bearbeiten") && (
           <Modal
             open
             title={`${SUMMENWERT} umbenennen`}
@@ -288,7 +289,7 @@ export function GeraetSummenwerte({
           </Modal>
         )}
         <ConfirmDialog
-          open={!!archiv}
+          open={!!archiv && rechte.darf("messstelle.bearbeiten")}
           title={`„${archiv?.messstelle.name || SUMMENWERT}“ archivieren?`}
           intro="Der Wert verschwindet aus der Liste. Seine bisherigen Werte bleiben erhalten."
           consequences={[

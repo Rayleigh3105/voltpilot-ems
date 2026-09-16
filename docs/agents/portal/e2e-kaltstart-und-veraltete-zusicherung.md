@@ -56,7 +56,7 @@ Bestenfalls-Arbeit — schlägt es fehl, warnt es und der Lauf läuft wie zuvor.
 ⚠ **NICHT repariert wurde es durch ein größeres Budget, `retries` oder
 `force`** — jede Zusicherung behält ihre strengen 5 s, damit eine wirklich
 langsam gewordene Hilfe weiterhin auffällt (siehe
-[gesamtwert-Lehre](gesamtwert-assistent-und-anzeige.md): `retries` verbergen
+[gesamtwert-Lehre](summenwert-assistent-und-karte.md): `retries` verbergen
 genau die Wettläufe, die den Kunden zuerst treffen).
 
 ⚠ **Vite `server.warmup` hilft hier NICHT** — gemessen: die erste Seite brauchte

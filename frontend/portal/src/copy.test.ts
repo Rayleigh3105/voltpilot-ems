@@ -1,4 +1,6 @@
 import ts from 'typescript';
+import { steuerGeldWoerter } from './anlegeNurMessen';
+import { everydayArticles } from './help/content/alltag';
 import { SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
 import { budgetFreiText, folgenSaetze } from './datenquelle';
 import { rechteSeed } from './test/rollenFixtures';
@@ -1983,7 +1985,7 @@ describe('UEMS AP-12 IP-14 · die Berichts-Dialoge sprechen Bericht · Entwurf �
   });
 });
 
-/** H-1/E10: nur der bestehende Wortbestand wartet auf H-5/H-7, kein neuer Satz darf hinzukommen. */
+/** H-9/E10: keine Alttexte mehr; technische Exportnamen bleiben kompatibel. */
 describe('Summenwert: das eine Kundenwort', () => {
   const altwort = new RegExp(`\\b(?:${SUMMENWERT_VERBOTENE_WOERTER.map((w) => w === 'Gesamtwert' ? `${w}(?:e|en|s)?` : w).join('|')})\\b`);
   // AST statt Quelltext: JSX-Text vor einem Ausdruck und Template-Sätze werden vollständig erfasst.
@@ -2001,15 +2003,25 @@ describe('Summenwert: das eine Kundenwort', () => {
     return out.filter((t) => !/^[./]/.test(t)).map((t) => t.trim().replace(/\s+/g, ' '));
   };
   // EXAKTER Satz, Datei und Höchstzahl. Entfernen ist erlaubt; neue/duplizierte Alttexte sind rot.
-  const bestand: Record<string, number> = {
-    "components/GesamtwertKarten.tsx · Sie können jederzeit einen neuen Gesamtwert zusammenstellen.": 1,
-    "components/GesamtwertKarten.tsx · Ein Wert fehlt gerade — der Gesamtwert bleibt leer statt zu klein.": 1,
-    "components/VerlaufExplorer.tsx · Gesamtwert": 1,
-    "components/VerlaufExplorer.tsx · Diese Werte werden über den Wechselrichter gemessen und stecken in „PV gesamt“. Einen eigenen Verlauf hat dieser Erzeuger nicht — die Gesamt-PV finden Sie im Cockpit und in der Historie.": 1,
-    "help/content/alltag.ts · Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, den Gesamtwert einzuordnen.": 1,
-    "help/content/alltag.ts · Gesamtwerte und einzelne Anlagen": 1,
-    "help/content/alltag.ts · Gesamtwerte und einzelne Anlagen haben unterschiedliche Geltungsbereiche. Prüfen Sie Auswahl und Zeitraum. Andere Geräte oder Betriebsmodelle erklären, warum Ansichten zwischen Anlagen abweichen.": 1,
-  };
+  const bestand: Record<string, number> = {};
+
+  it('alle Summenwert-Flächen und ihr Hilfeartikel sprechen ohne Steuer- oder Geldwörter', () => {
+    const FLAECHEN = [
+      'components/SummenwertAssistent.tsx', 'components/GeraetSummenwerte.tsx',
+      'components/RolleAendernDialog.tsx', 'components/SummenwertFormelDialog.tsx',
+      'components/GesamtwertKarten.tsx', 'components/PvRollenBreakdown.tsx',
+      'gesamtwert.ts', 'summenwertQuellen.ts', 'uemsRollen.ts', 'pvRolle.ts',
+    ];
+    for (const file of FLAECHEN) {
+      for (const text of visibleTexts(readFileSync(join(SRC, file), 'utf8'))) {
+        // IANA-Zonen sind technische Optionen, kein Geldwort im Kundentext.
+        expect(steuerGeldWoerter(text.replace(/Europe\/Berlin/g, '')), `${file}: ${text}`).toEqual([]);
+      }
+    }
+    const hilfe = everydayArticles.find((a) => a.id === 'summenwerte');
+    expect(hilfe).toBeDefined();
+    expect(steuerGeldWoerter(JSON.stringify(hilfe))).toEqual([]);
+  });
   it('Konstante und Wortverbote entsprechen dem Vertrag', () => {
     const v = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/rollen-zuordnung-vectors.json'), 'utf8'));
     expect(SUMMENWERT).toBe(v.kundenwort);
@@ -2026,7 +2038,6 @@ describe('Summenwert: das eine Kundenwort', () => {
     "gesamtwert.ts": 5,
     "glossar.ts": 1,
     "components/GesamtwertDialog.tsx": 3,
-    "components/GesamtwertKarten.tsx": 8,
     "components/SummenwertAssistent.tsx": 3,
     "pages/MesswerteSection.tsx": 2
   };

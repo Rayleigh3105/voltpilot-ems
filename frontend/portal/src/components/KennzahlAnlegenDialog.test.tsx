@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, type Messstelle } from '../api';
 import {
@@ -14,6 +14,8 @@ import { fassungenVon } from '../test/kennzahlWerteFixtures';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../test/ortsbaumFixtures';
 import { ahrenbergHeute, ahrenbergUnternehmen, FIXTURE_IDS, werkLindach } from '../test/standorteFixtures';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 import { KennzahlAnlegenDialog } from './KennzahlAnlegenDialog';
 
 /**
@@ -176,6 +178,18 @@ describe('KennzahlAnlegenDialog', () => {
     await waitFor(() => expect(weiterKnopf().disabled).toBe(false));
     expect(screen.queryByTestId('kennzahl-hebel-gesamtwert')).toBeNull();
     expect(screen.getByTestId('kennzahl-anlegen').textContent).toContain('MS-23 Montage gesamt');
+  });
+
+  it('der zusätzliche Summenwert-Einstieg verschwindet ohne Formelrecht', async () => {
+    verdrahte();
+    render(<KennzahlAnlegenDialog open onClose={() => undefined} />);
+    fireEvent.click(await screen.findByRole('radio', { name: /^Stromeinsatz je Stück/ }));
+    weiter(); await waehle('Menge', /^MS-12 Montage Linie M1/);
+    fireEvent.click(await screen.findByRole('option', { name: /^MS-18 Montagehalle Lindach gesamt/ }));
+    expect(await screen.findByRole('button', { name: 'Summenwert anlegen' })).toBeVisible();
+    act(() => setSelbstauskunft(rechteSeed('CB').me));
+    expect(screen.queryByRole('button', { name: 'Summenwert anlegen' })).toBeNull();
+    expect(screen.queryByTestId('gesamtwert-attrappe')).toBeNull();
   });
 
   it('Kopieren: Form, Name mit dem neuen Geltungsbereich und Zweck übernommen — Eingänge und Verantwortlich neu', async () => {

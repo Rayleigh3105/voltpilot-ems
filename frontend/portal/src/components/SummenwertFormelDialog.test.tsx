@@ -1,6 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api, type Messstelle } from '../api';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 import { SummenwertFormelDialog } from './SummenwertFormelDialog';
 const m: Messstelle = { id: 'm1', name: 'Dach', kennzeichen: 'MS-0001', art: 'berechnet', medium: 'Strom', lebenszyklus: 'aktiv', fehlt: [], notiz: null };
 afterEach(() => vi.restoreAllMocks());
@@ -16,4 +18,15 @@ it('schreibt eine neue Fassung und erhält Quellenidentität sowie Erzeugungsent
   fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
   await waitFor(() => expect(speichern).toHaveBeenCalledWith('m1', expect.objectContaining({ terme: [{ eingang_art: 'messkanal', entity_id: 'e1', point_key: 'gen-port', vorzeichen: '+', faktor: .5, gilt_als_erzeugung: true }] })));
   expect(anlegen).not.toHaveBeenCalled();
+});
+
+it('ein Leser bekommt auch im schon geöffneten Formeldialog keinen Schreibknopf', async () => {
+  vi.spyOn(api, 'messstelleFormel').mockResolvedValue({ terme: [] } as unknown as Awaited<ReturnType<typeof api.messstelleFormel>>);
+  vi.spyOn(api, 'siteEntities').mockResolvedValue({ entities: [] } as unknown as Awaited<ReturnType<typeof api.siteEntities>>);
+  const speichern = vi.spyOn(api, 'messstelleFormelFassungEintragen');
+  render(<SummenwertFormelDialog siteId="s1" messstelle={m} onClose={() => {}} onGespeichert={() => {}} />);
+  await waitFor(() => expect(screen.queryByText('Wird geladen …')).toBeNull());
+  act(() => setSelbstauskunft(rechteSeed('CB').me));
+  expect(screen.queryByRole('button', { name: 'Übernehmen' })).toBeNull();
+  expect(speichern).not.toHaveBeenCalled();
 });
