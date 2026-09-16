@@ -66,6 +66,8 @@ class RechtRoutenArchitekturTest {
         m.put("KorrekturFreigabeController#freigeben", korrektur);
         m.put("KorrekturFreigabeController#zuruecknehmen", korrektur);
         m.put("DeviceController#claim", "DeviceController.claim — RechtPruefung.pruefen an der Anlage aus siteId");
+        m.put("AblesungController#eingeben", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
+        m.put("AblesungController#berichtigen", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("BezugsgroesseController#anlegen", "BezugsgroesseController.geltungPruefen — Geltung aus dem Körper");
         m.put("MessstelleController#anlegen", "keine — eine neue Messstelle hängt an keinem Standort (Ort erst danach)");
         m.put("MessstelleFormelController#anlegen", "keine — eine neue berechnete Messstelle hängt an keinem Standort");

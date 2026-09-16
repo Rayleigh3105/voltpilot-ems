@@ -7,6 +7,7 @@ import com.voltpilot.api.uems.AblesungService;
 import com.voltpilot.api.uems.MessstelleRepository;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,6 +43,7 @@ public class AblesungController {
 
     /** Recht: {@code ablesung.erfassen}. Ziel wird vor dem Lesen des Körpers aus dem Kennzeichen aufgelöst. */
     @PostMapping
+    @Recht(value = "ablesung.erfassen", ziel = RechtZiel.DIENST)
     public AblesungService.Antwort eingeben(@PathVariable String kennzeichen,
             @RequestBody(required=false) JsonNode body, Authentication auth) {
         recht(kennzeichen,"ablesung.erfassen");
@@ -52,6 +54,7 @@ public class AblesungController {
 
     /** Recht: {@code ablesung.erfassen}. Fassung n + 1; Freigabe über die bestehende Korrekturroute. */
     @PostMapping("/{zeitpunkt}/berichtigung")
+    @Recht(value = "ablesung.erfassen", ziel = RechtZiel.DIENST)
     public AblesungService.Antwort berichtigen(@PathVariable String kennzeichen,@PathVariable String zeitpunkt,
             @RequestBody(required=false) JsonNode body, Authentication auth) {
         recht(kennzeichen,"ablesung.erfassen");
