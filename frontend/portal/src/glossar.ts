@@ -211,7 +211,7 @@ export const SUMMENWERT = 'Summenwert';
 /** Produkttexte, nicht freie Kundennamen; copy.test.ts hält den Übergangsbestand fest. */
 export const SUMMENWERT_VERBOTENE_WOERTER = ['Gesamtwert', 'PV gesamt', 'Helfer'] as const;
 /** @deprecated Nur Übergangsbestand bis H-5/H-7; keine neuen Importe. Keine Flächenänderung in H-1. */
-export const GESAMTWERT = 'Gesamtwert';
+export const GESAMTWERT = SUMMENWERT;
 
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex

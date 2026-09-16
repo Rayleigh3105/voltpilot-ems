@@ -1,67 +1,18 @@
-# Der „Gesamtwert"-Assistent und seine Anzeige (Portal)
+# Der Summenwert-Assistent und seine Anzeige
 
-Die Kunden-Hälfte der berechneten Messwerte (Konzept `data/vp-helfer-konzept-h1`,
-Backend = UEMS-AP-10, siehe `docs/agents/root/gesamtwert-berechnete-messstelle-formel-ap10.md`).
-Der Kunde stellt aus mehreren gemessenen Werten seiner Anlage EINEN neuen Wert als
-**gewichtete Summe** (Vorzeichen + optionaler Faktor) zusammen; danach verhält er sich wie
-ein gemessener Wert. Nur Anzeige — keine Steuerungs-/Optimierungs-Kopplung.
-
-## Das Kundenwort
-
-**„Gesamtwert"** steht als EINE Konstante `GESAMTWERT` in `src/glossar.ts` (später änderbar).
-Interne Wörter (Messstelle, Messkanal, Point-Key, Entität …) stehen in KEINEM Kundentext;
-`src/copy.test.ts` bewacht das. Das automatische Kennzeichen `MS-…` erscheint klein/unaufdringlich.
-
-## Die reine Hälfte: `src/gesamtwert.ts` (+ `gesamtwert.test.ts`)
-
-Alle Regeln/Sätze/Vorschläge — ohne DOM, ohne Netz. Stützt sich additiv auf die Zwillinge
-`src/uemsMessstelleFormel.ts` (`gewichteteSumme`, `formelGroesse`, `normiere`) und
-`src/uemsMessstelle.ts` (`GROESSEN_KATALOG`). Kernstücke: `passt`/`sperrgrund` (nur
-größen-verträgliche Werte sind summierbar — keine Äpfel+Birnen), `abgeleiteteGroesse`,
-`vorschau`/`rechenzeile` (Live-Summe; fehlt EIN Term → `null` „unvollständig", NIE eine
-Teilsumme), `giltAlsPvMoeglich`, `nameVorschlag`, `entwurfFehler`, `alsAnfrage` (POST-Körper),
-`tagesverlauf` (client-seitige 15-min-Summe für die Vorschau-Kurve).
-
-## Der Assistent: `src/components/GesamtwertDialog.tsx` (+ `.test.tsx`)
-
-Geschwister von `EigeneAuswertungDialog`: zentriertes `Modal` (am Telefon Vollbild), Stepper
-`.vp-steps`, Messwert-Baum aus **`verlauf.measurementTree`** (dieselben Namen/Kanäle wie der
-Explorer). Fünf Schritte: (1) Werte wählen — **`VpPicker` Mehrfachauswahl** mit Live-Wert +
-Status-Punkt je Kanal, unpassende Größen gesperrt mit Grund; (2) Rechnen — +/- je Term
-(Standard +), Faktor hinter „Feineinstellung"; (3) Name (Freitext + Vorschlag, Kennzeichen,
-optional Schalter „gilt als Gesamt-PV"); (4) Vorschau — Live-Rechenzeile + Ergebnis + kleiner
-Verlauf, Größe/Einheit abgeleitet, ehrlich „unvollständig"; (5) Fertig. **Beim Speichern EIN
-`POST /api/v1/messstellen/berechnet`** (keine Term-Ändern-Route — die Vorschau wird deshalb
-CLIENT-seitig gerechnet, nicht durch ein Zwischen-Anlegen).
-
-⚠ Die Schritt-Inhalte werden als **Funktionen aufgerufen** (`{SchrittWerte()}`), NICHT als
-`<Schritt/>`-Komponenten gerendert: eine je Render neu definierte Komponente hätte einen neuen
-Typ und würde den Picker bei jeder Auswahl neu mounten — das Panel klappte nach dem ersten
-Haken zu.
-
-Die Live-Werte + Vertrags-Größen kommen aus `ladeQuellen`: je Komponente `messkanaele`
-(Größe/Richtung/Einheit/Wertart) + `entityHistory('day')` (zuletzt gemessener Wert + Frische).
-Nur v2-Anlagen (echte Komponenten) tragen Gesamtwerte.
-
-## ⚠ Der Vertrag ist snake_case (Backend #688)
-
-Die Formel-DTOs (`MessstelleFormelDto`) tragen `@JsonNaming(SnakeCaseStrategy)`; das JSON heißt
-also `terme[].entity_id` / `point_key` / `eingang_art` / `quell_messstelle_id`,
-`formel_vorhanden`, `messstelle_id` (belegt in `MessstelleFormelApiTest`). `request()` wandelt
-NICHT snake→camel um — die api.ts-Interfaces (`MessstelleFormel`, `MessstelleFormelTerm`,
-`MessstelleVerlauf`) und ihre Leser (`gesamtwertQuelle.ts`) sprechen deshalb snake_case. Ein
-camelCase-Feld wäre still `undefined` → die Site-Zuordnung fände nie einen Term (Review-Blocker
-B1). `src/gesamtwertQuelle.test.ts` ist der Kontrakttest gegen die echte snake_case-Form;
-Mocks (Unit + E2E) MÜSSEN snake_case liefern, sonst grünen sie am falschen Vertrag vorbei.
+Der aktuelle gemeinsame Geräte-/Anlagen-Assistent ist unter
+[H-5/H-6](../root/uems-summenwert-assistent.md) dokumentiert.
+`GesamtwertDialog.tsx` ist nur noch ein Einstieg in `SummenwertAssistent.tsx`.
+Kundenwort: `SUMMENWERT`; Live-Rollen: [H-1/H-2](../root/uems-rollen-zuordnung.md).
 
 ## Die Anzeige danach
 
 - **Gesamtwert-Anzeige + Einstieg** `src/components/GesamtwertKarten.tsx`: seit vp-agg (Konzept
   `data/vp-agg-konzept3-r8` §2.5) **nicht mehr auf der Cockpit-Bühne**, sondern in
   **„Verlauf › Messwerte"** (`pages/MesswerteSection.tsx`) — dort leben Einstieg (der
-  „+ Gesamtwert"-Knopf öffnet den `GesamtwertDialog`) UND Anzeige gemeinsam (Prop `eingebettet` =
-  Host trägt Überschrift + Einstieg, die Karten lassen ihren eigenen Kopf weg). Der GERÄTEFREIE
-  Gesamtwert gehört zu den Auswertungen, nicht auf die Bühne. Live-Wert aus `GET …/{id}/wert`,
+  „+ Summenwert"-Knopf öffnet denselben `SummenwertAssistent`) UND Anzeige gemeinsam (Prop `eingebettet` =
+  Host trägt Überschrift + Einstieg, die Karten lassen ihren eigenen Kopf weg). Der rollenlose
+  Summenwert gehört zu den Auswertungen, nicht auf die Bühne. Live-Wert aus `GET …/{id}/wert`,
   dezentes „berechnet", Lebenszyklus über `RowMenu` (umbenennen via `PUT …/{id}` mit Kennzeichen +
   Notiz; anhalten/fortsetzen; archivieren statt hartem Löschen via `ConfirmDialog`).
 - **Cockpit-PV = kanonische Rolle mit Rückfall (GEBAUT, vp-agg §2.4).** Die frühere Notiz „gilt als
