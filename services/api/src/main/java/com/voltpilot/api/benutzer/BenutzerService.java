@@ -73,6 +73,9 @@ public class BenutzerService {
     }
 
     private Angelegt anlegen(Anlage a, ProtokollAkteur akteur, boolean erster) {
+        // Serialize before creating the external account, including against tenant teardown.
+        aenderung.sperreKundenbereich();
+        if (!zugriffe.kundenbereichVorhanden()) throw nichtGefunden();
         if (a == null || a.username() == null || a.username().isBlank() || a.username().length() > 255
                 || a.email() == null || !a.email().matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) {
             throw new BenutzerFehler(400, "anfrage_ungueltig", "Benutzername und E-Mail-Adresse sind erforderlich.");

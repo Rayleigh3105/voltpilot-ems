@@ -121,6 +121,18 @@ class ZugriffAenderungArchitekturTest {
                 .contains("aenderung.kontoBeenden(", "hasRole('platform-admin')");
     }
 
+    @Test
+    void dieOffboardingAusnahmeHatNurDenPlattformDienstAlsAufrufer() throws IOException {
+        Set<String> aufrufer = new TreeSet<>();
+        for (Path p : dateien()) {
+            if (Files.readString(p).contains(".kundenbereichSperren(")) aufrufer.add(p.getFileName().toString());
+        }
+        assertThat(aufrufer).containsExactly("AdminBenutzerService.java");
+        String controller = Files.readString(JAVA.resolve("web/AdminController.java"));
+        assertThat(controller).contains("adminBenutzer.offboardingSperren(tenantId)",
+                "tenants.offboard(tenantId,", "adminBenutzer.offboardingResteSperren(tenantId)");
+    }
+
     private static List<Path> dateien() throws IOException {
         try (Stream<Path> s = Files.walk(JAVA)) {
             return s.filter(p -> p.getFileName().toString().endsWith(".java")).sorted().toList();

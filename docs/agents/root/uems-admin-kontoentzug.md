@@ -30,8 +30,9 @@ entscheidet über Selbstschutz und den letzten Kundenadministrator. Keine Kopie 
 ## Weitere Schreibwege und Abgrenzung
 
 `rg 'keycloak\.(deleteUser|setEnabled)' services/api/src/main/java` belegt zusätzlich:
-Mandanten-Offboarding (`AdminController.deleteTenant`) löscht Konten nach dem
-Datenbank-Abbau; dies bleibt ein gesonderter Folgeauftrag. `StartpasswortKonten`
+Mandanten-Offboarding (`AdminController.deleteTenant`) sperrt Konten über denselben
+Schreibweg vor dem Datenbank-Abbau und löscht sie anschließend; der [Offboarding-Weg](uems-offboarding-kontensperre.md)
+erklärt die vollständige Mandantenbeendigung und wiederholbares Aufräumen. `StartpasswortKonten`
 löscht ausschließlich kompensierend nach abgebrochener Kontoanlage. Beide Ausnahmen
 sind in `ZugriffAenderungArchitekturTest` benannt. Unterstützungen behalten ihren
 Prüfpunkt aus AP-03 IP-8, der Notfall-Zugriff braucht dessen eigene Selbstschutzregel.

@@ -4983,11 +4983,14 @@ paths:
       description: >
         The most destructive platform action. The body must carry the tenant's
         EXACT name (`confirmName`); a mismatch is refused (400) before anything
-        is touched. The database cascade - all series data, sites, devices,
-        assets and the tenant row - runs in ONE transaction. The tenant's
-        retained MQTT topics and Keycloak users are then cleaned best-effort;
-        users whose deletion failed are reported by name in `failedUsers` so a
-        partial directory failure is never silent.
+        is touched. All tenant accounts are disabled through the shared account
+        path before the database cascade runs in ONE transaction. A database
+        failure retains the data and leaves accounts disabled for a retry.
+        Retained MQTT topics and Keycloak users are then cleaned best-effort;
+        `failedUsers` names disabled accounts still pending deletion. Repeat
+        directory cleanup with POST /tenants/{tenantId}/offboarding/cleanup.
+        Existing customer JWTs of a removed tenant are rejected with 401,
+        including GET /api/v1/me.
       parameters:
         - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -5005,7 +5008,28 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant not found. }
-        "502": { description: Keycloak unreachable - refused before deleting anything (the tenant's logins could not be enumerated). }
+        "502": { description: Accounts could not be completely listed or disabled; no database teardown. }
+  /api/v1/admin/tenants/{tenantId}/offboarding/cleanup:
+    post:
+      tags: [admin]
+      summary: Repeat directory cleanup for an already removed tenant (platform-admin only).
+      description: >
+        Lists accounts by their exact tenant_id attribute, disables every remaining
+        account, then retries deletion. Failed deletions remain disabled and are
+        returned in failedUsers and logged. An empty list is a successful retry.
+        An existing tenant is refused before any directory write.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Cleanup attempted; remaining disabled accounts are named in failedUsers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantOffboardingCleanup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Tenant still exists; use the confirmed offboarding route. }
+        "502": { description: Accounts could not be completely listed or disabled; no deletions attempted. }
   /api/v1/admin/tenants/{tenantId}/sites:
     get:
       tags: [admin]
@@ -19358,7 +19382,7 @@ components:
       description: >
         What the offboarding removed. The database part is transactional
         (all-or-nothing); `failedUsers` lists Keycloak logins that could not be
-        deleted and need manual cleanup.
+        deleted, remain disabled and can be retried with the directory cleanup route.
       properties:
         tenantId: { type: string, format: uuid }
         tenantName: { type: string }
@@ -19370,6 +19394,18 @@ components:
           items: { type: string }
         failedUsers:
           type: array
+          items: { type: string }
+    TenantOffboardingCleanup:
+      type: object
+      required: [tenantId, deletedUsers, failedUsers]
+      properties:
+        tenantId: { type: string, format: uuid }
+        deletedUsers:
+          type: array
+          items: { type: string }
+        failedUsers:
+          type: array
+          description: Disabled accounts whose final deletion still needs a retry.
           items: { type: string }
     UpdateUserRequest:
       type: object

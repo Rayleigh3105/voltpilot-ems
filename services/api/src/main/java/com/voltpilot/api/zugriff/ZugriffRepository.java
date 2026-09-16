@@ -138,6 +138,12 @@ public class ZugriffRepository {
     /** Eine Zuweisung mit dem Anzeigenamen ihres Kontos (ohne Spiegel: das Subject). */
     public record MitName(Zeile zeile, String name) {}
 
+    /** Ein entferntes Unternehmen darf nicht über die E12-Rückfallregel als aktives Konto erscheinen. */
+    public boolean kundenbereichVorhanden() {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM tenant WHERE id = ?)",
+                Boolean.class, kundenbereich()));
+    }
+
     public KundenbereichKopf kundenbereichKopf() {
         UUID tenant = kundenbereich();
         return jdbc.query("SELECT coalesce(u.name, t.name) AS name, coalesce(u.zeitzone, 'Europe/Berlin') AS zeitzone "

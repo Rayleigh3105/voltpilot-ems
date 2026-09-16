@@ -7,7 +7,7 @@ import java.util.UUID;
  * Result of a tenant offboarding: what the transactional database cascade
  * removed, plus the best-effort Keycloak cleanup. The database part is
  * all-or-nothing; Keycloak deletions that failed are reported by username in
- * {@code failedUsers} so the operator can finish them manually - a partial
+ * {@code failedUsers} so the operator can retry the cleanup route (accounts remain disabled) - a partial
  * failure never silently disappears.
  */
 public record TenantOffboardingReportDto(

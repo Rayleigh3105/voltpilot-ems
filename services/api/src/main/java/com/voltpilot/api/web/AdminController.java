@@ -22,6 +22,7 @@ import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TenantDto;
 import com.voltpilot.api.web.dto.TenantOffboardingReportDto;
+import com.voltpilot.api.web.dto.TenantOffboardingCleanupDto;
 import com.voltpilot.api.web.dto.UpdateTenantRequest;
 import com.voltpilot.api.web.dto.UpdateUserRequest;
 import com.voltpilot.api.benutzer.BenutzerService;
@@ -124,10 +125,9 @@ public class AdminController {
      * Offboard a tenant - the most destructive action on the platform, so it is
      * type-to-confirm: the body must carry the tenant's EXACT name or nothing
      * happens (400). The database cascade (sites, devices, assets, all series
-     * data, the tenant row) runs in ONE transaction; the tenant's retained MQTT
-     * topics and Keycloak users are then cleaned best-effort, and every user
-     * whose deletion failed is reported by name - a partial directory failure
-     * is visible, never silent.
+     * data, the tenant row) runs in ONE transaction, AFTER all accounts have been
+     * disabled through the shared account path. Failed final deletions leave disabled
+     * accounts and are reported/logged; the cleanup route can repeat them without a tenant row.
      */
     @PostMapping("/tenants/{tenantId}/delete")
     public TenantOffboardingReportDto deleteTenant(@PathVariable UUID tenantId,
@@ -145,20 +145,64 @@ public class AdminController {
         List<TenantDevice> devices = tenants.devicesOfTenant(tenantId);
         List<KeycloakUser> users;
         try {
-            users = keycloak.listUsersForTenant(tenantId);
-        } catch (KeycloakAdminException ex) {
-            // Refuse rather than orphan logins we could not even enumerate.
-            throw toResponse(ex);
+            users = new ArrayList<>(adminBenutzer.offboardingSperren(tenantId));
+        } catch (RuntimeException ex) {
+            log.warn("Offboarding tenant {}: account blocking failed; database retained", tenantId);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Konten konnten nicht vollständig gesperrt werden.");
         }
 
-        OffboardCounts counts = tenants.offboard(tenantId);
+        OffboardCounts counts;
+        try {
+            counts = tenants.offboard(tenantId, () -> {
+                // Close the gap between the blocking commit and the teardown transaction:
+                // a concurrent account enable/create must not leave an enabled orphan.
+                List<KeycloakUser> current = adminBenutzer.offboardingResteSperren(tenantId);
+                users.clear();
+                users.addAll(current);
+            });
+        } catch (RuntimeException ex) {
+            log.error("Offboarding tenant {}: database removal failed; accounts remain disabled; retry offboarding", tenantId);
+            throw ex;
+        }
 
         // Broker cleanup (best-effort): clear each device's retained
         // provisioning config + schedule so the hardware falls back to its
         // watchdog default and the refs become claimable again.
-        provisioning.ifAvailable(p -> devices.forEach(d ->
-                p.clearRetained(d.externalRef(), tenantId, d.siteId(), d.id())));
+        provisioning.ifAvailable(p -> devices.forEach(d -> {
+            try {
+                p.clearRetained(d.externalRef(), tenantId, d.siteId(), d.id());
+            } catch (RuntimeException ex) {
+                log.warn("Offboarding tenant {}: retained cleanup failed for device {}", tenantId, d.id());
+            }
+        }));
 
+        TenantOffboardingCleanupDto cleanup = deleteOffboardingUsers(tenantId, users);
+        log.info("Offboarded tenant {} ('{}'): {} sites, {} devices, {} telemetry rows, "
+                + "{} users deleted, {} disabled users pending cleanup", tenantId, tenant.name(),
+                counts.sites(), counts.devices(), counts.telemetryRows(),
+                cleanup.deletedUsers().size(), cleanup.failedUsers().size());
+        return new TenantOffboardingReportDto(tenantId, tenant.name(), counts.sites(),
+                counts.devices(), counts.telemetryRows(), cleanup.deletedUsers(), cleanup.failedUsers());
+    }
+
+    /** Only the platform may repeat cleanup, and only after the tenant's data has been removed. */
+    @PostMapping("/tenants/{tenantId}/offboarding/cleanup")
+    public TenantOffboardingCleanupDto cleanupTenantUsers(@PathVariable UUID tenantId) {
+        if (tenants.findById(tenantId) != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Mandant ist noch vorhanden.");
+        }
+        List<KeycloakUser> users;
+        try {
+            // Also covers legacy orphans and a crash after DB commit but before final deletion.
+            users = adminBenutzer.offboardingResteSperren(tenantId);
+        } catch (RuntimeException ex) {
+            log.warn("Offboarding tenant {}: cleanup blocking failed; no accounts deleted", tenantId);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Konten konnten nicht vollständig gesperrt werden.");
+        }
+        return deleteOffboardingUsers(tenantId, users);
+    }
+
+    private TenantOffboardingCleanupDto deleteOffboardingUsers(UUID tenantId, List<KeycloakUser> users) {
         List<String> deletedUsers = new ArrayList<>();
         List<String> failedUsers = new ArrayList<>();
         for (KeycloakUser user : users) {
@@ -166,17 +210,17 @@ public class AdminController {
                 keycloak.deleteUser(user.id());
                 deletedUsers.add(user.username());
             } catch (RuntimeException ex) {
-                log.warn("Offboarding tenant {}: could not delete Keycloak user '{}': {}",
-                        tenantId, user.username(), ex.getMessage());
+                if (ex instanceof KeycloakAdminException kc && kc.status() == 404) {
+                    deletedUsers.add(user.username()); // Another retry already removed it.
+                    continue;
+                }
+                log.warn("Offboarding tenant {}: disabled Keycloak user {} pending cleanup", tenantId, user.id());
                 failedUsers.add(user.username());
             }
         }
-        log.info("Offboarded tenant {} ('{}'): {} sites, {} devices, {} telemetry rows, "
-                + "{} users deleted, {} user deletions failed", tenantId, tenant.name(),
-                counts.sites(), counts.devices(), counts.telemetryRows(),
-                deletedUsers.size(), failedUsers.size());
-        return new TenantOffboardingReportDto(tenantId, tenant.name(), counts.sites(),
-                counts.devices(), counts.telemetryRows(), deletedUsers, failedUsers);
+        log.info("Offboarding cleanup tenant {}: {} deleted, {} disabled users pending cleanup",
+                tenantId, deletedUsers.size(), failedUsers.size());
+        return new TenantOffboardingCleanupDto(tenantId, deletedUsers, failedUsers);
     }
 
     // ---- sites (cross-tenant) ------------------------------------------------

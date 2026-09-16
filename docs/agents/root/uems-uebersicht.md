@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Mandanten-Offboarding mit vorheriger Kontensperre** — gemeinsamer IP-9-Sperrweg, wiederholbares Keycloak-Cleanup, fehlender Mandant sperrt auch alte JWTs bei `/me` · [Reihenfolge und Fehlerfälle](uems-offboarding-kontensperre.md)
+
 - **Plattform-Kontenentzug am IP-9-Prüfpunkt** — `disable`/`delete` mit Sofortwirkung, letztem Kundenadministrator und beiden Protokollen; `enable` erhält frühere Entzüge; E12 und parallele Entzüge geprüft · [Wege und Grenzen](uems-admin-kontoentzug.md)
 
 - **Netzanschluss-Vorschlag für vorhandene Anlagen** — Anlage, Bindungsbeginn und Name vorausgewählt; Vertragsangaben ergänzen, Übernahme atomar bestätigen, Verwerfen merken; keine Preisübernahme · [Vorschlag und Grenzen](uems-netzanschluss-vorschlag.md)

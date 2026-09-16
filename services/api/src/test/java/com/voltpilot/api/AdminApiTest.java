@@ -754,34 +754,115 @@ class AdminApiTest {
         assertThat(tenants.getBody()).extracting(t -> t.get("id")).doesNotContain(tenantId);
     }
 
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    com.voltpilot.api.repo.TenantRepository offboardingTenants;
+
     @Test
-    void offboardingDeletionFailureLeavesEnabledOrphanOnBaseline() {
+    @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+    void offboardingDeletionFailureLeavesDisabledAccountAndRetryableCleanup(
+            org.springframework.boot.test.system.CapturedOutput output) {
         String admin = token("admin", "admin");
         String tenantId = (String) createTenant(admin, "Offboarding Fehlerfall", "CI").get("id");
         String userId = (String) createUser(admin, tenantId, "offboarding-fehler",
                 "offboarding@fehler.example", "offboarding-pw-123").get("id");
-        String before = token("offboarding-fehler", "offboarding-pw-123");
+        Map<String, Object> tokens = tryToken("offboarding-fehler", "offboarding-pw-123");
+        String before = (String) tokens.get("access_token");
+        assertThat(before).isNotBlank();
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated directory deletion failure"))
                 .when(keycloakAdmin).deleteUser(userId);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            // A concurrent enable between the first commit and teardown must be fenced out again.
+            keycloakAdmin.setEnabled(userId, true);
+            return invocation.callRealMethod();
+        }).when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)),
+                org.mockito.ArgumentMatchers.any(Runnable.class));
 
-        ResponseEntity<Map<String, Object>> report = rest.exchange(
-                url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("confirmName", "Offboarding Fehlerfall"), bearer(admin)),
-                new ParameterizedTypeReference<>() {});
+        var report = offboard(admin, tenantId, "Offboarding Fehlerfall");
         assertThat(report.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(report.getBody().get("failedUsers")).isEqualTo(List.of("offboarding-fehler"));
         assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isZero();
-        assertThat(keycloakAdmin.getUser(userId).enabled()).isTrue();
-        String after = token("offboarding-fehler", "offboarding-pw-123");
-        for (String accessToken : List.of(before, after)) {
-            ResponseEntity<Map<String, Object>> me = rest.exchange(url("/api/v1/me"), HttpMethod.GET,
-                    new HttpEntity<>(bearer(accessToken)), new ParameterizedTypeReference<>() {});
-            assertThat(me.getStatusCode()).isEqualTo(HttpStatus.OK);
-            System.out.println("OFFBOARDING_BASELINE_ME=" + me.getBody());
+        assertThat(keycloakAdmin.getUser(userId).enabled()).isFalse();
+        assertThat(tryToken("offboarding-fehler", "offboarding-pw-123")).doesNotContainKey("access_token");
+        MultiValueMap<String, String> refresh = new LinkedMultiValueMap<>();
+        refresh.add("grant_type", "refresh_token");
+        refresh.add("refresh_token", (String) tokens.get("refresh_token"));
+        refresh.add("client_id", "voltpilot-api");
+        refresh.add("client_secret", "voltpilot-api-dev-secret");
+        HttpHeaders form = new HttpHeaders();
+        form.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        Map<?, ?> renewed = keycloakRest().postForObject(KEYCLOAK.getAuthServerUrl()
+                + "/realms/voltpilot/protocol/openid-connect/token", new HttpEntity<>(refresh, form), Map.class);
+        assertThat(renewed.containsKey("access_token")).isFalse();
+        for (String path : List.of("/api/v1/me", "/api/v1/sites")) {
+            assertThat(rest.exchange(url(path), HttpMethod.GET, new HttpEntity<>(bearer(before)), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         }
-        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("confirmName", "Offboarding Fehlerfall"), bearer(admin)), String.class)
-                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        var order = org.mockito.Mockito.inOrder(keycloakAdmin, offboardingTenants);
+        order.verify(keycloakAdmin).setEnabled(userId, false);
+        order.verify(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class));
+        order.verify(keycloakAdmin).deleteUser(userId);
+        assertThat(output).contains("disabled Keycloak user " + userId + " pending cleanup");
+
+        String cleanupPath = "/api/v1/admin/tenants/" + tenantId + "/offboarding/cleanup";
+        assertThat(rest.exchange(url(cleanupPath), HttpMethod.POST,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(cleanup(admin, tenantId).getBody().get("failedUsers")).isEqualTo(List.of("offboarding-fehler"));
+        org.mockito.Mockito.doCallRealMethod().when(keycloakAdmin).deleteUser(userId);
+        assertThat(cleanup(admin, tenantId).getBody()).containsEntry("deletedUsers", List.of("offboarding-fehler"))
+                .containsEntry("failedUsers", List.of());
+        assertThat(cleanup(admin, tenantId).getBody()).containsEntry("deletedUsers", List.of())
+                .containsEntry("failedUsers", List.of());
+        assertThat(tryToken("demo", "demo")).containsKey("access_token");
+    }
+
+    @Test
+    void offboardingBlockingFailureRetainsDatabaseAndCanBeRetried() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Sperrfehler", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "offboarding-sperre",
+                "sperre@offboarding.example", "offboarding-pw-123").get("id");
+        org.mockito.Mockito.doThrow(new IllegalStateException("simulated blocking failure"))
+                .when(keycloakAdmin).setEnabled(userId, false);
+        assertThat(offboard(admin, tenantId, "Sperrfehler").getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1);
+        org.mockito.Mockito.verify(offboardingTenants, org.mockito.Mockito.never()).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class));
+        org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
+        assertThat(cleanup(admin, tenantId).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        org.mockito.Mockito.doCallRealMethod().when(keycloakAdmin).setEnabled(userId, false);
+        assertThat(offboard(admin, tenantId, "Sperrfehler").getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void offboardingDatabaseFailureKeepsCommittedAccountBlockAndCanBeRetried() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Datenbankfehler", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "offboarding-datenbank",
+                "datenbank@offboarding.example", "offboarding-pw-123").get("id");
+        String customer = token("offboarding-datenbank", "offboarding-pw-123");
+        org.mockito.Mockito.doThrow(new IllegalStateException("simulated database failure"))
+                .when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class));
+        assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM benutzer WHERE tenant_id = '" + tenantId
+                + "' AND sub = '" + userId + "' AND zustand = 'gesperrt'")).isEqualTo(1);
+        assertThat(keycloakAdmin.getUser(userId).enabled()).isFalse();
+        assertThat(tryToken("offboarding-datenbank", "offboarding-pw-123")).doesNotContainKey("access_token");
+        assertThat(rest.exchange(url("/api/v1/sites"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
+        org.mockito.Mockito.doCallRealMethod().when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class));
+        assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    private ResponseEntity<Map<String, Object>> offboard(String admin, String tenantId, String name) {
+        return rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("confirmName", name), bearer(admin)), new ParameterizedTypeReference<>() {});
+    }
+
+    private ResponseEntity<Map<String, Object>> cleanup(String admin, String tenantId) {
+        return rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/offboarding/cleanup"), HttpMethod.POST,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
     }
 
     @Test
