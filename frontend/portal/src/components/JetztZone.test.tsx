@@ -82,6 +82,29 @@ describe('Zone ① „Jetzt" (Steuerung Stufe 1)', () => {
     ));
   });
 
+  it('A4: während die Funktion angehalten ist, gibt es keine Handeingriffe', async () => {
+    cList.mockResolvedValue([CONSUMER]);
+    vi.spyOn(api, 'siteInterventions').mockResolvedValue({
+      automationPaused: false,
+      pausedUntil: null,
+      interventions: [{
+        kind: 'pause', entityId: null, targetValueKw: null,
+        endsAt: new Date(Date.now() + 60_000).toISOString(), createdBy: null, createdAt: new Date().toISOString(),
+      }],
+    } as never);
+    render(<JetztZone
+      site={site}
+      eingriffeAngeboten={false}
+      funktionsAktion={<button type="button">Steuerung fortsetzen</button>}
+    />);
+
+    expect(await screen.findByText('Wallbox Garage')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /eingreifen/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Automatik pausieren' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Automatik fortsetzen' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Steuerung fortsetzen' })).toBeInTheDocument();
+  });
+
   it('nennt einen laufenden Handeingriff im Banner — mit Ende UND Countdown', async () => {
     cList.mockResolvedValue([CONSUMER]);
     cOverrides.mockResolvedValue([{

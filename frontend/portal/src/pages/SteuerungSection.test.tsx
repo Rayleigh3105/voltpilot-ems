@@ -344,6 +344,34 @@ function nurEinsAktiv() {
 }
 
 describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
+  it('A4: zeigt den Anhaltestand, markiert Regeln/Betriebsmodelle wirkungslos und bietet keine Handeingriffe', async () => {
+    setup();
+    cList.mockResolvedValue([CONSUMER]);
+    const funktionen = structuredClone(ahrenbergFunktionen());
+    const teilnahme = funktionen.standorte[0].steuern.anlagen[0].teilnahme;
+    teilnahme.zustand = 'angehalten';
+    teilnahme.seit = '2026-11-03T14:10:00+01:00';
+    teilnahme.text = 'Angehalten seit 03.11.2026';
+    teilnahme.aktionen = ['fortsetzen', 'beenden'];
+    funktionen.standorte[0].steuern.zustand = 'angehalten';
+    funktionen.standorte[0].steuern.aktionen = ['fortsetzen', 'beenden'];
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionen);
+
+    render(<SteuerungSection site={{
+      ...site,
+      id: FIXTURE_IDS.an1,
+      name: 'Werk Ahrenberg – Halle 1',
+    }} />);
+
+    expect(await screen.findByText('Angehalten seit 03.11.2026 14:10')).toBeInTheDocument();
+    expect(screen.getByText('Regeln: wirkt nicht — angehalten seit 03.11.2026 14:10'))
+      .toBeInTheDocument();
+    expect(screen.getByText('Betriebsmodelle: wirkt nicht — angehalten seit 03.11.2026 14:10'))
+      .toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /eingreifen/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Automatik pausieren' })).not.toBeInTheDocument();
+  });
+
   it('rendert VIER Zonen in der Reihenfolge Jetzt · Verbraucher · Regeln · Betriebsmodelle',
     async () => {
       setup();
@@ -1231,7 +1259,8 @@ describe('Steuern-Regel · eine Anlage, die nur misst, schweigt auf ihrer Steuer
     setup();
     nurNetz();
     ladepunktHalle2();
-    // Selbst wenn der Server „Werk Ahrenberg steuert mit Halle 1“ sagt: die Seite fragt gar nicht danach.
+    // Der Server nennt den Standortzustand; die Seite findet für Halle 2 aber
+    // nur „kein Objekt" und bleibt deshalb still.
     const funktionen = vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
     const { container } = render(<SteuerungSection site={{ ...site, id: an2, name: 'Werk Ahrenberg – Halle 2' }} />);
     expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
@@ -1239,7 +1268,7 @@ describe('Steuern-Regel · eine Anlage, die nur misst, schweigt auf ihrer Steuer
     expect(screen.queryByTestId('nur-messen')).toBeNull();
     for (const wort of ANGEBOTE) expect(container.textContent, wort).not.toContain(wort);
     expect(container.textContent).not.toContain('Werk Ahrenberg – Halle 1');
-    expect(funktionen).not.toHaveBeenCalled();
+    expect(funktionen).toHaveBeenCalled();
   });
 
   it('Erreichbarkeit: der Weg zu Steuerart und Regeln bleibt — die Zeile des Ladepunkts öffnet den Steuerart-Dialog, „＋ Neue Regel“ steht da', async () => {

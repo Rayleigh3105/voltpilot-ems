@@ -615,6 +615,10 @@ export function PortfolioCockpit({
           abschnitte={funktionenKarte(ebene, funktionen ?? null)}
           laedt={funktionen === undefined}
           onSteuernEinrichten={setSteuernStandort}
+          onSteuernAktion={async (standortId, aktion) => {
+            await api.funktionSteuernStandort(standortId, aktion);
+            setReloadKey((k) => k + 1);
+          }}
         />
       )}
 

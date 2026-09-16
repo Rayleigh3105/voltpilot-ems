@@ -20,7 +20,7 @@ import { Recht } from './Recht';
  *    „noch 1 Std. 12 Min." nicht einfriert. Ein abgelaufener Handeingriff
  *    verschwindet damit von selbst.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -105,6 +105,8 @@ export function JetztZone({
   steuerart,
   fahrzeug,
   onReload,
+  eingriffeAngeboten = true,
+  funktionsAktion,
 }: {
   site: Site;
   charging?: SiteCharging | null;
@@ -117,6 +119,10 @@ export function JetztZone({
    */
   fahrzeug?: (tagRef: string | null | undefined) => string | null;
   onReload?: () => void;
+  /** Eine angehaltene Funktion bietet keinerlei Handeingriff an. */
+  eingriffeAngeboten?: boolean;
+  /** IP-11: Anhalten/Fortsetzen der Funktion neben den Handeingriffen. */
+  funktionsAktion?: ReactNode;
 }): JSX.Element {
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
   const [control, setControl] = useState<ControlStatus | null>(null);
@@ -339,7 +345,7 @@ export function JetztZone({
           <p className="vp-jetzt-banner" role="status">
             <Icon name="alert-triangle" size={16} />
             <span>{view.banner.text}</span>
-            {view.banner.entityId === LADEPUNKT_BANNER_ID && view.banner.ladepunkt ? (
+            {eingriffeAngeboten && (view.banner.entityId === LADEPUNKT_BANNER_ID && view.banner.ladepunkt ? (
               <Recht aktion="handeingriff.setzen"><button
                 type="button"
                 className="vp-jetzt-banner-act"
@@ -373,7 +379,7 @@ export function JetztZone({
               >
                 {view.banner.aktion}
               </button></Recht>
-            )}
+            ))}
           </p>
         )}
 
@@ -387,6 +393,7 @@ export function JetztZone({
                 zeile={z}
                 offen={offen === z.key}
                 busy={busy}
+                aktionenAngeboten={eingriffeAngeboten}
                 onToggle={() => setOffen((o) => (o === z.key ? null : z.key))}
                 onAktion={(a: SofortAktion | HandeingriffAktion | LadepunktAktion) => {
                   setOffen(null);
@@ -417,19 +424,22 @@ export function JetztZone({
       </Card>
 
       {/* Die ANLAGEN-Pause ist keine Zeile: sie gilt allen. */}
-      {!view.leer && !interventions?.automationPaused && (
+      {((!view.leer && eingriffeAngeboten && !interventions?.automationPaused) || funktionsAktion) && (
         <p className="vp-jetzt-pausezeile">
-          <Recht aktion="handeingriff.setzen"><button
-            type="button"
-            className="vp-jetzt-pausebtn"
-            disabled={busy}
-            onClick={() => {
-              setHandDauer(HAND_DEFAULT_DAUER);
-              setHand({ aktion: 'pause', umfang: 'anlage' });
-            }}
-          >
-            {HANDEINGRIFF_LABEL.pause}
-          </button></Recht>
+          {!view.leer && eingriffeAngeboten && !interventions?.automationPaused && (
+            <Recht aktion="handeingriff.setzen"><button
+              type="button"
+              className="vp-jetzt-pausebtn"
+              disabled={busy}
+              onClick={() => {
+                setHandDauer(HAND_DEFAULT_DAUER);
+                setHand({ aktion: 'pause', umfang: 'anlage' });
+              }}
+            >
+              {HANDEINGRIFF_LABEL.pause}
+            </button></Recht>
+          )}
+          {funktionsAktion}
         </p>
       )}
 
@@ -477,12 +487,14 @@ function JetztZeileView({
   zeile,
   offen,
   busy,
+  aktionenAngeboten,
   onToggle,
   onAktion,
 }: {
   zeile: JetztZeile;
   offen: boolean;
   busy: boolean;
+  aktionenAngeboten: boolean;
   onToggle: () => void;
   onAktion: (a: SofortAktion | HandeingriffAktion | LadepunktAktion) => void;
 }): JSX.Element {
@@ -502,7 +514,7 @@ function JetztZeileView({
           {zeile.bis && <span className="vp-jetztrow-until">{zeile.bis}</span>}
         </span>
       </span>
-      {zeile.aktionen.length > 0 ? (
+      {aktionenAngeboten && zeile.aktionen.length > 0 ? (
         <span className="vp-jetztrow-act">
           <Recht aktion="handeingriff.setzen"><button
             type="button"
@@ -539,7 +551,7 @@ function JetztZeileView({
           )}
         </span>
       ) : (
-        zeile.keinEingriff && <span className="vp-jetztrow-noact">{zeile.keinEingriff}</span>
+        aktionenAngeboten && zeile.keinEingriff && <span className="vp-jetztrow-noact">{zeile.keinEingriff}</span>
       )}
     </li>
   );

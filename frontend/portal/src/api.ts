@@ -8227,6 +8227,11 @@ export const api = {
     request<FunktionSteuernErgebnis>(`/api/v1/sites/${encodeURIComponent(siteId)}/funktionen/steuern`, {
       method: 'PUT', body: JSON.stringify({ aktion }),
     }),
+  /** AP-01 IP-3/IP-11: alle teilnehmenden Anlagen eines Standorts anhalten bzw. fortsetzen. */
+  funktionSteuernStandort: (standortId: string, aktion: 'anhalten' | 'fortsetzen') =>
+    request<FunktionSteuernErgebnis>(`/api/v1/standorte/${encodeURIComponent(standortId)}/funktionen/steuern`, {
+      method: 'PUT', body: JSON.stringify({ aktion }),
+    }),
   /** UEMS AP-01 IP-9a: „Messen & Auswerten“ für einen Standort einrichten (Entwurf); ein zweites Mal ist 409 `bereits_angelegt`. */
   funktionMessenEinrichten: (standortId: string) =>
     request<FunktionMessenErgebnis>(`/api/v1/standorte/${encodeURIComponent(standortId)}/funktionen/messen`, {

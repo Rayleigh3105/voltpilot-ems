@@ -18,6 +18,21 @@
   min-width: 0;
 }
 
+.vp-funktion-kopf,
+.vp-funktion-wirkung {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--vp-warn, #f59e0b);
+  border-radius: var(--vp-radius-sm, 6px);
+  background: var(--vp-surface-alt, #f7f9fc);
+  color: var(--vp-text-muted, #64748b);
+  font-size: var(--vp-text-sm, 14px);
+}
+
+.vp-funktion-ohne-wirkung > .vp-capsule {
+  opacity: 0.72;
+}
+
 .vp-steuerung-part {
   min-width: 0;
 }
@@ -957,6 +972,9 @@
   margin: 12px 0 0;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  flex-wrap: wrap;
 }
 
 .vp-jetzt-pausebtn {

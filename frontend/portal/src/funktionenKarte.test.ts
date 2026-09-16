@@ -46,6 +46,24 @@ describe('Unternehmens-Übersicht: je Funktion, je Standort Zustand und nächste
         schritt: 'Werk Ahrenberg – Halle 2 aufnehmen',
       },
     ]);
+    expect(steuern.zeilen[0]).toMatchObject({
+      steuerungAktion: 'anhalten',
+      betroffen: ['Werk Ahrenberg – Halle 1'],
+    });
+  });
+
+  it('A5: ein angehaltener Standort bietet Fortsetzen für seine angehaltenen Anlagen an', () => {
+    const f = structuredClone(ahrenbergFunktionen());
+    const standort = f.standorte[0];
+    standort.steuern.zustand = 'angehalten';
+    standort.steuern.aktionen = ['fortsetzen', 'beenden'];
+    standort.steuern.anlagen[0].teilnahme.zustand = 'angehalten';
+    standort.steuern.anlagen[0].teilnahme.aktionen = ['fortsetzen', 'beenden'];
+    const [, steuern] = funktionenKarte(UNTERNEHMEN, f)!;
+    expect(steuern.zeilen[0]).toMatchObject({
+      steuerungAktion: 'fortsetzen',
+      betroffen: ['Werk Ahrenberg – Halle 1'],
+    });
   });
 
   it('A11: nach dem Umstieg hat Messen kein Objekt — der Schritt heißt „einrichten"', () => {

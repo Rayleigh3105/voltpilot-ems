@@ -385,11 +385,15 @@ export interface FunktionenKarteZeile {
   satz: string;
   ton: Ton;
   /**
-   * „Werk Ahrenberg – Halle 2 aufnehmen" — ein benannter Schritt, KEIN Knopf:
-   * die Assistenten (IP-9a/IP-10a) gibt es noch nicht, und ein Knopf ohne Ziel
-   * wäre eine Sackgasse (Captain zu PR 771). `null` = es gibt keinen.
+   * „Werk Ahrenberg – Halle 2 aufnehmen" — der benannte nächste Schritt; die
+   * Komponente macht ihn nur mit vorhandenem Assistenten zum Knopf. `null` =
+   * es gibt keinen.
    */
   schritt: string | null;
+  /** IP-11: Standort-Handlung nur, wenn die Server-Aktionsliste sie erlaubt. */
+  steuerungAktion?: 'anhalten' | 'fortsetzen' | null;
+  /** Die Anlagen, die der Standort-Übergang tatsächlich betrifft. */
+  betroffen?: string[];
 }
 
 export interface FunktionenKarteAbschnitt {
@@ -456,6 +460,13 @@ export function funktionenKarte(
         verbreitung: imUnternehmen && rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : null,
         zeilen: hier.map((fs) => {
           const z = funktionsZeilen(fs).find((x) => x.funktion === funktion)!;
+          const steuerungAktion = funktion === 'steuern'
+            ? fs.steuern.aktionen.includes('anhalten')
+              ? 'anhalten'
+              : fs.steuern.aktionen.includes('fortsetzen')
+                ? 'fortsetzen'
+                : null
+            : null;
           return {
             standortId: fs.id,
             name: imUnternehmen ? fs.name : null,
@@ -463,6 +474,12 @@ export function funktionenKarte(
             satz: z.satz,
             ton: z.ton,
             schritt: naechsterSchritt(funktion, fs),
+            ...(funktion === 'steuern' ? {
+              steuerungAktion,
+              betroffen: steuerungAktion === null ? [] : fs.steuern.anlagen
+                .filter((a) => a.teilnahme.aktionen.includes(steuerungAktion))
+                .map((a) => a.name),
+            } : {}),
           };
         }),
       },

@@ -1,6 +1,7 @@
 import { Recht } from './Recht';
 import { Button } from '../../designsystem/components/core/Button';
 import { FUNKTIONEN_UNBEKANNT, type FunktionenKarteAbschnitt } from '../uebersicht';
+import { FunktionSteuerungAktion } from './FunktionSteuerungAktion';
 import './FunktionenKarte.css';
 
 /**
@@ -10,10 +11,9 @@ import './FunktionenKarte.css';
  * „Steuern & Optimieren" steht nur da, wo eine Anlage teilnimmt; ein Standort,
  * an dem nur gemessen wird, schweigt darüber (`uebersicht.steuernSpricht`).
  *
- * ⚠ Der nächste Schritt ist ein BENANNTER Hinweis, kein Knopf: die Assistenten
- * „Messen & Auswerten" und „Steuern & Optimieren" (IP-9a/IP-10a) gibt es noch
- * nicht, und ein Knopf ohne Ziel wäre eine Sackgasse (Captain zu PR 771). Kommt
- * ein Assistent, wird sein Hinweis zu seinem Einstieg.
+ * Ein vorhandener Assistent macht den nächsten Schritt zum Einstieg; ohne Ziel
+ * bleibt er als benannter Hinweis stehen. IP-11 ergänzt daneben ausschließlich
+ * die erlaubte Standort-Aktion anhalten/fortsetzen.
  *
  * Render-only: Zustand, Satz und Schritt entstehen in `uebersicht.funktionenKarte`.
  */
@@ -21,12 +21,15 @@ export function FunktionenKarte({
   abschnitte,
   laedt = false,
   onSteuernEinrichten,
+  onSteuernAktion,
 }: {
   /** `null` = die Funktionen sind nicht abrufbar. */
   abschnitte: FunktionenKarteAbschnitt[] | null;
   laedt?: boolean;
   /** IP-10a: der bewusste Einstieg; ohne Ziel bleibt der bisherige Hinweis. */
   onSteuernEinrichten?: (standortId: string) => void;
+  /** IP-11: Standort anhalten/fortsetzen über die gebaute Funktionsroute. */
+  onSteuernAktion?: (standortId: string, aktion: 'anhalten' | 'fortsetzen') => Promise<void>;
 }) {
   return (
     <section className="vp-funktionen-karte" aria-labelledby="vp-funktionen-karte-titel" data-testid="funktionen-karte">
@@ -65,6 +68,17 @@ export function FunktionenKarte({
                     ) : z.schritt && (
                       <p className="vp-fk-schritt">
                         <Recht standort={z.standortId} aktion={a.funktion === 'messen' ? 'funktion.messen_einrichten' : 'funktion.steuern_einrichten'}><span className="vp-fk-schritt-wort">Nächster Schritt:</span> {z.schritt}</Recht>
+                      </p>
+                    )}
+                    {z.steuerungAktion && onSteuernAktion && (
+                      <p className="vp-fk-aktion">
+                        <FunktionSteuerungAktion
+                          art={z.steuerungAktion}
+                          umfang="standort"
+                          standortId={z.standortId}
+                          betroffen={z.betroffen ?? []}
+                          onBestaetigen={() => onSteuernAktion(z.standortId, z.steuerungAktion!)}
+                        />
                       </p>
                     )}
                   </li>
