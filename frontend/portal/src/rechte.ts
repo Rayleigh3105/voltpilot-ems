@@ -108,6 +108,8 @@ export const AENDERUNGEN = [
   'entfernen',
   'verlaengern',
   'ablaufen',
+  'erste_anmeldung',
+  'startpasswort_neu',
 ] as const;
 export type AenderungsArt = (typeof AENDERUNGEN)[number];
 

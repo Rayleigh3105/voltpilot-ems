@@ -73,7 +73,7 @@ public class Selbstauskunft {
         this.geltungsbereich = geltungsbereich;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public SelbstauskunftDto fuer(Authentication auth) {
         // Die Selbstauskunft rechnet die Sichtbarkeit selbst nach dem Rechte-Vertrag (n von m Standorten, Zuweisungen
         // an fremden Standorten) und gibt nichts Unsichtbares aus — sie liest darum ohne Standort-Zaun (IP-5).
@@ -89,6 +89,10 @@ public class Selbstauskunft {
             return new SelbstauskunftDto(sub, tokenName, code(konto), KontoZustand.AKTIV.code(), null, null, List.of(),
                     false, List.of(), rechte(b, OHNE_KUNDENBEREICH, Ziel.unternehmen(), jetzt), List.of(), null, null,
                     SelbstauskunftDto.Unterstuetzungen.KEINE, List.of());
+        }
+
+        if (jwt != null && sub != null && sub.equals(z.sub()) && z.zugang() != Zugang.UMSCHALTER) {
+            ProtokollAkteur.aus(auth).ifPresent(akteur -> zugriffe.ersteAnmeldung(sub, jetzt, akteur));
         }
 
         ZugriffRepository.KundenbereichKopf kopf = zugriffe.kundenbereichKopf();

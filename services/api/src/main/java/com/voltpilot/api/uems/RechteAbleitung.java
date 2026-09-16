@@ -317,7 +317,9 @@ public final class RechteAbleitung {
         SPERREN("sperren"),
         ENTFERNEN("entfernen"),
         VERLAENGERN("verlaengern"),
-        ABLAUFEN("ablaufen");
+        ABLAUFEN("ablaufen"),
+        ERSTE_ANMELDUNG("erste_anmeldung"),
+        STARTPASSWORT_NEU("startpasswort_neu");
 
         private final String code;
 

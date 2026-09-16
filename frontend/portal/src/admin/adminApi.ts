@@ -1,3 +1,4 @@
+import type { BenutzerAngelegt } from '../benutzer';
 import {
   request,
   type CertSource,
@@ -51,8 +52,6 @@ export interface CreateUserInput {
   email?: string;
   firstName?: string;
   lastName?: string;
-  password?: string;
-  temporaryPassword?: boolean;
 }
 
 export interface ResetPasswordInput {
@@ -299,7 +298,7 @@ export const adminApi = {
     request<AdminUser[]>(`/api/v1/admin/tenants/${tenantId}/users`),
 
   createUser: (tenantId: string, input: CreateUserInput) =>
-    request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users`, {
+    request<BenutzerAngelegt>(`/api/v1/admin/tenants/${tenantId}/users`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),

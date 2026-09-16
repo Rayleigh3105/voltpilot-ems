@@ -219,7 +219,9 @@
       "sperren",
       "entfernen",
       "verlaengern",
-      "ablaufen"
+      "ablaufen",
+      "erste_anmeldung",
+      "startpasswort_neu"
     ],
     "rolle_noetig_reihenfolge": [
       "leser",

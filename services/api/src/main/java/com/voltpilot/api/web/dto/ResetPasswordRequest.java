@@ -17,6 +17,8 @@ public record ResetPasswordRequest(
         @NotBlank @Size(min = 8, max = 128) String password,
         Boolean temporary) {
 
+    @Override public String toString() { return "ResetPasswordRequest[geschützt]"; }
+
     public boolean temporaryOrDefault() {
         return temporary == null || temporary;
     }

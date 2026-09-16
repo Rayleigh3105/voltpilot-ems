@@ -197,7 +197,7 @@
     "ocpp_stufe": { "enum": ["keine", "CUSTOMER", "SITE_ADMIN", "PLATFORM"] },
     "unterstuetzung_zustand": { "enum": ["entwurf", "eingerichtet", "aktiv", "archiviert"] },
     "_aenderung_art": "AP-03 IP-8: verlaengern und ablaufen sind PROTOKOLLwoerter der Unterstuetzung (\u00a74.6, A4); ueber sie urteilt zuweisungAendern nicht.",
-    "aenderung_art": { "enum": ["zuweisen", "entziehen", "sperren", "entfernen", "verlaengern", "ablaufen"] },
+    "aenderung_art": { "enum": ["zuweisen", "entziehen", "sperren", "entfernen", "verlaengern", "ablaufen", "erste_anmeldung", "startpasswort_neu"] },
     "grund": {
       "enum": [
         "erlaubt",

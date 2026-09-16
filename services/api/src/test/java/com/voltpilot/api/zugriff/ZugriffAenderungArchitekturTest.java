@@ -28,7 +28,9 @@ import org.junit.jupiter.api.Test;
  *   <li>{@code ZugriffBestand} (IP-2, E12) — die Bestandsübernahme, die die ERSTEN Zuweisungen anlegt; sie
  *       beendet nie eine und läuft, bevor es jemanden zu schützen gäbe.</li>
  * </ul>
- * Wer eine vierte Stelle baut, fällt hier auf — und entscheidet dann bewusst, ob sie durch den Prüfpunkt geht.
+ * BenutzerService legt ausschließlich für den ersten Plattform-Administrator direkt eine Zuweisung an;
+ * jede Kundenanlage geht durch ZugriffAenderung.
+ * Wer eine weitere Stelle baut, fällt hier auf — und entscheidet dann bewusst, ob sie durch den Prüfpunkt geht.
  *
  * <p>Ebenso geprüft: AUSSERHALB von {@code ZugriffRepository} steht kein eigenes SQL auf der Tabelle
  * {@code zugriff} (das Offboarding eines ganzen Kundenbereichs ausgenommen — dort endet nicht eine Zuweisung,
@@ -42,7 +44,8 @@ class ZugriffAenderungArchitekturTest {
 
     /** Die Klassen, die {@code ZugriffRepository.zuweisen} oder {@code .beenden} rufen dürfen. */
     private static final Set<String> ERLAUBT = Set.of(
-            "ZugriffAenderung.java", "UnterstuetzungService.java", "ZugriffBestand.java");
+            "ZugriffAenderung.java", "UnterstuetzungService.java", "ZugriffBestand.java",
+            "BenutzerService.java");
 
     @Test
     void nurDerPruefpunktUndDieZweiBegruendetenAusnahmenSchreibenEineZuweisung() throws IOException {

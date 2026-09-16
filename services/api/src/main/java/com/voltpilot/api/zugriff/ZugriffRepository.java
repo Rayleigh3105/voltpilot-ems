@@ -101,6 +101,20 @@ public class ZugriffRepository {
                 kundenbereich(), sub).stream().findFirst();
     }
 
+    /** Token nur nach abgeschlossener Keycloak-Anmeldung; das bedingte UPDATE macht den Übergang einmalig. */
+    public void ersteAnmeldung(String sub, Instant jetzt, ProtokollAkteur akteur) {
+        List<String> namen = jdbc.queryForList("UPDATE benutzer SET zustand = 'aktiv', angenommen_am = ?, "
+                + "zuletzt_angemeldet = ? WHERE tenant_id = ? AND sub = ? AND zustand = 'angelegt' "
+                + "RETURNING anzeigename", String.class, utc(jetzt), utc(jetzt), kundenbereich(), sub);
+        for (String name : namen) {
+            kontoProtokoll("erste_anmeldung", sub, name, akteur);
+        }
+    }
+
+    public void kontoProtokoll(String aktion, String sub, String name, ProtokollAkteur akteur) {
+        protokoll(kundenbereich(), aktion, sub, name, null, null, null, null, null, null, null, null, null, akteur);
+    }
+
     // ------------------------------------------------------------------ Kundenbereich (Selbstauskunft, IP-4)
 
     /** Name und Zeitzone des Kundenbereichs: das Unternehmen, sonst der Mandant und Europe/Berlin. */

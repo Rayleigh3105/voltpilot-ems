@@ -24,7 +24,10 @@ import com.voltpilot.api.web.dto.TenantDto;
 import com.voltpilot.api.web.dto.TenantOffboardingReportDto;
 import com.voltpilot.api.web.dto.UpdateTenantRequest;
 import com.voltpilot.api.web.dto.UpdateUserRequest;
-import com.voltpilot.api.zugriff.KundenbenutzerAngelegt;
+import com.voltpilot.api.benutzer.BenutzerService;
+import com.voltpilot.api.benutzer.BenutzerFehler;
+import com.voltpilot.api.uems.ProtokollAkteur;
+import org.springframework.security.core.Authentication;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +35,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -75,19 +77,19 @@ public class AdminController {
     private final AdminEnrollmentRepository enrollments;
     private final KeycloakAdminClient keycloak;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
-    private final ApplicationEventPublisher ereignisse;
+    private final BenutzerService benutzer;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
-            ObjectProvider<ProvisioningPublisher> provisioning, ApplicationEventPublisher ereignisse) {
+            ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
         this.enrollments = enrollments;
         this.keycloak = keycloak;
         this.provisioning = provisioning;
-        this.ereignisse = ereignisse;
+        this.benutzer = benutzer;
     }
 
     // ---- tenants -------------------------------------------------------------
@@ -250,20 +252,13 @@ public class AdminController {
     }
 
     @PostMapping("/tenants/{tenantId}/users")
-    public ResponseEntity<AdminUserDto> createUser(@PathVariable UUID tenantId,
-            @Valid @RequestBody CreateUserRequest request) {
+    public ResponseEntity<BenutzerService.Angelegt> createUser(@PathVariable UUID tenantId,
+            @Valid @RequestBody CreateUserRequest request, Authentication auth) {
         requireTenant(tenantId);
-        try {
-            KeycloakUser user = keycloak.createCustomerUser(tenantId, request.username(),
-                    request.email(), request.firstName(), request.lastName(),
-                    request.password(), request.temporaryPassword());
-            // AP-03 IP-2 (E12): every customer user is customer administrator until the customer's
-            // user management assigns roles - isolated listener, never fails the creation.
-            ereignisse.publishEvent(new KundenbenutzerAngelegt(tenantId, user));
-            return ResponseEntity.status(HttpStatus.CREATED).body(toDto(user));
-        } catch (KeycloakAdminException ex) {
-            throw toResponse(ex);
-        }
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(benutzer.erster(tenantId, new BenutzerService.Anlage(request.username(), request.email(),
+                        request.firstName(), request.lastName(), null, List.of()),
+                        ProtokollAkteur.aus(auth).orElseThrow()));
     }
 
     /** Update a customer user's profile (email/name; the username is immutable). */
@@ -328,16 +323,11 @@ public class AdminController {
      * it works immediately.
      */
     @PostMapping("/tenants/{tenantId}/users/{userId}/reset-password")
-    public AdminUserDto resetPassword(@PathVariable UUID tenantId, @PathVariable String userId,
-            @Valid @RequestBody ResetPasswordRequest request) {
+    public AdminUserDto resetPassword(@PathVariable UUID tenantId, @PathVariable String userId) {
         requireTenant(tenantId);
-        try {
-            KeycloakUser user = requireUserInTenant(tenantId, userId);
-            keycloak.resetPassword(userId, request.password(), request.temporaryOrDefault());
-            return toDto(user);
-        } catch (KeycloakAdminException ex) {
-            throw toResponse(ex);
-        }
+        requireUserInTenant(tenantId, userId);
+        throw new BenutzerFehler(403, "recht_fehlt",
+                "Ein Startpasswort vergibt der Kundenadministrator in der Benutzerverwaltung neu.");
     }
 
     /**

@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Unterstützungen (eigene und gewährte) mit ihren Banner-Sätzen und die Kundenadministratoren für „Grund und Weg".
  *
  * <p>Liest den {@code ZugriffContext} der Anfrage und leitet mit {@code RechteAbleitung} ab; sie setzt nichts durch
- * und schreibt nichts. Ohne angenommenen Kundenbereich (Partner ohne wirksame Unterstützung) antwortet sie mit dem
+ * und vermerkt die erste abgeschlossene Anmeldung (IP-14). Ohne angenommenen Kundenbereich (Partner ohne wirksame Unterstützung) antwortet sie mit dem
  * eigenen Konto allein — nie mit einem Hinweis auf den gewählten Kundenbereich.
  */
 @RestController
