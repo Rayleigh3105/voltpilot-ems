@@ -16,10 +16,20 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Fleet-overview aggregates for the current tenant. Every query runs through
- * the RLS-scoped app datasource WITHOUT a tenant predicate - RLS (migration V2)
- * fences the tenant, so omitting the site filter aggregates exactly the
- * caller's fleet and never more.
+ * Fleet-overview aggregates for the caller's VISIBLE sites. Every query runs
+ * through the RLS-scoped app datasource WITHOUT a tenant predicate - RLS
+ * fences it: the Mandanten-Policy (migration V2) and, seit UEMS AP-03 IP-5,
+ * die RESTRICTIVE Policy {@code site_scope} auf {@code site}, {@code device}
+ * und {@code measurement_point} ({@code V20260915190000}).
+ *
+ * <p><b>Der Zaun hängt an DIESEN Tabellen, nicht an den Messdaten.</b> Eine
+ * Abfrage auf {@code asset}, {@code telemetry_rollup_15m}, {@code schedule},
+ * {@code flow_definition} oder {@code site_charging_config} läuft ohne
+ * {@code site}-Bindung mandantenweit. Für eine Abfrage JE ANLAGE ist das
+ * harmlos - der Controller liest daraus nur die Einträge der sichtbaren
+ * Anlagen. Eine SUMME über alle Zeilen muss dagegen selbst über {@code site}
+ * gehen, sonst trägt sie fremde Standorte (AP-03 IP-10, Regel R-A2); siehe
+ * {@link #storageTotals()}.
  */
 @Repository
 public class OverviewRepository {
@@ -191,14 +201,22 @@ public class OverviewRepository {
     }
 
     /**
-     * Fleet-wide Σ battery capacity (kWh) and Σ discharge power (kW) for the
-     * portfolio KPI row - from the v1 {@code asset} rows (no new schema).
-     * RLS-scoped; both null when the fleet has no battery (never a fake zero).
+     * Σ battery capacity (kWh) and Σ discharge power (kW) over the SICHTBAREN Anlagen for the portfolio KPI row -
+     * from the v1 {@code asset} rows (no new schema). Both null when no visible site has a battery (never a fake
+     * zero).
+     *
+     * <p><b>Der {@code JOIN site} ist der Zaun (UEMS AP-03 IP-10).</b> {@code asset} trägt nur die
+     * Mandanten-Policy, nicht {@code site_scope} (IP-5) — ohne den Join war dies die EINZIGE Zahl von
+     * {@code /overview}, die mandantenweit entstand: ein Bearbeiter EINES Standorts bekam die Speicher-Summe
+     * ALLER Standorte seines Unternehmens und konnte daraus die fremde Kapazität als Differenz ableiten
+     * (§6.2 Punkt 6, Regel R-A2). Die Summe läuft jetzt über genau die Anlagen, die auch in {@code sites}
+     * stehen. Für einen unternehmensweiten Zugriff ändert der Join nichts: {@code asset.site_id} ist NOT NULL
+     * und zeigt immer auf eine Anlage desselben Kundenbereichs (Bestandsnachweis W11).
      */
     public StorageTotals storageTotals() {
         return jdbc.queryForObject(
-                "SELECT sum(capacity_kwh) AS kwh, sum(max_discharge_kw) AS kw "
-                        + "FROM asset WHERE type = 'battery'",
+                "SELECT sum(a.capacity_kwh) AS kwh, sum(a.max_discharge_kw) AS kw "
+                        + "FROM asset a JOIN site s ON s.id = a.site_id WHERE a.type = 'battery'",
                 (rs, n) -> new StorageTotals(rs.getBigDecimal("kwh"), rs.getBigDecimal("kw")));
     }
 

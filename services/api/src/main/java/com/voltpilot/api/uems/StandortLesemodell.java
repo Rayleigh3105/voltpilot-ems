@@ -9,6 +9,7 @@ import com.voltpilot.api.uems.OrtsbaumAbleitung.OrtAmStichtag;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.OrtArt;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.Ortsbaum;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.StandAm;
+import com.voltpilot.api.web.dto.TeilansichtDto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -250,13 +251,31 @@ public final class StandortLesemodell {
      * es an dem Tag gab (in der Reihenfolge des Anlegens), {@code nichtGezeigt}
      * die übrigen mit Grund und Satz; {@code nochNichtZugeordnet} ist
      * {@code null}, sobald alles zugeordnet ist (kein „0 nicht zugeordnet").
-     * Additiv vorgesehen: {@code teilansicht} (AP-03 IP-10).
+     *
+     * <p>{@code teilansicht} ist das additive Feld aus UEMS AP-03 IP-10 und
+     * gehört NICHT zu dieser Ableitung: der Zaun bestimmt schon, welche
+     * Standorte in {@code z.standorte()} stehen, und wie viele der
+     * Kundenbereich insgesamt hat, weiß nur die Datenbank hinter dem Zaun. Die
+     * reine Ableitung lässt es darum {@code null}; der Controller setzt es mit
+     * {@link #mitTeilansicht} auf jeder Antwort, die das Haus verlässt.
      */
     public record StandorteAmStichtag(
             LocalDate stichtag,
             List<StandortAmStichtag> standorte,
             List<StandortAmStichtag> nichtGezeigt,
-            NochNichtZugeordnet nochNichtZugeordnet) {}
+            NochNichtZugeordnet nochNichtZugeordnet,
+            TeilansichtDto teilansicht) {
+
+        public StandorteAmStichtag(LocalDate stichtag, List<StandortAmStichtag> standorte,
+                List<StandortAmStichtag> nichtGezeigt, NochNichtZugeordnet nochNichtZugeordnet) {
+            this(stichtag, standorte, nichtGezeigt, nochNichtZugeordnet, null);
+        }
+
+        /** Dieselbe Sicht mit gesetztem {@code teilansicht} (IP-10). */
+        public StandorteAmStichtag mitTeilansicht(TeilansichtDto teilansicht) {
+            return new StandorteAmStichtag(stichtag, standorte, nichtGezeigt, nochNichtZugeordnet, teilansicht);
+        }
+    }
 
     /** Das additive Feld {@code standort} an {@code /overview} und {@code /sites/{id}}. */
     public record StandortBezug(UUID id, String name, String kurzzeichen, LocalDate gueltigAb) {}

@@ -22,6 +22,13 @@ import java.util.UUID;
  * spot, saved algebraically equals the battery's dispatch valued at spot
  * ({@code (discharge - charge) * price/1000}), so round-trip losses debit
  * VoltPilot automatically - the number is self-honest.
+ *
+ * <p><b>Die Menge ist die Standort-Menge des Aufrufers</b> (UEMS AP-03 IP-10,
+ * Regel R-A2): {@code sites} sind die SICHTBAREN Anlagen - gefencet von
+ * {@code site_scope} (IP-5) - und optional nur die an den Standorten, die der
+ * Aufruf mit {@code ?standort=} gewählt hat. {@code totals} und
+ * {@code vergleich} summieren über genau diese Liste und über nichts sonst;
+ * {@link TeilansichtDto} sagt additiv, über wie viele Standorte das war.
  */
 public record EarningsDto(
         String range,
@@ -29,7 +36,8 @@ public record EarningsDto(
         Instant to,
         List<EarningsSiteDto> sites,
         EarningsTotalsDto totals,
-        EarningsVergleichDto vergleich) {
+        EarningsVergleichDto vergleich,
+        TeilansichtDto teilansicht) {
 
     /**
      * One site's realized earnings over the window. All money values are null
@@ -240,7 +248,8 @@ public record EarningsDto(
     }
 
     /**
-     * Fleet totals over the computable sites. Null money values when NO site
+     * Totals über die computable sites DIESER Antwort - also über die sichtbaren (und ggf. gewählten)
+     * Standorte, nie mandantenweit (AP-03 §6.2 Punkt 6). Null money values when NO site
      * has a computable slot (never a fake zero); {@code firstCoveredDate} is
      * the earliest covered Berlin day across the fleet - the honest start of a
      * "Gesamt" range ("seit ...").

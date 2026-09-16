@@ -3663,10 +3663,27 @@ export interface OverviewDailySavings {
   savingsEur: number;
 }
 
+/**
+ * Das additive Feld `teilansicht` der Flotten-Antworten (UEMS AP-03 IP-10, Regel R-A2):
+ * über wie viele Standorte die Antwort gebildet wurde und wie viele der Kundenbereich hat.
+ *
+ * `gesamt` ist eine ANZAHL von Standorten — keine Energie- und keine Geldsumme. Jede Liste
+ * und jede Summe der Antwort entsteht ausschliesslich über die `sichtbar` Standorte; das
+ * Portal rechnet nie selbst über Standorte hinweg, sondern nur über das, was es bekommt.
+ * Der Satz „Teilansicht: n von m Standorten" kommt fertig aus `GET /api/v1/me`
+ * (`teilansicht.kopfzeile`); dieses Feld sagt je Antwort, worüber sie gebildet wurde.
+ */
+export interface Teilansicht {
+  sichtbar: number;
+  gesamt: number;
+}
+
 export interface Overview {
   sites: OverviewSite[];
   totals: OverviewTotals;
   dailySavings: OverviewDailySavings[];
+  /** Additiv (AP-03 IP-10); absent auf einem älteren Backend. */
+  teilansicht?: Teilansicht;
 }
 
 // ---- UEMS-Ortsstruktur: Unternehmen und Standorte (AP-02 IP-3) -------------
@@ -3825,6 +3842,8 @@ export interface StandorteAmStichtag {
   nichtGezeigt: StandortAmStichtag[];
   /** `null`, sobald jede Anlage zugeordnet ist. */
   nochNichtZugeordnet: NochNichtZugeordnet | null;
+  /** Additiv (AP-03 IP-10); absent auf einem älteren Backend. */
+  teilansicht?: Teilansicht;
 }
 
 // ---- Ortsstruktur schreiben (UEMS AP-02 IP-4) --------------------------------
@@ -5936,6 +5955,8 @@ export interface Earnings {
   totals: EarningsTotals;
   /** Absent auf einem älteren Backend — die Zeile bleibt dann weg. */
   vergleich?: EarningsVergleich | null;
+  /** Additiv (AP-03 IP-10); absent auf einem älteren Backend. */
+  teilansicht?: Teilansicht;
 }
 
 // ---- Anlagen-scharfe Erlöse (GET /api/v1/sites/{id}/earnings) ---------------

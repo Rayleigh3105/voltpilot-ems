@@ -8,17 +8,24 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * The tenant-wide fleet overview behind {@code GET /api/v1/overview} (see
+ * The fleet overview behind {@code GET /api/v1/overview} (see
  * docs/contracts/openapi.yaml): one aggregate the portal's adaptive Übersicht
  * renders for customers with several sites - per-site status + live snapshot +
  * today's planned savings, plus fleet totals and the per-day savings series for
- * the hero's 14-day mini chart. Everything is read through the RLS-scoped app
- * datasource, so the aggregate can never span more than the caller's tenant.
+ * the hero's 14-day mini chart.
+ *
+ * <p>Everything is read through the RLS-scoped app datasource: der
+ * Mandanten-Zaun und - seit UEMS AP-03 IP-5 - der Standort-Zaun
+ * {@code site_scope}. <b>Liste UND Summen entstehen darum über genau die
+ * SICHTBAREN Anlagen</b>, nie mandantenweit (IP-10, Regel R-A2). {@code totals}
+ * ist die Summe über {@code sites} und über nichts sonst; {@link TeilansichtDto}
+ * sagt additiv, über wie viele Standorte das war.
  */
 public record OverviewDto(
         List<OverviewSiteDto> sites,
         OverviewTotalsDto totals,
-        List<OverviewDailySavingsDto> dailySavings) {
+        List<OverviewDailySavingsDto> dailySavings,
+        TeilansichtDto teilansicht) {
 
     /**
      * One site of the fleet.
@@ -143,6 +150,13 @@ public record OverviewDto(
      * values ({@code null} when NO site has a plan today). {@code liveSitesCovered}
      * counts sites whose live snapshot is inside the 5-minute freshness window -
      * the portal only sums live power over those and says so.
+     */
+    /**
+     * Die Summen über die SICHTBAREN Anlagen - jedes Feld entsteht über genau die Anlagen in
+     * {@link OverviewDto#sites()}. {@code storageCapacityKwh}/{@code storagePowerKw} kommen aus
+     * {@code OverviewRepository.storageTotals()}, das dafür seit IP-10 über {@code site} joint; die übrigen
+     * summiert der Controller in der Schleife über dieselbe Liste. Kein Feld trägt eine mandantenweite Summe
+     * (AP-03 §6.2 Punkt 6).
      */
     public record OverviewTotalsDto(
             int sites,

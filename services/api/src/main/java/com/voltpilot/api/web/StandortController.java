@@ -8,6 +8,7 @@ import com.voltpilot.api.uems.StandortService;
 import com.voltpilot.api.web.dto.StandortDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -47,22 +48,26 @@ public class StandortController {
     private final StandortLesemodellService lesemodell;
     private final StandortService standorte;
     private final OrtAnfrage anfrage;
+    private final TeilansichtDienst teilansicht;
 
     public StandortController(StandortLesemodellService lesemodell, StandortService standorte,
-            OrtAnfrage anfrage) {
+            OrtAnfrage anfrage, TeilansichtDienst teilansicht) {
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.anfrage = anfrage;
+        this.teilansicht = teilansicht;
     }
 
     // Rechte (rechte-matrix.json): heute lesend — keine eigene Kennung; die Sicht
     // „Stand am" (ein Stichtag in der Vergangenheit) ist `aenderungsprotokoll.lesen`.
-    // Die Teilansicht nach zugewiesenen Standorten (AP-03 E10) kommt mit AP-03 IP-10
-    // als additives Feld `teilansicht`.
+    // Die Liste selbst schneidet der Standort-Zaun (AP-03 IP-5, `site_scope` auf
+    // `standort`): ein Standort außerhalb des Zugriffs steht weder unter `standorte`
+    // noch unter `nichtGezeigt`. `teilansicht {sichtbar, gesamt}` sagt additiv, wie
+    // viele es waren und wie viele der Kundenbereich hat (AP-03 IP-10, E10).
     @GetMapping
     public StandorteAmStichtag standorte(@RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate stichtag) {
-        return lesemodell.standorte(stichtag);
+        return lesemodell.standorte(stichtag).mitTeilansicht(teilansicht.jetzt());
     }
 
     // Rechte: `standort.verwalten` — der Vorschlag gehört zum Anlege-Dialog.
