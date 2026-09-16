@@ -271,7 +271,7 @@ public class DeviceChargerStatusRepository {
                 "SELECT s.* FROM device_charging_budget s WHERE s.site_id = ? AND " + BOX_AKTIV
                         + " ORDER BY s.device_id",
                 DeviceChargerStatusRepository::mapBudget, siteId);
-        return new SiteChargingDto(budgets.isEmpty() ? null : budgets.get(0), points);
+        return new SiteChargingDto(budgets.isEmpty() ? null : budgets.get(0), points, budgets);
     }
 
     private static String key(UUID deviceId, String chargePointId) {

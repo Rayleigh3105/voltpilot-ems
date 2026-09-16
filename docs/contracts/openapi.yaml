@@ -2589,6 +2589,7 @@ paths:
                 label: { type: string, nullable: true, maxLength: 120, description: "Der Name für den Kunden; abwesend = die Box nimmt die Kennung." }
                 ratedKw: { type: number, nullable: true, description: "Nennleistung je Stecker, sofern bekannt. Abwesend = unbekannt, nie 0." }
                 connectors: { type: integer, nullable: true, description: "Steckerzahl, sofern bekannt. Abwesend = die Box lernt sie von der Säule." }
+                deviceId: { type: string, format: uuid, nullable: true, description: "Die Box, mit der sich die Säule verbinden soll. Bei mehreren Boxen Pflicht; bei einer Ein-Box-Anlage darf ein älterer Client das Feld weglassen." }
                 source: { type: string, nullable: true, enum: [nur_sonne, sonne_zuerst, schnell], description: "Die STEUERART dieser Säule (P5) - woher IHR Ladestrom kommen soll. Abwesend = für sie äußert sich das Portal nicht und es gilt der ANLAGEN-STANDARD (surplusPolicy); nie \"schnell\", das wäre eine Netzstrom-Freigabe, die niemand erteilt hat." }
                 minKw: { type: number, nullable: true, description: "Ab welcher Leistung diese Säule überhaupt anfängt. Abwesend = unbekannt, nie 0." }
       responses:
@@ -2600,6 +2601,7 @@ paths:
         "400": { description: Unzulässige Kennung, unplausible Angabe oder Deckel erreicht (deutscher Grund im Körper). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+        "422": { description: Box fehlt, gehört nicht zur Anlage oder eine andere Box führt bereits Ladepunkte (deutscher Grund im Körper). }
   /api/v1/sites/{siteId}/charging-config/charge-points/{chargePointId}:
     delete:
       tags: [sites]
@@ -18273,6 +18275,10 @@ components:
         Die Ladepunkt-Sicht EINER Anlage: das geteilte Budget + die Säulen.
       properties:
         budget: { allOf: [{ $ref: "#/components/schemas/ChargingBudget" }], nullable: true }
+        budgets:
+          type: array
+          description: "Additive Mehrbox-Sicht: der gemeldete OCPP-Anschluss je aktiver Box. `budget` bleibt für Bestandsleser bestehen."
+          items: { $ref: "#/components/schemas/ChargingBudget" }
         chargers:
           type: array
           items: { $ref: "#/components/schemas/ChargePoint" }

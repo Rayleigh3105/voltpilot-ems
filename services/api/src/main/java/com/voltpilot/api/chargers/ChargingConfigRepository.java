@@ -369,9 +369,22 @@ public class ChargingConfigRepository {
                 siteId, tenantId, rank, Timestamp.from(Instant.now()), actor);
     }
 
-    /** Die Geräte dieser Anlage - die Empfänger des retained Dokuments. */
+    /** Die aktiven Geräte dieser Anlage. */
     public List<UUID> deviceIds(UUID siteId) {
         return new ArrayList<>(jdbc.query("SELECT id FROM device WHERE site_id = ? AND ausgebaut_am IS NULL ORDER BY id",
+                (rs, n) -> rs.getObject("id", UUID.class), siteId));
+    }
+
+    /**
+     * Die aktiven Boxen, die mindestens einen Ladepunkt dieser Anlage gemeldet haben.
+     *
+     * <p>Das ist der physische Beleg fuer die Ladepark-Zustaendigkeit. Eine
+     * fuehrende Box oder die Reihenfolge der Geraeteliste sagt darueber nichts.
+     */
+    public List<UUID> deviceIdsWithChargePoints(UUID siteId) {
+        return new ArrayList<>(jdbc.query("SELECT DISTINCT d.id FROM device d "
+                + "JOIN device_charge_point cp ON cp.device_id = d.id AND cp.site_id = d.site_id "
+                + "WHERE d.site_id = ? AND d.ausgebaut_am IS NULL ORDER BY d.id",
                 (rs, n) -> rs.getObject("id", UUID.class), siteId));
     }
 }

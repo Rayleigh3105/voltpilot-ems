@@ -308,14 +308,6 @@ public class ChargingConfigService {
     }
 
     /**
-     * Schickt die gespeicherte Konfiguration an jedes Gerät der Anlage.
-     *
-     * <p>An JEDES, nicht nur an das mit den Ladesäulen: welches Gerät das CSMS
-     * fährt, weiß nur die Box selbst, und eine Box ohne Ladepunkte übernimmt
-     * eine Anschlussgrenze folgenlos (ihr Budget verteilt sie an niemanden).
-     * Raten wäre die schlechtere Hälfte.
-     */
-    /**
      * Schickt die AKTUELL gespeicherte Konfiguration erneut hinaus - der Weg,
      * den ein Nachbar-Feature nimmt, das im selben Dokument mitreist (P7: die
      * Fahrzeug-Profile). Es gibt bewusst nur EINEN Kanal zur Box, also auch nur
@@ -335,9 +327,20 @@ public class ChargingConfigService {
     }
 
     private boolean pushResult(UUID tenantId, UUID siteId, ChargingConfigDto config) {
+        return push(tenantId, siteId, config,
+                zielBoxen(configs.deviceIds(siteId), configs.deviceIdsWithChargePoints(siteId)));
+    }
+
+    private boolean push(UUID tenantId, UUID siteId, ChargingConfigDto config,
+            List<UUID> deviceIds) {
         ChargingConfigPublisher pub = publisher.getIfAvailable();
         if (pub == null) {
             log.debug("no charging-config publisher configured - nothing pushed for site {}",
+                    siteId);
+            return false;
+        }
+        if (deviceIds.isEmpty()) {
+            log.warn("charging config for site {} not pushed: no unambiguous station box",
                     siteId);
             return false;
         }
@@ -351,7 +354,7 @@ public class ChargingConfigService {
         List<VehicleProfileDto> vehicles = vehicleProfiles(siteId);
         String control = configs.ocppControl(siteId);
         boolean delivered = true;
-        for (UUID deviceId : configs.deviceIds(siteId)) {
+        for (UUID deviceId : deviceIds) {
             if (control != null) {
                 delivered &= pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(), config.priorityChargePointIds(),
                         config.surplusPolicy(), config.storagePriority(), config.chargePoints(), config.removedChargePointIds(),
@@ -365,6 +368,51 @@ public class ChargingConfigService {
                     config.wallboxes(), vehicles, now);
         }
         return delivered;
+    }
+
+    /**
+     * Genau eine Box fuehrt den Ladepark. Solange noch keine Station gemeldet
+     * ist, bleibt ausschliesslich die bestehende Ein-Box-Anlage auf ihrem
+     * bisherigen Empfaenger; bei mehreren Boxen wird nie geraten.
+     */
+    static List<UUID> zielBoxen(List<UUID> aktiveBoxen, List<UUID> boxenMitLadepunkten) {
+        if (boxenMitLadepunkten.size() == 1) {
+            return List.of(boxenMitLadepunkten.get(0));
+        }
+        if (boxenMitLadepunkten.isEmpty() && aktiveBoxen.size() == 1) {
+            return List.of(aktiveBoxen.get(0));
+        }
+        return List.of();
+    }
+
+    private UUID zielBoxFuerAnbinden(UUID siteId, UUID gewaehlt) {
+        List<UUID> aktive = configs.deviceIds(siteId);
+        List<UUID> belegt = configs.deviceIdsWithChargePoints(siteId);
+        if (belegt.size() > 1) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Ladepunkte dieser Anlage sind bereits auf mehrere Boxen verteilt. "
+                            + "VoltPilot sendet keine weitere Ladepark-Konfiguration, bis die "
+                            + "Zuständigkeit geklärt ist.");
+        }
+        UUID vorhanden = belegt.isEmpty() ? null : belegt.get(0);
+        UUID ziel = gewaehlt != null ? gewaehlt
+                : vorhanden != null ? vorhanden
+                : aktive.size() == 1 ? aktive.get(0) : null;
+        if (ziel == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Wählen Sie die Box, mit der sich die Ladesäule verbinden soll.");
+        }
+        if (!aktive.contains(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die gewählte Box gehört nicht zu dieser Anlage oder ist nicht mehr eingebaut.");
+        }
+        if (vorhanden != null && !vorhanden.equals(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Ladepunkte dieser Anlage sind bereits an eine andere Box angebunden. "
+                            + "Eine zweite Box für Ladepunkte ist erst mit der gemeinsamen "
+                            + "Steuerung verfügbar.");
+        }
+        return ziel;
     }
 
     /**
@@ -414,9 +462,10 @@ public class ChargingConfigService {
     @Transactional
     public ChargingConfigDto admit(UUID siteId, String chargePointId, String label,
             Double ratedKw, Integer connectors, String source, Double minKw, String connection,
-            String actor) {
+            UUID deviceId, String actor) {
         requireSite(siteId);
         UUID tenantId = TenantContext.get();
+        UUID zielBox = zielBoxFuerAnbinden(siteId, deviceId);
         String id = chargePointId == null ? "" : chargePointId.trim();
         // ⚠ Das Zeichen-Vokabular ist das des KONTRAKTS (und damit das der Box):
         // eine Kennung, die kein MQTT-Topic-Segment sein kann, erreichte die
@@ -465,7 +514,11 @@ public class ChargingConfigService {
         configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, src, minKw, conn,
                 actor);
         ChargingConfigDto saved = configs.forSite(siteId);
-        push(tenantId, siteId, saved);
+        // Vor der ersten Meldung gibt es noch keinen device_charge_point-Beleg.
+        // Genau dieser explizite Assistenten-Schritt darf deshalb an die
+        // gewaehlte Box zustellen; alle spaeteren Pushes lesen den physischen
+        // Beleg und raten bei mehreren Boxen nie.
+        push(tenantId, siteId, saved, List.of(zielBox));
         return saved;
     }
 

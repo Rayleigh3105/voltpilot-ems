@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.chargers.ChargerStatusListener;
+import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
@@ -32,6 +33,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -116,6 +118,9 @@ class ChargerApiTest {
 
     @Autowired
     com.voltpilot.api.fahrzeuge.SiteVehicleRepository vehicles;
+
+    @MockBean
+    ChargingConfigPublisher chargingConfigPublisher;
 
     private final ObjectMapper json = new ObjectMapper();
 
@@ -547,6 +552,60 @@ class ChargerApiTest {
     }
 
     /**
+     * A14: Ladepunkte einer Anlage haengen an genau einer Box. Rahmen und
+     * Rangliste erreichen nur diese Box; der Wechsel auf eine zweite Box wird
+     * als fachliche 422-Ablehnung benannt.
+     */
+    @Test
+    void a14ChargingParkConfigurationReachesExactlyTheStationBox() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "A14 Ladepark");
+        try {
+            UUID halle2 = claim(customer, site, "edge-a14-halle-2");
+            UUID lesebox = claim(customer, site, "edge-a14-lesebox");
+            heartbeat(site, halle2, endpointStations());
+            heartbeat(site, lesebox, noStationsEndpoint());
+
+            JsonNode sicht = getJson("/api/v1/sites/" + site + "/chargers", customer);
+            assertThat(sicht.get("budgets")).hasSize(2);
+            UUID ladepunkt = UUID.fromString(
+                    sicht.get("chargers").get(0).get("entityId").asText());
+
+            org.mockito.Mockito.clearInvocations(chargingConfigPublisher);
+            HttpHeaders admin = bearer(token("admin", "admin"));
+            admin.set("X-Tenant-Id", TENANT_A);
+            ResponseEntity<String> rahmen = rest.exchange(
+                    url("/api/v1/admin/sites/" + site + "/charging-frame"), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("houseReserveKw", 10, "maxHouseLoadKw", 120), admin),
+                    String.class);
+            assertThat(rahmen.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(publishedChargingDevices()).containsExactly(halle2);
+
+            org.mockito.Mockito.clearInvocations(chargingConfigPublisher);
+            ResponseEntity<String> rangliste = rest.exchange(
+                    url("/api/v1/sites/" + site + "/rangliste"), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("eintraege", List.of(Map.of(
+                            "art", "ladepunkt", "entityId", ladepunkt.toString()))),
+                            bearer(customer)), String.class);
+            assertThat(rangliste.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(publishedChargingDevices()).containsExactly(halle2);
+
+            org.mockito.Mockito.clearInvocations(chargingConfigPublisher);
+            ResponseEntity<String> zweiteBox = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config/charge-points"),
+                    HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "ahr-lp-02",
+                            "deviceId", lesebox.toString()), bearer(customer)), String.class);
+            assertThat(zweiteBox.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(zweiteBox.getBody()).contains("bereits an eine andere Box angebunden")
+                    .contains("gemeinsamen Steuerung");
+            assertThat(publishedChargingDevices()).isEmpty();
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
      * Cockpit Phase 1 / C1: WO eine Ladesäule hängt - vom Anbinde-Dialog bis in
      * die Antwort, und getrennt vom IST, das die Box meldet.
      *
@@ -873,6 +932,14 @@ class ChargerApiTest {
                     "connectors":[{"id":1,"status":"Available","charging":false}]}]}""";
     }
 
+    /** Eine zweite Box meldet ihren OCPP-Anschluss, aber keinen Ladepunkt. */
+    private static String noStationsEndpoint() {
+        return """
+                {"reported_at":"2026-08-21T09:16:00Z","enabled":true,"control_enabled":true,
+                 "ocpp_port":8890,"url_path":"/ocpp","grid_limit_kw":277,
+                 "budget_kw":197,"connector_count":0,"chargers":[]}""";
+    }
+
     /** Eine Anlage mit laufender Quellen-Bahn und EINER Übersteuerung. */
     private static String surplusStations() {
         return """
@@ -921,6 +988,13 @@ class ChargerApiTest {
         assertThat(res.getStatusCode()).as("POST %s -> %s", path, res.getBody())
                 .isEqualTo(HttpStatus.OK);
         return json.readTree(res.getBody());
+    }
+
+    private List<UUID> publishedChargingDevices() {
+        return org.mockito.Mockito.mockingDetails(chargingConfigPublisher).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().equals("publish"))
+                .map(invocation -> invocation.<UUID>getArgument(2))
+                .toList();
     }
 
     private JsonNode putJson(String path, String token, Map<String, Object> body) throws Exception {

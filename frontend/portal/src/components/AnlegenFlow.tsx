@@ -115,6 +115,7 @@ const UDB_TYP = 'user-defined-battery';
 export function AnlegenFlow({
   siteId,
   box,
+  boxes,
   vorlage,
   initialTyp,
   initialRolle,
@@ -132,6 +133,8 @@ export function AnlegenFlow({
    * sie nennt der Assistent ehrlich den Weg statt eine Adresse zu behaupten.
    */
   box?: Device;
+  /** Alle Boxen der Anlage fuer die ausdrueckliche OCPP-Zielwahl. */
+  boxes?: Device[];
   /**
    * Einheitsmodell Stufe 6: aus einer EIGENEN Vorlage ein Gerät machen. Mit
    * ihr startet der Fluss direkt im Eigenbau-Weg, vorbefüllt - die Typ-Wahl
@@ -1171,7 +1174,7 @@ export function AnlegenFlow({
           zwei Wahrheiten über denselben Weg. */}
       {schritt >= 2 && typ === 'ladesaeule' && (
         <section data-testid="typ-ladesaeule">
-          <LadesaeuleAnbinden siteId={siteId} device={box} />
+          <LadesaeuleAnbinden siteId={siteId} device={box} devices={boxes} />
         </section>
       )}
 

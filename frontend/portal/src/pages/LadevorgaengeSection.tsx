@@ -310,6 +310,7 @@ export function LadevorgaengeSection({
         open={anbinden}
         siteId={site.id}
         device={box ?? undefined}
+        devices={(devices ?? []).filter((device) => device.siteId === site.id)}
         onClose={() => setAnbinden(false)}
       />
 
