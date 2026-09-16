@@ -185,8 +185,10 @@ public class ImportUebernahmeService {
                 .getBytes(StandardCharsets.UTF_8)).toString());
         e.put("art","correction");
         ZoneId zone=ZoneId.of(a.zone());
-        Instant von=a.von()==null ? a.zeitpunkt() : a.von().atStartOfDay(zone).toInstant();
-        Instant bis=a.bis()==null ? a.zeitpunkt().plusSeconds(60) : a.bis().plusDays(1).atStartOfDay(zone).toInstant();
+        // Ereignisintervalle liegen im gemeinsamen Viertelstundenraster; ein Stand kann minutengenau sein.
+        Instant von=a.von()==null ? Instant.ofEpochSecond(Math.floorDiv(a.zeitpunkt().getEpochSecond(),900)*900)
+                : a.von().atStartOfDay(zone).toInstant();
+        Instant bis=a.bis()==null ? von.plusSeconds(900) : a.bis().plusDays(1).atStartOfDay(zone).toInstant();
         e.put("von",von.toString()); e.put("bis",bis.toString()); e.put("bezugsgroesse",kennzeichen);
         e.put("korrektur",kennung+"/Zeile-"+a.zeile()+"/Fassung-"+(a.vorher()+1)); e.put("import",kennung); e.put("korrektur_art",EreignisVokabular.KORREKTUR_ART_BEZUGSWERT);
         e.put("status","freigegeben"); e.put("fassung_alt",a.vorher()); e.put("fassung_neu",a.vorher()+1);

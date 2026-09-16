@@ -216,11 +216,15 @@ class BezugsdatenImportUebernahmeApiTest {
     @Test void standWirdNachZeitpunktImportiertUndZurueckgenommen() throws Exception {
         Welt w=welt();
         root.update("UPDATE bezugsgroesse SET wertart='stand',periode_art=NULL WHERE tenant_id=?",w.mandant());
-        String datei="Periode;Menge;Einheit\n2025-08-01T12:00:00+02:00;100;kg\n";
+        String datei="Periode;Menge;Einheit\n2025-08-01T12:07:00+02:00;100;kg\n";
         String i=importieren(w,datei,Map.of(),null,null,200).path("kennung").asText();
         assertThat(importieren(w,datei,Map.of(),null,null,200).path("aenderungen").asInt()).isZero();
         ruecknahme(w,i,200);
         assertThat(wert(w)).isNull();
+        assertThat(root.queryForObject("SELECT nutzlast->>'von' FROM messreihe_ereignis WHERE tenant_id=?",String.class,w.mandant()))
+                .isEqualTo("2025-08-01T10:00:00Z");
+        assertThat(root.queryForObject("SELECT nutzlast->>'bis' FROM messreihe_ereignis WHERE tenant_id=?",String.class,w.mandant()))
+                .isEqualTo("2025-08-01T10:15:00Z");
     }
 
     @Test void zweiBerichtigteZeilenHabenUnterschiedlicheKaskadenAnlaesse() throws Exception {

@@ -27,6 +27,8 @@ ALTER TABLE bezugsdaten_import_freigabe FORCE ROW LEVEL SECURITY;
 CREATE POLICY bezugsdaten_import_freigabe_tenant ON bezugsdaten_import_freigabe
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+-- V2/V4 vergeben voreingestellt breite Tabellenrechte; hier ausdrücklich begrenzen.
+REVOKE ALL ON bezugsdaten_import_freigabe FROM ${appDbUser}, ${adminDbUser};
 GRANT SELECT ON bezugsdaten_import_freigabe TO ${appDbUser};
 GRANT INSERT (tenant_id, kennung, fassung, status, grund, ruecknahme, auftrag,
     actor_sub, actor_name, actor_rolle, actor_art) ON bezugsdaten_import_freigabe TO ${appDbUser};
