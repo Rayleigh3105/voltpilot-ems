@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Speicher-Wächter und gemessene VM-Kompression (AP-07 IP-16)** — täglich gecachte physische Tabellenanteile je interner Mandantenkennung und Klasse, 70-%-Planwarnung, bestehender 0,5-TB-Flottenalarm unverändert; lokale synthetische Nicht-RLS-Kompressionsmessung · [Wächter, Grenzen und Nachweise](uems-speicher-waechter.md)
+
 - **UEMS-Verbrauchsbildung abgeschlossen (AP-08 IP-1 bis IP-20)** — Vertrag und Rechenwege, Mengen je Viertelstunde bis Jahr, Zustand, Lesen, Ersatzwerte, Korrekturen und Versionen; Abschlusswächter pinnt die drei Kern-Rollup-Prozeduren und eine plausible Historienantwort, Cockpit-/Erlös-Bestandsmuster bleiben zuständig · [Abschluss und Bestandsschutz](uems-verbrauchsbildung-abschluss.md)
 
 - **Saldo-Schreibweg (AP-10 IP-16)** — optionale Typ-/Tagesangaben, Hauptzähler-Paar, berechnete Richtung `saldiert`, vorhandener Geräte-Zaun und Periodenmengen statt Zählerstand-Differenzen · [Wege und Nachweise](uems-saldo-schreibweg.md)

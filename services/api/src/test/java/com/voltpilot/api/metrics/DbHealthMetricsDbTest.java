@@ -11,6 +11,7 @@ import java.sql.Statement;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
@@ -49,6 +50,8 @@ class DbHealthMetricsDbTest {
 
     private static final String ADMIN_USER = "voltpilot_admin";
     private static final String ADMIN_PW = "pw_admin";
+    private static final UUID STORAGE_TENANT =
+            UUID.fromString("71000000-0000-0000-0000-000000000016");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -89,6 +92,8 @@ class DbHealthMetricsDbTest {
                 .migrate();
 
         try (Connection c = superuser().getConnection(); Statement s = c.createStatement()) {
+            s.execute("INSERT INTO tenant (id, name) VALUES ('" + STORAGE_TENANT
+                    + "', 'Nur Name der lokalen Testvorrichtung')");
             // Ein paar echte Zeilen, damit hypertable_size nicht 0 ist.
             s.execute("INSERT INTO forecast "
                     + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min,"
@@ -130,6 +135,14 @@ class DbHealthMetricsDbTest {
         return registry.scrape();
     }
 
+    private static String storageScrape() {
+        DbHealthMetricsRepository repo =
+                new DbHealthMetricsRepository(new JdbcTemplate(adminRole()));
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        new DbStorageMetricsCollector(repo, registry).collect();
+        return registry.scrape();
+    }
+
     private static String line(String scrape, String prefix) {
         return scrape.lines().filter(l -> l.startsWith(prefix)).findFirst().orElse(null);
     }
@@ -146,6 +159,16 @@ class DbHealthMetricsDbTest {
         String forecast = line(scrape, "voltpilot_db_total_bytes{table=\"forecast\"}");
         double bytes = Double.parseDouble(forecast.substring(forecast.lastIndexOf(' ') + 1));
         assertThat(bytes).isGreaterThan(0.0);
+    }
+
+    @Test
+    void everyStorageClassIsVisibleForTheInternalTenantId() {
+        String scrape = storageScrape();
+        for (var plan : DbHealthMetrics.STORAGE_PLAN) {
+            assertThat(scrape).contains("voltpilot_db_table_bytes{class=\""
+                    + plan.storageClass() + "\",tenant=\"" + STORAGE_TENANT + "\"}");
+        }
+        assertThat(scrape).doesNotContain("Nur Name der lokalen Testvorrichtung");
     }
 
     @Test

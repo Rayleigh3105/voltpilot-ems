@@ -167,6 +167,14 @@ class SiteScopeArchitekturTest {
                     "uems/EndgueltigkeitLaeufer.java", "@Scheduled"),
             new Erlaubt("repo/FleetMetricsRepository.java", "telemetry", 1, Grund.OHNE_ANFRAGE,
                     "metrics/FleetMetricsCollector.java", "@Scheduled"),
+            // AP-07 IP-16: systemweiter, taeglich gecachter Speicher-Waechter
+            // ueber die BYPASSRLS-Admin-Rolle; nie in einem Kunden-Request.
+            new Erlaubt("repo/DbHealthMetricsRepository.java", "device_measurement_sample", 1,
+                    Grund.OHNE_ANFRAGE, "metrics/DbStorageMetricsCollector.java", "@Scheduled"),
+            // Die Plan-Tabelle nennt die vier physischen Tabellen nur als Daten,
+            // nicht als SQL; der Scanner erkennt ihren Text trotzdem.
+            new Erlaubt("metrics/DbHealthMetrics.java", "device_measurement_sample", 1,
+                    Grund.KEIN_SQL, "metrics/DbHealthMetrics.java", "STORAGE_PLAN"),
             new Erlaubt("repo/ConsumerRequirementStateRepository.java", "telemetry_v2", 1, Grund.OHNE_ANFRAGE,
                     "consumers/ConsumerRuntimeStatusListener.java", "client.subscribe(STATUS_FILTER"),
 
