@@ -44,6 +44,20 @@ beforeEach(() => {
   vi.spyOn(api, 'saveCustomerChargingFrame').mockResolvedValue({ gridLimitKw: 200, priorityChargePointIds: [] });
   vi.spyOn(api, 'setzeSteuerart').mockResolvedValue({ steuerart: { quelle: 'sofort', herkunft: 'policy' }, aktiv: true });
   vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] } as never);
+  vi.spyOn(api, 'funktionSteuern').mockResolvedValue({ aktion: 'starten', betroffen: [], standort: ahrenbergFunktionen().standorte[0] });
+  vi.spyOn(api, 'funktionSteuernPruefung').mockResolvedValue({
+    anlage_id: FIXTURE_IDS.an2, anlage: 'Werk Ahrenberg – Halle 2', standort_id: FIXTURE_IDS.st1,
+    standort: 'Werk Ahrenberg', bereit: true,
+    zeilen: [
+      { pruefung: 'box', bestanden: true, fakt: 'Box Halle 2 verbunden', grund: null, weg: null },
+      { pruefung: 'freigabe', bestanden: true, fakt: 'Ladepunkt Parkplatz Halle 2 freigegeben', grund: null, weg: null },
+      { pruefung: 'verbindungstest', bestanden: true, fakt: 'Verbindungstest OCPP bestanden', grund: null, weg: null },
+      { pruefung: 'grenze', bestanden: true, fakt: 'Grenze 200 kW ≤ 200 kW vereinbart', grund: null, weg: null },
+      { pruefung: 'hauptzaehler', bestanden: true, fakt: 'Hauptzähler MS-10 liefert Daten', grund: null, weg: null },
+      { pruefung: 'betriebsweise', bestanden: true, fakt: 'Betriebsweise gesetzt', grund: null, weg: null },
+    ],
+    folgen: 'Ab dem nächsten Fahrplan, spätestens in 15 Minuten, lädt VoltPilot den Ladepunkt netzschonend.',
+  });
 });
 
 describe('SteuernAssistent — Referenzfall 5 bis Schritt 4', () => {
@@ -73,7 +87,45 @@ describe('SteuernAssistent — Referenzfall 5 bis Schritt 4', () => {
     expect(api.setzeSteuerart).not.toHaveBeenCalled();
     expect(api.setSiteProfile).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Betriebsweise übernehmen' }));
+    expect(await screen.findByText('Ist der Start sicher?')).toBeInTheDocument();
+    expect(screen.getByText('Grenze 200 kW ≤ 200 kW vereinbart')).toBeInTheDocument();
+    expect(screen.getByText(/Ab dem nächsten Fahrplan/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Steuerung starten' }));
+    expect(await screen.findByText('Steuerung ist gestartet')).toBeInTheDocument();
+    expect(screen.getByText('Werk Ahrenberg – Halle 2')).toBeInTheDocument();
+    expect(api.funktionSteuern).toHaveBeenNthCalledWith(1, FIXTURE_IDS.an2, 'aufnehmen');
+    expect(api.funktionSteuern).toHaveBeenNthCalledWith(2, FIXTURE_IDS.an2, 'starten');
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('zeigt bei einer roten Zeile Grund und Weg, aber keinen Start-Knopf', async () => {
+    vi.mocked(api.funktionSteuernPruefung).mockResolvedValueOnce({
+      anlage_id: FIXTURE_IDS.an2, anlage: 'Werk Ahrenberg – Halle 2', standort_id: FIXTURE_IDS.st1,
+      standort: 'Werk Ahrenberg', bereit: false,
+      zeilen: [{ pruefung: 'hauptzaehler', bestanden: false, fakt: 'Hauptzähler MS-10 liefert keine aktuellen Daten',
+        grund: 'Diese Voraussetzung für den sicheren Start ist noch nicht erfüllt.',
+        weg: 'Prüfen Sie die Datenquelle des Hauptzählers MS-10.' }], folgen: 'Wird nicht gezeigt.',
+    });
+    render(<SteuernAssistent standortId={FIXTURE_IDS.st1} anlageId={FIXTURE_IDS.an2} onClose={vi.fn()} />);
+    await screen.findByText('Welche Anlage wird aufgenommen?');
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await screen.findByText('Was darf VoltPilot steuern?');
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await screen.findByText('Welche Grenze gilt?');
+    fireEvent.change(screen.getByLabelText('Anschlussgrenze (kW)'), { target: { value: '200' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await screen.findByText('Wie soll gesteuert werden?');
+    fireEvent.click(screen.getByRole('button', { name: 'Steuerart wählen' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByLabelText(/Sofort laden/));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Betriebsweise übernehmen' }));
+    expect(await screen.findByText('Hauptzähler MS-10 liefert keine aktuellen Daten')).toBeInTheDocument();
+    expect(screen.getByText('Prüfen Sie die Datenquelle des Hauptzählers MS-10.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Steuerung starten' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Erneut prüfen' })).toBeInTheDocument();
   });
 
   it('weist 220 kW gegen 200 kW zurück und ruft die Route nicht', async () => {

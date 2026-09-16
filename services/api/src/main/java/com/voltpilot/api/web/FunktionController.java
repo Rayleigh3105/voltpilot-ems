@@ -61,11 +61,24 @@ public class FunktionController {
     }
 
     /**
-     * Recht: {@code steuerung.starten_beenden} für starten und beenden, {@code steuerung.anhalten_fortsetzen} für
-     * anhalten und fortsetzen — durchgesetzt je Aktion an der Anlage (AP-03 IP-7).
+     * Recht: {@code steuerung.starten_beenden} — dieselbe Start-Berechtigung wie der anschließende Klick,
+     * durchgesetzt mit {@link RechtPruefung} an der Anlage (AP-03 IP-7). {@code @Recht} ist laut Architekturvertrag
+     * ausschließlich für Kunden-Schreibrouten; fremde Anlagen bleiben auch hier 404.
+     */
+    @GetMapping("/api/v1/sites/{siteId}/funktionen/steuern/pruefung")
+    public FunktionDto.SteuernPruefung steuernPruefung(@PathVariable UUID siteId) {
+        recht.pruefen(STARTEN_BEENDEN, RechtZiel.ANLAGE, siteId,
+                () -> FunktionAbgelehnt.nichtGefunden("Nicht gefunden."));
+        return dienst.steuernPruefung(siteId);
+    }
+
+    /**
+     * Recht: {@code funktion.steuern_einrichten} für aufnehmen, {@code steuerung.starten_beenden} für starten und
+     * beenden, {@code steuerung.anhalten_fortsetzen} für anhalten und fortsetzen — durchgesetzt je Aktion an der
+     * Anlage (AP-03 IP-7).
      */
     @PutMapping("/api/v1/sites/{siteId}/funktionen/steuern")
-    @Recht(value = {STARTEN_BEENDEN, ANHALTEN_FORTSETZEN}, ziel = RechtZiel.DIENST)
+    @Recht(value = {STEUERN_EINRICHTEN, STARTEN_BEENDEN, ANHALTEN_FORTSETZEN}, ziel = RechtZiel.DIENST)
     public FunktionDto.SteuernErgebnis steuernAnlage(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         String aktion = aktion(body);
@@ -99,6 +112,7 @@ public class FunktionController {
 
     private static final String STARTEN_BEENDEN = "steuerung.starten_beenden";
     private static final String ANHALTEN_FORTSETZEN = "steuerung.anhalten_fortsetzen";
+    private static final String STEUERN_EINRICHTEN = "funktion.steuern_einrichten";
 
     /**
      * Die genaue Prüfung je Aktion (AP-03 §4.3): starten/beenden = Rahmen, anhalten/fortsetzen = Betrieb. Eine
@@ -106,6 +120,7 @@ public class FunktionController {
      */
     private void pruefeSteuern(String aktion, RechtZiel ziel, UUID id) {
         String kennung = aktion == null ? null : switch (aktion) {
+            case "aufnehmen" -> STEUERN_EINRICHTEN;
             case "starten", "beenden" -> STARTEN_BEENDEN;
             case "anhalten", "fortsetzen" -> ANHALTEN_FORTSETZEN;
             default -> null;

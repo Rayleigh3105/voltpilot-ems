@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
@@ -124,6 +125,16 @@ class FunktionApiTest {
         ruhe(w, "AN-2");
         String vorher = stand(w);
 
+        JsonNode pruefung = ok(ruf(w, HttpMethod.GET, pruefung(w, "AN-2"), null), 200).body();
+        assertThat(pruefung.path("bereit").asBoolean(true)).isFalse();
+        assertThat(texte(pruefung.path("zeilen"), "pruefung"))
+                .containsExactly("box", "freigabe", "verbindungstest", "grenze", "hauptzaehler", "betriebsweise");
+        JsonNode box = pruefung.path("zeilen").get(0);
+        assertThat(box.path("fakt").asText()).isEqualTo("Keine Box verbunden");
+        assertThat(box.path("grund").asText()).isNotBlank();
+        assertThat(box.path("weg").asText()).contains("Verbinden Sie eine Box");
+        assertThat(stand(w)).as("die GET-Prüfung schreibt nichts").isEqualTo(vorher);
+
         Antwort a = ruf(w, HttpMethod.PUT, anlage(w, "AN-2"), Map.of("aktion", "starten"));
 
         assertThat(a.status()).as(a.body().toString()).isEqualTo(409);
@@ -181,6 +192,80 @@ class FunktionApiTest {
         JsonNode st1 = gestartet.body().path("standort");
         assertThat(st1.at("/steuern/zustand").asText()).isEqualTo("aktiv");
         assertThat(st1.at("/steuern/text").asText()).isEqualTo("Läuft mit " + w.name("AN-2"));
+    }
+
+    @Test
+    void a3PruefenOhneStartLaesstTeilnahmeBetriebsmodellRuheUndBefehlsverlaufUnveraendert() throws Exception {
+        Welt w = welt();
+        UUID funktion = funktion(w, "ST-1", "eingerichtet");
+        teilnahme(w, funktion, "AN-2", "eingerichtet", null, false);
+        ruhe(w, "AN-2");
+        gruen(w, "AN-2", "ST-1", "NA-2");
+        String vorher = stand(w);
+        List<Map<String, Object>> profileVorher = root.queryForList(
+                "SELECT profile, state FROM site_profile_state WHERE tenant_id = ? ORDER BY profile", w.mandant());
+        int befehleVorher = root.queryForObject(
+                "SELECT count(*) FROM device_command_log WHERE tenant_id = ?", Integer.class, w.mandant());
+
+        JsonNode p = ok(ruf(w, HttpMethod.GET, pruefung(w, "AN-2"), null), 200).body();
+
+        assertThat(p.path("bereit").asBoolean()).isTrue();
+        assertThat(p.path("zeilen")).allMatch(z -> z.path("bestanden").asBoolean());
+        assertThat(p.path("folgen").asText()).contains("spätestens in 15 Minuten");
+        assertThat(stand(w)).isEqualTo(vorher);
+        assertThat(root.queryForList(
+                "SELECT profile, state FROM site_profile_state WHERE tenant_id = ? ORDER BY profile", w.mandant()))
+                .isEqualTo(profileVorher);
+        assertThat(root.queryForObject("SELECT count(*) FROM device_command_log WHERE tenant_id = ?",
+                Integer.class, w.mandant())).isEqualTo(befehleVorher);
+        assertThat(ruhen(w, "AN-2")).as("bis zum ausdrücklichen Start in Ruhe").isEqualTo(1);
+    }
+
+    @Test
+    void a3AufnehmenLegtNurEntwurfUndRuheAnUndLoestKeineSteuerungAus() throws Exception {
+        Welt w = welt();
+        int profileVorher = root.queryForObject(
+                "SELECT count(*) FROM site_profile_state WHERE tenant_id = ?", Integer.class, w.mandant());
+        int befehleVorher = root.queryForObject(
+                "SELECT count(*) FROM device_command_log WHERE tenant_id = ?", Integer.class, w.mandant());
+
+        JsonNode antwort = ok(ruf(w, HttpMethod.PUT, anlage(w, "AN-2"), Map.of("aktion", "aufnehmen")), 200).body();
+
+        assertThat(antwort.path("aktion").asText()).isEqualTo("aufnehmen");
+        assertThat(root.queryForObject("SELECT zustand FROM funktion_teilnahme WHERE tenant_id = ? AND site_id = ?",
+                String.class, w.mandant(), w.id("AN-2"))).isEqualTo("entwurf");
+        assertThat(root.queryForObject("SELECT zustand FROM funktion WHERE tenant_id = ? AND standort_id = ? "
+                + "AND funktion = 'steuern'", String.class, w.mandant(), w.id("ST-1"))).isEqualTo("entwurf");
+        assertThat(ruhen(w, "AN-2")).isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM site_profile_state WHERE tenant_id = ?",
+                Integer.class, w.mandant())).isEqualTo(profileVorher);
+        assertThat(root.queryForObject("SELECT count(*) FROM device_command_log WHERE tenant_id = ?",
+                Integer.class, w.mandant())).isEqualTo(befehleVorher);
+    }
+
+    @Test
+    void startIstAllesOderNichtsWennDerFunktionsschrittScheitert() throws Exception {
+        Welt w = welt();
+        UUID funktion = funktion(w, "ST-1", "eingerichtet");
+        UUID teilnahme = teilnahme(w, funktion, "AN-2", "eingerichtet", null, false);
+        ruhe(w, "AN-2");
+        gruen(w, "AN-2", "ST-1", "NA-2");
+        String vorher = stand(w);
+        root.execute("CREATE OR REPLACE FUNCTION funktion_start_testfehler() RETURNS trigger LANGUAGE plpgsql AS "
+                + "$$ BEGIN RAISE EXCEPTION 'erzwungener Startfehler'; END $$");
+        root.execute("CREATE TRIGGER funktion_start_testfehler BEFORE UPDATE ON funktion FOR EACH ROW "
+                + "WHEN (NEW.zustand = 'aktiv' AND OLD.zustand <> 'aktiv') EXECUTE FUNCTION funktion_start_testfehler()");
+        try {
+            assertThatThrownBy(() -> ruf(w, HttpMethod.PUT, anlage(w, "AN-2"), Map.of("aktion", "starten")))
+                    .hasMessageContaining("erzwungener Startfehler");
+        } finally {
+            root.execute("DROP TRIGGER funktion_start_testfehler ON funktion");
+            root.execute("DROP FUNCTION funktion_start_testfehler()");
+        }
+        assertThat(stand(w)).as("Teilnahme, Funktion und Ruhe rollen gemeinsam zurück").isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT zustand FROM funktion_teilnahme WHERE id = ?", String.class, teilnahme))
+                .isEqualTo("eingerichtet");
+        assertThat(ruhen(w, "AN-2")).isEqualTo(1);
     }
 
     /** AP-01 IP-13: die neue Kunden-Route prüft NA-2, bevor sie denselben Box-Wunsch speichert. */
@@ -320,6 +405,7 @@ class FunktionApiTest {
         }
         assertThat(ruf(b, HttpMethod.PUT, "/api/v1/sites/keine-id/funktionen/steuern", Map.of("aktion", "anhalten"))
                 .status()).isEqualTo(404);
+        assertThat(ruf(b, HttpMethod.GET, pruefung(a, "AN-1"), null).status()).isEqualTo(404);
         assertThat(stand(a)).isEqualTo(vorher);
         // Die Übersicht des fremden Kundenbereichs kennt die Standorte von A nicht.
         JsonNode sicht = ok(ruf(b, HttpMethod.GET, "/api/v1/funktionen", null), 200).body();
@@ -640,6 +726,10 @@ class FunktionApiTest {
 
     private static String standort(Welt w, String kennzeichen) {
         return "/api/v1/standorte/" + w.id(kennzeichen) + "/funktionen/steuern";
+    }
+
+    private static String pruefung(Welt w, String kennzeichen) {
+        return anlage(w, kennzeichen) + "/pruefung";
     }
 
     private static String messen(Welt w, String kennzeichen) {

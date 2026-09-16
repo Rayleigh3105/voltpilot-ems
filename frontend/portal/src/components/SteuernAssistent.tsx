@@ -4,6 +4,8 @@ import { Input } from '../../designsystem/components/forms/Input';
 import {
   api,
   type Funktionen,
+  type FunktionSteuernErgebnis,
+  type FunktionSteuernPruefung,
   type Netzanschluss,
   type SiteEntity,
   type StandorteAmStichtag,
@@ -73,6 +75,8 @@ export function SteuernAssistent({
   const [betriebsmodell, setBetriebsmodell] = useState('');
   const [fehler, setFehler] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pruefung, setPruefung] = useState<FunktionSteuernPruefung | null>(null);
+  const [ergebnis, setErgebnis] = useState<FunktionSteuernErgebnis | null>(null);
 
   useEffect(() => {
     let lebt = true;
@@ -111,6 +115,21 @@ export function SteuernAssistent({
 
   useEffect(() => { if (fehler) fehlerRef.current?.focus(); }, [fehler]);
 
+  async function pruefungLaden() {
+    if (!anlageId) return;
+    setBusy(true);
+    setFehler(null);
+    try {
+      setPruefung(await api.funktionSteuernPruefung(anlageId));
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : 'Die Prüfliste konnte nicht geladen werden.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => { if (schritt === 5) void pruefungLaden(); }, [schritt, anlageId]);
+
   const zeilen = komponentenZeilen(entities);
   const anschluss = netzanschlussDerAnlage(netzanschluesse, anlageId ?? '');
   const vereinbart = kw(anschluss?.vereinbart_kw) ?? kw(vereinbartUebergang);
@@ -131,6 +150,20 @@ export function SteuernAssistent({
   async function weiter() {
     setFehler(null);
     if (schritt === 1 && !anlageId) return setFehler('Bitte wählen Sie eine Anlage.');
+    if (schritt === 1) {
+      const t = funktion?.steuern.anlagen.find((a) => a.id === anlageId)?.teilnahme;
+      if (!t || t.zustand === 'kein_objekt' || t.zustand === 'archiviert') {
+        setBusy(true);
+        try {
+          await api.funktionSteuern(anlageId!, 'aufnehmen');
+        } catch (e) {
+          setFehler(e instanceof Error ? e.message : 'Die Anlage konnte nicht aufgenommen werden.');
+          return;
+        } finally {
+          setBusy(false);
+        }
+      }
+    }
     if (schritt === 3) {
       if (grenzeEinwand) return setFehler(grenzeEinwand);
       setBusy(true);
@@ -150,6 +183,21 @@ export function SteuernAssistent({
     if (naechster) setSchritt(naechster);
   }
 
+  async function starten() {
+    if (!anlageId || !pruefung?.bereit) return;
+    setBusy(true);
+    setFehler(null);
+    try {
+      setErgebnis(await api.funktionSteuern(anlageId, 'starten'));
+      setSchritt(6);
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : 'Die Steuerung konnte nicht gestartet werden.');
+      await pruefungLaden();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const fuss = schritt === 4 ? (
     <div className="vp-sta-fuss">
       <Button variant="ghost" onClick={onClose}>{SPATER}</Button>
@@ -161,8 +209,19 @@ export function SteuernAssistent({
           steuerarten: Object.fromEntries(Object.entries(steuerarten).map(([id, e]) => [id, e.wunsch])),
           betriebsmodell: betriebsmodell || null,
         });
-        onClose();
+        setSchritt(5);
       }} disabled={!betriebsweiseVollstaendig}>Betriebsweise übernehmen</Button>
+    </div>
+  ) : schritt === 5 ? (
+    <div className="vp-sta-fuss">
+      <Button variant="ghost" onClick={onClose}>{SPATER}</Button>
+      {pruefung?.bereit
+        ? <Button onClick={starten} disabled={busy}>Steuerung starten</Button>
+        : <Button variant="outline" onClick={pruefungLaden} disabled={busy}>Erneut prüfen</Button>}
+    </div>
+  ) : schritt === 6 ? (
+    <div className="vp-sta-fuss vp-sta-fuss-fertig">
+      <Button onClick={onClose}>Fertig</Button>
     </div>
   ) : (
     <div className="vp-sta-fuss">
@@ -275,6 +334,36 @@ export function SteuernAssistent({
                 </fieldset>
               ) : <p className="vp-sta-hinweis">Kein Speicher — kein Betriebsmodell nötig.</p>}
               <p className="vp-sta-ruhe">Steuerung bleibt in Ruhe. Starten folgt erst nach der Prüfung in Schritt 6.</p>
+            </section>
+          )}
+
+          {schritt === 5 && (
+            <section className="vp-sta-schritt" data-schritt="pruefen" aria-labelledby={`${basis}-pruefen`}>
+              <h3 id={`${basis}-pruefen`}>Ist der Start sicher?</h3>
+              <p>Die Prüfliste wird aus den aktuellen Fakten der Anlage gebildet.</p>
+              {pruefung && (
+                <ul className="vp-sta-pruefliste" aria-label="Prüfliste">
+                  {pruefung.zeilen.map((z) => (
+                    <li key={z.pruefung} data-bestanden={z.bestanden === null ? 'offen' : z.bestanden ? 'ja' : 'nein'}>
+                      <span className="vp-sta-pruefmarke" aria-hidden="true">{z.bestanden ? '✓' : z.bestanden === null ? '–' : '!'}</span>
+                      <div><strong>{z.fakt}</strong>{z.grund && <span>{z.grund}</span>}{z.weg && <small>{z.weg}</small>}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {pruefung?.bereit && <aside className="vp-sta-folgen"><strong>Das passiert nach dem Start</strong><p>{pruefung.folgen}</p></aside>}
+              {!busy && !pruefung && !fehler && <p>Die Prüfliste ist noch nicht verfügbar.</p>}
+            </section>
+          )}
+
+          {schritt === 6 && (
+            <section className="vp-sta-schritt vp-sta-fertig" data-schritt="starten" aria-labelledby={`${basis}-starten`}>
+              <h3 id={`${basis}-starten`}>Steuerung ist gestartet</h3>
+              <p>Der nächste Fahrplan berücksichtigt die vorbereitete Betriebsweise. Ob die Box bereits ausführt, sehen Sie getrennt am Anlagenstatus.</p>
+              <div className="vp-sta-anlagenzeile">
+                <span><strong>{pruefung?.anlage ?? 'Anlage'}</strong><small>{pruefung?.standort}</small></span>
+                <strong>{ergebnis?.aktion === 'starten' ? 'Gestartet' : 'Start bestätigt'}</strong>
+              </div>
             </section>
           )}
         </AnlegenDialog>

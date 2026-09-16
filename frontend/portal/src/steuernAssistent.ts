@@ -9,7 +9,7 @@ import type { SteuerartWunsch } from './steuerartDialog';
 
 /** Reine Regeln des Assistenten „Steuern & Optimieren“ (AP-01 IP-10a). */
 export const STEUERN_SCHRITTE = ['Anlage', 'Freigeben', 'Grenze', 'Betriebsweise', 'Prüfen', 'Starten'] as const;
-export type SteuernSchritt = 1 | 2 | 3 | 4;
+export type SteuernSchritt = 1 | 2 | 3 | 4 | 5 | 6;
 
 export const STEUERN_TITEL = 'Steuern & Optimieren einrichten';
 export const STEUERN_TITEL_KURZ = 'Steuern & Optimieren';
@@ -36,7 +36,7 @@ export function schrittZaehler(schritt: SteuernSchritt): string {
 }
 
 export function vor(schritt: SteuernSchritt): SteuernSchritt | null {
-  return schritt < 4 ? ((schritt + 1) as SteuernSchritt) : null;
+  return schritt < 6 ? ((schritt + 1) as SteuernSchritt) : null;
 }
 
 export function zurueck(schritt: SteuernSchritt): SteuernSchritt | null {

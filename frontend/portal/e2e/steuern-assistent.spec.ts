@@ -7,13 +7,31 @@ import { FIXTURE_IDS, ahrenbergHeute } from '../src/test/standorteFixtures';
 const BILDER = process.env.STEUERN_ASSISTENT_BILDER;
 
 async function cloud(page: Page) {
-  const aufrufe = { grenze: 0, steuerart: 0, profiles: 0 };
+  const aufrufe = { grenze: 0, steuerart: 0, profiles: 0, aufnehmen: 0, starten: 0 };
   await page.route('**/api/v1/**', async (route) => {
     const req = route.request();
     const pfad = new URL(req.url()).pathname;
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (pfad === '/api/v1/standorte') return json(ahrenbergHeute());
     if (pfad === '/api/v1/funktionen') return json(ahrenbergFunktionen());
+    if (pfad.endsWith(`/sites/${FIXTURE_IDS.an2}/funktionen/steuern/pruefung`)) return json({
+      anlage_id: FIXTURE_IDS.an2, anlage: 'Werk Ahrenberg – Halle 2', standort_id: FIXTURE_IDS.st1,
+      standort: 'Werk Ahrenberg', bereit: true,
+      zeilen: [
+        { pruefung: 'box', bestanden: true, fakt: 'Box Halle 2 verbunden', grund: null, weg: null },
+        { pruefung: 'freigabe', bestanden: true, fakt: 'Ladepunkt Parkplatz Halle 2 freigegeben', grund: null, weg: null },
+        { pruefung: 'verbindungstest', bestanden: true, fakt: 'Verbindungstest OCPP bestanden', grund: null, weg: null },
+        { pruefung: 'grenze', bestanden: true, fakt: 'Grenze 200 kW ≤ 200 kW vereinbart', grund: null, weg: null },
+        { pruefung: 'hauptzaehler', bestanden: true, fakt: 'Hauptzähler MS-10 liefert Daten', grund: null, weg: null },
+        { pruefung: 'betriebsweise', bestanden: true, fakt: 'Betriebsweise Netzschonend laden gesetzt', grund: null, weg: null },
+      ],
+      folgen: 'Ab dem nächsten Fahrplan, spätestens in 15 Minuten, lädt VoltPilot den Ladepunkt netzschonend innerhalb 200 kW abzüglich Hauslast und Reserve. Nichts anderes ändert sich. Sie können jederzeit anhalten.',
+    });
+    if (pfad.endsWith(`/sites/${FIXTURE_IDS.an2}/funktionen/steuern`) && req.method() === 'PUT') {
+      const aktion = (req.postDataJSON() as { aktion: 'aufnehmen' | 'starten' }).aktion;
+      aufrufe[aktion] += 1;
+      return json({ aktion, betroffen: [{ id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2' }], standort: ahrenbergFunktionen().standorte[0] });
+    }
     if (pfad.endsWith(`/sites/${FIXTURE_IDS.an2}/entities`)) return json({ registry: null, localSetup: [], staleOnDevice: [], entities: [
       { id: 'K-9', entityType: 'ocpp-charge-point', typeLabel: 'Ladepunkt', role: 'consumer', label: 'Parkplatz Halle 2', control: true, deviceId: 'E-2', capabilities: null, guards: null, syncStatus: 'in_sync', observed: null, edgeSourceId: null },
       { id: 'EK-1', entityType: 'meter', typeLabel: 'Energiekarte EK-1', role: 'grid', label: 'Energiekarte EK-1', control: false, deviceId: 'E-2', capabilities: null, guards: null, syncStatus: 'in_sync', observed: null, edgeSourceId: null },
@@ -61,7 +79,7 @@ async function bild(page: Page, name: string) {
 
 for (const breite of [375, 1440] as const) {
   for (const runde of [1, 2] as const) {
-    test(`Referenzfall 5 · Schritte 1–4 · ${breite}px · Runde ${runde}`, async ({ page }) => {
+    test(`Referenzfall 5 · Schritte 1–6 · ${breite}px · Runde ${runde}`, async ({ page }) => {
       await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
       const aufrufe = await cloud(page);
       await page.goto('/e2e/steuern-assistent.html');
@@ -90,6 +108,19 @@ for (const breite of [375, 1440] as const) {
       await bild(page, `schritt-4-${breite}-r${runde}`);
       expect(aufrufe.profiles).toBe(0);
       expect(aufrufe.steuerart).toBe(0);
+      await page.getByRole('button', { name: 'Betriebsweise übernehmen' }).click();
+
+      await expect(page.getByText('Ist der Start sicher?')).toBeVisible();
+      await expect(page.getByText('Grenze 200 kW ≤ 200 kW vereinbart')).toBeVisible();
+      await page.locator('.vp-sta-folgen').scrollIntoViewIfNeeded();
+      await bild(page, `schritt-5-${breite}-r${runde}`);
+      await page.getByRole('button', { name: 'Steuerung starten' }).click();
+
+      await expect(page.getByText('Steuerung ist gestartet')).toBeVisible();
+      await expect(page.getByText('Werk Ahrenberg – Halle 2')).toBeVisible();
+      await bild(page, `schritt-6-${breite}-r${runde}`);
+      expect(aufrufe.aufnehmen).toBe(1);
+      expect(aufrufe.starten).toBe(1);
     });
   }
 }
