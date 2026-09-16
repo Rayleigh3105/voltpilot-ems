@@ -162,11 +162,11 @@ describe('KennzahlAnlegenDialog', () => {
     fireEvent.click(await screen.findByRole('option', { name: /^MS-18 Montagehalle Lindach gesamt/ }));
 
     const hebel = await screen.findByTestId('kennzahl-hebel-gesamtwert');
-    expect(hebel.textContent).toContain('Mehrere Messstellen? Legen Sie zuerst einen Gesamtwert an');
-    expect(hebel.textContent).toContain('Der Gesamtwert entsteht an der Anlage Werk Ahrenberg – Halle 2.');
+    expect(hebel.textContent).toContain('Mehrere Messstellen? Legen Sie zuerst einen Summenwert an');
+    expect(hebel.textContent).toContain('Der Summenwert entsteht an der Anlage Werk Ahrenberg – Halle 2.');
     expect(weiterKnopf().disabled).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Gesamtwert anlegen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Summenwert anlegen' }));
     const attrappe = screen.getByTestId('gesamtwert-attrappe');
     expect(attrappe.getAttribute('data-anlage')).toBe(FIXTURE_IDS.an2);
     fireEvent.click(screen.getByRole('button', { name: 'Gesamtwert speichern' }));

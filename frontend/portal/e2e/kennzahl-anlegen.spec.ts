@@ -112,13 +112,13 @@ for (const breite of [375, 1440]) {
     await (await listeVon(page, menge)).getByRole('option', { name: /^MS-18 Montagehalle Lindach gesamt/ }).click();
     await page.keyboard.press('Escape');
     const hebel = dialog.getByTestId('kennzahl-hebel-gesamtwert');
-    await expect(hebel).toContainText('Mehrere Messstellen? Legen Sie zuerst einen Gesamtwert an');
-    await expect(hebel).toContainText('Der Gesamtwert entsteht an der Anlage Werk Ahrenberg – Halle 2.');
+    await expect(hebel).toContainText('Mehrere Messstellen? Legen Sie zuerst einen Summenwert an');
+    await expect(hebel).toContainText('Der Summenwert entsteht an der Anlage Werk Ahrenberg – Halle 2.');
     await expect(weiter(dialog)).toBeDisabled();
     await pruefeUndFotografiere(page, breite, 's2-hebel');
 
-    await hebel.getByRole('button', { name: 'Gesamtwert anlegen' }).click();
-    const gesamtwert = page.getByRole('dialog', { name: 'Neuer Gesamtwert' });
+    await hebel.getByRole('button', { name: 'Summenwert anlegen' }).click();
+    const gesamtwert = page.getByRole('dialog', { name: 'Summenwert anlegen' });
     await expect(gesamtwert).toBeVisible();
     await expect(page.locator('.vp-modal')).toHaveCount(2);
     await pruefeUndFotografiere(page, breite, 's2-gesamtwert-darueber', { ganz: false });

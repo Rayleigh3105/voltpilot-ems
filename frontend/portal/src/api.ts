@@ -6687,6 +6687,16 @@ export const api = {
     request<MeasurementSelectionState>(
       `/api/v1/devices/${deviceId}/measurement-selection${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}`,
     ),
+  summenwertQuellen: (siteId: string) =>
+    request<Array<{ entityId: string; deviceId: string | null; name: string; grund: string | null }>>(`/api/v1/sites/${siteId}/summenwert-quellen`),
+
+  /** Flüchtige Katalog-Lesung; verändert weder Selektion noch Register. */
+  measurementLesen: (deviceId: string, entityId: string, pointKey: string) =>
+    request<import('./summenwertQuellen').Sitzungswert>(
+      `/api/v1/devices/${deviceId}/measurement-selection/lesen?${new URLSearchParams({ entityId, pointKey })}`,
+      { method: 'POST' },
+    ),
+
   measurementCatalog: (deviceId: string, params: URLSearchParams) =>
     request<MeasurementCatalogResult>(
       `/api/v1/devices/${deviceId}/measurement-selection/catalog?${params.toString()}`,

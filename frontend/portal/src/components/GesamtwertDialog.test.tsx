@@ -1,205 +1,142 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api, type MeasurementCatalogPoint } from '../api';
 import { GesamtwertDialog } from './GesamtwertDialog';
+import { SummenwertAssistent } from './SummenwertAssistent';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
-/**
- * Der geführte Assistent „Gesamtwert" (Konzept `vp-helfer-konzept-h1`).
- *
- * Der Ankerfall ist der Deye SUN-30K: PV 1 + PV 2 + PV 3 + Mikrowechselrichter
- * ergeben einen Gesamt-PV-Wert. Der Assistent liest denselben Messwert-Baum wie
- * der Verlauf-Explorer, filtert auf zueinander passende Messgrößen und rechnet
- * die Vorschau live — fehlt ein Wert, bleibt sie ehrlich unvollständig.
- */
-
-const KANAELE = [
-  { kanal: 'pv1_power_kw', wert: 5.2 },
-  { kanal: 'pv2_power_kw', wert: 4.1 },
-  { kanal: 'pv3_power_kw', wert: 3.1 },
-  { kanal: 'microinverter_power_kw', wert: 3.1 },
-];
-
-function entities(): unknown {
-  return {
-    registry: null,
-    entities: [
-      {
-        id: 'inv',
-        entityType: 'modbus-generic',
-        typeLabel: 'Wechselrichter',
-        role: 'grid',
-        label: 'Deye SUN-30K',
-        control: false,
-        deviceId: 'd1',
-        capabilities: { measure: KANAELE.map((k) => ({ channel: k.kanal, unit: 'kW' })) },
-        guards: null,
-        syncStatus: 'in_sync',
-        observed: { health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
-        edgeSourceId: null,
-      },
-    ],
-    localSetup: [],
-    staleOnDevice: [],
-  };
+const gen = 'deye.hybrid_3p.generator-smartload-microinverter.generator-power';
+function point(key: string, value: number | null, extra = {}): MeasurementCatalogPoint {
+  return { pointKey: key, labelDe: key === gen ? 'Gen-Port' : key, group: 'PV', quantity: 'active_power',
+    direction: 'generation', aggregationKind: 'gauge', unit: 'kW', selected: true,
+    decodedValue: value === null ? null : String(value), lastReadAt: new Date().toISOString(),
+    estimatedDataPerYearBytes: 400_000_000, ...extra } as MeasurementCatalogPoint;
 }
-
-function topology(): unknown {
-  return {
-    schemaVersion: '1.0',
-    entities: [
-      { id: 'inv', entityType: 'modbus-generic', typeLabel: 'Wechselrichter', label: 'Deye SUN-30K', category: 'meter', health: 'ok', capabilities: [] },
-    ],
-    topology: { schema_version: '1.0', nodes: [] },
-  };
+function stub(points = [point('PV 1', 5.2), point('PV 2', 4.1), point('PV 3', 3.1), point(gen, null, { selected: false, direction: null })]) {
+  vi.spyOn(api, 'summenwertQuellen').mockResolvedValue([{ entityId: 'inv', deviceId: 'd1', name: 'Deye SUN-30K', grund: null }]);
+  vi.spyOn(api, 'measurementCatalog').mockResolvedValue({ points, total: points.length } as never);
+  vi.spyOn(api, 'measurementSelection').mockResolvedValue({ desiredRevision: 1 } as never);
+  const observe = vi.spyOn(api, 'changeMeasurementSelection').mockResolvedValue({ desiredRevision: 2 } as never);
+  const read = vi.spyOn(api, 'measurementLesen').mockResolvedValue({ wert: 2, einheit: 'kW', gelesen_am: new Date().toISOString() });
+  vi.spyOn(api, 'geraetRolle').mockResolvedValue({ zugeordnet: null } as never);
+  const save = vi.spyOn(api, 'berechneteMessstelleAnlegen').mockImplementation(async (b) => ({ id: 'gw', name: b.name, kennzeichen: 'MS-0007' }) as never);
+  return { read, observe, save };
 }
-
-function messkanaele(): unknown {
-  return {
-    siteId: 's-1',
-    komponente: 'inv',
-    inhaltsstand: '2026.09.11.1',
-    messkanaele: KANAELE.map((k) => ({
-      kanal: k.kanal,
-      anzeigename: null,
-      einheit: 'kW',
-      wertart: 'Momentanwert',
-      groesse: 'Wirkleistung',
-      richtung: 'Erzeugung',
-      quantity: 'Power',
-      direction: 'Generation',
-      kadenzS: 5,
-      aktiv: true,
-    })),
-  };
+function mount(device = false, onGespeichert = vi.fn()) {
+  const common = { open: true, siteId: 's1', onClose: vi.fn(), onGespeichert };
+  return device ? render(<SummenwertAssistent {...common} deviceId="d1" entityId="inv" geraetName="Deye SUN-30K" />) : render(<GesamtwertDialog {...common} />);
 }
-
-function history(): unknown {
-  const buckets = (last: number) => [
-    { start: '2026-09-12T09:45:00Z', avg: last, min: last, max: last, last, n: 1 },
-  ];
-  return {
-    range: 'day',
-    from: '',
-    to: '',
-    bucketMinutes: 5,
-    channels: Object.fromEntries(KANAELE.map((k) => [k.kanal, buckets(k.wert)])),
-  };
-}
-
-function stub(over: { history?: unknown } = {}) {
-  vi.spyOn(api, 'siteEntities').mockResolvedValue(entities() as never);
-  vi.spyOn(api, 'topology').mockResolvedValue(topology() as never);
-  vi.spyOn(api, 'komponenteMesskanaele').mockResolvedValue(messkanaele() as never);
-  vi.spyOn(api, 'entityHistory').mockResolvedValue((over.history ?? history()) as never);
-  vi.spyOn(api, 'kennzeichenVorschlag').mockResolvedValue({ kennzeichen: 'MS-0007' } as never);
-}
-
-function mount(props: Partial<Parameters<typeof GesamtwertDialog>[0]> = {}) {
-  return render(
-    <GesamtwertDialog
-      open
-      siteId="s-1"
-      onClose={props.onClose ?? (() => {})}
-      onGespeichert={props.onGespeichert}
-      {...props}
-    />,
-  );
-}
-
-/** Wählt die vier PV-Werte über den Mehrfach-Picker. */
-async function waehleVier() {
-  fireEvent.click(await screen.findByRole('combobox', { name: /Messwerte/ }));
-  for (const name of [/PV 1/, /PV 2/, /PV 3/, /Mikrowechselrichter/]) {
-    fireEvent.click(await screen.findByRole('option', { name }));
-  }
-}
-
+function next() { fireEvent.click(screen.getByRole('button', { name: 'Weiter', exact: true })); }
+async function rolle() { next(); await screen.findByText('Wie zählen wir sie?'); next(); await screen.findByLabelText('Name des Summenwerts'); next(); }
 afterEach(() => vi.restoreAllMocks());
 
-describe('GesamtwertDialog', () => {
-  it('führt in fünf Schritten und lädt den Messwert-Baum erst beim Öffnen', async () => {
-    stub();
-    mount();
-    await waitFor(() => expect(document.body.textContent).toContain('Schritt 1 von 5'));
-    for (const s of ['Werte', 'Rechnen', 'Name', 'Vorschau', 'Fertig']) {
-      expect(document.body.textContent).toContain(s);
-    }
+describe('ein Summenwert-Assistent für Gerät und Anlage', () => {
+  it('Anlagen-Einstieg beginnt ohne Vorauswahl und führt in fünf Schritten ohne Rolle', async () => {
+    const { save } = stub(); const cb = vi.fn(); mount(false, cb);
+    const choose = await screen.findByRole('button', { name: 'PV 1 mitzählen' });
+    expect(screen.getByRole('button', { name: 'Weiter' })).toBeDisabled();
+    fireEvent.click(choose); fireEvent.click(screen.getByRole('button', { name: 'PV 2 mitzählen' }));
+    await rolle();
+    expect(screen.getByRole('button', { name: 'keine Rolle', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern', exact: true }));
+    await screen.findByText(/ist angelegt/);
+    expect(save.mock.calls[0][0].rolle).toBeUndefined();
+    expect(save.mock.calls[0][0].terme).toHaveLength(2);
+    expect(cb).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Fertig', exact: true })).toBeVisible();
+    expect(screen.getByRole('dialog')).toBeVisible();
   });
 
-  it('spielt den Ankerfall SUN-30K durch: PV1+PV2+PV3+Mikro → Gesamt-PV = 15,5 kW', async () => {
-    stub();
-    const onGespeichert = vi.fn();
-    const anlegen = vi
-      .spyOn(api, 'berechneteMessstelleAnlegen')
-      .mockResolvedValue({ id: 'gw-1', kennzeichen: 'MS-0007', name: 'Gesamt-PV', art: 'berechnet', medium: 'Strom', lebenszyklus: 'aktiv', fehlt: [] } as never);
-    mount({ onGespeichert });
+  it('Gen-Port: ein Lesen je Sitzung, keine Beobachtung vor Speichern, atomar mit PV-Rolle', async () => {
+    const { read, observe, save } = stub(); mount(true);
+    await screen.findByRole('button', { name: 'PV 1 entfernen' });
+    const lesen = screen.getByRole('button', { name: 'Gen-Port einmal lesen', hidden: true });
+    fireEvent.click(lesen);
+    await waitFor(() => expect(read).toHaveBeenCalledOnce());
+    await screen.findByText(/jetzt gelesen/);
+    expect(observe).not.toHaveBeenCalled();
+    const entscheid = screen.getByText('Am Gen-Port hängt ein Mikrowechselrichter?').closest('.vp-sw-suggest')!;
+    fireEvent.click(within(entscheid as HTMLElement).getByRole('checkbox', { hidden: true }));
+    fireEvent.click(within(entscheid as HTMLElement).getByRole('checkbox', { hidden: true }));
+    fireEvent.click(within(entscheid as HTMLElement).getByRole('checkbox', { hidden: true }));
+    expect(read).toHaveBeenCalledOnce();
+    await rolle();
+    fireEvent.click(screen.getByRole('button', { name: 'PV-Produktion', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern', exact: true }));
+    await screen.findByText(/ist angelegt/);
+    expect(observe).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0]).toMatchObject({ rolle: { entity_id: 'inv', role: 'pv', ersetzen: false } });
+    expect(save.mock.calls[0][0].terme[3]).toMatchObject({ point_key: gen, gilt_als_erzeugung: true });
+    expect(document.body.textContent).toContain('14,4');
+  });
 
-    // Schritt 1: vier Werte
-    await screen.findByRole('combobox', { name: /Messwerte/ });
-    await waehleVier();
-    fireEvent.click(await screen.findByRole('button', { name: /Weiter · 4 Werte/ }));
+  it('auch am Gerät ändern Vorzeichen und Faktor genau die Anfrage', async () => {
+    const { save } = stub(); mount(true); await screen.findByRole('button', { name: 'PV 1 entfernen' });
+    next();
+    fireEvent.click(within(screen.getByRole('group', { name: 'Vorzeichen für PV 2' })).getByRole('button', { name: '−' }));
+    fireEvent.click(screen.getByRole('button', { name: /Feineinstellung/ }));
+    fireEvent.change(screen.getByLabelText('Faktor für PV 2'), { target: { value: '0.5' } });
+    next(); next(); fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save.mock.calls[0][0].terme[1]).toMatchObject({ vorzeichen: '-', faktor: 0.5 });
+  });
 
-    // Schritt 2: Rechnen (Standard +)
-    await waitFor(() => expect(document.body.textContent).toContain('Wie zählen wir sie?'));
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+  it('ein fehlender oder veralteter Eingang liefert keine Teilsumme und nie Null', async () => {
+    stub([point('PV 1', 5.2), point('PV 2', 4.1, { lastReadAt: '2000-01-01T00:00:00Z' })]); mount(true);
+    await screen.findByRole('button', { name: 'PV 1 entfernen' });
+    expect(screen.getByText('unvollständig', { exact: true })).toBeVisible();
+    expect(screen.getByText(/liefert keinen aktuellen Wert/)).toHaveTextContent('PV 2');
+  });
 
-    // Schritt 3: Name-Vorschlag „Gesamt-PV" + Kennzeichen
-    await waitFor(() => {
-      const feld = screen.getByLabelText('Name') as HTMLInputElement;
-      expect(feld.value).toBe('Gesamt-PV');
-    });
-    expect(document.body.textContent).toContain('MS-0007');
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+  it('ein fehlgeschlagenes Lesen bleibt fehlend und schreibt nichts', async () => {
+    const { read, observe } = stub(); read.mockResolvedValue({ wert: null, einheit: 'kW', gelesen_am: null, grund: 'box_offline' });
+    mount(true); fireEvent.click(await screen.findByRole('button', { name: 'Gen-Port einmal lesen', hidden: true }));
+    await screen.findByText(/die Box antwortet nicht/); expect(observe).not.toHaveBeenCalled();
+  });
 
-    // Schritt 4: Vorschau 15,5 kW + Rechenzeile
-    await waitFor(() => expect(document.body.textContent).toContain('15,5'));
-    expect(document.body.textContent).toContain('Wirkleistung');
+  it('ohne Einrichtungsrecht kann ein Summenwert nur ohne Rolle gespeichert werden', async () => {
+    stub(); const me = rechteSeed().me; me.unternehmen_rechte = me.unternehmen_rechte.filter((r) => r !== 'geraet.einrichten');
+    setSelbstauskunft(me); mount(true); await screen.findByRole('button', { name: 'PV 1 entfernen' }); await rolle();
+    expect(screen.queryByRole('button', { name: 'PV-Produktion', exact: true })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Speichern' })).toBeEnabled();
+  });
+
+  it('weitere Geräte der Anlage bilden einen Verbrauch mit einer atomaren Rollenwahl', async () => {
+    const { save } = stub([point('Wirkleistung', 148.6, { direction: 'import' })]);
+    vi.mocked(api.summenwertQuellen).mockResolvedValue([
+      { entityId: 'inv', deviceId: 'd1', name: 'Spritzguss', grund: null },
+      { entityId: 'druck', deviceId: 'd2', name: 'Druckluft', grund: null },
+    ]);
+    mount(); await screen.findAllByRole('button', { name: 'Wirkleistung mitzählen' });
+    for (const b of screen.getAllByRole('button', { name: 'Wirkleistung mitzählen' })) fireEvent.click(b);
+    await rolle(); fireEvent.click(screen.getByRole('button', { name: 'Verbrauch', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
-
-    // Der Server bekommt die vier Terme als gewichtete Summe (+/1).
-    await waitFor(() => expect(anlegen).toHaveBeenCalled());
-    expect(anlegen.mock.calls[0][0]).toEqual({
-      name: 'Gesamt-PV',
-      terme: [
-        { eingang_art: 'messkanal', entity_id: 'inv', point_key: 'pv1_power_kw', vorzeichen: '+', faktor: 1 },
-        { eingang_art: 'messkanal', entity_id: 'inv', point_key: 'pv2_power_kw', vorzeichen: '+', faktor: 1 },
-        { eingang_art: 'messkanal', entity_id: 'inv', point_key: 'pv3_power_kw', vorzeichen: '+', faktor: 1 },
-        { eingang_art: 'messkanal', entity_id: 'inv', point_key: 'microinverter_power_kw', vorzeichen: '+', faktor: 1 },
-      ],
-    });
-
-    // Schritt 5: Fertig
-    await waitFor(() => expect(document.body.textContent).toContain('ist angelegt'));
-    expect(onGespeichert).toHaveBeenCalled();
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save.mock.calls[0][0].terme.map((t) => t.entity_id)).toEqual(['inv', 'druck']);
+    expect(save.mock.calls[0][0].rolle?.role).toBe('consumer');
   });
 
-  it('EHRLICHKEIT: fehlt ein Wert, zeigt die Vorschau „unvollständig", nie eine Teilsumme', async () => {
-    // Ein Kanal ohne aktuellen Wert (leere Reihe).
-    const luecke = history() as { channels: Record<string, unknown[]> };
-    luecke.channels['microinverter_power_kw'] = [];
-    stub({ history: luecke });
-    mount();
-
-    await screen.findByRole('combobox', { name: /Messwerte/ });
-    await waehleVier();
-    fireEvent.click(await screen.findByRole('button', { name: /Weiter · 4 Werte/ }));
-    await screen.findByText('Wie zählen wir sie?');
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await screen.findByLabelText('Name');
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-
-    await waitFor(() => expect(document.body.textContent).toContain('unvollständig'));
-    // Die Summe wird NICHT als kleinere Zahl gezeigt.
-    expect(document.body.textContent).not.toContain('12,4');
+  it('Netz entsteht als Bezug minus Abgabe und fragt vor dem Ablösen', async () => {
+    const { save } = stub([point('Bezug', 8, { direction: 'import' }), point('Abgabe', 2, { direction: 'export' })]);
+    vi.spyOn(api, 'rollenWert').mockResolvedValue({ zuordnung_vorhanden: true, geraete: [{ name: 'Bisheriger Netzwert', art: 'messkanal' }] } as never);
+    mount(); fireEvent.click(await screen.findByRole('button', { name: 'Bezug mitzählen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abgabe mitzählen' })); next();
+    fireEvent.click(within(screen.getByRole('group', { name: 'Vorzeichen für Abgabe' })).getByRole('button', { name: '−' }));
+    next(); next(); fireEvent.click(screen.getByRole('button', { name: 'Netz', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await screen.findByText('Zuordnung ersetzen?'); expect(save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Ersetzen', exact: true }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save.mock.calls[0][0].rolle).toMatchObject({ role: 'grid', ersetzen: true });
+    expect(save.mock.calls[0][0].terme[1].vorzeichen).toBe('-');
   });
 
-  it('ohne summierbare Werte wird nichts angeboten, sondern gesagt', async () => {
-    vi.spyOn(api, 'siteEntities').mockResolvedValue({ registry: null, entities: [], localSetup: [], staleOnDevice: [] } as never);
-    vi.spyOn(api, 'topology').mockResolvedValue(null as never);
-    vi.spyOn(api, 'kennzeichenVorschlag').mockResolvedValue({ kennzeichen: 'MS-0007' } as never);
-    mount();
-    await waitFor(() =>
-      expect(document.body.textContent).toContain('meldet noch keine Messwerte'),
-    );
+  it('ein atomarer Rollenfehler lässt die Anfrage im Dialog korrigierbar', async () => {
+    const { save } = stub(); save.mockRejectedValue(new Error('Netzwert schon vorhanden.'));
+    mount(true); await screen.findByRole('button', { name: 'PV 1 entfernen' }); await rolle();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Netzwert schon vorhanden.');
+    expect(screen.getByRole('button', { name: 'Speichern' })).toBeEnabled();
   });
 });

@@ -84,15 +84,29 @@ public class DeviceMeasurementSelectionController {
     private final ObjectProvider<MeasurementConfigPublisher> publisher;
     private final MeasurementHistoryService history;
     private final BestandGeraeteCsv bestandCsv;
+    private final com.voltpilot.api.measurement.MeasurementPointReadService reads;
 
     public DeviceMeasurementSelectionController(MeasurementSelectionService selections,
             MeasurementCatalog catalog, ObjectProvider<MeasurementConfigPublisher> publisher,
-            MeasurementHistoryService history, BestandGeraeteCsv bestandCsv) {
+            MeasurementHistoryService history, BestandGeraeteCsv bestandCsv,
+            com.voltpilot.api.measurement.MeasurementPointReadService reads) {
         this.selections = selections;
         this.catalog = catalog;
         this.publisher = publisher;
         this.history = history;
         this.bestandCsv = bestandCsv;
+        this.reads = reads;
+    }
+
+    /** Recht: {@code messwerte.ansehen}; flüchtige Einmal-Lesung, keine Selektion und kein Journal. */
+    @PostMapping("/lesen")
+    @Recht(value = "messwerte.ansehen", ziel = RechtZiel.DEVICE)
+    public com.voltpilot.api.measurement.MeasurementPointReadService.Reading lesen(
+            @PathVariable UUID deviceId, @RequestParam UUID entityId, @RequestParam String pointKey,
+            @AuthenticationPrincipal Jwt caller) {
+        var who = actor(caller);
+        return reads.read(deviceId, entityId, pointKey,
+                new com.voltpilot.api.registerwrite.RegisterWriteService.Actor(who.subject(), who.displayName(), false));
     }
 
     /**

@@ -275,3 +275,29 @@ export function gruppen(zeilen: RegisterZeile[], query = ''): Gruppen {
     alle: gefiltert.filter((z) => !z.beobachtet),
   };
 }
+
+
+/** Einmal gelesene Werte gehören ausschließlich zur geöffneten Sitzung. */
+export interface Sitzungswert {
+  wert: number | null;
+  einheit: string | null;
+  gelesen_am: string | null;
+  grund?: string | null;
+}
+
+/** Ein Sitzungs-Ergebnis schlägt den gespeicherten Zustand, auch bei fehlendem Wert. */
+export function mitSitzungswert(zeile: RegisterZeile, gelesen?: Sitzungswert): RegisterZeile {
+  if (!gelesen) return zeile;
+  return { ...zeile, wert: gelesen.wert != null && Number.isFinite(gelesen.wert) ? gelesen.wert : null,
+    stand: gelesen.gelesen_am, einheit: gelesen.einheit ?? zeile.einheit };
+}
+
+export function standText(stand: string | null, jetztGelesen = false): string {
+  if (!stand || !Number.isFinite(Date.parse(stand))) return 'Stand unbekannt';
+  const zeit = new Date(stand).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return `${jetztGelesen ? 'jetzt gelesen' : 'Stand'} ${zeit} Uhr`;
+}
+
+export function leseGrund(grund: string | null | undefined): string {
+  return grund === 'box_offline' ? 'nicht gelesen (die Box antwortet nicht)' : 'nicht gelesen (dieses Register ist gerade nicht lesbar)';
+}

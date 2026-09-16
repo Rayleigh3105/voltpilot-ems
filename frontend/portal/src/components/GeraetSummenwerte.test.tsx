@@ -4,7 +4,7 @@ import { api, type GeraetSummenwert } from "../api";
 import { setSelbstauskunft } from "../rollen";
 import { rechteSeed } from "../test/rollenFixtures";
 import { GeraetSummenwerte } from "./GeraetSummenwerte";
-vi.mock("./SummenwertAssistent", () => ({ SummenwertAssistent: () => null }));
+vi.mock("./SummenwertAssistent", () => ({ useSummenwertAssistent: () => ({ oeffneSummenwertAssistent: vi.fn(), assistent: null }) }));
 const z: GeraetSummenwert = {
   messstelle: {
     id: "m1",
