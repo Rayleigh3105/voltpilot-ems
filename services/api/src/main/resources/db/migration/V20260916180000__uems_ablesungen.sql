@@ -210,9 +210,15 @@ BEGIN
     UNION ALL SELECT version FROM public.messreihe_periode_version WHERE tenant_id=p_tenant
       AND messstelle_id=p_messstelle AND ebene=p_art AND tag=p_tag) v;
   IF p_version <> coalesce(letzte,0)+1 OR (p_version>1 AND NOT EXISTS (
-      SELECT 1 FROM public.messreihe_korrektur k WHERE k.tenant_id=p_tenant AND k.kennung=p_korrektur
-        AND k.fassung=p_korrektur_fassung AND k.status IN ('freigegeben','zurueckgenommen')
-        AND k.reihen->0->>'messstelle_id'=p_messstelle::text AND k.reihen->0->>'spur'='ablesung')) THEN
+      SELECT 1 FROM public.messreihe_korrektur k
+        JOIN public.messreihe_korrektur anlage ON anlage.tenant_id=k.tenant_id
+          AND anlage.kennung=k.kennung AND anlage.fassung=1
+        WHERE k.tenant_id=p_tenant AND k.kennung=p_korrektur
+          AND k.fassung=p_korrektur_fassung AND k.status IN ('freigegeben','zurueckgenommen')
+          AND NOT EXISTS (SELECT 1 FROM public.messreihe_korrektur folge
+              WHERE folge.tenant_id=k.tenant_id AND folge.kennung=k.kennung AND folge.fassung>k.fassung)
+          AND anlage.reihen->0->>'messstelle_id'=p_messstelle::text
+          AND anlage.reihen->0->>'spur'='ablesung')) THEN
     RAISE EXCEPTION 'Ablesungsperiode braucht die nächste freigegebene Fassung' USING ERRCODE='check_violation';
   END IF;
   a := p_tag::timestamp AT TIME ZONE p_zone;
