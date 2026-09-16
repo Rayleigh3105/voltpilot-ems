@@ -2,6 +2,7 @@ package com.voltpilot.api.zugriff;
 
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.RechteAbleitung.KontoZustand;
 import com.voltpilot.api.uems.RechteAbleitung.Art;
 import com.voltpilot.api.uems.RechteAbleitung.Konto;
 import com.voltpilot.api.uems.RechteAbleitung.Rolle;
@@ -130,9 +131,11 @@ public class ZugriffKontextLader {
                 return Ergebnis.keiner();
             }
             var spiegel = zugriffe.spiegel(sub);
-            if (spiegel.isPresent() && (spiegel.get().zustand() == com.voltpilot.api.uems.RechteAbleitung.KontoZustand.GESPERRT
-                    || spiegel.get().zustand() == com.voltpilot.api.uems.RechteAbleitung.KontoZustand.ENTFERNT)) {
-                return Ergebnis.abgewiesenWeilBeendet(ZugriffBeendet.standort(null));
+            if (spiegel.filter(b -> b.zustand() == KontoZustand.GESPERRT
+                    || b.zustand() == KontoZustand.ENTFERNT).isPresent()) {
+                // Auch ein altes JWT und die E12-Bestandsregel dürfen die Kontosperre nicht umgehen.
+                return Ergebnis.mit(new Zugriff(sub, konto, tenant, Zugang.KONTO, List.of(), jetzt),
+                        ZugriffBeendet.standort(null));
             }
             ZugriffRepository.Stand stand = stand(sub, jetzt);
             Zugriff z = new Zugriff(sub, konto, tenant, Zugang.KONTO, stand.wirksam(), jetzt,

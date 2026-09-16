@@ -121,9 +121,10 @@ class BenutzerVerwaltungApiTest {
         assertThat(ruf(post("/api/v1/benutzer/" + sub + "/sperren", "{}"), konto(JONAS, DEMO)).status()).isEqualTo(204);
         Antwort danach = ruf(get("/api/v1/sites"), alt);
         assertThat(danach.status()).isEqualTo(404); assertThat(danach.body()).contains("zugriff_beendet");
-        assertThat(zuweisungen(sub)).isEmpty();
+        assertThat(zuweisungen(sub)).hasSize(1); // Sperren hält an; Entfernen beendet die Zuweisung.
         assertThat(root.queryForObject("SELECT zustand FROM benutzer WHERE tenant_id = ? AND sub = ?", String.class, DEMO, sub)).isEqualTo("gesperrt");
         assertThat(ruf(MockMvcRequestBuilders.delete(uri("/api/v1/benutzer/" + sub)), konto(JONAS, DEMO)).status()).isEqualTo(204);
+        assertThat(zuweisungen(sub)).isEmpty();
         assertThat(ruf(get("/api/v1/benutzer"), konto(JONAS, DEMO)).body()).doesNotContain(sub);
         String p = "/api/v1/benutzer/protokoll?von=" + Instant.now().minusSeconds(3600) + "&bis=" + Instant.now().plusSeconds(3600);
         Antwort protokoll = ruf(get(p), konto(JONAS, DEMO));
@@ -177,7 +178,8 @@ class BenutzerVerwaltungApiTest {
             start.countDown();
             assertThat(List.of(a.get(), b.get())).containsExactlyInAnyOrder(204, 409);
         }
-        assertThat(root.queryForObject("SELECT count(*) FROM zugriff WHERE tenant_id = ? AND beendet_am IS NULL", Integer.class, tenant)).isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM zugriff z JOIN benutzer b ON b.tenant_id = z.tenant_id AND b.sub = z.benutzer_sub "
+                + "WHERE z.tenant_id = ? AND z.beendet_am IS NULL AND b.zustand = 'aktiv'", Integer.class, tenant)).isEqualTo(1);
     }
 
     private static List<UUID> zuweisungen(String sub) {

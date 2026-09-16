@@ -100,6 +100,27 @@ class ZugriffAenderungArchitekturTest {
                 .doesNotContain("Grund.LETZTER_KUNDENADMINISTRATOR").doesNotContain("Grund.EIGENE_ZUWEISUNG");
     }
 
+    @Test
+    void kontenEntziehenHatNurEinenKeycloakSchreiberNebenOffboardingUndAnlageKompensation() throws IOException {
+        Set<String> gefunden = new TreeSet<>();
+        for (Path p : dateien()) {
+            String quelle = Files.readString(p);
+            Matcher feld = Pattern.compile("KeycloakAdminClient\\s+(\\w+)\\s*[;,)]").matcher(quelle);
+            while (feld.find()) {
+                String name = feld.group(1);
+                if (quelle.contains(name + ".setEnabled(") || quelle.contains(name + ".deleteUser(")) {
+                    gefunden.add(p.getFileName().toString());
+                }
+            }
+        }
+        assertThat(gefunden).containsExactlyInAnyOrder("AdminBenutzerService.java", "AdminController.java", "StartpasswortKonten.java");
+        String controller = Files.readString(JAVA.resolve("web/AdminController.java"));
+        assertThat(controller).doesNotContain("keycloak.setEnabled(", "keycloak.deleteUser(userId)");
+        assertThat(controller.split("keycloak.deleteUser", -1)).hasSize(2); // nur Mandanten-Offboarding
+        assertThat(Files.readString(JAVA.resolve("admin/AdminBenutzerService.java")))
+                .contains("aenderung.kontoBeenden(", "hasRole('platform-admin')");
+    }
+
     private static List<Path> dateien() throws IOException {
         try (Stream<Path> s = Files.walk(JAVA)) {
             return s.filter(p -> p.getFileName().toString().endsWith(".java")).sorted().toList();

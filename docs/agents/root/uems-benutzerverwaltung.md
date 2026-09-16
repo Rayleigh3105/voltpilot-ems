@@ -20,8 +20,8 @@ Die Folgenvorschau ruft `rechte.darf` mit `rechte-matrix.json` auf. Sie gibt kei
   die angegebenen Zuweisungen über `ZugriffAenderung`; leeres `bisher` ergänzt eine Rolle.
   Fremdes Konto oder fremde Zuweisung: 404, fehlender Standort: 422, vorhandene Rolle im gleichen
   Geltungsbereich: 409 `zuweisung_vorhanden`. Keine Änderung bei einer Ablehnung.
-- `POST /api/v1/benutzer/{sub}/sperren` und `DELETE /api/v1/benutzer/{sub}` beenden alle
-  Zuweisungen einschließlich der künftigen und setzen den Spiegelzustand. Identität und Protokoll
+- `POST /api/v1/benutzer/{sub}/sperren` hält Zuweisungen über den Spiegelzustand an;
+  `DELETE /api/v1/benutzer/{sub}` beendet alle Zuweisungen einschließlich der künftigen. Identität und Protokoll
   bleiben erhalten. Beide verlangen `benutzer.verwalten`, eigene Rolle und letzter Administrator
   bleiben über den Vertrags-Prüfpunkt geschützt. Eine gemeinsame Transaktionssperre serialisiert
   auch die bisherigen Zuweisungsrouten. Keine Keycloak-Löschung auf diesem Kundenweg.
@@ -45,7 +45,7 @@ Portal: `BenutzerPage.test.tsx`, `AppShell.test.tsx`, additiver Routennachweis i
 `e2e/benutzer.vite.config.ts` baut einen statischen Wirt; `benutzer.playwright.config.ts` prüft N1–N3/N8
 und den vorhandenen Startpasswort-Fluss. Keine Test-Fixture im Produktionsbundle.
 
-Separater Bestandsbefund: Plattformwege `AdminController.disableUser/deleteUser` verändern Keycloak
-weiterhin direkt und verwenden keinen IP-9-Prüfpunkt. Sie sind keine Kundenrouten; deren Harmonisierung
-gehört in die Plattformverwaltung. Tenant-Offboarding und Kompensation fehlgeschlagener Kontoanlage
-sind weitere, absichtlich getrennte Wege.
+Plattformwege `AdminController.disableUser/deleteUser` verwenden denselben Konten-Prüfpunkt
+`ZugriffAenderung.kontoBeenden`; [Kontenwege und Grenzen](uems-admin-kontoentzug.md) beschreibt
+auch den Gegenweg `enable`. Tenant-Offboarding und Kompensation fehlgeschlagener Kontoanlage
+bleiben getrennte Wege.

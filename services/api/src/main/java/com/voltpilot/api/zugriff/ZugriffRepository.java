@@ -115,6 +115,18 @@ public class ZugriffRepository {
         protokoll(kundenbereich(), aktion, sub, name, null, null, null, null, null, null, null, null, null, akteur);
     }
 
+    /** Kontozustand im selben Vorgang wie Entzugsprüfung und Protokoll ändern. */
+    public void kontoZustandSetzen(String sub, KontoZustand zustand) {
+        jdbc.update("UPDATE benutzer SET zustand = ? WHERE tenant_id = ? AND sub = ?",
+                zustand.code(), kundenbereich(), sub);
+    }
+
+    /** Eine unveränderte Zuweisung pausiert oder wirkt wieder; ihre Identität und Zeit bleiben erhalten. */
+    public void kontoZuweisungProtokoll(String aktion, Zeile z, ProtokollAkteur akteur, String grund) {
+        protokoll(kundenbereich(), aktion, z.benutzerSub(), anzeigename(z.benutzerSub()), z.id(), z.rolle(),
+                z.standortId(), z.art(), z.umfang(), z.gueltigAb(), z.gueltigBis(), z.endetAm(), grund, akteur);
+    }
+
     // ------------------------------------------------------------------ Kundenbereich (Selbstauskunft, IP-4)
 
     /** Name und Zeitzone des Kundenbereichs: das Unternehmen, sonst der Mandant und Europe/Berlin. */

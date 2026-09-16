@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.admin.AdminBenutzerService;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
@@ -77,11 +78,13 @@ public class AdminController {
     private final KeycloakAdminClient keycloak;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final BenutzerService benutzer;
+    private final AdminBenutzerService adminBenutzer;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
-            ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer) {
+            ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer,
+            AdminBenutzerService adminBenutzer) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
@@ -89,6 +92,7 @@ public class AdminController {
         this.keycloak = keycloak;
         this.provisioning = provisioning;
         this.benutzer = benutzer;
+        this.adminBenutzer = adminBenutzer;
     }
 
     // ---- tenants -------------------------------------------------------------
@@ -280,8 +284,7 @@ public class AdminController {
         requireNotSelf(caller, userId, "deaktivieren");
         requireTenant(tenantId);
         try {
-            requireUserInTenant(tenantId, userId);
-            return toDto(keycloak.setEnabled(userId, false));
+            return toDto(adminBenutzer.sperren(tenantId, userId));
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);
         }
@@ -292,8 +295,7 @@ public class AdminController {
     public AdminUserDto enableUser(@PathVariable UUID tenantId, @PathVariable String userId) {
         requireTenant(tenantId);
         try {
-            requireUserInTenant(tenantId, userId);
-            return toDto(keycloak.setEnabled(userId, true));
+            return toDto(adminBenutzer.aktivieren(tenantId, userId));
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);
         }
@@ -306,8 +308,7 @@ public class AdminController {
         requireNotSelf(caller, userId, "löschen");
         requireTenant(tenantId);
         try {
-            requireUserInTenant(tenantId, userId);
-            keycloak.deleteUser(userId);
+            adminBenutzer.entfernen(tenantId, userId);
             return ResponseEntity.noContent().build();
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);
