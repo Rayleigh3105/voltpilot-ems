@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
 import { anlageSidebar, ebenenLeiste } from '../ebenenNav';
-import { pageRoute } from '../nav';
+import { pageRoute, standortBereichRoute } from '../nav';
 import { anlageSurface } from '../surface';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
@@ -731,7 +731,8 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
       berichte: pageRoute('portfolio'),
     }),
   );
-  const ebenen = { titel, kacheln, aktiv: 'uebersicht' as const, onOpen: vi.fn() };
+  const ebenen: NonNullable<React.ComponentProps<typeof AppShell>['ebenen']> =
+    { titel, kacheln, aktiv: 'uebersicht', onOpen: vi.fn() };
 
   const renderEbene = (over: Partial<typeof ebenen> | null = {}, anlage: React.ComponentProps<typeof AppShell>['anlage'] = null) =>
     render(
@@ -763,6 +764,30 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
     expect(bar.querySelector('[aria-current="page"]')?.textContent).toBe('Übersicht');
     expect(bar.textContent).not.toMatch(/Steuer/);
   });
+
+  it.each(['uebersicht', 'netzanschluesse'] as const)(
+    'die Netzanschlüsse-Kachel lässt bestehende Buttons bytegleich, aktiv: %s', (aktiv) => {
+      const vorher = renderEbene({ aktiv });
+      const bestehendeButtons = within(screen.getByLabelText(titel)).getAllByRole('button')
+        .map(button => ({ name: button.textContent!, html: button.outerHTML }));
+      vorher.unmount();
+
+      const ziel = standortBereichRoute(werkAhrenberg().id, 'netzanschluesse');
+      const onOpen = vi.fn();
+      renderEbene({ aktiv, onOpen, kacheln: [...kacheln, { key: 'netzanschluesse', label: 'Netzanschlüsse', icon: 'zap', ziel }] });
+      const bar = screen.getByLabelText(titel);
+      for (const { name, html } of bestehendeButtons) {
+        expect(within(bar).getByRole('button', { name }).outerHTML).toBe(html);
+      }
+      const netzanschluesse = within(bar).getByRole('button', { name: 'Netzanschlüsse' });
+      expect(bar.querySelectorAll('.vp-bottombar-netzanschluesse')).toHaveLength(1);
+      expect(netzanschluesse.className).toBe(`vp-bottombar-item vp-bottombar-netzanschluesse${aktiv === 'netzanschluesse' ? ' active' : ''}`);
+      expect(netzanschluesse.getAttribute('aria-current')).toBe(aktiv === 'netzanschluesse' ? 'page' : null);
+      fireEvent.click(netzanschluesse);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+      expect(onOpen).toHaveBeenCalledWith(ziel);
+    },
+  );
 
   it('eine Kachel navigiert auf ihre Seite', () => {
     const onOpen = vi.fn();

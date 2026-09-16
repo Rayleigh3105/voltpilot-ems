@@ -52,3 +52,7 @@ Der Bestandsschutz in `migration.test.ts` prüft die durchgereichten React-Kinde
 Fingerabdruck aller vorhandenen Kunden-Bedienelemente (`test/kundenBestand-vor-ip12.json`, UEMS-Bezugsstand
 im Dokument). Der Fingerabdruck normalisiert nur TSX-Leerraum und den nicht gerenderten React-Schlüssel;
 Beschriftung, Handler und Attribute bleiben Prüfgegenstand. Er ersetzt keine Dialog- oder Browserprüfung.
+Beabsichtigte spätere Änderungen werden als einzelne `fortschreibungen` mit Datei, altem/neuem Fingerabdruck,
+Commit und Grund ergänzt; die ursprünglichen 913 Fingerabdrücke bleiben erhalten. Der Wächter verlangt den
+exakten Nachfolger und weist unbenutzte Fortschreibungen zurück. Die Netzanschlüsse-Klasse aus AP-10 IP-13
+ist so belegt; `shell/AppShell.test.tsx` prüft daneben die unveränderten übrigen Buttons der Telefonleiste.
