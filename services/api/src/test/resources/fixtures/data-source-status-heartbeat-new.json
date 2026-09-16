@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "ts": "2026-11-03T14:02:15Z",
+  "data_sources": [
+    {
+      "id": "DQ-4",
+      "health": "ok",
+      "read_at": "2026-11-03T14:02:12Z",
+      "requests_per_min": 6,
+      "samples_per_min": 24
+    },
+    {
+      "id": "DQ-5",
+      "health": "stale",
+      "error_class": "unreachable",
+      "since": "2026-11-03T14:02:10Z",
+      "read_at": "2026-11-03T14:01:50Z",
+      "requests_per_min": 1,
+      "samples_per_min": 0
+    }
+  ]
+}

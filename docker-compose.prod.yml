@@ -500,6 +500,7 @@ services:
       # service, which is itself semaphore-bounded.
       VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED: ${VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED:-true}
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
+      VOLTPILOT_UEMS_DATA_SOURCE_STATUS_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_CHARGERS_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Portal v3 M5: the device's own view of the flows it runs (deployment

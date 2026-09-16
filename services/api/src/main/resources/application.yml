@@ -529,6 +529,11 @@ voltpilot:
     zeilentexte:
       enabled: ${VOLTPILOT_UEMS_ZEILENTEXTE_ENABLED:true}
       cron: ${VOLTPILOT_UEMS_ZEILENTEXTE_CRON:0 17 3 * * *}
+    # AP-06 IP-14: additive data_sources[] heartbeat block -> latest state per
+    # (box, data source). Production default ON; Surefire turns the broker
+    # listener off globally and parser tests call it directly.
+    data-source-status:
+      mqtt-listener-enabled: ${VOLTPILOT_UEMS_DATA_SOURCE_STATUS_MQTT_LISTENER_ENABLED:true}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's
