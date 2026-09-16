@@ -81,7 +81,9 @@ public class SiteChargingConfigController {
              * null heisst „fuer sie aeussert sich das Portal nicht" und es gilt
              * der ANLAGEN-STANDARD (surplusPolicy oben).
              */
-            @Size(max = 32) String source, Double minKw) {}
+            @Size(max = 32) String source, Double minKw,
+            /* Die Box, deren echte LAN-Adresse der Assistent zeigt. */
+            UUID deviceId) {}
 
     /**
      * Der Rumpf der Steuerart je Säule (P5): beide Felder optional, aber nicht
@@ -152,6 +154,7 @@ public class SiteChargingConfigController {
             @AuthenticationPrincipal Jwt caller) {
         return service.admit(siteId, req.chargePointId(), req.label(), req.ratedKw(),
                 req.connectors(), req.source(), req.minKw(), req.connection(),
+                req.deviceId(),
                 caller == null ? "unbekannt" : caller.getSubject());
     }
 

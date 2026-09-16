@@ -775,6 +775,7 @@ export function AnlagenModellSection({
         <AnlegenFlow
           siteId={site.id}
           box={fuehrendeBoxOf(devices, site.id) ?? undefined}
+          boxes={(devices ?? []).filter((device) => device.siteId === site.id)}
           vorlage={vorlage}
           initialTyp={vorlage ? null : addTyp}
           initialRolle={vorlage ? null : addRolle}

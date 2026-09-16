@@ -17,7 +17,8 @@ import java.util.UUID;
  * Zustand einer Anlage ohne Ladesäulen (oder mit einer älteren Box, die den
  * Block noch nicht sendet) - nie ein Budget von 0.
  */
-public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> chargers) {
+public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> chargers,
+        List<ChargingBudgetDto> budgets) {
 
     /**
      * Das Standort-Budget. Alle {@code *Kw}-Felder sind NULLABLE: kein Messwert

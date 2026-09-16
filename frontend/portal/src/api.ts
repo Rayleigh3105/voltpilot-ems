@@ -7386,6 +7386,8 @@ export const api = {
        * wird nichts gesagt" - die Box behält dann, was sie hat.
        */
       connection?: 'haus' | 'eigen';
+      /** Die Box, deren echte Adresse der Anbinde-Assistent zeigt. */
+      deviceId?: string;
     },
   ) =>
     request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config/charge-points`, {
