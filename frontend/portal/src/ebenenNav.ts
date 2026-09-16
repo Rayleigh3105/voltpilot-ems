@@ -536,8 +536,8 @@ const lebenderStandort = (lm: EbenenLesemodell, standortId: string) =>
  * - Unternehmen: Übersicht immer · Standorte ab 2 Standorten · Messstellen und
  *   Bezugsgrößen und Berichte, sobald ein Standort misst · Kennzahlen, sobald ein Standort misst
  *   UND es eine Kennzahl gibt.
- * - Standort: Übersicht immer · Gebäude ab 1 Gebäude · Anlagen ab 2 Anlagen ·
- *   Messstellen, wenn DIESER Standort misst.
+ * - Standort: Übersicht immer · Boxen und Messstellen, wenn DIESER Standort
+ *   misst · Gebäude ab 1 Gebäude · Anlagen ab 2 Anlagen.
  *
  * ⚠ Einen Bereich „Steuerung" gibt es auf keiner der beiden Ebenen (Steuern-Regel
  * vom 15.09.2026): gesteuert wird je Anlage, und dort bleibt der Bereich
@@ -556,7 +556,7 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
   } else {
     const standort = lebenderStandort(lm, ort.standortId);
     if (standort) {
-      out.push('boxen');
+      if (misst(lm, standort.id)) out.push('boxen');
       if ((standort.gebaeudeZahl ?? 0) >= 1) out.push('gebaeude');
       if (standort.anlagen.length >= 2) out.push('anlagen');
       if (misst(lm, standort.id)) out.push('messstellen', 'netzanschluesse');

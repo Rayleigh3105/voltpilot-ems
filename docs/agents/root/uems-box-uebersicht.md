@@ -1,6 +1,8 @@
 # Box-Übersicht je Standort
 
 AP-06 IP-16 bündelt die vorhandenen Box-Fakten auf `Standort › Boxen` und auf der Box-Seite.
+Der Bereich erscheint nur, wenn die Messfunktion des Standorts eingerichtet, angehalten oder aktiv ist;
+ein Betriebskunde ohne Messfunktion behält nach O18 seine bisherige Standort-Navigation ohne neuen Reiter.
 Die Fläche liest keine neue Route: `/api/v1/devices` kennzeichnet additiv die führende Box,
 `/api/v1/sites/{siteId}/data-sources` liefert additiv die jüngste Quell-Rückmeldung aus
 `device_data_source_status`, und die vorhandene Edge-Versionen-Antwort liefert den Software-Stand.
