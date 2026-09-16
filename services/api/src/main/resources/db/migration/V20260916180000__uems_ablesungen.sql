@@ -1,10 +1,12 @@
 -- AP-09 IP-8: zweite Rohwert-Spur, ohne erfundene Box/Komponente.
 -- Kanalwerte behalten Schlüssel, Herkunft, Rechte und Aufbewahrung.
-ALTER TABLE messstelle_quelle ADD COLUMN art TEXT NOT NULL DEFAULT 'messkanal';
+-- NULL bleibt bei Bestandszeilen stehen und bedeutet unverändert Messkanal.
+ALTER TABLE messstelle_quelle ADD COLUMN art TEXT;
+ALTER TABLE messstelle_quelle ALTER COLUMN art SET DEFAULT 'messkanal';
 ALTER TABLE messstelle_quelle ALTER COLUMN entity_id DROP NOT NULL;
 ALTER TABLE messstelle_quelle ALTER COLUMN geraet_id DROP NOT NULL;
 ALTER TABLE messstelle_quelle ADD CONSTRAINT messstelle_quelle_art_chk CHECK (coalesce(
-    (art = 'messkanal' AND entity_id IS NOT NULL AND geraet_id IS NOT NULL)
+    (coalesce(art, 'messkanal') = 'messkanal' AND entity_id IS NOT NULL AND geraet_id IS NOT NULL)
     OR (art = 'ablesung' AND entity_id IS NULL AND geraet_id IS NULL AND rolle = 'fuehrend'
         AND kanal_wertart = 'counter' AND herleitung = 'differenzen' AND anteil IS NULL), false));
 

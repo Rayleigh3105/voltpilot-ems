@@ -1089,7 +1089,7 @@ public class KorrekturKaskade {
         Instant a = TagRegeln.beginn(von, zone);
         Instant b = TagRegeln.ende(bis, zone);
         try {
-            if (ref.messstelleId() != null && ref.berechnet()) {
+            if (ref.messstelleId() != null && (ref.berechnet() || ablesungsquelle(con, tenant, ref.messstelleId()))) {
                 for (Versioniert v : versionen(con, tenant, null, null, ref.messstelleId(), ebene, a, b)) {
                     einsetzen(aus, v, ref.kennzeichen(), schluessel(ref.messstelleId(), null, null, ebene, v.beginn()),
                             wirkt);
@@ -1203,6 +1203,15 @@ public class KorrekturKaskade {
             }
         }
         return aus;
+    }
+
+    private static boolean ablesungsquelle(Connection con, UUID tenant, UUID messstelle) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("SELECT EXISTS (SELECT 1 FROM messstelle_quelle "
+                + "WHERE tenant_id=? AND messstelle_id=? AND entity_id IS NULL)")) {
+            ps.setObject(1, tenant);
+            ps.setObject(2, messstelle);
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getBoolean(1); }
+        }
     }
 
     /** Die führenden Bindungen der Hauptgröße einer gemessenen Messstelle — wie das Lese-Modell sie filtert. */

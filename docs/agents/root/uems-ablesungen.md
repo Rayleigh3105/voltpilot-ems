@@ -6,7 +6,8 @@ Einstieg: `docs/contracts/v2/messwert-herkunft.md` → Ablesungen; Code `Ablesun
 
 - Ablesungen sind gemessene Zählerstände, keine Bezugsgrößen mit Beleg. Identität:
   Mandant + Messstelle + Größe, niemals eine erfundene Box/Komponente. Quellen-Art
-  `ablesung` ist additiv; alte `messkanal`-Quellen und ihre Pflichtfelder bleiben.
+  `ablesung` ist additiv; alte Quellen behalten `art = NULL` (= Messkanal) und ihre Pflichtfelder. Der
+  Default `messkanal` gilt nur für neue Zeilen, kein Backfill der Bestandszeilen.
 - Erst die gemeinsame Vier-Augen-Einstellung mit FOR SHARE sperren, dann die Messstelle.
   Berichtigungen nutzen `MessreiheKorrekturRepository` und die bestehenden Freigabe-/
   Rücknahmerouten. `Reihe.ablesung` ist eine eigene Identitätsform; kanalgebundene
@@ -19,6 +20,9 @@ Einstieg: `docs/contracts/v2/messwert-herkunft.md` → Ablesungen; Code `Ablesun
 - Z6/E5 ordnet den ganzen Ablesezeitraum einem Monat zu; nie interpolieren oder auf
   Tage verteilen. Das AP-08-Lesemodell liest vorhandene Perioden und Versionen.
   B8/F17: 95,9 %, Oktober 1 240 m³, November keine Werte.
+- Archivieren beendet auch die komponentenlose Quellenbindung über den bestehenden
+  `MessstelleQuelleService` und nennt sie im Archiv-Protokoll. Der Filter verwendet
+  Bestandsspalten; alte Migrationsstände bleiben lesbar.
 - Z7: strikt später als letzte Ablesung + zwei lokale Kalendermonate. `data_gap/cloud`
   ohne Box; stabile Ereignis-ID aus Quelle und letztem Zeitpunkt. Änderungen des
   Kennzeichens ändern die Ereignisidentität nicht.

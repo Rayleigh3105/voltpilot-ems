@@ -63,9 +63,10 @@ public class AblesungService {
         UUID tenant=TenantContext.get();
         Instant jetzt=uhr.instant();
         return tx.execute(t -> {
-            Messstelle m=finde(kz);
+            UUID messstelleId=finde(kz).id();
             boolean vier=werte.vierAugen(tenant);
-            werte.sperren(tenant,m.id());
+            werte.sperren(tenant,messstelleId);
+            Messstelle m=finde(kz);
             if (m.archiviertAm()!=null || !"gemessen".equals(m.art())
                     || !"Zählerstand".equals(m.hauptgroesse().wertart())
                     || werte.hatKanal(tenant,m.id())) throw new AblesungAbgelehnt(QUELLE_PASST_NICHT);

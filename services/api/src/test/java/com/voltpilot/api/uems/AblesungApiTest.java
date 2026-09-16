@@ -80,12 +80,13 @@ class AblesungApiTest {
     @Autowired
     MockMvc mvc;
     @Autowired AblesungService ablesungen;
+    @Autowired MessstelleService messstellen;
     @Autowired MessstelleWerteService werte;
     @Autowired AblesungLueckenLauf luecken;
     @org.junit.jupiter.api.BeforeEach
     void uhren() {
         var clock=java.time.Clock.fixed(java.time.Instant.parse("2027-02-10T12:00:00Z"),java.time.ZoneOffset.UTC);
-        ablesungen.uhrStellen(clock); werte.uhrStellen(clock);
+        ablesungen.uhrStellen(clock); werte.uhrStellen(clock); messstellen.uhrStellen(clock);
     }
     private static final String ERSTE="2026-10-01T07:15:00+02:00";
     private static final String ZWEITE="2026-11-02T07:40:00+01:00";
@@ -245,6 +246,18 @@ class AblesungApiTest {
         new com.voltpilot.api.repo.TenantRepository(root).offboard(w.mandant());
         assertThat(root.queryForObject("SELECT count(*) FROM messstelle_ablesung_fassung WHERE tenant_id=?",
                 Integer.class,w.mandant())).isZero();
+    }
+
+    @Test
+    void archivierenBeendetAuchDieQuelleOhneKomponente() throws Exception {
+        Welt w=welt(); anfang(w);
+        ok(ruf(w.jonas(),HttpMethod.POST,"/api/v1/messstellen/"+w.messstelle()+"/archivieren",
+                Map.of("zeitpunkt","2027-02-01T12:00:00+01:00","grund","Zähler ist außer Betrieb.")),200);
+        assertThat(root.queryForObject("SELECT gueltig_bis FROM messstelle_quelle WHERE tenant_id=? AND art='ablesung'",
+                java.sql.Timestamp.class,w.mandant()).toInstant()).isEqualTo(java.time.Instant.parse("2027-02-01T11:00:00Z"));
+        assertThat(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt","2027-02-02T07:00:00+01:00",
+                "stand","50.000")).status()).isEqualTo(422);
+        assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("1240");
     }
 
     private int lueckenFuer(Welt w) { return root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap'",Integer.class,w.mandant()); }

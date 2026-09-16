@@ -98,6 +98,16 @@ public class MessstelleQuelleRepository {
                 MessstelleQuelleRepository::quelle, messstelleId);
     }
 
+    /** Ablesungen haben keine Komponente. Dieser Bestandsspalten-Filter funktioniert auch vor AP-09 IP-8. */
+    public record Ablesungsbindung(UUID id, Instant von, Instant bis) {}
+
+    public List<Ablesungsbindung> ablesungen(UUID messstelleId) {
+        return jdbc.query("SELECT id, gueltig_ab, gueltig_bis FROM messstelle_quelle "
+                + "WHERE messstelle_id = ? AND entity_id IS NULL", (rs, n) -> new Ablesungsbindung(
+                        rs.getObject(1, UUID.class), rs.getTimestamp(2).toInstant(),
+                        rs.getTimestamp(3) == null ? null : rs.getTimestamp(3).toInstant()), messstelleId);
+    }
+
     /** Alle Bindungen des Kundenbereichs — für das Register. */
     public List<Quelle> alle() {
         return jdbc.query("SELECT " + SPALTEN + VON + REIHENFOLGE, MessstelleQuelleRepository::quelle);

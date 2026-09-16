@@ -27,6 +27,8 @@ public class AblesungRepository {
     public void sperren(UUID tenant, UUID messstelle) {
         jdbc.queryForList("SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(?, 0))", Integer.class,
                 "ablesungen:" + tenant + ":" + messstelle);
+        jdbc.queryForList("SELECT id FROM messstelle WHERE tenant_id = ? AND id = ? FOR SHARE",
+                UUID.class, tenant, messstelle);
     }
 
     public boolean vierAugen(UUID tenant) {
@@ -52,7 +54,7 @@ public class AblesungRepository {
 
     public boolean hatKanal(UUID tenant, UUID messstelle) {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM messstelle_quelle "
-                + "WHERE tenant_id = ? AND messstelle_id = ? AND art <> 'ablesung' AND rolle = 'fuehrend')",
+                + "WHERE tenant_id = ? AND messstelle_id = ? AND art IS DISTINCT FROM 'ablesung' AND rolle = 'fuehrend')",
                 Boolean.class, tenant, messstelle));
     }
 

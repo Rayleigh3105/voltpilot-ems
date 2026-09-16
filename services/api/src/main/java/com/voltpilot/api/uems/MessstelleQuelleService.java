@@ -403,6 +403,14 @@ public class MessstelleQuelleService {
      * Archivieren zu diesem Zeitpunkt abgelehnt (409 {@code zustand_passt_nicht}) und nennt sie.
      */
     void archivierbar(Messstelle m, Instant am) {
+        for (var q : quellen.ablesungen(m.id())) {
+            if (!(q.bis() != null && !q.bis().isAfter(am))
+                    && !(q.bis() == null && q.von().isBefore(am))) {
+                throw MessstelleAbgelehnt.schnittstelle(Schnittstelle.ZUSTAND_PASST_NICHT,
+                        "Die Ablesungsquelle kann zu diesem Zeitpunkt nicht beendet werden.",
+                        Map.of("quelle_id", q.id().toString()));
+            }
+        }
         for (Quelle q : quellen.derMessstelle(m.id())) {
             boolean endetVorher = q.gueltigBis() != null && !q.gueltigBis().isAfter(am);
             boolean offenUndBegonnen = q.gueltigBis() == null && q.gueltigAb().isBefore(am);
@@ -425,6 +433,12 @@ public class MessstelleQuelleService {
     /** Beendet in der laufenden Transaktion jede offene Quelle zum Archivzeitpunkt; liefert ihre Kennungen. */
     List<UUID> zumArchivBeenden(Messstelle m, Instant am) {
         List<UUID> beendet = new ArrayList<>();
+        for (var q : quellen.ablesungen(m.id())) {
+            if (q.bis() == null) {
+                if (!quellen.beenden(q.id(), am, null)) throw soebenVeraendert(m);
+                beendet.add(q.id());
+            }
+        }
         for (Quelle q : quellen.derMessstelle(m.id())) {
             if (q.gueltigBis() == null) {
                 if (!quellen.beenden(q.id(), am, null)) {
