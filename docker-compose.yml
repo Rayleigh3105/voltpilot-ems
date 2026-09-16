@@ -355,6 +355,7 @@ services:
       # service, which is itself semaphore-bounded.
       VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED: ${VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED:-true}
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
+      VOLTPILOT_UEMS_DATA_SOURCE_STATUS_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_CHARGERS_MQTT_LISTENER_ENABLED: "true"
       # OCPP 1.6 station-originated calls/results/errors from the edge journal.
       # The edge already masks tags/secrets; the api repeats redaction before DB.

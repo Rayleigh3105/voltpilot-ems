@@ -351,6 +351,9 @@
                              UnterstuetzungApiTest ruft lauf() mit gestellter Uhr selbst.
                              Der Zugang endet auch ohne ihn (endet_am). -->
                         <voltpilot.uems.unterstuetzung.enabled>false</voltpilot.uems.unterstuetzung.enabled>
+                        <!-- The AP-06 per-data-source status listener is ON in production.
+                             Unit tests drive handle() without opening a broker connection. -->
+                        <voltpilot.uems.data-source-status.mqtt-listener-enabled>false</voltpilot.uems.data-source-status.mqtt-listener-enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>
