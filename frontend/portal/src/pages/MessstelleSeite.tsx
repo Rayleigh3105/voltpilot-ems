@@ -485,6 +485,7 @@ function MessstelleSeiteMitId({
         />
       )}
       {wechsel && <ZaehlerwechselDialog ziel={wechsel} onClose={() => setWechsel(null)}
+        onBerichtigt={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }}
         onGewechselt={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }} />}
       {binden && (
         <QuelleBindenDialog

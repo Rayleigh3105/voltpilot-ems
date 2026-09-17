@@ -30,6 +30,17 @@ describe('Zählerwechsel: Tatsachen statt Verbrauchsrechnung', () => {
       .toEqual(['Zählerwechsel am 18.11.2026 10:40: Z-5a → Z-5b']);
     expect(wechselMarken([{ ...e, toValue: null }], 'Europe/Berlin')).toEqual([]);
   });
+  it('A3: ursprüngliche Ankündigung bleibt neben der Berichtigung lesbar', () => {
+    const vorher = '2026-11-18T10:00:00+01:00';
+    const e = { revision: 1, effectiveAt: vorher, createdAt: '2026-11-10T09:00:00+01:00',
+      fromValue: 'Z-5a', toValue: 'Z-5b', eventType: 'device_replaced' };
+    const korrektur = { ...e, eventType: 'edited', fromValue: vorher, toValue: WECHSEL_AM,
+      effectiveAt: WECHSEL_AM, note: 'Zeitpunkt berichtigt: 10:00 → 10:40' };
+    expect(wechselMarken([e, korrektur], 'Europe/Berlin')).toEqual([
+      'Zeitpunkt berichtigt: 18.11.2026 10:00 → 18.11.2026 10:40',
+      'Zählerwechsel am 18.11.2026 10:00: Z-5a → Z-5b',
+    ]);
+  });
   it('zeigt Rückwirkung und angekündigt aus dem Vertragszwilling', () => {
     expect(wechselAbzeichen(WECHSEL_AM, WECHSEL_JETZT)).toBe('rückwirkend (25 min)');
     expect(wechselAbzeichen(WECHSEL_JETZT, WECHSEL_AM)).toBe('angekündigt');

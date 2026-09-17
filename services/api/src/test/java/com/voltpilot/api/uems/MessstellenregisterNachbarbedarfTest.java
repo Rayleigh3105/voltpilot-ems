@@ -21,11 +21,7 @@ class MessstellenregisterNachbarbedarfTest {
         assertThat(folge.grund()).isNull();
     }
 
-    @Disabled("A3 · eigener Folge-Schnitt: Korrektur braucht neue Rechte für sechs Zeitachsen und einen autorisierten Schreibweg")
-    @Test
-    void a3AngekuendigtenWechselzeitpunktKorrigieren() {
-        fail("Korrektur-Schreibweg für angekündigte Zählerwechsel fehlt");
-    }
+    // A3 ist ausführbar in ZaehlerwechselApiTest.a3AngekuendigtenWechselzeitpunktKorrigieren.
 
     @Disabled("A5 · Nachbar AP-06/Edge: Eine angewendete Wandlerfassung wird noch nicht an die Box zugestellt")
     @Test

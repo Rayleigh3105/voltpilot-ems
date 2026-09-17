@@ -13,17 +13,19 @@ import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import { VpTimePicker } from './VpTimePicker';
 import './ZaehlerwechselDialog.css';
+import { WechselzeitpunktDialog } from './WechselzeitpunktDialog';
 
 interface Kontext {
   geraet: UemsGeraet; zone: string; vorgabe: boolean; standort: string | null;
   einheit: string | null; einstellungen: EinstellungFassung[]; datenquellen: UemsDatenquelle[]; messstellen: string[];
 }
 /** Beide Einstiege benutzen genau EINEN Schreibaufruf. Keine nachgelagerten Einstellungs-Schreibwege. */
-export function ZaehlerwechselDialog({ ziel, jetzt, onClose, onGewechselt }: {
-  ziel: WechselZiel; jetzt?: string; onClose: () => void; onGewechselt: (v: ZaehlerwechselVorgang) => void;
+export function ZaehlerwechselDialog({ ziel, jetzt, onClose, onGewechselt, onBerichtigt }: {
+  ziel: WechselZiel; jetzt?: string; onBerichtigt?: () => void; onClose: () => void; onGewechselt: (v: ZaehlerwechselVorgang) => void;
 }) {
   const uhr = useMemo(() => jetzt ?? new Date().toISOString(), [jetzt]);
   const rollen = useRollen();
+  const [geplant, setGeplant] = useState<{ alt: UemsGeraet; zone: string; standort: string | null } | null>(null);
   const [kontext, setKontext] = useState<Kontext | null>(null);
   const [eingabe, setEingabe] = useState<WechselEingabe | null>(null);
   const [schritt, setSchritt] = useState<1 | 2>(1);
@@ -45,11 +47,15 @@ export function ZaehlerwechselDialog({ ziel, jetzt, onClose, onGewechselt }: {
           api.uemsGeraete(ziel.anlageId), api.standorte(), api.datenquellen(ziel.anlageId),
         ]);
         const geraet = liste.geraete.find(g => g.id === zielId);
+        const standort = standorte.standorte.find(s => s.anlagen.some(a => a.id === ziel.anlageId));
+        const zone = standort?.zeitzone ?? VORGABE_ZEITZONE;
+        const alt = liste.geraete.find(g => g.kennzeichen === geraet?.kennzeichen
+          && g.ausgebaut_am && Date.parse(g.ausgebaut_am) > Date.parse(uhr)
+          && liste.geraete.some(n => n.id !== g.id && n.kennzeichen === g.kennzeichen && n.eingebaut_am === g.ausgebaut_am));
+        if (alt) { if (aktiv) setGeplant({ alt, zone, standort: standort?.id ?? null }); return; }
         if (!geraet || geraet.ausgebaut_am || geraet.geraeteart === 'controller' || geraet.teile?.length) {
           throw new Error('Dieses Gerät kann hier nicht als Zähler ausgetauscht werden.');
         }
-        const standort = standorte.standorte.find(s => s.anlagen.some(a => a.id === ziel.anlageId));
-        const zone = standort?.zeitzone ?? VORGABE_ZEITZONE;
         const [einstellungen, ...kanaele] = await Promise.all([
           api.geraetEinstellungen(geraet.id),
           ...geraet.komponenten.filter(k => !k.gueltig_bis).map(k => api.komponenteMesskanaele(ziel.anlageId, k.entity_id)),
@@ -103,6 +109,9 @@ export function ZaehlerwechselDialog({ ziel, jetzt, onClose, onGewechselt }: {
     error: feldFehler(feld), 'aria-invalid': !!feldFehler(feld) });
   const gueltigeEinstellungen = k?.einstellungen.filter(f => body?.zeitpunkt && Date.parse(f.gueltig_ab) <= Date.parse(body.zeitpunkt)
     && (!f.gueltig_bis || Date.parse(body.zeitpunkt) < Date.parse(f.gueltig_bis))) ?? [];
+
+  if (geplant) return <WechselzeitpunktDialog geraet={geplant.alt} zone={geplant.zone} jetzt={uhr}
+    darf={rollen.darf('messstelle.quelle', geplant.standort)} onClose={onClose} onBerichtigt={onBerichtigt} />;
 
   return <Modal open onClose={() => { if (!busy) onClose(); }} title={ergebnis ? 'Zählerwechsel eingetragen' : 'Zähler wechseln'}
     footer={ergebnis ? <Button onClick={onClose}>Schließen</Button> : <>

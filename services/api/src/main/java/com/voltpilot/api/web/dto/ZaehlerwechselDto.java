@@ -61,6 +61,13 @@ public final class ZaehlerwechselDto {
             List<Ablesestand> ablesestaende,
             List<UUID> bestaetigteBindungen) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Berichtigung(OffsetDateTime bisher, OffsetDateTime zeitpunkt, String grund) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Berichtigt(UUID vorgaenger, UUID nachfolger, OffsetDateTime bisher,
+            OffsetDateTime zeitpunkt, String satz) {}
+
     /** Optionaler Stand je führender Bindung; auch mehrere Zählwerke derselben Karte sind eindeutig. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Ablesestand(UUID bindung, MessstelleQuelleDto.Stand endstand,

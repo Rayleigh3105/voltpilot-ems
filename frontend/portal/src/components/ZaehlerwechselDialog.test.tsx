@@ -70,3 +70,27 @@ describe('Zählerwechsel als ein Vorgang', () => {
     await waitFor(() => expect(feld).toHaveFocus());
   });
 });
+
+it('A3: geplanter Wechsel öffnet die Berichtigung und schreibt nur den neuen Zeitpunkt', async () => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-10T09:00:00+01:00'));
+  const alt = { ...vorherGeraet(), ausgebaut_am: '2026-11-18T10:00:00+01:00' };
+  const neu = { ...vorherGeraet(), id: 'g-z5b', eingebaut_am: alt.ausgebaut_am, ausgebaut_am: null };
+  vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [alt, neu] });
+  vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
+  vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [] });
+  const send = vi.spyOn(api, 'wechselzeitpunktBerichtigen').mockResolvedValue({
+    vorgaenger: alt.id, nachfolger: neu.id, bisher: alt.ausgebaut_am,
+    zeitpunkt: '2026-11-18T10:40:00+01:00', satz: 'Zeitpunkt berichtigt',
+  });
+  const fertig = vi.fn();
+  render(<ZaehlerwechselDialog ziel={{ art: 'geraet', geraet: alt, anlageId: FIXTURE_IDS.an1 }}
+    jetzt="2026-11-10T09:00:00+01:00" onClose={vi.fn()} onGewechselt={vi.fn()} onBerichtigt={fertig} />);
+  await screen.findByRole('button', { name: 'Zeitpunkt berichtigen' });
+  expect(screen.queryByLabelText('Seriennummer (optional)')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Uhrzeit' }), { target: { value: '10:40' } });
+  fireEvent.blur(screen.getByRole('combobox', { name: 'Uhrzeit' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Zeitpunkt berichtigen' }));
+  await screen.findByText(/Geändert:/);
+  expect(send).toHaveBeenCalledWith(alt.id, { bisher: alt.ausgebaut_am, zeitpunkt: '2026-11-18T10:40:00+01:00', grund: undefined });
+  expect(fertig).toHaveBeenCalledOnce();
+});

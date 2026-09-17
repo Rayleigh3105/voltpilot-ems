@@ -8141,6 +8141,9 @@ export const api = {
     }),
   controllerwechselVorschau: (id: string, zeitpunkt: string) =>
     request<ControllerwechselVorschau>(`/api/v1/geraete/${id}/austausch/vorschau?zeitpunkt=${encodeURIComponent(zeitpunkt)}`),
+  wechselzeitpunktBerichtigen: (id: string, body: { bisher: string; zeitpunkt: string; grund?: string }) =>
+    request<{ vorgaenger: string; nachfolger: string; bisher: string; zeitpunkt: string; satz: string }>(
+      `/api/v1/geraete/${id}/austausch/zeitpunkt`, { method: 'POST', body: JSON.stringify(body) }),
   geraetAustauschen: (id: string, body: Zaehlerwechsel) =>
     request<ZaehlerwechselVorgang>(`/api/v1/geraete/${id}/austausch`, {
       method: 'POST', body: JSON.stringify(body),

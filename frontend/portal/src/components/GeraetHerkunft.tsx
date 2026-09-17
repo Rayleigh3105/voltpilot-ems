@@ -164,7 +164,7 @@ export function GeraetHerkunft({
         </p>
         <Zeilen zeilen={karte.zeilen} />
         {geraet.geraeteart === 'zaehler' && !geraet.teile?.length && (
-          <Recht aktion="geraet.einrichten"><Recht aktion="messstelle.quelle"><Button variant="ghost" size="sm" onClick={event => { event.currentTarget.focus(); setWechsel(geraet); }}>Zähler wechseln</Button></Recht></Recht>
+          <Recht aktion="geraet.einrichten"><Recht aktion="messstelle.quelle"><Button variant="ghost" size="sm" onClick={event => { event.currentTarget.focus(); setWechsel(geraet); }}>{(geraet.ausgebaut_am && Date.parse(geraet.ausgebaut_am) > Date.parse(uhr)) || (geraet.eingebaut_am && Date.parse(geraet.eingebaut_am) > Date.parse(uhr) && geraet.vorgaenger?.length) ? 'Zeitpunkt berichtigen' : 'Zähler wechseln'}</Button></Recht></Recht>
         )}
         {geraet.geraeteart === 'controller' && !geraet.ausgebaut_am && (
           <Recht aktion="geraet.einrichten"><Recht aktion="messstelle.quelle"><Button variant="ghost" size="sm" onClick={event => { event.currentTarget.focus(); setWechsel(geraet); }}>Controller austauschen</Button></Recht></Recht>
@@ -296,7 +296,7 @@ export function GeraetHerkunft({
       {wechsel?.geraeteart === 'controller' && <ControllerwechselDialog geraet={wechsel} anlageId={siteId} jetzt={jetzt}
         onClose={() => setWechsel(null)} onGewechselt={() => setStand(n => n + 1)} />}
       {wechsel && wechsel.geraeteart !== 'controller' && <ZaehlerwechselDialog ziel={{ art: 'geraet', geraet: wechsel, anlageId: siteId }} jetzt={jetzt}
-        onClose={() => setWechsel(null)} onGewechselt={() => setStand(n => n + 1)} />}
+        onClose={() => setWechsel(null)} onGewechselt={() => setStand(n => n + 1)} onBerichtigt={() => setStand(n => n + 1)} />}
       {verwenden && (
         <QuelleBindenDialog
           open

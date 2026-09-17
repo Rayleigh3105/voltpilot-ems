@@ -335,7 +335,7 @@ class UemsQuelleEinstellungMigrationTest {
     }
 
     /**
-     * Eine Fassung wird nur verkürzt: die App-Rolle darf allein {@code gueltig_bis} setzen, nie
+     * Eine Fassung wird nur verkürzt: außerhalb eines geplanten Wechsels bleibt nur {@code gueltig_bis} änderbar, nie
      * löschen; der Trigger lässt es nur früher werden und schreibt keiner Rolle einen Wert um.
      */
     @Test
@@ -368,7 +368,7 @@ class UemsQuelleEinstellungMigrationTest {
         assertThat(rechte("quelle_einstellung")).isEqualTo("INSERT,SELECT");
         assertThat(root.queryForList("SELECT column_name FROM information_schema.column_privileges "
                 + "WHERE table_name = 'quelle_einstellung' AND grantee = ? AND privilege_type = 'UPDATE'",
-                String.class, APP_USER)).containsExactly("gueltig_bis");
+                String.class, APP_USER)).containsExactlyInAnyOrder("gueltig_ab", "gueltig_bis");
     }
 
     /**
