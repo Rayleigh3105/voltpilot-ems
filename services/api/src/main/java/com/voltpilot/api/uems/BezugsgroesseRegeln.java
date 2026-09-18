@@ -62,7 +62,7 @@ public final class BezugsgroesseRegeln {
                 "Prozesse und Kostenstellen sind als Geltungsbereich noch nicht wählbar."),
         GELTUNG_UNBEKANNT("geltung_unbekannt", 422, "Den gewählten Geltungsbereich gibt es nicht."),
         BEDEUTUNG_FEST("bedeutung_fest", 422,
-                "Nach dem ersten Wert bleiben Wertart, Einheit, Periode und Geltungsbereich fest. "
+                "Nach dem ersten Wert bleiben Art, Wertart, Einheit, Periode und Geltungsbereich fest. "
                         + "Legen Sie dafür eine neue Bezugsgröße an."),
         KENNZEICHEN_BELEGT("kennzeichen_belegt", 409, "Dieses Kennzeichen trägt oder trug schon eine andere Bezugsgröße."),
         ARCHIVIERT("archiviert", 409, "Diese Bezugsgröße ist archiviert und wird nicht mehr geändert."),
@@ -107,7 +107,7 @@ public final class BezugsgroesseRegeln {
 
     /** M1: was nach dem ersten Wert fest bleibt ({@code verwalten.fest_nach_erstem_wert}). */
     public static final List<String> FEST_NACH_ERSTEM_WERT =
-            List.of("wertart", "einheit", "periode_art", "geltung_art", "geltung_id");
+            List.of("art", "wertart", "einheit", "periode_art", "geltung_art", "geltung_id");
 
     /** M1: was immer änderbar bleibt. */
     public static final List<String> IMMER_AENDERBAR = List.of("kennzeichen", "name");
@@ -141,7 +141,12 @@ public final class BezugsgroesseRegeln {
             String einheit,
             String periodeArt,
             String geltungArt,
-            String geltungId) {}
+            String geltungId, String art) {
+        public Entwurf(String kennzeichen, String name, String wertart, String einheit,
+                String periodeArt, String geltungArt, String geltungId) {
+            this(kennzeichen, name, wertart, einheit, periodeArt, geltungArt, geltungId, null);
+        }
+    }
 
     /** Das Vokabular des Vertrags, wie es hereingereicht wird. */
     public record Vokabular(
@@ -316,6 +321,7 @@ public final class BezugsgroesseRegeln {
     /** M1: die Felder der Bedeutung, die sich zwischen Bestand und Entwurf unterscheiden — in der Reihenfolge des Vertrags. */
     public static List<String> bedeutungGeaendert(Entwurf bestand, Entwurf neu) {
         List<String> felder = new ArrayList<>();
+        if (!Objects.equals(bestand.art(), neu.art())) felder.add("art");
         if (!Objects.equals(bestand.wertart(), neu.wertart())) {
             felder.add("wertart");
         }

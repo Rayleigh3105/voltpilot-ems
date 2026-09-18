@@ -128,7 +128,7 @@ class BezugsgroesseApiTest {
                 "monat", "standort", w.standort()));
         assertThat(a.status()).isEqualTo(201);
         assertThat(felder(a.body())).containsExactly("id", "kennzeichen", "name", "wertart", "einheit", "periode_art",
-                "geltung_art", "geltung_id", "geltung_name", "hat_werte", "archiviert_am", "angelegt_am");
+                "geltung_art", "geltung_id", "geltung_name", "hat_werte", "archiviert_am", "angelegt_am", "art");
         assertThat(a.body().get("kennzeichen").asText()).isEqualTo("BZ-0001");
         assertThat(a.body().get("geltung_name").asText()).isEqualTo("Werk Ahrenberg");
         assertThat(a.body().get("hat_werte").asBoolean()).isFalse();
@@ -190,6 +190,33 @@ class BezugsgroesseApiTest {
                 "standort", fremd.standort())).status()).isEqualTo(201);
     }
 
+    @Test
+    void artReistMitBleibtBeiAltenClientsUndIstNachWertenFest() throws Exception {
+        Welt w = welt();
+        Map<String, Object> a = anfrage("BZ-ART", "Produktionsmenge Spritzguss", "periodenwert", "kg", "monat", "standort", w.standort());
+        a.put("art", "produktionsmenge");
+        Antwort angelegt = ruf(w, HttpMethod.POST, PFAD, a);
+        assertThat(angelegt.status()).as(angelegt.body().toString()).isEqualTo(201);
+        UUID id = UUID.fromString(angelegt.body().path("id").asText());
+        assertThat(angelegt.body().path("art").asText()).isEqualTo("produktionsmenge");
+        a.remove("art");
+        assertThat(ruf(w, HttpMethod.PUT, PFAD + "/" + id, a).body().path("art").asText()).isEqualTo("produktionsmenge");
+        a.put("art", "sonstige_menge");
+        assertThat(ruf(w, HttpMethod.PUT, PFAD + "/" + id, a).body().path("art").asText()).isEqualTo("sonstige_menge");
+        a.put("art", "gutteile");
+        abgelehnt(w, HttpMethod.PUT, PFAD + "/" + id, a, "anfrage_ungueltig");
+        a.put("art", "erfunden");
+        abgelehnt(w, HttpMethod.PUT, PFAD + "/" + id, a, "wort_unbekannt");
+        erstwert(w, id, 1, "erstwert", "wirksam", "312400", null);
+        a.put("art", "produktionsmenge");
+        abgelehnt(w, HttpMethod.PUT, PFAD + "/" + id, a, "bedeutung_fest");
+        assertThat(ruf(w, HttpMethod.GET, PFAD + "/" + id, null).body().path("art").asText()).isEqualTo("sonstige_menge");
+        assertThat(ruf(w, HttpMethod.GET, PFAD, null).body().path("bezugsgroessen").findValuesAsText("art")).contains("sonstige_menge");
+        assertThat(ruf(welt(), HttpMethod.GET, PFAD + "/" + id, null).status()).isEqualTo(404);
+        UUID alt = anlegen(w, "BZ-ALT");
+        assertThat(ruf(w, HttpMethod.GET, PFAD + "/" + alt, null).body().path("art").isNull()).isTrue();
+    }
+
     // ================================================================ Ablehnungen
 
     /** Jede Ablehnung der Form und der Regeln: Code, Status, Kundensatz — und nichts ist geschrieben. */
@@ -206,7 +233,7 @@ class BezugsgroesseApiTest {
         abgelehntMitFeld(w, HttpMethod.POST, gut, mit(anfrage(null, "X", "periodenwert", "kg", "monat", "standort",
                 w.standort()), "periodeArt", "monat"), "anfrage_ungueltig", "periodeArt");
         abgelehntMitFeld(w, HttpMethod.POST, gut, mit(anfrage(null, "X", "periodenwert", "kg", "monat", "standort",
-                w.standort()), "art", "Produktionsmenge"), "anfrage_ungueltig", "art");
+                w.standort()), "art", "Produktionsmenge"), "wort_unbekannt", "art");
         abgelehntMitFeld(w, HttpMethod.POST, gut, anfrage(null, "  ", "periodenwert", "kg", "monat", "standort",
                 w.standort()), "anfrage_ungueltig", "name");
         abgelehntMitFeld(w, HttpMethod.POST, gut, mit(anfrage(null, "X", "periodenwert", "kg", "monat", "standort",

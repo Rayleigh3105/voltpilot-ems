@@ -54,7 +54,7 @@ export const ABLEHNUNGEN = {
   geltung_unbekannt: { status: 422, satz: 'Den gewählten Geltungsbereich gibt es nicht.' },
   bedeutung_fest: {
     status: 422,
-    satz: 'Nach dem ersten Wert bleiben Wertart, Einheit, Periode und Geltungsbereich fest. Legen Sie dafür eine neue Bezugsgröße an.',
+    satz: 'Nach dem ersten Wert bleiben Art, Wertart, Einheit, Periode und Geltungsbereich fest. Legen Sie dafür eine neue Bezugsgröße an.',
   },
   kennzeichen_belegt: {
     status: 409,

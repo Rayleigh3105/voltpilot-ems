@@ -31,7 +31,7 @@ public final class BezugsgroesseDto {
             String einheit,
             String periodeArt,
             String geltungArt,
-            String geltungId) {}
+            String geltungId, String art) {}
 
     /** Eine Bezugsgröße. {@code hat_werte} sagt, ob M1 greift und ob sie löschbar ist (M6). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -47,7 +47,7 @@ public final class BezugsgroesseDto {
             String geltungName,
             boolean hatWerte,
             OffsetDateTime archiviertAm,
-            OffsetDateTime angelegtAm) {}
+            OffsetDateTime angelegtAm, String art) {}
 
     /**
      * {@code GET /api/v1/bezugsgroessen}: archivierte eingeschlossen, nach Kennzeichen — und, getrennt davon,

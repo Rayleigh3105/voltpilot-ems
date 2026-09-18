@@ -43,7 +43,7 @@ public class BezugsgroesseRepository {
             String geltungName,
             boolean hatWerte,
             Instant archiviertAm,
-            Instant angelegtAm) {}
+            Instant angelegtAm, String art) {}
 
     /** Eine gespeicherte Wert-Zeile (eine Fassung). */
     public record WertZeile(
@@ -71,7 +71,7 @@ public class BezugsgroesseRepository {
             String freigeberArt,
             Instant createdAt, String kanalHerkunft) {}
 
-    private static final String SPALTEN = "b.id, b.kennzeichen, b.name, b.wertart, b.einheit, b.periode_art, "
+    private static final String SPALTEN = "to_jsonb(b)->>'art' AS art, b.id, b.kennzeichen, b.name, b.wertart, b.einheit, b.periode_art, "
             + "b.geltung_art, coalesce(b.unternehmen_id, b.standort_id, b.ort_id, b.prozess_id, b.kostenstelle_id, "
             + "b.messstelle_id) AS geltung_id, "
             + "coalesce(u.name, s.name, o.name, p.name, k.name, m.name, m.kennzeichen) AS geltung_name, "
@@ -98,7 +98,7 @@ public class BezugsgroesseRepository {
             rs.getString("geltung_name"),
             rs.getBoolean("hat_werte"),
             instant(rs, "archiviert_am"),
-            instant(rs, "created_at"));
+            instant(rs, "created_at"), rs.getString("art"));
 
     /** Das Vokabular des Vertrags aus seiner EINEN Stelle in der Datenbank ({@code bezugsdaten_vokabular()}). */
     public BezugsgroesseRegeln.Vokabular vokabular() {
@@ -249,18 +249,30 @@ public class BezugsgroesseRepository {
         UUID[] verweis = verweis(e.geltungArt(), geltungId);
         return jdbc.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, "
                 + "periode_art, geltung_art, unternehmen_id, standort_id, ort_id, messstelle_id, prozess_id, "
-                + "kostenstelle_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id", UUID.class, tenant,
+                + "kostenstelle_id, art) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id", UUID.class, tenant,
                 e.kennzeichen(), e.name(), e.wertart(), e.einheit(), e.periodeArt(), e.geltungArt(), verweis[0],
-                verweis[1], verweis[2], verweis[3], verweis[4], verweis[5]);
+                verweis[1], verweis[2], verweis[3], verweis[4], verweis[5], e.art());
     }
 
     public void aendern(UUID id, BezugsgroesseRegeln.Entwurf e, UUID geltungId) {
         UUID[] verweis = verweis(e.geltungArt(), geltungId);
         jdbc.update("UPDATE bezugsgroesse SET kennzeichen = ?, name = ?, wertart = ?, einheit = ?, periode_art = ?, "
                 + "geltung_art = ?, unternehmen_id = ?, standort_id = ?, ort_id = ?, messstelle_id = ?, "
-                + "prozess_id = ?, kostenstelle_id = ?, updated_at = now() WHERE id = ?", e.kennzeichen(), e.name(),
+                + "prozess_id = ?, kostenstelle_id = ?, art = ?, updated_at = now() WHERE id = ?", e.kennzeichen(), e.name(),
                 e.wertart(), e.einheit(), e.periodeArt(), e.geltungArt(), verweis[0], verweis[1], verweis[2],
-                verweis[3], verweis[4], verweis[5], id);
+                verweis[3], verweis[4], verweis[5], e.art(), id);
+    }
+
+    public boolean artBekannt(String art) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT bezugsarten() ?? ?", Boolean.class, art));
+    }
+
+    public boolean artPasst(BezugsgroesseRegeln.Entwurf e) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT bezugsart_passt(?,?,?,?,?) AND (bezugsarten()->?->>'einheiten' <> 'messstelle' "
+                + "OR EXISTS (SELECT 1 FROM messstelle WHERE id = ?::uuid AND einheit = ?))",
+                Boolean.class, e.art(), e.wertart(), e.einheit(), e.periodeArt(), e.geltungArt(),
+                e.art(), e.geltungId(), e.einheit()));
     }
 
     public void archivieren(UUID id) {

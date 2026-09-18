@@ -295,9 +295,21 @@ Einheiten und die Perioden.
 - **Keine Regel der Fälle.** Die Prüfungen gehören zu keinem Abnahmefall (BZ-3 hat keinen), darum
   stehen sie nicht in `cases` und `zwillinge`; beide Umsetzungen fahren jede.
 
-Es ändert sich kein Verhalten: keine Migration, keine Spalte an `bezugsgroesse`, keine Route und
-keine Portal-Fläche, und kein Produktionsweg ruft `BezugsArt` oder `bezugsArt.ts` an. Das Paket,
-das die Art speichert, legt ihre Spalte additiv an und prüft sie gegen dieses Vokabular.
+Seit `V20260918110000` trägt `bezugsgroesse.art` die gewählte Art als nullable Spalte ohne
+Default. Produktionsmenge, Gutteile und Sonstige Menge können dieselbe Einheit, Wertart,
+Periode und Geltung haben; eine verlustfreie Rekonstruktion ist unmöglich. Der Bestandsnachtrag
+setzt deshalb nur genau einen passenden Kandidaten, sonst bleibt `art` null.
+`bezugsarten()` ist der vollständig gegen `arten.je_art` geprüfte Datenbank-Katalog;
+`bezugsart_passt()` prüft die Kombination. Die Herkunft bleibt am Wert.
+
+POST und PUT nehmen `art` additiv an; GET/Liste geben sie mit null für ungeklärten Bestand
+zurück. Ohne Art bleibt POST kompatibel. Bei PUT erhält eine fehlende oder null gesetzte Art
+die vorhandene Art. Unbekannte Wörter antworten mit `wort_unbekannt`, unpassende Kombinationen
+mit `anfrage_ungueltig` (jeweils `feld: art`). Nach dem ersten Wert oder einer Kanalbindung
+bleibt die Art fest (M1), auch eine zuvor fehlende Art. Name/Kennzeichen bleiben änderbar.
+Die Liste zeigt „Art nicht angegeben“, wenn keine gespeichert ist. Kennzahl-Nenner,
+Import-Zuordnungen und freigegebene Berichts-Abzüge benötigen die Art nicht zur Rechnung;
+ihre bestehenden Zahlen, Fassungen und Prüfsummen bleiben unverändert.
 
 ## 9. Der CSV-Leser (C1, nachgetragen mit AP-09 IP-11 am 13.09.2026)
 

@@ -668,7 +668,7 @@ class BezugsdatenVectorsTest {
     private static BezugsgroesseRegeln.Entwurf entwurf(JsonNode e) {
         return new BezugsgroesseRegeln.Entwurf(text(e.path("kennzeichen")), text(e.path("name")),
                 text(e.path("wertart")), text(e.path("einheit")), text(e.path("periode_art")),
-                text(e.path("geltung_art")), text(e.path("geltung_id")));
+                text(e.path("geltung_art")), text(e.path("geltung_id")), text(e.path("art")));
     }
 
     // ------------------------------------------------------------ Die Vektor-Form lesen
