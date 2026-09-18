@@ -1,0 +1,43 @@
+# AP-14 IP-1: die Ergebnisform je Abfrage der Blätter unter tools/betriebsabfragen/ —
+# Datei, Kennung, dann Spaltenname:Spaltentyp in der Reihenfolge des SELECT.
+# Geprüft von BetriebsabfragenBlaetterTest. Eine Migration, die eine Abfrage bricht oder still
+# umbaut, macht den Test rot. Wer ein Blatt bewusst ändert, kopiert die beobachtete Form aus
+# services/api/target/betriebsabfragen/<blatt>.formen.txt hierher.
+
+bestand-vor-uems.sql Q01#1 angewandt:int8 fehlgeschlagen:int8 hoechste_version:numeric helfer_check_angewandt:bool uems_migrationen:int8 letzter_lauf:timestamp
+bestand-vor-uems.sql Q02#1 klasse:text kundenbereiche:int8 anlagen:numeric
+bestand-vor-uems.sql Q03#1 lage:text kundenbereiche:int8 anlagen:numeric offene_vorschlagszeilen:numeric standorte_im_entwurf:numeric standorte_archiviert:numeric ohne_unternehmen:int8
+bestand-vor-uems.sql Q04#1 art:text zeilen:int8 akteure:int8 zeilen_ohne_person:int8 zeilen_einer_person:int8 zeilen_fremder_automat:int8 erste:timestamptz letzte:timestamptz
+bestand-vor-uems.sql Q05#1 messstellen:int8 davon_berechnet:int8 formel_terme:int8 terme_gelten_als_erzeugung:int8 kundenbereiche_mit_messstellen:int8
+bestand-vor-uems.sql Q06#1 status:text kind:text boxen:int8
+bestand-vor-uems.sql Q06#2 boxen_je_anlage:int8 anlagen:int8
+bestand-vor-uems.sql Q07#1 core_version:text palette_version:text boxen:int8 aelteste_meldung:timestamptz juengste_meldung:timestamptz
+bestand-vor-uems.sql Q08#1 klasse:text boxen:int8 freie_register:numeric zeilen_ohne_kadenz:numeric
+bestand-vor-uems.sql Q09#1 klasse:text boxen:int8 mittel:numeric hoechstwert:numeric
+bestand-vor-uems.sql Q10#1 catalog_version:text apply_status:text zeilen:int8 boxen:int8
+bestand-vor-uems.sql Q11#1 offene_perioden_ohne_box:int8
+bestand-vor-uems.sql Q12#1 zeilen:int8 ohne_box:int8
+bestand-vor-uems.sql Q13#1 kind:text laufend:int8 endet_in_3h:int8
+bestand-vor-uems.sql Q14#1 datenbank:text bytes:int8
+bestand-vor-uems.sql Q14#2 tabelle:name groesse:text compression_enabled:bool
+bestand-vor-uems.sql Q14#3 arbeit_viertelstunde_offen:int8 arbeit_tag_offen:int8 arbeit_periode_offen:int8
+bestand-vor-uems.sql Q15#1 archived_count:int8 last_archived_time:timestamptz failed_count:int8 last_failed_time:timestamptz
+bestand-vor-uems.sql Q16#1 tenant_id:uuid site_id:uuid created_at:timestamptz
+bestand-vor-uems.sql Q17#1 device_id:uuid site_id:uuid tenant_id:uuid freie_register:int8 anteil_frei_prozent:numeric schnellste_kadenz_s:int4
+bestand-vor-uems.sql Q18#1 site_id:uuid tenant_id:uuid boxen:int8 zustaende:_text
+
+bestand-nach-rollout.sql Z01#1 angewandt:int8 fehlgeschlagen:int8 hoechste_version:numeric millisekunden_letzter_tag:int8
+bestand-nach-rollout.sql Z01#2 version:varchar description:varchar millisekunden:int4 installed_on:timestamp
+bestand-nach-rollout.sql Z02#1 conname:name traegt_rolle_gesetzt:bool traegt_rolle_entzogen:bool
+bestand-nach-rollout.sql Z03#1 funktion:text zustand_am_standort:text standorte:int8
+bestand-nach-rollout.sql Z03#2 zustand_der_anlage:text uebernommen:bool anlagen:int8
+bestand-nach-rollout.sql Z04#1 mit_standort_ohne_teilnahme:int8 ohne_standort:int8 anlagen:int8
+bestand-nach-rollout.sql Z05#1 kundenbereiche:int8 stichtag_bestandslauf:int8 stichtag_neu:int8 ohne_stichtag:int8 konten_uebernommen:int8
+bestand-nach-rollout.sql Z06#1 registry_schluessel_je_box:bool offene_perioden_ohne_box:int8
+bestand-nach-rollout.sql Z07#1 arbeit_viertelstunde_offen:int8 arbeit_tag_offen:int8 arbeit_periode_offen:int8
+
+pilot-tagesblick.sql T01a#1 tenant_id:uuid quellen_art:text einheiten:int8 einheiten_ueber_1h:int8 einheiten_ueber_24h:int8 aeltester_stand_min:numeric juengster_stand_min:numeric
+pilot-tagesblick.sql T01b#1 tenant_id:uuid eingangsweg:text rohwerte_24h:int8 nicht_gut:int8 mit_luecken_kennzeichen:int8 verworfene_samples:numeric quellen:int8 juengster_eingang_min:numeric
+pilot-tagesblick.sql T02#1 tenant_id:uuid quellen_art:text offene_luecken:int8 offene_nachlieferung:int8 aeltester_luecke_min:numeric juengste_luecke_min:numeric
+pilot-tagesblick.sql T03#1 tenant_id:uuid liste:text grund:text offen:int8 aeltester_min:numeric juengster_min:numeric
+pilot-tagesblick.sql T04#1 laeufer:text schluessel:text zeitpunkt:timestamptz zahl:int8 notiz:text geaendert_am:timestamptz alter_min:numeric
