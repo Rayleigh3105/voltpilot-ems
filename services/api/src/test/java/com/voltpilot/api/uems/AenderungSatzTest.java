@@ -253,11 +253,13 @@ class AenderungSatzTest {
                         "archiviert", "nebengroesse_hinzugefuegt", "nebengroesse_archiviert",
                         "ort_zugeordnet", "ort_korrigiert", "stellung_zugeordnet", "stellung_korrigiert",
                         "quelle_gebunden", "quelle_beendet", "einstellung_geaendert", "zaehler_gewechselt");
-        // Seit AP-03 IP-9 weitet V20260916150000 diesen CHECK — der LETZTE Stand zählt, nicht der erste.
+        // Beide Ankunftsreihenfolgen müssen dasselbe Vokabular erlauben (main vor UEMS in Produktion).
         assertThat(arten("V20260916150000__uems_zugriff_entzug_protokoll.sql", "ort_aenderung_art_chk"))
                 .containsExactlyInAnyOrder("angelegt", "bearbeitet", "verschoben", "korrigiert",
                         "flaeche_geaendert", "archiviert", "wiederhergestellt", "geloescht",
-                        "zugriff_zugewiesen", "zugriff_entzogen");
+                        "zugriff_zugewiesen", "zugriff_entzogen", "rolle_gesetzt", "rolle_entzogen")
+                .containsExactlyInAnyOrderElementsOf(arten(
+                        "V20260916203000__rollen_zuordnung_protokoll.sql", "ort_aenderung_art_chk"));
         assertThat(arten("V20260911270000__uems_datenquelle_bestand.sql", "data_source_aenderung_art_chk"))
                 .containsExactlyInAnyOrder("angelegt", "bearbeitet", "erreichbarkeit_geprueft",
                         "zustaendigkeit_begonnen", "zustaendigkeit_gewechselt", "aus_bestand_uebernommen");
