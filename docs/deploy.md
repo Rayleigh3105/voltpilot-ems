@@ -15,7 +15,7 @@ flowchart LR
 
 1. Den Workflow **Build & Deploy** auslösen. Er führt Tests aus und baut die Cloud-Images. **Build & Deploy (fast)** überspringt Tests und setzt bereits erfolgte Prüfung voraus.
 2. Den Job `gitops-tag-bump` prüfen: Er aktualisiert `apps/voltpilot/overlays/prod/kustomization.yaml` im separaten Repository `mamotec/gitops` auf den gebauten Commit-SHA.
-3. Den gewünschten Stand in Argo CD synchronisieren und Rollout/Readiness prüfen. Die aktuelle Sync-Policy und Cluster-Manifeste sind im GitOps-Repository maßgeblich; ein erfolgreicher Image-Build belegt noch keinen Rollout.
+3. Den gewünschten Stand in Argo CD synchronisieren und Rollout/Readiness prüfen. Die aktuelle Sync-Policy und Cluster-Manifeste sind im GitOps-Repository maßgeblich; ein erfolgreicher Image-Build belegt noch keinen Rollout. **Zwei Eigenschaften der Produktions-Application gehören dazu:** sie läuft auf Auto-Sync — ein gemergter Commit rollt selbsttätig aus —, und die Dienste tragen Sync-Wellen (`api` Welle 0, `timescale-writer`/`ingest`/`frontend` Welle 1). **Wellen ordnen die Aktualisierung, sie halten keine alten Pods an:** wer alten Code sicher aus dem Weg haben muss, setzt Replikas auf null und belegt den Nullstand.
 4. Nach dem Rollout Anmeldung, aktuelle Telemetrie, Preisabdeckung und Fahrplanalter prüfen.
 
 Quellen: [Workflow](../.forgejo/workflows/deploy.yaml), [Fast-Workflow](../.forgejo/workflows/deploy-fast.yaml), [Tag-Bump-Werkzeug](../tools/deploy/gitops-image-bump.sh).
@@ -59,8 +59,10 @@ Auf einer reinen Daten-VM ausschließlich die benötigten Datendienste verwalten
 - Produktion verwendet standardmäßig ein leeres `SPRING_PROFILES_ACTIVE`. `local` ergänzt Demomigrationen.
 - Angewandte Migrationen unverändert lassen. `out-of-order: true` erlaubt später eintreffende Versionen; nicht umnummerieren.
 - Selbstheilende Prüfsummenkorrektur ersetzt keine SQL-Migration. Unerwartete Flyway-Warnungen untersuchen. [Migrationen](api.md#schema-und-migrationen).
-- Rücknahme eines App-Releases: vorherigen geprüften Image-Stand im GitOps wiederherstellen und synchronisieren. Das setzt die Datenbank nicht zurück; Expand-Contract-Kompatibilität beachten.
+- **Die Grenze der Selbstheilung:** `SelfHealingFlywayMigrationStrategy` ruft nach einer gescheiterten Validierung `repair()` auf. Startet damit ein **älterer** Build gegen ein neueres Schema, markiert Flyway jede ihm unbekannte angewandte Migration in `flyway_schema_history` als `type='DELETE'` — die Tabellen bleiben, aber der neue Build sieht diese Versionen danach als `PENDING`, migriert sie erneut und **bricht beim Start ab** (`relation … already exists`, Exit 1). Ein einziger alter Fehlstart nach einer Migration legt also den neuen Betrieb lahm. Der Schutz ist der belegte Nullstand vor der Migration, nicht die Selbstheilung.
+- Rücknahme eines App-Releases: vorherigen geprüften Image-Stand im GitOps wiederherstellen und synchronisieren. Das setzt die Datenbank nicht zurück. **Das trägt nur bei additiven Migrationen** (Expand-Contract). Hat das Release eine Spalte umbenannt, eine Spalte oder einen Primärschlüssel fallen lassen, ist ein Image-Revert **kein** Rückweg: er stellt den alten Code auf das neue Schema. Dann gilt die Reihenfolge api und Writer auf null und belegt null → Wiederherstellung auf den Punkt → Gegenprobe → erst dann alte Images.
 - Vor zustandsverändernden Wartungsarbeiten eine zur Umgebung passende, getestete Wiederherstellung für Datenbank, CA, ACL und Konfiguration bereithalten.
+- Die erste UEMS-Produktfreigabe ist die benannte Ausnahme mit Wartungsfenster und Wiederherstellungspunkt; ihr wörtlicher Ablauf steht im [Rollout-Drehbuch](rollout/uems-erste-freigabe.md). Danach gilt Expand-Contract wirklich — bewacht von `MigrationHygieneTest`: eine neue Migration mit `RENAME COLUMN`, `DROP COLUMN` oder `DROP CONSTRAINT …_pkey` braucht den Marker `-- freigabe: fenster`, mit dem sie ausdrücklich ein Wartungsfenster anmeldet.
 
 ## Betrieb prüfen
 

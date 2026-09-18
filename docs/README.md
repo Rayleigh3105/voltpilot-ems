@@ -6,7 +6,7 @@ Starten Sie mit der Frage, die Sie beantworten möchten. Jede Erklärung hat ein
 |---|---|
 | Überblick | [Architektur](architecture.md), [Portal und Bedienmodell](portal.md) |
 | Entwicklung | [Lokal starten und testen](development.md), [API und Datenbank](api.md) |
-| Cloud-Betrieb | [Deployment](deploy.md), [Kubernetes-Betriebsvertrag](k8s-readiness.md) |
+| Cloud-Betrieb | [Deployment](deploy.md), [Kubernetes-Betriebsvertrag](k8s-readiness.md), [Rollout-Drehbuch der ersten UEMS-Freigabe](rollout/uems-erste-freigabe.md) |
 | Geräte verbinden | [Enrollment](connect-a-device.md), [MQTT-Sicherheit](security-mqtt.md) |
 | Box betreiben | [Edge-App](../edge-app/README.md), [Installation](../edge-app/DEPLOY.md), [Laufzeitregeln](edge-runtime.md) |
 | Updates | [Edge-Updates bedienen](ota-autonomie.md), [Signaturkette und Schlüssel](ota-signing.md) |
