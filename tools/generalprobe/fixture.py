@@ -123,6 +123,9 @@ def main():
             assert int(sql('SELECT count(*) FROM flyway_schema_history WHERE success;')) == len(names)
             # Nonempty legacy tenant/site: probes must surface Z03/Z05 without identities.
             sql("INSERT INTO tenant(id,name) VALUES ('12345678-1234-1234-1234-123456789abc','CUSTOMER_SECRET_9a52'); INSERT INTO site(tenant_id,name) VALUES ('12345678-1234-1234-1234-123456789abc','SITE_SECRET_9a52'); INSERT INTO unternehmen(tenant_id,name,zeitzone) SELECT id,name,'Europe/Berlin' FROM tenant;")
+            # Same legacy case as FunktionBestandApiTest: armed inverter, no running
+            # operating mode -> eingerichtet. A DB fixture, never a physical grant.
+            sql("INSERT INTO device(tenant_id,site_id,external_ref,kind,status) SELECT tenant_id,id,'SERIAL_SECRET_9a52','inverter','claimed' FROM site; INSERT INTO device_control_activation(device_id,activated_by) SELECT id,'ACTOR_SECRET_9a52' FROM device;")
             # Exercise the lock sampler with a real blocked relation lock before the backup.
             blocker = threading.Thread(target=lambda: sql("BEGIN; LOCK TABLE device_measurement_sample IN ACCESS EXCLUSIVE MODE; SELECT pg_sleep(3); COMMIT;"))
             blocker.start()
@@ -188,7 +191,7 @@ def main():
             for name in ['probe.json', 'rueckweg.json']:
                 text = (a.artifacts / name).read_text()
                 assert_numeric_tree(json.loads(text))
-                for secret in ['CUSTOMER_SECRET', 'SITE_SECRET', '12345678-1234', 'fixture_password', 'voltpilot_app', prefix]:
+                for secret in ['CUSTOMER_SECRET', 'SITE_SECRET', 'SERIAL_SECRET', 'ACTOR_SECRET', '12345678-1234', 'fixture_password', 'voltpilot_app', prefix]:
                     assert secret not in text
             print('PASS: main migration set -> physical PITR copy -> new API -> old API -> physical PITR return; numeric outputs only; expected Z03/Z05 review.', flush=True)
     finally:

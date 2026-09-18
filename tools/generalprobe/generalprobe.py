@@ -129,8 +129,11 @@ class LogFacts:
     def __init__(self):
         self.flyway = self.schema = self.failed = self.repairs = 0
         self.summaries = {}
+        self.migrations_done = False
 
     def feed(self, line):
+        if re.search(r'Successfully applied \d+ migration|Schema .* is up to date\. No migration necessary', line):
+            self.migrations_done = True
         if ('Flyway' in line or 'Migration ' in line) and re.search(r'(?i)exception|failed|error', line):
             self.flyway = 1
         if re.search(r'(?i)(column|relation).*does not exist', line):
@@ -352,6 +355,8 @@ def probe(db, a, report):
     observation = {'stichproben': 0, 'fehler': 0, 'laengste_beobachtete_sperrwartezeit_ms': 0}
     def sample():
         while not stop.is_set():
+            if getattr(db, 'facts', None) is not None and db.facts.migrations_done:
+                break
             try:
                 ms = float(db.query(LOCK_SQL)[0]['ms'])
                 observation['stichproben'] += 1
@@ -375,6 +380,7 @@ def probe(db, a, report):
                    'start_ms': startup, 'laeufer_abwarten_ms': runners_ms, 'startbudget_ms': 180000,
                    'startbudget_reicht': int(ready and startup <= 180000 and sum(ms) <= 180000),
                    'sperren': observation, 'flyway_reparaturen': db.facts.repairs}
+    observation['migrationsende_erkannt'] = int(db.facts.migrations_done)
     report['B'] = counts
     migration_failed = (not ready and db.facts.flyway) or any(not r['success'] for r in durations)
     if migration_failed:
@@ -400,7 +406,7 @@ def probe(db, a, report):
         report['W1']['flyway_historie_veraendert'] = int(db.snapshot()['history_sha256'] != before_old['history_sha256'])
     report['pruefen_Z03'] = sum(v for k, v in report['C']['Z03']['anlagen'].items() if k.startswith('eingerichtet_'))
     report['pruefen_Z05'] = report['C']['Z05']['ohne_stichtag']
-    review(report, incomplete or not observation['stichproben'] or bool(observation['fehler']))
+    review(report, incomplete or not observation['stichproben'] or bool(observation['fehler']) or not observation['migrationsende_erkannt'])
 
 
 def review(report, incomplete):

@@ -146,6 +146,16 @@ class Results(unittest.TestCase):
     def test_unknown_is_not_zero(self):
         self.assertEqual({'metrik': 0, 'abgeschlossen': 0}, g.runner_counts('', g.LogFacts())['bestand_rechte'])
 
+    def test_sampling_stops_at_flyway_completion_not_runner_completion(self):
+        facts = g.LogFacts()
+        facts.feed('Successfully validated 235 migrations')
+        self.assertFalse(facts.migrations_done)
+        facts.feed('Successfully applied 67 migrations to schema "public"')
+        self.assertTrue(facts.migrations_done)
+        facts = g.LogFacts()
+        facts.feed('Schema "public" is up to date. No migration necessary.')
+        self.assertTrue(facts.migrations_done)
+
     def test_error_classification_drops_data(self):
         facts = g.LogFacts()
         facts.feed('org.flywaydb.core.FlywayException: customer SECRET failed password=PRIVATE')

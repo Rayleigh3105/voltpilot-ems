@@ -114,7 +114,8 @@ Seriennummern, Zeitstempel, SQL-Zeilen, Versionsbezeichnungen oder Passwörter.
   reichen nicht oder Bereitschaft konnte nicht nachgewiesen werden.
 - **Sperren in A:** etwa alle 250 ms plus Abfragedauer `pg_locks.waitstart`,
   `pg_stat_activity`, Muttertabelle `device_measurement_sample` und ihre
-  Timescale-Chunks. Gemessen wird die **längste beobachtete bisherige Wartezeit**
+  Timescale-Chunks; Ende bei der Flyway-Erfolgsmeldung. Fehlt diese, bleibt
+  die Zeitgrenze unbelegt und der Lauf wird unvollständig (23). Gemessen wird die **längste beobachtete bisherige Wartezeit**
   einer nicht gewährten Relationssperre, keine exakte abgeschlossene Dauer,
   keine Sperrhaltezeit, keine Transaktions-/Advisory-/Index-Sperre. Kurze Wartezeiten
   zwischen Stichproben werden verpasst. Ohne Writer-Last beweist 0 keinen
