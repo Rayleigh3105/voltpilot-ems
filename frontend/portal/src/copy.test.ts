@@ -2286,3 +2286,123 @@ describe('AP-14 IP-15 · Zuordnung korrigieren', () => {
     expect(text).toContain('wird nichts gelöscht');
   });
 });
+
+describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)', () => {
+  const GRENZ_SATZ =
+    'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
+  const NEUTRALE_ISO_NENNUNG = 'Eine Zertifizierung nach ISO 50001 wird nicht versprochen.';
+  const RELEASE_NOTIZ = join(SRC, '../../../docs/rollout/release-notiz-vorlage.md');
+  const BERICHT_VORLAGEN = join(
+    SRC,
+    '../../../services/api/src/main/resources/berichte/bericht-vorlagen.json',
+  );
+
+  const REGELN = [
+    { regel: 'S1', re: /ISO[-‑– ]konform/iu, grund: 'keine Aussage „ISO-konform"' },
+    { regel: 'S1', re: /zertifiziert\s+nach/iu, grund: 'keine Aussage „zertifiziert nach"' },
+    { regel: 'S1', re: /normkonform/iu, grund: 'keine Aussage „normkonform"' },
+    { regel: 'S1', re: /ISO\s*50001/iu, grund: 'ISO 50001 nicht als erreichte Eigenschaft behaupten' },
+    { regel: 'S2', re: /(?:^|[^\p{L}\p{N}])Pilot[\p{L}\p{N}-]*/iu, grund: '„Pilot" ist ein Betreiberwort' },
+    { regel: 'S2', re: /Betreuungs[-‑– ]Welle/iu, grund: '„Betreuungs-Welle" ist ein Betreiberwort' },
+    { regel: 'S2', re: /Betreiber[-‑– ]Liste/iu, grund: '„Betreiber-Liste" ist ein Betreiberwort' },
+    { regel: 'S2', re: /(?:^|[^\p{L}\p{N}])Rollout(?:$|[^\p{L}\p{N}])/iu, grund: '„Rollout" ist ein Betreiberwort' },
+    { regel: 'S2', re: /Freigabe[-‑– ]Tor/iu, grund: '„Freigabe-Tor" ist ein Betreiberwort' },
+    { regel: 'S2', re: /Stufe\s+S(?:\s*\d+)?(?![\p{L}\p{N}])/iu, grund: '„Stufe S" ist ein Betreiberwort' },
+    { regel: 'S3', re: /gemeinsam\s+optimiert/iu, grund: 'Boxen werden nicht gemeinsam optimiert' },
+    { regel: 'S3', re: /(?:^|[^\p{L}\p{N}])Verbund(?:$|[^\p{L}\p{N}])/iu, grund: 'kein „Verbund" mehrerer Boxen' },
+    { regel: 'S3', re: /übergreifend\s+optimiert/iu, grund: 'Boxen werden nicht übergreifend optimiert' },
+  ] as const;
+
+  function freigabeVerstoesse(text: string) {
+    const prueftext = [GRENZ_SATZ, NEUTRALE_ISO_NENNUNG].reduce(
+      (rest, erlaubterSatz) => rest.replaceAll(erlaubterSatz, ' '),
+      text,
+    );
+    return REGELN.filter(({ re }) => re.test(prueftext));
+  }
+
+  function jsonTexte(wert: unknown): string[] {
+    if (typeof wert === 'string') return [wert];
+    if (Array.isArray(wert)) return wert.flatMap(jsonTexte);
+    if (wert && typeof wert === 'object') return Object.values(wert).flatMap(jsonTexte);
+    return [];
+  }
+
+  function kundenFundstellen() {
+    const portal = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .map((text) => ({ wo, text }));
+    });
+    const berichte = jsonTexte(JSON.parse(readFileSync(BERICHT_VORLAGEN, 'utf8')))
+      .map((text) => ({ wo: 'services/api/src/main/resources/berichte/bericht-vorlagen.json', text }));
+    return [
+      ...portal,
+      ...berichte,
+      { wo: 'docs/rollout/release-notiz-vorlage.md', text: readFileSync(RELEASE_NOTIZ, 'utf8') },
+    ];
+  }
+
+  it('S1 wird an Behauptungen rot und lässt die ausdrückliche Abgrenzung zu', () => {
+    for (const probe of [
+      'VoltPilot ist ISO-konform.',
+      'VoltPilot ist zertifiziert nach einer Energiemanagement-Norm.',
+      'VoltPilot arbeitet normkonform.',
+      'VoltPilot erfüllt ISO 50001.',
+    ]) {
+      expect(freigabeVerstoesse(probe).some(({ regel }) => regel === 'S1'), probe).toBe(true);
+    }
+    expect(freigabeVerstoesse(GRENZ_SATZ)).toEqual([]);
+    expect(freigabeVerstoesse(NEUTRALE_ISO_NENNUNG)).toEqual([]);
+  });
+
+  it('S2 wird an Betreiberwörtern rot, aber nicht am Produktnamen oder in Admin-Flächen', () => {
+    for (const probe of [
+      'Dieser Pilot beginnt heute.',
+      'Der Pilotnachweis fehlt.',
+      'Die nächste Betreuungs-Welle beginnt morgen.',
+      'Sie stehen auf der Betreiber-Liste.',
+      'Der Rollout ist abgeschlossen.',
+      'Das Freigabe-Tor ist offen.',
+      'Sie befinden sich in Stufe S3.',
+    ]) {
+      expect(freigabeVerstoesse(probe).some(({ regel }) => regel === 'S2'), probe).toBe(true);
+    }
+    expect(freigabeVerstoesse('VoltPilot zeigt Ihre Messwerte.')).toEqual([]);
+    expect(freigabeVerstoesse('Die Stufe Standort ist vollständig.')).toEqual([]);
+    expect(customerFiles().some((file) => file.includes('/pages/admin/'))).toBe(false);
+    expect(customerFiles().some((file) => EXCLUDED.some((frag) => file.includes(frag)))).toBe(false);
+    expect(customerFiles().some((file) => file.includes('/help/content/'))).toBe(true);
+  });
+
+  it('S3 wird an einer behaupteten Kopplung rot und lässt die festgelegte Einzel-Box-Aussage zu', () => {
+    for (const probe of [
+      'Ihre Boxen werden gemeinsam optimiert.',
+      'Die Anlagen bilden einen Verbund.',
+      'Mehrere Anlagen werden übergreifend optimiert.',
+    ]) {
+      expect(freigabeVerstoesse(probe).some(({ regel }) => regel === 'S3'), probe).toBe(true);
+    }
+    expect(freigabeVerstoesse('Jede Box liest ihre Quellen.')).toEqual([]);
+    expect(freigabeVerstoesse('Das Verbundnetz gehört zum Stromverbund.')).toEqual([]);
+  });
+
+  it('findet im Bestand, in Hilfe, Berichts-Texten und Release-Notiz keinen echten Verstoß', () => {
+    const violations = kundenFundstellen().flatMap(({ wo, text }) =>
+      freigabeVerstoesse(text).map(({ regel, grund }) => `${wo}: ${regel} — ${grund} in „${text.trim().slice(0, 100)}"`),
+    );
+    expect(violations, `Verbotene Freigabe-Aussagen:\n${violations.join('\n')}`).toEqual([]);
+  });
+
+  it('die drei Vorlagen tragen den Grenz-Satz und die sichtbaren Änderungen', () => {
+    const vorlage = readFileSync(RELEASE_NOTIZ, 'utf8');
+    expect(vorlage.split(GRENZ_SATZ)).toHaveLength(4);
+    expect(vorlage).toContain('„Noch nicht zugeordnet“');
+    expect(vorlage).toContain('„Standort anlegen“');
+    expect(vorlage).toContain('„Messen & Auswerten“');
+    expect(vorlage).toMatch(/historischen\s+Prozentwerte\s+für\s+Autarkie\s+und\s+Eigenverbrauch/u);
+    expect(vorlage).toContain('Software-Aktualisierung Ihrer Box');
+    expect(vorlage.match(/Jede Box liest ihre Quellen\./g)).toHaveLength(3);
+  });
+});
