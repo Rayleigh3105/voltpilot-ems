@@ -223,6 +223,14 @@ class UemsStreckeAbnahmeTest {
         assertThat(umschlaege).as(schluessel + ": es wird wirklich gespielt").isNotEmpty();
         senden(keys, umschlaege);
 
+        // Erst überhaupt etwas, dann die Zahlen: ein verworfener Umschlag ist im Writer nur
+        // eine WARN-Zeile. Ohne diesen Vorlauf liefe jede Reihe in ihre volle Wartezeit und
+        // meldete „0 statt N", statt zu sagen, dass gar nichts angekommen ist.
+        warteBis(schluessel + ": kein einziger Wert ist angekommen — verwirft der Writer den "
+                        + "Umschlag? (WARN „Skipping invalid measurements.raw event\")",
+                () -> zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id IN ("
+                        + boxen(szenario) + ")") > 0);
+
         // Erwartet wird JE MESSSTELLE UND ROLLE; die Reihe steht am entity_id der Stammdaten.
         Map<String, Long> erwartet = new TreeMap<>();
         for (JsonNode r : szenario.path("erwartete_reihen")) {
@@ -279,7 +287,13 @@ class UemsStreckeAbnahmeTest {
         out.put("sequence", n.path("sequence").asLong());
         out.put("observed_at", n.path("observed_at").asText());
         out.put("ingested_at", z.path("eingangszeit").asText());
-        out.put("source_topic", z.path("topic").asText());
+        // ⚠ Der Writer prüft Topic und Umschlag auf IDENTITÄT
+        // (`ems/<mandant>/<anlage>/<box>/v2/measurement-samples`). Das Topic des Drehbuchs
+        // nennt die Ahrenberg-Box; hier gilt die je Szenario abgebildete. Wer das Topic
+        // einfach kopiert, bekommt 234 stille `Skipping invalid measurements.raw event`.
+        out.put("source_topic", "ems/" + n.path("tenant_id").asText() + "/"
+                + n.path("site_id").asText() + "/" + je(sz, n.path("device_id").asText())
+                + "/v2/measurement-samples");
         out.put("dropped_samples", 0);
         out.put("gap", false);
         // ⚠ Die Datenannahme reicht die 2.1-Herkunftsfelder NICHT weiter: sie prüft
@@ -521,8 +535,23 @@ class UemsStreckeAbnahmeTest {
         }
     }
 
+    private void warteBis(String was, Bedingung bedingung) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (bedingung.erfuellt()) {
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError(was);
+    }
+
+    private interface Bedingung {
+        boolean erfuellt() throws Exception;
+    }
+
     private void warte(String was, Zaehlung zaehlung, long erwartet) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(90).toNanos();
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
         long ist = -1;
         while (System.nanoTime() < deadline) {
             ist = zaehlung.zaehle();
