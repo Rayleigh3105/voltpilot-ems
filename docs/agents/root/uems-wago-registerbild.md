@@ -48,10 +48,12 @@ fahren — kein Leser, kein Treiber, kein Produktivcode der Box.
   n Karten) und ein In-Process-Modbus-TCP-Server davor, nach dem Muster von `modbus_spec.js`.
   Exporte für IP-6: `vertragVorhanden`, `ladeAufbau`, `erstelleRegisterbild`,
   `starteRegisterbildServer`, `ladeFaelle`/`ladeFall`, `UNGUELTIG`.
-- [`wago-simulator-vectors.json`](../../contracts/v2/wago-simulator-vectors.json) — fünf Fälle
-  S1–S5: Normallast (4 Karten, big, FC3), Rücksetzung (Überlauf 65 535 → 0 ist KEIN Neustart, ein
+- [`wago-simulator-vectors.json`](../../contracts/v2/wago-simulator-vectors.json) — sechs Fälle
+  S1–S6: Normallast (4 Karten, big, FC3), Rücksetzung (Überlauf 65 535 → 0 ist KEIN Neustart, ein
   Programmstart schon), Herzschlag steht (little, FC4, Basisadresse 4096), Version fremd, Karte
-  fehlt. Je Fall `lesungen[]` mit `schritte` (Store-Mutationen) und `erwartet`.
+  fehlt, Bereichsbegrenzung (S6 kam mit IP-8: der UNGÜLTIG-Wert tritt ein, bleibt, geht und tritt
+  wieder ein). Je Fall `lesungen[]` mit `schritte` (Store-Mutationen), `erwartet` und
+  `ereignisse` (was IP-8 aus dieser Lesung meldet, ohne die Kennungen des Aufrufers).
 - `edge-app/nodered/vp-palette/test/wago_simulator_spec.js` — der Prüfer: baut den Store, liest ihn
   über den echten Modbus-Weg (`lib/modbus-conn`) und dekodiert mit einem kleinen unabhängigen Leser.
 
@@ -120,3 +122,51 @@ bleiben in `NOCH_NICHT_AN_DER_BOX`, kein Edge-Release.
   antwortet `not_supported` (`ValidateOp`-Vorgabe); eine heutige Cloud verwirft ein Finding-Wort
   außerhalb ihres Vokabulars (`ProbeResultListener.finding`) und ignoriert den Block damit still.
   Auf dem lokalen Bus trägt eine gewöhnliche Lesung weiterhin KEIN `op`-Feld.
+
+## Ereignisse und Qualität aus Statuswort und Zählerverlauf (AP-05 IP-8, 18.09.2026)
+
+Die dritte Stufe: `liesRegisterbild` (IP-6) → `pruefeLesung` (IP-7) → `lesung()` → `edge/events`.
+Weiter **RUHEND**: `RUNTIME_VERSION` bleibt 2026.08.26.3, `wago.pm494`/`wago.pm495` bleiben in
+`NOCH_NICHT_AN_DER_BOX`, kein Edge-Release, keine Migration, keine Cloud-Änderung.
+
+- `edge-app/nodered/measurements/wago-ereignisse.js` — `WagoEreignisse.lesung()` gibt
+  `{ ereignisse, qualitaet }`: fertige Bus-Nachrichten für `edge/events` und die Sicht je Wert.
+- **Die drei Arten, jede einmal je Zustandswechsel.** Vertrag §3 nennt die zwei Schlüsse aus dem
+  Herzschlag, §5 die Ereignisse daraus: `frozen_source` („Werte eingefroren") wenn der Herzschlag
+  steht, `device_restart` wenn er zurückspringt (`ueberlauf` ist **kein** Neustart, Fall S2).
+  `range_limit` fällt beim UNGÜLTIG-Wert des Datentyps, je
+  (Karte, Gruppe), mit dem rohen Statuswort 1 der Gruppe als unausgelegter Beigabe.
+- **Qualität je Wert** trägt nur zusammen, was gebaut ist: `stale` aus IP-7, `invalid` beim
+  UNGÜLTIG-Wert, `null` bei einem Feld ohne belegten Datentyp. **Kein zweiter Lieferweg** — dass
+  ein UNGÜLTIG-Wert gar kein Sample erzeugt, tut schon IP-6 (PR 942).
+- Bühne: `S6 bereichsbegrenzung` in `wago-simulator-vectors.json` (der UNGÜLTIG-Wert tritt ein,
+  bleibt, geht, tritt wieder ein) und das neue `ereignisse`-Feld je Lesung an **allen** Fällen.
+- `edge-app/nodered/measurements/wago-ereignisse.test.js` (26, über den echten Modbus-Weg der
+  Bühne, plus die Fälle des Referenzdatensatzes).
+
+### Fallen
+
+- ⚠ **Das geschlossene Vokabular wird NICHT geweitet.** `device_restart`, `frozen_source` und
+  `range_limit` sind seit AP-07 IP-3/IP-19 Box-Arten; der Einliefer-Weg `device-events.js` ist der
+  Briefkasten, diese Stufe der Absender. Die §8-Zelle des Konzepts nennt noch „additive
+  `event_kind`-Werte" und eine Migration — **sie ist älter als der Ereignis-Vertrag**. Ein Test
+  hält fest, dass jede Nachricht unverändert durch `device-events.ereignis()` passt.
+- ⚠ **Die Bitlage der Bereichsbegrenzung ist NICHT belegt** (Vertrag §4.2 „Zu erheben",
+  `wago-registerbild-vectors.json` → `statuswoerter.bitlage_bereichsbegrenzung.art`, Befunde 1
+  und 4). Kein Bit wird gedeutet: die vier Bitzahlen sind ein Parameter
+  (`bereichsbegrenzungBits`), ohne ihn lautet die Antwort **`null` = unbekannt**, nie „nein". Ein
+  Test bricht, sobald der Vektor nicht mehr „zu erheben" sagt — dann gehört die Lage in den Leser.
+- ⚠ **`frozen_source` ist der stehende Herzschlag, nicht ein stillstehender Messwert.** Das
+  Vokabular nennt die Art „Werte eingefroren", Vertrag §3 setzt genau das mit dem stehenden
+  Herzschlag gleich, und der Referenzdatensatz-Fall `anwendung-gestoppt-herzschlag-steht` erwartet
+  `frozen_source` bei `heartbeat: [1731, 1731, 1731]`. Ein Zähler ohne Last steht still, ohne
+  eingefroren zu sein — eine Regel „alle Werte bit-gleich" würde auf S1 (Normallast) auslösen.
+- ⚠ **Ein Poll-Takt Unterschied in der Schwelle (Befund, IP-7 gehörig).** Vertrag §3, die Bühne
+  (`S3.stillstand_ab_lesung: 3`) und der Referenzdatensatz lesen „über drei aufeinanderfolgende
+  Lesungen" als **drei gleiche Lesungen**; `HerzschlagWacht` zählt stehende **Übergänge**
+  (`STEHT_AB = 3`) und urteilt `stale` erst bei der **vierten**. IP-8 legt bewusst keine eigene
+  Zahl daneben, sondern fährt auf `qualitaet === 'stale'` — wo die Schwelle liegt, entscheidet
+  IP-7. Der Test `BEFUND: …` hält den heutigen Stand fest.
+- ⚠ **Mischbetrieb:** keine Laufzeit ruft diese Stufe, `flows.json` bettet sie nicht ein — eine Box
+  ohne WAGO-Quelle sendet keines dieser Ereignisse. Wer sie verdrahtet, braucht ein Edge-Release
+  und einen neuen Mischbetriebs-Nachweis.

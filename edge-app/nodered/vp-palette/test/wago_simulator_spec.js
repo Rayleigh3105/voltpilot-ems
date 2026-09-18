@@ -4,7 +4,9 @@
  * Der Prüfer der Bühne: `fixtures/wago-registerbild-store.js` baut den Register-Store, ein
  * In-Process-Modbus-TCP-Server liefert ihn aus, und ein KLEINER, UNABHÄNGIGER Leser hier im Spec
  * rechnet die Wörter zurück und vergleicht sie mit `docs/contracts/v2/wago-simulator-vectors.json`.
- * Fünf Fälle: Normallast, Rücksetzung, Herzschlag steht, Version fremd, Karte fehlt.
+ * Sechs Fälle: Normallast, Rücksetzung, Herzschlag steht, Version fremd, Karte fehlt,
+ * Bereichsbegrenzung (S6 kam mit IP-8 und setzt ein ganzes Statuswort - die Bitlage darin
+ * ist nicht belegt).
  *
  * Warum der Leser hier steht und nicht in der Fixture: die Fixture ist die Bühne, die IP-6 und
  * IP-7 importieren, um IHREN Leser zu prüfen. Läge der Leser in der Fixture, prüfte IP-6 seinen
@@ -188,8 +190,8 @@ describe('WAGO-Registerbild v1: Simulator-Vorstufe (AP-05 IP-12)', function () {
 
   describe('kein Beleg (die Beweisregel des Konzepts)', function () {
     it('jeder Fall ist herkunft: simulator, belegt: false und trägt nie einen Nachweis', function () {
-      assert.strictEqual(faelle.length, 5, 'fünf Fälle: Normallast, Rücksetzung, Herzschlag steht, '
-        + 'Version fremd, Karte fehlt');
+      assert.strictEqual(faelle.length, 6, 'sechs Fälle: Normallast, Rücksetzung, Herzschlag '
+        + 'steht, Version fremd, Karte fehlt, Bereichsbegrenzung (S6 kam mit IP-8)');
       faelle.forEach((f) => {
         assert.strictEqual(f.herkunft, 'simulator', `${f.name}: herkunft`);
         assert.strictEqual(f.belegt, false, `${f.name}: belegt MUSS false sein`);

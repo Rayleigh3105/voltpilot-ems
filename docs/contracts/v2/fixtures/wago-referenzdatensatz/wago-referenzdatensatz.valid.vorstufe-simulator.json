@@ -54,6 +54,39 @@
         "samples": 0,
         "events": ["frozen_source"]
       }
+    },
+    {
+      "name": "ek1-bereichsbegrenzung-ungueltig",
+      "why": "Bereichsbegrenzung: das UInt32-Feld liest 4 294 967 295 — den UNGÜLTIG-Wert seines Datentyps (Handbuch 750-495 S. 79 Tab. 27). Das ist KEIN Zählerstand von 214 748 364,75 kWh, sondern die Abwesenheit eines Werts: kein Sample, Qualität invalid, Ereignis range_limit. Die Bitlage der Bereichsbegrenzung IM Statuswort ist nicht belegt (Vertrag §4.2, Befunde 1 und 4) und wird nicht gedeutet — dieser Fall braucht sie auch nicht",
+      "herkunft": "simulator",
+      "belegt": false,
+      "quelle": "Simulator-Vorstufe (kein Hardwarebeleg)",
+      "input": {
+        "karte": 1,
+        "steckplatz": 2,
+        "woerter": { "energy_import_total": [65535, 65535] },
+        "register35": 4
+      },
+      "expected": {
+        "energy_import_total_kwh": null,
+        "quality": "invalid",
+        "samples": 0,
+        "events": ["range_limit"]
+      }
+    },
+    {
+      "name": "c1-programm-neu-angelaufen",
+      "why": "Programmstart der Steuerung: der Herzschlag springt von 1 731 auf 4 zurück, und kein Überlauf passt dazu (der Abstand über 65 536 hinweg wäre 63 809, weit über der Schrittgrenze 120) — also Ereignis device_restart. Ein echter Überlauf (65 535 → 0) ist KEIN Neustart. Die Werte der Lesung bleiben gültig: ein neu angelaufenes Programm liefert frische Register, es entwertet sie nicht",
+      "herkunft": "simulator",
+      "belegt": false,
+      "quelle": "Simulator-Vorstufe (kein Hardwarebeleg)",
+      "input": {
+        "heartbeat": [1731, 4]
+      },
+      "expected": {
+        "quality": "good",
+        "events": ["device_restart"]
+      }
     }
   ]
 }
