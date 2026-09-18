@@ -75,7 +75,7 @@
       },
       "selector": "model:211/W",
       "driver": "edge-app/nodered/sunspec/sunspec-live.js",
-      "driver_sha256": "9cc4e257acd16b035ab494b4f98d0a6f66b15462f2f4642df3dbc7e9fcfb3a84"
+      "driver_sha256": "e3c104c4a9e793e7453431260ca4c966cc727cdc667a1aa77e91d7f54dccaf35"
     },
     {
       "family": "sunspec_live",
@@ -91,7 +91,7 @@
       },
       "selector": "model:212/W",
       "driver": "edge-app/nodered/sunspec/sunspec-live.js",
-      "driver_sha256": "9cc4e257acd16b035ab494b4f98d0a6f66b15462f2f4642df3dbc7e9fcfb3a84"
+      "driver_sha256": "e3c104c4a9e793e7453431260ca4c966cc727cdc667a1aa77e91d7f54dccaf35"
     },
     {
       "family": "sunspec_live",
@@ -107,7 +107,7 @@
       },
       "selector": "model:213/W",
       "driver": "edge-app/nodered/sunspec/sunspec-live.js",
-      "driver_sha256": "9cc4e257acd16b035ab494b4f98d0a6f66b15462f2f4642df3dbc7e9fcfb3a84"
+      "driver_sha256": "e3c104c4a9e793e7453431260ca4c966cc727cdc667a1aa77e91d7f54dccaf35"
     }
   ]
 }
