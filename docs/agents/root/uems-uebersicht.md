@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Generalprobe und Rückweg (AP-14 IP-11, E2/E3)** — Betreiberwerkzeug ausschließlich für wiederhergestellte Kopien · [Aufruf, Schutz und Nachweise](uems-generalprobe.md).
+
 - **Produktionsreihenfolge der Migrationen (AP-14)** — vollständiger `main`-Satz vor UEMS-Nachzug, Rollenbestand und CHECK-Vergleich; Liste bei jedem `main`-Nachzieh-Merge fortschreiben · [Wächter und Prüfsummenhinweis](uems-migration-produktionsreihenfolge.md)
 
 - **Box-Fähigkeiten (AP-06 IP-18)** — additive Meldung, zentrale Cloud-Abfrage und Mischbetrieb; nur gebaute Fähigkeiten · [Vertrag und Leser](uems-edge-faehigkeiten.md)
