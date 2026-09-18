@@ -20976,7 +20976,8 @@ components:
         sind die der Messstellen-Antwort - der HEUTIGE Lebenszyklus (gespeichert ist nur
         der heutige Eingang); ein Stichtag verschiebt Ort, Stellung und Quelle, nicht ihn.
       required: [id, kennzeichen, name, art, medium, hauptgroesse, ort, elektrische_stellung, quelle,
-        lebenszyklus, fehlt, angehalten_ab, archiviert_am, beobachtung, letzter_wert, nebengroessen, berechnung]
+        lebenszyklus, fehlt, angehalten_ab, archiviert_am, beobachtung, letzter_wert, nebengroessen, fakten,
+        berechnung]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -21009,6 +21010,10 @@ components:
           type: array
           description: "Je Nebengröße dieselbe Beobachtung, über ihre EIGENE führende Quelle."
           items: { $ref: "#/components/schemas/MessstelleRegisterNebengroesse" }
+        fakten:
+          type: array
+          description: "Wirksame, append-only protokollierte Tatsachen an dieser Messstelle."
+          items: { $ref: "#/components/schemas/MessstelleRegisterFakt" }
         berechnung:
           nullable: true
           description: >
@@ -21017,6 +21022,12 @@ components:
             Stellung. null an einer gemessenen Messstelle und an einer berechneten ohne Formel
             am Tag.
           allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBerechnung" }]
+    MessstelleRegisterFakt:
+      type: object
+      required: [art, gilt_ab]
+      properties:
+        art: { type: string, enum: [einstellung_geaendert] }
+        gilt_ab: { type: string, format: date-time }
     MessstelleRegisterBerechnung:
       type: object
       required: [zustand, fehlend, seit, text]
