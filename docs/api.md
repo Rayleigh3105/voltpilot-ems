@@ -68,9 +68,40 @@ einer frisch in Versionsreihenfolge migrierten Datenbank. Rollenereignisse werde
 gesät. Pflege der Liste und die einmalige Prüfsummenänderung der noch nicht produktiven
 `V20260916150000`: [Produktionsreihenfolge](agents/root/uems-migration-produktionsreihenfolge.md).
 
-Die `SelfHealingFlywayMigrationStrategy` repariert bestimmte Validierungsabweichungen einmalig und versucht die Migration erneut. Das richtet Prüfsummen aus, **führt bereits angewandtes SQL aber nicht erneut aus**. SQL-Fehler und fehlende Out-of-Order-Migrationen sind keine reparierbare Prüfsummendrift. Unerwartete Reparaturwarnungen prüfen; Migrationen niemals deshalb nachträglich bearbeiten.
+Die `SelfHealingFlywayMigrationStrategy` prüft vor Migration und jeder Reparatur lesend die
+Historie: unbekannte angewandte Kernversionen (`FUTURE_*` und `MISSING_*`) sowie physische
+`DELETE`-Marker verweigern den Start. Auch eine unlesbare Diagnose bricht ab. Ein älteres Image
+kann so keine neuere Historie reparieren und danach Bereitschaft melden. Eine datenbankweite
+Advisory-Sperre hält Diagnose und Flyway-Aufrufe für alle Starts mit dieser Strategie zusammen;
+ihr Schlüssel bleibt über Releases stabil. Sie liegt auf einer separaten lesenden Transaktion,
+die auch bei Startabbruch endet. Manuelle Flyway-Aufrufe und alte Builds ohne Wächter nehmen
+nicht an dieser Sperre teil und müssen betrieblich ausgeschlossen werden. Das schützt erst
+Builds, die den Wächter enthalten; bereits laufende Prozesse hält er nicht an.
 
-`*:missing` toleriert aufgezeichnete, nicht mehr mitgelieferte Migrationen, etwa Dev-Seeds nach Profilwechsel. Ein leeres Produktionsprofil entfernt keine bereits vorhandenen Demodaten.
+Bekannte Prüfsummen-/Beschreibungs-/Typabweichungen werden weiterhin einmal laut repariert.
+Das richtet Metadaten aus, führt geändertes SQL aber nicht aus. Flyway `repair()` kann fehlende
+Versionen außerdem als `DELETE` markieren; deshalb steht der Wächter vor diesem Schreibweg.
+SQL-Fehler und `IGNORED`-Ankünfte ohne Out-of-Order-Freigabe sind keine heilbare Drift.
+
+`*:missing` bleibt für den Profilwechsel erhalten, wird aber durch eine explizite Ausnahme im
+Wächter begrenzt: die acht Dateien unter `db/dev` (Version UND exakter Skriptname) sowie
+`V20260702000100__dev_provisioned_devices.sql` aus `8766260c` (heutige Fassung
+`V20260702020100` aus `ec6d93a7`). Die Git-Historie enthält keine weiteren entfernten Dev-Seeds;
+entfernte Kernskripte sind ausdrücklich keine Ausnahme. Ein leeres Produktionsprofil entfernt
+keine vorhandenen Demodaten. Neue Dev-Seeds benötigen eine bewusste Aktualisierung dieser Liste.
+
+Bei einem Rolling Update mit neuer Migration kann ein neu startender alter Pod bis zu seiner
+Ersetzung in CrashLoop gehen; er meldet keine Readiness. Der neue Pod kennt die Migrationen und
+kann weiter starten. API-Welle 0 mit Readiness und `maxSurge: 1`/`maxUnavailable: 0` erlaubt diesen
+Austausch, garantiert bei gleichzeitigem Ausfall des alten Pods aber keine unterbrechungsfreie
+Verfügbarkeit. Sync-Wellen stoppen keine bereits laufenden alten Prozesse. Für den inkompatiblen
+UEMS-Umstieg bleibt daher der nachgewiesene Nullbestand von API/Writer im Wartungsfenster nötig.
+[Nachher-Blatt Z08](../tools/betriebsabfragen/README.md) prüft die Marker; bei Schaden vor Öffnung:
+API/Writer anhalten, Befund sichern und geübten Rückweg auf den Wiederherstellungspunkt nutzen.
+
+Nachweise: `FlywayStartupGuardTest` (vollständiger main-Satz → UEMS → alter Start ohne Schreibzugriff
+→ neuer Start, kanonischer Historienfingerabdruck), `SelfHealingFlywayMigrationStrategyTest`,
+`FlywayIgnoreMissingBootTest`, `FlywayOutOfOrderBootTest`, `BetriebsabfragenBlaetterTest`.
 
 ## Betrieb und Änderungspunkte
 
