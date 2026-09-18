@@ -24,10 +24,13 @@ public class MeasurementRawConsumer {
 
     private final ObjectMapper mapper;
     private final MeasurementWriteRepository repository;
+    private final WriterVerwerfMetriken verworfen;
 
-    public MeasurementRawConsumer(ObjectMapper mapper, MeasurementWriteRepository repository) {
+    public MeasurementRawConsumer(ObjectMapper mapper, MeasurementWriteRepository repository,
+            WriterVerwerfMetriken verworfen) {
         this.mapper = mapper;
         this.repository = repository;
+        this.verworfen = verworfen;
     }
 
     @KafkaListener(topics = "${voltpilot.redpanda.measurements-topic:measurements.raw}",
@@ -38,29 +41,37 @@ public class MeasurementRawConsumer {
                     .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                     .readValue(value);
-            if (!valid(event)) {
+            String grund = pruefen(event);
+            if (grund != null) {
                 log.warn("Skipping invalid measurements.raw event");
+                verworfen.umschlagMitSamples("measurements", grund, sampleAnzahl(event));
                 return;
             }
             repository.insert(event);
         } catch (JsonProcessingException e) {
             log.warn("Skipping unparseable measurements.raw: {}", e.getMessage());
+            verworfen.umschlag("measurements", WriterVerwerfMetriken.UNLESBAR);
         }
     }
 
-    private static boolean valid(MeasurementRawEvent event) {
-        if (event == null || !"1.0".equals(event.schema_version()) || event.event_id() == null
-                || event.tenant_id() == null || event.site_id() == null || event.device_id() == null
-                || event.catalog_version() == null || event.catalog_version().isBlank()
-                || event.sequence() < 0 || event.observed_at() == null || event.ingested_at() == null
-                || event.source_topic() == null || event.samples() == null
-                || !event.samples().isArray() || event.samples().isEmpty()
-                || event.samples().size() > 256 || event.dropped_samples() < 0) {
-            return false;
+    private static String pruefen(MeasurementRawEvent event) {
+        if (event == null || !"1.0".equals(event.schema_version())) {
+            return WriterVerwerfMetriken.UNGUELTIG;
+        }
+        if (event.event_id() == null || event.tenant_id() == null || event.site_id() == null
+                || event.device_id() == null || event.catalog_version() == null
+                || event.catalog_version().isBlank() || event.observed_at() == null
+                || event.ingested_at() == null || event.source_topic() == null
+                || event.samples() == null || !event.samples().isArray()
+                || event.samples().isEmpty()) {
+            return WriterVerwerfMetriken.PFLICHTFELD;
+        }
+        if (event.sequence() < 0 || event.samples().size() > 256 || event.dropped_samples() < 0) {
+            return WriterVerwerfMetriken.UNGUELTIG;
         }
         String expectedTopic = "ems/" + event.tenant_id() + "/" + event.site_id() + "/"
                 + event.device_id() + "/v2/measurement-samples";
-        if (!expectedTopic.equals(event.source_topic())) return false;
+        if (!expectedTopic.equals(event.source_topic())) return WriterVerwerfMetriken.IDENTITAET;
         Set<String> points = new HashSet<>();
         for (JsonNode sample : event.samples()) {
             String pointKey = sample.path("point_key").asText("");
@@ -69,18 +80,27 @@ public class MeasurementRawConsumer {
                     || sample.get("raw") == null
                     || !scalar(sample.get("raw"))
                     || !QUALITY.contains(sample.path("quality").asText())) {
-                return false;
+                return WriterVerwerfMetriken.UNGUELTIG;
             }
-            if (sample.has("decoded") && !scalar(sample.get("decoded"))) return false;
+            if (sample.has("decoded") && !scalar(sample.get("decoded"))) {
+                return WriterVerwerfMetriken.UNGUELTIG;
+            }
             try {
                 if (sample.has("observed_at")) Instant.parse(sample.get("observed_at").asText());
             } catch (Exception e) {
-                return false;
+                return WriterVerwerfMetriken.UNGUELTIG;
             }
             if (sample.path("signed_data").asText("").length() > 32768
-                    || sample.path("signed_data_format").asText("").length() > 128) return false;
+                    || sample.path("signed_data_format").asText("").length() > 128) {
+                return WriterVerwerfMetriken.UNGUELTIG;
+            }
         }
-        return true;
+        return null;
+    }
+
+    private static int sampleAnzahl(MeasurementRawEvent event) {
+        return event != null && event.samples() != null && event.samples().isArray()
+                ? event.samples().size() : 0;
     }
 
     private static boolean onlyFields(JsonNode node, Set<String> allowed) {

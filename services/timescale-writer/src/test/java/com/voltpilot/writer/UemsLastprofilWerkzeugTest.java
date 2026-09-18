@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -55,6 +57,9 @@ class UemsLastprofilWerkzeugTest {
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static List<JsonNode> zustellungen;
+
+    @Autowired
+    MeterRegistry meters;
 
     @Container
     static final RedpandaContainer REDPANDA =
@@ -130,6 +135,10 @@ class UemsLastprofilWerkzeugTest {
                 + "WHERE device_id IN (" + sqlListe(boxen) + ")")).isEqualTo(100);
         assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id IN ("
                 + sqlListe(boxen) + ") AND (role <> 'fuehrend' OR delivery <> 'direkt')")).isZero();
+        assertThat(meters.find(WriterVerwerfMetriken.UMSCHLAEGE).counters().stream()
+                .mapToDouble(Counter::count).sum()).as("gültige Umschläge").isZero();
+        assertThat(meters.find(WriterVerwerfMetriken.SAMPLES).counters().stream()
+                .mapToDouble(Counter::count).sum()).as("gültige Samples").isZero();
         System.out.printf("AP14_LASTPROFIL_WERKZEUG samples=2600 boxen=4 minuten=2 "
                 + "writer_dauer_s=%.3f writer_rate_samples_min=%.2f%n", dauerS, 2_600 / dauerS * 60);
     }

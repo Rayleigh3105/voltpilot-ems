@@ -55,7 +55,8 @@ class DatenannahmeNachrichtenTest {
                 SimpleMeterRegistry meters = new SimpleMeterRegistry();
                 ObjectNode record = r.deepCopy();
                 record.put("event_id", UUID.randomUUID().toString());
-                new EventsRawConsumer(MAPPER, repository, meters).onMessage(record.toString());
+                new EventsRawConsumer(MAPPER, repository, meters,
+                        new WriterVerwerfMetriken(meters)).onMessage(record.toString());
                 verify(repository, times(1)).anhaengen(eq(UUID.fromString(r.path("tenant_id").asText())),
                         eq(UUID.fromString(r.path("site_id").asText())),
                         eq(Urheber.vonCode(r.path("urheber").asText())), eq(r.path("ereignis")),

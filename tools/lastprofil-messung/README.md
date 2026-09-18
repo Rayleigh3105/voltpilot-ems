@@ -38,10 +38,14 @@ python3 lastprofil_messen.py --fixtures fixtures \
 ## Ehrliche Grenze
 
 `device_measurement_sample.dropped_samples` zählt nur Verluste, welche die Box
-selbst meldet. Der Writer exportiert heute keinen Zähler für Umschläge oder
-Samples, die er bei der Annahme verwirft. Deshalb markiert das Werkzeug „kein
-Sample verworfen“ immer als **NICHT MESSBAR**, bis diese Quelle gebaut ist. Eine
-0 aus der Box-Spalte wird nie als 0 Writer-Verwerfungen ausgegeben.
+selbst meldet. Für die Schwelle „kein Sample verworfen“ verwendet das Werkzeug
+darum ausschließlich den Zuwachs von
+`voltpilot_writer_verworfene_samples_total` zwischen den beiden Messpunkten.
+`voltpilot_writer_verworfen_total{strom="measurements",grund="unlesbar"}` hält
+dabei fest, ob die Sample-Zahl eines kaputten Umschlags unbekannt blieb. Fehlt
+eine der Metriken an einem Messpunkt (alter Writer), oder trat so ein
+unlesbarer Umschlag auf, bleibt die Schwelle laut **NICHT MESSBAR**; eine 0 aus
+der Box-Spalte wird nie als 0 Writer-Verwerfungen ausgegeben.
 
 `voltpilot_db_table_bytes` wird täglich gesammelt. Vor einer Abnahme muss der
 Betreiber den Sammler vor und nach dem Lauf regulär aktualisieren lassen; das

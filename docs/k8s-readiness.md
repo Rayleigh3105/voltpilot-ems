@@ -137,6 +137,8 @@ API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API 
 | `voltpilot_db_metrics_collect_age_seconds`, `…_duration_seconds` | Gesundheit des DB-Sammlers |
 | `voltpilot_kafka_consumer_lag{group,topic}` | Committeter Offset bis Log-Ende; unbekannte Gruppe ohne Zeile |
 | `voltpilot_kafka_consumer_lag_collect_age_seconds` | Alter der letzten Lag-Abfrage |
+| `voltpilot_writer_verworfen_total{strom,grund}` | Vom Writer nicht geschriebene Eingangsumschläge; geschlossene Eingänge und Gründe, ab Start als `0` vorhanden |
+| `voltpilot_writer_verworfene_samples_total{grund}` | Bekannte Sample-Zahl verworfener `measurements`-Umschläge; ab Start als `0` vorhanden |
 | `voltpilot_uems_arbeitsliste_offen{liste}`, `…_aeltester_eintrag_age_seconds` | Rückstand der drei UEMS-Arbeitslisten über alle Kundenbereiche; das Alter fehlt, wenn die Liste leer ist |
 | `voltpilot_uems_laeufer_letzter_lauf_age_seconds{laeufer}` | Alter des letzten beendeten Laufs je UEMS-Läufer; **fehlt, wenn der Läufer aus ist oder seit dem Prozess-Start nie lief** |
 | `voltpilot_uems_laeufer_zustand{laeufer,zustand}`, `…_fehler_total{laeufer}` | 1 für den aktiven Zustand `gelaufen` \| `nie` \| `aus`; Fehlschläge je Läufer, ab Start als `0` vorhanden |
@@ -144,6 +146,10 @@ API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API 
 | `voltpilot_uems_bestandslaeufer_total{laeufer,ergebnis}` | Kundenbereiche je Ergebnis der drei Start-Läufer (`erledigt` \| `fehler`) |
 
 Ein nie gelaufener Job hat keinen erfundenen Erfolgsstatus. Altersmetriken wachsen bei ausgefallenem Sammler weiter. Für Betriebsalarme Größen summieren, Zyklus-/Lag-Alter überwachen und Label-Duplikate über Instanzen aggregieren. Nachweise: `DbHealthMetricsScrapeTest`, `DbHealthMetricsDbTest`, `KafkaConsumerLagScrapeTest`, `KafkaLagProbeTest`.
+
+Die Regel für Writer-Verwerfungen (Zuwachs > 0 über 15 Minuten → Warnung an `betreiber`) gehört
+in das gitops-Repo und ist nicht Teil dieses PRs; Gitops-PR 37 liegt beim Betreiber und wird dort
+ergänzt. Die Metriken tragen bewusst keine Mandanten-, Anlagen-, Box- oder sonstigen Kennungen.
 
 Die UEMS-Betriebsmetriken kommen aus demselben Muster (`UemsMetricsCollector`, alle 60 s, `VOLTPILOT_METRICS_UEMS_ENABLED`, Vorgabe true, Lesen über die BYPASSRLS-Admin-Rolle); ein Scrape führt auch hier nie SQL aus. Der Läufer-Stand wird IM PROZESS gehalten: nach einem Neustart meldet ein Läufer, der noch nicht lief, kein Alter `0`, und mehrere Repliken melden jede ihren eigenen Stand — Alarm-Regeln aggregieren über `laeufer`. Der Mess-Eingang je Kundenbereich kommt aus dem verdichteten `messreihe_luecke_stand` (`art = 'box'`), nicht aus dem heißen `device_measurement_sample`. Nachweise: `UemsMetricsScrapeTest`, `UemsMetricsDbTest`, `UemsMetricsEndpointE2eTest`, `UemsMetrikenWiringTest`; Einzelheiten unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwachung.md).
 
