@@ -46,6 +46,7 @@ for (const breite of [375, 1440]) {
     const fehler: string[] = []; page.on('pageerror', e => fehler.push(e.message)); page.on('console', m => { if (m.type() === 'error') fehler.push(m.text()); });
     await oeffne(page, breite);
     await expect(page.getByTestId('bezugsgroesse-karte')).toHaveCount(11);
+    await expect(page.getByText('Art nicht angegeben', { exact: true })).toHaveCount(6);
     await foto(page, `a-liste-${breite}`);
     if (breite === 375) {
       expect(await page.locator('.vp-bottombar .lbl').evaluateAll(es => es.filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent))).toEqual([]);
@@ -76,6 +77,9 @@ for (const breite of [375, 1440]) {
     await expect(neu).toBeFocused();
     const karte = page.getByTestId('bezugsgroesse-karte').filter({ hasText: 'BZ-0008' });
     await expect(karte).toContainText('Noch keine Werte');
+    await expect(karte.getByText('Produktionsmenge', { exact: true })).toBeVisible();
+    await foto(page, `art-gespeichert-${breite}`);
+    if (BILDER) await karte.screenshot({ path: join(BILDER, `art-karte-${breite}.png`) });
     expect(await page.evaluate(() => (window as unknown as { bzAufrufe: { anlegen: unknown[] } }).bzAufrufe.anlegen)).toHaveLength(1);
     await karte.getByRole('button', { name: 'Archivieren', exact: true }).click();
     const archiv = page.getByRole('dialog', { name: 'Bezugsgröße archivieren?', exact: true });
@@ -211,6 +215,7 @@ for (const breite of [375, 1440]) {
     await weg.click();
     await expect(page).toHaveURL(/#\/portfolio\/bezugsgroessen$/);
     await expect(page.getByTestId('bezugsgroesse-karte')).toHaveCount(11);
+    await expect(page.getByText('Art nicht angegeben', { exact: true })).toHaveCount(6);
     await expect(page.getByRole('button', { name: 'Bezugsgröße anlegen', exact: true })).toBeVisible();
   });
 }

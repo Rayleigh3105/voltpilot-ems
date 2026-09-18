@@ -106,9 +106,8 @@ Prosa `bezugsdaten.md` §8. Zwillinge Java `uems/BezugsArt` (+ `BezugsArtTest`) 
 - **Keine Regel der Fälle:** `arten.pruefungen` stehen nicht in `cases`/`zwillinge` (BZ-3 hat
   keinen Abnahmefall); `beispiel` BZ-1 … BZ-5 wird gegen `uems-referenzunternehmen.json`
   gegengeprüft (BZ-4 dort `geltung_art` „ort“ → hier `gebaeude`, mit `hinweis`).
-- **Keine Spalte, keine Migration, keine Route, kein Aufrufer.** Wer die Art speichert, legt die
-  Spalte additiv an; die DB bekommt dann — wie `bezugsdaten_vokabular()` — EINE aus der Datei
-  erzeugte Funktion, und jeder CHECK fragt sie.
+- **Persistenz seit `V20260918110000`:** nullable `art`, Katalog `bezugsarten()` aus dieser Datei,
+  gemeinsamer CHECK/Bestandsnachtrag über `bezugsart_passt()`. [Leser und Bestand](uems-bezugsgroesse-art.md).
 
 ## Wie man hier weiterbaut
 

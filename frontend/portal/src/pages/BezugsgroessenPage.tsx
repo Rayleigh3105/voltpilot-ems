@@ -82,7 +82,7 @@ export function BezugsgroessenPage() {
       {zeilen.length === 0 ? <div className="vp-bz-leer"><Icon name="layers" size={28} /><h2>{alle.length === 0 ? B.LEER : filter.archiviert ? 'Keine archivierten Bezugsgrößen' : 'Keine Bezugsgrößen für diese Auswahl'}</h2><p>{alle.length === 0 ? B.LEER_SATZ : 'Ändern Sie die Auswahl, um weitere Bezugsgrößen zu sehen.'}</p></div> : <ul className="vp-bz-liste">
         {zeilen.map(z => <li className="vp-bz-karte" key={z.key} data-testid="bezugsgroesse-karte">
           <div className="vp-bz-kennung"><span>{z.kennzeichen ?? 'Bezugsfläche'}</span><span className="vp-bz-status">{z.status}</span></div>
-          <h2>{z.name}</h2><p className="vp-bz-einheit">{z.einheit}</p><p>{z.geltung}</p>
+          <h2>{z.name}</h2><p>{z.art}</p><p className="vp-bz-einheit">{z.einheit}</p><p>{z.geltung}</p>
           {z.flaeche && <p className="vp-bz-hinweis">Flächen werden in der Ortsstruktur gepflegt.</p>}
           {z.flaeche && z.standort && <a className="vp-bz-weg" href={`#/standort/${encodeURIComponent(z.standort)}/gebaeude`}>Gebäude und Bereiche ansehen<Icon name="chevron-right" size={16} /></a>}
           {z.original?.wertart === 'periodenwert' && <BezugsKanalbindung onChanged={() => setKanalRevision(n => n + 1)} bezug={z.original} standort={z.standort} zone={stand.daten.standorte.find(s => s.id === z.standort)?.zeitzone ?? stand.daten.unternehmen?.zeitzone ?? VORGABE_ZEITZONE} />}

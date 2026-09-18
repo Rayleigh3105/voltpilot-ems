@@ -2370,6 +2370,8 @@ export interface MessstelleFormelFassungEintragen {
  * schon fest ist (M1) und ob sie noch löschbar ist (M6).
  */
 export interface Bezugsgroesse {
+  /** Gespeicherte Art; fehlt bei älteren Antworten oder ungeklärtem Bestand. */
+  art?: string | null;
   id: string;
   kennzeichen: string;
   name: string;
@@ -2395,6 +2397,8 @@ export interface BezugsgroessenListe {
  * BZ-0001 …) und `PUT …/{id}` (die GANZE Bezugsgröße, mit Kennzeichen). Streng gelesen.
  */
 export interface BezugsgroesseAnfrage {
+  /** Gespeicherte Art; fehlt bei älteren Antworten oder ungeklärtem Bestand. */
+  art?: string | null;
   kennzeichen?: string;
   name: string;
   wertart: Bezugsgroesse['wertart'];

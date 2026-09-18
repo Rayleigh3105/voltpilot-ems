@@ -46,6 +46,14 @@ describe('Bezugsgrößen-Liste und Anlegen (AP-09 IP-9)', () => {
     const b = { ...liste.bezugsgroessen[0], hat_werte: false, geltung_art: 'gebaeude' as const, geltung_id: 'fehlt' };
     expect(B.zeilen({ bezugsgroessen: [b], bezugsflaechen: [] }, orte)[0]).toMatchObject({ status: 'Noch keine Werte', standort: undefined });
   });
+  it('zeigt die gespeicherte Art und rät bei identischen Vertragsfeldern nicht', () => {
+    const bestand = liste.bezugsgroessen[0];
+    const lesen = (art: string | null) => B.zeilen({ bezugsgroessen: [{ ...bestand, art }], bezugsflaechen: [] }, orte)[0];
+    expect(lesen('produktionsmenge').art).toBe('Produktionsmenge');
+    expect(lesen('sonstige_menge').art).toBe('Sonstige Menge');
+    expect(lesen(null).art).toBe('Art nicht angegeben');
+    expect(lesen(null).einheit).toBe(lesen('produktionsmenge').einheit);
+  });
   it('Artwechsel erneuert abhängige Felder und verwirft unpassende Geltung', () => {
     const e = { ...B.neuerEntwurf(), ort: orte.find(o => o.art === 'prozess')!.key };
     expect(B.artWechsel(e, 'mitarbeitende', orte)).toMatchObject({ einheit: 'Personen', periode: null, ort: null });
@@ -55,7 +63,7 @@ describe('Bezugsgrößen-Liste und Anlegen (AP-09 IP-9)', () => {
     const o = orte.find(o => o.art === 'prozess')!;
     const e = { ...B.neuerEntwurf(), name: ' Produktionsmenge Spritzguss ', ort: o.key };
     expect(B.pruefen(e, orte, darf)).toEqual({});
-    expect(B.anfrage(e, o)).toEqual({ name: 'Produktionsmenge Spritzguss', wertart: 'periodenwert', einheit: 'kg', periode_art: 'monat', geltung_art: 'prozess', geltung_id: o.id });
+    expect(B.anfrage(e, o)).toEqual({ art: 'produktionsmenge', name: 'Produktionsmenge Spritzguss', wertart: 'periodenwert', einheit: 'kg', periode_art: 'monat', geltung_art: 'prozess', geltung_id: o.id });
     expect(B.pruefen({ ...e, kennzeichen: 'b', einheit: 'h', periode: 'jahr' }, orte, darf)).toHaveProperty('kennzeichen');
     expect(B.pruefen({ ...e, kennzeichen: 'b', einheit: 'h', periode: 'jahr' }, orte, darf)).toHaveProperty('einheit');
   });

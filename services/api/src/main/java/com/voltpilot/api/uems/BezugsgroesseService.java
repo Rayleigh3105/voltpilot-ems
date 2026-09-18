@@ -259,7 +259,7 @@ public class BezugsgroesseService {
         return repo.bezugsflaeche(geltungArt, objekt).or(() -> {
             Entwurf e = new Entwurf(BezugsgroesseRegeln.kennzeichenVorschlag(repo.jeBelegt()),
                     BezugsflaecheLesemodell.NAME, BezugsgroesseRegeln.STAMMDATUM, BezugsflaecheLesemodell.EINHEIT, null,
-                    geltungArt, objekt.toString());
+                    geltungArt, objekt.toString(), "bezugsflaeche");
             UUID id = repo.anlegen(tenant, e, objekt);
             return repo.finde(id);
         });
@@ -380,9 +380,10 @@ public class BezugsgroesseService {
             List<String> jeBelegt = repo.jeBelegt();
             pruefe(BezugsgroesseRegeln.anlegen(e, repo.vokabular(), BezugsgroesseRegeln.GELTUNG_WAEHLBAR, jeBelegt));
             UUID geltung = geltungDa(e);
+            artPruefen(e);
             Entwurf mitKennzeichen = e.kennzeichen() != null ? e : new Entwurf(
                     BezugsgroesseRegeln.kennzeichenVorschlag(jeBelegt), e.name(), e.wertart(), e.einheit(),
-                    e.periodeArt(), e.geltungArt(), e.geltungId());
+                    e.periodeArt(), e.geltungArt(), e.geltungId(), e.art());
             UUID neu = repo.anlegen(tenant, mitKennzeichen, geltung);
             repo.protokoll(tenant, neu, "angelegt", null, alsJson(felder(mitKennzeichen)), wer);
             return neu;
@@ -393,15 +394,19 @@ public class BezugsgroesseService {
     // ----------------------------------------------------------------------------- ändern
 
     /** Ändert die ganze Bezugsgröße; ein unverändertes {@code PUT} schreibt nichts, auch kein Protokoll. */
-    public BezugsgroesseDto.Bezugsgroesse aendern(UUID id, Entwurf neu, ProtokollAkteur wer) {
+    public BezugsgroesseDto.Bezugsgroesse aendern(UUID id, Entwurf anfrage, ProtokollAkteur wer) {
         UUID tenant = TenantContext.get();
         schreibe(() -> transaktion.execute(s -> {
             repo.kundenbereichSperren(tenant);
             Zeile b = repo.sperre(id).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
             Entwurf bestand = entwurf(b);
+            Entwurf neu = new Entwurf(anfrage.kennzeichen(), anfrage.name(), anfrage.wertart(), anfrage.einheit(),
+                    anfrage.periodeArt(), anfrage.geltungArt(), anfrage.geltungId(),
+                    anfrage.art() == null ? b.art() : anfrage.art());
             pruefe(BezugsgroesseRegeln.aendern(bestand, neu, b.archiviertAm() != null, bedeutungFest(id),
                     repo.vokabular(), BezugsgroesseRegeln.GELTUNG_WAEHLBAR, repo.belegtVonAnderen(id)));
             UUID geltung = geltungDa(neu);
+            artPruefen(neu);
             Map<String, Object> alt = felder(bestand);
             Map<String, Object> jetzt = felder(neu);
             Map<String, Object> altGeaendert = new LinkedHashMap<>();
@@ -516,9 +521,19 @@ public class BezugsgroesseService {
         return s.toString();
     }
 
+    private void artPruefen(Entwurf e) {
+        if (e.art() == null) return; // alte Clients und ungeklärter Bestand
+        if (!repo.artBekannt(e.art())) {
+            throw new BezugsgroesseAbgelehnt(Ablehnung.WORT_UNBEKANNT, Map.of("feld", "art"));
+        }
+        if (!repo.artPasst(e)) {
+            throw new BezugsgroesseAbgelehnt(Ablehnung.ANFRAGE_UNGUELTIG, Map.of("feld", "art"));
+        }
+    }
+
     private static Entwurf entwurf(Zeile b) {
         return new Entwurf(b.kennzeichen(), b.name(), b.wertart(), b.einheit(), b.periodeArt(), b.geltungArt(),
-                b.geltungId().toString());
+                b.geltungId().toString(), b.art());
     }
 
     /** Die Felder im Protokoll, snake_case wie die Schnittstelle. */
@@ -526,6 +541,7 @@ public class BezugsgroesseService {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("kennzeichen", e.kennzeichen());
         m.put("name", e.name());
+        m.put("art", e.art());
         m.put("wertart", e.wertart());
         m.put("einheit", e.einheit());
         m.put("periode_art", e.periodeArt());
@@ -537,7 +553,7 @@ public class BezugsgroesseService {
     private static BezugsgroesseDto.Bezugsgroesse darstellung(Zeile b) {
         return new BezugsgroesseDto.Bezugsgroesse(b.id(), b.kennzeichen(), b.name(), b.wertart(), b.einheit(),
                 b.periodeArt(), b.geltungArt(), b.geltungId(), b.geltungName(), b.hatWerte(),
-                zeit(b.archiviertAm()), zeit(b.angelegtAm()));
+                zeit(b.archiviertAm()), zeit(b.angelegtAm()), b.art());
     }
 
     private static OffsetDateTime zeit(Instant t) {

@@ -22742,7 +22742,7 @@ components:
         message: { type: string }
         feld: { type: string }
         erlaubt: { type: array, items: { type: string } }
-        felder: { type: array, items: { type: string, enum: [wertart, einheit, periode_art, geltung_art, geltung_id] } }
+        felder: { type: array, items: { type: string, enum: [art, wertart, einheit, periode_art, geltung_art, geltung_id] } }
         werte: { type: integer }
         wertart: { type: string, description: "`kein_stammdatum`, `kein_periodenwert`: die Wertart der Bezugsgröße." }
         hinweis: { type: string, description: "`zahl_unlesbar` bei Stück, Personen und Schichten: „Stück sind ganze Zahlen.“ (U5)." }
@@ -23139,9 +23139,10 @@ components:
         periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
         geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle], description: "Alle sieben sind seit AP-10 IP-7 wählbar (Prozess und Kostenstelle haben ihre Tabellen)." }
         geltung_id: { type: string, format: uuid }
+        art: { type: string, nullable: true, enum: [produktionsmenge, gutteile, betriebszeit, schichten, bezugsflaeche, mitarbeitende, gradtagzahl, zaehlerstand, sonstige_menge], description: "Eigene Art; null = nicht angegeben. POST darf sie weglassen; PUT ohne Art oder mit null erhält die vorhandene Art." }
     Bezugsgroesse:
       type: object
-      required: [id, kennzeichen, name, wertart, einheit, periode_art, geltung_art, geltung_id, geltung_name, hat_werte, archiviert_am, angelegt_am]
+      required: [id, kennzeichen, name, art, wertart, einheit, periode_art, geltung_art, geltung_id, geltung_name, hat_werte, archiviert_am, angelegt_am]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -23155,6 +23156,7 @@ components:
         hat_werte: { type: boolean, description: "Trägt sie eine Wert-Zeile oder ein Intervall eines Stammdatums? Dann gilt M1 und sie ist nicht löschbar (M6)." }
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
+        art: { type: string, nullable: true, enum: [produktionsmenge, gutteile, betriebszeit, schichten, bezugsflaeche, mitarbeitende, gradtagzahl, zaehlerstand, sonstige_menge], description: "Eigene Art; null = nicht angegeben. POST darf sie weglassen; PUT ohne Art oder mit null erhält die vorhandene Art." }
     BezugsgroesseListe:
       type: object
       required: [bezugsgroessen, bezugsflaechen]

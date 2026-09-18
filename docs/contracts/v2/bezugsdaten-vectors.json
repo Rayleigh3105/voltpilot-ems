@@ -236,6 +236,7 @@
       "regel": "M2: ohne Kennzeichen vergibt der Server BZ- und die nächste Nummer nach der HÖCHSTEN, die je ein Kennzeichen der Form BZ-<Ziffern> im Kundenbereich getragen hat (auch ein früheres oder das einer gelöschten Bezugsgröße) — vierstellig mit führenden Nullen. Ein Kennzeichen wird nie an eine andere Bezugsgröße weitergegeben; die eigene darf zu ihrem früheren zurück."
     },
     "fest_nach_erstem_wert": [
+      "art",
       "wertart",
       "einheit",
       "periode_art",
@@ -437,7 +438,7 @@
         "code": "bedeutung_fest",
         "status": 422,
         "regel": "M1",
-        "satz": "Nach dem ersten Wert bleiben Wertart, Einheit, Periode und Geltungsbereich fest. Legen Sie dafür eine neue Bezugsgröße an."
+        "satz": "Nach dem ersten Wert bleiben Art, Wertart, Einheit, Periode und Geltungsbereich fest. Legen Sie dafür eine neue Bezugsgröße an."
       },
       {
         "code": "kennzeichen_belegt",
@@ -1029,7 +1030,7 @@
       "„Tag → Monat“ (Gradtagzahl) ist gelesen als: Tag und Monat sind Perioden dieser Art, Woche und Jahr nicht.",
       "Die Art schränkt ein, sie rechnet nicht um: eine Einheit derselben Größe, die die Art nicht führt, passt nicht (Zählerstand in l an einer Messstelle in m³). Die Umrechnung eines gelieferten Werts bleibt die Regel `einheit`.",
       "`pruefungen` sind KEINE Regel der Fälle (`cases`/`zwillinge`): sie gehören zu keinem Abnahmefall aus §7 — BZ-3 hat keinen. Beide Umsetzungen (Java `uems/BezugsArt`, TypeScript `bezugsArt.ts`) fahren JEDE Prüfung. `abweichend` nennt alle Felder, die nicht passen, in der Reihenfolge art · wertart · geltung_art · einheit · periode_art · herkunft_art; leer heißt: passt. `herkunft_art` null wird nicht geprüft — die Herkunft gehört zum Wert, nicht zur Bezugsgröße (§4.1).",
-      "Eine Spalte für die Art an `bezugsgroesse` gibt es NICHT und keine Route nimmt die Art an; das Paket, das sie braucht, legt sie additiv an und prüft sie gegen dieses Vokabular."
+      "Die Art wird additiv und nullable gespeichert (V20260918110000). Fehlende oder mehrdeutige Bestandsangaben bleiben null; PUT ohne Art erhält die gespeicherte Art. Nach dem ersten Wert bleibt auch die Art fest."
     ]
   },
   "csv": {

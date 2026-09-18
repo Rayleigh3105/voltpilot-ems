@@ -546,7 +546,7 @@
 
     "bezugsgroesse_feld": {
       "type": "string",
-      "enum": ["wertart", "einheit", "periode_art", "geltung_art", "geltung_id"],
+      "enum": ["art", "wertart", "einheit", "periode_art", "geltung_art", "geltung_id"],
       "description": "verwalten (M1): ein Feld, das die Bedeutung eines Betrags trägt."
     },
 
@@ -562,7 +562,8 @@
         "einheit": { "type": ["string", "null"] },
         "periode_art": { "type": ["string", "null"] },
         "geltung_art": { "type": ["string", "null"] },
-        "geltung_id": { "type": ["string", "null"] }
+        "geltung_id": { "type": ["string", "null"] },
+        "art": { "type": ["string", "null"] }
       }
     },
 

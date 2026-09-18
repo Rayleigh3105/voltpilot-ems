@@ -247,7 +247,7 @@ public class BezugsgroesseController {
             }
         }
         return new BezugsgroesseRegeln.Entwurf(leer(a.kennzeichen()), a.name() == null ? null : a.name().strip(),
-                leer(a.wertart()), leer(a.einheit()), leer(a.periodeArt()), leer(a.geltungArt()), geltungId);
+                leer(a.wertart()), leer(a.einheit()), leer(a.periodeArt()), leer(a.geltungArt()), geltungId, a.art());
     }
 
     /** Ein JSON-Objekt mit nur bekannten Feldern, jedes Text oder {@code null} — sonst 400 {@code anfrage_ungueltig} mit {@code feld}. */
