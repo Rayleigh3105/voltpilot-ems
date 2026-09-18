@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/boxevents"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
@@ -79,6 +80,17 @@ type Agent struct {
 	measurementIdentity measurements.Identity
 	measurementRevision int64
 	measurementConfig   []byte
+
+	// The SECOND outbox of the box: its own event stream on .../v2/events
+	// (UEMS AP-07 IP-19). Its own sequence, its own FIFO - never mixed with
+	// measurement samples.
+	boxEventOutbox     *boxevents.Outbox
+	boxEventMu         sync.Mutex
+	boxRestartGemeldet bool
+	zeitWache          *boxevents.ZeitWache
+	gestartet          time.Time
+	// uhr is nil in production; a test injects a jumping clock through it.
+	uhr boxevents.Uhr
 
 	mu            sync.Mutex
 	currentPlan   *plan.Plan
@@ -528,6 +540,11 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	boxEventOutbox, err := boxevents.OpenOutbox(
+		filepath.Join(cfg.DataDir, "box-event-outbox"), 1000)
+	if err != nil {
+		return nil, err
+	}
 	ps, err := plan.NewStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -582,6 +599,7 @@ func New(cfg config.Config) (*Agent, error) {
 		State:             state.New(ref, Version),
 		buf:               buf,
 		measurementOutbox: measurementOutbox,
+		boxEventOutbox:    boxEventOutbox,
 		hist:              history.New(historyCapacity),
 		planStore:         ps,
 		invStore:          is,
@@ -616,6 +634,7 @@ func New(cfg config.Config) (*Agent, error) {
 		curtailUnits: map[string]state.CurtailUnit{},
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
+		gestartet:    time.Now(),
 		lastReading: guards.Reading{
 			SocPct: guards.Unknown(), PvKw: guards.Unknown(),
 			LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown(),
@@ -624,6 +643,8 @@ func New(cfg config.Config) (*Agent, error) {
 	// The native supervision's proof grace derives from the setpoint cadence, so
 	// it is constructed after the Agent literal (a.Cfg is set there).
 	a.native = guards.NewNativeMode(a.nativeProofGrace())
+	// The clock guard takes its first reading here: a.boxClock needs the Agent.
+	a.zeitWache = boxevents.NeueZeitWache(a.boxClock)
 	if raw, err := os.ReadFile(filepath.Join(cfg.DataDir, "measurement-config.json")); err == nil {
 		var header struct {
 			Revision int64 `json:"revision"`
@@ -771,6 +792,9 @@ func (a *Agent) Start(ctx context.Context) error {
 		return err
 	}
 	if err := bus.Subscribe(datasourcestatus.Topic, 21, a.onDataSourcePoll); err != nil {
+		return err
+	}
+	if err := bus.Subscribe(boxevents.Topic, 22, a.onBoxEvent); err != nil {
 		return err
 	}
 	if err := bus.Subscribe(localbus.TopicStatus, 2, a.onLocalStatus); err != nil {
@@ -3240,6 +3264,25 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 			default:
 			}
 		}
+		for sent := 0; sent < 64; sent++ {
+			e, ok := a.boxEventOutbox.Next()
+			if !ok {
+				break
+			}
+			if err := link.PublishBoxEvents(e.Raw); err != nil {
+				slog.Warn("box event publish failed; will retry", "seq", e.Sequence, "err", err)
+				break
+			}
+			if err := a.boxEventOutbox.Ack(e.Sequence); err != nil {
+				slog.Error("box event outbox ack failed", "err", err)
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+		}
 		for sent := 0; sent < 256; sent++ {
 			e, ok := a.measurementOutbox.Next()
 			if !ok {
@@ -3259,7 +3302,7 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 			default:
 			}
 		}
-		if a.buf.Pending() > 0 || a.measurementOutbox.Pending() > 0 {
+		if a.buf.Pending() > 0 || a.measurementOutbox.Pending() > 0 || a.boxEventOutbox.Pending() > 0 {
 			a.kick()
 		}
 	}

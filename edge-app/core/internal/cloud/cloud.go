@@ -1679,6 +1679,18 @@ func (l *Link) PublishMeasurementSamples(payload []byte) error {
 	return tok.Error()
 }
 
+// PublishBoxEvents drains one durable event envelope of the box on
+// .../v2/events (mqtt-events 2.1, QoS1, non-retained). The payload is sent
+// UNCHANGED: identity, sequence and every ereignis_id were fixed when the
+// envelope was persisted, so a retry after a WAN outage repeats the same bytes.
+func (l *Link) PublishBoxEvents(payload []byte) error {
+	tok := l.client.Publish(l.topic("v2/events"), 1, false, payload)
+	if !tok.WaitTimeout(30 * time.Second) {
+		return fmt.Errorf("box events publish timed out")
+	}
+	return tok.Error()
+}
+
 // PublishOcppEvent uploads ONE already-redacted, durably queued OCPP journal
 // event on .../v2/ocpp-events (QoS1, non-retained). Identity is added here from
 // the enrolled link, never trusted from event bytes. The caller deletes its

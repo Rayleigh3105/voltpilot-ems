@@ -114,8 +114,9 @@ class EdgeSupportsListenerTest {
         var service = new BoxFaehigkeiten(mock(org.springframework.jdbc.core.JdbcTemplate.class), versions);
         assertThat(service.kann(DEVICE, "data_sources")).isTrue();
         assertThat(service.kann(DEVICE, "measurement_sample_provenance")).isTrue();
+        assertThat(service.kann(DEVICE, "events")).isTrue();
         assertThat(service.kann(DEVICE, "assignment_effective_at")).isFalse();
-        assertThat(service.kann(DEVICE, "events")).isFalse();
+        assertThat(service.kann(DEVICE, "unbekannt")).isFalse();
         assertThat(service.kann(UUID.randomUUID(), "data_sources")).isFalse();
     }
 }
