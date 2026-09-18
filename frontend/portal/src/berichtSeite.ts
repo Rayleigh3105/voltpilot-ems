@@ -471,7 +471,8 @@ const wertZahl = (w: AbzugWert, kopf: AbzugKopf): QuellenZahl => {
     // AP-13 IP-11: die Zeilen einer gemessenen Zahl nennen kein fremdes Objekt — ihre Kante hängt an der Zahl
     // selbst (`sprung`). Die Stücke entstehen trotzdem, damit jede Zeile durch dieselbe Form läuft.
     nachweis: { karte, herkunft, herkunftStuecke: herkunft.map((t) => herkunftsZeile(t, () => null)) },
-    // Laden und Entladen trägt der heutige Leseweg nicht getrennt (Folgepaket vp-uems-b12-tagesverlauf-speicher).
+    // Eine Richtungs-Zeile (Laden/Entladen, Vertrag 1.2) ist KEINE eigene Messstelle: sie springt nicht,
+    // denn ihr Ziel waere dieselbe Reihe wie die der anderen Richtung.
     messstelle: w.menge_art ? null : w.quelle,
     sprung: w.menge_art ? null : kennzeichenSprung(w.quelle, { periode: kopf.zeitraum.schluessel }),
     sprungWort: w.menge_art ? null : ZUR_MESSSTELLE,

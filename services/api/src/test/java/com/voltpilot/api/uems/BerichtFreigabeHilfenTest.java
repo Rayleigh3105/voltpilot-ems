@@ -66,7 +66,10 @@ class BerichtFreigabeHilfenTest {
         assertThat(f.get(0).quelle()).isEqualTo(abzug.path("werte").get(0).path("quelle").asText());
         assertThat(f.get(0).name()).isEqualTo(abzug.path("werte").get(0).path("name_zum_datenstand").asText());
         assertThat(f).allMatch(w -> !KennzahlRegeln.VORLAEUFIG.equals(w.fassung()));
-        assertThat(BerichtService.zeiten(abzug, "endgueltig_ab")).hasSize(werte).containsOnly(t("2026-11-08T00:00:00+01:00"));
+        // Seit Vertrag 1.2 trägt auch eine KENNZAHL ihr „endgültig ab“ — F1 wiegt sie mit, nicht nur die Werte.
+        // Vorher sah die Freigabe eine Kennzahl, die noch vorläufig gewesen wäre, gar nicht.
+        assertThat(BerichtService.zeiten(abzug, "endgueltig_ab")).hasSize(werte + kennzahlen)
+                .containsOnly(t("2026-11-08T00:00:00+01:00"));
         Instant datenstand = t(abzug.path("kopf").path("datenstand").asText());
         assertThat(BerichtRegeln.d2(datenstand, BerichtService.zeiten(abzug, "berechnet_am"),
                 BerichtService.zeiten(abzug, "endgueltig_ab"), true)).isEmpty();

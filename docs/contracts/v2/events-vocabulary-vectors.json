@@ -5507,7 +5507,7 @@
           "bericht": "BR-2026-0001",
           "nr": 1,
           "datenstand": "2026-11-10T07:55:00Z",
-          "pruefsumme": "sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d"
+          "pruefsumme": "sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03"
         }
       },
       "expected": {
@@ -5534,7 +5534,7 @@
           "bericht": "BR-2026-0001",
           "nr": 1,
           "datenstand": "2026-11-10T07:55:00Z",
-          "pruefsumme": "sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d"
+          "pruefsumme": "sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03"
         }
       },
       "expected": {
@@ -5559,7 +5559,7 @@
           "bericht": "BR-2026-0001",
           "nr": 1,
           "datenstand": "2026-11-10T08:10:00Z",
-          "pruefsumme": "sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d"
+          "pruefsumme": "sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03"
         }
       },
       "expected": {

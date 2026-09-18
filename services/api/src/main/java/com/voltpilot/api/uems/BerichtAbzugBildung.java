@@ -129,7 +129,10 @@ public class BerichtAbzugBildung {
 
     private record Gelesen(ObjectNode wert, BigDecimal menge, Integer version, String zustand, String fassung,
             Integer abdeckung, List<Instant> zeiten, List<Eingang> eingaenge, List<String> korrekturen,
-            List<String> ersatzwerte, Set<UUID> luecken) {}
+            List<String> ersatzwerte, Set<UUID> luecken, BigDecimal[] paar, List<Tag> tage) {}
+
+    /** Ein Tag des Tagesverlaufs (Vertrag 1.2): Menge und Zustand, wie die Tageszeile sie führt. */
+    private record Tag(LocalDate tag, BigDecimal menge, BigDecimal positiv, BigDecimal negativ, String zustand) {}
 
     private record Spanne(LocalDate von, LocalDate bis) {}
 
@@ -254,11 +257,26 @@ public class BerichtAbzugBildung {
         int vorlaeufig = 0;
         Integer abdeckungMin = null;
 
+        // A2 — der Tagesverlauf steht in der MONATS-Vorlage (die Jahresvorlage zeigt Monatswerte).
+        // Er wird abgeschrieben, nicht gerechnet: die Tageszeilen von AP-08 stehen schon da.
+        boolean mitTagesverlauf = "monat".equals(z.art());
+        ArrayNode tagesverlauf = json.createArrayNode();
+        java.util.function.BiFunction<String, List<Object>, List<Tag>> tageLeser =
+                (spur, spurArgs) -> tageDerReihe(j, tenant, z.ersterTag(), z.letzterTag(), spur, spurArgs);
+
         for (MessstelleRepository.Messstelle m : ordnung) {
             TreeMap<LocalDate, String> t = tage.get(m.id());
             Gelesen r = lies(j, lesemodell, tenant, m, z.art(), z.schluessel(), z.ersterTag(), z.letzterTag(), z.von(),
-                    zone, t.lastEntry().getValue());
-            werte.add(r.wert());
+                    zone, t.lastEntry().getValue(), mitTagesverlauf ? tageLeser : null);
+            // Vertrag 1.2 — das Richtungspaar wird zu ZWEI Zeilen (B1: MS-04 laden 7 900 / entladen 7 100).
+            // Beide tragen denselben Nachweis: es ist EINE gemessene Reihe, nur in ihre zwei Flüsse zerlegt.
+            List<ObjectNode> zeilen = r.paar() == null ? List.of(r.wert())
+                    : List.of(richtungsZeile(r.wert(), "laden", r.paar()[0]),
+                            richtungsZeile(r.wert(), "entladen", r.paar()[1]));
+            zeilen.forEach(werte::add);
+            if (mitTagesverlauf) {
+                zeilen.forEach(zeile -> tagesverlauf.add(tagesverlaufEintrag(json, zeile, r.tage())));
+            }
             zeiten.addAll(r.zeiten());
             for (Spanne s : spannen(t.navigableKeySet())) {
                 quellen.add(new Quelle(BerichtRegeln.QUELLE_ARTEN.get(0), m.kennzeichen(), m.id(),
@@ -273,18 +291,27 @@ public class BerichtAbzugBildung {
                 }
             }
             mengen.put(m.id(), r.menge());
-            String summe = summenSchluessel(m, stellungAm(stellungen.get(m.id()), t.lastKey()));
-            // Am Unternehmen fasst die Zusammenfassung nur den Netzbezug (Vorlage: „Netzbezug gesamt“, IP-6).
-            if (summe != null && (amStandort || NETZBEZUG.equals(summe))) {
-                if (r.menge() == null) {
-                    unbekannt.add(summe);
-                } else {
-                    summen.merge(summe, r.menge(), BigDecimal::add);
+            String stellung = stellungAm(stellungen.get(m.id()), t.lastKey());
+            if (r.paar() != null && amStandort && "Speicher".equals(stellung)) {
+                // Laden und Entladen speisen ihre eigene Summe — nie die Netto-Menge, die keine von beiden ist.
+                summen.merge(SPEICHER_LADEN, r.paar()[0], BigDecimal::add);
+                summen.merge(SPEICHER_ENTLADEN, r.paar()[1], BigDecimal::add);
+            } else {
+                String summe = summenSchluessel(m, stellung);
+                // Am Unternehmen fasst die Zusammenfassung nur den Netzbezug (Vorlage: „Netzbezug gesamt“, IP-6).
+                if (summe != null && (amStandort || NETZBEZUG.equals(summe))) {
+                    if (r.menge() == null) {
+                        unbekannt.add(summe);
+                    } else {
+                        summen.merge(summe, r.menge(), BigDecimal::add);
+                    }
                 }
             }
-            endgueltig += KennzahlRegeln.ENDGUELTIG.equals(r.fassung()) ? 1 : 0;
-            vorlaeufig += KennzahlRegeln.VORLAEUFIG.equals(r.fassung()) ? 1 : 0;
-            vollstaendig += ErgebnisZustand.VOLLSTAENDIG.equals(r.zustand()) ? 1 : 0;
+            // Eine Reihe, zwei Zeilen: die Zählungen der Zusammenfassung zählen ZEILEN (B1: 16, nicht 15).
+            int zeilenZahl = zeilen.size();
+            endgueltig += KennzahlRegeln.ENDGUELTIG.equals(r.fassung()) ? zeilenZahl : 0;
+            vorlaeufig += KennzahlRegeln.VORLAEUFIG.equals(r.fassung()) ? zeilenZahl : 0;
+            vollstaendig += ErgebnisZustand.VOLLSTAENDIG.equals(r.zustand()) ? zeilenZahl : 0;
             if (r.abdeckung() != null) {
                 abdeckungMin = abdeckungMin == null ? r.abdeckung() : Math.min(abdeckungMin, r.abdeckung());
             }
@@ -306,7 +333,7 @@ public class BerichtAbzugBildung {
                 for (MessstelleRepository.Messstelle m : sortiert(messstellen, vt.keySet())) {
                     TreeMap<LocalDate, String> t = vt.get(m.id());
                     Gelesen r = lies(j, lesemodell, tenant, m, z.art(), v.schluessel(), v.ersterTag(), v.letzterTag(),
-                            v.von(), zone, t.lastEntry().getValue());
+                            v.von(), zone, t.lastEntry().getValue(), null);
                     if (r.menge() == null) {
                         continue;
                     }
@@ -408,6 +435,9 @@ public class BerichtAbzugBildung {
         zusammenfassung.put("davon_vollstaendig", vollstaendig);
 
         abzug.set("werte", werte);
+        if (mitTagesverlauf) {
+            abzug.set("tagesverlauf", tagesverlauf);
+        }
         abzug.set("kennzahlen", kennzahlen.kennzahlen());
         if (!amStandort) {
             abzug.set("standorte", standorte);
@@ -437,7 +467,8 @@ public class BerichtAbzugBildung {
      * RW2).
      */
     private Gelesen lies(JdbcTemplate j, MessstelleWerteService lesemodell, UUID tenant, MessstelleRepository.Messstelle m,
-            String art, String schluessel, LocalDate erster, LocalDate letzter, Instant beginn, ZoneId zone, String ort) {
+            String art, String schluessel, LocalDate erster, LocalDate letzter, Instant beginn, ZoneId zone, String ort,
+            java.util.function.BiFunction<String, List<Object>, List<Tag>> tagesverlauf) {
         MessstelleWerteDto.Werte antwort = lesemodell.werte(tenant, m, art, erster.toString(), letzter.toString());
         if (antwort.werte().size() != 1) {
             throw new IllegalStateException("Das Lesemodell nennt für " + m.kennzeichen() + " " + schluessel + " "
@@ -451,6 +482,7 @@ public class BerichtAbzugBildung {
         List<String> ersatzwerte = List.of();
 
         String spur;
+        String kanalDerSpur = null;
         List<Object> spurArgs = new ArrayList<>();
         if (berechnet) {
             spur = "messstelle_id = ?";
@@ -461,6 +493,7 @@ public class BerichtAbzugBildung {
             spur = "entity_id = ? AND messkanal = ?";
             spurArgs.add(bindung.get("entity_id"));
             spurArgs.add(bindung.get("kanal"));
+            kanalDerSpur = (String) bindung.get("kanal");
         } else {
             spur = null;
         }
@@ -540,8 +573,19 @@ public class BerichtAbzugBildung {
             w.ereignisse().stream().filter(e -> DATA_GAP.equals(e.art())).map(MessstelleWerteDto.Ereignis::id)
                     .forEach(luecken::add);
         }
+        // Vertrag 1.2 — eine Messstelle mit ZWEI Flussrichtungen in einer Größe zeigt beide getrennt.
+        // Abgeschrieben, nicht gerechnet (EW3): die Verdichtung hat sie je Rohwert gebildet
+        // (V20260918104000) und in der Periodenzeile abgelegt (V20260918101000).
+        // Dass diese Messstelle zwei Flüsse führt, sagt ihre HAUPTGRÖSSE (AP-04) — nicht der Katalogpunkt
+        // ihrer heutigen Bindung, der wechseln kann. Die beiden Zahlen liefert die Verdichtung.
+        BigDecimal[] paar = null;
+        if (SPEICHER_RICHTUNG.equals(m.hauptgroesse().richtung()) && spur != null && !berechnet) {
+            paar = Richtungspaar.mengenDerPeriode(j, tenant, art, beginn, spur, spurArgs).orElse(null);
+        }
+        List<Tag> tageDerReihe = tagesverlauf == null || spur == null ? List.of()
+                : tagesverlauf.apply(spur, spurArgs);
         return new Gelesen(n, w.menge(), version, zustand, fassung, abdeckung, zeiten, eingaenge, korrekturen,
-                ersatzwerte, luecken);
+                ersatzwerte, luecken, paar, tageDerReihe);
     }
 
     /** Die gespeicherten Eingänge einer berechneten Zahl IN IHRER Version (die jüngste Fassung bis zu ihr). */
@@ -597,6 +641,57 @@ public class BerichtAbzugBildung {
                 : e.faktor().stripTrailingZeros().toPlainString() + " × ";
         String anteil = anteilWort(e);
         return faktor + bezeichnung(e) + (anteil == null ? "" : " (" + anteil + ")");
+    }
+
+    /**
+     * Die Tageszeilen EINER Reihe im Zeitraum (Tage einschließlich) — Menge, Richtungspaar und Zustand,
+     * genau wie {@code messreihe_tag} sie führt. Ein Tag ohne Zeile ist kein Tag mit 0: er fehlt hier,
+     * und damit fehlt er auch im Bericht.
+     */
+    private static List<Tag> tageDerReihe(JdbcTemplate j, UUID tenant, LocalDate erster, LocalDate letzter,
+            String spur, List<Object> spurArgs) {
+        List<Object> args = new ArrayList<>(List.of(tenant, Date.valueOf(erster), Date.valueOf(letzter)));
+        args.addAll(spurArgs);
+        return j.query("SELECT tag, menge, menge_positiv, menge_negativ, menge_zustand FROM messreihe_tag "
+                + "WHERE tenant_id = ? AND tag >= ? AND tag <= ? AND " + spur + " ORDER BY tag",
+                (rs, i) -> new Tag(rs.getDate(1).toLocalDate(), rs.getBigDecimal(2), rs.getBigDecimal(3),
+                        rs.getBigDecimal(4), rs.getString(5)),
+                args.toArray());
+    }
+
+    /**
+     * Der Tagesverlauf EINER Wert-Zeile: dieselbe Kennung wie im Abschnitt „werte“ ({@code quelle} plus
+     * {@code menge_art}), dazu je Tag Menge und Zustand. Eine Richtungs-Zeile nimmt den Anteil ihres
+     * Tages; fehlt er, fehlt die Menge — unbekannt ist keine Null.
+     */
+    private static ObjectNode tagesverlaufEintrag(ObjectMapper json, ObjectNode zeile, List<Tag> tage) {
+        ObjectNode n = json.createObjectNode();
+        n.put("quelle", zeile.path("quelle").asText());
+        String art = zeile.hasNonNull("menge_art") ? zeile.path("menge_art").asText() : null;
+        if (art != null) {
+            n.put("menge_art", art);
+        }
+        ArrayNode aus = n.putArray("tage");
+        for (Tag t : tage) {
+            ObjectNode x = aus.addObject();
+            x.put("tag", t.tag().toString());
+            x.put("menge", art == null ? t.menge() : "laden".equals(art) ? t.positiv() : t.negativ());
+            x.put("zustand", t.zustand() == null ? ErgebnisZustand.KEINE_WERTE : t.zustand());
+        }
+        return n;
+    }
+
+    /**
+     * Eine der beiden Richtungs-Zeilen einer Reihe mit zwei Flüssen: dieselbe Zeile, nur mit der Menge
+     * des Anteils und dem Wort, das sie benennt. Alles andere — Ort, Zustand, Abdeckung, Kennzeichen,
+     * Fassung, Endgültigkeit, Version, Berechnungszeit — ist der Nachweis der EINEN Reihe und bleibt
+     * gleich; es gibt keine zweite Messung.
+     */
+    private static ObjectNode richtungsZeile(ObjectNode vorlage, String art, BigDecimal menge) {
+        ObjectNode n = vorlage.deepCopy();
+        n.put("menge", menge);
+        n.put("menge_art", art);
+        return n;
     }
 
     private static String anteilWort(Eingang e) {

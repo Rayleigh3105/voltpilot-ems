@@ -23,13 +23,15 @@ import java.util.List;
  * <p><b>Welche Abschnitte Zeilen tragen</b> — die mit Werten in der Trägerform des Abzugs, in der Folge aller vier Vorlagen
  * der Fassung 1: am Standort {@code verbrauch_je_messstelle} ({@code werte}), am Unternehmen {@code standorte}
  * ({@code werte}) und {@code kostenstellen} (je Kostenstelle ihr Block {@code summe}), an beiden {@code kennzahlen}. Kopf,
- * Zusammenfassung, Qualität und Quellenverzeichnis sind keine Werte; Tagesverlauf und Monatswerte trägt der Abzug noch nicht.
+ * Zusammenfassung, Qualität und Quellenverzeichnis sind keine Werte; Monatswerte trägt der Abzug noch nicht.
  *
  * <p><b>Kennzahlen</b> (firstmate 001 = A): ihre Richtung (Untergrenze, Obergrenze, unbestimmt) steht als Kennzeichen in der
- * Zelle {@code kennzeichen} — keine 14. Spalte. Der Abzug 1.1 trägt je Kennzahl weder {@code ort_zum_datenstand} noch
- * {@code endgueltig_ab}: der Vertrag kennt beide Felder seit 1.2, der Abzug trägt sie noch nicht — beide Zellen bleiben
- * leer, bis das Folgepaket {@code vp-uems-b12-tagesverlauf-speicher} sie in der Bildung füllt und den Abzug
- * auf 1.2 hebt — gelesen werden sie hier schon. Die Periode einer Kennzahl ist der Zeitraum des Berichts (Q4).
+ * Zelle {@code kennzeichen} — keine 14. Spalte. Seit Vertrag 1.2 trägt eine Kennzahl {@code ort_zum_datenstand} und
+ * {@code endgueltig_ab} wie ein Wert; das Mapping las beide schon immer aus demselben Knoten, darum füllen sich die zwei
+ * Zellen von selbst, sobald der Abzug sie trägt (B14/KZ-0001: {@code G-2}, {@code 2026-11-08}). Ein Abzug nach 1.0/1.1
+ * trägt sie nicht — dort bleiben die Zellen leer, und das ist die Lücke, nicht die Null. Der Tagesverlauf ist KEIN Wert
+ * und erscheint nicht in der CSV; sein Nachweis steht an der Monatszeile. Die Periode einer Kennzahl ist der Zeitraum
+ * des Berichts (Q4).
  */
 public final class BerichtCsv {
 
