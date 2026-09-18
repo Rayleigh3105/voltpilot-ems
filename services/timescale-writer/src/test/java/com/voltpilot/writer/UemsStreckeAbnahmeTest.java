@@ -82,6 +82,9 @@ class UemsStreckeAbnahmeTest {
     /** Die Datenannahme weist eine Messzeit ab, die weiter als das in der Zukunft liegt. */
     private static final Duration UHR_TOLERANZ = Duration.ofMinutes(5);
 
+    /** Arten, die der LÜCKEN-MELDER schreibt (AP-07 IP-9), nie der Writer beim Einlauf. */
+    private static final Set<String> MELDER_ARTEN = Set.of("data_gap", "backfill");
+
     private static JsonNode drehbuch;
 
     @Container
@@ -251,15 +254,30 @@ class UemsStreckeAbnahmeTest {
                             + id + "' AND role='" + teile[1] + "' AND time >= '"
                             + fruehesteMesszeit(szenario) + "' AND time <= '"
                             + spaetesteMesszeit(szenario) + "'"),
-                    e.getValue());
+                    e.getValue(), () -> reihenBeleg(id));
         }
 
-        // Die erwarteten Ereignisse des Writers — Wort für Wort aus dem Vokabular.
+        // Die erwarteten Ereignisse — aber nur die, die der WRITER schreibt.
         for (String art : writerEreignisarten(szenario)) {
+            if (MELDER_ARTEN.contains(art)) {
+                // ⚠ Befund am Drehbuch: `data_gap` und `backfill` trägt das Drehbuch als
+                // urheber `writer`. Geschrieben werden sie aber vom LÜCKEN-MELDER (AP-07
+                // IP-9, ein Takt in services/api, urheber `cloud`) — der Writer sieht beim
+                // Einlauf nur den einzelnen Wert und kann eine Lücke gar nicht kennen.
+                // Dieser Lauf belegt darum, dass sie hier NICHT entstehen; dass sie
+                // entstehen, zeigt UemsLueckenMelderTest.
+                assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='" + art
+                        + "' AND urheber='writer' AND device_id IN (" + boxen(szenario) + ")"))
+                        .as(schluessel + ": " + art + " ist Sache des Lücken-Melders, "
+                                + "nicht des Writers")
+                        .isZero();
+                continue;
+            }
             warte(schluessel + ": Ereignis " + art + " ist festgehalten",
                     () -> zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='" + art
                             + "' AND urheber='writer' AND device_id IN (" + boxen(szenario) + ")"),
-                    (long) ereignisSequenzenOderZahl(szenario, art));
+                    (long) ereignisSequenzenOderZahl(szenario, art),
+                    () -> beleg(szenario, art));
         }
     }
 
@@ -551,6 +569,15 @@ class UemsStreckeAbnahmeTest {
     }
 
     private void warte(String was, Zaehlung zaehlung, long erwartet) throws Exception {
+        warte(was, zaehlung, erwartet, () -> "");
+    }
+
+    /**
+     * Wartet auf eine Zahl und sagt bei Misserfolg, was statt dessen DA ist. Eine Abnahme, die
+     * nur „6 statt 7" meldet, zwingt den nächsten Leser in einen zweiten Lauf.
+     */
+    private void warte(String was, Zaehlung zaehlung, long erwartet, Beleg beleg)
+            throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
         long ist = -1;
         while (System.nanoTime() < deadline) {
@@ -560,7 +587,44 @@ class UemsStreckeAbnahmeTest {
             }
             Thread.sleep(250);
         }
-        throw new AssertionError(was + ": " + ist + " statt " + erwartet);
+        throw new AssertionError(was + ": " + ist + " statt " + erwartet + "\n" + beleg.text());
+    }
+
+    private interface Beleg {
+        String text() throws Exception;
+    }
+
+    /** Jede Zeile dieser Reihe mit Messzeit, Rolle und Box — der Beleg für „6 statt 7". */
+    private static String reihenBeleg(String entity) throws Exception {
+        StringBuilder sb = new StringBuilder("  Zeilen dieser Reihe:\n");
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT time, role, device_id, edge_sequence, "
+                        + "delivery FROM device_measurement_sample WHERE entity_id='" + entity
+                        + "' ORDER BY time LIMIT 40")) {
+            while (rs.next()) {
+                sb.append("    ").append(rs.getString(1)).append(" / ").append(rs.getString(2))
+                        .append(" / ").append(rs.getString(3)).append(" / ").append(rs.getLong(4))
+                        .append(" / ").append(rs.getString(5)).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Was WIRKLICH in der Ereignis-Tabelle steht — die Zeilen, nicht nur ihre Zahl. */
+    private static String beleg(JsonNode szenario, String art) throws Exception {
+        StringBuilder sb = new StringBuilder("  gefunden für art=" + art + ":\n");
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT art, urheber, entity_id, messkanal, "
+                        + "nutzlast FROM messreihe_ereignis WHERE device_id IN ("
+                        + boxen(szenario) + ") ORDER BY art, entity_id LIMIT 40")) {
+            while (rs.next()) {
+                sb.append("    ").append(rs.getString(1)).append(" / ").append(rs.getString(2))
+                        .append(" / ").append(rs.getString(3)).append(" / ")
+                        .append(rs.getString(4)).append(" / ").append(rs.getString(5))
+                        .append("\n");
+            }
+        }
+        return sb.toString();
     }
 
     private interface Zaehlung {
