@@ -69,6 +69,7 @@ import { fmtNum } from '../format';
 import { LocationMap } from './LocationMap';
 import { VpPicker } from './VpPicker';
 import { TariffFields } from './TariffFields';
+import { StandortZuerst } from './StandortZuerst';
 import { HelpLink } from '../help/HelpProvider';
 import { helpForSetupStep } from '../help/context';
 import type { Route } from '../nav';
@@ -292,9 +293,11 @@ export function AnlageFlow({
   const [step, setStep] = useState<number>(initialFlowStep(sites.length > 0));
   // Steuern-Regel im Anlege-Fluss (`anlegeNurMessen.ts`): die Funktionen IN der
   // Entscheidung laden — `undefined`, solange sie unterwegs sind (dann fehlen
-  // Geld-Block und „Betrieb“, statt aufzublitzen); ein Fehler heißt „wie heute“.
+  // Geld-Block und „Betrieb“, statt aufzublitzen); bei einem Fehler bleibt die
+  // Entscheidung ebenso offen.
   // Der Standort kommt aus Schritt 1, nach dem Anlegen steht die Art fest.
   const [funktionen, setFunktionen] = useState<Funktionen | null | undefined>(undefined);
+  const [funktionenRunde, setFunktionenRunde] = useState(0);
   const [standortId, setStandortId] = useState<string | null>(null);
   const [artBeimAnlegen, setArtBeimAnlegen] = useState<AnlegeArt | null>(null);
   useEffect(() => {
@@ -310,9 +313,11 @@ export function AnlageFlow({
     return () => {
       aktiv = false;
     };
-  }, []);
+  }, [funktionenRunde]);
   // Die neue Anlage steht noch nicht in den Funktionen — nach dem Anlegen zählt ihr Standort.
-  const ort = createdHere ? { standortId } : { standortId, anlageId: site?.id ?? null };
+  const ort = createdHere
+    ? { standortId, hatAnlage: true }
+    : { standortId, anlageId: site?.id ?? null, hatAnlage: sites.length > 0 || (existingSites?.length ?? 0) > 0 };
   const art: AnlegeArt | null = artBeimAnlegen ?? (funktionen === undefined ? null : anlegeArt(funktionen, ort));
   const nurMessen = art === 'nur_messen';
   const schritte = anlegeSchritte(art);
@@ -331,7 +336,16 @@ export function AnlageFlow({
       <div className="vp-anlage-flow">
         <StepsRail current={step} schritte={schritte} />
         <div className="vp-context-help"><HelpLink article={helpForSetupStep(finished ? FLOW_STEPS.length + 1 : step)}>Hilfe zu diesem Schritt</HelpLink></div>
-        {step === 1 && (
+        {step === 1 && art === 'standort_zuerst' && (
+          <StandortZuerst
+            onGespeichert={(id) => {
+              setStandortId(id);
+              setFunktionen(undefined);
+              setFunktionenRunde((runde) => runde + 1);
+            }}
+          />
+        )}
+        {step === 1 && art !== null && art !== 'standort_zuerst' && (
           <AnlageStep
             locationSites={locationSites}
             mitGeld={art === 'wie_heute'}
@@ -344,6 +358,13 @@ export function AnlageFlow({
               setStep(2);
             }}
           />
+        )}
+        {step === 1 && art === null && (
+          <p className="vp-note" aria-busy={funktionen === undefined}>
+            {funktionen === undefined
+              ? 'Der nächste Schritt wird vorbereitet …'
+              : 'Der nächste Schritt konnte nicht geladen werden.'}
+          </p>
         )}
         {step === 2 && site && (
           <RegisterStep

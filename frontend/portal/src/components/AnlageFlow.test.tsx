@@ -12,6 +12,7 @@ import {
 } from '../api';
 import type { SiteProfile } from '../profiles';
 import { anwendungLabel } from '../anwendungen';
+import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 
 // The adaptive Nutzung step reads isPlatformAdmin() (admin: bootstrap +
 // auto-start + entity add). The flow tests exercise the CUSTOMER path - keycloak
@@ -190,6 +191,7 @@ async function skipNutzung() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
 });
 
 describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => {
@@ -209,7 +211,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
 
     // Step 1: Anlage - name only (the register brings the specs).
-    expect(screen.getByText('Wie heißt Ihre Anlage?')).toBeInTheDocument();
+    expect(await screen.findByText('Wie heißt Ihre Anlage?')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(createSite).toHaveBeenCalled());
@@ -260,7 +262,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const onDone = vi.fn();
 
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
     // Drop into the manual hand-entry path from the register step.
@@ -294,7 +296,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const onDone = vi.fn();
 
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
     // Skip the Register step, the Gerät step, then the Nutzung step.
@@ -321,7 +323,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     vi.spyOn(api, 'claimDevice').mockRejectedValue(new ApiError(422, 'unknown'));
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
 
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     // Register skipped -> the Gerät step is now next (before Nutzung).
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
@@ -338,7 +340,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
       new ApiError(404, 'Diese Nummer ist im Register nicht auffindbar.'),
     );
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     fireEvent.change(await screen.findByLabelText('MaStR-Nummer der PV-Anlage'), {
       target: { value: 'SEE900000012345' },
@@ -347,12 +349,12 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(await screen.findByText(/nicht auffindbar/)).toBeInTheDocument();
   });
 
-  it('offers a "gleicher Standort wie …" reuse chip for an existing placed Anlage', () => {
+  it('offers a "gleicher Standort wie …" reuse chip for an existing placed Anlage', async () => {
     const placed: Site = { ...site, id: 's-9', name: 'Ferienhaus', latitude: 52.5, longitude: 13.4 };
     render(
       <AnlageFlow sites={[]} existingSites={[placed]} waitForFirstData={false} onDone={() => {}} />,
     );
-    expect(screen.getByText('Gleicher Standort wie')).toBeInTheDocument();
+    expect(await screen.findByText('Gleicher Standort wie')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Ferienhaus/ })).toBeInTheDocument();
   });
 
@@ -363,7 +365,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
     fireEvent.click(await screen.findByText(/Feineinstellungen/));
     // Der Tarif steht auf „Ohne Angabe", die Wahl auf „Schnell" - beides unberührt.
@@ -379,7 +381,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
     fireEvent.click(await screen.findByText(/Feineinstellungen/));
     fireEvent.click(screen.getByRole('radio', { name: /Genau/ }));
@@ -393,9 +395,9 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     updateSupply.mockRestore();
   });
 
-  it('speaks "Anlage", never "Standort", as the entity name (wording decision 3)', () => {
+  it('speaks "Anlage", never "Standort", as the entity name (wording decision 3)', async () => {
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    expect(screen.getByLabelText('Name der Anlage')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Name der Anlage')).toBeInTheDocument();
     expect(screen.queryByText(/Name des Standorts/)).not.toBeInTheDocument();
   });
 });

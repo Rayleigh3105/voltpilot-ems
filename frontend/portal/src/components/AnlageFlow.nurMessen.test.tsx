@@ -296,13 +296,14 @@ describe('der Standort entscheidet — derselbe Fakt wie auf der Übersicht (Ste
     expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät', 'Betrieb']);
   });
 
-  it('Funktionen nicht lesbar (älteres Backend, Fehler): wie heute — auch an einem Standort, der nur misst', async () => {
+  it('Funktionen nicht lesbar: keine der beiden Fassungen wird behauptet', async () => {
     vi.spyOn(api, 'standorte').mockResolvedValue({ ...ahrenbergHeute(), standorte: [werkLindach()] });
     vi.spyOn(api, 'funktionen').mockRejectedValue(new ApiError(503, 'kurz weg'));
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
     await ruhe();
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät', 'Betrieb']);
-    expect(screen.getByText(/Feineinstellungen/)).toBeInTheDocument();
+    expect(screen.getByText('Der nächste Schritt konnte nicht geladen werden.')).toBeInTheDocument();
+    expect(screen.queryByText('Zuerst den Standort')).toBeNull();
+    expect(screen.queryByText(/Feineinstellungen/)).toBeNull();
   });
 });
 

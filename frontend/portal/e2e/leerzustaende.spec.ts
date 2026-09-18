@@ -10,9 +10,9 @@ import { join } from 'node:path';
  * Dokument (`scrollWidth − clientWidth`), nicht am Fenster.
  *
  * Steuern-Regel (Captain 15.09.2026): wo keine Anlage teilnimmt, steht kein Wort
- * über Steuern (`nie`, geprüft an der ganzen Seite) — und die Steuerungsseite
- * einer Anlage, die nur misst, trägt keinen Hinweis mehr, behält aber ihre Wege
- * zu Steuerart und Regeln (`wege`).
+ * über Steuern (`nie`, geprüft an der ganzen Seite). Erst auf der vom Kunden
+ * selbst geöffneten Steuerungsseite steht der eine sachliche Einstieg in den
+ * vorhandenen Standort-Assistenten; Steuerart und Regeln bleiben erreichbar.
  *
  * Mit `LEERZUSTAENDE_BILDER=<Ordner>` legt der Lauf je Fall das Bild der
  * Stelle, die ganze Seite und die Messung ab.
@@ -69,18 +69,18 @@ const FAELLE: Fall[] = [
     name: 'steuerung-halle2',
     query: 'bild=unternehmen&ansicht=steuerung-halle2',
     ziel: '.vp-main',
-    sichtbar: ['Ladepunkt Parkplatz Halle 2', 'Regeln'],
-    nie: ['Diese Anlage misst nur', 'Steuern & Optimieren', 'Werk Ahrenberg – Halle 1', 'aufnehmen', 'Wenn VoltPilot'],
-    wege: ['Neue Regel'],
+    sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'Ladepunkt Parkplatz Halle 2', 'Regeln'],
+    nie: ['Diese Anlage misst nur', 'Werk Ahrenberg – Halle 1', 'aufnehmen', 'Wenn VoltPilot'],
+    wege: ['Steuern & Optimieren einrichten', 'Neue Regel'],
     ohneGeld: true,
   },
   {
     name: 'steuerung-lindach',
     query: 'bild=unternehmen&ansicht=steuerung-lindach',
     ziel: '.vp-main',
-    sichtbar: ['Regeln'],
-    nie: ['Diese Anlage misst nur', 'Steuern & Optimieren', 'Zum Steuern braucht sie', 'Gerät anbinden', 'einrichten'],
-    wege: ['Neue Regel'],
+    sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'Regeln'],
+    nie: ['Diese Anlage misst nur', 'Zum Steuern braucht sie', 'Gerät anbinden'],
+    wege: ['Steuern & Optimieren einrichten', 'Neue Regel'],
     ohneGeld: true,
   },
 ];
@@ -156,4 +156,20 @@ for (const fall of FAELLE) {
       await ablegen(page, fall, breite, m);
     });
   }
+}
+
+for (const breite of BREITEN) {
+  test(`IP-4 Steuerungsseite ${breite} px: eigener Anstoß öffnet den bestehenden Standort-Assistenten`, async ({ page }) => {
+    const fall = FAELLE.find((f) => f.name === 'steuerung-lindach')!;
+    await oeffne(page, fall, breite);
+    await page.getByRole('button', { name: 'Steuern & Optimieren einrichten' }).click();
+    const dialog = page.getByRole('dialog', { name: /Steuern & Optimieren/ });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Werk Lindach');
+    await expect(dialog).toContainText('Standort: Werk Lindach');
+    if (BILDER) {
+      await page.screenshot({ path: join(BILDER, `steuern-assistent-${breite}.png`) });
+      await page.screenshot({ path: join(BILDER, `steuern-assistent-${breite}-ganz.png`), fullPage: true });
+    }
+  });
 }

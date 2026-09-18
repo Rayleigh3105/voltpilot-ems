@@ -3,6 +3,7 @@ import type { FunktionStandort, FunktionZustand, Funktionen } from './api';
 import { FLOW_STEPS, STARTKLAR_SATZ, startklarSatz } from './anlageFlow';
 import {
   anlegeArt,
+  anlageLeertext,
   anlegeSchritte,
   anlegeStandort,
   ERSTE_DATEN_NUR_MESSEN,
@@ -41,10 +42,23 @@ const messkunde = (): Funktionen =>
   ahrenbergFunktionen({ standorte: [teilnahmen(funktionWerkAhrenberg(), 'kein_objekt'), funktionWerkLindach()] });
 
 describe('anlegeArt — derselbe Fakt wie auf der Übersicht, am Standort der neuen Anlage', () => {
-  it('ohne Funktionen (älteres Backend, Fehler) und ohne Standort-Objekt: wie heute', () => {
-    expect(anlegeArt(null)).toBe('wie_heute');
-    expect(anlegeArt(null, { standortId: FIXTURE_IDS.st2 })).toBe('wie_heute');
-    expect(anlegeArt(ahrenbergFunktionen({ standorte: [] }))).toBe('wie_heute');
+  it('noch nicht entschieden: funktionen === null zeigt weder die eine noch die andere Fassung', () => {
+    expect(anlegeArt(null)).toBeNull();
+    expect(anlegeArt(null, { standortId: FIXTURE_IDS.st2 })).toBeNull();
+  });
+
+  it('kein Standort und keine Anlage: zuerst den Standort', () => {
+    expect(anlegeArt(ahrenbergFunktionen({ standorte: [] }))).toBe('standort_zuerst');
+  });
+
+  it('kein Standort und eine Bestandsanlage: wie heute', () => {
+    expect(anlegeArt(ahrenbergFunktionen({ standorte: [] }), { hatAnlage: true })).toBe('wie_heute');
+    expect(anlegeArt(ahrenbergFunktionen({ standorte: [] }), { anlageId: 'bestand-ohne-standort' })).toBe('wie_heute');
+  });
+
+  it('ein Bestands-Kundenbereich, der nie eine Anlage angelegt hat: zuerst den Standort', () => {
+    const bestandOhneAnlage = ahrenbergFunktionen({ standorte: [] });
+    expect(anlegeArt(bestandOhneAnlage, { hatAnlage: false })).toBe('standort_zuerst');
   });
 
   it('Werk Ahrenberg spricht (Halle 1 steuert): wie heute — Werk Lindach schweigt: nur messen', () => {
@@ -88,7 +102,17 @@ describe('anlegeStandort, Schritte und Ziel', () => {
   it('„Betrieb“ steht nur wie heute — nicht im Modus „nur messen“ und nicht, solange die Art offen ist', () => {
     expect(anlegeSchritte('wie_heute')).toEqual([...FLOW_STEPS]);
     expect(anlegeSchritte('nur_messen')).toEqual(['Anlage', 'Register', 'Gerät']);
+    expect(anlegeSchritte('standort_zuerst')).toEqual(['Standort', 'Anlage', 'Register', 'Gerät']);
     expect(anlegeSchritte(null)).toEqual(['Anlage', 'Register', 'Gerät']);
+  });
+
+  it('Leerzustand: nur der Mess-Standort verliert Fahrplan und Erlöse; offen zeigt keinen Satz', () => {
+    const heute = 'Live-Daten, Fahrplan und Erlöse';
+    const messen = 'Messwerte und technischer Zustand';
+    expect(anlageLeertext('nur_messen', heute, messen)).toBe(messen);
+    expect(anlageLeertext('wie_heute', heute, messen)).toBe(heute);
+    expect(anlageLeertext('standort_zuerst', heute, messen)).toBe(heute);
+    expect(anlageLeertext(null, heute, messen)).toBeNull();
   });
 
   it('der Satz des Einrichtungs-Assistenten zählt die Schritte, die der Fluss zeigt', () => {

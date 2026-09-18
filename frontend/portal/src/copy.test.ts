@@ -1,5 +1,6 @@
 import ts from 'typescript';
-import { steuerGeldWoerter } from './anlegeNurMessen';
+import { STANDORT_ZUERST_SATZ, STANDORT_ZUERST_TITEL, steuerGeldWoerter } from './anlegeNurMessen';
+import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from './steuernAssistent';
 import { everydayArticles } from './help/content/alltag';
 import { GESAMTWERT, SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
 import { budgetFreiText, folgenSaetze } from './datenquelle';
@@ -2217,5 +2218,29 @@ describe('AP-08 IP-16 · Ersatzwerte und Korrekturen', () => {
     expect(texte.some(t => t.includes('weitere Version'))).toBe(true);
     expect(texte.some(t => t.includes('bisherigen Werte bleiben unverändert'))).toBe(true);
     expect(texte.some(t => t.includes('werden neu berechnet'))).toBe(true);
+  });
+});
+
+describe('AP-14 IP-4 · erste Minute des Messkunden', () => {
+  const texte = [
+    STANDORT_ZUERST_TITEL,
+    STANDORT_ZUERST_SATZ,
+    STEUERN_EINSTIEG_SATZ,
+    STEUERN_EINSTIEG_AKTION,
+    'Legen Sie Ihre Anlage an, um Ihr Gerät zu verbinden und ihre Messwerte zu sehen.',
+    'Eine Anlage bündelt Ihr Gerät und seine Messwerte. Danach verbinden Sie Ihr Gerät in wenigen Schritten.',
+  ];
+
+  it('spricht auf Kundenflächen ohne Betreiberwörter', () => {
+    const falsch = texte.flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN]
+        .filter(({ re }) => re.test(ohneAusnahmen(text)))
+        .map(({ why }) => `${text}: ${why}`),
+    );
+    expect(falsch).toEqual([]);
+  });
+
+  it('spricht vor der eigenen Steuerungsseite weder von Steuern noch Geld', () => {
+    expect(steuerGeldWoerter(`${STANDORT_ZUERST_TITEL} ${STANDORT_ZUERST_SATZ}`)).toEqual([]);
   });
 });

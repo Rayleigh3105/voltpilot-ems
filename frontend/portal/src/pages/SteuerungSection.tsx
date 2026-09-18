@@ -22,6 +22,7 @@
  * selbst nach.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   ApiError,
@@ -36,12 +37,15 @@ import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { JetztZone } from '../components/JetztZone';
 import { FunktionSteuerungAktion } from '../components/FunktionSteuerungAktion';
+import { Recht } from '../components/Recht';
+import { SteuernAssistent } from '../components/SteuernAssistent';
 import { SteuerungIntro } from '../components/SteuerungIntro';
 import { LadeparkRahmenKarte } from '../components/LadeparkRahmenKarte';
 import { RegelnKapsel } from '../components/RegelnKapsel';
 import { SteuerartDialog } from '../components/SteuerartDialog';
 import { SteuerartIntro } from '../components/SteuerartIntro';
 import type { SteuerartWunsch } from '../steuerartDialog';
+import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from '../steuernAssistent';
 import { VerbraucherZone } from '../components/VerbraucherZone';
 import { quelleLang, type SiteVerbraucher } from '../verbraucherZone';
 import type { SiteFahrzeuge } from '../fahrzeugProfile';
@@ -132,6 +136,7 @@ export function SteuerungSection({
   const [profiles, setProfiles] = useState<SiteProfiles | null>(null);
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [funktionen, setFunktionen] = useState<Funktionen | null>(null);
+  const [steuernEinrichten, setSteuernEinrichten] = useState(false);
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft: ein älteres Backend
   // kennt die Route nicht, dann gibt es die Ladepark-Kapsel schlicht nicht.
   const [charging, setCharging] = useState<SiteCharging | null>(null);
@@ -695,6 +700,17 @@ export function SteuerungSection({
             <p className="vp-funktion-kopf" role="status">{funktionsAnzeige.kopf}</p>
           )}
 
+          {steuerTeilnahme?.zustand === 'kein_objekt' && funktionsStandort && (
+            <div className="vp-steuern-einstieg" data-testid="steuern-einstieg">
+              <p>{STEUERN_EINSTIEG_SATZ}</p>
+              <Recht standort={funktionsStandort.id} aktion="funktion.steuern_einrichten">
+                <Button variant="outline" onClick={() => setSteuernEinrichten(true)}>
+                  {STEUERN_EINSTIEG_AKTION}
+                </Button>
+              </Recht>
+            </div>
+          )}
+
           <SteuerungIntro />
 
           {/* --- Zone ① · Jetzt (Konzept b3 §3.2, Stufe 1) ------------------
@@ -906,6 +922,14 @@ export function SteuerungSection({
                 run();
               }}
               onCancel={() => setFolgen(null)}
+            />
+          )}
+
+          {steuernEinrichten && funktionsStandort && (
+            <SteuernAssistent
+              standortId={funktionsStandort.id}
+              anlageId={site.id}
+              onClose={() => setSteuernEinrichten(false)}
             />
           )}
         </>
