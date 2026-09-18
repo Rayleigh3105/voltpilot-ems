@@ -37,7 +37,7 @@ describe('WAGO-Lesung — Regel aus IP-1', () => {
 
   it('nennt die ausgelesene PFC200-Kombination ehrlich „in Prüfung“', () => {
     expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [wagoKarteAusLesung(1, antwort(2, 494))]))
-      .toMatchObject({ ergebnis: 'in_pruefung', titel: 'In Prüfung — Pilot ausstehend' });
+      .toMatchObject({ ergebnis: 'in_pruefung', titel: 'In Prüfung — Einsatz noch nicht bestätigt' });
   });
 
   it('erfindet bei einer unvollständigen Kartenlesung weder Steckplatz noch Typ', () => {
