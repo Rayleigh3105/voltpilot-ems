@@ -105,12 +105,28 @@ public class FunktionBestandService {
         if (tenant == null) {
             throw new IllegalStateException("Funktions-Übernahme ohne Kundenbereich");
         }
-        return transaktion.execute(s -> uebernehmen(tenant));
+        return transaktion.execute(s -> uebernehmen(tenant, null));
+    }
+
+    /**
+     * Derselbe Umstieg wie beim Start-Läufer, begrenzt auf die gerade einem Standort zugeordneten
+     * Anlagen. Eine vorhandene äußere Transaktion wird dabei beibehalten.
+     */
+    public Ergebnis uebernehmen(Set<UUID> anlagen) {
+        UUID tenant = TenantContext.get();
+        if (tenant == null) {
+            throw new IllegalStateException("Funktions-Übernahme ohne Kundenbereich");
+        }
+        Set<UUID> genauDiese = Set.copyOf(anlagen);
+        if (genauDiese.isEmpty()) {
+            return new Ergebnis(0, 0, 0, 0);
+        }
+        return transaktion.execute(s -> uebernehmen(tenant, genauDiese));
     }
 
     private record Neu(UUID siteId, BestandErgebnis ergebnis) {}
 
-    private Ergebnis uebernehmen(UUID tenant) {
+    private Ergebnis uebernehmen(UUID tenant, Set<UUID> anlagen) {
         unternehmen.sperren();
         Instant jetzt = uhr.instant();
         Map<UUID, String> namen = new HashMap<>();
@@ -133,7 +149,8 @@ public class FunktionBestandService {
             LocalDate heute = LocalDate.ofInstant(jetzt, zone);
             List<Neu> neu = new ArrayList<>();
             for (UUID site : heuteZugeordnet(alleZuordnungen, st.id(), heute)) {
-                if (!namen.containsKey(site) || schonTeilnahme.contains(site)) {
+                if ((anlagen != null && !anlagen.contains(site)) || !namen.containsKey(site)
+                        || schonTeilnahme.contains(site)) {
                     continue;
                 }
                 BestandErgebnis b = FunktionZustandAbleitung.bestand(fakten.lesen(tenant, site, namen.get(site)), zone);

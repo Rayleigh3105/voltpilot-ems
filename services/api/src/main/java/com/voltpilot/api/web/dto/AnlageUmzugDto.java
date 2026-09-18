@@ -28,7 +28,7 @@ public final class AnlageUmzugDto {
 
     /**
      * Die Teilnahme der Anlage an „Steuern &amp; Optimieren" und der Standort IHRER Funktion — die
-     * Zuordnung ändert beides nicht.
+     * erste Zuordnung einer Bestandsanlage kann sie anlegen; ein späterer Umzug ändert sie nicht.
      */
     public record Teilnahme(String funktion, String zustand, StandortRef standort) {}
 
