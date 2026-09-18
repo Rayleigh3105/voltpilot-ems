@@ -28,6 +28,16 @@ const version: EdgeVersion = {
 };
 
 describe('Box-Übersicht · reine Ableitungen', () => {
+  it('zeigt gemeldete Fähigkeiten nur an der meldenden Box und nutzt das Cloud-Urteil', () => {
+    const result = boxUebersicht(
+      [box('box-1', 'Alt', false), box('box-2', 'Neu', true)],
+      [{ ...version, supports: ['data_sources'], capabilities: ['data_sources'] }], [],
+      new Map([['anlage-1', 'Halle 2']]), JETZT,
+    );
+    expect(result.find((b) => b.id === 'box-2')?.faehigkeiten).toBe('Software 2.5.0 · Update nötig für: Zuständigkeit ab Zeitpunkt');
+    expect(result.find((b) => b.id === 'box-1')?.faehigkeiten).toContain('Rückmeldung je Datenquelle');
+  });
+
   it('wählt bei mehreren Boxen nur die serverseitig markierte führende Box', () => {
     const lesend = box('box-1', 'Lese-Box', false);
     const fuehrend = box('box-2', 'Box Halle 2', true);

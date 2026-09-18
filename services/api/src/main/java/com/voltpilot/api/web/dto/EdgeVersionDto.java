@@ -25,7 +25,14 @@ public record EdgeVersionDto(UUID deviceId, UUID siteId, String coreVersion,
         // also kein Maßstab), `upToDate` DREIWERTIG - null heißt „nicht
         // bewertbar" (nichts gemeldet ODER nicht registriert), NIE „veraltet".
         // Es reist das Urteil, nie das Register (EdgeStandVerdict).
-        String newestRelease, Boolean upToDate) {
+        String newestRelease, Boolean upToDate,
+        // Raw report plus the central reported-OR-table result. Null report = legacy box.
+        java.util.List<String> supports, java.util.List<String> capabilities) {
+
+    public EdgeVersionDto(UUID deviceId, UUID siteId, String coreVersion, String paletteVersion,
+            Instant reportedAt, String newestRelease, Boolean upToDate) {
+        this(deviceId, siteId, coreVersion, paletteVersion, reportedAt, newestRelease, upToDate, null, null);
+    }
 
     /** Die Vor-R2a-Form - ohne Urteil, für Aufrufer, die keines bilden. */
     public EdgeVersionDto(UUID deviceId, UUID siteId, String coreVersion, String paletteVersion,

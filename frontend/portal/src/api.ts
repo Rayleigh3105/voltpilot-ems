@@ -5380,6 +5380,9 @@ export interface MessstelleVorschlagUebernommen<T = unknown> {
  * dass weder der moderne Top-Level-Stand noch der ältere Flow-Beleg vorliegt.
  */
 export interface EdgeVersion {
+  supports?: string[] | null;
+  /** Known reported capabilities OR release table, resolved by the cloud. */
+  capabilities?: string[] | null;
   deviceId: string;
   siteId: string;
   coreVersion: string | null;

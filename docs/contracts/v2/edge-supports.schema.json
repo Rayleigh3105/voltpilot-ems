@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "edge-supports.schema.json",
+  "title": "Additive supports block of status schema 1.0",
+  "type": "array",
+  "maxItems": 128,
+  "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" }
+}

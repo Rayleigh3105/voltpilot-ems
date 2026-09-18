@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Box-Fähigkeiten (AP-06 IP-18)** — additive Meldung, zentrale Cloud-Abfrage und Mischbetrieb; nur gebaute Fähigkeiten · [Vertrag und Leser](uems-edge-faehigkeiten.md)
+
 - **Gemeinsamer Messbudget-Vertrag (AP-07 IP-4)** — Kostentabelle Java/Node-RED, A16 einschließlich Ahrenberg/25 Karten, unveränderter AP-06-Box-Deckel und Mischbetrieb ohne Laufzeitversionssprung · [Vertrag und Nachweise](uems-messbudget-vertrag.md)
 - **Quellen-Herzschlag auf der Box (AP-06 IP-13)** — gespeichertes DQ-Kennzeichen im offenen Treiberblock, Poll-Belege und additive `data_sources[]`; Mischbetrieb ohne Versionshub · [Vertrag und Leser](uems-quellen-herzschlag.md)
 

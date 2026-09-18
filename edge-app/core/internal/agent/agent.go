@@ -1290,7 +1290,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
 					a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
-					a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now())}); err != nil {
+					a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports()}); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():

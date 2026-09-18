@@ -38,7 +38,10 @@ public class EdgeVersionRepository {
      * jeweilige Feld leer, nie eine geratene Version.
      */
     public record EdgeVersion(UUID deviceId, UUID siteId, String coreVersion,
-            String paletteVersion, Instant reportedAt) {
+            String paletteVersion, Instant reportedAt, List<String> supports) {
+        public EdgeVersion(UUID deviceId, UUID siteId, String coreVersion, String paletteVersion, Instant reportedAt) {
+            this(deviceId, siteId, coreVersion, paletteVersion, reportedAt, null);
+        }
     }
 
     /**
@@ -100,21 +103,22 @@ public class EdgeVersionRepository {
         return jdbc.query(
                 "SELECT d.id AS device_id, d.site_id, "
                         + "COALESCE(NULLIF(u.version, ''), NULLIF(u.current_version, ''), "
-                        + "e.core_version) AS core_version, e.palette_version, "
+                        + "e.core_version) AS core_version, e.palette_version, d.supports, "
                         + "CASE WHEN COALESCE(NULLIF(u.version, ''), "
                         + "NULLIF(u.current_version, '')) IS NOT NULL "
-                        + "THEN u.reported_at ELSE e.reported_at END AS reported_at "
+                        + "THEN u.reported_at ELSE coalesce(e.reported_at, d.supports_reported_at) END AS reported_at "
                         + "FROM device d "
                         + "LEFT JOIN device_update_status u ON u.device_id = d.id "
                         + "LEFT JOIN device_edge_version e ON e.device_id = d.id "
-                        + "WHERE d.ausgebaut_am IS NULL AND COALESCE(NULLIF(u.version, ''), NULLIF(u.current_version, ''), "
-                        + "e.core_version, e.palette_version) IS NOT NULL "
+                        + "WHERE d.ausgebaut_am IS NULL AND (d.supports IS NOT NULL OR COALESCE(NULLIF(u.version, ''), NULLIF(u.current_version, ''), "
+                        + "e.core_version, e.palette_version) IS NOT NULL) "
                         + "ORDER BY reported_at DESC",
                 (rs, i) -> new EdgeVersion(
                         rs.getObject("device_id", UUID.class),
                         rs.getObject("site_id", UUID.class),
                         rs.getString("core_version"),
                         rs.getString("palette_version"),
-                        rs.getTimestamp("reported_at").toInstant()));
+                        rs.getTimestamp("reported_at").toInstant(),
+                        com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports"))));
     }
 }

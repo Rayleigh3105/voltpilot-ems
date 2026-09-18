@@ -80,7 +80,11 @@ public class AdminFleetRepository {
 
     /** Eine aktive Box mit ihren eigenen, nie anlagenweit geratenen Ständen. */
     public record FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
-            Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update) {
+            Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update, List<String> supports) {
+        public FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
+                Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update) {
+            this(deviceId, siteId, externalRef, name, lastSeenAt, edge, update, null);
+        }
     }
 
     /** Eingänge der gemeinsamen {@code FuehrendeBoxAbleitung}, je Anlage. */
@@ -154,7 +158,7 @@ public class AdminFleetRepository {
      */
     public List<FleetBoxRow> boxes() {
         return jdbc.query("""
-                SELECT d.id AS device_id, d.site_id, d.external_ref, d.name,
+                SELECT d.id AS device_id, d.site_id, d.external_ref, d.name, d.supports,
                        coalesce(d.device_status_seen_at, telemetry.last_seen) AS last_seen,
                        edge.core_version, edge.palette_version,
                        edge.reported_at AS edge_reported_at,
@@ -201,7 +205,8 @@ public class AdminFleetRepository {
                                     rs.getString("state"),
                                     rs.getString("reason"),
                                     rs.getString("last_known_good"),
-                                    updateReported.toInstant()));
+                                    updateReported.toInstant()),
+                            com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports")));
                 });
     }
 

@@ -2653,7 +2653,7 @@
       "name": "supports-uebersteuert-die-tabelle",
       "familie": "faehigkeiten",
       "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
-      "why": "E12 = A: meldet die Box `supports[]`, entscheidet ALLEIN ihre Meldung — auch gegen die Tabelle (etwa ein Sonderbau). Ein Wort, das die Tabelle nicht kennt („vlan_tagging“), wird verworfen und taucht nirgends auf.",
+      "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Unbekannte Namen werden ignoriert.",
       "input": {
         "stand": {
           "version": "edge-2026.10.1-3bf8c038e1d2",
@@ -2690,18 +2690,18 @@
           },
           {
             "code": "assignment_effective_at",
-            "status": "fehlt",
-            "nachweis": "supports"
+            "status": "vorhanden",
+            "nachweis": "tabelle"
           }
         ],
-        "text": "Software edge-2026.10.1 · Update nötig für: Zuständigkeit ab Zeitpunkt"
+        "text": "Software edge-2026.10.1 · alle Fähigkeiten"
       }
     },
     {
-      "name": "supports-leer-uebersteuert-auch",
+      "name": "supports-leer-erhaelt-tabelle",
       "familie": "faehigkeiten",
       "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
-      "why": "E12 = A: ein LEERER Block `supports[]` ist eine Meldung („ich kann keine davon“) und übersteuert die Tabelle ebenfalls — nur ein FEHLENDER Block lässt die Tabelle sprechen.",
+      "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Unbekannte Namen werden ignoriert.",
       "input": {
         "stand": {
           "version": "edge-2026.10.1-3bf8c038e1d2",
@@ -2730,23 +2730,23 @@
         "faehigkeiten": [
           {
             "code": "data_sources",
-            "status": "fehlt",
-            "nachweis": "supports"
+            "status": "vorhanden",
+            "nachweis": "tabelle"
           },
           {
             "code": "assignment_effective_at",
-            "status": "fehlt",
-            "nachweis": "supports"
+            "status": "vorhanden",
+            "nachweis": "tabelle"
           }
         ],
-        "text": "Software edge-2026.10.1 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+        "text": "Software edge-2026.10.1 · alle Fähigkeiten"
       }
     },
     {
       "name": "supports-meldet-mehr-als-die-echte-tabelle",
       "familie": "faehigkeiten",
       "annahme": "Ein künftiges Release edge-2026.10.0 mit Block `supports[]` (AP-06 IP-18) ist angenommen.",
-      "why": "E12 = A: die echte Tabelle kennt noch kein Release mit den Fähigkeiten — eine Box, die sie in `supports[]` meldet, hat sie trotzdem. Die Meldung der Box ist der Fakt; die Tabelle deckt nur Boxen ab, die nichts melden.",
+      "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Unbekannte Namen werden ignoriert.",
       "input": {
         "stand": {
           "version": "edge-2026.10.0-3bf8c038e1d2",

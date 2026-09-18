@@ -62,6 +62,7 @@ export interface AdminFleetUpdate {
 
 /** Eine Box innerhalb ihrer Anlagen-Gruppe im Flotten-Puls. */
 export interface AdminFleetBox {
+  supports?: string[] | null;
   deviceId: string;
   externalRef: string;
   name: string | null;

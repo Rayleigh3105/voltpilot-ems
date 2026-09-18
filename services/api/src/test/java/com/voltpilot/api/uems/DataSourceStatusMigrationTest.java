@@ -87,6 +87,35 @@ class DataSourceStatusMigrationTest {
         zuweisen(fremd, fremdeQuelle, fremdesDevice, "192.168.30.10:502");
     }
 
+    @Test
+    void supportsAreNullableTenantFencedOrderedAndExposedThroughBothBoxReads() {
+        UUID tenant = root.queryForObject("INSERT INTO tenant (name) VALUES ('Supports') RETURNING id", UUID.class);
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, 'Supports') RETURNING id", UUID.class, tenant);
+        UUID device = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, 'VP-SUPPORTS') RETURNING id", UUID.class, tenant, site);
+        TenantContext.set(tenant);
+        var versions = new com.voltpilot.api.repo.EdgeVersionRepository(app);
+        var capabilities = new BoxFaehigkeiten(app, versions);
+        assertThat(capabilities.kann(device, "data_sources")).isFalse();
+        capabilities.record(device, REPORTED, List.of("data_sources", "measurement_sample_provenance"));
+        assertThat(capabilities.kann(device, "data_sources")).isTrue();
+        assertThat(capabilities.kann(device, "assignment_effective_at")).isFalse();
+        assertThat(versions.findAll()).filteredOn(v -> v.deviceId().equals(device))
+                .singleElement().satisfies(v -> assertThat(v.supports()).containsExactly("data_sources", "measurement_sample_provenance"));
+        assertThat(new AdminFleetRepository(admin).boxes()).filteredOn(v -> v.deviceId().equals(device))
+                .singleElement().satisfies(v -> assertThat(v.supports()).containsExactly("data_sources", "measurement_sample_provenance"));
+        capabilities.record(device, REPORTED.minusSeconds(1), List.of());
+        assertThat(capabilities.kann(device, "data_sources")).isTrue();
+        TenantContext.set(fremd);
+        assertThat(capabilities.kann(device, "data_sources")).isFalse();
+        capabilities.record(device, REPORTED.plusSeconds(1), List.of());
+        TenantContext.set(tenant);
+        assertThat(capabilities.kann(device, "data_sources")).isTrue();
+        capabilities.record(device, REPORTED.plusSeconds(2), List.of());
+        assertThat(capabilities.kann(device, "data_sources")).isFalse();
+        capabilities.record(device, REPORTED.plusSeconds(3), null);
+        assertThat(root.queryForObject("SELECT supports IS NULL FROM device WHERE id = ?", Boolean.class, device)).isTrue();
+    }
+
     @AfterEach
     void clearTenant() {
         TenantContext.clear();

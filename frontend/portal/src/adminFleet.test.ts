@@ -99,6 +99,17 @@ describe('fleetRows', () => {
     expect(groups[0].boxes[0].capabilities.every((capability) => capability.status === 'fehlt')).toBe(true);
   });
 
+  it('uses each box report even when its version is unknown to the table', () => {
+    const groups = fleetBoxGroups([site({ boxes: [
+      { deviceId: 'new', externalRef: 'VP-new', name: null, fuehrtAnlage: true,
+        lastSeenAt: ago(1000), edge: null, update: null, supports: ['data_sources', 'future_feature'] },
+      { deviceId: 'old', externalRef: 'VP-old', name: null, fuehrtAnlage: false,
+        lastSeenAt: ago(1000), edge: null, update: null },
+    ] })], NOW, []);
+    expect(groups[0].boxes.find((b) => b.deviceId === 'new')?.capabilities.map((c) => c.status)).toEqual(['vorhanden', 'fehlt']);
+    expect(groups[0].boxes.find((b) => b.deviceId === 'old')?.capabilities.map((c) => c.status)).toEqual(['fehlt', 'fehlt']);
+  });
+
   it('sorts attention first - a silent device beats a healthy plant', () => {
     const rows = fleetRows(
       [

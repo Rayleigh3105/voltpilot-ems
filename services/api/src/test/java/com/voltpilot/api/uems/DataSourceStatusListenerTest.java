@@ -39,7 +39,7 @@ class DataSourceStatusListenerTest {
     void setUp() {
         devices = mock(DeviceRepository.class);
         statuses = mock(DeviceDataSourceStatusRepository.class);
-        listener = new DataSourceStatusListener("tcp://unused", "", "", devices, statuses);
+        listener = new DataSourceStatusListener("tcp://unused", "", "", devices, statuses, mock(BoxFaehigkeiten.class));
         when(devices.findById(DEVICE)).thenReturn(Optional.of(new DeviceDto(DEVICE, SITE,
                 "VP-BOX-1", "gateway", null, "claimed", Instant.now(), Instant.now())));
     }

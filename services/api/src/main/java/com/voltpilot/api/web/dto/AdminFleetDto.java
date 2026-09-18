@@ -105,7 +105,8 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
      * die belegte Nebenrolle neben einer anderen führenden Box.
      */
     public record FleetBoxDto(UUID deviceId, String externalRef, String name,
-            Boolean fuehrtAnlage, Instant lastSeenAt, FleetEdgeDto edge, FleetUpdateDto update) {
+            Boolean fuehrtAnlage, Instant lastSeenAt, FleetEdgeDto edge, FleetUpdateDto update,
+            List<String> supports) {
     }
 
     /**

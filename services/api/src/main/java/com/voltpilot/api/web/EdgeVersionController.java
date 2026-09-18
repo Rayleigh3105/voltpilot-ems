@@ -63,7 +63,8 @@ public class EdgeVersionController {
                             EdgeStandVerdict.of(v.coreVersion(), register);
                     return new EdgeVersionDto(v.deviceId(), v.siteId(), v.coreVersion(),
                             v.paletteVersion(), v.reportedAt(), urteil.newestRelease(),
-                            urteil.upToDate());
+                            urteil.upToDate(), v.supports(),
+                            com.voltpilot.api.uems.BoxFaehigkeiten.effective(v.coreVersion(), v.supports(), register));
                 })
                 .toList(), teilansicht.jetzt());
     }

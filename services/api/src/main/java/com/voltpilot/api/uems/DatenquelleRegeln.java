@@ -756,9 +756,9 @@ public final class DatenquelleRegeln {
     // -------------------------------------------------------------- Fähigkeiten
 
     /**
-     * Welche Fähigkeiten hat eine Box (E12 = A)? Meldet sie {@code supports[]}, entscheidet
-     * allein die Meldung (auch eine leere; fremde Wörter werden verworfen). Sonst die Tabelle:
-     * vorhanden, wenn das Release der Box im Register nicht vor {@code abRelease} liegt. Ein
+     * Welche Fähigkeiten hat eine Box (E12 = A)? Gemeldet ODER laut Tabelle:
+     * eine leere/teilweise Meldung entzieht keine durch die Tabelle belegte Fähigkeit.
+     * Laut Tabelle vorhanden, wenn das Release der Box im Register nicht vor {@code abRelease} liegt. Ein
      * Stand ohne Release beweist nichts.
      *
      * @param register die Releases in der Ordnung des Registers ({@code release_seq}), älteste zuerst
@@ -769,8 +769,8 @@ public final class DatenquelleRegeln {
         for (TabellenEintrag e : tabelle) {
             boolean vorhanden;
             Nachweis nachweis;
-            if (stand.supports() != null) {
-                vorhanden = stand.supports().contains(e.code());
+            if (stand.supports() != null && stand.supports().contains(e.code())) {
+                vorhanden = true;
                 nachweis = Nachweis.SUPPORTS;
             } else {
                 int ist = stand.release() == null ? -1 : register.indexOf(stand.release());
