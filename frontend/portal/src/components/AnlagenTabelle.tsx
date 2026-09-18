@@ -8,6 +8,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import './AnlagenTabelle.css';
 import { useStaffel } from '../staffel';
 import { UEMS_ENERGIEBILANZ } from '../glossar';
+import { Recht } from './Recht';
 
 /**
  * DIE ANLAGEN-TABELLE — EINE Fläche in zwei Dichten (Scout
@@ -48,6 +49,8 @@ export interface AnlagenTabelleProps {
    */
   energiebilanz?: ReadonlySet<string> | null;
   onEnergiebilanz?: (siteId: string) => void;
+  /** Nur „Standort › Anlagen“: geführter Einstieg in den bestehenden Zuordnungsdialog. */
+  onZuordnungKorrigieren?: (siteId: string) => void;
   /** AP-02 IP-10: nur die offenen Bestandsanlagen tragen den zusätzlichen Chip. */
   nichtZugeordnet?: ReadonlySet<string>;
 }
@@ -192,7 +195,7 @@ function VorschauBlock({
 // Desktop
 // ---------------------------------------------------------------------------
 
-function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz, nichtZugeordnet }: AnlagenTabelleProps) {
+function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz, onZuordnungKorrigieren, nichtZugeordnet }: AnlagenTabelleProps) {
   // Bewegung P6: die Zeilen staffeln beim ERSTEN Blick auf das Portfolio, nie
   // beim zweiten (`src/staffel.ts`). Beide Formen teilen den Schlüssel — es
   // ist dieselbe Liste, nur einmal als Tabelle und einmal als Karten.
@@ -235,6 +238,18 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
               >
                 {UEMS_ENERGIEBILANZ}
               </button>
+            )}
+            {onZuordnungKorrigieren && (
+              <Recht aktion="anlage.zuordnen"><button
+                type="button"
+                className="vp-at-weg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onZuordnungKorrigieren(z.id);
+                }}
+              >
+                Zuordnung korrigieren
+              </button></Recht>
             )}
             <button
               type="button"
@@ -327,7 +342,7 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
  * Vorschau bzw. auf der Anlagen-Seite. Eine Kachel ohne Wert erscheint gar
  * nicht.
  */
-function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz, nichtZugeordnet }: AnlagenTabelleProps) {
+function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen, energiebilanz, onEnergiebilanz, onZuordnungKorrigieren, nichtZugeordnet }: AnlagenTabelleProps) {
   const zeigt = new Set(spalten);
   const staffel = useStaffel('portfolio-anlagen');
   const liste = staffel ? `vp-at-karten ${staffel}` : 'vp-at-karten';
@@ -426,6 +441,18 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen
             oeffnen
           )}
         </div>
+        {onZuordnungKorrigieren && (
+          <Recht aktion="anlage.zuordnen"><button
+            type="button"
+            className="vp-at-weg vp-at-korrigieren"
+            onClick={(e) => {
+              e.stopPropagation();
+              onZuordnungKorrigieren(z.id);
+            }}
+          >
+            Zuordnung korrigieren
+          </button></Recht>
+        )}
         {auf && (
           <div
             id={`anlage-vorschau-${z.id}`}

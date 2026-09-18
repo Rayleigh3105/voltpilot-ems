@@ -11,6 +11,7 @@ import ReactDOM from 'react-dom/client';
 import {
   api,
   type FunktionStandort,
+  type AnlageUmzug,
   type BezugsdatenZuordnung,
   type MessstellenRegisterAnfrage,
   type MessstelleWerte,
@@ -175,7 +176,7 @@ import '../src/index.css';
  * 96,5 kW; Werk Lindach 38,7 kW. Was die Datei nicht trägt (Verbrauch, Geld),
  * bleibt leer — nie eine erfundene Zahl.
  *
- * `?bild=einzel|standort|unternehmen|messkunde` — die drei Startbilder plus
+ * `?bild=einzel|standort|unternehmen|messkunde|korrektur` — die drei Startbilder plus
  * Peter Hollerbach (nur Werk Lindach, AP-03-Teilansicht); `&ansicht=anlage`
  * öffnet Halle 1, `&ansicht=werk` die Standort-Übersicht Werk Ahrenberg,
  * `&ansicht=lindach` die Standort-Übersicht Werk Lindach. `&messen=bestand`
@@ -193,6 +194,7 @@ const params = new URLSearchParams(location.search);
 const bild = params.get('bild') ?? 'einzel';
 const ansicht = params.get('ansicht');
 const AUSFALL = params.get('ausfall') === '1';
+const KORREKTUR = bild === 'korrektur';
 const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet';
 /**
  * AP-13 IP-9: `&ansicht=kostenstellen` / `&ansicht=prozesse` öffnen „Unternehmen › Messstellen“ im Reiter (die Adresse
@@ -537,6 +539,27 @@ const SZENEN = {
     liste: { ...ahrenbergHeute(), standorte: [werkLindach()] },
     unternehmen: ahrenbergUnternehmen(),
   },
+  /** AP-14 IP-15/U7a: AN-3 wurde seit ihrem ersten Tag dem falschen, sonst leeren Standort zugeordnet. */
+  korrektur: {
+    sites: [lindach],
+    liste: {
+      ...ahrenbergHeute(),
+      stichtag: '2026-11-20',
+      standorte: [
+        werkAhrenberg({
+          name: 'Werk Irrtum',
+          kurzzeichen: 'ST-1',
+          anlagen: [{ id: an3, name: lindach.name, gueltigAb: '2026-10-15', gueltigBis: null }],
+          anlagenZahl: 1,
+          gebaeudeZahl: 0,
+          bereichZahl: 0,
+        }),
+        werkLindach({ anlagen: [], anlagenZahl: 0, gebaeudeZahl: 0, bereichZahl: 0 }),
+      ],
+      nochNichtZugeordnet: null,
+    },
+    unternehmen: ahrenbergUnternehmen({ anlagenZahl: 1, standortZahl: 2 }),
+  },
   /** IP-8: Werk Lindach ist angelegt, AN-3 noch nicht — der Leerzustand der Standort-Übersicht. */
   'vor-lindach': {
     sites: [halle1, halle2],
@@ -585,6 +608,29 @@ const standortVorschlag = {
       anlagen: [{ vorschlagId: 'aa020000-0000-4000-8000-000000000002', anlageId: an2, anlageName: 'Werk Ahrenberg – Halle 2', gueltigAb: '2026-09-14' }] },
   ],
 };
+
+const korrekturUmzug = (): AnlageUmzug => ({
+  anlageId: an3,
+  anlageName: lindach.name,
+  bisher: { id: FIXTURE_IDS.st1, kurzzeichen: 'ST-1', name: 'Werk Irrtum' },
+  neu: { id: st2, kurzzeichen: 'ST-2', name: 'Werk Lindach' },
+  gueltigAb: '2026-10-15',
+  gueltigBis: null,
+  danach: null,
+  rueckwirkung: { art: 'rueckwirkend' as const, tage: 36, abzeichen: 'rückwirkend (36 Tage)' },
+  zuordnungen: [
+    { standort: { id: FIXTURE_IDS.st1, kurzzeichen: 'ST-1', name: 'Werk Irrtum' }, gueltigAb: '2026-10-15', gueltigBis: null, zustand: 'aufgehoben' as const },
+    { standort: { id: st2, kurzzeichen: 'ST-2', name: 'Werk Lindach' }, gueltigAb: '2026-10-15', gueltigBis: null, zustand: 'gueltig' as const },
+  ],
+  bleibt: ['box', 'topics', 'freigaben', 'betriebsmodell', 'fahrplaene', 'messstellen'],
+  boxen: 1,
+  netzanschluss: { id: 'na-3', kennzeichen: 'NA-3' },
+  steuern: { funktion: 'steuern' as const, zustand: 'aktiv', standort: { id: FIXTURE_IDS.st1, kurzzeichen: 'ST-1', name: 'Werk Irrtum' } },
+  befehle: 0,
+  begruendung: null,
+  protokoll: [],
+});
+let korrekturArchiviert = false;
 
 // Die gestellte Cloud: nur, was die Flotten-Fläche liest.
 const overview: Overview = {
@@ -758,8 +804,23 @@ Object.assign(api, {
   // AP-04 IP-6: was der Messstellen-Dialog beim Öffnen liest (Vorschlag, Standorte, Ortsbäume).
   kennzeichenVorschlag: async () => ({ kennzeichen: 'MS-0023' }),
   ...netzanschlussBuehne(szene.liste),
-  standortOrte: async (id: string) =>
-    id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg(),
+  standortOrte: async (id: string) => {
+    if (KORREKTUR && id === FIXTURE_IDS.st1) {
+      const standort = szene.liste.standorte.find((s) => s.id === id)!;
+      return ortsbaumAhrenberg({
+        standort: { ...standort, zustand: korrekturArchiviert ? 'archiviert' : standort.zustand },
+        summeGebaeudeM2: null,
+        gebaeude: [],
+        direktAmStandort: { bereiche: [], messstellenZahl: 0 },
+        aktionen: {
+          archivieren: { erlaubt: !korrekturArchiviert, text: null, gruende: [], letzterTag: '2026-11-19', mitarchiviert: [] },
+          wiederherstellen: null,
+          loeschen: null,
+        },
+      });
+    }
+    return id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg();
+  },
   versorgung: async (id: string) => id === werkLindach().id ? versorgungLindach() : versorgungAhrenberg(),
   // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
   kennzahlen: async () => ({ kennzahlen: (messenArt === 'bestand' ? [] : kennzahlenDerBuehne()).filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
@@ -810,7 +871,27 @@ Object.assign(api, {
   bezugsdatenRuecknahmeVorschau: async () => ({ kennung: 'I-2026-0001', aenderungen: 1, vieraugen: false, werte: [{ bezugsgroesse_id: bzListe.bezugsgroessen[0]?.id ?? '', kennzeichen: 'BZ-1', name: 'Produktionsmenge', periode_von: '2026-10-01', periode_bis: '2026-10-31', zeitpunkt: null, bisheriger_betrag: '312400', neuer_betrag: null, einheit: 'kg', vorgang: 'zurueckgenommen' as const }] }),
   bezugsdatenImportZuruecknehmen: async (_kennung: string, begruendung: string) => { bzAufrufe.ruecknahmen.push(begruendung); importStatus = 'zurueckgenommen'; return { kennung: 'I-2026-0001', status: importStatus, aenderungen: 1, vorschlaege: 0, zaehler: null, vorlage: null }; },
   unternehmen: async () => ahrenbergUnternehmen(),
-  standorte: async () => ahrenbergHeute(),
+  standorte: async () => structuredClone(szene.liste),
+  anlageStandortVorschau: async () => korrekturUmzug(),
+  anlageStandortSetzen: async () => {
+    if (KORREKTUR) {
+      const alt = szene.liste.standorte.find((s) => s.id === FIXTURE_IDS.st1)!;
+      const ziel = szene.liste.standorte.find((s) => s.id === st2)!;
+      alt.anlagen = [];
+      alt.anlagenZahl = 0;
+      ziel.anlagen = [{ id: an3, name: lindach.name, gueltigAb: '2026-10-15', gueltigBis: null }];
+      ziel.anlagenZahl = 1;
+    }
+    return korrekturUmzug();
+  },
+  berichteBetroffen: async () => ({
+    anlass: 'anlage_umzug_rueckwirkend', gilt_ab: '2026-10-15', berichte_vorhanden: false, betroffen: [], zitieren: [],
+  }),
+  standortArchivieren: async (id: string) => {
+    korrekturArchiviert = true;
+    const standort = szene.liste.standorte.find((s) => s.id === id)!;
+    return { ...standort, zustand: 'archiviert' as const, archiviertAm: '2026-11-20T09:00:00+01:00' };
+  },
   standortAusfall: async (standortId: string): Promise<StandortAusfall> => {
     if (!AUSFALL || standortId !== FIXTURE_IDS.st1) {
       return { standort_id: standortId, boxen_gesamt: standortId === FIXTURE_IDS.st1 ? 2 : 1, boxen_ausgefallen: 0, messstellen_unvollstaendig: 0, boxen: [], messstellen: [] };
@@ -1150,6 +1231,8 @@ function Vorschau() {
         ? anlageRoute(bilanzAn, 'energiebilanz')
         : ansicht === 'box-halle1'
           ? { ...anlageRoute(an1, 'box'), geraet: { ref: 'VP-BOX-2024-0117', geraetId: null } }
+        : ansicht === 'korrektur-anlage'
+          ? anlageRoute(an3, 'technik')
         : ansicht === 'anlage'
         ? anlageRoute(an1)
         : ansicht === 'steuerung-halle2'

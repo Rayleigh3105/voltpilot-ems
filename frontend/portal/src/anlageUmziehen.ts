@@ -26,10 +26,13 @@ import { datumText, type Tag } from './uemsOrtsbaum';
 export const UMZUG_TITEL = 'Anlage zuordnen';
 export const UMZUG_GESPEICHERT_TITEL = 'Zuordnung gespeichert';
 export const KNOPF_ANDEREM_STANDORT = 'Anderem Standort zuordnen';
+export const KNOPF_ZUORDNUNG_KORRIGIEREN = 'Zuordnung korrigieren';
 export const KNOPF_ZUORDNEN = 'Zuordnen';
 export const KNOPF_FERTIG = 'Fertig';
 export const UMZUG_VORSPANN =
   'Die Anlage gehört ab dem gewählten Tag zu einem anderen Standort. Das ist eine Aussage über die Zugehörigkeit — am Betrieb der Anlage ändert sich nichts.';
+export const KORREKTUR_VORSPANN =
+  'Die Anlage gehört seit ihrem ersten Tag zu einem anderen Standort? Hier ändern Sie das rückwirkend. Steuerung und Messwerte bleiben unberührt.';
 export const FOLGEN_AENDERT_TITEL = 'Das ändert sich';
 export const FOLGEN_BLEIBT_TITEL = 'Das bleibt, wie es ist';
 export const FOLGEN_PRUEFEN = 'Die Folgen werden geprüft …';
@@ -50,9 +53,9 @@ export interface UmzugForm {
 export type UmzugFeld = 'standortId' | 'gueltigAb' | 'begruendung';
 export type UmzugFehler = Partial<Record<UmzugFeld, string>>;
 
-/** Der Dialog öffnet ohne Wahl, „gültig ab“ heute. */
-export function umzugStart(heute: Tag): UmzugForm {
-  return { standortId: null, gueltigAb: heute, begruendung: '' };
+/** Der normale Umzug öffnet heute; die geführte Korrektur reicht den ersten Anlagentag ein. */
+export function umzugStart(heute: Tag, gueltigAb = heute): UmzugForm {
+  return { standortId: null, gueltigAb, begruendung: '' };
 }
 
 /**

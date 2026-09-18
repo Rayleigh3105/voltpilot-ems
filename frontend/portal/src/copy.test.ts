@@ -3,6 +3,8 @@ import { STANDORT_ZUERST_SATZ, STANDORT_ZUERST_TITEL, steuerGeldWoerter } from '
 import { GELD_BLEIBT, STARTSEITE_UNTERNEHMEN, STEUERUNG_BLEIBT } from './standortVorschlag';
 import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from './steuernAssistent';
 import { everydayArticles } from './help/content/alltag';
+import { plantArticles } from './help/content/anlage';
+import { KORREKTUR_VORSPANN } from './anlageUmziehen';
 import { GESAMTWERT, SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
 import { budgetFreiText, folgenSaetze } from './datenquelle';
 import { rechteSeed } from './test/rollenFixtures';
@@ -2264,5 +2266,23 @@ describe('AP-14 IP-14 · Bestandsschutz in der Standort-Vorschau', () => {
       ...(intern.test(text) ? [`${text}: internes Einführungswort`] : []),
     ]);
     expect(falsch).toEqual([]);
+  });
+});
+
+describe('AP-14 IP-15 · Zuordnung korrigieren', () => {
+  const artikel = plantArticles.find((a) => a.id === 'standort-zuordnung-korrigieren');
+
+  it('trägt den verbindlichen Satz aus §5.9 additiv', () => {
+    expect(KORREKTUR_VORSPANN).toBe(
+      'Die Anlage gehört seit ihrem ersten Tag zu einem anderen Standort? Hier ändern Sie das rückwirkend. Steuerung und Messwerte bleiben unberührt.',
+    );
+  });
+
+  it('erklärt Korrektur, normalen Umzug, Erhalt und den fehlenden Zustand „wieder nicht zugeordnet“', () => {
+    const text = artikel?.sections.flatMap((s) => s.paragraphs).join(' ') ?? '';
+    expect(text).toContain('tatsächlichen Umzugstag');
+    expect(text).toContain('Steuerung und Messwerte bleiben unberührt');
+    expect(text).toContain('keinen Zustand „wieder nicht zugeordnet“');
+    expect(text).toContain('wird nichts gelöscht');
   });
 });

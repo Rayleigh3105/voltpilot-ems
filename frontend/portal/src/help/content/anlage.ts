@@ -51,4 +51,22 @@ export const plantArticles: HelpArticle[] = [
       ] },
     ], related: ['speicher', 'marktpreise', 'erloese'],
   },
+  {
+    id: 'standort-zuordnung-korrigieren', category: 'anlage', title: 'Standort-Zuordnung korrigieren',
+    summary: 'Eine falsche erste Zuordnung berichtigen, ohne Messwerte oder Steuerung zu verändern.',
+    keywords: ['Standort', 'Zuordnung', 'korrigieren', 'rückwirkend', 'umziehen', 'archivieren'],
+    sections: [
+      { id: 'korrigieren-oder-umziehen', title: 'Korrigieren oder umziehen?', paragraphs: [
+        'War die Anlage seit ihrem ersten Tag dem falschen Standort zugeordnet, wählen Sie „Zuordnung korrigieren“. Zieht die Anlage erst jetzt um, verwenden Sie weiterhin „Anderem Standort zuordnen“ und den tatsächlichen Umzugstag.',
+      ] },
+      { id: 'folgen-pruefen', title: 'Folgen vor dem Speichern prüfen', paragraphs: [
+        'Bei der Korrektur ist „Gültig ab“ mit dem ersten Tag der Anlage vorbelegt. Sie können den Tag ändern. Die Vorschau zeigt, welche Zuordnungszeiträume rückwirkend geändert werden.',
+        'Steuerung und Messwerte bleiben unberührt. Auch die Teilnahme der Anlage an ihren Funktionen bleibt bestehen.',
+      ] },
+      { id: 'alter-standort', title: 'Den bisherigen Standort erhalten oder archivieren', paragraphs: [
+        'Es gibt keinen Zustand „wieder nicht zugeordnet“: Die Anlage gehört nach der Korrektur zu ihrem richtigen Standort.',
+        'Ist der bisherige Standort danach leer, können Sie ihn archivieren. Dabei wird nichts gelöscht; seine Geschichte bleibt erhalten.',
+      ] },
+    ], related: ['einstellungen', 'anlagenmodell', 'probleme'],
+  },
 ];

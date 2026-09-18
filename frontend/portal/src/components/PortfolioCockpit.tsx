@@ -13,6 +13,7 @@ import {
   type Overview,
   type SchedulePlan,
   type Site,
+  type StandorteAmStichtag,
   type StandortZuordnungVorschau as StandortZuordnungVorschauDaten,
 } from '../api';
 import { fleetTonalitaet } from '../fleet';
@@ -48,6 +49,7 @@ import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsPhone } from '../useIsPhone';
 import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
 import { AnlagenTabelle } from './AnlagenTabelle';
+import { AnlageStandortDialog } from './AnlageStandortDialog';
 import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
 import { AddDeviceDrawer } from './DeviceDrawers';
 import { KennzahlLeiste } from './KennzahlLeiste';
@@ -160,6 +162,11 @@ export function PortfolioCockpit({
   const [funktionen, setFunktionen] = useState<Funktionen | null | undefined>(undefined);
   const [standortVorschlag, setStandortVorschlag] = useState<StandortZuordnungVorschauDaten | null>(null);
   const [standortVorschauOffen, setStandortVorschauOffen] = useState(false);
+  const [korrektur, setKorrektur] = useState<{
+    anlage: Site;
+    standorte: StandorteAmStichtag;
+    ersterTag: string;
+  } | null>(null);
   const isPhone = useIsPhone();
   const mitEbene = ebene != null;
   const rollen = useRollen();
@@ -604,6 +611,15 @@ export function PortfolioCockpit({
             vorschau={vorschau}
             energiebilanz={mitBilanzWeg ? energiebilanz : null}
             onEnergiebilanz={mitBilanzWeg ? (id) => onNavigate(anlageRoute(id, 'energiebilanz')) : undefined}
+            onZuordnungKorrigieren={mitBilanzWeg ? (id) => {
+              void api.standorte().then((antwort) => {
+                const anlage = sites.find((s) => s.id === id);
+                // Die Vorschlags-Bestätigung schreibt `site.created_at` als Beginn dieser
+                // ersten Zuordnung. Genau dieser bestätigte Tag ist die Korrektur-Vorgabe.
+                const zuordnung = antwort.standorte.flatMap((s) => s.anlagen).find((a) => a.id === id);
+                if (anlage && zuordnung) setKorrektur({ anlage, standorte: antwort, ersterTag: zuordnung.gueltigAb });
+              });
+            } : undefined}
             nichtZugeordnet={new Set(standortVorschlag?.gruppen.flatMap((g) => g.anlagen.map((a) => a.anlageId)) ?? [])}
           />
         )}
@@ -664,6 +680,22 @@ export function PortfolioCockpit({
           onReload();
         }}
       />
+      {korrektur && (
+        <AnlageStandortDialog
+          open
+          anlageId={korrektur.anlage.id}
+          anlageName={korrektur.anlage.name}
+          standorte={korrektur.standorte}
+          modus="korrektur"
+          gueltigAbVorgabe={korrektur.ersterTag}
+          onClose={() => setKorrektur(null)}
+          onGespeichert={() => {
+            setKorrektur(null);
+            setReloadKey((k) => k + 1);
+            onReload();
+          }}
+        />
+      )}
       {drawers}
     </>
   );

@@ -6,6 +6,9 @@ import { FOLGEN_WAEHLEN } from '../anlageUmziehen';
 import { ahrenbergHeute, FIXTURE_IDS, werkAhrenberg } from '../test/standorteFixtures';
 import { AnlageStandortDialog } from './AnlageStandortDialog';
 import { AnlageStandortZeile } from './AnlageStandortZeile';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
+import { ortsbaumAhrenberg } from '../test/ortsbaumFixtures';
 
 /**
  * UEMS AP-02 IP-11 — Dialog T6b „Anlage zuordnen“ und sein Einstieg an der Zeile „Standort“
@@ -76,6 +79,30 @@ afterEach(() => {
 });
 
 describe('Dialog „Anlage zuordnen“ (T6b)', () => {
+  it('Korrektur: erster Tag ist vorbelegt und der verbindliche Satz steht im bestehenden Dialog', () => {
+    render(
+      <AnlageStandortDialog
+        open
+        anlageId={FIXTURE_IDS.an2}
+        anlageName={HALLE_2}
+        standorte={mitNord()}
+        modus="korrektur"
+        gueltigAbVorgabe="2026-10-01"
+        onClose={vi.fn()}
+        onGespeichert={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('combobox', { name: 'Gültig ab *' })).toHaveTextContent('01.10.2026');
+    expect(screen.getByText('Die Anlage gehört seit ihrem ersten Tag zu einem anderen Standort? Hier ändern Sie das rückwirkend. Steuerung und Messwerte bleiben unberührt.')).toBeInTheDocument();
+  });
+
+  it('normaler Umzug bleibt auf heute und behält seinen bisherigen Einleitungssatz', () => {
+    oeffne();
+    expect(screen.getByRole('combobox', { name: 'Gültig ab *' })).toHaveTextContent('20.02.2027');
+    expect(screen.getByText(/Die Anlage gehört ab dem gewählten Tag zu einem anderen Standort/)).toBeInTheDocument();
+    expect(screen.queryByText(/seit ihrem ersten Tag/)).toBeNull();
+  });
+
   it('T6: die Folgen-Karte nennt, was sich ändert, die vier Dinge, die bleiben, und dass nichts gesendet wird', async () => {
     const vorschau = vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
     oeffne();
@@ -162,6 +189,37 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
     expect(put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('bietet nach der Korrektur nur den laut bestehendem Ortsbaum-Weg leeren Standort zum Archivieren an', async () => {
+    vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug({ gueltigAb: '2026-10-01' }));
+    vi.spyOn(api, 'anlageStandortSetzen').mockResolvedValue(umzug({ gueltigAb: '2026-10-01' }));
+    vi.spyOn(api, 'standortOrte').mockResolvedValue(ortsbaumAhrenberg({
+      aktionen: { archivieren: { erlaubt: true, text: null, gruende: [], letzterTag: '2026-11-19', mitarchiviert: [] }, wiederherstellen: null, loeschen: null },
+    }));
+    render(<AnlageStandortDialog open anlageId={FIXTURE_IDS.an2} anlageName={HALLE_2} standorte={mitNord()}
+      modus="korrektur" gueltigAbVorgabe="2026-10-01" onClose={vi.fn()} onGespeichert={vi.fn()} />);
+    waehleNord();
+    await screen.findByTestId('umzug-folgen');
+    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    const angebot = await screen.findByTestId('standort-archiv-angebot');
+    expect(angebot).toHaveTextContent('ist jetzt leer');
+    expect(within(angebot).getByRole('button', { name: 'Standort archivieren' })).toBeInTheDocument();
+  });
+
+  it('zeigt bei einem nicht leeren bisherigen Standort kein Archivier-Angebot', async () => {
+    vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug({ gueltigAb: '2026-10-01' }));
+    vi.spyOn(api, 'anlageStandortSetzen').mockResolvedValue(umzug({ gueltigAb: '2026-10-01' }));
+    vi.spyOn(api, 'standortOrte').mockResolvedValue(ortsbaumAhrenberg({
+      aktionen: { archivieren: { erlaubt: false, text: 'Am Standort ist noch etwas aktiv.', gruende: [], letzterTag: null, mitarchiviert: [] }, wiederherstellen: null, loeschen: null },
+    }));
+    render(<AnlageStandortDialog open anlageId={FIXTURE_IDS.an2} anlageName={HALLE_2} standorte={mitNord()}
+      modus="korrektur" gueltigAbVorgabe="2026-10-01" onClose={vi.fn()} onGespeichert={vi.fn()} />);
+    waehleNord();
+    await screen.findByTestId('umzug-folgen');
+    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    await waitFor(() => expect(api.standortOrte).toHaveBeenCalledWith(ST1.id));
+    expect(screen.queryByTestId('standort-archiv-angebot')).toBeNull();
   });
 });
 
@@ -252,6 +310,19 @@ describe('Zeile „Standort“ in „Meine Anlage“ (T6a → T6b)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Fertig' }));
     expect(onGeaendert).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByText('Zuordnung gespeichert')).toBeNull());
+  });
+
+  it('zeigt „Zuordnung korrigieren“ nur mit dem Recht anlage.zuordnen', () => {
+    zeile(mitNord());
+    expect(screen.getByRole('button', { name: `Zuordnung korrigieren: ${HALLE_2}` })).toBeInTheDocument();
+
+    const me = rechteSeed().me;
+    act(() => setSelbstauskunft({
+      ...me,
+      unternehmen_rechte: me.unternehmen_rechte.filter((r) => r !== 'anlage.zuordnen'),
+      standorte: me.standorte.map((s) => ({ ...s, rechte: s.rechte.filter((r) => r !== 'anlage.zuordnen') })),
+    }));
+    expect(screen.queryByRole('button', { name: `Zuordnung korrigieren: ${HALLE_2}` })).toBeNull();
   });
 
   it('eine geplante Zuordnung steht in der Zeile: „bis 28.02.2027 · ab 01.03.2027: Werk Ahrenberg Nord (ST-3)“', async () => {
