@@ -24,7 +24,9 @@ brauchen keine Geldanzeige."
 2. **Schritte aus dem ZUSTAND, nie aus `aktionen`.** Der Server nennt dort nur starten, anhalten, fortsetzen
    und beenden (`FunktionService.ANLAGEN_AKTIONEN`/`STANDORT_AKTIONEN`). Die Fixture `funktionenFixtures.ts`
    trägt `einrichten`/`aufnehmen` trotzdem — nicht darauf bauen.
-3. **Geld je Anlage ist DERSELBE Fakt wie auf der Ebene:** `geldAnlagen` über `roleCounts` (Katalog-Kategorie)
+3. **Geld je Anlage folgt grundsätzlich demselben Fakt wie auf der Ebene; W7 erhält jedoch auf den
+   Anlagenflächen bei `tarifArt` `fest`/`dynamisch` die tarifbasierten Kosten, während `geldAnlagen` der
+   Ebene unverändert bleibt:** `geldAnlagen` über `roleCounts` (Katalog-Kategorie)
    und die aktive Teilnahme. Nie die AE7-Signale `hasPv`/`hasStorage` — sie lesen gemessene Rollen und dürften
    über dieselbe Anlage Verschiedenes sagen. Die Regel greift nur für Anlagen in `GET /funktionen`; ohne
    Funktionen oder ohne Standort bleibt alles zeichengleich (Betreiber, ältere Backends). Ohne Zeile der

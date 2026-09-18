@@ -9,10 +9,11 @@
  * keinen Geld-Held, keine Steuerungs-Karte und keine Marktpreise, im Verlauf
  * keine Erlöse, Marktpreise und Lastspitzen.
  *
- * Der Fakt ist DERSELBE wie auf der Ebene — `geldAnlagen` über die Zeile der
- * Übersicht (`roleCounts`, Katalog-Kategorie) und die Funktionen. Die AE7-Signale
- * `hasPv`/`hasStorage` lesen dagegen gemessene Rollen; sie dürften über dieselbe
- * Anlage etwas anderes sagen als die Übersicht, deshalb liest die Regel sie nie.
+ * Der Grundfakt kommt wie auf der Ebene aus `geldAnlagen` über die Zeile der
+ * Übersicht (`roleCounts`, Katalog-Kategorie) und die Funktionen. W7 erhält auf
+ * den Anlagenflächen zusätzlich tarifbasierte Kosten. Die AE7-Signale `hasPv`/
+ * `hasStorage` lesen dagegen gemessene Rollen; sie dürften über dieselbe Anlage
+ * etwas anderes sagen als die Übersicht, deshalb liest die Regel sie nie.
  *
  * ⚠ Die Regel greift nur, wo es die Ebene gibt: die Anlage steht in
  * `GET /funktionen` (heute einem Standort zugeordnet oder mit Teilnahme). Ohne
@@ -92,9 +93,10 @@ export function anlageAufEbene(siteId: string, funktionen: Funktionen | null): b
 }
 
 /**
- * Bleibt diese Anlage ohne Geld? Nur auf einer Ebene, und dann genau dann, wenn
- * `geldAnlagen` sie nicht nennt. Ohne Zeile der Übersicht gibt es keine Rolle —
- * unbekannt ist nie „erlaubt" (dieselbe Regel wie IP-6).
+ * Bleibt diese Anlage ohne Geld? Nur auf einer Ebene, grundsätzlich dann, wenn
+ * `geldAnlagen` sie nicht nennt; ein expliziter Tarif erhält nach W7 die
+ * Anlagenflächen. Ohne Zeile der Übersicht gibt es keine Rolle — unbekannt ist
+ * nie „erlaubt" (dieselbe Regel wie IP-6).
  */
 export function anlageOhneGeld(
   siteId: string,
@@ -105,7 +107,8 @@ export function anlageOhneGeld(
   if (!anlageAufEbene(siteId, funktionen)) return false;
   // W7: Die Ebenen-Übersicht folgt weiterhin allein `geldAnlagen`. Auf den
   // Bestandsflächen der Anlage bleiben tarifbasierte Kosten dagegen sichtbar;
-  // ein Standort darf sie durch die Zuordnung nicht verschwinden lassen.
+  // ein Standort darf sie durch die Zuordnung nicht verschwinden lassen. Damit
+  // zeigt auch eine reine Messanlage dort Geld, sobald der Kunde einen Tarif setzt.
   if (tarifArt === 'fest' || tarifArt === 'dynamisch') return false;
   const fakt = zeile?.id === siteId ? zeile : ({ id: siteId } as OverviewSite);
   return !geldAnlagen([fakt], funktionen).has(siteId);

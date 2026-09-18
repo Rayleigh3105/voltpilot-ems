@@ -16,6 +16,7 @@ import { CANONICAL_DESKTOP, CANONICAL_PHONE, type BausteinId } from './cockpitLa
 import { anlageSurface, type AnlageSurfaceInput } from './surface';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { FIXTURE_IDS } from './test/standorteFixtures';
+import { geldAnlagen } from './uebersicht';
 import { NODE_MARKET } from './usageProfile';
 
 /**
@@ -70,7 +71,7 @@ const ALLES: AnlageSurfaceInput = {
   ],
 } as AnlageSurfaceInput;
 
-describe('der Fakt je Anlage ist DERSELBE wie auf der Ebene (`geldAnlagen`)', () => {
+describe('der Grundfakt je Anlage folgt der Ebene (`geldAnlagen`)', () => {
   it('Werk Lindach und Halle 2 am 15.11.2026 bleiben ohne Geld, Halle 1 nicht', () => {
     const f = ahrenbergFunktionen();
     expect(anlageOhneGeld(an3, f, LINDACH)).toBe(true);
@@ -104,6 +105,37 @@ describe('der Fakt je Anlage ist DERSELBE wie auf der Ebene (`geldAnlagen`)', ()
     const nurAhrenberg = ahrenbergFunktionen({ standorte: [ahrenbergFunktionen().standorte[0]] });
     expect(anlageAufEbene(an3, nurAhrenberg)).toBe(false);
     expect(anlageOhneGeld(an3, nurAhrenberg, LINDACH)).toBe(false);
+  });
+});
+
+describe('W7: ein Tarif erhält Kosten nur auf den Anlagenflächen', () => {
+  const nurMessenBleibtAufEbeneOhneGeld = () => {
+    expect(geldAnlagen([HALLE2], ahrenbergFunktionen()).has(an2)).toBe(false);
+  };
+
+  it("nur messen + Tarif 'ohne': kein Geld (unverändert)", () => {
+    const f = ahrenbergFunktionen();
+    expect(anlageOhneGeld(an2, f, HALLE2, 'ohne')).toBe(true);
+    nurMessenBleibtAufEbeneOhneGeld();
+  });
+
+  it("nur messen + Tarif 'fest': Geld auf den Anlagenflächen", () => {
+    const f = ahrenbergFunktionen();
+    expect(anlageOhneGeld(an2, f, HALLE2, 'fest')).toBe(false);
+    nurMessenBleibtAufEbeneOhneGeld();
+  });
+
+  it("nur messen + Tarif 'dynamisch': Geld auf den Anlagenflächen", () => {
+    const f = ahrenbergFunktionen();
+    expect(anlageOhneGeld(an2, f, HALLE2, 'dynamisch')).toBe(false);
+    nurMessenBleibtAufEbeneOhneGeld();
+  });
+
+  it('tarifArt undefined/null: altes Verhalten', () => {
+    const f = ahrenbergFunktionen();
+    expect(anlageOhneGeld(an2, f, HALLE2, undefined)).toBe(true);
+    expect(anlageOhneGeld(an2, f, HALLE2, null)).toBe(true);
+    nurMessenBleibtAufEbeneOhneGeld();
   });
 });
 
