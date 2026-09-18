@@ -34,6 +34,7 @@ MESSAGES = {
     23: 'API oder Bestands-Laeufer nicht vollstaendig bereit; Probe unvollstaendig.',
     24: 'Startbudget von 180 Sekunden reicht nicht.',
     25: 'W1 UNGEPROBT: altes API-Image fehlt lokal.',
+    26: 'Z08: Flyway-Historie beschaedigt; API/Writer anhalten, Befund sichern, Rueckweg auf den Punkt. Kein blosser Imagewechsel.',
     30: 'Wiederherstellung gescheitert.',
     31: 'Rueckweg-Gegenprobe abweichend: Flyway-Stand oder Q01.',
 }
@@ -322,6 +323,7 @@ def after_sheet(db):
         'Z04': ('mit_standort_ohne_teilnahme', 'ohne_standort', 'anlagen'),
         'Z05': ('kundenbereiche', 'stichtag_bestandslauf', 'stichtag_neu', 'ohne_stichtag', 'konten_uebernommen'),
         'Z07': ('arbeit_viertelstunde_offen', 'arbeit_tag_offen', 'arbeit_periode_offen'),
+        'Z08': ('geloescht_markiert', 'fehlgeschlagen', 'sql_erfolgreich', 'versionen_geloescht'),
     }
     for key, cols in columns.items():
         report[key] = {col: numeric(raw[key][0][0][col]) if raw[key][0][0][col] is not None else None for col in cols}
@@ -404,12 +406,16 @@ def probe(db, a, report):
                          'fehlerklasse_start_stelle_unbestimmt': int(not old_ready and not db.facts.flyway and not db.facts.schema)}
         db.stop_api()
         report['W1']['flyway_historie_veraendert'] = int(db.snapshot()['history_sha256'] != before_old['history_sha256'])
+        report['W1']['Z08'] = after_sheet(db)['Z08']
     report['pruefen_Z03'] = sum(v for k, v in report['C']['Z03']['anlagen'].items() if k.startswith('eingerichtet_'))
     report['pruefen_Z05'] = report['C']['Z05']['ohne_stichtag']
     review(report, incomplete or not observation['stichproben'] or bool(observation['fehler']) or not observation['migrationsende_erkannt'])
 
 
 def review(report, incomplete):
+    for history in (report['C']['Z08'], report['W1'].get('Z08', report['C']['Z08'])):
+        if history['geloescht_markiert'] or history['fehlgeschlagen']:
+            raise Refusal(26)
     if report['pruefen_Z03']:
         raise Refusal(21)
     if report['pruefen_Z05']:

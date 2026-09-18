@@ -137,7 +137,7 @@ class BetriebsabfragenBlaetterTest {
         Map<String, Integer> nachZeilen = new LinkedHashMap<>();
         Map<String, String> nachFormen = fahre("uems", NACHHER, nachZeilen);
         assertThat(nachFormen.keySet()).contains("Z01#1", "Z01#2", "Z02#1", "Z03#1", "Z03#2",
-                "Z04#1", "Z05#1", "Z06#1", "Z07#1");
+                "Z04#1", "Z05#1", "Z06#1", "Z07#1", "Z08#1");
         assertThat(vergleichbar(NACHHER, nachFormen)).isEqualTo(erwarteteFormen(NACHHER));
         assertThat(nachZeilen).as("der CHECK und die Läufer-Zählungen stehen")
                 .containsEntry("Z02#1", 1).containsEntry("Z04#1", 1).containsEntry("Z05#1", 1)
@@ -168,6 +168,48 @@ class BetriebsabfragenBlaetterTest {
     // -----------------------------------------------------------------------------------------
     // Die drei Zusicherungen an die Form
     // -----------------------------------------------------------------------------------------
+
+    @Test
+    void nachherBlattErkenntErfolgreicheDeleteMarkerOhneSieAlsSqlZuZaehlen() throws Exception {
+        try (Connection c = verbindung("uems"); Statement s = c.createStatement()) {
+            // Session-local copy: the actual migrated history remains untouched for all other tests.
+            s.execute("CREATE TEMP TABLE flyway_schema_history AS TABLE public.flyway_schema_history");
+            long sqlCount;
+            try (ResultSet rs = s.executeQuery("SELECT count(*) FROM flyway_schema_history WHERE type='SQL' AND success")) {
+                rs.next();
+                sqlCount = rs.getLong(1);
+            }
+            for (int i = 0; i < 2; i++) {
+                s.executeUpdate("""
+                        INSERT INTO flyway_schema_history
+                        SELECT (SELECT max(installed_rank)+1 FROM flyway_schema_history), version, description,
+                               'DELETE', script, checksum, installed_by, installed_on, 0, true
+                        FROM flyway_schema_history WHERE type='SQL' ORDER BY installed_rank LIMIT 1
+                        """);
+            }
+            s.executeUpdate("""
+                    INSERT INTO flyway_schema_history
+                    SELECT (SELECT max(installed_rank)+1 FROM flyway_schema_history), '99999999999999',
+                           'failed probe', 'SQL', 'failed.sql', 0, current_user, now(), 0, false
+                    """);
+            s.execute("BEGIN TRANSACTION READ ONLY");
+            for (Abfrage query : lies(NACHHER)) {
+                if (!List.of("Z01#1", "Z08#1").contains(query.kennung())) continue;
+                try (ResultSet rs = s.executeQuery(query.sql())) {
+                    assertThat(rs.next()).isTrue();
+                    assertThat(rs.getLong("fehlgeschlagen")).isEqualTo(1);
+                    if (query.kennung().equals("Z01#1")) {
+                        assertThat(rs.getLong("angewandt")).isEqualTo(sqlCount);
+                    } else {
+                        assertThat(rs.getLong("sql_erfolgreich")).isEqualTo(sqlCount);
+                        assertThat(rs.getLong("geloescht_markiert")).isEqualTo(2);
+                        assertThat(rs.getLong("versionen_geloescht")).isEqualTo(1);
+                    }
+                }
+            }
+            s.execute("ROLLBACK");
+        }
+    }
 
     @Test
     void keineAbfrageDerBlaetterSchreibt() throws Exception {

@@ -170,11 +170,14 @@ def main():
                              '--timeout', '180', '--output', str(a.artifacts / 'probe.json')], timeout=600, check=False)
             (a.artifacts / 'probe-status.txt').write_text(run.stdout + run.stderr)
             print('Probe Exit ' + str(run.returncode), flush=True)
-            assert run.returncode in (21, 22), 'expected operator review for nonempty fixture without Keycloak'
+            assert run.returncode in (21, 26), 'expected history alarm or operator review'
             report = json.loads((a.artifacts / 'probe.json').read_text())
             assert report['A']['migrationen'] > 0 and report['W1']['versuche'] == 1
             assert all(v['abgeschlossen'] == 1 and v['metrik'] == 1 for v in report['B'].values())
-            assert report['pruefen_Z03'] == 1 and run.returncode == 21
+            assert report['pruefen_Z03'] == 1
+            assert report['C']['Z08']['geloescht_markiert'] == 0
+            history = report['W1']['Z08']
+            assert run.returncode == (26 if history['geloescht_markiert'] or history['fehlgeschlagen'] else 21)
             assert report['C']['Z05']['kundenbereiche'] == 1 and report['pruefen_Z05'] == 1
             assert report['B']['bestand_standort']['erledigt'] == 1
             assert report['B']['bestand_funktion']['erledigt'] == 1
@@ -193,7 +196,7 @@ def main():
                 assert_numeric_tree(json.loads(text))
                 for secret in ['CUSTOMER_SECRET', 'SITE_SECRET', 'SERIAL_SECRET', 'ACTOR_SECRET', '12345678-1234', 'fixture_password', 'voltpilot_app', prefix]:
                     assert secret not in text
-            print('PASS: main migration set -> physical PITR copy -> new API -> old API -> physical PITR return; numeric outputs only; expected Z03/Z05 review.', flush=True)
+            print('PASS: main migration set -> physical PITR copy -> new API -> old API -> physical PITR return; numeric outputs only; expected Z08 alarm for unguarded old image, otherwise Z03/Z05 review.', flush=True)
     finally:
         for name in containers:
             g.docker('rm', '-f', name, check=False)

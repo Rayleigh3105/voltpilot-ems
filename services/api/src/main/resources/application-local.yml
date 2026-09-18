@@ -8,6 +8,10 @@ spring:
 
 # Legacy local fixtures retain the old admin switcher explicitly; production defaults to false.
 voltpilot:
+  # Persistent local databases may carry another development branch's migrations.
+  # Effective ONLY with the sole active profile local; blank/mixed profiles stay strict.
+  flyway:
+    startwaechter: ${VOLTPILOT_FLYWAY_STARTWAECHTER:nur-warnen}
   uems:
     unterstuetzung:
       umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}

@@ -36,6 +36,8 @@ bestand-nach-rollout.sql Z05#1 kundenbereiche:int8 stichtag_bestandslauf:int8 st
 bestand-nach-rollout.sql Z06#1 registry_schluessel_je_box:bool offene_perioden_ohne_box:int8
 bestand-nach-rollout.sql Z07#1 arbeit_viertelstunde_offen:int8 arbeit_tag_offen:int8 arbeit_periode_offen:int8
 
+bestand-nach-rollout.sql Z08#1 geloescht_markiert:int8 fehlgeschlagen:int8 sql_erfolgreich:int8 versionen_geloescht:int8
+
 pilot-tagesblick.sql T01a#1 tenant_id:uuid quellen_art:text einheiten:int8 einheiten_ueber_1h:int8 einheiten_ueber_24h:int8 aeltester_stand_min:numeric juengster_stand_min:numeric
 pilot-tagesblick.sql T01b#1 tenant_id:uuid eingangsweg:text rohwerte_24h:int8 nicht_gut:int8 mit_luecken_kennzeichen:int8 verworfene_samples:numeric quellen:int8 juengster_eingang_min:numeric
 pilot-tagesblick.sql T02#1 tenant_id:uuid quellen_art:text offene_luecken:int8 offene_nachlieferung:int8 aeltester_luecke_min:numeric juengste_luecke_min:numeric

@@ -1,7 +1,6 @@
 -- =============================================================================================
--- AP-14 · Bestandsblatt NACH den Migrationen und Start-Läufern            Stand 18.09.2026
--- Nach dem Captain-Entscheid vom 18.09.2026 (E1 = B: kein Freigabe-Tor) durchgesehen: die Abfragen
--- sind unverändert, geändert sind nur Kommentarzeilen „ENTSCHEIDUNG“ (Z05, Z06, Z07).
+-- AP-14 · Bestandsblatt NACH den Migrationen und Start-Läufern            Stand 19.09.2026
+-- Z01 zählt nur erfolgreiche SQL-Migrationen; Z08 erkennt gelöschte Historienmarkierungen.
 -- =============================================================================================
 -- REIN LESEND. Zwei Einsätze:
 --   (1) auf der KOPIE der Generalprobe (Kasten E3) — dort ist es die Vorschau, die das Fundament
@@ -26,8 +25,8 @@ SET LOCAL lock_timeout = '2s';
 --       ENTSCHEIDUNG: Länge des Wartungsfensters (Regel D4: gemessene Summe × 3, mindestens 30 min).
 --       AUFFÄLLIG, WENN: fehlgeschlagen > 0 · eine einzelne Migration über 60 s (dann hält sie eine
 --       Sperre, die der Writer spürt — Checkliste PR 933 und PR 943).
-SELECT count(*) FILTER (WHERE success) AS angewandt, count(*) FILTER (WHERE NOT success) AS fehlgeschlagen,
-       max(version::numeric) FILTER (WHERE success AND version ~ '^[0-9]+$') AS hoechste_version,
+SELECT count(*) FILTER (WHERE type = 'SQL' AND success) AS angewandt, count(*) FILTER (WHERE NOT success) AS fehlgeschlagen,
+       max(version::numeric) FILTER (WHERE type = 'SQL' AND success AND version ~ '^[0-9]+$') AS hoechste_version,
        sum(execution_time) FILTER (WHERE installed_on > now() - interval '1 day') AS millisekunden_letzter_tag
   FROM flyway_schema_history;
 SELECT version, description, execution_time AS millisekunden, installed_on
@@ -96,5 +95,17 @@ SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entity_registry_stat
 SELECT (SELECT count(*) FROM messreihe_viertelstunde_arbeit) AS arbeit_viertelstunde_offen,
        (SELECT count(*) FROM messreihe_tag_arbeit)           AS arbeit_tag_offen,
        (SELECT count(*) FROM messreihe_periode_arbeit)       AS arbeit_periode_offen;
+
+-- Z08 · FRAGE: Hat ein alter API-Start die Migrationshistorie als gelöscht markiert?
+--       AUFFÄLLIG, WENN: geloescht_markiert > 0 oder fehlgeschlagen > 0; sql_erfolgreich muss
+--       zum eingefrorenen Release und Vorher-Blatt passen. versionen_geloescht ist NUR eine Zahl.
+--       ENTSCHEIDUNG bei DELETE: NICHT einfach das neue Image wieder ausrollen. API/Writer anhalten,
+--       Befund sichern, geübten Rückweg auf den Wiederherstellungspunkt ausführen (vor Portalöffnung).
+--       Vollständigen Historienfingerabdruck bis zur Öffnung erneut vergleichen; keine Marker löschen.
+SELECT count(*) FILTER (WHERE type = 'DELETE') AS geloescht_markiert,
+       count(*) FILTER (WHERE NOT success) AS fehlgeschlagen,
+       count(*) FILTER (WHERE type = 'SQL' AND success) AS sql_erfolgreich,
+       count(DISTINCT version) FILTER (WHERE type = 'DELETE') AS versionen_geloescht
+  FROM flyway_schema_history;
 
 COMMIT;
