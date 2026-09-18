@@ -132,6 +132,11 @@ class UemsMesskundenLaufAbnahmeTest {
     private static final Instant T_VERDICHTET = Instant.parse("2026-12-01T00:30:00Z");
     private static final Instant T_TAKT = Instant.parse("2026-12-01T01:00:00Z");
     private static final Instant T_ENDGUELTIG = Instant.parse("2026-12-08T07:00:00Z");
+    /** Der Takt, der die eben angelegten Kennzahlen rechnet — derselbe Läufer, eine Stunde später. */
+    private static final Instant T_KENNZAHL = Instant.parse("2026-12-08T08:00:00Z");
+
+    /** Die Bezugsfläche des Standorts, von Hand eingegeben — der Nenner der Kennzahl. */
+    private static final BigDecimal FLAECHE_M2 = new BigDecimal("8450");
 
     /**
      * Wörter, die auf dem ganzen Weg des reinen Messkunden in keiner API-Antwort stehen dürfen (U5, S2).
@@ -181,6 +186,10 @@ class UemsMesskundenLaufAbnahmeTest {
 
     @Autowired
     MessstelleWerteService werte;
+
+    /** Der ECHTE Kennzahl-Lauf — er hängt im Takt, sonst rechnet keine Kennzahl (AP-11 IP-6). */
+    @Autowired
+    KennzahlLauf kennzahlLauf;
 
     @Autowired
     UemsMetricsCollector metriken;
@@ -267,6 +276,16 @@ class UemsMesskundenLaufAbnahmeTest {
         flaecheVonHand();
         UUID kennzahl = kennzahlAusVorlage();
 
+        // Gerechnet wird über den ECHTEN Läufer-Schritt, nicht über einen Aufruf von KennzahlLauf: derselbe
+        // Takt, der den November endgültig gemacht hat, rührt eine Stunde später auch die Kennzahl an. GENAU
+        // DAS fehlte PR 973 — die Kennzahl entstand nach dem letzten Takt und wurde darum nie gerechnet.
+        assertThat(zahl("SELECT count(*) FROM kennzahl_wert WHERE tenant_id = ?", kb))
+                .as("vor dem Takt gibt es keine einzige Kennzahl-Zeile").isZero();
+        laeufer.takt(T_KENNZAHL);
+        assertThat(zahl("SELECT count(*) FROM kennzahl_wert WHERE tenant_id = ? AND periode_art = 'monat' "
+                + "AND periode_von = DATE '2026-11-01'", kb))
+                .as("der Takt hat die Monats-Kennzahl des Novembers gerechnet").isEqualTo(1);
+
         // ---- Schritt 10: Bericht — Entwurf (Peter) → Freigabe (Anna) → PDF und CSV -----------------------------
         uhrBerichte("2026-12-09T09:00:00+01:00");
         Antwort angelegt = ok(ruf(peter, HttpMethod.POST, "/api/v1/berichte", Map.of("vorlage", "monatsbericht_standort",
@@ -312,6 +331,26 @@ class UemsMesskundenLaufAbnahmeTest {
                 .isEqualByComparingTo(erwartet);
         assertThat(csvText).as("dieselbe Zahl steht in der CSV")
                 .contains(erwartet.stripTrailingZeros().toPlainString().replace('.', ','));
+
+        // ---- Zusicherung 2b: das Glied „Kennzahl" schließt die Kette (AP-14 NW-4) ---------------------------
+        // Der Bericht trägt die Kennzahl endgültig, und sie wird hier UNABHÄNGIG nachgerechnet: die Menge aus
+        // den gesendeten Zählerständen, geteilt durch die Fläche, die der Kunde selbst eingetippt hat — nicht
+        // mit der Formel des Produkts.
+        JsonNode kennzahlen = abzugJson.path("kennzahlen");
+        assertThat(kennzahlen).as("der Abzug führt die Kennzahl, nicht mehr die leere Liste aus PR 973")
+                .hasSize(1);
+        JsonNode jeM2 = kennzahlen.get(0);
+        assertThat(jeM2.path("quelle").asText()).isEqualTo(kennzeichenVon(kennzahl));
+        assertThat(jeM2.path("fassung").asText()).as("die Kennzahl im Bericht ist endgültig")
+                .isEqualTo("endgültig");
+        assertThat(jeM2.path("einheit").asText()).isEqualTo("kWh/m²");
+        BigDecimal erwarteteKennzahl = erwartet.divide(FLAECHE_M2, 10, RoundingMode.HALF_UP);
+        assertThat(jeM2.path("wert").decimalValue())
+                .as("Menge ÷ Fläche, unabhängig gerechnet (" + erwartet.toPlainString() + " ÷ "
+                        + FLAECHE_M2.toPlainString() + " = " + erwarteteKennzahl.toPlainString()
+                        + "), der Bericht sagt " + jeM2.path("wert").decimalValue().toPlainString())
+                .isEqualByComparingTo(erwarteteKennzahl);
+        assertThat(csvText).as("dieselbe Kennzahl steht in der CSV").contains(kennzeichenVon(kennzahl));
 
         // ---- Zusicherung 3: die Lücke bleibt sichtbar — der Bericht verschweigt sie nicht ----------------------
         long inDerLuecke = zahl("SELECT count(*) FROM messreihe_viertelstunde WHERE tenant_id = ? "
@@ -389,8 +428,10 @@ class UemsMesskundenLaufAbnahmeTest {
         tage = new TagVerdichter(admin, katalog, 200, 40, 20_000, 200_000);
         BerechnetePeriodenLauf berechnete = mock(BerechnetePeriodenLauf.class);
         when(berechnete.zoneDesKundenbereichs(any())).thenReturn(BERLIN);
+        // Der Takt trägt den Kennzahl-Lauf MIT (AP-11 IP-6) — ohne ihn bliebe das Glied „Kennzahl" der
+        // Kette stumm, und genau das war der Zustand in PR 973.
         laeufer = new EndgueltigkeitLaeufer(new EndgueltigkeitLauf(admin, 2000, 200), tage,
-                new PeriodeVerdichter(admin, katalog, 50, 40, 2000), berechnete,
+                new PeriodeVerdichter(admin, katalog, 50, 40, 2000), berechnete, kennzahlLauf,
                 new KorrekturVorschlagLauf(admin, verdichter, melder, 200));
     }
 
@@ -491,12 +532,34 @@ class UemsMesskundenLaufAbnahmeTest {
 
     /**
      * Die Bezugsgröße von Hand — als BEZUGSFLÄCHE des Standorts (AP-11 E17: eine Bezugsfläche WIRD eine
-     * Bezugsgröße mit Wertart {@code stammdatum}). Der Weg über eine Bezugsgröße mit Wertart
-     * {@code periodenwert} steht dem Lauf nicht offen, siehe {@code BEFUND} in der Klassen-Beschreibung.
+     * Bezugsgröße mit Wertart {@code stammdatum}).
+     *
+     * <p><b>Warum nicht mit Wertart {@code periodenwert}</b> (AP-14 IP-7b, am Code nachgesehen): Dieser Lauf
+     * spielt im November 2026, und der liegt in der ECHTEN Zukunft. Ein Periodenwert für eine Periode, die
+     * nach der Uhr der DATENBANK noch nicht zu Ende ist, kann nicht geschrieben werden — und daran ändert
+     * keine Uhr des Dienstes etwas. Der CHECK {@code bezugsgroesse_wert_abgeschlossen_chk} (E16/Z4) misst
+     * das Periodenende gegen {@code created_at}, und {@code created_at} setzt ABSICHTLICH die Datenbank:
+     * die Spalte fehlt in der Spaltenliste des {@code GRANT INSERT} für {@code voltpilot_app}
+     * ({@code V20260913104500__uems_bezugsgroesse.sql:632-640}, mit genau diesem Satz als Kommentar).
+     * Die Bezugsfläche kennt diese Schranke nicht — ein Stammdatum hat keine Periode, die zu Ende gehen
+     * müsste —, und sie ist eine vollwertige Bezugsgröße: das Glied „Kennzahl" ist damit belegt.
      */
     private void flaecheVonHand() throws Exception {
         ok(ruf(anna, HttpMethod.PUT, "/api/v1/standorte/" + standort + "/flaeche",
-                Map.of("m2", 8450)), 200);
+                Map.of("m2", FLAECHE_M2.intValueExact())), 200);
+    }
+
+    private String kennzeichenVon(UUID kennzahl) {
+        return root.queryForObject("SELECT kennzeichen FROM kennzahl WHERE id = ?", String.class, kennzahl);
+    }
+
+    private static JsonNode kennzahlZeile(JsonNode kennzahlen, String kennzeichen) {
+        for (JsonNode k : kennzahlen) {
+            if (kennzeichen.equals(k.path("quelle").asText())) {
+                return k;
+            }
+        }
+        throw new AssertionError("Kennzahl " + kennzeichen + " fehlt im Abzug: " + kennzahlen);
     }
 
     /** Die Kennzahl aus der Vorlage „Energie je Fläche": Zähler = die Messstelle, Nenner = die Bezugsfläche. */
