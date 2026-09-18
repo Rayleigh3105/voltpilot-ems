@@ -113,7 +113,8 @@ public class TagVerdichter {
         "zustand", "endgueltig_ab", "berechnet_am", "version",
         "n_nachgeliefert", "letzte_eingangszeit", "zustellart", "ereignisse",
         "menge", "menge_zustand", "kennzeichen", "kadenz_s",
-        "summe", "energie", "gemessen_s", "luecke_innen"};
+        "summe", "energie", "gemessen_s", "luecke_innen",
+        "menge_positiv", "menge_negativ"};
 
     private static final Set<String> JSONB_SPALTEN = Set.of("ereignisse", "kennzeichen");
 
@@ -727,6 +728,12 @@ public class TagVerdichter {
         z.put("energie", werteteil == null ? null : werteteil.energie());
         z.put("gemessen_s", momentan && werteteil != null ? (int) werteteil.gemessenS() : null);
         z.put("luecke_innen", momentan && werteteil != null ? werteteil.lueckeInnen() : null);
+        // Das Richtungspaar (V20260918101000): fuehrt der Katalogkanal ZWEI Fluesse in EINER Groesse
+        // (charge_discharge, import_export), stehen neben der Netto-Menge ihre beiden Anteile. Ein
+        // Bericht schreibt sie ab, statt sie aus Vorzeichen neu zu rechnen (bericht.md EW3).
+        BigDecimal[] paar = Richtungspaar.ausTeilen(katalog, t.kanal(), wertart, teile.werteteile(), beginn, ende);
+        z.put("menge_positiv", paar == null ? null : paar[0]);
+        z.put("menge_negativ", paar == null ? null : paar[1]);
 
         Object[] werte = new Object[SPALTEN.length];
         for (int i = 0; i < SPALTEN.length; i++) {

@@ -143,9 +143,26 @@ export interface AbzugWert {
   formel_fassung?: number;
 }
 
+/**
+ * Der Tagesverlauf EINER Wert-Zeile (Vertrag 1.2, `$defs/tagesverlauf_reihe`) - je Tag Menge und
+ * Zustand, abgeschrieben aus den gespeicherten Tageszeilen. Die Zeile wird ueber `quelle` plus
+ * `menge_art` angesprochen, also genau wie in `werte`; ein Speicher hat zwei.
+ *
+ * Eine leere `tage`-Liste ist die LUECKE (keine gespeicherte Tageszeile), nicht die Null.
+ */
+export interface AbzugTagesverlauf {
+  quelle: string;
+  menge_art?: 'laden' | 'entladen';
+  tage: Array<{ tag: string; menge: number | null; zustand: string }>;
+}
+
 export interface AbzugKennzahl {
   quelle: string;
   name_zum_datenstand: string;
+  /** 1.2 - wie an `AbzugWert`; ein Abzug nach 1.0/1.1 traegt es nicht. */
+  ort_zum_datenstand?: string | null;
+  /** 1.2 - wie an `AbzugWert`; fuellt mit `ort_zum_datenstand` die zwei Zellen der CSV (B14). */
+  endgueltig_ab?: string | null;
   wert: number | null;
   einheit: string;
   zustand: string;
@@ -177,6 +194,8 @@ export interface Abzug {
   kopf: AbzugKopf;
   zusammenfassung: Record<string, number>;
   werte: AbzugWert[];
+  /** 1.2, nur in der Monatsvorlage; ein Abzug nach 1.0/1.1 traegt den Abschnitt nicht. */
+  tagesverlauf?: AbzugTagesverlauf[];
   kennzahlen: AbzugKennzahl[];
   qualitaet: {
     abdeckung_min_prozent: number;

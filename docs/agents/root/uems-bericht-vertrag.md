@@ -42,3 +42,31 @@ IP-4, Abzug IP-5/IP-6, Routen IP-7, Naht IP-8, Läufer IP-9, CSV/PDF IP-10/IP-11
   (Tabellen und Ereignisse: `uems-bericht-tabellen.md`).
 - **Keine TS-Frist-Klasse:** `FREIGABE_FRIST_TAGE` im TS-Zwilling ist gegen `regeln.freigabe_frist_tage` geprüft, die Java
   gegen `TagRegeln.FRIST` prüft. Der Quelltext-Wächter verbietet feste Zeitzonen und eigene Sieben-Tage-Rechnungen.
+
+## Fassung 1.2 und das Richtungspaar (Folgepaket `vp-uems-b12-tagesverlauf-speicher`, erster Schnitt)
+
+- **1.2 ist additiv und WAHLFREI.** `$defs/abzug.tagesverlauf` (`$defs/tagesverlauf_reihe`: je Wert-Zeile ihre Tage mit
+  Menge und Zustand) und `$defs/kennzahl.ort_zum_datenstand`/`endgueltig_ab` wie an `$defs/wert`. Ein Abzug nach 1.0/1.1
+  bleibt gültig, byte-gleich lesbar und behält seine Prüfsumme (`b79d0fb8…`/`d2073f76…`) — die Abnahme aus PR 827 rührt
+  sich nicht. `BerichtRegelwerk.VERTRAEGE` nennt `bericht` = `1.2`, `BerichtRegelwerkTest` hält es gegen die
+  `schema_version` der Vektor-Datei.
+- **Die Bildung schreibt 1.2 noch NICHT ab.** Die Abzüge der Vektor-Datei bleiben in der Form 1.1; jede Lücke steht als
+  Ist-Zustand in `BerichtAbzugBildungTest` (Lücken 3–5 + Tagesverlauf) und in `_nicht_geprueft` (B1). Wer sie schließt,
+  macht diesen Test planmäßig rot und schreibt beide Prüfsummen fort — und mit ihnen `berichtFixtures.ts`,
+  `e2e/berichte.spec.ts`, `BerichtApiTest`, `BerichtCsvTest` und `uems-bericht-routen.md`.
+- **Das Richtungspaar gehört in die VERDICHTUNG, nicht in den Abzug** (EW3). `V20260918101000` legt
+  `menge_positiv`/`menge_negativ` an `messreihe_tag` und `messreihe_periode` (nullbar, ohne Nachfüllung — der
+  Bestandsschutz-Vergleich sieht eine überall leere Spalte nicht). `Richtungspaar.ausTeilen` bildet Σ max(0, Teil) und
+  Σ max(0, −Teil) über `VerbrauchRegeln.anteilDesWerts`; Tag und Monat aus ihren Viertelstunden, das Jahr aus seinen
+  Monaten. Fehlt EINEM Teil sein Paar, fehlt es der ganzen Periode.
+- **`RICHTUNGSPAAR` ist nicht `ANTEIL_RICHTUNGEN`.** Das eine sagt, wie die Verdichtung die zwei Anteile benennt
+  (`charge_discharge` → Laden/Entladen, `import_export` → Bezug/Abgabe); das andere, was eine QUELLENBINDUNG mit einem
+  Anteil belegen darf (Regel 7) — dort bleibt `charge_discharge` weiter ausgeschlossen. Wer das zusammenlegt, ändert
+  still, welche Bindungen das System annimmt.
+- **⚠ Offen, und der Grund, warum B1 noch nicht 7 900/7 100 zeigt:** im gepackten Katalog trägt JEDER Kanal mit zwei
+  Richtungen `active_power` in W — einen Momentanwert (5 × `charge_discharge`, 49 × `import_export`, kein einziger als
+  Intervallmenge). Seine Menge entsteht durch Integration der Leistung; der exakte Anteil wäre die Integration von
+  max(0, P) über die ROHWERTE. Ab der Tages-Ebene ist die Viertelstunde schon zu EINER Energie verdichtet — ein
+  Vorzeichenwechsel innerhalb einer Viertelstunde wäre verloren, eine Summe über Viertelstunden-Vorzeichen also eine
+  Näherung. Die Regel liefert für einen Momentanwert deshalb `null`. Damit ein Abzug das Paar abschreiben kann, muss
+  `messreihe_viertelstunde` die beiden Anteile selbst tragen (`RichtungspaarTest`, `bericht.md` „Das Richtungspaar“).

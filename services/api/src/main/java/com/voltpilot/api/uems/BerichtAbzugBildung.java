@@ -62,9 +62,15 @@ import org.springframework.stereotype.Component;
  * seiner Tabellen ({@link BerichtKennzahlen}).
  *
  * <p><b>Was der Abzug (noch) nicht trägt</b> — firstmate 001 = A, Folgepaket {@code vp-uems-b12-tagesverlauf-speicher}:
- * keinen Tagesverlauf ({@code $defs/abzug} kennt ihn nicht), keine Vergleichswerte je Messstelle, und einen Speicher mit
- * „Laden / Entladen“ als EINE Netto-Menge, wie das Lesemodell sie führt — {@code speicher_laden_kwh}/
- * {@code speicher_entladen_kwh} fehlen dann, unbekannt ist keine Null.
+ * keinen Tagesverlauf, keine Vergleichswerte je Messstelle, einen Speicher mit „Laden / Entladen“ als EINE Netto-Menge,
+ * wie das Lesemodell sie führt ({@code speicher_laden_kwh}/{@code speicher_entladen_kwh} fehlen dann, unbekannt ist
+ * keine Null), und je Kennzahl weder {@code ort_zum_datenstand} noch {@code endgueltig_ab}.
+ *
+ * <p><b>Stand nach dem ersten Schnitt des Folgepakets.</b> Der VERTRAG kennt alle drei Formen jetzt (1.2:
+ * {@code $defs/abzug.tagesverlauf}, {@code $defs/kennzahl.ort_zum_datenstand}/{@code endgueltig_ab}) und der Träger des
+ * Richtungspaars steht in der Verdichtung ({@link Richtungspaar}, {@code V20260918101000}) — diese Bildung schreibt sie
+ * noch nicht ab. Solange bleiben die Abzüge in der Form 1.1 und ihre Prüfsummen unberührt; jede Lücke ist in
+ * {@code BerichtAbzugBildungTest} als Ist-Zustand benannt und wird rot, sobald sie sich schließt.
  */
 @Component
 public class BerichtAbzugBildung {

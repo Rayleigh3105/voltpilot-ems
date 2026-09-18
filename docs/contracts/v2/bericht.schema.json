@@ -8,7 +8,7 @@
   "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "referenzunternehmen", "referenz_stand", "vorlagen_datei", "titel", "plan_abnahmen", "regeln_kurz", "vokabulare", "fehler_status", "regeln", "saetze", "verbotene_woerter", "zwillinge", "zwillinge_grund", "_abweichungen", "_nicht_geprueft", "abzuege", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-    "schema_version": { "type": "string", "const": "1.1", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Abzug des Unternehmens — standorte und kostenstellen, AP-12 IP-6)." },
+    "schema_version": { "type": "string", "const": "1.2", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Abzug des Unternehmens — standorte und kostenstellen, AP-12 IP-6. 1.2: Tagesverlauf, Richtungspaar des Speichers und Ort/Endgültigkeit je Kennzahl — vp-uems-b12-tagesverlauf-speicher). Ein Abzug nach 1.0 oder 1.1 bleibt gültig: alles Neue ist wahlfrei, seine Prüfsumme rührt sich nicht." },
     "$schema_datei": { "type": "string", "const": "./bericht.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt; die Regeln nehmen die Zone der Geltung." },
@@ -178,6 +178,7 @@
         "zusammenfassung": { "type": "object", "additionalProperties": { "type": "number" } },
         "werte": { "type": "array", "items": { "$ref": "#/$defs/wert" } },
         "kennzahlen": { "type": "array", "items": { "$ref": "#/$defs/kennzahl" } },
+        "tagesverlauf": { "type": "array", "items": { "$ref": "#/$defs/tagesverlauf_reihe" }, "description": "1.2, nur in der Monatsvorlage (Abschnitt „tagesverlauf“): je Wert-Zeile des Abschnitts „werte“ ihre Tage mit Menge und Zustand — abgeschrieben aus messreihe_tag, nie neu gerechnet (EW3). Eine Messstelle ohne gespeicherte Tageszeile steht mit leerer Tagesliste da; das ist die Lücke, keine Null." },
         "standorte": { "type": "array", "items": { "$ref": "#/$defs/standort_abschnitt" }, "description": "1.1, nur am Unternehmen: je Standort ein Abschnitt (AP-12 IP-6)." },
         "kostenstellen": { "type": "array", "items": { "$ref": "#/$defs/kostenstelle" }, "description": "1.1, nur am Unternehmen: je Kostenstelle, die einen Tag des Zeitraums besteht, ihre Energie (AP-10 IP-11) mit den Verteilungs-Sätzen zum Tag (AP-12 IP-6)." },
         "qualitaet": {
@@ -271,17 +272,19 @@
     },
     "kennzahl": {
       "type": "object", "additionalProperties": false,
-      "description": "Ein Kennzahl-Wert im Abzug: Wert, Zustand, Kennzeichen, Version, Fassung der Berechnung und Eingänge (A3, AP-11).",
+      "description": "Ein Kennzahl-Wert im Abzug: Wert, Zustand, Kennzeichen, Version, Fassung der Berechnung und Eingänge (A3, AP-11). 1.2 ergänzt ort_zum_datenstand und endgueltig_ab wie an $defs/wert (B14 füllt damit die zwei Zellen der CSV); beide sind WAHLFREI, weil ein Abzug nach 1.0/1.1 sie nicht trägt und byte-gleich bleiben muss.",
       "required": ["quelle", "name_zum_datenstand", "wert", "einheit", "zustand", "abdeckung_prozent", "kennzeichen", "fassung", "version", "definition_fassung", "eingaenge", "berechnet_am"],
       "properties": {
         "quelle": { "type": "string", "pattern": "^KZ-[0-9]{4}$" },
         "name_zum_datenstand": { "type": "string" },
+        "ort_zum_datenstand": { "type": ["string", "null"] },
         "wert": { "type": ["number", "null"] },
         "einheit": { "type": "string" },
         "zustand": { "type": "string" },
         "abdeckung_prozent": { "type": "number" },
         "kennzeichen": { "type": "array", "items": { "type": "string" } },
         "fassung": { "type": "string", "enum": ["vorläufig", "endgültig"] },
+        "endgueltig_ab": { "$ref": "#/$defs/zeitpunkt_oder_null" },
         "version": { "type": "integer", "minimum": 1 },
         "definition_fassung": { "type": "integer", "minimum": 1 },
         "eingaenge": {
@@ -297,6 +300,26 @@
           }
         },
         "berechnet_am": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+    "tagesverlauf_reihe": {
+      "type": "object", "additionalProperties": false,
+      "description": "1.2 — der Tagesverlauf EINER Zeile des Abschnitts „werte“: Menge und Zustand je Tag, in der Zone des Kopfes. Die Zeile wird über quelle und menge_art angesprochen, also genau wie im Abschnitt „werte“ (ein Speicher hat zwei Zeilen). Kein Nachweis je Tag: der steht an der Monatszeile.",
+      "required": ["quelle", "tage"],
+      "properties": {
+        "quelle": { "type": "string", "pattern": "^MS-[0-9]{2}$" },
+        "menge_art": { "type": "string", "enum": ["laden", "entladen"] },
+        "tage": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["tag", "menge", "zustand"],
+            "properties": {
+              "tag": { "$ref": "#/$defs/tag" },
+              "menge": { "type": ["number", "null"] },
+              "zustand": { "type": "string", "enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"] }
+            }
+          }
+        }
       }
     },
     "tag_oder_null": { "anyOf": [{ "$ref": "#/$defs/tag" }, { "type": "null" }] },

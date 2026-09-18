@@ -129,6 +129,21 @@ public final class MessstelleRegeln {
     public static final Map<String, Map<String, String>> ANTEIL_RICHTUNGEN =
             Map.of("import_export", Map.of(ANTEIL_POSITIV, "Bezug", ANTEIL_NEGATIV, "Abgabe"));
 
+    /**
+     * Welche Flüsse ein Katalogkanal führt, dessen Richtung ZWEI davon in EINER Größe hält — das
+     * Wort je Anteil. Das ist <b>nicht</b> {@link #ANTEIL_RICHTUNGEN}: dort steht, womit eine
+     * QUELLENBINDUNG einen Anteil belegen darf (Regel 7), und {@code charge_discharge} darf das
+     * weiterhin nicht. Hier steht nur, wie die VERDICHTUNG die beiden Anteile einer solchen Reihe
+     * benennt, die sie seit {@code V20260918101000} neben der Netto-Menge speichert
+     * ({@code messreihe_tag.menge_positiv}/{@code menge_negativ}).
+     *
+     * <p>Ein Speicher heißt darum „Laden / Entladen“ und ein Netzanschluss „Bezug / Abgabe“, ohne
+     * dass die Spalte das Wort trüge — die Spalte kennt nur Vorzeichen.
+     */
+    public static final Map<String, Map<String, String>> RICHTUNGSPAAR = Map.of(
+            "import_export", Map.of(ANTEIL_POSITIV, "Bezug", ANTEIL_NEGATIV, "Abgabe"),
+            "charge_discharge", Map.of(ANTEIL_POSITIV, "Laden", ANTEIL_NEGATIV, "Entladen"));
+
     public static final List<String> HINWEISE = List.of("ablesestand_pruefen");
 
     /** Die Flüsse, aus denen ein Vorschlag wird (E6) — in der Reihenfolge der Liste. */

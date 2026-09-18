@@ -27,7 +27,8 @@ import java.util.List;
  *
  * <p><b>Kennzahlen</b> (firstmate 001 = A): ihre Richtung (Untergrenze, Obergrenze, unbestimmt) steht als Kennzeichen in der
  * Zelle {@code kennzeichen} — keine 14. Spalte. Der Abzug 1.1 trägt je Kennzahl weder {@code ort_zum_datenstand} noch
- * {@code endgueltig_ab}: beide Zellen bleiben leer, bis das Folgepaket {@code vp-uems-b12-tagesverlauf-speicher} den Abzug
+ * {@code endgueltig_ab}: der Vertrag kennt beide Felder seit 1.2, der Abzug trägt sie noch nicht — beide Zellen bleiben
+ * leer, bis das Folgepaket {@code vp-uems-b12-tagesverlauf-speicher} sie in der Bildung füllt und den Abzug
  * auf 1.2 hebt — gelesen werden sie hier schon. Die Periode einer Kennzahl ist der Zeitraum des Berichts (Q4).
  */
 public final class BerichtCsv {

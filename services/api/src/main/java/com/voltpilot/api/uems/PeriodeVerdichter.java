@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ergebnis;
 import com.voltpilot.api.uems.VerbrauchRegeln.Teilperiode;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -68,7 +69,8 @@ public class PeriodeVerdichter {
         "erster_wert", "erster_zeit", "letzter_wert", "letzter_zeit",
         "menge", "menge_zustand", "kennzeichen", "erhalten", "erwartet", "abdeckung_prozent",
         "kadenz_s", "n_nachgeliefert", "zustand", "endgueltig_ab", "berechnet_am", "version",
-        "mittel", "min_wert", "max_wert", "summe", "energie", "gemessen_s", "luecke_innen"};
+        "mittel", "min_wert", "max_wert", "summe", "energie", "gemessen_s", "luecke_innen",
+        "menge_positiv", "menge_negativ"};
 
     private final JdbcTemplate adminJdbc;
     private final MeasurementCatalog katalog;
@@ -268,7 +270,8 @@ public class PeriodeVerdichter {
                 tage.endgueltig(), v.innen(beginn, ende), v.teile(), v.ereignisse(), v.deklaration(), v.wertart(),
                 v.kadenzS(),
                 v.nachgeliefert(), v.siteEindeutig() ? v.siteId() : null, zustand,
-                ViertelstundenTeile.werte(v.werteteile(), v.wertart(), v.kadenzS(), beginn, ende), jetzt);
+                ViertelstundenTeile.werte(v.werteteile(), v.wertart(), v.kadenzS(), beginn, ende),
+                Richtungspaar.ausTeilen(katalog, a.kanal(), v.wertart(), v.werteteile(), beginn, ende), jetzt);
     }
 
     /** Ein JAHR aus seinen Monaten. */
@@ -286,6 +289,7 @@ public class PeriodeVerdichter {
         List<Teilperiode> teile = new ArrayList<>();
         List<Teilperiode> innen = new ArrayList<>();
         List<VerbrauchRegeln.Werteteil> werteteile = new ArrayList<>();
+        Richtungspaar.Summe paar = new Richtungspaar.Summe();
         String wertart = null;
         Integer kadenzS = null;
         int nachgeliefert = 0;
@@ -295,7 +299,8 @@ public class PeriodeVerdichter {
                 "SELECT tag, beginn, ende, stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit, "
                         + "erster_wert, erster_zeit, letzter_wert, letzter_zeit, menge, menge_zustand, "
                         + "erhalten, erwartet, kennzeichen::text, kadenz_s, wertart, n_nachgeliefert, site_id, "
-                        + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen "
+                        + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen, "
+                        + "menge_positiv, menge_negativ "
                         + "FROM messreihe_periode WHERE tenant_id = ? AND entity_id = ? AND messkanal = ? "
                         + "AND art = 'monat' AND tag >= ? AND tag <= ? ORDER BY tag")) {
             ps.setObject(1, a.tenant(), Types.OTHER);
@@ -327,6 +332,7 @@ public class PeriodeVerdichter {
                             luecke != null && luecke));
                     if (!tag.isBefore(erster) && tag.isBefore(naechster)) {
                         innen.add(t);
+                        paar.nimm(rs.getBigDecimal(28), rs.getBigDecimal(29));
                         kadenzS = (Integer) rs.getObject(17);
                         wertart = rs.getString(18) != null ? rs.getString(18) : wertart;
                         nachgeliefert += rs.getInt(19);
@@ -350,7 +356,7 @@ public class PeriodeVerdichter {
         return zeile(a, erster, ReihenKontext.aus(katalog, a.kanal(), zone), monate, beginn, ende, 12,
                 monate.endgueltig(), innen, teile, ereignisse,
                 deklaration, wertart, kadenzS, nachgeliefert, siteEindeutig ? site : null, zustand,
-                ViertelstundenTeile.werte(werteteile, wertart, kadenzS, beginn, ende), jetzt);
+                ViertelstundenTeile.werte(werteteile, wertart, kadenzS, beginn, ende), paar.fertig(), jetzt);
     }
 
     /**
@@ -361,7 +367,8 @@ public class PeriodeVerdichter {
             Instant ende, int teileErwartet, int teileEndgueltig, List<Teilperiode> innen,
             List<Teilperiode> alle, List<VerbrauchRegeln.Ereignis> ereignisse, ZaehlerDeklaration deklaration,
             String wertart, Integer kadenzS,
-            int nachgeliefert, UUID site, String zustand, VerbrauchRegeln.Werteteil werteteil, Instant jetzt) {
+            int nachgeliefert, UUID site, String zustand, VerbrauchRegeln.Werteteil werteteil,
+            BigDecimal[] richtungspaar, Instant jetzt) {
         Teilperiode menge = ViertelstundenTeile.zaehlerstand(reihe, alle, ereignisse, deklaration, wertart,
                 kadenzS, beginn, ende);
         // Zählerstand aus den Periodenständen (IP-5), Momentanwert/Intervallmenge aus der Regel von
@@ -409,6 +416,10 @@ public class PeriodeVerdichter {
         z.put("menge_zustand", mengeErgebnis == null ? null : mengeErgebnis.zustand());
         z.put("kennzeichen", ViertelstundeRegeln.kennzeichenJson(
                 mengeErgebnis == null ? List.of() : mengeErgebnis.kennzeichen()));
+        // Das Richtungspaar (V20260918101000) — der Monat aus seinen Viertelstunden, das Jahr aus
+        // den gespeicherten Monaten. Unbekannt ist keine Null: fehlt es an EINEM Teil, fehlt es ganz.
+        z.put("menge_positiv", richtungspaar == null ? null : richtungspaar[0]);
+        z.put("menge_negativ", richtungspaar == null ? null : richtungspaar[1]);
         z.put("erhalten", erhalten);
         z.put("erwartet", erwartet);
         z.put("abdeckung_prozent", abdeckung);
