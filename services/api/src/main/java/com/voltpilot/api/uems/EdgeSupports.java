@@ -9,7 +9,7 @@ import java.util.function.Consumer;
 /** Wire vocabulary. Shared with Go and TS through edge-supports-vectors.json. */
 public final class EdgeSupports {
     public static final List<String> NAMES = List.of(
-            "data_sources", "assignment_effective_at", "measurement_sample_provenance");
+            "data_sources", "assignment_effective_at", "measurement_sample_provenance", "events");
     private EdgeSupports() {}
 
     public static List<String> parse(JsonNode block, Consumer<String> unknown) {

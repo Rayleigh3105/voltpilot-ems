@@ -18,6 +18,12 @@
       "meaning": "measurement-samples 2.1 mit applied_revision je Umschlag und entity_id je eindeutig gebundenem Sample; gespeicherte 2.0-Umschläge unverändert wiederholen.",
       "advertised": true,
       "evidence": "edge-app/core/internal/measurements/provenance_test.go"
+    },
+    {
+      "name": "events",
+      "meaning": "Box-Ereignisse über .../v2/events (mqtt-events 2.1): box_restart, die Puffer-Verdrängung als data_gap mit erkannt_aus verdraengung und die Geräte-Ereignisse device_restart, frozen_source, range_limit, layout_changed vom lokalen Bus. Kein clock_jump: dessen Urheber ist die Datenannahme.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/boxevents/boxevents_test.go"
     }
   ],
   "cases": [
@@ -69,14 +75,15 @@
     {
       "name": "future_names_are_ignored",
       "supports": [
-        "events",
         "future_thing",
+        "events",
         "data_sources",
         "data_sources"
       ],
       "table": [],
       "expected": [
-        "data_sources"
+        "data_sources",
+        "events"
       ]
     }
   ]

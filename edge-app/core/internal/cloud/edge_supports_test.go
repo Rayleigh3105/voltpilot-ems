@@ -3,6 +3,7 @@ package cloud
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -16,6 +17,7 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 		Capabilities []struct {
 			Name       string
 			Advertised bool
+			Evidence   string
 		}
 	}
 	if err := json.Unmarshal(raw, &vectors); err != nil {
@@ -31,9 +33,30 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 		t.Fatalf("supports = %v; want %v", BuiltSupports(), expected)
 	}
 	for _, name := range BuiltSupports() {
-		if name == "assignment_effective_at" || name == "events" {
+		if name == "assignment_effective_at" {
 			t.Fatalf("unbuilt capability: %s", name)
 		}
+	}
+	// "Only what is built" is checked, not promised: every advertised capability
+	// names a file in this tree, and that file has to exist. events (AP-07 IP-19)
+	// joins the list exactly because internal/boxevents really sends.
+	gebaut := false
+	for _, c := range vectors.Capabilities {
+		if !c.Advertised {
+			continue
+		}
+		if c.Evidence == "" {
+			t.Fatalf("%s advertises without evidence", c.Name)
+		}
+		if _, err := os.Stat(filepath.Join("../../../..", c.Evidence)); err != nil {
+			t.Fatalf("%s: evidence %s missing: %v", c.Name, c.Evidence, err)
+		}
+		if c.Name == "events" {
+			gebaut = true
+		}
+	}
+	if !gebaut {
+		t.Fatal("events is built but not advertised")
 	}
 	sink := startStatusSink(t)
 	link := connectedLink(t, sink, "unchanged-version")

@@ -164,6 +164,9 @@ func (a *Agent) onMeasurementSamples(_ string, payload []byte) {
 		slog.Warn("local measurement batch rejected", "err", err)
 		return
 	}
+	// An Append may have evicted older envelopes. The box reports that loss
+	// itself as a data_gap with erkannt_aus = verdraengung (AP-07 IP-19).
+	a.meldeVerdraengung()
 	a.kick()
 }
 
@@ -172,6 +175,11 @@ func (a *Agent) setMeasurementIdentity(tenant, site, device string) {
 	a.measurementIdentity = measurements.Identity{TenantID: tenant, SiteID: site, DeviceID: device}
 	stored := append([]byte(nil), a.measurementConfig...)
 	a.measurementMu.Unlock()
+	// The first moment this runtime has a topic to send on: now - and only now -
+	// it can report that it started.
+	if tenant != "" && site != "" && device != "" {
+		a.meldeBoxNeustart()
+	}
 	if len(stored) == 0 || a.Bus == nil {
 		return
 	}

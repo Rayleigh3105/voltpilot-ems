@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance"]` steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events"]` steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -12,6 +12,11 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
 - `measurement_sample_provenance`: optionale Herkunft in `measurement-samples` 2.1,
   `applied_revision` je Umschlag und `entity_id` je eindeutig gebundenem Sample;
   bestehende Outbox-Umschläge bleiben bytegleich. Dies verspricht keinen neuen Messplan.
+- `events`: Box-Ereignisse über `.../v2/events` (`mqtt-events-2.1`): `box_restart`, die
+  Puffer-Verdrängung als `data_gap` mit `erkannt_aus: verdraengung` und die vom lokalen Bus
+  eingelieferten `device_restart`, `frozen_source`, `range_limit`, `layout_changed`
+  (`edge-app/core/internal/boxevents`, AP-07 IP-19). Das Vokabular bleibt geschlossen und der
+  Cloud gehörend; `clock_jump` ist keine Box-Art und wird nie gesendet.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

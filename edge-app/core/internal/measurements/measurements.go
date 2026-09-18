@@ -368,6 +368,17 @@ type diskState struct {
 	Gap                bool   `json:"gap"`
 	PendingDropFile    string `json:"pending_drop_file,omitempty"`
 	PendingDropSamples int64  `json:"pending_drop_samples,omitempty"`
+	// The WINDOW of an eviction episode, so the box can report the loss as a
+	// data_gap with erkannt_aus = verdraengung (UEMS AP-07 IP-19). Durable like
+	// the loss counter itself: a reboot in the middle keeps the report.
+	GapVon     string `json:"gap_von,omitempty"`
+	GapBis     string `json:"gap_bis,omitempty"`
+	GapSamples int64  `json:"gap_samples,omitempty"`
+	// GapOffen says the eviction episode is still RUNNING. While the uplink is
+	// down every Append evicts again, so the window keeps growing; it is handed
+	// out as ONE gap when an Append finally evicts nothing - not once per
+	// discarded envelope.
+	GapOffen bool `json:"gap_offen,omitempty"`
 }
 type Outbox struct {
 	mu    sync.Mutex
@@ -447,6 +458,7 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 	if err != nil {
 		return Envelope{}, err
 	}
+	verdraengt := false
 	for len(files) >= o.max {
 		drop := 0
 		if o.inFlight >= 0 && sequenceOf(files[drop]) == o.inFlight {
@@ -456,10 +468,18 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 			return Envelope{}, errors.New("measurement outbox contains only in-flight entry")
 		}
 		name := files[drop]
-		count, countErr := envelopeLossCount(filepath.Join(o.dir, name))
+		count, observed, countErr := envelopeLoss(filepath.Join(o.dir, name))
 		if countErr != nil {
 			return Envelope{}, countErr
 		}
+		// The gap starts at the OLDEST envelope this episode threw away and stays
+		// there while more are evicted; only its end moves.
+		if o.state.GapVon == "" && observed != "" {
+			o.state.GapVon = observed
+		}
+		o.state.GapSamples += count
+		o.state.GapOffen = true
+		verdraengt = true
 		// Two-phase eviction: recovery can distinguish "prepared but file still
 		// exists" from "file removed but loss counter not committed" exactly.
 		o.state.PendingDropFile, o.state.PendingDropSamples = name, count
@@ -477,6 +497,23 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 		o.state.Gap = true
 		o.state.PendingDropFile, o.state.PendingDropSamples = "", 0
 		if err = o.save(); err != nil {
+			return Envelope{}, err
+		}
+	}
+	// The gap is half-open [von, bis): it ends where the oldest SURVIVING
+	// envelope begins - the one this envelope, or the replay behind it, does
+	// deliver. Nothing survived means the gap ends at the batch written now.
+	if verdraengt && o.state.GapVon != "" {
+		o.state.GapBis = b.ObservedAt.UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z")
+		if len(files) > 0 {
+			if _, observed, err := envelopeLoss(filepath.Join(o.dir, files[0])); err == nil && observed != "" {
+				o.state.GapBis = observed
+			}
+		}
+	} else if o.state.GapOffen {
+		// Nothing had to go this time: the episode is over and can be reported.
+		o.state.GapOffen = false
+		if err := o.save(); err != nil {
 			return Envelope{}, err
 		}
 	}
@@ -603,19 +640,48 @@ func (o *Outbox) recoverPendingDrop() error {
 	o.state.PendingDropFile, o.state.PendingDropSamples = "", 0
 	return o.save()
 }
-func envelopeLossCount(path string) (int64, error) {
+
+// envelopeLoss reports how many samples one stored envelope carries and WHEN the
+// box observed them, so an eviction can name both the size and the window of the
+// loss.
+func envelopeLoss(path string) (int64, string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	var payload struct {
-		Samples []json.RawMessage `json:"samples"`
-		Dropped int64             `json:"dropped_samples"`
+		Samples    []json.RawMessage `json:"samples"`
+		Dropped    int64             `json:"dropped_samples"`
+		ObservedAt string            `json:"observed_at"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return 0, fmt.Errorf("measurement outbox envelope corrupt: %w", err)
+		return 0, "", fmt.Errorf("measurement outbox envelope corrupt: %w", err)
 	}
-	return int64(len(payload.Samples)) + payload.Dropped, nil
+	observed := ""
+	if t, parseErr := time.Parse(time.RFC3339, payload.ObservedAt); parseErr == nil {
+		observed = t.UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z")
+	}
+	return int64(len(payload.Samples)) + payload.Dropped, observed, nil
+}
+
+// Verdraengung hands out the window of a completed eviction episode exactly ONCE
+// and clears it durably in the same step. The caller turns it into the box's own
+// data_gap; a crash between the two loses the precise window, never the loss
+// itself - `gap` and `dropped_samples` still ride on the next envelope.
+func (o *Outbox) Verdraengung() (von, bis time.Time, samples int64, ok bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.state.GapVon == "" || o.state.GapBis == "" || o.state.GapOffen {
+		return time.Time{}, time.Time{}, 0, false
+	}
+	von, vonErr := time.Parse(time.RFC3339, o.state.GapVon)
+	bis, bisErr := time.Parse(time.RFC3339, o.state.GapBis)
+	samples = o.state.GapSamples
+	o.state.GapVon, o.state.GapBis, o.state.GapSamples = "", "", 0
+	if err := o.save(); err != nil || vonErr != nil || bisErr != nil || !bis.After(von) {
+		return time.Time{}, time.Time{}, 0, false
+	}
+	return von.UTC(), bis.UTC(), samples, true
 }
 func atomicWrite(path string, raw []byte) error {
 	tmp := path + ".tmp"
