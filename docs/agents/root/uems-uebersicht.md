@@ -16,6 +16,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 - **WAGO-Assistent im Portal (AP-05 IP-10)** — Kopfprüfung, ausgelesene Karten, drei nötige Angaben je Karte und Übergabe an die Messstellen-Vorschläge; Einstieg bleibt bis zur Edge-Aktivierung hinter der Box-Fähigkeit `wago_registerbild` geschlossen · [Fluss, Grenzen und Nachweise](uems-wago-assistent.md)
 
 - **Gemeinsamer Messbudget-Vertrag (AP-07 IP-4)** — Kostentabelle Java/Node-RED, A16 einschließlich Ahrenberg/25 Karten, unveränderter AP-06-Box-Deckel und Mischbetrieb ohne Laufzeitversionssprung · [Vertrag und Nachweise](uems-messbudget-vertrag.md)
+- **Budget-Prüfung der Bestandsboxen vor Edge-Release A (AP-14 IP-17, X5)** — ausdrücklich gestarteter `READ ONLY`-Lauf über den echten Publisher-Plan und `MeasurementBudgetContract`; Teil A–C nur Zählungen, interne Kennungen nur in Teil D; ausschließlich gegen das UEMS-Schema nach dem Rollout · [Aufruf, Grenzen und U12](uems-budgetpruefung-bestandsboxen.md)
 - **Quellen-Herzschlag auf der Box (AP-06 IP-13)** — gespeichertes DQ-Kennzeichen im offenen Treiberblock, Poll-Belege und additive `data_sources[]`; Mischbetrieb ohne Versionshub · [Vertrag und Leser](uems-quellen-herzschlag.md)
 
 - **Kern-/Katalog-Spiegel (AP-07 IP-17)** — geprüfte Cloud-Registerpaare, Writer-Kennzeichnung zur Messzeit für beide Kern-Schreibwege; führende Quellenbindung und NULL-Rollenbestand bleiben erhalten · [Zuordnung, Grenzen und Nachweise](uems-kern-spiegel.md)
