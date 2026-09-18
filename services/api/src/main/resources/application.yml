@@ -124,6 +124,9 @@ server:
 # offline unit tests and broker-less dev setups opt out explicitly with
 # VOLTPILOT_SECURITY_OIDC_ENABLED=false.
 voltpilot:
+  flyway:
+    # The switch alone never relaxes startup without the explicit local profile.
+    startwaechter: ${VOLTPILOT_FLYWAY_STARTWAECHTER:streng}
   # Additional measurement-point selection (Geraete-Erlebnis Slice 5). D5's
   # global limits live in code; representative driver bench runs may only
   # TIGHTEN the sample ceiling per canonical catalog family, never widen 600.

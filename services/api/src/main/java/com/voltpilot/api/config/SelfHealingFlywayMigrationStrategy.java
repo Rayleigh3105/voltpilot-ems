@@ -19,12 +19,17 @@ import org.flywaydb.core.api.output.ValidateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
+import org.springframework.core.env.Environment;
 
 /**
  * Fail closed before migration or repair when this build does not know an applied
  * core migration, or the history contains a core DELETE marker. An older image
  * must never rewrite a newer database's history or become ready on that schema.
  * The diagnosis is read-only; an unreadable diagnosis also prevents startup.
+ * An explicit developer exception requires the sole active profile local AND
+ * voltpilot.flyway.startwaechter=nur-warnen. It warns and retains the previous
+ * Flyway behaviour, including potentially destructive repair of future entries.
+ * Without that profile, the switch alone can never relax this guard.
  *
  * <p>Known missing development seeds are the explicit exception below. For known
  * migrations, checksum/description/type drift still receives one loud repair and
@@ -43,6 +48,20 @@ import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(SelfHealingFlywayMigrationStrategy.class);
+
+    private final boolean localWarnOnly;
+
+    /** Direct users and tests remain strict unless they supply the gated environment. */
+    public SelfHealingFlywayMigrationStrategy() {
+        localWarnOnly = false;
+    }
+
+    public SelfHealingFlywayMigrationStrategy(Environment environment) {
+        // Do not use default profiles here: an empty ACTIVE profile must stay strict.
+        // Mixed profiles (e.g. local,prod) also stay strict rather than opening production.
+        localWarnOnly = Arrays.equals(environment.getActiveProfiles(), new String[] {"local"})
+                && "nur-warnen".equals(environment.getProperty("voltpilot.flyway.startwaechter", "streng"));
+    }
 
     /**
      * The validation error codes {@link Flyway#repair()} genuinely realigns.
@@ -82,6 +101,11 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
 
     @Override
     public void migrate(Flyway flyway) {
+        if (localWarnOnly) {
+            log.warn("ACHTUNG ENTWICKLERMODUS: Profil local und voltpilot.flyway.startwaechter=nur-warnen. "
+                    + "Unbekannte Kernmigrationen und DELETE-Marker sperren diesen lokalen Start nicht. "
+                    + "Flyway repair() kann die Historie verändern. NIEMALS für Produktionsdaten verwenden.");
+        }
         // Stable, database-local lock shared by every build carrying this strategy.
         // Flyway locks each individual command, not the info -> repair sequence.
         // The separate READ ONLY transaction holds no history-table lock and ends
@@ -170,9 +194,19 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
             throw new FlywayException(message, diagnosisFailed);
         }
         if (!incompatible.isEmpty()) {
-            String message = "Flyway-Start verweigert: Diese Datenbank ist neuer als dieser Build "
+            String diagnosis = "Diese Datenbank ist neuer als dieser Build "
                     + "oder ihre Kern-Migrationshistorie wurde als DELETE markiert. Versionen: "
-                    + String.join(", ", incompatible) + ". Nicht reparieren, nicht starten; richtiges Image "
+                    + String.join(", ", incompatible);
+            if (localWarnOnly) {
+                log.warn("ACHTUNG ENTWICKLERMODUS — UNVERTRÄGLICHE MIGRATIONSHISTORIE: {}. "
+                        + "Lokaler Zweigwechsel: Fortsetzung nach den bisherigen Flyway-Regeln. "
+                        + "FUTURE-Versionen können bei repair() als DELETE markiert werden; "
+                        + "vorhandene DELETE-Marker können erneute SQL-Ausführung und Fehler verursachen. "
+                        + "Kein Kompatibilitätsnachweis, keine Freigabe für Produktionsdaten.", diagnosis);
+                return migrations;
+            }
+            String message = "Flyway-Start verweigert: " + diagnosis
+                    + ". Nicht reparieren, nicht starten; richtiges Image "
                     + "ausrollen oder Datenbank auf den Wiederherstellungspunkt wiederherstellen. "
                     + "Bei DELETE: API/Writer anhalten, Befund sichern, Rückweg auf den Punkt; "
                     + "ein neues Image allein behebt den Schaden nicht.";

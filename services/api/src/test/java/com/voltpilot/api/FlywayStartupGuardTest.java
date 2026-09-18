@@ -6,8 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.voltpilot.api.config.FlywayConfig;
 import com.voltpilot.api.config.SelfHealingFlywayMigrationStrategy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -30,8 +35,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.postgresql.ds.PGSimpleDataSource;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -295,6 +305,133 @@ class FlywayStartupGuardTest {
                 SELECT count(*) FROM pg_locks WHERE locktype='advisory'
                 AND classid=1448101453 AND objid=1179408727
                 """, Long.class)).isZero();
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "           |             | false",
+            "           | nur-warnen  | false",
+            "local      |             | true",
+            "local      | nur-warnen  | true",
+            "local      | streng      | false",
+            "prod       | nur-warnen  | false",
+            "local,prod | nur-warnen  | false"
+    })
+    void branchSwitchRequiresBothExplicitLocalProfileAndWarningMode(
+            String profiles, String mode, boolean allowed) throws Exception {
+        script("V1__other_branch.sql");
+        script("V999__common.sql");
+        synthetic().load().migrate();
+        Files.delete(scripts.resolve("V1__other_branch.sql"));
+        String before = historyFingerprint();
+        Flyway flyway = spy(synthetic().load());
+        var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(SelfHealingFlywayMigrationStrategy.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            configuredMode(profiles, mode).run(context -> {
+                assertThat(context).hasNotFailed();
+                FlywayMigrationStrategy configured = context.getBean(FlywayMigrationStrategy.class);
+                if (allowed) {
+                    assertThatCode(() -> configured.migrate(flyway)).doesNotThrowAnyException();
+                    verify(flyway).migrate();
+                    assertThat(logs.list).anySatisfy(event -> {
+                        assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                        assertThat(event.getFormattedMessage()).contains("ENTWICKLERMODUS", "1 (MISSING_SUCCESS)");
+                    });
+                } else {
+                    assertThatThrownBy(() -> configured.migrate(flyway))
+                            .isInstanceOf(FlywayException.class).hasMessageContaining("MISSING_SUCCESS");
+                    verify(flyway, never()).migrate();
+                    assertThat(logs.list).noneMatch(event -> event.getFormattedMessage().contains("ENTWICKLERMODUS"));
+                }
+                verify(flyway, never()).repair();
+            });
+        } finally {
+            logger.detachAppender(logs);
+            logs.stop();
+        }
+        assertThat(historyFingerprint()).isEqualTo(before);
+    }
+
+    @Test
+    void defaultLocalProfileDoesNotOpenAnEmptyActiveProfile() throws Exception {
+        script("V1__other_branch.sql");
+        synthetic().load().migrate();
+        Files.delete(scripts.resolve("V1__other_branch.sql"));
+        Flyway flyway = spy(synthetic().load());
+        configuredMode(null, "nur-warnen").withPropertyValues("spring.profiles.default=local").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getEnvironment().getActiveProfiles()).isEmpty();
+            assertThatThrownBy(() -> context.getBean(FlywayMigrationStrategy.class).migrate(flyway))
+                    .isInstanceOf(FlywayException.class).hasMessageContaining("FUTURE_SUCCESS");
+        });
+        verify(flyway, never()).migrate();
+        verify(flyway, never()).repair();
+    }
+
+    @Test
+    void localFutureAndDeletedCoreAreLoudWarningsWithThePreviousRepairBehaviour() throws Exception {
+        script("V1__common.sql");
+        script("V2__other_branch.sql");
+        synthetic().load().migrate();
+        Files.delete(scripts.resolve("V2__other_branch.sql"));
+        var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(SelfHealingFlywayMigrationStrategy.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            configuredMode("local", "nur-warnen").run(context -> {
+                assertThat(context).hasNotFailed();
+                FlywayMigrationStrategy configured = context.getBean(FlywayMigrationStrategy.class);
+                Flyway first = spy(synthetic().load());
+                assertThatCode(() -> configured.migrate(first)).doesNotThrowAnyException();
+                verify(first).repair();
+                verify(first, times(2)).migrate();
+                assertThat(logs.list).anySatisfy(event -> {
+                    assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                    assertThat(event.getFormattedMessage()).contains("ENTWICKLERMODUS", "2 (FUTURE_SUCCESS)");
+                });
+                assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE type='DELETE'", Long.class))
+                        .isEqualTo(1);
+                String afterRepair = historyFingerprint();
+                logs.list.clear();
+                Flyway second = spy(synthetic().load());
+                assertThatCode(() -> configured.migrate(second)).doesNotThrowAnyException();
+                verify(second, never()).repair();
+                assertThat(logs.list).anySatisfy(event -> {
+                    assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                    assertThat(event.getFormattedMessage()).contains("ENTWICKLERMODUS", "2 (DELETE)");
+                });
+                assertThat(historyFingerprint()).isEqualTo(afterRepair);
+            });
+        } finally {
+            logger.detachAppender(logs);
+            logs.stop();
+        }
+    }
+
+    @Test
+    void localWarningModeStillFailsClosedOnUnreadableDiagnosis() {
+        Flyway flyway = spy(synthetic().load());
+        doThrow(new FlywayException("diagnosis failed")).when(flyway).info();
+        configuredMode("local", "nur-warnen").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThatThrownBy(() -> context.getBean(FlywayMigrationStrategy.class).migrate(flyway))
+                    .hasMessageContaining("nicht sicher lesbar");
+        });
+        verify(flyway, never()).migrate();
+        verify(flyway, never()).repair();
+    }
+
+    /** Real Spring bean and shipped application/profile YAML; no app services or schedulers. */
+    private ApplicationContextRunner configuredMode(String profiles, String mode) {
+        ApplicationContextRunner runner = new ApplicationContextRunner()
+                .withInitializer(new ConfigDataApplicationContextInitializer())
+                .withUserConfiguration(FlywayConfig.class)
+                .withPropertyValues("spring.profiles.active=" + (profiles == null ? "" : profiles));
+        return mode == null ? runner : runner.withPropertyValues("voltpilot.flyway.startwaechter=" + mode);
     }
 
     private void assertRefusedUnchanged(Flyway flyway, String message) throws Exception {

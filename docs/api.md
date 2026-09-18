@@ -90,6 +90,19 @@ Wächter begrenzt: die acht Dateien unter `db/dev` (Version UND exakter Skriptna
 entfernte Kernskripte sind ausdrücklich keine Ausnahme. Ein leeres Produktionsprofil entfernt
 keine vorhandenen Demodaten. Neue Dev-Seeds benötigen eine bewusste Aktualisierung dieser Liste.
 
+**Lokaler Zweigwechsel:** `docker-compose.yml` setzt für die API ausdrücklich
+`SPRING_PROFILES_ACTIVE=local`; die Produktionsvorlage lässt das Profil leer. Eine bleibende
+Entwicklungsdatenbank kann Kernmigrationen eines anderen Zweigs tragen. Ausschließlich wenn
+`local` das **einzige aktive Profil** ist UND `voltpilot.flyway.startwaechter=nur-warnen` gilt,
+warnt der Wächter deshalb laut und setzt nach den bisherigen Flyway-Regeln fort. `application-local.yml`
+belegt diesen Schalter vor; `VOLTPILOT_FLYWAY_STARTWAECHTER=streng` schaltet lokal auf den strengen
+Wächter zurück. Vorgabe, leeres Profil, nur ein Default-Profil sowie gemischte Profile bleiben
+streng, selbst mit `nur-warnen`. Niedrige unbekannte Versionen können lokal durch `*:missing`
+weiter toleriert werden; FUTURE-Versionen und DELETE-Marker werden mit Versionen ausdrücklich
+gewarnt. Eine lokale Reparatur kann dabei DELETE-Marker erzeugen und einen späteren Start brechen;
+der Modus ist kein Kompatibilitätsnachweis und ausschließlich für Entwicklungsdaten gedacht.
+SQL-Fehler oder unlesbare Diagnosen bleiben Startfehler, die Startsperre bleibt aktiv.
+
 Bei einem Rolling Update mit neuer Migration kann ein neu startender alter Pod bis zu seiner
 Ersetzung in CrashLoop gehen; er meldet keine Readiness. Der neue Pod kennt die Migrationen und
 kann weiter starten. API-Welle 0 mit Readiness und `maxSurge: 1`/`maxUnavailable: 0` erlaubt diesen
