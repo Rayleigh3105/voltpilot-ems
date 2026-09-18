@@ -4809,6 +4809,12 @@ export interface MessstelleQuelleGeraet {
   id: string | null;
   geraet: string | null;
   einbau: string | null;
+  /**
+   * AP-05 IP-11, additiv: der Hersteller des Einbaus. Die Fläche fragt Kartenangaben nur dort
+   * nach, wo ein Hersteller sie haben kann — sonst liefe jede Messstellen-Seite in ein 404.
+   * `undefined` an einer älteren Antwort; dann wird nicht gefragt (nie geraten).
+   */
+  hersteller?: string | null;
 }
 
 /** Ein abgelesener Zählerstand an einer Bindung. */
@@ -6887,6 +6893,21 @@ export interface WagoKartenangaben {
   anwenderskalierung: boolean | null;
   register35: number | null;
   version: number;
+  /**
+   * AP-05 IP-11: der Zeitpunkt der jüngsten GESPEICHERTEN Gerätegrenze „Karte getauscht“ an
+   * dieser Komponente — `null`, solange keine eingetragen ist. Er ist der Beleg, der (zusammen
+   * mit einer fehlenden `anwenderskalierung`) den Hebel „Wandler/Anwenderskalierung prüfen“
+   * trägt; ohne ihn gibt es keinen Hebel.
+   */
+  kartenwechsel: string | null;
+}
+
+/** AP-05 IP-11 (E6): Gerätegrenze an der Karte — Zeitpunkt, wahlweise Endstand, Prüfaufgabe. */
+export interface WagoKartenwechsel {
+  zeitpunkt: string;
+  endstand: number | null;
+  einheit: string | null;
+  einstellungenPruefen: boolean;
 }
 
 /** Gerätestammdaten der WAGO-Steuerung. */
@@ -8167,13 +8188,26 @@ export const api = {
 
   /** AP-05 IP-9/IP-10: Kartendaten dokumentieren; Steckplatz kommt aus der physischen Zuordnung. */
   wagoKarteEintragen: (siteId: string, entityId: string, body: {
-    expected_revision: number;
+    // Der Name der Schnittstelle ist `expectedRevision` (WagoMetadataService.KartenEintrag);
+    // `expected_revision` kam nie an und lief in ein 400 (gefunden in AP-05 IP-11).
+    expectedRevision: number;
     anwenderskalierung: boolean | null;
     register35: number | null;
   }) => request<WagoKartenangaben>(
     `/api/v1/sites/${siteId}/components/${entityId}/wago`,
     { method: 'PUT', body: JSON.stringify(body) },
   ),
+
+  /** AP-05 IP-11: die WAGO-Kartenangaben einer Komponente; keine WAGO-Komponente = 404. */
+  wagoKarte: (siteId: string, entityId: string) =>
+    request<WagoKartenangaben>(`/api/v1/sites/${siteId}/components/${entityId}/wago`),
+
+  /** AP-05 IP-11 (E6): „Karte getauscht“ — Gerätegrenze OHNE Gerätewechsel. */
+  wagoKartenwechsel: (siteId: string, entityId: string, body: WagoKartenwechsel) =>
+    request<WagoKartenangaben>(
+      `/api/v1/sites/${siteId}/components/${entityId}/wago/kartenwechsel`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
 
   /** AP-05 IP-9/IP-10: abgelesene Controller-Angaben, keine Geräteerkennung. */
   wagoGeraetEintragen: (id: string, body: WagoGeraeteangaben) =>

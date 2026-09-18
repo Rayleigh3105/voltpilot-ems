@@ -219,7 +219,7 @@ export function WagoAssistent({
         if (!zeile) throw new Error('Die neu angelegte Energiekarte wurde nicht zurückgegeben.');
         bekannt.add(zeile.id);
         await api.wagoKarteEintragen(site.id, zeile.id, {
-          expected_revision: zeile.definitionVersion,
+          expectedRevision: zeile.definitionVersion,
           anwenderskalierung: null,
           register35: null,
         });

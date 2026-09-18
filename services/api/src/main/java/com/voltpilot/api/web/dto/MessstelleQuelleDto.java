@@ -55,9 +55,13 @@ public final class MessstelleQuelleDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Beenden(OffsetDateTime gueltigBis, Stand endstand, String grund) {}
 
-    /** Das Gerät des Messkanals: der Einbau, der die Komponente zu Beginn der Quelle speist. */
+    /**
+     * Das Gerät des Messkanals: der Einbau, der die Komponente zu Beginn der Quelle speist.
+     * {@code hersteller} ist additiv (AP-05 IP-11): die Fläche fragt Kartenangaben nur dort nach,
+     * wo ein Hersteller sie überhaupt haben kann — sonst liefe jede Messstellen-Seite in ein 404.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Geraet(UUID id, String geraet, String einbau) {}
+    public record Geraet(UUID id, String geraet, String einbau, String hersteller) {}
 
     /**
      * Eine Quellenbindung. {@code status} gegen „jetzt“ (geplant · gilt · beendet);

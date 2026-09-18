@@ -517,7 +517,7 @@ class UemsQuelleAnteilTest {
 
     private static QuelleZeile zeile(String anteil) {
         Quelle q = new Quelle(UUID.randomUUID(), UUID.randomUUID(), "MS-01", "Wirkleistung", "Bezug", IDS.get("K-3"),
-                null, "K-3", null, "GR-2", "GR-2", WIRKLEISTUNG, "gauge", "momentanwert", "fuehrend", null,
+                null, "K-3", null, "GR-2", "GR-2", "Janitza", WIRKLEISTUNG, "gauge", "momentanwert", "fuehrend", null,
                 Instant.parse("2024-03-12T00:00:00Z"), null, null, null, true, null, Instant.parse("2026-10-01T07:14:00Z"),
                 "Probe", anteil);
         return new QuelleZeile(q, "Netzzähler", null);

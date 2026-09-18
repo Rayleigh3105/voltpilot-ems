@@ -25,7 +25,7 @@ public class MessstelleQuelleRepository {
 
     private static final String SPALTEN = "q.id, q.messstelle_id, m.kennzeichen AS messstelle, q.groesse, "
             + "q.richtung, q.entity_id, p.site_id, p.label AS komponente_name, q.geraet_id, "
-            + "g.kennzeichen AS geraet, g.einbau_kennzeichen AS einbau, q.kanal, q.kanal_wertart, "
+            + "g.kennzeichen AS geraet, g.einbau_kennzeichen AS einbau, g.hersteller, q.kanal, q.kanal_wertart, "
             + "q.herleitung, q.rolle, q.zweck, q.gueltig_ab, q.gueltig_bis, q.anfangsstand, "
             + "q.anfangsstand_einheit, q.endstand, q.endstand_einheit, q.rueckwirkend, q.herkunft, "
             + "q.eingetragen_am, q.actor_name, q.anteil";
@@ -50,7 +50,7 @@ public class MessstelleQuelleRepository {
      */
     public record Quelle(UUID id, UUID messstelleId, String messstelle, String groesse, String richtung,
             UUID entityId, UUID siteId, String komponenteName, UUID geraetId, String geraet, String einbau,
-            String kanal, String kanalWertart, String herleitung, String rolle, String zweck,
+            String hersteller, String kanal, String kanalWertart, String herleitung, String rolle, String zweck,
             Instant gueltigAb, Instant gueltigBis, Stand anfangsstand, Stand endstand, boolean rueckwirkend,
             String herkunft, Instant eingetragenAm, String eingetragenVon, String anteil) {}
 
@@ -152,7 +152,8 @@ public class MessstelleQuelleRepository {
                 rs.getString("messstelle"), rs.getString("groesse"), rs.getString("richtung"),
                 rs.getObject("entity_id", UUID.class), rs.getObject("site_id", UUID.class),
                 rs.getString("komponente_name"), rs.getObject("geraet_id", UUID.class), rs.getString("geraet"),
-                rs.getString("einbau"), rs.getString("kanal"), rs.getString("kanal_wertart"),
+                rs.getString("einbau"), rs.getString("hersteller"), rs.getString("kanal"),
+                rs.getString("kanal_wertart"),
                 rs.getString("herleitung"), rs.getString("rolle"), rs.getString("zweck"),
                 zeit(rs, "gueltig_ab"), zeit(rs, "gueltig_bis"),
                 stand(rs.getBigDecimal("anfangsstand"), rs.getString("anfangsstand_einheit")),

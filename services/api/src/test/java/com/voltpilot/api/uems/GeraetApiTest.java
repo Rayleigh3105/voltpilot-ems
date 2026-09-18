@@ -524,6 +524,83 @@ class GeraetApiTest {
                 .getStatusCode().value()).isEqualTo(404);
     }
 
+    /**
+     * AP-05 IP-11 (E6, Abnahme A10): „Karte getauscht“ ist eine GERÄTEGRENZE OHNE GERÄTEWECHSEL.
+     * Das Gerät bleibt, die Komponente bleibt, nichts wird gelöscht — und die Einstellungen der
+     * NEUEN Karte sind wieder offen, nicht geerbt.
+     */
+    @Test
+    void kartenwechselSetztGrenzeOhneGeraetewechselUndOeffnetDieEinstellungen() {
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id,name) VALUES (?, 'WAGO-Kartentausch') RETURNING id",
+                UUID.class, ahrenberg);
+        UUID geraet = root.queryForObject("INSERT INTO geraet (tenant_id,site_id,kennzeichen,einbau_kennzeichen,"
+                + "geraeteart,hersteller,typ,eingebaut_am) VALUES (?,?,uems_geraet_kennzeichen(?),"
+                + "'GR-EK4','controller','WAGO','Test',date_trunc('minute',now())-interval '2 days') RETURNING id",
+                UUID.class, ahrenberg, site, ahrenberg);
+        UUID teil = root.queryForObject("INSERT INTO geraet_teil (tenant_id,geraet_id,steckplatz,typ,eingebaut_am) "
+                + "VALUES (?,?,5,'750-494',date_trunc('minute',now())-interval '2 days') RETURNING id",
+                UUID.class, ahrenberg, geraet);
+        UUID entity = root.queryForObject("WITH m AS (INSERT INTO measurement_point (tenant_id,site_id,role,"
+                + "entity_type,brand,model) VALUES (?,?,'modbus-generic','modbus-generic','wago','750-494') RETURNING id) "
+                + "INSERT INTO geraet_komponente (tenant_id,geraet_id,entity_id,teil_id,gueltig_ab) "
+                + "SELECT ?,?,m.id,?,date_trunc('minute',now())-interval '2 days' FROM m RETURNING entity_id",
+                UUID.class, ahrenberg, site, ahrenberg, geraet, teil);
+        String path = "/api/v1/sites/" + site + "/components/" + entity + "/wago";
+        String wechsel = path + "/kartenwechsel";
+        int revision = ok(rufe(path, ahrenbergAdmin)).path("version").asInt();
+        // Die ALTE Karte war erhoben: Anwenderskalierung EIN, Register 35 = 4.
+        JsonNode erhoben = ok(schreibeWago(path, Map.of("expectedRevision", revision,
+                "anwenderskalierung", true, "register35", 4), ahrenbergAdmin));
+        assertThat(erhoben.path("kartenwechsel").isNull()).as("ohne Wechsel kein Beleg").isTrue();
+
+        String zeitpunkt = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+                .minusSeconds(3600).toString();
+        Map<String,Object> auftrag = new LinkedHashMap<>();
+        auftrag.put("zeitpunkt", zeitpunkt);
+        auftrag.put("endstand", new java.math.BigDecimal("6184.37"));
+        auftrag.put("einheit", "kWh");
+        auftrag.put("einstellungenPruefen", true);
+        JsonNode nachher = ok(schreibeWago(wechsel, auftrag, ahrenbergAdmin, HttpMethod.POST));
+        assertThat(nachher.path("kartenwechsel").isNull()).isFalse();
+        // Die Prüfaufgabe: was für die alte Karte erhoben war, gilt für die neue nicht.
+        assertThat(nachher.path("anwenderskalierung").isNull()).isTrue();
+        assertThat(nachher.path("register35").isNull()).isTrue();
+        assertThat(nachher.path("slot").asInt()).as("die Karte steckt weiter im Steckplatz").isEqualTo(5);
+        // Nichts gelöscht: Komponente, Gerät und die physische Zuordnung stehen unverändert.
+        assertThat(root.queryForObject("SELECT count(*) FROM measurement_point WHERE id=?", Integer.class, entity))
+                .isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet_komponente WHERE entity_id=? "
+                + "AND gueltig_bis IS NULL", Integer.class, entity)).isEqualTo(1);
+        assertThat(root.queryForObject("SELECT einbau_kennzeichen FROM geraet WHERE id=?", String.class, geraet))
+                .isEqualTo("GR-EK4");
+        // Der Beleg: EIN device_boundary mit Anlass kartenwechsel — derselbe Einbau auf beiden Seiten (E6).
+        Map<String,Object> e = root.queryForMap("SELECT art, nutzlast->>'anlass' anlass, "
+                + "nutzlast->>'einbau_alt' alt, nutzlast->>'einbau_neu' neu, nutzlast->>'endstand' endstand, "
+                + "nutzlast->>'einheit' einheit FROM messreihe_ereignis WHERE entity_id=? AND NOT aus_bestand", entity);
+        assertThat(e.get("art")).isEqualTo("device_boundary");
+        assertThat(e.get("anlass")).isEqualTo("kartenwechsel");
+        assertThat(e.get("alt")).isEqualTo("GR-EK4");
+        assertThat(e.get("neu")).isEqualTo(e.get("alt"));
+        assertThat(String.valueOf(e.get("endstand"))).startsWith("6184.37");
+        assertThat(e.get("einheit")).isEqualTo("kWh");
+
+        // Ein Wechsel im Voraus und ein Endstand ohne Einheit werden abgelehnt.
+        Map<String,Object> voraus = new LinkedHashMap<>(auftrag);
+        voraus.put("zeitpunkt", OffsetDateTime.now().plusDays(1).toInstant().toString());
+        assertThat(schreibeWago(wechsel, voraus, ahrenbergAdmin, HttpMethod.POST).getStatusCode().value())
+                .isEqualTo(400);
+        Map<String,Object> ohneEinheit = new LinkedHashMap<>(auftrag);
+        ohneEinheit.put("einheit", null);
+        assertThat(schreibeWago(wechsel, ohneEinheit, ahrenbergAdmin, HttpMethod.POST).getStatusCode().value())
+                .isEqualTo(400);
+
+        // Eine fremde Anlage und ein fremder Kundenbereich sehen die Route nicht (404, nie 403).
+        assertThat(schreibeWago("/api/v1/sites/"+ANLAGEN.get("AN-1")+"/components/"+entity+"/wago/kartenwechsel",
+                auftrag, ahrenbergAdmin, HttpMethod.POST).getStatusCode().value()).isEqualTo(404);
+        assertThat(schreibeWago(wechsel, auftrag, new Anrufer("demo", null), HttpMethod.POST)
+                .getStatusCode().value()).isEqualTo(404);
+    }
+
     private ResponseEntity<JsonNode> schreibeWago(String path, Map<String,Object> body, Anrufer wer) {
         return schreibeWago(path, body, wer, HttpMethod.PUT);
     }

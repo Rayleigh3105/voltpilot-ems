@@ -29,6 +29,8 @@ import type { Schritt } from '../messstelleDialog';
 import { PROTOKOLL_LABEL } from '../components/ProtokollDialog';
 import { ProtokollListe, useProtokoll } from '../components/ProtokollListe';
 import { ErrorState, Skeleton } from '../components/States';
+import { WagoKarte } from '../components/WagoKarte';
+import { kannKartenangabenHaben } from '../wagoKarte';
 import { WerteSektion } from '../components/WerteSektion';
 import { wahlHash } from '../uemsVergleich';
 import { ZuordnungAendernDialog } from '../components/ZuordnungAendernDialog';
@@ -437,6 +439,21 @@ function MessstelleSeiteMitId({
             const q = quellen?.groessen.find(g => g.groesse === karte.groesse.groesse && g.richtung === karte.groesse.richtung)?.fuehrend;
             if (q?.geraet.id) setWechsel({ art: 'messstelle', id: m.id, kennzeichen: m.kennzeichen, geraetId: q.geraet.id, anlageId: q.anlage });
           }}
+        />
+      )}
+
+      {/* AP-05 IP-11: die Energiekarte — nur wo es eine WAGO-Komponente GIBT (sonst 404, nichts
+          gezeichnet). Die Verlauf-Marker der Box-Ereignisse hängen NICHT hieran; sie stehen oben
+          in der WerteSektion und erscheinen bei jeder Box, die sie meldet. */}
+      {quellen?.groessen[0]?.fuehrend
+        && kannKartenangabenHaben(quellen.groessen[0].fuehrend.geraet.hersteller) && (
+        <WagoKarte
+          anlageId={quellen.groessen[0].fuehrend.anlage}
+          standortId={zeile?.ort.standort_id ?? null}
+          entityId={quellen.groessen[0].fuehrend.komponente}
+          zone={standorte?.standorte.find(s => s.id === zeile?.ort.standort_id)?.zeitzone ?? zone}
+          einheit={haupt?.wertart === 'Zählerstand' ? haupt.einheit : null}
+          onGetauscht={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }}
         />
       )}
 

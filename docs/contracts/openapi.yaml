@@ -21298,11 +21298,15 @@ components:
         grund: { type: string, nullable: true }
     MessstelleQuelleGeraet:
       type: object
-      required: [id, geraet, einbau]
+      required: [id, geraet, einbau, hersteller]
       properties:
         id: { type: string, format: uuid, description: "Der Einbau - für GET /api/v1/geraete/{id}." }
         geraet: { type: string }
         einbau: { type: string }
+        hersteller:
+          type: string
+          nullable: true
+          description: "AP-05 IP-11, additiv: der Hersteller des Einbaus. Die Fläche fragt Kartenangaben nur dort nach, wo ein Hersteller sie haben kann."
     MessstelleQuelle:
       type: object
       description: "Eine Quellenbindung, wie sie gespeichert ist; `status` gegen jetzt."
