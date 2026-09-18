@@ -345,6 +345,14 @@ export function flaecheZeitraum(baum: Ortsbaum, objekt: string, von: Tag, bis: T
 /** §5.10: der Satz zu einer Fläche, die keine ganze Zahl größer als 0 ist. */
 export const FLAECHE_SATZ = 'Bitte geben Sie die Bezugsfläche als ganze Zahl in m² an, z. B. 3\u00a0100.';
 
+/** „3 100“ (auch mit geschütztem Leerzeichen) → 3100; sonst {@code null}. */
+export function flaecheZahl(t: string): number | null {
+  const roh = t.replace(/[\s\u00a0\u202f]/g, '');
+  if (!/^[0-9]+$/.test(roh)) return null;
+  const n = Number(roh);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
 /** Die Reihenfolge IST die Regel: sie entscheidet, welcher Grund gilt, wenn mehrere zutreffen. */
 export const FLAECHE_GRUENDE = ['flaeche_ungueltig', 'gab_es_noch_nicht', 'archiviert', 'gleiche_flaeche'] as const;
 export type FlaecheGrund = (typeof FLAECHE_GRUENDE)[number];

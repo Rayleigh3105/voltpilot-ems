@@ -38,14 +38,15 @@ afterEach(() => {
 });
 
 describe('OrtDialog — Gebäude anlegen (T4)', () => {
-  it('nennt den Standort, erbt die Zeitzone und hat kein Kurzzeichen-Feld', () => {
+  it('nennt den Standort, erbt die Zeitzone und zeigt das überschreibbare Kurzzeichen', () => {
+    vi.spyOn(api, 'ortKurzzeichenVorschlag').mockResolvedValue({ kurzzeichen: 'G-4' });
     zeige();
     expect(screen.getByRole('dialog', { name: 'Gebäude anlegen' })).toBeInTheDocument();
     expect(vorspann()).toEqual([
       'Am Standort Werk Ahrenberg (ST-1). Nur der Name ist Pflicht.',
       'Zeitzone: Europe/Berlin — vom Standort geerbt, kein eigenes Feld.',
     ]);
-    expect(screen.queryByLabelText('Kurzzeichen *')).toBeNull();
+    expect(screen.getByLabelText('Kurzzeichen')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Hängt an *' })).toBeNull();
   });
 
@@ -70,9 +71,11 @@ describe('OrtDialog — Gebäude anlegen (T4)', () => {
     await waitFor(() => expect(document.activeElement).toBe(feld('Bezugsfläche (m²)')));
   });
 
-  it('sendet POST ohne Kurzzeichen mit der ersten Fläche ab „Gültig ab“', async () => {
+  it('sendet POST mit vorgeschlagenem Kurzzeichen und der ersten Fläche ab „Gültig ab“', async () => {
+    vi.spyOn(api, 'ortKurzzeichenVorschlag').mockResolvedValue({ kurzzeichen: 'G-4' });
     const anlegen = vi.spyOn(api, 'ortAnlegen').mockResolvedValue(ortNachSchreiben());
     const p = zeige();
+    await waitFor(() => expect(feld('Kurzzeichen').value).toBe('G-4'));
     tippe('Name *', 'Halle 4');
     tippe('Bezugsfläche (m²)', `2${NB}000`);
     tippe('Baujahr', '2019');
@@ -81,6 +84,7 @@ describe('OrtDialog — Gebäude anlegen (T4)', () => {
     expect(anlegen).toHaveBeenCalledWith(p.antwort.standort.id, {
       art: 'gebaeude',
       name: 'Halle 4',
+      kurzzeichen: 'G-4',
       gueltigAb: '2026-10-20',
       nutzung: null,
       notiz: null,

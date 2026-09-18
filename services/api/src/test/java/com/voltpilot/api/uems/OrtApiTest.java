@@ -395,9 +395,19 @@ class OrtApiTest {
         assertThat(alleEintraege(ah.tenant)).isEqualTo(vorher);
 
         // A10: an Werk Lindach darf ein Gebäude „Halle 1“ heißen — Kurzzeichen G-6.
+        String vorschlagRoute = "/api/v1/standorte/" + ah.ids.get("ST-2")
+                + "/orte/kurzzeichen-vorschlag";
+        assertThat(ok(get(vorschlagRoute + "?art=gebaeude", token, ah.tenant)).path("kurzzeichen").asText())
+                .isEqualTo("G-6");
+        assertThat(ok(get(vorschlagRoute + "?art=bereich", token, ah.tenant)).path("kurzzeichen").asText())
+                .isEqualTo("B-8");
+        assertThat(ok(get(vorschlagRoute + "?art=gebaeude", token, ah.tenant)).path("kurzzeichen").asText())
+                .as("Lesen bewegt den Zähler nicht").isEqualTo("G-6");
         JsonNode lindach = created(post("/api/v1/standorte/" + ah.ids.get("ST-2") + "/orte", token,
                 ah.tenant, Map.of("art", "gebaeude", "name", "Halle 1")));
         assertThat(lindach.path("kurzzeichen").asText()).isEqualTo("G-6");
+        assertThat(ok(get(vorschlagRoute + "?art=gebaeude", token, ah.tenant)).path("kurzzeichen").asText())
+                .isEqualTo("G-7");
         assertThat(alleEintraege(ah.tenant)).isEqualTo(vorher + 1);
 
         // Ein eigenes Kurzzeichen, das ein Ort ODER ein Standort trägt: 409 mit Verweis.
@@ -450,6 +460,8 @@ class OrtApiTest {
         String demo2 = token("demo2", "demo2");
         assertThat(get("/api/v1/standorte/" + werk + "/orte", demo2, null).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(get("/api/v1/standorte/" + werk + "/orte/kurzzeichen-vorschlag?art=gebaeude", demo2, null)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(post("/api/v1/standorte/" + werk + "/orte", demo2, null,
                 Map.of("art", "gebaeude", "name", "Fremd")).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(put("/api/v1/orte/" + halle2, demo2, null,

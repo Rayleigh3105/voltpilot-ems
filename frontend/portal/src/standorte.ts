@@ -1,12 +1,23 @@
 import type {
   Nutzung,
+  OrtFlaeche,
   OrtFehler,
   StandortAmStichtag,
   StandorteAmStichtag,
   StandortStammdaten,
   Unternehmen,
 } from './api';
-import { datumText, lokalerTag, m2Text, nameBelegt, nameBelegtSatz, VORGABE_ZEITZONE, type Ortsbaum } from './uemsOrtsbaum';
+import {
+  datumText,
+  FLAECHE_SATZ,
+  flaecheZahl,
+  lokalerTag,
+  m2Text,
+  nameBelegt,
+  nameBelegtSatz,
+  VORGABE_ZEITZONE,
+  type Ortsbaum,
+} from './uemsOrtsbaum';
 
 /**
  * Der Standort-Dialog und die Liste „Unternehmen › Standorte“ (UEMS AP-02 IP-6,
@@ -18,9 +29,8 @@ import { datumText, lokalerTag, m2Text, nameBelegt, nameBelegtSatz, VORGABE_ZEIT
  * dem Senden genauso klingt wie danach. Die Namensregel wird nicht nachgebaut,
  * sie wird AUFGERUFEN (`nameBelegt`/`nameBelegtSatz` aus `uemsOrtsbaum.ts`).
  *
- * ⚠ Die Bezugsfläche eines Standorts hat heute keine Schreibroute (nur Gebäude
- * und Bereiche: `PUT /api/v1/orte/{id}/flaeche`). Der Dialog zeigt sie darum
- * nur lesend; die Eingabe mit „gültig ab“ kommt, sobald es die Route gibt.
+ * Die Bezugsfläche reist getrennt von den einfachen Stammdaten als zeitgültige
+ * Fassung über `PUT /api/v1/standorte/{id}/flaeche`.
  */
 
 // ───────────────────────────────────────────────────────────── Vokabulare
@@ -134,6 +144,8 @@ export interface StandortFormular {
   /** In der Reihenfolge der Auswahl — die erste ist die Hauptnutzung (E4). */
   nutzung: Nutzung[];
   notiz: string;
+  flaeche: string;
+  gueltigAb: string;
 }
 
 /** Die Zeitzone, die ein neuer Standort vorbelegt bekommt: die des Unternehmens, sonst die Vorgabe. */
@@ -143,7 +155,7 @@ export function vorbelegteZeitzone(unternehmen: Unternehmen | null): string {
 }
 
 /** Das leere Formular „Standort anlegen“: Zeitzone vom Unternehmen, Land vom Sitz (wenn bekannt). */
-export function leeresFormular(unternehmen: Unternehmen | null): StandortFormular {
+export function leeresFormular(unternehmen: Unternehmen | null, heute = ''): StandortFormular {
   return {
     name: '',
     kurzzeichen: '',
@@ -154,11 +166,13 @@ export function leeresFormular(unternehmen: Unternehmen | null): StandortFormula
     zeitzone: vorbelegteZeitzone(unternehmen),
     nutzung: [],
     notiz: '',
+    flaeche: '',
+    gueltigAb: heute,
   };
 }
 
 /** Das Formular eines bestehenden Standorts, wie er heute gespeichert ist. */
-export function formularAus(s: StandortAmStichtag): StandortFormular {
+export function formularAus(s: StandortAmStichtag, heute = ''): StandortFormular {
   return {
     name: s.name,
     kurzzeichen: s.kurzzeichen,
@@ -169,6 +183,8 @@ export function formularAus(s: StandortAmStichtag): StandortFormular {
     zeitzone: s.zeitzone,
     nutzung: s.nutzung ?? [],
     notiz: s.notiz ?? '',
+    flaeche: s.flaecheQuelle === 'eigen' && s.flaecheM2 != null ? String(s.flaecheM2) : '',
+    gueltigAb: heute,
   };
 }
 
@@ -183,6 +199,8 @@ export const FELDER = [
   'zeitzone',
   'nutzung',
   'notiz',
+  'flaeche',
+  'gueltigAb',
 ] as const;
 export type FeldName = (typeof FELDER)[number];
 export type FeldFehler = Partial<Record<FeldName, string>>;
@@ -264,7 +282,19 @@ export function pruefen(
   if (!f.land) fehler.land = SATZ_ADRESSE;
   if (!(ZEITZONEN as readonly string[]).includes(f.zeitzone)) fehler.zeitzone = SATZ_ZEITZONE;
   if (zeichen(f.notiz.trim()) > NOTIZ_HOECHSTENS) fehler.notiz = SATZ_NOTIZ_ZU_LANG;
+  if (f.flaeche.trim() && flaecheZahl(f.flaeche) == null) fehler.flaeche = FLAECHE_SATZ;
   return { fehler, belegtVon };
+}
+
+/** Eine neue Flächenfassung nur bei einer wirklichen Eingabe bzw. Änderung. */
+export function standortFlaecheAnfrage(
+  f: StandortFormular,
+  standort: StandortAmStichtag | null,
+): OrtFlaeche | null {
+  const m2 = f.flaeche.trim() ? flaecheZahl(f.flaeche) : null;
+  if (m2 == null) return null;
+  if (standort?.flaecheQuelle === 'eigen' && standort.flaecheM2 === m2) return null;
+  return { m2, gueltigAb: f.gueltigAb };
 }
 
 export function ersterFehler(fehler: FeldFehler): FeldName | null {

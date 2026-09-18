@@ -109,15 +109,18 @@ describe('StandortDialog — anlegen', () => {
     await waitFor(() => expect(document.activeElement).toBe(feld('PLZ')));
   });
 
-  it('legt Werk Lindach an (T2) und meldet den gespeicherten Standort', async () => {
+  it('legt Werk Lindach mit zeitgültiger Bezugsfläche an und meldet den letzten Stand', async () => {
     const gespeichert = werkLindach();
+    const mitFlaeche = { ...gespeichert, flaecheM2: 2700, flaecheQuelle: 'eigen' as const };
     const anlegen = vi.spyOn(api, 'standortAnlegen').mockResolvedValue(gespeichert);
+    const flaeche = vi.spyOn(api, 'standortFlaeche').mockResolvedValue(mitFlaeche);
     const p = zeige({ standorte: [werkAhrenberg()] });
     tippe('Name *', 'Werk Lindach');
     tippe('Straße und Hausnummer *', 'Am Bahndamm 12');
     tippe('Ort *', 'Lindach');
+    tippe('Bezugsfläche (m²)', '2700');
     fireEvent.click(screen.getByRole('button', { name: 'Standort anlegen' }));
-    await waitFor(() => expect(p.onGespeichert).toHaveBeenCalledWith(gespeichert));
+    await waitFor(() => expect(p.onGespeichert).toHaveBeenCalledWith(mitFlaeche));
     expect(anlegen).toHaveBeenCalledWith({
       name: 'Werk Lindach',
       adresse: { strasse: 'Am Bahndamm 12', plz: null, ort: 'Lindach', land: 'DE' },
@@ -125,6 +128,7 @@ describe('StandortDialog — anlegen', () => {
       nutzung: null,
       notiz: null,
     });
+    expect(flaeche).toHaveBeenCalledWith(gespeichert.id, { m2: 2700, gueltigAb: '2026-10-20' });
   });
 
   it('eine Ablehnung des Servers landet mit ihrem Satz am Feld aus `feld`', async () => {
@@ -166,12 +170,14 @@ describe('StandortDialog — anlegen', () => {
 });
 
 describe('StandortDialog — bearbeiten und vervollständigen', () => {
-  it('bearbeiten: Kurzzeichen änderbar, Fläche nur lesend, PUT trägt die Lage mit', async () => {
+  it('bearbeiten: Kurzzeichen änderbar, Fläche mit Gültig-ab, PUT trägt die Lage mit', async () => {
     const bearbeiten = vi.spyOn(api, 'standortBearbeiten').mockResolvedValue(werkAhrenberg());
     const p = zeige({ standort: werkLindach() });
     expect(screen.getByRole('dialog', { name: 'Standort bearbeiten' })).toBeInTheDocument();
     expect(feld('Kurzzeichen *').value).toBe('ST-2');
     expect(document.querySelector('.vp-sd-flaeche-wert')?.textContent).toBe('2\u00a0600\u00a0m² · aus Gebäuden summiert');
+    expect(feld('Bezugsfläche (m²)').value).toBe('');
+    expect(screen.getByLabelText('Gültig ab')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Nutzung' }).textContent).toContain('Lager');
     tippe('Notiz', 'Tore an der Nordseite');
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));

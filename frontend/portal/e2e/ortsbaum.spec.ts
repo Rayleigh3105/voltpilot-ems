@@ -29,7 +29,30 @@ const BREITEN = [375, 1440] as const;
 
 type Baeume = { ahrenberg: () => OrtsbaumAmStichtag; lindach: () => OrtsbaumAmStichtag };
 
-const HEUTE: Baeume = { ahrenberg: () => ortsbaumAhrenberg(), lindach: () => ortsbaumLindach() };
+const DATENLAGE: Record<string, [number, number]> = {
+  'G-1': [5, 6], 'B-1': [1, 1], 'B-2': [2, 3],
+  'G-2': [4, 5], 'B-3': [1, 1], 'B-4': [1, 1], 'B-5': [0, 1],
+  'G-3': [2, 2], 'G-4': [1, 1], 'B-6': [0, 0], 'G-5': [0, 1], 'B-7': [0, 0],
+};
+
+function mitDatenlage(baum: OrtsbaumAmStichtag): OrtsbaumAmStichtag {
+  for (const g of baum.gebaeude) {
+    const [erfuellt, gesamt] = DATENLAGE[g.kurzzeichen] ?? [0, 0];
+    g.datenlage = { erfuellt, gesamt, text: `${erfuellt} von ${gesamt} Messstellen liefern Daten` };
+    for (const b of g.bereiche) {
+      const [bErfuellt, bGesamt] = DATENLAGE[b.kurzzeichen] ?? [0, 0];
+      b.datenlage = { erfuellt: bErfuellt, gesamt: bGesamt, text: `${bErfuellt} von ${bGesamt} Messstellen liefern Daten` };
+    }
+  }
+  if (baum.direktAmStandort) {
+    const gesamt = baum.direktAmStandort.messstellenZahl ?? 0;
+    const erfuellt = Math.max(0, gesamt - 1);
+    baum.direktAmStandort.datenlage = { erfuellt, gesamt, text: `${erfuellt} von ${gesamt} Messstellen liefern Daten` };
+  }
+  return baum;
+}
+
+const HEUTE: Baeume = { ahrenberg: () => mitDatenlage(ortsbaumAhrenberg()), lindach: () => mitDatenlage(ortsbaumLindach()) };
 const LINDACH_LEER: Baeume = { ahrenberg: () => ortsbaumAhrenberg(), lindach: ortsbaumLindachOhneGebaeude };
 const VERWALTUNG_OHNE_FLAECHE: Baeume = {
   ahrenberg: () =>
@@ -48,6 +71,10 @@ async function verdrahte(page: Page, baeume: Baeume) {
   );
   await page.route('**/api/v1/standorte**', (r) => {
     const url = new URL(r.request().url());
+    if (url.pathname.endsWith('/orte/kurzzeichen-vorschlag') && r.request().method() === 'GET') {
+      const kurzzeichen = url.searchParams.get('art') === 'bereich' ? 'B-8' : 'G-6';
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ kurzzeichen }) });
+    }
     if (url.pathname.endsWith('/orte') && r.request().method() === 'GET') {
       const baum = url.pathname.includes(werkLindach().id) ? baeume.lindach() : baeume.ahrenberg();
       return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(baum) });
@@ -164,7 +191,7 @@ for (const breite of BREITEN) {
         'VerwaltungG-3',
         'Direkt am Standort',
       ]);
-      await expect(baum.getByTestId('datenlage').first()).toHaveText('6 Messstellen');
+      await expect(baum.getByTestId('datenlage').first()).toHaveText('5 von 6 Messstellen liefern Daten');
       await expect(lindach(page).locator('.vp-ob-name')).toHaveText([
         'Lagerhalle LindachG-4',
         'Lager LindachB-6',
@@ -191,6 +218,7 @@ for (const breite of BREITEN) {
       await ahrenberg(page).getByRole('button', { name: 'Gebäude anlegen' }).click();
       const dialog = page.getByRole('dialog', { name: 'Gebäude anlegen' });
       await expect(dialog.getByText('Am Standort Werk Ahrenberg (ST-1). Nur der Name ist Pflicht.')).toBeVisible();
+      await expect(dialog.getByLabel('Kurzzeichen')).toHaveValue('G-6');
       await dialog.getByLabel('Name *').fill('Halle 4');
       await waehle(page, 'Nutzung', ['Lager', 'Logistik']);
       await dialog.getByLabel('Bezugsfläche (m²)').fill('2400');
@@ -205,6 +233,7 @@ for (const breite of BREITEN) {
           body: {
             art: 'gebaeude',
             name: 'Halle 4',
+            kurzzeichen: 'G-6',
             gueltigAb: '2026-10-20',
             nutzung: ['lager', 'logistik'],
             notiz: null,

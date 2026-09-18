@@ -20,6 +20,7 @@ import {
   NUTZUNGEN,
   pruefen,
   sichtbareFehler,
+  standortFlaecheAnfrage,
   ZEITZONEN,
   type FeldFehler,
   type FeldName,
@@ -27,6 +28,7 @@ import {
   type StandortFormular,
 } from '../standorte';
 import { VpPicker } from './VpPicker';
+import { VpDatePicker } from './VpDatePicker';
 import './StandortDialog.css';
 
 /**
@@ -39,9 +41,8 @@ import './StandortDialog.css';
  * erste fehlerhafte Eintrag bekommt den Fokus. Lehnt der Server trotzdem ab,
  * landet sein Satz am Feld aus `feld` — sonst über dem Fuß.
  *
- * ⚠ Die Bezugsfläche steht hier nur LESEND: für die Fläche eines Standorts gibt
- * es noch keine Schreibroute (Befund IP-6). Ein Feld mit „gültig ab“, das nichts
- * speichern kann, wird nicht angeboten.
+ * Die Bezugsfläche wird als eigene zeitgültige Fassung gespeichert; Stammdaten und
+ * Flächenhistorie bleiben dadurch getrennte Wahrheiten.
  */
 /** „ST-2“ bricht nie am Bindestrich um (375 px: „ST-“ / „2“ stand auf zwei Zeilen). */
 function mitGanzemKurzzeichen(satz: string, kurzzeichen: string | null) {
@@ -84,7 +85,7 @@ export function StandortDialog({
   const feldId = (f: FeldName) => `${basis}-${f}`;
 
   const [form, setForm] = useState<StandortFormular>(() =>
-    standort ? formularAus(standort) : leeresFormular(unternehmen),
+    standort ? formularAus(standort, heute) : leeresFormular(unternehmen, heute),
   );
   const [versucht, setVersucht] = useState(false);
   const [serverFehler, setServerFehler] = useState<FeldFehler>({});
@@ -141,10 +142,12 @@ export function StandortDialog({
     setBusy(true);
     try {
       const body = anfrage(form, fassung, standort);
-      const s =
+      let s =
         fassung === 'anlegen'
           ? await api.standortAnlegen(body)
           : await api.standortBearbeiten(standort!.id, body);
+      const flaeche = standortFlaecheAnfrage(form, standort);
+      if (flaeche) s = await api.standortFlaeche(s.id, flaeche);
       onGespeichert(s);
     } catch (err) {
       const ort = err instanceof ApiError ? alsOrtFehler(err.body) : null;
@@ -174,7 +177,7 @@ export function StandortDialog({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Recht aktion="standort.verwalten"><Button type="submit" form={`${basis}-form`} disabled={busy}>
+          <Recht aktion="standort.verwalten" rueckwirkend={!!form.flaeche.trim() && form.gueltigAb < heute}><Button type="submit" form={`${basis}-form`} disabled={busy}>
             {DIALOG_SENDEN[fassung]}
           </Button></Recht>
         </>
@@ -289,6 +292,28 @@ export function StandortDialog({
             <span className="vp-sd-flaeche-wert">{flaeche}</span>
           </div>
         )}
+
+        <div className="vp-sd-reihe">
+          <div className="vp-sd-flaeche-eingabe">
+            <Input
+              id={feldId('flaeche')}
+              label="Bezugsfläche (m²)"
+              inputMode="numeric"
+              value={form.flaeche}
+              onChange={(e) => setze('flaeche', e.target.value)}
+              error={amFeld.flaeche}
+            />
+          </div>
+          <div className="vp-sd-flaeche-ab">
+            <VpDatePicker
+              id={feldId('gueltigAb')}
+              label="Gültig ab"
+              value={form.gueltigAb}
+              onChange={(v) => setze('gueltigAb', v)}
+              error={amFeld.gueltigAb}
+            />
+          </div>
+        </div>
 
         {allgemein && (
           <div className="vp-alert vp-alert-err" role="alert">

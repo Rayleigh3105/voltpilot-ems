@@ -134,6 +134,17 @@ export function OrtDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, startFeld]);
 
+  useEffect(() => {
+    if (!open || knoten) return;
+    let aktiv = true;
+    api.ortKurzzeichenVorschlag(standort.id, art).then((v) => {
+      if (aktiv) setForm((f) => (f.kurzzeichen ? f : { ...f, kurzzeichen: v.kurzzeichen }));
+    }).catch(() => undefined);
+    return () => {
+      aktiv = false;
+    };
+  }, [open, knoten, standort.id, art]);
+
   /** Eine Ablehnung am Feld — oder über dem Fuß, wenn der Dialog das Feld nicht zeigt. */
   function ablehnung(err: unknown, sichtbar: OrtFeld[]) {
     const ort = err instanceof ApiError ? alsOrtFehler(err.body) : null;
@@ -153,7 +164,7 @@ export function OrtDialog({
 
   const sichtbareFelder: OrtFeld[] = [
     'name',
-    ...(fassung === 'bearbeiten' ? (['kurzzeichen'] as const) : []),
+    'kurzzeichen',
     ...(art === 'bereich' && fassung === 'anlegen' ? (['elternId'] as const) : []),
     'nutzung',
     ...(flaecheEingabe ? (['flaeche', 'gueltigAb'] as const) : []),
@@ -228,16 +239,14 @@ export function OrtDialog({
           </button>
         )}
 
-        {fassung === 'bearbeiten' && (
-          <Input
-            id={feldId('kurzzeichen')}
-            label="Kurzzeichen *"
-            value={form.kurzzeichen}
-            autoComplete="off"
-            onChange={(e) => setze('kurzzeichen', e.target.value)}
-            error={fehler.kurzzeichen}
-          />
-        )}
+        <Input
+          id={feldId('kurzzeichen')}
+          label={fassung === 'bearbeiten' ? 'Kurzzeichen *' : 'Kurzzeichen'}
+          value={form.kurzzeichen}
+          autoComplete="off"
+          onChange={(e) => setze('kurzzeichen', e.target.value)}
+          error={fehler.kurzzeichen}
+        />
 
         {art === 'bereich' && fassung === 'anlegen' && (
           <VpPicker

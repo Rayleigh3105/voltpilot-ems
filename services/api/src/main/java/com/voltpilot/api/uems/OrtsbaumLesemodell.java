@@ -64,6 +64,7 @@ public final class OrtsbaumLesemodell {
             Integer flaecheM2,
             String flaecheQuelle,
             Integer messstellenZahl,
+            Datenlage datenlage,
             Danach danach,
             OrtAktionen.Aktionen aktionen) {}
 
@@ -94,12 +95,16 @@ public final class OrtsbaumLesemodell {
             Integer flaecheM2,
             String flaecheQuelle,
             Integer messstellenZahl,
+            Datenlage datenlage,
             List<Bereich> bereiche,
             Danach danach,
             OrtAktionen.Aktionen aktionen) {}
 
     /** Was am Stichtag ohne Gebäude am Standort hängt (AP-00 E3: Gebäude sind optional). */
-    public record DirektAmStandort(List<Bereich> bereiche, Integer messstellenZahl) {}
+    public record DirektAmStandort(List<Bereich> bereiche, Integer messstellenZahl, Datenlage datenlage) {}
+
+    /** Dieselbe Zählung und derselbe Satz wie im Messstellen-Register. */
+    public record Datenlage(int erfuellt, int gesamt, String text) {}
 
     /**
      * {@code standort} ist dieselbe Zeile wie {@code GET /api/v1/standorte/{id}}.
@@ -159,6 +164,12 @@ public final class OrtsbaumLesemodell {
      */
     public static Optional<OrtsbaumAmStichtag> ortsbaum(Zeilen z, UUID standortId, LocalDate stichtag,
             List<OrtsbaumAbleitung.Messstelle> messstellen, OrtAktionen aktionen) {
+        return ortsbaum(z, standortId, stichtag, messstellen, aktionen, null);
+    }
+
+    static Optional<OrtsbaumAmStichtag> ortsbaum(Zeilen z, UUID standortId, LocalDate stichtag,
+            List<OrtsbaumAbleitung.Messstelle> messstellen, OrtAktionen aktionen,
+            Map<String, List<ZustandAbleitung.LiefertDaten>> datenlagen) {
         Map<String, Integer> zahl = messstellenJeOrt(messstellen, stichtag);
         Optional<StandortAmStichtag> standort = StandortLesemodell.standort(z, standortId, stichtag);
         if (standort.isEmpty()) {
@@ -182,13 +193,15 @@ public final class OrtsbaumLesemodell {
             }
             if ("gebaeude".equals(o.art())) {
                 OrtZuordnungRepository.Zuordnung iv = intervallAm(z, o.id(), stichtag);
+                List<Bereich> kinder = bereicheUnter(z, amTag, o.id().toString(), stichtag, zahl, datenlagen,
+                        aktionen);
                 gebaeude.add(new Gebaeude(o.id(), o.kurzzeichen(), o.name(), o.nutzung(), o.baujahr(),
                         o.notiz(), o.zustand(), iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(),
-                        quelle(a), zahl(zahl, o.kurzzeichen()),
-                        bereicheUnter(z, amTag, o.id().toString(), stichtag, zahl, aktionen),
+                        quelle(a), zahl(zahl, o.kurzzeichen()), datenlage(datenlagen,
+                                kinder.stream().map(Bereich::kurzzeichen).toList(), o.kurzzeichen()), kinder,
                         danach(z, iv), aktionen == null ? null : aktionen.imBaum(o)));
             } else if (st.equals(a.eltern())) {
-                direkt.add(bereich(z, o, a, stichtag, zahl, aktionen));
+                direkt.add(bereich(z, o, a, stichtag, zahl, datenlagen, aktionen));
             }
         }
         OrtAmStichtag s = amTag.get(st);
@@ -196,7 +209,9 @@ public final class OrtsbaumLesemodell {
                 : s.gebaeudeOhneFlaeche().stream().map(UUID::fromString).toList();
         return Optional.of(new OrtsbaumAmStichtag(stichtag, standort.get(), s.summeGebaeudeM2(), ohne,
                 List.copyOf(gebaeude),
-                new DirektAmStandort(List.copyOf(direkt), zahl(zahl, standort.get().kurzzeichen())),
+                new DirektAmStandort(List.copyOf(direkt), zahl(zahl, standort.get().kurzzeichen()),
+                        datenlage(datenlagen, direkt.stream().map(Bereich::kurzzeichen).toList(),
+                                standort.get().kurzzeichen())),
                 archiviert(z, stand, amTag, standortId, ZoneId.of(standort.get().zeitzone()), stichtag, aktionen),
                 aktionen == null ? null : aktionen.standort(standort.get().kurzzeichen())));
     }
@@ -292,23 +307,39 @@ public final class OrtsbaumLesemodell {
     }
 
     private static List<Bereich> bereicheUnter(Zeilen z, Map<String, OrtAmStichtag> amTag, String gebaeude,
-            LocalDate stichtag, Map<String, Integer> zahl, OrtAktionen aktionen) {
+            LocalDate stichtag, Map<String, Integer> zahl,
+            Map<String, List<ZustandAbleitung.LiefertDaten>> datenlagen, OrtAktionen aktionen) {
         List<Bereich> out = new ArrayList<>();
         for (OrtRepository.Ort o : z.orte()) {
             OrtAmStichtag a = amTag.get(o.id().toString());
             if (a != null && "bereich".equals(o.art()) && gebaeude.equals(a.eltern())) {
-                out.add(bereich(z, o, a, stichtag, zahl, aktionen));
+                out.add(bereich(z, o, a, stichtag, zahl, datenlagen, aktionen));
             }
         }
         return List.copyOf(out);
     }
 
     private static Bereich bereich(Zeilen z, OrtRepository.Ort o, OrtAmStichtag a, LocalDate stichtag,
-            Map<String, Integer> zahl, OrtAktionen aktionen) {
+            Map<String, Integer> zahl, Map<String, List<ZustandAbleitung.LiefertDaten>> datenlagen,
+            OrtAktionen aktionen) {
         OrtZuordnungRepository.Zuordnung iv = intervallAm(z, o.id(), stichtag);
         return new Bereich(o.id(), o.kurzzeichen(), o.name(), o.nutzung(), o.notiz(), o.zustand(),
                 iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(), quelle(a), zahl(zahl, o.kurzzeichen()),
-                danach(z, iv), aktionen == null ? null : aktionen.imBaum(o));
+                datenlage(datenlagen, List.of(), o.kurzzeichen()), danach(z, iv),
+                aktionen == null ? null : aktionen.imBaum(o));
+    }
+
+    private static Datenlage datenlage(Map<String, List<ZustandAbleitung.LiefertDaten>> datenlagen,
+            List<String> kinder, String selbst) {
+        if (datenlagen == null) {
+            return null;
+        }
+        List<ZustandAbleitung.LiefertDaten> zeilen = new ArrayList<>(
+                datenlagen.getOrDefault(selbst, List.of()));
+        kinder.forEach(k -> zeilen.addAll(datenlagen.getOrDefault(k, List.of())));
+        ZustandAbleitung.AggregatErgebnis a = ZustandAbleitung.aggregatLiefertDaten(
+                zeilen, ZustandAbleitung.Einheit.MESSSTELLE);
+        return new Datenlage(a.erfuellt(), a.gesamt(), a.text());
     }
 
     /**

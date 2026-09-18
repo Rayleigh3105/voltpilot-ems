@@ -2,8 +2,8 @@
 
 Die erste Portal-Fläche der Ortsstruktur: der Kunde sieht seine Standorte mit Kurzzeichen, Adresse,
 Gebäuden, Anlagen und Fläche (Mockup T1), legt einen an und bearbeitet oder vervollständigt ihn im
-selben Dialog (T2). Kein Backend, keine Migration: gelesen und geschrieben über die Routen aus
-IP-3/IP-4 (`uems-standort-lesemodell-unternehmen-st.md`, `uems-standort-schreibrouten-kurzzeichen-archiv.md`).
+selben Dialog (T2). Die Stammdaten laufen über IP-3/IP-4; die Bezugsfläche schreibt eine eigene,
+zeitgültige Fassung über `PUT /api/v1/standorte/{id}/flaeche` (keine Migration).
 
 | Teil | Datei |
 |---|---|
@@ -12,15 +12,16 @@ IP-3/IP-4 (`uems-standort-lesemodell-unternehmen-st.md`, `uems-standort-schreibr
 | Standort-Kopf (Name, Kurzzeichen, Zeile, „Bearbeiten“ / „Adresse nachtragen“) | `src/components/StandortKopf.tsx` (+ `.css`) |
 | Liste mit „Archiviert“ und „Noch nicht zugeordnet“ | `src/pages/StandortePage.tsx` (+ `.css`, `.test.tsx`) |
 | Wirt heute | Reiter „Standorte“ der Übersicht, `#/portfolio/standorte` (`PORTFOLIO_WELT_PAGES` in `nav.ts`, `PortfolioTabs`) |
-| Daten | `api.standorte`, `api.unternehmen`, `api.standortKurzzeichenVorschlag`, `api.standortAnlegen`, `api.standortBearbeiten` |
+| Daten | `api.standorte`, `api.unternehmen`, `api.standortKurzzeichenVorschlag`, `api.standortAnlegen`, `api.standortBearbeiten`, `api.standortFlaeche` |
 | 375/1440 px + Bilder | `e2e/standorte.spec.ts` (+ Bühne `standorte.html/.tsx`, Antworten `src/test/standorteFixtures.ts`); `STANDORTE_BILDER=<Ordner>` legt Bilder und `messung-*.json` ab |
 
 ## Die Fallen
 
-1. **Die Bezugsfläche eines STANDORTS hat keine Schreibroute.** `PUT /api/v1/orte/{id}/flaeche`
-   nimmt nur Gebäude und Bereiche, `StandortDto.Stammdaten` kennt keine Fläche. Der Dialog zeigt sie
-   darum nur lesend („8 450 m²“, „2 600 m² · aus Gebäuden summiert“); die Eingabe mit „gültig ab“
-   über `VpDatePicker` kommt mit der Route — nie ein Feld, das nichts speichern kann.
+1. **Die Bezugsfläche ist ein eigener Schreibweg.** `StandortDto.Stammdaten` bleibt ohne Fläche;
+   der Dialog schreibt nach den Stammdaten eine neue Fassung mit „gültig ab“ über
+   `api.standortFlaeche`. Eine aus Gebäuden summierte Fläche bleibt ein Hinweis und wird nicht
+   als eigene Standort-Fläche vorbelegt. Eine bestehende eigene Fläche bleibt lesend stehen;
+   das Feld erfasst die nächste Fassung.
 2. **PUT ist die ganze Menge.** Die Lage auf der Karte zeigt der Dialog nicht; `anfrage()` trägt
    sie beim Bearbeiten unverändert mit, sonst wäre sie danach leer. POST sendet kein Kurzzeichen
    (der Server vergibt ST-n, der Vorspann nennt es aus `kurzzeichen-vorschlag`).

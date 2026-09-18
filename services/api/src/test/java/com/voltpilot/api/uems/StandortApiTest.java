@@ -243,6 +243,32 @@ class StandortApiTest {
         assertThat(eintraege.get(1).get("gilt_ab").toString()).isEqualTo("2026-10-15");
     }
 
+    @Test
+    void dieStandortFlaecheBekommtZeitgueltigeFassungenStattUeberschriebenZuWerden() {
+        UUID t = neuerKundenbereich();
+        Anrufer wer = admin(t);
+        uhr("2026-10-01T09:12:00+02:00");
+        String id = anlegen(wer, ausReferenz("ST-1")).get("id").asText();
+
+        JsonNode erste = rufe(HttpMethod.PUT, "/standorte/" + id + "/flaeche", wer,
+                Map.of("m2", 8450, "gueltigAb", "2026-10-01")).getBody();
+        assertThat(erste.get("flaecheM2").asInt()).isEqualTo(8450);
+        assertThat(erste.get("flaecheQuelle").asText()).isEqualTo("eigen");
+
+        uhr("2027-01-15T14:40:00+01:00");
+        JsonNode zweite = rufe(HttpMethod.PUT, "/standorte/" + id + "/flaeche", wer,
+                Map.of("m2", 9000, "gueltigAb", "2027-01-01")).getBody();
+        assertThat(zweite.get("flaecheM2").asInt()).isEqualTo(9000);
+        assertThat(bestandFlaeche(wer, id, "2026-12-31")).isEqualTo(8450);
+        assertThat(bestandFlaeche(wer, id, "2027-01-01")).isEqualTo(9000);
+
+        List<Map<String, Object>> fassungen = root.queryForList("SELECT m2, gueltig_ab, gueltig_bis, "
+                + "aufgehoben_am FROM flaeche_gueltigkeit WHERE standort_id = ?::uuid ORDER BY gueltig_ab", id);
+        assertThat(fassungen).hasSize(2);
+        assertThat(fassungen.get(0).get("gueltig_bis").toString()).isEqualTo("2026-12-31");
+        assertThat(fassungen.get(0).get("aufgehoben_am")).isNull();
+    }
+
     // ---- Kurzzeichen: eigenes, belegt (auch archiviert, früher, Gebäude) ----------
 
     @Test
@@ -906,6 +932,11 @@ class StandortApiTest {
     private String bestand(Anrufer wer, String standort, String stichtag) {
         return rufe(HttpMethod.GET, "/standorte/" + standort + "?stichtag=" + stichtag, wer, null).getBody()
                 .get("bestand").asText();
+    }
+
+    private int bestandFlaeche(Anrufer wer, String standort, String stichtag) {
+        return rufe(HttpMethod.GET, "/standorte/" + standort + "?stichtag=" + stichtag, wer, null).getBody()
+                .get("flaecheM2").asInt();
     }
 
     private UUID neuerKundenbereich() {

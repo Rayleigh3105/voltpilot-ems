@@ -840,6 +840,34 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/{standortId}/flaeche:
+    put:
+      tags: [ortsstruktur]
+      summary: Eine neue zeitgültige Bezugsflächen-Fassung des Standorts eintragen.
+      description: >
+        Beendet die laufende Fassung am Vortag und legt ab `gueltigAb` eine neue
+        an; eine Korrektur am selben Beginn hebt die alte Zeile auf, statt sie zu
+        überschreiben. Fehlendes `gueltigAb` bedeutet heute in der Zeitzone des
+        Standorts. Rechte: `standort.verwalten`, rückwirkend zusätzlich
+        `aenderung.rueckwirkend`.
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrtFlaeche" }
+      responses:
+        "200":
+          description: Der Standort heute mit der dann geltenden Fläche.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortAmStichtag" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "422": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/standorte/{standortId}/ausfall:
     get:
       tags: [ortsstruktur, messstellen]
@@ -934,7 +962,10 @@ paths:
         Knoten die Messstellen, deren Ort am Stichtag GENAU dieser Knoten ist (am
         Gebäude nicht die seiner Bereiche; `direktAmStandort` die am Standort
         selbst), 0 wenn keine. Gebäude und Bereiche
-        tragen keine Zeitzone - sie erben die des Standorts (A16). Ein fremder
+        tragen daneben `datenlage` in derselben Form und Rechnung wie das
+        Messstellen-Register (E13: gezählt werden seine Zeilen); am Gebäude
+        einschließlich Bereiche. Gebäude und Bereiche tragen keine Zeitzone -
+        sie erben die des Standorts (A16). Ein fremder
         Standort ist 404, nie 403 (A14). Rechte (rechte-matrix.json): heute
         lesend ohne eigene Kennung; ein Stichtag in der Vergangenheit ("Stand
         am") ist `aenderungsprotokoll.lesen`. Additiv vorgesehen: `teilansicht`
@@ -993,6 +1024,26 @@ paths:
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
         "422": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/{standortId}/orte/kurzzeichen-vorschlag:
+    get:
+      tags: [ortsstruktur]
+      summary: Das nächste freie G-/B-Kurzzeichen für den Anlege-Dialog.
+      description: >
+        Liest dieselbe mandantenweite, nie wiederverwendete Kurzzeichen-Folge wie
+        der Schreibweg, ohne ihren Zähler zu bewegen. Reine Leseroute; kein
+        `@Recht`, Sichtbarkeit über RLS/404.
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: art, in: query, required: true, schema: { type: string, enum: [gebaeude, bereich] } }
+      responses:
+        "200":
+          description: Der Vorschlag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortKurzzeichenVorschlag" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/standorte/{standortId}/messstellen-vorschlag:
     parameters:
       - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -19805,6 +19856,10 @@ components:
           type: integer
           nullable: true
           description: "Die Messstellen, deren Ort am Stichtag dieses Gebäude selbst ist (nicht seine Bereiche); 0 wenn keine, null nur ohne Messstellen-Quelle."
+        datenlage:
+          nullable: true
+          description: Dieselbe Register-Zählung für das Gebäude einschließlich seiner Bereiche.
+          allOf: [{ $ref: "#/components/schemas/OrtsbaumDatenlage" }]
         bereiche:
           type: array
           items: { $ref: "#/components/schemas/OrtsbaumBereich" }
@@ -19831,6 +19886,9 @@ components:
         flaecheM2: { type: integer, nullable: true }
         flaecheQuelle: { type: string, nullable: true, enum: [eigen] }
         messstellenZahl: { type: integer, nullable: true, description: "Die Messstellen, deren Ort am Stichtag genau dieser Knoten ist; 0 wenn keine." }
+        datenlage:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/OrtsbaumDatenlage" }]
         danach:
           nullable: true
           description: IP-12 (V4) - wohin der Knoten nach `gueltigBis` zieht; null ohne Ende.
@@ -19846,6 +19904,17 @@ components:
           type: array
           items: { $ref: "#/components/schemas/OrtsbaumBereich" }
         messstellenZahl: { type: integer, nullable: true, description: "Die Messstellen, deren Ort am Stichtag genau dieser Knoten ist; 0 wenn keine." }
+        datenlage:
+          nullable: true
+          description: Dieselbe Register-Zählung für die direkt am Standort hängenden Messstellen und Bereiche.
+          allOf: [{ $ref: "#/components/schemas/OrtsbaumDatenlage" }]
+    OrtsbaumDatenlage:
+      type: object
+      required: [erfuellt, gesamt, text]
+      properties:
+        erfuellt: { type: integer, minimum: 0 }
+        gesamt: { type: integer, minimum: 0 }
+        text: { type: string, example: "4 von 5 Messstellen liefern Daten" }
     OrtAnlegen:
       type: object
       additionalProperties: false

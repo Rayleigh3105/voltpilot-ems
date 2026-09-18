@@ -1,8 +1,8 @@
 # UEMS-Fläche: der Ortsbaum „Standort › Gebäude“ mit Gebäude- und Bereich-Dialog (AP-02 IP-7)
 
 Die zweite Portal-Fläche der Ortsstruktur: je Standort die Gebäude mit ihren Bereichen und der
-Zweig „Direkt am Standort“, jede Zeile mit Nutzung, Fläche, Baujahr und der Messstellen-Zahl an der
-Stelle der Datenlage (Mockup T3); „Gebäude anlegen“ (T4), „Bereich anlegen“ (T5), Bearbeiten über
+Zweig „Direkt am Standort“, jede Zeile mit Nutzung, Fläche, Baujahr und der Datenlage aus dem
+Messstellen-Register (Mockup T3); „Gebäude anlegen“ (T4), „Bereich anlegen“ (T5), Bearbeiten über
 den Stift; ohne Gebäude und Bereiche der Leerzustand L1. Kein Backend, keine Migration: gelesen und
 geschrieben über die Routen aus IP-5 (`uems-orte-schreibweg-gebaeude-bereich-fl.md`).
 
@@ -12,7 +12,7 @@ geschrieben über die Routen aus IP-5 (`uems-orte-schreibweg-gebaeude-bereich-fl
 | Baum mit Leerzustand, lädt seinen Standort selbst | `src/components/Ortsbaum.tsx` (+ `.css`, `.test.tsx`) |
 | Dialog Gebäude/Bereich (anlegen · bearbeiten) in der Schale des Standort-Dialogs (`vp-sd`) | `src/components/OrtDialog.tsx` (+ `.css`, `.test.tsx`) |
 | Wirt heute | jede Karte der Liste „Standorte“ unter dem Standort-Kopf (`StandortePage`, `#/portfolio/standorte`) |
-| Daten | `api.standortOrte`, `api.ortAnlegen`, `api.ortBearbeiten`, `api.ortFlaeche` |
+| Daten | `api.standortOrte`, `api.ortKurzzeichenVorschlag`, `api.ortAnlegen`, `api.ortBearbeiten`, `api.ortFlaeche` |
 | 375/1440 px + Bilder | `e2e/ortsbaum.spec.ts` (Bühne `standorte.html`, Antworten `src/test/ortsbaumFixtures.ts`); `ORTSBAUM_BILDER=<Ordner>` legt Bilder und `messung-*.json` ab |
 
 ## Die Fallen
@@ -24,14 +24,16 @@ geschrieben über die Routen aus IP-5 (`uems-orte-schreibweg-gebaeude-bereich-fl
    Der Vertragsbaum kennt nur den Stichtag der Antwort — ein früheres „gültig ab“ urteilt der Server,
    sein Satz landet am Feld „Gültig ab“ (`ortFeldAusServer`: die Tages-Gründe meinen das Datum, auch
    wenn der Server `elternId` nennt).
-2. **Die Messstellen-Zahl zählt am Gebäude die seiner Bereiche MIT** (T3: Halle 2 = 2 + 1 + 1 + 1),
-   das Lesemodell liefert je Knoten GENAU dort. Ist eine Zahl `null`, fehlt die Angabe — nie 0.
-3. **Die Datenlage je Knoten kennt `GET …/orte` nicht** (Befund IP-7). An ihrer Stelle steht die
-   Messstellen-Zahl: am Telefon als Zeile, ab 520 px Baumbreite (Container-Abfrage) als Spalte rechts,
-   wo T3 „liefert“ zeigt. Gemessen (Werk Ahrenberg): 1440 px Baum 731 → 566 px, 375 px bleibt 833 px.
+2. **Die Datenlage zählt Register-ZEILEN, nicht Quellen.** Das Gebäude umfasst seine Bereiche;
+   Bereiche und „Direkt am Standort“ umfassen jeweils ihre eigenen Knoten. Der Satz
+   „n von m Messstellen liefern Daten“ kommt aus derselben Aggregat-Rechnung wie Standort und
+   Unternehmen. Die Messstellen-Zahl ist nur Fallback für Antworten eines älteren Servers.
+3. **Die Datenlage bleibt am Telefon eine Zeile**, ab 520 px Baumbreite (Container-Abfrage) eine
+   Spalte rechts. Gemessen (Werk Ahrenberg): 1440 px Baum 731 → 566 px, 375 px bleibt 833 px.
    Zeilen ohne Stift („Direkt am Standort“) halten den 40-px-Platz, sonst stünde die Spalte schief.
-4. **Kein Kurzzeichen-Vorschlag für Gebäude/Bereich** (nur `…/standorte/kurzzeichen-vorschlag`):
-   der Vorspann aus T4 steht OHNE „Kurzzeichen G-2 wird vergeben“ — geraten wird es nicht.
+4. **Kurzzeichen werden vorgeschlagen, nicht festgelegt.** `GET …/orte/kurzzeichen-vorschlag?art=`
+   liefert die nächste freie G-n/B-n-Nummer, ohne den Zähler zu bewegen; das Dialogfeld ist damit
+   vorbelegt und bleibt überschreibbar.
 5. **Fläche**: beim Anlegen die erste Fläche ab „Gültig ab“ (= erster Tag des Knotens, POST
    `flaecheM2` + `gueltigAb`); beim Bearbeiten nur, solange es keine gibt („für kWh/m² fehlt die
    Fläche — Fläche eintragen“ öffnet den Dialog an der Fläche) — erst PUT der Stammdaten, dann PUT
@@ -44,7 +46,7 @@ geschrieben über die Routen aus IP-5 (`uems-orte-schreibweg-gebaeude-bereich-fl
 8. **E2E-Routen**: `**/api/v1/standorte**` trifft auch `…/{id}/orte` — `standorte.spec.ts` reicht
    diese Pfade weiter (`fallback`), sonst bekäme der Baum die Standort-Liste.
 9. **Nicht hier:** Verschieben (IP-12, `uems-ort-verschieben.md`), Archivieren/Löschen von Orten (IP-15, `uems-ort-archivieren.md`),
-   Fläche ändern mit Verlauf (IP-8), die Datenlage je Knoten, eine eigene Seite „Standort › Gebäude“
+   Fläche ändern mit Verlauf (IP-8), eine eigene Seite „Standort › Gebäude“
    (kommt mit der Ebenen-Navigation aus AP-01 IP-5/IP-7 — `Ortsbaum` zieht unverändert um).
    „Stand am …“ (IP-13): der Baum nimmt `stichtag` und bietet dann nichts an (`uems-stand-am-portal.md`).
 

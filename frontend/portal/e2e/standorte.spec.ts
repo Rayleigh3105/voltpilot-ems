@@ -215,13 +215,15 @@ for (const breite of BREITEN) {
       await messeUndFotografiere(page, breite, 'name-belegt');
     });
 
-    test('Dialog bearbeiten: Werk Ahrenberg, Fläche lesend, Rückkehr zum Auslöser', async ({ page }) => {
+    test('Dialog bearbeiten: Werk Ahrenberg, neue Flächenfassung mit „gültig ab“, Rückkehr zum Auslöser', async ({ page }) => {
       const gesendet = await oeffne(page, breite, FAELLE.heute);
       const knopf = page.getByRole('button', { name: 'Werk Ahrenberg bearbeiten' });
       await knopf.click();
       const dialog = page.getByRole('dialog', { name: 'Standort bearbeiten' });
       await expect(dialog.getByLabel('Kurzzeichen *')).toHaveValue('ST-1');
       await expect(dialog.locator('.vp-sd-flaeche')).toContainText('8 450 m²');
+      await expect(dialog.getByLabel('Bezugsfläche (m²)')).toBeVisible();
+      await expect(dialog.getByLabel('Gültig ab')).toBeVisible();
       await messeUndFotografiere(page, breite, 'bearbeiten');
       await dialog.getByRole('button', { name: 'Speichern' }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);

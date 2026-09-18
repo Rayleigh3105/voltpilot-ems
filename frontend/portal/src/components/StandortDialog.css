@@ -61,6 +61,16 @@
   min-width: 0;
 }
 
+.vp-sd-flaeche-eingabe {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.vp-sd-flaeche-ab {
+  flex: 1 1 11rem;
+  min-width: 0;
+}
+
 .vp-sd-flaeche {
   display: flex;
   flex-wrap: wrap;

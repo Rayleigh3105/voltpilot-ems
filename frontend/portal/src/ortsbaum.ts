@@ -25,6 +25,7 @@ import {
 import {
   eintrag,
   FLAECHE_SATZ,
+  flaecheZahl,
   m2Text,
   nameBelegt,
   nameBelegtSatz,
@@ -32,6 +33,7 @@ import {
   type Ort,
   type Ortsbaum,
 } from './uemsOrtsbaum';
+export { flaecheZahl } from './uemsOrtsbaum';
 
 /**
  * Der Ortsbaum „Standort › Gebäude“ und die Dialoge für Gebäude und Bereich
@@ -44,8 +46,8 @@ import {
  * „woran darf was hängen“ werden AUFGERUFEN (`nameBelegt`, `eintrag` aus
  * `uemsOrtsbaum.ts`), nie nachgebaut.
  *
- * ⚠ Die Datenlage je Knoten („liefert“) kennt die Antwort nicht. Die Zeile trägt
- * an ihrer Stelle die Messstellen-Zahl — der Platz, an dem sie später steht.
+ * Die Datenlage je Knoten kommt als fertiger Satz aus dem Register-Aggregat des
+ * Servers. Nur für Antworten älterer Server bleibt die Messstellen-Zahl als Fallback.
  * ⚠ Eine vorhandene Fläche ändern (Verlauf, „rückwirkend“) ist IP-8 (T7); hier
  * nur die ERSTE Fläche: beim Anlegen oder als „Fläche eintragen“.
  */
@@ -90,10 +92,7 @@ export interface Knoten {
   kurzzeichen: string | null;
   /** „Produktion · Montage · 3 100 m² · 2019“ — Fehlendes bleibt weg, eine unbekannte Fläche ist keine 0. */
   zeile: string;
-  /**
-   * Platzhalter der Datenlage: heute die Zahl der Messstellen im Knoten und
-   * seinen Bereichen („5 Messstellen“); `null`, wenn eine Zahl unbekannt ist.
-   */
+  /** „n von m Messstellen liefern Daten“; bei einer älteren Antwort ersatzweise die Messstellen-Zahl. */
   datenlage: string | null;
   /** Nur Gebäude: am Stichtag ohne Fläche (§5.9 „für kWh/m² fehlt die Fläche“). */
   flaecheFehlt: boolean;
@@ -146,7 +145,7 @@ function bereichKnoten(b: OrtsbaumBereich, eltern: Knoten['eltern']): Knoten {
     name: b.name,
     kurzzeichen: b.kurzzeichen,
     zeile: zeileAus(b.nutzung, b.flaecheM2, null),
-    datenlage: b.messstellenZahl == null ? null : messstellenText(b.messstellenZahl),
+    datenlage: b.datenlage?.text ?? (b.messstellenZahl == null ? null : messstellenText(b.messstellenZahl)),
     flaecheFehlt: false,
     archiviert: b.zustand === 'archiviert',
     archiviertAm: null,
@@ -182,7 +181,7 @@ function archivierterKnoten(s: OrtsbaumArchivierterOrt, eltern: Knoten['eltern']
  * Aus der flachen Antwort wird der Baum (T3): Gebäude nach Kurzzeichen, darunter
  * ihre Bereiche, am Ende der Zweig „Direkt am Standort“ — ein gültiger Ort, kein
  * „nicht zugeordnet“ (AP-00 E3). Den Zweig gibt es nur, wenn dort etwas hängt.
- * Die Messstellen eines Gebäudes zählen die seiner Bereiche mit.
+ * Die Datenlage eines Gebäudes umfasst seine Bereiche; ihre Rechnung kommt vom Server.
  */
 export function ortsbaumSicht(antwort: OrtsbaumAmStichtag): OrtsbaumSicht {
   const standortName = antwort.standort.name;
@@ -199,7 +198,7 @@ export function ortsbaumSicht(antwort: OrtsbaumAmStichtag): OrtsbaumSicht {
       name: g.name,
       kurzzeichen: g.kurzzeichen,
       zeile: zeileAus(g.nutzung, g.flaecheM2, g.baujahr),
-      datenlage: zahl == null ? null : messstellenText(zahl),
+      datenlage: g.datenlage?.text ?? (zahl == null ? null : messstellenText(zahl)),
       flaecheFehlt: g.flaecheM2 == null && !archiviert,
       archiviert,
       archiviertAm: null,
@@ -234,7 +233,7 @@ export function ortsbaumSicht(antwort: OrtsbaumAmStichtag): OrtsbaumSicht {
       name: DIREKT_AM_STANDORT,
       kurzzeichen: null,
       zeile: '',
-      datenlage: zahl == null ? null : messstellenText(zahl),
+      datenlage: direkt.datenlage?.text ?? (zahl == null ? null : messstellenText(zahl)),
       flaecheFehlt: false,
       archiviert: false,
       archiviertAm: null,
@@ -386,10 +385,8 @@ export function ortDialogSenden(art: OrtDialogArt, fassung: OrtFassung): string 
 }
 
 /**
- * Die Zeile unter dem Titel. T4: „Am Standort Werk Ahrenberg (ST-1). Nur der Name
- * ist Pflicht.“ — ohne „Kurzzeichen G-2 wird vergeben“: für Gebäude und Bereiche
- * gibt es keinen Vorschlag des Servers, und geraten wird es nicht. T5: der Satz des
- * Bereichs.
+ * Die Zeile unter dem Titel. Der Kurzzeichen-Vorschlag steht im gleichnamigen,
+ * überschreibbaren Feld; der Vorspann erklärt nur den räumlichen Zusammenhang.
  */
 export function ortDialogVorspann(art: OrtDialogArt, standort: { name: string; kurzzeichen: string }): string {
   return art === 'gebaeude'
@@ -474,14 +471,6 @@ export function ortFormularAus(knoten: Knoten, antwort: OrtsbaumAmStichtag): Ort
 
 function zeichen(t: string): number {
   return [...t].length;
-}
-
-/** „3 100“ (auch mit geschütztem Leerzeichen) → 3100; alles andere, das keine ganze Zahl > 0 ist → `null`. */
-export function flaecheZahl(t: string): number | null {
-  const roh = t.replace(/[\s\u00a0\u202f]/g, '');
-  if (!/^[0-9]+$/.test(roh)) return null;
-  const n = Number(roh);
-  return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
 export interface OrtPruefung {
@@ -570,11 +559,12 @@ function leerIstNull(t: string): string | null {
   return x ? x : null;
 }
 
-/** POST …/orte. Ohne Kurzzeichen (der Server vergibt G-n/B-n); „direkt am Standort“ = ohne `elternId`. */
+/** POST …/orte. Der Vorschlag ist überschreibbar; leer bleibt die automatische Server-Vergabe. */
 export function ortAnlegenAnfrage(art: OrtDialogArt, f: OrtFormular, antwort: OrtsbaumAmStichtag): OrtAnlegen {
   const body: OrtAnlegen = {
     art,
     name: f.name.trim(),
+    kurzzeichen: f.kurzzeichen.trim() || null,
     gueltigAb: f.gueltigAb,
     nutzung: f.nutzung.length > 0 ? [...f.nutzung] : null,
     notiz: leerIstNull(f.notiz),

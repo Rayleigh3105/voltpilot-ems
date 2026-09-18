@@ -9,10 +9,12 @@ import com.voltpilot.api.uems.StandortVorschlagService;
 import com.voltpilot.api.uems.StandortAusfallService;
 import com.voltpilot.api.uems.VersorgungService;
 import com.voltpilot.api.uems.VersorgungService.Versorgung;
-import com.voltpilot.api.web.dto.StandortDto;
+import com.voltpilot.api.web.dto.OrtDto;
 import com.voltpilot.api.web.dto.StandortAusfallDto;
+import com.voltpilot.api.web.dto.StandortDto;
 import com.voltpilot.api.web.dto.StandortVorschlagDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import com.voltpilot.api.zugriff.TeilansichtDienst;
 import java.net.URI;
@@ -58,10 +60,11 @@ public class StandortController {
     private final StandortVorschlagService vorschlaege;
     private final VersorgungService versorgung;
     private final StandortAusfallService ausfaelle;
+    private final RechtPruefung rechte;
 
     public StandortController(StandortLesemodellService lesemodell, StandortService standorte,
             OrtAnfrage anfrage, TeilansichtDienst teilansicht, StandortVorschlagService vorschlaege,
-            VersorgungService versorgung, StandortAusfallService ausfaelle) {
+            VersorgungService versorgung, StandortAusfallService ausfaelle, RechtPruefung rechte) {
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.anfrage = anfrage;
@@ -69,6 +72,7 @@ public class StandortController {
         this.vorschlaege = vorschlaege;
         this.versorgung = versorgung;
         this.ausfaelle = ausfaelle;
+        this.rechte = rechte;
     }
 
     // Rechte (rechte-matrix.json): heute lesend — keine eigene Kennung; die Sicht
@@ -146,6 +150,16 @@ public class StandortController {
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return standorte.bearbeiten(standortId, anfrage.lies(body, StandortDto.Stammdaten.class, false),
                 OrtAnfrage.akteur(auth));
+    }
+
+    // Rechte: `standort.verwalten`; mit „gültig ab" vor heute zusätzlich `aenderung.rueckwirkend`.
+    @PutMapping("/{standortId}/flaeche")
+    @Recht(value = "standort.verwalten", ziel = RechtZiel.STANDORT)
+    public StandortAmStichtag flaeche(@PathVariable UUID standortId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        OrtDto.Flaeche f = anfrage.lies(body, OrtDto.Flaeche.class, false);
+        rechte.rueckwirkend(f.gueltigAb());
+        return standorte.flaecheSetzen(standortId, f, OrtAnfrage.akteur(auth));
     }
 
     // Rechte: `standort.verwalten`. Ohne Inhalt: es gibt nichts zu wählen — archiviert wird ab heute.
