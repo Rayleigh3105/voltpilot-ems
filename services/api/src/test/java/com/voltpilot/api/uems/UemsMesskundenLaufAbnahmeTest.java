@@ -223,7 +223,7 @@ class UemsMesskundenLaufAbnahmeTest {
     /** Jede Antwort, die der Messkunde auf seinem Weg gesehen hat — für die Wortprobe am Ende. */
     private final List<String> gesehen = new ArrayList<>();
 
-    /** Die Antwort von {@code POST /api/v1/sites} — sie wird getrennt geprüft, siehe BEFUND B1. */
+    /** Die Antwort von {@code POST /api/v1/sites} — sie geht in die Sprachprobe ein, siehe B1. */
     private String anlageAntwort;
 
     @BeforeEach
@@ -374,14 +374,21 @@ class UemsMesskundenLaufAbnahmeTest {
                 + "Messkunden — Standort, Box, Funktion, Datenquelle, Messstelle, Kennzahl, Bericht, Werte, CSV")
                 .isEmpty();
 
-        // BEFUND B1, als Tatsache festgehalten statt stillschweigend übergangen: die Antwort von
-        // POST /api/v1/sites trägt auch für eine Anlage „nur messen" die Wörter der steuernden Welt. Sie ist
-        // die EINZIGE Antwort des Kundenwegs, die das tut. Ändert sich das, wird diese Zusicherung rot und
-        // jemand muss die Zeile bewusst streichen — nicht aus Versehen.
-        assertThat(worteIn(List.of(anlageAntwort)))
-                .as("BEFUND B1: die Anlage-Antwort spricht zum reinen Messkunden von Geld und Steuern — "
-                        + "der Weg des Kunden führt daran vorbei, die Antwort selbst nicht: " + anlageAntwort)
-                .isNotEmpty();
+        // B1 aus PR 973 ist KEIN Befund (AP-14 IP-7b, am Code nachgesehen): was die Antwort von
+        // POST /api/v1/sites trägt, sind FELDNAMEN von {@code SiteDto} — allein
+        // {@code marktpraemieCtKwh}, mit dem Wert {@code null} —, keine Sprache; keine Fläche, die ein
+        // Messkunde öffnet, liest sie (alle Portal-Leser von {@code marktpraemieCtKwh} sitzen auf den
+        // Geld-Flächen, die {@code anlageGeld.ts} für diese Anlage abschaltet, und das Wort
+        // „Marktprämie" als Satz steht nur in {@code CreateSiteDrawer.tsx}, der Betreiber-Seite
+        // {@code pages/admin/MandantenPage.tsx}). An die Stelle der Zusicherung tritt die schärfere
+        // Probe: was der Messkunde wirklich LIEST — die Sprachfelder aller Antworten, die Anlage-Antwort
+        // eingeschlossen — schweigt über Steuern und Geld.
+        List<String> mitAnlage = new ArrayList<>(gesehen);
+        mitAnlage.add(anlageAntwort);
+        assertThat(worteIn(spracheIn(mitAnlage)))
+                .as("kein Wort von Steuern, Geld oder Fahrplan in dem, was der Messkunde LIEST — "
+                        + "Sprachfelder (message, text, satz, label) aller Antworten samt POST /api/v1/sites")
+                .isEmpty();
 
         // ---- Zusicherung 5: die UEMS-Metriken zeigen nach dem Lauf, was sie sollen (AP-14 IP-9) ---------------
         metriken.tick();
@@ -684,6 +691,48 @@ class UemsMesskundenLaufAbnahmeTest {
      */
     private long laeuferZustaende() {
         return register.find(UemsMetricsCollector.LAEUFER_ZUSTAND).gauges().stream().count();
+    }
+
+    /**
+     * Die Namen der Felder, die wirklich SPRACHE tragen — was eine Fläche wörtlich anzeigt. Ein Feldname
+     * wie {@code marktpraemieCtKwh} ist keine Sprache; sein Wert stand beim reinen Messkunden auf
+     * {@code null} und keine Kundenfläche liest ihn (B1, siehe oben).
+     */
+    private static final List<String> SPRACHFELDER = List.of("message", "text", "satz", "label",
+            "titel", "hinweis", "beschreibung", "kennzeichen", "grund", "anzeige");
+
+    /** Alle Zeichenketten unter einem Sprachfeld — rekursiv, auch in Listen und tiefer geschachtelt. */
+    private static List<String> spracheIn(List<String> antworten) {
+        List<String> aus = new ArrayList<>();
+        for (String antwort : antworten) {
+            if (antwort == null || antwort.isBlank()) {
+                continue;
+            }
+            try {
+                sprache(MAPPER.readTree(antwort), false, aus);
+            } catch (Exception e) {
+                // Keine JSON-Antwort (die CSV): sie geht als Ganzes durch die breite Probe.
+                aus.add(antwort);
+            }
+        }
+        return aus;
+    }
+
+    private static void sprache(JsonNode knoten, boolean drin, List<String> aus) {
+        if (knoten.isTextual()) {
+            if (drin) {
+                aus.add(knoten.asText());
+            }
+            return;
+        }
+        if (knoten.isArray()) {
+            knoten.forEach(k -> sprache(k, drin, aus));
+            return;
+        }
+        knoten.fields().forEachRemaining(f -> {
+            String name = f.getKey().toLowerCase(Locale.ROOT);
+            sprache(f.getValue(), drin || SPRACHFELDER.stream().anyMatch(name::endsWith), aus);
+        });
     }
 
     /** Welche der verbotenen Wörter in diesen Antworten vorkommen. */
