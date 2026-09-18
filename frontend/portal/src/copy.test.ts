@@ -28,6 +28,8 @@ import * as QB from './quelleBinden';
 import { JETZT as QB_JETZT, kanaeleK3, quellenMs01 } from './test/quelleBindenFixtures';
 import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SAETZE as KENNZAHL_SAETZE, VERBOTENE_WOERTER as KENNZAHL_VERBOTEN } from './uemsKennzahl';
 import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
+import { UEMS_BEREICH, UEMS_GEBAEUDE, UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossar';
+import { STAND_AM, bannerTitel } from './standAm';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
 import * as KK from './kennzahlKarte';
 import * as BS from './berichtSeite';
@@ -1048,6 +1050,51 @@ describe('UEMS AP-02 IP-15 · Archivieren, Wiederherstellen und Löschen spreche
       expect(texte.filter((t) => verboten.test(t)), datei).toEqual([]);
     }
     expect(FORBIDDEN_INTERN.some(({ re }) => re.test('Der Grabstein bleibt'))).toBe(true);
+  });
+});
+
+/**
+ * UEMS AP-02 IP-16 — die Demo-Daten des Referenzunternehmens „Kunststoffwerk Ahrenberg GmbH"
+ * (`infra/local/seed/ahrenberg.sql`) sind das, was ein Mensch beim ersten Anmelden sieht.
+ * Sie sprechen deshalb dieselben Kundenwörter wie jede gebaute Fläche: Standort, Gebäude,
+ * Bereich, gültig ab, Stand am, rückwirkend, archiviert — und nie ihre englischen oder
+ * internen Zwillinge. Der Wächter liest die Seed-Datei selbst, damit ein „Site"/„Building"
+ * in einer Demo-Zeile nicht still an allen Wörterbüchern vorbeiläuft.
+ */
+describe('UEMS AP-02 IP-16 · die Demo-Daten Ahrenberg sprechen die Kundenwörter', () => {
+  const AHRENBERG = join(SRC, '..', '..', '..', 'infra', 'local', 'seed', 'ahrenberg.sql');
+  const seed = () => readFileSync(AHRENBERG, 'utf8');
+
+  it('die sieben Wörter der Ortsstruktur stehen im Wörterbuch und auf den Flächen', () => {
+    expect(UEMS_UNTERNEHMEN).toBe('Unternehmen');
+    expect(UEMS_STANDORT).toBe('Standort');
+    expect(UEMS_GEBAEUDE).toBe('Gebäude');
+    expect(UEMS_BEREICH).toBe('Bereich');
+    expect(STAND_AM).toBe('Stand am');
+    expect(bannerTitel('2027-01-15')).toBe('Sie sehen den Stand am 15.01.2027');
+    expect(UEMS_LEBENSZYKLUS).toContain('archiviert');
+    expect(archiviertAmText('2027-06-30')).toBe('Archiviert am 30.06.2027');
+    // „gültig ab" und „rückwirkend" spricht die gebaute Fläche - hier gegen die Quelle geprüft.
+    expect(readFileSync(join(SRC, 'components', 'StandortDialog.tsx'), 'utf8')).toContain('Gültig ab');
+    expect(readFileSync(join(SRC, 'ortVerschieben.ts'), 'utf8')).toContain('rückwirkend');
+  });
+
+  it('die Demo-Daten nennen die Orte mit den Kundenwörtern - kein englischer Zwilling', () => {
+    const text = seed();
+    expect(text.length).toBeGreaterThan(0);
+    for (const wort of ['Standort', 'Gebäude', 'Bereich', 'gültig ab', 'rückwirkend', 'Unternehmen']) {
+      expect(text, wort).toContain(wort);
+    }
+    const verboten = /\b(Site|Sites|Building|Buildings|Zone|Area|Facility|Snapshot|valid from|deleted)\b/;
+    for (const zeile of text.split('\n')) {
+      expect(verboten.test(zeile), zeile).toBe(false);
+    }
+  });
+
+  it('beisst wirklich (das Muster gegen seinen eigenen Fall)', () => {
+    const verboten = /\b(Site|Sites|Building|Buildings|Zone|Area|Facility|Snapshot|valid from|deleted)\b/;
+    expect(verboten.test('-- Building G-1 mit Zone B-1')).toBe(true);
+    expect(verboten.test('-- Gebäude G-1 mit Bereich B-1')).toBe(false);
   });
 });
 

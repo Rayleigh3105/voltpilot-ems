@@ -40,6 +40,56 @@ services:
       start_period: 20s
 
   # ---------------------------------------------------------------------------
+  # demo-seed: spielt die Demo-Daten des Referenzunternehmens „Kunststoffwerk
+  # Ahrenberg GmbH" ein (AP-00 IP-7 + AP-02 IP-16) - ein DRITTER Kundenbereich
+  # neben den beiden Demo-Mandanten, Login `ahrenberg` / `ahrenberg`.
+  #
+  # Ein-Weg-Dienst: er wartet, bis die api ihre Flyway-Kette durch hat (die
+  # UEMS-Tabellen stehen), spielt `infra/local/seed/ahrenberg.sql` ein und
+  # endet. Das Skript ist ADDITIV und IDEMPOTENT - es fasst nur den
+  # Ahrenberg-Mandanten an, ein zweiter Lauf ändert nichts.
+  #
+  #   docker compose up -d demo-seed      # nachträglich, ohne `down -v`
+  #   docker compose logs demo-seed       # „Ahrenberg-Demodaten eingespielt."
+  #
+  # Der Seed ist BEWUSST keine Flyway-Migration unter `db/dev`: dort läge er in
+  # jedem Testlauf unter den Testklassen mit `@ActiveProfiles("local")` und
+  # änderte still deren Ausgangslage. `infra/local/timescale/` scheidet aus,
+  # weil das vor Flyway läuft (die UEMS-Tabellen gibt es dann noch nicht).
+  # ---------------------------------------------------------------------------
+  demo-seed:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: voltpilot-demo-seed
+    restart: "no"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      PGHOST: timescaledb
+      PGUSER: ${POSTGRES_USER:-voltpilot}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
+      PGDATABASE: ${POSTGRES_DB:-voltpilot}
+    volumes:
+      - ./infra/local/seed:/seed:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        i=0
+        until psql -qtAX -c "SELECT to_regclass('public.ort_zuordnung')" | grep -q ort_zuordnung; do
+          i=$$((i + 1))
+          if [ "$$i" -ge 120 ]; then
+            echo "demo-seed: die UEMS-Tabellen sind nach 10 Minuten nicht da - abgebrochen." >&2
+            exit 1
+          fi
+          sleep 5
+        done
+        psql -v ON_ERROR_STOP=1 -q -f /seed/ahrenberg.sql
+        echo "Ahrenberg-Demodaten eingespielt."
+
+  # ---------------------------------------------------------------------------
   # EMQX: MQTT 5.0 broker (device ingress). Dashboard on :18083.
   # Topic convention: ems/{tenant_id}/{site_id}/{device_id}/{telemetry|status|
   # schedule|command|config}. See docs/contracts/mqtt-telemetry.schema.json.

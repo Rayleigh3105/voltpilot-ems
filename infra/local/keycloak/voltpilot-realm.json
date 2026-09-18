@@ -225,6 +225,29 @@
       "realmRoles": [
         "operator"
       ]
+    },
+    {
+      "username": "ahrenberg",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "ahrenberg@voltpilot.local",
+      "firstName": "Ahrenberg",
+      "lastName": "Operator",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ahrenberg",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "operator"
+      ]
     }
   ],
   "components": {
