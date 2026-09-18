@@ -26,6 +26,10 @@ function httpGroupKey(selected) {
   return `${targetKeyOf(selected)}:${selected.point.poll_group}:${selected.cadence_s}`;
 }
 
+function withEntity(sample, selected) {
+  return selected.entity_id ? { ...sample, entity_id:selected.entity_id } : sample;
+}
+
 /**
  * Read-only runtime. Every I/O primitive is injected for bench simulation;
  * there is deliberately no write-register primitive in this module.
@@ -62,7 +66,7 @@ class MeasurementRuntime {
         Promise.resolve(result).then((confirmed) => {
           if (generation !== this.applyGeneration) return;
           if (confirmed && confirmed.applied === false) throw new Error(confirmed.reason || 'rejected');
-          this.activate(candidate);
+          this.activate(candidate, config);
           this.publishStatus(config, candidate);
         }).catch(() => {
           if (generation !== this.applyGeneration) return;
@@ -70,7 +74,7 @@ class MeasurementRuntime {
             selection.point.source_kind === 'ocpp_sampled_value').map((selection) => selection.requested_key));
           const fallback = buildPlan(Object.assign({}, config, { selections:(config.selections || [])
             .filter((selection) => !ocppKeys.has(selection.point_key)) }), planning);
-          if (fallback.applied) this.activate(fallback);
+          if (fallback.applied) this.activate(fallback, config);
           this.publishStatus(config, { accepted:fallback.accepted || [],
             rejected:(fallback.rejected || []).concat([...ocppKeys].map((point_key) => ({
               point_key, reason:'ocpp_configuration_incompatible',
@@ -79,13 +83,22 @@ class MeasurementRuntime {
         return candidate;
       }
       this.applyGeneration++;
-      this.activate(candidate);
+      this.activate(candidate, config);
     }
     this.publishStatus(config, candidate);
     return candidate;
   }
 
-  activate(candidate) {
+  activate(candidate, config) {
+    // The cloud still merges ambiguous point keys. Only carry an explicit
+    // selection binding; never infer a component from its transport or target.
+    const entities = new Map();
+    for (const s of config.selections || []) {
+      if (!entities.has(s.point_key)) entities.set(s.point_key, s.entity_id);
+    }
+    candidate.selections = candidate.selections.map((s) => ({ ...s,
+      ...(entities.get(s.requested_key) ? { entity_id:entities.get(s.requested_key) } : {}),
+    }));
     // One pointer swap is the atomic cutover. No timer from the previous plan
     // survives because due is replaced together with active.
     const due = new Map(candidate.selections.map((s) => [s.point.point_key, 0]));
@@ -110,17 +123,20 @@ class MeasurementRuntime {
 
   async _tick() {
     if (!this.active) return [];
+    // Applying another plan while I/O awaits must not relabel the old read
+    // with the new component, decoder state, catalog or applied revision.
+    const plan = this.active; const decoderState = this.decoderState;
     const now = this.now(); const ms = now.getTime(); const dueKeys = new Set();
-    for (const s of this.active.selections) if ((this.due.get(s.point.point_key) || 0) <= ms) dueKeys.add(s.point.point_key);
+    for (const s of plan.selections) if ((this.due.get(s.point.point_key) || 0) <= ms) dueKeys.add(s.point.point_key);
     if (!dueKeys.size) return [];
     // Claim due work before the first await. Concurrent/re-entrant ticks can
     // now only join this run and can never issue a second physical read.
-    for (const s of this.active.selections) if (dueKeys.has(s.point.point_key)) {
+    for (const s of plan.selections) if (dueKeys.has(s.point.point_key)) {
       this.due.set(s.point.point_key, ms + s.cadence_s * 1000);
     }
-    const blocks = this.active.blocks.filter((b) => b.points.some((p) => dueKeys.has(p)));
+    const blocks = plan.blocks.filter((b) => b.points.some((p) => dueKeys.has(p)));
     for (const block of blocks) this.scheduler.enqueuePoll({ kind: 'modbus', block });
-    for (const group of this.active.httpGroups) this.scheduler.enqueuePoll({ kind: 'json', group });
+    for (const group of plan.httpGroups) this.scheduler.enqueuePoll({ kind: 'json', group });
     // ⚠ Wire words are kept PER TARGET. Register 616 of a bound Fronius and
     // register 616 of the primary Deye are different facts; one flat map would
     // decode one device's words with the other's point.
@@ -128,19 +144,19 @@ class MeasurementRuntime {
     for (let task; (task = this.scheduler.next());) {
       if (task.kind === 'control') { await task.run(); continue; }
       if (task.kind === 'modbus') await this.readBlock(task.block, dueKeys, wireWords);
-      else if (task.kind === 'json') samples.push(...await this.readJSON(task.group, dueKeys));
+      else if (task.kind === 'json') samples.push(...await this.readJSON(task.group, dueKeys, plan));
     }
-    for (const prerequisite of this.active.decoderPrerequisites || []) {
+    for (const prerequisite of plan.decoderPrerequisites || []) {
       if (!dueKeys.has(prerequisite.trigger_key)) continue;
       const words = wordsOf(wireWords, targetKeyOf(prerequisite));
       const addresses = this.addresses(prerequisite.point, targetKeyOf(prerequisite));
       if (addresses.length && addresses.every((address) => words.has(address))) {
         decodeRegisters(prerequisite.point, addresses.map((address) => words.get(address)),
           this.io.scaleFactors, addresses, this.decoderOptions(prerequisite.point, words,
-            targetKeyOf(prerequisite)));
+            targetKeyOf(prerequisite), plan, decoderState));
       }
     }
-    for (const selected of this.active.selections) {
+    for (const selected of plan.selections) {
       if (!dueKeys.has(selected.point.point_key)) continue;
       const words = wordsOf(wireWords, targetKeyOf(selected));
       let sample = null;
@@ -149,23 +165,23 @@ class MeasurementRuntime {
         if (addresses.length && addresses.every((address) => words.has(address))) {
           sample = decodeRegisters(selected.point, addresses.map((address) => words.get(address)),
             this.io.scaleFactors, addresses, this.decoderOptions(selected.point, words,
-              targetKeyOf(selected)));
+              targetKeyOf(selected), plan, decoderState));
         }
       } else if (derivedAddresses(selected.point).length) sample = decodeDerived(selected.point, words);
-      if (sample) samples.push(sample);
+      if (sample) samples.push(withEntity(sample, selected));
     }
     if (samples.some((sample) => sample.invalidate_all)) return [];
-    return this.publishSamples(samples, now);
+    return this.publishSamples(samples, now, plan);
   }
 
-  decoderOptions(point, wireWords, targetKey) {
+  decoderOptions(point, wireWords, targetKey, plan = this.active, decoderState = this.decoderState) {
     const decoder = point.decoder || {};
     return {
-      byteOrder:byteOrderFor(this.active || {}, targetKey || TARGET_PRIMARY),
+      byteOrder:byteOrderFor(plan || {}, targetKey || TARGET_PRIMARY),
       byteOrderWord:decoder.byte_order && wireWords.get(decoder.byte_order.register),
       variantWord:decoder.variant && wireWords.get(decoder.variant.register),
-      previousValues:this.decoderState.previous,
-      decodedValues:this.decoderState.values,
+      previousValues:decoderState.previous,
+      decodedValues:decoderState.values,
     };
   }
 
@@ -187,11 +203,11 @@ class MeasurementRuntime {
     return [];
   }
 
-  async readJSON(group, dueKeys) {
+  async readJSON(group, dueKeys, plan = this.active) {
     if (typeof this.io.readJSON !== 'function') return [];
     // A planned http group is {key, target}: one request per (target, group).
     const { key, target } = group;
-    const selected = this.active.selections.filter((x) => dueKeys.has(x.point.point_key)
+    const selected = plan.selections.filter((x) => dueKeys.has(x.point.point_key)
       && httpGroupKey(x) === key);
     if (!selected.length) return [];
     // go-e filter combines every selected API key into one request. Shelly RPC
@@ -205,20 +221,21 @@ class MeasurementRuntime {
     if (payload === MeasurementRuntime.BUDGET_BLOCKED) return [];
     const payloads = payload && Array.isArray(payload.__vpResponses)
       ? payload.__vpResponses : [payload];
-    return selected.flatMap((x) => payloads.flatMap((value) => decodeJSONSamples(x.point, value)));
+    return selected.flatMap((x) => payloads.flatMap((value) => decodeJSONSamples(x.point, value)
+      .map((sample) => withEntity(sample, x))));
   }
 
   /** OCPP MeterValues is event-driven; it never enters the polling queue. */
   onMeterValues(values, observedAt) {
     if (!this.active || !Array.isArray(values)) return [];
     const accepted = new Set(this.active.accepted); const at = observedAt || this.now();
-    const samples = values.map(decodeOcppSampledValue).filter((s) => {
-      if (!s || !accepted.has(templateKey(s.point_key))) return false;
+    const samples = values.map(decodeOcppSampledValue).flatMap((s) => {
+      if (!s || !accepted.has(templateKey(s.point_key))) return [];
       const selection = this.active.selections.find((x) => x.requested_key === templateKey(s.point_key));
       const due = this.ocppDue.get(s.point_key) || 0;
-      if (!selection || at.getTime() < due) return false;
+      if (!selection || at.getTime() < due) return [];
       this.ocppDue.set(s.point_key, at.getTime() + selection.cadence_s * 1000);
-      return true;
+      return [withEntity(s, selection)];
     });
     return this.publishSamples(samples, at);
   }
@@ -281,13 +298,15 @@ class MeasurementRuntime {
     finally { this.finishRequest(ticket); }
   }
 
-  publishSamples(samples, at) {
+  publishSamples(samples, at, plan = this.active) {
     const ms = at.getTime(); this.trimWindow(this.sampleWindow, ms);
     const room = Math.max(0, LIMITS.samplesPerMinute - this.sampleWindow.length);
     const kept = samples.slice(0, room); const dropped = samples.length - kept.length;
     for (let i = 0; i < kept.length; i++) this.sampleWindow.push(ms);
     if (kept.length || dropped) this.publish('edge/measurements/samples', {
-      catalog_version:this.active.catalog_version, observed_at:at.toISOString(), samples:kept,
+      catalog_version:plan.catalog_version, observed_at:at.toISOString(), samples:kept,
+      ...(Number.isSafeInteger(plan.revision) && plan.revision >= 0
+        ? { applied_revision:plan.revision } : {}),
       ...(dropped ? { gap:true, dropped_samples:dropped } : {}),
     }, false);
     return kept;

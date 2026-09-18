@@ -32,7 +32,7 @@ flowchart LR
 
 Die zusammengesetzten Typen `battery-hybrid`, `grid-meter`, `house-load` müssen mit Go `composedType` synchron bleiben. SunSpec benötigt eine eigene Modellerkennung **pro Ziel**. Verbindungen werden beim Lesen neu aufgelöst; eine inzwischen entfernte Quelle erzeugt eine Lücke, keinen Rückfall auf das Primärgerät. Änderungen an Quellen/Registry lösen eine erneute Prüfung aus.
 
-OCPP-Messungen kommen vom Core; ihre Zuordnung bleibt geräteweit. Proben tragen `point_key`, keine zusätzliche Komponentendimension. Die Cloud kennt die Auswahlzuordnung.
+OCPP-Messungen kommen vom Core; ihr Leseweg bleibt geräteweit. Jede Probe übernimmt eine explizite `entity_id` aus ihrer Auswahl, auch bei Modbus, HTTP und aufgefalteten Platzhaltern. Ohne eindeutige Bindung bleibt das Feld weg. Der lokale Batch trägt `applied_revision` vom tatsächlich aktiven Plan; ein Planwechsel während einer Lesung stempelt deren Ergebnis nicht um. Der Core sendet Herkunftsfelder unter Samples 2.1 und erhält alte Batches/Outbox-Umschläge. Der Cloud-Merge gleicher `point_key` bleibt vorerst bestehen; Details und Nachweise: [Box-Herkunft](../../../docs/agents/root/uems-measurement-samples-box-herkunft.md).
 
 ## Lastgrenzen und Datenqualität
 
