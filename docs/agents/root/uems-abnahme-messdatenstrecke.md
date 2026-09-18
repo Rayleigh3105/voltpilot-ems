@@ -96,13 +96,14 @@ nach der REGEL, nicht nach der Aufzählung, und der Wächter im Lauf meldet jede
   gehört `services/ingest`; A13 lebt genau dort. Der Abnahmelauf spielt für A13 darum nur
   die angenommenen Zustellungen und belegt, dass die anderen nach derselben Grenze
   abzuweisen sind — dass sie es werden, zeigt `DatenannahmeTest`.
-- **Der Bogen Box → Bericht in EINEM Lauf.** Er ist in zwei Hälften belegt, nicht in
-  einer: gespielte Samples → Rohzeilen mit Herkunft (`UemsStreckeAbnahmeTest`) und
-  Viertelstunde → Tag/Periode → Messstellen-Werte → gebildeter Abzug
-  (`UemsRohdatenablaufAbnahmeTest`). Die beiden Hälften treffen sich an der
-  Viertelstunden-Bildung, die als Takt läuft und im Test angestoßen wird — **kein
-  einziger Lauf trägt heute von der Box bis in den freigegebenen Bericht durch**. Das ist
-  der offene Befund aus dem AP-14-Fundament; er bleibt offen und wird hier nur benannt.
+- **Der Bogen Box → Bericht in EINEM Lauf** — *geschlossen mit AP-14 IP-7*. Bis dahin war er
+  in zwei Hälften belegt, nicht in einer: gespielte Samples → Rohzeilen mit Herkunft
+  (`UemsStreckeAbnahmeTest`) und Viertelstunde → Tag/Periode → Messstellen-Werte → gebildeter
+  Abzug (`UemsRohdatenablaufAbnahmeTest`). `UemsMesskundenLaufAbnahmeTest` (NW-4, Referenzfall
+  U5) trägt jetzt in EINEM Lauf vom Kundenweg bis in den freigegebenen Bericht mit PDF und CSV
+  — siehe [den Messkunden-Lauf](uems-messkunden-lauf.md). Offen bleibt allein die Naht
+  Broker → ingest → Writer: sie läuft als Prozess weiterhin nur hier, weil die api-Testklasse
+  die Beans der anderen Module nicht starten kann.
 - **A6 und der Abnahmetext.** §7 A6 erwartet für 07:30–07:45 „beide Boxen als Anker".
   Mit dem letzten führenden Wert um 07:29:50 hat die Viertelstunde nur die NEUE Box als
   Anker; beide erscheinen erst in der Herkunfts-Karte, weil das Intervall eine
