@@ -203,13 +203,16 @@ type Sample struct {
 	ObservedAt       *time.Time `json:"observed_at,omitempty"`
 	SignedData       string     `json:"signed_data,omitempty"`
 	SignedDataFormat string     `json:"signed_data_format,omitempty"`
+	// RawMessage distinguishes an absent provenance field from explicit null.
+	EntityID json.RawMessage `json:"entity_id,omitempty"`
 }
 type LocalBatch struct {
-	CatalogVersion string    `json:"catalog_version"`
-	ObservedAt     time.Time `json:"observed_at"`
-	Samples        []Sample  `json:"samples"`
-	DroppedSamples int64     `json:"dropped_samples,omitempty"`
-	Gap            bool      `json:"gap,omitempty"`
+	CatalogVersion  string          `json:"catalog_version"`
+	ObservedAt      time.Time       `json:"observed_at"`
+	Samples         []Sample        `json:"samples"`
+	DroppedSamples  int64           `json:"dropped_samples,omitempty"`
+	Gap             bool            `json:"gap,omitempty"`
+	AppliedRevision json.RawMessage `json:"applied_revision,omitempty"`
 }
 
 var qualities = map[string]bool{"good": true, "uncertain": true, "invalid": true, "stale": true, "device_error": true}
@@ -229,8 +232,21 @@ func parseBatch(raw []byte) (LocalBatch, error) {
 		b.DroppedSamples < 0 || (len(b.Samples) == 0 && !(b.Gap && b.DroppedSamples > 0)) {
 		return b, errors.New("invalid batch")
 	}
+	if len(b.AppliedRevision) > 0 {
+		var revision int64
+		if err := json.Unmarshal(b.AppliedRevision, &revision); err != nil ||
+			bytes.Equal(bytes.TrimSpace(b.AppliedRevision), []byte("null")) || revision < 0 {
+			return b, errors.New("invalid applied_revision")
+		}
+	}
 	seen := map[string]bool{}
 	for _, s := range b.Samples {
+		if len(s.EntityID) > 0 {
+			var entityID string
+			if err := json.Unmarshal(s.EntityID, &entityID); err != nil || !entityIDPattern.MatchString(entityID) {
+				return b, errors.New("invalid sample entity_id")
+			}
+		}
 		if !pointKeyPattern.MatchString(s.PointKey) || seen[s.PointKey] ||
 			s.Raw == nil || !qualities[s.Quality] {
 			return b, errors.New("invalid sample")
@@ -390,6 +406,18 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 	// actually sent after an eviction. Persisted later envelopes stay clean, so
 	// one loss episode cannot become a train of duplicate data-gap events.
 	payload := map[string]any{"schema_version": "2.0", "tenant_id": id.TenantID, "site_id": id.SiteID, "device_id": id.DeviceID, "catalog_version": b.CatalogVersion, "sequence": seq, "observed_at": b.ObservedAt.UTC(), "samples": b.Samples, "dropped_samples": b.DroppedSamples, "gap": b.Gap || b.DroppedSamples > 0}
+	// A legacy palette still produces the unchanged 2.0 shape. Provenance is
+	// legal only in 2.1; never manufacture it for old local batches or replay.
+	if len(b.AppliedRevision) > 0 {
+		payload["applied_revision"] = b.AppliedRevision
+		payload["schema_version"] = "2.1"
+	}
+	for _, sample := range b.Samples {
+		if len(sample.EntityID) > 0 {
+			payload["schema_version"] = "2.1"
+			break
+		}
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return Envelope{}, err
