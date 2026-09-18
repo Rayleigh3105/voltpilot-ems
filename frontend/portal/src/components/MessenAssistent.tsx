@@ -5,6 +5,7 @@ import { Input } from '../../designsystem/components/forms/Input';
 import {
   api,
   type Device,
+  type EdgeVersion,
   type Funktionen,
   type MessstelleRegisterZeile,
   type MessstelleVorschlagsliste,
@@ -88,12 +89,14 @@ import {
 import { ortOptionen } from '../messstelleDialog';
 import { hashForRoute, standortMessstellenRoute } from '../nav';
 import { useIsPhone } from '../useIsPhone';
+import { wagoAssistentSichtbar } from '../wagoAssistent';
 import { AnlegenDialog } from './AnlegenDialog';
 import { AnlegenFlow } from './AnlegenFlow';
 import { AddDeviceDrawer } from './DeviceDrawers';
 import { DatenquelleAnlegen } from './DatenquelleAnlegen';
 import { StandortDialog } from './StandortDialog';
 import { VpPicker } from './VpPicker';
+import { WagoAssistent } from './WagoAssistent';
 import './MessenAssistent.css';
 
 /**
@@ -137,7 +140,8 @@ type Unterfluss =
   | { art: 'standort'; standort: StandortAmStichtag | null }
   | { art: 'geraet'; site: Site }
   | { art: 'komponente'; siteId: string }
-  | { art: 'datenquelle'; anlage: { id: string; name: string } };
+  | { art: 'datenquelle'; anlage: { id: string; name: string } }
+  | { art: 'wago'; anlage: { id: string; name: string } };
 
 const LADEFEHLER = 'Die Standorte konnten nicht geladen werden.';
 const EINRICHTEN_FEHLER = 'Messen & Auswerten konnte nicht angelegt werden. Bitte versuchen Sie es erneut.';
@@ -193,6 +197,7 @@ export function MessenAssistent({
   // Schritt 4: die Fakten der Prüfliste, frisch gelesen.
   const [register, setRegister] = useState<MessstelleRegisterZeile[] | null>(null);
   const [geraete, setGeraete] = useState<Device[] | null>(null);
+  const [edgeVersionen, setEdgeVersionen] = useState<EdgeVersion[]>([]);
   const [geprueft, setGeprueft] = useState(false);
   const [pruefRunde, setPruefRunde] = useState(0);
   const gestartet = useRef(false);
@@ -241,12 +246,22 @@ export function MessenAssistent({
   useEffect(() => {
     if (schritt !== 2 || !anlagenKennung) return;
     let aktiv = true;
-    api.listSites().then((antwort) => antwort.eintraege).then(
+    api.listSites().then(
       (s) => {
-        if (aktiv) setSites(s);
+        if (aktiv) setSites(s.eintraege);
       },
       () => {
         if (aktiv) setSites(null);
+      },
+    );
+    Promise.all([api.listDevices(), api.edgeVersions()]).then(
+      ([g, v]) => {
+        if (!aktiv) return;
+        setGeraete(g.eintraege);
+        setEdgeVersionen(v.eintraege);
+      },
+      () => {
+        if (aktiv) setEdgeVersionen([]);
       },
     );
     for (const id of anlagenKennung.split(',')) {
@@ -576,6 +591,18 @@ export function MessenAssistent({
                         <span className="vp-ma-weg-titel">{GERAET_ANBINDEN}</span>
                         <span className="vp-ma-weg-satz">{GERAET_ANBINDEN_SATZ}</span>
                       </button></Recht>
+                      {wagoAssistentSichtbar(geraete ?? [], edgeVersionen, a.id) && <Recht aktion="datenquelle.bearbeiten"><button
+                        type="button"
+                        className="vp-ma-weg"
+                        aria-label={`WAGO-Steuerung anbinden für ${a.name}`}
+                        onClick={() => {
+                          setFehler(null);
+                          setUnterfluss({ art: 'wago', anlage: { id: a.id, name: a.name } });
+                        }}
+                      >
+                        <span className="vp-ma-weg-titel">WAGO-Steuerung anbinden</span>
+                        <span className="vp-ma-weg-satz">Bogen, Kopfprüfung und Energiekarten gemeinsam einrichten</span>
+                      </button></Recht>}
                     </div>
                   </li>
                 );
@@ -975,6 +1002,20 @@ export function MessenAssistent({
           standortId={standortId}
           anlagenAmStandort={anlagen.map((a) => a.id)}
           onClose={zurueckAusUnterfluss}
+        />
+      )}
+      {unterfluss?.art === 'wago' && standortId && geraete && (
+        <WagoAssistent
+          site={unterfluss.anlage}
+          standortId={standortId}
+          geraete={geraete}
+          versionen={edgeVersionen}
+          onClose={zurueckAusUnterfluss}
+          onMessstellen={() => {
+            setUnterfluss(null);
+            setVorschlagRunde((n) => n + 1);
+            setSchritt(3);
+          }}
         />
       )}
     </>

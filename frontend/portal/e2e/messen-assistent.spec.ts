@@ -61,6 +61,10 @@ interface Cloud {
   uebernahmen?: MessstelleVorschlagUebernehmen[];
   orte?: { messstelle: string; anfrage: MessstelleOrtAendern }[];
   budgetAblehnung?: boolean;
+  /** Nur die Bühne darf den künftigen Edge-Release vorwegnehmen. */
+  wagoFaehig?: boolean;
+  wagoProbeCount?: number;
+  wagoKomponenten?: Array<{ id: string; definitionVersion: number; label: string }>;
 }
 
 const ohneMessen = (): Cloud => ({
@@ -134,16 +138,41 @@ async function verdrahte(page: Page, cloud: Cloud) {
     if (pfad === '/api/v1/devices') return json(sichtbareListe(geraeteAhrenberg(new Date())));
     if (pfad === '/api/v1/edge-versions') return json(sichtbareListe([
       { deviceId: C1_IDS.boxHalle1, siteId: FIXTURE_IDS.an1, coreVersion: '2.8.0', paletteVersion: '1.14.0', reportedAt: new Date().toISOString() },
-      { deviceId: C1_IDS.boxHalle2, siteId: FIXTURE_IDS.an2, coreVersion: '2.8.0', paletteVersion: '1.14.0', reportedAt: new Date().toISOString() },
+      { deviceId: C1_IDS.boxHalle2, siteId: FIXTURE_IDS.an2, coreVersion: '2.8.0', paletteVersion: '1.14.0', reportedAt: new Date().toISOString(),
+        capabilities: cloud.wagoFaehig ? ['data_sources', 'events', 'wago_registerbild'] : ['data_sources', 'events'] },
     ]));
     if (pfad === '/api/v1/sites') {
       return json(sichtbareListe(cloud.standorte.standorte.flatMap((s) => s.anlagen).map((a) => ({ id: a.id, name: a.name }))));
     }
     const komponenten = /^\/api\/v1\/sites\/([^/]+)\/components$/.exec(pfad);
     if (komponenten) {
+      if (methode === 'POST' && cloud.wagoFaehig) {
+        const body = r.request().postDataJSON() as { label?: string };
+        const zeile = { id: `wago-k-${(cloud.wagoKomponenten?.length ?? 0) + 1}`, definitionVersion: 1, label: body.label ?? 'Energiekarte' };
+        (cloud.wagoKomponenten ??= []).push(zeile);
+        return json({ componentAuthority: 'cloud', components: [...Array.from({ length: KOMPONENTEN[komponenten[1]] ?? 0 }, (_, i) => ({ id: `k-${i + 1}`, definitionVersion: 1 })), ...cloud.wagoKomponenten] }, 201);
+      }
       const n = KOMPONENTEN[komponenten[1]] ?? 0;
-      return json({ componentAuthority: 'cloud', components: Array.from({ length: n }, (_, i) => ({ id: `k-${i + 1}` })) });
+      return json({ componentAuthority: 'cloud', components: [...Array.from({ length: n }, (_, i) => ({ id: `k-${i + 1}`, definitionVersion: 1 })), ...(cloud.wagoKomponenten ?? [])] });
     }
+    if (/^\/api\/v1\/sites\/[^/]+\/component-test$/.test(pfad) && methode === 'POST' && cloud.wagoFaehig) {
+      const body = r.request().postDataJSON() as { connection?: { slot?: number } };
+      const slot = Number(body.connection?.slot ?? 1);
+      return json({ requestId: `wago-wert-${slot}`, errorCode: null, message: null, results: [{
+        id: 'verbindung', ok: true, errorCode: null, message: 'Werte gelesen',
+        reading: { 'Spannung L1': 230.4, 'Wirkleistung gesamt': 18.7 + slot, 'Zählerstand Bezug': 36912.4 + slot },
+      }] });
+    }
+    if (/^\/api\/v1\/sites\/[^/]+\/components\/[^/]+\/wago$/.test(pfad) && methode === 'PUT' && cloud.wagoFaehig) {
+      const body = r.request().postDataJSON() as { expected_revision: number; anwenderskalierung: boolean | null; register35: number | null };
+      return json({ slot: 1, anwenderskalierung: body.anwenderskalierung, register35: body.register35, version: body.expected_revision + 1 });
+    }
+    if (/^\/api\/v1\/sites\/[^/]+\/geraete$/.test(pfad) && cloud.wagoFaehig) return json({ geraete: [{
+      id: 'geraet-c-1', kennzeichen: 'GR-7', einbau_kennzeichen: 'GR-7', ausgebaut_am: null,
+      komponenten: (cloud.wagoKomponenten ?? []).map((k) => ({ entity_id: k.id, gueltig_ab: '2026-10-20T08:15:00Z', gueltig_bis: null })),
+    }] });
+    if (/^\/api\/v1\/geraete\/[^/]+\/wago$/.test(pfad) && methode === 'PUT' && cloud.wagoFaehig) return json(r.request().postDataJSON());
+    if (/^\/api\/v1\/geraete\/[^/]+\/einstellungen$/.test(pfad) && methode === 'POST' && cloud.wagoFaehig) return json({ fassung: {}, beendet: null, folgen: [], messstellen: [] }, 201);
     if (pfad === '/api/v1/component-templates') return json([]);
     const quelle = /^\/api\/v1\/sites\/([^/]+)\/data-sources(?:\/([^/]+))?(?:\/(reachability-check|assignments))?$/.exec(pfad);
     if (quelle) {
@@ -160,6 +189,16 @@ async function verdrahte(page: Page, cloud: Cloud) {
       };
       if (!quelle[2] && methode === 'POST') return json(datenquelle, 201);
       if (quelle[2] && !quelle[3] && methode === 'PUT') return json(datenquelle);
+      if (quelle[3] === 'reachability-check' && cloud.wagoFaehig) {
+        cloud.wagoProbeCount = (cloud.wagoProbeCount ?? 0) + 1;
+        return json({
+          box: { id: boxId, name: boxName, heimat_anlage: FIXTURE_IDS.an2 },
+          adresse: datenquelle.adresse, ergebnis: 'ok', gewertet: true,
+          text: `${boxName} erreicht ${datenquelle.adresse}.`, zeitpunkt: new Date().toISOString(), dauer_ms: 184,
+          antwort: { requestId: `wago-kopf-${cloud.wagoProbeCount}`, errorCode: null, results: [{ id: 'wago-kopf', ok: true,
+            wago_kopf: { signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kartenzahl: 4, herzschlag: 1731, controller_kennung: 8212 } }] },
+        });
+      }
       if (quelle[3] === 'reachability-check') return json({
         box: { id: boxId, name: boxName, heimat_anlage: FIXTURE_IDS.an2 },
         adresse: datenquelle.adresse, ergebnis: 'ok', gewertet: true,
@@ -371,6 +410,71 @@ for (const breite of BREITEN) {
       await expect(dialog.getByText('Frei: 545 Messwerte/min · 29 Anfragen/min · 19,3 % Buszeit')).toBeVisible();
       await ablehnung.scrollIntoViewIfNeeded();
       await messeUndFotografiere(page, breite, 'datenquelle-budget');
+    });
+
+    test('WAGO: Bogen → Kopf → Gerät → Karten → Komponenten → Messstellen-Vorschläge', async ({ page }) => {
+      const cloud: Cloud = {
+        standorte: ahrenbergHeute(),
+        funktionen: ahrenbergFunktionen({
+          standorte: [funktionMessenEntwurf(funktionWerkAhrenberg('bestand')), funktionWerkLindach('bestand')],
+        }),
+        vorschlag: vorschlagHalle2(),
+        wagoFaehig: true,
+      };
+      await verdrahte(page, cloud);
+      await oeffne(page, breite, `?standort=${FIXTURE_IDS.st1}`);
+      await schritt2(page);
+      await page.getByRole('button', { name: 'WAGO-Steuerung anbinden für Werk Ahrenberg – Halle 2', exact: true }).click();
+
+      await expect(page.getByRole('heading', { name: 'Was ist am Schaltschrank vorhanden?' })).toBeVisible();
+      await page.getByLabel(/A1 Welche Steuerung/).fill('750-8212 PFC200');
+      await page.getByLabel(/A4 Gibt das Programm/).fill('VoltPilot-Registerbild v1 über Modbus TCP');
+      await page.locator('.vp-wago-bogengruppe').filter({ hasText: 'B · Die Energiekarten' }).getByText('B · Die Energiekarten').click();
+      await page.getByLabel(/B2 Welche Positionen/).fill('Steckplatz 1: 750-494, Hauptmessung Halle 2');
+      await expect(page.getByText('In Prüfung — Pilot ausstehend', { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Bogen speichern', exact: true }).click();
+      await expect(page.getByText('Zwischenstand gespeichert.')).toBeVisible();
+      await messeUndFotografiere(page, breite, 'wago-bogen');
+
+      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Wie erreicht die Box die Steuerung?' })).toBeVisible();
+      await page.getByLabel('Adresse', { exact: true }).fill('192.168.20.10');
+      await page.getByLabel('Netzlage').fill('VLAN 20 „Produktion“');
+      await page.getByRole('button', { name: 'Kopf prüfen', exact: true }).click();
+      await expect(page.getByText('Registerbild v1.0')).toBeVisible();
+      await expect(page.getByText('4 Energiekarten')).toBeVisible();
+      await expect(page.getByText(/Herzschlag 1\.731/)).toBeVisible();
+      await page.getByRole('button', { name: 'Kopf erneut prüfen', exact: true }).click();
+      await expect(page.getByText('Herzschlag steht bei 1.731')).toBeVisible();
+      await messeUndFotografiere(page, breite, 'wago-kopf');
+
+      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Welche Steuerung antwortet?' })).toBeVisible();
+      await page.getByLabel('Seriennummer').fill('SN-C1-2026');
+      await page.getByLabel('Firmware').fill('04.05.08(27)');
+      await page.getByLabel('Name des Programms').fill('Halle2_Energie');
+      await messeUndFotografiere(page, breite, 'wago-geraet');
+
+      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Welche Energiekarten stecken in der Steuerung?' })).toBeVisible();
+      await page.getByLabel('Name').fill('Energiekarte Hauptmessung Halle 2');
+      await page.getByLabel('Wandler Primärwert in A').fill('400');
+      await page.getByLabel('Wandler Sekundärwert in A').fill('5');
+      await expect(page.getByLabel('Register 35')).toHaveValue('');
+      await expect(page.getByText(/Messwert-Tabelle und Skalierungsfaktor nicht belegt/)).toBeVisible();
+      await messeUndFotografiere(page, breite, 'wago-karten');
+
+      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Werte prüfen und Komponenten anlegen' })).toBeVisible();
+      await page.getByRole('button', { name: 'Echte Werte lesen', exact: true }).click();
+      await expect(page.getByText('Wirkleistung gesamt: 19,7')).toBeVisible();
+      await expect(page.getByText('Zählerstand Bezug: 36.913,4')).toBeVisible();
+      await messeUndFotografiere(page, breite, 'wago-werte');
+      await page.getByRole('button', { name: 'Komponenten anlegen', exact: true }).click();
+      await expect(page.getByText('Komponenten angelegt', { exact: true })).toBeVisible();
+      await messeUndFotografiere(page, breite, 'wago-komponenten');
+      await page.getByRole('button', { name: breite < 720 ? 'Zu den Messstellen' : 'Zur Messstellen-Vorschlagsliste', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Was bedeutet jeder Messkanal?' })).toBeVisible();
     });
 
     test('ohne Standort legt Schritt 1 ihn im Standort-Dialog aus AP-02 an', async ({ page }) => {
