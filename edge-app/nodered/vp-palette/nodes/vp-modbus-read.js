@@ -29,6 +29,7 @@
 const conn = require('../lib/modbus-conn.js');
 const codec = require('../lib/modbus-tcp.js');
 const sharedBus = require('../../measurements/shared-bus-arbiter');
+const sourceStatus = require('../../measurements/data-source-status');
 
 var privateHost = require('../lib/private-host');
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -102,6 +103,11 @@ module.exports = function (RED) {
       return;
     }
 
+    const report = (failed, error) => {
+      if (!mapped || !core || !core.client) return;
+      const evidence = sourceStatus.event({entity_id:entity, requests:1, failed, error_class:sourceStatus.errorClass(error)});
+      core.client.publish(sourceStatus.TOPIC, JSON.stringify(evidence), {qos:1,retain:false});
+    };
     let busySince = 0; // 0 = idle
     let lastDone = 0;
     let lastEmitted = null;
@@ -141,8 +147,9 @@ module.exports = function (RED) {
         .then((regs) => {
           const value = computeValue(regs, readCfg);
           if (value === null) {
-            throw new Error('Antwort nicht dekodierbar (' + readCfg.dataType + ')');
+            throw Object.assign(new Error('Antwort nicht dekodierbar (' + readCfg.dataType + ')'), {code:'invalid_response'});
           }
+          report(false);
           if (hadError) {
             hadError = false;
             node.log('Modbus-Lesen ' + label + ': wieder erreichbar');
@@ -160,6 +167,7 @@ module.exports = function (RED) {
           }
         })
         .catch((err) => {
+          report(true,err);
           // Never silent, never a fabricated value: status + rate-limited
           // warn; downstream simply receives nothing (TTL degradation).
           hadError = true;

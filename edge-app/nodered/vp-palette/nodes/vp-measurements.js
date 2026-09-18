@@ -6,6 +6,7 @@ const https = require('https');
 const losslessJSON = require('../lib/lossless-json');
 const sourcesConfig = require('./vp-sources-config');
 const binding = require('../../measurements/measurement-binding');
+const sourceStatus = require('../../measurements/data-source-status');
 
 const CONFIG = 'edge/measurements/config';
 const INVERTER = 'edge/inverter/config';
@@ -29,7 +30,7 @@ function request(host, port, frame, expectedLength, timeoutMs) {
       if (settled) return; settled = true; socket.destroy();
       error ? reject(error) : resolve(value);
     };
-    socket.setTimeout(timeoutMs || 3000, () => finish(new Error('Zeitüberschreitung')));
+    socket.setTimeout(timeoutMs || 3000, () => finish(Object.assign(new Error('Zeitüberschreitung'), { code:'no_answer' })));
     socket.on('connect', () => socket.write(frame));
     socket.on('data', (chunk) => {
       data = Buffer.concat([data, chunk]);
@@ -48,11 +49,11 @@ function getJSON(url) {
       let body = ''; res.setEncoding('utf8');
       res.on('data', (chunk) => { if (body.length < 1024 * 1024) body += chunk; });
       res.on('end', () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) return reject(new Error('HTTP ' + res.statusCode));
-        try { resolve(losslessJSON.parse(body)); } catch (error) { reject(error); }
+        if (res.statusCode < 200 || res.statusCode >= 300) return reject(Object.assign(new Error('HTTP ' + res.statusCode),{code:'invalid_response'}));
+        try { resolve(losslessJSON.parse(body)); } catch (error) { reject(Object.assign(error,{code:'invalid_response'})); }
       });
     });
-    req.on('timeout', () => req.destroy(new Error('Zeitüberschreitung')));
+    req.on('timeout', () => req.destroy(Object.assign(new Error('Zeitüberschreitung'),{code:'no_answer'})));
     req.on('error', reject);
   });
 }
@@ -141,6 +142,22 @@ module.exports = function (RED) {
     const deviceFor = (target) =>
       binding.resolveDevice(target, { inverter, sources:bindingContext.sources });
     const io = {
+      sourceStatus: (evidence) => {
+        const pin = evidence.target && evidence.target.sourceId || binding.PRIMARY_PIN;
+        const selection = desired && evidence.point_key && desired.selections.find(s => s.point_key === evidence.point_key);
+        const entityID = evidence.entity_id || (selection && selection.entity_id);
+        const matching = Object.values(bindingContext.entities).filter(e => entityID ? e.entity_id === entityID
+          : e.edge_source_id === pin || (pin === binding.PRIMARY_PIN && !e.edge_source_id && binding.COMPOSED_TYPES.includes(e.entity_type)));
+        // One physical request belongs to one source even if several components share it.
+        const ids = evidence.target && evidence.target.dataSourceId
+          ? new Set([evidence.target.dataSourceId])
+          : new Set(matching.map(e => e.data_source_id).filter(Boolean));
+        for (const id of ids) {
+          const value = sourceStatus.event({ id, requests:evidence.requests, samples:evidence.samples,
+            failed:evidence.failed, error_class:evidence.error_class });
+          if (value) core.client.publish(sourceStatus.TOPIC, JSON.stringify(value), { qos:1, retain:false });
+        }
+      },
       // The setpoint lane announces control before the existing write flow
       // touches the device. Measurement requests yield a bounded exclusive
       // window, so control communication cannot queue behind catalog polling.

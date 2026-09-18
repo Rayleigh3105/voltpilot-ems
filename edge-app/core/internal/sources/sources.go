@@ -99,6 +99,7 @@ func invalid(format string, a ...any) error {
 // it and sums its PV into the site reading. CapacityKwp feeds both the
 // aggregate site kWp (portal side) and the widened physical envelope (guards).
 type Source struct {
+	DataSourceID   string              `json:"data_source_id,omitempty"`
 	ID             string              `json:"id"`
 	Role           string              `json:"role"`
 	Label          string              `json:"label"`
@@ -379,7 +380,7 @@ func (s Source) busEntry() map[string]any {
 		// plan node silently falls back to the FC16 default.
 		conn["curtail_write_fc"] = s.Connection.CurtailWriteFc
 	}
-	return map[string]any{
+	out := map[string]any{
 		"id":            s.ID,
 		"role":          s.Role,
 		"brand":         s.Brand,
@@ -390,6 +391,10 @@ func (s Source) busEntry() map[string]any {
 		"interval_s":    s.IntervalS,
 		"capacity_kwp":  s.CapacityKwp,
 	}
+	if s.DataSourceID != "" {
+		out["data_source_id"] = s.DataSourceID
+	}
+	return out
 }
 
 // BusConfig builds the retained edge/sources/config payload: the schema version

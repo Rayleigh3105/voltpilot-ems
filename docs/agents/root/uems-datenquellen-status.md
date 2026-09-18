@@ -1,7 +1,7 @@
 # Rückmeldung je Datenquelle aus dem Herzschlag
 
-AP-06 IP-14 nimmt den additiven Herzschlag-Block `data_sources[]` in der Cloud an. Der Edge-Bau,
-der diesen Block erzeugt, ist ein getrenntes Paket; bestehende Boxen senden ihn noch nicht.
+AP-06 IP-14 nimmt den additiven Herzschlag-Block `data_sources[]` in der Cloud an. Der [Edge-Bau IP-13](uems-quellen-herzschlag.md) erzeugt diesen Block ab seinem nächsten Edge-Release;
+bestehende Boxen senden ihn noch nicht.
 
 ## Schreibweg und Senke
 

@@ -1,0 +1,636 @@
+{
+  "schema_version": "1.0",
+  "cases": [
+    {
+      "name": "never",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "never",
+          "requests_per_min": null,
+          "samples_per_min": 0,
+          "since": "2026-11-03T14:00:00Z"
+        }
+      ]
+    },
+    {
+      "name": "ok",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "ok",
+          "requests_per_min": 1,
+          "samples_per_min": 3,
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "unreachable",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "source_id": "src-a",
+          "ts": "2026-11-03T14:00:10Z",
+          "requests": 1,
+          "samples": 0,
+          "failed": true,
+          "error_class": "unreachable"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 2,
+          "samples_per_min": 3,
+          "error_class": "unreachable",
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "no_answer",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "source_id": "src-a",
+          "ts": "2026-11-03T14:00:10Z",
+          "requests": 1,
+          "samples": 0,
+          "failed": true,
+          "error_class": "no_answer"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 2,
+          "samples_per_min": 3,
+          "error_class": "no_answer",
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "invalid_response",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "source_id": "src-a",
+          "ts": "2026-11-03T14:00:10Z",
+          "requests": 1,
+          "samples": 0,
+          "failed": true,
+          "error_class": "invalid_response"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 2,
+          "samples_per_min": 3,
+          "error_class": "invalid_response",
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "implausible",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "source_id": "src-a",
+          "ts": "2026-11-03T14:00:10Z",
+          "requests": 1,
+          "samples": 0,
+          "failed": true,
+          "error_class": "implausible"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 2,
+          "samples_per_min": 3,
+          "error_class": "implausible",
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "fronius_api",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "source_id": "src-a",
+          "ts": "2026-11-03T14:00:10Z",
+          "requests": 1,
+          "samples": 0,
+          "failed": true,
+          "error_class": "fronius_api"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 2,
+          "samples_per_min": 3,
+          "error_class": "fronius_api",
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "timeout",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "source_id": "src-a",
+          "ts": "2026-11-03T14:00:10Z",
+          "requests": 1,
+          "samples": 0,
+          "failed": true,
+          "error_class": "timeout"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 2,
+          "samples_per_min": 3,
+          "error_class": "timeout",
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "layout_changed",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "source_id": "src-a",
+          "ts": "2026-11-03T14:00:10Z",
+          "requests": 1,
+          "samples": 0,
+          "failed": true,
+          "error_class": "layout_changed"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 2,
+          "samples_per_min": 3,
+          "error_class": "layout_changed",
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "budget",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "source_id": "src-a",
+          "ts": "2026-11-03T14:00:10Z",
+          "requests": 0,
+          "samples": 0,
+          "failed": true,
+          "error_class": "budget"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 1,
+          "samples_per_min": 3,
+          "error_class": "budget",
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "unknown-cause",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "id": "DQ-4",
+          "ts": "2026-11-03T14:00:10Z",
+          "failed": true,
+          "error_class": "box_meldet_sich_nicht"
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 1,
+          "samples_per_min": 3,
+          "since": "2026-11-03T14:00:10Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "recovery",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "DQ-4",
+          "ts": "2026-11-03T14:00:00Z",
+          "failed": true,
+          "error_class": "unreachable"
+        },
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "ok",
+          "requests_per_min": 1,
+          "samples_per_min": 3,
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "silent",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        }
+      ],
+      "at": "2026-11-03T14:06:00Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "stale",
+          "requests_per_min": 0,
+          "samples_per_min": 0,
+          "since": "2026-11-03T14:05:05Z",
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    },
+    {
+      "name": "old-cloud",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer"
+          }
+        ]
+      },
+      "events": [],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": []
+    },
+    {
+      "name": "foreign-source",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "DQ-99",
+          "ts": "2026-11-03T14:00:10Z",
+          "samples": 1
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "never",
+          "requests_per_min": null,
+          "samples_per_min": 0,
+          "since": "2026-11-03T14:00:00Z"
+        }
+      ]
+    },
+    {
+      "name": "delayed-read",
+      "started_at": "2026-11-03T14:00:00Z",
+      "registry": {
+        "entities": [
+          {
+            "entity_id": "entity-a",
+            "entity_type": "producer",
+            "edge_source_id": "src-a",
+            "driver": {
+              "data_source_id": "DQ-4",
+              "interval_s": 5
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "entity_id": "entity-a",
+          "ts": "2026-11-03T14:00:05Z",
+          "requests": 1,
+          "samples": 3
+        },
+        {
+          "id": "DQ-4",
+          "ts": "2026-11-03T14:00:00Z",
+          "samples": 1
+        }
+      ],
+      "at": "2026-11-03T14:00:15Z",
+      "expected": [
+        {
+          "id": "DQ-4",
+          "health": "ok",
+          "requests_per_min": 1,
+          "samples_per_min": 3,
+          "read_at": "2026-11-03T14:00:05Z"
+        }
+      ]
+    }
+  ]
+}

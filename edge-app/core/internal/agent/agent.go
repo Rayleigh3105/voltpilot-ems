@@ -28,6 +28,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlcert"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
@@ -63,9 +64,10 @@ const historyCapacity = 5000
 
 // Agent is the running core.
 type Agent struct {
-	Cfg   config.Config
-	State *state.Store
-	Bus   *localbus.Bus
+	dataSourceStatus datasourcestatus.Collector
+	Cfg              config.Config
+	State            *state.Store
+	Bus              *localbus.Bus
 
 	buf                 *buffer.Buffer
 	hist                *history.Ring
@@ -678,6 +680,7 @@ func New(cfg config.Config) (*Agent, error) {
 	// per-entity retained configs are re-published once the bus is up in Start.
 	a.entStore = es
 	a.restoreEntities()
+	a.dataSourceStatus.Reconcile(a.entRegistry, time.Now())
 	// Einheitsmodell Stufe 1: who owns this plant's device configuration. Loaded
 	// BEFORE the first push of the session, so a portal-managed plant refuses
 	// local edits even while offline.
@@ -765,6 +768,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.Bus = bus
 
 	if err := bus.Subscribe(localbus.TopicTelemetry, 1, a.onLocalTelemetry); err != nil {
+		return err
+	}
+	if err := bus.Subscribe(datasourcestatus.Topic, 21, a.onDataSourcePoll); err != nil {
 		return err
 	}
 	if err := bus.Subscribe(localbus.TopicStatus, 2, a.onLocalStatus); err != nil {
@@ -1284,7 +1290,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
 					a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
-					a.registerWritesSummary(), a.chargersSummary()); err != nil {
+					a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now())}); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():
@@ -1351,6 +1357,7 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// their share to the primary. Committed into the state snapshot only after
 	// the gates below KEEP the sample; a gated channel is held to its last
 	// accepted primary value there (the same display policy as the composite).
+	a.dataSourceStatus.Observe(datasourcestatus.Event{SourceID: "inverter", Ts: ts, Samples: len(measurements)}, time.Now())
 	primary := make(map[string]float64, len(measurements))
 	for k, v := range measurements {
 		primary[k] = v

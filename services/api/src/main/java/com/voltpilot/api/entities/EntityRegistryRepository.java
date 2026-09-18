@@ -512,6 +512,17 @@ public class EntityRegistryRepository {
         return out;
     }
 
+    /** Stable source labels for the additive read-status metadata, under tenant RLS. */
+    public java.util.Map<UUID, String> datenquellenKennzeichen(UUID siteId) {
+        java.util.Map<UUID, String> out = new java.util.LinkedHashMap<>();
+        jdbc.query("SELECT mp.id, dq.kennzeichen FROM measurement_point mp "
+                        + "JOIN data_source dq ON dq.id = mp.data_source_id AND dq.tenant_id = mp.tenant_id "
+                        + "WHERE mp.site_id = ? AND mp.entity_type IS NOT NULL",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(
+                        rs.getObject("id", UUID.class), rs.getString("kennzeichen")), siteId);
+        return out;
+    }
+
     /**
      * Alle Zeiträume der Datenquellen, hinter denen Entitäten dieser Anlage antworten — auch
      * beendete und geplante. Welche Box zum Zeitpunkt liest, entscheidet die reine Regel
