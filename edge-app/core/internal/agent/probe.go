@@ -62,7 +62,12 @@ const (
 // stay in one place (probe.Op.Scaled here in the core), so the node reads
 // registers and nothing else.
 type probeBusOp struct {
-	ID        string `json:"id"`
+	ID string `json:"id"`
+	// Op names the STEP TYPE on the local bus. It is omitted for a plain
+	// register read, so a box whose palette predates AP-05 IP-7 sees exactly the
+	// bytes it has always seen; a step it does not know arrives WITH the field
+	// and is refused by name instead of being read as a register.
+	Op        string `json:"op,omitempty"`
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
 	UnitID    int    `json:"unit_id"`
@@ -70,6 +75,8 @@ type probeBusOp struct {
 	Address   int    `json:"address"`
 	DataType  string `json:"data_type"`
 	WordOrder string `json:"word_order"`
+	// Nameplate: wago_kopf only - also read 0xFA10-0xFA17 and SHOW them.
+	Nameplate bool `json:"nameplate,omitempty"`
 }
 
 type probeBusRequest struct {
@@ -85,6 +92,10 @@ type probeBusResult struct {
 	Registers []int    `json:"registers"`
 	ErrorCode string   `json:"error_code"`
 	Message   string   `json:"message"`
+	// WagoKopf is the decoded head a wago_kopf step read. The node DECODES (it
+	// owns the Modbus codec), the core JUDGES - the same split as everywhere on
+	// this channel: policy never leaves the core.
+	WagoKopf *probe.WagoKopf `json:"wago_kopf"`
 }
 
 type probeBusResponse struct {
@@ -191,7 +202,7 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 			fc = probeFnReadInput
 		}
 		index[op.ID] = i
-		busOps = append(busOps, probeBusOp{
+		bus := probeBusOp{
 			ID:        op.ID,
 			Host:      op.Host,
 			Port:      op.EffectivePort(),
@@ -200,7 +211,15 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 			Address:   op.EffectiveAddress(),
 			DataType:  op.DataType,
 			WordOrder: op.EffectiveWordOrder(),
-		})
+		}
+		if op.Op == probe.OpWagoKopf {
+			// A head read has no data_type on purpose: it reads the twelve words
+			// of a documented layout, not "a value of some type".
+			bus.Op = probe.OpWagoKopf
+			bus.DataType = ""
+			bus.Nameplate = op.WantsNameplate()
+		}
+		busOps = append(busOps, bus)
 	}
 
 	if len(busOps) > 0 {
@@ -210,6 +229,10 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 				continue // an answer to a step we never asked for
 			}
 			op := req.Ops[i]
+			if op.Op == probe.OpWagoKopf {
+				results[i] = wagoKopfResult(op, r)
+				continue
+			}
 			if r.OK && r.Raw != nil {
 				results[i] = probe.Succeeded(op.ID, *r.Raw, r.Registers, op.Scaled(*r.Raw))
 				continue
@@ -226,7 +249,8 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 		// Whatever the exchange did not answer at all is a timeout - stated,
 		// never left as a zero value that would read like a successful 0.
 		for i, op := range req.Ops {
-			if verdicts[i].OK() && op.Op == probe.OpRead && results[i].ID == "" {
+			if verdicts[i].OK() && (op.Op == probe.OpRead || op.Op == probe.OpWagoKopf) &&
+				results[i].ID == "" {
 				results[i] = probe.Failed(op.ID, probe.ErrTimeout,
 					"Die Prüfung hat nicht rechtzeitig geantwortet.")
 			}
@@ -234,6 +258,46 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 	}
 
 	a.publishProbeResult(probe.NewResult(req, id, time.Now(), results))
+}
+
+// wagoKopfResult turns one answered head read into the contract line. The NODE
+// decoded the twelve words; the verdict is made HERE, because it is policy:
+//
+//   - the head is our register image  -> ok=true with the head.
+//   - signature or major version foreign -> a REFUSAL that still carries the
+//     head and names the finding `registerbild_unbekannt`. Not a single card
+//     value is ever taken from such a reading (the reader refuses that upstream),
+//     and hiding what actually stood there would make the rejection a riddle.
+//   - any other reason (length, word order) -> the same refusal WITHOUT a
+//     finding: a v1 image IS there, it just does not decode with these
+//     parameters, which is a statement about the ANLAGE, not about the program
+//     in the controller.
+//   - the read itself failed -> the node's own class, unchanged.
+func wagoKopfResult(op probe.Op, r probeBusResult) probe.OpResult {
+	if !r.OK || r.WagoKopf == nil {
+		code, msg := r.ErrorCode, r.Message
+		if code == "" {
+			code, msg = probe.ErrInvalidResponse, "Die Antwort der Steuerung war nicht lesbar."
+		}
+		return probe.Failed(op.ID, code, msg)
+	}
+	kopf := r.WagoKopf
+	if kopf.Erkannt {
+		return probe.SucceededWagoKopf(op.ID, kopf)
+	}
+	if kopf.Grund == "signatur_fremd" || kopf.Grund == "hauptversion_fremd" {
+		return probe.FailedWagoKopf(op.ID, probe.ErrInvalidResponse,
+			"Unter dieser Adresse steht nicht das VoltPilot-Registerbild v1 "+
+				"(Signatur oder Version fremd) - es wurde kein Kartenwert übernommen.",
+			kopf, &probe.Finding{
+				Channel: probe.FindingChannelWagoKopf,
+				Rule:    probe.FindingRuleRegisterbildUnbekannt,
+			})
+	}
+	return probe.FailedWagoKopf(op.ID, probe.ErrInvalidResponse,
+		"Der Kopf des Registerbilds ließ sich mit diesen Angaben nicht lesen "+
+			"("+kopf.Grund+") - Basisadresse, Registerart und Wortreihenfolge prüfen.",
+		kopf, nil)
 }
 
 // probeExchange runs ONE correlated request/response round trip over the local

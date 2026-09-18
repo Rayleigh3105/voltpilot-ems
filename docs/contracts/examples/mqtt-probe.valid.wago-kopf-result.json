@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "c41f0a9b3e77d215",
+  "answered_at": "2026-09-18T10:05:02Z",
+  "results": [
+    {
+      "id": "kopf",
+      "ok": true,
+      "wago_kopf": {
+        "signatur_ok": true,
+        "erkannt": true,
+        "hauptversion": 1,
+        "nebenversion": 0,
+        "kopflaenge": 12,
+        "kartenblocklaenge": 42,
+        "kartenzahl": 4,
+        "herzschlag": 900,
+        "controller_kennung": 7,
+        "typenschild": "PFC200 CS 2ETH"
+      }
+    },
+    {
+      "id": "kopf-halle-2",
+      "ok": false,
+      "error_code": "invalid_response",
+      "message": "Unter dieser Adresse steht nicht das VoltPilot-Registerbild v1 (Signatur oder Version fremd) - es wurde kein Kartenwert übernommen.",
+      "wago_kopf": {
+        "signatur_ok": true,
+        "erkannt": false,
+        "grund": "hauptversion_fremd",
+        "hauptversion": 2
+      },
+      "finding": {
+        "channel": "wago_kopf",
+        "rule": "registerbild_unbekannt"
+      }
+    }
+  ]
+}

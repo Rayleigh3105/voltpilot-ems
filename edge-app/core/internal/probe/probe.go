@@ -64,6 +64,27 @@ const (
 	// write - never a value the box chose and never an address it remembered.
 	OpSwitchTest   = "switch_test"
 	OpSwitchCancel = "switch_cancel"
+	// OpWagoKopf reads ONLY the head of a "VoltPilot-Registerbild WAGO v1"
+	// (docs/contracts/v2/wago-registerbild.md, AP-05 IP-7) - signature, version,
+	// lengths, card count, heartbeat, controller id. No card, no measurement.
+	// It is what lets the wizard show WHAT answers under that base address
+	// before a single card has been assigned to anything.
+	OpWagoKopf = "wago_kopf"
+)
+
+// The finding vocabulary this package adds to the testconn rules. A finding is
+// machine readable next to the German sentence, so no surface has to parse prose.
+const (
+	// FindingChannelWagoKopf is not a measurement channel at all: it names the
+	// HEAD of the WAGO register image. The controller answered - it just did not
+	// answer with our register image.
+	FindingChannelWagoKopf = "wago_kopf"
+	// FindingRuleRegisterbildUnbekannt: signature or major version foreign. Not
+	// a single card value is taken from such a reading. In normal operation the
+	// box reports the same finding as the source contract's error class
+	// `layout_changed` ("Aufbau geaendert - nichts wurde umgehaengt"); that
+	// vocabulary is closed, so the fine-grained word lives here.
+	FindingRuleRegisterbildUnbekannt = "registerbild_unbekannt"
 )
 
 // TransportModbusTCP is the only transport V1 executes.
@@ -161,6 +182,12 @@ type Op struct {
 	Role       string          `json:"role,omitempty"`
 	Connection json.RawMessage `json:"connection,omitempty"`
 
+	// wago_kopf only: ALSO read the nameplate registers 0xFA10-0xFA17 and show
+	// them. They are never an identity proof - whether they answer without a
+	// running runtime system is NOT documented by the manufacturer (evidence
+	// H2) - so a controller that stays silent here is not a foreign controller.
+	Nameplate *bool `json:"nameplate,omitempty"`
+
 	// switch_test / switch_cancel only.
 	WriteFC         *int `json:"write_fc,omitempty"`
 	OnValue         *int `json:"on_value,omitempty"`
@@ -235,9 +262,41 @@ type OpResult struct {
 	// and hiding them turned a refusal into a riddle (live case Muehlfeldweg 2,
 	// 21.08.2026). Raw/Value stay absent there - those belong to a register read.
 	Reading *Reading `json:"reading,omitempty"`
+	// WagoKopf is the head of a WAGO register image that a wago_kopf op read. Its
+	// OWN block, like Reading and Switched: it carries no measurement, so it has
+	// no business in Raw/Value. It rides a REFUSAL too - "what stood there?" is
+	// exactly what turns a rejection from a riddle into something actionable.
+	WagoKopf *WagoKopf `json:"wago_kopf,omitempty"`
 	// Finding names WHICH channel violated WHICH plausibility rule. Machine
 	// readable next to the German sentence, so no surface parses prose.
 	Finding *Finding `json:"finding,omitempty"`
+}
+
+// WagoKopf is the decoded head of a "VoltPilot-Registerbild WAGO v1". Every
+// field beyond the two verdicts is a POINTER, because a field this reading did
+// not produce is ABSENT, never a fabricated 0 (the gap-not-zero rule):
+//
+//   - foreign signature: nothing but SignaturOK is known - version, card count
+//     and heartbeat would be guesses.
+//   - foreign major version: the version itself IS the answer and stays; the
+//     rest does not, because in a v2 image the words at offset 4-11 no longer
+//     mean what a v1 reader would make of them.
+type WagoKopf struct {
+	SignaturOK bool   `json:"signatur_ok"`
+	Erkannt    bool   `json:"erkannt"`
+	Grund      string `json:"grund,omitempty"`
+
+	Hauptversion      *int   `json:"hauptversion,omitempty"`
+	Nebenversion      *int   `json:"nebenversion,omitempty"`
+	Kopflaenge        *int   `json:"kopflaenge,omitempty"`
+	Kartenblocklaenge *int   `json:"kartenblocklaenge,omitempty"`
+	Kartenzahl        *int   `json:"kartenzahl,omitempty"`
+	Herzschlag        *int   `json:"herzschlag,omitempty"`
+	ControllerKennung *int64 `json:"controller_kennung,omitempty"`
+
+	// Typenschild: the nameplate text, DISPLAY ONLY. Absent when not asked for,
+	// not answered or empty - never a fabricated empty string.
+	Typenschild string `json:"typenschild,omitempty"`
 }
 
 // Finding is the plausibility verdict about one channel of a test_connection
@@ -386,6 +445,8 @@ func ValidateOp(op Op) (code string, message string) {
 		return validateTestConnection(op)
 	case OpSwitchTest, OpSwitchCancel:
 		return validateSwitch(op)
+	case OpWagoKopf:
+		return validateWagoKopf(op)
 	default:
 		return ErrNotSupported, "Diesen Prüfschritt kennt diese VoltPilot-Box nicht."
 	}
@@ -507,6 +568,61 @@ func validateTestConnection(op Op) (string, string) {
 				"Geräte im Heim- oder Firmennetz."
 	}
 	return "", ""
+}
+
+// validateWagoKopf admits a head read. It carries the SAME rules a register
+// read does - private target, bounded port/unit, a stated register kind and a
+// base address - and deliberately NOT a data_type: this op does not read "a
+// value of some type", it reads the twelve head words of a documented layout,
+// and a free word count is exactly the mistake the contract's fixed head length
+// exists to prevent.
+func validateWagoKopf(op Op) (string, string) {
+	if op.Transport != TransportModbusTCP {
+		return ErrNotSupported, "Diese Verbindungsart kann diese VoltPilot-Box nicht prüfen."
+	}
+	host := strings.TrimSpace(op.Host)
+	if host == "" {
+		return ErrInvalidRequest, "Es fehlt die Adresse der Steuerung."
+	}
+	if !IsPrivateHost(host) {
+		return ErrInvalidRequest,
+			"Die Adresse liegt nicht im eigenen Netz. Bitte die IP-Adresse der Steuerung " +
+				"eintragen (oder einen Namen wie „steuerung.local“) - VoltPilot liest nur " +
+				"Geräte im Heim- oder Firmennetz."
+	}
+	if op.Port != nil && (*op.Port < 1 || *op.Port > 65535) {
+		return ErrInvalidRequest, "Der Port liegt außerhalb des gültigen Bereichs."
+	}
+	if op.UnitID != nil && (*op.UnitID < 0 || *op.UnitID > 255) {
+		return ErrInvalidRequest, "Die Unit-ID liegt außerhalb des gültigen Bereichs."
+	}
+	if op.RegisterKind != "holding" && op.RegisterKind != "input" {
+		return ErrInvalidRequest, "Die Registerart muss „holding“ oder „input“ sein."
+	}
+	if op.Address == nil || *op.Address < 0 || *op.Address > 65535 {
+		return ErrInvalidRequest, "Die Basisadresse fehlt oder liegt außerhalb des gültigen Bereichs."
+	}
+	if op.WordOrder != "" && op.WordOrder != "big" && op.WordOrder != "little" {
+		return ErrInvalidRequest, "Die Wortreihenfolge muss „big“ oder „little“ sein."
+	}
+	return "", ""
+}
+
+// WantsNameplate reports whether this op also asks for the nameplate registers.
+func (o Op) WantsNameplate() bool { return o.Nameplate != nil && *o.Nameplate }
+
+// SucceededWagoKopf builds an answered wago_kopf line.
+func SucceededWagoKopf(id string, kopf *WagoKopf) OpResult {
+	return OpResult{ID: id, OK: true, WagoKopf: kopf}
+}
+
+// FailedWagoKopf builds a REFUSED wago_kopf line that still shows what the box
+// read - the same discipline as FailedReading: the controller answered, it just
+// did not answer with our register image, and hiding the head would turn the
+// refusal back into a riddle.
+func FailedWagoKopf(id, code, message string, kopf *WagoKopf, finding *Finding) OpResult {
+	return OpResult{ID: id, OK: false, ErrorCode: code, Message: message,
+		WagoKopf: kopf, Finding: finding}
 }
 
 // validateSwitch admits the two WRITING ops. It re-applies every rule a read

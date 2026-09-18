@@ -662,3 +662,78 @@ func TestAnInvalidSelectionIsRefusedByTheCatalogNotByTheDevice(t *testing.T) {
 		t.Fatalf("Grund = %q", res.Message)
 	}
 }
+
+// AP-05 IP-7: der Knoten DEKODIERT den Kopf, der Core URTEILT. Diese Teilung ist
+// der Grund, warum das Vokabular des Befunds nirgends im Knoten steht.
+func TestWagoKopfVerdictIsMadeInTheCore(t *testing.T) {
+	op := probe.Op{Op: probe.OpWagoKopf, ID: "kopf", Transport: probe.TransportModbusTCP,
+		Host: "192.168.10.31"}
+	i := func(v int) *int { return &v }
+
+	// 1. Erkannt: die Zeile ist ein Erfolg und traegt den Kopf, sonst nichts.
+	kopf := &probe.WagoKopf{SignaturOK: true, Erkannt: true, Hauptversion: i(1), Kartenzahl: i(4)}
+	got := wagoKopfResult(op, probeBusResult{ID: "kopf", OK: true, WagoKopf: kopf})
+	if !got.OK || got.WagoKopf == nil || got.Finding != nil || got.Raw != nil {
+		t.Fatalf("erkannt = %+v", got)
+	}
+
+	// 2. Fremdes Registerbild: eine EHRLICHE Ablehnung, die trotzdem zeigt, was
+	// dastand - und den Befund beim Namen nennt.
+	for _, grund := range []string{"signatur_fremd", "hauptversion_fremd"} {
+		fremd := &probe.WagoKopf{SignaturOK: grund == "hauptversion_fremd", Grund: grund}
+		got = wagoKopfResult(op, probeBusResult{ID: "kopf", OK: true, WagoKopf: fremd})
+		if got.OK || got.ErrorCode != probe.ErrInvalidResponse || got.WagoKopf == nil {
+			t.Fatalf("%s = %+v", grund, got)
+		}
+		if got.Finding == nil || got.Finding.Rule != probe.FindingRuleRegisterbildUnbekannt ||
+			got.Finding.Channel != probe.FindingChannelWagoKopf {
+			t.Fatalf("%s: Befund = %+v", grund, got.Finding)
+		}
+		if !strings.Contains(got.Message, "kein Kartenwert") {
+			t.Fatalf("%s: Satz = %q", grund, got.Message)
+		}
+	}
+
+	// 3. Jeder ANDERE Grund ist kein Befund ueber das Programm der Steuerung: ein
+	// v1-Registerbild IST da, es dekodiert nur mit diesen Parametern nicht.
+	for _, grund := range []string{"wortfolge_abweichend", "laenge_ungueltig"} {
+		got = wagoKopfResult(op, probeBusResult{ID: "kopf", OK: true,
+			WagoKopf: &probe.WagoKopf{SignaturOK: true, Grund: grund}})
+		if got.OK || got.Finding != nil {
+			t.Fatalf("%s = %+v", grund, got)
+		}
+		if !strings.Contains(got.Message, grund) {
+			t.Fatalf("%s: Satz = %q", grund, got.Message)
+		}
+	}
+
+	// 4. Die LESUNG selbst ist gescheitert: die Klasse des Knotens bleibt stehen,
+	// und es wird kein Kopf erfunden.
+	got = wagoKopfResult(op, probeBusResult{ID: "kopf", OK: false,
+		ErrorCode: probe.ErrUnreachable, Message: "nicht erreichbar"})
+	if got.OK || got.ErrorCode != probe.ErrUnreachable || got.WagoKopf != nil {
+		t.Fatalf("Fehlschlag = %+v", got)
+	}
+	// Eine Antwort ohne Kopf ist kein Erfolg - nie ein leerer Kopf, der wie ein
+	// gelesener aussieht.
+	got = wagoKopfResult(op, probeBusResult{ID: "kopf", OK: true})
+	if got.OK || got.ErrorCode != probe.ErrInvalidResponse || got.WagoKopf != nil {
+		t.Fatalf("Antwort ohne Kopf = %+v", got)
+	}
+}
+
+// Der lokale Bus traegt den Op-Typ nur, wenn es einen gibt: eine gewoehnliche
+// Lesung sieht auf dem Draht aus wie immer (Mischbetrieb in beide Richtungen).
+func TestWagoKopfBusOpStaysAdditive(t *testing.T) {
+	alt, _ := json.Marshal(probeBusOp{ID: "soc", Host: "h", Port: 502, UnitID: 1, FC: 3,
+		Address: 588, DataType: "u16", WordOrder: "big"})
+	if strings.Contains(string(alt), "\"op\"") || strings.Contains(string(alt), "nameplate") {
+		t.Fatalf("eine gewoehnliche Lesung darf keine neuen Felder tragen: %s", alt)
+	}
+	neu, _ := json.Marshal(probeBusOp{ID: "kopf", Op: probe.OpWagoKopf, Host: "h", Port: 502,
+		UnitID: 1, FC: 4, Address: 4096, WordOrder: "little", Nameplate: true})
+	if !strings.Contains(string(neu), "\"op\":\"wago_kopf\"") ||
+		!strings.Contains(string(neu), "\"nameplate\":true") {
+		t.Fatalf("der Kopf-Schritt muss sich benennen: %s", neu)
+	}
+}

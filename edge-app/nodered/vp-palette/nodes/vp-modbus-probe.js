@@ -36,6 +36,8 @@
 const conn = require('../lib/modbus-conn.js');
 const codec = require('../lib/modbus-tcp.js');
 const sharedBus = require('../../measurements/shared-bus-arbiter');
+const registerbild = require('../../measurements/wago-registerbild');
+const wagoKopf = require('../../measurements/wago-kopf');
 
 const REQUEST_TOPIC = 'edge/probe/request';
 const RESULT_TOPIC = 'edge/probe/result';
@@ -47,6 +49,17 @@ const ERR_INVALID_RESPONSE = 'invalid_response';
 const ERR_TIMEOUT = 'timeout';
 
 const MAX_OPS = 8;
+
+/**
+ * Der Op-Typ `wago_kopf` (UEMS AP-05 IP-7): NUR der Kopf eines
+ * „VoltPilot-Registerbild WAGO v1“, keine Karte und kein Messwert.
+ *
+ * Er steht hier und nicht im Core aus demselben Grund wie jede andere Lesung: die Socket-Disziplin
+ * der Box lebt in `lib/modbus-conn.js`, und eine Vorschau darf dem laufenden Poll nie den einen
+ * Platz am Geraet wegnehmen. Der Knoten DEKODIERT (er hat den Modbus-Codec), das URTEIL faellt der
+ * Core - dieselbe Teilung wie ueberall auf diesem Kanal.
+ */
+const OP_WAGO_KOPF = 'wago_kopf';
 
 /**
  * parse() is exported for unit tests: turn the local-bus JSON into the request,
@@ -132,6 +145,53 @@ function readPlan(op) {
   return { host: host, port: port, unitId: unitId, fc: fc, addr: addr, count: count };
 }
 
+/**
+ * Der Leseplan einer `wago_kopf`-Op. Die Wortzahl ist die KOPFLAENGE des Vertrags, kein freier
+ * Wert der Anfrage: der Kopf ist ein dokumentierter Aufbau, und eine frei gewaehlte Wortzahl ist
+ * genau der Fehler, den die feste Laenge verhindert.
+ */
+function kopfPlan(op) {
+  if (op == null || typeof op !== 'object') return null;
+  const host = typeof op.host === 'string' ? op.host.trim() : '';
+  if (!host) return null;
+  const addr = Math.floor(Number(op.address));
+  if (!isFinite(addr) || addr < 0 || addr > 65535) return null;
+  const fc = op.fc === codec.FN_READ_INPUT ? codec.FN_READ_INPUT : codec.FN_READ_HOLDING;
+  return { host, port: boundedInt(op.port, 1, 65535, 502),
+    unitId: boundedInt(op.unit_id, 0, 255, 1), fc, addr,
+    count: registerbild.KOPFLAENGE_MIN };
+}
+
+/**
+ * Eine `wago_kopf`-Op ausfuehren: Kopf lesen, deuten, und - nur wenn gefragt - das Typenschild
+ * dazu.
+ *
+ * WARNUNG: Das Typenschild wird NIE zur Identitaetspruefung herangezogen und sein Fehlschlag ist
+ * KEIN Fehlschlag der Op: ob die Register 0xFA10-0xFA17 ohne laufendes Laufzeitsystem antworten,
+ * ist beim Hersteller nicht belegt (Beleg H2). Eine Steuerung, die hier schweigt, ist keine
+ * fremde Steuerung - es fehlt nur eine Anzeige.
+ */
+function runWagoKopf(op, id, plan, readRegisters) {
+  return readRegisters(plan)
+    .then((woerter) => {
+      const schild = () => {
+        if (!op.nameplate) return Promise.resolve(null);
+        return readRegisters(Object.assign({}, plan, {
+          addr: wagoKopf.TYPENSCHILD.adresse, count: wagoKopf.TYPENSCHILD.woerter,
+        })).catch(() => null);
+      };
+      return schild().then((typenschild) => ({
+        id, ok: true,
+        wago_kopf: wagoKopf.kopfBericht(woerter,
+          { wortfolge: op.word_order === 'little' ? 'little' : 'big', typenschild }),
+      }));
+    })
+    .catch((err) => {
+      const c = classify(err && err.message);
+      return { id, ok: false, error_code: c.code, message: c.message };
+    });
+}
+
 function boundedInt(v, min, max, fallback) {
   const n = Math.floor(Number(v));
   if (!isFinite(n) || n < min || n > max) return fallback;
@@ -146,6 +206,19 @@ function runOps(ops, readRegisters) {
     if (i >= ops.length) return Promise.resolve(results);
     const op = ops[i];
     const id = typeof op.id === 'string' ? op.id : String(i);
+    if (op && op.op === OP_WAGO_KOPF) {
+      const kopf = kopfPlan(op);
+      if (!kopf) {
+        results.push({
+          id: id, ok: false, error_code: ERR_INVALID_REQUEST,
+          message: 'Der Prüfschritt ist unvollständig.',
+        });
+        return step(i + 1);
+      }
+      return runWagoKopf(op, id, kopf, readRegisters)
+        .then((r) => { results.push(r); })
+        .then(() => step(i + 1));
+    }
     const plan = readPlan(op);
     if (!plan) {
       results.push({
@@ -234,6 +307,8 @@ module.exports = function (RED) {
 module.exports.parse = parse;
 module.exports.classify = classify;
 module.exports.readPlan = readPlan;
+module.exports.kopfPlan = kopfPlan;
 module.exports.runOps = runOps;
+module.exports.OP_WAGO_KOPF = OP_WAGO_KOPF;
 module.exports.REQUEST_TOPIC = REQUEST_TOPIC;
 module.exports.RESULT_TOPIC = RESULT_TOPIC;

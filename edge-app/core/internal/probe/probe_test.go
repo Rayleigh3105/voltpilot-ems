@@ -766,3 +766,120 @@ func TestSwitchResultNeverClaimsAReadbackItDidNotTake(t *testing.T) {
 		t.Fatalf("a cancel reports no auto-off")
 	}
 }
+
+// AP-05 IP-7: the head read of a WAGO controller. The fixtures are read BY PATH
+// by the real device-side parser, so renaming one breaks this deliberately.
+func TestWagoKopfFixturesParseAndAdmit(t *testing.T) {
+	raw, err := os.ReadFile(contractPath("mqtt-probe.valid.wago-kopf.json"))
+	if err != nil {
+		t.Fatalf("Fixture: %v", err)
+	}
+	req, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(req.Ops) != 1 || req.Ops[0].Op != OpWagoKopf {
+		t.Fatalf("ops = %+v", req.Ops)
+	}
+	op := req.Ops[0]
+	if v := ValidateOps(req.Ops); !v[0].OK() {
+		t.Fatalf("die Fixture muss zugelassen werden: %+v", v[0])
+	}
+	// Basisadresse, Registerart und Wortfolge sind Parameter je Anlage (Vertrag
+	// Paragraf 2) - die Box erfindet keinen davon.
+	if op.EffectiveAddress() != 4096 || op.RegisterKind != "input" ||
+		op.EffectiveWordOrder() != "little" || !op.WantsNameplate() {
+		t.Fatalf("Parameter = %+v", op)
+	}
+	// Ein Kopf-Lesen SCHREIBT nicht - die eine Frage, an der ein neuer Op-Typ
+	// nicht still an einem Aufrufer vorbeirutschen darf, der nur Lesen erlaubt.
+	if op.Writes() {
+		t.Fatal("wago_kopf darf niemals als schreibend gelten")
+	}
+
+	// Fehlende Basisadresse: der Kopf beginnt genau dort, raten waere ein
+	// Registerbild an der falschen Stelle.
+	raw, err = os.ReadFile(contractPath("mqtt-probe.invalid.wago-kopf-without-address.json"))
+	if err != nil {
+		t.Fatalf("Negativ-Fixture: %v", err)
+	}
+	bad, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	code, msg := ValidateOp(bad.Ops[0])
+	if code != ErrInvalidRequest || !strings.Contains(msg, "Basisadresse") {
+		t.Fatalf("Ablehnung = %q / %q", code, msg)
+	}
+
+	// Eine Box, die diesen Op-Typ nicht kennt, sagt es - sie liest nicht
+	// ersatzweise irgendein Register.
+	unknown := Op{Op: "wago_karte", ID: "x", Transport: TransportModbusTCP, Host: "192.168.0.5"}
+	if code, _ := ValidateOp(unknown); code != ErrNotSupported {
+		t.Fatalf("unbekannter Op-Typ = %q", code)
+	}
+
+	// Dieselbe Beweispflicht wie bei jeder Lesung: ein Ziel, das nicht belegbar
+	// privat ist, wird nicht gewaehlt.
+	oeffentlich := op
+	oeffentlich.Host = "203.0.113.9"
+	if code, _ := ValidateOp(oeffentlich); code != ErrInvalidRequest {
+		t.Fatalf("oeffentliches Ziel = %q", code)
+	}
+}
+
+func TestWagoKopfResultIsHonestAboutWhatItRead(t *testing.T) {
+	raw, err := os.ReadFile(contractPath("mqtt-probe.valid.wago-kopf-result.json"))
+	if err != nil {
+		t.Fatalf("Ergebnis-Fixture: %v", err)
+	}
+	var res Result
+	if err := json.Unmarshal(raw, &res); err != nil {
+		t.Fatalf("Ergebnis unlesbar: %v", err)
+	}
+	if len(res.Results) != 2 {
+		t.Fatalf("Zeilen = %d", len(res.Results))
+	}
+	gut := res.Results[0]
+	if !gut.OK || gut.WagoKopf == nil || !gut.WagoKopf.Erkannt ||
+		gut.WagoKopf.Kartenzahl == nil || *gut.WagoKopf.Kartenzahl != 4 {
+		t.Fatalf("erkannter Kopf = %+v", gut.WagoKopf)
+	}
+	if gut.WagoKopf.Typenschild != "PFC200 CS 2ETH" {
+		t.Fatalf("Typenschild = %q", gut.WagoKopf.Typenschild)
+	}
+	// Ein Kopf traegt keinen Messwert - raw/value sind fuer eine Registerlesung
+	// reserviert, genau wie bei switched/reading.
+	if gut.Raw != nil || gut.Value != nil {
+		t.Fatalf("ein Kopf ist kein Messwert: %+v", gut)
+	}
+
+	// Die EHRLICHE Ablehnung: die Steuerung hat geantwortet, nur nicht mit
+	// unserem Registerbild. Der Kopf reist mit, der Befund nennt die Regel.
+	fremd := res.Results[1]
+	if fremd.OK || fremd.ErrorCode != ErrInvalidResponse || fremd.Finding == nil {
+		t.Fatalf("fremdes Registerbild = %+v", fremd)
+	}
+	if fremd.Finding.Channel != FindingChannelWagoKopf ||
+		fremd.Finding.Rule != FindingRuleRegisterbildUnbekannt {
+		t.Fatalf("Befund = %+v", fremd.Finding)
+	}
+	if fremd.WagoKopf == nil || fremd.WagoKopf.Grund != "hauptversion_fremd" ||
+		fremd.WagoKopf.Hauptversion == nil || *fremd.WagoKopf.Hauptversion != 2 {
+		t.Fatalf("der Kopf muss mitreisen: %+v", fremd.WagoKopf)
+	}
+	// Luecke statt Null: was diese Lesung nicht ergeben hat, darf nicht auf den
+	// Draht. In einem v2-Registerbild bedeuten die Woerter an Offset 4-11 nicht
+	// mehr, was ein v1-Leser aus ihnen machen wuerde.
+	if fremd.WagoKopf.Kartenzahl != nil || fremd.WagoKopf.Herzschlag != nil ||
+		fremd.WagoKopf.ControllerKennung != nil {
+		t.Fatalf("geratene Felder: %+v", fremd.WagoKopf)
+	}
+	out, _ := json.Marshal(FailedWagoKopf("kopf", ErrInvalidResponse, "x",
+		fremd.WagoKopf, fremd.Finding))
+	for _, feld := range []string{"kartenzahl", "herzschlag", "controller_kennung", "raw", "value"} {
+		if strings.Contains(string(out), feld) {
+			t.Fatalf("%q darf nicht in den Draht: %s", feld, out)
+		}
+	}
+}
