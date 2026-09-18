@@ -234,11 +234,30 @@ class UemsStreckeAbnahmeTest {
                 () -> zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id IN ("
                         + boxen(szenario) + ")") > 0);
 
-        // Erwartet wird JE MESSSTELLE UND ROLLE; die Reihe steht am entity_id der Stammdaten.
-        Map<String, Long> erwartet = new TreeMap<>();
+        // Erwartet wird JE MESSSTELLE UND ROLLE. Die Zahl kommt NICHT aus der Aufzählung des
+        // Drehbuchs, sondern aus den gespielten Zustellungen unter den beiden Regeln, die die
+        // Datenbank durchsetzt: Idempotenz über (Reihe, Messkanal, Messzeit) und die Rolle aus
+        // der Zuständigkeit ZUR MESSZEIT. Was das Drehbuch sagt, wird daneben geprüft — und
+        // wo beide auseinandergehen, sagt die Abweichung genau, worin.
+        Map<String, Long> erwartet = ausDenZustellungen(szenario);
+        Map<String, Long> lautDrehbuch = new TreeMap<>();
         for (JsonNode r : szenario.path("erwartete_reihen")) {
-            erwartet.merge(r.path("messstelle").asText() + "/" + r.path("rolle").asText(),
+            lautDrehbuch.merge(r.path("messstelle").asText() + "/" + r.path("rolle").asText(),
                     r.path("rohzeilen").asLong(), Long::sum);
+        }
+        if (!erwartet.equals(lautDrehbuch)) {
+            // ⚠ A6, Befund am Drehbuch: der „Nachzügler mit Messzeit VOR dem Wechsel"
+            // (Sequenz 90 503) trägt 05:29:50 — GENAU die Messzeit des Umschlags 90 502, der
+            // schon liegt. Die Idempotenz (E3) speichert ihn zu Recht kein zweites Mal, also
+            // sind es 6 führende Zeilen je Reihe und nicht 7. Der Fall kann damit nicht
+            // zeigen, was er zeigen will; dass ein später eintreffender Wert der ALTEN Box mit
+            // Messzeit vor dem Wechsel führend ist, beweist
+            // WriterPipeTest#derNachzueglerIstFuehrendUndDerSpaetereEinSpiegel mit eigenen
+            // Messzeiten. Wir folgen den Zeitstempeln, nicht dem Abnahmetext.
+            assertThat(schluessel)
+                    .as("nur A6 weicht bekannt ab; jede andere Abweichung ist neu und zu klären:"
+                            + " aus den Zustellungen " + erwartet + " vs. Drehbuch " + lautDrehbuch)
+                    .isEqualTo("A6");
         }
         Map<String, String> entity = new LinkedHashMap<>();
         for (JsonNode r : szenario.path("stammdaten").path("reihen")) {
@@ -276,9 +295,83 @@ class UemsStreckeAbnahmeTest {
             warte(schluessel + ": Ereignis " + art + " ist festgehalten",
                     () -> zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='" + art
                             + "' AND urheber='writer' AND device_id IN (" + boxen(szenario) + ")"),
-                    (long) ereignisSequenzenOderZahl(szenario, art),
+                    erwarteteZahl(szenario, art),
                     () -> beleg(szenario, art));
         }
+
+        // Die Sequenzregel gilt IMMER, auch wo das Drehbuch sie nicht aufzählt.
+        for (String art : List.of("sequence_gap", "sequence_reset")) {
+            long ausDenSequenzen = ausDenSequenzen(szenario, art);
+            if (ausDenSequenzen == 0 || writerEreignisarten(szenario).contains(art)) {
+                continue;
+            }
+            warte(schluessel + ": " + art + " nach der Sequenzregel",
+                    () -> zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='" + art
+                            + "' AND urheber='writer' AND device_id IN (" + boxen(szenario) + ")"),
+                    ausDenSequenzen, () -> beleg(szenario, art));
+        }
+    }
+
+    /**
+     * Die Zeilen, die aus den GESPIELTEN Zustellungen entstehen müssen, je Messstelle und
+     * Rolle. Zwei Regeln, beide von der Datenbank durchgesetzt:
+     *
+     * <ul>
+     *   <li><b>Idempotenz</b> — ein Wert ist (Reihe, Messkanal, Messzeit); dieselbe Messzeit
+     *       ein zweites Mal ist kein zweiter Wert ({@code uq_device_measurement_sample_reihe});
+     *   <li><b>Rolle zur MESSZEIT</b> — führend, wenn die liefernde Box zu dieser Messzeit
+     *       zuständig war, sonst Spiegel (W8: Spiegel statt Verwerfen).
+     * </ul>
+     */
+    private static Map<String, Long> ausDenZustellungen(JsonNode szenario) {
+        Map<String, java.util.Set<String>> schluessel = new TreeMap<>();
+        Map<String, String> punktZuReihe = new LinkedHashMap<>();
+        for (JsonNode r : szenario.path("stammdaten").path("reihen")) {
+            punktZuReihe.put(r.path("point_key").asText(), r.path("messstelle").asText());
+        }
+
+        for (JsonNode z : szenario.path("zustellungen")) {
+            if (!"measurement-samples".equals(z.path("strom").asText()) || vorgehend(z)) {
+                continue;
+            }
+            String box = z.path("nutzlast").path("device_id").asText();
+            for (JsonNode sample : z.path("nutzlast").path("samples")) {
+                String punkt = sample.path("point_key").asText();
+                String reihe = punktZuReihe.get(punkt);
+                if (reihe == null) {
+                    // A1 hängt einen Kanal-Index an: custom.ms-10.…-bezug.07
+                    reihe = punktZuReihe.get(punkt.substring(0, Math.max(0,
+                            punkt.lastIndexOf('.'))));
+                }
+                if (reihe == null) {
+                    continue;
+                }
+                String messzeit = sample.path("observed_at").asText();
+                String rolle = zustaendig(szenario, box, messzeit) ? "fuehrend" : "spiegel";
+                schluessel.computeIfAbsent(reihe + "/" + rolle, k -> new LinkedHashSet<>())
+                        .add(punkt + "@" + messzeit);
+            }
+        }
+
+        Map<String, Long> zahlen = new TreeMap<>();
+        schluessel.forEach((k, v) -> zahlen.put(k, (long) v.size()));
+        return zahlen;
+    }
+
+    /** War diese Box zu dieser Messzeit zuständig? Halboffen: [von, bis). */
+    private static boolean zustaendig(JsonNode szenario, String box, String messzeit) {
+        for (JsonNode z : szenario.path("stammdaten").path("zustaendigkeiten")) {
+            if (!box.equals(z.path("device_id").asText())) {
+                continue;
+            }
+            boolean nachVon = messzeit.compareTo(z.path("von").asText()) >= 0;
+            boolean vorBis = z.path("bis").isNull()
+                    || messzeit.compareTo(z.path("bis").asText()) < 0;
+            if (nachVon && vorBis) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Eine Zustellung, deren Messzeiten weiter als die Toleranz in der Zukunft stehen. */
@@ -458,6 +551,48 @@ class UemsStreckeAbnahmeTest {
             }
         }
         return arten;
+    }
+
+    /**
+     * Wie oft dieses Ereignis zu erwarten ist. Für die Sequenz-Arten NICHT aus der Aufzählung
+     * des Drehbuchs, sondern aus der Regel des Vertrags: {@code sequence_gap} und
+     * {@code sequence_reset} entstehen EINMAL JE UMSCHLAG, dessen Sequenz springt
+     * ({@code MesswertEreignisse}). ⚠ Befund am Drehbuch: es zählt für A4 nur den EINEN
+     * Sprung des Abnahmetextes (48 214 → 48 402) auf, gespielt werden aber vier
+     * aufeinanderfolgende Sprünge (7 → 48 402 → 52 002 → 55 601 → 62 001) und ein
+     * Rücksprung (48 213 → 7), den es gar nicht nennt. Der Writer hat recht, die
+     * Aufzählung ist unvollständig — darum rechnet dieser Lauf nach der Regel.
+     */
+    private static long erwarteteZahl(JsonNode szenario, String art) {
+        if ("sequence_gap".equals(art) || "sequence_reset".equals(art)) {
+            return ausDenSequenzen(szenario, art);
+        }
+        return ereignisSequenzenOderZahl(szenario, art);
+    }
+
+    /** Sprünge der Sequenz je Box über die GESPIELTEN Umschläge, in ihrer Reihenfolge. */
+    private static long ausDenSequenzen(JsonNode szenario, String art) {
+        Map<String, Long> letzte = new LinkedHashMap<>();
+        long n = 0;
+        for (JsonNode z : szenario.path("zustellungen")) {
+            if (!"measurement-samples".equals(z.path("strom").asText()) || vorgehend(z)
+                    || z.path("nutzlast").path("samples").isEmpty()) {
+                continue;   // leere und abgewiesene Umschläge erreichen den Writer nie
+            }
+            String box = z.path("nutzlast").path("device_id").asText();
+            long seq = z.path("sequenz").asLong();
+            Long vor = letzte.put(box, seq);
+            if (vor == null) {
+                continue;   // der erste Umschlag einer Box hat keinen Vorgänger
+            }
+            if ("sequence_gap".equals(art) && seq > vor + 1) {
+                n++;
+            }
+            if ("sequence_reset".equals(art) && seq < vor) {
+                n++;
+            }
+        }
+        return n;
     }
 
     private static int ereignisSequenzenOderZahl(JsonNode szenario, String art) {
