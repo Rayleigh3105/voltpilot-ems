@@ -88,6 +88,9 @@
               },
               {
                 "$ref": "#/$defs/op_switch_cancel"
+              },
+              {
+                "$ref": "#/$defs/op_wago_kopf"
               }
             ]
           }
@@ -392,6 +395,77 @@
         }
       }
     },
+    "op_wago_kopf": {
+      "type": "object",
+      "title": "op 'wago_kopf' - den KOPF eines VoltPilot-Registerbilds WAGO v1 lesen (AP-05 IP-7)",
+      "description": "Der Verbindungstest einer WAGO-Steuerung mit VoltPilot-Energiekarten. Er liest NUR den Kopf des Registerbilds (docs/contracts/v2/wago-registerbild.md Paragraf 3): Signatur, Version, Kopf- und Kartenblocklaenge, Kartenzahl, Herzschlag, Wortfolge-Pruefwert und Controller-Kennung - KEINE Karte und KEINEN Messwert. Damit kann der Anlege-Assistent zeigen, WAS dort antwortet, bevor irgendeine Karte zugeordnet ist.\n\nBasisadresse, Registerart und Wortfolge sind Parameter je Anlage (Vertrag Paragraf 2), keine Konstanten - darum stehen sie hier in der Anfrage. Eine Steuerung, unter deren Basisadresse ein FREMDES Registerbild steht (Signatur oder Hauptversion abweichend), antwortet mit ok=false, error_code 'invalid_response' und einem 'finding' mit der Regel 'registerbild_unbekannt' - der Kopf-Block sagt daneben, was tatsaechlich dastand.\n\nEine Box, die diesen Op-Typ nicht ausfuehrt (aelterer Stand), antwortet wie bei jedem unbekannten Op ehrlich mit 'not_supported' - eine Aussage ueber die Box, nie ueber das Geraet.",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id",
+        "transport",
+        "host",
+        "register_kind",
+        "address"
+      ],
+      "properties": {
+        "op": {
+          "const": "wago_kopf"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+        },
+        "transport": {
+          "const": "modbus_tcp",
+          "description": "Das Registerbild ist ein Modbus-TCP-Wortbereich; eine andere Verbindungsart wird mit 'not_supported' beantwortet."
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "description": "IP oder Name im KUNDEN-LAN, mit derselben Beweispflicht wie bei 'read': die Box akzeptiert nur ein belegbar privates Ziel."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 502
+        },
+        "unit_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 1
+        },
+        "register_kind": {
+          "enum": [
+            "holding",
+            "input"
+          ],
+          "description": "holding = Modbus FC3, input = FC4. Der Funktionscode ist im Registerbild-Vertrag ein Parameter je Anlage, keine Festlegung."
+        },
+        "address": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Die BASISADRESSE des Registerbilds, 0-basiert. Der Kopf beginnt genau hier."
+        },
+        "word_order": {
+          "enum": [
+            "big",
+            "little"
+          ],
+          "default": "big",
+          "description": "Die Wortfolge der 32-Bit-Felder des Kopfes (Pruefwert, Controller-Kennung). Stimmt sie nicht, ist der Grund 'wortfolge_abweichend' - genau die Auskunft, die der Assistent braucht."
+        },
+        "nameplate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Zusaetzlich die Typenschild-Register 0xFA10-0xFA17 lesen und NUR ANZEIGEN. Sie sind NIE ein Identitaetsbeweis: ob sie ohne laufendes Laufzeitsystem antworten, ist beim Hersteller nicht belegt (Beleg H2). Antworten sie nicht, fehlt 'typenschild' im Ergebnis und sonst aendert sich nichts - ein Geraet, das hier schweigt, ist kein fremdes Geraet."
+        }
+      }
+    },
     "probe_result": {
       "type": "object",
       "title": "probe_result (Edge -> Cloud, .../v2/probe-result)",
@@ -584,6 +658,78 @@
             }
           }
         },
+        "wago_kopf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "signatur_ok",
+            "erkannt"
+          ],
+          "description": "Nur bei op 'wago_kopf': der gelesene Kopf des Registerbilds. EIGENER Block wie 'reading' und 'switched' - er traegt keinen Messwert, also gehoert er nicht in raw/value.\n\nEr steht AUCH bei ok=false, wenn die Box wirklich gelesen hat: die Frage 'was steht denn dort?' ist genau das, was eine Ablehnung handhabbar statt raetselhaft macht (dieselbe Begruendung wie beim 'reading' neben einem 'finding').\n\nLuecke statt Null: ein Feld, das DIESE Lesung nicht ergeben hat, FEHLT. Bei fremder Signatur steht nur 'signatur_ok: false' da - Version, Kartenzahl und Herzschlag waeren geraten. Bei fremder Hauptversion steht die Version selbst da (sie ist die Auskunft), der Rest nicht: in einem v2-Registerbild bedeuten die Woerter an Offset 4-11 nicht mehr, was ein v1-Leser aus ihnen machen wuerde.",
+          "properties": {
+            "signatur_ok": {
+              "type": "boolean",
+              "description": "Ob an der Basisadresse die Signatur 0x5650 0x5242 („VPRB“) steht. Sie ist von der Wortfolge unberuehrt."
+            },
+            "erkannt": {
+              "type": "boolean",
+              "description": "Ob der Kopf als VoltPilot-Registerbild WAGO v1 gelesen werden konnte. false heisst NICHT „Geraet kaputt“, sondern „hier steht nicht unser Registerbild“."
+            },
+            "grund": {
+              "enum": [
+                "signatur_fremd",
+                "hauptversion_fremd",
+                "laenge_ungueltig",
+                "wortfolge_abweichend"
+              ],
+              "description": "Warum der Kopf nicht gelesen werden konnte - das Klartext-Vokabular aus Paragraf 5 des Registerbild-Vertrags, in seiner Pruefreihenfolge. Fehlt bei erkannt=true. Die beiden uebrigen Gruende des Vertrags (kartenzahl_abweichend, controller_kennung_abweichend) koennen hier nicht vorkommen: sie vergleichen mit dem Hardwareblatt, und ein Verbindungstest hat keines."
+            },
+            "hauptversion": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Die Hauptversion des Registerbilds. Steht auch bei grund „hauptversion_fremd“ - sie ist dort die eigentliche Auskunft."
+            },
+            "nebenversion": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "kopflaenge": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "kartenblocklaenge": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "kartenzahl": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Wie viele Karten das Programm der Steuerung meldet. Der Assistent zeigt sie an; ob sie zum Hardwareblatt passt, entscheidet erst die spaetere Zuordnung."
+            },
+            "herzschlag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Die Herzschlag-Zahl dieser EINEN Lesung. Ein Verbindungstest kann daraus nichts ableiten - erst drei stehende Lesungen IN FOLGE im laufenden Betrieb machen die Werte „stale“."
+            },
+            "controller_kennung": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Die Kennung, die das Programm der Steuerung meldet. KEIN Identitaetsbeweis: sie zeigt nur, ob unter der Adresse dieselbe Steuerung wie beim letzten Mal antwortet. Das Geraet bleibt ueber die Seriennummer vom Typenschild identifiziert."
+            },
+            "typenschild": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "Der Text aus den Typenschild-Registern 0xFA10-0xFA17, NUR ZUR ANZEIGE. Fehlt, wenn nicht angefragt, nicht beantwortet oder leer - nie eine erfundene leere Zeichenkette. Er wird NIE zur Identitaetspruefung herangezogen (Beleg H2: nicht belegt, ob diese Register ohne Laufzeitsystem antworten)."
+            }
+          }
+        },
         "finding": {
           "type": "object",
           "additionalProperties": false,
@@ -591,21 +737,23 @@
             "channel",
             "rule"
           ],
-          "description": "Nur bei op 'test_connection' mit error_code 'implausible': WELCHER Kanal die Plausibilitaetsregel verletzt hat und WARUM - maschinenlesbar, damit keine Oberflaeche einen deutschen Satz nach Stichworten durchsuchen muss (die Haus-Regel 'target_verdict NEBEN state'). Der deutsche Satz gehoert dem Portal; hier steht die Tatsache. Ein Wort ausserhalb des Vokabulars wird von der Cloud VERWORFEN statt weitergereicht.",
+          "description": "Bei op 'test_connection' mit error_code 'implausible' und bei op 'wago_kopf' mit error_code 'invalid_response': WELCHER Kanal die Plausibilitaetsregel verletzt hat und WARUM - maschinenlesbar, damit keine Oberflaeche einen deutschen Satz nach Stichworten durchsuchen muss (die Haus-Regel 'target_verdict NEBEN state'). Der deutsche Satz gehoert dem Portal; hier steht die Tatsache. Ein Wort ausserhalb des Vokabulars wird von der Cloud VERWORFEN statt weitergereicht.",
           "properties": {
             "channel": {
               "enum": [
-                "soc_pct"
+                "soc_pct",
+                "wago_kopf"
               ],
-              "description": "Der betroffene Messkanal. Heute genau einer: der Ladestand ist der einzige Wert, dessen Plausibilitaet die Box gegen eine feste Regel (0 < soc <= 100) prueft."
+              "description": "Der betroffene Kanal. 'soc_pct' = der Ladestand, der einzige Messwert, dessen Plausibilitaet die Box gegen eine feste Regel (0 < soc <= 100) prueft. 'wago_kopf' = nicht ein Messwert, sondern der KOPF des WAGO-Registerbilds: die Steuerung hat geantwortet, aber nicht mit unserem Registerbild (AP-05 IP-7)."
             },
             "rule": {
               "enum": [
                 "missing",
                 "out_of_range",
-                "no_answer"
+                "no_answer",
+                "registerbild_unbekannt"
               ],
-              "description": "WARUM der Kanal verworfen wurde. 'missing' = der Registerblock LEBT (andere Register haben sich bewegt) und nur dieser Kanal liest exakt 0 - typisch eine Batterie, deren BMS nicht am Wechselrichter haengt; das ist der EINZIGE Fall, in dem ein Betreiber die Anlage bewusst ohne diesen Kanal betreiben darf. 'out_of_range' = ein Wert ausserhalb des gueltigen Bereichs, also ein kaputter/verschobener Rahmen. 'no_answer' = der ganze Block ist 0, die dokumentierte Leerantwort des Loggers. Die letzten beiden sind KEINE Aussage ueber ein fehlendes BMS und duerfen nie uebergangen werden."
+              "description": "WARUM der Kanal verworfen wurde. 'missing' = der Registerblock LEBT (andere Register haben sich bewegt) und nur dieser Kanal liest exakt 0 - typisch eine Batterie, deren BMS nicht am Wechselrichter haengt; das ist der EINZIGE Fall, in dem ein Betreiber die Anlage bewusst ohne diesen Kanal betreiben darf. 'out_of_range' = ein Wert ausserhalb des gueltigen Bereichs, also ein kaputter/verschobener Rahmen. 'no_answer' = der ganze Block ist 0, die dokumentierte Leerantwort des Loggers. Die letzten beiden sind KEINE Aussage ueber ein fehlendes BMS und duerfen nie uebergangen werden. 'registerbild_unbekannt' (nur mit channel 'wago_kopf') = unter der Basisadresse steht nicht das VoltPilot-Registerbild WAGO v1 - Signatur oder Hauptversion sind fremd. Es wird dann kein einziger Kartenwert uebernommen; im laufenden Betrieb meldet die Box denselben Befund als Fehlerklasse 'layout_changed' des Quellenvertrags („Aufbau geaendert - nichts wurde umgehaengt“)."
             },
             "raw": {
               "type": "number",

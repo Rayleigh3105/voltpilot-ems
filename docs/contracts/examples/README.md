@@ -8,7 +8,7 @@ Ausführbare JSON-Fixtures für Schema- und Laufzeitprüfungen. Dateinamen und I
 | `mqtt-charging-config.*.json` | 5 | 1 |
 | `mqtt-control-certification.*.json` | 2 | 1 |
 | `mqtt-ota-target.*.json` | 2 | 1 |
-| `mqtt-probe.*.json` | 10 | 2 |
+| `mqtt-probe.*.json` | 12 | 3 |
 | `mqtt-register-write.*.json` | 6 | 1 |
 | `mqtt-schedule.*.json` | 5 | 4 |
 | `ota-release-manifest.*.json` | 2 | 1 |
@@ -31,4 +31,5 @@ Konsumenten: Optimierung `tests/test_contract.py`; Go-Core `internal/plan`, `ota
 - `mqtt-probe.valid.test-connection-battery*.json`: MQTT-/HTTP-Vorschau mit `samples`; kein Empfang bedeutet `count: 0` ohne erfundenen Wert. HTTP-Geheimnisse gehören nur in Probe/Registry.
 - `mqtt-charging-config.valid.steuerart-je-saeule.json`: fehlende Säulenwahl übernimmt den Anlagenstandard; fehlende Rahmenfelder erhalten den Boxwert.
 - `mqtt-charging-config.valid.fahrzeug-profile*.json`: vollständige Profil-Liste je Box-`tag_ref`; eine leere Liste entfernt alle Profile. Der Cloud-Journalbezug ist keine gültige Kartenkennung.
+- `mqtt-probe.valid.wago-kopf*.json`: der Op `wago_kopf` liest NUR den Kopf eines VoltPilot-Registerbilds WAGO v1. Ein Feld, das die Lesung nicht ergeben hat, fehlt; bei fremder Hauptversion steht nur die Version da, nie Kartenzahl oder Herzschlag. `mqtt-probe.invalid.wago-kopf-without-address.json`: ohne Basisadresse gibt es keinen Kopf - der Kopf beginnt genau dort.
 - `mqtt-charging-boost.valid.laden-pausieren.json`: `action: pause` stoppt nur diesen Ladevorgang; fehlende `action` behält den bisherigen Voll-Laden-Boost.

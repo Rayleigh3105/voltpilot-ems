@@ -71,3 +71,52 @@ fahren — kein Leser, kein Treiber, kein Produktivcode der Box.
 - ⚠ **Testweg:** `npm test` in `edge-app/nodered/vp-palette` (Mocha). Unter `node --test` scheitern
   die Specs mit „describe is not defined"; die CI schließt `vp-palette` aus dem `node --test`-Schritt
   aus (`.forgejo/workflows/edge-images.yaml`).
+
+## Kopf-Prüfung und Probe-Op `wago_kopf` (AP-05 IP-7, 18.09.2026)
+
+Was aus der Prüfung von IP-6 **folgt** — die Prüfung selbst steht dort und wird hier nicht
+wiederholt. Weiter **RUHEND**: `RUNTIME_VERSION` bleibt 2026.08.26.3, `wago.pm494`/`wago.pm495`
+bleiben in `NOCH_NICHT_AN_DER_BOX`, kein Edge-Release.
+
+- `edge-app/nodered/measurements/wago-kopf.js` — die Stufe über dem Treiber. `pruefeLesung()`
+  reicht das Ergebnis von `liesRegisterbild` durch und hängt drei Dinge an: `befund`,
+  `herzschlag_urteil`/`steht` und `qualitaet`.
+- **Finding `registerbild_unbekannt`:** genau die zwei Gründe `signatur_fremd` und
+  `hauptversion_fremd` — die beiden, die VOR jeder Längenprüfung stehen. Jeder andere Grund bleibt
+  ein Grund: dort steht ein v1-Registerbild, es passt nur nicht zum Hardwareblatt oder zu den
+  Parametern, und das ist eine Aussage über die Anlage, nicht über das Programm der Steuerung.
+- **Qualität `stale` nach drei stehenden Lesungen in Folge**, gezählt **je Steuerung** in
+  `HerzschlagWacht` — der Herzschlag steht im Kopf, also gilt er für alle Karten zugleich.
+  `ueberlauf` und `rueckwaerts` setzen den Zähler zurück wie `laeuft` (Fall S2).
+- **Probe-Op `wago_kopf`** (additiv in `docs/contracts/mqtt-probe.schema.json`): liest NUR die
+  zwölf Kopfwörter. Core `internal/probe` (Zulassung, Urteil), `agent/probe.go`
+  (`wagoKopfResult`), Palette `nodes/vp-modbus-probe.js` (Ausführung über `lib/modbus-conn`).
+  Fixtures `mqtt-probe.valid.wago-kopf{,-result}.json`, `mqtt-probe.invalid.wago-kopf-without-address.json`.
+- `edge-app/nodered/measurements/wago-kopf.test.js` (11) und
+  `edge-app/nodered/vp-palette/test/wago_kopf_spec.js` (8, über den echten Modbus-Weg der Bühne:
+  S4 Version fremd, S3 Herzschlag steht).
+
+### Fallen
+
+- ⚠ **`registerbild_unbekannt` ist KEINE Fehlerklasse.** §7 des Quellenvertrags
+  ([`data-source-assignment.md`](../../contracts/v2/data-source-assignment.md#7-fehlerklassen-je-quelle-e5--a-geschlossenes-vokabular))
+  ist ein geschlossenes Vokabular, das Box, Ingest, Writer, api und Portal gemeinsam tragen — ein
+  neues Wort dort ist eine Migration und mehrere Vertragsleser. Auf dem Findings-Weg der
+  Mess-Runtime (`reportSource` → `data-source-status.js` → `edge/data-sources/poll`) fährt der
+  Befund deshalb als **`layout_changed`** („Aufbau geändert — nichts wurde umgehängt"). Das feine
+  Wort steht im Probe-Ergebnis, wo der Assistent es braucht.
+- ⚠ **Der Kopf-Bericht der Probe teilt sich den Leser NICHT mit `liesRegisterbild`.** Der Treiber
+  verlangt, dass das GANZE Registerbild vorliegt (`laenge_ungueltig`, sonst könnten Kartenhälften
+  aus zwei Lesesätzen stammen); die Probe liest absichtlich nur zwölf Wörter. `kopfBericht()` fährt
+  darum dieselbe Reihenfolge aus §5 mit den Konstanten des Treibers, aber ohne diese eine Prüfung.
+- ⚠ **Lücke statt Null im Kopf-Bericht:** bei `signatur_fremd` steht NUR `signatur_ok: false` da,
+  bei `hauptversion_fremd` zusätzlich die Version selbst — Kartenzahl, Herzschlag und
+  Controller-Kennung wären in einem v2-Registerbild geraten (Vektor V4).
+- ⚠ **Das Typenschild 0xFA10–0xFA17 ist nur Anzeige und nie ein Identitätsbeweis** (Hersteller-Beleg
+  H2: es ist NICHT belegt, ob die Register ohne Laufzeitsystem antworten). Antwortet es nicht, fehlt
+  das Feld und kein einziges Urteil ändert sich — der Spec prüft genau das gegen einen Server, der
+  die Adresse mit Ausnahme 0x02 abweist.
+- ⚠ **Mischbetrieb ist in beide Richtungen geprüft:** eine ältere Box kennt den Op-Typ nicht und
+  antwortet `not_supported` (`ValidateOp`-Vorgabe); eine heutige Cloud verwirft ein Finding-Wort
+  außerhalb ihres Vokabulars (`ProbeResultListener.finding`) und ignoriert den Block damit still.
+  Auf dem lokalen Bus trägt eine gewöhnliche Lesung weiterhin KEIN `op`-Feld.

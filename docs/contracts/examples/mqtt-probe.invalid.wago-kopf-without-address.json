@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "c41f0a9b3e77d216",
+  "requested_at": "2026-09-18T10:06:00Z",
+  "ops": [
+    {
+      "op": "wago_kopf",
+      "id": "kopf",
+      "transport": "modbus_tcp",
+      "host": "192.168.10.31",
+      "register_kind": "input"
+    }
+  ]
+}
