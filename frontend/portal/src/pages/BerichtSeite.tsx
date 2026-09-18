@@ -40,6 +40,7 @@ import { BerichtFreigebenDialog } from '../components/BerichtFreigebenDialog';
 import { BerichtVergleichDialog } from '../components/BerichtVergleichDialog';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
 import { ZeitSegment } from '../components/HistorieWelt';
+import { MiniBarSpark } from '../components/MiniChart';
 import { ErrorState, Skeleton } from '../components/States';
 import { WerteKarte } from '../components/WerteKarte';
 import { TRENNER } from '../uemsErgebnis';
@@ -431,7 +432,37 @@ function AbschnittBlock({
         </ul>
       )}
       {a.art === 'kennzahlen' && a.leer && <p className="vp-br-leer">{a.leer}</p>}
-      {(a.art === 'messstellen' || a.art === 'kennzahlen') && (
+      {a.art === 'messstellen' && (
+        <ul className="vp-br-zahlen">
+          {a.gruppen.map((g) => (
+            <li
+              key={g.schluessel}
+              className={g.richtungspaar ? 'vp-br-paar' : undefined}
+              data-testid={g.richtungspaar ? 'bericht-richtungspaar' : undefined}
+              data-quelle={g.richtungspaar ? g.schluessel : undefined}
+            >
+              {g.richtungspaar ? (
+                <>
+                  <p className="vp-br-paar-kopf">
+                    <span className="vp-br-kz">{g.kennzeichen}</span> {g.name}
+                  </p>
+                  {g.fehlt && <p className="vp-br-paar-fehlt">{g.fehlt}</p>}
+                  <ul>
+                    {g.zeilen.map((z) => (
+                      <li key={z.schluessel}>
+                        <ZahlZeile zahl={z} heuteLaden={heuteLaden} />
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <ZahlZeile zahl={g.zeilen[0]} heuteLaden={heuteLaden} />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {a.art === 'kennzahlen' && (
         <ul className="vp-br-zahlen">
           {a.zeilen.map((z) => (
             <li key={z.schluessel}>
@@ -439,6 +470,41 @@ function AbschnittBlock({
             </li>
           ))}
         </ul>
+      )}
+      {a.art === 'tagesverlauf' && (
+        <>
+          {a.leer && <p className="vp-br-leer">{a.leer}</p>}
+          <ul className="vp-br-tagesverlauf">
+            {a.zeilen.map((z) => (
+              <li key={z.schluessel} data-testid="bericht-tagesverlauf" data-quelle={z.schluessel}>
+                <p className="vp-br-tagesverlauf-kopf">
+                  <span className="vp-br-kz">{z.kennzeichen}</span> {z.name}
+                </p>
+                {z.leer ? <p className="vp-br-tagesverlauf-leer">{z.leer}</p> : z.tage.every((t) => t.menge === null) ? (
+                  <ul className="vp-br-tage-ohne-menge">
+                    {z.tage.map((t) => (
+                      <li key={t.tag}>
+                        <span>{t.label}: {t.mengeText}</span>
+                        <Badge variant="off">{t.zustand}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <MiniBarSpark
+                    points={z.tage.map((t) => ({ key: t.tag, label: t.label, value: t.menge, tone: t.ton }))}
+                    size="streifen"
+                    ariaLabel={`Tagesverlauf ${z.name}`}
+                    caption="Tag antippen, um Menge und Zustand abzulesen."
+                    readout={(p) => {
+                      const tag = z.tage.find((t) => t.tag === p.key)!;
+                      return `${tag.label}: ${tag.mengeText} · ${tag.zustand}`;
+                    }}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {a.art === 'quellen' && (
         <details className="vp-br-quellen" data-testid="bericht-quellen">

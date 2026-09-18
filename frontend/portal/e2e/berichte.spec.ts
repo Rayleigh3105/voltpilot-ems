@@ -153,13 +153,26 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     expect(m.kopfZeile).toBe('Datenstand 12.11.2026 10:05 (MEZ) · Berichtsstand Nr. 2 · freigegeben 16.11.2026 14:20 von Ines Kaltenbach');
     expect(m.abzeichen).toEqual(['Berichtsstand Nr. 2']);
     expect(m.pruefsumme).toBe('sha256:0f0feda03d1979477a2596db5b9723399f227af0226a5397251704384de10d0d');
-    expect(m.abschnitte).toEqual(['Kopf', 'Zusammenfassung', 'Verbrauch je Messstelle', 'Kennzahlen', 'Qualität', 'Quellenverzeichnis', 'Verlauf der Berichtsstände']);
+    expect(m.abschnitte).toEqual(['Kopf', 'Zusammenfassung', 'Verbrauch je Messstelle', 'Tagesverlauf je Messstelle', 'Kennzahlen', 'Qualität', 'Quellenverzeichnis', 'Verlauf der Berichtsstände']);
     expect(m.zahlen).toBe(18);
     expect(m.knoepfe).toEqual([]);
     expect(m.verlauf[0]).toContain('Anlass Korrektur K-2026-0007');
     expect(m.verlauf[1]).toContain('ersetzt durch Nr. 2 (16.11.2026)');
+    const paar = page.getByTestId('bericht-richtungspaar');
+    await expect(paar).toHaveCount(1);
+    await expect(paar).toContainText('MS-04 Speicher Halle 1');
+    await expect(paar).toContainText(/Laden\s*7\.900\s*kWh/);
+    await expect(paar).toContainText(/Entladen\s*7\.100\s*kWh/);
+    const leer = page.locator('[data-testid="bericht-tagesverlauf"][data-quelle="MS-12"]');
+    await expect(leer).toContainText('In diesem Berichtsstand sind keine Tageswerte gespeichert.');
     await ablegen(page, 'seite-oben-375', m);
     await ablegen(page, 'seite-nr2-375', m, true);
+    if (BILDER) {
+      await paar.scrollIntoViewIfNeeded();
+      await paar.screenshot({ path: join(BILDER, 'richtungspaar-375.png') });
+      await leer.scrollIntoViewIfNeeded();
+      await leer.screenshot({ path: join(BILDER, 'tagesverlauf-leer-375.png') });
+    }
 
     const n = await nachweis(page, 'MS-12');
     expect(n.zahl).toBe(`6.040${NB}kWh`);
@@ -180,6 +193,22 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await aktionen.evaluate((e) => e.scrollIntoView({ block: 'center' }));
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
     if (BILDER) await aktionen.screenshot({ path: join(BILDER, 'ip11-bericht-aktionen-375.png') });
+  });
+
+  test('bei 375 und 1440 px: gespeicherte Tageswerte nutzen den vorhandenen Balken-Verlauf, Lücke und Zustand bleiben ablesbar', async ({ page }) => {
+    for (const breite of [375, 1440]) {
+      await oeffne(page, 'ansicht=bericht&br=BR-2026-0001&tagesverlauf=gefuellt', breite, AM_20_11);
+      await warteAufSeite(page);
+      const reihe = page.locator('[data-testid="bericht-tagesverlauf"][data-quelle="MS-12"]');
+      await expect(reihe.locator('[data-testid="mini-col"]')).toHaveCount(5);
+      await reihe.locator('[data-testid="mini-col"]').nth(2).dispatchEvent('pointerdown');
+      await expect(reihe.locator('.vp-mini-cap')).toHaveText(`03.10.2026: — · keine Werte`);
+      ohneQuerlauf(await messe(page), `tagesverlauf-${breite}`);
+      if (BILDER && breite === 375) {
+        await reihe.scrollIntoViewIfNeeded();
+        await reihe.screenshot({ path: join(BILDER, 'tagesverlauf-gefuellt-375.png') });
+      }
+    }
   });
 
   test('bei 1440 px: Nr. 1 ist „ersetzt durch Nr. 2“ und nennt 6.100 kWh; der Entwurf trägt keine Prüfsumme', async ({ page }) => {
@@ -231,7 +260,7 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     ohneQuerlauf(m, 'b10-375');
     expect(m.heute).toEqual(['heute: Montage Linie M1 (Halle 2)']);
     await expect(page.locator('[data-testid="bericht-zahl"][data-quelle="MS-12"] summary')).toContainText('Montage Linie M1');
-    await page.locator('[data-quelle="MS-12"]').scrollIntoViewIfNeeded();
+    await page.locator('[data-testid="bericht-zahl"][data-quelle="MS-12"]').scrollIntoViewIfNeeded();
     await ablegen(page, 'b10-heute-375', m);
   });
 

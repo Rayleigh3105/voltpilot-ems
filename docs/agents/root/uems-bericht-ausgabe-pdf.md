@@ -38,5 +38,6 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 - **Eine Einheit ohne Ebenen-Regel** (Stück an einer Bezugsgröße) lässt `BerichtRegeln.anzeige` werfen; `BerichtPdf.menge` fällt
   auf die ungerundete Zahl in derselben Schreibweise zurück.
 - **Abschnitte, Titel und Vorlagen-Namen stehen fest in `BerichtPdf`** (Fassung 1), nicht aus der heutigen Vorlagen-Datei —
-  `dieAbschnitteFolgenDenVorlagen` pinnt sie gegen `bericht-vorlagen.json`. Tagesverlauf und Monatswerte trägt der Abzug nicht.
+  `dieAbschnitteFolgenDenVorlagen` pinnt sie gegen `bericht-vorlagen.json`. Der Abzug 1.2 trägt den Tagesverlauf; der
+  PDF-Setzer bildet Tagesverlauf und Monatswerte weiterhin nicht ab.
 - **Die Route hat kein `produces`** — wie beim CSV kommen die Ablehnungen als JSON aus dem `@ExceptionHandler`.

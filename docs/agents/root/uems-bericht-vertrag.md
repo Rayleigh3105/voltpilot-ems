@@ -60,8 +60,9 @@ IP-4, Abzug IP-5/IP-6, Routen IP-7, Naht IP-8, Läufer IP-9, CSV/PDF IP-10/IP-11
   `events-vocabulary-vectors.json` (3), `berichtFixtures.ts` (2), `e2e/berichte.spec.ts` (2), `BerichtApiTest` (2),
   `BerichtCsvTest` (1), `bericht.md`, `uems-bericht-routen.md`, `uems-uebersicht.md` und diese Datei — plus die
   byte-gleiche Kopie `frontend/portal/src/test/berichtAbzuege.json`, die kein Grep nach der Prüfsumme findet.
-- **Der Tagesverlauf steht im Abzug, aber die Berichtsseite zeigt ihn noch nicht** — `berichtSeite.ts` hat keinen
-  Abschnitt dafür, er landet weiter in `ohneInhalt`. Das ist eine PORTAL-Lücke, keine Vertrags-Lücke.
+- **Die Berichtsseite spricht die Erweiterungen von 1.2** — Tagesverlauf mit gespeicherten Tagesmengen und Zustand
+  (`tage: []` als sichtbare Lücke), das Richtungspaar als Gruppe Laden/Entladen sowie Ort und Endgültigkeit im
+  Kennzahl-Nachweis. Ein Abzug nach 1.0/1.1 ohne die optionalen Felder bleibt unverändert lesbar.
 - **Das Richtungspaar gehört in die VERDICHTUNG, nicht in den Abzug** (EW3). `V20260918101000` legt
   `menge_positiv`/`menge_negativ` an `messreihe_tag` und `messreihe_periode` (nullbar, ohne Nachfüllung — der
   Bestandsschutz-Vergleich sieht eine überall leere Spalte nicht). `Richtungspaar.ausTeilen` bildet Σ max(0, Teil) und

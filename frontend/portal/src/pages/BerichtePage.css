@@ -316,6 +316,75 @@
   border-top: 1px solid var(--vp-c-border);
 }
 
+.vp-br-paar-kopf,
+.vp-br-tagesverlauf-kopf {
+  margin: 0;
+  padding-top: var(--vp-c-space-3);
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+
+.vp-br-paar > ul {
+  margin: 0;
+  padding: 0 0 0 var(--vp-c-space-4);
+  list-style: none;
+}
+
+.vp-br-paar > ul > li + li {
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-br-paar-fehlt,
+.vp-br-tagesverlauf-leer {
+  margin: var(--vp-c-space-2) 0 var(--vp-c-space-3);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-br-tagesverlauf {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-br-tagesverlauf > li {
+  min-width: 0;
+}
+
+.vp-br-tagesverlauf .vp-mini-wrap {
+  margin-top: var(--vp-c-space-2);
+}
+
+.vp-br-tage-ohne-menge {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin: var(--vp-c-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-br-tage-ohne-menge > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  align-items: center;
+}
+
+.vp-br-tagesverlauf .vp-mini-bar.is-unvollstaendig,
+.vp-br-tagesverlauf .vp-mini-bar.is-ersatzwert {
+  background: var(--vp-chart-pv-line, #e65100);
+  opacity: 0.85;
+}
+
+.vp-br-tagesverlauf .vp-mini-bar.is-keine-werte {
+  background: transparent;
+}
+
 /* Eine Zahl-Zeile: am Rechner Name | Zahl | Abzeichen, am Telefon untereinander. */
 .vp-br-zeile > summary {
   display: grid;

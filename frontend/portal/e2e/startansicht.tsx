@@ -418,6 +418,24 @@ const geltungName = (art: string, id: string): string | null => {
  * `src/test/berichtFixtures.ts`); `&heute=b10` nennt im Register die Umbenennung von MS-12 ab 01.12.2026 (B10).
  */
 const heuteB10 = params.get('heute') === 'b10';
+const tagesverlaufGefuellt = params.get('tagesverlauf') === 'gefuellt';
+
+/** Nur die E2E-Bühne ergänzt echte gespeicherte Tageszeilen; die Vektor-Abzüge selbst bleiben byte-gleich. */
+const mitTagesverlauf = <T extends { abzug: Record<string, unknown> }>(antwort: T): T => {
+  if (!tagesverlaufGefuellt) return antwort;
+  const aus = structuredClone(antwort) as T;
+  const abzug = aus.abzug as { tagesverlauf?: Array<{ quelle: string; menge_art?: string; tage: unknown[] }> };
+  const tage = [
+    { tag: '2026-10-01', menge: 196, zustand: 'vollständig' },
+    { tag: '2026-10-02', menge: 204, zustand: 'vollständig' },
+    { tag: '2026-10-03', menge: null, zustand: 'keine Werte' },
+    { tag: '2026-10-04', menge: 188, zustand: 'mit Ersatzwert' },
+    { tag: '2026-10-05', menge: 211, zustand: 'vollständig' },
+  ];
+  const ms12 = abzug.tagesverlauf?.find((r) => r.quelle === 'MS-12' && r.menge_art === undefined);
+  if (ms12) ms12.tage = tage;
+  return aus;
+};
 /**
  * AP-01 IP-7: `&seiten=kuenftig` stellt das Bild, sobald JEDER Bereich der Ebene
  * eine Seite hat (AP-04 IP-5, AP-13) — nur für die Vorschau; die Kacheln führen
@@ -811,13 +829,13 @@ Object.assign(api, {
     berichtDa = true;
     return b;
   },
-  berichtEntwurf: async () => entwurfAm(Date.now()),
+  berichtEntwurf: async () => mitTagesverlauf(entwurfAm(Date.now())),
   berichtVergleich: async (_kennung: string, gegen: number) => vergleichAm(gegen, Date.now()),
   berichtFreigeben: async (_kennung: string, datenstand: string) => {
     berichtAufrufe.freigeben.push(datenstand);
     return freigabeAm(datenstand, Date.now());
   },
-  berichtStand: async (_kennung: string, nr: number) => standAm(nr, Date.now()),
+  berichtStand: async (_kennung: string, nr: number) => mitTagesverlauf(standAm(nr, Date.now())),
   berichtAnstossVerwerfen: async (_kennung: string, id: string, begruendung: string) => {
     berichtAufrufe.verwerfen.push(begruendung);
     verworfen = { begruendung, am: new Date(Date.now()).toISOString(), von: person ?? 'Jonas Wendlinger' };
