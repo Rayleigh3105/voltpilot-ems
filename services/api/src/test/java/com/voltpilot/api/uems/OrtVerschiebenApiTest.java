@@ -26,6 +26,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -410,7 +411,14 @@ class OrtVerschiebenApiTest {
     // ---- Ablehnungen -------------------------------------------------------------------------
 
     @Test
-    void dieGruendeDesVertragsMitSatzUndKeinerSchreibtEtwas() {
+    void dieGruendeDesVertragsMitSatzUndKeinerSchreibtEtwas() throws IOException {
+        // A14 braucht einen bestehenden fremden Kundenbereich. Ohne ihn prüft der Filter
+        // den Kontenentzug (401), bevor die Route den fremden Ort verbergen kann (404).
+        JsonNode ansprueche = MAPPER.readTree(Base64.getUrlDecoder().decode(token(DEMO2.benutzer()).split("\\.")[1]));
+        UUID fremderKundenbereich = UUID.fromString(ansprueche.get("tenant_id").asText());
+        root.update("INSERT INTO tenant (id, name) VALUES (?, ?)", fremderKundenbereich, "Fremder Kundenbereich");
+        assertThat(ok(rufe(HttpMethod.GET, "/me", DEMO2, null)).at("/kundenbereich/id").asText())
+                .isEqualTo(fremderKundenbereich.toString());
         Welt w = ahrenberg(false);
         String heute = w.heute().toString();
         String morgen = w.heute().plusDays(1).toString();
