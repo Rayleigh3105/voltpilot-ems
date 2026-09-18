@@ -32,4 +32,15 @@ public record ComponentDefinitionDto(
         Integer templateVersion,
         Instant createdAt,
         String createdBy,
-        String note) {}
+        String note,
+        Integer slot,
+        Boolean wagoAnwenderskalierung,
+        Integer wagoRegister35) {
+    public ComponentDefinitionDto(UUID entityId, int version, String role, String label,
+            String brand, String model, String family, String communication, String connection,
+            String sourceKind, String templateRef, Integer templateVersion, Instant createdAt,
+            String createdBy, String note) {
+        this(entityId, version, role, label, brand, model, family, communication, connection,
+                sourceKind, templateRef, templateVersion, createdAt, createdBy, note, null, null, null);
+    }
+}

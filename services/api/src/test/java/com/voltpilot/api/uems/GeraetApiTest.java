@@ -458,6 +458,85 @@ class GeraetApiTest {
         return kanaele.get(0).get("geraet");
     }
 
+    @Test
+    void wagoDokumentationSpeichertFassungenUndBleibtMandantengebunden() {
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id,name) VALUES (?, 'WAGO-Dokumentation') RETURNING id",
+                UUID.class, ahrenberg);
+        UUID geraet = root.queryForObject("INSERT INTO geraet (tenant_id,site_id,kennzeichen,einbau_kennzeichen,"
+                + "geraeteart,hersteller,typ,eingebaut_am) VALUES (?,?,uems_geraet_kennzeichen(?),"
+                + "'WAGO-Test','controller','WAGO','Test',date_trunc('minute',now())-interval '1 day') RETURNING id",
+                UUID.class, ahrenberg, site, ahrenberg);
+        UUID teil = root.queryForObject("INSERT INTO geraet_teil (tenant_id,geraet_id,steckplatz,typ,eingebaut_am) "
+                + "VALUES (?,?,2,'750-494',date_trunc('minute',now())-interval '1 day') RETURNING id",
+                UUID.class, ahrenberg, geraet);
+        UUID entity = root.queryForObject("WITH m AS (INSERT INTO measurement_point (tenant_id,site_id,role,"
+                + "entity_type,brand,model) VALUES (?,?,'modbus-generic','modbus-generic','wago','750-494') RETURNING id) "
+                + "INSERT INTO geraet_komponente (tenant_id,geraet_id,entity_id,teil_id,gueltig_ab) "
+                + "SELECT ?,?,m.id,?,date_trunc('minute',now())-interval '1 day' FROM m RETURNING entity_id",
+                UUID.class, ahrenberg, site, ahrenberg, geraet, teil);
+        String path = "/api/v1/sites/" + site + "/components/" + entity + "/wago";
+        JsonNode before = ok(rufe(path, ahrenbergAdmin));
+        assertThat(before.path("slot").isNull()).isTrue();
+        int revision = before.path("version").asInt();
+        String connectionBefore = root.queryForObject("SELECT connection_json::text FROM measurement_point WHERE id=?",
+                String.class, entity);
+        JsonNode first = ok(schreibeWago(path, Map.of("expectedRevision", revision,
+                "anwenderskalierung", true, "register35", 4), ahrenbergAdmin));
+        assertThat(first.path("slot").asInt()).isEqualTo(2);
+        assertThat(first.path("version").asInt()).isEqualTo(revision + 1);
+        assertThat(root.queryForObject("SELECT count(*) FROM component_activation_outbox WHERE entity_id=? AND revision=?",
+                Integer.class, entity, revision+1)).isEqualTo(1);
+        JsonNode second = ok(schreibeWago(path, Map.of("expectedRevision", revision+1,
+                "anwenderskalierung", false, "register35", 65535), ahrenbergAdmin));
+        assertThat(second.path("register35").asInt()).isEqualTo(65535); // Rohwort, keine 495-Deutung für 494.
+        assertThat(root.queryForList("SELECT wago_register_35 FROM component_definition WHERE entity_id=? ORDER BY version",
+                Integer.class, entity)).containsExactly(4, 65535);
+        assertThat(root.queryForObject("SELECT connection_json::text FROM measurement_point WHERE id=?",
+                String.class, entity)).isEqualTo(connectionBefore);
+        assertThat(schreibeWago(path, Map.of("expectedRevision",revision,"register35",4), ahrenbergAdmin)
+                .getStatusCode().value()).isEqualTo(409);
+        assertThat(schreibeWago(path, Map.of("expectedRevision",revision+2,"register35",65536), ahrenbergAdmin)
+                .getStatusCode().value()).isEqualTo(400);
+        String componentPath = "/api/v1/sites/"+site+"/components/"+entity;
+        JsonNode history = ok(rufe(componentPath+"/versions", ahrenbergAdmin));
+        assertThat(history.get(0).path("wagoRegister35").asInt()).isEqualTo(65535);
+        assertThat(history.get(1).path("wagoRegister35").asInt()).isEqualTo(4);
+        String rollback = componentPath+"/versions/"+(revision+1)+"/rollback";
+        // Eine fremde physische Zuordnung wird nicht durch einen Konfigurations-Rollback verschoben.
+        root.update("UPDATE geraet_teil SET steckplatz=3 WHERE id=?", teil);
+        assertThat(schreibeWago(rollback, Map.of("expectedRevision",revision+2), ahrenbergAdmin, HttpMethod.POST)
+                .getStatusCode().value()).isEqualTo(409);
+        root.update("UPDATE geraet_teil SET steckplatz=2 WHERE id=?", teil);
+        ok(schreibeWago(rollback, Map.of("expectedRevision",revision+2), ahrenbergAdmin, HttpMethod.POST));
+        assertThat(ok(rufe(path, ahrenbergAdmin)).path("register35").asInt()).isEqualTo(4);
+        String devicePath = "/api/v1/geraete/" + geraet + "/wago";
+        JsonNode device = ok(schreibeWago(devicePath,
+                Map.of("seriennummer","SN-1","firmware","FW-1","anwendung","Registerbild v1"), ahrenbergAdmin));
+        assertThat(device.path("seriennummer").asText()).isEqualTo("SN-1");
+        assertThat(ok(rufe(devicePath, ahrenbergAdmin)).path("firmware").asText()).isEqualTo("FW-1");
+        Anrufer fremd = new Anrufer("demo", null);
+        for (String endpoint : List.of(path, devicePath)) {
+            assertThat(rufe(endpoint, fremd).getStatusCode().value()).isEqualTo(404);
+            assertThat(schreibeWago(endpoint, Map.of("expectedRevision",revision+2), fremd)
+                    .getStatusCode().value()).isEqualTo(404);
+        }
+        assertThat(rufe("/api/v1/sites/"+ANLAGEN.get("AN-1")+"/components/"+entity+"/wago", ahrenbergAdmin)
+                .getStatusCode().value()).isEqualTo(404);
+    }
+
+    private ResponseEntity<JsonNode> schreibeWago(String path, Map<String,Object> body, Anrufer wer) {
+        return schreibeWago(path, body, wer, HttpMethod.PUT);
+    }
+
+    private ResponseEntity<JsonNode> schreibeWago(String path, Map<String,Object> body, Anrufer wer, HttpMethod method) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token(wer.benutzer()));
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        if (wer.kundenbereich()!=null) headers.set("X-Tenant-Id",wer.kundenbereich().toString());
+        return rest.exchange("http://localhost:"+port+path, method,
+                new HttpEntity<>(body,headers),JsonNode.class);
+    }
+
     // ---- Gerüst: Schnittstelle ------------------------------------------------------------
 
     private static Anrufer admin(UUID kundenbereich) {
