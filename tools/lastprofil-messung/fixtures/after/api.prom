@@ -1,0 +1,10 @@
+voltpilot_uems_arbeitsliste_offen{liste="viertelstunde"} 2
+voltpilot_uems_arbeitsliste_offen{liste="tag"} 5
+voltpilot_uems_arbeitsliste_offen{liste="periode"} 0
+voltpilot_uems_arbeitsliste_aeltester_eintrag_age_seconds{liste="viertelstunde"} 120
+voltpilot_uems_arbeitsliste_aeltester_eintrag_age_seconds{liste="tag"} 180
+voltpilot_uems_laeufer_letzter_lauf_age_seconds{laeufer="endgueltigkeit"} 30
+voltpilot_db_table_bytes{class="roh",tenant="a4e0b000-0000-4000-8000-000000000001"} 102340000
+voltpilot_db_table_bytes{class="vm",tenant="a4e0b000-0000-4000-8000-000000000001"} 50312000
+voltpilot_db_table_bytes{class="tag",tenant="a4e0b000-0000-4000-8000-000000000001"} 1003800
+voltpilot_db_table_bytes{class="ereignis",tenant="a4e0b000-0000-4000-8000-000000000001"} 2000000

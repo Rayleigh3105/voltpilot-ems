@@ -117,3 +117,30 @@ Jedes `Szenario` nennt seine `zustellungen` (geprüft gegen
 `events.raw`-Nutzlasten und die `erwarteten_reihen` mit Zeilenzahl und Rolle.
 Dieses Paket prüft die erzeugte Nachrichtenfolge; die Prüfung der Zeilen und
 Ereignisse in der Datenbank gehört zur Testcontainers-Abnahme A1…A16 (IP-21).
+
+## UEMS: Lastprofil „100 Messstellen“ (AP-14 IP-8)
+
+`uems_lastprofil.py` erzeugt vier Box-Identitäten im Kundenbereich Ahrenberg.
+Jede liefert 25 Messstellen × 13 Kanäle × 60 Takte/h, also exakt 325
+Samples/min; zusammen sind es 1 300. Die Nachrichten bleiben im bestehenden
+`mqtt-measurement-samples`-Vertrag 2.0. Weil dieser höchstens 256 Samples je
+Umschlag erlaubt, besteht ein Minutentakt je Box aus 256 + 69 Samples.
+
+```bash
+# 24 h in Echtzeit beziehungsweise in fünf Minuten
+python3 uems_lastprofil.py --profil dauerlast --minuten 1440 --broker <broker>
+python3 uems_lastprofil.py --profil dauerlast --minuten 1440 --time-scale 288 --broker <broker>
+
+# 210 min Trennung einer Box, dann 68 250 Samples FIFO nachliefern
+python3 uems_lastprofil.py --profil nachliefer-stoss --time-scale 288 --broker <broker>
+
+# erster historischer Puffer aller Boxen
+python3 uems_lastprofil.py --profil kaltstart --minuten 1440 --time-scale 288 --broker <broker>
+```
+
+Ohne `--broker` wird nur die Zusammenfassung berechnet und nichts gesendet.
+`--zustellungen` schreibt reproduzierbares JSONL. Der feste `--seed` verändert
+nur Werte, nie Identitäten oder Raten. Die Eingangszeit ist Simulationsmetadatum;
+der echte Writer setzt `received_at` beim Eingang. Das Messwerkzeug unter
+[`tools/lastprofil-messung`](../lastprofil-messung/README.md) beobachtet diesen
+Eingang ausschließlich über bestehende Metriken und lesende Zählabfragen.

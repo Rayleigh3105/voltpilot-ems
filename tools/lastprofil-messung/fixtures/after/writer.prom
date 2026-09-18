@@ -1,0 +1,2 @@
+voltpilot_kafka_consumer_lag{group="timescale-writer",topic="measurements.raw"} 0
+voltpilot_kafka_consumer_lag_collect_age_seconds 3
