@@ -131,6 +131,8 @@ class ComponentTemplateApiTest {
                 + com.voltpilot.api.templates.WagoComponentTemplateSeeder.REF, token("demo", "demo"));
         assertThat(wago.path("certificationStatus").asText()).isEqualTo("in_certification");
         assertThat(wago.path("deviceType").asText()).isEqualTo("meter");
+        assertThat(wago.path("communication").asText()).isEqualTo("modbus_tcp");
+        assertThat(wago.path("transportSchema").toString()).contains("mb_slave_id");
         assertThat(wago.path("modelLabel").asText()).isEqualTo("WAGO 750-494/495 an Registerbild v1");
         assertThat(wago.path("channels").isNull()).isTrue();
         assertThat(wago.path("writes").isNull()).isTrue();

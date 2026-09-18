@@ -56,8 +56,7 @@ public final class ComponentTemplateDefinition {
     /** Anbindungs-Arten, die eine geprüfte Vorlage heute beschreiben kann. */
     public static final List<String> COMMUNICATIONS =
             List.of("modbus_tcp", "solarman_v5", "fronius_solar_api", "fronius_sunspec",
-                    "sunspec_tcp", "kaco_http", "kaco_modbus", "goe_http_api", "shelly_http",
-                    "wago_registerbild");
+                    "sunspec_tcp", "kaco_http", "kaco_modbus", "goe_http_api", "shelly_http");
 
     /** Feld-Arten des Verbindungs-Formulars (das Vokabular der `:8484`-Seite). */
     private static final List<String> FIELD_TYPES = List.of("text", "number", "select", "checkbox");

@@ -26,10 +26,10 @@ public class WagoComponentTemplateSeeder {
                   certification_note, note, created_by)
                 SELECT 'certified', ?, 1, 'wago', 'WAGO', 'pm494_pm495_registerbild_v1',
                   'WAGO 750-494/495 an Registerbild v1', 'meter', 'registerbild_v1',
-                  'WAGO Energiekarte', 'wago_registerbild', 'VoltPilot-Registerbild WAGO v1',
+                  'WAGO Energiekarte', 'modbus_tcp', 'Modbus TCP · VoltPilot-Registerbild WAGO v1',
                   '[{"key":"ip","label":"Adresse","type":"text","required":true},
                     {"key":"port","label":"Port","type":"number","required":true},
-                    {"key":"unit_id","label":"Geräte-ID","type":"number","required":true},
+                    {"key":"mb_slave_id","label":"Geräte-ID","type":"number","required":true},
                     {"key":"base_address","label":"Basisadresse","type":"number","required":true},
                     {"key":"function_code","label":"Funktionscode","type":"select","required":true,
                      "options":[{"value":"3","label":"3"},{"value":"4","label":"4"}]},

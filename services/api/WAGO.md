@@ -5,8 +5,8 @@
 `certification_status=in_certification`. Das historische Herkunftswort `kind=certified`
 ist kein Pilotnachweis. Der Datensatz nennt weder geprüfte Hardware noch Faktoren;
 Kanäle, Schreibwege und Freigabedatum bleiben NULL. Ein erneuter Start verändert
-keine vorhandene Fassung, Rücknahme oder spätere Pilotfreigabe. Die Anbindungsart
-`wago_registerbild` ist für den künftigen Box-Leser reserviert, keine freigegebene
+keine vorhandene Fassung, Rücknahme oder spätere Pilotfreigabe. Die Vorlage nutzt die vorhandene Anbindungsart `modbus_tcp`.
+Das Profil `registerbild_v1` ist ein Cloud-Vorgriff, keine freigegebene
 Laufzeitfähigkeit. Maßgeblich: [Registerbild-Vertrag](../../docs/contracts/v2/wago-registerbild.md).
 
 ## Vorhandene Fakten weiterverwenden
