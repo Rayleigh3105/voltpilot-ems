@@ -1,10 +1,14 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.doThrow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.web.dto.StandortVorschlagDto;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -27,6 +31,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
@@ -99,6 +104,8 @@ class BestandsuebernahmeApiTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Path REFERENZ =
             Path.of("..", "..", "docs", "contracts", "v2", "uems-referenzunternehmen.json");
+    private static final Path NACHHER_BLATT =
+            Path.of("..", "..", "tools", "betriebsabfragen", "bestand-nach-rollout.sql");
 
     /** Die Tabellen, in die die Übernahme schreiben DARF — alle anderen bleiben zeichengleich. */
     private static final List<String> SCHREIBT_IN = List.of("standort", "anlage_standort",
@@ -165,6 +172,15 @@ class BestandsuebernahmeApiTest {
 
     @Autowired
     StandortRepository standorte;
+
+    @Autowired
+    StandortVorschlagService standortVorschlagService;
+
+    @Autowired
+    FunktionBestandLaeufer funktionBestandLaeufer;
+
+    @SpyBean
+    FunktionBestandService funktionBestand;
 
     /** Der Kundenbereich des Referenzunternehmens (A5 mit dem echten Datum). */
     private static String ahrenbergTenant;
@@ -329,7 +345,7 @@ class BestandsuebernahmeApiTest {
         Bestandsschutz.mutationsprobe(root, SCHREIBT_IN, "site", "UPDATE site SET name = name || ' (Probe)'");
     }
 
-    /** A6/A15: Lesen schreibt nichts; Bestätigen legt zwei Anlagen auf EINEN Standort und räumt die Karte ab. */
+    /** U2/N2: Bestätigen übernimmt alle drei Bestandsanlagen sofort und bleibt beim späteren Lauf idempotent. */
     @Test
     @Order(7)
     void vorschauZusammenlegenUndBestaetigen() {
@@ -337,15 +353,24 @@ class BestandsuebernahmeApiTest {
         String tenant = neuerKundenbereich(adminToken, "Vorschau Kunststoff GmbH");
         String halle1 = neueAnlage(adminToken, tenant, "Werk Ahrenberg – Halle 1");
         String halle2 = neueAnlage(adminToken, tenant, "Werk Ahrenberg – Halle 2");
+        String lindach = neueAnlage(adminToken, tenant, "Werk Lindach");
         admin.update("UPDATE site SET created_at = '2025-01-03T09:00:00Z' WHERE id = ?::uuid", halle1);
-        admin.update("UPDATE site SET created_at = '2025-06-04T09:00:00Z' WHERE id = ?::uuid", halle2);
+        admin.update("UPDATE site SET created_at = '2026-10-01T09:00:00Z' WHERE id = ?::uuid", halle2);
+        admin.update("UPDATE site SET created_at = '2026-10-15T09:00:00Z' WHERE id = ?::uuid", lindach);
+        for (String site : List.of(halle1, halle2, lindach)) {
+            admin.update("INSERT INTO site_profile_state (site_id, profile, state, tenant_id, updated_at) "
+                    + "VALUES (?::uuid, 'lastspitzenkappung', 'an', ?::uuid, '2025-01-01T00:00:00Z')", site, tenant);
+        }
         alsMandant(tenant, () -> bestandsuebernahme.uebernehmen());
 
         long standorteVorher = anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant);
         long zuordnungenVorher = anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant);
+        Map<String, String> steuerungVorher = Bestandsschutz.fingerabdruck(admin, List.of(
+                "standort", "anlage_standort", "ort_aenderung", "ort_kurzzeichen", "ort_kurzzeichen_seq",
+                "standort_vorschlag", "funktion%"));
         JsonNode vorschau = ok(get("/api/v1/standorte/vorschlag", adminToken, tenant));
-        assertThat(vorschau.path("anlagenZahl").asInt()).isEqualTo(2);
-        assertThat(vorschau.path("gruppen")).hasSize(2);
+        assertThat(vorschau.path("anlagenZahl").asInt()).isEqualTo(3);
+        assertThat(vorschau.path("gruppen")).hasSize(3);
         assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(standorteVorher);
         assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(zuordnungenVorher);
         assertThat(protokoll(tenant)).isEmpty();
@@ -360,16 +385,55 @@ class BestandsuebernahmeApiTest {
         JsonNode ergebnis = ok(exchange("/api/v1/standorte/vorschlag/bestaetigen", HttpMethod.POST,
                 adminToken, tenant, Map.of("gruppen", List.of(gruppe))));
         assertThat(ergebnis.path("standortIds")).hasSize(1);
-        assertThat(ergebnis.path("zuordnungen").asInt()).isEqualTo(2);
+        assertThat(ergebnis.path("zuordnungen").asInt()).isEqualTo(3);
         assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isOne();
-        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(2);
+        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(3);
         assertThat(anzahl("SELECT count(*) FROM standort_vorschlag WHERE tenant_id = ?::uuid", tenant)).isZero();
         assertThat(admin.queryForList("SELECT gueltig_ab FROM anlage_standort WHERE tenant_id = ?::uuid ORDER BY gueltig_ab", tenant))
-                .extracting(x -> x.get("gueltig_ab").toString()).containsExactly("2025-01-03", "2025-06-04");
+                .extracting(x -> x.get("gueltig_ab").toString())
+                .containsExactly("2025-01-03", "2026-10-01", "2026-10-15");
         assertThat(protokoll(tenant)).extracting(x -> x.get("objekt_art") + "/" + x.get("art"))
-                .containsExactly("standort/angelegt", "anlage/verschoben", "anlage/verschoben");
-        assertThat(ok(get("/api/v1/standorte", adminToken, tenant)).path("nochNichtZugeordnet").isNull()).isTrue();
+                .containsExactly("standort/angelegt", "anlage/verschoben", "anlage/verschoben",
+                        "anlage/verschoben");
+        assertThat(anzahl("SELECT count(*) FROM funktion_teilnahme WHERE tenant_id = ?::uuid", tenant)).isEqualTo(3);
+        assertThat(alsMandant(tenant, () -> app.queryForMap(z04())).get("mit_standort_ohne_teilnahme"))
+                .isEqualTo(0L);
+        assertThat(Bestandsschutz.abweichungen(steuerungVorher, Bestandsschutz.fingerabdruck(admin, List.of(
+                "standort", "anlage_standort", "ort_aenderung", "ort_kurzzeichen", "ort_kurzzeichen_seq",
+                "standort_vorschlag", "funktion%")))).as("Steuer-Bestand bleibt zeichengleich").isEmpty();
+
+        String funktionVorLauf = funktionStand(tenant);
+        funktionBestandLaeufer.lauf();
+        assertThat(funktionStand(tenant)).as("der spätere Start-Läufer schreibt nichts mehr").isEqualTo(funktionVorLauf);
         assertThat(ok(get("/api/v1/standorte/vorschlag", adminToken, tenant)).path("gruppen")).isEmpty();
+    }
+
+    /** Die Funktions-Ableitung gehört zur selben Transaktion: ihr Fehler nimmt die Zuordnung zurück. */
+    @Test
+    @Order(99)
+    void einFehlerDerFunktionsAbleitungRolltDieBestaetigungZurueck() {
+        String adminToken = token("admin", "admin");
+        String tenant = neuerKundenbereich(adminToken, "Rollback Vorschlag GmbH");
+        String site = neueAnlage(adminToken, tenant, "Bestandshalle 1");
+        String zweite = neueAnlage(adminToken, tenant, "Bestandshalle 2");
+        admin.update("UPDATE site SET created_at = '2024-01-03T09:00:00Z' WHERE id IN (?::uuid, ?::uuid)",
+                site, zweite);
+        alsMandant(tenant, () -> bestandsuebernahme.uebernehmen());
+        List<UUID> vorschlagIds = alsMandant(tenant,
+                () -> vorschlaege.alle().stream().map(StandortVorschlagRepository.Vorschlag::id).toList());
+        doThrow(new IllegalStateException("Ableitung kaputt")).when(funktionBestand).uebernehmen(anySet());
+
+        StandortVorschlagDto.Bestaetigen body = new StandortVorschlagDto.Bestaetigen(List.of(
+                new StandortVorschlagDto.GruppeEingang("Werk Rollback", "Europe/Berlin",
+                        new StandortLesemodell.Adresse("Prüfweg 1", "84123", "Ahrenberg", "DE"), vorschlagIds)));
+        assertThatThrownBy(() -> alsMandant(tenant,
+                () -> standortVorschlagService.bestaetigen(body, ProtokollAkteur.bestandsuebernahme())))
+                .hasRootCauseMessage("Ableitung kaputt");
+
+        assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isZero();
+        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isZero();
+        assertThat(anzahl("SELECT count(*) FROM funktion_teilnahme WHERE tenant_id = ?::uuid", tenant)).isZero();
+        assertThat(anzahl("SELECT count(*) FROM standort_vorschlag WHERE tenant_id = ?::uuid", tenant)).isEqualTo(2);
     }
 
     /** Die Übernahme kennt keinen Publisher — sie KANN nichts an eine Box schicken. */
@@ -606,6 +670,30 @@ class BestandsuebernahmeApiTest {
                     + "ORDER BY x::text), 'leer') FROM (SELECT * FROM " + t + wo + ") x", String.class));
         }
         return stand;
+    }
+
+    private String funktionStand(String tenant) {
+        return admin.queryForObject("SELECT "
+                + "(SELECT coalesce(string_agg(f::text, E'\\n' ORDER BY f::text), 'leer') "
+                + "FROM funktion f WHERE tenant_id = ?::uuid) || E'\\n---\\n' || "
+                + "(SELECT coalesce(string_agg(ft::text, E'\\n' ORDER BY ft::text), 'leer') "
+                + "FROM funktion_teilnahme ft WHERE tenant_id = ?::uuid)", String.class, tenant, tenant);
+    }
+
+    /** Der exakte Abfragetext Z04 aus dem parallel gelieferten Nachher-Blatt. */
+    private static String z04() {
+        try {
+            String blatt = Files.readString(NACHHER_BLATT);
+            int marker = blatt.indexOf("-- Z04");
+            int anfang = blatt.indexOf("SELECT", marker);
+            int ende = blatt.indexOf(';', anfang);
+            if (marker < 0 || anfang < 0 || ende < 0) {
+                throw new IllegalStateException("Z04 fehlt in " + NACHHER_BLATT);
+            }
+            return blatt.substring(anfang, ende + 1);
+        } catch (IOException e) {
+            throw new IllegalStateException("Z04 kann nicht gelesen werden: " + NACHHER_BLATT, e);
+        }
     }
 
     /**

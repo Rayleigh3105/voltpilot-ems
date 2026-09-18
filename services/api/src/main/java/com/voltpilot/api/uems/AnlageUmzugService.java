@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -34,14 +35,16 @@ import org.springframework.transaction.annotation.Transactional;
  * <h2>Die Kernzusage: kein Regelkreis ändert sich</h2>
  *
  * Eine Zuordnung ist eine Aussage über ZUGEHÖRIGKEIT, kein Eingriff in den Betrieb. Dieser Dienst
- * schreibt genau zwei Tabellen — {@code anlage_standort} (das laufende Intervall endet am Vortag,
- * das neue erbt dessen Ende) und {@code ort_aenderung} — und ruft keinen Publisher, keinen
- * Override, keine Funktion und keinen Fahrplan. Box-Heimat, MQTT-Topics {@code ems/{t}/{Anlage}/…}
+ * schreibt bei einem späteren Umzug genau zwei Tabellen — {@code anlage_standort} (das laufende
+ * Intervall endet am Vortag, das neue erbt dessen Ende) und {@code ort_aenderung}. Bei der ersten
+ * Zuordnung wendet er zusätzlich den bestehenden Funktions-Umstieg auf genau diese Anlage an;
+ * dieser ruft keinen Publisher, keinen Override und keinen Fahrplan. Box-Heimat, MQTT-Topics
+ * {@code ems/{t}/{Anlage}/…}
  * (sie tragen die Anlage, nie den Standort), Freigaben, Betriebsmodell, Ladepark-Rahmen,
- * Fahrpläne, Messstellen (sie hängen an ihrem Ort, nie an der Anlage), der Netzanschluss und die
- * Teilnahme an „Steuern &amp; Optimieren" bleiben, wie sie sind. {@link #BLEIBT} nennt das als
- * Codes, die Folgen-Karte spricht sie aus, und {@code AnlageUmzugApiTest} beweist es, indem er
- * die ganze Datenbank vorher und nachher vergleicht und jeden Publisher zählt.
+ * Fahrpläne, Messstellen (sie hängen an ihrem Ort, nie an der Anlage) und der Netzanschluss bleiben,
+ * wie sie sind. Eine schon vorhandene Teilnahme bleibt auch bei späteren Umzügen unverändert.
+ * {@link #BLEIBT} nennt die Folgen-Codes, und {@code AnlageUmzugApiTest} beweist das mit dem
+ * Datenbankvergleich und der Zählung jedes Publishers.
  *
  * <h2>Vorschau = Wirkung</h2>
  *
@@ -74,13 +77,14 @@ public class AnlageUmzugService {
     private final UnternehmenRepository unternehmen;
     private final FunktionTeilnahmeRepository teilnahmen;
     private final FunktionRepository funktionen;
+    private final FunktionBestandService funktionBestand;
     private final OrtProtokoll protokoll;
     private volatile Clock uhr = Clock.systemUTC();
 
     public AnlageUmzugService(JdbcTemplate jdbc, StandortService standortService,
             StandortLesemodellService lesemodell, AnlageStandortRepository zuordnungen,
             UnternehmenRepository unternehmen, FunktionTeilnahmeRepository teilnahmen,
-            FunktionRepository funktionen, OrtProtokoll protokoll) {
+            FunktionRepository funktionen, FunktionBestandService funktionBestand, OrtProtokoll protokoll) {
         this.jdbc = jdbc;
         this.standortService = standortService;
         this.lesemodell = lesemodell;
@@ -88,6 +92,7 @@ public class AnlageUmzugService {
         this.unternehmen = unternehmen;
         this.teilnahmen = teilnahmen;
         this.funktionen = funktionen;
+        this.funktionBestand = funktionBestand;
         this.protokoll = protokoll;
     }
 
@@ -159,6 +164,10 @@ public class AnlageUmzugService {
             eintraege.add(eintragen(p, "standort", bisher.id(), null, hinaus, ZoneId.of(bisher.zeitzone()), wer));
         }
 
+        if (p.ersteZuordnung()) {
+            funktionBestand.uebernehmen(Set.of(siteId));
+        }
+
         List<AnlageUmzugDto.Zuordnung> gelesen = zuordnungen.fuerAnlage(siteId).stream()
                 .sorted(Comparator.comparing(AnlageStandortRepository.Zuordnung::gueltigAb)
                         .thenComparing(z -> !z.aufgehoben()))
@@ -175,7 +184,7 @@ public class AnlageUmzugService {
     private record Plan(UUID tenant, UUID siteId, String anlageName, StandortService.Baum baum,
             StandortRepository.Standort ziel, StandortRepository.Standort bisher,
             AnlageStandortRepository.Zuordnung laufend, EintragErgebnis ergebnis, IntervallMitZustand neu,
-            LocalDate ab, LocalDate heute, ZoneId zone, Instant jetzt) {}
+            boolean ersteZuordnung, LocalDate ab, LocalDate heute, ZoneId zone, Instant jetzt) {}
 
     private Plan planen(UUID siteId, UUID standortId, LocalDate gueltigAb) {
         UUID tenant = TenantContext.get();
@@ -211,7 +220,8 @@ public class AnlageUmzugService {
                 .filter(i -> !i.aufgehoben() && i.ab().equals(ab) && ziel.kurzzeichen().equals(i.eltern()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Eintrag ohne neues Intervall"));
-        AnlageStandortRepository.Zuordnung laufend = zuordnungen.fuerAnlage(siteId).stream()
+        List<AnlageStandortRepository.Zuordnung> vorhandeneZuordnungen = zuordnungen.fuerAnlage(siteId);
+        AnlageStandortRepository.Zuordnung laufend = vorhandeneZuordnungen.stream()
                 .filter(z -> !z.aufgehoben() && !z.gueltigAb().isAfter(ab)
                         && (z.gueltigBis() == null || !z.gueltigBis().isBefore(ab)))
                 .findFirst().orElse(null);
@@ -219,7 +229,8 @@ public class AnlageUmzugService {
             throw new IllegalStateException("Lesemodell und Zuordnungen weichen voneinander ab: " + siteId);
         }
         StandortRepository.Standort bisher = laufend == null ? null : standort(b, laufend.standortId());
-        return new Plan(tenant, siteId, namen.get(0), b, ziel, bisher, laufend, e, neu, ab, heute, zone, jetzt);
+        return new Plan(tenant, siteId, namen.get(0), b, ziel, bisher, laufend, e, neu,
+                vorhandeneZuordnungen.isEmpty(), ab, heute, zone, jetzt);
     }
 
     /** Die Gründe des Vertrags mit seinem Satz; das Feld sagt dem Dialog, wohin der Satz gehört. */

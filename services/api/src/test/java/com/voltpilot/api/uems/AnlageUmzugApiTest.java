@@ -231,6 +231,43 @@ class AnlageUmzugApiTest {
         assertThat(standort(mar, w.nord()).get("anlagenZahl").asInt()).isEqualTo(1);
     }
 
+    /** N2: Nur die erste Zuordnung stößt für eine Bestandsanlage sofort denselben Umstieg wie der Läufer an. */
+    @Test
+    void ersteZuordnungEinerBestandsanlageErzeugtSofortDieTeilnahme() {
+        OhneStandort w = ohneStandort("Bestand");
+        root.update("INSERT INTO site_profile_state (site_id, profile, state, tenant_id, updated_at) "
+                + "VALUES (?::uuid, 'lastspitzenkappung', 'an', ?, now())", w.anlage(), w.tenant());
+        LocalDate ersterTag = LocalDate.now(BERLIN).plusDays(14);
+
+        ResponseEntity<JsonNode> erste = rufe(HttpMethod.PUT, "/sites/" + w.anlage() + "/standort", w.wer(),
+                Map.of("standortId", w.werk(), "gueltigAb", ersterTag.toString()));
+        assertThat(erste.getStatusCode().value()).as(String.valueOf(erste.getBody())).isEqualTo(200);
+        assertThat(erste.getBody().path("steuern").path("zustand").asText()).isEqualTo("aktiv");
+        assertThat(root.queryForObject("SELECT count(*) FROM funktion_teilnahme WHERE tenant_id = ?", Long.class,
+                w.tenant())).isOne();
+        UUID funktion = root.queryForObject("SELECT funktion_id FROM funktion_teilnahme WHERE site_id = ?::uuid",
+                UUID.class, w.anlage());
+
+        ResponseEntity<JsonNode> spaeter = rufe(HttpMethod.PUT, "/sites/" + w.anlage() + "/standort", w.wer(),
+                Map.of("standortId", w.nord(), "gueltigAb", ersterTag.plusDays(1).toString()));
+        assertThat(spaeter.getStatusCode().value()).as(String.valueOf(spaeter.getBody())).isEqualTo(200);
+        assertThat(root.queryForList("SELECT funktion_id FROM funktion_teilnahme WHERE site_id = ?::uuid",
+                UUID.class, w.anlage())).containsExactly(funktion);
+    }
+
+    /** Eine neu angelegte Anlage ohne Bestandsfakten bleibt beim Steuern-/Messen-Assistenten. */
+    @Test
+    void neueAnlageBekommtDurchDieErsteZuordnungKeineTeilnahme() {
+        OhneStandort w = ohneStandort("Neu");
+
+        ResponseEntity<JsonNode> r = rufe(HttpMethod.PUT, "/sites/" + w.anlage() + "/standort", w.wer(),
+                Map.of("standortId", w.werk()));
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+        assertThat(r.getBody().path("steuern").isMissingNode() || r.getBody().path("steuern").isNull()).isTrue();
+        assertThat(root.queryForObject("SELECT count(*) FROM funktion_teilnahme WHERE site_id = ?::uuid", Long.class,
+                w.anlage())).isZero();
+    }
+
     /**
      * Jede Klasse, die über MQTT SENDET, ist ein Sender dieses Tests: der Quelltext ist die Liste
      * (Paho-Import und {@code .publish(}), der Spring-Kontext muss für jede einen Mock tragen. Kommt ein neuer Sender
@@ -456,6 +493,8 @@ class AnlageUmzugApiTest {
     /** Ein Kundenbereich mit Werk Ahrenberg und Werk Ahrenberg Nord; Halle 2 heute am Werk angelegt. */
     private record Welt(UUID tenant, Anrufer wer, String werk, String nord, String anlage, LocalDate angelegt) {}
 
+    private record OhneStandort(UUID tenant, Anrufer wer, String werk, String nord, String anlage) {}
+
     private Welt ahrenberg() {
         ResponseEntity<JsonNode> t = rufe(HttpMethod.POST, "/admin/tenants", ADMIN_OHNE_KUNDENBEREICH,
                 Map.of("name", "Kunststoffwerk Ahrenberg GmbH"));
@@ -469,6 +508,19 @@ class AnlageUmzugApiTest {
         assertThat(s.getStatusCode().value()).as(String.valueOf(s.getBody())).isEqualTo(201);
         LocalDate angelegt = LocalDate.now(BERLIN);
         return new Welt(tenant, wer, werk, nord, s.getBody().get("id").asText(), angelegt);
+    }
+
+    private OhneStandort ohneStandort(String art) {
+        ResponseEntity<JsonNode> t = rufe(HttpMethod.POST, "/admin/tenants", ADMIN_OHNE_KUNDENBEREICH,
+                Map.of("name", art + " ohne Standort GmbH"));
+        assertThat(t.getStatusCode().value()).as(String.valueOf(t.getBody())).isEqualTo(201);
+        UUID tenant = UUID.fromString(t.getBody().get("id").asText());
+        Anrufer wer = new Anrufer("admin", tenant);
+        ResponseEntity<JsonNode> s = rufe(HttpMethod.POST, "/sites", wer, Map.of("name", art + " Halle"));
+        assertThat(s.getStatusCode().value()).as(String.valueOf(s.getBody())).isEqualTo(201);
+        String werk = neuerStandort(wer, art + " Werk");
+        String nord = neuerStandort(wer, art + " Werk Nord");
+        return new OhneStandort(tenant, wer, werk, nord, s.getBody().get("id").asText());
     }
 
     private String neuerStandort(Anrufer wer, String name) {

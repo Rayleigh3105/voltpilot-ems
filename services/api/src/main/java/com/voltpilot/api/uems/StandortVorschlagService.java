@@ -23,16 +23,18 @@ public class StandortVorschlagService {
     private final StandortService standorte;
     private final StandortRepository standortRepository;
     private final AnlageStandortService anlageStandort;
+    private final FunktionBestandService funktionBestand;
     private final TransactionTemplate transaktion;
     private volatile Clock uhr = Clock.systemUTC();
 
     public StandortVorschlagService(StandortVorschlagRepository vorschlaege, StandortService standorte,
             StandortRepository standortRepository, AnlageStandortService anlageStandort,
-            PlatformTransactionManager transactionManager) {
+            FunktionBestandService funktionBestand, PlatformTransactionManager transactionManager) {
         this.vorschlaege = vorschlaege;
         this.standorte = standorte;
         this.standortRepository = standortRepository;
         this.anlageStandort = anlageStandort;
+        this.funktionBestand = funktionBestand;
         this.transaktion = new TransactionTemplate(transactionManager);
     }
 
@@ -87,6 +89,7 @@ public class StandortVorschlagService {
 
         Instant jetzt = uhr.instant();
         List<UUID> standortIds = new ArrayList<>();
+        Set<UUID> anlageIds = new HashSet<>();
         int zuordnungen = 0;
         for (StandortVorschlagDto.GruppeEingang gruppe : body.gruppen()) {
             String zone = gruppe.zeitzone();
@@ -98,6 +101,7 @@ public class StandortVorschlagService {
             for (UUID id : gruppe.vorschlagIds()) {
                 StandortVorschlagRepository.Vorschlag v = jeId.get(id);
                 anlageStandort.zuordnen(tenant, v.siteId(), v.siteName(), ziel, v.gueltigAb(), jetzt, wer);
+                anlageIds.add(v.siteId());
                 zuordnungen++;
             }
         }
@@ -105,6 +109,7 @@ public class StandortVorschlagService {
             throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.VORSCHLAG_GEAENDERT,
                     "Der Vorschlag hat sich geändert. Bitte laden Sie ihn neu.", Map.of());
         }
+        funktionBestand.uebernehmen(anlageIds);
         return new StandortVorschlagDto.Ergebnis(List.copyOf(standortIds), zuordnungen);
     }
 }
