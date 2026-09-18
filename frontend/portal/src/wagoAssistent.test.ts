@@ -1,38 +1,49 @@
 import { describe, expect, it } from 'vitest';
-import type { Device, EdgeVersion, UemsDatenquellePruefergebnis } from './api';
+import type { Device, EdgeVersion, ProbeAntwort, UemsDatenquellePruefergebnis } from './api';
 import {
-  LEERE_WAGO_ANTWORTEN,
   WAGO_BOX_FAehIGKEIT,
-  bogenLesen,
-  bogenSpeichern,
   wagoAssistentSichtbar,
-  wagoBogenAuswerten,
+  wagoKarteAusLesung,
   wagoKopfAnzeige,
+  wagoUrteilAusLesung,
 } from './wagoAssistent';
 
-const antworten = (werte: Partial<typeof LEERE_WAGO_ANTWORTEN>) => ({ ...LEERE_WAGO_ANTWORTEN, ...werte });
+describe('WAGO-Lesung — Regel aus IP-1', () => {
+  const antwort = (steckplatz: number, kartentyp: number): ProbeAntwort => ({
+    requestId: 'probe-1', errorCode: null,
+    results: [{ id: 'karte', ok: true, reading: { steckplatz, kartentyp, spannung_l1: 230.4 } }],
+  });
+  const kopf = { signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kartenzahl: 1, herzschlag: 1 };
 
-describe('WAGO-Erhebungsbogen — Regel aus IP-1', () => {
-  it('liefert „belegt“ nur mit einem im Pilot belegten Hardwareblatt', () => {
-    expect(wagoBogenAuswerten(antworten({ A1: '750-8212', B2: '750-495', A4: 'VoltPilot-Registerbild v1' }), true).ergebnis)
-      .toBe('belegt');
+  it('übernimmt Steckplatz und Typ aus der Lesung statt aus einer Kundeneingabe', () => {
+    expect(wagoKarteAusLesung(1, antwort(3, 495))).toMatchObject({ steckplatz: 3, typ: '750-495' });
   });
 
-  it('liefert „belegt je Kunde“ für eine eigene Registerliste', () => {
-    expect(wagoBogenAuswerten(antworten({ A1: '750-8212', B2: '750-494', A4: 'Eigene Registerliste liegt bei' })).ergebnis)
+  it('liefert „belegt je Kunde“ nur für den ausgelesenen PFC100', () => {
+    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8100 }, [wagoKarteAusLesung(1, antwort(2, 495))]).ergebnis)
       .toBe('belegt_je_kunde');
   });
 
-  it('liefert „nicht unterstützt“ samt Ausweg für eine 750-493', () => {
-    const urteil = wagoBogenAuswerten(antworten({ A1: '750-8212', B2: '750-493' }));
-    expect(urteil.ergebnis).toBe('nicht_unterstuetzt');
-    expect(urteil.ausweg).toContain('Installateur');
+  it('nennt ein fremdes Registerbild unbekannt statt eine Kombination anzunehmen', () => {
+    expect(wagoUrteilAusLesung({ signatur_ok: false, erkannt: false, grund: 'signatur_fremd' }, []))
+      .toMatchObject({ ergebnis: 'in_pruefung', titel: 'Unbekannt — Registerbild nicht erkannt' });
   });
 
-  it('nennt die noch unbelegte Vorlage „in Prüfung — Pilot ausstehend“', () => {
-    expect(wagoBogenAuswerten(antworten({ A1: '750-8212', B2: '750-494', A4: 'VoltPilot-Registerbild v1' }))).toMatchObject({
-      ergebnis: 'in_pruefung', titel: 'In Prüfung — Pilot ausstehend',
-    });
+  it('liefert „nicht unterstützt“ samt Ausweg für eine ausgelesene 750-493', () => {
+    const urteil = wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [wagoKarteAusLesung(1, antwort(2, 493))]);
+    expect(urteil.ergebnis).toBe('nicht_unterstuetzt');
+    expect(urteil.ausweg).toContain('Energiezähler');
+  });
+
+  it('nennt die ausgelesene PFC200-Kombination ehrlich „in Prüfung“', () => {
+    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [wagoKarteAusLesung(1, antwort(2, 494))]))
+      .toMatchObject({ ergebnis: 'in_pruefung', titel: 'In Prüfung — Pilot ausstehend' });
+  });
+
+  it('erfindet bei einer unvollständigen Kartenlesung weder Steckplatz noch Typ', () => {
+    const karte = wagoKarteAusLesung(1, { requestId: 'probe-2', errorCode: null, results: [{ id: 'karte', ok: true }] });
+    expect(karte).toMatchObject({ steckplatz: null, typ: null });
+    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [karte]).titel).toContain('Unbekannt');
   });
 });
 
@@ -67,7 +78,7 @@ describe('WAGO-Kopf-Anzeige', () => {
   it.each([
     ['signatur_fremd', 'Unter der Basisadresse steht kein VoltPilot-Registerbild.'],
     ['laenge_ungueltig', 'Der Kopf meldet eine unzulässige Länge.'],
-    ['wortfolge_abweichend', 'Die Wortfolge passt nicht zur Angabe im Bogen.'],
+    ['wortfolge_abweichend', 'Die gelesene Wortfolge passt nicht zur Verbindungsangabe.'],
   ] as const)('übersetzt den Kopf-Grund %s', (grund, text) => {
     expect(wagoKopfAnzeige(pruefung({ signatur_ok: grund !== 'signatur_fremd', erkannt: false, grund }))?.details)
       .toEqual([text]);
@@ -76,17 +87,5 @@ describe('WAGO-Kopf-Anzeige', () => {
   it('zeigt einen stehenden Herzschlag nach der zweiten Prüfung', () => {
     const anzeige = wagoKopfAnzeige(pruefung({ signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kartenzahl: 4, herzschlag: 1731 }), 1731);
     expect(anzeige?.details).toContain('Herzschlag steht bei 1.731');
-  });
-});
-
-describe('WAGO-Bogen — Browser-Speicher', () => {
-  it('speichert die 22 Antworten und liest beschädigte Ablagen als leer', () => {
-    const daten = new Map<string, string>();
-    const speicher = { getItem: (k: string) => daten.get(k) ?? null, setItem: (k: string, v: string) => { daten.set(k, v); } };
-    const bogen = antworten({ A1: '750-8212', E4: 'nein' });
-    expect(bogenSpeichern(speicher, 'anlage-1', bogen)).toBe(true);
-    expect(bogenLesen(speicher, 'anlage-1')).toEqual(bogen);
-    daten.set('vp.uems.wago-assistent.anlage-1.v1', '{kaputt');
-    expect(bogenLesen(speicher, 'anlage-1')).toEqual(LEERE_WAGO_ANTWORTEN);
   });
 });
