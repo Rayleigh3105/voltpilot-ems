@@ -18,12 +18,12 @@
 PY ?= python3
 PYTEST ?= $(PY) -m pytest
 TESTS := test_edge_sim.py test_uems_ahrenberg.py test_uems_szenarien.py \
-	test_ap07_abnahme_fixture.py
+	test_ap07_abnahme_fixture.py test_uems_lastprofil.py
 SZENARIO ?=
 
 VP_SIM_PORT ?= 1883
 
-.PHONY: help test plan szenarien zustellungen abnahme abhaengigkeiten
+.PHONY: help test plan szenarien zustellungen abnahme abhaengigkeiten lastprofil
 
 help:
 	@awk '/^#/ { sub(/^# ?/, ""); print; next } { exit }' $(firstword $(MAKEFILE_LIST))
@@ -39,6 +39,9 @@ plan:
 
 zustellungen:
 	$(PY) uems_szenarien.py --zustellungen $(SZENARIO)
+
+lastprofil:
+	$(PY) uems_lastprofil.py --profil dauerlast --minuten 1440 --time-scale 288
 
 szenarien:
 	@test -n "$(VP_SIM_BROKER)" || { \
