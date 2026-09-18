@@ -5,6 +5,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.voltpilot.api.config.SecurityConfig;
 import com.voltpilot.api.repo.FleetMetricsRepository;
+import com.voltpilot.api.zugriff.ZugriffKontextLader;
+import com.voltpilot.api.zugriff.ZugriffRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.Filter;
 import java.time.Duration;
 import java.time.Instant;
@@ -14,6 +17,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -75,6 +79,17 @@ class FleetMetricsEndpointE2eTest {
     })
     @Import({SecurityConfig.class, FleetMetricsCollector.class})
     static class ScrapeApp {
+
+        /**
+         * Der ZugriffFilter der Kette (AP-03 IP-4) braucht seinen Lader; ein anonymer Scraper
+         * erreicht das Repository nie, darum steht eine Attrappe für die Datenbank. Ohne diese Bohne
+         * lädt der Kontext seit IP-4 gar nicht mehr — gefunden bei AP-14 IP-9 auf 9ca28733.
+         */
+        @Bean
+        ZugriffKontextLader zugriffKontextLader() {
+            return new ZugriffKontextLader(Mockito.mock(ZugriffRepository.class),
+                    new SimpleMeterRegistry(), true);
+        }
 
         /** Eine Flotte aus einer gesunden Anlage in einer bepreisten Zone. */
         @Bean

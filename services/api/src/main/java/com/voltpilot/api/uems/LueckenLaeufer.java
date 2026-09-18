@@ -1,8 +1,10 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -33,6 +35,19 @@ public class LueckenLaeufer {
 
     private final LueckenMelder melder;
 
+    /**
+     * AP-14 IP-9: der Betriebs-Melder (§3.5, Schicht „Läufer“). Nachgereicht statt in den Konstruktor
+     * gelegt, damit kein bestehender Aufrufer sich ändert; {@link UemsLaeuferMelder#STUMM} hält ihn
+     * ohne Spring UND in den Minimal-Kontexten der Wiring-Tests gültig (darum
+     * {@code required = false}). Melden darf einen Lauf NIE brechen — der Melder schluckt alles.
+     */
+    private UemsLaeuferMelder betrieb = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void betriebsMelder(UemsLaeuferMelder betrieb) {
+        this.betrieb = betrieb;
+    }
+
     public LueckenLaeufer(LueckenMelder melder) {
         this.melder = melder;
     }
@@ -42,7 +57,9 @@ public class LueckenLaeufer {
     public void takt() {
         try {
             melder.lauf(Instant.now());
+            betrieb.gelaufen(UemsLaeuferMelder.LUECKEN);
         } catch (RuntimeException e) {
+            betrieb.fehler(UemsLaeuferMelder.LUECKEN);
             log.warn("UEMS Lücken-Melder übersprungen: {}", e.toString());
         }
     }

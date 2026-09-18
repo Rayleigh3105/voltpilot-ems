@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,19 @@ public class EndgueltigkeitLaeufer {
 
     private static final Logger log = LoggerFactory.getLogger(EndgueltigkeitLaeufer.class);
 
+    /**
+     * AP-14 IP-9: der Betriebs-Melder (§3.5, Schicht „Läufer“). Nachgereicht statt in den Konstruktor
+     * gelegt, damit kein bestehender Aufrufer sich ändert; {@link UemsLaeuferMelder#STUMM} hält ihn
+     * ohne Spring UND in den Minimal-Kontexten der Wiring-Tests gültig (darum
+     * {@code required = false}). Melden darf einen Lauf NIE brechen — der Melder schluckt alles.
+     */
+    private UemsLaeuferMelder melder = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void melder(UemsLaeuferMelder melder) {
+        this.melder = melder;
+    }
+
     private final EndgueltigkeitLauf endgueltigkeit;
     private final TagVerdichter tage;
     private final PeriodeVerdichter perioden;
@@ -93,35 +107,42 @@ public class EndgueltigkeitLaeufer {
      * fährt, statt sie nachzubauen.
      */
     void takt(Instant jetzt) {
+        boolean gescheitert = false;
         try {
             endgueltigkeit.umschalten(jetzt);
         } catch (RuntimeException e) {
+            gescheitert = true;
             log.warn("UEMS Endgültigkeit übersprungen: {}", e.toString());
         }
         try {
             tage.lauf(jetzt);
         } catch (RuntimeException e) {
+            gescheitert = true;
             log.warn("UEMS Tageslauf übersprungen: {}", e.toString());
         }
         try {
             perioden.lauf(jetzt);
         } catch (RuntimeException e) {
+            gescheitert = true;
             log.warn("UEMS Monats-/Jahreslauf übersprungen: {}", e.toString());
         }
         try {
             if (ablesungen != null) ablesungen.lauf(jetzt);
         } catch (RuntimeException e) {
+            gescheitert = true;
             log.warn("UEMS Ablesungslücken übersprungen: {}", e.toString());
         }
         // Nach ALLEN gemessenen Stufen: die berechneten Messstellen lesen, was gerade gebildet wurde.
         try {
             berechnete.lauf(jetzt);
         } catch (RuntimeException e) {
+            gescheitert = true;
             log.warn("UEMS berechnete Periodenwerte übersprungen: {}", e.toString());
         }
         try {
             if (kanalbindungen != null) kanalbindungen.lauf(jetzt);
         } catch (RuntimeException e) {
+            gescheitert = true;
             log.warn("UEMS Kanalbindung übersprungen: {}", e.toString());
         }
         // Nach den berechneten Messstellen: die Kennzahlen lesen gemessene UND berechnete Periodenwerte (AP-11 IP-6).
@@ -129,14 +150,22 @@ public class EndgueltigkeitLaeufer {
             try {
                 kennzahlen.lauf(jetzt);
             } catch (RuntimeException e) {
-                log.warn("UEMS Kennzahlen übersprungen: {}", e.toString());
+                gescheitert = true;
+            log.warn("UEMS Kennzahlen übersprungen: {}", e.toString());
             }
         }
         // Zuletzt: was gerade endgültig wurde, kann eine Nachlieferung nur noch vorschlagen — nie anwenden.
         try {
             vorschlaege.lauf(jetzt);
         } catch (RuntimeException e) {
+            gescheitert = true;
             log.warn("UEMS Korrektur-Vorschläge übersprungen: {}", e.toString());
         }
+        // AP-14 IP-9: der Takt IST gelaufen, auch wenn ein Schritt aussetzte - „steht" und „hatte
+        // einen Fehler" sind zwei Fragen, und der Zähler beantwortet die zweite.
+        if (gescheitert) {
+            melder.fehler(UemsLaeuferMelder.ENDGUELTIGKEIT);
+        }
+        melder.gelaufen(UemsLaeuferMelder.ENDGUELTIGKEIT);
     }
 }

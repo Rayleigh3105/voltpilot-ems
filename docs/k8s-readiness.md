@@ -103,19 +103,15 @@ abgebaut“, nicht „der HTTP-Prozess ist nicht bereit“
 `services/api/src/main/java/com/voltpilot/api/uems/TagVerdichter.java:350-389`). **Arbeitslistenrückstand darf die Readiness nicht rot schalten**;
 sonst würde Kubernetes gerade den Prozess neu starten, der den Rückstand abbauen soll.
 
-Im Stand dieses Dokuments veröffentlichen `DbHealthMetricsCollector` und der tägliche
-`DbStorageMetricsCollector` Größen, Planverbrauch, Timescale-Jobfehler, Optimierer-Zyklus und
-Sammler-Alter, aber noch keine UEMS-Arbeitslisten-Metrik
-(`services/api/src/main/java/com/voltpilot/api/metrics/DbHealthMetricsCollector.java:45-84`,
-`services/api/src/main/java/com/voltpilot/api/metrics/DbStorageMetricsCollector.java:39-88`). Damit
-ist auch noch kein belastbarer PromQL-Arbeitslisten-Alarm im separaten GitOps-Repository belegbar.
-Das ist ein **Betriebsbefund**, keine Readiness-Zusage: bis die Metrik gebaut und ausgerollt ist,
-müssen Betreiber die Tabellen `messreihe_viertelstunde_arbeit`, `messreihe_tag_arbeit` und
-`messreihe_periode_arbeit` nach Anzahl und ältestem `eingetragen_am` beobachten. Der Alarm soll
-auf anhaltendes Alter beziehungsweise Wachstum gehen und den API-Job prüfen lassen; Schwellen und
-Empfänger gehören ins GitOps-Repository, nicht in dieses Produkt-Repository.
+Seit AP-14 IP-9 veröffentlicht die API den Rückstand als Metrik: `UemsMetricsCollector` meldet je
+Arbeitsliste die Zahl offener Einträge und das Alter des ältesten (`liste` = `viertelstunde` |
+`tag` | `periode`, Tabelle unten). Betreiber müssen `messreihe_viertelstunde_arbeit`,
+`messreihe_tag_arbeit` und `messreihe_periode_arbeit` also nicht mehr von Hand abfragen.
+**Die Schwellen und der Alarm selbst stehen weiter im separaten GitOps-Repository, nicht hier** —
+sie kommen mit AP-14 IP-10; bis dahin ist die Metrik vorhanden, aber unbewacht.
 Der gebaute Kapazitätswächter ist davon getrennt; Details stehen unter
-[UEMS-Speicher-Wächter](agents/root/uems-speicher-waechter.md).
+[UEMS-Speicher-Wächter](agents/root/uems-speicher-waechter.md), die UEMS-Betriebsüberwachung
+vollständig unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwachung.md).
 
 ## Migrationen und Rollouts
 
@@ -141,8 +137,15 @@ API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API 
 | `voltpilot_db_metrics_collect_age_seconds`, `…_duration_seconds` | Gesundheit des DB-Sammlers |
 | `voltpilot_kafka_consumer_lag{group,topic}` | Committeter Offset bis Log-Ende; unbekannte Gruppe ohne Zeile |
 | `voltpilot_kafka_consumer_lag_collect_age_seconds` | Alter der letzten Lag-Abfrage |
+| `voltpilot_uems_arbeitsliste_offen{liste}`, `…_aeltester_eintrag_age_seconds` | Rückstand der drei UEMS-Arbeitslisten über alle Kundenbereiche; das Alter fehlt, wenn die Liste leer ist |
+| `voltpilot_uems_laeufer_letzter_lauf_age_seconds{laeufer}` | Alter des letzten beendeten Laufs je UEMS-Läufer; **fehlt, wenn der Läufer aus ist oder seit dem Prozess-Start nie lief** |
+| `voltpilot_uems_laeufer_zustand{laeufer,zustand}`, `…_fehler_total{laeufer}` | 1 für den aktiven Zustand `gelaufen` \| `nie` \| `aus`; Fehlschläge je Läufer, ab Start als `0` vorhanden |
+| `voltpilot_uems_kundenbereich_letzter_messwert_age_seconds{tenant}`, `…_messwert_zustand{tenant,zustand}` | Alter des jüngsten Mess-Eingangs je Kundenbereich mit AKTIVER Funktion „Messen“, interne Kennung; Alter fehlt, wenn nie |
+| `voltpilot_uems_bestandslaeufer_total{laeufer,ergebnis}` | Kundenbereiche je Ergebnis der drei Start-Läufer (`erledigt` \| `fehler`) |
 
 Ein nie gelaufener Job hat keinen erfundenen Erfolgsstatus. Altersmetriken wachsen bei ausgefallenem Sammler weiter. Für Betriebsalarme Größen summieren, Zyklus-/Lag-Alter überwachen und Label-Duplikate über Instanzen aggregieren. Nachweise: `DbHealthMetricsScrapeTest`, `DbHealthMetricsDbTest`, `KafkaConsumerLagScrapeTest`, `KafkaLagProbeTest`.
+
+Die UEMS-Betriebsmetriken kommen aus demselben Muster (`UemsMetricsCollector`, alle 60 s, `VOLTPILOT_METRICS_UEMS_ENABLED`, Vorgabe true, Lesen über die BYPASSRLS-Admin-Rolle); ein Scrape führt auch hier nie SQL aus. Der Läufer-Stand wird IM PROZESS gehalten: nach einem Neustart meldet ein Läufer, der noch nicht lief, kein Alter `0`, und mehrere Repliken melden jede ihren eigenen Stand — Alarm-Regeln aggregieren über `laeufer`. Der Mess-Eingang je Kundenbereich kommt aus dem verdichteten `messreihe_luecke_stand` (`art = 'box'`), nicht aus dem heißen `device_measurement_sample`. Nachweise: `UemsMetricsScrapeTest`, `UemsMetricsDbTest`, `UemsMetricsEndpointE2eTest`, `UemsMetrikenWiringTest`; Einzelheiten unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwachung.md).
 
 Der Mandanten-Wächter läuft über die Admin-Datenquelle außerhalb eines
 Kundenkontexts und standardmäßig nur einmal täglich

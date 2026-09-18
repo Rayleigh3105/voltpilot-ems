@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -13,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -63,6 +65,19 @@ public class StrukturAenderungLaeufer {
 
     private static final Logger log = LoggerFactory.getLogger(StrukturAenderungLaeufer.class);
 
+    /**
+     * AP-14 IP-9: der Betriebs-Melder (§3.5, Schicht „Läufer“). Nachgereicht statt in den Konstruktor
+     * gelegt, damit kein bestehender Aufrufer sich ändert; {@link UemsLaeuferMelder#STUMM} hält ihn
+     * ohne Spring UND in den Minimal-Kontexten der Wiring-Tests gültig (darum
+     * {@code required = false}). Melden darf einen Lauf NIE brechen — der Melder schluckt alles.
+     */
+    private UemsLaeuferMelder melder = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void melder(UemsLaeuferMelder melder) {
+        this.melder = melder;
+    }
+
     private static final String KANDIDATEN = """
             SELECT 'ort_aenderung' AS protokoll, a.id, a.tenant_id, a.objekt_art, a.objekt_id, a.art, a.alt::text AS alt,
                    a.neu::text AS neu, a.gilt_ab AS gilt_ab_tag, CAST(NULL AS timestamptz) AS gilt_ab_zeit, a.rueckwirkend,
@@ -104,11 +119,13 @@ public class StrukturAenderungLaeufer {
     public void takt() {
         try {
             Lauf l = lauf(Instant.now());
+            melder.gelaufen(UemsLaeuferMelder.BERICHT_STRUKTUR);
             if (l.berichte() > 0 || !l.gescheitert().isEmpty()) {
                 log.info("UEMS Strukturänderungs-Läufer: {} Zeilen gelesen, {} Berichte benachrichtigt, {} gescheitert",
                         l.gelesen(), l.berichte(), l.gescheitert().size());
             }
         } catch (RuntimeException e) {
+            melder.fehler(UemsLaeuferMelder.BERICHT_STRUKTUR);
             log.warn("UEMS Strukturänderungs-Läufer übersprungen: {}", e.toString());
         }
     }
