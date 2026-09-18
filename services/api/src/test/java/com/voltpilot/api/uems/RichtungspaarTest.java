@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -20,22 +21,27 @@ class RichtungspaarTest {
     private static final MeasurementCatalog KATALOG = new MeasurementCatalog(new ObjectMapper());
     private static final Instant VON = Instant.parse("2026-10-01T00:00:00Z");
     private static final Instant BIS = Instant.parse("2026-10-01T01:00:00Z");
+    /** Der Speicher-Kanal des Referenzgeräts — {@code charge_discharge}, also „Laden / Entladen“. */
+    private static final String SPEICHER = "deye.hybrid_3p.battery.battery-power";
 
-    /** Eine Viertelstunde mit ihrer vorzeichenbehafteten Menge. */
-    private static VerbrauchRegeln.Werteteil viertelstunde(String beginn, String menge) {
-        Instant von = Instant.parse(beginn);
-        return new VerbrauchRegeln.Werteteil(
-                new VerbrauchRegeln.Teilperiode(von, von.plusSeconds(900), null, null, null, null, null),
-                menge == null ? null : new BigDecimal(menge), null, 0, false);
+    private static VerbrauchRegeln.Rohwert roh(String zeit, String wert) {
+        return new VerbrauchRegeln.Rohwert(Instant.parse(zeit), new BigDecimal(wert), true);
     }
 
-    private static final List<VerbrauchRegeln.Werteteil> STUNDE = List.of(
-            viertelstunde("2026-10-01T00:00:00Z", "4"),
-            viertelstunde("2026-10-01T00:15:00Z", "-3"),
-            viertelstunde("2026-10-01T00:30:00Z", "2.5"),
-            viertelstunde("2026-10-01T00:45:00Z", "-1.5"));
+    private static ViertelstundenTeile.Anteil anteil(String zeit, String p, String n) {
+        return new ViertelstundenTeile.Anteil(Instant.parse(zeit),
+                p == null ? null : new BigDecimal(p), n == null ? null : new BigDecimal(n));
+    }
 
     /** Der Wortschatz: die Spalte kennt Vorzeichen, das WORT kommt aus der Richtung des Kanals. */
+    /** Der Kanal, an dem die Regel hängt, ist wirklich ein Zwei-Richtungs-Kanal des Katalogs. */
+    @Test
+    void derSpeicherKanalFuehrtZweiRichtungen() {
+        assertThat(Richtungspaar.zweiRichtungen(KATALOG, SPEICHER)).isTrue();
+        assertThat(Richtungspaar.woerter(KATALOG, SPEICHER))
+                .containsEntry(MessstelleRegeln.ANTEIL_POSITIV, "Laden");
+    }
+
     @Test
     void jedeRichtungHatIhreBeidenWoerter() {
         assertThat(MessstelleRegeln.RICHTUNGSPAAR.get("charge_discharge"))
@@ -58,46 +64,84 @@ class RichtungspaarTest {
     }
 
     /**
-     * ⚠ Der Befund, der den zweiten Schnitt aufhält: im gepackten Katalog (2026.09.16.1) trägt
-     * JEDER Kanal mit zwei Richtungen {@code active_power} in W — einen Momentanwert; keiner ist
-     * eine Intervallmenge. Seine Menge entsteht durch Integration der Leistung, und der Anteil
-     * wäre die Integration von {@code max(0, P)} über die ROHWERTE. Auf dieser Ebene ist die
-     * Viertelstunde schon zu EINER Energie verdichtet — ein Vorzeichenwechsel innerhalb einer
-     * Viertelstunde wäre verloren. Darum sagt die Regel für einen Momentanwert lieber nichts, als
-     * eine Näherung in einen Nachweis zu schreiben.
+     * Der Anteil entsteht JE ROHWERT und vor jeder Verdichtung (AP-08 E15/M5) — das ist der Grund,
+     * warum er in der Viertelstunde gebildet wird und nicht am Tag: eine Reihe, die innerhalb EINER
+     * Viertelstunde von Laden auf Entladen wechselt, hat beide Anteile, obwohl ihre Energie nur
+     * EINE Zahl mit EINEM Vorzeichen ist. Genau diese Zahl fiele einer Summe über
+     * Viertelstunden-Vorzeichen zum Opfer.
      */
     @Test
-    void einMomentanwertBekommtKeinPaar() {
-        assertThat(ViertelstundeRegeln.regelWort("gauge")).isEqualTo("momentanwert");
-        assertThat(Richtungspaar.ausTeilen(KATALOG, "battery.active_power", "gauge", STUNDE, VON, BIS)).isNull();
+    void derAnteilTrenntJeRohwert_auchInnerhalbEinerViertelstunde() {
+        // 5 min +12 kW, 5 min −12 kW, 5 min +12 kW: die Energie der Viertelstunde ist NICHT null,
+        // und beide Anteile sind es auch nicht.
+        List<VerbrauchRegeln.Rohwert> werte = List.of(
+                roh("2026-10-01T00:00:00Z", "12"),
+                roh("2026-10-01T00:05:00Z", "-12"),
+                roh("2026-10-01T00:10:00Z", "12"),
+                roh("2026-10-01T00:15:00Z", "12"));
+        BigDecimal[] paar = Richtungspaar.jeRohwert(KATALOG, SPEICHER, "gauge", true, werte,
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T00:15:00Z"), Duration.ofMinutes(5));
+        assertThat(paar).as("ein Zwei-Richtungs-Kanal aus integrierter Leistung hat ein Paar").isNotNull();
+        assertThat(paar[0]).as("Laden").isPositive();
+        assertThat(paar[1]).as("Entladen - genau das, was eine Vorzeichen-Summe verloere").isPositive();
+    }
+
+    /** Ohne Integrations-Bindung gibt es gar keine Energie (E5) — also auch keinen Anteil. */
+    @Test
+    void ohneIntegrationGibtEsKeinenAnteil() {
+        assertThat(Richtungspaar.jeRohwert(KATALOG, SPEICHER, "gauge", false, List.of(),
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T00:15:00Z"), Duration.ofMinutes(5)))
+                .isNull();
     }
 
     /** Ein Zählerstand hat keine Vorzeichen-Teile: die Menge ist ein Zuwachs zweier Stände. */
     @Test
     void einZaehlerstandBekommtKeinPaar() {
         assertThat(ViertelstundeRegeln.regelWort("counter")).isEqualTo("zaehlerstand");
-        assertThat(Richtungspaar.ausTeilen(KATALOG, "battery.active_power", "counter", STUNDE, VON, BIS)).isNull();
+        assertThat(Richtungspaar.jeRohwert(KATALOG, SPEICHER, "counter", true, List.of(),
+                Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-01T00:15:00Z"), Duration.ofMinutes(5)))
+                .isNull();
     }
 
-    /** Die Zerlegung einer Intervallmenge: Σ max(0, Teil) und Σ max(0, −Teil), beide als Betrag. */
+    /**
+     * Ab der Tages-Ebene wird nur noch SUMMIERT: die Anteile stehen gespeichert je Viertelstunde.
+     * Fehlt EINER, fehlt er der ganzen Periode — unbekannt ist keine Null.
+     */
     @Test
-    void dieAnteileSindDieBetraegeDerBeidenVorzeichen() {
-        BigDecimal positiv = BigDecimal.ZERO;
-        BigDecimal negativ = BigDecimal.ZERO;
-        for (VerbrauchRegeln.Werteteil w : STUNDE) {
-            positiv = positiv.add(VerbrauchRegeln.anteilDesWerts(w.summe(), MessstelleRegeln.ANTEIL_POSITIV));
-            negativ = negativ.add(VerbrauchRegeln.anteilDesWerts(w.summe(), MessstelleRegeln.ANTEIL_NEGATIV));
-        }
-        assertThat(positiv).isEqualByComparingTo("6.5");
-        assertThat(negativ).isEqualByComparingTo("4.5");
-        // Und die Netto-Menge bleibt, was sie war — das Paar tritt neben sie, nie an ihre Stelle.
-        assertThat(positiv.subtract(negativ)).isEqualByComparingTo("2.0");
+    void derTagSummiertNurNoch() {
+        List<ViertelstundenTeile.Anteil> drei = List.of(
+                anteil("2026-10-01T00:00:00Z", "4", "1"),
+                anteil("2026-10-01T00:15:00Z", "2.5", "0.5"),
+                anteil("2026-10-01T00:30:00Z", "1", "3"));
+        BigDecimal[] paar = Richtungspaar.ausTeilen(drei, VON, BIS);
+        assertThat(paar[0]).isEqualByComparingTo("7.5");
+        assertThat(paar[1]).isEqualByComparingTo("4.5");
+
+        List<ViertelstundenTeile.Anteil> mitLuecke = List.of(
+                anteil("2026-10-01T00:00:00Z", "4", "1"),
+                new ViertelstundenTeile.Anteil(Instant.parse("2026-10-01T00:15:00Z"), null, null));
+        assertThat(Richtungspaar.ausTeilen(mitLuecke, VON, BIS)).isNull();
+        assertThat(Richtungspaar.ausTeilen(List.of(), VON, BIS)).as("keine Viertelstunde, keine Aussage").isNull();
+    }
+
+    /** Die Regel am einzelnen Wert: {@code max(0, P)} bzw. {@code max(0, −P)}, beide als Betrag. */
+    @Test
+    void derAnteilEinesWertsIstSeinBetragInEinerRichtung() {
+        assertThat(VerbrauchRegeln.anteilDesWerts(new BigDecimal("4"), MessstelleRegeln.ANTEIL_POSITIV))
+                .isEqualByComparingTo("4");
+        assertThat(VerbrauchRegeln.anteilDesWerts(new BigDecimal("4"), MessstelleRegeln.ANTEIL_NEGATIV))
+                .isEqualByComparingTo("0");
+        assertThat(VerbrauchRegeln.anteilDesWerts(new BigDecimal("-3"), MessstelleRegeln.ANTEIL_NEGATIV))
+                .isEqualByComparingTo("3");
+        assertThat(VerbrauchRegeln.anteilDesWerts(null, MessstelleRegeln.ANTEIL_POSITIV))
+                .as("kein Wert bleibt kein Wert").isNull();
     }
 
     /** Ein Kanal ohne zwei Richtungen sagt nichts — {@code null}, nie 0. */
     @Test
     void ohneZweiRichtungenGibtEsKeineAussage() {
-        assertThat(Richtungspaar.ausTeilen(KATALOG, null, "intervallmenge", STUNDE, VON, BIS)).isNull();
+        assertThat(Richtungspaar.jeRohwert(KATALOG, null, "gauge", true, List.of(), VON, BIS, Duration.ofMinutes(5)))
+                .isNull();
         assertThat(Richtungspaar.zweiRichtungen(KATALOG, null)).isFalse();
     }
 

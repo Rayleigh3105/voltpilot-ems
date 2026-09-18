@@ -728,10 +728,10 @@ public class TagVerdichter {
         z.put("energie", werteteil == null ? null : werteteil.energie());
         z.put("gemessen_s", momentan && werteteil != null ? (int) werteteil.gemessenS() : null);
         z.put("luecke_innen", momentan && werteteil != null ? werteteil.lueckeInnen() : null);
-        // Das Richtungspaar (V20260918101000): fuehrt der Katalogkanal ZWEI Fluesse in EINER Groesse
-        // (charge_discharge, import_export), stehen neben der Netto-Menge ihre beiden Anteile. Ein
-        // Bericht schreibt sie ab, statt sie aus Vorzeichen neu zu rechnen (bericht.md EW3).
-        BigDecimal[] paar = Richtungspaar.ausTeilen(katalog, t.kanal(), wertart, teile.werteteile(), beginn, ende);
+        // Das Richtungspaar (V20260918101000): neben der Netto-Menge die beiden Anteile, SUMMIERT
+        // aus den je Rohwert gebildeten Anteilen der Viertelstunden (V20260918104000, AP-08 E15/M5).
+        // Hier wird nichts gerechnet - ein Bericht schreibt ab (bericht.md EW3).
+        BigDecimal[] paar = Richtungspaar.ausTeilen(teile.anteile(), beginn, ende);
         z.put("menge_positiv", paar == null ? null : paar[0]);
         z.put("menge_negativ", paar == null ? null : paar[1]);
 

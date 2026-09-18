@@ -11,6 +11,19 @@ Zehn-Jahres-Klasse)“. Entschieden ist E7-A: RLS-Tabellen ohne Kompression.
 | `tag` | `messreihe_tag` | 4 748 900 | 1 329 692 000 B | 930 784 400 B |
 | `ereignis` | `messreihe_ereignis` | 1 095 900 | 350 688 000 B | 245 481 600 B |
 
+**Das Richtungspaar der Viertelstunde kostet im Plan praktisch nichts** (`V20260918104000`,
+`energie_positiv`/`energie_negativ`). Gerechnet, nicht geschätzt:
+
+- **Solange beide NULL sind: 0 B je Zeile.** Eine NULL-Spalte belegt in PostgreSQL keinen Datenraum;
+  sie wächst nur die Null-Bitmap. `messreihe_viertelstunde` geht von 47 auf 49 Spalten, die Bitmap
+  also von 6 auf 7 Byte — und der Zeilenkopf ist in beiden Fällen `MAXALIGN(23 + Bitmap) = 32 B`.
+  Die Zeile wird nicht um ein einziges Byte länger. Das gilt für den gesamten Bestand, denn die
+  Migration füllt nichts nach.
+- **Gefüllt: ~24 B je Zeile, aber nur an 54 von 2 395 Katalogpunkten (2,3 %)** — nur Kanäle mit zwei
+  Flussrichtungen, deren Menge aus integrierter Leistung entsteht. Im Szenario oben sind das
+  ≈ 0,25 GB je Mandant im Zehn-Jahres-Bestand, **0,23 % des `vm`-Plans**. Die Plan- und
+  Warnschwellen bleiben darum unverändert; die 70-%-Warnung verschiebt sich nicht messbar.
+
 Die Werte stehen für die Laufzeit identisch in `DbHealthMetrics.STORAGE_PLAN`.
 `voltpilot_db_table_bytes{class,tenant}` ordnet die echte physische
 Hypertable-Größe proportional zur logischen Zeilengröße einer internen

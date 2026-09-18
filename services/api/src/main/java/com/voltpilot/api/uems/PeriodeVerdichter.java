@@ -271,7 +271,7 @@ public class PeriodeVerdichter {
                 v.kadenzS(),
                 v.nachgeliefert(), v.siteEindeutig() ? v.siteId() : null, zustand,
                 ViertelstundenTeile.werte(v.werteteile(), v.wertart(), v.kadenzS(), beginn, ende),
-                Richtungspaar.ausTeilen(katalog, a.kanal(), v.wertart(), v.werteteile(), beginn, ende), jetzt);
+                Richtungspaar.ausTeilen(v.anteile(), beginn, ende), jetzt);
     }
 
     /** Ein JAHR aus seinen Monaten. */
