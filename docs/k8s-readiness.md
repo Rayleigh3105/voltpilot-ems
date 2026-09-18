@@ -115,9 +115,15 @@ vollständig unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwac
 
 ## Migrationen und Rollouts
 
-Expand-Contract: Während eines Rollouts kann alter Code bereits das neue Schema sehen. Neue Felder zunächst kompatibel ergänzen, Leser/Schreiber umstellen und erst später entfernen. Flyway-Dateien nicht nachträglich ändern oder umnummerieren.
+Expand-Contract: Während eines Rollouts kann alter Code bereits das neue Schema sehen. Der rollende Wechsel der api (`maxSurge 1 / maxUnavailable 0`, `replicas: 1`) bedeutet ausdrücklich, dass der neue Pod bereit sein muss, **bevor** der alte geht — für Sekunden laufen zwei. Neue Felder zunächst kompatibel ergänzen, Leser/Schreiber umstellen und erst später entfernen. Flyway-Dateien nicht nachträglich ändern oder umnummerieren.
 
-Ein Rollback des Images setzt keine Datenbankmigration zurück. Kein zweiter Compose-Optimierer neben dem Cluster. Nach Rollout MQTT-Verbindungen, Auth, Datenfrische und Preisabdeckung prüfen.
+**Der rollende Wechsel VERLANGT Expand-Contract, er stellt ihn nicht her.** Eine Migration, die eine Spalte umbenennt, eine Spalte oder einen Primärschlüssel fallen lässt, braucht ein Wartungsfenster mit Wiederherstellungspunkt. `MigrationHygieneTest` lehnt eine solche neue Migration ohne den Marker `-- freigabe: fenster` ab; die erste UEMS-Produktfreigabe ist die benannte Ausnahme und hat ihr eigenes [Rollout-Drehbuch](rollout/uems-erste-freigabe.md).
+
+**Die Selbstheilung der Flyway-Strategie hat eine Grenze, und sie zeigt nach unten:** startet ein älterer Build gegen ein neueres Schema, bricht er nicht, sondern repariert — er markiert jede ihm unbekannte angewandte Migration als `type='DELETE'` in `flyway_schema_history` und meldet Bereitschaft. Der neue Build sieht diese Versionen danach als `PENDING`, migriert erneut und **startet nicht mehr**. Deshalb ist der belegte Nullstand (keine Pods, keine alten ReplicaSets, keine offenen DB-Sitzungen der Laufzeitrolle) die Bedingung vor jeder solchen Migration.
+
+**Sync-Wellen ordnen, sie stoppen nicht.** `api` liegt in Welle 0, `timescale-writer`, `ingest` und `frontend` in Welle 1; Argo wartet auf die Gesundheit der aktualisierten Welle 0. Alte Pods der Welle 1 bleiben davon unberührt.
+
+Ein Rollback des Images setzt keine Datenbankmigration zurück — und nach einer nicht-additiven Migration ist er **kein Rückweg**, sondern stellt alten Code auf das neue Schema. Kein zweiter Compose-Optimierer neben dem Cluster. Nach Rollout MQTT-Verbindungen, Auth, Datenfrische und Preisabdeckung prüfen.
 
 Belege: `K8sReadinessConfigTest` in den JVM-Diensten, Python-`test_runtime.py`, `MetricsEndpointSecurityTest`, `FleetMetricsScrapeTest` und Deployment-Selbstchecks.
 
