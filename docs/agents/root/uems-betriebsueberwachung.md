@@ -91,8 +91,22 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
   Lückenstand-Zeile trägt je Box denselben `received_at` bereits verdichtet (so nimmt es auch das
   Pilot-Blatt T01a). Preis: die Zahl entsteht im Lücken-Melder — steht der, altert sie mit. Genau
   dafür gibt es die Schicht „Wächter über den Wächter“ mit `laeufer="luecken"`.
-- **Messkunde = `funktion.funktion = 'messen' AND funktion.zustand = 'aktiv'`** — dieselbe Bedingung,
-  die das Produkt in `NetzanschlussVorschlagService` stellt.
+- **Messkunde = eine bestehende `funktion`-Zeile `messen` an einem nicht archivierten Standort**
+  (`f.zustand <> 'archiviert' AND s.archiviert_am IS NULL`) — **nicht** `zustand = 'aktiv'`. Die Falle
+  (AP-14 IP-7, BEFUND B2): für „Messen & Auswerten“ gibt es kein Starten. `FunktionService.MESSEN_AKTIONEN`
+  kennt nur `einrichten`, `FunktionZustandAbleitung.uebergangMessen` lehnt `starten` mit
+  `STARTET_AUTOMATISCH` ab, und die Zeile wird genau einmal als `entwurf` geschrieben
+  (`FunktionService.messenStandort`) — danach rührt sie kein Weg des Produkts mehr an (`nachziehen` und
+  `FunktionBestandService` betreffen nur `steuern`). Das `aktiv`, das der Kunde in `GET /funktionen`
+  liest, leitet `FunktionZustandAbleitung.messen` bei jedem Lesen frisch ab und speichert es nie.
+  `zustand = 'aktiv'` traf deshalb keinen einzigen über die Kundenrouten entstandenen Messkunden — der
+  Betreiber sähe ihn nicht. **`NetzanschlussVorschlagService` trägt die alte Bedingung weiter**; dort
+  ist sie ein anderer Zweck (eine Vorschlagsliste) und wurde in IP-7 nicht geändert.
+  Metrikname und Labels sind unverändert geblieben — die Betreiber-Regel `VoltPilotMesskundeOhneMesswerte`
+  (gitops PR 37) muss nicht angefasst werden. Sie sieht ab jetzt nur MEHR Kundenbereiche und kann darum
+  früher anschlagen: ein eben eingerichteter Messkunde, bei dem noch nie etwas ankam, trägt
+  `zustand="nie"` und fällt der Regel auf. Das ist gewollt — stockt beim Messkunden etwas, soll es der
+  Betreiber vor dem Kunden wissen.
 - **Gelesen wird über `adminJdbcTemplate` (`voltpilot_admin`, BYPASSRLS).** Unter der Mandanten-RLS
   gäbe jede dieser Abfragen null Zeilen zurück, und null Zeilen hieße hier „kein Rückstand, kein
   Messkunde ohne Werte“: ein stiller Fehlalarm in die beruhigende Richtung.

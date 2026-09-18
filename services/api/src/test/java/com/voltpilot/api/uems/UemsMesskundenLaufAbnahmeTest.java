@@ -350,16 +350,19 @@ class UemsMesskundenLaufAbnahmeTest {
                 + "Gebrauch: je Läufer eine Zustandszeile").isPositive();
         assertThat(arbeitslistenOffen()).as("nach dem Lauf ist keine Arbeitsliste mehr offen").isZero();
 
-        // BEFUND B2, als Tatsache festgehalten: der Kundenbereich taucht in
-        // voltpilot_uems_kundenbereich_letzter_messwert_age_seconds NICHT auf, obwohl er einen freigegebenen
-        // Bericht aus gemessenen Werten hat. Die Abfrage MESSKUNDEN (UemsMetricsRepository) verlangt
-        // funktion.zustand = 'aktiv'; der Kundenweg des Referenzfalls U5 richtet „Messen & Auswerten“ in
-        // Schritt 5 ein — VOR Datenquelle und Messstelle —, und der Zustand bleibt danach unter 'aktiv'.
-        // Der Betreiber sähe diesen Messkunden also nicht. Wird das behoben, wird diese Zeile rot.
-        assertThat(messwertAlter()).as("BEFUND B2: der neue Messkunde fehlt in der Messwert-Metrik, weil "
-                + "„Messen & Auswerten“ nach dem Kundenweg nicht 'aktiv' ist — Zustand in der Datenbank: "
-                + root.queryForList("SELECT zustand FROM funktion WHERE tenant_id = ? AND funktion = 'messen'",
-                        String.class, kb)).isNull();
+        // B2 aus PR 973 ist behoben (AP-14 IP-7b): der Betreiber SIEHT diesen Messkunden. Die Abfrage
+        // MESSKUNDEN verlangte {@code funktion.zustand = 'aktiv'} — einen Zustand, den für „messen“ kein
+        // Weg des Produkts je schreibt (es gibt kein Starten, die Zeile bleibt auf 'entwurf', und 'aktiv'
+        // leitet erst das Lesen ab). Jetzt zählt, was einen Messkunden wirklich ausmacht: die Funktionszeile
+        // besteht und ihr Standort auch.
+        assertThat(root.queryForObject("SELECT zustand FROM funktion WHERE tenant_id = ? AND funktion = 'messen'",
+                String.class, kb))
+                .as("der Kundenweg hinterlässt 'entwurf' — das ist der Normalfall, nicht ein halber Zustand")
+                .isEqualTo("entwurf");
+        assertThat(messwertZustandDesKunden())
+                .as("der neue Messkunde steht in der Betreiber-Metrik — vorher fehlte er dort ganz, und "
+                        + "stockt bei ihm etwas, soll es der Betreiber vor dem Kunden wissen")
+                .isNotNull();
     }
 
     // =========================================================================== Schritt 1: Registrierung
@@ -587,6 +590,18 @@ class UemsMesskundenLaufAbnahmeTest {
     }
 
 
+
+    /**
+     * Der Zustand dieses Kundenbereichs in {@code voltpilot_uems_kundenbereich_messwert_zustand}
+     * ({@code bekannt} | {@code nie}), oder {@code null}, wenn der Kundenbereich in der Metrik GAR NICHT
+     * vorkommt — genau das war BEFUND B2. Das ALTER steht nur bei {@code bekannt}: es kommt aus dem
+     * Lücken-Melder, und der läuft in diesem Lauf nicht mit (der Takt kennt ihn nicht).
+     */
+    private String messwertZustandDesKunden() {
+        return register.find(UemsMetricsCollector.MESSWERT_ZUSTAND).gauges().stream()
+                .filter(g -> kb.toString().equals(g.getId().getTag("tenant")) && g.value() == 1.0)
+                .map(g -> g.getId().getTag("zustand")).findFirst().orElse(null);
+    }
 
     private Double messwertAlter() {
         return register.find(UemsMetricsCollector.MESSWERT_ALTER).gauges().stream()
