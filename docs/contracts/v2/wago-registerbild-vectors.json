@@ -652,7 +652,7 @@
     }
   ],
   "lesen": {
-    "max_woerter_je_anfrage": {"art": "repo", "wert": 120, "fundstelle": "edge-app/nodered/measurements/measurement-planner.js:97"},
+    "max_woerter_je_anfrage": {"art": "repo", "wert": 120, "fundstelle": "docs/contracts/v2/measurement-budget-vectors.json \u2192 families.modbus.units_per_request"},
     "kartenblock_nie_teilen": {
       "art": "festlegung",
       "wert": "ein Karten-Block wird nie auf zwei Anfragen verteilt",

@@ -2,6 +2,7 @@
 
 const { catalogDocument, resolvePoint, derivedAddresses } = require('./measurement-driver');
 const { TARGET_PRIMARY, resolveTarget } = require('./measurement-binding');
+const wago = require('./wago-registerbild');
 
 // Generated verbatim by package_edge_runtime.py from docs/contracts/v2.
 const budgetContract = require('./measurement-budget-vectors.json');
@@ -162,6 +163,53 @@ function groupModbus(points, options) {
   return blocks;
 }
 
+/**
+ * The per-installation parameters of a WAGO register image (base address,
+ * function code, word order, Soll) - per TARGET, like `discoveries`. They are
+ * parameters, not identity: one port, one address or the same transport proves
+ * no device sameness (Befund 9, Vertrag §2).
+ */
+function registerbildFor(options, targetKey) {
+  if (options && options.registerbilder
+      && Object.prototype.hasOwnProperty.call(options.registerbilder, targetKey)) {
+    return options.registerbilder[targetKey];
+  }
+  return null;
+}
+
+/**
+ * ⚠ ONE poll group per CONTROLLER - the grouping key names target and cadence,
+ * deliberately NOT the family. One controller can carry a 750-494 and a 750-495
+ * side by side, and both live in the same register image; with the family in the
+ * key the same register range would be read twice per reading.
+ *
+ * The blocks themselves come from the contract (§7): at most 120 words per
+ * request and never a card block split across two requests.
+ */
+function groupRegisterbild(points, options) {
+  const gruppen = new Map();
+  for (const selected of points) {
+    const target = selected.target || { key:TARGET_PRIMARY, sourceId:null };
+    const key = wago.pollGruppe(target.key, selected.cadence_s);
+    const gruppe = gruppen.get(key)
+      || { key, target, cadence_s:selected.cadence_s, points:[] };
+    const triggerKey = selected.trigger_key || selected.point.point_key;
+    if (!gruppe.points.includes(triggerKey)) gruppe.points.push(triggerKey);
+    gruppen.set(key, gruppe);
+  }
+  const blocks = [];
+  for (const gruppe of gruppen.values()) {
+    const parameter = registerbildFor(options, gruppe.target.key);
+    if (!parameter) continue; // refused as driver_unavailable in buildPlan already
+    for (const anfrage of wago.planeAnfragen(parameter)) {
+      blocks.push({ key:gruppe.key, start:anfrage.start, count:anfrage.count,
+        cadence_s:gruppe.cadence_s, source_kind:'wago_registerbild', target:gruppe.target,
+        points:gruppe.points, requestCostMs:requestCostMs(null, 'wago_registerbild') });
+    }
+  }
+  return blocks;
+}
+
 function compatibleOcpp(points, capability) {
   const measurands = [...new Set(points.map((x) => {
     const match = x.point.selector.match(/measurand=([^,\]]+)/);
@@ -215,6 +263,29 @@ function buildPlan(config, options) {
         && !p.address && derivedAddresses(p).length === 0) {
       rejected.push({ point_key:s.point_key,reason:'driver_unavailable' }); continue;
     }
+    // ⚠ A register image without its per-installation parameters cannot be
+    // addressed AT ALL - there is no default base address. Refuse the point
+    // instead of reading register 0 of whatever answers on that connection.
+    if (wago.istRegisterbildPunkt(p)) {
+      const parameter = registerbildFor(options, target.key);
+      const kartenzahl = parameter && parameter.kartenzahl;
+      if (!Number.isInteger(kartenzahl) || kartenzahl < 1) {
+        rejected.push({ point_key:s.point_key, reason:'driver_unavailable' }); continue;
+      }
+      // How many cards exist is the Soll from the Hardwareblatt, never a
+      // discovery: the template expands to exactly the planned cards.
+      const indizes = p.point_key.includes('[*]')
+        ? Array.from({ length:kartenzahl }, (_, i) => i) : [wago.karteIndexAus(p.point_key)];
+      if (indizes.some((i) => !Number.isInteger(i) || i >= kartenzahl)) {
+        rejected.push({ point_key:s.point_key, reason:'driver_unavailable' }); continue;
+      }
+      for (const index of indizes) {
+        const concrete = resolvePoint(s.point_key.replace('[*]', `[${index}]`), discovery);
+        if (concrete) valid.push({ point:concrete, cadence_s:s.cadence_s,
+          requested_key:s.point_key, target });
+      }
+      continue;
+    }
     if (p.point_key.includes('[*]') && p.family === 'sunspec.model_160') {
       const n = Number(discovery && discovery.models
         && discovery.models[160] && discovery.models[160].moduleCount);
@@ -245,9 +316,12 @@ function buildPlan(config, options) {
   });
   const uniquePrerequisites = [...new Map(prerequisites.map((item) =>
     [`${item.target.key}:${item.point.point_key}:${item.cadence_s}:${item.trigger_key}`, item])).values()];
-  const blocks = groupModbus(acceptedCandidates.concat(uniquePrerequisites), options);
+  const alleKandidaten = acceptedCandidates.concat(uniquePrerequisites);
+  const blocks = groupModbus(alleKandidaten.filter((x) => !wago.istRegisterbildPunkt(x.point)),
+    options).concat(groupRegisterbild(
+      alleKandidaten.filter((x) => wago.istRegisterbildPunkt(x.point)), options));
   const nonModbusGroups = new Map();
-  for (const x of acceptedCandidates.filter((v) => !['modbus_holding','modbus_input','sunspec_model','ocpp_sampled_value'].includes(v.point.source_kind))) {
+  for (const x of acceptedCandidates.filter((v) => !['modbus_holding','modbus_input','sunspec_model','ocpp_sampled_value','wago_registerbild'].includes(v.point.source_kind))) {
     // Same rule as the modbus blocks: one HTTP request per (target, group).
     const key = `${x.target.key}:${x.point.poll_group}:${x.cadence_s}`; nonModbusGroups.set(key, x);
   }
@@ -279,5 +353,6 @@ class Scheduler {
   next(){return this.control.length?this.control.shift():this.poll.shift();}
 }
 
-module.exports = { LIMITS, COST_MS, buildPlan, groupModbus, compatibleOcpp, Scheduler,
-  decoderDependencies, discoveryFor, byteOrderFor, requestCostMs, requestsForUnits, estimateSources };
+module.exports = { LIMITS, COST_MS, buildPlan, groupModbus, groupRegisterbild, registerbildFor,
+  compatibleOcpp, Scheduler, decoderDependencies, discoveryFor, byteOrderFor, requestCostMs,
+  requestsForUnits, estimateSources };

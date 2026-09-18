@@ -54,6 +54,35 @@ type Selection struct {
 	EntityID   string          `json:"entity_id,omitempty"`
 	Definition json.RawMessage `json:"definition,omitempty"`
 }
+// RegisterbildKarte is the Soll of one energy card: WHICH card the Hardwareblatt
+// expects in which slot. Identity of a card is (device, slot) - card type and
+// variant only check that the expected card is plugged in, so a card swapped to
+// another slot becomes visible instead of being silently re-attached.
+type RegisterbildKarte struct {
+	Steckplatz int `json:"steckplatz"`
+	Kartentyp  int `json:"kartentyp"`
+	Variante   int `json:"variante"`
+}
+
+// Registerbild carries the per-installation parameters of a WAGO register image
+// (UEMS AP-05, docs/contracts/v2/wago-registerbild.md §2). Base address,
+// function code and word order differ per plant and are therefore PARAMETERS,
+// never a fixed modbus_holding (AP-05 Befund 9); the controller id is not proof
+// of identity, only that the expected controller answers at that address.
+//
+// This layer carries and shape-checks them; the reading rule lives in
+// edge-app/nodered/measurements/wago-registerbild.js. The field is OPTIONAL and
+// purely additive: a config without it parses exactly as before.
+type Registerbild struct {
+	EntityID          string              `json:"entity_id"`
+	Basisadresse      int                 `json:"basisadresse"`
+	Funktionscode     int                 `json:"funktionscode"`
+	Wortfolge         string              `json:"wortfolge"`
+	Kartenzahl        int                 `json:"kartenzahl"`
+	ControllerKennung int64               `json:"controller_kennung"`
+	Karten            []RegisterbildKarte `json:"karten"`
+}
+
 type Config struct {
 	SchemaVersion  string      `json:"schema_version"`
 	TenantID       string      `json:"tenant_id"`
@@ -62,6 +91,8 @@ type Config struct {
 	Revision       int64       `json:"revision"`
 	CatalogVersion string      `json:"catalog_version"`
 	Selections     []Selection `json:"selections"`
+	// Additive since UEMS AP-05 IP-6; absent on every box shipped so far.
+	Registerbilder []Registerbild `json:"registerbilder,omitempty"`
 }
 
 // ParseConfig validates identity, strict shape, duplicates and monotonicity.
@@ -110,7 +141,63 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 			return c, errors.New("catalog selection must not carry a custom definition")
 		}
 	}
+	if err := validRegisterbilder(c.Registerbilder); err != nil {
+		return c, err
+	}
 	return c, nil
+}
+
+// MaxRegisterbilder bounds the controllers one box may carry register images
+// for. The image itself is bounded by the address space (§2).
+const MaxRegisterbilder = 64
+
+func validRegisterbilder(bilder []Registerbild) error {
+	if len(bilder) > MaxRegisterbilder {
+		return errors.New("too many registerbilder")
+	}
+	seen := map[string]bool{}
+	for _, b := range bilder {
+		if !entityIDPattern.MatchString(b.EntityID) {
+			return errors.New("invalid registerbild entity_id")
+		}
+		if seen[b.EntityID] {
+			return fmt.Errorf("duplicate registerbild %s", b.EntityID)
+		}
+		seen[b.EntityID] = true
+		if b.Funktionscode != 3 && b.Funktionscode != 4 {
+			return errors.New("registerbild funktionscode must be 3 or 4")
+		}
+		if b.Wortfolge != "big" && b.Wortfolge != "little" {
+			return errors.New("registerbild wortfolge must be big or little")
+		}
+		// Base address + header + cards must stay inside the address space (§2);
+		// a header is 12 words and a card block 42, and those minima are what the
+		// cloud plans with. The reader navigates with the lengths FROM THE HEAD.
+		if b.Basisadresse < 0 || b.Basisadresse > 65535 || b.Kartenzahl < 1 ||
+			b.Basisadresse+12+b.Kartenzahl*42 > 65536 {
+			return errors.New("registerbild does not fit the address space")
+		}
+		if len(b.Karten) != b.Kartenzahl {
+			return errors.New("registerbild karten must match kartenzahl")
+		}
+		steckplaetze := map[int]bool{}
+		for _, k := range b.Karten {
+			if k.Steckplatz < 1 || k.Steckplatz > 65535 {
+				return errors.New("invalid registerbild steckplatz")
+			}
+			if steckplaetze[k.Steckplatz] {
+				return fmt.Errorf("duplicate registerbild steckplatz %d", k.Steckplatz)
+			}
+			steckplaetze[k.Steckplatz] = true
+			if k.Kartentyp != 494 && k.Kartentyp != 495 {
+				return errors.New("registerbild kartentyp must be 494 or 495")
+			}
+			if k.Variante < 0 || k.Variante > 65535 {
+				return errors.New("invalid registerbild variante")
+			}
+		}
+	}
+	return nil
 }
 
 func validCustomDefinition(raw []byte) bool {

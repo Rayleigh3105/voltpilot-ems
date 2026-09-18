@@ -40,8 +40,9 @@
       "unit": "word"
     },
     "wago_registerbild": {
+      "_comment": "Zwei Energiekarten je Anfrage - die Telegramm-Wahrheit aus wago-registerbild.md \u00a77: 12 + 42 \u00b7 K W\u00f6rter, h\u00f6chstens 120 W\u00f6rter je Anfrage und ein Karten-Block nie auf zwei Anfragen verteilt. F\u00fcnf Karten sind 222 W\u00f6rter und passen in kein Telegramm (AP-05 Befund 10).",
       "request_cost_ms": 400,
-      "units_per_request": 5,
+      "units_per_request": 2,
       "unit": "energy_card"
     },
     "http": {
@@ -161,8 +162,8 @@
       ],
       "expected": {
         "samples_per_minute": 52.0,
-        "requests_per_minute": 1.0,
-        "duty_cycle_percent": 0.667,
+        "requests_per_minute": 2.0,
+        "duty_cycle_percent": 1.333,
         "soft_warning": false,
         "hard_rejected": false
       }
@@ -307,8 +308,8 @@
       ],
       "expected": {
         "samples_per_minute": 129.0,
-        "requests_per_minute": 23.0,
-        "duty_cycle_percent": 15.333,
+        "requests_per_minute": 24.0,
+        "duty_cycle_percent": 16.0,
         "soft_warning": true,
         "hard_rejected": false
       }
@@ -363,8 +364,8 @@
       ],
       "expected": {
         "samples_per_minute": 325.0,
-        "requests_per_minute": 5.0,
-        "duty_cycle_percent": 3.333,
+        "requests_per_minute": 13.0,
+        "duty_cycle_percent": 8.667,
         "soft_warning": true,
         "hard_rejected": false
       }

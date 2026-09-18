@@ -1587,15 +1587,8 @@
           "erwartet": {
             "ergebnis": "nicht_lesbar",
             "grund": "hauptversion_fremd",
-            "kopf": {
-              "hauptversion": 2,
-              "nebenversion": 0,
-              "kopflaenge": 12,
-              "kartenblocklaenge": 42,
-              "kartenzahl": 4,
-              "herzschlag": 300,
-              "controller_kennung": 1
-            },
+            "kopf": null,
+            "kopf_warum": "Kein Kopf: bei hauptversion_fremd bricht der Leser nach Prüfschritt 2 ab (Vertrag §5, Vektor V4). Die Wörter an Offset 4–11 stehen zwar da, aber in einem v2-Registerbild bedeuten sie nicht mehr, was ein v1-Leser aus ihnen machen würde - lieber keine Zahl als eine falsche. Nur kartenzahl_abweichend und controller_kennung_abweichend geben den Kopf mit.",
             "karten": []
           },
           "herzschlag_urteil": "erste_lesung"

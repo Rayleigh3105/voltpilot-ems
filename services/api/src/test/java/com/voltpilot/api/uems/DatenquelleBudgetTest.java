@@ -85,10 +85,29 @@ class DatenquelleBudgetTest {
         assertThat(MeasurementBudget.customRegisterRequestCostMs()).isEqualTo(2_000);
     }
 
+    /**
+     * ⚠ Berichtigt mit AP-05 IP-6 (Befund 10): der Messbudget-Vertrag führte
+     * {@code wago_registerbild} mit fünf Energiekarten je Anfrage. Fünf Karten sind 222 Wörter
+     * (12 + 42 · K) und passen in kein Modbus-Telegramm; der Registerbild-Vertrag §7 erlaubt
+     * höchstens 120 Wörter je Anfrage und teilt einen Karten-Block nie. Also zwei Karten je
+     * Anfrage, für 25 Karten dreizehn Blöcke statt fünf.
+     *
+     * <p>Damit nennt der S1-Fall in {@code data-source-budget-vectors.json} (AP-06 §4.6) mit
+     * {@code requests_per_cadence: 20} nicht mehr die Zahl, die der Planer für 100 Karten an
+     * vier Steuerungen ausrechnet — es wären 52. Die Rechnung, die der Fall prüft, stimmt
+     * weiterhin, und sein Urteil ändert sich nicht (schon über der Proben-Grenze). Das
+     * Nachziehen des AP-06-Szenarios gehört nicht in dieses Paket.
+     */
     @Test
-    void s1VierWagoSteuerungenMitJe25KartenSindZwanzigBloeckeJeTakt() {
-        assertThat(DatenquelleBudgetService.wagoBloecke(25)).isEqualTo(5);
-        assertThat(4 * DatenquelleBudgetService.wagoBloecke(25)).isEqualTo(20);
+    void s1VierWagoSteuerungenMitJe25KartenSindDreizehnBloeckeJeTakt() {
+        assertThat(DatenquelleBudgetService.wagoBloecke(25)).isEqualTo(13);
+        assertThat(4 * DatenquelleBudgetService.wagoBloecke(25)).isEqualTo(52);
+        // Die Tabelle aus dem Registerbild-Vertrag §7, Karte für Karte.
+        assertThat(DatenquelleBudgetService.wagoBloecke(1)).isEqualTo(1);
+        assertThat(DatenquelleBudgetService.wagoBloecke(2)).isEqualTo(1);
+        assertThat(DatenquelleBudgetService.wagoBloecke(3)).isEqualTo(2);
+        assertThat(DatenquelleBudgetService.wagoBloecke(4)).isEqualTo(2);
+        assertThat(DatenquelleBudgetService.wagoBloecke(5)).isEqualTo(3);
     }
 
     private static SourceCandidate source(String name, JsonNode n) {
