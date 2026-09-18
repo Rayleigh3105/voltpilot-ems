@@ -1,5 +1,7 @@
 package com.voltpilot.api.templates;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -9,6 +11,7 @@ import org.springframework.stereotype.Component;
 /** Cloud-Vorgriff, kein Eintrag im ausgelieferten Box-Katalog. Der Pilot steht aus. */
 @Component
 public class WagoComponentTemplateSeeder {
+    private static final Logger log = LoggerFactory.getLogger(WagoComponentTemplateSeeder.class);
     public static final String REF = "certified:wago:pm494_pm495_registerbild_v1";
     private final JdbcTemplate admin;
 
@@ -16,8 +19,25 @@ public class WagoComponentTemplateSeeder {
         this.admin = admin;
     }
 
+    /**
+     * Wie die Bestands-Läufer daneben: ein Fehlschlag wird protokolliert, nicht geworfen. Eine
+     * Ausnahme aus einem {@link ApplicationReadyEvent}-Hörer verlässt {@code SpringApplication.run}
+     * und beendet die api - eine kurz nicht erreichbare Admin-Rolle würde sonst den Start der
+     * ganzen api verhindern. Ohne Vorlage fehlt nur der WAGO-Eintrag im Anlege-Assistenten; der
+     * nächste Start legt sie nach.
+     */
     @EventListener(ApplicationReadyEvent.class)
     public void seed() {
+        try {
+            schreibe();
+        } catch (RuntimeException e) {
+            log.error("WAGO-Vorlage {} konnte beim Start nicht angelegt werden, die api läuft ohne sie "
+                    + "weiter (der Anlege-Assistent zeigt die Karte dann nicht): {}", REF, e.toString(), e);
+        }
+    }
+
+    /** Der Schreibvorgang selbst - für Tests direkt aufrufbar. */
+    public void schreibe() {
         // Nur erstmals anlegen: spätere Pilot-Fassungen, Rücknahmen und Belege bleiben erhalten.
         admin.update("""
                 INSERT INTO component_template (kind, template_ref, version, brand, brand_label,
