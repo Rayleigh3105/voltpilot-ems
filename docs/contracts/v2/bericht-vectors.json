@@ -11,7 +11,7 @@
     "Recht RechteAbleitung.darf, die Sprache der Naht BerichteNaht.Bericht und KorrekturKaskade.Betroffen.",
     "Beträge sind Dezimaltext; Zeitpunkte ISO-8601 mit Offset; Tage einschließlich. null heißt „keine Werte“, nie 0."
   ],
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "$schema_datei": "./bericht.schema.json",
   "herkunft": "UEMS AP-12 §4 (A, Q, V, D, F, B, R, EW, RW, DA, G, S), §5.8 (Kundensätze), §7 (B1–B16) — Entscheide E1–E15 und W1–W11 vom 14.09.2026; Bau-Paket IP-1/IP-3",
   "zeitzone": "Europe/Berlin",
@@ -304,6 +304,11 @@
     }
   ],
   "_nicht_geprueft": [
+    {
+      "fall": "B1",
+      "was": "dass die Abzüge dieser Datei die drei Formen von Vertrag 1.2 tragen — tagesverlauf, das Richtungspaar von MS-04 (laden 7 900 / entladen 7 100) und ort_zum_datenstand/endgueltig_ab je Kennzahl",
+      "warum": "vp-uems-b12-tagesverlauf-speicher, erster Schnitt: der Vertrag und der Leseweg stehen (messreihe_tag/messreihe_periode.menge_positiv/menge_negativ, V20260918101000), die Bildung schreibt sie noch nicht ab. Bis dahin bleiben die Abzüge in der Form 1.1 und ihre Prüfsummen (b79d0fb8…/d2073f76…) unberührt; BerichtAbzugBildungTest nennt jede Lücke als Ist-Zustand."
+    },
     {
       "fall": "B1",
       "was": "dass die Freigabe den Entwurf byte-gleich kopiert, `ersetzt_durch_nr` setzt und Anstöße erledigt (F2)",

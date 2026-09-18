@@ -59,6 +59,12 @@ nie ein Verweis auf lebende Zeilen (E1). Ein zweites Anlegen derselben Vorlage �
   falsche ist `500 abzug_beschaedigt` — nie still neu gerechnet. Regel `kanonisch`, Satz `abzug_beschaedigt`.
 - **A7** Gespeichert als `text`, nie als `jsonb` (jsonb normalisiert und bräche die Prüfsumme).
 - **A8** Größe ≈ 100 KB je Monatsbericht Standort; kein Objektspeicher nötig.
+- **A9 Fassung 1.2 — additiv, und nur für NEU gebildete Abzüge.** `$defs/abzug` kennt `tagesverlauf`
+  (`$defs/tagesverlauf_reihe`: je Wert-Zeile ihre Tage mit Menge und Zustand), `$defs/kennzahl` kennt
+  `ort_zum_datenstand` und `endgueltig_ab` wie `$defs/wert`. **Alles Neue ist wahlfrei:** ein Abzug nach 1.0 oder 1.1
+  bleibt gültig, byte-gleich lesbar und behält seine Prüfsumme; PDF und CSV aus ihm bleiben byte-gleich (die Abnahme des
+  Captains, `UemsBerichtNachDenFristenTest`). 1.0/1.1-Abzüge tragen die drei Formen nicht — das ist die Lücke, nicht die
+  Null.
 
 ## 3. Quellen (Q1–Q6, E3)
 
@@ -311,6 +317,27 @@ sich nie von „Version“ (die gehört den Werten), „Ausgabe“, „Snapshot�
 
 Den SHA-256 rechnet das Portal nicht: der Server prüft die Prüfsumme beim Lesen eines Stands (A6). Was der Vertrag bewusst
 anders sagt als der Konzeptkatalog, steht mit Grund in `_abweichungen`; was erst spätere Pakete prüfen, in `_nicht_geprueft`.
+
+## Das Richtungspaar einer Reihe mit zwei Flüssen
+
+Eine Messstelle wie MS-04 („Laden / Entladen“) führt EINE Größe mit zwei Flussrichtungen. Ein Bericht soll Laden und
+Entladen getrennt zeigen (B1: 7 900 / 7 100 kWh), darf sie aber nicht neu rechnen (EW3) — er schreibt ab. Darum
+entstehen die beiden Anteile in der **Verdichtung** und stehen neben der Netto-Menge:
+
+- Migration `V20260918101000` legt `menge_positiv`/`menge_negativ` an `messreihe_tag` und `messreihe_periode` — nullbar,
+  ohne Nachfüllung, ohne Default. Die Spalten kennen nur Vorzeichen; welches WORT ein Anteil trägt, sagt das Katalogwort
+  der Richtung (`MessstelleRegeln.RICHTUNGSPAAR`: `charge_discharge` → Laden/Entladen, `import_export` → Bezug/Abgabe).
+  Das ist **nicht** `ANTEIL_RICHTUNGEN`: was eine QUELLENBINDUNG mit einem Anteil belegen darf (Regel 7), bleibt
+  unverändert.
+- `Richtungspaar.ausTeilen` bildet sie wie den Anteil eines Vorzeichen-Werts: Σ max(0, Teil) und Σ max(0, −Teil)
+  (`VerbrauchRegeln.anteilDesWerts`). Tag und Monat rechnen über ihre Viertelstunden, das Jahr summiert seine Monate;
+  fehlt EINEM Teil sein Paar, fehlt es der ganzen Periode. Unbekannt ist keine Null.
+- **Offen:** heute trägt im gepackten Katalog jeder Kanal mit zwei Richtungen `active_power` in W, also einen
+  **Momentanwert** — die Menge entsteht durch Integration der Leistung. Der exakte Anteil wäre die Integration von
+  max(0, P) über die ROHWERTE; auf Tages-Ebene ist die Viertelstunde schon zu EINER Energie verdichtet, ein
+  Vorzeichenwechsel innerhalb einer Viertelstunde wäre verloren. Die Regel liefert für einen Momentanwert deshalb
+  `null` statt einer Näherung. Damit ein Abzug das Paar wirklich abschreiben kann, muss `messreihe_viertelstunde` die
+  beiden Anteile selbst tragen (`RichtungspaarTest`).
 
 ## Grenzen
 

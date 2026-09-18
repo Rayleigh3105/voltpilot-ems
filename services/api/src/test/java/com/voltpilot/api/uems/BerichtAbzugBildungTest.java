@@ -51,8 +51,11 @@ import org.testcontainers.utility.DockerImageName;
  * <p><b>Die benannten Lücken</b> (firstmate 001 = A): Der Abzug ist byte-gleich zum Vektor bis auf benannte Stellen, und
  * jede ist als ERWARTETER IST-ZUSTAND behauptet — sobald eine Lücke sich schließt, wird dieser Test rot und die Ausnahme
  * darf weg. Kennzahlen und Bezugsgrößen hat AP-12 IP-6 geschlossen (KZ-0001, KZ-0005, BZ-4, BZ-6 — dafür zwei benannte
- * Abweichungen des Vektors); Speicher-Paar und Tagesverlauf bringt das Folgepaket {@code vp-uems-b12-tagesverlauf-speicher}
- * (Vertrag 1.2 + AP-08-Leseweg).
+ * Abweichungen des Vektors); Speicher-Paar, Tagesverlauf und Ort/Endgültigkeit je Kennzahl bringt das Folgepaket
+ * {@code vp-uems-b12-tagesverlauf-speicher}. Dessen ERSTER Schnitt hat den Vertrag auf 1.2 gehoben (die drei Formen
+ * stehen in {@code bericht.schema.json}, wahlfrei) und den Träger des Richtungspaars in die Verdichtung gelegt
+ * ({@link Richtungspaar}, {@code V20260918101000}); die Bildung schreibt sie noch nicht ab, darum bleiben die Lücken
+ * unten stehen und die Prüfsummen der Vektor-Abzüge unberührt.
  */
 @Testcontainers(disabledWithoutDocker = true)
 class BerichtAbzugBildungTest {
