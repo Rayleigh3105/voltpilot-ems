@@ -126,12 +126,33 @@ class ComponentTemplateApiTest {
      * Der Kern: die Tabelle IST der Go-Katalog, und die Antwort ist ehrlich.
      */
     @Test
+    void wagoBleibtEinCloudVorgriffOhneErfundeneFaktoren() throws Exception {
+        JsonNode wago = getJson("/api/v1/component-templates/"
+                + com.voltpilot.api.templates.WagoComponentTemplateSeeder.REF, token("demo", "demo"));
+        assertThat(wago.path("certificationStatus").asText()).isEqualTo("in_certification");
+        assertThat(wago.path("deviceType").asText()).isEqualTo("meter");
+        assertThat(wago.path("communication").asText()).isEqualTo("modbus_tcp");
+        assertThat(wago.path("transportSchema").toString()).contains("mb_slave_id");
+        assertThat(wago.path("modelLabel").asText()).isEqualTo("WAGO 750-494/495 an Registerbild v1");
+        assertThat(wago.path("channels").isNull()).isTrue();
+        assertThat(wago.path("writes").isNull()).isTrue();
+        assertThat(wago.path("certifiedAt").isNull()).isTrue();
+        assertThat(wago.path("note").asText()).contains("750-494", "zu erheben");
+        assertThat(wago.toString()).doesNotContain("geprüft", "0.01", "0.05", "default");
+        var input = json.copy().disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .treeToValue(wago, com.voltpilot.api.templates.ComponentTemplateDefinition.Input.class);
+        assertThat(com.voltpilot.api.templates.ComponentTemplateDefinition.validate(input).errors()).isEmpty();
+        assertThat(com.voltpilot.api.templates.ComponentTemplateDefinition.refFor(input.brand(), input.model()))
+                .isEqualTo(wago.path("templateRef").asText());
+    }
+
+    @Test
     void theRegisterCarriesExactlyTheEdgeCatalogAndStaysHonest() throws Exception {
         String customer = token("demo", "demo");
         JsonNode list = getJson("/api/v1/component-templates", customer);
 
         List<String> served = new ArrayList<>();
-        list.forEach(t -> served.add(t.get("templateRef").asText()));
+        list.forEach(t -> { if ("builtin".equals(t.path("kind").asText())) served.add(t.get("templateRef").asText()); });
         // ⚠ GENAU die exportierten Vorlagen OHNE die abgelösten: die
         // Katalog-Neustruktur hat den zweiten Fronius-Eintrag zu einer
         // Alias-Zeile gemacht - sie bleibt auflösbar, wird aber nicht mehr

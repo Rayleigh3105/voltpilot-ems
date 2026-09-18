@@ -32,7 +32,10 @@ public class ComponentDefinitionRepository {
     private static final String DEF_COLUMNS =
             "entity_id, version, role, label, brand, model, family, communication, "
                     + "connection_json::text AS conn, source_kind, template_ref, template_version, "
-                    + "created_at, created_by, note";
+                    + "created_at, created_by, note, "
+                    + "(to_jsonb(component_definition)->>'slot')::integer AS wago_slot, "
+                    + "(to_jsonb(component_definition)->>'wago_anwenderskalierung')::boolean AS wago_scaling, "
+                    + "(to_jsonb(component_definition)->>'wago_register_35')::integer AS wago_register";
 
     private final JdbcTemplate jdbc;
 
@@ -102,6 +105,16 @@ public class ComponentDefinitionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** Eine Konfigurations-Rücknahme darf keine physische Karten-Zuordnung umdeuten. */
+    public boolean currentWagoSlotMatches(UUID siteId, UUID entityId, Integer slot) {
+        if (slot == null) return true;
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM geraet_komponente k "
+                + "JOIN geraet_teil t ON t.id=k.teil_id AND t.tenant_id=k.tenant_id "
+                + "JOIN measurement_point m ON m.id=k.entity_id "
+                + "WHERE m.id=? AND m.site_id=? AND t.steckplatz=? AND k.gueltig_ab<=now() "
+                + "AND (k.gueltig_bis IS NULL OR k.gueltig_bis>now()))", Boolean.class, entityId, siteId, slot));
+    }
+
     public Applied applyDefinitionFull(UUID siteId, UUID entityId, int expectedRevision,
             FullDefinition old) {
         ComponentDefinitionDto d = old.definition();
@@ -116,6 +129,19 @@ public class ComponentDefinitionRepository {
                 d.model(), d.family(), d.communication(), d.connection(), d.sourceKind(), d.templateRef(),
                 d.templateVersion(), old.capacityKwp(), old.control(), old.entityType(), old.capabilitiesJson(),
                 old.guardConfigJson(), old.registryUnitId(), entityId, siteId, expectedRevision);
+        // Auch Rollback trägt die Kartenfakten der gewählten Fassung zurück. Die
+        // to_jsonb-Abfrage läuft ebenso auf historischen Schemata ohne diese Spalten.
+        if (!rows.isEmpty() && (d.slot() != null || d.wagoAnwenderskalierung() != null
+                || d.wagoRegister35() != null || Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT (to_jsonb(m)->>'slot' IS NOT NULL OR "
+                        + "to_jsonb(m)->>'wago_anwenderskalierung' IS NOT NULL OR "
+                        + "to_jsonb(m)->>'wago_register_35' IS NOT NULL) "
+                        + "FROM measurement_point m WHERE id=? AND site_id=?",
+                Boolean.class, entityId, siteId)))) {
+            jdbc.update("UPDATE measurement_point SET slot=?, wago_anwenderskalierung=?, "
+                    + "wago_register_35=? WHERE id=? AND site_id=?", d.slot(),
+                    d.wagoAnwenderskalierung(), d.wagoRegister35(), entityId, siteId);
+        }
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -274,6 +300,7 @@ public class ComponentDefinitionRepository {
                 tv,
                 created == null ? null : created.toInstant(),
                 rs.getString("created_by"),
-                rs.getString("note"));
+                rs.getString("note"), (Integer) rs.getObject("wago_slot"),
+                (Boolean) rs.getObject("wago_scaling"), (Integer) rs.getObject("wago_register"));
     }
 }
