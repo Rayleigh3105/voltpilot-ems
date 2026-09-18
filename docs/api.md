@@ -61,6 +61,13 @@ Die Prüfziffer gilt für Referenzen im generierten Format; freie Integrationsre
 
 `out-of-order: true` erlaubt später gemergte Migrationen mit kleinerer Versionsnummer. Eine neue Migration muss unabhängig von der Ankunftsreihenfolge funktionieren. Versionskollisionen und veraltete Buildkopien werden durch `MigrationHygieneTest` geprüft.
 
+`UemsProduktionsreihenfolgeMigrationTest` spielt zusätzlich den vollständigen, eingecheckten
+`main`-Migrationssatz und danach alle übrigen Migrationen mit `out-of-order` ein. Er vergleicht
+Tabelleninhalte (`Bestandsschutz`), Spalten und Constraints einschließlich CHECK-Definitionen mit
+einer frisch in Versionsreihenfolge migrierten Datenbank. Rollenereignisse werden vor dem Nachzug
+gesät. Pflege der Liste und die einmalige Prüfsummenänderung der noch nicht produktiven
+`V20260916150000`: [Produktionsreihenfolge](agents/root/uems-migration-produktionsreihenfolge.md).
+
 Die `SelfHealingFlywayMigrationStrategy` repariert bestimmte Validierungsabweichungen einmalig und versucht die Migration erneut. Das richtet Prüfsummen aus, **führt bereits angewandtes SQL aber nicht erneut aus**. SQL-Fehler und fehlende Out-of-Order-Migrationen sind keine reparierbare Prüfsummendrift. Unerwartete Reparaturwarnungen prüfen; Migrationen niemals deshalb nachträglich bearbeiten.
 
 `*:missing` toleriert aufgezeichnete, nicht mehr mitgelieferte Migrationen, etwa Dev-Seeds nach Profilwechsel. Ein leeres Produktionsprofil entfernt keine bereits vorhandenen Demodaten.

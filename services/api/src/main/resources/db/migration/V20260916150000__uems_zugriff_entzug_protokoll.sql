@@ -7,8 +7,7 @@
 -- Berichtszeitraum erklären kann)."
 --
 -- `zugriff_protokoll` (V20260915030000) trägt die erste Zeile schon. Diese
--- Migration weitet allein das Vokabular von `ort_aenderung` (V20260911100000) um
--- zwei Wörter:
+-- Migration weitet das Vokabular von `ort_aenderung` (V20260911100000):
 --
 --   zugriff_zugewiesen — eine Person darf an diesem Ort handeln (Rolle × Ort)
 --   zugriff_entzogen   — sie darf es nicht mehr, ab jetzt
@@ -20,18 +19,21 @@
 -- (BerichtRegeln.struktur: eine unbekannte Art ist `keine_strukturaenderung`),
 -- sie stoßen also keine Revision an — ein Entzug ändert keine Zahl.
 --
--- Der CHECK wird als WÖRTLICHE Liste ersetzt, in der Reihenfolge des Bestands
--- plus der zwei neuen Wörter (Muster V20260911270000 für
--- data_source_aenderung_art_chk).
+-- Die Liste enthält auch rolle_gesetzt/rolle_entzogen aus V20260916203000:
+-- diese Migration ist auf main bereits angewandt und diese hier kommt beim
+-- UEMS-Nachzug out-of-order an. Beide Reihenfolgen müssen dieselbe Vereinigung
+-- erlauben, auch wenn bereits Rollenereignisse im Protokoll stehen.
+-- Vor der ersten Produktionsanwendung berichtigt; Nicht-Prod-Datenbanken mit
+-- der alten Prüfsumme brauchen flyway repair oder ein Neuaufsetzen.
 --
 -- Bestandsschutz: keine Tabelle, keine Spalte, keine Zeile, kein Fremdschlüssel.
 -- Ein CHECK wird allein GEWEITET — jede heute erlaubte Zeile bleibt erlaubt,
--- jede heute abgelehnte bis auf die zwei neuen Wörter abgelehnt.
+-- jede heute abgelehnte bis auf die vier genannten Wörter abgelehnt.
 -- -----------------------------------------------------------------------------
 
 ALTER TABLE ort_aenderung DROP CONSTRAINT IF EXISTS ort_aenderung_art_chk;
 ALTER TABLE ort_aenderung ADD CONSTRAINT ort_aenderung_art_chk
     CHECK (art IN ('angelegt', 'bearbeitet', 'verschoben', 'korrigiert',
                    'flaeche_geaendert', 'archiviert', 'wiederhergestellt',
-                   'geloescht', 'zugriff_zugewiesen', 'zugriff_entzogen'));
-
+                   'geloescht', 'zugriff_zugewiesen', 'zugriff_entzogen',
+                   'rolle_gesetzt', 'rolle_entzogen'));
