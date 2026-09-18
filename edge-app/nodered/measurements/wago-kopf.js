@@ -132,11 +132,16 @@ class HerzschlagWacht {
     // (Zaehlerumlauf bzw. Neustart) - sie setzen den Zaehler zurueck wie `laeuft`.
     const steht = urteil === 'steht' ? (vorher ? vorher.steht : 0) + 1 : 0;
     this.stand.set(steuerung, { herzschlag, steht, urteil });
-    return this.urteilen(urteil, steht);
+    // Die ZAHLEN gehoeren dieser Stufe, das Ereignis daraus IP-8: `device_restart` braucht
+    // `herzschlag_vorher`/`herzschlag_nachher` (Vokabular), und nur hier steht das Paar
+    // beisammen. Darum reicht die Beobachtung es mit heraus, statt dass ein zweiter Zaehler
+    // denselben Herzschlag noch einmal mitfuehrt.
+    return this.urteilen(urteil, steht, vorher ? vorher.herzschlag : null, herzschlag);
   }
 
-  urteilen(urteil, steht) {
-    return { urteil, steht, qualitaet: steht >= this.stehtAb ? QUALITAET_ALT : QUALITAET_NORMAL };
+  urteilen(urteil, steht, herzschlagVorher = null, herzschlagNachher = null) {
+    return { urteil, steht, qualitaet: steht >= this.stehtAb ? QUALITAET_ALT : QUALITAET_NORMAL,
+      herzschlag_vorher: herzschlagVorher, herzschlag_nachher: herzschlagNachher };
   }
 
   /** Der Stand einer Steuerung, ohne ihn zu veraendern. */
@@ -196,8 +201,10 @@ function liesTypenschild(woerter) {
  * `wacht`: die `HerzschlagWacht` der Laufzeit; ohne sie gibt es kein `stale`.
  *
  * Rueckgabe: das Ergebnis von `liesRegisterbild`, ergaenzt um `befund`, `herzschlag_urteil`,
- * `steht` und `qualitaet`. Die Karten bleiben unveraendert - diese Stufe erfindet keinen Wert
- * und nimmt auch keinen weg; sie sagt nur, wie ALT er ist.
+ * `steht`, `qualitaet` und das Herzschlag-Paar `herzschlag_vorher`/`herzschlag_nachher` (die
+ * beiden Zahlen, aus denen IP-8 `device_restart` baut - ohne Kopf bleiben sie `null`). Die
+ * Karten bleiben unveraendert - diese Stufe erfindet keinen Wert und nimmt auch keinen weg;
+ * sie sagt nur, wie ALT er ist.
  */
 function pruefeLesung(woerter, { steuerung, parameter = {}, soll = null, wacht = null } = {}) {
   const gelesen = registerbild.liesRegisterbild(woerter, { parameter, soll });
@@ -209,6 +216,10 @@ function pruefeLesung(woerter, { steuerung, parameter = {}, soll = null, wacht =
     befund: bef,
     herzschlag_urteil: beobachtung.urteil,
     steht: beobachtung.steht,
+    herzschlag_vorher: beobachtung.herzschlag_vorher === undefined ? null
+      : beobachtung.herzschlag_vorher,
+    herzschlag_nachher: beobachtung.herzschlag_nachher === undefined ? null
+      : beobachtung.herzschlag_nachher,
     // Ohne Kartenwerte gibt es auch keine Qualitaet zu vergeben.
     qualitaet: gelesen.ergebnis === 'erkannt' ? beobachtung.qualitaet : null,
   });

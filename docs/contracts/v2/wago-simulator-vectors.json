@@ -20,6 +20,7 @@
   "herkunft": "UEMS AP-05 §8 IP-12; Vertrag wago-registerbild.md §2–§5 (IP-2, PR 831); Befunde aus dem Bau von AP-05 (1, 4, 8, 9)",
   "fixture": "edge-app/nodered/vp-palette/test/fixtures/wago-registerbild-store.js",
   "pruefer": [
+    "edge-app/nodered/measurements/wago-ereignisse.test.js",
     "edge-app/nodered/vp-palette/test/wago_simulator_spec.js"
   ],
   "beweisregel": "Der Simulator dient dem Bauen, nie dem Beleg. belegt: true verlangt herkunft: pilot und einen nachweis mit Datum, Ort, Prüfer und Vergleich (AP-05 IP-14); kein Fall dieser Datei darf das je tragen.",
@@ -37,7 +38,8 @@
       "kartenzahl_setzen",
       "karte_nicht_gelesen",
       "karte_gueltigkeit_setzen",
-      "karte_messwert_setzen"
+      "karte_messwert_setzen",
+      "karte_statuswort_setzen"
     ],
     "fundstelle": "edge-app/nodered/vp-palette/test/fixtures/wago-registerbild-store.js (schritt)"
   },
@@ -509,7 +511,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "erste_lesung"
+          "herzschlag_urteil": "erste_lesung",
+          "ereignisse": []
         },
         {
           "nr": 2,
@@ -550,7 +553,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "laeuft"
+          "herzschlag_urteil": "laeuft",
+          "ereignisse": []
         },
         {
           "nr": 3,
@@ -591,9 +595,11 @@
               }
             ]
           },
-          "herzschlag_urteil": "laeuft"
+          "herzschlag_urteil": "laeuft",
+          "ereignisse": []
         }
-      ]
+      ],
+      "ereignis_regel": "Die `ereignisse` je Lesung sind die Arten, die IP-8 aus DIESER Lesung meldet, ohne `zeitpunkt`, `datenquelle` und `komponente` - diese drei sind Kennungen des AUFRUFERS, der Simulator kennt keine Entitaet des Bestands."
     },
     {
       "name": "S2 ruecksetzung",
@@ -785,7 +791,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "erste_lesung"
+          "herzschlag_urteil": "erste_lesung",
+          "ereignisse": []
         },
         {
           "nr": 2,
@@ -818,7 +825,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "laeuft"
+          "herzschlag_urteil": "laeuft",
+          "ereignisse": []
         },
         {
           "nr": 3,
@@ -851,7 +859,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "ueberlauf"
+          "herzschlag_urteil": "ueberlauf",
+          "ereignisse": []
         },
         {
           "nr": 4,
@@ -884,7 +893,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "laeuft"
+          "herzschlag_urteil": "laeuft",
+          "ereignisse": []
         },
         {
           "nr": 5,
@@ -916,9 +926,17 @@
               }
             ]
           },
-          "herzschlag_urteil": "rueckwaerts"
+          "herzschlag_urteil": "rueckwaerts",
+          "ereignisse": [
+            {
+              "art": "device_restart",
+              "herzschlag_vorher": 7,
+              "herzschlag_nachher": 0
+            }
+          ]
         }
-      ]
+      ],
+      "ereignis_regel": "Die `ereignisse` je Lesung sind die Arten, die IP-8 aus DIESER Lesung meldet, ohne `zeitpunkt`, `datenquelle` und `komponente` - diese drei sind Kennungen des AUFRUFERS, der Simulator kennt keine Entitaet des Bestands."
     },
     {
       "name": "S3 herzschlag-steht",
@@ -1310,7 +1328,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "erste_lesung"
+          "herzschlag_urteil": "erste_lesung",
+          "ereignisse": []
         },
         {
           "nr": 2,
@@ -1350,7 +1369,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "steht"
+          "herzschlag_urteil": "steht",
+          "ereignisse": []
         },
         {
           "nr": 3,
@@ -1390,7 +1410,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "steht"
+          "herzschlag_urteil": "steht",
+          "ereignisse": []
         },
         {
           "nr": 4,
@@ -1430,9 +1451,17 @@
               }
             ]
           },
-          "herzschlag_urteil": "steht"
+          "herzschlag_urteil": "steht",
+          "ereignisse": [
+            {
+              "art": "frozen_source",
+              "lesungen": 3,
+              "herzschlag": 900
+            }
+          ]
         }
-      ]
+      ],
+      "ereignis_regel": "Die `ereignisse` je Lesung sind die Arten, die IP-8 aus DIESER Lesung meldet, ohne `zeitpunkt`, `datenquelle` und `komponente` - diese drei sind Kennungen des AUFRUFERS, der Simulator kennt keine Entitaet des Bestands."
     },
     {
       "name": "S4 version-fremd",
@@ -1591,9 +1620,11 @@
             "kopf_warum": "Kein Kopf: bei hauptversion_fremd bricht der Leser nach Prüfschritt 2 ab (Vertrag §5, Vektor V4). Die Wörter an Offset 4–11 stehen zwar da, aber in einem v2-Registerbild bedeuten sie nicht mehr, was ein v1-Leser aus ihnen machen würde - lieber keine Zahl als eine falsche. Nur kartenzahl_abweichend und controller_kennung_abweichend geben den Kopf mit.",
             "karten": []
           },
-          "herzschlag_urteil": "erste_lesung"
+          "herzschlag_urteil": "erste_lesung",
+          "ereignisse": []
         }
-      ]
+      ],
+      "ereignis_regel": "Die `ereignisse` je Lesung sind die Arten, die IP-8 aus DIESER Lesung meldet, ohne `zeitpunkt`, `datenquelle` und `komponente` - diese drei sind Kennungen des AUFRUFERS, der Simulator kennt keine Entitaet des Bestands."
     },
     {
       "name": "S5 karte-fehlt",
@@ -1948,7 +1979,8 @@
               }
             ]
           },
-          "herzschlag_urteil": "erste_lesung"
+          "herzschlag_urteil": "erste_lesung",
+          "ereignisse": []
         },
         {
           "nr": 2,
@@ -1999,9 +2031,571 @@
               }
             ]
           },
-          "herzschlag_urteil": "laeuft"
+          "herzschlag_urteil": "laeuft",
+          "ereignisse": []
         }
-      ]
+      ],
+      "ereignis_regel": "Die `ereignisse` je Lesung sind die Arten, die IP-8 aus DIESER Lesung meldet, ohne `zeitpunkt`, `datenquelle` und `komponente` - diese drei sind Kennungen des AUFRUFERS, der Simulator kennt keine Entitaet des Bestands."
+    },
+    {
+      "name": "S6 bereichsbegrenzung",
+      "why": "Fuenf Lesungen mit LAUFENDEM Herzschlag: Messwert 1 der ersten Karte liest den UNGUELTIG-Wert seines Datentyps (UInt32 4 294 967 295, Handbuch 750-495 S. 79 Tab. 27) - das ist die einzige BELEGTE Bereichsbegrenzung. Sie tritt ein (Lesung 2), bleibt stehen (Lesung 3), geht (Lesung 4) und tritt wieder ein (Lesung 5): daran zeigt sich, dass das Ereignis `range_limit` einmal je ZUSTANDSWECHSEL faellt und nicht je Lesung. In Lesung 5 sind die Statuswoerter zusaetzlich nicht gelesen (Gueltigkeit Bit 3 = 0) - dann gibt es kein Statuswort, und keines wird als 0 erfunden. Aufbau wie S2: zwei Karten, 96 Woerter, eine Anfrage.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen auf einer ausgedachten Anlage. Der Simulator dient dem Bauen, nie dem Beleg; ein belegter Fall braucht herkunft: pilot und einen nachweis (AP-05 IP-14).",
+      "faktor_hinweis": "Rohwoerter, keine kWh: ob ein Schritt der 750-494/000-001 0,01 oder 0,05 kWh ist, ist nicht belegt (Befunde 1 und 4). Der UNGUELTIG-Wert ist ausserdem KEIN grosser Zaehlerstand, sondern die Abwesenheit eines Werts - ohne den Leser aus IP-6 kaeme 4 294 967 295 als echter Stand an (Befund 7).",
+      "bitlage_nicht_belegt": "Die Bitlage der Bereichsbegrenzung IN den Statuswoertern ist fuer die 750-494 nicht belegt (Vertrag 4.2 „Zu erheben\", Befunde 1 und 4). Dieser Fall setzt darum ein ganzes Statuswort und behauptet ueber kein einzelnes Bit etwas; das Wort faehrt unausgelegt mit, damit Pilotschritt 2 die Lage daran ablesen kann.",
+      "aufbau": {
+        "basisadresse": 0,
+        "funktionscode": 3,
+        "wortfolge": "big",
+        "herzschlag": 100,
+        "controller_kennung": 55,
+        "karten": [
+          {
+            "steckplatz": 2,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              220000,
+              {
+                "roh": 0
+              },
+              5000,
+              5100,
+              4900,
+              23000,
+              23010,
+              22990,
+              2500,
+              2550,
+              2450,
+              50000
+            ]
+          },
+          {
+            "steckplatz": 3,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              77000,
+              {
+                "roh": 0
+              },
+              1500,
+              1600,
+              1400,
+              23020,
+              23030,
+              23040,
+              800,
+              850,
+              750,
+              49980
+            ]
+          }
+        ]
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "schritte": [],
+          "herzschlag_urteil": "erste_lesung",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 100,
+              "controller_kennung": 55
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  220000,
+                  null,
+                  5000,
+                  5100,
+                  4900,
+                  23000,
+                  23010,
+                  22990,
+                  2500,
+                  2550,
+                  2450,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  77000,
+                  null,
+                  1500,
+                  1600,
+                  1400,
+                  23020,
+                  23030,
+                  23040,
+                  800,
+                  850,
+                  750,
+                  49980
+                ]
+              }
+            ]
+          },
+          "ereignisse": []
+        },
+        {
+          "nr": 2,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 60
+            },
+            {
+              "art": "karte_messwert_setzen",
+              "karte": 0,
+              "nr": 1,
+              "eintrag": "ungueltig"
+            },
+            {
+              "art": "karte_statuswort_setzen",
+              "karte": 0,
+              "gruppe": 1,
+              "platz": 1,
+              "wert": 64
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 160,
+              "controller_kennung": 55
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  64,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  null,
+                  null,
+                  5000,
+                  5100,
+                  4900,
+                  23000,
+                  23010,
+                  22990,
+                  2500,
+                  2550,
+                  2450,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  77000,
+                  null,
+                  1500,
+                  1600,
+                  1400,
+                  23020,
+                  23030,
+                  23040,
+                  800,
+                  850,
+                  750,
+                  49980
+                ]
+              }
+            ]
+          },
+          "ereignisse": [
+            {
+              "art": "range_limit",
+              "statuswort": 64
+            }
+          ]
+        },
+        {
+          "nr": 3,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 60
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 220,
+              "controller_kennung": 55
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  64,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  null,
+                  null,
+                  5000,
+                  5100,
+                  4900,
+                  23000,
+                  23010,
+                  22990,
+                  2500,
+                  2550,
+                  2450,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  77000,
+                  null,
+                  1500,
+                  1600,
+                  1400,
+                  23020,
+                  23030,
+                  23040,
+                  800,
+                  850,
+                  750,
+                  49980
+                ]
+              }
+            ]
+          },
+          "ereignisse": []
+        },
+        {
+          "nr": 4,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 60
+            },
+            {
+              "art": "karte_messwert_setzen",
+              "karte": 0,
+              "nr": 1,
+              "eintrag": 220000
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 280,
+              "controller_kennung": 55
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  64,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  220000,
+                  null,
+                  5000,
+                  5100,
+                  4900,
+                  23000,
+                  23010,
+                  22990,
+                  2500,
+                  2550,
+                  2450,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  77000,
+                  null,
+                  1500,
+                  1600,
+                  1400,
+                  23020,
+                  23030,
+                  23040,
+                  800,
+                  850,
+                  750,
+                  49980
+                ]
+              }
+            ]
+          },
+          "ereignisse": []
+        },
+        {
+          "nr": 5,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 60
+            },
+            {
+              "art": "karte_messwert_setzen",
+              "karte": 0,
+              "nr": 1,
+              "eintrag": "ungueltig"
+            },
+            {
+              "art": "karte_gueltigkeit_setzen",
+              "karte": 0,
+              "wert": 7
+            }
+          ],
+          "herzschlag_urteil": "laeuft",
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 340,
+              "controller_kennung": 55
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 7,
+                "statuswoerter": null,
+                "messwerte": [
+                  null,
+                  null,
+                  5000,
+                  5100,
+                  4900,
+                  23000,
+                  23010,
+                  22990,
+                  2500,
+                  2550,
+                  2450,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte": [
+                  77000,
+                  null,
+                  1500,
+                  1600,
+                  1400,
+                  23020,
+                  23030,
+                  23040,
+                  800,
+                  850,
+                  750,
+                  49980
+                ]
+              }
+            ]
+          },
+          "ereignisse": [
+            {
+              "art": "range_limit"
+            }
+          ]
+        }
+      ],
+      "ereignis_regel": "Die `ereignisse` je Lesung sind die Arten, die IP-8 aus DIESER Lesung meldet, ohne `zeitpunkt`, `datenquelle` und `komponente` - diese drei sind Kennungen des AUFRUFERS, der Simulator kennt keine Entitaet des Bestands. Leer heisst: kein Ereignis - Lesung 3 belegt „einmal je Zustandswechsel, nicht je Lesung\", Lesung 5 belegt, dass ein nicht gelesenes Statuswort FEHLT und nie als 0 erfunden wird."
     }
-  ]
+  ],
+  "ereignisse_je_lesung": {
+    "art": "festlegung",
+    "wert": [
+      "device_restart",
+      "frozen_source",
+      "range_limit"
+    ],
+    "erklaerung": "Was IP-8 aus dem Herzschlag und dem UNGUELTIG-Wert meldet, je Lesung und je Art nur EINMAL je Zustandswechsel. Der Vertrag §3 nennt die zwei Schluesse aus dem Herzschlag: steht er ueber drei Lesungen, sind die Werte eingefroren (`frozen_source`, dieselbe Aussage, die IP-7 als Qualitaet `stale` an jeden Wert schreibt); springt er zurueck, ist das Programm neu angelaufen (`device_restart`). Ein Ueberlauf ist keines von beiden - S2 Lesung 3. `range_limit` faellt beim UNGUELTIG-Wert des Datentyps, der einzigen BELEGTEN Bereichsbegrenzung: die Bitlage im Statuswort ist zu erheben (wago-registerbild-vectors.json statuswoerter.bitlage_bereichsbegrenzung), darum deutet kein Leser ein Bit und das rohe Statuswort faehrt unausgelegt mit.",
+    "fundstelle": "edge-app/nodered/measurements/wago-ereignisse.js"
+  }
 }

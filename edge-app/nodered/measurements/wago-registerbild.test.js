@@ -6,7 +6,7 @@
  * Drei Quellen, keine abgeschriebenen Zahlen:
  *  - `docs/contracts/v2/wago-registerbild-vectors.json` (IP-2): die Vertragsfaelle V1…V13 mit
  *    rohen Woertern und erwartetem Leseergebnis - sie sind die Leserspezifikation.
- *  - `docs/contracts/v2/wago-simulator-vectors.json` + die Buehne aus IP-12 (PR 937): die fuenf
+ *  - `docs/contracts/v2/wago-simulator-vectors.json` + die Buehne aus IP-12 (PR 937): die sechs
  *    Faelle S1…S5 werden ueber den ECHTEN Modbus-Weg gefahren - `buildReadRequest` /
  *    `parseReadResponse` dieses Repos gegen den In-Process-Server der Buehne.
  *  - der Katalog selbst fuer den Pflicht-Test aus Befund 7.
@@ -228,7 +228,7 @@ test('der Herzschlag wird nur beobachtet', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. Die fuenf Simulator-Faelle S1…S5 - ueber den echten Modbus-Weg
+// 6. Die Simulator-Faelle S1…S6 - ueber den echten Modbus-Weg
 // ---------------------------------------------------------------------------
 
 /** Eine Modbus-TCP-Lesung mit den Bausteinen dieses Repos (`modbus-tcp.js`). */
@@ -263,11 +263,11 @@ async function lesungUeberModbus(port, parameter, zaehler) {
   return { woerter, anfragen: anfragen.length };
 }
 
-test('die fuenf Simulator-Faelle S1…S5 ueber den echten Modbus-Weg',
+test('die Simulator-Faelle S1…S6 ueber den echten Modbus-Weg',
   { skip: !vertraegeDa }, async (t) => {
     const buehne = require(BUEHNE);
     const datei = liesJson(simulatorDatei);
-    assert.strictEqual(datei.faelle.length, 5, 'fuenf Faelle S1…S5');
+    assert.strictEqual(datei.faelle.length, 6, 'sechs Faelle S1…S6 - S6 kam mit IP-8');
     for (const beschreibung of datei.faelle) {
       await t.test(beschreibung.name, async () => {
         // Gegenprobe zur Beweisregel: ein Simulator-Fall kann nie belegt sein.

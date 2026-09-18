@@ -77,7 +77,8 @@ function ladeAufbau() {
     kopf,
     karte,
     gueltigkeitBits,
-    statuswoerterJeGruppe: v.statuswoerter.woerter_je_gruppe,
+    // Die Vektoren fuehren jede Angabe als { art, wert, fundstelle } - hier zaehlt die ZAHL.
+    statuswoerterJeGruppe: v.statuswoerter.woerter_je_gruppe.wert,
     messwerte: v.messwerte.map((m) => ({
       nr: m.nr,
       offset: m.offset,
@@ -247,6 +248,24 @@ function erstelleRegisterbild(cfg = {}, aufbau = ladeAufbau()) {
         steckplatzSetzen(wert) { setzeWort(karteOffset(n, 'steckplatz'), wert); return griff; },
         kartentypSetzen(wert) { setzeWort(karteOffset(n, 'kartentyp'), wert); return griff; },
         varianteSetzen(wert) { setzeWort(karteOffset(n, 'variante'), wert); return griff; },
+        /**
+         * Ein Statuswort setzen: `gruppe` 1-3 (Vertrag 4.2), `platz` 1 = Statuswort 1, 2-4 = die
+         * erweiterten Statuswoerter 1-3. Die Bitlage der Bereichsbegrenzung DARIN ist nicht
+         * belegt (Vertrag 4.2 "Zu erheben") - der Simulator setzt darum ein ganzes Wort, nie ein
+         * benanntes Bit.
+         */
+        statuswortSetzen(gruppe, platz, wert) {
+          const jeGruppe = aufbau.statuswoerterJeGruppe;
+          if (gruppe < 1 || platz < 1 || platz > jeGruppe) {
+            throw new Error(`Statuswort ${gruppe}/${platz} gibt es nicht`);
+          }
+          const i = (gruppe - 1) * jeGruppe + (platz - 1);
+          if (i >= aufbau.karte.statuswoerter.woerter) {
+            throw new Error(`Statuswort ${gruppe}/${platz} liegt hinter dem Block`);
+          }
+          setzeWort(karteOffset(n, 'statuswoerter') + i, wert);
+          return griff;
+        },
         messwertSetzen(nr, eintrag) {
           const m = aufbau.messwerte.find((x) => x.nr === nr);
           if (!m) throw new Error(`Messwert ${nr} gibt es nicht`);
@@ -271,6 +290,8 @@ function erstelleRegisterbild(cfg = {}, aufbau = ladeAufbau()) {
         case 'karte_nicht_gelesen': store.karte(s.karte).nichtGelesen(); return store;
         case 'karte_gueltigkeit_setzen': store.karte(s.karte).gueltigkeitSetzen(s.wert); return store;
         case 'karte_messwert_setzen': store.karte(s.karte).messwertSetzen(s.nr, s.eintrag); return store;
+        case 'karte_statuswort_setzen':
+          store.karte(s.karte).statuswortSetzen(s.gruppe, s.platz, s.wert); return store;
         default: throw new Error(`unbekannter Schritt ${s.art}`);
       }
     },
