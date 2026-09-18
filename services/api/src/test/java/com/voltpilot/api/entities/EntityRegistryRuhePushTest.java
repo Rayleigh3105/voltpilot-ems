@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.repo.FlowClaimRepository;
@@ -48,7 +49,8 @@ class EntityRegistryRuhePushTest {
         when(repo.roleAssignments(any())).thenReturn(Map.of());
         return new EntityRegistryService(repo, mock(ObjectProvider.class), MAPPER, mock(EntityTypeCatalog.class),
                 mock(AssetRepository.class), mock(FlowClaimRepository.class), overrides,
-                new LeadDeviceService(repo));
+                new LeadDeviceService(repo),
+                mock(BerichtsBelege.class));
     }
 
     private static DeviceOverrideRepository mitPause(String herkunft, Instant endsAt) {

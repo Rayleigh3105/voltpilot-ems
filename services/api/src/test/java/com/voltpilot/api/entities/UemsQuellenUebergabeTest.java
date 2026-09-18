@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
@@ -102,7 +103,8 @@ class UemsQuellenUebergabeTest {
         when(provider.getIfAvailable()).thenReturn(pub);
         registry = new EntityRegistryService(registryRepo, provider, JSON, mock(EntityTypeCatalog.class),
                 mock(AssetRepository.class),mock(FlowClaimRepository.class),mock(DeviceOverrideRepository.class),
-                new LeadDeviceService(registryRepo),uhr);
+                new LeadDeviceService(registryRepo),uhr,
+                mock(BerichtsBelege.class));
         neuStarten();
         push(); // initiale Zuständigkeit
         bestaetigen(a); bestaetigen(b);

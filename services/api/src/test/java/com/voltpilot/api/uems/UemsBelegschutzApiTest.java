@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.entities.EntityRegistryService;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -23,6 +24,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -119,6 +125,9 @@ class UemsBelegschutzApiTest {
 
     @Autowired
     TestRestTemplate rest;
+
+    @Autowired
+    EntityRegistryService registryService;
 
     private record Anrufer(String benutzer, UUID kundenbereich) {}
 
@@ -300,6 +309,86 @@ class UemsBelegschutzApiTest {
     }
 
     // ---- Gerüst: das Referenzunternehmen ------------------------------------------------------
+
+    /** All additional DELETE entries use the same response and refuse before any write. */
+    @ParameterizedTest
+    @ValueSource(strings = {"admin", "admin-purge", "admin-composed", "measurement-points"})
+    void verwaltungsUndMesspunktLoeschwegeSchuetzenBelegeUndLassenUnzitierteWieBisher(String weg) {
+        Werk w = werk("Verwaltungsweg " + weg);
+        berichte(w);
+        if (weg.equals("admin-composed")) {
+            root.update("UPDATE measurement_point SET role = 'pv-generation' WHERE id IN (?, ?)",
+                    w.k("K-8.3"), w.k("K-8.2"));
+        }
+        String prefix = weg.equals("measurement-points") ? "/api/v1/sites/" : "/api/v1/admin/sites/";
+        String segment = weg.equals("measurement-points") ? "/measurement-points/" : "/v2-entities/";
+        String suffix = weg.equals("admin-purge") ? "?purgePoint=true" : "";
+        String route = prefix + w.an2() + segment;
+        Map<String, String> vorher = Bestandsschutz.fingerabdruck(root, List.of());
+
+        ResponseEntity<JsonNode> result = rufe(HttpMethod.DELETE, route + w.k("K-8.3") + suffix, w.admin());
+        komponenteIstBeleg(result, STAENDE_MS12, List.of("MS-12"));
+        assertThat(Bestandsschutz.fingerabdruck(root, List.of())).isEqualTo(vorher);
+
+        // Same point in a different selected tenant is still invisible, without leaking the report list.
+        UUID fremd = root.queryForObject("INSERT INTO tenant (name) VALUES ('Fremd') RETURNING id", UUID.class);
+        assertThat(status(rufe(HttpMethod.DELETE, route + w.k("K-8.3") + suffix, new Anrufer("admin", fremd))))
+                .isEqualTo(404);
+        assertThat(status(rufe(HttpMethod.DELETE, route + UUID.randomUUID() + suffix, w.admin()))).isEqualTo(404);
+
+        // MS-11 is cited only by a draft: keep the old success status and composed-row behavior.
+        ResponseEntity<JsonNode> frei = rufe(HttpMethod.DELETE, route + w.k("K-8.2") + suffix, w.admin());
+        assertThat(status(frei)).as(String.valueOf(frei.getBody()))
+                .isEqualTo(weg.equals("measurement-points") ? 200 : 204);
+        assertThat(anzahl("SELECT count(*) FROM measurement_point WHERE id = ?", w.k("K-8.2")))
+                .isEqualTo(weg.equals("admin-composed") ? 1 : 0);
+        if (weg.equals("admin-composed")) {
+            assertThat(root.queryForObject("SELECT entity_type FROM measurement_point WHERE id = ?",
+                    String.class, w.k("K-8.2"))).isNull();
+        }
+    }
+
+    /** Re-pin and adoption share stale-point cleanup; citations retain the row and all its evidence. */
+    @ParameterizedTest
+    @ValueSource(strings = {"repin", "adopt"})
+    @ExtendWith(OutputCaptureExtension.class)
+    void internesAufraeumenUeberspringtZitierteZeilenUndLoeschtUnzitierte(String weg, CapturedOutput output) {
+        Werk w = werk("Aufräumen " + weg);
+        berichte(w);
+        UUID belegt = w.k("K-8.3");
+        UUID frei = w.k("K-8.2");
+        root.update("UPDATE measurement_point SET entity_type = NULL, role = 'pv-generation', capacity_kwp = 5, "
+                + "edge_source_id = id::text WHERE id IN (?, ?)", belegt, frei);
+        root.update("INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) VALUES (?, ?, 'pv', 10)",
+                w.tenant(), w.an2());
+        String vorher = root.queryForObject("SELECT (to_jsonb(p) - 'edge_source_id')::text "
+                + "FROM measurement_point p WHERE id = ?", String.class, belegt);
+        long quellen = anzahl("SELECT count(*) FROM messstelle_quelle WHERE entity_id = ?", belegt);
+        assertThat(quellen).isPositive();
+        TenantContext.set(w.tenant());
+
+        var neu = weg.equals("repin")
+                ? registryService.repin(w.an2(), w.k("K-8.4"), belegt.toString())
+                : registryService.adopt(w.an2(), belegt.toString(), "modbus-generic", "Übernommen", null, null, null);
+        assertThat(neu.edgeSourceId()).isEqualTo(belegt.toString());
+        assertThat(neu.id()).isNotEqualTo(belegt);
+        assertThat(root.queryForObject("SELECT (to_jsonb(p) - 'edge_source_id')::text "
+                + "FROM measurement_point p WHERE id = ?", String.class, belegt)).isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT edge_source_id FROM measurement_point WHERE id = ?",
+                String.class, belegt)).isNull();
+        assertThat(anzahl("SELECT count(*) FROM messstelle_quelle WHERE entity_id = ?", belegt)).isEqualTo(quellen);
+        assertThat(root.queryForObject("SELECT pv_capacity_kwp FROM asset WHERE site_id = ? AND type = 'pv'",
+                java.math.BigDecimal.class, w.an2())).isEqualByComparingTo("10");
+        assertThat(output).contains("Belegschutz: Aufräumen der Komponente " + belegt)
+                .contains("übersprungen; Berichtsstände:", "BR-2026-0001", "BR-2026-0004");
+
+        if (weg.equals("repin")) registryService.repin(w.an2(), neu.id(), frei.toString());
+        else registryService.adopt(w.an2(), frei.toString(), "modbus-generic", "Übernommen", null, null, null);
+        assertThat(anzahl("SELECT count(*) FROM measurement_point WHERE id = ?", frei)).isZero();
+        assertThat(root.queryForObject("SELECT pv_capacity_kwp FROM asset WHERE site_id = ? AND type = 'pv'",
+                java.math.BigDecimal.class, w.an2())).isEqualByComparingTo("5");
+        assertThat(anzahl("SELECT count(*) FROM messstelle_quelle WHERE entity_id = ?", belegt)).isEqualTo(quellen);
+    }
 
     private Werk werk(String zusatz) {
         String unternehmen = referenz.at("/unternehmen/name").asText();
