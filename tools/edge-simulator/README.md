@@ -82,3 +82,38 @@ Der Zeitpunkt ist halboffen ausgewertet. Dadurch liest DQ-3 beim Wechsel um
 07:30 Uhr nie auf beiden Boxen. `--offline-box` unterdrückt nur die
 Quellmeldungen dieser Box; die andere Identität und ihre Quellen bleiben
 unverändert.
+
+## UEMS: Störungen der Messdatenstrecke (AP-07 IP-20)
+
+`uems_szenarien.py` baut fünf Abnahmefälle der Messdatenstrecke als
+deterministische Nachrichtenfolgen. Es liest nur Verträge und das
+Referenzunternehmen und löst die Box-Zuständigkeiten über `uems_ahrenberg.py`
+auf — kein Broker, keine Datenbank, keine Uhr des Rechners.
+
+| Szenario | Abnahmefall | Was die Folge zeigt |
+|---|---|---|
+| `A1` | Doppel-Zustellung | derselbe Umschlag 48 213 dreimal: einmal frisch, einmal als QoS-1-Wiederholung (DUP), einmal mit zurückgesetzter Sequenz — 256 Zeilen, 512 gezählte Wiederholungen, ein `sequence_reset` |
+| `A3` | Ausfall mit Nachlieferung | Uplink weg 14:00–17:30, die Outbox spielt 210 Takte FIFO mit Original-Messzeit nach; `data_gap` je Quelle und Reihe, `backfill` je Quelle |
+| `A4` | Verdrängung | 8 Tage Ausfall, die ältesten 3 Tage sind fort: Box-Ereignis `data_gap` mit `erkannt_aus: verdraengung`, Sequenzsprung 48 213 → 48 402 (188 Umschläge), Nachzügler nach der Endgültigkeit als `late_arrival` |
+| `A6` | Übergabe | DQ-3 wechselt am 10.04.2027 07:30 die Box; zwei Nachzügler der alten Box — einer vor dem Wechsel bleibt führend, einer danach wird Spiegel mit `unassigned_reader` |
+| `A13` | Uhr geht vor | Box Lindach stempelt 840 s in die Zukunft: drei Umschläge abgewiesen (`clock_ahead`), die Nachlieferung mit alter Messzeit bleibt unberührt |
+
+```bash
+make test                                   # alle Tests, ohne Broker und ohne Datenbank
+make plan SZENARIO="--szenario A3"          # Trockenlauf: die Folge als JSON
+make zustellungen SZENARIO="--szenario A1"  # die vollständigen Nutzlasten
+VP_SIM_BROKER=<broker> make szenarien       # spielt alle fünf gegen den genannten Broker
+```
+
+Der Broker steht **nur** in der Umgebung (`VP_SIM_BROKER`, `VP_SIM_PORT`,
+`VP_SIM_TLS`, `VP_SIM_USER`, `VP_SIM_PASSWORD`); ohne ihn druckt das Werkzeug den
+Plan und sendet nichts. `make abhaengigkeiten` installiert `requirements-dev.txt`
+(`pytest` und `jsonschema` für die Vertragsprüfung).
+
+**Naht zu AP-07 IP-21:** `szenarien()` gibt die fünf Fälle als Bibliothek zurück.
+Jedes `Szenario` nennt seine `zustellungen` (geprüft gegen
+[`mqtt-measurement-samples`](../../docs/contracts/v2/mqtt-measurement-samples-2.1.md)
+2.0/2.1 und `mqtt-events-2.1`), die `erwarteten_ereignisse` als gültige
+`events.raw`-Nutzlasten und die `erwarteten_reihen` mit Zeilenzahl und Rolle.
+Dieses Paket prüft die erzeugte Nachrichtenfolge; die Prüfung der Zeilen und
+Ereignisse in der Datenbank gehört zur Testcontainers-Abnahme A1…A16 (IP-21).

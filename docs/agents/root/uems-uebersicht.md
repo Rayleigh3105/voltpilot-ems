@@ -256,6 +256,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 - **UEMS-Oberflächen: Energiebilanz (AP-13 IP-7–IP-10)** — Quellen je Ebene, Ort × Stellung, kein Gebäude-Rest, keine Kostenstellen-Gesamtsumme; ausschließlich Zeichnungsgeometrie in der Fläche · [Energiebilanz](uems-oberflaechen-energiebilanz.md).
 - **UEMS-Oberflächen: Sprünge (AP-13 IP-11–IP-13)** — Periode und Version am Eingang, Box je Quelle, Cockpit ausschließlich mit gefiltertem Weg; Kanten und Prüfnachweise · [Sprünge](uems-oberflaechen-spruenge.md).
 
+- **UEMS-Störungs-Szenarien der Messdatenstrecke im Edge-Simulator (AP-07 IP-20)** — `tools/edge-simulator/uems_szenarien.py` baut die Abnahmefälle A1 (Doppel-Zustellung mit DUP und Sequenz-Reset), A3 (Ausfall mit Outbox-Replay), A4 (Verdrängung, Sequenzsprung 188, Nachzügler nach Endgültigkeit), A6 (Übergabe DQ-3 mit Nachzügler) und A13 (Uhr 840 s vor) als deterministische Nachrichtenfolgen — kein Broker, keine Datenbank, keine Rechneruhr. Jede Zustellung wird gegen `mqtt-measurement-samples` 2.0/2.1 bzw. `mqtt-events-2.1` geprüft, jedes erwartete Ereignis gegen `events-raw`; Zuständigkeiten löst der Zwei-Boxen-Simulator `uems_ahrenberg.py` (AP-06 IP-20) auf. ⚠ `make szenarien` sendet echte MQTT-Nachrichten an `VP_SIM_BROKER` — der Broker steht nur in der Umgebung, ohne ihn wird nur der Plan gedruckt. Die Prüfung der Zeilen und Ereignisse in der Datenbank ist AP-07 IP-21; `szenarien()` ist dafür die Bibliotheks-Naht · [Simulator-README](../../../tools/edge-simulator/README.md)
+
 ## Pflegeregel
 
 Neue UEMS-Pakete tragen ihren Eintrag HIER ein, nicht im Themen-Index von `AGENTS.md`.

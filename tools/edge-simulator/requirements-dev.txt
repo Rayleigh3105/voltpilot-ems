@@ -1,0 +1,6 @@
+# VoltPilot edge simulator - Prüfwerkzeug (nicht auf der Box installiert).
+-r requirements.txt
+pytest>=7,<9
+# Die Szenarien von AP-07 IP-20 prüfen ihre Umschläge gegen die Verträge unter
+# docs/contracts/v2; dafür braucht der Testlauf einen JSON-Schema-Prüfer.
+jsonschema>=4.18,<5
