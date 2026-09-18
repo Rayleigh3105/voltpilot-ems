@@ -19,6 +19,7 @@ import com.voltpilot.api.uems.OrtsbaumAbleitung.WiederherstellErgebnis;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.WiederherstellGrund;
 import com.voltpilot.api.uems.OrtsbaumLesemodell.OrtsbaumAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodell.Zeilen;
+import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.OrtDto;
 import com.voltpilot.api.web.dto.StandortDto;
 import java.sql.SQLException;
@@ -30,6 +31,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -90,13 +92,14 @@ public class OrtService {
     private final OrtProtokoll protokoll;
     private final JdbcTemplate jdbc;
     private final ObjectProvider<OrtsbaumMessstellen> messstellen;
+    private final MessstelleRegisterService register;
     private final TransactionTemplate transaktion;
     private volatile Clock uhr = Clock.systemUTC();
 
     public OrtService(StandortLesemodellService lesemodell, OrtRepository orte,
             OrtZuordnungRepository zuordnungen, FlaecheRepository flaechen, OrtKurzzeichen kurzzeichen,
             OrtProtokoll protokoll, JdbcTemplate jdbc, ObjectProvider<OrtsbaumMessstellen> messstellen,
-            PlatformTransactionManager transactionManager) {
+            MessstelleRegisterService register, PlatformTransactionManager transactionManager) {
         this.lesemodell = lesemodell;
         this.orte = orte;
         this.zuordnungen = zuordnungen;
@@ -105,6 +108,7 @@ public class OrtService {
         this.protokoll = protokoll;
         this.jdbc = jdbc;
         this.messstellen = messstellen;
+        this.register = register;
         this.transaktion = new TransactionTemplate(transactionManager);
     }
 
@@ -136,7 +140,24 @@ public class OrtService {
         OrtAktionen aktionen = stichtag != null ? null
                 : new OrtAktionen(StandortService.baum(z, ms == null ? List.of() : ms), tag, orte.mitBezugsgroesse(),
                         orte.mitKennzahl());
-        return OrtsbaumLesemodell.ortsbaum(z, standortId, tag, ms, aktionen);
+        Instant datenAm = stichtag == null ? null : tag.atStartOfDay(ZoneId.of(st.get().zeitzone())).toInstant();
+        MessstelleDto.Liste registerListe = register.liste(datenAm,
+                new MessstelleRegisterService.Filter(standortId.toString(), null, null, null, false));
+        Map<String, List<ZustandAbleitung.LiefertDaten>> datenlagen = new HashMap<>();
+        for (MessstelleDto.RegisterZeile zeile : registerListe.register()) {
+            ZustandAbleitung.LiefertDaten zustand = MessstelleRegisterService.aggregatZustand(zeile);
+            if (zustand != null && zeile.ort().kennzeichen() != null) {
+                datenlagen.computeIfAbsent(zeile.ort().kennzeichen(), k -> new ArrayList<>()).add(zustand);
+            }
+        }
+        return OrtsbaumLesemodell.ortsbaum(z, standortId, tag, ms, aktionen, datenlagen);
+    }
+
+    /** Das nächste freie G-/B-Kurzzeichen; die Lesung bewegt den Zähler nicht. */
+    public OrtDto.Vorschlag vorschlag(UUID standortId, String art) {
+        lesemodell.standort(standortId, null).orElseThrow(
+                () -> OrtAbgelehnt.nichtGefunden("Diesen Standort gibt es nicht."));
+        return new OrtDto.Vorschlag(kurzzeichen.vorschlag(mandant(), art(art)));
     }
 
     // ---------------------------------------------------------------- anlegen
@@ -619,7 +640,7 @@ public class OrtService {
         return OrtAbgelehnt.von(g, e.text(), Map.of("feld", "elternId"));
     }
 
-    private static OrtAbgelehnt abgelehnt(FlaecheErgebnis e, String feld) {
+    static OrtAbgelehnt abgelehnt(FlaecheErgebnis e, String feld) {
         OrtAbgelehnt.Grund g = switch (e.grund()) {
             case FLAECHE_UNGUELTIG -> OrtAbgelehnt.Grund.FLAECHE_UNGUELTIG;
             case GAB_ES_NOCH_NICHT -> OrtAbgelehnt.Grund.GAB_ES_NOCH_NICHT;

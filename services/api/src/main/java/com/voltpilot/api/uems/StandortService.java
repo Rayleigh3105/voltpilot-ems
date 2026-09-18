@@ -5,6 +5,9 @@ import com.voltpilot.api.uems.OrtsbaumAbleitung.ArchivErgebnis;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.ArchivGrund;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.ArchivGrundArt;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.Archiviert;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.FlaecheAntrag;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.FlaecheErgebnis;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.FlaechenIntervallMitZustand;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.Intervall;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.OrtArt;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.Ortsbaum;
@@ -16,6 +19,7 @@ import com.voltpilot.api.uems.StandortLesemodell.StandortAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodell.Zeilen;
 import com.voltpilot.api.uems.StandortRepository.NeuerStandort;
 import com.voltpilot.api.uems.StandortRepository.Stammdaten;
+import com.voltpilot.api.web.dto.OrtDto;
 import com.voltpilot.api.web.dto.StandortDto;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -63,8 +67,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * Kein Löschen: §4.1 nennt beim Standort nur Anlegen · Bearbeiten · Archivieren ·
  * Wiederherstellen, das Löschen ohne Historie (E1) bringt IP-15 für Gebäude und Bereiche,
- * und die App-Rolle hat auf {@code standort} kein DELETE. Keine Fläche (IP-5), keine
- * Anlagen-Zuordnung (IP-11). Die Messstellen im Sperrgrund kommen über
+ * und die App-Rolle hat auf {@code standort} kein DELETE. Die Fläche hat wie Gebäude und
+ * Bereiche eine zeitgültige Fassungsreihe; keine Anlagen-Zuordnung (IP-11). Die Messstellen
+ * im Sperrgrund kommen über
  * {@link OrtsbaumMessstellen} — seit AP-04 IP-7 aus {@code messstelle_ort}.
  *
  * <p>Der Mandant ist die RLS: ein fremder Standort ist nicht da (404, nie 403).
@@ -82,6 +87,7 @@ public class StandortService {
     private final UnternehmenRepository unternehmen;
     private final OrtRepository orte;
     private final OrtZuordnungRepository ortZuordnungen;
+    private final FlaecheRepository flaechen;
     private final OrtKurzzeichen kurzzeichen;
     private final OrtProtokoll protokoll;
     private final ObjectProvider<OrtsbaumMessstellen> messstellen;
@@ -90,13 +96,15 @@ public class StandortService {
 
     public StandortService(StandortLesemodellService lesemodell, StandortRepository standorte,
             UnternehmenRepository unternehmen, OrtRepository orte, OrtZuordnungRepository ortZuordnungen,
-            OrtKurzzeichen kurzzeichen, OrtProtokoll protokoll, ObjectProvider<OrtsbaumMessstellen> messstellen,
+            FlaecheRepository flaechen, OrtKurzzeichen kurzzeichen, OrtProtokoll protokoll,
+            ObjectProvider<OrtsbaumMessstellen> messstellen,
             PlatformTransactionManager transactionManager) {
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.unternehmen = unternehmen;
         this.orte = orte;
         this.ortZuordnungen = ortZuordnungen;
+        this.flaechen = flaechen;
         this.kurzzeichen = kurzzeichen;
         this.protokoll = protokoll;
         this.messstellen = messstellen;
@@ -113,6 +121,65 @@ public class StandortService {
     /** Der Vorschlag des Anlege-Dialogs („vorbelegt, meist unberührt", E8) — der Zähler bleibt stehen. */
     public StandortDto.Vorschlag vorschlag() {
         return new StandortDto.Vorschlag(kurzzeichen.vorschlag(kundenbereich(), OrtArt.STANDORT));
+    }
+
+    /**
+     * Schreibt eine neue zeitgültige Flächenfassung des Standorts. Die laufende Fassung endet
+     * am Vortag; eine Korrektur hebt die am selben Tag beginnende Zeile auf, statt sie zu überschreiben.
+     */
+    public StandortAmStichtag flaecheSetzen(UUID id, OrtDto.Flaeche f, ProtokollAkteur wer) {
+        if (f.m2() == null) {
+            throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.FLAECHE_UNGUELTIG, OrtsbaumAbleitung.FLAECHE_SATZ,
+                    Map.of("feld", "m2"));
+        }
+        return transaktion.execute(tx -> {
+            unternehmen.sperren();
+            Zeilen z = lesemodell.zeilen();
+            StandortRepository.Standort s = z.standorte().stream().filter(x -> x.id().equals(id)).findFirst()
+                    .orElseThrow(() -> OrtAbgelehnt.nichtGefunden("Diesen Standort gibt es nicht."));
+            Instant jetzt = uhr.instant();
+            ZoneId zone = ZoneId.of(s.zeitzone());
+            LocalDate heute = tag(jetzt, zone);
+            LocalDate ab = f.gueltigAb() == null ? heute : f.gueltigAb();
+            FlaecheErgebnis e = OrtsbaumAbleitung.flaecheEintrag(StandortLesemodell.baum(z),
+                    new FlaecheAntrag(id.toString(), ab, f.m2(), heute));
+            if (!e.erlaubt()) {
+                throw OrtService.abgelehnt(e, "m2");
+            }
+            UUID tenant = kundenbereich();
+            flaechenAnwenden(tenant, id, e.flaechen(), jetzt, wer);
+            Map<String, Object> alt = new LinkedHashMap<>();
+            alt.put("flaeche_m2", e.vorherM2());
+            Map<String, Object> neu = new LinkedHashMap<>();
+            neu.put("flaeche_m2", f.m2());
+            neu.put("korrektur", e.korrektur());
+            protokoll.eintragen(tenant, OBJEKT, id, "flaeche_geaendert", alt, neu, ab, zone, jetzt, wer);
+            return lesen(id, heute);
+        });
+    }
+
+    private void flaechenAnwenden(UUID tenant, UUID standortId, List<FlaechenIntervallMitZustand> soll,
+            Instant jetzt, ProtokollAkteur wer) {
+        List<FlaecheRepository.Flaeche> ist = flaechen.fuerStandort(standortId).stream()
+                .filter(x -> !x.aufgehoben()).toList();
+        for (FlaecheRepository.Flaeche r : ist) {
+            FlaechenIntervallMitZustand bleibt = soll.stream()
+                    .filter(x -> x.ab().equals(r.gueltigAb()) && x.m2() == r.m2()).findFirst().orElse(null);
+            if (bleibt == null) {
+                flaechen.aufheben(r.id(), jetzt);
+            } else if (!Objects.equals(bleibt.bis(), r.gueltigBis())) {
+                if (bleibt.bis() == null) {
+                    throw new IllegalStateException("eine Fläche wird nie wieder geöffnet: " + r.id());
+                }
+                flaechen.beenden(r.id(), bleibt.bis());
+            }
+        }
+        for (FlaechenIntervallMitZustand s : soll) {
+            boolean da = ist.stream().anyMatch(r -> r.gueltigAb().equals(s.ab()) && r.m2() == s.m2());
+            if (!da) {
+                flaechen.eintragen(tenant, standortId, null, s.m2(), s.ab(), s.bis(), wer.sub());
+            }
+        }
     }
 
     /**

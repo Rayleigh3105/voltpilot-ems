@@ -72,6 +72,13 @@ public class OrtController {
                 () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort not found"));
     }
 
+    // Recht: `gebaeude.pflegen` — reine Vorbelegung des Anlege-Dialogs; kein @Recht an einem GET.
+    @GetMapping("/api/v1/standorte/{standortId}/orte/kurzzeichen-vorschlag")
+    public OrtDto.Vorschlag kurzzeichenVorschlag(@PathVariable UUID standortId,
+            @RequestParam String art) {
+        return orte.vorschlag(standortId, art);
+    }
+
     // Rechte: `gebaeude.pflegen`; mit „gültig ab" vor heute zusätzlich `aenderung.rueckwirkend`.
     @PostMapping("/api/v1/standorte/{standortId}/orte")
     @Recht(value = "gebaeude.pflegen", ziel = RechtZiel.STANDORT)

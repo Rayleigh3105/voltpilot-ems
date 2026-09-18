@@ -79,6 +79,7 @@ class OrtSchnittstelleVertragTest {
                 Map.entry("OrtsbaumAmStichtag", OrtsbaumLesemodell.OrtsbaumAmStichtag.class),
                 Map.entry("OrtsbaumGebaeude", OrtsbaumLesemodell.Gebaeude.class),
                 Map.entry("OrtsbaumBereich", OrtsbaumLesemodell.Bereich.class),
+                Map.entry("OrtsbaumDatenlage", OrtsbaumLesemodell.Datenlage.class),
                 // IP-15: der Grabstein und die Aktionen je Knoten
                 Map.entry("OrtsbaumArchivierterOrt", OrtsbaumLesemodell.ArchivierterOrt.class),
                 Map.entry("OrtAktionen", OrtAktionen.Aktionen.class),

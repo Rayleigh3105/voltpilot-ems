@@ -44,7 +44,7 @@ const ICON: Record<Knoten['art'], 'building' | 'layers' | 'map-pin'> = {
 /**
  * Der Ortsbaum „Standort › Gebäude“ (UEMS AP-02 IP-7, Mockup T3): die Gebäude
  * mit ihren Bereichen und der Zweig „Direkt am Standort“, jede Zeile mit
- * Nutzung, Fläche, Baujahr und der Messstellen-Zahl an der Stelle der Datenlage;
+ * Nutzung, Fläche, Baujahr und Datenlage („n von m Messstellen liefern Daten“);
  * „Gebäude anlegen“ und „Bereich anlegen“; ohne Gebäude und Bereiche der
  * Leerzustand L1. Gebäude und Bereiche öffnen ihren Dialog (T4/T5).
  *
@@ -57,8 +57,8 @@ const ICON: Record<Knoten['art'], 'building' | 'layers' | 'map-pin'> = {
  * (`?stichtag=`) und bietet keinen Schreibweg an — kein Anlegen, kein Stift,
  * kein „Fläche eintragen“. Datumsfeld und Banner trägt der Wirt (`StandAm`).
  *
- * Nicht hier: Verschieben (IP-12), Archivieren (IP-15), die Fläche ÄNDERN mit
- * Verlauf (IP-8, T7) und die Datenlage je Knoten.
+ * Nicht hier: Verschieben (IP-12), Archivieren (IP-15) und die Fläche ÄNDERN mit
+ * Verlauf (IP-8, T7).
  *
  * UEMS AP-13 IP-2 (E4 = A): „Standort › Gebäude“ trägt den Baum als eigene Seite
  * (`StandortGebaeudePage`) und nennt seine Überschrift schon selbst

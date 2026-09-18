@@ -66,6 +66,14 @@ describe('ortsbaumSicht — aus flachen Orten wird der Baum (T3)', () => {
     expect(sichtFlaecheFehlt(ortsbaumAhrenberg())).toEqual([]);
   });
 
+  it('ersetzt den alten Messstellen-Platzhalter durch die Datenlage des Servers', () => {
+    const antwort = ortsbaumAhrenberg({
+      gebaeude: [halle2({ datenlage: { erfuellt: 4, gesamt: 5, text: '4 von 5 Messstellen liefern Daten' } })],
+      direktAmStandort: null,
+    });
+    expect(ortsbaumSicht(antwort).knoten[0].datenlage).toBe('4 von 5 Messstellen liefern Daten');
+  });
+
   it('unbekannt ist keine Null: fehlt eine Zahl, fehlt die Datenlage; fehlt die Fläche, sagt es der Hinweis', () => {
     const antwort = ortsbaumAhrenberg({
       gebaeude: [
@@ -317,7 +325,7 @@ describe('Dialoge Gebäude und Bereich (T4, T5)', () => {
     ).toContain('(B-5)');
   });
 
-  it('Anfragen: POST ohne Kurzzeichen, direkt am Standort ohne elternId; PUT die ganze Menge; Fläche nur, wenn eingetragen', () => {
+  it('Anfragen: POST mit überschreibbarem Kurzzeichen, direkt am Standort ohne elternId; PUT die ganze Menge', () => {
     const g = {
       ...leer('gebaeude'),
       name: ' Halle 4 ',
@@ -329,6 +337,7 @@ describe('Dialoge Gebäude und Bereich (T4, T5)', () => {
     expect(ortAnlegenAnfrage('gebaeude', g, antwort)).toEqual({
       art: 'gebaeude',
       name: 'Halle 4',
+      kurzzeichen: null,
       gueltigAb: '2026-10-01',
       nutzung: ['lager'],
       notiz: null,
@@ -343,6 +352,7 @@ describe('Dialoge Gebäude und Bereich (T4, T5)', () => {
     expect(ortAnlegenAnfrage('bereich', b, antwort)).toEqual({
       art: 'bereich',
       name: 'Parkplatz',
+      kurzzeichen: null,
       gueltigAb: '2026-10-20',
       nutzung: null,
       notiz: null,

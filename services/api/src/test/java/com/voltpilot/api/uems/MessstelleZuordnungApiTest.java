@@ -333,16 +333,25 @@ class MessstelleZuordnungApiTest {
             for (JsonNode g : werk.get("gebaeude")) {
                 String kz = g.get("kurzzeichen").asText();
                 assertThat(g.get("messstellenZahl").asInt(-1)).as(kz + " " + stichtag).isEqualTo(soll.getOrDefault(kz, 0));
+                assertThat(g.get("datenlage")).as(kz + " nutzt dieselbe Register-Rechnung")
+                        .isEqualTo(registerAggregat(ah, kz, stichtag));
                 for (JsonNode b : g.get("bereiche")) {
                     String bkz = b.get("kurzzeichen").asText();
                     assertThat(b.get("messstellenZahl").asInt(-1)).as(bkz + " " + stichtag)
                             .isEqualTo(soll.getOrDefault(bkz, 0));
+                    assertThat(b.get("datenlage")).as(bkz + " nutzt dieselbe Register-Rechnung")
+                            .isEqualTo(registerAggregat(ah, bkz, stichtag));
                 }
             }
         }
         // Stichprobe der Rechnung: B-2 verliert MS-08 am 01.03.2027, B-3 gewinnt sie.
         assertThat(zahlJeOrt(LocalDate.parse("2026-10-20")).get("B-2")).isEqualTo(3);
         assertThat(zahlJeOrt(LocalDate.parse("2027-03-01")).get("B-2")).isEqualTo(2);
+    }
+
+    private JsonNode registerAggregat(Ahrenberg ah, String ort, String stichtag) {
+        return ok(rufeApi(HttpMethod.GET, "/api/v1/messstellen?ort=" + ort + "&stichtag=" + stichtag,
+                ah.wer(), null)).at("/aggregat/unternehmen");
     }
 
     // ---- Regel 8: die Stellung ------------------------------------------------

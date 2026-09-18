@@ -4178,6 +4178,9 @@ export interface StandortKurzzeichenVorschlag {
   kurzzeichen: string;
 }
 
+/** Dieselbe Form für das nächste freie G-/B-Kurzzeichen eines Standorts. */
+export type OrtKurzzeichenVorschlag = StandortKurzzeichenVorschlag;
+
 /** PUT /api/v1/unternehmen — die ganze Menge; ein fehlendes Feld ist leer. */
 export interface UnternehmenBearbeiten {
   name: string;
@@ -4274,6 +4277,8 @@ export interface OrtsbaumBereich {
    * seiner Bereiche; AP-04 IP-7); 0, wenn keine — `null` nur ohne Messstellen-Quelle.
    */
   messstellenZahl: number | null;
+  /** Die Register-Zählung dieses Knotens: „n von m Messstellen liefern Daten“. */
+  datenlage?: OrtsbaumDatenlage | null;
   /** IP-12 (V4): wohin der Knoten nach `gueltigBis` zieht — „ab 01.03.2027 → Werk Ahrenberg Nord“; `null` ohne Ende. */
   danach?: OrtsbaumDanach | null;
   /** IP-15: was man heute mit dem Knoten tun kann; `null` mit Stichtag. */
@@ -4295,6 +4300,12 @@ export interface OrtsbaumGebaeude extends OrtsbaumBereich {
   bereiche: OrtsbaumBereich[];
 }
 
+export interface OrtsbaumDatenlage {
+  erfuellt: number;
+  gesamt: number;
+  text: string;
+}
+
 /**
  * GET /api/v1/standorte/{id}/orte?stichtag= — die Gebäude mit ihren Bereichen
  * und die Bereiche „direkt am Standort“, so wie sie am Stichtag galten. Gab es
@@ -4310,7 +4321,11 @@ export interface OrtsbaumAmStichtag {
   /** Die Gebäude, denen am Stichtag die Fläche fehlt („für kWh/m² fehlt die Fläche“). */
   gebaeudeOhneFlaeche: string[];
   gebaeude: OrtsbaumGebaeude[];
-  direktAmStandort: { bereiche: OrtsbaumBereich[]; messstellenZahl: number | null } | null;
+  direktAmStandort: {
+    bereiche: OrtsbaumBereich[];
+    messstellenZahl: number | null;
+    datenlage?: OrtsbaumDatenlage | null;
+  } | null;
   /** IP-15 (Z3): die am Stichtag archivierten Gebäude und Bereiche dieses Standorts. */
   archiviert?: OrtsbaumArchivierterOrt[];
   /** IP-15: was man heute mit dem Standort tun kann (nur `archivieren`); `null` mit Stichtag. */
@@ -8466,6 +8481,13 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /** Schreibt eine neue zeitgültige Bezugsflächen-Fassung des Standorts. */
+  standortFlaeche: (id: string, body: OrtFlaeche) =>
+    request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}/flaeche`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
   // ---- Ortsstruktur: Gebäude und Bereiche (UEMS AP-02 IP-5; Fläche dazu IP-7)
   /** Der Ortsbaum eines Standorts zum Stichtag (ohne: heute) — Gebäude mit Bereichen und „direkt am Standort“. */
   standortOrte: (standortId: string, stichtag?: string) =>
@@ -8473,6 +8495,12 @@ export const api = {
       `/api/v1/standorte/${encodeURIComponent(standortId)}/orte${
         stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''
       }`,
+    ),
+
+  /** Das nächste freie G-/B-Kurzzeichen; bewegt den Zähler nicht. */
+  ortKurzzeichenVorschlag: (standortId: string, art: 'gebaeude' | 'bereich') =>
+    request<OrtKurzzeichenVorschlag>(
+      `/api/v1/standorte/${encodeURIComponent(standortId)}/orte/kurzzeichen-vorschlag?art=${encodeURIComponent(art)}`,
     ),
 
   /** Legt ein Gebäude oder einen Bereich an; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
