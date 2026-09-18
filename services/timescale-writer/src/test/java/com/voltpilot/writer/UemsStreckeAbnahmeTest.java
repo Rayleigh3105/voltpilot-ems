@@ -241,40 +241,19 @@ class UemsStreckeAbnahmeTest {
                 () -> zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id IN ("
                         + boxen(szenario) + ")") > 0);
 
-        // Erwartet wird JE MESSSTELLE UND ROLLE. Die Zahl kommt NICHT aus der Aufzählung des
-        // Drehbuchs, sondern aus den gespielten Zustellungen unter den beiden Regeln, die die
-        // Datenbank durchsetzt: Idempotenz über (Reihe, Messkanal, Messzeit) und die Rolle aus
-        // der Zuständigkeit ZUR MESSZEIT. Was das Drehbuch sagt, wird daneben geprüft — und
-        // wo beide auseinandergehen, sagt die Abweichung genau, worin.
+        // Erwartet wird JE MESSSTELLE UND ROLLE. Die gespielten Zustellungen werden unabhängig
+        // nach den beiden Datenbankregeln nachgerechnet: Idempotenz über (Reihe, Messkanal,
+        // Messzeit) und Rolle aus der Zuständigkeit ZUR MESSZEIT. Das berichtigte Drehbuch muss
+        // diese vollständige Karte nun genau wiedergeben.
         Map<String, Long> erwartet = ausDenZustellungen(szenario);
         Map<String, Long> lautDrehbuch = new TreeMap<>();
         for (JsonNode r : szenario.path("erwartete_reihen")) {
             lautDrehbuch.merge(r.path("messstelle").asText() + "/" + r.path("rolle").asText(),
                     r.path("rohzeilen").asLong(), Long::sum);
         }
-        // Das Drehbuch zählt nur die Reihen AUF, um die es dem Abnahmefall geht; A3 spielt
-        // daneben die Kontrollgruppe MS-05…MS-08 („MS-01…MS-08 ohne Ereignis"), die es nicht
-        // nennt. Es muss also Teilmenge sein — wo es eine Reihe nennt, muss die Zahl stimmen.
-        Map<String, Long> strittig = new TreeMap<>();
-        lautDrehbuch.forEach((k, v) -> {
-            if (!v.equals(erwartet.get(k))) {
-                strittig.put(k, v);
-            }
-        });
-        if (!strittig.isEmpty()) {
-            // ⚠ A6, Befund am Drehbuch: der „Nachzügler mit Messzeit VOR dem Wechsel"
-            // (Sequenz 90 503) trägt 05:29:50 — GENAU die Messzeit des Umschlags 90 502, der
-            // schon liegt. Die Idempotenz (E3) speichert ihn zu Recht kein zweites Mal, also
-            // sind es 6 führende Zeilen je Reihe und nicht 7. Der Fall kann damit nicht
-            // zeigen, was er zeigen will; dass ein später eintreffender Wert der ALTEN Box mit
-            // Messzeit vor dem Wechsel führend ist, beweist
-            // WriterPipeTest#derNachzueglerIstFuehrendUndDerSpaetereEinSpiegel mit eigenen
-            // Messzeiten. Wir folgen den Zeitstempeln, nicht dem Abnahmetext.
-            assertThat(schluessel)
-                    .as("nur A6 weicht bekannt ab; jede andere Abweichung ist neu und zu klären:"
-                            + " aus den Zustellungen " + erwartet + " vs. Drehbuch " + strittig)
-                    .isEqualTo("A6");
-        }
+        assertThat(lautDrehbuch)
+                .as(schluessel + ": Drehbuch und Vertragsregeln nennen genau dieselben Reihen")
+                .isEqualTo(erwartet);
         Map<String, String> entity = new LinkedHashMap<>();
         for (JsonNode r : szenario.path("stammdaten").path("reihen")) {
             entity.put(r.path("messstelle").asText(), je(schluessel, r.path("entity_id").asText()));
@@ -291,6 +270,18 @@ class UemsStreckeAbnahmeTest {
                             + spaetesteMesszeit(szenario) + "'"),
                     e.getValue(), () -> reihenBeleg(id));
         }
+
+        // Die drei gebündelten Writer-Regeln werden unabhängig nachgerechnet. Nach der
+        // Berichtigung darf das Drehbuch weder nur eine Teilmenge noch zusätzliche Meldungen
+        // aufzählen.
+        for (String art : List.of("sequence_gap", "sequence_reset")) {
+            assertThat((long) ereignisSequenzenOderZahl(szenario, art))
+                    .as(schluessel + ": Drehbuch zählt " + art + " einmal je Sequenzsprung")
+                    .isEqualTo(ausDenSequenzen(szenario, art));
+        }
+        assertThat((long) ereignisSequenzenOderZahl(szenario, "unassigned_reader"))
+                .as(schluessel + ": Drehbuch bündelt und drosselt unassigned_reader")
+                .isEqualTo(ausDenSpiegeln(szenario));
 
         // Die erwarteten Ereignisse — aber nur die, die der WRITER schreibt.
         for (String art : writerEreignisarten(szenario)) {
@@ -311,20 +302,8 @@ class UemsStreckeAbnahmeTest {
             warte(schluessel + ": Ereignis " + art + " ist festgehalten",
                     () -> zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='" + art
                             + "' AND urheber='writer' AND device_id IN (" + boxen(szenario) + ")"),
-                    erwarteteZahl(szenario, art),
+                    ereignisSequenzenOderZahl(szenario, art),
                     () -> beleg(szenario, art));
-        }
-
-        // Die Sequenzregel gilt IMMER, auch wo das Drehbuch sie nicht aufzählt.
-        for (String art : List.of("sequence_gap", "sequence_reset")) {
-            long ausDenSequenzen = ausDenSequenzen(szenario, art);
-            if (ausDenSequenzen == 0 || writerEreignisarten(szenario).contains(art)) {
-                continue;
-            }
-            warte(schluessel + ": " + art + " nach der Sequenzregel",
-                    () -> zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='" + art
-                            + "' AND urheber='writer' AND device_id IN (" + boxen(szenario) + ")"),
-                    ausDenSequenzen, () -> beleg(szenario, art));
         }
     }
 
@@ -570,33 +549,9 @@ class UemsStreckeAbnahmeTest {
     }
 
     /**
-     * Wie oft dieses Ereignis zu erwarten ist. Für die Sequenz-Arten NICHT aus der Aufzählung
-     * des Drehbuchs, sondern aus der Regel des Vertrags: {@code sequence_gap} und
-     * {@code sequence_reset} entstehen EINMAL JE UMSCHLAG, dessen Sequenz springt
-     * ({@code MesswertEreignisse}). ⚠ Befund am Drehbuch: es zählt für A4 nur den EINEN
-     * Sprung des Abnahmetextes (48 214 → 48 402) auf, gespielt werden aber vier
-     * aufeinanderfolgende Sprünge (7 → 48 402 → 52 002 → 55 601 → 62 001) und ein
-     * Rücksprung (48 213 → 7), den es gar nicht nennt. Der Writer hat recht, die
-     * Aufzählung ist unvollständig — darum rechnet dieser Lauf nach der Regel.
-     */
-    private static long erwarteteZahl(JsonNode szenario, String art) {
-        if ("sequence_gap".equals(art) || "sequence_reset".equals(art)) {
-            return ausDenSequenzen(szenario, art);
-        }
-        if ("unassigned_reader".equals(art)) {
-            return ausDenSpiegeln(szenario);
-        }
-        return ereignisSequenzenOderZahl(szenario, art);
-    }
-
-    /**
      * {@code unassigned_reader} entsteht EINMAL je Umschlag, Box und Datenquelle — gebündelt
      * als Zeitraum über die gespiegelten Messzeiten, mit {@code anzahl}, und gedrosselt auf
      * höchstens einmal je Stunde je Box und Datenquelle ({@code MesswertEreignisse}).
-     *
-     * <p>⚠ Befund am Drehbuch: A6 zählt VIER auf, eine je Messstelle. Das widerspricht der
-     * Bündelung und dem Abnahmetext A9 selbst („≤ 1 je Stunde"). Gespielt wird EIN Umschlag
-     * mit gespiegelten Werten, also ist EINS richtig.
      */
     private static long ausDenSpiegeln(JsonNode szenario) {
         Set<String> gedrosselt = new LinkedHashSet<>();

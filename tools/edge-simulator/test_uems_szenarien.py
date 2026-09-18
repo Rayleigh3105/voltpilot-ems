@@ -170,6 +170,8 @@ def test_a3_die_outbox_spielt_fifo_mit_originalmesszeit_nach():
     assert sum(e["anzahl"] for e in backfill) == 210 * 5
     assert {e["datenquelle"] for e in backfill} == {"DQ-4", "DQ-5"}
     assert len(luecken) == 7, "je Quelle (2) und je Reihe (5)"
+    assert all(e["urheber"] == "cloud" for e in szenario.erwartete_ereignisse
+               if e["ereignis"]["art"] in {"data_gap", "backfill"})
     assert all(e["erkannt_aus"] == "kadenz" for e in luecken)
     assert all(e["nachgeliefert_am"] == "2026-11-03T16:31:00Z" for e in luecken)
 
@@ -190,11 +192,14 @@ def test_a4_verdraengung_laesst_die_luecke_stehen_und_springt_in_der_sequenz():
     assert gemeldet["art"] == "data_gap" and gemeldet["erkannt_aus"] == "verdraengung"
     assert (_zeit(gemeldet["von"]), _zeit(gemeldet["bis"])) == verdraengt
 
-    # Die Sequenz springt um genau 188 verlorene Umschläge.
+    # Jeder der vier gespielten Sprünge erzeugt genau ein Ereignis.
     assert replay[0].sequenz == 48402
-    sprung = szenario.erwartete_ereignisse[0]["ereignis"]
-    assert sprung["art"] == "sequence_gap"
-    assert sprung["sequenz_erhalten"] - sprung["sequenz_erwartet"] == sprung["anzahl"] == 188
+    spruenge = [e["ereignis"] for e in szenario.erwartete_ereignisse
+                if e["ereignis"]["art"] == "sequence_gap"]
+    assert [(e["sequenz_erwartet"], e["sequenz_erhalten"]) for e in spruenge] == [
+        (48214, 48402), (48403, 52002), (52003, 55601), (55602, 62001),
+    ]
+    assert all(e["sequenz_erhalten"] - e["sequenz_erwartet"] == e["anzahl"] for e in spruenge)
 
     # Kein einziger nachgelieferter Wert liegt im verdrängten Fenster …
     behalten = [m for z in replay[:3] for m in _messzeiten(z)]
@@ -208,6 +213,8 @@ def test_a4_verdraengung_laesst_die_luecke_stehen_und_springt_in_der_sequenz():
     assert eingang - verdraengt[0] > timedelta(days=7)
     late = [e["ereignis"] for e in szenario.erwartete_ereignisse if e["ereignis"]["art"] == "late_arrival"]
     assert len(late) == 1 and late[0]["eingangszeit"] == spaet.eingangszeit
+    assert next(e["urheber"] for e in szenario.erwartete_ereignisse
+                if e["ereignis"]["art"] == "late_arrival") == "cloud"
     # Die Lücke des verdrängten Fensters kennt kein nachgeliefert_am — sie bleibt.
     luecke = [e["ereignis"] for e in szenario.erwartete_ereignisse if e["ereignis"]["art"] == "data_gap"]
     assert len(luecke) == 1 and "nachgeliefert_am" not in luecke[0]
@@ -225,7 +232,7 @@ def test_a6_uebergabe_trennt_fuehrende_werte_vom_nachzuegler_der_alten_box():
     alt, neu = sorted(boxen, key=lambda code: code != "E-1")
     werte_alt = [m for z in szenario.zustellungen if z.box == alt for m in _messzeiten(z)]
     werte_neu = [m for z in szenario.zustellungen if z.box == neu for m in _messzeiten(z)]
-    assert max(m for m in werte_alt if m < wechsel) == _zeit("2027-04-10T05:29:50Z")
+    assert max(m for m in werte_alt if m < wechsel) == _zeit("2027-04-10T05:29:55Z")
     assert min(werte_neu) == _zeit("2027-04-10T05:31:10Z")
     assert all(m >= wechsel for m in werte_neu)
 
@@ -249,9 +256,11 @@ def test_a6_uebergabe_trennt_fuehrende_werte_vom_nachzuegler_der_alten_box():
     assert len(handover) == 1
     assert (_zeit(handover[0]["von"]), _zeit(handover[0]["bis"])) == (wechsel, wechsel + timedelta(minutes=1))
     assert handover[0]["box_alt"] != handover[0]["box_neu"]
-    assert len(fremd) == 4 and all(e["datenquelle"] == "DQ-3" for e in fremd)
+    assert len(fremd) == 1 and fremd[0]["datenquelle"] == "DQ-3"
+    assert fremd[0]["anzahl"] == 4, "ein Ereignis bündelt die vier Spiegelwerte des Umschlags"
     assert all(e["zustaendige_box"] == handover[0]["box_neu"] for e in fremd)
     assert {r.rolle for r in szenario.erwartete_reihen} == {"fuehrend", "spiegel"}
+    assert {r.rohzeilen for r in szenario.erwartete_reihen if r.rolle == "fuehrend"} == {7}
 
 
 # -- A13 ------------------------------------------------------------------
@@ -275,7 +284,12 @@ def test_a13_die_vorgehende_uhr_wirft_nur_die_zukunft_weg():
     assert sum(r.rohzeilen for r in szenario.erwartete_reihen) == 8, "nur die vier guten Takte je Reihe"
 
     ereignisse = [e["ereignis"] for e in szenario.erwartete_ereignisse]
-    assert [e["art"] for e in ereignisse] == ["clock_ahead"] * 3
-    assert all(e["vor_s"] == 840 for e in ereignisse)
-    assert [e["sequenz"] for e in ereignisse] == [z.sequenz for z in vorgehend]
-    assert all(e["box"] == vorgehend[0].nutzlast["device_id"] for e in ereignisse)
+    clock_ahead = [e for e in ereignisse if e["art"] == "clock_ahead"]
+    assert len(clock_ahead) == 3
+    assert all(e["vor_s"] == 840 for e in clock_ahead)
+    assert [e["sequenz"] for e in clock_ahead] == [z.sequenz for z in vorgehend]
+    assert all(e["box"] == vorgehend[0].nutzlast["device_id"] for e in clock_ahead)
+    sequence_gap = [e for e in ereignisse if e["art"] == "sequence_gap"]
+    assert len(sequence_gap) == 1
+    assert (sequence_gap[0]["sequenz_erwartet"], sequence_gap[0]["sequenz_erhalten"],
+            sequence_gap[0]["anzahl"]) == (7816, 7819, 3)

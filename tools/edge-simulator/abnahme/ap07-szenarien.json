@@ -1,5 +1,5 @@
 {
-  "pruefsumme": "89b93ffd47a6647f3a578b2c28c557c2f61d19fb7dc4d9ea417c08b49f268c0a",
+  "pruefsumme": "b8cc42d3684b158a8d9a9fb3d6c96a9ead119fc2e7a194d3b291227ff0eac54c",
   "quelle": "tools/edge-simulator/uems_szenarien.py",
   "szenarien": [
     {
@@ -6403,7 +6403,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         },
         {
           "ereignis": {
@@ -6423,7 +6423,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         },
         {
           "ereignis": {
@@ -6442,7 +6442,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         },
         {
           "ereignis": {
@@ -6462,7 +6462,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         },
         {
           "ereignis": {
@@ -6483,7 +6483,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         },
         {
           "ereignis": {
@@ -6504,7 +6504,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         },
         {
           "ereignis": {
@@ -6525,7 +6525,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         },
         {
           "ereignis": {
@@ -6546,7 +6546,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         },
         {
           "ereignis": {
@@ -6566,6 +6566,42 @@
           "ingested_at": "2026-11-03T13:05:00Z",
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "urheber": "cloud"
+        },
+        {
+          "ereignis": {
+            "anzahl": 54,
+            "art": "sequence_gap",
+            "box": "a4e0b000-0000-4000-8000-0000000000e1",
+            "ereignis_id": "268c0530-fb27-567f-909a-c81d4496274f",
+            "sequenz_erhalten": 90160,
+            "sequenz_erwartet": 90106,
+            "strom": "measurement-samples",
+            "zeitpunkt": "2026-11-03T14:00:02Z"
+          },
+          "event_id": "3939fea5-4b14-5686-b975-95ec70057ba0",
+          "ingested_at": "2026-11-03T14:00:02Z",
+          "schema_version": "1.0",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "urheber": "writer"
+        },
+        {
+          "ereignis": {
+            "anzahl": 119,
+            "art": "sequence_gap",
+            "box": "a4e0b000-0000-4000-8000-0000000000e1",
+            "ereignis_id": "9a55c8c2-551a-5287-a55d-53d087a5a3d7",
+            "sequenz_erhalten": 90280,
+            "sequenz_erwartet": 90161,
+            "strom": "measurement-samples",
+            "zeitpunkt": "2026-11-03T16:00:02Z"
+          },
+          "event_id": "e8c780ac-34ab-5ab6-aa44-d88fb898caef",
+          "ingested_at": "2026-11-03T16:00:02Z",
+          "schema_version": "1.0",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
           "urheber": "writer"
         }
@@ -6599,6 +6635,30 @@
           "hinweis": "",
           "messstelle": "MS-14",
           "rohzeilen": 211,
+          "rolle": "fuehrend"
+        },
+        {
+          "hinweis": "Kontrollgruppe der durchgehend liefernden Box Halle 1",
+          "messstelle": "MS-05",
+          "rohzeilen": 3,
+          "rolle": "fuehrend"
+        },
+        {
+          "hinweis": "Kontrollgruppe der durchgehend liefernden Box Halle 1",
+          "messstelle": "MS-06",
+          "rohzeilen": 3,
+          "rolle": "fuehrend"
+        },
+        {
+          "hinweis": "Kontrollgruppe der durchgehend liefernden Box Halle 1",
+          "messstelle": "MS-07",
+          "rohzeilen": 3,
+          "rolle": "fuehrend"
+        },
+        {
+          "hinweis": "Kontrollgruppe der durchgehend liefernden Box Halle 1",
+          "messstelle": "MS-08",
+          "rohzeilen": 3,
           "rolle": "fuehrend"
         }
       ],
@@ -20258,14 +20318,68 @@
             "anzahl": 188,
             "art": "sequence_gap",
             "box": "a4e0b000-0000-4000-8000-0000000000e2",
-            "ereignis_id": "d7118b9b-500c-57f2-8885-98a5297e6bba",
+            "ereignis_id": "5978b530-cc3b-5dae-9872-cf6b4aca3028",
             "sequenz_erhalten": 48402,
             "sequenz_erwartet": 48214,
             "strom": "measurement-samples",
             "zeitpunkt": "2026-11-11T13:01:00Z"
           },
-          "event_id": "4cd3a480-47a3-5aa8-b6f6-871e463f503d",
+          "event_id": "4887881e-ac9f-5f48-bc0b-bc20dbf6ebcc",
           "ingested_at": "2026-11-11T13:01:00Z",
+          "schema_version": "1.0",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "urheber": "writer"
+        },
+        {
+          "ereignis": {
+            "anzahl": 3599,
+            "art": "sequence_gap",
+            "box": "a4e0b000-0000-4000-8000-0000000000e2",
+            "ereignis_id": "892e446a-4090-5aa5-8c44-a1e5386f7f29",
+            "sequenz_erhalten": 52002,
+            "sequenz_erwartet": 48403,
+            "strom": "measurement-samples",
+            "zeitpunkt": "2026-11-11T13:02:00Z"
+          },
+          "event_id": "c29bf85d-0268-5fbf-a77b-b78f860c354b",
+          "ingested_at": "2026-11-11T13:02:00Z",
+          "schema_version": "1.0",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "urheber": "writer"
+        },
+        {
+          "ereignis": {
+            "anzahl": 3598,
+            "art": "sequence_gap",
+            "box": "a4e0b000-0000-4000-8000-0000000000e2",
+            "ereignis_id": "b9cacaf8-7bed-5d45-adba-1bbaa85d84c1",
+            "sequenz_erhalten": 55601,
+            "sequenz_erwartet": 52003,
+            "strom": "measurement-samples",
+            "zeitpunkt": "2026-11-11T13:02:59Z"
+          },
+          "event_id": "3a1b077c-cf6d-51fd-928e-1f3ae0f9f099",
+          "ingested_at": "2026-11-11T13:02:59Z",
+          "schema_version": "1.0",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "urheber": "writer"
+        },
+        {
+          "ereignis": {
+            "anzahl": 6399,
+            "art": "sequence_gap",
+            "box": "a4e0b000-0000-4000-8000-0000000000e2",
+            "ereignis_id": "3af29683-71a6-5990-af5f-ceed1a222eb9",
+            "sequenz_erhalten": 62001,
+            "sequenz_erwartet": 55602,
+            "strom": "measurement-samples",
+            "zeitpunkt": "2026-11-12T08:02:00Z"
+          },
+          "event_id": "b71dd0ea-9af8-5956-89f2-fc8857325ecf",
+          "ingested_at": "2026-11-12T08:02:00Z",
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
@@ -20311,7 +20425,7 @@
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
+          "urheber": "cloud"
         }
       ],
       "erwartete_reihen": [
@@ -20794,78 +20908,18 @@
         },
         {
           "ereignis": {
-            "anzahl": 1,
+            "anzahl": 4,
             "art": "unassigned_reader",
             "bis": "2027-04-10T05:30:50Z",
             "box": "a4e0b000-0000-4000-8000-0000000000e1",
             "datenquelle": "DQ-3",
-            "ereignis_id": "5e171e6c-5bb2-5d87-88c4-1af62b7200ba",
+            "ereignis_id": "aa409a23-788d-5879-bc66-bc74f0bfdc4e",
             "komponente": "K-4",
             "messkanal": "Wirkenergie Bezug",
             "von": "2027-04-10T05:30:50Z",
             "zustaendige_box": "a4e0b000-0000-4000-8000-0000000002e2"
           },
-          "event_id": "04640576-ee88-5553-ac21-f6768119cb60",
-          "ingested_at": "2027-04-10T05:33:01Z",
-          "schema_version": "1.0",
-          "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
-          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
-        },
-        {
-          "ereignis": {
-            "anzahl": 1,
-            "art": "unassigned_reader",
-            "bis": "2027-04-10T05:30:50Z",
-            "box": "a4e0b000-0000-4000-8000-0000000000e1",
-            "datenquelle": "DQ-3",
-            "ereignis_id": "1c504d44-7182-55f5-a5e8-865d873b58af",
-            "komponente": "K-5",
-            "messkanal": "Wirkenergie Bezug",
-            "von": "2027-04-10T05:30:50Z",
-            "zustaendige_box": "a4e0b000-0000-4000-8000-0000000002e2"
-          },
-          "event_id": "d12b01a7-4760-56cc-b97d-f95c071bbbb8",
-          "ingested_at": "2027-04-10T05:33:01Z",
-          "schema_version": "1.0",
-          "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
-          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
-        },
-        {
-          "ereignis": {
-            "anzahl": 1,
-            "art": "unassigned_reader",
-            "bis": "2027-04-10T05:30:50Z",
-            "box": "a4e0b000-0000-4000-8000-0000000000e1",
-            "datenquelle": "DQ-3",
-            "ereignis_id": "cdbb3e7b-af2f-5f71-9e92-2aa61dc1ae76",
-            "komponente": "K-6",
-            "messkanal": "Wirkenergie Bezug",
-            "von": "2027-04-10T05:30:50Z",
-            "zustaendige_box": "a4e0b000-0000-4000-8000-0000000002e2"
-          },
-          "event_id": "517d91cf-e1de-5269-b2c2-e10be10e36ae",
-          "ingested_at": "2027-04-10T05:33:01Z",
-          "schema_version": "1.0",
-          "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
-          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
-          "urheber": "writer"
-        },
-        {
-          "ereignis": {
-            "anzahl": 1,
-            "art": "unassigned_reader",
-            "bis": "2027-04-10T05:30:50Z",
-            "box": "a4e0b000-0000-4000-8000-0000000000e1",
-            "datenquelle": "DQ-3",
-            "ereignis_id": "68137d91-b7ef-596e-91b0-b5d654f8b46e",
-            "komponente": "K-7",
-            "messkanal": "Wirkenergie Bezug",
-            "von": "2027-04-10T05:30:50Z",
-            "zustaendige_box": "a4e0b000-0000-4000-8000-0000000002e2"
-          },
-          "event_id": "2ba54893-44f7-5d3a-9edb-c8b05cb889de",
+          "event_id": "945e942c-f35c-5e14-8a16-7e26b0ad494d",
           "ingested_at": "2027-04-10T05:33:01Z",
           "schema_version": "1.0",
           "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
@@ -21366,12 +21420,12 @@
             "applied_revision": 1,
             "catalog_version": "2026.08.26.3",
             "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
-            "observed_at": "2027-04-10T05:29:50Z",
+            "observed_at": "2027-04-10T05:29:55Z",
             "samples": [
               {
                 "decoded": 221450.9,
                 "entity_id": "a4e0b000-0000-4000-8000-0000000000c4",
-                "observed_at": "2027-04-10T05:29:50Z",
+                "observed_at": "2027-04-10T05:29:55Z",
                 "point_key": "custom.ms-05.wirkenergie-bezug",
                 "quality": "good",
                 "raw": 2214509
@@ -21379,7 +21433,7 @@
               {
                 "decoded": 1083402.7,
                 "entity_id": "a4e0b000-0000-4000-8000-0000000000c5",
-                "observed_at": "2027-04-10T05:29:50Z",
+                "observed_at": "2027-04-10T05:29:55Z",
                 "point_key": "custom.ms-06.wirkenergie-bezug",
                 "quality": "good",
                 "raw": 10834027
@@ -21387,7 +21441,7 @@
               {
                 "decoded": 331181.5,
                 "entity_id": "a4e0b000-0000-4000-8000-0000000000c6",
-                "observed_at": "2027-04-10T05:29:50Z",
+                "observed_at": "2027-04-10T05:29:55Z",
                 "point_key": "custom.ms-07.wirkenergie-bezug",
                 "quality": "good",
                 "raw": 3311815
@@ -21395,7 +21449,7 @@
               {
                 "decoded": 190741.2,
                 "entity_id": "a4e0b000-0000-4000-8000-0000000000c7",
-                "observed_at": "2027-04-10T05:29:50Z",
+                "observed_at": "2027-04-10T05:29:55Z",
                 "point_key": "custom.ms-08.wirkenergie-bezug",
                 "quality": "good",
                 "raw": 1907412
@@ -21528,6 +21582,24 @@
           "site_id": "a4e0b000-0000-4000-8000-0000000000a3",
           "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
           "urheber": "datenannahme"
+        },
+        {
+          "ereignis": {
+            "anzahl": 3,
+            "art": "sequence_gap",
+            "box": "a4e0b000-0000-4000-8000-0000000000e3",
+            "ereignis_id": "7802a310-ce4f-52ec-9b83-6fdf87967fd3",
+            "sequenz_erhalten": 7819,
+            "sequenz_erwartet": 7816,
+            "strom": "measurement-samples",
+            "zeitpunkt": "2026-10-20T07:15:00Z"
+          },
+          "event_id": "9f46fac1-c495-5526-acbf-d4f1e1e1862d",
+          "ingested_at": "2026-10-20T07:15:00Z",
+          "schema_version": "1.0",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a3",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "urheber": "writer"
         }
       ],
       "erwartete_reihen": [
