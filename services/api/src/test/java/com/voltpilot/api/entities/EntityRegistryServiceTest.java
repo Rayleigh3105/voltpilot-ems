@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
@@ -26,7 +27,8 @@ class EntityRegistryServiceTest {
         when(repo.entityForSite(site, entity)).thenReturn(row);
         var service = spy(new EntityRegistryService(repo, mock(ObjectProvider.class), new ObjectMapper(),
                 mock(EntityTypeCatalog.class), mock(AssetRepository.class), mock(FlowClaimRepository.class),
-                mock(DeviceOverrideRepository.class), new LeadDeviceService(repo)));
+                mock(DeviceOverrideRepository.class), new LeadDeviceService(repo),
+                mock(BerichtsBelege.class)));
         doReturn(new EntityRegistryService.PushOutcome(false, false, "test", null)).when(service).pushRegistryBestEffort(site);
         assertThat(service.deleteEntity(site, entity)).isTrue();
         var reihenfolge = inOrder(repo);

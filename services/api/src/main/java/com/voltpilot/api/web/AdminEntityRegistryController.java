@@ -6,6 +6,7 @@ import com.voltpilot.api.components.ComponentAdoption;
 import com.voltpilot.api.components.ComponentAdoptionService;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -15,8 +16,10 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -291,6 +294,11 @@ public class AdminEntityRegistryController {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
     }
 
     private void requireSite(UUID siteId) {

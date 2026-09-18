@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.entities.EntityRegistryRepository.BatteryAsset;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryRepository.RoleAssignment;
@@ -259,7 +260,8 @@ class RegistryPushJeBoxBestandTest {
         when(provider.getIfAvailable()).thenReturn(pub);
         EntityRegistryService service = new EntityRegistryService(repo, provider, MAPPER,
                 mock(EntityTypeCatalog.class), mock(AssetRepository.class), mock(FlowClaimRepository.class),
-                mock(DeviceOverrideRepository.class), new LeadDeviceService(repo), Clock.fixed(NOW, ZoneOffset.UTC));
+                mock(DeviceOverrideRepository.class), new LeadDeviceService(repo), Clock.fixed(NOW, ZoneOffset.UTC),
+                mock(BerichtsBelege.class));
         return new Welt(repo, pub, service);
     }
 

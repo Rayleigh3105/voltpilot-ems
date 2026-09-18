@@ -12,6 +12,7 @@ import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.uems.FuehrendeBoxAbleitung.Grund;
 import com.voltpilot.api.uems.PushJeBox;
 import com.voltpilot.api.uems.RuheRegel;
@@ -146,6 +147,7 @@ public class EntityRegistryService {
     private final DeviceOverrideRepository overrides;
     private final LeadDeviceService leadDevices;
     private final Clock clock;
+    private final BerichtsBelege berichtsBelege;
     private com.voltpilot.api.uems.QuellenUebergabe uebergabe;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -163,15 +165,15 @@ public class EntityRegistryService {
     public EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
             EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
-            DeviceOverrideRepository overrides, LeadDeviceService leadDevices) {
+            DeviceOverrideRepository overrides, LeadDeviceService leadDevices, BerichtsBelege berichtsBelege) {
         this(repo, publisher, mapper, catalog, assets, claims, overrides, leadDevices,
-                Clock.systemUTC());
+                Clock.systemUTC(), berichtsBelege);
     }
 
     EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
             EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
-            DeviceOverrideRepository overrides, LeadDeviceService leadDevices, Clock clock) {
+            DeviceOverrideRepository overrides, LeadDeviceService leadDevices, Clock clock, BerichtsBelege berichtsBelege) {
         this.repo = repo;
         this.publisher = publisher;
         this.mapper = mapper;
@@ -181,6 +183,7 @@ public class EntityRegistryService {
         this.overrides = overrides;
         this.leadDevices = leadDevices;
         this.clock = clock;
+        this.berichtsBelege = berichtsBelege;
     }
 
     /**
@@ -835,6 +838,8 @@ public class EntityRegistryService {
      * Pilsting ghost) reappears as "Neues Gerät gefunden" forever. The purge
      * releases the point's kWp from the aggregate {@code asset.pv} and deletes
      * the row, freeing its edge source for a clean adoption or re-pin.
+     * Cited components are refused with {@code 409 berichts_belege} before
+     * any write, including role removal and the non-purging admin path.
      */
     @Transactional
     public boolean deleteEntity(UUID siteId, UUID pointId, boolean purgePoint) {
@@ -842,6 +847,7 @@ public class EntityRegistryService {
         if (row == null) {
             return false;
         }
+        berichtsBelege.pruefeKomponente(siteId, pointId);
         repo.deleteRoleAssignments(pointId);
         if (purgePoint) {
             // The purge fully removes the entity, so its flow_claim would dangle
@@ -994,8 +1000,19 @@ public class EntityRegistryService {
      * Drop a de-entitied adopted point (and its kWp contribution) so its edge
      * source can be adopted as a v2-native entity instead - the pin is unique
      * per (site, source), so the stale row would otherwise refuse the new one.
+     * A cited point survives with its sources and kWp contribution; only its
+     * pin is released, and skipping the deletion is logged.
      */
     private void releaseStalePoint(UUID tenantId, UUID siteId, EntityRow stale) {
+        BerichtsBelege.Komponente belege = berichtsBelege.derKomponente(siteId, stale.id());
+        if (!belege.staende().isEmpty()) {
+            // The pin may move, but the cited row and its sources must survive.
+            // Keep its nameplate contribution too: no point was removed.
+            repo.setEdgeSource(stale.id(), null);
+            log.info("Belegschutz: Aufräumen der Komponente {} an Anlage {} übersprungen; Berichtsstände: {}",
+                    stale.id(), siteId, belege.staende());
+            return;
+        }
         if (stale.capacityKwp() != null && stale.capacityKwp().signum() != 0) {
             assets.addPvCapacity(tenantId, siteId, stale.capacityKwp().negate());
         }

@@ -5,6 +5,8 @@ import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.web.dto.CreateMeasurementPointRequest;
 import com.voltpilot.api.web.dto.MeasurementPointDto;
 import com.voltpilot.api.zugriff.Recht;
@@ -14,8 +16,10 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -66,13 +70,15 @@ public class MeasurementPointController {
     private final MeasurementPointRepository points;
     private final AssetRepository assets;
     private final EntityRegistryService entityRegistry;
+    private final BerichtsBelege berichtsBelege;
 
     public MeasurementPointController(Geltungsbereich geltungsbereich, MeasurementPointRepository points,
-            AssetRepository assets, EntityRegistryService entityRegistry) {
+            AssetRepository assets, EntityRegistryService entityRegistry, BerichtsBelege berichtsBelege) {
         this.geltungsbereich = geltungsbereich;
         this.points = points;
         this.assets = assets;
         this.entityRegistry = entityRegistry;
+        this.berichtsBelege = berichtsBelege;
     }
 
     @GetMapping
@@ -150,6 +156,7 @@ public class MeasurementPointController {
                     "Dieser Eintrag gehört zum Wechselrichter Ihrer Anlage und kann hier nicht "
                             + "entfernt werden.");
         }
+        berichtsBelege.pruefeKomponente(siteId, pointId);
         BigDecimal removedKwp = points.deleteReturningCapacity(siteId, pointId);
         if (removedKwp == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Measurement point not found");
@@ -163,6 +170,11 @@ public class MeasurementPointController {
             entityRegistry.pushRegistryBestEffort(siteId);
         }
         return remaining;
+    }
+
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
     }
 
     private void requireSite(UUID siteId) {
