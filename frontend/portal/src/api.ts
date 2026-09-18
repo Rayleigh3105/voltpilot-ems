@@ -6881,6 +6881,21 @@ export interface UemsDatenquellePruefergebnis {
   antwort: unknown | null;
 }
 
+/** Dokumentierte WAGO-Kartenangaben; fehlend bleibt fehlend und wird nie zu einem Faktor. */
+export interface WagoKartenangaben {
+  slot: number | null;
+  anwenderskalierung: boolean | null;
+  register35: number | null;
+  version: number;
+}
+
+/** Gerätestammdaten der WAGO-Steuerung. */
+export interface WagoGeraeteangaben {
+  seriennummer: string | null;
+  firmware: string | null;
+  anwendung: string | null;
+}
+
 export interface DatenquelleBudgetZahlen {
   channels: number;
   samples_per_minute: number;
@@ -8149,6 +8164,22 @@ export const api = {
   /** Die UEMS-Geräte einer Anlage (AP-04 IP-10) — der Weg von der Komponente zum Gerät. */
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
+
+  /** AP-05 IP-9/IP-10: Kartendaten dokumentieren; Steckplatz kommt aus der physischen Zuordnung. */
+  wagoKarteEintragen: (siteId: string, entityId: string, body: {
+    expected_revision: number;
+    anwenderskalierung: boolean | null;
+    register35: number | null;
+  }) => request<WagoKartenangaben>(
+    `/api/v1/sites/${siteId}/components/${entityId}/wago`,
+    { method: 'PUT', body: JSON.stringify(body) },
+  ),
+
+  /** AP-05 IP-9/IP-10: abgelesene Controller-Angaben, keine Geräteerkennung. */
+  wagoGeraetEintragen: (id: string, body: WagoGeraeteangaben) =>
+    request<WagoGeraeteangaben>(`/api/v1/geraete/${id}/wago`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
 
   komponentenEreignisse: (siteId: string, entityId: string) =>
     request<KomponentenEreignis[]>(`/api/v1/sites/${siteId}/components/${entityId}/events`),

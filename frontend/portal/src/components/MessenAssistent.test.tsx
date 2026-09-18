@@ -1,7 +1,7 @@
 import { sichtbareListe } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type ComponentTemplate, type Site, type SiteComponents } from '../api';
+import { api, ApiError, type ComponentTemplate, type Device, type EdgeVersion, type Site, type SiteComponents } from '../api';
 import { entwurfLesen, entwurfSchreiben, messenEinstieg, type EntwurfSpeicher } from '../messenAssistent';
 import {
   ahrenbergFunktionen,
@@ -62,6 +62,14 @@ beforeEach(() => {
   } as unknown as SiteComponents);
   vi.spyOn(api, 'standortKurzzeichenVorschlag').mockResolvedValue({ kurzzeichen: 'ST-3' });
   vi.spyOn(api, 'componentTemplates').mockResolvedValue([] as ComponentTemplate[]);
+  vi.spyOn(api, 'listDevices').mockResolvedValue(sichtbareListe([{
+    id: 'box-lindach', siteId: FIXTURE_IDS.an3, externalRef: 'VP-LINDACH', kind: 'edge', name: 'Box Lindach',
+    status: 'online', lastSeenAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+  } as Device]));
+  vi.spyOn(api, 'edgeVersions').mockResolvedValue(sichtbareListe([{
+    deviceId: 'box-lindach', siteId: FIXTURE_IDS.an3, coreVersion: '2.8.0', paletteVersion: '1.14.0',
+    reportedAt: new Date().toISOString(), capabilities: ['data_sources', 'events'],
+  } as EdgeVersion]));
 });
 
 afterEach(() => {
@@ -269,6 +277,14 @@ describe('MessenAssistent — Schritt 1 erzeugt die Standort-Funktion genau einm
 });
 
 describe('MessenAssistent — die bestehenden Dialoge', () => {
+  it('zeigt heute keinem Kunden den WAGO-Einstieg, solange keine Box den ruhenden Leser meldet', async () => {
+    vi.mocked(api.funktionen).mockResolvedValue(lindachImEntwurf());
+    zeige({ standortId: LINDACH });
+    await schritt2();
+    await within(assistent()).findByText('2 Komponenten angebunden');
+    expect(within(assistent()).queryByRole('button', { name: /WAGO-Steuerung anbinden/ })).toBeNull();
+  });
+
   it('ohne Standort legt Schritt 1 ihn über den Standort-Dialog aus AP-02 an', async () => {
     vi.mocked(api.standorte).mockResolvedValue({ ...ahrenbergHeute(), standorte: [] });
     zeige();
