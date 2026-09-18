@@ -1311,6 +1311,13 @@
       "nachher": "4a2bd7dd0d3e194b6573bab8c5cca5948895a6dc0ce89d50cd8609961e0971b2",
       "commit": "d8eff25145995313cd08082d0c4453b2a669894c",
       "grund": "AP-06 IP-9 sperrt Kennung eintragen zusätzlich, solange bei mehreren Boxen keine Ziel-Box gewählt ist; Beschriftung, Handler und bisherige Mangelsperre bleiben erhalten."
+    },
+    {
+      "datei": "components/OrtDialog.tsx",
+      "vorher": "dfcc537ad26f972057fbc8702aa183b4b745a9338ac0fc2de24f881691b94240",
+      "nachher": "6d504df2f98c7a478052fedf93b0c7e2d8f6314762357adfd3a467ef7297f114",
+      "commit": "2b3d51c738321b313454b2ff9bc67242304b86f1",
+      "grund": "AP-02 PR 941 zeigt das bisher nur beim Bearbeiten sichtbare Kurzzeichen-Feld additiv auch beim Anlegen und belegt es mit dem dokumentierten Server-Vorschlag vor. Beim Bearbeiten bleiben Pflicht-Label, Wert, Handler und Fehlerbindung erhalten."
     }
   ],
   "assistentZusammenfuehrung": {
