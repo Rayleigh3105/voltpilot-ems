@@ -63,10 +63,16 @@ IP-4, Abzug IP-5/IP-6, Routen IP-7, Naht IP-8, Läufer IP-9, CSV/PDF IP-10/IP-11
   (`charge_discharge` → Laden/Entladen, `import_export` → Bezug/Abgabe); das andere, was eine QUELLENBINDUNG mit einem
   Anteil belegen darf (Regel 7) — dort bleibt `charge_discharge` weiter ausgeschlossen. Wer das zusammenlegt, ändert
   still, welche Bindungen das System annimmt.
-- **⚠ Offen, und der Grund, warum B1 noch nicht 7 900/7 100 zeigt:** im gepackten Katalog trägt JEDER Kanal mit zwei
-  Richtungen `active_power` in W — einen Momentanwert (5 × `charge_discharge`, 49 × `import_export`, kein einziger als
-  Intervallmenge). Seine Menge entsteht durch Integration der Leistung; der exakte Anteil wäre die Integration von
-  max(0, P) über die ROHWERTE. Ab der Tages-Ebene ist die Viertelstunde schon zu EINER Energie verdichtet — ein
-  Vorzeichenwechsel innerhalb einer Viertelstunde wäre verloren, eine Summe über Viertelstunden-Vorzeichen also eine
-  Näherung. Die Regel liefert für einen Momentanwert deshalb `null`. Damit ein Abzug das Paar abschreiben kann, muss
-  `messreihe_viertelstunde` die beiden Anteile selbst tragen (`RichtungspaarTest`, `bericht.md` „Das Richtungspaar“).
+- **Der Anteil entsteht JE ROHWERT** (AP-08 E15/M5, firstmate-Entscheid 18.09.2026 = Option A). Im gepackten Katalog
+  trägt JEDER Kanal mit zwei Richtungen `active_power` in W — einen Momentanwert (5 × `charge_discharge`,
+  49 × `import_export`, kein einziger als Intervallmenge), seine Menge entsteht aus integrierter Leistung. Darum legt
+  `V20260918104000` `energie_positiv`/`energie_negativ` an `messreihe_viertelstunde`, und `Richtungspaar.jeRohwert`
+  bildet sie dort: Rohwerte mit `anteilJeRohwert` trennen, beide Hälften mit derselben Regel integrieren wie `energie`.
+  **Ab der Tages-Ebene wird nur noch summiert** — wer dort rechnen wollte, verlöre jeden Vorzeichenwechsel INNERHALB
+  einer Viertelstunde (`UemsRichtungspaarLaufTest` misst genau diesen Fall).
+- **Das ALTER am Hypertable ist reine Metadaten-Arbeit.** `ADD COLUMN` nullbar ohne Default schreibt seit PG 11 nur den
+  Katalog; komprimierte Chunks kann es an `messreihe_viertelstunde` nicht geben, weil sie RLS + FORCE trägt und
+  TimescaleDB Kompression auf RLS-Tabellen verweigert (Grund steht in `V20260809000000`). Der CHECK steht darum
+  ausdrücklich als `NOT VALID` — ein gültiger CHECK müsste jede Zeile lesen. Kosten: **0 B je Zeile, solange NULL**
+  (Null-Bitmap 6 → 7 B, Zeilenkopf bleibt `MAXALIGN(23+7) = 32 B`), gefüllt ~24 B an 54 von 2 395 Katalogpunkten
+  (2,3 %) ≈ 0,23 % des `vm`-Plans (`docs/performance/speicherplanung.md`).

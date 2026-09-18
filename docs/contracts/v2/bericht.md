@@ -332,12 +332,18 @@ entstehen die beiden Anteile in der **Verdichtung** und stehen neben der Netto-M
 - `Richtungspaar.ausTeilen` bildet sie wie den Anteil eines Vorzeichen-Werts: Σ max(0, Teil) und Σ max(0, −Teil)
   (`VerbrauchRegeln.anteilDesWerts`). Tag und Monat rechnen über ihre Viertelstunden, das Jahr summiert seine Monate;
   fehlt EINEM Teil sein Paar, fehlt es der ganzen Periode. Unbekannt ist keine Null.
-- **Offen:** heute trägt im gepackten Katalog jeder Kanal mit zwei Richtungen `active_power` in W, also einen
-  **Momentanwert** — die Menge entsteht durch Integration der Leistung. Der exakte Anteil wäre die Integration von
-  max(0, P) über die ROHWERTE; auf Tages-Ebene ist die Viertelstunde schon zu EINER Energie verdichtet, ein
-  Vorzeichenwechsel innerhalb einer Viertelstunde wäre verloren. Die Regel liefert für einen Momentanwert deshalb
-  `null` statt einer Näherung. Damit ein Abzug das Paar wirklich abschreiben kann, muss `messreihe_viertelstunde` die
-  beiden Anteile selbst tragen (`RichtungspaarTest`).
+- **Der Anteil entsteht JE ROHWERT, vor jeder Verdichtung** (AP-08 E15/M5). Das ist keine Feinheit: im gepackten
+  Katalog trägt jeder Kanal mit zwei Richtungen `active_power` in W, also einen **Momentanwert** — die Menge entsteht
+  durch Integration der Leistung. Migration `V20260918104000` legt darum `energie_positiv`/`energie_negativ` an
+  `messreihe_viertelstunde`; `Richtungspaar.jeRohwert` trennt die Rohwerte mit
+  `VerbrauchRegeln.anteilJeRohwert` und integriert beide Hälften mit derselben Regel, die `energie` bildet.
+  Ab der Tages-Ebene wird nur noch SUMMIERT (`Richtungspaar.ausTeilen`) — dort ist die Viertelstunde schon EINE Zahl
+  mit EINEM Vorzeichen. Der Beweis steht in `UemsRichtungspaarLaufTest`: eine Viertelstunde, in der der Speicher
+  fünf Minuten lädt und fünf Minuten entlädt, hat BEIDE Anteile positiv — eine Summe über Viertelstunden-Vorzeichen
+  behauptete dort für eine Richtung eine Null.
+- **Was der Bestand sagt.** Viertelstunden von vor diesem Paket tragen ein NULL-Paar; ein Bericht zeigt das Paar dann
+  als fehlend, nie als 0. Nachgerechnet wird nur über den bestehenden Rückrechnungsweg und nur aus noch vorhandenen
+  Rohwerten — eine Näherung ersetzt keine Messung.
 
 ## Grenzen
 

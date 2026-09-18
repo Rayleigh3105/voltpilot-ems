@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -31,18 +32,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * wenn ein Teil der Periode seinen Anteil nicht trägt, weil er vor dieser Migration verdichtet
  * wurde.
  *
- * <p><b>⚠ Der MOMENTANWERT fehlt hier noch — und das ist heute jeder Speicher.</b> Im gepackten
- * Katalog (2026.09.16.1) trägt <em>jeder</em> Kanal mit zwei Richtungen {@code active_power} in W,
- * also einen Momentanwert: 5 × {@code charge_discharge}, 49 × {@code import_export}, kein einziger
- * als Intervallmenge. Seine Menge entsteht durch INTEGRATION der Leistung über die Zeit
- * ({@code VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT} — das Kennzeichen, das MS-04 im Referenzfall
- * trägt), und der exakte Anteil wäre die Integration von {@code max(0, P)} bzw. {@code max(0, −P)}
- * über die ROHWERTE. Die stehen nur der Viertelstunden-Verdichtung zur Verfügung; ab hier ist die
- * Viertelstunde schon zu EINER vorzeichenbehafteten Energie verdichtet, und ein Vorzeichenwechsel
- * INNERHALB einer Viertelstunde wäre verloren. Eine Summe über Viertelstunden-Vorzeichen wäre
- * darum nicht der Anteil, sondern eine Näherung — und eine Näherung ist in einem Nachweis, den ein
- * Abzug byte-gleich festhält, keine Zahl. Bis {@code messreihe_viertelstunde} die beiden Anteile
- * selbst trägt, liefert diese Regel für einen Momentanwert-Kanal {@code null}.
+ * <p><b>Der MOMENTANWERT — und das ist heute jeder Speicher.</b> Im gepackten Katalog trägt
+ * <em>jeder</em> Kanal mit zwei Richtungen {@code active_power} in W, also einen Momentanwert:
+ * 5 × {@code charge_discharge}, 49 × {@code import_export}, kein einziger als Intervallmenge. Seine
+ * Menge entsteht durch INTEGRATION der Leistung ({@code VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT} —
+ * das Kennzeichen, das MS-04 im Referenzfall trägt). Sein Anteil entsteht darum in
+ * {@link #jeRohwert}: die Integration von {@code max(0, P)} bzw. {@code max(0, −P)} <b>je
+ * Rohwert</b>, in der Viertelstunden-Verdichtung, wie AP-08 E15/M5 es verlangt. Ab der Tages-Ebene
+ * ist die Viertelstunde schon zu EINER Energie verdichtet; {@link #ausTeilen} summiert von dort an
+ * nur noch die GESPEICHERTEN Anteile, es rechnet keinen mehr aus.
  */
 final class Richtungspaar {
 
@@ -93,32 +91,56 @@ final class Richtungspaar {
     }
 
     /**
-     * Das Paar aus den Viertelstunden einer Periode — für Tag und Monat, die beide unmittelbar auf
-     * den Viertelstunden stehen.
+     * Der Anteil EINER Viertelstunde, je Rohwert gebildet (AP-08 E15/M5) — {@code {positiv,
+     * negativ}} als Energie, oder {@code null}, wenn es keine Aussage gibt.
      *
-     * @param kanal der Messkanal (Katalogpunkt), dessen Richtung entscheidet
-     * @param wertart die Wertart der Reihe; nur {@code intervallmenge} trägt ein Paar
-     * @param werteteile die Viertelstunden; nur die in {@code [beginn, ende)} zählen
-     * @return {@code {positiv, negativ}} oder {@code null}, wenn es keine Aussage gibt
+     * <p>Es gibt sie nur, wenn der Kanal zwei Flussrichtungen in EINER Größe führt <b>und</b> seine
+     * Menge aus integrierter Leistung entsteht (Momentanwert mit Integrations-Bindung). Ein
+     * Zählerstand hat keine Vorzeichen-Teile (die Menge ist der Zuwachs zweier Stände), und ohne
+     * Integrations-Bindung gibt es gar keine Energie (E5).
+     *
+     * <p>Die Rohwerte werden mit {@link VerbrauchRegeln#anteilJeRohwert} getrennt und dann mit
+     * derselben Regel integriert, die {@code energie} bildet — nicht nachgebaut, sondern
+     * aufgerufen. Eine Reihe ohne Vorzeichenwechsel bekommt so auf der einen Seite ihre Energie und
+     * auf der anderen 0; beides ist gemessen, keines geraten.
      */
-    static BigDecimal[] ausTeilen(MeasurementCatalog katalog, String kanal, String wertart,
-            List<VerbrauchRegeln.Werteteil> werteteile, Instant beginn, Instant ende) {
-        // Nur die Intervallmenge: dort IST der Viertelstunden-Wert die vorzeichenbehaftete Menge
-        // dieser Viertelstunde, die Zerlegung also exakt. Für den Momentanwert siehe den Klassen-
-        // kommentar — er braucht die Rohwerte, nicht diese Ebene.
-        if (!zweiRichtungen(katalog, kanal) || !"intervallmenge".equals(ViertelstundeRegeln.regelWort(wertart))) {
+    static BigDecimal[] jeRohwert(MeasurementCatalog katalog, String kanal, String wertart,
+            boolean integrieren, List<VerbrauchRegeln.Rohwert> werte, Instant von, Instant bis,
+            Duration kadenz) {
+        if (!zweiRichtungen(katalog, kanal) || !integrieren
+                || !"momentanwert".equals(ViertelstundeRegeln.regelWort(wertart))) {
             return null;
         }
+        VerbrauchRegeln.Werteteil positiv = VerbrauchRegeln.momentanwertTeil(
+                VerbrauchRegeln.anteilJeRohwert(werte, MessstelleRegeln.ANTEIL_POSITIV), von, bis, kadenz, true);
+        VerbrauchRegeln.Werteteil negativ = VerbrauchRegeln.momentanwertTeil(
+                VerbrauchRegeln.anteilJeRohwert(werte, MessstelleRegeln.ANTEIL_NEGATIV), von, bis, kadenz, true);
+        if (positiv == null || negativ == null || positiv.energie() == null || negativ.energie() == null) {
+            return null;
+        }
+        return new BigDecimal[] {positiv.energie().abs(), negativ.energie().abs()};
+    }
+
+    /**
+     * Das Paar einer Periode aus den GESPEICHERTEN Anteilen ihrer Viertelstunden — für Tag und
+     * Monat, die beide unmittelbar auf den Viertelstunden stehen. Hier wird nichts mehr gerechnet:
+     * die Anteile stehen seit {@code V20260918104000} in {@code messreihe_viertelstunde}, gebildet
+     * je Rohwert.
+     *
+     * @param anteile je Viertelstunde ihr {@code {positiv, negativ}} oder {@code null}
+     * @return {@code {positiv, negativ}} oder {@code null}, wenn es keine Aussage gibt
+     */
+    static BigDecimal[] ausTeilen(List<ViertelstundenTeile.Anteil> anteile, Instant beginn, Instant ende) {
         Summe s = new Summe();
-        for (VerbrauchRegeln.Werteteil w : werteteile) {
-            VerbrauchRegeln.Teilperiode t = w.teil();
-            if (t == null || t.von().isBefore(beginn) || !t.von().isBefore(ende)) {
+        boolean einer = false;
+        for (ViertelstundenTeile.Anteil a : anteile) {
+            if (a.von().isBefore(beginn) || !a.von().isBefore(ende)) {
                 continue;
             }
-            s.nimm(VerbrauchRegeln.anteilDesWerts(w.summe(), MessstelleRegeln.ANTEIL_POSITIV),
-                    VerbrauchRegeln.anteilDesWerts(w.summe(), MessstelleRegeln.ANTEIL_NEGATIV));
+            einer = true;
+            s.nimm(a.positiv(), a.negativ());
         }
-        return s.fertig();
+        return einer ? s.fertig() : null;
     }
 
     /** Führt der Katalogkanal zwei Flussrichtungen in EINER Größe? */

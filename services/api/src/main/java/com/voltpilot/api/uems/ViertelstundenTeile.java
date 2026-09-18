@@ -51,7 +51,8 @@ final class ViertelstundenTeile {
     private static final String SPALTEN = "intervall_beginn, zustand, wertart, site_id, stand_anfang, stand_anfang_zeit, "
             + "stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, letzter_zeit, "
             + "menge, menge_zustand, erhalten, erwartet, kennzeichen::text, kadenz_s, n_nachgeliefert, "
-            + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen";
+            + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen, "
+            + "energie_positiv, energie_negativ";
 
     private ViertelstundenTeile() {}
 
@@ -66,9 +67,17 @@ final class ViertelstundenTeile {
      * @param werteteile dieselben Viertelstunden wie {@code teile} als {@link Werteteil}, dazu die
      *     erste mit gutem Wert ab {@code bis}
      */
+    /**
+     * Der gespeicherte Anteil EINER Viertelstunde (AP-08 E15/M5, {@code V20260918104000}) — beide
+     * Zahlen zusammen oder gar keine. {@code null} in beiden heißt: diese Viertelstunde macht über
+     * ihre Richtungen keine Aussage (kein Zwei-Richtungs-Kanal, oder vor der Migration verdichtet).
+     */
+    record Anteil(Instant von, BigDecimal positiv, BigDecimal negativ) {}
+
     record Geladen(List<Teilperiode> teile, List<VerbrauchRegeln.Ereignis> ereignisse, int vorhanden,
             int endgueltig, int nachgeliefert, Integer kadenzS, String wertart, UUID siteId,
-            boolean siteEindeutig, List<Werteteil> werteteile, ZaehlerDeklaration deklaration) {
+            boolean siteEindeutig, List<Werteteil> werteteile, List<Anteil> anteile,
+            ZaehlerDeklaration deklaration) {
 
         /** Nur die Viertelstunden IN {@code [von, bis)}. */
         List<Teilperiode> innen(Instant von, Instant bis) {
@@ -82,6 +91,7 @@ final class ViertelstundenTeile {
         String spalten = SPALTEN;
         List<Teilperiode> teile = new ArrayList<>();
         List<Werteteil> werteteile = new ArrayList<>();
+        List<Anteil> anteile = new ArrayList<>();
         int vorhanden = 0;
         int endgueltig = 0;
         int nachgeliefert = 0;
@@ -118,6 +128,7 @@ final class ViertelstundenTeile {
                     Teilperiode t = teilperiode(rs);
                     teile.add(t);
                     werteteile.add(werteteil(rs, t));
+                    anteile.add(new Anteil(beginn, rs.getBigDecimal(27), rs.getBigDecimal(28)));
                     if (!beginn.isBefore(von) && beginn.isBefore(bis)) {
                         vorhanden++;
                         if (ViertelstundeRegeln.ENDGUELTIG.equals(rs.getString(2))) {
@@ -160,7 +171,7 @@ final class ViertelstundenTeile {
         ZaehlerDeklaration deklaration = ZaehlerDeklaration.lesen(con, tenant, entity, kanal, von);
         return new Geladen(teile, ereignisse(con, tenant, entity, kanal, von, bis, deklaration), vorhanden,
                 endgueltig, nachgeliefert, kadenzS, wertart, site, siteEindeutig, List.copyOf(werteteile),
-                deklaration);
+                List.copyOf(anteile), deklaration);
     }
 
     /** Eine gelesene Viertelstunde (Spalten wie in {@link #laden}) als {@link Teilperiode}. */

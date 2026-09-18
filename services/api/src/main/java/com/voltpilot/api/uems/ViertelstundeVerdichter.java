@@ -129,7 +129,8 @@ public class ViertelstundeVerdichter {
         "box", "box_2", "box_weitere",
         "fassung", "katalog", "rolle",
         "zustand", "endgueltig_ab", "berechnet_am", "version",
-        "n_nachgeliefert", "letzte_eingangszeit", "zustellart", "ereignisse"};
+        "n_nachgeliefert", "letzte_eingangszeit", "zustellart", "ereignisse",
+        "energie_positiv", "energie_negativ"};
 
     /** Die Spalten, die als {@code jsonb} geschrieben werden (der Platzhalter braucht den Cast). */
     private static final Set<String> JSONB_SPALTEN = Set.of("ereignisse", "kennzeichen");
@@ -708,6 +709,14 @@ public class ViertelstundeVerdichter {
         // E5: die Energie aus Leistung — nur mit Bindung `integration`, nur mit Kennzeichen (das die
         // Regel schon in `kennzeichen` gesetzt hat), nie in `menge` (M6).
         werteJeSpalte.put("energie", teil == null ? null : teil.energie());
+        // AP-08 E15/M5 — der Anteil eines Vorzeichen-Kanals JE ROHWERT, vor jeder Verdichtung: die
+        // Energie aus max(0, P) und die aus max(0, −P), mit derselben Regel integriert wie `energie`.
+        // Nur hier ist er exakt; eine Ebene höher wäre die Viertelstunde schon EINE Energie, und ein
+        // Vorzeichenwechsel in ihr wäre verloren (V20260918104000, Richtungspaar).
+        BigDecimal[] anteil = Richtungspaar.jeRohwert(katalog, a.kanal(), wertart, integrieren,
+                werte, von, bis, kadenzD);
+        werteJeSpalte.put("energie_positiv", anteil == null ? null : anteil[0]);
+        werteJeSpalte.put("energie_negativ", anteil == null ? null : anteil[1]);
         werteJeSpalte.put("gemessen_s", momentan ? (int) teil.gemessenS() : null);
         werteJeSpalte.put("luecke_innen", momentan ? teil.lueckeInnen() : null);
         werteJeSpalte.put("erhalten", e.erhalten());
