@@ -1,9 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import type { Funktionen, StandorteAmStichtag } from '../src/api';
+import type { Funktionen, StandortAmStichtag, StandorteAmStichtag, Unternehmen } from '../src/api';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
-import { ahrenbergHeute, FIXTURE_IDS, werkAhrenberg, werkLindach } from '../src/test/standorteFixtures';
+import { ahrenbergHeute, ahrenbergUnternehmen, FIXTURE_IDS, werkAhrenberg, werkLindach } from '../src/test/standorteFixtures';
 
 /**
  * Der Modus „nur messen" im Anlege-Fluss (Steuern-Regel, Captain 15.09.2026) auf der
@@ -26,6 +26,7 @@ const MESSSTELLEN_LINDACH = `#/standort/${FIXTURE_IDS.st2}/messstellen`;
 interface Cloud {
   standorte: StandorteAmStichtag;
   funktionen: Funktionen;
+  unternehmen?: Unternehmen;
   /** Jeder Körper von `POST /api/v1/sites`. */
   angelegt: Record<string, unknown>[];
 }
@@ -42,6 +43,19 @@ const kundeMitSteuern = (): Cloud => ({
   angelegt: [],
 });
 
+const neuerMesskunde = (): Cloud => ({
+  standorte: { ...ahrenbergHeute(), standorte: [], nichtGezeigt: [], nochNichtZugeordnet: null },
+  funktionen: ahrenbergFunktionen({ standorte: [] }),
+  unternehmen: ahrenbergUnternehmen({ standortZahl: 0, anlagenZahl: 0, nochNichtZugeordnetZahl: 0 }),
+  angelegt: [],
+});
+
+const bestandskundeOhneStandort = (): Cloud => ({
+  standorte: { ...ahrenbergHeute(), standorte: [], nichtGezeigt: [], nochNichtZugeordnet: null },
+  funktionen: ahrenbergFunktionen({ standorte: [] }),
+  angelegt: [],
+});
+
 async function verdrahte(page: Page, cloud: Cloud) {
   // Keine Kartenkacheln aus dem Netz — die Karte ist hier nicht Gegenstand.
   await page.route((url) => url.hostname !== '127.0.0.1' && url.hostname !== 'localhost', (r) => r.abort());
@@ -52,6 +66,25 @@ async function verdrahte(page: Page, cloud: Cloud) {
     const json = (body: unknown, status = 200) =>
       r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (pfad === '/api/v1/standorte' && methode === 'GET') return json(cloud.standorte);
+    if (pfad === '/api/v1/unternehmen') return json(cloud.unternehmen ?? ahrenbergUnternehmen());
+    if (pfad === '/api/v1/standorte/kurzzeichen-vorschlag') return json({ kurzzeichen: 'ST-2' });
+    if (pfad === '/api/v1/standorte' && methode === 'POST') {
+      const body = r.request().postDataJSON() as {
+        name: string;
+        adresse: { strasse: string; plz: string | null; ort: string; land: string };
+        zeitzone: string;
+      };
+      const standort: StandortAmStichtag = werkLindach({
+        name: body.name,
+        adresse: body.adresse,
+        zeitzone: body.zeitzone,
+        anlagen: [],
+        anlagenZahl: 0,
+      });
+      cloud.standorte = { ...cloud.standorte, standorte: [standort] };
+      cloud.funktionen = ahrenbergFunktionen({ standorte: [funktionWerkLindach()] });
+      return json(standort, 201);
+    }
     if (pfad === '/api/v1/funktionen') return json(cloud.funktionen);
     if (pfad === '/api/v1/sites' && methode === 'POST') {
       const body = r.request().postDataJSON() as Record<string, unknown>;
@@ -89,10 +122,10 @@ async function verdrahte(page: Page, cloud: Cloud) {
   });
 }
 
-async function oeffne(page: Page, breite: number, suche = '') {
+async function oeffne(page: Page, breite: number, suche = '', titel = 'Wie heißt Ihre Anlage?') {
   await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
   await page.goto(`/e2e/anlage-anlegen.html${suche}`);
-  await expect(page.getByRole('heading', { name: 'Wie heißt Ihre Anlage?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: titel })).toBeVisible();
 }
 
 const woerter = (page: Page) =>
@@ -154,6 +187,69 @@ async function messeUndFotografiere(page: Page, breite: number, name: string) {
 }
 
 for (const breite of BREITEN) {
+  test(`neuer Messkunde ohne Standort · ${breite} px: zuerst Standort, danach Anlage nur messen`, async ({ page }) => {
+    const cloud = neuerMesskunde();
+    await verdrahte(page, cloud);
+    await oeffne(page, breite, '', 'Zuerst den Standort');
+    await expect(page.locator('.vp-step-label')).toHaveText(['Standort', 'Anlage', 'Register', 'Gerät']);
+    await expect(page.getByText('Jede Anlage gehört zu einem Standort.')).toBeVisible();
+    await schweigt(page, 'Zuerst den Standort');
+    await messeUndFotografiere(page, breite, 'neu-0-standort-zuerst');
+
+    await page.getByRole('button', { name: 'Standort anlegen', exact: true }).click();
+    const standort = page.getByRole('dialog', { name: 'Standort anlegen' });
+    await standort.getByLabel('Name *').fill('Werk Lindach');
+    await standort.getByLabel('Straße und Hausnummer *').fill('Am Bahndamm 12');
+    await standort.getByLabel('Ort *').fill('Lindach');
+    await standort.getByRole('button', { name: 'Standort anlegen' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Wie heißt Ihre Anlage?' })).toBeVisible();
+    const anlage = page.getByRole('dialog', { name: 'Anlage anlegen' });
+    await expect(anlage.getByRole('combobox', { name: 'Standort *' })).toContainText('Werk Lindach');
+    await expect(anlage.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät']);
+    await schweigt(page, 'Anlage nach dem Standort');
+    await messeUndFotografiere(page, breite, 'neu-1-anlage');
+
+    await anlage.getByLabel('Name der Anlage').fill('Messung Halle 1');
+    await anlage.getByRole('button', { name: 'Weiter', exact: true }).click();
+    await expect(anlage.getByRole('heading', { name: 'PV & Speicher aus dem Register' })).toBeVisible();
+    expect(cloud.angelegt).toEqual([
+      expect.objectContaining({ standortId: FIXTURE_IDS.st2, plantKind: 'eigenverbrauch', tarifArt: 'ohne' }),
+    ]);
+  });
+
+  test(`Ein-Anlagen-Bestandskunde ohne Standort · ${breite} px: Zeichenweg bleibt wie heute`, async ({ page }) => {
+    await verdrahte(page, bestandskundeOhneStandort());
+    await oeffne(page, breite, '?wirt=bestand-ohne-standort');
+    const dialog = page.getByRole('dialog', { name: 'Anlage anlegen' });
+    await expect(dialog.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät', 'Betrieb']);
+    await expect(dialog.getByRole('combobox', { name: 'Veräußerungsform' })).toBeVisible();
+    await expect(dialog.getByText(/Feineinstellungen/)).toBeVisible();
+    await expect(dialog.getByText('Zuerst den Standort')).toHaveCount(0);
+    await messeUndFotografiere(page, breite, 'bestand-eine-anlage');
+  });
+
+  test(`Leerzustand · ${breite} px: Messkunde ohne Fahrplan und Erlöse, Gegenprobe wie heute`, async ({ page }) => {
+    await verdrahte(page, messkunde());
+    await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
+    await page.goto('/e2e/anlage-anlegen.html?wirt=leer');
+    await expect(page.getByRole('heading', { name: 'Noch keine Anlage' })).toBeVisible();
+    await expect(page.locator('.vp-main')).toContainText('ihre Messwerte');
+    await expect(page.locator('.vp-main')).not.toContainText('Fahrplan');
+    await expect(page.locator('.vp-main')).not.toContainText('Erlöse');
+    await messeUndFotografiere(page, breite, 'leer-messkunde-nachher');
+  });
+
+  test(`Leerzustand-Gegenprobe · ${breite} px: Standort mit Steuern behält heutigen Text`, async ({ page }) => {
+    await verdrahte(page, kundeMitSteuern());
+    await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
+    await page.goto('/e2e/anlage-anlegen.html?wirt=leer');
+    await expect(page.getByRole('heading', { name: 'Noch keine Anlage' })).toBeVisible();
+    await expect(page.locator('.vp-main')).toContainText('Fahrplan');
+    await expect(page.locator('.vp-main')).toContainText('Erlöse');
+    await messeUndFotografiere(page, breite, 'leer-wie-heute-vorher');
+  });
+
   test(`nur messen · ${breite} px: Werk Lindach — drei Schritte, kein Wort der Wortliste, „Zu den Messstellen"`, async ({ page }) => {
     const cloud = messkunde();
     await verdrahte(page, cloud);

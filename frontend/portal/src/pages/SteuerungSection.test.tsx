@@ -9,7 +9,9 @@ import { buildGuidedFlow } from '../flows/guidedBuilder';
 import { DURCH_VOLTPILOT } from '../betriebsmodelle';
 import { NEUE_REGEL_LABEL } from '../steuerungArea';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
-import { FIXTURE_IDS } from '../test/standorteFixtures';
+import { ahrenbergHeute, FIXTURE_IDS } from '../test/standorteFixtures';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
 // The read-only canvas preview needs real layout; the derivation it renders is
 // covered by the flow-editor tests.
@@ -1204,20 +1206,20 @@ describe('Umstellung des Anlagentyps hinterlässt keinen kaputten Zwischenzustan
 /**
  * Steuern-Regel (Captain über firstmate 003/004, 15.09.2026) — löst den
  * Leerzustand „Diese Anlage misst nur" aus AP-01 IP-8 (PR 776) BEWUSST ab: eine
- * Anlage, die nur misst, schweigt auf ihrer Steuerungsseite, auch wenn am
- * Standort eine andere Anlage steuert („Von steuern soll beim messen eigentlich
- * noch nicht die rede sein."). Die Seite bleibt, und mit ihr der Weg zu
- * Steuerart und Regeln („Okay ich will aber schon das Messkunden auch zu Kunden
- * werden wo man verbraucher steuern kann."). Referenzunternehmen Ahrenberg:
+ * Anlage, die nur misst, schweigt in der Messwelt, auch wenn am Standort eine
+ * andere Anlage steuert („Von steuern soll beim messen eigentlich noch nicht
+ * die rede sein."). Auf der vom Kunden selbst geöffneten Steuerungsseite steht
+ * genau ein sachlicher Einstieg in den vorhandenen Standort-Assistenten
+ * („Okay ich will aber schon das Messkunden auch zu Kunden werden wo man
+ * verbraucher steuern kann."). Referenzunternehmen Ahrenberg:
  * Halle 1 steuert, Halle 2 misst mit dem Ladepunkt „Parkplatz Halle 2", Werk
  * Lindach hat keine steuerbare Komponente.
  */
-describe('Steuern-Regel · eine Anlage, die nur misst, schweigt auf ihrer Steuerungsseite — der Weg bleibt offen', () => {
+describe('Steuern-Regel · Messwelt still, eigener Anstoß auf der Steuerungsseite bleibt möglich', () => {
   const { an2, an3 } = FIXTURE_IDS;
   /** Was PR 776 hier anbot — kein Wort davon darf mehr erscheinen. */
   const ANGEBOTE = [
     'Diese Anlage misst nur',
-    'Steuern & Optimieren',
     'aufnehmen',
     'Wenn VoltPilot',
     'Zum Steuern braucht sie',
@@ -1255,7 +1257,7 @@ describe('Steuern-Regel · eine Anlage, die nur misst, schweigt auf ihrer Steuer
       rangliste: [],
     } as never);
 
-  it('Halle 2 schweigt auf ihrer eigenen Seite, obwohl am Standort Halle 1 steuert — kein Hinweis, kein „aufnehmen“', async () => {
+  it('Halle 2: sachlicher Zustand und Einstieg, obwohl am Standort Halle 1 steuert — kein Verkaufssatz', async () => {
     setup();
     nurNetz();
     ladepunktHalle2();
@@ -1266,9 +1268,50 @@ describe('Steuern-Regel · eine Anlage, die nur misst, schweigt auf ihrer Steuer
     expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Ladepunkt Parkplatz Halle 2/ })).toBeInTheDocument();
     expect(screen.queryByTestId('nur-messen')).toBeNull();
+    expect(screen.getByTestId('steuern-einstieg')).toHaveTextContent(
+      'Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.',
+    );
+    expect(screen.getByRole('button', { name: 'Steuern & Optimieren einrichten' })).toBeInTheDocument();
     for (const wort of ANGEBOTE) expect(container.textContent, wort).not.toContain(wort);
     expect(container.textContent).not.toContain('Werk Ahrenberg – Halle 1');
     expect(funktionen).toHaveBeenCalled();
+  });
+
+  it('Erreichbarkeit: der Einstieg öffnet den bestehenden Assistenten mit Anlage und richtigem Standort', async () => {
+    setup();
+    nurNetz();
+    vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    render(<SteuerungSection site={{ ...site, id: an2, name: 'Werk Ahrenberg – Halle 2' }} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Steuern & Optimieren einrichten' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Steuern & Optimieren einrichten' });
+    expect(within(dialog).getByText('Werk Ahrenberg – Halle 2')).toBeInTheDocument();
+    expect(within(dialog).getByRole('combobox', { name: 'Standort' })).toHaveTextContent('Werk Ahrenberg');
+    expect(within(dialog).getByText('Standort: Werk Ahrenberg')).toBeInTheDocument();
+  });
+
+  it('ohne Recht ist kein Einstiegsknopf sichtbar', async () => {
+    setup();
+    nurNetz();
+    const me = structuredClone(rechteSeed().me);
+    const standort = me.standorte.find((s) => s.id === FIXTURE_IDS.st1)!;
+    standort.rechte = standort.rechte.filter((recht) => recht !== 'funktion.steuern_einrichten');
+    setSelbstauskunft(me);
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    render(<SteuerungSection site={{ ...site, id: an2, name: 'Werk Ahrenberg – Halle 2' }} />);
+
+    await screen.findByTestId('steuern-einstieg');
+    expect(screen.queryByRole('button', { name: 'Steuern & Optimieren einrichten' })).toBeNull();
+  });
+
+  it('eine bereits steuernde Anlage bleibt unverändert und sieht den Einstieg nicht', async () => {
+    setup();
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    render(<SteuerungSection site={{ ...site, id: FIXTURE_IDS.an1, name: 'Werk Ahrenberg – Halle 1' }} />);
+    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
+    expect(screen.queryByTestId('steuern-einstieg')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Steuern & Optimieren einrichten' })).toBeNull();
   });
 
   it('Erreichbarkeit: der Weg zu Steuerart und Regeln bleibt — die Zeile des Ladepunkts öffnet den Steuerart-Dialog, „＋ Neue Regel“ steht da', async () => {
@@ -1281,12 +1324,14 @@ describe('Steuern-Regel · eine Anlage, die nur misst, schweigt auf ihrer Steuer
     expect(await screen.findByRole('dialog', { name: /Steuerart/ })).toBeInTheDocument();
   });
 
-  it('Werk Lindach ohne steuerbare Komponente schweigt ebenso — kein „Gerät anbinden“, die Regeln stehen da', async () => {
+  it('Werk Lindach ohne steuerbare Komponente: kein „Gerät anbinden“, aber der bewusste Einstieg steht da', async () => {
     setup();
     nurNetz();
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
     render(<SteuerungSection site={{ ...site, id: an3, name: 'Werk Lindach' }} onOpenSub={vi.fn()} />);
     expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: NEUE_REGEL_LABEL })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Steuern & Optimieren einrichten' })).toBeInTheDocument();
     for (const wort of ANGEBOTE) expect(document.body.textContent, wort).not.toContain(wort);
   });
 });

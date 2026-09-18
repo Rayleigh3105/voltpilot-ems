@@ -2,10 +2,12 @@ import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { keycloak } from '../src/auth';
+import type { Site } from '../src/api';
 import { steuerGeldWoerter } from '../src/anlegeNurMessen';
 import { AnlageAnlegenDrawer } from '../src/components/AnlageAnlegenDrawer';
 import { hashForRoute } from '../src/nav';
 import { OnboardingWizard } from '../src/Onboarding';
+import { UebersichtPage } from '../src/pages/UebersichtPage';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -32,6 +34,20 @@ import '../src/index.css';
  */
 const wirt = new URLSearchParams(window.location.search).get('wirt');
 
+const BESTANDS_ANLAGE: Site = {
+  id: 'bestand-ohne-standort',
+  name: 'Bestandsanlage',
+  biddingZone: 'DE-LU',
+  latitude: null,
+  longitude: null,
+  plantKind: 'eigenverbrauch',
+  anzulegenderWertCtKwh: null,
+  tarifArt: 'ohne',
+  tarifParamCtKwh: null,
+  netzladenErlaubt: false,
+  maxFeedInKw: null,
+};
+
 (window as unknown as { steuerGeldWoerterDerSeite: () => string[] }).steuerGeldWoerterDerSeite = () => {
   const merkmale = [...document.body.querySelectorAll('[aria-label],[placeholder],[title],[alt]')].flatMap((el) =>
     ['aria-label', 'placeholder', 'title', 'alt'].map((a) => el.getAttribute(a) ?? ''),
@@ -42,6 +58,23 @@ const wirt = new URLSearchParams(window.location.search).get('wirt');
 function Buehne() {
   const [offen, setOffen] = useState(true);
   const [gemeldet, setGemeldet] = useState<string | null>(null);
+  if (wirt === 'leer') {
+    return (
+      <div className="vp-content">
+        <main className="vp-main">
+          <UebersichtPage
+            sites={[]}
+            devices={[]}
+            selectedSite={null}
+            onSelectSite={() => {}}
+            onNavigate={() => {}}
+            onReload={() => {}}
+            betriebsart="endkunde"
+          />
+        </main>
+      </div>
+    );
+  }
   if (wirt === 'assistent') {
     return (
       <div className="vp-content">
@@ -68,6 +101,7 @@ function Buehne() {
       <AnlageAnlegenDrawer
         open={offen}
         onClose={() => setOffen(false)}
+        existingSites={wirt === 'bestand-ohne-standort' ? [BESTANDS_ANLAGE] : undefined}
         onChanged={(id, ziel) => setGemeldet(`${id} → ${ziel ? hashForRoute(ziel) : 'Anlage'}`)}
       />
     </div>

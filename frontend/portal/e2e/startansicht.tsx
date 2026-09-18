@@ -123,6 +123,7 @@ import {
   werkLindach,
 } from '../src/test/standorteFixtures';
 import { versorgungAhrenberg, versorgungLindach } from '../src/test/versorgungFixtures';
+import { ahrenbergNetzanschluesse } from '../src/test/netzanschlussFixtures';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
 import {
@@ -929,6 +930,13 @@ Object.assign(api, {
   summenwertQuellen: async () => [], // Diese Bühne stellt keine lesbaren Geräte-Register.
   siteEntities: async (id: string) => ({ registry: null, localSetup: [], staleOnDevice: [], entities: komponentenVon(id) }),
   siteVerbraucher: async (id: string) => verbraucherVon(id),
+  netzanschluesse: async (standortId: string) => ({
+    standort: { id: standortId, kurzzeichen: standortId === FIXTURE_IDS.st1 ? 'ST-1' : 'ST-2' },
+    stichtag: '2026-10-20',
+    kennzeichen_vorschlag: 'NA-3',
+    netzanschluesse: ahrenbergNetzanschluesse().filter((n) => n.standort.id === standortId),
+  }),
+  chargingConfig: async () => ({ gridLimitKw: null, priorityChargePointIds: [], chargePoints: [], frame: null }),
   entityStrategies: async () => ({}),
   // Der Einstieg mit nur einer Anlage kann deren Cockpit vor der E1-Weiche laden.
   // Die Standort-Bühne liefert diese Zusatzdaten nicht; auch dieser Pfad bleibt isoliert.

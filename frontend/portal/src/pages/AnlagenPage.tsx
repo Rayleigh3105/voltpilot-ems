@@ -56,6 +56,8 @@ import { todaySlots } from '../schedule';
 import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
+import { anlageLeertext } from '../anlegeNurMessen';
+import { useAnlegeArt } from '../useAnlegeArt';
 import { resolveAnlage } from '../ebenenNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
@@ -291,6 +293,7 @@ function AnlagenEmpty({
   isAdmin: boolean;
 }) {
   const [drawer, setDrawer] = useState(false);
+  const anlegeArt = useAnlegeArt();
   return (
     <>
       <div className="vp-page-head">
@@ -299,7 +302,11 @@ function AnlagenEmpty({
           <p>
             {isAdmin
               ? 'Dieser Mandant hat noch keine Anlage.'
-              : 'Hier erscheint Ihre Anlage: Live-Daten, Fahrplan, Technik und Erlöse an einem Ort.'}
+              : anlageLeertext(
+                  anlegeArt,
+                  'Hier erscheint Ihre Anlage: Live-Daten, Fahrplan, Technik und Erlöse an einem Ort.',
+                  'Hier erscheint Ihre Anlage mit ihren Messwerten und ihrem technischen Zustand.',
+                )}
           </p>
         </div>
       </div>
@@ -312,7 +319,11 @@ function AnlagenEmpty({
           <p>
             {isAdmin
               ? 'Sobald für diesen Mandanten eine Anlage angelegt ist, erscheint sie hier. Sie können im Namen des Mandanten eine Anlage anlegen.'
-              : 'Legen Sie Ihre Anlage an - danach verbinden Sie Ihr Gerät und sehen Live-Daten, Fahrplan und Erlöse.'}
+              : anlageLeertext(
+                  anlegeArt,
+                  'Legen Sie Ihre Anlage an - danach verbinden Sie Ihr Gerät und sehen Live-Daten, Fahrplan und Erlöse.',
+                  'Legen Sie Ihre Anlage an - danach verbinden Sie Ihr Gerät und sehen ihre Messwerte.',
+                )}
           </p>
           <Recht aktion="anlage.verwalten"><Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
             Anlage anlegen

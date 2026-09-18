@@ -15,6 +15,8 @@ export type SteuernSchritt = 1 | 2 | 3 | 4 | 5 | 6;
 
 export const STEUERN_TITEL = 'Steuern & Optimieren einrichten';
 export const STEUERN_TITEL_KURZ = 'Steuern & Optimieren';
+export const STEUERN_EINSTIEG_SATZ = 'Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.';
+export const STEUERN_EINSTIEG_AKTION = 'Steuern & Optimieren einrichten';
 export const SPATER = 'Später fortsetzen';
 export const STEUERN_ENTWURF_SCHLUESSEL = 'vp.uems.steuern-assistent.entwurf.v1';
 

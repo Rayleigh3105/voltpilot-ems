@@ -10,6 +10,8 @@ import { anlageRoute, type Route } from '../nav';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
 import { AnlageSeite } from './AnlagenPage';
+import { anlageLeertext } from '../anlegeNurMessen';
+import { useAnlegeArt } from '../useAnlegeArt';
 
 interface UebersichtProps {
   sites: Site[];
@@ -82,6 +84,7 @@ export function UebersichtPage(props: UebersichtProps) {
 /** Empty-state: onboarding entry for customers, neutral notice for admins. */
 function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
   const [siteDrawer, setSiteDrawer] = useState(false);
+  const anlegeArt = useAnlegeArt();
   return (
     <>
       <div className="vp-page-head">
@@ -90,7 +93,11 @@ function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
           <p>
             {isAdmin
               ? 'Dieser Mandant hat noch keine Anlage.'
-              : 'Legen Sie Ihre Anlage an, um Ihr Gerät zu verbinden und Live-Daten, Fahrplan und Erlöse zu sehen.'}
+              : anlageLeertext(
+                  anlegeArt,
+                  'Legen Sie Ihre Anlage an, um Ihr Gerät zu verbinden und Live-Daten, Fahrplan und Erlöse zu sehen.',
+                  'Legen Sie Ihre Anlage an, um Ihr Gerät zu verbinden und ihre Messwerte zu sehen.',
+                )}
           </p>
         </div>
       </div>
@@ -103,7 +110,11 @@ function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
           <p>
             {isAdmin
               ? 'Sobald für diesen Mandanten eine Anlage angelegt ist, erscheinen hier ihre Live-Daten, Marktpreise, Wetter und der Batterie-Fahrplan. Sie können im Namen des Mandanten eine Anlage anlegen.'
-              : 'Eine Anlage bündelt Ihr Gerät, Live-Daten, Marktpreise, Wetter und den Batterie-Fahrplan. Danach verbinden Sie Ihr Gerät in wenigen Schritten.'}
+              : anlageLeertext(
+                  anlegeArt,
+                  'Eine Anlage bündelt Ihr Gerät, Live-Daten, Marktpreise, Wetter und den Batterie-Fahrplan. Danach verbinden Sie Ihr Gerät in wenigen Schritten.',
+                  'Eine Anlage bündelt Ihr Gerät und seine Messwerte. Danach verbinden Sie Ihr Gerät in wenigen Schritten.',
+                )}
           </p>
           <Recht aktion="anlage.verwalten"><Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
             {isAdmin ? 'Anlage anlegen' : 'Erste Anlage anlegen'}

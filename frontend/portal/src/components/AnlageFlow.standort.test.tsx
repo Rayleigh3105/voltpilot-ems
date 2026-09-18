@@ -4,12 +4,13 @@ import { AnlageFlow } from './AnlageFlow';
 import { api, ApiError, type Site, type StandorteAmStichtag } from '../api';
 import { standortWaehlenSatz } from '../anlageStandort';
 import { ahrenbergHeute, bestandEineAnlage, FIXTURE_IDS } from '../test/standorteFixtures';
+import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 
 /**
- * UEMS AP-02 IP-8 — Bestandsschutz von Schritt 1 des Anlage-Assistenten: ohne
- * Standort-Objekt im Kundenbereich sieht der Schritt Zeichen für Zeichen aus wie
- * vor dem Paket, und `POST /api/v1/sites` trägt KEIN `standortId`. Die Dateien
- * unter `__snapshots__/` wurden auf dem Stand VOR IP-8 aufgenommen (eigener Commit).
+ * UEMS AP-14 IP-4: ohne Standort UND ohne Anlage kommt zuerst der bestehende
+ * Standort-Weg. Hat der Kundenbereich bereits eine Anlage, bleibt Schritt 1
+ * Zeichen für Zeichen wie heute. Die Dateien unter `__snapshots__/` wurden auf
+ * dem Stand VOR IP-8 aufgenommen (eigener Commit).
  */
 
 vi.mock('../auth', () => ({ isPlatformAdmin: () => false }));
@@ -82,10 +83,12 @@ function ohneReactIds(html: string): string {
 
 async function schrittEins(existingSites: Site[] | undefined, standorte: () => Promise<StandorteAmStichtag>) {
   vi.spyOn(api, 'standorte').mockImplementation(standorte);
+  vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen({ standorte: [] }));
+  vi.spyOn(api, 'unternehmen').mockResolvedValue(null as never);
   // Das Anlegen bleibt offen: verglichen wird nur, was gesendet wird.
   const createSite = vi.spyOn(api, 'createSite').mockReturnValue(new Promise<Site>(() => {}));
   render(<AnlageFlow sites={[]} existingSites={existingSites} waitForFirstData={false} onDone={() => {}} />);
-  expect(screen.getByText('Wie heißt Ihre Anlage?')).toBeInTheDocument();
+  await screen.findByText(existingSites?.length ? 'Wie heißt Ihre Anlage?' : 'Zuerst den Standort');
   for (let i = 0; i < 3; i++) {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -99,30 +102,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Anlage-Assistent Schritt 1 ohne Standort — unverändert wie heute (AP-02 IP-8)', () => {
+describe('Anlage-Assistent Schritt 1 ohne Standort — zuerst der Standort, Bestand bleibt wie heute', () => {
   for (const [fall, standorte] of Object.entries(OHNE_STANDORT)) {
     it(`Erst-Anlage: ${fall}`, async () => {
       const { html, createSite } = await schrittEins(undefined, standorte);
-      await expect(html).toMatchFileSnapshot('./__snapshots__/anlage-schritt1-ohne-standort.html');
-
-      fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-      expect(createSite).toHaveBeenCalledTimes(1);
-      // Genau der Körper von heute — ohne `standortId`, auch nicht als `undefined`-Schlüssel.
-      const body = createSite.mock.calls[0][0];
-      expect(Object.keys(body)).not.toContain('standortId');
-      expect(body).toStrictEqual({
-        name: 'Zuhause',
-        biddingZone: 'DE-LU',
-        latitude: null,
-        longitude: null,
-        plantKind: 'eigenverbrauch',
-        anzulegenderWertCtKwh: null,
-        tarifArt: 'ohne',
-        tarifParamCtKwh: null,
-        netzladenErlaubt: false,
-        maxFeedInKw: null,
-      });
+      expect(html).toContain('Zuerst den Standort');
+      expect(html).toContain('danach geht es hier mit der Anlage weiter');
+      expect(screen.getByRole('button', { name: 'Standort anlegen' })).toBeInTheDocument();
+      expect(createSite).not.toHaveBeenCalled();
     });
 
     it(`weitere Anlage (gleicher Standort wie …): ${fall}`, async () => {
@@ -135,11 +122,12 @@ describe('Anlage-Assistent Schritt 1 ohne Standort — unverändert wie heute (A
 describe('Anlage-Assistent Schritt 1 · der Standort-Picker (AP-02 IP-8)', () => {
   async function schritt(standorte: () => Promise<StandorteAmStichtag>, anlegen?: () => Promise<Site>) {
     const lesen = vi.spyOn(api, 'standorte').mockImplementation(standorte);
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
     const createSite = vi
       .spyOn(api, 'createSite')
       .mockImplementation(anlegen ?? (() => new Promise<Site>(() => {})));
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Halle 3' } });
+    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Halle 3' } });
     return { lesen, createSite };
   }
 

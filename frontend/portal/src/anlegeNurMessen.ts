@@ -18,6 +18,8 @@
  * und ohne Standort-Objekt bleibt alles wie heute — dieselbe Grenze wie die Geld-Regel
  * je Anlage (`anlageGeld.ts`, PR 776). Still heißt nicht Sackgasse: die Anlage behält
  * ihren Bereich „Steuerung", Tarif und Netzgrenzen stehen unter „Einstellungen".
+ * Ohne geladene Funktionen fällt keine Entscheidung; so blitzt weder die heutige
+ * noch die stille Fassung auf.
  *
  * Reines Modul: keine React-Importe, kein Netzwerk.
  */
@@ -27,7 +29,11 @@ import { pageRoute, standortMessstellenRoute, type Route } from './nav';
 import { steuernSpricht } from './uebersicht';
 
 /** Wie der Anlege-Fluss spricht: wie heute, oder ohne ein Wort über Steuern und Geld. */
-export type AnlegeArt = 'wie_heute' | 'nur_messen';
+export type AnlegeArt = 'wie_heute' | 'nur_messen' | 'standort_zuerst';
+
+export const STANDORT_ZUERST_TITEL = 'Zuerst den Standort';
+export const STANDORT_ZUERST_SATZ =
+  'Jede Anlage gehört zu einem Standort. Legen Sie ihn zuerst an; danach geht es hier mit der Anlage weiter.';
 
 /**
  * Woran der Fluss steht: am gewählten Standort (Schritt 1), an der schon bestehenden
@@ -36,6 +42,8 @@ export type AnlegeArt = 'wie_heute' | 'nur_messen';
 export interface AnlegeOrt {
   standortId?: string | null;
   anlageId?: string | null;
+  /** Bestandsschutz: es gibt bereits mindestens eine Anlage, auch wenn sie keinem Standort zugeordnet ist. */
+  hatAnlage?: boolean;
 }
 
 /**
@@ -51,12 +59,16 @@ export function anlegeStandort(funktionen: Funktionen | null, ort: AnlegeOrt): F
 }
 
 /**
- * Die Entscheidung. Ein Standort, den `GET /funktionen` nicht nennt, und eine Anlage
- * ohne Standort haben keine Ebene — sie bleiben wie heute, nie still „nur messen".
+ * Die Entscheidung. Ohne Standort UND Anlage kommt zuerst der Standort; eine
+ * Bestandsanlage ohne Standort bleibt wie heute. Ein Standort, den `GET /funktionen`
+ * nicht nennt, hat keine Ebene — er bleibt wie heute, nie still „nur messen".
  */
-export function anlegeArt(funktionen: Funktionen | null, ort: AnlegeOrt = {}): AnlegeArt {
-  const standorte = funktionen?.standorte ?? [];
-  if (standorte.length === 0) return 'wie_heute';
+export function anlegeArt(funktionen: Funktionen | null, ort: AnlegeOrt = {}): AnlegeArt | null {
+  if (funktionen === null) return null;
+  const standorte = funktionen.standorte;
+  if (standorte.length === 0) {
+    return ort.hatAnlage || ort.anlageId || ort.standortId ? 'wie_heute' : 'standort_zuerst';
+  }
   if (ort.standortId || ort.anlageId) {
     const standort = anlegeStandort(funktionen, ort);
     return standort && !steuernSpricht(standort) ? 'nur_messen' : 'wie_heute';
@@ -71,7 +83,22 @@ export function anlegeArt(funktionen: Funktionen | null, ort: AnlegeOrt = {}): A
  * verschwände, dieselbe Falle wie beim Geld, `uems-leerzustaende.md` Falle 4).
  */
 export function anlegeSchritte(art: AnlegeArt | null): readonly string[] {
+  if (art === 'standort_zuerst') return ['Standort', ...FLOW_STEPS.filter((s) => s !== 'Betrieb')];
   return art === 'wie_heute' ? FLOW_STEPS : FLOW_STEPS.filter((s) => s !== 'Betrieb');
+}
+
+/**
+ * Text eines Leerzustands „Noch keine Anlage“. Erst wenn die Entscheidung feststeht,
+ * erscheint eine der beiden Fassungen; Laden oder Fehler behauptet weder Geld noch
+ * reine Messung. Ohne Standort-Bezug (`standort_zuerst`) bleibt der heutige Text.
+ */
+export function anlageLeertext(
+  art: AnlegeArt | null,
+  wieHeute: string,
+  nurMessen: string,
+): string | null {
+  if (art === null) return null;
+  return art === 'nur_messen' ? nurMessen : wieHeute;
 }
 
 /** Der Knopf am Ende des Modus „nur messen". */

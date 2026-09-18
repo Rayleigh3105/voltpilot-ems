@@ -33,6 +33,23 @@
   opacity: 0.72;
 }
 
+.vp-steuern-einstieg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-4, 16px);
+  flex-wrap: wrap;
+  padding: var(--vp-space-4, 16px);
+  border: 1px solid var(--vp-border, #dbe3ed);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+}
+
+.vp-steuern-einstieg p {
+  margin: 0;
+  color: var(--vp-text-muted, #64748b);
+}
+
 .vp-steuerung-part {
   min-width: 0;
 }
