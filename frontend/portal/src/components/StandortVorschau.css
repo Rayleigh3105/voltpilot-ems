@@ -19,7 +19,9 @@
 .vp-sv-adresse { display: grid; grid-template-columns: minmax(0, 2fr) minmax(90px, .6fr) minmax(0, 1.2fr); gap: 10px; }
 .vp-sv-zone { margin: 0; color: var(--vp-text-muted, #6c757d); font-size: .85rem; }
 .vp-sv-folgen { border-radius: 12px; padding: 14px; background: var(--vp-info-soft, #eff6ff); }
+.vp-sv-folgen h3 { margin: 10px 0 4px; font-size: 1rem; }
 .vp-sv-folgen p { margin: 4px 0 0; }
+.vp-sv-folgen .vp-sv-vorher { margin-top: 0; font-weight: 700; }
 .vp-sv-fehler { color: var(--vp-danger, #b42318); margin: 0; }
 @media (max-width: 720px) {
   .vp-sv-hinweis { align-items: stretch; flex-direction: column; }

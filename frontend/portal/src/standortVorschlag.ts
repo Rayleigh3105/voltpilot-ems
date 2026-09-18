@@ -1,4 +1,4 @@
-import type { StandortZuordnungBestaetigen, StandortZuordnungVorschau } from './api';
+import type { Betriebsart, Site, StandortZuordnungBestaetigen, StandortZuordnungVorschau } from './api';
 
 export interface VorschlagGruppeForm {
   id: string;
@@ -12,6 +12,48 @@ export interface VorschlagGruppeForm {
 }
 
 export const NICHT_ZUGEORDNET = 'noch nicht zugeordnet';
+
+export const STARTSEITE_UNTERNEHMEN = 'Ihre Startseite wird die Unternehmens-Übersicht.';
+export const GELD_BLEIBT = 'Erlöse und Kosten finden Sie weiter im Cockpit jeder Anlage, im Portfolio und unter Erlöse.';
+export const STEUERUNG_BLEIBT = 'An Steuerung, Fahrplänen und Freigaben ändert sich nichts.';
+
+const STEUERUNGS_ANWENDUNGEN = new Set([
+  'speicher-fahrplan',
+  'ueberschuss',
+  'verbraucher',
+  'marktvermarktung',
+  'lastspitzenkappung',
+  'atypische-netznutzung',
+  'lastmanagement',
+]);
+
+/**
+ * AP-14 IP-14: genau die Aussagen, die für diesen Kunden nach dem Bestätigen
+ * wahr sind. Die Komponente rendert nur dieses Urteil; die Bedingungen stehen
+ * bewusst an EINER reinen Stelle und sind als Vektoren geprüft.
+ */
+export function wasSichAendert(input: {
+  aktuelleEbene: 'heute' | 'standort' | 'unternehmen';
+  zielGruppen: number;
+  isAdmin: boolean;
+  betriebsart: Betriebsart | null;
+  anlagen: readonly Pick<Site, 'tarifArt'>[];
+  anwendungen: readonly string[];
+}): string[] {
+  const saetze: string[] = [];
+  const wechseltZurUnternehmensUebersicht = !input.isAdmin
+    && input.betriebsart !== 'betreiber'
+    && input.aktuelleEbene !== 'unternehmen'
+    && input.zielGruppen >= 2;
+  if (wechseltZurUnternehmensUebersicht) saetze.push(STARTSEITE_UNTERNEHMEN);
+
+  const geldHeuteSichtbar = input.anlagen.some((a) => a.tarifArt === 'fest' || a.tarifArt === 'dynamisch')
+    || input.anwendungen.some((a) => a === 'marktvermarktung' || a === 'lastspitzenkappung');
+  if (geldHeuteSichtbar) saetze.push(GELD_BLEIBT);
+
+  if (input.anwendungen.some((a) => STEUERUNGS_ANWENDUNGEN.has(a))) saetze.push(STEUERUNG_BLEIBT);
+  return saetze;
+}
 
 export function formular(v: StandortZuordnungVorschau): VorschlagGruppeForm[] {
   return v.gruppen.map((g, i) => ({

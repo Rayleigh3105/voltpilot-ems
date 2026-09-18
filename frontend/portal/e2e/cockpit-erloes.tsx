@@ -72,7 +72,9 @@ function view(id: string): CockpitHeroView {
       f.money.savedSteuerungEur == null ? 'no_battery_data' : f.money.steuerungSplitReason,
   };
   const speicher = speicherAussage(money, { now: new Date(f.now) });
-  const netto = 63.23;
+  // AP-14 IP-14: die E2E-Bühne kann dieselbe echte Cockpit-Komponente als
+  // reine Verbrauchsanlage mit Tarif (Kosten statt Erlös) aufnehmen.
+  const netto = new URLSearchParams(location.search).get('verbrauch') === '1' ? -63.23 : 63.23;
   return {
     rings: RINGE,
     ringsNote: null,

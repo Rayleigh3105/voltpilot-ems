@@ -163,7 +163,11 @@ export function PortfolioCockpit({
   const isPhone = useIsPhone();
   const mitEbene = ebene != null;
   const rollen = useRollen();
-  const darfStandorteEinrichten = ebene?.art === 'unternehmen' && rollen.darf('standort.verwalten', null);
+  // Vor der Bestätigung gibt es noch keine UEMS-Ebene: der Mehr-Anlagen-
+  // Bestand landet im bisherigen Portfolio (`ebene === null`). Genau dort
+  // muss die Vorschlagskarte erreichbar sein; nach der Bestätigung bleibt sie
+  // zusätzlich auf der Unternehmens-Ebene zulässig.
+  const darfStandorteEinrichten = (ebene == null || ebene.art === 'unternehmen') && rollen.darf('standort.verwalten', null);
 
   useEffect(() => {
     let active = true;
@@ -647,6 +651,11 @@ export function PortfolioCockpit({
       <StandortVorschau
         open={standortVorschauOffen}
         vorschau={standortVorschlag}
+        aktuelleEbene={ebene?.art ?? 'heute'}
+        isAdmin={isAdmin}
+        betriebsart={betriebsart}
+        anlagen={sites}
+        anwendungen={anwendungen}
         onClose={() => setStandortVorschauOffen(false)}
         onBestaetigt={() => {
           setStandortVorschauOffen(false);
