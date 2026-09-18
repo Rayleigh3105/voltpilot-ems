@@ -144,7 +144,7 @@ class BerichtApiTest {
                 "bericht-vectors.json")));
         nummerEins = BerichtRegeln.kanonisch(vektoren.path("abzuege").path("BR-2026-0001/1"));
         nummerZwei = BerichtRegeln.kanonisch(vektoren.path("abzuege").path("BR-2026-0001/2"));
-        assertThat(BerichtRegeln.pruefsumme(nummerEins)).startsWith("sha256:b79d0fb8");
+        assertThat(BerichtRegeln.pruefsumme(nummerEins)).startsWith("sha256:b113527d");
     }
 
     @BeforeEach
@@ -321,7 +321,7 @@ class BerichtApiTest {
         Antwort nr1 = ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
         JsonNode s = nr1.body();
         assertThat(s.get("nr").asInt()).isEqualTo(1);
-        assertThat(s.get("pruefsumme").asText()).isEqualTo(BerichtRegeln.pruefsumme(nummerEins)).startsWith("sha256:b79d0fb8");
+        assertThat(s.get("pruefsumme").asText()).isEqualTo(BerichtRegeln.pruefsumme(nummerEins)).startsWith("sha256:b113527d");
         assertThat(s.get("pruefsumme_geprueft").asBoolean()).isTrue();
         assertThat(nr1.text()).contains("\"abzug\":" + nummerEins + "}");
 

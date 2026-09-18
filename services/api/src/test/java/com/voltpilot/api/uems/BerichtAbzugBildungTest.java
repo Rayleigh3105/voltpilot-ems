@@ -48,14 +48,12 @@ import org.testcontainers.utility.DockerImageName;
  * endgültig ab 08.11.2026) und die gespeicherte Herkunft der beiden Reste MS-09 und MS-15. Ein fremder Kundenbereich mit
  * eigenem MS-01 liegt daneben.
  *
- * <p><b>Die benannten Lücken</b> (firstmate 001 = A): Der Abzug ist byte-gleich zum Vektor bis auf benannte Stellen, und
- * jede ist als ERWARTETER IST-ZUSTAND behauptet — sobald eine Lücke sich schließt, wird dieser Test rot und die Ausnahme
- * darf weg. Kennzahlen und Bezugsgrößen hat AP-12 IP-6 geschlossen (KZ-0001, KZ-0005, BZ-4, BZ-6 — dafür zwei benannte
- * Abweichungen des Vektors); Speicher-Paar, Tagesverlauf und Ort/Endgültigkeit je Kennzahl bringt das Folgepaket
- * {@code vp-uems-b12-tagesverlauf-speicher}. Dessen ERSTER Schnitt hat den Vertrag auf 1.2 gehoben (die drei Formen
- * stehen in {@code bericht.schema.json}, wahlfrei) und den Träger des Richtungspaars in die Verdichtung gelegt
- * ({@link Richtungspaar}, {@code V20260918101000}); die Bildung schreibt sie noch nicht ab, darum bleiben die Lücken
- * unten stehen und die Prüfsummen der Vektor-Abzüge unberührt.
+ * <p><b>Vollständig seit Vertrag 1.2</b> (Folgepaket {@code vp-uems-b12-tagesverlauf-speicher}, dritter Schnitt): der
+ * Abzug ist byte-gleich zum Vektor — keine benannte Lücke mehr. Die frühere Liste (firstmate 001 = A) ist damit
+ * abgearbeitet: Kennzahlen und Bezugsgrößen schloss AP-12 IP-6, Speicher-Paar, Tagesverlauf und Ort/Endgültigkeit je
+ * Kennzahl dieses Paket. Es bleiben zwei benannte ABWEICHUNGEN des Vektors, die keine Lücken sind: die Kennzahl-Zahl
+ * steht gespeichert mit zehn Nachkommastellen (der Vektor schreibt vier), und KZ-0005 heißt in der Referenzdatei
+ * „Netzbezug je m² — Halle 2“, während der Vektor den Gedankenstrich ausließ.
  */
 @Testcontainers(disabledWithoutDocker = true)
 class BerichtAbzugBildungTest {
@@ -167,44 +165,82 @@ class BerichtAbzugBildungTest {
         assertThat(abzug.path("kennzahlen").get(1).path("name_zum_datenstand").asText()).isEqualTo(kz0005);
         ((ObjectNode) soll.path("kennzahlen").get(1)).put("name_zum_datenstand", kz0005);
 
-        // Lücke 3 — vp-uems-b12-tagesverlauf-speicher: MS-04 („Laden / Entladen“) ist EINE Netto-Menge des Lesemodells,
-        // nicht Laden 7 900 / Entladen 7 100 — ohne menge_art, mit dem Kennzeichen seiner gespeicherten Zeile.
-        List<JsonNode> ms04Soll = zeilen(soll, "MS-04");
-        assertThat(ms04Soll).extracting(w -> w.path("menge_art").asText()).containsExactly("laden", "entladen");
-        List<JsonNode> ms04Ist = zeilen(abzug, "MS-04");
-        assertThat(ms04Ist).as("Speicher-Paar kommt mit vp-uems-b12-tagesverlauf-speicher").hasSize(1);
-        assertThat(ms04Ist.get(0).has("menge_art")).isFalse();
-        assertThat(ms04Ist.get(0).path("menge").decimalValue()).isEqualByComparingTo("800");
-        assertThat(texte(ms04Ist.get(0).path("kennzeichen"))).containsExactly(VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT);
-        ersetzeZeilen(soll, "MS-04", ms04Ist.get(0));
+        // Vertrag 1.2 — MS-04 („Laden / Entladen“) zeigt BEIDE Flüsse: laden 7 900 / entladen 7 100, abgeschrieben
+        // aus messreihe_periode.menge_positiv/menge_negativ. Beide Zeilen tragen denselben Nachweis; es ist EINE
+        // gemessene Reihe. Die Netto-Menge 800 steht in keiner von beiden — sie ist keine der zwei Richtungen.
+        List<JsonNode> ms04 = zeilen(abzug, "MS-04");
+        assertThat(ms04).hasSize(2);
+        assertThat(ms04).extracting(w -> w.path("menge_art").asText()).containsExactly("laden", "entladen");
+        assertThat(ms04.get(0).path("menge").decimalValue()).isEqualByComparingTo("7900");
+        assertThat(ms04.get(1).path("menge").decimalValue()).isEqualByComparingTo("7100");
+        assertThat(texte(ms04.get(0).path("kennzeichen"))).containsExactly(VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT);
 
-        // Lücke 4 — Folge von Lücke 3: speicher_laden_kwh/speicher_entladen_kwh fehlen (unbekannt ist keine Null),
-        // 16 Werte werden 15.
-        ObjectNode zusammenfassung = (ObjectNode) soll.path("zusammenfassung");
-        assertThat(zusammenfassung.path("speicher_laden_kwh").asInt()).isEqualTo(7900);
-        assertThat(zusammenfassung.path("werte").asInt()).isEqualTo(16);
-        assertThat(abzug.path("zusammenfassung").has("speicher_laden_kwh")).isFalse();
-        assertThat(abzug.path("zusammenfassung").has("speicher_entladen_kwh")).isFalse();
-        assertThat(abzug.path("zusammenfassung").path("werte").asInt()).isEqualTo(15);
-        zusammenfassung.remove(List.of("speicher_laden_kwh", "speicher_entladen_kwh"));
-        zusammenfassung.put("werte", 15);
-        zusammenfassung.put("davon_endgueltig", 15);
-        zusammenfassung.put("davon_vollstaendig", 15);
+        // Und die Zusammenfassung nennt beide Summen — 16 Zeilen, nicht 15.
+        assertThat(abzug.path("zusammenfassung").path(BerichtAbzugBildung.SPEICHER_LADEN).asInt()).isEqualTo(7900);
+        assertThat(abzug.path("zusammenfassung").path(BerichtAbzugBildung.SPEICHER_ENTLADEN).asInt()).isEqualTo(7100);
+        assertThat(abzug.path("zusammenfassung").path("werte").asInt()).isEqualTo(16);
 
-        // Lücke 5 — die Trägerform (A3): MS-03 (PV aus Leistung) trägt das Kennzeichen seiner gespeicherten Zeile, das
-        // der Konzept-Abzug nicht nennt. Vertrag 1.1 nimmt es in den Vektor.
-        assertThat(texte(zeilen(soll, "MS-03").get(0).path("kennzeichen"))).isEmpty();
-        assertThat(texte(zeilen(abzug, "MS-03").get(0).path("kennzeichen")))
-                .containsExactly(VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT);
-        ((ObjectNode) zeilen(soll, "MS-03").get(0)).set("kennzeichen", zeilen(abzug, "MS-03").get(0).path("kennzeichen"));
+        // Der Tagesverlauf (1.2) steht in der Monatsvorlage: je Wert-Zeile ein Eintrag mit derselben Kennung.
+        // Für Oktober 2026 hält das Referenzunternehmen keine Tageszeilen — die leere Liste IST die Lücke.
+        assertThat(abzug.path("tagesverlauf")).hasSize(16);
+        assertThat(abzug.path("tagesverlauf")).allSatisfy(t -> assertThat(t.path("tage")).isEmpty());
+        assertThat(abzug.path("tagesverlauf").get(3).path("menge_art").asText()).isEqualTo("laden");
 
-        // Vertrag 1.0 hat keinen Tagesverlauf ($defs/abzug) — vp-uems-b12-tagesverlauf-speicher.
-        assertThat(soll.has("tagesverlauf")).isFalse();
-        assertThat(abzug.has("tagesverlauf")).isFalse();
+        // Ort und Endgültigkeit je Kennzahl (1.2) — B14 füllt damit die zwei Zellen der CSV.
+        assertThat(abzug.path("kennzahlen")).allSatisfy(k -> {
+            assertThat(k.path("ort_zum_datenstand").asText()).isEqualTo("G-2");
+            assertThat(k.path("endgueltig_ab").asText()).isEqualTo("2026-11-08T00:00:00+01:00");
+        });
 
         assertThat(ist.text()).as("B1 Nr. 1 — alles andere Byte für Byte").isEqualTo(BerichtRegeln.kanonisch(soll));
         assertThat(ist.pruefsumme()).isEqualTo(BerichtRegeln.pruefsumme(BerichtRegeln.kanonisch(soll)));
         assertThat(UemsSchemaLaeufer.verstoesse(abzug, schemaAbzug())).as("bericht.schema.json $defs/abzug").isEmpty();
+    }
+
+    /**
+     * Der Tagesverlauf schreibt GESPEICHERTE Tageszeilen ab (1.2). Das Referenzunternehmen hält für Oktober 2026
+     * keine — darum ist er in B1 je Zeile leer. Hier bekommt MS-12 zwei echte Tageszeilen, und der Abzug zeigt
+     * genau sie: kein Tag ohne Zeile wird zur Null, und kein Tag außerhalb des Zeitraums rutscht herein.
+     */
+    @Test
+    void derTagesverlaufZeigtDieGespeichertenTage_undNurSie() throws Exception {
+        UUID entity = root.queryForObject("SELECT entity_id FROM messstelle_quelle WHERE tenant_id = ? "
+                + "AND messstelle_id = ?", UUID.class, KB, IDS.get("MS-12"));
+        try {
+            tageszeile(entity, "2026-10-05", "210", "vollständig");
+            tageszeile(entity, "2026-10-06", "185", "unvollständig");
+            tageszeile(entity, "2026-11-01", "999", "vollständig");   // nach dem Zeitraum — darf NICHT erscheinen
+            JsonNode abzug = alsVerwaltung(con -> bildung.zusammentragen(con, bericht, DATENSTAND)).abzug();
+            JsonNode ms12 = null;
+            for (JsonNode t : abzug.path("tagesverlauf")) {
+                if ("MS-12".equals(t.path("quelle").asText())) {
+                    ms12 = t;
+                }
+            }
+            assertThat(ms12).isNotNull();
+            assertThat(ms12.path("tage")).hasSize(2);
+            assertThat(ms12.path("tage").get(0).path("tag").asText()).isEqualTo("2026-10-05");
+            assertThat(ms12.path("tage").get(0).path("menge").decimalValue()).isEqualByComparingTo("210");
+            assertThat(ms12.path("tage").get(1).path("zustand").asText()).isEqualTo("unvollständig");
+            // Die 29 Tage ohne Zeile stehen nicht als 0 da — sie fehlen, und das ist die Lücke.
+            assertThat(ms12.path("tage")).extracting(t -> t.path("tag").asText())
+                    .doesNotContain("2026-10-07", "2026-11-01");
+            assertThat(UemsSchemaLaeufer.verstoesse(abzug, schemaAbzug())).isEmpty();
+        } finally {
+            root.update("DELETE FROM messreihe_tag WHERE tenant_id = ? AND entity_id = ?", KB, entity);
+        }
+    }
+
+    private static void tageszeile(UUID entity, String tag, String menge, String zustand) {
+        root.update("INSERT INTO messreihe_tag (tag, tenant_id, entity_id, messkanal, zeitzone, zeitzone_herkunft, "
+                + "beginn, ende, stunden, slots_erwartet, slots_vorhanden, slots_endgueltig, wertart, menge, "
+                + "menge_zustand, kennzeichen, erhalten, erwartet, abdeckung_prozent, zustand, endgueltig_ab, "
+                + "berechnet_am, version) VALUES (?::date, ?, ?, 'energy_kwh', 'Europe/Berlin', 'standort', "
+                + "?::date AT TIME ZONE 'Europe/Berlin', (?::date + 1) AT TIME ZONE 'Europe/Berlin', 24, 96, 96, 96, "
+                // messreihe_tag_frist_chk: endgueltig_ab IST das Periodenende + 7 Tage (AP-08), keine freie Angabe.
+                + "'counter', ?::numeric, ?, '[]'::jsonb, 1440, 1440, 100, 'endgueltig', "
+                + "((?::date + 1) AT TIME ZONE 'Europe/Berlin') + INTERVAL '7 days', ?, 1)",
+                tag, KB, entity, tag, tag, menge, zustand, tag, Timestamp.from(MONATSLAUF));
     }
 
     @Test
@@ -476,13 +512,20 @@ class BerichtAbzugBildungTest {
                 BigDecimal energie = "MS-04".equals(kz)
                         ? zahl(zeilen(soll(), kz).get(0).path("menge")).subtract(zahl(zeilen(soll(), kz).get(1).path("menge")))
                         : zahl(zeilen(soll(), kz).get(0).path("menge"));
+                // MS-04 führt ZWEI Flüsse in einer Größe: die Verdichtung hat sie je Rohwert getrennt
+                // (V20260918104000) und in der Periodenzeile abgelegt (V20260918101000) — 7 900 / 7 100,
+                // netto 800. Genau diese zwei Zahlen schreibt der Abzug ab, er rechnet sie nicht aus.
+                BigDecimal positiv = "MS-04".equals(kz) ? zahl(zeilen(soll(), kz).get(0).path("menge")) : null;
+                BigDecimal negativ = "MS-04".equals(kz) ? zahl(zeilen(soll(), kz).get(1).path("menge")) : null;
                 root.update("INSERT INTO messreihe_periode (tag, art, tenant_id, entity_id, messkanal, zeitzone, "
                         + "zeitzone_herkunft, beginn, ende, stunden, teile_erwartet, teile_vorhanden, teile_endgueltig, "
-                        + "wertart, energie, menge_zustand, kennzeichen, erhalten, erwartet, abdeckung_prozent, zustand, "
-                        + "endgueltig_ab, version, berechnet_am) VALUES (DATE '2026-10-01', 'monat', ?, ?, ?, "
-                        + "'Europe/Berlin', 'standort', ?, ?, 745, 31, 31, 31, 'gauge', ?, 'vollständig', ?::jsonb, 44700, "
+                        + "wertart, energie, menge_positiv, menge_negativ, menge_zustand, kennzeichen, erhalten, "
+                        + "erwartet, abdeckung_prozent, zustand, endgueltig_ab, version, berechnet_am) "
+                        + "VALUES (DATE '2026-10-01', 'monat', ?, ?, ?, "
+                        + "'Europe/Berlin', 'standort', ?, ?, 745, 31, 31, 31, 'gauge', ?, ?, ?, 'vollständig', ?::jsonb, 44700, "
                         + "44700, 100, 'endgueltig', ?, 1, ?)", KB, entity, kanal, Timestamp.from(BEGINN),
-                        Timestamp.from(ENDE), energie, JSON.writeValueAsString(List.of(VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT)),
+                        Timestamp.from(ENDE), energie, positiv, negativ,
+                        JSON.writeValueAsString(List.of(VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT)),
                         Timestamp.from(ENDGUELTIG_AB), Timestamp.from(MONATSLAUF));
             } else {
                 root.update("INSERT INTO messreihe_periode (tag, art, tenant_id, entity_id, messkanal, zeitzone, "

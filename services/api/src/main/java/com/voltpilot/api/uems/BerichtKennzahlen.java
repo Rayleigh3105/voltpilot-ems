@@ -54,7 +54,7 @@ final class BerichtKennzahlen {
     /** Der Abschnitt, seine Quellen und die Berechnungszeiten seiner Werte (D2). */
     record Abschnitt(ArrayNode kennzahlen, List<BerichtAbzugBildung.Quelle> quellen, List<Instant> zeiten) {}
 
-    private record Kennzahl(UUID id, String kennzeichen, String name) {}
+    private record Kennzahl(UUID id, String kennzeichen, String name, String ort) {}
 
     /** Ein Eingang im Abzug ({@code art} des Vertrags) mit dem Objekt, das er als Quelle nennt. */
     private record Eingang(String art, String kennzeichen, String objektKennzeichen, UUID objekt, String name,
@@ -141,9 +141,23 @@ final class BerichtKennzahlen {
                     + "AND a.bericht_id = ? AND a.kennzahl_id = k.id AND a.aufgehoben_am IS NULL)";
             args.add(u.bericht());
         }
-        return j.query("SELECT k.id, k.kennzeichen, k.name FROM kennzahl k WHERE k.tenant_id = ? AND (" + geltung + ")"
-                + abwahl + " ORDER BY k.kennzeichen, k.id",
-                (rs, i) -> new Kennzahl(rs.getObject("id", UUID.class), rs.getString("kennzeichen"), rs.getString("name")),
+        // A5 — der Ort zum Datenstand, wie ihn auch eine Wert-Zeile trägt (Vertrag 1.2): das Kurzzeichen
+        // des Gebäudes bzw. Bereichs, sonst des Standorts, bei einer Messstellen-Kennzahl ihr heutiger
+        // Ort. Am Unternehmen, am Prozess und an der Kostenstelle gibt es keinen — dort bleibt er null.
+        return j.query("""
+                SELECT k.id, k.kennzeichen, k.name,
+                       coalesce(o.kurzzeichen, ms_o.kurzzeichen, s.kurzzeichen) AS ort
+                  FROM kennzahl k
+                  LEFT JOIN ort o ON o.id = k.ort_id AND o.tenant_id = k.tenant_id
+                  LEFT JOIN standort s ON s.id = k.standort_id AND s.tenant_id = k.tenant_id
+                  LEFT JOIN messstelle_ort mo ON mo.messstelle_id = k.messstelle_id
+                       AND mo.tenant_id = k.tenant_id AND mo.gueltig_bis IS NULL
+                  LEFT JOIN ort ms_o ON ms_o.id = mo.ort_id AND ms_o.tenant_id = mo.tenant_id
+                 WHERE k.tenant_id = ? AND (%s)%s
+                 ORDER BY k.kennzeichen, k.id
+                """.formatted(geltung, abwahl),
+                (rs, i) -> new Kennzahl(rs.getObject("id", UUID.class), rs.getString("kennzeichen"),
+                        rs.getString("name"), rs.getString("ort")),
                 args.toArray());
     }
 
@@ -239,6 +253,9 @@ final class BerichtKennzahlen {
         ObjectNode n = json.createObjectNode();
         n.put("quelle", k.kennzeichen());
         n.put("name_zum_datenstand", k.name());
+        // Vertrag 1.2 — Ort und Endgültigkeit je Kennzahl, wie an einer Wert-Zeile (B14 füllt damit die
+        // zwei Zellen der CSV). Beide dürfen null sein; ein Abzug nach 1.0/1.1 trägt sie gar nicht.
+        n.put("ort_zum_datenstand", k.ort());
         n.put("wert", w.wert());
         n.put("einheit", einheit);
         n.put("zustand", w.mengeZustand());
@@ -247,6 +264,7 @@ final class BerichtKennzahlen {
         (w.kennzeichen() == null ? List.<String>of() : w.kennzeichen()).forEach(kennzeichen::add);
         n.put("fassung", "endgueltig".equals(w.zustand()) ? KennzahlRegeln.ENDGUELTIG
                 : "vorlaeufig".equals(w.zustand()) ? KennzahlRegeln.VORLAEUFIG : null);
+        n.put("endgueltig_ab", w.endgueltigAb() == null ? null : BerichtAbzugBildung.iso(w.endgueltigAb(), zone));
         n.put("version", w.version());
         n.put("definition_fassung", w.definitionFassung());
         ArrayNode ein = n.putArray("eingaenge");

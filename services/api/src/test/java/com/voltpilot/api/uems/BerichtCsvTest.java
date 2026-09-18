@@ -57,7 +57,7 @@ class BerichtCsvTest {
     void b14KopfSpaltenUndMs12SindDerVektor() {
         List<String> zeilen = jonas(nummerEins, standEins);
         assertThat(zeilen.subList(0, 16)).containsExactlyElementsOf(texte(B14.get(0).path("ergebnis").path("zeilen")));
-        assertThat(zeilen.get(12)).startsWith("# pruefsumme=sha256:b79d0fb8");
+        assertThat(zeilen.get(12)).startsWith("# pruefsumme=sha256:b113527d");
         assertThat(zeilen.get(16)).isEqualTo(String.join(";", BerichtRegeln.CSV_SPALTEN));
         assertThat(zeilen.get(16).split(";")).hasSize(13);
         assertThat(zeilen.get(17)).isEqualTo("# abschnitt=verbrauch_je_messstelle");
@@ -74,27 +74,25 @@ class BerichtCsvTest {
     }
 
     /**
-     * firstmate 001 = A: der Abzug 1.1 trägt je Kennzahl weder {@code ort_zum_datenstand} noch {@code endgueltig_ab} — die
-     * zwei Zellen bleiben leer, als Ist-Zustand BEHAUPTET; die übrigen elf sind der Vektor. Hebt das Folgepaket
-     * {@code vp-uems-b12-tagesverlauf-speicher} den Abzug auf 1.2, wird dieser Test rot.
+     * B14/KZ-0001 vollständig (Vertrag 1.2): die Zeile ist Zelle für Zelle der Vektor — alle DREIZEHN, auch
+     * {@code ort_zum_datenstand} ({@code G-2}) und {@code endgueltig_ab} ({@code 2026-11-08}). Die beiden waren bis
+     * zum Folgepaket {@code vp-uems-b12-tagesverlauf-speicher} leer; das Mapping las sie schon immer, es fehlte nur
+     * der Abzug.
      */
     @Test
-    void kz0001_derAbzugTraegtWederOrtNochEndgueltigAb_zweiZellenLeer_elfSindDerVektor() {
+    void kz0001_istZelleFuerZelleDerVektor_auchOrtUndEndgueltigAb() {
         JsonNode kz = nummerEins.path("kennzahlen").get(0);
         assertThat(kz.path("quelle").asText()).isEqualTo("KZ-0001");
-        assertThat(kz.has("ort_zum_datenstand")).as("Abzug 1.1 ohne ort_zum_datenstand je Kennzahl").isFalse();
-        assertThat(kz.has("endgueltig_ab")).as("Abzug 1.1 ohne endgueltig_ab je Kennzahl").isFalse();
+        assertThat(kz.path("ort_zum_datenstand").asText()).isEqualTo("G-2");
+        assertThat(kz.path("endgueltig_ab").asText()).isEqualTo("2026-11-08T00:00:00+01:00");
 
         String[] vektor = B14.get(2).path("ergebnis").path("zeile").asText().split(";", -1);
         String[] ist = jonas(nummerEins, standEins).get(35).split(";", -1);
         assertThat(ist).hasSize(13);
+        assertThat(ist[ORT]).as("die Zelle, die bis 1.2 leer blieb").isEqualTo("G-2");
+        assertThat(ist[ENDGUELTIG_AB]).as("die zweite Zelle, die bis 1.2 leer blieb").isNotEmpty();
         for (int i = 0; i < 13; i++) {
-            if (i == ORT || i == ENDGUELTIG_AB) {
-                assertThat(ist[i]).as(BerichtRegeln.CSV_SPALTEN.get(i) + " — Ist-Zustand leer").isEmpty();
-                assertThat(vektor[i]).as(BerichtRegeln.CSV_SPALTEN.get(i) + " — der Vektor kennt ihn").isNotEmpty();
-            } else {
-                assertThat(ist[i]).as(BerichtRegeln.CSV_SPALTEN.get(i)).isEqualTo(vektor[i]);
-            }
+            assertThat(ist[i]).as(BerichtRegeln.CSV_SPALTEN.get(i)).isEqualTo(vektor[i]);
         }
     }
 

@@ -24,7 +24,7 @@ IP-4, Abzug IP-5/IP-6, Routen IP-7, Naht IP-8, Läufer IP-9, CSV/PDF IP-10/IP-11
 - **Die kanonische Form ist Vertrag, Byte für Byte.** Schlüssel nach UTF-16-Codeeinheiten, Zeichenketten wie
   `JSON.stringify` (Steuerzeichen `\u00xx` KLEIN — Jackson schriebe groß, deshalb eigener Schreiber in `BerichtRegeln`),
   Zahlen ohne Exponent und ohne nachgestellte Nullen. Wer den Abzug als `jsonb` ablegt oder mit einem Standard-Serializer
-  schreibt, bricht die Prüfsumme `sha256:b79d0fb8…` von Nr. 1. Den SHA-256 rechnet nur Java; der TS-Test hasht mit
+  schreibt, bricht die Prüfsumme `sha256:b113527d…` von Nr. 1. Den SHA-256 rechnet nur Java; der TS-Test hasht mit
   `node:crypto`.
 - **Javadoc mit Backslash-u bricht javac** („Unzulässiges Unicode-Escapezeichen“) — auch im Kommentar.
 - **Das Recht prüft die Route VOR F1.** `freigabe` kennt nur Zeitraum → Werte → Entwurf; ein fremder Standort muss 404 sein,
@@ -47,13 +47,21 @@ IP-4, Abzug IP-5/IP-6, Routen IP-7, Naht IP-8, Läufer IP-9, CSV/PDF IP-10/IP-11
 
 - **1.2 ist additiv und WAHLFREI.** `$defs/abzug.tagesverlauf` (`$defs/tagesverlauf_reihe`: je Wert-Zeile ihre Tage mit
   Menge und Zustand) und `$defs/kennzahl.ort_zum_datenstand`/`endgueltig_ab` wie an `$defs/wert`. Ein Abzug nach 1.0/1.1
-  bleibt gültig, byte-gleich lesbar und behält seine Prüfsumme (`b79d0fb8…`/`d2073f76…`) — die Abnahme aus PR 827 rührt
+  bleibt gültig, byte-gleich lesbar und behält seine Prüfsumme (`b113527d…`/`0f0feda0…`) — die Abnahme aus PR 827 rührt
   sich nicht. `BerichtRegelwerk.VERTRAEGE` nennt `bericht` = `1.2`, `BerichtRegelwerkTest` hält es gegen die
   `schema_version` der Vektor-Datei.
-- **Die Bildung schreibt 1.2 noch NICHT ab.** Die Abzüge der Vektor-Datei bleiben in der Form 1.1; jede Lücke steht als
-  Ist-Zustand in `BerichtAbzugBildungTest` (Lücken 3–5 + Tagesverlauf) und in `_nicht_geprueft` (B1). Wer sie schließt,
-  macht diesen Test planmäßig rot und schreibt beide Prüfsummen fort — und mit ihnen `berichtFixtures.ts`,
-  `e2e/berichte.spec.ts`, `BerichtApiTest`, `BerichtCsvTest` und `uems-bericht-routen.md`.
+- **Die Bildung schreibt 1.2 ab — B1 ist vollständig, keine benannte Lücke mehr.** MS-04 wird zu ZWEI Zeilen
+  (laden 7 900 / entladen 7 100 aus `messreihe_periode.menge_positiv/menge_negativ`, beide mit demselben Nachweis),
+  die Zusammenfassung zählt 16 Zeilen und nennt `speicher_*`, der Tagesverlauf steht in der Monatsvorlage, jede
+  Kennzahl trägt Ort und Endgültigkeit, und die CSV füllt ihre zwei Zellen. Es bleiben zwei benannte ABWEICHUNGEN des
+  Vektors (Kennzahl-Zahl mit zehn statt vier Nachkommastellen; KZ-0005 heißt in der Referenzdatei mit Gedankenstrich).
+- **⚠ Die Prüfsummen sind fortgeschrieben** — `b79d0fb8…`→`b113527d…` (9 637 B) und `d2073f76…`→`0f0feda0…` (9 918 B).
+  Wer sie erneut bewegt, muss ALLE Nagelstellen in EINEM Zug erwischen: `bericht-vectors.json` (13),
+  `events-vocabulary-vectors.json` (3), `berichtFixtures.ts` (2), `e2e/berichte.spec.ts` (2), `BerichtApiTest` (2),
+  `BerichtCsvTest` (1), `bericht.md`, `uems-bericht-routen.md`, `uems-uebersicht.md` und diese Datei — plus die
+  byte-gleiche Kopie `frontend/portal/src/test/berichtAbzuege.json`, die kein Grep nach der Prüfsumme findet.
+- **Der Tagesverlauf steht im Abzug, aber die Berichtsseite zeigt ihn noch nicht** — `berichtSeite.ts` hat keinen
+  Abschnitt dafür, er landet weiter in `ohneInhalt`. Das ist eine PORTAL-Lücke, keine Vertrags-Lücke.
 - **Das Richtungspaar gehört in die VERDICHTUNG, nicht in den Abzug** (EW3). `V20260918101000` legt
   `menge_positiv`/`menge_negativ` an `messreihe_tag` und `messreihe_periode` (nullbar, ohne Nachfüllung — der
   Bestandsschutz-Vergleich sieht eine überall leere Spalte nicht). `Richtungspaar.ausTeilen` bildet Σ max(0, Teil) und

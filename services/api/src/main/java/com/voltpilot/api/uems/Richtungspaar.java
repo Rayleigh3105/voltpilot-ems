@@ -71,6 +71,23 @@ final class Richtungspaar {
         if (woerter == null) {
             return Optional.empty();
         }
+        return mengenDerPeriode(j, tenant, art, beginn, spur, spurArgs)
+                .map(m -> new Paar(woerter.get(MessstelleRegeln.ANTEIL_POSITIV),
+                        woerter.get(MessstelleRegeln.ANTEIL_NEGATIV), m[0], m[1]));
+    }
+
+    /**
+     * Nur die beiden ZAHLEN der Periode, ohne den Katalog zu fragen — für einen Aufrufer, der die
+     * Wörter schon kennt.
+     *
+     * <p>Der Berichts-Abzug ist so einer: dass eine Messstelle „Laden / Entladen“ führt, sagt ihre
+     * eigene Hauptgröße (AP-04), nicht der Katalogpunkt ihrer heutigen Quellenbindung. Die Bindung
+     * kann wechseln; wie die Messstelle ihre zwei Flüsse nennt, bleibt. Dass das Paar überhaupt
+     * dasteht, hat die Verdichtung schon entschieden — sie schreibt es nur für einen
+     * Zwei-Richtungs-Kanal.
+     */
+    static Optional<BigDecimal[]> mengenDerPeriode(JdbcTemplate j, UUID tenant, String art, Instant beginn,
+            String spur, List<Object> spurArgs) {
         List<Object> args = new java.util.ArrayList<>(List.of(tenant, art, java.sql.Timestamp.from(beginn)));
         args.addAll(spurArgs);
         List<BigDecimal[]> zeilen = j.query(
@@ -80,8 +97,7 @@ final class Richtungspaar {
         if (zeilen.isEmpty() || zeilen.get(0)[0] == null || zeilen.get(0)[1] == null) {
             return Optional.empty();
         }
-        return Optional.of(new Paar(woerter.get(MessstelleRegeln.ANTEIL_POSITIV),
-                woerter.get(MessstelleRegeln.ANTEIL_NEGATIV), zeilen.get(0)[0], zeilen.get(0)[1]));
+        return Optional.of(zeilen.get(0));
     }
 
     /** Die beiden Wörter des Kanals, {@code null} ohne zwei Richtungen. */

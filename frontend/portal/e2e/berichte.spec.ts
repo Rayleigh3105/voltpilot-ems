@@ -152,7 +152,7 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     expect(m.standAktiv).toBe('Nr. 2');
     expect(m.kopfZeile).toBe('Datenstand 12.11.2026 10:05 (MEZ) · Berichtsstand Nr. 2 · freigegeben 16.11.2026 14:20 von Ines Kaltenbach');
     expect(m.abzeichen).toEqual(['Berichtsstand Nr. 2']);
-    expect(m.pruefsumme).toBe('sha256:d2073f76be088dd37208be95df8e57796aac2fdfb295da702e79f77afb285b18');
+    expect(m.pruefsumme).toBe('sha256:0f0feda03d1979477a2596db5b9723399f227af0226a5397251704384de10d0d');
     expect(m.abschnitte).toEqual(['Kopf', 'Zusammenfassung', 'Verbrauch je Messstelle', 'Kennzahlen', 'Qualität', 'Quellenverzeichnis', 'Verlauf der Berichtsstände']);
     expect(m.zahlen).toBe(18);
     expect(m.knoepfe).toEqual([]);
@@ -192,7 +192,7 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     expect(m.reiterAktiv).toEqual(['Berichte']);
     expect(m.kopfZeile).toBe('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
     expect(m.abzeichen).toEqual(['ersetzt durch Nr. 2 (16.11.2026)']);
-    expect(m.pruefsumme).toBe('sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d');
+    expect(m.pruefsumme).toBe('sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03');
     await ablegen(page, 'seite-nr1-1440', m);
     const n = await nachweis(page, 'MS-12');
     expect(n.zahl).toBe(`6.100${NB}kWh`);

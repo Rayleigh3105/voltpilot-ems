@@ -46,8 +46,8 @@ export const ZEIT = {
 
 /** Die Prüfsummen der Vektoren (Regel `kanonisch`, B1). */
 export const PRUEFSUMME = {
-  1: 'sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d',
-  2: 'sha256:d2073f76be088dd37208be95df8e57796aac2fdfb295da702e79f77afb285b18',
+  1: 'sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03',
+  2: 'sha256:0f0feda03d1979477a2596db5b9723399f227af0226a5397251704384de10d0d',
 } as const;
 
 export const ABZUG_NR1 = abzuege['BR-2026-0001/1'] as unknown as BerichtAbzug;

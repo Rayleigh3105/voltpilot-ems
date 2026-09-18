@@ -8,11 +8,7 @@
       "bericht": "BR-2026-0001",
       "vorlage": "monatsbericht_standort",
       "vorlage_fassung": 1,
-      "geltung": {
-        "art": "standort",
-        "kennzeichen": "ST-1",
-        "name_zum_datenstand": "Werk Ahrenberg"
-      },
+      "geltung": {"art": "standort", "kennzeichen": "ST-1", "name_zum_datenstand": "Werk Ahrenberg"},
       "unternehmen": "Kunststoffwerk Ahrenberg GmbH",
       "sitz": "Gewerbering 7, Ahrenberg",
       "zeitraum": {
@@ -28,11 +24,7 @@
           "schluessel": "2026-09",
           "ergebnis": "keine Werte — vor Beginn (Energiemanagement seit 01.10.2026)"
         },
-        {
-          "art": "vorjahresmonat",
-          "schluessel": "2025-10",
-          "ergebnis": "keine Werte — vor Beginn"
-        }
+        {"art": "vorjahresmonat", "schluessel": "2025-10", "ergebnis": "keine Werte — vor Beginn"}
       ],
       "datenstand": "2026-11-10T08:55:00+01:00",
       "regelwerk": {
@@ -127,7 +119,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [],
+        "kennzeichen": ["aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -143,7 +135,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [],
+        "kennzeichen": ["aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -160,7 +152,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [],
+        "kennzeichen": ["aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -241,9 +233,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "berechnet"
-        ],
+        "kennzeichen": ["berechnet"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -341,9 +331,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "berechnet"
-        ],
+        "kennzeichen": ["berechnet"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -353,59 +341,59 @@
         "formel_fassung": 1
       }
     ],
+    "tagesverlauf": [
+        {"quelle": "MS-01", "tage": []},
+        {"quelle": "MS-02", "tage": []},
+        {"quelle": "MS-03", "tage": []},
+        {"quelle": "MS-04", "menge_art": "laden", "tage": []},
+        {"quelle": "MS-04", "menge_art": "entladen", "tage": []},
+        {"quelle": "MS-05", "tage": []},
+        {"quelle": "MS-06", "tage": []},
+        {"quelle": "MS-07", "tage": []},
+        {"quelle": "MS-08", "tage": []},
+        {"quelle": "MS-09", "tage": []},
+        {"quelle": "MS-10", "tage": []},
+        {"quelle": "MS-11", "tage": []},
+        {"quelle": "MS-12", "tage": []},
+        {"quelle": "MS-13", "tage": []},
+        {"quelle": "MS-14", "tage": []},
+        {"quelle": "MS-15", "tage": []}
+    ],
     "kennzahlen": [
       {
         "quelle": "KZ-0001",
         "name_zum_datenstand": "Stromeinsatz Montage je Stück — Halle 2",
+        "ort_zum_datenstand": "G-2",
         "wert": 0.1488,
         "einheit": "kWh/Stück",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "berechnet (Kennzahl)"
-        ],
+        "kennzeichen": ["berechnet (Kennzahl)"],
         "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
         "definition_fassung": 1,
         "eingaenge": [
-          {
-            "art": "messstelle",
-            "kennzeichen": "MS-12",
-            "wert": 6100,
-            "einheit": "kWh",
-            "version": 1
-          },
-          {
-            "art": "bezugsgroesse",
-            "kennzeichen": "BZ-6",
-            "wert": 41000,
-            "einheit": "Stück",
-            "fassung": 1
-          }
+          {"art": "messstelle", "kennzeichen": "MS-12", "wert": 6100, "einheit": "kWh", "version": 1},
+          {"art": "bezugsgroesse", "kennzeichen": "BZ-6", "wert": 41000, "einheit": "Stück", "fassung": 1}
         ],
         "berechnet_am": "2026-11-01T00:20:00+01:00"
       },
       {
         "quelle": "KZ-0005",
         "name_zum_datenstand": "Netzbezug je m² Halle 2",
+        "ort_zum_datenstand": "G-2",
         "wert": 11.9032,
         "einheit": "kWh/m²",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "berechnet (Kennzahl)"
-        ],
+        "kennzeichen": ["berechnet (Kennzahl)"],
         "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
         "definition_fassung": 1,
         "eingaenge": [
-          {
-            "art": "messstelle",
-            "kennzeichen": "MS-10",
-            "wert": 36900,
-            "einheit": "kWh",
-            "version": 1
-          },
+          {"art": "messstelle", "kennzeichen": "MS-10", "wert": 36900, "einheit": "kWh", "version": 1},
           {
             "art": "stammdatum",
             "kennzeichen": "BZ-4 (G-2)",
@@ -417,24 +405,14 @@
         "berechnet_am": "2026-11-01T00:20:00+01:00"
       }
     ],
-    "qualitaet": {
-      "abdeckung_min_prozent": 100,
-      "luecken": 0,
-      "ersatzwerte": 0,
-      "korrekturen_im_zeitraum": 0,
-      "vorlaeufig": 0
-    }
+    "qualitaet": {"abdeckung_min_prozent": 100, "luecken": 0, "ersatzwerte": 0, "korrekturen_im_zeitraum": 0, "vorlaeufig": 0}
   },
   "BR-2026-0001/2": {
     "kopf": {
       "bericht": "BR-2026-0001",
       "vorlage": "monatsbericht_standort",
       "vorlage_fassung": 1,
-      "geltung": {
-        "art": "standort",
-        "kennzeichen": "ST-1",
-        "name_zum_datenstand": "Werk Ahrenberg"
-      },
+      "geltung": {"art": "standort", "kennzeichen": "ST-1", "name_zum_datenstand": "Werk Ahrenberg"},
       "unternehmen": "Kunststoffwerk Ahrenberg GmbH",
       "sitz": "Gewerbering 7, Ahrenberg",
       "zeitraum": {
@@ -450,11 +428,7 @@
           "schluessel": "2026-09",
           "ergebnis": "keine Werte — vor Beginn (Energiemanagement seit 01.10.2026)"
         },
-        {
-          "art": "vorjahresmonat",
-          "schluessel": "2025-10",
-          "ergebnis": "keine Werte — vor Beginn"
-        }
+        {"art": "vorjahresmonat", "schluessel": "2025-10", "ergebnis": "keine Werte — vor Beginn"}
       ],
       "datenstand": "2026-11-12T10:05:33+01:00",
       "regelwerk": {
@@ -549,7 +523,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [],
+        "kennzeichen": ["aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -565,7 +539,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [],
+        "kennzeichen": ["aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -582,7 +556,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [],
+        "kennzeichen": ["aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -663,9 +637,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "berechnet"
-        ],
+        "kennzeichen": ["berechnet"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
@@ -715,9 +687,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "korrigiert (Version 2)"
-        ],
+        "kennzeichen": ["korrigiert (Version 2)"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 2,
@@ -765,10 +735,7 @@
         "einheit": "kWh",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "berechnet",
-          "korrigiert (Version 2)"
-        ],
+        "kennzeichen": ["berechnet", "korrigiert (Version 2)"],
         "fassung": "endgültig",
         "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 2,
@@ -778,60 +745,59 @@
         "formel_fassung": 1
       }
     ],
+    "tagesverlauf": [
+        {"quelle": "MS-01", "tage": []},
+        {"quelle": "MS-02", "tage": []},
+        {"quelle": "MS-03", "tage": []},
+        {"quelle": "MS-04", "menge_art": "laden", "tage": []},
+        {"quelle": "MS-04", "menge_art": "entladen", "tage": []},
+        {"quelle": "MS-05", "tage": []},
+        {"quelle": "MS-06", "tage": []},
+        {"quelle": "MS-07", "tage": []},
+        {"quelle": "MS-08", "tage": []},
+        {"quelle": "MS-09", "tage": []},
+        {"quelle": "MS-10", "tage": []},
+        {"quelle": "MS-11", "tage": []},
+        {"quelle": "MS-12", "tage": []},
+        {"quelle": "MS-13", "tage": []},
+        {"quelle": "MS-14", "tage": []},
+        {"quelle": "MS-15", "tage": []}
+    ],
     "kennzahlen": [
       {
         "quelle": "KZ-0001",
         "name_zum_datenstand": "Stromeinsatz Montage je Stück — Halle 2",
+        "ort_zum_datenstand": "G-2",
         "wert": 0.1473,
         "einheit": "kWh/Stück",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "berechnet (Kennzahl)",
-          "korrigiert (Version 2)"
-        ],
+        "kennzeichen": ["berechnet (Kennzahl)", "korrigiert (Version 2)"],
         "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 2,
         "definition_fassung": 1,
         "eingaenge": [
-          {
-            "art": "messstelle",
-            "kennzeichen": "MS-12",
-            "wert": 6040,
-            "einheit": "kWh",
-            "version": 2
-          },
-          {
-            "art": "bezugsgroesse",
-            "kennzeichen": "BZ-6",
-            "wert": 41000,
-            "einheit": "Stück",
-            "fassung": 1
-          }
+          {"art": "messstelle", "kennzeichen": "MS-12", "wert": 6040, "einheit": "kWh", "version": 2},
+          {"art": "bezugsgroesse", "kennzeichen": "BZ-6", "wert": 41000, "einheit": "Stück", "fassung": 1}
         ],
         "berechnet_am": "2026-11-01T00:20:00+01:00"
       },
       {
         "quelle": "KZ-0005",
         "name_zum_datenstand": "Netzbezug je m² Halle 2",
+        "ort_zum_datenstand": "G-2",
         "wert": 11.9032,
         "einheit": "kWh/m²",
         "zustand": "vollständig",
         "abdeckung_prozent": 100,
-        "kennzeichen": [
-          "berechnet (Kennzahl)"
-        ],
+        "kennzeichen": ["berechnet (Kennzahl)"],
         "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
         "version": 1,
         "definition_fassung": 1,
         "eingaenge": [
-          {
-            "art": "messstelle",
-            "kennzeichen": "MS-10",
-            "wert": 36900,
-            "einheit": "kWh",
-            "version": 1
-          },
+          {"art": "messstelle", "kennzeichen": "MS-10", "wert": 36900, "einheit": "kWh", "version": 1},
           {
             "art": "stammdatum",
             "kennzeichen": "BZ-4 (G-2)",

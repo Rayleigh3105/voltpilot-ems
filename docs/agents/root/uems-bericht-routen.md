@@ -60,5 +60,5 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 - **`werte_vorlaeufig`:** `vorlaeufig` zählt die Werte, `vorlaeufige` nennt jede Quelle einmal (MS-04 hat zwei Werte).
 - **Die Neubildung beim Abruf meldet nichts** (B6). `bericht_freigegeben` hat eine abgeleitete Kennung je Stand.
 - **Test-Personen:** `BerichtApiTest` setzt die B13-Personen als `@MockBean KennzahlAufrufer`; die Entwürfe sind die
-  kanonisch geschriebenen Vektor-Abzüge `BR-2026-0001/1` und `/2` (Prüfsumme `sha256:b79d0fb8…`), die Uhr über
+  kanonisch geschriebenen Vektor-Abzüge `BR-2026-0001/1` und `/2` (Prüfsumme `sha256:b113527d…`), die Uhr über
   `BerichtService.uhrStellen`.

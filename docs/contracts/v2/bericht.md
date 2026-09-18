@@ -9,7 +9,7 @@ Die Abnahme des Captains: **„Ein freigegebener Bericht lässt sich trotz spät
 erklären.“** — Monatsbericht Werk Ahrenberg Oktober 2026: Berichtsstand Nr. 1 (10.11.2026, Datenstand 08:55) nennt
 **6 100 kWh in Version 1** für MS-12; die Korrektur K-2026-0007 (12.11.2026) macht daraus 6 040 kWh in Version 2 und stößt
 die Revision an; Nr. 2 (16.11.2026) nennt 6 040. Nr. 1 ändert sich nie — auch nicht, wenn am 29.01.2027 die Rohwerte und am
-31.10.2036 die Zeilen der Speicherklasse weg sind: ihr Abzug ist Text mit Prüfsumme `sha256:b79d0fb8…` (B1, B16).
+31.10.2036 die Zeilen der Speicherklasse weg sind: ihr Abzug ist Text mit Prüfsumme `sha256:b113527d…` (B1, B16).
 
 | Datei | Rolle |
 |---|---|
@@ -59,12 +59,16 @@ nie ein Verweis auf lebende Zeilen (E1). Ein zweites Anlegen derselben Vorlage �
   falsche ist `500 abzug_beschaedigt` — nie still neu gerechnet. Regel `kanonisch`, Satz `abzug_beschaedigt`.
 - **A7** Gespeichert als `text`, nie als `jsonb` (jsonb normalisiert und bräche die Prüfsumme).
 - **A8** Größe ≈ 100 KB je Monatsbericht Standort; kein Objektspeicher nötig.
-- **A9 Fassung 1.2 — additiv, und nur für NEU gebildete Abzüge.** `$defs/abzug` kennt `tagesverlauf`
+- **A9 Fassung 1.2 — additiv, gebildet, und nur für NEU gebildete Abzüge.** `$defs/abzug` kennt `tagesverlauf`
   (`$defs/tagesverlauf_reihe`: je Wert-Zeile ihre Tage mit Menge und Zustand), `$defs/kennzahl` kennt
   `ort_zum_datenstand` und `endgueltig_ab` wie `$defs/wert`. **Alles Neue ist wahlfrei:** ein Abzug nach 1.0 oder 1.1
   bleibt gültig, byte-gleich lesbar und behält seine Prüfsumme; PDF und CSV aus ihm bleiben byte-gleich (die Abnahme des
   Captains, `UemsBerichtNachDenFristenTest`). 1.0/1.1-Abzüge tragen die drei Formen nicht — das ist die Lücke, nicht die
-  Null.
+  Null. **Die Bildung schreibt alle drei ab** (`BerichtAbzugBildung`): MS-04 wird zu ZWEI Zeilen (laden 7 900 /
+  entladen 7 100, beide mit demselben Nachweis — es ist EINE gemessene Reihe), die Zusammenfassung nennt
+  `speicher_laden_kwh`/`speicher_entladen_kwh` und zählt 16 Zeilen, der Tagesverlauf trägt je Wert-Zeile die
+  gespeicherten Tage, und jede Kennzahl ihren Ort und ihre Endgültigkeit. Die CSV füllt damit ihre zwei Zellen
+  (B14/KZ-0001: `G-2`, `2026-11-08`); ihr Mapping las beide schon immer, es fehlte nur der Abzug.
 
 ## 3. Quellen (Q1–Q6, E3)
 
