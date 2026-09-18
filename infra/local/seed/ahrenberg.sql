@@ -1,5 +1,6 @@
 -- =============================================================================
--- DEV-ONLY Demo-Daten: Kunststoffwerk Ahrenberg GmbH (AP-00 IP-7 + AP-02 IP-16)
+-- DEV-ONLY Demo-Daten: Kunststoffwerk Ahrenberg GmbH
+-- (AP-00 IP-7 + AP-02 IP-16 · AP-03 IP-16 Personen · AP-01 IP-14 Funktionszustände)
 -- -----------------------------------------------------------------------------
 -- Ein DRITTER Kundenbereich neben den beiden Demo-Mandanten, abgeschrieben aus
 -- `docs/contracts/v2/uems-referenzunternehmen.json` (Fassung 1.4). Diese Datei
@@ -39,8 +40,11 @@
 --     weg (`_herkunft.bewusst_ausgelassen`: „AP-00 §4.4 führt das Referenz-
 --     unternehmen mit ZWEI Standorten“).
 --   * Archivierung von B-5: die Referenz kennt keinen archivierten Bereich.
+--   * Sabine Rauch: die Referenz streicht sie zusammen mit ST-3 (siehe
+--     unten bei den Personen). Die Zelle AP-03 IP-16 nennt acht Logins,
+--     gebaut sind die sieben der Referenz.
 --   * Messstellen, Datenquellen, Geräte, Komponenten, Netzanschlüsse,
---     Kostenstellen, Prozesse, Personen: folgen.
+--     Kostenstellen, Prozesse: folgen.
 -- =============================================================================
 
 BEGIN;
@@ -243,6 +247,172 @@ INSERT INTO device (id, tenant_id, site_id, external_ref, status, created_at) VA
     ('20000000-0000-0000-0000-000000000703', '20000000-0000-0000-0000-000000000001',
      '20000000-0000-0000-0000-000000000503', 'VP-BOX-2026-0503', 'claimed',
      TIMESTAMPTZ '2026-10-15 00:00:00+02')
+ON CONFLICT (id) DO NOTHING;
+
+-- ---- Personen (AP-03 IP-16) ------------------------------------------------
+-- Der Spiegel der SIEBEN Konten, die die Referenz unter `personen` führt. Fünf
+-- Kundenkonten des Kundenbereichs, ein Partner-Konto (Installateur) und ein
+-- Plattform-Konto (VoltPilot-Support); die beiden letzten haben im Realm keinen
+-- Kundenbereich und bekommen ihren Spiegel hier, weil ihnen dieser
+-- Kundenbereich eine Unterstützung gewährt.
+--
+-- `sub` ist das Subject des Logins — dieselbe Kennung trägt der Realm-Eintrag
+-- als `id` (infra/local/keycloak/voltpilot-realm.json). Ohne diese feste
+-- Kennung vergäbe Keycloak beim Import eine zufällige, und kein Spiegel fände
+-- sein Konto wieder.
+--
+-- `email` ist die Adresse des lokalen Logins, nicht aus der Referenz: die kennt
+-- keine Adressen. Alles andere steht dort — Name, Rolle, Geltungsbereich, Tag.
+--
+-- NICHT enthalten: Sabine Rauch. Die Referenz streicht sie AUSDRÜCKLICH
+-- zusammen mit ihrem Standort ST-3 („_herkunft.bewusst_ausgelassen": AP-00 §4.4
+-- führt das Referenzunternehmen mit ZWEI Standorten). Die Zelle AP-03 IP-16
+-- nennt acht Logins, die einzige Quelle trägt sieben — der Seed folgt der
+-- Quelle. Was Sabine zeigen sollte, zeigen andere: eine Zuweisung, die am
+-- Stichtag noch in der Zukunft liegt, und eine Unterstützung mit Ende (beides
+-- unten bei Voss und Brunner).
+INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, email, zustand,
+                      angenommen_am, created_at) VALUES
+    ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-0000000008a1',
+     'benutzer', 'Jonas Wendlinger', 'jonas@voltpilot.local', 'aktiv',
+     TIMESTAMPTZ '2024-03-12 00:00:00+01', TIMESTAMPTZ '2024-03-12 00:00:00+01'),
+    ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-0000000008a2',
+     'benutzer', 'Ines Kaltenbach', 'ines@voltpilot.local', 'aktiv',
+     TIMESTAMPTZ '2026-10-01 00:00:00+02', TIMESTAMPTZ '2026-10-01 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-0000000008a3',
+     'benutzer', 'Peter Hollerbach', 'peter@voltpilot.local', 'aktiv',
+     TIMESTAMPTZ '2026-10-15 00:00:00+02', TIMESTAMPTZ '2026-10-15 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-0000000008a4',
+     'benutzer', 'Murat Demirci', 'murat@voltpilot.local', 'aktiv',
+     TIMESTAMPTZ '2026-10-01 00:00:00+02', TIMESTAMPTZ '2026-10-01 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-0000000008a5',
+     'benutzer', 'Claudia Berger', 'claudia@voltpilot.local', 'aktiv',
+     TIMESTAMPTZ '2026-10-01 00:00:00+02', TIMESTAMPTZ '2026-10-01 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-0000000008b1',
+     'partner', 'Thomas Brunner', 'partner-brunner@voltpilot.local', 'aktiv',
+     TIMESTAMPTZ '2026-11-24 09:40:00+01', TIMESTAMPTZ '2026-11-24 09:40:00+01'),
+    ('20000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-0000000008b2',
+     'plattform', 'Lena Voss', 'support-voss@voltpilot.local', 'aktiv',
+     TIMESTAMPTZ '2026-10-21 00:00:00+02', TIMESTAMPTZ '2026-10-21 00:00:00+02')
+ON CONFLICT (tenant_id, sub) DO NOTHING;
+
+-- ---- Zuweisungen (AP-03 IP-16) ---------------------------------------------
+-- `gueltig_ab` ist das „seit" der Referenz; `gewaehrt_von` das Subject der
+-- gewährenden Person. Jonas trägt NULL: er war bis 30.09.2026 der einzige
+-- Benutzer des Kundenbereichs, seine Zuweisung kommt aus der Bestandsübernahme
+-- (E12), und ein Bestandskonto hat keine gewährende Person.
+--
+-- Claudia liest BEIDE Standorte — je Standort eine eigene Zeile, so wie die
+-- Tabelle es verlangt; eine Zuweisung gilt nie für zwei Standorte zugleich.
+--
+-- Die zwei Unterstützungen tragen Art, Umfang und ein Ende. `gueltig_bis` ist
+-- der letzte Tag EINSCHLIESSLICH, `endet_am` derselbe Tatbestand als Zeitpunkt
+-- (ausschließend) in der Zeitzone des Standorts — der 15.12. endet am
+-- 16.12. 00:00 MEZ, der 28.10. am 29.10. 00:00 MEZ (die Sommerzeit endete am
+-- 25.10.2026). Beide liegen HINTER dem Stichtag 20.10.2026 10:15: am Stichtag
+-- ist Voss' Zuweisung noch künftig und Brunners erst recht.
+INSERT INTO zugriff (id, tenant_id, benutzer_sub, rolle, standort_id, art, umfang,
+                     gueltig_ab, gueltig_bis, endet_am, zeitzone, gewaehrt_von, created_at) VALUES
+    ('20000000-0000-0000-0000-000000000901', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000008a1', 'kundenadministrator', NULL, NULL, NULL,
+     TIMESTAMPTZ '2024-03-12 00:00:00+01', NULL, NULL, 'Europe/Berlin',
+     NULL, TIMESTAMPTZ '2024-03-12 00:00:00+01'),
+    ('20000000-0000-0000-0000-000000000902', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000008a2', 'energiemanager', NULL, NULL, NULL,
+     TIMESTAMPTZ '2026-10-01 00:00:00+02', NULL, NULL, 'Europe/Berlin',
+     '20000000-0000-0000-0000-0000000008a1', TIMESTAMPTZ '2026-10-01 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000903', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000008a3', 'bearbeiter',
+     '20000000-0000-0000-0000-0000000000a2', NULL, NULL,
+     TIMESTAMPTZ '2026-10-15 00:00:00+02', NULL, NULL, 'Europe/Berlin',
+     '20000000-0000-0000-0000-0000000008a1', TIMESTAMPTZ '2026-10-15 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000904', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000008a4', 'bedienberechtigt',
+     '20000000-0000-0000-0000-0000000000a1', NULL, NULL,
+     TIMESTAMPTZ '2026-10-01 00:00:00+02', NULL, NULL, 'Europe/Berlin',
+     '20000000-0000-0000-0000-0000000008a1', TIMESTAMPTZ '2026-10-01 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000905', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000008a5', 'leser',
+     '20000000-0000-0000-0000-0000000000a1', NULL, NULL,
+     TIMESTAMPTZ '2026-10-01 00:00:00+02', NULL, NULL, 'Europe/Berlin',
+     '20000000-0000-0000-0000-0000000008a1', TIMESTAMPTZ '2026-10-01 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000906', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000008a5', 'leser',
+     '20000000-0000-0000-0000-0000000000a2', NULL, NULL,
+     TIMESTAMPTZ '2026-10-01 00:00:00+02', NULL, NULL, 'Europe/Berlin',
+     '20000000-0000-0000-0000-0000000008a1', TIMESTAMPTZ '2026-10-01 00:00:00+02'),
+    ('20000000-0000-0000-0000-000000000907', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000008b1', 'unterstuetzer',
+     '20000000-0000-0000-0000-0000000000a1', 'installateur', 'einrichten_und_bedienen',
+     TIMESTAMPTZ '2026-11-24 09:40:00+01', DATE '2026-12-15',
+     TIMESTAMPTZ '2026-12-16 00:00:00+01', 'Europe/Berlin',
+     '20000000-0000-0000-0000-0000000008a1', TIMESTAMPTZ '2026-11-24 09:40:00+01'),
+    ('20000000-0000-0000-0000-000000000908', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000008b2', 'unterstuetzer',
+     '20000000-0000-0000-0000-0000000000a1', 'voltpilot', 'ansehen',
+     TIMESTAMPTZ '2026-10-21 00:00:00+02', DATE '2026-10-28',
+     TIMESTAMPTZ '2026-10-29 00:00:00+01', 'Europe/Berlin',
+     '20000000-0000-0000-0000-0000000008a1', TIMESTAMPTZ '2026-10-21 00:00:00+02')
+ON CONFLICT (id) DO NOTHING;
+
+-- ---- Die Anfrage zur VoltPilot-Unterstützung (Referenz: „angefragt am --------
+-- 21.10.2026, am selben Tag gewährt"). Nur VoltPilot fragt an; ein Installateur
+-- wird gewährt, nie gefragt — Brunner hat deshalb keine Anfrage.
+INSERT INTO unterstuetzung_anfrage (id, tenant_id, art, umfang, angefragt_von, angefragt_name,
+                                    angefragt_email, gueltig_ab, gueltig_bis, zeitzone, grund,
+                                    entschieden_am, entschieden_von, zugriff_id, created_at) VALUES
+    ('20000000-0000-0000-0000-000000000a01', '20000000-0000-0000-0000-000000000001',
+     'voltpilot', 'ansehen', '20000000-0000-0000-0000-0000000008b2', 'Lena Voss',
+     'support-voss@voltpilot.local', TIMESTAMPTZ '2026-10-21 00:00:00+02', DATE '2026-10-28',
+     'Europe/Berlin', 'Speicher-Diagnose',
+     TIMESTAMPTZ '2026-10-21 00:00:00+02', '20000000-0000-0000-0000-0000000008a1',
+     '20000000-0000-0000-0000-000000000908', TIMESTAMPTZ '2026-10-21 00:00:00+02')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO unterstuetzung_anfrage_standort (anfrage_id, tenant_id, standort_id) VALUES
+    ('20000000-0000-0000-0000-000000000a01', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000000a1')
+ON CONFLICT (anfrage_id, standort_id) DO NOTHING;
+
+-- ---- Funktionszustände (AP-01 IP-14) ---------------------------------------
+-- Der Zustand, den der Umstieg „Bestand → Zustand" (AP-01 §4.3, W5, A11) aus
+-- den Bestandsfakten der Referenz ABLEITET — hier abgeschrieben, weil der Seed
+-- die Bestandsfakten selbst (Komponenten, Freigaben, `site_profile_state`) noch
+-- nicht trägt.
+--
+-- AN-1 „Werk Ahrenberg – Halle 1" ist die einzige Bestandsanlage mit laufender
+-- Betriebsweise: Betriebsmodell Lastspitzenkappung seit 02.05.2024
+-- (`anlagen[0].betriebsmodell_seit`). Regel: eine laufende Betriebsweise →
+-- Teilnahme AKTIV, übernommen, seit der frühesten. Ihr Standort ST-1 trägt den
+-- höchsten Zustand seiner Anlagen, also ebenfalls aktiv.
+--
+-- AN-2 und AN-3 tragen in der Referenz „steuert nicht" und kein Betriebsmodell
+-- → keine Teilnahme, kein Objekt. Deshalb hat ST-2 „Werk Lindach" hier gar
+-- keine Zeile: kein Objekt ist keine Zeile.
+--
+-- „Messen & Auswerten" bekommt beim Umstieg KEIN Objekt (A11) — auch dafür
+-- steht hier nichts. Seine Einrichtung ist ein eigener Weg.
+--
+-- `eingerichtet_am` bleibt leer: eine aus dem Bestand übernommene Funktion
+-- kennt ihr Einrichtungsdatum nicht (W5).
+INSERT INTO funktion (id, tenant_id, standort_id, funktion, zustand,
+                      eingerichtet_am, aktiv_seit, angehalten_seit, archiviert_am,
+                      geaendert_von, created_at, updated_at) VALUES
+    ('20000000-0000-0000-0000-000000000b01', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-0000000000a1', 'steuern', 'aktiv',
+     NULL, TIMESTAMPTZ '2024-05-02 00:00:00+02', NULL, NULL,
+     'VoltPilot (Bestandsübernahme)',
+     TIMESTAMPTZ '2026-10-01 00:00:00+02', TIMESTAMPTZ '2026-10-01 00:00:00+02')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO funktion_teilnahme (id, tenant_id, funktion_id, funktion, site_id, zustand,
+                                uebernommen, eingerichtet_am, gestartet_am, angehalten_seit,
+                                beendet_am, created_at, updated_at) VALUES
+    ('20000000-0000-0000-0000-000000000c01', '20000000-0000-0000-0000-000000000001',
+     '20000000-0000-0000-0000-000000000b01', 'steuern',
+     '20000000-0000-0000-0000-000000000501', 'aktiv',
+     true, NULL, TIMESTAMPTZ '2024-05-02 00:00:00+02', NULL,
+     NULL, TIMESTAMPTZ '2026-10-01 00:00:00+02', TIMESTAMPTZ '2026-10-01 00:00:00+02')
 ON CONFLICT (id) DO NOTHING;
 
 COMMIT;

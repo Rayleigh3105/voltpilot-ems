@@ -29,6 +29,8 @@ import { JETZT as QB_JETZT, kanaeleK3, quellenMs01 } from './test/quelleBindenFi
 import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SAETZE as KENNZAHL_SAETZE, VERBOTENE_WOERTER as KENNZAHL_VERBOTEN } from './uemsKennzahl';
 import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
 import { UEMS_BEREICH, UEMS_GEBAEUDE, UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossar';
+import { UEMS_ROLLEN_STANDORT, UEMS_ROLLEN_UNTERNEHMEN, UEMS_ROLLE_UNTERSTUETZER } from './glossar';
+import { ARTEN as RECHTE_ARTEN, KONTEN as RECHTE_KONTEN, ROLLE_KUNDENWORT, TEXTE as RECHTE_TEXTE, UMFANG_KUNDENWORT } from './rechte';
 import { STAND_AM, bannerTitel } from './standAm';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
 import * as KK from './kennzahlKarte';
@@ -1095,6 +1097,75 @@ describe('UEMS AP-02 IP-16 · die Demo-Daten Ahrenberg sprechen die Kundenwörte
     const verboten = /\b(Site|Sites|Building|Buildings|Zone|Area|Facility|Snapshot|valid from|deleted)\b/;
     expect(verboten.test('-- Building G-1 mit Zone B-1')).toBe(true);
     expect(verboten.test('-- Gebäude G-1 mit Bereich B-1')).toBe(false);
+  });
+});
+
+/**
+ * UEMS AP-03 IP-16 — die Personen der Demo-Daten. Ein Seed schreibt CODES
+ * (`kundenadministrator`, `unterstuetzer`, `einrichten_und_bedienen`), die Fläche zeigt
+ * KUNDENWÖRTER (Kundenadministrator, Unterstützer, Einrichten und Bedienen). Dieser Wächter
+ * hält beide Seiten zusammen: jeder Code, den die Demo-Daten verwenden, muss ein Kundenwort
+ * haben — sonst stünde im Portal eine Rolle, die niemand benennen kann. Und die neun Wörter der
+ * Rechte-Fläche stehen im Wörterbuch, nicht nur in einer Komponente.
+ */
+describe('UEMS AP-03 IP-16 · die Personen der Demo-Daten sprechen die Kundenwörter', () => {
+  const AHRENBERG = join(SRC, '..', '..', '..', 'infra', 'local', 'seed', 'ahrenberg.sql');
+  const seed = () => readFileSync(AHRENBERG, 'utf8');
+  /** Die Werte einer Spalte, wie der Seed sie schreibt: `'wort'` in den VALUES-Zeilen. */
+  const woerter = (codes: readonly string[]) =>
+    codes.filter((c) => seed().includes(`'${c}'`));
+
+  it('die neun Wörter der Rechte-Fläche stehen im Wörterbuch', () => {
+    expect(UEMS_ROLLEN_UNTERNEHMEN).toEqual(['Kundenadministrator', 'Energiemanager']);
+    expect(UEMS_ROLLEN_STANDORT).toEqual(['Bearbeiter', 'Bedienberechtigt', 'Leser']);
+    expect(UEMS_ROLLE_UNTERSTUETZER).toBe('Unterstützer');
+    expect(RECHTE_TEXTE.unterstuetzung_beendet).toContain('Unterstützung');
+    expect(RECHTE_TEXTE.teilansicht).toContain('Teilansicht');
+    expect(RECHTE_TEXTE.zugriff_beendet).toContain('Zugriff');
+    // Und alle neun kommen aus EINER Quelle - kein zweites Wort für dieselbe Sache.
+    for (const wort of [...UEMS_ROLLEN_UNTERNEHMEN, ...UEMS_ROLLEN_STANDORT, UEMS_ROLLE_UNTERSTUETZER]) {
+      expect(Object.values(ROLLE_KUNDENWORT), wort).toContain(wort);
+    }
+  });
+
+  it('jede Rolle, Kontoart, Art und jeder Umfang der Demo-Daten hat ein Kundenwort', () => {
+    const rollen = woerter(Object.keys(ROLLE_KUNDENWORT));
+    // Sechs der sieben Rollen kommen vor; `voltpilot_betrieb` wird nie zugewiesen.
+    expect(rollen).toEqual([
+      'kundenadministrator', 'energiemanager', 'bearbeiter', 'bedienberechtigt', 'leser', 'unterstuetzer',
+    ]);
+    for (const rolle of rollen) {
+      expect(ROLLE_KUNDENWORT[rolle as keyof typeof ROLLE_KUNDENWORT], rolle).toBeTruthy();
+    }
+    expect(woerter(RECHTE_KONTEN)).toEqual(['benutzer', 'partner', 'plattform']);
+    // Ein Installateur und eine VoltPilot-Unterstützung; einen Notfall kennen die Demo-Daten nicht.
+    expect(woerter(RECHTE_ARTEN)).toEqual(['installateur', 'voltpilot']);
+    for (const umfang of woerter(Object.keys(UMFANG_KUNDENWORT))) {
+      expect(UMFANG_KUNDENWORT[umfang as keyof typeof UMFANG_KUNDENWORT], umfang).toBeTruthy();
+    }
+  });
+
+  it('die Demo-Daten nennen die Personen-Sachen deutsch - kein englischer Zwilling', () => {
+    const verboten = /\b(User|Users|Role|Roles|Permission|Permissions|Grant|Grants|Tenant|Owner|Viewer|Editor)\b/;
+    for (const zeile of seed().split('\n')) {
+      expect(verboten.test(zeile), zeile).toBe(false);
+    }
+    expect(verboten.test('-- Role of the User in this Tenant')).toBe(true);
+    expect(verboten.test('-- Rolle des Benutzers in diesem Kundenbereich')).toBe(false);
+  });
+
+  it('Sabine Rauch steht NICHT in den Demo-Daten - die Referenz streicht sie mit ST-3', () => {
+    // Die Zelle AP-03 IP-16 nennt acht Logins; die einzige Quelle trägt sieben Personen.
+    // AhrenbergDemoLoginTest hält dieselbe Tatsache auf der Realm-Seite fest.
+    // Geprüft werden die DATEN, nicht der Kopfkommentar - der nennt beide und sagt, warum.
+    const daten = seed()
+      .split('\n')
+      .filter((z) => !z.trimStart().startsWith('--'))
+      .join('\n');
+    expect(daten).not.toContain('Sabine');
+    expect(daten).not.toContain('ST-3');
+    // Der Kommentar dagegen MUSS es erklären, sonst trägt jemand sie stillschweigend nach.
+    expect(seed()).toContain('Sabine Rauch');
   });
 });
 

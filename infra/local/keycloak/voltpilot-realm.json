@@ -248,6 +248,154 @@
       "realmRoles": [
         "operator"
       ]
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a1",
+      "username": "jonas",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "jonas@voltpilot.local",
+      "firstName": "Jonas",
+      "lastName": "Wendlinger",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "jonas",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a2",
+      "username": "ines",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "ines@voltpilot.local",
+      "firstName": "Ines",
+      "lastName": "Kaltenbach",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ines",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a3",
+      "username": "peter",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "peter@voltpilot.local",
+      "firstName": "Peter",
+      "lastName": "Hollerbach",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "peter",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a4",
+      "username": "murat",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "murat@voltpilot.local",
+      "firstName": "Murat",
+      "lastName": "Demirci",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "murat",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a5",
+      "username": "claudia",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "claudia@voltpilot.local",
+      "firstName": "Claudia",
+      "lastName": "Berger",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "claudia",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008b1",
+      "username": "partner-brunner",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "partner-brunner@voltpilot.local",
+      "firstName": "Thomas",
+      "lastName": "Brunner",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "partner-brunner",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "partner"
+      ]
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008b2",
+      "username": "support-voss",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "support-voss@voltpilot.local",
+      "firstName": "Lena",
+      "lastName": "Voss",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "support-voss",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "platform-admin"
+      ]
     }
   ],
   "components": {
