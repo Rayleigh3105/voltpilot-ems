@@ -442,7 +442,7 @@ class Streckenszenarien:
         ereignisse: list[dict] = []
         for quelle, anzahl in (("DQ-4", 4 * takte), ("DQ-5", takte)):
             ereignisse.append(self.cloud_ereignis(
-                box, "writer", ausfall_von + timedelta(minutes=5),
+                box, "cloud", ausfall_von + timedelta(minutes=5),
                 {
                     "art": "data_gap", "von": _z(ausfall_von), "bis": _z(ausfall_bis),
                     "erkannt_aus": "kadenz", "box": self.device_id(box), "datenquelle": quelle,
@@ -451,7 +451,7 @@ class Streckenszenarien:
                 f"a3-data-gap-{quelle}",
             ))
             ereignisse.append(self.cloud_ereignis(
-                box, "writer", eingang_bis,
+                box, "cloud", eingang_bis,
                 {
                     "art": "backfill", "von": _z(ausfall_von),
                     "bis": _z(ausfall_von + timedelta(minutes=takte - 1)),
@@ -463,7 +463,7 @@ class Streckenszenarien:
             ))
         for code in reihen:
             ereignisse.append(self.cloud_ereignis(
-                box, "writer", ausfall_von + timedelta(minutes=5),
+                box, "cloud", ausfall_von + timedelta(minutes=5),
                 {
                     "art": "data_gap", "von": _z(ausfall_von), "bis": _z(ausfall_bis),
                     "erkannt_aus": "kadenz", "box": self.device_id(box),
@@ -473,6 +473,20 @@ class Streckenszenarien:
                 },
                 f"a3-data-gap-{code}",
             ))
+        for erwartet, erhalten, eingang in (
+            (90106, 90160, ausfall_von + timedelta(minutes=60, seconds=2)),
+            (90161, 90280, ausfall_von + timedelta(minutes=180, seconds=2)),
+        ):
+            ereignisse.append(self.cloud_ereignis(
+                "E-1", "writer", eingang,
+                {
+                    "art": "sequence_gap", "zeitpunkt": _z(eingang),
+                    "box": self.device_id("E-1"), "strom": "measurement-samples",
+                    "sequenz_erwartet": erwartet, "sequenz_erhalten": erhalten,
+                    "anzahl": erhalten - erwartet,
+                },
+                f"a3-sequence-gap-{erhalten}",
+            ))
 
         return Szenario(
             schluessel="A3",
@@ -480,7 +494,13 @@ class Streckenszenarien:
             quelle="AP-07 §7 A3",
             zustellungen=tuple(zustellungen),
             erwartete_ereignisse=tuple(ereignisse),
-            erwartete_reihen=tuple(ErwarteteReihe(messstelle=c, rohzeilen=takte + 1) for c in reihen),
+            erwartete_reihen=(
+                tuple(ErwarteteReihe(messstelle=c, rohzeilen=takte + 1) for c in reihen)
+                + tuple(ErwarteteReihe(
+                    messstelle=c, rohzeilen=3,
+                    hinweis="Kontrollgruppe der durchgehend liefernden Box Halle 1",
+                ) for c in ("MS-05", "MS-06", "MS-07", "MS-08"))
+            ),
             befunde=(
                 "14 Viertelstunden 14:00–17:30 stehen bis zur Nachlieferung auf 0 von 15 — nie auf 0 kWh (§4.5 E5.5)",
                 "MS-05…MS-08 bleiben ohne Ereignis: Box Halle 1 liefert durch",
@@ -563,16 +583,25 @@ class Streckenszenarien:
             hinweis="Nachzügler der reparierten Box nach der Endgültigkeit des Intervalls",
         ))
 
-        ereignisse = (
+        sequenzspruenge = (
+            (48214, 48402, rueckkehr + timedelta(seconds=60)),
+            (48403, 52002, rueckkehr + timedelta(seconds=120)),
+            (52003, 55601, rueckkehr + timedelta(seconds=179)),
+            (55602, 62001, spaet_eingang),
+        )
+        ereignisse = tuple(
             self.cloud_ereignis(
-                box, "writer", rueckkehr + timedelta(seconds=60),
+                box, "writer", eingang,
                 {
-                    "art": "sequence_gap", "zeitpunkt": _z(rueckkehr + timedelta(seconds=60)),
+                    "art": "sequence_gap", "zeitpunkt": _z(eingang),
                     "box": self.device_id(box), "strom": "measurement-samples",
-                    "sequenz_erwartet": 48214, "sequenz_erhalten": 48402, "anzahl": 188,
+                    "sequenz_erwartet": erwartet, "sequenz_erhalten": erhalten,
+                    "anzahl": erhalten - erwartet,
                 },
-                "a4-sequence-gap",
-            ),
+                f"a4-sequence-gap-{erhalten}",
+            )
+            for erwartet, erhalten, eingang in sequenzspruenge
+        ) + (
             self.cloud_ereignis(
                 box, "box", rueckkehr,
                 {
@@ -584,7 +613,7 @@ class Streckenszenarien:
                 aus_umschlag=zustellungen[1],
             ),
             self.cloud_ereignis(
-                box, "writer", spaet_eingang,
+                box, "cloud", spaet_eingang,
                 {
                     "art": "late_arrival", "von": _z(spaet_messzeit),
                     "bis": _z(spaet_messzeit + timedelta(minutes=15)),
@@ -658,15 +687,18 @@ class Streckenszenarien:
             ))
         # Zwei Nachzügler der alten Box, einer diesseits, einer jenseits des Wechsels.
         nachzuegler_eingang = _ortszeit("2027-04-10T07:33:00+02:00")
+        # 07:29:55 liegt nach dem vorhandenen 07:29:50-Takt, aber noch vor der Übergabe:
+        # so belegt der Nachzügler die Zeitregel, ohne an der Idempotenz zu scheitern.
+        vor_wechsel = letzte_alt + timedelta(seconds=5)
         zustellungen.append(Zustellung(
             topic=self.topic(alt.code, "measurement-samples"),
             nutzlast=self.umschlag(
                 alt.code, 90503,
-                [self._sample(c, 3, letzte_alt, mit_herkunft=True) for c in reihen],
-                letzte_alt,
+                [self._sample(c, 3, vor_wechsel, mit_herkunft=True) for c in reihen],
+                vor_wechsel,
             ),
             eingangszeit=_z(nachzuegler_eingang), box=alt.code,
-            zustellart=_zustellart(letzte_alt, nachzuegler_eingang), aus_outbox=True,
+            zustellart=_zustellart(vor_wechsel, nachzuegler_eingang), aus_outbox=True,
             hinweis="Nachzügler mit Messzeit VOR dem Wechsel: bleibt führend (Zuständigkeit zur Messzeit)",
         ))
         nach_wechsel = _ortszeit("2027-04-10T07:30:50+02:00")
@@ -694,17 +726,18 @@ class Streckenszenarien:
                 "a6-handover",
             ),
         ]
-        for code in reihen:
-            ereignisse.append(self.cloud_ereignis(
-                alt.code, "writer", nachzuegler_eingang + timedelta(seconds=1),
-                {
-                    "art": "unassigned_reader", "von": _z(nach_wechsel), "bis": _z(nach_wechsel),
-                    "box": self.device_id(alt.code), "datenquelle": "DQ-3",
-                    "komponente": KOMPONENTEN[code][0], "messkanal": KANAELE[code][0],
-                    "anzahl": 1, "zustaendige_box": self.device_id(neu.code),
-                },
-                f"a6-unassigned-{code}",
-            ))
+        erstes_spiegel_sample = reihen[0]
+        ereignisse.append(self.cloud_ereignis(
+            alt.code, "writer", nachzuegler_eingang + timedelta(seconds=1),
+            {
+                "art": "unassigned_reader", "von": _z(nach_wechsel), "bis": _z(nach_wechsel),
+                "box": self.device_id(alt.code), "datenquelle": "DQ-3",
+                "komponente": KOMPONENTEN[erstes_spiegel_sample][0],
+                "messkanal": KANAELE[erstes_spiegel_sample][0],
+                "anzahl": len(reihen), "zustaendige_box": self.device_id(neu.code),
+            },
+            "a6-unassigned-umschlag",
+        ))
 
         return Szenario(
             schluessel="A6",
@@ -796,6 +829,16 @@ class Streckenszenarien:
                 f"a13-clock-ahead-{tick}",
             )
             for tick in range(3)
+        ) + (
+            self.cloud_ereignis(
+                box, "writer", beginn_fehler + timedelta(minutes=3),
+                {
+                    "art": "sequence_gap", "zeitpunkt": _z(beginn_fehler + timedelta(minutes=3)),
+                    "box": self.device_id(box), "strom": "measurement-samples",
+                    "sequenz_erwartet": 7816, "sequenz_erhalten": 7819, "anzahl": 3,
+                },
+                "a13-sequence-gap-after-clock-ahead",
+            ),
         )
 
         return Szenario(

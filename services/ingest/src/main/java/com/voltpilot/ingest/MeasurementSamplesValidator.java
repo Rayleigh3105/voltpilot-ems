@@ -39,9 +39,9 @@ public class MeasurementSamplesValidator {
     static final Set<String> SAMPLE_FIELDS_2_0 = Set.of("point_key", "raw", "decoded",
             "quality", "observed_at", "signed_data", "signed_data_format");
     // 2.1 (UEMS AP-07 IP-2) = 2.0 plus two OPTIONAL provenance fields, and only under 2.1.
-    // Ingest validates them but does not forward them: the measurements.raw event stays 1.0 with
-    // exactly the 2.0 sample fields, which the writer checks strictly (forwarding needs the writer
-    // in the same step - IP-6/IP-7).
+    // Ingest validates and intentionally removes them: measurements.raw stays 1.0 with exactly
+    // the 2.0 sample fields. The writer resolves component, revision and role itself for the
+    // measurement time; forwarding wire provenance would bypass that authoritative lookup.
     static final String APPLIED_REVISION = "applied_revision";
     static final String ENTITY_ID = "entity_id";
     static final Set<String> ROOT_FIELDS_2_1 = plus(ROOT_FIELDS_2_0, APPLIED_REVISION);

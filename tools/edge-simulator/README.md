@@ -93,10 +93,10 @@ auf — kein Broker, keine Datenbank, keine Uhr des Rechners.
 | Szenario | Abnahmefall | Was die Folge zeigt |
 |---|---|---|
 | `A1` | Doppel-Zustellung | derselbe Umschlag 48 213 dreimal: einmal frisch, einmal als QoS-1-Wiederholung (DUP), einmal mit zurückgesetzter Sequenz — 256 Zeilen, 512 gezählte Wiederholungen, ein `sequence_reset` |
-| `A3` | Ausfall mit Nachlieferung | Uplink weg 14:00–17:30, die Outbox spielt 210 Takte FIFO mit Original-Messzeit nach; `data_gap` je Quelle und Reihe, `backfill` je Quelle |
-| `A4` | Verdrängung | 8 Tage Ausfall, die ältesten 3 Tage sind fort: Box-Ereignis `data_gap` mit `erkannt_aus: verdraengung`, Sequenzsprung 48 213 → 48 402 (188 Umschläge), Nachzügler nach der Endgültigkeit als `late_arrival` |
-| `A6` | Übergabe | DQ-3 wechselt am 10.04.2027 07:30 die Box; zwei Nachzügler der alten Box — einer vor dem Wechsel bleibt führend, einer danach wird Spiegel mit `unassigned_reader` |
-| `A13` | Uhr geht vor | Box Lindach stempelt 840 s in die Zukunft: drei Umschläge abgewiesen (`clock_ahead`), die Nachlieferung mit alter Messzeit bleibt unberührt |
+| `A3` | Ausfall mit Nachlieferung | Uplink weg 14:00–17:30, die Outbox spielt 210 Takte FIFO mit Original-Messzeit nach; der Cloud-Lücken-Melder schreibt `data_gap` je Quelle und Reihe sowie `backfill` je Quelle |
+| `A4` | Verdrängung | 8 Tage Ausfall, die ältesten 3 Tage sind fort: Box-Ereignis `data_gap` mit `erkannt_aus: verdraengung`, vier Sequenzsprünge in der Randstichprobe, Cloud-`late_arrival` nach der Endgültigkeit |
+| `A6` | Übergabe | DQ-3 wechselt am 10.04.2027 07:30 die Box; zwei Nachzügler der alten Box — einer vor dem Wechsel bleibt führend, einer danach wird Spiegel mit einem gebündelten `unassigned_reader` |
+| `A13` | Uhr geht vor | Box Lindach stempelt 840 s in die Zukunft: drei Umschläge abgewiesen (`clock_ahead`); die Nachlieferung bleibt erhalten und macht die drei verworfenen Sequenzen als `sequence_gap` sichtbar |
 
 ```bash
 make test                                   # alle Tests, ohne Broker und ohne Datenbank
