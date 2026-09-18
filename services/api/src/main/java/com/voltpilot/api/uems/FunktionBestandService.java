@@ -110,7 +110,10 @@ public class FunktionBestandService {
 
     /**
      * Derselbe Umstieg wie beim Start-Läufer, begrenzt auf die gerade einem Standort zugeordneten
-     * Anlagen. Eine vorhandene äußere Transaktion wird dabei beibehalten.
+     * Anlagen. Die ausdrücklich übergebene Zuordnung darf künftig beginnen: Bestätigen und erste
+     * Zuordnung schließen den Halb-Zustand sofort, während der Start-Läufer weiterhin nur die am
+     * Lauftag gültigen Zuordnungen findet. Fakten und Zustandsableitung bleiben dieselben.
+     * Eine vorhandene äußere Transaktion wird dabei beibehalten.
      */
     public Ergebnis uebernehmen(Set<UUID> anlagen) {
         UUID tenant = TenantContext.get();
@@ -148,9 +151,11 @@ public class FunktionBestandService {
             ZoneId zone = ZoneId.of(st.zeitzone());
             LocalDate heute = LocalDate.ofInstant(jetzt, zone);
             List<Neu> neu = new ArrayList<>();
-            for (UUID site : heuteZugeordnet(alleZuordnungen, st.id(), heute)) {
-                if ((anlagen != null && !anlagen.contains(site)) || !namen.containsKey(site)
-                        || schonTeilnahme.contains(site)) {
+            List<UUID> zugeordneteAnlagen = anlagen == null
+                    ? heuteZugeordnet(alleZuordnungen, st.id(), heute)
+                    : offenZugeordnet(alleZuordnungen, st.id(), anlagen);
+            for (UUID site : zugeordneteAnlagen) {
+                if (!namen.containsKey(site) || schonTeilnahme.contains(site)) {
                     continue;
                 }
                 BestandErgebnis b = FunktionZustandAbleitung.bestand(fakten.lesen(tenant, site, namen.get(site)), zone);
@@ -208,6 +213,19 @@ public class FunktionBestandService {
             if (z.standortId().equals(standortId) && !z.aufgehoben() && !z.gueltigAb().isAfter(heute)
                     && (z.gueltigBis() == null || !z.gueltigBis().isBefore(heute))
                     && !anlagen.contains(z.siteId())) {
+                anlagen.add(z.siteId());
+            }
+        }
+        return anlagen;
+    }
+
+    /** Gerade bestätigte offene Zuordnungen, auch wenn ihr erster Geltungstag noch bevorsteht. */
+    private static List<UUID> offenZugeordnet(List<AnlageStandortRepository.Zuordnung> alle, UUID standortId,
+            Set<UUID> gesucht) {
+        List<UUID> anlagen = new ArrayList<>();
+        for (AnlageStandortRepository.Zuordnung z : alle) {
+            if (z.standortId().equals(standortId) && gesucht.contains(z.siteId()) && !z.aufgehoben()
+                    && z.gueltigBis() == null && !anlagen.contains(z.siteId())) {
                 anlagen.add(z.siteId());
             }
         }

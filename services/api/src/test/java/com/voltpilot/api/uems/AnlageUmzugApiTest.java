@@ -237,9 +237,10 @@ class AnlageUmzugApiTest {
         OhneStandort w = ohneStandort("Bestand");
         root.update("INSERT INTO site_profile_state (site_id, profile, state, tenant_id, updated_at) "
                 + "VALUES (?::uuid, 'lastspitzenkappung', 'an', ?, now())", w.anlage(), w.tenant());
+        LocalDate ersterTag = LocalDate.now(BERLIN).plusDays(14);
 
         ResponseEntity<JsonNode> erste = rufe(HttpMethod.PUT, "/sites/" + w.anlage() + "/standort", w.wer(),
-                Map.of("standortId", w.werk()));
+                Map.of("standortId", w.werk(), "gueltigAb", ersterTag.toString()));
         assertThat(erste.getStatusCode().value()).as(String.valueOf(erste.getBody())).isEqualTo(200);
         assertThat(erste.getBody().path("steuern").path("zustand").asText()).isEqualTo("aktiv");
         assertThat(root.queryForObject("SELECT count(*) FROM funktion_teilnahme WHERE tenant_id = ?", Long.class,
@@ -248,7 +249,7 @@ class AnlageUmzugApiTest {
                 UUID.class, w.anlage());
 
         ResponseEntity<JsonNode> spaeter = rufe(HttpMethod.PUT, "/sites/" + w.anlage() + "/standort", w.wer(),
-                Map.of("standortId", w.nord(), "gueltigAb", LocalDate.now(BERLIN).plusDays(1).toString()));
+                Map.of("standortId", w.nord(), "gueltigAb", ersterTag.plusDays(1).toString()));
         assertThat(spaeter.getStatusCode().value()).as(String.valueOf(spaeter.getBody())).isEqualTo(200);
         assertThat(root.queryForList("SELECT funktion_id FROM funktion_teilnahme WHERE site_id = ?::uuid",
                 UUID.class, w.anlage())).containsExactly(funktion);
