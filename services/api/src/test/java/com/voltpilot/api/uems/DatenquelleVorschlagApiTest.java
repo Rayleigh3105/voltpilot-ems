@@ -191,6 +191,18 @@ class DatenquelleVorschlagApiTest {
      * A12: bis zur Bestätigung ändert sich nichts — keine Zeile, kein Registry-Push, keine
      * Flow-Aktivierung, keine führende Box; und nach der Bestätigung: dieselben Pushes an dieselbe
      * Box wie vorher.
+     *
+     * <p><b>Was „dieselben" heißt</b> — A12 sagt wörtlich „gleiche Pushes wie vorher (Vollmenge =
+     * alle Quellen dieser Box)": die Klammer nennt das Maß, nämlich dieselbe MENGE. Nichts fällt
+     * weg, nichts wandert zu einer anderen Box. Das entschiedene AP-06-Konzept führt dazu EINE
+     * additive Ausnahme (Verträge, additiv): „Registry-Push: unverändertes Schema, neue Regel WAS je
+     * Box hineingehört (Zuständigkeit) + optional {@code data_source_id} je Entität (alte Box
+     * überliest)". Seit PR 939 (AP-06 IP-13, stabiles DQ-Kennzeichen im Quellen-Herzschlag) trägt
+     * der Push dieses Feld, sobald eine Quelle zugeordnet ist.
+     *
+     * <p>Der Vergleich bleibt deshalb STRENG: {@link #ohneQuellkennzeichen} nimmt genau dieses eine
+     * Feld heraus — alles andere wird weiter Zeichen für Zeichen verglichen — und der Test prüft das
+     * Feld anschließend ausdrücklich. Kein generisches „unbekannte Felder ignorieren".
      */
     @Test
     void bisZurBestaetigungAendertSichNichtsUndDanachDieselbenPushes() throws Exception {
@@ -211,7 +223,24 @@ class DatenquelleVorschlagApiTest {
         assertThat(u.status()).as(u.body().toString()).isEqualTo(200);
         assertThat(u.body().get("neu").asInt()).isEqualTo(3);
         assertThat(fingerabdruck()).isNotEqualTo(abdruck);
-        assertThat(stand(w, an1)).as("nach der Übernahme: dieselben Pushes an dieselbe Box").isEqualTo(vorher);
+
+        Stand nachher = stand(w, an1);
+        assertThat(nachher.ohneQuellKennzeichen())
+                .as("nach der Übernahme: dieselben Pushes an dieselbe Box")
+                .isEqualTo(vorher.ohneQuellKennzeichen());
+
+        // Die EINE entschiedene Differenz, ausdrücklich geprüft statt ignoriert: jede Entität einer
+        // übernommenen Quelle trägt danach deren stabiles DQ-Kennzeichen, vorher trägt es keine.
+        assertThat(vorher.quellKennzeichen()).as("vor der Bestätigung trägt keine Entität das Feld").isEmpty();
+        for (String dq : HALLE_1) {
+            for (UUID k : w.komponentenDer(dq)) {
+                assertThat(nachher.quellKennzeichen().get(k)).as(dq + " an " + k).isEqualTo(dq);
+            }
+        }
+        // Keine Entität bleibt ohne Kennzeichen, und es taucht kein fremdes auf - die zusammengesetzte
+        // Entität (der producer des Hybrid-Wechselrichters) erbt das Kennzeichen ihres Erzeugers.
+        assertThat(nachher.quellKennzeichen().keySet()).isEqualTo(entitaeten(nachher.registry()));
+        assertThat(Set.copyOf(nachher.quellKennzeichen().values())).isEqualTo(Set.copyOf(HALLE_1));
     }
 
     /** Die Übernahme schreibt Quelle, Zuständigkeit ab Reihenbeginn, beide Verweise und EIN Protokoll. */
@@ -574,7 +603,17 @@ class DatenquelleVorschlagApiTest {
 
     /** Was eine Box erreicht: Registry-Push und Flow-Aktivierung (ohne ihre Zeitstempel), und wer führt. */
     private record Stand(String registry, UUID registryBox, int registryPushes, String flow, UUID flowBox,
-            UUID fuehrend, String fuehrungsGrund) {}
+            UUID fuehrend, String fuehrungsGrund, Map<UUID, String> quellKennzeichen) {
+
+        /**
+         * Fuer den Vergleich vorher/nachher: alles AUSSER dem einen Feld, das AP-06 als additiv
+         * entschieden hat. Das Feld selbst wird nicht ignoriert, sondern ausdruecklich geprueft.
+         */
+        Stand ohneQuellKennzeichen() {
+            return new Stand(registry, registryBox, registryPushes, flow, flowBox, fuehrend, fuehrungsGrund,
+                    Map.of());
+        }
+    }
 
     private Stand stand(Welt w, UUID anlage) throws Exception {
         reset(registryPublisher, flowPublisher);
@@ -595,9 +634,13 @@ class DatenquelleVorschlagApiTest {
             ArgumentCaptor<UUID> fBox = ArgumentCaptor.forClass(UUID.class);
             ArgumentCaptor<byte[]> fPush = ArgumentCaptor.forClass(byte[].class);
             verify(flowPublisher).publishDeployment(eq(w.mandant), eq(anlage), fBox.capture(), fPush.capture());
-            return new Stand(ohne(rPush.getAllValues().get(fuehrende), "revision", "published_at"),
+            Map<UUID, String> quellKennzeichen = new LinkedHashMap<>();
+            String registryPush = ohneQuellkennzeichen(rPush.getAllValues().get(fuehrende), quellKennzeichen,
+                    "revision", "published_at");
+            return new Stand(registryPush,
                     rBox.getAllValues().get(fuehrende), rBox.getAllValues().size(),
-                    ohne(fPush.getValue(), "deployed_at"), fBox.getValue(), f.box(), f.grund().code());
+                    ohne(fPush.getValue(), "deployed_at"), fBox.getValue(), f.box(), f.grund().code(),
+                    quellKennzeichen);
         } finally {
             TenantContext.clear();
         }
@@ -629,6 +672,39 @@ class DatenquelleVorschlagApiTest {
         Set<UUID> out = new HashSet<>();
         MAPPER.readTree(push).get("entities").forEach(e -> out.add(UUID.fromString(e.get("entity_id").asText())));
         return out;
+    }
+
+    /**
+     * Nimmt GENAU das eine Feld aus dem Registry-Push, das AP-06 als additiv entschieden hat -
+     * {@code entities[].driver.data_source_id} - und reicht es ueber {@code senke} zur
+     * ausdruecklichen Pruefung heraus. Alles andere bleibt im Vergleich: Entitaeten-Menge,
+     * Reihenfolge, Adressen, Kadenz, Register, Treiber-Parameter. Kein generisches
+     * "unbekannte Felder ignorieren".
+     *
+     * <p>Den Treiber-Behaelter selbst entfernt die Methode nur, wenn er NACH dem Herausnehmen leer
+     * ist: fuer eine Entitaet ohne eigenen Treiber legt ihn erst das Kennzeichen an (siehe
+     * {@code EntityRegistryService}, {@code d.has("driver") ? ... : d.putObject("driver")}).
+     */
+    private static String ohneQuellkennzeichen(byte[] push, Map<UUID, String> senke, String... zeitstempel)
+            throws IOException {
+        ObjectNode n = (ObjectNode) MAPPER.readTree(push);
+        for (String z : zeitstempel) {
+            assertThat(n.has(z)).as(z).isTrue();
+            n.remove(z);
+        }
+        for (JsonNode e : n.path("entities")) {
+            ObjectNode entitaet = (ObjectNode) e;
+            JsonNode treiber = entitaet.get("driver");
+            if (treiber == null || !treiber.has("data_source_id")) {
+                continue;
+            }
+            senke.put(UUID.fromString(entitaet.get("entity_id").asText()),
+                    ((ObjectNode) treiber).remove("data_source_id").asText());
+            if (treiber.isEmpty()) {
+                entitaet.remove("driver");
+            }
+        }
+        return n.toString();
     }
 
     private static String ohne(byte[] push, String... zeitstempel) throws IOException {

@@ -48,6 +48,17 @@ class V2SiteBackfillReconcileWiringTest {
             return mock(EntityRegistryService.class);
         }
 
+        /**
+         * Auch eine Attrappe bekommt die {@code @Autowired}-Methoden ihrer Oberklasse gespritzt:
+         * {@code EntityRegistryService.uebergabe(QuellenUebergabe)} kam mit PR 859 dazu, und ohne
+         * diese Bohne bricht der Minimal-Kontext beim Bauen ab. In der echten Anwendung ist die
+         * Klasse ein bedingungsloser {@code @Service}.
+         */
+        @Bean
+        com.voltpilot.api.uems.QuellenUebergabe quellenUebergabe() {
+            return mock(com.voltpilot.api.uems.QuellenUebergabe.class);
+        }
+
         @Bean
         EntityRegistryRepository entityRegistryRepository() {
             return mock(EntityRegistryRepository.class);

@@ -388,7 +388,17 @@ class UemsGeraetMigrationTest {
         for (String t : TABELLEN) {
             assertThat(root.queryForObject("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
                     + "WHERE relname = ?", Boolean.class, t)).as(t).isTrue();
-            assertThat(anzahl("SELECT count(*) FROM pg_policies WHERE tablename = ?", t)).as(t).isOne();
+            // GENAU eine Mandanten-Policy - in der Form der Schwesterklassen (UemsOrteMigrationTest,
+            // MessstelleZuordnungMigrationTest), die den Zaun an app.tenant_id festmachen statt an der
+            // blossen Anzahl. PR 949 legt auf geraet zusaetzlich den Standortzaun
+            // wago_geraet_site_scope AS RESTRICTIVE (wie measurement_point); eine RESTRICTIVE Policy
+            // wird UND-verknuepft und kann nur verengen, nie oeffnen.
+            assertThat(anzahl("SELECT count(*) FROM pg_policies WHERE tablename = ? AND qual LIKE "
+                    + "'%app.tenant_id%' AND with_check LIKE '%app.tenant_id%'", t)).as(t).isOne();
+            // Und die Zusicherung bleibt schaerfer als ein blosses count: PERMISSIVE Policies werden
+            // ODER-verknuepft und koennten den Zaun oeffnen - davon darf es genau die eine geben.
+            assertThat(anzahl("SELECT count(*) FROM pg_policies WHERE tablename = ? "
+                    + "AND permissive = 'PERMISSIVE'", t)).as(t + ": nur eine PERMISSIVE Policy").isOne();
             // Ohne gewählten Kundenbereich sieht die App-Rolle nichts.
             assertThat(app.queryForObject("SELECT count(*) FROM " + t, Long.class)).as(t).isZero();
         }

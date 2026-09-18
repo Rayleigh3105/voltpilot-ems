@@ -260,9 +260,14 @@ class MessstelleFormelFassungMigrationTest {
         // Nur Fassung 1 darf ohne ersten Tag sein.
         abgelehnt("messstelle_formel_fassung_ab_chk", () -> alsTue(t, () -> fassungen.anlegen(ms, 2,
                 "gewichtete_summe", null, "eintrag", false, null, Instant.now(), kunde())));
-        // Die gewichtete Summe und seit AP-10 IP-9 (V20260913235700) der Rest — saldo kommt mit seinem Schreibweg.
+        // Die gewichtete Summe, seit AP-10 IP-9 (V20260913235700) der Rest und seit AP-10 IP-16
+        // (V20260917106000, PR 914) der Saldo — „saldo kommt mit seinem Schreibweg" ist eingetreten,
+        // seine Annahme pinnt MessstelleFormelFassungApiTest. Der CHECK selbst bleibt geprüft: ein
+        // Typ AUSSERHALB des Vokabulars wird weiterhin von der Datenbank abgelehnt, nicht erst vom
+        // Schreibweg. (Ein erlaubter Typ käme hier gar nicht bis zum CHECK — die Exklusion oben
+        // griffe zuerst, weil Fassung 1 noch offen ist.)
         abgelehnt("messstelle_formel_fassung_typ_chk", () -> alsTue(t, () -> fassungen.anlegen(ms, 2,
-                "saldo", LocalDate.of(2026, 10, 18), "eintrag", false, null, Instant.now(), kunde())));
+                "unbekannt", LocalDate.of(2026, 10, 18), "eintrag", false, null, Instant.now(), kunde())));
         // Ein Rest ohne seinen Hauptzähler ist keiner (V20260913235700).
         abgelehnt("messstelle_formel_fassung_rest_hauptzaehler_chk", () -> alsTue(t, () -> fassungen.anlegen(ms, 2,
                 "rest", LocalDate.of(2026, 10, 18), "eintrag", false, null, Instant.now(), kunde())));

@@ -317,6 +317,13 @@ class RegistryPushJeBoxApiTest {
      * A12: eine Anlage mit genau einer Box sendet nach der Zuordnung ihrer Datenquellen denselben Push wie
      * vorher — Zeichen für Zeichen bis auf die beiden Zeitstempel, an dieselbe und nur diese Box.
      * (Byte-gleich mit fester Uhr: {@code RegistryPushJeBoxBestandTest}.)
+     *
+     * <p>A12 misst die MENGE („gleiche Pushes wie vorher (Vollmenge = alle Quellen dieser Box)"). Das
+     * entschiedene AP-06-Konzept führt dazu EINE additive Ausnahme: „optional {@code data_source_id}
+     * je Entität — alte Box überliest". Seit PR 939 trägt der Push dieses Feld, sobald eine Quelle
+     * zugeordnet ist. Der Vergleich bleibt streng: {@link #ohneQuellkennzeichen} nimmt genau dieses
+     * eine Feld heraus, alles andere wird weiter Zeichen für Zeichen verglichen — und das Feld wird
+     * anschließend ausdrücklich geprüft, samt Gegenprobe an der quellenlosen Hauslast.
      */
     @Test
     void eineAnlageMitEinerBoxSendetDenselbenPushWieVorher() throws Exception {
@@ -335,8 +342,26 @@ class RegistryPushJeBoxApiTest {
 
         assertThat(outcome.boxen()).containsExactly(new BoxZustellung(e1, true));
         assertThat(nachher.keySet()).containsExactly(e1);
-        assertThat(ohneZeit(nachher.get(e1))).isEqualTo(ohneZeit(vorher));
+        Map<UUID, String> vorherKennzeichen = new LinkedHashMap<>();
+        Map<UUID, String> nachherKennzeichen = new LinkedHashMap<>();
+        assertThat(ohneQuellkennzeichen(nachher.get(e1), nachherKennzeichen))
+                .isEqualTo(ohneQuellkennzeichen(vorher, vorherKennzeichen));
         assertThat(entitaeten(vorher)).hasSize(8);
+
+        // Die EINE entschiedene Differenz, ausdrücklich geprüft statt ignoriert (AP-06, Verträge
+        // additiv: „optional data_source_id je Entität — alte Box überliest"; PR 939).
+        assertThat(vorherKennzeichen).as("vor der Zuordnung trägt keine Entität das Feld").isEmpty();
+        Map<UUID, String> erwartet = new LinkedHashMap<>();
+        erwartet.put(w.komponenten.get("K-1"), "DQ-1");
+        erwartet.put(w.komponenten.get("K-1/PV"), "DQ-1");
+        erwartet.put(w.komponenten.get("K-3"), "DQ-2");
+        for (String k : UNTERZAEHLER) {
+            erwartet.put(w.komponenten.get(k), "DQ-3");
+        }
+        assertThat(nachherKennzeichen).isEqualTo(erwartet);
+        // Und die Gegenprobe: die Hauslast hat keine Quelle und bekommt darum auch kein Kennzeichen
+        // — das Feld reist nur mit dem eigenen Deskriptor, nie mit dem der Nachbarn.
+        assertThat(nachherKennzeichen).doesNotContainKey(w.komponenten.get("HS"));
         verify(publisher, times(2)).publishRegistry(eq(w.mandant), eq(an1), eq(e1), any());
         verify(publisher, times(2)).publishRegistry(eq(w.mandant), any(), any(), any());
         assertThat(soll(an1)).containsOnlyKeys(e1);
@@ -498,6 +523,32 @@ class RegistryPushJeBoxApiTest {
             }
         });
         return out;
+    }
+
+    /**
+     * Wie {@link #ohneZeit}, nimmt zusaetzlich GENAU das eine Feld heraus, das AP-06 als additiv
+     * entschieden hat - {@code entities[].driver.data_source_id} - und reicht es ueber {@code senke}
+     * zur ausdruecklichen Pruefung heraus. Alles andere bleibt im Vergleich. Den Treiber-Behaelter
+     * entfernt die Methode nur, wenn erst das Kennzeichen ihn angelegt hat, er also danach leer ist.
+     */
+    private static String ohneQuellkennzeichen(JsonNode push, Map<UUID, String> senke) {
+        ObjectNode n = push.deepCopy();
+        assertThat(n.has("revision") && n.has("published_at")).isTrue();
+        n.remove("revision");
+        n.remove("published_at");
+        for (JsonNode e : n.path("entities")) {
+            ObjectNode entitaet = (ObjectNode) e;
+            JsonNode treiber = entitaet.get("driver");
+            if (treiber == null || !treiber.has("data_source_id")) {
+                continue;
+            }
+            senke.put(UUID.fromString(entitaet.get("entity_id").asText()),
+                    ((ObjectNode) treiber).remove("data_source_id").asText());
+            if (treiber.isEmpty()) {
+                entitaet.remove("driver");
+            }
+        }
+        return n.toString();
     }
 
     private static String ohneZeit(JsonNode push) {

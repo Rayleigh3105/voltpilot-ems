@@ -460,12 +460,14 @@
         "./uemsErgebnis:menge",
         "./uemsErgebnis:zahl",
         "./uemsKennzahl:periodeText",
+        "./uemsMessstelle:RICHTUNGSPAAR",
         "./uemsOberflaechen:herkunftsZeile",
         "./uemsOberflaechen:kennzeichenSprung",
         "./uemsOrtsbaum:datumText"
       ],
       "operationen": [
         "abschnitte: Math.max(...werte.map((w) => w.version))",
+        "gruppiereZahlen: i++",
         "gueltigerStand: b.nr - a.nr",
         "nrAus: Number(id.slice(3))",
         "sortiert: Number(a.archiviert_am !== null)",
@@ -473,7 +475,8 @@
         "sortiert: Number(b.archiviert_am !== null)",
         "standWahl: a.nr - b.nr",
         "verlaufDerStaende: b.nr - a.nr"
-      ]
+      ],
+      "grund": "Anzeige, Versionsnummern und Sortierung (Ausnahme 5). PR 954 (Tagesverlauf im Bericht) ergänzt RICHTUNGSPAAR aus uemsMessstelle: eine Wort-Tabelle für die Beschriftung laden/entladen, keine Rechnung; i++ ist der Listenindex der Gruppierung (Ausnahme 2)."
     },
     "zaehlerwechsel.ts": {
       "importe": [
@@ -484,15 +487,20 @@
         "./uemsEreignis:zahlText",
         "./uemsEreignis:zeitText",
         "./uemsMessstelle:rueckwirkung",
+        "./uemsOrtsbaum:datumText",
+        "./uemsOrtsbaum:lokalerTag",
+        "./uemsOrtsbaum:plusTage",
+        "./uemsOrtsbaum:tageZwischen",
         "./uemsZustand:teile",
         "./zahl:ablesestandWert",
         "export:export { ablesestandWert } from './zahl';"
       ],
       "operationen": [
+        "wechselBerichtsfolge: -1",
         "wechselPruefen: Number(e.geraeteId)",
         "wechselPruefen: Number.isInteger(geraeteId)"
       ],
-      "grund": "Eingabe Geräte-ID prüfen; Kalender und reine Darstellung, keine Rechnung mit Messwerten. AP-09 IP-10 verschiebt die unveränderte Zahlendeutung in zahl.ts."
+      "grund": "Eingabe Geräte-ID prüfen; Kalender und reine Darstellung, keine Rechnung mit Messwerten. AP-09 IP-10 verschiebt die unveränderte Zahlendeutung in zahl.ts. PR 932 (Berichtsfolgen bei Zählerwechsel) ergänzt lokalerTag/plusTage/tageZwischen/datumText aus uemsOrtsbaum: Kalenderarithmetik nach Ausnahme 1, keine Energiemenge; plusTage(am, -1) ist der Vortag, keine Menge."
     },
     "netzanschlussListe.ts": {
       "importe": [

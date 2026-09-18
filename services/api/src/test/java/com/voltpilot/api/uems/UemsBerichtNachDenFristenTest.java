@@ -177,6 +177,12 @@ class UemsBerichtNachDenFristenTest {
         registry.add("spring.flyway.placeholders.appDbPassword", () -> APP_PW);
         registry.add("spring.flyway.placeholders.adminDbUser", () -> ADMIN_USER);
         registry.add("spring.flyway.placeholders.adminDbPassword", () -> ADMIN_PW);
+        // Der Pool des adminJdbcTemplate faellt sonst auf voltpilot_admin_dev_pw zurueck
+        // (application.yml) - diese Klasse legt die Rolle aber mit ADMIN_PW an. Seit dem
+        // Start-Hoerer des WAGO-Seeders (PR 949) scheiterte daran der ganze Kontext.
+        registry.add("voltpilot.admin-datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("voltpilot.admin-datasource.username", () -> ADMIN_USER);
+        registry.add("voltpilot.admin-datasource.password", () -> ADMIN_PW);
         registry.add("voltpilot.security.oidc.enabled", () -> "true");
         registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri",
                 () -> "http://127.0.0.1:9/realms/voltpilot");
