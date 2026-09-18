@@ -1,5 +1,6 @@
 package com.voltpilot.api.unterstuetzung;
 
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.unterstuetzung.UnterstuetzungService.Lauf;
 import java.time.Instant;
@@ -7,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,6 +43,19 @@ public class AblaufLaeufer {
     private final JdbcTemplate adminJdbc;
     private final UnterstuetzungService dienst;
 
+    /**
+     * AP-14 IP-9: der Betriebs-Melder (§3.5, Schicht „Läufer“). Nachgereicht statt in den Konstruktor
+     * gelegt, damit kein bestehender Aufrufer sich ändert; {@link UemsLaeuferMelder#STUMM} hält ihn
+     * ohne Spring UND in den Minimal-Kontexten der Wiring-Tests gültig (darum
+     * {@code required = false}). Melden darf einen Lauf NIE brechen — der Melder schluckt alles.
+     */
+    private UemsLaeuferMelder melder = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void melder(UemsLaeuferMelder melder) {
+        this.melder = melder;
+    }
+
     public AblaufLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, UnterstuetzungService dienst) {
         this.adminJdbc = adminJdbc;
         this.dienst = dienst;
@@ -55,7 +70,9 @@ public class AblaufLaeufer {
     public void takt() {
         try {
             lauf(Instant.now());
+            melder.gelaufen(UemsLaeuferMelder.UNTERSTUETZUNG);
         } catch (RuntimeException e) {
+            melder.fehler(UemsLaeuferMelder.UNTERSTUETZUNG);
             log.warn("UEMS-Unterstützung: Takt übersprungen: {}", e.toString());
         }
     }

@@ -1,10 +1,12 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -55,6 +57,20 @@ public class FunktionBestandLaeufer {
 
     private final JdbcTemplate adminJdbc;
     private final FunktionBestandService dienst;
+
+    /**
+     * AP-14 IP-9: der Betriebs-Melder (§3.5, Schicht „Übernahme“). Nachgereicht statt in den
+     * Konstruktor gelegt, damit kein bestehender Aufrufer sich ändert; {@link UemsLaeuferMelder#STUMM}
+     * hält ihn ohne Spring UND in den Minimal-Kontexten der Wiring-Tests gültig (darum
+     * {@code required = false}). Melden darf einen Lauf NIE brechen — der Melder schluckt alles.
+     */
+    private UemsLaeuferMelder melder = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void melder(UemsLaeuferMelder melder) {
+        this.melder = melder;
+    }
+
     private final boolean enabled;
 
     public FunktionBestandLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -74,6 +90,7 @@ public class FunktionBestandLaeufer {
         }
         try {
             Lauf l = lauf();
+            melder.bestandGelaufen(UemsLaeuferMelder.BESTAND_FUNKTION, l.kundenbereiche(), l.fehler());
             if (l.geaendert() || l.fehler() > 0) {
                 log.info("UEMS-Umstieg der Funktionen: {} Kundenbereich(e) betrachtet, {} Funktion(en) angelegt, "
                         + "{} nachgezogen, {} Teilnahme(n) aktiv, {} eingerichtet, {} Fehler", l.kundenbereiche(),
@@ -82,6 +99,7 @@ public class FunktionBestandLaeufer {
             }
         } catch (RuntimeException e) {
             // Ein Umstieg darf die api nie am Dienen hindern.
+            melder.fehler(UemsLaeuferMelder.BESTAND_FUNKTION);
             log.error("UEMS-Umstieg der Funktionen gescheitert, nichts übernommen: {}", e.toString(), e);
         }
     }

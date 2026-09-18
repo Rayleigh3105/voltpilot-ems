@@ -246,6 +246,13 @@
                              matchIfMissing). Dass die Vorgabe AN ist, prueft
                              DbHealthMetricsWiringTest an der echten application.yml. -->
                         <voltpilot.metrics.db.enabled>false</voltpilot.metrics.db.enabled>
+                        <!-- Der UEMS-Betriebssammler (AP-14 IP-9, UemsMetricsCollector)
+                             ist dieselbe @Scheduled-Falle - im Testlauf aus, in
+                             PRODUKTION an (application.yml, matchIfMissing). Wer
+                             ihn prueft, ruft collect() selbst; dass die Vorgabe AN
+                             ist, prueft UemsMetrikenWiringTest an der echten
+                             application.yml. -->
+                        <voltpilot.metrics.uems.enabled>false</voltpilot.metrics.uems.enabled>
                         <!-- Der getaktete v2-Komposition-Abgleich ist dieselbe
                              @Scheduled-Falle - im Testlauf aus, in PRODUKTION an
                              (application.yml + matchIfMissing). Der Start-Lauf

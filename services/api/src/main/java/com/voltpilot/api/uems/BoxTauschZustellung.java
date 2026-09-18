@@ -10,6 +10,7 @@ import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import com.voltpilot.api.measurement.MeasurementConfigPublisher;
 import com.voltpilot.api.measurement.MeasurementSelectionService;
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.ota.OtaTargetPublisher;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.ControlCertificationRepository;
@@ -19,6 +20,7 @@ import java.time.Instant;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -45,6 +47,20 @@ public class BoxTauschZustellung {
     private final FlowActivationService deployments;
     private final ChargingConfigService chargingConfig;
     private final boolean enabled;
+
+    /**
+     * AP-14 IP-9: der Betriebs-Melder (§3.5, Schicht „Läufer“). Nachgereicht statt in den Konstruktor
+     * gelegt, damit kein bestehender Aufrufer sich ändert; {@link UemsLaeuferMelder#STUMM} hält ihn
+     * ohne Spring UND in den Minimal-Kontexten der Wiring-Tests gültig (darum
+     * {@code required = false}). Melden darf einen Lauf NIE brechen — der Melder schluckt alles.
+     */
+    private UemsLaeuferMelder melder = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void melder(UemsLaeuferMelder melder) {
+        this.melder = melder;
+    }
+
     private final com.voltpilot.api.repo.DeviceRepository devices;
     private final com.voltpilot.api.enrollment.EnrollmentDeviceLookup identities;
     private final org.springframework.transaction.support.TransactionTemplate transaction;
@@ -83,6 +99,11 @@ public class BoxTauschZustellung {
                 TenantContext.set(row[0]);
                 zustellen(row[1]);
             }
+            melder.gelaufen(UemsLaeuferMelder.BOX_TAUSCH);
+        } catch (RuntimeException e) {
+            // AP-14 IP-9: nur ZÄHLEN, nie schlucken - der Aufrufer sieht denselben Fehler wie bisher.
+            melder.fehler(UemsLaeuferMelder.BOX_TAUSCH);
+            throw e;
         } finally {
             if (previous == null) TenantContext.clear(); else TenantContext.set(previous);
         }
