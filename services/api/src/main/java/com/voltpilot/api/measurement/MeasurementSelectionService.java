@@ -403,7 +403,7 @@ public class MeasurementSelectionService {
             } else {
                 out.add(new MeasurementBudget.Candidate(key, row.enabled(),
                         row.cadenceS(), p.pollGroup(),
-                        MeasurementBudget.requestCostMs(p.sourceKind()), row.retention(),
+                        MeasurementBudget.requestCostMs(p.sourceKind(), p.family()), row.retention(),
                         p.family()));
             }
         }
@@ -428,7 +428,7 @@ public class MeasurementSelectionService {
                 point.retention().retentionClass(), point.retention().rawRetentionDays(),
                 point.retention().longTermCadenceS(), point.retention().longTermStrategy());
         return new Resolved(cadence, point.pollGroup(),
-                MeasurementBudget.requestCostMs(point.sourceKind()), retention, null,
+                MeasurementBudget.requestCostMs(point.sourceKind(), point.family()), retention, null,
                 point.family());
     }
 
@@ -444,7 +444,7 @@ public class MeasurementSelectionService {
             Point known = catalog.resolve(pointKey);
             return new Resolved(old.cadenceS(), known == null ? null : known.pollGroup(),
                     known == null ? MeasurementBudget.requestCostMs(null)
-                            : MeasurementBudget.requestCostMs(known.sourceKind()),
+                            : MeasurementBudget.requestCostMs(known.sourceKind(), known.family()),
                     old.retention(), null, known == null ? null : known.family());
         }
         return resolveCatalog(pointKey, cadence);

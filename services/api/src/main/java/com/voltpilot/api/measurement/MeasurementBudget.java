@@ -10,17 +10,17 @@ import java.util.Set;
 /** D5 budget and the 96-byte/90-day volume preview from report §9. */
 public final class MeasurementBudget {
 
-    public static final double SOFT_SAMPLES_PER_MINUTE = 120.0;
-    public static final double HARD_SAMPLES_PER_MINUTE = 600.0;
-    public static final double HARD_REQUESTS_PER_MINUTE = 30.0;
-    public static final double HARD_DUTY_CYCLE_PERCENT = 20.0;
+    public static final double SOFT_SAMPLES_PER_MINUTE = MeasurementBudgetContract.limit("samples_soft");
+    public static final double HARD_SAMPLES_PER_MINUTE = MeasurementBudgetContract.limit("samples_hard");
+    public static final double HARD_REQUESTS_PER_MINUTE = MeasurementBudgetContract.limit("requests");
+    public static final double HARD_DUTY_CYCLE_PERCENT = MeasurementBudgetContract.limit("duty_pct");
     public static final int BYTES_PER_SAMPLE = 96;
     /**
      * Free registers have no catalog family/bench identity yet. Use the
      * conservative upper bound for a validated Modbus read; clients cannot
      * lower this value in a preview or apply request.
      */
-    public static final int CUSTOM_REGISTER_REQUEST_COST_MS = 2_000;
+    public static final int CUSTOM_REGISTER_REQUEST_COST_MS = MeasurementBudgetContract.cost("custom", null);
 
     private static final double DAYS_PER_YEAR = 365.0;
     private static final double SECONDS_PER_DAY = 86_400.0;
@@ -113,11 +113,18 @@ public final class MeasurementBudget {
                 List.copyOf(reasons));
     }
 
-    /** Die heutige Java-Kostentabelle; AP-07 IP-4 baut später den Edge-Vertragszwilling. */
+    /** AP-07 E10: same cost table as the Node-RED planner. */
     public static int requestCostMsForProtocol(String protocol) {
-        if ("ocpp".equals(protocol)) return 0;
-        if ("modbus_tcp".equals(protocol) || "sunspec_modbus".equals(protocol)) return 400;
-        return 250;
+        return requestCostMsForFamily(null, protocol);
+    }
+
+    public static int requestCostMsForFamily(String family, String sourceKind) {
+        return MeasurementBudgetContract.cost(family, sourceKind);
+    }
+
+    /** Units are words for Modbus, cards for WAGO and definitions for unbenched registers. */
+    public static int requestsForUnits(String family, String sourceKind, int units) {
+        return MeasurementBudgetContract.requests(family, sourceKind, units);
     }
 
     /** Family values may only tighten the global 600-sample ceiling. */
@@ -220,13 +227,14 @@ public final class MeasurementBudget {
 
     /** Conservative request-duration estimate until family bench values exist. */
     public static int requestCostMs(String sourceKind) {
+        return requestCostMs(sourceKind, null);
+    }
+
+    public static int requestCostMs(String sourceKind, String family) {
         if (sourceKind == null || "ocpp_sampled_value".equals(sourceKind)) {
             return 1; // inbound/event source: positive sentinel, no poll group is created
         }
-        if (sourceKind.startsWith("modbus") || "sunspec_model".equals(sourceKind)) {
-            return 400;
-        }
-        return 250;
+        return requestCostMsForFamily(family, sourceKind);
     }
 
     public static int customRegisterRequestCostMs() {

@@ -20,8 +20,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * Liest die heutige Last je Datenquelle und Box und lässt {@link DatenquelleBudget} vor einer
- * Zuständigkeitsänderung urteilen. Die Kostentabelle bleibt bis AP-07 IP-4 ausschließlich die
- * heutige Java-Tabelle in {@link MeasurementBudget}; dieser Cloud-Baustein löst kein Edge-Release aus.
+ * Zuständigkeitsänderung urteilen. {@link MeasurementBudget} liest die gemeinsame AP-07-Kostentabelle;
+ * Quellen-/Box-Zuordnung und die Auswege aus AP-06 IP-10 bleiben unverändert.
  */
 @Service
 public class DatenquelleBudgetService {
@@ -179,7 +179,7 @@ public class DatenquelleBudgetService {
             boolean wago = p != null && "wago_registerbild".equals(p.sourceKind());
             UUID blockTeil = teil == null ? entity : teil;
             requests.compute(gruppe, (k, alt) -> alt == null
-                    ? new Anfrage(MeasurementBudget.requestCostMsForProtocol(protokoll), wago,
+                    ? new Anfrage(MeasurementBudget.requestCostMsForFamily(p == null ? null : p.family(), protokoll), wago,
                             new LinkedHashSet<>(Set.of(blockTeil)))
                     : alt.mit(blockTeil));
         }
@@ -195,9 +195,9 @@ public class DatenquelleBudgetService {
         }
     }
 
-    /** WAGO v1 liest höchstens fünf Energiekarten (≈ 500 Wörter) in einem Block. */
+    /** WAGO register-image planning units come from the shared AP-07 E10 contract. */
     static int wagoBloecke(int karten) {
-        return karten <= 0 ? 0 : (karten + 4) / 5;
+        return MeasurementBudget.requestsForUnits(null, "wago_registerbild", Math.max(0, karten));
     }
 
     private record Anfrage(int cost, boolean wago, Set<UUID> teile) {
