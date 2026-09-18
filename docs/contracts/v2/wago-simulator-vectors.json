@@ -1,0 +1,2014 @@
+{
+  "_comment": [
+    "UEMS AP-05 IP-12 — Simulator-Vorstufe zum Vertrag „VoltPilot-Registerbild WAGO v1\".",
+    "Fünf Fälle auf einem In-Process-Modbus-Server: Normallast, Rücksetzung, Herzschlag steht,",
+    "Version fremd, Karte fehlt. Sie sind die BÜHNE für IP-6 (Treiberfamilie), IP-7 (Kopf-Prüfung)",
+    "und IP-8 (Ereignisse) — kein Leser, kein Treiber, kein Produktivcode der Box.",
+    "",
+    "⚠ KEIN BELEG. Es gibt keine Hardware. Jeder Fall trägt herkunft: simulator und belegt: false;",
+    "ein Simulator-Fall kann nie belegt sein (AP-05 IP-1, Gegenprobe im Prüfer). Alle Zahlen sind",
+    "AUSGEDACHT. Der Store liefert nur Rohwörter — eine kWh-Zahl entsteht hier nie, weil der",
+    "Skalierungsfaktor der 750-494 nicht belegt ist (faktor_hinweis je Fall).",
+    "",
+    "Aufbau, Offsets, Datentypen, Festlegungswerte und das Vokabular der Gründe stehen NICHT hier,",
+    "sondern in wago-registerbild-vectors.json (IP-2) — Fixture und Prüfer lesen sie von dort, damit",
+    "diese Datei nicht davon abdriften kann."
+  ],
+  "schema_version": "1.0",
+  "vertrag": "./wago-registerbild.md",
+  "vertrags_vektoren": "./wago-registerbild-vectors.json",
+  "herkunft": "UEMS AP-05 §8 IP-12; Vertrag wago-registerbild.md §2–§5 (IP-2, PR 831); Befunde aus dem Bau von AP-05 (1, 4, 8, 9)",
+  "fixture": "edge-app/nodered/vp-palette/test/fixtures/wago-registerbild-store.js",
+  "pruefer": [
+    "edge-app/nodered/vp-palette/test/wago_simulator_spec.js"
+  ],
+  "beweisregel": "Der Simulator dient dem Bauen, nie dem Beleg. belegt: true verlangt herkunft: pilot und einen nachweis mit Datum, Ort, Prüfer und Vergleich (AP-05 IP-14); kein Fall dieser Datei darf das je tragen.",
+  "runtime_version_unberuehrt": "IP-12 hebt die RUNTIME_VERSION der Box NICHT und packt keine Palette neu — das tut IP-6 zusammen mit einem Edge-Release (Befund 8).",
+  "schritte": {
+    "art": "festlegung",
+    "wert": [
+      "herzschlag_tick",
+      "herzschlag_steht",
+      "herzschlag_setzen",
+      "programm_neustart",
+      "hauptversion_setzen",
+      "nebenversion_setzen",
+      "signatur_setzen",
+      "kartenzahl_setzen",
+      "karte_nicht_gelesen",
+      "karte_gueltigkeit_setzen",
+      "karte_messwert_setzen"
+    ],
+    "fundstelle": "edge-app/nodered/vp-palette/test/fixtures/wago-registerbild-store.js (schritt)"
+  },
+  "herzschlag_urteile": {
+    "art": "beobachtung",
+    "wert": [
+      "erste_lesung",
+      "laeuft",
+      "steht",
+      "ueberlauf",
+      "rueckwaerts"
+    ],
+    "erklaerung": "Wie sich die Herzschlag-Zahl zur vorigen Lesung verhält — mehr nicht. Welche Qualität und welches Ereignis daraus werden, entscheiden IP-7 und IP-8."
+  },
+  "faelle": [
+    {
+      "name": "S1 normallast",
+      "why": "Der Regelfall: Kopf und vier Karten-Blöcke, alle Teile gelesen, der Herzschlag läuft je Lesung um 60 weiter (60 s zwischen den Lesungen). Aufbau wie Steuerung C-1 (Halle 2, EK-1…EK-4 auf Steckplatz 2…5, 750-494/000-001); 12 + 4 · 42 = 180 Wörter, also zwei Anfragen je Lesung (Vertrag §7).",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen auf einer ausgedachten Anlage. Der Simulator dient dem Bauen, nie dem Beleg; ein belegter Fall braucht herkunft: pilot und einen nachweis (AP-05 IP-14).",
+      "faktor_hinweis": "Rohwörter, keine kWh: ob ein Schritt der 750-494/000-001 0,01 oder 0,05 kWh ist, ist NICHT belegt (Befund 1 und 4 aus dem Bau von AP-05). Aus 3 691 248 wird hier weder 36 912,48 noch 184 562,40 kWh — der Simulator liefert nur, was im Register steht.",
+      "woerter_stichprobe": [
+        {
+          "adresse": 0,
+          "wort": 22096,
+          "warum": "signatur_1 = 0x5650"
+        },
+        {
+          "adresse": 1,
+          "wort": 21058,
+          "warum": "signatur_2 = 0x5242"
+        },
+        {
+          "adresse": 2,
+          "wort": 1,
+          "warum": "hauptversion"
+        },
+        {
+          "adresse": 4,
+          "wort": 12,
+          "warum": "kopflaenge"
+        },
+        {
+          "adresse": 5,
+          "wort": 42,
+          "warum": "kartenblocklaenge"
+        },
+        {
+          "adresse": 6,
+          "wort": 4,
+          "warum": "kartenzahl"
+        },
+        {
+          "adresse": 7,
+          "wort": 1731,
+          "warum": "herzschlag vor der ersten Lesung"
+        },
+        {
+          "adresse": 8,
+          "wort": 258,
+          "warum": "wortfolge_pruefwert 0x0102 (big: höherwertig zuerst)"
+        },
+        {
+          "adresse": 9,
+          "wort": 772,
+          "warum": "wortfolge_pruefwert 0x0304"
+        },
+        {
+          "adresse": 10,
+          "wort": 0,
+          "warum": "controller_kennung 1, höherwertiges Wort"
+        },
+        {
+          "adresse": 11,
+          "wort": 1,
+          "warum": "controller_kennung 1, niederwertiges Wort"
+        },
+        {
+          "adresse": 12,
+          "wort": 2,
+          "warum": "Karte 1: steckplatz"
+        },
+        {
+          "adresse": 15,
+          "wort": 15,
+          "warum": "Karte 1: gueltigkeit, alle vier Bits"
+        },
+        {
+          "adresse": 18,
+          "wort": 257,
+          "warum": "Karte 1: Statuswort 1 der Gruppe 1"
+        },
+        {
+          "adresse": 22,
+          "wort": 514,
+          "warum": "Karte 1: Statuswort 1 der Gruppe 2"
+        },
+        {
+          "adresse": 26,
+          "wort": 771,
+          "warum": "Karte 1: Statuswort 1 der Gruppe 3"
+        },
+        {
+          "adresse": 30,
+          "wort": 56,
+          "warum": "Karte 1: energy_import_total 0x0038…"
+        },
+        {
+          "adresse": 31,
+          "wort": 21232,
+          "warum": "…0x52F0 = 3 691 248 (Vertrag §8)"
+        },
+        {
+          "adresse": 38,
+          "wort": 65535,
+          "warum": "Karte 1: power_l3 0xFFFF…"
+        },
+        {
+          "adresse": 39,
+          "wort": 35536,
+          "warum": "…0x8AD0 = −30 000 als Int32 (Vertrag §8)"
+        },
+        {
+          "adresse": 54,
+          "wort": 3,
+          "warum": "Karte 2 beginnt bei 12 + 1 · 42: steckplatz"
+        }
+      ],
+      "aufbau": {
+        "basisadresse": 0,
+        "funktionscode": 3,
+        "wortfolge": "big",
+        "herzschlag": 1731,
+        "controller_kennung": 1,
+        "karten": [
+          {
+            "steckplatz": 2,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "statuswoerter": [
+              257,
+              0,
+              0,
+              0,
+              514,
+              0,
+              0,
+              0,
+              771,
+              0,
+              0,
+              0
+            ],
+            "messwerte": [
+              3691248,
+              {
+                "roh": 0
+              },
+              40000,
+              38000,
+              -30000,
+              23000,
+              23050,
+              22980,
+              20000,
+              19000,
+              15000,
+              50000
+            ]
+          },
+          {
+            "steckplatz": 3,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              618437,
+              {
+                "roh": 0
+              },
+              10000,
+              12000,
+              11000,
+              23010,
+              23020,
+              23030,
+              5000,
+              6000,
+              5500,
+              49990
+            ]
+          },
+          {
+            "steckplatz": 4,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              1250000,
+              {
+                "roh": 0
+              },
+              0,
+              0,
+              0,
+              23000,
+              23000,
+              23000,
+              0,
+              0,
+              0,
+              50010
+            ]
+          },
+          {
+            "steckplatz": 5,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              90000,
+              {
+                "roh": 120
+              },
+              2000,
+              2100,
+              1900,
+              22990,
+              23000,
+              23010,
+              1000,
+              1100,
+              900,
+              50000
+            ]
+          }
+        ]
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "schritte": [],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 1731,
+              "controller_kennung": 1
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  257,
+                  0,
+                  0,
+                  0,
+                  514,
+                  0,
+                  0,
+                  0,
+                  771,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  3691248,
+                  0,
+                  40000,
+                  38000,
+                  4294937296,
+                  23000,
+                  23050,
+                  22980,
+                  20000,
+                  19000,
+                  15000,
+                  50000
+                ],
+                "messwerte": [
+                  3691248,
+                  null,
+                  40000,
+                  38000,
+                  -30000,
+                  23000,
+                  23050,
+                  22980,
+                  20000,
+                  19000,
+                  15000,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  618437,
+                  0,
+                  10000,
+                  12000,
+                  11000,
+                  23010,
+                  23020,
+                  23030,
+                  5000,
+                  6000,
+                  5500,
+                  49990
+                ],
+                "messwerte": [
+                  618437,
+                  null,
+                  10000,
+                  12000,
+                  11000,
+                  23010,
+                  23020,
+                  23030,
+                  5000,
+                  6000,
+                  5500,
+                  49990
+                ]
+              },
+              {
+                "steckplatz": 4,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  1250000,
+                  0,
+                  0,
+                  0,
+                  0,
+                  23000,
+                  23000,
+                  23000,
+                  0,
+                  0,
+                  0,
+                  50010
+                ],
+                "messwerte": [
+                  1250000,
+                  null,
+                  0,
+                  0,
+                  0,
+                  23000,
+                  23000,
+                  23000,
+                  0,
+                  0,
+                  0,
+                  50010
+                ]
+              },
+              {
+                "steckplatz": 5,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  90000,
+                  120,
+                  2000,
+                  2100,
+                  1900,
+                  22990,
+                  23000,
+                  23010,
+                  1000,
+                  1100,
+                  900,
+                  50000
+                ],
+                "messwerte": [
+                  90000,
+                  null,
+                  2000,
+                  2100,
+                  1900,
+                  22990,
+                  23000,
+                  23010,
+                  1000,
+                  1100,
+                  900,
+                  50000
+                ]
+              }
+            ]
+          },
+          "herzschlag_urteil": "erste_lesung"
+        },
+        {
+          "nr": 2,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 60
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 1791,
+              "controller_kennung": 1
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 4,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 5,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "laeuft"
+        },
+        {
+          "nr": 3,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 60
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 1851,
+              "controller_kennung": 1
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 4,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 5,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "laeuft"
+        }
+      ]
+    },
+    {
+      "name": "S2 ruecksetzung",
+      "why": "Der Herzschlag läuft über 65 535 auf 0 (Überlauf, kein Neustart), und danach setzt ihn ein Programmstart auf 0 zurück, obwohl er bei 7 stand — DAS ist die Rücksetzung. Der Simulator stellt nur die Zahlenfolge her; welches Ereignis daraus wird (`device_restart`), baut IP-8. Aufbau wie Steuerung C-2 (Lindach, EK-5/EK-6): zwei Karten, 96 Wörter, eine Anfrage.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen auf einer ausgedachten Anlage. Der Simulator dient dem Bauen, nie dem Beleg; ein belegter Fall braucht herkunft: pilot und einen nachweis (AP-05 IP-14).",
+      "faktor_hinweis": "Rohwörter, keine kWh: ob ein Schritt der 750-494/000-001 0,01 oder 0,05 kWh ist, ist NICHT belegt (Befund 1 und 4 aus dem Bau von AP-05). Aus 3 691 248 wird hier weder 36 912,48 noch 184 562,40 kWh — der Simulator liefert nur, was im Register steht.",
+      "herzschlag_regel": {
+        "art": "beobachtung",
+        "schrittgrenze": 120,
+        "erklaerung": "Nur eine Beobachtung der Zahlenfolge, KEINE Leserregel — was daraus folgt, entscheidet IP-7/IP-8. steht: gleich wie zuvor · laeuft: größer · ueberlauf: kleiner, und der Abstand über 65 536 hinweg bleibt unter der Schrittgrenze · rueckwaerts: sonst."
+      },
+      "aufbau": {
+        "basisadresse": 0,
+        "funktionscode": 3,
+        "wortfolge": "big",
+        "herzschlag": 65534,
+        "controller_kennung": 42,
+        "karten": [
+          {
+            "steckplatz": 2,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              220000,
+              {
+                "roh": 0
+              },
+              5000,
+              5100,
+              4900,
+              23000,
+              23010,
+              22990,
+              2500,
+              2550,
+              2450,
+              50000
+            ]
+          },
+          {
+            "steckplatz": 3,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              77000,
+              {
+                "roh": 0
+              },
+              1500,
+              1600,
+              1400,
+              23020,
+              23030,
+              23040,
+              800,
+              850,
+              750,
+              49980
+            ]
+          }
+        ]
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "schritte": [],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 65534,
+              "controller_kennung": 42
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  220000,
+                  0,
+                  5000,
+                  5100,
+                  4900,
+                  23000,
+                  23010,
+                  22990,
+                  2500,
+                  2550,
+                  2450,
+                  50000
+                ],
+                "messwerte": [
+                  220000,
+                  null,
+                  5000,
+                  5100,
+                  4900,
+                  23000,
+                  23010,
+                  22990,
+                  2500,
+                  2550,
+                  2450,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  77000,
+                  0,
+                  1500,
+                  1600,
+                  1400,
+                  23020,
+                  23030,
+                  23040,
+                  800,
+                  850,
+                  750,
+                  49980
+                ],
+                "messwerte": [
+                  77000,
+                  null,
+                  1500,
+                  1600,
+                  1400,
+                  23020,
+                  23030,
+                  23040,
+                  800,
+                  850,
+                  750,
+                  49980
+                ]
+              }
+            ]
+          },
+          "herzschlag_urteil": "erste_lesung"
+        },
+        {
+          "nr": 2,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 1
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 65535,
+              "controller_kennung": 42
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "laeuft"
+        },
+        {
+          "nr": 3,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 1
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 0,
+              "controller_kennung": 42
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "ueberlauf"
+        },
+        {
+          "nr": 4,
+          "schritte": [
+            {
+              "art": "herzschlag_tick",
+              "wert": 7
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 7,
+              "controller_kennung": 42
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "laeuft"
+        },
+        {
+          "nr": 5,
+          "schritte": [
+            {
+              "art": "programm_neustart"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 2,
+              "herzschlag": 0,
+              "controller_kennung": 42
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "rueckwaerts"
+        }
+      ]
+    },
+    {
+      "name": "S3 herzschlag-steht",
+      "why": "Vier Lesungen, der Herzschlag steht bei 900 — die Werte sind eingefroren (Vertrag §3: über drei aufeinanderfolgende Lesungen). Dieselbe Anlage wie S1, aber mit den ANDEREN Parametern: Basisadresse 4096, Funktionscode 4 (Input Register), Wortfolge little. Damit steht in einem Fall, dass Basisadresse, Funktionscode und Wortfolge Parameter sind und keine Konstanten.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen auf einer ausgedachten Anlage. Der Simulator dient dem Bauen, nie dem Beleg; ein belegter Fall braucht herkunft: pilot und einen nachweis (AP-05 IP-14).",
+      "faktor_hinweis": "Rohwörter, keine kWh: ob ein Schritt der 750-494/000-001 0,01 oder 0,05 kWh ist, ist NICHT belegt (Befund 1 und 4 aus dem Bau von AP-05). Aus 3 691 248 wird hier weder 36 912,48 noch 184 562,40 kWh — der Simulator liefert nur, was im Register steht.",
+      "gleiche_lesungen_in_folge": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "stillstand_ab_lesung": 3,
+      "hinweis": "Ab Lesung 3 steht derselbe Herzschlag in drei aufeinanderfolgenden Lesungen. Der Vertrag §3 sagt dazu: Qualität `stale`, keine Samples als gemessen. Der Store liefert die Kartenwörter unverändert weiter — dass sie nichts mehr wert sind, entscheidet der Leser, nicht der Simulator.",
+      "woerter_stichprobe": [
+        {
+          "adresse": 4096,
+          "wort": 22096,
+          "warum": "signatur_1 an der Basisadresse 4096"
+        },
+        {
+          "adresse": 4097,
+          "wort": 21058,
+          "warum": "signatur_2 — von der Wortfolge unberührt"
+        },
+        {
+          "adresse": 4103,
+          "wort": 900,
+          "warum": "herzschlag, steht über alle vier Lesungen"
+        },
+        {
+          "adresse": 4104,
+          "wort": 772,
+          "warum": "wortfolge_pruefwert little: 0x0304 zuerst — big gelesen wäre das 50 594 050"
+        },
+        {
+          "adresse": 4105,
+          "wort": 258,
+          "warum": "…dann 0x0102"
+        },
+        {
+          "adresse": 4106,
+          "wort": 7,
+          "warum": "controller_kennung 7 little: niederwertiges Wort zuerst"
+        },
+        {
+          "adresse": 4107,
+          "wort": 0,
+          "warum": "…dann das höherwertige"
+        },
+        {
+          "adresse": 4126,
+          "wort": 21232,
+          "warum": "Karte 1: energy_import_total little, 0x52F0 zuerst"
+        },
+        {
+          "adresse": 4127,
+          "wort": 56,
+          "warum": "…dann 0x0038 — derselbe Wert 3 691 248 wie in S1"
+        }
+      ],
+      "aufbau": {
+        "basisadresse": 4096,
+        "funktionscode": 4,
+        "wortfolge": "little",
+        "herzschlag": 900,
+        "controller_kennung": 7,
+        "karten": [
+          {
+            "steckplatz": 2,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              3691248,
+              {
+                "roh": 0
+              },
+              40000,
+              38000,
+              -30000,
+              23000,
+              23050,
+              22980,
+              20000,
+              19000,
+              15000,
+              50000
+            ]
+          },
+          {
+            "steckplatz": 3,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              618437,
+              {
+                "roh": 0
+              },
+              10000,
+              12000,
+              11000,
+              23010,
+              23020,
+              23030,
+              5000,
+              6000,
+              5500,
+              49990
+            ]
+          },
+          {
+            "steckplatz": 4,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              1250000,
+              {
+                "roh": 0
+              },
+              0,
+              0,
+              0,
+              23000,
+              23000,
+              23000,
+              0,
+              0,
+              0,
+              50010
+            ]
+          },
+          {
+            "steckplatz": 5,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              90000,
+              {
+                "roh": 120
+              },
+              2000,
+              2100,
+              1900,
+              22990,
+              23000,
+              23010,
+              1000,
+              1100,
+              900,
+              50000
+            ]
+          }
+        ]
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "schritte": [],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 900,
+              "controller_kennung": 7
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  3691248,
+                  0,
+                  40000,
+                  38000,
+                  4294937296,
+                  23000,
+                  23050,
+                  22980,
+                  20000,
+                  19000,
+                  15000,
+                  50000
+                ],
+                "messwerte": [
+                  3691248,
+                  null,
+                  40000,
+                  38000,
+                  -30000,
+                  23000,
+                  23050,
+                  22980,
+                  20000,
+                  19000,
+                  15000,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  618437,
+                  0,
+                  10000,
+                  12000,
+                  11000,
+                  23010,
+                  23020,
+                  23030,
+                  5000,
+                  6000,
+                  5500,
+                  49990
+                ],
+                "messwerte": [
+                  618437,
+                  null,
+                  10000,
+                  12000,
+                  11000,
+                  23010,
+                  23020,
+                  23030,
+                  5000,
+                  6000,
+                  5500,
+                  49990
+                ]
+              },
+              {
+                "steckplatz": 4,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  1250000,
+                  0,
+                  0,
+                  0,
+                  0,
+                  23000,
+                  23000,
+                  23000,
+                  0,
+                  0,
+                  0,
+                  50010
+                ],
+                "messwerte": [
+                  1250000,
+                  null,
+                  0,
+                  0,
+                  0,
+                  23000,
+                  23000,
+                  23000,
+                  0,
+                  0,
+                  0,
+                  50010
+                ]
+              },
+              {
+                "steckplatz": 5,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  90000,
+                  120,
+                  2000,
+                  2100,
+                  1900,
+                  22990,
+                  23000,
+                  23010,
+                  1000,
+                  1100,
+                  900,
+                  50000
+                ],
+                "messwerte": [
+                  90000,
+                  null,
+                  2000,
+                  2100,
+                  1900,
+                  22990,
+                  23000,
+                  23010,
+                  1000,
+                  1100,
+                  900,
+                  50000
+                ]
+              }
+            ]
+          },
+          "herzschlag_urteil": "erste_lesung"
+        },
+        {
+          "nr": 2,
+          "schritte": [
+            {
+              "art": "herzschlag_steht"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 900,
+              "controller_kennung": 7
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 4,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 5,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "steht"
+        },
+        {
+          "nr": 3,
+          "schritte": [
+            {
+              "art": "herzschlag_steht"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 900,
+              "controller_kennung": 7
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 4,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 5,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "steht"
+        },
+        {
+          "nr": 4,
+          "schritte": [
+            {
+              "art": "herzschlag_steht"
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 900,
+              "controller_kennung": 7
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 4,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 5,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "steht"
+        }
+      ]
+    },
+    {
+      "name": "S4 version-fremd",
+      "why": "Die Steuerung trägt Hauptversion 2 im Kopf: der Leser bricht nach Prüfschritt 2 ab und liefert KEINEN einzigen Kartenwert (Vertrag §5) — lieber keine Zahl als eine falsche. Signatur, Längen und alle Kartenwörter stehen trotzdem im Register; der Simulator versteckt nichts, die Weigerung ist Sache des Lesers.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen auf einer ausgedachten Anlage. Der Simulator dient dem Bauen, nie dem Beleg; ein belegter Fall braucht herkunft: pilot und einen nachweis (AP-05 IP-14).",
+      "faktor_hinweis": "Rohwörter, keine kWh: ob ein Schritt der 750-494/000-001 0,01 oder 0,05 kWh ist, ist NICHT belegt (Befund 1 und 4 aus dem Bau von AP-05). Aus 3 691 248 wird hier weder 36 912,48 noch 184 562,40 kWh — der Simulator liefert nur, was im Register steht.",
+      "kartenwoerter_stehen_trotzdem": true,
+      "woerter_stichprobe": [
+        {
+          "adresse": 0,
+          "wort": 22096,
+          "warum": "signatur_1 stimmt — es geht allein um die Version"
+        },
+        {
+          "adresse": 1,
+          "wort": 21058,
+          "warum": "signatur_2 stimmt"
+        },
+        {
+          "adresse": 2,
+          "wort": 2,
+          "warum": "hauptversion 2: fremd für einen v1-Leser"
+        },
+        {
+          "adresse": 4,
+          "wort": 12,
+          "warum": "kopflaenge unverändert"
+        },
+        {
+          "adresse": 30,
+          "wort": 56,
+          "warum": "Karte 1: die Messwertwörter stehen da…"
+        },
+        {
+          "adresse": 31,
+          "wort": 21232,
+          "warum": "…und dürfen trotzdem nicht gelesen werden"
+        }
+      ],
+      "aufbau": {
+        "basisadresse": 0,
+        "funktionscode": 3,
+        "wortfolge": "big",
+        "herzschlag": 300,
+        "controller_kennung": 1,
+        "hauptversion": 2,
+        "karten": [
+          {
+            "steckplatz": 2,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              3691248,
+              {
+                "roh": 0
+              },
+              40000,
+              38000,
+              -30000,
+              23000,
+              23050,
+              22980,
+              20000,
+              19000,
+              15000,
+              50000
+            ]
+          },
+          {
+            "steckplatz": 3,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              618437,
+              {
+                "roh": 0
+              },
+              10000,
+              12000,
+              11000,
+              23010,
+              23020,
+              23030,
+              5000,
+              6000,
+              5500,
+              49990
+            ]
+          },
+          {
+            "steckplatz": 4,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              1250000,
+              {
+                "roh": 0
+              },
+              0,
+              0,
+              0,
+              23000,
+              23000,
+              23000,
+              0,
+              0,
+              0,
+              50010
+            ]
+          },
+          {
+            "steckplatz": 5,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              90000,
+              {
+                "roh": 120
+              },
+              2000,
+              2100,
+              1900,
+              22990,
+              23000,
+              23010,
+              1000,
+              1100,
+              900,
+              50000
+            ]
+          }
+        ]
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "schritte": [],
+          "erwartet": {
+            "ergebnis": "nicht_lesbar",
+            "grund": "hauptversion_fremd",
+            "kopf": {
+              "hauptversion": 2,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 300,
+              "controller_kennung": 1
+            },
+            "karten": []
+          },
+          "herzschlag_urteil": "erste_lesung"
+        }
+      ]
+    },
+    {
+      "name": "S5 karte-fehlt",
+      "why": "Zwischen zwei Lesungen fällt Karte 3 (Steckplatz 4) aus — gezogen oder Klemmenbusfehler. Das Programm löscht Gültigkeitsbit 0; die ALTEN Messwertwörter bleiben im Block stehen. Genau das ist die Falle: unbekannt ist keine Null, veraltete Wörter sind kein Wert (Vertrag §4.1). Die anderen drei Karten bleiben gelesen.",
+      "herkunft": "simulator",
+      "belegt": false,
+      "kein_beleg": "Ausgedachte Zahlen auf einer ausgedachten Anlage. Der Simulator dient dem Bauen, nie dem Beleg; ein belegter Fall braucht herkunft: pilot und einen nachweis (AP-05 IP-14).",
+      "faktor_hinweis": "Rohwörter, keine kWh: ob ein Schritt der 750-494/000-001 0,01 oder 0,05 kWh ist, ist NICHT belegt (Befund 1 und 4 aus dem Bau von AP-05). Aus 3 691 248 wird hier weder 36 912,48 noch 184 562,40 kWh — der Simulator liefert nur, was im Register steht.",
+      "alte_woerter_stehen_noch": {
+        "karte": 2,
+        "woerter": [
+          1250000,
+          0,
+          0,
+          0,
+          0,
+          23000,
+          23000,
+          23000,
+          0,
+          0,
+          0,
+          50010
+        ],
+        "erklaerung": "Dieselben Rohwerte wie in Lesung 1 stehen nach dem Ausfall unverändert im Register. Ein Leser, der nur die Wörter ansieht, merkt nichts — erst Gültigkeitsbit 0 sagt es ihm."
+      },
+      "aufbau": {
+        "basisadresse": 0,
+        "funktionscode": 3,
+        "wortfolge": "big",
+        "herzschlag": 4200,
+        "controller_kennung": 1,
+        "karten": [
+          {
+            "steckplatz": 2,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              3691248,
+              {
+                "roh": 0
+              },
+              40000,
+              38000,
+              -30000,
+              23000,
+              23050,
+              22980,
+              20000,
+              19000,
+              15000,
+              50000
+            ]
+          },
+          {
+            "steckplatz": 3,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              618437,
+              {
+                "roh": 0
+              },
+              10000,
+              12000,
+              11000,
+              23010,
+              23020,
+              23030,
+              5000,
+              6000,
+              5500,
+              49990
+            ]
+          },
+          {
+            "steckplatz": 4,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              1250000,
+              {
+                "roh": 0
+              },
+              0,
+              0,
+              0,
+              23000,
+              23000,
+              23000,
+              0,
+              0,
+              0,
+              50010
+            ]
+          },
+          {
+            "steckplatz": 5,
+            "kartentyp": 494,
+            "variante": 1,
+            "gueltigkeit": 15,
+            "kartenregister_32": 61440,
+            "kartenregister_35": 4,
+            "messwerte": [
+              90000,
+              {
+                "roh": 120
+              },
+              2000,
+              2100,
+              1900,
+              22990,
+              23000,
+              23010,
+              1000,
+              1100,
+              900,
+              50000
+            ]
+          }
+        ]
+      },
+      "lesungen": [
+        {
+          "nr": 1,
+          "schritte": [],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 4200,
+              "controller_kennung": 1
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  3691248,
+                  0,
+                  40000,
+                  38000,
+                  4294937296,
+                  23000,
+                  23050,
+                  22980,
+                  20000,
+                  19000,
+                  15000,
+                  50000
+                ],
+                "messwerte": [
+                  3691248,
+                  null,
+                  40000,
+                  38000,
+                  -30000,
+                  23000,
+                  23050,
+                  22980,
+                  20000,
+                  19000,
+                  15000,
+                  50000
+                ]
+              },
+              {
+                "steckplatz": 3,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  618437,
+                  0,
+                  10000,
+                  12000,
+                  11000,
+                  23010,
+                  23020,
+                  23030,
+                  5000,
+                  6000,
+                  5500,
+                  49990
+                ],
+                "messwerte": [
+                  618437,
+                  null,
+                  10000,
+                  12000,
+                  11000,
+                  23010,
+                  23020,
+                  23030,
+                  5000,
+                  6000,
+                  5500,
+                  49990
+                ]
+              },
+              {
+                "steckplatz": 4,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  1250000,
+                  0,
+                  0,
+                  0,
+                  0,
+                  23000,
+                  23000,
+                  23000,
+                  0,
+                  0,
+                  0,
+                  50010
+                ],
+                "messwerte": [
+                  1250000,
+                  null,
+                  0,
+                  0,
+                  0,
+                  23000,
+                  23000,
+                  23000,
+                  0,
+                  0,
+                  0,
+                  50010
+                ]
+              },
+              {
+                "steckplatz": 5,
+                "kartentyp": 494,
+                "variante": 1,
+                "ergebnis": "gelesen",
+                "gueltigkeit": 15,
+                "kartenregister_32": 61440,
+                "kartenregister_35": 4,
+                "statuswoerter": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "messwerte_roh": [
+                  90000,
+                  120,
+                  2000,
+                  2100,
+                  1900,
+                  22990,
+                  23000,
+                  23010,
+                  1000,
+                  1100,
+                  900,
+                  50000
+                ],
+                "messwerte": [
+                  90000,
+                  null,
+                  2000,
+                  2100,
+                  1900,
+                  22990,
+                  23000,
+                  23010,
+                  1000,
+                  1100,
+                  900,
+                  50000
+                ]
+              }
+            ]
+          },
+          "herzschlag_urteil": "erste_lesung"
+        },
+        {
+          "nr": 2,
+          "schritte": [
+            {
+              "art": "karte_nicht_gelesen",
+              "karte": 2
+            },
+            {
+              "art": "herzschlag_tick",
+              "wert": 60
+            }
+          ],
+          "erwartet": {
+            "ergebnis": "erkannt",
+            "grund": null,
+            "kopf": {
+              "hauptversion": 1,
+              "nebenversion": 0,
+              "kopflaenge": 12,
+              "kartenblocklaenge": 42,
+              "kartenzahl": 4,
+              "herzschlag": 4260,
+              "controller_kennung": 1
+            },
+            "karten": [
+              {
+                "steckplatz": 2,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 3,
+                "ergebnis": "gelesen"
+              },
+              {
+                "steckplatz": 4,
+                "ergebnis": "nicht_gelesen",
+                "gueltigkeit": 14,
+                "kartenregister_32": null,
+                "kartenregister_35": null,
+                "statuswoerter": null,
+                "messwerte_roh": null,
+                "messwerte": null
+              },
+              {
+                "steckplatz": 5,
+                "ergebnis": "gelesen"
+              }
+            ]
+          },
+          "herzschlag_urteil": "laeuft"
+        }
+      ]
+    }
+  ]
+}

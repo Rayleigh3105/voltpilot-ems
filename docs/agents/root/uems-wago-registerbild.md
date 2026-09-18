@@ -37,4 +37,37 @@ Baustein, kein Portal. Es gibt keine Hardware: **nichts im Vertrag ist am Gerät
 - **Vorbehalt vor dem Pilot (§6):** bis zum ersten eingebauten Baustein oder ausgelieferten Leser darf
   Fassung 1.0 selbst berichtigt werden (Vertrag + Datei + Test zusammen), danach nur additiv.
 - Nachfolger: IP-3 (Baustein schreibt), IP-4 (Katalog-Faktoren), IP-6/IP-7 (Leser = Zwillinge dieser
-  Datei), IP-12 (Simulator-Fälle `herkunft: simulator`), IP-14 (belegte Pilot-Fälle mit `nachweis`).
+  Datei), IP-14 (belegte Pilot-Fälle mit `nachweis`). IP-12 steht (siehe unten).
+
+## Simulator-Vorstufe (AP-05 IP-12, 18.09.2026)
+
+Die **Bühne**, auf der IP-6 (Treiberfamilie), IP-7 (Kopf-Prüfung) und IP-8 (Ereignisse) ihre Tests
+fahren — kein Leser, kein Treiber, kein Produktivcode der Box.
+
+- `edge-app/nodered/vp-palette/test/fixtures/wago-registerbild-store.js` — Register-Store (Kopf +
+  n Karten) und ein In-Process-Modbus-TCP-Server davor, nach dem Muster von `modbus_spec.js`.
+  Exporte für IP-6: `vertragVorhanden`, `ladeAufbau`, `erstelleRegisterbild`,
+  `starteRegisterbildServer`, `ladeFaelle`/`ladeFall`, `UNGUELTIG`.
+- [`wago-simulator-vectors.json`](../../contracts/v2/wago-simulator-vectors.json) — fünf Fälle
+  S1–S5: Normallast (4 Karten, big, FC3), Rücksetzung (Überlauf 65 535 → 0 ist KEIN Neustart, ein
+  Programmstart schon), Herzschlag steht (little, FC4, Basisadresse 4096), Version fremd, Karte
+  fehlt. Je Fall `lesungen[]` mit `schritte` (Store-Mutationen) und `erwartet`.
+- `edge-app/nodered/vp-palette/test/wago_simulator_spec.js` — der Prüfer: baut den Store, liest ihn
+  über den echten Modbus-Weg (`lib/modbus-conn`) und dekodiert mit einem kleinen unabhängigen Leser.
+
+### Fallen
+
+- ⚠ **Der Aufbau wird nicht abgeschrieben:** Offsets, Längen, Datentypen, Festlegungswerte und das
+  Vokabular der Gründe liest die Fixture aus `wago-registerbild-vectors.json`. Ändert IP-2 den
+  Vertrag, wandert der Store mit — dafür gibt es hier keine zweite Kopie der Zahlen.
+- ⚠ **Kein Beleg, und der Test hält es fest:** jeder Fall `herkunft: simulator`, `belegt: false`,
+  nie ein `nachweis`. Die Fixture **weigert sich**, für Messwert 2 (Datentyp zu erheben) eine
+  gedeutete Zahl anzunehmen — dort ist nur `{ "roh": N }` zulässig. Aus einem Rohwert wird nirgends
+  eine kWh-Zahl: der Faktor der 750-494 ist nicht belegt.
+- ⚠ **Der Leser gehört NICHT in die Fixture.** Läge er dort, prüfte IP-6 seinen Leser gegen einen
+  Zwilling seiner selbst. Er steht im Spec und bleibt dort.
+- ⚠ **`RUNTIME_VERSION` bleibt unberührt** (Befund 8): IP-12 packt keine Palette neu; das tut IP-6
+  zusammen mit einem Edge-Release.
+- ⚠ **Testweg:** `npm test` in `edge-app/nodered/vp-palette` (Mocha). Unter `node --test` scheitern
+  die Specs mit „describe is not defined"; die CI schließt `vp-palette` aus dem `node --test`-Schritt
+  aus (`.forgejo/workflows/edge-images.yaml`).
