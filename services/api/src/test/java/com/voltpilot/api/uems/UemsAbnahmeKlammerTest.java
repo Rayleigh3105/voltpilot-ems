@@ -8,10 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -69,7 +67,7 @@ class UemsAbnahmeKlammerTest {
      */
     @Test
     void jederNachweisZeigtAufEineKlasseUndEineMethodeDieEsGibt() throws IOException {
-        Map<String, Path> klassen = testklassen();
+        Map<String, List<Path>> klassen = testklassen();
         List<String> fehlend = new ArrayList<>();
         int geprueft = 0;
 
@@ -79,12 +77,20 @@ class UemsAbnahmeKlammerTest {
                 geprueft++;
                 String klasse = m.group(1);
                 String methode = m.group(2);
-                Path datei = klassen.get(klasse);
-                if (datei == null) {
+                List<Path> dateien = klassen.get(klasse);
+                if (dateien == null) {
                     fehlend.add(zeile.getKey() + ": Klasse " + klasse + " gibt es nicht");
                     continue;
                 }
-                String quelle = Files.readString(datei, StandardCharsets.UTF_8);
+                // Gleiche einfache Namen gibt es (K8sReadinessConfigTest steht in zwei
+                // Diensten). Mehrdeutig ist erst der NACHWEIS, wenn die genannte Klasse in
+                // mehreren Bäumen liegt — dann sagt die Zelle nicht, welche gemeint ist.
+                if (dateien.size() > 1) {
+                    fehlend.add(zeile.getKey() + ": " + klasse + " gibt es " + dateien.size()
+                            + "-mal — der Nachweis ist mehrdeutig");
+                    continue;
+                }
+                String quelle = Files.readString(dateien.get(0), StandardCharsets.UTF_8);
                 if (!quelle.contains(" " + methode + "(")) {
                     fehlend.add(zeile.getKey() + ": " + klasse + " hat keine Methode " + methode);
                 }
@@ -125,10 +131,9 @@ class UemsAbnahmeKlammerTest {
         return zeilen;
     }
 
-    /** Einfacher Klassenname → Datei, über alle drei Test-Bäume. */
-    private static Map<String, Path> testklassen() throws IOException {
-        Map<String, Path> gefunden = new LinkedHashMap<>();
-        Set<String> doppelt = new LinkedHashSet<>();
+    /** Einfacher Klassenname → alle Dateien dieses Namens, über die drei Test-Bäume. */
+    private static Map<String, List<Path>> testklassen() throws IOException {
+        Map<String, List<Path>> gefunden = new LinkedHashMap<>();
         for (Path baum : TESTBAEUME) {
             if (!Files.isDirectory(baum)) {
                 continue;
@@ -137,16 +142,11 @@ class UemsAbnahmeKlammerTest {
                 for (Path p : alle.filter(p -> p.getFileName().toString().endsWith(".java"))
                         .toList()) {
                     String name = p.getFileName().toString().replace(".java", "");
-                    if (gefunden.putIfAbsent(name, p) != null) {
-                        doppelt.add(name);
-                    }
+                    gefunden.computeIfAbsent(name, k -> new ArrayList<>()).add(p);
                 }
             }
         }
         assertThat(gefunden).as("die Test-Bäume liegen, wo die Klammer sie sucht").isNotEmpty();
-        assertThat(doppelt)
-                .as("zwei Testklassen gleichen Namens — der Nachweis wäre mehrdeutig")
-                .isEmpty();
         return gefunden;
     }
 }
