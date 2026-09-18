@@ -36,10 +36,16 @@ OCPP-Messungen kommen vom Core; ihr Leseweg bleibt geräteweit. Jede Probe über
 
 ## Lastgrenzen und Datenqualität
 
-- Warnung über 120 Proben/min; harte Grenzen: 600 Proben/min, 30 Geräteanfragen/min und 20 % geschätzte Busbelegung.
+- Warnung ab 120 Proben/min; harte Grenzen: 600 Proben/min, 30 Geräteanfragen/min und 20 % geschätzte Busbelegung.
 - Benachbarte Register in Blöcken von höchstens 120 Wörtern lesen; Grenzen bei Planannahme und im laufenden Zeitfenster prüfen.
 - Keine Antwort: keine Probe. `raw` stammt aus tatsächlich gelesenen Wörtern/Feldern. Unbelegte Skalierung lässt `decoded` weg.
 - SunSpec Model 160 verwendet die live ermittelte Modellbasis und Modulanzahl.
+
+Kosten und Grenzen stammen aus dem [gemeinsamen Budget-Vertrag](../../../docs/contracts/v2/measurement-budget-vectors.json).
+`package_edge_runtime.py` kopiert ihn unverändert neben den Katalog; `--check` und die
+Java-/Node-Vektortests sichern beide Pakete. Freie Register ohne belegte Familie kosten
+2.000 ms je Adresse, Katalogblöcke weiterhin 400/250 ms. Vertragsdetails und Mischbetrieb:
+[AP-07 IP-4](../../../docs/agents/root/uems-messbudget-vertrag.md).
 
 Der kanonische Katalog liegt unter [`catalog/measurement-points/dist`](../../../catalog/measurement-points/dist). `tools/package_edge_runtime.py` erzeugt daraus das lokale `catalog.json` und SQL-Metadaten; generierte Dateien nicht von Hand ändern. Neue SQL-Ausgaben dürfen keine bereits angewandte Migration überschreiben.
 

@@ -6,6 +6,8 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Gemeinsamer Messbudget-Vertrag (AP-07 IP-4)** — Kostentabelle Java/Node-RED, A16 einschließlich Ahrenberg/25 Karten, unveränderter AP-06-Box-Deckel und Mischbetrieb ohne Laufzeitversionssprung · [Vertrag und Nachweise](uems-messbudget-vertrag.md)
+
 - **Kern-/Katalog-Spiegel (AP-07 IP-17)** — geprüfte Cloud-Registerpaare, Writer-Kennzeichnung zur Messzeit für beide Kern-Schreibwege; führende Quellenbindung und NULL-Rollenbestand bleiben erhalten · [Zuordnung, Grenzen und Nachweise](uems-kern-spiegel.md)
 
 - **Speicher-Wächter und gemessene VM-Kompression (AP-07 IP-16)** — täglich gecachte physische Tabellenanteile je interner Mandantenkennung und Klasse, 70-%-Planwarnung, bestehender 0,5-TB-Flottenalarm unverändert; lokale synthetische Nicht-RLS-Kompressionsmessung · [Wächter, Grenzen und Nachweise](uems-speicher-waechter.md)

@@ -26,6 +26,7 @@ from cataloglib import CATALOG_VERSION, EDGE_FIELDS, ROOT, box_points, canonical
 REPO = ROOT.parents[1]
 SOURCE = ROOT / "dist" / f"measurement-point-catalog-{CATALOG_VERSION}.json"
 EDGE = REPO / "edge-app" / "nodered" / "measurements" / "catalog.json"
+BUDGET = REPO / "docs" / "contracts" / "v2" / "measurement-budget-vectors.json"
 MIGRATIONS = REPO / "services" / "api" / "src" / "main" / "resources" / "db" / "migration"
 # ⚠ Eine angewandte Migration ist unveränderlich: jeder Laufzeitstand bekommt seine EIGENE
 # Metadaten-Migration. Wer RUNTIME_VERSION hebt, trägt hier eine neue, datums-versionierte
@@ -77,7 +78,8 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     edge, sql = outputs()
-    expected = ((EDGE, edge), (sql_path(), sql))
+    expected = ((EDGE, edge), (sql_path(), sql),
+                (EDGE.with_name(BUDGET.name), BUDGET.read_bytes()))
     if args.check:
         stale = [str(path.relative_to(REPO)) for path, raw in expected
                  if not path.exists() or path.read_bytes() != raw]

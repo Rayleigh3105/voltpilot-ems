@@ -3,10 +3,63 @@
 const { catalogDocument, resolvePoint, derivedAddresses } = require('./measurement-driver');
 const { TARGET_PRIMARY, resolveTarget } = require('./measurement-binding');
 
-const LIMITS = Object.freeze({ samplesPerMinute: 600, requestsPerMinute: 30, dutyPercent: 20 });
-const COST_MS = Object.freeze({ modbus_holding: 400, modbus_input: 400,
-  sunspec_model: 400, http_api_key: 250,
-  rest_json: 250, rpc_json: 250, ocpp_sampled_value: 0 });
+// Generated verbatim by package_edge_runtime.py from docs/contracts/v2.
+const budgetContract = require('./measurement-budget-vectors.json');
+const LIMITS = Object.freeze({ samplesPerMinute: budgetContract.limits.samples_hard,
+  requestsPerMinute: budgetContract.limits.requests, dutyPercent: budgetContract.limits.duty_pct });
+function costFamily(family, sourceKind) {
+  const key = Object.hasOwn(budgetContract.family_overrides, family)
+    ? budgetContract.family_overrides[family]
+    : Object.hasOwn(budgetContract.aliases, sourceKind) ? budgetContract.aliases[sourceKind]
+    : typeof sourceKind === 'string' && sourceKind.startsWith('modbus') ? 'modbus'
+    : budgetContract.default_family;
+  return budgetContract.families[key];
+}
+function requestCostMs(family, sourceKind) {
+  return costFamily(family, sourceKind).request_cost_ms;
+}
+function requestsForUnits(family, sourceKind, units) {
+  if (!Number.isInteger(units) || units < 0) throw new Error('Invalid block size');
+  const row = costFamily(family, sourceKind);
+  return row.inbound ? 0 : Math.ceil(units / row.units_per_request);
+}
+const COST_MS = Object.freeze(Object.fromEntries(Object.keys(budgetContract.aliases)
+  .map((kind) => [kind, requestCostMs(null, kind)])));
+
+function budgetMetrics(samples, requests, dutyMs) {
+  const duty = dutyMs / 600;
+  const warning = samples >= budgetContract.limits.samples_soft - 1e-9 ? 'budget_warning_samples' : null;
+  const reason = samples > LIMITS.samplesPerMinute + 1e-9 ? 'budget_samples'
+    : requests > LIMITS.requestsPerMinute + 1e-9 ? 'budget_requests'
+    : duty > LIMITS.dutyPercent + 1e-9 ? 'budget_duty_cycle' : null;
+  return { reason, metrics: { samplesPerMinute:samples, requestsPerMinute:requests,
+    dutyPercent:duty, warning } };
+}
+
+/** The same source/box arithmetic as MeasurementBudget.estimateSources. No I/O. */
+function estimateSources(sources) {
+  let samples = 0; let requests = 0; let dutyMs = 0;
+  for (const source of sources) {
+    if (!Number.isInteger(source.channels) || source.channels < 0
+        || !Number.isInteger(source.cadenceS) || source.cadenceS < 1 || source.cadenceS > 86400) {
+      throw new Error('Invalid budget source');
+    }
+    const cycles = 60 / source.cadenceS;
+    samples += source.channels * cycles;
+    for (const request of source.requests) {
+      if (!Number.isInteger(request.requestsPerCadence) || request.requestsPerCadence < 0
+          || !Number.isInteger(request.requestCostMs) || request.requestCostMs < 0
+          || request.requestCostMs > 60000) throw new Error('Invalid budget request');
+      requests += request.requestsPerCadence * cycles;
+      dutyMs += request.requestsPerCadence * cycles * request.requestCostMs;
+    }
+  }
+  const result = budgetMetrics(samples, requests, dutyMs);
+  for (const key of ['samplesPerMinute', 'requestsPerMinute', 'dutyPercent']) {
+    result.metrics[key] = Math.round(result.metrics[key] * 1000) / 1000;
+  }
+  return result;
+}
 
 /**
  * Per-target lookups (Stufe 3c). `discovery`/`byteOrder` stay the PRIMARY
@@ -71,7 +124,8 @@ function groupModbus(points, options) {
     // carry the same family and the same register; merging them into one block
     // would read one device's addresses over the other's connection.
     const target = selected.target || { key:TARGET_PRIMARY, sourceId:null };
-    const key = `${target.key}:${selected.point.family}:${selected.point.source_kind}:${selected.cadence_s}`;
+    const unbenched = selected.point.family === 'custom' ? `:${selected.point.poll_group}` : '';
+    const key = `${target.key}:${selected.point.family}:${selected.point.source_kind}:${selected.cadence_s}${unbenched}`;
     targets.set(key, target);
     const list = grouped.get(key) || [];
     const address = addressFor(selected.point, discoveryFor(options, target.key));
@@ -94,9 +148,11 @@ function groupModbus(points, options) {
     let block = null;
     for (const item of list) {
       const end = item.start + item.count;
-      if (!block || item.start > block.start + block.count + 1 || end - block.start > 120) {
+      if (!block || item.start > block.start + block.count + 1
+          || end - block.start > costFamily(null, 'modbus_holding').units_per_request) {
         block = { key, start: item.start, count: item.count, cadence_s: item.selected.cadence_s,
-          source_kind:item.selected.point.source_kind, target:targets.get(key), points: [] };
+          source_kind:item.selected.point.source_kind, target:targets.get(key), points: [],
+          requestCostMs:requestCostMs(item.selected.point.family, item.selected.point.source_kind) };
         blocks.push(block);
       } else block.count = Math.max(block.count, end - block.start);
       const triggerKey = item.selected.trigger_key || item.selected.point.point_key;
@@ -198,15 +254,12 @@ function buildPlan(config, options) {
   const samples = acceptedCandidates.reduce((n,x) => n + 60/x.cadence_s, 0);
   const requests = blocks.reduce((n,b) => n + 60/b.cadence_s, 0)
     + [...nonModbusGroups.values()].reduce((n,x) => n + 60/x.cadence_s, 0);
-  const dutyMs = blocks.reduce((n,b) => n + 60/b.cadence_s*400, 0)
-    + [...nonModbusGroups.values()].reduce((n,x) => n + 60/x.cadence_s*(COST_MS[x.point.source_kind]||250), 0);
-  const duty = dutyMs/600;
-  const warning = samples > 120 ? 'budget_warning_samples' : null;
-  let budgetReason = samples > LIMITS.samplesPerMinute ? 'budget_samples'
-    : requests > LIMITS.requestsPerMinute ? 'budget_requests'
-    : duty > LIMITS.dutyPercent ? 'budget_duty_cycle' : null;
+  const dutyMs = blocks.reduce((n,b) => n + 60/b.cadence_s*b.requestCostMs, 0)
+    + [...nonModbusGroups.values()].reduce((n,x) => n + 60/x.cadence_s
+      *requestCostMs(x.point.family, x.point.source_kind), 0);
+  const { reason:budgetReason, metrics } = budgetMetrics(samples, requests, dutyMs);
   if (budgetReason) {
-    return { applied:false, accepted:[], rejected:acceptedCandidates.map((x)=>({point_key:x.requested_key,reason:budgetReason})).concat(rejected), metrics:{samplesPerMinute:samples,requestsPerMinute:requests,dutyPercent:duty,warning} };
+    return { applied:false, accepted:[], rejected:acceptedCandidates.map((x)=>({point_key:x.requested_key,reason:budgetReason})).concat(rejected), metrics };
   }
   const accepted = [...new Set(acceptedCandidates.map((x)=>x.requested_key))];
   return { applied:true, revision:config.revision, catalog_version:config.catalog_version,
@@ -215,7 +268,7 @@ function buildPlan(config, options) {
     byteOrder:options.byteOrder, byteOrders:options.byteOrders,
     blocks, httpGroups:[...nonModbusGroups.entries()].map(([key, x]) => ({ key, target:x.target })),
     ocppConfiguration:choreography.changes,
-    metrics:{samplesPerMinute:samples,requestsPerMinute:requests,dutyPercent:duty,warning} };
+    metrics };
 }
 
 // Scheduler is deliberately tiny: control work always drains before a poll.
@@ -227,4 +280,4 @@ class Scheduler {
 }
 
 module.exports = { LIMITS, COST_MS, buildPlan, groupModbus, compatibleOcpp, Scheduler,
-  decoderDependencies, discoveryFor, byteOrderFor };
+  decoderDependencies, discoveryFor, byteOrderFor, requestCostMs, requestsForUnits, estimateSources };

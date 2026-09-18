@@ -1,0 +1,640 @@
+{
+  "schema_version": "1.0",
+  "description": "AP-07 E10/A16: common planning costs, not measured runtime costs or a hardware certification. Sources/targets and physical blocks are resolved by the existing planners.",
+  "limits": {
+    "samples_soft": 120,
+    "samples_hard": 600,
+    "requests": 30,
+    "duty_pct": 20
+  },
+  "default_family": "http",
+  "family_overrides": {
+    "custom": "unbenched_register",
+    "wago.pm494": "wago_registerbild",
+    "wago.pm495": "wago_registerbild"
+  },
+  "aliases": {
+    "modbus_holding": "modbus",
+    "modbus_input": "modbus",
+    "modbus_tcp": "modbus",
+    "sunspec_model": "sunspec",
+    "sunspec_modbus": "sunspec",
+    "http_api_key": "http",
+    "rest_json": "http",
+    "rpc_json": "http",
+    "mqtt": "http",
+    "solarman_v5": "http",
+    "ocpp_sampled_value": "ocpp",
+    "ocpp": "ocpp",
+    "wago_registerbild": "wago_registerbild"
+  },
+  "families": {
+    "modbus": {
+      "request_cost_ms": 400,
+      "units_per_request": 120,
+      "unit": "word"
+    },
+    "sunspec": {
+      "request_cost_ms": 400,
+      "units_per_request": 120,
+      "unit": "word"
+    },
+    "wago_registerbild": {
+      "request_cost_ms": 400,
+      "units_per_request": 5,
+      "unit": "energy_card"
+    },
+    "http": {
+      "request_cost_ms": 250,
+      "units_per_request": 1,
+      "unit": "endpoint"
+    },
+    "ocpp": {
+      "request_cost_ms": 0,
+      "units_per_request": 1,
+      "unit": "inbound",
+      "inbound": true
+    },
+    "unbenched_register": {
+      "request_cost_ms": 2000,
+      "units_per_request": 1,
+      "unit": "register_definition"
+    }
+  },
+  "cases": [
+    {
+      "id": "DQ-1",
+      "sources": [
+        {
+          "channels": 8,
+          "cadence_s": 10,
+          "blocks": [
+            {
+              "source_kind": "sunspec_model",
+              "units": 1
+            },
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 48.0,
+        "requests_per_minute": 12.0,
+        "duty_cycle_percent": 8.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "DQ-2",
+      "sources": [
+        {
+          "channels": 3,
+          "cadence_s": 10,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 18.0,
+        "requests_per_minute": 6.0,
+        "duty_cycle_percent": 4.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "DQ-3",
+      "sources": [
+        {
+          "channels": 8,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            },
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            },
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            },
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 8.0,
+        "requests_per_minute": 4.0,
+        "duty_cycle_percent": 2.667,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "DQ-4",
+      "sources": [
+        {
+          "channels": 52,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "wago_registerbild",
+              "units": 4,
+              "family": "wago.pm494"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 52.0,
+        "requests_per_minute": 1.0,
+        "duty_cycle_percent": 0.667,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "DQ-5",
+      "sources": [
+        {
+          "channels": 3,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "ocpp",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 3.0,
+        "requests_per_minute": 0.0,
+        "duty_cycle_percent": 0.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "DQ-6",
+      "sources": [
+        {
+          "channels": 26,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "wago_registerbild",
+              "units": 2,
+              "family": "wago.pm495"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 26.0,
+        "requests_per_minute": 1.0,
+        "duty_cycle_percent": 0.667,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "DQ-7",
+      "sources": [
+        {
+          "channels": 3,
+          "cadence_s": 10,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 18.0,
+        "requests_per_minute": 6.0,
+        "duty_cycle_percent": 4.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "Ahrenberg-box-halle-1",
+      "sources": [
+        {
+          "channels": 8,
+          "cadence_s": 10,
+          "blocks": [
+            {
+              "source_kind": "sunspec_model",
+              "units": 1
+            },
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        },
+        {
+          "channels": 3,
+          "cadence_s": 10,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        },
+        {
+          "channels": 8,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            },
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            },
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            },
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        },
+        {
+          "channels": 52,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "wago_registerbild",
+              "units": 4,
+              "family": "wago.pm494"
+            }
+          ]
+        },
+        {
+          "channels": 3,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "ocpp",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 129.0,
+        "requests_per_minute": 23.0,
+        "duty_cycle_percent": 15.333,
+        "soft_warning": true,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "Ahrenberg-box-halle-2",
+      "sources": [
+        {
+          "channels": 26,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "wago_registerbild",
+              "units": 2,
+              "family": "wago.pm494"
+            }
+          ]
+        },
+        {
+          "channels": 3,
+          "cadence_s": 10,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 44.0,
+        "requests_per_minute": 7.0,
+        "duty_cycle_percent": 4.667,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "A16-25-cards",
+      "sources": [
+        {
+          "channels": 325,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "wago_registerbild",
+              "units": 25,
+              "family": "wago.pm494"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 325.0,
+        "requests_per_minute": 5.0,
+        "duty_cycle_percent": 3.333,
+        "soft_warning": true,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "A16-52-free-registers",
+      "sources": [
+        {
+          "channels": 52,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 52,
+              "family": "custom"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 52.0,
+        "requests_per_minute": 52.0,
+        "duty_cycle_percent": 173.333,
+        "soft_warning": false,
+        "hard_rejected": true
+      }
+    },
+    {
+      "id": "modbus-120-words",
+      "sources": [
+        {
+          "channels": 120,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 120
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 120.0,
+        "requests_per_minute": 1.0,
+        "duty_cycle_percent": 0.667,
+        "soft_warning": true,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "modbus-121-words",
+      "sources": [
+        {
+          "channels": 121,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 121
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 121.0,
+        "requests_per_minute": 2.0,
+        "duty_cycle_percent": 1.333,
+        "soft_warning": true,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "modbus-240-words",
+      "sources": [
+        {
+          "channels": 240,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 240
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 240.0,
+        "requests_per_minute": 2.0,
+        "duty_cycle_percent": 1.333,
+        "soft_warning": true,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "http",
+      "sources": [
+        {
+          "channels": 3,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "rest_json",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 3.0,
+        "requests_per_minute": 1.0,
+        "duty_cycle_percent": 0.417,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "soft-boundary",
+      "sources": [
+        {
+          "channels": 120,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "ocpp",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 120.0,
+        "requests_per_minute": 0.0,
+        "duty_cycle_percent": 0.0,
+        "soft_warning": true,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "hard-samples-boundary",
+      "sources": [
+        {
+          "channels": 600,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "ocpp",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 600.0,
+        "requests_per_minute": 0.0,
+        "duty_cycle_percent": 0.0,
+        "soft_warning": true,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "hard-samples-exceeded",
+      "sources": [
+        {
+          "channels": 601,
+          "cadence_s": 60,
+          "blocks": [
+            {
+              "source_kind": "ocpp",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 601.0,
+        "requests_per_minute": 0.0,
+        "duty_cycle_percent": 0.0,
+        "soft_warning": true,
+        "hard_rejected": true
+      }
+    },
+    {
+      "id": "hard-requests-and-duty-boundary",
+      "sources": [
+        {
+          "channels": 1,
+          "cadence_s": 2,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 30,
+        "requests_per_minute": 30.0,
+        "duty_cycle_percent": 20.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "hard-requests-exceeded",
+      "sources": [
+        {
+          "channels": 1,
+          "cadence_s": 1,
+          "blocks": [
+            {
+              "source_kind": "rest_json",
+              "units": 1
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 60.0,
+        "requests_per_minute": 60.0,
+        "duty_cycle_percent": 25.0,
+        "soft_warning": false,
+        "hard_rejected": true
+      }
+    },
+    {
+      "id": "free-register-duty-boundary",
+      "sources": [
+        {
+          "channels": 1,
+          "cadence_s": 10,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1,
+              "family": "custom"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 6.0,
+        "requests_per_minute": 6.0,
+        "duty_cycle_percent": 20.0,
+        "soft_warning": false,
+        "hard_rejected": false
+      }
+    },
+    {
+      "id": "free-register-duty-exceeded",
+      "sources": [
+        {
+          "channels": 1,
+          "cadence_s": 5,
+          "blocks": [
+            {
+              "source_kind": "modbus_holding",
+              "units": 1,
+              "family": "custom"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "samples_per_minute": 12.0,
+        "requests_per_minute": 12.0,
+        "duty_cycle_percent": 40.0,
+        "soft_warning": false,
+        "hard_rejected": true
+      }
+    }
+  ]
+}

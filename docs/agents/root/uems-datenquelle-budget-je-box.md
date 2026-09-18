@@ -5,8 +5,8 @@ Neu am 16.09.2026 (AP-06 IP-10), ohne Migration und ohne Edge-Release. Der Schre
 Zeitraumsschreibzugriff die neue Box-Belegung. `MeasurementBudget.estimateSources` trennt dabei
 Kanäle × Takt von Blockanfragen × Takt und verwendet die heutige Java-Kostentabelle
 (Modbus/SunSpec 400 ms, HTTP/MQTT/Solarman 250 ms, OCPP 0 ms, freie Register 2.000 ms).
-AP-07 IP-4 baut erst später den Vertragszwilling mit der Edge-Laufzeit; dieses Paket ändert keinen
-Edge-Vertrag und löst kein Edge-Release aus.
+AP-07 IP-4 führt diese Werte nun im [gemeinsamen Kostenvertrag](uems-messbudget-vertrag.md).
+Die AP-06-Quellen-/Box-Rechnung und ihre Auswege bleiben dabei unverändert.
 
 Die Last einer Quelle kommt aus ihren Komponenten (`measurement_point.data_source_id`) und deren
 aktivierten Messpunkten. Katalog-Pollgruppen werden je Komponente nur einmal angefragt; freie
