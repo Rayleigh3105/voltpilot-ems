@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
@@ -36,7 +37,9 @@ class TelemetryV2RawSeqTest {
     void aRecordWithSeqIsWrittenLikeOneWithout() {
         for (String seq : new String[] {"\"seq\":4711,", ""}) {
             TelemetryV2WriteRepository repository = mock(TelemetryV2WriteRepository.class);
-            new TelemetryV2RawConsumer(spring, repository).onMessage(record(seq));
+            SimpleMeterRegistry meters = new SimpleMeterRegistry();
+            new TelemetryV2RawConsumer(spring, repository, new WriterVerwerfMetriken(meters))
+                    .onMessage(record(seq));
             ArgumentCaptor<TelemetryV2RawEvent> event = ArgumentCaptor.forClass(TelemetryV2RawEvent.class);
             verify(repository).insert(event.capture());
             assertThat(event.getValue().entities().size()).as(seq).isEqualTo(1);

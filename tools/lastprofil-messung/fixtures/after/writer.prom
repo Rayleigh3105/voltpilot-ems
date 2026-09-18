@@ -1,2 +1,10 @@
 voltpilot_kafka_consumer_lag{group="timescale-writer",topic="measurements.raw"} 0
 voltpilot_kafka_consumer_lag_collect_age_seconds 3
+voltpilot_writer_verworfene_samples_total{grund="unlesbar"} 0
+voltpilot_writer_verworfene_samples_total{grund="ungueltig"} 0
+voltpilot_writer_verworfene_samples_total{grund="identitaet"} 0
+voltpilot_writer_verworfene_samples_total{grund="pflichtfeld"} 0
+voltpilot_writer_verworfen_total{grund="unlesbar",strom="measurements"} 0
+voltpilot_writer_verworfen_total{grund="ungueltig",strom="measurements"} 0
+voltpilot_writer_verworfen_total{grund="identitaet",strom="measurements"} 0
+voltpilot_writer_verworfen_total{grund="pflichtfeld",strom="measurements"} 0

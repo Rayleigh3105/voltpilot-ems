@@ -22,6 +22,23 @@ Takt `…interval-ms` (Vorgabe 60 s).
 | `voltpilot_uems_kundenbereich_messwert_zustand` | `tenant`, `zustand` | 1 für den aktiven Zustand: `bekannt` \| `nie` |
 | `voltpilot_uems_bestandslaeufer_total` | `laeufer`, `ergebnis` | Kundenbereiche je Ergebnis des Start-Laufs; `ergebnis` = `erledigt` \| `fehler` |
 
+## Verwerfungen im Writer
+
+Der Writer exportiert auf seinem bestehenden `/metrics`-Endpunkt zusätzlich:
+
+| Metrik | Labels | Bedeutung |
+|---|---|---|
+| `voltpilot_writer_verworfen_total` | `strom`, `grund` | Nicht geschriebene Eingangsumschläge; `strom` = `measurements` \| `telemetry` \| `telemetry_v2` \| `events`, `grund` = `unlesbar` \| `ungueltig` \| `identitaet` \| `pflichtfeld` |
+| `voltpilot_writer_verworfene_samples_total` | `grund` | Samples in einem verworfenen `measurements`-Umschlag, wenn ihre Zahl trotz der Ablehnung lesbar war |
+
+Alle geschlossenen Reihen stehen ab Prozessstart als `0` bereit. Ein syntaktisch unlesbarer
+Umschlag zählt nur als Umschlag, weil seine Sample-Zahl nicht belastbar bekannt ist. Mandant, Box,
+Anlage und andere Kennungen sind keine Labels; die betroffene Identität bleibt ausschließlich in
+der WARN-Zeile.
+
+Die Alarm-Regel „Zuwachs > 0 über 15 Minuten → Warnung an `betreiber`“ gehört in das gitops-Repo
+und ist nicht Teil dieses PRs. Gitops-PR 37 liegt beim Betreiber; die Regel wird dort nachgezogen.
+
 Die zwei `…_zustand`-Metriken sind der Hausstil von `voltpilot_site_telemetry_state`. Ohne sie kann
 eine Regel „steht“ nicht von „ist abgeschaltet“ und „lief seit dem Neustart noch nie“ unterscheiden
 — und ein abgeschalteter Läufer soll gerade KEINEN Daueralarm erzeugen.
@@ -95,7 +112,8 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
   hat sie gar nicht — er veröffentlicht nur `/health` auf 8091, keinen Metrik-Endpunkt. Und
   abgeholt wird bis heute keiner von beiden: die `ServiceMonitor`-Objekte für Writer und ingest baut
   laut §3.5 erst IP-10 in gitops.
-- Alarm-Regeln, Schwellen, `ServiceMonitor` und Dashboards: IP-10 (gitops).
+- Alarm-Regeln, Schwellen, `ServiceMonitor` und Dashboards liegen im gitops-Repo; die neue
+  Writer-Verwerfregel wird dort nachgezogen.
 
 ## Nachweise
 

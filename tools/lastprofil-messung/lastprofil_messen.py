@@ -25,6 +25,9 @@ LAEUFER_ALTER = "voltpilot_uems_laeufer_letzter_lauf_age_seconds"
 DB_BYTES = "voltpilot_db_table_bytes"
 LAG = "voltpilot_kafka_consumer_lag"
 LAG_AGE = "voltpilot_kafka_consumer_lag_collect_age_seconds"
+VERWORFENE_SAMPLES = "voltpilot_writer_verworfene_samples_total"
+VERWORFENE_UMSCHLAEGE = "voltpilot_writer_verworfen_total"
+VERWERF_GRUENDE = {"unlesbar", "ungueltig", "identitaet", "pflichtfeld"}
 LISTEN = ("viertelstunde", "tag", "periode")
 KLASSEN = ("roh", "vm", "tag", "ereignis")
 
@@ -143,6 +146,23 @@ def _zeit(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
+def _verwerf_werte(samples: list[Sample], name: str, **labels: str) -> dict[str, float] | None:
+    reihen = [sample for sample in samples if sample.name == name
+              and all(sample.labels.get(k) == v for k, v in labels.items())]
+    if not reihen:
+        return None
+    gruende = {sample.labels.get("grund") for sample in reihen}
+    if gruende != VERWERF_GRUENDE or len(reihen) != len(VERWERF_GRUENDE):
+        raise Messfehler(f"{name} hat nicht das geschlossene Grund-Vokabular")
+    return {sample.labels["grund"]: sample.value for sample in reihen}
+
+
+def _zuwachs(vorher: dict[str, float], nachher: dict[str, float], name: str) -> dict[str, int]:
+    if any(nachher[grund] < vorher[grund] for grund in VERWERF_GRUENDE):
+        raise Messfehler(f"{name} wurde waehrend der Messung zurueckgesetzt")
+    return {grund: int(nachher[grund] - vorher[grund]) for grund in VERWERF_GRUENDE}
+
+
 def auswerten(vorher: dict, nachher: dict, *, tenant: str, profil_minuten: int) -> dict:
     if profil_minuten < 1:
         raise Messfehler("Profil-Minuten muessen groesser als 0 sein")
@@ -192,11 +212,29 @@ def auswerten(vorher: dict, nachher: dict, *, tenant: str, profil_minuten: int) 
     erwartet_raw = TAGES_ROHZEILEN * profil_minuten / (24 * 60)
     erwartet_quarter = TAGES_VIERTELSTUNDEN * profil_minuten / (24 * 60)
 
-    # dropped_samples ist nur das, was die Box SELBST meldet. Der Writer hat
-    # keinen Zaehler fuer verworfene Umschlaege/Samples; die NW-5-Schwelle ist
-    # damit trotz dieser Zusatzbeobachtung nicht entscheidbar.
     box_dropped = int(sql_nach["box_reported_dropped_samples"]
                       - sql_vor["box_reported_dropped_samples"])
+    samples_vor = _verwerf_werte(writer_vor, VERWORFENE_SAMPLES)
+    samples_nach = _verwerf_werte(writer_nach, VERWORFENE_SAMPLES)
+    umschlaege_vor = _verwerf_werte(
+        writer_vor, VERWORFENE_UMSCHLAEGE, strom="measurements")
+    umschlaege_nach = _verwerf_werte(
+        writer_nach, VERWORFENE_UMSCHLAEGE, strom="measurements")
+    if any(wert is None for wert in (samples_vor, samples_nach,
+                                     umschlaege_vor, umschlaege_nach)):
+        cloud_verworfen = None
+        cloud_unbekannt = None
+        cloud_luecke = (
+            f"Pflichtmetrik {VERWORFENE_SAMPLES} oder {VERWORFENE_UMSCHLAEGE} fehlt an "
+            "mindestens einem Messpunkt; "
+            "mit diesem Writer-Stand ist die Schwelle NICHT MESSBAR."
+        )
+    else:
+        sample_delta = _zuwachs(samples_vor, samples_nach, VERWORFENE_SAMPLES)
+        umschlag_delta = _zuwachs(umschlaege_vor, umschlaege_nach, VERWORFENE_UMSCHLAEGE)
+        cloud_verworfen = sum(sample_delta.values())
+        cloud_unbekannt = umschlag_delta["unlesbar"]
+        cloud_luecke = None
     lag_abgebaut_min = dauer_s / 60 if lag_vor > 0 and lag_nach == 0 else None
 
     relevante_klassen = ("roh", "vm")
@@ -216,11 +254,9 @@ def auswerten(vorher: dict, nachher: dict, *, tenant: str, profil_minuten: int) 
         "rohzeilen": {"gemessen": raw_delta, "erwartet": erwartet_raw},
         "viertelstundenzeilen": {"gemessen": quarter_delta, "erwartet": erwartet_quarter},
         "box_gemeldete_verworfene_samples": box_dropped,
-        "cloud_verworfene_samples": None,
-        "cloud_verworfene_samples_luecke": (
-            "Keine vorhandene Metrik oder Tabelle zaehlt vom Writer verworfene Umschlaege/Samples; "
-            "dropped_samples belegt nur von der Box gemeldete Pufferverluste."
-        ),
+        "cloud_verworfene_samples": cloud_verworfen,
+        "cloud_unlesbare_umschlaege": cloud_unbekannt,
+        "cloud_verworfene_samples_luecke": cloud_luecke,
         "speicher_gesamt": {"gemessen": bytes_ist, "erwartet": bytes_soll,
                              "untergrenze": bytes_soll * 0.8, "obergrenze": bytes_soll * 1.2},
     }
@@ -241,6 +277,32 @@ def bericht(ergebnis: dict, *, umgebung: str, commit: str) -> str:
     rows_ok = (round(ergebnis["rohzeilen"]["gemessen"]) == round(ergebnis["rohzeilen"]["erwartet"])
                and round(ergebnis["viertelstundenzeilen"]["gemessen"])
                == round(ergebnis["viertelstundenzeilen"]["erwartet"]))
+    verworfen = ergebnis["cloud_verworfene_samples"]
+    unbekannt = ergebnis["cloud_unlesbare_umschlaege"]
+    if verworfen is None:
+        verworfen_text, verworfen_ok = "NICHT MESSBAR", None
+    elif unbekannt:
+        verworfen_text = (f"{verworfen} bekannt; Sample-Zahl in {unbekannt} unlesbaren "
+                           "Umschlägen unbekannt")
+        verworfen_ok = None
+    else:
+        verworfen_text, verworfen_ok = str(verworfen), verworfen == 0
+    if verworfen is None:
+        verwerf_einordnung = ergebnis["cloud_verworfene_samples_luecke"]
+        verwerf_schluss = "Die Zeile „Samples verworfen“ darf deshalb nicht als bestanden markiert werden."
+    elif unbekannt:
+        verwerf_einordnung = (
+            f"Der Writer meldet {unbekannt} unlesbare measurements-Umschläge. Deren Sample-Zahl "
+            "ist ohne Parsen nicht bekannt; zusätzlich wurden " + str(verworfen)
+            + " bekannte Samples verworfen."
+        )
+        verwerf_schluss = "Die Zeile „Samples verworfen“ bleibt deshalb NICHT MESSBAR."
+    else:
+        verwerf_einordnung = (
+            f"Der Writer-Zähler meldet über die Messdauer {verworfen} verworfene Samples. "
+            "`dropped_samples` bleibt die getrennte Zusatzbeobachtung der Box."
+        )
+        verwerf_schluss = "Die Schwelle wird aus dem Zuwachs des Writer-Zählers beurteilt."
     lines = [
         "# NW-5 Lastprofil — Messbericht",
         "",
@@ -252,7 +314,7 @@ def bericht(ergebnis: dict, *, umgebung: str, commit: str) -> str:
         "",
         "| Schwelle aus §3.3 | Soll | Gemessen | Urteil |",
         "|---|---:|---:|---|",
-        f"| Samples verworfen | 0 | keine vollständige Quelle (Box meldete {ergebnis['box_gemeldete_verworfene_samples']}) | {_urteil(None)} |",
+        f"| Samples verworfen | 0 | {verworfen_text} (Box meldete zusätzlich {ergebnis['box_gemeldete_verworfene_samples']}) | {_urteil(verworfen_ok)} |",
         f"| Ereignis-Bus-Rückstand nach Stoß abgebaut | < 15 min | {f'≤ {lag_min:.2f} min' if lag_min is not None else 'nicht abgebaut'} | {_urteil(lag_min is not None and lag_min < 15)} |",
         f"| Ältester Arbeitslisten-Eintrag im Dauerlauf | < 15 min | {max_alter / 60:.2f} min | {_urteil(max_alter < 15 * 60)} |",
         f"| Stundenlauf | < 10 min | {f'≤ {lauf / 60:.2f} min' if lauf is not None else 'kein Abschluss beobachtet'} | {_urteil(lauf is not None and lauf < 10 * 60)} |",
@@ -266,10 +328,10 @@ def bericht(ergebnis: dict, *, umgebung: str, commit: str) -> str:
         "- Bytes je Speicherklasse: " + ", ".join(
             f"{k} {v} B" for k, v in ergebnis["bytes_delta"].items()),
         "",
-        "## Benannte Messlücke",
+        "## Einordnung der Verwerfungen",
         "",
-        ergebnis["cloud_verworfene_samples_luecke"],
-        "Die Zeile „Samples verworfen“ darf deshalb nicht als bestanden markiert werden.",
+        verwerf_einordnung,
+        verwerf_schluss,
         "",
     ]
     return "\n".join(lines)
