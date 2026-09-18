@@ -98,7 +98,8 @@ class UemsRohdatenablaufAbnahmeTest {
         root = new JdbcTemplate(ds(POSTGRES.getUsername(), POSTGRES.getPassword()));
         flyway().load().migrate();
         stammdaten();
-        rohwerte(TAG_VON.plusSeconds(12L * 3600), 96, 4000L);       // 20.10.2026, ab 10:00 Ortszeit
+        // Genau die 96 Viertelstunden des 20.10.2026 — [TAG_VON, TAG_BIS) und keine daneben.
+        rohwerte(TAG_VON, 96, 4000L);
         rohwerte(FRISCH_VON, 60, 9000L);                            // 18.01.2027, innerhalb der Frist
         viertelstunden();
         tageswert();
