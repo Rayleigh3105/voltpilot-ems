@@ -149,6 +149,27 @@ describe('Bericht-Vertrag: Form der Vektor-Datei', () => {
     expect(schemaVerstoesse(lies('bericht-vorlagen.json'), schema, schema.$defs.vorlagen_datei)).toEqual([]);
   });
 
+  it('Vertrag 1.2 bleibt additiv: Tagesverlauf und Kennzahl-Angaben dürfen gefüllt, leer oder ganz abwesend sein', () => {
+    const neu = structuredClone(vektoren.abzuege['BR-2026-0001/1']);
+    expect(neu.tagesverlauf).toHaveLength(neu.werte.length);
+    expect(neu.tagesverlauf.every((r: Json) => r.tage.length === 0)).toBe(true);
+    expect(neu.werte.filter((w: Json) => w.quelle === 'MS-04').map((w: Json) => [w.menge_art, w.menge])).toEqual([
+      ['laden', 7900], ['entladen', 7100],
+    ]);
+    expect(neu.kennzahlen.every((k: Json) => k.ort_zum_datenstand === 'G-2' && k.endgueltig_ab)).toBe(true);
+
+    neu.tagesverlauf[0].tage.push({ tag: '2026-10-01', menge: 1, zustand: 'vollständig' });
+    expect(schemaVerstoesse(neu, schema, schema.$defs.abzug)).toEqual([]);
+
+    const alt = structuredClone(vektoren.abzuege['BR-2026-0001/1']);
+    delete alt.tagesverlauf;
+    for (const k of alt.kennzahlen) {
+      delete k.ort_zum_datenstand;
+      delete k.endgueltig_ab;
+    }
+    expect(schemaVerstoesse(alt, schema, schema.$defs.abzug)).toEqual([]);
+  });
+
   it('die Beispielwelt ist das Referenzunternehmen 1.4 oder später; Prosa und Java-Zwilling liegen', () => {
     const ref = lies('uems-referenzunternehmen.json');
     expect(fassung(ref.version)).toBeGreaterThanOrEqual(fassung(vektoren.referenz_stand));

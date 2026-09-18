@@ -8,11 +8,11 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
 
 | Datei (`frontend/portal/…`) | Was |
 |---|---|
-| `src/berichtSeite.ts` | reine Ableitung: Listen-Karte, Reiter der Stände, Seitenkopf, Abschnitte nach Vorlage mit Nachweis je Zahl (Form `uemsWerteKarte.Karte`), Verlauf der Stände, PDF/CSV-Ableitung, „heutigen Wert zeigen“ |
-| `src/pages/BerichtePage.tsx`, `src/pages/BerichtSeite.tsx`, `BerichtePage.css` | Liste und Seite; `WerteKarte` und `ZeitSegment` wiederverwendet, Aufklappen als natives `<details>` |
+| `src/berichtSeite.ts` | reine Ableitung: Listen-Karte, Reiter der Stände, Seitenkopf, Abschnitte nach Vorlage mit Nachweis je Zahl (Form `uemsWerteKarte.Karte`), Tagesverlauf, Verlauf der Stände, PDF/CSV-Ableitung, „heutigen Wert zeigen“ |
+| `src/pages/BerichtePage.tsx`, `src/pages/BerichtSeite.tsx`, `BerichtePage.css` | Liste und Seite; `WerteKarte`, `ZeitSegment` und `MiniBarSpark` wiederverwendet, Aufklappen als natives `<details>` |
 | `src/test/berichtFixtures.ts`, `src/test/berichtAbzuege.json` | Antworten entlang der Zeitachse der Referenzdatei 1.4 (10.11. Nr. 1 · 12.11. K-2026-0007 · 16.11. Nr. 2); die Abzüge sind die Vektor-Abzüge BR-2026-0001/1 und /2, byte-gleich |
 | `src/berichtSeite.test.ts` | B1 Nr. 1/Nr. 2, B10 („heute: …“), B16 (nach den Fristen) gegen `bericht-vectors.json`; beweist auch die Gleichheit der Fixture-Kopie |
-| `e2e/berichte.spec.ts` | Bühne `startansicht`: `ansicht=berichte`, `ansicht=bericht&br=BR-2026-0001`, `heute=b10`; vier Uhren (13.11., 20.11., 03.12.2026, 02.11.2036) |
+| `e2e/berichte.spec.ts` | Bühne `startansicht`: `ansicht=berichte`, `ansicht=bericht&br=BR-2026-0001`, `heute=b10`, `tagesverlauf=gefuellt`; vier Uhren (13.11., 20.11., 03.12.2026, 02.11.2036) |
 
 ```bash
 (cd frontend/portal && npx vitest run src/berichtSeite.test.ts src/copy.test.ts src/ebenenNav.test.ts src/uemsBericht.test.ts)
@@ -24,10 +24,14 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
 - **Der Abzug IST das Dokument.** Die Seite spricht ihn wörtlich (Zahl nach DA1 über `uemsBericht.anzeige`, Zustand,
   Kennzeichen, Namen und Orte zum Datenstand) und prüft ihn NICHT gegen `uemsErgebnis.pruefe` nach — „berechnet“ kennt der
   Wert-Vertrag nicht, und eine Zahl eines freigegebenen Stands wird nie stumm. Nichts wird aus lebenden Zeilen ersetzt.
-- **Abschnitte nach Vorlage, nur mit Inhalt.** Was der Abzug (Vertrag 1.0) nicht trägt — Tagesverlauf, Monatswerte,
-  Standorte, Kostenstellen —, erscheint nicht (`abschnitte(...).ohneInhalt`), keine zweite Quelle. Wer den Abzug erweitert
-  (`vp-uems-b12-tagesverlauf-speicher`, AP-12 IP-6), ergänzt den Zweig in `abschnitte` und die Darstellung.
-- **Laden/Entladen:** MS-04 steht zweimal (Mengen-Art); „heutigen Wert zeigen“ fehlt dort, der heutige Leseweg trennt nicht.
+- **Abschnitte nach Vorlage, nur wenn der Vertrag sie kann.** Ein Abzug nach 1.0/1.1 ohne `tagesverlauf` zeigt den
+  Abschnitt nicht (`abschnitte(...).ohneInhalt`). Vertrag 1.2 zeigt dagegen jede Reihe; `tage: []` bleibt als sichtbare
+  Lücke stehen. Tagesmengen werden mit `MiniBarSpark` nur aus dem Abzug gezeichnet, `null` bleibt eine Lücke.
+- **Laden/Entladen:** MS-04 steht als EINE Gruppe mit den zwei Kundenwörtern aus `MessstelleRegeln.RICHTUNGSPAAR`.
+  Fehlt eine gespeicherte Menge, nennt die Gruppe den Grund und zeigt einen Strich, nie 0; „heutigen Wert zeigen“ fehlt
+  dort, weil der heutige Leseweg die beiden Richtungen nicht trennt.
+- **Kennzahlen-Nachweis 1.2:** `ort_zum_datenstand` und `endgueltig_ab` stehen in derselben Herkunftsliste wie an einer
+  Messstellen-Zahl. Fehlen die optionalen Felder in 1.0/1.1, entsteht keine Ersatzangabe.
 - **PDF und CSV ohne Ziel = kein Knopf.** `ausgabeKnoepfe` leitet ab (nur Stände, EW4; Recht über `uemsBericht.kennung`;
   Dateiname §5.4). Sichtbar erst mit `AUSGABE_EINGEHAENGT[handlung] = true` UND einer `onAbruf`-Prop an `BerichtSeite`.
   ⚠ **Stand IP-15: beide aus.** IP-10 und IP-11 haben nur die Routen gebaut; `berichtSeite.test.ts` pinnt

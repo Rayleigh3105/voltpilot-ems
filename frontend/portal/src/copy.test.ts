@@ -1574,6 +1574,13 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
           if (teil.art === 'zusammenfassung') out.push(...teil.kacheln.flatMap((z) => [z.name, z.wert]), ...[teil.zaehlung].filter(da));
           if (teil.art === 'messstellen') out.push(...teil.vergleiche);
           if (teil.art === 'kennzahlen') out.push(...[teil.leer].filter(da));
+          if (teil.art === 'tagesverlauf') {
+            out.push(...[teil.leer].filter(da));
+            for (const z of teil.zeilen) {
+              out.push(z.name, ...[z.leer].filter(da));
+              out.push(...z.tage.flatMap((t) => [t.label, t.mengeText, t.zustand]));
+            }
+          }
           if (teil.art === 'messstellen' || teil.art === 'kennzahlen') {
             for (const z of teil.zeilen) {
               out.push(z.name, z.zahl, z.zustand, z.version, ...z.kennzeichenSaetze, ...z.nachweis.herkunft, ...[z.heute].filter(da));
@@ -1599,6 +1606,7 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
       BS.TITEL, BS.LADEN, BS.LADEFEHLER, BS.LADEFEHLER_SEITE, BS.LADEFEHLER_STAND, BS.LEER, BS.NICHT_GEFUNDEN, BS.ZUR_LISTE,
       BS.ARCHIVIERT, BS.STAND_WAHL, BS.KEIN_STAND, BS.NEU_GEBILDET, BS.PRUEFSUMME_GEPRUEFT, BS.VERLAUF_TITEL, BS.NACHWEIS,
       BS.HEUTIGEN_WERT, BS.HEUTIGER_WERT_LAEDT, BS.HEUTIGER_WERT_FEHLER, BS.KEINE_KENNZAHLEN,
+      BS.KEIN_TAGESVERLAUF, BS.RICHTUNGSPAAR_FEHLT, ...Object.values(BS.MENGE_ART_WORT),
       ...BS.ZUSAMMENFASSUNG.map(([, name]) => name), ...Object.values(BS.VERGLEICH_WORT), ...Object.values(BS.GELTUNG_WORT),
       ...Object.values(BS.KOPF_WORT), ...Object.values(BS.QUALITAET_WORT),
     );
@@ -1614,6 +1622,10 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
     expect(alle).toContain('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
     expect(alle).toContain('Revision nötig — Korrektur K-2026-0007');
     expect(alle).toContain('heute: Montage Linie M1 (Halle 2)');
+    expect(alle).toContain('Tagesverlauf je Messstelle');
+    expect(alle).toContain('In diesem Berichtsstand sind keine Tageswerte gespeichert.');
+    expect(alle).toContain('Laden');
+    expect(alle).toContain('Entladen');
     expect(alle).toContain('Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. 1 vom 10.11.2026 hält ihn fest.');
     expect(flaechenTexte().length).toBeGreaterThan(3);
   });

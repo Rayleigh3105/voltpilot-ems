@@ -95,12 +95,9 @@ alles.
    (`berichtSeite.ts:649`). Die Routen `…/staende/{nr}/pdf` und `…/csv` stehen und sind geprüft; es fehlt nur der Knopf. Auch
    „zuletzt abgerufen“ und die Spalte „letzter Abruf“ zeigt das Portal nicht (`BerichtePage.tsx:37`). **Die größte Lücke:**
    ein Bericht, den man nicht weitergeben kann.
-2. **Den Tagesverlauf oder Monatswerte im Bericht sehen** — der Abzug trägt sie nicht (`vp-uems-b12-tagesverlauf-speicher`).
-3. **Laden und Entladen des Speichers getrennt sehen** — MS-04 ist eine Netto-Menge, `speicher_laden_kwh`/`_entladen_kwh`
-   fehlen (fehlend, nicht 0) — dito.
-4. **Zwei CSV-Zellen je Kennzahl** (`ort`, `endgueltig_ab`) — leer bis Abzug 1.2 — dito.
-5. **Bei PV aus Leistung das Kennzeichen „aus Leistung integriert …“** im Bericht (MS-03, Lücke 5 aus IP-5).
-6. **Eine Messstelle ohne Ort, die nur über die Anlage zum Standort gehört** (MS-22 „Rest“) im Standort-Bericht — Q3 über die
+2. **Monatswerte im Jahresbericht sehen** — der Vertrag trägt den Abschnitt noch nicht.
+3. **Bei PV aus Leistung das Kennzeichen „aus Leistung integriert …“** im Bericht (MS-03, Lücke 5 aus IP-5).
+4. **Eine Messstelle ohne Ort, die nur über die Anlage zum Standort gehört** (MS-22 „Rest“) im Standort-Bericht — Q3 über die
    Anlage ist nicht gebaut.
 7. **Gas und Wärme in der Zusammenfassung** (nur Strom in kWh), Vergleichswerte je Messstelle (nur Zählungen), einen
    Ortswechsel im Zeitraum als „bis … · ab …“.

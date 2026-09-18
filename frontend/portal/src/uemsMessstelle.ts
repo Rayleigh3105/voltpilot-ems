@@ -93,6 +93,16 @@ export const ANTEIL_RICHTUNGEN: Readonly<Record<string, Readonly<Record<Anteil, 
   import_export: { positiv: 'Bezug', negativ: 'Abgabe' },
 };
 
+/**
+ * Zwei Flüsse in EINER Messreihe (MessstelleRegeln.RICHTUNGSPAAR). Das ist nicht das
+ * Quellenbindungs-Vokabular `ANTEIL_RICHTUNGEN`: hier stehen ausschließlich die Kundenwörter,
+ * mit denen gespeicherte positive und negative Mengen nebeneinander angezeigt werden.
+ */
+export const RICHTUNGSPAAR: Readonly<Record<string, Readonly<Record<Anteil, string>>>> = {
+  import_export: { positiv: 'Bezug', negativ: 'Abgabe' },
+  charge_discharge: { positiv: 'Laden', negativ: 'Entladen' },
+};
+
 export type GroesseGrund = 'groesse' | 'medium' | 'einheit' | 'richtung' | 'wertart';
 
 export const HINWEISE = ['ablesestand_pruefen'] as const;

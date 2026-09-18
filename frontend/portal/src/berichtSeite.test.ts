@@ -13,6 +13,7 @@ import {
   heutigerWert,
   KEIN_STAND,
   KEINE_KENNZAHLEN,
+  KEIN_TAGESVERLAUF,
   LADEFEHLER,
   listenFehler,
   listenKarte,
@@ -115,9 +116,12 @@ describe('B1 Nr. 1 — der Berichtsstand vom 10.11.2026, gelesen am 20.11.2026',
     expect(k.abzeichen.map((a) => a.text)).toEqual([pruefung('B1', 'kennzeichen', (p) => p.eingang.schluessel === 'ersetzt_durch').ergebnis.text]);
   });
 
-  it('die Abschnitte folgen der Vorlage; den Tagesverlauf trägt der Abzug nicht — er erscheint nicht', () => {
-    expect(liste.map((a) => a.titel)).toEqual(['Kopf', 'Zusammenfassung', 'Verbrauch je Messstelle', 'Kennzahlen', 'Qualität', 'Quellenverzeichnis']);
-    expect(ohneInhalt).toEqual(['tagesverlauf']);
+  it('die Abschnitte folgen der Vorlage; der Tagesverlauf 1.2 erscheint, seine leeren Listen bleiben sichtbare Lücken', () => {
+    expect(liste.map((a) => a.titel)).toEqual(['Kopf', 'Zusammenfassung', 'Verbrauch je Messstelle', 'Tagesverlauf je Messstelle', 'Kennzahlen', 'Qualität', 'Quellenverzeichnis']);
+    expect(ohneInhalt).toEqual([]);
+    const tagesverlauf = teil(liste, 'tagesverlauf');
+    expect(tagesverlauf.zeilen).toHaveLength(16);
+    expect(tagesverlauf.zeilen.every((z) => z.tage.length === 0 && z.leer === KEIN_TAGESVERLAUF)).toBe(true);
     expect(teil(liste, 'kopf').anzahl).toBe('8 Angaben');
     expect(teil(liste, 'kopf').zeilen.map((z) => z.name)).toEqual([
       'Unternehmen', 'Standort', 'Zeitraum', 'Vormonat September 2026', 'Vorjahresmonat Oktober 2025', 'Datenstand', 'Darstellung', 'Regelwerk',
@@ -139,12 +143,16 @@ describe('B1 Nr. 1 — der Berichtsstand vom 10.11.2026, gelesen am 20.11.2026',
     expect(ms12.heute).toBeNull();
   });
 
-  it('MS-15 (berechnet) trägt Formel und Formel-Fassung; MS-04 steht als laden und entladen — ohne „heutigen Wert“', () => {
+  it('MS-15 trägt Formel und Formel-Fassung; MS-04 steht als ein Richtungspaar „Laden / Entladen“ beieinander', () => {
     const ms = teil(liste, 'messstellen');
     const ms15 = zeile(ms.zeilen, 'MS-15');
     expect([ms15.zahl, ms15.kennzeichenSaetze]).toEqual([nb('3.800 kWh'), ['berechnet']]);
     expect(ms15.nachweis.herkunft.slice(-2)).toEqual(['Berechnung MS-10 − MS-11 − MS-12 − MS-13 − MS-14 · Fassung 1', `Regelwerk bilanz ${RW}`]);
     expect([zeile(ms.zeilen, 'MS-04/laden').zahl, zeile(ms.zeilen, 'MS-04/entladen').zahl]).toEqual([nb('7.900 kWh'), nb('7.100 kWh')]);
+    const paar = ms.gruppen.find((g) => g.kennzeichen === 'MS-04')!;
+    expect([paar.name, paar.richtungspaar, paar.fehlt, paar.zeilen.map((z) => z.name)]).toEqual([
+      'Speicher Halle 1', true, null, ['Laden', 'Entladen'],
+    ]);
     expect(zeile(ms.zeilen, 'MS-04/laden').messstelle).toBeNull();
     expect(ms.zeilen).toHaveLength(16);
     expect(ms.vergleiche).toEqual([
@@ -160,12 +168,13 @@ describe('B1 Nr. 1 — der Berichtsstand vom 10.11.2026, gelesen am 20.11.2026',
     expect(kz1.zahl).toBe(pruefung('B1', 'anzeige', (p) => p.eingang.wert === '0.1488').ergebnis.text);
     expect(zeile(kz.zeilen, 'KZ-0005').zahl).toBe(pruefung('B1', 'anzeige', (p) => p.eingang.wert === '11.9032').ergebnis.text);
     expect(kz1.nachweis.herkunft).toEqual([
+      'Ort zum Datenstand G-2',
       nb('MS-12 6.100 kWh (Version 1)'),
       nb('BZ-6 41.000 Stück (Fassung 1)'),
-      'Berechnung Fassung 1 · gerechnet 01.11.2026 00:20',
+      'Berechnung Fassung 1 · endgültig ab 08.11.2026 · gerechnet 01.11.2026 00:20',
       `Regelwerk kennzahl ${RW}`,
     ]);
-    expect(zeile(kz.zeilen, 'KZ-0005').nachweis.herkunft[1]).toBe(nb('BZ-4 (G-2) 3.100 m² (Stichtag 31.10.2026)'));
+    expect(zeile(kz.zeilen, 'KZ-0005').nachweis.herkunft[2]).toBe(nb('BZ-4 (G-2) 3.100 m² (Stichtag 31.10.2026)'));
   });
 
   it('Zusammenfassung, Qualität und Quellenverzeichnis sprechen den Abzug', () => {
@@ -213,6 +222,59 @@ describe('B1 Nr. 1 — der Berichtsstand vom 10.11.2026, gelesen am 20.11.2026',
   });
 });
 
+describe('Vertrag 1.2 — Tagesverlauf, Richtungspaar und Kennzahl-Nachweis', () => {
+  it('zeigt gespeicherte Tage mit Menge und Zustand; ein nicht gespeicherter Tag wird nicht als 0 ergänzt', () => {
+    const roh = structuredClone(vektoren.abzuege['BR-2026-0001/1']);
+    const reihe = roh.tagesverlauf.find((r: Json) => r.quelle === 'MS-12');
+    reihe.tage = [
+      { tag: '2026-10-01', menge: 201.5, zustand: 'vollständig' },
+      { tag: '2026-10-03', menge: null, zustand: 'keine Werte' },
+    ];
+    const tagesverlauf = teil(abschnitte(abzugAus(roh)).abschnitte, 'tagesverlauf');
+    const ms12 = tagesverlauf.zeilen.find((z) => z.schluessel === 'MS-12')!;
+    expect(ms12.tage.map((t) => [t.label, t.mengeText, t.zustand, t.ton])).toEqual([
+      ['01.10.2026', nb('202 kWh'), 'vollständig', 'vollstaendig'],
+      ['03.10.2026', '—', 'keine Werte', 'keine-werte'],
+    ]);
+    expect(ms12.tage.some((t) => t.tag === '2026-10-02')).toBe(false);
+    expect(ms12.leer).toBeNull();
+  });
+
+  it('unterscheidet eine leere Tagesliste von einem alten Abzug, der das Feld noch nicht kannte', () => {
+    const leer = structuredClone(vektoren.abzuege['BR-2026-0001/1']);
+    const leerErgebnis = abschnitte(abzugAus(leer));
+    expect(teil(leerErgebnis.abschnitte, 'tagesverlauf').zeilen[0].leer).toBe(KEIN_TAGESVERLAUF);
+    const alt = structuredClone(leer);
+    delete alt.tagesverlauf;
+    const altErgebnis = abschnitte(abzugAus(alt));
+    expect(altErgebnis.abschnitte.some((a) => a.art === 'tagesverlauf')).toBe(false);
+    expect(altErgebnis.ohneInhalt).toContain('tagesverlauf');
+  });
+
+  it('nennt ein unvollständig gespeichertes Richtungspaar mit Grund und zeigt keine erfundene Null', () => {
+    const roh = structuredClone(vektoren.abzuege['BR-2026-0001/1']);
+    for (const w of roh.werte.filter((x: Json) => x.quelle === 'MS-04')) w.menge = null;
+    const ms = teil(abschnitte(abzugAus(roh)).abschnitte, 'messstellen');
+    const paar = ms.gruppen.find((g) => g.kennzeichen === 'MS-04')!;
+    expect(paar.fehlt).toContain('nicht vollständig getrennt gespeichert');
+    expect(paar.zeilen.map((z) => z.zahl)).toEqual(['—', '—']);
+    expect(paar.zeilen.map((z) => z.zahl).join(' ')).not.toContain('0');
+  });
+
+  it('zeigt Ort und „endgültig ab“ nur, wenn die optionale Kennzahl sie im Abzug trägt', () => {
+    const neu = teil(abschnitte(abzugAus(structuredClone(vektoren.abzuege['BR-2026-0001/1']))).abschnitte, 'kennzahlen').zeilen[0];
+    expect(neu.nachweis.herkunft).toContain('Ort zum Datenstand G-2');
+    expect(neu.nachweis.herkunft.some((h) => h.includes('endgültig ab 08.11.2026'))).toBe(true);
+    const alt = structuredClone(vektoren.abzuege['BR-2026-0001/1']);
+    for (const k of alt.kennzahlen) {
+      delete k.ort_zum_datenstand;
+      delete k.endgueltig_ab;
+    }
+    const vorher = teil(abschnitte(abzugAus(alt)).abschnitte, 'kennzahlen').zeilen[0];
+    expect(vorher.nachweis.herkunft.some((h) => h.includes('Ort zum Datenstand') || h.includes('endgültig ab'))).toBe(false);
+  });
+});
+
 describe('B1 Nr. 2 — die Revision vom 16.11.2026', () => {
   const detail = detailAm(AM_20_11);
   const ansicht = stand(2, AM_20_11);
@@ -237,7 +299,7 @@ describe('B1 Nr. 2 — die Revision vom 16.11.2026', () => {
     expect(ms12.nachweis.herkunft[1]).toBe('Version 2 · endgültig ab 08.11.2026 · gerechnet 12.11.2026 10:05');
     expect([zeile(ms.zeilen, 'MS-15').zahl, zeile(ms.zeilen, 'MS-15').kennzeichenSaetze]).toEqual([nb('3.860 kWh'), ['berechnet', 'korrigiert (Version 2)']]);
     const kz1 = zeile(teil(liste, 'kennzahlen').zeilen, 'KZ-0001');
-    expect([kz1.version, kz1.nachweis.herkunft[0]]).toEqual(['Version 2', nb('MS-12 6.040 kWh (Version 2)')]);
+    expect([kz1.version, kz1.nachweis.herkunft[1]]).toEqual(['Version 2', nb('MS-12 6.040 kWh (Version 2)')]);
     expect(teil(liste, 'qualitaet').korrekturen).toEqual([
       'Korrektur K-2026-0007 an MS-12 · freigegeben 12.11.2026 10:05 von Ines Kaltenbach (Energiemanager) · Zählerablesung 31.10. berichtigt (Ablesefehler 60 kWh)',
     ]);

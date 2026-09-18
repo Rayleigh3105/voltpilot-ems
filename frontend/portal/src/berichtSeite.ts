@@ -47,6 +47,7 @@ import { fassung as fassungWort, menge, OHNE_ZAHL, PROZENT, TRENNER, zahl } from
 import { periodeText } from './uemsKennzahl';
 import { herkunftsZeile, kennzeichenSprung, type Sprung, type Stueck } from './uemsOberflaechen';
 import { datumText } from './uemsOrtsbaum';
+import { RICHTUNGSPAAR } from './uemsMessstelle';
 import type { Karte, Ton } from './uemsWerteKarte';
 
 // ------------------------------------------------------------------ Wörter
@@ -88,6 +89,9 @@ export const HEUTIGER_WERT_LAEDT = 'Der heutige Wert wird geladen …';
 export const HEUTIGER_WERT_FEHLER = 'Der heutige Wert konnte nicht geladen werden.';
 /** Der Satz der Bildung (IP-5), solange ein Abzug keine Kennzahl trägt. */
 export const KEINE_KENNZAHLEN = 'Keine Kennzahlen definiert';
+export const KEIN_TAGESVERLAUF = 'In diesem Berichtsstand sind keine Tageswerte gespeichert.';
+export const RICHTUNGSPAAR_FEHLT =
+  'Laden und Entladen sind für diesen Zeitraum nicht vollständig getrennt gespeichert. Fehlende Mengen bleiben leer und werden nicht als 0 gezeigt.';
 export const QUELLEN_ANZAHL = (n: number): string => (n === 1 ? '1 Quelle' : `${n} Quellen`);
 /** Der zugeklappte Kopf-Abschnitt (Variante B): „8 Angaben“ — Datenstand, Stand und Prüfsumme stehen schon im Seitenkopf. */
 export const ANGABEN_ANZAHL = (n: number): string => (n === 1 ? '1 Angabe' : `${n} Angaben`);
@@ -103,7 +107,10 @@ export const ZUSAMMENFASSUNG: ReadonlyArray<readonly [string, string]> = [
 
 export const VERGLEICH_WORT: Record<string, string> = { vormonat: 'Vormonat', vorjahresmonat: 'Vorjahresmonat', vorjahr: 'Vorjahr' };
 export const GELTUNG_WORT: Record<Bericht['geltung_art'], string> = { standort: 'Standort', unternehmen: 'Unternehmen' };
-export const MENGE_ART_WORT: Record<string, string> = { laden: 'laden', entladen: 'entladen' };
+export const MENGE_ART_WORT: Record<string, string> = {
+  laden: RICHTUNGSPAAR.charge_discharge.positiv,
+  entladen: RICHTUNGSPAAR.charge_discharge.negativ,
+};
 
 export const KOPF_WORT = {
   unternehmen: 'Unternehmen',
@@ -392,10 +399,31 @@ export interface QuellenZahl {
   sprungWort: string | null;
 }
 
+export interface ZahlenGruppe {
+  schluessel: string;
+  kennzeichen: string;
+  name: string;
+  /** Zwei Richtungen derselben Messstelle stehen als EINE Gruppe beieinander. */
+  richtungspaar: boolean;
+  /** Alte Perioden können nur einen oder gar keinen gespeicherten Anteil tragen. */
+  fehlt: string | null;
+  zeilen: QuellenZahl[];
+}
+
+export interface TagesverlaufZeile {
+  schluessel: string;
+  kennzeichen: string;
+  name: string;
+  einheit: string;
+  tage: Array<{ tag: string; label: string; menge: number | null; mengeText: string; zustand: string; ton: string }>;
+  leer: string | null;
+}
+
 export type Abschnitt =
   | { art: 'kopf'; schluessel: string; titel: string; anzahl: string; zeilen: Zeile[] }
   | { art: 'zusammenfassung'; schluessel: string; titel: string; kacheln: Zeile[]; zaehlung: string | null }
-  | { art: 'messstellen'; schluessel: string; titel: string; vergleiche: string[]; zeilen: QuellenZahl[] }
+  | { art: 'messstellen'; schluessel: string; titel: string; vergleiche: string[]; zeilen: QuellenZahl[]; gruppen: ZahlenGruppe[] }
+  | { art: 'tagesverlauf'; schluessel: string; titel: string; leer: string | null; zeilen: TagesverlaufZeile[] }
   | { art: 'kennzahlen'; schluessel: string; titel: string; leer: string | null; zeilen: QuellenZahl[] }
   | { art: 'qualitaet'; schluessel: string; titel: string; zeilen: Zeile[]; korrekturen: string[] }
   | { art: 'quellen'; schluessel: string; titel: string; anzahl: string; zeilen: QuellenEintrag[] };
@@ -461,7 +489,7 @@ const wertZahl = (w: AbzugWert, kopf: AbzugKopf): QuellenZahl => {
   return {
     schluessel: w.menge_art ? `${w.quelle}/${w.menge_art}` : w.quelle,
     kennzeichen: w.quelle,
-    name: art ? `${w.name_zum_datenstand} (${art})` : w.name_zum_datenstand,
+    name: art ?? w.name_zum_datenstand,
     heute: null,
     zahl: zahlText,
     zustand: w.zustand,
@@ -532,15 +560,75 @@ const kennzahlZahl = (k: AbzugKennzahl, kopf: AbzugKopf): QuellenZahl => {
  */
 function nachweisDerKennzahl(k: AbzugKennzahl, kopf: AbzugKopf, karte: Karte): Nachweis {
   const zeitraum = kopf.zeitraum;
+  const endgueltig = k.fassung === 'endgültig' && k.endgueltig_ab
+    ? [`endgültig ab ${zeitText(k.endgueltig_ab, zeitraum.zone)}`]
+    : [];
   const herkunft = [
+    ...(k.ort_zum_datenstand ? [`Ort zum ${UEMS_DATENSTAND} ${k.ort_zum_datenstand}`] : []),
     ...k.eingaenge.map(eingangText),
-    [`${UEMS_BERECHNUNG} ${UEMS_FASSUNG} ${k.definition_fassung}`, `gerechnet ${zeitText(k.berechnet_am, zeitraum.zone)}`].join(TRENNER),
+    [`${UEMS_BERECHNUNG} ${UEMS_FASSUNG} ${k.definition_fassung}`, ...endgueltig, `gerechnet ${zeitText(k.berechnet_am, zeitraum.zone)}`].join(TRENNER),
     ...[regelwerkZeile(kopf, 'kennzahl')].filter((t): t is string => t !== null),
   ];
   const rahmen = new Map(k.eingaenge.map((e) => [e.kennzeichen, { periode: zeitraum.schluessel, version: e.version ?? null }]));
   const ziel = (kennzeichen: string) => kennzeichenSprung(kennzeichen, rahmen.get(kennzeichen) ?? { periode: zeitraum.schluessel });
   return { karte, herkunft, herkunftStuecke: herkunft.map((t) => herkunftsZeile(t, ziel)) };
 }
+
+const wertSchluessel = (w: Pick<AbzugWert | AbzugTagesverlauf, 'quelle' | 'menge_art'>): string =>
+  w.menge_art ? `${w.quelle}/${w.menge_art}` : w.quelle;
+
+const gruppiereZahlen = (werte: readonly AbzugWert[], zeilen: QuellenZahl[]): ZahlenGruppe[] => {
+  const gruppen = new Map<string, { werte: AbzugWert[]; zeilen: QuellenZahl[] }>();
+  for (let i = 0; i < werte.length; i++) {
+    const w = werte[i];
+    const g = gruppen.get(w.quelle) ?? { werte: [], zeilen: [] };
+    g.werte.push(w);
+    g.zeilen.push(zeilen[i]);
+    gruppen.set(w.quelle, g);
+  }
+  return [...gruppen.entries()].map(([quelle, g]) => {
+    const richtungspaar = g.werte.some((w) => w.menge_art !== undefined);
+    const arten = new Set(g.werte.map((w) => w.menge_art).filter((x): x is 'laden' | 'entladen' => x !== undefined));
+    const fehlt = richtungspaar && (arten.size < 2 || g.werte.some((w) => w.menge === null)) ? RICHTUNGSPAAR_FEHLT : null;
+    return {
+      schluessel: quelle,
+      kennzeichen: quelle,
+      name: g.werte[0]?.name_zum_datenstand ?? quelle,
+      richtungspaar,
+      fehlt,
+      zeilen: g.zeilen,
+    };
+  });
+};
+
+const zustandTon = (zustand: string): string => {
+  if (zustand === 'vollständig') return 'vollstaendig';
+  if (zustand === 'unvollständig') return 'unvollstaendig';
+  if (zustand === 'mit Ersatzwert') return 'ersatzwert';
+  return 'keine-werte';
+};
+
+const tagesverlaufZeilen = (a: Abzug): TagesverlaufZeile[] => (a.tagesverlauf ?? []).map((reihe) => {
+  const schluessel = wertSchluessel(reihe);
+  const wert = a.werte.find((w) => wertSchluessel(w) === schluessel);
+  const richtung = reihe.menge_art ? MENGE_ART_WORT[reihe.menge_art] : null;
+  const einheit = wert?.einheit ?? '';
+  return {
+    schluessel,
+    kennzeichen: reihe.quelle,
+    name: [wert?.name_zum_datenstand ?? reihe.quelle, richtung].filter((x): x is string => x !== null).join(TRENNER),
+    einheit,
+    tage: reihe.tage.map((t) => ({
+      tag: t.tag,
+      label: datumText(t.tag),
+      menge: t.menge,
+      mengeText: t.menge === null || einheit === '' ? OHNE_ZAHL : B.anzeige('menge', dezimal(t.menge), einheit, 'tag'),
+      zustand: t.zustand,
+      ton: zustandTon(t.zustand),
+    })),
+    leer: reihe.tage.length === 0 ? KEIN_TAGESVERLAUF : null,
+  };
+});
 
 const kopfZeilen = (kopf: AbzugKopf): Zeile[] => {
   const z = B.zeitraum(kopf.zeitraum.art, kopf.zeitraum.schluessel, kopf.zeitraum.zone);
@@ -596,6 +684,7 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
           : null;
       out.push({ art: 'zusammenfassung', schluessel, titel, kacheln, zaehlung });
     } else if (schluessel === 'verbrauch_je_messstelle') {
+      const zeilen = a.werte.map((w) => mitHeute(wertZahl(w, kopf), w.name_zum_datenstand));
       out.push({
         art: 'messstellen',
         schluessel,
@@ -603,8 +692,12 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
         vergleiche: kopf.vergleichszeitraeume.map(
           (v) => `${VERGLEICH_WORT[v.art] ?? v.art} ${periodeText(v.art === 'vorjahr' ? 'jahr' : 'monat', v.schluessel)}: ${v.ergebnis}`,
         ),
-        zeilen: a.werte.map((w) => mitHeute(wertZahl(w, kopf), w.name_zum_datenstand)),
+        zeilen,
+        gruppen: gruppiereZahlen(a.werte, zeilen),
       });
+    } else if (schluessel === 'tagesverlauf' && a.tagesverlauf !== undefined) {
+      const zeilen = tagesverlaufZeilen(a);
+      out.push({ art: 'tagesverlauf', schluessel, titel, leer: zeilen.length === 0 ? KEIN_TAGESVERLAUF : null, zeilen });
     } else if (schluessel === 'kennzahlen') {
       out.push({
         art: 'kennzahlen',
@@ -655,7 +748,7 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
       });
       out.push({ art: 'quellen', schluessel, titel, anzahl: QUELLEN_ANZAHL(zeilen.length), zeilen });
     } else {
-      // Tagesverlauf, Monatswerte, Standorte, Kostenstellen: Vertrag 1.0 trägt sie nicht im Abzug.
+      // Monatswerte, Standorte, Kostenstellen — und Tagesverlauf in einem Abzug nach 1.0/1.1 — fehlen im Abzug.
       ohneInhalt.push(schluessel);
     }
   }
