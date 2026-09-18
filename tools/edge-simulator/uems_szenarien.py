@@ -986,6 +986,17 @@ def fixture_text(ausgewaehlt: list[Szenario] | None = None) -> str:
                       sort_keys=True) + "\n"
 
 
+def fixture_dateisumme(ausgewaehlt: list[Szenario] | None = None) -> str:
+    """sha256 ueber die BYTES der Datei — die Summe, die der Java-Lauf nachrechnet.
+
+    Die Pruefsumme IM Inhalt haengt an Pythons Schreibweise fuer Zahlen und
+    Zeichen; ein zweiter Leser in einer anderen Sprache kaeme dort nie sicher
+    auf dieselbe Zeichenkette. Die Summe ueber die Bytes dagegen ist in jeder
+    Sprache dieselbe — darum liegt sie als eigene Datei daneben.
+    """
+    return hashlib.sha256(fixture_text(ausgewaehlt).encode("utf-8")).hexdigest()
+
+
 def spiele(szenario: Szenario, veroeffentliche, *, echo=None) -> int:
     """Spielt die Zustellungen in ihrer Reihenfolge; `veroeffentliche(zustellung)` sendet."""
     for nummer, zustellung in enumerate(szenario.zustellungen, start=1):
@@ -1035,6 +1046,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--zustellungen", action="store_true", help="die vollständigen Nutzlasten als JSON ausgeben")
     parser.add_argument("--abnahme", action="store_true",
                         help="die Abnahme-Vorlage für AP-07 IP-21 als JSON ausgeben (mit Prüfsumme)")
+    parser.add_argument("--abnahme-summe", action="store_true",
+                        help="nur die sha256 über die Bytes der Abnahme-Vorlage")
     parser.add_argument("--broker", default=os.environ.get("VP_SIM_BROKER"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("VP_SIM_PORT", "1883")))
     parser.add_argument("--tls", action="store_true", default=os.environ.get("VP_SIM_TLS") == "1")
@@ -1047,6 +1060,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.abnahme:
         sys.stdout.write(fixture_text(ausgewaehlt))
+        return 0
+
+    if args.abnahme_summe:
+        print(fixture_dateisumme(ausgewaehlt))
         return 0
 
     if args.zustellungen:

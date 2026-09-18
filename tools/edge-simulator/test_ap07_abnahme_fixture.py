@@ -13,10 +13,9 @@ import pathlib
 
 import pytest
 
-from uems_szenarien import abnahme_fixture, fixture_text, pruefsumme
+from uems_szenarien import abnahme_fixture, fixture_dateisumme, fixture_text, pruefsumme
 
-VORLAGE = (pathlib.Path(__file__).resolve().parents[2]
-           / "services/timescale-writer/src/test/resources/uems/ap07-abnahme-szenarien.json")
+VORLAGE = pathlib.Path(__file__).resolve().parent / "abnahme" / "ap07-szenarien.json"
 
 
 def test_die_eingecheckte_vorlage_ist_die_des_simulators():
@@ -25,6 +24,17 @@ def test_die_eingecheckte_vorlage_ist_die_des_simulators():
         "Vorlage und Simulator laufen auseinander — `make abnahme` neu erzeugen "
         "und die Abnahme-Klassen erneut fahren"
     )
+
+
+def test_die_dateisumme_liegt_daneben_und_stimmt():
+    """Den Java-Lauf bindet die Summe ueber die BYTES — sie ist sprachunabhaengig."""
+    sidecar = VORLAGE.with_suffix(VORLAGE.suffix + ".sha256")
+    assert sidecar.exists(), f"{sidecar} fehlt — `make abnahme` erzeugt sie"
+    assert sidecar.read_text(encoding="utf-8").strip() == fixture_dateisumme()
+
+    import hashlib
+    gelesen = hashlib.sha256(VORLAGE.read_bytes()).hexdigest()
+    assert gelesen == fixture_dateisumme(), "Datei und Summe passen nicht zusammen"
 
 
 def test_die_pruefsumme_deckt_den_ganzen_inhalt():

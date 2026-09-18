@@ -50,8 +50,9 @@ szenarien:
 # Die Vorlage, aus der der Java-Abnahmelauf (AP-07 IP-21) die Zustellungen,
 # Ereignisse und Stammdaten liest. Erzeugt, nie von Hand geschrieben:
 # test_ap07_abnahme_fixture.py hält sie an diesen Befehl.
-ABNAHME := ../../services/timescale-writer/src/test/resources/uems/ap07-abnahme-szenarien.json
+ABNAHME := abnahme/ap07-szenarien.json
 
 abnahme:
 	$(PY) uems_szenarien.py --abnahme > $(ABNAHME)
+	$(PY) uems_szenarien.py --abnahme-summe > $(ABNAHME).sha256
 	@echo "$(ABNAHME) neu erzeugt — Abnahme-Klassen erneut fahren"

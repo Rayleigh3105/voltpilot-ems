@@ -1,0 +1,540 @@
+package com.voltpilot.writer;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeMap;
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.redpanda.RedpandaContainer;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * AP-07 IP-21 — die Störungs-Szenarien des Simulators durch die ECHTE Strecke.
+ *
+ * <p>Der Simulator (AP-07 IP-20, {@code tools/edge-simulator/uems_szenarien.py}) schreibt das
+ * Drehbuch: je Szenario die Zustellungen mit ihren vollständigen Nutzlasten, die erwarteten
+ * {@code events.raw}-Ereignisse und die erwarteten Zeilen je Messstelle. Dieser Lauf spielt
+ * genau diese Zustellungen über ein echtes Redpanda in den echten Writer und vergleicht,
+ * was in einer echten TimescaleDB liegt.
+ *
+ * <p><b>Der Java-Lauf startet kein Python.</b> Das Drehbuch steht als erzeugte Datei
+ * {@code tools/edge-simulator/abnahme/ap07-szenarien.json} im Baum; sie trägt eine Prüfsumme
+ * über ihren eigenen Inhalt, die hier nachgerechnet wird, und
+ * {@code test_ap07_abnahme_fixture.py} hält sie an den Simulator. Laufen beide auseinander,
+ * ist der Wächter rot — nie still ein anderes Drehbuch.
+ *
+ * <p><b>Die Naht zur Datenannahme.</b> Gespielt wird der Weg AB {@code measurements.raw}, also
+ * Writer → Datenbank. Der Schritt davor (MQTT → Datenannahme → {@code measurements.raw}) ist
+ * die Sache von {@code services/ingest}; A13 lebt genau dort, und der Drehbuch-Eintrag sagt,
+ * welche drei Zustellungen die Datenannahme abweist. Dieser Lauf spielt darum für A13 nur die
+ * ANGENOMMENEN Zustellungen und prüft, dass die abgewiesenen nach der Regel der Datenannahme
+ * abgewiesen GEHÖREN — den Nachweis, dass sie es werden, führt {@code MesszeitregelTest}.
+ *
+ * <p>Wegwerf-Container auf zufälligen Ports; ohne Docker wird übersprungen.
+ */
+@Testcontainers(disabledWithoutDocker = true)
+@SpringBootTest
+class UemsStreckeAbnahmeTest {
+
+    /** Das Drehbuch liegt neben seinem Erzeuger, nicht als Kopie je Maven-Modul. */
+    private static final Path DREHBUCH =
+            Path.of("../../tools/edge-simulator/abnahme/ap07-szenarien.json");
+
+    private static final String MEASUREMENTS_RAW_TOPIC = "measurements.raw";
+    private static final String APP_PW = "voltpilot_app_test_pw";
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Die Datenannahme weist eine Messzeit ab, die weiter als das in der Zukunft liegt. */
+    private static final Duration UHR_TOLERANZ = Duration.ofMinutes(5);
+
+    private static JsonNode drehbuch;
+
+    @Container
+    static final RedpandaContainer REDPANDA =
+            new RedpandaContainer(DockerImageName.parse("redpandadata/redpanda:v24.2.7"));
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
+            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
+                    .asCompatibleSubstituteFor("postgres"))
+            .withDatabaseName("voltpilot")
+            .withUsername("voltpilot")
+            .withPassword("voltpilot_dev_pw")
+            .withInitScript("writer-schema.sql");
+
+    @BeforeAll
+    static void drehbuchLesenUndSaeen() throws Exception {
+        drehbuch = MAPPER.readTree(Files.readString(DREHBUCH, StandardCharsets.UTF_8));
+        String tenant = drehbuch.path("szenarien").get(0).path("stammdaten").path("tenant_id").asText();
+        EreignisTabelleImTest.anlegen(POSTGRES, tenant);
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            for (JsonNode szenario : drehbuch.path("szenarien")) {
+                saee(st, szenario);
+            }
+        }
+    }
+
+    @org.junit.jupiter.api.AfterAll
+    static void zuhoererBeenden(@Autowired KafkaListenerEndpointRegistry zuhoerer) {
+        zuhoerer.stop();
+    }
+
+    @DynamicPropertySource
+    static void wire(DynamicPropertyRegistry registry) {
+        registry.add("spring.kafka.bootstrap-servers", REDPANDA::getBootstrapServers);
+        registry.add("voltpilot.redpanda.measurements-topic", () -> MEASUREMENTS_RAW_TOPIC);
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", () -> "voltpilot_app");
+        registry.add("spring.datasource.password", () -> APP_PW);
+    }
+
+    // ================================================== Der Wächter über dem Drehbuch
+
+    /**
+     * Die Prüfsumme deckt den ganzen Inhalt: wer die Datei von Hand anfasst, ohne
+     * {@code make abnahme} zu fahren, macht diesen Lauf rot — und nicht die Abnahme still falsch.
+     */
+    @Test
+    void dasDrehbuchIstDasDesSimulators() throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        String ist = HexFormat.of().formatHex(md.digest(Files.readAllBytes(DREHBUCH)));
+        String genannt = Files.readString(Path.of(DREHBUCH + ".sha256"), StandardCharsets.UTF_8).trim();
+        assertThat(ist)
+                .as("sha256 über die Bytes der Vorlage — `make abnahme` erzeugt sie neu")
+                .isEqualTo(genannt);
+        assertThat(schluessel()).containsExactly("A1", "A3", "A4", "A6", "A13");
+    }
+
+    // ================================================== Die fünf Szenarien durch die Strecke
+
+    /** A1: dieselben 256 Werte dreimal — einmal gespeichert, ein {@code sequence_reset}. */
+    @Test
+    void a1_dieWiederholungVerdoppeltKeinenVerbrauch() throws Exception {
+        spielenUndPruefen("A1");
+    }
+
+    /** A3: 3,5 Stunden Ausfall, 210 Takte aus der Outbox — jeder Takt landet genau einmal. */
+    @Test
+    void a3_dieNachlieferungFuelltDenAusfall() throws Exception {
+        spielenUndPruefen("A3");
+    }
+
+    /** A4: der Puffer hat verdrängt — die Lücke bleibt Lücke, der Rest kommt an. */
+    @Test
+    void a4_dieVerdraengtenMesszeitenBleibenLuecke() throws Exception {
+        spielenUndPruefen("A4");
+    }
+
+    /**
+     * A6: nach der Übergabe ist der Nachzügler der alten Box mit Messzeit VOR dem Wechsel
+     * führend, mit Messzeit danach ein Spiegel — die Rolle entscheidet die Zuständigkeit zur
+     * MESSZEIT, nie die Eingangszeit (W8).
+     */
+    @Test
+    void a6_derNachzueglerIstFuehrendDerSpaetereEinSpiegel() throws Exception {
+        spielenUndPruefen("A6");
+    }
+
+    /**
+     * A13: die drei vorgehenden Zustellungen gehören nicht in die Strecke. Gespielt werden
+     * nur die angenommenen; dass die anderen an der Datenannahme scheitern, ist ihr Vertrag
+     * und wird dort geprüft ({@code MesszeitregelTest}). Hier wird belegt, dass sie nach
+     * derselben Regel abzuweisen sind — sonst prüfte die Abnahme eine andere Grenze.
+     */
+    @Test
+    void a13_keinWertInDerZukunft() throws Exception {
+        JsonNode szenario = szenario("A13");
+        List<JsonNode> abgewiesen = new ArrayList<>();
+        for (JsonNode z : szenario.path("zustellungen")) {
+            if (vorgehend(z)) {
+                abgewiesen.add(z);
+            }
+        }
+        assertThat(abgewiesen).as("drei Umschläge mit Messzeit in der Zukunft").hasSize(3);
+        Set<Long> sequenzen = new LinkedHashSet<>();
+        abgewiesen.forEach(z -> sequenzen.add(z.path("sequenz").asLong()));
+        assertThat(ereignisSequenzen(szenario, "clock_ahead"))
+                .as("das Drehbuch meldet genau diese Sequenzen als clock_ahead")
+                .isEqualTo(sequenzen);
+
+        spielenUndPruefen("A13");
+
+        // Und keine einzige Zeile trägt eine Messzeit nach ihrer Eingangszeit.
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE time > received_at"))
+                .as("keine Rohwerte in der Zukunft").isZero();
+    }
+
+    // ================================================== Werkzeug
+
+    /**
+     * Spielt die angenommenen Zustellungen eines Szenarios und vergleicht Zeilen und
+     * Ereignisse mit dem Drehbuch.
+     */
+    private void spielenUndPruefen(String schluessel) throws Exception {
+        JsonNode szenario = szenario(schluessel);
+        createTopic();
+
+        List<String> umschlaege = new ArrayList<>();
+        List<String> keys = new ArrayList<>();
+        for (JsonNode z : szenario.path("zustellungen")) {
+            if (!"measurement-samples".equals(z.path("strom").asText()) || vorgehend(z)) {
+                continue;   // Ereignis-Umschläge und die Uhrfehler gehören der Datenannahme
+            }
+            umschlaege.add(umschlag(schluessel, z));
+            JsonNode n = z.path("nutzlast");
+            keys.add(n.path("tenant_id").asText() + ":" + n.path("site_id").asText() + ":"
+                    + je(schluessel, n.path("device_id").asText()));
+        }
+        assertThat(umschlaege).as(schluessel + ": es wird wirklich gespielt").isNotEmpty();
+        senden(keys, umschlaege);
+
+        // Erwartet wird JE MESSSTELLE UND ROLLE; die Reihe steht am entity_id der Stammdaten.
+        Map<String, Long> erwartet = new TreeMap<>();
+        for (JsonNode r : szenario.path("erwartete_reihen")) {
+            erwartet.merge(r.path("messstelle").asText() + "/" + r.path("rolle").asText(),
+                    r.path("rohzeilen").asLong(), Long::sum);
+        }
+        Map<String, String> entity = new LinkedHashMap<>();
+        for (JsonNode r : szenario.path("stammdaten").path("reihen")) {
+            entity.put(r.path("messstelle").asText(), je(schluessel, r.path("entity_id").asText()));
+        }
+
+        for (Map.Entry<String, Long> e : erwartet.entrySet()) {
+            String[] teile = e.getKey().split("/");
+            String id = entity.get(teile[0]);
+            assertThat(id).as(schluessel + ": " + teile[0] + " hat Stammdaten").isNotNull();
+            warte(schluessel + ": " + teile[0] + " als " + teile[1],
+                    () -> zaehle("SELECT count(*) FROM device_measurement_sample WHERE entity_id='"
+                            + id + "' AND role='" + teile[1] + "' AND time >= '"
+                            + fruehesteMesszeit(szenario) + "' AND time <= '"
+                            + spaetesteMesszeit(szenario) + "'"),
+                    e.getValue());
+        }
+
+        // Die erwarteten Ereignisse des Writers — Wort für Wort aus dem Vokabular.
+        for (String art : writerEreignisarten(szenario)) {
+            warte(schluessel + ": Ereignis " + art + " ist festgehalten",
+                    () -> zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='" + art
+                            + "' AND urheber='writer' AND device_id IN (" + boxen(szenario) + ")"),
+                    (long) ereignisSequenzenOderZahl(szenario, art));
+        }
+    }
+
+    /** Eine Zustellung, deren Messzeiten weiter als die Toleranz in der Zukunft stehen. */
+    private static boolean vorgehend(JsonNode z) {
+        Instant eingang = Instant.parse(z.path("eingangszeit").asText());
+        for (JsonNode s : z.path("nutzlast").path("samples")) {
+            if (Instant.parse(s.path("observed_at").asText()).isAfter(eingang.plus(UHR_TOLERANZ))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Der {@code measurements.raw}-Umschlag, den die Datenannahme aus diesem Publish baut. */
+    private static String umschlag(String sz, JsonNode z) throws Exception {
+        JsonNode n = z.path("nutzlast");
+        var out = MAPPER.createObjectNode();
+        out.put("schema_version", "1.0");
+        out.put("event_id", java.util.UUID.randomUUID().toString());
+        out.put("tenant_id", n.path("tenant_id").asText());
+        out.put("site_id", n.path("site_id").asText());
+        out.put("device_id", je(sz, n.path("device_id").asText()));
+        out.put("catalog_version", n.path("catalog_version").asText());
+        out.put("sequence", n.path("sequence").asLong());
+        out.put("observed_at", n.path("observed_at").asText());
+        out.put("ingested_at", z.path("eingangszeit").asText());
+        out.put("source_topic", z.path("topic").asText());
+        out.put("dropped_samples", 0);
+        out.put("gap", false);
+        // ⚠ Die Datenannahme reicht die 2.1-Herkunftsfelder NICHT weiter: sie prüft
+        // `applied_revision` und `entity_id` und lässt beide dann fallen
+        // (MeasurementSamplesValidator: "ingest validates them but does not forward them").
+        // Der Umschlag der Strecke ist darum 1.0 mit genau den 2.0-Feldern — und der Writer
+        // schlägt Komponente, Fassung und Rolle ZUR MESSZEIT selbst nach (IP-7). Genau das
+        // soll diese Abnahme prüfen; ein Umschlag mit Herkunft am Draht würde sie umgehen.
+        var samples = MAPPER.createArrayNode();
+        for (JsonNode s : n.path("samples")) {
+            var kopie = (com.fasterxml.jackson.databind.node.ObjectNode) s.deepCopy();
+            kopie.remove("entity_id");
+            samples.add(kopie);
+        }
+        out.set("samples", samples);
+        return MAPPER.writeValueAsString(out);
+    }
+
+    /** Stammdaten EINES Szenarios: Box, Quelle mit Zuständigkeit, Gerät, Bindung, Auswahl. */
+    private static void saee(Statement st, JsonNode szenario) throws Exception {
+        JsonNode stamm = szenario.path("stammdaten");
+        String tenant = stamm.path("tenant_id").asText();
+        String sz = szenario.path("szenario").asText();
+
+        for (JsonNode b : stamm.path("boxen")) {
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('"
+                    + je(sz, b.path("device_id").asText()) + "','" + tenant + "','"
+                    + b.path("site_id").asText() + "') ON CONFLICT DO NOTHING");
+        }
+        Set<String> quellen = new LinkedHashSet<>();
+        for (JsonNode z : stamm.path("zustaendigkeiten")) {
+            String quelle = z.path("datenquelle_id").asText();
+            if (quellen.add(quelle)) {
+                st.execute("INSERT INTO data_source(id,tenant_id,kennzeichen,kadenz_s) VALUES ('"
+                        + quelle + "','" + tenant + "','" + z.path("kennzeichen").asText() + "',"
+                        + z.path("kadenz_s").asLong() + ") ON CONFLICT DO NOTHING");
+            }
+            st.execute("INSERT INTO data_source_assignment(tenant_id,data_source_id,device_id,"
+                    + "effective_from,effective_to) VALUES ('" + tenant + "','" + quelle + "','"
+                    + je(sz, z.path("device_id").asText()) + "','" + z.path("von").asText() + "',"
+                    + (z.path("bis").isNull() ? "NULL" : "'" + z.path("bis").asText() + "'") + ")");
+        }
+        for (JsonNode r : stamm.path("reihen")) {
+            String geraet = r.path("geraet_id").asText();
+            String entity = je(sz, r.path("entity_id").asText());
+            st.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,device_id,"
+                    + "data_source_id) VALUES ('" + entity + "','" + tenant + "','"
+                    + r.path("site_id").asText() + "','grid','"
+                    + je(sz, r.path("device_id").asText())
+                    + "','" + r.path("datenquelle_id").asText() + "') ON CONFLICT DO NOTHING");
+            st.execute("INSERT INTO geraet(id,tenant_id,site_id,kennzeichen,einbau_kennzeichen,"
+                    + "seriennummer,eingebaut_am) VALUES ('" + geraet + "','" + tenant + "','"
+                    + r.path("site_id").asText() + "','" + r.path("komponente").asText() + "','"
+                    + r.path("einbau_kennzeichen").asText() + "','SN-"
+                    + r.path("einbau_kennzeichen").asText() + "','"
+                    + r.path("eingebaut_am").asText() + "') ON CONFLICT DO NOTHING");
+            st.execute("INSERT INTO geraet_komponente(tenant_id,geraet_id,entity_id,gueltig_ab) "
+                    + "VALUES ('" + tenant + "','" + geraet + "','" + entity + "','"
+                    + r.path("eingebaut_am").asText() + "')");
+        }
+
+        // Jeder Punktschlüssel am Draht braucht Katalogeintrag, Auswahl und Bindung. A1
+        // hängt einen Kanal-Index an (256 Punkte über fünf Reihen) — gesät wird darum,
+        // was das Drehbuch WIRKLICH sendet, nicht der eine Punkt je Reihe.
+        Map<String, JsonNode> reiheZuEntity = new LinkedHashMap<>();
+        for (JsonNode r : stamm.path("reihen")) {
+            reiheZuEntity.put(r.path("entity_id").asText(), r);   // Kennung des Drehbuchs
+        }
+        Set<String> gesaet = new LinkedHashSet<>();
+        for (JsonNode z : szenario.path("zustellungen")) {
+            JsonNode n = z.path("nutzlast");
+            for (JsonNode s : n.path("samples")) {
+                String punkt = s.path("point_key").asText();
+                String drehbuchEntity = s.path("entity_id").asText(null);
+                JsonNode r = drehbuchEntity == null ? null : reiheZuEntity.get(drehbuchEntity);
+                if (r == null || !gesaet.add(n.path("device_id").asText() + "|" + punkt)) {
+                    continue;
+                }
+                String entity = je(sz, drehbuchEntity);
+                String box = je(sz, n.path("device_id").asText());
+                st.execute("INSERT INTO measurement_catalog_point_metadata VALUES ('"
+                        + n.path("catalog_version").asText() + "','" + punkt
+                        + "','counter',900) ON CONFLICT DO NOTHING");
+                st.execute("INSERT INTO device_measurement_selection(tenant_id,site_id,device_id,"
+                        + "point_key,enabled,cadence_s,desired_revision,enabled_at,catalog_version,"
+                        + "changed_by,apply_status,applied_at,retention_class,raw_retention_days,"
+                        + "long_term_cadence_s,long_term_strategy,entity_id) VALUES ('" + tenant
+                        + "','" + n.path("site_id").asText() + "','" + box
+                        + "','" + punkt + "',true,60,"
+                        + n.path("applied_revision").asLong(1) + ",'"
+                        + r.path("eingebaut_am").asText() + "','"
+                        + n.path("catalog_version").asText() + "','abnahme','applied','"
+                        + r.path("eingebaut_am").asText() + "','energy_counter',90,900,"
+                        + "'fifteen_minute','" + entity + "')");
+                st.execute("INSERT INTO messstelle_quelle(tenant_id,messstelle_id,entity_id,"
+                        + "geraet_id,kanal,rolle,gueltig_ab) VALUES ('" + tenant + "','"
+                        + r.path("messstelle_id").asText() + "','" + entity + "','"
+                        + r.path("geraet_id").asText() + "','" + punkt + "','fuehrend','"
+                        + r.path("gebunden_ab").asText() + "')");
+            }
+        }
+        for (JsonNode r : stamm.path("reihen")) {
+            st.execute("INSERT INTO messstelle_kennzeichen(tenant_id,kennzeichen,messstelle_id) "
+                    + "VALUES ('" + tenant + "','" + szenario.path("szenario").asText() + "-"
+                    + r.path("messstelle").asText() + "','" + r.path("messstelle_id").asText()
+                    + "') ON CONFLICT DO NOTHING");
+        }
+    }
+
+    /**
+     * Die fünf Szenarien benutzen dieselben Ahrenberg-Kennungen (Box E-2 liest in A1, A3 und
+     * A4). Nacheinander in EINER Datenbank würden sie sich Box, Komponente und Zuständigkeit
+     * gegenseitig überschreiben — {@code device.id} und {@code measurement_point.id} sind
+     * Primärschlüssel. Jede dieser beiden Kennungen bekommt darum je Szenario eine eigene,
+     * deterministisch abgeleitete. An der Strecke ändert das nichts: sie liest Kennungen, sie
+     * deutet sie nicht. Gerät, Messstelle und Datenquelle sind schon im Drehbuch je Szenario
+     * eigen und bleiben, wie sie dort stehen.
+     */
+    private static String je(String schluessel, String kennung) {
+        return java.util.UUID.nameUUIDFromBytes((schluessel + ":" + kennung)
+                .getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
+    private static List<String> schluessel() {
+        List<String> alle = new ArrayList<>();
+        drehbuch.path("szenarien").forEach(s -> alle.add(s.path("szenario").asText()));
+        return alle;
+    }
+
+    private static JsonNode szenario(String schluessel) {
+        for (JsonNode s : drehbuch.path("szenarien")) {
+            if (schluessel.equals(s.path("szenario").asText())) {
+                return s;
+            }
+        }
+        throw new AssertionError("kein Szenario " + schluessel + " im Drehbuch");
+    }
+
+    private static Set<String> writerEreignisarten(JsonNode szenario) {
+        Set<String> arten = new LinkedHashSet<>();
+        for (JsonNode e : szenario.path("erwartete_ereignisse")) {
+            if ("writer".equals(e.path("urheber").asText())) {
+                arten.add(e.path("ereignis").path("art").asText());
+            }
+        }
+        return arten;
+    }
+
+    private static int ereignisSequenzenOderZahl(JsonNode szenario, String art) {
+        int n = 0;
+        for (JsonNode e : szenario.path("erwartete_ereignisse")) {
+            if ("writer".equals(e.path("urheber").asText())
+                    && art.equals(e.path("ereignis").path("art").asText())) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private static Set<Long> ereignisSequenzen(JsonNode szenario, String art) {
+        Set<Long> seq = new LinkedHashSet<>();
+        for (JsonNode e : szenario.path("erwartete_ereignisse")) {
+            if (art.equals(e.path("ereignis").path("art").asText())) {
+                seq.add(e.path("ereignis").path("sequenz").asLong());
+            }
+        }
+        return seq;
+    }
+
+    private static String boxen(JsonNode szenario) {
+        StringBuilder sb = new StringBuilder();
+        for (JsonNode b : szenario.path("stammdaten").path("boxen")) {
+            sb.append(sb.length() == 0 ? "" : ",").append("'")
+                    .append(je(szenario.path("szenario").asText(), b.path("device_id").asText()))
+                    .append("'");
+        }
+        return sb.toString();
+    }
+
+    private static String fruehesteMesszeit(JsonNode szenario) {
+        return grenze(szenario, true);
+    }
+
+    private static String spaetesteMesszeit(JsonNode szenario) {
+        return grenze(szenario, false);
+    }
+
+    private static String grenze(JsonNode szenario, boolean frueheste) {
+        String grenze = null;
+        for (JsonNode z : szenario.path("zustellungen")) {
+            for (JsonNode s : z.path("nutzlast").path("samples")) {
+                String t = s.path("observed_at").asText();
+                if (grenze == null || (frueheste ? t.compareTo(grenze) < 0 : t.compareTo(grenze) > 0)) {
+                    grenze = t;
+                }
+            }
+        }
+        return grenze;
+    }
+
+    private void senden(List<String> keys, List<String> pakete) throws Exception {
+        try (KafkaProducer<String, String> producer = producer()) {
+            for (int i = 0; i < pakete.size(); i++) {
+                producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, keys.get(i),
+                        pakete.get(i))).get();
+            }
+            producer.flush();
+        }
+    }
+
+    private static KafkaProducer<String, String> producer() {
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, REDPANDA.getBootstrapServers());
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        return new KafkaProducer<>(props);
+    }
+
+    private static void createTopic() throws Exception {
+        try (Admin admin = Admin.create(Map.of("bootstrap.servers", REDPANDA.getBootstrapServers()))) {
+            admin.createTopics(List.of(new NewTopic(MEASUREMENTS_RAW_TOPIC, 1, (short) 1)))
+                    .all().get();
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (!(e.getCause() instanceof TopicExistsException)) {
+                throw e;
+            }
+        }
+    }
+
+    private static Connection admin() throws Exception {
+        return DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+    }
+
+    private static long zaehle(String sql) throws Exception {
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(sql)) {
+            return rs.next() ? rs.getLong(1) : -1;
+        }
+    }
+
+    private void warte(String was, Zaehlung zaehlung, long erwartet) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(90).toNanos();
+        long ist = -1;
+        while (System.nanoTime() < deadline) {
+            ist = zaehlung.zaehle();
+            if (ist == erwartet) {
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError(was + ": " + ist + " statt " + erwartet);
+    }
+
+    private interface Zaehlung {
+        long zaehle() throws Exception;
+    }
+}
