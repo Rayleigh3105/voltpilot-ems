@@ -403,7 +403,8 @@ public class ComponentService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Diese historische Fassung enthält keinen vollständigen Sicherheits-Snapshot und kann nicht automatisch zurückgesetzt werden.");
         }
-        if (!definitions.currentWagoSlotMatches(siteId, entityId, old.definition().slot())) {
+        if (old.definition().slot() != null
+                && !definitions.currentWagoSlotMatches(siteId, entityId, old.definition().slot())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Diese Fassung gehört zu einer anderen Karten-Zuordnung. Bitte prüfen Sie den Steckplatz.");
         }
