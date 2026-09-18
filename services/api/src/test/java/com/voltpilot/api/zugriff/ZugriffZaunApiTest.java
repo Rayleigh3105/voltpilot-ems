@@ -11,6 +11,8 @@ import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import jakarta.servlet.ServletException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -25,6 +27,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -252,6 +255,33 @@ class ZugriffZaunApiTest {
     }
 
     /**
+     * Lesende Kundenrouten, die es <b>vor IP-4 noch gar nicht gab</b> und die den Zugriffs-Kontext voraussetzen.
+     *
+     * <p>Fuer sie sagt der Bestandsvergleich nichts: „vorher" ist keine aeltere Fassung, sondern derselbe heutige
+     * Handler mit abgeschaltetem {@link ZugriffKontextLader} — ohne Kontext lehnt er ab. Eine historische Antwort
+     * existiert nicht, weil es vor IP-4 die Route nicht gab. Ihr Vertrag steht darum in einer EIGENEN Klasse, die
+     * hier als Klassenobjekt genannt ist: verschwindet sie, bricht schon die Kompilierung.
+     *
+     * <p>Die Routen bleiben im gemeinsamen Sammler {@link #kundenrouten(boolean)} — Partner-Zaun (404) und
+     * Standort-Zaun pruefen sie weiter; nur DIESER eine Vergleich nimmt sie aus.
+     *
+     * @param muster       das Routenmuster, wie das {@link RequestMappingHandlerMapping} es nennt
+     * @param probe        ein aufrufbarer Pfad dieser Route (mit Pflichtparametern) fuer den Waechter
+     * @param vertragstest die Klasse, die den eigenen Vertrag dieser Route prueft
+     */
+    private record NachIp4(String muster, String probe, Class<?> vertragstest) {}
+
+    /** AP-03 IP-13 (Einfuehrung 83e3820e): Benutzerliste und Protokoll der Benutzerverwaltung. */
+    private static final List<NachIp4> NACH_IP4 = List.of(
+            new NachIp4("/api/v1/benutzer", "/api/v1/benutzer", BenutzerVerwaltungApiTest.class),
+            new NachIp4("/api/v1/benutzer/protokoll",
+                    "/api/v1/benutzer/protokoll?von=2024-01-01T00:00:00Z&bis=2024-12-31T00:00:00Z",
+                    BenutzerVerwaltungApiTest.class));
+
+    private static final Set<String> AUSGENOMMEN =
+            NACH_IP4.stream().map(NachIp4::muster).collect(Collectors.toCollection(TreeSet::new));
+
+    /**
      * Bestand (AP-03 IP-4 und IP-5): „vorher" lädt der Lader nichts, also bleiben alle Sitzungs-Einstellungen leer —
      * das ist der Stand vor IP-4 und zugleich der Stand, in dem {@code site_scope} nichts filtert. Jedes HEUTIGE Konto
      * sieht nachher auf jeder lesenden Kundenroute Zeichen für Zeichen dasselbe: der Kundenadministrator (nach der
@@ -275,7 +305,9 @@ class ZugriffZaunApiTest {
      */
     @Test
     void jedesHeutigeKontoSiehtAufJederLesendenKundenrouteDasselbeWieVorIp4UndIp5() throws Exception {
-        List<Route> routen = kundenrouten(true);
+        List<Route> routen = kundenrouten(true).stream()
+                .filter(r -> !AUSGENOMMEN.contains(r.muster()))
+                .toList();
         List<Konto> konten = List.of(
                 new Konto("Kundenkonto (Bestandsübernahme: Kundenadministrator)", konto(KUNDE_KA, DEMO, "operator"),
                         new String[0]),
@@ -289,8 +321,10 @@ class ZugriffZaunApiTest {
         List<String> stufenwechsel = new ArrayList<>();
         Set<String> fluechtig = new TreeSet<>();
         Set<String> mitAusnahme = new TreeSet<>();
+        Set<String> ohneAussage = new TreeSet<>();
         int mitDaten = 0;
         for (Route r : routen) {
+            boolean jedeAntwortAbgelehnt = true;
             for (Konto k : konten) {
                 Antwort vorher1 = vorher(r, k);
                 Antwort nachher = ruf(r, k);
@@ -317,11 +351,21 @@ class ZugriffZaunApiTest {
                 if (gleich && nachher.status() == 200 && nachher.body().length() > 2) {
                     mitDaten++;
                 }
+                if (nachher.status() < 400) {
+                    jedeAntwortAbgelehnt = false;
+                }
+            }
+            if (jedeAntwortAbgelehnt) {
+                ohneAussage.add(r.toString());
             }
         }
         System.out.printf("Bestand: %d lesende Kundenrouten × %d Konten, %d Antworten mit Daten gleich, flüchtig: %s, "
                 + "Ausnahme im Handler (beide Seiten): %s, OCPP-Stufenwechsel (E13): %s%n", routen.size(),
                 konten.size(), mitDaten, fluechtig, mitAusnahme, stufenwechsel);
+        // Routen, die JEDES Konto auf beiden Seiten ablehnt (Pflichtparameter fehlt, Platzhalter passt nicht,
+        // Recht fehlt): ihr Vergleich ist gleich, sagt aber nichts über den Bestand. Nur ein Protokoll.
+        System.out.printf("Bestandsvergleich ohne Aussage (beide Seiten ≥ 400 für jedes Konto): %s%n"
+                + "Vom Vor-IP4-Vergleich ausgenommen (eigener Vertrag): %s%n", ohneAussage, AUSGENOMMEN);
         assertThat(ruf(get("/api/v1/sites"), konten.get(0)).body()).contains(BERLIN_SITE);
         assertThat(routen).hasSizeGreaterThan(150);
         assertThat(mitDaten).isGreaterThan(100);
@@ -331,6 +375,63 @@ class ZugriffZaunApiTest {
         // bekaeme jedes bestehende Kundenkonto den Hardware-Befehlssatz, ohne dass jemand es ihm gegeben hat.
         assertThat(stufenwechsel).containsExactly(
                 "Kundenkonto (Bestandsübernahme: Kundenadministrator): CUSTOMER → SITE_ADMIN");
+    }
+
+    /**
+     * Der Waechter ueber der Grenze des Bestandsvergleichs: <b>keine lesende Kundenroute kommt still an ihm vorbei.</b>
+     *
+     * <p>Jedes GET-Muster unter {@code /api/v1/} steht entweder im Bestandsvergleich, oder — mit Beleg — in
+     * {@link #NACH_IP4}, oder es ist eine der beiden hier namentlich genannten Nicht-Kundenrouten. Gemessen wird
+     * gegen das rohe {@link RequestMappingHandlerMapping}, nicht gegen {@link #kundenrouten(boolean)}: so faellt
+     * auch ein spaeter dort eingebauter stiller Uebersprung auf.
+     *
+     * <p>Und jede Ausnahme muss ihre Ausnahme verdienen. Sie muss es heute geben, ihr Vertragstest muss die Route
+     * wirklich aufrufen, und sie muss ohne Kontext eine ANDERE Antwort geben als mit — sonst ist „vorher 403" keine
+     * Emulation, sondern eine echte Aussage, und die Route gehoert zurueck in den Vergleich.
+     */
+    @Test
+    void keineLesendeKundenrouteKommtAmVorIp4VergleichVorbeiUndJedeAusnahmeIstBelegt() throws Exception {
+        Set<String> alleGet = new TreeSet<>();
+        mapping.getHandlerMethods().forEach((info, handler) -> {
+            Set<RequestMethod> methoden = info.getMethodsCondition().getMethods();
+            if (!methoden.isEmpty() && !methoden.contains(RequestMethod.GET)) {
+                return;
+            }
+            info.getPatternValues().stream()
+                    .filter(m -> m.startsWith("/api/v1/") && !m.startsWith("/api/v1/admin/"))
+                    .forEach(alleGet::add);
+        });
+        Set<String> verglichen = kundenrouten(true).stream().map(Route::muster)
+                .filter(m -> !AUSGENOMMEN.contains(m)).collect(Collectors.toCollection(TreeSet::new));
+        Set<String> abgedeckt = new TreeSet<>(verglichen);
+        abgedeckt.addAll(AUSGENOMMEN);
+        abgedeckt.add(ZugriffFilter.SELBSTAUSKUNFT); // eigener Zaun: SelbstauskunftApiTest
+        abgedeckt.add(SITZUNG); // die Test-Route dieser Klasse selbst
+        assertThat(abgedeckt).as("jede GET-Route entweder verglichen oder benannt ausgenommen")
+                .containsExactlyInAnyOrderElementsOf(alleGet);
+        assertThat(verglichen).doesNotContainAnyElementsOf(AUSGENOMMEN);
+        assertThat(alleGet).as("keine verrottete Ausnahme").containsAll(AUSGENOMMEN);
+
+        Konto ka = new Konto("Kundenkonto (Bestandsübernahme: Kundenadministrator)", konto(KUNDE_KA, DEMO, "operator"),
+                new String[0]);
+        for (NachIp4 a : NACH_IP4) {
+            Route probe = new Route(HttpMethod.GET, a.muster(), a.probe());
+            Antwort ohneKontext = vorher(probe, ka);
+            Antwort mitKontext = ruf(probe, ka);
+            assertThat(mitKontext.status()).as(a.muster() + " mit Kontext").isEqualTo(200);
+            assertThat(ohneKontext.status()).as(a.muster() + " ohne Kontext (Emulation, kein Bestand)").isEqualTo(403);
+            assertThat(quelle(a.vertragstest())).as(a.vertragstest().getSimpleName() + " ruft " + a.muster())
+                    .contains(a.probe());
+        }
+    }
+
+    /** Der Quelltext einer Testklasse, ueber das Modulverzeichnis aus ihrem {@code target/test-classes}. */
+    private static String quelle(Class<?> klasse) throws Exception {
+        Path modul = Path.of(ZugriffZaunApiTest.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+                .getParent().getParent();
+        Path datei = modul.resolve("src/test/java").resolve(klasse.getName().replace('.', '/') + ".java");
+        assertThat(datei).as("Quelle des Vertragstests").exists();
+        return Files.readString(datei, StandardCharsets.UTF_8);
     }
 
     /** Das Muster der einen Route, die seit IP-7 die Stufe aus der Zuweisung nennt (E13). */

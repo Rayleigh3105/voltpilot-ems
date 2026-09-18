@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -112,6 +113,58 @@ class BenutzerVerwaltungApiTest {
         assertThat(ruf(MockMvcRequestBuilders.delete(uri("/api/v1/benutzer/fremdes-konto")), konto(JONAS, DEMO)).status()).isEqualTo(404);
         Antwort fremd = ruf(get("/api/v1/benutzer"), konto("anderer-admin", UUID.fromString("00000000-0000-0000-0000-000000000003")));
         assertThat(fremd.body()).doesNotContain(JONAS, CLAUDIA);
+    }
+
+    /**
+     * Der EIGENE Vertrag der Benutzerliste — die Route ist erst mit IP-13 entstanden, darum nimmt
+     * {@link ZugriffZaunApiTest} sie aus seinem Vor-IP4-Bestandsvergleich aus und verweist auf diese Klasse.
+     *
+     * <p>Lesen duerfen (AP-03 E1/E2, entschieden Option A) Kundenadministrator und Energiemanager, und nach der
+     * Bestandsregel E12 ein Kundenkonto ohne jede Zuweisung, solange der Kundenbereich keinen Stichtag hat.
+     * Nicht lesen duerfen ein Standort-Leser und dasselbe Bestandskonto NACH gesetztem Stichtag. Die Antwort traegt
+     * nur den eigenen Kundenbereich und keine Geheimnisse.
+     */
+    @Test void benutzerlisteLesendeRollenBestandskontoStichtagUndKeineGeheimnisse() throws Exception {
+        UUID fremderKundenbereich = UUID.randomUUID();
+        root.update("INSERT INTO tenant (id, name) VALUES (?, 'Ahrenberg Fremdvergleich')", fremderKundenbereich);
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, email, zustand) "
+                + "VALUES (?, 'liste-fremde-person', 'benutzer', 'Fremde Person', 'fremd@example.invalid', 'aktiv')",
+                fremderKundenbereich);
+        for (String sub : List.of(JONAS, INES, BESTAND)) {
+            Antwort a = ruf(get("/api/v1/benutzer"), konto(sub, DEMO));
+            assertThat(a.status()).as(sub).isEqualTo(200);
+            List<String> subs = new ArrayList<>();
+            MAPPER.readTree(a.body()).forEach(n -> subs.add(n.path("sub").asText()));
+            assertThat(subs).as(sub).contains(JONAS, INES, CLAUDIA).doesNotContain("liste-fremde-person");
+            assertThat(a.body()).as(sub).doesNotContain("fremd@example.invalid", "passwort", "secret", "Secret");
+        }
+        assertThat(ruf(get("/api/v1/benutzer"), konto(CLAUDIA, DEMO)).status()).as("Standort-Leser").isEqualTo(403);
+        root.update("INSERT INTO zugriff_bestand (tenant_id, stichtag, herkunft, konten) "
+                + "VALUES (?, now(), 'bestandslauf', 6)", DEMO);
+        try {
+            assertThat(ruf(get("/api/v1/benutzer"), konto(BESTAND, DEMO)).status())
+                    .as("Bestandskonto nach dem Stichtag").isEqualTo(403);
+            assertThat(ruf(get("/api/v1/benutzer"), konto(JONAS, DEMO)).status())
+                    .as("echte Zuweisung bleibt unberuehrt").isEqualTo(200);
+        } finally {
+            root.update("DELETE FROM zugriff_bestand WHERE tenant_id = ?", DEMO);
+        }
+    }
+
+    /**
+     * Der eigene Vertrag des Protokolls — dieselbe Ausnahme im Zaun, dieselbe Klasse als Beleg. Die Route verlangt
+     * {@code zugriffsprotokoll.lesen}: in {@code docs/contracts/v2/rechte-matrix.json} U fuer den
+     * Kundenadministrator und {@code -} fuer jede andere Kundenrolle, also auch fuer den Energiemanager, der die
+     * Liste noch lesen darf. Das Bestandskonto (E12) zaehlt bis zum Stichtag als Kundenadministrator.
+     */
+    @Test void protokollNurKundenadministratorUndBestandskontoBisZumStichtag() throws Exception {
+        String zeitraum = "/api/v1/benutzer/protokoll?von=2024-01-01T00:00:00Z&bis=2024-12-31T00:00:00Z";
+        assertThat(ruf(get(zeitraum), konto(JONAS, DEMO)).status()).as("Kundenadministrator").isEqualTo(200);
+        assertThat(ruf(get(zeitraum), konto(BESTAND, DEMO)).status()).as("Bestandskonto E12").isEqualTo(200);
+        assertThat(ruf(get(zeitraum), konto(INES, DEMO)).status()).as("Energiemanager").isEqualTo(403);
+        assertThat(ruf(get(zeitraum), konto(CLAUDIA, DEMO)).status()).as("Standort-Leser").isEqualTo(403);
+        Antwort fremd = ruf(get(zeitraum), konto("protokoll-fremder-admin", UUID.randomUUID()));
+        assertThat(fremd.body()).as("kein fremdes Protokoll").doesNotContain(JONAS, CLAUDIA);
     }
 
     @Test void sperrenEntfernenUndAltesTokenSofortGesperrt() throws Exception {
