@@ -116,6 +116,54 @@ class DataSourceStatusListenerTest {
                 .isEqualTo("${VOLTPILOT_UEMS_DATA_SOURCE_STATUS_MQTT_LISTENER_ENABLED:true}");
     }
 
+    @Test
+    void sharedWireVectorsReachTheBuiltListener() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var dir = java.nio.file.Path.of("../../docs/contracts/v2");
+        var vectors = mapper.readTree(java.nio.file.Files.readString(dir.resolve("data-source-status-vectors.json")));
+        var schema = mapper.readTree(java.nio.file.Files.readString(dir.resolve("data-source-status.schema.json")));
+        for (var v : vectors.path("cases")) {
+            setUp();
+            var block = v.path("expected");
+            assertThat(UemsSchemaLaeufer.verstoesse(block, schema)).as(v.path("name").asText()).isEmpty();
+            var payload = mapper.createObjectNode();
+            payload.put("schema_version", "1.0").put("tenant_id", TENANT.toString())
+                    .put("site_id", SITE.toString()).put("device_id", DEVICE.toString())
+                    .put("ts", v.path("at").asText());
+            payload.set("data_sources", block);
+            listener.handle(TOPIC, mapper.writeValueAsBytes(payload));
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<Meldung>> rows = ArgumentCaptor.forClass(List.class);
+            verify(statuses).replaceForDevice(eq(DEVICE), eq(TENANT),
+                    eq(Instant.parse(v.path("at").asText())), rows.capture());
+            assertThat(rows.getValue()).hasSize(block.size());
+            for (int i = 0; i < block.size(); i++) {
+                var r = block.get(i);
+                assertThat(rows.getValue().get(i)).isEqualTo(new Meldung(
+                        r.path("id").asText(), r.path("health").asText(), r.path("error_class").asText(null),
+                        r.has("since") ? Instant.parse(r.path("since").asText()) : null,
+                        r.has("read_at") ? Instant.parse(r.path("read_at").asText()) : null,
+                        r.path("requests_per_min").isNull() ? null : r.path("requests_per_min").asDouble(), r.path("samples_per_min").asDouble()));
+            }
+        }
+    }
+
+    @Test
+    void sourceLabelFitsTheUnchangedLegacyRegistrySchema() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var dir = java.nio.file.Path.of("../../docs/contracts/v2");
+        var document = mapper.readTree(java.nio.file.Files.readString(dir.resolve("edge-entity.schema.json")));
+        var schema = mapper.createObjectNode();
+        schema.put("$ref", "#/$defs/registry_push"); schema.set("$defs", document.path("$defs"));
+        var push = mapper.readTree(java.nio.file.Files.readString(dir.resolve("examples/edge-entity.valid.registry-push.json")));
+        for (var entity : push.path("entities")) {
+            var object = (com.fasterxml.jackson.databind.node.ObjectNode) entity;
+            var driver = object.has("driver") ? (com.fasterxml.jackson.databind.node.ObjectNode) object.get("driver") : object.putObject("driver");
+            driver.put("data_source_id", "DQ-4");
+        }
+        assertThat(UemsSchemaLaeufer.verstoesse(push, schema)).isEmpty();
+    }
+
     private static byte[] fixture(String name) throws Exception {
         try (InputStream in = DataSourceStatusListenerTest.class
                 .getResourceAsStream("/fixtures/" + name)) {

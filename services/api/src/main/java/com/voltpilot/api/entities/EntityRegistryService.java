@@ -1232,9 +1232,17 @@ public class EntityRegistryService {
         // gespeicherte Zuordnung ist die Nutzlast byte-gleich zu vorher.
         java.util.Map<UUID, java.util.List<EntityRegistryRepository.RoleAssignment>> roles =
                 repo.roleAssignments(siteId);
+        // The existing opaque driver object is extensible even in old registry schemas.
+        // Never derive this identity from an address or from edge_source_id.
+        var sourceLabels = repo.datenquellenKennzeichen(siteId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
+            String sourceLabel = sourceLabels.get(row.id());
+            if (sourceLabel != null) {
+                ObjectNode driver = d.has("driver") ? (ObjectNode) d.get("driver") : d.putObject("driver");
+                driver.put("data_source_id", sourceLabel);
+            }
             EntityRegistryRepository.ConsumerCycleLimits cl = cycle.get(row.id());
             if (cl != null) {
                 mergeCycleLimits(d, cl);

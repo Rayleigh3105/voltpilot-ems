@@ -1474,7 +1474,7 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary,
 	flowNodes *FlowNodeStatusSummary, curtail *CurtailmentSummary,
 	update *UpdateSummary, consumers ConsumersSummary,
-	registerWrites *RegisterWritesSummary, chargers *ChargersSummary) error {
+	registerWrites *RegisterWritesSummary, chargers *ChargersSummary, extensions ...StatusExtension) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -1484,6 +1484,11 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 		"online":         true,
 		"control_source": controlSource,
 		"soc_pct":        socPct,
+	}
+	for _, extension := range extensions {
+		if extension.DataSources != nil {
+			payload["data_sources"] = extension.DataSources
+		}
 	}
 	if l.version != "" {
 		payload["version"] = l.version

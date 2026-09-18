@@ -375,7 +375,8 @@ function makeSunspecReader(deps) {
       let pending = null; // { resolve, reject } for the one outstanding request
       let txid = 0;
 
-      const done = (res) => {
+      const done = (res, errorClass) => {
+        if (!settled && (errorClass || res === null) && typeof deps.onError === 'function') deps.onError({ error_class:errorClass || 'invalid_response' });
         if (settled) return;
         settled = true;
         clearTimeout(connectTimer);
@@ -384,14 +385,14 @@ function makeSunspecReader(deps) {
         resolve(res);
       };
 
-      const connectTimer = setTimeout(() => done(null), CONNECT_TIMEOUT_MS);
+      const connectTimer = setTimeout(() => done(null, 'unreachable'), CONNECT_TIMEOUT_MS);
       let readTimer = null;
       const armReadTimer = () => {
         clearTimeout(readTimer);
-        readTimer = setTimeout(() => done(null), READ_TIMEOUT_MS);
+        readTimer = setTimeout(() => done(null, 'no_answer'), READ_TIMEOUT_MS);
       };
 
-      sock.once('error', () => done(null));
+      sock.once('error', () => done(null, 'unreachable'));
 
       // One FC3 request over the open socket -> Promise<number[]>. Rejects on a
       // Modbus exception / short frame / illegal address (used to detect the end

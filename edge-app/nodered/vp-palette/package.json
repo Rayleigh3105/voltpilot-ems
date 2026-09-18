@@ -38,6 +38,7 @@
       "vp-installer-write-result": "nodes/vp-installer-write-result.js",
       "vp-register-write": "nodes/vp-register-write.js",
       "vp-measurements": "nodes/vp-measurements.js",
+      "vp-data-source-status": "nodes/vp-data-source-status.js",
       "vp-mqtt-read": "nodes/vp-mqtt-read.js",
       "vp-soc-derive": "nodes/vp-soc-derive.js",
       "vp-http-read": "nodes/vp-http-read.js",

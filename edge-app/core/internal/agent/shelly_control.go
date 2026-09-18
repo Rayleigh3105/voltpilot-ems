@@ -269,13 +269,16 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 			continue
 		}
 		cfg := shelly.Config{IP: s.Connection.IP, Port: s.Connection.Port, Channel: s.Connection.Channel}
-		ident, err := a.shellyIdentity(ctx, doer, cfg)
+		counted := &sourceStatusDoer{inner: doer}
+		ident, err := a.shellyIdentity(ctx, counted, cfg)
 		if err != nil {
+			a.observeShellySource(s, counted.requests, 0, err)
 			slog.Warn("shelly source detect failed", "source", s.ID, "target", cfg.HostPort(), "err", err)
 			continue
 		}
-		st, de := shelly.ReadState(ctx, doer, cfg, ident)
+		st, de := shelly.ReadState(ctx, counted, cfg, ident)
 		if de != nil {
+			a.observeShellySource(s, counted.requests, 0, de)
 			slog.Warn("shelly source read failed", "source", s.ID, "target", cfg.HostPort(), "err", de)
 			if de.Code == shelly.ErrInvalidResponse {
 				a.shellyForgetIdentity(cfg)
@@ -289,6 +292,7 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 		if st.PowerKw != nil {
 			payload["load_kw"] = *st.PowerKw
 		}
+		a.observeShellySource(s, counted.requests, len(payload), nil)
 		if len(payload) == 0 {
 			continue // nothing honest to publish
 		}

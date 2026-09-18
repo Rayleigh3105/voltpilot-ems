@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/data-source-status.schema.json",
+  "title": "Additive data_sources block of the status heartbeat",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "id",
+      "health"
+    ],
+    "additionalProperties": true,
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Z0-9./-]{2,16}$"
+      },
+      "health": {
+        "enum": [
+          "ok",
+          "stale",
+          "never"
+        ]
+      },
+      "error_class": {
+        "enum": [
+          "unreachable",
+          "no_answer",
+          "invalid_response",
+          "implausible",
+          "fronius_api",
+          "timeout",
+          "layout_changed",
+          "budget"
+        ]
+      },
+      "since": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "read_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "requests_per_min": {
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": 0
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "samples_per_min": {
+        "type": "number",
+        "minimum": 0
+      }
+    },
+    "anyOf": [
+      {
+        "properties": {
+          "health": {
+            "const": "ok"
+          }
+        }
+      },
+      {
+        "required": [
+          "since"
+        ],
+        "properties": {
+          "health": {
+            "enum": [
+              "stale",
+              "never"
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

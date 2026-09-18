@@ -8,6 +8,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
@@ -66,6 +67,7 @@ func (a *Agent) onEntityRegistryPush(payload []byte) {
 // command - the provisioning clearRetained precedent), persists, and stamps
 // the heartbeat ack.
 func (a *Agent) applyEntityRegistry(reg entities.Registry) {
+	a.dataSourceStatus.Reconcile(reg, time.Now())
 	a.entMu.Lock()
 	old := a.entRegistry
 	a.entRegistry = reg
@@ -173,6 +175,7 @@ func (a *Agent) onEntityTelemetry(topic string, payload []byte) {
 
 	// Confirmed-progress evidence for the deadline fallback (Inkrement 6;
 	// no-op unless VP_CONSUMER_CONTROL_ENABLED and the entity carries duties).
+	a.dataSourceStatus.Observe(datasourcestatus.Event{EntityID: id, Ts: t.Ts, Samples: len(t.Channels)}, now)
 	a.observeFlexProgress(id, t.Channels, now)
 
 	// Store-and-forward (E1b): the v2 uplink rides the SAME buffer as v1

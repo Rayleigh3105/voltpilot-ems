@@ -125,10 +125,10 @@ function startModbusServer(img) {
 // node.send + node.warn capture, real node:net (awaits a Promise result).
 // `ctx` may be shared across invocations - a real function node keeps ONE
 // context store across poll ticks, which is what the overlap guard relies on.
-async function runFunctionNode(func, { msg = {}, flow = {}, sends = [], warns = [], logs = [], ctx = {}, netStub = null, fakeTimers = null } = {}) {
+async function runFunctionNode(func, { msg = {}, flow = {}, sends = [], health = [], warns = [], logs = [], ctx = {}, netStub = null, fakeTimers = null } = {}) {
   const sandbox = {
     msg,
-    node: { status() {}, error() {}, warn(w) { warns.push(String(w)); }, log(l) { logs.push(String(l)); }, send(m) { sends.push(JSON.parse(JSON.stringify(m))); } },
+    node: { status() {}, error() {}, warn(w) { warns.push(String(w)); }, log(l) { logs.push(String(l)); }, send(m) { const copy = JSON.parse(JSON.stringify(m)); if (Array.isArray(copy) && copy[3]) health.push(copy[3].payload); if (!Array.isArray(copy) || copy.slice(0, 3).some(Boolean)) sends.push(copy); } },
     context: { get: (k) => ctx[k], set: (k, v) => { ctx[k] = v; } },
     flow: { get: (k) => flow[k], set: (k, v) => { flow[k] = v; } },
     global: { get: (k) => (k === 'net' ? (netStub || net) : (k === 'http' ? http : (k === 'https' ? https : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)))) },
@@ -796,4 +796,32 @@ test('a dead Fronius Solar API source is skipped (no send) and named via node.wa
   await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, sends, warns });
   assert.equal(sends.length, 0, 'a dead source publishes nothing (error isolation)');
   assert.ok(warns.some((w) => /src-fr/.test(w)), 'the failed read is named, never silent');
+});
+
+
+test('source poll sends stable identity, actual request counts and a typed failure on output four', async () => {
+  const srv = await startModbusServer(sunspecImage(40000, {wWatts:26500}));
+  try {
+    const flow = {}, health = [], sends = [];
+    await runFunctionNode(byId['sources-store'].func, { msg:{payload:[froniusSource(srv.port, {data_source_id:'DQ-4'})]}, flow });
+    await runFunctionNode(byId['sources-read'].func, {flow, health, sends});
+    assert.equal(health.length,1);
+    assert.equal(health[0].id,'DQ-4');
+    assert.equal(health[0].failed,false);
+    assert.equal(health[0].samples,1);
+    assert.ok(health[0].requests > 1, 'discovery and register blocks are each counted: ' + JSON.stringify(health));
+    assert.equal(sends.length,1);
+  } finally { srv.server.close(); }
+});
+
+test('an unreachable source emits its failure class without a telemetry sample', async () => {
+  const dead=await startModbusServer(new Map());
+  await new Promise(resolve=>dead.server.close(resolve));
+  const flow={},health=[],sends=[];
+  await runFunctionNode(byId['sources-store'].func,{msg:{payload:[froniusSource(dead.port,{data_source_id:'DQ-5'})]},flow});
+  await runFunctionNode(byId['sources-read'].func,{flow,health,sends});
+  assert.equal(sends.length,0);assert.equal(health.length,1);
+  assert.equal(health[0].id,'DQ-5');assert.equal(health[0].failed,true);
+  assert.equal(health[0].error_class,'unreachable');assert.equal(health[0].samples,0);
+  assert.equal(health[0].requests,1);
 });

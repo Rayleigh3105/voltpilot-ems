@@ -13,6 +13,7 @@ v2 ergänzt mehrere Entitäten je Box, typisierte Flows, Verbraucheranforderunge
 | Flow-Graph und Artefakt | [Graph](flow-graph.md), [Artefakt](flow-artifact.md), [Graph-Schema](flow-graph.schema.json), [Artefakt-Schema](flow-artifact.schema.json) |
 | Verbraucher | [Funktionsmodell](../../verbrauchssteuerung.md), [Policy](consumer-policy.schema.json), [Vektoren](consumer-policy-vectors.json) |
 | Anlagenprojektion | [Topologie](topology-read-model.md), [Nutzungsprofil](usage-profile.md) |
+| Quellen-Herzschlag | [Vertrag](data-source-status.md), [Schema](data-source-status.schema.json), [Vektoren](data-source-status-vectors.json) |
 | Zusätzliche Messpunkte | [Konfiguration](mqtt-measurement-config.schema.json), [Status](mqtt-measurement-config-status.schema.json), [Messungen](mqtt-measurement-samples.schema.json), [Ereignis](measurements-raw.event.schema.json) |
 | Prüfung | [Fixtures](examples/README.md), [Simulator](edge-simulator-v2.md) |
 

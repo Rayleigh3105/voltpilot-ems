@@ -91,6 +91,7 @@ var ErrNoConfiguration = errors.New("der Push enthält keine Geräte-Konfigurati
 // go-e/Shelly write executors, which have consumed it since E1a); this is the
 // READ view the applier needs.
 type Driver struct {
+	DataSourceID string `json:"data_source_id,omitempty"`
 	// Role is the plant role this device plays. Absent = derived from the
 	// entity type (see roleFor) - never guessed beyond the types whose role is
 	// unambiguous.
@@ -362,6 +363,7 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 		// The clash check keys on the TRANSPORT IDENTITY, not on the final id:
 		// two entities describing the same physical device are ambiguous even
 		// when one of them would inherit a local id.
+		src.DataSourceID = d.DataSourceID
 		fingerprint := sources.TransportIdentity(src)
 		if other, clash := byFingerprint[fingerprint]; clash {
 			return Plan{}, fmt.Errorf(

@@ -5,6 +5,7 @@ const { resolvePoint, decodeRegisters, decodeDerived, derivedAddresses,
   decodeJSONSamples, decodeOcppSampledValue, templateKey } = require('./measurement-driver');
 const { LIMITS, COST_MS, discoveryFor, byteOrderFor } = require('./measurement-planner');
 const { TARGET_PRIMARY } = require('./measurement-binding');
+const sourceStatus = require('./data-source-status');
 const RESERVATION_MS = Object.freeze({ modbus_holding:4000, modbus_input:4000,
   sunspec_model:4000, http_api_key:4000, rest_json:4000, rpc_json:4000,
   ocpp_sampled_value:0 });
@@ -170,7 +171,13 @@ class MeasurementRuntime {
       } else if (derivedAddresses(selected.point).length) sample = decodeDerived(selected.point, words);
       if (sample) samples.push(withEntity(sample, selected));
     }
-    if (samples.some((sample) => sample.invalidate_all)) return [];
+    if (samples.some((sample) => sample.invalidate_all)) {
+      for (const sample of samples.filter(s => s.invalidate_all)) {
+        const selected = plan.selections.find(x => x.point.point_key === sample.point_key && x.entity_id === sample.entity_id);
+        if (selected) this.reportSource(selected.target, {failed:true,error_class:'implausible',point_key:selected.requested_key}, selected.entity_id);
+      }
+      return [];
+    }
     return this.publishSamples(samples, now, plan);
   }
 
@@ -185,6 +192,12 @@ class MeasurementRuntime {
     };
   }
 
+  reportSource(target, evidence, entityID) {
+    if (typeof this.io.sourceStatus !== 'function') return;
+    // Monitoring must not turn a completed read into a failed sample delivery.
+    try { this.io.sourceStatus({ target, entity_id:entityID, ...evidence }); } catch (_) { /* isolated observer */ }
+  }
+
   async readBlock(block, dueKeys, wireWords) {
     if (typeof this.io.readModbus !== 'function') return [];
     const target = block.target || { key:TARGET_PRIMARY, sourceId:null };
@@ -195,9 +208,14 @@ class MeasurementRuntime {
     try { words = await this.runMeasuredRequest(block.source_kind || 'modbus_holding',
       () => this.runBusTask(target, () => this.io.readModbus({ start:block.start,
         count:block.count, source_kind:block.source_kind, target, priority:'measurement' }))); }
-    catch (_) { return []; } // silence is a gap in time, never a synthetic zero sample.
-    if (words === MeasurementRuntime.BUDGET_BLOCKED) return [];
-    if (!Array.isArray(words) || words.length < block.count) return [];
+    catch (error) { this.reportSource(target, { requests:1, failed:true, error_class:sourceStatus.errorClass(error) }); return []; }
+    if (words === MeasurementRuntime.BUDGET_BLOCKED) {
+      this.reportSource(target, { failed:true, error_class:'budget' }); return [];
+    }
+    if (!Array.isArray(words) || words.length < block.count) {
+      this.reportSource(target, { requests:1, failed:true, error_class:'invalid_response' }); return [];
+    }
+    this.reportSource(target, { requests:1 });
     const bucket = wordsOf(wireWords, target.key);
     for (let i = 0; i < block.count; i++) bucket.set(block.start + i, words[i]);
     return [];
@@ -217,8 +235,11 @@ class MeasurementRuntime {
     let payload;
     try { payload = await this.runMeasuredRequest(selected[0].point.source_kind,
       () => this.io.readJSON({ group:key, target, filter, points:selected.map((x)=>x.point) })); }
-    catch (_) { return []; }
-    if (payload === MeasurementRuntime.BUDGET_BLOCKED) return [];
+    catch (error) { this.reportSource(target, { requests:1, failed:true, error_class:sourceStatus.errorClass(error) }); return []; }
+    if (payload === MeasurementRuntime.BUDGET_BLOCKED) {
+      this.reportSource(target, { failed:true, error_class:'budget' }); return [];
+    }
+    this.reportSource(target, { requests:1 });
     const payloads = payload && Array.isArray(payload.__vpResponses)
       ? payload.__vpResponses : [payload];
     return selected.flatMap((x) => payloads.flatMap((value) => decodeJSONSamples(x.point, value)
@@ -303,6 +324,14 @@ class MeasurementRuntime {
     const room = Math.max(0, LIMITS.samplesPerMinute - this.sampleWindow.length);
     const kept = samples.slice(0, room); const dropped = samples.length - kept.length;
     for (let i = 0; i < kept.length; i++) this.sampleWindow.push(ms);
+    for (const sample of kept) {
+      const selected = plan.selections.find(x => x.entity_id === sample.entity_id && (x.point.point_key === sample.point_key || x.requested_key === templateKey(sample.point_key)));
+      if (selected) this.reportSource(selected.target, { ...(sample.quality === 'invalid' ? {failed:true,error_class:'implausible'} : {samples:1}), point_key:selected.requested_key }, selected.entity_id);
+    }
+    for (const sample of samples.slice(room)) {
+      const selected = plan.selections.find(x => x.entity_id === sample.entity_id && (x.point.point_key === sample.point_key || x.requested_key === templateKey(sample.point_key)));
+      if (selected) this.reportSource(selected.target, { failed:true, error_class:'budget', point_key:selected.requested_key }, selected.entity_id);
+    }
     if (kept.length || dropped) this.publish('edge/measurements/samples', {
       catalog_version:plan.catalog_version, observed_at:at.toISOString(), samples:kept,
       ...(Number.isSafeInteger(plan.revision) && plan.revision >= 0

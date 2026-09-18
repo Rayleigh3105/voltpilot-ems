@@ -1184,6 +1184,7 @@ test('flow sources-store defaults a fronius_sunspec plan to model_type auto / un
 test('flow sources-read embeds the current SunSpec + go-e + Deye + Fronius decode sources', () => {
   const func = byId['sources-read'].func;
   for (const rel of [
+    'measurements/data-source-status.js',
     'sunspec/model-discovery.js',
     'sunspec/sunspec-live.js',
     'goe/goe-api.js',
@@ -1201,7 +1202,7 @@ test('flow sources-read embeds the current SunSpec + go-e + Deye + Fronius decod
   // with explicit timeouts (the one-shot "Verbindung testen" path proven on the
   // real Fronius Eco), guarded against overlapping polls (skip-if-busy) and
   // never silent on failure (rate-limited node.warn naming the source).
-  assert.ok(func.includes('__SS.makeSunspecReader({ net: net, discovery: __DISC, connectTimeoutMs: CONNECT_TIMEOUT_MS, readTimeoutMs: READ_TIMEOUT_MS })'));
+  assert.ok(func.includes('__SS.makeSunspecReader({ net: net, discovery: __DISC, onError:poll.failure, connectTimeoutMs: CONNECT_TIMEOUT_MS, readTimeoutMs: READ_TIMEOUT_MS })'));
   assert.ok(func.includes("context.get('src_busy_since')"), 'overlap guard (skip-if-busy) present');
   assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
 });

@@ -149,6 +149,22 @@ class DataSourceStatusMigrationTest {
                 Integer.class, tenant)).isZero();
     }
 
+    @Test
+    void registrySourceLabelsComeFromTenantScopedStoredIdentity() {
+        UUID customer = root.queryForObject("INSERT INTO tenant (name) VALUES ('Push identity') RETURNING id", UUID.class);
+        UUID location = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, 'Push identity') RETURNING id", UUID.class, customer);
+        UUID source = quelle(customer, location, "DQ-91", "192.168.21.11:502");
+        UUID entity = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, data_source_id) "
+                + "VALUES (?, ?, 'pv-generation', 'producer', ?) RETURNING id", UUID.class, customer, location, source);
+        var registry = new com.voltpilot.api.entities.EntityRegistryRepository(app);
+        TenantContext.set(customer);
+        assertThat(registry.datenquellenKennzeichen(location)).containsExactlyEntriesOf(Map.of(entity, "DQ-91"));
+        TenantContext.set(fremd);
+        assertThat(registry.datenquellenKennzeichen(location)).isEmpty();
+        TenantContext.clear();
+        assertThat(registry.datenquellenKennzeichen(location)).isEmpty();
+    }
+
     private static UUID quelle(UUID tenantId, UUID siteId, String kennzeichen, String adresse) {
         return root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, "
                 + "protokoll, adresse, geraete_ids, kadenz_s) "

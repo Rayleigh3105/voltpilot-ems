@@ -68,6 +68,15 @@ class EntityRegistryChargePointTest {
     }
 
     @Test
+    void sourceLabelTravelsOnlyWithItsOwnDescriptor() throws Exception {
+        var repo = repoWith(Map.of());
+        when(repo.datenquellenKennzeichen(SITE)).thenReturn(Map.of(CHARGER, "DQ-4"));
+        var entities = push(service(repo), List.of(row(CHARGER, "ev-charger"), row(BATTERY, "battery-hybrid"))).path("entities");
+        assertThat(entities.get(0).path("driver").path("data_source_id").asText()).isEqualTo("DQ-4");
+        assertThat(entities.get(1).has("driver")).isFalse();
+    }
+
+    @Test
     void aChargePointComponentCarriesItsOcppIdentity() throws Exception {
         EntityRegistryService svc = service(repoWith(Map.of(CHARGER, "saeule-1")));
         JsonNode entities = push(svc, List.of(row(CHARGER, "ev-charger"))).get("entities");
