@@ -28,6 +28,7 @@ Die Messzeiten des Konzepts stehen in Ortszeit (Europe/Berlin), am Draht in UTC.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -830,6 +831,161 @@ def szenarien(ahrenberg: AhrenbergScenario | None = None) -> dict[str, Szenario]
     return {szenario.schluessel: szenario for szenario in Streckenszenarien(ahrenberg).alle()}
 
 
+STAMM_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://voltpilot.example/uems/ap07/ip21")
+
+
+def _stamm_id(schluessel: str) -> str:
+    return str(uuid.uuid5(STAMM_NAMESPACE, schluessel))
+
+
+def stammdaten(s: Szenario) -> dict:
+    """Die Stammdaten, die EIN Szenario braucht, damit die Strecke es lesen kann.
+
+    Das IP-20-Drehbuch nennt Zustellungen und Erwartungen, nicht die Zeilen, die
+    vorher in der Datenbank stehen müssen (Zuständigkeit, Bindung, Gerät-Einbau).
+    Sie werden hier AUS dem Szenario abgeleitet — nie im Java-Lauf erfunden, der
+    sonst seine eigene Annahme prüfen würde statt des Vertrags.
+    """
+    punkt_zu_code = {punkt: code for code, (_, punkt) in KANAELE.items()}
+
+    boxen: list[str] = []
+    geraete: dict[str, str] = {}
+    anlagen: dict[str, str] = {}
+    box_der_reihe: dict[str, str] = {}
+    messzeiten: list[str] = []
+    for z in s.zustellungen:
+        if z.box not in boxen:
+            boxen.append(z.box)
+            geraete[z.box] = z.nutzlast["device_id"]
+            anlagen[z.box] = z.nutzlast["site_id"]
+        for sample in z.nutzlast.get("samples", ()):
+            messzeiten.append(sample["observed_at"])
+            # A1 hängt einen Kanal-Index an den Punktschlüssel (256 Punkte über fünf Reihen).
+            punkt = sample["point_key"]
+            code = punkt_zu_code.get(punkt) or punkt_zu_code.get(punkt.rsplit(".", 1)[0])
+            if code is not None:
+                box_der_reihe.setdefault(code, z.box)
+
+    beginn = min(messzeiten) if messzeiten else s.zustellungen[0].eingangszeit
+    # Ein voller Tag Vorlauf: Zuständigkeit und Einbau bestehen VOR dem ersten Wert.
+    von = _z(datetime.fromisoformat(beginn.replace("Z", "+00:00")) - timedelta(days=1))
+
+    # Die Übergabe steht als Ereignis im Drehbuch; ohne sie gehört jede Box ihrer Quelle.
+    uebergabe = next(
+        (e["ereignis"] for e in s.erwartete_ereignisse if e["ereignis"]["art"] == "handover"),
+        None,
+    )
+    zustaendigkeiten: list[dict] = []
+    quelle_der_reihe: dict[str, str] = {}
+    if uebergabe is not None:
+        quelle_id = _stamm_id(f"quelle:{s.schluessel}:{uebergabe['datenquelle']}")
+        zustaendigkeiten = [
+            {"datenquelle_id": quelle_id, "kennzeichen": uebergabe["datenquelle"], "kadenz_s": 60,
+             "device_id": uebergabe["box_alt"], "von": von, "bis": uebergabe["von"]},
+            {"datenquelle_id": quelle_id, "kennzeichen": uebergabe["datenquelle"], "kadenz_s": 60,
+             "device_id": uebergabe["box_neu"], "von": uebergabe["von"], "bis": None},
+        ]
+        for code in box_der_reihe:
+            quelle_der_reihe[code] = quelle_id
+    else:
+        for box in boxen:
+            kennzeichen = f"DQ-{s.schluessel}-{box}"
+            quelle_id = _stamm_id(f"quelle:{s.schluessel}:{kennzeichen}")
+            zustaendigkeiten.append(
+                {"datenquelle_id": quelle_id, "kennzeichen": kennzeichen, "kadenz_s": 60,
+                 "device_id": geraete[box], "von": von, "bis": None})
+            for code, b in box_der_reihe.items():
+                if b == box:
+                    quelle_der_reihe[code] = quelle_id
+
+    # Je Reihe genau EIN Gerät mit EINEM Einbau; der Punktschlüssel am Draht ist der
+    # des Drehbuchs, der Katalogname der der führenden Quelle des Referenzunternehmens.
+    reihen = []
+    for code, box in box_der_reihe.items():
+        komponente, entity_id = KOMPONENTEN[code]
+        kanal, punkt = KANAELE[code]
+        reihen.append({
+            "messstelle": code,
+            "messstelle_id": _stamm_id(f"messstelle:{s.schluessel}:{code}"),
+            "entity_id": entity_id,
+            "komponente": komponente,
+            "geraet_id": _stamm_id(f"geraet:{s.schluessel}:{code}"),
+            "einbau_kennzeichen": f"{komponente}-E1",
+            "kanal": kanal,
+            "point_key": punkt,
+            "box": box,
+            "device_id": geraete[box],
+            "site_id": anlagen[box],
+            "datenquelle_id": quelle_der_reihe[code],
+            "eingebaut_am": von,
+            "gebunden_ab": von,
+        })
+
+    return {
+        "tenant_id": s.zustellungen[0].nutzlast["tenant_id"],
+        "boxen": [{"box": b, "device_id": geraete[b], "site_id": anlagen[b]} for b in boxen],
+        "zustaendigkeiten": zustaendigkeiten,
+        "reihen": reihen,
+    }
+
+
+def abnahme_fixture(ausgewaehlt: list[Szenario] | None = None) -> dict:
+    """Die vollstaendige Abnahme-Vorlage fuer AP-07 IP-21 — Java liest sie als JSON.
+
+    Der Java-Lauf startet kein Python. Damit Vorlage und Simulator nicht
+    auseinanderlaufen, traegt die Datei eine Pruefsumme ueber ihren eigenen
+    Inhalt: der Waechter hier erzeugt sie neu und vergleicht, der Java-Lauf
+    rechnet sie aus der gelesenen Datei nach.
+    """
+    liste = list(ausgewaehlt if ausgewaehlt is not None else szenarien().values())
+    inhalt = {
+        "vertrag": "AP-07 IP-21 Abnahme-Vorlage",
+        "quelle": "tools/edge-simulator/uems_szenarien.py",
+        "szenarien": [
+            {
+                "szenario": s.schluessel,
+                "titel": s.titel,
+                "herkunft": s.quelle,
+                "erwartet_wiederholt": s.erwartet_wiederholt,
+                "befunde": list(s.befunde),
+                "stammdaten": stammdaten(s),
+                "zustellungen": [
+                    {
+                        "topic": z.topic,
+                        "eingangszeit": z.eingangszeit,
+                        "box": z.box,
+                        "strom": z.strom,
+                        "zustellart": z.zustellart,
+                        "dup": z.dup,
+                        "aus_outbox": z.aus_outbox,
+                        "sequenz": z.sequenz,
+                        "hinweis": z.hinweis,
+                        "nutzlast": z.nutzlast,
+                    }
+                    for z in s.zustellungen
+                ],
+                "erwartete_ereignisse": [dict(e) for e in s.erwartete_ereignisse],
+                "erwartete_reihen": [vars(r) for r in s.erwartete_reihen],
+            }
+            for s in liste
+        ],
+    }
+    return {"pruefsumme": pruefsumme(inhalt), **inhalt}
+
+
+def pruefsumme(inhalt: dict) -> str:
+    """sha256 ueber den kanonisch geschriebenen Inhalt OHNE das Pruefsummenfeld."""
+    ohne = {k: v for k, v in inhalt.items() if k != "pruefsumme"}
+    kanonisch = json.dumps(ohne, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(kanonisch.encode("utf-8")).hexdigest()
+
+
+def fixture_text(ausgewaehlt: list[Szenario] | None = None) -> str:
+    """Genau die Bytes, die in der eingecheckten Datei stehen (mit Zeilenende)."""
+    return json.dumps(abnahme_fixture(ausgewaehlt), ensure_ascii=False, indent=2,
+                      sort_keys=True) + "\n"
+
+
 def spiele(szenario: Szenario, veroeffentliche, *, echo=None) -> int:
     """Spielt die Zustellungen in ihrer Reihenfolge; `veroeffentliche(zustellung)` sendet."""
     for nummer, zustellung in enumerate(szenario.zustellungen, start=1):
@@ -877,6 +1033,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Einzelnes Szenario; mehrfach erlaubt. Vorgabe: alle.")
     parser.add_argument("--plan", action="store_true", help="nur den Plan als JSON ausgeben")
     parser.add_argument("--zustellungen", action="store_true", help="die vollständigen Nutzlasten als JSON ausgeben")
+    parser.add_argument("--abnahme", action="store_true",
+                        help="die Abnahme-Vorlage für AP-07 IP-21 als JSON ausgeben (mit Prüfsumme)")
     parser.add_argument("--broker", default=os.environ.get("VP_SIM_BROKER"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("VP_SIM_PORT", "1883")))
     parser.add_argument("--tls", action="store_true", default=os.environ.get("VP_SIM_TLS") == "1")
@@ -886,6 +1044,10 @@ def main(argv: list[str] | None = None) -> int:
 
     alle = szenarien()
     ausgewaehlt = [alle[key] for key in (args.szenario or list(alle))]
+
+    if args.abnahme:
+        sys.stdout.write(fixture_text(ausgewaehlt))
+        return 0
 
     if args.zustellungen:
         print(json.dumps(

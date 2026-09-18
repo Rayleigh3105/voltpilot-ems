@@ -3,6 +3,7 @@
 #   make test        alle Tests des Simulators, ohne Broker und ohne Datenbank
 #   make plan        die fünf Szenarien als JSON (Trockenlauf, nichts wird gesendet)
 #   make szenarien   spielt alle fünf Szenarien gegen VP_SIM_BROKER
+#   make abnahme     erzeugt die Abnahme-Vorlage für AP-07 IP-21 neu
 #
 # Der Broker wird IMMER über die Umgebung genannt, nie fest verdrahtet:
 #
@@ -16,12 +17,13 @@
 
 PY ?= python3
 PYTEST ?= $(PY) -m pytest
-TESTS := test_edge_sim.py test_uems_ahrenberg.py test_uems_szenarien.py
+TESTS := test_edge_sim.py test_uems_ahrenberg.py test_uems_szenarien.py \
+	test_ap07_abnahme_fixture.py
 SZENARIO ?=
 
 VP_SIM_PORT ?= 1883
 
-.PHONY: help test plan szenarien zustellungen abhaengigkeiten
+.PHONY: help test plan szenarien zustellungen abnahme abhaengigkeiten
 
 help:
 	@awk '/^#/ { sub(/^# ?/, ""); print; next } { exit }' $(firstword $(MAKEFILE_LIST))
@@ -44,3 +46,12 @@ szenarien:
 	  echo "  VP_SIM_BROKER=localhost make szenarien"; \
 	  exit 2; }
 	$(PY) uems_szenarien.py --broker "$(VP_SIM_BROKER)" --port "$(VP_SIM_PORT)" $(SZENARIO)
+
+# Die Vorlage, aus der der Java-Abnahmelauf (AP-07 IP-21) die Zustellungen,
+# Ereignisse und Stammdaten liest. Erzeugt, nie von Hand geschrieben:
+# test_ap07_abnahme_fixture.py hält sie an diesen Befehl.
+ABNAHME := ../../services/timescale-writer/src/test/resources/uems/ap07-abnahme-szenarien.json
+
+abnahme:
+	$(PY) uems_szenarien.py --abnahme > $(ABNAHME)
+	@echo "$(ABNAHME) neu erzeugt — Abnahme-Klassen erneut fahren"
