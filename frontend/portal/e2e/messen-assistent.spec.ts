@@ -160,7 +160,7 @@ async function verdrahte(page: Page, cloud: Cloud) {
       const slot = Number(body.connection?.slot ?? 1);
       return json({ requestId: `wago-wert-${slot}`, errorCode: null, message: null, results: [{
         id: 'verbindung', ok: true, errorCode: null, message: 'Werte gelesen',
-        reading: { 'Spannung L1': 230.4, 'Wirkleistung gesamt': 18.7 + slot, 'Zählerstand Bezug': 36912.4 + slot },
+        reading: { steckplatz: slot, kartentyp: 494, 'Spannung L1': 230.4, 'Wirkleistung gesamt': 18.7 + slot, 'Zählerstand Bezug': 36912.4 + slot },
       }] });
     }
     if (/^\/api\/v1\/sites\/[^/]+\/components\/[^/]+\/wago$/.test(pfad) && methode === 'PUT' && cloud.wagoFaehig) {
@@ -412,7 +412,7 @@ for (const breite of BREITEN) {
       await messeUndFotografiere(page, breite, 'datenquelle-budget');
     });
 
-    test('WAGO: Bogen → Kopf → Gerät → Karten → Komponenten → Messstellen-Vorschläge', async ({ page }) => {
+    test('WAGO: Kopf → ausgelesene Karten → drei Angaben → Komponenten → Messstellen-Vorschläge', async ({ page }) => {
       const cloud: Cloud = {
         standorte: ahrenbergHeute(),
         funktionen: ahrenbergFunktionen({
@@ -426,18 +426,7 @@ for (const breite of BREITEN) {
       await schritt2(page);
       await page.getByRole('button', { name: 'WAGO-Steuerung anbinden für Werk Ahrenberg – Halle 2', exact: true }).click();
 
-      await expect(page.getByRole('heading', { name: 'Was ist am Schaltschrank vorhanden?' })).toBeVisible();
-      await page.getByLabel(/A1 Welche Steuerung/).fill('750-8212 PFC200');
-      await page.getByLabel(/A4 Gibt das Programm/).fill('VoltPilot-Registerbild v1 über Modbus TCP');
-      await page.locator('.vp-wago-bogengruppe').filter({ hasText: 'B · Die Energiekarten' }).getByText('B · Die Energiekarten').click();
-      await page.getByLabel(/B2 Welche Positionen/).fill('Steckplatz 1: 750-494, Hauptmessung Halle 2');
-      await expect(page.getByText('In Prüfung — Pilot ausstehend', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Bogen speichern', exact: true }).click();
-      await expect(page.getByText('Zwischenstand gespeichert.')).toBeVisible();
-      await messeUndFotografiere(page, breite, 'wago-bogen');
-
-      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Wie erreicht die Box die Steuerung?' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Verbindung zur WAGO-Steuerung prüfen' })).toBeVisible();
       await page.getByLabel('Adresse', { exact: true }).fill('192.168.20.10');
       await page.getByLabel('Netzlage').fill('VLAN 20 „Produktion“');
       await page.getByRole('button', { name: 'Kopf prüfen', exact: true }).click();
@@ -448,19 +437,17 @@ for (const breite of BREITEN) {
       await expect(page.getByText('Herzschlag steht bei 1.731')).toBeVisible();
       await messeUndFotografiere(page, breite, 'wago-kopf');
 
-      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Welche Steuerung antwortet?' })).toBeVisible();
-      await page.getByLabel('Seriennummer').fill('SN-C1-2026');
-      await page.getByLabel('Firmware').fill('04.05.08(27)');
-      await page.getByLabel('Name des Programms').fill('Halle2_Energie');
-      await messeUndFotografiere(page, breite, 'wago-geraet');
-
-      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Welche Energiekarten stecken in der Steuerung?' })).toBeVisible();
-      await page.getByLabel('Name').fill('Energiekarte Hauptmessung Halle 2');
-      await page.getByLabel('Wandler Primärwert in A').fill('400');
-      await page.getByLabel('Wandler Sekundärwert in A').fill('5');
-      await expect(page.getByLabel('Register 35')).toHaveValue('');
+      await page.getByRole('button', { name: breite < 720 ? 'Karten lesen' : 'Karten auslesen und weiter', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Ausgelesene Energiekarten ergänzen' })).toBeVisible();
+      await expect(page.getByText('Steckplatz 1 · 750-494')).toBeVisible();
+      await expect(page.getByText('In Prüfung — Pilot ausstehend', { exact: true })).toBeVisible();
+      const karten = page.locator('.vp-wago-karten > li');
+      await expect(karten).toHaveCount(4);
+      for (let index = 0; index < 4; index += 1) {
+        await karten.nth(index).getByLabel('Was misst die Karte?').fill(['Zuleitung Halle 2', 'Abgang Produktion', 'Maschine M1', 'Maschine M2'][index]);
+        await karten.nth(index).getByLabel('Wandler Primärwert in A').fill('400');
+        await karten.nth(index).getByLabel('Wandler Sekundärwert in A').fill('5');
+      }
       await expect(page.getByText(/Messwert-Tabelle und Skalierungsfaktor nicht belegt/)).toBeVisible();
       await messeUndFotografiere(page, breite, 'wago-karten');
 

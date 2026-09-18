@@ -21,58 +21,6 @@ export function wagoAssistentSichtbar(
   return versionen.some((v) => boxen.has(v.deviceId) && v.capabilities?.includes(WAGO_BOX_FAehIGKEIT));
 }
 
-export const WAGO_BOGEN_GRUPPEN = [
-  {
-    code: 'A', titel: 'Die Steuerung', fragen: [
-      ['A1', 'Welche Steuerung trägt die Energiekarten?'],
-      ['A2', 'Welcher Firmware-Stand läuft?'],
-      ['A3', 'Läuft auf der Steuerung ein Programm?'],
-      ['A4', 'Gibt das Programm heute Werte per Modbus TCP heraus?'],
-      ['A5', 'Gehen die Messwerte heute noch auf einem anderen Weg nach außen?'],
-    ],
-  },
-  {
-    code: 'B', titel: 'Die Energiekarten', fragen: [
-      ['B1', 'Welche Klemmen stecken rechts neben der Steuerung?'],
-      ['B2', 'Welche Positionen sind Energiekarten, welcher Typ, und was misst jede?'],
-      ['B3', 'Welcher Stromwandler hängt an jeder Karte?'],
-      ['B4', 'Rechnet die Karte selbst mit dem Wandler um?'],
-      ['B5', 'Wurde Energie-Auflösung oder Anschlussart umgestellt?'],
-    ],
-  },
-  {
-    code: 'C', titel: 'Zählerstände und Verhalten', fragen: [
-      ['C1', 'Wo werden heute Zählerstände geführt?'],
-      ['C2', 'Was passierte beim letzten Stromausfall oder Neustart?'],
-      ['C3', 'Kann jemand die Zähler zurücksetzen?'],
-      ['C4', 'Gab es Netzwerkstörungen?'],
-    ],
-  },
-  {
-    code: 'D', titel: 'Netzwerk', fragen: [
-      ['D1', 'Unter welcher Adresse ist die Steuerung erreichbar?'],
-      ['D2', 'Hängt die VoltPilot-Box im selben Netz?'],
-      ['D3', 'Wer liest die Steuerung sonst noch per Modbus TCP?'],
-      ['D4', 'Ist der Modbus-Watchdog eingeschaltet?'],
-    ],
-  },
-  {
-    code: 'E', titel: 'Ansprechpartner, Unterlagen, Pilot', fragen: [
-      ['E1', 'Wer betreut die Steuerung?'],
-      ['E2', 'Welche Unterlagen liegen bei?'],
-      ['E3', 'Wann ist ein Termin vor Ort möglich?'],
-      ['E4', 'Soll VoltPilot noch andere Zähler lesen?'],
-    ],
-  },
-] as const;
-
-export type WagoFrage = typeof WAGO_BOGEN_GRUPPEN[number]['fragen'][number][0];
-export type WagoAntworten = Record<WagoFrage, string>;
-
-export const LEERE_WAGO_ANTWORTEN = Object.fromEntries(
-  WAGO_BOGEN_GRUPPEN.flatMap((g) => g.fragen.map(([code]) => [code, ''])),
-) as WagoAntworten;
-
 export type WagoBogenErgebnis = 'belegt' | 'belegt_je_kunde' | 'nicht_unterstuetzt' | 'in_pruefung';
 
 export interface WagoBogenUrteil {
@@ -80,44 +28,6 @@ export interface WagoBogenUrteil {
   titel: string;
   satz: string;
   ausweg: string | null;
-}
-
-const enthaelt = (antworten: WagoAntworten, muster: RegExp) =>
-  Object.values(antworten).some((wert) => muster.test(wert));
-
-/** Die Regel aus `docs/wago/erhebungsbogen.md`, nicht eine Produktvermutung. */
-export function wagoBogenAuswerten(antworten: WagoAntworten, hardwareblattBelegt = false): WagoBogenUrteil {
-  if (enthaelt(antworten, /751-9301|752-8303|750-493|codesys\s*2\.3/i)
-    || (enthaelt(antworten, /energiedatenmanagement/i) && !enthaelt(antworten, /registerliste/i))) {
-    return {
-      ergebnis: 'nicht_unterstuetzt',
-      titel: 'Nicht unterstützt',
-      satz: 'Diese Kombination ist nicht belegt.',
-      ausweg: 'Lassen Sie das VoltPilot-Registerbild durch den Installateur einbauen oder verwenden Sie einen passenden Energiezähler.',
-    };
-  }
-  if (hardwareblattBelegt) {
-    return {
-      ergebnis: 'belegt',
-      titel: 'Belegt',
-      satz: 'Für diese Kombination liegt ein im Pilot belegtes Hardwareblatt vor.',
-      ausweg: null,
-    };
-  }
-  if (enthaelt(antworten, /registerliste/i) || enthaelt(antworten, /750-8100|pfc\s*100/i)) {
-    return {
-      ergebnis: 'belegt_je_kunde',
-      titel: 'Belegt je Kunde',
-      satz: 'Die Registerliste wird für diese Anlage geprüft. Daraus folgt keine Zusage für andere Kunden.',
-      ausweg: null,
-    };
-  }
-  return {
-    ergebnis: 'in_pruefung',
-    titel: 'In Prüfung — Pilot ausstehend',
-    satz: 'Die Vorlage ist noch nicht belegt. Unbekannte Angaben bleiben Prüfaufgaben.',
-    ausweg: null,
-  };
 }
 
 export type WagoKopfGrund = 'signatur_fremd' | 'hauptversion_fremd' | 'laenge_ungueltig' | 'wortfolge_abweichend';
@@ -166,7 +76,7 @@ export function wagoKopfAnzeige(
       signatur_fremd: 'Unter der Basisadresse steht kein VoltPilot-Registerbild.',
       hauptversion_fremd: `Registerbild-Version ${kopf.hauptversion ?? 'unbekannt'} ist fremd.`,
       laenge_ungueltig: 'Der Kopf meldet eine unzulässige Länge.',
-      wortfolge_abweichend: 'Die Wortfolge passt nicht zur Angabe im Bogen.',
+      wortfolge_abweichend: 'Die gelesene Wortfolge passt nicht zur Verbindungsangabe.',
     };
     return {
       art: 'fehler',
@@ -190,51 +100,61 @@ export function wagoKopfAnzeige(
 
 export interface WagoKarteEntwurf {
   id: string;
-  steckplatz: string;
-  typ: '750-494' | '750-495';
-  name: string;
+  steckplatz: number | null;
+  typ: '750-493' | '750-494' | '750-495' | null;
+  messaufgabe: string;
   wandlerPrimaer: string;
   wandlerSekundaer: string;
   wandlerAnwendung: 'dokumentiert' | 'angewendet';
-  anwenderskalierung: '' | 'ja' | 'nein';
-  register35: string;
 }
 
 export function neueWagoKarte(nummer: number): WagoKarteEntwurf {
   return {
     id: `karte-${nummer}`,
-    steckplatz: String(nummer),
-    typ: '750-494',
-    name: `Energiekarte ${nummer}`,
+    steckplatz: null,
+    typ: null,
+    messaufgabe: '',
     wandlerPrimaer: '',
     wandlerSekundaer: '',
     wandlerAnwendung: 'dokumentiert',
-    anwenderskalierung: '',
-    register35: '',
   };
 }
 
-export function wagoBogenSpeicher(siteId: string): string {
-  return `vp.uems.wago-assistent.${siteId}.v1`;
+export function wagoKarteAusLesung(nummer: number, antwort: ProbeAntwort): WagoKarteEntwurf {
+  const werte = antwort.results?.flatMap((r) => r.reading ? [r.reading] : []) ?? [];
+  const zahl = (name: string) => werte.map((w) => w[name]).find((w): w is number => typeof w === 'number');
+  const steckplatz = zahl('steckplatz');
+  const kartentyp = zahl('kartentyp');
+  return {
+    ...neueWagoKarte(nummer),
+    steckplatz: Number.isInteger(steckplatz) ? steckplatz ?? null : null,
+    typ: kartentyp === 493 || kartentyp === 494 || kartentyp === 495 ? `750-${kartentyp}` : null,
+  };
 }
 
-export function bogenLesen(speicher: Pick<Storage, 'getItem'> | null, siteId: string): WagoAntworten {
-  try {
-    const roh = speicher?.getItem(wagoBogenSpeicher(siteId));
-    if (!roh) return { ...LEERE_WAGO_ANTWORTEN };
-    const gelesen = JSON.parse(roh) as Partial<WagoAntworten>;
-    return Object.fromEntries(Object.keys(LEERE_WAGO_ANTWORTEN).map((k) =>
-      [k, typeof gelesen[k as WagoFrage] === 'string' ? gelesen[k as WagoFrage] : ''])) as WagoAntworten;
-  } catch {
-    return { ...LEERE_WAGO_ANTWORTEN };
+/** Regel aus `docs/wago/erhebungsbogen.md`, ausschließlich aus gelesenen Fakten. */
+export function wagoUrteilAusLesung(kopf: WagoKopf | null, karten: readonly WagoKarteEntwurf[]): WagoBogenUrteil {
+  if (!kopf?.erkannt) return {
+    ergebnis: 'in_pruefung', titel: 'Unbekannt — Registerbild nicht erkannt',
+    satz: 'Aus dem Kopf lässt sich die Kombination nicht bestimmen. Es wird keine Unterstützung angenommen.',
+    ausweg: null,
+  };
+  if (kopf.controller_kennung === 9301 || kopf.controller_kennung === 8303 || karten.some((k) => k.typ === '750-493')) {
+    return {
+      ergebnis: 'nicht_unterstuetzt', titel: 'Nicht unterstützt', satz: 'Die ausgelesene Kombination ist nicht belegt.',
+      ausweg: 'Verwenden Sie einen unterstützten Controller mit 750-494/750-495 oder einen passenden Energiezähler.',
+    };
   }
-}
-
-export function bogenSpeichern(speicher: Pick<Storage, 'setItem'> | null, siteId: string, antworten: WagoAntworten): boolean {
-  try {
-    speicher?.setItem(wagoBogenSpeicher(siteId), JSON.stringify(antworten));
-    return speicher != null;
-  } catch {
-    return false;
-  }
+  if (kopf.controller_kennung === 8100) return {
+    ergebnis: 'belegt_je_kunde', titel: 'Belegt je Kunde',
+    satz: 'Der ausgelesene PFC100 wird nur für diese Anlage geprüft. Daraus folgt keine Zusage für andere Kunden.', ausweg: null,
+  };
+  if (karten.length !== kopf.kartenzahl || karten.some((k) => k.steckplatz == null || k.typ == null)) return {
+    ergebnis: 'in_pruefung', titel: 'Unbekannt — Lesung unvollständig',
+    satz: 'Steckplatz oder Kartentyp fehlt in der Lesung. Es wird nichts angenommen.', ausweg: null,
+  };
+  return {
+    ergebnis: 'in_pruefung', titel: 'In Prüfung — Pilot ausstehend',
+    satz: 'Die Kombination wurde ausgelesen, hat aber noch keinen Pilotnachweis. Für 750-494 bleibt die Messwert-Tabelle unbelegt.', ausweg: null,
+  };
 }
