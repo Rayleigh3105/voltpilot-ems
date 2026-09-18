@@ -126,7 +126,7 @@ Seriennummern, Zeitstempel, SQL-Zeilen, Versionsbezeichnungen oder Passwörter.
   Nur wenn die Metrik des Läufers fehlt, zählt die feste aggregierte Log-Zeile
   als Ersatz (`metrik=0`, `betrachtet` statt `erledigt`). Keine Log-Zeile bedeutet
   unbekannt, niemals null erledigte Kundenbereiche.
-- **C:** sämtliche SQL-Abfragen Z01–Z07 aus dem unveränderten
+- **C:** sämtliche SQL-Abfragen Z01–Z08 aus dem
   [Nachher-Blatt](../betriebsabfragen/bestand-nach-rollout.sql), in lesenden
   Transaktionen. Nur freigegebene Zählspalten werden übernommen; Z01-Dauern
   stehen gezielt für diese Probe in A statt im unscharfen Tagesfenster. Die
@@ -139,7 +139,9 @@ Seriennummern, Zeitstempel, SQL-Zeilen, Versionsbezeichnungen oder Passwörter.
   abgefangene Startdiagnosen; bei erreichter Readiness sind sie kein Startabbruch.
   Nach erreichter Readiness wird weitere fünf Sekunden beobachtet;
   `flyway_historie_veraendert` prüft danach, ob die alte API die neue
-  Flyway-Historie verändert hat (etwa durch ihre Selbstheilung). `ungeprobt=1` ist ausdrücklich kein W1-Nachweis.
+  Flyway-Historie verändert hat (etwa durch ihre Selbstheilung). `W1.Z08` wiederholt
+  die vier Historienzähler nach dem alten Start; erfolgreiche DELETE-Marker sind ein
+  Schaden, auch bei `fehlgeschlagen=0`. `ungeprobt=1` ist ausdrücklich kein W1-Nachweis.
 - `pruefen_Z03` und `pruefen_Z05` sind **Prüfaufträge an den Betreiber**.
   Jede eingerichtete Anlage wird konservativ zur Prüfung vorgelegt; das
   Werkzeug behauptet nicht, aus der Zählung zu wissen, welche Anlage steuert.
@@ -209,6 +211,7 @@ bisherigen Commit der Gruppe.
 | 23 | Readiness, Läuferabschluss oder Sperrmessung unvollständig/fehlerhaft |
 | 24 | Deployment-Startbudget 180 s reicht nicht |
 | 25 | Alte API fehlt lokal: W1 UNGEPROBT |
+| 26 | Z08 nach neuem oder altem Start auffällig: API/Writer anhalten, Befund sichern, Rückweg auf den Punkt; kein bloßer Imagewechsel. Hat Vorrang vor 21–25. |
 | 30 | Physische Wiederherstellung gescheitert |
 | 31 | Flyway-Stand oder Q01 am Rückweg abweichend |
 

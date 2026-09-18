@@ -42,14 +42,10 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
     locations: classpath:db/migration
-    # Tolerate APPLIED-but-now-absent migrations, scoped to ":missing" ONLY.
-    # A production instance runs with a BLANK profile (db/migration only), but a
-    # VM that previously ran SPRING_PROFILES_ACTIVE=local already applied the
-    # db/dev seeds; once the local profile is dropped those migrations leave the
-    # classpath, and by default Flyway validation FAILS startup ("detected
-    # applied migration not resolved locally"). ":missing" tolerates exactly that
-    # so prod boots cleanly - without loosening checksum/other validation, so
-    # dev + CI still catch an accidental edit of an already-applied migration.
+    # Profile changes can leave the known db/dev seeds in history. The startup
+    # strategy permits only explicit version+script identities (docs/api.md).
+    # This Flyway pattern alone is NOT a guard: it also ignores missing core
+    # migrations from a newer build. The strategy rejects those before migrate/repair.
     ignore-migration-patterns: "*:missing"
     # Apply a migration whose version is BELOW the highest already-applied one.
     #
@@ -128,6 +124,9 @@ server:
 # offline unit tests and broker-less dev setups opt out explicitly with
 # VOLTPILOT_SECURITY_OIDC_ENABLED=false.
 voltpilot:
+  flyway:
+    # The switch alone never relaxes startup without the explicit local profile.
+    startwaechter: ${VOLTPILOT_FLYWAY_STARTWAECHTER:streng}
   # Additional measurement-point selection (Geraete-Erlebnis Slice 5). D5's
   # global limits live in code; representative driver bench runs may only
   # TIGHTEN the sample ceiling per canonical catalog family, never widen 600.

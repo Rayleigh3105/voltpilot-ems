@@ -1,12 +1,17 @@
 package com.voltpilot.api.config;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.ErrorCode;
+import org.flywaydb.core.api.FlywayException;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationState;
 import org.flywaydb.core.api.exception.FlywayValidateException;
@@ -14,75 +19,49 @@ import org.flywaydb.core.api.output.ValidateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
+import org.springframework.core.env.Environment;
 
 /**
- * Deploy-resilient Flyway startup: keep STRICT validation on the happy path, but
- * SELF-HEAL a checksum drift instead of crash-looping the deploy - and, for the
- * drift class {@link Flyway#repair()} provably CANNOT fix, say so plainly
- * instead of claiming a heal that never happens.
+ * Fail closed before migration or repair when this build does not know an applied
+ * core migration, or the history contains a core DELETE marker. An older image
+ * must never rewrite a newer database's history or become ready on that schema.
+ * The diagnosis is read-only; an unreadable diagnosis also prevents startup.
+ * An explicit developer exception requires the sole active profile local AND
+ * voltpilot.flyway.startwaechter=nur-warnen. It warns and retains the previous
+ * Flyway behaviour, including potentially destructive repair of future entries.
+ * Without that profile, the switch alone can never relax this guard.
  *
- * <p><b>Why this exists.</b> A long-lived VM that ran (or still runs) with
- * {@code SPRING_PROFILES_ACTIVE=local} has the DEV-ONLY {@code db/dev} seed
- * migrations recorded in {@code flyway_schema_history}. When one of those seeds
- * is later edited (the FK existence-guard hotfixes to {@code V20260706020000} /
- * {@code V20260706030000} are the recurring example), the recorded checksum no
- * longer matches the shipped one, and Flyway's default startup validation
- * ABORTS the api boot with a checksum mismatch. That has bricked the captain's
- * production deploy repeatedly, each time needing a manual DB repair.
+ * <p>Known missing development seeds are the explicit exception below. For known
+ * migrations, checksum/description/type drift still receives one loud repair and
+ * retry. This accepted bookkeeping repair does not execute changed SQL; applied
+ * migrations must remain immutable. Flyway repair can also mark unresolved
+ * migrations DELETE, so it is NOT merely a checksum adjustment.
  *
- * <p><b>What it does.</b> This strategy first tries a normal
- * {@link Flyway#migrate()} - so a healthy database validates strictly exactly
- * like before, and any genuine drift is loudly logged. Only when validation
- * FAILS ({@link FlywayValidateException}) does it react, and it then splits the
- * failure into two classes:
+ * <p>New resolved migrations, including late lower versions with out-of-order
+ * enabled, are allowed. IGNORED arrivals with out-of-order disabled cannot be
+ * repaired. SQL execution errors and a failed retry propagate unchanged.
  *
- * <ul>
- *   <li><b>Repairable bookkeeping drift</b> (checksum/description/type of an
- *       ALREADY-APPLIED migration, an applied-but-no-longer-resolved one, a
- *       failed entry): loud {@code WARN} naming the drifted migrations, then
- *       {@link Flyway#repair()} - which realigns the recorded bookkeeping to the
- *       shipped migrations WITHOUT re-executing anything, because the schema is
- *       already in that state - and ONE retry of {@code migrate()}. The deploy
- *       heals itself with no manual step.</li>
- *   <li><b>Out-of-order arrivals</b> ({@link MigrationState#IGNORED}: a resolved
- *       migration whose version sits BELOW the highest already-applied one, so
- *       Flyway refuses to apply it while {@code out-of-order} is off). Here
- *       {@code repair()} is a no-op by construction - it only ever touches
- *       migrations that ARE applied - so the retry would fail identically and
- *       the only thing the old code added was a misleading "self-healing" line
- *       in front of the crash. This strategy now logs an {@code ERROR} that
- *       names the migrations, the cause and the fix, and rethrows immediately.
- *       See the {@code spring.flyway.out-of-order} block in
- *       {@code application.yml} for the 2026-08-26 production incident this
- *       class of failure caused.</li>
- * </ul>
- *
- * <p><b>Scope of the catch (deliberately narrow).</b> Only
- * {@link FlywayValidateException} is handled at all. A genuinely broken
- * migration (a SQL error while applying) throws a different exception, is NOT
- * caught here, and still fails the boot - repair could not fix it and must not
- * hide it. A second migrate failure after repair also propagates.
- *
- * <p><b>Residual risk (accepted, mitigated).</b> {@code repair()} realigns
- * checksums to whatever is on the classpath, so an accidental edit of an
- * already-applied CORE migration ({@code db/migration}) would be accepted with
- * only the logged {@code WARN} rather than blocking the boot. The mitigations
- * are unchanged project discipline: the "never edit an already-applied
- * migration" rule (AGENTS.md), and code review + CI - the WARN is loud and
- * names the versions so an unexpected core drift is visible in the deploy logs.
- * This trade is intentional: an auto-healed deploy beats a crash-loop that
- * needs a human at the DB, and the dev-seed drift that actually recurs is
- * harmless bookkeeping.
- *
- * <p>The forward-looking hygiene ({@code spring.flyway.ignore-migration-patterns:
- * "*:missing"}, {@code spring.flyway.out-of-order: true} plus the blank
- * production profile) is complementary: it stops both failure modes from
- * arising in the first place. This strategy is what rescues an instance that
- * already carries the drift - and what explains itself when it cannot.
+ * <p>This single class deliberately has no UEMS dependency, so the same protection
+ * can be shipped in an older release. It does not stop processes already running
+ * when a different build migrates the database; the rollout must handle those.
  */
 public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(SelfHealingFlywayMigrationStrategy.class);
+
+    private final boolean localWarnOnly;
+
+    /** Direct users and tests remain strict unless they supply the gated environment. */
+    public SelfHealingFlywayMigrationStrategy() {
+        localWarnOnly = false;
+    }
+
+    public SelfHealingFlywayMigrationStrategy(Environment environment) {
+        // Do not use default profiles here: an empty ACTIVE profile must stay strict.
+        // Mixed profiles (e.g. local,prod) also stay strict rather than opening production.
+        localWarnOnly = Arrays.equals(environment.getActiveProfiles(), new String[] {"local"})
+                && "nur-warnen".equals(environment.getProperty("voltpilot.flyway.startwaechter", "streng"));
+    }
 
     /**
      * The validation error codes {@link Flyway#repair()} genuinely realigns.
@@ -101,12 +80,62 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
             ErrorCode.FAILED_VERSIONED_MIGRATION,
             ErrorCode.FAILED_REPEATABLE_MIGRATION);
 
+    // Exact historical identities, not a prefix/range permission for absent core SQL.
+    // Eight current db/dev files plus the original provisioned-devices seed from
+    // 8766260c (before the current filename from ec6d93a7). See docs/api.md.
+    private static final Map<String, String> OPTIONAL_DEV_SEEDS = Map.of(
+            "100", "V100__dev_seed.sql",
+            "20260702000100", "V20260702000100__dev_provisioned_devices.sql",
+            "20260702020100", "V20260702020100__dev_provisioned_devices.sql",
+            "20260706020000", "V20260706020000__dev_fleet_seed.sql",
+            "20260706030000", "V20260706030000__dev_earnings_seed.sql",
+            "20260707000100", "V20260707000100__dev_netzladen_dachau.sql",
+            "20260707020100", "V20260707020100__dev_market_values_and_anzulegender_wert.sql",
+            "20260707030100", "V20260707030100__dev_site_strompreis.sql",
+            "20260708010100", "V20260708010100__dev_site_tarif.sql");
+
+    private static final Set<MigrationState> UNKNOWN_APPLIED = EnumSet.of(
+            MigrationState.FUTURE_SUCCESS, MigrationState.FUTURE_FAILED,
+            MigrationState.MISSING_SUCCESS, MigrationState.MISSING_FAILED,
+            MigrationState.DELETED);
+
     @Override
     public void migrate(Flyway flyway) {
+        if (localWarnOnly) {
+            log.warn("ACHTUNG ENTWICKLERMODUS: Profil local und voltpilot.flyway.startwaechter=nur-warnen. "
+                    + "Unbekannte Kernmigrationen und DELETE-Marker sperren diesen lokalen Start nicht. "
+                    + "Flyway repair() kann die Historie verändern. NIEMALS für Produktionsdaten verwenden.");
+        }
+        // Stable, database-local lock shared by every build carrying this strategy.
+        // Flyway locks each individual command, not the info -> repair sequence.
+        // The separate READ ONLY transaction holds no history-table lock and ends
+        // even on a failed startup. Never change these keys across releases.
+        try (Connection lock = flyway.getConfiguration().getDataSource().getConnection()) {
+            lock.setAutoCommit(false);
+            lock.setReadOnly(true);
+            try {
+                try (var statement = lock.createStatement()) {
+                    statement.execute("SELECT pg_advisory_xact_lock(1448101453, 1179408727)");
+                }
+                migrateWithStartupLock(flyway);
+            } finally {
+                lock.rollback();
+            }
+        } catch (SQLException lockFailed) {
+            String message = "Flyway-Start verweigert: Start-Sperre nicht sicher lesbar/erreichbar; "
+                    + "nicht reparieren, nicht starten.";
+            log.error(message, lockFailed);
+            throw new FlywayException(message, lockFailed);
+        }
+    }
+
+    private void migrateWithStartupLock(Flyway flyway) {
+        requireCompatibleHistory(flyway);
         try {
             flyway.migrate();
         } catch (FlywayValidateException validationFailure) {
-            List<String> outOfOrder = outOfOrderMigrations(flyway);
+            MigrationInfo[] diagnosed = requireCompatibleHistory(flyway);
+            List<String> outOfOrder = outOfOrderMigrations(diagnosed);
             if (!outOfOrder.isEmpty()) {
                 log.error(
                         "Flyway startup validation FAILED and repair() CANNOT fix it: [{}] resolved but NOT "
@@ -125,45 +154,121 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
             }
             log.warn(
                     "Flyway startup validation FAILED - self-healing the migration history and retrying. "
-                            + "Drifted migrations: [{}]. Running repair() to realign recorded checksums to the "
-                            + "shipped migrations (no migration is re-executed), then migrate() once more. If an "
+                            + "Drifted migrations: [{}]. Running repair() for checksum/description/type drift "
+                            + "or known absent dev seeds (which may be marked DELETE), then migrate() once more. If an "
                             + "UNEXPECTED core (db/migration) version appears here, someone edited an already-applied "
                             + "migration - see AGENTS.md 'never edit an applied migration'.",
                     describeRepairableDrift(flyway),
                     validationFailure);
+            // Recheck immediately before the write, including after validateWithResult().
+            requireCompatibleHistory(flyway);
             flyway.repair();
+            requireCompatibleHistory(flyway);
             flyway.migrate();
         }
+        // A different build may have migrated while this process waited for Flyway's
+        // lock. Diagnose again before returning to Spring's readiness lifecycle.
+        requireCompatibleHistory(flyway);
     }
 
-    /**
-     * The migrations Flyway parked in {@link MigrationState#IGNORED}: resolved,
-     * versioned, and below the highest applied version, so they are skipped
-     * while {@code out-of-order} is off. This is read from
-     * {@link Flyway#info()} rather than from the validate result on purpose -
-     * both an out-of-order arrival and an ordinary PENDING migration report the
-     * same {@code RESOLVED_VERSIONED_MIGRATION_NOT_APPLIED} error code, and only
-     * the state tells them apart.
-     *
-     * <p>Empty when info cannot be read, so an unreadable history falls back to
-     * the previous repair-and-retry behaviour rather than blocking the boot on a
-     * diagnosis we could not make.
-     */
-    private List<String> outOfOrderMigrations(Flyway flyway) {
+    /** No migration/repair is allowed when even the read-only diagnosis fails. */
+    private MigrationInfo[] requireCompatibleHistory(Flyway flyway) {
+        MigrationInfo[] migrations;
+        List<String> incompatible = new ArrayList<>();
         try {
-            return Arrays.stream(flyway.info().all())
-                    .filter(MigrationInfo::isVersioned)
-                    .filter(m -> m.getState() == MigrationState.IGNORED)
-                    .map(m -> m.getVersion() + " (" + m.getDescription() + ")")
-                    .collect(Collectors.toList());
-        } catch (RuntimeException infoFailed) {
-            log.debug("Could not read Flyway info while classifying the validation failure", infoFailed);
-            return List.of();
+            migrations = flyway.info().all();
+            for (MigrationInfo migration : migrations) {
+                String version = migration.getVersion() == null ? null : migration.getVersion().getVersion();
+                if (UNKNOWN_APPLIED.contains(migration.getState())
+                        && !optionalDevSeed(version, migration.getScript())) {
+                    incompatible.add(version + " (" + migration.getState() + ")");
+                }
+            }
+            // Read the physical markers as well: info() describes the effective state,
+            // which can hide an earlier DELETE when a version was subsequently reapplied.
+            incompatible.addAll(deletedCoreMigrations(flyway));
+        } catch (RuntimeException | SQLException diagnosisFailed) {
+            String message = "Flyway-Start verweigert: Migrationshistorie nicht sicher lesbar. "
+                    + "Nicht reparieren, nicht starten; Datenbankverbindung und Historie prüfen.";
+            log.error(message, diagnosisFailed);
+            throw new FlywayException(message, diagnosisFailed);
+        }
+        if (!incompatible.isEmpty()) {
+            String diagnosis = "Diese Datenbank ist neuer als dieser Build "
+                    + "oder ihre Kern-Migrationshistorie wurde als DELETE markiert. Versionen: "
+                    + String.join(", ", incompatible);
+            if (localWarnOnly) {
+                log.warn("ACHTUNG ENTWICKLERMODUS — UNVERTRÄGLICHE MIGRATIONSHISTORIE: {}. "
+                        + "Lokaler Zweigwechsel: Fortsetzung nach den bisherigen Flyway-Regeln. "
+                        + "FUTURE-Versionen können bei repair() als DELETE markiert werden; "
+                        + "vorhandene DELETE-Marker können erneute SQL-Ausführung und Fehler verursachen. "
+                        + "Kein Kompatibilitätsnachweis, keine Freigabe für Produktionsdaten.", diagnosis);
+                return migrations;
+            }
+            String message = "Flyway-Start verweigert: " + diagnosis
+                    + ". Nicht reparieren, nicht starten; richtiges Image "
+                    + "ausrollen oder Datenbank auf den Wiederherstellungspunkt wiederherstellen. "
+                    + "Bei DELETE: API/Writer anhalten, Befund sichern, Rückweg auf den Punkt; "
+                    + "ein neues Image allein behebt den Schaden nicht.";
+            log.error(message);
+            throw new FlywayException(message);
+        }
+        return migrations;
+    }
+
+    private static boolean optionalDevSeed(String version, String script) {
+        return version != null && script != null && script.equals(OPTIONAL_DEV_SEEDS.get(version));
+    }
+
+    private List<String> deletedCoreMigrations(Flyway flyway) throws SQLException {
+        var config = flyway.getConfiguration();
+        try (Connection connection = config.getDataSource().getConnection()) {
+            connection.setReadOnly(true);
+            String schema = config.getDefaultSchema();
+            if (schema == null) {
+                schema = config.getSchemas().length == 0 ? connection.getSchema() : config.getSchemas()[0];
+            }
+            String table = quoteIdentifier(schema) + "." + quoteIdentifier(config.getTable());
+            // A fresh database legitimately has no history table yet. All other SQL
+            // errors (permissions, corrupt history, unavailable DB) must propagate.
+            try (var exists = connection.prepareStatement("SELECT to_regclass(?)")) {
+                exists.setString(1, table);
+                try (var result = exists.executeQuery()) {
+                    result.next();
+                    if (result.getString(1) == null) {
+                        return List.of();
+                    }
+                }
+            }
+            List<String> deleted = new ArrayList<>();
+            try (var statement = connection.createStatement();
+                    var rows = statement.executeQuery("SELECT version, script FROM " + table
+                            + " WHERE type = 'DELETE' ORDER BY installed_rank")) {
+                while (rows.next()) {
+                    if (!optionalDevSeed(rows.getString(1), rows.getString(2))) {
+                        deleted.add(rows.getString(1) + " (DELETE)");
+                    }
+                }
+            }
+            return deleted;
         }
     }
 
+    private static String quoteIdentifier(String identifier) {
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
+    }
+
+    /** IGNORED is a known late arrival, unlike an unknown applied migration. */
+    private List<String> outOfOrderMigrations(MigrationInfo[] migrations) {
+        return Arrays.stream(migrations)
+                .filter(MigrationInfo::isVersioned)
+                .filter(m -> m.getState() == MigrationState.IGNORED)
+                .map(m -> m.getVersion() + " (" + m.getDescription() + ")")
+                .collect(Collectors.toList());
+    }
+
     /**
-     * Best-effort listing of the REPAIRABLE drift, so the WARN names it. Entries
+     * Read-only listing of the REPAIRABLE drift, so the WARN names it. Entries
      * outside {@link #REPAIRABLE} are dropped: a standalone validate also flags
      * every ordinary pending migration, and listing those would bury the one
      * checksum mismatch the repair is actually about.
@@ -180,7 +285,9 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
                     .collect(Collectors.joining(", "));
             return repairable.isEmpty() ? "none repairable reported by validateWithResult" : repairable;
         } catch (RuntimeException enumerationFailed) {
-            return "could not enumerate (" + enumerationFailed.getClass().getSimpleName() + ")";
+            String message = "Flyway-Start verweigert: Validierungsdiagnose nicht lesbar; nicht reparieren.";
+            log.error(message, enumerationFailed);
+            throw new FlywayException(message, enumerationFailed);
         }
     }
 }

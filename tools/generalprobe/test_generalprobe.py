@@ -167,8 +167,8 @@ class Results(unittest.TestCase):
 
     def test_actual_sheets_extracted(self):
         sheets = g.sheet_queries('bestand-nach-rollout.sql', 'Z')
-        self.assertEqual({'Z01', 'Z02', 'Z03', 'Z04', 'Z05', 'Z06', 'Z07'}, set(sheets))
-        self.assertEqual(9, sum(map(len, sheets.values())))
+        self.assertEqual({'Z01', 'Z02', 'Z03', 'Z04', 'Z05', 'Z06', 'Z07', 'Z08'}, set(sheets))
+        self.assertEqual(10, sum(map(len, sheets.values())))
         self.assertEqual(1, len(g.sheet_queries('bestand-vor-uems.sql', 'Q')['Q01']))
 
     def test_sheet_export_drops_names_and_versions_from_generated_file(self):
@@ -182,6 +182,7 @@ class Results(unittest.TestCase):
             [{'kundenbereiche': 1, 'stichtag_bestandslauf': 0, 'stichtag_neu': 0, 'ohne_stichtag': 1, 'konten_uebernommen': None}],
             [{'registry_schluessel_je_box': True, 'offene_perioden_ohne_box': 0}],
             [{'arbeit_viertelstunde_offen': 0, 'arbeit_tag_offen': 0, 'arbeit_periode_offen': 0}],
+            [{'geloescht_markiert': 18, 'fehlgeschlagen': 0, 'sql_erfolgreich': 235, 'versionen_geloescht': 18}],
         ]
         from unittest.mock import Mock
         db = Mock()
@@ -194,6 +195,7 @@ class Results(unittest.TestCase):
             self.assertNotIn('SECRET', text)
             self.assertNotIn('20269999000000', text)
             self.assertEqual(1, json.loads(text)['Z03']['anlagen']['eingerichtet_uebernommen'])
+            self.assertEqual(raw[-1][0], json.loads(text)['Z08'])
 
     def test_writer_template_does_not_execute_rpk_or_expand_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -209,7 +211,7 @@ class Results(unittest.TestCase):
             self.assertIn('telemetry.raw,telemetry-v2.raw,measurements.raw,events.raw', result.stdout)
 
     def test_operator_review_codes_and_all_counts_survive(self):
-        report = {'pruefen_Z03': 2, 'pruefen_Z05': 3, 'A': {'startbudget_reicht': 1}, 'W1': {'ungeprobt': 0}}
+        report = {'C': {'Z08': {'geloescht_markiert': 0, 'fehlgeschlagen': 0}}, 'pruefen_Z03': 2, 'pruefen_Z05': 3, 'A': {'startbudget_reicht': 1}, 'W1': {'ungeprobt': 0}}
         with self.assertRaises(g.Refusal) as raised:
             g.review(report, False)
         self.assertEqual(21, raised.exception.code)
@@ -226,6 +228,18 @@ class Results(unittest.TestCase):
             with self.assertRaises(g.Refusal) as raised:
                 g.review(report, incomplete)
             self.assertEqual(code, raised.exception.code)
+
+    def test_history_damage_takes_priority_even_with_successful_delete_markers(self):
+        clean = {'geloescht_markiert': 0, 'fehlgeschlagen': 0, 'sql_erfolgreich': 235, 'versionen_geloescht': 0}
+        for phase in ('C', 'W1'):
+            for column in ('geloescht_markiert', 'fehlgeschlagen'):
+                with self.subTest(phase=phase, column=column):
+                    report = {'C': {'Z08': dict(clean)}, 'W1': {'Z08': dict(clean)}, 'pruefen_Z03': 1}
+                    report[phase]['Z08'][column] = 18
+                    with self.assertRaises(g.Refusal) as raised:
+                        g.review(report, False)
+                    self.assertEqual(26, raised.exception.code)
+                    self.assertEqual(235, report[phase]['Z08']['sql_erfolgreich'])
 
     def test_restore_calls_existing_tool_with_exact_point_and_compares_both(self):
         from unittest.mock import Mock

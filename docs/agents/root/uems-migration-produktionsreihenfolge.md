@@ -40,6 +40,16 @@ Es gibt keinen Zugriff auf bestehende Datenbanken. Timescale-Hintergrundarbeiter
   `messreihe_viertelstunde_lauf`, `messreihe_tag_lauf` und `messreihe_luecke_lauf`.
   Alle übrigen Felder und Zeilen dieser Tabellen bleiben im Inhaltsvergleich.
 
+## Start eines älteren Builds
+
+`FlywayStartupGuardTest` nutzt denselben `main-migrations.txt`-Satz: main → vollständiger Nachzug
+→ alter Start mit `SelfHealingFlywayMigrationStrategy` verweigert → neuer Start erfolgreich.
+Der SHA-256-Fingerabdruck aller Historienzeilen aus
+`installed_rank, version, type, checksum, success, description, script` bleibt beim alten
+Start unverändert, `migrate()` und `repair()` werden nicht aufgerufen. Niedrige unbekannte
+`MISSING_*` sind ebenso gesperrt wie `FUTURE_*` und physische Kern-`DELETE`-Marker.
+Die benannten Dev-Seed-Ausnahmen und Rollout-Folgen stehen in [API](../../api.md#schema-und-migrationen).
+
 ## Einmalige Korrektur vor der ersten Produktionsfreigabe
 
 `V20260916150000__uems_zugriff_entzug_protokoll.sql` wurde laut Freigabeschnitt vom 18.09.2026
