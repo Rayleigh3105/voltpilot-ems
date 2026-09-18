@@ -54,6 +54,8 @@ public class DataSourceStatusListener {
     private final String password;
     private final DeviceRepository devices;
     private final DeviceDataSourceStatusRepository statuses;
+    private final BoxFaehigkeiten capabilities;
+    private final Set<String> unknownCapabilities = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -62,12 +64,13 @@ public class DataSourceStatusListener {
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
-            DeviceRepository devices, DeviceDataSourceStatusRepository statuses) {
+            DeviceRepository devices, DeviceDataSourceStatusRepository statuses, BoxFaehigkeiten capabilities) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.statuses = statuses;
+        this.capabilities = capabilities;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -158,6 +161,20 @@ public class DataSourceStatusListener {
                 return;
             }
             devices.markStatusSeen(deviceId);
+            Instant capabilityAt = instant(json.get("ts"));
+            if (capabilityAt == null) capabilityAt = Instant.now();
+            try {
+                var reported = EdgeSupports.parse(json.get("supports"), name -> {
+                    // Bounded once-per-process diagnostic, never a customer-visible warning.
+                    if (unknownCapabilities.size() < 128 && unknownCapabilities.add(name))
+                        log.info("Ignoring unknown edge capability '{}'", name);
+                });
+                capabilities.record(deviceId, capabilityAt, reported);
+            } catch (Exception e) {
+                io.micrometer.core.instrument.Metrics.counter("voltpilot_uems_supports_herzschlag",
+                        "ergebnis", "fehler").increment();
+                log.warn("Capability status for {} ignored: {}", deviceId, e.getMessage());
+            }
             JsonNode block = json.get("data_sources");
             if (block == null || !block.isArray()) {
                 return;

@@ -3,8 +3,8 @@
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
 Der optionale Nachbarblock `data_sources` ist eine vollständige Liste; `[]` entfernt
 vorherige Quellenzustände. Sein [Schema](data-source-status.schema.json) beschreibt
-nur den Zusatz, alle bisherigen Herzschlag-Felder bleiben unverändert. Ein künftiges
-`supports[]` kann unabhängig daneben stehen.
+nur den Zusatz, alle bisherigen Herzschlag-Felder bleiben unverändert. Der
+[Fähigkeitsblock `supports[]`](edge-supports.md) steht unabhängig daneben.
 
 ## Identität und Mischbetrieb
 

@@ -176,6 +176,7 @@
                 <targetPath>uems</targetPath>
                 <includes>
                     <include>rechte-matrix.json</include>
+                    <include>edge-capabilities.json</include>
                     <include>measurement-budget-vectors.json</include>
                 </includes>
             </resource>

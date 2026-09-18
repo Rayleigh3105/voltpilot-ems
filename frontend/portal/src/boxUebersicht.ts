@@ -100,7 +100,7 @@ export function quellZeile(q: UemsDatenquelle): BoxQuelleZeile {
 function faehigkeitenText(edge: EdgeVersion | undefined): { text: string; update: boolean } {
   const stand = edge?.coreVersion?.trim() || null;
   const f = faehigkeiten(
-    { version: stand, release: null, supports: null },
+    { version: stand, release: null, supports: edge?.capabilities ?? edge?.supports ?? null },
     BOX_FAEHIGKEITEN,
     [],
   );

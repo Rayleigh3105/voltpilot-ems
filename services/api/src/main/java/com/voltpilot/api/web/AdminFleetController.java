@@ -155,7 +155,7 @@ public class AdminFleetController {
             List<FleetBoxDto> boxDtos = siteBoxes.stream().map(box -> new FleetBoxDto(
                     box.deviceId(), box.externalRef(), box.name(),
                     leading == null ? null : leading.equals(box.deviceId()),
-                    box.lastSeenAt(), edgeDto(box.edge()), updateDto(box.update()))).toList();
+                    box.lastSeenAt(), edgeDto(box.edge()), updateDto(box.update()), box.supports())).toList();
             DeviceStats stats = deviceStats.get(id);
             int deviceCount = stats == null ? 0 : stats.deviceCount();
             int onlineCount = stats == null ? 0 : stats.onlineCount();

@@ -704,8 +704,8 @@ export function fuehrendeBox(
 // ─────────────────────────────────────────────────────────────────── Fähigkeiten
 
 /**
- * Welche Fähigkeiten hat eine Box (E12 = A)? Meldet sie `supports[]`, entscheidet allein die
- * Meldung (auch eine leere; fremde Wörter werden verworfen). Sonst die Tabelle: vorhanden, wenn
+ * Welche Fähigkeiten hat eine Box (E12 = A)? Gemeldet ODER laut Tabelle: eine leere oder
+ * teilweise Meldung entzieht keine belegte Fähigkeit. Laut Tabelle vorhanden, wenn
  * das Release der Box im Register nicht vor `ab_release` liegt. Ein Stand ohne Release beweist
  * nichts. `register`: die Releases in der Ordnung des Registers (`release_seq`), älteste zuerst.
  */
@@ -715,8 +715,8 @@ export function faehigkeiten(
   register: string[],
 ): FaehigkeitenErgebnis {
   const status = tabelle.map((e) => {
-    if (stand.supports !== null) {
-      return { code: e.code, vorhanden: stand.supports.includes(e.code), nachweis: 'supports' as const };
+    if (stand.supports?.includes(e.code)) {
+      return { code: e.code, vorhanden: true, nachweis: 'supports' as const };
     }
     const ist = stand.release === null ? -1 : register.indexOf(stand.release);
     const ab = e.ab_release === null ? -1 : register.indexOf(e.ab_release);

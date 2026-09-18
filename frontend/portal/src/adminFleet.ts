@@ -420,7 +420,7 @@ function fleetBoxRow(
     .sort((a, b) => a.releaseSeq - b.releaseSeq)
     .map((entry) => entry.version);
   const capabilityResult = faehigkeiten(
-    { version, release, supports: null },
+    { version, release, supports: box.supports ?? null },
     BOX_FAEHIGKEITEN,
     register,
   );

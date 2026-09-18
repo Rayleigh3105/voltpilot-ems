@@ -16434,6 +16434,15 @@ components:
         version still comes from that flows acknowledgement and can be absent
         while Node-RED's admin API is not configured.
       properties:
+        supports:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: Known capability names from the latest heartbeat; null means absent.
+        capabilities:
+          type: array
+          items: { type: string }
+          description: Effective known capabilities, reported OR supported by the release table.
         deviceId: { type: string, format: uuid }
         siteId: { type: string, format: uuid }
         coreVersion:

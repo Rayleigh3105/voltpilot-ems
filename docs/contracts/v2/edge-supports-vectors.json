@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "capabilities": [
+    {
+      "name": "data_sources",
+      "meaning": "Vollständiger Quellenstatus im Status-Herzschlag; DQ-Kennzeichen, Zustand und beobachtete Leseraten.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/datasourcestatus/status.go"
+    },
+    {
+      "name": "assignment_effective_at",
+      "meaning": "Eine vorab zugestellte Quellenzuständigkeit lokal erst zum Gültigkeitsbeginn ausführen. Der Cloud-Zeitgeber allein belegt dies nicht.",
+      "advertised": false,
+      "evidence": "docs/agents/root/uems-quellen-uebergabe.md (Cloud-Zeitgeber; lokale Ausführung noch nicht gebaut)"
+    },
+    {
+      "name": "measurement_sample_provenance",
+      "meaning": "measurement-samples 2.1 mit applied_revision je Umschlag und entity_id je eindeutig gebundenem Sample; gespeicherte 2.0-Umschläge unverändert wiederholen.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/measurements/provenance_test.go"
+    }
+  ],
+  "cases": [
+    {
+      "name": "legacy_table",
+      "supports": null,
+      "table": [
+        "assignment_effective_at"
+      ],
+      "expected": [
+        "assignment_effective_at"
+      ]
+    },
+    {
+      "name": "reported_overrides_missing_release",
+      "supports": [
+        "data_sources",
+        "measurement_sample_provenance"
+      ],
+      "table": [],
+      "expected": [
+        "data_sources",
+        "measurement_sample_provenance"
+      ]
+    },
+    {
+      "name": "partial_report_keeps_table",
+      "supports": [
+        "data_sources"
+      ],
+      "table": [
+        "assignment_effective_at"
+      ],
+      "expected": [
+        "data_sources",
+        "assignment_effective_at"
+      ]
+    },
+    {
+      "name": "empty_keeps_table",
+      "supports": [],
+      "table": [
+        "data_sources"
+      ],
+      "expected": [
+        "data_sources"
+      ]
+    },
+    {
+      "name": "future_names_are_ignored",
+      "supports": [
+        "events",
+        "future_thing",
+        "data_sources",
+        "data_sources"
+      ],
+      "table": [],
+      "expected": [
+        "data_sources"
+      ]
+    }
+  ]
+}

@@ -310,9 +310,10 @@ Zeile, erreicht die Box nicht und ist darum kein Beleg.
 Fläche benennt — heute **Rückmeldung je Datenquelle** (`data_sources`) und **Zuständigkeit ab
 Zeitpunkt** (`assignment_effective_at`) — mit dem ersten Release, das sie trägt (`ab_release`).
 
-1. Meldet die Box `supports[]` im Herzschlag (IP-18), entscheidet **allein** ihre Meldung — auch
-   eine leere Liste. Fremde Wörter werden verworfen.
-2. Sonst die Tabelle: die Fähigkeit ist da, wenn der Stempel der Box zu einem Release des
+1. Eine bekannte Fähigkeit aus `supports[]` gilt auch ohne Tabellenbeleg. Fremde Wörter
+   werden verworfen; Details und Vokabular: [Fähigkeitsmeldung](edge-supports.md).
+2. Zusätzlich gilt die Tabelle (auch bei fehlendem, leerem oder teilweisem Block): die
+   Fähigkeit ist da, wenn der Stempel der Box zu einem Release des
    Registers `edge_release` gehört (Präfix-Regel `RolloutStates.releaseIsRunning`) und dieses
    Release in der Ordnung `release_seq` nicht vor `ab_release` liegt (Captain-Entscheid D5 —
    nie ein Zeichenketten- oder SHA-Vergleich).

@@ -1,5 +1,7 @@
 # v2-Verträge
 
+[Fähigkeiten im Box-Herzschlag](edge-supports.md): additiver `supports[]`-Vertrag (AP-06 IP-18).
+
 v2 ergänzt mehrere Entitäten je Box, typisierte Flows, Verbraucheranforderungen und zusätzliche Messpunkte. v1 läuft auf getrennten Topics weiter.
 
 ## Referenzen
