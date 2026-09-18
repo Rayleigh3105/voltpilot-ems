@@ -287,3 +287,72 @@ func TestPreparedEvictionRecoversBothCrashSidesExactly(t *testing.T) {
 		})
 	}
 }
+
+// registerbildConfig is the UEMS AP-05 IP-6 shape: the per-installation
+// parameters of a WAGO register image next to the usual selections.
+func registerbildConfig(body string) []byte {
+	return []byte(fmt.Sprintf(`{"schema_version":"2.0","tenant_id":"%s","site_id":"%s","device_id":"%s","revision":2,"catalog_version":"2026.08.25.1","selections":[{"point_key":"goe.api_v2.nrg","cadence_s":30}]%s}`,
+		testID.TenantID, testID.SiteID, testID.DeviceID, body))
+}
+
+func TestRegisterbildIsAdditiveAndLeavesATodaysBoxUntouched(t *testing.T) {
+	// ⚠ Mischbetrieb: a config WITHOUT the field must parse exactly as before -
+	// no box shipped so far sends one, and none may start failing over it.
+	ohne, err := ParseConfig(config(2, testID.TenantID), testID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ohne.Registerbilder != nil {
+		t.Fatalf("a config without registerbilder must carry none: %#v", ohne.Registerbilder)
+	}
+	roundtrip, err := json.Marshal(ohne)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(roundtrip, []byte("registerbilder")) {
+		t.Fatalf("the empty field must not appear on the wire: %s", roundtrip)
+	}
+
+	mit := registerbildConfig(`,"registerbilder":[{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":4096,"funktionscode":4,"wortfolge":"little","kartenzahl":2,"controller_kennung":7,"karten":[{"steckplatz":2,"kartentyp":494,"variante":1},{"steckplatz":3,"kartentyp":495,"variante":25001}]}]`)
+	c, err := ParseConfig(mit, testID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Registerbilder) != 1 {
+		t.Fatalf("registerbild lost: %#v", c.Registerbilder)
+	}
+	b := c.Registerbilder[0]
+	if b.Basisadresse != 4096 || b.Funktionscode != 4 || b.Wortfolge != "little" ||
+		b.Kartenzahl != 2 || b.ControllerKennung != 7 || len(b.Karten) != 2 {
+		t.Fatalf("registerbild parameters garbled: %#v", b)
+	}
+	// One controller can carry a 750-494 and a 750-495 side by side.
+	if b.Karten[0].Kartentyp != 494 || b.Karten[1].Kartentyp != 495 ||
+		b.Karten[1].Variante != 25001 {
+		t.Fatalf("cards garbled: %#v", b.Karten)
+	}
+}
+
+func TestRegisterbildShapeIsChecked(t *testing.T) {
+	karte := `[{"steckplatz":2,"kartentyp":494,"variante":1}]`
+	bad := map[string]string{
+		"foreign function code": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":6,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
+		"foreign word order":    `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"middle","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
+		"past the address space": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":65000,"funktionscode":3,"wortfolge":"big","kartenzahl":40,"controller_kennung":1,"karten":` + karte + `}`,
+		"cards do not match kartenzahl": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":2,"controller_kennung":1,"karten":` + karte + `}`,
+		"foreign card type": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":[{"steckplatz":2,"kartentyp":493,"variante":0}]}`,
+		"two cards in one slot": `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":2,"controller_kennung":1,"karten":[{"steckplatz":2,"kartentyp":494,"variante":1},{"steckplatz":2,"kartentyp":495,"variante":1}]}`,
+		"no entity":             `{"entity_id":"","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`,
+		"unknown field":         `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `,"unit_id":1}`,
+	}
+	for name, body := range bad {
+		if _, err := ParseConfig(registerbildConfig(`,"registerbilder":[`+body+`]`), testID, 1); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
+	}
+	// The same entity twice would make the poll group ambiguous.
+	doppelt := `{"entity_id":"00000000-0000-0000-0000-00000000000a","basisadresse":0,"funktionscode":3,"wortfolge":"big","kartenzahl":1,"controller_kennung":1,"karten":` + karte + `}`
+	if _, err := ParseConfig(registerbildConfig(`,"registerbilder":[`+doppelt+`,`+doppelt+`]`), testID, 1); err == nil {
+		t.Fatal("duplicate entity accepted")
+	}
+}

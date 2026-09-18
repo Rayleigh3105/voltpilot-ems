@@ -227,8 +227,11 @@ Welche Findings und Ereignisse daraus werden (`registerbild_unbekannt`, `layout_
 ## 7. Größe und Anfragen
 
 Das Registerbild ist 12 + 42 · K Wörter lang. Die Box liest höchstens 120 Wörter je Anfrage
-(`edge-app/nodered/measurements/measurement-planner.js:97`) und **teilt einen Karten-Block nie auf zwei
-Anfragen** — sonst könnten die Hälften aus zwei verschiedenen Lesesätzen stammen.
+(`docs/contracts/v2/measurement-budget-vectors.json` → `families.modbus.units_per_request`) und **teilt
+einen Karten-Block nie auf zwei Anfragen** — sonst könnten die Hälften aus zwei verschiedenen Lesesätzen
+stammen. Daraus folgt `ceil(K / 2)` Anfragen je Lesung; genau diese Zahl trägt der gemeinsame
+Messbudget-Vertrag als `families.wago_registerbild.units_per_request: 2` (Energiekarten je Anfrage).
+Gebaut ist das in `edge-app/nodered/measurements/wago-registerbild.js` (`planeAnfragen`).
 
 | Karten | Wörter | Anfragen je Lesung | Beispiel |
 |---|---|---|---|
@@ -240,7 +243,14 @@ Anfragen** — sonst könnten die Hälften aus zwei verschiedenen Lesesätzen st
 
 ⚠ **Abweichung vom Konzept:** E9 rechnet für Ahrenberg mit einer Anfrage je Minute, IP-6 mit mehreren
 Blöcken erst ab vier Karten. Mit Statuswörtern je Gruppe braucht C-1 zwei Anfragen je Lesung, bei 60 s also
-zwei von 30 erlaubten Anfragen je Minute (`measurement-planner.js:6`). Die Grenze bleibt weit entfernt.
+zwei von 30 erlaubten Anfragen je Minute (`measurement-budget-vectors.json` → `limits.requests`). Die
+Grenze bleibt weit entfernt.
+
+⚠ **Berichtigt mit IP-6 (Befund 10):** der Messbudget-Vertrag führte `wago_registerbild` zuerst mit
+`units_per_request: 5`. Fünf Karten sind 222 Wörter und passen in kein Modbus-Telegramm; die Zahl
+unterschätzte die echten Anfragen. Seit dem Bau des Lesers steht dort die Telegramm-Wahrheit 2 — für
+25 Karten an einer Steuerung also 13 statt 5 Anfragen je Minute. Das Urteil bleibt „zulässig": die Grenze
+sind 30.
 
 ## 8. Rechenbeispiele
 
