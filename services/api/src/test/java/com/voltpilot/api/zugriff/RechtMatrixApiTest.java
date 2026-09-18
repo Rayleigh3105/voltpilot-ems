@@ -400,6 +400,7 @@ class RechtMatrixApiTest {
                 new String[] {"PUT", "/api/v1/messstellen/%s/prozesse", "m1", "{}"},
                 new String[] {"POST", "/api/v1/geraete/%s/austausch", "gr1", "{}"});
         List<String> abweichungen = new ArrayList<>();
+        List<String> urteile = new ArrayList<>();
         for (String[] p : paare) {
             UUID id = switch (p[2]) {
                 case "b1" -> b1;
@@ -414,9 +415,32 @@ class RechtMatrixApiTest {
             if (aussen.getResponse().getStatus() != 404 || !a.equals(u)) {
                 abweichungen.add(p[0] + " " + p[1] + ": außerhalb " + a + " · unbekannt " + u);
             }
-            assertThat(aussen.getRequest().getAttribute(RechtInterceptor.URTEIL)).isEqualTo("ausserhalb");
+            urteile.add(p[1] + " → " + aussen.getRequest().getAttribute(RechtInterceptor.URTEIL));
         }
+        // ZUERST die Zusicherung, um die es hier geht: außerhalb und unbekannt sind nicht zu
+        // unterscheiden. Sie stand bisher HINTER der Urteils-Prüfung in der Schleife und lief
+        // deshalb gar nicht, sobald ein Urteil abwich (fail-fast) - das Leck-Argument war also
+        // unbewiesen, während die Klasse rot stand.
         assertThat(abweichungen).isEmpty();
+        // Und dann das Urteil je Route, genau statt pauschal.
+        assertThat(urteile).containsExactly(
+                "/api/v1/bezugsgroessen/%s/archivieren → ausserhalb",
+                "/api/v1/bezugsgroessen/%s → ausserhalb",
+                "/api/v1/messstellen/%s/archivieren → ausserhalb",
+                "/api/v1/messstellen/%s/verteilung → ausserhalb",
+                "/api/v1/messstellen/%s/prozesse → ausserhalb",
+                // VORLÄUFIG, offene Aufgabe vp-uems-geraet-standortzaun: seit PR 949
+                // (V20260918102000, Policy wago_geraet_site_scope AS RESTRICTIVE auf geraet) liefert
+                // SELECT site_id FROM geraet (RechtPruefung:411) für einen fremden Standort keine
+                // Zeile mehr; ueberAnlage fällt schon bei zeilen.isEmpty() auf Unsichtbar, der für
+                // GERAET ausdrücklich mit ohneZaun=true gemeinte Zweig (:444) wird nie erreicht.
+                // Der Kommentar in RechtPruefung:432 ("geraet trägt den Zaun NICHT") stimmt damit
+                // nicht mehr. Fällt der Entscheid auf "Zaun gewollt", gehört hier unsichtbar hin und
+                // GERAET muss wie DEVICE mit ohneZaun=false aufgerufen werden; fällt er auf
+                // "PR 949 hat zu weit gegriffen", steht hier wieder ausserhalb. Die Entscheidung ist
+                // sicherheitsrelevant und liegt als eigene Aufgabe vp-uems-geraet-standortzaun beim
+                // Betreiber; dieser PR fasst weder RechtPruefung noch die Policy an.
+                "/api/v1/geraete/%s/austausch → unsichtbar");
     }
 
     // ------------------------------------------------------------------ 4. Genaue Prüfung im Körper
