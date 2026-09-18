@@ -61,6 +61,34 @@ der Strecke ändert das nichts, sie liest Kennungen und deutet sie nicht.
 | A15 | Kadenz als Fakt: Abdeckung ohne Auffüllung | `UemsViertelstundeMigrationTest#dieAbdeckungWirdNieAufHundertProzentGerundet` · `UemsViertelstundeMengeTest#dieDatenbankgrenzeWeistDasErfundeneAb` |
 | A16 | Budget mit Benchkosten je Ziel und Familie | `MeasurementBudgetVectorsTest#releasedRuntimeCatalogKeepsEveryCloudCostAndVersion` · `MeasurementBudgetVectorsTest#unbenchedRegisterAtFiveSecondsWasAlreadyRejectedByTheCloud` |
 
+## Befunde am Drehbuch (AP-07 IP-20)
+
+Die Abnahme hat das Drehbuch zum ersten Mal gegen die echte Strecke gehalten. Fünf Stellen
+sagen etwas anderes als der Vertrag. **Keine davon ist ein Fehler im Produktivcode** — der
+Writer verhält sich jedes Mal nach seiner dokumentierten Regel. Die Abnahme rechnet deshalb
+nach der REGEL, nicht nach der Aufzählung, und der Wächter im Lauf meldet jede NEUE Abweichung.
+
+| Stelle | Drehbuch | Vertrag und Wirklichkeit |
+|---|---|---|
+| A3 `data_gap`, `backfill` | `urheber: writer` | Schreibt der **Lücken-Melder** (IP-9, Takt in `services/api`, urheber `cloud`). Der Writer sieht beim Einlauf einen einzelnen Wert und kann eine Lücke nicht kennen. |
+| A4 `late_arrival` | `urheber: writer` | Schreibt der **`SpaetankunftMelder`** (IP-13). Ob die Viertelstunde schon endgültig war, weiß erst die Verdichtung. |
+| A4 `sequence_gap` | zählt **einen** Sprung auf (48 214 → 48 402) | `MesswertEreignisse`: EINMAL JE UMSCHLAG, dessen Sequenz springt. Gespielt werden **vier** Sprünge (7 → 48 402 → 52 002 → 55 601 → 62 001) — und ein Rücksprung 48 213 → 7, den das Drehbuch gar nicht nennt. |
+| A6 `erwartete_reihen` | 7 führende Zeilen je Reihe | Der „Nachzügler mit Messzeit VOR dem Wechsel" (Sequenz 90 503) trägt **05:29:50 — genau die Messzeit des Umschlags 90 502**, der schon liegt. Die Idempotenz (E3) speichert ihn zu Recht kein zweites Mal: es sind **6**. Der Fall kann damit nicht zeigen, was er zeigen will; das tut `WriterPipeTest#derNachzueglerIstFuehrendUndDerSpaetereEinSpiegel` mit eigenen Messzeiten. |
+| A6 `unassigned_reader` | **vier**, eine je Messstelle | EINMAL je Umschlag, Box und Datenquelle, gebündelt mit `anzahl`, gedrosselt auf höchstens einmal je Stunde. Gespielt wird EIN Umschlag mit gespiegelten Werten, also **eins** — so sagt es auch der Abnahmetext A9 selbst („≤ 1 je Stunde"). |
+
+## Zwei Befunde an der Strecke
+
+- **Die Datenannahme reicht die 2.1-Herkunftsfelder nicht weiter.** `MeasurementSamplesValidator`
+  prüft `applied_revision` (Wurzel) und `entity_id` (je Sample) und **entfernt beide**, bevor der
+  Umschlag nach `measurements.raw` geht; sein Kommentar nennt das Weiterreichen noch als offene
+  Nacharbeit „needs the writer in the same step – IP-6/IP-7", **beide sind gebaut**. Sachlich ist
+  es heute richtig: der Writer schlägt Komponente, Fassung und Rolle ZUR MESSZEIT selbst nach, und
+  ein Umschlag mit Herkunft am Draht würde genau diese Auflösung umgehen. Veraltet ist nur der
+  Kommentar.
+- **Der Writer prüft Topic- und Umschlag-IDENTITÄT** (`ems/<mandant>/<anlage>/<box>/v2/measurement-samples`).
+  Stimmt sie nicht, ist die Nachricht weg — eine `WARN`-Zeile, sonst nichts. Wer eine Abnahme
+  baut, merkt das erst an leeren Tabellen; der Lauf hat darum einen Vorlauf, der genau das sagt.
+
 ## Was die Abnahme NICHT beweist
 
 - **Die Naht zur Datenannahme.** `UemsStreckeAbnahmeTest` spielt ab `measurements.raw`,
