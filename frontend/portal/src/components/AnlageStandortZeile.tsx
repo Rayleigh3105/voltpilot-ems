@@ -8,7 +8,7 @@ import {
   standortZeile,
   type AnlageStandort,
 } from '../anlageStandort';
-import { KNOPF_ANDEREM_STANDORT, geplantZeile, tagPlus } from '../anlageUmziehen';
+import { KNOPF_ANDEREM_STANDORT, KNOPF_ZUORDNUNG_KORRIGIEREN, geplantZeile, tagPlus } from '../anlageUmziehen';
 import { AnlageStandortDialog } from './AnlageStandortDialog';
 import { StandortDialog } from './StandortDialog';
 import './AnlageStandortZeile.css';
@@ -97,8 +97,10 @@ export function AnlageStandortZeile({
 }) {
   const [dialog, setDialog] = useState<{ unternehmen: Unternehmen | null } | null>(null);
   const [umzug, setUmzug] = useState(false);
+  const [korrektur, setKorrektur] = useState(false);
   const ausloeser = useRef<HTMLButtonElement>(null);
   const umzugAusloeser = useRef<HTMLButtonElement>(null);
+  const korrekturAusloeser = useRef<HTMLButtonElement>(null);
   const z = standortZeile(anlageStandort);
   const { standort, zuordnung } = anlageStandort;
   const geplant = geplantZeile(anlageStandort, useDanach(anlageStandort));
@@ -116,9 +118,11 @@ export function AnlageStandortZeile({
   }
 
   function schliesseUmzug() {
+    const fokus = korrektur ? korrekturAusloeser : umzugAusloeser;
     setUmzug(false);
+    setKorrektur(false);
     requestAnimationFrame(() => {
-      if (umzugAusloeser.current?.isConnected) umzugAusloeser.current.focus();
+      if (fokus.current?.isConnected) fokus.current.focus();
     });
   }
 
@@ -150,6 +154,15 @@ export function AnlageStandortZeile({
         >
           {KNOPF_ANDEREM_STANDORT}
         </button></Recht>
+        <Recht aktion="anlage.zuordnen"><button
+          ref={korrekturAusloeser}
+          type="button"
+          className="vp-as-verweis"
+          aria-label={`${KNOPF_ZUORDNUNG_KORRIGIEREN}: ${zuordnung.name}`}
+          onClick={() => setKorrektur(true)}
+        >
+          {KNOPF_ZUORDNUNG_KORRIGIEREN}
+        </button></Recht>
         {dialog && (
           <StandortDialog
             open
@@ -164,12 +177,14 @@ export function AnlageStandortZeile({
             }}
           />
         )}
-        {umzug && (
+        {(umzug || korrektur) && (
           <AnlageStandortDialog
             open
             anlageId={zuordnung.id}
             anlageName={zuordnung.name}
             standorte={antwort}
+            modus={korrektur ? 'korrektur' : 'umzug'}
+            gueltigAbVorgabe={korrektur ? zuordnung.gueltigAb : undefined}
             onClose={schliesseUmzug}
             onGespeichert={() => {
               schliesseUmzug();

@@ -194,6 +194,11 @@
   transform: rotate(90deg);
 }
 
+.vp-at-korrigieren {
+  align-self: flex-start;
+  margin: 0 14px 12px;
+}
+
 /* Zustand: 8-px-Punkt + WORT + Alter — nie ein gefülltes Badge. */
 .vp-at-state {
   display: inline-flex;

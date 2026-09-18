@@ -11,6 +11,7 @@ import {
   FOLGEN_PRUEFEN,
   FOLGEN_WAEHLEN,
   HINWEIS_BEGRUENDUNG,
+  KORREKTUR_VORSPANN,
   KNOPF_FERTIG,
   KNOPF_ZUORDNEN,
   LABEL_BEGRUENDUNG,
@@ -35,6 +36,7 @@ import {
 } from '../anlageUmziehen';
 import { alsOrtFehler } from '../standorte';
 import { useBerichteFolgen } from '../useBerichteFolgen';
+import { ArchivierenDialog, type ArchivObjekt } from './ArchivierenDialog';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import './StandortDialog.css';
@@ -42,6 +44,7 @@ import './FlaecheDialog.css';
 import './AnlageStandortDialog.css';
 
 type Vorschau = { stand: 'leer' } | { stand: 'pruefen' } | { stand: 'da'; umzug: AnlageUmzug } | { stand: 'abgelehnt' };
+type ArchivAngebot = { objekt: ArchivObjekt; archiviert: boolean } | null;
 
 /**
  * Dialog „Anlage zuordnen“ (UEMS AP-02 IP-11, Mockup T6b): neuer Standort, „gültig ab“, eine
@@ -56,6 +59,8 @@ export function AnlageStandortDialog({
   anlageId,
   anlageName,
   standorte,
+  modus = 'umzug',
+  gueltigAbVorgabe,
   onClose,
   onGespeichert,
 }: {
@@ -64,18 +69,50 @@ export function AnlageStandortDialog({
   anlageName: string;
   /** `GET /api/v1/standorte` von heute — Zielliste und „heute“. */
   standorte: StandorteAmStichtag;
+  /** Geführter Einstieg; Vorschau und Schreibweg bleiben identisch zum normalen Umzug. */
+  modus?: 'umzug' | 'korrektur';
+  /** Erster Tag der Anlage aus ihrer bestätigten Zuordnung. */
+  gueltigAbVorgabe?: string;
   onClose: () => void;
   onGespeichert: (umzug: AnlageUmzug) => void;
 }) {
   const basis = `vp-au-${useId().replace(/:/g, '')}`;
-  const [form, setForm] = useState<UmzugForm>(() => umzugStart(standorte.stichtag));
+  const [form, setForm] = useState<UmzugForm>(() => umzugStart(standorte.stichtag, gueltigAbVorgabe));
   const [versucht, setVersucht] = useState(false);
   const [serverFehler, setServerFehler] = useState<UmzugFehler>({});
   const [allgemein, setAllgemein] = useState<string | null>(null);
   const [vorschau, setVorschau] = useState<Vorschau>({ stand: 'leer' });
   const [busy, setBusy] = useState(false);
   const [ergebnis, setErgebnis] = useState<AnlageUmzug | null>(null);
+  const [archivAngebot, setArchivAngebot] = useState<ArchivAngebot>(null);
+  const [archivDialog, setArchivDialog] = useState(false);
   const ergebnisKopf = useRef<HTMLParagraphElement>(null);
+
+  // Nach einer Korrektur urteilt der bestehende Ortsbaum-Weg, ob der bisherige Standort
+  // wirklich leer und damit archivierbar ist. Keine lokale Näherung aus Anlagenzahlen.
+  useEffect(() => {
+    const bisher = ergebnis?.bisher;
+    if (modus !== 'korrektur' || !bisher) {
+      setArchivAngebot(null);
+      return;
+    }
+    let aktiv = true;
+    api.standortOrte(bisher.id).then(
+      (baum) => {
+        if (!aktiv || !baum.aktionen?.archivieren?.erlaubt) return;
+        setArchivAngebot({
+          objekt: {
+            art: 'standort', id: baum.standort.id, name: baum.standort.name,
+            kurzzeichen: baum.standort.kurzzeichen, eltern: null,
+            archiviertAm: baum.standort.archiviertAm ?? null, aktionen: baum.aktionen,
+          },
+          archiviert: false,
+        });
+      },
+      () => undefined,
+    );
+    return () => { aktiv = false; };
+  }, [ergebnis, modus]);
 
   const pruefung = pruefeUmzug(form);
   const fehler: UmzugFehler = { ...(versucht ? pruefung : {}), ...serverFehler };
@@ -204,12 +241,26 @@ export function AnlageStandortDialog({
               </ul>
             </section>
             <FolgenKarteAnsicht karte={folgenKarte(ergebnis)} />
+            {archivAngebot && (
+              <section className="vp-au-archiv" data-testid="standort-archiv-angebot">
+                {archivAngebot.archiviert ? (
+                  <p>Der bisherige Standort {archivAngebot.objekt.name} ist archiviert. Seine Geschichte bleibt erhalten.</p>
+                ) : (
+                  <>
+                    <p>Der bisherige Standort {archivAngebot.objekt.name} ist jetzt leer. Sie können ihn archivieren; seine Geschichte bleibt erhalten.</p>
+                    <Recht aktion="standort.verwalten"><Button type="button" variant="outline" onClick={() => setArchivDialog(true)}>
+                      Standort archivieren
+                    </Button></Recht>
+                  </>
+                )}
+              </section>
+            )}
           </>
         ) : (
           <>
             <div className="vp-fd-kopf">
               <p className="vp-fd-name">{anlageName}</p>
-              <p className="vp-sd-vorspann">{UMZUG_VORSPANN}</p>
+              <p className="vp-sd-vorspann">{modus === 'korrektur' ? KORREKTUR_VORSPANN : UMZUG_VORSPANN}</p>
             </div>
             <VpPicker
               id={feldId('standortId')}
@@ -251,6 +302,18 @@ export function AnlageStandortDialog({
           </>
         )}
       </form>
+      {archivDialog && archivAngebot && (
+        <ArchivierenDialog
+          open
+          aktion="archivieren"
+          objekt={archivAngebot.objekt}
+          onClose={() => setArchivDialog(false)}
+          onFertig={() => {
+            setArchivDialog(false);
+            setArchivAngebot({ ...archivAngebot, archiviert: true });
+          }}
+        />
+      )}
     </Modal>
   );
 }

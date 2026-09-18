@@ -136,6 +136,14 @@ describe('Form, Anfrage, Ablehnung', () => {
     );
   });
 
+  it('öffnet die geführte Korrektur mit dem ersten Tag der Anlage statt mit heute', () => {
+    expect(umzugStart('2026-11-20', '2026-10-15')).toEqual({
+      standortId: null,
+      gueltigAb: '2026-10-15',
+      begruendung: '',
+    });
+  });
+
   it('sendet die Begründung getrimmt — und eine leere gar nicht', () => {
     expect(umzugAnfrage({ standortId: ST3.id, gueltigAb: '2027-03-01', begruendung: '   ' })).toEqual({
       standortId: ST3.id,

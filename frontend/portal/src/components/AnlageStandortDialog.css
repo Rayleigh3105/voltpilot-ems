@@ -109,3 +109,18 @@
   border: 1px solid var(--vp-c-border, #d9dde3);
   font-size: var(--vp-c-fs-13, 13px);
 }
+
+.vp-au-archiv {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-primary);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-primary-soft, var(--vp-c-muted));
+}
+
+.vp-au-archiv p {
+  margin: 0;
+}
