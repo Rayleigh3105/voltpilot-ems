@@ -335,7 +335,12 @@ public class MeasurementHistoryService {
                 + zuwachs.einheit() + " — nicht auf Viertelstunden verteilbar";
     }
 
-    /** Kundensprache für die sieben Ereignisarten, die der Verlauf zeigt (§4.8, AP-08 IP-4). */
+    /**
+     * Kundensprache für die Ereignisarten, die der Verlauf zeigt (§4.8, AP-08 IP-4; AP-05 IP-11
+     * für die vier Meldungen an der Datenquelle). Die Wörter sind die Überschriften des
+     * Ereignis-Vokabulars — wer {@code MARKER_ARTEN} erweitert, erweitert auch diese Liste,
+     * sonst stünde das englische Vertragswort in der Kundensicht.
+     */
     private static String ereignisWort(String art, int anzahl) {
         String wort = switch (art) {
             case "data_gap" -> "Datenlücke";
@@ -345,6 +350,10 @@ public class MeasurementHistoryService {
             case "handover" -> "Messung von einer anderen Box übernommen";
             case "duplicate_conflict" -> "Doppelte Zustellung mit abweichendem Wert";
             case "late_arrival" -> "Nachträglich eingetroffene Werte";
+            case "device_restart" -> "Neustart des Geräts";
+            case "frozen_source" -> "Werte eingefroren";
+            case "range_limit" -> "Bereichsbegrenzung";
+            case "layout_changed" -> "Aufbau geändert";
             default -> art;
         };
         return anzahl > 1 ? wort + " (" + anzahl + "×)" : wort;

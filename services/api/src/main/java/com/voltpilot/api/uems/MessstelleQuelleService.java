@@ -697,7 +697,7 @@ public class MessstelleQuelleService {
                 : q.gueltigBis() == null || q.gueltigBis().isAfter(minute) ? "gilt" : "beendet";
         return new MessstelleQuelleDto.Quelle(q.id(), q.messstelleId(), q.groesse(), q.richtung(), q.rolle(),
                 q.zweck(), q.entityId(), q.komponenteName(), q.siteId(), q.kanal(), q.kanalWertart(), q.herleitung(),
-                new MessstelleQuelleDto.Geraet(q.geraetId(), q.geraet(), q.einbau()), zeit(q.gueltigAb()),
+                new MessstelleQuelleDto.Geraet(q.geraetId(), q.geraet(), q.einbau(), q.hersteller()), zeit(q.gueltigAb()),
                 zeit(q.gueltigBis()), status, dtoStand(q.anfangsstand()), dtoStand(q.endstand()), q.rueckwirkend(),
                 q.herkunft(), zeit(q.eingetragenAm()), q.eingetragenVon(), q.anteil());
     }

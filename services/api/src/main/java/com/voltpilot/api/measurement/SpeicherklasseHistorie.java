@@ -58,13 +58,19 @@ public class SpeicherklasseHistorie {
 
     /**
      * Die Ereignisarten, die als Marker in den Verlauf gehören (Auftrag IP-14: Lücke,
-     * Rücksetzung, Gerätegrenze, Übergabe, Doppelzustellung, Spätankunft; AP-08 IP-4: Überlauf).
+     * Rücksetzung, Gerätegrenze, Übergabe, Doppelzustellung, Spätankunft; AP-08 IP-4: Überlauf;
+     * AP-05 IP-11: die vier Meldungen, die die Box über eine Datenquelle stellt — Neustart des
+     * Geräts, eingefrorene Werte, Bereichsbegrenzung und ein geänderter Aufbau).
      * Alles andere des Vokabulars (§4.8) bleibt draußen — ein Verlauf mit 24 Markerarten erklärt
      * nichts mehr.
+     *
+     * <p>Die vier neuen Arten sind NICHT WAGO-eigen: jede Box kann sie melden, sobald ein
+     * Edge-Release sie sendet. Ein Marker erklärt eine Lücke, er füllt sie nie auf.
      */
     private static final String MARKER_ARTEN =
             "'data_gap','counter_reset','counter_overflow','device_boundary','handover',"
-                    + "'duplicate_conflict','late_arrival'";
+                    + "'duplicate_conflict','late_arrival','device_restart','frozen_source',"
+                    + "'range_limit','layout_changed'";
 
     /**
      * Die Rücksetzung, die in Wahrheit ein ÜBERLAUF war (AP-08 IP-4): der Bestand kennt das Wort
