@@ -1,0 +1,61 @@
+# Vorlage für Release-Notizen
+
+Den passenden Abschnitt kopieren, alle eckigen Klammern ersetzen und nur die tatsächlich
+sichtbaren Änderungen stehen lassen. Die beiden abschließenden Sätze bleiben unverändert.
+
+## Neue Einstiege im Portal
+
+**Betreff:** Neue Möglichkeiten im Portal ab [TT.MM.JJJJ]
+
+Guten Tag,
+
+ab [TT.MM.JJJJ, HH:MM Uhr] finden Sie im Portal neue Möglichkeiten:
+
+- Wenn Sie mehrere Anlagen und offene Vorschläge haben, sehen Sie die Karte
+  „Noch nicht zugeordnet“. Dort prüfen Sie zuerst den Vorschlag und entscheiden selbst.
+- Mit „Standort anlegen“ und „Messen & Auswerten“ können Sie Standorte strukturieren,
+  Zähler und weitere Messstellen aufnehmen, Kennzahlen bilden und Berichte erzeugen.
+- Die Benutzerverwaltung finden Sie unter Ihrem Namen oben rechts unter Unternehmen und
+  Einstellungen. Ihre bisherigen Berechtigungen bleiben erhalten.
+- Bei einer nicht mehr angemeldeten Box endet der Befehlsverlauf am Zeitpunkt der Abmeldung.
+
+Beim ersten Aufruf lädt das Portal einmal neu. Von allein wird nichts zugeordnet oder
+eingerichtet. An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich dadurch nichts.
+
+VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.
+Mehrere Boxen werden nicht als eine Einheit optimiert. Jede Box liest ihre Quellen.
+
+## Historische Prozentwerte
+
+**Betreff:** Geänderte Anzeige historischer Prozentwerte ab [TT.MM.JJJJ]
+
+Guten Tag,
+
+ab [TT.MM.JJJJ, HH:MM Uhr] ändert sich die Anzeige der historischen Prozentwerte für
+Autarkie und Eigenverbrauch. Das Portal zeigt dann den aus den gespeicherten Messwerten
+berechneten Wert auch dann unverändert an, wenn er unter 0 Prozent oder über 100 Prozent
+liegt. In diesem Fall weist das Portal darauf hin, dass Messwerte nicht zusammenpassen.
+
+Die Änderung betrifft nur die Anzeige. Messwerte und bereits gespeicherte Werte werden
+nicht verändert.
+
+VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.
+Mehrere Boxen werden nicht als eine Einheit optimiert. Jede Box liest ihre Quellen.
+
+## Software-Aktualisierung der Box
+
+**Betreff:** Software-Aktualisierung Ihrer Box auf [Versionsbezeichnung]
+
+Guten Tag,
+
+Ihre Box [Name oder Kennzeichen] erhält am [TT.MM.JJJJ] die Version
+[Versionsbezeichnung]. Die Aktualisierung bringt [sichtbare Änderungen nennen]. Während
+der Aktualisierung kann die Verbindung für [Dauer] unterbrochen sein. Die Box setzt ihre
+bisherigen Aufgaben danach fort. Falls der Selbsttest nicht erfolgreich ist, verwendet sie
+wieder die vorige Version.
+
+Diese Aktualisierung verspricht nur die oben genannten Änderungen. Weitere Gerätearten,
+Messwege oder Steuerungsmöglichkeiten sind damit nicht zugesagt.
+
+VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.
+Mehrere Boxen werden nicht als eine Einheit optimiert. Jede Box liest ihre Quellen.

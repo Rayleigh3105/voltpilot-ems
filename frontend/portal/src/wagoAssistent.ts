@@ -154,7 +154,7 @@ export function wagoUrteilAusLesung(kopf: WagoKopf | null, karten: readonly Wago
     satz: 'Steckplatz oder Kartentyp fehlt in der Lesung. Es wird nichts angenommen.', ausweg: null,
   };
   return {
-    ergebnis: 'in_pruefung', titel: 'In Prüfung — Pilot ausstehend',
-    satz: 'Die Kombination wurde ausgelesen, hat aber noch keinen Pilotnachweis. Für 750-494 bleibt die Messwert-Tabelle unbelegt.', ausweg: null,
+    ergebnis: 'in_pruefung', titel: 'In Prüfung — Einsatz noch nicht bestätigt',
+    satz: 'Die Kombination wurde ausgelesen, ist aber noch nicht für den Einsatz bestätigt. Für 750-494 bleibt die Messwert-Tabelle unbelegt.', ausweg: null,
   };
 }

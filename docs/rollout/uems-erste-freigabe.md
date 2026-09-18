@@ -834,6 +834,11 @@ die eine neue Karte auf ihrer Startseite finden.
 Rollout-Tag **aus**, sie kommen mit einem eigenen angekündigten Termin) und das Ende des
 Befehlsverlaufs abgemeldeter Boxen (Q11), sofern niemand betroffen ist.
 
+**Release-Notiz:** Für diesen Tag wird der Abschnitt „Neue Einstiege im Portal“ aus der
+[Vorlage für Release-Notizen](release-notiz-vorlage.md) ausgefüllt. Dieselbe Vorlage enthält
+die getrennten Kundenfassungen für den später angekündigten Quoten-Termin und für jedes
+Edge-Release. Die Release-Notiz gibt ausschließlich der Betreiber frei.
+
 ---
 
 ## 11. Support-Probe F6 — Checkliste
