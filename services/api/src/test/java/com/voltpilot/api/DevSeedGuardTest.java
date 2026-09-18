@@ -183,12 +183,69 @@ class DevSeedGuardTest {
         assertThat(count("SELECT count(*) FROM flaeche_gueltigkeit f JOIN standort s ON s.id = f.standort_id"
                 + " WHERE s.kurzzeichen = 'ST-2' AND f.tenant_id = '" + AHRENBERG_TENANT + "'")).isZero();
 
-        // 6. Rechte-Zaun: für einen anderen Kundenbereich ist Ahrenberg unsichtbar.
+        // 6. AP-03 IP-16 — die Personen: genau die SIEBEN der Referenz, mit ihrer Rolle.
+        //    Die Zelle nennt acht Logins; Sabine Rauch streicht die Referenz ausdrücklich
+        //    zusammen mit ST-3 (`_herkunft.bewusst_ausgelassen`), und der Seed folgt der Quelle.
+        assertThat(ref.path("personen")).as("die Referenz führt sieben Personen").hasSize(7);
+        assertThat(texte("SELECT anzeigename FROM benutzer WHERE tenant_id = '" + AHRENBERG_TENANT
+                + "' ORDER BY anzeigename")).isEqualTo(sortiert(ref.path("personen"), "name"));
+        assertThat(texte("SELECT anzeigename FROM benutzer WHERE tenant_id = '" + AHRENBERG_TENANT
+                + "' AND anzeigename LIKE 'Sabine%'")).isEmpty();
+
+        // Kontoart je Person: Benutzer des Kundenbereichs, Partner, Plattform (`personen[].art`).
+        for (JsonNode person : ref.path("personen")) {
+            String name = person.path("name").asText();
+            assertThat(text("SELECT konto FROM benutzer WHERE tenant_id = '" + AHRENBERG_TENANT
+                    + "' AND anzeigename = '" + name + "'"))
+                    .as("Kontoart " + name)
+                    .isEqualTo(sollKonto(person));
+            assertThat(zuweisungen(name)).as("Zuweisungen " + name).isEqualTo(sollZuweisungen(ref, person));
+        }
+
+        // Am Stichtag ist KEINE der beiden Unterstützungen schon wirksam, und beide haben ein
+        // Ende — das ist der Beleg für „Zuweisung in der Zukunft" und „beendete Unterstützung",
+        // den sonst Sabine geliefert hätte.
+        String stichtag = ref.path("unternehmen").path("momentaufnahme").asText();
+        assertThat(count("SELECT count(*) FROM zugriff WHERE tenant_id = '" + AHRENBERG_TENANT
+                + "' AND rolle = 'unterstuetzer' AND gueltig_ab > TIMESTAMPTZ '" + stichtag + "'"))
+                .as("beide Unterstützungen liegen hinter dem Stichtag").isEqualTo(2L);
+        assertThat(count("SELECT count(*) FROM zugriff WHERE tenant_id = '" + AHRENBERG_TENANT
+                + "' AND rolle = 'unterstuetzer' AND endet_am IS NULL"))
+                .as("eine Unterstützung ohne Ende gibt es nicht").isZero();
+
+        // Die VoltPilot-Unterstützung wurde angefragt und am selben Tag gewährt; der
+        // Installateur wird gewährt, nie gefragt — also genau EINE Anfrage.
+        assertThat(count("SELECT count(*) FROM unterstuetzung_anfrage WHERE tenant_id = '"
+                + AHRENBERG_TENANT + "'")).isEqualTo(1L);
+        assertThat(text("SELECT to_char(gueltig_ab AT TIME ZONE zeitzone, 'DD.MM.YYYY')"
+                + " || ' / ' || to_char(entschieden_am AT TIME ZONE zeitzone, 'DD.MM.YYYY')"
+                + " FROM unterstuetzung_anfrage WHERE tenant_id = '" + AHRENBERG_TENANT + "'"))
+                .as("angefragt und am selben Tag entschieden").isEqualTo("21.10.2026 / 21.10.2026");
+
+        // 7. AP-01 IP-14 — die Funktionszustände: nur „Steuern & Optimieren" an ST-1 ist ein
+        //    Objekt. AN-1 trägt als einzige Anlage der Referenz ein Betriebsmodell.
+        assertThat(texte("SELECT s.kurzzeichen || ' ' || f.funktion || ' = ' || f.zustand"
+                + " FROM funktion f JOIN standort s ON s.id = f.standort_id"
+                + " WHERE f.tenant_id = '" + AHRENBERG_TENANT + "' ORDER BY 1"))
+                .containsExactly("ST-1 steuern = aktiv");
+        assertThat(texte("SELECT si.name || ' = ' || t.zustand || ' seit '"
+                + " || to_char(t.gestartet_am AT TIME ZONE 'Europe/Berlin', 'DD.MM.YYYY')"
+                + " || (CASE WHEN t.uebernommen THEN ' (übernommen)' ELSE '' END)"
+                + " FROM funktion_teilnahme t JOIN site si ON si.id = t.site_id"
+                + " WHERE t.tenant_id = '" + AHRENBERG_TENANT + "' ORDER BY 1"))
+                .containsExactly(anlagenname(ref, "AN-1") + " = aktiv seit 02.05.2024 (übernommen)");
+        // Der Tag stammt aus der Referenz, nicht aus diesem Test.
+        assertThat(ref.path("anlagen").get(0).path("betriebsmodell_seit").asText())
+                .startsWith("2024-05-02");
+
+        // 8. Rechte-Zaun: für einen anderen Kundenbereich ist Ahrenberg unsichtbar.
         try (Connection app = DriverManager.getConnection(POSTGRES.getJdbcUrl(), APP_USER, APP_PW);
                 Statement s2 = app.createStatement()) {
             s2.execute("SET app.tenant_id = '10000000-0000-0000-0000-000000000001'");
             for (String tabelle : List.of("standort", "ort", "ort_zuordnung", "flaeche_gueltigkeit",
-                    "anlage_standort", "unternehmen", "site", "device")) {
+                    "anlage_standort", "unternehmen", "site", "device",
+                    "benutzer", "zugriff", "unterstuetzung_anfrage", "unterstuetzung_anfrage_standort",
+                    "funktion", "funktion_teilnahme")) {
                 try (ResultSet rs = s2.executeQuery("SELECT count(*) FROM " + tabelle
                         + " WHERE tenant_id = '" + AHRENBERG_TENANT + "'")) {
                     rs.next();
@@ -196,6 +253,119 @@ class DevSeedGuardTest {
                 }
             }
         }
+    }
+
+    /**
+     * <b>Die Rechte-Probe je Rolle</b> (AP-03 IP-16, Auftrag des Pakets) — als TATSACHE, ohne
+     * etwas daran zu ändern: Was sieht jede der sieben Personen des Seeds, wenn der Zaun
+     * {@code site_scope} (IP-5) aus ihren wirksamen Zuweisungen gestellt wird?
+     *
+     * <p>Gestellt wird genau das, was {@code ZugriffKontextLader} je Anfrage stellt:
+     * {@code app.zugriff} ({@code unternehmen} oder {@code standort}) und
+     * {@code app.standort_ids}. Gezählt wird unter der Laufzeitrolle {@code voltpilot_app},
+     * nicht als Superuser — sonst liefe die Policy gar nicht.
+     *
+     * <p>Gemessen wird an ZWEI Zeitpunkten, weil die beiden Unterstützungen hinter dem
+     * Stichtag liegen: am Stichtag der Referenz (20.10.2026 10:15) und am 01.12.2026, wo
+     * Brunner wirksam und Voss abgelaufen ist. Der Unterschied IST der Befund.
+     */
+    @Test
+    @Order(4)
+    void rechteProbeJeRolleGegenDenSeed() throws Exception {
+        assertThat(probe("2026-10-20 10:15:00+02")).containsExactly(
+                "Claudia Berger | leser | ST-1, ST-2 | 2 Standorte",
+                "Ines Kaltenbach | energiemanager | unternehmensweit | 2 Standorte",
+                "Jonas Wendlinger | kundenadministrator | unternehmensweit | 2 Standorte",
+                "Lena Voss | - | keine Zuweisung | 0 Standorte",
+                "Murat Demirci | bedienberechtigt | ST-1 | 1 Standort",
+                "Peter Hollerbach | bearbeiter | ST-2 | 1 Standort",
+                "Thomas Brunner | - | keine Zuweisung | 0 Standorte");
+
+        assertThat(probe("2026-12-01 12:00:00+01")).containsExactly(
+                "Claudia Berger | leser | ST-1, ST-2 | 2 Standorte",
+                "Ines Kaltenbach | energiemanager | unternehmensweit | 2 Standorte",
+                "Jonas Wendlinger | kundenadministrator | unternehmensweit | 2 Standorte",
+                "Lena Voss | - | keine Zuweisung | 0 Standorte",
+                "Murat Demirci | bedienberechtigt | ST-1 | 1 Standort",
+                "Peter Hollerbach | bearbeiter | ST-2 | 1 Standort",
+                "Thomas Brunner | unterstuetzer | ST-1 | 1 Standort");
+
+        // Und die zweite Frage des Auftrags — „wer darf die Benutzerliste?" — beantwortet die
+        // Rechte-Matrix, nicht diese Datenbank: `benutzer.verwalten` hat NUR der
+        // Kundenadministrator (U), jede andere Rolle „-". Hier nur festgehalten, nicht geändert.
+        JsonNode matrix = new ObjectMapper().readTree(
+                Path.of("..", "..", "docs", "contracts", "v2", "rechte-matrix.json").toFile());
+        JsonNode zellen = null;
+        for (JsonNode a : matrix.path("aktionen")) {
+            if ("benutzer.verwalten".equals(a.path("kennung").asText())) {
+                zellen = a.path("zellen");
+            }
+        }
+        assertThat(zellen).as("`benutzer.verwalten` steht in der Matrix").isNotNull();
+        assertThat(zellen.path("kundenadministrator").asText()).isEqualTo("U");
+        for (String rolle : List.of("energiemanager", "bearbeiter", "bedienberechtigt", "leser",
+                "unterstuetzer")) {
+            assertThat(zellen.path(rolle).asText()).as("benutzer.verwalten " + rolle).isEqualTo("-");
+        }
+    }
+
+    /** „Name | Rolle | Geltungsbereich | was der Zaun durchlässt" je Person, zum Zeitpunkt. */
+    private List<String> probe(String zeitpunkt) throws Exception {
+        List<String> zeilen = new ArrayList<>();
+        try (Connection app = DriverManager.getConnection(POSTGRES.getJdbcUrl(), APP_USER, APP_PW);
+                Statement s = app.createStatement()) {
+            s.execute("SET app.tenant_id = '" + AHRENBERG_TENANT + "'");
+            for (String sub : texte("SELECT sub FROM benutzer WHERE tenant_id = '" + AHRENBERG_TENANT
+                    + "' ORDER BY anzeigename")) {
+                String name = text("SELECT anzeigename FROM benutzer WHERE tenant_id = '"
+                        + AHRENBERG_TENANT + "' AND sub = '" + sub + "'");
+                // Die wirksamen Zuweisungen zum Zeitpunkt - dieselbe Bedingung wie `zugriff_zeitraum`.
+                String wirksam = " FROM zugriff WHERE tenant_id = '" + AHRENBERG_TENANT + "'"
+                        + " AND benutzer_sub = '" + sub + "' AND beendet_am IS NULL"
+                        + " AND gueltig_ab <= TIMESTAMPTZ '" + zeitpunkt + "'"
+                        + " AND (endet_am IS NULL OR endet_am > TIMESTAMPTZ '" + zeitpunkt + "')";
+                List<String> rollen = texte("SELECT DISTINCT rolle" + wirksam + " ORDER BY 1");
+                boolean unternehmensweit =
+                        count("SELECT count(*)" + wirksam + " AND standort_id IS NULL") > 0;
+                List<String> ids = texte("SELECT standort_id::text" + wirksam
+                        + " AND standort_id IS NOT NULL ORDER BY 1");
+
+                s.execute("SET app.zugriff = '" + (unternehmensweit ? "unternehmen" : "standort") + "'");
+                s.execute("SET app.standort_ids = '{" + String.join(",", ids) + "}'");
+                List<String> kurz = new ArrayList<>();
+                try (ResultSet rs = s.executeQuery(
+                        "SELECT kurzzeichen FROM standort ORDER BY kurzzeichen")) {
+                    while (rs.next()) {
+                        kurz.add(rs.getString(1));
+                    }
+                }
+                long anlagen;
+                try (ResultSet rs = s.executeQuery("SELECT count(*) FROM site")) {
+                    rs.next();
+                    anlagen = rs.getLong(1);
+                }
+                // Rechte hängen am Standort, Daten am Stichtag (A16): eine Anlage ist für eine
+                // standortbeschränkte Person nur sichtbar, solange sie HEUTE — echtes Heute, nicht
+                // der Zeitpunkt der Probe — an ihrem Standort hängt. Deshalb steht die Zahl nicht
+                // in der Tabelle, sondern wird gegen `anlage_standort` gerechnet.
+                long erwartet = unternehmensweit
+                        ? count("SELECT count(*) FROM site WHERE tenant_id = '" + AHRENBERG_TENANT + "'")
+                        : ids.isEmpty() ? 0L
+                                : count("SELECT count(DISTINCT a.site_id) FROM anlage_standort a"
+                                        + " WHERE a.tenant_id = '" + AHRENBERG_TENANT + "'"
+                                        + " AND a.standort_id IN ('" + String.join("','", ids) + "')"
+                                        + " AND a.gueltig_ab <= current_date"
+                                        + " AND (a.gueltig_bis IS NULL OR a.gueltig_bis >= current_date)");
+                assertThat(anlagen).as("Anlagen für " + name + " am " + zeitpunkt).isEqualTo(erwartet);
+
+                String bereich = unternehmensweit ? "unternehmensweit"
+                        : rollen.isEmpty() ? "keine Zuweisung" : String.join(", ", kurz);
+                zeilen.add(name + " | " + (rollen.isEmpty() ? "-" : String.join("+", rollen))
+                        + " | " + bereich + " | " + kurz.size()
+                        + (kurz.size() == 1 ? " Standort" : " Standorte"));
+            }
+        }
+        return zeilen;
     }
 
     /**
@@ -235,7 +405,8 @@ class DevSeedGuardTest {
     private String abdruck(String vergleich) throws Exception {
         StringBuilder sb = new StringBuilder();
         for (String tabelle : List.of("tenant", "unternehmen", "standort", "ort", "ort_zuordnung",
-                "flaeche_gueltigkeit", "anlage_standort", "site", "device", "ort_kurzzeichen")) {
+                "flaeche_gueltigkeit", "anlage_standort", "site", "device", "ort_kurzzeichen",
+                "benutzer", "zugriff", "unterstuetzung_anfrage", "funktion", "funktion_teilnahme")) {
             String spalte = "tenant".equals(tabelle) ? "id" : "tenant_id";
             sb.append(tabelle).append('=')
                     .append(text("SELECT coalesce(string_agg(t.z, '|' ORDER BY t.z), '-') FROM ("
@@ -298,6 +469,55 @@ class DevSeedGuardTest {
                     + " bis " + (bis.isNull() || bis.isMissingNode() ? "offen" : bis.asText()));
         }
         return soll;
+    }
+
+    /** `personen[].art` der Referenz → das Wort des Vokabulars `konto`. */
+    private String sollKonto(JsonNode person) {
+        String art = person.path("art").asText();
+        if ("benutzer".equals(art)) {
+            return "benutzer";
+        }
+        // Ein Unterstützer ist Partner ODER Plattform — die Organisation sagt, welcher.
+        return "VoltPilot".equals(person.path("unterstuetzung").path("organisation").asText())
+                ? "plattform" : "partner";
+    }
+
+    /** „rolle @ ST-x ab TT.MM.JJJJ bis TT.MM.JJJJ" je Zuweisung, aufsteigend. */
+    private List<String> zuweisungen(String name) throws Exception {
+        return texte("SELECT z.rolle || ' @ ' || coalesce(s.kurzzeichen, '-')"
+                + " || ' ab ' || to_char(z.gueltig_ab AT TIME ZONE z.zeitzone, 'DD.MM.YYYY')"
+                + " || ' bis ' || coalesce(to_char(z.gueltig_bis, 'DD.MM.YYYY'), 'offen')"
+                + " FROM zugriff z LEFT JOIN standort s ON s.id = z.standort_id"
+                + " JOIN benutzer b ON b.tenant_id = z.tenant_id AND b.sub = z.benutzer_sub"
+                + " WHERE z.tenant_id = '" + AHRENBERG_TENANT + "' AND b.anzeigename = '" + name + "'"
+                + " ORDER BY 1");
+    }
+
+    /**
+     * Dieselbe Zeile aus der Referenz gerechnet: Rolle klein geschrieben, je Standort eine
+     * Zeile (unternehmensweit „-"), „seit" als Tag in der Zeitzone des Standorts, „gültig bis"
+     * nur bei einer Unterstützung.
+     */
+    private List<String> sollZuweisungen(JsonNode ref, JsonNode person) {
+        String rolle = person.path("rolle").asText().toLowerCase(java.util.Locale.ROOT)
+                .replace("ü", "ue").replace("ä", "ae").replace("ö", "oe");
+        String ab = OffsetDateTime.parse(person.path("seit").asText())
+                .atZoneSameInstant(java.time.ZoneId.of("Europe/Berlin"))
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+        JsonNode bis = person.path("gueltig_bis");
+        String ende = bis.isNull() || bis.isMissingNode() ? "offen"
+                : LocalDate.parse(bis.asText())
+                        .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+        List<String> orte = new ArrayList<>();
+        if ("unternehmen".equals(person.path("geltungsbereich_art").asText())) {
+            orte.add("-");
+        } else {
+            person.path("standorte").forEach(n -> orte.add(n.asText()));
+            assertThat(orte).as("Standorte " + person.path("name").asText()).isNotEmpty();
+            // Die Referenz nennt sie als ST-x; genau diese Standorte kennt der Seed.
+            assertThat(kennzeichen(ref.path("standorte"))).containsAll(orte);
+        }
+        return orte.stream().sorted().map(o -> rolle + " @ " + o + " ab " + ab + " bis " + ende).toList();
     }
 
     private List<String> texte(String sql) throws Exception {
