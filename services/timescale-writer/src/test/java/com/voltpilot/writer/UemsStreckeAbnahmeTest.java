@@ -82,8 +82,15 @@ class UemsStreckeAbnahmeTest {
     /** Die Datenannahme weist eine Messzeit ab, die weiter als das in der Zukunft liegt. */
     private static final Duration UHR_TOLERANZ = Duration.ofMinutes(5);
 
-    /** Arten, die der LÜCKEN-MELDER schreibt (AP-07 IP-9), nie der Writer beim Einlauf. */
-    private static final Set<String> MELDER_ARTEN = Set.of("data_gap", "backfill");
+    /**
+     * Arten, die ein TAKT in {@code services/api} schreibt, nie der Writer beim Einlauf:
+     * {@code data_gap} und {@code backfill} der Lücken-Melder (AP-07 IP-9),
+     * {@code late_arrival} der {@code SpaetankunftMelder} (IP-13). Der Writer sieht beim
+     * Einlauf einen einzelnen Wert — ob dessen Viertelstunde schon endgültig war oder ob eine
+     * Reihe schweigt, weiß er nicht und darf er nicht raten.
+     */
+    private static final Set<String> MELDER_ARTEN =
+            Set.of("data_gap", "backfill", "late_arrival");
 
     private static JsonNode drehbuch;
 
@@ -245,7 +252,16 @@ class UemsStreckeAbnahmeTest {
             lautDrehbuch.merge(r.path("messstelle").asText() + "/" + r.path("rolle").asText(),
                     r.path("rohzeilen").asLong(), Long::sum);
         }
-        if (!erwartet.equals(lautDrehbuch)) {
+        // Das Drehbuch zählt nur die Reihen AUF, um die es dem Abnahmefall geht; A3 spielt
+        // daneben die Kontrollgruppe MS-05…MS-08 („MS-01…MS-08 ohne Ereignis"), die es nicht
+        // nennt. Es muss also Teilmenge sein — wo es eine Reihe nennt, muss die Zahl stimmen.
+        Map<String, Long> strittig = new TreeMap<>();
+        lautDrehbuch.forEach((k, v) -> {
+            if (!v.equals(erwartet.get(k))) {
+                strittig.put(k, v);
+            }
+        });
+        if (!strittig.isEmpty()) {
             // ⚠ A6, Befund am Drehbuch: der „Nachzügler mit Messzeit VOR dem Wechsel"
             // (Sequenz 90 503) trägt 05:29:50 — GENAU die Messzeit des Umschlags 90 502, der
             // schon liegt. Die Idempotenz (E3) speichert ihn zu Recht kein zweites Mal, also
@@ -256,7 +272,7 @@ class UemsStreckeAbnahmeTest {
             // Messzeiten. Wir folgen den Zeitstempeln, nicht dem Abnahmetext.
             assertThat(schluessel)
                     .as("nur A6 weicht bekannt ab; jede andere Abweichung ist neu und zu klären:"
-                            + " aus den Zustellungen " + erwartet + " vs. Drehbuch " + lautDrehbuch)
+                            + " aus den Zustellungen " + erwartet + " vs. Drehbuch " + strittig)
                     .isEqualTo("A6");
         }
         Map<String, String> entity = new LinkedHashMap<>();
@@ -567,7 +583,37 @@ class UemsStreckeAbnahmeTest {
         if ("sequence_gap".equals(art) || "sequence_reset".equals(art)) {
             return ausDenSequenzen(szenario, art);
         }
+        if ("unassigned_reader".equals(art)) {
+            return ausDenSpiegeln(szenario);
+        }
         return ereignisSequenzenOderZahl(szenario, art);
+    }
+
+    /**
+     * {@code unassigned_reader} entsteht EINMAL je Umschlag, Box und Datenquelle — gebündelt
+     * als Zeitraum über die gespiegelten Messzeiten, mit {@code anzahl}, und gedrosselt auf
+     * höchstens einmal je Stunde je Box und Datenquelle ({@code MesswertEreignisse}).
+     *
+     * <p>⚠ Befund am Drehbuch: A6 zählt VIER auf, eine je Messstelle. Das widerspricht der
+     * Bündelung und dem Abnahmetext A9 selbst („≤ 1 je Stunde"). Gespielt wird EIN Umschlag
+     * mit gespiegelten Werten, also ist EINS richtig.
+     */
+    private static long ausDenSpiegeln(JsonNode szenario) {
+        Set<String> gedrosselt = new LinkedHashSet<>();
+        for (JsonNode z : szenario.path("zustellungen")) {
+            if (!"measurement-samples".equals(z.path("strom").asText()) || vorgehend(z)) {
+                continue;
+            }
+            String box = z.path("nutzlast").path("device_id").asText();
+            for (JsonNode sample : z.path("nutzlast").path("samples")) {
+                String messzeit = sample.path("observed_at").asText();
+                if (!zustaendig(szenario, box, messzeit)) {
+                    gedrosselt.add(box + "|" + messzeit.substring(0, 13));   // Box je Stunde
+                    break;
+                }
+            }
+        }
+        return gedrosselt.size();
     }
 
     /** Sprünge der Sequenz je Box über die GESPIELTEN Umschläge, in ihrer Reihenfolge. */
