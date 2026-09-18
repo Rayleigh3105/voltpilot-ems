@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import { STANDORT_ZUERST_SATZ, STANDORT_ZUERST_TITEL, steuerGeldWoerter } from './anlegeNurMessen';
+import { GELD_BLEIBT, STARTSEITE_UNTERNEHMEN, STEUERUNG_BLEIBT } from './standortVorschlag';
 import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from './steuernAssistent';
 import { everydayArticles } from './help/content/alltag';
 import { GESAMTWERT, SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
@@ -2242,5 +2243,26 @@ describe('AP-14 IP-4 · erste Minute des Messkunden', () => {
 
   it('spricht vor der eigenen Steuerungsseite weder von Steuern noch Geld', () => {
     expect(steuerGeldWoerter(`${STANDORT_ZUERST_TITEL} ${STANDORT_ZUERST_SATZ}`)).toEqual([]);
+  });
+});
+
+describe('AP-14 IP-14 · Bestandsschutz in der Standort-Vorschau', () => {
+  const texte = [STARTSEITE_UNTERNEHMEN, GELD_BLEIBT, STEUERUNG_BLEIBT];
+
+  it('trägt den verbindlichen Wortlaut additiv', () => {
+    expect(texte.join(' ')).toBe(
+      'Ihre Startseite wird die Unternehmens-Übersicht. Erlöse und Kosten finden Sie weiter im Cockpit jeder Anlage, im Portfolio und unter Erlöse. An Steuerung, Fahrplänen und Freigaben ändert sich nichts.',
+    );
+  });
+
+  it('enthält weder Betreiberwörter noch Pilot oder Rollout', () => {
+    const intern = /\b(?:Pilot|Rollout|Betreiber)\b/i;
+    const falsch = texte.flatMap((text) => [
+      ...[...FORBIDDEN, ...FORBIDDEN_INTERN]
+        .filter(({ re }) => re.test(ohneAusnahmen(text)))
+        .map(({ why }) => `${text}: ${why}`),
+      ...(intern.test(text) ? [`${text}: internes Einführungswort`] : []),
+    ]);
+    expect(falsch).toEqual([]);
   });
 });

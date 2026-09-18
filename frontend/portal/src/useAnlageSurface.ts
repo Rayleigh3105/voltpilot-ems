@@ -145,7 +145,7 @@ export function useAnlageSurface(
         entities: entities?.entities ?? null,
         profileStates: profileStatesFrom(shelf),
       });
-      const geldRegel = anlageOhneGeld(siteId, geld.funktionen, geld.zeile) ? ohneGeld(projektion) : projektion;
+      const geldRegel = anlageOhneGeld(siteId, geld.funktionen, geld.zeile, tarifArt) ? ohneGeld(projektion) : projektion;
       setSurface(mitEnergiebilanz(geldRegel, geld.bilanz));
       setFailed(entitiesFailed);
       setLoading(false);

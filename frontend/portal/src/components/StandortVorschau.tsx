@@ -3,9 +3,9 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type StandortZuordnungVorschau } from '../api';
+import { api, type Betriebsart, type Site, type StandortZuordnungVorschau } from '../api';
 import { useRollen } from '../rollen';
-import { alleZusammenlegen, anfrage, formular, pruefen, type VorschlagGruppeForm } from '../standortVorschlag';
+import { alleZusammenlegen, anfrage, formular, pruefen, wasSichAendert, type VorschlagGruppeForm } from '../standortVorschlag';
 import './StandortVorschau.css';
 
 export function NochNichtZugeordnetKarte({ vorschau, onOeffnen }: {
@@ -25,9 +25,14 @@ export function NochNichtZugeordnetKarte({ vorschau, onOeffnen }: {
   );
 }
 
-export function StandortVorschau({ open, vorschau, onClose, onBestaetigt }: {
+export function StandortVorschau({ open, vorschau, aktuelleEbene, isAdmin, betriebsart, anlagen, anwendungen, onClose, onBestaetigt }: {
   open: boolean;
   vorschau: StandortZuordnungVorschau | null;
+  aktuelleEbene: 'heute' | 'standort' | 'unternehmen';
+  isAdmin: boolean;
+  betriebsart: Betriebsart | null;
+  anlagen: readonly Pick<Site, 'tarifArt'>[];
+  anwendungen: readonly string[];
   onClose: () => void;
   onBestaetigt: () => void;
 }) {
@@ -64,6 +69,7 @@ export function StandortVorschau({ open, vorschau, onClose, onBestaetigt }: {
   }
 
   if (!rollen.darf('standort.verwalten', null)) return null;
+  const aenderungen = wasSichAendert({ aktuelleEbene, zielGruppen: gruppen.length, isAdmin, betriebsart, anlagen, anwendungen });
 
   return (
     <Modal
@@ -103,9 +109,10 @@ export function StandortVorschau({ open, vorschau, onClose, onBestaetigt }: {
             <p className="vp-sv-zone">Zeitzone {g.zeitzone}</p>
           </Card>
         ))}
-        <aside className="vp-sv-folgen">
-          <strong>Bis Sie bestätigen, ändert sich nichts</strong>
-          <p>Ihr Portfolio bleibt, wie es ist. Nach der Bestätigung gruppiert die Übersicht nach Standorten; Cockpits, Fahrpläne, Freigaben und Lesezeichen bleiben.</p>
+        <aside className="vp-sv-folgen" aria-labelledby="vp-sv-aenderungen">
+          <p className="vp-sv-vorher">Bis Sie bestätigen, ändert sich nichts.</p>
+          <h3 id="vp-sv-aenderungen">Was sich ändert</h3>
+          {aenderungen.map((satz) => <p key={satz}>{satz}</p>)}
         </aside>
         {fehler && <p className="vp-sv-fehler" role="alert">{fehler}</p>}
       </form>

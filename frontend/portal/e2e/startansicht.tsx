@@ -517,6 +517,20 @@ const SZENEN = {
     liste: ahrenbergHeute(),
     unternehmen: ahrenbergUnternehmen(),
   },
+  /** AP-14 IP-14: gestern Portfolio — drei Bestandsanlagen, noch ohne Standort. */
+  'bestand-mehrere': {
+    sites: [halle1, halle2, lindach],
+    liste: {
+      stichtag: '2026-10-20',
+      standorte: [],
+      nichtGezeigt: [],
+      nochNichtZugeordnet: {
+        anlagenZahl: 3,
+        anlagen: [halle1, halle2, lindach].map((a) => ({ id: a.id, name: a.name })),
+      },
+    },
+    unternehmen: ahrenbergUnternehmen({ standortZahl: 0, anlagenZahl: 3, sitz: null }),
+  },
   /** Peter Hollerbach am 20.10.2026: Zugriff nur auf Werk Lindach — der reine Messkunde (A13). */
   messkunde: {
     sites: [lindach],
@@ -547,7 +561,19 @@ if (rechteAnsicht) {
   const sichtbar = new Set(szene.liste.standorte.flatMap(s => s.anlagen.map(a => a.id)));
   szene.sites = szene.sites.filter(s => sichtbar.has(s.id));
 }
-const sites = szene.sites as Site[];
+const vorschauArt = params.get('vorschauart');
+const sites = szene.sites.map((site) => vorschauArt ? {
+  ...site,
+  latitude: null,
+  longitude: null,
+  plantKind: 'eigenverbrauch',
+  anzulegenderWertCtKwh: null,
+  tarifArt: vorschauArt === 'messkunde' ? 'ohne' : 'fest',
+  tarifParamCtKwh: vorschauArt === 'messkunde' ? null : 31.4,
+  netzladenErlaubt: false,
+  maxFeedInKw: null,
+  leistungspreisEurKw: vorschauArt === 'steuerkunde' ? 120 : null,
+} : site) as Site[];
 const siteIds = sites.map((s) => s.id);
 let standortVorschlagOffen = params.get('vorschlag') === 'offen';
 const standortVorschlag = {
@@ -562,7 +588,20 @@ const standortVorschlag = {
 
 // Die gestellte Cloud: nur, was die Flotten-Fläche liest.
 const overview: Overview = {
-  sites: siteIds.map((id) => ZEILEN[id]),
+  sites: siteIds.map((id) => vorschauArt
+    ? {
+        ...ZEILEN[id],
+        roleCounts: vorschauArt === 'steuerkunde' && id === an1
+          ? ZEILEN[id].roleCounts
+          : { pv: 0, storage: 0, consumer: 1, grid: 1 },
+        live: vorschauArt === 'steuerkunde'
+          ? ZEILEN[id].live
+          : { ...ZEILEN[id].live, pvKw: null, socPct: null },
+        anwendungen: vorschauArt === 'steuerkunde' && id === an1
+          ? ['monitoring', 'lastspitzenkappung']
+          : ['monitoring'],
+      }
+    : ZEILEN[id]),
   totals: {
     sites: siteIds.length,
     devices: siteIds.length,
@@ -624,6 +663,10 @@ Object.assign(api, {
     : { gruppen: [], anlagenZahl: 0 },
   standortZuordnungBestaetigen: async () => {
     standortVorschlagOffen = false;
+    if (bild === 'bestand-mehrere') {
+      szene.liste = ahrenbergHeute();
+      szene.unternehmen = ahrenbergUnternehmen();
+    }
     return { standortIds: ['aa020000-0000-4000-8000-000000000010'], zuordnungen: 2 };
   },
   earnings: async () => {
@@ -1005,11 +1048,25 @@ async function nichtGestellt(): Promise<never> {
 /** IP-8: ein Standort ohne Anlage misst noch nicht und hat keine Teilnahme. */
 /** `GET /funktionen` der Szene: beide Funktionen je sichtbarem Standort — dieselbe Antwort für Schale und Seite. */
 function funktionenDerSzene() {
-  return ahrenbergFunktionen({
+  const basis = ahrenbergFunktionen({
     standorte: [funktionWerkAhrenberg(messenArt), funktionWerkLindach(messenArt)]
       .filter((f) => szene.liste.standorte.some((s) => s.id === f.id))
       .map(ohneAnlage),
   });
+  if (vorschauArt === 'steuerkunde' || !vorschauArt) return basis;
+  return {
+    ...basis,
+    standorte: basis.standorte.map((standort) => ({
+      ...standort,
+      steuern: {
+        ...standort.steuern,
+        anlagen: standort.steuern.anlagen.map((anlage) => ({
+          ...anlage,
+          teilnahme: { ...anlage.teilnahme, zustand: 'kein_objekt' as const },
+        })),
+      },
+    })),
+  };
 }
 
 function ohneAnlage(f: FunktionStandort): FunktionStandort {
@@ -1070,6 +1127,7 @@ function surfaceVon(id: string) {
 const FLOTTE = 'Meine Anlagen';
 
 function Vorschau() {
+  const [, setRevision] = useState(0);
   const rahmen = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde' as const };
   const orte = orteAus(szene.liste, szene.unternehmen);
   const ebene = startEbene({ ...rahmen, siteIds, orte, eingeschraenkt: !rollenMoment.unternehmensweit });
@@ -1433,7 +1491,7 @@ function Vorschau() {
           <PortfolioPage
             sites={sites}
             onNavigate={navigate}
-            onReload={() => undefined}
+            onReload={() => setRevision((revision) => revision + 1)}
             betriebsart="endkunde"
             ebene={unternehmensEbene}
           />

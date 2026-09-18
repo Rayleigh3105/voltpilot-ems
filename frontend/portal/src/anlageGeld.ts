@@ -100,8 +100,13 @@ export function anlageOhneGeld(
   siteId: string,
   funktionen: Funktionen | null,
   zeile: OverviewSite | null,
+  tarifArt?: string | null,
 ): boolean {
   if (!anlageAufEbene(siteId, funktionen)) return false;
+  // W7: Die Ebenen-Übersicht folgt weiterhin allein `geldAnlagen`. Auf den
+  // Bestandsflächen der Anlage bleiben tarifbasierte Kosten dagegen sichtbar;
+  // ein Standort darf sie durch die Zuordnung nicht verschwinden lassen.
+  if (tarifArt === 'fest' || tarifArt === 'dynamisch') return false;
   const fakt = zeile?.id === siteId ? zeile : ({ id: siteId } as OverviewSite);
   return !geldAnlagen([fakt], funktionen).has(siteId);
 }
