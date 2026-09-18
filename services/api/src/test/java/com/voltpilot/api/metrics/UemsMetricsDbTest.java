@@ -42,12 +42,20 @@ class UemsMetricsDbTest {
     private static final String ADMIN_USER = "voltpilot_admin";
     private static final String ADMIN_PW = "pw_admin";
 
-    /** Zwei Messkunden (aktive Funktion „Messen“) und einer, der nur steuert. */
+    /** Zwei Messkunden mit eingerichteter Funktion „Messen“ und einer, der nur steuert. */
     private static final UUID MESSKUNDE_A = UUID.fromString("71000000-0000-0000-0000-0000000009a1");
     private static final UUID MESSKUNDE_B = UUID.fromString("71000000-0000-0000-0000-0000000009b2");
     private static final UUID NUR_STEUERN = UUID.fromString("71000000-0000-0000-0000-0000000009c3");
-    /** Ein Kundenbereich, dessen Funktion „Messen“ noch ein Entwurf ist — er ist kein Messkunde. */
+    /**
+     * Ein Kundenbereich, dessen {@code funktion}-Zeile „messen“ auf {@code entwurf} steht — seit AP-14 IP-7
+     * ist das der NORMALFALL und er IST ein Messkunde: die Zeile wird einmal als {@code entwurf} geschrieben
+     * und nie mehr geändert, {@code aktiv} leitet erst das Lesen ab (BEFUND B2).
+     */
     private static final UUID MESSEN_ENTWURF = UUID.fromString("71000000-0000-0000-0000-0000000009d4");
+    /** Ein Kundenbereich, dessen Standort archiviert ist — er misst nicht mehr und zählt nicht mit. */
+    private static final UUID MESSEN_ARCHIVIERT = UUID.fromString("71000000-0000-0000-0000-0000000009e5");
+    /** Ein Kundenbereich, dessen Funktion „messen“ selbst archiviert ist — zählt ebenfalls nicht. */
+    private static final UUID FUNKTION_ARCHIVIERT = UUID.fromString("71000000-0000-0000-0000-0000000009f6");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -76,6 +84,8 @@ class UemsMetricsDbTest {
             kundenbereich(s, MESSKUNDE_B, "messen", "aktiv");
             kundenbereich(s, NUR_STEUERN, "steuern", "aktiv");
             kundenbereich(s, MESSEN_ENTWURF, "messen", "entwurf");
+            kundenbereich(s, MESSEN_ARCHIVIERT, "messen", "entwurf", true);
+            kundenbereich(s, FUNKTION_ARCHIVIERT, "messen", "archiviert");
 
             // Der Lückenstand je BOX: der jüngste Eingang. A hat zwei Boxen (die jüngere zählt),
             // B hat noch keine einzige - „nie ein Messwert“.
@@ -83,6 +93,11 @@ class UemsMetricsDbTest {
             box(s, MESSKUNDE_A, "00000000-0000-0000-0000-0000000000a2", "now() - interval '3 minutes'");
             // Auch der Nur-Steuern-Kunde hat Boxen - er darf trotzdem nicht im Export stehen.
             box(s, NUR_STEUERN, "00000000-0000-0000-0000-0000000000c1", "now() - interval '1 minute'");
+            // Der Entwurfs-Messkunde misst wirklich - genau darum muss der Betreiber ihn sehen.
+            box(s, MESSEN_ENTWURF, "00000000-0000-0000-0000-0000000000d1", "now() - interval '6 minutes'");
+            // Die beiden archivierten haben Boxen und bleiben trotzdem draußen.
+            box(s, MESSEN_ARCHIVIERT, "00000000-0000-0000-0000-0000000000e1", "now() - interval '1 minute'");
+            box(s, FUNKTION_ARCHIVIERT, "00000000-0000-0000-0000-0000000000f1", "now() - interval '1 minute'");
 
             // Die drei Arbeitslisten, je Liste mit einem ALTEN und einem jungen Eintrag, und der
             // alte je in einem ANDEREN Kundenbereich - die Metrik ist global, ohne Tenant-Label.
@@ -128,13 +143,29 @@ class UemsMetricsDbTest {
 
     // --- Dateneingang je Messkunde -------------------------------------------------------------
 
+    /**
+     * AP-14 IP-7 (BEFUND B2): ein Messkunde ist, wer „Messen &amp; Auswerten“ eingerichtet hat und dessen
+     * Standort besteht — NICHT, wer {@code zustand = 'aktiv'} in der Datenbank trägt. Diesen Zustand
+     * schreibt kein Weg des Produkts für „messen“; die Bedingung traf darum keinen Kunden, der über die
+     * Kundenrouten entstanden ist. Wer nur steuert und wer archiviert ist, bleibt draußen.
+     */
     @Test
-    void nurKundenbereicheMitAKTIVERFunktionMessenErscheinen() {
+    void jederKundenbereichMitEingerichtetemMessenErscheintAuchImEntwurf() {
         var eingaenge = repo.messkundenEingaenge();
 
         assertThat(eingaenge).extracting(MesskundeEingang::tenantId)
-                .containsExactlyInAnyOrder(MESSKUNDE_A, MESSKUNDE_B)
-                .doesNotContain(NUR_STEUERN, MESSEN_ENTWURF);
+                .as("der Entwurf ist der Normalfall des Kundenwegs und gehört dazu")
+                .containsExactlyInAnyOrder(MESSKUNDE_A, MESSKUNDE_B, MESSEN_ENTWURF)
+                .doesNotContain(NUR_STEUERN, MESSEN_ARCHIVIERT, FUNKTION_ARCHIVIERT);
+    }
+
+    @Test
+    void einArchivierterStandortUndEineArchivierteFunktionZaehlenNichtMit() {
+        var eingaenge = repo.messkundenEingaenge();
+
+        assertThat(eingaenge).extracting(MesskundeEingang::tenantId)
+                .as("beide haben eine junge Box-Zeile - und bleiben trotzdem draußen")
+                .doesNotContain(MESSEN_ARCHIVIERT, FUNKTION_ARCHIVIERT);
     }
 
     @Test
@@ -177,7 +208,11 @@ class UemsMetricsDbTest {
         assertThat(uems).noneMatch(l -> l.contains("Werke")).noneMatch(l -> l.contains("@"))
                 .noneMatch(l -> l.contains("name=")).noneMatch(l -> l.contains("serial="));
         assertThat(uems).noneMatch(l -> l.contains(NUR_STEUERN.toString()))
-                .noneMatch(l -> l.contains(MESSEN_ENTWURF.toString()));
+                .noneMatch(l -> l.contains(MESSEN_ARCHIVIERT.toString()))
+                .noneMatch(l -> l.contains(FUNKTION_ARCHIVIERT.toString()));
+        assertThat(scrape).as("der Entwurfs-Messkunde steht im Export - der Betreiber sieht ihn")
+                .contains("voltpilot_uems_kundenbereich_letzter_messwert_age_seconds{tenant=\""
+                        + MESSEN_ENTWURF + "\"}");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -193,18 +228,28 @@ class UemsMetricsDbTest {
     /** Kundenbereich mit Unternehmen, Standort und EINER Funktion im genannten Zustand. */
     private static void kundenbereich(Statement s, UUID tenant, String funktion, String zustand)
             throws Exception {
+        kundenbereich(s, tenant, funktion, zustand, false);
+    }
+
+    /** Wie oben; mit {@code standortArchiviert} steht der Standort auf {@code archiviert}. */
+    private static void kundenbereich(Statement s, UUID tenant, String funktion, String zustand,
+            boolean standortArchiviert) throws Exception {
         UUID unternehmen = UUID.randomUUID();
         UUID standort = UUID.randomUUID();
         s.execute("INSERT INTO tenant (id, name) VALUES ('" + tenant + "', 'Testvorrichtung "
                 + tenant.toString().substring(0, 8) + "')");
         s.execute("INSERT INTO unternehmen (id, tenant_id, name, zeitzone) VALUES ('" + unternehmen
                 + "', '" + tenant + "', 'Testvorrichtung', 'Europe/Berlin')");
+        // `standort_archiv_chk`: Zustand und Zeitpunkt gehören in EINE Zeile, nicht in zwei Befehle.
         s.execute("INSERT INTO standort (id, tenant_id, unternehmen_id, name, kurzzeichen, zeitzone,"
-                + " zustand) VALUES ('" + standort + "', '" + tenant + "', '" + unternehmen
-                + "', 'Werk', 'ST-1', 'Europe/Berlin', 'aktiv')");
-        s.execute("INSERT INTO funktion (tenant_id, standort_id, funktion, zustand, geaendert_von)"
-                + " VALUES ('" + tenant + "', '" + standort + "', '" + funktion + "', '" + zustand
-                + "', 'Testvorrichtung')");
+                + " zustand, archiviert_am) VALUES ('" + standort + "', '" + tenant + "', '" + unternehmen
+                + "', 'Werk', 'ST-1', 'Europe/Berlin', '"
+                + (standortArchiviert ? "archiviert', now()" : "aktiv', NULL") + ")");
+        // `funktion_archiviert_chk`: archiviert nur MIT Zeitpunkt.
+        s.execute("INSERT INTO funktion (tenant_id, standort_id, funktion, zustand, archiviert_am,"
+                + " geaendert_von) VALUES ('" + tenant + "', '" + standort + "', '" + funktion + "', '"
+                + zustand + "', " + ("archiviert".equals(zustand) ? "now()" : "NULL")
+                + ", 'Testvorrichtung')");
     }
 
     /** Eine Box-Zeile des Lücken-Melders: {@code zuletzt} ist der jüngste EINGANG (received_at). */

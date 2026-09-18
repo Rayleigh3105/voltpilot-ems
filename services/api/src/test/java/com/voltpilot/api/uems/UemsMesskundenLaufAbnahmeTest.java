@@ -132,6 +132,11 @@ class UemsMesskundenLaufAbnahmeTest {
     private static final Instant T_VERDICHTET = Instant.parse("2026-12-01T00:30:00Z");
     private static final Instant T_TAKT = Instant.parse("2026-12-01T01:00:00Z");
     private static final Instant T_ENDGUELTIG = Instant.parse("2026-12-08T07:00:00Z");
+    /** Der Takt, der die eben angelegten Kennzahlen rechnet — derselbe Läufer, eine Stunde später. */
+    private static final Instant T_KENNZAHL = Instant.parse("2026-12-08T08:00:00Z");
+
+    /** Die Bezugsfläche des Standorts, von Hand eingegeben — der Nenner der Kennzahl. */
+    private static final BigDecimal FLAECHE_M2 = new BigDecimal("8450");
 
     /**
      * Wörter, die auf dem ganzen Weg des reinen Messkunden in keiner API-Antwort stehen dürfen (U5, S2).
@@ -182,6 +187,10 @@ class UemsMesskundenLaufAbnahmeTest {
     @Autowired
     MessstelleWerteService werte;
 
+    /** Der ECHTE Kennzahl-Lauf — er hängt im Takt, sonst rechnet keine Kennzahl (AP-11 IP-6). */
+    @Autowired
+    KennzahlLauf kennzahlLauf;
+
     @Autowired
     UemsMetricsCollector metriken;
 
@@ -214,7 +223,7 @@ class UemsMesskundenLaufAbnahmeTest {
     /** Jede Antwort, die der Messkunde auf seinem Weg gesehen hat — für die Wortprobe am Ende. */
     private final List<String> gesehen = new ArrayList<>();
 
-    /** Die Antwort von {@code POST /api/v1/sites} — sie wird getrennt geprüft, siehe BEFUND B1. */
+    /** Die Antwort von {@code POST /api/v1/sites} — sie geht in die Sprachprobe ein, siehe B1. */
     private String anlageAntwort;
 
     @BeforeEach
@@ -267,6 +276,16 @@ class UemsMesskundenLaufAbnahmeTest {
         flaecheVonHand();
         UUID kennzahl = kennzahlAusVorlage();
 
+        // Gerechnet wird über den ECHTEN Läufer-Schritt, nicht über einen Aufruf von KennzahlLauf: derselbe
+        // Takt, der den November endgültig gemacht hat, rührt eine Stunde später auch die Kennzahl an. GENAU
+        // DAS fehlte PR 973 — die Kennzahl entstand nach dem letzten Takt und wurde darum nie gerechnet.
+        assertThat(zahl("SELECT count(*) FROM kennzahl_wert WHERE tenant_id = ?", kb))
+                .as("vor dem Takt gibt es keine einzige Kennzahl-Zeile").isZero();
+        laeufer.takt(T_KENNZAHL);
+        assertThat(zahl("SELECT count(*) FROM kennzahl_wert WHERE tenant_id = ? AND periode_art = 'monat' "
+                + "AND periode_von = DATE '2026-11-01'", kb))
+                .as("der Takt hat die Monats-Kennzahl des Novembers gerechnet").isEqualTo(1);
+
         // ---- Schritt 10: Bericht — Entwurf (Peter) → Freigabe (Anna) → PDF und CSV -----------------------------
         uhrBerichte("2026-12-09T09:00:00+01:00");
         Antwort angelegt = ok(ruf(peter, HttpMethod.POST, "/api/v1/berichte", Map.of("vorlage", "monatsbericht_standort",
@@ -313,6 +332,26 @@ class UemsMesskundenLaufAbnahmeTest {
         assertThat(csvText).as("dieselbe Zahl steht in der CSV")
                 .contains(erwartet.stripTrailingZeros().toPlainString().replace('.', ','));
 
+        // ---- Zusicherung 2b: das Glied „Kennzahl" schließt die Kette (AP-14 NW-4) ---------------------------
+        // Der Bericht trägt die Kennzahl endgültig, und sie wird hier UNABHÄNGIG nachgerechnet: die Menge aus
+        // den gesendeten Zählerständen, geteilt durch die Fläche, die der Kunde selbst eingetippt hat — nicht
+        // mit der Formel des Produkts.
+        JsonNode kennzahlen = abzugJson.path("kennzahlen");
+        assertThat(kennzahlen).as("der Abzug führt die Kennzahl, nicht mehr die leere Liste aus PR 973")
+                .hasSize(1);
+        JsonNode jeM2 = kennzahlen.get(0);
+        assertThat(jeM2.path("quelle").asText()).isEqualTo(kennzeichenVon(kennzahl));
+        assertThat(jeM2.path("fassung").asText()).as("die Kennzahl im Bericht ist endgültig")
+                .isEqualTo("endgültig");
+        assertThat(jeM2.path("einheit").asText()).isEqualTo("kWh/m²");
+        BigDecimal erwarteteKennzahl = erwartet.divide(FLAECHE_M2, 10, RoundingMode.HALF_UP);
+        assertThat(jeM2.path("wert").decimalValue())
+                .as("Menge ÷ Fläche, unabhängig gerechnet (" + erwartet.toPlainString() + " ÷ "
+                        + FLAECHE_M2.toPlainString() + " = " + erwarteteKennzahl.toPlainString()
+                        + "), der Bericht sagt " + jeM2.path("wert").decimalValue().toPlainString())
+                .isEqualByComparingTo(erwarteteKennzahl);
+        assertThat(csvText).as("dieselbe Kennzahl steht in der CSV").contains(kennzeichenVon(kennzahl));
+
         // ---- Zusicherung 3: die Lücke bleibt sichtbar — der Bericht verschweigt sie nicht ----------------------
         long inDerLuecke = zahl("SELECT count(*) FROM messreihe_viertelstunde WHERE tenant_id = ? "
                 + "AND intervall_beginn >= ? AND intervall_beginn < ?", kb, Timestamp.from(LUECKE_VON),
@@ -335,14 +374,21 @@ class UemsMesskundenLaufAbnahmeTest {
                 + "Messkunden — Standort, Box, Funktion, Datenquelle, Messstelle, Kennzahl, Bericht, Werte, CSV")
                 .isEmpty();
 
-        // BEFUND B1, als Tatsache festgehalten statt stillschweigend übergangen: die Antwort von
-        // POST /api/v1/sites trägt auch für eine Anlage „nur messen" die Wörter der steuernden Welt. Sie ist
-        // die EINZIGE Antwort des Kundenwegs, die das tut. Ändert sich das, wird diese Zusicherung rot und
-        // jemand muss die Zeile bewusst streichen — nicht aus Versehen.
-        assertThat(worteIn(List.of(anlageAntwort)))
-                .as("BEFUND B1: die Anlage-Antwort spricht zum reinen Messkunden von Geld und Steuern — "
-                        + "der Weg des Kunden führt daran vorbei, die Antwort selbst nicht: " + anlageAntwort)
-                .isNotEmpty();
+        // B1 aus PR 973 ist KEIN Befund (AP-14 IP-7b, am Code nachgesehen): was die Antwort von
+        // POST /api/v1/sites trägt, sind FELDNAMEN von {@code SiteDto} — allein
+        // {@code marktpraemieCtKwh}, mit dem Wert {@code null} —, keine Sprache; keine Fläche, die ein
+        // Messkunde öffnet, liest sie (alle Portal-Leser von {@code marktpraemieCtKwh} sitzen auf den
+        // Geld-Flächen, die {@code anlageGeld.ts} für diese Anlage abschaltet, und das Wort
+        // „Marktprämie" als Satz steht nur in {@code CreateSiteDrawer.tsx}, der Betreiber-Seite
+        // {@code pages/admin/MandantenPage.tsx}). An die Stelle der Zusicherung tritt die schärfere
+        // Probe: was der Messkunde wirklich LIEST — die Sprachfelder aller Antworten, die Anlage-Antwort
+        // eingeschlossen — schweigt über Steuern und Geld.
+        List<String> mitAnlage = new ArrayList<>(gesehen);
+        mitAnlage.add(anlageAntwort);
+        assertThat(worteIn(spracheIn(mitAnlage)))
+                .as("kein Wort von Steuern, Geld oder Fahrplan in dem, was der Messkunde LIEST — "
+                        + "Sprachfelder (message, text, satz, label) aller Antworten samt POST /api/v1/sites")
+                .isEmpty();
 
         // ---- Zusicherung 5: die UEMS-Metriken zeigen nach dem Lauf, was sie sollen (AP-14 IP-9) ---------------
         metriken.tick();
@@ -350,16 +396,19 @@ class UemsMesskundenLaufAbnahmeTest {
                 + "Gebrauch: je Läufer eine Zustandszeile").isPositive();
         assertThat(arbeitslistenOffen()).as("nach dem Lauf ist keine Arbeitsliste mehr offen").isZero();
 
-        // BEFUND B2, als Tatsache festgehalten: der Kundenbereich taucht in
-        // voltpilot_uems_kundenbereich_letzter_messwert_age_seconds NICHT auf, obwohl er einen freigegebenen
-        // Bericht aus gemessenen Werten hat. Die Abfrage MESSKUNDEN (UemsMetricsRepository) verlangt
-        // funktion.zustand = 'aktiv'; der Kundenweg des Referenzfalls U5 richtet „Messen & Auswerten“ in
-        // Schritt 5 ein — VOR Datenquelle und Messstelle —, und der Zustand bleibt danach unter 'aktiv'.
-        // Der Betreiber sähe diesen Messkunden also nicht. Wird das behoben, wird diese Zeile rot.
-        assertThat(messwertAlter()).as("BEFUND B2: der neue Messkunde fehlt in der Messwert-Metrik, weil "
-                + "„Messen & Auswerten“ nach dem Kundenweg nicht 'aktiv' ist — Zustand in der Datenbank: "
-                + root.queryForList("SELECT zustand FROM funktion WHERE tenant_id = ? AND funktion = 'messen'",
-                        String.class, kb)).isNull();
+        // B2 aus PR 973 ist behoben (AP-14 IP-7b): der Betreiber SIEHT diesen Messkunden. Die Abfrage
+        // MESSKUNDEN verlangte {@code funktion.zustand = 'aktiv'} — einen Zustand, den für „messen“ kein
+        // Weg des Produkts je schreibt (es gibt kein Starten, die Zeile bleibt auf 'entwurf', und 'aktiv'
+        // leitet erst das Lesen ab). Jetzt zählt, was einen Messkunden wirklich ausmacht: die Funktionszeile
+        // besteht und ihr Standort auch.
+        assertThat(root.queryForObject("SELECT zustand FROM funktion WHERE tenant_id = ? AND funktion = 'messen'",
+                String.class, kb))
+                .as("der Kundenweg hinterlässt 'entwurf' — das ist der Normalfall, nicht ein halber Zustand")
+                .isEqualTo("entwurf");
+        assertThat(messwertZustandDesKunden())
+                .as("der neue Messkunde steht in der Betreiber-Metrik — vorher fehlte er dort ganz, und "
+                        + "stockt bei ihm etwas, soll es der Betreiber vor dem Kunden wissen")
+                .isNotNull();
     }
 
     // =========================================================================== Schritt 1: Registrierung
@@ -386,8 +435,10 @@ class UemsMesskundenLaufAbnahmeTest {
         tage = new TagVerdichter(admin, katalog, 200, 40, 20_000, 200_000);
         BerechnetePeriodenLauf berechnete = mock(BerechnetePeriodenLauf.class);
         when(berechnete.zoneDesKundenbereichs(any())).thenReturn(BERLIN);
+        // Der Takt trägt den Kennzahl-Lauf MIT (AP-11 IP-6) — ohne ihn bliebe das Glied „Kennzahl" der
+        // Kette stumm, und genau das war der Zustand in PR 973.
         laeufer = new EndgueltigkeitLaeufer(new EndgueltigkeitLauf(admin, 2000, 200), tage,
-                new PeriodeVerdichter(admin, katalog, 50, 40, 2000), berechnete,
+                new PeriodeVerdichter(admin, katalog, 50, 40, 2000), berechnete, kennzahlLauf,
                 new KorrekturVorschlagLauf(admin, verdichter, melder, 200));
     }
 
@@ -488,12 +539,34 @@ class UemsMesskundenLaufAbnahmeTest {
 
     /**
      * Die Bezugsgröße von Hand — als BEZUGSFLÄCHE des Standorts (AP-11 E17: eine Bezugsfläche WIRD eine
-     * Bezugsgröße mit Wertart {@code stammdatum}). Der Weg über eine Bezugsgröße mit Wertart
-     * {@code periodenwert} steht dem Lauf nicht offen, siehe {@code BEFUND} in der Klassen-Beschreibung.
+     * Bezugsgröße mit Wertart {@code stammdatum}).
+     *
+     * <p><b>Warum nicht mit Wertart {@code periodenwert}</b> (AP-14 IP-7b, am Code nachgesehen): Dieser Lauf
+     * spielt im November 2026, und der liegt in der ECHTEN Zukunft. Ein Periodenwert für eine Periode, die
+     * nach der Uhr der DATENBANK noch nicht zu Ende ist, kann nicht geschrieben werden — und daran ändert
+     * keine Uhr des Dienstes etwas. Der CHECK {@code bezugsgroesse_wert_abgeschlossen_chk} (E16/Z4) misst
+     * das Periodenende gegen {@code created_at}, und {@code created_at} setzt ABSICHTLICH die Datenbank:
+     * die Spalte fehlt in der Spaltenliste des {@code GRANT INSERT} für {@code voltpilot_app}
+     * ({@code V20260913104500__uems_bezugsgroesse.sql:632-640}, mit genau diesem Satz als Kommentar).
+     * Die Bezugsfläche kennt diese Schranke nicht — ein Stammdatum hat keine Periode, die zu Ende gehen
+     * müsste —, und sie ist eine vollwertige Bezugsgröße: das Glied „Kennzahl" ist damit belegt.
      */
     private void flaecheVonHand() throws Exception {
         ok(ruf(anna, HttpMethod.PUT, "/api/v1/standorte/" + standort + "/flaeche",
-                Map.of("m2", 8450)), 200);
+                Map.of("m2", FLAECHE_M2.intValueExact())), 200);
+    }
+
+    private String kennzeichenVon(UUID kennzahl) {
+        return root.queryForObject("SELECT kennzeichen FROM kennzahl WHERE id = ?", String.class, kennzahl);
+    }
+
+    private static JsonNode kennzahlZeile(JsonNode kennzahlen, String kennzeichen) {
+        for (JsonNode k : kennzahlen) {
+            if (kennzeichen.equals(k.path("quelle").asText())) {
+                return k;
+            }
+        }
+        throw new AssertionError("Kennzahl " + kennzeichen + " fehlt im Abzug: " + kennzahlen);
     }
 
     /** Die Kennzahl aus der Vorlage „Energie je Fläche": Zähler = die Messstelle, Nenner = die Bezugsfläche. */
@@ -588,6 +661,18 @@ class UemsMesskundenLaufAbnahmeTest {
 
 
 
+    /**
+     * Der Zustand dieses Kundenbereichs in {@code voltpilot_uems_kundenbereich_messwert_zustand}
+     * ({@code bekannt} | {@code nie}), oder {@code null}, wenn der Kundenbereich in der Metrik GAR NICHT
+     * vorkommt — genau das war BEFUND B2. Das ALTER steht nur bei {@code bekannt}: es kommt aus dem
+     * Lücken-Melder, und der läuft in diesem Lauf nicht mit (der Takt kennt ihn nicht).
+     */
+    private String messwertZustandDesKunden() {
+        return register.find(UemsMetricsCollector.MESSWERT_ZUSTAND).gauges().stream()
+                .filter(g -> kb.toString().equals(g.getId().getTag("tenant")) && g.value() == 1.0)
+                .map(g -> g.getId().getTag("zustand")).findFirst().orElse(null);
+    }
+
     private Double messwertAlter() {
         return register.find(UemsMetricsCollector.MESSWERT_ALTER).gauges().stream()
                 .map(g -> g.value()).findFirst().orElse(null);
@@ -606,6 +691,48 @@ class UemsMesskundenLaufAbnahmeTest {
      */
     private long laeuferZustaende() {
         return register.find(UemsMetricsCollector.LAEUFER_ZUSTAND).gauges().stream().count();
+    }
+
+    /**
+     * Die Namen der Felder, die wirklich SPRACHE tragen — was eine Fläche wörtlich anzeigt. Ein Feldname
+     * wie {@code marktpraemieCtKwh} ist keine Sprache; sein Wert stand beim reinen Messkunden auf
+     * {@code null} und keine Kundenfläche liest ihn (B1, siehe oben).
+     */
+    private static final List<String> SPRACHFELDER = List.of("message", "text", "satz", "label",
+            "titel", "hinweis", "beschreibung", "kennzeichen", "grund", "anzeige");
+
+    /** Alle Zeichenketten unter einem Sprachfeld — rekursiv, auch in Listen und tiefer geschachtelt. */
+    private static List<String> spracheIn(List<String> antworten) {
+        List<String> aus = new ArrayList<>();
+        for (String antwort : antworten) {
+            if (antwort == null || antwort.isBlank()) {
+                continue;
+            }
+            try {
+                sprache(MAPPER.readTree(antwort), false, aus);
+            } catch (Exception e) {
+                // Keine JSON-Antwort (die CSV): sie geht als Ganzes durch die breite Probe.
+                aus.add(antwort);
+            }
+        }
+        return aus;
+    }
+
+    private static void sprache(JsonNode knoten, boolean drin, List<String> aus) {
+        if (knoten.isTextual()) {
+            if (drin) {
+                aus.add(knoten.asText());
+            }
+            return;
+        }
+        if (knoten.isArray()) {
+            knoten.forEach(k -> sprache(k, drin, aus));
+            return;
+        }
+        knoten.fields().forEachRemaining(f -> {
+            String name = f.getKey().toLowerCase(Locale.ROOT);
+            sprache(f.getValue(), drin || SPRACHFELDER.stream().anyMatch(name::endsWith), aus);
+        });
     }
 
     /** Welche der verbotenen Wörter in diesen Antworten vorkommen. */

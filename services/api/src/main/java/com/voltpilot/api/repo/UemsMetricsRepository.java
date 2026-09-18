@@ -48,9 +48,27 @@ public class UemsMetricsRepository {
             """;
 
     /**
-     * Der Dateneingang je MESSKUNDE: ein Kundenbereich mit mindestens einer AKTIVEN Funktion „Messen“
-     * — dieselbe Bedingung, die das Produkt stellt ({@code NetzanschlussVorschlagService}: {@code
-     * funktion = 'messen' AND zustand = 'aktiv'}).
+     * Der Dateneingang je MESSKUNDE: ein Kundenbereich, der irgendwo „Messen &amp; Auswerten“ eingerichtet
+     * hat und dessen Standort noch besteht.
+     *
+     * <p><b>Warum NICHT {@code zustand = 'aktiv'}</b> (die Bedingung bis AP-14 IP-7). Für „Messen &amp;
+     * Auswerten“ gibt es kein Starten: {@code FunktionService.MESSEN_AKTIONEN} kennt nur
+     * {@code einrichten}, und {@code FunktionZustandAbleitung.uebergangMessen} lehnt {@code starten} mit
+     * {@code STARTET_AUTOMATISCH} ab. Die Zeile in {@code funktion} wird genau EINMAL geschrieben
+     * ({@code FunktionService.messenStandort}, mit {@code uebergangMessen(...).nachher() == entwurf}) und
+     * danach von keinem Weg des Produkts mehr geändert — {@code nachziehen} und
+     * {@code FunktionBestandService} rühren nur {@code steuern} an. Der Zustand {@code aktiv}, den der Kunde
+     * in {@code GET /funktionen} liest, wird bei JEDEM Lesen frisch abgeleitet
+     * ({@code FunktionZustandAbleitung.messen}) und nie gespeichert. {@code zustand = 'aktiv'} traf deshalb
+     * keinen einzigen Messkunden, der über die Kundenrouten entstanden ist — der Betreiber sähe ihn nicht
+     * (AP-14 IP-7, BEFUND B2).
+     *
+     * <p><b>Was einen Messkunden wirklich ausmacht:</b> die Funktionszeile besteht
+     * ({@code zustand &lt;&gt; 'archiviert'}) und ihr Standort ist nicht archiviert — dieselben beiden Enden,
+     * die auch die Ableitung kennt ({@code kein_objekt} ohne Zeile, {@code archiviert} am archivierten
+     * Standort). {@code entwurf} zählt mit: er misst schon, und „stockt beim Messkunden etwas, weiß es der
+     * Betreiber vor dem Kunden“. {@code NetzanschlussVorschlagService} trägt die alte Bedingung weiter; sie
+     * ist dort ein anderer Zweck (eine Vorschlagsliste) und bleibt in diesem Paket unangetastet.
      *
      * <p><b>Warum nicht {@code device_measurement_sample} selbst.</b> Der Rohwert-Hypertable ist die
      * heißeste Tabelle der Plattform; ein {@code max(received_at)} je Kundenbereich liefe je
@@ -68,8 +86,11 @@ public class UemsMetricsRepository {
      */
     private static final String MESSKUNDEN = """
             SELECT m.tenant_id AS tenant_id, max(l.zuletzt) AS zuletzt
-              FROM (SELECT DISTINCT tenant_id FROM funktion
-                     WHERE funktion = 'messen' AND zustand = 'aktiv') m
+              FROM (SELECT DISTINCT f.tenant_id
+                      FROM funktion f
+                      JOIN standort s ON s.id = f.standort_id AND s.tenant_id = f.tenant_id
+                     WHERE f.funktion = 'messen' AND f.zustand <> 'archiviert'
+                       AND s.archiviert_am IS NULL) m
               LEFT JOIN messreihe_luecke_stand l
                      ON l.tenant_id = m.tenant_id AND l.art = 'box'
              GROUP BY m.tenant_id
