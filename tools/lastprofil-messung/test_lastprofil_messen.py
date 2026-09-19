@@ -103,3 +103,55 @@ def test_unlesbarer_umschlag_macht_die_samplezahl_nicht_messbar():
     text = bericht(ergebnis, umgebung="Test", commit="deadbeef")
     assert "Sample-Zahl in 1 unlesbaren Umschlägen unbekannt" in text
     assert "NICHT MESSBAR" in text
+
+
+def test_annahme_verwerfzaehler_werden_je_strom_gelesen():
+    ergebnis = auswerten(
+        fixture_lesen(FIXTURES, "before"), fixture_lesen(FIXTURES, "after"),
+        tenant=TENANT, profil_minuten=15,
+    )
+    assert ergebnis["annahme_verworfene_umschlaege"] == {
+        "measurements": 0, "telemetry": 0, "telemetry_v2": 0, "events": 0,
+    }
+    assert ergebnis["annahme_verworfene_umschlaege_luecke"] is None
+    text = bericht(ergebnis, umgebung="Testcontainers", commit="deadbeef")
+    assert "Umschläge in der Annahme verworfen | 0 | 0" in text
+
+
+def test_verwerfender_ingest_macht_die_annahme_zeile_rot():
+    vorher = fixture_lesen(FIXTURES, "before")
+    nachher = fixture_lesen(FIXTURES, "after")
+    nachher["ingest_metrics"] = nachher["ingest_metrics"].replace(
+        'voltpilot_ingest_verworfen_total{grund="ungueltig",strom="telemetry"} 0',
+        'voltpilot_ingest_verworfen_total{grund="ungueltig",strom="telemetry"} 4')
+    ergebnis = auswerten(vorher, nachher, tenant=TENANT, profil_minuten=15)
+    assert ergebnis["annahme_verworfene_umschlaege"]["telemetry"] == 4
+    text = bericht(ergebnis, umgebung="Test", commit="deadbeef")
+    assert "Umschläge in der Annahme verworfen | 0 | 4" in text
+    assert "NICHT BESTANDEN" in text
+
+
+def test_alter_ingest_ohne_metrik_endpunkt_bleibt_laut_nicht_messbar():
+    """Ein ingest VOR AP-14 IP-10 hat keinen /metrics - das darf nie als 0 durchgehen."""
+    vorher = fixture_lesen(FIXTURES, "before")
+    nachher = fixture_lesen(FIXTURES, "after")
+    for messpunkt in (vorher, nachher):
+        messpunkt["ingest_metrics"] = None
+    ergebnis = auswerten(vorher, nachher, tenant=TENANT, profil_minuten=15)
+    assert ergebnis["annahme_verworfene_umschlaege"] is None
+    text = bericht(ergebnis, umgebung="Altbestand", commit="deadbeef")
+    assert "Umschläge in der Annahme verworfen | 0 | NICHT MESSBAR" in text
+    assert "keinen /metrics-Endpunkt" in text
+
+
+def test_halb_gelieferter_ingest_ist_auch_nicht_messbar():
+    """Ein Strom fehlt: lieber laut NICHT MESSBAR als eine still zu kleine Summe."""
+    vorher = fixture_lesen(FIXTURES, "before")
+    nachher = fixture_lesen(FIXTURES, "after")
+    nachher["ingest_metrics"] = "\n".join(
+        line for line in nachher["ingest_metrics"].splitlines()
+        if 'strom="events"' not in line) + "\n"
+    ergebnis = auswerten(vorher, nachher, tenant=TENANT, profil_minuten=15)
+    assert ergebnis["annahme_verworfene_umschlaege"] is None
+    text = bericht(ergebnis, umgebung="Test", commit="deadbeef")
+    assert "NICHT MESSBAR" in text

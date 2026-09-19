@@ -93,7 +93,8 @@ class DatenannahmeTest {
     private void messwerte(String topic, String payload, String eingang, boolean eventsKaputt) {
         KafkaTemplate<String, String> kafka = kafka(eventsKaputt);
         new MeasurementIngestHandler(new MeasurementSamplesValidator(MAPPER, Messzeitregel.E13), MAPPER,
-                kafka, "measurements.raw", producer(kafka), uhr(eingang))
+                kafka, "measurements.raw", producer(kafka), uhr(eingang),
+                new IngestMetriken(new SimpleMeterRegistry(), uhr(eingang)))
                 .handle(new GenericMessage<>(payload), topic, quittung);
     }
 
@@ -347,7 +348,8 @@ class DatenannahmeTest {
         when(eventsTopic.vorhanden()).thenReturn(false);
         KafkaTemplate<String, String> kafka = kafka(false);
         new TelemetryV2IngestHandler(new TelemetryV2Validator(MAPPER, Messzeitregel.E13), MAPPER, kafka,
-                "telemetry-v2.raw", producer(kafka), uhr("2026-07-18T11:31:00Z"))
+                "telemetry-v2.raw", producer(kafka), uhr("2026-07-18T11:31:00Z"),
+                new IngestMetriken(new SimpleMeterRegistry(), uhr("2026-07-18T11:31:00Z")))
                 .handle(new GenericMessage<>(Files.readString(
                         EXAMPLES.resolve("mqtt-telemetry-2.0.valid.three-entities.json"))
                         .replace("\"soc_pct\": 62.5", "\"soc_pct\": \"62.5\"")),
@@ -369,7 +371,8 @@ class DatenannahmeTest {
         KafkaTemplate<String, String> kafka = kafka(false);
         var handler = new TelemetryV2IngestHandler(new TelemetryV2Validator(MAPPER, Messzeitregel.E13), MAPPER,
                 kafka, "telemetry-v2.raw", producer(kafka),
-                uhr("2026-07-18T11:31:00Z"));
+                uhr("2026-07-18T11:31:00Z"),
+                new IngestMetriken(new SimpleMeterRegistry(), uhr("2026-07-18T11:31:00Z")));
         handler.handle(new GenericMessage<>(Files.readString(
                 EXAMPLES.resolve("mqtt-telemetry-2.0.valid.three-entities.json"))), t);
         handler.handle(new GenericMessage<>(Files.readString(
@@ -403,7 +406,8 @@ class DatenannahmeTest {
     private void boxEreignisse(String topic, String payload, String eingang) {
         KafkaTemplate<String, String> kafka = kafka(false);
         new BoxEventsIngestHandler(new BoxEventsValidator(MAPPER, Messzeitregel.E13),
-                producer(kafka), uhr(eingang))
+                producer(kafka), uhr(eingang),
+                new IngestMetriken(new SimpleMeterRegistry(), uhr(eingang)))
                 .handle(new GenericMessage<>(payload), topic, quittung);
     }
 

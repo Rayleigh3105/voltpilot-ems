@@ -39,6 +39,48 @@ der WARN-Zeile.
 Die Alarm-Regel „Zuwachs > 0 über 15 Minuten → Warnung an `betreiber`“ gehört in das gitops-Repo
 und ist nicht Teil dieses PRs. Gitops-PR 37 liegt beim Betreiber; die Regel wird dort nachgezogen.
 
+## Verwerfungen in der Datenannahme (AP-14 IP-10)
+
+Der ingest sitzt VOR dem Writer und veröffentlicht seit diesem Paket einen eigenen
+`/metrics`-Endpunkt auf **8091** (gleiche Bauart: Actuator-Endpunkt `prometheus`, umgehängt auf
+`/metrics`, anonym lesbar, kein Security-Starter). Bis dahin liefen dort Micrometer-Zähler, die
+niemand abholen konnte — auch das ältere `voltpilot_ingest_events_undelivered_total`.
+
+| Metrik | Labels | Bedeutung |
+|---|---|---|
+| `voltpilot_ingest_angenommen_total` | `strom` | Bei der Datenannahme eingegangene Umschläge |
+| `voltpilot_ingest_weitergereicht_total` | `strom` | An Redpanda übergebene Umschläge |
+| `voltpilot_ingest_verworfen_total` | `strom`, `grund` | Umschläge, die ihr Nutzlast-Topic nicht erreicht haben; `grund` = `ungueltig` \| `identitaet` \| `serialisierung` |
+| `voltpilot_ingest_letzter_schreibzug_age_seconds` | `strom` | Sekunden seit dem letzten von Redpanda BESTÄTIGTEN Schreibzug; `NaN` bis zum ersten |
+
+`strom` ist dasselbe geschlossene Wort wie beim Writer (`measurements` \| `telemetry` \|
+`telemetry_v2` \| `events`). Das Grund-Vokabular ist **kleiner als beim Writer**: der ingest
+unterscheidet `unlesbar` und `pflichtfeld` nicht (beide laufen durch dieselbe Abweisung, der v1-Weg
+hat gar keine Grund-Kennung), kennt dafür den Serialisierungsfehler. Ein geratenes Label wäre
+schlechter als ein grobes.
+
+**`angenommen` = `weitergereicht` + `verworfen` gilt bewusst nicht.** Abgelehnte TEILWERTE eines
+angenommenen Umschlags zählen NICHT als Verwerfung — sie gehen als Ereignis auf `events.raw` heraus
+und wären sonst doppelt gezählt, womit jede Regel „Verwerfungen > 0“ im Normalbetrieb feuert. Das
+ist dieselbe Trennung, die PR 972 beim Writer gezogen hat.
+
+Vier Verwerf-Stellen, wie PR 972 sie gefunden hat — Verhalten unverändert, nur zählbar:
+
+| Stelle | Was | Zählt als |
+|---|---|---|
+| `TelemetryIngestHandler` (v1-Prüfung) | unlesbares JSON, fehlendes Pflichtfeld ODER Topic-Abweichung | `telemetry` / `ungueltig` |
+| `TelemetryIngestHandler` (Serialisierung) | geprüfter Umschlag, der sich nicht schreiben lässt | `telemetry` / `serialisierung` |
+| `TelemetryV2IngestHandler` (Abweisung) | `UmschlagAbgewiesen` | `telemetry_v2` / `identitaet` bei `KENNUNG_ABWEICHEND`, sonst `ungueltig` |
+| `TelemetryV2IngestHandler` (Serialisierung) | war die EINZIGE Stelle ganz ohne Zähler | `telemetry_v2` / `serialisierung` |
+| `MeasurementIngestHandler` | `UmschlagAbgewiesen` | `measurements` / wie oben |
+| `BoxEventsIngestHandler` | `UmschlagAbgewiesen` | `events` / wie oben |
+| alle vier: abgelehnte Teilwerte | Ablehnung geht als `events.raw` heraus | **nichts** — kein stiller Verlust |
+| Messwert-/Ereignisweg: äußerer Fehler | Quittung wird zurückgehalten, der Broker stellt erneut zu | **nichts** — Wiederzustellung, keine Verwerfung |
+
+Nachweise: `IngestMetrikenTest` (je Stelle genau ein Zuwachs mit dem richtigen `grund` UND die
+Nachricht wird weiterhin nicht weitergereicht), `MetrikEndpunktTest` (anonymes `GET /metrics`, und
+kein anderer Actuator-Endpunkt ist mitaufgegangen).
+
 Die zwei `…_zustand`-Metriken sind der Hausstil von `voltpilot_site_telemetry_state`. Ohne sie kann
 eine Regel „steht“ nicht von „ist abgeschaltet“ und „lief seit dem Neustart noch nie“ unterscheiden
 — und ein abgeschalteter Läufer soll gerade KEINEN Daueralarm erzeugen.
@@ -124,9 +166,9 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
 - Die ★-Metrik „Verbraucher-Rückstand je Gruppe“ der Schicht „Strecke“ liegt beim Writer und beim
   ingest, nicht in der api. Der Writer hat sie halb: `voltpilot_kafka_consumer_lag{group,topic}` aus
   `services/timescale-writer/.../KafkaLagMetricsCollector` auf seinem `/metrics` (8092). Der ingest
-  hat sie gar nicht — er veröffentlicht nur `/health` auf 8091, keinen Metrik-Endpunkt. Und
-  abgeholt wird bis heute keiner von beiden: die `ServiceMonitor`-Objekte für Writer und ingest baut
-  laut §3.5 erst IP-10 in gitops.
+  hat seit AP-14 IP-10 einen eigenen `/metrics` auf 8091 (Abschnitt oben), aber KEINEN Lag-Sammler —
+  er ist Producer, nicht Consumer. Und abgeholt wird bis heute keiner von beiden: die
+  `ServiceMonitor`-Objekte für Writer und ingest baut laut §3.5 erst gitops.
 - Alarm-Regeln, Schwellen, `ServiceMonitor` und Dashboards liegen im gitops-Repo; die neue
   Writer-Verwerfregel wird dort nachgezogen.
 

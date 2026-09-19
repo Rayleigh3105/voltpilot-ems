@@ -28,6 +28,12 @@ LAG_AGE = "voltpilot_kafka_consumer_lag_collect_age_seconds"
 VERWORFENE_SAMPLES = "voltpilot_writer_verworfene_samples_total"
 VERWORFENE_UMSCHLAEGE = "voltpilot_writer_verworfen_total"
 VERWERF_GRUENDE = {"unlesbar", "ungueltig", "identitaet", "pflichtfeld"}
+# Die Datenannahme sitzt VOR dem Writer und zaehlt seit AP-14 IP-10 dieselbe Art Verwerfung.
+# Ihr Grund-Vokabular ist kleiner: der ingest unterscheidet unlesbar/pflichtfeld nicht, kennt
+# dafuer den Serialisierungsfehler (services/ingest/.../IngestMetriken.java).
+INGEST_VERWORFEN = "voltpilot_ingest_verworfen_total"
+INGEST_GRUENDE = {"ungueltig", "identitaet", "serialisierung"}
+INGEST_STROEME = ("measurements", "telemetry", "telemetry_v2", "events")
 LISTEN = ("viertelstunde", "tag", "periode")
 KLASSEN = ("roh", "vm", "tag", "ereignis")
 
@@ -123,21 +129,27 @@ def _sql(db_url: str, tenant: str) -> dict:
     return json.loads(lines[0])
 
 
-def aufnehmen(api_url: str, writer_url: str, db_url: str, tenant: str) -> dict:
+def aufnehmen(api_url: str, writer_url: str, db_url: str, tenant: str,
+              ingest_url: str | None = None) -> dict:
     return {
         "captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "api_metrics": _http(api_url),
         "writer_metrics": _http(writer_url),
+        # Ohne --ingest-url bleibt die Annahme-Zeile NICHT MESSBAR statt still 0.
+        "ingest_metrics": _http(ingest_url) if ingest_url else None,
         "sql": _sql(db_url, tenant),
     }
 
 
 def fixture_lesen(pfad: Path, name: str) -> dict:
     basis = pfad / name
+    ingest = basis / "ingest.prom"
     return {
         "captured_at": (basis / "captured-at.txt").read_text().strip(),
         "api_metrics": (basis / "api.prom").read_text(),
         "writer_metrics": (basis / "writer.prom").read_text(),
+        # Eine Aufzeichnung von einem ingest ohne /metrics hat diese Datei nicht.
+        "ingest_metrics": ingest.read_text() if ingest.exists() else None,
         "sql": json.loads((basis / "counts.json").read_text()),
     }
 
@@ -146,21 +158,47 @@ def _zeit(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
-def _verwerf_werte(samples: list[Sample], name: str, **labels: str) -> dict[str, float] | None:
+def _verwerf_werte(samples: list[Sample], name: str, gruende: set[str] = VERWERF_GRUENDE,
+                   **labels: str) -> dict[str, float] | None:
     reihen = [sample for sample in samples if sample.name == name
               and all(sample.labels.get(k) == v for k, v in labels.items())]
     if not reihen:
         return None
-    gruende = {sample.labels.get("grund") for sample in reihen}
-    if gruende != VERWERF_GRUENDE or len(reihen) != len(VERWERF_GRUENDE):
+    gefunden = {sample.labels.get("grund") for sample in reihen}
+    if gefunden != gruende or len(reihen) != len(gruende):
         raise Messfehler(f"{name} hat nicht das geschlossene Grund-Vokabular")
     return {sample.labels["grund"]: sample.value for sample in reihen}
 
 
-def _zuwachs(vorher: dict[str, float], nachher: dict[str, float], name: str) -> dict[str, int]:
-    if any(nachher[grund] < vorher[grund] for grund in VERWERF_GRUENDE):
+def _zuwachs(vorher: dict[str, float], nachher: dict[str, float], name: str,
+             gruende: set[str] = VERWERF_GRUENDE) -> dict[str, int]:
+    if any(nachher[grund] < vorher[grund] for grund in gruende):
         raise Messfehler(f"{name} wurde waehrend der Messung zurueckgesetzt")
-    return {grund: int(nachher[grund] - vorher[grund]) for grund in VERWERF_GRUENDE}
+    return {grund: int(nachher[grund] - vorher[grund]) for grund in gruende}
+
+
+def _ingest_verworfen(vorher: dict, nachher: dict) -> tuple[dict[str, int] | None, str | None]:
+    """Zuwachs der Verwerfungen der Datenannahme je Strom.
+
+    Fehlt der Metrik-Rumpf ganz (ein ingest VOR AP-14 IP-10 hatte keinen /metrics-Endpunkt) oder
+    fehlt ein Strom, bleibt die Zeile ausdruecklich NICHT MESSBAR - eine fehlende Metrik als 0 zu
+    lesen waere genau die stille Luege, gegen die dieses Werkzeug gebaut ist.
+    """
+    if not vorher.get("ingest_metrics") or not nachher.get("ingest_metrics"):
+        return None, ("Der ingest liefert an mindestens einem Messpunkt keinen /metrics-Endpunkt "
+                      "(Stand vor AP-14 IP-10); seine Verwerfungen sind NICHT MESSBAR.")
+    vor = prometheus(vorher["ingest_metrics"])
+    nach = prometheus(nachher["ingest_metrics"])
+    je_strom: dict[str, int] = {}
+    for strom in INGEST_STROEME:
+        a = _verwerf_werte(vor, INGEST_VERWORFEN, INGEST_GRUENDE, strom=strom)
+        b = _verwerf_werte(nach, INGEST_VERWORFEN, INGEST_GRUENDE, strom=strom)
+        if a is None or b is None:
+            return None, (f"Pflichtmetrik {INGEST_VERWORFEN}{{strom=\"{strom}\"}} fehlt an "
+                          "mindestens einem Messpunkt; die Verwerfungen der Datenannahme sind "
+                          "NICHT MESSBAR.")
+        je_strom[strom] = sum(_zuwachs(a, b, INGEST_VERWORFEN, INGEST_GRUENDE).values())
+    return je_strom, None
 
 
 def auswerten(vorher: dict, nachher: dict, *, tenant: str, profil_minuten: int) -> dict:
@@ -235,6 +273,7 @@ def auswerten(vorher: dict, nachher: dict, *, tenant: str, profil_minuten: int) 
         cloud_verworfen = sum(sample_delta.values())
         cloud_unbekannt = umschlag_delta["unlesbar"]
         cloud_luecke = None
+    annahme_verworfen, annahme_luecke = _ingest_verworfen(vorher, nachher)
     lag_abgebaut_min = dauer_s / 60 if lag_vor > 0 and lag_nach == 0 else None
 
     relevante_klassen = ("roh", "vm")
@@ -257,6 +296,8 @@ def auswerten(vorher: dict, nachher: dict, *, tenant: str, profil_minuten: int) 
         "cloud_verworfene_samples": cloud_verworfen,
         "cloud_unlesbare_umschlaege": cloud_unbekannt,
         "cloud_verworfene_samples_luecke": cloud_luecke,
+        "annahme_verworfene_umschlaege": annahme_verworfen,
+        "annahme_verworfene_umschlaege_luecke": annahme_luecke,
         "speicher_gesamt": {"gemessen": bytes_ist, "erwartet": bytes_soll,
                              "untergrenze": bytes_soll * 0.8, "obergrenze": bytes_soll * 1.2},
     }
@@ -303,6 +344,21 @@ def bericht(ergebnis: dict, *, umgebung: str, commit: str) -> str:
             "`dropped_samples` bleibt die getrennte Zusatzbeobachtung der Box."
         )
         verwerf_schluss = "Die Schwelle wird aus dem Zuwachs des Writer-Zählers beurteilt."
+
+    annahme = ergebnis["annahme_verworfene_umschlaege"]
+    if annahme is None:
+        annahme_text, annahme_ok = "NICHT MESSBAR", None
+        annahme_einordnung = ergebnis["annahme_verworfene_umschlaege_luecke"]
+    else:
+        gesamt = sum(annahme.values())
+        annahme_text, annahme_ok = str(gesamt), gesamt == 0
+        annahme_einordnung = (
+            "Die Datenannahme meldet über die Messdauer " + str(gesamt)
+            + " verworfene Umschläge ("
+            + ", ".join(f"{strom} {zahl}" for strom, zahl in annahme.items())
+            + "). Sie sitzt VOR dem Writer: stockt hier etwas, kommt es beim Writer gar nicht "
+              "erst an."
+        )
     lines = [
         "# NW-5 Lastprofil — Messbericht",
         "",
@@ -315,6 +371,7 @@ def bericht(ergebnis: dict, *, umgebung: str, commit: str) -> str:
         "| Schwelle aus §3.3 | Soll | Gemessen | Urteil |",
         "|---|---:|---:|---|",
         f"| Samples verworfen | 0 | {verworfen_text} (Box meldete zusätzlich {ergebnis['box_gemeldete_verworfene_samples']}) | {_urteil(verworfen_ok)} |",
+        f"| Umschläge in der Annahme verworfen | 0 | {annahme_text} | {_urteil(annahme_ok)} |",
         f"| Ereignis-Bus-Rückstand nach Stoß abgebaut | < 15 min | {f'≤ {lag_min:.2f} min' if lag_min is not None else 'nicht abgebaut'} | {_urteil(lag_min is not None and lag_min < 15)} |",
         f"| Ältester Arbeitslisten-Eintrag im Dauerlauf | < 15 min | {max_alter / 60:.2f} min | {_urteil(max_alter < 15 * 60)} |",
         f"| Stundenlauf | < 10 min | {f'≤ {lauf / 60:.2f} min' if lauf is not None else 'kein Abschluss beobachtet'} | {_urteil(lauf is not None and lauf < 10 * 60)} |",
@@ -333,6 +390,8 @@ def bericht(ergebnis: dict, *, umgebung: str, commit: str) -> str:
         verwerf_einordnung,
         verwerf_schluss,
         "",
+        annahme_einordnung,
+        "",
     ]
     return "\n".join(lines)
 
@@ -343,6 +402,8 @@ def main(argv: list[str] | None = None) -> int:
     quelle.add_argument("--fixtures", type=Path, help="aufgezeichnete before/after-Antworten")
     quelle.add_argument("--api-url", help="API-/metrics; live zusammen mit --writer-url/--db-url/--tenant")
     parser.add_argument("--writer-url")
+    parser.add_argument("--ingest-url", help="ingest-/metrics (8091); fehlt er, bleibt die Zeile"
+                        " \u201eAnnahme verworfen\u201c NICHT MESSBAR")
     parser.add_argument("--db-url")
     parser.add_argument("--tenant", required=True, help="interne UUID; erscheint nicht im Bericht")
     parser.add_argument("--intervall-s", type=int, default=300)
@@ -358,9 +419,11 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if not args.writer_url or not args.db_url:
                 raise Messfehler("live brauchen --writer-url und --db-url")
-            vorher = aufnehmen(args.api_url, args.writer_url, args.db_url, args.tenant)
+            vorher = aufnehmen(args.api_url, args.writer_url, args.db_url, args.tenant,
+                               args.ingest_url)
             time.sleep(args.intervall_s)
-            nachher = aufnehmen(args.api_url, args.writer_url, args.db_url, args.tenant)
+            nachher = aufnehmen(args.api_url, args.writer_url, args.db_url, args.tenant,
+                                args.ingest_url)
         ergebnis = auswerten(vorher, nachher, tenant=args.tenant, profil_minuten=args.profil_minuten)
         text = bericht(ergebnis, umgebung=args.umgebung, commit=args.commit)
         if args.output:

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,6 +23,11 @@ import org.springframework.stereotype.Component;
  * value drops only itself, and every refusal - of a value or of the whole
  * envelope - lands as a datenannahme event on {@code events.raw}, not only in
  * the log. The v1 {@link TelemetryIngestHandler} is untouched.
+ *
+ * <p>Auf {@link IngestMetriken} zaehlt ein abgewiesener Umschlag als {@code verworfen}; abgelehnte
+ * TEILWERTE tun das nicht — sie stehen als Ereignis auf {@code events.raw} und sind damit kein
+ * stiller Verlust (dieselbe Trennung wie beim Writer, PR 972). Der Serialisierungs-/Sendefehler
+ * ganz unten war bis hierher die einzige Stelle im ingest ohne jeden Zaehler.
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.telemetry-v2.enabled", havingValue = "true",
@@ -38,20 +42,19 @@ public class TelemetryV2IngestHandler {
     private final String topic;
     private final EventsRawProducer ereignisse;
     private final Clock clock;
-
-    private final AtomicLong accepted = new AtomicLong();
-    private final AtomicLong rejected = new AtomicLong();
+    private final IngestMetriken metriken;
 
     public TelemetryV2IngestHandler(TelemetryV2Validator validator, ObjectMapper mapper,
             KafkaTemplate<String, String> kafka,
             @Value("${voltpilot.redpanda.telemetry-v2-topic:telemetry-v2.raw}") String topic,
-            EventsRawProducer ereignisse, Clock clock) {
+            EventsRawProducer ereignisse, Clock clock, IngestMetriken metriken) {
         this.validator = validator;
         this.mapper = mapper;
         this.kafka = kafka;
         this.topic = topic;
         this.ereignisse = ereignisse;
         this.clock = clock;
+        this.metriken = metriken;
     }
 
     @ServiceActivator(inputChannel = MqttIngestV2Config.V2_CHANNEL)
@@ -59,11 +62,12 @@ public class TelemetryV2IngestHandler {
             @Header(MqttHeaders.RECEIVED_TOPIC) String mqttTopic) {
         Instant eingang = clock.instant();
         String payload = message.getPayload();
+        metriken.angenommen(IngestMetriken.TELEMETRY_V2);
         Annahme<TelemetryV2RawEvent> annahme;
         try {
             annahme = validator.annehmen(mqttTopic, payload, eingang);
         } catch (UmschlagAbgewiesen e) {
-            rejected.incrementAndGet();
+            metriken.verworfen(IngestMetriken.TELEMETRY_V2, IngestMetriken.grundVon(e));
             log.warn("rejected v2 telemetry on {}: {}", mqttTopic, e.getMessage());
             melde(EventsRawEvent.abweisung(e, mqttTopic, payload, eingang).stream().toList(), mqttTopic);
             return;
@@ -74,6 +78,8 @@ public class TelemetryV2IngestHandler {
         }
         TelemetryV2RawEvent event = annahme.weiter();
         if (event == null) {
+            // Alle Teilwerte abgelehnt: nichts zu senden, aber auch nichts still verloren - die
+            // Ablehnungen sind oben als Ereignis herausgegangen. Darum KEIN verworfen-Zuwachs.
             return;
         }
         try {
@@ -81,10 +87,13 @@ public class TelemetryV2IngestHandler {
             kafka.send(topic, event.kafkaKey(), json).whenComplete((result, error) -> {
                 if (error != null) {
                     log.error("producing v2 event {} to {} failed", event.event_id(), topic, error);
+                } else {
+                    metriken.schreibzugBestaetigt(IngestMetriken.TELEMETRY_V2, clock.instant());
                 }
             });
-            accepted.incrementAndGet();
+            metriken.weitergereicht(IngestMetriken.TELEMETRY_V2);
         } catch (Exception e) {
+            metriken.verworfen(IngestMetriken.TELEMETRY_V2, IngestMetriken.SERIALISIERUNG);
             log.error("cannot serialize/produce v2 event from {}", mqttTopic, e);
         }
     }
@@ -100,13 +109,5 @@ public class TelemetryV2IngestHandler {
         } catch (Exception e) {
             log.error("cannot serialize/produce events.raw for {}", mqttTopic, e);
         }
-    }
-
-    long acceptedCount() {
-        return accepted.get();
-    }
-
-    long rejectedCount() {
-        return rejected.get();
     }
 }

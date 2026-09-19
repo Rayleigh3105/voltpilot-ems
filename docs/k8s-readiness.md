@@ -131,7 +131,7 @@ Belege: `K8sReadinessConfigTest` in den JVM-Diensten, Python-`test_runtime.py`, 
 
 Ingest verwendet `readinessState,eventsTopic`: `events.raw` muss einmal erfolgreich erkannt sein. Fehlt es, legt der Ingest es vorher selbst an (abschaltbar; ein vorhandenes Topic wird nie angepasst; Grund und Einstellung im Ingest-README). Bis dahin bleiben Messwerte mit Ereignis-Fallback möglich, der Box-Ereignisadapter wartet. Ein späterer Broker-Ausfall entfernt die einmal erkannte Bereitschaft nicht. Details: [Ingest](../services/ingest/README.md).
 
-API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API ergänzt Datenhaltungsmetriken über `DbHealthMetricsCollector` (alle 60 s, `VOLTPILOT_METRICS_DB_ENABLED`, Vorgabe true). Der Writer ermittelt Gruppenrückstand über Kafka-AdminClient (`VOLTPILOT_METRICS_KAFKA_LAG_ENABLED`, Vorgabe true).
+API, Writer und Ingest liefern interne `/metrics`-Endpunkte auf 8090, 8092 bzw. 8091 (gleiche Bauart: Actuator-Endpunkt `prometheus`, umgehängt auf `/metrics`; anonym lesbar, vom Frontend-nginx nie durchgereicht). Die API ergänzt Datenhaltungsmetriken über `DbHealthMetricsCollector` (alle 60 s, `VOLTPILOT_METRICS_DB_ENABLED`, Vorgabe true). Der Writer ermittelt Gruppenrückstand über Kafka-AdminClient (`VOLTPILOT_METRICS_KAFKA_LAG_ENABLED`, Vorgabe true).
 
 | Metrikfamilie | Bedeutung |
 |---|---|
@@ -143,6 +143,9 @@ API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API 
 | `voltpilot_db_metrics_collect_age_seconds`, `…_duration_seconds` | Gesundheit des DB-Sammlers |
 | `voltpilot_kafka_consumer_lag{group,topic}` | Committeter Offset bis Log-Ende; unbekannte Gruppe ohne Zeile |
 | `voltpilot_kafka_consumer_lag_collect_age_seconds` | Alter der letzten Lag-Abfrage |
+| `voltpilot_ingest_angenommen_total{strom}`, `…_weitergereicht_total{strom}` | Umschläge, die die Datenannahme aufgenommen bzw. an Redpanda übergeben hat |
+| `voltpilot_ingest_verworfen_total{strom,grund}` | Umschläge, die ihr Nutzlast-Topic nicht erreicht haben; `grund` = `ungueltig` \| `identitaet` \| `serialisierung` |
+| `voltpilot_ingest_letzter_schreibzug_age_seconds{strom}` | Sekunden seit dem letzten von Redpanda bestätigten Schreibzug; ohne Schreibzug `NaN` |
 | `voltpilot_writer_verworfen_total{strom,grund}` | Vom Writer nicht geschriebene Eingangsumschläge; geschlossene Eingänge und Gründe, ab Start als `0` vorhanden |
 | `voltpilot_writer_verworfene_samples_total{grund}` | Bekannte Sample-Zahl verworfener `measurements`-Umschläge; ab Start als `0` vorhanden |
 | `voltpilot_uems_arbeitsliste_offen{liste}`, `…_aeltester_eintrag_age_seconds` | Rückstand der drei UEMS-Arbeitslisten über alle Kundenbereiche; das Alter fehlt, wenn die Liste leer ist |
