@@ -30,7 +30,7 @@ export function netzanschlussBuehne(standorte: StandorteAmStichtag) {
     kurzzeichen: id === FIXTURE_IDS.st1 ? 'ST-1' : 'ST-2',
   });
   return {
-    standorte: async (am = '2026-10-20') => ({
+    standorte: async (am = standorte.stichtag) => ({
       ...structuredClone(standorte),
       stichtag: am,
       standorte: standorte.standorte.map((s) => ({

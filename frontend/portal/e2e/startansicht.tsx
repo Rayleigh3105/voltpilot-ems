@@ -803,7 +803,6 @@ Object.assign(api, {
   },
   // AP-04 IP-6: was der Messstellen-Dialog beim Öffnen liest (Vorschlag, Standorte, Ortsbäume).
   kennzeichenVorschlag: async () => ({ kennzeichen: 'MS-0023' }),
-  ...netzanschlussBuehne(szene.liste),
   standortOrte: async (id: string) => {
     if (KORREKTUR && id === FIXTURE_IDS.st1) {
       const standort = szene.liste.standorte.find((s) => s.id === id)!;
@@ -872,6 +871,9 @@ Object.assign(api, {
   bezugsdatenImportZuruecknehmen: async (_kennung: string, begruendung: string) => { bzAufrufe.ruecknahmen.push(begruendung); importStatus = 'zurueckgenommen'; return { kennung: 'I-2026-0001', status: importStatus, aenderungen: 1, vorschlaege: 0, zaehler: null, vorlage: null }; },
   unternehmen: async () => ahrenbergUnternehmen(),
   standorte: async () => structuredClone(szene.liste),
+  // Nach dem allgemeinen Standort-Leser: die Netzanschluss-Bühne ergänzt den
+  // echten API-Vertrag `anlagen[].netzanschluss` und hält ihn nach Schreibwegen aktuell.
+  ...netzanschlussBuehne(szene.liste),
   anlageStandortVorschau: async () => korrekturUmzug(),
   anlageStandortSetzen: async () => {
     if (KORREKTUR) {
