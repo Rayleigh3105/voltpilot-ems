@@ -54,16 +54,23 @@ DEV=00000000-0000-0000-0000-000000000003
 BASIS="ems/$TEN/$SIT/$DEV"
 
 PROJEKT=""
+SPROJEKT=""
 TAGWT=""
 BROKER=""
 
 aufraeumen() {
   local rc=$?
   if [ "$BEHALTEN" = "1" ]; then
-    echo "--- behalten: Projekt $PROJEKT, Arbeitsbaum $TAGWT, Arbeitsordner $ARBEIT"
+    echo "--- behalten: Projekt $PROJEKT${SPROJEKT:+ + $SPROJEKT}, Arbeitsbaum $TAGWT, Arbeitsordner $ARBEIT"
     return $rc
   fi
   echo "--- aufraeumen (nur Eigenes)"
+  if [ -n "$SPROJEKT" ]; then
+    docker compose -p "$SPROJEKT" -f "$REPO/tools/nw3-box-image/nw3-strecke.yml" \
+      down -v --remove-orphans >/dev/null 2>&1 || true
+    # Nur die beiden Bilder DIESES Laufs (Marke = eigene PID), nie ein fremdes.
+    docker image rm -f "nw3-ingest:$$" "nw3-writer:$$" >/dev/null 2>&1 || true
+  fi
   if [ -n "$PROJEKT" ]; then
     docker compose -p "$PROJEKT" -f "$TAGWT/edge-app/docker-compose.yml" \
       -f "$TAGWT/edge-app/test/docker-compose.e2e.yml" \
@@ -158,6 +165,7 @@ bauen() { # <core_ref> <palette_ref>
   docker build -q -t "nw3-edge-sim:$core_ref" "$TAGWT/edge/sim" >/dev/null
   docker build -q -t "nw3-broker:$core_ref" \
     -f "$TAGWT/edge-app/test/Dockerfile.broker" "$TAGWT/edge-app/test" >/dev/null
+  BROKER_IMAGE="nw3-broker:$core_ref"
   STEMPEL="$stempel"
   SHA="$sha"
   # Was sich am gebauten Paar gegen das Release pruefen laesst.
@@ -200,6 +208,93 @@ stack_hoch() { # <ref>
     || { echo "Box meldete keinen Herzschlag"; docker logs --tail 40 "$KERN"; return 1; }
   STAND="$(letzte status | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
   echo "    Box meldet Stand: $STAND"
+  wechselrichter_waehlen
+}
+
+# Die EINE Einstellung, die am Geraet selbst getroffen wird und nicht aus der
+# Cloud kommt: welcher Wechselrichter an der Box haengt. Ohne sie veroeffentlicht
+# der Core kein retained `edge/inverter/config`, die Messlaufzeit findet zur
+# LESEZEIT keine Verbindung und sendet gar nichts - unabhaengig davon, welchen
+# Punkt die Cloud waehlt. Im Feld macht diese Wahl der Installateur in der
+# lokalen Weboberflaeche der Box; hier geht sie ueber genau dieselbe Route
+# (POST /api/inverter, internal/web/web.go:521) an den ECHTEN Core des Tags.
+# Gewaehlt wird `generic_modbus/sunspec` - das im Core hinterlegte Registerbild
+# des SIMULATORS (modbus-tcp.js: „the SIMULATOR's fixed layout, NOT real SunSpec").
+wechselrichter_waehlen() {
+  echo "    waehle den Wechselrichter an der Box (lokale Weboberflaeche, wie der Installateur)"
+  local antwort
+  antwort="$(docker run --rm --network "$NETZ" "$BROKER_IMAGE" wget -q -O - \
+      --header 'Content-Type: application/json' \
+      --post-data '{"brand":"generic_modbus","family":"sunspec","connection":{"ip":"edge-sim"}}' \
+      "http://core:8484/api/inverter" 2>&1 || true)"
+  WR="$(printf '%s' "$antwort" | python3 -c '
+import json,sys
+try: print(json.load(sys.stdin)["selection"]["communication"])
+except Exception: print("")
+' 2>/dev/null)"
+  [ -n "$WR" ] || echo "    WARNUNG: die Box hat keine Wechselrichter-Wahl angenommen: $antwort"
+}
+
+# --- Die zweite Container-Gruppe: die Strecke dieses Standes -----------------
+# Datenannahme -> Redpanda -> Writer -> TimescaleDB, alles aus DIESEM Arbeitsbaum
+# gebaut. Eigenes Projekt, eigenes Netz, kein Host-Port.
+#
+# Das SCHEMA der Datenbank ist der Spiegel, den der Writer selbst fuer seine
+# Tests haelt (services/timescale-writer/src/test/resources/writer-schema.sql)
+# plus die VIER echten api-Migrationen der Ereignis-Tabelle - dieselbe Kette, die
+# `EreignisTabelleImTest` fahrt. Das ist eine BENANNTE Grenze wie „kein
+# api-Prozess": gefahren wird die Strecke, nicht Flyway.
+strecke_hoch() {
+  SPROJEKT="nw3s-$$"
+  local sc=("docker" "compose" "-p" "$SPROJEKT" "-f" "$REPO/tools/nw3-box-image/nw3-strecke.yml")
+  echo "==> Strecke $SPROJEKT: Bilder aus diesem Arbeitsbaum bauen"
+  docker build -q -t "nw3-ingest:$$" "$REPO/services/ingest" >/dev/null
+  docker build -q -t "nw3-writer:$$" "$REPO/services/timescale-writer" >/dev/null
+  export NW3_INGEST_IMAGE="nw3-ingest:$$" NW3_WRITER_IMAGE="nw3-writer:$$"
+  echo "    Datenbank und Redpanda hoch"
+  "${sc[@]}" up -d --wait timescaledb redpanda >/dev/null
+  SDB="$("${sc[@]}" ps -q timescaledb)"
+  SRP="$("${sc[@]}" ps -q redpanda)"
+  SNETZ="${SPROJEKT}_default"
+  for t in measurements.raw events.raw telemetry.raw telemetry-v2.raw; do
+    docker exec "$SRP" rpk topic create "$t" --brokers localhost:29092 -p 1 -r 1 >/dev/null 2>&1 || true
+  done
+  echo "    Schema (Writer-Spiegel + die vier Ereignis-Migrationen der api) und Stammdaten"
+  psql_admin < "$REPO/services/timescale-writer/src/test/resources/writer-schema.sql"
+  local m="$REPO/services/api/src/main/resources/db/migration"
+  for f in V20260911260000__uems_messreihe_ereignis.sql V20260912220000__uems_zaehler_ueberlauf.sql \
+           V20260913130000__uems_luecken_vokabular.sql V20260913170000__uems_luecken_zuwachs.sql; do
+    sed -e 's/${appDbUser}/voltpilot_app/g' -e 's/${adminDbUser}/voltpilot_admin/g' "$m/$f" | psql_admin
+  done
+  psql_admin < "$REPO/tools/nw3-box-image/strecke-seed.sql"
+  echo "    Datenannahme und Writer anlegen, Datenannahme in das Netz der BOX haengen (Broker-Bruecke)"
+  "${sc[@]}" create ingest writer >/dev/null
+  SING="$("${sc[@]}" ps -aq ingest)"
+  SWRI="$("${sc[@]}" ps -aq writer)"
+  docker network connect "$NETZ" "$SING" >/dev/null
+  "${sc[@]}" start ingest writer >/dev/null
+  local i=0
+  while [ "$i" -lt 90 ]; do
+    if metrik_text | grep -q '^voltpilot_'; then break; fi
+    i=$((i+1)); sleep 2
+  done
+  [ "$i" -lt 90 ] || { echo "    WARNUNG: der Writer hat /metrics nicht beantwortet"; docker logs --tail 25 "$SWRI"; }
+}
+
+psql_admin() { docker exec -i "$SDB" psql -q -v ON_ERROR_STOP=1 -U voltpilot -d voltpilot >/dev/null; }
+
+# /metrics des Writers (actuator, `prometheus` auf `metrics` umgehaengt).
+metrik_text() {
+  docker run --rm --network "$SNETZ" "$BROKER_IMAGE" \
+    wget -q -O - "http://writer:8092/metrics" 2>/dev/null || true
+}
+
+# Summe ueber ALLE Reihen einer Verwurf-Familie. Micrometer gibt einen Zaehler
+# erst aus, wenn er einmal hochgezaehlt wurde - eine fehlende Reihe ist darum 0
+# und keine fehlende Messung.
+verwurf() { # <metrikname>
+  metrik_text | awk -v n="$1" '
+    index($0, n"{")==1 || $1==n { s += $NF } END { printf "%d", s+0 }'
 }
 
 hauptlauf() {
@@ -262,18 +357,78 @@ hauptlauf() {
 
   # (4) Samples 2.0 im Writer ---------------------------------------------
   echo "==> (4) Samples 2.0 im Writer"
-  if [ "$STRECKE" = "1" ]; then
+  if [ "$STRECKE" != "1" ]; then
+    # Ohne --strecke gibt es keinen Writer - der Punkt wird dann ausdruecklich
+    # NICHT gefahren, statt aus „die Box hat gesendet" ein Urteil zu machen.
     melde "4 samples 2.0 im writer" nicht_gefahren \
-      "--strecke ist angefordert, die Strecke Datenannahme->Redpanda->Writer->TimescaleDB ist in diesem Stand noch nicht verdrahtet" ""
+      "ohne --strecke laeuft die Kette Datenannahme->Redpanda->Writer->TimescaleDB nicht" ""
   else
-    # Die festgenagelte Mess-Auswahl der Cloud waehlt einen Deye-Punkt; der
-    # Simulator DES TAGS spricht SunSpec. Die Box NIMMT die Auswahl an (Punkt 3),
-    # findet aber keine Quelle dafuer und sendet folglich keine Samples. Das
-    # Werkzeug sagt das ausdruecklich, statt den Punkt still wegzulassen.
-    local n
-    n="$(mitschnitt | grep -c 'v2/measurement-samples' || true)"
-    melde "4 samples 2.0 im writer" nicht_gefahren \
-      "nicht gefahren: $n Sample-Umschlaege der Box (festgenagelte Auswahl = Deye-Punkt, Simulator = SunSpec); die Strecke bis zum Writer laeuft in diesem Lauf nicht" ""
+    strecke_hoch
+    local v0 vs0 fenster
+    v0="$(verwurf voltpilot_writer_verworfen_total)"
+    vs0="$(verwurf voltpilot_writer_verworfene_samples_total)"
+    # Die Auswahl, die die Box am Simulator DES TAGS wirklich lesen kann - Bytes
+    # aus dem Erzeuger der Cloud (MeasurementContractsTest
+    # #nw3AuswahlAmSimulatorIstDieFestgenagelteNutzlast), hier unveraendert zugestellt.
+    zustellen "v2/measurement-config" "$E/mqtt-measurement-config.valid.nw3-simulator.json" -r
+    if warte_auf "v2/measurement-config-status" \
+        'd.get("revision")==8 and not d.get("rejected") and d.get("accepted")==["custom.sim.soc"]' 60; then
+      local eq
+      eq="$(letzte v2/measurement-config-status | python3 -c 'import json,sys; print(json.load(sys.stdin).get("edge_version",""))')"
+      if [ "$eq" = "$STEMPEL" ]; then
+        melde "4a mess-quittung nennt die auswahl angewandt" gruen \
+          "revision 8 angewandt, accepted=[custom.sim.soc], rejected leer, edge_version=$eq (Stempel des Tags)" \
+          "$(letzte v2/measurement-config-status)"
+      else
+        melde "4a mess-quittung nennt die auswahl angewandt" rot \
+          "angewandt, aber edge_version=$eq statt $STEMPEL" "$(letzte v2/measurement-config-status)"
+      fi
+    else
+      melde "4a mess-quittung nennt die auswahl angewandt" rot \
+        "die Box hat die lesbare Auswahl nicht angewandt" "$(letzte v2/measurement-config-status)"
+    fi
+    fenster="${NW3_MESSFENSTER_S:-70}"
+    echo "    Messfenster: $fenster s bei Kadenz 10 s"
+    sleep "$fenster"
+    # ⚠ Reihenfolge: ERST die Datenbank, DANN der Draht. So ist der Draht die
+    # spaetere Seite - ein Umschlag aus dem Spalt dazwischen ist „noch unterwegs"
+    # und nicht „verloren". Andersherum saehe jede Zeile aus dem Spalt wie eine
+    # Zeile ohne Umschlag aus, und der Pruefstand meldete einen falschen Befund.
+    docker exec "$SDB" psql -qtAX -U voltpilot -d voltpilot -c \
+      "SELECT to_char(time AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS')||'Z'||' '||edge_sequence||' '||raw_numeric||' '||decoded_numeric||' '||quality||' '||catalog_version \
+       FROM device_measurement_sample WHERE point_key='custom.sim.soc' ORDER BY time" \
+      > "$ARBEIT/zeilen-punkt4.txt" 2>/dev/null || : > "$ARBEIT/zeilen-punkt4.txt"
+    # Die Umschlaege, die die ECHTE Box gesendet hat - aus dem Mitschnitt am
+    # Broker, also aus dem Draht, nicht aus einem Log.
+    mitschnitt > "$ARBEIT/mitschnitt-punkt4.txt"
+    local urteil
+    urteil="$(python3 "$REPO/tools/nw3-box-image/strecke_pruefen.py" \
+      --mitschnitt "$ARBEIT/mitschnitt-punkt4.txt" --zeilen "$ARBEIT/zeilen-punkt4.txt" \
+      --basis "$BASIS" --punkt custom.sim.soc)"
+    local gesendet geschrieben
+    gesendet="$(printf '%s' "$urteil" | python3 -c 'import json,sys; print(json.load(sys.stdin)["gesendet"])')"
+    geschrieben="$(printf '%s' "$urteil" | python3 -c 'import json,sys; print(json.load(sys.stdin)["geschrieben"])')"
+    if printf '%s' "$urteil" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["ok"] else 1)'; then
+      melde "4b samples der box landen als rohzeilen" gruen \
+        "$gesendet Umschlaege der ausgelieferten Box (Vertrag 2.0, Topic-Identitaet = Umschlag-Identitaet), $geschrieben Rohzeilen in device_measurement_sample - bis zum Wasserstand dieselben Messzeiten" \
+        "$urteil"
+    else
+      melde "4b samples der box landen als rohzeilen" rot \
+        "$gesendet gesendet, $geschrieben geschrieben: $(printf '%s' "$urteil" | python3 -c 'import json,sys; print(json.load(sys.stdin)["grund"])')" \
+        "$urteil"
+    fi
+    local v1 vs1
+    v1="$(verwurf voltpilot_writer_verworfen_total)"
+    vs1="$(verwurf voltpilot_writer_verworfene_samples_total)"
+    if [ "$v1" = "$v0" ] && [ "$vs1" = "$vs0" ]; then
+      melde "4c beide verwurf-familien bleiben 0" gruen \
+        "voltpilot_writer_verworfen_total $v0 -> $v1, voltpilot_writer_verworfene_samples_total $vs0 -> $vs1" \
+        "$(metrik_text | grep '^voltpilot_writer_verworfen' | tr '\n' '|')"
+      else
+      melde "4c beide verwurf-familien bleiben 0" rot \
+        "der Writer hat verworfen: Umschlaege $v0 -> $v1, Samples $vs0 -> $vs1" \
+        "$(metrik_text | grep '^voltpilot_writer_verworfen' | tr '\n' '|')"
+    fi
   fi
 
   # (5) Handeingriff ------------------------------------------------------
@@ -329,7 +484,10 @@ hauptlauf() {
   echo "    trenne die Box vom Netz (laenger als das rollierende Ende)"
   docker network disconnect "$NETZ" "$KERN" >/dev/null 2>&1 || true
   sleep "$(( ${NW3_RUHE_S:-20} + 10 ))"
-  docker network connect "$NETZ" "$KERN" >/dev/null 2>&1 || true
+  # ⚠ MIT --alias: `docker network connect` ohne Alias gibt dem Container NUR
+  # seine Kurz-ID zurueck, nicht den Compose-Namen. Layer 1 faende danach
+  # `core:1883` nicht mehr - ein Schaden des PRUEFSTANDS, kein Befund an der Box.
+  docker network connect --alias core "$NETZ" "$KERN" >/dev/null 2>&1 || true
   echo "    Box wieder am Netz — was sagt sie jetzt?"
   sleep 30
   # X7/W12: das rollierende Ende ist waehrend der Trennung verstrichen und die

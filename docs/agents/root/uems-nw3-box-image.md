@@ -10,7 +10,7 @@ ein ausgeliefertes Artefakt. Dieses Werkzeug startet die echte Box-Software
 eines Release-Standes als Prozesse und lässt sie die festgenagelten Nutzlasten
 dieses Repo-Standes lesen.
 
-## Die drei Fallen
+## Die vier Fallen
 
 1. **„Aus dem Release-Tag gebaut" ist nicht „das Release-Artefakt".** Ein Release
    ist ein Paar signierter Images in der privaten Registry `git.tecmaxx.de`
@@ -25,7 +25,16 @@ dieses Repo-Standes lesen.
    ein einziges neues Feld der Cloud, und die alte Box lehnt die ganze Auswahl
    ab. Wer am Erzeuger `MeasurementConfigPublisher` etwas ergänzt, bricht damit
    jede Box im Feld — bis zum Edge-Release, das sie lesen kann.
-3. **`driver` ist `json.RawMessage`.** Der Zusatz `driver.data_source_id`
+3. **Eine angenommene Auswahl ist keine gelesene Auswahl.** Die Box quittiert
+   `accepted: [...]`, `rejected: []` — und sendet trotzdem nichts. Zwei
+   unabhängige Gründe dafür sind gemessen: ohne **gewählten Wechselrichter** gibt
+   es kein retained `edge/inverter/config`, und die Messlaufzeit löst die
+   Verbindung erst zur LESEZEIT auf (`resolveDevice`), also liest sie gar nichts;
+   und ein **modell-relativer** `sunspec.*`-Punkt braucht eine Modell-Erkennung,
+   die der Simulator des Tags nicht bedient (er ist eine kompakte
+   64-Register-Karte ohne SID-Marke). Wer NW-3 oder einen Messnachweis liest:
+   **die Quittung ist nicht der Beweis, die Sample-Umschläge sind es.**
+4. **`driver` ist `json.RawMessage`.** Der Zusatz `driver.data_source_id`
    (`EntityRegistryService.java:1243`) wandert unverändert durch den Core in die
    Palette; „die alte Box überliest ihn" heißt: sie parst ihn nie. Der Lauf
    belegt es an der Wirkung — Revision geechot, alle Entitäten angewandt, keine
@@ -49,15 +58,29 @@ weiter „bis auf Widerruf" hält. Das ist keine Verschlechterung gegenüber `ma
 (dort gibt es gar keine Ruhe), aber die schwächere Zusage aus X7 ist real und
 die Fläche muss sie an Boxen ohne die Fähigkeit sagen.
 
-## Was der Lauf NICHT deckt
+## Punkt 4: die ganze Strecke, mit einer benannten Grenze
 
-* **Punkt 4 (Samples 2.0 im Writer) ist nicht gefahren.** Die festgenagelte
-  Mess-Auswahl der Cloud wählt einen Deye-Punkt, der Simulator des Tags spricht
-  SunSpec: die Box nimmt die Auswahl an (`rejected` leer) und findet keine
-  Quelle, also sendet sie keine Samples. Dafür fehlen eine am SunSpec-Simulator
-  lesbare Auswahl und die Strecke Datenannahme → Redpanda → Writer →
-  TimescaleDB als zweite Container-Gruppe. Die Zähler beider Verwurf-Familien
-  (PR 972) gehören dann ins Protokoll.
+Mit `--strecke` fährt eine **zweite** Container-Gruppe aus **diesem**
+Arbeitsbaum: `services/ingest`, Redpanda, `services/timescale-writer` und eine
+TimescaleDB. Die Datenannahme hängt zusätzlich im Netz der Box-Gruppe und hört
+an demselben Broker mit, an dem die ausgelieferte Box sendet. Gemessen wird
+dann: die Quittung nennt die Auswahl angewandt und trägt den Stempel des Tags ·
+die Umschläge der Box tragen Vertrag 2.0 und die Identität des Topics · die
+Messzeiten am Draht und die Zeilen in `device_measurement_sample` sind dieselbe
+Menge · **beide Verwurf-Familien des Writers bleiben 0**
+(`voltpilot_writer_verworfen_total`, `voltpilot_writer_verworfene_samples_total`
+aus `/metrics`).
+
+Gelesen wird ein `custom.`-Punkt auf Halteregister 4 des Simulators (Ladezustand,
+uint16, 0,1 %) — die Bytes der Auswahl schreibt der echte
+`MeasurementConfigPublisher` in
+`MeasurementContractsTest#nw3AuswahlAmSimulatorIstDieFestgenagelteNutzlast`.
+**Die Grenze:** ein Katalogpunkt über die SunSpec-Modell-Erkennung ist damit
+NICHT gefahren; dafür braucht es ein Gerät, das die Modell-Liste bedient. Und das
+Datenbankschema der Strecke ist der Writer-Spiegel plus die vier api-Migrationen
+der Ereignis-Tabelle, kein Flyway-Lauf der api.
+
+## Was der Lauf NICHT deckt
 * **Die Paar-Liste ist heute das eine Tag-Paar.** Welche Paare im Feld laufen,
   sagt **Q07** des Bestandsblatts, und diese Abfrage fährt allein der Betreiber.
   Die Liste ist darum ein Parameter (`--paare`), kein eingebauter Wert.
@@ -69,9 +92,10 @@ die Fläche muss sie an Boxen ohne die Fähigkeit sagen.
 
 ## Der Lauf als Beleg
 
-Protokoll des Laufs vom 19.09.2026 gegen `origin/uems` `5ea736be`:
+Protokoll des Laufs vom 19.09.2026 gegen `origin/uems` `2edc6e1d`, mit
+`--strecke`:
 [`docs/rollout/nw3-protokoll-edge-2026.09.4.json`](../../rollout/nw3-protokoll-edge-2026.09.4.json)
-— **9 grün, 0 rot, 1 Befund, 1 nicht gefahren**. Jeder Punkt trägt seinen Beleg
+— **12 grün, 0 rot, 1 Befund, 0 nicht gefahren**. Jeder Punkt trägt seinen Beleg
 (die Nachricht, die die Box wirklich gesendet hat). Die Naht zur api-Antwort für
 Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (3 Fälle).
 

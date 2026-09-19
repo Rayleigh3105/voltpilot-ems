@@ -44,7 +44,13 @@ d = {
         "cloud_seite": ("kein api-Prozess: die festgenagelten Nutzlasten des Standes "
                         "(docs/contracts/v2/examples/*) werden ueber den echten Broker "
                         "zugestellt"),
-        "strecke_ingest_writer": "gefahren" if a.strecke == "1" else "nicht gefahren",
+        "strecke_ingest_writer": (
+            "gefahren: services/ingest, Redpanda, services/timescale-writer und TimescaleDB "
+            "als zweite Container-Gruppe aus DIESEM Arbeitsbaum; die Datenannahme haengt "
+            "zusaetzlich im Netz der Box-Gruppe und hoert am selben Broker mit. Das "
+            "Datenbankschema ist der Writer-Spiegel (writer-schema.sql) plus die vier "
+            "echten api-Migrationen der Ereignis-Tabelle - kein Flyway-Lauf der api."
+            if a.strecke == "1" else "nicht gefahren"),
     },
     "punkte": befunde,
     "zusammenfassung": f"{gruen} gruen, {rot} rot, {befund} Befund, {offen} nicht gefahren",

@@ -76,6 +76,50 @@ class MeasurementContractsTest {
         assertThat(payload).isEqualTo(fixture);
     }
 
+    /**
+     * <b>NW-3 Punkt 4 (AP-14 IP-6): die Auswahl, die die AUSGELIEFERTE Box am Simulator des
+     * Release-Tags wirklich liest.</b> Der Lauf {@code tools/nw3-box-image/nw3.sh --strecke}
+     * stellt genau diese Bytes ueber den echten Broker zu - sie sind darum hier an den ERZEUGER
+     * gebunden und nicht von Hand geschrieben.
+     *
+     * <p><b>Warum ein {@code custom.}-Punkt und kein {@code sunspec.*} aus dem Katalog:</b> der
+     * Simulator des Tags ({@code edge/sim/sunspec-sim.js}) ist eine kompakte 64-Register-Karte
+     * und KEIN echtes SunSpec-Geraet - er traegt keine SID-Marke, also findet die
+     * Modell-Erkennung der Palette nichts und ein modell-relativer Punkt wird zwar ANGENOMMEN,
+     * aber nie gelesen. Ein {@code custom.}-Punkt adressiert das Halteregister absolut; er ist
+     * derselbe Weg, den die Cloud fuer jeden nicht-katalogisierten Kunden-Punkt geht
+     * (vgl. {@link #publisherCarriesConcreteCustomDefinitionToTheEdge()}), und Register 4 ist
+     * der dokumentierte Ladezustand der simulierten Anlage (uint16, 0,1 %).
+     */
+    @Test
+    void nw3AuswahlAmSimulatorIstDieFestgenagelteNutzlast() throws Exception {
+        MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
+        var definition = mapper.readTree("{\"label\":\"Ladezustand (Simulator)\","
+                + "\"sourceKind\":\"modbus_holding\",\"address\":4,"
+                + "\"selector\":\"holding:0x0004\",\"valueType\":\"uint16\",\"widthBits\":16,"
+                + "\"signed\":false,\"endian\":\"big\",\"scale\":0.1,\"unit\":\"%\","
+                + "\"cadenceS\":10,\"retentionClass\":\"unclassified\",\"readOnly\":true,"
+                + "\"requestCostMs\":400}");
+        SelectionPoint point = new SelectionPoint(null, "custom.sim.soc", true, 10, 8, null, null,
+                "2026.08.26.3", "test", null, null, "pending_edge", null, null, definition,
+                "unclassified", 90, 900, "fifteen_minute", "Ladezustand (Simulator)", "custom",
+                "custom", "known");
+        State state = new State(DEVICE, SITE, null, 8, "2026.08.26.3", "pending_edge", null,
+                null, null, List.of(point), List.of(), null);
+        var payload = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.nw3-simulator.json")));
+        assertThat(payload).isEqualTo(fixture);
+        // Die Revision liegt UEBER der von Punkt 3 (7): die Box wendet nur eine hoehere an.
+        assertThat(fixture.path("revision").asInt()).isGreaterThan(
+                mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts", "v2",
+                        "examples", "mqtt-measurement-config.valid.json"))).path("revision").asInt());
+        // Der Katalogstand ist der des Tags - eine Abweichung weist die Box als
+        // `unsupported_catalog` KOMPLETT ab (measurement-planner.js buildPlan).
+        assertThat(fixture.path("catalog_version").asText()).isEqualTo("2026.08.26.3");
+    }
+
     @Test
     void statusIdentityAndMonotoneRevisionAreEnforced() throws Exception {
         MeasurementSelectionRepository repository = mock(MeasurementSelectionRepository.class);
