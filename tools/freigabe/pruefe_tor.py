@@ -168,7 +168,9 @@ def surefire(klasse: str, landete_mit: str = '', wer: str = 'Crew'):
                                f'als der gepruefte Stand {ctx.kopf[:8]} ({tag(ctx.kopf_zeit)}); '
                                f'Lauf auf diesem Stand wiederholen ({wer})')
             woher = 'kein Commit im Bericht vermerkt, nur der Zeitpunkt'
-        return BELEGT, (f'{datei.name}: {zahl("tests")} Tests, 0 Fehler, Bericht vom '
+        # Uebersprungene Faelle werden genannt, nicht verschwiegen.
+        sprung = f', {zahl("skipped")} uebersprungen' if zahl('skipped') else ''
+        return BELEGT, (f'{datei.name}: {zahl("tests")} Tests, 0 Fehler{sprung}, Bericht vom '
                         f'{tag(ctx.mtime(datei))} ({woher})')
     return pruefe
 
