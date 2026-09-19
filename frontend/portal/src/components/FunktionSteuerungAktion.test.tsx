@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed, STANDORT_IDS } from '../test/rollenFixtures';
 import { FunktionSteuerungAktion } from './FunktionSteuerungAktion';
+import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 
 afterEach(() => act(() => setSelbstauskunft(null)));
 
@@ -15,6 +16,7 @@ describe('Steuerung anhalten und fortsetzen', () => {
       umfang="standort"
       standortId={STANDORT_IDS['ST-1']}
       betroffen={['Werk Ahrenberg – Halle 1', 'Werk Ahrenberg – Halle 2']}
+      ruheHinweis={RUHE_VERBINDUNG_HINWEIS}
       onBestaetigen={ausfuehren}
     />);
 
@@ -24,6 +26,7 @@ describe('Steuerung anhalten und fortsetzen', () => {
       'Betroffen: Werk Ahrenberg – Halle 1 und Werk Ahrenberg – Halle 2.',
     );
     expect(screen.getByText(/ohne Enddatum angehalten/)).toBeInTheDocument();
+    expect(screen.getByText(RUHE_VERBINDUNG_HINWEIS, { exact: true })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('dialog', { name: 'Standort anhalten?' })
       .querySelector('.dfoot button:last-child')!);

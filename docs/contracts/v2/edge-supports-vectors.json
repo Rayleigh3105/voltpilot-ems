@@ -24,6 +24,12 @@
       "meaning": "Box-Ereignisse über .../v2/events (mqtt-events 2.1): box_restart, die Puffer-Verdrängung als data_gap mit erkannt_aus verdraengung und die Geräte-Ereignisse device_restart, frozen_source, range_limit, layout_changed vom lokalen Bus. Kein clock_jump: dessen Urheber ist die Datenannahme.",
       "advertised": true,
       "evidence": "edge-app/core/internal/boxevents/boxevents_test.go"
+    },
+    {
+      "name": "automation_paused_until_revoked",
+      "meaning": "Die Box hält eine Ruhe ohne Enddatum, bis die Cloud sie ausdrücklich aufhebt.",
+      "advertised": false,
+      "evidence": "edge-app/core/internal/entities/ruhe_vectors_test.go"
     }
   ],
   "cases": [
@@ -84,6 +90,16 @@
       "expected": [
         "data_sources",
         "events"
+      ]
+    },
+    {
+      "name": "reported_rest_until_revoked_is_recognized",
+      "supports": [
+        "automation_paused_until_revoked"
+      ],
+      "table": [],
+      "expected": [
+        "automation_paused_until_revoked"
       ]
     }
   ]

@@ -22273,16 +22273,23 @@ components:
         teilnahme: { $ref: "#/components/schemas/FunktionTeilnahme" }
     FunktionTeilnahme:
       type: object
-      required: [zustand, seit, text, uebernommen, pruefliste, fehlt, wege, aktionen]
+      required: [zustand, seit, text, uebernommen, ruhe_hinweis, pruefliste, fehlt, wege, aktionen]
       properties:
         zustand: { type: string, enum: [kein_objekt, archiviert, entwurf, eingerichtet, angehalten, aktiv] }
         seit: { type: string, format: date-time, nullable: true }
         text: { type: string }
         uebernommen: { type: boolean }
+        ruhe_hinweis: { $ref: "#/components/schemas/FunktionRuheHinweis" }
         pruefliste: { type: array, items: { $ref: "#/components/schemas/FunktionPruefZeile" } }
         fehlt: { type: array, items: { type: string } }
         wege: { type: array, items: { $ref: "#/components/schemas/FunktionWeg" } }
         aktionen: { type: array, items: { type: string, enum: [aufnehmen, starten, anhalten, fortsetzen, beenden] } }
+    FunktionRuheHinweis:
+      type: object
+      required: [jetzt, beim_anhalten]
+      properties:
+        jetzt: { type: boolean }
+        beim_anhalten: { type: boolean }
     FunktionPruefZeile:
       type: object
       required: [pruefung, bestanden]

@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.measurement.MesskanalService;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
@@ -79,12 +80,15 @@ public class FunktionService {
     private final Geltungsbereich geltungsbereich;
     private final JdbcTemplate jdbc;
     private final ObjectProvider<EntityRegistryService> registry;
+    private final LeadDeviceService leadDevices;
+    private final BoxFaehigkeiten boxFaehigkeiten;
     private volatile Clock uhr = Clock.systemUTC();
 
     public FunktionService(StandortRepository standorte, AnlageStandortRepository zuordnungen,
             UnternehmenRepository unternehmen, FunktionRepository funktionen, FunktionTeilnahmeRepository teilnahmen,
             FunktionFakten fakten, DeviceOverrideRepository overrides, Geltungsbereich geltungsbereich, JdbcTemplate jdbc,
-            ObjectProvider<EntityRegistryService> registry) {
+            ObjectProvider<EntityRegistryService> registry, LeadDeviceService leadDevices,
+            BoxFaehigkeiten boxFaehigkeiten) {
         this.standorte = standorte;
         this.zuordnungen = zuordnungen;
         this.unternehmen = unternehmen;
@@ -95,6 +99,8 @@ public class FunktionService {
         this.geltungsbereich = geltungsbereich;
         this.jdbc = jdbc;
         this.registry = registry;
+        this.leadDevices = leadDevices;
+        this.boxFaehigkeiten = boxFaehigkeiten;
     }
 
     /** Nur für Tests. */
@@ -608,8 +614,11 @@ public class FunktionService {
             List<String> aktionen = t == null ? List.of() : ANLAGEN_AKTIONEN.stream()
                     .filter(x -> FunktionZustandAbleitung.uebergangAnlage(x, a.stand()).erlaubt())
                     .map(Aktion::code).toList();
+            RuheHinweisRegel.Ergebnis hinweis = ruheHinweis(site, a.stand().zustand(),
+                    aktionen.contains(Aktion.ANHALTEN.code()));
             zeilen.add(new FunktionDto.Anlage(site, w.name(site), new FunktionDto.Teilnahme(a.stand().zustand().code(),
                     zeit(a.stand().seit(), zone), a.text(), t != null && t.uebernommen(),
+                    new FunktionDto.RuheHinweis(hinweis.jetzt(), hinweis.beimAnhalten()),
                     a.ergebnis().pruefliste().stream()
                             .map(z -> new FunktionDto.PruefZeile(z.pruefung().code(), z.bestanden())).toList(),
                     a.stand().fehlt(), a.wege(), aktionen)));
@@ -630,6 +639,16 @@ public class FunktionService {
         FunktionDto.Messen messen = new FunktionDto.Messen(m.zustand().code(), zeit(m.seit(), zone), m.text(),
                 m.fehlt(), m.datenlage());
         return new FunktionDto.Standort(st.id(), st.kurzzeichen(), st.name(), st.zeitzone(), messen, steuern);
+    }
+
+    private RuheHinweisRegel.Ergebnis ruheHinweis(UUID site, Zustand zustand, boolean anhaltenErlaubt) {
+        UUID ziel = leadDevices.fuehrendeBox(site).box();
+        if (ziel == null) {
+            return RuheHinweisRegel.ableiten(zustand, anhaltenErlaubt, List.of());
+        }
+        Boolean faehig = boxFaehigkeiten.kann(ziel, RuheHinweisRegel.FAEHIGKEIT) ? Boolean.TRUE : null;
+        return RuheHinweisRegel.ableiten(zustand, anhaltenErlaubt,
+                List.of(new RuheHinweisRegel.Box(true, faehig)));
     }
 
     /**

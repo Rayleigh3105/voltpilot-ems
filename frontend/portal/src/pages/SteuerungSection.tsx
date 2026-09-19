@@ -37,6 +37,7 @@ import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { JetztZone } from '../components/JetztZone';
 import { FunktionSteuerungAktion } from '../components/FunktionSteuerungAktion';
+import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 import { Recht } from '../components/Recht';
 import { SteuernAssistent } from '../components/SteuernAssistent';
 import { SteuerungIntro } from '../components/SteuerungIntro';
@@ -699,6 +700,9 @@ export function SteuerungSection({
           {funktionsAnzeige.kopf && (
             <p className="vp-funktion-kopf" role="status">{funktionsAnzeige.kopf}</p>
           )}
+          {steuerTeilnahme?.ruhe_hinweis?.jetzt && (
+            <p className="vp-funktion-kopf" data-testid="ruhe-verbindung-hinweis">{RUHE_VERBINDUNG_HINWEIS}</p>
+          )}
 
           {steuerTeilnahme?.zustand === 'kein_objekt' && funktionsStandort && (
             <div className="vp-steuern-einstieg" data-testid="steuern-einstieg">
@@ -730,6 +734,7 @@ export function SteuerungSection({
                 umfang="anlage"
                 standortId={funktionsStandort.id}
                 betroffen={[site.name]}
+                ruheHinweis={steuerTeilnahme?.ruhe_hinweis?.beim_anhalten ? RUHE_VERBINDUNG_HINWEIS : null}
                 onBestaetigen={async () => {
                   await api.funktionSteuern(site.id, funktionsAktion);
                   reload();

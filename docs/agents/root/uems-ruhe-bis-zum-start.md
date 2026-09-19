@@ -38,6 +38,22 @@ Sie ist die Zeile `device_override` mit `kind = pause` und `herkunft = 'funktion
 - **Schreibweg für IP-3:** `DeviceOverrideRepository.putRuhe` (macht aus einer Handpause die Ruhe,
   eine bestehende Ruhe bleibt unverändert; `renewed_at` leer → der nächste Takt pusht) und
   `clearRuhe` (lässt eine Handpause stehen). Seit IP-3 ruft `FunktionService` an: Anhalten und Beenden
-  setzen die Ruhe, Starten und Fortsetzen heben sie auf (`uems-funktionen-routen.md`); keine Fläche.
+  setzen die Ruhe, Starten und Fortsetzen heben sie auf (`uems-funktionen-routen.md`).
+- **X7-Satz auf der Kundenfläche:** `GET /api/v1/funktionen` liefert je Teilnahme lesend
+  `ruhe_hinweis.jetzt` und `ruhe_hinweis.beim_anhalten`. `RuheHinweisRegel` entscheidet allein aus
+  Ruhe/Anhalten und der Fähigkeit `automation_paused_until_revoked` der führenden Box — genau dem
+  Zustellziel des Registry-Pushs; eine andere Box der Anlage zählt nicht. Fehlende Meldung ist
+  unbekannt und beweist die Fähigkeit nicht. Das Portal zeigt wörtlich: „Diese Box hält die Ruhe nur,
+  solange sie mit VoltPilot verbunden ist.“ Eine aktive Bestandsanlage sieht ihn nicht, weil die
+  Übernahme keine Ruhe anlegt; beim späteren bewussten Anhalten steht er im Bestätigungsweg.
+- **Stand des ausgelieferten Box-Images `edge-2026.09.4`:** Der Core versteht das Push-Feld bereits
+  (`internal/entities/entities.go`, `internal/agent/ruhe_bis_zum_start_test.go`), meldet die Fähigkeit
+  aber noch nicht: `internal/cloud/data_source_status.go` führt sie nicht in `BuiltSupports()`, und
+  `edge-supports-vectors.json` hält sie deshalb auf `advertised: false`. Heute sieht damit jede Anlage
+  in Ruhe den Satz; genau für diese ausgelieferte Flotte hat NW-3 den Ablauf nach mehr als vier
+  Stunden Trennung gemessen. Der Satz verschwindet erst, wenn die zuständige Box den Namen in
+  `supports[]` meldet. Offener Folgepunkt vor dem ersten Box-Update: das ruhende Box-Paket
+  „Box meldet `automation_paused_until_revoked` in `supports[]`“ bauen; ohne diesen Schritt bliebe der
+  Satz auch nach einem Box-Update sichtbar.
 - **Wirkt an einer echten Box erst mit einem Edge-Release.** `RUNTIME_VERSION` (Katalog-Laufzeitstand)
   ist unberührt, `schema_version` des Pushs bleibt `1.0`.

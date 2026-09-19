@@ -61,7 +61,12 @@ public final class FunktionDto {
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Teilnahme(String zustand, OffsetDateTime seit, String text, boolean uebernommen,
-            List<PruefZeile> pruefliste, List<String> fehlt, List<Weg> wege, List<String> aktionen) {}
+            RuheHinweis ruheHinweis, List<PruefZeile> pruefliste, List<String> fehlt, List<Weg> wege,
+            List<String> aktionen) {}
+
+    /** Der Zustandssatz gilt jetzt bzw. im Bestätigungsweg fürs Anhalten. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RuheHinweis(boolean jetzt, boolean beimAnhalten) {}
 
     /** {@code bestanden == null} heißt „nicht prüfbar“, nie „bestanden“. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
