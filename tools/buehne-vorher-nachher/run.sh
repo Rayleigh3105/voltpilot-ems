@@ -23,7 +23,7 @@ done
 case "$OUTPUT" in /*) ;; *) OUTPUT="$ROOT/$OUTPUT" ;; esac
 case "$REVIEW" in /*) ;; *) REVIEW="$ROOT/$REVIEW" ;; esac
 
-for programm in cmp docker git java npm python3 lsof memory_pressure; do
+for programm in cmp diff docker git java npm python3 lsof memory_pressure; do
   command -v "$programm" >/dev/null || { echo "Fehlt: $programm" >&2; exit 2; }
 done
 export JAVA_HOME=${JAVA_HOME:-$JAVA_HOME_DEFAULT}
@@ -127,8 +127,13 @@ echo "Rendere das echte UEMS-Portal mit den Antworten nach Migrationen und Läuf
 tail -25 "$ARBEIT/logs/uems-portal.log"
 
 for breite in 375 1440; do
+  if ! cmp -s "$OUTPUT/u1-vorher-$breite.inhalt.json" "$OUTPUT/u1-nachher-$breite.inhalt.json"; then
+    echo "U1 unterscheidet sich bei $breite px in sichtbarem Text oder Kachelmaßen:" >&2
+    diff -u "$OUTPUT/u1-vorher-$breite.inhalt.json" "$OUTPUT/u1-nachher-$breite.inhalt.json" || true
+    exit 1
+  fi
   if ! cmp -s "$OUTPUT/u1-vorher-$breite.png" "$OUTPUT/u1-nachher-$breite.png"; then
-    echo "U1 ist bei $breite px nicht bytegleich; Bilder bleiben zur Befundaufnahme erhalten." >&2
+    echo "U1 hat bei $breite px gleichen sichtbaren Text und gleiche Kachelmaße, ist aber nicht bytegleich; die Abweichung liegt in Rasterung oder PNG-Ausgabe." >&2
     exit 1
   fi
 done
