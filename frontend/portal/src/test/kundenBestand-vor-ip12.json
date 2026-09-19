@@ -839,6 +839,17 @@
     "components/StandortKopf.tsx": [
       "6582c8d419c9c7db8a733828a55bc1d40704e6aa1349a86671a10ddd8790ee2e"
     ],
+    "components/StandortVorschau.tsx": [
+      "ac5fc7ab354c11dc0d0cfc116bcd4c40628d23689fbbc2f4f94df8d272a2d1a8",
+      "29769f8fb8d8e59c24312ce236cc8bef95eb4984e06d4445b379a667ddb640b1",
+      "3555984b2c81afda44f8944d41c834a1affa6771ade6eb6436e45f673e9097d1",
+      "60e1d0cdcb423982005d8418e981aac1af72dcb44c070b56c4c278ab30514820",
+      "b3e1dc3038d3ff83087bcb26e84a2a94d029c4289083e5921c0560b66b515794",
+      "327901262eea4541ff3112548f7c05803bcb3396de528656e0c22531f0c629b5",
+      "03f0d766d8d7427f525463620b879f61b132b78f8f7dbefe0c1824ace53b7ed7",
+      "393ee24de76f430f2b37cae7e084de9f9a9ff1f388f134ea81f53010600c2e6d",
+      "aa597b76408eff463c488ea81d22d445770578cd12b6785f8cd77833ec4e747c"
+    ],
     "components/States.tsx": [
       "23ecaafac81bba2e3009e987ce38e33e0be2a32c6a0e239a3dd8dc1c850d16a0",
       "615500fea6be88d2272235f3af191fc8501c86c1ab5963a398f8600b4353a859",
@@ -1238,6 +1249,20 @@
     ]
   },
   "fortschreibungen": [
+    {
+      "datei": "components/StandortVorschau.tsx",
+      "vorher": "60e1d0cdcb423982005d8418e981aac1af72dcb44c070b56c4c278ab30514820",
+      "nachher": "18b82d5d7bf36b30a9a74f2379a4949dee238f2bbe182d61af3c95c8269e0629",
+      "commit": "fm/vp-uems-standortvorschau-teilgruppen",
+      "grund": "AP-14 U2 führt den bestehenden Abkürzungs-Knopf weiterhin durch dieselbe Gruppierungsfunktion wie die neue 2+1-Auswahl; Beschriftung und Bedienziel bleiben erhalten."
+    },
+    {
+      "datei": "components/StandortVorschau.tsx",
+      "vorher": "b3e1dc3038d3ff83087bcb26e84a2a94d029c4289083e5921c0560b66b515794",
+      "nachher": "eee1ed7a8f7f35931e52cc48b52adfc3369e39f15ee556157128df4e4e262e88",
+      "commit": "fm/vp-uems-standortvorschau-teilgruppen",
+      "grund": "AP-14 U2 führt auch das bestehende Wieder-getrennt-Lassen über die eine reine Gruppierungsfunktion; Wortlaut und Wirkung bleiben erhalten."
+    },
     {
       "datei": "components/ZuordnungAendernDialog.tsx",
       "vorher": "f82172e23790412b667c137c868ac4430f5db54b20789362f3f0759c6c1b614a",

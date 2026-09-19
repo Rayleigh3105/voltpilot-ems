@@ -5,7 +5,8 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Betriebsart, type Site, type StandortZuordnungVorschau } from '../api';
 import { useRollen } from '../rollen';
-import { alleZusammenlegen, anfrage, formular, pruefen, wasSichAendert, type VorschlagGruppeForm } from '../standortVorschlag';
+import { VpPicker } from './VpPicker';
+import { anfrage, formular, gruppierungAendern, pruefen, wasSichAendert, type VorschlagGruppeForm } from '../standortVorschlag';
 import './StandortVorschau.css';
 
 export function NochNichtZugeordnetKarte({ vorschau, onOeffnen }: {
@@ -40,6 +41,7 @@ export function StandortVorschau({ open, vorschau, aktuelleEbene, isAdmin, betri
   const [gruppen, setGruppen] = useState<VorschlagGruppeForm[]>([]);
   const [fehler, setFehler] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const ausgang = vorschau ? formular(vorschau) : [];
 
   useEffect(() => {
     if (open && vorschau) {
@@ -86,11 +88,11 @@ export function StandortVorschau({ open, vorschau, aktuelleEbene, isAdmin, betri
           <h2>Vorschau: Ihre Anlagen und Standorte</h2>
           <p>Unser Vorschlag: je Anlage ein Standort. Legen Sie zusammen, was zusammengehört.</p>
           {gruppen.length > 1 ? (
-            <Button type="button" variant="outline" onClick={() => setGruppen(alleZusammenlegen(gruppen))}>
+            <Button type="button" variant="outline" onClick={() => setGruppen(gruppierungAendern(gruppen, ausgang, { art: 'alle_zusammen' }))}>
               Alle Anlagen zusammenlegen
             </Button>
           ) : vorschau && vorschau.gruppen.length > 1 ? (
-            <Button type="button" variant="outline" onClick={() => setGruppen(formular(vorschau))}>
+            <Button type="button" variant="outline" onClick={() => setGruppen(gruppierungAendern(gruppen, ausgang, { art: 'alle_getrennt' }))}>
               Wieder getrennt lassen
             </Button>
           ) : null}
@@ -99,7 +101,25 @@ export function StandortVorschau({ open, vorschau, aktuelleEbene, isAdmin, betri
           <Card key={g.id} className="vp-sv-gruppe" padding="md" radius="md">
             <Input label="Name des Standorts *" value={g.name} onChange={(e) => setze(g.id, 'name', e.target.value)} />
             <ul aria-label={`Anlagen für ${g.name || 'diesen Standort'}`}>
-              {g.anlagen.map((a) => <li key={a.vorschlagId}><strong>{a.anlageName}</strong><span>zugeordnet ab {datum(a.gueltigAb)}</span></li>)}
+              {g.anlagen.map((a) => <li key={a.vorschlagId}>
+                <div className="vp-sv-anlage"><strong>{a.anlageName}</strong><span>zugeordnet ab {datum(a.gueltigAb)}</span></div>
+                <VpPicker
+                  label={`Gehört zu: ${a.anlageName}`}
+                  value={g.id}
+                  options={[
+                    ...gruppen.map((ziel) => ({ value: ziel.id, label: ziel.name.trim() || 'Standort ohne Namen' })),
+                    { value: '__eigen__', label: 'Eigener Standort' },
+                  ]}
+                  onChange={(ziel) => {
+                    setGruppen((alt) => gruppierungAendern(alt, ausgang, {
+                      art: 'anlage_zuordnen',
+                      vorschlagId: a.vorschlagId,
+                      zielGruppeId: ziel === '__eigen__' ? null : ziel,
+                    }));
+                    setFehler(null);
+                  }}
+                />
+              </li>)}
             </ul>
             <div className="vp-sv-adresse">
               <Input label="Straße und Hausnummer *" value={g.strasse} onChange={(e) => setze(g.id, 'strasse', e.target.value)} />
