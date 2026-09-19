@@ -5,14 +5,12 @@ import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
 import com.voltpilot.api.uems.ErwarteteKadenz;
 import com.voltpilot.api.uems.ErwarteteKadenz.Messkanal;
-import com.voltpilot.api.uems.KadenzRegeln;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.MqttClient;
@@ -102,43 +100,8 @@ public class MeasurementConfigPublisher {
      */
     byte[] payload(DeviceScope scope, State state) throws Exception {
         Map<Messkanal, Integer> fassungen = kadenzen.fassungenJeKanal(messkanaele(state), Instant.now());
-        Map<String, Map<String, Object>> byPointKey = new LinkedHashMap<>();
-        Map<String, Boolean> unambiguousEntity = new LinkedHashMap<>();
-        for (MeasurementSelectionService.SelectionPoint p : state.selections()) {
-            if (!p.enabled()) {
-                continue;
-            }
-            Integer soll = cadence(p, fassungen);
-            Map<String, Object> selection = byPointKey.get(p.pointKey());
-            if (selection == null) {
-                selection = new LinkedHashMap<>();
-                selection.put("point_key", p.pointKey());
-                selection.put("cadence_s", soll);
-                if (p.customDefinition() != null) {
-                    selection.put("definition", p.customDefinition());
-                }
-                if (p.entityId() != null) {
-                    selection.put("entity_id", p.entityId());
-                }
-                byPointKey.put(p.pointKey(), selection);
-                unambiguousEntity.put(p.pointKey(), Boolean.TRUE);
-                continue;
-            }
-            Object cadence = selection.get("cadence_s");
-            if (soll != null && (!(cadence instanceof Integer existing)
-                    || soll.intValue() < existing.intValue())) {
-                selection.put("cadence_s", soll);
-            }
-            if (!Objects.equals(p.entityId(), selection.get("entity_id"))) {
-                unambiguousEntity.put(p.pointKey(), Boolean.FALSE);
-            }
-        }
-        for (Map.Entry<String, Map<String, Object>> e : byPointKey.entrySet()) {
-            if (!Boolean.TRUE.equals(unambiguousEntity.get(e.getKey()))) {
-                e.getValue().remove("entity_id");
-            }
-        }
-        List<Map<String, Object>> selections = List.copyOf(byPointKey.values());
+        List<Map<String, Object>> selections = MeasurementPlan.compose(state.selections(), fassungen)
+                .stream().map(MeasurementConfigPublisher::wireEntry).toList();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema_version", "2.0");
         payload.put("tenant_id", scope.tenantId());
@@ -150,19 +113,13 @@ public class MeasurementConfigPublisher {
         return mapper.writeValueAsBytes(payload);
     }
 
-    /**
-     * Die Soll-Kadenz EINER Auswahlzeile: die Fassung ihrer Quellenbindung, sonst die der Auswahl.
-     * Eine Fassung außerhalb der Schranken des Drahtvertrags wird ÜBERGANGEN, nie zurechtgebogen —
-     * über den Schreibweg kann sie nicht entstehen (CHECK und {@link KadenzRegeln}), von Hand in
-     * der Datenbank schon.
-     */
-    private static Integer cadence(MeasurementSelectionService.SelectionPoint p,
-            Map<Messkanal, Integer> fassungen) {
-        if (p.entityId() == null) {
-            return p.cadenceS();
-        }
-        Integer fassung = fassungen.get(new Messkanal(p.entityId(), p.pointKey()));
-        return KadenzRegeln.imRahmen(fassung) ? fassung : p.cadenceS();
+    private static Map<String, Object> wireEntry(MeasurementPlan.Entry entry) {
+        Map<String, Object> selection = new LinkedHashMap<>();
+        selection.put("point_key", entry.pointKey());
+        selection.put("cadence_s", entry.cadenceS());
+        if (entry.customDefinition() != null) selection.put("definition", entry.customDefinition());
+        if (entry.entityId() != null) selection.put("entity_id", entry.entityId());
+        return selection;
     }
 
     /** Die Messkanäle, nach deren Fassung gefragt wird: je aktive Auswahlzeile mit Komponente. */
