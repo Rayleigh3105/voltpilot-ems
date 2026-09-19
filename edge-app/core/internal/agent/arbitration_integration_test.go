@@ -364,9 +364,15 @@ func TestArbitrationChainDesiredPlanOverrideStaleness(t *testing.T) {
 	if lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "superseded" }) == nil {
 		t.Fatal("the plan holder must receive a superseded event")
 	}
+	// Der Kern veroeffentlicht bewusst erst den Befehl und danach das Ereignis
+	// (arbiter.go: publishCommand vor emitEvent, in applyDecision wie in
+	// fallToFailsafe). Auf den Befehl warten und das Ereignis danach EINMAL
+	// lesen laesst dazwischen ein Fenster aufgehen - beides gehoert deshalb in
+	// dieselbe Warteschleife.
 	waitFor(t, 30*time.Second, "plan resumes after override TTL", func() bool {
 		v, src, ok := cmdSetpoint(entBattery)
-		return ok && src == "plan" && v == 1.5
+		return ok && src == "plan" && v == 1.5 &&
+			lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "expired" }) != nil
 	})
 	if lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "expired" }) == nil {
 		t.Fatal("override expiry must emit an expired event")
@@ -399,11 +405,17 @@ func TestArbitrationChainDesiredPlanOverrideStaleness(t *testing.T) {
 		v, src, ok := cmdSetpoint(entBattery)
 		return ok && src == "failsafe" && v == 2
 	})
+	// Auch hier: der geleerte Befehl steht VOR dem fallback-Ereignis, also
+	// wartet die Schleife auf beides.
 	waitFor(t, 30*time.Second, "producer command cleared (release failsafe)", func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		list := commands["edge/entities/"+entProducer+"/command"]
-		return len(list) > 0 && list[len(list)-1] == ""
+		geleert := func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			list := commands["edge/entities/"+entProducer+"/command"]
+			return len(list) > 0 && list[len(list)-1] == ""
+		}
+		return geleert() &&
+			lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "fallback" }) != nil
 	})
 	if lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "fallback" }) == nil {
 		t.Fatal("plan staleness must emit fallback events")
