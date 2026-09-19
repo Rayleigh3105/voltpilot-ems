@@ -95,12 +95,20 @@ voltpilot:
       username: ${POSTGRES_USER:voltpilot}
       password: ${POSTGRES_PASSWORD:voltpilot_dev_pw}
 
+# Actuator at the root: /health for the probes, /metrics for the Prometheus
+# scrape (the actuator endpoint id `prometheus`, remapped exactly like the writer
+# on 8092 and the api). Der ingest hat keinen Security-Starter, /metrics
+# antwortet also anonym - Prometheus scrapt jeden Pod im Pod-Netz, das nginx des
+# Portals reicht ihn nie durch. Erst damit sind die Zaehler der Datenannahme
+# ueberhaupt abholbar (docs/agents/root/uems-betriebsueberwachung.md).
 management:
   endpoints:
     web:
       base-path: /
       exposure:
-        include: health,info
+        include: health,info,prometheus
+      path-mapping:
+        prometheus: metrics
   endpoint:
     health:
       probes:

@@ -23,6 +23,9 @@ import org.springframework.stereotype.Component;
  * die QoS-1-Zustellung wird erst quittiert, wenn Redpanda alle Ereignisse bestätigt hat — ein
  * Ereignis wird nie gelöscht, also auch nicht beim Ausfall von Redpanda verloren. Der Adapter
  * verbindet sich erst, wenn es das Topic {@code events.raw} gibt ({@link BoxEreignisTor}).
+ *
+ * <p>Auf {@link IngestMetriken} zaehlt nur ein ABGEWIESENER Umschlag als {@code verworfen};
+ * abgelehnte Eintraege eines angenommenen Umschlags gehen selbst als {@code rejected} heraus.
  */
 @Component
 public class BoxEventsIngestHandler {
@@ -30,12 +33,14 @@ public class BoxEventsIngestHandler {
     private final BoxEventsValidator validator;
     private final EventsRawProducer ereignisse;
     private final Clock clock;
+    private final IngestMetriken metriken;
 
     public BoxEventsIngestHandler(BoxEventsValidator validator, EventsRawProducer ereignisse,
-            Clock clock) {
+            Clock clock, IngestMetriken metriken) {
         this.validator = validator;
         this.ereignisse = ereignisse;
         this.clock = clock;
+        this.metriken = metriken;
     }
 
     @ServiceActivator(inputChannel = MqttEventsIngestConfig.CHANNEL)
@@ -45,21 +50,34 @@ public class BoxEventsIngestHandler {
                     required = false) SimpleAcknowledgment acknowledgement) {
         Instant eingang = clock.instant();
         String payload = message.getPayload();
+        metriken.angenommen(IngestMetriken.EVENTS);
+        boolean weitergereicht = false;
         try {
             List<CompletableFuture<?>> sends = new ArrayList<>();
             try {
                 Annahme<List<EventsRawEvent>> annahme = validator.annehmen(mqttTopic, payload, eingang);
-                sends.addAll(ereignisse.sende(annahme.weiter()));
+                // Was WIRKLICH hinausging: fehlt events.raw, liefert sende() eine leere Liste
+                // (nur Log + der vorhandene Zaehler) - dann ist nichts weitergereicht worden.
+                List<CompletableFuture<?>> nutzlast = ereignisse.sende(annahme.weiter());
+                sends.addAll(nutzlast);
+                if (!nutzlast.isEmpty()) {
+                    metriken.weitergereicht(IngestMetriken.EVENTS);
+                    weitergereicht = true;
+                }
                 if (!annahme.ablehnungen().isEmpty()) {
                     log.warn("refused box events on {}: {}", mqttTopic, annahme.ablehnungen());
                 }
                 sends.addAll(ereignisse.sende(EventsRawEvent.ablehnungen(annahme, mqttTopic, payload, eingang)));
             } catch (UmschlagAbgewiesen e) {
+                metriken.verworfen(IngestMetriken.EVENTS, IngestMetriken.grundVon(e));
                 log.warn("rejected box events on {}: {}", mqttTopic, e.getMessage());
                 sends.addAll(ereignisse.sende(
                         EventsRawEvent.abweisung(e, mqttTopic, payload, eingang).stream().toList()));
             }
             EventsRawProducer.abwarten(sends);
+            if (weitergereicht) {
+                metriken.schreibzugBestaetigt(IngestMetriken.EVENTS, clock.instant());
+            }
             if (acknowledgement != null) {
                 acknowledgement.acknowledge();
             }

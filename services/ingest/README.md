@@ -12,7 +12,21 @@ Java 21; Befehle in diesem Verzeichnis:
 ./mvnw clean package
 ```
 
-Standardport: `8091`. Health: `/health`; Kubernetes: `/health/liveness` und `/health/readiness`. Testcontainers-Fälle benötigen Docker.
+Standardport: `8091`. Health: `/health`; Kubernetes: `/health/liveness` und `/health/readiness`. Metrik-Scrape: `/metrics` (Prometheus-Format, anonym lesbar wie beim Writer auf 8092 — der Dienst hat keinen Security-Starter; das nginx des Portals reicht ihn nie durch). Testcontainers-Fälle benötigen Docker.
+
+## Was die Datenannahme zählt
+
+| Metrik | Labels | Bedeutung |
+|---|---|---|
+| `voltpilot_ingest_angenommen_total` | `strom` | Eingegangene Umschläge, je Nachricht 1 |
+| `voltpilot_ingest_weitergereicht_total` | `strom` | An Redpanda übergebene Umschläge |
+| `voltpilot_ingest_verworfen_total` | `strom`, `grund` | Umschläge, die ihr Nutzlast-Topic NICHT erreicht haben |
+| `voltpilot_ingest_letzter_schreibzug_age_seconds` | `strom` | Sekunden seit dem letzten BESTÄTIGTEN Schreibzug; `NaN` bis zum ersten |
+| `voltpilot_ingest_events_undelivered_total` | `reason`, `strom` | Ereignis nicht zugestellt, weil `events.raw` fehlt (älter, erst jetzt abholbar) |
+
+`strom` = `measurements` | `telemetry` | `telemetry_v2` | `events`, `grund` = `ungueltig` | `identitaet` | `serialisierung`. Beide Vokabulare sind geschlossen, alle Reihen stehen ab Prozessstart auf `0`, und **keine Kennung wird je zum Label** — Mandant, Anlage und Box bleiben in der WARN-Zeile.
+
+**`angenommen` = `weitergereicht` + `verworfen` gilt bewusst nicht.** Ein angenommener Umschlag, dessen TEILWERTE abgelehnt wurden, reicht nichts weiter und ist trotzdem kein stiller Verlust: diese Ablehnungen gehen seit AP-07 IP-5 als Ereignis auf `events.raw` heraus. Die Lücke zwischen beiden Zählern ist also lesbar, keine verlorene Nachricht — dieselbe Trennung, die PR 972 beim Writer gezogen hat.
 
 Konfiguration: [`application.yml`](src/main/resources/application.yml), lokale/prod Compose-Dateien. Zugangsdaten nicht aus Entwicklungsbeispielen in Produktion übernehmen.
 
