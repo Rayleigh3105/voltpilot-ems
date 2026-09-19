@@ -13,13 +13,16 @@ ein ausgeliefertes Artefakt.
 
 ```bash
 tools/nw3-box-image/nw3.sh                     # die Paare aus paare.json
+tools/nw3-box-image/nw3.sh --strecke           # PLUS Datenannahme->Redpanda->Writer->DB
 tools/nw3-box-image/nw3.sh --paare q07.json    # die Paare des Betreibers
 tools/nw3-box-image/nw3.sh --protokoll /pfad/nw3.json
 tools/nw3-box-image/nw3.sh --behalten          # Stack stehen lassen (Fehlersuche)
 ```
 
 Gebraucht werden Docker und `python3`; sonst nichts. Der Lauf dauert rund
-fünf Minuten je Paar (der erste länger: er baut die Bilder).
+fünf Minuten je Paar (der erste länger: er baut die Bilder), mit `--strecke`
+rund drei Minuten mehr. **`--strecke` fährt zwei Container-Gruppen zugleich** —
+die Box-Gruppe und die Strecke —, also nur bei reichlich freiem Speicher starten.
 
 ## Die Paar-Liste ist ein Parameter, kein eingebauter Wert
 
@@ -45,7 +48,7 @@ statt still etwas anderes zu bauen.
 | MQTT-Broker | **echter Prozess** | Mosquitto, `edge-app/test/Dockerfile.broker` |
 | Cloud-Nutzlasten | **festgenagelte Bytes dieses Standes** | `docs/contracts/v2/examples/*` |
 | api | *kein Prozess* | siehe unten |
-| Datenannahme, Redpanda, Writer, TimescaleDB | *nicht gefahren* | siehe „Was offen ist" |
+| Datenannahme, Redpanda, Writer, TimescaleDB | **echte Prozesse** (mit `--strecke`) | aus DIESEM Arbeitsbaum gebaut |
 
 **Warum kein api-Prozess.** Die Frage von NW-3 ist nicht „läuft die api", sondern
 „erträgt die ausgelieferte Box, was die neue Cloud ihr schickt". Was die Cloud
@@ -91,7 +94,14 @@ Werkzeug fährt dann denselben Lauf gegen dieselben Bytes.
    `DisallowUnknownFields` (`internal/measurements/measurements.go:71`): schickt
    die neue Cloud auch nur EIN neues Feld mit, lehnt die alte Box die ganze
    Auswahl ab. Das ist dann ein **roter Befund**, nicht zu umgehen.
-4. **Samples 2.0 im Writer** — siehe „Was offen ist".
+4. **Samples 2.0 im Writer** (nur mit `--strecke`) — die Quittung nennt die
+   Auswahl als angewandt und trägt den Stempel des Tags · die Sample-Umschläge
+   der echten Box laufen über die **echte** Datenannahme, Redpanda und den
+   **echten** Writer dieses Standes in eine echte TimescaleDB · dieselben
+   Messzeiten am Draht wie in `device_measurement_sample` · **beide
+   Verwurf-Familien des Writers bleiben 0** (`voltpilot_writer_verworfen_total`
+   und `voltpilot_writer_verworfene_samples_total` aus `/metrics`). Siehe
+   „Die Auswahl, die der Simulator wirklich hergibt".
 5. **Handeingriff setzen und aufheben** (H7): Pause mit Ende zugestellt, dann
    aufgehoben.
 6. **Ruhe mit rollierendem Ende** und die Box **länger getrennt als das Ende**
@@ -106,28 +116,77 @@ Werkzeug fährt dann denselben Lauf gegen dieselben Bytes.
    zieht `services/api/.../uems/Nw3AusgeliefertesBoxImageTest.java` mit genau
    diesem Stand.
 
-## Was offen ist
+## Die Auswahl, die der Simulator wirklich hergibt
 
-**Punkt 4 (Samples 2.0 im Writer) ist in diesem Stand NICHT gefahren.** Der
-Grund ist benannt und kein Zufall: die festgenagelte Mess-Auswahl der Cloud
-wählt einen **Deye**-Punkt (`deye.hybrid_1p.battery.battery`), der Simulator des
-Tags spricht **SunSpec**. Die Box nimmt die Auswahl an (Punkt 3 ist grün und
-`rejected` ist leer), findet aber keine Quelle dafür und sendet folglich keine
-Samples. Für Punkt 4 fehlen zwei Dinge, die beide über diesen Schnitt hinausgehen:
+Zwei Dinge mussten dafür stimmen, und beide waren am Anfang falsch.
 
-* eine Mess-Auswahl auf einen Punkt, den die Palette des Tags am SunSpec-Simulator
-  wirklich liest, und
-* die Strecke Datenannahme → Redpanda → Writer → TimescaleDB als zweite
-  Container-Gruppe (`--strecke`, im Werkzeug vorgesehen, hier nicht gefahren).
-  Die Zähler beider Verwurf-Familien (PR 972) gehören dann in das Protokoll.
+**Erstens: ohne gewählten Wechselrichter liest die Box gar nichts.** Die
+Messlaufzeit löst die Verbindung zur LESEZEIT auf (`resolveDevice`), und die
+Verbindung des primären Wechselrichters steht im retained `edge/inverter/config`
+— das der Core nur veröffentlicht, wenn am Gerät ein Wechselrichter **gewählt**
+ist. Im Feld macht das der Installateur in der lokalen Weboberfläche der Box;
+der Lauf geht seit jetzt über genau dieselbe Route (`POST /api/inverter` an den
+echten Core des Tags) und wählt `generic_modbus` / `sunspec` — das im Core
+hinterlegte Registerbild **des Simulators**. Das ist die einzige Einstellung des
+Laufs, die nicht aus der Cloud kommt, und sie ist Gerätesache, keine Nutzlast.
+
+**Zweitens: der Simulator des Tags spricht KEIN echtes SunSpec.** Er ist eine
+kompakte 64-Register-Karte (`edge/sim/sunspec-sim.js`, Kopfkommentar: „not a
+byte-exact full SunSpec model dump"); die SID-Marke `SunS` steht an keiner der
+Basen, die `sunspec/model-discovery.js` absucht (40000, 50000, 0). Ein
+modell-relativer Katalogpunkt wird darum **angenommen und nie gelesen**:
+
+| Auswahl | Quittung der Box | gesendet |
+|---|---|---|
+| `deye.hybrid_1p.battery.battery` (die alte festgenagelte) | `accepted` | `raw: 0` — die Deye-Adresse liegt außerhalb der 64 Register des Simulators |
+| `sunspec.model_203.totwhimp` (der Punkt des NW-4-Laufs) | `accepted`, `rejected` leer | **nichts** — die Modell-Erkennung findet keine Basis |
+| `custom.sim.soc` (Halteregister 4, uint16, 0,1 %) | `accepted` | `raw: 520`, `decoded: 52` — der Ladezustand, den der Simulator wirklich hält |
+
+**Das ist der Befund dieses Punktes: eine angenommene Auswahl ist keine gelesene
+Auswahl.** Die Box meldet `rejected: []` und sendet trotzdem nichts; erst der
+Blick auf die Sample-Umschläge sagt, ob ein Punkt wirklich getragen wird. Ein
+`custom.`-Punkt adressiert das Halteregister absolut, braucht keine Erkennung
+und ist derselbe Weg, den die Cloud für jeden nicht-katalogisierten Kunden-Punkt
+geht. Die Bytes der Auswahl sind **aus dem Erzeuger** genommen, nicht von Hand
+geschrieben: `MeasurementContractsTest#nw3AuswahlAmSimulatorIstDieFestgenagelteNutzlast`
+schreibt sie mit dem echten `MeasurementConfigPublisher` und hält sie gegen
+`docs/contracts/v2/examples/mqtt-measurement-config.valid.nw3-simulator.json`.
+
+**Was das für NW-3 heißt und was nicht.** Gefahren ist damit die ganze Kette —
+echte Box → echter Broker → echte Datenannahme → Redpanda → echter Writer →
+TimescaleDB — mit einem Wert, der aus der simulierten Anlage stammt. **Nicht**
+gefahren ist ein Katalogpunkt über die Modell-Erkennung; dafür braucht es ein
+SunSpec-Gerät (echt oder ein Simulator, der die Modell-Liste bedient), und das
+liegt jenseits dieses Werkzeugs.
+
+## Was die Strecke ist — und was an ihr die benannte Grenze ist
+
+Mit `--strecke` fährt ein **zweites** Compose-Projekt `nw3s-<pid>`:
+`services/ingest`, Redpanda, `services/timescale-writer` und eine TimescaleDB,
+alles aus **diesem** Arbeitsbaum gebaut. Verbunden sind die beiden Gruppen an
+genau einer Stelle: die Datenannahme hängt zusätzlich im Netz der Box-Gruppe und
+hört dort an demselben Broker mit, an dem die Box sendet (die „Broker-Brücke").
+Ihr Themenfilter steht bewusst **nicht** im Environment — der Lauf prüft den
+Vorgabewert aus `services/ingest/src/main/resources/application.yml`.
+
+Die **benannte Grenze** hier ist das Datenbankschema: es ist der Spiegel, den der
+Writer für seine eigenen Tests hält
+(`services/timescale-writer/src/test/resources/writer-schema.sql`) plus die vier
+echten api-Migrationen der Ereignis-Tabelle — dieselbe Kette, die
+`EreignisTabelleImTest` fährt. Gefahren wird die **Strecke**, nicht Flyway; ein
+api-Prozess kommt auch hier nicht vor. Die zwei Stammdatenzeilen, ohne die der
+Writer einen Wert gar nicht annehmen *kann*, stehen in `strecke-seed.sql` mit
+der Codezeile, die sie verlangt.
 
 ## Hausregeln, an die sich der Lauf hält
 
-* **Nie der lokale Stack des Betreibers.** Eigenes Compose-Projekt `nw3-<pid>`,
-  eigenes Netz, eigene Bild-Namen mit Präfix `nw3-`.
-* **Kein fester Port.** Alle Port-Variablen stehen auf `0`; Docker wählt.
-* **Abgeräumt wird nur Eigenes:** das eigene Projekt mit `down -v` und der eigene
-  Tag-Arbeitsbaum. `--behalten` lässt beides stehen.
+* **Nie der lokale Stack des Betreibers.** Eigene Compose-Projekte `nw3-<pid>`
+  und `nw3s-<pid>`, eigene Netze, eigene Bild-Namen mit Präfix `nw3-`.
+* **Kein fester Port.** Alle Port-Variablen der Box-Gruppe stehen auf `0`; die
+  Strecke-Gruppe veröffentlicht überhaupt keinen Host-Port (kein `ports:`) und
+  wird über ihr Netz bzw. `docker exec` erreicht.
+* **Abgeräumt wird nur Eigenes:** die eigenen Projekte mit `down -v` und der
+  eigene Tag-Arbeitsbaum. `--behalten` lässt beides stehen.
 * Es wird **nichts** unter `edge-app/` oder am Katalog geändert — das Werkzeug
   liest den Tag in einem eigenen Arbeitsbaum außerhalb des Repos.
 
@@ -141,6 +200,9 @@ Samples. Für Punkt 4 fehlen zwei Dinge, die beide über diesen Schnitt hinausge
 | `nutzlast.py` | die Cloud-Nutzlasten aus den festgenagelten Beispielen |
 | `faehigkeiten.py` | X2: der Satz „Update nötig für: …" zum gemeldeten Stand |
 | `protokoll.py` | das Protokoll als Artefakt (nur technische Angaben) |
+| `nw3-strecke.yml` | die zweite Gruppe: Datenannahme, Redpanda, Writer, TimescaleDB |
+| `strecke-seed.sql` | die zwei Stammdatenzeilen, ohne die der Writer nicht annehmen kann |
+| `strecke_pruefen.py` | gesendet am Draht gegen geschrieben in der Datenbank |
 
 Der Nachweis selbst liegt unter
 [`docs/agents/root/uems-nw3-box-image.md`](../../docs/agents/root/uems-nw3-box-image.md).

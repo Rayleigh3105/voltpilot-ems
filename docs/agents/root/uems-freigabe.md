@@ -72,10 +72,15 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   gebaut; das Artefakt liegt als Container-Image-Paar in der privaten Registry. Prüfbar
   sind Versionsstempel, Palette-Inhaltsmarke und der Stand, den die Box selbst meldet —
   nicht die Identität mit dem ausgelieferten Image.
-- **NW-3 Punkt 4 ist nicht gefahren** (Samples 2.0 bis in den Writer), und der Befund zu
-  X7 steht: nach einer Trennung länger als das rollierende Ende läuft die Ruhe an der
-  alten Box ab und die Automatik setzt von selbst wieder ein, während die Cloud weiter
-  „bis auf Widerruf“ hält.
+- **NW-3 Punkt 4 ist gefahren** (`--strecke`, Samples 2.0 der echten Box bis in den
+  Writer und in `device_measurement_sample`, beide Verwurf-Familien 0). Der **Befund** zu
+  X7 steht weiter, und er allein hält NW-3 beim Tor-Prüfer offen: nach einer Trennung
+  länger als das rollierende Ende läuft die Ruhe an der alten Box ab und die Automatik
+  setzt von selbst wieder ein, während die Cloud weiter „bis auf Widerruf“ hält.
+- **Eine angenommene Mess-Auswahl ist keine gelesene.** Die Box quittiert `accepted`,
+  `rejected: []` — und sendet trotzdem nichts, wenn kein Wechselrichter gewählt ist oder
+  der Punkt eine SunSpec-Modell-Erkennung braucht, die das Gerät nicht bedient. Wer einen
+  Messnachweis liest: die Quittung ist nicht der Beleg, die Sample-Umschläge sind es.
 - **Ein Testlauf belegt nur den Stand, auf dem er lief.** Der Tor-Prüfer nimmt einen
   Surefire-Bericht nur an, wenn er nicht älter ist als der geprüfte Commit — oder wenn
   `stand.txt` im Lauf-Verzeichnis denselben Commit nennt. Übersprungen ist nicht grün.
