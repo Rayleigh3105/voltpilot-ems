@@ -345,7 +345,7 @@ class BestandsuebernahmeApiTest {
         Bestandsschutz.mutationsprobe(root, SCHREIBT_IN, "site", "UPDATE site SET name = name || ' (Probe)'");
     }
 
-    /** U2/N2: Bestätigen übernimmt alle drei Bestandsanlagen sofort und bleibt beim späteren Lauf idempotent. */
+    /** U2/N2: Bestätigen übernimmt die drei Anlagen als 2 + 1 und bleibt beim späteren Lauf idempotent. */
     @Test
     @Order(7)
     void vorschauZusammenlegenUndBestaetigen() {
@@ -377,16 +377,21 @@ class BestandsuebernahmeApiTest {
 
         List<String> ids = new java.util.ArrayList<>();
         vorschau.path("gruppen").forEach(g -> ids.add(g.path("anlagen").get(0).path("vorschlagId").asText()));
-        Map<String, Object> gruppe = new LinkedHashMap<>();
-        gruppe.put("name", "Werk Ahrenberg");
-        gruppe.put("zeitzone", "Europe/Berlin");
-        gruppe.put("adresse", Map.of("strasse", "Gewerbering 7", "plz", "84123", "ort", "Ahrenberg", "land", "DE"));
-        gruppe.put("vorschlagIds", ids);
+        Map<String, Object> ahrenberg = new LinkedHashMap<>();
+        ahrenberg.put("name", "Werk Ahrenberg");
+        ahrenberg.put("zeitzone", "Europe/Berlin");
+        ahrenberg.put("adresse", Map.of("strasse", "Gewerbering 7", "plz", "84123", "ort", "Ahrenberg", "land", "DE"));
+        ahrenberg.put("vorschlagIds", ids.subList(0, 2));
+        Map<String, Object> lindachGruppe = new LinkedHashMap<>();
+        lindachGruppe.put("name", "Werk Lindach");
+        lindachGruppe.put("zeitzone", "Europe/Berlin");
+        lindachGruppe.put("adresse", Map.of("strasse", "Werkstrasse 8", "plz", "84123", "ort", "Lindach", "land", "DE"));
+        lindachGruppe.put("vorschlagIds", List.of(ids.get(2)));
         JsonNode ergebnis = ok(exchange("/api/v1/standorte/vorschlag/bestaetigen", HttpMethod.POST,
-                adminToken, tenant, Map.of("gruppen", List.of(gruppe))));
-        assertThat(ergebnis.path("standortIds")).hasSize(1);
+                adminToken, tenant, Map.of("gruppen", List.of(ahrenberg, lindachGruppe))));
+        assertThat(ergebnis.path("standortIds")).hasSize(2);
         assertThat(ergebnis.path("zuordnungen").asInt()).isEqualTo(3);
-        assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isOne();
+        assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(2);
         assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(3);
         assertThat(anzahl("SELECT count(*) FROM standort_vorschlag WHERE tenant_id = ?::uuid", tenant)).isZero();
         assertThat(admin.queryForList("SELECT gueltig_ab FROM anlage_standort WHERE tenant_id = ?::uuid ORDER BY gueltig_ab", tenant))
@@ -394,7 +399,7 @@ class BestandsuebernahmeApiTest {
                 .containsExactly("2025-01-03", "2026-10-01", "2026-10-15");
         assertThat(protokoll(tenant)).extracting(x -> x.get("objekt_art") + "/" + x.get("art"))
                 .containsExactly("standort/angelegt", "anlage/verschoben", "anlage/verschoben",
-                        "anlage/verschoben");
+                        "standort/angelegt", "anlage/verschoben");
         assertThat(anzahl("SELECT count(*) FROM funktion_teilnahme WHERE tenant_id = ?::uuid", tenant)).isEqualTo(3);
         assertThat(alsMandant(tenant, () -> app.queryForMap(z04())).get("mit_standort_ohne_teilnahme"))
                 .isEqualTo(0L);

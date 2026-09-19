@@ -11,6 +11,11 @@ export interface VorschlagGruppeForm {
   anlagen: StandortZuordnungVorschau['gruppen'][number]['anlagen'];
 }
 
+export type GruppierungAenderung =
+  | { art: 'alle_zusammen' }
+  | { art: 'alle_getrennt' }
+  | { art: 'anlage_zuordnen'; vorschlagId: string; zielGruppeId: string | null };
+
 export const NICHT_ZUGEORDNET = 'noch nicht zugeordnet';
 
 export const STARTSEITE_UNTERNEHMEN = 'Ihre Startseite wird die Unternehmens-Übersicht.';
@@ -68,10 +73,51 @@ export function formular(v: StandortZuordnungVorschau): VorschlagGruppeForm[] {
   }));
 }
 
-/** B1: alle Anlagen werden zu einer Gruppe; ihr erster Vorschlag liefert den Namen. */
-export function alleZusammenlegen(gruppen: VorschlagGruppeForm[]): VorschlagGruppeForm[] {
-  if (gruppen.length < 2) return gruppen;
-  return [{ ...gruppen[0], anlagen: gruppen.flatMap((g) => g.anlagen) }];
+/**
+ * Jede Gruppierungsänderung läuft durch diese eine reine Funktion. Die Kennung
+ * einer Gruppe folgt ihrer ersten Anlage; dadurch bleibt sie auch nach dem
+ * Entfernen der bisherigen ersten Anlage eindeutig.
+ */
+export function gruppierungAendern(
+  gruppen: VorschlagGruppeForm[],
+  ausgang: VorschlagGruppeForm[],
+  aenderung: GruppierungAenderung,
+): VorschlagGruppeForm[] {
+  const normalisiert = (liste: VorschlagGruppeForm[]) => liste.map((g) => ({
+    ...g,
+    id: g.anlagen[0]?.vorschlagId ?? g.id,
+    anlagen: [...g.anlagen],
+  }));
+  if (aenderung.art === 'alle_getrennt') return normalisiert(ausgang);
+  if (aenderung.art === 'alle_zusammen') {
+    if (gruppen.length < 2) return normalisiert(gruppen);
+    return normalisiert([{ ...gruppen[0], anlagen: gruppen.flatMap((g) => g.anlagen) }]);
+  }
+
+  const quelle = gruppen.find((g) => g.anlagen.some((a) => a.vorschlagId === aenderung.vorschlagId));
+  const anlage = quelle?.anlagen.find((a) => a.vorschlagId === aenderung.vorschlagId);
+  if (!quelle || !anlage || aenderung.zielGruppeId === quelle.id) return normalisiert(gruppen);
+
+  const ohneAnlage = gruppen
+    .map((g) => ({ ...g, anlagen: g.anlagen.filter((a) => a.vorschlagId !== aenderung.vorschlagId) }))
+    .filter((g) => g.anlagen.length > 0);
+  if (aenderung.zielGruppeId !== null) {
+    if (!ohneAnlage.some((g) => g.id === aenderung.zielGruppeId)) return normalisiert(gruppen);
+    return normalisiert(ohneAnlage.map((g) => g.id === aenderung.zielGruppeId
+      ? { ...g, anlagen: [...g.anlagen, anlage] }
+      : g));
+  }
+
+  const eigeneVorlage = ausgang.find((g) => g.anlagen.some((a) => a.vorschlagId === aenderung.vorschlagId));
+  if (!eigeneVorlage || quelle.anlagen.length === 1) return normalisiert(gruppen);
+  const eigeneGruppe = { ...eigeneVorlage, anlagen: [anlage] };
+  const quellIndex = gruppen.indexOf(quelle);
+  const einfuegeIndex = Math.min(quellIndex + 1, ohneAnlage.length);
+  return normalisiert([
+    ...ohneAnlage.slice(0, einfuegeIndex),
+    eigeneGruppe,
+    ...ohneAnlage.slice(einfuegeIndex),
+  ]);
 }
 
 export function pruefen(gruppen: VorschlagGruppeForm[]): string | null {

@@ -1498,7 +1498,7 @@ describe('UEMS AP-01 IP-5 — die Startansicht-Weiche lässt den Einzel-Anlagen-
 
 
 describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
-  it('alle 913 bestehenden Bedienelemente in den 161 Kundendateien entsprechen dem Ausgangsstand mit einzeln belegten Fortschreibungen', () => {
+  it('alle 922 bestehenden Bedienelemente in den 162 Kundendateien entsprechen dem Ausgangsstand mit einzeln belegten Fortschreibungen', () => {
     // Vor IP-12 aus origin/uems aufgenommen: sämtliche Kunden-TSX, nicht nur die angefassten Dateien.
     // Der Schlüssel wandert beim Einklammern vom Knopf zum Recht; React rendert ihn nie ins DOM.
     // Leerraum normalisiert nur die TSX-Schreibweise, niemals Texte/Handler/Attribute.
@@ -1546,7 +1546,7 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         zahl++;
       }
     }
-    expect(zahl).toBe(913);
+    expect(zahl).toBe(922);
     expect(verwendeteFortschreibungen).toEqual(new Set(kundenBestand.fortschreibungen));
   });
   it('jeder Rechte-Hebel aller Kundenflächen erhält das bisherige Markup ohne zusätzliche Hülle', () => {

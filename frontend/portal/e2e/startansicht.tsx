@@ -598,15 +598,20 @@ const sites = szene.sites.map((site) => vorschauArt ? {
 } : site) as Site[];
 const siteIds = sites.map((s) => s.id);
 let standortVorschlagOffen = params.get('vorschlag') === 'offen';
+const standortVorschlagU2 = params.get('vorschlagfall') === 'u2';
 const standortVorschlag = {
-  anlagenZahl: 2,
+  anlagenZahl: standortVorschlagU2 ? 3 : 2,
   gruppen: [
     { name: 'Werk Ahrenberg – Halle 1', zeitzone: 'Europe/Berlin', adresse: null,
       anlagen: [{ vorschlagId: 'aa020000-0000-4000-8000-000000000001', anlageId: an1, anlageName: 'Werk Ahrenberg – Halle 1', gueltigAb: '2026-09-12' }] },
     { name: 'Werk Ahrenberg – Halle 2', zeitzone: 'Europe/Berlin', adresse: null,
       anlagen: [{ vorschlagId: 'aa020000-0000-4000-8000-000000000002', anlageId: an2, anlageName: 'Werk Ahrenberg – Halle 2', gueltigAb: '2026-09-14' }] },
+    ...(standortVorschlagU2 ? [{ name: 'Werk Lindach', zeitzone: 'Europe/Berlin', adresse: null,
+      anlagen: [{ vorschlagId: 'aa020000-0000-4000-8000-000000000003', anlageId: an3, anlageName: 'Werk Lindach', gueltigAb: '2026-10-15' }] }] : []),
   ],
 };
+const standortVorschlagAnfragen: unknown[] = [];
+Object.assign(window, { standortVorschlagAnfragen });
 
 const korrekturUmzug = (): AnlageUmzug => ({
   anlageId: an3,
@@ -706,13 +711,14 @@ Object.assign(api, {
   standortZuordnungVorschlag: async () => standortVorschlagOffen
     ? structuredClone(standortVorschlag)
     : { gruppen: [], anlagenZahl: 0 },
-  standortZuordnungBestaetigen: async () => {
+  standortZuordnungBestaetigen: async (body: unknown) => {
+    standortVorschlagAnfragen.push(structuredClone(body));
     standortVorschlagOffen = false;
     if (bild === 'bestand-mehrere') {
       szene.liste = ahrenbergHeute();
       szene.unternehmen = ahrenbergUnternehmen();
     }
-    return { standortIds: ['aa020000-0000-4000-8000-000000000010'], zuordnungen: 2 };
+    return { standortIds: ['aa020000-0000-4000-8000-000000000010', 'aa020000-0000-4000-8000-000000000011'], zuordnungen: standortVorschlag.anlagenZahl };
   },
   earnings: async () => {
     throw new Error('Das Referenzunternehmen trägt keine Geldwerte.');
