@@ -77,7 +77,11 @@ describe('SteuernAssistent — Referenzfall 5 bis Schritt 4', () => {
     render(<SteuernAssistent standortId={FIXTURE_IDS.st1} anlageId={FIXTURE_IDS.an2} onClose={onClose} />);
 
     expect(await screen.findByText('Welche Anlage wird aufgenommen?')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    const weiter = screen.getByRole('button', { name: 'Weiter' });
+    // Die Überschrift steht nach dem Basisabruf; erst der aktive Knopf belegt das Ende der vier Detailabrufe.
+    // Unter paralleler Fork-Last darf deren bereits aufgelöste Promise länger als den 1-s-jsdom-Standard brauchen.
+    await waitFor(() => expect(weiter).toBeEnabled(), { timeout: 5_000 });
+    fireEvent.click(weiter);
     expect(await screen.findByText('Was darf VoltPilot steuern?')).toBeInTheDocument();
     expect(await screen.findByText('2 von 3 freigegeben')).toBeInTheDocument();
     expect(screen.getByText('Wir schalten die Steuerung für Ihren Wechselrichter frei — VoltPilot')).toBeInTheDocument();

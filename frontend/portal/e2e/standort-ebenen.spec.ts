@@ -305,8 +305,8 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 });
 
 
-test('O18 · Betriebskunde: keine neuen Standort-Reiter; alte AP-13-Direktlinks landen auf der Übersicht', async ({ page }) => {
-  for (const breite of [1440, 375]) {
+for (const breite of [1440, 375]) {
+  test(`O18 · Betriebskunde bei ${breite} px: keine neuen Standort-Reiter; alte AP-13-Direktlinks landen auf der Übersicht`, async ({ page }) => {
     let uebersichtText = '';
     for (const bereich of ['', '-gebaeude', '-anlagen', '-kennzahlen', '-berichte']) {
       await oeffne(page, `bild=unternehmen&messen=bestand&ansicht=werk${bereich}`, breite);
@@ -321,5 +321,5 @@ test('O18 · Betriebskunde: keine neuen Standort-Reiter; alte AP-13-Direktlinks 
       await expect(page.getByTestId('uebersicht-bausteine')).toHaveCount(0);
       if (!bereich) await ablegen(page, `betrieb-${breite}`, m, true);
     }
-  }
-});
+  });
+}
