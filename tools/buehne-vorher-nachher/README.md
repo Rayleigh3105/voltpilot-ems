@@ -105,10 +105,13 @@ Zusätzlich zeichnet die Spec für U1 sichtbaren Text und Maße aller sichtbaren
 zuerst bytegleich. Ein roter PNG-Vergleich sagt dadurch ausdrücklich, ob sich
 Inhalt bzw. Layout unterscheiden oder nur Rasterung/PNG-Ausgabe.
 
-## Befund U2
+## U2 fährt den Weg 2 + 1
 
 Der entschiedene Referenzfall verlangt zwei Standorte: AN-1 und AN-2 gemeinsam,
-AN-3 separat. Die gebaute Vorschau bietet bei drei Gruppen jedoch nur „alle
-zusammenlegen“ oder „wieder getrennt lassen“. Eine gezielte Gruppierung 2 + 1
-ist nicht bedienbar. Die Bühne dokumentiert deshalb den echten Standardweg mit
-drei Standorten und repariert diese Produktabweichung ausdrücklich nicht.
+AN-3 separat. Seit PR 985 steht je Anlage ein Wähler „Gehört zu: …“ in der
+Vorschau; die Bühne benutzt ihn: sie füllt die Adressen über den **Namen** der
+Gruppe – nie über die Position –, legt Halle 2 zu Halle 1 (die Adressfelder
+werden dabei von drei auf zwei) und bestätigt erst danach. Die Aufzeichnung der
+API-Antworten (`buehneVorherNachherAntwortenAufzeichnen`) fährt denselben Weg
+über den Namen und bestätigt zwei Gruppen, damit der Stand nach der Bestätigung
+zu den Bildern passt: `standortIds` hat Größe 2.

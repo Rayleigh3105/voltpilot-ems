@@ -126,18 +126,27 @@ for (const breite of [375, 1440] as const) {
       const dialog = page.getByRole('dialog', { name: 'Standorte einrichten' });
       await expect(dialog.getByRole('heading', { name: 'Was sich ändert' })).toBeVisible();
       const strassen = dialog.getByLabel('Straße und Hausnummer *');
-      const plz = dialog.getByLabel('PLZ');
-      const orte = dialog.getByLabel('Ort *');
+      const karten = dialog.locator('.vp-sv-gruppe');
       // Erst zählen, wenn es etwas zu zählen gibt. Die Überschrift steht vor dem fertig
       // aufgebauten Dialogkörper; eine Zahl 0 ließe die Schleife nullmal laufen, und der
       // Fehler fiele erst zwölf Zeilen später beim Bestätigen auf („Bitte ergänzen Sie
       // Straße und Ort für jeden Standort.“).
       await expect(strassen.first()).toBeVisible();
-      for (let i = 0; i < await strassen.count(); i++) {
-        await strassen.nth(i).fill(i === 2 ? 'Werkstrasse 8' : `Industriestrasse ${4 + i}`);
-        await plz.nth(i).fill(i === 2 ? '84123' : '84347');
-        await orte.nth(i).fill(i === 2 ? 'Lindach' : 'Ahrenberg');
+      // Die Adresse hängt am NAMEN der Gruppe, nicht an ihrer Position: die Reihenfolge der
+      // Vorschläge ist keine Zusage, und die Aufzeichnung der API-Antworten ordnet genauso zu.
+      for (let i = 0; i < await karten.count(); i++) {
+        const karte = karten.nth(i);
+        const lindach = (await karte.getByLabel('Name des Standorts *').inputValue()).includes('Lindach');
+        await karte.getByLabel('Straße und Hausnummer *').fill(lindach ? 'Werkstrasse 8' : 'Industriestrasse 4');
+        await karte.getByLabel('PLZ').fill(lindach ? '84123' : '84347');
+        await karte.getByLabel('Ort *').fill(lindach ? 'Lindach' : 'Ahrenberg');
       }
+      // Der Weg 2 + 1 aus PR 985: der „Gehört zu“-Wähler legt Halle 2 zu Halle 1.
+      // Die geleerte Gruppe fällt weg, Halle 1 behält ihre Adresse - aus drei Anlagen
+      // werden ZWEI Standorte, und genau das zeigen die Bilder.
+      await dialog.getByRole('combobox', { name: 'Gehört zu: Werk Ahrenberg – Halle 2' }).click();
+      await page.getByRole('option', { name: 'Werk Ahrenberg – Halle 1' }).click();
+      await expect(strassen).toHaveCount(2);
       await dialog.locator('.dbody').evaluate((element) => { element.scrollTop = element.scrollHeight; });
       await page.screenshot({ path: join(BILDER, `u2-nachher-vorschau-${breite}.png`) });
 

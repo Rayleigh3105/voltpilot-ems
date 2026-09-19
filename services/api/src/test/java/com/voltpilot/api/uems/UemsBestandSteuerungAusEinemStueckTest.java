@@ -528,28 +528,46 @@ class UemsBestandSteuerungAusEinemStueckTest {
         if (!CAPTURE) {
             JsonNode vorschlag = JSON.readTree(apiAntwort("GET", "/api/v1/standorte/vorschlag", U2_TENANT, null)
                     .path("body").asText());
+            // Die Aufzeichnung faehrt denselben Weg wie die Buehne: der "Gehoert zu"-Waehler aus
+            // PR 985 legt Halle 2 zu Halle 1, die geleerte Gruppe faellt weg. Aus drei
+            // vorgeschlagenen Anlagen werden ZWEI Standorte - der Stand nach der Bestaetigung
+            // muss zu den Bildern passen, sonst zeigt das Portal drei.
+            // Zugeordnet wird ueber den NAMEN, nicht ueber die Position: die Reihenfolge der
+            // Vorschlaege ist keine Zusage, und ein Index-Griff paart sonst die falschen zwei.
             var gruppen = JSON.createArrayNode();
-            int nr = 0;
+            com.fasterxml.jackson.databind.node.ArrayNode halle1Ids = null;
+            var nachHalle1 = new java.util.ArrayList<JsonNode>();
             for (JsonNode vorgeschlagen : vorschlag.path("gruppen")) {
+                String name = vorgeschlagen.path("name").asText();
+                if (name.contains("Halle 2")) {
+                    nachHalle1.add(vorgeschlagen);
+                    continue;
+                }
+                boolean lindach = name.contains("Lindach");
                 var gruppe = JSON.createObjectNode();
-                gruppe.put("name", vorgeschlagen.path("name").asText());
+                gruppe.put("name", name);
                 gruppe.put("zeitzone", vorgeschlagen.path("zeitzone").asText("Europe/Berlin"));
                 var adresse = gruppe.putObject("adresse");
-                adresse.put("strasse", nr == 2 ? "Werkstrasse 8" : "Industriestrasse " + (4 + nr));
-                adresse.put("plz", nr == 2 ? "84123" : "84347");
-                adresse.put("ort", nr == 2 ? "Lindach" : "Ahrenberg");
+                adresse.put("strasse", lindach ? "Werkstrasse 8" : "Industriestrasse 4");
+                adresse.put("plz", lindach ? "84123" : "84347");
+                adresse.put("ort", lindach ? "Lindach" : "Ahrenberg");
                 adresse.put("land", "DE");
                 var ids = gruppe.putArray("vorschlagIds");
                 vorgeschlagen.path("anlagen").forEach(a -> ids.add(a.path("vorschlagId").asText()));
+                if (name.contains("Halle 1")) halle1Ids = ids;
                 gruppen.add(gruppe);
-                nr++;
+            }
+            assertThat(halle1Ids).as("die Gruppe Halle 1 traegt die Zusammenlegung").isNotNull();
+            for (JsonNode spaet : nachHalle1) {
+                final var ziel = halle1Ids;
+                spaet.path("anlagen").forEach(a -> ziel.add(a.path("vorschlagId").asText()));
             }
             var anfrage = JSON.createObjectNode();
             anfrage.set("gruppen", gruppen);
             var post = apiAntwort("POST", "/api/v1/standorte/vorschlag/bestaetigen", U2_TENANT,
                     JSON.writeValueAsString(anfrage));
             assertThat(post.path("status").asInt()).as(post.toPrettyString()).isEqualTo(200);
-            assertThat(JSON.readTree(post.path("body").asText()).path("standortIds")).hasSize(3);
+            assertThat(JSON.readTree(post.path("body").asText()).path("standortIds")).hasSize(2);
             ((com.fasterxml.jackson.databind.node.ObjectNode) u2.path("vorBestaetigung").path("antworten"))
                     .set("POST /api/v1/standorte/vorschlag/bestaetigen", post);
             u2.set("nachBestaetigung", portalStand(U2_TENANT, List.of(U2_HALLE_1, U2_HALLE_2, U2_LINDACH)));
