@@ -1,0 +1,23 @@
+{
+  "_kommentar": [
+    "NW-3 prueft je (core, palette)-Paar, das im Feld laeuft. WELCHE Paare das sind,",
+    "sagt Q07 des Bestandsblatts (tools/betriebsabfragen/bestand-vor-uems.sql) - und",
+    "diese Abfrage faehrt allein der Betreiber gegen Produktion. Die Liste ist darum",
+    "ein PARAMETER des Werkzeugs, kein eingebauter Wert: der Betreiber traegt die",
+    "Paare aus seiner Q07-Ausgabe hier ein (oder gibt eine eigene Datei mit --paare).",
+    "",
+    "Heute steht hier genau das eine Paar, das ohne Q07 belegbar ist: das letzte",
+    "Release-Tag edge-2026.09.4. Core und Palette werden GEMEINSAM ausgeliefert (X6),",
+    "darum tragen beide dasselbe Tag - ein Paar mit zwei verschiedenen Staenden waere",
+    "moeglich und das Werkzeug wuerde es fahren, aber es entstuende nie aus einem",
+    "regulaeren Release."
+  ],
+  "paare": [
+    {
+      "name": "edge-2026.09.4",
+      "core_ref": "edge-2026.09.4",
+      "palette_ref": "edge-2026.09.4",
+      "herkunft": "letztes Release-Tag auf main; Q07 nicht gefahren"
+    }
+  ]
+}

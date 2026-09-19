@@ -1,0 +1,102 @@
+{
+ "nachweis": "NW-3 — ausgeliefertes Box-Image gegen die neue Cloud (AP-14 IP-6)",
+ "gefahren_am": "2026-09-19T02:22:05Z",
+ "neue_cloud": {
+  "repo_stand": "5ea736be7f9a4ddb81df750976e4012983d7bb8b"
+ },
+ "paar": {
+  "name": "edge-2026.09.4",
+  "core_ref": "edge-2026.09.4",
+  "palette_ref": "edge-2026.09.4",
+  "herkunft": "aus dem Release-Tag gebaut, NICHT das Release-Artefakt",
+  "grund": "Das Release-Artefakt ist ein Container-Image-Paar in der privaten Registry git.tecmaxx.de; anonym HTTP 401. Es wurde keine Zugangsdaten angefragt und kein Login probiert.",
+  "tag_commit": "95166378dc1ce2904c9fd9b870b3d9f07a2393cf",
+  "versionsstempel_der_ci": "edge-2026.09.4-95166378dc1c"
+ },
+ "was_sich_am_paar_pruefen_laesst": {
+  "core_binary_stempel": "edge-2026.09.4-95166378dc1c",
+  "palette_oci_label": "edge-2026.09.4-95166378dc1c",
+  "palette_inhaltsmarke": "e73961b5e0ef7399d248c25bb8636dfe38aedd9819b472361e495db494d54146",
+  "package_edge_runtime_check_des_tags": "runtime derivatives match catalog 2026.08.26.3",
+  "stand_den_die_box_selbst_meldet": "edge-2026.09.4-95166378dc1c"
+ },
+ "glieder": {
+  "echte_prozesse": [
+   "Go-Core (aus dem Tag)",
+   "Node-RED-Palette (aus dem Tag)",
+   "SunSpec-Simulator (aus dem Tag)",
+   "MQTT-Broker (Mosquitto)"
+  ],
+  "cloud_seite": "kein api-Prozess: die festgenagelten Nutzlasten des Standes (docs/contracts/v2/examples/*) werden ueber den echten Broker zugestellt",
+  "strecke_ingest_writer": "nicht gefahren"
+ },
+ "punkte": [
+  {
+   "punkt": "1a registry-push ohne quelle",
+   "urteil": "gruen",
+   "satz": "Push angenommen, Revision undurchsichtig geechot",
+   "beleg": "{\"control\":{\"commanded_kw\":-6.17,\"confirmed_kw\":-6.17,\"all_match\":true,\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-09-19T02:19:53.69Z\",\"mismatch_roles\":[],\"execution\":{\"mode\":\"fallback\"}},\"control_source\":\"default\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"entities\":{\"revision\":\"uems-registry:4711\",\"applied_at\":\"2026-09-19T02:19:48Z\",\"count\":3,\"ids\":[\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\",\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\",\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\"],\"arbitration\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"source\":\"failsafe\",\"granted_setpoint_kw\":-5.32,\"all_match\":true},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"source\":\"failsafe\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"source\":\"failsafe\"}},\"observed\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"entity_type\":\"battery-hybrid\",\"health\":\"never\"},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"entity_type\":\"producer\",\"health\":\"never\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"entity_type\":\"grid-meter\",\"health\":\"never\"}}},\"online\":true,\"schema_version\":\"1.0\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"soc_pct\":54.9,\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"ts\":\"2026-09-19T02:20:03.669976554Z\",\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.09.4-95166378dc1c\",\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_error\":\"Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.\"}},\"version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "1b registry-push mit data_source_id",
+   "urteil": "gruen",
+   "satz": "Feld ueberlesen, Revision geechot, alle 3 Entitaeten angewandt (keine verworfen)",
+   "beleg": "{\"control\":{\"commanded_kw\":5.6,\"confirmed_kw\":5.6,\"all_match\":true,\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-09-19T02:20:13.688Z\",\"mismatch_roles\":[],\"execution\":{\"mode\":\"fallback\"}},\"control_source\":\"default\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"entities\":{\"revision\":\"uems-registry:4712\",\"applied_at\":\"2026-09-19T02:20:04Z\",\"count\":3,\"ids\":[\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\",\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\",\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\"],\"arbitration\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"source\":\"failsafe\",\"granted_setpoint_kw\":10.19,\"all_match\":true},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"source\":\"failsafe\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"source\":\"failsafe\"}},\"observed\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"entity_type\":\"battery-hybrid\",\"health\":\"never\"},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"entity_type\":\"producer\",\"health\":\"never\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"entity_type\":\"grid-meter\",\"health\":\"never\"}}},\"online\":true,\"schema_version\":\"1.0\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"soc_pct\":54.9,\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"ts\":\"2026-09-19T02:20:18.67020588Z\",\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.09.4-95166378dc1c\",\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_error\":\"Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.\"}},\"version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "2 planzyklus",
+   "urteil": "gruen",
+   "satz": "Plan zugestellt, angenommen und ausgefuehrt",
+   "beleg": "{\"control\":{\"commanded_kw\":5.6,\"confirmed_kw\":5.6,\"all_match\":true,\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-09-19T02:20:13.688Z\",\"mismatch_roles\":[],\"execution\":{\"mode\":\"fallback\"}},\"control_source\":\"default\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"entities\":{\"revision\":\"uems-registry:4712\",\"applied_at\":\"2026-09-19T02:20:04Z\",\"count\":3,\"ids\":[\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\",\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\",\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\"],\"arbitration\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"source\":\"failsafe\",\"granted_setpoint_kw\":10.19,\"all_match\":true},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"source\":\"failsafe\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"source\":\"failsafe\"}},\"observed\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"entity_type\":\"battery-hybrid\",\"health\":\"never\"},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"entity_type\":\"producer\",\"health\":\"never\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"entity_type\":\"grid-meter\",\"health\":\"never\"}}},\"online\":true,\"schema_version\":\"1.0\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"soc_pct\":54.9,\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"ts\":\"2026-09-19T02:20:18.67020588Z\",\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.09.4-95166378dc1c\",\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_error\":\"Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.\"}},\"version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "3 mess-auswahl",
+   "urteil": "gruen",
+   "satz": "festgenagelte Cloud-Nutzlast angewandt, revision 7, rejected leer — kein unbekanntes Feld",
+   "beleg": "{\"schema_version\":\"2.0\",\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"revision\":7,\"applied_at\":\"2026-09-19T02:20:19.777Z\",\"accepted\":[\"deye.hybrid_1p.battery.battery\"],\"rejected\":[],\"edge_version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "4 samples 2.0 im writer",
+   "urteil": "nicht_gefahren",
+   "satz": "nicht gefahren: 0 Sample-Umschlaege der Box (festgenagelte Auswahl = Deye-Punkt, Simulator = SunSpec); die Strecke bis zum Writer laeuft in diesem Lauf nicht",
+   "beleg": ""
+  },
+  {
+   "punkt": "5a handeingriff setzen",
+   "urteil": "gruen",
+   "satz": "Pause mit Ende angenommen",
+   "beleg": "{\"control\":{\"commanded_kw\":16.03,\"confirmed_kw\":16.03,\"all_match\":true,\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-09-19T02:20:23.688Z\",\"mismatch_roles\":[],\"execution\":{\"mode\":\"fallback\"}},\"control_source\":\"default\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"entities\":{\"revision\":\"uems-registry:4713\",\"applied_at\":\"2026-09-19T02:20:20Z\",\"count\":3,\"ids\":[\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\",\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\",\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\"],\"arbitration\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"source\":\"failsafe\",\"granted_setpoint_kw\":18.55,\"all_match\":true},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"source\":\"failsafe\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"source\":\"failsafe\"}},\"observed\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"entity_type\":\"battery-hybrid\",\"health\":\"never\"},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"entity_type\":\"producer\",\"health\":\"never\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"entity_type\":\"grid-meter\",\"health\":\"never\"}}},\"online\":true,\"schema_version\":\"1.0\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"soc_pct\":55,\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"ts\":\"2026-09-19T02:20:33.670422263Z\",\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.09.4-95166378dc1c\",\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_error\":\"Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.\"}},\"version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "5b handeingriff aufheben",
+   "urteil": "gruen",
+   "satz": "Aufhebung angenommen",
+   "beleg": "{\"control\":{\"commanded_kw\":-30,\"confirmed_kw\":-30,\"all_match\":true,\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-09-19T02:20:43.689Z\",\"mismatch_roles\":[],\"execution\":{\"mode\":\"plan\"}},\"control_source\":\"schedule\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"entities\":{\"revision\":\"uems-registry:4714\",\"applied_at\":\"2026-09-19T02:20:35Z\",\"count\":3,\"ids\":[\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\",\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\",\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\"],\"arbitration\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"holder\":\"plan-executor\",\"source\":\"plan\",\"granted_setpoint_kw\":-30,\"all_match\":true},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"source\":\"failsafe\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"source\":\"failsafe\"}},\"observed\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"entity_type\":\"battery-hybrid\",\"health\":\"never\"},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"entity_type\":\"producer\",\"health\":\"never\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"entity_type\":\"grid-meter\",\"health\":\"never\"}}},\"online\":true,\"schema_version\":\"1.0\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"soc_pct\":54.9,\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"ts\":\"2026-09-19T02:20:48.671281839Z\",\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.09.4-95166378dc1c\",\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_error\":\"Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.\"}},\"version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "6a ruhe zugestellt",
+   "urteil": "gruen",
+   "satz": "Ruhe angenommen: rollierendes Ende gelesen, automation_paused_until_revoked ueberlesen",
+   "beleg": "{\"control\":{\"commanded_kw\":-0.7,\"confirmed_kw\":-0.7,\"all_match\":true,\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-09-19T02:20:53.693Z\",\"mismatch_roles\":[],\"execution\":{\"mode\":\"fallback\"}},\"control_source\":\"default\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"entities\":{\"revision\":\"uems-registry:4715\",\"applied_at\":\"2026-09-19T02:20:49Z\",\"count\":3,\"ids\":[\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\",\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\",\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\"],\"arbitration\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"source\":\"failsafe\",\"granted_setpoint_kw\":-7.1,\"all_match\":true},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"source\":\"failsafe\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"source\":\"failsafe\"}},\"observed\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"entity_type\":\"battery-hybrid\",\"health\":\"never\"},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"entity_type\":\"producer\",\"health\":\"never\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"entity_type\":\"grid-meter\",\"health\":\"never\"}}},\"online\":true,\"schema_version\":\"1.0\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"soc_pct\":54.9,\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"ts\":\"2026-09-19T02:21:03.670419346Z\",\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.09.4-95166378dc1c\",\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_error\":\"Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.\"}},\"version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "6b ruhe haelt",
+   "urteil": "gruen",
+   "satz": "waehrend der Ruhe haelt der Planer die Batterie nicht (Schiedsspruch nicht 'plan')",
+   "beleg": "{\"control\":{\"commanded_kw\":-0.7,\"confirmed_kw\":-0.7,\"all_match\":true,\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-09-19T02:20:53.693Z\",\"mismatch_roles\":[],\"execution\":{\"mode\":\"fallback\"}},\"control_source\":\"default\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"entities\":{\"revision\":\"uems-registry:4715\",\"applied_at\":\"2026-09-19T02:20:49Z\",\"count\":3,\"ids\":[\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\",\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\",\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\"],\"arbitration\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"source\":\"failsafe\",\"granted_setpoint_kw\":-7.1,\"all_match\":true},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"source\":\"failsafe\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"source\":\"failsafe\"}},\"observed\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"entity_type\":\"battery-hybrid\",\"health\":\"never\"},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"entity_type\":\"producer\",\"health\":\"never\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"entity_type\":\"grid-meter\",\"health\":\"never\"}}},\"online\":true,\"schema_version\":\"1.0\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"soc_pct\":54.9,\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"ts\":\"2026-09-19T02:21:03.670419346Z\",\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.09.4-95166378dc1c\",\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_error\":\"Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.\"}},\"version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "6c nach trennung laenger als das ende",
+   "urteil": "befund",
+   "satz": "die Ruhe ist an der ausgelieferten Box abgelaufen und die Automatik setzt von selbst wieder ein — das ist die schwaechere Zusage aus X7, jetzt gemessen",
+   "beleg": "{\"control\":{\"commanded_kw\":-30,\"confirmed_kw\":-30,\"all_match\":true,\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-09-19T02:22:01.667Z\",\"mismatch_roles\":[],\"execution\":{\"mode\":\"plan\"}},\"control_source\":\"schedule\",\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"entities\":{\"revision\":\"uems-registry:4715\",\"applied_at\":\"2026-09-19T02:20:49Z\",\"count\":3,\"ids\":[\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\",\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\",\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\"],\"arbitration\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"holder\":\"plan-executor\",\"source\":\"plan\",\"granted_setpoint_kw\":-30,\"all_match\":true},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"source\":\"failsafe\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"source\":\"failsafe\"}},\"observed\":{\"5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f\":{\"entity_type\":\"battery-hybrid\",\"health\":\"never\"},\"6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60\":{\"entity_type\":\"producer\",\"health\":\"never\"},\"7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071\":{\"entity_type\":\"grid-meter\",\"health\":\"never\"}}},\"online\":true,\"schema_version\":\"1.0\",\"site_id\":\"00000000-0000-0000-0000-000000000002\",\"soc_pct\":54.6,\"tenant_id\":\"00000000-0000-0000-0000-000000000001\",\"ts\":\"2026-09-19T02:22:03.680602179Z\",\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.09.4-95166378dc1c\",\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_error\":\"Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.\"}},\"version\":\"edge-2026.09.4-95166378dc1c\"}"
+  },
+  {
+   "punkt": "7 update noetig",
+   "urteil": "gruen",
+   "satz": "Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt",
+   "beleg": "{\n \"stand\": \"edge-2026.09.4-95166378dc1c\",\n \"register\": [],\n \"fehlend\": [\n  \"Rückmeldung je Datenquelle\",\n  \"Zuständigkeit ab Zeitpunkt\"\n ],\n \"rest\": \"Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt\",\n \"text\": \"Software edge-2026.09.4-95166378dc1c · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt\"\n}"
+  }
+ ],
+ "zusammenfassung": "9 gruen, 0 rot, 1 Befund, 1 nicht gefahren"
+}
