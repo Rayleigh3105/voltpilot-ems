@@ -130,7 +130,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       expect(m.funktionenKarte).toBe(0);
       await expect(page.locator('.vp-main').getByRole('button', { name: 'Anpassen' })).toHaveCount(0);
       // AP-13 IP-8: beide Anlagen haben einen Hauptzähler — je Zeile der Weg in ihren Reiter Verlauf › Energiebilanz.
-      await expect(page.locator('.vp-main .vp-at-weg')).toHaveCount(2);
+      await expect(page.getByRole('button', { name: 'Energiebilanz', exact: true })).toHaveCount(2);
       leisteOderReiter(m, breite, 'Anlagen', `anlagen-${breite}`);
       await ablegen(page, `anlagen-${breite}`, m);
     }
