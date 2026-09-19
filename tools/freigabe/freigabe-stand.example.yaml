@@ -1,0 +1,100 @@
+# Stand-Blatt des Betreibers - VORLAGE.
+#
+# Die echte Datei gehoert NICHT ins Repo: sie liegt beim Betreiber, er pflegt sie
+# selbst, und der Tor-Pruefer liest sie nur (`--stand /BETREIBER/freigabe-stand.yaml`).
+# Das Werkzeug fragt nie interaktiv und raet nie.
+#
+# Hier steht ausschliesslich, was nur der Betreiber wissen kann. Ein Eintrag hier
+# macht einen Punkt NICHT gruen: der Tor-Pruefer gibt ihn als
+# "nicht maschinell pruefbar" mit Datum und Wortlaut zurueck. Was sich pruefen
+# laesst - Testlaeufe, Generalprobe, Bestandsblatt, git - kommt NIE aus dieser Datei.
+#
+# Form (streng, zwei Ebenen, zwei Leerzeichen Einzug):
+#   punkt:
+#     bestaetigt: ja|nein
+#     am: JJJJ-MM-TT          (Pflicht bei "ja")
+#     durch: <Name oder Rolle>
+#     beleg: <ein Satz, woran es der Betreiber festmacht>
+#
+# Ein fehlender Punkt und "bestaetigt: nein" sind beide "offen" - mit dem
+# Unterschied, dass "nein" den Grund aus "beleg:" mitnennt.
+
+# ---------------------------------------------------------------------------
+# G1 - Ausrollen
+# ---------------------------------------------------------------------------
+
+m1_ausgewertet:
+  bestaetigt: nein
+  beleg: Bestandsblatt gegen Produktion noch nicht gefahren, Q03 Lage c/f offen
+
+nw5_lastmessung:
+  bestaetigt: nein
+  beleg: 24-h-Messung nach L1-L4 steht aus; tools/lastprofil-messung/ liegt bereit
+
+nw6_alarmuebung:
+  bestaetigt: nein
+  beleg: die zwoelf Alarme sind nicht ausgeloest; lokale Regeltests beweisen weder Zustellung noch Not-Aus
+
+kapazitaet_l6:
+  bestaetigt: nein
+  beleg: Kapazitaet aus der echten Belegung noch nicht gerechnet (W5)
+
+pilotkunden:
+  bestaetigt: nein
+  beleg: die Betreiber-Liste steht, die Einwilligung fehlt
+
+gitops_pr37:
+  bestaetigt: nein
+  beleg: PR 37 gehoert mindestens einen Tag VOR das Fenster, nicht hinein
+
+gitops_platzhalter:
+  bestaetigt: nein
+  beleg: uems_datenbank_warnschwelle_bytes (Q14) und der Dauerlaeufer-Tenant stehen auf CHANGE-ME
+
+supportweg:
+  bestaetigt: nein
+  beleg: Support-Weg noch nicht von aussen gegangen
+
+kundennachricht:
+  bestaetigt: nein
+  beleg: Fenstertermin steht noch nicht fest
+
+ip18_dauerlaeufer:
+  bestaetigt: nein
+  beleg: Dauerlaeufer-Kundenbereich nicht angelegt
+
+startwaechter_main:
+  bestaetigt: nein
+  beleg: Entscheidung ueber den Start-Waechter auf main steht aus, Drehbuch ist mit und ohne fahrbar
+
+standortzaun_geraet:
+  bestaetigt: nein
+  beleg: Standort-Zaun auf geraet und component_definition ist eine offene Rechte-Frage
+
+# ---------------------------------------------------------------------------
+# GA - Edge-Release A
+# ---------------------------------------------------------------------------
+
+budgetpruefung_produktion:
+  bestaetigt: nein
+  beleg: tools/budgetpruefung/run.sh noch nicht lesend gegen Produktion gefahren
+
+core_palette_gemeinsam:
+  bestaetigt: nein
+  beleg: kein Edge-Release in der ersten Freigabe (E4)
+
+# ---------------------------------------------------------------------------
+# GB - Edge-Release B
+# ---------------------------------------------------------------------------
+
+flotte_auf_release_a:
+  bestaetigt: nein
+  beleg: Release A ist nicht gebaut
+
+q10_pending_edge:
+  bestaetigt: nein
+  beleg: Q10 kommt aus dem Bestandsblatt, das noch nicht gefahren ist
+
+wago_hardware_pilot:
+  bestaetigt: nein
+  beleg: WAGO-Pruefstand steht aus; Simulatornachweise ersetzen ihn nicht
