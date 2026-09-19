@@ -8,6 +8,8 @@ Zusammenführungs-Probe (PR 981) weitere zwölf rote Browser-Fälle aus einer ge
 E2E-Bühne. Seither sind die PRs 981–990 gelandet.
 
 **Gemessener Stand:** `957217b6` (`origin/uems`, PR 989).
+**Ergebnis:** grün — mit **zwei** roten Fällen, die beide beim Wiederholen grün wurden und
+unten als Befund (c) eingeordnet sind, nicht repariert.
 **Jede Zahl unten stammt aus einem `clean`-Lauf**, die Phasen wörtlich im Aufruf
 (zsh zerlegt eine Variable nicht in Wörter).
 
@@ -86,6 +88,7 @@ oder reihenfolgeabhängig · **(d)** Umgebung.
 |---|---|---|---|---|
 | **der komplette Playwright-Lauf selbst** | `npx playwright test` bricht beim Sammeln ab: `Error: BUEHNE_PHASE muss vorher oder nachher sein`, `Total: 0 tests in 0 files`, Exit 1 | **PR 983** (`9c218084`) | **(a)** Bühne nicht nachgezogen | **repariert** (1 Commit) |
 | `edge-app/core` `internal/agent` `TestTheSelfTestObservesTheWholeSwapAndThenRecordsTheRunningRelease` | `ota_autonomy_test.go:346: der bewiesene Stand muss aufgezeichnet sein: <nil>` | **PR 543** (`dbf5f051`) — älter als UEMS | **(c)** lastabhängig, 5 × allein grün | **nein — Befund** |
+| `buehne-vorher-nachher.spec.ts` `U2 nachher 1440` (Werkzeuglauf IP-20) | `expect(dialog).toHaveCount(0)` bleibt bei 1; das Portal meldet `Bitte ergänzen Sie Straße und Ort für jeden Standort.`, die Felder sind leer | **PR 983** (`9c218084`), verschärft durch den größeren Dialog aus **PR 985** | **(c)** 1. Lauf rot, 2. Lauf `4 passed` | **nein — Befund** |
 | `tools/edge-simulator` `pytest` (Sammelfehler) | `ModuleNotFoundError: No module named 'paho'` — `requirements.txt` ist auf dieser Maschine nicht installiert | kein Commit | **(d)** Umgebung | **nein** — mit `--with paho-mqtt` gefahren: `55 passed` |
 
 **Sonst kein Rot.** Nicht in 8612 api-Tests, nicht in 238 Writer-Tests, nicht in 119
@@ -249,6 +252,46 @@ Stand-Blatt des Betreibers: keines angegeben (--stand)
 1 belegt · 16 offen · 0 nicht maschinell pruefbar, vom Betreiber bestaetigt
 Tor G1: NICHT vollstaendig belegt. Die offenen Punkte stehen oben.
 ```
+
+## Die Bühne vorher/nachher — einmal ganz gefahren
+
+`bash tools/buehne-vorher-nachher/run.sh` lief vollständig durch: zwei `clean`-Aufzeichnungen der
+echten API-Antworten (main `4aa1e7fb` in einem Wegwerf-Worktree, dann UEMS), danach zweimal das
+**echte** Portal unter Playwright. Die U1-Bilder sind bei 375 und 1440 px bytegleich vorher wie
+nachher — das prüft das Werkzeug selbst und bricht sonst ab.
+
+**Vier der zwölf PNG sind neu** (`u2-nachher-vorschau-*`, `u2-nachher-bestaetigt-*`); die anderen
+acht sind bytegleich zum Bestand. Neu sichtbar ist die **Steuerung aus PR 985**: je Anlage steht
+jetzt ein „Gehört zu: …"-Wähler in der Vorschau, mit dem sich Anlagen zu einem Standort
+zusammenlegen lassen.
+
+> **Offen geblieben, ausdrücklich:** die U2-Bilder zeigen weiterhin **drei** Standorte, nicht den
+> Weg **2 + 1**. Der Grund ist nicht das Werkzeug, sondern die Spec: `buehne-vorher-nachher.spec.ts`
+> füllt drei Adressen und bestätigt — sie **benutzt den neuen Wähler nie**. „2 + 1" zu zeigen
+> heißt, die Spec einen Schritt weiter zu führen (Halle 2 über den Wähler zu Halle 1 legen, dann
+> bestätigen); das ist eine Änderung an der Bühne, nicht ein weiterer Lauf. **Kleinste
+> vorgeschlagene Änderung:** nach dem Adressblock
+> `dialog.getByRole('combobox', { name: /^Gehört zu: Werk Ahrenberg – Halle 2$/ })` auf Halle 1
+> stellen, die Adressfelder erneut zählen (es sind dann zwei) und erst danach bestätigen.
+
+### Und dabei ein zweiter Flatterer, gleicher Bauart wie der erste
+
+Der **erste** Lauf des Werkzeugs scheiterte an `U2 nachher 1440`:
+`expect(dialog).toHaveCount(0)` blieb bei 1, weil das Portal
+`Bitte ergänzen Sie Straße und Ort für jeden Standort.` meldete — die drei Adressfelder waren
+**leer**, wie das Bild belegt, das die Spec unmittelbar davor selbst aufnimmt. Der **zweite** Lauf
+war grün (`4 passed (6.6s)`), derselbe Stand, dieselben Aufzeichnungen.
+
+**Mechanismus:** die Spec wartet auf die Überschrift „Was sich ändert" und liest dann sofort
+`await strassen.count()` (`buehne-vorher-nachher.spec.ts:87-91`). Ist der Dialogkörper in diesem
+Moment noch nicht fertig aufgebaut, ist die Zahl **0**, die Schleife läuft **null**mal, es wird
+nichts gefüllt — und der Fehler fällt erst zwölf Zeilen später beim Bestätigen auf. Bei 375 px
+reichte die Zeit, bei 1440 px nicht.
+
+> **Kleinste vorgeschlagene Reparatur** (nicht in diesem PR, weil (c)): vor die Schleife ein
+> `await expect(strassen.first()).toBeVisible();` — dann zählt die Spec erst, wenn es etwas zu
+> zählen gibt. **Keine Frist verlängern, keine Zusicherung entfernen.** Dieselbe Falle wie beim
+> Go-Befund oben: gewartet wird auf A, geprüft wird B.
 
 ## Der Rebase am Ende — und was danach wiederholt wurde
 
