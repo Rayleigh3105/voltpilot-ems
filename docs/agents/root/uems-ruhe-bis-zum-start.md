@@ -46,14 +46,11 @@ Sie ist die Zeile `device_override` mit `kind = pause` und `herkunft = 'funktion
   unbekannt und beweist die Fähigkeit nicht. Das Portal zeigt wörtlich: „Diese Box hält die Ruhe nur,
   solange sie mit VoltPilot verbunden ist.“ Eine aktive Bestandsanlage sieht ihn nicht, weil die
   Übernahme keine Ruhe anlegt; beim späteren bewussten Anhalten steht er im Bestätigungsweg.
-- **Stand des ausgelieferten Box-Images `edge-2026.09.4`:** Der Core versteht das Push-Feld bereits
-  (`internal/entities/entities.go`, `internal/agent/ruhe_bis_zum_start_test.go`), meldet die Fähigkeit
-  aber noch nicht: `internal/cloud/data_source_status.go` führt sie nicht in `BuiltSupports()`, und
-  `edge-supports-vectors.json` hält sie deshalb auf `advertised: false`. Heute sieht damit jede Anlage
-  in Ruhe den Satz; genau für diese ausgelieferte Flotte hat NW-3 den Ablauf nach mehr als vier
-  Stunden Trennung gemessen. Der Satz verschwindet erst, wenn die zuständige Box den Namen in
-  `supports[]` meldet. Offener Folgepunkt vor dem ersten Box-Update: das ruhende Box-Paket
-  „Box meldet `automation_paused_until_revoked` in `supports[]`“ bauen; ohne diesen Schritt bliebe der
-  Satz auch nach einem Box-Update sichtbar.
+- **Stand des ausgelieferten Box-Images `edge-2026.09.4`:** Es meldet noch kein `supports[]`; damit
+  bleibt der Satz für diese alte Box unverändert. Genau für diese ausgelieferte Flotte hat NW-3 den
+  Ablauf nach mehr als vier Stunden Trennung gemessen. Der Core dieses ruhenden Folgepakets meldet
+  `automation_paused_until_revoked`, weil er das Push-Feld bereits versteht und die Ruhe ohne Ende
+  hält (`internal/entities/entities.go`, gemeinsamer Beweis in `internal/cloud/edge_supports_test.go`).
+  Sobald die zuständige Box ein späteres Box-Update mit diesem Paket trägt, verschwindet der Satz.
 - **Wirkt an einer echten Box erst mit einem Edge-Release.** `RUNTIME_VERSION` (Katalog-Laufzeitstand)
   ist unberührt, `schema_version` des Pushs bleibt `1.0`.

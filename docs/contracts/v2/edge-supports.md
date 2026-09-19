@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events"]` steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked"]` steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -17,6 +17,8 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   eingelieferten `device_restart`, `frozen_source`, `range_limit`, `layout_changed`
   (`edge-app/core/internal/boxevents`, AP-07 IP-19). Das Vokabular bleibt geschlossen und der
   Cloud gehörend; `clock_jump` ist keine Box-Art und wird nie gesendet.
+- `automation_paused_until_revoked`: die Box versteht das gleichnamige Registry-Feld und
+  hält die Ruhe ohne Enddatum über Uhr und Neustart hinweg, bis ein Push ohne das Feld sie aufhebt.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).
@@ -49,7 +51,9 @@ Keine neue Ansicht und keine neue Route.
 
 Neue Box an bisheriger Cloud: `EdgeSupportsLegacyListenerTest` wurde vor Änderung des
 Listeners auf `origin/uems` (`2b3d51c7`) mit `clean test` ausgeführt. Der Zusatz wird
-ignoriert, Quellenstatus und Lebenszeichen bleiben erhalten. Alte Box an neuer Cloud:
+ignoriert, Quellenstatus und Lebenszeichen bleiben erhalten. Auch die heutige Produktion
+auf `main` liest im Status-Zuhörer nur ihren jeweiligen Block und überliest `supports[]`.
+Alte Box an neuer Cloud:
 fehlender Block nutzt unverändert die Tabelle; die geteilten Vektoren und Listener-Tests
 prüfen beide Richtungen sowie unbekannte Namen.
 

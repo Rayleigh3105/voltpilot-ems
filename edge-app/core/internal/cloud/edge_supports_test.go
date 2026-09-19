@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 )
 
 func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.T) {
@@ -40,7 +43,8 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 	// "Only what is built" is checked, not promised: every advertised capability
 	// names a file in this tree, and that file has to exist. events (AP-07 IP-19)
 	// joins the list exactly because internal/boxevents really sends.
-	gebaut := false
+	eventsGebaut := false
+	ruheGemeldet := false
 	for _, c := range vectors.Capabilities {
 		if !c.Advertised {
 			continue
@@ -52,11 +56,25 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 			t.Fatalf("%s: evidence %s missing: %v", c.Name, c.Evidence, err)
 		}
 		if c.Name == "events" {
-			gebaut = true
+			eventsGebaut = true
+		}
+		if c.Name == "automation_paused_until_revoked" {
+			ruheGemeldet = true
 		}
 	}
-	if !gebaut {
+	if !eventsGebaut {
 		t.Fatal("events is built but not advertised")
+	}
+	// The capability and the code behind it are one promise: decode the real
+	// registry field, prove that it outlives every rolling end, and require the
+	// same runtime to advertise the name. Removing either half makes this fail.
+	var reg entities.Registry
+	if err := json.Unmarshal([]byte(`{"automation_paused_until_revoked":true}`), &reg); err != nil {
+		t.Fatal(err)
+	}
+	if !reg.Paused(time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)) || !ruheGemeldet {
+		t.Fatalf("Ruhe-until-revoked implementation and advertisement diverged: registry=%+v advertised=%v",
+			reg, ruheGemeldet)
 	}
 	sink := startStatusSink(t)
 	link := connectedLink(t, sink, "unchanged-version")

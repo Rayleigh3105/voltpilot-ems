@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.repo.DeviceRepository;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Timestamp;
@@ -91,6 +93,15 @@ class FunktionApiTest {
 
     @Autowired
     MockMvc mvc;
+
+    @Autowired
+    DeviceRepository devices;
+
+    @Autowired
+    DeviceDataSourceStatusRepository dataSourceStatuses;
+
+    @Autowired
+    BoxFaehigkeiten boxFaehigkeiten;
 
     private static JdbcTemplate root;
     private static JsonNode referenz;
@@ -224,8 +235,16 @@ class FunktionApiTest {
                 "ST-1", "AN-2", w);
         assertThat(bereit.at("/teilnahme/ruhe_hinweis/jetzt").asBoolean()).isTrue();
         UUID box = root.queryForObject("SELECT id FROM device WHERE site_id = ?", UUID.class, w.id("AN-2"));
-        root.update("UPDATE device SET supports = ?::jsonb, supports_reported_at = now() WHERE id = ?",
-                "[\"automation_paused_until_revoked\"]", box);
+        ObjectNode herzschlag = MAPPER.createObjectNode()
+                .put("schema_version", "1.0")
+                .put("tenant_id", w.mandant().toString())
+                .put("site_id", w.id("AN-2").toString())
+                .put("device_id", box.toString())
+                .put("ts", "2026-09-19T12:00:00Z");
+        herzschlag.putArray("supports").add("automation_paused_until_revoked");
+        new DataSourceStatusListener("tcp://unused", "", "", devices, dataSourceStatuses, boxFaehigkeiten)
+                .handle("ems/%s/%s/%s/status".formatted(w.mandant(), w.id("AN-2"), box),
+                MAPPER.writeValueAsBytes(herzschlag));
         JsonNode faehig = anlageIn(ok(ruf(w, HttpMethod.GET, "/api/v1/funktionen", null), 200).body(),
                 "ST-1", "AN-2", w);
         assertThat(faehig.at("/teilnahme/ruhe_hinweis/jetzt").asBoolean()).isFalse();
