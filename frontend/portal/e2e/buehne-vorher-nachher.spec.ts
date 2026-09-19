@@ -128,6 +128,11 @@ for (const breite of [375, 1440] as const) {
       const strassen = dialog.getByLabel('Straße und Hausnummer *');
       const plz = dialog.getByLabel('PLZ');
       const orte = dialog.getByLabel('Ort *');
+      // Erst zählen, wenn es etwas zu zählen gibt. Die Überschrift steht vor dem fertig
+      // aufgebauten Dialogkörper; eine Zahl 0 ließe die Schleife nullmal laufen, und der
+      // Fehler fiele erst zwölf Zeilen später beim Bestätigen auf („Bitte ergänzen Sie
+      // Straße und Ort für jeden Standort.“).
+      await expect(strassen.first()).toBeVisible();
       for (let i = 0; i < await strassen.count(); i++) {
         await strassen.nth(i).fill(i === 2 ? 'Werkstrasse 8' : `Industriestrasse ${4 + i}`);
         await plz.nth(i).fill(i === 2 ? '84123' : '84347');
