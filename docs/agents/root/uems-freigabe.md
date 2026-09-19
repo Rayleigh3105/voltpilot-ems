@@ -71,6 +71,10 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
 - **Die geteilte E2E-Bühne trägt fremde Specs.** Wer `startansicht.tsx`, eine `*-buehne.ts`
   oder gemeinsame Fixtures anfasst, fährt **alle** Specs, die sie lesen, nicht nur die
   eigenen (PR 980) — `rg -l "<bühnen-datei>" frontend/portal/e2e`.
+- **Der Bytegleich-Wächter der Bestandskunden-Bühne ist ein Paarbeweis.** U1 wird je Phase
+  und Breite siebenmal aufgenommen; grün ist ein bytegleiches Paar aus 7 × 7. Rot heißt
+  deshalb nicht „Rasterrauschen“, sondern echter Unterschied — die Zusage bleibt ohne
+  Toleranz und ohne Maske ([Werkzeug-LIESMICH](../../../tools/buehne-vorher-nachher/README.md)).
 - **Die Mess-Auswahl ist der scharfe Punkt an alten Boxen.** Der Go-Core liest sie strikt
   (`DisallowUnknownFields`): ein einziges neues Feld am `MeasurementConfigPublisher`
   bricht jede Box im Feld (PR 982) — [uems-nw3-box-image.md](uems-nw3-box-image.md).

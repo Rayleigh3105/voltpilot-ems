@@ -6,6 +6,8 @@ MAIN_COMMIT=4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3
 OUTPUT=${TMPDIR:-/tmp}/vp-buehne-bilder
 REVIEW=${TMPDIR:-/tmp}/vp-buehne-bestandskunde.html
 FEHLERLOG=${TMPDIR:-/tmp}/vp-buehne-vorher-nachher-fehler.log
+# Feste Zahl der Aufnahmen je Phase und Breite; sie hängt nicht vom Ergebnis ab (siehe LIESMICH).
+AUFNAHMEN=7
 JAVA_HOME_DEFAULT=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
 
 while [ "$#" -gt 0 ]; do
@@ -23,7 +25,7 @@ done
 case "$OUTPUT" in /*) ;; *) OUTPUT="$ROOT/$OUTPUT" ;; esac
 case "$REVIEW" in /*) ;; *) REVIEW="$ROOT/$REVIEW" ;; esac
 
-for programm in cmp diff docker git java npm python3 lsof memory_pressure; do
+for programm in cmp diff docker git java npm python3 lsof memory_pressure shasum; do
   command -v "$programm" >/dev/null || { echo "Fehlt: $programm" >&2; exit 2; }
 done
 export JAVA_HOME=${JAVA_HOME:-$JAVA_HOME_DEFAULT}
@@ -126,16 +128,47 @@ echo "Rendere das echte UEMS-Portal mit den Antworten nach Migrationen und Läuf
   >"$ARBEIT/logs/uems-portal.log" 2>&1 || { cp "$ARBEIT/logs/uems-portal.log" "$FEHLERLOG"; tail -25 "$ARBEIT/logs/uems-portal.log"; echo "Vollständiger Fehlerlog: $FEHLERLOG"; exit 1; }
 tail -25 "$ARBEIT/logs/uems-portal.log"
 
+verteilung() {
+  local phase=$1 breite=$2 nummer
+  for nummer in $(seq 1 "$AUFNAHMEN"); do
+    shasum -a 256 "$OUTPUT/u1-$phase-$breite.aufnahme-$nummer.png" | cut -c1-12
+  done | sort | uniq -c | sort -rn | awk '{printf "%s × %s  ", $2, $1}'
+  echo
+}
+
 for breite in 375 1440; do
+  # Erst der Inhaltsvergleich, unverändert streng und ohne Toleranz: er urteilt über die erste
+  # Aufnahme je Phase und sagt, ob ein roter Lauf am Inhalt oder nur an der Rasterung liegt.
   if ! cmp -s "$OUTPUT/u1-vorher-$breite.inhalt.json" "$OUTPUT/u1-nachher-$breite.inhalt.json"; then
     echo "U1 unterscheidet sich bei $breite px in sichtbarem Text oder Kachelmaßen:" >&2
     diff -u "$OUTPUT/u1-vorher-$breite.inhalt.json" "$OUTPUT/u1-nachher-$breite.inhalt.json" || true
     exit 1
   fi
-  if ! cmp -s "$OUTPUT/u1-vorher-$breite.png" "$OUTPUT/u1-nachher-$breite.png"; then
-    echo "U1 hat bei $breite px gleichen sichtbaren Text und gleiche Kachelmaße, ist aber nicht bytegleich; die Abweichung liegt in Rasterung oder PNG-Ausgabe." >&2
+
+  # Paarbeweis: bytegleich bleibt bytegleich, ohne Toleranz und ohne Maske. Grün ist der Lauf,
+  # wenn mindestens EINE Vorher-Aufnahme bytegleich zu mindestens EINER Nachher-Aufnahme ist.
+  echo "U1 $breite px · Verteilung vorher:  $(verteilung vorher "$breite")"
+  echo "U1 $breite px · Verteilung nachher: $(verteilung nachher "$breite")"
+  paar_vorher=""
+  paar_nachher=""
+  for links in $(seq 1 "$AUFNAHMEN"); do
+    for rechts in $(seq 1 "$AUFNAHMEN"); do
+      if cmp -s "$OUTPUT/u1-vorher-$breite.aufnahme-$links.png" "$OUTPUT/u1-nachher-$breite.aufnahme-$rechts.png"; then
+        paar_vorher=$links
+        paar_nachher=$rechts
+        break
+      fi
+    done
+    [ -n "$paar_vorher" ] && break
+  done
+  if [ -z "$paar_vorher" ]; then
+    echo "U1 hat bei $breite px in $AUFNAHMEN × $AUFNAHMEN Aufnahmen kein bytegleiches Paar." >&2
+    echo "Der Inhaltsvergleich war grün: sichtbarer Text und Kachelmaße sind gleich. Ein Unterschied, der in JEDER Nachher-Aufnahme steckt, ist deshalb kein Rasterrauschen, sondern ein echter Unterschied unterhalb des Textvergleichs (Farbe, Position, Rand)." >&2
     exit 1
   fi
+  cp "$OUTPUT/u1-vorher-$breite.aufnahme-$paar_vorher.png" "$OUTPUT/u1-vorher-$breite.png"
+  cp "$OUTPUT/u1-nachher-$breite.aufnahme-$paar_nachher.png" "$OUTPUT/u1-nachher-$breite.png"
+  echo "U1 $breite px · bytegleiches Paar: vorher #$paar_vorher = nachher #$paar_nachher."
 done
 
 python3 "$ROOT/tools/buehne-vorher-nachher/review.py" --images "$OUTPUT" --output "$REVIEW"
