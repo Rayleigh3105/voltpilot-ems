@@ -27,6 +27,12 @@ Rollout-Tags steht in [`docs/rollout/uems-erste-freigabe.md`](../../rollout/uems
 die Generalprobe in [uems-generalprobe.md](uems-generalprobe.md), NW-3 in
 [uems-nw3-box-image.md](uems-nw3-box-image.md).
 
+Die **gemessenen Suiten-Summen** des Zweiges, auf die der Tor-Prüfer mit `--laeufe` zeigt,
+stehen je Gesamtlauf unter `docs/rollout/gesamtlauf-<datum>.md` — zuletzt
+[gesamtlauf-2026-09-19.md](../../rollout/gesamtlauf-2026-09-19.md) (Stand `957217b6`,
+G0 = 9 von 9 belegt). Ein Bericht belegt **nur seinen** Commit: der Prüfer hält `stand.txt`
+gegen `HEAD` und lehnt einen Bericht eines anderen Standes ab.
+
 ## Termine des Betreibers — keine Tore
 
 Sie öffnen **nichts im System**; der Betreiber setzt sie selbst und hält sich daran.
