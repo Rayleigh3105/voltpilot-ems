@@ -5,6 +5,7 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 ## Änderungen prüfen
 
 - `npm run typecheck`, passende Vitest-Fälle und `npm run build` ausführen. Für Interaktion/Layout passende Playwright-Fälle verwenden.
+- Eine e2e-Spec, die beim LADEN wirft oder eine Umgebungsvariable braucht, gehört nicht in den Standardsatz: ein Sammelfehler in einer Datei setzt `npx playwright test` auf `0 tests in 0 files` und Exit 1 — der komplette Lauf findet dann nichts mehr. Solche Specs über `testIgnore` in `playwright.config.ts` ausnehmen und nur ihr Werkzeug sie einschalten lassen.
 - Bestehende Komponenten und Tokens in `designsystem/` nutzen. `Input` reicht seinen Ref zum nativen Feld durch; Picker und Input teilen den Feldrand.
 - `ebenenNav.ts` bestimmt Bereiche und Reiter aus `surface.ts`; `nav.ts` hält stabile Hash-Routen und Legacy-Umleitungen. Keine neuen Seiten ohne Navigationszuordnung.
 - Getrennte Portfolioreiter und Anlagenansichten erhalten; CSS für Portfolio-KPIs/Tabellen auf den Portfolio-Kontext begrenzen.
