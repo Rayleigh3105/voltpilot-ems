@@ -131,6 +131,24 @@ public class FunktionService {
                 verbreitung(Funktion.STEUERN, steuern, out.size())), List.copyOf(out));
     }
 
+    /**
+     * Ob „Messen &amp; Auswerten“ am Standort aktiv ist — aus genau denselben Fakten abgeleitet wie im
+     * Kunden-Lesemodell. Ein gespeichertes {@code aktiv} bleibt als Bestandsschutz gültig; der heutige Kundenweg
+     * speichert dagegen {@code entwurf} und erreicht {@code aktiv} ausschließlich über die Ableitung.
+     */
+    @Transactional(readOnly = true)
+    public boolean misstAktiv(UUID standortId) {
+        Instant jetzt = uhr.instant();
+        Welt w = welt();
+        StandortRepository.Standort st = w.standort(standortId);
+        if (st == null) {
+            return false;
+        }
+        FunktionRepository.Funktion gespeichert = w.funktionDerArt(standortId, Funktion.MESSEN);
+        return gespeichert != null && (gespeichert.zustand() == Zustand.AKTIV
+                || messenErgebnis(st, w, gespeichert, jetzt).zustand() == Zustand.AKTIV);
+    }
+
     /** Die sechs Start-Fakten der Anlage; Grund und Weg stehen ausschließlich an roten Zeilen. */
     @Transactional(readOnly = true)
     public FunktionDto.SteuernPruefung steuernPruefung(UUID siteId) {
@@ -634,11 +652,18 @@ public class FunktionService {
                 List.copyOf(fehlt), standortAktionen, List.copyOf(zeilen));
 
         // ---- Messen & Auswerten
-        FunktionZustandAbleitung.MessenErgebnis m = FunktionZustandAbleitung.messen(messenEingang(st, w,
-                w.funktionDerArt(st.id(), Funktion.MESSEN), heuteDa, zone, jetzt));
+        FunktionZustandAbleitung.MessenErgebnis m = messenErgebnis(st, w,
+                w.funktionDerArt(st.id(), Funktion.MESSEN), jetzt);
         FunktionDto.Messen messen = new FunktionDto.Messen(m.zustand().code(), zeit(m.seit(), zone), m.text(),
                 m.fehlt(), m.datenlage());
         return new FunktionDto.Standort(st.id(), st.kurzzeichen(), st.name(), st.zeitzone(), messen, steuern);
+    }
+
+    private FunktionZustandAbleitung.MessenErgebnis messenErgebnis(StandortRepository.Standort st, Welt w,
+            FunktionRepository.Funktion fm, Instant jetzt) {
+        ZoneId zone = ZoneId.of(st.zeitzone());
+        List<UUID> heuteDa = w.heuteZugeordnet(st.id(), LocalDate.ofInstant(jetzt, zone));
+        return FunktionZustandAbleitung.messen(messenEingang(st, w, fm, heuteDa, zone, jetzt));
     }
 
     private RuheHinweisRegel.Ergebnis ruheHinweis(UUID site, Zustand zustand, boolean anhaltenErlaubt) {
