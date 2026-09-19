@@ -46,10 +46,39 @@ nur im eigenen `mktemp`-Verzeichnis und werden am Ende entfernt; der temporäre
 Worktree wird dabei über Git abgemeldet. Das Skript entfernt keine fremden
 Container, Netze, Volumes oder Dateien.
 
-U1 ist bei 375 und 1440 Pixeln nach dem gezielten Einfrieren reiner
-Endlos-Animationen bytegleich: Text-Differenz 0, Pixel-Differenz 0. Die in B9
-genannten Einstiege sind additiv erreichbar, verändern die gezeigte
-Cockpit-Startansicht aber nicht.
+Der Wächter verlangt für U1 bei 375 und 1440 Pixeln nach dem gezielten
+Einfrieren reiner Endlos-Animationen weiterhin Bytegleichheit. Die in B9
+genannten Einstiege sind additiv erreichbar und dürfen die gezeigte
+Cockpit-Startansicht nicht verändern.
+
+## Bekannter Befund: Aufnahme bei 375 px nicht deterministisch
+
+Am 19.09.2026 wurde jede Variante mit einmal aufgezeichneten API-Antworten und
+30 Aufnahmen je Breite gemessen. Buchstaben bezeichnen unterschiedliche
+SHA-256-Werte derselben PNG-Datei; sie sind nur innerhalb einer Tabellenzeile
+vergleichbar. Bei 1440 px lieferte jede Variante 30 × A. Bei 375 px ergab sich:
+
+| Einzelne Stellschraube | Verteilung aus 30 Aufnahmen |
+|---|---|
+| unveränderte Spec | 22 × A, 5 × B, 2 × C, 1 × D |
+| Screenshot `animations: 'disabled'`, `caret: 'hide'`, `scale: 'css'` | 23 × A, 6 × B, 1 × C |
+| Chromium-Schalter für LCD-Text, Hinting, Subpixel, GPU, sRGB und Skia | 26 × A, 3 × B, 1 × C |
+| gebautes Portal über `vite preview` statt Vite-Entwicklungsserver | 14 × A, 10 × B, 6 × C |
+| fünf aufeinanderfolgende ruhige Frames nach Animations-/Transition-Prüfung | 23 × A, 3 × B, 3 × C, 1 × D |
+| lokale Web-Schriften für die verwendeten Familien und Schnitte mit `document.fonts.load/check` | 19 × A, 8 × B, 2 × C, 1 × D |
+
+`getAnimations({subtree:true})` meldete vor der Aufnahme keine laufende
+Animation. Die Kopfzeile hatte laut `getComputedStyle` weder laufende
+Transition noch `will-change` oder Transform. Inter, Inter Tight und Plus
+Jakarta Sans sind bereits lokal als WOFF2 eingebettet. Keine der einzeln
+gemessenen Stellschrauben erreichte deshalb die geforderten 30 von 30 bei
+375 px. Der Bytevergleich bleibt dennoch strikt: keine Pixeltoleranz, keine
+Maske und kein Wiederholen-bis-grün.
+
+Zusätzlich zeichnet die Spec für U1 sichtbaren Text und Maße aller sichtbaren
+`.vp-card`-/`.vp-c-card`-Kacheln als JSON auf. `run.sh` vergleicht diesen Inhalt
+zuerst bytegleich. Ein roter PNG-Vergleich sagt dadurch ausdrücklich, ob sich
+Inhalt bzw. Layout unterscheiden oder nur Rasterung/PNG-Ausgabe.
 
 ## Befund U2
 

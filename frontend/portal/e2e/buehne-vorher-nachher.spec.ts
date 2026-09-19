@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
@@ -61,12 +61,38 @@ async function oeffnen(page: Page, fall: 'u1' | 'u2', breite: 375 | 1440) {
   return fehler;
 }
 
+async function inhaltAufzeichnen(page: Page, pfad: string) {
+  const inhalt = await page.evaluate(() => {
+    const normalisiert = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim();
+    const kacheln = [...document.querySelectorAll<HTMLElement>('.vp-card, .vp-c-card')]
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0;
+      })
+      .map((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          klasse: element.className,
+          text: normalisiert(element.innerText),
+          x: box.x,
+          y: box.y,
+          breite: box.width,
+          hoehe: box.height,
+        };
+      });
+    return { sichtbarerText: normalisiert(document.body.innerText), kacheln };
+  });
+  writeFileSync(pfad, `${JSON.stringify(inhalt, null, 2)}\n`, 'utf8');
+}
+
 for (const breite of [375, 1440] as const) {
   test(`U1 ${PHASE} ${breite}`, async ({ page }) => {
     const unbekannt = await mitAntworten(page, 'u1');
     const fehler = await oeffnen(page, 'u1', breite);
     await expect(page.getByText('Werk Ahrenberg – Halle 1').first()).toBeVisible();
     await page.screenshot({ path: join(BILDER, `u1-${PHASE}-${breite}.png`) });
+    await inhaltAufzeichnen(page, join(BILDER, `u1-${PHASE}-${breite}.inhalt.json`));
     expect([...unbekannt]).toEqual([]);
     expect(fehler).toEqual([]);
   });
