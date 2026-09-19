@@ -440,7 +440,7 @@ for (const breite of BREITEN) {
       await page.getByRole('button', { name: breite < 720 ? 'Karten lesen' : 'Karten auslesen und weiter', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Ausgelesene Energiekarten ergänzen' })).toBeVisible();
       await expect(page.getByText('Steckplatz 1 · 750-494')).toBeVisible();
-      await expect(page.getByText('In Prüfung — Pilot ausstehend', { exact: true })).toBeVisible();
+      await expect(page.getByText('In Prüfung — Einsatz noch nicht bestätigt', { exact: true })).toBeVisible();
       const karten = page.locator('.vp-wago-karten > li');
       await expect(karten).toHaveCount(4);
       for (let index = 0; index < 4; index += 1) {

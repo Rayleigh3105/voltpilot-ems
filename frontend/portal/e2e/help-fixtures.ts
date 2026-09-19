@@ -3,7 +3,7 @@ import { rechteSeed, sichtbareListe } from '../src/test/rollenFixtures';
  * Fictional, frozen teaching data. Imported ONLY by /e2e/help.tsx.
  * No production API/auth fallback: the application bundle never imports this.
  */
-import { api } from '../src/api';
+import { api, type Funktionen, type StandorteAmStichtag, type Unternehmen } from '../src/api';
 import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { keycloak } from '../src/auth';
@@ -136,6 +136,29 @@ export function installHelpFixtures() {
   const result = (value: unknown) => async () => structuredClone(value);
   Object.assign(api, {
     selbstauskunft: result({ ...rechteSeed().me, standorte: [] }),
+    funktionen: result({
+      unternehmen: {
+        messen: { laeuft_an: 0, standorte: 0, text: null },
+        steuern: { laeuft_an: 0, standorte: 0, text: null },
+      },
+      standorte: [],
+    } satisfies Funktionen),
+    standorte: result({
+      stichtag: '2026-09-10',
+      standorte: [],
+      nichtGezeigt: [],
+      nochNichtZugeordnet: null,
+    } satisfies StandorteAmStichtag),
+    unternehmen: result({
+      zustand: 'nicht_angelegt',
+      id: null,
+      name: null,
+      kurzname: null,
+      zeitzone: null,
+      standortZahl: 0,
+      anlagenZahl: 0,
+      nochNichtZugeordnetZahl: 0,
+    } satisfies Unternehmen),
     listSites: error ? async () => { throw new Error('Demo data unavailable'); } : result(sichtbareListe(empty || admin ? [] : single ? [site] : sites)),
     listDevices: result(sichtbareListe(empty || admin ? [] : single ? [devices[0]] : devices)),
     tenantContext: result({ tenantId: 'help-tenant', name: 'Beispielbetrieb', betriebsart: single || empty ? 'endkunde' : 'betreiber' }),

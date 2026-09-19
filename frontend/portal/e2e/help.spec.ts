@@ -32,10 +32,11 @@ test('search, article navigation, section links, back and unknown links work', a
   await expect(page.getByRole('heading', { name: 'Artikel nicht gefunden' })).toBeVisible();
 });
 
-test('contextual help preserves an actual onboarding input and focus', async ({ page }) => {
+test('contextual help preserves the actual first onboarding step and focus', async ({ page }) => {
   await page.goto('/e2e/help.html?state=empty#/uebersicht');
-  const name = page.getByRole('textbox', { name: 'Name der Anlage' });
-  await name.fill('Sonnenhof West');
+  const firstStep = page.getByTestId('standort-zuerst');
+  await expect(firstStep).toBeVisible();
+  await expect(firstStep.getByRole('button', { name: 'Standort anlegen' })).toBeEnabled();
   const trigger = page.getByRole('link', { name: 'Hilfe zu diesem Schritt' });
   await trigger.focus();
   await trigger.press('Enter');
@@ -54,14 +55,14 @@ test('contextual help preserves an actual onboarding input and focus', async ({ 
   await panel.getByRole('button', { name: 'Schließen', exact: true }).focus();
   await page.keyboard.press('Escape');
   await expect(panel).not.toBeVisible();
-  await expect(name).toHaveValue('Sonnenhof West');
+  await expect(firstStep).toBeVisible();
   await expect(trigger).toBeFocused();
   // The reader chunk is now cached: focus must return on subsequent openings too.
   await trigger.click();
   await expect(panel).toBeVisible();
   await panel.getByRole('button', { name: 'Schließen', exact: true }).click();
   await expect(trigger).toBeFocused();
-  await expect(name).toHaveValue('Sonnenhof West');
+  await expect(firstStep).toBeVisible();
 });
 
 test('nested screenshot viewing closes independently and keeps the form behind help', async ({ page }) => {

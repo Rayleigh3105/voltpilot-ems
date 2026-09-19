@@ -82,6 +82,10 @@ Zeilen tragen sie. Es bleibt beim Betreiber, wie Teil D.
 | **Q17** Boxen aus Q08 b/c (Teil D) | Wen muss man vor Release A ansprechen? | Kundenliste für GA | — |
 | **Q18** Anlagen mit mehreren Boxen (Teil D) | Kandidaten für P3 | Pilotwahl | — |
 
+Q08 schätzt nur die Untergrenze aus freien Registern. Die
+[Budget-Prüfung](../budgetpruefung/README.md) urteilt vor Edge-Release A exakt über den vollständigen
+heutigen Publisher-Plan und den gemeinsamen Java-Vertrag.
+
 **Ohne SQL, aber vor G1:** Konten je Kundenbereich über 1 000 (Keycloak) → N5 · Alter des
 Basis-Backups ([`tools/backup/vp-db-backup-check.sh`](../backup/vp-db-backup-check.sh)) → E2 ·
 Aufbewahrung im Ereignis-Bus ≥ Fenster + Rückweg + Reserve → D5 · zwei bekannte Kunden mit reiner
