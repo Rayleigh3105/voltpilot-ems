@@ -28,7 +28,7 @@
     {
       "name": "automation_paused_until_revoked",
       "meaning": "Die Box hält eine Ruhe ohne Enddatum, bis die Cloud sie ausdrücklich aufhebt.",
-      "advertised": false,
+      "advertised": true,
       "evidence": "edge-app/core/internal/entities/ruhe_vectors_test.go"
     }
   ],
@@ -99,6 +99,22 @@
       ],
       "table": [],
       "expected": [
+        "automation_paused_until_revoked"
+      ]
+    },
+    {
+      "name": "this_runtime_reports_rest_until_revoked",
+      "supports": [
+        "data_sources",
+        "measurement_sample_provenance",
+        "events",
+        "automation_paused_until_revoked"
+      ],
+      "table": [],
+      "expected": [
+        "data_sources",
+        "measurement_sample_provenance",
+        "events",
         "automation_paused_until_revoked"
       ]
     }

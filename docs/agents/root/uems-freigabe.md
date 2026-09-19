@@ -19,7 +19,7 @@ ein Nachweis noch jemanden schützen könnte.
 |---|---|---|
 | **G0** Zusammenführen | `uems` → `main` in einem Stück | V0 · NW-2 · M-2 · IP-3, IP-4, IP-14, IP-15, IP-9, IP-19 gemergt |
 | **G1** Ausrollen | Rollout-Tag; zugleich Beginn des Piloten | M-1 · NW-1 · NW-8 · NW-3 · NW-4 · NW-5 · NW-6 · Kapazität nach L6 · Pilotkunden eingewilligt · M-4 als gitops-PR · Support-Weg geprobt · Kundennachricht samt Release-Notiz |
-| **GA** Edge-Release A | additive Box-Pakete, je Box zugewiesen | NW-3 gegen das NEUE Image · Q08/IP-17 · Core und Palette gemeinsam |
+| **GA** Edge-Release A | additive Box-Pakete, je Box zugewiesen | NW-3 gegen das NEUE Image · Q08/IP-17 · Core und Palette gemeinsam · `automation_paused_until_revoked` im Herzschlag gemeldet |
 | **GB** Edge-Release B | `RUNTIME_VERSION`, WAGO | ganze Flotte auf Release A · Q10 `pending_edge` · AP-05-Hardware-Pilot |
 
 Die acht Nachweise NW-1…NW-8 und wer sie trägt: Konzept §4.13. Das Drehbuch des
