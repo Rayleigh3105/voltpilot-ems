@@ -79,6 +79,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
     static final String MAIN = "4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3";
     static final boolean CAPTURE = System.getProperty("nw2.capture") != null;
     static final UUID TENANT = id(1), SITE = id(2), BOX = id(3), BATTERY = id(4), CONSUMER = id(5);
+    static final UUID U2_TENANT = id(21), U2_HALLE_1 = id(22), U2_HALLE_2 = id(23), U2_LINDACH = id(24);
     static final Instant NOW = Instant.parse("2090-09-18T10:00:00Z");
     static final String ACTOR = "jonas";
     static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
@@ -92,10 +93,19 @@ class UemsBestandSteuerungAusEinemStueckTest {
             "zugriff_bestand", "zugriff_protokoll", "messreihe_viertelstunde_lauf", "messreihe_tag_lauf",
             "messreihe_luecke_lauf", "component_template");
 
-    @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw")
-            .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
+    @Container static final PostgreSQLContainer<?> POSTGRES = postgres();
+
+    private static PostgreSQLContainer<?> postgres() {
+        var container = new PostgreSQLContainer<>(
+                DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
+                .withDatabaseName("voltpilot").withUsername("voltpilot").withPassword("voltpilot_dev_pw")
+                .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
+        String prefix = System.getProperty("buehne.container-prefix");
+        if (prefix != null && !prefix.isBlank()) {
+            container.withCreateContainerCmdModifier(cmd -> cmd.withName(prefix + "-db"));
+        }
+        return container;
+    }
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry r) throws Exception {
@@ -227,8 +237,15 @@ class UemsBestandSteuerungAusEinemStueckTest {
         senders().forEach((name, sender) -> boot.put(name, mockingDetails(sender).getInvocations().size()));
         startup = JSON.writeValueAsString(boot);
         clearInvocations(senders().values().toArray());
+        // Die Testdatenbank enthält neben den beiden Bühnenkunden weitere Dev-Seed-Mandanten. Der echte
+        // Startläufer geht sie chronologisch durch; eine nicht gestubbte Mockito-Antwort wäre null und würde
+        // den Lauf vor unseren Kunden abbrechen. Für alle fremden Mandanten ist die echte, vollständige Sicht
+        // deshalb eine leere Kontenliste.
+        when(keycloak.listUsersForTenant(any())).thenReturn(List.of());
         when(keycloak.listUsersForTenant(TENANT)).thenReturn(List.of(new KeycloakAdminClient.KeycloakUser(
                 ACTOR, ACTOR, "jonas@example.invalid", "Jonas", "Wendlinger", true, TENANT.toString())));
+        when(keycloak.listUsersForTenant(U2_TENANT)).thenReturn(List.of(new KeycloakAdminClient.KeycloakUser(
+                ACTOR, ACTOR, "jonas@example.invalid", "Jonas", "Wendlinger", true, U2_TENANT.toString())));
         when(registryPublisher.publishRegistry(any(), any(), any(), any())).thenReturn(true);
         // Real serializers and MQTT publication code; only the network connection is replaced.
         connect(chargingPublisher);
@@ -465,6 +482,131 @@ class UemsBestandSteuerungAusEinemStueckTest {
         ReflectionTestUtils.invokeMethod(charging, "saveCustomerFrame", SITE, 150.0, 999.0, ACTOR);
         assertThat(wire).hasSize(1);
         assertThat(JSON.readTree(wire.getFirst().split("\n", 2)[1]).path("grid_limit_kw").asDouble()).isEqualTo(150);
+    }
+
+    /**
+     * AP-14 IP-20: records the real HTTP answers used by the before/after stage.
+     * The method is dormant in normal test runs and is copied unchanged into the
+     * documented main archive for the before recording.
+     */
+    @Test @Order(11)
+    void buehneVorherNachherAntwortenAufzeichnen() throws Exception {
+        String output = System.getProperty("buehne.antworten");
+        org.junit.jupiter.api.Assumptions.assumeTrue(output != null, "nur der IP-20-Werkzeuglauf zeichnet Portalantworten auf");
+
+        var ds = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        try (var connection = ds.getConnection()) {
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("uems/nw2/u2-main-seed.sql"));
+        }
+        if (!CAPTURE) {
+            // Der globale Startläufer lief für U1 bereits und hält seinen einmaligen Cursor. U2 wird danach
+            // absichtlich als zweiter Bühnenfall gesät, deshalb derselbe mandantenbezogene Produktionsdienst,
+            // den BestandsuebernahmeApiTest für den Drei-Anlagen-Fall verwendet.
+            try {
+                TenantContext.set(U2_TENANT);
+                Object service = context.getBean(Class.forName("com.voltpilot.api.uems.BestandsuebernahmeService"));
+                Object result = ReflectionTestUtils.invokeMethod(service, "uebernehmen");
+                assertThat((Integer) ReflectionTestUtils.invokeMethod(result, "vorschlaege")).isEqualTo(3);
+            } finally {
+                TenantContext.clear();
+            }
+            Object rechte = context.getBean(Class.forName("com.voltpilot.api.zugriff.ZugriffBestandLaeufer"));
+            Object rechteLauf = ReflectionTestUtils.invokeMethod(rechte, "lauf");
+            assertThat((Integer) ReflectionTestUtils.invokeMethod(rechteLauf, "fehler")).isZero();
+        }
+
+        var dokument = JSON.createObjectNode();
+        dokument.put("schema", 1);
+        dokument.put("stand", CAPTURE ? "main-vorher" : "uems-nachher");
+        dokument.put("anmeldung", "ersetzt; Antworten stammen aus MockMvc mit Kunden-JWT");
+        dokument.put("liveTelemetrie", "nicht erzeugt; leere/fehlende Messwerte bleiben ehrlich leer");
+        var faelle = dokument.putObject("faelle");
+        faelle.set("u1", portalStand(TENANT, List.of(SITE)));
+
+        var u2 = faelle.putObject("u2");
+        u2.set("vorBestaetigung", portalStand(U2_TENANT, List.of(U2_HALLE_1, U2_HALLE_2, U2_LINDACH)));
+        if (!CAPTURE) {
+            JsonNode vorschlag = JSON.readTree(apiAntwort("GET", "/api/v1/standorte/vorschlag", U2_TENANT, null)
+                    .path("body").asText());
+            var gruppen = JSON.createArrayNode();
+            int nr = 0;
+            for (JsonNode vorgeschlagen : vorschlag.path("gruppen")) {
+                var gruppe = JSON.createObjectNode();
+                gruppe.put("name", vorgeschlagen.path("name").asText());
+                gruppe.put("zeitzone", vorgeschlagen.path("zeitzone").asText("Europe/Berlin"));
+                var adresse = gruppe.putObject("adresse");
+                adresse.put("strasse", nr == 2 ? "Werkstrasse 8" : "Industriestrasse " + (4 + nr));
+                adresse.put("plz", nr == 2 ? "84123" : "84347");
+                adresse.put("ort", nr == 2 ? "Lindach" : "Ahrenberg");
+                adresse.put("land", "DE");
+                var ids = gruppe.putArray("vorschlagIds");
+                vorgeschlagen.path("anlagen").forEach(a -> ids.add(a.path("vorschlagId").asText()));
+                gruppen.add(gruppe);
+                nr++;
+            }
+            var anfrage = JSON.createObjectNode();
+            anfrage.set("gruppen", gruppen);
+            var post = apiAntwort("POST", "/api/v1/standorte/vorschlag/bestaetigen", U2_TENANT,
+                    JSON.writeValueAsString(anfrage));
+            assertThat(post.path("status").asInt()).as(post.toPrettyString()).isEqualTo(200);
+            assertThat(JSON.readTree(post.path("body").asText()).path("standortIds")).hasSize(3);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) u2.path("vorBestaetigung").path("antworten"))
+                    .set("POST /api/v1/standorte/vorschlag/bestaetigen", post);
+            u2.set("nachBestaetigung", portalStand(U2_TENANT, List.of(U2_HALLE_1, U2_HALLE_2, U2_LINDACH)));
+        }
+        Files.writeString(Path.of(output), JSON.writerWithDefaultPrettyPrinter().writeValueAsString(dokument));
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode portalStand(UUID tenant, List<UUID> sites) throws Exception {
+        var stand = JSON.createObjectNode();
+        var antworten = stand.putObject("antworten");
+        List<String> gemeinsam = List.of(
+                "/api/v1/me", "/api/v1/tenant-context", "/api/v1/sites", "/api/v1/devices",
+                "/api/v1/overview", "/api/v1/earnings?range=day", "/api/v1/standorte",
+                "/api/v1/unternehmen", "/api/v1/funktionen", "/api/v1/kennzahlen",
+                "/api/v1/standorte/vorschlag", "/api/v1/tenant/cockpit-layout?surface=portfolio");
+        for (String path : gemeinsam) antworten.set("GET " + path, apiAntwort("GET", path, tenant, null));
+        JsonNode standorte = JSON.readTree(antworten.path("GET /api/v1/standorte").path("body").asText());
+        for (JsonNode standort : standorte.path("standorte")) {
+            String path = "/api/v1/standorte/" + standort.path("id").asText() + "/ausfall";
+            antworten.set("GET " + path, apiAntwort("GET", path, tenant, null));
+        }
+        for (UUID site : sites) {
+            String basis = "/api/v1/sites/" + site;
+            for (String suffix : List.of("", "/earnings?range=day", "/control-status", "/curtailment-status",
+                    "/chargers", "/sources", "/weather", "/schedule",
+                    "/bilanz?periode=tag",
+                    "/history?range=day&at=2026-10-20", "/cockpit-layout", "/eigene-auswertung",
+                    "/rollen/pv", "/rollen/verbrauch", "/rollen/netz", "/rollen/consumer", "/rollen/grid",
+                    "/topology", "/profile", "/entities", "/flows", "/profiles", "/interventions",
+                    "/entity-strategies", "/consumers", "/consumer-status")) {
+                String path = basis + suffix;
+                antworten.set("GET " + path, apiAntwort("GET", path, tenant, null));
+            }
+            String telemetryKey = basis
+                    + "/telemetry?from=2026-10-20T05%3A15%3A30.000Z&to=2026-10-20T08%3A15%3A30.000Z";
+            String telemetryRequest = basis
+                    + "/telemetry?from=2026-10-20T05:15:30.000Z&to=2026-10-20T08:15:30.000Z";
+            antworten.set("GET " + telemetryKey, apiAntwort("GET", telemetryRequest, tenant, null));
+        }
+        return stand;
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode apiAntwort(String method, String path, UUID tenant,
+            String body) throws Exception {
+        var req = org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .request(org.springframework.http.HttpMethod.valueOf(method), path)
+                .with(jwt().jwt(j -> j.subject(ACTOR).claim("tenant_id", tenant.toString())
+                        .claim("preferred_username", ACTOR))
+                        .authorities(new SimpleGrantedAuthority("ROLE_admin"),
+                                new SimpleGrantedAuthority("KONTO_benutzer")));
+        if (body != null) req.contentType("application/json").content(body);
+        var response = mvc.perform(req).andReturn().getResponse();
+        var result = JSON.createObjectNode();
+        result.put("status", response.getStatus());
+        result.put("contentType", Optional.ofNullable(response.getContentType()).orElse("application/json"));
+        result.put("body", response.getContentAsString(StandardCharsets.UTF_8));
+        return result;
     }
 
     @AfterAll
