@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ahrenbergFunktionen, funktionWerkLindach } from './test/funktionenFixtures';
 import { ahrenbergHeute, werkAhrenberg, werkLindach } from './test/standorteFixtures';
 import { funktionenKarte, standortLeerzustand, type UebersichtEbene } from './uebersicht';
+import { RUHE_VERBINDUNG_HINWEIS } from './ruheHinweis';
 
 /**
  * Die Karte „Funktionen" und der Leerzustand der Standort-Übersicht, reine
@@ -59,11 +60,23 @@ describe('Unternehmens-Übersicht: je Funktion, je Standort Zustand und nächste
     standort.steuern.aktionen = ['fortsetzen', 'beenden'];
     standort.steuern.anlagen[0].teilnahme.zustand = 'angehalten';
     standort.steuern.anlagen[0].teilnahme.aktionen = ['fortsetzen', 'beenden'];
+    standort.steuern.anlagen[0].teilnahme.ruhe_hinweis = { jetzt: true, beim_anhalten: false };
     const [, steuern] = funktionenKarte(UNTERNEHMEN, f)!;
     expect(steuern.zeilen[0]).toMatchObject({
       steuerungAktion: 'fortsetzen',
       betroffen: ['Werk Ahrenberg – Halle 1'],
+      ruheHinweis: RUHE_VERBINDUNG_HINWEIS,
     });
+  });
+
+  it('eine aktive Bestandsanlage sieht den Satz nie, auch wenn ihre Box die Fähigkeit nicht belegt', () => {
+    const f = structuredClone(ahrenbergFunktionen());
+    const teilnahme = f.standorte[0].steuern.anlagen[0].teilnahme;
+    expect(teilnahme.uebernommen).toBe(true);
+    teilnahme.ruhe_hinweis = { jetzt: false, beim_anhalten: true };
+    const [, steuern] = funktionenKarte(UNTERNEHMEN, f)!;
+    expect(steuern.zeilen[0].ruheHinweis).toBeNull();
+    expect(steuern.zeilen[0].ruheHinweisBeimAnhalten).toBe(RUHE_VERBINDUNG_HINWEIS);
   });
 
   it('A11: nach dem Umstieg hat Messen kein Objekt — der Schritt heißt „einrichten"', () => {

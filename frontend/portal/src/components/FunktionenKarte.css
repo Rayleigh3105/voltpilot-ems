@@ -104,6 +104,14 @@
   color: #334155;
 }
 
+.vp-fk-ruhe-hinweis {
+  margin: 4px 0 0 16px;
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .is-warn .vp-fk-satz {
   color: var(--vp-warn-ink, #b45309);
 }

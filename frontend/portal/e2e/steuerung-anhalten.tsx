@@ -39,12 +39,14 @@ const site: Site = {
 function Buehne() {
   const ansicht = new URLSearchParams(location.search).get('ansicht');
   if (ansicht === 'standort') {
+    const fall = new URLSearchParams(location.search).get('fall') ?? 'alt';
     return <div className="vp-content">
       <header className="vp-topbar"><div className="crumbs">Kunststoffwerk Ahrenberg › Werk Ahrenberg</div></header>
       <main className="vp-main">
         <h1>Werk Ahrenberg</h1>
         <FunktionenKarte
-          abschnitte={funktionenKarte({ art: 'standort', standort: werkAhrenberg() }, angehalten())}
+          abschnitte={funktionenKarte({ art: 'standort', standort: werkAhrenberg() },
+            fall === 'aktiv' ? funktionsFall(false, false) : funktionsFall(true, fall === 'neu'))}
           onSteuernAktion={async () => undefined}
         />
       </main>
@@ -56,18 +58,19 @@ function Buehne() {
   </div>;
 }
 
-function angehalten() {
+function funktionsFall(inRuhe = true, faehig = false) {
   const f = structuredClone(ahrenbergFunktionen());
   const standort = f.standorte[0];
   const teilnahme = standort.steuern.anlagen[0].teilnahme;
-  teilnahme.zustand = 'angehalten';
-  teilnahme.seit = '2026-11-03T14:10:00+01:00';
-  teilnahme.text = 'Angehalten seit 03.11.2026 14:10';
-  teilnahme.aktionen = ['fortsetzen', 'beenden'];
-  standort.steuern.zustand = 'angehalten';
+  teilnahme.zustand = inRuhe ? 'angehalten' : 'aktiv';
+  teilnahme.seit = inRuhe ? '2026-11-03T14:10:00+01:00' : '2024-05-02T00:00:00+02:00';
+  teilnahme.text = inRuhe ? 'Angehalten seit 03.11.2026 14:10' : 'Gestartet am 02.05.2024 (übernommen)';
+  teilnahme.aktionen = inRuhe ? ['fortsetzen', 'beenden'] : ['anhalten', 'beenden'];
+  teilnahme.ruhe_hinweis = { jetzt: inRuhe && !faehig, beim_anhalten: !inRuhe && !faehig };
+  standort.steuern.zustand = inRuhe ? 'angehalten' : 'aktiv';
   standort.steuern.seit = teilnahme.seit;
-  standort.steuern.text = 'Angehalten seit 03.11.2026 14:10';
-  standort.steuern.aktionen = ['fortsetzen', 'beenden'];
+  standort.steuern.text = teilnahme.text;
+  standort.steuern.aktionen = inRuhe ? ['fortsetzen', 'beenden'] : ['anhalten', 'beenden'];
   f.unternehmen.steuern = { laeuft_an: 0, standorte: 2, text: 'Steuern & Optimieren läuft an 0 von 2 Standorten' };
   return f;
 }

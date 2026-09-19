@@ -220,6 +220,15 @@ class FunktionApiTest {
         assertThat(halle2.at("/teilnahme/pruefliste/3/bestanden").asBoolean(true)).isFalse();
 
         root.update("UPDATE site_charging_config SET grid_limit_kw = 200 WHERE site_id = ?", w.id("AN-2"));
+        JsonNode bereit = anlageIn(ok(ruf(w, HttpMethod.GET, "/api/v1/funktionen", null), 200).body(),
+                "ST-1", "AN-2", w);
+        assertThat(bereit.at("/teilnahme/ruhe_hinweis/jetzt").asBoolean()).isTrue();
+        UUID box = root.queryForObject("SELECT id FROM device WHERE site_id = ?", UUID.class, w.id("AN-2"));
+        root.update("UPDATE device SET supports = ?::jsonb, supports_reported_at = now() WHERE id = ?",
+                "[\"automation_paused_until_revoked\"]", box);
+        JsonNode faehig = anlageIn(ok(ruf(w, HttpMethod.GET, "/api/v1/funktionen", null), 200).body(),
+                "ST-1", "AN-2", w);
+        assertThat(faehig.at("/teilnahme/ruhe_hinweis/jetzt").asBoolean()).isFalse();
         Antwort gestartet = ok(ruf(w, HttpMethod.PUT, anlage(w, "AN-2"), Map.of("aktion", "starten")), 200);
 
         assertThat(gestartet.body().path("aktion").asText()).isEqualTo("starten");
@@ -546,6 +555,7 @@ class FunktionApiTest {
         assertThat(halle1.at("/teilnahme/zustand").asText()).isEqualTo("aktiv");
         assertThat(halle1.at("/teilnahme/text").asText()).isEqualTo("Gestartet am 02.05.2024 (übernommen)");
         assertThat(halle1.at("/teilnahme/uebernommen").asBoolean()).isTrue();
+        assertThat(halle1.at("/teilnahme/ruhe_hinweis/jetzt").asBoolean()).as("Bestand ohne Ruhe").isFalse();
         assertThat(halle1.at("/teilnahme/pruefliste")).isEmpty();
         assertThat(texte(halle1.at("/teilnahme/aktionen"))).containsExactly("anhalten", "beenden");
         JsonNode halle2 = anlageIn(st1, w.name("AN-2"));

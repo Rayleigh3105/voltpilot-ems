@@ -20,6 +20,7 @@
 import type { FunktionStandort, Funktionen, OverviewSite, StandortAmStichtag } from './api';
 import { datenlageAnlagen, flottenAussage, flottenHinweis, type AnlagenZeile } from './portfolioCockpit';
 import { FUNKTIONEN, type FunktionCode, type FunktionZustand } from './uemsFunktion';
+import { RUHE_VERBINDUNG_HINWEIS } from './ruheHinweis';
 
 /** Die Ebene, die das Portfolio-Cockpit gerade zeigt. */
 export type UebersichtEbene =
@@ -394,6 +395,10 @@ export interface FunktionenKarteZeile {
   steuerungAktion?: 'anhalten' | 'fortsetzen' | null;
   /** Die Anlagen, die der Standort-Übergang tatsächlich betrifft. */
   betroffen?: string[];
+  /** X7: Zustandssatz genau in der betroffenen Steuern-Zelle. */
+  ruheHinweis?: string | null;
+  /** Derselbe Satz im Bestätigungsweg, wenn Anhalten die Ruhe erst setzt. */
+  ruheHinweisBeimAnhalten?: string | null;
 }
 
 export interface FunktionenKarteAbschnitt {
@@ -467,6 +472,16 @@ export function funktionenKarte(
                 ? 'fortsetzen'
                 : null
             : null;
+          const betroffen = steuerungAktion === null ? [] : fs.steuern.anlagen
+            .filter((a) => a.teilnahme.aktionen.includes(steuerungAktion))
+            .map((a) => a.name);
+          const ruheHinweis = funktion === 'steuern'
+            && fs.steuern.anlagen.some((a) => a.teilnahme.ruhe_hinweis?.jetzt)
+            ? RUHE_VERBINDUNG_HINWEIS : null;
+          const ruheHinweisBeimAnhalten = funktion === 'steuern' && steuerungAktion === 'anhalten'
+            && fs.steuern.anlagen.some((a) => a.teilnahme.aktionen.includes('anhalten')
+              && a.teilnahme.ruhe_hinweis?.beim_anhalten)
+            ? RUHE_VERBINDUNG_HINWEIS : null;
           return {
             standortId: fs.id,
             name: imUnternehmen ? fs.name : null,
@@ -476,9 +491,9 @@ export function funktionenKarte(
             schritt: naechsterSchritt(funktion, fs),
             ...(funktion === 'steuern' ? {
               steuerungAktion,
-              betroffen: steuerungAktion === null ? [] : fs.steuern.anlagen
-                .filter((a) => a.teilnahme.aktionen.includes(steuerungAktion))
-                .map((a) => a.name),
+              betroffen,
+              ruheHinweis,
+              ruheHinweisBeimAnhalten,
             } : {}),
           };
         }),

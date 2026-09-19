@@ -57,6 +57,9 @@ export function FunktionenKarte({
                         <span className="vp-fk-satz">{z.satz}</span>
                       </span>
                     </p>
+                    {z.ruheHinweis && (
+                      <p className="vp-fk-ruhe-hinweis" data-testid="ruhe-verbindung-hinweis">{z.ruheHinweis}</p>
+                    )}
                     {z.schritt && a.funktion === 'steuern' && onSteuernEinrichten ? (
                       <p className="vp-fk-schritt">
                         <Recht standort={z.standortId} aktion="funktion.steuern_einrichten">
@@ -77,6 +80,7 @@ export function FunktionenKarte({
                           umfang="standort"
                           standortId={z.standortId}
                           betroffen={z.betroffen ?? []}
+                          ruheHinweis={z.ruheHinweisBeimAnhalten}
                           onBestaetigen={() => onSteuernAktion(z.standortId, z.steuerungAktion!)}
                         />
                       </p>

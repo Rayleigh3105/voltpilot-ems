@@ -49,6 +49,7 @@ class FunktionSchnittstelleVertragTest {
         formen.put("FunktionSteuern", FunktionDto.Steuern.class);
         formen.put("FunktionAnlage", FunktionDto.Anlage.class);
         formen.put("FunktionTeilnahme", FunktionDto.Teilnahme.class);
+        formen.put("FunktionRuheHinweis", FunktionDto.RuheHinweis.class);
         formen.put("FunktionPruefZeile", FunktionDto.PruefZeile.class);
         formen.put("FunktionWeg", FunktionDto.Weg.class);
         formen.put("FunktionSteuernAnfrage", FunktionDto.SteuernAnfrage.class);
@@ -70,7 +71,8 @@ class FunktionSchnittstelleVertragTest {
             int beginn = ts.indexOf("export interface " + schema + " {");
             assertThat(beginn).as("api.ts kennt " + schema).isPositive();
             String koerper = ts.substring(beginn, ts.indexOf("\n}", beginn));
-            felder.forEach(f -> assertThat(koerper).as(schema + "." + f).contains("  " + f + ":"));
+            felder.forEach(f -> assertThat(koerper).as(schema + "." + f)
+                    .contains("ruhe_hinweis".equals(f) ? "  ruhe_hinweis?:" : "  " + f + ":"));
         });
     }
 

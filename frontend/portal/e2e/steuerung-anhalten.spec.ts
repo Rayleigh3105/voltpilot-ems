@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
+import { RUHE_VERBINDUNG_HINWEIS } from '../src/ruheHinweis';
 
 const BILDER = process.env.STEUERUNG_ANHALTEN_BILDER;
 
@@ -13,6 +14,7 @@ function angehalten() {
   teilnahme.seit = '2026-11-03T14:10:00+01:00';
   teilnahme.text = 'Angehalten seit 03.11.2026 14:10';
   teilnahme.aktionen = ['fortsetzen', 'beenden'];
+  teilnahme.ruhe_hinweis = { jetzt: true, beim_anhalten: false };
   standort.steuern.zustand = 'angehalten';
   standort.steuern.seit = teilnahme.seit;
   standort.steuern.text = 'Angehalten seit 03.11.2026 14:10';
@@ -59,6 +61,7 @@ for (const breite of [375, 1440] as const) {
     await cloud(page);
     await page.goto('/e2e/steuerung-anhalten.html');
     await expect(page.getByText('Angehalten seit 03.11.2026 14:10', { exact: true })).toBeVisible();
+    await expect(page.getByText(RUHE_VERBINDUNG_HINWEIS, { exact: true })).toBeVisible();
     await expect(page.getByText('Regeln: wirkt nicht — angehalten seit 03.11.2026 14:10')).toBeVisible();
     await expect(page.getByRole('button', { name: /eingreifen/i })).toHaveCount(0);
     await pruefenUndBild(page, `steuerung-angehalten-${breite}`);
@@ -70,4 +73,19 @@ for (const breite of [375, 1440] as const) {
     await expect(dialog).toContainText('prüft Box, Freigaben, Grenze, Hauptzähler und Betriebsweise erneut');
     await pruefenUndBild(page, `standort-fortsetzen-${breite}`);
   });
+
+  for (const fall of [
+    { code: 'alt', bild: 'ruhe-alte-box', hinweis: true },
+    { code: 'neu', bild: 'ruhe-faehige-box', hinweis: false },
+    { code: 'aktiv', bild: 'anlage-ohne-ruhe', hinweis: false },
+  ] as const) {
+    test(`${fall.bild} · ${breite}px`, async ({ page }) => {
+      await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+      await page.goto(`/e2e/steuerung-anhalten.html?ansicht=standort&fall=${fall.code}`);
+      const hinweis = page.getByText(RUHE_VERBINDUNG_HINWEIS, { exact: true });
+      if (fall.hinweis) await expect(hinweis).toBeVisible();
+      else await expect(hinweis).toHaveCount(0);
+      await pruefenUndBild(page, `${fall.bild}-${breite}`);
+    });
+  }
 }

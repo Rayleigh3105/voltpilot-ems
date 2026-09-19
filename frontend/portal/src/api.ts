@@ -4614,10 +4614,17 @@ export interface FunktionTeilnahme {
   seit: string | null;
   text: string;
   uebernommen: boolean;
+  /** Additive API-Angabe; fehlt nur bei einem älteren Server. */
+  ruhe_hinweis?: FunktionRuheHinweis;
   pruefliste: FunktionPruefZeile[];
   fehlt: string[];
   wege: FunktionWeg[];
   aktionen: FunktionAktion[];
+}
+
+export interface FunktionRuheHinweis {
+  jetzt: boolean;
+  beim_anhalten: boolean;
 }
 
 /** `bestanden: null` = nicht prüfbar, nie „bestanden“. */

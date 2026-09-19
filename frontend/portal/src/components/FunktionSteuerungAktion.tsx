@@ -20,12 +20,15 @@ export function FunktionSteuerungAktion({
   umfang,
   standortId,
   betroffen,
+  ruheHinweis,
   onBestaetigen,
 }: {
   art: FunktionSteuerungAktionArt;
   umfang: 'anlage' | 'standort';
   standortId: string;
   betroffen: readonly string[];
+  /** X7: ruhiger Zustandssatz, wenn diese Handlung die Ruhe an einer älteren Box setzt. */
+  ruheHinweis?: string | null;
   onBestaetigen: () => Promise<void>;
 }) {
   const [offen, setOffen] = useState(false);
@@ -39,6 +42,7 @@ export function FunktionSteuerungAktion({
         'VoltPilot sendet ab sofort keine Sollwerte und keine Schaltbefehle mehr.',
         'Betriebsmodelle, Regeln und Freigaben bleiben erhalten, wirken aber bis zum Fortsetzen nicht.',
         'Einspeisegrenzen und Wächter bleiben aktiv. Die Steuerung bleibt ohne Enddatum angehalten.',
+        ...(ruheHinweis ? [ruheHinweis] : []),
       ]
     : [
         `Betroffen: ${namen}.`,
