@@ -187,6 +187,12 @@ class UemsMesskundenLaufAbnahmeTest {
     @Autowired
     MessstelleWerteService werte;
 
+    @Autowired
+    FunktionService funktionen;
+
+    @Autowired
+    MessstelleRegisterService messstellenregister;
+
     /** Der ECHTE Kennzahl-Lauf — er hängt im Takt, sonst rechnet keine Kennzahl (AP-11 IP-6). */
     @Autowired
     KennzahlLauf kennzahlLauf;
@@ -239,6 +245,8 @@ class UemsMesskundenLaufAbnahmeTest {
     void uhrenZurueck() {
         berichte.uhrStellen(Clock.systemUTC());
         werte.uhrStellen(Clock.systemUTC());
+        funktionen.uhrStellen(Clock.systemUTC());
+        messstellenregister.uhrStellen(Clock.systemUTC());
     }
 
     @Test
@@ -260,6 +268,22 @@ class UemsMesskundenLaufAbnahmeTest {
         saeen(drehbuch);
         assertThat(zahl("SELECT count(*) FROM device_measurement_sample WHERE tenant_id = ?", kb))
                 .as("die Rohzeilen der Box liegen in der Datenbank").isEqualTo(drehbuch.size());
+
+        Instant messAktiv = DEZEMBER.plusSeconds(30);
+        Clock messUhr = Clock.fixed(messAktiv, ZoneOffset.UTC);
+        funktionen.uhrStellen(messUhr);
+        messstellenregister.uhrStellen(messUhr);
+        root.update("UPDATE device SET device_status_seen_at = ? WHERE id = ?", Timestamp.from(messAktiv), box);
+        JsonNode funktionsAntwort = ok(ruf(anna, HttpMethod.GET, "/api/v1/funktionen", null), 200).body();
+        assertThat(funktionsAntwort.path("standorte").get(0).at("/messen/zustand").asText())
+                .as("der Kunde liest den frisch abgeleiteten, nicht gespeicherten Mess-Zustand")
+                .isEqualTo("aktiv");
+        JsonNode vorschlaege = ok(ruf(anna, HttpMethod.GET,
+                "/api/v1/standorte/" + standort + "/netzanschluesse/vorschlaege", null), 200).body();
+        assertThat(vorschlaege)
+                .as("der über Kundenrouten eingerichtete und messende Standort erhält einen Netzanschluss-Vorschlag")
+                .hasSize(1);
+        assertThat(vorschlaege.get(0).path("anlage_id").asText()).isEqualTo(anlage.toString());
 
         verdichten(T_VERDICHTET);
         tage.rueckrechnenGanz(T_TAKT, 200);

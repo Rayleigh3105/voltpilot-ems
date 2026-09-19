@@ -8,7 +8,10 @@ an `site` liefern **keine** eindeutigen Anschluss-Stammdaten; insbesondere ist
 mit V20260708010000 entfernt. Kein Preisumzug (W9).
 
 - `NetzanschlussVorschlagService`: `GET …/netzanschluesse/vorschlaege` liest nur;
-  aktive Messfunktion, heutige Standortzuordnung und keine frühere wirksame
+  die aktive Messfunktion wird über `FunktionService.misstAktiv` aus genau denselben Fakten wie
+  `GET /funktionen` abgeleitet — beim regulären Kundenweg nie aus dem gespeicherten `funktion.zustand`;
+  ein historisch gespeichertes `aktiv` bleibt nur als Bestandsschutz gültig. Dazu heutige
+  Standortzuordnung und keine frühere wirksame
   (auch beendete/geplante) Bindung. Eine aufgehobene Bindung schließt nicht aus.
   Keine Kennzeichenreservierung, kein stiller Anschluss, kein Schreibzugriff auf `site`.
 - `POST …/vorschlaege/{anlageId}/uebernehmen`: unter derselben Unternehmenssperre

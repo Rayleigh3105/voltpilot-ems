@@ -530,6 +530,9 @@ class NetzanschlussApiTest {
     private Welt vorschlagswelt() {
         Welt w = welt();
         root.update("UPDATE anlage_standort SET gueltig_ab = DATE '2024-03-12' WHERE tenant_id = ?", w.mandant());
+        // Bewusster Bestandsschutzfall: Vor dem UEMS-Kundenweg konnten bereits gespeicherte aktive Zeilen
+        // existieren. Neue Kundenrouten schreiben dagegen entwurf; diesen Normalfall deckt der durchgehende
+        // UemsMesskundenLaufAbnahmeTest ab. Wer mit diesem Altstand Vorschläge bekam, behält sie.
         root.update("INSERT INTO funktion (tenant_id, standort_id, funktion, zustand, geaendert_von) "
                 + "VALUES (?, ?, 'messen', 'aktiv', 'Test')", w.mandant(), w.id("ST-1"));
         return w;

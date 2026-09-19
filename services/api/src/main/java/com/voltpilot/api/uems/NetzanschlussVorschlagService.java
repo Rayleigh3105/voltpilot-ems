@@ -25,16 +25,18 @@ public class NetzanschlussVorschlagService {
     private final StandortRepository standorte;
     private final UnternehmenRepository unternehmen;
     private final RechtPruefung rechte;
+    private final FunktionService funktionen;
 
     public NetzanschlussVorschlagService(JdbcTemplate jdbc, NetzanschlussService anschluesse,
             NetzanschlussRepository repo, StandortRepository standorte, UnternehmenRepository unternehmen,
-            RechtPruefung rechte) {
+            RechtPruefung rechte, FunktionService funktionen) {
         this.jdbc = jdbc;
         this.anschluesse = anschluesse;
         this.repo = repo;
         this.standorte = standorte;
         this.unternehmen = unternehmen;
         this.rechte = rechte;
+        this.funktionen = funktionen;
     }
 
     @Transactional(readOnly = true)
@@ -42,6 +44,9 @@ public class NetzanschlussVorschlagService {
         var s = standorte.finde(standortId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort nicht gefunden."));
         rechte.pruefen("netzanschluss.verwalten", RechtZiel.STANDORT, standortId, null);
+        if (!funktionen.misstAktiv(standortId)) {
+            return List.of();
+        }
         LocalDate heute = LocalDate.now(ZoneId.of(s.zeitzone()));
         var anlagen = jdbc.query("""
                 SELECT a.id, a.name, z.gueltig_ab FROM site a
@@ -50,8 +55,6 @@ public class NetzanschlussVorschlagService {
                 WHERE z.standort_id = ? AND z.aufgehoben_am IS NULL
                 AND daterange(z.gueltig_ab, z.gueltig_bis, '[]') @> ?::date
                 AND s.zustand <> 'archiviert'
-                AND EXISTS (SELECT 1 FROM funktion f WHERE f.standort_id = s.id
-                    AND f.funktion = 'messen' AND f.zustand = 'aktiv')
                 AND NOT EXISTS (SELECT 1 FROM anlage_netzanschluss n
                     WHERE n.site_id = a.id AND n.aufgehoben_am IS NULL)
                 AND NOT EXISTS (SELECT 1 FROM netzanschluss_vorschlag_entscheidung e WHERE e.site_id = a.id)

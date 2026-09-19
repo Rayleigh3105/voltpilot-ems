@@ -67,8 +67,9 @@ public class UemsMetricsRepository {
      * ({@code zustand &lt;&gt; 'archiviert'}) und ihr Standort ist nicht archiviert — dieselben beiden Enden,
      * die auch die Ableitung kennt ({@code kein_objekt} ohne Zeile, {@code archiviert} am archivierten
      * Standort). {@code entwurf} zählt mit: er misst schon, und „stockt beim Messkunden etwas, weiß es der
-     * Betreiber vor dem Kunden“. {@code NetzanschlussVorschlagService} trägt die alte Bedingung weiter; sie
-     * ist dort ein anderer Zweck (eine Vorschlagsliste) und bleibt in diesem Paket unangetastet.
+     * Betreiber vor dem Kunden“. Die Netzanschluss-Vorschlagsliste fragt seit AP-14 beim
+     * {@code FunktionService} dagegen den abgeleiteten aktiven Zustand ab: dort ist die vollständig
+     * eingerichtete Messfunktion die fachliche Schwelle, nicht schon die bestehende Zeile.
      *
      * <p><b>Warum nicht {@code device_measurement_sample} selbst.</b> Der Rohwert-Hypertable ist die
      * heißeste Tabelle der Plattform; ein {@code max(received_at)} je Kundenbereich liefe je

@@ -100,8 +100,9 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
   `FunktionBestandService` betreffen nur `steuern`). Das `aktiv`, das der Kunde in `GET /funktionen`
   liest, leitet `FunktionZustandAbleitung.messen` bei jedem Lesen frisch ab und speichert es nie.
   `zustand = 'aktiv'` traf deshalb keinen einzigen über die Kundenrouten entstandenen Messkunden — der
-  Betreiber sähe ihn nicht. **`NetzanschlussVorschlagService` trägt die alte Bedingung weiter**; dort
-  ist sie ein anderer Zweck (eine Vorschlagsliste) und wurde in IP-7 nicht geändert.
+  Betreiber sähe ihn nicht. Die frühere gleiche SQL-Bedingung in `NetzanschlussVorschlagService` ist
+  inzwischen auf die von `FunktionService` gelieferte Ableitung umgestellt; dort zählt fachlich erst die
+  aktive Messfunktion, während die Betreiber-Metrik schon den eingerichteten Messkunden überwacht.
   Metrikname und Labels sind unverändert geblieben — die Betreiber-Regel `VoltPilotMesskundeOhneMesswerte`
   (gitops PR 37) muss nicht angefasst werden. Sie sieht ab jetzt nur MEHR Kundenbereiche und kann darum
   früher anschlagen: ein eben eingerichteter Messkunde, bei dem noch nie etwas ankam, trägt
