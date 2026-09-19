@@ -86,15 +86,29 @@ async function inhaltAufzeichnen(page: Page, pfad: string) {
   writeFileSync(pfad, `${JSON.stringify(inhalt, null, 2)}\n`, 'utf8');
 }
 
+// Der Bytegleich-Wächter ist ein Paarbeweis: jede Phase nimmt U1 je Breite AUFNAHMEN-mal auf,
+// run.sh sucht darin ein bytegleiches Paar. Feste Zahl, kein Abbruch beim ersten Treffer und
+// keine Schleife bis grün - die Aufnahmezahl ist nicht vom Ergebnis abhängig.
+const AUFNAHMEN = 7;
+
 for (const breite of [375, 1440] as const) {
-  test(`U1 ${PHASE} ${breite}`, async ({ page }) => {
-    const unbekannt = await mitAntworten(page, 'u1');
-    const fehler = await oeffnen(page, 'u1', breite);
-    await expect(page.getByText('Werk Ahrenberg – Halle 1').first()).toBeVisible();
-    await page.screenshot({ path: join(BILDER, `u1-${PHASE}-${breite}.png`) });
-    await inhaltAufzeichnen(page, join(BILDER, `u1-${PHASE}-${breite}.inhalt.json`));
-    expect([...unbekannt]).toEqual([]);
-    expect(fehler).toEqual([]);
+  test(`U1 ${PHASE} ${breite}`, async ({ context }) => {
+    test.setTimeout(180_000);
+    // Jede Aufnahme bekommt eine frische Seite. Sieben Bilder aus einer einzigen Seite wären
+    // künstlich korreliert und würden die gemessene Streuung verstecken statt sie abzubilden.
+    for (let nummer = 1; nummer <= AUFNAHMEN; nummer++) {
+      const page = await context.newPage();
+      const unbekannt = await mitAntworten(page, 'u1');
+      const fehler = await oeffnen(page, 'u1', breite);
+      await expect(page.getByText('Werk Ahrenberg – Halle 1').first()).toBeVisible();
+      await page.screenshot({ path: join(BILDER, `u1-${PHASE}-${breite}.aufnahme-${nummer}.png`) });
+      // Der Inhaltsvergleich urteilt über die erste Aufnahme; sichtbarer Text und Kachelmaße
+      // sind laut Labortabelle über alle Aufnahmen hinweg gleich.
+      if (nummer === 1) await inhaltAufzeichnen(page, join(BILDER, `u1-${PHASE}-${breite}.inhalt.json`));
+      expect([...unbekannt]).toEqual([]);
+      expect(fehler).toEqual([]);
+      await page.close();
+    }
   });
 
   test(`U2 ${PHASE} ${breite}`, async ({ page }) => {

@@ -51,6 +51,31 @@ Einfrieren reiner Endlos-Animationen weiterhin Bytegleichheit. Die in B9
 genannten Einstiege sind additiv erreichbar und dürfen die gezeigte
 Cockpit-Startansicht nicht verändern.
 
+## Der Bytegleich-Wächter ist ein Paarbeweis
+
+Die Zusage bleibt „bytegleich“: keine Pixeltoleranz, keine Maske, kein
+Wiederholen bis grün. Die Spec nimmt U1 je Phase und Breite aber **siebenmal**
+auf – eine feste Zahl, unabhängig vom Ergebnis, jede Aufnahme auf einer frischen
+Seite. Grün ist der Lauf, wenn **mindestens ein Vorher-Bild bytegleich zu
+mindestens einem Nachher-Bild** ist.
+
+Warum das genauso streng ist wie der frühere Einzelvergleich: die unten
+gemessene Streuung ist Rasterrauschen derselben Seite – gleicher sichtbarer
+Text, gleiche Kachelmaße, bei 1440 px in jeder Variante 30 × A. Ein bytegleiches
+Paar kann es nur geben, wenn zwischen vorher und nachher **kein
+deterministischer Unterschied** besteht: ein echter Unterschied, und sei es ein
+Pixel, steckt in JEDER Nachher-Aufnahme und macht JEDES Paar ungleich. Der
+Paarbeweis ist deshalb genauso streng wie der Einzelvergleich, nur nicht mehr
+vom Zufall abhängig.
+
+So liest sich ein roter Lauf: `run.sh` druckt **immer** die Verteilung beider
+Seiten (SHA-256-Kürzel × Anzahl), auch bei grün. Findet er in 7 × 7 kein Paar,
+war der Inhaltsvergleich davor bereits grün – dann liegt der Unterschied nicht
+in der Rasterung, sondern unterhalb des Textvergleichs (Farbe, Position, Rand),
+und das ist ein echter Befund. Abgelegt und in `bilder/` gepflegt wird genau das
+gefundene bytegleiche Paar als `u1-vorher-<breite>.png` und
+`u1-nachher-<breite>.png`; die übrigen Aufnahmen bleiben im Arbeitsordner.
+
 ## Bekannter Befund: Aufnahme bei 375 px nicht deterministisch
 
 Am 19.09.2026 wurde jede Variante mit einmal aufgezeichneten API-Antworten und
