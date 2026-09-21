@@ -45,7 +45,11 @@ import org.testcontainers.utility.DockerImageName;
  * die Historienantwort eines plausiblen Bestandskunden veraendern.
  *
  * <p>Die Prozedur-Fingerabdruecke wurden auf dem Stand vor AP-08
- * ({@code 870b7e5a}) aufgenommen. Cockpit und Erloese werden von den bestehenden
+ * ({@code 870b7e5a}) aufgenommen. Einmal bewusst fortgeschrieben:
+ * {@code refresh_telemetry_rollups} mit {@code V20260922020000} (AP-15 Folgepunkt
+ * {@code vp-uems-v15-folge-leser-je-anlage}) - neuer Zweig NUR fuer Mehr-Box-Anlagen mit
+ * bestimmter fuehrender Box, jede andere Anlage rechnet Wort fuer Wort wie vorher; den
+ * Zeilenbeweis fuehrt {@code UemsRollupMehrBoxMigrationTest}. Cockpit und Erloese werden von den bestehenden
  * Bestandsmustern {@code PortalApiTest#overviewAggregatesFleetTenantScopedWithBerlinDaySavings}
  * und {@code PortalApiTest#earningsComputesRealizedSavingsPerSiteWithHonestDegradation}
  * abgedeckt und deshalb hier nicht nachgebaut.
@@ -65,8 +69,9 @@ class UemsVerbrauchBestandsschutzTest {
     private static final Map<String, String> ROLLUP_FINGERABDRUECKE = Map.of(
             "refresh_device_measurement_rollup",
             "6290471ab9cd23b33415e31b97731c1d14a81aa7c4966083561b83e2ac4b492a",
+            // V20260922020000 (vorher 89c6795528f28718173c57613646e8251b70e32dd7d21cc486f316a44bad9cd4)
             "refresh_telemetry_rollups",
-            "89c6795528f28718173c57613646e8251b70e32dd7d21cc486f316a44bad9cd4",
+            "e3c35a4157b245227daaa65a4dd92b94dc9b9d34e0ea9f96574f60dd4bec3945",
             "refresh_telemetry_v2_rollups",
             "906ae662ee2e974c2b6822cda07e5dedc4f072990b0b5e28f771397d3569485c");
 
