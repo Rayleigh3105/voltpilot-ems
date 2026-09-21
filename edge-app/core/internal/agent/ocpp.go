@@ -388,6 +388,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		SourceBlind:         surplus.Blind,
 		Previous:            rt.previousPlan(), Now: now,
 	})
+	prevPlan := rt.previousPlan()
 	rt.setPlan(&plan)
 
 	// P6: the wallbox allocations are published for the consumer executor
@@ -396,6 +397,10 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	a.noteWallboxCaps(plan)
 	if allowed, _ := a.ocppControlAllowed(); allowed {
 		a.ocppApply(ctx, plan, byKey, now)
+		// AP-15 IP-20: an allocation lowered below the measured draw MUST show
+		// at the meter (no-op without a share document)
+		drawKw, drawOk := rt.measuredChargingKw(now)
+		a.einfrierLadepunkte(now, prevPlan, &plan, drawKw, drawOk)
 	}
 	a.ocppReadback(ctx, snap, now)
 	a.publishOcppState()
@@ -440,6 +445,8 @@ func (a *Agent) ocppBudget(now time.Time, set lastmgmt.Settings, snap csms.Snaps
 	// share (lastmgmt/bezuganteil.go). A share that binds is a fixed figure,
 	// never Measured(), so what stations we cannot reach may draw comes OUT OF
 	// it - their draw is inside no measurement the share is compared with.
+	// B2 (AP-15 IP-20): a frozen connection-point value counts as blind
+	an.EingefrorenSeit = a.eingefrorenSeit(now)
 	verdict := a.ocpp.budget.BudgetAnteil(now, set, *an)
 	reserved := 0.0
 	if safe.Computable && !verdict.Measured() {

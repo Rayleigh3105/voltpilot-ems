@@ -53,6 +53,12 @@ type BezugAnteil struct {
 	// connection point). False for steuert_mit AND for a document without a
 	// role: the share then holds, always.
 	Fuehrt bool
+	// EingefrorenSeit is set while the box's own connection-point value counts
+	// as frozen (B2, guards.Einfrierprobe): the time of its last change. The
+	// budget then treats the value as a measurement that old - the leading
+	// box goes blind exactly as when the value stops arriving. Zero = not
+	// frozen.
+	EingefrorenSeit time.Time
 }
 
 // BudgetAnteil evaluates the charging budget for a box that holds a share
@@ -73,6 +79,12 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 
 	t.mu.Lock()
 	seen, at := t.seen, t.at
+	// B2: a frozen value is no measurement - its age counts from its last
+	// change.
+	eingefroren := seen && !an.EingefrorenSeit.IsZero() && !an.EingefrorenSeit.After(at)
+	if eingefroren {
+		at = an.EingefrorenSeit
+	}
 	age := now.Sub(at)
 	if age < 0 {
 		age = 0
@@ -101,7 +113,7 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 	case age > BudgetFreshWindow+BezugAnteilWindow:
 		t.rampValid = false
 		deckel, mode, blind = anteil, BudgetSafe, true
-		reason = t.blindPrefix(age) + "in der Gemeinsamen Steuerung gilt der Anteil dieser Box von " +
+		reason = t.anteilBlindPrefix(age, eingefroren) + "in der Gemeinsamen Steuerung gilt der Anteil dieser Box von " +
 			kwText(anteil) + " kW."
 	default:
 		if !t.rampValid {
@@ -115,7 +127,7 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 			frac = math.Min(math.Max(frac, 0), 1)
 			deckel -= (deckel - anteil) * frac
 		}
-		reason = t.blindPrefix(age) + "in der Gemeinsamen Steuerung zieht die Box das Ladebudget ohne Halten auf ihren Anteil von " +
+		reason = t.anteilBlindPrefix(age, eingefroren) + "in der Gemeinsamen Steuerung zieht die Box das Ladebudget ohne Halten auf ihren Anteil von " +
 			kwText(anteil) + " kW zusammen (aktuell " + kwText(round3(deckel)) + " kW)."
 	}
 	t.mu.Unlock()
@@ -126,6 +138,16 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 		res.AnteilBinds = true
 	}
 	return res
+}
+
+// anteilBlindPrefix opens the sentence of a blind share verdict: the value
+// stopped arriving - or it arrives, frozen (B2). Caller holds t.mu.
+func (t *BudgetTracker) anteilBlindPrefix(age time.Duration, eingefroren bool) string {
+	if eingefroren {
+		return "Der Messwert am Netzanschluss steht seit " + ageText(age) +
+			" still, obwohl diese Box selbst verstellt hat - er gilt als eingefroren; "
+	}
+	return t.blindPrefix(age)
 }
 
 // Netzpunkt is the newest usable paired measurement of the tracker, for the

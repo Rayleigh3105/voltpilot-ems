@@ -240,10 +240,16 @@ func TestOhneRolleWieMitsteuernd(t *testing.T) {
 // plan limit and commanded discharge, the PV cap WITH a share is never above
 // the cap WITHOUT a share for the same input, and the allowed discharge is
 // never above the commanded one - exactly, without tolerance.
+// IP-20: the meter may FREEZE (fresh timestamps, the same number from a random
+// step on) while the box adjusts itself at random; the probe's verdict goes in.
 func TestAnteilErweitertNie(t *testing.T) {
 	rng := rand.New(rand.NewSource(18))
+	eingefroren := 0
 	for run := 0; run < 400; run++ {
 		heute, anteil := NewExportLimiter(), NewExportLimiter()
+		probe := &Einfrierprobe{}
+		friertAb := rng.Intn(120) // >= 80: never frozen in this run
+		frozenGrid := 0.0
 		limit := 20 + rng.Float64()*200
 		an := ExportAnteil{AnteilKw: rng.Float64() * limit, Fuehrt: rng.Intn(2) == 0}
 		now := r9t0
@@ -253,10 +259,23 @@ func TestAnteilErweitertNie(t *testing.T) {
 			if rng.Intn(3) > 0 { // a measurement, sometimes long gaps
 				lastObs = now
 				grid := -rng.Float64()*1.5*limit + rng.Float64()*50
+				if step < friertAb {
+					frozenGrid = grid
+				} else {
+					grid = frozenGrid // frozen: fresh timestamp, same number
+				}
 				pv := rng.Float64() * 1.5 * limit
 				batt := -rng.Float64() * limit
+				probe.Wert(now, grid)
 				heute.Observe(now, grid, pv)
 				anteil.ObserveMitSpeicher(now, grid, pv, &batt)
+			}
+			if rng.Intn(3) == 0 { // an own adjustment, effective or not
+				probe.Verstellt(now, (rng.Float64()-0.5)*limit)
+			}
+			an.EingefrorenSeit = time.Time{}
+			if seit, ok := probe.Eingefroren(now); ok {
+				an.EingefrorenSeit = seit
 			}
 			var lim *float64
 			if rng.Intn(6) > 0 {
@@ -268,6 +287,9 @@ func TestAnteilErweitertNie(t *testing.T) {
 			}
 			h := heute.Cap(now, lim, exportSafeStatic(lim, d))
 			a := anteil.CapAnteil(now, lim, an, d)
+			if a.Eingefroren {
+				eingefroren++
+			}
 			if h.Active && a.CapKw > h.CapKw {
 				t.Fatalf("run %d step %d: with share %.3f (%s) > without %.3f (%s)",
 					run, step, a.CapKw, a.State, h.CapKw, h.State)
@@ -275,15 +297,24 @@ func TestAnteilErweitertNie(t *testing.T) {
 			if dischargeAllowed(a, d) > d+1e-9 || dischargeAllowed(a, d) < 0 {
 				t.Fatalf("run %d step %d: discharge raised or turned into a charge", run, step)
 			}
-			// R9/V6: never measured, or blind for more than 30 + 60 s: generation
-			// and discharge together on the share (1 W: rounding to watts)
-			if (lastObs.IsZero() || now.Sub(lastObs) > ExportFreshWindow+ExportAnteilWindow) &&
+			// R9/V6: never measured, or blind for more than 30 + 60 s - also
+			// frozen since more than 90 s (B2): generation and discharge
+			// together on the share (1 W: rounding to watts)
+			blindSeit := lastObs
+			if !an.EingefrorenSeit.IsZero() {
+				blindSeit = an.EingefrorenSeit
+			}
+			if (lastObs.IsZero() || now.Sub(blindSeit) > ExportFreshWindow+ExportAnteilWindow) &&
 				a.CapKw+dischargeAllowed(a, d) > an.AnteilKw+1e-3 {
 				t.Fatalf("run %d step %d: blind %v, over the share: %.3f + %.3f > %.3f (%s)",
-					run, step, now.Sub(lastObs), a.CapKw, dischargeAllowed(a, d), an.AnteilKw, a.State)
+					run, step, now.Sub(blindSeit), a.CapKw, dischargeAllowed(a, d), an.AnteilKw, a.State)
 			}
 		}
 	}
+	if eingefroren < 100 {
+		t.Fatalf("the frozen meter was blind in only %d steps - the random source does not reach it", eingefroren)
+	}
+	t.Logf("%d steps blind because the meter froze", eingefroren)
 }
 
 // exportSafeStatic is the caller's `limit - discharge` (agent.exportSafeStaticCap).
