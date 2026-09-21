@@ -6,7 +6,9 @@ an 39 Einstiegen; die Methode gibt es nicht mehr), `MeasurementHistoryService.hi
 `RlsIsolationTest` (A1, A13, A16, Schreiben, fail closed, Mandanten-Zaun), `SiteScopeBestandTest` (vorher/nachher je
 Kundenbereich und Tabelle), `ZugriffZaunApiTest` (157 lesende Routen gleich, standortbeschränkte Konten; seit 21.09.2026 die 18 nach IP-4
 eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anderswo, `PROBEN`),
-`SiteScopeArchitekturTest` (Messdaten ohne `site`).
+`SiteScopeArchitekturTest` (Messdaten ohne `site`). Seit der Inventur vom 21.09.2026 misst
+`ZugriffZaunApiTest#jedeLesendeRouteMitKennungZeigtIhrObjektNurAmStandortDesObjekts` jede übrige Leseroute mit Kennung
+(Abschnitt „Inventur der Lesewege“).
 
 ## Was gilt
 
@@ -38,7 +40,8 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
 
 ## ⚠ Fallen für die Folgepakete
 
-- ⚠ **Offen, nicht gezäunt:** `messstelle` und ihre Tabellen haben keinen Standort-Zaun.
+- ⚠ **Offen, nicht gezäunt:** `messstelle` und ihre Tabellen haben keinen Standort-Zaun — gemessen am 21.09.2026,
+  13 Einzelrouten und die Liste stehen in `ZugriffZaunApiTest.ZAUN_OFFEN` (siehe Inventur).
   - `GET /api/v1/messstellen` (`MessstelleRegisterRepository`, in der Liste `OFFEN`) liest alle Messstellen. Die
     Formel-Kanäle liest es über `device_measurement_selection` ohne Anlage.
   - Die Werte einer Messstelle kommen nur über `measurement_point` und fallen darum weg. Die Messstelle selbst bleibt
@@ -84,6 +87,32 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   - Ein `FROM site` irgendwo in der Anweisung gilt als Join. Prüf beim Eintragen, dass er die Messdaten wirklich bindet.
 - ⚠ **Tests:** ein Mockito-Mock von `Geltungsbereich` tut bei `requireSite` nichts (void). `siteVisible` liefert
   `false`, bis man es stubbt.
+
+## Inventur der Lesewege (21.09.2026)
+
+148 der 184 lesenden Kundenrouten tragen eine Kennung im Pfad. Woran ihr Zaun hängt (Objekt → Art, Beleg):
+
+| Objekt (Routen) | Zaun | Beleg |
+|---|---|---|
+| Anlage `/sites/{siteId}/…` (85) | `Geltungsbereich.requireSite`, Unterobjekte über `(siteId, id)` | z. B. `web/SiteConsumerController.java:122` |
+| Standort (11), Gerät `geraete` (5), Box `devices` (5), Ort `orte` (2) | RLS `site_scope` | `V20260915190000__uems_site_scope.sql:110-149`, `V20260918102000…:21` |
+| Bericht (6) | `Geltungsbereich.requireScope` | `uems/BerichtService.java:584` |
+| Korrektur, Ersatzwert-Lücken (2) | Standort jeder Reihe/Quelle | PR 998 |
+| Bezugsgröße (5), Import (2), Ablesung (1), Kennzahl (5) | `RechtPruefung`/`sicht` | `zugriff/RechtPruefung.java:550-575`, `uems/KennzahlService.java:484` |
+| **Messstelle (13), Kostenstelle (2), Prozess (1)** | **nichts — offen** | `ZAUN_OFFEN` |
+| Unterstützung, Komponenten-Vorlage, Enrollment (3) | kein Standortbezug (Recht + Mandant, globaler Katalog, öffentlich) | — |
+
+- **Offen (22 Muster in `ZAUN_OFFEN`, jedes gemessen):** Messstelle `/{id}`, `/aenderungen`, `/prozesse`,
+  `/verteilung` (ganz), `/quellen`, `/standort`, `/{kennzeichen}/werte(/versionen)` (Teile), `/quellen/{quelleId}`,
+  `…/kadenz`, `/formel`, `/wert`, `/verlauf` (Existenz); Kostenstelle `/{id}`, `/{id}/energie`, Prozess `/{id}`; die Listen
+  `/messstellen`, `/unternehmen/kostenstellen`, `/unternehmen/prozesse`, `/bezugsdaten/vorlagen`,
+  `/unternehmen/aenderungen`; `/berichte/betroffen?objekt=` (Existenz). Kostenstelle/Prozess haben Geltung
+  Unternehmen: nach R-A1 nur unternehmensweite Rollen.
+- **Messform:** erste Kennung = Objekt der Bühne (`behaelter`), Bearbeiter hier sieht es (sonst Kundenadministrator),
+  Bearbeiter anderswo = Status und Körper der unbekannten Kennung. Zwei gleiche Ablehnungen sind „ohne Aussage“, zwei
+  verschiedene ein Loch (Existenz). Listen: anderswo fehlt das Objekt.
+- ⚠ Die Inventur setzt ihre Pfade selbst und fasst `PROBEN` (Bestandsvergleich) nicht an. 18 Muster bleiben „ohne
+  Aussage“ (Unterobjekte der Anlage ohne Objekt, Pflichtparameter), 11 ohne Objekt der Bühne (Bericht, Kennzahl).
 
 ## Prüfen
 
