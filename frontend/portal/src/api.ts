@@ -2270,6 +2270,8 @@ export interface MessstelleWerteHistorie {
   grund: string | null;
   /** Aufsteigend: Version 1 zuerst. */
   versionen: MessstelleWerteVersion[];
+  /** AP-03 R-A3/R-A6: ein Eingang der berechneten Messstelle liegt außerhalb des Zugriffs — dann ohne Versionen. */
+  ausserhalb_zugriff?: string;
 }
 
 export interface MessstelleWerte {
@@ -2293,6 +2295,11 @@ export interface MessstelleWerte {
   werte: MessstelleWerteWert[];
   /** `nicht_zugeordnet`: im Zeitraum kamen an der Box Werte an, die Reihe trägt keinen; die Schritte bleiben. */
   zuordnung: MessstelleZuordnung | null;
+  /**
+   * AP-03 R-A3/R-A6: ein Eingang der berechneten Messstelle liegt im Zeitraum außerhalb des Zugriffs — dann ist
+   * `werte` leer (keine Zahl, keine Abdeckung) und hier steht der Hinweis ohne Namen. Sonst fehlt das Feld.
+   */
+  ausserhalb_zugriff?: string;
 }
 
 /**

@@ -34,6 +34,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -43,6 +44,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Predicate;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -987,33 +989,53 @@ public class MessstelleFormelService {
     // ------------------------------------------------------- Eingänge (Zaun)
 
     /**
-     * Die Messstellen, aus denen die Zahl der berechneten Messstelle {@code id} an dem Tag entsteht ({@code am}
+     * Die Eingänge einer Zahl (AP-03 R-A3): die Messstellen — über berechnete Eingänge hinweg und bei einem Rest über den
+     * Hauptzähler und die Terme seiner Stellung (E3) — und die Komponenten der Messkanal-Terme, auch die eines
+     * berechneten Eingangs.
+     */
+    public record Eingaenge(Set<UUID> messstellen, Set<UUID> komponenten) {}
+
+    /**
+     * Die Eingänge, aus denen die Zahl der berechneten Messstelle {@code id} an dem Tag entsteht ({@code am}
      * {@code null} = heute) — für den Zaun der Routen (AP-03 R-A3): wer nicht JEDEN sieht, bekommt die Zahl nicht.
      */
-    public Set<UUID> eingangsMessstellen(UUID id, LocalDate am) {
+    public Eingaenge eingaenge(UUID id, LocalDate am) {
         LocalDate tag = am != null ? am : heute(zone());
-        return eingangsMessstellen(id, tag, tag);
+        return eingaenge(id, tag, tag);
     }
 
     /** Dasselbe über den Zeitraum des Verlaufs ({@code range} wie an {@link #verlauf}). */
-    public Set<UUID> eingangsMessstellenDesVerlaufs(UUID id, String range) {
+    public Eingaenge eingaengeDesVerlaufs(UUID id, String range) {
         ZoneId zone = zone();
         Instant bis = viertelstunde(uhr.instant());
-        return eingangsMessstellen(id, LocalDate.ofInstant(bis.minus(zeitraum(range)), zone),
-                LocalDate.ofInstant(bis, zone));
+        return eingaenge(id, LocalDate.ofInstant(bis.minus(zeitraum(range)), zone), LocalDate.ofInstant(bis, zone));
     }
 
-    /**
-     * Jede Messstelle, die in [{@code von}, {@code bis}] in die Zahl eingeht — über berechnete Eingänge hinweg und bei
-     * einem Rest über den Hauptzähler und die Terme seiner Stellung (E3). Rechnet nichts, schreibt nichts.
-     */
-    Set<UUID> eingangsMessstellen(UUID id, LocalDate von, LocalDate bis) {
-        Set<UUID> out = new LinkedHashSet<>();
+    /** Jeder Eingang, der in [{@code von}, {@code bis}] (Tage, beide eingeschlossen) in die Zahl eingeht. Rechnet nichts. */
+    public Eingaenge eingaenge(UUID id, LocalDate von, LocalDate bis) {
+        Eingaenge out = new Eingaenge(new LinkedHashSet<>(), new LinkedHashSet<>());
         sammle(id, von, bis, out, new HashSet<>());
         return out;
     }
 
-    private void sammle(UUID id, LocalDate von, LocalDate bis, Set<UUID> out, Set<UUID> besucht) {
+    /**
+     * Liegt jeder Eingang im Zugriff (AP-03 R-A3)? Die Messstellen fragt die Route ({@code RechtPruefung#alleLesbar}),
+     * die Komponenten der Messkanal-Terme ihr Standort-Zaun: {@link #komponenteSichtbar}. Ohne Kontext und mit einer
+     * unternehmensweiten Rolle ist jeder Eingang sichtbar.
+     */
+    public boolean imZugriff(Eingaenge e, Predicate<Collection<UUID>> messstellenLesbar) {
+        return messstellenLesbar.test(e.messstellen()) && e.komponenten().stream().allMatch(this::komponenteSichtbar);
+    }
+
+    /**
+     * Sieht der Leser die Komponente? RLS {@code site_scope} über {@code measurement_point} — dieselbe Sicht, mit der
+     * der Live-Wert ihren Kanal liest ({@link MessstelleFormelWerteRepository#quelle}).
+     */
+    public boolean komponenteSichtbar(UUID entity) {
+        return werte.komponenteGehoert(entity);
+    }
+
+    private void sammle(UUID id, LocalDate von, LocalDate bis, Eingaenge out, Set<UUID> besucht) {
         if (!besucht.add(id)) {
             return;
         }
@@ -1027,8 +1049,10 @@ public class MessstelleFormelService {
             if (!MessstelleFormelRegeln.REST.equals(f.formelTyp())) {
                 for (TermZeile t : terme.derFassung(f.id())) {
                     if (t.quellMessstelleId() != null) {
-                        out.add(t.quellMessstelleId());
+                        out.messstellen().add(t.quellMessstelleId());
                         sammle(t.quellMessstelleId(), von, bis, out, besucht);
+                    } else if (t.entityId() != null) {
+                        out.komponenten().add(t.entityId());
                     }
                 }
                 continue;
@@ -1038,7 +1062,7 @@ public class MessstelleFormelService {
             if (x == null) {
                 continue;
             }
-            out.add(x.id());
+            out.messstellen().add(x.id());
             stand = stand != null ? stand : stellungen.lesen();
             for (LocalDate tag = ab; !tag.isAfter(ende); tag = tag.plusDays(1)) {
                 BilanzAbleitung.RestFassung r = stand.rest(x.kennzeichen(), tag);
@@ -1046,7 +1070,7 @@ public class MessstelleFormelService {
                     for (BilanzAbleitung.RestTerm t : r.terme()) {
                         Messstelle q = stand.nachKennzeichen().get(t.messstelle());
                         if (q != null) {
-                            out.add(q.id());
+                            out.messstellen().add(q.id());
                         }
                     }
                 }

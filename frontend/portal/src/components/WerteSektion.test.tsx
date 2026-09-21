@@ -270,3 +270,25 @@ describe('WerteSektion · Werte kommen an, gehören aber zu keiner Messreihe (Me
     expect(zuordnungDerWerte(undefined, null)).toBeNull();
   });
 });
+
+describe('WerteSektion · ein Eingang außerhalb des Zugriffs (AP-03 R-A3/R-A6)', () => {
+  it('die Route sagt `ausserhalb_zugriff`: der Hinweis ohne Namen statt Karte, Leerzustand und Liste', async () => {
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => ({
+      ...antwortFuer(raster, von, bis),
+      werte: [],
+      ausserhalb_zugriff: 'umfasst Standorte außerhalb Ihres Zugriffs',
+    }));
+    zeige();
+    const hinweis = await screen.findByTestId('werte-ausserhalb', {}, WARTEN);
+    expect(hinweis.textContent).toBe('Die Zahl umfasst Standorte außerhalb Ihres Zugriffs.');
+    expect(screen.queryByTestId('werte-leer')).toBeNull();
+    expect(screen.queryAllByTestId('verlauf-schritt')).toHaveLength(0);
+  });
+
+  it('ohne das Feld (jeder Bestand) steht kein Hinweis', async () => {
+    verdrahte();
+    zeige();
+    await screen.findAllByTestId('verlauf-schritt', {}, WARTEN);
+    expect(screen.queryByTestId('werte-ausserhalb')).toBeNull();
+  });
+});

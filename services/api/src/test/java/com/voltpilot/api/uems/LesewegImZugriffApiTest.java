@@ -338,7 +338,7 @@ class LesewegImZugriffApiTest {
                 .filter(e -> e.getValue().contains("MS-16") || e.getValue().contains(ms16.toString()))
                 .map(Map.Entry::getKey).toList())
                 .as("rot bei einem neuen UND bei einem geheilten Fall")
-                .containsExactlyInAnyOrderElementsOf(FOLGEPUNKTE_OFFEN.keySet());
+                .containsExactlyInAnyOrderElementsOf(offen("register ", "MS-30", "vorschlag ", "bilanz "));
 
         // Lesart A (AP-03 R-A3/R-A6/R-A7): keine Zahl über MS-16, an ihrer Stelle der Hinweis ohne Namen und Anzahl.
         String hinweis = "umfasst Standorte außerhalb Ihres Zugriffs";
@@ -429,14 +429,168 @@ class LesewegImZugriffApiTest {
     }
 
     /**
+     * Die gespeicherten Periodenwerte einer BERECHNETEN Messstelle ({@code …/werte}, {@code …/werte/versionen}) nach
+     * AP-03 R-A3/R-A6: liegt ein Eingang im Zeitraum außerhalb, fehlt die Zahl ganz — keine Zeile, keine Summe, keine
+     * Abdeckung, keine Version —, an ihrer Stelle der Hinweis. Mit nur sichtbaren Eingängen und für jeden, der alle
+     * sieht, Zeichen für Zeichen die Antwort von vorher.
+     */
+    @Test
+    void gespeicherteWerteEinerBerechnetenMessstelleNurMitAllenEingaengen() throws Exception {
+        Welt w = welt();
+        Konten k = konten(w);
+        UUID ms01 = messstelle(w, "MS-01", "gemessen", "standort_id", w.ahrenberg());
+        UUID ms16 = messstelle(w, "MS-16", "gemessen", "standort_id", w.lindach());
+        UUID ms30 = messstelle(w, "MS-30", "berechnet", "standort_id", w.ahrenberg());
+        UUID ms31 = messstelle(w, "MS-31", "berechnet", "standort_id", w.ahrenberg());
+        UUID f30 = fassung(w, ms30);
+        termMessstelle(w, ms30, f30, 0, ms01);
+        termMessstelle(w, ms30, f30, 1, ms16);
+        UUID f31 = fassung(w, ms31);
+        termMessstelle(w, ms31, f31, 0, ms01);
+        gespeicherterTag(w, ms30, f30, "4711.125");
+        gespeicherterTag(w, ms31, f31, "815.5");
+        String beide = beide(w);
+
+        String hinweis = "umfasst Standorte außerhalb Ihres Zugriffs";
+        for (String route : List.of("/werte", "/werte/versionen")) {
+            String pfad = MS + "/MS-30" + route + TAG;
+            Roh referenz = ok(w, k.ka(), pfad);
+            assertThat(referenz.body()).as(pfad).contains("4711.125").doesNotContain(hinweis)
+                    .doesNotContain("ausserhalb_zugriff");
+            assertThat(roh(w, k.bestand(), pfad)).as(pfad).isEqualTo(referenz);
+            assertThat(roh(w, beide, pfad)).as(pfad).isEqualTo(referenz);
+            assertThat(ohneKontext(w, pfad)).as(pfad).isEqualTo(referenz);
+
+            JsonNode hier = MAPPER.readTree(ok(w, k.hier(), pfad).body());
+            assertThat(hier.path("ausserhalb_zugriff").asText()).as(pfad).isEqualTo(hinweis);
+            assertThat(hier.path(route.equals("/werte") ? "werte" : "versionen")).as(pfad).isEmpty();
+            assertThat(hier.toString()).as(pfad).doesNotContain("4711").doesNotContain("abdeckung")
+                    .doesNotContain("MS-16").doesNotContain(ms16.toString());
+            assertThat(hier.at("/messstelle/kennzeichen").asText()).isEqualTo("MS-30");
+
+            // Nur sichtbare Eingänge: für den Bearbeiter an ST-1 dieselbe Antwort wie für alle.
+            String nurSichtbar = MS + "/MS-31" + route + TAG;
+            Roh alle = ok(w, k.ka(), nurSichtbar);
+            assertThat(alle.body()).as(nurSichtbar).contains("815.5").doesNotContain("ausserhalb_zugriff");
+            assertThat(roh(w, k.hier(), nurSichtbar)).as(nurSichtbar).isEqualTo(alle);
+        }
+    }
+
+    /**
+     * Messkanal-Terme (AP-03 R-A3): die Komponente eines Terms hängt an einer Anlage an ST-2. Für den Bearbeiter an ST-1
+     * ist sie ein Eingang außerhalb wie MS-16 — Formel ohne den Term, Wert, Verlauf und gespeicherte Werte ohne Zahl,
+     * je mit dem Hinweis. Die Gerätekarte ({@code …/summenwerte}) nennt keinen Summenwert außerhalb und keine Zahl über
+     * einen Eingang außerhalb.
+     */
+    @Test
+    void messkanalTermeUndSummenwerteAnDerGeraetekarteNurImZugriff() throws Exception {
+        Welt w = welt();
+        Konten k = konten(w);
+        UUID ms01 = messstelle(w, "MS-01", "gemessen", "standort_id", w.ahrenberg());
+        UUID ms16 = messstelle(w, "MS-16", "gemessen", "standort_id", w.lindach());
+        UUID[] hierAnlage = anlageMitZaehler(w, "Werk Ahrenberg – Halle 1", w.ahrenberg(), "HIER", HIER_KANAL);
+        UUID[] dortAnlage = anlageMitZaehler(w, "Werk Lindach – Halle 7", w.lindach(), "DORT", DORT_KANAL);
+        UUID hierZaehler = hierAnlage[1];
+        UUID dortZaehler = dortAnlage[1];
+        // MS-32 (ST-1) = MS-01 + Kanal des Zählers an ST-2.
+        UUID ms32 = messstelle(w, "MS-32", "berechnet", "standort_id", w.ahrenberg());
+        UUID f32 = fassung(w, ms32);
+        termMessstelle(w, ms32, f32, 0, ms01);
+        termKanal(w, ms32, f32, 1, dortZaehler, DORT_KANAL);
+        gespeicherterTag(w, ms32, f32, "4711.125");
+        // Gerätekarte des Zählers an ST-1: MS-33 (ST-1) = Kanal hier + MS-16, MS-40 (ST-2) = Kanal hier.
+        UUID ms33 = messstelle(w, "MS-33", "berechnet", "standort_id", w.ahrenberg());
+        UUID f33 = fassung(w, ms33);
+        termKanal(w, ms33, f33, 0, hierZaehler, HIER_KANAL);
+        termMessstelle(w, ms33, f33, 1, ms16);
+        UUID ms40 = messstelle(w, "MS-40", "berechnet", "standort_id", w.lindach());
+        UUID f40 = fassung(w, ms40);
+        termKanal(w, ms40, f40, 0, hierZaehler, HIER_KANAL);
+        String beide = beide(w);
+
+        String hinweis = "umfasst Standorte außerhalb Ihres Zugriffs";
+        String karte = "/api/v1/sites/" + hierAnlage[0] + "/komponenten/" + hierZaehler + "/summenwerte";
+        Map<String, String> antworten = new LinkedHashMap<>();
+        for (JsonNode zeile : MAPPER.readTree(ok(w, k.hier(), MS + "?" + STICHTAG).body()).path("register")) {
+            if ("MS-32".equals(zeile.path("kennzeichen").asText())) {
+                antworten.put("messkanal register MS-32 berechnung", zeile.path("berechnung").toString());
+            }
+        }
+        for (String r : List.of("/formel", "/wert", "/verlauf")) {
+            antworten.put("messkanal MS-32" + r, ok(w, k.hier(), MS + "/" + ms32 + r).body());
+        }
+        antworten.put("messkanal MS-32/werte", ok(w, k.hier(), MS + "/MS-32/werte" + TAG).body());
+        antworten.put("messkanal MS-32/werte/versionen", ok(w, k.hier(), MS + "/MS-32/werte/versionen" + TAG).body());
+        antworten.put("summenwerte Zähler ST-1", ok(w, k.hier(), karte).body());
+
+        // Wo der Bearbeiter an ST-1 den Zähler an ST-2, MS-16 oder MS-40 liest: genau die offenen Folgepunkte.
+        assertThat(antworten.entrySet().stream()
+                .filter(e -> e.getValue().contains(dortZaehler.toString()) || e.getValue().contains("DORT")
+                        || e.getValue().contains(DORT_KANAL)
+                        || e.getValue().contains("MS-16") || e.getValue().contains(ms16.toString())
+                        || e.getValue().contains("MS-40") || e.getValue().contains(ms40.toString()))
+                .map(Map.Entry::getKey).toList())
+                .as("rot bei einem neuen UND bei einem geheilten Fall")
+                .containsExactlyInAnyOrderElementsOf(offen("messkanal ", "summenwerte "));
+
+        JsonNode formel = MAPPER.readTree(antworten.get("messkanal MS-32/formel"));
+        assertThat(formel.path("ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+        assertThat(formel.path("terme")).hasSize(1);
+        assertThat(formel.at("/terme/0/quell_messstelle_id").asText()).isEqualTo(ms01.toString());
+        JsonNode wert = MAPPER.readTree(antworten.get("messkanal MS-32/wert"));
+        assertThat(wert.path("wert").isNull()).isTrue();
+        assertThat(wert.path("fehlende")).isEmpty();
+        assertThat(wert.path("ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+        JsonNode verlauf = MAPPER.readTree(antworten.get("messkanal MS-32/verlauf"));
+        assertThat(verlauf.path("punkte")).isEmpty();
+        assertThat(verlauf.path("ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+        for (String route : List.of("/werte", "/werte/versionen")) {
+            JsonNode werte = MAPPER.readTree(antworten.get("messkanal MS-32" + route));
+            assertThat(werte.path("ausserhalb_zugriff").asText()).as(route).isEqualTo(hinweis);
+            assertThat(werte.toString()).as(route).doesNotContain("4711");
+        }
+        JsonNode summen = MAPPER.readTree(antworten.get("summenwerte Zähler ST-1"));
+        assertThat(summen).hasSize(1);
+        assertThat(summen.at("/0/messstelle/kennzeichen").asText()).isEqualTo("MS-33");
+        assertThat(summen.at("/0/wert/wert").isNull()).isTrue();
+        assertThat(summen.at("/0/wert/fehlende")).isEmpty();
+        assertThat(summen.at("/0/wert/ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+
+        // Wer alles sieht, liest Zeichen für Zeichen dasselbe wie vorher: mit dem Zähler an ST-2, MS-16 und MS-40.
+        for (String pfad : List.of(MS + "/" + ms32 + "/formel", MS + "/" + ms32 + "/wert",
+                MS + "/MS-32/werte" + TAG, MS + "/MS-32/werte/versionen" + TAG, karte)) {
+            Roh referenz = ok(w, k.ka(), pfad);
+            assertThat(referenz.body()).as(pfad).doesNotContain(hinweis);
+            assertThat(roh(w, k.bestand(), pfad)).as(pfad).isEqualTo(referenz);
+            assertThat(roh(w, beide, pfad)).as(pfad).isEqualTo(referenz);
+            assertThat(ohneKontext(w, pfad)).as(pfad).isEqualTo(referenz);
+        }
+        assertThat(ok(w, k.ka(), MS + "/" + ms32 + "/formel").body()).contains(dortZaehler.toString());
+        assertThat(ok(w, k.ka(), MS + "/MS-32/werte" + TAG).body()).contains("4711.125");
+        assertThat(ok(w, k.ka(), karte).body()).contains("MS-33").contains("MS-40");
+    }
+
+    /**
      * Gemessen am 21.09.2026 (Bearbeiter nur an ST-1, MS-16 an ST-2): hier nennt eine sonst sichtbare Antwort die
      * fremde Messstelle. Entschieden ist AP-03 R-A3/R-A6/R-A7 (Lesart A, firstmate 21.09.2026): eine Zahl über einen
      * Eingang außerhalb fehlt ganz, der Hinweis „umfasst Standorte außerhalb Ihres Zugriffs“ nennt weder Namen noch
      * Werte. Gebaut in {@code vp-uems-zaun-eingaenge-ausserhalb} (Register, Formel/Wert/Verlauf, Vorschlag, Bilanz
      * über {@code RechtPruefung#alleLesbar}); die Liste ist leer und bewacht neue Funde — ein neuer Fall kommt hier
-     * mit Grund hinein, bis er geheilt ist.
+     * mit Grund hinein, bis er geheilt ist. Gespeicherte Werte, Messkanal-Terme an Formel/Wert/Verlauf und die
+     * Gerätekarte sind in {@code vp-uems-zaun-berechnete-werte} geheilt.
      */
-    private static final Map<String, String> FOLGEPUNKTE_OFFEN = Map.of();
+    private static final Map<String, String> FOLGEPUNKTE_OFFEN = Map.of(
+            "messkanal register MS-32 berechnung",
+            "Gemessen 21.09.2026: RegisterBerechnung urteilt über Messkanal-Eingänge ohne Zaun — `fehlend` nennt den "
+                    + "Kanal der Komponente an ST-2 und sein Zustand zählt mit (liefert er, stünde „vollständig“). Der "
+                    + "Zaun des Registers (Predicate<UUID> lesbar) kennt nur Messstellen-Eingänge; die Heilung braucht "
+                    + "die Komponenten-Sicht in RegisterBerechnung#ergebnis — eigenes Paket.");
+
+    /** Die offenen Folgepunkte einer Probe: die Schlüssel, die mit einem ihrer Präfixe beginnen. */
+    private static List<String> offen(String... praefixe) {
+        return FOLGEPUNKTE_OFFEN.keySet().stream()
+                .filter(f -> java.util.Arrays.stream(praefixe).anyMatch(f::startsWith)).toList();
+    }
 
     // ================================================================ Gerüst
 
@@ -585,6 +739,68 @@ class LesewegImZugriffApiTest {
                     + "(?, ?, ?, '2024-01-01')", w.mandant(), id, ort);
         }
         return id;
+    }
+
+    /** Ein Tag (20.09.2026) der gespeicherten Spur einer berechneten Messstelle, wie ihn der Lauf schreibt. */
+    private static final String TAG = "?raster=tag&von=2026-09-20&bis=2026-09-20";
+
+    private static UUID fassung(Welt w, UUID messstelle) {
+        return root.queryForObject("INSERT INTO messstelle_formel_fassung (tenant_id, messstelle_id, nummer, formel_typ, "
+                + "herkunft, actor_sub, actor_name, actor_art) VALUES (?, ?, 1, 'gewichtete_summe', 'anlage', 'sub-test', "
+                + "'Test', 'kunde') RETURNING id", UUID.class, w.mandant(), messstelle);
+    }
+
+    private static void termMessstelle(Welt w, UUID messstelle, UUID fassung, int position, UUID quelle) {
+        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, eingang_art, "
+                + "quell_messstelle_id, vorzeichen, faktor) VALUES (?, ?, ?, ?, 'messstelle', ?, '+', 1)", w.mandant(),
+                messstelle, fassung, position, quelle);
+    }
+
+    /** Der Kanal des Zählers am eigenen Standort und der des Zählers an ST-2 — verschieden, damit der Filter trifft. */
+    private static final String HIER_KANAL = "sunspec.model_203.totwhimp";
+    private static final String DORT_KANAL = "sunspec.model_203.totwhexp";
+
+    private static void termKanal(Welt w, UUID messstelle, UUID fassung, int position, UUID komponente, String kanal) {
+        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, eingang_art, "
+                + "entity_id, point_key, vorzeichen, faktor) VALUES (?, ?, ?, ?, 'messkanal', ?, ?, '+', 1)",
+                w.mandant(), messstelle, fassung, position, komponente, kanal);
+    }
+
+    private static void gespeicherterTag(Welt w, UUID messstelle, UUID fassung, String menge) {
+        root.update("INSERT INTO messreihe_tag (tag, tenant_id, messstelle_id, formel_fassung_id, formel_typ, zeitzone, "
+                + "zeitzone_herkunft, beginn, ende, stunden, menge, menge_zustand, abdeckung_prozent, endgueltig_ab) "
+                + "VALUES ('2026-09-20', ?, ?, ?, 'gewichtete_summe', 'Europe/Berlin', 'vorgabe', "
+                + "'2026-09-19T22:00:00Z', '2026-09-20T22:00:00Z', 24, ?::numeric, 'vollständig', 100, "
+                + "'2026-09-27T22:00:00Z')", w.mandant(), messstelle, fassung, menge);
+    }
+
+    /** Ein Bearbeiter an ST-1 UND ST-2. */
+    private static String beide(Welt w) {
+        String beide = zuweisung(w, "sub-beide-", "bearbeiter", w.ahrenberg());
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) VALUES "
+                + "(?, ?, 'bearbeiter', ?, '2024-01-01T00:00:00+01', 'Europe/Berlin')", w.mandant(), beide, w.lindach());
+        return beide;
+    }
+
+    /** Eine Anlage am Standort mit Box und einem Zähler, dessen Energie-Kanal ausgewählt ist: {Anlage, Zähler}. */
+    private static UUID[] anlageMitZaehler(Welt w, String name, UUID standort, String merkmal, String kanal) {
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name, created_at) VALUES (?, ?, "
+                + "'2024-01-01T00:00:00+01') RETURNING id", UUID.class, w.mandant(), name);
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", w.mandant(), anlage, standort);
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, name, status, created_at) "
+                + "VALUES (?, ?, ?, 'Box', 'claimed', '2024-01-01T00:00:00+01') RETURNING id", UUID.class,
+                w.mandant(), anlage, "E-LESEWEG-" + merkmal + "-" + w.mandant());
+        UUID zaehler = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, "
+                + "device_id, control, communication, connection_json, created_at) VALUES (?, ?, 'modbus-generic', ?, "
+                + "'modbus-generic', ?, false, 'modbus_tcp', '{\"ip\":\"10.11.0.31\",\"port\":502,\"unit_id\":1}'::jsonb, "
+                + "'2024-01-01T00:00:00+01') RETURNING id", UUID.class, w.mandant(), anlage, "Zähler " + merkmal, box);
+        root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 60, 1, now(), '2026.08.26.3', "
+                + "'test', 'pending_edge', 'energy_counter', 'fifteen_minute') ON CONFLICT DO NOTHING", w.mandant(),
+                anlage, box, zaehler, kanal);
+        return new UUID[] {anlage, zaehler};
     }
 
     private static void bezugsgroesse(Welt w, String kennzeichen, UUID standort) {

@@ -18,6 +18,7 @@ import com.voltpilot.api.uems.MessstelleWerteRegeln.Reihe;
 import com.voltpilot.api.uems.MessstelleWerteRegeln.Schritt;
 import com.voltpilot.api.uems.MessstelleWerteRegeln.Zeitraum;
 import com.voltpilot.api.web.dto.MessstelleWerteDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -123,12 +124,47 @@ public class MessstelleWerteService {
      * Bericht-Bildung) lesen eine alte Periode weiter als „keine Werte“ und brechen an ihr nie ab.
      */
     public MessstelleWerteDto.Werte werteDerRoute(String kennzeichen, String raster, String von, String bis,
-            String version, Consumer<UUID> zaun) {
+            String version, Consumer<UUID> zaun, EingaengeImZugriff eingaenge) {
         Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
         Lesung l = lesen(kennzeichen, form, versionen, zaun);
+        if (ausserhalb(l, eingaenge)) {
+            Zone zone = l.zone();
+            return new MessstelleWerteDto.Werte(messstelle(l), l.z().raster().wort(),
+                    MessstelleWerteRegeln.iso(l.z().von(), zone.id()), MessstelleWerteRegeln.iso(l.z().bis(), zone.id()),
+                    zone.id().getId(), zone.herkunft(), form.version(), quellen(l), List.of(), null,
+                    RechtPruefung.AUSSERHALB_ZUGRIFF);
+        }
         MessstelleWerteDto.Werte antwort = werte(l, form);
         pruefeAufbewahrung(l, form.version());
         return antwort;
+    }
+
+    /**
+     * Der Zaun der Routen über die Eingänge einer berechneten Messstelle (AP-03 R-A3): {@code true}, wenn jeder Eingang,
+     * der in [{@code von}, {@code bis}] (Tage, beide eingeschlossen) in ihre Zahl eingeht, im Zugriff liegt.
+     */
+    @FunctionalInterface
+    public interface EingaengeImZugriff {
+        boolean alle(UUID messstelle, LocalDate von, LocalDate bis);
+    }
+
+    /**
+     * Eine BERECHNETE Messstelle, von deren Eingängen im angefragten Zeitraum einer außerhalb des Zugriffs liegt: dann
+     * fehlt die gespeicherte Zahl ganz — kein Schritt, keine Summe, keine Abdeckung, keine Version (AP-03 R-A3), an ihrer
+     * Stelle {@code ausserhalb_zugriff} (R-A6). Nur die Routen fragen; die Leser im Haus rechnen mit allen Eingängen.
+     */
+    private static boolean ausserhalb(Lesung l, EingaengeImZugriff eingaenge) {
+        if (!MessstelleRegeln.BERECHNET.equals(l.m().art())) {
+            return false;
+        }
+        ZoneId zone = l.zone().id();
+        return !eingaenge.alle(l.m().id(), LocalDate.ofInstant(l.z().von(), zone),
+                LocalDate.ofInstant(l.z().bis().minusNanos(1), zone));
+    }
+
+    private static MessstelleWerteDto.Messstelle messstelle(Lesung l) {
+        return new MessstelleWerteDto.Messstelle(l.m().id(), l.m().kennzeichen(), l.m().name(), l.m().art(),
+                l.haupt().groesse(), l.haupt().richtung(), l.haupt().einheit(), l.haupt().wertart());
     }
 
     /** Der früheste freigegebene Berichtsstand, der GENAU diese Periode der Messstelle in Version 1 zitiert. */
@@ -226,10 +262,7 @@ public class MessstelleWerteService {
             werte.add(schritt(l, e.getKey(), e.getValue(), form.version(), herkuenfte));
         }
 
-        return new MessstelleWerteDto.Werte(
-                new MessstelleWerteDto.Messstelle(l.m().id(), l.m().kennzeichen(), l.m().name(), l.m().art(),
-                        l.haupt().groesse(), l.haupt().richtung(), l.haupt().einheit(), l.haupt().wertart()),
-                z.raster().wort(), MessstelleWerteRegeln.iso(z.von(), zone.id()),
+        return new MessstelleWerteDto.Werte(messstelle(l), z.raster().wort(), MessstelleWerteRegeln.iso(z.von(), zone.id()),
                 MessstelleWerteRegeln.iso(z.bis(), zone.id()), zone.id().getId(), zone.herkunft(), form.version(),
                 quellen(l), List.copyOf(werte), l.ablesung() != null ? null : zuordnung(l.imZeitraum(), z));
     }
@@ -282,15 +315,18 @@ public class MessstelleWerteService {
      * gelesen. Version 1 ist die Zahl der Verdichtung. Eine Periode ohne Korrektur hat genau eine Version.
      */
     public MessstelleWerteDto.Historie historie(String kennzeichen, String raster, String von, String bis,
-            Consumer<UUID> zaun) {
+            Consumer<UUID> zaun, EingaengeImZugriff eingaenge) {
         Form form = pruefe(() -> MessstelleWerteRegeln.historieForm(raster, von, bis));
         Lesung l = lesen(kennzeichen, form, versionen, zaun);
         Schritt s = pruefe(() -> MessstelleWerteRegeln.einePeriode(l.z()));
         Deckung d = l.deckung().get(s);
         ZoneId zone = l.zone().id();
-        MessstelleWerteDto.Messstelle messstelle = new MessstelleWerteDto.Messstelle(l.m().id(), l.m().kennzeichen(),
-                l.m().name(), l.m().art(), l.haupt().groesse(), l.haupt().richtung(), l.haupt().einheit(),
-                l.haupt().wertart());
+        MessstelleWerteDto.Messstelle messstelle = messstelle(l);
+        if (ausserhalb(l, eingaenge)) {
+            return new MessstelleWerteDto.Historie(messstelle, l.z().raster().wort(),
+                    MessstelleWerteRegeln.iso(s.von(), zone), MessstelleWerteRegeln.iso(s.bis(), zone), zone.getId(),
+                    l.zone().herkunft(), null, List.of(), RechtPruefung.AUSSERHALB_ZUGRIFF);
+        }
 
         MessstelleWerteDto.Wert neueste = wertIn(l, s, d, null);
         List<MessstelleWerteDto.Version> liste = new ArrayList<>();

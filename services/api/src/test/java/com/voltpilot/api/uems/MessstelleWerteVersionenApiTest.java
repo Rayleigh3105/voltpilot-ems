@@ -625,9 +625,14 @@ class MessstelleWerteVersionenApiTest {
                     "MessstelleWerteVersionGibtEsNicht")) {
                 Map<String, Object> s = (Map<String, Object>) schemas.get(name);
                 assertThat(s).as(name).isNotNull();
+                // Einzige Ausnahme (AP-03 R-A6): `ausserhalb_zugriff` steht nur, wenn es gilt — wie an Formel und Bilanz.
+                Set<String> pflicht = new TreeSet<>(((Map<String, Object>) s.get("properties")).keySet());
+                if (name.equals("MessstelleWerteHistorie")) {
+                    assertThat(pflicht.remove("ausserhalb_zugriff")).as(name + " · ausserhalb_zugriff").isTrue();
+                }
                 assertThat((List<String>) s.get("required")).as(name + " · jedes Feld ist Pflicht, auch leer")
-                        .containsExactlyInAnyOrderElementsOf(((Map<String, Object>) s.get("properties")).keySet());
-                out.put(name, new TreeSet<>(((Map<String, Object>) s.get("properties")).keySet()));
+                        .containsExactlyInAnyOrderElementsOf(pflicht);
+                out.put(name, pflicht);
             }
             return out;
         }
