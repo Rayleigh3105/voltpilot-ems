@@ -15,6 +15,7 @@ genau eine Anlage je Tag.
 | `services/api/.../uems/NetzanschlussRegeln.java` | der **Java-Zwilling** (rein: ohne Spring, ohne DB, ohne Uhr) |
 | `frontend/portal/src/uemsNetzanschluss.ts` | der **TypeScript-Zwilling** |
 | `…/uems/NetzanschlussVectorsTest.java` · `…/src/uemsNetzanschluss.test.ts` | beide fahren DIESELBE Vektor-Datei, per Pfad |
+| [`netzanschluss-grenze-vectors.json`](./netzanschluss-grenze-vectors.json) | das **Grenzblatt** (AP-15 IP-3, §5): Auflösung und Plausibilität — Java `uems/GrenzeAufloesung` ⟷ Python `voltpilot_optimization/grenze_aufloesung.py` |
 
 **Wer eine Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.**
 
@@ -59,12 +60,12 @@ genau eine Anlage je Tag.
    eine Stelle, U+00A0 vor der Einheit); die Grenzprüfung ist AP-15. `grenze_geprueft` ist deshalb in jedem
    Fall `false` — eine Fläche, die eine Überschreitung behauptete, hätte hier keinen Fakt, der sie
    trägt. Was fehlt, steht nicht da: ein fehlender Momentanwert wird nie zu „0 kW“.
-7. **Die Preisspalten ziehen NICHT mit (W9).** `site.max_feed_in_kw`, `site_supply_price` und die
-   übrigen Preis- und Grenzspalten bleiben unverändert an der Anlage; ihr Umzug mit Zeitgültigkeit
-   ist ein eigenes Folgepaket („Netzanschluss-Preisblatt“, nach AP-10, vor AP-15), damit Erlöse und
-   Optimierer nicht in einem Bilanz-Paket angefasst werden. Die Auswirkungs-Karte des Fachmodells
-   ([`docs/fachmodell/auswirkungen.md`](../../fachmodell/auswirkungen.md)) sagt das seit AP-10 IP-1
-   so.
+7. **Die Preisspalten ziehen NICHT mit (W9).** `site_supply_price` und die übrigen Preisspalten
+   bleiben unverändert an der Anlage; ein Preisblatt ist ein eigenes, ungeplantes Paket und keine
+   Voraussetzung von AP-15. Die zwei GRENZEN bekommen mit AP-15 IP-3 ein Grenzblatt am
+   Netzanschluss (§5) — die Spalten der Anlage (`site.max_feed_in_kw`,
+   `site_charging_config.grid_limit_kw`) bleiben dabei, wo sie sind. Die Auswirkungs-Karte des
+   Fachmodells ([`docs/fachmodell/auswirkungen.md`](../../fachmodell/auswirkungen.md)) sagt das so.
 
 ## 3. Wo die Vektoren liegen — und warum hier
 
@@ -80,9 +81,40 @@ weiterhin das Feld `netzanschluss` der Anlage im Standort-Lesemodell und liest d
 Die drei Anschlüsse, ihre Marktlokationen, Leistungen und Bindungstage stammen aus
 [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json) (Fassung 1.1).
 
+## 5. Das Grenzblatt am Netzanschluss (AP-15 IP-3, Kasten W1)
+
+Zwei Grenzen, keine Preise: **Einspeisegrenze** und **Bezugsgrenze** in kW, zeitgültig je Netzanschluss
+(`netzanschluss_grenze`, `V20260921120000`). Eine Fassung gilt ab ihrem Tag (Zeitzone des Standorts) bis
+zum Vortag der nächsten; `null` in einer Richtung setzt dort keine Grenze; eine zweite Fassung am selben
+Tag hebt die erste auf (nie überschrieben). Jeder Schreibvorgang ist GENAU EIN Protokolleintrag der Art
+`grenze` in `netzanschluss_aenderung` (alt/neu = die Fassung des Tages).
+
+**Die eine Lese-Regel** (`GrenzeAufloesung` ⟷ `grenze_aufloesung.py`, Vektoren
+[`netzanschluss-grenze-vectors.json`](./netzanschluss-grenze-vectors.json)): je Richtung gilt der
+**ENGERE** Wert aus Anlage und Netzanschluss; ohne gebundenen Netzanschluss am Tag oder ohne gültige
+Fassung der alte Wert der Anlage — dasselbe Objekt, Byte für Byte. Gleich = Anlage. Unbekannt ist nie 0 kW.
+
+| Richtung | Wert der Anlage | wer liest über die Regel |
+|---|---|---|
+| Einspeisung | `site.max_feed_in_kw` | Optimierer-Eingang (`inputs.load_battery_sites` → `BatterySite.max_feed_in_kw`, MILP-Kappe und `grid_export_limit_kw` im Plan) |
+| Bezug | `site_charging_config.grid_limit_kw` | Ladepark-Dokument (`ChargingConfigService` → `grid_limit_kw`) |
+
+**Plausibilität** (AP-01 E10, 422, schreibt nichts): Bezugsgrenze ≤ vereinbarte Leistung
+(`grenze_ueber_vereinbart`); jede Grenze ≤ Anschlussleistung in kVA (`grenze_ueber_anschluss`); zuerst
+die vereinbarte Leistung. Fehlt der Vergleichswert, gibt es nichts zu prüfen. Eine Grenze ist leer oder
+> 0 kW mit höchstens drei Nachkommastellen (400 `anfrage_ungueltig`).
+
+**Routen:** `GET …/netzanschluesse/{id}/grenzen?stichtag=` (lesend, keine eigene Kennung, Zaun über
+`RechtPruefung#pruefenLesen` am Standort) und `POST …/netzanschluesse/{id}/grenzen` (`netzanschluss.verwalten`,
+rückwirkend zusätzlich `aenderung.rueckwirkend`). Der Mandant kommt aus der Anmeldung, nie aus dem Körper.
+Gilt eine neue Fassung heute schon, reist das Ladepark-Dokument der heute gebundenen Anlage neu — nur wenn
+sie schon einen Rahmen hat. `grenze_geprueft` bleibt `false`, bis der Grenz-Nachweis (IP-31) sie misst.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='NetzanschlussVectorsTest')   # rein, kein Docker
 (cd frontend/portal && npx vitest run src/uemsNetzanschluss.test.ts)
+(cd services/api && ./mvnw test -Dtest='GrenzeAufloesungVectorsTest')   # Grenzblatt, rein
+(cd services/optimization && PYTHONPATH=. python -m pytest tests/test_grenze_aufloesung.py)
 ```

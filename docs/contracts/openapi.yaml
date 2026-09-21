@@ -11742,6 +11742,61 @@ paths:
         "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
         "409": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
         "422": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+  /api/v1/standorte/{standortId}/netzanschluesse/{id}/grenzen:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [netzanschluesse]
+      summary: Das Grenzblatt des Netzanschlusses (UEMS AP-15 IP-3).
+      description: >
+        Heute lesend - keine eigene Kennung; der Zaun fragt `RechtPruefung#pruefenLesen` am
+        Standort. Fremd, unbekannt, an einem anderen Standort oder außerhalb des Zugriffs = 404
+        `nicht_gefunden`. Alle wirksamen Fassungen und die am `stichtag` (ohne: heute am Standort)
+        gültige; `gilt` ist null, wenn keine gilt. Was an der Anlage WIRKT, ist der engere Wert aus
+        Anlage und dieser Fassung (netzanschluss.md §5).
+      parameters:
+        - { name: stichtag, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Das Grenzblatt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetzanschlussGrenzblatt" }
+        "400": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+    post:
+      tags: [netzanschluesse]
+      summary: Ab einem Tag gilt diese Fassung des Grenzblatts.
+      description: >
+        Recht `netzanschluss.verwalten`; mit „gültig ab“ vor heute zusätzlich
+        `aenderung.rueckwirkend`. Einspeise- und Bezugsgrenze in kW, je leer oder größer 0
+        (400 `anfrage_ungueltig` mit `feld`); der Anschluss besteht am Tag (422
+        `netzanschluss_besteht_nicht`); Plausibilität gegen den Anschluss: Bezugsgrenze über der
+        vereinbarten Leistung → 422 `grenze_ueber_vereinbart`, eine Grenze über der
+        Anschlussleistung → 422 `grenze_ueber_anschluss`. Eine zweite Fassung am selben Tag hebt
+        die erste auf; dieselben Werte noch einmal schreiben nichts. Genau ein Protokolleintrag
+        `grenze`. Keine Preise (W1). Der Mandant kommt aus der Anmeldung, nie aus dem Körper.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetzanschlussGrenzeSetzen" }
+            example:
+              gueltig_ab: "2027-05-03"
+              einspeisegrenze_kw: 100
+              bezugsgrenze_kw: 550
+      responses:
+        "201":
+          description: Eingetragen - das Grenzblatt heute.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetzanschlussGrenzblatt" }
+        "400": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "422": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
   /api/v1/messstellen/{kennzeichen}/ablesungen:
     parameters:
       - { name: kennzeichen, in: path, required: true, schema: { type: string, example: MS-21 } }
@@ -22040,14 +22095,17 @@ components:
         `bindungen`), `bindung_ueberlappt` und `anschluss_belegt` (`anlage_id`, `netzanschluss`,
         `gueltig_ab`, `bindungen`); 422 `kennzeichen_format` (`feld`, `kennzeichen`), `malo_form`
         (`feld`), `zeitraum_ungueltig` (`gueltig_ab`, `gueltig_bis`), `anlage_unbekannt` (`feld`),
-        `netzanschluss_besteht_nicht` (`kennzeichen`, `besteht_ab`, `besteht_bis`, `gueltig_ab`).
+        `netzanschluss_besteht_nicht` (`kennzeichen`, `besteht_ab`, `besteht_bis`, `gueltig_ab`);
+        seit AP-15 IP-3 das Grenzblatt: 422 `grenze_ueber_vereinbart` und `grenze_ueber_anschluss`
+        (`kennzeichen`, `einspeisegrenze_kw`, `bezugsgrenze_kw`, `vereinbart_kw`, `anschluss_kva`)
+        aus netzanschluss-grenze-vectors.json.
         Die Codes des Vertrags (`kennzeichen_*`, `malo_form`, `anfrage_ungueltig`,
         `bindung_ueberlappt`, `anschluss_belegt`) sind die von netzanschluss-vectors.json.
       required: [code, message]
       properties:
         code:
           type: string
-          enum: [anfrage_ungueltig, nicht_gefunden, kennzeichen_format, kennzeichen_belegt, malo_form, zeitraum_ungueltig, bereits_beendet, bindung_besteht, anlage_unbekannt, netzanschluss_besteht_nicht, bindung_ueberlappt, anschluss_belegt]
+          enum: [anfrage_ungueltig, nicht_gefunden, kennzeichen_format, kennzeichen_belegt, malo_form, zeitraum_ungueltig, bereits_beendet, bindung_besteht, anlage_unbekannt, netzanschluss_besteht_nicht, bindung_ueberlappt, anschluss_belegt, grenze_ueber_vereinbart, grenze_ueber_anschluss]
         message: { type: string }
         feld: { type: string }
         kennzeichen: { type: string, nullable: true }
@@ -22057,6 +22115,10 @@ components:
         gueltig_bis: { type: string, format: date, nullable: true }
         besteht_ab: { type: string, format: date, nullable: true }
         besteht_bis: { type: string, format: date, nullable: true }
+        einspeisegrenze_kw: { type: number, nullable: true }
+        bezugsgrenze_kw: { type: number, nullable: true }
+        vereinbart_kw: { type: number, nullable: true }
+        anschluss_kva: { type: number, nullable: true }
         bindungen:
           type: array
           items:
@@ -22122,6 +22184,40 @@ components:
         anlage_id: { type: string, format: uuid }
         gueltig_ab: { type: string, format: date }
         grund: { type: string, nullable: true }
+    NetzanschlussGrenzeSetzen:
+      type: object
+      additionalProperties: false
+      description: >
+        UEMS AP-15 IP-3. Ab `gueltig_ab` gilt diese Fassung bis zum Vortag der nächsten. null in
+        einer Richtung = dort keine Grenze am Anschluss (die Anlage gilt). Leistungen als Zahl
+        oder Dezimaltext, höchstens drei Nachkommastellen.
+      required: [gueltig_ab]
+      properties:
+        gueltig_ab: { type: string, format: date }
+        einspeisegrenze_kw: { type: number, nullable: true, exclusiveMinimum: 0 }
+        bezugsgrenze_kw: { type: number, nullable: true, exclusiveMinimum: 0 }
+        grund: { type: string, nullable: true }
+    NetzanschlussGrenzFassung:
+      type: object
+      required: [gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw, eingetragen_am]
+      properties:
+        gueltig_ab: { type: string, format: date }
+        einspeisegrenze_kw: { type: number, nullable: true }
+        bezugsgrenze_kw: { type: number, nullable: true }
+        eingetragen_am: { type: string, format: date-time }
+    NetzanschlussGrenzblatt:
+      type: object
+      required: [netzanschluss_id, kennzeichen, stichtag, gilt, fassungen]
+      properties:
+        netzanschluss_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        stichtag: { type: string, format: date }
+        gilt:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/NetzanschlussGrenzFassung" }]
+        fassungen:
+          type: array
+          items: { $ref: "#/components/schemas/NetzanschlussGrenzFassung" }
     NetzanschlussStandort:
       type: object
       properties:

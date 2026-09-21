@@ -58,6 +58,7 @@ from voltpilot_optimization.config import (
     soc_max_age,
     terminal_value_override_eur_per_kwh,
 )
+from voltpilot_optimization import grenze_aufloesung
 from voltpilot_optimization.domain import (
     BatteryParams,
     DEFAULT_SOC_MAX_FRACTION,
@@ -309,7 +310,10 @@ class BatterySite:
     ``max_feed_in_kw`` (FK1) is the site's static feed-in cap at the grid
     connection point (``site.max_feed_in_kw``, nullable master data) - a hard
     EXPORT-ONLY cap in the MILP, separate from the telemetry-driven §14a
-    ``grid_limit_kw``.
+    ``grid_limit_kw``. Since UEMS AP-15 IP-3 it is the ENGERE value of the
+    site column and the Grenzblatt of the Netzanschluss bound today
+    (:func:`load_grenzblaetter`, twin :mod:`voltpilot_optimization.grenze_aufloesung`);
+    without a bound Netzanschluss or Fassung it is the site column, unchanged.
 
     ``latitude``/``longitude`` are the site's WGS84 coordinates
     (``site.latitude``/``site.longitude``, nullable) - used to night-floor the
@@ -360,6 +364,10 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     # Platform default for assets without a per-asset wear override (NULL
     # column); resolved once per cycle so an env change needs only a restart.
     default_wear_ct = default_wear_cost_ct_per_kwh()
+    # UEMS AP-15 IP-3: the Einspeisegrenze is read through the resolution twin
+    # - the tighter of site and Netzanschluss, else the site value unchanged.
+    grenz_tag = datetime.now(GRENZ_ZONE).date()
+    grenzblaetter = load_grenzblaetter(dsn, grenz_tag, site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -445,8 +453,11 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                     netzladen_erlaubt=bool(netzladen),
                     latitude=float(lat) if lat is not None else None,
                     longitude=float(lon) if lon is not None else None,
-                    max_feed_in_kw=(
-                        float(max_feed_in) if max_feed_in is not None else None
+                    max_feed_in_kw=_einspeisegrenze(
+                        site_id,
+                        float(max_feed_in) if max_feed_in is not None else None,
+                        grenzblaetter,
+                        grenz_tag,
                     ),
                     leistungspreis_eur_kw=(
                         float(leistungspreis) if leistungspreis is not None else None
@@ -491,6 +502,66 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                 )
             )
     return sites
+
+
+#: The day a Grenzblatt Fassung is picked for (contract zeitzone of
+#: docs/contracts/v2/netzanschluss-grenze-vectors.json).
+GRENZ_ZONE = ZoneInfo("Europe/Berlin")
+
+
+def load_grenzblaetter(dsn: str, tag, site_id: UUID | None = None) -> dict:
+    """``{site_id: [Fassung, ...]}`` for every site bound to a Netzanschluss on ``tag``.
+
+    A site bound without any Fassung maps to ``[]``; an unbound site is absent
+    (UEMS AP-15 IP-3). Only the raw rows are read here - WHICH Fassung holds and
+    the tighter value are the twin's (:mod:`grenze_aufloesung`). Before the api
+    migration ``V20260921120000`` has run there is no table and therefore no
+    Fassung: that is exactly "no Grenzblatt", so the site value stays.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT b.site_id, g.gueltig_ab, g.einspeisegrenze_kw,
+                       g.bezugsgrenze_kw
+                FROM anlage_netzanschluss b
+                LEFT JOIN netzanschluss_grenze g
+                  ON g.netzanschluss_id = b.netzanschluss_id
+                 AND g.tenant_id = b.tenant_id
+                 AND g.aufgehoben_am IS NULL
+                WHERE b.aufgehoben_am IS NULL
+                  AND b.gueltig_ab <= %(tag)s
+                  AND (b.gueltig_bis IS NULL OR b.gueltig_bis >= %(tag)s)
+                  AND (%(site_id)s::uuid IS NULL OR b.site_id = %(site_id)s::uuid)
+                ORDER BY b.site_id, g.gueltig_ab
+                """,
+                {
+                    "tag": tag,
+                    "site_id": str(site_id) if site_id is not None else None,
+                },
+            )
+            rows = cur.fetchall()
+    except psycopg.errors.UndefinedTable:
+        logger.warning("grenzblatt.table_missing")
+        return {}
+    out: dict = {}
+    for sid, ab, einspeisung, bezug in rows:
+        fassungen = out.setdefault(sid, [])
+        if ab is not None:
+            fassungen.append(
+                grenze_aufloesung.Fassung(ab, _opt_float(einspeisung), _opt_float(bezug))
+            )
+    return out
+
+
+def _einspeisegrenze(site_id, anlage_kw, grenzblaetter: dict, tag):
+    """The effective feed-in cap: the twin's tighter value, else ``anlage_kw`` itself."""
+    fassungen = grenzblaetter.get(site_id)
+    return grenze_aufloesung.aufloesen(
+        anlage_kw, None, fassungen is not None, fassungen, tag
+    ).einspeisung_kw
 
 
 def _opt_float(value) -> float | None:

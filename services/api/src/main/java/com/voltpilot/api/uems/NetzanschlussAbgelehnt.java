@@ -39,7 +39,11 @@ public final class NetzanschlussAbgelehnt extends RuntimeException {
         BINDUNG_UEBERLAPPT(NetzanschlussRegeln.FEHLER_BINDUNG_UEBERLAPPT, 409,
                 "Die Anlage hängt an diesem Tag schon an einem Netzanschluss. Ein Wechsel beginnt nach dem Tag der laufenden Bindung — sie endet dann am Vortag."),
         ANSCHLUSS_BELEGT(NetzanschlussRegeln.FEHLER_ANSCHLUSS_BELEGT, 409,
-                "Der Netzanschluss hängt an diesen Tagen schon an einer anderen Anlage.");
+                "Der Netzanschluss hängt an diesen Tagen schon an einer anderen Anlage."),
+        GRENZE_UEBER_VEREINBART(GrenzeAufloesung.FEHLER_UEBER_VEREINBART, 422,
+                "Die Bezugsgrenze liegt über der vereinbarten Leistung dieses Netzanschlusses — bitte prüfen."),
+        GRENZE_UEBER_ANSCHLUSS(GrenzeAufloesung.FEHLER_UEBER_ANSCHLUSS, 422,
+                "Die Grenze liegt über der Anschlussleistung dieses Netzanschlusses — bitte prüfen.");
 
         private final String code;
         private final int status;

@@ -363,8 +363,10 @@ public class TenantRepository {
                         "flaeche_gueltigkeit", "ort_zuordnung", "ort",
                         // The Netzanschluss (V20260913235000): its bindings and Kennzeichen
                         // occupancy before it, it before its Standort; counter and protocol hold
-                        // only the tenant (RESTRICT).
-                        "netzanschluss_vorschlag_entscheidung", "anlage_netzanschluss", "netzanschluss_kennzeichen", "netzanschluss",
+                        // only the tenant (RESTRICT). The Grenzblatt (V20260921120000) is a child
+                        // of the Netzanschluss (RESTRICT) and goes before it.
+                        "netzanschluss_vorschlag_entscheidung", "anlage_netzanschluss", "netzanschluss_kennzeichen",
+                        "netzanschluss_grenze", "netzanschluss",
                         "netzanschluss_kennzeichen_seq", "netzanschluss_aenderung",
                         // The Funktionen (V20260914190000): a Teilnahme before its Funktion
                         // (RESTRICT), the Funktion before its Standort.

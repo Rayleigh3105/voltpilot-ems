@@ -46,8 +46,26 @@ Vertrag [`docs/contracts/v2/netzanschluss.md`](../../contracts/v2/netzanschluss.
 ## ⚠ Bewusst NICHT umgezogen (W9)
 
 Die Preis- und Grenzspalten der Anlage (`site.max_feed_in_kw`, `site_supply_price` …) bleiben unverändert
-an der Anlage; ihr Umzug mit Zeitgültigkeit ist das Folgepaket „Netzanschluss-Preisblatt“. `site` hat
+an der Anlage; ein Preisblatt ist ein eigenes, ungeplantes Paket. `site` hat
 KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsprobe prüft das).
+
+## Grenzblatt (AP-15 IP-3, W1)
+
+`V20260921120000` `netzanschluss_grenze` (Fassung ab Tag, aufheben statt ändern, RLS+`FORCE`) · Protokoll-Art
+`grenze` in `netzanschluss_aenderung` (CHECK erweitert) · Regel `uems/GrenzeAufloesung` ⟷
+`voltpilot_optimization/grenze_aufloesung.py` gegen `netzanschluss-grenze-vectors.json` · Leseweg Java
+`uems/AnlageGrenzen` · Routen `GET/POST …/netzanschluesse/{id}/grenzen` · Tests `GrenzeAufloesungVectorsTest`,
+`chargers/NetzanschlussGrenzeApiTest` (Paarbeweis Ladepark), `test_grenze_aufloesung.py`, `test_freshness.py`
+(Paarbeweis Optimierer). Vertrag [§5](../../contracts/v2/netzanschluss.md#5-das-grenzblatt-am-netzanschluss-ap-15-ip-3-kasten-w1).
+
+- **Engerer Wert, ohne Eintrag dasselbe Objekt:** Byte-Gleichheit hängt an `isSameAs`, nicht an `equals` —
+  `AnlageGrenzen.bezugKw` gibt das `Double` des Rahmens zurück, der Python-Zwilling den `float` der Anlage.
+- **Wer liest:** Einspeisung = Optimierer-Eingang (`load_grenzblaetter` + Zwilling, eigener Verbindungsaufbau;
+  fehlt die Tabelle vor der api-Migration, gilt „kein Grenzblatt“), Bezug = Ladepark-Dokument
+  (`ChargingConfigService.netzgrenze`, Setter-Injektion — Konstruktor unverändert).
+- **Nicht über die Regel (Folgepunkte):** `AdminFleetRepository.maxFeedInPerSite` (Flotten-Pflege vergleicht die
+  gemessene Decke mit `site.max_feed_in_kw`), `FunktionFakten`/`SiteProfileService` (fragen nur, ob ein
+  Rahmen gesetzt ist), Zustellung des Ladepark-Dokuments bei Tageswechsel oder neuer Bindung.
 
 ## Befunde (PR-Text)
 

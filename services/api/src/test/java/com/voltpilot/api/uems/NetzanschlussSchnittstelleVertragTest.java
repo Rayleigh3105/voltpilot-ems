@@ -97,7 +97,7 @@ class NetzanschlussSchnittstelleVertragTest {
     void keineRouteLoescht() {
         List<String> eigene = pfade.keySet().stream()
                 .filter(p -> p.startsWith("/api/v1/standorte/{standortId}/netzanschluesse")).toList();
-        assertThat(eigene).hasSize(6);
+        assertThat(eigene).as("sechs Pfade aus AP-10, dazu das Grenzblatt aus AP-15 IP-3").hasSize(7);
         for (String p : eigene) {
             assertThat(((Map<String, Object>) pfade.get(p)).keySet()).as(p).doesNotContain("delete");
         }

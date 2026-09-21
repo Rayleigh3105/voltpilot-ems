@@ -1,0 +1,158 @@
+{
+  "_comment": [
+    "Die EINE Wahrheit der GRENZEN AM NETZANSCHLUSS (UEMS AP-15 IP-3, Kasten W1 — Auflösung übernommen am 21.09.2026).",
+    "Die Prosa steht in netzanschluss.md §5. Wer die Regel ändert, ändert diese Datei UND beide Zwillinge:",
+    "Java uems/GrenzeAufloesung (GrenzeAufloesungVectorsTest) und Python voltpilot_optimization/grenze_aufloesung.py",
+    "(tests/test_grenze_aufloesung.py). Zahlen in kW (Anschluss in kVA); null = keine Grenze bekannt, nie 0 kW."
+  ],
+  "schema_version": "1.0",
+  "herkunft": "UEMS AP-15 §6.1, §8 IP-3, Kasten W1; Fall R1 „gegeben“ (NA-1: Einspeisegrenze 100 kW, Bezugsgrenze 550 kW ab 03.05.2027); AP-01 E10 (Plausibilität).",
+  "zeitzone": "Europe/Berlin",
+  "regeln_kurz": [
+    "Je Richtung gilt der ENGERE Wert aus Anlage (Einspeisung: site.max_feed_in_kw; Bezug: site_charging_config.grid_limit_kw) und Grenzblatt des Netzanschlusses.",
+    "Ohne gebundenen Netzanschluss am Tag oder ohne gültige Fassung: der alte Wert der Anlage — unverändert.",
+    "Eine Fassung gilt ab ihrem Tag bis zum Vortag der nächsten; eine Fassung mit null in einer Richtung setzt dort keine Grenze.",
+    "Gleich = Anlage (der alte Wert bleibt Quelle). Fehlt eine Seite, gilt die andere.",
+    "Plausibel: Bezugsgrenze ≤ vereinbarte Leistung; jede Grenze ≤ Anschlussleistung. Zuerst die vereinbarte Leistung. Fehlt der Vergleichswert, gibt es nichts zu prüfen."
+  ],
+  "zwillinge": {
+    "aufloesen": ["java: GrenzeAufloesung.aufloesen", "python: grenze_aufloesung.aufloesen"],
+    "plausibel": ["java: GrenzeAufloesung.plausibel", "python: grenze_aufloesung.plausibel"]
+  },
+  "_abweichungen": [
+    {
+      "feld": "TypeScript-Zwilling",
+      "grund": "IP-3 baut keine Portal-Fläche; der Zwilling im Portal kommt mit der Kundenkarte (IP-23)."
+    }
+  ],
+  "aufloesen": [
+    {
+      "name": "beide da, Netzanschluss enger (R1)",
+      "anlage": {"einspeisung_kw": 120, "bezug_kw": 600},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 100, "quelle_einspeisung": "netzanschluss", "bezug_kw": 550, "quelle_bezug": "netzanschluss"}
+    },
+    {
+      "name": "beide da, je Richtung eine andere Seite enger",
+      "anlage": {"einspeisung_kw": 80, "bezug_kw": 600},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 80, "quelle_einspeisung": "anlage", "bezug_kw": 550, "quelle_bezug": "netzanschluss"}
+    },
+    {
+      "name": "beide gleich: die Anlage bleibt Quelle",
+      "anlage": {"einspeisung_kw": 100, "bezug_kw": 550},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 100, "quelle_einspeisung": "anlage", "bezug_kw": 550, "quelle_bezug": "anlage"}
+    },
+    {
+      "name": "nur Anlage: gebunden, aber kein Grenzblatt",
+      "anlage": {"einspeisung_kw": 70, "bezug_kw": 250},
+      "gebunden": true,
+      "fassungen": [],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 70, "quelle_einspeisung": "anlage", "bezug_kw": 250, "quelle_bezug": "anlage"}
+    },
+    {
+      "name": "nur Anlage: ohne gebundenen Netzanschluss gilt der alte Wert, auch wenn es Fassungen gäbe",
+      "anlage": {"einspeisung_kw": 70, "bezug_kw": 250},
+      "gebunden": false,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 50, "bezugsgrenze_kw": 200}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 70, "quelle_einspeisung": "anlage", "bezug_kw": 250, "quelle_bezug": "anlage"}
+    },
+    {
+      "name": "nur Netzanschluss (R1): die Anlage hat keine Werte",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 100, "quelle_einspeisung": "netzanschluss", "bezug_kw": 550, "quelle_bezug": "netzanschluss"}
+    },
+    {
+      "name": "keiner: keine Grenze, nie 0 kW",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": false,
+      "fassungen": [],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": null, "quelle_einspeisung": null, "bezug_kw": null, "quelle_bezug": null}
+    },
+    {
+      "name": "Fassung nur in einer Richtung: die andere Richtung bleibt bei der Anlage",
+      "anlage": {"einspeisung_kw": 120, "bezug_kw": 600},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": null}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 100, "quelle_einspeisung": "netzanschluss", "bezug_kw": 600, "quelle_bezug": "anlage"}
+    },
+    {
+      "name": "zeitgültig: Fassung ab gestern gilt",
+      "anlage": {"einspeisung_kw": 120, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-06-12", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 100, "quelle_einspeisung": "netzanschluss", "bezug_kw": 550, "quelle_bezug": "netzanschluss"}
+    },
+    {
+      "name": "zeitgültig: Fassung ab heute gilt",
+      "anlage": {"einspeisung_kw": 120, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-06-13", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 100, "quelle_einspeisung": "netzanschluss", "bezug_kw": 550, "quelle_bezug": "netzanschluss"}
+    },
+    {
+      "name": "zeitgültig: Fassung ab morgen gilt heute noch nicht",
+      "anlage": {"einspeisung_kw": 120, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-06-14", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 120, "quelle_einspeisung": "anlage", "bezug_kw": null, "quelle_bezug": null}
+    },
+    {
+      "name": "zeitgültig: die spätere Fassung löst die frühere am eigenen Tag ab, der Vortag gehört der früheren",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [
+        {"gueltig_ab": "2027-06-14", "einspeisegrenze_kw": 90, "bezugsgrenze_kw": 500},
+        {"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}
+      ],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 100, "quelle_einspeisung": "netzanschluss", "bezug_kw": 550, "quelle_bezug": "netzanschluss"}
+    },
+    {
+      "name": "zeitgültig: eine leere Fassung beendet die Grenze am Netzanschluss, die Anlage gilt wieder",
+      "anlage": {"einspeisung_kw": 120, "bezug_kw": 600},
+      "gebunden": true,
+      "fassungen": [
+        {"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550},
+        {"gueltig_ab": "2027-06-01", "einspeisegrenze_kw": null, "bezugsgrenze_kw": null}
+      ],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 120, "quelle_einspeisung": "anlage", "bezug_kw": 600, "quelle_bezug": "anlage"}
+    },
+    {
+      "name": "Dezimalstellen bleiben, gerundet wird nicht",
+      "anlage": {"einspeisung_kw": 99.95, "bezug_kw": 549.5},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 99.9, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 99.9, "quelle_einspeisung": "netzanschluss", "bezug_kw": 549.5, "quelle_bezug": "anlage"}
+    }
+  ],
+  "plausibel": [
+    {"name": "R1: 100/550 an 550 kW vereinbart, 630 kVA", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550, "vereinbart_kw": 550, "anschluss_kva": 630, "erwartet": null},
+    {"name": "Bezug über vereinbart", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 560, "vereinbart_kw": 550, "anschluss_kva": 630, "erwartet": "grenze_ueber_vereinbart"},
+    {"name": "Einspeisung über vereinbart ist erlaubt (vereinbart ist Bezug)", "einspeisegrenze_kw": 600, "bezugsgrenze_kw": null, "vereinbart_kw": 550, "anschluss_kva": 630, "erwartet": null},
+    {"name": "Einspeisung über Anschluss", "einspeisegrenze_kw": 700, "bezugsgrenze_kw": 550, "vereinbart_kw": 550, "anschluss_kva": 630, "erwartet": "grenze_ueber_anschluss"},
+    {"name": "Bezug über Anschluss ohne vereinbarte Leistung", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 640, "vereinbart_kw": null, "anschluss_kva": 630, "erwartet": "grenze_ueber_anschluss"},
+    {"name": "beides verletzt: zuerst die vereinbarte Leistung", "einspeisegrenze_kw": 700, "bezugsgrenze_kw": 640, "vereinbart_kw": 550, "anschluss_kva": 630, "erwartet": "grenze_ueber_vereinbart"},
+    {"name": "ohne Vergleichswerte nichts zu prüfen", "einspeisegrenze_kw": 900, "bezugsgrenze_kw": 900, "vereinbart_kw": null, "anschluss_kva": null, "erwartet": null},
+    {"name": "leere Fassung ist plausibel", "einspeisegrenze_kw": null, "bezugsgrenze_kw": null, "vereinbart_kw": 550, "anschluss_kva": 630, "erwartet": null}
+  ]
+}

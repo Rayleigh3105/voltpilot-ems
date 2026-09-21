@@ -1,6 +1,7 @@
 package com.voltpilot.api.chargers;
 
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
+import com.voltpilot.api.uems.AnlageGrenzen;
 import com.voltpilot.api.uems.AnlageStandortRepository;
 import com.voltpilot.api.uems.NetzanschlussRepository;
 import com.voltpilot.api.uems.StandortRepository;
@@ -24,6 +25,7 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,6 +91,8 @@ public class ChargingConfigService {
     private final ChargingConfigRepository configs;
     private final DeviceChargerStatusRepository chargers;
     private final ObjectProvider<ChargingConfigPublisher> publisher;
+    /** UEMS AP-15 IP-3: der Leseweg des Grenzblatts; ohne (Einzeltests) reist der Rahmen unverändert. */
+    private volatile AnlageGrenzen grenzen;
     private final NetzanschlussRepository netzanschluesse;
     private final AnlageStandortRepository anlageStandorte;
     private final StandortRepository standorte;
@@ -317,6 +321,22 @@ public class ChargingConfigService {
         push(tenantId, siteId, configs.forSite(siteId));
     }
 
+    /** Setter statt Konstruktor: bestehende Aufrufer und Tests bauen den Dienst unverändert. */
+    @Autowired(required = false)
+    void grenzenLesen(AnlageGrenzen grenzen) {
+        this.grenzen = grenzen;
+    }
+
+    /**
+     * Die Anschlussgrenze, mit der das Ladepark-Dokument reist (UEMS AP-15 IP-3, Kasten W1): der ENGERE Wert aus
+     * Rahmen ({@code site_charging_config.grid_limit_kw}) und Bezugsgrenze des heute gebundenen Netzanschlusses,
+     * entschieden von {@code GrenzeAufloesung}. Ohne Bindung oder Fassung dasselbe {@code Double} — Byte für Byte.
+     */
+    Double netzgrenze(UUID siteId, Double rahmen) {
+        AnlageGrenzen g = grenzen;
+        return g == null ? rahmen : g.bezugKw(siteId, heuteAmStandort(siteId), rahmen);
+    }
+
     void push(UUID tenantId, UUID siteId, ChargingConfigDto config) {
         pushResult(tenantId, siteId, config);
     }
@@ -353,15 +373,16 @@ public class ChargingConfigService {
         // Rücknahme bei einer Box an, die gerade offline war.
         List<VehicleProfileDto> vehicles = vehicleProfiles(siteId);
         String control = configs.ocppControl(siteId);
+        Double netzgrenze = netzgrenze(siteId, config.gridLimitKw());
         boolean delivered = true;
         for (UUID deviceId : deviceIds) {
             if (control != null) {
-                delivered &= pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(), config.priorityChargePointIds(),
+                delivered &= pub.publish(tenantId, siteId, deviceId, netzgrenze, config.priorityChargePointIds(),
                         config.surplusPolicy(), config.storagePriority(), config.chargePoints(), config.removedChargePointIds(),
                         config.frame(), config.storageRank(), config.wallboxes(), vehicles, control, now);
                 continue;
             }
-            delivered &= pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
+            delivered &= pub.publish(tenantId, siteId, deviceId, netzgrenze,
                     config.priorityChargePointIds(), config.surplusPolicy(),
                     config.storagePriority(), config.chargePoints(),
                     config.removedChargePointIds(), config.frame(), config.storageRank(),
