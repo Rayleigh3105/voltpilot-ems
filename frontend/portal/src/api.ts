@@ -2110,6 +2110,8 @@ export interface MessstelleFormel {
   formel_vorhanden: boolean;
   eingaenge_eingerichtet: boolean;
   fassung_am?: { tag: string; fassung: MessstelleFormelFassung | null };
+  /** NUR mit einem Eingang außerhalb des Zugriffs (AP-03 R-A6): der Hinweis; Terme außerhalb fehlen. */
+  ausserhalb_zugriff?: string;
 }
 
 /** Ein fehlender/veralteter Term des Live-Werts — genannt, nie verschwiegen. */
@@ -2130,6 +2132,8 @@ export interface MessstelleWert {
   unvollstaendig: boolean;
   fehlende: MessstelleWertFehlend[];
   stand: string | null;
+  /** NUR mit einem Eingang außerhalb des Zugriffs (AP-03 R-A3): die Zahl fehlt ganz, dies ist der Hinweis. */
+  ausserhalb_zugriff?: string;
 }
 
 /** Ein 15-min-Zeitraster des Verlaufs; `wert` null = unvollständig (nie 0). */
@@ -2143,6 +2147,8 @@ export interface MessstelleVerlauf {
   messstelle_id: string;
   einheit: string | null;
   punkte: MessstelleVerlaufPunkt[];
+  /** NUR mit einem Eingang außerhalb des Zugriffs (AP-03 R-A3): keine Punkte, dies ist der Hinweis. */
+  ausserhalb_zugriff?: string;
 }
 
 // ---- Werte je Messstelle (UEMS AP-08 IP-9) ----------------------------------
@@ -3529,6 +3535,8 @@ export interface Bilanz {
   bis: string;
   zeitzone: string;
   hauptzaehler: BilanzHauptzaehler[];
+  /** NUR wenn ein Hauptzähler fehlt, weil sein Block eine Messstelle außerhalb des Zugriffs braucht (AP-03 R-A3). */
+  ausserhalb_zugriff?: string;
 }
 
 /** `POST /api/v1/sites/{id}/bilanz/rest`: `neu` = false, wenn der Hauptzähler schon einen Rest hatte. */
@@ -5070,7 +5078,8 @@ export interface MessstelleRegisterFakt {
 
 /** Nur berechnet (AP-10 IP-9): vollständig nur, wenn ALLE Eingänge der Formel des Tages liefern. */
 export interface MessstelleRegisterBerechnung {
-  zustand: 'vollstaendig' | 'unvollstaendig';
+  /** `ausserhalb_zugriff`: ein Eingang liegt außerhalb des Zugriffs, das Urteil ist nicht zu fällen (AP-03 R-A6). */
+  zustand: 'vollstaendig' | 'unvollstaendig' | 'ausserhalb_zugriff';
   fehlend: string[];
   seit: string | null;
   text: string;
@@ -5347,7 +5356,8 @@ export interface MessstelleVorschlagAusgelassen {
     | 'vorzeichen_wert'
     | 'vergleich_kandidat'
     | 'gleicher_fluss'
-    | 'passt_nicht';
+    | 'passt_nicht'
+    | 'ausserhalb_zugriff';
   zu: string | null;
   text: string;
 }

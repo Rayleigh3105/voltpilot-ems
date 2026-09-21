@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -573,6 +574,22 @@ public class RechtPruefung {
     public boolean lesbar(RechtZiel ziel, UUID id) {
         Urteil u = lesen(ziel, id, null);
         return u.ablehnung() == null && u.ergebnis() != Ergebnis.UNSICHTBAR;
+    }
+
+    /**
+     * Der Hinweis an der Stelle einer Zahl, die einen Eingang außerhalb des Zugriffs umfasst (AP-03 R-A6, wörtlich):
+     * ohne Namen, ohne Werte, ohne Anzahl der fremden Eingänge. Derselbe Satz wie an der Kennzahl.
+     */
+    public static final String AUSSERHALB_ZUGRIFF = RechteAbleitung.TEXTE.get("standortuebergreifend");
+
+    /**
+     * Liegt JEDER Eingang im Zugriff (AP-03 R-A3)? {@code false} heißt: die Zahl, die aus ihnen entsteht, fehlt ganz
+     * — nicht teilweise, nicht als Rest —, und an ihrer Stelle steht {@link #AUSSERHALB_ZUGRIFF}. Dieselbe Frage wie
+     * {@link #lesbar} je Eingang: ohne Kontext, am Umschalter und mit einer unternehmensweiten Rolle (auch das
+     * Bestandskonto) ist jeder Eingang im Zugriff. Nur Routen fragen; interne Leser rechnen mit allen Eingängen.
+     */
+    public boolean alleLesbar(RechtZiel ziel, Collection<UUID> eingaenge) {
+        return eingaenge.stream().allMatch(id -> lesbar(ziel, id));
     }
 
     private Urteil lesen(RechtZiel ziel, UUID id, Supplier<? extends RuntimeException> nichtGefunden) {

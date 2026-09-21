@@ -11,6 +11,7 @@ import com.voltpilot.api.uems.BilanzService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.BilanzDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
@@ -52,10 +53,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class BilanzController {
 
     private final BilanzService dienst;
+    private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public BilanzController(BilanzService dienst, ObjectMapper json) {
+    public BilanzController(BilanzService dienst, RechtPruefung rechte, ObjectMapper json) {
         this.dienst = dienst;
+        this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -67,7 +70,8 @@ public class BilanzController {
     @GetMapping
     public BilanzDto.Bilanz bilanz(@PathVariable UUID siteId, @RequestParam(required = false) String periode,
             @RequestParam(required = false) String am) {
-        return dienst.bilanz(siteId, periode, tag(am));
+        return dienst.bilanz(siteId, periode, tag(am),
+                eingaenge -> rechte.alleLesbar(RechtZiel.MESSSTELLE, eingaenge));
     }
 
     /**

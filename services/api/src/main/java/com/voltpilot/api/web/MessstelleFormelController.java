@@ -18,7 +18,9 @@ import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -82,7 +84,27 @@ public class MessstelleFormelController {
     public MessstelleFormelDto.Formel formel(@PathVariable UUID id,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate am) {
         imZugriff(id);
-        return formeln.formel(id, am);
+        MessstelleFormelDto.Formel f = formeln.formel(id, am);
+        return rechte.alleLesbar(RechtZiel.MESSSTELLE, formeln.eingangsMessstellen(id, am)) ? f : ohneFremde(f);
+    }
+
+    /**
+     * Die Formel für einen Leser, der nicht jeden Eingang sieht (AP-03 R-A3/R-A6/R-A7): kein Term, der eine Messstelle
+     * außerhalb nennt — weder Kennung noch Größe noch Faktor —, die übrigen lückenlos durchnummeriert (eine Lücke
+     * verriete die Anzahl), und der Hinweis ohne Namen. Die Messstelle selbst bleibt sichtbar.
+     */
+    private MessstelleFormelDto.Formel ohneFremde(MessstelleFormelDto.Formel f) {
+        List<MessstelleFormelDto.Term> terme = new ArrayList<>();
+        for (MessstelleFormelDto.Term t : f.terme()) {
+            if (t.quellMessstelleId() == null || rechte.lesbar(RechtZiel.MESSSTELLE, t.quellMessstelleId())) {
+                terme.add(new MessstelleFormelDto.Term(terme.size(), t.eingangArt(), t.entityId(), t.pointKey(),
+                        t.quellMessstelleId(), t.vorzeichen(), t.faktor(), t.giltAlsErzeugung(), t.groesse(),
+                        t.eingerichtet(), t.verteilungZiel(), t.anteil()));
+            }
+        }
+        return new MessstelleFormelDto.Formel(f.messstelleId(), f.schemaVersion(), f.hauptgroesse(),
+                List.copyOf(terme), f.formelVorhanden(), f.eingaengeEingerichtet(), f.fassungAm(),
+                RechtPruefung.AUSSERHALB_ZUGRIFF);
     }
 
     /** Außerhalb des Zugriffs (AP-03 R-A1): Status und Körper einer Kennung, die es nicht gibt. */
@@ -114,7 +136,10 @@ public class MessstelleFormelController {
     @GetMapping("/{id}/wert")
     public MessstelleFormelDto.Wert wert(@PathVariable UUID id) {
         imZugriff(id);
-        return formeln.wert(id);
+        MessstelleFormelDto.Wert w = formeln.wert(id);
+        return rechte.alleLesbar(RechtZiel.MESSSTELLE, formeln.eingangsMessstellen(id, null)) ? w
+                : new MessstelleFormelDto.Wert(null, w.einheit(), true, List.of(), null,
+                        RechtPruefung.AUSSERHALB_ZUGRIFF);
     }
 
     /**
@@ -125,7 +150,9 @@ public class MessstelleFormelController {
     public MessstelleFormelDto.Verlauf verlauf(@PathVariable UUID id,
             @RequestParam(name = "range", required = false) String range) {
         imZugriff(id);
-        return formeln.verlauf(id, range);
+        MessstelleFormelDto.Verlauf v = formeln.verlauf(id, range);
+        return rechte.alleLesbar(RechtZiel.MESSSTELLE, formeln.eingangsMessstellenDesVerlaufs(id, range)) ? v
+                : new MessstelleFormelDto.Verlauf(id, v.einheit(), List.of(), RechtPruefung.AUSSERHALB_ZUGRIFF);
     }
 
     /**

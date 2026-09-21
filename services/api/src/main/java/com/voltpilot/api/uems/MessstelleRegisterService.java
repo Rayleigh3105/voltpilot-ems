@@ -128,7 +128,8 @@ public class MessstelleRegisterService {
 
     /**
      * Die Liste der Route: nur Messstellen, die {@code sichtbar} zulässt — sie fehlen in beiden Listen und im Aggregat,
-     * ohne Hinweis und ohne Anzahl. Interne Leser (Standort-Übersicht, Ausfall) nehmen {@link #liste(Instant, Filter)}.
+     * ohne Hinweis und ohne Anzahl. Als Eingang einer sichtbaren berechneten Messstelle nennt {@code berechnung} sie
+     * nicht ({@link RegisterBerechnung#ableiten}, AP-03 R-A3/R-A6). Interne Leser (Standort-Übersicht, Ausfall) nehmen {@link #liste(Instant, Filter)}.
      */
     public MessstelleDto.Liste liste(Instant am, Filter filter, Predicate<UUID> sichtbar) {
         Instant zeitpunkt = am != null ? am : uhr.instant();
@@ -167,7 +168,7 @@ public class MessstelleRegisterService {
         }
         Map<UUID, MessstelleDto.RegisterBerechnung> berechnungen = RegisterBerechnung.ableiten(plan, alle, werte,
                 m -> kanaele.kadenz(m.kanal(), werte.get(m) == null ? null : werte.get(m).kadenzS(), null).erwartetS(),
-                zeitpunkt, id -> OrtsbaumAbleitung.zeitzoneVon(baum.baum(), alle.get(id).ort().standort()));
+                zeitpunkt, id -> OrtsbaumAbleitung.zeitzoneVon(baum.baum(), alle.get(id).ort().standort()), sichtbar);
         for (int i = 0; i < bestand.size(); i++) {
             MessstelleDto.RegisterZeile z = mitBerechnung(alle.get(bestand.get(i).messstelle().id()),
                     berechnungen.get(bestand.get(i).messstelle().id()));
@@ -338,7 +339,9 @@ public class MessstelleRegisterService {
 
     /**
      * Wie EINE Zeile im Aggregat zählt — {@code null} = gar nicht: gemessene über ihre Beobachtung, berechnete über
-     * {@code berechnung} (vollständig = liefert, unvollständig = liefert nicht, ohne Formel am Tag = keine Datenquelle).
+     * {@code berechnung} (vollständig = liefert, unvollständig = liefert nicht, ohne Formel am Tag = keine Datenquelle;
+     * {@code ausserhalb_zugriff} — ein Eingang außerhalb des Zugriffs, alle sichtbaren liefern — steht wie
+     * „liefert nicht“ im Nenner, nie im Zähler: ein Urteil, das der Leser nicht fällen darf, ist kein „liefert“).
      * ⚠ AP-13 IP-7 (E13 = A): die Datenlage von „Messen &amp; Auswerten“ ({@link FunktionService}) zählt über GENAU
      * diese Stelle — Register, Baustein „Messstellen“ der Übersicht und Karte „Funktionen“ sagen dieselbe Zahl.
      */

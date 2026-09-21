@@ -47,6 +47,8 @@ export function SummenwertFormelDialog({
   const [begruendung, setBegruendung] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // AP-03 R-A6: fehlen Terme außerhalb des Zugriffs, schriebe „Übernehmen“ die Formel ohne sie — nie.
+  const [ausserhalb, setAusserhalb] = useState<string | null>(null);
   const key = (t: Term) =>
     t.entity_id
       ? `${t.entity_id}:${t.point_key}`
@@ -83,6 +85,7 @@ export function SummenwertFormelDialog({
         if (!aktiv) return;
         setTyp(f.fassung_am?.fassung?.formel_typ === 'saldo' || f.hauptgroesse?.richtung === 'saldiert' ? 'saldo' : 'gewichtete_summe');
         setKomponenten(geraete.entities.map(e => e.id));
+        setAusserhalb(f.ausserhalb_zugriff ?? null);
         const ts: Term[] = f.terme.map((t) => ({
           eingang_art: t.eingang_art as Term["eingang_art"],
           ...(t.entity_id
@@ -130,7 +133,7 @@ export function SummenwertFormelDialog({
   const faktorFehler = terme?.some(t => !Number.isFinite(t.faktor) || t.faktor === 0 || ((typ === 'saldo' || t.eingang_art === 'verteilung') && t.faktor !== 1));
   const saldoFehlt = typ === 'saldo' && (terme?.length !== 2 || !terme.some(t => t.vorzeichen === '+') || !terme.some(t => t.vorzeichen === '-'));
   async function speichern() {
-    if (!terme?.length || busy || faktorFehler || saldoFehlt || ableitung?.fehler || !rechte.darf("messstelle.formel") || (ab < heute && !rechte.darf("aenderung.rueckwirkend"))) return;
+    if (!terme?.length || busy || ausserhalb || faktorFehler || saldoFehlt || ableitung?.fehler || !rechte.darf("messstelle.formel") || (ab < heute && !rechte.darf("aenderung.rueckwirkend"))) return;
     setBusy(true);
     setFehler(null);
     try {
@@ -167,6 +170,7 @@ export function SummenwertFormelDialog({
           {rechte.darf("messstelle.formel") && <Button
             disabled={
               busy ||
+              !!ausserhalb ||
               !terme?.length ||
               !ab ||
               !!faktorFehler || saldoFehlt || !!ableitung?.fehler ||
@@ -192,6 +196,7 @@ export function SummenwertFormelDialog({
           Werts bleibt gleich.
         </p>
         <p>{typ === 'saldo' ? 'Saldo · Bezug − Abgabe' : 'Summe'}{ableitung?.hauptgroesse && ` · ${ableitung.hauptgroesse.groesse} · ${ableitung.hauptgroesse.richtung} · ${ableitung.hauptgroesse.einheit}`}</p>
+        {ausserhalb && <p>Die Formel {ausserhalb}.</p>}
         {ableitung?.fehler && <p role="alert">Die Messgrößen passen nicht zusammen ({ableitung.grund}).</p>}
         {saldoFehlt && <p>Ein Saldo braucht beide Hauptzähler: Bezug plus, Abgabe minus.</p>}
         {ab < heute && (

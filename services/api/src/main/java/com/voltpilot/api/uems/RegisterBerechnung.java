@@ -6,6 +6,7 @@ import com.voltpilot.api.uems.MessstelleRegisterRepository.Messwert;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Werte;
 import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.web.dto.MessstelleDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.ToLongFunction;
 
 /**
@@ -132,15 +134,40 @@ final class RegisterBerechnung {
     static Map<UUID, MessstelleDto.RegisterBerechnung> ableiten(Plan plan, Map<UUID, MessstelleDto.RegisterZeile> zeilen,
             Map<Messwert, Werte> werte, ToLongFunction<Messwert> kadenzS, Instant zeitpunkt,
             Function<UUID, ZoneId> zone) {
+        return ableiten(plan, zeilen, werte, kadenzS, zeitpunkt, zone, id -> true);
+    }
+
+    /**
+     * Wie oben, gesehen von einem Leser, der nur die Messstellen sieht, die {@code lesbar} zulässt (AP-03 R-A3/R-A6/R-A7).
+     * Liegt ein Eingang — auch über eine berechnete Messstelle hinweg — außerhalb, nennt die Berechnung ihn nicht:
+     * sie urteilt allein über die sichtbaren Eingänge. Fehlt einer von ihnen, ist sie {@code unvollstaendig} mit
+     * genau diesen (das gilt ohne jeden fremden Eingang); liefern alle sichtbaren, ist das Urteil nicht zu fällen
+     * ({@link #AUSSERHALB_ZUGRIFF}, ohne {@code fehlend} und {@code seit}) — nie „vollständig“, nie ein Zustand des
+     * fremden Eingangs. Der Satz {@link RechtPruefung#AUSSERHALB_ZUGRIFF} steht in {@code text}, ohne Namen und Anzahl.
+     */
+    static Map<UUID, MessstelleDto.RegisterBerechnung> ableiten(Plan plan, Map<UUID, MessstelleDto.RegisterZeile> zeilen,
+            Map<Messwert, Werte> werte, ToLongFunction<Messwert> kadenzS, Instant zeitpunkt,
+            Function<UUID, ZoneId> zone, Predicate<UUID> lesbar) {
         Map<UUID, ZustandAbleitung.BerechnetErgebnis> fertig = new LinkedHashMap<>();
+        Set<UUID> fremd = new HashSet<>();
         for (UUID id : plan.eingaenge().keySet()) {
-            ergebnis(id, plan, zeilen, werte, kadenzS, zeitpunkt, zone, fertig, new HashSet<>());
+            ergebnis(id, plan, zeilen, werte, kadenzS, zeitpunkt, zone, fertig, new HashSet<>(), lesbar, fremd);
         }
         Map<UUID, MessstelleDto.RegisterBerechnung> out = new LinkedHashMap<>();
         fertig.forEach((id, e) -> {
-            if (e != null) {
+            if (e == null) {
+                return;
+            }
+            if (!fremd.contains(id)) {
                 out.put(id, new MessstelleDto.RegisterBerechnung(e.vollstaendig() ? VOLLSTAENDIG : UNVOLLSTAENDIG,
                         e.fehlend(), e.seit() == null ? null : MessstelleService.zeit(e.seit()), e.text()));
+            } else if (e.vollstaendig()) {
+                out.put(id, new MessstelleDto.RegisterBerechnung(AUSSERHALB_ZUGRIFF, List.of(), null,
+                        RechtPruefung.AUSSERHALB_ZUGRIFF));
+            } else {
+                out.put(id, new MessstelleDto.RegisterBerechnung(UNVOLLSTAENDIG, e.fehlend(),
+                        e.seit() == null ? null : MessstelleService.zeit(e.seit()),
+                        e.text() + " · " + RechtPruefung.AUSSERHALB_ZUGRIFF));
             }
         });
         return out;
@@ -148,11 +175,13 @@ final class RegisterBerechnung {
 
     static final String VOLLSTAENDIG = "vollstaendig";
     static final String UNVOLLSTAENDIG = "unvollstaendig";
+    /** Ein Eingang liegt außerhalb des Zugriffs, und alle sichtbaren liefern: das Urteil ist nicht zu fällen. */
+    static final String AUSSERHALB_ZUGRIFF = "ausserhalb_zugriff";
 
     private static ZustandAbleitung.BerechnetErgebnis ergebnis(UUID id, Plan plan,
             Map<UUID, MessstelleDto.RegisterZeile> zeilen, Map<Messwert, Werte> werte, ToLongFunction<Messwert> kadenzS,
             Instant zeitpunkt, Function<UUID, ZoneId> zone, Map<UUID, ZustandAbleitung.BerechnetErgebnis> fertig,
-            Set<UUID> unterwegs) {
+            Set<UUID> unterwegs, Predicate<UUID> lesbar, Set<UUID> fremd) {
         if (fertig.containsKey(id)) {
             return fertig.get(id);
         }
@@ -163,6 +192,10 @@ final class RegisterBerechnung {
         ZoneId z = zone.apply(id);
         List<ZustandAbleitung.BerechnetEingang> urteile = new ArrayList<>();
         for (Eingang e : eingaenge) {
+            if (e.messstelle() != null && !lesbar.test(e.messstelle())) {
+                fremd.add(id); // außerhalb: kein Urteil, kein Kennzeichen, kein Zeitpunkt aus seinem Zustand
+                continue;
+            }
             ZustandAbleitung.LiefertDaten zustand = ZustandAbleitung.LiefertDaten.KEINE_DATENQUELLE;
             Instant seit = null;
             if (e.kanal() != null) {
@@ -179,7 +212,13 @@ final class RegisterBerechnung {
                     seit = zeile.beobachtung().seit() == null ? null : zeile.beobachtung().seit().toInstant();
                 } else if (plan.eingaenge().containsKey(e.messstelle())) {
                     ZustandAbleitung.BerechnetErgebnis sub = ergebnis(e.messstelle(), plan, zeilen, werte, kadenzS,
-                            zeitpunkt, zone, fertig, unterwegs);
+                            zeitpunkt, zone, fertig, unterwegs, lesbar, fremd);
+                    if (sub != null && fremd.contains(e.messstelle())) {
+                        fremd.add(id); // die Zahl des Eingangs umfasst selbst einen Eingang außerhalb
+                        if (sub.vollstaendig()) {
+                            continue; // sein Urteil ist nicht zu fällen — es zählt hier nicht als „liefert“
+                        }
+                    }
                     if (sub != null) {
                         zustand = sub.vollstaendig() ? ZustandAbleitung.LiefertDaten.LIEFERT
                                 : ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT;
@@ -190,7 +229,7 @@ final class RegisterBerechnung {
             urteile.add(new ZustandAbleitung.BerechnetEingang(e.kennzeichen(), zustand, seit));
         }
         unterwegs.remove(id);
-        ZustandAbleitung.BerechnetErgebnis r = urteile.isEmpty() ? null
+        ZustandAbleitung.BerechnetErgebnis r = urteile.isEmpty() && !fremd.contains(id) ? null
                 : ZustandAbleitung.berechnet(urteile, zeitpunkt, z);
         fertig.put(id, r);
         return r;

@@ -64,12 +64,15 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   `#lesbar`e Bezugsgrößen (außerhalb = `bezug_unbekannt` wie ein unbekanntes Kennzeichen, ohne Kennung und Stand);
   eine `vorlage_id` mit einem Bezug außerhalb ist `nicht_gefunden` (`BezugsdatenVorlageService#aktuell`). Die
   Übernahme rechnet mit derselben Sicht nach, sonst wiche der Fingerabdruck ab.
-- ⚠ **Eingänge außerhalb, gemessen und OFFEN** (`LesewegImZugriffApiTest.FOLGEPUNKTE_OFFEN`, rot bei neuem UND
-  geheiltem Fall): eine sichtbare Antwort nennt eine Messstelle an einem fremden Standort — Register `berechnung`
-  (`fehlend`/`text`), `/{id}/formel` (`quell_messstelle_id`), `GET /standorte/{id}/messstellen-vorschlag`
-  (`unterzaehler_von`), `GET /sites/{siteId}/bilanz` (Hauptzähler). Entschieden ist AP-03 R-A3/R-A6/R-A7: die Zahl
-  über einen Eingang außerhalb fehlt ganz, Hinweis „umfasst Standorte außerhalb Ihres Zugriffs“ ohne Namen und Werte.
-  Bau: `vp-uems-zaun-eingaenge-ausserhalb`. Der Vorschlag eines FREMDEN Standorts ist die unbekannte Kennung (RLS).
+- **Eingänge außerhalb** (`vp-uems-zaun-eingaenge-ausserhalb`, AP-03 R-A3/R-A6/R-A7): EIN Baustein
+  `RechtPruefung#alleLesbar` + Satz `RechtPruefung.AUSSERHALB_ZUGRIFF`; nur Routen fragen, interne Leser rechnen mit
+  allen Eingängen. Register `berechnung` urteilt nur über sichtbare Eingänge (`unvollstaendig` mit ihnen + Hinweis im
+  `text`, sonst `zustand: ausserhalb_zugriff`); `/{id}/formel` ohne fremde Terme (lückenlos nummeriert),
+  `/wert`/`/verlauf` ohne Zahl — je mit `ausserhalb_zugriff`; Bilanz ohne den ganzen Hauptzähler-Block;
+  Vorschlag: Zeile unter `ausgelassen` (`grund: ausserhalb_zugriff`, `zu` null), die Übernahme liest dieselbe Liste
+  (409 `vorschlag_geaendert`). Portal: der Formel-Dialog sperrt „Übernehmen“ (sonst fielen die Terme weg).
+  Offen: gespeicherte Werte `GET /messstellen/{kennzeichen}/werte` einer berechneten Messstelle, Messkanal-Terme.
+  Wächter: `LesewegImZugriffApiTest.FOLGEPUNKTE_OFFEN` (leer, rot bei neuem Fund).
 - **Kostenstelle, Prozess, Protokoll des Unternehmens, Bericht-Betroffenheit** (`vp-uems-zaun-kostenstelle-prozess-protokoll`):
   - `GET /unternehmen/kostenstellen/{id}`, `…/{id}/energie`, `/unternehmen/prozesse/{id}`: Geltung Unternehmen,
     `pruefenLesen(RechtZiel.UNTERNEHMEN, …)` in der Route — nur unternehmensweite Rollen, sonst die 404 der unbekannten
