@@ -37,6 +37,7 @@ import { UEMS_ROLLEN_STANDORT, UEMS_ROLLEN_UNTERNEHMEN, UEMS_ROLLE_UNTERSTUETZER
 import { ARTEN as RECHTE_ARTEN, KONTEN as RECHTE_KONTEN, ROLLE_KUNDENWORT, TEXTE as RECHTE_TEXTE, UMFANG_KUNDENWORT } from './rechte';
 import { STAND_AM, bannerTitel } from './standAm';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
+import { KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
 import * as KK from './kennzahlKarte';
 import * as BS from './berichtSeite';
 import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, vergleichAm } from './test/berichtFixtures';
@@ -2311,6 +2312,10 @@ describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)',
     { regel: 'S3', re: /gemeinsam\s+optimiert/iu, grund: 'Boxen werden nicht gemeinsam optimiert' },
     { regel: 'S3', re: /(?:^|[^\p{L}\p{N}])Verbund(?:$|[^\p{L}\p{N}])/iu, grund: 'kein „Verbund" mehrerer Boxen' },
     { regel: 'S3', re: /übergreifend\s+optimiert/iu, grund: 'Boxen werden nicht übergreifend optimiert' },
+    // AP-15 W5: der Wächter wird nicht geöffnet — „Steuerungsverbund“ ist Fach- und Vertragswort,
+    // auf Kundenflächen heißt es „Gemeinsame Steuerung“. Als Wortteil (auch gebeugt), anders als
+    // das freie „Verbund“ oben, das „Stromverbund“ zulässt.
+    { regel: 'S3', re: /Steuerungsverb[uü]nd/iu, grund: '„Gemeinsame Steuerung" statt „Steuerungsverbund"' },
   ] as const;
 
   function freigabeVerstoesse(text: string) {
@@ -2381,11 +2386,43 @@ describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)',
       'Ihre Boxen werden gemeinsam optimiert.',
       'Die Anlagen bilden einen Verbund.',
       'Mehrere Anlagen werden übergreifend optimiert.',
+      'Ihre Boxen bilden einen Steuerungsverbund.',
+      'Die Steuerungsverbünde sind eingerichtet.',
     ]) {
       expect(freigabeVerstoesse(probe).some(({ regel }) => regel === 'S3'), probe).toBe(true);
     }
     expect(freigabeVerstoesse('Jede Box liest ihre Quellen.')).toEqual([]);
     expect(freigabeVerstoesse('Das Verbundnetz gehört zum Stromverbund.')).toEqual([]);
+  });
+
+  it('S3: jedes der vier Wörter macht den Wächter allein rot (AP-15 IP-25, Test des Tests)', () => {
+    const s3 = (text: string) => freigabeVerstoesse(text).filter(({ regel }) => regel === 'S3');
+    for (const [probe, grund] of [
+      ['Ihre Boxen werden gemeinsam optimiert.', 'gemeinsam optimiert'],
+      ['Die Anlagen bilden einen Verbund.', '„Verbund"'],
+      ['Mehrere Anlagen werden übergreifend optimiert.', 'übergreifend optimiert'],
+      ['Ihre Boxen bilden einen Steuerungsverbund.', '„Steuerungsverbund"'],
+    ] as const) {
+      expect(s3(probe).map((r) => r.grund), probe).toHaveLength(1);
+      expect(s3(probe)[0].grund, probe).toContain(grund);
+    }
+  });
+
+  it('die Sätze der Gemeinsamen Steuerung (AP-15 §5.8) bestehen den Wächter — roh und eingesetzt', () => {
+    expect(freigabeVerstoesse(GEMEINSAME_STEUERUNG)).toEqual([]);
+    expect(freigabeVerstoesse('Gemeinsam gesteuert wird nur hinter demselben Netzanschluss.')).toEqual([]);
+    const werte: Record<string, string> = {
+      box: 'Halle 1', andere_box: 'Verwaltung', boxen: '2',
+      einspeisung_kw: '100', bezug_kw: '550', kw: '77', uhrzeit: '13:10', kwh: '160', ladepark: 'Ladepark Verwaltung',
+    };
+    const texte = Object.entries(STEUERUNG_SAETZE).flatMap(([schluessel, vorlage]) => [
+      vorlage,
+      steuerungSatz(schluessel as keyof typeof STEUERUNG_SAETZE, Object.fromEntries(steuerungPlatzhalter(vorlage).map((k) => [k, werte[k]]))),
+    ]);
+    expect(texte).toHaveLength(32);
+    expect(texte.flatMap((t) => freigabeVerstoesse(t).map(({ grund }) => `${grund}: ${t}`))).toEqual([]);
+    // …und der Bestands-Scan liest das Modul als Kundenfläche mit.
+    expect(customerFiles().some((file) => file.endsWith('/uemsGemeinsameSteuerung.ts'))).toBe(true);
   });
 
   it('findet im Bestand, in Hilfe, Berichts-Texten und Release-Notiz keinen echten Verstoß', () => {
