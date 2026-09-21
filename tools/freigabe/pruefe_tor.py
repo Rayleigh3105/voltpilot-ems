@@ -417,10 +417,12 @@ def punkte(tor: str):
              betreiber('kundennachricht',
                        'Nachricht 48 h vorher raus, Release-Notiz mit den sichtbaren Aenderungen dabei; '
                        'docs/rollout/release-notiz-vorlage.md ist die VORLAGE, keine versendete Nachricht')),
-            ('IP-18', 'Dauerlaeufer-Kundenbereich steht', 'Drehbuch §9.3 / §8',
+            ('IP-18', 'Dauerlaeufer-Kundenbereich steht', 'Drehbuch §14',
              betreiber('ip18_dauerlaeufer',
-                       'interner Kundenbereich mit zwei simulierten Boxen und Regel VoltPilotDauerlaeuferStumm',
-                       'Crew baut, Betreiber synct')),
+                       'Kundenbereich "VoltPilot Dauerlaeufer (intern)" angelegt, zwei Boxen angemeldet, '
+                       'VOLTPILOT_UEMS_DAUERLAEUFER_TENANT und voltpilot:uems_dauerlaeufer gesetzt, '
+                       'Uebung Simulator anhalten -> VoltPilotDauerlaeuferStumm nach 15 min gesehen',
+                       'Betreiber, das Werkzeug liegt bereit')),
             ('W1', 'Entscheidung ueber den Start-Waechter auf main', 'Drehbuch §9.1',
              betreiber('startwaechter_main',
                        'die alte api schreibt beim Neustart 18 DELETE-Marker, danach startet die neue nicht; '

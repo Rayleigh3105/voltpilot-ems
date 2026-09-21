@@ -144,3 +144,27 @@ nur Werte, nie Identitäten oder Raten. Die Eingangszeit ist Simulationsmetadatu
 der echte Writer setzt `received_at` beim Eingang. Das Messwerkzeug unter
 [`tools/lastprofil-messung`](../lastprofil-messung/README.md) beobachtet diesen
 Eingang ausschließlich über bestehende Metriken und lesende Zählabfragen.
+
+## UEMS: Dauerläufer (AP-14 IP-18)
+
+`uems_dauerlaeufer.py` ist die Box-Seite des internen Kundenbereichs „VoltPilot
+Dauerläufer (intern)“. Zwei Box-Identitäten senden endlos im Normalbetrieb:
+E-1 sendet MS-05…MS-08, E-2 sendet MS-10…MS-14, je Box ein
+`measurement-samples`-2.0-Umschlag pro Minute. Störungs-Szenarien gibt es hier
+nicht. Die Kennungen kommen aus der Umgebung, die Zertifikate aus einem
+eingehängten Geheimnis ([`.env.dauerlaeufer.example`](.env.dauerlaeufer.example)).
+Einrichtung für den Betreiber:
+[Drehbuch](../../docs/rollout/uems-erste-freigabe.md) §14.
+
+| Eigenschaft | Umsetzung |
+|---|---|
+| Neustart | Sequenz, Messzeit und Zählerstand folgen aus der Minute seit 1970. Nach dem Neustart gibt es keinen Reset und keinen Zählerbruch |
+| Broker-Trennung | paho verbindet neu. QoS-1-Umschläge warten in der Warteschlange, höchstens ein Tag |
+| Ende | SIGTERM/SIGINT → beide Boxen trennen, Exit 0 |
+| Probe | `python uems_dauerlaeufer.py --probe` → Exit 0, wenn das Lebenszeichen jünger als drei Takte ist |
+| Datenmenge | `--menge`: 2 880 Umschläge, 12 960 Samples, 2 577 600 Byte Nutzlast je Tag (≈ 2,6 MB) |
+| Image | `docker build -f Dockerfile.dauerlaeufer .`: ohne root, `paho-mqtt==2.1.0`, ohne Zugangsdaten |
+
+```bash
+PYTHONPATH=. python3 -m pytest test_uems_dauerlaeufer.py -q   # braucht paho-mqtt nicht
+```

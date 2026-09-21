@@ -18,7 +18,7 @@
 PY ?= python3
 PYTEST ?= $(PY) -m pytest
 TESTS := test_edge_sim.py test_uems_ahrenberg.py test_uems_szenarien.py \
-	test_ap07_abnahme_fixture.py test_uems_lastprofil.py
+	test_ap07_abnahme_fixture.py test_uems_lastprofil.py test_uems_dauerlaeufer.py
 SZENARIO ?=
 
 VP_SIM_PORT ?= 1883
