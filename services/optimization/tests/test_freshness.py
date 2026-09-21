@@ -197,8 +197,12 @@ class _SitesCursor:
     def __init__(
         self, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
         max_feed_in=None, leistungspreis=None, abrechnung="jahr",
-        peak_reserve=None, supply_row=None,
+        peak_reserve=None, supply_row=None, grenz_rows=(),
     ) -> None:
+        # The UEMS AP-15 IP-3 Grenzblatt read (load_grenzblaetter): rows of
+        # (site_id, gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw); none by
+        # default = no site is bound, the site value stays.
+        self._grenz_rows = list(grenz_rows)
         self._wear_ct = wear_ct
         self._backup_reserve = backup_reserve
         self._soc_min = soc_min
@@ -221,6 +225,10 @@ class _SitesCursor:
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
+        if "FROM anlage_netzanschluss b" in sql:
+            assert "LEFT JOIN netzanschluss_grenze g" in sql
+            self._rows = self._grenz_rows
+            return
         assert "FROM asset" in sql
         assert "a.wear_cost_ct_per_kwh" in sql
         assert "s.tarif_art" in sql  # the P1 pricing master data is read too
@@ -257,7 +265,7 @@ class _SitesCursor:
 def _wire_sites(
     monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
     max_feed_in=None, leistungspreis=None, abrechnung="jahr", peak_reserve=None,
-    supply_row=None,
+    supply_row=None, grenz_rows=(),
 ):
     class _Conn:
         def __enter__(self):
@@ -270,6 +278,7 @@ def _wire_sites(
             return _SitesCursor(
                 wear_ct, backup_reserve, soc_min, soc_max, max_feed_in,
                 leistungspreis, abrechnung, peak_reserve, supply_row,
+                grenz_rows,
             )
 
     monkeypatch.setitem(
@@ -305,6 +314,86 @@ def test_max_feed_in_column_resolves_to_the_battery_site(monkeypatch):
     _wire_sites(monkeypatch, None, max_feed_in=75.0)
     [site] = load_battery_sites("postgresql://fake")
     assert site.max_feed_in_kw == 75.0
+
+
+def _ohne_box(site):
+    # The fake row draws a fresh device_id per load; everything else must match.
+    import dataclasses
+
+    return repr(dataclasses.replace(site, device_id=None))
+
+
+def test_grenzblatt_ohne_eintrag_laesst_den_optimierer_eingang_byte_gleich(monkeypatch):
+    # UEMS AP-15 IP-3 Paarbeweis: je Anlagen-Wert (keiner / 75 kW) ist der
+    # geladene BatterySite Zeichen fuer Zeichen derselbe, ob die Anlage an
+    # keinem Netzanschluss haengt (Stand vor IP-3), gebunden ist ohne
+    # Fassung, oder nur eine Fassung ab MORGEN hat.
+    from datetime import date
+
+    morgen = date.today() + timedelta(days=2)
+    for max_feed_in in (None, 75.0):
+        _wire_sites(monkeypatch, None, max_feed_in=max_feed_in)
+        [vorher] = load_battery_sites("postgresql://fake")
+        for grenz_rows in (
+            [(SITE, None, None, None)],
+            [(SITE, morgen, 10.0, 20.0)],
+            [(UUID(int=99), date(2020, 1, 1), 10.0, 20.0)],
+        ):
+            _wire_sites(
+                monkeypatch, None, max_feed_in=max_feed_in, grenz_rows=grenz_rows
+            )
+            [nachher] = load_battery_sites("postgresql://fake")
+            assert _ohne_box(nachher) == _ohne_box(vorher), grenz_rows
+            assert nachher.max_feed_in_kw is None or max_feed_in is not None
+
+
+def test_grenzblatt_am_gebundenen_netzanschluss_verengt_die_einspeisegrenze(monkeypatch):
+    # R1: Einspeisegrenze 100 kW am Netzanschluss; es gilt der ENGERE Wert.
+    from datetime import date
+
+    fassung = [(SITE, date(2020, 1, 1), 100.0, 550.0)]
+    _wire_sites(monkeypatch, None, max_feed_in=None, grenz_rows=fassung)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.max_feed_in_kw == 100.0  # nur Netzanschluss
+    _wire_sites(monkeypatch, None, max_feed_in=120.0, grenz_rows=fassung)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.max_feed_in_kw == 100.0  # Netzanschluss enger
+    _wire_sites(monkeypatch, None, max_feed_in=75.0, grenz_rows=fassung)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.max_feed_in_kw == 75.0  # Anlage enger
+
+
+def test_grenzblatt_tabelle_fehlt_vor_der_migration_heisst_kein_grenzblatt(monkeypatch):
+    # Rollout: der Optimierer kann vor der api-Migration laufen; dann gibt es
+    # keine Fassung, und der Wert der Anlage bleibt - kein Abbruch des Laufs.
+    class _Undefined(Exception):
+        pass
+
+    class _Cur:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=()):
+            raise _Undefined("relation netzanschluss_grenze does not exist")
+
+    class _Conn(_Cur):
+        def cursor(self):
+            return _Cur()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "psycopg",
+        SimpleNamespace(
+            connect=lambda dsn: _Conn(),
+            errors=SimpleNamespace(UndefinedTable=_Undefined),
+        ),
+    )
+    from voltpilot_optimization.inputs import load_grenzblaetter
+
+    assert load_grenzblaetter("postgresql://fake", datetime.now().date()) == {}
 
 
 def test_peak_shaving_columns_resolve_to_site_and_battery_params(monkeypatch):

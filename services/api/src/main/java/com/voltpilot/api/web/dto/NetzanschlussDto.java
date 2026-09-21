@@ -64,4 +64,27 @@ public final class NetzanschlussDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Netzanschluesse(Standort standort, LocalDate stichtag, String kennzeichenVorschlag,
             List<Netzanschluss> netzanschluesse) {}
+
+    /**
+     * {@code POST …/netzanschluesse/{id}/grenzen} (UEMS AP-15 IP-3): ab {@code gueltig_ab} gilt diese Fassung des
+     * Grenzblatts — bis zum Vortag der nächsten. {@code null} in einer Richtung = dort keine Grenze am Anschluss;
+     * die Leistungen als Zahl oder Dezimaltext.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GrenzeSetzen(String gueltigAb, BigDecimal einspeisegrenzeKw, BigDecimal bezugsgrenzeKw,
+            String grund) {}
+
+    /** Eine wirksame Fassung des Grenzblatts. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GrenzFassung(LocalDate gueltigAb, BigDecimal einspeisegrenzeKw, BigDecimal bezugsgrenzeKw,
+            OffsetDateTime eingetragenAm) {}
+
+    /**
+     * {@code GET …/netzanschluesse/{id}/grenzen}: alle wirksamen Fassungen und die am {@code stichtag} (ohne: heute am
+     * Standort) gültige — {@code null}, wenn keine gilt. Was an der Anlage WIRKT, ist der engere Wert aus Anlage und
+     * dieser Fassung ({@code GrenzeAufloesung}).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Grenzblatt(UUID netzanschlussId, String kennzeichen, LocalDate stichtag, GrenzFassung gilt,
+            List<GrenzFassung> fassungen) {}
 }

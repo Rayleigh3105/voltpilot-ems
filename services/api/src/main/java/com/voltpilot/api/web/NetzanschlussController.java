@@ -8,12 +8,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.NetzanschlussAbgelehnt;
 import com.voltpilot.api.uems.NetzanschlussAbgelehnt.Ablehnung;
+import com.voltpilot.api.uems.NetzanschlussGrenzeService;
 import com.voltpilot.api.uems.NetzanschlussService;
 import com.voltpilot.api.uems.NetzanschlussVorschlagService;
 import java.util.List;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.NetzanschlussDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
@@ -62,15 +64,21 @@ import org.springframework.web.server.ResponseStatusException;
 public class NetzanschlussController {
 
     /** Die Felder, die als Zahl ODER als Dezimaltext kommen dürfen. */
-    private static final Set<String> ZAHLEN = Set.of("anschluss_kva", "vereinbart_kw");
+    private static final Set<String> ZAHLEN = Set.of("anschluss_kva", "vereinbart_kw", "einspeisegrenze_kw",
+            "bezugsgrenze_kw");
 
     private final NetzanschlussService dienst;
     private final ObjectMapper streng;
     private final NetzanschlussVorschlagService vorschlaege;
+    private final NetzanschlussGrenzeService grenzen;
+    private final RechtPruefung rechte;
 
-    public NetzanschlussController(NetzanschlussService dienst, ObjectMapper json, NetzanschlussVorschlagService vorschlaege) {
+    public NetzanschlussController(NetzanschlussService dienst, ObjectMapper json, NetzanschlussVorschlagService vorschlaege,
+            NetzanschlussGrenzeService grenzen, RechtPruefung rechte) {
         this.dienst = dienst;
         this.vorschlaege = vorschlaege;
+        this.grenzen = grenzen;
+        this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -138,6 +146,34 @@ public class NetzanschlussController {
     public ResponseEntity<Void> verwerfen(@PathVariable UUID standortId, @PathVariable UUID anlageId, Authentication auth) {
         vorschlaege.verwerfen(standortId, anlageId, akteur(auth));
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Recht: heute lesend — keine eigene Kennung (wie der Anschluss selbst); der Zaun fragt
+     * {@code RechtPruefung#pruefenLesen} am Standort — außerhalb dieselbe Antwort wie ein unbekannter (404).
+     * Das Grenzblatt (UEMS AP-15 IP-3): alle wirksamen Fassungen und die am Stichtag (ohne: heute) gültige.
+     */
+    @GetMapping("/{id}/grenzen")
+    public NetzanschlussDto.Grenzblatt grenzblatt(@PathVariable UUID standortId, @PathVariable UUID id,
+            @RequestParam(required = false) String stichtag) {
+        rechte.pruefenLesen(RechtZiel.STANDORT, standortId, () -> NetzanschlussAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        return grenzen.grenzblatt(standortId, id, tag("stichtag", stichtag));
+    }
+
+    /**
+     * Recht: {@code netzanschluss.verwalten}; mit „gültig ab“ vor heute zusätzlich {@code aenderung.rueckwirkend}.
+     * Ab dem Tag gilt diese Fassung des Grenzblatts (UEMS AP-15 IP-3) — Plausibilität gegen vereinbarte Leistung und
+     * Anschlussleistung (422). Der Mandant kommt aus der Anmeldung, nie aus dem Körper.
+     */
+    @PostMapping("/{id}/grenzen")
+    @Recht(value = "netzanschluss.verwalten", ziel = RechtZiel.STANDORT)
+    public ResponseEntity<NetzanschlussDto.Grenzblatt> grenzeSetzen(@PathVariable UUID standortId, @PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        NetzanschlussDto.GrenzeSetzen g = lies(body, NetzanschlussDto.GrenzeSetzen.class);
+        rechte.rueckwirkend(tag("gueltig_ab", g.gueltigAb()));
+        grenzen.setzen(standortId, id, g, akteur(auth));
+        return ResponseEntity.created(URI.create(pfad(standortId, id) + "/grenzen"))
+                .body(grenzen.grenzblatt(standortId, id, null));
     }
 
     // ----------------------------------------------------------------------------- Gerüst
