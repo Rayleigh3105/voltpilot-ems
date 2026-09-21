@@ -75,6 +75,11 @@ type GemeinsameSteuerung struct {
 	// AnteileKw are the EFFECTIVE own shares per direction (kW), the decimal
 	// text of the accepted document - "alt" of every two-step change (Y3, A18).
 	AnteileKw *AnteileKw `json:"anteile_kw,omitempty"`
+	// ReserveVerbraucherKw mirrors reserve_verbraucher of the accepted
+	// document (AP-15 Folge of IP-19): what the charge park's import share is
+	// lowered by for the box's other controllable consumers. Absent when the
+	// document has none.
+	ReserveVerbraucherKw *ReserveVerbraucherKw `json:"reserve_verbraucher_kw,omitempty"`
 	// AnteilVerlust is what the feed-in share held back (IP-22), only with a
 	// share document: the running local day and the closed day before it.
 	AnteilVerlust *AnteilVerlust `json:"anteil_verlust,omitempty"`
@@ -94,6 +99,12 @@ type AnteilVerlustVortag struct {
 	Tag       string  `json:"tag"`
 	Kwh       float64 `json:"kwh"`
 	GebundenS int64   `json:"gebunden_s"`
+}
+
+// ReserveVerbraucherKw is the reserve of the other controllable consumers
+// per direction in kW (only bezug).
+type ReserveVerbraucherKw struct {
+	Bezug json.Number `json:"bezug"`
 }
 
 // AnteileKw is the own share per direction in kW.

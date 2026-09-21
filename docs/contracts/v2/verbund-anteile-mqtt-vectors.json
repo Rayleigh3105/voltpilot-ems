@@ -514,5 +514,346 @@
     "gueltig": false
    }
   }
- ]
+ ],
+ "reserve_verbraucher": {
+  "_comment": "UEMS AP-15 Folge von IP-19 (V3: der Anteil bezug gilt für ALLES, was die Box steuert). Je Box die Summe der Nennleistungen ihrer steuerbaren Bezugs-Geräte AUSSERHALB des Ladepark-Rahmens (Schreibfreigabe ja; Typ heating-rod, heat-pump-sgready, pump, generic-load, modbus-load oder eine Wallbox, die nicht in wallboxes[] reist) — aufgerundet auf 0,1 kW (die sichere Seite). Ladepunkte (ev-charger, Wallbox in wallboxes[]), Speicher, Erzeuger, Geräte ohne Schreibfreigabe und das Ungeregelte hinter dem Abgang zählen NICHT. Das Feld reist im Dokument jeder Box als reserve_verbraucher.bezug (wahlfrei, schema_version bleibt 1.0); die Box gibt dem Ladepark max(0, Anteil − Reserve), wo der Anteil bindet. Leser: VerbundAnteileReserveVectorsTest (Java, Erzeuger) und edge-app/core/internal/lastmgmt/reserve_verbraucher_vectors_test.go (Go, Lesen + Ladebudget).",
+  "ableitung": [
+   {
+    "name": "R3 mit Wärmepumpe: sechs Ladepunkte und eine 10-kW-Wärmepumpe an Box Verwaltung → Reserve 10,0 kW, Box Halle 1 ohne solche Verbraucher 0,0",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f1",
+      "typ": "heat-pump-sgready",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 10.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e1",
+      "komponente": "7a000000-0000-4000-8000-0000000000b1",
+      "typ": "battery-hybrid",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 100.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": null,
+      "typ": null,
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 38.0,
+      "schreibfreigabe": false
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f6",
+      "typ": "producer",
+      "im_ladepark": false,
+      "richtung": "einspeisung",
+      "nenn_kw": 60.0,
+      "schreibfreigabe": true
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 10.0
+    }
+   },
+   {
+    "name": "R3 wie in der Referenzanlage: nur Ladepunkte → beide Boxen 0,0 (Zahl für Zahl wie ohne das Feld)",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 0.0
+    }
+   },
+   {
+    "name": "go-e außerhalb wallboxes[] zählt, eine Wallbox im Ladepark nicht; ohne Schreibfreigabe zählt nichts",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f1",
+      "typ": "heat-pump-sgready",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 10.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f2",
+      "typ": "wallbox",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 11.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f3",
+      "typ": "wallbox",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 11.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f5",
+      "typ": "generic-load",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 5.0,
+      "schreibfreigabe": false
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 21.0
+    }
+   },
+   {
+    "name": "aufgerundet auf 0,1 kW: Heizstab 3,05 kW → 3,1",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e1",
+      "komponente": "7a000000-0000-4000-8000-0000000000f4",
+      "typ": "heating-rod",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 3.05,
+      "schreibfreigabe": true
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e1": 3.1,
+     "7a000000-0000-4000-8000-0000000000e4": 0.0
+    }
+   }
+  ],
+  "draht": [
+   {
+    "name": "R3 mit Wärmepumpe: Box Verwaltung steuert mit, Anteil 77, Reserve 10,0 → Ladepark höchstens 67",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": 10.0,
+    "erwartet": {
+     "gelesen": true,
+     "reserve_bezug": "10.0",
+     "ladebudget_kw": 67.0
+    }
+   },
+   {
+    "name": "ohne das Feld (alte Cloud): keine Reserve, Ladepark 77 wie heute",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": true,
+     "reserve_bezug": null,
+     "ladebudget_kw": 77.0
+    }
+   },
+   {
+    "name": "Reserve 0,0: keine anderen Verbraucher, Ladepark 77",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": 0.0,
+    "erwartet": {
+     "gelesen": true,
+     "reserve_bezug": "0.0",
+     "ladebudget_kw": 77.0
+    }
+   },
+   {
+    "name": "Reserve über dem Anteil: das Ladebudget fällt nie unter 0",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": 90.0,
+    "erwartet": {
+     "gelesen": true,
+     "reserve_bezug": "90.0",
+     "ladebudget_kw": 0.0
+    }
+   },
+   {
+    "name": "negative Reserve: unlesbar, ohne Quittung, der Anteil bleibt",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": -1.0,
+    "erwartet": {
+     "gelesen": false,
+     "reserve_bezug": null,
+     "ladebudget_kw": null
+    }
+   }
+  ]
+ }
 }

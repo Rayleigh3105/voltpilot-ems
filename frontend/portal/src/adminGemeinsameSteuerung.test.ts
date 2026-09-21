@@ -81,6 +81,15 @@ describe('AP-15 IP-24 · Betreiber-Blatt — Spalten je Box', () => {
     const [e1, e4] = boxSpalten(gsBlatt('aktiv', JETZT), null, NAMEN, JETZT);
     expect(e1.wirksam.einspeisung.text).toBe('40 kW');
     expect(e4.wirksam.bezug.text).toBe('77 kW');
+    expect(e4.wirksam.reserve).toEqual({ text: 'keine', unbekannt: true });
+  });
+
+  it('die Reserve der anderen steuerbaren Verbraucher, nur wenn die Box sie meldet (AP-15 Folge von IP-19)', () => {
+    const b = gsBlatt('aktiv', JETZT);
+    b.boxen[1] = { ...b.boxen[1], anteile: { ...b.boxen[1].anteile, reserve_verbraucher_kw: 10 } };
+    const [e1, e4] = boxSpalten(b, null, NAMEN, JETZT);
+    expect(e4.wirksam.reserve.text).toBe('10 kW');
+    expect(e1.wirksam.reserve).toEqual({ text: 'keine', unbekannt: true });
   });
 
   it('Verlust gestern: Untergrenze der Box und Schätzung der Cloud nebeneinander, nie verrechnet (Folgepaket IP-22, R2)', () => {

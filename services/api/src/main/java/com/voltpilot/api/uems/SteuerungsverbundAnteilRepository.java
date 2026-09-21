@@ -128,6 +128,23 @@ public class SteuerungsverbundAnteilRepository {
                         instant(rs, "created_at"), rs.getString("created_by")), verbundId);
     }
 
+    /**
+     * Die Komponenten der Anlage, die zur Reserve der anderen steuerbaren Verbraucher zählen (AP-15 Folge von IP-19,
+     * {@link SteuerungsverbundAbleitung#zaehltZurReserve}): ihr Typ und, für eine Wallbox, ob sie in
+     * {@code wallboxes[]} reist (ein Verbraucher-Profil hat, wie {@code ChargingConfigRepository#wallboxes}).
+     */
+    public List<String> komponentenZurReserve(UUID siteId) {
+        List<String> out = new ArrayList<>();
+        jdbc.query("SELECT mp.id, mp.entity_type, EXISTS (SELECT 1 FROM consumer_profile cp WHERE cp.entity_id = mp.id) "
+                + "AS im_ladepark FROM measurement_point mp WHERE mp.site_id = ? ORDER BY mp.id", rs -> {
+                    if (SteuerungsverbundAbleitung.zaehltZurReserve(rs.getString("entity_type"),
+                            rs.getBoolean("im_ladepark"))) {
+                        out.add(rs.getObject("id", UUID.class).toString());
+                    }
+                }, siteId);
+        return out;
+    }
+
     // ------------------------------------------------------------------ Dokumente
 
     /** Hängt ein Dokument an; ein zweites mit derselben Epoche und Revision scheitert (23505). */

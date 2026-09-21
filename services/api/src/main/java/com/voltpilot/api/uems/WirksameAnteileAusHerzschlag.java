@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class WirksameAnteileAusHerzschlag implements WirksameAnteileQuelle {
 
-    private record Eintrag(UUID siteId, Map<Grenzart, BigDecimal> anteile) {}
+    private record Eintrag(UUID siteId, Map<Grenzart, BigDecimal> anteile, BigDecimal reserveBezug) {}
 
     private final Map<UUID, Eintrag> jeBox = new ConcurrentHashMap<>();
 
@@ -48,12 +48,22 @@ public class WirksameAnteileAusHerzschlag implements WirksameAnteileQuelle {
             }
             anteile.put(r, wert.decimalValue());
         }
-        jeBox.put(deviceId, new Eintrag(siteId, Map.copyOf(anteile)));
+        // AP-15 Folge von IP-19: die Reserve der anderen steuerbaren Verbraucher, nur wenn die Box sie meldet
+        JsonNode reserve = block.path("reserve_verbraucher_kw").path(Grenzart.BEZUG.code());
+        BigDecimal reserveBezug = reserve.isNumber() && reserve.decimalValue().signum() >= 0 ? reserve.decimalValue()
+                : null;
+        jeBox.put(deviceId, new Eintrag(siteId, Map.copyOf(anteile), reserveBezug));
     }
 
     @Override
     public Optional<Map<Grenzart, BigDecimal>> wirksam(UUID siteId, UUID box) {
         Eintrag e = jeBox.get(box);
         return e == null || !e.siteId().equals(siteId) ? Optional.empty() : Optional.of(e.anteile());
+    }
+
+    @Override
+    public Optional<BigDecimal> reserveVerbraucher(UUID siteId, UUID box) {
+        Eintrag e = jeBox.get(box);
+        return e == null || !e.siteId().equals(siteId) ? Optional.empty() : Optional.ofNullable(e.reserveBezug());
     }
 }

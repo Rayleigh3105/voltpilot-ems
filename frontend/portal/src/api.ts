@@ -6996,7 +6996,7 @@ export interface UemsBoxStand {
   messpunkt?: { data_source_id: string; zustand: 'ok' | 'stale' | 'never' | 'nicht_gemeldet'; gelesen_am?: string | null } | null;
   waechter?: { einspeisung?: string | null; bezug?: string | null } | null;
   plan: { veroeffentlicht?: UemsPlanZeile | null; angenommen?: UemsPlanZeile | null };
-  anteile: { gesendet?: UemsRevision | null; quittiert?: UemsRevision | null; wirksam_kw?: { einspeisung?: number; bezug?: number } | null };
+  anteile: { gesendet?: UemsRevision | null; quittiert?: UemsRevision | null; wirksam_kw?: { einspeisung?: number; bezug?: number } | null; reserve_verbraucher_kw?: number | null };
   /** Folgepaket zu IP-22: `null` = die Box hat für gestern keinen Anteils-Verlust gemeldet. */
   verlust_gestern?: UemsVerlustTag | null;
 }

@@ -28,6 +28,12 @@
         "bezug": { "$ref": "#/$defs/je_box_kw" }
       }
     },
+    "reserve_verbraucher": {
+      "type": "object",
+      "description": "wahlfrei (AP-15 Folge von IP-19, V3): je Richtung (nur bezug) die Summe der Nennleistungen der steuerbaren Geräte DIESER Box außerhalb des Ladeparks, kW mit einer Nachkommastelle; die Box gibt dem Ladepark max(0, Anteil − Reserve), wo der Anteil bindet. Fehlt es, gilt keine Reserve.",
+      "additionalProperties": false,
+      "properties": { "bezug": { "$ref": "#/$defs/kw" } }
+    },
     "published_at": { "type": "string", "format": "date-time" }
   },
   "$defs": {

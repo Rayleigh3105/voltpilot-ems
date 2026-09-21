@@ -28,6 +28,7 @@ einen Verbund ab Stufe S1 (LA2), und nur an seine Mitglieder.
     "einspeisung": { "<E-1>": 10.0, "<E-4>": 60.0 },
     "bezug":       { "<E-1>": 0.0,  "<E-4>": 77.0 }
   },
+  "reserve_verbraucher": { "bezug": 0.0 },
   "published_at": "2027-10-20T09:00:00Z"
 }
 ```
@@ -40,6 +41,13 @@ einen Verbund ab Stufe S1 (LA2), und nur an seine Mitglieder.
   (auch, wenn der Übergang schon der Zielstand ist — reines Verengen).
 - **`rolle`** (wahlfrei, IP-17): `fuehrt` · `steuert_mit` — die Rolle der Box des Topics. Sie ist nicht Teil der
   Prüfung; die Box hält sie mit dem Anteil und spiegelt sie im Herzschlag (die Wächter aus IP-18 brauchen sie).
+- **`reserve_verbraucher`** (wahlfrei, AP-15 Folge von IP-19, V3; `schema_version` bleibt 1.0): je Box ihr eigenes
+  `bezug` = die Summe der Nennleistungen ihrer steuerbaren Bezugs-Geräte AUSSERHALB des Ladeparks (Schreibfreigabe ja;
+  Schalter/Relais, SG-Ready, Wärmepumpen, Heizstäbe, Pumpen, eine Wallbox ohne Platz in `wallboxes[]`), aus
+  `steuerungsverbund_geraet`, aufgerundet auf 0,1 kW (`SteuerungsverbundAbleitung.reserveVerbraucher`). Ladepunkte,
+  Speicher, Geräte ohne Schreibfreigabe und das Ungeregelte hinter dem Abgang zählen nicht. **Kein Doppelzählen:** ein
+  solches Gerät steckt nicht im Vorbehalt (der deckt, was keine Box steuert), sondern einmal im Anteil seiner Box — die
+  Reserve teilt diesen einen Anteil auf der Box nur auf. Vektoren: Abschnitt `reserve_verbraucher`.
 - **Epoche und Revision steigen nur.** Die Revision steigt je Dokument eines Verbunds; eine neue Epoche setzt nur das
   Scharfschalten. Das Dokument reist **nie im Plan**.
 
@@ -106,7 +114,13 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   (blind, ohne Grenze, `steuert_mit`, ohne `rolle`) lädt der Speicher höchstens die eigene gemessene PV („nicht aus
   dem Netz“, ohne PV-Wert 0). Beide Teile senken nur, entladen nie, heben nie an; das Ladebudget ist das Minimum mit der
   Box ohne Anteil (V5), „Jetzt voll laden“ verteilt innerhalb des Anteils (R13). Stufe im Herzschlag:
-  `waechter.bezug` (die strengere beider Teile).
+  `waechter.bezug` (die strengere beider Teile). **Der Anteil gilt für ALLES (Folge von IP-19):** trägt das Dokument
+  `reserve_verbraucher.bezug`, rechnet das Ladebudget überall, wo der Anteil bindet (`steuert_mit`, ohne `rolle`, die
+  führende Box blind, vor dem ersten Messwert, nach einem Uhrensprung), mit `max(0, Anteil − Reserve)` — R3 mit einer
+  10-kW-Wärmepumpe an Box Verwaltung: 67 statt 77 kW, 473 + 67 + 10 = 550. Die führende Box mit frischem Netzpunkt
+  misst die Verbraucher am Netzzähler; dort (und in ihrer Prüf-Verstellung) ändert die Reserve nichts. Der
+  Netzladen-Deckel rechnet nicht vom Anteil und bleibt. Fehlt das Feld: keine Reserve, wie vorher; der Herzschlag
+  spiegelt sie nur, wenn sie gilt (`reserve_verbraucher_kw`), das Betreiber-Blatt zeigt sie unter „Wirksam Bezug“.
 - **Eingefroren gilt als blind (IP-20, B2):** ein Zähler kann weiter Werte mit frischem Zeitstempel liefern, aber
   immer dieselbe Zahl. Gilt ein Dokument, hört EINE Probe (`edge-app/core/internal/guards/eingefroren.go`,
   `Einfrierprobe`) den eigenen Messpunkt und die eigenen WIRKSAMEN Verstellungen der Box (PV-Kappe unter der

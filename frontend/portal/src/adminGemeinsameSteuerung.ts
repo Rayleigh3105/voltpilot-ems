@@ -253,7 +253,8 @@ export interface BoxSpalte {
   waechter: { einspeisung: Zelle; bezug: Zelle };
   plan: { veroeffentlicht: Zelle; angenommen: Zelle; ungleich: boolean };
   revision: { gesendet: Zelle; quittiert: Zelle; ungleich: boolean };
-  wirksam: { einspeisung: Zelle; bezug: Zelle };
+  /** `reserve`: um so viel senkt die Box das Ladebudget ihres Bezugs-Anteils (andere steuerbare Verbraucher). */
+  wirksam: { einspeisung: Zelle; bezug: Zelle; reserve: Zelle };
   verlustGestern: Zelle;
 }
 
@@ -357,7 +358,12 @@ export function boxSpalten(
         quittiert: { text: q ? revisionText(q) : NICHT_GEMELDET, unbekannt: q == null, warnung: revUngleich },
         ungleich: revUngleich,
       },
-      wirksam: { einspeisung: kwZelle(b.anteile.wirksam_kw?.einspeisung), bezug: kwZelle(b.anteile.wirksam_kw?.bezug) },
+      wirksam: {
+        einspeisung: kwZelle(b.anteile.wirksam_kw?.einspeisung),
+        bezug: kwZelle(b.anteile.wirksam_kw?.bezug),
+        // nicht gemeldet = die Box hält keine Reserve (altes Dokument, alte Box)
+        reserve: b.anteile.reserve_verbraucher_kw == null ? { text: 'keine', unbekannt: true } : kwZelle(b.anteile.reserve_verbraucher_kw),
+      },
       verlustGestern: verlustGesternZelle(b.verlust_gestern),
     };
   });

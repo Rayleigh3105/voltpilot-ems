@@ -50,6 +50,16 @@ public final class VerbundAnteileDokument {
      */
     public static byte[] nutzlast(ObjectMapper mapper, UUID tenant, UUID site, UUID box, Rolle rolle, long epoche,
             long revision, Schritt schritt, Tabelle tabelle, Instant veroeffentlicht) {
+        return nutzlast(mapper, tenant, site, box, rolle, epoche, revision, schritt, tabelle, null, veroeffentlicht);
+    }
+
+    /**
+     * Wie oben, mit der Reserve der anderen steuerbaren Verbraucher dieser Box ({@code reserve_verbraucher.bezug},
+     * wahlfrei, AP-15 Folge von IP-19; {@link SteuerungsverbundAbleitung#reserveVerbraucher}). {@code null} = ohne das
+     * Feld; eine Box, die es nicht kennt, ignoriert es ({@code schema_version} bleibt 1.0).
+     */
+    public static byte[] nutzlast(ObjectMapper mapper, UUID tenant, UUID site, UUID box, Rolle rolle, long epoche,
+            long revision, Schritt schritt, Tabelle tabelle, BigDecimal reserveBezugKw, Instant veroeffentlicht) {
         ObjectNode n = mapper.createObjectNode();
         n.put("schema_version", SCHEMA_VERSION);
         n.put("tenant_id", tenant.toString());
@@ -67,6 +77,9 @@ public final class VerbundAnteileDokument {
             v.put(r.code(), tabelle.verteilbar().get(r));
             ObjectNode je = a.putObject(r.code());
             new TreeMap<>(tabelle.anteile().getOrDefault(r, Map.of())).forEach(je::put);
+        }
+        if (reserveBezugKw != null) {
+            n.putObject("reserve_verbraucher").put(Grenzart.BEZUG.code(), reserveBezugKw);
         }
         n.put("published_at", veroeffentlicht.toString());
         try {

@@ -380,6 +380,7 @@ public class SteuerungsverbundAnteilDienst {
         List<UUID> gesendetAn = new ArrayList<>();
         List<Map.Entry<String, byte[]>> auftraege = new ArrayList<>();
         VerbundAnteileVersand weg = versand.getIfAvailable();
+        Map<String, BigDecimal> reserven = reserveVerbraucher(v, jetzt);
         for (String box : d.tabelle().boxen()) {
             MitgliedZeile m = mitglieder.get(box);
             if (m == null || weg == null) {
@@ -388,7 +389,7 @@ public class SteuerungsverbundAnteilDienst {
             UUID b = UUID.fromString(box);
             auftraege.add(Map.entry(VerbundAnteileDokument.topic(tenant, v.siteId(), b),
                     VerbundAnteileDokument.nutzlast(mapper, tenant, v.siteId(), b, m.rolle(), epoche, revision,
-                            d.schritt(), d.tabelle(), jetzt)));
+                            d.schritt(), d.tabelle(), reserven.getOrDefault(box, BigDecimal.ZERO.setScale(1)), jetzt)));
             verbuende.gesendet(m.id(), epoche, revision, jetzt);
             gesendetAn.add(b);
         }
@@ -418,15 +419,33 @@ public class SteuerungsverbundAnteilDienst {
         DokumentZeile d = dokumente.get(0);
         UUID tenant = TenantContext.get();
         List<UUID> an = new ArrayList<>();
+        Map<String, BigDecimal> reserven = reserveVerbraucher(v, clock.instant());
         for (MitgliedZeile m : verbuende.mitglieder(v.id(), clock.instant())) {
             if (d.tabelle().boxen().contains(m.deviceId().toString()) && weg.senden(
                     VerbundAnteileDokument.topic(tenant, v.siteId(), m.deviceId()), VerbundAnteileDokument.nutzlast(
                             mapper, tenant, v.siteId(), m.deviceId(), m.rolle(), d.epoche(), d.revision(),
-                            d.schritt(), d.tabelle(), clock.instant()))) {
+                            d.schritt(), d.tabelle(), reserven.getOrDefault(m.deviceId().toString(),
+                                    BigDecimal.ZERO.setScale(1)), clock.instant()))) {
                 an.add(m.deviceId());
             }
         }
         return List.copyOf(an);
+    }
+
+    /**
+     * Die Reserve der anderen steuerbaren Verbraucher je Mitglied (AP-15 Folge von IP-19, V3) aus den erklärten
+     * Geräten ({@code steuerungsverbund_geraet}, Richtung bezug, Schreibfreigabe) — so, wie sie beim Versand gelten.
+     */
+    private Map<String, BigDecimal> reserveVerbraucher(VerbundZeile v, Instant jetzt) {
+        List<SteuerungsverbundAbleitung.Mitglied> mitglieder = verbuende.mitglieder(v.id(), jetzt).stream()
+                .map(m -> new SteuerungsverbundAbleitung.Mitglied(m.deviceId().toString(), m.rolle())).toList();
+        List<SteuerungsverbundAbleitung.Geraet> geraete = anteile.geraete(v.id()).stream()
+                .map(g -> new SteuerungsverbundAbleitung.Geraet(g.deviceId().toString(),
+                        g.entityId() == null ? null : g.entityId().toString(), g.richtung(), g.nennKw(),
+                        g.schreibfreigabe(), null))
+                .toList();
+        return SteuerungsverbundAbleitung.reserveVerbraucher(mitglieder, geraete,
+                anteile.komponentenZurReserve(v.siteId()));
     }
 
     private static void nachCommit(Runnable r) {

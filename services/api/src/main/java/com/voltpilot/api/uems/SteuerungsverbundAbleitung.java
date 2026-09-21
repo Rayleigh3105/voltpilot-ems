@@ -3,10 +3,13 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Rolle;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Die Eingänge der Anteile (UEMS AP-15 IP-7, G3/G4, I1, E2 = A): aus Mitgliedern, Geräten je Box, Grenze und Vorbehalt
@@ -82,6 +85,48 @@ public final class SteuerungsverbundAbleitung {
                 e.vorbehaltKw(), mitglieder.stream().map(m -> new SteuerungsverbundAnteile.Mitglied(m.box(), m.rolle(),
                         e.jeBox().get(m.box()).nennKw(), e.jeBox().get(m.box()).rueckfallKw())).toList())));
         return ergebnis;
+    }
+
+    /**
+     * Steuerbare Bezugs-Geräte AUSSERHALB des Ladepark-Rahmens der Box (AP-15 Folge von IP-19, V3): Schalter/Relais,
+     * SG-Ready, Wärmepumpen, Heizstäbe, Pumpen. Ladepunkte ({@code ev-charger}, eine Wallbox in {@code wallboxes[]})
+     * rechnet die Box schon im Ladebudget; Speicher ({@code guards/bezuganteil.go}) und Erzeuger haben ihren eigenen Weg.
+     */
+    public static final Set<String> VERBRAUCHER_AUSSERHALB_LADEPARK = Set.of("heating-rod", "heat-pump-sgready",
+            "pump", "generic-load", "modbus-load");
+
+    /**
+     * Zählt eine Komponente vom Typ {@code typ} zur Reserve? {@code imLadepark} = die Wallbox reist in
+     * {@code wallboxes[]} (sie hat ein Verbraucher-Profil, {@code ChargingConfigRepository#wallboxes}) — dann rechnet sie
+     * das Ladebudget, eine Wallbox ohne es (go-e außerhalb) steuert die Box wie jeden anderen Verbraucher.
+     */
+    public static boolean zaehltZurReserve(String typ, boolean imLadepark) {
+        return typ != null && (VERBRAUCHER_AUSSERHALB_LADEPARK.contains(typ) || "wallbox".equals(typ) && !imLadepark);
+    }
+
+    /**
+     * Die Reserve der anderen steuerbaren Verbraucher je Box ({@code reserve_verbraucher.bezug} im Anteils-Dokument,
+     * AP-15 Folge von IP-19, V3): die Summe der Nennleistungen ihrer Bezugs-Geräte MIT Schreibfreigabe, deren
+     * Komponente in {@code zurReserve} steht ({@link #zaehltZurReserve}) — aufgerundet auf 0,1 kW, die sichere Seite
+     * (sie senkt auf der Box nur). Jedes Mitglied steht im Ergebnis, ohne solche Geräte mit 0,0.
+     *
+     * <p><b>Kein Doppelzählen:</b> ein solches Gerät steckt nicht im Vorbehalt (der deckt, was KEINE Box steuert; die
+     * Verbund-Bilanz zieht den Beitrag jeder Box ab), sondern zählt einmal — im Anteil seiner Box, über ihre
+     * Nennleistung und ihren Rückfall ({@link #eingaenge}). Die Reserve teilt diesen einen Anteil auf der Box nur auf:
+     * Ladepark = Anteil − Reserve. Geräte ohne Schreibfreigabe und das Ungeregelte hinter dem Abgang zählen nicht.
+     */
+    public static Map<String, BigDecimal> reserveVerbraucher(List<Mitglied> mitglieder, List<Geraet> geraete,
+            Collection<String> zurReserve) {
+        Map<String, BigDecimal> summe = new LinkedHashMap<>();
+        mitglieder.forEach(m -> summe.put(m.box(), BigDecimal.ZERO));
+        for (Geraet g : geraete) {
+            if (g.richtung() == Grenzart.BEZUG && g.schreibfreigabe() && g.komponente() != null
+                    && zurReserve.contains(g.komponente()) && summe.containsKey(g.box())) {
+                summe.merge(g.box(), g.nennKw(), BigDecimal::add);
+            }
+        }
+        summe.replaceAll((box, kw) -> kw.setScale(1, RoundingMode.CEILING));
+        return summe;
     }
 
     /** Scharf nur mit {@code passt} in BEIDEN Richtungen (E2 = A); eine fehlende Richtung passt nicht. */

@@ -177,6 +177,9 @@ type BudgetVerdict struct {
 	AnteilKw *float64 `json:"anteil_kw,omitempty"`
 	// AnteilBinds is true when that share is what caps the vehicles.
 	AnteilBinds bool `json:"anteil_binds,omitempty"`
+	// ReserveVerbraucherKw echoes the reserve of the box's other controllable
+	// consumers the charge park's share was lowered by; nil without one.
+	ReserveVerbraucherKw *float64 `json:"reserve_verbraucher_kw,omitempty"`
 	// Pruefung is true when this evaluation made the probing adjustment of
 	// IP-27 A7 (BudgetAnteil only): the caller reports it to the
 	// Einfrierprobe, whose answer window starts now.
