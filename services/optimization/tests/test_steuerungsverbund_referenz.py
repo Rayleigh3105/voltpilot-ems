@@ -45,6 +45,7 @@ ABLEHNUNGEN = (
     "auslegung_passt_nicht",
     "fuehrende_box_misst_nicht",
     "vorgabe_signal_nicht_an_jeder_box",
+    "mitsteuernde_box_misst_nicht",
 )
 DOKUMENT_URTEILE = ("angenommen", "abgelehnt")
 DOKUMENT_ABLEHNUNGEN = ("fremde_anlage", "box_fehlt_im_dokument", "revision_aelter", "summe_ueber_verteilbar")

@@ -1,0 +1,350 @@
+{
+  "_comment": [
+    "Die Regeln des VERBUND-OBJEKTS einer Gemeinsamen Steuerung (UEMS AP-15 IP-4; Vertrag steuerungsverbund.md §5).",
+    "Leser: services/api uems/SteuerungsverbundRegelnVectorsTest (Java, rein) — eine eigene Datei, weil nur die api diese Regeln rechnet; die Anteile (G2–G5) bleiben in verbund-anteil-vectors.json mit ihren drei Zwillingen.",
+    "Urteile sind Wörter aus vokabulare.ablehnung in verbund-anteil-vectors.json, in dessen Reihenfolge; je Wort in der Reihenfolge der Mitglieder.",
+    "\"fehler\": true = Eingabefehler, kein Urteil: was die Datenbank strukturell ausschließt (V20260921140000) — zwei führende Boxen, `liest` als Mitglied, eine Box oder ein Messpunkt doppelt, zwei Netzanschlüsse (W3).",
+    "Kennungen der Referenzwelt (Ahrenberg 1.5): Fälle mit `quelle` prüfen Mitglieder, Heimat und Anlage der Datenquellen gegen uems-referenzunternehmen.json; `hinweis: konstruiert` ist keine Tatsache der Referenzwelt."
+  ],
+  "schema_version": "1.0",
+  "herkunft": "UEMS AP-15 §3.2, §3.3, §4.2 (T1, T2, T6), §4.3 (G2, G3), §4.4 (B1, B3), §6.1, §8 IP-4; Fälle R20, R21; Kasten W3; Entscheid 21.09.2026.",
+  "regeln_kurz": [
+    "T1: Mitglied kann nur eine Box sein, deren Heimat die Anlage des Verbunds ist — sonst box_nicht_in_anlage (je Box).",
+    "T2/W3: die Anlage hängt an genau einem Netzanschluss; keiner = kein_netzanschluss, mehrere = Eingabefehler (gekuppelter Fall außerhalb des Umfangs).",
+    "Genau eine führt: keine führende Box = fuehrende_box_misst_nicht; zwei = Eingabefehler (die Datenbank hält höchstens eine).",
+    "B1: der Messpunkt der führenden Box ist eine Datenquelle DIESER Anlage und wird von ihr gelesen — sonst fuehrende_box_misst_nicht.",
+    "B3: hat eine mitsteuernde Box einen Messpunkt, ist er eine Datenquelle DIESER Anlage und wird von ihr gelesen — sonst mitsteuernde_box_misst_nicht; ohne Messpunkt gilt die Summe ihrer Geräteleistungen.",
+    "G2/G3: je übergebener Richtung rechnet SteuerungsverbundAnteile.anteile mit genau den Mitgliedern dieses Verbunds; jedes Urteil außer passt = auslegung_passt_nicht (mit Richtung).",
+    "T6: Mitglied ist nur, wer Heimat in der Anlage UND die Rolle fuehrt oder steuert_mit hat; Lesen — auch über die Systemgrenze — macht kein Mitglied."
+  ],
+  "verbund_pruefen": [
+    {
+      "name": "V-1 am 24.05.2027 (S3 anteile_aktiv): E-1 führt an DQ-2, E-4 steuert an DQ-10 mit — zulässig",
+      "stichtag": "2027-05-24T00:00:00+02:00",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-4"}
+      ],
+      "auslegung": {
+        "einspeisung": {"grenze_kw": 100, "vorbehalt_kw": 0,
+          "je_box": {"E-1": {"nenn_kw": 100, "rueckfall_kw": 40}, "E-4": {"nenn_kw": 60, "rueckfall_kw": 60}}},
+        "bezug": {"grenze_kw": 550, "vorbehalt_kw": 473.0,
+          "je_box": {"E-1": {"nenn_kw": 100, "rueckfall_kw": 0}, "E-4": {"nenn_kw": 132, "rueckfall_kw": 24.6}}}
+      },
+      "erwartet": {"befunde": []},
+      "quelle": {"verbund": "/gemeinsame_steuerungen/0", "auslegung": "verbund-anteil-vectors.json anteile R1 (Einspeisung) und R1/R3 (Bezug)"}
+    },
+    {
+      "name": "V-1 nach dem Box-Tausch am 12.10.2027 (R17): E-4′ übernimmt DQ-10 — zulässig",
+      "stichtag": "2027-10-12T00:00:00+02:00",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4′", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-4′"}
+      ],
+      "erwartet": {"befunde": []},
+      "quelle": {"verbund": "/gemeinsame_steuerungen/0"}
+    },
+    {
+      "name": "R20 Box Halle 2 (neu) soll in die Gemeinsame Steuerung von AN-1 — box_nicht_in_anlage",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"},
+          {"box": "E-2′", "heimat": "AN-2", "rolle": "steuert_mit", "messpunkt": null}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-4"}
+      ],
+      "erwartet": {"befunde": [{"ablehnung": "box_nicht_in_anlage", "box": "E-2′"}]},
+      "quelle": {"boxen": "/boxen (heimat_anlage)"}
+    },
+    {
+      "name": "T2 ohne gebundenen Netzanschluss — kein_netzanschluss",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": [],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"}],
+      "erwartet": {"befunde": [{"ablehnung": "kein_netzanschluss"}]}
+    },
+    {
+      "name": "W3 gekuppelter Fall: zwei Netzanschlüsse an einem System — Eingabefehler",
+      "hinweis": "konstruiert; anlage_netzanschluss_eine_je_anlage schließt ihn aus",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1", "NA-2"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"}],
+      "fehler": true
+    },
+    {
+      "name": "Keine Box führt — fuehrende_box_misst_nicht (ohne Box)",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-4"}],
+      "erwartet": {"befunde": [{"ablehnung": "fuehrende_box_misst_nicht"}]}
+    },
+    {
+      "name": "Zwei Boxen führen — Eingabefehler (die Datenbank hält höchstens eine)",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-10"}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-4"}
+      ],
+      "fehler": true
+    },
+    {
+      "name": "B1 der Netzzähler DQ-2 hat gerade keine zuständige Box — fuehrende_box_misst_nicht",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": null},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-4"}
+      ],
+      "erwartet": {"befunde": [{"ablehnung": "fuehrende_box_misst_nicht", "box": "E-1"}]}
+    },
+    {
+      "name": "B1 der Messpunkt der führenden Box liegt in einer anderen Anlage — fuehrende_box_misst_nicht",
+      "hinweis": "konstruiert; die Datenbank lehnt ihn zusätzlich ab (steuerungsverbund_mitglied_messpunkt_fk)",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-4"}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-4", "anlage": "AN-2", "gelesen_von": "E-1"}],
+      "erwartet": {"befunde": [{"ablehnung": "fuehrende_box_misst_nicht", "box": "E-1"}]}
+    },
+    {
+      "name": "B3 DQ-10 wird von E-1 gelesen statt von E-4 — mitsteuernde_box_misst_nicht",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-1"}
+      ],
+      "erwartet": {"befunde": [{"ablehnung": "mitsteuernde_box_misst_nicht", "box": "E-4"}]}
+    },
+    {
+      "name": "B3 mitsteuernde Box ohne Abgangszähler: die Summe ihrer Geräteleistungen gilt — zulässig",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": null}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"}],
+      "erwartet": {"befunde": []}
+    },
+    {
+      "name": "G2 Bezug mit 510 kW Ungeregeltem: 1,1 × 510 = 561 > 550 — auslegung_passt_nicht (Richtung bezug)",
+      "hinweis": "Variante des Konzepts (Eingang des Falls, kein Zustand der Welt)",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-4"}
+      ],
+      "auslegung": {
+        "einspeisung": {"grenze_kw": 100, "vorbehalt_kw": 0,
+          "je_box": {"E-1": {"nenn_kw": 100, "rueckfall_kw": 40}, "E-4": {"nenn_kw": 60, "rueckfall_kw": 60}}},
+        "bezug": {"grenze_kw": 550, "vorbehalt_kw": 561.0,
+          "je_box": {"E-1": {"nenn_kw": 100, "rueckfall_kw": 0}, "E-4": {"nenn_kw": 132, "rueckfall_kw": 24.6}}}
+      },
+      "erwartet": {"befunde": [{"ablehnung": "auslegung_passt_nicht", "richtung": "bezug"}]}
+    },
+    {
+      "name": "Mehrere Gründe in der Reihenfolge des Vokabulars",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": [],
+        "mitglieder": [
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"},
+          {"box": "E-2′", "heimat": "AN-2", "rolle": "fuehrt", "messpunkt": "DQ-2"}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": null}
+      ],
+      "erwartet": {"befunde": [
+        {"ablehnung": "box_nicht_in_anlage", "box": "E-2′"},
+        {"ablehnung": "kein_netzanschluss"},
+        {"ablehnung": "fuehrende_box_misst_nicht", "box": "E-2′"},
+        {"ablehnung": "mitsteuernde_box_misst_nicht", "box": "E-4"}
+      ]}
+    },
+    {
+      "name": "T6 eine Lese-Box als Mitglied — Eingabefehler",
+      "hinweis": "konstruiert; die Datenbank lehnt `liest` ab (steuerungsverbund_mitglied_rolle_chk)",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "liest", "messpunkt": null}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"}],
+      "fehler": true
+    },
+    {
+      "name": "Box doppelt — Eingabefehler",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-1", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": null}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"}],
+      "fehler": true
+    },
+    {
+      "name": "Kein Doppel-Lesen: zwei Mitglieder am selben Messpunkt — Eingabefehler",
+      "hinweis": "konstruiert; die Datenbank lehnt es ab (steuerungsverbund_mitglied_messpunkt_einmal)",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-2"}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"}],
+      "fehler": true
+    },
+    {
+      "name": "Messpunkt ohne Datenquelle im Stand — Eingabefehler",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"}
+        ]
+      },
+      "quellen": [],
+      "fehler": true
+    },
+    {
+      "name": "Leistung je Box nennt eine Box, die kein Mitglied ist — Eingabefehler",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"}],
+      "auslegung": {
+        "einspeisung": {"grenze_kw": 100, "vorbehalt_kw": 0,
+          "je_box": {"E-1": {"nenn_kw": 100, "rueckfall_kw": 40}, "E-4": {"nenn_kw": 60, "rueckfall_kw": 60}}}
+      },
+      "fehler": true
+    }
+  ],
+  "mitglied": [
+    {
+      "name": "R21 Box Halle 2 (neu) liest DQ-3 aus AN-1 — und wird dadurch kein Mitglied",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-4", "heimat": "AN-1", "rolle": "steuert_mit", "messpunkt": "DQ-10"}
+        ]
+      },
+      "quellen": [
+        {"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"},
+        {"kennung": "DQ-3", "anlage": "AN-1", "gelesen_von": "E-2′"},
+        {"kennung": "DQ-10", "anlage": "AN-1", "gelesen_von": "E-4"}
+      ],
+      "erwartet": {"E-1": true, "E-4": true, "E-2′": false},
+      "quelle": {"fall": "/abnahmefaelle_ap15 R21", "zeitachse": "DQ-3 E-1 → E-2′ → E-1"}
+    },
+    {
+      "name": "T1 vor T6: eine als Mitglied erklärte Box einer anderen Anlage ist nie Mitglied",
+      "hinweis": "konstruiert",
+      "verbund": {
+        "anlage": "AN-1",
+        "netzanschluesse": ["NA-1"],
+        "mitglieder": [
+          {"box": "E-1", "heimat": "AN-1", "rolle": "fuehrt", "messpunkt": "DQ-2"},
+          {"box": "E-2′", "heimat": "AN-2", "rolle": "steuert_mit", "messpunkt": null}
+        ]
+      },
+      "quellen": [{"kennung": "DQ-2", "anlage": "AN-1", "gelesen_von": "E-1"}],
+      "erwartet": {"E-1": true, "E-2′": false}
+    }
+  ]
+}

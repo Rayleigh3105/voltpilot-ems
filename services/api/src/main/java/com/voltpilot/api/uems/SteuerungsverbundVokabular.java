@@ -109,7 +109,7 @@ public final class SteuerungsverbundVokabular {
         }
     }
 
-    /** Ablehnung beim Scharfschalten (T1, T2, T5, I1, G3/E2, B1/W2, G6/Z3); Prüfungen und Routen kommen mit IP-5. */
+    /** Ablehnung beim Scharfschalten (T1, T2, T5, I1, G3/E2, B1/W2, G6/Z3, B3); Regeln des Verbund-Objekts: IP-4, Routen: IP-5. */
     public enum Ablehnung {
         BOX_NICHT_IN_ANLAGE("box_nicht_in_anlage"),
         KEIN_NETZANSCHLUSS("kein_netzanschluss"),
@@ -118,7 +118,9 @@ public final class SteuerungsverbundVokabular {
         NACHWEIS_FEHLT("nachweis_fehlt"),
         AUSLEGUNG_PASST_NICHT("auslegung_passt_nicht"),
         FUEHRENDE_BOX_MISST_NICHT("fuehrende_box_misst_nicht"),
-        VORGABE_SIGNAL_NICHT_AN_JEDER_BOX("vorgabe_signal_nicht_an_jeder_box");
+        VORGABE_SIGNAL_NICHT_AN_JEDER_BOX("vorgabe_signal_nicht_an_jeder_box"),
+        /** B3 (IP-4): der Messpunkt einer mitsteuernden Box ist keine Datenquelle ihrer Anlage oder wird nicht von ihr gelesen. */
+        MITSTEUERNDE_BOX_MISST_NICHT("mitsteuernde_box_misst_nicht");
 
         private final String code;
 
