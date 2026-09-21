@@ -60,6 +60,18 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   (`bezugsdaten_vorlage_bezug`) alle `#lesbar` sind (AP-09 E12); `GET /bezugsdaten/importe` lässt einen Import mit
   einem Ziel außerhalb weg (`RechtPruefung#erlaubt`, dieselbe Prüfung wie das Detail), statt die ganze Liste mit 404
   abzulehnen.
+- **Kostenstelle, Prozess, Protokoll des Unternehmens, Bericht-Betroffenheit** (`vp-uems-zaun-kostenstelle-prozess-protokoll`):
+  - `GET /unternehmen/kostenstellen/{id}`, `…/{id}/energie`, `/unternehmen/prozesse/{id}`: Geltung Unternehmen,
+    `pruefenLesen(RechtZiel.UNTERNEHMEN, …)` in der Route — nur unternehmensweite Rollen, sonst die 404 der unbekannten
+    Kennung. Die Bilanz bekommt den Zaun als `Consumer<UUID>` nach Periode/Version (`UemsKorrekturKaskadeTest` baut
+    `KostenstelleEnergieService` direkt; Bericht und Kaskade lesen ungezäunt).
+  - ⚠ Offen: die LISTEN `/unternehmen/kostenstellen` und `/unternehmen/prozesse` (in `ZAUN_OFFEN`). Die Matrix gibt dem
+    Bearbeiter „Prozess, Kostenstelle zuordnen“ je Standort; ob er dafür die Namen in der Auswahl sieht, ist offen
+    (needs-decision `kostenstelle-auswahl`). Der Zuordnungs-Dialog lädt genau diese Listen.
+  - `GET /unternehmen/aenderungen`: ein Eintrag erscheint nur, wenn sein Objekt `#lesbar` ist (Messstelle, Standort,
+    Gebäude/Bereich, Anlage, Datenquelle über ihre Anlage; Unternehmen nur U-Rollen). Die Seite liest nach, bis sie voll
+    ist; U-Rollen, Bestandskonto und ohne Kontext bekommen die eine Abfrage von bisher. Beweis im Zaun-Test.
+  - `GET /berichte/betroffen?objekt=<Messstelle>` außerhalb = unbekanntes Objekt (Orte, Standorte, Anlagen hält RLS).
 - **`bezugsgroesse`: geschlossen mit PR 1000 (Befund 21.09.2026).** Die Tabelle trägt weiter nur die
   Mandanten-Policy; gezäunt wird in der Anwendungsschicht über die Geltung, mit DERSELBEN Auflösung wie die
   Schreibseite: `RechtPruefung#pruefenLesen` (Einzelroute) und `#lesbar` (Liste), Aktion `messwerte.ansehen`.
@@ -69,8 +81,7 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
     `/{id}/kanalbindung/kanaele`. Interne Leser (`BezugsgroesseService#werte`/`#stammdatum`, `KanalbindungService#liste`,
     `BezugsgroesseRepository#finde`) bleiben ungezäunt — Kennzahl, Import, Berichtigung bedienen keine Anfrage
     nach dieser Kennung. Wer eine neue Leseroute baut, nimmt den `…ImGeltungsbereich`-Einstieg.
-  - `ZugriffZaunApiTest.ZAUN_OFFEN` ist leer und bleibt als Zusicherung stehen; je Geltungsart
-    `BezugsgroesseApiTest#jedeLeserouteZeigtDieBezugsgroesseNurImGeltungsbereich`.
+  - Beweis je Geltungsart: `BezugsgroesseApiTest#jedeLeserouteZeigtDieBezugsgroesseNurImGeltungsbereich`.
 - ⚠ **Summen:** `/overview` und `/earnings` lesen je Anlage des ganzen Kundenbereichs (`ZEIGT_NUR_SICHTBARE`). Die Antwort
   nimmt nur Anlagen aus `sites.findAll()`. Die Teilansicht der Summen ist IP-10.
 - ⚠ Übrige Tabellen mit `site_id` (Konfiguration, Verbraucher, Ladepunkte, `ort_zuordnung` …) sind nur über ihre
@@ -113,14 +124,14 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
 | Korrektur, Ersatzwert-Lücken (2) | Standort jeder Reihe/Quelle | PR 998 |
 | Bezugsgröße (5), Import (2), Ablesung (1), Kennzahl (5) | `RechtPruefung`/`sicht` | `zugriff/RechtPruefung.java:550-575`, `uems/KennzahlService.java:484` |
 | Messstelle (13) | `RechtPruefung#pruefenLesen` in der Route | `web/MessstelleController.java` `imZugriff`, `LesewegImZugriffApiTest` |
-| **Kostenstelle (2), Prozess (1)** | **nichts — offen** | `ZAUN_OFFEN` |
+| Kostenstelle (2), Prozess (1) | `RechtPruefung#pruefenLesen` (Geltung Unternehmen) in der Route | `web/KostenstelleProzessController.java`, `web/KostenstelleEnergieController.java` |
 | Unterstützung, Komponenten-Vorlage, Enrollment (3) | kein Standortbezug (Recht + Mandant, globaler Katalog, öffentlich) | — |
 
-- **Offen (7 Muster in `ZAUN_OFFEN`, jedes gemessen):** Kostenstelle `/{id}`, `/{id}/energie`, Prozess `/{id}`; die
-  Listen `/unternehmen/kostenstellen`, `/unternehmen/prozesse`, `/unternehmen/aenderungen`; `/berichte/betroffen?objekt=`
-  (Existenz). Kostenstelle/Prozess haben Geltung Unternehmen: nach R-A1 nur unternehmensweite Rollen. Die 14 Muster der
-  Messstelle und `/bezugsdaten/vorlagen` (22 bei der Inventur) sind geschlossen mit
-  `vp-uems-zaun-messstelle-vorlagen-lesen`.
+- **Offen (2 Muster in `ZAUN_OFFEN`, jedes gemessen):** die Listen `/unternehmen/kostenstellen` und
+  `/unternehmen/prozesse` (Entscheid zur Auswahl offen, siehe oben). Von den 22 der Inventur sind geschlossen: 14 der
+  Messstelle und `/bezugsdaten/vorlagen` (`vp-uems-zaun-messstelle-vorlagen-lesen`), Kostenstelle `/{id}`,
+  `/{id}/energie`, Prozess `/{id}`, `/unternehmen/aenderungen`, `/berichte/betroffen`
+  (`vp-uems-zaun-kostenstelle-prozess-protokoll`).
 - **Messform:** erste Kennung = Objekt der Bühne (`behaelter`), Bearbeiter hier sieht es (sonst Kundenadministrator),
   Bearbeiter anderswo = Status und Körper der unbekannten Kennung. Zwei gleiche Ablehnungen sind „ohne Aussage“, zwei
   verschiedene ein Loch (Existenz). Listen: anderswo fehlt das Objekt.
