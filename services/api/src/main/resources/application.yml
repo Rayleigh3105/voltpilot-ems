@@ -561,6 +561,13 @@ voltpilot:
     zeilentexte:
       enabled: ${VOLTPILOT_UEMS_ZEILENTEXTE_ENABLED:true}
       cron: ${VOLTPILOT_UEMS_ZEILENTEXTE_CRON:0 17 3 * * *}
+    # Grenzblatt-Anstoss (AP-15 IP-3 Folgepaket): stuendlich je Anlage mit Ladepark-Rahmen den heute
+    # wirksamen Bezug gegen den zuletzt zugestellten vergleichen und nur bei einem Unterschied das
+    # Ladepark-Dokument neu zustellen (Fassung/Bindung am Tageswechsel, Nachholen nach Ausfall).
+    # Vorgabe AN, im Testlauf AUS (surefire); wer ihn prueft, ruft LadeparkGrenzeLaeufer.lauf() selbst.
+    ladepark-grenze:
+      enabled: ${VOLTPILOT_UEMS_LADEPARK_GRENZE_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_LADEPARK_GRENZE_CRON:0 1 * * * *}
     # AP-06 IP-14: additive data_sources[] heartbeat block -> latest state per
     # (box, data source). Production default ON; Surefire turns the broker
     # listener off globally and parser tests call it directly.
