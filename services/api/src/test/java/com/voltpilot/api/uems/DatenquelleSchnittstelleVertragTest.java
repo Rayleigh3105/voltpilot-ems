@@ -106,6 +106,7 @@ class DatenquelleSchnittstelleVertragTest {
                 Map.entry("DatenquelleProtokoll", DatenquelleDto.Protokoll.class),
                 Map.entry("DatenquelleVorschlagKomponente", DatenquelleDto.VorschlagKomponente.class),
                 Map.entry("DatenquelleVorschlag", DatenquelleDto.Vorschlag.class),
+                Map.entry("DatenquelleVorschlagZiel", DatenquelleDto.VorschlagZiel.class),
                 Map.entry("DatenquelleAusgelassen", DatenquelleDto.Ausgelassen.class),
                 Map.entry("DatenquelleVorschlagsliste", DatenquelleDto.Vorschlagsliste.class),
                 Map.entry("DatenquelleBestaetigt", DatenquelleDto.Bestaetigt.class),

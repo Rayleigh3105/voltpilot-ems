@@ -9,6 +9,8 @@ import type {
   MessstelleVorschlagsliste,
   MessstelleVorschlagUebernehmen,
   StandorteAmStichtag,
+  UemsDatenquelleBestaetigt,
+  UemsDatenquelleVorschlagsliste,
 } from '../src/api';
 import {
   ahrenbergFunktionen,
@@ -65,6 +67,49 @@ interface Cloud {
   wagoFaehig?: boolean;
   wagoProbeCount?: number;
   wagoKomponenten?: Array<{ id: string; definitionVersion: number; label: string }>;
+  /** Schritt 2: die Datenquellen-Vorschlagsliste je Anlage (sonst leer) und was bestätigt wurde. */
+  dqVorschlag?: Record<string, UemsDatenquelleVorschlagsliste>;
+  dqUebernahmen?: { anlage: string; vorschlaege: UemsDatenquelleBestaetigt[] }[];
+  /** Die erste Bestätigung trifft auf eine inzwischen geänderte Liste (409 `vorschlag_geaendert`). */
+  dqGeaendertEinmal?: boolean;
+}
+
+const DQ_LEER: UemsDatenquelleVorschlagsliste = { fuehrende_box: null, fuehrung: 'keine_box', vorschlaege: [], ausgelassen: [] };
+
+/** Halle 1: ein freier Vorschlag (zwei Zähler am Gateway), dazu die zwei Komponenten des Claims ohne Adresse. */
+function dqHalle1(): UemsDatenquelleVorschlagsliste {
+  const box = { id: C1_IDS.boxHalle1, name: 'Box Halle 1', heimat_anlage: FIXTURE_IDS.an1 };
+  const ohne = 'Für diese Komponente kennt VoltPilot keine eindeutige Adresse, unter der eine Box sie liest — sie bekommt keine Datenquelle';
+  return {
+    fuehrende_box: box, fuehrung: 'einzige',
+    vorschlaege: [{
+      kennzeichen: 'DQ-5', box, protokoll: 'modbus_tcp', adresse: '192.168.10.20:502', geraete_ids: [1], kadenz_s: 60,
+      steuerquelle: false, ab: '2026-10-01T06:00:00Z',
+      komponenten: [{ id: 'c0000000-0000-4000-8000-0000000000a5', name: 'Zähler Druckluft', art: 'modbus-generic' },
+        { id: 'c0000000-0000-4000-8000-0000000000a6', name: 'Zähler Spritzguss', art: 'modbus-generic' }],
+      grund: null, text: 'Ab 01.10.2026 08:00 liest Box Halle 1', ziel: null,
+    }],
+    ausgelassen: [
+      { komponente: { id: 'c0000000-0000-4000-8000-0000000000b1', name: null, art: 'grid-meter' }, grund: 'keine_adresse', protokoll: null, anker: null, text: ohne },
+      { komponente: { id: 'c0000000-0000-4000-8000-0000000000b2', name: null, art: 'house-load' }, grund: 'keine_adresse', protokoll: null, anker: null, text: ohne },
+    ],
+  };
+}
+
+/** Halle 2: die Adresse trägt schon die von Hand angelegte DQ-4 — „Zu DQ-4 hinzufügen“. */
+function dqHalle2(): UemsDatenquelleVorschlagsliste {
+  const box = { id: C1_IDS.boxHalle2, name: 'Box Halle 2', heimat_anlage: FIXTURE_IDS.an2 };
+  return {
+    fuehrende_box: box, fuehrung: 'einzige',
+    vorschlaege: [{
+      kennzeichen: 'DQ-6', box, protokoll: 'modbus_tcp', adresse: '192.168.20.10:502', geraete_ids: [1], kadenz_s: 60,
+      steuerquelle: false, ab: '2026-10-01T06:00:00Z',
+      komponenten: [{ id: 'c0000000-0000-4000-8000-0000000000c1', name: 'Zähler Halle 2', art: 'modbus-generic' }],
+      grund: 'adresse_an_box_vergeben', text: 'Diese Adresse liest Box Halle 2 bereits als DQ-4 — Gerät dort hinzufügen?',
+      ziel: { id: 'd0000000-0000-4000-8000-000000000004', kennzeichen: 'DQ-4', name: 'WAGO-Steuerung Halle 2' },
+    }],
+    ausgelassen: [],
+  };
 }
 
 const ohneMessen = (): Cloud => ({
@@ -174,6 +219,26 @@ async function verdrahte(page: Page, cloud: Cloud) {
     if (/^\/api\/v1\/geraete\/[^/]+\/wago$/.test(pfad) && methode === 'PUT' && cloud.wagoFaehig) return json(r.request().postDataJSON());
     if (/^\/api\/v1\/geraete\/[^/]+\/einstellungen$/.test(pfad) && methode === 'POST' && cloud.wagoFaehig) return json({ fassung: {}, beendet: null, folgen: [], messstellen: [] }, 201);
     if (pfad === '/api/v1/component-templates') return json([]);
+    const dqv = /^\/api\/v1\/sites\/([^/]+)\/data-sources\/vorschlag(\/uebernehmen)?$/.exec(pfad);
+    if (dqv) {
+      const liste = cloud.dqVorschlag?.[dqv[1]] ?? DQ_LEER;
+      if (!dqv[2] && methode === 'GET') return json(liste);
+      if (dqv[2] && methode === 'POST') {
+        const { vorschlaege } = r.request().postDataJSON() as { vorschlaege: UemsDatenquelleBestaetigt[] };
+        (cloud.dqUebernahmen ??= []).push({ anlage: dqv[1], vorschlaege });
+        if (cloud.dqGeaendertEinmal) {
+          cloud.dqGeaendertEinmal = false;
+          return json({ code: 'vorschlag_geaendert', message: 'Dieser Vorschlag hat sich inzwischen geändert — bitte die Vorschlagsliste neu laden' }, 409);
+        }
+        const bestaetigt = liste.vorschlaege.filter((v) => vorschlaege.some((b) => b.device_id === v.box.id && b.adresse === v.adresse));
+        cloud.dqVorschlag = { ...cloud.dqVorschlag, [dqv[1]]: { ...liste, vorschlaege: liste.vorschlaege.filter((v) => !bestaetigt.includes(v)) } };
+        const angehaengt = vorschlaege.filter((b) => b.datenquelle_id).length;
+        return json({
+          neu: vorschlaege.length - angehaengt, unveraendert: 0, angehaengt,
+          datenquellen: bestaetigt.map((v) => ({ id: v.ziel?.id ?? 'd0000000-0000-4000-8000-000000000005', kennzeichen: v.ziel?.kennzeichen ?? v.kennzeichen })),
+        });
+      }
+    }
     const quelle = /^\/api\/v1\/sites\/([^/]+)\/data-sources(?:\/([^/]+))?(?:\/(reachability-check|assignments))?$/.exec(pfad);
     if (quelle) {
       const body = methode === 'GET' ? {} : r.request().postDataJSON() as Record<string, unknown>;
@@ -462,6 +527,66 @@ for (const breite of BREITEN) {
       await messeUndFotografiere(page, breite, 'wago-komponenten');
       await page.getByRole('button', { name: breite < 720 ? 'Zu den Messstellen' : 'Zur Messstellen-Vorschlagsliste', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Was bedeutet jeder Messkanal?' })).toBeVisible();
+    });
+
+    test('Schritt 2 zeigt die Vorschlagsliste und sendet vorschlag/uebernehmen', async ({ page }) => {
+      const cloud: Cloud = {
+        standorte: ahrenbergHeute(),
+        funktionen: ahrenbergFunktionen({
+          standorte: [funktionMessenEntwurf(funktionWerkAhrenberg('bestand')), funktionWerkLindach('bestand')],
+        }),
+        dqVorschlag: { [FIXTURE_IDS.an1]: dqHalle1(), [FIXTURE_IDS.an2]: dqHalle2() },
+        dqGeaendertEinmal: true,
+      };
+      await verdrahte(page, cloud);
+      await oeffne(page, breite, `?standort=${FIXTURE_IDS.st1}`);
+      await schritt2(page);
+      const halle1 = page.locator(`[data-testid="dq-vorschlag"][data-anlage="${FIXTURE_IDS.an1}"]`);
+      const halle2 = page.locator(`[data-testid="dq-vorschlag"][data-anlage="${FIXTURE_IDS.an2}"]`);
+      // Nichts ändert sich vor der Bestätigung: die Liste ist gelesen, nichts gesendet.
+      await expect(halle1.getByText('Box Halle 1 · Modbus TCP · 192.168.10.20:502 (Geräte-ID 1)')).toBeVisible();
+      await expect(halle1.getByText('Dahinter: Zähler Druckluft, Zähler Spritzguss')).toBeVisible();
+      await expect(halle1.getByText('Ab 01.10.2026 08:00 liest Box Halle 1')).toBeVisible();
+      // Die Komponenten des Claims ohne Adresse: eingeklappt, mit Namen und Grund.
+      await expect(halle1.getByText('Ohne Datenquelle (2)')).toBeVisible();
+      await expect(halle1.getByText(/^Netzanschlusszähler: /)).toBeHidden();
+      await expect(halle2.getByText('Diese Adresse liest Box Halle 2 bereits als DQ-4 — Gerät dort hinzufügen?')).toBeVisible();
+      await expect(halle2.getByRole('button', { name: 'Datenquellen übernehmen für Werk Ahrenberg – Halle 2' })).toHaveCount(0);
+      expect(cloud.dqUebernahmen ?? []).toEqual([]);
+      await messeUndFotografiere(page, breite, 'dq-vorschlag');
+
+      // Übernehmen: genau die gezeigte Zeile; die erste Antwort ist 409 → Liste neu mit Hinweis, dann gelingt es.
+      const uebernehmen = page.getByRole('button', { name: 'Datenquellen übernehmen für Werk Ahrenberg – Halle 1', exact: true });
+      await uebernehmen.click();
+      await expect(halle1.getByText(/Die Vorschläge haben sich inzwischen geändert/)).toBeVisible();
+      await uebernehmen.click();
+      await expect(halle1.getByText('Datenquelle DQ-5 angelegt.')).toBeVisible();
+      await expect(halle1.getByTestId('dq-vorschlag-leer')).toBeVisible();
+      const gezeigt = {
+        device_id: C1_IDS.boxHalle1, protokoll: 'modbus_tcp', adresse: '192.168.10.20:502',
+        komponenten: ['c0000000-0000-4000-8000-0000000000a5', 'c0000000-0000-4000-8000-0000000000a6'],
+      };
+      expect(cloud.dqUebernahmen).toEqual([
+        { anlage: FIXTURE_IDS.an1, vorschlaege: [gezeigt] },
+        { anlage: FIXTURE_IDS.an1, vorschlaege: [gezeigt] },
+      ]);
+      await halle1.getByText('Ohne Datenquelle (2)').click();
+      await expect(halle1.getByText(/^Netzanschlusszähler: /)).toBeVisible();
+      await halle1.scrollIntoViewIfNeeded();
+      await messeUndFotografiere(page, breite, 'dq-uebernommen');
+
+      // Quelle schon von Hand angelegt: „Zu DQ-4 hinzufügen“ hängt die Geräte an die vorhandene Quelle.
+      await halle2.scrollIntoViewIfNeeded();
+      await messeUndFotografiere(page, breite, 'dq-schon-angelegt');
+      await halle2.getByRole('button', { name: 'Zu DQ-4 hinzufügen', exact: true }).click();
+      await expect(halle2.getByText('Die Geräte gehören jetzt zu DQ-4.')).toBeVisible();
+      expect(cloud.dqUebernahmen?.at(-1)).toEqual({
+        anlage: FIXTURE_IDS.an2,
+        vorschlaege: [{ device_id: C1_IDS.boxHalle2, protokoll: 'modbus_tcp', adresse: '192.168.20.10:502',
+          komponenten: ['c0000000-0000-4000-8000-0000000000c1'], datenquelle_id: 'd0000000-0000-4000-8000-000000000004' }],
+      });
+      await halle2.scrollIntoViewIfNeeded();
+      await messeUndFotografiere(page, breite, 'dq-hinzugefuegt');
     });
 
     test('ohne Standort legt Schritt 1 ihn im Standort-Dialog aus AP-02 an', async ({ page }) => {

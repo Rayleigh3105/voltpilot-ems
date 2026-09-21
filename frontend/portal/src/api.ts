@@ -6872,6 +6872,69 @@ export interface UemsDatenquellenListe {
   datenquellen: UemsDatenquelle[];
 }
 
+// ---- Datenquellen-Vorschlag (AP-06 IP-4, Vertrag §8): GET/POST …/data-sources/vorschlag[/uebernehmen] ----
+// Erster Aufrufer ist Schritt 2 des Messen-Assistenten (`DatenquelleVorschlagListe`); der
+// Übernahme-Assistent für Bestandskunden nutzt dieselbe Liste. Das GET schreibt nichts.
+
+/** Eine Komponente hinter einem Vorschlag: `name` ist `null`, wenn der Kunde keinen vergeben hat. */
+export interface UemsVorschlagKomponente {
+  id: string;
+  name: string | null;
+  art: string | null;
+}
+
+/**
+ * Ein Vorschlag: EINE Quelle, die `box` ab `ab` liest. `grund` ist `null`, wenn er übernommen
+ * werden kann, sonst der Vertragsgrund (`adresse_an_box_vergeben`); `text` ist der Satz dazu.
+ * `ziel` nennt dann die vorhandene Quelle, an die „Hinzufügen“ die Komponenten hängt.
+ */
+export interface UemsDatenquelleVorschlag {
+  kennzeichen: string;
+  box: UemsDatenquelleBox;
+  protokoll: string;
+  adresse: string;
+  geraete_ids: number[];
+  kadenz_s: number | null;
+  steuerquelle: boolean;
+  ab: string;
+  komponenten: UemsVorschlagKomponente[];
+  grund: string | null;
+  text: string;
+  ziel?: { id: string; kennzeichen: string; name: string | null } | null;
+}
+
+/** Eine Komponente ohne Vorschlag — mit Grund und Satz des Vertrags. */
+export interface UemsDatenquelleAusgelassen {
+  komponente: UemsVorschlagKomponente;
+  grund: string;
+  protokoll: string | null;
+  anker: UemsVorschlagKomponente | null;
+  text: string;
+}
+
+export interface UemsDatenquelleVorschlagsliste {
+  fuehrende_box: UemsDatenquelleBox | null;
+  fuehrung: string;
+  vorschlaege: UemsDatenquelleVorschlag[];
+  ausgelassen: UemsDatenquelleAusgelassen[];
+}
+
+/** Ein bestätigter Vorschlag — so, wie die Liste ihn zeigte; `datenquelle_id` = sein `ziel`. */
+export interface UemsDatenquelleBestaetigt {
+  device_id: string;
+  protokoll: string;
+  adresse: string;
+  komponenten: string[];
+  datenquelle_id?: string;
+}
+
+export interface UemsDatenquelleUebernommen {
+  neu: number;
+  unveraendert: number;
+  angehaengt?: number;
+  datenquellen: UemsDatenquelle[];
+}
+
 export interface UemsDatenquelleAnlegen {
   name: string;
   protokoll: string;
@@ -8276,6 +8339,19 @@ export const api = {
     `/api/v1/sites/${siteId}/data-sources/${id}/assignments`,
     { method: 'POST', body: JSON.stringify(body) },
   ),
+
+  /** Die Datenquellen-Vorschlagsliste der Anlage (AP-06 IP-4) — liest nur. */
+  datenquellenVorschlag: (siteId: string) =>
+    request<UemsDatenquelleVorschlagsliste>(`/api/v1/sites/${siteId}/data-sources/vorschlag`),
+
+  /**
+   * Bestätigt Vorschläge genau so, wie die Liste sie zeigte (sonst 409 `vorschlag_geaendert`).
+   * Ein leerer Auftrag ist 400 — der Assistent schickt ihn nie.
+   */
+  datenquellenVorschlagUebernehmen: (siteId: string, vorschlaege: UemsDatenquelleBestaetigt[]) =>
+    request<UemsDatenquelleUebernommen>(`/api/v1/sites/${siteId}/data-sources/vorschlag/uebernehmen`, {
+      method: 'POST', body: JSON.stringify({ vorschlaege }),
+    }),
 
   datenquelleZuweisungZuruecknehmen: (siteId: string, id: string, assignmentId: string) =>
     request<UemsDatenquelle>(

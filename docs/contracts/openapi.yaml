@@ -24082,9 +24082,11 @@ components:
         EINE Quelle, die `box` ab `ab` (dem Reihenbeginn) ohnehin liest. `kennzeichen`
         bekäme sie, wenn alles (oder der Anfang der Liste) bestätigt wird - vergeben wird
         es erst beim Speichern. `grund` null: übernehmbar; sonst der Grund des Vertrags
-        (`adresse_an_box_vergeben`), `text` der Satz dazu.
+        (`adresse_an_box_vergeben`), `text` der Satz dazu. `ziel`: bei
+        `adresse_an_box_vergeben` die EINE vorhandene Quelle derselben Anlage, an die die
+        Bestätigung mit `datenquelle_id` die Komponenten hängt („Gerät dort hinzufügen?“), sonst null.
       required: [kennzeichen, box, protokoll, adresse, geraete_ids, kadenz_s, steuerquelle, ab,
-        komponenten, grund, text]
+        komponenten, grund, text, ziel]
       properties:
         kennzeichen: { type: string, example: DQ-3 }
         box: { $ref: "#/components/schemas/DatenquelleBox" }
@@ -24097,6 +24099,17 @@ components:
         komponenten: { type: array, items: { $ref: "#/components/schemas/DatenquelleVorschlagKomponente" } }
         grund: { type: string, nullable: true, enum: [adresse_an_box_vergeben, null] }
         text: { type: string, example: "Ab 12.03.2024 00:00 liest Box Halle 1" }
+        ziel:
+          allOf: [{ $ref: "#/components/schemas/DatenquelleVorschlagZiel" }]
+          nullable: true
+    DatenquelleVorschlagZiel:
+      type: object
+      description: Die vorhandene Quelle, die einen gesperrten Vorschlag aufnehmen kann (Vertrag §8 „Gerät dort hinzufügen“).
+      required: [id, kennzeichen, name]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: DQ-1 }
+        name: { type: string, nullable: true }
     DatenquelleAusgelassen:
       type: object
       required: [komponente, grund, protokoll, anker, text]
@@ -24128,6 +24141,11 @@ components:
         protokoll: { type: string }
         adresse: { type: string }
         komponenten: { type: array, minItems: 1, items: { type: string, format: uuid } }
+        datenquelle_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Das `ziel` des GET: die Komponenten an diese vorhandene Quelle hängen statt eine neue anzulegen; zeigt das GET es nicht mehr, 409 `vorschlag_geaendert`."
     DatenquelleUebernehmen:
       type: object
       required: [vorschlaege]
@@ -24135,10 +24153,11 @@ components:
         vorschlaege: { type: array, minItems: 1, items: { $ref: "#/components/schemas/DatenquelleBestaetigt" } }
     DatenquelleUebernommen:
       type: object
-      required: [neu, unveraendert, datenquellen]
+      required: [neu, unveraendert, angehaengt, datenquellen]
       properties:
         neu: { type: integer, description: "Angelegte Quellen." }
         unveraendert: { type: integer, description: "Schon übernommene Vorschläge - ein zweiter Aufruf legt nichts an." }
+        angehaengt: { type: integer, description: "Vorschläge, deren Komponenten an eine vorhandene Quelle gehängt wurden (`datenquelle_id`)." }
         datenquellen: { type: array, items: { $ref: "#/components/schemas/Datenquelle" }, description: "In der Reihenfolge der Anfrage." }
     DatenquelleFehler:
       type: object

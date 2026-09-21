@@ -276,6 +276,15 @@ Protokoll-Eintrag `aus_bestand_uebernommen` (`gilt_ab` = Reihenbeginn — die ei
 Bestätigt wird nur, was gezeigt wurde (Box, Protokoll, Adresse, Komponenten; sonst 409
 `vorschlag_geaendert`); hat eine Komponente inzwischen auf anderem Weg eine Quelle, 409
 `komponente_hat_quelle`; ein schon übernommener Vorschlag zählt als unverändert.
+**Gerät dort hinzufügen:** trägt ein Vorschlag `adresse_an_box_vergeben` und hat an seiner Box
+genau EINE Quelle derselben Anlage unter demselben Weg eine nicht beendete Zuständigkeit (nicht archiviert, mit allen
+Geräte-IDs des Vorschlags, Steuerquelle, wenn er es ist), nennt das GET sie als `ziel`
+(`id`, `kennzeichen`, `name`, sonst `null`). Bestätigt der Kunde den Vorschlag mit
+`datenquelle_id` = dieses Ziel, hängt `uebernehmen` die Komponenten an die vorhandene Quelle
+(`measurement_point`/`geraet.data_source_id`, Protokoll `aus_bestand_uebernommen` mit
+`angehaengt: true`, `gilt_ab` = jetzt) — keine neue Quelle, keine neue Zuständigkeit, nichts
+rückwirkend; die Antwort zählt sie als `angehaengt`. Zeigt das GET dieses Ziel nicht mehr: 409
+`vorschlag_geaendert`. Ohne `datenquelle_id` bleibt der gesperrte Vorschlag 409.
 
 **Vom Transport zum Protokoll** (`BestandAnschluss`, nur Cloud — die Box kennt keine Quelle, bevor
 IP-6 sie ihr zustellt): gelesen wird `measurement_point.communication` + `connection_json`, so, wie
