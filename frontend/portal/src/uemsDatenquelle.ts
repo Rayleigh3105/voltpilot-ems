@@ -20,6 +20,7 @@
  */
 import { VORGABE_ZEITZONE, teile } from './uemsZustand';
 import type { DatenquelleBudgetFehler } from './api';
+import { WECHSEL_NUR_ALS_AENDERUNG } from './uemsGemeinsameSteuerung';
 
 // ───────────────────────────────────────────────────────────────────── Vokabular
 
@@ -250,7 +251,37 @@ export const TEXTE = {
   software_unbekannt: 'Software-Stand unbekannt',
   alle_faehigkeiten: 'alle Fähigkeiten',
   update_noetig: 'Update nötig für: {liste}',
+  gemeinsame_steuerung_aendern: WECHSEL_NUR_ALS_AENDERUNG,
 } as const;
+
+// ─────────────────────────────────────────── Gemeinsame Steuerung (AP-15 T6, IP-26)
+
+/**
+ * Wohin ein Wechsel der zuständigen Box führt, VOR der Prüfreihenfolge (Familie
+ * `gemeinsame_steuerung`). Kein Grund des Vokabulars: die Schnittstelle antwortet mit ihrem Code
+ * `gemeinsame_steuerung_aendern` (409).
+ */
+export const WECHSEL_WEGE = ['zustaendigkeitswechsel', 'gemeinsame_steuerung_aendern'] as const;
+export type WechselWeg = (typeof WECHSEL_WEGE)[number];
+
+/** Die Zustände aus `GET …/gemeinsame-steuerung`, in denen eine Gemeinsame Steuerung Mitglieder trägt. */
+const EINGERICHTET = new Set(['erklaert', 'beobachtet', 'geprueft', 'anteile_aktiv', 'angehalten']);
+
+/**
+ * T6: in einer Anlage MIT eingerichteter Gemeinsamer Steuerung wechselt eine Steuerquelle ihre Box
+ * nur über „Gemeinsame Steuerung ändern“ (IP-26), ebenso jede Quelle, die sie trägt, solange die
+ * Anteile in Kraft sind (`nurAlsAenderung`, IP-8). Ohne, nach dem Auflösen und für jede andere
+ * Quelle entscheidet die Prüfreihenfolge wie bisher (I6).
+ */
+export function wegDesWechsels(steuerquelle: boolean, zustand: string | null, nurAlsAenderung: boolean): WechselWeg {
+  if (zustand === null || !EINGERICHTET.has(zustand)) return 'zustaendigkeitswechsel';
+  return steuerquelle || nurAlsAenderung ? 'gemeinsame_steuerung_aendern' : 'zustaendigkeitswechsel';
+}
+
+/** Der Satz zu `gemeinsame_steuerung_aendern`: Grund und Weg (Muster AP-03). */
+export function gemeinsameSteuerungAendern(kennzeichen: string): string {
+  return fuelle(TEXTE.gemeinsame_steuerung_aendern, { kennzeichen });
+}
 
 /**
  * Warum eine vorhandene Komponente in der Vorschlagsliste der Bestands-Übernahme KEINE Quelle

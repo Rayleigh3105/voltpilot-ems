@@ -27,6 +27,7 @@ import com.voltpilot.api.uems.DatenquelleRegeln.TabellenEintrag;
 import com.voltpilot.api.uems.DatenquelleRegeln.TauschErgebnis;
 import com.voltpilot.api.uems.DatenquelleRegeln.Vorschlag;
 import com.voltpilot.api.uems.DatenquelleRegeln.Vorschlagsliste;
+import com.voltpilot.api.uems.DatenquelleRegeln.WechselWeg;
 import com.voltpilot.api.uems.DatenquelleRegeln.Zeitraum;
 import com.voltpilot.api.uems.DatenquelleRegeln.ZeitraumErgebnis;
 import java.nio.file.Files;
@@ -334,6 +335,28 @@ class DatenquelleRegelnVectorsTest {
                     text(a.get("anker")), a.path("text").asText())));
             assertThat(ist.vorschlaege()).isEqualTo(soll);
             assertThat(ist.ausgelassen()).isEqualTo(sollAus);
+        });
+    }
+
+    /**
+     * AP-15 T6 (IP-26): vor der Prüfreihenfolge — der Weg eines Wechsels in einer Anlage mit Gemeinsamer Steuerung.
+     * Kein Grund des Vokabulars; der Code ist der der Schnittstelle, der Satz der aus {@code texte}.
+     */
+    @TestFactory
+    List<DynamicTest> gemeinsameSteuerung() throws Exception {
+        return faelle("gemeinsame_steuerung", c -> {
+            JsonNode in = c.path("input");
+            JsonNode q = in.path("quellen").get(0);
+            JsonNode gs = in.path("gemeinsame_steuerung");
+            WechselWeg ist = DatenquelleRegeln.wegDesWechsels(q.path("steuerquelle").asBoolean(),
+                    gs.isNull() ? null : gs.path("zustand").asText(), gs.path("nur_als_aenderung").asBoolean());
+            JsonNode exp = c.path("expected");
+            assertThat(ist.code()).isEqualTo(exp.path("weg").asText());
+            boolean aendern = ist == WechselWeg.GEMEINSAME_STEUERUNG_AENDERN;
+            assertThat(aendern ? DatenquelleAbgelehnt.Schnittstelle.GEMEINSAME_STEUERUNG_AENDERN.code() : null)
+                    .isEqualTo(text(exp.get("code")));
+            assertThat(aendern ? DatenquelleRegeln.gemeinsameSteuerungAendern(q.path("kennzeichen").asText()) : null)
+                    .isEqualTo(text(exp.get("text")));
         });
     }
 

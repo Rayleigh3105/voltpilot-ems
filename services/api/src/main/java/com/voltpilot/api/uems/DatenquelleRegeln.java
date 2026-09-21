@@ -184,6 +184,58 @@ public final class DatenquelleRegeln {
     public static final List<Grund> PRUEFREIHENFOLGE_TAUSCH =
             List.of(Grund.KEINE_VOLLE_MINUTE, Grund.RUECKWIRKEND);
 
+    // ------------------------------------------- Gemeinsame Steuerung (AP-15 T6, IP-26)
+
+    /**
+     * Wohin ein Wechsel der zuständigen Box führt, VOR der Prüfreihenfolge des Antrags (Familie
+     * {@code gemeinsame_steuerung}). Kein Grund des Vokabulars: ob eine Anlage eine Gemeinsame Steuerung hat, ist ein
+     * Fakt des Vertrags {@code steuerungsverbund.md}, nicht der Datenquelle — die Schnittstelle antwortet mit ihrem
+     * Code {@code gemeinsame_steuerung_aendern} (409).
+     */
+    public enum WechselWeg {
+        /** Der Zuständigkeitswechsel, wie er ist: es entscheidet die Prüfreihenfolge — auch {@code steuerquelle}. */
+        ZUSTAENDIGKEITSWECHSEL("zustaendigkeitswechsel"),
+        /** Nur als Änderung der Gemeinsamen Steuerung (anhalten → ändern → prüfen → scharfschalten). */
+        GEMEINSAME_STEUERUNG_AENDERN("gemeinsame_steuerung_aendern");
+
+        private final String code;
+
+        WechselWeg(String code) {
+            this.code = code;
+        }
+
+        public String code() {
+            return code;
+        }
+    }
+
+    /** Die Zustände (GET …/gemeinsame-steuerung), in denen eine Gemeinsame Steuerung Mitglieder trägt. */
+    private static final Set<String> EINGERICHTET =
+            Set.of("erklaert", "beobachtet", "geprueft", "anteile_aktiv", "angehalten");
+
+    /**
+     * T6: in einer Anlage MIT eingerichteter Gemeinsamer Steuerung wechselt eine Steuerquelle ihre Box nur über
+     * „Gemeinsame Steuerung ändern“ (IP-26 — die AP-06-Sperre {@code steuerquelle} „…erst mit der gemeinsamen
+     * Steuerung“ wäre dort eine Sackgasse), ebenso jede Quelle, die sie in einer scharfen oder angehaltenen Anlage
+     * trägt ({@code nurAlsAenderung}, IP-8). Ohne Gemeinsame Steuerung, nach dem Auflösen und für jede andere Quelle
+     * bleibt der Zuständigkeitswechsel, wie er ist (I6).
+     *
+     * @param zustand der Zustand der Gemeinsamen Steuerung der Anlage, {@code null} ohne
+     * @param nurAlsAenderung das Urteil von {@link SteuerungsverbundRegeln#wechseltNurAlsAenderung}
+     */
+    public static WechselWeg wegDesWechsels(boolean steuerquelle, String zustand, boolean nurAlsAenderung) {
+        if (zustand == null || !EINGERICHTET.contains(zustand)) {
+            return WechselWeg.ZUSTAENDIGKEITSWECHSEL;
+        }
+        return steuerquelle || nurAlsAenderung ? WechselWeg.GEMEINSAME_STEUERUNG_AENDERN
+                : WechselWeg.ZUSTAENDIGKEITSWECHSEL;
+    }
+
+    /** Der Satz zu {@link WechselWeg#GEMEINSAME_STEUERUNG_AENDERN}: Grund und Weg (Muster AP-03). */
+    public static String gemeinsameSteuerungAendern(String kennzeichen) {
+        return fuelle(TEXTE.get("gemeinsame_steuerung_aendern"), Map.of("kennzeichen", kennzeichen));
+    }
+
     /** Wer eine Fehlerklasse feststellen kann. */
     public enum Herkunft {
         BOX("box"),
@@ -338,6 +390,8 @@ public final class DatenquelleRegeln {
         t.put("software_unbekannt", "Software-Stand unbekannt");
         t.put("alle_faehigkeiten", "alle Fähigkeiten");
         t.put("update_noetig", "Update nötig für: {liste}");
+        t.put("gemeinsame_steuerung_aendern",
+                "{kennzeichen} gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“");
         return Map.copyOf(t);
     }
 

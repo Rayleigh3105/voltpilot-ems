@@ -65,6 +65,19 @@ export const SAETZE = {
 
 export type SatzSchluessel = keyof typeof SAETZE;
 
+/**
+ * Regel T6 (IP-26): Grund UND Weg, wenn eine Datenquelle ihre Box nur als Änderung der Gemeinsamen
+ * Steuerung wechselt (anhalten → ändern → prüfen → scharfschalten) — in einer Anlage mit
+ * eingerichteter Gemeinsamer Steuerung für jede Steuerquelle, solange die Anteile in Kraft sind
+ * auch für Netzzähler und Messpunkt eines Mitglieds. Kein Satz aus §5.8: derselbe Wortlaut steht
+ * als `texte.gemeinsame_steuerung_aendern` in `data-source-vectors.json` (Java-Zwilling
+ * `DatenquelleRegeln`) und kommt als `message` der 409 `gemeinsame_steuerung_aendern` zurück.
+ * Die Fläche „Gemeinsame Steuerung ändern“ baut IP-23 — bis dahin nennt der Satz den Weg, ohne
+ * auf eine Seite zu verweisen. Platzhalter `{kennzeichen}`: das Kennzeichen der Quelle.
+ */
+export const WECHSEL_NUR_ALS_AENDERUNG =
+  '{kennzeichen} gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“';
+
 /** Die Platzhalter einer Vorlage, in der Reihenfolge ihres ersten Auftretens. */
 export function platzhalter(vorlage: string): string[] {
   return [...new Set([...vorlage.matchAll(/\{([a-z_]+)\}/g)].map((m) => m[1]))];

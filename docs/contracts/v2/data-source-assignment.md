@@ -146,6 +146,26 @@ alte Box darf lesen (E8 = A).
 Das Lesebudget je Box (E6) prüft der Endpunkt danach mit den bestehenden Zwillingen
 `MeasurementBudget.java` / `measurement-planner.js`; es ist nicht Teil dieser Regeln.
 
+### 5.1 Vor der Reihenfolge: Gemeinsame Steuerung (AP-15 T6, IP-8 und IP-26)
+
+Hat die Anlage der Quelle eine eingerichtete Gemeinsame Steuerung (Zustand `erklaert`,
+`beobachtet`, `geprueft`, `anteile_aktiv` oder `angehalten`), wechselt eine **Steuerquelle** ihre
+Box nie als einfacher Zuständigkeitswechsel: Grund 4 („…erst mit der gemeinsamen Steuerung“) wäre
+dort eine Sackgasse, denn die Gemeinsame Steuerung gibt es schon. Der Weg ist „Gemeinsame Steuerung
+ändern“ (anhalten → ändern → prüfen → scharfschalten). Ebenso — solange die Anteile in Kraft sind
+(`anteile_aktiv`, angehalten) — Netzzähler und Messpunkt eines Mitglieds (IP-8,
+`SteuerungsverbundRegeln#wechseltNurAlsAenderung`, Vektoren `zustaendigkeitswechsel` in
+`steuerungsverbund-objekt-vectors.json`). Vor dem Scharfschalten wechseln Netzzähler und Messpunkt
+wie bisher. Die erste Box einer NEUEN Quelle ist kein Wechsel (`anlegen`).
+
+Das ist **kein Grund dieses Vokabulars**: ob eine Anlage eine Gemeinsame Steuerung hat, ist ein Fakt
+von `steuerungsverbund.md`, nicht der Datenquelle. Die Schnittstelle antwortet 409
+`gemeinsame_steuerung_aendern` mit dem Satz `texte.gemeinsame_steuerung_aendern`
+(„{kennzeichen} gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung
+ändern““) und den Fakten `kennzeichen` und `anlage` (deren `GET/PUT …/sites/{anlage}/gemeinsame-steuerung`
+der Weg ist). Ohne Gemeinsame Steuerung und nach dem Auflösen entscheidet die Reihenfolge oben,
+Byte für Byte wie bisher (I6). Familie `gemeinsame_steuerung` der Vektor-Datei.
+
 ## 6. Doppel-Lesen nur als gekennzeichnete Vergleichsquelle (E10 = B)
 
 Gleiche Adresse UND gleiche dokumentierte Netzlage an einer zweiten Box heißt: dasselbe Gerät

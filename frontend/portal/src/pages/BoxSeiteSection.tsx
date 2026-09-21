@@ -12,7 +12,9 @@ import {
   type SiteEntities,
   type SiteSource,
   type UemsDatenquelle,
+  type UemsGemeinsameSteuerungZustand,
 } from '../api';
+import { gemeinsameSteuerungAendern, wegDesWechsels } from '../uemsDatenquelle';
 import type { SiteCharging } from '../ladepunkte';
 import { boxGeraeteListe, boxSeite, GERAETE_HINWEIS, type BoxSeiteView } from '../boxSeite';
 import type { BoxGeraet, Zeile } from '../geraetSeite';
@@ -92,6 +94,7 @@ export function BoxSeiteSection({
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
+  const [gemeinsameSteuerung, setGemeinsameSteuerung] = useState<UemsGemeinsameSteuerungZustand | null>(null);
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminFehler, setAdminFehler] = useState<string | null>(null);
@@ -126,6 +129,7 @@ export function BoxSeiteSection({
     soft(api.edgeVersions().then((antwort) => antwort.eintraege), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
     soft(api.datenquellen(site.id).then((a) => a.datenquellen), setDatenquellen);
+    soft(api.gemeinsameSteuerung(site.id), setGemeinsameSteuerung);
     setNow(Date.now());
     if (showTechnicalLayer() && boxDevice) {
       void Promise.all([
@@ -407,7 +411,9 @@ export function BoxSeiteSection({
                           <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
                           <small>{q.budget}</small>
                           {datenquellen?.find((d) => d.id === q.id)?.steuerquelle ? (
-                            <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>
+                            wegDesWechsels(true, gemeinsameSteuerung?.zustand ?? null, false) === 'gemeinsame_steuerung_aendern'
+                              ? <small data-testid="steuerquelle-weg">{gemeinsameSteuerungAendern(q.kennzeichen)}</small>
+                              : <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>
                           ) : (
                             <Recht aktion="datenquelle.zustaendigkeit"><button type="button" className="vp-box-quellen-aktion"
                               onClick={() => setWechselQuelle(datenquellen?.find((d) => d.id === q.id) ?? null)}>

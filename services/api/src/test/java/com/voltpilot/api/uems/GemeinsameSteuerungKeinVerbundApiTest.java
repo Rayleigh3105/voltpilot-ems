@@ -287,6 +287,46 @@ class GemeinsameSteuerungKeinVerbundApiTest {
     }
 
     /**
+     * IP-26 (T6): in einer Anlage mit eingerichteter Gemeinsamer Steuerung führt der Wechsel der Steuerquelle nicht mehr
+     * auf die AP-06-Sperre {@code steuerquelle} („…erst mit der gemeinsamen Steuerung“ — die gibt es hier schon),
+     * sondern auf „Gemeinsame Steuerung ändern“: schon in S1, wo IP-8 den Netzzähler noch einfach wechseln lässt.
+     * Ohne Gemeinsame Steuerung ist die Antwort Byte für Byte die alte; die erste Box einer NEUEN Steuerquelle ist kein
+     * Wechsel (so entstehen DQ-8/DQ-9 an Box Verwaltung, Ahrenberg 1.5).
+     */
+    @Test
+    void ip26SteuerquelleWechseltInEingerichteterAnlageNurUeberGemeinsameSteuerungAendern() throws Exception {
+        Welt ohne = welt();
+        antwortet(ohne.e4());
+        assertThat(pruefen(ohne, ohne.dq1(), ohne.e4()).status()).isEqualTo(200);
+        Antwort alt = kunde(ohne, post(ohne.quelle(ohne.dq1()) + "/assignments").content(ziel(ohne.e4())));
+        assertThat(alt.status()).isEqualTo(409);
+        assertThat(alt.body().toString()).as("Bestand wortgleich").isEqualTo("{\"code\":\"steuerquelle\","
+                + "\"message\":\"Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Steuerung wechseln\","
+                + "\"urteil\":\"abgelehnt\",\"grund\":\"steuerquelle\","
+                + "\"satz\":\"Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Steuerung wechseln\"}");
+
+        Welt w = welt();
+        einrichten(w);
+        assertThat(stufe(w)).isEqualTo("beobachtet");
+        antwortet(w.e4());
+        assertThat(pruefen(w, w.dq1(), w.e4()).status()).isEqualTo(200);
+        long zeitraeume = zeitraeume(w);
+        long protokoll = protokoll(w);
+        gesperrt(w, w.dq1(), w.e4(), "DQ-1");
+        assertThat(zeitraeume(w)).as("abgelehnt = nichts geschrieben").isEqualTo(zeitraeume);
+        assertThat(protokoll(w)).isEqualTo(protokoll);
+        assertThat(leser(w.dq1())).isEqualTo(w.e1());
+
+        UUID dq8 = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, protokoll, adresse, "
+                + "geraete_ids, steuerquelle, kadenz_s) VALUES (?, ?, 'DQ-8', 'modbus_tcp', '10.0.4.21:502', '{1}', "
+                + "true, 10) RETURNING id", UUID.class, w.mandant(), w.an1());
+        assertThat(pruefen(w, dq8, w.e4()).status()).isEqualTo(200);
+        Antwort neu = kunde(w, post(w.quelle(dq8) + "/assignments").content(ziel(w.e4())));
+        assertThat(neu.status()).as("anlegen ist kein Wechsel: " + neu.body()).isEqualTo(201);
+        assertThat(leser(dq8)).isEqualTo(w.e4());
+    }
+
+    /**
      * Ein zurückgenommener geplanter Wechsel des Netzzählers steht nach seinem Beginn neben dem wieder geöffneten
      * Vorgänger (die Exklusion gilt nur für nicht zurückgenommene). Er liest nie: die Gemeinsame Steuerung sieht weiter
      * E-1 am Netzzähler, und die T6-Sperre urteilt über denselben Leser.
@@ -318,6 +358,8 @@ class GemeinsameSteuerungKeinVerbundApiTest {
         assertThat(a.status()).as(kennzeichen + " " + a.body()).isEqualTo(409);
         assertThat(a.code()).isEqualTo("gemeinsame_steuerung_aendern");
         assertThat(a.body().path("kennzeichen").asText()).isEqualTo(kennzeichen);
+        assertThat(a.body().path("anlage").asText()).as("der Weg: die Gemeinsame Steuerung dieser Anlage")
+                .isEqualTo(w.an1().toString());
         assertThat(a.body().path("message").asText()).isEqualTo(kennzeichen
                 + " gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“");
     }

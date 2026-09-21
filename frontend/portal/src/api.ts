@@ -6881,6 +6881,12 @@ export interface UemsDatenquelleZeitraum {
  * Felder. Das Portal liest heute nur `id`, `kennzeichen` und `zeitraeume`; die übrigen Felder
  * stehen für den nächsten Aufrufer.
  */
+/** `GET …/gemeinsame-steuerung` (AP-15 IP-5) — nur die Felder, die das Portal heute liest. */
+export interface UemsGemeinsameSteuerungZustand {
+  eingerichtet: boolean;
+  zustand: 'nicht_eingerichtet' | 'erklaert' | 'beobachtet' | 'geprueft' | 'anteile_aktiv' | 'angehalten' | 'aufgeloest';
+}
+
 export interface UemsDatenquelle {
   id: string;
   kennzeichen: string;
@@ -8361,6 +8367,14 @@ export const api = {
    */
   datenquellen: (siteId: string) =>
     request<UemsDatenquellenListe>(`/api/v1/sites/${siteId}/data-sources`),
+
+  /**
+   * Die Gemeinsame Steuerung der Anlage (UEMS AP-15 IP-5). Die Box-Seite liest daraus nur den
+   * Zustand: in einer eingerichteten Anlage führt die Sperre `steuerquelle` auf „Gemeinsame
+   * Steuerung ändern“ (IP-26). Ohne Gemeinsame Steuerung `zustand: nicht_eingerichtet`.
+   */
+  gemeinsameSteuerung: (siteId: string) =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung`),
 
   datenquelleAnlegen: (siteId: string, body: UemsDatenquelleAnlegen) =>
     request<UemsDatenquelle>(`/api/v1/sites/${siteId}/data-sources`, {
