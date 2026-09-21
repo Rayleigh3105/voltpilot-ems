@@ -71,8 +71,14 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   `/wert`/`/verlauf` ohne Zahl — je mit `ausserhalb_zugriff`; Bilanz ohne den ganzen Hauptzähler-Block;
   Vorschlag: Zeile unter `ausgelassen` (`grund: ausserhalb_zugriff`, `zu` null), die Übernahme liest dieselbe Liste
   (409 `vorschlag_geaendert`). Portal: der Formel-Dialog sperrt „Übernehmen“ (sonst fielen die Terme weg).
-  Offen: gespeicherte Werte `GET /messstellen/{kennzeichen}/werte` einer berechneten Messstelle, Messkanal-Terme.
-  Wächter: `LesewegImZugriffApiTest.FOLGEPUNKTE_OFFEN` (leer, rot bei neuem Fund).
+  Nachgezogen (`vp-uems-zaun-berechnete-werte`): `…/werte` und `…/werte/versionen` einer berechneten Messstelle
+  ohne Schritte/Versionen mit `ausserhalb_zugriff`, sobald ein Eingang im Zeitraum außerhalb liegt
+  (`MessstelleWerteService.EingaengeImZugriff`, nie ein Schritt-`grund` — interne Leser lesen `grund` als „ohne Zahl“).
+  Eingänge = `MessstelleFormelService#eingaenge`: Messstellen UND Komponenten von Messkanal-Termen (Sicht über
+  RLS `measurement_point`, `#komponenteSichtbar`); gilt auch für Formel/Wert/Verlauf. Gerätekarte
+  `…/komponenten/{id}/summenwerte`: Summenwert außerhalb fehlt, Zahl über Eingang außerhalb mit Hinweis.
+  Offen: Register-`berechnung` über Messkanal-Eingänge (`RegisterBerechnung` kennt nur Messstellen-Eingänge).
+  Wächter: `LesewegImZugriffApiTest.FOLGEPUNKTE_OFFEN` (rot bei neuem und bei geheiltem Fund).
 - **Kostenstelle, Prozess, Protokoll des Unternehmens, Bericht-Betroffenheit** (`vp-uems-zaun-kostenstelle-prozess-protokoll`):
   - `GET /unternehmen/kostenstellen/{id}`, `…/{id}/energie`, `/unternehmen/prozesse/{id}`: Geltung Unternehmen,
     `pruefenLesen(RechtZiel.UNTERNEHMEN, …)` in der Route — nur unternehmensweite Rollen, sonst die 404 der unbekannten

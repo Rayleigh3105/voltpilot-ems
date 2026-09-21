@@ -361,7 +361,7 @@ export function WerteSektion({
             <Skeleton height={148} />
           </div>
         ) : ausserhalb ? (
-          <p className="vp-wk-version" role="status" data-testid="werte-ausserhalb">Die Werte {ausserhalb}.</p>
+          <p className="vp-wk-version" role="status" data-testid="werte-ausserhalb">Die Zahl {ausserhalb}.</p>
         ) : leer ? (
           <WerteLeer leer={leer} weg={weg} onAb={(tag) => waehle(art, wertAm(art, tag))} onQuelleZuordnen={onQuelleZuordnen} />
         ) : (
