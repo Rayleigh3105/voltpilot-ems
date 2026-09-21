@@ -9,11 +9,14 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +35,11 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p><b>Senken</b> erweitert und bleibt ein Vorschlag mit Zahl, Herkunft und Zeitraum; wirksam erst über
  * {@link #freigeben} (Plattform-Rolle, danach Zweischritt). Ein Kundenkonto hat keinen Weg dorthin.
+ *
+ * <p><b>Zwei Takte.</b> {@link #pruefen} ist der Tageslauf über die Bilanz-Tage (alles oben). {@link
+ * #pruefenViertelstunden} ist der Viertelstunden-Takt (IP-13 Folge, R23 „die Cloud prüft nach jeder Viertelstunde“): er
+ * rechnet das Ungeregelte der REIFEN Viertelstunden von gestern und heute mit dem Baustein der Bilanz
+ * ({@link VerbundBilanzService#ausschnitt}) und tut nur eines — erhöhen, auf DEMSELBEN Weg wie der Tageslauf.
  */
 @Service
 public class VorbehaltDienst {
@@ -44,6 +52,10 @@ public class VorbehaltDienst {
     public static final String GRUND_ERHOEHT = "vorbehalt_aus_messwerten_erhoeht";
     public static final String GRUND_FREIGEGEBEN = "vorbehalt_vorschlag_freigegeben";
 
+    /** Welcher Takt geprüft hat — steht in der Herkunft des Protokolls ({@code pruefung}). */
+    static final String PRUEFUNG_TAG = "tag";
+    static final String PRUEFUNG_VIERTELSTUNDE = "viertelstunde";
+
     /** Was ein Lauf für eine Anlage getan hat. */
     public record Lauf(VorbehaltRegel.Urteil urteil, UUID zeile, String anteile) {}
 
@@ -51,14 +63,18 @@ public class VorbehaltDienst {
     private final SteuerungsverbundAnteilRepository vorbehalte;
     private final SteuerungsverbundAnteilDienst anteile;
     private final VorbehaltRepository repo;
+    /** Der Baustein der Bilanz — spät aufgelöst: die Bilanz hängt über {@link GemeinsameSteuerungService} an uns. */
+    private final ObjectProvider<VerbundBilanzService> bilanz;
     private Clock uhr = Clock.systemUTC();
 
     public VorbehaltDienst(SteuerungsverbundRepository verbuende, SteuerungsverbundAnteilRepository vorbehalte,
-            SteuerungsverbundAnteilDienst anteile, VorbehaltRepository repo) {
+            SteuerungsverbundAnteilDienst anteile, VorbehaltRepository repo,
+            ObjectProvider<VerbundBilanzService> bilanz) {
         this.verbuende = verbuende;
         this.vorbehalte = vorbehalte;
         this.anteile = anteile;
         this.repo = repo;
+        this.bilanz = bilanz;
     }
 
     void uhrStellen(Clock clock) {
@@ -89,19 +105,7 @@ public class VorbehaltDienst {
         Optional<VorbehaltRepository.Zeile> offen = repo.offenerVorschlag(v.id());
         switch (u.aktion()) {
             case ERHOEHEN -> {
-                vorbehalte.vorbehaltSetzen(v.id(), vb.kw().get(Grenzart.EINSPEISUNG), u.neuKw(), wer.name());
-                verbuende.protokoll(TenantContext.get(), v.id(), siteId, ART, zahl(alt), herkunft(u),
-                        uhr.instant(), false, GRUND_ERHOEHT, wer);
-                offen.ifPresent(z -> repo.entscheiden(z.id(), VorbehaltRepository.HINFAELLIG, wer.name()));
-                UUID id = repo.anlegen(TenantContext.get(), v.id(), VorbehaltRepository.ERHOEHT,
-                        VorbehaltRepository.WIRKSAM, u, wer.name());
-                String ergebnis = zweischritt(siteId, id, wer);
-                if (SteuerungsverbundAnteilDienst.Grund.AUSLEGUNG_PASST_NICHT.name().toLowerCase(Locale.ROOT)
-                        .equals(ergebnis)) {
-                    log.warn("Vorbehalt der Anlage {} selbsttätig auf {} kW erhöht — die Auslegung passt nicht mehr, "
-                            + "die Boxen halten ihr letztes Dokument", siteId, u.neuKw());
-                }
-                return Optional.of(new Lauf(u, id, ergebnis));
+                return Optional.of(erhoehen(siteId, v, vb, u, offen, wer, PRUEFUNG_TAG));
             }
             case VORSCHLAGEN -> {
                 if (offen.isPresent() && offen.get().neuKw().compareTo(u.neuKw()) == 0
@@ -121,6 +125,68 @@ public class VorbehaltDienst {
                 return Optional.of(new Lauf(u, null, nachholen(siteId, v, alt, wer)));
             }
         }
+    }
+
+    /**
+     * Der Viertelstunden-Takt (IP-13 Folge; A20 „Erkennung nach einer Viertelstunde“, R23 Schritt 2, §5.5 „verengt die
+     * Cloud selbsttätig“): das Ungeregelte der REIFEN Viertelstunden ({@link VorbehaltRegel#reifBis}) von gestern und
+     * heute (Tage der Anlage), je Tag gerechnet mit dem Baustein der Bilanz — eine unvollständige Viertelstunde zählt
+     * nicht (B5), kommt sie später vollständig nach, zählt sie im nächsten Takt. Verlangt der Höchstwert × 1,1 mehr als
+     * den geltenden Vorbehalt, wird erhöht (derselbe Weg wie im Tageslauf); sonst geschieht nichts außer dem Nachholen
+     * eines laufenden Zweischritts der jüngsten Erhöhung. Senken, 30-Tage-Regel und 12-Monats-Sicht bleiben beim
+     * Tageslauf. Leer ohne Gemeinsame Steuerung oder ohne wirksame Mitglieder.
+     */
+    @Transactional
+    public Optional<Lauf> pruefenViertelstunden(UUID siteId, Instant jetzt) {
+        Optional<VerbundZeile> gefunden = verbuende.derAnlage(siteId);
+        if (gefunden.isEmpty() || verbuende.mitglieder(gefunden.get().id(), jetzt).isEmpty()) {
+            return Optional.empty();
+        }
+        VerbundZeile v = gefunden.get();
+        Instant bis = VorbehaltRegel.reifBis(jetzt);
+        LocalDate heute = jetzt.atZone(GemeinsameSteuerungService.ZONE).toLocalDate();
+        List<VorbehaltRegel.Tag> tage = new ArrayList<>();
+        for (LocalDate tag = heute.minusDays(1); !tag.isAfter(heute); tag = tag.plusDays(1)) {
+            Optional<VerbundBilanzService.Ausschnitt> a = bilanz.getObject().ausschnitt(v, tag, bis);
+            if (a.isEmpty()) {
+                continue;
+            }
+            VerbundBilanzRegel.UrteilViertelstunde h = VerbundBilanzRegel.tag(a.get().erwartet(),
+                    a.get().viertelstunden(), a.get().grund()).hoechstes();
+            tage.add(new VorbehaltRegel.Tag(tag, h == null ? null : h.ungeregeltKw(), h == null ? null : h.von()));
+        }
+        ProtokollAkteur wer = ProtokollAkteur.vorbehaltAusMesswerten();
+        SteuerungsverbundAnteilRepository.Vorbehalt vb = vorbehalte.vorbehalt(v.id());
+        BigDecimal alt = vb.kw().get(Grenzart.BEZUG);
+        Optional<VorbehaltRegel.Urteil> u = VorbehaltRegel.erhoehen(alt, tage);
+        if (u.isEmpty()) {
+            return Optional.of(new Lauf(null, null, nachholen(siteId, v, alt, wer)));
+        }
+        return Optional.of(erhoehen(siteId, v, vb, u.get(), repo.offenerVorschlag(v.id()), wer,
+                PRUEFUNG_VIERTELSTUNDE));
+    }
+
+    /**
+     * Erhöhen — ein Weg für beide Takte: {@code vorbehaltSetzen} (Einspeiseseite unverändert), Protokoll, ein offener
+     * Vorschlag wird hinfällig, Zeile {@code erhoeht}/{@code wirksam}, dann der Zweischritt.
+     */
+    private Lauf erhoehen(UUID siteId, VerbundZeile v, SteuerungsverbundAnteilRepository.Vorbehalt vb,
+            VorbehaltRegel.Urteil u, Optional<VorbehaltRepository.Zeile> offen, ProtokollAkteur wer,
+            String pruefung) {
+        BigDecimal alt = vb.kw().get(Grenzart.BEZUG);
+        vorbehalte.vorbehaltSetzen(v.id(), vb.kw().get(Grenzart.EINSPEISUNG), u.neuKw(), wer.name());
+        verbuende.protokoll(TenantContext.get(), v.id(), siteId, ART, zahl(alt), herkunft(u, pruefung),
+                uhr.instant(), false, GRUND_ERHOEHT, wer);
+        offen.ifPresent(z -> repo.entscheiden(z.id(), VorbehaltRepository.HINFAELLIG, wer.name()));
+        UUID id = repo.anlegen(TenantContext.get(), v.id(), VorbehaltRepository.ERHOEHT,
+                VorbehaltRepository.WIRKSAM, u, wer.name());
+        String ergebnis = zweischritt(siteId, id, wer);
+        if (SteuerungsverbundAnteilDienst.Grund.AUSLEGUNG_PASST_NICHT.name().toLowerCase(Locale.ROOT)
+                .equals(ergebnis)) {
+            log.warn("Vorbehalt der Anlage {} selbsttätig auf {} kW erhöht — die Auslegung passt nicht mehr, "
+                    + "die Boxen halten ihr letztes Dokument", siteId, u.neuKw());
+        }
+        return new Lauf(u, id, ergebnis);
     }
 
     /**
@@ -145,8 +211,8 @@ public class VorbehaltDienst {
         repo.entscheiden(z.id(), VorbehaltRepository.FREIGEGEBEN, wer.name());
         VorbehaltRegel.Urteil u = new VorbehaltRegel.Urteil(VorbehaltRegel.Aktion.VORSCHLAGEN, null, alt, z.neuKw(),
                 z.hoechstwertKw(), z.hoechstwertVon(), z.zeitraumVon(), z.zeitraumBis(), z.messtage());
-        verbuende.protokoll(TenantContext.get(), v.id(), v.siteId(), ART, zahl(alt), herkunft(u), uhr.instant(),
-                false, GRUND_FREIGEGEBEN, wer);
+        verbuende.protokoll(TenantContext.get(), v.id(), v.siteId(), ART, zahl(alt), herkunft(u, PRUEFUNG_TAG),
+                uhr.instant(), false, GRUND_FREIGEGEBEN, wer);
         return Optional.of(new Lauf(u, z.id(), zweischritt(v.siteId(), z.id(), wer)));
     }
 
@@ -184,11 +250,11 @@ public class VorbehaltDienst {
         return o.toString();
     }
 
-    private static String herkunft(VorbehaltRegel.Urteil u) {
+    private static String herkunft(VorbehaltRegel.Urteil u, String pruefung) {
         ObjectNode o = JSON.createObjectNode().put("richtung", "bezug").put("kw", u.neuKw())
                 .put("herkunft", "gemessen").put("hoechstwert_kw", u.hoechstwertKw())
                 .put("zeitraum_von", u.zeitraumVon().toString()).put("zeitraum_bis", u.zeitraumBis().toString())
-                .put("messtage", u.messtage()).put("fassung", VorbehaltRegel.FASSUNG);
+                .put("messtage", u.messtage()).put("fassung", VorbehaltRegel.FASSUNG).put("pruefung", pruefung);
         Instant q = u.hoechstwertVon();
         o.put("hoechstwert_von", q == null ? null : q.toString());
         return o.toString();

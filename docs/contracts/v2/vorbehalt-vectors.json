@@ -131,5 +131,54 @@
       "erwartet": { "aktion": "vorschlagen", "grund": null, "neu_kw": "0.0", "hoechstwert_kw": "-5",
                     "messtage": 30 }
     }
-  ]
+  ],
+  "takt": {
+    "regel": "Viertelstunden-Takt (IP-13 Folge, R23): je Tag (gestern, heute) der höchste belegte Wert der REIFEN Viertelstunden; gemessen > alt: erhoehen · sonst nichts (Senken, 30 Messtage und 12 Monate bleiben beim Tageslauf); alt fehlt: nichts. Zeitraum = erster bis letzter Tag des Takts",
+    "reife_minuten": 10,
+    "reif_bis": [
+      { "jetzt": "2027-10-20T08:25:00Z", "reif_bis": "2027-10-20T08:15:00Z" },
+      { "jetzt": "2027-10-20T08:24:59Z", "reif_bis": "2027-10-20T08:00:00Z" },
+      { "jetzt": "2027-10-20T00:10:00Z", "reif_bis": "2027-10-20T00:00:00Z" }
+    ],
+    "faelle": [
+      {
+        "fall": "R23: die erste reife Viertelstunde mit 450 kW verlangt 495 kW gegen 473 kW — erhöhen",
+        "alt_kw": "473",
+        "tage": [ { "tag": "2027-10-19", "hoechstes_kw": "430" }, { "tag": "2027-10-20", "hoechstes_kw": "450" } ],
+        "erwartet": { "aktion": "erhoehen", "neu_kw": "495.0", "hoechstwert_kw": "450", "messtage": 2,
+                      "zeitraum_von": "2027-10-19", "zeitraum_bis": "2027-10-20" }
+      },
+      {
+        "fall": "Zweimal derselbe Takt: 495 kW gelten schon — nichts",
+        "alt_kw": "495.0",
+        "tage": [ { "tag": "2027-10-19", "hoechstes_kw": "430" }, { "tag": "2027-10-20", "hoechstes_kw": "450" } ],
+        "erwartet": { "aktion": "keine" }
+      },
+      {
+        "fall": "Die Messung verlangt weniger (430 kW → 473 kW gegen 500 kW) — der Takt senkt nie, nicht einmal als Vorschlag",
+        "alt_kw": "500",
+        "tage": [ { "tag": "2027-10-19", "hoechstes_kw": "430" }, { "tag": "2027-10-20", "hoechstes_kw": "430" } ],
+        "erwartet": { "aktion": "keine" }
+      },
+      {
+        "fall": "Heute nur unvollständige Viertelstunden (kein Messtag), gestern 430 kW — nichts",
+        "alt_kw": "473",
+        "tage": [ { "tag": "2027-10-19", "hoechstes_kw": "430" }, { "tag": "2027-10-20", "hoechstes_kw": null } ],
+        "erwartet": { "aktion": "keine" }
+      },
+      {
+        "fall": "Kein geltender Wert: unbekannt ist keine Null — nichts zu erhöhen",
+        "alt_kw": null,
+        "tage": [ { "tag": "2027-10-20", "hoechstes_kw": "450" } ],
+        "erwartet": { "aktion": "keine" }
+      },
+      {
+        "fall": "Schon am ersten Tag mit Messung (vor 30 Messtagen) wird erhöht; gleicher Höchstwert an zwei Tagen: der frühere",
+        "alt_kw": "473",
+        "tage": [ { "tag": "2027-10-19", "hoechstes_kw": "480" }, { "tag": "2027-10-20", "hoechstes_kw": "480" } ],
+        "erwartet": { "aktion": "erhoehen", "neu_kw": "528.0", "hoechstwert_kw": "480", "messtage": 2,
+                      "zeitraum_von": "2027-10-19", "zeitraum_bis": "2027-10-20", "hoechster_tag": "2027-10-19" }
+      }
+    ]
+  }
 }

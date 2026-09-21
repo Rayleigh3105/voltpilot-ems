@@ -81,7 +81,7 @@ promtool-Tests setzen die Reihe als Eingang.
 
 | Metrik | Labels | Einheit | Bedeutung | leer bis |
 |---|---|---|---|---|
-| `voltpilot_uems_vorbehalt_erhoeht_total` | `tenant`, `site` | Zähler | Selbsttätige ERHÖHUNGEN des Vorbehalts der Bezugsseite (Läufer `vorbehalt`, täglich 04:52 Europe/Berlin): die Messung (höchster belegter Viertelstundenwert des Ungeregelten × 1,1) verlangte mehr als den geltenden Vorbehalt — das Ungeregelte ist gewachsen (A20, R23), die Anteile der übrigen Boxen wurden verengt. | gefüllt (0), sobald eine Anlage JETZT wirksame Mitglieder hat |
+| `voltpilot_uems_vorbehalt_erhoeht_total` | `tenant`, `site` | Zähler | Selbsttätige ERHÖHUNGEN des Vorbehalts der Bezugsseite — aus beiden Takten: Läufer `vorbehalt_viertelstunde` (10 Minuten nach jedem Viertelstunden-Ende, reife vollständige Viertelstunden von gestern und heute) und Läufer `vorbehalt` (täglich 04:52 Europe/Berlin, Bilanz-Tage): die Messung (höchster belegter Viertelstundenwert des Ungeregelten × 1,1) verlangte mehr als den geltenden Vorbehalt — das Ungeregelte ist gewachsen (A20, R23), die Anteile der übrigen Boxen wurden verengt. | gefüllt (0), sobald eine Anlage JETZT wirksame Mitglieder hat |
 
 - Sammler `metrics/VorbehaltMetrik` am selben Schalter und Takt wie oben; gelesen über die Admin-Rolle
   (`repo/VorbehaltMetrikRepository`) als Zahl der Zeilen `erhoeht` in `steuerungsverbund_vorbehalt` — der Stand
@@ -92,7 +92,10 @@ promtool-Tests setzen die Reihe als Eingang.
   nicht mehr, NICHTS wurde erweitert, die Boxen halten ihr letztes Dokument — Handeln nötig (E2 = A: Termin am Gerät,
   G7: große Verbraucher an die führende Box). Ein SENKEN zählt nicht; es bleibt ein Vorschlag bis zur Freigabe
   (`POST /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/vorbehalt/freigeben`).
-- Ein stehender Läufer zeigt sich über `voltpilot_uems_laeufer_*{laeufer="vorbehalt"}` (Takt täglich), nicht hier.
+- Ein stehender Läufer zeigt sich über `voltpilot_uems_laeufer_*{laeufer="vorbehalt"}` (Takt täglich) und
+  `voltpilot_uems_laeufer_*{laeufer="vorbehalt_viertelstunde"}` (Takt 15 min, „kein Lauf > 3 × Takt“ = 45 min), nicht
+  hier. Die Metrik selbst ist unverändert (Name, Labels, Zählweise aus den Zeilen `erhoeht`); Teil B kann
+  `laeufer="vorbehalt_viertelstunde"` in die Läufer-Regel aufnehmen.
 
 ## Frist für `plan_zustellung`
 
