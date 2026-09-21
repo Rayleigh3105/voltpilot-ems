@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -48,7 +49,8 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code berechnet_am} ist darum der Zeitpunkt dieser Sicht.
  *
  * <p><b>Mandantenzaun:</b> alles über die App-Verbindung hinter RLS; eine fremde Kostenstelle ist nicht zu finden und
- * damit 404, und ihr „nicht verteilt“ nennt nur Messstellen des eigenen Kundenbereichs.
+ * damit 404, und ihr „nicht verteilt“ nennt nur Messstellen des eigenen Kundenbereichs. Den Standort-Zaun (Geltung
+ * Unternehmen, AP-03 R-A1) trägt die Route: sie reicht ihn als {@code zaun} herein; interne Leser rufen ohne.
  */
 @Service
 public class KostenstelleEnergieService {
@@ -84,11 +86,21 @@ public class KostenstelleEnergieService {
     }
 
     public KostenstelleEnergieDto.Energie energie(UUID id, String periodeWort, LocalDate am, String versionText) {
+        return energie(id, periodeWort, am, versionText, k -> { });
+    }
+
+    /**
+     * Wie {@link #energie(UUID, String, LocalDate, String)}; {@code zaun} prüft die Kennung genau dort, wo sie nachgeschlagen
+     * wird — nach Periode und Version — und wirft außerhalb dieselbe 404 wie für eine unbekannte.
+     */
+    public KostenstelleEnergieDto.Energie energie(UUID id, String periodeWort, LocalDate am, String versionText,
+            Consumer<UUID> zaun) {
         String periode = periodeWort == null || periodeWort.isBlank() ? VORGABE_PERIODE : periodeWort.strip();
         if (!PERIODEN.contains(periode)) {
             throw BilanzAbgelehnt.anfrage("periode", "„periode“ ist tag, monat oder jahr.");
         }
         Integer version = version(versionText);
+        zaun.accept(id);
         KostenstelleProzessRepository.Objekt k = objekte.finde(Art.KOSTENSTELLE, id).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Kostenstelle nicht gefunden."));
         String zoneText = lesen.zeitzone();

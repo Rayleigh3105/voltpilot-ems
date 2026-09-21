@@ -16,6 +16,7 @@ import com.voltpilot.api.uems.BerichtService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.BerichtDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -63,10 +64,12 @@ public class BerichtController {
     private static final Pattern NR = Pattern.compile("^[1-9][0-9]{0,8}$");
 
     private final BerichtService dienst;
+    private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public BerichtController(BerichtService dienst, ObjectMapper json) {
+    public BerichtController(BerichtService dienst, RechtPruefung rechte, ObjectMapper json) {
         this.dienst = dienst;
+        this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -83,8 +86,8 @@ public class BerichtController {
      * Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} je Bericht — die Zeile „Freigegebene Berichte: …“
      * der Folgen-Karten (Fläche ändern, Anlage zuordnen, Archivieren; AP-12 IP-9) nennt nur Stände, die die Person lesen
      * darf; wer nirgends einen Bericht lesen darf, bekommt 403. {@code anlass} ist die Anstoß-Art einer Strukturänderung
-     * (400 sonst); ein Objekt, das der Kundenbereich nicht kennt oder das nicht zur Art passt, ist 404 {@code nicht_gefunden}.
-     * Schreibt nichts.
+     * (400 sonst); ein Objekt, das der Kundenbereich nicht kennt oder das nicht zur Art passt, ist 404 {@code nicht_gefunden}
+     * — ebenso eine Messstelle außerhalb des Zugriffs ({@link RechtPruefung#lesbar}, AP-03 R-A1). Schreibt nichts.
      */
     @GetMapping("/berichte/betroffen")
     public BerichtDto.Betroffen betroffen(@RequestParam(required = false) String objekt,
@@ -95,7 +98,8 @@ public class BerichtController {
         }
         UUID id = uuid(objekt, "objekt");
         LocalDate ab = tag(giltAb, "gilt_ab");
-        BerichtService.Betroffen b = dienst.betroffen(id, ab, anlass, OrtAnfrage.akteur(auth));
+        BerichtService.Betroffen b = dienst.betroffen(id, ab, anlass, OrtAnfrage.akteur(auth),
+                m -> rechte.lesbar(RechtZiel.MESSSTELLE, m));
         return new BerichtDto.Betroffen(b.anlass(), b.giltAb().toString(), b.berichteVorhanden(),
                 b.betroffen().stream().map(s -> new BerichtDto.StandRef(s.kennung(), s.nr())).toList(),
                 b.zitieren().stream().map(s -> new BerichtDto.StandRef(s.kennung(), s.nr())).toList());

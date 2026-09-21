@@ -86,9 +86,13 @@ public class KostenstelleProzessController {
         return ResponseEntity.created(URI.create("/api/v1/unternehmen/kostenstellen/" + id)).body(dienst.kostenstelle(id));
     }
 
-    /** Recht: heute lesend — keine eigene Kennung. */
+    /**
+     * Recht: heute lesend — keine eigene Kennung. Geltung Unternehmen (AP-03 R-A1, §4.9): nur eine unternehmensweite
+     * Rolle sieht sie; jedes andere Konto bekommt Status und Körper einer Kostenstelle, die es nicht gibt.
+     */
     @GetMapping("/unternehmen/kostenstellen/{id}")
     public KostenstelleProzessDto.Kostenstelle kostenstelle(@PathVariable UUID id) {
+        rechte.pruefenLesen(RechtZiel.UNTERNEHMEN, id, () -> KostenstelleProzessAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
         return dienst.kostenstelle(id);
     }
 
@@ -127,9 +131,10 @@ public class KostenstelleProzessController {
         return ResponseEntity.created(URI.create("/api/v1/unternehmen/prozesse/" + id)).body(dienst.prozess(id));
     }
 
-    /** Recht: heute lesend — keine eigene Kennung. */
+    /** Recht: heute lesend — keine eigene Kennung. Geltung Unternehmen wie die Kostenstelle (AP-03 R-A1, §4.9). */
     @GetMapping("/unternehmen/prozesse/{id}")
     public KostenstelleProzessDto.Prozess prozess(@PathVariable UUID id) {
+        rechte.pruefenLesen(RechtZiel.UNTERNEHMEN, id, () -> KostenstelleProzessAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
         return dienst.prozess(id);
     }
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.RechtZiel;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Achse;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Filter;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Zeiger;
@@ -13,9 +14,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiPredicate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -107,9 +111,57 @@ public class AenderungsprotokollService {
         return antwort(protokolle.fuerEinbau(g.einbauKennzeichen(), filter(a)), a);
     }
 
-    /** Das Protokoll des ganzen Unternehmens — Messstellen, Quellen, Einstellungen, Orte, Anlagen. */
-    public ProtokollDto.Protokoll unternehmen(Anfrage a) {
-        return antwort(protokolle.fuerUnternehmen(filter(a)), a);
+    /**
+     * Das Protokoll des ganzen Unternehmens — Messstellen, Quellen, Einstellungen, Orte, Anlagen —, wie es der Aufrufer
+     * sieht (AP-03 R-A1): ein Eintrag erscheint nur, wenn {@code sichtbar} sein Objekt zeigt, ohne Hinweis
+     * und ohne Anzahl. Die Seite bleibt voll: fehlen Einträge, liest sie hinter dem letzten gelesenen weiter, bis sie
+     * {@code limit} Einträge trägt oder das Protokoll endet; „weiter“ steht auf dem letzten GELIEFERTEN. Wer alles sieht,
+     * bekommt genau die eine Abfrage von bisher.
+     */
+    public ProtokollDto.Protokoll unternehmen(Anfrage a, BiPredicate<RechtZiel, UUID> sichtbar) {
+        List<Zeile> seite = new ArrayList<>();
+        Map<String, Boolean> urteile = new HashMap<>();
+        Filter f = filter(a);
+        while (true) {
+            List<Zeile> gelesen = protokolle.fuerUnternehmen(f);
+            for (Zeile z : gelesen) {
+                if (urteile.computeIfAbsent(z.bezugArt() + ":" + z.bezugId(), k -> sichtbar(z, sichtbar))) {
+                    seite.add(z);
+                    if (seite.size() > a.grenze()) {
+                        return antwort(seite, a);
+                    }
+                }
+            }
+            if (gelesen.size() < f.grenze()) {
+                return antwort(seite, a);
+            }
+            Zeile letzte = gelesen.get(gelesen.size() - 1);
+            f = new Filter(f.von(), f.bis(), f.vonTag(), f.bisTag(), f.achse(), f.grenze(), new Zeiger(
+                    f.achse() == Achse.EINTRAG ? letzte.eingetragenAm() : letzte.giltAb(), letzte.quelle(), letzte.id()));
+        }
+    }
+
+    /**
+     * Das Objekt eines Eintrags als Ziel der Rechte-Prüfung: Messstelle wie {@link RechtZiel#MESSSTELLE}, Standort, Gebäude
+     * und Bereich, Anlage, eine Datenquelle über ihre Anlage; das Unternehmen (und jede andere Art) sieht nur, wer die
+     * Unternehmens-Geltung sieht. Wer sie sieht, sieht jeden Eintrag — ohne weitere Abfrage.
+     */
+    private boolean sichtbar(Zeile z, BiPredicate<RechtZiel, UUID> sichtbar) {
+        if (sichtbar.test(RechtZiel.UNTERNEHMEN, z.bezugId())) {
+            return true;
+        }
+        if (z.bezugId() == null) {
+            return false;
+        }
+        return switch (String.valueOf(z.bezugArt())) {
+            case "messstelle" -> sichtbar.test(RechtZiel.MESSSTELLE, z.bezugId());
+            case "standort" -> sichtbar.test(RechtZiel.STANDORT, z.bezugId());
+            case "gebaeude", "bereich" -> sichtbar.test(RechtZiel.ORT, z.bezugId());
+            case "anlage" -> sichtbar.test(RechtZiel.ANLAGE, z.bezugId());
+            case "datenquelle" -> protokolle.anlageDerDatenquelle(z.bezugId())
+                    .map(anlage -> sichtbar.test(RechtZiel.ANLAGE, anlage)).orElse(false);
+            default -> false;
+        };
     }
 
     public ProtokollDto.Protokoll anlage(UUID id, Anfrage a) {

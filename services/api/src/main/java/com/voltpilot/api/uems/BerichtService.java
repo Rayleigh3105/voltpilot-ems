@@ -37,6 +37,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import org.springframework.dao.DuplicateKeyException;
@@ -194,7 +195,8 @@ public class BerichtService {
      * — nur ohne Protokollzeile und ohne Datenstand-Schranke, weil die Änderung noch nicht geschrieben ist. Liest nichts, was
      * die Person nicht lesen darf; darf sie nirgends einen Bericht lesen, 403 vor 404.
      */
-    public Betroffen betroffen(UUID objekt, LocalDate giltAb, String anlass, ProtokollAkteur wer) {
+    public Betroffen betroffen(UUID objekt, LocalDate giltAb, String anlass, ProtokollAkteur wer,
+            Predicate<UUID> messstelleSichtbar) {
         UUID tenant = kundenbereich();
         Instant jetzt = jetzt();
         Benutzer b = aufrufer.benutzer(wer);
@@ -209,6 +211,11 @@ public class BerichtService {
             irgendwoLesbar(b, k, jetzt);
         }
         String art = StrukturAufloesung.objektArt(jdbc, tenant, objekt);
+        // Eine Messstelle hat keinen Standort-Zaun in der Tabelle (Orte, Standorte, Anlagen hält RLS): außerhalb des
+        // Zugriffs antwortet sie wie eine Kennung, die der Kundenbereich nicht kennt (AP-03 R-A1).
+        if (StrukturAufloesung.MESSSTELLE.equals(art) && !messstelleSichtbar.test(objekt)) {
+            art = null;
+        }
         if (art == null || !StrukturAufloesung.passt(anlass, art)) {
             throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
         }

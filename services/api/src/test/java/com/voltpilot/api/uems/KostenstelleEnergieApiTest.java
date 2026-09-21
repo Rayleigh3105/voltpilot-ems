@@ -1,12 +1,15 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.zugriff.ZugriffContext;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -29,6 +32,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -116,6 +120,90 @@ class KostenstelleEnergieApiTest {
     @AfterEach
     void aufraeumen() {
         TenantContext.clear();
+        ZugriffContext.clear();
+    }
+
+    // ============================================================================ Standort-Zaun (AP-03 R-A1)
+
+    private record Roh(int status, String body) {}
+
+    /**
+     * Geltung Unternehmen (AP-03 R-A1, §4.9): die Bilanz einer Kostenstelle sieht nur eine unternehmensweite Rolle —
+     * sie trägt Anteile von Messstellen jedes Standorts. Kundenadministrator, Bestandskonto (E12) und ein Aufruf ohne
+     * Zugriff-Kontext (wie jeder andere Fall dieser Klasse) sehen sie byte-gleich; ein Bearbeiter am Standort ALLER ihrer
+     * Messstellen bekommt Status und Körper einer unbekannten Kennung, auch bei einer ungültigen Periode (400 wie dort).
+     * Der interne Leser (Bericht, Kaskade) liest weiter.
+     */
+    @Test
+    void dieBilanzSiehtNurEineUnternehmensweiteRolle() throws Exception {
+        Welt w = lindach("Werk Lindach (Zaun)", true);
+        UUID standort = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Werk Lindach', 'ST-2', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), w.unternehmen());
+        for (UUID ms : w.messstellen().values()) {
+            root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                    + "'2024-01-01')", w.mandant(), ms, standort);
+        }
+        String bestand = "sub-" + w.mandant();
+        String ka = zuweisung(w, "sub-ka-", "kundenadministrator", null);
+        String hier = zuweisung(w, "sub-hier-", "bearbeiter", standort);
+        UUID k = w.kostenstellen().get("4200");
+        String basis = "/api/v1/unternehmen/kostenstellen/";
+        kostenstellenSicht.uhrStellen(Clock.fixed(Instant.parse("2026-10-31T23:15:00Z"), ZoneId.of("UTC")));
+        try {
+            for (String abfrage : List.of("/energie?periode=tag&am=" + F14_TAG, "/energie?periode=monat&am=" + F14_TAG,
+                    "/energie?periode=woche&am=" + F14_TAG)) {
+                String pfad = basis + k + abfrage;
+                Roh voll = als(w, ka, pfad);
+                assertThat(voll.status()).as(pfad + " " + voll.body()).isEqualTo(abfrage.contains("woche") ? 400 : 200);
+                assertThat(als(w, bestand, pfad)).as(pfad + ": Bestandskonto").isEqualTo(voll);
+                assertThat(ohneKontext(w, pfad)).as(pfad + ": ohne Kontext").isEqualTo(voll);
+                Roh h = als(w, hier, pfad);
+                Roh unbekannt = als(w, hier, basis + "00000000-0000-0000-0000-00000000dead" + abfrage);
+                assertThat(h.status()).as(pfad + ": Bearbeiter " + h.body()).isEqualTo(abfrage.contains("woche") ? 400 : 404);
+                assertThat(h).as(pfad + ": wie eine unbekannte Kennung").isEqualTo(unbekannt);
+            }
+            // Der interne Leser bedient keine Kundenanfrage nach der Kennung: er liest auch unter einem Zugriff, der die
+            // Kostenstelle nicht sieht.
+            TenantContext.set(w.mandant());
+            ZugriffContext.set(new ZugriffContext.Zugriff("sub-ohne", RechteAbleitung.Konto.BENUTZER, w.mandant(),
+                    ZugriffContext.Zugang.KONTO, List.of(), Instant.now(), false));
+            assertThat(kostenstellenSicht.energie(k, "tag", F14_TAG, null).kostenstelle().kennzeichen()).isEqualTo("4200");
+        } finally {
+            kostenstellenSicht.uhrStellen(Clock.systemUTC());
+        }
+    }
+
+    /** Ein Konto mit einer wirksamen Zuweisung ({@code standort} {@code null} = unternehmensweit). */
+    private static String zuweisung(Welt w, String praefix, String rolle, UUID standort) {
+        String sub = praefix + w.mandant();
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, "
+                + "'aktiv')", w.mandant(), sub, sub);
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) VALUES "
+                + "(?, ?, ?, ?, '2024-01-01T00:00:00+01', 'Europe/Berlin')", w.mandant(), sub, rolle, standort);
+        return sub;
+    }
+
+    /** Ein Kundenkonto wie aus Keycloak (der Konverter setzt die Kontoart): der Zugriff-Kontext wird geladen. */
+    private Roh als(Welt w, String sub, String pfad) throws Exception {
+        Map<String, Object> claims = Map.of("sub", sub, "preferred_username", sub, "tenant_id", w.mandant().toString(),
+                "realm_access", Map.of("roles", List.of()));
+        Jwt token = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
+        return roh(mvc.perform(get(pfad).with(authentication(new KeycloakRealmRoleConverter().convert(token))))
+                .andReturn());
+    }
+
+    /** Derselbe Aufruf ohne Kontoart — ohne Zugriff-Kontext, wie {@link #abrufen}. */
+    private Roh ohneKontext(Welt w, String pfad) throws Exception {
+        return roh(mvc.perform(get(pfad).with(jwt().jwt(j -> {
+            j.subject("sub-" + w.mandant());
+            j.claim("name", "Ines Test");
+            j.claim("tenant_id", w.mandant().toString());
+        }))).andReturn());
+    }
+
+    private static Roh roh(MvcResult r) throws Exception {
+        return new Roh(r.getResponse().getStatus(), r.getResponse().getContentAsString(StandardCharsets.UTF_8));
     }
 
     // ============================================================================ F13 — Tagesanteile (E12)
