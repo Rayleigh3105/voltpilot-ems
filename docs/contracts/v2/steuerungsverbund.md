@@ -45,7 +45,7 @@ Verbund-Objekt (IP-4), nicht diese Rechnung.
 | `grenzart` | `einspeisung` · `bezug` · `netzbetreiber_vorgabe` | `Grenzart` |
 | `geraete_rueckfall` | `haelt_letzten_wert` · `faellt_auf_wert` · `laeuft_frei` · `unbekannt` | `GeraeteRueckfall` |
 | `auslegung_urteil` | `passt` · `auslegung_passt_nicht` · `vorbehalt_ueber_grenze` | `AuslegungUrteil` |
-| `ablehnung` (Scharfschalten) | `box_nicht_in_anlage` · `kein_netzanschluss` · `grenze_fehlt` · `faehigkeit_fehlt` · `nachweis_fehlt` · `auslegung_passt_nicht` · `fuehrende_box_misst_nicht` · `vorgabe_signal_nicht_an_jeder_box` | `Ablehnung` |
+| `ablehnung` (Scharfschalten) | `box_nicht_in_anlage` · `kein_netzanschluss` · `grenze_fehlt` · `faehigkeit_fehlt` · `nachweis_fehlt` · `auslegung_passt_nicht` · `fuehrende_box_misst_nicht` · `vorgabe_signal_nicht_an_jeder_box` · `mitsteuernde_box_misst_nicht` (IP-4, B3) | `Ablehnung` |
 | `dokument_urteil` / `dokument_ablehnung` | `angenommen` · `abgelehnt` / `fremde_anlage` · `box_fehlt_im_dokument` · `revision_aelter` · `summe_ueber_verteilbar` | `DokumentUrteil` / `DokumentAblehnung` |
 
 Die Reihenfolge ist Teil des Vertrags; beide Zwillinge vergleichen sie wörtlich. `fuehrende_box_misst_nicht` ist
@@ -59,7 +59,7 @@ prüfen, dass sie sie nicht kennen.
 
 - **Zusage-Prüfung** der Zuteilung auf Zeit (§4.8, R16, A19): mit E1 = A entworfen, nicht gebaut. Sie kommt als eigene
   Vektor-Gruppe mit IP-33, falls der Captain nach dem Pilot so entscheidet.
-- **Die Prüfungen beim Scharfschalten** (T1, T2, T5, I1, B1, G6) samt Routen und Stufen: IP-4/IP-5. Hier stehen nur
+- **Die Prüfungen beim Scharfschalten** (T5, I1, G6) samt Routen und Stufen: IP-5; T1, T2, B1/B3 und T6 am Verbund-Objekt stehen in §5 (IP-4). Hier stehen nur
   ihre Wörter.
 - **MQTT**: Topic, Schema und Quittung des Anteils-Dokuments (`mqtt-verbund-anteile.md`, IP-10/IP-17) übernehmen die
   Wörter aus `dokument_ablehnung` als Grund der Quittung; Topic- und Payload-Identität prüft dort die Box zusätzlich.
@@ -86,9 +86,35 @@ und Σ Rückfall der Mitglieder = Σ über die Geräte-Rückfälle dieser Richtu
 mit `hinweis: konstruiert` nutzen die Kennungen `B-1 …` und sind keine Tatsache der Referenzwelt; R23 und die
 Bezugsfälle mit 480/510 kW Ungeregeltem sind Varianten des Konzepts (Eingang des Falls, kein Zustand der Welt).
 
+## 5. Das Verbund-Objekt (IP-4)
+
+Datenhaltung in `V20260921140000` (`steuerungsverbund`, `steuerungsverbund_mitglied`, `steuerungsverbund_aenderung`;
+RLS mit `FORCE`, Rechte eng, Offboarding in `TenantRepository.offboard`), Regeln in `uems/SteuerungsverbundRegeln`
+(rein), Vektoren in [`steuerungsverbund-objekt-vectors.json`](./steuerungsverbund-objekt-vectors.json) — eine eigene
+Datei, weil nur die api diese Regeln rechnet; die Anteile oben behalten ihre drei Zwillinge. Lese- und Schreibwege:
+`uems/SteuerungsverbundRepository`; Routen, Rechte und Stufenwechsel als Ablauf kommen mit IP-5.
+
+| Regel | Datenbank | Regel-Urteil |
+|---|---|---|
+| **T1** Mitglied nur mit Heimat in der Anlage | zusammengesetzter Fremdschlüssel `(device_id, site_id, tenant_id)` → `device` und `(steuerungsverbund_id, site_id, tenant_id)` → `steuerungsverbund` (23503) | `box_nicht_in_anlage` je Box |
+| **T2 / W3** genau ein Netzanschluss | der Verbund speichert keinen; `anlage_netzanschluss` hält höchstens einen je Tag | keiner: `kein_netzanschluss`; mehrere: Eingabefehler (gekuppelter Fall außerhalb des Umfangs) |
+| **genau eine führt** | Exklusion: höchstens eine `fuehrt` je Verbund und Zeitpunkt (23P01) | keine: `fuehrende_box_misst_nicht`; zwei: Eingabefehler |
+| **B1** Messpunkt der führenden Box | Pflicht (CHECK) und Datenquelle DIESER Anlage (Fremdschlüssel auf `data_source (id, site_id, tenant_id)`) | nicht dieser Anlage oder nicht von ihr gelesen: `fuehrende_box_misst_nicht` |
+| **B3** Messpunkt einer mitsteuernden Box | wahlfrei (ohne: Summe ihrer Geräteleistungen), sonst derselbe Fremdschlüssel | nicht dieser Anlage oder nicht von ihr gelesen: `mitsteuernde_box_misst_nicht` |
+| **Kein Doppel-Lesen** (§3.3) | Exklusion: ein Messpunkt je Zeitpunkt bei höchstens einem Mitglied; eine Box höchstens einmal | Eingabefehler |
+| **T6** Lesen macht kein Mitglied | `rolle` nur `fuehrt`/`steuert_mit` (CHECK); eine Zuständigkeit legt keine Zeile an | `istMitglied` nur mit Heimat UND Rolle (R21) |
+| **G2/G3** | — (keine Anteile gespeichert) | je übergebener Richtung `SteuerungsverbundAnteile.anteile` mit genau den Mitgliedern des Verbunds: `auslegung_passt_nicht` mit Richtung |
+
+Die Befunde stehen in der Reihenfolge des Vokabulars `ablehnung`, je Wort in der Reihenfolge der Mitglieder; das
+erste Wort ist die Antwort einer Route. Mitgliedschaften sind minutengenau und halboffen `[gueltig_ab, gueltig_bis)`,
+beendet oder aufgehoben, nie gelöscht und nie umgehängt (Box, Rolle, Messpunkt ändern = neues Intervall). Gesendet und
+quittiert (Epoche, Revision) steigen nur, und quittiert wird nie über das Gesendete hinaus (CHECK + Schreibweg).
+Eine Anlage ohne Gemeinsame Steuerung hat keine Zeile — sie merkt nichts (I6).
+
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest=SteuerungsverbundAnteilVectorsTest)
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundAnteilVectorsTest,SteuerungsverbundRegelnVectorsTest')
+(cd services/api && ./mvnw test -Dtest=SteuerungsverbundMigrationTest)   # Testcontainers
 (cd services/optimization && PYTHONPATH=. python -m pytest tests/test_steuerungsverbund_referenz.py)
 ```

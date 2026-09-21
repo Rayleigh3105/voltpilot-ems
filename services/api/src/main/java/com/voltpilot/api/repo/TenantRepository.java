@@ -352,6 +352,10 @@ public class TenantRepository {
                     st.executeUpdate();
                 }
                 for (String table : new String[] {
+                        // The Gemeinsame Steuerung (V20260921140000): a member holds its
+                        // Messpunkt (data_source, RESTRICT) and goes before it; the Verbund
+                        // before the tenant (RESTRICT); the protocol holds only the tenant.
+                        "steuerungsverbund_mitglied", "steuerungsverbund", "steuerungsverbund_aenderung",
                         "prozess", "kostenstelle",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",

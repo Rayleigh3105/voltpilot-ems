@@ -62,7 +62,8 @@
       "nachweis_fehlt",
       "auslegung_passt_nicht",
       "fuehrende_box_misst_nicht",
-      "vorgabe_signal_nicht_an_jeder_box"
+      "vorgabe_signal_nicht_an_jeder_box",
+      "mitsteuernde_box_misst_nicht"
     ],
     "dokument_urteil": ["angenommen", "abgelehnt"],
     "dokument_ablehnung": ["fremde_anlage", "box_fehlt_im_dokument", "revision_aelter", "summe_ueber_verteilbar"]
