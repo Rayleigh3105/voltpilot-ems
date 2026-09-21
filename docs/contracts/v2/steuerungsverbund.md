@@ -262,11 +262,47 @@ freigegebener Vorschlag hat den geltenden Wert gesetzt. **Metrik:** `voltpilot_u
 in A20 gezeichnet; der ungünstige Fall R23 Schritt 3 bleibt bis dahin offen (A20 ist ein benanntes Restrisiko). Tage
 vor einem Mitgliedswechsel zählen mit (das Ungeregelte war größer) — das hält den Vorbehalt höher, nie niedriger.
 
+## 9. Das Ladepark-Dokument je Box (IP-16)
+
+**Die Regel (P6, W6, E4 = A):** ein Betriebsmodell und eine Rangliste je ANLAGE. In einer Anlage mit Gemeinsamer
+Steuerung in `anteile_aktiv` oder `angehalten` reist das retained `v2/charging-config`
+([Schema](../mqtt-charging-config.schema.json)) JE BOX statt an die eine Box von AP-06: an die führende Box immer, an
+eine mitsteuernde, sobald sie Ladepunkte gemeldet hat, eine Wallbox trägt oder Ziel des Anbindens ist. Rein
+`chargers/LadeparkAusschnitt`, Vektoren [`ladepark-je-box-vectors.json`](ladepark-je-box-vectors.json).
+
+| Feld | je Box |
+|---|---|
+| `device_id` | die Box selbst (die Box prüft ihre Identität wie heute) |
+| `grid_limit_kw` | die Netzgrenze der Anlage wie heute (Rahmen, verengt durch das Grenzblatt) — für JEDE Box |
+| `charge_points[]` (mit `rank`), `priority_charge_point_ids` | ihr Ausschnitt: was SIE gemeldet hat (`device_charge_point`); Ungemeldetes bei der führenden (G7). Gefiltert, nie neu sortiert, jeder Rang behält seine Zahl aus der Anlage |
+| `wallboxes[]` | die Wallboxen ihrer Entitäten (`measurement_point.device_id`); ohne steuernde Box bei der führenden; leer = keine an dieser Box |
+| `storage_rank`, `storage_priority`, `surplus_policy`, `frame`, `removed_charge_point_ids`, `vehicle_profiles`, `ocpp_control` | ganz — eine Aussage der Anlage (der Speicher bleibt EIN Eintrag, W6/E7) |
+
+**Der Anteil reist NICHT im Ladepark-Dokument.** Er steht im Anteils-Dokument (Y1, §1); die Box rechnet ihr Ladebudget
+als Minimum aus heute und Anteil (IP-19). Die Netzgrenze kann dort nur verengen — sie ist eine Grenze, kein fremder
+Messwert (G1). Stünde der Anteil in `grid_limit_kw`, zöge `budget.go` Marge und Hausreserve ein zweites Mal ab (der
+Anteil enthält den Vorbehalt schon), R3 wäre nie erreichbar. Darum kein neues Feld und kein Neuversand bei einer
+Anteils-Änderung. **Folge (mitgetragen):** im STATISCHEN Modus — die mitsteuernde Box hat keinen eigenen Messwert —
+rechnet „heute“ mit Marge und Hausreserve gegen die Netzgrenze und kann UNTER dem Anteil liegen: enger als R3, nie
+weiter.
+
+**Anstoß (Grenzblatt, Tageswechsel, Binden):** derselbe Vergleich „zuletzt zugestellt gegen heute wirksam“ je Anlage
+(`ladepark_netzgrenze_zugestellt`). Gemerkt wird nur, wenn JEDE Box das Dokument bekommen hat — „je Anlage zugestellt“
+heißt „an alle ihre Boxen zugestellt“; fehlt eine, stellt der nächste Anstoß allen noch einmal zu. Kein Schlüssel je
+Box, keine Migration.
+
+**Die 422 „zweite Box für Ladepunkte“** fällt nur scharf (`anteile_aktiv`). Unscharf (S0–S2, R14) bleibt sie wie seit
+AP-06. Angehalten bleiben die Anteile in Kraft und die Ladepunkte an einer zweiten Box werden weiter je Box bedient; eine
+NEUE zweite Box lehnt die API ab („Die Gemeinsame Steuerung dieser Anlage ist angehalten. …“). Eine Box außerhalb der
+Gemeinsamen Steuerung (sie liest, T6) bekommt keine Ladepunkte (422). Ohne Gemeinsame Steuerung in diesen zwei Stufen ist
+das Dokument Byte für Byte das von heute (NW-6, `LadeparkJeBoxApiTest`). Flows des Betriebsmodells bleiben an der
+führenden Box — IP-16 fasst sie nicht an.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='SteuerungsverbundAnteilVectorsTest,SteuerungsverbundRegelnVectorsTest')
-(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest,VerbundBilanzVectorsTest,VorbehaltVectorsTest')
-(cd services/api && ./mvnw test -Dtest='SteuerungsverbundMigrationTest,GemeinsameSteuerungApiTest,VerbundBilanzApiTest')   # Testcontainers
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest,VerbundBilanzVectorsTest,VorbehaltVectorsTest,LadeparkJeBoxVectorsTest')
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundMigrationTest,GemeinsameSteuerungApiTest,VerbundBilanzApiTest,LadeparkJeBoxApiTest')   # Testcontainers
 (cd services/optimization && PYTHONPATH=. python -m pytest tests/test_steuerungsverbund_referenz.py)
 ```

@@ -3,6 +3,8 @@ package com.voltpilot.api.chargers;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.uems.AnlageGrenzen;
 import com.voltpilot.api.uems.AnlageStandortRepository;
+import com.voltpilot.api.uems.LadeparkJeBox;
+import com.voltpilot.api.uems.LadeparkJeBox.Verteilung;
 import com.voltpilot.api.uems.NetzanschlussRepository;
 import com.voltpilot.api.uems.StandortRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
@@ -17,10 +19,13 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -97,6 +102,8 @@ public class ChargingConfigService {
     private volatile AnlageGrenzen grenzen;
     /** AP-15 IP-3 Folgepaket: der zuletzt zugestellte Bezugswert; ohne (Einzeltests) wird nichts verglichen. */
     private volatile LadeparkNetzgrenzeRepository zugestellt;
+    /** UEMS AP-15 IP-16: die Boxen einer Anlage mit scharfer oder angehaltener Gemeinsamer Steuerung. */
+    private volatile LadeparkJeBox verbund;
     /** Die Uhr, an der „heute am Standort“ hängt — nur Tests stellen sie ({@link #uhrStellen}). */
     private volatile Clock uhr = Clock.systemUTC();
     private final NetzanschlussRepository netzanschluesse;
@@ -343,6 +350,17 @@ public class ChargingConfigService {
         this.zugestellt = zugestellt;
     }
 
+    /** Setter statt Konstruktor (IP-16): ohne die Bohne reist das eine Dokument von heute. */
+    @Autowired(required = false)
+    void verbundLesen(LadeparkJeBox verbund) {
+        this.verbund = verbund;
+    }
+
+    private Optional<Verteilung> verteilung(UUID siteId) {
+        LadeparkJeBox v = verbund;
+        return v == null ? Optional.empty() : v.derAnlage(siteId);
+    }
+
     /** Nur für Tests: der Tageswechsel am Standort. */
     void uhrStellen(Clock uhr) {
         this.uhr = uhr;
@@ -385,6 +403,10 @@ public class ChargingConfigService {
     }
 
     private boolean pushResult(UUID tenantId, UUID siteId, ChargingConfigDto config) {
+        Optional<Verteilung> jeBox = verteilung(siteId);
+        if (jeBox.isPresent()) {
+            return pushJeBox(tenantId, siteId, config, jeBox.get(), jeBox(siteId, jeBox.get(), null), null);
+        }
         return push(tenantId, siteId, config,
                 zielBoxen(configs.deviceIds(siteId), configs.deviceIdsWithChargePoints(siteId)));
     }
@@ -433,6 +455,90 @@ public class ChargingConfigService {
     }
 
     /**
+     * Wer in einer Anlage mit Gemeinsamer Steuerung ein Ladepark-Dokument bekommt, und welche Ladepunkte je Box
+     * reisen (IP-16). Die führende Box bekommt es immer (der Empfänger von heute); eine mitsteuernde nur, wenn sie
+     * Ladepunkte gemeldet hat, eine Wallbox trägt oder gerade das Ziel des Anbindens ist.
+     */
+    private record JeBox(List<UUID> empfaenger, Map<UUID, Set<String>> saeulen, Set<String> gemeldet,
+            Map<UUID, Set<UUID>> wallboxen, Set<UUID> zugeordnet) {}
+
+    private JeBox jeBox(UUID siteId, Verteilung v, Map.Entry<UUID, String> angebunden) {
+        Map<UUID, Set<String>> gemeldetJe = configs.chargePointsPerDevice(siteId);
+        Map<UUID, Set<UUID>> wallboxenJe = configs.wallboxesPerDevice(siteId);
+        Map<UUID, Set<String>> saeulen = new HashMap<>();
+        Map<UUID, Set<UUID>> wallboxen = new HashMap<>();
+        Set<String> gemeldet = new HashSet<>();
+        Set<UUID> zugeordnet = new HashSet<>();
+        List<UUID> empfaenger = new ArrayList<>();
+        for (UUID box : v.boxen()) {
+            Set<String> eigene = new HashSet<>(gemeldetJe.getOrDefault(box, Set.of()));
+            gemeldet.addAll(eigene);
+            if (angebunden != null && angebunden.getKey().equals(box)) {
+                eigene.add(angebunden.getValue());
+            }
+            Set<UUID> w = wallboxenJe.getOrDefault(box, Set.of());
+            zugeordnet.addAll(w);
+            saeulen.put(box, eigene);
+            wallboxen.put(box, w);
+            if (box.equals(v.fuehrende()) || !eigene.isEmpty() || !w.isEmpty()) {
+                empfaenger.add(box);
+            }
+        }
+        if (angebunden != null) {
+            gemeldet.add(angebunden.getValue());
+        }
+        return new JeBox(List.copyOf(empfaenger), saeulen, gemeldet, wallboxen, zugeordnet);
+    }
+
+    /**
+     * Das Ladepark-Dokument JE BOX (UEMS AP-15 IP-16, P6/W6/E4 = A): je Empfänger sein Ausschnitt der Rangliste in
+     * unveränderter Reihenfolge ({@link LadeparkAusschnitt}) und die Netzgrenze der Anlage wie heute — für JEDE Box.
+     * Der Anteil reist nur im Anteils-Dokument (Y1); die Box rechnet min(heute, Anteil) (IP-19), die Netzgrenze kann
+     * dort nur verengen. {@code nur} = nur an diese Boxen (Anbinden). Gemerkt wird die Netzgrenze nur, wenn JEDER
+     * Empfänger sie bekommen hat: „je Anlage zugestellt“ heißt „an alle ihre Boxen zugestellt“, sonst stellt der
+     * Anstoß beim nächsten Mal allen noch einmal zu (dasselbe retained Dokument, also unschädlich).
+     */
+    private boolean pushJeBox(UUID tenantId, UUID siteId, ChargingConfigDto config, Verteilung v, JeBox plan,
+            Set<UUID> nur) {
+        ChargingConfigPublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            log.debug("no charging-config publisher configured - nothing pushed for site {}", siteId);
+            return false;
+        }
+        Instant now = Instant.now();
+        List<VehicleProfileDto> vehicles = vehicleProfiles(siteId);
+        String control = configs.ocppControl(siteId);
+        Double netzgrenze = netzgrenze(siteId, config.gridLimitKw());
+        boolean delivered = true;
+        boolean alle = true;
+        for (UUID deviceId : plan.empfaenger()) {
+            if (nur != null && !nur.contains(deviceId)) {
+                alle = false;
+                continue;
+            }
+            boolean fuehrt = deviceId.equals(v.fuehrende());
+            Set<String> eigene = plan.saeulen().get(deviceId);
+            List<String> vorrang = LadeparkAusschnitt.vorrang(config.priorityChargePointIds(), fuehrt, eigene,
+                    plan.gemeldet());
+            List<ChargingConfigDto.AllowedChargePointDto> saeulen = LadeparkAusschnitt.saeulen(config.chargePoints(),
+                    fuehrt, eigene, plan.gemeldet());
+            List<ChargingConfigDto.WallboxDto> wallboxen = LadeparkAusschnitt.wallboxen(config.wallboxes(), fuehrt,
+                    plan.wallboxen().get(deviceId), plan.zugeordnet());
+            delivered &= control != null
+                    ? pub.publish(tenantId, siteId, deviceId, netzgrenze, vorrang, config.surplusPolicy(),
+                            config.storagePriority(), saeulen, config.removedChargePointIds(), config.frame(),
+                            config.storageRank(), wallboxen, vehicles, control, now)
+                    : pub.publish(tenantId, siteId, deviceId, netzgrenze, vorrang, config.surplusPolicy(),
+                            config.storagePriority(), saeulen, config.removedChargePointIds(), config.frame(),
+                            config.storageRank(), wallboxen, vehicles, now);
+        }
+        if (delivered && alle) {
+            merken(tenantId, siteId, netzgrenze);
+        }
+        return delivered;
+    }
+
+    /**
      * Merkt den zugestellten Bezug für den Anstoß ({@link #netzgrenzeNachziehen}). Nur im eigenen Kundenbereich (RLS);
      * ein Fehler hier nimmt die Zustellung nie zurück — schlimmstenfalls stellt der Anstoß einmal zu viel zu.
      */
@@ -466,6 +572,10 @@ public class ChargingConfigService {
     private UUID zielBoxFuerAnbinden(UUID siteId, UUID gewaehlt) {
         List<UUID> aktive = configs.deviceIds(siteId);
         List<UUID> belegt = configs.deviceIdsWithChargePoints(siteId);
+        Optional<Verteilung> jeBox = verteilung(siteId);
+        if (jeBox.isPresent()) {
+            return zielBoxJeBox(gewaehlt, aktive, belegt, jeBox.get());
+        }
         if (belegt.size() > 1) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Die Ladepunkte dieser Anlage sind bereits auf mehrere Boxen verteilt. "
@@ -489,6 +599,36 @@ public class ChargingConfigService {
                     "Die Ladepunkte dieser Anlage sind bereits an eine andere Box angebunden. "
                             + "Eine zweite Box für Ladepunkte ist erst mit der gemeinsamen "
                             + "Steuerung verfügbar.");
+        }
+        return ziel;
+    }
+
+    /**
+     * Die Ziel-Box des Anbindens in einer Anlage mit Gemeinsamer Steuerung (IP-16). Scharf ({@code anteile_aktiv})
+     * fällt die 422 „zweite Box für Ladepunkte“: jede steuernde Box darf Ladepunkte tragen. Angehalten bleiben die
+     * Anteile in Kraft und die Ladepunkte an einer zweiten Box werden weiter bedient, eine NEUE zweite Box wird aber
+     * wie seit AP-06 abgelehnt — angehalten heißt „zurück zum AP-06-Betrieb“ (Konzept §3.9, §5.5). Eine Box, die nur
+     * liest oder nicht mitmacht, bekommt kein Ladepark-Dokument, also auch keine Ladepunkte.
+     */
+    private static UUID zielBoxJeBox(UUID gewaehlt, List<UUID> aktive, List<UUID> belegt, Verteilung v) {
+        UUID ziel = gewaehlt != null ? gewaehlt : belegt.size() == 1 ? belegt.get(0) : null;
+        if (ziel == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Wählen Sie die Box, mit der sich die Ladesäule verbinden soll.");
+        }
+        if (!aktive.contains(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die gewählte Box gehört nicht zu dieser Anlage oder ist nicht mehr eingebaut.");
+        }
+        if (!v.boxen().contains(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Diese Box liest in der Gemeinsamen Steuerung nur. Verbinden Sie die Ladesäule mit einer Box, "
+                            + "die die Anlage führt oder mitsteuert.");
+        }
+        if (!v.scharf() && !belegt.isEmpty() && !belegt.contains(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Gemeinsame Steuerung dieser Anlage ist angehalten. Eine weitere Box für Ladepunkte "
+                            + "ist erst wieder möglich, wenn sie aktiv ist.");
         }
         return ziel;
     }
@@ -596,7 +736,14 @@ public class ChargingConfigService {
         // Genau dieser explizite Assistenten-Schritt darf deshalb an die
         // gewaehlte Box zustellen; alle spaeteren Pushes lesen den physischen
         // Beleg und raten bei mehreren Boxen nie.
-        push(tenantId, siteId, saved, List.of(zielBox));
+        Optional<Verteilung> jeBox = verteilung(siteId);
+        if (jeBox.isPresent()) {
+            // IP-16: nur das Dokument der gewählten Box reist, und die neue Säule steht in IHREM Ausschnitt.
+            pushJeBox(tenantId, siteId, saved, jeBox.get(), jeBox(siteId, jeBox.get(), Map.entry(zielBox, id)),
+                    Set.of(zielBox));
+        } else {
+            push(tenantId, siteId, saved, List.of(zielBox));
+        }
         return saved;
     }
 

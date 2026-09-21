@@ -11,6 +11,11 @@ Box angeben; nur dieser erste, ausdrückliche Schritt darf die Allowlist an die
 gewählte Box schicken. Meldet bereits eine andere Box Ladepunkte, lehnt die API
 die zweite Box mit 422 und einem Kundensatz zur gemeinsamen Steuerung ab.
 
+Ausnahme seit AP-15 IP-16: mit Gemeinsamer Steuerung in `anteile_aktiv` oder
+`angehalten` reist das Dokument je steuernder Box (`LadeparkJeBox`,
+`LadeparkAusschnitt`); scharf fällt die 422 für die zweite Box. Regeln und
+Fallen: [Vertrag §9](../../contracts/v2/steuerungsverbund.md#9-das-ladepark-dokument-je-box-ip-16).
+
 Die Ladepunkt-Lesefläche liefert additiv `budgets` je Box. `budget` bleibt für
 Bestandsleser bestehen. Der Assistent paart ausschließlich die LAN-Adresse der
 gewählten Box mit deren gemeldetem OCPP-Port und -Pfad.
