@@ -236,8 +236,9 @@ class BerichtApiTest {
     @Test
     void betroffenVerraetKeineMessstelleAusserhalbDesZugriffs() throws Exception {
         Welt w = welt();
-        messstelle(w, "MS-12", "Montage Linie M1", w.st1(), "2026-10-01");
-        messstelle(w, "MS-18", "Montagehalle Lindach gesamt", w.st2(), "2026-10-01");
+        // Der Ort gilt HEUTE (der Zaun fragt den Ort von heute; ohne Ort gälte „irgendwo“, firstmate 21.09.2026).
+        messstelle(w, "MS-12", "Montage Linie M1", w.st1(), "2024-01-01");
+        messstelle(w, "MS-18", "Montagehalle Lindach gesamt", w.st2(), "2024-01-01");
         UUID ms12 = root.queryForObject("SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = 'MS-12'", UUID.class,
                 w.mandant());
         UUID ms18 = root.queryForObject("SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = 'MS-18'", UUID.class,

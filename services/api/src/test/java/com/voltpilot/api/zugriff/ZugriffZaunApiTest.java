@@ -580,18 +580,8 @@ class ZugriffZaunApiTest {
     private static final Map<String, String> ZAUN_OFFEN = Map.ofEntries(
             Map.entry("/api/v1/unternehmen/kostenstellen", "Liste nennt jede Kostenstelle; Geltung Unternehmen sieht "
                     + "nach AP-03 R-A1 nur eine unternehmensweite Rolle — KostenstelleProzessService.java:81"),
-            Map.entry("/api/v1/unternehmen/kostenstellen/{id}", "ganze Kostenstelle (Geltung Unternehmen, R-A1) — "
-                    + "KostenstelleProzessService.java:88"),
-            Map.entry("/api/v1/unternehmen/kostenstellen/{id}/energie", "ganze Energiebilanz der Kostenstelle, auch "
-                    + "Anteile von Messstellen fremder Standorte — KostenstelleEnergieService.java:92"),
             Map.entry("/api/v1/unternehmen/prozesse", "Liste nennt jeden Prozess (Geltung Unternehmen, R-A1) — "
-                    + "KostenstelleProzessService.java:92"),
-            Map.entry("/api/v1/unternehmen/prozesse/{id}", "ganzer Prozess (Geltung Unternehmen, R-A1) — "
-                    + "KostenstelleProzessService.java:99"),
-            Map.entry("/api/v1/unternehmen/aenderungen", "Protokoll des Unternehmens nennt jeden Eintrag fremder "
-                    + "Messstellen samt alt/neu, Grund und Person — AenderungsprotokollService.java:111"),
-            Map.entry("/api/v1/berichte/betroffen", "nur Existenz einer Messstelle-Kennung (?objekt=) — "
-                    + "StrukturAufloesung.java:151 objektArt liest messstelle ohne Zaun"));
+                    + "KostenstelleProzessService.java:92"));
 
     /**
      * Ein Zaun-Fall. {@code sieht} bekommt das Objekt ({@code < 400}, der Körper nennt {@code beleg}). {@code blind}
