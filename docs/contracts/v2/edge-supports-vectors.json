@@ -42,6 +42,12 @@
       "meaning": "Die Box prüft das Anteils-Dokument einer Gemeinsamen Steuerung auf .../v2/verbund-anteile (Go-Zwilling der Vektoren), hält ein angenommenes auf der Platte (gilt nach einem Neustart vor dem ersten Messwert), quittiert jedes Urteil auf .../v2/verbund-anteile-result und spiegelt Rolle, Epoche, Revision und die wirksamen Anteile je Richtung im Herzschlag-Block gemeinsame_steuerung (mqtt-verbund-anteile 1.0, AP-15 IP-17). Regeln dagegen erst mit IP-18/IP-19.",
       "advertised": true,
       "evidence": "edge-app/core/internal/agent/verbund_anteile_test.go"
+    },
+    {
+      "name": "sprungprobe",
+      "meaning": "Die Box führt einen Sprungprobe-Auftrag auf .../v2/sprungprobe aus (eine Stellgröße senken, begrenzt in kW und Sekunden, zweimal, danach zurückstellen; Abbruch, sobald ein eigener Wächter eingreift) und berichtet auf .../v2/sprungprobe-result (mqtt-sprungprobe 1.0, AP-15 IP-21). Die Cloud-Seite ist gebaut; die Box meldet das Wort erst mit ihrem Ausführer.",
+      "advertised": false,
+      "evidence": "docs/contracts/v2/mqtt-sprungprobe.md (Cloud-Seite gebaut; Box-Ausführer folgt als eigener PR)"
     }
   ],
   "cases": [

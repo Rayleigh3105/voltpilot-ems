@@ -358,10 +358,11 @@ public class TenantRepository {
                         // Geräte and Anteils-Dokumente (V20260921190000) hold the tenant (RESTRICT).
                         // The Verbund-Bilanz (V20260921210000) and the Vorbehalt from measurements
                         // (V20260921230000) hang at the Verbund and go first, so do the ungesteuerte
-                        // Erzeuger of its Erklärung (V20260922070000). The share loss per box and day
-                        // (V20260922050000) holds the tenant (RESTRICT).
+                        // Erzeuger of its Erklärung (V20260922070000) and the Sprungprobe protocol
+                        // (V20260922080000). The share loss per box and day (V20260922050000) holds
+                        // the tenant (RESTRICT).
                         "steuerungsverbund_bilanz", "steuerungsverbund_vorbehalt", "steuerungsverbund_erzeuger",
-                        "steuerungsverbund_anteil_verlust",
+                        "steuerungsverbund_anteil_verlust", "steuerungsverbund_sprungprobe",
                         "steuerungsverbund_geraet", "steuerungsverbund_anteile",
                         "steuerungsverbund_mitglied", "steuerungsverbund", "steuerungsverbund_aenderung",
                         "prozess", "kostenstelle",

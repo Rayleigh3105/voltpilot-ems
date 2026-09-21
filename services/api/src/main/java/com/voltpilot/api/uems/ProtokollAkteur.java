@@ -60,6 +60,14 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
     }
 
     /**
+     * VoltPilot selbst, ohne Person: die Auswertung der Sprungprobe (AP-15 IP-21), die eine Anlage nach der letzten
+     * bestandenen Probe auf S2 {@code geprueft} hebt. Wer die Probe auslöste, steht in ihrem Protokoll.
+     */
+    public static ProtokollAkteur sprungprobe() {
+        return new ProtokollAkteur(null, "Sprungprobe", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
+    /**
      * VoltPilot selbst, ohne Person: der tägliche Lauf des Vorbehalts aus Messwerten (AP-15 IP-13), der den Vorbehalt
      * der Bezugsseite selbsttätig ERHÖHT (verengt nur) und Vorschläge zum Senken anlegt.
      */

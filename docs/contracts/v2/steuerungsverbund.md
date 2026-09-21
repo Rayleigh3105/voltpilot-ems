@@ -172,7 +172,7 @@ darum höchstens bis S1 und wird nicht scharf, solange eine Quelle fehlt:
 | Methode | heute | füllt |
 |---|---|---|
 | `faehigkeit` | `BoxFaehigkeiten.kann(box, "steuerungsverbund_anteil")` — seit IP-17 in `EdgeSupports.NAMES`: ja, sobald die Box es in `supports[]` meldet (keine Zeile in `edge-capabilities.json`) | IP-17 ✓ |
-| `sprungprobe` | nein | IP-21 |
+| `sprungprobe` | `SprungprobeDienst#gilt`: die jüngste ausgewertete, nicht entwertete Probe der Box ist `bestanden` und lief gegen die heutige führende Box ([§10](#10-die-sprungprobe-ip-21)) | IP-21 ✓ |
 | `auslegung` | leer → `auslegung_passt_nicht` (unbekannt ist nicht „passt“) | IP-7 (mit den Rückfällen aus IP-6) |
 | `vorgabeSignal` | erklärt je Mitglied (`vorgabe_signal`, V20260922030000): `ja` → true, `nein` → false, `unbekannt` → unbekannt | Folge zu IP-5 ✓ (IP-23 fragt es ab) |
 | `verbraucher14a` | abgeleitet aus `steuerungsverbund_geraet` der Box: eine Angabe `bezug` mit Komponente und Schreibfreigabe → ja; Angaben, aber keine solche → nein; keine Angabe → unbekannt | Folge zu IP-5 ✓ (Angaben: IP-7) |
@@ -381,11 +381,43 @@ Gemeinsamen Steuerung (sie liest, T6) bekommt keine Ladepunkte (422). Ohne Gemei
 das Dokument Byte für Byte das von heute (NW-6, `LadeparkJeBoxApiTest`). Flows des Betriebsmodells bleiben an der
 führenden Box — IP-16 fasst sie nicht an.
 
+## 10. Die Sprungprobe (IP-21)
+
+Kasten E3 = A, T5, I3, I4; Fälle R1/R19, Befund A17 (§8.5). Draht und Bericht: [mqtt-sprungprobe.md](mqtt-sprungprobe.md);
+Regel: `uems/SprungprobeRegel` gegen [`sprungprobe-vectors.json`](sprungprobe-vectors.json) (die Box rechnet sie nicht).
+
+- **Auslösen** nur die Plattform-Rolle: `POST /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/sprungprobe`
+  `{box_id, art, sprung_kw}` (Recht `plattform.betrieb`; Kundenkonto 403). Voraussetzungen: Stufe S1 `beobachtet`
+  (`nicht_beobachtet`), Box ist Mitglied (`kein_mitglied`) und meldet `sprungprobe` (`sprungprobe_nicht_gemeldet`),
+  keine andere Probe der Anlage ohne Bericht in den letzten 10 min (`sprungprobe_laeuft`), der Netzpunkt der führenden
+  Box hat einen Wert der letzten 60 s (`netzpunkt_nicht_frisch`), der Auftrag ist zugestellt (`nicht_zugestellt`; dann
+  wird nichts gespeichert). Die Probe ist ein Handgriff des Betreibers an einer Live-Anlage — kein Läufer löst sie aus.
+- **Auswertung** gegen den Netzpunkt der führenden Box in Sekundenauflösung: `telemetry.power_kw` (+ Bezug /
+  − Einspeisung) — nicht die Viertelstunden der Verbund-Bilanz (§7). Je Sprung: vorher = Mittel in [von − 20 s, von),
+  während = Mittel in [von + 20 s, bis); erwartet = −eigene Änderung (Erzeugung senken) bzw. +eigene Änderung (Verbrauch
+  senken); passt, wenn |gesehen − erwartet| ≤ max(10 %, 2 kW) — zweimal. Urteile `bestanden` · `nicht_bestanden`
+  (`nicht_gesehen` · `falsche_richtung` · `zu_klein` · `zu_gross`) · `abgebrochen` (Grund der Box) · `nicht_auswertbar`
+  (`netzpunkt_nicht_frisch` · `eigene_wirkung_unbekannt` · `sprung_zu_klein` < 5 kW · `bericht_unvollstaendig`) —
+  unbekannt ist kein Bestanden. Ein klares Durchfallen geht vor „nicht auswertbar“.
+- **Protokoll** `steuerungsverbund_sprungprobe` (V20260922080000; RLS + FORCE, `voltpilot_app` SELECT/INSERT/UPDATE,
+  Offboarding über die Admin-Rolle, legt keine Zeile an): wer/wann, Auftrag, der Bericht wie er ankam, Messwerte je
+  Sprung, Urteil, Entwertung. Nie gelöscht.
+- **S2.** Die letzte bestandene Probe, nach der JEDES Mitglied eine geltende hat, hebt S1 auf S2 `geprueft` (Protokoll
+  `stufe`, Grund `sprungprobe_bestanden`, Akteur „Sprungprobe“). Scharfschalten prüft die Naht weiter selbst (T5).
+- **I3.** Eine Probe gilt für die Struktur, in der sie lief. Einrichten/Ändern entwertet die Proben der Boxen, deren
+  Eintrag (Rolle, Messpunkt, Signal) sich ändert, kommt oder geht; ändert sich die führende Box oder ihr Messpunkt: aller.
+  Ein Zuständigkeitswechsel (vor dem Scharfschalten erlaubt, IP-8/IP-26) des Netzzählers entwertet alle, der eines
+  Messpunkts die Probe seines Mitglieds, der einer Steuerquelle die der bisherigen und der künftigen Box (soweit
+  Mitglieder) — und führt eine Anlage in S2 auf S1 zurück (Grund `sprungprobe_entwertet …`). Anhalten/Fortsetzen
+  entwertet nichts (§5.5).
+- **Auskunft** im `GET …/gemeinsame-steuerung` je Mitglied `sprungprobe` (jüngste Probe: Urteil, Grund, wann,
+  entwertet, `gilt`) — für das Betreiber-Blatt (IP-24).
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='SteuerungsverbundAnteilVectorsTest,SteuerungsverbundRegelnVectorsTest')
-(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest,VerbundBilanzVectorsTest,VorbehaltVectorsTest,LadeparkJeBoxVectorsTest')
-(cd services/api && ./mvnw test -Dtest='SteuerungsverbundMigrationTest,GemeinsameSteuerungApiTest,VerbundBilanzApiTest,LadeparkJeBoxApiTest')   # Testcontainers
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest,VerbundBilanzVectorsTest,VorbehaltVectorsTest,LadeparkJeBoxVectorsTest,SprungprobeRegelTest')
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundMigrationTest,GemeinsameSteuerungApiTest,VerbundBilanzApiTest,LadeparkJeBoxApiTest,SprungprobeApiTest')   # Testcontainers
 (cd services/optimization && PYTHONPATH=. python -m pytest tests/test_steuerungsverbund_referenz.py)
 ```

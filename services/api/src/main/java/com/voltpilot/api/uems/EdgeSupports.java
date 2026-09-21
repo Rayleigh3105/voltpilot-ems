@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 public final class EdgeSupports {
     public static final List<String> NAMES = List.of(
             "data_sources", "assignment_effective_at", "measurement_sample_provenance", "events",
-            "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil");
+            "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe");
     private EdgeSupports() {}
 
     public static List<String> parse(JsonNode block, Consumer<String> unknown) {

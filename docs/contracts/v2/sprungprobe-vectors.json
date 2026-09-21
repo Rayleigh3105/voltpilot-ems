@@ -1,0 +1,210 @@
+{
+  "schema_version": "1.0",
+  "vertrag": "docs/contracts/v2/mqtt-sprungprobe.md",
+  "hinweis": "Reine Regel der Sprungprobe (AP-15 IP-21, E3 = A, R1/R19, I3). Java: uems/SprungprobeRegel. Die Box rechnet sie nicht. Netzpunkt: + Bezug / - Einspeisung; eigene_kw = waehrend - vorher der verstellten Groesse (senken negativ). null = unbekannt.",
+  "auswertung": [
+    {
+      "name": "r1_bestanden_zweimal",
+      "fall": "R1: PV Verwaltung 55 -> 25 kW, die Einspeisung an NA-1 faellt zweimal um 30 kW",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -30.4 },
+        { "eigene_kw": -29.5, "netz_vorher_kw": -61.0, "netz_waehrend_kw": -31.0 }
+      ],
+      "erwartet": { "urteil": "bestanden", "grund": null, "gesehen_kw": [29.6, 30], "toleranz_kw": [3, 2.95] }
+    },
+    {
+      "name": "r19_anderer_anschluss_nicht_gesehen",
+      "fall": "R19: Box Verwaltung speist ueber NA-2 ein - am Netzzaehler NA-1 bewegt sich nichts",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -59.2 },
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -60.5 }
+      ],
+      "erwartet": { "urteil": "nicht_bestanden", "grund": "nicht_gesehen", "gesehen_kw": [0.8, -0.5], "toleranz_kw": [3, 3] }
+    },
+    {
+      "name": "r19_verdrehtes_vorzeichen_falsche_richtung",
+      "fall": "R19 Schritt 3: ein verdrehter Wandler zeigt den Sprung mit falschem Vorzeichen",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": 60.0, "netz_waehrend_kw": 30.0 },
+        { "eigene_kw": -30.0, "netz_vorher_kw": 60.0, "netz_waehrend_kw": 30.0 }
+      ],
+      "erwartet": { "urteil": "nicht_bestanden", "grund": "falsche_richtung", "gesehen_kw": [-30, -30], "toleranz_kw": [3, 3] }
+    },
+    {
+      "name": "einmal_gesehen_reicht_nicht",
+      "fall": "zweimal heisst zweimal: der zweite Sprung zeigt sich nicht",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -30.0 },
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -60.0 }
+      ],
+      "erwartet": { "urteil": "nicht_bestanden", "grund": "nicht_gesehen", "gesehen_kw": [30, 0], "toleranz_kw": [3, 3] }
+    },
+    {
+      "name": "zu_klein_ausserhalb_der_toleranz",
+      "fall": "nur ein Teil des Sprungs erscheint: ein weiterer Erzeuger hinter der Box gleicht aus",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -44.0 },
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -30.0 }
+      ],
+      "erwartet": { "urteil": "nicht_bestanden", "grund": "zu_klein", "gesehen_kw": [16, 30], "toleranz_kw": [3, 3] }
+    },
+    {
+      "name": "zu_gross_ausserhalb_der_toleranz",
+      "fall": "der Netzpunkt springt mehr als die Box: eine Last hat gleichzeitig geschaltet",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -15.0 },
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -30.0 }
+      ],
+      "erwartet": { "urteil": "nicht_bestanden", "grund": "zu_gross", "gesehen_kw": [45, 30], "toleranz_kw": [3, 3] }
+    },
+    {
+      "name": "toleranz_genau_am_rand_ist_bestanden",
+      "fall": "max(10 %, 2 kW) schliesst den Rand ein",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -33.0 },
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -27.0 }
+      ],
+      "erwartet": { "urteil": "bestanden", "grund": null, "gesehen_kw": [27, 33], "toleranz_kw": [3, 3] }
+    },
+    {
+      "name": "kleiner_sprung_toleranz_zwei_kw",
+      "fall": "unter 20 kW gilt die Untergrenze 2 kW",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -8.0, "netz_vorher_kw": -20.0, "netz_waehrend_kw": -14.5 },
+        { "eigene_kw": -8.0, "netz_vorher_kw": -20.0, "netz_waehrend_kw": -12.0 }
+      ],
+      "erwartet": { "urteil": "nicht_bestanden", "grund": "zu_klein", "gesehen_kw": [5.5, 8], "toleranz_kw": [2, 2] }
+    },
+    {
+      "name": "verbrauch_senken_bezug_faellt",
+      "fall": "ein ladendes Fahrzeug: Ladepunkt 40 -> 20 kW, der Bezug faellt um 20 kW",
+      "art": "verbrauch_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -20.0, "netz_vorher_kw": 120.0, "netz_waehrend_kw": 100.5 },
+        { "eigene_kw": -20.0, "netz_vorher_kw": 118.0, "netz_waehrend_kw": 98.0 }
+      ],
+      "erwartet": { "urteil": "bestanden", "grund": null, "gesehen_kw": [-19.5, -20], "toleranz_kw": [2, 2] }
+    },
+    {
+      "name": "verbrauch_senken_falsche_richtung",
+      "fall": "Bezug steigt, obwohl der Ladepunkt senkt",
+      "art": "verbrauch_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -20.0, "netz_vorher_kw": 100.0, "netz_waehrend_kw": 120.0 },
+        { "eigene_kw": -20.0, "netz_vorher_kw": 100.0, "netz_waehrend_kw": 120.0 }
+      ],
+      "erwartet": { "urteil": "nicht_bestanden", "grund": "falsche_richtung", "gesehen_kw": [20, 20], "toleranz_kw": [2, 2] }
+    },
+    {
+      "name": "netzpunkt_ohne_wert_nicht_auswertbar",
+      "fall": "unbekannt ist kein Bestanden: im Fenster kam kein Wert der fuehrenden Box an",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -30.0 },
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": null }
+      ],
+      "erwartet": { "urteil": "nicht_auswertbar", "grund": "netzpunkt_nicht_frisch", "gesehen_kw": [30, null], "toleranz_kw": [3, 3] }
+    },
+    {
+      "name": "klares_durchfallen_vor_unbekannt",
+      "fall": "ein Sprung falsch herum, der andere ohne Wert: das Durchfallen ist die Nachricht",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": null },
+        { "eigene_kw": -30.0, "netz_vorher_kw": 60.0, "netz_waehrend_kw": 30.0 }
+      ],
+      "erwartet": { "urteil": "nicht_bestanden", "grund": "falsche_richtung", "gesehen_kw": [null, -30], "toleranz_kw": [3, 3] }
+    },
+    {
+      "name": "eigener_sprung_zu_klein",
+      "fall": "wenig Sonne: die PV sank nur um 3 kW - das trennt nichts von der Toleranz",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -3.0, "netz_vorher_kw": -5.0, "netz_waehrend_kw": -2.0 },
+        { "eigene_kw": -3.0, "netz_vorher_kw": -5.0, "netz_waehrend_kw": -2.0 }
+      ],
+      "erwartet": { "urteil": "nicht_auswertbar", "grund": "sprung_zu_klein", "gesehen_kw": [null, null], "toleranz_kw": [null, null] }
+    },
+    {
+      "name": "eigene_wirkung_unbekannt",
+      "fall": "die Box hat keine eigene Messung der verstellten Groesse",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": null, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -30.0 },
+        { "eigene_kw": null, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -30.0 }
+      ],
+      "erwartet": { "urteil": "nicht_auswertbar", "grund": "eigene_wirkung_unbekannt", "gesehen_kw": [null, null], "toleranz_kw": [null, null] }
+    },
+    {
+      "name": "nur_ein_sprung_unvollstaendig",
+      "fall": "zweimal heisst zweimal: ein Bericht mit einem Sprung ist nicht auswertbar",
+      "art": "erzeugung_senken", "abgebrochen": false, "abbruch_grund": null,
+      "spruenge": [
+        { "eigene_kw": -30.0, "netz_vorher_kw": -60.0, "netz_waehrend_kw": -30.0 }
+      ],
+      "erwartet": { "urteil": "nicht_auswertbar", "grund": "bericht_unvollstaendig", "gesehen_kw": [30], "toleranz_kw": [3] }
+    },
+    {
+      "name": "abgebrochen_vom_einspeisewaechter",
+      "fall": "der eigene Waechter greift ein - die Probe bricht ab, ohne Urteil ueber die Verdrahtung",
+      "art": "verbrauch_senken", "abgebrochen": true, "abbruch_grund": "einspeisewaechter",
+      "spruenge": [
+        { "eigene_kw": -20.0, "netz_vorher_kw": 100.0, "netz_waehrend_kw": 80.0 }
+      ],
+      "erwartet": { "urteil": "abgebrochen", "grund": "einspeisewaechter", "gesehen_kw": [-20], "toleranz_kw": [2] }
+    }
+  ],
+  "entwerten_beim_aendern": [
+    {
+      "name": "mitsteuernde_box_neuer_messpunkt",
+      "vorher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }],
+      "nachher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-11" }],
+      "signal_geaendert": [],
+      "erwartet": ["E-4"]
+    },
+    {
+      "name": "netzzaehler_wechselt_alle",
+      "vorher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }],
+      "nachher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-3" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }],
+      "signal_geaendert": [],
+      "erwartet": ["E-1", "E-4"]
+    },
+    {
+      "name": "neue_box_nur_sie",
+      "vorher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }],
+      "nachher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }],
+      "signal_geaendert": [],
+      "erwartet": ["E-4"]
+    },
+    {
+      "name": "signal_geaendert",
+      "vorher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }],
+      "nachher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }],
+      "signal_geaendert": ["E-4"],
+      "erwartet": ["E-4"]
+    },
+    {
+      "name": "nichts_geaendert",
+      "vorher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }],
+      "nachher": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }],
+      "signal_geaendert": [],
+      "erwartet": []
+    }
+  ],
+  "entwerten_beim_wechsel": [
+    { "name": "netzzaehler_alle", "quelle": "DQ-2", "steuerquelle": false, "bisher": "E-1", "kuenftig": "E-9", "erwartet": ["E-1", "E-4"] },
+    { "name": "messpunkt_mitsteuernde", "quelle": "DQ-10", "steuerquelle": false, "bisher": "E-4", "kuenftig": "E-9", "erwartet": ["E-4"] },
+    { "name": "steuerquelle_zwischen_mitgliedern", "quelle": "DQ-8", "steuerquelle": true, "bisher": "E-4", "kuenftig": "E-1", "erwartet": ["E-4", "E-1"] },
+    { "name": "steuerquelle_von_fremder_box", "quelle": "DQ-8", "steuerquelle": true, "bisher": "E-2", "kuenftig": "E-4", "erwartet": ["E-4"] },
+    { "name": "andere_quelle_keine", "quelle": "DQ-7", "steuerquelle": false, "bisher": "E-1", "kuenftig": "E-4", "erwartet": [] }
+  ],
+  "mitglieder_beim_wechsel": [{ "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2" }, { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10" }]
+}

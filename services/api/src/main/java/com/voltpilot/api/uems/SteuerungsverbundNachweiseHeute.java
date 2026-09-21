@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component;
 /**
  * Der Stand der Naht {@link SteuerungsverbundNachweise}: die Fähigkeit fragt {@link BoxFaehigkeiten#kann} (das Wort
  * kennt sie erst mit IP-17 — bis dahin nein), die Auslegung rechnet IP-7, G6 liest das erklärte Signal je Mitglied
- * und leitet die steuerbaren Verbraucher nach § 14a aus den Geräten je Box ab; die Sprungprobe hat noch keine Quelle
- * und fehlt. Damit wird keine Anlage scharf, bevor die Pakete ihre Quellen liefern.
+ * und leitet die steuerbaren Verbraucher nach § 14a aus den Geräten je Box ab; die Sprungprobe liest das Protokoll aus
+ * IP-21 ({@link SprungprobeDienst#gilt}). Damit wird keine Anlage scharf, bevor die Pakete ihre Quellen liefern.
  */
 @Component
 public class SteuerungsverbundNachweiseHeute implements SteuerungsverbundNachweise {
@@ -40,10 +40,21 @@ public class SteuerungsverbundNachweiseHeute implements SteuerungsverbundNachwei
         return faehigkeiten.kann(box, FAEHIGKEIT);
     }
 
-    /** IP-21 baut die Sprungprobe. */
+    /** Das Protokoll der Sprungprobe (IP-21), nachgereicht — ein bestehender Konstruktor ändert sich nicht. */
+    private SprungprobeDienst sprungproben;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void sprungproben(SprungprobeDienst dienst) {
+        this.sprungproben = dienst;
+    }
+
+    /**
+     * IP-21 (T5): eine bestandene, nicht entwertete Probe der Box für die HEUTIGE Struktur — dieselbe führende Box wie
+     * beim Auslösen, keine Strukturänderung seither (I3). Ohne Quelle „fehlt“.
+     */
     @Override
     public boolean sprungprobe(UUID verbundId, UUID box) {
-        return false;
+        return sprungproben != null && sprungproben.gilt(verbundId, box);
     }
 
     /**

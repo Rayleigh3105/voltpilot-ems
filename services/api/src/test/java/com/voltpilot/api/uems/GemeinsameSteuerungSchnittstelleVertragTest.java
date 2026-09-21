@@ -62,6 +62,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         formen.put("GemeinsameSteuerungErzeuger", GemeinsameSteuerungEinrichtenDto.Erzeuger.class);
         formen.put("GemeinsameSteuerungRueckfallAngabe", GemeinsameSteuerungEinrichtenDto.RueckfallAngabe.class);
         formen.put("GemeinsameSteuerungLuecke", GemeinsameSteuerungEinrichtenDto.Luecke.class);
+        formen.put("GemeinsameSteuerungSprungprobe", GemeinsameSteuerungDto.Sprungprobe.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -88,6 +89,15 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
                 .containsExactlyElementsOf(VerbundBilanzRegel.ZUSTAENDE);
         assertThat((List<String>) ((Map<String, Object>) bilanz.get("grund")).get("enum")).containsExactlyElementsOf(
                 Arrays.stream(VerbundBilanzRegel.Grund.values()).map(VerbundBilanzRegel.Grund::code).toList());
+        Map<String, Object> probe = eigenschaften("GemeinsameSteuerungSprungprobe");
+        assertThat((List<String>) ((Map<String, Object>) probe.get("urteil")).get("enum"))
+                .containsExactlyElementsOf(SprungprobeRegel.URTEILE);
+        List<String> gruende = new ArrayList<>(SprungprobeRegel.GRUENDE_NICHT_BESTANDEN);
+        gruende.addAll(SprungprobeRegel.GRUENDE_NICHT_AUSWERTBAR);
+        gruende.addAll(SprungprobeRegel.GRUENDE_ABGEBROCHEN);
+        gruende.add(null);
+        assertThat((List<String>) ((Map<String, Object>) probe.get("grund")).get("enum"))
+                .containsExactlyElementsOf(gruende);
         Map<String, Object> richtung = eigenschaften("GemeinsameSteuerungVorbehaltRichtung");
         assertThat((List<String>) ((Map<String, Object>) richtung.get("herkunft")).get("enum")).containsExactly(
                 GemeinsameSteuerungService.HERKUNFT_ERKLAERT, GemeinsameSteuerungService.HERKUNFT_GEMESSEN);
@@ -123,7 +133,8 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
                 ADMIN + "/fortsetzen|post", "plattform.betrieb",
                 ADMIN + "/mitglieder/{boxId}/bestaetigen|post", "plattform.betrieb",
                 ADMIN + "/vorbehalt/freigeben|post", "plattform.betrieb",
-                KUNDE + "/komponenten/{komponenteId}/rueckfall|put", "funktion.steuern_einrichten");
+                KUNDE + "/komponenten/{komponenteId}/rueckfall|put", "funktion.steuern_einrichten",
+                ADMIN + "/sprungprobe|post", "plattform.betrieb");
         recht.forEach((schluessel, kennung) -> {
             String[] t = schluessel.split("\\|");
             Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) pfade.get(t[0])).get(t[1]);

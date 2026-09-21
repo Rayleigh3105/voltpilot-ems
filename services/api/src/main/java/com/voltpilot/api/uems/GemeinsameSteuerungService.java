@@ -117,6 +117,14 @@ public class GemeinsameSteuerungService {
         this.erklaerungDienst = erklaerung;
     }
 
+    /** Die Sprungprobe (IP-21): Auskunft je Mitglied und Entwerten bei jeder Strukturänderung (I3), nachgereicht. */
+    private SprungprobeDienst sprungproben;
+
+    @Autowired(required = false)
+    void sprungproben(SprungprobeDienst dienst) {
+        this.sprungproben = dienst;
+    }
+
     void uhrStellen(Clock clock) {
         uhr = clock;
     }
@@ -148,7 +156,8 @@ public class GemeinsameSteuerungService {
                     signal == null ? SteuerungsverbundNachweiseHeute.UNBEKANNT : signal.wert(),
                     signal == null || signal.am() == null ? null : signal.am().atOffset(ZoneOffset.UTC),
                     SteuerungsverbundNachweiseHeute.wort(nachweise.verbraucher14a(siteId, m.deviceId())),
-                    anteilVerlust(siteId, m.deviceId(), jetzt));
+                    anteilVerlust(siteId, m.deviceId(), jetzt),
+                    sprungproben == null ? null : sprungproben.auskunft(v.id(), m.deviceId(), mitglieder));
         }).toList();
         LocalDate tag = tag(jetzt);
         UUID netzanschluss = repo.netzanschluesse(siteId, tag).stream().findFirst().orElse(null);
@@ -284,6 +293,9 @@ public class GemeinsameSteuerungService {
         }
         boolean geaendert = vorhanden.isEmpty();
         List<MitgliedZeile> ist = repo.mitglieder(verbundId, jetzt);
+        Map<UUID, String> signalVorher = new HashMap<>();
+        repo.vorgabeSignale(verbundId).forEach((mitglied, sig) -> ist.stream().filter(m -> m.id().equals(mitglied))
+                .findFirst().ifPresent(m -> signalVorher.put(m.deviceId(), sig.wert())));
         Map<UUID, SteuerungsverbundRepository.VorgabeSignal> signaleVorher = new HashMap<>();
         Map<UUID, SteuerungsverbundRepository.VorgabeSignal> signaleIst = repo.vorgabeSignale(verbundId);
         ist.forEach(m -> Optional.ofNullable(signaleIst.get(m.id())).ifPresent(s -> signaleVorher.put(m.deviceId(), s)));
@@ -312,6 +324,23 @@ public class GemeinsameSteuerungService {
             geaendert = true;
         }
         VerbundZeile v = repo.finden(verbundId).orElseThrow();
+        if (geaendert && sprungproben != null) {
+            // I3: jede Strukturänderung entwertet die Proben der betroffenen Boxen (Netzzähler/führende Box: aller).
+            List<MitgliedZeile> nachher = repo.mitglieder(verbundId, jetzt);
+            Map<UUID, String> signalNachher = new HashMap<>();
+            repo.vorgabeSignale(verbundId).forEach((mitglied, sig) -> nachher.stream()
+                    .filter(m -> m.id().equals(mitglied)).findFirst()
+                    .ifPresent(m -> signalNachher.put(m.deviceId(), sig.wert())));
+            Set<String> signalGeaendert = new java.util.HashSet<>();
+            signalNachher.forEach((box, sig) -> {
+                if (signalVorher.containsKey(box) && !Objects.equals(signalVorher.get(box), sig)) {
+                    signalGeaendert.add(box.toString());
+                }
+            });
+            Set<String> betroffen = SprungprobeRegel.betroffenBeimAendern(SprungprobeDienst.eintraege(ist),
+                    SprungprobeDienst.eintraege(nachher), signalGeaendert);
+            sprungproben.entwerten(verbundId, betroffen.stream().map(UUID::fromString).toList(), "struktur");
+        }
         if (geaendert) {
             Stufe neu = SteuerungsverbundScharfschalten.stufeNachAenderung(urteil(siteId, v, jetzt));
             stufeWechseln(tenant, v, neu, jetzt, wer);

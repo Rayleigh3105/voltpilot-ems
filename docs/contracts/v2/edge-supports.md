@@ -29,6 +29,11 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   (`faehigkeit_fehlt`) fragt dieses Wort. **Nur gemeldet, keine Zeile in `edge-capabilities.json`**:
   eine Zeile verlangte ein `ab_release`, und jede Bestandsbox bekäme einen allgemeinen „Update
   nötig“-Hinweis; der Hinweis A12 gehört auf die Fläche der Gemeinsamen Steuerung (IP-23).
+- `sprungprobe` (AP-15 IP-21): die Box führt einen Sprungprobe-Auftrag auf `.../v2/sprungprobe` aus und berichtet auf
+  `.../v2/sprungprobe-result` ([Sprungprobe](mqtt-sprungprobe.md)). Die Route
+  `POST …/admin/sites/{id}/gemeinsame-steuerung/sprungprobe` fragt dieses Wort (`sprungprobe_nicht_gemeldet`). **Nur
+  gemeldet, keine Zeile in `edge-capabilities.json`** (Begründung wie `plan_quittung`). Die Cloud kennt das Wort; die
+  Box meldet es erst mit ihrem Ausführer (`advertised: false` in den Vektoren, bis der Box-PR es umstellt).
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).
