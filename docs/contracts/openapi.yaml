@@ -13359,13 +13359,30 @@ components:
         erstellt_am: { type: string, format: date-time }
     GemeinsameSteuerungMitglied:
       type: object
-      required: [box_id, rolle, gueltig_ab]
+      required: [box_id, rolle, gueltig_ab, vorgabe_signal, verbraucher14a]
       properties:
         box_id: { type: string, format: uuid }
         rolle: { type: string, enum: [fuehrt, steuert_mit] }
         messpunkt_id: { type: string, format: uuid, nullable: true }
         gueltig_ab: { type: string, format: date-time }
         bestaetigt_am: { type: string, format: date-time, nullable: true }
+        vorgabe_signal:
+          type: string
+          enum: [ja, nein, unbekannt]
+          description: >-
+            G6: liegt das Signal des Netzbetreibers (§ 14a u. ä.) an dieser Box an — vom Kundenadministrator
+            erklärt; `unbekannt` (Vorgabe) zählt als „liegt nicht an“.
+        vorgabe_signal_am:
+          type: string
+          format: date-time
+          nullable: true
+          description: Wann das Signal zuletzt erklärt wurde; null = nie.
+        verbraucher14a:
+          type: string
+          enum: [ja, nein, unbekannt]
+          description: >-
+            G6: hängen steuerbare Verbraucher nach § 14a hinter dieser Box — abgeleitet aus den Geräte-Angaben der
+            Box (Richtung bezug mit Komponente und Schreibfreigabe); `unbekannt` (keine Angabe) zählt als „ja“.
     GemeinsameSteuerungBefund:
       type: object
       required: [wort]
@@ -13400,6 +13417,13 @@ components:
               box_id: { type: string, format: uuid }
               rolle: { type: string, enum: [fuehrt, steuert_mit] }
               messpunkt_id: { type: string, format: uuid, nullable: true }
+              vorgabe_signal:
+                type: string
+                nullable: true
+                enum: [ja, nein, unbekannt, null]
+                description: >-
+                  G6, wahlfrei: fehlt es, bleibt das erklärte Signal der Box (eine neue Box beginnt mit
+                  `unbekannt`). Eine Änderung ist eine Strukturänderung (Stufe zurück, Protokoll `vorgabe_signal`).
     GemeinsameSteuerungFehler:
       type: object
       required: [code, message]

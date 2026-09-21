@@ -261,6 +261,40 @@ public class SteuerungsverbundRepository {
         return out;
     }
 
+    // ------------------------------------------------------------------ Signal des Netzbetreibers (G6)
+
+    /** Das erklärte Signal an einem Mitglied: {@code ja} · {@code nein} · {@code unbekannt}; wann/von wem, null = nie. */
+    public record VorgabeSignal(String wert, Instant am, String von) {}
+
+    /** Das Signal je Mitglied ({@code vorgabe_signal}, V20260922030000) — Mitglied-Kennung → Angabe. */
+    public java.util.Map<UUID, VorgabeSignal> vorgabeSignale(UUID verbundId) {
+        java.util.Map<UUID, VorgabeSignal> out = new java.util.HashMap<>();
+        jdbc.query("SELECT id, vorgabe_signal, vorgabe_signal_am, vorgabe_signal_von FROM steuerungsverbund_mitglied "
+                + "WHERE steuerungsverbund_id = ?", rs -> {
+                    out.put(rs.getObject("id", UUID.class), new VorgabeSignal(rs.getString("vorgabe_signal"),
+                            instant(rs, "vorgabe_signal_am"), rs.getString("vorgabe_signal_von")));
+                }, verbundId);
+        return out;
+    }
+
+    /**
+     * Das Signal an der Box: das offene Mitglied (weder beendet noch aufgehoben) im Verbund der Anlage — leer, wenn die
+     * Box dort kein offenes Mitglied ist.
+     */
+    public Optional<String> vorgabeSignalDerBox(UUID siteId, UUID box) {
+        return jdbc.queryForList("SELECT m.vorgabe_signal FROM steuerungsverbund_mitglied m "
+                + "JOIN steuerungsverbund v ON v.id = m.steuerungsverbund_id WHERE v.site_id = ? AND m.device_id = ? "
+                + "AND m.aufgehoben_am IS NULL AND m.gueltig_bis IS NULL ORDER BY m.gueltig_ab DESC LIMIT 1",
+                String.class, siteId, box).stream().findFirst();
+    }
+
+    /** Schreibt das Signal eines nicht aufgehobenen Mitglieds um; false, wenn es nicht (mehr) sichtbar ist. */
+    public boolean vorgabeSignalSetzen(UUID mitgliedId, String wert, String wer, Instant am) {
+        return jdbc.update("UPDATE steuerungsverbund_mitglied SET vorgabe_signal = ?, vorgabe_signal_am = ?, "
+                + "vorgabe_signal_von = ? WHERE id = ? AND aufgehoben_am IS NULL", wert,
+                am == null ? null : Timestamp.from(am), wer, mitgliedId) > 0;
+    }
+
     /** Bestätigt ein offenes Mitglied (I4); false, wenn es schon bestätigt oder nicht (mehr) wirksam ist. */
     public boolean bestaetigen(UUID mitgliedId, String wer, Instant am) {
         return jdbc.update("UPDATE steuerungsverbund_mitglied SET bestaetigt_am = ?, bestaetigt_von = ? "

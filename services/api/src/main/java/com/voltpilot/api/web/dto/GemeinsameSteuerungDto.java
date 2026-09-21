@@ -62,10 +62,15 @@ public final class GemeinsameSteuerungDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bilanz(String zustand, LocalDate tag, LocalDate seit, String grund, OffsetDateTime gerechnetAm) {}
 
-    /** Ein wirksames Mitglied: Box, Rolle ({@code fuehrt} · {@code steuert_mit}), Messpunkt (Datenquelle, wahlfrei). */
+    /**
+     * Ein wirksames Mitglied: Box, Rolle ({@code fuehrt} · {@code steuert_mit}), Messpunkt (Datenquelle, wahlfrei). G6:
+     * {@code vorgabeSignal} — liegt das Signal des Netzbetreibers an der Box an ({@code ja} · {@code nein} ·
+     * {@code unbekannt}, erklärt; {@code vorgabeSignalAm} wann zuletzt, null = nie) — und {@code verbraucher14a} —
+     * hängen steuerbare Verbraucher nach § 14a hinter ihr (dieselben drei Wörter, abgeleitet aus den Geräten je Box).
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Mitglied(UUID boxId, String rolle, UUID messpunktId, OffsetDateTime gueltigAb,
-            OffsetDateTime bestaetigtAm) {}
+            OffsetDateTime bestaetigtAm, String vorgabeSignal, OffsetDateTime vorgabeSignalAm, String verbraucher14a) {}
 
     /** Ein Grund aus dem Ablehnungs-Vokabular; {@code boxId} bzw. {@code richtung} nur, wo er daran hängt. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -78,7 +83,10 @@ public final class GemeinsameSteuerungDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record WarnungFuehrung(String wort, UUID fuehrendeBoxId, UUID speicherBoxId) {}
 
-    /** Ein gewünschtes Mitglied aus {@code PUT {"mitglieder": […]}} — Mandant und Anlage kommen nie aus dem Körper. */
+    /**
+     * Ein gewünschtes Mitglied aus {@code PUT {"mitglieder": […]}} — Mandant und Anlage kommen nie aus dem Körper.
+     * {@code vorgabeSignal} wahlfrei ({@code ja} · {@code nein} · {@code unbekannt}); fehlt es, bleibt das erklärte.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record MitgliedWunsch(UUID boxId, String rolle, UUID messpunktId) {}
+    public record MitgliedWunsch(UUID boxId, String rolle, UUID messpunktId, String vorgabeSignal) {}
 }

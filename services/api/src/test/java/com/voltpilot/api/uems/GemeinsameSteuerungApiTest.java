@@ -438,6 +438,161 @@ class GemeinsameSteuerungApiTest {
         assertThat(ohneE4.body().path("mitglieder")).hasSize(1);
     }
 
+    // ============================================================================ G6: Träger des Signals, § 14a abgeleitet
+
+    /**
+     * R18 mit dem echten Träger (Folge zu IP-5): das Signal liegt nur an Box Halle 1 (erklärt), die Ladepunkte hängen an
+     * Box Verwaltung (abgeleitet aus ihren Geräten) — 409 mit genau einem Befund an E-4, die Anlage bleibt auf S1.
+     */
+    @Test
+    void r18TraegerSignalNurAnHalle1LadepunkteAnVerwaltung() throws Exception {
+        Welt w = welt(true, true);
+        einrichten(w, "ja", "nein");
+        geraet(w, w.e1(), "pv-generation", "einspeisung", true);
+        geraet(w, w.e4(), "wallbox", "bezug", true);
+        faehigUndGeprueft();
+        auslegung(w, "100");
+        Antwort g = kunde(w, get(w.pfad()));
+        assertThat(mitglied(g.body(), w.e1()).path("vorgabe_signal").asText()).isEqualTo("ja");
+        assertThat(mitglied(g.body(), w.e1()).path("verbraucher14a").asText()).isEqualTo("nein");
+        assertThat(mitglied(g.body(), w.e4()).path("vorgabe_signal").asText()).isEqualTo("nein");
+        assertThat(mitglied(g.body(), w.e4()).path("verbraucher14a").asText()).isEqualTo("ja");
+        assertThat(g.fehlt()).containsExactly("vorgabe_signal_nicht_an_jeder_box");
+        assertThat(g.body().path("fehlt").get(0).path("box_id").asText()).isEqualTo(w.e4().toString());
+        Antwort a = plattform(w, post(w.admin() + "/scharfschalten"));
+        assertThat(a.status()).isEqualTo(409);
+        assertThat(a.code()).isEqualTo("vorgabe_signal_nicht_an_jeder_box");
+        assertThat(a.body().path("fehlt")).hasSize(1);
+        assertThat(a.body().path("fehlt").get(0).path("box_id").asText()).isEqualTo(w.e4().toString());
+        assertThat(stufe(w)).as("scharf_ohne_signal_an_e4 = false").isEqualTo("beobachtet");
+    }
+
+    /** R18, Schritt 3: der Elektriker führt den Kontakt auch an Box Verwaltung — G6 fällt aus {@code fehlt}. */
+    @Test
+    void signalAnBeidenBoxenFaelltAusFehlt() throws Exception {
+        Welt w = welt(true, true);
+        einrichten(w, "ja", "ja");
+        geraet(w, w.e4(), "wallbox", "bezug", true);
+        faehigUndGeprueft();
+        auslegung(w, "100");
+        assertThat(kunde(w, get(w.pfad())).fehlt()).isEmpty();
+        Antwort s = plattform(w, post(w.admin() + "/scharfschalten"));
+        assertThat(s.status()).as(s.body().toString()).isEqualTo(200);
+        assertThat(s.body().path("stufe").asText()).isEqualTo("S3");
+    }
+
+    /**
+     * G6, zweite Hälfte: alle steuerbaren Verbraucher hängen an der Box mit dem Signal — Box Verwaltung hat nur einen
+     * Erzeuger und ungeregelte Last (keine Schreibfreigabe in Bezugsrichtung), sie braucht das Signal nicht.
+     */
+    @Test
+    void alleVerbraucherAnDerBoxMitSignalIstErfuellt() throws Exception {
+        Welt w = welt(true, true);
+        einrichten(w, "ja", "nein");
+        geraet(w, w.e1(), "wallbox", "bezug", true);
+        geraet(w, w.e4(), "pv-generation", "einspeisung", true);
+        geraet(w, w.e4(), "wallbox", "bezug", false);
+        geraet(w, w.e4(), null, "bezug", false);
+        faehigUndGeprueft();
+        auslegung(w, "100");
+        Antwort g = kunde(w, get(w.pfad()));
+        assertThat(mitglied(g.body(), w.e1()).path("verbraucher14a").asText()).isEqualTo("ja");
+        assertThat(mitglied(g.body(), w.e4()).path("verbraucher14a").asText()).isEqualTo("nein");
+        assertThat(g.fehlt()).isEmpty();
+        assertThat(plattform(w, post(w.admin() + "/scharfschalten")).status()).isEqualTo(200);
+    }
+
+    /**
+     * Unbekannt ist keine Null: ohne erklärtes Signal (E-4) und ohne Geräte-Angaben (unbekannt zählt als „hat
+     * welche“) wird abgelehnt — auch wenn an E-4 „nein“ erklärt ist, solange ihre Verbraucher unbekannt sind.
+     */
+    @Test
+    void unbekanntWirdAbgelehnt() throws Exception {
+        Welt w = welt(true, true);
+        Antwort e = einrichten(w, "ja", null);
+        assertThat(mitglied(e.body(), w.e4()).path("vorgabe_signal").asText()).isEqualTo("unbekannt");
+        assertThat(mitglied(e.body(), w.e4()).path("vorgabe_signal_am").isNull()).isTrue();
+        assertThat(mitglied(e.body(), w.e4()).path("verbraucher14a").asText()).isEqualTo("unbekannt");
+        faehigUndGeprueft();
+        auslegung(w, "100");
+        Antwort a = plattform(w, post(w.admin() + "/scharfschalten"));
+        assertThat(a.code()).isEqualTo("vorgabe_signal_nicht_an_jeder_box");
+        assertThat(a.body().path("fehlt").get(0).path("box_id").asText()).isEqualTo(w.e4().toString());
+
+        geraet(w, w.e1(), "wallbox", "bezug", true);
+        einrichten(w, "ja", "nein");
+        Antwort b = plattform(w, post(w.admin() + "/scharfschalten"));
+        assertThat(b.code()).as("Verbraucher an E-4 unbekannt").isEqualTo("vorgabe_signal_nicht_an_jeder_box");
+        assertThat(b.body().path("fehlt").get(0).path("box_id").asText()).isEqualTo(w.e4().toString());
+    }
+
+    /**
+     * I3: das Signal zu ändern ist eine Strukturänderung — die Stufe geht zurück, das Protokoll nennt alt und neu; die
+     * Mitglied-Zeile bleibt dieselbe (das Signal ist nicht Teil der Identität). Derselbe Stand schreibt nichts.
+     */
+    @Test
+    void signalSetzenSetztDieStufeZurueckUndStehtImProtokoll() throws Exception {
+        Welt w = welt(true, true);
+        einrichten(w, "ja", null);
+        long zeilen = mitgliedZeilen(w);
+        root.update("UPDATE steuerungsverbund SET stufe = 'geprueft' WHERE site_id = ?", w.an1());
+
+        Antwort a = einrichten(w, "ja", "ja");
+        assertThat(a.body().path("zustand").asText()).isEqualTo("beobachtet");
+        assertThat(mitgliedZeilen(w)).as("keine neue Mitglied-Zeile").isEqualTo(zeilen);
+        JsonNode e4 = mitglied(a.body(), w.e4());
+        assertThat(e4.path("vorgabe_signal").asText()).isEqualTo("ja");
+        assertThat(e4.path("vorgabe_signal_am").isNull()).isFalse();
+        assertThat(root.queryForObject("SELECT vorgabe_signal_von FROM steuerungsverbund_mitglied WHERE device_id = ? "
+                + "AND gueltig_bis IS NULL AND aufgehoben_am IS NULL", String.class, w.e4())).isNotBlank();
+        List<Map<String, Object>> eintraege = root.queryForList("SELECT alt::text AS alt, neu::text AS neu, actor_art "
+                + "FROM steuerungsverbund_aenderung WHERE site_id = ? AND art = 'vorgabe_signal' ORDER BY id", w.an1());
+        assertThat(eintraege).hasSize(2);
+        assertThat(eintraege.get(0).get("neu").toString()).contains(w.e1().toString()).contains("\"ja\"");
+        assertThat(eintraege.get(1).get("alt").toString()).contains(w.e4().toString()).contains("\"unbekannt\"");
+        assertThat(eintraege.get(1).get("neu").toString()).contains("\"ja\"");
+        assertThat(eintraege.get(1).get("actor_art")).isEqualTo("kunde");
+        assertThat(root.queryForList("SELECT neu::text FROM steuerungsverbund_aenderung WHERE site_id = ? "
+                + "AND art = 'stufe' ORDER BY id DESC LIMIT 1", String.class, w.an1())).containsExactly("\"beobachtet\"");
+
+        root.update("UPDATE steuerungsverbund SET stufe = 'geprueft' WHERE site_id = ?", w.an1());
+        long vorher = zeilen(w);
+        assertThat(einrichten(w, "ja", "ja").body().path("zustand").asText()).isEqualTo("geprueft");
+        assertThat(einrichten(w, "ja", null).body().path("zustand").asText())
+                .as("fehlt das Feld, bleibt das erklärte").isEqualTo("geprueft");
+        assertThat(zeilen(w)).as("derselbe Stand schreibt nichts").isEqualTo(vorher);
+    }
+
+    /** Ein neues Intervall derselben Box (anderer Messpunkt) erbt das erklärte Signal mit wer/wann. */
+    @Test
+    void neuesIntervallErbtDasSignal() throws Exception {
+        Welt w = welt(true, true);
+        einrichten(w, "ja", "ja");
+        String am = root.queryForObject("SELECT vorgabe_signal_am::text FROM steuerungsverbund_mitglied "
+                + "WHERE device_id = ? AND gueltig_bis IS NULL AND aufgehoben_am IS NULL", String.class, w.e4());
+        Antwort a = kunde(w, put(w.pfad()).content(mitglieder(w.e1(), "fuehrt", w.dq2(), w.e4(), "steuert_mit",
+                null)));
+        assertThat(a.status()).as(a.body().toString()).isEqualTo(200);
+        assertThat(mitglied(a.body(), w.e4()).path("vorgabe_signal").asText()).isEqualTo("ja");
+        assertThat(root.queryForObject("SELECT vorgabe_signal_am::text FROM steuerungsverbund_mitglied "
+                + "WHERE device_id = ? AND gueltig_bis IS NULL AND aufgehoben_am IS NULL", String.class, w.e4())).isEqualTo(am);
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_aenderung WHERE site_id = ? "
+                + "AND art = 'vorgabe_signal'", Long.class, w.an1())).as("geerbt ist keine Änderung").isEqualTo(2L);
+    }
+
+    @Test
+    void vorgabeSignalNurMitDenDreiWoertern() throws Exception {
+        Welt w = welt(true, true);
+        for (String falsch : List.of("\"vielleicht\"", "true", "1")) {
+            String body = "{\"mitglieder\":[{\"box_id\":\"" + w.e1() + "\",\"rolle\":\"fuehrt\",\"messpunkt_id\":\""
+                    + w.dq2() + "\",\"vorgabe_signal\":" + falsch + "}]}";
+            Antwort a = kunde(w, put(w.pfad()).content(body));
+            assertThat(a.status()).as(falsch).isEqualTo(400);
+            assertThat(a.code()).isEqualTo("anfrage_ungueltig");
+        }
+        assertThat(zeilen(w)).isZero();
+    }
+
     // ============================================================================ Mandant nie aus dem Körper, Zaun
 
     @Test
@@ -556,6 +711,33 @@ class GemeinsameSteuerungApiTest {
         return a;
     }
 
+    /** Wie {@link #einrichten(Welt)}, mit {@code vorgabe_signal} je Box (null = Feld fehlt). */
+    private Antwort einrichten(Welt w, String signalE1, String signalE4) throws Exception {
+        Antwort a = kunde(w, put(w.pfad()).content("{\"mitglieder\":[" + mitglied(w.e1(), "fuehrt", w.dq2(), signalE1)
+                + "," + mitglied(w.e4(), "steuert_mit", w.dq10(), signalE4) + "]}"));
+        assertThat(a.status()).as(a.body().toString()).isEqualTo(200);
+        return a;
+    }
+
+    /**
+     * Eine Geräte-Angabe der Box im Verbund (IP-7, {@code steuerungsverbund_geraet}); {@code rolle} null = das
+     * Ungeregelte hinter dem Abgang (keine Komponente, nie freigegeben).
+     */
+    private static void geraet(Welt w, UUID box, String rolle, String richtung, boolean schreibfreigabe) {
+        UUID verbund = root.queryForObject("SELECT id FROM steuerungsverbund WHERE site_id = ?", UUID.class, w.an1());
+        UUID k = rolle == null ? null : root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, "
+                + "created_at) VALUES (?, ?, ?, '2026-01-01T00:00:00Z') RETURNING id", UUID.class, w.mandant(),
+                w.an1(), rolle);
+        root.update("INSERT INTO steuerungsverbund_geraet (tenant_id, steuerungsverbund_id, site_id, device_id, "
+                + "entity_id, richtung, nenn_kw, schreibfreigabe, created_by) VALUES (?, ?, ?, ?, ?, ?, 22, ?, 'test')",
+                w.mandant(), verbund, w.an1(), box, k, richtung, schreibfreigabe);
+    }
+
+    private static long mitgliedZeilen(Welt w) {
+        return root.queryForObject("SELECT count(*) FROM steuerungsverbund_mitglied WHERE site_id = ?", Long.class,
+                w.an1());
+    }
+
     private void faehigUndGeprueft() {
         doReturn(true).when(nachweise).faehigkeit(any());
         doReturn(true).when(nachweise).sprungprobe(any(), any());
@@ -599,6 +781,11 @@ class GemeinsameSteuerungApiTest {
     private static String mitglied(UUID box, String rolle, UUID messpunkt) {
         return "{\"box_id\":\"" + box + "\",\"rolle\":\"" + rolle + "\",\"messpunkt_id\":"
                 + (messpunkt == null ? "null" : "\"" + messpunkt + "\"") + "}";
+    }
+
+    private static String mitglied(UUID box, String rolle, UUID messpunkt, String signal) {
+        String m = mitglied(box, rolle, messpunkt);
+        return signal == null ? m : m.substring(0, m.length() - 1) + ",\"vorgabe_signal\":\"" + signal + "\"}";
     }
 
     private static JsonNode mitglied(JsonNode zustand, UUID box) {

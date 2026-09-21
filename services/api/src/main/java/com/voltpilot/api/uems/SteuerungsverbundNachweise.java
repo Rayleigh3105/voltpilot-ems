@@ -18,8 +18,9 @@ import java.util.UUID;
  *   <li>{@link #sprungprobe} — IP-21 (Protokoll der Sprungprobe je steuernder Box),</li>
  *   <li>{@link #auslegung} — IP-7 mit den Geräte-Rückfällen aus IP-6 (Nennleistung und Rückfall je Box und Richtung,
  *       Vorbehalt aus IP-13),</li>
- *   <li>{@link #verbraucher14a} und {@link #vorgabeSignal} — G6: kein Paket in §8 nennt ihren Träger (Befund im
- *       PR von IP-5); bis dahin unbekannt, also nie scharf.</li>
+ *   <li>{@link #verbraucher14a} und {@link #vorgabeSignal} — G6 (Folge zu IP-5, Anhang B Z3): das Signal erklärt der
+ *       Kundenadministrator je Mitglied ({@code vorgabe_signal}, V20260922030000; IP-23 fragt es ab), die
+ *       Verbraucher werden aus den Geräten je Box abgeleitet (IP-7); was keiner weiß, bleibt unbekannt.</li>
  * </ul>
  */
 public interface SteuerungsverbundNachweise {
