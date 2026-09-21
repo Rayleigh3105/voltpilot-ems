@@ -1109,6 +1109,9 @@ frühestens 7 Tage nach Monatsende (`docs/contracts/v2/bericht.md:134`).
 
 Nach dem Neustart stellt der Broker die gehaltene Auswahl erneut zu; der Simulator lernt sie
 neu und quittiert sie noch einmal. Einen Handgriff braucht das nicht.
+Nur wenn der Broker selbst neu gestartet ist und dabei gehaltene Nachrichten verloren hat, bleibt
+der Simulator nach seinem Neustart stumm (`gelernt: 0` im Lebenszeichen). Dann je Box einen
+eigenen Messwert einmal aus- und wieder einschalten: Die Plattform stellt dadurch neu zu.
 
 Lokal belegt ist Folgendes. `DauerlaeuferMetrikenDbTest` zeigt mit verstellter Uhr, dass die
 Metrik bei ausbleibenden Werten über 900 s steigt. `DauerlaeuferGanzerWegDbTest` richtet alles

@@ -26,6 +26,10 @@ Neu angelegt am 21.09.2026. Keine Migration, keine Route, keine Fläche. Einrich
   Dafür braucht es eine Komponente MIT Anschluss (Baukasten, Lesung = Verbindungsbeleg; `POST …/measurement-points` hat keinen
   und bekommt keinen Vorschlag), „Vorschlag übernehmen“ (Datenquelle UND Zuständigkeit, sonst Spiegel; das Portal hat dafür
   keinen Knopf) und die Quittung (sonst bleibt der erste Wert je Schlüssel ohne Fassung).
+- **Das Gedächtnis ist die gehaltene Zustellung.** Anders als eine echte Box speichert der Simulator die Auswahl nicht.
+  Verliert der Broker gehaltene Nachrichten (gitops setzt keinen EMQX-Retainer, der Standard hält sie im Speicher) UND
+  startet der Simulator danach neu, sendet er nichts, bis die Plattform neu zustellt: einen eigenen Messwert je Box einmal
+  aus- und wieder einschalten (neue Revision). Der Alarm meldet das zu Recht.
 - **Vor dem ersten Wert** gibt es kein Alter, aber `messwert_zustand{zustand="nie"} 1`; daran hängt die nie-Regel in gitops.
 - **Arbeitslisten und Speicher zählen ihn mit.** Beide messen die Verarbeitung, sie zählen keine Kunden. Der Dauerläufer soll
   dort gerade auffallen, wenn die Strecke steht.
