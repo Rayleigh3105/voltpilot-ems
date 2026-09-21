@@ -123,15 +123,18 @@ public class MessstelleRegisterService {
      */
     @Transactional(readOnly = true)
     public MessstelleDto.Liste liste(Instant am, Filter filter) {
-        return liste(am, filter, id -> true);
+        return liste(am, filter, id -> true, komponente -> true);
     }
 
     /**
      * Die Liste der Route: nur Messstellen, die {@code sichtbar} zulässt — sie fehlen in beiden Listen und im Aggregat,
      * ohne Hinweis und ohne Anzahl. Als Eingang einer sichtbaren berechneten Messstelle nennt {@code berechnung} sie
-     * nicht ({@link RegisterBerechnung#ableiten}, AP-03 R-A3/R-A6). Interne Leser (Standort-Übersicht, Ausfall) nehmen {@link #liste(Instant, Filter)}.
+     * nicht, ebenso wenig den Messkanal einer Komponente, die {@code komponenteSichtbar} nicht zulässt
+     * ({@link RegisterBerechnung#ableiten}, AP-03 R-A3/R-A6). Interne Leser (Standort-Übersicht, Ausfall) nehmen
+     * {@link #liste(Instant, Filter)}.
      */
-    public MessstelleDto.Liste liste(Instant am, Filter filter, Predicate<UUID> sichtbar) {
+    public MessstelleDto.Liste liste(Instant am, Filter filter, Predicate<UUID> sichtbar,
+            Predicate<UUID> komponenteSichtbar) {
         Instant zeitpunkt = am != null ? am : uhr.instant();
         LocalDate tag = LocalDate.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
         List<Bestand> bestand = register.alle();
@@ -168,7 +171,8 @@ public class MessstelleRegisterService {
         }
         Map<UUID, MessstelleDto.RegisterBerechnung> berechnungen = RegisterBerechnung.ableiten(plan, alle, werte,
                 m -> kanaele.kadenz(m.kanal(), werte.get(m) == null ? null : werte.get(m).kadenzS(), null).erwartetS(),
-                zeitpunkt, id -> OrtsbaumAbleitung.zeitzoneVon(baum.baum(), alle.get(id).ort().standort()), sichtbar);
+                zeitpunkt, id -> OrtsbaumAbleitung.zeitzoneVon(baum.baum(), alle.get(id).ort().standort()), sichtbar,
+                komponenteSichtbar);
         for (int i = 0; i < bestand.size(); i++) {
             MessstelleDto.RegisterZeile z = mitBerechnung(alle.get(bestand.get(i).messstelle().id()),
                     berechnungen.get(bestand.get(i).messstelle().id()));

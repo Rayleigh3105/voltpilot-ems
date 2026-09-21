@@ -77,8 +77,10 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   Eingänge = `MessstelleFormelService#eingaenge`: Messstellen UND Komponenten von Messkanal-Termen (Sicht über
   RLS `measurement_point`, `#komponenteSichtbar`); gilt auch für Formel/Wert/Verlauf. Gerätekarte
   `…/komponenten/{id}/summenwerte`: Summenwert außerhalb fehlt, Zahl über Eingang außerhalb mit Hinweis.
-  Offen: Register-`berechnung` über Messkanal-Eingänge (`RegisterBerechnung` kennt nur Messstellen-Eingänge).
-  Wächter: `LesewegImZugriffApiTest.FOLGEPUNKTE_OFFEN` (rot bei neuem und bei geheiltem Fund).
+  Register-`berechnung` über Messkanal-Eingänge (`vp-uems-zaun-register-messkanal`): `RegisterBerechnung#ableiten`
+  nimmt neben `lesbar` die Komponenten-Sicht der Route (`#komponenteSichtbar`, je Komponente einmal gefragt); ein
+  fremder Kanal fehlt in `fehlend`/`text`, sein Zustand ändert das Urteil nicht (Beweis: liefernd = nicht liefernd).
+  Wächter: `LesewegImZugriffApiTest.FOLGEPUNKTE_OFFEN` ist leer (rot bei neuem und bei geheiltem Fund).
 - **Kostenstelle, Prozess, Protokoll des Unternehmens, Bericht-Betroffenheit** (`vp-uems-zaun-kostenstelle-prozess-protokoll`):
   - `GET /unternehmen/kostenstellen/{id}`, `…/{id}/energie`, `/unternehmen/prozesse/{id}`: Geltung Unternehmen,
     `pruefenLesen(RechtZiel.UNTERNEHMEN, …)` in der Route — nur unternehmensweite Rollen, sonst die 404 der unbekannten
