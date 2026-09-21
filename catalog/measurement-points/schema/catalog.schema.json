@@ -26,11 +26,20 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["an_der_box", "family", "point_count", "single_reader", "template_count"],
+        "required": ["an_der_box", "family", "point_count", "rueckfall_ohne_box", "single_reader", "template_count"],
         "properties": {
           "an_der_box": {"type": "boolean", "description": "false = die Familie steht nur im Inhaltsstand und geht an keine Box (cataloglib.NOCH_NICHT_AN_DER_BOX, README „Familien noch nicht an der Box“)"},
           "family": {"type": "string", "minLength": 1},
           "point_count": {"type": "integer", "minimum": 1},
+          "rueckfall_ohne_box": {
+            "type": ["object", "null"],
+            "description": "UEMS AP-15 IP-6: was ein Gerät dieser Familie tut, wenn seine Box schweigt, je Richtung (Vokabular geraete_rueckfall); null = VoltPilot steuert die Familie nicht. Cloud-Regel, geht nicht in den Box-Laufzeitkatalog.",
+            "additionalProperties": false,
+            "properties": {
+              "einspeisung": {"$ref": "#/$defs/geraeteRueckfall"},
+              "bezug": {"$ref": "#/$defs/geraeteRueckfall"}
+            }
+          },
           "single_reader": {"type": "boolean", "description": "Cloud-Regel: Geräte dieser Vorlage vertragen nie zwei gleichzeitig lesende Boxen; das Feld geht nicht in den Box-Laufzeitkatalog."},
           "template_count": {"type": "integer", "minimum": 0}
         }
@@ -42,6 +51,29 @@
     }
   },
   "$defs": {
+    "geraeteRueckfall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grund", "nach_s", "quelle", "rueckfall", "rueckfall_kw"],
+      "properties": {
+        "grund": {"type": "string", "minLength": 1},
+        "nach_s": {"type": ["integer", "null"], "minimum": 0},
+        "quelle": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["titel", "fassung", "stelle"],
+          "properties": {
+            "titel": {"type": "string", "minLength": 1},
+            "fassung": {"type": "string", "minLength": 1},
+            "stelle": {"type": "string", "minLength": 1}
+          }
+        },
+        "rueckfall": {"enum": ["haelt_letzten_wert", "faellt_auf_wert", "laeuft_frei", "unbekannt"]},
+        "rueckfall_kw": {"type": ["number", "null"], "minimum": 0}
+      },
+      "if": {"properties": {"rueckfall": {"const": "unbekannt"}}},
+      "then": {"properties": {"quelle": {"type": "null"}, "rueckfall_kw": {"type": "null"}, "nach_s": {"type": "null"}}}
+    },
     "nullableString": {"type": ["string", "null"]},
     "nullableBoolean": {"type": ["boolean", "null"]},
     "nullableInteger": {"type": ["integer", "null"], "minimum": 0},

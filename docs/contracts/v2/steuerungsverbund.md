@@ -31,10 +31,28 @@ eigenen Messpunkt) der Box in dieser Richtung. `nenn_kw` = Nennleistung der gest
 Ungeregelten hinter dem Abgang; `rueckfall_kw` = Summe der Geräte-Rückfälle (`unbekannt` und `laeuft_frei` zählen
 mit Nennleistung) + derselbe Höchstwert (G3, B3). Das Ungeregelte steht also in BEIDEN Summen, sonst läge der
 Rückfall zu Unrecht über der Nennleistung (Vektor `ungeregeltes_hinter_dem_abgang`); was nicht hinter einem Abgang
-einer Box liegt, gehört in den Vorbehalt. Wie der Wert je Gerät entsteht, legt IP-6 (Katalog) fest; dieser Vertrag rechnet ab der Summe je Box. Mitglied ist nur, wer
+einer Box liegt, gehört in den Vorbehalt. Wie der Wert je Gerät entsteht, legt IP-6 fest (§1a); dieser Vertrag rechnet ab der Summe je Box. Mitglied ist nur, wer
 `fuehrt` oder `steuert_mit`; eine Lese-Box als Mitglied, eine doppelte Box, ein negativer Eingang und ein Rückfall über
 der Nennleistung (roh verglichen) sind Eingabefehler, kein Urteil (Vektoren mit `"fehler": true`). „Genau eine Box führt“ prüft das
 Verbund-Objekt (IP-4), nicht diese Rechnung.
+
+### 1a. Der Geräte-Rückfall je Komponente (IP-6)
+
+`rueckfall_kw` einer Box ist die Summe über ihre Komponenten in dieser Richtung (plus Ungeregeltes, oben). Den
+Summanden je Komponente macht EINE Regel (Java `uems/GeraeteRueckfallRegel`, Eingänge über
+`uems/GeraeteRueckfallDienst`):
+
+1. der **am Gerät hinterlegte Wert** der Komponente (`komponente_geraete_rueckfall`, je Richtung eine wirksame
+   Angabe mit wer/wann; eine neue hebt die alte auf) — z. B. K-1 `faellt_auf_wert` 40 kW nach 60 s;
+2. sonst der **Katalog-Eintrag** der Familie (`families[].rueckfall_ohne_box` im Messpunktkatalog; mehrere
+   Katalog-Familien einer Komponente, die Verschiedenes sagen, gelten als keiner);
+3. sonst `unbekannt`.
+
+Gezählt wird zur sicheren Seite: nur `faellt_auf_wert` mit einer Zahl zählt weniger als die Nennleistung, höchstens
+aber die Nennleistung. `unbekannt`, `laeuft_frei` und `haelt_letzten_wert` zählen mit der Nennleistung — der letzte
+Wert kann alles bis zur Nennleistung gewesen sein, denn die führende Box regelt gegen die ganze Grenze (R4: K-1 hält
+83 kW). Die Nennleistung der Komponente bringt der Aufrufer mit (IP-7). Eine Angabe ist keine Bestätigung am
+Prüfstand; die trägt nur der Betreiber ein (NW-7).
 
 ## 2. Geschlossene Vokabulare
 

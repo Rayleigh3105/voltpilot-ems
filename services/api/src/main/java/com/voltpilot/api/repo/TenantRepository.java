@@ -357,6 +357,8 @@ public class TenantRepository {
                         // before the tenant (RESTRICT); the protocol holds only the tenant.
                         "steuerungsverbund_mitglied", "steuerungsverbund", "steuerungsverbund_aenderung",
                         "prozess", "kostenstelle",
+                        // The Geräte-Rückfall (V20260921150000) holds only the tenant (RESTRICT).
+                        "komponente_geraete_rueckfall",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "device_data_source_status", "data_source_assignment", "data_source",

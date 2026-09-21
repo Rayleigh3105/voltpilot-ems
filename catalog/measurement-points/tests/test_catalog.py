@@ -116,6 +116,54 @@ class CatalogTest(unittest.TestCase):
         self.assertTrue(runtime)
         self.assertFalse(any("single_reader" in point for point in runtime))
 
+    def test_rueckfall_ohne_box_is_cloud_only_and_names_only_controllable_families(self) -> None:
+        # UEMS AP-15 IP-6: steuerbar = die Familien mit Schreibweg (Deye-Hybrid, SunSpec 123/124, KOSTAL, go-e,
+        # Shelly, OCPP); jede heute `unbekannt` — die sichere Seite (zählt mit Nennleistung), bis eine
+        # Herstellerquelle mit Titel, Fassung und Stelle anderes belegt und NW-7 es am Prüfstand bestätigt.
+        families = {family["family"]: family["rueckfall_ohne_box"] for family in self.catalog["families"]}
+        self.assertEqual(
+            {name for name, rueckfall in families.items() if rueckfall is not None},
+            {"goe.api_v2", "hybrid_1p", "hybrid_3p", "kostal_plenticore", "ocpp.1_6", "shelly.gen1",
+             "shelly.gen2plus", "sunspec.model_123", "sunspec.model_124"},
+        )
+        for name in ("fronius_solar_api", "kaco_http", "kaco_http_hybrid", "micro", "string", "wago.pm494"):
+            self.assertIsNone(families[name], name)
+        worte = {angabe["rueckfall"] for rueckfall in families.values() if rueckfall for angabe in rueckfall.values()}
+        self.assertEqual(worte, {"unbekannt"})
+        self.assertEqual(set(families["ocpp.1_6"]), {"bezug"})
+        self.assertEqual(set(families["sunspec.model_123"]), {"einspeisung"})
+        runtime = runtime_projection(self.catalog, self.catalog["runtime_catalog_version"])
+        self.assertFalse(any("rueckfall_ohne_box" in point for point in runtime))
+        # das Vokabular ist das geschlossene aus IP-2 (verbund-anteil-vectors.json)
+        vektoren = json.loads((REPO / "docs" / "contracts" / "v2" / "verbund-anteil-vectors.json").read_text(encoding="utf-8"))
+        self.assertEqual(list(cataloglib.GERAETE_RUECKFALL_WOERTER), vektoren["vokabulare"]["geraete_rueckfall"])
+
+    def test_rueckfall_ohne_box_rejects_invented_vendor_claims(self) -> None:
+        catalog_schema = json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8"))
+        falsch = []
+        for name, angabe in (
+            ("ohne Quelle", {"rueckfall": "faellt_auf_wert", "rueckfall_kw": 40, "nach_s": 60, "quelle": None}),
+            ("Quelle ohne Stelle", {"rueckfall": "laeuft_frei", "rueckfall_kw": None, "nach_s": None,
+                                    "quelle": {"titel": "Handbuch", "fassung": "1.0", "stelle": ""}}),
+            ("Zahl bei unbekannt", {"rueckfall": "unbekannt", "rueckfall_kw": 10, "nach_s": None, "quelle": None}),
+            ("Zahl bei laeuft_frei", {"rueckfall": "laeuft_frei", "rueckfall_kw": 10, "nach_s": None,
+                                      "quelle": {"titel": "Handbuch", "fassung": "1.0", "stelle": "S. 3"}}),
+            ("fremdes Wort", {"rueckfall": "schaltet_ab", "rueckfall_kw": None, "nach_s": None, "quelle": None}),
+        ):
+            document = copy.deepcopy(self.catalog)
+            ocpp = next(family for family in document["families"] if family["family"] == "ocpp.1_6")
+            ocpp["rueckfall_ohne_box"] = {"bezug": {"grund": "Test", **angabe}}
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / ARTIFACT.name
+                path.write_bytes(canonical_json_bytes(document))
+                with self.assertRaises(Exception, msg=name):
+                    validate_catalog(path)
+            if name in ("Zahl bei unbekannt", "fremdes Wort"):  # den Rest prüft validate.py
+                with self.assertRaises(SchemaValidationError, msg=name):
+                    validate_json_schema(document, catalog_schema)
+            falsch.append(name)
+        self.assertEqual(len(falsch), 5)
+
     def test_json_schemas_reject_extras_and_nested_type_errors(self) -> None:
         catalog_schema = json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8"))
         manifest_schema = json.loads(MANIFEST_SCHEMA.read_text(encoding="utf-8"))

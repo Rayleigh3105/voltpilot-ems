@@ -139,6 +139,14 @@ public class MeasurementCatalog {
     /** Größe und Richtung eines Punkts in den Katalogwörtern ({@code null} = nicht belegt). */
     public record Semantik(String quantity, String direction) {}
 
+    /**
+     * Was ein Gerät dieser Familie tut, wenn seine Box schweigt, in EINER Richtung ({@code families[].rueckfall_ohne_box},
+     * UEMS AP-15 IP-6): ein Wort des geschlossenen Vokabulars {@code geraete_rueckfall}; {@code rueckfallKw} nur bei
+     * {@code faellt_auf_wert} mit einem festen Wert des Modells, sonst {@code null}. Die Zahl macht allein
+     * {@code uems.GeraeteRueckfallRegel}.
+     */
+    public record RueckfallOhneBox(String rueckfall, java.math.BigDecimal rueckfallKw, Integer nachS) {}
+
     public record SearchResult(String catalogVersion, String edgeMinVersion,
             String customPointActionLabel, long total, int offset, int limit,
             List<Facet> groups, List<Facet> semanticStatuses, List<Point> points, String availabilityReason) {}
@@ -150,6 +158,7 @@ public class MeasurementCatalog {
     private final Map<String, Point> byKey;
     private final Map<String, Semantik> semantik;
     private final Set<String> nochNichtAnDerBox;
+    private final Map<String, Map<String, RueckfallOhneBox>> rueckfallOhneBox;
 
     public MeasurementCatalog(ObjectMapper mapper) {
         JsonNode root = readCanonical(mapper);
@@ -162,9 +171,22 @@ public class MeasurementCatalog {
         // Punkte gibt es für die api nicht — keine Suche, keine Auswahl, keine Mess-Konfiguration, die die
         // Box mit unknown_point ablehnen würde. Sie erscheinen mit dem Edge-Release, das sie lesen kann.
         Set<String> zurueckgehalten = new java.util.TreeSet<>();
+        // Der Geräte-Rückfall je steuerbarer Familie (UEMS AP-15 IP-6): nur Familien mit Objekt; null = VoltPilot
+        // steuert die Familie nicht. Eine Richtung ohne Eintrag hat keine Angabe — sie zählt mit Nennleistung.
+        Map<String, Map<String, RueckfallOhneBox>> rueckfaelle = new LinkedHashMap<>();
         for (JsonNode f : root.path("families")) {
             if (f.path("an_der_box").isBoolean() && !f.path("an_der_box").asBoolean()) {
                 zurueckgehalten.add(text(f, "family"));
+            }
+            JsonNode r = f.get("rueckfall_ohne_box");
+            if (r != null && r.isObject()) {
+                Map<String, RueckfallOhneBox> jeRichtung = new LinkedHashMap<>();
+                r.fields().forEachRemaining(e -> jeRichtung.put(e.getKey(), new RueckfallOhneBox(
+                        required(e.getValue(), "rueckfall"),
+                        e.getValue().path("rueckfall_kw").isNumber() ? e.getValue().get("rueckfall_kw").decimalValue()
+                                : null,
+                        nullableInt(e.getValue().get("nach_s")))));
+                rueckfaelle.put(text(f, "family"), Map.copyOf(jeRichtung));
             }
         }
         List<Point> loaded = new ArrayList<>();
@@ -206,6 +228,7 @@ public class MeasurementCatalog {
         this.byKey = Map.copyOf(indexed);
         this.semantik = Map.copyOf(meanings);
         this.nochNichtAnDerBox = Set.copyOf(zurueckgehalten);
+        this.rueckfallOhneBox = Map.copyOf(rueckfaelle);
     }
 
     /** The runtime version the box speaks (see the class comment). */
@@ -230,6 +253,20 @@ public class MeasurementCatalog {
      * Größe und Richtung eines Punkts; ein konkreter Modul-Schlüssel ({@code module[3]})
      * trägt die seiner Vorlage. {@code null} für einen Schlüssel, den der Katalog nicht kennt.
      */
+    /** Die Familien, die VoltPilot steuert (sie tragen {@code rueckfall_ohne_box}), UEMS AP-15 IP-6. */
+    public Set<String> steuerbareFamilien() {
+        return rueckfallOhneBox.keySet();
+    }
+
+    /**
+     * Der Katalog-Eintrag des Geräte-Rückfalls einer Familie in einer Richtung ({@code einspeisung}/{@code bezug}),
+     * oder {@code null}: die Familie wird nicht gesteuert, oder der Katalog sagt für diese Richtung nichts.
+     */
+    public RueckfallOhneBox rueckfallOhneBox(String family, String richtung) {
+        Map<String, RueckfallOhneBox> jeRichtung = family == null ? null : rueckfallOhneBox.get(family);
+        return jeRichtung == null ? null : jeRichtung.get(richtung);
+    }
+
     public Semantik semantik(String pointKey) {
         Semantik exact = pointKey == null ? null : semantik.get(pointKey);
         if (exact != null || pointKey == null || !pointKey.contains("[")) {
