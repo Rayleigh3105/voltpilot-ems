@@ -13,6 +13,7 @@ import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -128,7 +129,9 @@ class GeraeteRueckfallDienstTest {
     @Test
     void nachEinemGeraeteTauschGiltDerAlteWertNichtMehr() {
         Welt w = welt();
-        UUID alt = einbau(w, "WR-1", Instant.parse("2026-01-01T00:00:00Z"));
+        // jede Komponente bekommt beim Anlegen ihren Einbau (V20260911240000), hier ab ihrem created_at
+        UUID alt = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ? "
+                + "AND gueltig_bis IS NULL", UUID.class, w.wechselrichter());
         TenantContext.set(w.mandant());
         GeraeteRueckfallRepository.Zeile z = dienst.hinterlegen(w.wechselrichter(), Grenzart.EINSPEISUNG,
                 new Angabe(GeraeteRueckfall.FAELLT_AUF_WERT, new BigDecimal("40"), 60), null, "installateur@a.test");
@@ -137,8 +140,9 @@ class GeraeteRueckfallDienstTest {
                 .isEqualByComparingTo("40");
 
         // Tausch: der alte Einbau endet, ein neuer speist dieselbe Komponente
-        Instant tausch = Instant.now().minusSeconds(60);
-        root.update("UPDATE geraet_komponente SET gueltig_bis = ? WHERE geraet_id = ?", Timestamp.from(tausch), alt);
+        Instant tausch = Instant.now().truncatedTo(ChronoUnit.MINUTES).minus(1, ChronoUnit.MINUTES);
+        root.update("UPDATE geraet_komponente SET gueltig_bis = ? WHERE geraet_id = ? AND entity_id = ?",
+                Timestamp.from(tausch), alt, w.wechselrichter());
         UUID neu = einbau(w, "WR-2", tausch);
         Rueckfall danach = dienst.rueckfall(w.wechselrichter(), Grenzart.EINSPEISUNG, new BigDecimal("100"));
         assertThat(danach.kw()).as("der Wert steckt im alten Gerät").isEqualByComparingTo("100");
@@ -246,7 +250,7 @@ class GeraeteRueckfallDienstTest {
         UUID an = root.queryForObject("SELECT site_id FROM measurement_point WHERE id = ?", UUID.class,
                 w.wechselrichter());
         UUID geraet = root.queryForObject("INSERT INTO geraet (tenant_id, site_id, kennzeichen, einbau_kennzeichen, "
-                + "geraeteart, eingebaut_am) VALUES (?, ?, 'GR-11', ?, 'wechselrichter', ?) RETURNING id", UUID.class,
+                + "geraeteart, eingebaut_am) VALUES (?, ?, 'GR-99', ?, 'wechselrichter', ?) RETURNING id", UUID.class,
                 w.mandant(), an, kennzeichen, Timestamp.from(ab));
         root.update("INSERT INTO geraet_komponente (tenant_id, geraet_id, gueltig_ab, entity_id) VALUES (?,?,?,?)",
                 w.mandant(), geraet, Timestamp.from(ab), w.wechselrichter());
@@ -254,8 +258,8 @@ class GeraeteRueckfallDienstTest {
     }
 
     private static UUID komponente(UUID t, UUID an, String rolle, String familie) {
-        return root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, family) "
-                + "VALUES (?, ?, ?, ?) RETURNING id", UUID.class, t, an, rolle, familie);
+        return root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, family, created_at) "
+                + "VALUES (?, ?, ?, ?, '2026-01-01T00:00:00Z') RETURNING id", UUID.class, t, an, rolle, familie);
     }
 
     private static long zeilen(Welt w) {
