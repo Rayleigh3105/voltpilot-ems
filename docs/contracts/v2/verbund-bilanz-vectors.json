@@ -1,0 +1,131 @@
+{
+  "vertrag": "Verbund-Bilanz der Gemeinsamen Steuerung (UEMS AP-15 IP-12, B3, B5, A17)",
+  "fassung": "1",
+  "leser": [
+    "services/api/src/main/java/com/voltpilot/api/uems/VerbundBilanzRegel.java",
+    "services/api/src/test/java/com/voltpilot/api/uems/VerbundBilanzVectorsTest.java"
+  ],
+  "vorzeichen": "kW-Mittel der Viertelstunde, Bezug positiv, Einspeisung negativ; ungeregelt = netzpunkt - Summe box",
+  "toleranz": "max(2 kW, 5 % x (|netzpunkt| + Summe |box|)); unplausibel, wenn ungeregelt < -toleranz",
+  "tag": "unplausibel ab 2 unplausiblen Viertelstunden; sonst unbekannt bei einer unbekannten (luecke) oder genau einer unplausiblen (einzelne_abweichung); sonst plausibel",
+  "viertelstunden": [
+    {
+      "fall": "R1 Augenblick: Netzpunkt 98 kW Einspeisung, PV Halle 1 (E-1, führt) 83 kW, Abgang Verwaltung (E-4) 55 kW, Last 40 kW",
+      "netzpunkt_kw": "-98",
+      "box_kw": ["-83", "-55"],
+      "erwartet": { "zustand": "plausibel", "ungeregelt_kw": "40", "toleranz_kw": "11.8" }
+    },
+    {
+      "fall": "R19-Lage, versteckter Erzeuger 60 kW hinter dem Netzzähler: die führende Box regelt den Netzpunkt weiter auf 98 kW, ihre PV fällt auf 23 kW — am Netzpunkt fehlt, was die Boxen zusammen einspeisen müssten",
+      "netzpunkt_kw": "-98",
+      "box_kw": ["-23", "-55"],
+      "erwartet": { "zustand": "unplausibel", "ungeregelt_kw": "-20", "toleranz_kw": "8.8" }
+    },
+    {
+      "fall": "versteckter Erzeuger kleiner als die Last derselben Viertelstunde (30 kW gegen 40 kW): die Bilanz sieht ihn noch nicht",
+      "netzpunkt_kw": "-98",
+      "box_kw": ["-53", "-55"],
+      "erwartet": { "zustand": "plausibel", "ungeregelt_kw": "10", "toleranz_kw": "10.3" }
+    },
+    {
+      "fall": "Vorzeichen des Abgangszählers der Verwaltung verdreht",
+      "netzpunkt_kw": "-98",
+      "box_kw": ["-83", "55"],
+      "erwartet": { "zustand": "unplausibel", "ungeregelt_kw": "-70", "toleranz_kw": "11.8" }
+    },
+    {
+      "fall": "Grenze der Bilanz: PV Verwaltung speist über einen anderen Netzanschluss ein — das Ungeregelte wird nur größer; das fängt die Sprungprobe (IP-21, E3 = A), nicht die Bilanz",
+      "netzpunkt_kw": "-43",
+      "box_kw": ["-83", "-55"],
+      "erwartet": { "zustand": "plausibel", "ungeregelt_kw": "95", "toleranz_kw": "9.05" }
+    },
+    {
+      "fall": "Genau auf der Toleranz ist plausibel (Untergrenze 2 kW)",
+      "netzpunkt_kw": "-12",
+      "box_kw": ["-10"],
+      "erwartet": { "zustand": "plausibel", "ungeregelt_kw": "-2", "toleranz_kw": "2" }
+    },
+    {
+      "fall": "Knapp unter der Toleranz ist unplausibel",
+      "netzpunkt_kw": "-12.001",
+      "box_kw": ["-10"],
+      "erwartet": { "zustand": "unplausibel", "ungeregelt_kw": "-2.001", "toleranz_kw": "2" }
+    },
+    {
+      "fall": "Nachts: Bezug 45 kW, Boxen beziehen 5 kW (Speicher lädt) und 0 kW",
+      "netzpunkt_kw": "45",
+      "box_kw": ["5", "0"],
+      "erwartet": { "zustand": "plausibel", "ungeregelt_kw": "40", "toleranz_kw": "2.5" }
+    },
+    {
+      "fall": "B5: der Messpunkt der Verwaltung fehlt in dieser Viertelstunde — unbekannt, nie Null",
+      "netzpunkt_kw": "-98",
+      "box_kw": ["-83", null],
+      "erwartet": { "zustand": "unbekannt" }
+    },
+    {
+      "fall": "B5: der Netzpunkt fehlt",
+      "netzpunkt_kw": null,
+      "box_kw": ["-83", "-55"],
+      "erwartet": { "zustand": "unbekannt" }
+    }
+  ],
+  "tage": [
+    {
+      "fall": "R1 den ganzen Tag: 96 belegte Viertelstunden",
+      "erwartet_viertelstunden": 96,
+      "muster": [ { "anzahl": 96, "netzpunkt_kw": "-98", "box_kw": ["-83", "-55"] } ],
+      "erwartet": { "zustand": "plausibel", "grund": null, "plausibel": 96, "unplausibel": 0, "unbekannt": 0 }
+    },
+    {
+      "fall": "Versteckter Erzeuger zwei Stunden mittags",
+      "erwartet_viertelstunden": 96,
+      "muster": [
+        { "anzahl": 88, "netzpunkt_kw": "-98", "box_kw": ["-83", "-55"] },
+        { "anzahl": 8, "netzpunkt_kw": "-98", "box_kw": ["-23", "-55"] }
+      ],
+      "erwartet": { "zustand": "unplausibel", "grund": null, "plausibel": 88, "unplausibel": 8, "unbekannt": 0,
+                    "geringstes_ungeregelt_kw": "-20" }
+    },
+    {
+      "fall": "Zwei unplausible Viertelstunden und Lücken: die belegte Abweichung bleibt belegt",
+      "erwartet_viertelstunden": 96,
+      "muster": [
+        { "anzahl": 90, "netzpunkt_kw": "-98", "box_kw": ["-83", "-55"] },
+        { "anzahl": 2, "netzpunkt_kw": "-98", "box_kw": ["-23", "-55"] },
+        { "anzahl": 2, "netzpunkt_kw": "-98", "box_kw": ["-83", null] }
+      ],
+      "erwartet": { "zustand": "unplausibel", "grund": null, "plausibel": 90, "unplausibel": 2, "unbekannt": 4 }
+    },
+    {
+      "fall": "Eine einzelne Abweichung ist kein Muster — und kein plausibel",
+      "erwartet_viertelstunden": 96,
+      "muster": [
+        { "anzahl": 95, "netzpunkt_kw": "-98", "box_kw": ["-83", "-55"] },
+        { "anzahl": 1, "netzpunkt_kw": "-98", "box_kw": ["-23", "-55"] }
+      ],
+      "erwartet": { "zustand": "unbekannt", "grund": "einzelne_abweichung", "plausibel": 95, "unplausibel": 1,
+                    "unbekannt": 0 }
+    },
+    {
+      "fall": "B5: eine fehlende Viertelstunde macht den Tag unbekannt",
+      "erwartet_viertelstunden": 96,
+      "muster": [ { "anzahl": 95, "netzpunkt_kw": "-98", "box_kw": ["-83", "-55"] } ],
+      "erwartet": { "zustand": "unbekannt", "grund": "luecke", "plausibel": 95, "unplausibel": 0, "unbekannt": 1 }
+    },
+    {
+      "fall": "Umstellung auf Sommerzeit: 92 Viertelstunden, alle belegt",
+      "erwartet_viertelstunden": 92,
+      "muster": [ { "anzahl": 92, "netzpunkt_kw": "45", "box_kw": ["5", "0"] } ],
+      "erwartet": { "zustand": "plausibel", "grund": null, "plausibel": 92, "unplausibel": 0, "unbekannt": 0 }
+    },
+    {
+      "fall": "Kein Netzpunkt mit Messstelle: der Grund steht vor den Werten",
+      "erwartet_viertelstunden": 96,
+      "grund_fest": "netzpunkt_ohne_messstelle",
+      "muster": [],
+      "erwartet": { "zustand": "unbekannt", "grund": "netzpunkt_ohne_messstelle", "plausibel": 0, "unplausibel": 0,
+                    "unbekannt": 96 }
+    }
+  ]
+}

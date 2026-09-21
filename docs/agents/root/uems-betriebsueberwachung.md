@@ -85,7 +85,7 @@ Die zwei `…_zustand`-Metriken sind der Hausstil von `voltpilot_site_telemetry_
 eine Regel „steht“ nicht von „ist abgeschaltet“ und „lief seit dem Neustart noch nie“ unterscheiden
 — und ein abgeschalteter Läufer soll gerade KEINEN Daueralarm erzeugen.
 
-## Die fünfzehn Läufer
+## Die sechzehn Läufer
 
 Der Katalog steht in `UemsLaeuferMelder.KATALOG` und ist VOLLSTÄNDIG: `UemsMetrikenWiringTest` liest
 die Quelltexte von `uems`, `unterstuetzung`, `zugriff` und `chargers` und verlangt für jede Klasse mit
@@ -105,6 +105,7 @@ vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet. Au
 | `zeilentexte` | `ZeilentextAufbewahrungLaeufer` | `voltpilot.uems.zeilentexte.enabled` | täglich 03:17 Europe/Berlin |
 | `plan_zustellung` | `PlanZustellungAufbewahrungLaeufer` | `voltpilot.uems.plan-zustellung.enabled` | täglich 03:47 Europe/Berlin |
 | `ladepark_grenze` | `chargers/LadeparkGrenzeLaeufer` | `voltpilot.uems.ladepark-grenze.enabled` | 1 h (Minute 1, UTC) |
+| `verbund_bilanz` | `VerbundBilanzLaeufer` | `voltpilot.uems.verbund-bilanz.enabled` | täglich 04:37 Europe/Berlin |
 | `uebergabe` | `UebergabeLaeufer` | `voltpilot.uems.uebergabe.enabled` | 1 s |
 | `box_tausch` | `BoxTauschZustellung` | `voltpilot.uems.uebergabe.enabled` | 15 s |
 | `unterstuetzung` | `AblaufLaeufer` | `voltpilot.uems.unterstuetzung.enabled` | 1 min |
@@ -161,7 +162,7 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
   rechnet, ist Arithmetik auf dem zuletzt gesammelten Zeitpunkt — darum wachsen die Alter zwischen
   zwei Sammel-Läufen weiter, und ein ausgefallener SAMMLER wird an denselben Regeln sichtbar, ohne
   eigene Metrik.
-- **Kardinalität**: drei Arbeitslisten, fünfzehn Läufer, ein Wert je Messkunden-Kundenbereich. Keine
+- **Kardinalität**: drei Arbeitslisten, sechzehn Läufer, ein Wert je Messkunden-Kundenbereich. Keine
   Anlage, keine Box, keine Messstelle als Label (Ausnahme mit Absicht: die Box-Sicht unten, nur für
   Boxen mit Bezug) — und `tenant` trägt die INTERNE Kennung, nie einen Namen.
 

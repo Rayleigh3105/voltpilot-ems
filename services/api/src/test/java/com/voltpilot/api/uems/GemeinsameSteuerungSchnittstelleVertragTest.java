@@ -50,6 +50,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         formen.put("GemeinsameSteuerungMitglied", GemeinsameSteuerungDto.Mitglied.class);
         formen.put("GemeinsameSteuerungBefund", GemeinsameSteuerungDto.Befund.class);
         formen.put("GemeinsameSteuerungWarnungFuehrung", GemeinsameSteuerungDto.WarnungFuehrung.class);
+        formen.put("GemeinsameSteuerungBilanz", GemeinsameSteuerungDto.Bilanz.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -70,6 +71,11 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         assertThat((List<String>) wort.get("enum")).containsExactlyElementsOf(
                 Arrays.stream(Ablehnung.values()).map(Ablehnung::code).toList());
         GemeinsameSteuerungAbgelehnt.UEBERGANG.forEach(code -> assertThat(text).as(code).contains("`" + code + "`"));
+        Map<String, Object> bilanz = eigenschaften("GemeinsameSteuerungBilanz");
+        assertThat((List<String>) ((Map<String, Object>) bilanz.get("zustand")).get("enum"))
+                .containsExactlyElementsOf(VerbundBilanzRegel.ZUSTAENDE);
+        assertThat((List<String>) ((Map<String, Object>) bilanz.get("grund")).get("enum")).containsExactlyElementsOf(
+                Arrays.stream(VerbundBilanzRegel.Grund.values()).map(VerbundBilanzRegel.Grund::code).toList());
     }
 
     @Test

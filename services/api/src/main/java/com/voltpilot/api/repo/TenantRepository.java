@@ -356,6 +356,8 @@ public class TenantRepository {
                         // Messpunkt (data_source, RESTRICT) and goes before it; the Verbund
                         // before the tenant (RESTRICT); the protocol holds only the tenant. Its
                         // Geräte and Anteils-Dokumente (V20260921190000) hold the tenant (RESTRICT).
+                        // The Verbund-Bilanz (V20260921210000) hangs at the Verbund and goes first.
+                        "steuerungsverbund_bilanz",
                         "steuerungsverbund_geraet", "steuerungsverbund_anteile",
                         "steuerungsverbund_mitglied", "steuerungsverbund", "steuerungsverbund_aenderung",
                         "prozess", "kostenstelle",
