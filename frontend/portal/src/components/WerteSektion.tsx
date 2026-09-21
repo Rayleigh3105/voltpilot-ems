@@ -79,6 +79,7 @@ import { VpDatePicker } from './VpDatePicker';
 import { VersionenDialog, VersionenEinstieg } from './WertVersionen';
 import { WerteKarte, WerteListe } from './WerteKarte';
 import { ZUORDNUNG_ETIKETT, ZUORDNUNG_SATZ, zuordnungDerWerte } from '../werteOhneReihe';
+import { ZUORDNUNG_KNOPF } from '../messenEinstieg';
 
 const ARTEN = ZEITRAEUME.map((id) => ({ id, label: UEMS_ZEITRAEUME[id] }));
 
@@ -127,6 +128,7 @@ export function WerteSektion({
   vergleich = null,
   onVergleich,
   onQuelleZuordnen,
+  onZuordnen,
   medium = null,
   korrekturKontext,
   herkunftKontext,
@@ -152,6 +154,11 @@ export function WerteSektion({
   quelle?: MessstelleRegisterZeile['quelle'] | null;
   /** „Quelle zuordnen“ im Leerzustand — nur mit Recht; ohne steht der Satz, wer es kann. */
   onQuelleZuordnen?: () => void;
+  /**
+   * AP-01 E5 = A: der Satz „Daten kommen an – noch keiner Messreihe zugeordnet“ führt in den Messen-Assistenten,
+   * Schritt 2 des Standorts — nur mit Recht, sonst Grund und Weg. Ohne Wirt bleibt es beim Satz.
+   */
+  onZuordnen?: () => void;
   /** Das Medium aus dem Register; nur Strom kann einen Katalog-Messwert binden. */
   medium?: string | null;
   korrekturKontext?: KorrekturKontext;
@@ -359,6 +366,15 @@ export function WerteSektion({
               <section className="vp-wk-zuordnung" role="status" aria-label={ZUORDNUNG_ETIKETT} data-testid="werte-zuordnung">
                 <h3 className="vp-wk-zuordnung-titel">{ZUORDNUNG_ETIKETT}</h3>
                 <p>{ZUORDNUNG_SATZ}</p>
+                {onZuordnen && (
+                  <p className="vp-wk-zuordnung-weg">
+                    <Recht aktion={['funktion.messen_einrichten', 'datenquelle.bearbeiten']}>
+                      <Button variant="outline" size="sm" onClick={onZuordnen}>
+                        {ZUORDNUNG_KNOPF}
+                      </Button>
+                    </Recht>
+                  </p>
+                )}
               </section>
             )}
             {hinweis && (

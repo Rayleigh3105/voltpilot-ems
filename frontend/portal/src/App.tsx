@@ -93,6 +93,7 @@ import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
+import { MessenEinstiegKontext, type MessenZiel } from './messenEinstieg';
 import { PortfolioTabs } from './components/PortfolioTabs';
 import { EbenenTabs } from './components/EbenenTabs';
 import { helpForRoute } from './help/context';
@@ -212,6 +213,11 @@ const SteuerungsFreigabePage = lazy(() =>
 );
 const VorlagenPage = lazy(() =>
   PAGE_CHUNK.vorlagen().then((m) => ({ default: m.VorlagenPage })),
+);
+// AP-01 E5 = A: der Assistent „Messen & Auswerten“ an genau EINER Stelle der App. Er wird nur gerendert, solange
+// ein Einstieg ihn geöffnet hat - ein blosses `lazy` lädt also erst beim ersten Öffnen.
+const MessenAssistent = lazy(() =>
+  import('./components/MessenAssistent').then((m) => ({ default: m.MessenAssistent })),
 );
 const KomponentenFlottePage = lazy(() =>
   PAGE_CHUNK['komponenten-flotte']().then((m) => ({
@@ -599,6 +605,10 @@ function UnifiedPortal() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   // The shell's "＋ Anlage hinzufügen" one-flow drawer (single-Anlage customers).
   const [addAnlageOpen, setAddAnlageOpen] = useState(false);
+  // AP-01 E5 = A: Ziel des offenen Messen-Assistenten (`null` = zu), Zahl der Schließungen, Avatar → Karte.
+  const [messenZiel, setMessenZiel] = useState<MessenZiel | null>(null);
+  const [messenRunde, setMessenRunde] = useState(0);
+  const [karteGezeigtAm, setKarteGezeigtAm] = useState<number | null>(null);
   // Deploy-Erkennung (deployWatch.ts): ein tagelang offener Tab erfuhr sonst
   // NIE von einem Deploy und zeigte die UI seines Boot-Stands weiter (die
   // APIs sind additiv, die alte App läuft klaglos - Scout vp-stale-view-w2).
@@ -1254,8 +1264,14 @@ function UnifiedPortal() {
 
   const leer = ohneStandort(selbst);
   const rechteStandort = route.standortId ?? orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null;
+  // Avatar-Menü „Funktionen“ (AP-01 E5 = A): nur, wo die Landung eine Ebene mit der Karte ist. Die Anlage- und die
+  // Bestands-Landung haben keine Karte - dort bleibt das Menü, wie es war.
+  const funktionenZiel: Route | null =
+    ebene.art === 'unternehmen' ? pageRoute('portfolio') : ebene.art === 'standort' ? standortRoute(ebene.standort.id) : null;
+  const messenWirt = { oeffnen: setMessenZiel, runde: messenRunde, karteGezeigtAm };
   return (
     <RechteStandort.Provider value={rechteStandort}>
+    <MessenEinstiegKontext.Provider value={messenWirt}>
     <AppShell
       page={page}
       onNavigate={navigateSchale}
@@ -1270,6 +1286,10 @@ function UnifiedPortal() {
       fleetLabel={fleetLabel(betriebsart)}
       showAddAnlage={showAddAnlage}
       onAddAnlage={() => setAddAnlageOpen(true)}
+      onFunktionen={funktionenZiel ? () => {
+        navigate(funktionenZiel);
+        setKarteGezeigtAm(Date.now());
+      } : undefined}
       counts={{
         sites: tenantReady ? sites.length : null,
         devices: tenantReady ? devices.length : null,
@@ -1452,6 +1472,10 @@ function UnifiedPortal() {
               onUebersicht={() =>
                 navigate(messstellenEbene.art === 'standort' ? standortRoute(messstellenEbene.id) : pageRoute('portfolio'))
               }
+              // AP-01 E5 = A: der Leerzustand führt in den Assistenten (am Standort mit Vorwahl).
+              onMessenEinrichten={() =>
+                setMessenZiel({ standortId: messstellenEbene.art === 'standort' ? messstellenEbene.id : null })
+              }
               // AP-04 IP-8: die Messstellen-Seite im Bereich, aus dem sie geöffnet wird.
               messstelleId={route.messstelleId ?? null}
               onOeffnen={(id) =>
@@ -1627,7 +1651,22 @@ function UnifiedPortal() {
           navigate(ziel ?? anlageRoute(createdSiteId));
         }}
       />
+
+      {messenZiel && (
+        <LazyBoundary fallback={null}>
+          <MessenAssistent
+            standortId={messenZiel.standortId ?? null}
+            schritt={messenZiel.schritt ?? null}
+            onClose={() => {
+              setMessenZiel(null);
+              setMessenRunde((r) => r + 1);
+              void reload();
+            }}
+          />
+        </LazyBoundary>
+      )}
     </AppShell>
+    </MessenEinstiegKontext.Provider>
     </RechteStandort.Provider>
   );
 }

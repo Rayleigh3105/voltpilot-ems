@@ -1,7 +1,9 @@
+import { useEffect, useRef } from 'react';
 import { Recht } from './Recht';
 import { Button } from '../../designsystem/components/core/Button';
 import { FUNKTIONEN_UNBEKANNT, type FunktionenKarteAbschnitt } from '../uebersicht';
 import { FunktionSteuerungAktion } from './FunktionSteuerungAktion';
+import type { MessenStart } from '../messenAssistent';
 import './FunktionenKarte.css';
 
 /**
@@ -13,7 +15,9 @@ import './FunktionenKarte.css';
  *
  * Ein vorhandener Assistent macht den nächsten Schritt zum Einstieg; ohne Ziel
  * bleibt er als benannter Hinweis stehen. IP-11 ergänzt daneben ausschließlich
- * die erlaubte Standort-Aktion anhalten/fortsetzen.
+ * die erlaubte Standort-Aktion anhalten/fortsetzen. „Messen & Auswerten“ trägt
+ * seit dem Einstiegs-Paket den Text aus `messenEinstieg` (Start bzw. „Einrichtung
+ * fortsetzen (Schritt n von 5)“) — nur mit Recht, sonst Grund und Weg.
  *
  * Render-only: Zustand, Satz und Schritt entstehen in `uebersicht.funktionenKarte`.
  */
@@ -22,6 +26,9 @@ export function FunktionenKarte({
   laedt = false,
   onSteuernEinrichten,
   onSteuernAktion,
+  messenEinstiege,
+  onMessenOeffnen,
+  gezeigtAm = null,
 }: {
   /** `null` = die Funktionen sind nicht abrufbar. */
   abschnitte: FunktionenKarteAbschnitt[] | null;
@@ -30,10 +37,24 @@ export function FunktionenKarte({
   onSteuernEinrichten?: (standortId: string) => void;
   /** IP-11: Standort anhalten/fortsetzen über die gebaute Funktionsroute. */
   onSteuernAktion?: (standortId: string, aktion: 'anhalten' | 'fortsetzen') => Promise<void>;
+  /** Je Standort Text und Start des Messen-Assistenten (`messenEinstiegeDerKarte`). */
+  messenEinstiege?: ReadonlyMap<string, { text: string; start: MessenStart }>;
+  /** Der Einstieg; ohne Ziel bleibt der bisherige Hinweis. */
+  onMessenOeffnen?: (start: MessenStart) => void;
+  /** Avatar-Menü „Funktionen“: die Karte rückt einmal in den Blick, sobald sie steht. */
+  gezeigtAm?: number | null;
 }) {
+  const titel = useRef<HTMLHeadingElement | null>(null);
+  const erledigt = useRef<number | null>(null);
+  useEffect(() => {
+    if (laedt || gezeigtAm == null || erledigt.current === gezeigtAm) return;
+    erledigt.current = gezeigtAm;
+    titel.current?.scrollIntoView?.({ block: 'start' });
+    titel.current?.focus({ preventScroll: true });
+  }, [laedt, gezeigtAm]);
   return (
     <section className="vp-funktionen-karte" aria-labelledby="vp-funktionen-karte-titel" data-testid="funktionen-karte">
-      <h2 id="vp-funktionen-karte-titel" className="vp-fk-titel">
+      <h2 id="vp-funktionen-karte-titel" className="vp-fk-titel" ref={titel} tabIndex={-1}>
         Funktionen
       </h2>
       {laedt ? (
@@ -60,7 +81,19 @@ export function FunktionenKarte({
                     {z.ruheHinweis && (
                       <p className="vp-fk-ruhe-hinweis" data-testid="ruhe-verbindung-hinweis">{z.ruheHinweis}</p>
                     )}
-                    {z.schritt && a.funktion === 'steuern' && onSteuernEinrichten ? (
+                    {a.funktion === 'messen' && onMessenOeffnen && messenEinstiege?.get(z.standortId) ? (
+                      <p className="vp-fk-schritt">
+                        <Recht standort={z.standortId} aktion="funktion.messen_einrichten">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onMessenOeffnen(messenEinstiege.get(z.standortId)!.start)}
+                          >
+                            {messenEinstiege.get(z.standortId)!.text}
+                          </Button>
+                        </Recht>
+                      </p>
+                    ) : z.schritt && a.funktion === 'steuern' && onSteuernEinrichten ? (
                       <p className="vp-fk-schritt">
                         <Recht standort={z.standortId} aktion="funktion.steuern_einrichten">
                           <Button variant="outline" size="sm" onClick={() => onSteuernEinrichten(z.standortId)}>

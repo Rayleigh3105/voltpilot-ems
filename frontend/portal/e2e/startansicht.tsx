@@ -196,6 +196,13 @@ const AUSFALL = params.get('ausfall') === '1';
 const KORREKTUR = bild === 'korrektur';
 const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet';
 /**
+ * AP-01 E5 = A (Einstieg Messen-Assistent): `&messen=entwurf` stellt „Messen & Auswerten“ an jedem Standort in den
+ * Entwurf (Wiedereinstieg), `&zuordnung=offen` lässt die Werte-Route „nicht_zugeordnet“ sagen (Satz „Daten kommen
+ * an“). Ohne diese Parameter bleibt die Bühne zeichengleich.
+ */
+const MESSEN_ENTWURF = params.get('messen') === 'entwurf';
+const ZUORDNUNG_OFFEN = params.get('zuordnung') === 'offen';
+/**
  * AP-13 IP-9: `&ansicht=kostenstellen` / `&ansicht=prozesse` öffnen „Unternehmen › Messstellen“ im Reiter (die Adresse
  * trägt `?reiter=`, dazu `&periode=&am=` aus der Bühnen-Adresse); die Kostenstellen tragen dort ihre echte Gültigkeit
  * (9000 bis 31.12.2026, 9010/9020 ab 01.01.2027 — die Kennzahl-Bühne behält ihre sieben). `&organisation=leer`: keine
@@ -991,7 +998,8 @@ Object.assign(api, {
       if (antwort) return antwort;
       throw new ApiError(404, 'Diese Messstelle gibt es nicht.');
     }
-    return heutigeWerteAm(kennzeichen, Date.now());
+    const heute = await heutigeWerteAm(kennzeichen, Date.now());
+    return ZUORDNUNG_OFFEN ? { ...heute, zuordnung: 'nicht_zugeordnet' as const } : heute;
   },
   // AP-13 IP-13: was die Messstellen-Seite selbst liest — Stammdaten, Verteilung, Protokoll und die Versionen der Zahl.
   messstelle: async (id: string) => (id === MS_IDS.ms06 ? ms06() : ms10()),
@@ -1135,6 +1143,12 @@ function funktionenDerSzene() {
       .filter((f) => szene.liste.standorte.some((s) => s.id === f.id))
       .map(ohneAnlage),
   });
+  if (MESSEN_ENTWURF) {
+    basis.standorte = basis.standorte.map((s) => ({
+      ...s,
+      messen: { zustand: 'entwurf' as const, seit: null, text: 'Messen & Auswerten — Entwurf', fehlt: [], datenlage: null },
+    }));
+  }
   if (vorschauArt === 'steuerkunde' || !vorschauArt) return basis;
   return {
     ...basis,

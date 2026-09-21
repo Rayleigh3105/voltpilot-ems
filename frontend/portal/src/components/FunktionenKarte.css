@@ -16,6 +16,8 @@
 }
 
 .vp-fk-titel {
+  /* Avatar-Menü „Funktionen“ rückt die Karte in den Blick — nicht unter den Seitenkopf. */
+  scroll-margin-top: 80px;
   margin: 0 0 var(--vp-space-4, 16px);
   font-size: 1.125rem;
   font-weight: 600;
@@ -142,4 +144,8 @@
 .vp-portfolio-schritt {
   display: block;
   margin-top: var(--vp-space-2, 8px);
+}
+
+.vp-fk-titel:focus:not(:focus-visible) {
+  outline: none;
 }

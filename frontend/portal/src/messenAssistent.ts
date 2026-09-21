@@ -159,17 +159,22 @@ function schrittNachEinrichten(
  * - die Funktionen sind nicht abrufbar → Schritt 1 mit Vorwahl (Schritt 1 fragt beim Weitergehen den Server)
  * - „Messen & Auswerten" hat am Standort noch kein Objekt → Schritt 1 mit Vorwahl
  * - es gibt die Funktion → der gemerkte Schritt dieses Standorts, mindestens 2, höchstens der weiteste gebaute
+ *
+ * `wunsch` ist die Stelle, auf die ein Einstieg zeigt (der Satz „Daten kommen an“ → Schritt 2). Er gilt nur, wo
+ * die Funktion schon besteht: ohne Objekt beginnt jeder Einstieg bei Schritt 1 — der Server entscheidet vor dem Knopf.
  */
 export function startSchritt({
   standortId,
   funktionen,
   entwurf,
   gebaut = GEBAUTE_SCHRITTE,
+  wunsch = null,
 }: {
   standortId?: string | null;
   funktionen: Funktionen | null;
   entwurf: MessenEntwurf | null;
   gebaut?: readonly MessenSchritt[];
+  wunsch?: MessenSchritt | null;
 }): MessenStart {
   const id = standortId ?? entwurf?.standortId ?? null;
   if (!id) return { standortId: null, schritt: 1 };
@@ -177,14 +182,17 @@ export function startSchritt({
   const fs = funktionen.standorte.find((s) => s.id === id);
   if (!fs || fs.messen.zustand === 'archiviert') return { standortId: null, schritt: 1 };
   if (fs.messen.zustand === 'kein_objekt') return { standortId: id, schritt: 1 };
-  return { standortId: id, schritt: schrittNachEinrichten(id, entwurf, gebaut) };
+  const schritt = wunsch
+    ? (Math.min(Math.max(wunsch, 2), weitesterSchritt(gebaut)) as MessenSchritt)
+    : schrittNachEinrichten(id, entwurf, gebaut);
+  return { standortId: id, schritt };
 }
 
 /**
  * Der Einstieg aus der Karte „Funktionen" (Konzept §4.3/§5.5): „Messen &
  * Auswerten für Werk Lindach einrichten" ohne Objekt, „Einrichtung fortsetzen
  * (Schritt 2 von 5)" im Entwurf, sonst keiner. Die Fläche setzt ihn NICHT
- * selbst — das ist die Karte aus IP-8.
+ * selbst — die Karte aus IP-8 macht ihn zum Knopf ({@link messenEinstiegeDerKarte}).
  */
 export function messenEinstieg(
   fs: FunktionStandort,
@@ -197,6 +205,25 @@ export function messenEinstieg(
   if (fs.messen.zustand !== 'entwurf') return null;
   const schritt = schrittNachEinrichten(fs.id, entwurf, gebaut);
   return { text: `Einrichtung fortsetzen (${schrittZaehler(schritt)})`, start: { standortId: fs.id, schritt } };
+}
+
+/**
+ * Die Knöpfe der Karte „Funktionen“ (AP-01 E5 = A) je Standort. Ohne Anlage am Standort gibt es keinen: dort
+ * nennt der Leerzustand der Standort-Übersicht den Schritt (wie `uebersicht.naechsterSchritt`), und Schritt 2
+ * hätte nichts anzubinden. `null` = die Funktionen sind nicht abrufbar.
+ */
+export function messenEinstiegeDerKarte(
+  funktionen: Funktionen | null,
+  entwurf: MessenEntwurf | null,
+  gebaut: readonly MessenSchritt[] = GEBAUTE_SCHRITTE,
+): Map<string, { text: string; start: MessenStart }> {
+  const einstiege = new Map<string, { text: string; start: MessenStart }>();
+  for (const fs of funktionen?.standorte ?? []) {
+    if (fs.steuern.anlagen.length === 0) continue;
+    const e = messenEinstieg(fs, entwurf, gebaut);
+    if (e) einstiege.set(fs.id, e);
+  }
+  return einstiege;
 }
 
 // ────────────────────────────────────────────────────────────── Schritt 1 · Standort

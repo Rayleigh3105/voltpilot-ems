@@ -58,6 +58,8 @@ import { FunktionenKarte } from './FunktionenKarte';
 import { SteuernAssistent } from './SteuernAssistent';
 import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
 import { useRollen } from '../rollen';
+import { browserSpeicher, entwurfLesen, messenEinstiegeDerKarte } from '../messenAssistent';
+import { useMessenEinstieg } from '../messenEinstieg';
 import { NochNichtZugeordnetKarte, StandortVorschau } from './StandortVorschau';
 import { FunktionsZustaende, StandortGruppeKopf } from './StandortGruppeKopf';
 import { EmptyState, ErrorState, Skeleton } from './States';
@@ -170,6 +172,9 @@ export function PortfolioCockpit({
   const isPhone = useIsPhone();
   const mitEbene = ebene != null;
   const rollen = useRollen();
+  // AP-01 E5 = A: die Karte „Funktionen“ öffnet den EINEN Messen-Assistenten der App; ohne Wirt bleibt der Hinweis.
+  const messen = useMessenEinstieg();
+  const messenRunde = messen?.runde ?? 0;
   // Vor der Bestätigung gibt es noch keine UEMS-Ebene: der Mehr-Anlagen-
   // Bestand landet im bisherigen Portfolio (`ebene === null`). Genau dort
   // muss die Vorschlagskarte erreichbar sein; nach der Bestätigung bleibt sie
@@ -228,7 +233,7 @@ export function PortfolioCockpit({
     return () => {
       active = false;
     };
-  }, [reloadKey, mitEbene]);
+  }, [reloadKey, mitEbene, messenRunde]);
 
   // AP-02 IP-10/O18: nur ein berechtigter Kunde auf der Unternehmensebene
   // lädt und sieht die neue Fläche. Ein reiner Betriebskunde bleibt zeichengleich.
@@ -639,6 +644,10 @@ export function PortfolioCockpit({
             await api.funktionSteuernStandort(standortId, aktion);
             setReloadKey((k) => k + 1);
           }}
+          // Der Entwurf liegt im Browser; nach jedem Schließen des Assistenten liest die Karte ihn neu (`messenRunde`).
+          messenEinstiege={messen ? messenEinstiegeDerKarte(funktionen ?? null, entwurfLesen(browserSpeicher())) : undefined}
+          onMessenOeffnen={messen ? (start) => messen.oeffnen({ standortId: start.standortId }) : undefined}
+          gezeigtAm={messen?.karteGezeigtAm ?? null}
         />
       )}
 

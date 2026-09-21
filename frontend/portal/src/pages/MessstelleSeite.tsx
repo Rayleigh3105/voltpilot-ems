@@ -63,6 +63,7 @@ import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
 import { boxAmGeraet, boxWechselAmGeraet } from '../boxAnQuelle';
 import { useBoxenAnQuellen } from '../useBoxenAnQuellen';
 import { nebengroessen, periodeAus } from '../uemsWerteKarte';
+import { useMessenEinstieg } from '../messenEinstieg';
 import './MessstelleSeite.css';
 
 interface Stamm {
@@ -167,6 +168,7 @@ function MessstelleSeiteMitId({
   onWerteVergleich,
   onListe,
 }: MessstelleSeiteProps) {
+  const messenEinstieg = useMessenEinstieg();
   const [stamm, setStamm] = useState<Stamm | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
   const [register, setRegister] = useState<MessstellenRegister | null>(null);
@@ -378,6 +380,10 @@ function MessstelleSeiteMitId({
         <WerteSektion
           key={wechselStand}
           kennzeichen={m.kennzeichen}
+          // AP-01 E5 = A: „Daten kommen an“ → Messen-Assistent, Schritt 2 des Standorts dieser Messstelle.
+          onZuordnen={messenEinstieg && zeile?.ort.standort_id
+            ? () => messenEinstieg.oeffnen({ standortId: zeile.ort.standort_id, schritt: 2 })
+            : undefined}
           messstelle={`${k.kennzeichen} · ${k.titel}`}
           kopf={<h2 id="vp-mss-werte-titel">{UEMS_WERTE}</h2>}
           anfang={werteAnfang}

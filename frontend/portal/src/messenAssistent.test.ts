@@ -12,6 +12,7 @@ import {
   komponentenSatz,
   MESSEN_SCHRITTE,
   messenEinstieg,
+  messenEinstiegeDerKarte,
   mussEinrichten,
   schrittZaehler,
   standortMessenSatz,
@@ -205,6 +206,29 @@ describe('messenAssistent — Start und Wiedereinstieg', () => {
       'Einrichtung fortsetzen (Schritt 3 von 5)',
     );
     expect(messenEinstieg(funktionWerkLindach('eingerichtet'), null)).toBeNull();
+  });
+
+  it('die Karte bekommt je Standort den Einstieg — nur mit Anlage, nie bei „aktiv“ (AP-01 E5 = A)', () => {
+    const ohneAnlage = { ...lindachOhne(), steuern: { ...lindachOhne().steuern, anlagen: [] } };
+    const f = ahrenbergFunktionen({ standorte: [funktionWerkAhrenberg('eingerichtet'), lindachEntwurf()] });
+    const karte = messenEinstiegeDerKarte(f, { standortId: LINDACH, schritt: 3 });
+    expect([...karte.keys()]).toEqual([LINDACH]);
+    expect(karte.get(LINDACH)).toEqual({
+      text: 'Einrichtung fortsetzen (Schritt 3 von 5)',
+      start: { standortId: LINDACH, schritt: 3 },
+    });
+    expect(messenEinstiegeDerKarte(ahrenbergFunktionen({ standorte: [ohneAnlage] }), null).size).toBe(0);
+    expect(messenEinstiegeDerKarte(null, null).size).toBe(0);
+  });
+
+  it('ein Einstieg mit Ziel-Schritt („Daten kommen an“ → 2) gilt nur, wo die Funktion besteht', () => {
+    const f = ahrenbergFunktionen({ standorte: [lindachEntwurf()] });
+    const entwurf = { standortId: LINDACH, schritt: 4 as MessenSchritt };
+    expect(startSchritt({ standortId: LINDACH, funktionen: f, entwurf, wunsch: 2 })).toEqual({ standortId: LINDACH, schritt: 2 });
+    expect(startSchritt({ standortId: LINDACH, funktionen: f, entwurf })).toEqual({ standortId: LINDACH, schritt: 4 });
+    const ohne = ahrenbergFunktionen({ standorte: [lindachOhne()] });
+    expect(startSchritt({ standortId: LINDACH, funktionen: ohne, entwurf: null, wunsch: 2 })).toEqual({ standortId: LINDACH, schritt: 1 });
+    expect(startSchritt({ standortId: LINDACH, funktionen: null, entwurf: null, wunsch: 2 })).toEqual({ standortId: LINDACH, schritt: 1 });
   });
 });
 
