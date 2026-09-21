@@ -19,11 +19,13 @@ public class KanalbindungService {
     private final MesskanalService kanaele;
     private final ObjectMapper json;
     private final com.voltpilot.api.zugriff.Geltungsbereich geltung;
+    private final com.voltpilot.api.zugriff.RechtPruefung rechte;
     private Clock uhr = Clock.systemUTC();
 
     public KanalbindungService(JdbcTemplate jdbc, BezugsgroesseRepository bezuege, MesskanalService kanaele,
-            ObjectMapper json, com.voltpilot.api.zugriff.Geltungsbereich geltung) {
-        this.jdbc=jdbc; this.bezuege=bezuege; this.kanaele=kanaele; this.json=json; this.geltung=geltung;
+            ObjectMapper json, com.voltpilot.api.zugriff.Geltungsbereich geltung,
+            com.voltpilot.api.zugriff.RechtPruefung rechte) {
+        this.jdbc=jdbc; this.bezuege=bezuege; this.kanaele=kanaele; this.json=json; this.geltung=geltung; this.rechte=rechte;
     }
     void uhrStellen(Clock uhr) { this.uhr=uhr; }
 
@@ -105,6 +107,13 @@ public class KanalbindungService {
         return aus;
     }
 
+    /** Die Route: die Bindungen nur im Geltungsbereich des Aufrufers (AP-03 R-A1) — außerhalb wie eine unbekannte Kennung. */
+    public List<Bindung> listeImGeltungsbereich(UUID id) {
+        sichtbar(id);
+        return liste(id);
+    }
+
+    /** Ungezäunt — für {@link #beenden}, dessen Route {@code @Recht} schon am Objekt geprüft hat. */
     public List<Bindung> liste(UUID id) {
         bezuege.finde(id).orElseThrow(KanalbindungService::nichtGefunden);
         return jdbc.query("SELECT * FROM bezugsgroesse_kanalbindung WHERE bezugsgroesse_id=? ORDER BY von",
@@ -119,7 +128,7 @@ public class KanalbindungService {
 
     /** Dieselbe Mess-Selektion wie beim Binden; fremde Standorte erscheinen nie im Picker. */
     public List<Auswahl> auswahl(UUID id) {
-        var b=bezuege.finde(id).orElseThrow(KanalbindungService::nichtGefunden);
+        var b=sichtbar(id);
         List<Auswahl> aus=new ArrayList<>();
         var reihen=jdbc.query("SELECT DISTINCT p.id,p.site_id,p.label,s.point_key FROM measurement_point p "
             + "JOIN device_measurement_selection s ON s.entity_id=p.id AND s.tenant_id=p.tenant_id ORDER BY p.label,s.point_key",
@@ -174,6 +183,12 @@ public class KanalbindungService {
     }
     private static void minute(Instant t) {
         if (t==null || t.getNano()!=0 || t.getEpochSecond()%60!=0) throw fehler("zeit_ungueltig", "Bitte einen Zeitpunkt auf die volle Minute angeben.");
+    }
+    /** Die Bezugsgröße, wie eine Route sie liest: unbekannt und außerhalb des Geltungsbereichs sind dieselbe 404. */
+    private BezugsgroesseRepository.Zeile sichtbar(UUID id) {
+        var b=bezuege.finde(id).orElseThrow(KanalbindungService::nichtGefunden);
+        rechte.pruefenLesen(com.voltpilot.api.zugriff.RechtZiel.BEZUGSGROESSE,id,KanalbindungService::nichtGefunden);
+        return b;
     }
     private static KanalbindungFehler nichtGefunden() { return new KanalbindungFehler(404,"nicht_gefunden","Die Bezugsgröße oder der Kanal wurde nicht gefunden."); }
     private static KanalbindungFehler fehler(String code,String satz) { return new KanalbindungFehler(422,code,satz); }

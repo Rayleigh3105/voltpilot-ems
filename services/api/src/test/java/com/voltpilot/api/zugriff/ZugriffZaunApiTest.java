@@ -77,8 +77,8 @@ import org.testcontainers.utility.DockerImageName;
  *       zählt als flüchtig und wird nur am Status gemessen.</li>
  *   <li><b>Die 18 nach IP-4 eingeführten Lese-Routen, die der Bestandsvergleich nur zufällig grün zeigte</b> (Befund
  *       18.09.2026, PR 961): jede trifft über {@link #PROBEN} ein echtes Objekt, und ein Bearbeiter an einem ANDEREN
- *       Standort bekommt dort die Antwort einer unbekannten Kennung. Was daran heute scheitert, steht benannt in
- *       {@link #ZAUN_OFFEN}.</li>
+ *       Standort bekommt dort die Antwort einer unbekannten Kennung. Was daran scheitert, stünde benannt in
+ *       {@link #ZAUN_OFFEN} — die Liste ist leer.</li>
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
@@ -557,24 +557,15 @@ class ZugriffZaunApiTest {
     private static final String BEZUGSGROESSE_SELBST = "/api/v1/bezugsgroessen/{id}";
 
     /**
-     * <b>OFFEN — ein echtes Loch im Standort-Zaun</b>, gefunden am 21.09.2026 von
-     * {@link #jedeNachIp4NurZufaelligGrueneRouteTrifftEinEchtesObjektUndMachtEineZaunAussage} und NICHT geheilt
-     * (Entscheid A; die Heilung ist das Folgepaket {@code vp-uems-zaun-bezugsgroesse-lesen}). {@code bezugsgroesse}
-     * trägt nur die Mandanten-Policy, kein {@code site_scope}, und die Lesewege lösen sie ohne Standort auf
-     * ({@code BezugsgroesseRepository#finde}, keine {@code RechtPruefung} auf {@code BEZUGSGROESSE}). Ein Konto, das
-     * NUR an einem anderen Standort zugewiesen ist, liest so eine Bezugsgröße mit Geltung an einem fremden Standort
-     * bzw. erfährt, dass es sie gibt.
-     *
-     * <p>Genau diese Muster dürfen am Zaun scheitern — und nur auf der Seite des fremden Kontos. Ein DRITTES Muster
-     * macht den Test rot (neues Loch), ein geheiltes ebenso (es gehört hier heraus). Die leere Liste ist der Beweis,
-     * dass der Zaun an der Bezugsgröße steht.
+     * Die Muster, die am Zaun scheitern dürfen — LEER, und so bleibt die Zusicherung stehen: ein Muster, das den Zaun
+     * verfehlt, ist ein neues Loch und macht den Test rot. Bis zum 21.09.2026 standen hier die drei Lesewege der
+     * Bezugsgröße ({@code /{id}}, {@code …/kanalbindung}, {@code …/kanalbindung/kanaele}): {@code bezugsgroesse} trägt
+     * nur die Mandanten-Policy, und ein Bearbeiter NUR an einem anderen Standort las eine Bezugsgröße mit Geltung am
+     * fremden Standort bzw. erfuhr, dass es sie gibt. Seit {@code vp-uems-zaun-bezugsgroesse-lesen} lesen alle Routen
+     * sie über ihre Geltung ({@code RechtPruefung#pruefenLesen}, AP-03 R-A1); je Geltungsart belegt das
+     * {@code BezugsgroesseApiTest#jedeLeserouteZeigtDieBezugsgroesseNurImGeltungsbereich}.
      */
-    private static final Map<String, String> ZAUN_OFFEN = Map.of(
-            "/api/v1/bezugsgroessen/{id}/kanalbindung",
-            "200 mit den Bindungen (samt entity_id einer Komponente an einer unsichtbaren Anlage) statt 404 — "
-                    + "KanalbindungService#liste",
-            "/api/v1/bezugsgroessen/{id}/kanalbindung/kanaele", "200 [] statt 404 — KanalbindungService#auswahl",
-            BEZUGSGROESSE_SELBST, "200 mit der Bezugsgröße statt 404 — BezugsgroesseService#eine");
+    private static final Map<String, String> ZAUN_OFFEN = Map.of();
 
     /**
      * Ein Zaun-Fall. {@code sieht} bekommt das Objekt ({@code < 400}, der Körper nennt {@code beleg}). {@code blind}
@@ -697,7 +688,7 @@ class ZugriffZaunApiTest {
             System.out.printf("Zaun-Aussage %s: %s%s%n", f.muster(), f.aussage(),
                     ZAUN_OFFEN.containsKey(f.muster()) ? " — OFFEN: " + ZAUN_OFFEN.get(f.muster()) : "");
         }
-        System.out.printf("Zaun OFFEN (Befund 21.09.2026, nicht geheilt): %s%n", zaunVerfehlt);
+        System.out.printf("Zaun OFFEN: %s%n", zaunVerfehlt);
         assertThat(fehler).isEmpty();
         assertThat(zaunVerfehlt.keySet()).as("genau die benannten offenen Fälle verfehlen den Zaun — ein weiterer ist "
                 + "ein neues Loch, ein geheilter gehört aus ZAUN_OFFEN heraus: " + zaunVerfehlt)

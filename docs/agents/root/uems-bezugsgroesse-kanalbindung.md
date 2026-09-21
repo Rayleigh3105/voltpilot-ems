@@ -5,10 +5,6 @@
 `state` mit `zustand`. `GET` derselben Route liest die Bindungen;
 `POST …/kanalbindung/{bindung}/beenden` nimmt `bis` entgegen. Verwalten benutzt
 `bezugsgroesse.verwalten`, Lesen `messwerte.ansehen`; fremde Objekte bleiben 404.
-⚠ **Für den Standort-Zaun stimmt das NICHT (offener Befund 21.09.2026):** ein Konto, das nur an
-einem anderen Standort zugewiesen ist, liest die Bindungen einer fremden Bezugsgröße (200) und bekommt
-`…/kanalbindung/kanaele` mit 200 `[]` statt 404 — die Bezugsgröße wird ohne Standort aufgelöst. Benannt in
-`ZugriffZaunApiTest.ZAUN_OFFEN`, Heilung Folgepaket `vp-uems-zaun-bezugsgroesse-lesen`; siehe `uems-standort-zaun.md`.
 
 - Migration `V20260917100000`: `bezugsgroesse_kanalbindung`, RLS + FORCE, USING und
   WITH CHECK, zusammengesetzte Mandanten-FKs, Exklusion mit Mandant zuerst. Minuten,

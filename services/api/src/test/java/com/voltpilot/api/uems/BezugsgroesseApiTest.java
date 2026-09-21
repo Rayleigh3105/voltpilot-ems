@@ -1,16 +1,20 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.zugriff.ZugriffContext;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
@@ -33,6 +37,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -114,9 +119,16 @@ class BezugsgroesseApiTest {
         vertrag = MAPPER.readTree(VEKTOREN.toFile());
     }
 
+    @Autowired
+    BezugsgroesseService bezugsgroessen;
+
+    @Autowired
+    KanalbindungService kanalbindungen;
+
     @AfterEach
     void aufraeumen() {
         TenantContext.clear();
+        ZugriffContext.clear();
     }
 
     // ================================================================ anlegen, Kennzeichen
@@ -575,6 +587,146 @@ class BezugsgroesseApiTest {
         List<String> aus = new ArrayList<>();
         liste.forEach(x -> aus.add(x.asText()));
         return aus;
+    }
+
+    // ================================================================ Leseweg im Geltungsbereich (AP-03 R-A1)
+
+    /** Die Leserouten einer Bezugsgröße per Kennung — der Leseweg, den {@code RechtPruefung#pruefenLesen} zäunt. */
+    private static final List<String> LESEROUTEN = List.of("", "/werte", "/stammdatum", "/kanalbindung",
+            "/kanalbindung/kanaele");
+
+    private record Roh(int status, String body) {}
+
+    /**
+     * Je Geltungsart (AP-03 R-A1, §4.9; AP-09 §4.11 {@code messwerte.ansehen}): ein Bearbeiter am Standort der Geltung
+     * sieht die Bezugsgröße wie der Kundenadministrator, derselbe Bearbeiter an einem anderen Standort bekommt an jeder
+     * Leseroute Status und Körper einer unbekannten Kennung. Eine Unternehmens-Geltung (auch Prozess und Kostenstelle)
+     * sehen nur unternehmensweite Rollen. Kundenadministrator, Bestandskonto (E12) und ein Aufruf ohne Zugriff-Kontext
+     * (wie jeder andere Fall dieser Klasse) sehen alles, byte-gleich; die Liste zeigt genau, was die Einzelroute zeigt;
+     * die internen Leser bleiben ungezäunt.
+     */
+    @Test
+    void jedeLeserouteZeigtDieBezugsgroesseNurImGeltungsbereich() throws Exception {
+        Welt w = welt();
+        UUID anderer = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Werk Lindach', 'ST-2', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), w.unternehmen());
+        root.update("INSERT INTO ort_zuordnung (tenant_id, ort_id, eltern_standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01'), (?, ?, ?, '2024-01-01')", w.mandant(), w.gebaeude(), w.standort(), w.mandant(),
+                w.bereich(), w.standort());
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", w.mandant(), w.messstelle(), w.standort());
+        UUID prozess = root.queryForObject("INSERT INTO prozess (tenant_id, unternehmen_id, kennzeichen, name, "
+                + "gueltig_ab) VALUES (?, ?, 'P-1', 'Spritzguss', '2024-01-01') RETURNING id", UUID.class, w.mandant(),
+                w.unternehmen());
+        UUID kostenstelle = root.queryForObject("INSERT INTO kostenstelle (tenant_id, unternehmen_id, kennzeichen, name, "
+                + "gueltig_ab) VALUES (?, ?, '4200', 'Montage', '2024-01-01') RETURNING id", UUID.class, w.mandant(),
+                w.unternehmen());
+        Map<String, UUID> amStandort = new LinkedHashMap<>();
+        amStandort.put("standort", geltung(w, "standort", "standort_id", w.standort()));
+        amStandort.put("gebaeude", geltung(w, "gebaeude", "ort_id", w.gebaeude()));
+        amStandort.put("bereich", geltung(w, "bereich", "ort_id", w.bereich()));
+        amStandort.put("messstelle", geltung(w, "messstelle", "messstelle_id", w.messstelle()));
+        Map<String, UUID> alle = new LinkedHashMap<>(amStandort);
+        alle.put("unternehmen", geltung(w, "unternehmen", "unternehmen_id", w.unternehmen()));
+        alle.put("prozess", geltung(w, "prozess", "prozess_id", prozess));
+        alle.put("kostenstelle", geltung(w, "kostenstelle", "kostenstelle_id", kostenstelle));
+        String bestand = "sub-ines-" + w.mandant();
+        String ka = zuweisung(w, "sub-ka-", "kundenadministrator", null);
+        String hier = zuweisung(w, "sub-hier-", "bearbeiter", w.standort());
+        String anderswo = zuweisung(w, "sub-anderswo-", "bearbeiter", anderer);
+        String nie = "00000000-0000-0000-0000-00000000dead";
+
+        List<String> fehler = new ArrayList<>();
+        for (Map.Entry<String, UUID> g : alle.entrySet()) {
+            for (String route : LESEROUTEN) {
+                String pfad = PFAD + "/" + g.getValue() + route;
+                String unbekannt = PFAD + "/" + nie + route;
+                String fall = g.getKey() + " " + route;
+                Roh voll = roh(w, ka, pfad);
+                if (voll.status() != (route.equals("/stammdatum") ? 422 : 200)) {
+                    fehler.add(fall + ": Kundenadministrator " + voll);
+                }
+                if (!roh(w, bestand, pfad).equals(voll) || !ohneKontext(w, pfad).equals(voll)) {
+                    fehler.add(fall + ": Bestandskonto oder ohne Kontext ≠ Kundenadministrator");
+                }
+                Roh h = roh(w, hier, pfad);
+                if (!h.equals(amStandort.containsKey(g.getKey()) ? voll : roh(w, hier, unbekannt))) {
+                    fehler.add(fall + ": Bearbeiter am Standort " + h);
+                }
+                Roh a = roh(w, anderswo, pfad);
+                if (a.status() != 404 || !a.equals(roh(w, anderswo, unbekannt))) {
+                    fehler.add(fall + ": Bearbeiter an einem anderen Standort " + a);
+                }
+            }
+        }
+        assertThat(fehler).isEmpty();
+
+        // Die Liste zeigt dieselbe Menge — ohne Hinweis auf die fehlenden.
+        assertThat(roh(w, bestand, PFAD)).isEqualTo(roh(w, ka, PFAD)).isEqualTo(ohneKontext(w, PFAD));
+        assertThat(kennungen(w, ka)).containsExactlyInAnyOrderElementsOf(alle.values().stream().map(UUID::toString)
+                .toList());
+        assertThat(kennungen(w, hier)).containsExactlyInAnyOrderElementsOf(amStandort.values().stream()
+                .map(UUID::toString).toList());
+        assertThat(kennungen(w, anderswo)).isEmpty();
+
+        // Der interne Leser (Kennzahl, Import, Berichtigung) bedient keine Kundenanfrage nach der Kennung: er liest
+        // auch unter einem Zugriff, der die Bezugsgröße nicht sieht — die Route desselben Zugriffs nicht.
+        UUID standort = amStandort.get("standort");
+        TenantContext.set(w.mandant());
+        ZugriffContext.set(new ZugriffContext.Zugriff("sub-ohne", RechteAbleitung.Konto.BENUTZER, w.mandant(),
+                ZugriffContext.Zugang.KONTO, List.of(), Instant.now(), false));
+        assertThat(bezugsgroessen.werte(standort, null, null, "alle").bezugsgroesseId()).isEqualTo(standort);
+        assertThat(kanalbindungen.liste(standort)).isEmpty();
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> bezugsgroessen.eine(standort)))
+                .isInstanceOf(BezugsgroesseAbgelehnt.class);
+        assertThat(bezugsgroessen.alle().bezugsgroessen()).isEmpty();
+    }
+
+    private static UUID geltung(Welt w, String art, String spalte, UUID objekt) {
+        return root.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, "
+                + "periode_art, geltung_art, " + spalte + ") VALUES (?, ?, ?, 'periodenwert', 'h', 'monat', ?, ?) "
+                + "RETURNING id", UUID.class, w.mandant(), "BZ-" + art.substring(0, 4).toUpperCase(), "Betriebszeit " + art, art, objekt);
+    }
+
+    /** Ein Konto mit einer wirksamen Zuweisung ({@code standort} {@code null} = unternehmensweit). */
+    private static String zuweisung(Welt w, String praefix, String rolle, UUID standort) {
+        String sub = praefix + w.mandant();
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, "
+                + "'aktiv')", w.mandant(), sub, sub);
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) VALUES "
+                + "(?, ?, ?, ?, '2024-01-01T00:00:00+01', 'Europe/Berlin')", w.mandant(), sub, rolle, standort);
+        return sub;
+    }
+
+    private List<String> kennungen(Welt w, String sub) throws Exception {
+        Roh r = roh(w, sub, PFAD);
+        assertThat(r.status()).as(sub + " " + r.body()).isEqualTo(200);
+        List<String> aus = new ArrayList<>();
+        MAPPER.readTree(r.body()).path("bezugsgroessen").forEach(x -> aus.add(x.path("id").asText()));
+        return aus;
+    }
+
+    /** Ein Kundenkonto wie aus Keycloak (Konverter setzt die Kontoart): der Zugriff-Kontext wird geladen. */
+    private Roh roh(Welt w, String sub, String pfad) throws Exception {
+        Map<String, Object> claims = Map.of("sub", sub, "preferred_username", sub, "tenant_id", w.mandant().toString(),
+                "realm_access", Map.of("roles", List.of()));
+        Jwt token = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
+        return roh(request(HttpMethod.GET, pfad).with(authentication(new KeycloakRealmRoleConverter().convert(token))));
+    }
+
+    /** Derselbe Aufruf ohne Kontoart — ohne Zugriff-Kontext, wie jeder andere Aufruf dieser Klasse ({@link #ruf}). */
+    private Roh ohneKontext(Welt w, String pfad) throws Exception {
+        return roh(request(HttpMethod.GET, pfad).with(jwt().jwt(j -> {
+            j.subject("sub-ines-" + w.mandant());
+            j.claim("preferred_username", "Ines Kaltenbach");
+            j.claim("tenant_id", w.mandant().toString());
+        })));
+    }
+
+    private Roh roh(MockHttpServletRequestBuilder anfrage) throws Exception {
+        MvcResult r = mvc.perform(anfrage).andReturn();
+        return new Roh(r.getResponse().getStatus(), r.getResponse().getContentAsString(StandardCharsets.UTF_8));
     }
 
     private Welt welt() {
