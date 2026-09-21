@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Ablehnung;
 import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
+import com.voltpilot.api.web.dto.GemeinsameSteuerungEinrichtenDto;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,17 +38,24 @@ public final class GemeinsameSteuerungAbgelehnt extends RuntimeException {
     public static final String BEREITS_BESTAETIGT = "bereits_bestaetigt";
     /** Freigabe des Vorbehalts ohne offenen Vorschlag zum Senken (IP-13) — oder er passt nicht mehr. */
     public static final String KEIN_VORSCHLAG = "kein_vorschlag";
+    /**
+     * Ein erklärter Vorbehalt der Bezugsseite UNTER dem, den eine Messung trägt (B4): senken ist ein Vorschlag mit
+     * Freigabe des Betreibers (IP-13), nie eine Erklärung.
+     */
+    public static final String VORBEHALT_GEMESSEN = "vorbehalt_gemessen";
+    /** Die Erklärung ist unvollständig (422): {@code fehlt} nennt jede Lücke mit ihrer Kennung. */
+    public static final String ERKLAERUNG_UNVOLLSTAENDIG = "erklaerung_unvollstaendig";
 
     /** Die Übergangs-Gründe (409) in ihrer Vertrags-Reihenfolge. */
     public static final List<String> UEBERGANG = List.of(NICHT_EINGERICHTET, NICHT_AKTIV, NICHT_ANGEHALTEN,
             VOM_BETREIBER_ANGEHALTEN, BEREITS_AKTIV, ERST_ANHALTEN, ANTEILE_IN_KRAFT, KEIN_MITGLIED, BEREITS_BESTAETIGT,
-            KEIN_VORSCHLAG);
+            KEIN_VORSCHLAG, VORBEHALT_GEMESSEN);
 
     private final int status;
     private final String code;
-    private final List<GemeinsameSteuerungDto.Befund> fehlt;
+    private final List<?> fehlt;
 
-    private GemeinsameSteuerungAbgelehnt(int status, String code, String satz, List<GemeinsameSteuerungDto.Befund> fehlt) {
+    private GemeinsameSteuerungAbgelehnt(int status, String code, String satz, List<?> fehlt) {
         super(satz);
         this.status = status;
         this.code = code;
@@ -76,6 +84,15 @@ public final class GemeinsameSteuerungAbgelehnt extends RuntimeException {
                 + "“ ist nicht erfüllt.", fehlt);
     }
 
+    /**
+     * Die Erklärung ist unvollständig (422 {@code erklaerung_unvollstaendig}): je Lücke ein Eintrag {@code wort}
+     * ({@code geraete} · {@code komponente} · {@code ungesteuerte_erzeuger}) mit Box bzw. Komponente, wo sie daran hängt.
+     */
+    public static GemeinsameSteuerungAbgelehnt unvollstaendig(String satz,
+            List<GemeinsameSteuerungEinrichtenDto.Luecke> luecken) {
+        return new GemeinsameSteuerungAbgelehnt(422, ERKLAERUNG_UNVOLLSTAENDIG, satz, luecken);
+    }
+
     public int status() {
         return status;
     }
@@ -84,7 +101,10 @@ public final class GemeinsameSteuerungAbgelehnt extends RuntimeException {
         return code;
     }
 
-    /** {@code {code, message, fehlt}} — {@code fehlt} nur bei einem Wort des Ablehnungs-Vokabulars. */
+    /**
+     * {@code {code, message, fehlt}} — {@code fehlt} nur bei einem Wort des Ablehnungs-Vokabulars und bei
+     * {@code erklaerung_unvollstaendig}.
+     */
     public Map<String, Object> body() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", code);

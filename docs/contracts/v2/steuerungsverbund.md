@@ -201,6 +201,56 @@ ein unbekanntes Signal als nicht anliegend (R18).
 Gemeinsame Steuerung, deren führende Box (`LeadDeviceService`) nicht die Box des primären Speichers ist. Kein
 Kundensatz — die Flächen kommen mit IP-23/IP-24.
 
+## 6a. Einrichten in sechs Fragen — die Erklärung (Folge vor IP-23)
+
+`uems/GemeinsameSteuerungErklaerung` über `web/GemeinsameSteuerungController`; Migration `V20260922070000`
+(`steuerungsverbund_erzeuger`, Protokoll-Wörter `geraete` · `erzeuger` als Vereinigung). Schemas
+`GemeinsameSteuerungEinrichten*`, `…RueckfallAngabe`, `…Luecke` in [`openapi.yaml`](../openapi.yaml).
+
+| Route | Recht | Inhalt |
+|---|---|---|
+| `GET …/gemeinsame-steuerung/einrichten` | lesend, keine eigene Kennung (Zaun `pruefenLesen`) | Fragen 1–5 aus dem Bestand: je Box, was sie liest (`komponenten`: Schreibfreigabe, Richtungen nach Typ, Nennleistung soweit bekannt), `netzzaehler_box_id`, wirksame `grenzen`; mit Verbund dazu die Erklärung (`geraete` je Box mit `rueckfall_herkunft` `am_geraet` · `katalog` · `ohne_angabe`, `ungeregelt`, `ungesteuerte_erzeuger`, `vorbehalt` mit Herkunft, wer/wann und `aus_messwerten`), Frage 6 `ergebnis` (Auslegung je Richtung aus `SteuerungsverbundAnteilDienst#ableiten`: Urteil, Grenze, Vorbehalt, verteilbar, Rückfälle, Anteile je Box) und `hinweise`. Ohne Verbund nur der Vorschlag — schreibt nie (I6) |
+| `PUT …/gemeinsame-steuerung` | `funktion.steuern_einrichten` | wie §6, dazu die Erklärung (unten) |
+| `GET …/gemeinsame-steuerung/komponenten/{komponenteId}/rueckfall` | lesend, keine eigene Kennung | Verlauf der Rückfall-Angaben (IP-6), neueste zuerst; fremde Komponente 404 |
+| `PUT …/gemeinsame-steuerung/komponenten/{komponenteId}/rueckfall` | `funktion.steuern_einrichten` | `GeraeteRueckfallDienst#hinterlegen` (Folgepunkt PR 1026): `{richtung, rueckfall, rueckfall_kw, nach_s, hinweis}`, kW nur und genau bei `faellt_auf_wert` |
+
+**Die Erklärung im `PUT`.** Sie beginnt, sobald `geraete`/`ungeregelt` an einem Mitglied, `ungesteuerte_erzeuger`
+oder `vorbehalt` im Körper steht; ohne diese Felder ändert `PUT` nur die Struktur wie bisher und die Erklärung bleibt
+stehen. Eine Erklärung ist vollständig, sonst 422 `erklaerung_unvollstaendig` mit je Lücke `{wort, box_id,
+komponente_id}`:
+
+- **Geräte je Mitglied** (`steuerungsverbund_geraet`, IP-7): jedes Mitglied nennt `geraete` (`komponente_id`,
+  `richtung`, `nenn_kw` > 0), wahlfrei `ungeregelt` (`richtung`, `hoechstwert_kw` > 0; B3). Die **Schreibfreigabe
+  kommt aus dem Bestand**, nie aus dem Körper (400): die Box, die die Komponente liest (Regel des Push je Box,
+  `SummenwertQuellenService#sources`), schreibt an sie (`CommandLogReader#writesTo`). **Vollständig:** jede Komponente
+  mit Schreibfreigabe an einer Mitglieds-Box steht in deren `geraete` — sonst Lücke `komponente` mit ihrer Kennung
+  (eine unvollständige Gerätetabelle hieße für G6 still „keine steuerbaren Verbraucher“). Eine erklärte Komponente
+  ohne Schreibfreigabe zählt als ungeregelt mit Nennleistung (I1). Weicht die Nennleistung vom Bestand ab (PV
+  `capacity_kwp`, Verbraucher `consumer_profile.rated_power_kw`; ein Speicher hat keine), ist das ein Hinweis
+  `nennleistung_weicht_ab` in `GET …/einrichten`, keine Ablehnung. Aufheben statt ändern.
+- **Ungesteuerte Erzeuger** (Frage 4, Pflicht): `"keine"` oder eine nicht leere Liste `{bezeichnung, nenn_kw}`;
+  fehlt das Feld, ist es die Lücke `ungesteuerte_erzeuger`, `[]`/`null` ist 400 — unbekannt ist keine Null. Ihre
+  Summe ist `vorbehalt_einspeisung_kw`; nicht erklärt = leer (die Auslegung der Einspeiseseite ist dann nicht
+  rechenbar). Der Einspeise-Vorbehalt selbst wird nicht erklärt (400).
+- **Vorbehalt der Bezugsseite** (B4): `vorbehalt.bezug_kw` ≥ 0, Herkunft `erklaert`, wer/wann am Verbund. **Erklärt
+  gegen gemessen:** Solange keine Messung den geltenden Wert trägt, gilt der erklärte — auch ein kleinerer (die
+  Stufe geht zurück; wirksam an den Boxen wird er erst über das Scharfschalten des Betreibers). Trägt eine Messung
+  ihn (IP-13 hat erhöht oder ein Vorschlag wurde freigegeben: Herkunft `gemessen`), gewinnt sie: ein kleinerer
+  erklärter Wert ist 409 `vorbehalt_gemessen` — senken bleibt Vorschlag mit Freigabe des Betreibers
+  (`POST /api/v1/admin/…/vorbehalt/freigeben`), nie selbsttätig; ein gleicher ändert nichts, ein größerer gilt als
+  erklärt (verengen geht immer). Erhöht die Messung später über den erklärten Wert, erhöht IP-13 selbsttätig.
+- **Strukturänderung:** jede Änderung eines Teils ist eine (Protokoll `geraete` · `erzeuger` · `vorbehalt` mit
+  `alt`/`neu`, die Stufe geht zurück wie bei jeder anderen, I3); dieselbe Erklärung noch einmal schreibt nichts. In
+  `anteile_aktiv` gilt wie in §6 409 `erst_anhalten`.
+
+**Hinweise** in `GET …/einrichten` (keine Ablehnung): `nennleistung_weicht_ab`, `ohne_schreibfreigabe`,
+`geraete_nicht_erklaert` (Mitglied ohne Geräte), `geraet_nicht_erklaert` (der Bestand kennt eine Komponente mit
+Schreibfreigabe, die nicht erklärt ist — z. B. nach einem PUT nur mit Mitgliedern oder einer neuen Komponente),
+`erzeuger_nicht_erklaert`, `vorbehalt_nicht_erklaert`, `netzzaehler_nicht_gelesen`.
+
+**Offen:** Scharfschalten prüft die Vollständigkeit der Gerätetabelle gegen den Bestand nicht selbst (nur die
+Erklärung beim `PUT` und der Hinweis `geraet_nicht_erklaert`); der Rückfall am Gerät ändert die Stufe nicht.
+
 ## 7. Die Verbund-Bilanz (IP-12)
 
 **Die Frage (A17):** erklärt sich der Netzpunkt aus den Boxen? Je Viertelstunde (kW-Mittel, Bezug positiv) ist das

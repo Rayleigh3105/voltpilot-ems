@@ -109,6 +109,14 @@ public class GemeinsameSteuerungService {
         this.vorbehalte = vorbehalte;
     }
 
+    /** Die Erklärung der Gemeinsamen Steuerung (§5.2), nachgereicht wie die Bilanz. */
+    private GemeinsameSteuerungErklaerung erklaerungDienst;
+
+    @Autowired
+    void erklaerung(GemeinsameSteuerungErklaerung erklaerung) {
+        this.erklaerungDienst = erklaerung;
+    }
+
     void uhrStellen(Clock clock) {
         uhr = clock;
     }
@@ -243,6 +251,18 @@ public class GemeinsameSteuerungService {
     @Transactional
     public GemeinsameSteuerungDto.Zustand einrichten(UUID siteId, List<GemeinsameSteuerungDto.MitgliedWunsch> wunsch,
             ProtokollAkteur wer) {
+        return einrichten(siteId, wunsch, null, wer);
+    }
+
+    /**
+     * Wie oben, mit der ERKLÄRUNG (§5.2 Fragen 4/5, {@link GemeinsameSteuerungErklaerung}): die Geräte je Mitglied,
+     * das Ungeregelte hinter seinem Abgang, die ungesteuerten Erzeuger und der erklärte Vorbehalt. {@code erklaerung}
+     * {@code null} = nur die Struktur wie bisher (die Erklärung bleibt stehen). Jede Änderung der Erklärung ist eine
+     * Strukturänderung wie jede andere: Protokoll je Teil und die Stufe geht zurück (I3).
+     */
+    @Transactional
+    public GemeinsameSteuerungDto.Zustand einrichten(UUID siteId, List<GemeinsameSteuerungDto.MitgliedWunsch> wunsch,
+            GemeinsameSteuerungErklaerung.Wunsch erklaerung, ProtokollAkteur wer) {
         sichtbar(siteId);
         List<Wunsch> soll = pruefeWunsch(siteId, wunsch);
         UUID tenant = TenantContext.get();
@@ -285,6 +305,10 @@ public class GemeinsameSteuerungService {
             }
         }
         if (signaleSetzen(tenant, verbundId, siteId, wunsch, signaleVorher, jetzt, wer)) {
+            geaendert = true;
+        }
+        if (erklaerung != null && erklaerungDienst.erklaeren(tenant, verbundId, siteId,
+                soll.stream().map(Wunsch::box).toList(), erklaerung, jetzt, wer)) {
             geaendert = true;
         }
         VerbundZeile v = repo.finden(verbundId).orElseThrow();
