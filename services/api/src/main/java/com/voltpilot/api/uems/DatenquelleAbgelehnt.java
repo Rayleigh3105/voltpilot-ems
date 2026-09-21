@@ -54,7 +54,13 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
          */
         VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409),
         /** Das physische Lesebudget der Ziel-Box wäre nach dieser Quelle überschritten. */
-        BUDGET_UEBERSCHRITTEN("budget_ueberschritten", 422);
+        BUDGET_UEBERSCHRITTEN("budget_ueberschritten", 422),
+        /**
+         * AP-15 T6: die Quelle trägt eine scharfe Gemeinsame Steuerung (Netzzähler, Messpunkt oder Steuerquelle eines
+         * Mitglieds) — ihre Box wechselt nur als Änderung der Gemeinsamen Steuerung, nicht als Zuständigkeitswechsel.
+         * Fakt: {@code kennzeichen}.
+         */
+        GEMEINSAME_STEUERUNG_AENDERN("gemeinsame_steuerung_aendern", 409);
 
         private final String code;
         private final int status;

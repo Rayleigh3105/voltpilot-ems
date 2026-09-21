@@ -119,6 +119,7 @@ public class DatenquelleService {
     private UebergabeRepository uebergaben;
     private DatenquelleBudgetService budget;
     private DeviceDataSourceStatusRepository quellstatus;
+    private SteuerungsverbundRepository verbund;
 
     @org.springframework.beans.factory.annotation.Autowired
     void uebergaben(UebergabeRepository repo) { this.uebergaben = repo; }
@@ -128,6 +129,9 @@ public class DatenquelleService {
 
     @org.springframework.beans.factory.annotation.Autowired
     void quellstatus(DeviceDataSourceStatusRepository repo) { this.quellstatus = repo; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void verbund(SteuerungsverbundRepository repo) { this.verbund = repo; }
 
     /**
      * @param uhr die Uhr des Dienstes — ohne eigene {@link Clock}-Bean die Systemuhr (UTC);
@@ -350,6 +354,7 @@ public class DatenquelleService {
         // Die Zeilensperre zuerst: wer danach liest, sieht den Stand, gegen den er schreibt.
         Datenquelle q = quellen.sperren(id).orElseThrow(DatenquelleService::quelleFehlt);
         nichtArchiviert(q);
+        nichtInScharferSteuerung(q);
         Lage lage = lage();
         Box box = boxImZaun(z.deviceId(), lage.boxen());
         Instant ab = z.effectiveFrom() == null ? minute(lage.jetzt()) : z.effectiveFrom().toInstant();
@@ -724,6 +729,29 @@ public class DatenquelleService {
         if (q.archiviertAm() != null) {
             throw DatenquelleAbgelehnt.schnittstelle(Schnittstelle.QUELLE_ARCHIVIERT,
                     q.kennzeichen() + " ist archiviert", Map.of("kennzeichen", q.kennzeichen()));
+        }
+    }
+
+    /**
+     * AP-15 T6 (IP-8): Netzzähler, Messpunkt und Steuerquelle eines Mitglieds einer scharfen Gemeinsamen Steuerung
+     * wechseln ihre Box nur als Änderung der Gemeinsamen Steuerung (anhalten → ändern → prüfen → scharfschalten). Ohne
+     * Gemeinsame Steuerung greift das nie; der Zuständigkeitswechsel bleibt, wie er war.
+     */
+    private void nichtInScharferSteuerung(Datenquelle q) {
+        Optional<SteuerungsverbundRepository.VerbundZeile> v =
+                verbund == null ? Optional.empty() : verbund.derAnlage(q.siteId());
+        if (v.isEmpty()) {
+            return; // Bestand: ohne Gemeinsame Steuerung eine Abfrage mehr, sonst nichts
+        }
+        Instant jetzt = uhr.instant();
+        SteuerungsverbundRegeln.Verbund stand = verbund.regelStand(q.siteId(), jetzt, jetzt.atZone(ZONE).toLocalDate())
+                .orElseThrow().verbund();
+        SteuerungsverbundRegeln.Datenquelle quelle = verbund.quellen(List.of(q.id()), jetzt).get(0);
+        if (SteuerungsverbundRegeln.wechseltNurAlsAenderung(v.get().stufe(), stand, quelle, q.steuerquelle())) {
+            throw DatenquelleAbgelehnt.schnittstelle(Schnittstelle.GEMEINSAME_STEUERUNG_AENDERN,
+                    q.kennzeichen() + " gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über "
+                            + "„Gemeinsame Steuerung ändern“",
+                    Map.of("kennzeichen", q.kennzeichen()));
         }
     }
 
