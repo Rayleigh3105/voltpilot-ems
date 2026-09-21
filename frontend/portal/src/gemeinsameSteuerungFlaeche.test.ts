@@ -18,7 +18,7 @@ import {
   zustandsZeile,
 } from './gemeinsameSteuerungFlaeche';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
-import { GS_IDS, gsBoxen, gsEingerichtet, gsVorschlag, gsZustand } from './test/gemeinsameSteuerungFixtures';
+import { GS_ABWEICHEND, GS_IDS, gsBoxen, gsEingerichtet, gsVorschlag, gsZustand } from './test/gemeinsameSteuerungFixtures';
 import { FIXTURE_IDS } from './test/standorteFixtures';
 
 const JETZT = new Date('2027-06-15T11:40:00Z');
@@ -75,6 +75,22 @@ describe('AP-15 IP-23 · Zustände (S1: eingerichtet · wird geprüft · aktiv �
     expect(boxZeilen(gsZustand('beobachtet'), e, namen, new Map(), 'B')[1].text)
       .toBe('Box Verwaltung steuert mit, sobald VoltPilot freischaltet · vorgesehener Anteil: Einspeisung 60 kW · Bezug 77 kW');
   });
+  it('in Kraft zählen die WIRKSAMEN Anteile, nicht die Auslegung (G4: der Betreiber weicht ab)', () => {
+    const e = gsEingerichtet();
+    expect(boxZeilen(gsZustand('anteile_aktiv', null, { wirksam: GS_ABWEICHEND }), e, namen, new Map(), 'B')[1].text)
+      .toBe('Box Verwaltung steuert mit · hält ihren Anteil: Einspeisung 70 kW · Bezug 72 kW');
+    expect(boxZeilen(gsZustand('angehalten', null, { wirksam: GS_ABWEICHEND }), e, namen, new Map(), 'B')[1].text)
+      .toBe('Box Verwaltung steuert mit · hält ihren Anteil: Einspeisung 70 kW · Bezug 72 kW');
+    // vor dem Freischalten bleibt es die Auslegung, auch wenn die Route schon etwas nennen sollte
+    expect(boxZeilen(gsZustand('beobachtet'), e, namen, new Map(), 'B')[1].text).toContain('Einspeisung 60 kW');
+  });
+  it('unbekannt ist keine Null: ohne quittierten Anteil steht der Satz ohne Zahl', () => {
+    const e = gsEingerichtet();
+    expect(boxZeilen(gsZustand('anteile_aktiv', null, { wirksam: { e4: null } }), e, namen, new Map(), 'B')[1].text)
+      .toBe('Box Verwaltung steuert mit');
+    expect(boxZeilen(gsZustand('anteile_aktiv', null, { wirksam: { e4: { einspeisung_kw: 70, bezug_kw: null } } }), e, namen, new Map(), 'B')[1].text)
+      .toBe('Box Verwaltung steuert mit');
+  });
   it('was fehlt: Update, Signal — die Sprungprobe ist Sache von VoltPilot und steht nicht da', () => {
     expect(befundSaetze(gsZustand('beobachtet'), namen).map((b) => b.text)).toEqual([
       'Box Verwaltung braucht ein Update für die gemeinsame Steuerung.',
@@ -89,28 +105,29 @@ describe('AP-15 IP-23 · Zustände (S1: eingerichtet · wird geprüft · aktiv �
   });
 });
 
-describe('AP-15 IP-23 · Ausfall-Sätze (A1, A2, A4) nur mit Anteilen in Kraft', () => {
+describe('AP-15 IP-23 · Ausfall-Sätze (A1, A2, A4) nur mit Anteilen in Kraft — Herzschlag aus der Route', () => {
   const namen = boxNamen(gsBoxen(JETZT), null);
+  const z = (l: Parameters<typeof gsZustand>[0], seit: { halle1Seit?: number; verwaltungSeit?: number }) =>
+    gsZustand(l, null, { jetzt: JETZT, ...seit });
   it('A1: die mitsteuernde Box antwortet seit ihrem letzten Herzschlag nicht (Zone der Anlage)', () => {
-    const boxen = gsBoxen(JETZT, { verwaltungSeit: 30 * 60 });
-    expect(ausfallSaetze(gsZustand('anteile_aktiv'), boxen, namen, JETZT).get(GS_IDS.e4))
+    expect(ausfallSaetze(z('anteile_aktiv', { verwaltungSeit: 30 * 60 }), namen, JETZT).get(GS_IDS.e4))
       .toBe('Box Verwaltung antwortet seit 13:10 nicht. Die Grenze am Netzanschluss bleibt eingehalten; ihre Geräte laufen mit ihren sicheren Vorgabewerten.');
   });
   it('A2: die führende Box antwortet nicht', () => {
-    const boxen = gsBoxen(JETZT, { halle1Seit: 30 * 60 });
-    expect(ausfallSaetze(gsZustand('angehalten'), boxen, namen, JETZT).get(GS_IDS.e1))
+    expect(ausfallSaetze(z('angehalten', { halle1Seit: 30 * 60 }), namen, JETZT).get(GS_IDS.e1))
       .toBe('Box Halle 1 antwortet nicht. Niemand regelt gerade am Netzanschluss; jede Box und jedes Gerät hält seinen sicheren Anteil.');
   });
   it('A4: beide Boxen nicht verbunden', () => {
-    const boxen = gsBoxen(JETZT, { halle1Seit: 3600, verwaltungSeit: 3600 });
-    expect([...ausfallSaetze(gsZustand('anteile_aktiv'), boxen, namen, JETZT).values()])
+    expect([...ausfallSaetze(z('anteile_aktiv', { halle1Seit: 3600, verwaltungSeit: 3600 }), namen, JETZT).values()])
       .toEqual(Array(2).fill('Beide Boxen sind nicht verbunden. Die Grenze am Netzanschluss halten sie selbst ein.'));
   });
   it('vor dem Freischalten hält keine Box einen Anteil: kein Satz; eine Box ohne Herzschlag ist unbekannt', () => {
-    const boxen = gsBoxen(JETZT, { verwaltungSeit: 3600 });
-    expect(ausfallSaetze(gsZustand('beobachtet'), boxen, namen, JETZT).size).toBe(0);
-    const ohne = [boxen[0], { ...boxen[1], lastSeenAt: null }];
-    expect(ausfallSaetze(gsZustand('anteile_aktiv'), ohne, namen, JETZT).size).toBe(0);
+    expect(ausfallSaetze(z('beobachtet', { verwaltungSeit: 3600 }), namen, JETZT).size).toBe(0);
+    const ohne = z('anteile_aktiv', { verwaltungSeit: 3600 });
+    ohne.mitglieder = ohne.mitglieder!.map((m) => ({ ...m, zuletzt_gehoert: null }));
+    expect(ausfallSaetze(ohne, namen, JETZT).size).toBe(0);
+    // die Geräteliste ist keine Quelle mehr: eine stumme Box dort ändert nichts, solange die Route sie gehört hat
+    expect(ausfallSaetze(z('anteile_aktiv', {}), namen, JETZT).size).toBe(0);
   });
 });
 

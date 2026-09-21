@@ -49,6 +49,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         Map<String, Class<? extends Record>> formen = new LinkedHashMap<>();
         formen.put("GemeinsameSteuerung", GemeinsameSteuerungDto.Zustand.class);
         formen.put("GemeinsameSteuerungMitglied", GemeinsameSteuerungDto.Mitglied.class);
+        formen.put("GemeinsameSteuerungWirksameAnteile", GemeinsameSteuerungDto.WirksameAnteile.class);
         formen.put("GemeinsameSteuerungBefund", GemeinsameSteuerungDto.Befund.class);
         formen.put("GemeinsameSteuerungWarnungFuehrung", GemeinsameSteuerungDto.WarnungFuehrung.class);
         formen.put("GemeinsameSteuerungBilanz", GemeinsameSteuerungDto.Bilanz.class);
@@ -57,6 +58,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         formen.put("GemeinsameSteuerungVorbehaltVorschlag", GemeinsameSteuerungDto.VorbehaltVorschlag.class);
         // Einrichten in sechs Fragen (§5.2, Vertrag §6a)
         formen.put("GemeinsameSteuerungEinrichtenAuskunft", GemeinsameSteuerungEinrichtenDto.Einrichten.class);
+        formen.put("GemeinsameSteuerungVorschau", GemeinsameSteuerungEinrichtenDto.Vorschau.class);
         formen.put("GemeinsameSteuerungEinrichtenBox", GemeinsameSteuerungEinrichtenDto.Box.class);
         formen.put("GemeinsameSteuerungAuslegung", GemeinsameSteuerungEinrichtenDto.Auslegung.class);
         formen.put("GemeinsameSteuerungErzeuger", GemeinsameSteuerungEinrichtenDto.Erzeuger.class);
@@ -137,7 +139,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
     @Test
     @SuppressWarnings("unchecked")
     void dieRoutenNennenIhreRechte() {
-        Map<String, String> recht = Map.of(
+        Map<String, String> recht = new LinkedHashMap<>(Map.of(
                 KUNDE + "|put", "funktion.steuern_einrichten",
                 KUNDE + "/anhalten|post", "steuerung.starten_beenden",
                 KUNDE + "/fortsetzen|post", "steuerung.starten_beenden",
@@ -147,14 +149,15 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
                 ADMIN + "/mitglieder/{boxId}/bestaetigen|post", "plattform.betrieb",
                 ADMIN + "/vorbehalt/freigeben|post", "plattform.betrieb",
                 KUNDE + "/komponenten/{komponenteId}/rueckfall|put", "funktion.steuern_einrichten",
-                ADMIN + "/sprungprobe|post", "plattform.betrieb");
+                ADMIN + "/sprungprobe|post", "plattform.betrieb"));
+        recht.put(KUNDE + "/einrichten/vorschau|post", "funktion.steuern_einrichten");
         recht.forEach((schluessel, kennung) -> {
             String[] t = schluessel.split("\\|");
             Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) pfade.get(t[0])).get(t[1]);
             assertThat(op).as(schluessel).isNotNull();
             assertThat((String) op.get("description")).as(schluessel).contains("`" + kennung + "`");
             List<String> antworten = new ArrayList<>(List.of("200", "400", "401", "403", "404", "409"));
-            if (schluessel.equals(KUNDE + "|put")) {
+            if (schluessel.equals(KUNDE + "|put") || schluessel.equals(KUNDE + "/einrichten/vorschau|post")) {
                 antworten.add("422"); // die Erklärung ist unvollständig
             }
             assertThat(((Map<String, Object>) op.get("responses")).keySet()).as(schluessel)

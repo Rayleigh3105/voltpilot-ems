@@ -6,7 +6,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  * UEMS AP-15 IP-23 — die Karte „Gemeinsame Steuerung“ unter Anlage → Technik und das Einrichten in sechs Fragen, bei
  * 375 und 1440 px, auf der eigenen Bühne `e2e/gemeinsame-steuerung.html` (echte Komponente, gestellte Routen; die
  * geteilte `startansicht` bleibt unberührt). Zahlen aus der Referenzdatei 1.5: Grenzen 100/550 kW, Vorbehalt 473 kW,
- * Ergebnis Einspeisung 40/60 kW und Bezug 0/77 kW, beide „passt“. Mit `GS_BILDER=<Ordner>` legt der Lauf je Lage
+ * Ergebnis Einspeisung 40/60 kW und Bezug 0/77 kW, beide „passt“. Frage 6 kommt aus der Vorschau (schreibt nichts),
+ * erst „Absenden“ schreibt (§5.2 Nr. 6/7); die Karte zeigt in Kraft die WIRKSAMEN Anteile der Route. Mit `GS_BILDER=<Ordner>` legt der Lauf je Lage
  * und Breite ein Bild für die Ansicht ab. Die Spec importiert keine Fixtures (sie laden `api.ts`).
  */
 
@@ -40,6 +41,11 @@ async function bild(ziel: Locator, name: string) {
 }
 
 const modal = (page: Page) => page.locator('.vp-modal').last();
+
+const geschrieben = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __gsGeschrieben: () => unknown }).__gsGeschrieben());
+const vorschauen = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __gsVorschauen: () => number }).__gsVorschauen());
 
 async function waehle(page: Page, feld: Locator, option: RegExp) {
   await feld.click();
@@ -101,19 +107,24 @@ for (const breite of [375, 1440]) {
     const halle1 = m.getByTestId('gs-box-frage').filter({ hasText: 'Box Halle 1' });
     const verwaltung = m.getByTestId('gs-box-frage').filter({ hasText: 'Box Verwaltung' });
     await expect(verwaltung.getByTestId('gs-geraet')).toHaveCount(7);
-    await m.getByRole('button', { name: 'Einrichten' }).click();
-    // Der Speicher hat im Bestand keine Nennleistung — die Lücke steht an seinem Feld, geschrieben wird nichts.
+    await expect(m.getByRole('button', { name: 'Einrichten' })).toHaveCount(0);
+    await weiter.click();
+    // Der Speicher hat im Bestand keine Nennleistung — die Lücke steht an seinem Feld, gefragt und geschrieben wird nichts.
     await expect(halle1.getByTestId('gs-geraet').filter({ hasText: 'Batteriespeicher' })).toContainText('Bitte die Nennleistung in kW angeben.');
-    expect(await page.evaluate(() => (window as unknown as { __gsGeschrieben: () => unknown }).__gsGeschrieben())).toBeNull();
+    expect(await geschrieben(page)).toBeNull();
+    expect(await vorschauen(page)).toBe(0);
     await halle1.getByLabel(/Batteriespeicher 200 kWh · Bezug/).fill('100');
     await waehle(page, halle1.getByRole('combobox', { name: 'Bekommt diese Box das Signal des Netzbetreibers?', exact: true }), /^Ja/);
     await waehle(page, verwaltung.getByRole('combobox', { name: 'Zähler dieser Box', exact: true }), /^DQ-10/);
     await waehle(page, verwaltung.getByRole('combobox', { name: 'Bekommt diese Box das Signal des Netzbetreibers?', exact: true }), /^Nein/);
     await bild(m, `frage-5-${breite}`);
-    await m.getByRole('button', { name: 'Einrichten' }).click();
+    await weiter.click();
 
+    // Frage 6 VOR dem Schreiben: das Ergebnis des Entwurfs aus der Vorschau, noch ist nichts gespeichert
     await expect(m.getByText('Frage 6 von 6 · Ergebnis')).toBeVisible();
-    await expect(m.getByTestId('gs-ergebnis-zustand')).toHaveText('Eingerichtet · wird geprüft. VoltPilot prüft die Anlage mit einer kurzen Messung und schaltet sie frei.');
+    await expect(m.getByTestId('gs-ergebnis-entwurf')).toHaveText('Noch ist nichts gespeichert. Mit „Absenden“ richten Sie die Gemeinsame Steuerung so ein.');
+    expect(await vorschauen(page)).toBe(1);
+    expect(await geschrieben(page)).toBeNull();
     const ein = m.getByTestId('gs-richtung-einspeisung');
     const bez = m.getByTestId('gs-richtung-bezug');
     await expect(ein).toContainText('Box Halle 1: 40 kW');
@@ -128,19 +139,29 @@ for (const breite of [375, 1440]) {
       'Der Ladepark hängt an einer Box, die den Netzanschluss nicht sieht: er bekommt fest 77 kW. An Box Halle 1 bekäme er, was am Anschluss frei ist.',
       'Die Ladepunkte müssen an der Box hängen, die das Signal des Netzbetreibers bekommt.',
     ]);
-    const koerper = await page.evaluate(() => (window as unknown as { __gsGeschrieben: () => unknown }).__gsGeschrieben()) as {
+    await bild(m, `frage-6-${breite}`);
+
+    // Der Rückfallwert lässt sich gleich am Gerät hinterlegen (PUT …/komponenten/{id}/rueckfall); das Ergebnis wird
+    // neu gerechnet und bleibt ein Entwurf.
+    const rueckfall = m.getByTestId('gs-hinweis').filter({ hasText: 'kein sicherer Rückfallwert' });
+    await rueckfall.getByLabel('Sicherer Rückfallwert (kW)').fill('30');
+    await rueckfall.getByRole('button', { name: 'Am Gerät hinterlegen' }).click();
+    await expect(m.getByTestId('gs-hinweis').filter({ hasText: 'kein sicherer Rückfallwert' })).toHaveCount(0);
+    expect(await vorschauen(page)).toBe(2);
+    expect(await geschrieben(page)).toBeNull();
+
+    // §5.2 Nr. 7: Absenden ist ein eigener Schritt — erst jetzt geht das PUT
+    await m.getByRole('button', { name: 'Absenden' }).click();
+    await expect(m.getByText('Abgesendet', { exact: true })).toBeVisible();
+    await expect(m.getByTestId('gs-ergebnis-zustand')).toHaveText('Eingerichtet · wird geprüft. VoltPilot prüft die Anlage mit einer kurzen Messung und schaltet sie frei.');
+    await expect(m.getByTestId('gs-abgesendet')).toContainText('An den Boxen hat sich nichts geändert.');
+    const koerper = await geschrieben(page) as {
       mitglieder: { rolle: string; vorgabe_signal: string; geraete: unknown[] }[]; ungesteuerte_erzeuger: unknown; vorbehalt: unknown;
     };
     expect(koerper.mitglieder.map((x) => [x.rolle, x.vorgabe_signal, x.geraete.length])).toEqual([['fuehrt', 'ja', 2], ['steuert_mit', 'nein', 7]]);
     expect(koerper.ungesteuerte_erzeuger).toBe('keine');
     expect(koerper.vorbehalt).toEqual({ bezug_kw: 473 });
-    await bild(m, `frage-6-${breite}`);
-
-    // Der Rückfallwert lässt sich gleich am Gerät hinterlegen (PUT …/komponenten/{id}/rueckfall).
-    const rueckfall = m.getByTestId('gs-hinweis').filter({ hasText: 'kein sicherer Rückfallwert' });
-    await rueckfall.getByLabel('Sicherer Rückfallwert (kW)').fill('30');
-    await rueckfall.getByRole('button', { name: 'Am Gerät hinterlegen' }).click();
-    await expect(m.getByTestId('gs-hinweis').filter({ hasText: 'kein sicherer Rückfallwert' })).toHaveCount(0);
+    await bild(m, `abgesendet-${breite}`);
 
     await m.getByRole('button', { name: 'Fertig' }).click();
     await expect(page.getByTestId('gs-zustand')).toHaveText('Eingerichtet · wird geprüft. VoltPilot prüft die Anlage mit einer kurzen Messung und schaltet sie frei.');
@@ -169,6 +190,7 @@ for (const breite of [375, 1440]) {
       /^Box Verwaltung steuert mit · hält ihren Anteil: Einspeisung 60 kW · Bezug 77 kW/,
     ]);
     await expect(k.getByTestId('gs-erst-anhalten')).toBeVisible();
+    await expect(k.getByTestId('gs-ausfall')).toHaveCount(0);
     await expect(k.getByRole('button', { name: 'Gemeinsame Steuerung ändern' })).toHaveCount(0);
     await bild(page.locator('#technik-gemeinsam'), `karte-aktiv-${breite}`);
     await k.getByRole('button', { name: 'Anhalten' }).click();
@@ -190,6 +212,18 @@ for (const breite of [375, 1440]) {
     const k3 = await karte(page, breite);
     await expect(k3.getByTestId('gs-zustand')).toHaveText('Gemeinsame Steuerung eingerichtet');
     await bild(page.locator('#technik-gemeinsam'), `karte-eingerichtet-${breite}`);
+  });
+
+  test(`AP-15 IP-23 · ${breite} px: der Betreiber weicht beim Scharfschalten ab — die Karte zeigt die wirksamen Anteile`, async ({ page }) => {
+    await oeffne(page, breite, 'lage=anteile_aktiv&wirksam=abweichend');
+    const k = await karte(page, breite);
+    await expect(k.getByTestId('gs-box').nth(1)).toHaveText(/^Box Verwaltung steuert mit · hält ihren Anteil: Einspeisung 70 kW · Bezug 72 kW/);
+    await expect(k).not.toContainText('Einspeisung 60 kW');
+    await bild(page.locator('#technik-gemeinsam'), `karte-aktiv-abweichend-${breite}`);
+    await k.getByRole('button', { name: 'Anhalten' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Anhalten' }).click();
+    await expect(k.getByTestId('gs-zustand')).toContainText('Gemeinsame Steuerung angehalten.');
+    await expect(k.getByTestId('gs-box').nth(1)).toHaveText(/^Box Verwaltung steuert mit · hält ihren Anteil: Einspeisung 70 kW · Bezug 72 kW/);
   });
 
   test(`AP-15 IP-23 · ${breite} px: Verlust-Zeile — kWh nur als Untergrenze, sonst die Stunden (Varianten A und B)`, async ({ page }) => {

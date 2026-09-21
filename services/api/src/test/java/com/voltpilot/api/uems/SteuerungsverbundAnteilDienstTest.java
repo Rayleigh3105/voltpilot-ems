@@ -120,6 +120,8 @@ class SteuerungsverbundAnteilDienstTest {
     ObjectProvider<VerbundAnteileVersand> versand;
     @Autowired
     ObjectProvider<WirksameAnteileQuelle> herzschlagQuelle;
+    @Autowired
+    GemeinsameSteuerungService steuerung;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -205,6 +207,13 @@ class SteuerungsverbundAnteilDienstTest {
                 .filter(b -> b.boxId().equals(w.e4())).findFirst().orElseThrow();
         assertThat(e4.anteile().gesendet().revision()).isEqualTo(3);
         assertThat(e4.anteile().quittiert().revision()).isEqualTo(3);
+        // IP-23-Folge: der Kunde sieht je Box, was sie QUITTIERT hat — E-4 den Übergangswert 60, E-1 (rev 3 nur
+        // gesendet) weiter ihren Zielstand 40 aus rev 2, nicht die gesendeten 10
+        Map<UUID, GemeinsameSteuerungDto.WirksameAnteile> kunde = new java.util.HashMap<>();
+        steuerung.lesen(w.anlage()).mitglieder().forEach(m -> kunde.put(m.boxId(), m.wirksameAnteile()));
+        assertThat(kunde.get(w.e4()).einspeisungKw()).isEqualByComparingTo("60.0");
+        assertThat(kunde.get(w.e1()).einspeisungKw()).isEqualByComparingTo("40.0");
+        assertThat(kunde.get(w.e4()).bezugKw()).isEqualByComparingTo("77.0");
 
         quittung(w, w.e1(), 1, 3, "angenommen", null, null);
         TenantContext.set(w.mandant());

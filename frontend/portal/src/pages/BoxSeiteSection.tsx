@@ -27,6 +27,7 @@ import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog
 import { Recht } from '../components/Recht';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, boxSeiteHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
+import { einstellungenHash } from '../settingsNav';
 import {
   aufzeichnungSeit,
   genauigkeitsSatz,
@@ -417,7 +418,9 @@ export function BoxSeiteSection({
                           {datenquellen?.find((d) => d.id === q.id)?.steuerquelle
                             && steuerquelleWeg !== 'innerhalb_der_gemeinsamen_steuerung' ? (
                             steuerquelleWeg === 'gemeinsame_steuerung_aendern'
-                              ? <small data-testid="steuerquelle-weg">{gemeinsameSteuerungAendern(q.kennzeichen)}</small>
+                              ? <small data-testid="steuerquelle-weg">
+                                <a href={einstellungenHash(site.id, 'gemeinsam')}>{gemeinsameSteuerungAendern(q.kennzeichen)}</a>
+                              </small>
                               : <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>
                           ) : (
                             <Recht aktion="datenquelle.zustaendigkeit"><button type="button" className="vp-box-quellen-aktion"

@@ -108,6 +108,10 @@ export const FLAECHE = {
   signal_ladepunkte: 'Die Ladepunkte müssen an der Box hängen, die das Signal des Netzbetreibers bekommt.',
   /** §5.2 Nr. 6 („Am Wechselrichter Verwaltung …“), mit dem Gerätenamen aus dem Bestand */
   rueckfall_fehlt: 'Am Gerät {geraet} ist kein sicherer Rückfallwert hinterlegt — es zählt mit seiner vollen Leistung.',
+  /** Frage 6 vor „Absenden“ (§5.2 Nr. 6/7): das Ergebnis ist ein Entwurf */
+  ergebnis_entwurf: 'Noch ist nichts gespeichert. Mit „Absenden“ richten Sie die Gemeinsame Steuerung so ein.',
+  /** §5.2 Nr. 7, wörtlich */
+  abgesendet: 'An den Boxen hat sich nichts geändert.',
   /** Frage 6: Passt die Anlage zur Grenze? */
   urteil_passt: 'Ja — die Anlage passt zur Grenze am Netzanschluss.',
   urteil_passt_nicht: 'Nein — ohne ihre Boxen kämen die Geräte auf {summe_kw} kW, die Grenze lässt {verteilbar_kw} kW zu.',

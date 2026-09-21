@@ -126,19 +126,40 @@ export function gsEingerichtet(): UemsGemeinsameSteuerungEinrichten {
 
 export type GsLage = 'nicht_eingerichtet' | 'erklaert' | 'beobachtet' | 'anteile_aktiv' | 'angehalten' | 'angehalten_betreiber';
 
-/** `GET …/gemeinsame-steuerung` je Lage; `verlust` = was E-4 heute gemeldet hat (IP-22). */
-export function gsZustand(l: GsLage, verlust: UemsVerlustSumme | null = null): UemsGemeinsameSteuerungZustand {
+/** Die wirksamen Anteile je Box (quittiert); Vorgabe = die Auslegung 40/0 und 60/77. */
+export type GsWirksam = { e1?: WirksameAnteile | null; e4?: WirksameAnteile | null };
+type WirksameAnteile = { einspeisung_kw?: number | null; bezug_kw?: number | null };
+const AUSLEGUNG: Required<GsWirksam> = { e1: { einspeisung_kw: 40, bezug_kw: 0 }, e4: { einspeisung_kw: 60, bezug_kw: 77 } };
+/** R-G4: der Betreiber ist beim Scharfschalten abgewichen (innerhalb G2/G3) — 30/70 statt 40/60, Bezug 5/72. */
+export const GS_ABWEICHEND: Required<GsWirksam> = { e1: { einspeisung_kw: 30, bezug_kw: 5 }, e4: { einspeisung_kw: 70, bezug_kw: 72 } };
+
+/**
+ * `GET …/gemeinsame-steuerung` je Lage; `verlust` = was E-4 heute gemeldet hat (IP-22). Mit Anteilen in Kraft trägt
+ * jedes Mitglied seine wirksamen (quittierten) Anteile — Vorgabe die Auslegung — und mit `jetzt` seinen letzten
+ * Herzschlag (`halle1Seit`/`verwaltungSeit` Sekunden davor; für A1/A2/A4).
+ */
+export function gsZustand(
+  l: GsLage,
+  verlust: UemsVerlustSumme | null = null,
+  opts: { wirksam?: GsWirksam; jetzt?: Date; halle1Seit?: number; verwaltungSeit?: number } = {},
+): UemsGemeinsameSteuerungZustand {
   if (l === 'nicht_eingerichtet') return { eingerichtet: false, zustand: 'nicht_eingerichtet', mitglieder: [], fehlt: [] };
   const zustand = l === 'angehalten_betreiber' ? 'angehalten' : l;
   const stufe = l === 'erklaert' ? 'S0' : l === 'beobachtet' ? 'S1' : l === 'anteile_aktiv' ? 'S3' : null;
+  const inKraft = l === 'anteile_aktiv' || l === 'angehalten' || l === 'angehalten_betreiber';
+  const wirksam = { ...AUSLEGUNG, ...(opts.wirksam ?? {}) };
+  const gehoert = (s: number | undefined, vorgabe: number) =>
+    opts.jetzt ? new Date(opts.jetzt.getTime() - (s ?? vorgabe) * 1000).toISOString() : null;
   return {
     eingerichtet: true,
     zustand,
     stufe,
     mitglieder: [
-      { box_id: GS_IDS.e1, rolle: 'fuehrt', messpunkt_id: GS_IDS.dq2, vorgabe_signal: 'ja', verbraucher14a: 'ja', anteil_verlust: null },
+      { box_id: GS_IDS.e1, rolle: 'fuehrt', messpunkt_id: GS_IDS.dq2, vorgabe_signal: 'ja', verbraucher14a: 'ja', anteil_verlust: null,
+        wirksame_anteile: inKraft ? wirksam.e1 : null, zuletzt_gehoert: gehoert(opts.halle1Seit, 40) },
       { box_id: GS_IDS.e4, rolle: 'steuert_mit', messpunkt_id: GS_IDS.dq10, vorgabe_signal: 'nein', verbraucher14a: 'ja',
-        anteil_verlust: verlust ? { heute: verlust, monat: verlust } : null },
+        anteil_verlust: verlust ? { heute: verlust, monat: verlust } : null,
+        wirksame_anteile: inKraft ? wirksam.e4 : null, zuletzt_gehoert: gehoert(opts.verwaltungSeit, 35) },
     ],
     naechster_schritt: l === 'angehalten_betreiber' ? 'vom_betreiber_angehalten' : l === 'beobachtet' ? 'anteile_aktiv' : null,
     fehlt: l === 'anteile_aktiv' || l === 'angehalten' || l === 'angehalten_betreiber' ? [] : [
