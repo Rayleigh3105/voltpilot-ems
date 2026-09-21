@@ -67,10 +67,27 @@ public final class GemeinsameSteuerungDto {
      * {@code vorgabeSignal} — liegt das Signal des Netzbetreibers an der Box an ({@code ja} · {@code nein} ·
      * {@code unbekannt}, erklärt; {@code vorgabeSignalAm} wann zuletzt, null = nie) — und {@code verbraucher14a} —
      * hängen steuerbare Verbraucher nach § 14a hinter ihr (dieselben drei Wörter, abgeleitet aus den Geräten je Box).
+     * {@code anteilVerlust} (IP-22) {@code null}, solange die Box an dieser Anlage keinen Tag gemeldet hat.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Mitglied(UUID boxId, String rolle, UUID messpunktId, OffsetDateTime gueltigAb,
-            OffsetDateTime bestaetigtAm, String vorgabeSignal, OffsetDateTime vorgabeSignalAm, String verbraucher14a) {}
+            OffsetDateTime bestaetigtAm, String vorgabeSignal, OffsetDateTime vorgabeSignalAm, String verbraucher14a,
+            AnteilVerlust anteilVerlust) {}
+
+    /**
+     * Was der feste Einspeise-Anteil der Box zurückhielt (IP-22, E1 = A, R2) — für die Verlust-Zeile (IP-23) und das
+     * Betreiber-Blatt (IP-24): {@code heute} und der laufende {@code monat} (Tage der Anlage, Europe/Berlin), je
+     * {@code null} ohne gemeldeten Tag.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AnteilVerlust(VerlustSumme heute, VerlustSumme monat) {}
+
+    /**
+     * {@code kwh} ist eine UNTERGRENZE (die Box kennt die verfügbare Erzeugung einer abgeregelten PV nur aus gemessenen
+     * Werten); {@code gebundenS} — wie lange der Anteil die Erzeuger hielt — ist exakt; {@code tage} gemeldete Tage.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VerlustSumme(BigDecimal kwh, long gebundenS, int tage) {}
 
     /** Ein Grund aus dem Ablehnungs-Vokabular; {@code boxId} bzw. {@code richtung} nur, wo er daran hängt. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

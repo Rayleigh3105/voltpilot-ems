@@ -90,6 +90,8 @@ func (a *Agent) gemeinsameSteuerung() *cloud.GemeinsameSteuerung {
 		block.AnteileEpoche = &epoche
 		block.AnteileRevision = &revision
 		block.AnteileKw = &cloud.AnteileKw{Einspeisung: h.AnteilKw["einspeisung"], Bezug: h.AnteilKw["bezug"]}
+		// AP-15 IP-22: what the share held back today (and the closed day before)
+		block.AnteilVerlust = a.anteilVerlust()
 	}
 	return block
 }

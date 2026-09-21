@@ -13386,6 +13386,27 @@ components:
           description: >-
             G6: hängen steuerbare Verbraucher nach § 14a hinter dieser Box — abgeleitet aus den Geräte-Angaben der
             Box (Richtung bezug mit Komponente und Schreibfreigabe); `unbekannt` (keine Angabe) zählt als „ja“.
+        anteil_verlust:
+          nullable: true
+          description: >-
+            AP-15 IP-22 (E1 = A, R2): was der feste Einspeise-Anteil dieser Box zurückhielt, gemeldet von der Box im
+            Herzschlag. `null`, solange sie an dieser Anlage keinen Tag gemeldet hat.
+          allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungAnteilVerlust' }]
+    GemeinsameSteuerungAnteilVerlust:
+      type: object
+      properties:
+        heute: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungVerlustSumme' }], nullable: true }
+        monat: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungVerlustSumme' }], nullable: true }
+    GemeinsameSteuerungVerlustSumme:
+      type: object
+      required: [kwh, gebunden_s, tage]
+      description: >-
+        Tage der Anlage (Europe/Berlin). `kwh` ist eine UNTERGRENZE — die Box kennt die verfügbare Erzeugung einer
+        abgeregelten PV nur aus gemessenen Werten; `gebunden_s` (wie lange der Anteil die Erzeuger hielt) ist exakt.
+      properties:
+        kwh: { type: number }
+        gebunden_s: { type: integer, format: int64 }
+        tage: { type: integer }
     GemeinsameSteuerungBefund:
       type: object
       required: [wort]

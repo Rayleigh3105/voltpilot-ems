@@ -85,6 +85,17 @@ public class DataSourceStatusListener {
         this.wirksameAnteile = wirksameAnteile;
     }
 
+    /**
+     * AP-15 IP-22: der Anteils-Verlust je Box und Tag aus demselben Block. Nachgereicht wie oben; ohne ihn (Tests mit
+     * eigenem Aufbau) überliest der Zuhörer das Feld.
+     */
+    private AnteilVerlustAusHerzschlag anteilVerlust;
+
+    @Autowired(required = false)
+    void anteilVerlust(AnteilVerlustAusHerzschlag anteilVerlust) {
+        this.anteilVerlust = anteilVerlust;
+    }
+
     public DataSourceStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
@@ -191,6 +202,14 @@ public class DataSourceStatusListener {
             }
             if (wirksameAnteile != null) {
                 wirksameAnteile.merke(siteId, deviceId, json.get("gemeinsame_steuerung"));
+            }
+            if (anteilVerlust != null) {
+                try {
+                    anteilVerlust.merke(tenantId, siteId, deviceId, json.get("gemeinsame_steuerung"));
+                } catch (RuntimeException e) {
+                    // the loss is a report, never a reason to drop the rest of the heartbeat
+                    log.warn("Share loss of {} ignored: {}", deviceId, e.getMessage());
+                }
             }
             Instant capabilityAt = instant(json.get("ts"));
             if (capabilityAt == null) capabilityAt = Instant.now();

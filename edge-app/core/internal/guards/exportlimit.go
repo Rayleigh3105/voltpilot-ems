@@ -203,6 +203,11 @@ type ExportCap struct {
 	// AnteilKw echoes the box's own feed-in share; nil without a share
 	// document (Cap).
 	AnteilKw *float64
+	// HeuteCapKw is the cap the SAME box would command without a share - the
+	// shadow of CapAnteil (V5) - nil when that shadow holds nothing (no
+	// feed-in limit in the plan). The distance to CapKw is what the share
+	// holds back (IP-22, anteilverlust.go). CapAnteil only; Cap leaves it nil.
+	HeuteCapKw *float64
 	// Eingefroren is true while the verdict is blind because the measured
 	// value stands still although the box itself moved its actuators (B2,
 	// eingefroren.go; CapAnteil only). MeasurementAge then counts from the

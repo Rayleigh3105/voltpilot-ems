@@ -138,6 +138,10 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 		l.ramp(now, res.MeasurementAge, safePv, budget, discharge, &res)
 	}
 	l.anteilReason(an.Fuehrt, budget, discharge, &res)
+	if heute.Active {
+		h := heute.CapKw
+		res.HeuteCapKw = &h
+	}
 	if heute.Active && heute.CapKw < res.CapKw {
 		// today's staged evaluation is the tighter one right now (e.g. it
 		// restarted from its static cap after the plan's limit came back):

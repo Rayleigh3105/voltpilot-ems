@@ -89,6 +89,14 @@ public class GemeinsameSteuerungService {
         this.bilanzen = bilanzen;
     }
 
+    /** Der Anteils-Verlust je Box und Tag (IP-22), nachgereicht wie die Bilanz. */
+    private AnteilVerlustRepository verluste;
+
+    @Autowired(required = false)
+    void verluste(AnteilVerlustRepository verluste) {
+        this.verluste = verluste;
+    }
+
     /** Der Vorbehalt aus Messwerten (IP-13): Auskunft und Freigabe, nachgereicht wie die Bilanz. */
     private VorbehaltDienst vorbehaltDienst;
     private VorbehaltRepository vorbehaltZeilen;
@@ -131,7 +139,8 @@ public class GemeinsameSteuerungService {
                     Optional.ofNullable(bestaetigt.get(m.id())).map(t -> t.atOffset(ZoneOffset.UTC)).orElse(null),
                     signal == null ? SteuerungsverbundNachweiseHeute.UNBEKANNT : signal.wert(),
                     signal == null || signal.am() == null ? null : signal.am().atOffset(ZoneOffset.UTC),
-                    SteuerungsverbundNachweiseHeute.wort(nachweise.verbraucher14a(siteId, m.deviceId())));
+                    SteuerungsverbundNachweiseHeute.wort(nachweise.verbraucher14a(siteId, m.deviceId())),
+                    anteilVerlust(siteId, m.deviceId(), jetzt));
         }).toList();
         LocalDate tag = tag(jetzt);
         UUID netzanschluss = repo.netzanschluesse(siteId, tag).stream().findFirst().orElse(null);
@@ -176,6 +185,26 @@ public class GemeinsameSteuerungService {
                         z.zeitraumVon(), z.zeitraumBis(), z.messtage(), z.erstelltAm().atOffset(ZoneOffset.UTC)))
                 .orElse(null);
         return new GemeinsameSteuerungDto.Vorbehalt(einspeisung, bezug, vorschlag);
+    }
+
+    /**
+     * Der Anteils-Verlust der Box für IP-23/IP-24 (IP-22): heute und der laufende Monat, Tage der Anlage in der Zählung
+     * der Box (Europe/Berlin); {@code null}, solange sie an dieser Anlage keinen Tag gemeldet hat.
+     */
+    private GemeinsameSteuerungDto.AnteilVerlust anteilVerlust(UUID siteId, UUID box, Instant jetzt) {
+        if (verluste == null) {
+            return null;
+        }
+        LocalDate heute = LocalDate.ofInstant(jetzt, AnteilVerlustAusHerzschlag.ZONE);
+        GemeinsameSteuerungDto.VerlustSumme h = verluste.summe(siteId, box, heute, heute).map(this::summe)
+                .orElse(null);
+        GemeinsameSteuerungDto.VerlustSumme m = verluste.summe(siteId, box, heute.withDayOfMonth(1), heute)
+                .map(this::summe).orElse(null);
+        return h == null && m == null ? null : new GemeinsameSteuerungDto.AnteilVerlust(h, m);
+    }
+
+    private GemeinsameSteuerungDto.VerlustSumme summe(AnteilVerlustRepository.Summe s) {
+        return new GemeinsameSteuerungDto.VerlustSumme(s.kwh(), s.gebundenS(), s.tage());
     }
 
     /** Die Verbund-Bilanz für IP-24: jüngster gerechneter Tag und seit wann derselbe Zustand steht (IP-12). */
