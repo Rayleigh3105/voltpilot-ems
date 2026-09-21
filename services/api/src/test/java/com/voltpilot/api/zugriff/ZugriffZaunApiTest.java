@@ -178,7 +178,10 @@ class ZugriffZaunApiTest {
 
     private static JdbcTemplate root;
     private static UUID demoStandort;
-    /** Der zweite Standort desselben Kundenbereichs: an ihm hängt KEIN Objekt dieser Klasse. */
+    /**
+     * Der zweite Standort desselben Kundenbereichs: an ihm hängt kein Objekt der 18 Routen und der Inventur — nur die
+     * fremde Seite des Netzanschlusses ({@link #netz}).
+     */
     private static UUID andererStandort;
     /** Je Muster ein aufrufbarer Pfad auf ein Objekt, das es im Bestand dieser Bühne WIRKLICH gibt. */
     private static final Map<String, String> PROBEN = new TreeMap<>();
@@ -191,6 +194,11 @@ class ZugriffZaunApiTest {
 
     private record Buehne(UUID messstelle, UUID quelle, UUID box, UUID wago, UUID komponente, UUID ort,
             UUID kostenstelle, UUID prozess) {}
+
+    /** Die Netzanschlüsse der Bühne ({@link #netzanschluesse}): hier, anderswo und die Anlage anderswo. */
+    private static Netz netz;
+
+    private record Netz(UUID hier, UUID fremd, UUID fremdeAnlage) {}
 
     private record Route(HttpMethod methode, String muster, String pfad) {
         @Override
@@ -778,6 +786,7 @@ class ZugriffZaunApiTest {
 
     /** Weitere Kennungen hinter der ersten: das Objekt der Bühne, wo es eines gibt, sonst eine unbekannte. */
     private static String unterobjekte(String rest) {
+        rest = rest.replace("/netzanschluesse/{id}", "/netzanschluesse/" + netz.hier());
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\{([^}:]+)(:[^}]*)?}").matcher(rest);
         StringBuilder s = new StringBuilder();
         while (m.find()) {
@@ -910,6 +919,68 @@ class ZugriffZaunApiTest {
                 m -> inventur.contains(m) || schonGemessen.contains(m));
         assertThat(auswahl).as("jede benannte Ausnahme ist gemessen und hält: " + zaunVerfehlt)
                 .hasSize(AUSWAHL_KATALOG.size());
+    }
+
+    /**
+     * Die Kreuzfälle des Netzanschlusses ({@code vp-uems-zaun-netzanschluss-buehne}). Die Inventur misst die drei
+     * Einzel-Routen an NA-Z1 (hier sieht, anderswo = unbekannte Kennung); hier steht, was sie nicht sieht:
+     * <ol>
+     *   <li>der Anschluss eines fremden Standorts ist für den Bearbeiter hier eine unbekannte Kennung — über seinen
+     *       eigenen Standort und über den des Bearbeiters, auf allen drei Wegen und in der Liste;</li>
+     *   <li>ein sichtbarer Anschluss nennt keine Anlage außerhalb (AP-03 R-A7, die Liste der Bindungen filtert still);</li>
+     *   <li>der Grenz-Nachweis eines Monats, in dem eine Anlage außerhalb am Anschluss hing, nennt weder ihren
+     *       Hauptzähler noch eine Zahl, die aus ihr stammt — an ihrer Stelle {@link RechtPruefung#AUSSERHALB_ZUGRIFF}
+     *       (R-A3).</li>
+     * </ol>
+     */
+    @Test
+    void derNetzanschlussNenntKeineAnlageUndKeinenZaehlerAusserhalbDesZugriffs() throws Exception {
+        Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
+        Konto hier = new Konto("Bearbeiter am Standort des Objekts", konto(KUNDE_BEARBEITER, DEMO), new String[0]);
+        Konto anderswo = new Konto("Bearbeiter nur an einem anderen Standort", konto(KUNDE_BEARBEITER_FREMD, DEMO),
+                new String[0]);
+        String demo = "/api/v1/standorte/" + demoStandort + "/netzanschluesse";
+        String fremd = "/api/v1/standorte/" + andererStandort + "/netzanschluesse";
+        String nie = "/api/v1/standorte/" + NIE + "/netzanschluesse";
+        List<String> fehler = new ArrayList<>();
+        for (String weg : List.of("", "/grenzen", "/grenznachweis")) {
+            Antwort ueberHier = ruf(get(demo + "/" + netz.fremd() + weg), hier);
+            Antwort ueberFremd = ruf(get(fremd + "/" + netz.fremd() + weg), hier);
+            if (ruf(get(fremd + "/" + netz.fremd() + weg), anderswo).status() != 200) {
+                fehler.add("NA-Z9" + weg + ": " + anderswo.name() + " sieht ihn nicht (Gegenprobe)");
+            }
+            if (!ueberHier.equals(ruf(get(demo + "/" + NIE + weg), hier))) {
+                fehler.add("NA-Z9" + weg + " über den eigenen Standort: " + ueberHier);
+            }
+            if (!ueberFremd.equals(ruf(get(nie + "/" + NIE + weg), hier))) {
+                fehler.add("NA-Z9" + weg + " über seinen Standort: " + ueberFremd);
+            }
+        }
+        if (!ruf(get(fremd), hier).equals(ruf(get(nie), hier))) {
+            fehler.add("Liste am fremden Standort: " + ruf(get(fremd), hier));
+        }
+        for (String weg : List.of(demo, demo + "/" + netz.hier())) {
+            String anlage = netz.fremdeAnlage().toString();
+            if (!ruf(get(weg), ka).body().contains(anlage)) {
+                fehler.add(weg + ": " + ka.name() + " sieht die Bindung der Anlage anderswo nicht (Gegenprobe)");
+            }
+            Antwort h = ruf(get(weg), hier);
+            if (h.status() != 200 || !h.body().contains(BERLIN_SITE) || h.body().contains(anlage)) {
+                fehler.add(weg + ": " + hier.name() + " bekommt " + h.status() + " " + kurz(h.body()));
+            }
+        }
+        String monat = demo + "/" + netz.hier() + "/grenznachweis?monat=2023-06";
+        Antwort voll = ruf(get(monat), ka);
+        Antwort h = ruf(get(monat), hier);
+        System.out.printf("Grenz-Nachweis 2023-06%n  KA:   %s%n  hier: %s%n", voll.body(), h.body());
+        if (!voll.body().contains("MS-Z8") || !voll.body().contains("437")) {
+            fehler.add("Grenz-Nachweis 2023-06: " + ka.name() + " rechnet nicht mit MS-Z8 und 437 kW (Gegenprobe)");
+        }
+        if (h.status() != 200 || h.body().contains("MS-Z8") || h.body().contains("437")
+                || !h.body().contains(RechtPruefung.AUSSERHALB_ZUGRIFF)) {
+            fehler.add("Grenz-Nachweis 2023-06: " + hier.name() + " bekommt " + h.status() + " " + h.body());
+        }
+        assertThat(fehler).isEmpty();
     }
 
     /** Die Feldnamen der Listen-Zeile mit dem Kennzeichen {@code beleg}, in der Folge der Antwort. */
@@ -1307,6 +1378,7 @@ class ZugriffZaunApiTest {
                 + "VALUES (?, ?, 'bearbeiter', ?, ?, 'Europe/Berlin')", DEMO, KUNDE_BEARBEITER_FREMD, andererStandort,
                 ab("2024-01-01"));
         objekteDerNachIp4Routen();
+        netzanschluesse();
     }
 
     /**
@@ -1429,6 +1501,55 @@ class ZugriffZaunApiTest {
         PROBEN.put("/api/v1/zugriff", "/api/v1/zugriff?benutzer=" + KUNDE_BEARBEITER);
         FREMDER_KUNDENBEREICH.put("/api/v1/unterstuetzung/{id}", "/api/v1/unterstuetzung/" + unterstuetzungNordwind);
         FREMDER_KUNDENBEREICH.put("/api/v1/zugriff", "/api/v1/zugriff?benutzer=" + PARTNER_NORDWIND);
+    }
+
+    /**
+     * Der Netzanschluss auf der Bühne ({@code vp-uems-zaun-netzanschluss-buehne}): NA-Z1 am Demo-Standort mit der
+     * Berliner Anlage, einer Fassung des Grenzblatts und MS-Z1 als Hauptzähler; NA-Z9 am anderen Standort mit eigener
+     * Anlage, Fassung und Hauptzähler MS-Z8. Die Anlage anderswo hing 2023 an NA-Z1 — vor ihrem Umzug; die Zuordnung
+     * ändert den Anschluss nicht ({@code AnlageUmzugDto.Netzanschluss}). So nennt ein sichtbarer Anschluss eine Anlage
+     * und einen Hauptzähler außerhalb, und ihre eigene Grenze (437 kW) wirkt in NA-Z1 mit.
+     */
+    private static void netzanschluesse() {
+        UUID hier = netzanschluss(demoStandort, "NA-Z1", "Zaun-Übergabe hier");
+        UUID fremd = netzanschluss(andererStandort, "NA-Z9", "Zaun-Übergabe anderswo");
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, 'Zaun-Anlage anderswo') "
+                + "RETURNING id", UUID.class, DEMO);
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", DEMO, anlage, andererStandort);
+        root.update("INSERT INTO site_charging_config (site_id, tenant_id, grid_limit_kw) VALUES (?, ?, 437)", anlage,
+                DEMO);
+        binden(UUID.fromString(BERLIN_SITE), hier, "2024-01-01", null);
+        binden(anlage, hier, "2023-01-01", "2023-12-31");
+        binden(anlage, fremd, "2024-01-01", null);
+        for (UUID na : List.of(hier, fremd)) {
+            root.update("INSERT INTO netzanschluss_grenze (tenant_id, netzanschluss_id, gueltig_ab, einspeisegrenze_kw, "
+                    + "bezugsgrenze_kw, created_by) VALUES (?, ?, '2024-01-01', 100, 300, 'test')", DEMO, na);
+        }
+        UUID zaehler = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, 'MS-Z8', 'Zaun-Zähler anderswo', 'gemessen', 'Strom', "
+                + "'Wirkenergie', 'Bezug', 'kWh', 'Zählerstand') RETURNING id", UUID.class, DEMO);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2023-01-01')", DEMO, zaehler, andererStandort);
+        hauptzaehler(buehne.messstelle(), UUID.fromString(BERLIN_SITE), "2024-01-01");
+        hauptzaehler(zaehler, anlage, "2023-01-01");
+        netz = new Netz(hier, fremd, anlage);
+    }
+
+    private static UUID netzanschluss(UUID standort, String kennzeichen, String name) {
+        return root.queryForObject("INSERT INTO netzanschluss (tenant_id, standort_id, kennzeichen, name, anschluss_kva, "
+                + "vereinbart_kw, messung) VALUES (?, ?, ?, ?, 630, 550, 'RLM') RETURNING id", UUID.class, DEMO, standort,
+                kennzeichen, name);
+    }
+
+    private static void binden(UUID anlage, UUID netzanschluss, String ab, String bis) {
+        root.update("INSERT INTO anlage_netzanschluss (tenant_id, site_id, netzanschluss_id, gueltig_ab, gueltig_bis) "
+                + "VALUES (?, ?, ?, ?::date, ?::date)", DEMO, anlage, netzanschluss, ab, bis);
+    }
+
+    private static void hauptzaehler(UUID messstelle, UUID anlage, String ab) {
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, gueltig_ab) "
+                + "VALUES (?, ?, ?, 'Hauptzähler', ?::date)", DEMO, messstelle, anlage, ab);
     }
 
     /**
