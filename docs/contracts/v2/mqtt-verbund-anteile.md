@@ -74,7 +74,21 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   mit frischer Messung erst, wenn die Erzeuger auf 0 stehen —, lädt nie und hebt nie an. Er steht hinter der
   Arbitration (V1) und gilt in Ruhe, Pause und ohne Plan (V5); zusätzlich läuft die Box ohne Anteil als Schatten mit,
   das Ergebnis ist nie weiter als ohne Dokument. `sicherheitskappe` im Herzschlag heißt dann „= eigener Anteil“.
-  Der Bezug (IP-19) liest den Anteil noch nicht. Ohne Dokument verhält sich die Box Byte für Byte wie vor IP-17.
+  Ohne Dokument verhält sich die Box Byte für Byte wie vor IP-17.
+- **Bezugswächter (IP-19, V3):** gilt ein Dokument, hält die Box den Anteil der Richtung `bezug` über alles, was sie
+  auf der Bezugsseite steuert. **Ladebudget** (Ladepark-Rahmen: OCPP-Säulen und `wallboxes[]`,
+  `edge-app/core/internal/lastmgmt/bezuganteil.go`): `steuert_mit` — und ein Dokument **ohne** `rolle` — gibt den
+  Ladepunkten zusammen höchstens den Anteil, fest, ohne Messung (auch ohne Verbindung und nach einem Neustart; das
+  Ungeregelte hinter dem Abgangszähler steckt schon im Vorbehalt, R3: 473 + 77 = 550 kW); was unerreichbare Säulen
+  ziehen dürfen, geht vom Anteil ab. `fuehrt`: der Regelkreis von heute gegen die ganze Anschlussgrenze, solange der
+  Netzpunkt-Wert frisch ist (≤ 30 s); danach ohne Halten in 60 s linear auf den Anteil; vor dem ersten Messwert der
+  Anteil. **Netzladen des Speichers** (`guards/bezuganteil.go`, hinter der Arbitration und vor der Abregelungs-Nachführung):
+  nur `fuehrt` mit frischem Netzpunkt UND gepflegter Anschlussgrenze lädt aus dem Netz — Deckel
+  `planbar − (Netz − gemessene Ladung + zugeteilte, noch nicht gezogene Ladeleistung)`, der Ladepark geht vor; sonst
+  (blind, ohne Grenze, `steuert_mit`, ohne `rolle`) lädt der Speicher höchstens die eigene gemessene PV („nicht aus
+  dem Netz“, ohne PV-Wert 0). Beide Teile senken nur, entladen nie, heben nie an; das Ladebudget ist das Minimum mit der
+  Box ohne Anteil (V5), „Jetzt voll laden“ verteilt innerhalb des Anteils (R13). Stufe im Herzschlag:
+  `waechter.bezug` (die strengere beider Teile).
 
 ## 3. Die Quittung (Uplink)
 

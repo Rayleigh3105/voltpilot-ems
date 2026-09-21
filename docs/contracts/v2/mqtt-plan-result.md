@@ -80,7 +80,7 @@ einer Box mit Plan und ohne Dokument ist Byte für Byte der aus IP-10:
 |---|---|---|
 | `plan_id` | wenn ein Plan 2.0 gilt | Kennung des wirksamen (zuletzt angenommenen) Plans 2.0 |
 | `waechter.einspeisung` | wenn ein Einspeisewächter läuft | Stufe wie `export_guard.state` (`aus`, `ueberwacht`, `regelt`, `haelt`, `zieht_zusammen`, `sicherheitskappe`) |
-| `waechter.bezug` | nie (IP-18) | Stufe des Bezugswächters, gleiches Vokabular |
+| `waechter.bezug` | wenn ein Anteils-Dokument gilt (IP-19) | Stufe des Bezugswächters, gleiches Vokabular: die strengere aus Ladebudget (`regelt` Regelkreis bzw. Anteil greift, `zieht_zusammen`, `sicherheitskappe` = Anteil blind) und Netzladen (`regelt`/`ueberwacht` Regelkreis, `sicherheitskappe` = nur eigene PV) |
 | `messpunkt_alter_s` | wenn gemessen | Alter der jüngsten verwertbaren Messung am eigenen Messpunkt in Sekunden |
 | `rolle` | wenn ein Anteils-Dokument gilt und die Cloud sie nennt (IP-17) | `fuehrt` · `steuert_mit` (`liest` hat kein Dokument) |
 | `anteile_epoche` | wenn ein Anteils-Dokument gilt (IP-17) | Epoche der wirksamen Anteile |

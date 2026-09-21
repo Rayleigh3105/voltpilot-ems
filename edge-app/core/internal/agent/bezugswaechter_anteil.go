@@ -1,0 +1,128 @@
+package agent
+
+import (
+	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
+)
+
+// AP-15 IP-19: the Bezugswaechter - the import-side twin of the feed-in
+// watchdog with a share (V3). It holds the box's own import share over
+// everything the box controls on the import side: the charge park of the
+// Ladepark-Rahmen (lastmgmt/bezuganteil.go) and the battery charging from the
+// grid (guards/bezuganteil.go). Without a share document every function here
+// answers "none" and the box is byte for byte today's.
+
+// bezugAnteil is the own import share the guard holds; nil without a share
+// document. Only fuehrt regulates the whole limit while it measures -
+// steuert_mit AND a document without a role (the field is optional) hold the
+// share, always.
+func (a *Agent) bezugAnteil() *lastmgmt.BezugAnteil {
+	h := a.heldAnteile()
+	if h == nil {
+		return nil
+	}
+	an := &lastmgmt.BezugAnteil{Fuehrt: h.Rolle == "fuehrt"}
+	// An accepted document names this box in both directions with a valid
+	// number (anteile.DokumentPruefen); should the text still not read, the
+	// share is 0 - a held document never falls back to "no share".
+	if v, err := h.AnteilKw["bezug"].Float64(); err == nil {
+		an.AnteilKw = v
+	}
+	return an
+}
+
+// netzladenDeckel is the ceiling on the battery's charge for a box holding a
+// share document, nil without one. Every input is the box's own (G1): its PV
+// reading and, at the leading box, the connection-point sample and connection
+// limit of its charging budget. A leading box without a charge park knows no
+// connection limit and so never charges from the grid while it holds a share.
+func (a *Agent) netzladenDeckel(now time.Time, r guards.Reading) *guards.NetzladenDeckel {
+	an := a.bezugAnteil()
+	if an == nil {
+		return nil
+	}
+	in := guards.Netzladen{Fuehrt: an.Fuehrt, PvKw: r.PvKw}
+	if rt := a.ocpp; an.Fuehrt && rt != nil {
+		n, hasLimit := rt.budget.Netzpunkt(now, rt.currentSettings())
+		in.Fresh = n.Seen && n.Age <= lastmgmt.BudgetFreshWindow
+		in.Limit = hasLimit
+		in.PlanableKw, in.GridKw, in.BattChargeKw = n.PlanableKw, n.GridKw, n.BattChargeKw
+		if p := rt.previousPlan(); p != nil && p.AllocatedKw > n.ChargingKw {
+			in.ReservedKw = p.AllocatedKw - n.ChargingKw
+		}
+	}
+	d := guards.NetzladenDeckelFuer(in)
+	return &d
+}
+
+// The heartbeat stage of the guard (waechter.bezug, the export_guard.state
+// words) is the most severe of its two parts: the charging budget and the
+// battery ceiling.
+var bezugStufeRang = map[guards.ExportState]int{
+	guards.ExportWatching: 1, guards.ExportLimiting: 2, guards.ExportHolding: 3,
+	guards.ExportContracting: 4, guards.ExportSafeCap: 5,
+}
+
+// ladeStufe maps a charging-budget verdict of a share-holding box.
+func ladeStufe(v lastmgmt.BudgetVerdict, an lastmgmt.BezugAnteil) guards.ExportState {
+	switch {
+	case an.Fuehrt && v.Mode == lastmgmt.BudgetMeasured:
+		return guards.ExportLimiting
+	case !v.AnteilBinds:
+		return guards.ExportWatching
+	case v.Mode == lastmgmt.BudgetContracting:
+		return guards.ExportContracting
+	case an.Fuehrt:
+		return guards.ExportSafeCap
+	default:
+		return guards.ExportLimiting
+	}
+}
+
+// battStufe maps the battery ceiling for a charge the path asked for
+// (requestedKw > 0) and whether it lowered it. The loop "regelt" only while it
+// cuts; the solar-only rule is the safe cap whether the charge fits or not.
+// Without a charge there is nothing to guard: "" (no contribution).
+func battStufe(d guards.NetzladenDeckel, requestedKw float64, lowered bool) guards.ExportState {
+	switch {
+	case !(requestedKw > 0):
+		return ""
+	case d.Regelt && lowered:
+		return guards.ExportLimiting
+	case d.Regelt:
+		return guards.ExportWatching
+	default:
+		return guards.ExportSafeCap
+	}
+}
+
+func (a *Agent) setBezugStufe(lade, batt *guards.ExportState) {
+	a.bezugMu.Lock()
+	if lade != nil {
+		a.bezugLade = *lade
+	}
+	if batt != nil {
+		a.bezugBatt = *batt
+	}
+	a.bezugMu.Unlock()
+}
+
+// bezugStufe is the stage for the heartbeat: "" without a share document and
+// before either part has decided anything (a stage is never invented - like
+// the feed-in stage, it appears with the first evaluation).
+func (a *Agent) bezugStufe() string {
+	if a.heldAnteile() == nil {
+		return ""
+	}
+	a.bezugMu.Lock()
+	defer a.bezugMu.Unlock()
+	var s guards.ExportState
+	for _, t := range []guards.ExportState{a.bezugLade, a.bezugBatt} {
+		if bezugStufeRang[t] > bezugStufeRang[s] {
+			s = t
+		}
+	}
+	return string(s)
+}

@@ -427,11 +427,26 @@ func (a *Agent) ocppStep(ctx context.Context) {
 // and the engineering margin covers the gap. Every blind stage gets it back.
 func (a *Agent) ocppBudget(now time.Time, set lastmgmt.Settings, snap csms.Snapshot, safe lastmgmt.SafeDefault) (lastmgmt.BudgetVerdict, float64) {
 	a.ocppFeedPlanLimit(now)
-	verdict := a.ocpp.budget.Budget(now, set)
+	an := a.bezugAnteil()
+	if an == nil {
+		verdict := a.ocpp.budget.Budget(now, set)
+		reserved := 0.0
+		if safe.Computable && !verdict.Measured() {
+			reserved = safe.PerConnectorKw * float64(ocppUncontrolledConnectors(snap))
+		}
+		return verdict, reserved
+	}
+	// AP-15 IP-19: with a share document the budget holds the box's import
+	// share (lastmgmt/bezuganteil.go). A share that binds is a fixed figure,
+	// never Measured(), so what stations we cannot reach may draw comes OUT OF
+	// it - their draw is inside no measurement the share is compared with.
+	verdict := a.ocpp.budget.BudgetAnteil(now, set, *an)
 	reserved := 0.0
 	if safe.Computable && !verdict.Measured() {
 		reserved = safe.PerConnectorKw * float64(ocppUncontrolledConnectors(snap))
 	}
+	stufe := ladeStufe(verdict, *an)
+	a.setBezugStufe(&stufe, nil)
 	return verdict, reserved
 }
 

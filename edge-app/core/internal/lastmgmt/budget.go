@@ -172,6 +172,11 @@ type BudgetVerdict struct {
 	// Capped is true when the measured budget was cut back to the connection's
 	// own planable power (see the cap in measuredBudget).
 	Capped bool `json:"capped,omitempty"`
+	// AnteilKw is the box's own import share of a held share document (AP-15
+	// IP-19, bezuganteil.go); nil without one - then nothing below changed.
+	AnteilKw *float64 `json:"anteil_kw,omitempty"`
+	// AnteilBinds is true when that share is what caps the vehicles.
+	AnteilBinds bool `json:"anteil_binds,omitempty"`
 }
 
 // Measured reports whether this verdict came out of the closed loop.
@@ -226,6 +231,10 @@ type BudgetTracker struct {
 	planableValid bool
 	planable      float64
 	marginKw      float64
+	// rampFrom is the budget in force when the LEADING box of a share
+	// document went blind (bezuganteil.go); rampValid while that ramp runs.
+	rampValid bool
+	rampFrom  float64
 }
 
 // urgentDropKw is how much smaller a sample must demand the budget to be
