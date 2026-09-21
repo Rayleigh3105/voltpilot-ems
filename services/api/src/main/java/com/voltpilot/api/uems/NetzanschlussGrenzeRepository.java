@@ -68,13 +68,6 @@ public class NetzanschlussGrenzeRepository {
                 tenant, netzanschluss, ab, einspeisung, bezug, wer);
     }
 
-    /** Hat die Anlage einen Ladepark-Rahmen? Nur dann reist ein Ladepark-Dokument (nie ein neues). */
-    public boolean hatLadeparkRahmen(UUID siteId) {
-        Integer n = jdbc.queryForObject("SELECT count(*) FROM site_charging_config WHERE site_id = ?", Integer.class,
-                siteId);
-        return n != null && n > 0;
-    }
-
     /** {@code 100.000} aus NUMERIC(12,3) wird {@code 100} — die Zahl, die eingetragen wurde. */
     private static BigDecimal ohneNullen(BigDecimal wert) {
         if (wert == null) {

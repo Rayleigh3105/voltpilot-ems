@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.chargers.ChargingConfigService;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.NetzanschlussAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.NetzanschlussRepository.Anschluss;
@@ -19,9 +20,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -55,6 +62,10 @@ public class NetzanschlussService {
     private final ObjectMapper json;
     private final TransactionTemplate transaktion;
     private volatile Clock uhr = Clock.systemUTC();
+    /** AP-15 IP-3 Folgepaket: der Grenzblatt-Anstoß nach einer Bindung; ohne (Einzeltests) reist nichts. */
+    private volatile ObjectProvider<ChargingConfigService> ladepark;
+
+    private static final Logger log = LoggerFactory.getLogger(NetzanschlussService.class);
 
     public NetzanschlussService(NetzanschlussRepository repo, StandortRepository standorte,
             UnternehmenRepository unternehmen, ObjectMapper json, PlatformTransactionManager transactionManager) {
@@ -68,6 +79,12 @@ public class NetzanschlussService {
     /** Nur für Tests: die Uhr, an der „heute“ und „rückwirkend“ hängen. */
     void uhrStellen(Clock uhr) {
         this.uhr = uhr;
+    }
+
+    /** Setter statt Konstruktor: bestehende Aufrufer und Tests bauen den Dienst unverändert. */
+    @Autowired(required = false)
+    void ladeparkLesen(ObjectProvider<ChargingConfigService> ladepark) {
+        this.ladepark = ladepark;
     }
 
     // ------------------------------------------------------------------------ lesen
@@ -236,6 +253,47 @@ public class NetzanschlussService {
                     ab.atStartOfDay(zone).toInstant(), urteil.rueckwirkend(), grund, wer);
             return netzanschlussId;
         }));
+        nachCommit(() -> netzgrenzeNachziehen(tenant, anlage));
+    }
+
+    /**
+     * Gebunden, umgebunden oder beendet: ändert das den HEUTE wirksamen Bezug der Anlage, reist ihr Ladepark-Dokument
+     * neu ({@link ChargingConfigService#netzgrenzeNachziehen} — nur mit Rahmen, nur bei anderem Wert). Eine Bindung
+     * ab einem späteren Tag stellt der Tageslauf zu. Ein Fehler der Zustellung nimmt die Bindung nicht zurück.
+     */
+    private void netzgrenzeNachziehen(UUID tenant, UUID anlage) {
+        ObjectProvider<ChargingConfigService> p = ladepark;
+        ChargingConfigService dienst = p == null ? null : p.getIfAvailable();
+        if (dienst == null) {
+            return;
+        }
+        UUID vorher = TenantContext.get();
+        try {
+            TenantContext.set(tenant);
+            dienst.netzgrenzeNachziehen(tenant, anlage);
+        } catch (RuntimeException e) {
+            log.warn("Ladepark-Dokument nach neuer Bindung nicht zugestellt (Anlage {}): {}", anlage, e.getMessage());
+        } finally {
+            if (vorher == null) {
+                TenantContext.clear();
+            } else {
+                TenantContext.set(vorher);
+            }
+        }
+    }
+
+    /** Läuft eine äußere Transaktion (Vorschlag übernehmen), reist das Dokument erst nach ihrem Commit. */
+    private static void nachCommit(Runnable r) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    r.run();
+                }
+            });
+        } else {
+            r.run();
+        }
     }
 
     /**

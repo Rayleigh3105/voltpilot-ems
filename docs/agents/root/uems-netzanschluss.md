@@ -65,7 +65,12 @@ KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsp
   (`ChargingConfigService.netzgrenze`, Setter-Injektion — Konstruktor unverändert).
 - **Nicht über die Regel (Folgepunkte):** `AdminFleetRepository.maxFeedInPerSite` (Flotten-Pflege vergleicht die
   gemessene Decke mit `site.max_feed_in_kw`), `FunktionFakten`/`SiteProfileService` (fragen nur, ob ein
-  Rahmen gesetzt ist), Zustellung des Ladepark-Dokuments bei Tageswechsel oder neuer Bindung.
+  Rahmen gesetzt ist).
+- **Anstoß (Folgepaket):** `ChargingConfigService.netzgrenzeNachziehen` vergleicht den heute wirksamen Bezug mit
+  `ladepark_netzgrenze_zugestellt` (`V20260921170000`, gemerkt in jedem erfolgreichen Push; ohne Zeile gilt der
+  Rahmen als zugestellt) und stellt nur bei Unterschied zu. Aufrufer: Grenzblatt setzen, `NetzanschlussService.binden`
+  (nach Commit), stündlich `chargers/LadeparkGrenzeLaeufer` (Schalter `voltpilot.uems.ladepark-grenze.enabled`, im
+  Testlauf aus). Tests `chargers/LadeparkGrenzeAnstossApiTest` (Publisher-Mock, `ladepark.uhrStellen` für den Tag).
 
 ## Befunde (PR-Text)
 

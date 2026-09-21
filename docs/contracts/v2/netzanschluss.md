@@ -107,8 +107,11 @@ die vereinbarte Leistung. Fehlt der Vergleichswert, gibt es nichts zu prüfen. E
 **Routen:** `GET …/netzanschluesse/{id}/grenzen?stichtag=` (lesend, keine eigene Kennung, Zaun über
 `RechtPruefung#pruefenLesen` am Standort) und `POST …/netzanschluesse/{id}/grenzen` (`netzanschluss.verwalten`,
 rückwirkend zusätzlich `aenderung.rueckwirkend`). Der Mandant kommt aus der Anmeldung, nie aus dem Körper.
-Gilt eine neue Fassung heute schon, reist das Ladepark-Dokument der heute gebundenen Anlage neu — nur wenn
-sie schon einen Rahmen hat. `grenze_geprueft` bleibt `false`, bis der Grenz-Nachweis (IP-31) sie misst.
+Das Ladepark-Dokument reist neu, sobald sich der HEUTE wirksame Bezug einer Anlage mit Rahmen ändert: sofort
+nach einer heute wirksamen oder aufgehobenen Fassung und nach Binden/Umbinden, sonst am Tageswechsel des
+Standorts (stündlicher Anstoß, vergleicht mit dem zuletzt zugestellten Wert in
+`ladepark_netzgrenze_zugestellt`, holt nach einem Ausfall nach). Gleicher Wert, kein Rahmen oder keine
+Bindung: keine Zustellung. `grenze_geprueft` bleibt `false`, bis der Grenz-Nachweis (IP-31) sie misst.
 
 ## Prüfen
 

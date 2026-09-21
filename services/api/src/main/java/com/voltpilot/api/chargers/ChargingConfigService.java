@@ -11,6 +11,7 @@ import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.FahrzeugDto.VehicleProfileDto;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -93,6 +95,10 @@ public class ChargingConfigService {
     private final ObjectProvider<ChargingConfigPublisher> publisher;
     /** UEMS AP-15 IP-3: der Leseweg des Grenzblatts; ohne (Einzeltests) reist der Rahmen unverändert. */
     private volatile AnlageGrenzen grenzen;
+    /** AP-15 IP-3 Folgepaket: der zuletzt zugestellte Bezugswert; ohne (Einzeltests) wird nichts verglichen. */
+    private volatile LadeparkNetzgrenzeRepository zugestellt;
+    /** Die Uhr, an der „heute am Standort“ hängt — nur Tests stellen sie ({@link #uhrStellen}). */
+    private volatile Clock uhr = Clock.systemUTC();
     private final NetzanschlussRepository netzanschluesse;
     private final AnlageStandortRepository anlageStandorte;
     private final StandortRepository standorte;
@@ -252,7 +258,7 @@ public class ChargingConfigService {
 
     /** Tagesbindungen gelten in der Zeitzone des zugeordneten Standorts, nie nach Server-Mitternacht. */
     private LocalDate heuteAmStandort(UUID siteId) {
-        Instant jetzt = Instant.now();
+        Instant jetzt = uhr.instant();
         for (AnlageStandortRepository.Zuordnung z : anlageStandorte.fuerAnlage(siteId)) {
             if (z.aufgehoben()) {
                 continue;
@@ -332,6 +338,38 @@ public class ChargingConfigService {
      * Rahmen ({@code site_charging_config.grid_limit_kw}) und Bezugsgrenze des heute gebundenen Netzanschlusses,
      * entschieden von {@code GrenzeAufloesung}. Ohne Bindung oder Fassung dasselbe {@code Double} — Byte für Byte.
      */
+    @Autowired(required = false)
+    void zugestelltLesen(LadeparkNetzgrenzeRepository zugestellt) {
+        this.zugestellt = zugestellt;
+    }
+
+    /** Nur für Tests: der Tageswechsel am Standort. */
+    void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
+    }
+
+    /**
+     * Der Grenzblatt-Anstoß (UEMS AP-15 IP-3, Folgepaket): stellt das Ladepark-Dokument neu zu, wenn der HEUTE
+     * wirksame Bezug ({@link #netzgrenze}) ein anderer ist als der zuletzt zugestellte — nach einer Fassung, die am
+     * Tageswechsel beginnt oder endet, einer neuen, geänderten oder beendeten Bindung, einer aufgehobenen Fassung.
+     * Ohne Rahmen nie (kein neues Dokument); ohne Zeile gilt der Rahmen als zugestellt (Stand vor dem Grenzblatt),
+     * darum bekommt eine Anlage ohne Bindung/Fassung nie eine Zustellung. Idempotent: ein zweiter Aufruf ist still.
+     *
+     * @return ob das Dokument hinausging
+     */
+    public boolean netzgrenzeNachziehen(UUID tenantId, UUID siteId) {
+        LadeparkNetzgrenzeRepository z = zugestellt;
+        if (z == null || !z.hatRahmen(siteId)) {
+            return false;
+        }
+        Double rahmen = configs.forSite(siteId).gridLimitKw();
+        Double zuletzt = z.zuletzt(siteId).map(LadeparkNetzgrenzeRepository.Zugestellt::kw).orElse(rahmen);
+        if (Objects.equals(netzgrenze(siteId, rahmen), zuletzt)) {
+            return false;
+        }
+        return republishForSite(tenantId, siteId);
+    }
+
     Double netzgrenze(UUID siteId, Double rahmen) {
         AnlageGrenzen g = grenzen;
         return g == null ? rahmen : g.bezugKw(siteId, heuteAmStandort(siteId), rahmen);
@@ -388,7 +426,26 @@ public class ChargingConfigService {
                     config.removedChargePointIds(), config.frame(), config.storageRank(),
                     config.wallboxes(), vehicles, now);
         }
+        if (delivered) {
+            merken(tenantId, siteId, netzgrenze);
+        }
         return delivered;
+    }
+
+    /**
+     * Merkt den zugestellten Bezug für den Anstoß ({@link #netzgrenzeNachziehen}). Nur im eigenen Kundenbereich (RLS);
+     * ein Fehler hier nimmt die Zustellung nie zurück — schlimmstenfalls stellt der Anstoß einmal zu viel zu.
+     */
+    private void merken(UUID tenantId, UUID siteId, Double netzgrenze) {
+        LadeparkNetzgrenzeRepository z = zugestellt;
+        if (z == null || !Objects.equals(TenantContext.get(), tenantId)) {
+            return;
+        }
+        try {
+            z.zugestellt(tenantId, siteId, netzgrenze);
+        } catch (RuntimeException e) {
+            log.warn("zugestellte Netzgrenze der Anlage {} nicht gemerkt: {}", siteId, e.getMessage());
+        }
     }
 
     /**

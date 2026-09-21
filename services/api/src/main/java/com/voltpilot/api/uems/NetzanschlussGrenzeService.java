@@ -142,8 +142,10 @@ public class NetzanschlussGrenzeService {
     }
 
     /**
-     * Gilt die neue Fassung heute schon, reist das Ladepark-Dokument der heute gebundenen Anlage neu — nur, wenn die
-     * Anlage schon einen Rahmen hat (nie ein neues Dokument). Ein Fehler der Zustellung nimmt den Eintrag nicht zurück.
+     * Gilt die neue Fassung heute schon (auch: sie hebt eine wirksame auf), reist das Ladepark-Dokument der heute
+     * gebundenen Anlage neu — nur, wenn sich ihr wirksamer Bezug dadurch ändert und sie schon einen Rahmen hat
+     * ({@link ChargingConfigService#netzgrenzeNachziehen}). Eine Fassung ab einem späteren Tag stellt der
+     * {@link LadeparkGrenzeLaeufer} am Tageswechsel zu. Ein Fehler der Zustellung nimmt den Eintrag nicht zurück.
      */
     private void zustellen(UUID netzanschluss, LocalDate heute) {
         ChargingConfigService dienst = ladepark.getIfAvailable();
@@ -151,9 +153,9 @@ public class NetzanschlussGrenzeService {
             return;
         }
         for (NetzanschlussRepository.Bindung b : anschluesse.bindungenDesAnschlusses(netzanschluss)) {
-            if (b.laeuftAm(heute) && repo.hatLadeparkRahmen(b.siteId())) {
+            if (b.laeuftAm(heute)) {
                 try {
-                    dienst.republishForSite(TenantContext.get(), b.siteId());
+                    dienst.netzgrenzeNachziehen(TenantContext.get(), b.siteId());
                 } catch (RuntimeException e) {
                     log.warn("Ladepark-Dokument nach neuer Grenze nicht zugestellt (Anlage {}): {}", b.siteId(),
                             e.getMessage());
