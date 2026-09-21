@@ -1343,6 +1343,13 @@
       "nachher": "6d504df2f98c7a478052fedf93b0c7e2d8f6314762357adfd3a467ef7297f114",
       "commit": "2b3d51c738321b313454b2ff9bc67242304b86f1",
       "grund": "AP-02 PR 941 zeigt das bisher nur beim Bearbeiten sichtbare Kurzzeichen-Feld additiv auch beim Anlegen und belegt es mit dem dokumentierten Server-Vorschlag vor. Beim Bearbeiten bleiben Pflicht-Label, Wert, Handler und Fehlerbindung erhalten."
+    },
+    {
+      "datei": "components/BeobachteteRegister.tsx",
+      "vorher": "c4d8fd33da45ec22b21697b04173d70f36471224f983cdfdbadf4ce889737ac2",
+      "nachher": "b7a2e7fec2eab58d979ab375e0ceed75651aaaeaea7376981664370edd8d4bbf",
+      "commit": "d257291e828c35da3269b1688c1c4d1f3db8994d",
+      "grund": "Paket vp-uems-baukasten-messwert-groesse (Schnitt 2): „Jetzt aufzeichnen“ im Formular „Eigenen Messwert hinzufügen“ wartet zusätzlich auf die Antwort auf „Was misst dieser Wert?“ und auf eine dazu passende Einheit. Beschriftung, Handler und die bisherigen Sperren (Prüfung, harte Grenze, busy) bleiben erhalten; die neue Frage ist ein VpPicker, kein geschütztes Element."
     }
   ],
   "assistentZusammenfuehrung": {

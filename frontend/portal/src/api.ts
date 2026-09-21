@@ -1109,9 +1109,21 @@ export interface MeasurementSelectionState {
       label: string; sourceKind: string; address: number; selector: string; valueType: string;
       widthBits: number; signed: boolean; endian: string; scale: number; unit: string;
       cadenceS: number; retentionClass: string; readOnly: boolean; requestCostMs: number;
+      measures?: CustomMeasurementMeasures;
     } | null;
   }>;
   volumeEstimate: MeasurementBudgetEstimate;
+}
+
+/**
+ * Was ein eigener Messwert misst (openapi `CustomMeasurementMeasures`) — in den
+ * Katalogwörtern; nur damit trägt er eine Messstelle. Fehlt es, bleibt der Wert
+ * Beobachtung wie bisher.
+ */
+export interface CustomMeasurementMeasures {
+  quantity: 'active_energy' | 'active_power';
+  direction: 'import' | 'export' | 'generation' | 'charge' | 'discharge';
+  aggregationKind: 'counter' | 'gauge';
 }
 
 export type MeasurementRange = '24h' | '7d' | '30d' | '90d' | 'year' | 'free';

@@ -1,6 +1,8 @@
 package com.voltpilot.api.measurement;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
 import com.voltpilot.api.uems.ErwarteteKadenz;
@@ -117,9 +119,24 @@ public class MeasurementConfigPublisher {
         Map<String, Object> selection = new LinkedHashMap<>();
         selection.put("point_key", entry.pointKey());
         selection.put("cadence_s", entry.cadenceS());
-        if (entry.customDefinition() != null) selection.put("definition", entry.customDefinition());
+        if (entry.customDefinition() != null) selection.put("definition", fuerDieBox(entry.customDefinition()));
         if (entry.entityId() != null) selection.put("entity_id", entry.entityId());
         return selection;
+    }
+
+    /**
+     * Die eigene Definition, wie die Box sie kennt: ohne {@code measures}. Was der Wert misst, ist
+     * eine Angabe der Cloud (Messkanal, Messstelle); der Vertrag {@code mqtt-measurement-config} ist
+     * geschlossen ({@code additionalProperties: false}, die Box liest mit
+     * {@code DisallowUnknownFields}), und eine ältere Box würde die ganze Auswahl verwerfen.
+     */
+    static JsonNode fuerDieBox(JsonNode definition) {
+        if (definition instanceof ObjectNode o && o.has("measures")) {
+            ObjectNode kopie = o.deepCopy();
+            kopie.remove("measures");
+            return kopie;
+        }
+        return definition;
     }
 
     /** Die Messkanäle, nach deren Fassung gefragt wird: je aktive Auswahlzeile mit Komponente. */

@@ -77,6 +77,35 @@ class MeasurementContractsTest {
     }
 
     /**
+     * Schnitt 2: was ein eigener Messwert misst ({@code measures}) bleibt in der Cloud. Die Box
+     * bekommt dieselben Bytes wie ohne Angabe — der Vertrag ist geschlossen, und eine ältere Box
+     * verwürfe sonst die ganze Auswahl.
+     */
+    @Test
+    void publisherGibtDieAngabeDesEigenenMesswertsNichtAnDieBox() throws Exception {
+        MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
+        String ohne = "{\"label\":\"Test\",\"sourceKind\":\"modbus_input\",\"address\":42,"
+                + "\"selector\":\"input:0x002a\",\"valueType\":\"uint16\",\"widthBits\":16,"
+                + "\"signed\":false,\"endian\":\"big\",\"scale\":1,\"unit\":\"V\","
+                + "\"cadenceS\":30,\"retentionClass\":\"unclassified\",\"readOnly\":true,"
+                + "\"requestCostMs\":400";
+        var definition = mapper.readTree(ohne + ",\"measures\":{\"quantity\":\"active_power\","
+                + "\"direction\":\"import\",\"aggregationKind\":\"gauge\"}}");
+        SelectionPoint point = new SelectionPoint(null, "custom.abc", true, 30, 8, null, null,
+                "2026.08.25.1", "test", null, null, "pending_edge", null, null, definition,
+                "unclassified", 90, 900, "fifteen_minute", "Test", "custom", "custom", "known");
+        State state = new State(DEVICE, SITE, null, 8, "2026.08.25.1", "pending_edge", null,
+                null, null, List.of(point), List.of(), null);
+        var payload = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
+        assertThat(payload.at("/selections/0/definition")).isEqualTo(mapper.readTree(ohne + "}"));
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.custom.json")));
+        assertThat(payload).isEqualTo(fixture);
+        assertThat(definition.has("measures")).as("die gespeicherte Zeile bleibt unberührt").isTrue();
+    }
+
+    /**
      * <b>NW-3 Punkt 4 (AP-14 IP-6): die Auswahl, die die AUSGELIEFERTE Box am Simulator des
      * Release-Tags wirklich liest.</b> Der Lauf {@code tools/nw3-box-image/nw3.sh --strecke}
      * stellt genau diese Bytes ueber den echten Broker zu - sie sind darum hier an den ERZEUGER

@@ -32,6 +32,7 @@ import {
   type BrueckeVorschlag,
 } from '../beobachteteRegister';
 import { BEOBACHTEN_HINWEIS } from '../registerFamilie';
+import { ANDERES, MESSWERT_ARTEN, MESSWERT_FRAGE, definitionAusArt, einheitFehler, messwertArt, messwertHinweis } from '../eigenerMesswert';
 import { NO_DATA } from '../nodata';
 import type { MiniPoint } from '../miniChart';
 import { MesswertHerkunftKarte, nachlieferungMarker, rohwerteHinweis } from './MesswertHerkunftKarte';
@@ -368,6 +369,13 @@ export function BeobachteteRegister({
   const [customOpen, setCustomOpen] = useState(false);
   const [custom, setCustom] = useState({ label: '', address: '0', valueType: 'uint16', endian: 'big', scale: '1', unit: 'W', cadenceS: '30', sourceKind: 'modbus_holding' });
   const [customEstimate, setCustomEstimate] = useState<MeasurementBudgetEstimate | null>(null);
+  /** „Was misst dieser Wert?" (`eigenerMesswert.ts`) — leer, bis der Kunde antwortet. */
+  const [customArt, setCustomArt] = useState('');
+  /**
+   * Der Satz der API zum Formular. ⚠ Nicht `error`: das steht nur im Katalog-Einschub, und
+   * eine Ablehnung von „Last und Volumen prüfen" blieb so unsichtbar.
+   */
+  const [customError, setCustomError] = useState<string | null>(null);
   const [sparks, setSparks] = useState<Record<string, MiniPoint[]>>({});
 
   const loadState = () => {
@@ -542,14 +550,18 @@ export function BeobachteteRegister({
       label: custom.label, sourceKind: custom.sourceKind, address,
       selector: `${custom.sourceKind === 'modbus_holding' ? 'holding' : 'input'}:0x${address.toString(16).padStart(4, '0')}`,
       valueType, widthBits, signed, endian: custom.endian, scale: Number(custom.scale),
-      unit: custom.unit, cadenceS: Number(custom.cadenceS), retentionClass: 'gauge', readOnly: true,
+      unit: custom.unit, cadenceS: Number(custom.cadenceS), readOnly: true,
+      ...definitionAusArt(messwertArt(customArt) ?? messwertArt(ANDERES)!),
     };
   };
+  const gewaehlteArt = messwertArt(customArt);
+  const customEinheitFehler = einheitFehler(gewaehlteArt, custom.unit);
 
   const checkCustom = async () => {
     if (!deviceId) return;
+    setCustomError(null);
     try { setCustomEstimate(await api.customMeasurementEstimate(deviceId, customDefinition(), entityId)); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Das Register ist nicht gültig.'); }
+    catch (e) { setCustomError(e instanceof Error ? e.message : 'Das Register ist nicht gültig.'); }
   };
   const addCustom = async () => {
     if (!deviceId || !state) return;
@@ -558,8 +570,8 @@ export function BeobachteteRegister({
       setState(await api.addCustomMeasurement(deviceId, {
         expectedRevision: state.desiredRevision, idempotencyKey: uuid(), definition: customDefinition(),
       }, entityId));
-      setCustomOpen(false); setCustomEstimate(null); loadQuiet();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Das Register konnte nicht hinzugefügt werden.'); }
+      setCustomOpen(false); setCustomEstimate(null); setCustomArt(''); loadQuiet();
+    } catch (e) { setCustomError(e instanceof Error ? e.message : 'Das Register konnte nicht hinzugefügt werden.'); }
     finally { setBusy(false); }
   };
 
@@ -581,6 +593,8 @@ export function BeobachteteRegister({
       scale: bruecke.scale,
     }));
     setCustomEstimate(null);
+    setCustomArt('');
+    setCustomError(null);
     setCustomOpen(true);
     onBrueckeVerbraucht?.();
   }, [bruecke, onBrueckeVerbraucht]);
@@ -698,10 +712,11 @@ export function BeobachteteRegister({
         {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} onWaehlen={setHistoryIndex} /><p className="vp-measure-hint">{rohwerteHinweis(history) ?? history.meta.aggregationExplanation}</p><p className="vp-measure-hint">Tippen Sie auf einen Messwert, um seine Herkunft zu sehen.</p>{historyIndex !== null && <MesswertHerkunftKarte history={history} index={historyIndex} namen={{ geraete: geraeteNamen, boxen: boxNamen }} />}<ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {nachlieferungMarker(history, m)}</li>)}</ul></>}
       </Modal>
 
-      <Modal open={customOpen} onClose={() => setCustomOpen(false)} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Recht aktion="mess_selektion.bearbeiten"><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy}>Jetzt aufzeichnen</Button></Recht></>}>
+      <Modal open={customOpen} onClose={() => { setCustomOpen(false); setCustomError(null); }} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Recht aktion="mess_selektion.bearbeiten"><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy || !gewaehlteArt || !!customEinheitFehler}>Jetzt aufzeichnen</Button></Recht></>}>
         <p>Nur lesbare Modbus-Register. VoltPilot erfindet keine Semantik: Name, Einheit, Datentyp und Skala stammen aus Ihrer Gerätedokumentation.</p>
         <div className="vp-measure-custom">
           <Input label="Bezeichnung" value={custom.label} onChange={(e) => { setCustom({ ...custom, label: e.target.value }); setCustomEstimate(null); }} />
+          <VpPicker label={MESSWERT_FRAGE} value={customArt || null} options={MESSWERT_ARTEN.map((a) => ({ value: a.value, label: a.label }))} hint={messwertHinweis(gewaehlteArt)} error={customEinheitFehler} onChange={(value) => { setCustomArt(value); setCustomEstimate(null); }} />
           <Input label="Registeradresse (dezimal)" type="number" min="0" max="65535" value={custom.address} onChange={(e) => { setCustom({ ...custom, address: e.target.value }); setCustomEstimate(null); }} />
           <VpPicker label="Registerart" value={custom.sourceKind} options={[{ value: 'modbus_holding', label: 'Holding Register' }, { value: 'modbus_input', label: 'Input Register' }]} onChange={(value) => { setCustom({ ...custom, sourceKind: value }); setCustomEstimate(null); }} />
           <VpPicker label="Datentyp" value={custom.valueType} options={['uint16', 'int16', 'uint32', 'int32', 'float32', 'float64'].map((value) => ({ value, label: value }))} onChange={(value) => { setCustom({ ...custom, valueType: value }); setCustomEstimate(null); }} />
@@ -711,6 +726,7 @@ export function BeobachteteRegister({
           <Input label="Kadenz in Sekunden" type="number" min="1" max="86400" value={custom.cadenceS} onChange={(e) => { setCustom({ ...custom, cadenceS: e.target.value }); setCustomEstimate(null); }} />
         </div>
         <p className="vp-measure-readonly"><Icon name="lock" size={15} /> Ausschließlich lesbar. Keine Schreibparameter.</p>
+        {customError && <p role="alert" className="vp-assist-error">{customError}</p>}
         {customEstimate && <p role="status" className="vp-measure-global-status">{customEstimate.samplesPerMinute} Samples/min · {customEstimate.dutyCyclePercent} % Buslast · {customEstimate.totalGbPerYear.toFixed(3)} GB/Jahr. Start jetzt, kein Backfill.</p>}
       </Modal>
     </section>
