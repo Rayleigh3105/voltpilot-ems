@@ -1,0 +1,662 @@
+{
+  "_vertrag": "Grenz-Nachweis am Netzanschluss (UEMS AP-15 IP-31, NW-8, M-1, B5, W10) — docs/contracts/v2/netzanschluss.md §6. Java: services/api/.../uems/GrenzNachweisRegel (GrenzNachweisVectorsTest). Das Portal rechnet den Nachweis nicht; es zeigt sein Urteil in der Kopfzeile (netzanschluss-vectors.json, Regel kopfzeile, beide Zwillinge).",
+  "_eingang": "`reihe` sind aufeinanderfolgende Viertelstunden ab `ab`: [grenze_kw | null, hauptzaehler, zustand | null, mittel_kw | null]. `grenze_kw` ist die an ihrem Tag wirksame Grenze (GrenzeAufloesung), `zustand` das Wort des Ergebnis-Zustands-Vertrags, `mittel_kw` das Viertelstunden-Mittel in kW (aus kWh: × 4).",
+  "_nicht_geprueft": [
+    {
+      "feld": "M-2 (Augenblick über der Grenze, Startwert ≤ 60 s)",
+      "warum": "Die Mess-Welt hält je Viertelstunde Mittel, Min und Max, keine Dauer über einer Schwelle; der Nachweis weist M-2 als `nicht_gemessen` aus, statt eine Dauer zu erfinden."
+    }
+  ],
+  "faelle": [
+    {
+      "id": "sauber",
+      "name": "Sauberer Monat: jede Viertelstunde vollständig und unter der Grenze",
+      "warum": "M-1 erfüllt und belegt: eingehalten, 100 %.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            true,
+            "vollständig",
+            "80"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "95"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "60.5"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "90"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "eingehalten",
+        "viertelstunden": {
+          "erwartet": 4,
+          "belegt": 4,
+          "unvollstaendig": 0,
+          "fehlend": 0
+        },
+        "belegt_prozent": 100,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:15:00Z",
+          "bis": "2026-09-01T00:30:00Z",
+          "mittel_kw": "95",
+          "grenze_kw": "100",
+          "abstand_kw": "-5"
+        },
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    },
+    {
+      "id": "gleich",
+      "name": "Gleich der Grenze ist eingehalten",
+      "warum": "Über heißt echt größer.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            true,
+            "vollständig",
+            "100"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "99.999"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "eingehalten",
+        "viertelstunden": {
+          "erwartet": 2,
+          "belegt": 2,
+          "unvollstaendig": 0,
+          "fehlend": 0
+        },
+        "belegt_prozent": 100,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:00:00Z",
+          "bis": "2026-09-01T00:15:00Z",
+          "mittel_kw": "100",
+          "grenze_kw": "100",
+          "abstand_kw": "0"
+        },
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    },
+    {
+      "id": "ueberschreitung",
+      "name": "Überschreitung: höchstes Mittel, Minuten darüber und zwei Unterbrechungen",
+      "warum": "Zusammenhängende Viertelstunden darüber sind EINE Unterbrechung mit ihrem Höchstwert.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            true,
+            "vollständig",
+            "90"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "120"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "130"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "80"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "110"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "ueberschritten",
+        "viertelstunden": {
+          "erwartet": 5,
+          "belegt": 5,
+          "unvollstaendig": 0,
+          "fehlend": 0
+        },
+        "belegt_prozent": 100,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:30:00Z",
+          "bis": "2026-09-01T00:45:00Z",
+          "mittel_kw": "130",
+          "grenze_kw": "100",
+          "abstand_kw": "30"
+        },
+        "darueber": {
+          "viertelstunden": 3,
+          "minuten": 45
+        },
+        "unterbrechungen": [
+          {
+            "von": "2026-09-01T00:15:00Z",
+            "bis": "2026-09-01T00:45:00Z",
+            "minuten": 30,
+            "hoechstwert_kw": "130",
+            "grenze_kw": "100"
+          },
+          {
+            "von": "2026-09-01T01:00:00Z",
+            "bis": "2026-09-01T01:15:00Z",
+            "minuten": 15,
+            "hoechstwert_kw": "110",
+            "grenze_kw": "100"
+          }
+        ]
+      }
+    },
+    {
+      "id": "luecke",
+      "name": "Lücke: fehlende und unvollständige Viertelstunden machen den Monat „nicht belegt“",
+      "warum": "B5: eine Lücke ist kein sauberer Wert — nie eingehalten; der Anteil wird abgerundet.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            true,
+            "vollständig",
+            "80"
+          ],
+          [
+            "100",
+            true,
+            "keine Werte",
+            null
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "90"
+          ],
+          [
+            "100",
+            true,
+            "unvollständig",
+            "85"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "nicht_belegt",
+        "viertelstunden": {
+          "erwartet": 4,
+          "belegt": 2,
+          "unvollstaendig": 1,
+          "fehlend": 1
+        },
+        "belegt_prozent": 50,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:30:00Z",
+          "bis": "2026-09-01T00:45:00Z",
+          "mittel_kw": "90",
+          "grenze_kw": "100",
+          "abstand_kw": "-10"
+        },
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    },
+    {
+      "id": "luecke-ohne-zeile",
+      "name": "Eine Viertelstunde ohne gebildeten Wert fehlt — auch wenn sie noch gebildet werden könnte",
+      "warum": "Nur ein vollständiger Wert belegt etwas.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            true,
+            "vollständig",
+            "80"
+          ],
+          [
+            "100",
+            true,
+            null,
+            null
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "80"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "nicht_belegt",
+        "viertelstunden": {
+          "erwartet": 3,
+          "belegt": 2,
+          "unvollstaendig": 0,
+          "fehlend": 1
+        },
+        "belegt_prozent": 66,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:00:00Z",
+          "bis": "2026-09-01T00:15:00Z",
+          "mittel_kw": "80",
+          "grenze_kw": "100",
+          "abstand_kw": "-20"
+        },
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    },
+    {
+      "id": "ersatzwert",
+      "name": "Ein Ersatzwert ist kein Messwert: nicht belegt",
+      "warum": "AP-08 IP-12: mit Ersatzwert zählt wie unvollständig.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            true,
+            "vollständig",
+            "50"
+          ],
+          [
+            "100",
+            true,
+            "mit Ersatzwert",
+            "50"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "nicht_belegt",
+        "viertelstunden": {
+          "erwartet": 2,
+          "belegt": 1,
+          "unvollstaendig": 1,
+          "fehlend": 0
+        },
+        "belegt_prozent": 50,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:00:00Z",
+          "bis": "2026-09-01T00:15:00Z",
+          "mittel_kw": "50",
+          "grenze_kw": "100",
+          "abstand_kw": "-50"
+        },
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    },
+    {
+      "id": "luecke-und-ueberschreitung",
+      "name": "Eine belegte Überschreitung bleibt überschritten — über eine Lücke wird nichts verbunden",
+      "warum": "Zwei Unterbrechungen, weil dazwischen niemand weiß, was war.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            true,
+            "vollständig",
+            "120"
+          ],
+          [
+            "100",
+            true,
+            "keine Werte",
+            null
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "130"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "ueberschritten",
+        "viertelstunden": {
+          "erwartet": 3,
+          "belegt": 2,
+          "unvollstaendig": 0,
+          "fehlend": 1
+        },
+        "belegt_prozent": 66,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:30:00Z",
+          "bis": "2026-09-01T00:45:00Z",
+          "mittel_kw": "130",
+          "grenze_kw": "100",
+          "abstand_kw": "30"
+        },
+        "darueber": {
+          "viertelstunden": 2,
+          "minuten": 30
+        },
+        "unterbrechungen": [
+          {
+            "von": "2026-09-01T00:00:00Z",
+            "bis": "2026-09-01T00:15:00Z",
+            "minuten": 15,
+            "hoechstwert_kw": "120",
+            "grenze_kw": "100"
+          },
+          {
+            "von": "2026-09-01T00:30:00Z",
+            "bis": "2026-09-01T00:45:00Z",
+            "minuten": 15,
+            "hoechstwert_kw": "130",
+            "grenze_kw": "100"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grenzwechsel",
+      "name": "Grenzwechsel: jede Viertelstunde gegen die Grenze IHRES Tages",
+      "warum": "95 kW unter 100 kW ist eingehalten; 70 kW über der neuen 60-kW-Grenze nicht — das höchste Mittel GEGEN die Grenze ist das mit dem größten Abstand darüber.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            true,
+            "vollständig",
+            "95"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "95"
+          ],
+          [
+            "60",
+            true,
+            "vollständig",
+            "70"
+          ],
+          [
+            "60",
+            true,
+            "vollständig",
+            "50"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "ueberschritten",
+        "viertelstunden": {
+          "erwartet": 4,
+          "belegt": 4,
+          "unvollstaendig": 0,
+          "fehlend": 0
+        },
+        "belegt_prozent": 100,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:30:00Z",
+          "bis": "2026-09-01T00:45:00Z",
+          "mittel_kw": "70",
+          "grenze_kw": "60",
+          "abstand_kw": "10"
+        },
+        "darueber": {
+          "viertelstunden": 1,
+          "minuten": 15
+        },
+        "unterbrechungen": [
+          {
+            "von": "2026-09-01T00:30:00Z",
+            "bis": "2026-09-01T00:45:00Z",
+            "minuten": 15,
+            "hoechstwert_kw": "70",
+            "grenze_kw": "60"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ohne-grenze-kein-teil",
+      "name": "Viertelstunden ohne Grenze sind nicht Teil des Nachweises",
+      "warum": "Nur wo eine Grenze gilt, gibt es etwas zu belegen.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            null,
+            true,
+            "keine Werte",
+            null
+          ],
+          [
+            null,
+            true,
+            "vollständig",
+            "500"
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "90"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "eingehalten",
+        "viertelstunden": {
+          "erwartet": 1,
+          "belegt": 1,
+          "unvollstaendig": 0,
+          "fehlend": 0
+        },
+        "belegt_prozent": 100,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:30:00Z",
+          "bis": "2026-09-01T00:45:00Z",
+          "mittel_kw": "90",
+          "grenze_kw": "100",
+          "abstand_kw": "-10"
+        },
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    },
+    {
+      "id": "keine-grenze",
+      "name": "Keine Grenze: nicht geprüft, mit Grund",
+      "warum": "grenze_geprueft bleibt false.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            null,
+            true,
+            "vollständig",
+            "80"
+          ],
+          [
+            null,
+            true,
+            "vollständig",
+            "90"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": false,
+        "grund": "keine_grenze",
+        "urteil": null,
+        "viertelstunden": {
+          "erwartet": 0,
+          "belegt": 0,
+          "unvollstaendig": 0,
+          "fehlend": 0
+        },
+        "belegt_prozent": null,
+        "hoechstes_mittel": null,
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    },
+    {
+      "id": "kein-hauptzaehler",
+      "name": "Grenze ohne Hauptzähler: nicht geprüft, mit Grund",
+      "warum": "grenze_geprueft bleibt false.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            false,
+            null,
+            null
+          ],
+          [
+            "100",
+            false,
+            null,
+            null
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": false,
+        "grund": "kein_hauptzaehler",
+        "urteil": null,
+        "viertelstunden": {
+          "erwartet": 0,
+          "belegt": 0,
+          "unvollstaendig": 0,
+          "fehlend": 0
+        },
+        "belegt_prozent": null,
+        "hoechstes_mittel": null,
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    },
+    {
+      "id": "hauptzaehler-teilweise",
+      "name": "Tage mit Grenze, aber ohne Hauptzähler fehlen",
+      "warum": "Geprüft wird, wo beides vorliegt — der Rest ist nicht belegt.",
+      "eingang": {
+        "ab": "2026-09-01T00:00:00Z",
+        "reihe": [
+          [
+            "100",
+            false,
+            null,
+            null
+          ],
+          [
+            "100",
+            true,
+            "vollständig",
+            "40"
+          ]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "nicht_belegt",
+        "viertelstunden": {
+          "erwartet": 2,
+          "belegt": 1,
+          "unvollstaendig": 0,
+          "fehlend": 1
+        },
+        "belegt_prozent": 50,
+        "hoechstes_mittel": {
+          "von": "2026-09-01T00:15:00Z",
+          "bis": "2026-09-01T00:30:00Z",
+          "mittel_kw": "40",
+          "grenze_kw": "100",
+          "abstand_kw": "-60"
+        },
+        "darueber": {
+          "viertelstunden": 0,
+          "minuten": 0
+        },
+        "unterbrechungen": []
+      }
+    }
+  ]
+}

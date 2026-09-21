@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { anschlussText, tagText } from '../netzanschlussListe';
+import type { KopfzeileNachweis } from '../uemsNetzanschluss';
 
 /** Ein ausgewiesener Stichtag, keine Behauptung über die gesamte Bilanzperiode.
  * Die Bilanzroute trägt keinen Anschluss; Standort und Bindung kommen aus den bestehenden Tages-Leserouten. */
@@ -22,7 +23,17 @@ export function NetzanschlussBilanzKopf({ anlage, am }: { anlage: string; am: st
           try {
             const liste = (await api.netzanschluesse(ort.id, am)).netzanschluesse;
             const n = liste.find((n) => n.id === bezug.id);
-            if (n) text = anschlussText(n);
+            if (n) {
+              // AP-15 IP-31: das Urteil des Grenz-Nachweises im Monat des Stichtags. Fehlt es, bleibt die
+              // Zeile, wie sie war — gezeigt, nicht geprüft.
+              let nachweis: KopfzeileNachweis | null = null;
+              try {
+                nachweis = await api.netzanschlussGrenznachweis(ort.id, n.id, am.slice(0, 7));
+              } catch {
+                /* Ohne Nachweis bleibt die Kopfzeile ohne Urteil. */
+              }
+              text = anschlussText(n, nachweis);
+            }
           } catch {
             /* Der bekannte Bezug bleibt auch bei einem Lesefehler erhalten. */
           }

@@ -37,6 +37,15 @@ class NetzanschlussVectorsTest {
         return lies(VECTORS);
     }
 
+    /** Der Grenz-Nachweis der Kopfzeile (AP-15 IP-31); fehlt er im Eingang, gilt die Zeile ohne Nachweis. */
+    private static NetzanschlussRegeln.KopfzeileNachweis nachweis(JsonNode n) {
+        if (n.isMissingNode() || n.isNull()) {
+            return null;
+        }
+        return new NetzanschlussRegeln.KopfzeileNachweis(n.path("grenze_geprueft").asBoolean(), str(n.path("urteil")),
+                str(n.path("monat")));
+    }
+
     private static LocalDate tag(JsonNode n) {
         String s = str(n);
         return s == null ? null : LocalDate.parse(s);
@@ -174,9 +183,9 @@ class NetzanschlussVectorsTest {
             case "kopfzeile" -> {
                 NetzanschlussRegeln.KopfzeileUrteil ist = NetzanschlussRegeln.kopfzeile(
                         str(ein.path("netzanschluss")), bd(ein.path("vereinbart_kw")),
-                        bd(ein.path("anschluss_kva")), bd(ein.path("momentan_kw")));
+                        bd(ein.path("anschluss_kva")), bd(ein.path("momentan_kw")), nachweis(ein.path("nachweis")));
                 assertThat(ist.text()).as(why + " · Kopfzeile").isEqualTo(str(soll.path("text")));
-                assertThat(ist.grenzeGeprueft()).as(why + " · hier wird gezeigt, nicht geprüft")
+                assertThat(ist.grenzeGeprueft()).as(why + " · geprüft nur mit Grenz-Nachweis")
                         .isEqualTo(soll.path("grenze_geprueft").asBoolean());
             }
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());

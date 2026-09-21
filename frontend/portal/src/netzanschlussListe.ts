@@ -7,7 +7,7 @@ import {
   type StandortAnlage,
 } from './api';
 import { dez, dezText, type Dez } from './bezugsdaten';
-import { bindung, felder, kennzeichen, kopfzeile, type Bindung } from './uemsNetzanschluss';
+import { bindung, felder, kennzeichen, kopfzeile, type Bindung, type KopfzeileNachweis } from './uemsNetzanschluss';
 import { UEMS_NETZANSCHLUSS } from './glossar';
 import { datumVon } from './picker/datum';
 import { datumText } from './uemsOrtsbaum';
@@ -23,13 +23,17 @@ export const giltAm = (b: { gueltig_ab: string | null; gueltig_bis: string | nul
 export const anschlussDerAnlage = (liste: Netzanschluss[], anlage: string, am: string) =>
   liste.find((n) => giltAm(n, am) && n.anlagen.some((b) => b.anlage.id === anlage && giltAm(b, am))) ?? null;
 
-/** EINE Formatierstelle für Liste und Bilanz; der Vertragszwilling kennzeichnet Vereinbartes. */
-export function leistung(n: Netzanschluss): string {
+/**
+ * EINE Formatierstelle für Liste und Bilanz; der Vertragszwilling kennzeichnet Vereinbartes. Mit dem
+ * Grenz-Nachweis (AP-15 IP-31) sagt die Zeile, ob die Grenze im Monat eingehalten wurde.
+ */
+export function leistung(n: Netzanschluss, nachweis: KopfzeileNachweis | null = null): string {
   return kopfzeile(
     n.kennzeichen,
     n.vereinbart_kw === null ? null : dez(String(n.vereinbart_kw)),
     n.anschluss_kva === null ? null : dez(String(n.anschluss_kva)),
     null,
+    nachweis,
   ).text;
 }
 export const bindungsText = (b: NetzanschlussBindung) =>
@@ -38,9 +42,9 @@ export function bilanzKopf(liste: Netzanschluss[], anlage: string, am: string): 
   const n = anschlussDerAnlage(liste, anlage, am);
   return anschlussText(n);
 }
-export function anschlussText(n: Netzanschluss | null): string {
+export function anschlussText(n: Netzanschluss | null, nachweis: KopfzeileNachweis | null = null): string {
   return n
-    ? [`Netzanschluss ${n.kennzeichen}`, n.name, n.malo ? `MaLo ${n.malo}` : null, n.netzbetreiber, leistung(n)]
+    ? [`Netzanschluss ${n.kennzeichen}`, n.name, n.malo ? `MaLo ${n.malo}` : null, n.netzbetreiber, leistung(n, nachweis)]
         .filter(Boolean)
         .join(' · ')
     : 'Netzanschluss: nicht angelegt';

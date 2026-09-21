@@ -127,7 +127,7 @@
     {
       "fall": "F16 · Grenzprüfung",
       "feld": "vereinbart_kw gegen die Momentanleistung",
-      "warum": "Die Kopfzeile ZEIGT beide Zahlen; geprüft wird die Grenze erst in AP-15 (`grenze_geprueft` ist deshalb in jedem Fall `false`). Eine Anzeige, die eine Überschreitung behauptete, hätte hier keinen Fakt, der sie trägt."
+      "warum": "Die Kopfzeile ZEIGT beide Zahlen; sie prüft sie nicht selbst. Seit AP-15 IP-31 trägt sie das Urteil des Grenz-Nachweises (`netzanschluss-grenznachweis-vectors.json`: Viertelstunden-Mittel am Hauptzähler gegen die wirksame Grenze) — `grenze_geprueft` ist nur wahr, wo er Grenze UND Hauptzähler hatte. Den Momentanwert gegen die vereinbarte Leistung vergleicht weiterhin niemand: eine Anzeige, die daraus eine Überschreitung behauptete, hätte keinen Fakt, der sie trägt."
     },
     {
       "fall": "F16 · Preisfelder",
@@ -631,6 +631,66 @@
             "vereinbart_kw": "550",
             "anschluss_kva": "630",
             "momentan_kw": null
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA",
+            "grenze_geprueft": false
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Mit Grenz-Nachweis (AP-15 IP-31): Grenze und Hauptzähler lagen vor, der Monat ist belegt",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null,
+            "nachweis": {"grenze_geprueft": true, "urteil": "eingehalten", "monat": "2026-09"}
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Grenze im September 2026 eingehalten",
+            "grenze_geprueft": true
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Eine belegte Überschreitung heißt überschritten",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null,
+            "nachweis": {"grenze_geprueft": true, "urteil": "ueberschritten", "monat": "2026-03"}
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Grenze im März 2026 überschritten",
+            "grenze_geprueft": true
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Eine Lücke ist kein sauberer Wert: nicht belegt, nie eingehalten (B5)",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null,
+            "nachweis": {"grenze_geprueft": true, "urteil": "nicht_belegt", "monat": "2026-10"}
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Grenze im Oktober 2026 nicht belegt",
+            "grenze_geprueft": true
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Ohne Grenze oder ohne Hauptzähler bleibt die Zeile, wie sie war — gezeigt, nicht geprüft",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null,
+            "nachweis": {"grenze_geprueft": false, "urteil": null, "monat": "2026-09"}
           },
           "ergebnis": {
             "text": "vereinbart 550 kW · Anschluss 630 kVA",

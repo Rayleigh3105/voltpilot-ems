@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.math.BigDecimal;
@@ -87,4 +88,54 @@ public final class NetzanschlussDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Grenzblatt(UUID netzanschlussId, String kennzeichen, LocalDate stichtag, GrenzFassung gilt,
             List<GrenzFassung> fassungen) {}
+
+    /**
+     * {@code GET …/netzanschluesse/{id}/grenznachweis?monat=} (UEMS AP-15 IP-31, NW-8, M-1, M-2): je Richtung das
+     * höchste Viertelstunden-Mittel am Hauptzähler gegen die an seinem Tag wirksame Grenze, die Viertelstunden darüber
+     * und die Unterbrechungen — gerechnet über die abgeschlossenen Tage des Monats ({@code von}..{@code bis}, beide
+     * eingeschlossen; {@code null}, wenn noch keiner abgeschlossen ist). {@code grenze_geprueft} ist wahr, wo in einer
+     * Richtung Grenze UND Hauptzähler vorliegen; sonst sagt {@code grund}, warum nicht.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record GrenzNachweis(UUID netzanschlussId, String kennzeichen, String monat, LocalDate von, LocalDate bis,
+            String zeitzone, boolean grenzeGeprueft, String grund, String urteil, List<GrenzNachweisRichtung> richtungen) {}
+
+    /**
+     * Eine Richtung ({@code bezug} · {@code einspeisung}). {@code viertelstunden} zählt nur die mit Grenze;
+     * {@code belegt_prozent} ist abgerundet — 100 nur, wenn nichts fehlt. {@code augenblick} ist M-2.
+     * {@code ausserhalb_zugriff} statt der Zahlen, wenn ein Hauptzähler außerhalb des Zugriffs liegt.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record GrenzNachweisRichtung(String richtung, boolean grenzeGeprueft, String grund, String urteil,
+            List<GrenzAbschnitt> grenzen, List<MessstelleKurz> hauptzaehler, GrenzViertelstunden viertelstunden,
+            Integer belegtProzent, GrenzHoechstes hoechstesMittel, GrenzDarueber darueber,
+            List<GrenzUnterbrechung> unterbrechungen, GrenzAugenblick augenblick,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {}
+
+    /** Die wirksame Grenze einer Richtung über zusammenhängende Tage (engerer Wert aus Anlage und Anschluss). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GrenzAbschnitt(LocalDate von, LocalDate bis, BigDecimal kw, String quelle) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record MessstelleKurz(UUID id, String kennzeichen, String name) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GrenzViertelstunden(int erwartet, int belegt, int unvollstaendig, int fehlend) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GrenzHoechstes(OffsetDateTime von, OffsetDateTime bis, BigDecimal mittelKw, BigDecimal grenzeKw,
+            BigDecimal abstandKw) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GrenzDarueber(int viertelstunden, long minuten) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GrenzUnterbrechung(OffsetDateTime von, OffsetDateTime bis, long minuten, BigDecimal hoechstwertKw,
+            BigDecimal grenzeKw) {}
+
+    /** M-2: {@code nicht_gemessen} mit dem Grund — die Mess-Welt hat heute keine Dauer über der Grenze. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GrenzAugenblick(String status, String grund) {}
 }

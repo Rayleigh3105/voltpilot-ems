@@ -18,6 +18,7 @@ function stelle(bezug: { id: string; kennzeichen: string; gueltigAb: string; gue
     kennzeichen_vorschlag: 'NA-0004',
     netzanschluesse: ahrenbergNetzanschluesse(),
   });
+  vi.spyOn(api, 'netzanschlussGrenznachweis').mockRejectedValue(new Error('kein Nachweis'));
 }
 const bezug = { id: 'na-NA-1', kennzeichen: 'NA-1', gueltigAb: '2024-03-12', gueltigBis: null };
 it('liest Standort und Anschluss zum ausgewiesenen Bilanztag', async () => {
@@ -57,4 +58,42 @@ it('null heißt nicht angelegt; fehlende Antwort ist unbekannt', async () => {
   await waitFor(() =>
     expect(screen.getByTestId('bilanz-netzanschluss')).toHaveTextContent('Netzanschluss konnte nicht geladen werden.'),
   );
+});
+it('trägt das Urteil des Grenz-Nachweises im Monat des Stichtags (AP-15 IP-31)', async () => {
+  stelle(bezug);
+  vi.mocked(api.netzanschlussGrenznachweis).mockResolvedValue({
+    netzanschluss_id: 'na-NA-1',
+    kennzeichen: 'NA-1',
+    monat: '2026-10',
+    von: '2026-10-01',
+    bis: '2026-10-19',
+    zeitzone: 'Europe/Berlin',
+    grenze_geprueft: true,
+    grund: null,
+    urteil: 'ueberschritten',
+    richtungen: [],
+  });
+  render(<NetzanschlussBilanzKopf anlage={I.an1} am="2026-10-20" />);
+  await waitFor(() =>
+    expect(screen.getByTestId('bilanz-netzanschluss')).toHaveTextContent('Grenze im Oktober 2026 überschritten'),
+  );
+  expect(api.netzanschlussGrenznachweis).toHaveBeenCalledWith(I.st1, 'na-NA-1', '2026-10');
+});
+it('ohne Grenze oder Hauptzähler bleibt die Kopfzeile, wie sie war', async () => {
+  stelle(bezug);
+  vi.mocked(api.netzanschlussGrenznachweis).mockResolvedValue({
+    netzanschluss_id: 'na-NA-1',
+    kennzeichen: 'NA-1',
+    monat: '2026-10',
+    von: '2026-10-01',
+    bis: '2026-10-19',
+    zeitzone: 'Europe/Berlin',
+    grenze_geprueft: false,
+    grund: 'keine_grenze',
+    urteil: null,
+    richtungen: [],
+  });
+  render(<NetzanschlussBilanzKopf anlage={I.an1} am="2026-10-20" />);
+  await waitFor(() => expect(screen.getByTestId('bilanz-netzanschluss')).toHaveTextContent('vereinbart'));
+  expect(screen.getByTestId('bilanz-netzanschluss')).not.toHaveTextContent('Grenze im');
 });

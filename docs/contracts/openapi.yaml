@@ -11797,6 +11797,39 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
         "422": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+  /api/v1/standorte/{standortId}/netzanschluesse/{id}/grenznachweis:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [netzanschluesse]
+      summary: Der Grenz-Nachweis des Netzanschlusses für einen Monat (UEMS AP-15 IP-31).
+      description: >
+        Heute lesend - keine eigene Kennung; der Zaun fragt `RechtPruefung#pruefenLesen` am
+        Standort. Fremd, unbekannt, an einem anderen Standort oder außerhalb des Zugriffs = 404
+        `nicht_gefunden`; ein Hauptzähler außerhalb des Zugriffs nimmt seiner Richtung die Zahlen
+        (`ausserhalb_zugriff`). Gerechnet, nie gespeichert, über die abgeschlossenen Tage des
+        Monats (ohne `monat`: der laufende am Standort; heute gehört nicht dazu). Je Richtung
+        (Bezug = Hauptzähler Bezug, Einspeisung = Hauptzähler Abgabe) das höchste
+        Viertelstunden-Mittel gegen die an seinem Tag wirksame Grenze (der engere Wert aus Anlage
+        und Grenzblatt), die Viertelstunden und Minuten darüber und die Unterbrechungen
+        (zusammenhängende Viertelstunden darüber) mit Höchstwert. Nur eine vollständige
+        Viertelstunde belegt etwas: eine Lücke heißt `nicht_belegt`, nie `eingehalten` (B5).
+        `grenze_geprueft` ist wahr, wo Grenze UND Hauptzähler vorliegen; sonst nennt `grund`
+        `keine_grenze`, `kein_hauptzaehler` oder `kein_abgeschlossener_tag`. M-2 (Augenblick) ist
+        `nicht_gemessen` - die Mess-Welt hat keine Dauer unter der Viertelstunde
+        (netzanschluss.md §6).
+      parameters:
+        - { name: monat, in: query, required: false, schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$", example: "2026-09" } }
+      responses:
+        "200":
+          description: Der Nachweis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetzanschlussGrenzNachweis" }
+        "400": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
   /api/v1/messstellen/{kennzeichen}/ablesungen:
     parameters:
       - { name: kennzeichen, in: path, required: true, schema: { type: string, example: MS-21 } }
@@ -22218,6 +22251,96 @@ components:
         fassungen:
           type: array
           items: { $ref: "#/components/schemas/NetzanschlussGrenzFassung" }
+    NetzanschlussGrenzNachweis:
+      type: object
+      description: UEMS AP-15 IP-31 - netzanschluss.md §6, Vektoren netzanschluss-grenznachweis-vectors.json.
+      required: [netzanschluss_id, kennzeichen, monat, von, bis, zeitzone, grenze_geprueft, grund, urteil, richtungen]
+      properties:
+        netzanschluss_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        monat: { type: string, example: "2026-09" }
+        von: { type: string, format: date, nullable: true, description: "Erster Tag; null ohne abgeschlossenen Tag." }
+        bis: { type: string, format: date, nullable: true, description: "Letzter Tag, eingeschlossen; nie heute." }
+        zeitzone: { type: string }
+        grenze_geprueft: { type: boolean }
+        grund: { type: string, nullable: true, enum: [keine_grenze, kein_hauptzaehler, kein_abgeschlossener_tag, null] }
+        urteil:
+          type: string
+          nullable: true
+          enum: [eingehalten, ueberschritten, nicht_belegt, null]
+          description: Über beide Richtungen; null ohne geprüfte Richtung oder mit einer Richtung außerhalb des Zugriffs.
+        richtungen:
+          type: array
+          items: { $ref: "#/components/schemas/NetzanschlussGrenzNachweisRichtung" }
+    NetzanschlussGrenzNachweisRichtung:
+      type: object
+      required: [richtung, grenze_geprueft, grund, urteil, grenzen, hauptzaehler, viertelstunden, belegt_prozent,
+        hoechstes_mittel, darueber, unterbrechungen, augenblick]
+      properties:
+        richtung: { type: string, enum: [bezug, einspeisung] }
+        grenze_geprueft: { type: boolean }
+        grund: { type: string, nullable: true, enum: [keine_grenze, kein_hauptzaehler, kein_abgeschlossener_tag, null] }
+        urteil: { type: string, nullable: true, enum: [eingehalten, ueberschritten, nicht_belegt, null] }
+        grenzen:
+          type: array
+          items:
+            type: object
+            properties:
+              von: { type: string, format: date }
+              bis: { type: string, format: date }
+              kw: { type: number }
+              quelle: { type: string, enum: [anlage, netzanschluss] }
+        hauptzaehler:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              kennzeichen: { type: string }
+              name: { type: string }
+        viertelstunden:
+          type: object
+          nullable: true
+          description: Nur Viertelstunden mit Grenze.
+          properties:
+            erwartet: { type: integer }
+            belegt: { type: integer }
+            unvollstaendig: { type: integer, description: "Unvollständig oder mit Ersatzwert." }
+            fehlend: { type: integer }
+        belegt_prozent: { type: integer, nullable: true, description: "Abgerundet - 100 nur, wenn nichts fehlt." }
+        hoechstes_mittel:
+          type: object
+          nullable: true
+          description: Die belegte Viertelstunde mit dem größten Abstand Mittel − Grenze.
+          properties:
+            von: { type: string, format: date-time }
+            bis: { type: string, format: date-time }
+            mittel_kw: { type: number }
+            grenze_kw: { type: number }
+            abstand_kw: { type: number }
+        darueber:
+          type: object
+          nullable: true
+          properties:
+            viertelstunden: { type: integer }
+            minuten: { type: integer }
+        unterbrechungen:
+          type: array
+          items:
+            type: object
+            properties:
+              von: { type: string, format: date-time }
+              bis: { type: string, format: date-time }
+              minuten: { type: integer }
+              hoechstwert_kw: { type: number }
+              grenze_kw: { type: number }
+        augenblick:
+          type: object
+          description: M-2 - heute `nicht_gemessen`, Grund `keine_dauer_unter_der_viertelstunde`.
+          properties:
+            status: { type: string, enum: [nicht_gemessen] }
+            grund: { type: string }
+        ausserhalb_zugriff: { type: string, description: "Nur, wenn ein Hauptzähler außerhalb des Zugriffs liegt; dann ohne Zahlen." }
     NetzanschlussStandort:
       type: object
       properties:

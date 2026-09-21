@@ -84,6 +84,22 @@ KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsp
 - Vektor-Familie: liegt seit IP-1 in `netzanschluss-vectors.json`, nicht in `ortsbaum-vectors.json`
   (`_abweichungen`); `ortsbaum-vectors.json` bleibt unverändert, ihr Anlagen-Feld wird jetzt gefüllt.
 
+## Grenz-Nachweis (AP-15 IP-31, NW-8, M-1)
+
+Gerechnet, nie gespeichert (keine Migration): `uems/GrenzNachweisService` → `GrenzNachweisRegel` gegen
+`netzanschluss-grenznachweis-vectors.json` · Route `GET …/netzanschluesse/{id}/grenznachweis?monat=` · Vertrag
+[§6](../../contracts/v2/netzanschluss.md#6-der-grenz-nachweis-am-netzanschluss-ap-15-ip-31-nw-8-m-1-m-2-b5-w10) ·
+Tests `GrenzNachweisVectorsTest`, `NetzanschlussGrenznachweisApiTest`.
+
+- **Viertelstunden kommen aus `MessstelleWerteService.werte(…, "viertelstunde", …)`** — höchstens 2 200 Schritte je
+  Aufruf, darum in Läufen zu 20 Tagen. kWh × 4 = kW; nur `vollständig` belegt, Ersatzwert zählt wie unvollständig.
+- **Hauptzähler je Tag aus `BilanzStellungen`** (Bezug = `Bezug`, Einspeisung = `Abgabe`), genau einer — zwei am
+  selben Tag lassen den Tag fehlen. Ohne Bindung am Tag keine Grenze (wie `AnlageGrenzen`).
+- **Heute zählt nicht mit**; am 1. des laufenden Monats ist der Grund `kein_abgeschlossener_tag`.
+- **Die Kopfzeile** (`kopfzeile(…, nachweis)` beider Zwillinge) sagt „Grenze im September 2026 eingehalten“;
+  `grenze_geprueft` nur mit Nachweis. Der Bilanz-Kopf fragt den Monat des Stichtags und schweigt bei Lesefehler.
+- **Testdaten:** `messreihe_viertelstunde.endgueltig_ab` muss `intervall_beginn + 10095 minutes` sein (CHECK).
+
 **Portal:** [Reiter, Dialoge und Bilanzkopf (IP-13)](uems-netzanschluss-portal.md).
 
 Preis-Umzug (W9) bleibt ein eigenes Paket. Aktuelle Routenrechte stehen an `NetzanschlussController` (`@Recht`, AP-03).

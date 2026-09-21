@@ -184,6 +184,19 @@ for (const breite of [375, 1440]) {
     await expect(page.getByRole('dialog').getByRole('alert')).toContainText('überschneidet');
     await expect(page.getByRole('dialog').getByRole('alert')).toBeFocused();
   });
+  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31) ${breite}`, async ({ page }) => {
+    await oeffne(page, breite);
+    const kopf = page.getByTestId('bilanz-netzanschluss');
+    await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1&grenze=eingehalten');
+    await expect(kopf).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA · Grenze im September 2026 eingehalten');
+    await foto(page, `bilanz-nachweis-${breite}`);
+    await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1&grenze=nicht_belegt');
+    await expect(kopf).toContainText('Grenze im September 2026 nicht belegt');
+    await foto(page, `bilanz-nicht-belegt-${breite}`);
+    await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1');
+    await expect(kopf).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA');
+    await expect(kopf).not.toContainText('Grenze im');
+  });
   test(`Bilanzkopf aus Tagesroute und Betriebskunde ohne neuen Reiter ${breite}`, async ({ page }) => {
     await oeffne(page, breite);
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1');

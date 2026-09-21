@@ -16,6 +16,7 @@ genau eine Anlage je Tag.
 | `frontend/portal/src/uemsNetzanschluss.ts` | der **TypeScript-Zwilling** |
 | `…/uems/NetzanschlussVectorsTest.java` · `…/src/uemsNetzanschluss.test.ts` | beide fahren DIESELBE Vektor-Datei, per Pfad |
 | [`netzanschluss-grenze-vectors.json`](./netzanschluss-grenze-vectors.json) | das **Grenzblatt** (AP-15 IP-3, §5): Auflösung und Plausibilität — Java `uems/GrenzeAufloesung` ⟷ Python `voltpilot_optimization/grenze_aufloesung.py` |
+| [`netzanschluss-grenznachweis-vectors.json`](./netzanschluss-grenznachweis-vectors.json) | der **Grenz-Nachweis** (AP-15 IP-31, §6): Viertelstunden-Mittel am Hauptzähler gegen die wirksame Grenze — Java `uems/GrenzNachweisRegel` |
 
 **Wer eine Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.**
 
@@ -57,9 +58,11 @@ genau eine Anlage je Tag.
 6. **Die Kopfzeile ZEIGT, sie prüft nicht.** „vereinbart 550 kW · Anschluss 630 kVA · Momentan
    312,4 kW“ ist eine Anzeige (Zahlform aus [`ergebnis-zustand.md`](./ergebnis-zustand.md) §3, E11:
    vereinbarte kW und Anschluss-kVA ganzzahlig, echte Dezimalstellen bleiben; gemessene kW
-   eine Stelle, U+00A0 vor der Einheit); die Grenzprüfung ist AP-15. `grenze_geprueft` ist deshalb in jedem
-   Fall `false` — eine Fläche, die eine Überschreitung behauptete, hätte hier keinen Fakt, der sie
-   trägt. Was fehlt, steht nicht da: ein fehlender Momentanwert wird nie zu „0 kW“.
+   eine Stelle, U+00A0 vor der Einheit). Seit AP-15 IP-31 trägt sie das Urteil des Grenz-Nachweises
+   (§6): „Grenze im September 2026 eingehalten“ · „… überschritten“ · „… nicht belegt“ — und
+   `grenze_geprueft` ist genau dann `true`, wenn der Nachweis Grenze UND Hauptzähler hatte. Ohne
+   Nachweis bleibt die Zeile, wie sie war (`false`): den Momentanwert gegen die vereinbarte Leistung
+   vergleicht weiterhin niemand. Was fehlt, steht nicht da: ein fehlender Momentanwert wird nie zu „0 kW“.
 7. **Die Preisspalten ziehen NICHT mit (W9).** `site_supply_price` und die übrigen Preisspalten
    bleiben unverändert an der Anlage; ein Preisblatt ist ein eigenes, ungeplantes Paket und keine
    Voraussetzung von AP-15. Die zwei GRENZEN bekommen mit AP-15 IP-3 ein Grenzblatt am
@@ -111,7 +114,43 @@ Das Ladepark-Dokument reist neu, sobald sich der HEUTE wirksame Bezug einer Anla
 nach einer heute wirksamen oder aufgehobenen Fassung und nach Binden/Umbinden, sonst am Tageswechsel des
 Standorts (stündlicher Anstoß, vergleicht mit dem zuletzt zugestellten Wert in
 `ladepark_netzgrenze_zugestellt`, holt nach einem Ausfall nach). Gleicher Wert, kein Rahmen oder keine
-Bindung: keine Zustellung. `grenze_geprueft` bleibt `false`, bis der Grenz-Nachweis (IP-31) sie misst.
+Bindung: keine Zustellung. Ob die Grenze eingehalten wurde, misst der Grenz-Nachweis (§6).
+
+## 6. Der Grenz-Nachweis am Netzanschluss (AP-15 IP-31, NW-8, M-1, M-2, B5, W10)
+
+**Die Mess-Welt beweist, die Steuer-Welt regelt.** Der Nachweis wird GERECHNET, nie gespeichert (keine
+Migration): `GET …/netzanschluesse/{id}/grenznachweis?monat=JJJJ-MM` (lesend, keine eigene Kennung, Zaun
+über `RechtPruefung#pruefenLesen` am Standort; ohne `monat` der laufende am Standort). Er umfasst die
+**abgeschlossenen Tage** des Monats — heute und später nicht, eine laufende Viertelstunde ist keine Lücke.
+
+| Schritt | Woher |
+|---|---|
+| Anlage am Tag | Bindung `anlage_netzanschluss` (AP-10); ohne Bindung gilt an dem Tag keine Grenze |
+| Grenze am Tag, je Richtung | `GrenzeAufloesung` (§5): der engere Wert aus Anlage und Grenzblatt — die Grenze kann im Monat wechseln |
+| Hauptzähler am Tag | Stellung `Hauptzähler` der Anlage: Bezug = Richtung `Bezug`, Einspeisung = Richtung `Abgabe`; GENAU EINER, sonst fehlt der Tag |
+| Viertelstunden-Mittel | `MessstelleWerteService` (AP-08, Raster `viertelstunde`, mit Zustand): kWh × 4 = kW (kWh ≠ kW), eine Leistungs-Messstelle liefert ihr Mittel |
+| Urteil | `GrenzNachweisRegel` gegen [`netzanschluss-grenznachweis-vectors.json`](./netzanschluss-grenznachweis-vectors.json) |
+
+**Die Regel (B5 — unbekannt ist keine Null):** gezählt werden nur Viertelstunden, an deren Tag eine
+Grenze gilt. Nur eine **vollständige** Viertelstunde belegt etwas; unvollständig oder mit Ersatzwert zählt
+als `unvollstaendig`, ohne Wert oder ohne Hauptzähler als `fehlend`. Über der Grenze heißt echt größer.
+`ueberschritten`, sobald eine belegte Viertelstunde darüber liegt (auch mit Lücken daneben); sonst
+`nicht_belegt`, sobald eine fehlt oder unvollständig ist; sonst `eingehalten`. `belegt_prozent` wird
+abgerundet. **Höchstes Mittel** = die belegte Viertelstunde mit dem größten Abstand Mittel − Grenze (bei
+gleicher Grenze das höchste Mittel). **Unterbrechungen** = zusammenhängende belegte Viertelstunden über der
+Grenze mit Dauer und Höchstwert — über eine Lücke wird nichts verbunden.
+
+**`grenze_geprueft`** ist je Richtung wahr, wo an mindestens einem Tag Grenze UND Hauptzähler vorliegen;
+sonst nennt `grund` `keine_grenze`, `kein_hauptzaehler` oder `kein_abgeschlossener_tag`. Die Antwort ist
+wahr, wenn eine Richtung geprüft ist. Liegt ein Hauptzähler außerhalb des Zugriffs
+(`RechtPruefung#alleLesbar`), fehlen die Zahlen seiner Richtung ganz (`ausserhalb_zugriff`), und das
+Gesamturteil bleibt leer.
+
+**M-2 (Augenblick, Startwert ≤ 60 s) ist `nicht_gemessen`.** Die Mess-Welt hält je Viertelstunde Mittel,
+Min und Max, aber keine Dauer über einer Schwelle; der Nachweis erfindet keine. M-2 belegt heute der
+Zwei-Agenten-Test und das Ergebnisblatt (IP-27, IP-29).
+
+**Die Kopfzeile** (§2 Falle 6, Regel `kopfzeile` beider Zwillinge) zeigt das Urteil des Monats.
 
 ## Prüfen
 
@@ -119,5 +158,7 @@ Bindung: keine Zustellung. `grenze_geprueft` bleibt `false`, bis der Grenz-Nachw
 (cd services/api && ./mvnw test -Dtest='NetzanschlussVectorsTest')   # rein, kein Docker
 (cd frontend/portal && npx vitest run src/uemsNetzanschluss.test.ts)
 (cd services/api && ./mvnw test -Dtest='GrenzeAufloesungVectorsTest')   # Grenzblatt, rein
+(cd services/api && ./mvnw test -Dtest='GrenzNachweisVectorsTest')      # Grenz-Nachweis, rein
+(cd services/api && ./mvnw test -Dtest='NetzanschlussGrenznachweisApiTest')   # Route, Testcontainers
 (cd services/optimization && PYTHONPATH=. python -m pytest tests/test_grenze_aufloesung.py)
 ```
