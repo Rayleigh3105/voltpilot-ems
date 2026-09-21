@@ -382,6 +382,11 @@ type Agent struct {
 	anteileMu    sync.Mutex
 	anteile      *anteile.Gehalten
 	anteileStore *anteile.Store
+	// AP-15 IP-19: the last stage of the Bezugswaechter's two parts (charging
+	// budget, battery ceiling) for the heartbeat (bezugswaechter_anteil.go).
+	bezugMu   sync.Mutex
+	bezugLade guards.ExportState
+	bezugBatt guards.ExportState
 
 	// Edge-local deadline fallback (agent/flexfallback.go + internal/
 	// flexfallback; Verbrauchssteuerung Inkrement 6, D-20): the validated
@@ -2935,6 +2940,21 @@ func (a *Agent) applySetpoint(now time.Time) {
 			m := math.Round(mean*1000) / 1000
 			quarterMean = &m
 		}
+	}
+
+	// GEMEINSAME STEUERUNG, Bezugswaechter (AP-15 IP-19, V1/V3/V5): with a
+	// share document the battery's charge is held under the import share - the
+	// leading box regulates it against the connection limit while it measures,
+	// any other box and a blind leading box charge only from their own PV
+	// (guards/bezuganteil.go). It sits HERE, after the arbitration and every
+	// clamp, so no manual override and no customer rule lifts it, and BEFORE
+	// the curtailment tracker, which must see what the battery will really
+	// take. It only ever lowers a charge; without a document it is a no-op.
+	if d := a.netzladenDeckel(now, r); d != nil {
+		before := kw
+		kw = guards.LowerCharge(kw, &d.DeckelKw)
+		stufe := battStufe(*d, before, kw < before)
+		a.setBezugStufe(nil, &stufe)
 	}
 
 	// DYNAMISCHE EINSPEISEBEGRENZUNG (2026-08-06): the real-time watchdog at the

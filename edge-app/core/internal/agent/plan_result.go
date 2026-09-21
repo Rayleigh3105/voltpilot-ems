@@ -53,7 +53,8 @@ func (a *Agent) quittierePlan2(r cloud.PlanResult) {
 // age of the own measuring point come from the feed-in guard that exists
 // today; the share fields (rolle, epoch, revision, effective own share per
 // direction) come only from a held document, so the block of a box without
-// one stays byte-identical to IP-10. Bezug waits for IP-18.
+// one stays byte-identical to IP-10. Bezug is the import guard's stage
+// (IP-19), sent only with a share document.
 func (a *Agent) gemeinsameSteuerung() *cloud.GemeinsameSteuerung {
 	a.arbMu.Lock()
 	p := a.curPlan2
@@ -75,6 +76,13 @@ func (a *Agent) gemeinsameSteuerung() *cloud.GemeinsameSteuerung {
 			age := *g.MeasurementAgeSeconds
 			block.MesspunktAlterS = &age
 		}
+	}
+	// AP-15 IP-19: the Bezugswaechter's stage, only with a share document.
+	if st := a.bezugStufe(); st != "" {
+		if block.Waechter == nil {
+			block.Waechter = &cloud.Waechter{}
+		}
+		block.Waechter.Bezug = st
 	}
 	if h != nil {
 		epoche, revision := h.Stand.Epoche, h.Stand.Revision

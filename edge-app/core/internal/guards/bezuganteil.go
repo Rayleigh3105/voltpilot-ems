@@ -1,0 +1,96 @@
+package guards
+
+// The grid-charge ceiling of the battery WITH A SHARE (UEMS AP-15 IP-19, rules
+// V1, V3, V5, G1; concept vp-uems-ap15-verbund §3.6/§4.6, R3). The import-side
+// twin of the discharge ceiling in exportanteil.go: the Bezugswaechter covers
+// EVERYTHING the box controls, and the battery charging from the grid is the
+// one consumer today's box never bounded by the connection limit (only by
+// §14a and the plan).
+//
+//	role         fresh (<= 30 s) and a known limit   otherwise
+//	fuehrt       loop: charge <= planable − rest,     no charge from the grid:
+//	             rest = grid − measured charge +      charge <= own measured PV
+//	             what the charge park was granted
+//	             but does not draw yet
+//	steuert_mit  -                                    the same - its share goes
+//	(or none)                                         to the charge park
+//
+// "Nicht aus dem Netz" is the solar-only clamp of today (guards.Clamp stage 4):
+// a charge no larger than the box's own measured PV adds nothing to the import
+// at the connection point that the PV does not offset, so the worst case of R3
+// stays 473 kW Vorbehalt + 77 kW Anteil + 0 kW = 550 kW. Without a usable PV
+// reading that is 0 - grid-charging blind is exactly what V3 excludes.
+//
+// The charge park is served FIRST on a fresh loop: what it was granted but
+// does not draw yet is taken off the battery's headroom, so the two loops
+// against one connection limit never both spend the same kilowatts from one
+// sample. The budget in turn sees the battery's measured charge as rest.
+//
+// The ceiling only ever LOWERS a charge (LowerCharge): it never discharges,
+// never raises a charge and never touches a discharge (the mirror of V6).
+// Without a share document nothing here runs.
+
+import "math"
+
+// Netzladen is what the ceiling is derived from; every measurement is the
+// box's own (G1).
+type Netzladen struct {
+	// Fuehrt is the role of the box (rolle fuehrt); false for steuert_mit and
+	// for a document without a role.
+	Fuehrt bool
+	// Fresh is true while the own connection-point measurement is at most 30 s
+	// old; Limit is true when a connection limit is maintained. Only both
+	// together let the leading box charge from the grid.
+	Fresh bool
+	Limit bool
+	// PlanableKw is the connection limit (or the tighter §14a envelope) minus
+	// the engineering margin, as the charging budget uses it.
+	PlanableKw float64
+	// GridKw is the measured connection point (+ import); BattChargeKw the
+	// measured battery charge (>= 0) of the same sample.
+	GridKw       float64
+	BattChargeKw float64
+	// ReservedKw is what the charge park was granted but does not draw yet.
+	ReservedKw float64
+	// PvKw is the box's own measured PV; Unknown() without a reading.
+	PvKw float64
+}
+
+// NetzladenDeckel is the ceiling on the battery's charge (kW >= 0).
+type NetzladenDeckel struct {
+	DeckelKw float64
+	// Regelt is true for the leading box's closed loop, false for the
+	// solar-only clamp.
+	Regelt bool
+}
+
+// NetzladenDeckelFuer derives the battery's charge ceiling for a box that
+// holds a share document.
+func NetzladenDeckelFuer(in Netzladen) NetzladenDeckel {
+	if in.Fuehrt && in.Fresh && in.Limit && finite(in.PlanableKw) && finite(in.GridKw) {
+		batt, reserved := in.BattChargeKw, in.ReservedKw
+		if !finite(batt) || batt < 0 {
+			batt = 0
+		}
+		if !finite(reserved) || reserved < 0 {
+			reserved = 0
+		}
+		rest := in.GridKw - batt + reserved
+		return NetzladenDeckel{DeckelKw: round3(math.Max(in.PlanableKw-rest, 0)), Regelt: true}
+	}
+	pv := 0.0
+	if known(in.PvKw) && finite(in.PvKw) && in.PvKw > 0 {
+		pv = in.PvKw
+	}
+	return NetzladenDeckel{DeckelKw: round3(pv)}
+}
+
+// LowerCharge applies a charge ceiling to the final battery setpoint (+ charge
+// / - discharge): it only ever LOWERS a charge - a discharge, an idle battery
+// and a charge below the ceiling pass unchanged.
+func LowerCharge(kw float64, deckelKw *float64) float64 {
+	if deckelKw == nil || !(kw > 0) || kw <= *deckelKw {
+		return kw
+	}
+	return math.Max(*deckelKw, 0)
+}

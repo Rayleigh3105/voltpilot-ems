@@ -63,7 +63,8 @@ func (l *Link) PublishPlanResult(r PlanResult) error {
 // plan 2.0 (IP-10) or an accepted share document (IP-17); a box with neither
 // sends no block. The share fields stay absent without a document, so the
 // block of a box without one is byte-identical to IP-10. Bezug in Waechter
-// waits for the import twin of the feed-in guard (IP-18).
+// is the stage of the import twin of the feed-in guard (IP-19), sent only
+// with a share document.
 type GemeinsameSteuerung struct {
 	PlanID          string    `json:"plan_id,omitempty"`
 	Waechter        *Waechter `json:"waechter,omitempty"`
