@@ -73,6 +73,14 @@ public class VerbundBilanzService {
     }
 
     /**
+     * Was der Baustein über einen Ausschnitt [von, bis) eines Tages der Anlage liest: die Grundlage (Terme), ein Grund,
+     * der schon vor den Werten feststeht (dann keine Viertelstunden), und je Viertelstunde die Terme mit Vorzeichen.
+     * {@code erwartet} = so viele Viertelstunden hat der Ausschnitt.
+     */
+    public record Ausschnitt(Instant von, Instant bis, int erwartet, VerbundBilanzRegel.Grund grund,
+            List<VerbundBilanzRegel.Viertelstunde> viertelstunden, ObjectNode grundlage) {}
+
+    /**
      * Rechnet den Tag der Anlage. Leer ohne Gemeinsame Steuerung, ohne wirksame Mitglieder (aufgelöst) oder wenn der
      * Tag schon ein Ergebnis hat — dann schreibt der Lauf nichts.
      */
@@ -83,8 +91,40 @@ public class VerbundBilanzService {
             return Optional.empty();
         }
         VerbundZeile v = gefunden.get();
+        Optional<Ausschnitt> gelesen = ausschnitt(v, tag, null);
+        if (gelesen.isEmpty()) {
+            return Optional.empty();
+        }
+        Ausschnitt a = gelesen.get();
+        VerbundBilanzRegel.Urteil u = VerbundBilanzRegel.tag(a.erwartet(), a.viertelstunden(), a.grund());
+
+        boolean zurueck = VerbundBilanzRegel.UNPLAUSIBEL.equals(u.zustand())
+                && steuerung.bilanzUnplausibel(siteId, tag, ProtokollAkteur.verbundBilanz());
+        VerbundBilanzRegel.UrteilViertelstunde g = u.geringstes();
+        VerbundBilanzRegel.UrteilViertelstunde h = u.hoechstes();
+        VerbundBilanzRepository.Ergebnis e = new VerbundBilanzRepository.Ergebnis(v.id(), siteId, tag, u.zustand(),
+                u.grund(), u.erwartet(), u.plausibel(), u.unplausibel(), u.unbekannt(),
+                g == null ? null : g.ungeregeltKw(), g == null ? null : g.toleranzKw(), g == null ? null : g.von(),
+                a.grundlage().toString(), v.stufe().code(), zurueck, ProtokollAkteur.verbundBilanz().name(),
+                h == null ? null : h.ungeregeltKw(), h == null ? null : h.von());
+        repo.speichern(TenantContext.get(), e);
+        return Optional.of(e);
+    }
+
+    /**
+     * Der Baustein der Bilanz — geteilt mit dem Vorbehalt im Viertelstunden-Takt (IP-13 Folge, R23), damit das
+     * Ungeregelte an EINER Stelle gerechnet wird: der Tag {@code tag} der Anlage, abgeschnitten bei
+     * {@code bisHoechstens} ({@code null} = der ganze Tag). Terme, Vorzeichen und die feststehenden Gründe gelten für
+     * den Ausschnitt (Mitglieder an seinem Anfang und Ende); eine Viertelstunde, in der ein Term nicht VOLLSTÄNDIG ist,
+     * trägt {@code null} (B5). Leer ohne wirksame Mitglieder am Ende des Ausschnitts oder wenn der Ausschnitt leer ist.
+     */
+    public Optional<Ausschnitt> ausschnitt(VerbundZeile v, LocalDate tag, Instant bisHoechstens) {
         Instant von = tag.atStartOfDay(GemeinsameSteuerungService.ZONE).toInstant();
-        Instant bis = tag.plusDays(1).atStartOfDay(GemeinsameSteuerungService.ZONE).toInstant();
+        Instant tagesende = tag.plusDays(1).atStartOfDay(GemeinsameSteuerungService.ZONE).toInstant();
+        Instant bis = bisHoechstens == null || bisHoechstens.isAfter(tagesende) ? tagesende : bisHoechstens;
+        if (!bis.isAfter(von)) {
+            return Optional.empty();
+        }
         List<MitgliedZeile> amEnde = verbund.mitglieder(v.id(), bis.minusSeconds(1));
         if (amEnde.isEmpty()) {
             return Optional.empty();
@@ -152,19 +192,7 @@ public class VerbundBilanzService {
                 viertelstunden.add(new VerbundBilanzRegel.Viertelstunde(q, summe(netz, q, tag, gelesen), kw));
             }
         }
-        VerbundBilanzRegel.Urteil u = VerbundBilanzRegel.tag(erwartet, viertelstunden, grund);
-
-        boolean zurueck = VerbundBilanzRegel.UNPLAUSIBEL.equals(u.zustand())
-                && steuerung.bilanzUnplausibel(siteId, tag, ProtokollAkteur.verbundBilanz());
-        VerbundBilanzRegel.UrteilViertelstunde g = u.geringstes();
-        VerbundBilanzRegel.UrteilViertelstunde h = u.hoechstes();
-        VerbundBilanzRepository.Ergebnis e = new VerbundBilanzRepository.Ergebnis(v.id(), siteId, tag, u.zustand(),
-                u.grund(), u.erwartet(), u.plausibel(), u.unplausibel(), u.unbekannt(),
-                g == null ? null : g.ungeregeltKw(), g == null ? null : g.toleranzKw(), g == null ? null : g.von(),
-                grundlage.toString(), v.stufe().code(), zurueck, ProtokollAkteur.verbundBilanz().name(),
-                h == null ? null : h.ungeregeltKw(), h == null ? null : h.von());
-        repo.speichern(TenantContext.get(), e);
-        return Optional.of(e);
+        return Optional.of(new Ausschnitt(von, bis, erwartet, grund, viertelstunden, grundlage));
     }
 
     /** Die Summe der Terme einer Viertelstunde mit Vorzeichen; {@code null}, sobald einer nicht vollständig ist (B5). */

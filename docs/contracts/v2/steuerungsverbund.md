@@ -257,13 +257,26 @@ Einspeiseseite bleibt erklärt.
 | < 30 Messtage (und nicht mehr) | nichts — der erklärte Wert gilt weiter |
 | kein geltender Wert | nichts zu erhöhen (unbekannt ist keine Null); ab 30 Messtagen ein Vorschlag |
 
-**Lauf.** `uems/VorbehaltLaeufer` (täglich 04:52 Europe/Berlin, nach der Bilanz; Schalter
-`voltpilot.uems.vorbehalt.enabled`) je Anlage MIT Gemeinsamer Steuerung und wirksamen Mitgliedern. Erhöhen:
+**Zwei Takte.** `uems/VorbehaltLaeufer` (täglich 04:52 Europe/Berlin, nach der Bilanz; Schalter
+`voltpilot.uems.vorbehalt.enabled`) prüft die Bilanz-Tage: erhöhen, vorschlagen, 30-Tage-Regel, 12-Monats-Sicht.
+`uems/VorbehaltViertelstundeLaeufer` (IP-13 Folge; Minute 10/25/40/55 Europe/Berlin; Schalter zusätzlich
+`voltpilot.uems.vorbehalt.viertelstunde.enabled`) prüft die REIFEN Viertelstunden von gestern und heute (Tage der
+Anlage) und tut NUR eines — erhöhen: je Tag rechnet `VerbundBilanzService#ausschnitt` das Ungeregelte (derselbe
+Baustein wie §7, bis zur jüngsten reifen Viertelstunde abgeschnitten), eine unvollständige Viertelstunde zählt nicht,
+gemessen = Höchstwert × 1,1 wie oben, erhöht wird nur bei gemessen > geltend (`VorbehaltRegel#erhoehen`, Vektoren
+`takt` in [`vorbehalt-vectors.json`](vorbehalt-vectors.json)). **Reif** ist eine Viertelstunde 10 Minuten nach ihrem
+Ende (`VorbehaltRegel.REIFE`: Verdichter-Takt 5 min + Sicherheit 2 min + Transport); die Viertelstunde 10:00–10:15 wird
+um 10:25 geprüft. **Nachholen:** jeder Takt liest gestern und heute ganz — was ein Ausfall oder eine Nachlieferung
+(der Verdichter bildet die Zeile neu, AP-07) bis dahin nachreicht, zählt im nächsten Takt; eine Viertelstunde bleibt so
+24–48 Stunden im Blick, danach nur noch in der Bilanz ihres Tages. Doppelt geschieht nichts: erhöht wird nur, solange
+gemessen > geltend. Ohne Gemeinsame Steuerung bleibt es bei der einen Frage nach den Kundenbereichen. Beide Takte
+erhöhen auf demselben Weg, je Anlage MIT Gemeinsamer Steuerung und wirksamen Mitgliedern. Erhöhen:
 `vorbehaltSetzen` (Akteur „Vorbehalt aus Messwerten“, Art `voltpilot`), Protokoll `steuerungsverbund_aenderung`
 Art `vorbehalt` (alt/neu mit Herkunft, Grund `vorbehalt_aus_messwerten_erhoeht`), Zeile `steuerungsverbund_vorbehalt`
-(`erhoeht`/`wirksam`), ein offener Vorschlag wird `hinfaellig`, dann `anteileAendern` (R23: E-4 77 → 55 kW; nur
-verengen ist schon der Zielstand, §4). Das Ergebnis steht an der Zeile (`anteile`); `zweischritt_laeuft` holt der
-nächste Lauf nach. **Passt die Auslegung nicht mehr** (`auslegung_passt_nicht`): nichts wird erweitert, die Boxen halten
+(`erhoeht`/`wirksam`; der Zeitraum ist beim Viertelstunden-Takt gestern bis heute), ein offener Vorschlag wird
+`hinfaellig`, dann `anteileAendern` (R23: E-4 77 → 55 kW; nur verengen ist schon der Zielstand, §4). Die Herkunft im
+Protokoll trägt `pruefung` = `tag` | `viertelstunde` (additiv). Das Ergebnis steht an der Zeile (`anteile`);
+`zweischritt_laeuft` holt der nächste Lauf nach — auch der nächste Viertelstunden-Takt. **Passt die Auslegung nicht mehr** (`auslegung_passt_nicht`): nichts wird erweitert, die Boxen halten
 ihr letztes Dokument, der Vorbehalt steht erhöht, Scharfschalten scheitert an der Auslegung — der Zähler meldet es
 (E2 = A: erst der Termin am Gerät). Die Kundenroute kann den Vorbehalt nicht setzen (PUT kennt nur `mitglieder`).
 
@@ -275,9 +288,12 @@ wieder erweitert, schreibt die Vereinigung einschließlich `vorbehalt` — nie n
 freigegebener Vorschlag hat den geltenden Wert gesetzt. **Metrik:** `voltpilot_uems_vorbehalt_erhoeht_total{tenant,site}`
 ([Übergabe](../../rollout/gemeinsame-steuerung-metriken.md)).
 
-**Grenzen (bewusst):** erkannt wird am Tag danach (die Bilanz rechnet den Vortag) — nicht „nach einer Viertelstunde“ wie
-in A20 gezeichnet; der ungünstige Fall R23 Schritt 3 bleibt bis dahin offen (A20 ist ein benanntes Restrisiko). Tage
-vor einem Mitgliedswechsel zählen mit (das Ungeregelte war größer) — das hält den Vorbehalt höher, nie niedriger.
+**Grenzen (bewusst):** erkannt wird nach der ersten vollständigen Viertelstunde, 10 Minuten nach ihrem Ende (R23
+Schritt 2, A20 „Erkennung nach einer Viertelstunde“ — plus die Reife der Verdichtung); die Verengung erreicht die Box in
+Sekunden, wenn sie verbunden ist. Der ungünstige Fall R23 Schritt 3 (schon die ERSTE Viertelstunde bringt 480 kW) bleibt
+bis dahin offen — höchstens diese Viertelstunde und 10 Minuten (A20 bleibt ein benanntes Restrisiko). Ein Tag mit
+Mitgliedswechsel zählt im Takt wie in der Bilanz nicht (`struktur_geaendert`). Tage vor einem Mitgliedswechsel zählen
+mit (das Ungeregelte war größer) — das hält den Vorbehalt höher, nie niedriger.
 
 ## 9. Das Ladepark-Dokument je Box (IP-16)
 

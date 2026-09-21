@@ -355,6 +355,10 @@
                         <voltpilot.uems.plan-zustellung.enabled>false</voltpilot.uems.plan-zustellung.enabled>
                         <voltpilot.uems.verbund-bilanz.enabled>false</voltpilot.uems.verbund-bilanz.enabled>
                         <voltpilot.uems.vorbehalt.enabled>false</voltpilot.uems.vorbehalt.enabled>
+                        <!-- Der Vorbehalt im Viertelstunden-Takt (IP-13 Folge): im Testlauf aus, in
+                             PRODUKTION an. Wer ihn prueft, ruft VorbehaltViertelstundeLaeufer.lauf(jetzt)
+                             selbst. -->
+                        <voltpilot.uems.vorbehalt.viertelstunde.enabled>false</voltpilot.uems.vorbehalt.viertelstunde.enabled>
                         <!-- Der Grenzblatt-Anstoss (AP-15 IP-3 Folgepaket): im Testlauf aus,
                              in PRODUKTION an. Wer ihn prueft, ruft
                              LadeparkGrenzeLaeufer.lauf() selbst. -->

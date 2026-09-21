@@ -584,6 +584,15 @@ voltpilot:
     vorbehalt:
       enabled: ${VOLTPILOT_UEMS_VORBEHALT_ENABLED:true}
       cron: ${VOLTPILOT_UEMS_VORBEHALT_CRON:0 52 4 * * *}
+      # Derselbe Vorbehalt im VIERTELSTUNDEN-Takt (IP-13 Folge, R23 "die Cloud prueft nach jeder
+      # Viertelstunde"): 10 Minuten nach jedem Viertelstunden-Ende (Reife: Verdichter 5 min +
+      # Sicherheit 2 min + Transport) das Ungeregelte der reifen, vollstaendigen Viertelstunden von
+      # gestern und heute - NUR erhoehen (derselbe Weg wie oben), Senken/30 Tage/12 Monate bleiben
+      # beim Tageslauf. Haengt zusaetzlich an vorbehalt.enabled. Vorgabe AN, im Testlauf AUS
+      # (surefire); wer ihn prueft, ruft VorbehaltViertelstundeLaeufer.lauf(jetzt) selbst.
+      viertelstunde:
+        enabled: ${VOLTPILOT_UEMS_VORBEHALT_VIERTELSTUNDE_ENABLED:true}
+        cron: ${VOLTPILOT_UEMS_VORBEHALT_VIERTELSTUNDE_CRON:0 10/15 * * * *}
     # Grenzblatt-Anstoss (AP-15 IP-3 Folgepaket): stuendlich je Anlage mit Ladepark-Rahmen den heute
     # wirksamen Bezug gegen den zuletzt zugestellten vergleichen und nur bei einem Unterschied das
     # Ladepark-Dokument neu zustellen (Fassung/Bindung am Tageswechsel, Nachholen nach Ausfall).

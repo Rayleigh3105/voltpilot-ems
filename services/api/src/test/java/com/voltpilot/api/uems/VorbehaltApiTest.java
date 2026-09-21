@@ -23,6 +23,7 @@ import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Schritt;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -455,14 +456,245 @@ class VorbehaltApiTest {
                 Long.class, w.mandant())).isZero();
     }
 
+    // ============================================================================ der Viertelstunden-Takt (IP-13 Folge)
+
+    /** Die Viertelstunde, in der das Ungeregelte auf 450 kW steigt (10:00–10:15 Europe/Berlin, R23 Schritt 1). */
+    private static final Instant Q450 = Instant.parse("2027-10-20T08:00:00Z");
+
+    /**
+     * R23 als Ablauf mit gespeicherten Viertelstunden (AP-08) und dem Baustein der Bilanz: gestern und heute bis 10:00
+     * 430 kW Ungeregeltes (Netzpunkt 507 kW − Ladepark 77 kW), 10:00–10:15 steigt es auf 450 kW (Netzpunkt 527 kW).
+     * Nach der ERSTEN vollständigen Viertelstunde verengt der Takt: 10:15 Ende der Viertelstunde, 10:25 reif und
+     * geprüft — Vorbehalt 495 kW, Zweischritt, E-4 77 → 55 kW. Eine noch laufende Viertelstunde (10:15–10:30, schon
+     * mit 480 kW verdichtet) zählt nicht; zweimal derselbe Takt tut nichts doppelt.
+     */
+    @Test
+    void taktR23ErhoehtNachDerErstenVollstaendigenViertelstunde() throws Exception {
+        Gemessen g = gemessen("473");
+        Welt w = scharf(g.welt());
+        assertThat(kw(letztes(w), Grenzart.BEZUG, w.e4())).isEqualByComparingTo("77.0");
+        viertelstunde(g.netz(), Q450, "131.75");
+        viertelstunde(g.abgang(), Q450, "19.25");
+        // die laufende Viertelstunde 10:15–10:30 mit 480 kW (Netzpunkt 557 kW): noch nicht reif
+        viertelstunde(g.netz(), Q450.plusSeconds(900), "139.25");
+        viertelstunde(g.abgang(), Q450.plusSeconds(900), "19.25");
+        SimpleMeterRegistry reg = new SimpleMeterRegistry();
+        VorbehaltMetrik zaehler = new VorbehaltMetrik(metrik, reg);
+        zaehler.collect();
+        leer();
+
+        // 10:24:59 — die Viertelstunde 10:00–10:15 ist noch nicht reif (Verdichtung): nichts
+        assertThat(takt().lauf(Instant.parse("2027-10-20T08:24:59Z"))).isZero();
+        TenantContext.set(w.mandant());
+        assertThat(zeilen.zeilen(w.verbund())).isEmpty();
+        assertThat(topics()).isEmpty();
+
+        // 10:25 — reif: 450 × 1,1 = 495 kW > 473 kW
+        assertThat(takt().lauf(Instant.parse("2027-10-20T08:25:00Z"))).isEqualTo(1);
+        TenantContext.set(w.mandant());
+        SteuerungsverbundAnteilRepository.Vorbehalt vb = anteile.vorbehalt(w.verbund());
+        assertThat(vb.kw().get(Grenzart.BEZUG)).as("aus 450 kW, nicht aus der laufenden 480")
+                .isEqualByComparingTo("495.0");
+        assertThat(vb.kw().get(Grenzart.EINSPEISUNG)).isEqualByComparingTo("0");
+        assertThat(vb.von()).isEqualTo("Vorbehalt aus Messwerten");
+        DokumentZeile d = letztes(w);
+        assertThat(d.anlass()).isEqualTo("aendern");
+        assertThat(kw(d, Grenzart.BEZUG, w.e4())).isEqualByComparingTo("55.0");
+        assertThat(kw(d, Grenzart.BEZUG, w.e1())).isEqualByComparingTo("0.0");
+        assertThat(d.verengteBoxen()).containsExactly(w.e4().toString());
+        assertThat(d.schritt()).isEqualTo(Schritt.ZIEL);
+        assertThat(topics()).as("an beide Boxen, im selben Takt").hasSize(2);
+
+        TenantContext.set(w.mandant());
+        List<VorbehaltRepository.Zeile> z = zeilen.zeilen(w.verbund());
+        assertThat(z).hasSize(1);
+        assertThat(z.get(0).art()).isEqualTo("erhoeht");
+        assertThat(z.get(0).zustand()).isEqualTo("wirksam");
+        assertThat(z.get(0).altKw()).isEqualByComparingTo("473");
+        assertThat(z.get(0).hoechstwertKw()).isEqualByComparingTo("450");
+        assertThat(z.get(0).hoechstwertVon()).isEqualTo(Q450);
+        assertThat(z.get(0).zeitraumVon()).isEqualTo(LocalDate.parse("2027-10-19"));
+        assertThat(z.get(0).zeitraumBis()).isEqualTo(LocalDate.parse("2027-10-20"));
+        assertThat(z.get(0).messtage()).isEqualTo(2);
+        assertThat(z.get(0).anteile()).isEqualTo("veroeffentlicht");
+        Map<String, Object> p = root.queryForMap("SELECT neu::text AS neu, grund FROM steuerungsverbund_aenderung "
+                + "WHERE site_id = ? AND art = 'vorbehalt'", w.anlage());
+        assertThat(p.get("grund")).isEqualTo(VorbehaltDienst.GRUND_ERHOEHT);
+        JsonNode neu = MAPPER.readTree((String) p.get("neu"));
+        assertThat(neu.path("pruefung").asText()).isEqualTo("viertelstunde");
+        assertThat(neu.path("hoechstwert_von").asText()).isEqualTo(Q450.toString());
+        zaehler.collect();
+        assertThat(zaehlerstand(reg, w)).isEqualTo(1d);
+
+        // zweimal derselbe Takt — und der nächste: die Messung verlangt nicht mehr, nichts doppelt
+        leer();
+        assertThat(takt().lauf(Instant.parse("2027-10-20T08:25:00Z"))).isZero();
+        assertThat(takt().lauf(Instant.parse("2027-10-20T08:40:00Z"))).as("jetzt mit der 480er Viertelstunde")
+                .isEqualTo(1);
+        TenantContext.set(w.mandant());
+        assertThat(anteile.vorbehalt(w.verbund()).kw().get(Grenzart.BEZUG))
+                .as("B4: die nächste reife Viertelstunde bringt 480 kW — 528 kW > 495 kW, wieder selbsttätig")
+                .isEqualByComparingTo("528.0");
+        assertThat(zeilen.zeilen(w.verbund()).get(0).anteile())
+                .as("550 − 528 = 22 kW reichen nicht für die Rückfälle der Wallboxen (6 × 4,1 kW): nichts erweitert")
+                .isEqualTo("auslegung_passt_nicht");
+        leer();
+        assertThat(takt().lauf(Instant.parse("2027-10-20T08:40:00Z"))).isZero();
+        TenantContext.set(w.mandant());
+        assertThat(zeilen.zeilen(w.verbund())).hasSize(2);
+        assertThat(topics()).isEmpty();
+        assertThat(protokollVorbehalt(w)).isEqualTo(2);
+    }
+
+    /**
+     * Eine unvollständige Viertelstunde verändert nichts (B5); kommt sie vollständig nach (Nachlieferung, AP-07: der
+     * Verdichter bildet die Zeile neu), zählt sie im nächsten Takt — ohne dass jemand sie anstoßen muss.
+     */
+    @Test
+    void taktUnvollstaendigeViertelstundeNichtsSpaetankunftWirdNachgeholt() throws Exception {
+        Gemessen g = gemessen("473");
+        Welt w = scharf(g.welt());
+        viertelstunde(g.netz(), Q450, "131.75");
+        viertelstunde(g.abgang(), Q450, "19.25");
+        assertThat(root.update("UPDATE messreihe_viertelstunde SET menge_zustand = 'unvollständig', erhalten = 9 "
+                + "WHERE entity_id = ? AND intervall_beginn = ?", g.abgang(), Timestamp.from(Q450))).isEqualTo(1);
+        leer();
+
+        assertThat(takt().lauf(Instant.parse("2027-10-20T08:25:00Z"))).isZero();
+        TenantContext.set(w.mandant());
+        assertThat(anteile.vorbehalt(w.verbund()).kw().get(Grenzart.BEZUG)).isEqualByComparingTo("473");
+        assertThat(zeilen.zeilen(w.verbund())).isEmpty();
+        assertThat(topics()).isEmpty();
+        assertThat(protokollVorbehalt(w)).isZero();
+
+        // Spätankunft: die Werte der Box kommen nach, die Viertelstunde ist jetzt vollständig
+        assertThat(root.update("UPDATE messreihe_viertelstunde SET menge_zustand = 'vollständig', erhalten = 15, "
+                + "n_nachgeliefert = 6, zustellart = 'gemischt' WHERE entity_id = ? AND intervall_beginn = ?", g.abgang(),
+                Timestamp.from(Q450))).isEqualTo(1);
+        assertThat(takt().lauf(Instant.parse("2027-10-20T13:10:00Z"))).isEqualTo(1);
+        TenantContext.set(w.mandant());
+        assertThat(anteile.vorbehalt(w.verbund()).kw().get(Grenzart.BEZUG)).isEqualByComparingTo("495.0");
+        assertThat(zeilen.zeilen(w.verbund()).get(0).hoechstwertVon()).isEqualTo(Q450);
+        assertThat(kw(letztes(w), Grenzart.BEZUG, w.e4())).isEqualByComparingTo("55.0");
+    }
+
+    /**
+     * Der Takt senkt nie — nicht einmal als Vorschlag: gegen erklärte 500 kW verlangen 430 kW nur 473 kW. Das bleibt dem
+     * Tageslauf (mit 30 Messtagen und Freigabe).
+     */
+    @Test
+    void taktSchlaegtNieEtwasZumSenkenVor() throws Exception {
+        Gemessen g = gemessen("500");
+        Welt w = scharf(g.welt());
+        long vorher = dokumente(w);
+        leer();
+
+        assertThat(takt().lauf(Instant.parse("2027-10-20T08:25:00Z"))).isZero();
+
+        TenantContext.set(w.mandant());
+        assertThat(anteile.vorbehalt(w.verbund()).kw().get(Grenzart.BEZUG)).isEqualByComparingTo("500");
+        assertThat(zeilen.zeilen(w.verbund())).isEmpty();
+        assertThat(dokumente(w)).isEqualTo(vorher);
+        assertThat(topics()).isEmpty();
+        assertThat(protokollVorbehalt(w)).isZero();
+    }
+
+    /** Ohne Gemeinsame Steuerung: der Takt findet keine Anlage, schreibt keine Zeile. */
+    @Test
+    void taktOhneGemeinsameSteuerungKeineZeile() {
+        UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES ('Ohne Verbund, Takt') RETURNING id",
+                UUID.class);
+        root.update("INSERT INTO site (tenant_id, name) VALUES (?, 'Halle')", t);
+
+        takt().lauf(Instant.parse("2027-10-20T08:25:00Z"));
+
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_vorbehalt WHERE tenant_id = ?",
+                Long.class, t)).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_aenderung WHERE tenant_id = ?",
+                Long.class, t)).isZero();
+    }
+
     // ============================================================================ Gerüst
 
     private VorbehaltLaeufer laeufer() {
         return new VorbehaltLaeufer(admin, vorbehalt);
     }
 
-    /** AN-1 mit E-1 (führt) und E-4 (steuert mit), Stufe S1, erklärter Vorbehalt der Bezugsseite. */
+    private VorbehaltViertelstundeLaeufer takt() {
+        return new VorbehaltViertelstundeLaeufer(admin, vorbehalt);
+    }
+
+    private record Gemessen(Welt welt, UUID netz, UUID abgang) {}
+
+    /**
+     * Wie {@link #ahrenberg}, aber gemessen: E-4 steuert mit über DQ-10 (Abgangszähler Ladepark), am Netzpunkt DQ-2 der
+     * Hauptzähler; gestern und heute bis 10:00 Europe/Berlin vollständige Viertelstunden — Netzpunkt 507 kW Bezug
+     * (126,75 kWh), Ladepark 77 kW Bezug (19,25 kWh), also 430 kW Ungeregeltes.
+     */
+    private Gemessen gemessen(String vorbehaltKw) {
+        Welt w = ahrenberg(vorbehaltKw, true);
+        root.update("INSERT INTO unternehmen (tenant_id, name, zeitzone) VALUES (?, 'Kunststoffwerk Ahrenberg GmbH', "
+                + "'Europe/Berlin')", w.mandant());
+        UUID dq2 = root.queryForObject("SELECT data_source_id FROM steuerungsverbund_mitglied WHERE device_id = ?",
+                UUID.class, w.e1());
+        UUID dq10 = root.queryForObject("SELECT data_source_id FROM steuerungsverbund_mitglied WHERE device_id = ?",
+                UUID.class, w.e4());
+        UUID netz = messstelle(w, w.e1(), dq2, "MS-NZ", "126.75");
+        UUID abgang = messstelle(w, w.e4(), dq10, "MS-LP", "19.25");
+        return new Gemessen(w, netz, abgang);
+    }
+
+    /** Komponente an Box und Quelle, Mess-Selektion, Messstelle Wirkenergie Bezug, vollständige Viertelstunden. */
+    private static UUID messstelle(Welt w, UUID box, UUID quelle, String kennzeichen, String kwh) {
+        String kanal = "sunspec.model_203.totwhimp";
+        String k = kennzeichen + "-" + NR.get();
+        UUID komponente = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                + "entity_type, device_id, data_source_id, communication, connection_json, created_at) VALUES (?, ?, "
+                + "'modbus-generic', ?, 'modbus-generic', ?, ?, 'modbus_tcp', '{\"unit_id\":1}'::jsonb, "
+                + "'2020-01-01T00:00:00Z') RETURNING id", UUID.class, w.mandant(), w.anlage(), "Zähler " + k, box,
+                quelle);
+        root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 60, 1, now(), '2026.09.11.1', "
+                + "'test', 'pending_edge', 'energy_counter', 'fifteen_minute')", w.mandant(), w.anlage(), box,
+                komponente, kanal);
+        UUID geraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ?", UUID.class,
+                komponente);
+        UUID ms = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, ?, ?, 'gemessen', 'Strom', 'Wirkenergie', 'Bezug', 'kWh', "
+                + "'Zählerstand') RETURNING id", UUID.class, w.mandant(), k, "Zähler " + k);
+        root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, geraet_id, "
+                + "kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, actor_name, "
+                + "actor_art) VALUES (?,?,'Wirkenergie','Bezug',?,?,?,'counter','zaehlerstand','fuehrend',"
+                + "'2027-01-01T00:00:00Z',false,'2027-01-01T00:01:00Z','test','voltpilot')", w.mandant(), ms,
+                komponente, geraet, kanal);
+        // gestern (Europe/Berlin, 2027-10-19) ganz und heute bis 10:00 — 136 Viertelstunden
+        assertThat(root.update("INSERT INTO messreihe_viertelstunde (intervall_beginn, tenant_id, entity_id, "
+                + "messkanal, erhalten, erwartet, kadenz_s, kadenz_herkunft, endgueltig_ab, wertart, menge, "
+                + "menge_zustand) SELECT q, ?, ?, ?, 15, 15, 60, 'auswahl', q + interval '10095 minutes', 'counter', "
+                + "?::numeric, 'vollständig' FROM generate_series(TIMESTAMPTZ '2027-10-18T22:00:00Z', "
+                + "TIMESTAMPTZ '2027-10-20T07:45:00Z', interval '15 minutes') AS q", w.mandant(), komponente, kanal,
+                kwh)).isEqualTo(136);
+        return komponente;
+    }
+
+    /** Eine weitere vollständige Viertelstunde (oder eine vorhandene überschrieben) mit {@code kwh}. */
+    private static void viertelstunde(UUID komponente, Instant beginn, String kwh) {
+        root.update("INSERT INTO messreihe_viertelstunde (intervall_beginn, tenant_id, entity_id, messkanal, erhalten, "
+                + "erwartet, kadenz_s, kadenz_herkunft, endgueltig_ab, wertart, menge, menge_zustand) SELECT ?, "
+                + "tenant_id, entity_id, messkanal, 15, 15, 60, 'auswahl', ?::timestamptz + interval '10095 minutes', "
+                + "'counter', ?::numeric, 'vollständig' FROM messreihe_viertelstunde WHERE entity_id = ? LIMIT 1 "
+                + "ON CONFLICT DO NOTHING", Timestamp.from(beginn), Timestamp.from(beginn), kwh, komponente);
+        root.update("UPDATE messreihe_viertelstunde SET menge = ?::numeric WHERE entity_id = ? "
+                + "AND intervall_beginn = ?", kwh, komponente, Timestamp.from(beginn));
+    }
+
     private Welt ahrenberg(String vorbehaltKw) {
+        return ahrenberg(vorbehaltKw, false);
+    }
+
+    /** AN-1 mit E-1 (führt) und E-4 (steuert mit), Stufe S1, erklärter Vorbehalt der Bezugsseite. */
+    private Welt ahrenberg(String vorbehaltKw, boolean e4MitMesspunkt) {
         int nr = NR.incrementAndGet();
         UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class,
                 "Ahrenberg Vorbehalt #" + nr);
@@ -476,12 +708,15 @@ class VorbehaltApiTest {
         UUID dq2 = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, protokoll, adresse, "
                 + "geraete_ids, kadenz_s) VALUES (?, ?, 'DQ-2', 'modbus_tcp', ?, '{1}', 10) RETURNING id", UUID.class,
                 t, an, "10.1." + nr + ".2:502");
+        UUID dq10 = !e4MitMesspunkt ? null : root.queryForObject("INSERT INTO data_source (tenant_id, site_id, "
+                + "kennzeichen, protokoll, adresse, geraete_ids, kadenz_s) VALUES (?, ?, 'DQ-10', 'modbus_tcp', ?, "
+                + "'{1}', 10) RETURNING id", UUID.class, t, an, "10.1." + nr + ".10:502");
         TenantContext.set(t);
         UUID v = verbuende.einrichten(t, an, "test");
         verbuende.stufeSetzen(v, Stufe.BEOBACHTET);
         Instant ab = Instant.parse("2026-01-01T00:00:00Z");
         verbuende.mitgliedAufnehmen(t, v, e1, Rolle.FUEHRT, dq2, ab, null, "test");
-        verbuende.mitgliedAufnehmen(t, v, e4, Rolle.STEUERT_MIT, null, ab, null, "test");
+        verbuende.mitgliedAufnehmen(t, v, e4, Rolle.STEUERT_MIT, dq10, ab, null, "test");
         Welt w = new Welt(t, an, v, e1, e4);
         anteile.vorbehaltSetzen(v, BigDecimal.ZERO, new BigDecimal(vorbehaltKw), "betreiber@voltpilot.test");
         geraet(w, e1, "pv-generation", Grenzart.EINSPEISUNG, "100", "40");
