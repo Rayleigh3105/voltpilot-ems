@@ -1,0 +1,450 @@
+{
+  "_comment": [
+    "Die EINE Wahrheit der ANTEILE einer Gemeinsamen Steuerung (UEMS AP-15 IP-2, Nachweis NW-1; Regeln G2–G5, T4, E2 = A).",
+    "Die Prosa steht in steuerungsverbund.md. Wer eine Regel oder ein Vokabular ändert, ändert diese Datei UND alle Zwillinge:",
+    "Java uems/SteuerungsverbundAnteile + uems/SteuerungsverbundVokabular (SteuerungsverbundAnteilVectorsTest) und die",
+    "Python-Referenz services/optimization/tests/test_steuerungsverbund_referenz.py. Der Go-Zwilling der Box kommt mit IP-17.",
+    "Zahlen in kW, gerechnet in ganzen Zehntel-kW. Vektoren mit „quelle“ holen ihre Zahlen aus uems-referenzunternehmen.json 1.5 —",
+    "beide Zwillinge prüfen jeden Zeiger; nichts davon ist abgetippt."
+  ],
+  "schema_version": "1.0",
+  "herkunft": "UEMS AP-15 §4.3 (G2–G6), §4.7 (Y1), §4.9 (I1), §6.2, §8 IP-2; Fälle R1, R2, R3, R12, R18, R23; Kasten E2 = A (Ablehnung in beiden Richtungen); Entscheid 21.09.2026.",
+  "regeln_kurz": [
+    "Je Richtung: verteilbar = Grenze − Vorbehalt; verteilbar < 0 heißt vorbehalt_ueber_grenze (G2).",
+    "Jede Box bekommt mindestens ihren Geräte-Rückfall; passt die Summe der Rückfälle nicht in verteilbar: auslegung_passt_nicht — in BEIDEN Richtungen eine Ablehnung, keine Warnung (G3, E2 = A).",
+    "Der Rest geht zuerst an die mitsteuernden Boxen bis zur Nennleistung, anteilig nach Bedarf (Nennleistung − Rückfall); was dann bleibt, an die führende; was auch dann bleibt, bleibt ungenutzt (G4).",
+    "Abrunden, nie Aufrunden: jeder anteilige Zuschlag wird auf Zehntel-kW abgerundet; der Rundungsrest bleibt ungenutzt und wandert nicht weiter (G2).",
+    "Rundung zur sicheren Seite am Eingang: was die Grenze gibt (Grenze, Nennleistung), wird abgerundet; was sie belegt (Vorbehalt, Geräte-Rückfall), aufgerundet.",
+    "Übergangsstand = je Box das Kleinere aus alt und neu; eine Box, die nur in einem Stand vorkommt, steht dort mit 0. Zielstand erst nach der Quittung JEDER verengten Box; ist der Übergang schon der Zielstand, gibt es keinen zweiten Schritt (G5).",
+    "Die Box prüft jedes Anteils-Dokument: Mandant und Anlage (fremde_anlage), die eigene Kennung in BEIDEN Richtungen (box_fehlt_im_dokument), Epoche und Revision steigen nur (revision_aelter), je Richtung Summe ≤ verteilbar (summe_ueber_verteilbar) — in dieser Reihenfolge; dieselbe Revision noch einmal wird angenommen (T4, G5, Y1)."
+  ],
+  "zwillinge": {
+    "anteile": ["java: SteuerungsverbundAnteile.anteile", "python: test_steuerungsverbund_referenz.anteile"],
+    "uebergangsstand": ["java: SteuerungsverbundAnteile.uebergangsstand", "python: test_steuerungsverbund_referenz.uebergangsstand"],
+    "dokument_pruefen": ["java: SteuerungsverbundAnteile.dokumentPruefen", "python: test_steuerungsverbund_referenz.dokument_pruefen"],
+    "vokabulare": ["java: SteuerungsverbundVokabular", "python: test_steuerungsverbund_referenz.VOKABULARE"]
+  },
+  "_abweichungen": [
+    {
+      "feld": "zusage_pruefen",
+      "grund": "Die Zusage-Prüfung gehört zur Zuteilung auf Zeit (§4.8, Stufe S4, Fall R16, Matrixzeile A19). Mit E1 = A ist sie entworfen, aber nicht gebaut; IP-33/IP-34 stehen nicht in der verbindlichen Bau-Liste, und §4.8 verlangt sie für den ersten Umfang nicht. Die Gruppe kommt mit IP-33, falls der Captain nach dem Pilot so entscheidet."
+    },
+    {
+      "feld": "Go-Zwilling",
+      "grund": "Die Box rechnet mit IP-17 (Anteils-Dokument auf der Box); dann fährt ein dritter Zwilling diese Datei."
+    },
+    {
+      "feld": "TypeScript-Zwilling",
+      "grund": "Das Portal rechnet keine Anteile; Kunden-Fläche und Betreiber-Blatt (IP-23/IP-24) lesen sie von der Route. Seine Kundensätze stehen in frontend/portal/src/uemsGemeinsameSteuerung.ts (IP-25) und nennen keines dieser Wörter."
+    },
+    {
+      "feld": "Prüfung von G6 (vorgabe_signal_nicht_an_jeder_box)",
+      "grund": "IP-2 legt nur das Wort fest (Zuordnung Z3); die Prüfung beim Scharfschalten und ihr Test kommen mit IP-5 (R18)."
+    }
+  ],
+  "vokabulare": {
+    "rolle": ["fuehrt", "steuert_mit", "liest"],
+    "stufe": [
+      {"stufe": "S0", "code": "erklaert"},
+      {"stufe": "S1", "code": "beobachtet"},
+      {"stufe": "S2", "code": "geprueft"},
+      {"stufe": "S3", "code": "anteile_aktiv"},
+      {"stufe": null, "code": "angehalten"}
+    ],
+    "grenzart": ["einspeisung", "bezug", "netzbetreiber_vorgabe"],
+    "geraete_rueckfall": ["haelt_letzten_wert", "faellt_auf_wert", "laeuft_frei", "unbekannt"],
+    "auslegung_urteil": ["passt", "auslegung_passt_nicht", "vorbehalt_ueber_grenze"],
+    "ablehnung": [
+      "box_nicht_in_anlage",
+      "kein_netzanschluss",
+      "grenze_fehlt",
+      "faehigkeit_fehlt",
+      "nachweis_fehlt",
+      "auslegung_passt_nicht",
+      "fuehrende_box_misst_nicht",
+      "vorgabe_signal_nicht_an_jeder_box"
+    ],
+    "dokument_urteil": ["angenommen", "abgelehnt"],
+    "dokument_ablehnung": ["fremde_anlage", "box_fehlt_im_dokument", "revision_aelter", "summe_ueber_verteilbar"]
+  },
+  "nicht_gebaut": {
+    "stufe": [{"stufe": "S4", "code": "zuteilung_auf_zeit"}],
+    "grund": "E1 = A: die Zuteilung auf Zeit ist entworfen (§4.8), nicht gebaut; kein Zwilling kennt dieses Wort."
+  },
+  "anteile": [
+    {
+      "name": "R1 Einspeisung: Anteile 40/60 kW",
+      "richtung": "einspeisung",
+      "grenze_kw": 100,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40},
+        {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 60, "rueckfall_kw": 60}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 100.0, "summe_rueckfall_kw": 100.0, "anteile": {"E-1": 40.0, "E-4": 60.0}, "ungenutzt_kw": 0.0},
+      "quelle": {
+        "grenze_kw": "/netzanschluss_grenzen/0/einspeisegrenze_kw",
+        "erwartet": "/gemeinsame_steuerungen/0/auslegung/einspeisung",
+        "geraete_rueckfaelle": "einspeisung"
+      }
+    },
+    {
+      "name": "R1/R3 Bezug: Anteile 0/77 kW (Vorbehalt 1,1 × 430 = 473 kW)",
+      "richtung": "bezug",
+      "grenze_kw": 550,
+      "vorbehalt_kw": 473.0,
+      "mitglieder": [
+        {"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0},
+        {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 132, "rueckfall_kw": 24.6}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 77.0, "summe_rueckfall_kw": 24.6, "anteile": {"E-1": 0.0, "E-4": 77.0}, "ungenutzt_kw": 0.0},
+      "quelle": {
+        "grenze_kw": "/netzanschluss_grenzen/0/bezugsgrenze_kw",
+        "vorbehalt_kw": "/gemeinsame_steuerungen/0/auslegung/bezug/vorbehalt_grundlast_kw",
+        "erwartet": "/gemeinsame_steuerungen/0/auslegung/bezug",
+        "geraete_rueckfaelle": "bezug"
+      }
+    },
+    {
+      "name": "R2 wäre die Grenze 70 kW, mit Rückfallwert 20 kW an K-12: 40/30 kW",
+      "richtung": "einspeisung",
+      "grenze_kw": 70,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40},
+        {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 60, "rueckfall_kw": 20}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 70.0, "summe_rueckfall_kw": 60.0, "anteile": {"E-1": 40.0, "E-4": 30.0}, "ungenutzt_kw": 0.0},
+      "quelle": {
+        "grenze_kw": "/abnahmefaelle_ap15/faelle/1/gegeben/grenze_kw",
+        "erwartet": "/abnahmefaelle_ap15/faelle/1/gegeben/anteile"
+      }
+    },
+    {
+      "name": "R2 ohne Rückfallwert an K-12: Einspeisung auslegung_passt_nicht (40 + 60 > 70)",
+      "richtung": "einspeisung",
+      "grenze_kw": 70,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40},
+        {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 60, "rueckfall_kw": 60}
+      ],
+      "erwartet": {"urteil": "auslegung_passt_nicht", "ablehnung": "auslegung_passt_nicht", "verteilbar_kw": 70.0, "summe_rueckfall_kw": 100.0, "anteile": {}},
+      "quelle": {
+        "grenze_kw": "/abnahmefaelle_ap15/faelle/1/gegeben/grenze_kw",
+        "erwartet": "/abnahmefaelle_ap15/faelle/1/gegeben/ohne_rueckfallwert_an_k12"
+      }
+    },
+    {
+      "name": "E2 = A auch am Bezug: Ungeregeltes 480 kW → Vorbehalt 528 kW → verteilbar 22 kW < Rückfall der sechs Säulen 24,6 kW",
+      "richtung": "bezug",
+      "grenze_kw": 550,
+      "vorbehalt_kw": 528.0,
+      "mitglieder": [
+        {"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0},
+        {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 132, "rueckfall_kw": 24.6}
+      ],
+      "erwartet": {"urteil": "auslegung_passt_nicht", "ablehnung": "auslegung_passt_nicht", "verteilbar_kw": 22.0, "summe_rueckfall_kw": 24.6, "anteile": {}}
+    },
+    {
+      "name": "vorbehalt_ueber_grenze: Ungeregeltes 510 kW → Vorbehalt 561 kW > Bezugsgrenze 550 kW; beim Scharfschalten auslegung_passt_nicht",
+      "richtung": "bezug",
+      "grenze_kw": 550,
+      "vorbehalt_kw": 561.0,
+      "mitglieder": [
+        {"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0},
+        {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 132, "rueckfall_kw": 24.6}
+      ],
+      "erwartet": {"urteil": "vorbehalt_ueber_grenze", "ablehnung": "auslegung_passt_nicht", "verteilbar_kw": -11.0, "anteile": {}}
+    },
+    {
+      "name": "R12 neuer Stand: zweiter Wechselrichter an E-4, Rückfallwert 10 kW an K-1 → 10/90 kW",
+      "richtung": "einspeisung",
+      "grenze_kw": 100,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 10},
+        {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 90, "rueckfall_kw": 90}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 100.0, "summe_rueckfall_kw": 100.0, "anteile": {"E-1": 10.0, "E-4": 90.0}, "ungenutzt_kw": 0.0},
+      "quelle": {
+        "erwartet.anteile": "/abnahmefaelle_ap15/faelle/11/gegeben/neu"
+      }
+    },
+    {
+      "name": "R23 das Ungeregelte wächst auf 450 kW: Vorbehalt 495 kW → 0/55 kW",
+      "richtung": "bezug",
+      "grenze_kw": 550,
+      "vorbehalt_kw": 495.0,
+      "mitglieder": [
+        {"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0},
+        {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 132, "rueckfall_kw": 24.6}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 55.0, "summe_rueckfall_kw": 24.6, "anteile": {"E-1": 0.0, "E-4": 55.0}, "ungenutzt_kw": 0.0}
+    },
+    {
+      "name": "Abrunden, nie Aufrunden: 1,5 kW für zwei gleich bedürftige mitsteuernde Boxen → je 0,7 kW, 0,1 kW bleibt ungenutzt",
+      "hinweis": "konstruiert, keine Box der Referenzwelt. Aufgerundet (je 0,8 kW) wäre die Summe 100,1 kW > 100 kW verteilbar. Der Rundungsrest geht auch NICHT an die führende Box.",
+      "richtung": "einspeisung",
+      "grenze_kw": 100,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40},
+        {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 60, "rueckfall_kw": 28.5},
+        {"box": "B-3", "rolle": "steuert_mit", "nenn_kw": 61.5, "rueckfall_kw": 30}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 100.0, "summe_rueckfall_kw": 98.5, "anteile": {"B-1": 40.0, "B-2": 29.2, "B-3": 30.7}, "ungenutzt_kw": 0.1},
+      "aufgerundet_waere": {"anteile": {"B-1": 40.0, "B-2": 29.3, "B-3": 30.8}, "summe_kw": 100.1}
+    },
+    {
+      "name": "anteilig nach Bedarf: 30 kW Rest für Bedarf 40 und 20 kW → 20 und 10 kW",
+      "hinweis": "konstruiert",
+      "richtung": "einspeisung",
+      "grenze_kw": 90,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40},
+        {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 50, "rueckfall_kw": 10},
+        {"box": "B-3", "rolle": "steuert_mit", "nenn_kw": 30, "rueckfall_kw": 10}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 90.0, "summe_rueckfall_kw": 60.0, "anteile": {"B-1": 40.0, "B-2": 30.0, "B-3": 20.0}, "ungenutzt_kw": 0.0}
+    },
+    {
+      "name": "erst die mitsteuernde bis Nennleistung, dann die führende bis Nennleistung, der Rest bleibt ungenutzt",
+      "hinweis": "konstruiert",
+      "richtung": "bezug",
+      "grenze_kw": 200,
+      "vorbehalt_kw": 50,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0},
+        {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 30, "rueckfall_kw": 10}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 150.0, "summe_rueckfall_kw": 10.0, "anteile": {"B-1": 100.0, "B-2": 30.0}, "ungenutzt_kw": 20.0}
+    },
+    {
+      "name": "Rundung zur sicheren Seite am Eingang: Grenze 100,05 → 100,0; Vorbehalt 0,04 → 0,1; Rückfall 39,91 → 40,0; Nennleistung 60,09 → 60,0",
+      "hinweis": "konstruiert. Eingänge feiner als 0,1 kW runden so, dass verteilbar kleiner und die Mindestanteile größer werden — nie umgekehrt.",
+      "richtung": "einspeisung",
+      "grenze_kw": 100.05,
+      "vorbehalt_kw": 0.04,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 39.91},
+        {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 60.09, "rueckfall_kw": 20}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 99.9, "summe_rueckfall_kw": 60.0, "anteile": {"B-1": 40.0, "B-2": 59.9}, "ungenutzt_kw": 0.0}
+    },
+    {
+      "name": "Fehler: Geräte-Rückfall über der Nennleistung der Box",
+      "richtung": "einspeisung",
+      "grenze_kw": 100,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40},
+        {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 50, "rueckfall_kw": 60}
+      ],
+      "erwartet": {"fehler": true}
+    },
+    {
+      "name": "Fehler: eine Lese-Box ist kein Mitglied (T6: Lesen macht kein Mitglied)",
+      "richtung": "einspeisung",
+      "grenze_kw": 100,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40},
+        {"box": "B-2", "rolle": "liest", "nenn_kw": 0, "rueckfall_kw": 0}
+      ],
+      "erwartet": {"fehler": true}
+    },
+    {
+      "name": "Fehler: negativer Vorbehalt",
+      "richtung": "bezug",
+      "grenze_kw": 550,
+      "vorbehalt_kw": -1,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0}
+      ],
+      "erwartet": {"fehler": true}
+    }
+  ],
+  "uebergangsstand": [
+    {
+      "name": "R12 Zweischritt: 40/60 → Übergang 10/60 → Ziel 10/90 kW, nie mehr als 100",
+      "richtung": "einspeisung",
+      "alt": {"verteilbar_kw": 100.0, "anteile": {"E-1": 40.0, "E-4": 60.0}},
+      "neu": {"verteilbar_kw": 100.0, "anteile": {"E-1": 10.0, "E-4": 90.0}},
+      "erwartet": {"uebergang": {"E-1": 10.0, "E-4": 60.0}, "verengte_boxen": ["E-1"], "zweiter_schritt": true, "summe_alt_kw": 100.0, "summe_uebergang_kw": 70.0, "summe_neu_kw": 100.0},
+      "quelle": {
+        "alt.anteile": "/abnahmefaelle_ap15/faelle/11/gegeben/alt",
+        "neu.anteile": "/abnahmefaelle_ap15/faelle/11/gegeben/neu",
+        "erwartet.uebergang": "/abnahmefaelle_ap15/faelle/11/gegeben/uebergang"
+      }
+    },
+    {
+      "name": "R23 nur verengen: 0/77 → 0/55 kW — der Übergang IST der Zielstand, kein zweiter Schritt",
+      "richtung": "bezug",
+      "alt": {"verteilbar_kw": 77.0, "anteile": {"E-1": 0.0, "E-4": 77.0}},
+      "neu": {"verteilbar_kw": 55.0, "anteile": {"E-1": 0.0, "E-4": 55.0}},
+      "erwartet": {"uebergang": {"E-1": 0.0, "E-4": 55.0}, "verengte_boxen": ["E-4"], "zweiter_schritt": false, "summe_alt_kw": 77.0, "summe_uebergang_kw": 55.0, "summe_neu_kw": 55.0}
+    },
+    {
+      "name": "nur erweitern: 0/55 → 0/77 kW — Übergang = alter Stand, niemand muss quittieren",
+      "richtung": "bezug",
+      "alt": {"verteilbar_kw": 55.0, "anteile": {"E-1": 0.0, "E-4": 55.0}},
+      "neu": {"verteilbar_kw": 77.0, "anteile": {"E-1": 0.0, "E-4": 77.0}},
+      "erwartet": {"uebergang": {"E-1": 0.0, "E-4": 55.0}, "verengte_boxen": [], "zweiter_schritt": true, "summe_alt_kw": 55.0, "summe_uebergang_kw": 55.0, "summe_neu_kw": 77.0}
+    },
+    {
+      "name": "eine Box kommt hinzu: wer nur im neuen Stand steht, hat im Übergang 0 kW",
+      "hinweis": "konstruiert",
+      "richtung": "einspeisung",
+      "alt": {"verteilbar_kw": 100.0, "anteile": {"B-1": 50.0, "B-2": 50.0}},
+      "neu": {"verteilbar_kw": 100.0, "anteile": {"B-1": 30.0, "B-2": 40.0, "B-3": 30.0}},
+      "erwartet": {"uebergang": {"B-1": 30.0, "B-2": 40.0, "B-3": 0.0}, "verengte_boxen": ["B-1", "B-2"], "zweiter_schritt": true, "summe_alt_kw": 100.0, "summe_uebergang_kw": 70.0, "summe_neu_kw": 100.0}
+    },
+    {
+      "name": "eine Box geht: wer nur im alten Stand steht, hat im Übergang 0 kW und muss quittieren",
+      "hinweis": "konstruiert",
+      "richtung": "einspeisung",
+      "alt": {"verteilbar_kw": 100.0, "anteile": {"B-1": 30.0, "B-2": 40.0, "B-3": 30.0}},
+      "neu": {"verteilbar_kw": 100.0, "anteile": {"B-1": 50.0, "B-2": 50.0}},
+      "erwartet": {"uebergang": {"B-1": 30.0, "B-2": 40.0, "B-3": 0.0}, "verengte_boxen": ["B-3"], "zweiter_schritt": true, "summe_alt_kw": 100.0, "summe_uebergang_kw": 70.0, "summe_neu_kw": 100.0}
+    }
+  ],
+  "dokument_pruefen": [
+    {
+      "name": "R12 Übergangsstand, Revision 8 nach 7: angenommen",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-1"},
+      "stand": {"epoche": 1, "revision": 7},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 8,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 10.0, "E-4": 60.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "angenommen", "grund": null}
+    },
+    {
+      "name": "R12 Zielstand, Revision 9: angenommen",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 1, "revision": 8},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 9,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 10.0, "E-4": 90.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "angenommen", "grund": null}
+    },
+    {
+      "name": "erstes Dokument, die Box hat noch keinen Stand: angenommen",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": null,
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 1,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "angenommen", "grund": null}
+    },
+    {
+      "name": "dieselbe Revision noch einmal (gespeichert, nach Wiederverbindung): angenommen",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 1, "revision": 9},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 9,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 10.0, "E-4": 90.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "angenommen", "grund": null}
+    },
+    {
+      "name": "A10/A18 niedrigere Revision derselben Epoche (Datenbank zurückgespielt): revision_aelter",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 1, "revision": 9},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 7,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "revision_aelter"}
+    },
+    {
+      "name": "ältere Epoche mit höherer Revision: revision_aelter",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 2, "revision": 1},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 12,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "revision_aelter"}
+    },
+    {
+      "name": "neue Epoche nach dem Scharfschalten, Revision beginnt bei 1: angenommen",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 1, "revision": 9},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 2, "revision": 1,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 10.0, "E-4": 90.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "angenommen", "grund": null}
+    },
+    {
+      "name": "T4 fremde Anlage (AN-2 hinter NA-2): fremde_anlage",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 1, "revision": 9},
+      "dokument": {"mandant": "U", "anlage": "AN-2", "epoche": 1, "revision": 10,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 10.0, "E-4": 90.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "fremde_anlage"}
+    },
+    {
+      "name": "T4 fremder Mandant: fremde_anlage",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": null,
+      "dokument": {"mandant": "X", "anlage": "AN-1", "epoche": 1, "revision": 1,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "fremde_anlage"}
+    },
+    {
+      "name": "T4 die eigene Kennung fehlt im Dokument: box_fehlt_im_dokument",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4′"},
+      "stand": null,
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 10,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "box_fehlt_im_dokument"}
+    },
+    {
+      "name": "die eigene Kennung fehlt nur am Bezug — unbekannt ist keine Null: box_fehlt_im_dokument",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": null,
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 1,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "box_fehlt_im_dokument"}
+    },
+    {
+      "name": "Einspeisung 40 + 70 = 110 kW > 100 kW verteilbar: summe_ueber_verteilbar",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 1, "revision": 9},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 10,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 70.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "summe_ueber_verteilbar"}
+    },
+    {
+      "name": "Bezug 0,1 + 77 = 77,1 kW > 77 kW verteilbar: summe_ueber_verteilbar",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-1"},
+      "stand": {"epoche": 1, "revision": 9},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 10,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.1, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "summe_ueber_verteilbar"}
+    },
+    {
+      "name": "Reihenfolge: fremde Anlage zuerst, auch wenn Revision und Summe ebenfalls nicht stimmen",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 1, "revision": 9},
+      "dokument": {"mandant": "U", "anlage": "AN-2", "epoche": 1, "revision": 3,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 70.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "fremde_anlage"}
+    },
+    {
+      "name": "Reihenfolge: ältere Revision vor zu großer Summe",
+      "identitaet": {"mandant": "U", "anlage": "AN-1", "box": "E-4"},
+      "stand": {"epoche": 1, "revision": 9},
+      "dokument": {"mandant": "U", "anlage": "AN-1", "epoche": 1, "revision": 3,
+        "verteilbar": {"einspeisung_kw": 100.0, "bezug_kw": 77.0},
+        "anteile": {"einspeisung": {"E-1": 40.0, "E-4": 70.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}},
+      "erwartet": {"urteil": "abgelehnt", "grund": "revision_aelter"}
+    }
+  ]
+}
