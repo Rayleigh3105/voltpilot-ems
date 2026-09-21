@@ -46,17 +46,39 @@ final class MessstelleBeobachtung {
      */
     static Ergebnis ableiten(QuelleZeile fuehrend, Werte werte, long kadenzS, String einheit,
             Instant zeitpunkt, ZoneId zeitzone) {
-        Instant letzterGuterWert = werte == null ? null : werte.letzterGuterWert();
-        ZustandAbleitung.LiefertDatenErgebnis e = ZustandAbleitung.liefertDaten(
-                new ZustandAbleitung.LiefertDatenEingang(fuehrend != null, letzterGuterWert,
-                        werte != null && werte.jeEinWert(), kadenzS, zeitpunkt, zeitzone));
+        // Der Zustand spricht über die REIHE: nur zugeordnete Werte zählen (dasselbe Kriterium wie die Werte-Karte).
+        ZustandAbleitung.LiefertDatenErgebnis e = liefert(fuehrend, werte == null ? null : werte.nurReihe(),
+                kadenzS, zeitpunkt, zeitzone);
+        // Die Box liefert, die Reihe nicht: die Werte kommen an, gehören aber zu keiner Reihe — das wird gesagt,
+        // nicht verschwiegen und nicht als „liefert“ ausgegeben. Keine Zahl ändert sich (der letzte Wert bleibt).
+        boolean nichtZugeordnet = e.zustand() != ZustandAbleitung.LiefertDaten.LIEFERT
+                && liefert(fuehrend, werte, kadenzS, zeitpunkt, zeitzone).zustand()
+                        == ZustandAbleitung.LiefertDaten.LIEFERT;
         String einbau = fuehrend == null ? null : fuehrend.quelle().einbau();
         // Ohne Quelle gibt es keinen Kanal — also auch keine Kadenz und kein Fenster. Die Vorgabe,
         // mit der die Ableitung gerufen wurde, ist eine RECHENGRÖSSE, keine Auskunft: sie bleibt drin.
         MessstelleDto.RegisterBeobachtung b = new MessstelleDto.RegisterBeobachtung(
-                e.zustand().code(), satz(e, einbau), MessstelleService.zeit(e.seit()),
-                fuehrend == null ? null : e.toleranzS(), fuehrend == null ? null : kadenzS, einbau);
+                e.zustand().code(), nichtZugeordnet ? SATZ_NICHT_ZUGEORDNET : satz(e, einbau),
+                MessstelleService.zeit(e.seit()),
+                fuehrend == null ? null : e.toleranzS(), fuehrend == null ? null : kadenzS, einbau,
+                nichtZugeordnet ? NICHT_ZUGEORDNET : null);
         return new Ergebnis(b, letzterWert(werte, einheit, fuehrend == null ? null : fuehrend.quelle().anteil()));
+    }
+
+    /** Das Wort von {@code beobachtung.zuordnung}: Werte kommen an der Box an, gehören aber zu keiner Reihe. */
+    static final String NICHT_ZUGEORDNET = "nicht_zugeordnet";
+
+    /**
+     * Der Kundensatz dazu — sagt, was das System sieht, ohne Technikwort. Die Werte-Karte spricht denselben
+     * Anfang ({@code werteOhneReihe.ts}); den Weg nennt nur sie, die Liste hat dafür keinen Platz.
+     */
+    static final String SATZ_NICHT_ZUGEORDNET = "Daten kommen an – noch keiner Messreihe zugeordnet";
+
+    private static ZustandAbleitung.LiefertDatenErgebnis liefert(QuelleZeile fuehrend, Werte werte, long kadenzS,
+            Instant zeitpunkt, ZoneId zeitzone) {
+        return ZustandAbleitung.liefertDaten(new ZustandAbleitung.LiefertDatenEingang(fuehrend != null,
+                werte == null ? null : werte.letzterGuterWert(), werte != null && werte.jeEinWert(), kadenzS,
+                zeitpunkt, zeitzone));
     }
 
     /**

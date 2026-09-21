@@ -767,10 +767,11 @@ class FunktionApiTest {
                 + "actor_art) VALUES (?,?,'Wirkenergie','Bezug',?,?,?,'counter','zaehlerstand','fuehrend',?,false,?,"
                 + "'test','voltpilot')", t, messstelle, zaehler, geraet, ENERGIE_BEZUG,
                 Timestamp.from(Instant.parse("2024-03-12T00:00:00Z")), Timestamp.from(Instant.parse("2024-03-12T00:01:00Z")));
+        // Ein zugeordneter Wert (Reihe der Komponente, führend) — nur er zählt als „liefert“ im Register.
         root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, raw_numeric, "
-                + "decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) VALUES "
-                + "(now() - interval '30 seconds', ?, ?, ?, ?, 1000, 1000, 'good', '2026.08.26.3', ?, 'counter')",
-                t, site, box, ENERGIE_BEZUG, NR.incrementAndGet());
+                + "decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind, entity_id, role) VALUES "
+                + "(now() - interval '30 seconds', ?, ?, ?, ?, 1000, 1000, 'good', '2026.08.26.3', ?, 'counter', ?, "
+                + "'fuehrend')", t, site, box, ENERGIE_BEZUG, NR.incrementAndGet(), zaehler);
     }
 
     /** Teilnahmen, Funktionen und Ruhe-Einträge des Kundenbereichs als Text — der Vergleich „nichts geschrieben“. */

@@ -2291,6 +2291,8 @@ export interface MessstelleWerte {
   version: number | null;
   quellen: MessstelleWerteQuelle[];
   werte: MessstelleWerteWert[];
+  /** `nicht_zugeordnet`: im Zeitraum kamen an der Box Werte an, die Reihe trägt keinen; die Schritte bleiben. */
+  zuordnung: MessstelleZuordnung | null;
 }
 
 /**
@@ -5022,7 +5024,15 @@ export interface MessstelleRegisterBeobachtung {
   toleranz_s: number | null;
   kadenz_s: number | null;
   geraet: string | null;
+  /**
+   * Nur im Fall „Werte kommen an der Box an, gehören aber zu keiner Reihe“ (der Komponente fehlt die
+   * Datenquelle): `zustand` spricht über die Reihe, `text` sagt den Fall, `letzter_wert` bleibt der der Box.
+   */
+  zuordnung?: MessstelleZuordnung;
 }
+
+/** „Werte kommen an, gehören aber zu keiner Messreihe“ — dasselbe Wort im Register und an der Werte-Route. */
+export type MessstelleZuordnung = 'nicht_zugeordnet';
 
 /**
  * Der letzte Wert mit Qualität „gut“ der führenden Quelle. Genau eines von `wert` und `text` ist

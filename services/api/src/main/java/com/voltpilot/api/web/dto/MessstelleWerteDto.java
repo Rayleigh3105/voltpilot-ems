@@ -30,7 +30,8 @@ public final class MessstelleWerteDto {
             String zeitzoneHerkunft,
             Integer version,
             List<Quelle> quellen,
-            List<Wert> werte) {}
+            List<Wert> werte,
+            String zuordnung) {}
 
     /** Die Messstelle und ihre Hauptgröße — jede Zahl der Antwort steht in {@code einheit}. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

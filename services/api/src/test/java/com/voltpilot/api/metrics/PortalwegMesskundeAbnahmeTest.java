@@ -483,6 +483,21 @@ class PortalwegMesskundeAbnahmeTest {
                 + (mitMenge.isEmpty() ? werte.path("werte").path(0) : mitMenge.get(0)));
         assertThat(mitMenge).as("Viertelstunden der Werte-Karte mit Menge").isNotEmpty();
         assertThat(mitMenge.get(0).path("erhalten").asInt()).as("erhaltene Werte").isGreaterThan(0);
+        // (5) Nach der Übernahme gehören die Werte zur Reihe: weder das Register noch die Werte-Karte sagen
+        // „noch keiner Messreihe zugeordnet“ (Messstelle liefert Daten ehrlich).
+        assertThat(werte.path("zuordnung").isNull()).as("Werte-Karte ohne zuordnung").isTrue();
+        JsonNode reg = ok(ruf(false, HttpMethod.GET, "/api/v1/messstellen?stichtag=" + uhr.instant(), null), 200)
+                .body();
+        List<JsonNode> zeile = new ArrayList<>();
+        reg.path("register").forEach(z -> {
+            if (assistentMs.equals(z.path("kennzeichen").asText())) {
+                zeile.add(z);
+            }
+        });
+        befund("Register der Assistenten-Messstelle", zeile);
+        assertThat(zeile).hasSize(1);
+        assertThat(zeile.get(0).path("beobachtung").has("zuordnung")).as("Register ohne zuordnung").isFalse();
+        assertThat(zeile.get(0).at("/beobachtung/zustand").asText()).isIn("liefert", "liefert_nicht_seit");
         String metrik = metrik(uhr);
         befund("Messkunden-Metrik", metrik);
         assertThat(metrik).as("Messkunde nicht mehr „nie“").contains("zustand=\"nie\"} 0.0");

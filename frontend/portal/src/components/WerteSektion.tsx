@@ -78,6 +78,7 @@ import { ErrorState, Skeleton } from './States';
 import { VpDatePicker } from './VpDatePicker';
 import { VersionenDialog, VersionenEinstieg } from './WertVersionen';
 import { WerteKarte, WerteListe } from './WerteKarte';
+import { ZUORDNUNG_ETIKETT, ZUORDNUNG_SATZ, zuordnungDerWerte } from '../werteOhneReihe';
 
 const ARTEN = ZEITRAEUME.map((id) => ({ id, label: UEMS_ZEITRAEUME[id] }));
 
@@ -256,6 +257,8 @@ export function WerteSektion({
   const weg = leer ? ohneQuelleWeg(quelle, anfragen.liste.bis, heute, onQuelleZuordnen !== undefined, medium) : null;
   const e = aktuell?.karte ? einstieg(aktuell.karte) : null;
   const hinweis = aktuell?.karte ? versionHinweis(aktuell.karte, gewaehlt) : null;
+  // Werte kommen an der Box an, gehören aber zu keiner Reihe: gesagt statt als „keine Werte“ gedeutet.
+  const zuordnung = aktuell ? zuordnungDerWerte(aktuell.karte, aktuell.liste) : null;
   const frueher = hinweis !== null && gewaehlt !== aktuell?.karte?.werte[0]?.versionen;
   // Die Zone steht, sobald EINE Antwort da ist; beim Blättern bleibt die Zeile stehen, statt zu springen.
   const zone = geladen ? zeitenKopf(geladen.karte ?? geladen.liste, standortName) : null;
@@ -352,6 +355,12 @@ export function WerteSektion({
           <WerteLeer leer={leer} weg={weg} onAb={(tag) => waehle(art, wertAm(art, tag))} onQuelleZuordnen={onQuelleZuordnen} />
         ) : (
           <>
+            {zuordnung && (
+              <section className="vp-wk-zuordnung" role="status" aria-label={ZUORDNUNG_ETIKETT} data-testid="werte-zuordnung">
+                <h3 className="vp-wk-zuordnung-titel">{ZUORDNUNG_ETIKETT}</h3>
+                <p>{ZUORDNUNG_SATZ}</p>
+              </section>
+            )}
             {hinweis && (
               <p className="vp-wk-version" role="status" data-testid="werte-version">
                 <span>{hinweis}</span>

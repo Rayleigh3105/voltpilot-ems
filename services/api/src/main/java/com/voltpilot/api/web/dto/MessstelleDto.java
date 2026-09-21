@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -194,10 +195,16 @@ public final class MessstelleDto {
      * <p>{@code geraet} ist der Einbau der führenden Quelle (Z-5b) — er steht auch im Satz, sobald
      * eine Größe nach einem Zählerwechsel noch auf ihre ersten Werte wartet („Wartet auf erste
      * Daten von Z-5b“); {@code null}, wenn keine Quelle gebunden ist.
+     *
+     * <p>{@code zustand} spricht über die REIHE der Messstelle — nur zugeordnete Werte zählen, wie in der
+     * Werte-Karte. {@code zuordnung} = {@code nicht_zugeordnet}, wenn an der Box Werte ankommen (sie
+     * „liefert“), die zu keiner Reihe gehören, während die Reihe selbst nicht liefert; {@code text} sagt das
+     * dann. Ohne diesen Fall fehlt das Feld in der Antwort — eine Zeile mit zugeordneten Werten bleibt
+     * Zeichen für Zeichen, wie sie war.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegisterBeobachtung(String zustand, String text, OffsetDateTime seit, Long toleranzS,
-            Long kadenzS, String geraet) {}
+            Long kadenzS, String geraet, @JsonInclude(JsonInclude.Include.NON_NULL) String zuordnung) {}
 
     /**
      * Der letzte Wert mit Qualität „gut“ der führenden Quelle — {@code null}, solange es keinen

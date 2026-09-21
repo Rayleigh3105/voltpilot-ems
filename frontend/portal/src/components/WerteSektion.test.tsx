@@ -15,6 +15,7 @@ import {
   ohneQuelleViertelstunden,
 } from '../test/werteKarteFixtures';
 import { MESSSTELLE_GIBT_ES_NICHT, VERLAUF_NICHT_ABRUFBAR, WERTE_NICHT_ABRUFBAR } from '../uemsOberflaechen';
+import { ZUORDNUNG_ETIKETT, ZUORDNUNG_SATZ, zuordnungDerWerte } from '../werteOhneReihe';
 import { WerteSektion } from './WerteSektion';
 
 /**
@@ -234,5 +235,38 @@ describe('WerteSektion · warum eine Zahl fehlt: Auskunft statt Fehlermeldung, L
     expect(await screen.findByText(WERTE_NICHT_ABRUFBAR, undefined, WARTEN)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
     expect(await screen.findByTestId('werte-karte', undefined, WARTEN)).toHaveTextContent(/720\skWh/);
+  });
+});
+
+describe('WerteSektion · Werte kommen an, gehören aber zu keiner Messreihe (Messstelle liefert Daten ehrlich)', () => {
+  const mitZuordnung = (zuordnung: MessstelleWerte['zuordnung']) =>
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => ({
+      ...antwortFuer(raster, von, bis),
+      zuordnung,
+    }));
+
+  it('die Route sagt `nicht_zugeordnet`: Titel und Satz mit dem Weg über der Karte — die Zahlen darunter bleiben', async () => {
+    mitZuordnung('nicht_zugeordnet');
+    zeige();
+    const hinweis = await screen.findByTestId('werte-zuordnung', {}, WARTEN);
+    expect(within(hinweis).getByRole('heading').textContent).toBe(ZUORDNUNG_ETIKETT);
+    expect(hinweis.textContent).toContain('Schritt 2 „Datenquellen aus Ihren Geräten“');
+    expect(hinweis.textContent).toContain('bleiben ohne Messreihe');
+    expect(hinweis.querySelector('button')).toBeNull();
+    expect(screen.queryByTestId('werte-leer')).toBeNull();
+  });
+
+  it('ohne den Fall (null oder ein Bestand ohne das Feld) steht kein Hinweis', async () => {
+    mitZuordnung(null);
+    zeige();
+    await screen.findAllByTestId('verlauf-schritt', {}, WARTEN);
+    expect(screen.queryByTestId('werte-zuordnung')).toBeNull();
+  });
+
+  it('der Satz spricht Messwelt-Sprache: kein Technikwort, nichts über Steuern oder Geld', () => {
+    for (const satz of [ZUORDNUNG_ETIKETT, ZUORDNUNG_SATZ]) {
+      expect(satz).not.toMatch(/entity|Rolle|Writer|Komponente|steuer|Steuer|€|Euro|Erlös|Kosten/);
+    }
+    expect(zuordnungDerWerte(undefined, null)).toBeNull();
   });
 });

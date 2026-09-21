@@ -231,7 +231,49 @@ public class MessstelleWerteService {
                         l.haupt().groesse(), l.haupt().richtung(), l.haupt().einheit(), l.haupt().wertart()),
                 z.raster().wort(), MessstelleWerteRegeln.iso(z.von(), zone.id()),
                 MessstelleWerteRegeln.iso(z.bis(), zone.id()), zone.id().getId(), zone.herkunft(), form.version(),
-                quellen(l), List.copyOf(werte));
+                quellen(l), List.copyOf(werte), l.ablesung() != null ? null : zuordnung(l.imZeitraum(), z));
+    }
+
+    /**
+     * {@code nicht_zugeordnet}, wenn im Zeitraum an der Box gute Werte einer führenden Bindung ankamen, ihre Reihe
+     * aber keinen einzigen trägt — die Werte kommen an, gehören aber zu keiner Reihe (der Komponente fehlt die
+     * Datenquelle). Sonst {@code null}. Dieselben zwei Kriterien wie das Register
+     * ({@link MessstelleRegisterRepository#werte}): die Box über die Mess-Selektion, die Reihe über
+     * {@code entity_id} + Rolle nicht {@code spiegel}. Kein Schritt, keine Zahl und kein Grund ändert sich — die
+     * Schritte sagen weiter, was die Reihe hat; das Feld sagt dazu, was die Box sieht.
+     */
+    private String zuordnung(List<Quelle> imZeitraum, Zeitraum z) {
+        if (imZeitraum.isEmpty()) {
+            return null;
+        }
+        UUID[] komponenten = imZeitraum.stream().map(Quelle::entityId).toArray(UUID[]::new);
+        String[] kanaele = imZeitraum.stream().map(Quelle::kanal).toArray(String[]::new);
+        Timestamp[] von = imZeitraum.stream().map(q -> Timestamp.from(
+                q.gueltigAb().isAfter(z.von()) ? q.gueltigAb() : z.von())).toArray(Timestamp[]::new);
+        Timestamp[] bis = imZeitraum.stream().map(q -> Timestamp.from(
+                q.gueltigBis() != null && q.gueltigBis().isBefore(z.bis()) ? q.gueltigBis() : z.bis()))
+                .toArray(Timestamp[]::new);
+        Boolean an = jdbc.query(con -> {
+            var ps = con.prepareStatement("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM unnest(?::uuid[], ?::text[], ?::timestamptz[], ?::timestamptz[])
+                                   AS b(komponente, kanal, von, bis)
+                          JOIN device_measurement_selection d ON d.entity_id = b.komponente AND d.point_key = b.kanal
+                         WHERE EXISTS (SELECT 1 FROM device_measurement_sample s
+                                        WHERE s.device_id = d.device_id AND s.point_key = b.kanal
+                                          AND s.quality = 'good' AND s.time >= b.von AND s.time < b.bis)
+                           AND NOT EXISTS (SELECT 1 FROM device_measurement_sample s
+                                        WHERE s.entity_id = b.komponente AND s.point_key = b.kanal
+                                          AND s.entity_id IS NOT NULL AND s.role IS DISTINCT FROM 'spiegel'
+                                          AND s.time >= b.von AND s.time < b.bis))
+                    """);
+            ps.setArray(1, con.createArrayOf("uuid", komponenten));
+            ps.setArray(2, con.createArrayOf("text", kanaele));
+            ps.setArray(3, con.createArrayOf("timestamptz", von));
+            ps.setArray(4, con.createArrayOf("timestamptz", bis));
+            return ps;
+        }, rs -> rs.next() && rs.getBoolean(1));
+        return Boolean.TRUE.equals(an) ? MessstelleBeobachtung.NICHT_ZUGEORDNET : null;
     }
 
     /**
@@ -427,7 +469,7 @@ public class MessstelleWerteService {
                         haupt.richtung(), haupt.einheit(), haupt.wertart()),
                 "woche", MessstelleWerteRegeln.iso(ab, zone.id()), MessstelleWerteRegeln.iso(ende, zone.id()),
                 zone.id().getId(), zone.herkunft(), null, quellen(imZeitraum(fuehrend, ab, ende), zone.id()),
-                List.copyOf(werte));
+                List.copyOf(werte), null);
     }
 
     /** Eine Woche mit ihrer Reihe: der freie Zeitraum der Regel — ohne Zahl, wenn eine Viertelstunde später korrigiert ist. */

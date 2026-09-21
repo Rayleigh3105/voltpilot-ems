@@ -21110,7 +21110,7 @@ components:
       type: object
       description: >
         Die Beobachtung EINER Größe (AP-04 IP-15) - abgeleitet, nie gespeichert und nie geraten.
-        `zustand` ist eines der vier Wörter des Zustandsvertrags, `text` der Kundensatz dazu;
+        `zustand` ist eines der vier Wörter des Zustandsvertrags über die REIHE, `text` der Kundensatz dazu;
         `seit` trägt nur liefert_nicht_seit (ein Satz ohne Zeitpunkt wäre eine halbe Aussage).
         `toleranz_s` ist das angewandte Fenster min(max(3 x kadenz_s, 300), 86400) - die Kante
         gehört zu „liefert“. ⚠ 3 x Kadenz ist die BEOBACHTUNG; 2 x Kadenz ist die LÜCKE, eine
@@ -21124,6 +21124,15 @@ components:
         toleranz_s: { type: integer, format: int64, nullable: true, description: "null bei keine_datenquelle - ohne Kanal ist kein Fenster bekannt." }
         kadenz_s: { type: integer, format: int64, nullable: true, description: "Die erwartete Häufigkeit des Kanals (Mess-Selektion, sonst Katalog); null bei keine_datenquelle." }
         geraet: { type: string, nullable: true, description: "Der Einbau der führenden Quelle (Z-5b); null ohne Quelle.", example: Z-5b }
+        zuordnung:
+          type: string
+          enum: [nicht_zugeordnet]
+          description: >
+            Nur vorhanden, wenn an der Box Werte ankommen (sie „liefert“ nach derselben Toleranz), die zu keiner
+            Reihe gehören, während die Reihe selbst nicht liefert - der Komponente fehlt die Datenquelle.
+            `zustand` spricht immer über die REIHE (nur zugeordnete Werte, dasselbe Kriterium wie die
+            Werte-Karte), `text` sagt dann „Daten kommen an – noch keiner Messreihe zugeordnet“, `letzter_wert`
+            bleibt der der Box. Fehlt das Feld, ist die Zeile Zeichen für Zeichen die von vorher.
     MessstelleRegisterWert:
       type: object
       description: >
@@ -23590,7 +23599,7 @@ components:
     MessstelleWerte:
       type: object
       description: Das Lese-Modell „Werte je Messstelle“ (AP-08 IP-9). Jede Zahl steht in `messstelle.einheit`.
-      required: [messstelle, raster, von, bis, zeitzone, zeitzone_herkunft, version, quellen, werte]
+      required: [messstelle, raster, von, bis, zeitzone, zeitzone_herkunft, version, quellen, werte, zuordnung]
       properties:
         messstelle: { $ref: "#/components/schemas/MessstelleWerteMessstelle" }
         raster: { type: string, enum: [viertelstunde, stunde, tag, monat, jahr] }
@@ -23601,6 +23610,15 @@ components:
         version: { type: integer, nullable: true }
         quellen: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteQuelle" } }
         werte: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteWert" } }
+        zuordnung:
+          type: string
+          nullable: true
+          enum: [nicht_zugeordnet]
+          description: >
+            nicht_zugeordnet, wenn im Zeitraum an der Box gute Werte einer führenden Bindung ankamen, die Reihe
+            der Messstelle aber keinen trägt (der Komponente fehlt die Datenquelle) - dasselbe Wort und dieselben
+            zwei Kriterien wie `MessstelleRegisterBeobachtung.zuordnung`. Kein Schritt, keine Zahl und kein
+            `grund` ändern sich; sonst null. An der Woche und an einer Messstelle mit Ablesungen immer null.
     MessstelleWerteMessstelle:
       type: object
       required: [id, kennzeichen, name, art, groesse, richtung, einheit, wertart]

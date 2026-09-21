@@ -80,9 +80,27 @@ public class MessstelleRegisterRepository {
      * @param text sein Textwert; {@code null} bei einem Zahlen-Kanal
      * @param jeEinWert ob überhaupt je ein Wert ankam — auch ein schlechter (ändert den Zustand
      *     NICHT, gezählt werden nur gute; der Vertrag will den Eingang trotzdem ehrlich)
+     * @param reihe dieselben Fakten, nur über die Werte, die der Reihe (Komponente, Kanal) ZUGEORDNET
+     *     sind — dasselbe Kriterium wie Verdichtung und Werte-Karte ({@code entity_id} = Komponente,
+     *     Rolle nicht {@code spiegel}). Die fünf Felder davor lesen die BOX: alles, was sie unter
+     *     diesem Kanal geliefert hat, zugeordnet oder nicht.
      */
     public record Werte(Integer kadenzS, Instant letzterGuterWert, Double zahl, String text,
-            boolean jeEinWert) {}
+            boolean jeEinWert, Reihe reihe) {
+
+        /** Ein Messwert, dessen Box-Werte alle zugeordnet sind — die Reihe sieht dasselbe wie die Box. */
+        public Werte(Integer kadenzS, Instant letzterGuterWert, Double zahl, String text, boolean jeEinWert) {
+            this(kadenzS, letzterGuterWert, zahl, text, jeEinWert, new Reihe(letzterGuterWert, zahl, text, jeEinWert));
+        }
+
+        /** Die Werte der Reihe in derselben Form — die Eingänge der Ableitung, nur über die Reihe. */
+        public Werte nurReihe() {
+            return new Werte(kadenzS, reihe.letzterGuterWert(), reihe.zahl(), reihe.text(), reihe.jeEinWert(), reihe);
+        }
+    }
+
+    /** Der letzte gute Wert der REIHE und ob je einer ankam (UEMS: Messstelle liefert Daten ehrlich). */
+    public record Reihe(Instant letzterGuterWert, Double zahl, String text, boolean jeEinWert) {}
 
     /**
      * Die Abfrage. Je Tabelle EIN Durchgang, gruppiert je Messstelle (Hash-Verbund statt einer
@@ -202,6 +220,12 @@ public class MessstelleRegisterRepository {
      * seiner Zeile) — nie eine Summe, nie ein Mittel. Ohne Zeile der Mess-Selektion fehlt der
      * Messwert in der Antwort: dann gibt es weder Kadenz noch Wert, und die Ableitung sagt
      * „wartet auf erste Daten“ statt eine 0 zu raten.
+     *
+     * <p><b>Box und Reihe.</b> Über (Box, Kanal) sieht die Abfrage alles, was die Box geliefert hat — auch
+     * Werte, die der Writer keiner Reihe zuordnen konnte (Komponente ohne Datenquelle). Darum liest sie
+     * dieselben Fakten ein zweites Mal NUR über die Reihe ({@link Werte#reihe}): {@code entity_id} = Komponente,
+     * Rolle nicht {@code spiegel} — das Kriterium von Verdichtung, Lücken-Melder und Werte-Karte
+     * ({@code SpeicherklasseHistorie.mitDaten}), kein drittes.
      */
     static final String WERTE = """
             WITH paare AS (
@@ -239,10 +263,28 @@ public class MessstelleRegisterRepository {
                        komponente, kanal, ab, cadence_s, zeit, zahl, text
                   FROM gemessen
                  ORDER BY komponente, kanal, ab, zeit DESC NULLS LAST, device_id)
-            SELECT j.komponente, j.kanal, j.ab, j.cadence_s, j.zeit, j.zahl, j.text, k.je_ein_wert
+            SELECT j.komponente, j.kanal, j.ab, j.cadence_s, j.zeit, j.zahl, j.text, k.je_ein_wert,
+                   rg.zeit AS r_zeit, rg.zahl AS r_zahl, rg.text AS r_text, re.gab_es IS NOT NULL AS r_je_ein_wert
               FROM juengste j
               JOIN je_bindung k
                 ON k.komponente = j.komponente AND k.kanal = j.kanal AND k.ab = j.ab
+              LEFT JOIN LATERAL (
+                  SELECT s.time AS zeit,
+                         coalesce(s.decoded_numeric, s.raw_numeric) AS zahl,
+                         coalesce(s.decoded_text, s.raw_text) AS text
+                    FROM device_measurement_sample s
+                   WHERE s.entity_id = j.komponente AND s.point_key = j.kanal
+                     AND s.entity_id IS NOT NULL AND s.role IS DISTINCT FROM 'spiegel'
+                     AND s.quality = 'good' AND s.time >= j.ab AND s.time <= ?
+                   ORDER BY s.time DESC
+                   LIMIT 1) rg ON TRUE
+              LEFT JOIN LATERAL (
+                  SELECT true AS gab_es
+                    FROM device_measurement_sample s
+                   WHERE s.entity_id = j.komponente AND s.point_key = j.kanal
+                     AND s.entity_id IS NOT NULL AND s.role IS DISTINCT FROM 'spiegel'
+                     AND s.time >= j.ab AND s.time <= ?
+                   LIMIT 1) re ON TRUE
             """;
 
     /**
@@ -266,17 +308,24 @@ public class MessstelleRegisterRepository {
             ps.setArray(3, con.createArrayOf("timestamptz", ab));
             ps.setTimestamp(4, Timestamp.from(bis));
             ps.setTimestamp(5, Timestamp.from(bis));
+            ps.setTimestamp(6, Timestamp.from(bis));
+            ps.setTimestamp(7, Timestamp.from(bis));
             return ps;
         }, (ResultSet rs) -> {
             Timestamp zeit = rs.getTimestamp("zeit");
             double zahl = rs.getDouble("zahl");
             boolean textwert = rs.wasNull();
+            Timestamp rZeit = rs.getTimestamp("r_zeit");
+            double rZahl = rs.getDouble("r_zahl");
+            boolean rTextwert = rs.wasNull();
             out.put(new Messwert(rs.getObject("komponente", UUID.class), rs.getString("kanal"),
                             rs.getTimestamp("ab").toInstant()),
                     new Werte((Integer) rs.getObject("cadence_s"),
                             zeit == null ? null : zeit.toInstant(),
                             textwert ? null : zahl, rs.getString("text"),
-                            rs.getBoolean("je_ein_wert")));
+                            rs.getBoolean("je_ein_wert"),
+                            new Reihe(rZeit == null ? null : rZeit.toInstant(), rTextwert ? null : rZahl,
+                                    rs.getString("r_text"), rs.getBoolean("r_je_ein_wert"))));
         });
         return Map.copyOf(out);
     }

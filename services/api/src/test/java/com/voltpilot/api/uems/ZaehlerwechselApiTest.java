@@ -899,11 +899,13 @@ class ZaehlerwechselApiTest {
         alle.addAll(WERTE_Z5B);
         long folge = 1;
         for (String t : alle) {
+            // Zugeordnet (Reihe von K-5, führend), wie der Writer ihn heute ablegt — nur so „liefert“ das Register.
             root.update("INSERT INTO device_measurement_sample (time, received_at, tenant_id, site_id, device_id, "
                     + "point_key, raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, "
-                    + "aggregation_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'good', '2026.08.26.3', ?, 'counter')",
+                    + "aggregation_kind, entity_id, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'good', '2026.08.26.3', ?, "
+                    + "'counter', ?, 'fuehrend')",
                     Timestamp.from(zeitpunkt(t)), Timestamp.from(zeitpunkt(t)), w.tenant(), w.an1(), w.box(),
-                    ENERGIE_BEZUG, 1083000.0 + folge, 1083000.0 + folge, folge);
+                    ENERGIE_BEZUG, 1083000.0 + folge, 1083000.0 + folge, folge, w.k("K-5"));
             root.update("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, entity_id, "
                     + "channel, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", Timestamp.from(zeitpunkt(t)),
                     Timestamp.from(zeitpunkt(t)), w.tenant(), w.an1(), w.box(), w.k("K-5").toString(),

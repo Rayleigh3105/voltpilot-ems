@@ -173,6 +173,21 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
     expect(zeileWoerter(schweigt, kontext(a)).beobachtung).toEqual({ text: 'Liefert keine Daten seit 03.11.2026 14:05 Uhr', ton: 'hinweis' });
   });
 
+  it('Werte kommen an, gehören aber zu keiner Messreihe: der Satz des Servers als Hinweis, nie „gut“ — der letzte Wert bleibt', () => {
+    const a = ahrenbergRegister();
+    const ohneReihe = structuredClone(zeile(a, 'MS-01'));
+    ohneReihe.beobachtung = {
+      ...ohneReihe.beobachtung!,
+      zustand: 'wartet_auf_erste_daten',
+      text: 'Daten kommen an – noch keiner Messreihe zugeordnet',
+      zuordnung: 'nicht_zugeordnet',
+    };
+    ohneReihe.letzter_wert = { wert: 501, text: null, einheit: 'kWh', zeitpunkt: '2026-11-03T14:05:00+01:00' };
+    const w = zeileWoerter(ohneReihe, kontext(a));
+    expect(w.beobachtung).toEqual({ text: 'Daten kommen an – noch keiner Messreihe zugeordnet', ton: 'hinweis' });
+    expect(w.wert?.text).toContain('501');
+  });
+
   it('Vergleichsquellen werden gezählt und beim Namen genannt', () => {
     const a = ahrenbergRegister();
     const eine = structuredClone(zeile(a, 'MS-01'));
