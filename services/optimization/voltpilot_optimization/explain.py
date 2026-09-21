@@ -95,6 +95,13 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         # Nacht-Wertfunktion (P3, night_reserve.py): the epigraph per quantile
         # over the sunrise SoC node. It can bind, and the scan below says so.
         "vf_c",
+        # UEMS AP-15 IP-14 (P4): die Anteile der mitsteuernden Boxen - nur im
+        # Modell einer Anlage in `anteile_aktiv` (voltpilot_optimization.verbund).
+        "verbund_abregeln",
+        "verbund_einspeisung",
+        "verbund_bezug",
+        "verbund_stumm_einspeisung",
+        "verbund_stumm_bezug",
     }
 )
 

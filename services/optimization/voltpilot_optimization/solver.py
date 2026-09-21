@@ -388,6 +388,15 @@ EARLY_CHARGE_TIEBREAK_EUR_PER_KW = 1e-7
 #   expensive, i.e. it pushes the same way as the S2 guard, never against it.
 EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW = 1e-7
 
+# UEMS AP-15 IP-14 "Abregeln nach Wert": an EINEM Anschluss hat jede erzeugte
+# kWh je Slot denselben Wert, also ist die Aufteilung einer Abregelung auf die
+# Erzeuger wirtschaftlich gleichgueltig. Dieser Gleichstand-Brecher (unter dem
+# Abregel-Brecher oben, er aendert also nie, OB abgeregelt wird) legt sie auf
+# die Erzeugung der fuehrenden Box - ihr Regelkreis korrigiert gegen Messung;
+# die PV einer mitsteuernden Box wird nur abgeregelt, soweit ihr Anteil es
+# verlangt. Nur in einem Lauf mit Verbund im Modell.
+VERBUND_CURTAIL_TIEBREAK_EUR_PER_KW = 5e-7
+
 # MIP optimality tolerances (scout vp-fahrplan-idle-n7, "latent defect found in
 # passing"). HiGHS defaults to mip_rel_gap = 1e-4, i.e. on a ~10 EUR objective
 # it stops ~1e-3 EUR short of the true optimum - ORDERS OF MAGNITUDE above the
@@ -591,6 +600,9 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.peak_below_epigraph = Constraint(
             m.T, rule=lambda model, t: model.peak_below >= model.grid_import[t]
         )
+    # UEMS AP-15 IP-14 (P4): die Anteile der mitsteuernden Boxen. Ohne Verbund
+    # (jede Ein-Box-Anlage) kommt nichts ins Modell - byte-identisch.
+    verbund_cost = _add_verbund(m, inp, enforce_grid_limit) if inp.verbund else None
     # Real degradation cost per AC-side kWh in each direction (see module
     # docstring); the epsilon tie-break below stays for the c_wear = 0 case.
     wear_eur_per_kwh = p.wear_cost_eur_per_kwh_each_way
@@ -632,8 +644,110 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         - v_end * (m.soc[n] - soc0),
         sense=minimize,
     )
+    if verbund_cost is not None:
+        m.total_cost.expr = m.total_cost.expr + verbund_cost
     _add_night_reserve(m, inp, soc_floor)
     return m
+
+
+def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: bool):
+    """Die Anteile der mitsteuernden Boxen als Nebenbedingung (AP-15 IP-14, P4).
+
+    Regeln und Lesarten stehen in :mod:`voltpilot_optimization.verbund`. Im
+    Modell: die Abregelung teilt sich in den Rest (die Erzeuger der fuehrenden
+    Box) und je mitsteuernder Box ihren Teil ``curtail_box``; je Box und Slot
+
+    - ``verbund_einspeisung``: PV der Box - ihre Abregelung (+ Entladung, wenn
+      der geplante Speicher an ihr haengt) <= Einspeise-Anteil (V6),
+    - ``verbund_bezug``: Netzladen des Speichers an ihr = Ladung - eigene PV
+      <= Bezugs-Anteil (V3, nur mit Speicher an der Box - v1 kennt keine
+      steuerbaren Verbraucher),
+    - stumm (Y4/B5): ihre PV laeuft ungeplant bis zum Anteil (die Abregelung ist
+      eine feste Schranke, kein Kommando), und die Anschlussgrenzen der Anlage
+      sind um ihren vollen Anteil enger (``verbund_stumm_einspeisung``/
+      ``verbund_stumm_bezug``) - der ungenutzte Rest geht an niemanden (R7).
+
+    Gibt den Gleichstand-Brecher der Zielfunktion zurueck.
+    """
+    boxen = inp.verbund
+    B = range(len(boxen))
+    aktiv = [b for b in B if not boxen[b].stumm]
+    stumm = [b for b in B if boxen[b].stumm]
+
+    def _curtail_box_bounds(model, b, t):
+        box = boxen[b]
+        pv = max(box.pv_kw[t], 0.0)
+        if box.stumm:
+            fest = max(pv - box.einspeisung_kw, 0.0)
+            return (fest, fest)
+        return (0.0, pv)
+
+    m.curtail_box = Var(B, m.T, domain=NonNegativeReals, bounds=_curtail_box_bounds)
+    pv_rest = [
+        max(max(inp.pv_kw[t], 0.0) - sum(max(box.pv_kw[t], 0.0) for box in boxen), 0.0)
+        for t in range(inp.slots)
+    ]
+    m.curtail_rest = Var(
+        m.T, domain=NonNegativeReals, bounds=lambda model, t: (0.0, pv_rest[t])
+    )
+    m.verbund_abregeln = Constraint(
+        m.T,
+        rule=lambda model, t: model.curtail[t]
+        == model.curtail_rest[t] + sum(model.curtail_box[b, t] for b in B),
+    )
+
+    def _speicher_an(b: int) -> bool:
+        return inp.device_id is not None and boxen[b].device_id == inp.device_id
+
+    if aktiv:
+        m.verbund_einspeisung = Constraint(
+            aktiv,
+            m.T,
+            rule=lambda model, b, t: max(boxen[b].pv_kw[t], 0.0)
+            - model.curtail_box[b, t]
+            + (model.discharge[t] if _speicher_an(b) else 0.0)
+            <= boxen[b].einspeisung_kw,
+        )
+        mit_speicher = [b for b in aktiv if _speicher_an(b)]
+        if mit_speicher:
+            m.verbund_bezug = Constraint(
+                mit_speicher,
+                m.T,
+                rule=lambda model, b, t: model.charge[t]
+                - (max(boxen[b].pv_kw[t], 0.0) - model.curtail_box[b, t])
+                <= boxen[b].bezug_kw,
+            )
+    if stumm:
+        # Was eine stumme Box ins Netz schieben KOENNTE, ueber das hinaus, was
+        # ihre PV im Modell schon beitraegt: ihr voller Einspeise-Anteil.
+        reserve_e = [
+            sum(
+                boxen[b].einspeisung_kw
+                - min(max(boxen[b].pv_kw[t], 0.0), boxen[b].einspeisung_kw)
+                for b in stumm
+            )
+            for t in range(inp.slots)
+        ]
+        caps_e = [c for c in (inp.max_feed_in_kw,) if c is not None]
+        if enforce_grid_limit and inp.grid_limit_kw is not None:
+            caps_e.append(inp.grid_limit_kw)
+        if caps_e:
+            cap_e = min(caps_e)
+            m.verbund_stumm_einspeisung = Constraint(
+                m.T,
+                rule=lambda model, t: model.grid_export[t]
+                <= max(cap_e - reserve_e[t], 0.0),
+            )
+        if enforce_grid_limit and inp.grid_limit_kw is not None:
+            reserve_b = sum(boxen[b].bezug_kw for b in stumm)
+            m.verbund_stumm_bezug = Constraint(
+                m.T,
+                rule=lambda model, t: model.grid_import[t]
+                <= max(inp.grid_limit_kw - reserve_b, 0.0),
+            )
+    return VERBUND_CURTAIL_TIEBREAK_EUR_PER_KW * sum(
+        m.curtail_box[b, t] for b in B for t in m.T
+    )
 
 
 def _add_night_reserve(

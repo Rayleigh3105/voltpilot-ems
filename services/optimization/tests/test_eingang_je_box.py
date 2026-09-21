@@ -378,3 +378,42 @@ def test_fristen_von_heute_bleiben(telemetrie):
     assert pv_nowcast_max_age() == timedelta(seconds=30)
     load_default = inspect.signature(_recent_load_samples).parameters["max_age"].default
     assert load_default == timedelta(seconds=30)
+
+
+# --- (IP-14) Anteile im Eingang: nur in einer scharfen Anlage, genau ein Feld ---
+
+
+def test_ip14_zwei_boxen_ohne_scharfen_verbund_eingang_wie_heute(telemetrie):
+    """Zwei sendende Boxen OHNE Anlage in ``anteile_aktiv`` (``site.verbund``
+    None): kein Anteil im Eingang - der Solver baut das Modell von heute."""
+    _halle(telemetrie)
+    _verwaltung(telemetrie)
+    inp = _eingang()
+    assert inp.verbund == ()
+
+
+def test_ip14_scharfer_verbund_aendert_im_eingang_genau_ein_feld(telemetrie):
+    """Mit Gemeinsamer Steuerung in ``anteile_aktiv`` kommt GENAU das Feld
+    ``verbund`` dazu; jedes andere Feld bleibt, was es ohne waere."""
+    from voltpilot_optimization.verbund import MitsteuerndeBox, VerbundStand
+
+    _halle(telemetrie)
+    _verwaltung(telemetrie)
+    ohne = _eingang()
+    stand = VerbundStand(
+        mitsteuernde=(
+            MitsteuerndeBox(BOX_VERWALTUNG, 60.0, 77.0, stumm=False, pv_kwp=60.0),
+        ),
+        pv_kwp_gesamt=150.0,
+    )
+    mit = gather_inputs(
+        "postgresql://fake",
+        dataclasses.replace(_site(), verbund=stand),
+        NOW,
+        SLOTS,
+    )
+    assert dataclasses.replace(mit, verbund=()) == ohne
+    (box,) = mit.verbund
+    assert (box.device_id, box.einspeisung_kw, box.bezug_kw) == (BOX_VERWALTUNG, 60.0, 77.0)
+    # Ihr Teil der PV-Prognose: 60 von 150 kWp.
+    assert box.pv_kw == pytest.approx(tuple(p * 0.4 for p in mit.pv_kw))

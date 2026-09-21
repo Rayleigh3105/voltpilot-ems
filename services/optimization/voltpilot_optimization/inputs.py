@@ -58,7 +58,7 @@ from voltpilot_optimization.config import (
     soc_max_age,
     terminal_value_override_eur_per_kwh,
 )
-from voltpilot_optimization import grenze_aufloesung
+from voltpilot_optimization import grenze_aufloesung, verbund
 from voltpilot_optimization.domain import (
     BatteryParams,
     DEFAULT_SOC_MAX_FRACTION,
@@ -349,6 +349,10 @@ class BatterySite:
     tariff: SiteTariff = SiteTariff()
     leistungspreis_eur_kw: float | None = None
     abrechnung_leistung: str = "jahr"
+    #: UEMS AP-15 IP-14: die Gemeinsame Steuerung der Anlage in Stufe
+    #: ``anteile_aktiv`` (:func:`voltpilot_optimization.verbund.load_verbund`);
+    #: ``None`` = kein Verbund, keine mitsteuernde Box oder eine andere Stufe.
+    verbund: verbund.VerbundStand | None = None
 
 
 def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySite]:
@@ -368,6 +372,9 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     # - the tighter of site and Netzanschluss, else the site value unchanged.
     grenz_tag = datetime.now(GRENZ_ZONE).date()
     grenzblaetter = load_grenzblaetter(dsn, grenz_tag, site_id)
+    # UEMS AP-15 IP-14: die Anteile der mitsteuernden Boxen je Anlage in
+    # `anteile_aktiv` (P4); jede andere Anlage fehlt und bleibt, wie sie war.
+    verbuende = verbund.load_verbund(dsn, datetime.now(timezone.utc), site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -465,6 +472,7 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                     abrechnung_leistung=(
                         str(abrechnung) if abrechnung is not None else "jahr"
                     ),
+                    verbund=verbuende.get(site_id),
                     tariff=SiteTariff(
                         plant_kind=(
                             str(plant_kind) if plant_kind is not None
@@ -837,6 +845,9 @@ def gather_inputs(
         night_error_quantiles=night_errors,
         # P7: WOHER der Start-Ladestand kam. `unbekannt` ist der Ruhe-Plan.
         soc_source=soc_source,
+        # AP-15 IP-14 (P4): die Anteile der mitsteuernden Boxen - nur in einer
+        # Anlage in `anteile_aktiv`, sonst () und der Eingang von heute.
+        verbund=verbund.fuer_lauf(site.verbund, pv_kw),
     )
 
 
