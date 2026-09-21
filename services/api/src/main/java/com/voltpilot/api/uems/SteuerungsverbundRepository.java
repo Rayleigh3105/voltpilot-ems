@@ -168,14 +168,18 @@ public class SteuerungsverbundRepository {
                 UUID.class, siteId, tag, tag);
     }
 
-    /** Anlage und lesende Box je Datenquelle zu einem Zeitpunkt; unbekannte Quellen fehlen in der Liste. */
+    /**
+     * Anlage und lesende Box je Datenquelle zu einem Zeitpunkt; unbekannte Quellen fehlen in der Liste. Ein
+     * zurückgenommener geplanter Zeitraum liest nie — er steht nach seinem Beginn neben dem wieder geöffneten Vorgänger
+     * (die Exklusion der Datenbank gilt nur für nicht zurückgenommene, V20260917109000).
+     */
     public List<SteuerungsverbundRegeln.Datenquelle> quellen(Collection<UUID> dataSourceIds, Instant zeitpunkt) {
         if (dataSourceIds.isEmpty()) {
             return List.of();
         }
         Timestamp t = Timestamp.from(zeitpunkt);
         return jdbc.query("SELECT ds.id, ds.site_id, (SELECT a.device_id FROM data_source_assignment a "
-                + "WHERE a.data_source_id = ds.id AND a.effective_from <= ? "
+                + "WHERE a.data_source_id = ds.id AND a.zurueckgenommen_am IS NULL AND a.effective_from <= ? "
                 + "AND (a.effective_to IS NULL OR a.effective_to > ?)) AS gelesen_von "
                 + "FROM data_source ds WHERE ds.id = ANY (?::uuid[])",
                 (rs, n) -> new SteuerungsverbundRegeln.Datenquelle(rs.getString("id"), rs.getString("site_id"),

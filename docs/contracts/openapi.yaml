@@ -9447,7 +9447,11 @@ paths:
       tags: [datenquellen]
       summary: Ab `effective_from` liest `device_id` die Quelle - erste Box oder Wechsel.
       description: >
-        Recht `datenquelle.zustaendigkeit`. Die erste Box einer Quelle ist ein Antrag
+        Recht `datenquelle.zustaendigkeit`. Vor allen Regeln (AP-15 T6): ist die Quelle
+        Netzzähler, Messpunkt oder Steuerquelle eines Mitglieds einer Gemeinsamen
+        Steuerung in `anteile_aktiv` oder angehalten, 409 `gemeinsame_steuerung_aendern` -
+        ihre Box wechselt nur als Änderung der Gemeinsamen Steuerung. Ohne Gemeinsame
+        Steuerung greift das nie. Die erste Box einer Quelle ist ein Antrag
         `anlegen`, jede weitere ein `wechsel`; geprüft von DatenquelleRegeln in der
         festen Reihenfolge des Vertrags (§5): protokoll_unbekannt → keine_volle_minute
         → rueckwirkend → steuerquelle → spaeterer_wechsel_geplant → schon_zustaendig →
@@ -24733,6 +24737,9 @@ components:
         (`komponenten`, `datenquellen`) und `vorschlag_geaendert` 409 (`device_id`,
         `protokoll`, `adresse`). `budget_ueberschritten` ist 422 und trägt unter
         `rechnung` Zahlen, freie Kapazität am Standort und beide konkrete Auswege.
+        `gemeinsame_steuerung_aendern` 409 (`kennzeichen`, AP-15 T6): die Quelle ist
+        Netzzähler, Messpunkt oder Steuerquelle eines Mitglieds einer scharfen
+        Gemeinsamen Steuerung - ihre Box wechselt nur über „Gemeinsame Steuerung ändern“.
       required: [code, message]
       properties:
         code:
@@ -24741,7 +24748,7 @@ components:
             spaeterer_wechsel_geplant, schon_zustaendig, ueberschneidung, adresse_an_box_vergeben,
             netzlage_fehlt, nur_ein_leser, vergleich_bestaetigen, pruefung_fehlt, pruefung_gescheitert,
             anfrage_ungueltig, weg_fest, quelle_archiviert, pruefung_nicht_moeglich, gleichzeitig_geaendert,
-            komponente_hat_quelle, vorschlag_geaendert, budget_ueberschritten]
+            komponente_hat_quelle, vorschlag_geaendert, budget_ueberschritten, gemeinsame_steuerung_aendern]
         message: { type: string }
         grund: { type: string, description: "Bei Vertragsgründen identisch zu `code`." }
         satz: { type: string, description: "Bei Vertragsgründen identisch zu `message`; stabiler Kundensatz des Vertrags." }

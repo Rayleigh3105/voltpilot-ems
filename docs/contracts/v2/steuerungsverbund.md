@@ -124,6 +124,7 @@ Datei, weil nur die api diese Regeln rechnet; die Anteile oben behalten ihre dre
 | **B3** Messpunkt einer mitsteuernden Box | wahlfrei (ohne: Summe ihrer Geräteleistungen), sonst derselbe Fremdschlüssel | nicht dieser Anlage oder nicht von ihr gelesen: `mitsteuernde_box_misst_nicht` |
 | **Kein Doppel-Lesen** (§3.3) | Exklusion: ein Messpunkt je Zeitpunkt bei höchstens einem Mitglied; eine Box höchstens einmal | Eingabefehler |
 | **T6** Lesen macht kein Mitglied | `rolle` nur `fuehrt`/`steuert_mit` (CHECK); eine Zuständigkeit legt keine Zeile an | `istMitglied` nur mit Heimat UND Rolle (R21) |
+| **T6 Rückrichtung** (IP-8) | — | `wechseltNurAlsAenderung`: in `anteile_aktiv` oder angehalten wechselt die Box des Netzzählers, eines Messpunkts oder einer Steuerquelle eines Mitglieds nicht als Zuständigkeitswechsel — `POST …/data-sources/{id}/assignments` antwortet 409 `gemeinsame_steuerung_aendern`; jede andere Quelle, jede Anlage vor dem Scharfschalten und ohne Gemeinsame Steuerung bleibt, wie sie war (Vektoren `zustaendigkeitswechsel`) |
 | **G2/G3** | — (die Anteile speichert IP-7: `steuerungsverbund_anteile`, `mqtt-verbund-anteile.md` §4) | je übergebener Richtung `SteuerungsverbundAnteile.anteile` mit genau den Mitgliedern des Verbunds: `auslegung_passt_nicht` mit Richtung |
 
 Die Befunde stehen in der Reihenfolge des Vokabulars `ablehnung`, je Wort in der Reihenfolge der Mitglieder; das

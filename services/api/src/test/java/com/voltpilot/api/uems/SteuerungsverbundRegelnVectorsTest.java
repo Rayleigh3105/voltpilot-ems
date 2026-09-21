@@ -17,6 +17,7 @@ import com.voltpilot.api.uems.SteuerungsverbundRegeln.Verbund;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Ablehnung;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Rolle;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Stufe;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -74,6 +75,42 @@ class SteuerungsverbundRegelnVectorsTest {
             f.get("erwartet").fields().forEachRemaining(e -> assertThat(SteuerungsverbundRegeln.istMitglied(v, e.getKey()))
                     .as(f.get("name").asText() + " / " + e.getKey()).isEqualTo(e.getValue().asBoolean()));
         }
+    }
+
+    /**
+     * T6 Rückrichtung (IP-8, R21 Schritt 3): Netzzähler, Messpunkt und Steuerquelle eines Mitglieds wechseln in einer
+     * scharfen Gemeinsamen Steuerung nur als Änderung; jede andere Quelle, jede Stufe davor und jede Anlage ohne
+     * Gemeinsame Steuerung bleiben beim Zuständigkeitswechsel. Heimat, Anlage und Steuerquelle stehen so in der
+     * Referenzdatei 1.5.
+     */
+    @Test
+    void zustaendigkeitWechseltInScharferSteuerungNurAlsAenderung() throws Exception {
+        JsonNode ref = lies(REFERENZ);
+        Map<String, String> heimat = new HashMap<>();
+        ref.get("boxen").forEach(b -> heimat.put(b.get("kennzeichen").asText(), b.get("heimat_anlage").asText()));
+        Map<String, JsonNode> quelleDerReferenz = new HashMap<>();
+        ref.get("datenquellen").forEach(q -> quelleDerReferenz.put(q.get("kennzeichen").asText(), q));
+
+        List<Boolean> gesehen = new ArrayList<>();
+        for (JsonNode f : lies(VECTORS).get("zustaendigkeitswechsel")) {
+            String fall = f.get("name").asText();
+            Verbund v = f.get("verbund").isNull() ? null : verbund(f.get("verbund"));
+            JsonNode dq = f.get("datenquelle");
+            JsonNode inReferenz = quelleDerReferenz.get(dq.get("kennung").asText());
+            assertThat(dq.get("anlage").asText()).as(fall).isEqualTo(inReferenz.get("anlage").asText());
+            assertThat(dq.get("steuerquelle").asBoolean()).as(fall).isEqualTo(inReferenz.get("steuerquelle").asBoolean());
+            assertThat(heimat).as(fall).containsKey(dq.get("gelesen_von").asText());
+            if (v != null) {
+                v.mitglieder().forEach(m -> assertThat(m.heimat()).as(fall).isEqualTo(heimat.get(m.box())));
+            }
+            boolean erwartet = f.get("erwartet").get("nur_als_aenderung").asBoolean();
+            assertThat(SteuerungsverbundRegeln.wechseltNurAlsAenderung(stufe(str(f.get("stufe"))), v,
+                    new Datenquelle(dq.get("kennung").asText(), dq.get("anlage").asText(),
+                            dq.get("gelesen_von").asText()),
+                    dq.get("steuerquelle").asBoolean())).as(fall).isEqualTo(erwartet);
+            gesehen.add(erwartet);
+        }
+        assertThat(gesehen).as("beide Urteile belegt").contains(true, false);
     }
 
     /** Die Urteile sind Wörter des IP-2-Vokabulars; kein Vektor nennt ein Wort, das es dort nicht gibt. */
@@ -183,6 +220,18 @@ class SteuerungsverbundRegelnVectorsTest {
             l.add(m);
         }
         return l;
+    }
+
+    private static Stufe stufe(String code) {
+        if (code == null) {
+            return null;
+        }
+        for (Stufe st : Stufe.values()) {
+            if (st.code().equals(code)) {
+                return st;
+            }
+        }
+        throw new IllegalArgumentException(code);
     }
 
     private static Rolle rolle(String code) {

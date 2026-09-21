@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Ablehnung;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Rolle;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Stufe;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -119,6 +120,24 @@ public final class SteuerungsverbundRegeln {
         return verbund.mitglieder().stream().anyMatch(m -> m.box().equals(box)
                 && verbund.anlage().equals(m.heimat())
                 && (m.rolle() == Rolle.FUEHRT || m.rolle() == Rolle.STEUERT_MIT));
+    }
+
+    /**
+     * T6 Rückrichtung (IP-8, R21 Schritt 3): die Zuständigkeit für diese Datenquelle wechselt NUR als Änderung der
+     * Gemeinsamen Steuerung (anhalten → ändern → prüfen → scharfschalten), wenn die Gemeinsame Steuerung scharf ist
+     * ({@link Stufe#ANTEILE_AKTIV} oder {@link Stufe#ANGEHALTEN} — die Anteile sind in Kraft) und die Quelle sie trägt:
+     * Messpunkt eines Mitglieds (für die führende Box der Netzzähler) oder eine Steuerquelle, die ein Mitglied liest.
+     * Ohne Gemeinsame Steuerung ({@code verbund} null), vor dem Scharfschalten und für jede andere Quelle — auch eine,
+     * die eine Box über die Anlagengrenze liest (R21) — bleibt der Zuständigkeitswechsel, wie er ist.
+     */
+    public static boolean wechseltNurAlsAenderung(Stufe stufe, Verbund verbund, Datenquelle quelle,
+            boolean steuerquelle) {
+        if (verbund == null || (stufe != Stufe.ANTEILE_AKTIV && stufe != Stufe.ANGEHALTEN)) {
+            return false;
+        }
+        boolean messpunkt = verbund.mitglieder().stream()
+                .anyMatch(m -> quelle.kennung().equals(m.messpunkt()) && istMitglied(verbund, m.box()));
+        return messpunkt || (steuerquelle && quelle.gelesenVon() != null && istMitglied(verbund, quelle.gelesenVon()));
     }
 
     /** Messpunkt ist eine Datenquelle DIESER Anlage, und dieses Mitglied liest sie. */

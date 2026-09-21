@@ -173,6 +173,14 @@ class GemeinsameSteuerungApiTest {
         assertThat(zeilen(w)).as("abgelehnt = nichts geschrieben").isZero();
         assertThat(root.queryForObject("SELECT count(*) FROM anlage_netzanschluss WHERE site_id = ? "
                 + "AND netzanschluss_id = ?", Long.class, w.an2(), w.na2())).as("AN-2 bleibt an NA-2").isOne();
+
+        // IP-8 (NW-5): und umgekehrt — Box Halle 1 wird kein Mitglied an AN-2; zwei Anlagen, nie ein gemeinsamer Anteil.
+        Antwort umgekehrt = kunde(w, put("/api/v1/sites/" + w.an2() + "/gemeinsame-steuerung")
+                .content(mitglieder(w.e2(), "fuehrt", null, w.e1(), "steuert_mit", null)));
+        assertThat(umgekehrt.status()).isEqualTo(409);
+        assertThat(umgekehrt.code()).isEqualTo("box_nicht_in_anlage");
+        assertThat(umgekehrt.body().path("fehlt").get(0).path("box_id").asText()).isEqualTo(w.e1().toString());
+        assertThat(zeilen(w)).isZero();
     }
 
     /** T1 beim Scharfschalten: eine ausgebaute Box ist nicht mehr in der Anlage. */
