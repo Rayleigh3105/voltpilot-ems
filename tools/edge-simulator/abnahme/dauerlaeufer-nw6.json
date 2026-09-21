@@ -14,28 +14,32 @@
           "messstelle": "MS-05",
           "name": "Wirkenergie Bezug",
           "point_key": "custom.55d17333ce6829f7550beabb7b9eb13b",
-          "register": 500
+          "register": 500,
+          "szenario_schluessel": "custom.ms-05.wirkenergie-bezug"
         },
         {
           "entity_id": "d1c00000-0000-4000-8000-000000000006",
           "messstelle": "MS-06",
           "name": "Wirkenergie Bezug",
           "point_key": "custom.a5b38580b81cfe982d571d751ed82d6a",
-          "register": 600
+          "register": 600,
+          "szenario_schluessel": "custom.ms-06.wirkenergie-bezug"
         },
         {
           "entity_id": "d1c00000-0000-4000-8000-000000000007",
           "messstelle": "MS-07",
           "name": "Wirkenergie Bezug",
           "point_key": "custom.f625638c15ca4d24ef00872e36494052",
-          "register": 700
+          "register": 700,
+          "szenario_schluessel": "custom.ms-07.wirkenergie-bezug"
         },
         {
           "entity_id": "d1c00000-0000-4000-8000-000000000008",
           "messstelle": "MS-08",
           "name": "Wirkenergie Bezug",
           "point_key": "custom.2cfb4262ac99cc544b8b8657cf36205c",
-          "register": 800
+          "register": 800,
+          "szenario_schluessel": "custom.ms-08.wirkenergie-bezug"
         }
       ],
       "point_keys": [
@@ -60,35 +64,40 @@
           "messstelle": "MS-10",
           "name": "Wirkenergie Bezug",
           "point_key": "custom.ba016a8254484d604b166af69e2e1c9e",
-          "register": 1000
+          "register": 1000,
+          "szenario_schluessel": "custom.ms-10.wirkenergie-bezug"
         },
         {
           "entity_id": "d1c00000-0000-4000-8000-000000000011",
           "messstelle": "MS-11",
           "name": "Wirkenergie Bezug",
           "point_key": "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
-          "register": 1100
+          "register": 1100,
+          "szenario_schluessel": "custom.ms-11.wirkenergie-bezug"
         },
         {
           "entity_id": "d1c00000-0000-4000-8000-000000000012",
           "messstelle": "MS-12",
           "name": "Wirkenergie Bezug",
           "point_key": "custom.6960fe4e912c72196b38d1faae4266f7",
-          "register": 1200
+          "register": 1200,
+          "szenario_schluessel": "custom.ms-12.wirkenergie-bezug"
         },
         {
           "entity_id": "d1c00000-0000-4000-8000-000000000013",
           "messstelle": "MS-13",
           "name": "Wirkenergie Bezug",
           "point_key": "custom.988b3435637ab34e9fa564a688d0d1c3",
-          "register": 1300
+          "register": 1300,
+          "szenario_schluessel": "custom.ms-13.wirkenergie-bezug"
         },
         {
           "entity_id": "d1c00000-0000-4000-8000-000000000014",
           "messstelle": "MS-14",
           "name": "OCPP-Zählerstand",
           "point_key": "custom.6a75edc085741a7fb7dc616248e46ffb",
-          "register": 1400
+          "register": 1400,
+          "szenario_schluessel": "custom.ms-14.ocpp-zaehlerstand"
         }
       ],
       "point_keys": [

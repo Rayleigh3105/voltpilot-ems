@@ -442,7 +442,10 @@ def nw6_vorlage() -> dict:
         "boxen": [{"code": b.code, "site_id": b.site_id, "device_id": b.device_id,
                    "gateway": {"host": GATEWAY[b.code], "port": GATEWAY_PORT, "unit_id": GATEWAY_UNIT},
                    "messstellen": [{"messstelle": m, "name": KANAELE[m][0], "register": register(m),
-                                    "entity_id": nw6_komponente(m), "point_key": beispiel_schluessel(m)}
+                                    "entity_id": nw6_komponente(m), "point_key": beispiel_schluessel(m),
+                                    # Der feste Schlüssel der AP-07-Szenarien: den nimmt die Plattform
+                                    # nicht an (PR 999, Befund 1) — darum lernt der Dauerläufer.
+                                    "szenario_schluessel": KANAELE[m][1]}
                                    for m in BOX_REIHEN[b.code]],
                    "point_keys": [beispiel_schluessel(m) for m in BOX_REIHEN[b.code]]} for b in NW6_BOXEN],
         "einrichtung": einrichtung,
