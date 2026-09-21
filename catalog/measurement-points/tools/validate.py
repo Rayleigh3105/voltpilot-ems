@@ -15,7 +15,9 @@ from cataloglib import (
     EDGE_MIN_VERSION,
     POINT_KEY_RE,
     ROOT,
+    GERAETE_RUECKFALL_WOERTER,
     NOCH_NICHT_AN_DER_BOX,
+    RUECKFALL_OHNE_BOX,
     RUNTIME_CATALOG_VERSION,
     ZAEHLER_DEKLARATION_FIELDS,
     read_json,
@@ -520,6 +522,34 @@ def validate_shelly_evidence(errors: ValidationErrors, points: list[dict[str, An
         errors.check(point.get("source_url") == evidence[0].get("url"), f"{key}: primary Shelly source URL mismatch")
 
 
+def validate_rueckfall(errors: ValidationErrors, name: str, rueckfall: Any) -> None:
+    """UEMS AP-15 IP-6: der Geräte-Rückfall einer steuerbaren Familie — kein anderes Wort als `unbekannt` ohne
+    Herstellerquelle (Titel, Fassung, Stelle), eine Zahl nur bei `faellt_auf_wert`, nie über den Katalog hinaus."""
+    errors.check(rueckfall == RUECKFALL_OHNE_BOX.get(name), f"{name}: rueckfall_ohne_box mismatch")
+    if rueckfall is None:
+        return
+    errors.check(isinstance(rueckfall, dict) and rueckfall and set(rueckfall) <= {"einspeisung", "bezug"},
+                 f"{name}: rueckfall_ohne_box needs einspeisung and/or bezug")
+    for richtung, angabe in (rueckfall.items() if isinstance(rueckfall, dict) else []):
+        prefix = f"{name}.rueckfall_ohne_box.{richtung}"
+        wort = angabe.get("rueckfall")
+        errors.check(wort in GERAETE_RUECKFALL_WOERTER, f"{prefix}: unknown word {wort!r}")
+        errors.check(isinstance(angabe.get("grund"), str) and angabe["grund"].strip() != "", f"{prefix}: grund missing")
+        kw = angabe.get("rueckfall_kw")
+        errors.check(kw is None or (wort == "faellt_auf_wert" and isinstance(kw, (int, float)) and kw >= 0),
+                     f"{prefix}: rueckfall_kw only with faellt_auf_wert and never negative")
+        nach = angabe.get("nach_s")
+        errors.check(nach is None or (wort in ("haelt_letzten_wert", "faellt_auf_wert") and isinstance(nach, int) and nach >= 0),
+                     f"{prefix}: nach_s only where the device acts after a period")
+        quelle = angabe.get("quelle")
+        if wort == "unbekannt":
+            errors.check(quelle is None and kw is None and nach is None, f"{prefix}: unbekannt carries no source, value or period")
+        else:
+            errors.check(isinstance(quelle, dict) and all(isinstance(quelle.get(k), str) and quelle[k].strip()
+                                                          for k in ("titel", "fassung", "stelle")),
+                         f"{prefix}: {wort} needs a manufacturer source with titel, fassung and stelle")
+
+
 def validate_catalog(path: Path) -> dict[str, Any]:
     errors = ValidationErrors()
     validate_manifest(errors)
@@ -583,8 +613,11 @@ def validate_catalog(path: Path) -> dict[str, Any]:
             errors.check(family.get("point_count") == expected_counts[name], f"{name}: point_count mismatch")
             errors.check(family.get("template_count") == expected_templates[name], f"{name}: template_count mismatch")
             errors.check(family.get("an_der_box") is (name not in NOCH_NICHT_AN_DER_BOX), f"{name}: an_der_box mismatch")
+            validate_rueckfall(errors, name, family.get("rueckfall_ohne_box"))
     stale_box = sorted(set(NOCH_NICHT_AN_DER_BOX) - set(expected_counts))
     errors.check(not stale_box, f"not-at-the-box entries name no family: {stale_box}")
+    stale_rueckfall = sorted(set(RUECKFALL_OHNE_BOX) - set(expected_counts))
+    errors.check(not stale_rueckfall, f"rueckfall_ohne_box names no family: {stale_rueckfall}")
 
     model_160 = [point for point in points if point.get("family") == "sunspec.model_160"]
     dynamic_160 = [point for point in model_160 if point.get("dynamic")]

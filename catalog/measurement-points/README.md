@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.09.17.1.json`](dist/measurement-point-catalog-2026.09.17.1.json).
+[`dist/measurement-point-catalog-2026.09.21.1.json`](dist/measurement-point-catalog-2026.09.21.1.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
@@ -23,6 +23,17 @@ gleicher Checkout und gleiche Python-Standardbibliothek ergeben dieselben Bytes.
 Jede Familie trägt außerdem `single_reader`. Das ist eine reine Cloud-Regel für das Anlegen
 von Datenquellen: `true` bedeutet, dass niemals zwei Boxen dasselbe physische Gerät gleichzeitig
 lesen dürfen (Solarman-Logger, WAGO-Koppler-Weg). Das Feld gehört bewusst nicht zu `EDGE_FIELDS`.
+
+Jede Familie trägt `rueckfall_ohne_box` (UEMS AP-15 IP-6, Regel G3): was ein Gerät dieser Familie tut,
+wenn seine Box schweigt, je Richtung `einspeisung`/`bezug` — ein Wort des geschlossenen Vokabulars
+`geraete_rueckfall` ([Vertrag](../../docs/contracts/v2/steuerungsverbund.md) §1a), `grund`, `quelle`,
+`rueckfall_kw`, `nach_s`. `null` heißt: VoltPilot steuert die Familie nicht (`RUECKFALL_OHNE_BOX` in
+`tools/cataloglib.py`). Heute steht bei jeder steuerbaren Familie `unbekannt` — die sichere Seite, sie
+zählt mit Nennleistung; `grund` sagt, was belegt ist und warum die Familie das Verhalten nicht festlegt.
+Ein anderes Wort verlangt eine Herstellerquelle mit Titel, Fassung und Stelle (`validate.py`); die
+Bestätigung je Modell am Prüfstand (NW-7) trägt der Betreiber ein, nicht der Katalog. Der am Gerät
+eingestellte Wert einer einzelnen Komponente steht in der api (`komponente_geraete_rueckfall`) und geht
+dem Katalog vor. Cloud-only wie `single_reader`.
 
 `core-channel-mirrors.json` ist die gesonderte Cloud-Zuordnung von Kern-Kanal und Katalogpunkt
 am selben Register (AP-07 IP-17). Sie nennt Registry-Familie, Komponententyp, Kanal, Point-Key,
@@ -209,7 +220,8 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
   (`RUNTIME_FIELDS` in `tools/cataloglib.py`: Zugriff, Dekodierung, Kadenz, Aggregation,
   Punktbestand). `validate.py` beweist es: die Box-Sicht des Inhaltsstands ist gleich der des
   ausgelieferten Laufzeitstand-Artefakts — sonst schlägt er fehl.
-- Eine rein cloud-seitige Version (wie 2026.09.17.1: `families[].single_reader`) lässt
+- Eine rein cloud-seitige Version (wie 2026.09.17.1: `families[].single_reader`, 2026.09.21.1:
+  `families[].rueckfall_ohne_box`) lässt
   `edge-app/nodered/measurements/catalog.json` und die Metadaten-Migration BYTE-GLEICH
   (`tools/package_edge_runtime.py --check`, Test `test_runtime_derivatives_are_byte_identical`).
   Keine Box sieht einen fremden Stand, kein Edge-Release ist nötig.
