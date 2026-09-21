@@ -181,6 +181,11 @@ class ZugriffZaunApiTest {
     private static final Map<String, String> FREMDER_KUNDENBEREICH = new TreeMap<>();
     private static UUID bezugsgroesse;
     private static String importKennung;
+    /** Die übrigen Objekte der Bühne, die die Inventur ({@link #behaelter}, {@link #unterobjekte}) einsetzt. */
+    private static Buehne buehne;
+
+    private record Buehne(UUID messstelle, UUID quelle, UUID box, UUID wago, UUID komponente, UUID ort,
+            UUID kostenstelle, UUID prozess) {}
 
     private record Route(HttpMethod methode, String muster, String pfad) {
         @Override
@@ -557,15 +562,61 @@ class ZugriffZaunApiTest {
     private static final String BEZUGSGROESSE_SELBST = "/api/v1/bezugsgroessen/{id}";
 
     /**
-     * Die Muster, die am Zaun scheitern dürfen — LEER, und so bleibt die Zusicherung stehen: ein Muster, das den Zaun
-     * verfehlt, ist ein neues Loch und macht den Test rot. Bis zum 21.09.2026 standen hier die drei Lesewege der
-     * Bezugsgröße ({@code /{id}}, {@code …/kanalbindung}, {@code …/kanalbindung/kanaele}): {@code bezugsgroesse} trägt
-     * nur die Mandanten-Policy, und ein Bearbeiter NUR an einem anderen Standort las eine Bezugsgröße mit Geltung am
-     * fremden Standort bzw. erfuhr, dass es sie gibt. Seit {@code vp-uems-zaun-bezugsgroesse-lesen} lesen alle Routen
-     * sie über ihre Geltung ({@code RechtPruefung#pruefenLesen}, AP-03 R-A1); je Geltungsart belegt das
-     * {@code BezugsgroesseApiTest#jedeLeserouteZeigtDieBezugsgroesseNurImGeltungsbereich}.
+     * Die Muster, die am Zaun scheitern dürfen — jedes ist ein ECHTES, gemessenes Loch mit Satz und Ursache, NICHT
+     * geheilt. Die Zusicherung bleibt stehen: ein weiteres Muster ist ein neues Loch, ein geheiltes gehört hier heraus
+     * (beides rot). Bis zum 21.09.2026 standen hier die drei Lesewege der Bezugsgröße (geschlossen mit PR 1000). Seit
+     * der Inventur vom 21.09.2026 ({@code vp-uems-zaun-alle-leserouten-messen},
+     * {@link #jedeLesendeRouteMitKennungZeigtIhrObjektNurAmStandortDesObjekts}) stehen hier die Lesewege von
+     * Messstelle, Kostenstelle, Prozess und die Vorlagen-Liste: {@code messstelle*}, {@code kostenstelle},
+     * {@code prozess} und {@code bezugsdaten_vorlage} tragen nur die Mandanten-Policy, und die Dienste fragen weder
+     * {@code Geltungsbereich} noch {@code RechtPruefung#pruefenLesen}. Ursachen relativ zu
+     * {@code services/api/src/main/java/com/voltpilot/api/uems/}.
      */
-    private static final Map<String, String> ZAUN_OFFEN = Map.of();
+    private static final Map<String, String> ZAUN_OFFEN = Map.ofEntries(
+            Map.entry("/api/v1/messstellen", "Liste nennt jede Messstelle des Kundenbereichs (ganzes Objekt je Zeile) — "
+                    + "MessstelleRegisterService.java:127 register.alle(), keine Teilansicht"),
+            Map.entry("/api/v1/messstellen/{id}", "ganze Messstelle (Stammdaten, Größen, Stellung) — "
+                    + "MessstelleService.java:145 → MessstelleRepository#finde, kein Zaun"),
+            Map.entry("/api/v1/messstellen/{id}/aenderungen", "ganzes Änderungsprotokoll der Messstelle — "
+                    + "AenderungsprotokollService.java:93 messstellen.finde(id)"),
+            Map.entry("/api/v1/messstellen/{id}/formel", "Existenz (an einer berechneten Messstelle die ganze Formel) — "
+                    + "MessstelleFormelService.java:475"),
+            Map.entry("/api/v1/messstellen/{id}/wert", "Existenz (an einer berechneten Messstelle Einheit und Werte "
+                    + "sichtbarer Terme) — MessstelleFormelService.java:648"),
+            Map.entry("/api/v1/messstellen/{id}/verlauf", "Existenz (an einer berechneten Messstelle der Verlauf) — "
+                    + "MessstelleFormelService.java:992"),
+            Map.entry("/api/v1/messstellen/{id}/prozesse", "Prozess-Zuordnungen der Messstelle (Teile) — "
+                    + "KostenstelleProzessService.java:104"),
+            Map.entry("/api/v1/messstellen/{id}/quellen", "Existenz und Größen-Gerüst; die Quellen selbst fallen über "
+                    + "den Join auf geraet/measurement_point weg (Teile) — MessstelleQuelleService.java:149"),
+            Map.entry("/api/v1/messstellen/{id}/quellen/{quelleId}", "nur Existenz: „Quelle nicht gefunden.“ statt "
+                    + "„Messstelle nicht gefunden.“ — MessstelleQuelleService.java:221"),
+            Map.entry("/api/v1/messstellen/{id}/quellen/{quelleId}/kadenz", "nur Existenz: „Quelle nicht gefunden.“ "
+                    + "statt „Messstelle nicht gefunden.“ — QuelleKadenzService.java:102"),
+            Map.entry("/api/v1/messstellen/{id}/standort", "Existenz und Stellung; Ort und Standort bleiben leer "
+                    + "(site_scope) — MessstelleZuordnungService.java:411"),
+            Map.entry("/api/v1/messstellen/{id}/verteilung", "ganze Verteilung auf Kostenstellen — "
+                    + "VerteilungService.java:93"),
+            Map.entry("/api/v1/messstellen/{kennzeichen}/werte", "Kopf der Messstelle (an berechneten auch die Werte) — "
+                    + "MessstelleWerteService.java:305 findeNachKennzeichen"),
+            Map.entry("/api/v1/messstellen/{kennzeichen}/werte/versionen", "Kopf der Messstelle (an berechneten auch "
+                    + "die Versionen) — MessstelleWerteService.java:305 findeNachKennzeichen"),
+            Map.entry("/api/v1/unternehmen/kostenstellen", "Liste nennt jede Kostenstelle; Geltung Unternehmen sieht "
+                    + "nach AP-03 R-A1 nur eine unternehmensweite Rolle — KostenstelleProzessService.java:81"),
+            Map.entry("/api/v1/unternehmen/kostenstellen/{id}", "ganze Kostenstelle (Geltung Unternehmen, R-A1) — "
+                    + "KostenstelleProzessService.java:88"),
+            Map.entry("/api/v1/unternehmen/kostenstellen/{id}/energie", "ganze Energiebilanz der Kostenstelle, auch "
+                    + "Anteile von Messstellen fremder Standorte — KostenstelleEnergieService.java:92"),
+            Map.entry("/api/v1/unternehmen/prozesse", "Liste nennt jeden Prozess (Geltung Unternehmen, R-A1) — "
+                    + "KostenstelleProzessService.java:92"),
+            Map.entry("/api/v1/unternehmen/prozesse/{id}", "ganzer Prozess (Geltung Unternehmen, R-A1) — "
+                    + "KostenstelleProzessService.java:99"),
+            Map.entry("/api/v1/unternehmen/aenderungen", "Protokoll des Unternehmens nennt jeden Eintrag fremder "
+                    + "Messstellen samt alt/neu, Grund und Person — AenderungsprotokollService.java:111"),
+            Map.entry("/api/v1/berichte/betroffen", "nur Existenz einer Messstelle-Kennung (?objekt=) — "
+                    + "StrukturAufloesung.java:151 objektArt liest messstelle ohne Zaun"),
+            Map.entry("/api/v1/bezugsdaten/vorlagen", "Liste nennt jede Vorlage samt Zuordnung (Kennzeichen der "
+                    + "Ziel-Bezugsgröße am fremden Standort), AP-09 E12 — BezugsdatenVorlageService.java:30"));
 
     /**
      * Ein Zaun-Fall. {@code sieht} bekommt das Objekt ({@code < 400}, der Körper nennt {@code beleg}). {@code blind}
@@ -692,7 +743,179 @@ class ZugriffZaunApiTest {
         assertThat(fehler).isEmpty();
         assertThat(zaunVerfehlt.keySet()).as("genau die benannten offenen Fälle verfehlen den Zaun — ein weiterer ist "
                 + "ein neues Loch, ein geheilter gehört aus ZAUN_OFFEN heraus: " + zaunVerfehlt)
-                .containsExactlyInAnyOrderElementsOf(ZAUN_OFFEN.keySet());
+                .containsExactlyInAnyOrderElementsOf(ZAUN_OFFEN.keySet().stream().filter(gemessen::contains).toList());
+    }
+
+    /** Pflichtparameter einer Inventur-Route, ohne die auch der Bearbeiter am Standort abgelehnt wird. */
+    private static final Map<String, String> ANFRAGE = Map.of(
+            "/api/v1/messstellen/{kennzeichen}/werte", "?raster=tag&von=2026-09-01&bis=2026-09-02",
+            "/api/v1/messstellen/{kennzeichen}/werte/versionen", "?raster=tag&von=2026-09-01&bis=2026-09-02");
+
+    /** Eine Kennung, die es in keinem Kundenbereich gibt. */
+    private static final String NIE = "00000000-0000-0000-0000-00000000dead";
+
+    /**
+     * Die LISTEN der Objekte, die die Inventur trifft: Muster → {aufrufbarer Pfad, was die Liste für das Objekt der
+     * Bühne nennt}. Eine Liste, die einem Bearbeiter an einem anderen Standort das Objekt nennt, ist dasselbe Loch wie
+     * die Einzelroute.
+     */
+    private static Map<String, String[]> listen() {
+        Map<String, String[]> l = new TreeMap<>();
+        l.put("/api/v1/sites", new String[] {"/api/v1/sites", BERLIN_SITE});
+        l.put("/api/v1/standorte", new String[] {"/api/v1/standorte", demoStandort.toString()});
+        l.put("/api/v1/messstellen", new String[] {"/api/v1/messstellen", "MS-Z1"});
+        l.put("/api/v1/devices", new String[] {"/api/v1/devices", buehne.box().toString()});
+        l.put("/api/v1/bezugsgroessen", new String[] {"/api/v1/bezugsgroessen", BEZUGSGROESSE});
+        l.put("/api/v1/bezugsdaten/importe", new String[] {"/api/v1/bezugsdaten/importe", importKennung});
+        l.put("/api/v1/overview", new String[] {"/api/v1/overview", BERLIN_SITE});
+        l.put("/api/v1/earnings", new String[] {"/api/v1/earnings", BERLIN_SITE});
+        l.put("/api/v1/bezugsdaten/vorlagen", new String[] {"/api/v1/bezugsdaten/vorlagen", "Zaun-Vorlage"});
+        l.put("/api/v1/unternehmen/kostenstellen", new String[] {"/api/v1/unternehmen/kostenstellen", "K-91"});
+        l.put("/api/v1/unternehmen/prozesse", new String[] {"/api/v1/unternehmen/prozesse", "P-91"});
+        l.put("/api/v1/unternehmen/aenderungen", new String[] {"/api/v1/unternehmen/aenderungen?von=2026-09-01"
+                + "&bis=2026-09-30", "Zaun-Protokoll"});
+        return l;
+    }
+
+    /**
+     * Die erste Kennung im Pfad: das Objekt der Bühne und eine Kennung derselben Art, die es nicht gibt — oder
+     * {@code null}, wenn die Bühne dieses Objekt nicht trägt (Protokoll „ohne Objekt").
+     */
+    private static String[] behaelter(String kopf, String name) {
+        return switch (kopf) {
+            case "/api/v1/sites/" -> new String[] {BERLIN_SITE, NIE};
+            case "/api/v1/standorte/" -> new String[] {demoStandort.toString(), NIE};
+            case "/api/v1/messstellen/" -> "kennzeichen".equals(name) ? new String[] {"MS-Z1", "MS-Z9"}
+                    : new String[] {buehne.messstelle().toString(), NIE};
+            case "/api/v1/geraete/" -> new String[] {buehne.wago().toString(), NIE};
+            case "/api/v1/devices/" -> new String[] {buehne.box().toString(), NIE};
+            case "/api/v1/bezugsgroessen/" -> new String[] {bezugsgroesse.toString(), NIE};
+            case "/api/v1/korrekturen/" -> new String[] {KORREKTUR, "K-2026-9999"};
+            case "/api/v1/bezugsdaten/importe/" -> new String[] {importKennung, "I-2026-9999"};
+            case "/api/v1/orte/" -> new String[] {buehne.ort().toString(), NIE};
+            case "/api/v1/unternehmen/kostenstellen/" -> new String[] {buehne.kostenstelle().toString(), NIE};
+            case "/api/v1/unternehmen/prozesse/" -> new String[] {buehne.prozess().toString(), NIE};
+            default -> null;
+        };
+    }
+
+    /** Weitere Kennungen hinter der ersten: das Objekt der Bühne, wo es eines gibt, sonst eine unbekannte. */
+    private static String unterobjekte(String rest) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\{([^}:]+)(:[^}]*)?}").matcher(rest);
+        StringBuilder s = new StringBuilder();
+        while (m.find()) {
+            String wert = switch (m.group(1)) {
+                case "entityId" -> buehne.komponente().toString();
+                case "quelleId" -> buehne.quelle().toString();
+                case "pointKey" -> KANAL;
+                case "role" -> "grid-meter";
+                case "nr" -> "1";
+                default -> NIE;
+            };
+            m.appendReplacement(s, wert);
+        }
+        m.appendTail(s);
+        return s.toString();
+    }
+
+    /**
+     * Die Inventur vom 21.09.2026 ({@code vp-uems-zaun-alle-leserouten-messen}): JEDE übrige lesende Kundenroute mit
+     * einer Kennung im Pfad, deren erste Kennung ein Objekt dieser Bühne trifft ({@link #behaelter}), macht dieselbe
+     * Aussage wie die 18 — gesehen wird das Objekt vom Bearbeiter am Standort ({@code < 400}; lehnt ihn ein Recht ab,
+     * vom Kundenadministrator, Protokoll „sieht: KA"), und der Bearbeiter an einem ANDEREN Standort bekommt Status und
+     * Körper derselben Route mit einer unbekannten Kennung. Sieht auch der Kundenadministrator nichts (Pflichtparameter,
+     * Unterobjekt fehlt der Bühne), steht die Route „ohne Aussage" im Protokoll: zwei gleiche Ablehnungen beweisen
+     * keinen Zaun. Dazu die Listen derselben Objekte ({@link #listen}): anderswo nennen sie das Objekt nicht.
+     */
+    @Test
+    void jedeLesendeRouteMitKennungZeigtIhrObjektNurAmStandortDesObjekts() throws Exception {
+        Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
+        Konto hier = new Konto("Bearbeiter am Standort des Objekts", konto(KUNDE_BEARBEITER, DEMO), new String[0]);
+        Konto anderswo = new Konto("Bearbeiter nur an einem anderen Standort", konto(KUNDE_BEARBEITER_FREMD, DEMO),
+                new String[0]);
+        Set<String> schonGemessen = new TreeSet<>(NACH_IP4_NUR_ZUFAELLIG_GRUEN);
+        schonGemessen.add(BEZUGSGROESSE_SELBST);
+        Set<String> inventur = new TreeSet<>();
+        Map<String, String> zaunVerfehlt = new TreeMap<>();
+        Set<String> gezaeunt = new TreeSet<>();
+        Set<String> ohneAussage = new TreeSet<>();
+        Set<String> ohneObjekt = new TreeSet<>();
+        Map<String, String[]> paare = new TreeMap<>();
+        for (Route r : kundenrouten(true)) {
+            String muster = r.muster();
+            if (!muster.contains("{") || schonGemessen.contains(muster) || AUSGENOMMEN.contains(muster)) {
+                continue;
+            }
+            int a = muster.indexOf('{');
+            int e = muster.indexOf('}', a);
+            String[] b = behaelter(muster.substring(0, a), muster.substring(a + 1, e).split(":")[0]);
+            if (b == null) {
+                ohneObjekt.add(muster);
+                continue;
+            }
+            String rest = unterobjekte(muster.substring(e + 1)) + ANFRAGE.getOrDefault(muster, "");
+            paare.put(muster, new String[] {muster.substring(0, a) + b[0] + rest, muster.substring(0, a) + b[1] + rest});
+        }
+        // Die Kennung steht in der Anfrage statt im Pfad: dieselbe Aussage (anderswo = unbekannte Kennung).
+        String betroffen = "/api/v1/berichte/betroffen?gilt_ab=2026-09-01&anlass=zuordnung_rueckwirkend&objekt=";
+        paare.put("/api/v1/berichte/betroffen", new String[] {betroffen + buehne.messstelle(), betroffen + NIE});
+        for (Map.Entry<String, String[]> paar : paare.entrySet()) {
+            String muster = paar.getKey();
+            String probe = paar.getValue()[0];
+            String unbekannt = paar.getValue()[1];
+            inventur.add(muster);
+            Antwort sieht = ruf(get(probe), hier);
+            String wer = "";
+            if (sieht.status() >= 400) {
+                sieht = ruf(get(probe), ka);
+                wer = " (sieht: KA)";
+            }
+            Antwort blind = ruf(get(probe), anderswo);
+            Antwort nichts = ruf(get(unbekannt), anderswo);
+            if (sieht.status() >= 400 && blind.status() == nichts.status() && blind.body().equals(nichts.body())) {
+                // Zwei gleiche Ablehnungen beweisen keinen Zaun; zwei VERSCHIEDENE verraten die Existenz (unten).
+                ohneAussage.add(muster + " " + sieht.status() + " " + kurz(sieht.body()));
+                continue;
+            }
+            if (blind.status() < 400 || blind.status() != nichts.status() || !blind.body().equals(nichts.body())) {
+                zaunVerfehlt.put(muster, anderswo.name() + " bekommt " + blind.status() + " " + kurz(blind.body())
+                        + " — eine unbekannte Kennung " + nichts.status() + " " + kurz(nichts.body()));
+            } else {
+                gezaeunt.add(muster + wer);
+            }
+        }
+        for (Map.Entry<String, String[]> l : listen().entrySet()) {
+            String muster = l.getKey();
+            String pfad = l.getValue()[0];
+            String beleg = l.getValue()[1];
+            inventur.add(muster);
+            Antwort sieht = ruf(get(pfad), hier);
+            String wer = "";
+            if (sieht.status() >= 400 || !sieht.body().contains(beleg)) {
+                sieht = ruf(get(pfad), ka);
+                wer = " (sieht: KA)";
+            }
+            if (sieht.status() >= 400 || !sieht.body().contains(beleg)) {
+                ohneAussage.add(muster + " (Liste) " + sieht.status() + " " + kurz(sieht.body()));
+                continue;
+            }
+            Antwort blind = ruf(get(pfad), anderswo);
+            if (blind.status() < 400 && blind.body().contains(beleg)) {
+                zaunVerfehlt.put(muster, "die Liste nennt " + anderswo.name() + " das Objekt (" + beleg + ")");
+            } else {
+                gezaeunt.add(muster + " (Liste)" + wer);
+            }
+        }
+        System.out.printf("Inventur: %d gemessen, davon am Zaun %d: %s%n", gezaeunt.size() + zaunVerfehlt.size(),
+                gezaeunt.size(), gezaeunt);
+        System.out.printf("Inventur OFFEN (%d): %s%n", zaunVerfehlt.size(), zaunVerfehlt);
+        System.out.printf("Inventur ohne Aussage (%d): %s%n", ohneAussage.size(), ohneAussage);
+        System.out.printf("Inventur ohne Objekt der Bühne (%d): %s%n", ohneObjekt.size(), ohneObjekt);
+        assertThat(zaunVerfehlt.keySet()).as("genau die benannten offenen Fälle verfehlen den Zaun — ein weiterer ist "
+                + "ein neues Loch, ein geheilter gehört aus ZAUN_OFFEN heraus: " + zaunVerfehlt)
+                .containsExactlyInAnyOrderElementsOf(ZAUN_OFFEN.keySet().stream().filter(inventur::contains).toList());
+        assertThat(ZAUN_OFFEN.keySet()).as("jeder offene Fall ist gemessen").allMatch(
+                m -> inventur.contains(m) || schonGemessen.contains(m));
     }
 
     private static String kurz(String body) {
@@ -944,6 +1167,26 @@ class ZugriffZaunApiTest {
                 + "?, 'installateur', 'ansehen', ?, '2099-12-30', '2099-12-31T00:00:00+01', 'Europe/Berlin') RETURNING id",
                 UUID.class, NORDWIND, PARTNER_NORDWIND, nordwindStandort, ab("2026-01-01"));
 
+        // Für die Inventur: ein Gebäude am Demo-Standort, dazu Kostenstelle und Prozess (Geltung Unternehmen, AP-03
+        // §4.9) mit der Messstelle als Mitglied.
+        UUID ort = root.queryForObject("INSERT INTO ort (tenant_id, art, name, kurzzeichen, zustand) VALUES (?, "
+                + "'gebaeude', 'Zaun-Halle', 'G-91', 'aktiv') RETURNING id", UUID.class, DEMO);
+        root.update("INSERT INTO ort_zuordnung (tenant_id, ort_id, eltern_standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", DEMO, ort, demoStandort);
+        UUID kostenstelle = root.queryForObject("INSERT INTO kostenstelle (tenant_id, unternehmen_id, kennzeichen, name, "
+                + "gueltig_ab) VALUES (?, ?, 'K-91', 'Zaun-Kostenstelle', '2024-01-01') RETURNING id", UUID.class, DEMO,
+                unternehmenDesDemoKundenbereichs());
+        UUID prozess = root.queryForObject("INSERT INTO prozess (tenant_id, unternehmen_id, kennzeichen, name, "
+                + "gueltig_ab) VALUES (?, ?, 'P-91', 'Zaun-Prozess', '2024-01-01') RETURNING id", UUID.class, DEMO,
+                unternehmenDesDemoKundenbereichs());
+        root.update("INSERT INTO messstelle_prozess (tenant_id, messstelle_id, prozess_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", DEMO, messstelle, prozess);
+        // Ein Eintrag im Protokoll der Messstelle (für das Protokoll des Unternehmens).
+        root.update("INSERT INTO messstelle_aenderung (tenant_id, messstelle_id, art, alt, neu, gilt_ab, rueckwirkend, "
+                + "grund, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, 'bearbeitet', '{}'::jsonb, "
+                + "'{\"name\":\"Zaun-Zähler\"}'::jsonb, '2026-09-01T00:00:00Z', false, 'Zaun-Protokoll', ?, 'Zaun', "
+                + "'kundenadministrator', 'kunde')", DEMO, messstelle, KUNDE_KA);
+        buehne = new Buehne(messstelle, quelle, box, wago, komponente, ort, kostenstelle, prozess);
         String standort = "/api/v1/standorte/" + demoStandort;
         PROBEN.put(BEZUGSGROESSE_SELBST, "/api/v1/bezugsgroessen/" + bezugsgroesse);
         PROBEN.put("/api/v1/bezugsgroessen/{id}/kanalbindung", "/api/v1/bezugsgroessen/" + bezugsgroesse
@@ -999,6 +1242,11 @@ class ZugriffZaunApiTest {
         PROBEN.put("/api/v1/bezugsdaten/importe/{kennung}", "/api/v1/bezugsdaten/importe/" + importKennung);
         PROBEN.put("/api/v1/bezugsdaten/importe/{kennung}/ruecknahme/vorschau", "/api/v1/bezugsdaten/importe/"
                 + importKennung + "/ruecknahme/vorschau");
+        // Eine Vorlage mit derselben Zuordnung (Ziel BZ-Z1, Geltung Demo-Standort), über ihren Schreibweg.
+        Antwort vorlage = ruf(MockMvcRequestBuilders.post(URI.create("/api/v1/bezugsdaten/vorlagen"))
+                .contentType("application/json").content("{\"vorlage_id\":null,\"name\":\"Zaun-Vorlage\","
+                        + "\"zuordnung\":" + new String(zuordnung, StandardCharsets.UTF_8) + "}"), ka);
+        assertThat(vorlage.status()).as(vorlage.body()).isEqualTo(201);
     }
 
     private static UUID unternehmenDesDemoKundenbereichs() {
