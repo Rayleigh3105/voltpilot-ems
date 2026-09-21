@@ -18,7 +18,9 @@ import org.springframework.stereotype.Component;
 /**
  * Der TAKT der Verbund-Bilanz (AP-15 IP-12): einmal täglich rechnet {@link VerbundBilanzService#rechnen} den Vortag
  * (Europe/Berlin) jeder Anlage MIT Gemeinsamer Steuerung — nur dort; ein Kundenbereich ohne Verbund wird nicht einmal
- * betreten. Ein Tag wird genau einmal gerechnet; ein zweiter Takt am selben Tag schreibt nichts.
+ * betreten. Ein Tag wird genau einmal gerechnet; ein zweiter Takt am selben Tag schreibt nichts. Ausnahme (A4, IP-30):
+ * ein Tag der letzten {@value #NACHRECHNEN_TAGE} Tage davor, der noch {@code unbekannt} steht, wird mit dem heutigen
+ * Datenstand neu geurteilt — die Boxen puffern 48 h, eine Viertelstunde kann nach dem ersten Lauf nachgeliefert werden.
  *
  * <p><b>⚠ Wie jeder {@code @Scheduled} ist er im TESTLAUF AUS</b> (surefire-Systemeigenschaft) und in PRODUKTION AN
  * ({@code application.yml}, {@code matchIfMissing}); wer ihn prüft, ruft {@link #lauf(LocalDate)} selbst. Er wirft
@@ -29,6 +31,9 @@ import org.springframework.stereotype.Component;
 public class VerbundBilanzLaeufer {
 
     private static final Logger log = LoggerFactory.getLogger(VerbundBilanzLaeufer.class);
+
+    /** 48 h Puffer der Boxen + ein Tag für die Verdichtung der Viertelstunden. */
+    static final int NACHRECHNEN_TAGE = 3;
 
     private final JdbcTemplate adminJdbc;
     private final VerbundBilanzService bilanz;
@@ -54,7 +59,12 @@ public class VerbundBilanzLaeufer {
     @Scheduled(cron = "${voltpilot.uems.verbund-bilanz.cron:0 37 4 * * *}", zone = "Europe/Berlin")
     public void takt() {
         try {
-            int n = lauf(uhr.instant().atZone(GemeinsameSteuerungService.ZONE).toLocalDate().minusDays(1));
+            LocalDate gestern = uhr.instant().atZone(GemeinsameSteuerungService.ZONE).toLocalDate().minusDays(1);
+            int n = lauf(gestern);
+            int nach = nachrechnen(gestern);
+            if (nach > 0) {
+                log.info("Verbund-Bilanz: {} nachgelieferte(r) Tag(e) neu geurteilt", nach);
+            }
             melder.gelaufen(UemsLaeuferMelder.VERBUND_BILANZ);
             if (n > 0) {
                 log.info("Verbund-Bilanz: {} Anlage(n) gerechnet", n);
@@ -87,5 +97,31 @@ public class VerbundBilanzLaeufer {
             }
         }
         return gerechnet;
+    }
+
+    /**
+     * Rechnet in jedem Kundenbereich mit Verbund die Tage [{@code gestern} − {@value #NACHRECHNEN_TAGE}, {@code gestern}
+     * − 1] neu, die noch {@code unbekannt} stehen; gibt die Zahl der Tage zurück, deren Urteil sich geändert hat.
+     */
+    public int nachrechnen(LocalDate gestern) {
+        List<UUID> kundenbereiche = adminJdbc.queryForList(
+                "SELECT DISTINCT tenant_id FROM steuerungsverbund ORDER BY tenant_id", UUID.class);
+        int geaendert = 0;
+        for (UUID tenant : kundenbereiche) {
+            try {
+                TenantContext.set(tenant);
+                for (UUID anlage : bilanz.anlagen()) {
+                    try {
+                        geaendert += bilanz.nachrechnen(anlage, gestern.minusDays(NACHRECHNEN_TAGE),
+                                gestern.minusDays(1)).size();
+                    } catch (RuntimeException e) {
+                        log.warn("Verbund-Bilanz nachrechnen für Anlage {} gescheitert: {}", anlage, e.toString());
+                    }
+                }
+            } finally {
+                TenantContext.clear();
+            }
+        }
+        return geaendert;
     }
 }

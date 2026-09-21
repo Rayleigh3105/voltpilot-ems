@@ -62,6 +62,33 @@ public class VerbundBilanzRepository {
     }
 
     /**
+     * Die Tage des Verbunds im Fenster [{@code von}, {@code bis}], die noch {@code unbekannt} stehen — nur sie rechnet
+     * der Läufer neu ({@link #nachrechnen}); ein plausibel/unplausibel-Urteil wird nie wieder angefasst.
+     */
+    public List<LocalDate> unbekannteTage(UUID verbundId, LocalDate von, LocalDate bis) {
+        return jdbc.queryForList("SELECT tag FROM steuerungsverbund_bilanz WHERE steuerungsverbund_id = ? "
+                + "AND tag BETWEEN ? AND ? AND zustand = 'unbekannt' ORDER BY tag", LocalDate.class, verbundId, von,
+                bis);
+    }
+
+    /**
+     * Ersetzt das Ergebnis eines Tages, der noch {@code unbekannt} steht (A4: nachgelieferte Viertelstunden, IP-30);
+     * false, wenn der Tag kein solches Ergebnis hat. Schlüssel und Zaun bleiben (Spaltenrechte V20260922110000).
+     */
+    public boolean nachrechnen(Ergebnis e) {
+        return jdbc.update("UPDATE steuerungsverbund_bilanz SET zustand = ?, grund = ?, viertelstunden_erwartet = ?, "
+                + "viertelstunden_plausibel = ?, viertelstunden_unplausibel = ?, viertelstunden_unbekannt = ?, "
+                + "geringstes_ungeregeltes_kw = ?, geringstes_toleranz_kw = ?, geringstes_von = ?, "
+                + "grundlage = ?::jsonb, stufe_vorher = ?, auf_s1_zurueck = ?, gerechnet_von = ?, "
+                + "hoechstes_ungeregeltes_kw = ?, hoechstes_von = ?, gerechnet_am = now() "
+                + "WHERE steuerungsverbund_id = ? AND tag = ? AND zustand = 'unbekannt'",
+                e.zustand(), e.grund(), e.erwartet(), e.plausibel(), e.unplausibel(), e.unbekannt(), e.geringstesKw(),
+                e.geringstesToleranzKw(), e.geringstesVon() == null ? null : Timestamp.from(e.geringstesVon()),
+                e.grundlageJson(), e.stufeVorher(), e.aufS1Zurueck(), e.gerechnetVon(), e.hoechstesKw(),
+                e.hoechstesVon() == null ? null : Timestamp.from(e.hoechstesVon()), e.verbundId(), e.tag()) > 0;
+    }
+
+    /**
      * Der Stand des Verbunds: sein jüngstes Ergebnis und der erste Tag der ununterbrochenen Reihe gleicher Zustände
      * davor („seit“). Leer ohne Ergebnis.
      */

@@ -16,7 +16,10 @@ import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Schritt;
 import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +29,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -110,6 +114,12 @@ class SteuerungsverbundAnteilDienstTest {
     WirksameAnteileAusHerzschlag herzschlag;
     @Autowired
     GemeinsameSteuerungBoxStand boxStand;
+    @Autowired
+    AnlageGrenzen grenzen;
+    @Autowired
+    ObjectProvider<VerbundAnteileVersand> versand;
+    @Autowired
+    ObjectProvider<WirksameAnteileQuelle> herzschlagQuelle;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -371,6 +381,177 @@ class SteuerungsverbundAnteilDienstTest {
     // ------------------------------------------------------------------ Welt
 
     /** AN-1 mit E-1 (führt, K-1 100 kW → 40, K-2 100 kW → 0) und E-4 (steuert mit, K-12 60 kW frei, 6 × 22 → 4,1). */
+    // ============================================================ AP-15 IP-30 (NW-4): Ausfälle am Zweischritt
+
+    /**
+     * A5/R7 einseitig stumm: E-4 soll am Bezug enger werden (77 → 47 kW), damit E-1 30 kW bekommt — E-4 ist stumm und
+     * quittiert nichts. E-1 quittiert ihren Übergang, bekommt aber nie mehr als vorher (0 kW), es gibt keinen
+     * Zielstand und keine zweite Änderung; das einzige, was E-4 bekommt, ist das retained Übergangsdokument.
+     */
+    @Test
+    void a5EinseitigStummDieVerengteBoxQuittiertNichtDieAndereWirdNieErweitert() throws Exception {
+        Welt w = zielstandQuittiert();
+        UUID akku = root.queryForObject("SELECT entity_id FROM steuerungsverbund_geraet WHERE device_id = ? "
+                + "AND richtung = 'bezug'", UUID.class, w.e1());
+        TenantContext.set(w.mandant());
+        rueckfaelle.hinterlegen(akku, Grenzart.BEZUG, new Angabe(GeraeteRueckfall.FAELLT_AUF_WERT,
+                new BigDecimal("30"), 60), null, "installateur@ahrenberg.test");
+        leer();
+
+        Ergebnis u = dienst.anteileAendern(w.anlage(), BETREIBER);
+        assertThat(u.veroeffentlicht()).isTrue();
+        assertThat(u.dokument().schritt()).isEqualTo(Schritt.UEBERGANG);
+        assertThat(u.dokument().verengteBoxen()).containsExactly(w.e4().toString());
+        assertThat(kw(u, Grenzart.BEZUG, w.e1())).as("Übergang: E-1 bleibt bei 0").isEqualByComparingTo("0.0");
+        assertThat(kw(u, Grenzart.BEZUG, w.e4())).as("Übergang: E-4 schon eng").isEqualByComparingTo("47.0");
+        assertThat(u.gesendetAn()).containsExactlyInAnyOrder(w.e1(), w.e4());
+
+        quittung(w, w.e1(), 1, 3, "angenommen", null, null);
+        TenantContext.set(w.mandant());
+        assertThat(letztes(w).dokument().revision()).as("kein Zielstand ohne E-4").isEqualTo(3);
+        assertThat(kw(letztes(w), Grenzart.BEZUG, w.e1())).isEqualByComparingTo("0.0");
+        assertThat(dienst.anteileAendern(w.anlage(), BETREIBER).grund()).isEqualTo(Grund.ZWEISCHRITT_LAEUFT);
+        assertThat(quittiert(w.e4())).as("E-4 hält weiter ihren Zielstand von Revision 2").containsExactly(1L, 2L);
+        assertThat(topics()).as("nach dem Übergang geht nichts mehr auf den Draht").hasSize(2);
+    }
+
+    /**
+     * A10/R12 hängender Zweischritt über einen Neustart der api: drei Tage später, mit einem neuen Dienst ohne
+     * Gedächtnis (alles steht in der Datenbank), steht der Übergang noch — kein Zeitablauf macht ihn zum Zielstand.
+     * Eine späte Quittung einer ALTEN Revision (E-1 hatte Revision 2 nie quittiert) zählt nicht; erst die Quittung
+     * des Übergangs selbst bringt den Zielstand. Erneut zugestellt wird genau der Übergang.
+     */
+    @Test
+    void a10HaengenderZweischrittUeberstehtDenNeustartUndEineAlteQuittungZaehltNicht() throws Exception {
+        Welt w = ahrenberg(Stufe.ANTEILE_AKTIV);
+        TenantContext.set(w.mandant());
+        dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        quittung(w, w.e1(), 1, 1, "angenommen", null, null);
+        quittung(w, w.e4(), 1, 2, "angenommen", null, null);
+        TenantContext.set(w.mandant());
+        rueckfaelle.hinterlegen(k1(w), Grenzart.EINSPEISUNG, new Angabe(GeraeteRueckfall.FAELLT_AUF_WERT,
+                new BigDecimal("10"), 60), null, "installateur@ahrenberg.test");
+        anteile.geraetEintragen(w.mandant(), w.verbund(), w.e4(), komponente(w, "pv-generation"), Grenzart.EINSPEISUNG,
+                new BigDecimal("30"), true, "zweiter Wechselrichter", "kunde@ahrenberg.test");
+        Ergebnis u = dienst.anteileAendern(w.anlage(), BETREIBER);
+        assertThat(u.dokument().revision()).isEqualTo(3);
+        assertThat(u.dokument().verengteBoxen()).containsExactly(w.e1().toString());
+
+        // Neustart: neuer Dienst, neuer Listener, die Uhr drei Tage weiter
+        SteuerungsverbundAnteilDienst neu = new SteuerungsverbundAnteilDienst(verbuende, anteile, rueckfaelle, grenzen,
+                versand, herzschlagQuelle, mapper,
+                Clock.fixed(Instant.now().plus(Duration.ofDays(3)), ZoneOffset.UTC));
+        leer();
+        TenantContext.set(w.mandant());
+        assertThat(neu.anteileAendern(w.anlage(), BETREIBER).grund()).isEqualTo(Grund.ZWEISCHRITT_LAEUFT);
+        assertThat(letztes(w).dokument().schritt()).isEqualTo(Schritt.UEBERGANG);
+
+        quittung(neu, w, w.e1(), 1, 2, "angenommen");
+        TenantContext.set(w.mandant());
+        assertThat(letztes(w).dokument().revision()).as("Revision 2 ist nicht der Übergang").isEqualTo(3);
+        assertThat(letztes(w).dokument().schritt()).isEqualTo(Schritt.UEBERGANG);
+        assertThat(Draht.GESENDET).isEmpty();
+
+        TenantContext.set(w.mandant());
+        List<UUID> erneut = neu.erneutSenden(w.anlage());
+        assertThat(erneut).containsExactlyInAnyOrder(w.e1(), w.e4());
+        synchronized (Draht.GESENDET) {
+            for (Map.Entry<String, byte[]> e : Draht.GESENDET) {
+                assertThat(mapper.readTree(e.getValue()).path("revision").asLong()).as(e.getKey()).isEqualTo(3);
+            }
+        }
+
+        quittung(neu, w, w.e1(), 1, 3, "angenommen");
+        TenantContext.set(w.mandant());
+        assertThat(letztes(w).dokument().revision()).isEqualTo(4);
+        assertThat(letztes(w).dokument().schritt()).isEqualTo(Schritt.ZIEL);
+        assertThat(kw(letztes(w), Grenzart.EINSPEISUNG, w.e4())).isEqualByComparingTo("90.0");
+    }
+
+    /**
+     * Epoche nach dem Rückspielen (A18-Folge): die Cloud steht nach dem erneuten Scharfschalten in Epoche 2; eine
+     * verspätete Quittung aus dem verlorenen Stand (Epoche 1, Revision 9 — ein Dokument, das diese Datenbank nie
+     * gespeichert hat) ist keine Quittung: kein Zielstand, kein Quittungs-Stand, keine erneute Rückspiel-Marke.
+     * Die Box bekommt ihr Dokument über die retained Nachricht bzw. {@code erneutSenden} noch einmal.
+     */
+    @Test
+    void epocheNachRueckspielenEineQuittungDerAltenEpocheIstKeineQuittung() throws Exception {
+        Welt w = ahrenberg(Stufe.ANTEILE_AKTIV);
+        TenantContext.set(w.mandant());
+        dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        quittung(w, w.e1(), 1, 1, "angenommen", null, null);
+        quittung(w, w.e1(), 1, 2, "angenommen", null, null);
+        quittung(w, w.e4(), 1, 2, "angenommen", null, null);
+        quittung(w, w.e1(), 1, 2, "abgelehnt", "revision_aelter", "{\"epoche\":1,\"revision\":9}");
+        herzschlag.merke(w.anlage(), w.e1(), mapper.readTree("""
+                {"rolle":"fuehrt","anteile_epoche":1,"anteile_revision":9,"anteile_kw":{"einspeisung":10.0,"bezug":0.0}}"""));
+        herzschlag.merke(w.anlage(), w.e4(), mapper.readTree("""
+                {"rolle":"steuert_mit","anteile_epoche":1,"anteile_revision":9,
+                 "anteile_kw":{"einspeisung":90.0,"bezug":77.0}}"""));
+        TenantContext.set(w.mandant());
+        Ergebnis e2 = dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        assertThat(e2.dokument().epoche()).isEqualTo(2);
+        assertThat(e2.dokument().verengteBoxen()).containsExactly(w.e4().toString());
+        long revision = e2.dokument().revision();
+
+        // E-4 meldet verspätet ihren alten Stand an
+        quittung(w, w.e4(), 1, 9, "angenommen", null, null);
+        TenantContext.set(w.mandant());
+        assertThat(letztes(w).dokument().revision()).as("kein Zielstand").isEqualTo(revision);
+        assertThat(letztes(w).dokument().schritt()).isEqualTo(Schritt.UEBERGANG);
+        assertThat(quittiert(w.e4())).as("der alte Stand zählt nicht als Quittung").containsExactly(1L, 2L);
+        assertThat(anteile.rueckgespieltErkannt(w.verbund())).isEmpty();
+
+        leer();
+        TenantContext.set(w.mandant());
+        assertThat(dienst.erneutSenden(w.anlage())).contains(w.e4());
+        synchronized (Draht.GESENDET) {
+            assertThat(Draht.GESENDET).allSatisfy(x -> assertThat(epocheRevision(x.getValue()))
+                    .containsExactly(2L, revision));
+        }
+
+        quittung(w, w.e4(), 2, revision, "angenommen", null, null);
+        TenantContext.set(w.mandant());
+        assertThat(letztes(w).dokument().schritt()).isEqualTo(Schritt.ZIEL);
+        assertThat(letztes(w).dokument().epoche()).isEqualTo(2);
+    }
+
+    /** Ahrenberg in S3 mit Zielstand (Revision 2), beide quittiert. */
+    private Welt zielstandQuittiert() {
+        Welt w = ahrenberg(Stufe.ANTEILE_AKTIV);
+        TenantContext.set(w.mandant());
+        dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        quittung(w, w.e1(), 1, 1, "angenommen", null, null);
+        quittung(w, w.e1(), 1, 2, "angenommen", null, null);
+        quittung(w, w.e4(), 1, 2, "angenommen", null, null);
+        TenantContext.set(w.mandant());
+        assertThat(letztes(w).dokument().schritt()).isEqualTo(Schritt.ZIEL);
+        return w;
+    }
+
+    private void quittung(SteuerungsverbundAnteilDienst d, Welt w, UUID box, long epoche, long revision,
+            String urteil) {
+        VerbundAnteileResultListener listener = new VerbundAnteileResultListener("tcp://nie:1883", "", "", d, mapper);
+        TenantContext.clear();
+        assertThat(listener.handle(VerbundAnteileDokument.resultTopic(w.mandant(), w.anlage(), box),
+                ergebnis(w.mandant(), w.anlage(), box, epoche, revision, urteil, null, null), Instant.now())).isTrue();
+    }
+
+    private static List<Long> quittiert(UUID box) {
+        Map<String, Object> m = root.queryForMap("SELECT quittiert_epoche, quittiert_revision FROM "
+                + "steuerungsverbund_mitglied WHERE device_id = ? AND aufgehoben_am IS NULL", box);
+        return java.util.Arrays.asList((Long) m.get("quittiert_epoche"), (Long) m.get("quittiert_revision"));
+    }
+
+    private List<Long> epocheRevision(byte[] nutzlast) {
+        try {
+            JsonNode n = mapper.readTree(nutzlast);
+            return List.of(n.path("epoche").asLong(), n.path("revision").asLong());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private Welt ahrenberg(Stufe stufe) {
         int nr = NR.incrementAndGet();
         UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class, "Ahrenberg #" + nr);
