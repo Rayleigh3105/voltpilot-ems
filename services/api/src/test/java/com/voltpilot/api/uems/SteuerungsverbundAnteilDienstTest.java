@@ -13,6 +13,7 @@ import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Rolle;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Stufe;
 import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Schritt;
+import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -107,6 +108,8 @@ class SteuerungsverbundAnteilDienstTest {
     ObjectMapper mapper;
     @Autowired
     WirksameAnteileAusHerzschlag herzschlag;
+    @Autowired
+    GemeinsameSteuerungBoxStand boxStand;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -181,8 +184,24 @@ class SteuerungsverbundAnteilDienstTest {
         quittung(w, w.e4(), 1, 3, "angenommen", null, null);
         assertThat(letztes(w).dokument().revision()).isEqualTo(3);
         assertThat(letztes(w).dokument().schritt()).isEqualTo(Schritt.UEBERGANG);
+        // IP-24: das Betreiber-Blatt sieht den Übergangsstand „1 von 2“ und wartet auf E-1 — kein Zielstand
+        TenantContext.set(w.mandant());
+        GemeinsameSteuerungDto.Zweischritt uebergang = boxStand.blatt(w.anlage()).zweischritt();
+        assertThat(uebergang.schritt()).isEqualTo("uebergang");
+        assertThat(uebergang.revision()).isEqualTo(3);
+        assertThat(uebergang.bestaetigt()).containsExactly(w.e4());
+        assertThat(uebergang.wartetAuf()).containsExactly(w.e1());
+        GemeinsameSteuerungDto.BoxStand e4 = boxStand.blatt(w.anlage()).boxen().stream()
+                .filter(b -> b.boxId().equals(w.e4())).findFirst().orElseThrow();
+        assertThat(e4.anteile().gesendet().revision()).isEqualTo(3);
+        assertThat(e4.anteile().quittiert().revision()).isEqualTo(3);
 
         quittung(w, w.e1(), 1, 3, "angenommen", null, null);
+        TenantContext.set(w.mandant());
+        GemeinsameSteuerungDto.Zweischritt ziel = boxStand.blatt(w.anlage()).zweischritt();
+        assertThat(ziel.schritt()).as("der Zielstand erst, wenn die api ihn veröffentlicht").isEqualTo("ziel");
+        assertThat(ziel.revision()).isEqualTo(4);
+        assertThat(ziel.wartetAuf()).as("gesendet, noch nicht quittiert").containsExactlyInAnyOrder(w.e1(), w.e4());
         Ergebnis r12ziel = letztes(w);
         assertThat(r12ziel.dokument().revision()).isEqualTo(4);
         assertThat(kw(r12ziel, Grenzart.EINSPEISUNG, w.e1())).isEqualByComparingTo("10.0");

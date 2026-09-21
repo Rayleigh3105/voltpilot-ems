@@ -31,6 +31,20 @@ public class BoxFaehigkeiten {
                 .orElse(false);
     }
 
+    /** Woher die Fähigkeit kommt (IP-24): {@code gemeldet} · {@code versions_tabelle} · {@code fehlt}. */
+    public String herkunft(UUID deviceId, String capability) {
+        if (capability == null || !EdgeSupports.NAMES.contains(capability)) return FEHLT;
+        return versions.findAll().stream().filter(v -> v.deviceId().equals(deviceId)).findFirst()
+                .map(v -> v.supports() != null && v.supports().contains(capability) ? GEMELDET
+                        : effective(v.coreVersion(), v.supports(), versions.releases()).contains(capability)
+                                ? VERSIONS_TABELLE : FEHLT)
+                .orElse(FEHLT);
+    }
+
+    public static final String GEMELDET = "gemeldet";
+    public static final String VERSIONS_TABELLE = "versions_tabelle";
+    public static final String FEHLT = "fehlt";
+
     /** Separate transaction: a failed extension must not prevent legacy source handling. */
     @org.springframework.transaction.annotation.Transactional(
             propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)

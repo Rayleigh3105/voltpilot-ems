@@ -63,6 +63,19 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         formen.put("GemeinsameSteuerungRueckfallAngabe", GemeinsameSteuerungEinrichtenDto.RueckfallAngabe.class);
         formen.put("GemeinsameSteuerungLuecke", GemeinsameSteuerungEinrichtenDto.Luecke.class);
         formen.put("GemeinsameSteuerungSprungprobe", GemeinsameSteuerungDto.Sprungprobe.class);
+        // Betreiber-Blatt (IP-24)
+        formen.put("GemeinsameSteuerungBetreiberblatt", GemeinsameSteuerungDto.Betreiberblatt.class);
+        formen.put("GemeinsameSteuerungBoxStand", GemeinsameSteuerungDto.BoxStand.class);
+        formen.put("GemeinsameSteuerungFaehigkeit", GemeinsameSteuerungDto.Faehigkeit.class);
+        formen.put("GemeinsameSteuerungMesspunkt", GemeinsameSteuerungDto.Messpunkt.class);
+        formen.put("GemeinsameSteuerungWaechter", GemeinsameSteuerungDto.Waechter.class);
+        formen.put("GemeinsameSteuerungPlanStand", GemeinsameSteuerungDto.PlanStand.class);
+        formen.put("GemeinsameSteuerungPlanZeile", GemeinsameSteuerungDto.PlanZeile.class);
+        formen.put("GemeinsameSteuerungAnteilStand", GemeinsameSteuerungDto.AnteilStand.class);
+        formen.put("GemeinsameSteuerungRevision", GemeinsameSteuerungDto.Revision.class);
+        formen.put("GemeinsameSteuerungZweischritt", GemeinsameSteuerungDto.Zweischritt.class);
+        formen.put("GemeinsameSteuerungSprungprobeProtokoll", GemeinsameSteuerungDto.SprungprobeProtokoll.class);
+        formen.put("GemeinsameSteuerungSprungMessung", GemeinsameSteuerungDto.SprungMessung.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -155,6 +168,10 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         Map<String, Object> zustand = eigenschaften("GemeinsameSteuerung");
         assertThat((List<String>) ((Map<String, Object>) zustand.get("naechster_schritt")).get("enum"))
                 .contains(GemeinsameSteuerungAbgelehnt.VOM_BETREIBER_ANGEHALTEN);
+        Map<String, Object> blatt = (Map<String, Object>) ((Map<String, Object>) pfade.get(ADMIN)).get("get");
+        assertThat((String) blatt.get("description")).contains("`plattform.betrieb`");
+        assertThat(((Map<String, Object>) blatt.get("responses")).keySet()).containsExactlyInAnyOrder("200", "401",
+                "403", "404");
         Map<String, Object> lesen = (Map<String, Object>) ((Map<String, Object>) pfade.get(KUNDE)).get("get");
         assertThat(((Map<String, Object>) lesen.get("responses")).keySet()).containsExactlyInAnyOrder("200", "401",
                 "404");

@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -116,4 +117,73 @@ public final class GemeinsameSteuerungDto {
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record MitgliedWunsch(UUID boxId, String rolle, UUID messpunktId, String vorgabeSignal) {}
+
+    /**
+     * Das Betreiber-Blatt (IP-24, §5.3/§5.4): je Box, was nur die Plattform sieht, dazu der Zweischritt und alle
+     * Sprungprobe-Protokolle. Zustand, Mitglieder, {@code fehlt}, Bilanz und Vorbehalt stehen im {@link Zustand};
+     * Geräte, Rückfall und Auslegung im Einrichten-Vorschlag — das Blatt liest alle drei, nichts doppelt.
+     * {@code boxen} ist leer ohne Gemeinsame Steuerung.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Betreiberblatt(List<BoxStand> boxen, Zweischritt zweischritt,
+            List<SprungprobeProtokoll> sprungproben) {}
+
+    /**
+     * Eine Box des Verbunds. {@code zuletztGesehen} = letzter Herzschlag ({@code device.device_status_seen_at}, null =
+     * nie); {@code waechter} null = kein Herzschlag-Block seit dem Start der api (alte Box oder noch keiner) — nie
+     * eine Null-Stufe; {@code anteile.wirksamKw} null = nicht gemeldet.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record BoxStand(UUID boxId, String rolle, OffsetDateTime zuletztGesehen, Faehigkeit faehigkeit,
+            Messpunkt messpunkt, Waechter waechter, PlanStand plan, AnteilStand anteile) {}
+
+    /** Je Fähigkeit {@code gemeldet} · {@code versions_tabelle} · {@code fehlt}. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Faehigkeit(String steuerungsverbundAnteil, String sprungprobe) {}
+
+    /**
+     * Der Messpunkt des Mitglieds und sein Alter: {@code zustand} {@code ok} · {@code stale} · {@code never} wie die
+     * Box meldet, {@code nicht_gemeldet} ohne Meldung; {@code gelesenAm} der letzte gelesene Wert.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Messpunkt(UUID dataSourceId, String zustand, OffsetDateTime gelesenAm) {}
+
+    /** Wächter-Stufe je Richtung aus dem Herzschlag-Block (IP-10); eine fehlende Richtung ist null. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Waechter(String einspeisung, String bezug) {}
+
+    /** Veröffentlicht gegen angenommen (R11); je Teil null, wenn es ihn nicht gibt. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record PlanStand(PlanZeile veroeffentlicht, PlanZeile angenommen) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record PlanZeile(UUID planId, OffsetDateTime erzeugtAm, OffsetDateTime am, String urteil, String grund) {}
+
+    /**
+     * Anteils-Dokument der Box: zuletzt gesendet und zuletzt quittiert (Epoche/Revision), die WIRKSAMEN Anteile, wie
+     * die Box sie im Herzschlag meldet ({@code einspeisung}/{@code bezug} in kW; null = nicht gemeldet).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AnteilStand(Revision gesendet, Revision quittiert, Map<String, BigDecimal> wirksamKw) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Revision(long epoche, long revision, OffsetDateTime am) {}
+
+    /**
+     * Das jüngste Anteils-Dokument (IP-7): {@code schritt} {@code uebergang} · {@code ziel}; {@code bestaetigt} die
+     * Boxen, deren Quittung diesen Stand (oder später) trägt, {@code wartetAuf} die übrigen Mitglieder. Der Zielstand
+     * gilt erst mit {@code schritt = ziel} und leerem {@code wartetAuf}. null ohne Dokument.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Zweischritt(String schritt, long epoche, long revision, OffsetDateTime am, List<UUID> bestaetigt,
+            List<UUID> wartetAuf) {}
+
+    /** Ein Protokoll der Sprungprobe mit den Messungen je Sprung (leer, solange der Bericht aussteht). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record SprungprobeProtokoll(Sprungprobe probe, List<SprungMessung> spruenge) {}
+
+    /** {@code abweichungKw} = gesehen − erwartet; null, wenn nichts gesehen wurde. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record SprungMessung(BigDecimal eigeneKw, BigDecimal erwartetKw, BigDecimal gesehenKw,
+            BigDecimal toleranzKw, BigDecimal abweichungKw, String urteil, String grund) {}
 }

@@ -222,6 +222,41 @@ public class SprungprobeDienst {
         return proben.letzte(verbundId, box).map(p -> auskunft(p, fuehrende(mitglieder).orElse(null))).orElse(null);
     }
 
+    /** Die Protokolle aller Proben des Verbunds mit ihren Messungen je Sprung (IP-24), jüngste zuerst. */
+    public List<GemeinsameSteuerungDto.SprungprobeProtokoll> protokoll(UUID verbundId, List<MitgliedZeile> mitglieder) {
+        UUID fuehrend = fuehrende(mitglieder).orElse(null);
+        return proben.protokoll(verbundId, PROTOKOLL_GRENZE).stream()
+                .map(e -> new GemeinsameSteuerungDto.SprungprobeProtokoll(auskunft(e.probe(), fuehrend),
+                        messungen(e.messwerte())))
+                .toList();
+    }
+
+    static final int PROTOKOLL_GRENZE = 50;
+
+    private List<GemeinsameSteuerungDto.SprungMessung> messungen(String json) {
+        if (json == null) {
+            return List.of();
+        }
+        try {
+            List<GemeinsameSteuerungDto.SprungMessung> aus = new ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode n : mapper.readTree(json)) {
+                BigDecimal erwartet = zahl(n, "erwartet_kw");
+                BigDecimal gesehen = zahl(n, "gesehen_kw");
+                aus.add(new GemeinsameSteuerungDto.SprungMessung(zahl(n, "eigene_kw"), erwartet, gesehen,
+                        zahl(n, "toleranz_kw"), erwartet == null || gesehen == null ? null : gesehen.subtract(erwartet),
+                        n.path("urteil").asText(null), n.path("grund").isNull() ? null : n.path("grund").asText(null)));
+            }
+            return List.copyOf(aus);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return List.of();
+        }
+    }
+
+    private static BigDecimal zahl(com.fasterxml.jackson.databind.JsonNode n, String feld) {
+        com.fasterxml.jackson.databind.JsonNode w = n.get(feld);
+        return w == null || !w.isNumber() ? null : w.decimalValue();
+    }
+
     private GemeinsameSteuerungDto.Sprungprobe auskunft(SprungprobeRepository.Probe p, UUID fuehrende) {
         boolean gilt = SprungprobeRegel.BESTANDEN.equals(p.urteil()) && p.entwertetAm() == null
                 && p.fuehrendeBox().equals(fuehrende)

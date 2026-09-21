@@ -2776,6 +2776,30 @@ paths:
         "403": { description: Das Recht `grenze.eintragen` fehlt. }
         "404": { description: Anlage unbekannt oder außerhalb des Kundenbereichs. }
         "422": { description: Grenze über vereinbarter Leistung, fehlende Anschlussdaten oder kein verbleibendes Ladebudget; deutscher Grund im Körper. }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [admin]
+      summary: Das Betreiber-Blatt der Gemeinsamen Steuerung lesen (AP-15 IP-24, §5.3/§5.4).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle; ein Kundenkonto bekommt 403), lesend. Je Box, was nur der
+        Betreiber sieht: Fähigkeit (`gemeldet` · `versions_tabelle` · `fehlt`), Messpunkt und sein Alter, Wächter-Stufe
+        je Richtung aus dem Herzschlag-Block, `plan_id` veröffentlicht/angenommen, Anteils-Revision gesendet/quittiert
+        und die WIRKSAMEN Anteile, wie die Box sie meldet; dazu der Zweischritt des jüngsten Anteils-Dokuments und alle
+        Sprungprobe-Protokolle mit den Messungen je Sprung. Unbekannt ist nie eine Null — was die Box nicht meldet, ist
+        `null` bzw. `nicht_gemeldet`. Zustand, `fehlt`, Bilanz und Vorbehalt stehen in `GET …/sites/{siteId}/gemeinsame-steuerung`,
+        Geräte, Rückfall und Auslegung in `GET …/gemeinsame-steuerung/einrichten`. Ohne Gemeinsame Steuerung leer;
+        eine fremde Anlage ist 404.
+      responses:
+        "200":
+          description: Das Blatt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerungBetreiberblatt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/scharfschalten:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -13547,6 +13571,105 @@ components:
           type: boolean
           description: >-
             Trägt die Naht `sprungprobe` für die HEUTIGE Struktur: bestanden, nicht entwertet, dieselbe führende Box.
+    GemeinsameSteuerungBetreiberblatt:
+      type: object
+      required: [boxen, sprungproben]
+      properties:
+        boxen: { type: array, items: { $ref: '#/components/schemas/GemeinsameSteuerungBoxStand' } }
+        zweischritt: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungZweischritt' }], nullable: true }
+        sprungproben: { type: array, items: { $ref: '#/components/schemas/GemeinsameSteuerungSprungprobeProtokoll' } }
+    GemeinsameSteuerungBoxStand:
+      type: object
+      required: [box_id, rolle, faehigkeit, plan, anteile]
+      properties:
+        box_id: { type: string, format: uuid }
+        rolle: { type: string, enum: [fuehrt, steuert_mit] }
+        zuletzt_gesehen: { type: string, format: date-time, nullable: true, description: letzter Herzschlag der Box. }
+        faehigkeit: { $ref: '#/components/schemas/GemeinsameSteuerungFaehigkeit' }
+        messpunkt: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungMesspunkt' }], nullable: true }
+        waechter:
+          allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungWaechter' }]
+          nullable: true
+          description: null = kein Herzschlag-Block seit dem Start der api (alte Box) — nicht gemeldet, keine Stufe.
+        plan: { $ref: '#/components/schemas/GemeinsameSteuerungPlanStand' }
+        anteile: { $ref: '#/components/schemas/GemeinsameSteuerungAnteilStand' }
+    GemeinsameSteuerungFaehigkeit:
+      type: object
+      properties:
+        steuerungsverbund_anteil: { type: string, enum: [gemeldet, versions_tabelle, fehlt] }
+        sprungprobe: { type: string, enum: [gemeldet, versions_tabelle, fehlt] }
+    GemeinsameSteuerungMesspunkt:
+      type: object
+      properties:
+        data_source_id: { type: string, format: uuid }
+        zustand: { type: string, enum: [ok, stale, never, nicht_gemeldet] }
+        gelesen_am: { type: string, format: date-time, nullable: true }
+    GemeinsameSteuerungWaechter:
+      type: object
+      properties:
+        einspeisung: { type: string, nullable: true }
+        bezug: { type: string, nullable: true }
+    GemeinsameSteuerungPlanStand:
+      type: object
+      description: Veröffentlicht gegen angenommen (R11); ein Teil ist null, wenn es ihn nicht gibt.
+      properties:
+        veroeffentlicht: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungPlanZeile' }], nullable: true }
+        angenommen: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungPlanZeile' }], nullable: true }
+    GemeinsameSteuerungPlanZeile:
+      type: object
+      properties:
+        plan_id: { type: string, format: uuid }
+        erzeugt_am: { type: string, format: date-time, nullable: true }
+        am: { type: string, format: date-time, nullable: true }
+        urteil: { type: string, nullable: true }
+        grund: { type: string, nullable: true }
+    GemeinsameSteuerungAnteilStand:
+      type: object
+      properties:
+        gesendet: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungRevision' }], nullable: true }
+        quittiert: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungRevision' }], nullable: true }
+        wirksam_kw:
+          type: object
+          nullable: true
+          description: Die wirksamen Anteile je Richtung aus dem Herzschlag der Box; null = nicht gemeldet.
+          properties:
+            einspeisung: { type: number }
+            bezug: { type: number }
+    GemeinsameSteuerungRevision:
+      type: object
+      required: [epoche, revision]
+      properties:
+        epoche: { type: integer, format: int64 }
+        revision: { type: integer, format: int64 }
+        am: { type: string, format: date-time, nullable: true }
+    GemeinsameSteuerungZweischritt:
+      type: object
+      required: [schritt, epoche, revision, bestaetigt, wartet_auf]
+      description: >-
+        Das jüngste Anteils-Dokument. Der Zielstand gilt erst mit `schritt = ziel` und leerem `wartet_auf`.
+      properties:
+        schritt: { type: string, enum: [uebergang, ziel] }
+        epoche: { type: integer, format: int64 }
+        revision: { type: integer, format: int64 }
+        am: { type: string, format: date-time, nullable: true }
+        bestaetigt: { type: array, items: { type: string, format: uuid } }
+        wartet_auf: { type: array, items: { type: string, format: uuid } }
+    GemeinsameSteuerungSprungprobeProtokoll:
+      type: object
+      required: [probe, spruenge]
+      properties:
+        probe: { $ref: '#/components/schemas/GemeinsameSteuerungSprungprobe' }
+        spruenge: { type: array, items: { $ref: '#/components/schemas/GemeinsameSteuerungSprungMessung' } }
+    GemeinsameSteuerungSprungMessung:
+      type: object
+      properties:
+        eigene_kw: { type: number, nullable: true }
+        erwartet_kw: { type: number, nullable: true }
+        gesehen_kw: { type: number, nullable: true }
+        toleranz_kw: { type: number, nullable: true }
+        abweichung_kw: { type: number, nullable: true, description: gesehen − erwartet. }
+        urteil: { type: string, nullable: true }
+        grund: { type: string, nullable: true }
     GemeinsameSteuerungAnteilVerlust:
       type: object
       properties:

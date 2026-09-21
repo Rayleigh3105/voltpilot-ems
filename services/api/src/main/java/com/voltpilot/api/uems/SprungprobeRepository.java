@@ -68,6 +68,16 @@ public class SprungprobeRepository {
                 + "ORDER BY ausgeloest_am DESC, created_at DESC LIMIT 1", PROBE, verbundId, box).stream().findFirst();
     }
 
+    /** Ein Protokoll-Eintrag für das Betreiber-Blatt (IP-24): die Probe und ihre Messwerte je Sprung (JSON, oder null). */
+    public record Eintrag(Probe probe, String messwerte) {}
+
+    /** Alle Proben des Verbunds, jüngste zuerst, höchstens {@code grenze} — das Protokoll wird nie gelöscht. */
+    public List<Eintrag> protokoll(UUID verbundId, int grenze) {
+        return jdbc.query("SELECT " + SPALTEN + ", messwerte::text AS messwerte_text FROM steuerungsverbund_sprungprobe "
+                + "WHERE steuerungsverbund_id = ? ORDER BY ausgeloest_am DESC, created_at DESC LIMIT ?",
+                (rs, n) -> new Eintrag(PROBE.mapRow(rs, n), rs.getString("messwerte_text")), verbundId, grenze);
+    }
+
     /** Läuft in diesem Verbund eine Probe, ausgelöst nach {@code seit} und noch ohne Bericht? */
     public boolean laeuft(UUID verbundId, Instant seit) {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM steuerungsverbund_sprungprobe "

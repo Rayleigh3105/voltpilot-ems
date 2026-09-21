@@ -1,5 +1,5 @@
 import { Recht } from '../components/Recht';
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -79,6 +79,7 @@ import { ErrorState, TextSkeleton } from '../components/States';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { GemeinsameSteuerungKarte, useGemeinsameSteuerung, type GemeinsameSteuerungDaten } from '../components/GemeinsameSteuerungKarte';
 import type { VerlustVariante } from '../gemeinsameSteuerungFlaeche';
+import { showTechnicalLayer } from '../rollen';
 import { FLAECHE } from '../uemsGemeinsameSteuerung';
 import './Einstellungen.css';
 
@@ -301,6 +302,13 @@ function TechCard({
   );
 }
 
+/**
+ * AP-15 IP-24: das Betreiber-Blatt lädt nur für die Plattform-Rolle (eigener Chunk) — Kundenkonten laden es nie.
+ */
+const GemeinsameSteuerungBetreiberBlatt = lazy(() =>
+  import('./admin/GemeinsameSteuerungBetreiberBlatt').then((m) => ({ default: m.GemeinsameSteuerungBetreiberBlatt })),
+);
+
 const KEINE: ReadonlySet<SectionKey> = new Set();
 const OHNE_GEMEINSAM: ReadonlySet<SectionKey> = new Set(['gemeinsam']);
 
@@ -327,6 +335,12 @@ export function GemeinsameSteuerungAbschnitt({
   return (
     <TechCard section={sectionOf('gemeinsam')} explain={FLAECHE.karte_erklaerung} summary={daten.zeile ?? undefined} deepLinked={deepLinked}>
       <GemeinsameSteuerungKarte siteId={siteId} siteDevices={siteDevices} daten={daten} jetzt={jetzt} verlustVariante={verlustVariante} />
+      {/* IP-24: unter der Kundenkarte das Betreiber-Blatt — nur hinter dem EINEN Rollen-Tor, nur mit Einrichtung. */}
+      {showTechnicalLayer() && daten.zustand?.eingerichtet && (
+        <Suspense fallback={null}>
+          <GemeinsameSteuerungBetreiberBlatt siteId={siteId} siteDevices={siteDevices} daten={daten} jetzt={jetzt} />
+        </Suspense>
+      )}
     </TechCard>
   );
 }

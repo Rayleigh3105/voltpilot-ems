@@ -1,0 +1,47 @@
+/* UEMS AP-15 IP-24 — Betreiber-Blatt „Gemeinsame Steuerung“ (nur Plattform-Rolle). Tokens wie die Kundenkarte. */
+.vp-gsb { display: grid; gap: var(--vp-c-space-4); min-width: 0; padding: var(--vp-c-space-4); border: 1px dashed var(--vp-border); border-radius: var(--vp-c-radius); color: var(--vp-c-fg); font-family: var(--vp-c-font); }
+.vp-gsb > * { min-width: 0; }
+.vp-gsb p { margin: 0; line-height: var(--vp-c-lh-text); overflow-wrap: anywhere; }
+.vp-gsb h3, .vp-gsb h4 { margin: 0; }
+.vp-gsb h3 { font-size: var(--vp-c-fs-18); }
+.vp-gsb h4 { font-size: var(--vp-c-fs-16); margin-bottom: var(--vp-c-space-2); }
+.vp-gsb ul { margin: 0; padding-left: var(--vp-c-space-5); display: grid; gap: var(--vp-c-space-1); overflow-wrap: anywhere; }
+.vp-gsb-kopf { display: grid; gap: var(--vp-c-space-1); }
+.vp-gsb-nur, .vp-gsb-klein { color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-14); }
+.vp-gsb-stufe { font-weight: var(--vp-c-fw-600); }
+.vp-gsb-zweischritt { padding: var(--vp-c-space-3); border-radius: var(--vp-c-radius); background: var(--vp-c-muted); }
+.vp-gsb-uebergang, .vp-gsb-ziel_gesendet { border-left: 4px solid var(--vp-warn-ink); }
+.vp-gsb-ziel { border-left: 4px solid var(--vp-ok-ink); }
+.vp-gsb-tabelle { overflow-x: auto; max-width: 100%; }
+.vp-gsb table { border-collapse: collapse; width: 100%; font-size: var(--vp-c-fs-14); }
+.vp-gsb th, .vp-gsb td { text-align: left; vertical-align: top; padding: var(--vp-c-space-2); border-bottom: 1px solid var(--vp-border); min-width: 8rem; }
+.vp-gsb thead th small { display: block; font-weight: normal; color: var(--vp-c-muted-fg); }
+.vp-gsb tbody th { color: var(--vp-c-muted-fg); font-weight: normal; white-space: nowrap; min-width: 0; }
+.vp-gsb-warnung { color: var(--vp-warn-ink); font-weight: var(--vp-c-fw-600); }
+.vp-gsb-unbekannt { color: var(--vp-c-muted-fg); font-style: italic; }
+.vp-gsb-ok { color: var(--vp-ok-ink); }
+.vp-gsb-geraete { padding-left: var(--vp-c-space-4) !important; }
+.vp-gsb-handgriffe { list-style: none; padding-left: 0 !important; gap: var(--vp-c-space-2) !important; }
+.vp-gsb-handgriffe li { display: flex; flex-wrap: wrap; gap: var(--vp-c-space-2); align-items: center; padding: var(--vp-c-space-2) 0; border-bottom: 1px solid var(--vp-border); }
+.vp-gsb-box { font-weight: var(--vp-c-fw-600); min-width: 9rem; }
+.vp-gsb-grund { color: var(--vp-c-muted-fg); }
+.vp-gsb-fehlt, .vp-gsb-i1 { display: grid; gap: var(--vp-c-space-1); }
+.vp-gsb-i1 ul, .vp-gsb-i1-kurz { list-style: none; padding-left: 0 !important; }
+.vp-gsb-i1 li { display: flex; gap: var(--vp-c-space-2); align-items: flex-start; }
+.vp-gsb-i1 li[data-stand='offen'] { color: var(--vp-warn-ink); }
+.vp-gsb-i1 li[data-stand='erfuellt'] .vp-gsb-marke { color: var(--vp-ok-ink); }
+.vp-gsb-wort { display: block; color: var(--vp-c-muted-fg); }
+.vp-gsb-fehler { color: var(--vp-industry-end); }
+.vp-gsb-aktionen { display: flex; flex-wrap: wrap; gap: var(--vp-c-space-2); }
+.vp-gsb-darunter { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: var(--vp-c-space-4); }
+.vp-gsb-darunter > * { min-width: 0; }
+.vp-gsb-form { display: grid; gap: var(--vp-c-space-3); }
+/* Am Telefon bleiben die Boxen nebeneinander: schmale Spalten, die Merkmale umbrechen. */
+@media (max-width: 600px) {
+  .vp-gsb { padding: var(--vp-c-space-3); }
+  .vp-gsb table { font-size: var(--vp-c-fs-12, 0.75rem); }
+  .vp-gsb th, .vp-gsb td { min-width: 0; padding: var(--vp-c-space-1); overflow-wrap: anywhere; }
+  .vp-gsb tbody th { white-space: normal; width: 5.5rem; }
+  .vp-gsb-geraete { padding-left: var(--vp-c-space-3) !important; }
+  .vp-gsb-box { min-width: 0; }
+}

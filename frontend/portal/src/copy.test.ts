@@ -153,6 +153,9 @@ const EXCLUDED = [
   // „Messpunkt") und wird - wie die Plattform-Sicht - NUR hinter dem EINEN Tor
   // gerendert; der Test unten prüft dieses Tor, statt es zu glauben.
   '/components/TechnischeKarten.tsx',
+  // UEMS AP-15 IP-24: die reine Schicht des Betreiber-Blatts „Gemeinsame Steuerung“ (einziger Importeur
+  // `pages/admin/GemeinsameSteuerungBetreiberBlatt`) — Betreiber-Vokabular (Messpunkt, plan_id, Epoche).
+  '/adminGemeinsameSteuerung.ts',
   '/entities.ts',
   '/entitiesApi.ts',
   '/channels.ts',
@@ -677,6 +680,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       // sie darf die anderen Admin-Schichten importieren (nur die Admin-Seite
       // rendert sie), war aber bei ihrer Einführung nicht mit aufgeführt.
       'boxVersions',
+      // UEMS AP-15 IP-24: das Betreiber-Blatt der Gemeinsamen Steuerung.
+      'adminGemeinsameSteuerung',
     ];
     // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
     // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor
@@ -719,6 +724,10 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       // gerendert werden - sonst wäre die Ausnahme still ein Loch.
       if (/from '[^']*\bTechnischeKarten'/.test(code) && !gated) {
         offenders.push(`${rel} rendert die technische Sicht OHNE ${GATE})`);
+      }
+      // UEMS AP-15 IP-24: das Betreiber-Blatt (auch lazy geladen) nur hinter dem Tor.
+      if (/['/]admin\/GemeinsameSteuerungBetreiberBlatt'/.test(code) && !gated) {
+        offenders.push(`${rel} rendert das Betreiber-Blatt OHNE ${GATE})`);
       }
     }
     expect(offenders, offenders.join('\n')).toEqual([]);
