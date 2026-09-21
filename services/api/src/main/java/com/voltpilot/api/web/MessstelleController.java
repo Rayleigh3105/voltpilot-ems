@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.KadenzAbgelehnt;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
+import com.voltpilot.api.uems.MessstelleFormelService;
 import com.voltpilot.api.uems.MessstelleQuelleService;
 import com.voltpilot.api.uems.MessstelleRegeln;
 import com.voltpilot.api.uems.MessstelleRegisterService;
@@ -77,6 +78,7 @@ public class MessstelleController {
 
     private final MessstelleService messstellen;
     private final MessstelleRegisterService register;
+    private final MessstelleFormelService formeln;
     private final MessstelleZuordnungService zuordnungen;
     private final MessstelleQuelleService quellen;
     private final QuelleKadenzService kadenzen;
@@ -85,10 +87,11 @@ public class MessstelleController {
     private final ObjectMapper streng;
 
     public MessstelleController(MessstelleService messstellen, MessstelleRegisterService register,
-            MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
+            MessstelleFormelService formeln, MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
             QuelleKadenzService kadenzen, ZaehlerwechselService wechsel, RechtPruefung rechte, ObjectMapper json) {
         this.messstellen = messstellen;
         this.register = register;
+        this.formeln = formeln;
         this.zuordnungen = zuordnungen;
         this.quellen = quellen;
         this.kadenzen = kadenzen;
@@ -103,7 +106,9 @@ public class MessstelleController {
      * (Ort mit abgeleitetem Standort, Stellung, Quelle mit „davor“, Zustand). Die Filter gelten für
      * beide Listen; ein Standort, Ort oder eine Anlage, die es im Kundenbereich nicht gibt, findet
      * nichts (leer, nie 403). Eine Messstelle außerhalb des Zugriffs fehlt in beiden Listen und im Aggregat — ohne
-     * Hinweis und ohne Anzahl ({@link RechtPruefung#lesbar}, AP-03 R-A1); {@code teilansicht} bleibt {@code false}.
+     * Hinweis und ohne Anzahl ({@link RechtPruefung#lesbar}, AP-03 R-A1); {@code teilansicht} bleibt {@code false}. Die
+     * {@code berechnung} einer sichtbaren berechneten Messstelle urteilt nur über Eingänge im Zugriff — Messstellen wie
+     * Messkanäle ({@link MessstelleFormelService#komponenteSichtbar}, AP-03 R-A3/R-A6/R-A7).
      * Ein Stichtag ist ein Tag ({@code 2026-11-20}, dann gilt sein Beginn) oder ein Zeitpunkt mit
      * Versatz; fehlend = jetzt.
      */
@@ -118,7 +123,7 @@ public class MessstelleController {
         return register.liste(stichtag(stichtag), new MessstelleRegisterService.Filter(
                 leer(standort) ? null : standort.strip(), leer(ort) ? null : ort.strip(),
                 anlage(anlage), zustand(zustand), ohneQuelle(ohneQuelle)),
-                id -> rechte.lesbar(RechtZiel.MESSSTELLE, id));
+                id -> rechte.lesbar(RechtZiel.MESSSTELLE, id), formeln::komponenteSichtbar);
     }
 
     /**

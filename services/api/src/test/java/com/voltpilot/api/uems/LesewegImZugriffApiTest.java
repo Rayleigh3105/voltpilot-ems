@@ -568,6 +568,48 @@ class LesewegImZugriffApiTest {
         assertThat(ok(w, k.ka(), MS + "/" + ms32 + "/formel").body()).contains(dortZaehler.toString());
         assertThat(ok(w, k.ka(), MS + "/MS-32/werte" + TAG).body()).contains("4711.125");
         assertThat(ok(w, k.ka(), karte).body()).contains("MS-33").contains("MS-40");
+
+        // Register: die Berechnung von MS-32 urteilt für den Bearbeiter an ST-1 nur über MS-01 — der Kanal an ST-2
+        // fehlt in `fehlend` und im Text, und sein Zustand verändert das Urteil nicht (liefert er, oder nicht).
+        String liste = MS + "?" + STICHTAG;
+        JsonNode ohneWert = MAPPER.readTree(berechnung(w, k.hier(), "MS-32"));
+        assertThat(ohneWert.path("zustand").asText()).isEqualTo("unvollstaendig");
+        assertThat(ohneWert.path("fehlend")).extracting(JsonNode::asText).containsExactly("MS-01");
+        assertThat(ohneWert.path("text").asText()).isEqualTo("Unvollständig (fehlt: MS-01) · " + hinweis);
+        assertThat(MAPPER.readTree(berechnung(w, k.ka(), "MS-32")).path("fehlend")).extracting(JsonNode::asText)
+                .containsExactly("MS-01", DORT_KANAL);
+        String referenzListe = ok(w, k.ka(), liste).body();
+        assertThat(roh(w, beide, liste).body()).isEqualTo(referenzListe);
+        assertThat(roh(w, k.bestand(), liste).body()).isEqualTo(referenzListe);
+        assertThat(ohneKontext(w, liste).body()).isEqualTo(referenzListe);
+
+        rohwert(w, dortAnlage[0], dortZaehler, DORT_KANAL, "2026-09-20T21:59:00Z");
+        assertThat(MAPPER.readTree(berechnung(w, k.ka(), "MS-32")).path("fehlend")).extracting(JsonNode::asText)
+                .as("der fremde Kanal liefert jetzt").containsExactly("MS-01");
+        assertThat(berechnung(w, k.hier(), "MS-32")).isEqualTo(ohneWert.toString());
+        referenzListe = ok(w, k.ka(), liste).body();
+        assertThat(roh(w, beide, liste).body()).isEqualTo(referenzListe);
+        assertThat(roh(w, k.bestand(), liste).body()).isEqualTo(referenzListe);
+        assertThat(ohneKontext(w, liste).body()).isEqualTo(referenzListe);
+    }
+
+    /** Die {@code berechnung} der Register-Zeile {@code kennzeichen}, wie sie {@code sub} am Stichtag liest. */
+    private String berechnung(Welt w, String sub, String kennzeichen) throws Exception {
+        for (JsonNode zeile : MAPPER.readTree(ok(w, sub, MS + "?" + STICHTAG).body()).path("register")) {
+            if (kennzeichen.equals(zeile.path("kennzeichen").asText())) {
+                return zeile.path("berechnung").toString();
+            }
+        }
+        throw new AssertionError(kennzeichen + " fehlt im Register von " + sub);
+    }
+
+    /** Ein guter Wert des Kanals an der Box des Zählers, zugeordnet (Reihe der Komponente, Rolle führend). */
+    private static void rohwert(Welt w, UUID anlage, UUID zaehler, String kanal, String zeit) {
+        UUID box = root.queryForObject("SELECT device_id FROM measurement_point WHERE id = ?", UUID.class, zaehler);
+        root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind, "
+                + "entity_id, role) VALUES (?::timestamptz, ?, ?, ?, ?, 812.5, 812.5, 'good', '2026.08.26.3', 1, "
+                + "'counter', ?, 'fuehrend')", zeit, w.mandant(), anlage, box, kanal, zaehler);
     }
 
     /**
@@ -577,14 +619,10 @@ class LesewegImZugriffApiTest {
      * Werte. Gebaut in {@code vp-uems-zaun-eingaenge-ausserhalb} (Register, Formel/Wert/Verlauf, Vorschlag, Bilanz
      * über {@code RechtPruefung#alleLesbar}); die Liste ist leer und bewacht neue Funde — ein neuer Fall kommt hier
      * mit Grund hinein, bis er geheilt ist. Gespeicherte Werte, Messkanal-Terme an Formel/Wert/Verlauf und die
-     * Gerätekarte sind in {@code vp-uems-zaun-berechnete-werte} geheilt.
+     * Gerätekarte sind in {@code vp-uems-zaun-berechnete-werte} geheilt, die Register-Berechnung über einen Messkanal
+     * an einer Komponente außerhalb in {@code vp-uems-zaun-register-messkanal}.
      */
-    private static final Map<String, String> FOLGEPUNKTE_OFFEN = Map.of(
-            "messkanal register MS-32 berechnung",
-            "Gemessen 21.09.2026: RegisterBerechnung urteilt über Messkanal-Eingänge ohne Zaun — `fehlend` nennt den "
-                    + "Kanal der Komponente an ST-2 und sein Zustand zählt mit (liefert er, stünde „vollständig“). Der "
-                    + "Zaun des Registers (Predicate<UUID> lesbar) kennt nur Messstellen-Eingänge; die Heilung braucht "
-                    + "die Komponenten-Sicht in RegisterBerechnung#ergebnis — eigenes Paket.");
+    private static final Map<String, String> FOLGEPUNKTE_OFFEN = Map.of();
 
     /** Die offenen Folgepunkte einer Probe: die Schlüssel, die mit einem ihrer Präfixe beginnen. */
     private static List<String> offen(String... praefixe) {
