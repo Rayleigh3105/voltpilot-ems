@@ -222,6 +222,140 @@ class LesewegImZugriffApiTest {
         assertThat(uebernahme.protokoll().importe()).hasSize(2);
     }
 
+    // ================================================================ Folgepunkte aus PR 1003
+
+    /**
+     * Folgepunkt 2: {@code POST /bezugsdaten/importe/vorschau}. Eine Vorlage mit einem Bezug außerhalb ist wie eine
+     * unbekannte {@code vorlage_id}; eine Bezugsgröße außerhalb ist als Ziel wie ein unbekanntes Kennzeichen
+     * ({@code bezug_unbekannt}, ohne Kennung und ohne Stand). Die Übernahme rechnet mit derselben Sicht nach.
+     */
+    @Test
+    void importVorschauKenntNurVorlagenUndBezugsgroessenImZugriff() throws Exception {
+        Welt w = welt();
+        Konten k = konten(w);
+        bezugsgroesse(w, "BZ-1", w.ahrenberg());
+        bezugsgroesse(w, "BZ-2", w.lindach());
+        String vorlageDort = vorlage(w, "ERP Lindach", "BZ-2");
+        importieren(w, "BZ-2");
+
+        // Vorlage per Kennung: außerhalb = unbekannte Kennung, Status und Körper.
+        Roh unbekannt = vorschau(w, k.hier(), null, NIE);
+        assertThat(unbekannt.status()).as(unbekannt.body()).isEqualTo(404);
+        assertThat(vorschau(w, k.hier(), null, vorlageDort)).isEqualTo(unbekannt);
+        assertThat(vorschau(w, k.anderswo(), null, vorlageDort)).isEqualTo(vorschau(w, k.anderswo(), null, NIE));
+        for (String sub : new String[] {k.ka(), k.bestand(), null}) {
+            JsonNode v = MAPPER.readTree(ok(vorschau(w, sub, null, vorlageDort)).body());
+            assertThat(v.at("/vorlage/name").asText()).as(String.valueOf(sub)).isEqualTo("ERP Lindach");
+        }
+
+        // Ziel per Kennzeichen: außerhalb = unbekanntes Kennzeichen, dieselben Zeilen (keine Kennung, kein Stand).
+        JsonNode fremd = MAPPER.readTree(ok(vorschau(w, k.hier(), zuordnung("BZ-2"), null)).body());
+        JsonNode nie = MAPPER.readTree(ok(vorschau(w, k.hier(), zuordnung("BZ-99"), null)).body());
+        assertThat(fremd.path("zeilen")).isEqualTo(nie.path("zeilen"));
+        assertThat(fremd.at("/zeilen/0/befunde").toString()).contains("\"bezug_unbekannt\"");
+        assertThat(fremd.toString()).doesNotContain("312,4 kg").doesNotContain("\"bestand\":{");
+        JsonNode voll = MAPPER.readTree(ok(vorschau(w, k.ka(), zuordnung("BZ-2"), null)).body());
+        assertThat(voll.at("/zeilen/0/bezugsgroesse_id").isNull()).isFalse();
+        assertThat(voll.at("/zeilen/0/bestand").isNull()).as("KA sieht den Stand").isFalse();
+        for (String sub : new String[] {k.bestand(), null}) {
+            assertThat(MAPPER.readTree(ok(vorschau(w, sub, zuordnung("BZ-2"), null)).body()).path("zeilen"))
+                    .isEqualTo(voll.path("zeilen"));
+        }
+        // Am eigenen Standort bleibt alles, wie es war.
+        JsonNode eigen = MAPPER.readTree(ok(vorschau(w, k.hier(), zuordnung("BZ-1"), null)).body());
+        assertThat(eigen.at("/zeilen/0/bezugsgroesse").asText()).isEqualTo("BZ-1");
+        assertThat(eigen.at("/zeilen/0/urteil").asText()).isEqualTo("neu");
+    }
+
+    /**
+     * Folgepunkte 1, 3 und 4 an EINER Bühne: MS-01 an ST-1, MS-16 an ST-2, die berechnete MS-30 an ST-1 mit den
+     * Eingängen MS-01 und MS-16; die Anlage AN-1 hängt an ST-1, MS-16 ist dort Hauptzähler, MS-01 sein Unterzähler
+     * (eine Stellung prüft den Ort der Messstelle nicht — {@code MessstelleZuordnungService} kennt keine solche Regel).
+     * Gemessen wird, ob der Bearbeiter an ST-1 das Kennzeichen MS-16 irgendwo liest.
+     */
+    @Test
+    void registerVorschlagUndBilanzNennenKeineMessstelleAusserhalb() throws Exception {
+        Welt w = welt();
+        Konten k = konten(w);
+        UUID ms01 = messstelle(w, "MS-01", "gemessen", "standort_id", w.ahrenberg());
+        UUID ms16 = messstelle(w, "MS-16", "gemessen", "standort_id", w.lindach());
+        UUID ms30 = messstelle(w, "MS-30", "berechnet", "standort_id", w.ahrenberg());
+        UUID fassung = root.queryForObject("INSERT INTO messstelle_formel_fassung (tenant_id, messstelle_id, nummer, "
+                + "formel_typ, herkunft, actor_sub, actor_name, actor_art) VALUES (?, ?, 1, 'gewichtete_summe', "
+                + "'anlage', 'sub-test', 'Test', 'kunde') RETURNING id", UUID.class, w.mandant(), ms30);
+        int position = 0;
+        for (UUID eingang : List.of(ms01, ms16)) {
+            root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, "
+                    + "eingang_art, quell_messstelle_id, vorzeichen, faktor) VALUES (?, ?, ?, ?, 'messstelle', ?, '+', "
+                    + "1)", w.mandant(), ms30, fassung, position++, eingang);
+        }
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name, created_at) VALUES (?, 'Werk Ahrenberg – "
+                + "Halle 1', '2024-01-01T00:00:00+01') RETURNING id", UUID.class, w.mandant());
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", w.mandant(), anlage, w.ahrenberg());
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, unterzaehler_von, "
+                + "gueltig_ab) VALUES (?, ?, ?, 'Hauptzähler', NULL, '2024-01-01')", w.mandant(), ms16, anlage);
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, unterzaehler_von, "
+                + "gueltig_ab) VALUES (?, ?, ?, 'Unterzähler', ?, '2024-01-01')", w.mandant(), ms01, anlage, ms16);
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, name, status, created_at) "
+                + "VALUES (?, ?, ?, 'Box Halle 1', 'claimed', '2024-01-01T00:00:00+01') RETURNING id", UUID.class,
+                w.mandant(), anlage, "E-LESEWEG-" + w.mandant());
+        UUID zaehler = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, "
+                + "device_id, control, communication, connection_json, created_at) VALUES (?, ?, 'modbus-generic', "
+                + "'Unterzähler Verwaltung', 'modbus-generic', ?, false, 'modbus_tcp', "
+                + "'{\"ip\":\"10.11.0.30\",\"port\":502,\"unit_id\":1}'::jsonb, '2024-01-01T00:00:00+01') "
+                + "RETURNING id", UUID.class, w.mandant(), anlage, box);
+        for (String kanal : List.of("sunspec.model_203.totwhimp", "sunspec.model_203.w")) {
+            root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                    + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                    + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 60, 1, now(), '2026.08.26.3', "
+                    + "'test', 'pending_edge', 'energy_counter', 'fifteen_minute') ON CONFLICT DO NOTHING",
+                    w.mandant(), anlage, box, zaehler, kanal);
+        }
+
+        Map<String, String> antworten = new LinkedHashMap<>();
+        // (1) Register: die sichtbare berechnete MS-30 und ihre Routen.
+        JsonNode liste = MAPPER.readTree(ok(w, k.hier(), MS + "?" + STICHTAG).body());
+        for (JsonNode zeile : liste.path("register")) {
+            if ("MS-30".equals(zeile.path("kennzeichen").asText())) {
+                antworten.put("register MS-30 berechnung", zeile.path("berechnung").toString());
+            }
+        }
+        for (String r : List.of("", "/formel", "/wert", "/verlauf")) {
+            antworten.put("MS-30" + r, ok(w, k.hier(), MS + "/" + ms30 + r).body());
+        }
+        // (3) Vorschlag: fremder Standort = unbekannte Kennung; der eigene Standort.
+        String vorschlag = "/api/v1/standorte/%s/messstellen-vorschlag";
+        assertThat(roh(w, k.hier(), vorschlag.formatted(w.lindach())))
+                .isEqualTo(unbekannt(w, k.hier(), vorschlag.formatted(NIE)));
+        antworten.put("vorschlag ST-1", ok(w, k.hier(), vorschlag.formatted(w.ahrenberg())).body());
+        // (4) Bilanz der sichtbaren Anlage.
+        antworten.put("bilanz AN-1", ok(w, k.hier(), "/api/v1/sites/" + anlage + "/bilanz?periode=tag").body());
+
+        // Wo der Bearbeiter an ST-1 MS-16 liest (Kennzeichen oder Kennung): genau die offenen Folgepunkte.
+        assertThat(antworten).isNotEmpty().allSatisfy((fall, body) -> assertThat(body).as(fall).isNotEmpty());
+        assertThat(antworten.entrySet().stream()
+                .filter(e -> e.getValue().contains("MS-16") || e.getValue().contains(ms16.toString()))
+                .map(Map.Entry::getKey).toList())
+                .as("rot bei einem neuen UND bei einem geheilten Fall")
+                .containsExactlyInAnyOrderElementsOf(FOLGEPUNKTE_OFFEN.keySet());
+        // Unternehmensweit bleibt die Bilanz vollständig — sie ist die Referenz, nicht der Befund.
+        assertThat(ok(w, k.ka(), "/api/v1/sites/" + anlage + "/bilanz?periode=tag").body()).contains("MS-16");
+    }
+
+    /**
+     * Gemessen am 21.09.2026 (Bearbeiter nur an ST-1, MS-16 an ST-2): hier nennt eine sonst sichtbare Antwort die
+     * fremde Messstelle. Entschieden ist AP-03 R-A3/R-A6/R-A7 (Lesart A, firstmate 21.09.2026): eine Zahl über einen
+     * Eingang außerhalb fehlt ganz, der Hinweis „umfasst Standorte außerhalb Ihres Zugriffs“ nennt weder Namen noch
+     * Werte. Gebaut wird das im Folgepaket {@code vp-uems-zaun-eingaenge-ausserhalb}; wer einen Fall heilt, nimmt ihn
+     * hier heraus.
+     */
+    private static final Map<String, String> FOLGEPUNKTE_OFFEN = Map.of(
+            "register MS-30 berechnung", "fehlend/text nennen den Eingang MS-16 (fehlt: MS-01, MS-16)",
+            "MS-30/formel", "terme[].quell_messstelle_id ist die Kennung von MS-16",
+            "vorschlag ST-1", "unterzaehler_von.messstelle = MS-16 (bestehender Hauptzähler der Anlage)",
+            "bilanz AN-1", "Hauptzähler MS-16 mit Kennung, Name, Termen und Werten");
+
     // ================================================================ Gerüst
 
     /** Eine Route: KA = Bestandskonto = ohne Kontext; Bearbeiter hier/anderswo wie KA oder wie die unbekannte. */
@@ -274,10 +408,35 @@ class LesewegImZugriffApiTest {
 
     /** Ein Kundenkonto wie aus Keycloak (Konverter setzt die Kontoart): der Zugriff-Kontext wird geladen. */
     private Roh roh(Welt w, String sub, String pfad) throws Exception {
+        return roh(request(HttpMethod.GET, pfad).with(konto(w, sub)));
+    }
+
+    private static RequestPostProcessor konto(Welt w, String sub) {
         Map<String, Object> claims = Map.of("sub", sub, "preferred_username", sub, "tenant_id", w.mandant().toString(),
                 "realm_access", Map.of("roles", List.of()));
         Jwt token = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
-        return roh(request(HttpMethod.GET, pfad).with(authentication(new KeycloakRealmRoleConverter().convert(token))));
+        return authentication(new KeycloakRealmRoleConverter().convert(token));
+    }
+
+    /** {@code POST /bezugsdaten/importe/vorschau} mit einer Zeile; {@code sub} {@code null} = ohne Zugriff-Kontext. */
+    private Roh vorschau(Welt w, String sub, String zuordnung, String vorlageId) throws Exception {
+        byte[] datei = ("Periode;Menge;Einheit\n" + YearMonth.now().minusMonths(2) + ";312,4;kg\n")
+                .getBytes(StandardCharsets.UTF_8);
+        var anfrage = multipart("/api/v1/bezugsdaten/importe/vorschau")
+                .file(new MockMultipartFile("datei", "ERP.csv", "text/csv", datei));
+        if (zuordnung != null) {
+            anfrage.file(new MockMultipartFile("zuordnung", "", "application/json",
+                    zuordnung.getBytes(StandardCharsets.UTF_8)));
+        }
+        if (vorlageId != null) {
+            anfrage.file(new MockMultipartFile("vorlage_id", "", "text/plain", vorlageId.getBytes(StandardCharsets.UTF_8)));
+        }
+        return roh(anfrage.with(sub == null ? ohneKontext(w) : konto(w, sub)));
+    }
+
+    private static Roh ok(Roh r) {
+        assertThat(r.status()).as(r.body()).isEqualTo(200);
+        return r;
     }
 
     /** Derselbe Aufruf ohne Kontoart — ohne Zugriff-Kontext. */
