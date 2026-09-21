@@ -89,6 +89,17 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   dem Netz“, ohne PV-Wert 0). Beide Teile senken nur, entladen nie, heben nie an; das Ladebudget ist das Minimum mit der
   Box ohne Anteil (V5), „Jetzt voll laden“ verteilt innerhalb des Anteils (R13). Stufe im Herzschlag:
   `waechter.bezug` (die strengere beider Teile).
+- **Eingefroren gilt als blind (IP-20, B2):** ein Zähler kann weiter Werte mit frischem Zeitstempel liefern, aber
+  immer dieselbe Zahl. Gilt ein Dokument, hört EINE Probe (`edge-app/core/internal/guards/eingefroren.go`,
+  `Einfrierprobe`) den eigenen Messpunkt und die eigenen WIRKSAMEN Verstellungen der Box (PV-Kappe unter der
+  gemessenen Erzeugung, Speicher vom gemessenen Wert Richtung 0, Ladepunkt-Zuteilung unter dem gemessenen Bezug —
+  vorzeichenrichtig summiert; Anheben zählt nie, Regelung aus zählt nie). Steht die Summe mindestens 2 kW von ihrem
+  Stand beim letzten Wertwechsel entfernt und bleibt der Wert danach 60 s exakt gleich (beides Startwerte), gilt er
+  als eingefroren — mit dem Alter ab seinem letzten Wechsel, also genau wie ein Wert, der nicht mehr kommt: beide
+  Wächter oben gehen in dieselben Blind-Stufen, das Netzladen fällt auf „nicht aus dem Netz“. Das Urteil hält, bis
+  sich der Wert wieder ändert; dann gibt der Regelkreis gebremst frei wie nach jedem Blind-Zustand. Eine ruhende
+  Anlage (nichts verstellt) ist mit gleichbleibendem Wert gesund. Ohne Dokument wird die Probe weder gefüttert noch
+  gefragt.
 
 ## 3. Die Quittung (Uplink)
 
