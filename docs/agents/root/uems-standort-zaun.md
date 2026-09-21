@@ -78,9 +78,13 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
     `pruefenLesen(RechtZiel.UNTERNEHMEN, …)` in der Route — nur unternehmensweite Rollen, sonst die 404 der unbekannten
     Kennung. Die Bilanz bekommt den Zaun als `Consumer<UUID>` nach Periode/Version (`UemsKorrekturKaskadeTest` baut
     `KostenstelleEnergieService` direkt; Bericht und Kaskade lesen ungezäunt).
-  - ⚠ Offen: die LISTEN `/unternehmen/kostenstellen` und `/unternehmen/prozesse` (in `ZAUN_OFFEN`). Die Matrix gibt dem
-    Bearbeiter „Prozess, Kostenstelle zuordnen“ je Standort; ob er dafür die Namen in der Auswahl sieht, ist offen
-    (needs-decision `kostenstelle-auswahl`). Der Zuordnungs-Dialog lädt genau diese Listen.
+  - Die LISTEN `/unternehmen/kostenstellen` und `/unternehmen/prozesse` sind der **Auswahl-Katalog** (Entscheid
+    21.09.2026, Lesart B; `vp-uems-zaun-kostenstellen-auswahl`), eine Stelle: `RechtPruefung#auswahlKatalog`. Ganz für
+    U-Rollen, E12, ohne Kontext, Umschalter; nur Stammdaten (Kennung, Kennzeichen, Name, Gültigkeit, Eltern — ohne
+    `angelegt_am`, darum dort in `openapi.yaml` nicht Pflicht) für `messstelle.bearbeiten`/`messstelle.verteilung`
+    irgendwo (die `@Recht` der zwei Zuordnungs-Schreibwege); sonst leer wie ein Unternehmen ohne Objekte. Detail und
+    Bilanz bleiben U-only; der Kostenstellen-Reiter zeigt dem Bearbeiter darum „gerade nicht abrufbar“ (bekannt,
+    mit der Wahl in Kauf genommen). Beweis `KostenstelleProzessApiTest`, im Zaun-Test `AUSWAHL_KATALOG`.
   - `GET /unternehmen/aenderungen`: ein Eintrag erscheint nur, wenn sein Objekt `#lesbar` ist (Messstelle, Standort,
     Gebäude/Bereich, Anlage, Datenquelle über ihre Anlage; Unternehmen nur U-Rollen). Die Seite liest nach, bis sie voll
     ist; U-Rollen, Bestandskonto und ohne Kontext bekommen die eine Abfrage von bisher. Beweis im Zaun-Test.
@@ -140,11 +144,13 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
 | Kostenstelle (2), Prozess (1) | `RechtPruefung#pruefenLesen` (Geltung Unternehmen) in der Route | `web/KostenstelleProzessController.java`, `web/KostenstelleEnergieController.java` |
 | Unterstützung, Komponenten-Vorlage, Enrollment (3) | kein Standortbezug (Recht + Mandant, globaler Katalog, öffentlich) | — |
 
-- **Offen (2 Muster in `ZAUN_OFFEN`, jedes gemessen):** die Listen `/unternehmen/kostenstellen` und
-  `/unternehmen/prozesse` (Entscheid zur Auswahl offen, siehe oben). Von den 22 der Inventur sind geschlossen: 14 der
-  Messstelle und `/bezugsdaten/vorlagen` (`vp-uems-zaun-messstelle-vorlagen-lesen`), Kostenstelle `/{id}`,
+- **Offen: 0 Muster — `ZAUN_OFFEN` ist leer** und bleibt als Wache stehen. Von den 22 der Inventur sind geschlossen:
+  14 der Messstelle und `/bezugsdaten/vorlagen` (`vp-uems-zaun-messstelle-vorlagen-lesen`), Kostenstelle `/{id}`,
   `/{id}/energie`, Prozess `/{id}`, `/unternehmen/aenderungen`, `/berichte/betroffen`
   (`vp-uems-zaun-kostenstelle-prozess-protokoll`).
+- **Entschiedene Ausnahme `AUSWAHL_KATALOG` (21.09.2026, Lesart B):** die Listen `/unternehmen/kostenstellen` und
+  `/unternehmen/prozesse` nennen dem Bearbeiter anderswo jede Zeile, aber GENAU die Stammdaten-Felder; der Leser sieht
+  keine. Die Inventur misst beides — ein weiteres Feld ist ein Loch.
 - **Messform:** erste Kennung = Objekt der Bühne (`behaelter`), Bearbeiter hier sieht es (sonst Kundenadministrator),
   Bearbeiter anderswo = Status und Körper der unbekannten Kennung. Zwei gleiche Ablehnungen sind „ohne Aussage“, zwei
   verschiedene ein Loch (Existenz). Listen: anderswo fehlt das Objekt.

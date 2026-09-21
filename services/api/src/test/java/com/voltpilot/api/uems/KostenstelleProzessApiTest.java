@@ -384,6 +384,153 @@ class KostenstelleProzessApiTest {
         assertThat(dienst.prozess(prozess).kennzeichen()).isEqualTo("P-1");
     }
 
+    /**
+     * Die zwei Listen sind der Auswahl-Katalog (Entscheid 21.09.2026, Lesart B; {@code RechtPruefung#auswahlKatalog}),
+     * mit und ohne Stichtag. (1) Kundenadministrator, Energiemanager, Bestandskonto (E12) und ein Aufruf ohne Kontext
+     * sehen byte-gleich die ganze Liste (den Umschalter misst {@code ZugriffZaunApiTest} im Bestandsvergleich). (2) Ein
+     * Bearbeiter — an IRGENDEINEM Standort, hier nicht an dem der Messstelle — sieht jede Zeile mit genau ihren
+     * Stammdaten und denselben Werten, ohne {@code angelegt_am}, ohne Prozess-Mitglieder. (3) Leser und Bedienberechtigte
+     * bekommen Zeichen für Zeichen die Antwort eines Unternehmens ohne Kostenstellen und Prozesse. Detail bleibt 404.
+     */
+    @Test
+    void dieListenSindEinAuswahlKatalogMitDreiSichten() throws Exception {
+        Welt w = welt();
+        Welt leer = welt();
+        UUID st1 = standort(w, "Werk Ahrenberg", "ST-1");
+        UUID st3 = standort(w, "Werk Lindach", "ST-3");
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", w.mandant(), w.messstelle(), st1);
+        UUID kostenstelle = id(ok(ruf(w, HttpMethod.POST, KST, objekt("4200", "Montage", "2024-01-01")), 201));
+        ok(ruf(w, HttpMethod.POST, KST, objekt("4100", "Spritzguss", "2024-01-01")), 201);
+        UUID prozess = id(ok(ruf(w, HttpMethod.POST, PRZ, objekt("P-1", "Spritzguss", "2024-01-01")), 201));
+        Map<String, Object> kind = objekt("P-2", "Anguss", "2024-01-01");
+        kind.put("eltern_id", prozess.toString());
+        ok(ruf(w, HttpMethod.POST, PRZ, kind), 201);
+        ok(ruf(w, HttpMethod.PUT, pfad(w), setzen("2024-01-01", prozess)), 200);
+        String bestand = "sub-ines-" + w.mandant();
+        String ka = zuweisung(w, "sub-ka-", "kundenadministrator", null);
+        String em = zuweisung(w, "sub-em-", "energiemanager", null);
+        String bearbeiter = zuweisung(w, "sub-be-", "bearbeiter", st3);
+        String leser = zuweisung(w, "sub-le-", "leser", st1);
+        String bedien = zuweisung(w, "sub-bd-", "bedienberechtigt", st1);
+        String nie = "00000000-0000-0000-0000-00000000dead";
+
+        for (String liste : List.of(KST, PRZ, KST + "?stichtag=2026-09-21", PRZ + "?stichtag=2026-09-21")) {
+            boolean k = liste.startsWith(KST);
+            String feld = k ? "kostenstellen" : "prozesse";
+            Roh voll = ohneKontext(w, liste);
+            assertThat(voll.status()).as(liste + " " + voll.body()).isEqualTo(200);
+            assertThat(MAPPER.readTree(voll.body()).get(feld)).as(liste).hasSize(2);
+            assertThat(als(w, ka, liste)).as(liste + ": Kundenadministrator").isEqualTo(voll);
+            assertThat(als(w, em, liste)).as(liste + ": Energiemanager").isEqualTo(voll);
+            assertThat(als(w, bestand, liste)).as(liste + ": Bestandskonto").isEqualTo(voll);
+
+            Roh stamm = als(w, bearbeiter, liste);
+            assertThat(stamm.status()).as(liste + ": Bearbeiter " + stamm.body()).isEqualTo(200);
+            JsonNode ganz = MAPPER.readTree(voll.body());
+            JsonNode nur = MAPPER.readTree(stamm.body());
+            assertThat(felder(nur)).as(liste).isEqualTo(felder(ganz));
+            assertThat(nur.get("stichtag")).isEqualTo(ganz.get("stichtag"));
+            assertThat(nur.get(feld)).hasSameSizeAs(ganz.get(feld));
+            List<String> stammdaten = k ? List.of("id", "kennzeichen", "name", "gueltig_ab", "gueltig_bis")
+                    : List.of("id", "kennzeichen", "name", "eltern", "gueltig_ab", "gueltig_bis");
+            for (int i = 0; i < ganz.get(feld).size(); i++) {
+                JsonNode zeile = nur.get(feld).get(i);
+                assertThat(felder(zeile)).as(liste + " Zeile " + i + ": genau die Stammdaten").isEqualTo(stammdaten);
+                assertThat(felder(ganz.get(feld).get(i))).as("die ganze Zeile hat mehr").contains("angelegt_am");
+                for (String f : stammdaten) {
+                    assertThat(zeile.get(f)).as(liste + " " + f).isEqualTo(ganz.get(feld).get(i).get(f));
+                }
+            }
+            assertThat(stamm.body()).as("keine Messstelle").doesNotContain(w.kennzeichen())
+                    .doesNotContain(w.messstelle().toString());
+
+            Roh keiner = ohneKontext(leer, liste);
+            assertThat(MAPPER.readTree(keiner.body()).get(feld)).as("das Unternehmen ohne Objekte").isEmpty();
+            assertThat(als(w, leser, liste)).as(liste + ": Leser").isEqualTo(keiner);
+            assertThat(als(w, bedien, liste)).as(liste + ": Bedienberechtigt").isEqualTo(keiner);
+        }
+
+        // Detail bleibt den unternehmensweiten Rollen (PR 1004): auch dem Bearbeiter mit Katalog gleich unbekannt.
+        for (String pfad : List.of(KST + "/" + kostenstelle, PRZ + "/" + prozess)) {
+            Roh b = als(w, bearbeiter, pfad);
+            assertThat(b.status()).as(pfad).isEqualTo(404);
+            assertThat(b).isEqualTo(als(w, bearbeiter, pfad.substring(0, pfad.lastIndexOf('/') + 1) + nie));
+        }
+    }
+
+    /**
+     * Der Zuordnungs-Fluss (AP-10 F19: „Peter legt die Verteilung MS-17 an → 200") bleibt heil: der Bearbeiter an ST-1
+     * lädt beide Listen, wählt daraus und ordnet SEINE Messstelle Prozess und Kostenstelle zu — 200. Ein Bearbeiter nur
+     * an ST-3 wird an derselben Messstelle abgelehnt wie bisher, gleich einer unbekannten Messstelle, und schreibt nichts.
+     */
+    @Test
+    void derBearbeiterOrdnetAusDemAuswahlKatalogZu() throws Exception {
+        Welt w = welt();
+        UUID st1 = standort(w, "Werk Ahrenberg", "ST-1");
+        UUID st3 = standort(w, "Werk Lindach", "ST-3");
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", w.mandant(), w.messstelle(), st1);
+        ok(ruf(w, HttpMethod.POST, KST, objekt("4200", "Montage", "2024-01-01")), 201);
+        ok(ruf(w, HttpMethod.POST, PRZ, objekt("P-1", "Spritzguss", "2024-01-01")), 201);
+        String hier = zuweisung(w, "sub-hier-", "bearbeiter", st1);
+        String anderswo = zuweisung(w, "sub-anderswo-", "bearbeiter", st3);
+
+        String kostenstelle = gewaehlt(als(w, hier, KST), "kostenstellen", "4200");
+        String prozess = gewaehlt(als(w, hier, PRZ), "prozesse", "P-1");
+        String verteilung = "/api/v1/messstellen/" + w.messstelle() + "/verteilung";
+        Roh p = als(w, hier, HttpMethod.PUT, pfad(w), setzen("2030-01-01", UUID.fromString(prozess)));
+        assertThat(p.status()).as(p.body()).isEqualTo(200);
+        Roh v = als(w, hier, HttpMethod.PUT, verteilung, verteilen("2030-01-01", kostenstelle));
+        assertThat(v.status()).as(v.body()).isEqualTo(200);
+        assertThat(v.body()).contains("4200");
+
+        Roh prozesseVorher = ohneKontext(w, pfad(w));
+        Roh verteilungVorher = ohneKontext(w, verteilung);
+        String nie = "/api/v1/messstellen/00000000-0000-0000-0000-00000000dead";
+        Roh pa = als(w, anderswo, HttpMethod.PUT, pfad(w), setzen("2030-02-01", UUID.fromString(prozess)));
+        assertThat(pa.status()).as(pa.body()).isEqualTo(404);
+        assertThat(pa).isEqualTo(als(w, anderswo, HttpMethod.PUT, nie + "/prozesse",
+                setzen("2030-02-01", UUID.fromString(prozess))));
+        Roh va = als(w, anderswo, HttpMethod.PUT, verteilung, verteilen("2030-02-01", kostenstelle));
+        assertThat(va.status()).as(va.body()).isEqualTo(404);
+        assertThat(va).isEqualTo(als(w, anderswo, HttpMethod.PUT, nie + "/verteilung",
+                verteilen("2030-02-01", kostenstelle)));
+        assertThat(ohneKontext(w, pfad(w))).as("nichts geschrieben").isEqualTo(prozesseVorher);
+        assertThat(ohneKontext(w, verteilung)).as("nichts geschrieben").isEqualTo(verteilungVorher);
+    }
+
+    private static UUID standort(Welt w, String name, String kurzzeichen) {
+        UUID unternehmen = root.queryForObject("SELECT id FROM unternehmen WHERE tenant_id = ?", UUID.class, w.mandant());
+        return root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, ?, ?, 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class, w.mandant(),
+                unternehmen, name, kurzzeichen);
+    }
+
+    /** Die Kennung der Zeile mit dem Kennzeichen — so, wie das Portal im Picker wählt. */
+    private static String gewaehlt(Roh liste, String feld, String kennzeichen) throws Exception {
+        assertThat(liste.status()).as(liste.body()).isEqualTo(200);
+        for (JsonNode z : MAPPER.readTree(liste.body()).get(feld)) {
+            if (kennzeichen.equals(z.get("kennzeichen").asText())) {
+                return z.get("id").asText();
+            }
+        }
+        throw new AssertionError(kennzeichen + " fehlt in " + liste.body());
+    }
+
+    private static Map<String, Object> verteilen(String ab, String kostenstelle) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("gueltig_ab", ab);
+        m.put("zeilen", List.of(Map.of("kostenstelle_id", kostenstelle, "anteil_prozent", "100")));
+        return m;
+    }
+
+    private static List<String> felder(JsonNode o) {
+        List<String> aus = new ArrayList<>();
+        o.fieldNames().forEachRemaining(aus::add);
+        return aus;
+    }
+
     /** Ein Konto mit einer wirksamen Zuweisung ({@code standort} {@code null} = unternehmensweit). */
     private static String zuweisung(Welt w, String praefix, String rolle, UUID standort) {
         String sub = praefix + w.mandant();
@@ -396,10 +543,19 @@ class KostenstelleProzessApiTest {
 
     /** Ein Kundenkonto wie aus Keycloak (der Konverter setzt die Kontoart): der Zugriff-Kontext wird geladen. */
     private Roh als(Welt w, String sub, String pfad) throws Exception {
+        return als(w, sub, HttpMethod.GET, pfad, null);
+    }
+
+    private Roh als(Welt w, String sub, HttpMethod methode, String pfad, Object body) throws Exception {
         Map<String, Object> claims = Map.of("sub", sub, "preferred_username", sub, "tenant_id", w.mandant().toString(),
                 "realm_access", Map.of("roles", List.of()));
         Jwt token = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
-        return roh(request(HttpMethod.GET, pfad).with(authentication(new KeycloakRealmRoleConverter().convert(token))));
+        MockHttpServletRequestBuilder anfrage = request(methode, pfad)
+                .with(authentication(new KeycloakRealmRoleConverter().convert(token)));
+        if (body != null) {
+            anfrage.contentType(MediaType.APPLICATION_JSON).content(MAPPER.writeValueAsString(body));
+        }
+        return roh(anfrage);
     }
 
     /** Derselbe Aufruf ohne Kontoart — ohne Zugriff-Kontext, wie {@link #ruf}. */
