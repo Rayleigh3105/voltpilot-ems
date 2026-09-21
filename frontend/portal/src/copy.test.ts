@@ -37,7 +37,7 @@ import { UEMS_ROLLEN_STANDORT, UEMS_ROLLEN_UNTERNEHMEN, UEMS_ROLLE_UNTERSTUETZER
 import { ARTEN as RECHTE_ARTEN, KONTEN as RECHTE_KONTEN, ROLLE_KUNDENWORT, TEXTE as RECHTE_TEXTE, UMFANG_KUNDENWORT } from './rechte';
 import { STAND_AM, bannerTitel } from './standAm';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
-import { KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
+import { FLAECHE as STEUERUNG_FLAECHE, flaechenSatz as steuerungFlaechenSatz, KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
 import * as KK from './kennzahlKarte';
 import * as BS from './berichtSeite';
 import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, vergleichAm } from './test/berichtFixtures';
@@ -2423,6 +2423,20 @@ describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)',
     expect(texte.flatMap((t) => freigabeVerstoesse(t).map(({ grund }) => `${grund}: ${t}`))).toEqual([]);
     // …und der Bestands-Scan liest das Modul als Kundenfläche mit.
     expect(customerFiles().some((file) => file.endsWith('/uemsGemeinsameSteuerung.ts'))).toBe(true);
+  });
+
+  it('die Sätze der Kundenfläche (AP-15 IP-23) bestehen den Wächter — roh und eingesetzt', () => {
+    const werte: Record<string, string> = {
+      box: 'Verwaltung', boxen: '2', einspeisung_kw: '60', bezug_kw: '77', geraet: 'PV-Wechselrichter Verwaltung 60 kW',
+      summe_kw: '100', verteilbar_kw: '70', kwh: '160', dauer: '9,1 Stunden',
+    };
+    const texte = Object.entries(STEUERUNG_FLAECHE).flatMap(([schluessel, vorlage]) => [
+      vorlage,
+      steuerungFlaechenSatz(schluessel as keyof typeof STEUERUNG_FLAECHE, Object.fromEntries(steuerungPlatzhalter(vorlage).map((k) => [k, werte[k]]))),
+    ]);
+    expect(texte.flatMap((t) => freigabeVerstoesse(t).map(({ grund }) => `${grund}: ${t}`))).toEqual([]);
+    // „mindestens“: die kWh der Verlust-Zeile ist eine Untergrenze (IP-22) und steht nie ohne das Wort.
+    expect(Object.values(STEUERUNG_FLAECHE).filter((v) => v.includes('{kwh}')).every((v) => v.includes('mindestens {kwh}'))).toBe(true);
   });
 
   it('findet im Bestand, in Hilfe, Berichts-Texten und Release-Notiz keinen echten Verstoß', () => {

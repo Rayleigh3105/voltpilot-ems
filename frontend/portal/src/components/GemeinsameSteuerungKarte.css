@@ -1,0 +1,29 @@
+/* UEMS AP-15 IP-23 — Karte „Gemeinsame Steuerung“ und die Einrichten-Folge. Tokens wie ZaehlerwechselDialog. */
+.vp-gs, .vp-gs-folge { display: grid; gap: var(--vp-c-space-3); min-width: 0; color: var(--vp-c-fg); font-family: var(--vp-c-font); }
+.vp-gs p, .vp-gs-folge p { margin: 0; line-height: var(--vp-c-lh-text); overflow-wrap: anywhere; }
+.vp-gs-zeile { font-weight: var(--vp-c-fw-600); }
+.vp-gs-boxen { display: grid; gap: var(--vp-c-space-2); margin: 0; padding: 0; list-style: none; }
+.vp-gs-boxen li { display: grid; gap: var(--vp-c-space-1); padding: var(--vp-c-space-3); border: 1px solid var(--vp-border); border-radius: var(--vp-c-radius); min-width: 0; overflow-wrap: anywhere; }
+.vp-gs-ausfall { color: var(--vp-industry-end); }
+.vp-gs-verlust, .vp-gs-klein, .vp-gs-erklaerung, .vp-gs-frage-nr { color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-14); }
+.vp-gs-befunde { margin: 0; padding-left: var(--vp-c-space-5); display: grid; gap: var(--vp-c-space-2); overflow-wrap: anywhere; }
+.vp-gs-aktionen { display: flex; flex-wrap: wrap; gap: var(--vp-c-space-2); }
+.vp-gs-hinweis { padding: var(--vp-c-space-3); background: var(--vp-c-muted); border-radius: var(--vp-c-radius); display: grid; gap: var(--vp-c-space-2); overflow-wrap: anywhere; }
+.vp-gs-fehler, .vp-gs-luecke { color: var(--vp-industry-end); }
+.vp-gs-weg { white-space: nowrap; }
+.vp-gs-feld { display: grid; gap: var(--vp-c-space-3); border: 0; padding: 0; margin: 0; min-width: 0; }
+.vp-gs-feld legend { font-weight: var(--vp-c-fw-600); margin-bottom: var(--vp-c-space-3); }
+.vp-gs-feld + .vp-gs-feld { padding-top: var(--vp-c-space-4); border-top: 1px solid var(--vp-border); }
+.vp-gs-wahl { display: flex; align-items: flex-start; gap: var(--vp-c-space-2); min-height: 44px; }
+.vp-gs-wahl input { flex: none; margin-top: 0.3rem; }
+.vp-gs-wahl span { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.vp-gs-wahl small { color: var(--vp-c-muted-fg); }
+.vp-gs-reihe { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: var(--vp-c-space-3); align-items: end; }
+.vp-gs-reihe > * { min-width: 0; }
+.vp-gs-grenzen { display: grid; gap: var(--vp-c-space-2); margin: 0; }
+.vp-gs-grenzen div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--vp-c-space-2); }
+.vp-gs-grenzen dt { color: var(--vp-c-muted-fg); }
+.vp-gs-grenzen dd { margin: 0; font-weight: var(--vp-c-fw-600); }
+.vp-gs-richtung { display: grid; gap: var(--vp-c-space-2); padding: var(--vp-c-space-3); border: 1px solid var(--vp-border); border-radius: var(--vp-c-radius); }
+.vp-gs-richtung h3 { margin: 0; font-size: var(--vp-c-fs-16); }
+.vp-gs-richtung ul { margin: 0; padding-left: var(--vp-c-space-5); }

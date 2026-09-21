@@ -6881,10 +6881,133 @@ export interface UemsDatenquelleZeitraum {
  * Felder. Das Portal liest heute nur `id`, `kennzeichen` und `zeitraeume`; die übrigen Felder
  * stehen für den nächsten Aufrufer.
  */
-/** `GET …/gemeinsame-steuerung` (AP-15 IP-5) — nur die Felder, die das Portal heute liest. */
+/**
+ * `GET …/gemeinsame-steuerung` (AP-15 IP-5, Vertrag `steuerungsverbund.md` §6). Die Box-Seite liest nur
+ * `zustand` (IP-26); die Karte unter Anlage → Technik (IP-23) liest Mitglieder, Befunde und den nächsten
+ * Schritt. Alle weiteren Felder sind wahlfrei, damit ältere Antworten und die Bühnen gültig bleiben.
+ */
 export interface UemsGemeinsameSteuerungZustand {
   eingerichtet: boolean;
   zustand: 'nicht_eingerichtet' | 'erklaert' | 'beobachtet' | 'geprueft' | 'anteile_aktiv' | 'angehalten' | 'aufgeloest';
+  stufe?: 'S0' | 'S1' | 'S2' | 'S3' | null;
+  mitglieder?: UemsGemeinsameSteuerungMitglied[];
+  naechster_schritt?: 'beobachtet' | 'anteile_aktiv' | 'vom_betreiber_angehalten' | null;
+  fehlt?: UemsGemeinsameSteuerungBefund[];
+}
+
+export type UemsSteuerRichtung = 'einspeisung' | 'bezug';
+export type UemsDreiwert = 'ja' | 'nein' | 'unbekannt';
+
+export interface UemsGemeinsameSteuerungMitglied {
+  box_id: string;
+  rolle: 'fuehrt' | 'steuert_mit';
+  messpunkt_id?: string | null;
+  vorgabe_signal: UemsDreiwert;
+  verbraucher14a: UemsDreiwert;
+  /** IP-22: `kwh` ist eine UNTERGRENZE, `gebunden_s` exakt; `null`, solange die Box keinen Tag gemeldet hat. */
+  anteil_verlust?: { heute?: UemsVerlustSumme | null; monat?: UemsVerlustSumme | null } | null;
+}
+
+export interface UemsVerlustSumme {
+  kwh: number;
+  gebunden_s: number;
+  tage: number;
+}
+
+export interface UemsGemeinsameSteuerungBefund {
+  wort: 'box_nicht_in_anlage' | 'kein_netzanschluss' | 'grenze_fehlt' | 'faehigkeit_fehlt' | 'nachweis_fehlt'
+    | 'auslegung_passt_nicht' | 'fuehrende_box_misst_nicht' | 'vorgabe_signal_nicht_an_jeder_box' | 'mitsteuernde_box_misst_nicht';
+  box_id?: string | null;
+  richtung?: UemsSteuerRichtung | null;
+}
+
+/** Frage 6: die Auslegung einer Richtung; `null`, solange sie nicht rechenbar ist. */
+export interface UemsGemeinsameSteuerungAuslegung {
+  urteil: 'passt' | 'auslegung_passt_nicht' | 'vorbehalt_ueber_grenze';
+  grenze_kw: number;
+  vorbehalt_kw: number;
+  verteilbar_kw: number;
+  summe_rueckfall_kw: number;
+  anteile: { box_id: string; kw: number }[];
+  ungenutzt_kw?: number;
+}
+
+export interface UemsEinrichtenKomponente {
+  komponente_id: string;
+  name: string | null;
+  typ: string;
+  schreibfreigabe: boolean;
+  richtungen: UemsSteuerRichtung[];
+  nenn_kw: number | null;
+}
+
+export interface UemsEinrichtenGeraet {
+  komponente_id: string;
+  richtung: UemsSteuerRichtung;
+  nenn_kw: number;
+  schreibfreigabe?: boolean;
+  rueckfall?: string | null;
+  rueckfall_kw?: number | null;
+  rueckfall_herkunft?: 'am_geraet' | 'katalog' | 'ohne_angabe' | null;
+}
+
+export interface UemsEinrichtenBox {
+  box_id: string;
+  name: string;
+  rolle: 'fuehrt' | 'steuert_mit' | null;
+  messpunkt_id: string | null;
+  liest_netzzaehler: boolean;
+  komponenten: UemsEinrichtenKomponente[];
+  geraete_erklaert?: boolean;
+  geraete?: UemsEinrichtenGeraet[];
+  ungeregelt?: { richtung: UemsSteuerRichtung; hoechstwert_kw: number }[];
+}
+
+export interface UemsErzeuger {
+  bezeichnung: string;
+  nenn_kw: number;
+}
+
+/** `GET …/gemeinsame-steuerung/einrichten` (Vertrag §6a): der Vorschlag für die sechs Fragen, schreibt nie. */
+export interface UemsGemeinsameSteuerungEinrichten {
+  eingerichtet: boolean;
+  netzzaehler_box_id: string | null;
+  grenzen: { einspeisung_kw: number | null; bezug_kw: number | null } | null;
+  boxen: UemsEinrichtenBox[];
+  ungesteuerte_erzeuger?: 'keine' | UemsErzeuger[] | null;
+  vorbehalt?: {
+    einspeisung_kw?: number | null;
+    bezug_kw?: number | null;
+    bezug_herkunft?: 'erklaert' | 'gemessen' | null;
+    aus_messwerten?: { kw: number; hoechstwert_kw: number; messtage: number } | null;
+  } | null;
+  ergebnis?: { einspeisung?: UemsGemeinsameSteuerungAuslegung | null; bezug?: UemsGemeinsameSteuerungAuslegung | null } | null;
+  hinweise?: {
+    wort: 'nennleistung_weicht_ab' | 'ohne_schreibfreigabe' | 'geraete_nicht_erklaert' | 'geraet_nicht_erklaert'
+      | 'erzeuger_nicht_erklaert' | 'vorbehalt_nicht_erklaert' | 'netzzaehler_nicht_gelesen';
+    box_id?: string | null;
+    komponente_id?: string | null;
+  }[];
+}
+
+/** Körper von `PUT …/gemeinsame-steuerung` mit der Erklärung (Vertrag §6a). */
+export interface UemsGemeinsameSteuerungSetzen {
+  mitglieder: {
+    box_id: string;
+    rolle: 'fuehrt' | 'steuert_mit';
+    messpunkt_id: string | null;
+    vorgabe_signal: UemsDreiwert;
+    geraete: { komponente_id: string; richtung: UemsSteuerRichtung; nenn_kw: number }[];
+  }[];
+  ungesteuerte_erzeuger: 'keine' | UemsErzeuger[];
+  vorbehalt?: { bezug_kw: number };
+}
+
+/** Eine Lücke der 422 `erklaerung_unvollstaendig` — an IHRER Stelle angezeigt. */
+export interface UemsErklaerungLuecke {
+  wort: 'geraete' | 'komponente' | 'ungesteuerte_erzeuger';
+  box_id?: string | null;
+  komponente_id?: string | null;
 }
 
 export interface UemsDatenquelle {
@@ -8375,6 +8498,21 @@ export const api = {
    */
   gemeinsameSteuerung: (siteId: string) =>
     request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung`),
+  /** Der Vorschlag für die sechs Fragen (Vertrag §6a) — schreibt nie. */
+  gemeinsameSteuerungEinrichten: (siteId: string) =>
+    request<UemsGemeinsameSteuerungEinrichten>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/einrichten`),
+  /** Einrichten und Ändern (Recht `funktion.steuern_einrichten`); 422 `erklaerung_unvollstaendig` nennt die Lücken. */
+  gemeinsameSteuerungSetzen: (siteId: string, body: UemsGemeinsameSteuerungSetzen) =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung`,
+      { method: 'PUT', body: JSON.stringify(body) }),
+  /** Den sicheren Rückfallwert am Gerät hinterlegen (Vertrag §6a, `GeraeteRueckfallDienst`). */
+  gemeinsameSteuerungRueckfall: (siteId: string, komponenteId: string,
+    body: { richtung: UemsSteuerRichtung; rueckfall: 'faellt_auf_wert'; rueckfall_kw: number }) =>
+    request<unknown>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/komponenten/${komponenteId}/rueckfall`,
+      { method: 'PUT', body: JSON.stringify(body) }),
+  /** Anhalten · Fortsetzen (Recht `steuerung.starten_beenden`); Scharfschalten ist nie eine Kundenroute (I5). */
+  gemeinsameSteuerungSchritt: (siteId: string, schritt: 'anhalten' | 'fortsetzen') =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/${schritt}`, { method: 'POST' }),
 
   datenquelleAnlegen: (siteId: string, body: UemsDatenquelleAnlegen) =>
     request<UemsDatenquelle>(`/api/v1/sites/${siteId}/data-sources`, {

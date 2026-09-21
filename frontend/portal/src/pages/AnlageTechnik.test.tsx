@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { initInstallApp, resetInstallApp, type InstallEnv } from '../installApp';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
 import { api, type Device, type Site, type SiteAsset, type SupplyPrice } from '../api';
@@ -879,5 +879,47 @@ describe('Einstellungen · Als App auf dem Handy (PWA-Hülle)', () => {
     expect(steps[1]).toHaveTextContent(/Home-Bildschirm/);
     expect(within(app).queryByRole('button', { name: 'App installieren' })).toBeNull();
     restore();
+  });
+});
+
+describe('AP-15 IP-23 · Karte „Gemeinsame Steuerung“ auf der Technik-Seite', () => {
+  /** Rendert die Technik-Seite einer steuernden Anlage mit `boxen` Boxen. */
+  async function renderMitBoxen(boxen: number, teilnahme: 'aktiv' | 'kein_objekt') {
+    const spies = [
+      vi.spyOn(api, 'siteAssets').mockResolvedValue([battery({ deviceId: 'd-1' })]),
+      vi.spyOn(api, 'siteDeletionPreview').mockRejectedValue(new Error('n/a')),
+      vi.spyOn(api, 'supplyPrice').mockResolvedValue(null as never),
+      vi.spyOn(api, 'schedule').mockRejectedValue(new Error('kein Plan')),
+      vi.spyOn(api, 'funktionen').mockResolvedValue({
+        standorte: [{ id: 'st-1', steuern: { anlagen: [{ id: 's-1', teilnahme: { zustand: teilnahme } }] } }],
+      } as never),
+      vi.spyOn(api, 'gemeinsameSteuerung').mockResolvedValue({ eingerichtet: false, zustand: 'nicht_eingerichtet', mitglieder: [], fehlt: [] }),
+    ];
+    const devices = Array.from({ length: boxen }, (_, i) => device({ id: `d-${i + 1}`, kind: 'edge', name: `Box ${i + 1}` }));
+    render(
+      <TechnikSection site={eegSite} devices={devices} sites={[eegSite]} onReload={() => {}} onSiteSaved={() => {}} onSiteDeleted={() => {}} />,
+    );
+    await screen.findByText('Kapazität');
+    await waitFor(() => expect(api.gemeinsameSteuerung).toHaveBeenCalled());
+    return () => spies.forEach((m) => m.mockRestore());
+  }
+
+  it('steuernd mit zwei Boxen: Karte und Sprungmarke erscheinen', async () => {
+    const restore = await renderMitBoxen(2, 'aktiv');
+    const karte = await screen.findByTestId('gemeinsame-steuerung');
+    expect(karte.closest('#technik-gemeinsam')).not.toBeNull();
+    expect(within(screen.getByRole('navigation', { name: 'Abschnitte' })).getByText('Gemeinsame Steuerung')).toBeInTheDocument();
+    restore();
+  });
+
+  it('eine Box oder nur messend: weder Karte noch Sprungmarke', async () => {
+    for (const [boxen, teilnahme] of [[1, 'aktiv'], [2, 'kein_objekt']] as const) {
+      const restore = await renderMitBoxen(boxen, teilnahme);
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      expect(document.getElementById('technik-gemeinsam')).toBeNull();
+      expect(within(screen.getByRole('navigation', { name: 'Abschnitte' })).queryByText('Gemeinsame Steuerung')).toBeNull();
+      restore();
+      cleanup();
+    }
   });
 });
