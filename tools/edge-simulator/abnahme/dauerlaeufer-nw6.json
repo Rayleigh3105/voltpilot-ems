@@ -3,28 +3,469 @@
     {
       "code": "E-1",
       "device_id": "d1b00000-0000-4000-8000-000000000001",
+      "gateway": {
+        "host": "10.99.1.10",
+        "port": 502,
+        "unit_id": 1
+      },
+      "messstellen": [
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000005",
+          "messstelle": "MS-05",
+          "name": "Wirkenergie Bezug",
+          "point_key": "custom.55d17333ce6829f7550beabb7b9eb13b",
+          "register": 500
+        },
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000006",
+          "messstelle": "MS-06",
+          "name": "Wirkenergie Bezug",
+          "point_key": "custom.a5b38580b81cfe982d571d751ed82d6a",
+          "register": 600
+        },
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000007",
+          "messstelle": "MS-07",
+          "name": "Wirkenergie Bezug",
+          "point_key": "custom.f625638c15ca4d24ef00872e36494052",
+          "register": 700
+        },
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000008",
+          "messstelle": "MS-08",
+          "name": "Wirkenergie Bezug",
+          "point_key": "custom.2cfb4262ac99cc544b8b8657cf36205c",
+          "register": 800
+        }
+      ],
       "point_keys": [
-        "custom.ms-05.wirkenergie-bezug",
-        "custom.ms-06.wirkenergie-bezug",
-        "custom.ms-07.wirkenergie-bezug",
-        "custom.ms-08.wirkenergie-bezug"
+        "custom.55d17333ce6829f7550beabb7b9eb13b",
+        "custom.a5b38580b81cfe982d571d751ed82d6a",
+        "custom.f625638c15ca4d24ef00872e36494052",
+        "custom.2cfb4262ac99cc544b8b8657cf36205c"
       ],
       "site_id": "d1000000-0000-4000-8000-000000000001"
     },
     {
       "code": "E-2",
       "device_id": "d1b00000-0000-4000-8000-000000000002",
+      "gateway": {
+        "host": "10.99.2.10",
+        "port": 502,
+        "unit_id": 1
+      },
+      "messstellen": [
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000010",
+          "messstelle": "MS-10",
+          "name": "Wirkenergie Bezug",
+          "point_key": "custom.ba016a8254484d604b166af69e2e1c9e",
+          "register": 1000
+        },
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000011",
+          "messstelle": "MS-11",
+          "name": "Wirkenergie Bezug",
+          "point_key": "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
+          "register": 1100
+        },
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000012",
+          "messstelle": "MS-12",
+          "name": "Wirkenergie Bezug",
+          "point_key": "custom.6960fe4e912c72196b38d1faae4266f7",
+          "register": 1200
+        },
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000013",
+          "messstelle": "MS-13",
+          "name": "Wirkenergie Bezug",
+          "point_key": "custom.988b3435637ab34e9fa564a688d0d1c3",
+          "register": 1300
+        },
+        {
+          "entity_id": "d1c00000-0000-4000-8000-000000000014",
+          "messstelle": "MS-14",
+          "name": "OCPP-Zählerstand",
+          "point_key": "custom.6a75edc085741a7fb7dc616248e46ffb",
+          "register": 1400
+        }
+      ],
       "point_keys": [
-        "custom.ms-10.wirkenergie-bezug",
-        "custom.ms-11.wirkenergie-bezug",
-        "custom.ms-12.wirkenergie-bezug",
-        "custom.ms-13.wirkenergie-bezug",
-        "custom.ms-14.ocpp-zaehlerstand"
+        "custom.ba016a8254484d604b166af69e2e1c9e",
+        "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
+        "custom.6960fe4e912c72196b38d1faae4266f7",
+        "custom.988b3435637ab34e9fa564a688d0d1c3",
+        "custom.6a75edc085741a7fb7dc616248e46ffb"
       ],
       "site_id": "d1000000-0000-4000-8000-000000000002"
     }
   ],
-  "quelle": "tools/edge-simulator/uems_dauerlaeufer.py (topic, umschlag)",
+  "einrichtung": [
+    {
+      "auswahl": {
+        "nutzlast": {
+          "catalog_version": "2026.08.26.3",
+          "device_id": "d1b00000-0000-4000-8000-000000000001",
+          "revision": 4,
+          "schema_version": "2.0",
+          "selections": [
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 500,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-05 Wirkenergie Bezug",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x01f4",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000005",
+              "point_key": "custom.55d17333ce6829f7550beabb7b9eb13b"
+            },
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 600,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-06 Wirkenergie Bezug",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x0258",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000006",
+              "point_key": "custom.a5b38580b81cfe982d571d751ed82d6a"
+            },
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 700,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-07 Wirkenergie Bezug",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x02bc",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000007",
+              "point_key": "custom.f625638c15ca4d24ef00872e36494052"
+            },
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 800,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-08 Wirkenergie Bezug",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x0320",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000008",
+              "point_key": "custom.2cfb4262ac99cc544b8b8657cf36205c"
+            }
+          ],
+          "site_id": "d1000000-0000-4000-8000-000000000001",
+          "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+        },
+        "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/measurement-config"
+      },
+      "box": "E-1",
+      "lesung": {
+        "anfrage": {
+          "device_id": "d1b00000-0000-4000-8000-000000000001",
+          "ops": [
+            {
+              "address": 500,
+              "data_type": "u32",
+              "host": "10.99.1.10",
+              "id": "probe",
+              "offset": 0,
+              "op": "read",
+              "port": 502,
+              "register_kind": "input",
+              "scale": 0.1,
+              "transport": "modbus_tcp",
+              "unit_id": 1,
+              "word_order": "big"
+            }
+          ],
+          "request_id": "00000000000001e6",
+          "requested_at": "2026-11-03T09:50:00Z",
+          "requested_by": "kc-dauerlaeufer",
+          "schema_version": "1.0",
+          "site_id": "d1000000-0000-4000-8000-000000000001",
+          "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020",
+          "type": "probe_request"
+        },
+        "antwort": {
+          "answered_at": "2026-11-03T09:50:00Z",
+          "device_id": "d1b00000-0000-4000-8000-000000000001",
+          "request_id": "00000000000001e6",
+          "results": [
+            {
+              "id": "probe",
+              "ok": true,
+              "raw": 91899470,
+              "registers": [
+                1402,
+                17998
+              ],
+              "value": 9189947.0
+            }
+          ],
+          "schema_version": "1.0",
+          "site_id": "d1000000-0000-4000-8000-000000000001",
+          "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020",
+          "type": "probe_result"
+        },
+        "antwort_topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/probe-result",
+        "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/probe"
+      },
+      "quittung": {
+        "nutzlast": {
+          "accepted": [
+            "custom.55d17333ce6829f7550beabb7b9eb13b",
+            "custom.a5b38580b81cfe982d571d751ed82d6a",
+            "custom.f625638c15ca4d24ef00872e36494052",
+            "custom.2cfb4262ac99cc544b8b8657cf36205c"
+          ],
+          "applied_at": "2026-11-03T09:50:00Z",
+          "device_id": "d1b00000-0000-4000-8000-000000000001",
+          "edge_version": "voltpilot-dauerlaeufer/2",
+          "rejected": [],
+          "revision": 4,
+          "schema_version": "2.0",
+          "site_id": "d1000000-0000-4000-8000-000000000001",
+          "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+        },
+        "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/measurement-config-status"
+      }
+    },
+    {
+      "auswahl": {
+        "nutzlast": {
+          "catalog_version": "2026.08.26.3",
+          "device_id": "d1b00000-0000-4000-8000-000000000002",
+          "revision": 5,
+          "schema_version": "2.0",
+          "selections": [
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 1000,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-10 Wirkenergie Bezug",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x03e8",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000010",
+              "point_key": "custom.ba016a8254484d604b166af69e2e1c9e"
+            },
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 1100,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-11 Wirkenergie Bezug",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x044c",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000011",
+              "point_key": "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378"
+            },
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 1200,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-12 Wirkenergie Bezug",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x04b0",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000012",
+              "point_key": "custom.6960fe4e912c72196b38d1faae4266f7"
+            },
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 1300,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-13 Wirkenergie Bezug",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x0514",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000013",
+              "point_key": "custom.988b3435637ab34e9fa564a688d0d1c3"
+            },
+            {
+              "cadence_s": 60,
+              "definition": {
+                "address": 1400,
+                "cadenceS": 60,
+                "endian": "big",
+                "label": "MS-14 OCPP-Zählerstand",
+                "readOnly": true,
+                "requestCostMs": 2000,
+                "retentionClass": "energy_counter",
+                "scale": 0.1,
+                "selector": "input:0x0578",
+                "signed": false,
+                "sourceKind": "modbus_input",
+                "unit": "kWh",
+                "valueType": "uint32",
+                "widthBits": 32
+              },
+              "entity_id": "d1c00000-0000-4000-8000-000000000014",
+              "point_key": "custom.6a75edc085741a7fb7dc616248e46ffb"
+            }
+          ],
+          "site_id": "d1000000-0000-4000-8000-000000000002",
+          "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+        },
+        "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/measurement-config"
+      },
+      "box": "E-2",
+      "lesung": {
+        "anfrage": {
+          "device_id": "d1b00000-0000-4000-8000-000000000002",
+          "ops": [
+            {
+              "address": 1000,
+              "data_type": "u32",
+              "host": "10.99.2.10",
+              "id": "probe",
+              "offset": 0,
+              "op": "read",
+              "port": 502,
+              "register_kind": "input",
+              "scale": 0.1,
+              "transport": "modbus_tcp",
+              "unit_id": 1,
+              "word_order": "big"
+            }
+          ],
+          "request_id": "00000000000002e6",
+          "requested_at": "2026-11-03T09:50:00Z",
+          "requested_by": "kc-dauerlaeufer",
+          "schema_version": "1.0",
+          "site_id": "d1000000-0000-4000-8000-000000000002",
+          "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020",
+          "type": "probe_request"
+        },
+        "antwort": {
+          "answered_at": "2026-11-03T09:50:00Z",
+          "device_id": "d1b00000-0000-4000-8000-000000000002",
+          "request_id": "00000000000002e6",
+          "results": [
+            {
+              "id": "probe",
+              "ok": true,
+              "raw": 478726120,
+              "registers": [
+                7304,
+                51176
+              ],
+              "value": 47872612.0
+            }
+          ],
+          "schema_version": "1.0",
+          "site_id": "d1000000-0000-4000-8000-000000000002",
+          "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020",
+          "type": "probe_result"
+        },
+        "antwort_topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/probe-result",
+        "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/probe"
+      },
+      "quittung": {
+        "nutzlast": {
+          "accepted": [
+            "custom.ba016a8254484d604b166af69e2e1c9e",
+            "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
+            "custom.6960fe4e912c72196b38d1faae4266f7",
+            "custom.988b3435637ab34e9fa564a688d0d1c3",
+            "custom.6a75edc085741a7fb7dc616248e46ffb"
+          ],
+          "applied_at": "2026-11-03T09:50:00Z",
+          "device_id": "d1b00000-0000-4000-8000-000000000002",
+          "edge_version": "voltpilot-dauerlaeufer/2",
+          "rejected": [],
+          "revision": 5,
+          "schema_version": "2.0",
+          "site_id": "d1000000-0000-4000-8000-000000000002",
+          "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+        },
+        "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/measurement-config-status"
+      }
+    }
+  ],
+  "quelle": "tools/edge-simulator/uems_dauerlaeufer.py (probe_antwort, auswahl_lernen, umschlag)",
   "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020",
   "zustellungen": [
     {
@@ -37,28 +478,28 @@
           {
             "decoded": 9189948.5,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "point_key": "custom.55d17333ce6829f7550beabb7b9eb13b",
             "quality": "good",
             "raw": 91899485
           },
           {
             "decoded": 27988895.5,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "point_key": "custom.a5b38580b81cfe982d571d751ed82d6a",
             "quality": "good",
             "raw": 279888955
           },
           {
             "decoded": 15278677.5,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "point_key": "custom.f625638c15ca4d24ef00872e36494052",
             "quality": "good",
             "raw": 152786775
           },
           {
             "decoded": 12148738.0,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "point_key": "custom.2cfb4262ac99cc544b8b8657cf36205c",
             "quality": "good",
             "raw": 121487380
           }
@@ -80,35 +521,35 @@
           {
             "decoded": 47872620.0,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "point_key": "custom.ba016a8254484d604b166af69e2e1c9e",
             "quality": "good",
             "raw": 478726200
           },
           {
             "decoded": 20945308.5,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "point_key": "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
             "quality": "good",
             "raw": 209453085
           },
           {
             "decoded": 11967462.0,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "point_key": "custom.6960fe4e912c72196b38d1faae4266f7",
             "quality": "good",
             "raw": 119674620
           },
           {
             "decoded": 5984189.0,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "point_key": "custom.988b3435637ab34e9fa564a688d0d1c3",
             "quality": "good",
             "raw": 59841890
           },
           {
             "decoded": 2991733.5,
             "observed_at": "2026-11-03T09:55:00Z",
-            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "point_key": "custom.6a75edc085741a7fb7dc616248e46ffb",
             "quality": "good",
             "raw": 29917335
           }
@@ -130,28 +571,28 @@
           {
             "decoded": 9189948.8,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "point_key": "custom.55d17333ce6829f7550beabb7b9eb13b",
             "quality": "good",
             "raw": 91899488
           },
           {
             "decoded": 27988896.4,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "point_key": "custom.a5b38580b81cfe982d571d751ed82d6a",
             "quality": "good",
             "raw": 279888964
           },
           {
             "decoded": 15278678.0,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "point_key": "custom.f625638c15ca4d24ef00872e36494052",
             "quality": "good",
             "raw": 152786780
           },
           {
             "decoded": 12148738.4,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "point_key": "custom.2cfb4262ac99cc544b8b8657cf36205c",
             "quality": "good",
             "raw": 121487384
           }
@@ -173,35 +614,35 @@
           {
             "decoded": 47872621.6,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "point_key": "custom.ba016a8254484d604b166af69e2e1c9e",
             "quality": "good",
             "raw": 478726216
           },
           {
             "decoded": 20945309.2,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "point_key": "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
             "quality": "good",
             "raw": 209453092
           },
           {
             "decoded": 11967462.4,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "point_key": "custom.6960fe4e912c72196b38d1faae4266f7",
             "quality": "good",
             "raw": 119674624
           },
           {
             "decoded": 5984189.2,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "point_key": "custom.988b3435637ab34e9fa564a688d0d1c3",
             "quality": "good",
             "raw": 59841892
           },
           {
             "decoded": 2991733.6,
             "observed_at": "2026-11-03T09:56:00Z",
-            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "point_key": "custom.6a75edc085741a7fb7dc616248e46ffb",
             "quality": "good",
             "raw": 29917336
           }
@@ -223,28 +664,28 @@
           {
             "decoded": 9189949.1,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "point_key": "custom.55d17333ce6829f7550beabb7b9eb13b",
             "quality": "good",
             "raw": 91899491
           },
           {
             "decoded": 27988897.3,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "point_key": "custom.a5b38580b81cfe982d571d751ed82d6a",
             "quality": "good",
             "raw": 279888973
           },
           {
             "decoded": 15278678.5,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "point_key": "custom.f625638c15ca4d24ef00872e36494052",
             "quality": "good",
             "raw": 152786785
           },
           {
             "decoded": 12148738.8,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "point_key": "custom.2cfb4262ac99cc544b8b8657cf36205c",
             "quality": "good",
             "raw": 121487388
           }
@@ -266,35 +707,35 @@
           {
             "decoded": 47872623.2,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "point_key": "custom.ba016a8254484d604b166af69e2e1c9e",
             "quality": "good",
             "raw": 478726232
           },
           {
             "decoded": 20945309.9,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "point_key": "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
             "quality": "good",
             "raw": 209453099
           },
           {
             "decoded": 11967462.8,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "point_key": "custom.6960fe4e912c72196b38d1faae4266f7",
             "quality": "good",
             "raw": 119674628
           },
           {
             "decoded": 5984189.4,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "point_key": "custom.988b3435637ab34e9fa564a688d0d1c3",
             "quality": "good",
             "raw": 59841894
           },
           {
             "decoded": 2991733.7,
             "observed_at": "2026-11-03T09:57:00Z",
-            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "point_key": "custom.6a75edc085741a7fb7dc616248e46ffb",
             "quality": "good",
             "raw": 29917337
           }
@@ -316,28 +757,28 @@
           {
             "decoded": 9189949.4,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "point_key": "custom.55d17333ce6829f7550beabb7b9eb13b",
             "quality": "good",
             "raw": 91899494
           },
           {
             "decoded": 27988898.2,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "point_key": "custom.a5b38580b81cfe982d571d751ed82d6a",
             "quality": "good",
             "raw": 279888982
           },
           {
             "decoded": 15278679.0,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "point_key": "custom.f625638c15ca4d24ef00872e36494052",
             "quality": "good",
             "raw": 152786790
           },
           {
             "decoded": 12148739.2,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "point_key": "custom.2cfb4262ac99cc544b8b8657cf36205c",
             "quality": "good",
             "raw": 121487392
           }
@@ -359,35 +800,35 @@
           {
             "decoded": 47872624.8,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "point_key": "custom.ba016a8254484d604b166af69e2e1c9e",
             "quality": "good",
             "raw": 478726248
           },
           {
             "decoded": 20945310.6,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "point_key": "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
             "quality": "good",
             "raw": 209453106
           },
           {
             "decoded": 11967463.2,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "point_key": "custom.6960fe4e912c72196b38d1faae4266f7",
             "quality": "good",
             "raw": 119674632
           },
           {
             "decoded": 5984189.6,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "point_key": "custom.988b3435637ab34e9fa564a688d0d1c3",
             "quality": "good",
             "raw": 59841896
           },
           {
             "decoded": 2991733.8,
             "observed_at": "2026-11-03T09:58:00Z",
-            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "point_key": "custom.6a75edc085741a7fb7dc616248e46ffb",
             "quality": "good",
             "raw": 29917338
           }
@@ -409,28 +850,28 @@
           {
             "decoded": 9189949.7,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "point_key": "custom.55d17333ce6829f7550beabb7b9eb13b",
             "quality": "good",
             "raw": 91899497
           },
           {
             "decoded": 27988899.1,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "point_key": "custom.a5b38580b81cfe982d571d751ed82d6a",
             "quality": "good",
             "raw": 279888991
           },
           {
             "decoded": 15278679.5,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "point_key": "custom.f625638c15ca4d24ef00872e36494052",
             "quality": "good",
             "raw": 152786795
           },
           {
             "decoded": 12148739.6,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "point_key": "custom.2cfb4262ac99cc544b8b8657cf36205c",
             "quality": "good",
             "raw": 121487396
           }
@@ -452,35 +893,35 @@
           {
             "decoded": 47872626.4,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "point_key": "custom.ba016a8254484d604b166af69e2e1c9e",
             "quality": "good",
             "raw": 478726264
           },
           {
             "decoded": 20945311.3,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "point_key": "custom.6e7d98c4ee1a44ad7c86fe7d39c3c378",
             "quality": "good",
             "raw": 209453113
           },
           {
             "decoded": 11967463.6,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "point_key": "custom.6960fe4e912c72196b38d1faae4266f7",
             "quality": "good",
             "raw": 119674636
           },
           {
             "decoded": 5984189.8,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "point_key": "custom.988b3435637ab34e9fa564a688d0d1c3",
             "quality": "good",
             "raw": 59841898
           },
           {
             "decoded": 2991733.9,
             "observed_at": "2026-11-03T09:59:00Z",
-            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "point_key": "custom.6a75edc085741a7fb7dc616248e46ffb",
             "quality": "good",
             "raw": 29917339
           }
