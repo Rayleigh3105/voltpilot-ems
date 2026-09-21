@@ -2776,6 +2776,74 @@ paths:
         "403": { description: Das Recht `grenze.eintragen` fehlt. }
         "404": { description: Anlage unbekannt oder außerhalb des Kundenbereichs. }
         "422": { description: Grenze über vereinbarter Leistung, fehlende Anschlussdaten oder kein verbleibendes Ladebudget; deutscher Grund im Körper. }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/scharfschalten:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Gemeinsame Steuerung scharfschalten — Handgriff des Betreibers (UEMS AP-15 IP-5, I4/I5, W9).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle; ein Kundenkonto, auch der Kundenadministrator, bekommt 403).
+        Über den `X-Tenant-Id`-Umschalter auf dem RLS-Pfad, eine fremde Anlage ist 404. Prüft ALLE Bedingungen aus I1
+        und lehnt mit genau einem Wort ab (dem ersten in Vokabular-Reihenfolge; `fehlt` nennt alle):
+        `box_nicht_in_anlage` · `kein_netzanschluss` · `grenze_fehlt` · `faehigkeit_fehlt` · `nachweis_fehlt` ·
+        `auslegung_passt_nicht` · `fuehrende_box_misst_nicht` · `vorgabe_signal_nicht_an_jeder_box` ·
+        `mitsteuernde_box_misst_nicht`. Zulässig: neue Epoche, S3 `anteile_aktiv`, alle wirksamen Mitglieder
+        bestätigt. Bis IP-7/IP-17/IP-21 ihre Quellen liefern, fehlen Fähigkeit, Sprungprobe und Auslegung immer.
+      responses:
+        "200":
+          description: Scharf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/fortsetzen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Gemeinsame Steuerung fortsetzen — auch nach einem Anhalten des Betreibers (W9/I5).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle). Wie das Fortsetzen des Kunden: nur aus `angehalten`
+        (sonst 409 `nicht_angehalten`), dieselbe Epoche, alle Bedingungen aus I1 erneut geprüft (409 mit dem ersten
+        Wort und `fehlt`). Der Betreiber hebt jedes Anhalten auf, auch das des Kunden.
+      responses:
+        "200":
+          description: Fortgesetzt, `anteile_aktiv`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/mitglieder/{boxId}/bestaetigen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: boxId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Ein Mitglied der Gemeinsamen Steuerung bestätigen — nach dem Box-Tausch (I4, R17).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle). Setzt `bestaetigt_am`; 409 `kein_mitglied` für eine Box,
+        die kein wirksames Mitglied ist, `bereits_bestaetigt` beim zweiten Mal, `nicht_eingerichtet` ohne
+        Gemeinsame Steuerung.
+      responses:
+        "200":
+          description: Bestätigt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/admin/sites/{siteId}/charging-frame:
     put:
       tags: [admin]
@@ -9607,6 +9675,116 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Funktionen" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/sites/{siteId}/gemeinsame-steuerung:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [funktionen]
+      summary: Gemeinsame Steuerung der Anlage lesen (UEMS AP-15 IP-5).
+      description: >
+        Recht: heute lesend — keine eigene Kennung; eine Anlage außerhalb des Zugriffs ist dieselbe 404 wie eine
+        unbekannte. Ohne Gemeinsame Steuerung `eingerichtet: false`, `zustand: nicht_eingerichtet` und sonst nichts
+        (I6) — dazu nur die Warnung Z1 `warnung_fuehrung`, wenn führende Box und Speicher-Box auseinanderfallen (W2).
+        Mit: Stufe, Epoche, wirksame Mitglieder und je fehlender Bedingung zum `naechster_schritt` ein Wort des
+        Ablehnungs-Vokabulars (`fehlt`). Lesen legt nichts an.
+      responses:
+        "200":
+          description: Der Zustand.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+    put:
+      tags: [funktionen]
+      summary: Gemeinsame Steuerung einrichten oder ändern (Kundenadministrator, I5).
+      description: >
+        Recht `funktion.steuern_einrichten` an der Anlage. Der Körper ist der gewünschte Stand der Mitglieder;
+        unveränderte bleiben, geänderte und fehlende enden mit der laufenden Minute, neue beginnen mit ihr. Danach
+        S0 `erklaert` oder — bei vollständiger Struktur — S1 `beobachtet` (I3). An den Boxen ändert sich nichts.
+        Mandant und Anlage kommen aus Anmeldung und Pfad: jedes andere Feld ist 400. 409 mit dem ersten Wort des
+        Ablehnungs-Vokabulars (`box_nicht_in_anlage` T1/R20, `fuehrende_box_misst_nicht`,
+        `mitsteuernde_box_misst_nicht`) oder `erst_anhalten` (Anteile aktiv).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GemeinsameSteuerungEinrichten" }
+      responses:
+        "200":
+          description: Eingerichtet bzw. geändert; der Zustand danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Das Recht `funktion.steuern_einrichten` fehlt. }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/sites/{siteId}/gemeinsame-steuerung/anhalten:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [funktionen]
+      summary: Gemeinsame Steuerung anhalten (Kundenadministrator, I5).
+      description: >
+        Recht `steuerung.starten_beenden` an der Anlage. Nur aus `anteile_aktiv` (sonst 409 `nicht_aktiv`); danach
+        `angehalten`: nur die führende Box bekommt Pläne, die Anteile bleiben in Kraft. Kein Körper (mit Feldern 400).
+      responses:
+        "200":
+          description: Angehalten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Das Recht `steuerung.starten_beenden` fehlt. }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/sites/{siteId}/gemeinsame-steuerung/fortsetzen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [funktionen]
+      summary: Gemeinsame Steuerung nach dem Anhalten fortsetzen (Kundenadministrator).
+      description: >
+        Recht `steuerung.starten_beenden` an der Anlage. Nur aus `angehalten` (sonst 409 `nicht_angehalten`); ohne
+        neue Probe und in derselben Epoche, weil jede Änderung der Struktur die Stufe zurücksetzt — aber alle
+        Bedingungen aus I1 werden in derselben Transaktion erneut geprüft (409 mit dem ersten Wort und `fehlt`).
+        Kam das jüngste Anhalten nicht von einem Kundenkonto (der Betreiber, W9/I5), ist ein Kundenkonto 409
+        `vom_betreiber_angehalten` — dann setzt nur der Betreiber fort (`POST /api/v1/admin/…/fortsetzen`).
+      responses:
+        "200":
+          description: Fortgesetzt, `anteile_aktiv`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Das Recht `steuerung.starten_beenden` fehlt. }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/sites/{siteId}/gemeinsame-steuerung/aufloesen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [funktionen]
+      summary: Gemeinsame Steuerung auflösen (Kundenadministrator).
+      description: >
+        Recht `steuerung.starten_beenden` an der Anlage. Alle Mitglieder enden mit der laufenden Minute, `zustand`
+        wird `aufgeloest`; die Anlage läuft wie seit AP-06. Während die Anteile aktiv sind 409 `erst_anhalten`, nach
+        einem Scharfschalten 409 `anteile_in_kraft` (zurück nur im Zweischritt, IP-7).
+      responses:
+        "200":
+          description: Aufgelöst.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Das Recht `steuerung.starten_beenden` fehlt. }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/sites/{siteId}/funktionen/steuern:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -13008,6 +13186,16 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/FunktionFehler" }
+    GemeinsameSteuerungAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben (uems/GemeinsameSteuerungAbgelehnt). 400 `anfrage_ungueltig` (auch Mandant
+        oder Anlage im Körper), 404 `nicht_gefunden` (fremd, nie 403), 409 mit dem ersten Wort des
+        Ablehnungs-Vokabulars und allen Befunden in `fehlt` — oder einem Übergangs-Grund: `nicht_eingerichtet` ·
+        `nicht_aktiv` · `nicht_angehalten` · `vom_betreiber_angehalten` · `bereits_aktiv` · `erst_anhalten` · `anteile_in_kraft` ·
+        `kein_mitglied` · `bereits_bestaetigt`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/GemeinsameSteuerungFehler" }
     BilanzAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben. Code, Status und der deutsche `message`-Satz kommen aus
@@ -13056,6 +13244,83 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    GemeinsameSteuerung:
+      type: object
+      required: [eingerichtet, zustand, mitglieder, fehlt]
+      properties:
+        eingerichtet: { type: boolean }
+        zustand:
+          type: string
+          enum: [nicht_eingerichtet, erklaert, beobachtet, geprueft, anteile_aktiv, angehalten, aufgeloest]
+        stufe: { type: string, nullable: true, enum: [S0, S1, S2, S3], description: "null bei angehalten, aufgeloest, nicht_eingerichtet" }
+        epoche: { type: integer, format: int64, nullable: true }
+        netzanschluss_id: { type: string, format: uuid, nullable: true }
+        mitglieder:
+          type: array
+          items: { $ref: "#/components/schemas/GemeinsameSteuerungMitglied" }
+        naechster_schritt:
+          type: string
+          nullable: true
+          enum: [beobachtet, anteile_aktiv, vom_betreiber_angehalten]
+          description: "vom_betreiber_angehalten: der Betreiber hat angehalten — fortsetzen kann nur er (W9/I5)."
+        fehlt:
+          type: array
+          items: { $ref: "#/components/schemas/GemeinsameSteuerungBefund" }
+        warnung_fuehrung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/GemeinsameSteuerungWarnungFuehrung" }]
+    GemeinsameSteuerungMitglied:
+      type: object
+      required: [box_id, rolle, gueltig_ab]
+      properties:
+        box_id: { type: string, format: uuid }
+        rolle: { type: string, enum: [fuehrt, steuert_mit] }
+        messpunkt_id: { type: string, format: uuid, nullable: true }
+        gueltig_ab: { type: string, format: date-time }
+        bestaetigt_am: { type: string, format: date-time, nullable: true }
+    GemeinsameSteuerungBefund:
+      type: object
+      required: [wort]
+      properties:
+        wort:
+          type: string
+          enum: [box_nicht_in_anlage, kein_netzanschluss, grenze_fehlt, faehigkeit_fehlt, nachweis_fehlt,
+                 auslegung_passt_nicht, fuehrende_box_misst_nicht, vorgabe_signal_nicht_an_jeder_box,
+                 mitsteuernde_box_misst_nicht]
+        box_id: { type: string, format: uuid, nullable: true }
+        richtung: { type: string, nullable: true, enum: [einspeisung, bezug] }
+    GemeinsameSteuerungWarnungFuehrung:
+      type: object
+      required: [wort, fuehrende_box_id, speicher_box_id]
+      properties:
+        wort: { type: string, enum: [fuehrende_box_ist_nicht_speicher_box] }
+        fuehrende_box_id: { type: string, format: uuid }
+        speicher_box_id: { type: string, format: uuid }
+    GemeinsameSteuerungEinrichten:
+      type: object
+      additionalProperties: false
+      required: [mitglieder]
+      properties:
+        mitglieder:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [box_id, rolle]
+            properties:
+              box_id: { type: string, format: uuid }
+              rolle: { type: string, enum: [fuehrt, steuert_mit] }
+              messpunkt_id: { type: string, format: uuid, nullable: true }
+    GemeinsameSteuerungFehler:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        fehlt:
+          type: array
+          items: { $ref: "#/components/schemas/GemeinsameSteuerungBefund" }
     BezugsdatenImportBestaetigung:
       type: object
       additionalProperties: false
