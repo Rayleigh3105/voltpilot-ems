@@ -633,6 +633,9 @@ class RechtMatrixApiTest {
         String nurKa = "e3443333";              // U - - - - - -
         String gs = s1 + "/gemeinsame-steuerung";
         z.add(new Zeile("funktion.steuern_einrichten", HttpMethod.PUT, gs, einrichten));
+        // Rückfall am Gerät hinterlegen (IP-6, Folgepunkt PR 1026) — Recht wie einrichten
+        z.add(new Zeile("funktion.steuern_einrichten", HttpMethod.PUT, gs + "/komponenten/{FREMD}/rueckfall",
+                einrichten));
         z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/anhalten", nurKa));
         z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/fortsetzen", nurKa));
         z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/aufloesen", nurKa));

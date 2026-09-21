@@ -2,14 +2,21 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.uems.GemeinsameSteuerungAbgelehnt;
+import com.voltpilot.api.uems.GemeinsameSteuerungErklaerung;
 import com.voltpilot.api.uems.GemeinsameSteuerungService;
 import com.voltpilot.api.uems.ProtokollAkteur;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.GeraeteRueckfall;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
 import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
+import com.voltpilot.api.web.dto.GemeinsameSteuerungEinrichtenDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,21 +46,34 @@ import org.springframework.web.server.ResponseStatusException;
  * trägt keine eigene Kennung; eine Anlage außerhalb des Zugriffs ist dieselbe 404 wie eine unbekannte. Jede Route nennt
  * im Kommentar ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}.
  *
- * <p>Der Körper von {@code PUT} ist {@code {"mitglieder": [{"box_id", "rolle", "messpunkt_id", "vorgabe_signal"}]}}
- * ({@code messpunkt_id} und {@code vorgabe_signal} wahlfrei). Jedes andere Feld —
- * ausdrücklich ein Mandant oder eine Anlage — ist 400 {@code anfrage_ungueltig}: beide kommen aus Anmeldung und Pfad.
+ * <p>Der Körper von {@code PUT} ist {@code {"mitglieder": [{"box_id", "rolle", "messpunkt_id", "vorgabe_signal",
+ * "geraete", "ungeregelt"}], "ungesteuerte_erzeuger", "vorbehalt"}} — alles außer {@code box_id}/{@code rolle}
+ * wahlfrei. Die ERKLÄRUNG (§5.2 Fragen 4/5, {@link GemeinsameSteuerungErklaerung}) beginnt, sobald eines der Felder
+ * {@code geraete}, {@code ungeregelt}, {@code ungesteuerte_erzeuger} oder {@code vorbehalt} steht; dann ist sie
+ * vollständig oder 422. Jedes andere Feld — ausdrücklich ein Mandant, eine Anlage oder eine Schreibfreigabe — ist 400
+ * {@code anfrage_ungueltig}: Mandant und Anlage kommen aus Anmeldung und Pfad, die Schreibfreigabe aus dem Bestand.
  */
 @RestController
 public class GemeinsameSteuerungController {
 
     private static final String PFAD = "/api/v1/sites/{siteId}/gemeinsame-steuerung";
-    private static final Set<String> FELDER_MITGLIED = Set.of("box_id", "rolle", "messpunkt_id", "vorgabe_signal");
+    private static final Set<String> FELDER = Set.of("mitglieder", "ungesteuerte_erzeuger", "vorbehalt");
+    private static final Set<String> FELDER_MITGLIED = Set.of("box_id", "rolle", "messpunkt_id", "vorgabe_signal",
+            "geraete", "ungeregelt");
+    private static final Set<String> FELDER_GERAET = Set.of("komponente_id", "richtung", "nenn_kw");
+    private static final Set<String> FELDER_UNGEREGELT = Set.of("richtung", "hoechstwert_kw");
+    private static final Set<String> FELDER_ERZEUGER = Set.of("bezeichnung", "nenn_kw");
+    private static final Set<String> FELDER_RUECKFALL = Set.of("richtung", "rueckfall", "rueckfall_kw", "nach_s",
+            "hinweis");
 
     private final GemeinsameSteuerungService dienst;
+    private final GemeinsameSteuerungErklaerung erklaerung;
     private final RechtPruefung recht;
 
-    public GemeinsameSteuerungController(GemeinsameSteuerungService dienst, RechtPruefung recht) {
+    public GemeinsameSteuerungController(GemeinsameSteuerungService dienst, GemeinsameSteuerungErklaerung erklaerung,
+            RechtPruefung recht) {
         this.dienst = dienst;
+        this.erklaerung = erklaerung;
         this.recht = recht;
     }
 
@@ -68,12 +88,57 @@ public class GemeinsameSteuerungController {
         return dienst.lesen(siteId);
     }
 
-    /** Recht: {@code funktion.steuern_einrichten} an der Anlage — einrichten oder ändern (S0/S1). */
+    /**
+     * Recht: heute lesend — keine eigene Kennung (wie {@code GET …/gemeinsame-steuerung}); der Zaun fragt
+     * {@code RechtPruefung#pruefenLesen} an der Anlage. „Einrichten in sechs Fragen“ (§5.2): der Vorschlag aus dem
+     * Bestand, die Erklärung und das Ergebnis (Frage 6). Ohne Gemeinsame Steuerung nur der Vorschlag — schreibt nie.
+     */
+    @GetMapping(PFAD + "/einrichten")
+    public GemeinsameSteuerungEinrichtenDto.Einrichten einrichtenLesen(@PathVariable UUID siteId) {
+        recht.pruefenLesen(RechtZiel.ANLAGE, siteId, GemeinsameSteuerungAbgelehnt::nichtGefunden);
+        return erklaerung.lesen(siteId);
+    }
+
+    /** Recht: {@code funktion.steuern_einrichten} an der Anlage — einrichten oder ändern (S0/S1), mit der Erklärung. */
     @PutMapping(PFAD)
     @Recht(value = "funktion.steuern_einrichten", ziel = RechtZiel.ANLAGE)
     public GemeinsameSteuerungDto.Zustand einrichten(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
-        return dienst.einrichten(siteId, mitglieder(body), akteur(auth));
+        return dienst.einrichten(siteId, mitglieder(body), erklaerung(body), akteur(auth));
+    }
+
+    /**
+     * Recht: heute lesend — keine eigene Kennung; der Zaun fragt {@code RechtPruefung#pruefenLesen} an der Anlage. Die
+     * Rückfall-Angaben einer Komponente der Anlage (IP-6), neueste zuerst; eine fremde Komponente ist 404.
+     */
+    @GetMapping(PFAD + "/komponenten/{komponenteId}/rueckfall")
+    public List<GemeinsameSteuerungEinrichtenDto.RueckfallAngabe> rueckfallLesen(@PathVariable UUID siteId,
+            @PathVariable UUID komponenteId) {
+        recht.pruefenLesen(RechtZiel.ANLAGE, siteId, GemeinsameSteuerungAbgelehnt::nichtGefunden);
+        return erklaerung.rueckfallVerlauf(siteId, komponenteId);
+    }
+
+    /**
+     * Recht: {@code funktion.steuern_einrichten} an der Anlage (wie einrichten) — hinterlegen, was am Gerät als sicherer
+     * Rückfallwert eingestellt ist (IP-6, G3): {@code {"richtung", "rueckfall", "rueckfall_kw", "nach_s", "hinweis"}}.
+     */
+    @PutMapping(PFAD + "/komponenten/{komponenteId}/rueckfall")
+    @Recht(value = "funktion.steuern_einrichten", ziel = RechtZiel.ANLAGE)
+    public List<GemeinsameSteuerungEinrichtenDto.RueckfallAngabe> rueckfallHinterlegen(@PathVariable UUID siteId,
+            @PathVariable UUID komponenteId, @RequestBody(required = false) JsonNode body, Authentication auth) {
+        objekt(body, FELDER_RUECKFALL, "Erwartet ist {\"richtung\", \"rueckfall\", …}.");
+        Grenzart richtung = richtung(body.get("richtung"));
+        GeraeteRueckfall wort = Arrays.stream(GeraeteRueckfall.values())
+                .filter(g -> body.get("rueckfall") != null && g.code().equals(body.get("rueckfall").asText()))
+                .findFirst().orElseThrow(() -> GemeinsameSteuerungAbgelehnt.anfrage("rueckfall ist haelt_letzten_wert, "
+                        + "faellt_auf_wert, laeuft_frei oder unbekannt."));
+        JsonNode nach = body.get("nach_s");
+        if (nach != null && !nach.isNull() && !nach.canConvertToInt()) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("nach_s ist eine ganze Zahl.");
+        }
+        return erklaerung.rueckfallHinterlegen(siteId, komponenteId, richtung, wort, zahl(body.get("rueckfall_kw"),
+                false), nach == null || nach.isNull() ? null : nach.intValue(), text(body.get("hinweis")),
+                akteur(auth));
     }
 
     /** Recht: {@code steuerung.starten_beenden} an der Anlage — anhalten (I5); die Anteile bleiben in Kraft. */
@@ -115,7 +180,7 @@ public class GemeinsameSteuerungController {
         }
         for (Iterator<String> it = body.fieldNames(); it.hasNext(); ) {
             String feld = it.next();
-            if (!"mitglieder".equals(feld)) {
+            if (!FELDER.contains(feld)) {
                 throw GemeinsameSteuerungAbgelehnt.anfrage("Unbekanntes Feld „" + feld
                         + "“ — Mandant und Anlage kommen aus Anmeldung und Pfad.");
             }
@@ -145,6 +210,78 @@ public class GemeinsameSteuerungController {
         return out;
     }
 
+    /**
+     * Liest die Erklärung (§5.2 Fragen 4/5) — {@code null}, wenn der Körper keines ihrer Felder trägt (nur die
+     * Struktur, wie bisher). {@code ungesteuerte_erzeuger} ist dann Pflicht: {@code "keine"} oder eine nicht leere
+     * Liste; fehlt es, nennt 422 die Lücke. Der Vorbehalt der Einspeiseseite folgt aus den Erzeugern (400, wenn er
+     * erklärt wird).
+     */
+    static GemeinsameSteuerungErklaerung.Wunsch erklaerung(JsonNode body) {
+        JsonNode liste = body.get("mitglieder");
+        boolean erklaert = body.has("ungesteuerte_erzeuger") || body.has("vorbehalt");
+        for (JsonNode m : liste) {
+            erklaert |= m.has("geraete") || m.has("ungeregelt");
+        }
+        if (!erklaert) {
+            return null;
+        }
+        Map<UUID, GemeinsameSteuerungErklaerung.BoxErklaerung> jeBox = new LinkedHashMap<>();
+        for (JsonNode m : liste) {
+            JsonNode geraete = m.get("geraete");
+            JsonNode ungeregelt = m.get("ungeregelt");
+            if (geraete == null) {
+                if (ungeregelt != null) {
+                    throw GemeinsameSteuerungAbgelehnt.anfrage("ungeregelt steht nur zusammen mit geraete.");
+                }
+                continue;
+            }
+            List<GemeinsameSteuerungErklaerung.Geraet> g = new ArrayList<>();
+            for (JsonNode e : array(geraete, "geraete")) {
+                objekt(e, FELDER_GERAET, "Ein Gerät ist {\"komponente_id\", \"richtung\", \"nenn_kw\"} — die "
+                        + "Schreibfreigabe kommt aus dem Bestand.");
+                g.add(new GemeinsameSteuerungErklaerung.Geraet(uuid(e.get("komponente_id"), true),
+                        richtung(e.get("richtung")), zahl(e.get("nenn_kw"), true)));
+            }
+            List<GemeinsameSteuerungErklaerung.Ungeregelt> u = new ArrayList<>();
+            if (ungeregelt != null) {
+                for (JsonNode e : array(ungeregelt, "ungeregelt")) {
+                    objekt(e, FELDER_UNGEREGELT, "Das Ungeregelte ist {\"richtung\", \"hoechstwert_kw\"}.");
+                    u.add(new GemeinsameSteuerungErklaerung.Ungeregelt(richtung(e.get("richtung")),
+                            zahl(e.get("hoechstwert_kw"), true)));
+                }
+            }
+            jeBox.put(uuid(m.get("box_id"), true), new GemeinsameSteuerungErklaerung.BoxErklaerung(g, u));
+        }
+        List<GemeinsameSteuerungErklaerung.Erzeuger> erzeuger = null;
+        JsonNode e = body.get("ungesteuerte_erzeuger");
+        if (e != null) {
+            if (e.isTextual() && GemeinsameSteuerungErklaerung.KEINE.equals(e.asText())) {
+                erzeuger = List.of();
+            } else if (e.isArray() && !e.isEmpty()) {
+                erzeuger = new ArrayList<>();
+                for (JsonNode z : e) {
+                    objekt(z, FELDER_ERZEUGER, "Ein Erzeuger ist {\"bezeichnung\", \"nenn_kw\"}.");
+                    erzeuger.add(new GemeinsameSteuerungErklaerung.Erzeuger(text(z.get("bezeichnung")),
+                            zahl(z.get("nenn_kw"), true)));
+                }
+            } else {
+                throw GemeinsameSteuerungAbgelehnt.anfrage("ungesteuerte_erzeuger ist „keine“ oder eine Liste — "
+                        + "unbekannt ist keine Null.");
+            }
+        }
+        BigDecimal bezug = null;
+        JsonNode v = body.get("vorbehalt");
+        if (v != null) {
+            if (v.has("einspeisung_kw")) {
+                throw GemeinsameSteuerungAbgelehnt.anfrage("Der Vorbehalt der Einspeiseseite folgt aus den "
+                        + "ungesteuerten Erzeugern.");
+            }
+            objekt(v, Set.of("bezug_kw"), "Der Vorbehalt ist {\"bezug_kw\"}.");
+            bezug = zahl(v.get("bezug_kw"), true);
+        }
+        return new GemeinsameSteuerungErklaerung.Wunsch(jeBox, erzeuger, bezug);
+    }
+
     /** Ein Übergang braucht keinen Körper; ein Körper mit Feldern ist 400 (Mandant/Anlage nie aus dem Körper). */
     static void leer(JsonNode body) {
         if (body != null && !body.isNull() && !(body.isObject() && body.isEmpty())) {
@@ -168,6 +305,49 @@ public class GemeinsameSteuerungController {
 
     private static String text(JsonNode n) {
         return n == null || !n.isTextual() ? null : n.asText();
+    }
+
+    private static void objekt(JsonNode n, Set<String> felder, String satz) {
+        if (n == null || !n.isObject()) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage(satz);
+        }
+        for (Iterator<String> it = n.fieldNames(); it.hasNext(); ) {
+            String feld = it.next();
+            if (!felder.contains(feld)) {
+                throw GemeinsameSteuerungAbgelehnt.anfrage("Unbekanntes Feld „" + feld + "“. " + satz);
+            }
+        }
+    }
+
+    private static JsonNode array(JsonNode n, String feld) {
+        if (!n.isArray()) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage(feld + " ist eine Liste.");
+        }
+        return n;
+    }
+
+    private static Grenzart richtung(JsonNode n) {
+        String code = text(n);
+        if (Grenzart.EINSPEISUNG.code().equals(code)) {
+            return Grenzart.EINSPEISUNG;
+        }
+        if (Grenzart.BEZUG.code().equals(code)) {
+            return Grenzart.BEZUG;
+        }
+        throw GemeinsameSteuerungAbgelehnt.anfrage("richtung ist einspeisung oder bezug.");
+    }
+
+    private static BigDecimal zahl(JsonNode n, boolean pflicht) {
+        if (n == null || n.isNull()) {
+            if (pflicht) {
+                throw GemeinsameSteuerungAbgelehnt.anfrage("Eine Leistung in kW fehlt.");
+            }
+            return null;
+        }
+        if (!n.isNumber()) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("Eine Leistung ist eine Zahl in kW.");
+        }
+        return n.decimalValue();
     }
 
     static ProtokollAkteur akteur(Authentication auth) {

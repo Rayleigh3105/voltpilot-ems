@@ -219,7 +219,7 @@ public class CommandLogReader {
      * mit {@link DeviceScopes}, damit eine Komponente und ihr Gerät darüber nie
      * Verschiedenes behaupten.
      */
-    static boolean writesTo(boolean control, String capabilitiesJson) {
+    public static boolean writesTo(boolean control, String capabilitiesJson) {
         if (control) {
             return true;
         }

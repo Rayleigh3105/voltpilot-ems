@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Ablehnung;
 import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
+import com.voltpilot.api.web.dto.GemeinsameSteuerungEinrichtenDto;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,6 +55,13 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         formen.put("GemeinsameSteuerungVorbehalt", GemeinsameSteuerungDto.Vorbehalt.class);
         formen.put("GemeinsameSteuerungVorbehaltRichtung", GemeinsameSteuerungDto.VorbehaltRichtung.class);
         formen.put("GemeinsameSteuerungVorbehaltVorschlag", GemeinsameSteuerungDto.VorbehaltVorschlag.class);
+        // Einrichten in sechs Fragen (§5.2, Vertrag §6a)
+        formen.put("GemeinsameSteuerungEinrichtenAuskunft", GemeinsameSteuerungEinrichtenDto.Einrichten.class);
+        formen.put("GemeinsameSteuerungEinrichtenBox", GemeinsameSteuerungEinrichtenDto.Box.class);
+        formen.put("GemeinsameSteuerungAuslegung", GemeinsameSteuerungEinrichtenDto.Auslegung.class);
+        formen.put("GemeinsameSteuerungErzeuger", GemeinsameSteuerungEinrichtenDto.Erzeuger.class);
+        formen.put("GemeinsameSteuerungRueckfallAngabe", GemeinsameSteuerungEinrichtenDto.RueckfallAngabe.class);
+        formen.put("GemeinsameSteuerungLuecke", GemeinsameSteuerungEinrichtenDto.Luecke.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -92,6 +100,19 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void dieWoerterDerErklaerungSindDieDesDienstes() {
+        Map<String, Object> auskunft = eigenschaften("GemeinsameSteuerungEinrichtenAuskunft");
+        Map<String, Object> hinweis = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) auskunft
+                .get("hinweise")).get("items")).get("properties");
+        assertThat((List<String>) ((Map<String, Object>) hinweis.get("wort")).get("enum"))
+                .containsExactlyElementsOf(GemeinsameSteuerungErklaerung.HINWEISE);
+        assertThat((List<String>) ((Map<String, Object>) eigenschaften("GemeinsameSteuerungLuecke").get("wort"))
+                .get("enum")).containsExactlyElementsOf(GemeinsameSteuerungErklaerung.LUECKEN);
+        assertThat(text).contains("`" + GemeinsameSteuerungAbgelehnt.ERKLAERUNG_UNVOLLSTAENDIG + "`");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void dieRoutenNennenIhreRechte() {
         Map<String, String> recht = Map.of(
                 KUNDE + "|put", "funktion.steuern_einrichten",
@@ -101,15 +122,25 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
                 ADMIN + "/scharfschalten|post", "plattform.betrieb",
                 ADMIN + "/fortsetzen|post", "plattform.betrieb",
                 ADMIN + "/mitglieder/{boxId}/bestaetigen|post", "plattform.betrieb",
-                ADMIN + "/vorbehalt/freigeben|post", "plattform.betrieb");
+                ADMIN + "/vorbehalt/freigeben|post", "plattform.betrieb",
+                KUNDE + "/komponenten/{komponenteId}/rueckfall|put", "funktion.steuern_einrichten");
         recht.forEach((schluessel, kennung) -> {
             String[] t = schluessel.split("\\|");
             Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) pfade.get(t[0])).get(t[1]);
             assertThat(op).as(schluessel).isNotNull();
             assertThat((String) op.get("description")).as(schluessel).contains("`" + kennung + "`");
+            List<String> antworten = new ArrayList<>(List.of("200", "400", "401", "403", "404", "409"));
+            if (schluessel.equals(KUNDE + "|put")) {
+                antworten.add("422"); // die Erklärung ist unvollständig
+            }
             assertThat(((Map<String, Object>) op.get("responses")).keySet()).as(schluessel)
-                    .containsExactlyInAnyOrder("200", "400", "401", "403", "404", "409");
+                    .containsExactlyInAnyOrderElementsOf(antworten);
         });
+        for (String lesen : List.of(KUNDE + "/einrichten", KUNDE + "/komponenten/{komponenteId}/rueckfall")) {
+            Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) pfade.get(lesen)).get("get");
+            assertThat(((Map<String, Object>) op.get("responses")).keySet()).as(lesen)
+                    .containsExactlyInAnyOrder("200", "401", "404");
+        }
         Map<String, Object> zustand = eigenschaften("GemeinsameSteuerung");
         assertThat((List<String>) ((Map<String, Object>) zustand.get("naechster_schritt")).get("enum"))
                 .contains(GemeinsameSteuerungAbgelehnt.VOM_BETREIBER_ANGEHALTEN);
