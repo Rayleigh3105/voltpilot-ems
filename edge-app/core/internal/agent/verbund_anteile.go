@@ -12,8 +12,9 @@ import (
 // AP-15 IP-17: the share document of a Gemeinsame Steuerung on the box
 // (docs/contracts/v2/mqtt-verbund-anteile.md, rules Y1-Y3, G5, T4). The box
 // judges it with the Go twin, keeps an accepted one on disk, receipts EVERY
-// verdict and mirrors the effective share in the heartbeat. No guard reads it
-// yet - IP-18/IP-19 regulate against it. Without a document nothing here runs.
+// verdict and mirrors the effective share in the heartbeat. The feed-in
+// watchdog regulates against it (IP-18, einspeisewaechter_anteil.go); the
+// import side follows with IP-19. Without a document nothing here runs.
 
 // restoreAnteile loads the accepted document in New, before Start opens the
 // local bus - the share holds before the first measurement (R15, A13).

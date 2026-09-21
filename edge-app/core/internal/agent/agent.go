@@ -1590,7 +1590,7 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		v := *battKw
 		a.lastBattKw = &v
 	}
-	// Der gemessene Netzpunkt (Verbund, nach den Toren): der Netz-Sollwert-Test
+	// Der gemessene Netzpunkt (zusammengesetzter Netzpunkt, nach den Toren): der Netz-Sollwert-Test
 	// braucht ihn fuer seine Voraussetzung und sein Halte-Ziel, und er ist
 	// dieselbe Groesse, die Einspeisewaechter und Lastspitzen-Zaehler unten
 	// bekommen. Ein Sample ohne power_kw laesst den letzten Wert stehen - die
@@ -1625,7 +1625,15 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// pass. Deliberately only on a TIGHTENING - a release must never bypass its
 	// rate limit, and an unconditional nudge would republish at telemetry
 	// cadence for no gain.
-	if g, ok := measurements["power_kw"]; ok {
+	//
+	// AP-15 IP-18: a box holding a share document observes its OWN measuring
+	// point plus its measured battery (einspeisewaechter_anteil.go); without a
+	// document this is exactly the call above it always was.
+	if an := a.exportAnteil(); an != nil {
+		if a.observeExportAnteil(ts, measurements, battKw, an.Fuehrt) {
+			a.nudgeSetpoint()
+		}
+	} else if g, ok := measurements["power_kw"]; ok {
 		if pv, okPv := measurements["pv_power_kw"]; okPv {
 			if a.export.Observe(ts, g, pv) {
 				a.nudgeSetpoint()
@@ -2590,8 +2598,15 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// its plant yet. It is EVALUATED (so the state shows the safe static cap
 		// it would command) while this branch still publishes nothing - the honest
 		// outcome is that state, on :8484 and in the heartbeat.
-		exportGuard := a.exportGuardInfo(
-			a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, 0)))
+		// With a share document (AP-15 IP-18) the share holds here too - before
+		// the first measurement, with or without a plan (R15, V5).
+		var noReadingCap guards.ExportCap
+		if an := a.exportAnteil(); an != nil {
+			noReadingCap = a.export.CapAnteil(now, exportLimit, *an, 0)
+		} else {
+			noReadingCap = a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, 0))
+		}
+		exportGuard := a.exportGuardInfo(noReadingCap)
 		a.State.Update(func(s *state.Snapshot) {
 			s.Mode = state.ModeNoReading
 			s.PeakTargetKw = peakTarget
@@ -2982,7 +2997,28 @@ func (a *Agent) applySetpoint(now time.Time) {
 	}
 	curtailTrack := a.curtailTrackInfo(curtailCap)
 
-	exportCap := a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, kw))
+	//
+	// GEMEINSAME STEUERUNG (AP-15 IP-18, V1-V6): with a share document the
+	// watchdog holds the box's own share (guards/exportanteil.go) - the leading
+	// box regulates the whole limit while it measures and falls to its share
+	// without holding when blind; any other box holds its share at its own
+	// point, always. It sits HERE, after the arbitration has put the holder's
+	// value into kw, so no manual override and no customer rule lifts it (V1),
+	// and it holds in pause, rest and without a plan alike (V5). The share
+	// covers generation AND discharge (V6): the watchdog may then LOWER the
+	// battery discharge too - blind to the share, with a fresh measurement only
+	// once the producers are at 0 - and never charges or raises anything.
+	// Without a document this is exactly the single-box watchdog, and the
+	// static cap below holds as argued for EVERY house load - but only for the
+	// generation THIS box controls (a producer another box reads is not in
+	// pv_total, W11).
+	var exportCap guards.ExportCap
+	if an := a.exportAnteil(); an != nil {
+		exportCap = a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
+		kw = lowerDischarge(kw, exportCap.DischargeCapKw)
+	} else {
+		exportCap = a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, kw))
+	}
 	if exportCap.Active {
 		if pvLimit == nil || exportCap.CapKw < *pvLimit {
 			v := exportCap.CapKw
@@ -3150,9 +3186,12 @@ func idleReadbackHealthy(control *state.ControlInfo, now time.Time, window time.
 //	      <= pv + discharge                        (load, charge >= 0)
 //	      <= (limit - discharge) + discharge = limit
 //
-// So capping total PV at `limit - commanded discharge` is sufficient. It is
-// derived at the setpoint path because only there is the final commanded
-// setpoint known - a CHARGE only ever absorbs PV, so it subtracts nothing.
+// So capping total PV at `limit - commanded discharge` is sufficient - for the
+// generation THIS box controls (W11: a producer another box reads is not in pv).
+// It is derived at the setpoint path because only there is the final commanded
+// setpoint known - a CHARGE only ever absorbs PV, so it subtracts nothing. With
+// a share document the guard derives its own cap from the share instead
+// (guards.ExportLimiter.CapAnteil).
 func exportSafeStaticCap(limitKw *float64, setpointKw float64) float64 {
 	if limitKw == nil {
 		return 0
