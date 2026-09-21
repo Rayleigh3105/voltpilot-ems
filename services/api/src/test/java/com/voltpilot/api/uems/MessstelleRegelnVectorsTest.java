@@ -52,7 +52,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -704,11 +708,60 @@ class MessstelleRegelnVectorsTest {
      * {@code fortschreibung} nach dem letzten Ereignis der Zeitachse ist — oder
      * noch offen sein, weil der Fall den Stand VOR dem Eintrag zeigt.
      */
+    /**
+     * Die Zeilen der Zeitachse, an denen der Horizont einer Fortschreibung gemessen wird: alle außer denen
+     * mit dem Merkmal {@code gemeinsame_steuerung} (Referenzunternehmen 1.5). Diese verlängern die Zeitachse
+     * nur für die gemeinsame Steuerung von AN-1 und sagen über Messstellen-Quellen nichts — das hält
+     * {@link #dieZeilenDerGemeinsamenSteuerungNennenKeineMessstelleDerVektoren} fest. Dieselbe Regel steht in
+     * {@code frontend/portal/src/uemsMessstelle.test.ts}.
+     */
+    private static List<JsonNode> horizontZeilen(JsonNode ref) {
+        List<JsonNode> out = new ArrayList<>();
+        ref.path("zeitachse").forEach(z -> {
+            if (!z.hasNonNull("gemeinsame_steuerung")) {
+                out.add(z);
+            }
+        });
+        return out;
+    }
+
+    /**
+     * Die Ausnahme vom Horizont ist durch die Daten begründet: keine Zeile der gemeinsamen Steuerung nennt eine
+     * Messstelle, Datenquelle oder Bezugsgröße, die ein Messstellen-Vektor benutzt. Sagt AP-15 doch etwas über
+     * eine solche Quelle, bricht dieser Fall — dann gehört die Zeile in den Horizont.
+     */
+    @Test
+    void dieZeilenDerGemeinsamenSteuerungNennenKeineMessstelleDerVektoren() throws Exception {
+        Pattern kz = Pattern.compile("\\b(?:MS|DQ|BZ)-[0-9]+\\b");
+        Set<String> benutzt = new TreeSet<>();
+        Matcher m = kz.matcher(Files.readString(VECTORS));
+        while (m.find()) {
+            benutzt.add(m.group());
+        }
+        assertThat(benutzt).as("Kennzeichen der Messstellen-Vektoren").isNotEmpty();
+        List<String> fehler = new ArrayList<>();
+        int ausgenommen = 0;
+        for (JsonNode z : lies(REFERENZ).path("zeitachse")) {
+            if (!z.hasNonNull("gemeinsame_steuerung")) {
+                continue;
+            }
+            ausgenommen++;
+            Matcher e = kz.matcher(z.path("ereignis").asText());
+            while (e.find()) {
+                if (benutzt.contains(e.group())) {
+                    fehler.add(z.path("zeitpunkt").asText() + " nennt " + e.group());
+                }
+            }
+        }
+        assertThat(ausgenommen).as("ausgenommene Zeilen").isPositive();
+        assertThat(fehler).isEmpty();
+    }
+
     @TestFactory
     List<DynamicTest> faelleUebernehmenDasReferenzunternehmen() throws Exception {
         JsonNode ref = lies(REFERENZ);
         OffsetDateTime letztes = null;
-        for (JsonNode z : ref.path("zeitachse")) {
+        for (JsonNode z : horizontZeilen(ref)) {
             OffsetDateTime t = OffsetDateTime.parse(z.path("zeitpunkt").asText());
             letztes = letztes == null || t.isAfter(letztes) ? t : letztes;
         }

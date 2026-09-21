@@ -128,6 +128,7 @@ const register = (): { reg: Map<string, string>; doppelt: string[] } => {
   for (const s of [
     'standorte', 'gebaeude', 'bereiche', 'prozesse', 'kostenstellen', 'netzanschluesse',
     'anlagen', 'boxen', 'datenquellen', 'geraete', 'komponenten', 'messstellen', 'bezugsgroessen', 'kennzahlen',
+    'gemeinsame_steuerungen',
   ]) {
     for (const o of daten[s] as any[]) merke(s, o.kennzeichen);
   }
@@ -222,6 +223,20 @@ const verweise = (): Array<[string, string, string[]]> => {
     for (const p of (k.paare ?? []) as string[]) out.push([`${k.kennzeichen}.paar`, p, ['kennzahlen']]);
   }
   // Welcher Elternknoten wem erlaubt ist, prüft „hängt jeden Ort zeitgültig an seinen Elternknoten“.
+  // Fassung 1.5 (AP-15 E8): Grenzen, gemeinsame Steuerung und Geräte-Rückfälle verweisen nur über Kennzeichen.
+  for (const g of daten.netzanschluss_grenzen as any[]) out.push(['grenze.netzanschluss', g.netzanschluss, ['netzanschluesse']]);
+  for (const v of daten.gemeinsame_steuerungen as any[]) {
+    out.push([`${v.kennzeichen}.anlage`, v.anlage, ['anlagen']]);
+    out.push([`${v.kennzeichen}.netzanschluss`, v.netzanschluss, ['netzanschluesse']]);
+    for (const m of v.mitglieder as any[]) {
+      out.push([`${v.kennzeichen}.mitglied`, m.box, ['boxen']]);
+      out.push([`${v.kennzeichen}.messpunkt`, m.messpunkt, ['datenquellen']]);
+    }
+  }
+  for (const r of daten.geraete_rueckfaelle as any[]) out.push(['rueckfall.komponente', r.komponente, ['komponenten']]);
+  for (const z of daten.zeitachse as any[]) {
+    if (z.gemeinsame_steuerung != null) out.push(['zeitachse.gemeinsame_steuerung', z.gemeinsame_steuerung, ['gemeinsame_steuerungen']]);
+  }
   const VON: Record<string, string[]> = {
     ort_eltern: ['standorte', 'gebaeude', 'bereiche'],
     anlage_standort: ['anlagen'],
@@ -253,12 +268,17 @@ describe('UEMS-Referenzunternehmen — Form', () => {
     expect(daten.prozesse).toHaveLength(6);
     expect(daten.netzanschluesse).toHaveLength(3);
     expect(daten.anlagen).toHaveLength(3);
-    expect(daten.datenquellen).toHaveLength(7);
-    expect(daten.geraete).toHaveLength(10);
+    // Fassung 1.5 (AP-15 E8): DQ-8 … DQ-10 mit GR-11 … GR-18 an Box Verwaltung.
+    expect(daten.datenquellen).toHaveLength(10);
+    expect(daten.geraete).toHaveLength(18);
     expect(daten.messstellen).toHaveLength(22);
     // Fassung 1.3 (AP-11 E13): BZ-6 und BZ-7 als Gebäude-Stückzahlen, fünf Kennzahlen.
     expect(daten.bezugsgroessen).toHaveLength(7);
     expect(daten.kennzahlen).toHaveLength(5);
+    // Fassung 1.5 (AP-15 E8): eine gemeinsame Steuerung mit Grenzen an NA-1, die Abnahmefälle R1 … R22.
+    expect(daten.netzanschluss_grenzen).toHaveLength(1);
+    expect(daten.gemeinsame_steuerungen).toHaveLength(1);
+    expect(daten.abnahmefaelle_ap15.faelle).toHaveLength(22);
 
     // Boxen, Komponenten und Kostenstellen tragen auch Objekte, die erst NACH
     // der Momentaufnahme entstehen (Nachfolger-Box E-2′, Energiekarte EK-7, die
@@ -942,6 +962,45 @@ const ohneFassung14 = (d: Record<string, any>): void => {
   expect(zeilen - d.zeitachse.length).toBe(4);
 };
 
+/** So viele Zeilen hatte `_comment` in Fassung 1.4 — Fassung 1.5 hängt nur an. */
+const KOMMENTAR_ZEILEN_1_4 = 89;
+/** Die Datenquellen, die Fassung 1.5 der Box Verwaltung gibt (AP-15 E8). */
+const QUELLEN_1_5 = new Set(['DQ-8', 'DQ-9', 'DQ-10']);
+
+/**
+ * Nimmt GENAU die Zusätze der Fassung 1.5 heraus (AP-15 IP-1) — Box E-4/E-4′, DQ-8 … DQ-10 mit ihren Geräten,
+ * Komponenten und Zuständigkeiten, die Blöcke `netzanschluss_grenzen`, `gemeinsame_steuerungen`,
+ * `geraete_rueckfaelle` und `abnahmefaelle_ap15`, die sechs Zeilen der Zeitachse aus AP-15, die Herkunft
+ * `fassung_1_5` und die angehängten Kommentarzeilen — und setzt Fassung und Stand auf 1.4 zurück.
+ */
+const ohneFassung15 = (d: Record<string, any>): void => {
+  expect(d.version).toBe('1.5');
+  d.version = '1.4';
+  d.stand = '2026-09-15';
+  expect(d._comment.length).toBeGreaterThan(KOMMENTAR_ZEILEN_1_4);
+  d._comment = d._comment.slice(0, KOMMENTAR_ZEILEN_1_4);
+  expect(d._herkunft.fassung_1_5).toBeDefined();
+  delete d._herkunft.fassung_1_5;
+  for (const block of ['netzanschluss_grenzen', 'gemeinsame_steuerungen', 'geraete_rueckfaelle', 'abnahmefaelle_ap15']) {
+    expect(d[block], block).toBeDefined();
+    delete d[block];
+  }
+  const geraete = new Set(
+    (d.geraete as any[]).filter((g) => QUELLEN_1_5.has(g.datenquelle)).map((g) => g.kennzeichen as string),
+  );
+  const entferne = (liste: string, weg: (o: any) => boolean, erwartet: number) => {
+    const vorher = d[liste].length;
+    d[liste] = d[liste].filter((o: any) => !weg(o));
+    expect(vorher - d[liste].length, liste).toBe(erwartet);
+  };
+  entferne('boxen', (b) => ['E-4', 'E-4′'].includes(b.kennzeichen), 2);
+  entferne('datenquellen', (q) => QUELLEN_1_5.has(q.kennzeichen), 3);
+  entferne('geraete', (g) => geraete.has(g.kennzeichen), 8);
+  entferne('komponenten', (k) => geraete.has(k.geraet), 8);
+  entferne('zuordnungen', (z) => QUELLEN_1_5.has(z.von), 6);
+  entferne('zeitachse', (z) => z.gemeinsame_steuerung != null, 6);
+};
+
 describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
   /** Der Fingerabdruck der Fassung 1.2, kanonisch geschrieben, aus origin/uems vor AP-11 IP-2 — derselbe wie im Java-Zwilling. */
   const FASSUNG_1_2_SHA256 = '33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd';
@@ -964,6 +1023,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
    */
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.2', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung15(d);
     ohneFassung14(d);
     expect(d.version).toBe('1.3');
     d.version = '1.2';
@@ -1038,6 +1098,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.4 (AP-12 E15)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.3', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung15(d);
     ohneFassung14(d);
     expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_3_SHA256);
   });
@@ -1115,5 +1176,245 @@ describe('UEMS-Referenzunternehmen — Fassung 1.4 (AP-12 E15)', () => {
     const zeitachse = new Set((daten.zeitachse as any[]).map((z) => zeit(z.zeitpunkt)));
     for (const t of [nr1.freigegeben_am, k.freigegeben_am, nr2.freigegeben_am]) if (!zeitachse.has(zeit(t))) fehler.push(`Zeitachse nennt ${t} nicht`);
     expect(fehler).toEqual([]);
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.5 (AP-15 E8)', () => {
+  /** Der Fingerabdruck der Fassung 1.4, kanonisch geschrieben, aus origin/uems vor AP-15 IP-1 — derselbe wie im Java-Zwilling. */
+  const FASSUNG_1_4_SHA256 = 'a32f92053787fb6cdbe31c5c1c154179ccfadd2bc330e4c8c3b0061a768000a4';
+
+  const kanonisch = (x: unknown): string => {
+    if (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(x);
+  };
+  /** kW auf eine Nachkommastelle — wie der Java-Zwilling mit BigDecimal rechnet (6 × 4,1 = 24,6, nicht 24,599…). */
+  const r1 = (x: number): number => Math.round(x * 10) / 10;
+  const nach = (liste: any[]): Map<string, any> => new Map(liste.map((o) => [o.kennzeichen as string, o]));
+  const ohne = (o: Record<string, any>, ...felder: string[]): Record<string, any> =>
+    Object.fromEntries(Object.entries(o).filter(([k]) => !felder.includes(k)));
+  const grenzeAm = (netz: string, tag: string): any =>
+    (daten.netzanschluss_grenzen as any[]).find((g) => g.netzanschluss === netz && giltAm(g, tag)) ?? null;
+  const zustaendig = zuordnungen('datenquelle_box');
+  const boxen = nach(daten.boxen);
+  const quellen = nach(daten.datenquellen);
+  const komponenten = nach(daten.komponenten);
+  const geraete = nach(daten.geraete);
+  const netzanschluesse = nach(daten.netzanschluesse);
+  const anlagen = nach(daten.anlagen);
+
+  it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.4', () => {
+    const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung15(d);
+    expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_4_SHA256);
+  });
+
+  it('lässt höchstens eine Steuerquelle je Anlage zu — außer mit gemeinsamer Steuerung', () => {
+    const fehler: string[] = [];
+    const mehrAlsEine: string[] = [];
+    const gemeinsam: string[] = [];
+    for (const a of daten.anlagen as any[]) {
+      const an = a.kennzeichen as string;
+      const qs = (daten.datenquellen as any[]).filter((q) => q.anlage === an && q.steuerquelle);
+      const mitglieder = (daten.gemeinsame_steuerungen as any[])
+        .filter((v) => v.anlage === an)
+        .flatMap((v) => v.mitglieder as any[]);
+      if (qs.length > 1) mehrAlsEine.push(an);
+      if (mitglieder.length) gemeinsam.push(an);
+      const stichzeiten = new Set<number>([
+        ...qs.flatMap((q) => (zustaendig.get(q.kennzeichen) ?? []).map((z) => zeit(z.gueltig_ab))),
+        ...mitglieder.map((m) => zeit(m.gueltig_ab)),
+      ]);
+      for (const t of [...stichzeiten].sort((x, y) => x - y)) {
+        const mitgliedBoxen = mitglieder.filter((m) => gilt(m, t)).map((m) => m.box as string);
+        const lesend: string[] = [];
+        for (const q of qs) {
+          for (const z of zustaendig.get(q.kennzeichen) ?? []) {
+            if (!gilt(z, t)) continue;
+            lesend.push(q.kennzeichen);
+            if (mitgliedBoxen.length && (!mitgliedBoxen.includes(z.nach) || boxen.get(z.nach).heimat_anlage !== an)) {
+              fehler.push(`${an} ${new Date(t).toISOString()}: Steuerquelle ${q.kennzeichen} liest ${z.nach} — kein Mitglied`);
+            }
+          }
+        }
+        if (!mitgliedBoxen.length && lesend.length > 1) {
+          fehler.push(`${an} ${new Date(t).toISOString()}: ${lesend.join(', ')} — mehr als eine Steuerquelle ohne gemeinsame Steuerung`);
+        }
+      }
+    }
+    expect(fehler).toEqual([]);
+    expect(mehrAlsEine.length).toBeGreaterThan(0);
+    expect(mehrAlsEine.filter((an) => !gemeinsam.includes(an))).toEqual([]);
+  });
+
+  it('hängt die gemeinsame Steuerung an ihre Anlage: ein führendes Mitglied, Heimat, eigener Messpunkt, Stufen, Grenze', () => {
+    const STUFE: Record<string, string> = { S0: 'erklaert', S1: 'beobachtet', S2: 'geprueft', S3: 'anteile_aktiv' };
+    const fehler: string[] = [];
+    for (const v of daten.gemeinsame_steuerungen as any[]) {
+      const { kennzeichen: kz, anlage: an, netzanschluss: netz } = v;
+      if (anlagen.get(an).netzanschluss !== netz) fehler.push(`${kz}: ${netz} ist nicht der Netzanschluss von ${an}`);
+      const mitglieder = v.mitglieder as any[];
+      for (const m of mitglieder) {
+        const ab = zeit(m.gueltig_ab);
+        const box = boxen.get(m.box);
+        if (box.heimat_anlage !== an) fehler.push(`${kz}: ${m.box} hat ihre Heimat nicht in ${an}`);
+        if (!laeuft(box, ab, 'in_betrieb_ab', 'ausgebaut_am')) fehler.push(`${kz}: ${m.box} ist beim Eintritt nicht in Betrieb`);
+        const punkt = quellen.get(m.messpunkt);
+        if (punkt.anlage !== an || punkt.steuerquelle) fehler.push(`${kz}: ${m.messpunkt} ist kein Messpunkt in ${an}`);
+        if (!(zustaendig.get(m.messpunkt) ?? []).some((z) => gilt(z, ab) && z.nach === m.box)) {
+          fehler.push(`${kz}: ${m.box} liest ihren Messpunkt ${m.messpunkt} nicht selbst`);
+        }
+        if (m.rolle === 'fuehrt' && box.fuehrend_fuer !== an) fehler.push(`${kz}: ${m.box} führt, ist aber nicht die führende Box von ${an}`);
+        const fuehrend = mitglieder.filter((x) => gilt(x, ab) && x.rolle === 'fuehrt').length;
+        if (fuehrend !== 1) fehler.push(`${kz} ${m.gueltig_ab}: ${fuehrend} führende Mitglieder statt einem`);
+      }
+      const stufen = v.stufen as any[];
+      stufen.forEach((s, i) => {
+        if (STUFE[s.stufe] !== s.code) fehler.push(`${kz}: Stufe ${s.stufe} heißt nicht ${s.code}`);
+        if (i > 0 && (s.stufe <= stufen[i - 1].stufe || s.ab <= stufen[i - 1].ab)) fehler.push(`${kz}: die Stufen steigen nicht`);
+      });
+      const erstesMitglied = mitglieder.map((m) => m.gueltig_ab as string).sort((x, y) => zeit(x) - zeit(y))[0];
+      if (stufen[0].ab !== lokalerTag(erstesMitglied, ZONE)) fehler.push(`${kz}: die erste Stufe beginnt nicht mit den ersten Mitgliedern`);
+      const grenze = grenzeAm(netz, stufen[0].ab);
+      if (!grenze) fehler.push(`${kz}: ${netz} hat ab ${stufen[0].ab} keine Grenze`);
+      else if (grenze.bezugsgrenze_kw > netzanschluesse.get(netz).vereinbart_kw) {
+        fehler.push(`${kz}: die Bezugsgrenze liegt über der vereinbarten Leistung von ${netz}`);
+      }
+    }
+    expect(fehler).toEqual([]);
+  });
+
+  it('rechnet die Auslegung aus der Datei: Vorbehalt, verteilbar, Anteile, Rückfälle, Urteil', () => {
+    const fehler: string[] = [];
+    for (const v of daten.gemeinsame_steuerungen as any[]) {
+      const scharf = (v.stufen as any[]).find((s) => s.stufe === 'S3').ab as string;
+      const t = mitternacht(scharf, ZONE).ms;
+      const grenze = grenzeAm(v.netzanschluss, scharf);
+      const vorbehalt = r1(v.grundlast.gemessenes_viertelstunden_maximum_kw * v.grundlast.zuschlag);
+      const mitglieder = new Set((v.mitglieder as any[]).filter((m) => gilt(m, t)).map((m) => m.box as string));
+      for (const richtung of ['einspeisung', 'bezug']) {
+        const a = v.auslegung[richtung];
+        const verteilbar = richtung === 'einspeisung' ? grenze.einspeisegrenze_kw : r1(grenze.bezugsgrenze_kw - vorbehalt);
+        if (richtung === 'bezug' && a.vorbehalt_grundlast_kw !== vorbehalt) fehler.push(`${v.kennzeichen} bezug: Vorbehalt ${a.vorbehalt_grundlast_kw} statt ${vorbehalt}`);
+        if (a.verteilbar_kw !== verteilbar) fehler.push(`${v.kennzeichen} ${richtung}: verteilbar ${a.verteilbar_kw} statt ${verteilbar}`);
+        let summe = a.ungenutzt_kw as number;
+        for (const [box, kw] of Object.entries(a.anteile as Record<string, number>)) {
+          summe = r1(summe + kw);
+          if (!mitglieder.has(box)) fehler.push(`${v.kennzeichen} ${richtung}: Anteil für ${box}, kein Mitglied am ${scharf}`);
+        }
+        if (summe !== verteilbar) fehler.push(`${v.kennzeichen} ${richtung}: Anteile + ungenutzt = ${summe} statt ${verteilbar}`);
+        const jeBox = new Map<string, number>();
+        for (const r of daten.geraete_rueckfaelle as any[]) {
+          if (r.richtung !== richtung) continue;
+          const quelle = geraete.get(komponenten.get(r.komponente).geraet).datenquelle;
+          for (const z of zustaendig.get(quelle) ?? []) {
+            if (gilt(z, t) && mitglieder.has(z.nach)) jeBox.set(z.nach, r1((jeBox.get(z.nach) ?? 0) + r.rueckfall_kw));
+          }
+        }
+        const rueckfall = r1([...jeBox.values()].reduce((x, y) => x + y, 0));
+        if (rueckfall !== a.summe_rueckfall_kw) fehler.push(`${v.kennzeichen} ${richtung}: Summe der Rückfälle ${rueckfall} statt ${a.summe_rueckfall_kw}`);
+        for (const [box, kw] of jeBox) {
+          if (!(box in a.anteile) || kw > a.anteile[box]) fehler.push(`${v.kennzeichen} ${richtung}: ${box} hält weniger Anteil als den Rückfall ${kw}`);
+        }
+        const urteil = rueckfall <= verteilbar ? 'passt' : 'auslegung_passt_nicht';
+        if (a.urteil !== urteil) fehler.push(`${v.kennzeichen} ${richtung}: Urteil ${a.urteil} statt ${urteil}`);
+      }
+    }
+    expect(fehler).toEqual([]);
+  });
+
+  it('hängt jeden Geräte-Rückfall an eine steuerbare Komponente — und jede steuerbare Komponente der gemeinsamen Steuerung hat einen', () => {
+    const fehler: string[] = [];
+    const gesehen = new Set<string>();
+    for (const r of daten.geraete_rueckfaelle as any[]) {
+      const k = komponenten.get(r.komponente);
+      if (gesehen.has(`${r.komponente}/${r.richtung}`)) fehler.push(`${r.komponente}: zwei Rückfälle in derselben Richtung`);
+      gesehen.add(`${r.komponente}/${r.richtung}`);
+      if (!k.steuerbar || k.steuerbar.startsWith('nein')) fehler.push(`${r.komponente}: Rückfall an einer nicht steuerbaren Komponente`);
+      if (r.rueckfall === 'laeuft_frei' ? r.rueckfall_kw !== r.nenn_kw : r.rueckfall_kw > r.nenn_kw) {
+        fehler.push(`${r.komponente}: Rückfall ${r.rueckfall_kw} kW passt nicht zu ${r.rueckfall}`);
+      }
+    }
+    const gemeinsam = new Set((daten.gemeinsame_steuerungen as any[]).map((v) => v.anlage as string));
+    for (const k of daten.komponenten as any[]) {
+      const quelle = quellen.get(geraete.get(k.geraet).datenquelle);
+      if (gemeinsam.has(k.anlage) && quelle.steuerquelle && k.steuerbar?.startsWith('ja')
+        && ![...gesehen].some((s) => s.startsWith(`${k.kennzeichen}/`))) {
+        fehler.push(`${k.kennzeichen}: steuerbar in einer gemeinsamen Steuerung, aber ohne Rückfall`);
+      }
+    }
+    expect(fehler).toEqual([]);
+  });
+
+  it('nennt in den Abnahmefällen R1 … R22 die Tatsachen der Datei', () => {
+    const faelle = daten.abnahmefaelle_ap15.faelle as any[];
+    expect(faelle.map((f) => f.fall)).toEqual(Array.from({ length: 22 }, (_, i) => `R${i + 1}`));
+    expect(faelle.filter((f) => f.stand === 'entwurf').map((f) => f.fall)).toEqual(['R16']);
+    const g: Record<string, any> = Object.fromEntries(faelle.map((f) => [f.fall, f.gegeben]));
+
+    const v = (daten.gemeinsame_steuerungen as any[])[0];
+    const grenze = (daten.netzanschluss_grenzen as any[]).find((x) => x.netzanschluss === v.netzanschluss);
+    const { einspeisung, bezug } = v.auslegung;
+    expect(kanonisch(g.R1.grenzen_na1), 'R1 Grenzen').toBe(kanonisch(ohne(grenze, 'netzanschluss', 'gueltig_bis')));
+    expect(kanonisch(g.R1.einspeisung), 'R1 Einspeisung').toBe(kanonisch(einspeisung));
+    expect(kanonisch(g.R1.bezug), 'R1 Bezug').toBe(kanonisch(bezug));
+    expect(kanonisch(g.R3.bezug), 'R3 Bezug').toBe(kanonisch(bezug));
+    expect(kanonisch(g.R3.grundlast), 'R3 Grundlast').toBe(kanonisch(v.grundlast));
+    expect(kanonisch(g.R7.anteile_kw), 'R7').toBe(kanonisch(einspeisung.anteile));
+    expect(kanonisch(g.R12.alt), 'R12 alt').toBe(kanonisch(einspeisung.anteile));
+    expect(g.R2.arbeitspreis_ct_kwh, 'R2 Arbeitspreis').toBe(netzanschluesse.get(v.netzanschluss).arbeitspreis_ct_kwh);
+
+    // Geräte-Rückfälle: K-1 wörtlich, die Ladepunkte der Anlage als Summe.
+    const rueckfaelle = daten.geraete_rueckfaelle as any[];
+    const k1 = rueckfaelle.find((r) => r.komponente === 'K-1');
+    expect(kanonisch(g.R5.rueckfall_k1), 'R5 Rückfall K-1').toBe(kanonisch(ohne(k1, 'komponente', 'richtung')));
+    const ladepunkte = r1(rueckfaelle
+      .filter((r) => komponenten.get(r.komponente).anlage === v.anlage && komponenten.get(r.komponente).art?.startsWith('Ladepunkt'))
+      .reduce((s, r) => s + r.rueckfall_kw, 0));
+    expect(g.R3.geraete_rueckfall_ladepunkte_kw, 'R3 Ladepunkte').toBe(ladepunkte);
+
+    // Der Augenblick des Beispielsonntags (R1 = R4 vorher = R5 vorher) rechnet in sich.
+    const aug = g.R1.augenblick;
+    expect(kanonisch(g.R4.vorher)).toBe(kanonisch(aug));
+    expect(kanonisch(g.R5.vorher)).toBe(kanonisch(aug));
+    expect(aug.grenze_kw).toBe(grenze.einspeisegrenze_kw);
+    const ueberschussE4 = aug.pv_e4_kw - aug.last_kw;
+    expect(aug.ungeregelt_einspeisung_kw).toBe(r1(ueberschussE4 + aug.pv_e1_verfuegbar_kw));
+    expect(aug.einspeisung_kw).toBe(r1(aug.grenze_kw - aug.marge_kw));
+    expect(aug.e1_darf_kw).toBe(r1(aug.einspeisung_kw - ueberschussE4));
+    expect(aug.e1_regelt_ab_kw).toBe(r1(aug.pv_e1_verfuegbar_kw - aug.e1_darf_kw));
+    // Der Dienstag (R3): der Ladepark bekommt seinen Anteil, schlimmstenfalls genau die Bezugsgrenze.
+    const di = g.R3.augenblick;
+    expect(di.anteil_e4_kw).toBe(bezug.anteile['E-4']);
+    expect(di.laden_kw).toBe(Math.min(di.ladewunsch_kw, di.anteil_e4_kw));
+    expect(di.schlimmster_fall_kw).toBe(grenze.bezugsgrenze_kw);
+    expect(di.schlimmster_fall_kw).toBe(r1(bezug.vorbehalt_grundlast_kw + bezug.verteilbar_kw));
+
+    // R17: die Nachfolgerin von E-4 übernimmt genau die Quellen, die ihr die Datei zuordnet.
+    const nachfolger = g.R17.nachfolger as string;
+    expect(boxen.get(nachfolger)?.vorgaenger, 'R17 Nachfolgerin').toBe('E-4');
+    const uebernimmt = (daten.zuordnungen as any[])
+      .filter((z) => z.art === 'datenquelle_box' && z.nach === nachfolger)
+      .map((z) => z.von as string);
+    expect([...uebernimmt].sort()).toEqual([...(g.R17.uebernimmt as string[])].sort());
+
+    // R20: die Netzanschlüsse, wie die Datei sie führt, je mit ihrer Anlage.
+    for (const [n, r] of Object.entries(g.R20.na as Record<string, any>)) {
+      const anschluss = netzanschluesse.get(n);
+      expect(r.standort).toBe(anschluss.standort);
+      expect(r.anschluss_kva).toBe(anschluss.anschluss_kva);
+      expect(r.vereinbart_kw).toBe(anschluss.vereinbart_kw);
+      expect((daten.anlagen as any[]).filter((a) => a.netzanschluss === n).map((a) => a.kennzeichen)).toEqual([r.anlage]);
+    }
+
+    // R21: die Zuständigkeitskette von DQ-3, wie Fassung 1.4 sie führt.
+    const kette = [...(zustaendig.get('DQ-3') ?? [])]
+      .sort((x, y) => zeit(x.gueltig_ab) - zeit(y.gueltig_ab))
+      .map((z) => z.nach)
+      .join(' → ');
+    expect(g.R21.zeitachse.endsWith(`DQ-3 ${kette}`)).toBe(true);
   });
 });
