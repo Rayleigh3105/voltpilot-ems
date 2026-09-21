@@ -1,0 +1,135 @@
+{
+  "vertrag": "Vorbehalt der Bezugsseite aus Messwerten (UEMS AP-15 IP-13, B4, W10, A20, R23)",
+  "fassung": "1",
+  "leser": [
+    "services/api/src/main/java/com/voltpilot/api/uems/VorbehaltRegel.java",
+    "services/api/src/test/java/com/voltpilot/api/uems/VorbehaltVectorsTest.java"
+  ],
+  "eingang": "je Tag der Anlage der höchste BELEGTE Viertelstundenwert des Ungeregelten aus der Verbund-Bilanz (IP-12, hoechstes_ungeregeltes_kw); null = kein Messtag",
+  "zeitraum": "heute minus 12 Monate bis gestern, beide eingeschlossen; heute ist nicht abgeschlossen",
+  "gemessen": "Höchstwert x 1,1, aufgerundet auf 0,1 kW, nie unter 0",
+  "zuschlag": "1.1",
+  "mindest_messtage": 30,
+  "regel": "gemessen > alt: erhoehen (selbsttätig, auch vor 30 Messtagen) · sonst unter 30 Messtagen: keine (zu_wenig_messung, der erklärte Wert gilt weiter) · alt fehlt oder gemessen < alt: vorschlagen · sonst keine (unveraendert); ohne Messtag: keine (keine_messung)",
+  "tage_form": "je Eintrag entweder {tag, hoechstes_kw} oder {von, bis, hoechstes_kw} für jeden Tag von..bis",
+  "faelle": [
+    {
+      "fall": "430 kW → 473 kW: 30 Messtage mit Höchstwert 430 kW, erklärt 473 kW — die Messung bestätigt den Vorbehalt",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": "430" } ],
+      "erwartet": { "aktion": "keine", "grund": "unveraendert", "neu_kw": "473.0", "hoechstwert_kw": "430",
+                    "messtage": 30, "zeitraum_von": "2026-10-20", "zeitraum_bis": "2027-10-19" }
+    },
+    {
+      "fall": "430 kW → 473 kW als Vorschlag: erklärt 500 kW — senken erweitert, bleibt Vorschlag mit Freigabe (G5)",
+      "heute": "2027-10-20",
+      "alt_kw": "500",
+      "tage": [ { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": "430" } ],
+      "erwartet": { "aktion": "vorschlagen", "grund": null, "neu_kw": "473.0", "hoechstwert_kw": "430",
+                    "messtage": 30 }
+    },
+    {
+      "fall": "R23: die neue Maschine — eine Viertelstunde mit 450 kW, 450 × 1,1 = 495 kW > 473 kW: selbsttätig erhöhen",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "von": "2027-09-20", "bis": "2027-10-18", "hoechstes_kw": "430" },
+                { "tag": "2027-10-19", "hoechstes_kw": "450" } ],
+      "erwartet": { "aktion": "erhoehen", "grund": null, "neu_kw": "495.0", "hoechstwert_kw": "450",
+                    "messtage": 30 }
+    },
+    {
+      "fall": "Lücke verändert nichts: drei Tage ohne belegte Viertelstunde neben denselben 30 Messtagen",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "von": "2027-09-17", "bis": "2027-09-19", "hoechstes_kw": null },
+                { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": "430" } ],
+      "erwartet": { "aktion": "keine", "grund": "unveraendert", "neu_kw": "473.0", "hoechstwert_kw": "430",
+                    "messtage": 30 }
+    },
+    {
+      "fall": "Unter 30 Messtagen gilt der erklärte Wert weiter: 20 Tage mit 400 kW (gemessen 440 kW) senken nichts, schlagen nichts vor",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "von": "2027-09-30", "bis": "2027-10-19", "hoechstes_kw": "400" } ],
+      "erwartet": { "aktion": "keine", "grund": "zu_wenig_messung", "neu_kw": "440.0", "hoechstwert_kw": "400",
+                    "messtage": 20 }
+    },
+    {
+      "fall": "Unter 30 Messtagen, aber die Messung verlangt mehr: erhöhen verengt nur und wartet nicht (B4 „sobald die Messung sie verlangt“)",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "von": "2027-10-10", "bis": "2027-10-19", "hoechstes_kw": "450" } ],
+      "erwartet": { "aktion": "erhoehen", "grund": null, "neu_kw": "495.0", "hoechstwert_kw": "450",
+                    "messtage": 10 }
+    },
+    {
+      "fall": "Älter als zwölf Monate zählt nicht: 600 kW am Tag vor dem Zeitraum",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "tag": "2026-10-19", "hoechstes_kw": "600" },
+                { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": "430" } ],
+      "erwartet": { "aktion": "keine", "grund": "unveraendert", "neu_kw": "473.0", "hoechstwert_kw": "430",
+                    "messtage": 30 }
+    },
+    {
+      "fall": "Genau zwölf Monate zurück zählt noch: 460 kW am ersten Tag des Zeitraums",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "tag": "2026-10-20", "hoechstes_kw": "460" },
+                { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": "430" } ],
+      "erwartet": { "aktion": "erhoehen", "grund": null, "neu_kw": "506.0", "hoechstwert_kw": "460",
+                    "messtage": 31 }
+    },
+    {
+      "fall": "Heute ist nicht abgeschlossen und zählt nicht",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": "430" },
+                { "tag": "2027-10-20", "hoechstes_kw": "600" } ],
+      "erwartet": { "aktion": "keine", "grund": "unveraendert", "neu_kw": "473.0", "hoechstwert_kw": "430",
+                    "messtage": 30 }
+    },
+    {
+      "fall": "Aufgerundet zur sicheren Seite: 430,001 kW × 1,1 = 473,0011 → 473,1 kW > 473 kW",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "von": "2027-09-20", "bis": "2027-10-18", "hoechstes_kw": "430" },
+                { "tag": "2027-10-19", "hoechstes_kw": "430.001" } ],
+      "erwartet": { "aktion": "erhoehen", "grund": null, "neu_kw": "473.1", "hoechstwert_kw": "430.001",
+                    "messtage": 30 }
+    },
+    {
+      "fall": "Ohne Messtag geschieht nichts — unbekannt ist keine Null",
+      "heute": "2027-10-20",
+      "alt_kw": "473",
+      "tage": [ { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": null } ],
+      "erwartet": { "aktion": "keine", "grund": "keine_messung", "neu_kw": null, "hoechstwert_kw": null,
+                    "messtage": 0 }
+    },
+    {
+      "fall": "Ohne geltenden Vorbehalt gibt es nichts zu erhöhen: ab 30 Messtagen ein Vorschlag",
+      "heute": "2027-10-20",
+      "alt_kw": null,
+      "tage": [ { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": "430" } ],
+      "erwartet": { "aktion": "vorschlagen", "grund": null, "neu_kw": "473.0", "hoechstwert_kw": "430",
+                    "messtage": 30 }
+    },
+    {
+      "fall": "Ohne geltenden Vorbehalt vor 30 Messtagen: nichts",
+      "heute": "2027-10-20",
+      "alt_kw": null,
+      "tage": [ { "von": "2027-10-10", "bis": "2027-10-19", "hoechstes_kw": "430" } ],
+      "erwartet": { "aktion": "keine", "grund": "zu_wenig_messung", "neu_kw": "473.0", "hoechstwert_kw": "430",
+                    "messtage": 10 }
+    },
+    {
+      "fall": "Speist das Ungeregelte nur ein, ist der Vorbehalt 0 kW, nie negativ",
+      "heute": "2027-10-20",
+      "alt_kw": "10",
+      "tage": [ { "von": "2027-09-20", "bis": "2027-10-19", "hoechstes_kw": "-5" } ],
+      "erwartet": { "aktion": "vorschlagen", "grund": null, "neu_kw": "0.0", "hoechstwert_kw": "-5",
+                    "messtage": 30 }
+    }
+  ]
+}

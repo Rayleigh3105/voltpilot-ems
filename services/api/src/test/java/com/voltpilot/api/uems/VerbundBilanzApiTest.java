@@ -118,6 +118,9 @@ class VerbundBilanzApiTest {
         assertThat(e.get("viertelstunden_erwartet")).isEqualTo(96);
         assertThat(e.get("viertelstunden_plausibel")).isEqualTo(96);
         assertThat((java.math.BigDecimal) e.get("geringstes_ungeregeltes_kw")).isEqualByComparingTo("40");
+        assertThat((java.math.BigDecimal) root.queryForObject("SELECT hoechstes_ungeregeltes_kw FROM "
+                + "steuerungsverbund_bilanz WHERE site_id = ? AND tag = ?", java.math.BigDecimal.class, w.an1(), TAG))
+                .as("IP-13: der Höchstwert des Ungeregelten").isEqualByComparingTo("40");
         assertThat(e.get("stufe_vorher")).isEqualTo("anteile_aktiv");
         assertThat(e.get("auf_s1_zurueck")).isEqualTo(false);
         assertThat(e.get("gerechnet_von")).isEqualTo("Verbund-Bilanz");
@@ -197,6 +200,30 @@ class VerbundBilanzApiTest {
         assertThat(e.get("auf_s1_zurueck")).isEqualTo(false);
         assertThat(stufe(w)).isEqualTo("anteile_aktiv");
         assertThat(stufenwechsel(w)).isZero();
+    }
+
+    /**
+     * IP-13 (W10): der Höchstwert des Ungeregelten für den Vorbehalt aus Messwerten kommt nur aus BELEGTEN
+     * Viertelstunden. 11:00 ist unvollständig (Netzzähler 0 kWh — gezählt wären es 138 kW), 12:00 vollständig mit
+     * 80 kW Einspeisung am Netzpunkt → 58 kW; alle übrigen 40 kW.
+     */
+    @Test
+    void unvollstaendigeViertelstundeZaehltNichtFuerDenHoechstwert() {
+        Welt w = welt("anteile_aktiv");
+        assertThat(root.update("UPDATE messreihe_viertelstunde SET menge = 0, menge_zustand = 'unvollständig', "
+                + "erhalten = 3 WHERE entity_id = ? AND intervall_beginn = ?", w.netz(), ts("2027-06-13T11:00:00Z")))
+                .isEqualTo(1);
+        assertThat(root.update("UPDATE messreihe_viertelstunde SET menge = 20 WHERE entity_id = ? "
+                + "AND intervall_beginn = ?", w.netz(), ts("2027-06-13T12:00:00Z"))).isEqualTo(1);
+
+        laeufer().lauf(TAG);
+
+        Map<String, Object> e = root.queryForMap("SELECT zustand, grund, hoechstes_ungeregeltes_kw, hoechstes_von "
+                + "FROM steuerungsverbund_bilanz WHERE site_id = ? AND tag = ?", w.an1(), TAG);
+        assertThat(e.get("zustand")).isEqualTo("unbekannt");
+        assertThat(e.get("grund")).isEqualTo("luecke");
+        assertThat((java.math.BigDecimal) e.get("hoechstes_ungeregeltes_kw")).isEqualByComparingTo("58");
+        assertThat(((Timestamp) e.get("hoechstes_von")).toInstant()).isEqualTo(Instant.parse("2027-06-13T12:00:00Z"));
     }
 
     @Test

@@ -51,6 +51,9 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         formen.put("GemeinsameSteuerungBefund", GemeinsameSteuerungDto.Befund.class);
         formen.put("GemeinsameSteuerungWarnungFuehrung", GemeinsameSteuerungDto.WarnungFuehrung.class);
         formen.put("GemeinsameSteuerungBilanz", GemeinsameSteuerungDto.Bilanz.class);
+        formen.put("GemeinsameSteuerungVorbehalt", GemeinsameSteuerungDto.Vorbehalt.class);
+        formen.put("GemeinsameSteuerungVorbehaltRichtung", GemeinsameSteuerungDto.VorbehaltRichtung.class);
+        formen.put("GemeinsameSteuerungVorbehaltVorschlag", GemeinsameSteuerungDto.VorbehaltVorschlag.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -76,6 +79,14 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
                 .containsExactlyElementsOf(VerbundBilanzRegel.ZUSTAENDE);
         assertThat((List<String>) ((Map<String, Object>) bilanz.get("grund")).get("enum")).containsExactlyElementsOf(
                 Arrays.stream(VerbundBilanzRegel.Grund.values()).map(VerbundBilanzRegel.Grund::code).toList());
+        Map<String, Object> richtung = eigenschaften("GemeinsameSteuerungVorbehaltRichtung");
+        assertThat((List<String>) ((Map<String, Object>) richtung.get("herkunft")).get("enum")).containsExactly(
+                GemeinsameSteuerungService.HERKUNFT_ERKLAERT, GemeinsameSteuerungService.HERKUNFT_GEMESSEN);
+        List<String> zweischritt = new ArrayList<>(List.of("veroeffentlicht"));
+        Arrays.stream(SteuerungsverbundAnteilDienst.Grund.values())
+                .forEach(g -> zweischritt.add(g.name().toLowerCase(java.util.Locale.ROOT)));
+        assertThat((List<String>) ((Map<String, Object>) richtung.get("zweischritt")).get("enum"))
+                .containsExactlyElementsOf(zweischritt);
     }
 
     @Test
@@ -88,7 +99,8 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
                 KUNDE + "/aufloesen|post", "steuerung.starten_beenden",
                 ADMIN + "/scharfschalten|post", "plattform.betrieb",
                 ADMIN + "/fortsetzen|post", "plattform.betrieb",
-                ADMIN + "/mitglieder/{boxId}/bestaetigen|post", "plattform.betrieb");
+                ADMIN + "/mitglieder/{boxId}/bestaetigen|post", "plattform.betrieb",
+                ADMIN + "/vorbehalt/freigeben|post", "plattform.betrieb");
         recht.forEach((schluessel, kennung) -> {
             String[] t = schluessel.split("\\|");
             Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) pfade.get(t[0])).get(t[1]);

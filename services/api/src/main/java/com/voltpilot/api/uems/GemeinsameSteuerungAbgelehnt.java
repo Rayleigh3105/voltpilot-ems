@@ -35,10 +35,13 @@ public final class GemeinsameSteuerungAbgelehnt extends RuntimeException {
     public static final String KEIN_MITGLIED = "kein_mitglied";
     /** Bestätigen eines Mitglieds, das schon bestätigt ist. */
     public static final String BEREITS_BESTAETIGT = "bereits_bestaetigt";
+    /** Freigabe des Vorbehalts ohne offenen Vorschlag zum Senken (IP-13) — oder er passt nicht mehr. */
+    public static final String KEIN_VORSCHLAG = "kein_vorschlag";
 
     /** Die Übergangs-Gründe (409) in ihrer Vertrags-Reihenfolge. */
     public static final List<String> UEBERGANG = List.of(NICHT_EINGERICHTET, NICHT_AKTIV, NICHT_ANGEHALTEN,
-            VOM_BETREIBER_ANGEHALTEN, BEREITS_AKTIV, ERST_ANHALTEN, ANTEILE_IN_KRAFT, KEIN_MITGLIED, BEREITS_BESTAETIGT);
+            VOM_BETREIBER_ANGEHALTEN, BEREITS_AKTIV, ERST_ANHALTEN, ANTEILE_IN_KRAFT, KEIN_MITGLIED, BEREITS_BESTAETIGT,
+            KEIN_VORSCHLAG);
 
     private final int status;
     private final String code;

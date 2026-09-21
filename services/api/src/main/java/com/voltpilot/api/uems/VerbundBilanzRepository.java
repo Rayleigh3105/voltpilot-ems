@@ -22,7 +22,7 @@ public class VerbundBilanzRepository {
     public record Ergebnis(UUID verbundId, UUID siteId, LocalDate tag, String zustand, String grund, int erwartet,
             int plausibel, int unplausibel, int unbekannt, java.math.BigDecimal geringstesKw,
             java.math.BigDecimal geringstesToleranzKw, Instant geringstesVon, String grundlageJson, String stufeVorher,
-            boolean aufS1Zurueck, String gerechnetVon) {}
+            boolean aufS1Zurueck, String gerechnetVon, java.math.BigDecimal hoechstesKw, Instant hoechstesVon) {}
 
     /** Der Stand für die Auskunft: jüngstes Ergebnis, seit wann derselbe Zustand steht, wann gerechnet. */
     public record Stand(String zustand, LocalDate tag, LocalDate seit, String grund, Instant gerechnetAm) {}
@@ -52,12 +52,13 @@ public class VerbundBilanzRepository {
         return jdbc.update("INSERT INTO steuerungsverbund_bilanz (tenant_id, site_id, steuerungsverbund_id, tag, "
                 + "zustand, grund, viertelstunden_erwartet, viertelstunden_plausibel, viertelstunden_unplausibel, "
                 + "viertelstunden_unbekannt, geringstes_ungeregeltes_kw, geringstes_toleranz_kw, geringstes_von, "
-                + "grundlage, stufe_vorher, auf_s1_zurueck, gerechnet_von) "
-                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?) "
+                + "grundlage, stufe_vorher, auf_s1_zurueck, gerechnet_von, hoechstes_ungeregeltes_kw, hoechstes_von) "
+                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,?,?) "
                 + "ON CONFLICT (steuerungsverbund_id, tag) DO NOTHING", tenant, e.siteId(), e.verbundId(), e.tag(),
                 e.zustand(), e.grund(), e.erwartet(), e.plausibel(), e.unplausibel(), e.unbekannt(), e.geringstesKw(),
                 e.geringstesToleranzKw(), e.geringstesVon() == null ? null : Timestamp.from(e.geringstesVon()),
-                e.grundlageJson(), e.stufeVorher(), e.aufS1Zurueck(), e.gerechnetVon()) > 0;
+                e.grundlageJson(), e.stufeVorher(), e.aufS1Zurueck(), e.gerechnetVon(), e.hoechstesKw(),
+                e.hoechstesVon() == null ? null : Timestamp.from(e.hoechstesVon())) > 0;
     }
 
     /**
@@ -82,13 +83,14 @@ public class VerbundBilanzRepository {
         return jdbc.query("SELECT steuerungsverbund_id, site_id, tag, zustand, grund, viertelstunden_erwartet, "
                 + "viertelstunden_plausibel, viertelstunden_unplausibel, viertelstunden_unbekannt, "
                 + "geringstes_ungeregeltes_kw, geringstes_toleranz_kw, geringstes_von, grundlage::text AS grundlage, "
-                + "stufe_vorher, auf_s1_zurueck, gerechnet_von FROM steuerungsverbund_bilanz "
-                + "WHERE steuerungsverbund_id = ? ORDER BY tag DESC",
+                + "stufe_vorher, auf_s1_zurueck, gerechnet_von, hoechstes_ungeregeltes_kw, hoechstes_von "
+                + "FROM steuerungsverbund_bilanz WHERE steuerungsverbund_id = ? ORDER BY tag DESC",
                 (rs, n) -> new Ergebnis(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
                         rs.getObject(3, LocalDate.class), rs.getString(4), rs.getString(5), rs.getInt(6), rs.getInt(7),
                         rs.getInt(8), rs.getInt(9), rs.getBigDecimal(10), rs.getBigDecimal(11),
                         rs.getTimestamp(12) == null ? null : rs.getTimestamp(12).toInstant(), rs.getString(13),
-                        rs.getString(14), rs.getBoolean(15), rs.getString(16)),
+                        rs.getString(14), rs.getBoolean(15), rs.getString(16), rs.getBigDecimal(17),
+                        rs.getTimestamp(18) == null ? null : rs.getTimestamp(18).toInstant()),
                 verbundId);
     }
 

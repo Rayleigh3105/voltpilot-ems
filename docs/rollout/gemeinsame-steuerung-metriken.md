@@ -57,7 +57,7 @@ promtool-Tests setzen die Reihe als Eingang.
 | `GemeinsameSteuerungAufAnteil` (Wächter > 10 min auf dem Anteil) | A7 | `voltpilot_uems_box_waechter_stufe{stufe="sicherheitskappe"} == 1` mit `for: 10m`, `and on (device) voltpilot_uems_box_herzschlag_age_seconds < 120` (eine stumme Box meldet `BoxStumm`, nicht ihren letzten Wächter-Wert) | Bedeutung „= eigener Anteil“ erst mit IP-18 (davor ist es die heutige Sicherheitskappe der Einzelbox); Richtung `bezug` erst IP-18/IP-19; Mitglieder-Begrenzung |
 | `GemeinsameSteuerungBilanzUnplausibel` | A17 | `voltpilot_uems_verbund_bilanz_zustand{zustand="unplausibel"} == 1` (je Anlage, ohne `for`: der Wert ändert sich höchstens einmal am Tag) | nichts: gefüllt seit IP-12, sobald für eine Anlage mit Mitgliedern ein Tag gerechnet ist (siehe unten) |
 | `GemeinsameSteuerungUhrUnsicher` | A8 | — | eine Quelle je Box. `clock_jump` gehört der Datenannahme und ist ein Ereignis, keine Metrik mit `device`. Vorschlag: der Versatz Herzschlag-`ts` gegen Cloud-Ankunft als `voltpilot_uems_box_uhr_versatz_seconds` in diesem Sammler (der Status ist nicht retained, der Versatz also echt) — in IP-11 nicht gebaut, weil die Zelle ihn nicht nennt |
-| `GemeinsameSteuerungVorbehaltZuKlein` | A20 | — | alles: die selbsttätige Erhöhung des Vorbehalts baut IP-13. Vorschlag an IP-13: ein Zähler je Anlage `voltpilot_uems_vorbehalt_erhoeht_total{tenant,site}` |
+| `GemeinsameSteuerungVorbehaltZuKlein` | A20 | `max by (namespace, tenant, site) (increase(voltpilot_uems_vorbehalt_erhoeht_total[1h])) > 0` | nichts: gefüllt seit IP-13 (siehe unten) |
 | `PlanNichtAngenommen{device}` (30 min) | A3, A9 | `voltpilot_uems_box_plan_angenommen_age_seconds > 1800 and on (device) voltpilot_uems_box_plan_quittung_gemeldet == 1`; der Nie-Fall: `(voltpilot_uems_box_plan_quittung_gemeldet == 1) unless on (device) voltpilot_uems_box_plan_angenommen_age_seconds` mit `for: 30m` | baubar; wirksam, sobald Boxen mit dem IP-10-Edge-Release quittieren. Ob ohne Mitglieder-Begrenzung, entscheidet Teil B (die Regel ist reine Betreibersicht) |
 | `AnteileNichtBestaetigt` (30 min) | A10 | `voltpilot_uems_box_anteile_unbestaetigt_age_seconds > 1800` | die Werte: IP-7 schreibt `gesendet_*`/`quittiert_*`, IP-17 lässt die Box quittieren |
 
@@ -76,6 +76,23 @@ promtool-Tests setzen die Reihe als Eingang.
   (Protokoll-Akteur „Verbund-Bilanz“, die Anteile bleiben in Kraft); die Regel meldet es.
 - Ein stehender Läufer lässt die Reihe auf dem letzten Tag stehen — das deckt die Läufer-Regel über
   `voltpilot_uems_laeufer_*{laeufer="verbund_bilanz"}` (Takt täglich), nicht diese Metrik.
+
+## Vorbehalt aus Messwerten je Anlage (AP-15 IP-13)
+
+| Metrik | Labels | Einheit | Bedeutung | leer bis |
+|---|---|---|---|---|
+| `voltpilot_uems_vorbehalt_erhoeht_total` | `tenant`, `site` | Zähler | Selbsttätige ERHÖHUNGEN des Vorbehalts der Bezugsseite (Läufer `vorbehalt`, täglich 04:52 Europe/Berlin): die Messung (höchster belegter Viertelstundenwert des Ungeregelten × 1,1) verlangte mehr als den geltenden Vorbehalt — das Ungeregelte ist gewachsen (A20, R23), die Anteile der übrigen Boxen wurden verengt. | gefüllt (0), sobald eine Anlage JETZT wirksame Mitglieder hat |
+
+- Sammler `metrics/VorbehaltMetrik` am selben Schalter und Takt wie oben; gelesen über die Admin-Rolle
+  (`repo/VorbehaltMetrikRepository`) als Zahl der Zeilen `erhoeht` in `steuerungsverbund_vorbehalt` — der Stand
+  übersteht einen api-Neustart, ist in jeder Instanz gleich und fällt nie. Jede Anlage mit Mitgliedern hat eine Reihe ab
+  0, damit `increase()` schon die erste Erhöhung sieht; ohne Gemeinsame Steuerung keine Reihe.
+- Was die Regel dem Betreiber sagt: die Verengung ist geschehen (Zweischritt angestoßen). Ob sie ausgerollt ist, steht
+  im GET unter `vorbehalt.bezug.zweischritt`: `auslegung_passt_nicht` = mit dem höheren Vorbehalt passt die Auslegung
+  nicht mehr, NICHTS wurde erweitert, die Boxen halten ihr letztes Dokument — Handeln nötig (E2 = A: Termin am Gerät,
+  G7: große Verbraucher an die führende Box). Ein SENKEN zählt nicht; es bleibt ein Vorschlag bis zur Freigabe
+  (`POST /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/vorbehalt/freigeben`).
+- Ein stehender Läufer zeigt sich über `voltpilot_uems_laeufer_*{laeufer="vorbehalt"}` (Takt täglich), nicht hier.
 
 ## Frist für `plan_zustellung`
 

@@ -2844,6 +2844,29 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
         "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/vorbehalt/freigeben:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Den Vorschlag zum Senken des Vorbehalts freigeben (AP-15 IP-13, B4/G5).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle). Der tägliche Lauf „Vorbehalt aus Messwerten“ ERHÖHT den
+        Vorbehalt der Bezugsseite selbsttätig (verengt nur); eine SENKUNG erweitert und bleibt ein Vorschlag
+        (`vorbehalt.vorschlag` im GET) — erst diese Freigabe setzt ihn, danach der Zweischritt in derselben Epoche.
+        409 `kein_vorschlag` ohne offenen Vorschlag (oder wenn er nicht mehr zum geltenden Vorbehalt passt),
+        `nicht_eingerichtet` ohne Gemeinsame Steuerung. Eine Kundenroute zum Senken gibt es nicht; kein Körper.
+      responses:
+        "200":
+          description: Freigegeben; der Vorbehalt ist gesenkt, der Zweischritt angestoßen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/admin/sites/{siteId}/charging-frame:
     put:
       tags: [admin]
@@ -13196,7 +13219,7 @@ components:
         oder Anlage im Körper), 404 `nicht_gefunden` (fremd, nie 403), 409 mit dem ersten Wort des
         Ablehnungs-Vokabulars und allen Befunden in `fehlt` — oder einem Übergangs-Grund: `nicht_eingerichtet` ·
         `nicht_aktiv` · `nicht_angehalten` · `vom_betreiber_angehalten` · `bereits_aktiv` · `erst_anhalten` · `anteile_in_kraft` ·
-        `kein_mitglied` · `bereits_bestaetigt`.
+        `kein_mitglied` · `bereits_bestaetigt` · `kein_vorschlag`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/GemeinsameSteuerungFehler" }
@@ -13277,6 +13300,10 @@ components:
           nullable: true
           description: "Verbund-Bilanz (AP-15 IP-12) — null, solange kein Tag gerechnet ist."
           allOf: [{ $ref: "#/components/schemas/GemeinsameSteuerungBilanz" }]
+        vorbehalt:
+          nullable: true
+          description: "Vorbehalt je Richtung mit Herkunft und offenem Vorschlag (AP-15 IP-13) — null ohne Gemeinsame Steuerung."
+          allOf: [{ $ref: "#/components/schemas/GemeinsameSteuerungVorbehalt" }]
     GemeinsameSteuerungBilanz:
       type: object
       required: [zustand, tag, seit, gerechnet_am]
@@ -13291,6 +13318,45 @@ components:
                  luecke, einzelne_abweichung]
           description: "nur bei unbekannt"
         gerechnet_am: { type: string, format: date-time }
+    GemeinsameSteuerungVorbehalt:
+      type: object
+      required: [einspeisung, bezug]
+      properties:
+        einspeisung: { $ref: "#/components/schemas/GemeinsameSteuerungVorbehaltRichtung" }
+        bezug: { $ref: "#/components/schemas/GemeinsameSteuerungVorbehaltRichtung" }
+        vorschlag:
+          nullable: true
+          description: "offener Vorschlag zum Senken — wirksam erst durch POST …/admin/…/vorbehalt/freigeben"
+          allOf: [{ $ref: "#/components/schemas/GemeinsameSteuerungVorbehaltVorschlag" }]
+    GemeinsameSteuerungVorbehaltRichtung:
+      type: object
+      required: [herkunft]
+      properties:
+        kw: { type: number, nullable: true, description: "null = unbekannt, keine Null" }
+        herkunft:
+          type: string
+          enum: [erklaert, gemessen]
+          description: "gemessen: eine selbsttätige Erhöhung oder ein freigegebener Vorschlag hat den Wert gesetzt; die Einspeiseseite ist immer erklaert"
+        seit: { type: string, format: date-time, nullable: true }
+        zweischritt:
+          type: string
+          nullable: true
+          enum: [veroeffentlicht, kein_verbund, stufe_zu_frueh, noch_nicht_scharf, auslegung_passt_nicht,
+                 zweischritt_laeuft, rueckgespielt, wirksame_anteile_unbekannt, unveraendert]
+          description: "nur bei gemessen: was der Zweischritt danach tat; auslegung_passt_nicht = nichts erweitert, die Boxen halten ihr letztes Dokument"
+    GemeinsameSteuerungVorbehaltVorschlag:
+      type: object
+      required: [richtung, neu_kw, hoechstwert_kw, zeitraum_von, zeitraum_bis, messtage, erstellt_am]
+      properties:
+        richtung: { type: string, enum: [einspeisung, bezug] }
+        alt_kw: { type: number, nullable: true }
+        neu_kw: { type: number }
+        hoechstwert_kw: { type: number, description: "höchster belegter Viertelstundenwert des Ungeregelten" }
+        hoechstwert_von: { type: string, format: date-time, nullable: true }
+        zeitraum_von: { type: string, format: date }
+        zeitraum_bis: { type: string, format: date }
+        messtage: { type: integer }
+        erstellt_am: { type: string, format: date-time }
     GemeinsameSteuerungMitglied:
       type: object
       required: [box_id, rolle, gueltig_ab]
