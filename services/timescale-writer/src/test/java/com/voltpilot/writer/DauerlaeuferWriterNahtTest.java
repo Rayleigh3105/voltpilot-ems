@@ -56,13 +56,12 @@ import org.testcontainers.utility.DockerImageName;
  * jedem Umschlag genau dieses Ereignis bildet (nur {@code event_id} neu), belegt
  * {@code DauerlaeuferVorlageAnnahmeTest} in services/ingest.
  *
- * <ul>
- *   <li><b>E-1</b> so, wie Drehbuch §14.2 die Einrichtung heute hinterlässt: KEINE Auswahlzeile, weil die
- *       Routen die Schlüssel des Simulators nicht annehmen.
- *   <li><b>E-2</b> mit allem, was der Writer für {@code entity_id} braucht: Auswahl mit Komponente,
- *       Datenquelle an der Komponente, E-2 für sie zuständig, Gerät eingebaut. Aber wie beim Simulator
- *       OHNE Quittung der Box: {@code applied_at} ist leer.
- * </ul>
+ * <p>Beide Boxen so, wie Drehbuch §14.2 die Einrichtung hinterlässt (in der api über die Routen belegt):
+ * Auswahl mit den Schlüsseln, die die Plattform vergeben und der Simulator gelernt hat, je Messstelle eine
+ * Komponente mit Datenquelle, die Box für sie zuständig, Gerät eingebaut — und die Auswahl QUITTIERT:
+ * {@code applied_at} aus der Quittung des Simulators ({@code einrichtung[].quittung} der Vorlage), wie
+ * {@code MeasurementConfigStatusListener} sie schreibt. Dann trägt schon der erste Wert je Schlüssel seine
+ * Zuordnung, auch wenn alle Takte im selben 60-s-Fenster des Nachschlags ankommen.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -110,38 +109,44 @@ class DauerlaeuferWriterNahtTest {
                 exec(c, "INSERT INTO device (id, tenant_id, site_id) VALUES (?::uuid, ?::uuid, ?::uuid)",
                         b.path("device_id").asText(), tenant, b.path("site_id").asText());
             }
-            JsonNode e2 = BOX.get("E-2");
-            String site = e2.path("site_id").asText();
-            String box = e2.path("device_id").asText();
-            String quelle = UUID.randomUUID().toString();
-            exec(c, "INSERT INTO data_source (id, tenant_id, kennzeichen, kadenz_s) VALUES (?::uuid, ?::uuid, "
-                    + "'DQ-E2', 60)", quelle, tenant);
-            exec(c, "INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, effective_from, "
-                    + "effective_to) VALUES (?::uuid, ?::uuid, ?::uuid, ?::timestamptz, NULL)", tenant, quelle, box,
-                    EINGERICHTET);
             String katalog = vorlage.path("zustellungen").get(0).path("nutzlast").path("catalog_version").asText();
-            for (JsonNode k : e2.path("point_keys")) {
-                String punkt = k.asText();
-                String komponente = UUID.randomUUID().toString();
-                String geraet = UUID.randomUUID().toString();
-                String messstelle = "MS-" + punkt.substring("custom.ms-".length(), "custom.ms-".length() + 2);
-                exec(c, "INSERT INTO measurement_point (id, tenant_id, site_id, role, label, device_id, "
-                        + "data_source_id) VALUES (?::uuid, ?::uuid, ?::uuid, 'consumer', ?, ?::uuid, ?::uuid)",
-                        komponente, tenant, site, messstelle, box, quelle);
-                exec(c, "INSERT INTO geraet (id, tenant_id, site_id, kennzeichen, einbau_kennzeichen, seriennummer, "
-                        + "eingebaut_am) VALUES (?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?::timestamptz)", geraet, tenant,
-                        site, messstelle, "Z-" + messstelle, "SN-" + messstelle, EINGERICHTET);
-                exec(c, "INSERT INTO geraet_komponente (tenant_id, geraet_id, entity_id, gueltig_ab) VALUES "
-                        + "(?::uuid, ?::uuid, ?::uuid, ?::timestamptz)", tenant, geraet, komponente, EINGERICHTET);
-                exec(c, "INSERT INTO measurement_catalog_point_metadata VALUES (?, ?, 'counter', 900) "
-                        + "ON CONFLICT DO NOTHING", katalog, punkt);
-                // Wie POST …/measurement-selection/custom sie anlegt: gewünscht, noch nicht quittiert.
-                exec(c, "INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, point_key, enabled, "
-                        + "cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
-                        + "applied_at, retention_class, raw_retention_days, long_term_cadence_s, long_term_strategy, "
-                        + "entity_id) VALUES (?::uuid, ?::uuid, ?::uuid, ?, true, 60, 1, ?::timestamptz, ?, 'nw6', "
-                        + "'pending_edge', NULL, 'energy_counter', 90, 900, 'fifteen_minute', ?::uuid)",
-                        tenant, site, box, punkt, EINGERICHTET, katalog, komponente);
+            for (JsonNode e : vorlage.path("einrichtung")) {
+                JsonNode b = BOX.get(e.path("box").asText());
+                String site = b.path("site_id").asText();
+                String box = b.path("device_id").asText();
+                String applied = e.at("/quittung/nutzlast/applied_at").asText();
+                String quelle = UUID.randomUUID().toString();
+                exec(c, "INSERT INTO data_source (id, tenant_id, kennzeichen, kadenz_s) VALUES (?::uuid, ?::uuid, "
+                        + "?, 60)", quelle, tenant, "DQ-" + b.path("code").asText());
+                exec(c, "INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, effective_from, "
+                        + "effective_to) VALUES (?::uuid, ?::uuid, ?::uuid, ?::timestamptz, NULL)", tenant, quelle,
+                        box, EINGERICHTET);
+                int revision = 0;
+                for (JsonNode m : b.path("messstellen")) {
+                    String punkt = m.path("point_key").asText();
+                    String komponente = m.path("entity_id").asText();
+                    String geraet = UUID.randomUUID().toString();
+                    String messstelle = m.path("messstelle").asText();
+                    revision++; // „Eigenen Messwert hinzufügen“ je Messstelle: eine Revision je Aufruf
+                    exec(c, "INSERT INTO measurement_point (id, tenant_id, site_id, role, label, device_id, "
+                            + "data_source_id) VALUES (?::uuid, ?::uuid, ?::uuid, 'consumer', ?, ?::uuid, ?::uuid)",
+                            komponente, tenant, site, messstelle, box, quelle);
+                    exec(c, "INSERT INTO geraet (id, tenant_id, site_id, kennzeichen, einbau_kennzeichen, "
+                            + "seriennummer, eingebaut_am) VALUES (?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?::timestamptz)",
+                            geraet, tenant, site, messstelle, "Z-" + messstelle, "SN-" + messstelle, EINGERICHTET);
+                    exec(c, "INSERT INTO geraet_komponente (tenant_id, geraet_id, entity_id, gueltig_ab) VALUES "
+                            + "(?::uuid, ?::uuid, ?::uuid, ?::timestamptz)", tenant, geraet, komponente, EINGERICHTET);
+                    exec(c, "INSERT INTO measurement_catalog_point_metadata VALUES (?, ?, 'counter', 900) "
+                            + "ON CONFLICT DO NOTHING", katalog, punkt);
+                    // Wie die api sie nach der Quittung hinterlässt: angewendet, applied_at aus der Quittung.
+                    exec(c, "INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, point_key, "
+                            + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, "
+                            + "apply_status, applied_at, retention_class, raw_retention_days, long_term_cadence_s, "
+                            + "long_term_strategy, entity_id) VALUES (?::uuid, ?::uuid, ?::uuid, ?, true, 60, ?, "
+                            + "?::timestamptz, ?, 'nw6', 'applied', ?::timestamptz, 'energy_counter', 90, 900, "
+                            + "'fifteen_minute', ?::uuid)",
+                            tenant, site, box, punkt, revision, EINGERICHTET, katalog, applied, komponente);
+                }
             }
         }
     }
@@ -159,9 +164,6 @@ class DauerlaeuferWriterNahtTest {
         registry.add("spring.datasource.username", () -> "voltpilot_app");
         registry.add("spring.datasource.password", () -> APP_PW);
     }
-
-    @Autowired
-    HerkunftNachschlag nachschlag;
 
     @Test
     void dieUmschlaegeDesDauerlaeufersAmEchtenWriter() throws Exception {
@@ -181,40 +183,37 @@ class DauerlaeuferWriterNahtTest {
         vorlage.path("zustellungen").forEach(zustellungen::add);
         String e1 = BOX.get("E-1").path("device_id").asText();
         String e2 = BOX.get("E-2").path("device_id").asText();
-        int jeTakt = BOX.get("E-2").path("point_keys").size();
         int takte = zustellungen.size() / 2;
 
-        // Takt 1, dann die 60 s, die in Produktion bis zum nächsten Takt vergehen: so lange hält der
-        // Nachschlag seine Zeitleisten (HerkunftNachschlag.CACHE_TTL_MS). Hier nicht gewartet, sondern
-        // verfallen lassen. Danach die Takte 2 bis 5.
-        senden(zustellungen.subList(0, 2));
-        warte(e2, jeTakt);
-        nachschlag.vergessen();
-        senden(zustellungen.subList(2, zustellungen.size()));
-        warte(e2, takte * jeTakt);
+        // Alle fünf Takte in EINEM Zug — innerhalb der 60 s, die der Nachschlag seine Zeitleisten hält
+        // (HerkunftNachschlag.CACHE_TTL_MS). Ohne Quittung blieb so JEDER Wert ohne Zuordnung (PR 999);
+        // mit ihr steht die Fassung schon vor dem ersten Wert.
+        senden(zustellungen);
+        warte(e1, takte * 4L);
+        warte(e2, takte * 5L);
 
-        // E-1, wie §14.2 die Einrichtung heute hinterlässt: ohne Auswahlzeile nimmt der Writer nichts an.
-        assertThat(zahl("SELECT count(*) FROM device_measurement_sample WHERE device_id = '" + e1 + "'"))
-                .as("E-1 ohne Auswahl: jeder Wert verworfen (MeasurementWriteRepository.java:145-150)").isZero();
-
-        // E-2, voll eingerichtet, nie quittiert. Der erste Wert je Schlüssel findet keine Fassung
-        // (MesswertHerkunft.java:437) und bleibt ohne Zuordnung; erst er setzt applied_at
-        // (MeasurementWriteRepository.java:451). Ab dem zweiten Takt trägt jeder Wert entity_id, Rolle
-        // „beobachtung“ (E-2 zuständig, keine Messstelle gebunden) — die zählt der Lücken-Melder.
-        List<String> jeMesszeit = zeilen("SELECT to_char(time AT TIME ZONE 'UTC', 'HH24:MI') || ' ' "
-                + "|| count(entity_id) || '/' || count(*) || ' ' || coalesce(string_agg(DISTINCT role, ','), '-') "
-                + "FROM device_measurement_sample WHERE device_id = '" + e2 + "' GROUP BY time ORDER BY time");
-        assertThat(jeMesszeit).as("je Messzeit: zugeordnet/geschrieben und Rolle").containsExactly(
-                "09:55 0/5 -", "09:56 5/5 beobachtung", "09:57 5/5 beobachtung", "09:58 5/5 beobachtung",
-                "09:59 5/5 beobachtung");
-        assertThat(zeilen("SELECT DISTINCT apply_status || ' ' || to_char(applied_at AT TIME ZONE 'UTC', 'HH24:MI') "
-                + "FROM device_measurement_selection WHERE device_id = '" + e2 + "'"))
-                .as("die Erstwert-Marke ersetzt die fehlende Quittung").containsExactly("first_sample 09:55");
+        for (String box : List.of(e1, e2)) {
+            int jeTakt = box.equals(e1) ? 4 : 5;
+            List<String> jeMesszeit = zeilen("SELECT to_char(time AT TIME ZONE 'UTC', 'HH24:MI') || ' ' "
+                    + "|| count(entity_id) || '/' || count(*) || ' ' || coalesce(string_agg(DISTINCT role, ','), '-') "
+                    + "FROM device_measurement_sample WHERE device_id = '" + box + "' GROUP BY time ORDER BY time");
+            String voll = jeTakt + "/" + jeTakt + " beobachtung";
+            assertThat(jeMesszeit).as("je Messzeit: zugeordnet/geschrieben und Rolle — auch der erste Takt")
+                    .containsExactly("09:55 " + voll, "09:56 " + voll, "09:57 " + voll, "09:58 " + voll,
+                            "09:59 " + voll);
+            // Der erste Wert setzt nur noch die Marke; applied_at bleibt das der Quittung.
+            assertThat(zeilen("SELECT DISTINCT apply_status || ' ' || to_char(applied_at AT TIME ZONE 'UTC', "
+                    + "'HH24:MI') FROM device_measurement_selection WHERE device_id = '" + box + "'"))
+                    .as("applied_at aus der Quittung, nicht aus dem ersten Wert").containsExactly("first_sample 09:50");
+            assertThat(zahl("SELECT count(*) FROM device_measurement_sample s JOIN device_measurement_selection a "
+                    + "ON a.device_id = s.device_id AND a.point_key = s.point_key WHERE s.device_id = '" + box
+                    + "' AND s.applied_revision = a.desired_revision AND s.entity_id = a.entity_id"))
+                    .as("jeder Wert mit der Fassung und der Komponente seiner Auswahlzeile").isEqualTo(takte * jeTakt);
+        }
         // Die Naht zur api-Hälfte: genau diese Spalten schreibt DauerlaeuferGanzerWegDbTest.
-        assertThat(zeilen("SELECT DISTINCT concat_ws(' ', role, delivery, value_kind, applied_revision, delay_s, "
-                + "aggregation_kind, extract(epoch FROM received_at - time)) FROM device_measurement_sample "
-                + "WHERE device_id = '" + e2 + "' AND entity_id IS NOT NULL"))
-                .containsExactly("beobachtung direkt counter 1 2 counter 2.000000");
+        assertThat(zeilen("SELECT DISTINCT concat_ws(' ', role, delivery, value_kind, delay_s, aggregation_kind, "
+                + "extract(epoch FROM received_at - time)) FROM device_measurement_sample"))
+                .containsExactly("beobachtung direkt counter 2 counter 2.000000");
     }
 
     private void senden(List<JsonNode> zustellungen) throws Exception {
@@ -234,7 +233,7 @@ class DauerlaeuferWriterNahtTest {
         while (zahl(sql) < erwartet && System.nanoTime() < frist) {
             Thread.sleep(250);
         }
-        assertThat(zahl(sql)).as("E-2: jeder Wert der Vorlage ist geschrieben").isEqualTo(erwartet);
+        assertThat(zahl(sql)).as(box + ": jeder Wert der Vorlage ist geschrieben").isEqualTo(erwartet);
     }
 
     /** Der Umschlag als {@code measurements.raw}-Ereignis — die Felder, die ingest durchreicht. */

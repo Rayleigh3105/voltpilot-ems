@@ -962,13 +962,27 @@ beim Anlegen vergibt.
 
 ### 14.2 Aufbau wie ein Messkunde, zwei Boxen anmelden
 
-Der Dauerläufer ist ein gewöhnlicher Messkunde. Sein Messwert-Alter entsteht erst, wenn
-**Funktion „Messen“** an einem Standort aktiv ist und die Box-Werte über eine
-**Mess-Auswahl** einer Komponente zugeordnet sind. Der Lücken-Melder zählt nur zugeordnete
-Werte (`LueckenMelder.java:84`, `UemsMetricsRepository.java:88-99`).
+Der Dauerläufer ist ein gewöhnlicher Messkunde und wird genau so eingerichtet. Sein
+Messwert-Alter entsteht erst, wenn **Funktion „Messen“** an einem Standort eingerichtet ist und
+jeder Box-Wert einer Komponente zugeordnet ist, deren Datenquelle die Box führt. Der
+Lücken-Melder zählt nur solche Werte (`LueckenMelder.java:84`, `UemsMetricsRepository.java:88-99`).
+
+**Was der Simulator selbst tut:** Er verhält sich wie eine echte Box
+(`uems_dauerlaeufer.py`, Weg a+). Er beantwortet die Registerlesung aus dem Baukasten
+(Schritt 3), er lernt die Mess-Auswahl, die die Plattform der Box zustellt (Schritt 4), er
+quittiert sie, und er sendet genau die Schlüssel, die die Plattform vergeben hat. **Du überträgst
+keinen Punktschlüssel.** Ohne Zustellung sendet der Simulator nichts, wie eine Box ohne Plan.
+
+Die Zähler hinter den Boxen (fest im Simulator, `GATEWAY` und `register`):
+
+| Box | Anlage | Gateway (Modbus TCP) | Messstellen und Register (Eingangsregister, u32, hohes Wort zuerst, ×0,1 kWh) |
+|---|---|---|---|
+| E-1 | AN-1 (Halle 1) | `10.99.1.10`, Port 502, Unit 1 | MS-05 → 500, MS-06 → 600, MS-07 → 700, MS-08 → 800 |
+| E-2 | AN-2 (Halle 2) | `10.99.2.10`, Port 502, Unit 1 | MS-10 → 1000, MS-11 → 1100, MS-12 → 1200, MS-13 → 1300, MS-14 → 1400 |
 
 1. Als Dauerläufer-Benutzer: Standort „Werk Dauerläufer“ anlegen, darin zwei Anlagen im Modus
-   „nur messen“: `AN-1` (Halle 1) und `AN-2` (Halle 2).
+   „nur messen“: `AN-1` (Halle 1) und `AN-2` (Halle 2). Am Standort Funktion **„Messen“**
+   einrichten.
 2. Zwei Boxen anmelden, je eine an ihrer Anlage. Das geht mit dem Betreiber-Werkzeug und der
    Anmeldung aus 14.1:
    ```bash
@@ -980,51 +994,59 @@ Werte (`LueckenMelder.java:84`, `UemsMetricsRepository.java:88-99`).
    ```
    Das Werkzeug beansprucht die Box im Kundenbereich des Tokens (`POST /api/v1/devices/claim`),
    stellt ihr Zertifikat aus und schreibt die ACL-Zeile (`provision-device.sh:16-21`). Merk dir
-   je Box die Geräte-UUID: `<DL_E1_DEVICE>` und `<DL_E2_DEVICE>`.
-3. „Messen & Auswerten“ je Anlage: Messstellen mit diesen Punktschlüsseln anlegen und binden.
-   Genau diese Schlüssel sendet der Simulator (`uems_szenarien.py` `KANAELE`,
-   `uems_dauerlaeufer.py` `BOX_REIHEN`):
-   E-1: `custom.ms-05.wirkenergie-bezug` bis `custom.ms-08.…`. E-2: `custom.ms-10.…` bis
-   `custom.ms-14.…` (MS-14 heißt `custom.ms-14.ocpp-zaehlerstand`). Alle sind Zählerstände
-   in kWh, `decoded = raw / 10`.
+   je Box die Geräte-UUID: `<DL_E1_DEVICE>` und `<DL_E2_DEVICE>`. **Dann zuerst 14.3 und 14.4
+   erledigen und den Simulator starten**, denn die nächsten Schritte brauchen eine Box, die
+   antwortet.
+3. **Je Messstelle ein Zähler im Modbus-Baukasten** (Anlage › Komponenten › eigenes
+   Modbus-Gerät; `POST …/components/custom/read`, dann `POST …/components/custom`):
+   Geräte-Adresse = Gateway der Halle aus der Tabelle. Messwert „Wirkenergie Bezug“
+   (bei MS-14 „OCPP-Zählerstand“): Eingangsregister, Adresse aus der Tabelle, Datentyp u32,
+   Wortfolge „hohes Wort zuerst“, Skalierung 0,1, Einheit kWh. Name des Geräts = Messstelle
+   (`MS-05` …). „Jetzt lesen“ muss einen Zählerstand zeigen: Das ist der Simulator, der
+   antwortet. Ein Lesen je Halle genügt als Verbindungsbeleg; die übrigen Zähler derselben
+   Halle speicherst du mit derselben Adresse. Es entstehen 4 + 5 Geräte.
+4. **Je Messstelle „Eigenen Messwert hinzufügen“** an der Box (Box-Seite › Beobachtete
+   Register; `POST /api/v1/devices/{box}/measurement-selection/custom?entityId=<Gerät>`), mit
+   denselben Zahlen wie in Schritt 3 und dem Gerät der Messstelle als Komponente. Die Plattform
+   vergibt den Schlüssel selbst (`custom.<32 Hexzeichen>`) und stellt die Auswahl der Box zu.
+   **Ablesen:** Jede Zeile wechselt von „wartet“ auf „beobachtet“, spätestens mit dem ersten
+   Wert (`beobachteteRegister.ts:197`). Möglich macht das die Quittung des Simulators
+   (`apply_status` „applied“). Steht dort „abgelehnt“, stimmt eine Zahl nicht mit der Tabelle
+   überein: Der Simulator nimmt nur u32-Eingangsregister auf den Adressen seiner Halle an.
+5. **Datenquelle und Zuständigkeit: „Vorschlag übernehmen“**, je Anlage einmal. Das Portal hat
+   dafür heute keinen Knopf, deshalb mit dem Dauerläufer-Token (`$DL_TOKEN`, derselbe wie in
+   Schritt 2):
+   ```bash
+   curl -sS -H "Authorization: Bearer $DL_TOKEN" \
+     https://portal.voltpilot.de/api/v1/sites/<AN-1-UUID>/data-sources/vorschlag
+   ```
+   Die Liste zeigt **einen** Vorschlag (das Gateway der Halle, die Box, die vier oder fünf
+   Zähler). Genau so bestätigen:
+   ```bash
+   curl -sS -X POST -H "Authorization: Bearer $DL_TOKEN" -H 'Content-Type: application/json' \
+     https://portal.voltpilot.de/api/v1/sites/<AN-1-UUID>/data-sources/vorschlag/uebernehmen \
+     -d '{"vorschlaege":[{"device_id":"<box.id>","protokoll":"<protokoll>","adresse":"<adresse>",
+          "komponenten":["<id>", …]}]}'
+   ```
+   Die Werte für `device_id`, `protokoll`, `adresse` und `komponenten` übernimmst du
+   unverändert aus der Liste. Das legt die Datenquelle an, hängt sie an die Zähler
+   (`DatenquelleBestandRepository.java:167-176`) und trägt die Box als zuständig ein
+   (`DatenquelleVorschlagService.java:185-190`). Ohne diesen Schritt wären die Werte Spiegel
+   (`MesswertHerkunft.java:447`), und der Lücken-Melder zählte sie nicht.
 
-> **⚠ Schritt 3 geht so heute nicht (berichtigt am 21.09.2026, NW-6 im Kleinen,
-> `DauerlaeuferGanzerWegDbTest`).** Standort, Anlagen, Funktion „Messen“ und die zwei Boxen
-> entstehen über die Portalwege wie beschrieben. Die Mess-Auswahl aber nimmt die Schlüssel des
-> Simulators über **keinen** Weg an:
->
-> - Die Katalog-Auswahl (`PUT /api/v1/devices/{box}/measurement-selection/{schlüssel}`) antwortet
->   bei allen neun Schlüsseln 400 „Dieser Katalog-Messpunkt ist nicht lesbar oder unbekannt.“
->   (`MeasurementSelectionService.java:416`). `custom.ms-05.…` steht in keinem Katalog.
-> - „Eigenen Messwert hinzufügen“ (`POST …/measurement-selection/custom`) ordnet zwar der
->   Komponente zu, vergibt den Schlüssel aber selbst: `custom.<32 Hexzeichen>`
->   (`MeasurementSelectionService.java:291`). Der Simulator sendet einen anderen.
->
-> Ohne Auswahlzeile verwirft der Writer jeden Wert (`MeasurementWriteRepository.java:145-150`).
-> Der Lücken-Melder schreibt dann keinen Stand, und `…letzter_messwert_age_seconds` hat für den
-> Dauerläufer **keine Reihe**. Eine Regel der Form „Alter > 900 s“ sieht dann nichts; sie
-> schweigt, statt zu melden. Ob `VoltPilotDauerlaeuferStumm` ein fehlendes Alter mitprüft,
-> steht in der gitops-Regel.
->
-> Eine Auswahlzeile allein genügt außerdem nicht. Damit der Writer `entity_id` setzt und der
-> Lücken-Melder den Wert zählt, braucht es zusätzlich:
->
-> - eine Datenquelle an der Komponente (`HerkunftNachschlag.java:106-108`). Die setzt nur
->   „Vorschlag übernehmen“ (`POST /api/v1/sites/{anlage}/data-sources/vorschlag/uebernehmen`,
->   `DatenquelleBestandRepository.java:167`);
-> - die Zuständigkeit der Box für diese Datenquelle. Sonst ist die Rolle „Spiegel“
->   (`MesswertHerkunft.java:447`), und Spiegel zählt der Lücken-Melder nicht (`LueckenMelder.java:84`);
-> - eine Einstellungs-Fassung zur Messzeit (`MesswertHerkunft.java:437`). Der Simulator
->   quittiert keine Auswahl; `applied_at` setzt erst die Erstwert-Marke des Writers
->   (`MeasurementWriteRepository.java:451`). Am echten Writer (`DauerlaeuferWriterNahtTest`)
->   bleibt darum der erste Wert jedes Schlüssels ohne Zuordnung, ab dem zweiten Takt tragen alle
->   eine. Das gilt, sobald der Writer seine Zeitleiste neu liest; er hält sie 60 s
->   (`HerkunftNachschlag.java:62`), so lange wie ein Takt des Simulators.
->
-> Welcher Weg das behebt, ist noch **nicht entschieden**. Zur Wahl stehen: der Simulator sendet
-> die Schlüssel, die die Plattform vergibt; er sendet Katalog-Schlüssel; oder die Mess-Auswahl
-> nimmt feste `custom.*`-Schlüssel an. Bis dahin bleibt der Dauerläufer ohne Messwert-Alter, und
-> die Übung 14.6 ist nicht fahrbar.
+**Warum der Simulator lernt statt feste Schlüssel zu senden** (belegt in
+`DauerlaeuferGanzerWegDbTest`): Die festen Schlüssel der AP-07-Szenarien
+(`custom.ms-05.wirkenergie-bezug` …) nimmt die Katalog-Auswahl mit 400 ab
+(`MeasurementSelectionService.java:416`), und „Eigenen Messwert hinzufügen“ vergibt den Schlüssel
+selbst (`MeasurementSelectionService.java:291`). Ohne Auswahlzeile verwirft der Writer jeden
+Wert (`MeasurementWriteRepository.java:145-150`). Weil der Simulator quittiert, steht die Fassung
+vor dem ersten Wert, und auch der erste Wert je Schlüssel trägt seine Zuordnung
+(`DauerlaeuferWriterNahtTest`).
+
+**Solange noch kein Wert kam** (eingerichtet, Simulator aus oder noch nicht verbunden), hat
+`…letzter_messwert_age_seconds` für den Dauerläufer keine Reihe. Stattdessen steht
+`voltpilot_uems_kundenbereich_messwert_zustand{tenant="<DL_TENANT>",zustand="nie"}` auf 1.
+Daran hängt die zweite Regel `VoltPilotDauerlaeuferStumm` (`zustand: nie`, nach 15 Minuten).
 
 ### 14.3 Geheimnis hinterlegen
 
@@ -1033,6 +1055,7 @@ Aus 14.2 hast du je Box einen Schlüssel und ein Zertifikat, dazu die Geräte-CA
 mit den Schlüsseln `ca.crt`, `e1.crt`, `e1.key`, `e2.crt` und `e2.key`. Das Secret steht nie im
 Repo und nie im gitops-Klartext; nimm den Weg, auf dem die anderen Produktionsgeheimnisse
 hinkommen. Die Namen und die Form stehen in `tools/edge-simulator/.env.dauerlaeufer.example`.
+**Punktschlüssel gehören nicht hinein**: die lernt der Simulator aus der Zustellung.
 
 ### 14.4 Schalter, Platzhalter, Sync
 
@@ -1054,9 +1077,11 @@ sichtbar, denn darauf schaut die Regel. Ein Wert, der keine UUID ist, zum Beispi
 vergessenes `CHANGE-ME`, lässt die api **nicht starten**. Das ist Absicht: Sonst würde ein
 Tippfehler den Dauerläufer still wieder mitzählen.
 
-**Nachsehen:** Nach etwa fünf Minuten liefert `…letzter_messwert_age_seconds{tenant="<DL_TENANT>"}`
-einen Wert unter 300. Außerdem zeigt die Probe des Simulator-Pods „bereit“, und der
-Warteschlangen-Stand steht im Lebenszeichen (`verbunden: true` je Box).
+**Nachsehen:** Die Probe des Simulator-Pods zeigt „bereit“. Im Lebenszeichen stehen
+`verbunden: true` je Box und `gelernt`: vor 14.2 Schritt 4 `0`, danach `4` (E-1) und `5` (E-2).
+Das Protokoll des Pods meldet je Box „Revision … angewendet, … angenommen, 0 abgelehnt“. Nach
+14.2 Schritt 5 und etwa fünf Minuten liefert
+`…letzter_messwert_age_seconds{tenant="<DL_TENANT>"}` einen Wert unter 300.
 
 ### 14.5 Monatsbericht als Dauerbeleg
 
@@ -1082,11 +1107,17 @@ frühestens 7 Tage nach Monatsende (`docs/contracts/v2/bericht.md:134`).
    (Lücken-Melder plus 60-s-Sammeltakt), und der Alarm löst sich. Sequenz und Zählerstand
    laufen nach dem Neustart weiter, ohne Reset (`uems_dauerlaeufer.py` `takt_von`).
 
-Lokal belegt ist, dass die Metrik bei ausbleibenden Werten über 900 s steigt
-(`DauerlaeuferMetrikenDbTest`, mit verstellter Uhr). `DauerlaeuferGanzerWegDbTest` geht die
-api-Hälfte mit der Einrichtung über die Portalwege, dem echten Lücken-Melder und den Umschlägen
-des Simulators. Dort steigt das Alter von 148 s auf 1 108 s, und der Schalter nimmt die zwei
-Anlagen aus der Flotte. Die Zeilen an der Writer-Naht sind die, die `DauerlaeuferWriterNahtTest`
-am echten Writer sieht, aber nur mit einer Einrichtung, die über die Portalwege heute nicht
-entsteht (Hinweis unter 14.2). Ob der Alarm in Produktion wirklich zugestellt wird, zeigt nur
-diese Übung.
+Nach dem Neustart stellt der Broker die gehaltene Auswahl erneut zu; der Simulator lernt sie
+neu und quittiert sie noch einmal. Einen Handgriff braucht das nicht.
+Nur wenn der Broker selbst neu gestartet ist und dabei gehaltene Nachrichten verloren hat, bleibt
+der Simulator nach seinem Neustart stumm (`gelernt: 0` im Lebenszeichen). Dann je Box einen
+eigenen Messwert einmal aus- und wieder einschalten: Die Plattform stellt dadurch neu zu.
+
+Lokal belegt ist Folgendes. `DauerlaeuferMetrikenDbTest` zeigt mit verstellter Uhr, dass die
+Metrik bei ausbleibenden Werten über 900 s steigt. `DauerlaeuferGanzerWegDbTest` richtet alles
+aus 14.1/14.2 über die Routen ein: Baukasten-Lesung, Geräte, eigene Messwerte, Zustellung und
+Quittung, Vorschlag übernehmen. Die Box-Antworten stammen dabei aus dem echten Simulator. Vor dem
+ersten Wert steht `zustand="nie"` auf 1. Danach steigt das Alter von 148 s auf 1 108 s, und der
+Schalter nimmt die zwei Anlagen aus der Flotte. Am echten Writer trägt jeder Wert seine
+Zuordnung, auch der erste (`DauerlaeuferWriterNahtTest`). Ob der Alarm in Produktion wirklich
+zugestellt wird, zeigt nur diese Übung. Sie ist Betreiber-Punkt `nw6_alarmuebung` in Tor G1.

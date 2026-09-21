@@ -401,6 +401,12 @@ def punkte(tor: str):
             ('NW-6', 'Alarm-Uebung: jeder Alarm einmal, jeder Laeufer-Schalter einmal', '§3.4 / §4.13',
              betreiber('nw6_alarmuebung',
                        'jeden Alarm einmal ausgeloest, Zustellung an "betreiber" beobachtet, jeden Laeufer-Schalter umgelegt')),
+            ('NW-6k', 'NW-6 im Kleinen: Dauerlaeufer-Einrichtung ueber die Produktwege traegt bis zur Alarm-Kennzahl',
+             'Drehbuch §14.2 / §14.6',
+             surefire('com.voltpilot.api.metrics.DauerlaeuferGanzerWegDbTest',
+                      'PR 999, Einrichtung ueber die Produktwege mit dem IP-18-Folgepaket; die Writer-Haelfte '
+                      'DauerlaeuferWriterNahtTest liegt in services/timescale-writer. Die Uebung in Produktion '
+                      'bleibt NW-6')),
             ('L6', 'Kapazitaet nach L6 als Zahl', '§3.4',
              betreiber('kapazitaet_l6', 'Kapazitaet aus der echten Belegung gerechnet, nicht behauptet (W5)')),
             ('P', 'Pilotkunden gewaehlt und eingewilligt', '§3.4',
