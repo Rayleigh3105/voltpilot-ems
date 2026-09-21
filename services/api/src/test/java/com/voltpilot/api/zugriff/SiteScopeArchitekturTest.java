@@ -183,6 +183,12 @@ class SiteScopeArchitekturTest {
             // übergeben; der Controller trägt den belegten platform-admin-Zaun.
             new Erlaubt("repo/AdminFleetRepository.java", "telemetry", 2, Grund.PLATTFORM,
                     "web/AdminFleetController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            // AP-15 IP-21: der Netzpunkt der führenden Box beim Auslösen der Sprungprobe (nur /admin) und beim
+            // Auswerten des Box-Berichts (MQTT-Hörer, ohne Anfrage); die Probe gehört zu Verbund und Anlage.
+            new Erlaubt("uems/SprungprobeRepository.java", "telemetry", 1, Grund.PLATTFORM,
+                    "web/AdminGemeinsameSteuerungController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("uems/SprungprobeRepository.java", "telemetry", 1, Grund.OHNE_ANFRAGE,
+                    "uems/SprungprobeBerichtListener.java", "IMqttMessageListener"),
             new Erlaubt("repo/AdminFleetRepository.java", "telemetry_rollup_15m", 2, Grund.PLATTFORM,
                     "web/AdminFleetController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("repo/TenantRepository.java", "telemetry", 1, Grund.PLATTFORM, "web/AdminController.java",
