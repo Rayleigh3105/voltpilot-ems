@@ -122,6 +122,38 @@ class SteuerungsverbundAnteilVectorsTest {
     }
 
     @Test
+    void ungeregeltesHinterDemAbgangStehtInBeidenSummen() throws Exception {
+        JsonNode f = null;
+        for (JsonNode x : lies(VECTORS).get("anteile")) {
+            if (x.get("name").asText().startsWith("ungeregeltes_hinter_dem_abgang")) {
+                f = x;
+            }
+        }
+        assertThat(f).isNotNull();
+        List<Mitglied> nurGeraete = new ArrayList<>();
+        int mitZusammensetzung = 0;
+        for (JsonNode m : f.get("mitglieder")) {
+            JsonNode z = m.get("zusammensetzung");
+            BigDecimal nenn = bd(m.get("nenn_kw"));
+            if (z != null) {
+                mitZusammensetzung++;
+                BigDecimal hoechst = bd(z.get("ungeregelt_hoechstwert_kw"));
+                assertGleich("Nenn = Geräte + Ungeregeltes", nenn, bd(z.get("geraete_nenn_kw")).add(hoechst));
+                assertGleich("Rückfall = Geräte + Ungeregeltes", bd(m.get("rueckfall_kw")),
+                        bd(z.get("geraete_rueckfall_kw")).add(hoechst));
+                nenn = bd(z.get("geraete_nenn_kw"));
+            }
+            nurGeraete.add(new Mitglied(m.get("box").asText(), Rolle.valueOf(m.get("rolle").asText().toUpperCase()), nenn,
+                    bd(m.get("rueckfall_kw"))));
+        }
+        assertThat(mitZusammensetzung).isEqualTo(1);
+        // der Vektor beweist etwas: mit der Nennleistung NUR der Geräte wäre es ein (falscher) Eingabefehler
+        JsonNode fall = f;
+        assertThatThrownBy(() -> SteuerungsverbundAnteile.anteile(bd(fall.get("grenze_kw")), bd(fall.get("vorbehalt_kw")),
+                nurGeraete)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void jederUebergangsstandGiltImJavaZwilling() throws Exception {
         JsonNode faelle = lies(VECTORS).get("uebergangsstand");
         assertThat(faelle.size()).isGreaterThanOrEqualTo(5);

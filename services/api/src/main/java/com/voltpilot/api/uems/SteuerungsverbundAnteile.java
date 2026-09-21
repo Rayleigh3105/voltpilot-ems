@@ -79,7 +79,7 @@ public final class SteuerungsverbundAnteile {
 
     /**
      * Anteile einer Richtung (G2–G4). Ungültiger Eingang — negativ, Box doppelt, Lese-Box als Mitglied, Rückfall über
-     * Nennleistung (nach der Rundung) — wirft {@link IllegalArgumentException}.
+     * Nennleistung (an den rohen Werten) — wirft {@link IllegalArgumentException}.
      */
     public static Auslegung anteile(BigDecimal grenzeKw, BigDecimal vorbehaltKw, List<Mitglied> mitglieder) {
         nichtNegativ(grenzeKw);
@@ -96,13 +96,14 @@ public final class SteuerungsverbundAnteile {
             if (!VERTEIL_REIHENFOLGE.contains(m.rolle())) {
                 throw new IllegalArgumentException("nur fuehrt und steuert_mit sind Mitglieder: " + m.box());
             }
-            long f = zehntel(m.rueckfallKw(), RoundingMode.CEILING);
-            long n = zehntel(m.nennKw(), RoundingMode.FLOOR);
-            if (f > n) {
+            if (m.rueckfallKw().compareTo(m.nennKw()) > 0) {
                 throw new IllegalArgumentException("Rückfall über Nennleistung: " + m.box());
             }
+            long f = zehntel(m.rueckfallKw(), RoundingMode.CEILING);
             rueckfall.put(m.box(), f);
-            nenn.put(m.box(), n);
+            // Obergrenze: der Anteil ist nie kleiner als der aufgerundete Rückfall, auch wenn die abgerundete
+            // Nennleistung darunter liegt (22,08 / 22,08 kW → 22,1 kW) — und die Box bekommt darüber nichts
+            nenn.put(m.box(), Math.max(zehntel(m.nennKw(), RoundingMode.FLOOR), f));
         }
 
         long verteilbar = zehntel(grenzeKw, RoundingMode.FLOOR) - zehntel(vorbehaltKw, RoundingMode.CEILING);

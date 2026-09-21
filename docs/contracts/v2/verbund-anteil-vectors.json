@@ -14,7 +14,7 @@
     "Jede Box bekommt mindestens ihren Geräte-Rückfall; passt die Summe der Rückfälle nicht in verteilbar: auslegung_passt_nicht — in BEIDEN Richtungen eine Ablehnung, keine Warnung (G3, E2 = A).",
     "Der Rest geht zuerst an die mitsteuernden Boxen bis zur Nennleistung, anteilig nach Bedarf (Nennleistung − Rückfall); was dann bleibt, an die führende; was auch dann bleibt, bleibt ungenutzt (G4).",
     "Abrunden, nie Aufrunden: jeder anteilige Zuschlag wird auf Zehntel-kW abgerundet; der Rundungsrest bleibt ungenutzt und wandert nicht weiter (G2).",
-    "Rundung zur sicheren Seite am Eingang: was die Grenze gibt (Grenze, Nennleistung), wird abgerundet; was sie belegt (Vorbehalt, Geräte-Rückfall), aufgerundet.",
+    "Rundung zur sicheren Seite am Eingang: was die Grenze gibt (Grenze, Nennleistung), wird abgerundet; was sie belegt (Vorbehalt, Geräte-Rückfall), aufgerundet. „Rückfall über Nennleistung“ prüfen die rohen Werte; die Obergrenze der Verteilung ist max(Nennleistung abgerundet, Rückfall aufgerundet).",
     "Übergangsstand = je Box das Kleinere aus alt und neu; eine Box, die nur in einem Stand vorkommt, steht dort mit 0. Zielstand erst nach der Quittung JEDER verengten Box; ist der Übergang schon der Zielstand, gibt es keinen zweiten Schritt (G5).",
     "Die Box prüft jedes Anteils-Dokument: Mandant und Anlage (fremde_anlage), die eigene Kennung in BEIDEN Richtungen (box_fehlt_im_dokument), Epoche und Revision steigen nur (revision_aelter), je Richtung Summe ≤ verteilbar (summe_ueber_verteilbar) — in dieser Reihenfolge; dieselbe Revision noch einmal wird angenommen (T4, G5, Y1)."
   ],
@@ -232,6 +232,42 @@
         {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 60.09, "rueckfall_kw": 20}
       ],
       "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 99.9, "summe_rueckfall_kw": 60.0, "anteile": {"B-1": 40.0, "B-2": 59.9}, "ungenutzt_kw": 0.0}
+    },
+    {
+      "name": "rueckfall_gleich_nennleistung_krumm: sechs Ladepunkte zu 3,68 kW, Rückfall unbekannt = Nennleistung 22,08 kW → Anteil 22,1 kW, Bedarf 0",
+      "hinweis": "konstruiert. Aufgerundeter Rückfall 22,1 kW > abgerundete Nennleistung 22,0 kW: die Obergrenze ist das Größere, der Anteil nie kleiner als der aufgerundete Rückfall, darüber nichts. Kein Eingabefehler — roh gilt 22,08 = 22,08.",
+      "richtung": "bezug",
+      "grenze_kw": 100,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 50, "rueckfall_kw": 0},
+        {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 22.08, "rueckfall_kw": 22.08}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 100.0, "summe_rueckfall_kw": 22.1, "anteile": {"B-1": 50.0, "B-2": 22.1}, "ungenutzt_kw": 27.9}
+    },
+    {
+      "name": "ungeregeltes_hinter_dem_abgang: PV 50 kW läuft frei + ungeregelter Erzeuger (Höchstwert 15 kW) hinter dem Abgangszähler von B-2 → Rückfall 65 = Nennleistung 65 kW",
+      "hinweis": "konstruiert. nenn_kw und rueckfall_kw meinen dieselbe Menge: alles hinter dem Abgang der Box, das Ungeregelte in BEIDEN Summen (G3, B3). Zählte die Nennleistung nur die Geräte (50 kW), läge der Rückfall 65 kW darüber — ein falscher Eingabefehler.",
+      "richtung": "einspeisung",
+      "grenze_kw": 120,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40},
+        {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 65, "rueckfall_kw": 65,
+          "zusammensetzung": {"geraete_nenn_kw": 50, "geraete_rueckfall_kw": 50, "ungeregelt_hoechstwert_kw": 15}}
+      ],
+      "erwartet": {"urteil": "passt", "ablehnung": null, "verteilbar_kw": 120.0, "summe_rueckfall_kw": 105.0, "anteile": {"B-1": 55.0, "B-2": 65.0}, "ungenutzt_kw": 0.0}
+    },
+    {
+      "name": "Fehler: Rückfall 22,09 kW über Nennleistung 22,08 kW — geprüft an den rohen Werten",
+      "richtung": "bezug",
+      "grenze_kw": 100,
+      "vorbehalt_kw": 0,
+      "mitglieder": [
+        {"box": "B-1", "rolle": "fuehrt", "nenn_kw": 50, "rueckfall_kw": 0},
+        {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 22.08, "rueckfall_kw": 22.09}
+      ],
+      "erwartet": {"fehler": true}
     },
     {
       "name": "Fehler: Geräte-Rückfall über der Nennleistung der Box",

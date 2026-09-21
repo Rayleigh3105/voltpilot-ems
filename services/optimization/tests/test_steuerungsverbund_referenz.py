@@ -78,10 +78,11 @@ def anteile(grenze_kw, vorbehalt_kw, mitglieder):
         raise ValueError("Box doppelt")
     if any(m["rolle"] not in MITGLIED_ROLLEN for m in mitglieder):
         raise ValueError("nur fuehrt und steuert_mit sind Mitglieder")
+    if any(Decimal(str(m["rueckfall_kw"])) > Decimal(str(m["nenn_kw"])) for m in mitglieder):
+        raise ValueError("Rueckfall ueber Nennleistung")  # an den ROHEN Werten
     F = {m["box"]: _zehntel(m["rueckfall_kw"], ROUND_CEILING) for m in mitglieder}
-    N = {m["box"]: _zehntel(m["nenn_kw"], ROUND_FLOOR) for m in mitglieder}
-    if any(F[b] > N[b] for b in boxen):
-        raise ValueError("Rueckfall ueber Nennleistung")
+    # Obergrenze: nie kleiner als der aufgerundete Rueckfall (22,08 / 22,08 kW -> 22,1 kW), darueber nichts
+    N = {m["box"]: max(_zehntel(m["nenn_kw"], ROUND_FLOOR), F[m["box"]]) for m in mitglieder}
 
     V = _zehntel(grenze_kw, ROUND_FLOOR) - _zehntel(vorbehalt_kw, ROUND_CEILING)
     if V < 0:
@@ -222,6 +223,18 @@ def test_jeder_anteilsfall_gilt_in_der_python_referenz(fall):
     assert _gleich(a["ungenutzt_kw"], e.get("ungenutzt_kw"))
     # die Summe der Anteile ueberschreitet nie das Verteilbare (G2)
     assert sum(a["anteile"].values(), Decimal(0)) <= a["verteilbar_kw"] or not a["anteile"]
+
+
+def test_ungeregeltes_hinter_dem_abgang_steht_in_beiden_summen():
+    fall = next(f for f in DATA["anteile"] if f["name"].startswith("ungeregeltes_hinter_dem_abgang"))
+    m = next(x for x in fall["mitglieder"] if "zusammensetzung" in x)
+    z = m["zusammensetzung"]
+    assert _gleich(m["nenn_kw"], Decimal(str(z["geraete_nenn_kw"])) + Decimal(str(z["ungeregelt_hoechstwert_kw"])))
+    assert _gleich(m["rueckfall_kw"], Decimal(str(z["geraete_rueckfall_kw"])) + Decimal(str(z["ungeregelt_hoechstwert_kw"])))
+    # der Vektor beweist etwas: mit der Nennleistung NUR der Geraete waere es ein (falscher) Eingabefehler
+    with pytest.raises(ValueError):
+        anteile(fall["grenze_kw"], fall["vorbehalt_kw"],
+                [dict(x, nenn_kw=z["geraete_nenn_kw"]) if x is m else x for x in fall["mitglieder"]])
 
 
 def test_abrunden_nie_aufrunden_ist_ein_eigener_vektor():

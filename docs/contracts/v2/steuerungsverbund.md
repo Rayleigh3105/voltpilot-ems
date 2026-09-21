@@ -18,7 +18,7 @@ Kästen = Empfehlung, E1 = A, E2 = A).
 | **G3 / E2 = A** | Jeder Anteil ≥ Geräte-Rückfall der Box und ≤ ihrer Nennleistung. Passt die Summe der Rückfälle nicht in `verteilbar`: `auslegung_passt_nicht` — in **beiden** Richtungen eine Ablehnung, keine Warnung. | `anteile` |
 | **G4** | Der Rest nach den Rückfällen geht zuerst an die mitsteuernden Boxen (`steuert_mit`) bis zur Nennleistung, anteilig nach Bedarf (Nennleistung − Rückfall); was bleibt, an die führende (`fuehrt`) bis zu ihrer Nennleistung; was auch dann bleibt, bleibt ungenutzt. | `anteile` |
 | **Abrunden** | Gerechnet wird in ganzen Zehntel-kW. Jeder anteilige Zuschlag wird **abgerundet, nie aufgerundet**; der Rundungsrest bleibt ungenutzt und wandert nicht weiter — auch nicht an die führende Box. Eigener Vektor „Abrunden, nie Aufrunden“: aufgerundet läge die Summe bei 100,1 kW über 100 kW verteilbar. | `anteile` |
-| **Rundung zur sicheren Seite** | Eingänge feiner als 0,1 kW: was die Grenze gibt (Grenze, Nennleistung), wird abgerundet; was sie belegt (Vorbehalt, Geräte-Rückfall), aufgerundet. Rückfall und Nennleistung werden nach der Rundung verglichen. | `anteile` |
+| **Rundung zur sicheren Seite** | Eingänge feiner als 0,1 kW: was die Grenze gibt (Grenze, Nennleistung), wird abgerundet; was sie belegt (Vorbehalt, Geräte-Rückfall), aufgerundet. Ob der Rückfall über der Nennleistung liegt, entscheiden die rohen Werte; die Obergrenze einer Box für die Verteilung ist max(Nennleistung abgerundet, Rückfall aufgerundet) — der Anteil ist nie kleiner als der aufgerundete Rückfall und darüber nichts (Vektor `rueckfall_gleich_nennleistung_krumm`: 22,08/22,08 kW → 22,1 kW). | `anteile` |
 | **G5 Zweischritt** | Übergangsstand = je Box das Kleinere aus alt und neu; wer nur in einem Stand vorkommt, steht im anderen mit 0. Er geht an alle. Der Zielstand folgt erst nach der Quittung JEDER verengten Box (`verengte_boxen` = Übergang < alt). Ist der Übergang schon der Zielstand (reines Verengen, R23), gibt es keinen zweiten Schritt. Der Übergang passt unter `verteilbar` beider Stände. | `uebergangsstand` |
 | **T4, G5, Y1 Dokument-Prüfung** | Die Box prüft jedes Anteils-Dokument in dieser Reihenfolge: Mandant und Anlage = ihre Identität (`fremde_anlage`) · die eigene Kennung steht in BEIDEN Richtungen der Tabelle — unbekannt ist keine Null (`box_fehlt_im_dokument`) · Epoche und Revision steigen nur: kleinere Epoche oder gleiche Epoche mit kleinerer Revision (`revision_aelter`) · je Richtung Summe ≤ `verteilbar` des Dokuments, exakt ohne Rundung (`summe_ueber_verteilbar`). Dieselbe Revision noch einmal (gespeichertes Dokument nach Wiederverbindung) wird angenommen. Eine neue Epoche setzt nur das Scharfschalten. | `dokument_pruefen` |
 
@@ -26,11 +26,14 @@ Die Scharfschalt-Ablehnung zur Auslegung ist `auslegung_passt_nicht` für jedes 
 `vorbehalt_ueber_grenze`, das ein Sonderfall ist (`verteilbar < 0 ≤ Summe der Rückfälle`); das Urteil selbst bleibt
 als Grund erhalten (Feld `ablehnung` je Vektor).
 
-Eingang je Richtung und Box: `nenn_kw` (Nennleistung dessen, was die Box in dieser Richtung steuert) und
-`rueckfall_kw` (Summe der Geräte-Rückfälle; `unbekannt` und `laeuft_frei` zählen mit Nennleistung, G3). Wie der Wert
-je Gerät entsteht, legt IP-6 (Katalog) fest; dieser Vertrag rechnet ab der Summe je Box. Mitglied ist nur, wer
+Eingang je Richtung und Box: `nenn_kw` und `rueckfall_kw` meinen **dieselbe Menge** — alles hinter dem Abgang (dem
+eigenen Messpunkt) der Box in dieser Richtung. `nenn_kw` = Nennleistung der gesteuerten Geräte + Höchstwert des
+Ungeregelten hinter dem Abgang; `rueckfall_kw` = Summe der Geräte-Rückfälle (`unbekannt` und `laeuft_frei` zählen
+mit Nennleistung) + derselbe Höchstwert (G3, B3). Das Ungeregelte steht also in BEIDEN Summen, sonst läge der
+Rückfall zu Unrecht über der Nennleistung (Vektor `ungeregeltes_hinter_dem_abgang`); was nicht hinter einem Abgang
+einer Box liegt, gehört in den Vorbehalt. Wie der Wert je Gerät entsteht, legt IP-6 (Katalog) fest; dieser Vertrag rechnet ab der Summe je Box. Mitglied ist nur, wer
 `fuehrt` oder `steuert_mit`; eine Lese-Box als Mitglied, eine doppelte Box, ein negativer Eingang und ein Rückfall über
-der Nennleistung sind Eingabefehler, kein Urteil (Vektoren mit `"fehler": true`). „Genau eine Box führt“ prüft das
+der Nennleistung (roh verglichen) sind Eingabefehler, kein Urteil (Vektoren mit `"fehler": true`). „Genau eine Box führt“ prüft das
 Verbund-Objekt (IP-4), nicht diese Rechnung.
 
 ## 2. Geschlossene Vokabulare
