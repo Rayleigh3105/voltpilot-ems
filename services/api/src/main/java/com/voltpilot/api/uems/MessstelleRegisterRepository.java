@@ -226,6 +226,11 @@ public class MessstelleRegisterRepository {
      * dieselben Fakten ein zweites Mal NUR über die Reihe ({@link Werte#reihe}): {@code entity_id} = Komponente,
      * Rolle nicht {@code spiegel} — das Kriterium von Verdichtung, Lücken-Melder und Werte-Karte
      * ({@code SpeicherklasseHistorie.mitDaten}), kein drittes.
+     *
+     * <p><b>Standort-Zaun:</b> der Box-Zweig zählt nur Werte an einer Anlage im Zugriff ({@code JOIN site}, RLS
+     * {@code site_scope}) — wie die Zuordnung der Werte-Karte ({@code MessstelleWerteService}). Die Mess-Selektion
+     * bindet die Komponente ohne {@code site_id}, und jeder Wert trägt die Anlage, an der er ankam; ohne den Join
+     * zeigte das Register den letzten Box-Wert einer fremden Anlage. Außerhalb fehlen Wert und Wort ganz.
      */
     static final String WERTE = """
             WITH paare AS (
@@ -245,6 +250,7 @@ public class MessstelleRegisterRepository {
                              coalesce(s.decoded_numeric, s.raw_numeric) AS zahl,
                              coalesce(s.decoded_text, s.raw_text) AS text
                         FROM device_measurement_sample s
+                        JOIN site st ON st.id = s.site_id
                        WHERE s.device_id = l.device_id AND s.point_key = l.kanal
                          AND s.quality = 'good' AND s.time >= l.ab AND s.time <= ?
                        ORDER BY s.time DESC
@@ -252,6 +258,7 @@ public class MessstelleRegisterRepository {
                   LEFT JOIN LATERAL (
                       SELECT true AS gab_es
                         FROM device_measurement_sample s
+                        JOIN site st ON st.id = s.site_id
                        WHERE s.device_id = l.device_id AND s.point_key = l.kanal
                          AND s.time >= l.ab AND s.time <= ?
                        LIMIT 1) j ON TRUE),
