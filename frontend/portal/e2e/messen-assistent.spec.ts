@@ -599,6 +599,45 @@ for (const breite of BREITEN) {
       await messeUndFotografiere(page, breite, 'standort-anlegen');
     });
 
+    test('Schritt 3 schlägt den Baukasten-Zähler MIT Angabe vor, den ohne lässt er aus (Schnitt 2)', async ({ page }) => {
+      // Zeilen wie PortalwegMesskundeAbnahmeTest sie vom Server bekommt: der eigene Messwert mit
+      // „Energie-Zählerstand – Bezug“ trägt eine Messstelle, der ohne Angabe ist keine_messgroesse.
+      const basis = vorschlagHalle2();
+      const zeile = basis.vorschlaege[0];
+      const vorschlag: MessstelleVorschlagsliste = {
+        ...basis,
+        vorschlaege: [{
+          ...zeile, kennzeichen: 'MS-0001', name: 'Zähler Druckluft', komponente_name: 'Zähler Druckluft',
+          stellung: null, unterzaehler_von: null, nebengroessen: [], hinweise: [],
+          hauptgroesse: { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Zählerstand' },
+          quelle: { kanal: 'custom.ea22355295944f859ec7f555c883134c', anzeigename: 'Zählerstand Bezug',
+            kanal_wertart: 'counter', herleitung: 'zaehlerstand' },
+        }],
+        ausgelassen: [{
+          anlage: zeile.anlage, komponente: 'c0000000-0000-4000-8000-0000000000a6', komponente_name: 'Zähler Spritzguss',
+          kanal: 'custom.9c3d25820f31463babfdacbe74549f51', grund: 'keine_messgroesse', zu: null,
+          text: '„Zähler Spritzguss“ misst keine Größe, die eine Messstelle trägt.',
+        }],
+      };
+      const wartet = registerNachUebernahme({ wartet: ['MS-0003'] });
+      await verdrahte(page, {
+        standorte: ahrenbergHeute(),
+        funktionen: ahrenbergFunktionen({ standorte: [ahrenbergMessen(wartet), funktionWerkLindach('bestand')] }),
+        vorschlag,
+        register: wartet,
+      });
+      await oeffne(page, breite, `?standort=${FIXTURE_IDS.st1}`);
+      await schritt2(page);
+      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Was bedeutet jeder Messkanal?' })).toBeVisible();
+      await expect(page.getByText('1 von 1 Vorschlag gewählt')).toBeVisible();
+      await expect(page.locator('.vp-ma-vorschlag')).toHaveCount(1);
+      await expect(page.locator('.vp-ma-vorschlag').first()).toContainText('Zähler Druckluft');
+      await page.getByText('Nicht vorgeschlagen (1)').click();
+      await expect(page.getByText('„Zähler Spritzguss“ misst keine Größe, die eine Messstelle trägt.')).toBeVisible();
+      await messeUndFotografiere(page, breite, 'schritt3-baukasten');
+    });
+
     test('Schritt 3 → 4 → 5 für Halle 2 (WAGO C-1): vier Vorschläge, Hauptzähler-Regel, Prüfliste aus Fakten, Fertig', async ({ page }) => {
       const wartet = registerNachUebernahme({ wartet: ['MS-0003'] });
       const cloud: Cloud = {
