@@ -26,7 +26,7 @@ Die Box urteilt über jeden Plan 2.0 fachlich und meldet das Urteil auf
 | `grund` | nur bei `false` | Grund der Ablehnung (geschlossen, siehe unten); bei `true` verboten |
 | `plan_id` | wenn lesbar | Kennung des beurteilten Plans; fehlt nur, wenn die Box sie nicht lesen konnte |
 | `generated_at` | wenn lesbar | Echo des `generated_at` des beurteilten Plans |
-| `lauf_nr` | wahlfrei | Echo der Laufnummer, sobald der Plan sie trägt (IP-15); heute nie gesendet |
+| `lauf_nr` | wahlfrei | Echo der Laufnummer; der Plan trägt sie seit IP-15 (nur in einer scharfen Anlage, [Fahrplan 2.0](mqtt-schedule-2.0.md)), das Echo braucht ein Edge-Release und ist noch nicht gebaut — heute nie gesendet |
 | `anteile_revision` | wahlfrei | Revision der wirksamen Anteile (IP-17); heute nie gesendet |
 
 Weitere Felder werden von der Cloud überlesen (additive Erweiterung).

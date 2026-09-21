@@ -81,6 +81,14 @@ class MitsteuerndeBox:
     pv_kwp: float = 0.0
     verbraucher: tuple[str, ...] = ()
 
+    @property
+    def bekommt_plan(self) -> bool:
+        """IP-15 (P2, R7, R14, R17): eine mitsteuernde Box bekommt ihr Plan-Dokument
+        genau dann, wenn der Planer sie NICHT als belegt rechnet - stumm, nach dem
+        Box-Tausch unbestaetigt und ohne die Faehigkeit ``steuerungsverbund_anteil``
+        sind derselbe Zustand: kein Kommando, kein Dokument."""
+        return not self.stumm
+
 
 @dataclass(frozen=True)
 class VerbundStand:
@@ -89,6 +97,11 @@ class VerbundStand:
     mitsteuernde: tuple[MitsteuerndeBox, ...]
     #: Nennleistung ALLER PV-Anlagen der Anlage (Nenner der Aufteilung).
     pv_kwp_gesamt: float = 0.0
+    #: Die fuehrende Box (Rolle ``fuehrt``) - Empfaenger von allem, was keiner
+    #: mitsteuernden Box gehoert, und allein Traeger von ``grid_import_limit_kw``
+    #: (IP-15). ``None`` = keine gueltige fuehrende Box: dann bleibt es beim
+    #: EINEN Dokument von heute.
+    fuehrende: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -175,7 +188,8 @@ def erzeuger_id(device_id: UUID) -> str:
 _MITGLIEDER_SQL = """
 SELECT v.site_id, m.device_id,
        q.anteile AS quittiert, g.anteile AS gesendet,
-       d.device_status_seen_at, m.bestaetigt_am
+       d.device_status_seen_at, m.bestaetigt_am,
+       COALESCE(d.supports ? 'steuerungsverbund_anteil', false) AS faehig
 FROM steuerungsverbund v
 JOIN steuerungsverbund_mitglied m
   ON m.steuerungsverbund_id = v.id AND m.tenant_id = v.tenant_id
@@ -193,6 +207,21 @@ WHERE v.stufe = 'anteile_aktiv'
   AND (m.gueltig_bis IS NULL OR m.gueltig_bis > %(jetzt)s)
   AND (%(site_id)s::uuid IS NULL OR v.site_id = %(site_id)s::uuid)
 ORDER BY v.site_id, m.device_id
+"""
+
+#: IP-15: die fuehrende Box je Anlage (hoechstens eine ``fuehrt`` je Zeitpunkt,
+#: von der Datenbank erzwungen - IP-4).
+_FUEHRENDE_SQL = """
+SELECT v.site_id, f.device_id
+FROM steuerungsverbund_mitglied f
+JOIN steuerungsverbund v
+  ON v.id = f.steuerungsverbund_id AND v.tenant_id = f.tenant_id
+WHERE v.stufe = 'anteile_aktiv'
+  AND f.rolle = 'fuehrt'
+  AND f.aufgehoben_am IS NULL
+  AND f.gueltig_ab <= %(jetzt)s
+  AND (f.gueltig_bis IS NULL OR f.gueltig_bis > %(jetzt)s)
+  AND v.site_id = ANY(%(sites)s)
 """
 
 _PV_SQL = """
@@ -231,7 +260,8 @@ def load_verbund(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict
     mitsteuernde Box fehlt - fuer sie aendert sich nichts (I6). Vor der
     api-Migration gibt es die Tabellen nicht: das ist genau "kein Verbund".
     Ein Mitglied, das der Betreiber nach dem Box-Tausch noch nicht bestaetigt
-    hat, bekommt keinen Plan (R17) - der Planer rechnet es wie eine stumme Box.
+    hat, bekommt keinen Plan (R17) - der Planer rechnet es wie eine stumme Box;
+    ebenso eine Box, die ``steuerungsverbund_anteil`` nicht meldet (A12, R14).
     """
     import psycopg  # lazy: optional [db] extra
 
@@ -249,6 +279,8 @@ def load_verbund(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict
             pv_rows = cur.fetchall()
             cur.execute(_VERBRAUCHER_SQL, {"sites": sites})
             verbraucher_rows = cur.fetchall()
+            cur.execute(_FUEHRENDE_SQL, {"jetzt": jetzt, "sites": sites})
+            fuehrende = dict(cur.fetchall())
     except psycopg.errors.UndefinedTable:
         logger.warning("verbund.table_missing")
         return {}
@@ -264,7 +296,7 @@ def load_verbund(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict
         verbraucher.setdefault((sid, box), []).append(entity)
 
     boxen: dict = {}
-    for sid, box, quittiert, gesendet, herzschlag, bestaetigt_am in mitglieder:
+    for sid, box, quittiert, gesendet, herzschlag, bestaetigt_am, faehig in mitglieder:
         quittiert, gesendet = _json(quittiert), _json(gesendet)
         boxen.setdefault(sid, []).append(
             MitsteuerndeBox(
@@ -277,14 +309,20 @@ def load_verbund(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict
                     anteile_je_box(quittiert, "bezug", box),
                     anteile_je_box(gesendet, "bezug", box),
                 ),
-                stumm=ist_stumm(herzschlag, jetzt) or bestaetigt_am is None,
+                # R17: unbestaetigt nach dem Box-Tausch; A12/R14: ohne die
+                # Faehigkeit (alter Edge-Stand) liest die Box nur - beides wie stumm.
+                stumm=ist_stumm(herzschlag, jetzt)
+                or bestaetigt_am is None
+                or not faehig,
                 pv_kwp=pv_je_box.get((sid, box), 0.0),
                 verbraucher=tuple(verbraucher.get((sid, box), ())),
             )
         )
     return {
         sid: VerbundStand(
-            mitsteuernde=tuple(liste), pv_kwp_gesamt=pv_gesamt.get(sid, 0.0)
+            mitsteuernde=tuple(liste),
+            pv_kwp_gesamt=pv_gesamt.get(sid, 0.0),
+            fuehrende=fuehrende.get(sid),
         )
         for sid, liste in boxen.items()
     }

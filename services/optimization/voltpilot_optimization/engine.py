@@ -38,7 +38,7 @@ from voltpilot_optimization.inputs import (
 )
 from voltpilot_optimization.persistence import ScheduleRepository
 from voltpilot_optimization.publisher import SchedulePublisher
-from voltpilot_optimization.publisher_v2 import PlanV2Publisher
+from voltpilot_optimization.publisher_v2 import PlanV2Publisher, plan_je_box
 from voltpilot_optimization.solver import (
     InfeasiblePlanError,
     optimize,
@@ -165,11 +165,21 @@ def _shadow_publish_v2(
     unflagged site never reaches any of it; a consumer-less flagged site
     co-optimizes exactly the pre-consumer model. Never raises - the v1 plan
     already persisted/published and the shadow must stay harmless.
+
+    AP-15 IP-15 (P1, P2, W8): a site whose Gemeinsame Steuerung is armed
+    (``anteile_aktiv`` with a leading box) takes this path WITHOUT the flag -
+    the armed state IS the switch (Konzept §6.6), the co-steering boxes get the
+    plan only as 2.0. Its ONE run is cut into one document per steering box
+    (:func:`publisher_v2.plan_je_box`), same ``plan_id``, a run number, and
+    "veröffentlicht" is noted per box. Every other site publishes the one
+    document of before, byte for byte.
     """
     if v2_publisher is None or site.device_id is None:
         return
+    stand = getattr(site, "verbund", None)
+    verbund_scharf = stand is not None and stand.fuehrende is not None
     flagged = v2_plan_site_ids() if v2_sites is None else v2_sites
-    if site.site_id not in flagged:
+    if site.site_id not in flagged and not verbund_scharf:
         return
     # P7: ohne Ladestand entsteht auch kein SCHATTEN-Plan. Der Co-Optimizer
     # bekaeme ueber `from_v1_input` nur den Modell-Platzhalter als Start-SoC
@@ -224,7 +234,12 @@ def _shadow_publish_v2(
             site_plan = co_optimize_ignoring_grid_limit(co_inp, v2_plan_id, now)
         if v2_repository is not None:
             v2_repository.upsert_site_plan(site_plan)
-        v2_publisher.publish(site_plan)
+        lauf_nr = _assign_run_number(v2_repository, site_plan)
+        if verbund_scharf:
+            empfaenger = _publish_je_box(v2_publisher, site_plan, stand, lauf_nr)
+        else:
+            v2_publisher.publish(site_plan)
+            empfaenger = [site.device_id]
     except Exception as exc:  # shadow only - never sink the v1 cycle
         logger.warning(
             "publish_v2.shadow_failed",
@@ -234,18 +249,65 @@ def _shadow_publish_v2(
     # AP-15 IP-10 (P3): the cloud notes "veröffentlicht" per box AFTER the
     # send; the box's receipt fills "angenommen". A failed note (e.g. an api
     # not yet migrated) costs the operator view one row, never the plan.
+    # IP-15: one note per box that got a document of this run (R11).
     if v2_repository is not None:
+        for device_id in empfaenger:
+            try:
+                v2_repository.record_publication(
+                    site_plan, device_id, datetime.now(timezone.utc)
+                )
+            except Exception as exc:
+                logger.warning(
+                    "publish_v2.publication_not_recorded",
+                    extra={
+                        "context": {
+                            "site_id": str(site.site_id),
+                            "device_id": str(device_id),
+                            "error": str(exc),
+                        }
+                    },
+                )
+
+
+def _assign_run_number(v2_repository, site_plan) -> int | None:
+    """P1: the site's next run number. Best effort like the publication note: an
+    api not yet migrated costs the number (the document then carries none),
+    never the plan."""
+    if v2_repository is None:
+        return None
+    try:
+        return v2_repository.assign_run_number(site_plan)
+    except Exception as exc:
+        logger.warning(
+            "publish_v2.run_number_not_assigned",
+            extra={"context": {"site_id": str(site_plan.site_id), "error": str(exc)}},
+        )
+        return None
+
+
+def _publish_je_box(v2_publisher, site_plan, stand, lauf_nr) -> list:
+    """IP-15: send each box its document of the ONE run; returns the boxes that
+    got a document. A failed send to one box never costs the others theirs - it
+    is logged and that box gets no "veröffentlicht"."""
+    empfaenger = []
+    for dokument in plan_je_box(site_plan, stand, lauf_nr):
         try:
-            v2_repository.record_publication(
-                site_plan, site.device_id, datetime.now(timezone.utc)
-            )
+            v2_publisher.publish_dokument(dokument)
         except Exception as exc:
             logger.warning(
-                "publish_v2.publication_not_recorded",
+                "publish_v2.box_failed",
                 extra={
-                    "context": {"site_id": str(site.site_id), "error": str(exc)}
+                    "context": {
+                        "site_id": str(site_plan.site_id),
+                        "device_id": str(dokument.device_id),
+                        "error": str(exc),
+                    }
                 },
             )
+            continue
+        if dokument.payload is not None:
+            empfaenger.append(dokument.device_id)
+    return empfaenger
 
 
 def run_cycle(

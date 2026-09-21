@@ -39,6 +39,10 @@ class SitePlanRepository(Protocol):
         """AP-15 IP-10 (P3): note "veröffentlicht" for the box that got the plan."""
         ...
 
+    def assign_run_number(self, plan: SitePlan) -> int | None:
+        """AP-15 IP-15 (P1): the site's next run number, stored on the run."""
+        ...
+
 
 class InMemorySitePlanRepository:
     """Test double: keeps every plan, latest-run lookup per site."""
@@ -46,6 +50,7 @@ class InMemorySitePlanRepository:
     def __init__(self) -> None:
         self.plans: list[SitePlan] = []
         self.publications: list[tuple[UUID, UUID, datetime, datetime]] = []
+        self.run_numbers: dict[UUID, int] = {}
 
     def upsert_site_plan(self, plan: SitePlan) -> int:
         self.plans = [
@@ -62,6 +67,10 @@ class InMemorySitePlanRepository:
         self.publications.append(
             (device_id, plan.plan_id, plan.generated_at, published_at)
         )
+
+    def assign_run_number(self, plan: SitePlan) -> int | None:
+        self.run_numbers[plan.site_id] = self.run_numbers.get(plan.site_id, 0) + 1
+        return self.run_numbers[plan.site_id]
 
     def latest_for_site(self, site_id) -> SitePlan | None:
         candidates = [p for p in self.plans if p.site_id == site_id]
@@ -110,6 +119,20 @@ DO UPDATE SET
     generated_at       = EXCLUDED.generated_at,
     veroeffentlicht_um = COALESCE(plan_zustellung.veroeffentlicht_um,
                                   EXCLUDED.veroeffentlicht_um);
+"""
+
+
+# AP-15 IP-15 (P1): eine Laufnummer je Anlage, aufsteigend, gespeichert am Lauf
+# (api migration V20260922000000__site_plan_run_lauf_nr.sql). EINE Optimierer-
+# Instanz schreibt; die Nummer folgt der hoechsten der Anlage. Die Aufbewahrung
+# (180 Tage) nimmt nur alte Laeufe - die juengsten tragen die Zaehlung weiter.
+_RUN_NUMBER_SQL = """
+UPDATE site_plan_run
+   SET lauf_nr = (SELECT COALESCE(max(r.lauf_nr), 0) + 1
+                    FROM site_plan_run r
+                   WHERE r.site_id = %s)
+ WHERE plan_id = %s AND generated_at = %s AND lauf_nr IS NULL
+RETURNING lauf_nr;
 """
 
 
@@ -205,3 +228,15 @@ class TimescaleSitePlanRepository:
                     ),
                 )
             conn.commit()
+
+    def assign_run_number(self, plan: SitePlan) -> int | None:
+        import psycopg  # lazy: optional [db] extra
+
+        with psycopg.connect(self._dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    _RUN_NUMBER_SQL, (plan.site_id, plan.plan_id, plan.generated_at)
+                )
+                row = cur.fetchone()
+            conn.commit()
+        return int(row[0]) if row else None

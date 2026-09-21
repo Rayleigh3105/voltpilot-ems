@@ -58,12 +58,56 @@ def test_a4_identical_controller_addresses_remain_distinct_by_box_and_network():
     assert (halle2.code, halle2.network) != (lindach_same_address.code, lindach_same_address.network)
 
 
+def _invariante(dokumente: list[dict]) -> None:
+    """AP-15 W8 (P1, P2): ein Lauf je Anlage; je Box hoechstens ein Dokument;
+    alle mit derselben plan_id; Topic-Identitaet je Box."""
+    boxen = [d["box"] for d in dokumente]
+    assert len(boxen) == len(set(boxen))
+    assert len({d["topic"] for d in dokumente}) == len(dokumente)
+    assert len({d["plan_id"] for d in dokumente}) == 1
+
+
 def test_a13_control_source_cannot_change_box_and_only_one_plan_recipient_remains():
+    """Die AP-06-Aussage gilt weiter, solange die Gemeinsame Steuerung nicht scharf ist."""
     scenario = _scenario()
 
     assert scenario.assignment_allowed("DQ-1", "E-2") == (False, "steuerquelle")
     assert scenario.box_for("DQ-1", "2027-04-20T10:00:00+02:00").code == "E-1"
-    plan_topics = [
-        f"ems/{scenario.tenant_id}/{scenario.site_id}/{scenario.boxes['E-1'].device_id}/schedule"
-    ]
-    assert len(plan_topics) == 1
+    for at in ("2027-04-20T10:00:00+02:00", "2027-05-20T10:00:00+02:00"):  # vor S0 / in S2
+        dokumente = scenario.plan_documents(at, "lauf-1")
+        _invariante(dokumente)
+        assert dokumente == [{
+            "box": "E-1",
+            "topic": f"ems/{scenario.tenant_id}/{scenario.site_id}/{scenario.boxes['E-1'].device_id}/schedule",
+            "plan_id": "lauf-1",
+            "rolle": None,
+        }]
+
+
+def test_w8_scharfe_gemeinsame_steuerung_je_box_ein_dokument_eine_plan_id():
+    """R1 am Sonntag 13.06.2027 (S3 anteile_aktiv seit 24.05.): zwei Dokumente."""
+    scenario = _scenario()
+    dokumente = scenario.plan_documents("2027-06-13T13:00:00+02:00", "lauf-4711")
+    _invariante(dokumente)
+    assert [(d["box"], d["rolle"]) for d in dokumente] == [("E-1", "fuehrt"), ("E-4", "steuert_mit")]
+    assert all(d["topic"].endswith("/v2/plan") for d in dokumente)
+
+
+def test_w8_angehalten_und_stumm_nur_die_fuehrende():
+    scenario = _scenario()
+    at = "2027-06-13T13:00:00+02:00"
+    angehalten = scenario.plan_documents(at, "lauf-1", angehalten=True)
+    assert [d["box"] for d in angehalten] == ["E-1"]
+    stumm = scenario.plan_documents(at, "lauf-2", stumm=("E-4",))
+    _invariante(stumm)
+    assert [(d["box"], d["rolle"]) for d in stumm] == [("E-1", "fuehrt")]
+
+
+def test_r17_nachfolgerin_bekommt_erst_nach_der_bestaetigung_einen_plan():
+    scenario = _scenario()
+    at = "2027-10-12T10:00:00+02:00"
+    vorher = scenario.plan_documents(at, "lauf-1")
+    assert [d["box"] for d in vorher] == ["E-1"]
+    nachher = scenario.plan_documents(at, "lauf-2", bestaetigt=("E-4′",))
+    _invariante(nachher)
+    assert [d["box"] for d in nachher] == ["E-1", "E-4′"]

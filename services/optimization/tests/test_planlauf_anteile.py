@@ -457,13 +457,14 @@ def test_pv_der_box_ist_ihr_teil_der_nennleistung_und_nie_mehr_als_die_prognose(
 
 
 class _Cursor:
-    """Die drei Abfragen von ``load_verbund``; Zeilen wie aus psycopg."""
+    """Die vier Abfragen von ``load_verbund``; Zeilen wie aus psycopg."""
 
-    def __init__(self, mitglieder, pv=(), verbraucher=()):
+    def __init__(self, mitglieder, pv=(), verbraucher=(), fuehrende=()):
         self._antworten = {
             "FROM steuerungsverbund v": list(mitglieder),
             "FROM asset": list(pv),
             "FROM steuerungsverbund_geraet g": list(verbraucher),
+            "FROM steuerungsverbund_mitglied f": list(fuehrende),
         }
         self.abfragen: list[str] = []
         self._rows: list = []
@@ -524,12 +525,13 @@ def test_load_verbund_liest_den_planwert_je_richtung_und_die_stummen(monkeypatch
     e_6 = UUID("00000000-0000-0000-0000-0000000000e6")
     cursor = _Cursor(
         mitglieder=[
-            (SITE, E_4, quittiert, uebergang, jetzt - timedelta(seconds=10), jetzt),
-            (SITE, e_5, None, quittiert, jetzt - timedelta(seconds=120), jetzt),
-            (SITE, e_6, None, None, jetzt, None),
+            (SITE, E_4, quittiert, uebergang, jetzt - timedelta(seconds=10), jetzt, True),
+            (SITE, e_5, None, quittiert, jetzt - timedelta(seconds=120), jetzt, True),
+            (SITE, e_6, None, None, jetzt, None, True),
         ],
         pv=[(SITE, E_1, 100.0), (SITE, E_4, 60.0), (SITE, None, 0.0)],
         verbraucher=[(SITE, E_4, "ahr-lp-02"), (SITE, E_4, "ahr-lp-03")],
+        fuehrende=[(SITE, E_1)],
     )
     _psycopg(monkeypatch, cursor)
     stand = load_verbund("dsn", jetzt)[SITE]
@@ -540,6 +542,8 @@ def test_load_verbund_liest_den_planwert_je_richtung_und_die_stummen(monkeypatch
     assert e5.stumm  # 120 s ohne Herzschlag (Y4)
     assert e5.einspeisung_kw is None  # E-5 steht in keinem Dokument
     assert e6.stumm  # nach dem Box-Tausch noch nicht bestaetigt (R17)
+    assert stand.fuehrende == E_1  # IP-15: Empfaenger von allem ohne mitsteuernde Box
+    assert (e4.bekommt_plan, e5.bekommt_plan, e6.bekommt_plan) == (True, False, False)
     assert "v.stufe = 'anteile_aktiv'" in cursor.abfragen[0]
     assert "m.rolle = 'steuert_mit'" in cursor.abfragen[0]
 
