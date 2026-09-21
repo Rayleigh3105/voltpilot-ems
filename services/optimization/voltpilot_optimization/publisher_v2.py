@@ -24,6 +24,13 @@ Contract rules the builder enforces:
 - ``grid_import_limit_kw`` stays SITE-level (PS-1 semantics carried over 1:1);
   per-entity ``reserve_soc_pct`` replaces the 1.0 top-level peak reserve.
 
+Plan je Box (UEMS AP-15 IP-15, P1/P2/W8): fuer eine Anlage in ``anteile_aktiv``
+schneidet :func:`plan_je_box` EINEN Lauf in je ein Dokument pro steuernder Box -
+dieselbe ``plan_id``, dasselbe ``generated_at``, die Laufnummer; jede Entitaet im
+Dokument der Box ihrer Komponente, ``grid_import_limit_kw`` nur bei der
+fuehrenden. Ohne scharfe Gemeinsame Steuerung ist es genau EIN Dokument, gebaut
+von :func:`build_plan_v2_payload` wie bisher - Byte fuer Byte (NW-6).
+
 ``paho-mqtt`` stays a lazy import behind the optional ``mqtt`` extra; the
 payload builder is pure (what the contract test exercises).
 """
@@ -33,7 +40,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+from dataclasses import dataclass, replace
 from typing import Protocol
+from uuid import UUID
 
 from voltpilot_optimization.domain import ensure_utc
 from voltpilot_optimization.entities import (
@@ -44,6 +53,7 @@ from voltpilot_optimization.entities import (
 )
 
 from voltpilot_optimization.publisher import EDGE_PLAN_SLOTS as _EDGE_PLAN_SLOTS
+from voltpilot_optimization.verbund import VerbundStand, erzeuger_id
 
 logger = logging.getLogger("voltpilot.optimization.publisher_v2")
 
@@ -114,6 +124,91 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
     if plan.peak_target_kw is not None:
         payload["grid_import_limit_kw"] = round(plan.peak_target_kw, 3)
     return payload
+
+
+#: Rollen im wahlfreien Block ``gemeinsame_steuerung`` (die Woerter der
+#: Mitgliedschaft, ``steuerungsverbund_mitglied.rolle``).
+ROLLE_FUEHRT = "fuehrt"
+ROLLE_STEUERT_MIT = "steuert_mit"
+
+
+@dataclass(frozen=True)
+class BoxDokument:
+    """Was EINE Box aus EINEM Lauf bekommt (IP-15, P2).
+
+    ``payload`` ist das Plan-2.0-Dokument der Box; ``None`` heisst: die Box hat in
+    diesem Lauf keine Entitaet - ein leeres Dokument lehnte sie ab
+    (``keine_entitaeten``), also bekommt sie keins, und ihr gehaltener Plan wird
+    mit der leeren retained Nachricht zurueckgenommen (die Freigabe-Regel des
+    Erzeugers, eine Ebene hoeher: kein alter Deckel wirkt 20 min nach).
+    """
+
+    device_id: UUID
+    topic: str
+    payload: dict | None
+
+
+def plan_je_box(
+    plan: SitePlan, stand: VerbundStand | None, lauf_nr: int | None = None
+) -> list[BoxDokument]:
+    """Die Dokumente EINES Laufs, je Box hoechstens eins (P2, W8).
+
+    Ohne scharfe Gemeinsame Steuerung (``stand`` fehlt oder nennt keine
+    fuehrende Box): genau EIN Dokument an ``plan.device_id``, gebaut wie immer -
+    kein ``lauf_nr``, kein Block (NW-6, R22).
+
+    Mit ihr gehoert jede Entitaet genau EINER Box: der Speicher der Box seines
+    Asset-Geraets (``plan.device_id``, W2), die PV einer mitsteuernden Box
+    (:func:`~voltpilot_optimization.verbund.erzeuger_id`) und ihre Verbraucher
+    (``steuerungsverbund_geraet``, dieselbe Zuordnung wie ihre Anteils-
+    Nebenbedingung) dieser Box, alles andere der fuehrenden. Eine mitsteuernde
+    Box, die der Planer als belegt rechnet (stumm, unbestaetigt, ohne
+    Faehigkeit), bekommt nichts - auch keine Ruecknahme; ihre Entitaeten stehen
+    in keinem Dokument. ``grid_import_limit_kw`` (das Lastspitzen-ZIEL) traegt
+    nur die fuehrende Box. Reihenfolge: fuehrende, Speicher-Box, mitsteuernde.
+    """
+    if stand is None or stand.fuehrende is None:
+        return [BoxDokument(plan.device_id, plan_v2_topic(plan), build_plan_v2_payload(plan))]
+    fuehrende = stand.fuehrende
+    mitsteuernde = {box.device_id: box for box in stand.mitsteuernde}
+    pv_box = {erzeuger_id(box.device_id): box.device_id for box in stand.mitsteuernde}
+    verbraucher_box = {
+        entity: box.device_id for box in stand.mitsteuernde for entity in box.verbraucher
+    }
+    speicher_box = plan.device_id if plan.device_id is not None else fuehrende
+
+    reihenfolge: list[UUID] = []
+    for box in (fuehrende, speicher_box, *mitsteuernde):
+        if box not in reihenfolge:
+            reihenfolge.append(box)
+
+    dokumente: list[BoxDokument] = []
+    for box in reihenfolge:
+        mit = mitsteuernde.get(box)
+        if mit is not None and not mit.bekommt_plan:
+            continue
+        teil = replace(
+            plan,
+            device_id=box,
+            storages=[s for s in plan.storages if speicher_box == box],
+            producers=[p for p in plan.producers if pv_box.get(p.entity_id, fuehrende) == box],
+            loads=[l for l in plan.loads if verbraucher_box.get(l.entity_id, fuehrende) == box],
+            peak_target_kw=plan.peak_target_kw if box == fuehrende else None,
+        )
+        topic = plan_v2_topic(teil)
+        try:
+            payload = build_plan_v2_payload(teil)
+        except ValueError:
+            dokumente.append(BoxDokument(box, topic, None))
+            continue
+        if lauf_nr is not None:
+            payload["lauf_nr"] = lauf_nr
+        if box == fuehrende:
+            payload["gemeinsame_steuerung"] = {"rolle": ROLLE_FUEHRT}
+        elif mit is not None:
+            payload["gemeinsame_steuerung"] = {"rolle": ROLLE_STEUERT_MIT}
+        dokumente.append(BoxDokument(box, topic, payload))
+    return dokumente
 
 
 def _storage_entity_payload(storage: StorageDispatch) -> dict:
@@ -206,15 +301,26 @@ class PlanV2Publisher(Protocol):
 
     def publish(self, plan: SitePlan) -> None: ...
 
+    def publish_dokument(self, dokument: BoxDokument) -> None:
+        """IP-15: one box's document (``payload`` None = retained clear)."""
+        ...
+
 
 class RecordingPlanV2Publisher:
-    """Test double: records (topic, payload) tuples."""
+    """Test double: records (topic, payload) tuples; clears by topic."""
 
     def __init__(self) -> None:
         self.published: list[tuple[str, dict]] = []
+        self.cleared: list[str] = []
 
     def publish(self, plan: SitePlan) -> None:
         self.published.append((plan_v2_topic(plan), build_plan_v2_payload(plan)))
+
+    def publish_dokument(self, dokument: BoxDokument) -> None:
+        if dokument.payload is None:
+            self.cleared.append(dokument.topic)
+        else:
+            self.published.append((dokument.topic, dokument.payload))
 
 
 class MqttPlanV2Publisher:
@@ -247,11 +353,40 @@ class MqttPlanV2Publisher:
         )
 
     def publish(self, plan: SitePlan) -> None:
-        import paho.mqtt.client as mqtt  # lazy: optional [mqtt] extra
-
         topic = plan_v2_topic(plan)
         body = build_plan_v2_payload(plan)
-        payload = json.dumps(body)
+        self._senden(topic, json.dumps(body))
+        logger.info(
+            "publish_v2.ok",
+            extra={
+                "context": {
+                    "topic": topic,
+                    "plan_id": str(plan.plan_id),
+                    "entities": len(body["entities"]),
+                }
+            },
+        )
+
+    def publish_dokument(self, dokument: BoxDokument) -> None:
+        """IP-15: one box's document, retained QoS1 like :meth:`publish`; a
+        document without entity is the empty retained message (clear)."""
+        body = dokument.payload
+        self._senden(dokument.topic, json.dumps(body) if body is not None else b"")
+        logger.info(
+            "publish_v2.ok" if body is not None else "publish_v2.cleared",
+            extra={
+                "context": {
+                    "topic": dokument.topic,
+                    "plan_id": body["plan_id"] if body is not None else None,
+                    "lauf_nr": body.get("lauf_nr") if body is not None else None,
+                    "entities": len(body["entities"]) if body is not None else 0,
+                }
+            },
+        )
+
+    def _senden(self, topic: str, payload) -> None:
+        import paho.mqtt.client as mqtt  # lazy: optional [mqtt] extra
+
         client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=self._client_id,
@@ -269,13 +404,3 @@ class MqttPlanV2Publisher:
         finally:
             client.loop_stop()
             client.disconnect()
-        logger.info(
-            "publish_v2.ok",
-            extra={
-                "context": {
-                    "topic": topic,
-                    "plan_id": str(plan.plan_id),
-                    "entities": len(body["entities"]),
-                }
-            },
-        )

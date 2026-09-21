@@ -205,3 +205,33 @@ func TestStoreRoundTripKeepsStalenessAnchor(t *testing.T) {
 		t.Fatalf("clear must remove the plan: %v %v", p, err)
 	}
 }
+
+// AP-15 IP-15 (P2, W8): ein Lauf, je Box ein Dokument - beide mit derselben
+// plan_id; lauf_nr und der Block gemeinsame_steuerung sind additiv und werden
+// ueberlesen, das Dokument jeder Box ist ein gewoehnlicher Plan 2.0. Ein
+// Dokument ohne Entitaet lehnt die Box ab - darum bekommt eine Box ohne
+// Entitaet im Lauf keins.
+func TestGemeinsameSteuerungJeBoxEinDokumentEinePlanID(t *testing.T) {
+	fuehrt, err := Parse(fixture(t, "mqtt-schedule-2.0.valid.gemeinsame-steuerung-fuehrt.json"), recv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mit, err := Parse(fixture(t, "mqtt-schedule-2.0.valid.gemeinsame-steuerung-steuert-mit.json"), recv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fuehrt.PlanID != mit.PlanID || fuehrt.DeviceID == mit.DeviceID {
+		t.Fatalf("one run, two boxes expected: %q/%q %q/%q", fuehrt.PlanID, fuehrt.DeviceID, mit.PlanID, mit.DeviceID)
+	}
+	if fuehrt.GridImportLimitKw == nil || mit.GridImportLimitKw != nil {
+		t.Fatalf("peak target only at the leading box: %v / %v", fuehrt.GridImportLimitKw, mit.GridImportLimitKw)
+	}
+	if mit.Entity("pv-00000000-0000-0000-0000-0000000000e4") == nil || len(mit.Entities) != 1 {
+		t.Fatalf("co-steering box entities wrong: %+v", mit.Entities)
+	}
+	leer := strings.Replace(string(fixture(t, "mqtt-schedule-2.0.valid.gemeinsame-steuerung-steuert-mit.json")),
+		`"entities": [`, `"entities": [], "x": [`, 1)
+	if _, err := Parse([]byte(leer), recv); Grund(err) != GrundKeineEntitaeten {
+		t.Fatalf("empty document must be rejected keine_entitaeten, got %v", err)
+	}
+}

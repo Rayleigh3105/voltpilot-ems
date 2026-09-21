@@ -11,7 +11,8 @@
   und `waechter.bezug` sind Vertrag, gesendet erst ab IP-17/IP-18.
 - Cloud: `plan_zustellung` (V20260921130000, FK auf `device (id, tenant_id)` mit CASCADE —
   Abmelden und Mandanten-Abbau brauchen keinen eigenen Weg). „veröffentlicht“ schreibt der
-  Optimierer nach dem Senden (`persistence_v2.record_publication`), das Urteil der
+  Optimierer nach dem Senden (`persistence_v2.record_publication`, seit IP-15 je Box und
+  Dokument; die leere retained Rücknahme wird nicht vermerkt), das Urteil der
   `uems/PlanResultListener`; `PlanZustellungRepository.stand` ist „veröffentlicht gegen
   angenommen“ (R11) für IP-11/IP-24. Eine alte Box behält „angenommen“ leer, ohne Alarm.
 - Seit IP-11: Frist 35 Tage (`uems/PlanZustellungAufbewahrung`, täglich; je Box bleiben die jüngste

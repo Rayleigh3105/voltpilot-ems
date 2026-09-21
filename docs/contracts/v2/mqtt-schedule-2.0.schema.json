@@ -49,7 +49,25 @@
     "grid_import_limit_kw": {
       "type": "number",
       "minimum": 0,
-      "description": "OPTIONAL site-level billing-period peak target in kW (PS-1/PS-3 semantics carried over 1:1 from 1.0): the highest 15-min mean grid IMPORT the optimizer planned for. Present only while the site's peak-shaving module is active; absent = no import target, and a NEW plan without it clears any latched target. Survives plan staleness (see x-failsafe). Import-side only; the edge peak guard is restrict-only and never widens any other guard."
+      "description": "OPTIONAL site-level billing-period peak target in kW (PS-1/PS-3 semantics carried over 1:1 from 1.0): the highest 15-min mean grid IMPORT the optimizer planned for. Present only while the site's peak-shaving module is active; absent = no import target, and a NEW plan without it clears any latched target. Survives plan staleness (see x-failsafe). Import-side only; the edge peak guard is restrict-only and never widens any other guard. Gemeinsame Steuerung (AP-15 IP-15): it is the peak TARGET, not a hard limit - in an armed site only the document of the LEADING box carries it."
+    },
+    "lauf_nr": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "OPTIONAL run number of the site (AP-15 IP-15, P1): one run per site, ascending. Carried only in the documents of a site whose Gemeinsame Steuerung is armed (anteile_aktiv) - every document of the run carries the same value. Absent everywhere else (a one-box site stays byte-identical, NW-6)."
+    },
+    "gemeinsame_steuerung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rolle"],
+      "description": "OPTIONAL block (AP-15 IP-15, P2): present only in an armed site; one run is published as at most one document per steering box, all with the same plan_id and generated_at. Carries NO shares - the hard limit travels in the separate share document (mqtt-verbund-anteile.md, Y1).",
+      "properties": {
+        "rolle": {
+          "type": "string",
+          "enum": ["fuehrt", "steuert_mit"],
+          "description": "Role of the addressed box in the site's Gemeinsame Steuerung."
+        }
+      }
     },
     "entities": {
       "type": "array",

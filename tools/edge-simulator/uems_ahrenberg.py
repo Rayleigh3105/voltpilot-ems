@@ -167,6 +167,68 @@ class AhrenbergScenario:
             "data_sources": sources,
         }
 
+    def plan_documents(
+        self,
+        at: str,
+        plan_id: str,
+        *,
+        anlage: str = "AN-1",
+        bestaetigt: tuple[str, ...] = (),
+        stumm: tuple[str, ...] = (),
+        angehalten: bool = False,
+    ) -> list[dict]:
+        """What ONE optimizer run of ``anlage`` publishes at ``at`` (AP-15 IP-15, W8).
+
+        Without an armed Gemeinsame Steuerung (no Verbund, any stage before
+        ``anteile_aktiv``, or halted) exactly one box gets the plan - the box that
+        reads the steering source of the storage (DQ-1), on its v1 ``schedule``
+        topic, as since AP-06. Armed: one ``…/v2/plan`` document per steering
+        member valid at ``at``, all with the same ``plan_id``; a co-steering box
+        that is silent, or a successor after a box swap the operator has not
+        confirmed yet (R17), gets none.
+        """
+        verbund = next(
+            (v for v in self.document.get("gemeinsame_steuerungen", []) if v["anlage"] == anlage),
+            None,
+        )
+        moment = _instant(at)
+        stufe = None
+        if verbund is not None:
+            for eintrag in verbund["stufen"]:
+                if datetime.fromisoformat(eintrag["ab"]).date() <= moment.date():
+                    stufe = eintrag["code"]
+        if stufe != "anteile_aktiv" or angehalten:
+            box = self.box_for("DQ-1", at)
+            return [{
+                "box": box.code,
+                "topic": f"ems/{self.tenant_id}/{self.site_id}/{box.device_id}/schedule",
+                "plan_id": plan_id,
+                "rolle": None,
+            }]
+        mitglieder = [
+            m for m in verbund["mitglieder"]
+            if _instant(m["gueltig_ab"]) <= moment
+            and (m["gueltig_bis"] is None or moment < _instant(m["gueltig_bis"]))
+        ]
+        vorgaenger_enden = {
+            (m["messpunkt"], m["gueltig_bis"]) for m in verbund["mitglieder"] if m["gueltig_bis"]
+        }
+        dokumente = []
+        for m in sorted(mitglieder, key=lambda m: (m["rolle"] != "fuehrt", m["box"])):
+            nachfolgerin = (m["messpunkt"], m["gueltig_ab"]) in vorgaenger_enden
+            if m["rolle"] == "steuert_mit" and (
+                m["box"] in stumm or (nachfolgerin and m["box"] not in bestaetigt)
+            ):
+                continue
+            box = self.boxes[m["box"]]
+            dokumente.append({
+                "box": box.code,
+                "topic": f"ems/{self.tenant_id}/{self.site_id}/{box.device_id}/v2/plan",
+                "plan_id": plan_id,
+                "rolle": m["rolle"],
+            })
+        return dokumente
+
     def assignment_allowed(self, source: str, target_box: str) -> tuple[bool, str | None]:
         if target_box not in self.boxes:
             raise KeyError(target_box)
