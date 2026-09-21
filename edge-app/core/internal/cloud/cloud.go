@@ -1492,6 +1492,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 		if extension.DataSources != nil {
 			payload["data_sources"] = extension.DataSources
 		}
+		if extension.GemeinsameSteuerung != nil {
+			payload["gemeinsame_steuerung"] = extension.GemeinsameSteuerung
+		}
 	}
 	if l.version != "" {
 		payload["version"] = l.version

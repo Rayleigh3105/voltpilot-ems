@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked"]` steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung"]` steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -19,6 +19,9 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   Cloud gehörend; `clock_jump` ist keine Box-Art und wird nie gesendet.
 - `automation_paused_until_revoked`: die Box versteht das gleichnamige Registry-Feld und
   hält die Ruhe ohne Enddatum über Uhr und Neustart hinweg, bis ein Push ohne das Feld sie aufhebt.
+- `plan_quittung` (AP-15 IP-10): die Box quittiert jeden Plan 2.0 auf `.../v2/plan-result` und
+  spiegelt den wirksamen Plan im Herzschlag-Block `gemeinsame_steuerung`
+  ([Plan-Quittung](mqtt-plan-result.md)). Nur gemeldet, keine Zeile in `edge-capabilities.json`.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

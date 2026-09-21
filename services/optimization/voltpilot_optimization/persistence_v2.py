@@ -17,7 +17,9 @@ byte-for-byte the discipline of :mod:`voltpilot_optimization.persistence`.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Protocol
+from uuid import UUID
 
 from voltpilot_optimization.entities import SitePlan
 
@@ -31,12 +33,19 @@ class SitePlanRepository(Protocol):
         """Persist the run + every consumer slot idempotently; return rows."""
         ...
 
+    def record_publication(
+        self, plan: SitePlan, device_id: UUID, published_at: datetime
+    ) -> None:
+        """AP-15 IP-10 (P3): note "veröffentlicht" for the box that got the plan."""
+        ...
+
 
 class InMemorySitePlanRepository:
     """Test double: keeps every plan, latest-run lookup per site."""
 
     def __init__(self) -> None:
         self.plans: list[SitePlan] = []
+        self.publications: list[tuple[UUID, UUID, datetime, datetime]] = []
 
     def upsert_site_plan(self, plan: SitePlan) -> int:
         self.plans = [
@@ -46,6 +55,13 @@ class InMemorySitePlanRepository:
         ]
         self.plans.append(plan)
         return sum(len(d.slots) for d in plan.loads)
+
+    def record_publication(
+        self, plan: SitePlan, device_id: UUID, published_at: datetime
+    ) -> None:
+        self.publications.append(
+            (device_id, plan.plan_id, plan.generated_at, published_at)
+        )
 
     def latest_for_site(self, site_id) -> SitePlan | None:
         candidates = [p for p in self.plans if p.site_id == site_id]
@@ -78,6 +94,22 @@ DO UPDATE SET
     target_value   = EXCLUDED.target_value,
     reason_code    = EXCLUDED.reason_code,
     requirement_id = EXCLUDED.requirement_id;
+"""
+
+
+# AP-15 IP-10: "veröffentlicht" je Box und Plan (api migration
+# V20260921130000__plan_zustellung.sql). The api writes the box's verdict into
+# the same row when the receipt arrives - whoever comes first inserts; this
+# side owns generated_at and keeps the FIRST publication time.
+_PUBLICATION_UPSERT_SQL = """
+INSERT INTO plan_zustellung
+    (device_id, plan_id, tenant_id, site_id, generated_at, veroeffentlicht_um)
+VALUES (%s, %s, %s, %s, %s, %s)
+ON CONFLICT (device_id, plan_id)
+DO UPDATE SET
+    generated_at       = EXCLUDED.generated_at,
+    veroeffentlicht_um = COALESCE(plan_zustellung.veroeffentlicht_um,
+                                  EXCLUDED.veroeffentlicht_um);
 """
 
 
@@ -153,3 +185,23 @@ class TimescaleSitePlanRepository:
             },
         )
         return len(rows)
+
+    def record_publication(
+        self, plan: SitePlan, device_id: UUID, published_at: datetime
+    ) -> None:
+        import psycopg  # lazy: optional [db] extra
+
+        with psycopg.connect(self._dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    _PUBLICATION_UPSERT_SQL,
+                    (
+                        device_id,
+                        plan.plan_id,
+                        plan.tenant_id,
+                        plan.site_id,
+                        plan.generated_at,
+                        published_at,
+                    ),
+                )
+            conn.commit()
