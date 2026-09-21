@@ -79,8 +79,8 @@ prüfen, dass sie sie nicht kennen.
 
 - **Zusage-Prüfung** der Zuteilung auf Zeit (§4.8, R16, A19): mit E1 = A entworfen, nicht gebaut. Sie kommt als eigene
   Vektor-Gruppe mit IP-33, falls der Captain nach dem Pilot so entscheidet.
-- **Die Prüfungen beim Scharfschalten** (T5, I1, G6) samt Routen und Stufen: IP-5; T1, T2, B1/B3 und T6 am Verbund-Objekt stehen in §5 (IP-4). Hier stehen nur
-  ihre Wörter.
+- **Die Prüfungen beim Scharfschalten** (T5, I1, G6) samt Routen und Stufen stehen in §6 (IP-5); T1, T2, B1/B3 und T6
+  am Verbund-Objekt in §5 (IP-4). Hier stehen nur ihre Wörter.
 - **MQTT**: Topic, Schema und Quittung des Anteils-Dokuments (`mqtt-verbund-anteile.md`, IP-10/IP-17) übernehmen die
   Wörter aus `dokument_ablehnung` als Grund der Quittung; Topic- und Payload-Identität prüft dort die Box zusätzlich.
 - **Der Go-Zwilling** der Box: IP-17 fährt dieselbe Datei als dritter Zwilling (NW-1 in Go).
@@ -112,7 +112,7 @@ Datenhaltung in `V20260921140000` (`steuerungsverbund`, `steuerungsverbund_mitgl
 RLS mit `FORCE`, Rechte eng, Offboarding in `TenantRepository.offboard`), Regeln in `uems/SteuerungsverbundRegeln`
 (rein), Vektoren in [`steuerungsverbund-objekt-vectors.json`](./steuerungsverbund-objekt-vectors.json) — eine eigene
 Datei, weil nur die api diese Regeln rechnet; die Anteile oben behalten ihre drei Zwillinge. Lese- und Schreibwege:
-`uems/SteuerungsverbundRepository`; Routen, Rechte und Stufenwechsel als Ablauf kommen mit IP-5.
+`uems/SteuerungsverbundRepository`; Routen, Rechte und Stufenwechsel als Ablauf stehen in §6 (IP-5).
 
 | Regel | Datenbank | Regel-Urteil |
 |---|---|---|
@@ -131,10 +131,56 @@ beendet oder aufgehoben, nie gelöscht und nie umgehängt (Box, Rolle, Messpunkt
 quittiert (Epoche, Revision) steigen nur, und quittiert wird nie über das Gesendete hinaus (CHECK + Schreibweg).
 Eine Anlage ohne Gemeinsame Steuerung hat keine Zeile — sie merkt nichts (I6).
 
+## 6. Routen, Rechte und Stufen (IP-5)
+
+`uems/GemeinsameSteuerungService` über `web/GemeinsameSteuerungController` (Kunde) und
+`web/AdminGemeinsameSteuerungController` (Betreiber); Schemas `GemeinsameSteuerung*` in
+[`openapi.yaml`](../openapi.yaml). Mandant aus Anmeldung bzw. Umschalter `X-Tenant-Id`, Anlage aus dem Pfad — ein
+anderes Feld im Körper ist 400 `anfrage_ungueltig`; eine fremde Anlage ist 404 `nicht_gefunden`, nie 403.
+
+| Route | Recht | Übergang |
+|---|---|---|
+| `GET /api/v1/sites/{siteId}/gemeinsame-steuerung` | lesend, keine eigene Kennung | ohne Verbund `nicht_eingerichtet` und sonst nichts (I6); mit: Stufe, Epoche, Mitglieder, `naechster_schritt`, `fehlt` |
+| `PUT …/gemeinsame-steuerung` | `funktion.steuern_einrichten` | einrichten/ändern (Kundenadministrator, I5): gewünschter Stand der Mitglieder → S0/S1 |
+| `POST …/anhalten` | `steuerung.starten_beenden` | `anteile_aktiv` → `angehalten`; die Anteile bleiben in Kraft |
+| `POST …/fortsetzen` | `steuerung.starten_beenden` | `angehalten` → `anteile_aktiv`, dieselbe Epoche, I1 erneut geprüft |
+| `POST …/aufloesen` | `steuerung.starten_beenden` | alle Mitglieder enden; nur ohne je scharf gewesen zu sein (`epoche = 0`) |
+| `POST /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/scharfschalten` | `plattform.betrieb` (nur Plattform-Rolle, I4/W9) | I1 vollständig → neue Epoche (G5), `anteile_aktiv`, Mitglieder bestätigt |
+| `POST /api/v1/admin/…/mitglieder/{boxId}/bestaetigen` | `plattform.betrieb` | `bestaetigt_am` (V20260921180000) nach dem Box-Tausch (R17) |
+
+**Stufen.** Einrichten und jede Strukturänderung setzen S0 `erklaert`, bei vollständiger Struktur S1 `beobachtet`
+(I3) — Struktur sind `box_nicht_in_anlage`, `kein_netzanschluss`, `grenze_fehlt`, `fuehrende_box_misst_nicht`,
+`mitsteuernde_box_misst_nicht`. S2 `geprueft` setzt IP-21. Ändern und Auflösen bei `anteile_aktiv` sind 409
+`erst_anhalten`; Auflösen nach einem Scharfschalten ist 409 `anteile_in_kraft` (Rücknahme nur im Zweischritt, IP-7).
+Weitere Übergangs-Gründe: `nicht_eingerichtet`, `nicht_aktiv`, `nicht_angehalten`, `bereits_aktiv`, `kein_mitglied`,
+`bereits_bestaetigt`. `zustand = aufgeloest` heißt: der Verbund hat keine wirksamen Mitglieder mehr.
+
+**Scharfschalten (I1).** `uems/SteuerungsverbundScharfschalten` (rein) ergänzt das Urteil des Verbund-Objekts um: beide
+Grenzen wirksam (`AnlageGrenzen`, W1), Fähigkeit und Sprungprobe je Mitglied, Auslegung bekannt, G6, Box angemeldet.
+Abgelehnt wird mit dem ersten Wort in Vokabular-Reihenfolge; `fehlt` nennt alle Befunde. Die Tatsachen ohne heutige
+Quelle liefert die Naht `uems/SteuerungsverbundNachweise` — in IP-5 antwortet sie „fehlt“, eine Anlage kommt
+darum höchstens bis S1 und wird nicht scharf:
+
+| Methode | heute | füllt |
+|---|---|---|
+| `faehigkeit` | `BoxFaehigkeiten.kann(box, "steuerungsverbund_anteil")` — das Wort ist noch nicht in `EdgeSupports.NAMES` → nein | IP-17 |
+| `sprungprobe` | nein | IP-21 |
+| `auslegung` | leer → `auslegung_passt_nicht` (unbekannt ist nicht „passt“) | IP-7 (mit den Rückfällen aus IP-6) |
+| `verbraucher14a`, `vorgabeSignal` | unbekannt → `vorgabe_signal_nicht_an_jeder_box` | offen: kein Paket in §8 nennt den Träger |
+
+**G6.** Scharf nur, wenn an jeder Box mit steuerbaren Verbrauchern nach § 14a das Signal anliegt; „alle solchen
+Verbraucher hängen an der Box mit dem Signal“ ist dieselbe Bedingung. Unbekannte Verbraucher zählen als vorhanden,
+ein unbekanntes Signal als nicht anliegend (R18).
+
+**Z1 (W2).** `warnung_fuehrung` mit dem Wort `fuehrende_box_ist_nicht_speicher_box`, nur an einer Anlage OHNE
+Gemeinsame Steuerung, deren führende Box (`LeadDeviceService`) nicht die Box des primären Speichers ist. Kein
+Kundensatz — die Flächen kommen mit IP-23/IP-24.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='SteuerungsverbundAnteilVectorsTest,SteuerungsverbundRegelnVectorsTest')
-(cd services/api && ./mvnw test -Dtest=SteuerungsverbundMigrationTest)   # Testcontainers
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest')
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundMigrationTest,GemeinsameSteuerungApiTest')   # Testcontainers
 (cd services/optimization && PYTHONPATH=. python -m pytest tests/test_steuerungsverbund_referenz.py)
 ```

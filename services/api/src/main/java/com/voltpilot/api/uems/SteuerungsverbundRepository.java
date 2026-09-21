@@ -207,6 +207,56 @@ public class SteuerungsverbundRepository {
                 quellen(messpunkte, zeitpunkt)));
     }
 
+    // ------------------------------------------------------------------ Routen (IP-5)
+
+    /** Die Anlage gibt es im Kundenbereich (RLS) — sonst antwortet eine Route 404 wie für eine unbekannte. */
+    public boolean anlageSichtbar(UUID siteId) {
+        return !jdbc.queryForList("SELECT 1 FROM site WHERE id = ?", Integer.class, siteId).isEmpty();
+    }
+
+    /** Sperrt den Verbund für die laufende Transaktion — zwei Übergänge derselben Anlage laufen nacheinander. */
+    public void sperren(UUID verbundId) {
+        jdbc.queryForList("SELECT id FROM steuerungsverbund WHERE id = ? FOR UPDATE", UUID.class, verbundId);
+    }
+
+    /** Die Box ist angemeldet und nicht ausgebaut (eine ausgebaute ist nicht mehr in ihrer Anlage — T1). */
+    public boolean boxAngemeldet(UUID deviceId) {
+        return !jdbc.queryForList("SELECT 1 FROM device WHERE id = ? AND ausgebaut_am IS NULL", Integer.class,
+                deviceId).isEmpty();
+    }
+
+    /** Die Anlage der Datenquelle — leer, wenn es sie im Kundenbereich nicht gibt. */
+    public Optional<UUID> anlageDerQuelle(UUID dataSourceId) {
+        return jdbc.queryForList("SELECT site_id FROM data_source WHERE id = ?", UUID.class, dataSourceId).stream()
+                .findFirst();
+    }
+
+    /** Die Werte der Anlage, gegen die das Grenzblatt aufgelöst wird (W1): Einspeisung und Bezug des Ladeparks. */
+    public GrenzeAufloesung.Grenzen grenzenDerAnlage(UUID siteId) {
+        return jdbc.query("SELECT s.max_feed_in_kw, c.grid_limit_kw FROM site s "
+                + "LEFT JOIN site_charging_config c ON c.site_id = s.id WHERE s.id = ?",
+                (rs, n) -> new GrenzeAufloesung.Grenzen(rs.getBigDecimal("max_feed_in_kw"),
+                        rs.getBigDecimal("grid_limit_kw")), siteId).stream().findFirst()
+                .orElse(new GrenzeAufloesung.Grenzen(null, null));
+    }
+
+    /** Wann das Mitglied bestätigt wurde ({@code bestaetigt_am}, V20260921180000) — null = noch nicht. */
+    public java.util.Map<UUID, Instant> bestaetigt(UUID verbundId) {
+        java.util.Map<UUID, Instant> out = new java.util.HashMap<>();
+        jdbc.query("SELECT id, bestaetigt_am FROM steuerungsverbund_mitglied WHERE steuerungsverbund_id = ? "
+                + "AND bestaetigt_am IS NOT NULL", rs -> {
+                    out.put(rs.getObject("id", UUID.class), rs.getTimestamp("bestaetigt_am").toInstant());
+                }, verbundId);
+        return out;
+    }
+
+    /** Bestätigt ein offenes Mitglied (I4); false, wenn es schon bestätigt oder nicht (mehr) wirksam ist. */
+    public boolean bestaetigen(UUID mitgliedId, String wer, Instant am) {
+        return jdbc.update("UPDATE steuerungsverbund_mitglied SET bestaetigt_am = ?, bestaetigt_von = ? "
+                + "WHERE id = ? AND bestaetigt_am IS NULL AND aufgehoben_am IS NULL", Timestamp.from(am), wer,
+                mitgliedId) > 0;
+    }
+
     // ------------------------------------------------------------------ Protokoll
 
     /** GENAU EIN Eintrag je Schreibvorgang; die Eintragszeit setzt die Datenbank. */

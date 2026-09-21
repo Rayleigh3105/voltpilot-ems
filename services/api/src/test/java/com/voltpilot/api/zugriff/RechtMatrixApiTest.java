@@ -628,13 +628,20 @@ class RechtMatrixApiTest {
         z.add(new Zeile(steuernStandort, HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/steuern", "e333e3e3"));
         z.add(new Zeile("grenze.eintragen|betriebsweise.aendern", HttpMethod.PUT, s1 + "/charging-config",
                 "e333e3ee"));
+        // Gemeinsame Steuerung (AP-15 IP-5, I5): der Kunde richtet ein und hält an; scharf schaltet nur die
+        // Plattform unter /api/v1/admin (keine Zeile hier)
+        String nurKa = "e3443333";              // U - - - - - -
+        String gs = s1 + "/gemeinsame-steuerung";
+        z.add(new Zeile("funktion.steuern_einrichten", HttpMethod.PUT, gs, einrichten));
+        z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/anhalten", nurKa));
+        z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/fortsetzen", nurKa));
+        z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/aufloesen", nurKa));
         return z;
     }
 
     /** Zeilen der Gruppe 4 ohne eigene Route — und warum. */
     private static final Map<String, String> OHNE_SCHREIBROUTE_STEUERUNG = Map.of(
             "grenze.eintragen", "im Rumpf von PUT /charging-config (genaue Prüfung je Feld)",
-            "steuerung.starten_beenden", "im Rumpf von PUT …/funktionen/steuern (genaue Prüfung je Aktion)",
             "steuerung.anhalten_fortsetzen", "im Rumpf von PUT …/funktionen/steuern (genaue Prüfung je Aktion)");
 
     /** Jede Zeile der Gruppe 4 hat eine Route oben oder einen Grund. */
