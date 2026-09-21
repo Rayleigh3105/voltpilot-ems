@@ -77,8 +77,10 @@ import org.testcontainers.utility.DockerImageName;
  *       zählt als flüchtig und wird nur am Status gemessen.</li>
  *   <li><b>Die 18 nach IP-4 eingeführten Lese-Routen, die der Bestandsvergleich nur zufällig grün zeigte</b> (Befund
  *       18.09.2026, PR 961): jede trifft über {@link #PROBEN} ein echtes Objekt, und ein Bearbeiter an einem ANDEREN
- *       Standort bekommt dort die Antwort einer unbekannten Kennung. Was daran scheitert, stünde benannt in
- *       {@link #ZAUN_OFFEN} — die Liste ist leer.</li>
+ *       Standort bekommt dort die Antwort einer unbekannten Kennung.</li>
+ *   <li><b>Die Inventur vom 21.09.2026:</b> jede übrige lesende Kundenroute mit Kennung, deren Objekt die Bühne trägt,
+ *       und die Listen derselben Objekte machen dieselbe Aussage. Was daran scheitert, steht benannt in
+ *       {@link #ZAUN_OFFEN} (Messstelle, Kostenstelle, Prozess, Vorlagen, Protokoll des Unternehmens).</li>
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
