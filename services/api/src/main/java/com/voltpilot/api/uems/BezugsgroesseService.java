@@ -12,6 +12,8 @@ import com.voltpilot.api.uems.BezugsgroesseRegeln.Urteil;
 import com.voltpilot.api.uems.BezugsgroesseRepository.WertZeile;
 import com.voltpilot.api.uems.BezugsgroesseRepository.Zeile;
 import com.voltpilot.api.web.dto.BezugsgroesseDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -25,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -47,7 +50,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * und die Datenbank-Wände (Kennzeichen-Belegung, M1-Fremdschlüssel, der Lösch-Trigger) werden im
  * Rennen auf dieselbe Ablehnung abgebildet — die Transaktion ist dann zurückgerollt.
  *
- * <p>Der Mandant ist die RLS: eine fremde Bezugsgröße ist nicht da (404 {@code nicht_gefunden}, nie 403).
+ * <p>Der Mandant ist die RLS: eine fremde Bezugsgröße ist nicht da (404 {@code nicht_gefunden}, nie 403). Den
+ * Standort-Zaun trägt die Tabelle nicht: die Routen lesen über ihre Geltung ({@link RechtPruefung#pruefenLesen},
+ * AP-03 R-A1) — außerhalb ist sie dieselbe 404. Interne Leser (Kennzahlen, Import, Berichtigung) bedienen keine
+ * Kundenanfrage nach dieser Kennung und lesen ungezäunt.
  */
 @Service
 public class BezugsgroesseService {
@@ -61,10 +67,13 @@ public class BezugsgroesseService {
     private final BezugswertRepository berichtigungen;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
+    private final RechtPruefung rechte;
 
     public BezugsgroesseService(BezugsgroesseRepository repo, BezugsflaecheLesemodell bezugsflaechen,
-            BezugswertRepository berichtigungen, PlatformTransactionManager transactionManager, ObjectMapper json) {
+            BezugswertRepository berichtigungen, PlatformTransactionManager transactionManager, ObjectMapper json,
+            RechtPruefung rechte) {
         this.repo = repo;
+        this.rechte = rechte;
         this.bezugsflaechen = bezugsflaechen;
         this.berichtigungen = berichtigungen;
         this.transaktion = new TransactionTemplate(transactionManager);
@@ -73,26 +82,40 @@ public class BezugsgroesseService {
 
     // ------------------------------------------------------------------------------ lesen
 
-    /** Die Bezugsgrößen — und daneben die Bezugsflächen, die in der Ortsstruktur stehen (IP-6, gelesen). */
+    /**
+     * Die Bezugsgrößen, die der Aufrufer sieht (je Zeile {@link RechtPruefung#lesbar}) — und daneben die
+     * Bezugsflächen, die in der Ortsstruktur stehen (IP-6, gelesen; ihr Orts-Lesemodell ist gezäunt).
+     */
     public BezugsgroesseDto.Liste alle() {
-        return new BezugsgroesseDto.Liste(repo.alle().stream().map(BezugsgroesseService::darstellung).toList(),
-                bezugsflaechen.alle());
+        return new BezugsgroesseDto.Liste(repo.alle().stream()
+                .filter(b -> rechte.lesbar(RechtZiel.BEZUGSGROESSE, b.id()))
+                .map(BezugsgroesseService::darstellung).toList(), bezugsflaechen.alle());
     }
 
     public BezugsgroesseDto.Bezugsgroesse eine(UUID id) {
-        return darstellung(finde(id));
+        return darstellung(sichtbar(id));
+    }
+
+    /** Die Route: {@link #werte} im Geltungsbereich des Aufrufers — außerhalb wie eine unbekannte Kennung. */
+    public BezugsgroesseDto.Werte werteImGeltungsbereich(UUID id, LocalDate von, LocalDate bis, String lesart) {
+        return werte(this::sichtbar, id, von, bis, lesart);
     }
 
     /**
      * Die Werte im Zeitraum (Tage, letzter einschließlich), je Schlüssel mit ihren Fassungen.
      * {@code lesart} {@code wirksam}: je Schlüssel nur die Fassung, die den wirksamen Betrag trägt,
-     * mit ihrer Herkunft; {@code alle}: die ganze Kette.
+     * mit ihrer Herkunft; {@code alle}: die ganze Kette. Ungezäunt, für interne Leser.
      */
     public BezugsgroesseDto.Werte werte(UUID id, LocalDate von, LocalDate bis, String lesart) {
+        return werte(this::finde, id, von, bis, lesart);
+    }
+
+    private BezugsgroesseDto.Werte werte(Function<UUID, Zeile> lies, UUID id, LocalDate von, LocalDate bis,
+            String lesart) {
         if (von != null && bis != null && bis.isBefore(von)) {
             throw BezugsgroesseAbgelehnt.von(Ablehnung.ZEITRAUM_UNGUELTIG);
         }
-        Zeile b = finde(id);
+        Zeile b = lies.apply(id);
         Map<String, List<WertZeile>> jeSchluessel = new LinkedHashMap<>();
         for (WertZeile w : repo.werte(id, von, bis)) {
             jeSchluessel.computeIfAbsent(w.periodeVon() + "|" + w.zeitpunkt(), k -> new ArrayList<>()).add(w);
@@ -200,10 +223,22 @@ public class BezugsgroesseService {
     /**
      * Die Intervalle eines Stammdatums, das AP-09 selbst hält — und, wenn {@code periodeArt} genannt ist, der
      * Wert je Periode am Stichtag mit den Übergängen (S3), gerechnet von {@link BezugsdatenRegeln#stammdatum}.
-     * Eine Bezugsgröße, die kein Stammdatum ist, hat keine Gültigkeiten (422 {@code kein_stammdatum}).
+     * Eine Bezugsgröße, die kein Stammdatum ist, hat keine Gültigkeiten (422 {@code kein_stammdatum}). Ungezäunt,
+     * für interne Leser.
      */
     public BezugsgroesseDto.Stammdatum stammdatum(UUID id, String periodeArt, LocalDate von, LocalDate bis) {
-        Zeile b = finde(id);
+        return stammdatum(this::finde, id, periodeArt, von, bis);
+    }
+
+    /** Die Route: {@link #stammdatum} im Geltungsbereich des Aufrufers — außerhalb wie eine unbekannte Kennung. */
+    public BezugsgroesseDto.Stammdatum stammdatumImGeltungsbereich(UUID id, String periodeArt, LocalDate von,
+            LocalDate bis) {
+        return stammdatum(this::sichtbar, id, periodeArt, von, bis);
+    }
+
+    private BezugsgroesseDto.Stammdatum stammdatum(Function<UUID, Zeile> lies, UUID id, String periodeArt,
+            LocalDate von, LocalDate bis) {
+        Zeile b = lies.apply(id);
         if (!BezugsgroesseRegeln.STAMMDATUM.equals(b.wertart())) {
             throw new BezugsgroesseAbgelehnt(Ablehnung.KEIN_STAMMDATUM, Map.of("wertart", b.wertart()));
         }
@@ -461,6 +496,13 @@ public class BezugsgroesseService {
 
     private Zeile finde(UUID id) {
         return repo.finde(id).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+    }
+
+    /** Die Bezugsgröße, wie eine Route sie liest: unbekannt und außerhalb des Geltungsbereichs sind dieselbe 404. */
+    private Zeile sichtbar(UUID id) {
+        Zeile b = finde(id);
+        rechte.pruefenLesen(RechtZiel.BEZUGSGROESSE, id, () -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        return b;
     }
 
     private static void pruefe(Urteil u) {

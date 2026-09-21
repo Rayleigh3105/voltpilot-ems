@@ -106,7 +106,7 @@ public class BezugsgroesseController {
             fakten.put("erlaubt", BezugsgroesseRegeln.LESARTEN);
             throw new BezugsgroesseAbgelehnt(Ablehnung.WORT_UNBEKANNT, fakten);
         }
-        return bezugsgroessen.werte(id, tag("von", von), tag("bis", bis), lesart);
+        return bezugsgroessen.werteImGeltungsbereich(id, tag("von", von), tag("bis", bis), lesart);
     }
 
     /**
@@ -149,7 +149,7 @@ public class BezugsgroesseController {
             @RequestParam(name = "periode_art", required = false) String periodeArt,
             @RequestParam(required = false) String von,
             @RequestParam(required = false) String bis) {
-        return bezugsgroessen.stammdatum(id, leer(periodeArt), tag("von", von), tag("bis", bis));
+        return bezugsgroessen.stammdatumImGeltungsbereich(id, leer(periodeArt), tag("von", von), tag("bis", bis));
     }
 
     /**

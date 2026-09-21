@@ -44,13 +44,17 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   - Die Werte einer Messstelle kommen nur über `measurement_point` und fallen darum weg. Die Messstelle selbst bleibt
     sichtbar.
   - Das gehört zu IP-10/IP-11 (A1: MS-19 unsichtbar).
-- ⚠ **Offen, nicht gezäunt (Befund 21.09.2026): `bezugsgroesse`.** Nur die Mandanten-Policy, und die Lesewege
-  lösen sie ohne Standort auf (`BezugsgroesseRepository#finde`, keine `RechtPruefung` auf `BEZUGSGROESSE`).
-  - Ein Konto NUR an einem anderen Standort bekommt `GET /api/v1/bezugsgroessen/{id}` und `…/kanalbindung` mit 200
-    samt Inhalt (die Bindung nennt die `entity_id` einer für es unsichtbaren Komponente), `…/kanalbindung/kanaele`
-    mit 200 `[]`. Eine unbekannte Kennung ist 404 — die Existenz ist verraten.
-  - Benannt in `ZugriffZaunApiTest.ZAUN_OFFEN`: rot bei einem NEUEN und bei einem GEHEILTEN Fall. Heilung ist das
-    Folgepaket `vp-uems-zaun-bezugsgroesse-lesen`; danach ist die Liste leer.
+- **`bezugsgroesse`: geschlossen mit PR 1000 (Befund 21.09.2026).** Die Tabelle trägt weiter nur die
+  Mandanten-Policy; gezäunt wird in der Anwendungsschicht über die Geltung, mit DERSELBEN Auflösung wie die
+  Schreibseite: `RechtPruefung#pruefenLesen` (Einzelroute) und `#lesbar` (Liste), Aktion `messwerte.ansehen`.
+  - Standort/Gebäude/Bereich/Messstelle: nur mit Zuweisung dort; Unternehmen/Prozess/Kostenstelle: nur
+    unternehmensweite Rollen (AP-03 R-A1, §4.9). Außerhalb = Status und Körper einer unbekannten Kennung.
+  - Gezäunt: `GET /bezugsgroessen` (Liste), `/{id}`, `/{id}/werte`, `/{id}/stammdatum`, `/{id}/kanalbindung`,
+    `/{id}/kanalbindung/kanaele`. Interne Leser (`BezugsgroesseService#werte`/`#stammdatum`, `KanalbindungService#liste`,
+    `BezugsgroesseRepository#finde`) bleiben ungezäunt — Kennzahl, Import, Berichtigung bedienen keine Anfrage
+    nach dieser Kennung. Wer eine neue Leseroute baut, nimmt den `…ImGeltungsbereich`-Einstieg.
+  - `ZugriffZaunApiTest.ZAUN_OFFEN` ist leer und bleibt als Zusicherung stehen; je Geltungsart
+    `BezugsgroesseApiTest#jedeLeserouteZeigtDieBezugsgroesseNurImGeltungsbereich`.
 - ⚠ **Summen:** `/overview` und `/earnings` lesen je Anlage des ganzen Kundenbereichs (`ZEIGT_NUR_SICHTBARE`). Die Antwort
   nimmt nur Anlagen aus `sites.findAll()`. Die Teilansicht der Summen ist IP-10.
 - ⚠ Übrige Tabellen mit `site_id` (Konfiguration, Verbraucher, Ladepunkte, `ort_zuordnung` …) sind nur über ihre

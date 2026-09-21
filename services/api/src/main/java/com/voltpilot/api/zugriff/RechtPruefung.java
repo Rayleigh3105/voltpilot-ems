@@ -3,6 +3,7 @@ package com.voltpilot.api.zugriff;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BezugsgroesseAbgelehnt;
 import com.voltpilot.api.uems.BezugsgroesseRegeln;
+import com.voltpilot.api.uems.KennzahlRegeln;
 import com.voltpilot.api.uems.KostenstelleProzessAbgelehnt;
 import com.voltpilot.api.uems.RechteAbleitung;
 import com.voltpilot.api.uems.RechteAbleitung.Anlage;
@@ -50,6 +51,7 @@ import org.springframework.web.server.ResponseStatusException;
  * geht sie unverändert an die Route, deren eigene 404 byte-gleich bleibt. Sieht sie es, liegt es aber nach dem
  * Rechte-Vertrag außerhalb (Messstelle und Bezugsgröße haben keinen Standort-Zaun), antwortet diese Stelle mit
  * GENAU der 404, die die Route für eine nie vergebene Kennung gibt. Erst im Geltungsbereich 403 {@link RechtFehlt}.
+ * Lesende Routen eines solchen Objekts fragen dieselbe Auflösung über {@link #pruefenLesen} bzw. {@link #lesbar}.
  *
  * <p><b>Wer fragt</b>, steht allein im {@link ZugriffContext}: die wirksamen Zuweisungen des Kundenkontos (nie
  * zugewiesen = Kundenadministrator, Bestandsregel E12) bzw. die angenommene Unterstützung. Zwei Fälle prüft sie
@@ -530,6 +532,49 @@ public class RechtPruefung {
         if (u.ablehnung() != null) {
             throw u.ablehnung();
         }
+    }
+
+    // ------------------------------------------------------------------ Lesen
+
+    /** Die Aktion des Lesens: „Bezugsgrößen und Werte, Herkunft, Fassungen, Importe ansehen" (AP-09 §4.11). */
+    private static final String ANSEHEN = KennzahlRegeln.ANSEHEN;
+
+    /**
+     * Der Leseweg einer Route zu einem Objekt per Kennung (AP-03 R-A1, §4.9): dieselbe Auflösung wie {@link #pruefen},
+     * gefragt mit {@code messwerte.ansehen} (AP-09 §4.11). Wer das Recht unternehmensweit hat, sieht jedes Objekt des
+     * Kundenbereichs; eine Unternehmens-Geltung (auch Prozess und Kostenstelle, {@link #geltung}) sieht NUR er — für
+     * jedes andere Konto gibt es sie nicht. Außerhalb wirft {@code nichtGefunden}, nie 403: die Antwort gleicht der
+     * einer unbekannten Kennung. Ein unsichtbares Objekt geht durch (die Route antwortet selbst); ohne Kontext und am
+     * Umschalter bleibt alles wie bisher. Gezählt wird nicht ({@code voltpilot_recht_total} zählt Schreibrouten).
+     */
+    public void pruefenLesen(RechtZiel ziel, UUID id, Supplier<? extends RuntimeException> nichtGefunden) {
+        Urteil u = lesen(ziel, id, nichtGefunden);
+        if (u.ablehnung() != null) {
+            throw u.ablehnung();
+        }
+    }
+
+    /** {@link #pruefenLesen} für eine Liste: {@code false} heißt, die Zeile fehlt — ohne Hinweis, ohne Anzahl. */
+    public boolean lesbar(RechtZiel ziel, UUID id) {
+        Urteil u = lesen(ziel, id, null);
+        return u.ablehnung() == null && u.ergebnis() != Ergebnis.UNSICHTBAR;
+    }
+
+    private Urteil lesen(RechtZiel ziel, UUID id, Supplier<? extends RuntimeException> nichtGefunden) {
+        Zugriff z = ZugriffContext.get();
+        Ergebnis ohne = ungeprueft(z);
+        if (ohne != null) {
+            return new Urteil(ohne, null);
+        }
+        if (RechteAbleitung.darf(RechteMatrixDatei.matrix(), benutzer(z), kundenbereich(null, List.of()), ANSEHEN,
+                Ziel.unternehmen(), z.stand()).darf()) {
+            return new Urteil(Ergebnis.ERLAUBT, null);
+        }
+        if (id == null) {
+            return new Urteil(Ergebnis.UNSICHTBAR, null);
+        }
+        Ort ort = aufloesen(ziel, id);
+        return urteil(z, ANSEHEN, ort instanceof Ort.Unternehmen ? new Ort.Ausserhalb() : ort, nichtGefunden);
     }
 
     /** Die 404, die die Route für eine nie vergebene Kennung gibt — {@code RechtMatrixApiTest} vergleicht beide. */

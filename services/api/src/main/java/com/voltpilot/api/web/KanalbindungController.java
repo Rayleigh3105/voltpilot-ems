@@ -34,5 +34,5 @@ public class KanalbindungController {
     public List<KanalbindungService.Auswahl> auswahl(@PathVariable UUID id) { return service.auswahl(id); }
     /** Recht: {@code messwerte.ansehen}. */
     @GetMapping
-    public List<KanalbindungService.Bindung> liste(@PathVariable UUID id) { return service.liste(id); }
+    public List<KanalbindungService.Bindung> liste(@PathVariable UUID id) { return service.listeImGeltungsbereich(id); }
 }
