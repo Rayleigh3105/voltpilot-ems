@@ -20886,6 +20886,28 @@ components:
           type: integer
           readOnly: true
           description: Serverseitige, konservative Kostenannahme; im Request nicht erlaubt.
+        measures:
+          $ref: "#/components/schemas/CustomMeasurementMeasures"
+    CustomMeasurementMeasures:
+      type: object
+      description: >
+        Wahlfrei und additiv: was der eigene Messwert misst, in den Wörtern des
+        Messpunkt-Katalogs (`quantity`, `direction`, `aggregation_kind`). Nur mit
+        dieser Angabe trägt er Größe, Richtung und Wertart am Messkanal und damit
+        eine Messstelle; ohne sie bleibt er Beobachtung wie bisher. Erlaubt sind
+        genau die Kombinationen, die einen Fluss des Messstellen-Vorschlags tragen:
+        `active_energy` mit `counter` (Einheit Wh, kWh oder MWh, Aufbewahrungsklasse
+        `energy_counter`) und `active_power` mit `gauge` (Einheit W, kW oder MW,
+        Aufbewahrungsklasse `live_power`, `phase_mppt_string` oder `thermal_bms`),
+        je mit `import`, `export`, `generation`, `charge` oder `discharge`; sonst 400
+        mit Kundensatz. Die Angabe bleibt in der Cloud: an die Box geht die
+        Definition ohne `measures` (`mqtt-measurement-config` bleibt unverändert).
+      additionalProperties: false
+      required: [quantity, direction, aggregationKind]
+      properties:
+        quantity: { type: string, enum: [active_energy, active_power] }
+        direction: { type: string, enum: [import, export, generation, charge, discharge] }
+        aggregationKind: { type: string, enum: [counter, gauge] }
     MessGroesse:
       type: object
       description: >

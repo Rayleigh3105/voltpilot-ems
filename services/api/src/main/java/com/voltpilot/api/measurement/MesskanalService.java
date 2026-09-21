@@ -121,11 +121,17 @@ public class MesskanalService {
     private MesskanalDto.Messkanal kanal(Zeile z, MesskanalDto.GeraetEinbau geraet,
             List<MesskanalDto.Speist> speist) {
         if (z.customDefinition() != null) {
-            // Selbstbau: Name und Einheit aus der eigenen Definition; eine Wertart, Größe oder
-            // Richtung trägt sie (noch) nicht — also keine.
+            // Selbstbau: Name und Einheit aus der eigenen Definition; Größe, Richtung und Wertart nur,
+            // wenn der Kunde angegeben hat, was der Wert misst („measures“, Katalogwörter wie
+            // bei einem Katalog-Kanal) — ohne Angabe keine, wie vor Schnitt 2.
             JsonNode d = lesen(z.customDefinition());
+            JsonNode m = d == null ? null : d.get("measures");
+            String quantity = text(m, "quantity");
+            String direction = text(m, "direction");
             return new MesskanalDto.Messkanal(z.pointKey(), text(d, "label"), text(d, "unit"),
-                    null, null, null, null, null, z.cadenceS(), z.enabled(), z.deviceId(), geraet, speist);
+                    MesskanalAbbildung.wertart(text(m, "aggregationKind")), MesskanalAbbildung.groesse(quantity),
+                    MesskanalAbbildung.richtung(direction), quantity, direction, z.cadenceS(), z.enabled(),
+                    z.deviceId(), geraet, speist);
         }
         MeasurementCatalog.Point p = catalog.resolve(z.pointKey());
         Semantik s = catalog.semantik(z.pointKey());

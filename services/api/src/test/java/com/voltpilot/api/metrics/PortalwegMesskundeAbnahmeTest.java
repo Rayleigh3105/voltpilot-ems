@@ -105,8 +105,12 @@ import org.testcontainers.utility.DockerImageName;
  * #schreibweg} stellt seine Nachschläge und sein Urteil nach. Echt laufen Lücken-Melder, Verdichtung,
  * Werte-Route und UEMS-Metrik.
  *
- * <p><b>Nicht im Umfang:</b> Messgröße/Wertart am eigenen Messwert des Baukastens (Schnitt 2 der
- * Untersuchung) — die Messstelle des Assistenten hängt darum am Katalog-Kanal von MS-05.
+ * <p><b>Schnitt 2 (Paket {@code vp-uems-baukasten-messwert-groesse}):</b> der eigene Messwert von MS-06
+ * trägt die Antwort auf „Was misst dieser Wert?" ({@code measures}: Energie-Zählerstand – Bezug). Er
+ * bekommt über den Messstellen-Vorschlag eine Messstelle, seine Werte führen, die Werte-Karte zeigt eine
+ * Menge. Die übrigen acht eigenen Messwerte bleiben OHNE Angabe, was sie waren: Beobachtung, im Vorschlag
+ * ausgelassen mit {@code keine_messgroesse}. Die erste Messstelle des Assistenten hängt weiter am
+ * Katalog-Kanal von MS-05.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(classes = ApiApplication.class)
@@ -318,6 +322,11 @@ class PortalwegMesskundeAbnahmeTest {
                 String ms = m.path("messstelle").asText();
                 ObjectNode definition = definition(einrichtung.get(code), m).deepCopy();
                 definition.remove("requestCostMs");
+                if (MIT_ANGABE.equals(ms)) {
+                    // „Was misst dieser Wert?" → Energie-Zählerstand – Bezug (eigenerMesswert.ts).
+                    definition.putObject("measures").put("quantity", "active_energy").put("direction", "import")
+                            .put("aggregationKind", "counter");
+                }
                 Antwort eigen = ok(ruf(false, HttpMethod.POST, "/api/v1/devices/" + an
                         + "/measurement-selection/custom?entityId=" + komponente.get(ms), Map.of(
                         "expectedRevision", revision(an), "idempotencyKey", UUID.randomUUID().toString(),
@@ -426,6 +435,19 @@ class PortalwegMesskundeAbnahmeTest {
         // messenAssistent.ts uebernehmenAnfrage — jede Zeile so, wie die Liste sie zeigt).
         Antwort liste = ok(ruf(false, HttpMethod.GET, "/api/v1/standorte/" + standort + "/messstellen-vorschlag",
                 null), 200);
+        befund("Messstellen-Vorschlag", liste.body());
+        // Schnitt 2: der eigene Messwert MIT Angabe steht im Vorschlag; die ohne Angabe bleiben ausgelassen
+        // wie vor dem Paket (keine_messgroesse).
+        List<String> vorgeschlagen = new ArrayList<>();
+        liste.body().path("vorschlaege").forEach(v -> vorgeschlagen.add(v.at("/quelle/kanal").asText()));
+        assertThat(vorgeschlagen).as("Vorschlag").contains(schluessel.get(MIT_ANGABE), "sunspec.model_203.totwhimp");
+        Map<String, String> ausgelassen = new LinkedHashMap<>();
+        liste.body().path("ausgelassen").forEach(a -> ausgelassen.put(a.path("kanal").asText(), a.path("grund").asText()));
+        for (Map.Entry<String, String> e : schluessel.entrySet()) {
+            if (!MIT_ANGABE.equals(e.getKey())) {
+                assertThat(ausgelassen.get(e.getValue())).as(e.getKey() + " ohne Angabe").isEqualTo("keine_messgroesse");
+            }
+        }
         List<Map<String, Object>> gewaehlt = new ArrayList<>();
         for (JsonNode v : liste.body().path("vorschlaege")) {
             Map<String, Object> z = new LinkedHashMap<>();
@@ -441,6 +463,11 @@ class PortalwegMesskundeAbnahmeTest {
                 + "/messstellen-vorschlag/uebernehmen", Map.of("vorschlaege", gewaehlt)), 200);
         String assistentMs = uebernommen.body().path("messstellen").path(0).path("kennzeichen").asText();
         assertThat(assistentMs).as("Messstelle aus dem Assistenten").isNotBlank();
+        List<String> baukastenMs = root.queryForList("SELECT m.kennzeichen FROM messstelle_quelle q "
+                + "JOIN messstelle m ON m.id = q.messstelle_id WHERE q.entity_id = ? AND q.kanal = ?",
+                String.class, komponente.get(MIT_ANGABE), schluessel.get(MIT_ANGABE));
+        befund("Messstelle des Baukasten-Zählers mit Angabe", baukastenMs);
+        assertThat(baukastenMs).as("der Baukasten-Zähler mit Angabe bekommt EINE Messstelle").hasSize(1);
 
         // ============================== nach dem Portal-Weg: die Werte der Box
         // (1) Jeder Zähler trägt eine Quelle, und die liest seine Box zu den Messzeiten der Vorlage (die
@@ -463,6 +490,8 @@ class PortalwegMesskundeAbnahmeTest {
                 .isSubsetOf("fuehrend", "beobachtung", "katalog:fuehrend", "katalog:beobachtung");
         assertThat(urteile.values().stream().mapToLong(Long::longValue).sum()).isEqualTo(50);
         assertThat(urteile.get("katalog:fuehrend")).as("die Assistenten-Messstelle führt").isEqualTo(5);
+        assertThat(urteile.get("fuehrend")).as("der Baukasten-Zähler mit Angabe führt").isEqualTo(5);
+        assertThat(urteile.get("beobachtung")).as("die acht ohne Angabe bleiben Beobachtung").isEqualTo(40);
         // (3) Lücken-Melder: eine Reihe je Zähler; Verdichtung: Viertelstunden.
         uhr.stellen(NOW.plus(Duration.ofSeconds(90)));
         melder.lauf(uhr.instant());
@@ -483,6 +512,17 @@ class PortalwegMesskundeAbnahmeTest {
                 + (mitMenge.isEmpty() ? werte.path("werte").path(0) : mitMenge.get(0)));
         assertThat(mitMenge).as("Viertelstunden der Werte-Karte mit Menge").isNotEmpty();
         assertThat(mitMenge.get(0).path("erhalten").asInt()).as("erhaltene Werte").isGreaterThan(0);
+        JsonNode baukastenWerte = ok(ruf(false, HttpMethod.GET, "/api/v1/messstellen/" + baukastenMs.get(0)
+                + "/werte?raster=viertelstunde&von=2026-11-03&bis=2026-11-03", null), 200).body();
+        List<JsonNode> baukastenMenge = new ArrayList<>();
+        baukastenWerte.path("werte").forEach(w -> {
+            if (w.path("menge").isNumber()) {
+                baukastenMenge.add(w);
+            }
+        });
+        befund("Werte am Baukasten-Zähler mit Angabe", baukastenMenge.size() + " Viertelstunden mit Menge, erste "
+                + (baukastenMenge.isEmpty() ? baukastenWerte.path("werte").path(0) : baukastenMenge.get(0)));
+        assertThat(baukastenMenge).as("Werte-Karte des Baukasten-Zählers mit Menge").isNotEmpty();
         // (5) Nach der Übernahme gehören die Werte zur Reihe: weder das Register noch die Werte-Karte sagen
         // „noch keiner Messreihe zugeordnet“ (Messstelle liefert Daten ehrlich).
         assertThat(werte.path("zuordnung").isNull()).as("Werte-Karte ohne zuordnung").isTrue();
@@ -502,6 +542,9 @@ class PortalwegMesskundeAbnahmeTest {
         befund("Messkunden-Metrik", metrik);
         assertThat(metrik).as("Messkunde nicht mehr „nie“").contains("zustand=\"nie\"} 0.0");
     }
+
+    /** Der eigene Messwert, dem der Kunde sagt, was er misst (Schnitt 2); alle anderen bleiben ohne Angabe. */
+    private static final String MIT_ANGABE = "MS-06";
 
     /** Die Routen dieses Laufs, so wie {@code api.ts} sie ruft — ohne sie spielte der Lauf einen Umweg. */
     private static final List<String> PORTAL_ROUTEN = List.of("'/api/v1/standorte'", "/api/v1/sites`",

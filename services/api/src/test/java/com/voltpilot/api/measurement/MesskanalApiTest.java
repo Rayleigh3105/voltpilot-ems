@@ -246,6 +246,23 @@ class MesskanalApiTest {
         assertThat(k.get("kadenz_s").asInt()).isEqualTo(60);
     }
 
+    /**
+     * Schnitt 2: hat der Kunde angegeben, was sein eigener Messwert misst ({@code measures}), trägt
+     * der Kanal Größe, Richtung und Wertart wie ein Katalog-Kanal — abgebildet über dieselbe Tabelle.
+     */
+    @Test
+    void selbstbauMitAngabeTraegtGroesseRichtungUndWertartWieEinKatalogKanal() {
+        Bestand b = ahrenberg();
+        UUID zaehler = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, device_id) "
+                + "VALUES (?, ?, 'grid-meter', 'Baukasten-Zähler mit Angabe', ?) RETURNING id", UUID.class,
+                b.tenant(), b.an1(), b.box());
+        auswahl(b.tenant(), b.an1(), b.box(), zaehler, "custom.modbus_input.0x01f4", 60,
+                "{\"label\":\"Zähler Halle 1\",\"unit\":\"kWh\",\"cadenceS\":60,\"measures\":"
+                        + "{\"quantity\":\"active_energy\",\"direction\":\"import\",\"aggregationKind\":\"counter\"}}");
+        JsonNode k = rufe(b.an1(), zaehler, "admin", b.tenant()).getBody().get("messkanaele").get(0);
+        kanal(k, "Zähler Halle 1", "kWh", "counter", "Wirkenergie", "Bezug", "active_energy", "import");
+    }
+
     @Test
     void eineAbgewaehlteAuswahlBleibtAlsKanalSichtbar() {
         Bestand b = ahrenberg();

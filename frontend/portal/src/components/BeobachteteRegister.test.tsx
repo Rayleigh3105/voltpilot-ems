@@ -446,3 +446,75 @@ describe('BeobachteteRegister · die Bruecke aus einer Lesung', () => {
     expect(api.customMeasurementEstimate).not.toHaveBeenCalled();
   });
 });
+
+describe('BeobachteteRegister · „Was misst dieser Wert?" (Schnitt 2)', () => {
+  beforeEach(() => {
+    vi.spyOn(api, 'measurementSelection').mockResolvedValue(state);
+    vi.spyOn(api, 'measurementCatalog').mockResolvedValue(katalog([point]));
+    vi.spyOn(api, 'customMeasurementEstimate').mockResolvedValue(estimate);
+    vi.spyOn(api, 'addCustomMeasurement').mockResolvedValue({ ...state, desiredRevision: 1 });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  async function formular(unit: string) {
+    render(
+      <BeobachteteRegister
+        deviceId="d"
+        familien={['hybrid_3p']}
+        bruecke={{ label: 'Zähler Halle 1', address: '500', sourceKind: 'modbus_input', unit, scale: '0.1' }}
+        onBrueckeVerbraucht={() => {}}
+      />,
+    );
+    return screen.findByRole('dialog', { name: 'Eigenen Messwert hinzufügen' });
+  }
+  async function waehle(dialog: HTMLElement, label: string) {
+    fireEvent.click(within(dialog).getByRole('combobox', { name: 'Was misst dieser Wert?' }));
+    fireEvent.click(await screen.findByRole('option', { name: label }));
+  }
+
+  it('fragt EINMAL und speichert erst mit einer Antwort', async () => {
+    const dialog = await formular('kWh');
+    expect(within(dialog).getByText('Nur mit dieser Angabe bekommt der Wert eine Messstelle.')).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Last und Volumen prüfen' }));
+    await waitFor(() => expect(api.customMeasurementEstimate).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Jetzt aufzeichnen' })).toBeDisabled();
+  });
+
+  it('schickt zum Energie-Zählerstand die Katalogwörter und die Zählerstand-Aufbewahrung', async () => {
+    const dialog = await formular('kWh');
+    await waehle(dialog, 'Energie-Zählerstand – Bezug');
+    expect(within(dialog).getByText('Bekommt eine Messstelle über den Messen-Assistenten. Einheit Wh, kWh oder MWh.')).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Last und Volumen prüfen' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Jetzt aufzeichnen' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt aufzeichnen' }));
+    await waitFor(() => expect(api.addCustomMeasurement).toHaveBeenCalled());
+    const body = vi.mocked(api.addCustomMeasurement).mock.calls[0][1] as { definition: Record<string, unknown> };
+    expect(body.definition).toMatchObject({
+      unit: 'kWh', retentionClass: 'energy_counter',
+      measures: { quantity: 'active_energy', direction: 'import', aggregationKind: 'counter' },
+    });
+  });
+
+  it('„Etwas anderes" bleibt ohne Messstelle und schickt keine Angabe', async () => {
+    const dialog = await formular('°C');
+    await waehle(dialog, 'Etwas anderes (ohne Messstelle)');
+    expect(within(dialog).getByText('Der Wert wird aufgezeichnet, bekommt aber keine Messstelle.')).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Last und Volumen prüfen' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Jetzt aufzeichnen' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt aufzeichnen' }));
+    await waitFor(() => expect(api.addCustomMeasurement).toHaveBeenCalled());
+    const body = vi.mocked(api.addCustomMeasurement).mock.calls[0][1] as { definition: Record<string, unknown> };
+    expect(body.definition).not.toHaveProperty('measures');
+    // Keine erfundene Klasse mehr: `gauge` kennt die API nicht (400).
+    expect(body.definition.retentionClass).toBe('live_power');
+  });
+
+  it('sagt, wenn die Einheit nicht zur Antwort passt, und speichert dann nicht', async () => {
+    const dialog = await formular('kW');
+    await waehle(dialog, 'Energie-Zählerstand – Abgabe');
+    expect(within(dialog).getByText('Ein Energie-Zählerstand braucht die Einheit Wh, kWh oder MWh.')).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Last und Volumen prüfen' }));
+    await waitFor(() => expect(api.customMeasurementEstimate).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Jetzt aufzeichnen' })).toBeDisabled();
+  });
+});
