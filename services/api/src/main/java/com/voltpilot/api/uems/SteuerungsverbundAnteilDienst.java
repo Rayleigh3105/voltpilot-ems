@@ -336,7 +336,9 @@ public class SteuerungsverbundAnteilDienst {
             anteile.rueckgespieltMarkieren(v.id(), am);
             return true;
         }
-        if (angenommen) {
+        // Eine Quittung zählt nur für ein Dokument, das diese Datenbank gespeichert hat: nach dem Rückspielen (neue
+        // Epoche) ist ein verspäteter Stand der alten Epoche keiner, den die Cloud je gesendet hat (IP-30).
+        if (angenommen && dokumente.stream().anyMatch(d -> d.stand().equals(stand))) {
             verbuende.quittiert(m.id(), stand.epoche(), stand.revision(), am);
             zielstandPruefen(v);
         }

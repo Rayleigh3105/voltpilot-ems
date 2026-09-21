@@ -276,7 +276,10 @@ nie `plausibel`.
 
 **Lauf und Folge.** `uems/VerbundBilanzLaeufer` (täglich 04:37 Europe/Berlin, Schalter
 `voltpilot.uems.verbund-bilanz.enabled`) rechnet den Vortag jeder Anlage MIT Gemeinsamer Steuerung und Mitgliedern —
-genau einmal je Tag, gespeichert in `steuerungsverbund_bilanz` (V20260921210000: wer, wann, worauf, Stufe davor). Eine
+genau einmal je Tag, gespeichert in `steuerungsverbund_bilanz` (V20260921210000: wer, wann, worauf, Stufe davor). Nur
+ein Tag der drei Tage davor, der noch `unbekannt` steht, wird im Takt neu geurteilt und ersetzt (IP-30, A4: die Boxen
+puffern 48 h; V20260922110000 gibt dafür das Spaltenrecht UPDATE); lückenhaft bleibt er `unbekannt`, ein gefälltes
+Urteil wird nie angefasst. Eine
 Anlage ohne Gemeinsame Steuerung bekommt keinen Lauf, keine Zeile, keine Metrik-Reihe. `unplausibel` führt eine Anlage
 auf S2, S3 oder angehalten über `GemeinsameSteuerungService#bilanzUnplausibel` auf S1 zurück — Protokoll `stufe` mit
 Akteur „Verbund-Bilanz“ und Grund `verbund_bilanz_unplausibel <tag>`; Epoche und Mitglieder bleiben, die Anteile an den

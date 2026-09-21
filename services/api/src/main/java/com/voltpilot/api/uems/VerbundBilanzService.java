@@ -90,7 +90,36 @@ public class VerbundBilanzService {
         if (gefunden.isEmpty() || repo.vorhanden(gefunden.get().id(), tag)) {
             return Optional.empty();
         }
+        Optional<VerbundBilanzRepository.Ergebnis> e = urteilen(gefunden.get(), siteId, tag);
+        e.ifPresent(x -> repo.speichern(TenantContext.get(), x));
+        return e;
+    }
+
+    /**
+     * A4 (IP-30): die Boxen puffern 48 h — eine Viertelstunde kann nach dem ersten Lauf nachgeliefert werden. Jeder
+     * Tag in [{@code von}, {@code bis}], der noch {@code unbekannt} steht, wird mit dem heutigen Datenstand neu
+     * geurteilt und ersetzt; ein plausibel/unplausibel-Urteil bleibt unberührt. Günstiger als {@code unbekannt} wird ein
+     * Tag nur mit vollständigen Viertelstunden (die Regel urteilt, B5); fehlt weiter etwas, bleibt er {@code
+     * unbekannt}. Gibt die Tage zurück, deren Ergebnis sich dabei geändert hat.
+     */
+    @Transactional
+    public List<LocalDate> nachrechnen(UUID siteId, LocalDate von, LocalDate bis) {
+        Optional<VerbundZeile> gefunden = verbund.derAnlage(siteId);
+        if (gefunden.isEmpty()) {
+            return List.of();
+        }
         VerbundZeile v = gefunden.get();
+        List<LocalDate> geaendert = new java.util.ArrayList<>();
+        for (LocalDate tag : repo.unbekannteTage(v.id(), von, bis)) {
+            Optional<VerbundBilanzRepository.Ergebnis> e = urteilen(v, siteId, tag);
+            if (e.isPresent() && !VerbundBilanzRegel.UNBEKANNT.equals(e.get().zustand()) && repo.nachrechnen(e.get())) {
+                geaendert.add(tag);
+            }
+        }
+        return List.copyOf(geaendert);
+    }
+
+    private Optional<VerbundBilanzRepository.Ergebnis> urteilen(VerbundZeile v, UUID siteId, LocalDate tag) {
         Optional<Ausschnitt> gelesen = ausschnitt(v, tag, null);
         if (gelesen.isEmpty()) {
             return Optional.empty();
@@ -102,13 +131,11 @@ public class VerbundBilanzService {
                 && steuerung.bilanzUnplausibel(siteId, tag, ProtokollAkteur.verbundBilanz());
         VerbundBilanzRegel.UrteilViertelstunde g = u.geringstes();
         VerbundBilanzRegel.UrteilViertelstunde h = u.hoechstes();
-        VerbundBilanzRepository.Ergebnis e = new VerbundBilanzRepository.Ergebnis(v.id(), siteId, tag, u.zustand(),
+        return Optional.of(new VerbundBilanzRepository.Ergebnis(v.id(), siteId, tag, u.zustand(),
                 u.grund(), u.erwartet(), u.plausibel(), u.unplausibel(), u.unbekannt(),
                 g == null ? null : g.ungeregeltKw(), g == null ? null : g.toleranzKw(), g == null ? null : g.von(),
                 a.grundlage().toString(), v.stufe().code(), zurueck, ProtokollAkteur.verbundBilanz().name(),
-                h == null ? null : h.ungeregeltKw(), h == null ? null : h.von());
-        repo.speichern(TenantContext.get(), e);
-        return Optional.of(e);
+                h == null ? null : h.ungeregeltKw(), h == null ? null : h.von()));
     }
 
     /**

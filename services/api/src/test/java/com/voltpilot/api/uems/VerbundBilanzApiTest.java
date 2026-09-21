@@ -226,6 +226,55 @@ class VerbundBilanzApiTest {
         assertThat(((Timestamp) e.get("hoechstes_von")).toInstant()).isEqualTo(Instant.parse("2027-06-13T12:00:00Z"));
     }
 
+    /**
+     * A4 (IP-30): die Boxen puffern 48 h. Eine Viertelstunde, die erst nach dem ersten Lauf (04:37) vollständig wird,
+     * fehlte bis IP-30 dauerhaft — der Tag wurde genau einmal gerechnet. Jetzt urteilt der Takt der Folgetage einen
+     * Tag, der noch {@code unbekannt} steht, neu: lückenhaft bleibt er {@code unbekannt} (nie günstiger ohne
+     * vollständige Daten, B5), vollständig wird er geurteilt; ein einmal gefälltes Urteil wird nie wieder angefasst.
+     */
+    @Test
+    void a4NachgelieferteViertelstundeWirdNachgerechnetNieGuenstigerOhneVollstaendigeDaten() {
+        Welt w = welt("anteile_aktiv");
+        Timestamp elf = ts("2027-06-13T11:00:00Z");
+        Map<String, Object> vorher = root.queryForMap("SELECT menge, erhalten FROM messreihe_viertelstunde "
+                + "WHERE entity_id = ? AND intervall_beginn = ?", w.abgang(), elf);
+        assertThat(root.update("UPDATE messreihe_viertelstunde SET menge_zustand = 'unvollständig', erhalten = 1 "
+                + "WHERE entity_id = ? AND intervall_beginn = ?", w.abgang(), elf)).isEqualTo(1);
+
+        laeufer().lauf(TAG);
+        assertThat(ergebnis(w).get("zustand")).isEqualTo("unbekannt");
+        laeufer().lauf(TAG);
+        assertThat(ergebnis(w).get("zustand")).as("ein zweiter Lauf desselben Tages schreibt nichts").isEqualTo(
+                "unbekannt");
+
+        // noch lückenhaft: das Nachrechnen der Folgetage ändert nichts
+        laeufer().nachrechnen(TAG.plusDays(1));
+        assertThat(ergebnis(w).get("zustand")).isEqualTo("unbekannt");
+        assertThat(ergebnis(w).get("viertelstunden_unbekannt")).isEqualTo(1);
+
+        // die Box liefert nach (48 h Puffer) — der Takt am übernächsten Morgen urteilt den Tag neu
+        root.update("UPDATE messreihe_viertelstunde SET menge = ?, erhalten = ?, menge_zustand = 'vollständig' "
+                + "WHERE entity_id = ? AND intervall_beginn = ?", vorher.get("menge"), vorher.get("erhalten"),
+                w.abgang(), elf);
+        VerbundBilanzLaeufer takt = laeufer();
+        takt.uhrStellen(java.time.Clock.fixed(Instant.parse("2027-06-15T02:37:00Z"), java.time.ZoneOffset.UTC));
+        takt.takt();
+        Map<String, Object> e = ergebnis(w);
+        assertThat(e.get("zustand")).isEqualTo("plausibel");
+        assertThat(e.get("grund")).isNull();
+        assertThat(e.get("viertelstunden_plausibel")).isEqualTo(96);
+        assertThat(e.get("viertelstunden_unbekannt")).isEqualTo(0);
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_bilanz WHERE site_id = ? AND tag = ?",
+                Long.class, w.an1(), TAG)).as("ersetzt, nicht angehängt").isEqualTo(1L);
+
+        // ein gefälltes Urteil bleibt: auch geänderte Daten ändern es nicht mehr
+        root.update("UPDATE messreihe_viertelstunde SET menge = 5.75 WHERE entity_id = ? AND intervall_beginn >= ? "
+                + "AND intervall_beginn < ?", w.pv(), ts("2027-06-13T10:00:00Z"), ts("2027-06-13T12:00:00Z"));
+        laeufer().nachrechnen(TAG.plusDays(1));
+        assertThat(ergebnis(w).get("zustand")).isEqualTo("plausibel");
+        assertThat(stufe(w)).isEqualTo("anteile_aktiv");
+    }
+
     @Test
     void unplausibelAufS1BleibtS1OhneProtokoll() {
         Welt w = welt("beobachtet");
