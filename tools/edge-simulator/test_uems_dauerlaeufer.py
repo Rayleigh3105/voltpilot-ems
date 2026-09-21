@@ -195,3 +195,32 @@ def test_umschlag_erfuellt_den_vertrag_measurement_samples():
     konf = dl.konfiguration(UMGEBUNG)
     for box in konf.boxen:
         pruefer.validate(dl.umschlag(konf.tenant_id, box, dl.takt_von(time.time())))
+
+
+def _flach_laden(verzeichnis: Path, monkeypatch):
+    """Lädt die drei Module so, als lägen sie unter ``verzeichnis`` (wie im Image), ohne dorthin zu schreiben."""
+    import types
+
+    for name in ("uems_ahrenberg", "uems_szenarien", "uems_dauerlaeufer"):
+        modul = types.ModuleType(name)
+        modul.__file__ = str(verzeichnis / f"{name}.py")
+        monkeypatch.setitem(sys.modules, name, modul)
+        exec(compile((HIER / f"{name}.py").read_text(encoding="utf-8"), modul.__file__, "exec"), modul.__dict__)
+    return sys.modules["uems_dauerlaeufer"]
+
+
+def _workdir_des_images() -> Path:
+    zeilen = (HIER / "Dockerfile.dauerlaeufer").read_text(encoding="utf-8").splitlines()
+    return Path(next(z.split()[1] for z in zeilen if z.startswith("WORKDIR ")))
+
+
+def test_image_layout_laedt_und_rechnet_die_menge(monkeypatch, capsys):
+    """Befund firstmate zu PR 996: unter /app/*.py scheiterte der Import an parents[2]."""
+    with pytest.raises(IndexError):
+        _flach_laden(Path("/app"), monkeypatch)  # die alte Lage: eine Ebene unter der Wurzel
+
+    modul = _flach_laden(_workdir_des_images(), monkeypatch)
+    for schluessel, wert in UMGEBUNG.items():
+        monkeypatch.setenv(schluessel, wert)
+    assert modul.main(["--menge"]) == 0
+    assert '"nutzlast_bytes": 2577600' in capsys.readouterr().out

@@ -8,7 +8,11 @@
 FROM python:3.12.7-slim-bookworm
 
 RUN useradd --create-home --uid 10001 dauerlaeufer
-WORKDIR /app
+# Die Tiefe ist Pflicht: uems_ahrenberg/uems_szenarien bilden beim IMPORT
+# Path(__file__).parents[2] (die Repo-Wurzel). Unter /app/*.py gibt es nur zwei
+# Eltern -> IndexError, CrashLoop. Gelesen wird aus docs/ zur Laufzeit nichts;
+# test_uems_dauerlaeufer.py laedt die Module mit genau diesem WORKDIR.
+WORKDIR /app/tools/edge-simulator
 
 COPY requirements-dauerlaeufer.txt ./
 RUN pip install --no-cache-dir -r requirements-dauerlaeufer.txt
