@@ -343,6 +343,45 @@ class GemeinsameSteuerungApiTest {
         assertThat(protokoll(w)).contains("eingerichtet", "mitglied", "stufe", "epoche");
     }
 
+    /**
+     * W9/I5 beim Fortsetzen: hat der Kunde angehalten, setzt der Kunde fort; hat der Betreiber angehalten (hier am
+     * Umschalter über die KUNDENroute), bekommt der Kunde 409 {@code vom_betreiber_angehalten}, die Stufe bleibt, und
+     * nur die Plattform setzt fort — über {@code /admin}, dieselbe Epoche.
+     */
+    @Test
+    void fortsetzenNachBetreiberAnhaltenNurDurchDenBetreiber() throws Exception {
+        Welt w = welt(true, true);
+        einrichten(w);
+        allesDa(w);
+        assertThat(plattform(w, post(w.admin() + "/scharfschalten")).status()).isEqualTo(200);
+
+        assertThat(kunde(w, post(w.pfad() + "/anhalten")).status()).isEqualTo(200);
+        assertThat(kunde(w, get(w.pfad())).body().path("naechster_schritt").asText()).isEqualTo("anteile_aktiv");
+        Antwort kundeSetztFort = kunde(w, post(w.pfad() + "/fortsetzen"));
+        assertThat(kundeSetztFort.status()).as("Kunde hält an → Kunde setzt fort").isEqualTo(200);
+        assertThat(kundeSetztFort.body().path("zustand").asText()).isEqualTo("anteile_aktiv");
+
+        assertThat(plattform(w, post(w.pfad() + "/anhalten")).status()).as("Betreiber hält an (Kundenroute am "
+                + "Umschalter)").isEqualTo(200);
+        assertThat(kunde(w, get(w.pfad())).body().path("naechster_schritt").asText())
+                .isEqualTo("vom_betreiber_angehalten");
+        Antwort abgelehnt = kunde(w, post(w.pfad() + "/fortsetzen"));
+        assertThat(abgelehnt.status()).isEqualTo(409);
+        assertThat(abgelehnt.code()).isEqualTo("vom_betreiber_angehalten");
+        assertThat(abgelehnt.body().has("fehlt")).as("kein Wort des Ablehnungs-Vokabulars").isFalse();
+        assertThat(stufe(w)).isEqualTo("angehalten");
+
+        Antwort betreiber = plattform(w, post(w.admin() + "/fortsetzen"));
+        assertThat(betreiber.status()).as(betreiber.body().toString()).isEqualTo(200);
+        assertThat(betreiber.body().path("zustand").asText()).isEqualTo("anteile_aktiv");
+        assertThat(betreiber.body().path("epoche").asLong()).isOne();
+
+        assertThat(kunde(w, post(w.pfad() + "/anhalten")).status()).isEqualTo(200);
+        assertThat(plattform(w, post(w.admin() + "/fortsetzen")).status())
+                .as("der Betreiber darf auch ein Kunden-Anhalten aufheben").isEqualTo(200);
+        assertThat(kunde(w, post(w.admin() + "/fortsetzen")).status()).isEqualTo(403);
+    }
+
     @Test
     void mitgliedBestaetigenNurDiePlattformUndNurEinmal() throws Exception {
         Welt w = welt(true, true);

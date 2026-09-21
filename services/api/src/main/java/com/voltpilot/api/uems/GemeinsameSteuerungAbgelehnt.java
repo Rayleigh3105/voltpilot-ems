@@ -23,6 +23,8 @@ public final class GemeinsameSteuerungAbgelehnt extends RuntimeException {
     public static final String NICHT_AKTIV = "nicht_aktiv";
     /** Fortsetzen verlangt {@code angehalten}. */
     public static final String NICHT_ANGEHALTEN = "nicht_angehalten";
+    /** Fortsetzen durch ein Kundenkonto, nachdem der Betreiber angehalten hat (W9/I5) — nur der Betreiber setzt fort. */
+    public static final String VOM_BETREIBER_ANGEHALTEN = "vom_betreiber_angehalten";
     /** Scharfschalten einer Anlage, deren Anteile schon aktiv sind. */
     public static final String BEREITS_AKTIV = "bereits_aktiv";
     /** Ändern oder Auflösen, während die Anteile aktiv sind: erst anhalten (T6). */
@@ -36,7 +38,7 @@ public final class GemeinsameSteuerungAbgelehnt extends RuntimeException {
 
     /** Die Übergangs-Gründe (409) in ihrer Vertrags-Reihenfolge. */
     public static final List<String> UEBERGANG = List.of(NICHT_EINGERICHTET, NICHT_AKTIV, NICHT_ANGEHALTEN,
-            BEREITS_AKTIV, ERST_ANHALTEN, ANTEILE_IN_KRAFT, KEIN_MITGLIED, BEREITS_BESTAETIGT);
+            VOM_BETREIBER_ANGEHALTEN, BEREITS_AKTIV, ERST_ANHALTEN, ANTEILE_IN_KRAFT, KEIN_MITGLIED, BEREITS_BESTAETIGT);
 
     private final int status;
     private final String code;

@@ -103,7 +103,9 @@ public class GemeinsameSteuerungService {
         }
         String naechster = switch (v.stufe()) {
             case ERKLAERT -> Stufe.BEOBACHTET.code();
-            case BEOBACHTET, GEPRUEFT, ANGEHALTEN -> Stufe.ANTEILE_AKTIV.code();
+            case BEOBACHTET, GEPRUEFT -> Stufe.ANTEILE_AKTIV.code();
+            case ANGEHALTEN -> vomBetreiberAngehalten(v) ? GemeinsameSteuerungAbgelehnt.VOM_BETREIBER_ANGEHALTEN
+                    : Stufe.ANTEILE_AKTIV.code();
             case ANTEILE_AKTIV -> null;
         };
         List<Befund> befunde = naechster == null ? List.of()
@@ -200,7 +202,9 @@ public class GemeinsameSteuerungService {
     /**
      * Fortsetzen nach dem Anhalten: ohne neue Probe und in derselben Epoche, weil jede Änderung der Struktur die Stufe
      * zurücksetzt (angehalten heißt: seit dem Scharfschalten unverändert) — aber mit allen Bedingungen aus I1 erneut in
-     * derselben Transaktion.
+     * derselben Transaktion. Hat der Betreiber angehalten, setzt nur der Betreiber fort (W9/I5): ein Kundenkonto
+     * bekommt 409 {@code vom_betreiber_angehalten}; der Betreiber darf auch ein Anhalten des Kunden aufheben. Wer
+     * handelt, sagt {@link ProtokollAkteur#art()} — die Plattform ist {@code voltpilot}, über welche Route auch immer.
      */
     @Transactional
     public GemeinsameSteuerungDto.Zustand fortsetzen(UUID siteId, ProtokollAkteur wer) {
@@ -208,6 +212,10 @@ public class GemeinsameSteuerungService {
         if (v.stufe() != Stufe.ANGEHALTEN) {
             throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.NICHT_ANGEHALTEN,
                     "Die Gemeinsame Steuerung ist nicht angehalten.");
+        }
+        if (!betreiber(wer) && vomBetreiberAngehalten(v)) {
+            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.VOM_BETREIBER_ANGEHALTEN,
+                    "VoltPilot hat die Gemeinsame Steuerung angehalten; fortsetzen kann nur VoltPilot.");
         }
         Instant jetzt = uhr.instant();
         bedingungenPruefen(siteId, v, jetzt);
@@ -394,6 +402,20 @@ public class GemeinsameSteuerungService {
                 GemeinsameSteuerungAbgelehnt.NICHT_EINGERICHTET, "Die Anlage hat keine Gemeinsame Steuerung."));
         repo.sperren(v.id());
         return repo.finden(v.id()).orElseThrow();
+    }
+
+    /** Die Plattform (Betreiber) handelt — am Umschalter über eine Kundenroute oder über {@code /api/v1/admin}. */
+    private static boolean betreiber(ProtokollAkteur wer) {
+        return ProtokollAkteur.ART_VOLTPILOT.equals(wer.art());
+    }
+
+    /**
+     * Das jüngste Anhalten kam NICHT von einem Kundenkonto (Akteur-Art im Protokoll). Ohne Eintrag gilt es als
+     * Betreiber-Anhalten — die sichere Seite.
+     */
+    private boolean vomBetreiberAngehalten(VerbundZeile v) {
+        return v.stufe() == Stufe.ANGEHALTEN
+                && !repo.letztesAnhalten(v.id()).map(ProtokollAkteur.ART_KUNDE::equals).orElse(false);
     }
 
     private void stufeWechseln(UUID tenant, VerbundZeile v, Stufe neu, Instant jetzt, ProtokollAkteur wer) {

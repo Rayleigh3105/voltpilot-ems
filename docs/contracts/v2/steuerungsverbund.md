@@ -143,17 +143,22 @@ anderes Feld im Körper ist 400 `anfrage_ungueltig`; eine fremde Anlage ist 404 
 | `GET /api/v1/sites/{siteId}/gemeinsame-steuerung` | lesend, keine eigene Kennung | ohne Verbund `nicht_eingerichtet` und sonst nichts (I6); mit: Stufe, Epoche, Mitglieder, `naechster_schritt`, `fehlt` |
 | `PUT …/gemeinsame-steuerung` | `funktion.steuern_einrichten` | einrichten/ändern (Kundenadministrator, I5): gewünschter Stand der Mitglieder → S0/S1 |
 | `POST …/anhalten` | `steuerung.starten_beenden` | `anteile_aktiv` → `angehalten`; die Anteile bleiben in Kraft |
-| `POST …/fortsetzen` | `steuerung.starten_beenden` | `angehalten` → `anteile_aktiv`, dieselbe Epoche, I1 erneut geprüft |
+| `POST …/fortsetzen` | `steuerung.starten_beenden` | `angehalten` → `anteile_aktiv`, dieselbe Epoche, I1 erneut geprüft — nur wenn das jüngste Anhalten von einem Kundenkonto kam, sonst 409 `vom_betreiber_angehalten` |
 | `POST …/aufloesen` | `steuerung.starten_beenden` | alle Mitglieder enden; nur ohne je scharf gewesen zu sein (`epoche = 0`) |
 | `POST /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/scharfschalten` | `plattform.betrieb` (nur Plattform-Rolle, I4/W9) | I1 vollständig → neue Epoche (G5), `anteile_aktiv`, Mitglieder bestätigt |
+| `POST /api/v1/admin/…/fortsetzen` | `plattform.betrieb` | wie oben, hebt jedes Anhalten auf — auch das des Betreibers |
 | `POST /api/v1/admin/…/mitglieder/{boxId}/bestaetigen` | `plattform.betrieb` | `bestaetigt_am` (V20260921180000) nach dem Box-Tausch (R17) |
 
 **Stufen.** Einrichten und jede Strukturänderung setzen S0 `erklaert`, bei vollständiger Struktur S1 `beobachtet`
 (I3) — Struktur sind `box_nicht_in_anlage`, `kein_netzanschluss`, `grenze_fehlt`, `fuehrende_box_misst_nicht`,
 `mitsteuernde_box_misst_nicht`. S2 `geprueft` setzt IP-21. Ändern und Auflösen bei `anteile_aktiv` sind 409
 `erst_anhalten`; Auflösen nach einem Scharfschalten ist 409 `anteile_in_kraft` (Rücknahme nur im Zweischritt, IP-7).
-Weitere Übergangs-Gründe: `nicht_eingerichtet`, `nicht_aktiv`, `nicht_angehalten`, `bereits_aktiv`, `kein_mitglied`,
-`bereits_bestaetigt`. `zustand = aufgeloest` heißt: der Verbund hat keine wirksamen Mitglieder mehr.
+Weitere Übergangs-Gründe: `nicht_eingerichtet`, `nicht_aktiv`, `nicht_angehalten`, `vom_betreiber_angehalten`,
+`bereits_aktiv`, `kein_mitglied`, `bereits_bestaetigt`. **Wer angehalten hat** steht im Protokoll (jüngster
+Stufenwechsel nach `angehalten`, `actor_art`): nur nach einem Anhalten mit `actor_art = kunde` setzt ein Kundenkonto
+fort; hat die Plattform angehalten (`voltpilot` — am Umschalter über die Kundenroute zählt genauso), zeigt `GET`
+`naechster_schritt = vom_betreiber_angehalten`, und nur die Plattform setzt fort (W9/I5). Kein Wort des
+Ablehnungs-Vokabulars. `zustand = aufgeloest` heißt: der Verbund hat keine wirksamen Mitglieder mehr.
 
 **Scharfschalten (I1).** `uems/SteuerungsverbundScharfschalten` (rein) ergänzt das Urteil des Verbund-Objekts um: beide
 Grenzen wirksam (`AnlageGrenzen`, W1), Fähigkeit und Sprungprobe je Mitglied, Auslegung bekannt, G6, Box angemeldet.

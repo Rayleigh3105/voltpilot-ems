@@ -2801,6 +2801,27 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
         "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/fortsetzen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Gemeinsame Steuerung fortsetzen — auch nach einem Anhalten des Betreibers (W9/I5).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle). Wie das Fortsetzen des Kunden: nur aus `angehalten`
+        (sonst 409 `nicht_angehalten`), dieselbe Epoche, alle Bedingungen aus I1 erneut geprüft (409 mit dem ersten
+        Wort und `fehlt`). Der Betreiber hebt jedes Anhalten auf, auch das des Kunden.
+      responses:
+        "200":
+          description: Fortgesetzt, `anteile_aktiv`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/mitglieder/{boxId}/bestaetigen:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -9730,6 +9751,8 @@ paths:
         Recht `steuerung.starten_beenden` an der Anlage. Nur aus `angehalten` (sonst 409 `nicht_angehalten`); ohne
         neue Probe und in derselben Epoche, weil jede Änderung der Struktur die Stufe zurücksetzt — aber alle
         Bedingungen aus I1 werden in derselben Transaktion erneut geprüft (409 mit dem ersten Wort und `fehlt`).
+        Kam das jüngste Anhalten nicht von einem Kundenkonto (der Betreiber, W9/I5), ist ein Kundenkonto 409
+        `vom_betreiber_angehalten` — dann setzt nur der Betreiber fort (`POST /api/v1/admin/…/fortsetzen`).
       responses:
         "200":
           description: Fortgesetzt, `anteile_aktiv`.
@@ -13168,7 +13191,7 @@ components:
         Abgelehnt, nichts geschrieben (uems/GemeinsameSteuerungAbgelehnt). 400 `anfrage_ungueltig` (auch Mandant
         oder Anlage im Körper), 404 `nicht_gefunden` (fremd, nie 403), 409 mit dem ersten Wort des
         Ablehnungs-Vokabulars und allen Befunden in `fehlt` — oder einem Übergangs-Grund: `nicht_eingerichtet` ·
-        `nicht_aktiv` · `nicht_angehalten` · `bereits_aktiv` · `erst_anhalten` · `anteile_in_kraft` ·
+        `nicht_aktiv` · `nicht_angehalten` · `vom_betreiber_angehalten` · `bereits_aktiv` · `erst_anhalten` · `anteile_in_kraft` ·
         `kein_mitglied` · `bereits_bestaetigt`.
       content:
         application/json:
@@ -13235,7 +13258,11 @@ components:
         mitglieder:
           type: array
           items: { $ref: "#/components/schemas/GemeinsameSteuerungMitglied" }
-        naechster_schritt: { type: string, nullable: true, enum: [beobachtet, anteile_aktiv] }
+        naechster_schritt:
+          type: string
+          nullable: true
+          enum: [beobachtet, anteile_aktiv, vom_betreiber_angehalten]
+          description: "vom_betreiber_angehalten: der Betreiber hat angehalten — fortsetzen kann nur er (W9/I5)."
         fehlt:
           type: array
           items: { $ref: "#/components/schemas/GemeinsameSteuerungBefund" }

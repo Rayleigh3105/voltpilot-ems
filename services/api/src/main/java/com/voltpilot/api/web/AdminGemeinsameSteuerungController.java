@@ -20,9 +20,10 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 /**
  * Die Handgriffe des Betreibers an der Gemeinsamen Steuerung (UEMS AP-15 IP-5, Konzept §4.9 I4/I5, §5.3, §5.7, Kasten
- * W9): scharfschalten und ein Mitglied bestätigen. NUR die Plattform-Rolle — ein Kundenkonto, auch der
- * Kundenadministrator, bekommt auf {@code /api/v1/admin/**} 403 (SecurityConfig + {@code @PreAuthorize}); eine
- * Kundenroute wäre für die Plattform am Umschalter ohnehin offen, deshalb liegen die Schritte nur hier.
+ * W9): scharfschalten, fortsetzen (auch nach einem Anhalten des Betreibers) und ein Mitglied bestätigen. NUR die
+ * Plattform-Rolle — ein Kundenkonto, auch der Kundenadministrator, bekommt auf {@code /api/v1/admin/**} 403
+ * (SecurityConfig + {@code @PreAuthorize}); eine Kundenroute wäre für die Plattform am Umschalter ohnehin offen,
+ * deshalb liegen die Schritte nur hier.
  *
  * <p>Wie {@link AdminChargingFrameController} über den {@code X-Tenant-Id}-Umschalter auf dem RLS-Pfad — KEIN
  * BYPASSRLS, eine fremde Anlage ist 404. Der Mandant kommt aus dem Umschalter, die Anlage aus dem Pfad; ein Körper ist
@@ -48,6 +49,17 @@ public class AdminGemeinsameSteuerungController {
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         GemeinsameSteuerungController.leer(body);
         return dienst.scharfschalten(siteId, GemeinsameSteuerungController.akteur(auth));
+    }
+
+    /**
+     * Recht: {@code plattform.betrieb} — fortsetzen nach dem Anhalten, auch nach einem Anhalten des Betreibers
+     * (W9/I5): dieselbe Prüfung aller Bedingungen aus I1, dieselbe Epoche.
+     */
+    @PostMapping("/fortsetzen")
+    public GemeinsameSteuerungDto.Zustand fortsetzen(@PathVariable UUID siteId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        GemeinsameSteuerungController.leer(body);
+        return dienst.fortsetzen(siteId, GemeinsameSteuerungController.akteur(auth));
     }
 
     /** Recht: {@code plattform.betrieb} — ein Mitglied nach dem Box-Tausch bestätigen (R17). */

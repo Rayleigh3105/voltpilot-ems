@@ -240,6 +240,13 @@ public class SteuerungsverbundRepository {
                 .orElse(new GrenzeAufloesung.Grenzen(null, null));
     }
 
+    /** Die Akteur-Art des jüngsten Wechsels nach {@code angehalten} (Protokoll) — leer, wenn nie angehalten wurde. */
+    public Optional<String> letztesAnhalten(UUID verbundId) {
+        return jdbc.queryForList("SELECT actor_art FROM steuerungsverbund_aenderung WHERE steuerungsverbund_id = ? "
+                + "AND art = 'stufe' AND neu = to_jsonb('angehalten'::text) ORDER BY created_at DESC, id DESC LIMIT 1",
+                String.class, verbundId).stream().findFirst();
+    }
+
     /** Wann das Mitglied bestätigt wurde ({@code bestaetigt_am}, V20260921180000) — null = noch nicht. */
     public java.util.Map<UUID, Instant> bestaetigt(UUID verbundId) {
         java.util.Map<UUID, Instant> out = new java.util.HashMap<>();

@@ -84,7 +84,10 @@ public class GemeinsameSteuerungController {
         return dienst.anhalten(siteId, akteur(auth));
     }
 
-    /** Recht: {@code steuerung.starten_beenden} an der Anlage — fortsetzen nach dem Anhalten, Bedingungen erneut. */
+    /**
+     * Recht: {@code steuerung.starten_beenden} an der Anlage — fortsetzen nach dem Anhalten, Bedingungen erneut; nach
+     * einem Anhalten des Betreibers 409 {@code vom_betreiber_angehalten} (dann fortsetzen nur über {@code /admin}).
+     */
     @PostMapping(PFAD + "/fortsetzen")
     @Recht(value = "steuerung.starten_beenden", ziel = RechtZiel.ANLAGE)
     public GemeinsameSteuerungDto.Zustand fortsetzen(@PathVariable UUID siteId,

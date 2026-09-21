@@ -81,6 +81,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
                 KUNDE + "/fortsetzen|post", "steuerung.starten_beenden",
                 KUNDE + "/aufloesen|post", "steuerung.starten_beenden",
                 ADMIN + "/scharfschalten|post", "plattform.betrieb",
+                ADMIN + "/fortsetzen|post", "plattform.betrieb",
                 ADMIN + "/mitglieder/{boxId}/bestaetigen|post", "plattform.betrieb");
         recht.forEach((schluessel, kennung) -> {
             String[] t = schluessel.split("\\|");
@@ -90,6 +91,9 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
             assertThat(((Map<String, Object>) op.get("responses")).keySet()).as(schluessel)
                     .containsExactlyInAnyOrder("200", "400", "401", "403", "404", "409");
         });
+        Map<String, Object> zustand = eigenschaften("GemeinsameSteuerung");
+        assertThat((List<String>) ((Map<String, Object>) zustand.get("naechster_schritt")).get("enum"))
+                .contains(GemeinsameSteuerungAbgelehnt.VOM_BETREIBER_ANGEHALTEN);
         Map<String, Object> lesen = (Map<String, Object>) ((Map<String, Object>) pfade.get(KUNDE)).get("get");
         assertThat(((Map<String, Object>) lesen.get("responses")).keySet()).containsExactlyInAnyOrder("200", "401",
                 "404");
