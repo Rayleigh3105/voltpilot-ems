@@ -41,6 +41,8 @@ for (const breite of [375, 1440] as const) {
       const knopf = karte(page).getByRole('button', { name: 'Messen & Auswerten für Werk Ahrenberg einrichten' });
       await expect(knopf).toBeVisible();
       await knopf.scrollIntoViewIfNeeded();
+      // Kein Querlauf, gemessen am Dokument: der lange Knopf bricht um (375 px).
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
       await bild(page, 'karte-knopf');
       await knopf.click();
       await expect(assistent(page).getByText('Wo wird gemessen?')).toBeVisible();
