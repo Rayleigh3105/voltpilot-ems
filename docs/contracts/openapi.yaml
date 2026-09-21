@@ -21032,8 +21032,11 @@ components:
       type: object
       required: [zustand, fehlend, seit, text]
       properties:
-        zustand: { type: string, enum: [vollstaendig, unvollstaendig] }
-        fehlend: { type: array, items: { type: string }, description: "Die Kennzeichen der Eingänge, die nicht liefern." }
+        zustand:
+          type: string
+          enum: [vollstaendig, unvollstaendig, ausserhalb_zugriff]
+          description: "`ausserhalb_zugriff` (AP-03 R-A3/R-A6): ein Eingang liegt außerhalb des Zugriffs des Lesers und alle sichtbaren liefern - das Urteil ist nicht zu fällen (`fehlend` leer, `seit` null, `text` der Hinweis). Fehlt ein SICHTBARER Eingang, bleibt es `unvollstaendig` mit genau den sichtbaren, und `text` endet mit ` · umfasst Standorte außerhalb Ihres Zugriffs`. Ein Eingang außerhalb wird nie genannt."
+        fehlend: { type: array, items: { type: string }, description: "Die Kennzeichen der Eingänge, die nicht liefern - nur Eingänge im Zugriff des Lesers." }
         seit: { type: string, format: date-time, nullable: true, description: "Seit wann der früheste fehlende Eingang schweigt; null, wenn keiner einen Zeitpunkt hat." }
         text: { type: string, example: "Unvollständig seit 14:00 Uhr (fehlt: MS-12)" }
     MessstelleRegisterOrt:
@@ -21720,7 +21723,8 @@ components:
         grund:
           type: string
           enum: [abgeleitet, ohne_messkanal, ohne_geraet, attribut_kanal, keine_messgroesse, ohne_richtung,
-            weitere_groesse, vorzeichen_wert, vergleich_kandidat, gleicher_fluss, passt_nicht]
+            weitere_groesse, vorzeichen_wert, vergleich_kandidat, gleicher_fluss, passt_nicht, ausserhalb_zugriff]
+          description: "`ausserhalb_zugriff` (AP-03 R-A6): die Zeile hinge an einer Messstelle außerhalb des Zugriffs des Lesers (Unterzähler eines bestehenden Hauptzählers, oder `zu`) - `zu` ist dann null, `text` der Hinweis ohne Kennzeichen."
         zu: { type: string, nullable: true, description: "Die Messstelle, auf die der Grund zeigt (Vergleichsquelle, gleicher Fluss)." }
         text: { type: string }
     MessstelleVorschlagsliste:
@@ -21913,6 +21917,10 @@ components:
             fassung:
               nullable: true
               allOf: [{ $ref: "#/components/schemas/MessstelleFormelFassung" }]
+        ausserhalb_zugriff:
+          type: string
+          description: "NUR wenn ein Eingang (auch über eine berechnete Messstelle oder einen Rest) außerhalb des Zugriffs des Lesers liegt (AP-03 R-A3/R-A6): dann fehlt jeder Term, der eine Messstelle außerhalb nennt, die übrigen sind lückenlos durchnummeriert. Ohne Namen, ohne Anzahl."
+          example: "umfasst Standorte außerhalb Ihres Zugriffs"
     MessstelleFormelFassungEintragen:
       type: object
       additionalProperties: false
@@ -22395,6 +22403,10 @@ components:
         bis: { type: string, format: date, description: "Der LETZTE Tag der Periode (einschließlich)." }
         zeitzone: { type: string, example: Europe/Berlin }
         hauptzaehler: { type: array, items: { $ref: "#/components/schemas/BilanzHauptzaehler" } }
+        ausserhalb_zugriff:
+          type: string
+          description: "NUR wenn ein Hauptzähler fehlt, weil sein Block eine Messstelle außerhalb des Zugriffs des Lesers braucht (er selbst, sein Rest oder ein Term seiner Stellung; AP-03 R-A3/R-A6): Rest, zugeordnete Summe, Abdeckung und Live-Wert fehlen dann ganz. Ohne Namen, ohne Anzahl."
+          example: "umfasst Standorte außerhalb Ihres Zugriffs"
     BilanzAnlage:
       type: object
       required: [id, name]

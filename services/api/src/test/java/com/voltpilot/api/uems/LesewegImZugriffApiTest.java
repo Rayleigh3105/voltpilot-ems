@@ -339,22 +339,104 @@ class LesewegImZugriffApiTest {
                 .map(Map.Entry::getKey).toList())
                 .as("rot bei einem neuen UND bei einem geheilten Fall")
                 .containsExactlyInAnyOrderElementsOf(FOLGEPUNKTE_OFFEN.keySet());
-        // Unternehmensweit bleibt die Bilanz vollständig — sie ist die Referenz, nicht der Befund.
+
+        // Lesart A (AP-03 R-A3/R-A6/R-A7): keine Zahl über MS-16, an ihrer Stelle der Hinweis ohne Namen und Anzahl.
+        String hinweis = "umfasst Standorte außerhalb Ihres Zugriffs";
+        JsonNode berechnung = MAPPER.readTree(antworten.get("register MS-30 berechnung"));
+        assertThat(berechnung.path("zustand").asText()).isEqualTo("unvollstaendig");
+        assertThat(berechnung.path("fehlend").toString()).isEqualTo("[\"MS-01\"]");
+        assertThat(berechnung.path("text").asText()).endsWith("(fehlt: MS-01) · " + hinweis);
+        JsonNode formel = MAPPER.readTree(antworten.get("MS-30/formel"));
+        assertThat(formel.path("ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+        assertThat(formel.path("terme")).hasSize(1);
+        assertThat(formel.at("/terme/0/position").asInt()).isZero();
+        assertThat(formel.at("/terme/0/quell_messstelle_id").asText()).isEqualTo(ms01.toString());
+        JsonNode wert = MAPPER.readTree(antworten.get("MS-30/wert"));
+        assertThat(wert.path("wert").isNull()).isTrue();
+        assertThat(wert.path("fehlende")).isEmpty();
+        assertThat(wert.path("ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+        JsonNode verlauf = MAPPER.readTree(antworten.get("MS-30/verlauf"));
+        assertThat(verlauf.path("punkte")).isEmpty();
+        assertThat(verlauf.path("ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+        JsonNode bilanz = MAPPER.readTree(antworten.get("bilanz AN-1"));
+        assertThat(bilanz.path("hauptzaehler")).isEmpty();
+        assertThat(bilanz.path("ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+        JsonNode vorschlagHier = MAPPER.readTree(antworten.get("vorschlag ST-1"));
+        assertThat(vorschlagHier.toString()).doesNotContain("\"unterzaehler_von\":{\"messstelle\":\"MS-");
+        JsonNode ausgelassen = null;
+        for (JsonNode a : vorschlagHier.path("ausgelassen")) {
+            if ("ausserhalb_zugriff".equals(a.path("grund").asText())) {
+                ausgelassen = a;
+            }
+        }
+        assertThat(ausgelassen).as(vorschlagHier.toString()).isNotNull();
+        assertThat(ausgelassen.path("zu").isNull()).isTrue();
+        assertThat(ausgelassen.path("komponente").asText()).isEqualTo(zaehler.toString());
+        assertThat(ausgelassen.path("text").asText()).contains(hinweis);
+
+        // Unternehmensweit, Bestandskonto, ohne Kontext und ein Bearbeiter an ST-1 UND ST-2 sehen alles wie bisher —
+        // untereinander Zeichen für Zeichen gleich, mit MS-16 und ohne den Hinweis.
+        String beide = zuweisung(w, "sub-beide-", "bearbeiter", w.ahrenberg());
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) VALUES "
+                + "(?, ?, 'bearbeiter', ?, '2024-01-01T00:00:00+01', 'Europe/Berlin')", w.mandant(), beide, w.lindach());
+        for (String pfad : List.of(MS + "/" + ms30 + "/formel", MS + "/" + ms30 + "/wert",
+                vorschlag.formatted(w.ahrenberg()), "/api/v1/sites/" + anlage + "/bilanz?periode=tag")) {
+            Roh referenz = ok(w, k.ka(), pfad);
+            assertThat(referenz.body()).as(pfad).doesNotContain(hinweis);
+            assertThat(roh(w, k.bestand(), pfad)).as(pfad).isEqualTo(referenz);
+            assertThat(roh(w, beide, pfad)).as(pfad).isEqualTo(referenz);
+            assertThat(ohneKontext(w, pfad)).as(pfad).isEqualTo(referenz);
+        }
+        for (String sub : List.of(k.ka(), beide)) {
+            for (JsonNode zeile : MAPPER.readTree(ok(w, sub, MS + "?" + STICHTAG).body()).path("register")) {
+                if ("MS-30".equals(zeile.path("kennzeichen").asText())) {
+                    assertThat(zeile.path("berechnung").toString()).as(sub)
+                            .isEqualTo("{\"zustand\":\"unvollstaendig\",\"fehlend\":[\"MS-01\",\"MS-16\"],"
+                                    + "\"seit\":null,\"text\":\"Unvollständig (fehlt: MS-01, MS-16)\"}");
+                }
+            }
+        }
         assertThat(ok(w, k.ka(), "/api/v1/sites/" + anlage + "/bilanz?periode=tag").body()).contains("MS-16");
+        assertThat(ok(w, k.ka(), MS + "/" + ms30 + "/formel").body()).contains(ms16.toString());
+
+        // Der Schreibweg: die Zeile, wie die Unternehmenssicht sie zeigt (Unterzähler von MS-16), hängt die
+        // Übernahme des Bearbeiters an ST-1 nicht still unter MS-16 — für ihn ist sie „geändert“.
+        JsonNode zeile = null;
+        for (JsonNode z : MAPPER.readTree(ok(w, k.ka(), vorschlag.formatted(w.ahrenberg())).body())
+                .path("vorschlaege")) {
+            if ("MS-16".equals(z.at("/unterzaehler_von/messstelle").asText())) {
+                zeile = z;
+            }
+        }
+        assertThat(zeile).as("die Unternehmenssicht schlägt den Unterzähler von MS-16 vor").isNotNull();
+        var bestaetigt = MAPPER.createObjectNode();
+        bestaetigt.put("komponente", zeile.path("komponente").asText());
+        bestaetigt.put("kanal", zeile.at("/quelle/kanal").asText());
+        bestaetigt.set("hauptgroesse", zeile.path("hauptgroesse"));
+        bestaetigt.set("nebengroessen", zeile.path("nebengroessen"));
+        bestaetigt.set("stellung", zeile.path("stellung"));
+        bestaetigt.set("ab", zeile.path("ab"));
+        var koerper = MAPPER.createObjectNode();
+        koerper.putArray("vorschlaege").add(bestaetigt);
+        Integer vorher = root.queryForObject("SELECT count(*) FROM messstelle WHERE tenant_id = ?", Integer.class,
+                w.mandant());
+        Roh uebernahme = roh(post(vorschlag.formatted(w.ahrenberg()) + "/uebernehmen").with(konto(w, k.hier()))
+                .contentType("application/json").content(koerper.toString()));
+        assertThat(uebernahme.status()).as(uebernahme.body()).isEqualTo(409);
+        assertThat(uebernahme.body()).contains("vorschlag_geaendert").doesNotContain("MS-16");
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle WHERE tenant_id = ?", Integer.class,
+                w.mandant())).isEqualTo(vorher);
     }
 
     /**
      * Gemessen am 21.09.2026 (Bearbeiter nur an ST-1, MS-16 an ST-2): hier nennt eine sonst sichtbare Antwort die
      * fremde Messstelle. Entschieden ist AP-03 R-A3/R-A6/R-A7 (Lesart A, firstmate 21.09.2026): eine Zahl über einen
      * Eingang außerhalb fehlt ganz, der Hinweis „umfasst Standorte außerhalb Ihres Zugriffs“ nennt weder Namen noch
-     * Werte. Gebaut wird das im Folgepaket {@code vp-uems-zaun-eingaenge-ausserhalb}; wer einen Fall heilt, nimmt ihn
-     * hier heraus.
+     * Werte. Gebaut in {@code vp-uems-zaun-eingaenge-ausserhalb} (Register, Formel/Wert/Verlauf, Vorschlag, Bilanz
+     * über {@code RechtPruefung#alleLesbar}); die Liste ist leer und bewacht neue Funde — ein neuer Fall kommt hier
+     * mit Grund hinein, bis er geheilt ist.
      */
-    private static final Map<String, String> FOLGEPUNKTE_OFFEN = Map.of(
-            "register MS-30 berechnung", "fehlend/text nennen den Eingang MS-16 (fehlt: MS-01, MS-16)",
-            "MS-30/formel", "terme[].quell_messstelle_id ist die Kennung von MS-16",
-            "vorschlag ST-1", "unterzaehler_von.messstelle = MS-16 (bestehender Hauptzähler der Anlage)",
-            "bilanz AN-1", "Hauptzähler MS-16 mit Kennung, Name, Termen und Werten");
+    private static final Map<String, String> FOLGEPUNKTE_OFFEN = Map.of();
 
     // ================================================================ Gerüst
 

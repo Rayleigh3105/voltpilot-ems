@@ -36,6 +36,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -980,6 +981,76 @@ public class MessstelleFormelService {
             return reste.vonHauptzaehler(hauptzaehler.id())
                     .map(r -> new RestAngelegt(r.messstelleId(), false))
                     .orElseThrow(() -> e);
+        }
+    }
+
+    // ------------------------------------------------------- Eingänge (Zaun)
+
+    /**
+     * Die Messstellen, aus denen die Zahl der berechneten Messstelle {@code id} an dem Tag entsteht ({@code am}
+     * {@code null} = heute) — für den Zaun der Routen (AP-03 R-A3): wer nicht JEDEN sieht, bekommt die Zahl nicht.
+     */
+    public Set<UUID> eingangsMessstellen(UUID id, LocalDate am) {
+        LocalDate tag = am != null ? am : heute(zone());
+        return eingangsMessstellen(id, tag, tag);
+    }
+
+    /** Dasselbe über den Zeitraum des Verlaufs ({@code range} wie an {@link #verlauf}). */
+    public Set<UUID> eingangsMessstellenDesVerlaufs(UUID id, String range) {
+        ZoneId zone = zone();
+        Instant bis = viertelstunde(uhr.instant());
+        return eingangsMessstellen(id, LocalDate.ofInstant(bis.minus(zeitraum(range)), zone),
+                LocalDate.ofInstant(bis, zone));
+    }
+
+    /**
+     * Jede Messstelle, die in [{@code von}, {@code bis}] in die Zahl eingeht — über berechnete Eingänge hinweg und bei
+     * einem Rest über den Hauptzähler und die Terme seiner Stellung (E3). Rechnet nichts, schreibt nichts.
+     */
+    Set<UUID> eingangsMessstellen(UUID id, LocalDate von, LocalDate bis) {
+        Set<UUID> out = new LinkedHashSet<>();
+        sammle(id, von, bis, out, new HashSet<>());
+        return out;
+    }
+
+    private void sammle(UUID id, LocalDate von, LocalDate bis, Set<UUID> out, Set<UUID> besucht) {
+        if (!besucht.add(id)) {
+            return;
+        }
+        BilanzStellungen.Stand stand = null;
+        for (FassungZeile f : fassungen.wirksame(id)) {
+            LocalDate ab = f.gueltigAb() == null || f.gueltigAb().isBefore(von) ? von : f.gueltigAb();
+            LocalDate ende = f.gueltigBis() == null || f.gueltigBis().isAfter(bis) ? bis : f.gueltigBis();
+            if (ab.isAfter(ende)) {
+                continue;
+            }
+            if (!MessstelleFormelRegeln.REST.equals(f.formelTyp())) {
+                for (TermZeile t : terme.derFassung(f.id())) {
+                    if (t.quellMessstelleId() != null) {
+                        out.add(t.quellMessstelleId());
+                        sammle(t.quellMessstelleId(), von, bis, out, besucht);
+                    }
+                }
+                continue;
+            }
+            Optional<UUID> haupt = reste.hauptzaehlerDerFassung(f.id());
+            Messstelle x = haupt.flatMap(messstellen::finde).orElse(null);
+            if (x == null) {
+                continue;
+            }
+            out.add(x.id());
+            stand = stand != null ? stand : stellungen.lesen();
+            for (LocalDate tag = ab; !tag.isAfter(ende); tag = tag.plusDays(1)) {
+                BilanzAbleitung.RestFassung r = stand.rest(x.kennzeichen(), tag);
+                if (r.fehler() == null) {
+                    for (BilanzAbleitung.RestTerm t : r.terme()) {
+                        Messstelle q = stand.nachKennzeichen().get(t.messstelle());
+                        if (q != null) {
+                            out.add(q.id());
+                        }
+                    }
+                }
+            }
         }
     }
 

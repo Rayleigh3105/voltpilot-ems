@@ -97,6 +97,8 @@ public final class MessstelleFormelDto {
      * {@code eingaenge_eingerichtet} sind die Eingänge des Lebenszyklus. {@code fassung_am} steht
      * NUR in der Antwort, wenn {@code am} gefragt war: ohne {@code am} ist die Antwort Zeichen für
      * Zeichen die von vor AP-10 IP-3 (die Portal-Fläche aus PR #689 liest sie unverändert).
+     * {@code ausserhalb_zugriff} steht NUR, wenn ein Eingang außerhalb des Zugriffs des Lesers liegt (AP-03 R-A6):
+     * dann fehlt jeder Term, der ihn nennt, die übrigen sind lückenlos durchnummeriert.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Formel(
@@ -106,7 +108,15 @@ public final class MessstelleFormelDto {
             List<Term> terme,
             boolean formelVorhanden,
             boolean eingaengeEingerichtet,
-            @JsonInclude(JsonInclude.Include.NON_NULL) FassungAm fassungAm) {}
+            @JsonInclude(JsonInclude.Include.NON_NULL) FassungAm fassungAm,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {
+
+        public Formel(UUID messstelleId, String schemaVersion, Groesse hauptgroesse, List<Term> terme,
+                boolean formelVorhanden, boolean eingaengeEingerichtet, FassungAm fassungAm) {
+            this(messstelleId, schemaVersion, hauptgroesse, terme, formelVorhanden, eingaengeEingerichtet, fassungAm,
+                    null);
+        }
+    }
 
     /**
      * Der Tag, nach dem gefragt war, und die Fassung, die an ihm gilt — {@code fassung} ist
@@ -159,6 +169,8 @@ public final class MessstelleFormelDto {
      * Der Live-Wert wird nie gespeichert; die Periodenwerte liegen seit AP-10 IP-10 in der Speicherklasse
      * ({@code GET …/messstellen/{kennzeichen}/werte}). Ein Rest (Formel-Typ {@code rest})
      * rechnet seine Terme aus der Stellung des Tages und antwortet in kW (Wirkleistung).
+     * Liegt ein Eingang außerhalb des Zugriffs (AP-03 R-A3), fehlt die Zahl ganz: {@code wert}/{@code stand}
+     * {@code null}, {@code fehlende} leer, {@code ausserhalb_zugriff} der Hinweis — nie eine Teilsumme.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Wert(
@@ -166,7 +178,14 @@ public final class MessstelleFormelDto {
             String einheit,
             boolean unvollstaendig,
             List<FehlenderTerm> fehlende,
-            OffsetDateTime stand) {}
+            OffsetDateTime stand,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {
+
+        public Wert(Double wert, String einheit, boolean unvollstaendig, List<FehlenderTerm> fehlende,
+                OffsetDateTime stand) {
+            this(wert, einheit, unvollstaendig, fehlende, stand, null);
+        }
+    }
 
     /** Ein 15-min-Bucket des Verlaufs; {@code wert} {@code null} = unvollständig (nicht 0). */
     public record VerlaufPunkt(OffsetDateTime zeit, Double wert) {}
@@ -175,8 +194,15 @@ public final class MessstelleFormelDto {
      * {@code GET /api/v1/messstellen/{id}/verlauf}: je 15-min-Bucket die Summe, WENN alle Terme im
      * Bucket einen Wert haben, sonst {@code null} (nie eine stille Teilsumme). Der Verlauf bleibt der schnelle
      * Blick aus den Geräte-Verdichtungen; die gespeicherten Periodenwerte mit Zustand liefert
-     * {@code GET …/messstellen/{kennzeichen}/werte} (AP-10 IP-10).
+     * {@code GET …/messstellen/{kennzeichen}/werte} (AP-10 IP-10). Mit einem Eingang außerhalb des Zugriffs
+     * (AP-03 R-A3): keine Punkte, {@code ausserhalb_zugriff} der Hinweis.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Verlauf(UUID messstelleId, String einheit, List<VerlaufPunkt> punkte) {}
+    public record Verlauf(UUID messstelleId, String einheit, List<VerlaufPunkt> punkte,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {
+
+        public Verlauf(UUID messstelleId, String einheit, List<VerlaufPunkt> punkte) {
+            this(messstelleId, einheit, punkte, null);
+        }
+    }
 }

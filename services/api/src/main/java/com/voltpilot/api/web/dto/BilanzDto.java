@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.math.BigDecimal;
@@ -22,6 +23,8 @@ public final class BilanzDto {
     /**
      * Die Bilanz einer Anlage in EINER Periode ({@code tag} · {@code monat} · {@code jahr}, die {@code am}
      * enthält; {@code von}/{@code bis} sind Tage, der letzte gehört dazu, Zeitzone des Standorts).
+     * {@code ausserhalb_zugriff} steht NUR, wenn ein Hauptzähler fehlt, weil sein Block eine Messstelle außerhalb
+     * des Zugriffs braucht (AP-03 R-A3/R-A6) — der Hinweis ohne Namen, ohne Anzahl.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bilanz(
@@ -31,7 +34,14 @@ public final class BilanzDto {
             LocalDate von,
             LocalDate bis,
             String zeitzone,
-            List<Hauptzaehler> hauptzaehler) {}
+            List<Hauptzaehler> hauptzaehler,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {
+
+        public Bilanz(Anlage anlage, String periode, LocalDate am, LocalDate von, LocalDate bis, String zeitzone,
+                List<Hauptzaehler> hauptzaehler) {
+            this(anlage, periode, am, von, bis, zeitzone, hauptzaehler, null);
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Anlage(UUID id, String name) {}

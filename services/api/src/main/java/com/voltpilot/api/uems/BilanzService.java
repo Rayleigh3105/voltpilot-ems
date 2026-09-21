@@ -5,6 +5,7 @@ import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.web.dto.BilanzDto;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleWerteDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.Clock;
@@ -15,12 +16,16 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.function.Predicate;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -88,6 +93,18 @@ public class BilanzService {
     // ------------------------------------------------------------------ lesen
 
     public BilanzDto.Bilanz bilanz(UUID siteId, String periodeWort, LocalDate amTag) {
+        return bilanz(siteId, periodeWort, amTag, eingaenge -> true);
+    }
+
+    /**
+     * Die Bilanz der Route (AP-03 R-A3/R-A6/R-A7): {@code imZugriff} beantwortet „liegt jeder Eingang im Zugriff?“
+     * ({@code RechtPruefung#alleLesbar}). Ein Hauptzähler, dessen Block eine Messstelle außerhalb braucht — er
+     * selbst, sein Rest oder ein Term seiner Stellung in der Periode oder heute —, fehlt GANZ: jede Zahl des Blocks
+     * (Rest, zugeordnete Summe, Abdeckung, Live-Wert) ist eine Differenz über alle Terme, eine Teilrechnung wäre
+     * genau der verbotene „Rest“. An seiner Stelle steht {@code ausserhalb_zugriff}, ohne Namen und ohne Anzahl.
+     */
+    public BilanzDto.Bilanz bilanz(UUID siteId, String periodeWort, LocalDate amTag,
+            Predicate<Collection<UUID>> imZugriff) {
         String name = anlageName(siteId);
         String periode = periodeWort == null || periodeWort.isBlank() ? VORGABE_PERIODE : periodeWort;
         if (!PERIODEN.contains(periode)) {
@@ -109,13 +126,45 @@ public class BilanzService {
         BilanzStellungen.Stand stand = stellungen.lesen();
         Map<UUID, BilanzRestRepository.Rest> alleReste = reste.alle();
         List<BilanzDto.Hauptzaehler> hauptzaehler = new ArrayList<>();
+        boolean ausserhalb = false;
         for (String kz : hauptzaehlerDerAnlage(stand, siteId, von, bis)) {
             Messstelle x = stand.nachKennzeichen().get(kz);
+            if (!imZugriff.test(eingaenge(x, von, bis, heute, stand, alleReste.get(x.id())))) {
+                ausserhalb = true;
+                continue;
+            }
             hauptzaehler.add(hauptzaehler(x, siteId, name, periode, von, bis, heute, stand, alleReste.get(x.id()),
                     zone));
         }
         return new BilanzDto.Bilanz(new BilanzDto.Anlage(siteId, name), periode, am, von, bis, zone.getId(),
-                List.copyOf(hauptzaehler));
+                List.copyOf(hauptzaehler), ausserhalb ? RechtPruefung.AUSSERHALB_ZUGRIFF : null);
+    }
+
+    /** Jede Messstelle, die der Block des Hauptzählers nennt oder rechnet: er, sein Rest, die Terme der Tage und heute. */
+    private static Set<UUID> eingaenge(Messstelle x, LocalDate von, LocalDate bis, LocalDate heute,
+            BilanzStellungen.Stand stand, BilanzRestRepository.Rest rest) {
+        Set<UUID> out = new LinkedHashSet<>();
+        out.add(x.id());
+        if (rest != null) {
+            out.add(rest.messstelleId());
+        }
+        List<LocalDate> tage = new ArrayList<>();
+        for (LocalDate tag = von; !tag.isAfter(bis); tag = tag.plusDays(1)) {
+            tage.add(tag);
+        }
+        tage.add(heute);
+        for (LocalDate tag : tage) {
+            BilanzAbleitung.RestFassung f = stand.rest(x.kennzeichen(), tag);
+            if (f.fehler() == null) {
+                for (BilanzAbleitung.RestTerm t : f.terme()) {
+                    Messstelle m = stand.nachKennzeichen().get(t.messstelle());
+                    if (m != null) {
+                        out.add(m.id());
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     /** Die Hauptzähler Bezug (gemessen, Strom), die in der Periode an mindestens einem Tag in DIESER Anlage stehen. */
