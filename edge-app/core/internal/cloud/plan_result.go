@@ -75,6 +75,25 @@ type GemeinsameSteuerung struct {
 	// AnteileKw are the EFFECTIVE own shares per direction (kW), the decimal
 	// text of the accepted document - "alt" of every two-step change (Y3, A18).
 	AnteileKw *AnteileKw `json:"anteile_kw,omitempty"`
+	// AnteilVerlust is what the feed-in share held back (IP-22), only with a
+	// share document: the running local day and the closed day before it.
+	AnteilVerlust *AnteilVerlust `json:"anteil_verlust,omitempty"`
+}
+
+// AnteilVerlust is the loss of the fixed share per local day of the plant
+// (Europe/Berlin): kWh a LOWER bound from measured PV, gebunden_s exact.
+type AnteilVerlust struct {
+	Tag       string               `json:"tag"`
+	Kwh       float64              `json:"kwh"`
+	GebundenS int64                `json:"gebunden_s"`
+	Vortag    *AnteilVerlustVortag `json:"vortag,omitempty"`
+}
+
+// AnteilVerlustVortag is the closed previous day, final.
+type AnteilVerlustVortag struct {
+	Tag       string  `json:"tag"`
+	Kwh       float64 `json:"kwh"`
+	GebundenS int64   `json:"gebunden_s"`
 }
 
 // AnteileKw is the own share per direction in kW.

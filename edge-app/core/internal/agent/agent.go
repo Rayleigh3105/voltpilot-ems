@@ -391,6 +391,9 @@ type Agent struct {
 	// shared by both watchdogs (eingefroren.go). Fed only with a share
 	// document.
 	einfrier einfrierStand
+	// AP-15 IP-22: what the feed-in share holds back, per local day of the
+	// plant, on disk (anteil_verlust.go). Counted only with a share document.
+	verlust *guards.AnteilVerlust
 
 	// Edge-local deadline fallback (agent/flexfallback.go + internal/
 	// flexfallback; Verbrauchssteuerung Inkrement 6, D-20): the validated
@@ -759,6 +762,7 @@ func New(cfg config.Config) (*Agent, error) {
 		slog.Warn("cached v2 plan unreadable; starting without", "err", err)
 	}
 	a.restoreAnteile(as)
+	a.restoreVerlust(cfg.DataDir)
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
@@ -2616,6 +2620,8 @@ func (a *Agent) applySetpoint(now time.Time) {
 		if an := a.exportAnteil(); an != nil {
 			an.EingefrorenSeit = a.eingefrorenSeit(now)
 			noReadingCap = a.export.CapAnteil(now, exportLimit, *an, 0)
+			// no reading: nothing counted, and the rate before it ends here
+			a.verlust.Zaehle(now, noReadingCap, an.Fuehrt, nil)
 		} else {
 			noReadingCap = a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, 0))
 		}
@@ -3047,6 +3053,8 @@ func (a *Agent) applySetpoint(now time.Time) {
 		an.EingefrorenSeit = a.eingefrorenSeit(now)
 		exportCap = a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
 		kw = lowerDischarge(kw, exportCap.DischargeCapKw)
+		// AP-15 IP-22: count what the share holds back (anteil_verlust.go)
+		a.verlust.Zaehle(now, exportCap, an.Fuehrt, exportCap.PvKw)
 	} else {
 		exportCap = a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, kw))
 	}

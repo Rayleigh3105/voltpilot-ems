@@ -116,7 +116,10 @@ func TestAnteilNeustartBehaeltDenAnteilVorDemErstenMesswert(t *testing.T) {
 		t.Fatalf("share after restart: %+v", h)
 	}
 	raw, _ := json.Marshal(nachher.gemeinsameSteuerung())
-	if string(raw) != `{"rolle":"steuert_mit","anteile_revision":8,"anteile_epoche":1,"anteile_kw":{"einspeisung":60.0,"bezug":77.0}}` {
+	// IP-22 adds the day's share loss (nothing counted yet) - only with a document
+	tag := nachher.verlust.TagVon(time.Now())
+	if string(raw) != `{"rolle":"steuert_mit","anteile_revision":8,"anteile_epoche":1,"anteile_kw":{"einspeisung":60.0,"bezug":77.0},`+
+		`"anteil_verlust":{"tag":"`+tag+`","kwh":0,"gebunden_s":0}}` {
 		t.Fatalf("heartbeat block after restart: %s", raw)
 	}
 	// the restarted box still refuses the older revision of the same epoch
