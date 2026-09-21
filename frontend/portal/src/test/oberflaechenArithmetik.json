@@ -6,7 +6,9 @@
     "uemsVerlauf: Number(menge) nur zur Bildhöhe; skalaOben/bild nur SVG-Koordinaten und Achsen, keine fachliche Summe oder Δ.",
     "anlageEnergiebilanz.teilBild: Math.max(0, e.menge) / zufluss nur MiniShareBar-Breite; Beschriftung bleibt die gelieferte Menge, keine Prozentzahl.",
     "kennzahlKarte.verlauf: Betrag/größter Betrag ausschließlich als Balkenbreite; kennzahlKarte/berichtSeite: Anzeige, Versionsnummern und Sortierung; die Fachwerte bilden die Vertrags-Zwillinge.",
-    "uemsWerteCache: TTL und LRU-Indizes, keine Menge."
+    "uemsWerteCache: TTL und LRU-Indizes, keine Menge.",
+    "kostenstellenUebersicht ./rechte:ROLLE_KUNDENWORT (PR 1014, Kostenstelle B): nur die Kundenwörter der Rollen für den Satz, wer die Mengen sieht; keine Menge.",
+    "kostenstellenUebersicht ./rechte:TEXTE (PR 1014, Kostenstelle B): nur die Satzbausteine weg_ein_kundenadministrator/weg_kundenadministratoren mit den Namen aus /me; keine Menge."
   ],
   "dateien": {
     "uemsOberflaechen.ts": {
@@ -294,6 +296,8 @@
         "./glossar:UEMS_PROZESS_SUMME",
         "./nav:hashForRoute",
         "./nav:pageRoute",
+        "./rechte:ROLLE_KUNDENWORT",
+        "./rechte:TEXTE",
         "./rechte:datumZeit",
         "./uebersichtBausteine:ende",
         "./uebersichtBausteine:zeitraumText",
