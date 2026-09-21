@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Rolle;
 import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Schritt;
 import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Tabelle;
 import java.math.BigDecimal;
@@ -40,6 +41,15 @@ public final class VerbundAnteileDokument {
     /** Die Nutzlast für EINE Box; {@code device_id} = die Box des Topics (Topic- und Payload-Identität). */
     public static byte[] nutzlast(ObjectMapper mapper, UUID tenant, UUID site, UUID box, long epoche, long revision,
             Schritt schritt, Tabelle tabelle, Instant veroeffentlicht) {
+        return nutzlast(mapper, tenant, site, box, null, epoche, revision, schritt, tabelle, veroeffentlicht);
+    }
+
+    /**
+     * Wie oben, mit der Rolle der Box des Topics (wahlfrei, IP-17): die Box hält sie mit dem Anteil und spiegelt sie im
+     * Herzschlag. {@code null} = ohne das Feld; eine Lese-Box bekommt kein Dokument.
+     */
+    public static byte[] nutzlast(ObjectMapper mapper, UUID tenant, UUID site, UUID box, Rolle rolle, long epoche,
+            long revision, Schritt schritt, Tabelle tabelle, Instant veroeffentlicht) {
         ObjectNode n = mapper.createObjectNode();
         n.put("schema_version", SCHEMA_VERSION);
         n.put("tenant_id", tenant.toString());
@@ -48,6 +58,9 @@ public final class VerbundAnteileDokument {
         n.put("epoche", epoche);
         n.put("revision", revision);
         n.put("schritt", schritt.code());
+        if (rolle == Rolle.FUEHRT || rolle == Rolle.STEUERT_MIT) {
+            n.put("rolle", rolle.code());
+        }
         ObjectNode v = n.putObject("verteilbar");
         ObjectNode a = n.putObject("anteile");
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {

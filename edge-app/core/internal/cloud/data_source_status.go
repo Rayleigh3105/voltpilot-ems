@@ -21,7 +21,10 @@ type StatusExtension struct {
 // in force without an end. A name is added here only when the way behind it
 // works - never because a package exists. plan_quittung (AP-15 IP-10): the agent
 // really judges every plan 2.0 on .../v2/plan-result (agent/plan_result.go).
+// steuerungsverbund_anteil (AP-15 IP-17): the agent judges, stores and
+// receipts the share document of a Gemeinsame Steuerung and mirrors it in the
+// heartbeat (agent/verbund_anteile.go) - regulating against it is IP-18/IP-19.
 func BuiltSupports() []string {
 	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
-		"plan_quittung"}
+		"plan_quittung", "steuerungsverbund_anteil"}
 }

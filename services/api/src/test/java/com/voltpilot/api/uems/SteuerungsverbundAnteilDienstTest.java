@@ -17,10 +17,8 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -78,11 +76,13 @@ class SteuerungsverbundAnteilDienstTest {
         registry.add("spring.flyway.placeholders.adminDbPassword", () -> ADMIN_PW);
     }
 
-    /** Der Draht im Test: jede Nutzlast je Topic; und ein Herzschlag, der Anteile nur meldet, wenn der Test es sagt. */
+    /**
+     * Der Draht im Test: jede Nutzlast je Topic. Die wirksamen Anteile kommen aus der ECHTEN Quelle
+     * {@link WirksameAnteileAusHerzschlag} (IP-17), gefüttert mit dem Herzschlag-Block, den die Box sendet.
+     */
     @TestConfiguration
     static class Draht {
         static final List<Map.Entry<String, byte[]>> GESENDET = new ArrayList<>();
-        static final Map<UUID, Map<Grenzart, BigDecimal>> HERZSCHLAG = new HashMap<>();
 
         @Bean
         VerbundAnteileVersand testVersand() {
@@ -92,11 +92,6 @@ class SteuerungsverbundAnteilDienstTest {
                 }
                 return true;
             };
-        }
-
-        @Bean
-        WirksameAnteileQuelle testHerzschlag() {
-            return (site, box) -> Optional.ofNullable(HERZSCHLAG.get(box));
         }
     }
 
@@ -110,6 +105,8 @@ class SteuerungsverbundAnteilDienstTest {
     GeraeteRueckfallDienst rueckfaelle;
     @Autowired
     ObjectMapper mapper;
+    @Autowired
+    WirksameAnteileAusHerzschlag herzschlag;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -130,7 +127,6 @@ class SteuerungsverbundAnteilDienstTest {
         synchronized (Draht.GESENDET) {
             Draht.GESENDET.clear();
         }
-        Draht.HERZSCHLAG.clear();
     }
 
     @AfterEach
@@ -225,11 +221,24 @@ class SteuerungsverbundAnteilDienstTest {
         assertThat(Draht.GESENDET).isEmpty();
         assertThat(verbuende.derAnlage(w.anlage()).orElseThrow().epoche()).isEqualTo(1);
 
-        // Der Herzschlag meldet, was die Boxen WIRKSAM halten (hier 10/90 aus dem verlorenen Stand)
-        Draht.HERZSCHLAG.put(w.e1(), Map.of(Grenzart.EINSPEISUNG, new BigDecimal("10.0"), Grenzart.BEZUG,
-                new BigDecimal("0.0")));
-        Draht.HERZSCHLAG.put(w.e4(), Map.of(Grenzart.EINSPEISUNG, new BigDecimal("90.0"), Grenzart.BEZUG,
-                new BigDecimal("77.0")));
+        // Der Herzschlag meldet, was die Boxen WIRKSAM halten (hier 10/90 aus dem verlorenen Stand) — der Block, wie
+        // ihn die Box sendet (IP-17); nur eine Richtung ist „unbekannt“, nicht null
+        herzschlag.merke(w.anlage(), w.e1(), mapper.readTree("""
+                {"rolle":"fuehrt","anteile_epoche":1,"anteile_revision":9,"anteile_kw":{"einspeisung":10.0}}"""));
+        assertThat(dienst.anteileScharfschalten(w.anlage(), BETREIBER).grund())
+                .as("eine Richtung fehlt im Herzschlag").isEqualTo(Grund.WIRKSAME_ANTEILE_UNBEKANNT);
+        herzschlag.merke(w.anlage(), w.e1(), mapper.readTree("""
+                {"plan_id":"4711aaaa-0000-4000-8000-000000004711","rolle":"fuehrt","anteile_epoche":1,
+                 "anteile_revision":9,"anteile_kw":{"einspeisung":10.0,"bezug":0.0}}"""));
+        herzschlag.merke(UUID.randomUUID(), w.e4(), mapper.readTree("""
+                {"rolle":"steuert_mit","anteile_epoche":1,"anteile_revision":9,
+                 "anteile_kw":{"einspeisung":90.0,"bezug":77.0}}"""));
+        assertThat(dienst.anteileScharfschalten(w.anlage(), BETREIBER).grund())
+                .as("der Herzschlag einer Box von einem anderen Standort zählt nicht").isEqualTo(
+                        Grund.WIRKSAME_ANTEILE_UNBEKANNT);
+        herzschlag.merke(w.anlage(), w.e4(), mapper.readTree("""
+                {"rolle":"steuert_mit","anteile_epoche":1,"anteile_revision":9,
+                 "anteile_kw":{"einspeisung":90.0,"bezug":77.0}}"""));
         Ergebnis neu = dienst.anteileScharfschalten(w.anlage(), BETREIBER);
         assertThat(neu.veroeffentlicht()).isTrue();
         assertThat(neu.dokument().epoche()).isEqualTo(2);
@@ -238,6 +247,14 @@ class SteuerungsverbundAnteilDienstTest {
         assertThat(kw(neu, Grenzart.EINSPEISUNG, w.e4())).as("min(90 wirksam, 60 neu)").isEqualByComparingTo("60.0");
         assertThat(neu.dokument().verengteBoxen()).containsExactly(w.e4().toString());
         assertThat(anteile.rueckgespieltErkannt(w.verbund())).as("nur das Scharfschalten hebt die Marke").isEmpty();
+        // IP-17: jedes Dokument nennt die Rolle der Box seines Topics
+        synchronized (Draht.GESENDET) {
+            for (Map.Entry<String, byte[]> e : Draht.GESENDET) {
+                String erwartet = e.getKey().contains(w.e1().toString()) ? "fuehrt" : "steuert_mit";
+                assertThat(mapper.readTree(e.getValue()).path("rolle").asText()).as(e.getKey()).isEqualTo(erwartet);
+            }
+            assertThat(Draht.GESENDET).hasSize(2);
+        }
     }
 
     @Test

@@ -70,21 +70,26 @@ und kein anderes Flottenbild — Metriken und Alarmregeln zur Quittung sind IP-1
 
 `ems/{tenant_id}/{site_id}/{device_id}/status` bleibt `schema_version: "1.0"`. Der
 wahlfreie Block `gemeinsame_steuerung` erscheint nur, solange die Box einen Plan 2.0 mit
-`plan_id` hält (angenommen oder nach einem Neustart von der Platte geladen), und fehlt wieder
-nach dem Löschen des Plans. Eine Box ohne Plan 2.0 sendet ihren Herzschlag wie zuvor
-(bis auf den neuen Namen in `supports[]`):
+`plan_id` hält (angenommen oder nach einem Neustart von der Platte geladen) ODER ein
+angenommenes Anteils-Dokument (IP-17, [Anteils-Dokument](mqtt-verbund-anteile.md)); ohne beides
+fehlt er. Eine Box ohne Plan 2.0 und ohne Anteils-Dokument sendet ihren Herzschlag wie zuvor
+(bis auf die neuen Namen in `supports[]`); die Anteils-Felder fehlen ohne Dokument, der Block
+einer Box mit Plan und ohne Dokument ist Byte für Byte der aus IP-10:
 
 | Feld | heute | Bedeutung |
 |---|---|---|
-| `plan_id` | ja | Kennung des wirksamen (zuletzt angenommenen) Plans 2.0 |
+| `plan_id` | wenn ein Plan 2.0 gilt | Kennung des wirksamen (zuletzt angenommenen) Plans 2.0 |
 | `waechter.einspeisung` | wenn ein Einspeisewächter läuft | Stufe wie `export_guard.state` (`aus`, `ueberwacht`, `regelt`, `haelt`, `zieht_zusammen`, `sicherheitskappe`) |
 | `waechter.bezug` | nie (IP-18) | Stufe des Bezugswächters, gleiches Vokabular |
 | `messpunkt_alter_s` | wenn gemessen | Alter der jüngsten verwertbaren Messung am eigenen Messpunkt in Sekunden |
-| `rolle` | nie (IP-17) | `fuehrt` · `steuert_mit` · `liest` |
-| `anteile_revision` | nie (IP-17) | Revision der wirksamen Anteile |
+| `rolle` | wenn ein Anteils-Dokument gilt und die Cloud sie nennt (IP-17) | `fuehrt` · `steuert_mit` (`liest` hat kein Dokument) |
+| `anteile_epoche` | wenn ein Anteils-Dokument gilt (IP-17) | Epoche der wirksamen Anteile |
+| `anteile_revision` | wenn ein Anteils-Dokument gilt (IP-17) | Revision der wirksamen Anteile |
+| `anteile_kw` | wenn ein Anteils-Dokument gilt (IP-17) | die WIRKSAMEN eigenen Anteile `{einspeisung, bezug}` in kW, wie im Dokument — „alt“ jedes Zweischritts (Y3, A18) |
 
 Der Block spiegelt, er entscheidet nichts: die Cloud liest ihn nur für die Überwachung
-(`waechter.*` als Box-Metrik, und eine Box mit Block zählt als Box mit Bezug, AP-15 IP-11); Lebenszeichen, Quellenstatus und
+(`waechter.*` als Box-Metrik, und eine Box mit Block zählt als Box mit Bezug, AP-15 IP-11) und als Quelle der
+wirksamen Anteile (`uems/WirksameAnteileAusHerzschlag`, IP-17); Lebenszeichen, Quellenstatus und
 Fähigkeiten bleiben gleich.
 
 ## Fähigkeit

@@ -25,9 +25,12 @@
   ],
   "$defs": {
     "herzschlag_block": {
-      "title": "Block gemeinsame_steuerung im Status-Herzschlag 1.0 (wahlfrei)",
+      "title": "Block gemeinsame_steuerung im Status-Herzschlag 1.0 (wahlfrei): Plan 2.0 (IP-10) und/oder Anteils-Dokument (IP-17)",
       "type": "object",
-      "required": ["plan_id"],
+      "anyOf": [
+        { "required": ["plan_id"] },
+        { "required": ["anteile_epoche", "anteile_revision", "anteile_kw"] }
+      ],
       "properties": {
         "plan_id": { "type": "string", "format": "uuid" },
         "waechter": {
@@ -40,7 +43,18 @@
         },
         "messpunkt_alter_s": { "type": "integer", "minimum": 0 },
         "rolle": { "enum": ["fuehrt", "steuert_mit", "liest"] },
-        "anteile_revision": { "type": "integer", "minimum": 0 }
+        "anteile_revision": { "type": "integer", "minimum": 0 },
+        "anteile_epoche": { "type": "integer", "minimum": 1 },
+        "anteile_kw": {
+          "description": "die WIRKSAMEN eigenen Anteile je Richtung in kW, wie im angenommenen Dokument (Y3, A18)",
+          "type": "object",
+          "required": ["einspeisung", "bezug"],
+          "additionalProperties": false,
+          "properties": {
+            "einspeisung": { "type": "number", "minimum": 0 },
+            "bezug": { "type": "number", "minimum": 0 }
+          }
+        }
       }
     },
     "waechter_stufe": { "enum": ["aus", "ueberwacht", "regelt", "haelt", "zieht_zusammen", "sicherheitskappe"] }

@@ -84,16 +84,17 @@ prüfen, dass sie sie nicht kennen.
 - **MQTT**: Topic, Schema und Quittung des Anteils-Dokuments stehen in [`mqtt-verbund-anteile.md`](./mqtt-verbund-anteile.md)
   (IP-7 Cloud-Seite, IP-17 Box-Seite); die Quittung übernimmt die Wörter aus `dokument_ablehnung` als Grund, Topic-
   und Payload-Identität prüft dort die Box zusätzlich.
-- **Der Go-Zwilling** der Box: IP-17 fährt dieselbe Datei als dritter Zwilling (NW-1 in Go).
+- **Der Go-Zwilling** der Box (IP-17): `edge-app/core/internal/anteile` fährt dieselbe Datei als dritter Zwilling
+  (NW-1 in Go, `anteile_vectors_test.go`); die `quelle`-Zeiger prüfen Java und Python.
 
 ## 4. Zwillinge und Herkunft der Zahlen
 
-| Gruppe | Java (`services/api`, rein) | Python-Referenz (`services/optimization/tests`) |
-|---|---|---|
-| `anteile` | `uems/SteuerungsverbundAnteile.anteile` | `test_steuerungsverbund_referenz.anteile` |
-| `uebergangsstand` | `…uebergangsstand` | `…uebergangsstand` |
-| `dokument_pruefen` | `…dokumentPruefen` | `…dokument_pruefen` |
-| `vokabulare` | `uems/SteuerungsverbundVokabular` | `…VOKABULARE`-Tupel |
+| Gruppe | Java (`services/api`, rein) | Python-Referenz (`services/optimization/tests`) | Go (`edge-app/core/internal/anteile`) |
+|---|---|---|---|
+| `anteile` | `uems/SteuerungsverbundAnteile.anteile` | `test_steuerungsverbund_referenz.anteile` | `Verteilen` |
+| `uebergangsstand` | `…uebergangsstand` | `…uebergangsstand` | `Uebergangsstand` |
+| `dokument_pruefen` | `…dokumentPruefen` | `…dokument_pruefen` | `DokumentPruefen` |
+| `vokabulare` | `uems/SteuerungsverbundVokabular` | `…VOKABULARE`-Tupel | `Rollen` · `AuslegungUrteile` · `DokumentUrteile` · `DokumentAblehnung` |
 
 Die Python-Referenz ist der Rechenkern aus dem Konzept (`k_faelle.py`: `anteile`, `uebergangsstand`) als Testmodul,
 ohne Berichts-Erzeugung; beide Seiten rechnen mit exakten Dezimalzahlen (Java `BigDecimal`, Python `Decimal`) — ein
@@ -170,7 +171,7 @@ darum höchstens bis S1 und wird nicht scharf:
 
 | Methode | heute | füllt |
 |---|---|---|
-| `faehigkeit` | `BoxFaehigkeiten.kann(box, "steuerungsverbund_anteil")` — das Wort ist noch nicht in `EdgeSupports.NAMES` → nein | IP-17 |
+| `faehigkeit` | `BoxFaehigkeiten.kann(box, "steuerungsverbund_anteil")` — seit IP-17 in `EdgeSupports.NAMES`: ja, sobald die Box es in `supports[]` meldet (keine Zeile in `edge-capabilities.json`) | IP-17 ✓ |
 | `sprungprobe` | nein | IP-21 |
 | `auslegung` | leer → `auslegung_passt_nicht` (unbekannt ist nicht „passt“) | IP-7 (mit den Rückfällen aus IP-6) |
 | `verbraucher14a`, `vorgabeSignal` | unbekannt → `vorgabe_signal_nicht_an_jeder_box` | offen: kein Paket in §8 nennt den Träger |

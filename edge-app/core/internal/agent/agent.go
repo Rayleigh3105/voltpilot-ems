@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/anteile"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/boxevents"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
@@ -375,6 +376,13 @@ type Agent struct {
 	entReadback map[string]*bool    // per-entity latest readback all_match
 	arbWake     chan struct{}
 
+	// AP-15 IP-17 (Y2): the accepted share document of a Gemeinsame
+	// Steuerung, restored from disk in New - before the first measurement
+	// (R15). nil = no document: the box behaves byte for byte as before.
+	anteileMu    sync.Mutex
+	anteile      *anteile.Gehalten
+	anteileStore *anteile.Store
+
 	// Edge-local deadline fallback (agent/flexfallback.go + internal/
 	// flexfallback; Verbrauchssteuerung Inkrement 6, D-20): the validated
 	// per-entity deadline duties from the registry push, the confirmed-progress
@@ -578,6 +586,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	as, err := anteile.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	cs, err := componentapply.NewStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -737,6 +749,7 @@ func New(cfg config.Config) (*Agent, error) {
 	} else if err != nil {
 		slog.Warn("cached v2 plan unreadable; starting without", "err", err)
 	}
+	a.restoreAnteile(as)
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
@@ -1233,6 +1246,9 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnEntities: a.onEntityRegistryPush,
 		OnPlanV2:   a.onPlanV2,
 		OnFlows:    a.onFlows,
+		// AP-15 IP-17: the share document of a Gemeinsame Steuerung -
+		// judged, stored, receipted and mirrored (verbund_anteile.go).
+		OnVerbundAnteile: a.onVerbundAnteile,
 		// OTA Stufe 2: das zugewiesene Release kommt retained ueber denselben
 		// Link. Es wird geprueft, abgelegt und gemeldet - angewandt wird es
 		// beaufsichtigt (update.sh --from-target).

@@ -47,19 +47,26 @@ func (a *Agent) quittierePlan2(r cloud.PlanResult) {
 	}()
 }
 
-// gemeinsameSteuerung is the Y3 heartbeat mirror: present only while the box
-// holds a plan 2.0 with a plan_id, so a box that never saw one keeps its
-// heartbeat. The guard stage and the age of the own measuring point come from
-// the feed-in guard that exists today; Bezug, Rolle and AnteileRevision stay
-// empty until their packages (IP-17, IP-18) build them.
+// gemeinsameSteuerung is the Y3 heartbeat mirror: present while the box
+// holds a plan 2.0 with a plan_id (IP-10) or an accepted share document
+// (IP-17), so a box with neither keeps its heartbeat. The guard stage and the
+// age of the own measuring point come from the feed-in guard that exists
+// today; the share fields (rolle, epoch, revision, effective own share per
+// direction) come only from a held document, so the block of a box without
+// one stays byte-identical to IP-10. Bezug waits for IP-18.
 func (a *Agent) gemeinsameSteuerung() *cloud.GemeinsameSteuerung {
 	a.arbMu.Lock()
 	p := a.curPlan2
 	a.arbMu.Unlock()
-	if p == nil || p.PlanID == "" {
+	h := a.heldAnteile()
+	hatPlan := p != nil && p.PlanID != ""
+	if !hatPlan && h == nil {
 		return nil
 	}
-	block := &cloud.GemeinsameSteuerung{PlanID: p.PlanID}
+	block := &cloud.GemeinsameSteuerung{}
+	if hatPlan {
+		block.PlanID = p.PlanID
+	}
 	if g := a.State.Get().ExportGuard; g != nil {
 		if g.State != "" {
 			block.Waechter = &cloud.Waechter{Einspeisung: g.State}
@@ -68,6 +75,13 @@ func (a *Agent) gemeinsameSteuerung() *cloud.GemeinsameSteuerung {
 			age := *g.MeasurementAgeSeconds
 			block.MesspunktAlterS = &age
 		}
+	}
+	if h != nil {
+		epoche, revision := h.Stand.Epoche, h.Stand.Revision
+		block.Rolle = h.Rolle
+		block.AnteileEpoche = &epoche
+		block.AnteileRevision = &revision
+		block.AnteileKw = &cloud.AnteileKw{Einspeisung: h.AnteilKw["einspeisung"], Bezug: h.AnteilKw["bezug"]}
 	}
 	return block
 }

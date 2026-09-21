@@ -3,9 +3,9 @@
     "Die EINE Wahrheit der ANTEILE einer Gemeinsamen Steuerung (UEMS AP-15 IP-2, Nachweis NW-1; Regeln G2–G5, T4, E2 = A).",
     "Die Prosa steht in steuerungsverbund.md. Wer eine Regel oder ein Vokabular ändert, ändert diese Datei UND alle Zwillinge:",
     "Java uems/SteuerungsverbundAnteile + uems/SteuerungsverbundVokabular (SteuerungsverbundAnteilVectorsTest) und die",
-    "Python-Referenz services/optimization/tests/test_steuerungsverbund_referenz.py. Der Go-Zwilling der Box kommt mit IP-17.",
+    "Python-Referenz services/optimization/tests/test_steuerungsverbund_referenz.py und den Go-Zwilling der Box edge-app/core/internal/anteile (IP-17).",
     "Zahlen in kW, gerechnet in ganzen Zehntel-kW. Vektoren mit „quelle“ holen ihre Zahlen aus uems-referenzunternehmen.json 1.5 —",
-    "beide Zwillinge prüfen jeden Zeiger; nichts davon ist abgetippt."
+    "Java und Python prüfen jeden Zeiger; nichts davon ist abgetippt. Go rechnet dieselben Zahlen, die Zeiger prüft er nicht erneut."
   ],
   "schema_version": "1.0",
   "herkunft": "UEMS AP-15 §4.3 (G2–G6), §4.7 (Y1), §4.9 (I1), §6.2, §8 IP-2; Fälle R1, R2, R3, R12, R18, R23; Kasten E2 = A (Ablehnung in beiden Richtungen); Entscheid 21.09.2026.",
@@ -19,19 +19,15 @@
     "Die Box prüft jedes Anteils-Dokument: Mandant und Anlage (fremde_anlage), die eigene Kennung in BEIDEN Richtungen (box_fehlt_im_dokument), Epoche und Revision steigen nur (revision_aelter), je Richtung Summe ≤ verteilbar (summe_ueber_verteilbar) — in dieser Reihenfolge; dieselbe Revision noch einmal wird angenommen (T4, G5, Y1)."
   ],
   "zwillinge": {
-    "anteile": ["java: SteuerungsverbundAnteile.anteile", "python: test_steuerungsverbund_referenz.anteile"],
-    "uebergangsstand": ["java: SteuerungsverbundAnteile.uebergangsstand", "python: test_steuerungsverbund_referenz.uebergangsstand"],
-    "dokument_pruefen": ["java: SteuerungsverbundAnteile.dokumentPruefen", "python: test_steuerungsverbund_referenz.dokument_pruefen"],
-    "vokabulare": ["java: SteuerungsverbundVokabular", "python: test_steuerungsverbund_referenz.VOKABULARE"]
+    "anteile": ["java: SteuerungsverbundAnteile.anteile", "python: test_steuerungsverbund_referenz.anteile", "go: anteile.Verteilen"],
+    "uebergangsstand": ["java: SteuerungsverbundAnteile.uebergangsstand", "python: test_steuerungsverbund_referenz.uebergangsstand", "go: anteile.Uebergangsstand"],
+    "dokument_pruefen": ["java: SteuerungsverbundAnteile.dokumentPruefen", "python: test_steuerungsverbund_referenz.dokument_pruefen", "go: anteile.DokumentPruefen"],
+    "vokabulare": ["java: SteuerungsverbundVokabular", "python: test_steuerungsverbund_referenz.VOKABULARE", "go: anteile.Rollen, AuslegungUrteile, DokumentUrteile, DokumentAblehnung"]
   },
   "_abweichungen": [
     {
       "feld": "zusage_pruefen",
       "grund": "Die Zusage-Prüfung gehört zur Zuteilung auf Zeit (§4.8, Stufe S4, Fall R16, Matrixzeile A19). Mit E1 = A ist sie entworfen, aber nicht gebaut; IP-33/IP-34 stehen nicht in der verbindlichen Bau-Liste, und §4.8 verlangt sie für den ersten Umfang nicht. Die Gruppe kommt mit IP-33, falls der Captain nach dem Pilot so entscheidet."
-    },
-    {
-      "feld": "Go-Zwilling",
-      "grund": "Die Box rechnet mit IP-17 (Anteils-Dokument auf der Box); dann fährt ein dritter Zwilling diese Datei."
     },
     {
       "feld": "TypeScript-Zwilling",

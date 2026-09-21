@@ -385,8 +385,8 @@ public class SteuerungsverbundAnteilDienst {
             }
             UUID b = UUID.fromString(box);
             auftraege.add(Map.entry(VerbundAnteileDokument.topic(tenant, v.siteId(), b),
-                    VerbundAnteileDokument.nutzlast(mapper, tenant, v.siteId(), b, epoche, revision, d.schritt(),
-                            d.tabelle(), jetzt)));
+                    VerbundAnteileDokument.nutzlast(mapper, tenant, v.siteId(), b, m.rolle(), epoche, revision,
+                            d.schritt(), d.tabelle(), jetzt)));
             verbuende.gesendet(m.id(), epoche, revision, jetzt);
             gesendetAn.add(b);
         }
@@ -419,8 +419,8 @@ public class SteuerungsverbundAnteilDienst {
         for (MitgliedZeile m : verbuende.mitglieder(v.id(), clock.instant())) {
             if (d.tabelle().boxen().contains(m.deviceId().toString()) && weg.senden(
                     VerbundAnteileDokument.topic(tenant, v.siteId(), m.deviceId()), VerbundAnteileDokument.nutzlast(
-                            mapper, tenant, v.siteId(), m.deviceId(), d.epoche(), d.revision(), d.schritt(),
-                            d.tabelle(), clock.instant()))) {
+                            mapper, tenant, v.siteId(), m.deviceId(), m.rolle(), d.epoche(), d.revision(),
+                            d.schritt(), d.tabelle(), clock.instant()))) {
                 an.add(m.deviceId());
             }
         }

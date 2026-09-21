@@ -59,15 +59,27 @@ func (l *Link) PublishPlanResult(r PlanResult) error {
 }
 
 // GemeinsameSteuerung is the optional heartbeat mirror of Y3 (block
-// `gemeinsame_steuerung`, status stays 1.0). It is sent only while the box
-// holds a plan 2.0; Rolle and AnteileRevision stay empty until IP-17, Bezug
-// until the import twin of the feed-in guard exists (IP-18).
+// `gemeinsame_steuerung`, status stays 1.0). It is sent while the box holds a
+// plan 2.0 (IP-10) or an accepted share document (IP-17); a box with neither
+// sends no block. The share fields stay absent without a document, so the
+// block of a box without one is byte-identical to IP-10. Bezug in Waechter
+// waits for the import twin of the feed-in guard (IP-18).
 type GemeinsameSteuerung struct {
-	PlanID          string    `json:"plan_id"`
+	PlanID          string    `json:"plan_id,omitempty"`
 	Waechter        *Waechter `json:"waechter,omitempty"`
 	MesspunktAlterS *int      `json:"messpunkt_alter_s,omitempty"`
 	Rolle           string    `json:"rolle,omitempty"`
 	AnteileRevision *int64    `json:"anteile_revision,omitempty"`
+	AnteileEpoche   *int64    `json:"anteile_epoche,omitempty"`
+	// AnteileKw are the EFFECTIVE own shares per direction (kW), the decimal
+	// text of the accepted document - "alt" of every two-step change (Y3, A18).
+	AnteileKw *AnteileKw `json:"anteile_kw,omitempty"`
+}
+
+// AnteileKw is the own share per direction in kW.
+type AnteileKw struct {
+	Einspeisung json.Number `json:"einspeisung"`
+	Bezug       json.Number `json:"bezug"`
 }
 
 // Waechter is the guard stage per direction, the export_guard.state words.

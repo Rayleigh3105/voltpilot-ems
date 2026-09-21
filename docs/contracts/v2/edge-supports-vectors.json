@@ -36,6 +36,12 @@
       "meaning": "Die Box quittiert jeden Plan 2.0 fachlich auf .../v2/plan-result (angenommen oder abgelehnt mit Grund aus dem geschlossenen Vokabular) und spiegelt den wirksamen Plan im Herzschlag-Block gemeinsame_steuerung (mqtt-plan-result 1.0, AP-15 IP-10).",
       "advertised": true,
       "evidence": "edge-app/core/internal/agent/plan_result_test.go"
+    },
+    {
+      "name": "steuerungsverbund_anteil",
+      "meaning": "Die Box prüft das Anteils-Dokument einer Gemeinsamen Steuerung auf .../v2/verbund-anteile (Go-Zwilling der Vektoren), hält ein angenommenes auf der Platte (gilt nach einem Neustart vor dem ersten Messwert), quittiert jedes Urteil auf .../v2/verbund-anteile-result und spiegelt Rolle, Epoche, Revision und die wirksamen Anteile je Richtung im Herzschlag-Block gemeinsame_steuerung (mqtt-verbund-anteile 1.0, AP-15 IP-17). Regeln dagegen erst mit IP-18/IP-19.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/agent/verbund_anteile_test.go"
     }
   ],
   "cases": [
@@ -116,6 +122,16 @@
       "table": [],
       "expected": [
         "plan_quittung"
+      ]
+    },
+    {
+      "name": "reported_steuerungsverbund_anteil_is_recognized",
+      "supports": [
+        "steuerungsverbund_anteil"
+      ],
+      "table": [],
+      "expected": [
+        "steuerungsverbund_anteil"
       ]
     },
     {

@@ -41,6 +41,7 @@ type Link struct {
 	onCommand           func(payload []byte) bool
 	onEntities          func(payload []byte)
 	onPlanV2            func(payload []byte)
+	onVerbundAnteile    func(payload []byte)
 	onFlows             func(payload []byte)
 	onUpdateTarget      func(payload []byte)
 	onProbeRequest      func(payload []byte)
@@ -84,6 +85,11 @@ type Options struct {
 	// (docs/contracts/v2/mqtt-schedule-2.0.md). Empty payload = retained
 	// clear. nil = the v2 plan executor is not wired.
 	OnPlanV2 func(payload []byte)
+	// OnVerbundAnteile receives the retained share document of a Gemeinsame
+	// Steuerung on .../v2/verbund-anteile (docs/contracts/v2/
+	// mqtt-verbund-anteile.md, AP-15 IP-17). An EMPTY payload is delivered
+	// too; the handler keeps the held share. nil = not wired.
+	OnVerbundAnteile func(payload []byte)
 	// OnFlows receives the retained flow deployment set on .../v2/flows
 	// (docs/contracts/v2/flow-artifact.md §3). Empty payload = retained
 	// clear (every artifact tab removed). nil = flow deployment not wired.
@@ -203,6 +209,7 @@ func New(o Options) (*Link, error) {
 		onCommand:  o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:       o.OnControlCert,
+		onVerbundAnteile:    o.OnVerbundAnteile,
 		onChargingConfig:    o.OnChargingConfig,
 		onChargingBoost:     o.OnChargingBoost,
 		onProbeRequest:      o.OnProbeRequest,
@@ -285,6 +292,7 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	}
 	add("v2/entities", l.onEntities, true)
 	add("v2/plan", l.onPlanV2, true)
+	add("v2/verbund-anteile", l.onVerbundAnteile, true)
 	add("v2/flows", l.onFlows, true)
 	add("v2/update", l.onUpdateTarget, true)
 	add("v2/control-certification", l.onControlCert, true)
