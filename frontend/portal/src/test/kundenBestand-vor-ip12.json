@@ -1348,7 +1348,7 @@
       "datei": "components/BeobachteteRegister.tsx",
       "vorher": "c4d8fd33da45ec22b21697b04173d70f36471224f983cdfdbadf4ce889737ac2",
       "nachher": "b7a2e7fec2eab58d979ab375e0ceed75651aaaeaea7376981664370edd8d4bbf",
-      "commit": "COMMIT",
+      "commit": "226ed7ae7eb60c9a9b68ed0d2179161b8a118e11",
       "grund": "Paket vp-uems-baukasten-messwert-groesse (Schnitt 2): „Jetzt aufzeichnen“ im Formular „Eigenen Messwert hinzufügen“ wartet zusätzlich auf die Antwort auf „Was misst dieser Wert?“ und auf eine dazu passende Einheit. Beschriftung, Handler und die bisherigen Sperren (Prüfung, harte Grenze, busy) bleiben erhalten; die neue Frage ist ein VpPicker, kein geschütztes Element."
     }
   ],
