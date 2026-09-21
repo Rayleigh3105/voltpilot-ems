@@ -4,9 +4,12 @@ import com.voltpilot.api.uems.AenderungsprotokollService;
 import com.voltpilot.api.uems.AenderungsprotokollService.Anfrage;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.web.dto.ProtokollDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,9 +47,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class AenderungsprotokollController {
 
     private final AenderungsprotokollService protokoll;
+    private final RechtPruefung rechte;
 
-    public AenderungsprotokollController(AenderungsprotokollService protokoll) {
+    public AenderungsprotokollController(AenderungsprotokollService protokoll, RechtPruefung rechte) {
         this.protokoll = protokoll;
+        this.rechte = rechte;
     }
 
     /** Recht: {@code aenderungsprotokoll.lesen}. Anlagenprotokoll mit Zeit, Änderung und Akteur. */
@@ -70,7 +75,11 @@ public class AenderungsprotokollController {
             @RequestParam(required = false) String achse,
             @RequestParam(required = false) String limit,
             @RequestParam(required = false) String nach) {
-        return protokoll.messstelle(id, anfrage(von, bis, achse, limit, nach));
+        Anfrage a = anfrage(von, bis, achse, limit, nach);
+        // Außerhalb des Zugriffs (AP-03 R-A1): Status und Körper einer Messstelle, die es nicht gibt.
+        rechte.pruefenLesen(RechtZiel.MESSSTELLE, id,
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
+        return protokoll.messstelle(id, a);
     }
 
     /**

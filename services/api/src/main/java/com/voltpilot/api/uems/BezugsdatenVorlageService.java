@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.web.dto.BezugsdatenImportDto;
 import com.voltpilot.api.web.dto.BezugsdatenVorlageDto;
 import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -26,9 +27,17 @@ public class BezugsdatenVorlageService {
         this.rechte = rechte;
     }
 
+    /**
+     * Die Liste der Route: sichtbar ist eine Vorlage, deren Bezüge alle im Zugriff liegen (AP-09 E12, AP-03 R-A1 —
+     * {@link RechtPruefung#lesbar} je Bezugsgröße). Die übrigen fehlen ohne Hinweis und ohne Anzahl; eine Vorlage
+     * ohne festen Bezug nennt keine Bezugsgröße und bleibt.
+     */
     @Transactional(readOnly = true)
     public BezugsdatenVorlageDto.Liste liste() {
-        return new BezugsdatenVorlageDto.Liste(vorlagen.aktuelle().stream().map(this::dto).toList());
+        return new BezugsdatenVorlageDto.Liste(vorlagen.aktuelle().stream()
+                .filter(v -> vorlagen.bezuege(v.id(), v.fassung()).stream()
+                        .allMatch(b -> rechte.lesbar(RechtZiel.BEZUGSGROESSE, b)))
+                .map(this::dto).toList());
     }
 
     @Transactional

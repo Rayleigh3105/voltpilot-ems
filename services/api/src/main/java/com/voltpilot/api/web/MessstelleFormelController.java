@@ -14,6 +14,7 @@ import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleFormelDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
@@ -50,10 +51,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class MessstelleFormelController {
 
     private final MessstelleFormelService formeln;
+    private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public MessstelleFormelController(MessstelleFormelService formeln, ObjectMapper json) {
+    public MessstelleFormelController(MessstelleFormelService formeln, RechtPruefung rechte, ObjectMapper json) {
         this.formeln = formeln;
+        this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -78,7 +81,14 @@ public class MessstelleFormelController {
     @GetMapping("/{id}/formel")
     public MessstelleFormelDto.Formel formel(@PathVariable UUID id,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate am) {
+        imZugriff(id);
         return formeln.formel(id, am);
+    }
+
+    /** Außerhalb des Zugriffs (AP-03 R-A1): Status und Körper einer Kennung, die es nicht gibt. */
+    private void imZugriff(UUID id) {
+        rechte.pruefenLesen(RechtZiel.MESSSTELLE, id,
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
     }
 
     /**
@@ -103,6 +113,7 @@ public class MessstelleFormelController {
      */
     @GetMapping("/{id}/wert")
     public MessstelleFormelDto.Wert wert(@PathVariable UUID id) {
+        imZugriff(id);
         return formeln.wert(id);
     }
 
@@ -113,6 +124,7 @@ public class MessstelleFormelController {
     @GetMapping("/{id}/verlauf")
     public MessstelleFormelDto.Verlauf verlauf(@PathVariable UUID id,
             @RequestParam(name = "range", required = false) String range) {
+        imZugriff(id);
         return formeln.verlauf(id, range);
     }
 

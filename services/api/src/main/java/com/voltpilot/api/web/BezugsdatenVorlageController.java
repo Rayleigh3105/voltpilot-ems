@@ -41,7 +41,10 @@ public class BezugsdatenVorlageController {
                 .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT);
     }
 
-    /** Lesend: keine eigene Kennung; Mandanten-RLS begrenzt die Liste auf den Kundenbereich. */
+    /**
+     * Lesend: keine eigene Kennung; Mandanten-RLS begrenzt die Liste auf den Kundenbereich, der Zugriff auf die
+     * Vorlagen, deren Bezüge alle sichtbar sind (AP-09 E12).
+     */
     @GetMapping
     public BezugsdatenVorlageDto.Liste liste() {
         return vorlagen.liste();

@@ -164,6 +164,21 @@ public class RechtPruefung {
     }
 
     /**
+     * {@link #pruefen} für eine Liste: {@code true} genau dann, wenn {@link #pruefen} nicht würfe. {@code false} heißt,
+     * die Zeile fehlt — ohne Hinweis, ohne Anzahl, auch statt einer 403. Gezählt wird nicht (keine Schreibroute).
+     */
+    public boolean erlaubt(String kennung, RechtZiel ziel, UUID id) {
+        if (ziel == RechtZiel.DIENST) {
+            throw new IllegalArgumentException("Die genaue Prüfung braucht ein Ziel.");
+        }
+        Zugriff z = ZugriffContext.get();
+        if (ungeprueft(z) != null || (ziel != RechtZiel.UNTERNEHMEN && id == null)) {
+            return true;
+        }
+        return urteil(z, kennung, aufloesen(ziel, id), null).ablehnung() == null;
+    }
+
+    /**
      * Ein Standort ODER ein Gebäude/Bereich als Ziel (Ort verschieben: der neue Elternknoten) — wie {@link #pruefen}.
      */
     public void pruefenStandortOderOrt(String kennung, UUID id, Supplier<? extends RuntimeException> nichtGefunden) {

@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -122,6 +123,14 @@ public class MessstelleRegisterService {
      */
     @Transactional(readOnly = true)
     public MessstelleDto.Liste liste(Instant am, Filter filter) {
+        return liste(am, filter, id -> true);
+    }
+
+    /**
+     * Die Liste der Route: nur Messstellen, die {@code sichtbar} zulässt — sie fehlen in beiden Listen und im Aggregat,
+     * ohne Hinweis und ohne Anzahl. Interne Leser (Standort-Übersicht, Ausfall) nehmen {@link #liste(Instant, Filter)}.
+     */
+    public MessstelleDto.Liste liste(Instant am, Filter filter, Predicate<UUID> sichtbar) {
         Instant zeitpunkt = am != null ? am : uhr.instant();
         LocalDate tag = LocalDate.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
         List<Bestand> bestand = register.alle();
@@ -162,7 +171,7 @@ public class MessstelleRegisterService {
         for (int i = 0; i < bestand.size(); i++) {
             MessstelleDto.RegisterZeile z = mitBerechnung(alle.get(bestand.get(i).messstelle().id()),
                     berechnungen.get(bestand.get(i).messstelle().id()));
-            if (auswahl.passt(z)) {
+            if (auswahl.passt(z) && sichtbar.test(z.id())) {
                 messstellenListe.add(voll.get(i));
                 zeilen.add(z);
             }
