@@ -224,11 +224,49 @@ größer — das fängt die Sprungprobe. Die Obergrenze (Ungeregeltes über dem 
 Abgangszähler (B3, Geräte als Messpunkt) zählt Ungeregeltes hinter dem Abgang zum Ungeregelten statt zum Anteil der Box —
 für die Bilanz gleich, für den Vorbehalt nicht prüfbar.
 
+## 8. Der Vorbehalt aus Messwerten (IP-13)
+
+**Die Regel (B4, W10, A20):** der Vorbehalt der BEZUGSseite = höchster BELEGTER Viertelstundenwert des Ungeregelten
+über die letzten ≤ 12 Monate (heute minus 12 Monate bis gestern) × 1,1, aufgerundet auf 0,1 kW, nie unter 0. Eingang ist
+dieselbe Rechnung wie §7: die Bilanz speichert je Tag `hoechstes_ungeregeltes_kw`/`hoechstes_von` (V20260921230000) —
+eine unvollständige Viertelstunde zählt nicht, ein Tag ohne belegte Viertelstunde ist kein Messtag (die Lücke verändert
+nichts). Regel `uems/VorbehaltRegel` (rein), Vektoren [`vorbehalt-vectors.json`](vorbehalt-vectors.json). Die
+Einspeiseseite bleibt erklärt.
+
+| Messung gegen geltenden Vorbehalt | Folge |
+|---|---|
+| gemessen > geltend | **erhöhen, selbsttätig** (verengt nur) — auch vor dem 30. Messtag: ein kurzer Zeitraum unterschätzt den Höchstwert, nie überschätzt er ihn |
+| gemessen < geltend, ≥ 30 Messtage | **Vorschlag** zum Senken (Zahl, Höchstwert und seine Viertelstunde, Zeitraum, Messtage); wirksam erst durch `POST /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/vorbehalt/freigeben` (Plattform-Rolle, `plattform.betrieb`), danach Zweischritt; 409 `kein_vorschlag` ohne offenen |
+| < 30 Messtage (und nicht mehr) | nichts — der erklärte Wert gilt weiter |
+| kein geltender Wert | nichts zu erhöhen (unbekannt ist keine Null); ab 30 Messtagen ein Vorschlag |
+
+**Lauf.** `uems/VorbehaltLaeufer` (täglich 04:52 Europe/Berlin, nach der Bilanz; Schalter
+`voltpilot.uems.vorbehalt.enabled`) je Anlage MIT Gemeinsamer Steuerung und wirksamen Mitgliedern. Erhöhen:
+`vorbehaltSetzen` (Akteur „Vorbehalt aus Messwerten“, Art `voltpilot`), Protokoll `steuerungsverbund_aenderung`
+Art `vorbehalt` (alt/neu mit Herkunft, Grund `vorbehalt_aus_messwerten_erhoeht`), Zeile `steuerungsverbund_vorbehalt`
+(`erhoeht`/`wirksam`), ein offener Vorschlag wird `hinfaellig`, dann `anteileAendern` (R23: E-4 77 → 55 kW; nur
+verengen ist schon der Zielstand, §4). Das Ergebnis steht an der Zeile (`anteile`); `zweischritt_laeuft` holt der
+nächste Lauf nach. **Passt die Auslegung nicht mehr** (`auslegung_passt_nicht`): nichts wird erweitert, die Boxen halten
+ihr letztes Dokument, der Vorbehalt steht erhöht, Scharfschalten scheitert an der Auslegung — der Zähler meldet es
+(E2 = A: erst der Termin am Gerät). Die Kundenroute kann den Vorbehalt nicht setzen (PUT kennt nur `mitglieder`).
+
+**Protokoll-Wort:** `vorbehalt` erweitert den `art`-CHECK als VEREINIGUNG aller Wörter (V20260921230000). Wer ihn
+wieder erweitert, schreibt die Vereinigung einschließlich `vorbehalt` — nie nur seinen Stand.
+
+**Auskunft:** `GET …/gemeinsame-steuerung` → `vorbehalt` {`einspeisung`, `bezug`: {`kw`, `herkunft` `erklaert` |
+`gemessen`, `seit`, `zweischritt`}, `vorschlag`}; `null` ohne Gemeinsame Steuerung. `gemessen` = eine Erhöhung oder ein
+freigegebener Vorschlag hat den geltenden Wert gesetzt. **Metrik:** `voltpilot_uems_vorbehalt_erhoeht_total{tenant,site}`
+([Übergabe](../../rollout/gemeinsame-steuerung-metriken.md)).
+
+**Grenzen (bewusst):** erkannt wird am Tag danach (die Bilanz rechnet den Vortag) — nicht „nach einer Viertelstunde“ wie
+in A20 gezeichnet; der ungünstige Fall R23 Schritt 3 bleibt bis dahin offen (A20 ist ein benanntes Restrisiko). Tage
+vor einem Mitgliedswechsel zählen mit (das Ungeregelte war größer) — das hält den Vorbehalt höher, nie niedriger.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='SteuerungsverbundAnteilVectorsTest,SteuerungsverbundRegelnVectorsTest')
-(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest,VerbundBilanzVectorsTest')
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest,VerbundBilanzVectorsTest,VorbehaltVectorsTest')
 (cd services/api && ./mvnw test -Dtest='SteuerungsverbundMigrationTest,GemeinsameSteuerungApiTest,VerbundBilanzApiTest')   # Testcontainers
 (cd services/optimization && PYTHONPATH=. python -m pytest tests/test_steuerungsverbund_referenz.py)
 ```

@@ -161,7 +161,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
             r.add("voltpilot.uems." + flag + ".enabled", () -> "false");
         for (String flag : List.of("viertelstunde", "endgueltigkeit", "luecken", "ersatzwert", "kaskade",
                 "berichte", "berichte.struktur", "zeilentexte", "plan-zustellung", "ladepark-grenze", "uebergabe",
-                "unterstuetzung", "kennzahlen", "verbund-bilanz"))
+                "unterstuetzung", "kennzahlen", "verbund-bilanz", "vorbehalt"))
             r.add("voltpilot.uems." + flag + ".enabled", () -> Boolean.toString(!CAPTURE));
     }
 
@@ -339,7 +339,8 @@ class UemsBestandSteuerungAusEinemStueckTest {
         for (String name : List.of("ViertelstundeLaeufer", "EndgueltigkeitLaeufer", "LueckenLaeufer",
                 "ErsatzwertLaeufer", "KorrekturKaskadeLaeufer", "StrukturAenderungLaeufer",
                 "ZeilentextAufbewahrungLaeufer", "PlanZustellungAufbewahrungLaeufer", "LadeparkGrenzeLaeufer",
-                "UebergabeLaeufer", "BoxTauschZustellung", "AblaufLaeufer", "VerbundBilanzLaeufer")) {
+                "UebergabeLaeufer", "BoxTauschZustellung", "AblaufLaeufer", "VerbundBilanzLaeufer",
+                "VorbehaltLaeufer")) {
             String pkg = name.equals("AblaufLaeufer") ? "unterstuetzung"
                     : name.equals("LadeparkGrenzeLaeufer") ? "chargers" : "uems";
             Object runner = context.getBean(Class.forName("com.voltpilot.api." + pkg + "." + name));
@@ -348,7 +349,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
         }
         Class<?> catalog = Class.forName("com.voltpilot.api.metrics.UemsLaeuferMelder");
         List<?> entries = (List<?>) ReflectionTestUtils.getField(catalog, "KATALOG");
-        assertThat(called).as("Alle 16 Läufer aus docs/agents/root/uems-betriebsueberwachung.md")
+        assertThat(called).as("Alle 17 Läufer aus docs/agents/root/uems-betriebsueberwachung.md")
                 .containsExactlyInAnyOrderElementsOf(entries.stream()
                         .map(e -> (String) ReflectionTestUtils.invokeMethod(e, "klasse")).toList());
         Object reporter = context.getBean(catalog);
@@ -357,10 +358,10 @@ class UemsBestandSteuerungAusEinemStueckTest {
             if (!label.startsWith("bestand_")) assertThat((Optional<?>) ReflectionTestUtils.invokeMethod(reporter,
                     "letzterLauf", label)).as("%s: Takt lief wirklich, kein ausgeschalteter Fruehruecksprung", label).isPresent();
         }
-        assertThat(meters.find("voltpilot_uems_laeufer_fehler").counters()).hasSize(16);
+        assertThat(meters.find("voltpilot_uems_laeufer_fehler").counters()).hasSize(17);
         meters.find("voltpilot_uems_laeufer_fehler").counters().forEach(c ->
                 assertThat(c.count()).as("Läufer darf seinen Fehler nicht nur loggen: %s", c.getId()).isZero());
-        assertPublishersSilent("alle 16 Läufer");
+        assertPublishersSilent("alle 17 Läufer");
     }
 
     @Test @Order(1)
@@ -383,10 +384,11 @@ class UemsBestandSteuerungAusEinemStueckTest {
                 Integer.class, TENANT, ACTOR)).isEqualTo(1);
         assertThat(root.queryForObject("SELECT herkunft FROM zugriff_bestand WHERE tenant_id=?", String.class, TENANT))
                 .isEqualTo("bestandslauf");
-        // AP-15 IP-12: die Verbund-Bilanz lief (Takt oben) und betrat den Bestand nicht — ohne Gemeinsame Steuerung
-        // kein Verbund, kein Ergebnis, kein Stufenwechsel (I6, R22).
+        // AP-15 IP-12/IP-13: Verbund-Bilanz und Vorbehalt aus Messwerten liefen (Takt oben) und betraten den Bestand
+        // nicht — ohne Gemeinsame Steuerung kein Verbund, kein Ergebnis, kein Vorbehalt, kein Protokoll (I6, R22).
         assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund", Integer.class)).isZero();
         assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_bilanz", Integer.class)).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_vorbehalt", Integer.class)).isZero();
         assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_aenderung", Integer.class)).isZero();
     }
 

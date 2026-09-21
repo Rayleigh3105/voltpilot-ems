@@ -14,6 +14,7 @@ import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -51,6 +52,9 @@ public class GemeinsameSteuerungService {
     public static final String WARNUNG_FUEHRUNG = "fuehrende_box_ist_nicht_speicher_box";
     public static final String ZUSTAND_NICHT_EINGERICHTET = "nicht_eingerichtet";
     public static final String ZUSTAND_AUFGELOEST = "aufgeloest";
+    /** Herkunft des Vorbehalts (IP-13). */
+    public static final String HERKUNFT_ERKLAERT = "erklaert";
+    public static final String HERKUNFT_GEMESSEN = "gemessen";
 
     static final ZoneId ZONE = ZoneId.of("Europe/Berlin");
 
@@ -81,6 +85,18 @@ public class GemeinsameSteuerungService {
         this.bilanzen = bilanzen;
     }
 
+    /** Der Vorbehalt aus Messwerten (IP-13): Auskunft und Freigabe, nachgereicht wie die Bilanz. */
+    private VorbehaltDienst vorbehaltDienst;
+    private VorbehaltRepository vorbehaltZeilen;
+    private SteuerungsverbundAnteilRepository vorbehalte;
+
+    @Autowired(required = false)
+    void vorbehalt(VorbehaltDienst dienst, VorbehaltRepository zeilen, SteuerungsverbundAnteilRepository vorbehalte) {
+        this.vorbehaltDienst = dienst;
+        this.vorbehaltZeilen = zeilen;
+        this.vorbehalte = vorbehalte;
+    }
+
     void uhrStellen(Clock clock) {
         uhr = clock;
     }
@@ -95,7 +111,7 @@ public class GemeinsameSteuerungService {
         Optional<VerbundZeile> v = repo.derAnlage(siteId);
         if (v.isEmpty()) {
             return new GemeinsameSteuerungDto.Zustand(false, ZUSTAND_NICHT_EINGERICHTET, null, null, null, List.of(),
-                    null, List.of(), warnungFuehrung(siteId), null);
+                    null, List.of(), warnungFuehrung(siteId), null, null);
         }
         return zustand(siteId, v.get(), jetzt);
     }
@@ -111,7 +127,7 @@ public class GemeinsameSteuerungService {
         UUID netzanschluss = repo.netzanschluesse(siteId, tag).stream().findFirst().orElse(null);
         if (mitglieder.isEmpty()) {
             return new GemeinsameSteuerungDto.Zustand(true, ZUSTAND_AUFGELOEST, null, v.epoche(), netzanschluss, dto,
-                    null, List.of(), null, bilanz(v));
+                    null, List.of(), null, bilanz(v), vorbehalt(v));
         }
         String naechster = switch (v.stufe()) {
             case ERKLAERT -> Stufe.BEOBACHTET.code();
@@ -124,7 +140,32 @@ public class GemeinsameSteuerungService {
                 : v.stufe() == Stufe.ERKLAERT ? SteuerungsverbundScharfschalten.struktur(urteil(siteId, v, jetzt))
                 : urteil(siteId, v, jetzt).befunde();
         return new GemeinsameSteuerungDto.Zustand(true, v.stufe().code(), v.stufe().stufe(), v.epoche(),
-                netzanschluss, dto, naechster, befunde(befunde), null, bilanz(v));
+                netzanschluss, dto, naechster, befunde(befunde), null, bilanz(v), vorbehalt(v));
+    }
+
+    /**
+     * Der Vorbehalt für IP-23/IP-24 (IP-13): je Richtung Zahl und Herkunft ({@code gemessen}, wenn eine Erhöhung oder
+     * ein freigegebener Vorschlag den geltenden Wert gesetzt hat, sonst {@code erklaert}), dazu der offene Vorschlag.
+     */
+    private GemeinsameSteuerungDto.Vorbehalt vorbehalt(VerbundZeile v) {
+        if (vorbehalte == null || vorbehaltZeilen == null) {
+            return null;
+        }
+        SteuerungsverbundAnteilRepository.Vorbehalt vb = vorbehalte.vorbehalt(v.id());
+        OffsetDateTime seit = vb.am() == null ? null : vb.am().atOffset(ZoneOffset.UTC);
+        Optional<VorbehaltRepository.Zeile> gemessen = vorbehaltZeilen.herkunftGemessen(v.id());
+        GemeinsameSteuerungDto.VorbehaltRichtung einspeisung = new GemeinsameSteuerungDto.VorbehaltRichtung(
+                vb.kw().get(Grenzart.EINSPEISUNG), HERKUNFT_ERKLAERT, seit, null);
+        GemeinsameSteuerungDto.VorbehaltRichtung bezug = new GemeinsameSteuerungDto.VorbehaltRichtung(
+                vb.kw().get(Grenzart.BEZUG), gemessen.isPresent() ? HERKUNFT_GEMESSEN : HERKUNFT_ERKLAERT, seit,
+                gemessen.map(VorbehaltRepository.Zeile::anteile).orElse(null));
+        GemeinsameSteuerungDto.VorbehaltVorschlag vorschlag = vorbehaltZeilen.offenerVorschlag(v.id())
+                .map(z -> new GemeinsameSteuerungDto.VorbehaltVorschlag(z.richtung(), z.altKw(), z.neuKw(),
+                        z.hoechstwertKw(), z.hoechstwertVon() == null ? null
+                                : z.hoechstwertVon().atOffset(ZoneOffset.UTC),
+                        z.zeitraumVon(), z.zeitraumBis(), z.messtage(), z.erstelltAm().atOffset(ZoneOffset.UTC)))
+                .orElse(null);
+        return new GemeinsameSteuerungDto.Vorbehalt(einspeisung, bezug, vorschlag);
     }
 
     /** Die Verbund-Bilanz für IP-24: jüngster gerechneter Tag und seit wann derselbe Zustand steht (IP-12). */
@@ -315,6 +356,21 @@ public class GemeinsameSteuerungService {
         repo.protokoll(TenantContext.get(), v.id(), siteId, "mitglied", null, bestaetigtJson(m), jetzt, false,
                 null, wer);
         return zustand(siteId, repo.finden(v.id()).orElseThrow(), jetzt);
+    }
+
+    /**
+     * Den offenen Vorschlag zum Senken des Vorbehalts freigeben — Handgriff der Plattform-Rolle (IP-13, B4/G5); danach
+     * der Zweischritt in derselben Epoche. 409 {@code kein_vorschlag} ohne offenen (oder nicht mehr passenden)
+     * Vorschlag.
+     */
+    @Transactional
+    public GemeinsameSteuerungDto.Zustand vorbehaltFreigeben(UUID siteId, ProtokollAkteur wer) {
+        VerbundZeile v = gesperrt(siteId);
+        if (vorbehaltDienst == null || vorbehaltDienst.freigeben(v, wer).isEmpty()) {
+            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.KEIN_VORSCHLAG,
+                    "Es liegt kein Vorschlag zum Senken des Vorbehalts vor.");
+        }
+        return zustand(siteId, repo.finden(v.id()).orElseThrow(), uhr.instant());
     }
 
     /**

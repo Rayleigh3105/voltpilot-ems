@@ -157,10 +157,12 @@ public class VerbundBilanzService {
         boolean zurueck = VerbundBilanzRegel.UNPLAUSIBEL.equals(u.zustand())
                 && steuerung.bilanzUnplausibel(siteId, tag, ProtokollAkteur.verbundBilanz());
         VerbundBilanzRegel.UrteilViertelstunde g = u.geringstes();
+        VerbundBilanzRegel.UrteilViertelstunde h = u.hoechstes();
         VerbundBilanzRepository.Ergebnis e = new VerbundBilanzRepository.Ergebnis(v.id(), siteId, tag, u.zustand(),
                 u.grund(), u.erwartet(), u.plausibel(), u.unplausibel(), u.unbekannt(),
                 g == null ? null : g.ungeregeltKw(), g == null ? null : g.toleranzKw(), g == null ? null : g.von(),
-                grundlage.toString(), v.stufe().code(), zurueck, ProtokollAkteur.verbundBilanz().name());
+                grundlage.toString(), v.stufe().code(), zurueck, ProtokollAkteur.verbundBilanz().name(),
+                h == null ? null : h.ungeregeltKw(), h == null ? null : h.von());
         repo.speichern(TenantContext.get(), e);
         return Optional.of(e);
     }

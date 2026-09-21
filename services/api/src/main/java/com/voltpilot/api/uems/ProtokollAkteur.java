@@ -59,6 +59,14 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
         return new ProtokollAkteur(null, "Verbund-Bilanz", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
     }
 
+    /**
+     * VoltPilot selbst, ohne Person: der tägliche Lauf des Vorbehalts aus Messwerten (AP-15 IP-13), der den Vorbehalt
+     * der Bezugsseite selbsttätig ERHÖHT (verengt nur) und Vorschläge zum Senken anlegt.
+     */
+    public static ProtokollAkteur vorbehaltAusMesswerten() {
+        return new ProtokollAkteur(null, "Vorbehalt aus Messwerten", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
     /** Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). */
     public static Optional<ProtokollAkteur> aus(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt)

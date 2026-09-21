@@ -96,9 +96,11 @@ public final class VerbundBilanzRegel {
     /**
      * Das Urteil eines Tages. {@code grund} nur bei {@code unbekannt}; {@code geringstes} ist die belegte Viertelstunde
      * mit dem kleinsten Abstand Ungeregeltes + Toleranz — die, die {@code unplausibel} am deutlichsten zeigt.
+     * {@code hoechstes} ist die belegte Viertelstunde mit dem GRÖSSTEN Ungeregelten — der Eingang des Vorbehalts aus
+     * Messwerten (AP-15 IP-13, B4/W10): eine unbekannte Viertelstunde zählt dort so wenig wie hier.
      */
     public record Urteil(String zustand, String grund, int erwartet, int plausibel, int unplausibel, int unbekannt,
-            UrteilViertelstunde geringstes) {}
+            UrteilViertelstunde geringstes, UrteilViertelstunde hoechstes) {}
 
     private VerbundBilanzRegel() {}
 
@@ -129,11 +131,12 @@ public final class VerbundBilanzRegel {
             throw new IllegalArgumentException("erwartet > 0");
         }
         if (grundFest != null) {
-            return new Urteil(UNBEKANNT, grundFest.code(), erwartet, 0, 0, erwartet, null);
+            return new Urteil(UNBEKANNT, grundFest.code(), erwartet, 0, 0, erwartet, null, null);
         }
         int plausibel = 0;
         int unplausibel = 0;
         UrteilViertelstunde geringstes = null;
+        UrteilViertelstunde hoechstes = null;
         for (Viertelstunde v : viertelstunden) {
             UrteilViertelstunde u = viertelstunde(v);
             if (UNBEKANNT.equals(u.zustand())) {
@@ -147,23 +150,27 @@ public final class VerbundBilanzRegel {
             if (geringstes == null || abstand(u).compareTo(abstand(geringstes)) < 0) {
                 geringstes = u;
             }
+            if (hoechstes == null || u.ungeregeltKw().compareTo(hoechstes.ungeregeltKw()) > 0) {
+                hoechstes = u;
+            }
         }
         int unbekannt = erwartet - plausibel - unplausibel;
         if (unbekannt < 0) {
             throw new IllegalArgumentException("mehr Viertelstunden als erwartet");
         }
         if (unplausibel >= MINDESTENS_UNPLAUSIBEL) {
-            return new Urteil(UNPLAUSIBEL, null, erwartet, plausibel, unplausibel, unbekannt, geringstes);
+            return new Urteil(UNPLAUSIBEL, null, erwartet, plausibel, unplausibel, unbekannt, geringstes, hoechstes);
         }
         if (unbekannt > 0) {
-            return new Urteil(UNBEKANNT, Grund.LUECKE.code(), erwartet, plausibel, unplausibel, unbekannt, geringstes);
+            return new Urteil(UNBEKANNT, Grund.LUECKE.code(), erwartet, plausibel, unplausibel, unbekannt, geringstes,
+                    hoechstes);
         }
         if (unplausibel > 0) {
             // Eine einzelne Abweichung belegt nichts — und belegt auch nicht „plausibel“.
             return new Urteil(UNBEKANNT, Grund.EINZELNE_ABWEICHUNG.code(), erwartet, plausibel, unplausibel, 0,
-                    geringstes);
+                    geringstes, hoechstes);
         }
-        return new Urteil(PLAUSIBEL, null, erwartet, plausibel, 0, 0, geringstes);
+        return new Urteil(PLAUSIBEL, null, erwartet, plausibel, 0, 0, geringstes, hoechstes);
     }
 
     private static BigDecimal abstand(UrteilViertelstunde u) {

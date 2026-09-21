@@ -576,6 +576,14 @@ voltpilot:
     verbund-bilanz:
       enabled: ${VOLTPILOT_UEMS_VERBUND_BILANZ_ENABLED:true}
       cron: ${VOLTPILOT_UEMS_VERBUND_BILANZ_CRON:0 37 4 * * *}
+    # Vorbehalt aus Messwerten (AP-15 IP-13): taeglich nach der Verbund-Bilanz je Anlage MIT Gemeinsamer
+    # Steuerung den hoechsten belegten Viertelstundenwert des Ungeregelten der letzten 12 Monate x 1,1
+    # gegen den Vorbehalt der Bezugsseite halten: ERHOEHEN selbsttaetig (verengt, Zweischritt, Zaehler
+    # voltpilot_uems_vorbehalt_erhoeht_total), SENKEN nur als Vorschlag (Freigabe unter /api/v1/admin).
+    # Vorgabe AN, im Testlauf AUS (surefire); wer ihn prueft, ruft VorbehaltLaeufer.lauf(heute) selbst.
+    vorbehalt:
+      enabled: ${VOLTPILOT_UEMS_VORBEHALT_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_VORBEHALT_CRON:0 52 4 * * *}
     # Grenzblatt-Anstoss (AP-15 IP-3 Folgepaket): stuendlich je Anlage mit Ladepark-Rahmen den heute
     # wirksamen Bezug gegen den zuletzt zugestellten vergleichen und nur bei einem Unterschied das
     # Ladepark-Dokument neu zustellen (Fassung/Bindung am Tageswechsel, Nachholen nach Ausfall).

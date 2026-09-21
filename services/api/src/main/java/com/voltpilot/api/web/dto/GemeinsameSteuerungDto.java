@@ -2,6 +2,7 @@ package com.voltpilot.api.web.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -24,11 +25,34 @@ public final class GemeinsameSteuerungDto {
      * @param fehlt           was zum {@code naechsterSchritt} fehlt — je Bedingung ein Wort des Ablehnungs-Vokabulars
      * @param warnungFuehrung Z1/W2 — nur OHNE Gemeinsame Steuerung: führende Box und Speicher-Box fallen auseinander
      * @param bilanz          die Verbund-Bilanz (IP-12) — {@code null}, solange kein Tag gerechnet ist
+     * @param vorbehalt       der Vorbehalt je Richtung mit Herkunft und offenem Vorschlag (IP-13) — {@code null} ohne
+     *                        Gemeinsame Steuerung
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Zustand(boolean eingerichtet, String zustand, String stufe, Long epoche, UUID netzanschlussId,
             List<Mitglied> mitglieder, String naechsterSchritt, List<Befund> fehlt, WarnungFuehrung warnungFuehrung,
-            Bilanz bilanz) {}
+            Bilanz bilanz, Vorbehalt vorbehalt) {}
+
+    /**
+     * Der Vorbehalt (IP-13, B4): je Richtung Zahl und Herkunft, dazu ein offener Vorschlag zum Senken. Die
+     * Einspeiseseite ist heute immer {@code erklaert}.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vorbehalt(VorbehaltRichtung einspeisung, VorbehaltRichtung bezug, VorbehaltVorschlag vorschlag) {}
+
+    /**
+     * Eine Richtung: {@code kw} leer = unbekannt (keine Null); {@code herkunft} {@code erklaert} · {@code gemessen};
+     * {@code seit} wann der Wert gilt; {@code zweischritt} nur bei {@code gemessen}: was der Zweischritt danach tat
+     * ({@code veroeffentlicht}, {@code auslegung_passt_nicht}, … — Wörter von {@code SteuerungsverbundAnteilDienst.Grund}).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VorbehaltRichtung(BigDecimal kw, String herkunft, OffsetDateTime seit, String zweischritt) {}
+
+    /** Ein offener Vorschlag zum Senken: Zahl, Herkunft (Höchstwert, Viertelstunde, Zeitraum, Messtage), seit wann. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VorbehaltVorschlag(String richtung, BigDecimal altKw, BigDecimal neuKw, BigDecimal hoechstwertKw,
+            OffsetDateTime hoechstwertVon, LocalDate zeitraumVon, LocalDate zeitraumBis, int messtage,
+            OffsetDateTime erstelltAm) {}
 
     /**
      * Die Verbund-Bilanz (IP-12, A17): {@code zustand} des jüngsten gerechneten Tages ({@code plausibel} ·

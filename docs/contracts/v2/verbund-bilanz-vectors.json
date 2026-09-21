@@ -8,6 +8,7 @@
   "vorzeichen": "kW-Mittel der Viertelstunde, Bezug positiv, Einspeisung negativ; ungeregelt = netzpunkt - Summe box",
   "toleranz": "max(2 kW, 5 % x (|netzpunkt| + Summe |box|)); unplausibel, wenn ungeregelt < -toleranz",
   "tag": "unplausibel ab 2 unplausiblen Viertelstunden; sonst unbekannt bei einer unbekannten (luecke) oder genau einer unplausiblen (einzelne_abweichung); sonst plausibel",
+  "hoechstes": "die belegte Viertelstunde mit dem größten Ungeregelten (Eingang des Vorbehalts aus Messwerten, AP-15 IP-13); eine unbekannte zählt nicht",
   "viertelstunden": [
     {
       "fall": "R1 Augenblick: Netzpunkt 98 kW Einspeisung, PV Halle 1 (E-1, führt) 83 kW, Abgang Verwaltung (E-4) 55 kW, Last 40 kW",
@@ -75,7 +76,8 @@
       "fall": "R1 den ganzen Tag: 96 belegte Viertelstunden",
       "erwartet_viertelstunden": 96,
       "muster": [ { "anzahl": 96, "netzpunkt_kw": "-98", "box_kw": ["-83", "-55"] } ],
-      "erwartet": { "zustand": "plausibel", "grund": null, "plausibel": 96, "unplausibel": 0, "unbekannt": 0 }
+      "erwartet": { "zustand": "plausibel", "grund": null, "plausibel": 96, "unplausibel": 0, "unbekannt": 0,
+                    "hoechstes_ungeregelt_kw": "40" }
     },
     {
       "fall": "Versteckter Erzeuger zwei Stunden mittags",
@@ -126,6 +128,14 @@
       "muster": [],
       "erwartet": { "zustand": "unbekannt", "grund": "netzpunkt_ohne_messstelle", "plausibel": 0, "unplausibel": 0,
                     "unbekannt": 96 }
+    },
+    {
+      "fall": "IP-13 (W10): die Lücke zählt nicht für den Höchstwert — 95 Viertelstunden Ungeregeltes 430 kW, eine mit 900 kW am Netzpunkt, aber ohne Wert des Abgangs",
+      "erwartet_viertelstunden": 96,
+      "muster": [ { "anzahl": 95, "netzpunkt_kw": "430", "box_kw": ["0", "0"] },
+                  { "anzahl": 1, "netzpunkt_kw": "900", "box_kw": ["0", null] } ],
+      "erwartet": { "zustand": "unbekannt", "grund": "luecke", "plausibel": 95, "unplausibel": 0, "unbekannt": 1,
+                    "hoechstes_ungeregelt_kw": "430" }
     }
   ]
 }

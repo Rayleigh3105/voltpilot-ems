@@ -71,6 +71,10 @@ class VerbundBilanzVectorsTest {
                 assertThat(u.geringstes().ungeregeltKw()).as(fall)
                         .isEqualByComparingTo(bd(e.path("geringstes_ungeregelt_kw")));
             }
+            if (e.has("hoechstes_ungeregelt_kw")) {
+                assertThat(u.hoechstes().ungeregeltKw()).as(fall)
+                        .isEqualByComparingTo(bd(e.path("hoechstes_ungeregelt_kw")));
+            }
         }
     }
 

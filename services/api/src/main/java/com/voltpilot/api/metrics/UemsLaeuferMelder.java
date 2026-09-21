@@ -86,6 +86,8 @@ public class UemsLaeuferMelder {
     public static final String LADEPARK_GRENZE = "ladepark_grenze";
     /** {@code VerbundBilanzLaeufer} — Verbund-Bilanz der Gemeinsamen Steuerung (AP-15 IP-12). */
     public static final String VERBUND_BILANZ = "verbund_bilanz";
+    /** {@code VorbehaltLaeufer} — Vorbehalt aus Messwerten der Gemeinsamen Steuerung (AP-15 IP-13). */
+    public static final String VORBEHALT = "vorbehalt";
     /** {@code UebergabeLaeufer}. */
     public static final String UEBERGABE = "uebergabe";
     /** {@code BoxTauschZustellung}. */
@@ -112,7 +114,7 @@ public class UemsLaeuferMelder {
     public record Eintrag(String label, String klasse, List<String> schalter, String takt) {}
 
     /**
-     * ALLE geplanten UEMS-Läufer — sechzehn, in der Reihenfolge der Verarbeitungskette, danach die
+     * ALLE geplanten UEMS-Läufer — siebzehn, in der Reihenfolge der Verarbeitungskette, danach die
      * drei Start-Läufer. Wer einen Läufer ergänzt, ergänzt ihn hier; sonst ist er unbeobachtet.
      */
     public static final List<Eintrag> KATALOG = List.of(
@@ -137,6 +139,8 @@ public class UemsLaeuferMelder {
                     List.of("voltpilot.uems.ladepark-grenze.enabled"), "1 h (Minute 1, UTC)"),
             new Eintrag(VERBUND_BILANZ, "VerbundBilanzLaeufer",
                     List.of("voltpilot.uems.verbund-bilanz.enabled"), "taeglich 04:37 Europe/Berlin"),
+            new Eintrag(VORBEHALT, "VorbehaltLaeufer",
+                    List.of("voltpilot.uems.vorbehalt.enabled"), "taeglich 04:52 Europe/Berlin"),
             new Eintrag(UEBERGABE, "UebergabeLaeufer",
                     List.of("voltpilot.uems.uebergabe.enabled"), "1 s"),
             new Eintrag(BOX_TAUSCH, "BoxTauschZustellung",
