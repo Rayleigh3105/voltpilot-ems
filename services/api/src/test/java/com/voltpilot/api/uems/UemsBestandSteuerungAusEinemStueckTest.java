@@ -218,6 +218,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
     @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) MeasurementConfigPublisher measurementPublisher;
     @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ConsumerOverridePublisher consumerPublisher;
     @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) VerbundAnteilePublisher verbundAnteilePublisher;
+    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) SprungprobePublisher sprungprobePublisher;
     @Autowired ApplicationContext context;
     @Autowired MockMvc mvc;
     @Autowired EntityRegistryService registry;
@@ -231,7 +232,8 @@ class UemsBestandSteuerungAusEinemStueckTest {
     private String startup;
     private String lastRegisterCorrelation;
     /** Sender, die es auf main nicht gibt (die Referenz kennt sie nicht): beim Start gezählt und stumm verlangt. */
-    private static final java.util.Set<String> NEU_SEIT_MAIN = java.util.Set.of("VerbundAnteilePublisher");
+    private static final java.util.Set<String> NEU_SEIT_MAIN = java.util.Set.of("VerbundAnteilePublisher",
+            "SprungprobePublisher");
     private final Map<String, Integer> startNeu = new TreeMap<>();
     private MockedStatic<Instant> time;
 
@@ -704,7 +706,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
         var result = new LinkedHashMap<String, Object>();
         for (Object sender : List.of(registryPublisher, probePublisher, chargingPublisher, boostPublisher,
                 registerPublisher, flowPublisher, certificationPublisher, otaPublisher, provisioningPublisher,
-                measurementPublisher, consumerPublisher, verbundAnteilePublisher))
+                measurementPublisher, consumerPublisher, verbundAnteilePublisher, sprungprobePublisher))
             result.put(mockingDetails(sender).getMockCreationSettings().getTypeToMock().getSimpleName(), sender);
         return result;
     }
