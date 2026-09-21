@@ -15,6 +15,9 @@ consumes what other layers produced:
   re-asserts itself in live telemetry - one old reading must never cap every
   future plan), a stale SoC falls back to the neutral default instead of
   silently planning from yesterday's value,
+- those two readings and the running slot's load/PV samples from the BOX of the
+  planned battery (``asset.device_id``, AP-15 P5): a second box of the site
+  never stands in for it, see :func:`_box_filter`,
 - the per-site backup-reserve SoC floor (``site.backup_reserve_soc_pct``, P11)
   and the grid-charging switch from ``site``,
 - the pricing master data for the P1 asymmetric objective: ``site.plant_kind``,
@@ -615,7 +618,9 @@ def gather_inputs(
     # then a small bounded upper-load scenario protects against residual error.
     # Both remain INPUTS to the unchanged full-horizon objective, so lambda
     # still prices efficiency, wear, future scarcity and later cheap recharge.
-    recent_load = _recent_load_samples(dsn, site.tenant_id, site.site_id, now)
+    recent_load = _recent_load_samples(
+        dsn, site.tenant_id, site.site_id, now, device_id=site.device_id
+    )
     residual = ewma_residual(recent_load, load_kw[0]) if load_kw else None
     load_kw = apply_load_nowcast(load_kw, residual)
     # No fresh evidence means no robust-band claim and preserves the active
@@ -641,9 +646,12 @@ def gather_inputs(
 
     # Both live readings sit behind a freshness window (F4/P4): a stale
     # section-14a reading must NOT become a standing envelope over every future
-    # plan, and a stale SoC must not plan from yesterday's value.
+    # plan, and a stale SoC must not plan from yesterday's value. Both come
+    # from the battery's own box (P5): stale there means unknown, never the
+    # younger reading of another box of the site.
     soc_pct = _fresh_measurement(
-        dsn, site.site_id, "soc_pct", now, soc_max_age()
+        dsn, site.site_id, "soc_pct", now, soc_max_age(),
+        device_id=site.device_id,
     )
     # P7 (Scout ``vp-deye-diybms-luecke-l5`` §3.3 / Paket P7, Captain-Entscheid
     # E4=b): OHNE frische, ECHTE Messung wird kein Ladestand ERFUNDEN. Bis hier
@@ -688,7 +696,8 @@ def gather_inputs(
         soc_source = SOC_SOURCE_GEMESSEN
         initial_soc_kwh = DEFAULT_SOC_PCT / 100.0 * site.battery.capacity_kwh
     grid_limit = _fresh_measurement(
-        dsn, site.site_id, "grid_limit_kw", now, grid_limit_max_age()
+        dsn, site.site_id, "grid_limit_kw", now, grid_limit_max_age(),
+        device_id=site.device_id,
     )
 
     # P1 asymmetric pricing: build the per-slot import/export series from the
@@ -1129,6 +1138,7 @@ def _nowcast_pv_input(
             now,
             lookback=pv_nowcast_lookback(),
             max_age=pv_nowcast_max_age(),
+            device_id=site.device_id,
         )
         measured = window_mean(samples)
         if measured is None:
@@ -1407,22 +1417,44 @@ def _load_history(
         return [(ensure_utc(ts), float(v)) for ts, v in cur.fetchall()]
 
 
+def _box_filter(device_id: UUID | None) -> tuple[str, tuple[UUID, ...]]:
+    """The live readers' box condition: the planned battery's box, or none.
+
+    AP-15 P5 / R8: once a second box of the site sends telemetry, "the newest
+    row of the site" may be that box's - a SoC of a battery the plan does not
+    drive, a §14a limit that does not apply here, load/PV samples interleaved
+    from two meters. So a live input is read from the box of the entity it
+    belongs to, and a value that is missing or stale THERE is unknown; no other
+    box's reading stands in for it at any age.
+
+    Without a box (``asset.device_id`` NULL) the condition is empty and the
+    query is the one of before, byte for byte; with one box on the site the
+    condition removes nothing. The fragment is appended LAST, after every
+    existing placeholder, so the parameter positions of before stay put.
+    """
+    if device_id is None:
+        return "", ()
+    return " AND device_id = %s", (device_id,)
+
+
 def _recent_load_samples(
     dsn: str, tenant_id: UUID, site_id: UUID, now: datetime,
     *, lookback: timedelta = timedelta(minutes=2), max_age: timedelta = timedelta(seconds=30),
+    device_id: UUID | None = None,
 ) -> list[float]:
     """Fresh load samples for the short EWMA, oldest first; stale means none."""
     import psycopg  # lazy: optional [db] extra
 
+    box, box_params = _box_filter(device_id)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT time, load_kw FROM telemetry
             WHERE tenant_id = %s AND site_id = %s
-              AND load_kw IS NOT NULL AND time >= %s AND time <= %s
+              AND load_kw IS NOT NULL AND time >= %s AND time <= %s{box}
             ORDER BY time
             """,
-            (tenant_id, site_id, now - lookback, now),
+            (tenant_id, site_id, now - lookback, now, *box_params),
         )
         rows = cur.fetchall()
     if not rows or now - ensure_utc(rows[-1][0]) > max_age:
@@ -1432,7 +1464,7 @@ def _recent_load_samples(
 
 def _recent_pv_samples(
     dsn: str, tenant_id: UUID, site_id: UUID, now: datetime,
-    *, lookback: timedelta, max_age: timedelta,
+    *, lookback: timedelta, max_age: timedelta, device_id: UUID | None = None,
 ) -> list[float]:
     """Fresh PV samples for the window mean, oldest first; stale means none.
 
@@ -1448,15 +1480,16 @@ def _recent_pv_samples(
     """
     import psycopg  # lazy: optional [db] extra
 
+    box, box_params = _box_filter(device_id)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT time, pv_power_kw FROM telemetry
             WHERE tenant_id = %s AND site_id = %s
-              AND pv_power_kw IS NOT NULL AND time >= %s AND time <= %s
+              AND pv_power_kw IS NOT NULL AND time >= %s AND time <= %s{box}
             ORDER BY time
             """,
-            (tenant_id, site_id, now - lookback, now),
+            (tenant_id, site_id, now - lookback, now, *box_params),
         )
         rows = cur.fetchall()
     if not rows or now - ensure_utc(rows[-1][0]) > max_age:
@@ -1470,13 +1503,16 @@ def _fresh_measurement(
     column: str,
     now: datetime,
     max_age: timedelta,
+    *,
+    device_id: UUID | None = None,
 ) -> float | None:
     """The newest telemetry value for ``column`` IF it is fresh, else ``None``.
 
     Deliberately reads the newest row WITHOUT a time bound and applies the
     window here, so a discarded stale reading is FLAGGED with its age (F4: the
     silent-poisoning failure mode was invisible) instead of just vanishing
-    from the query result.
+    from the query result. With ``device_id`` only that box's rows count
+    (:func:`_box_filter`).
     """
     # Fixed set, never user input - a hard raise (not assert, which is
     # stripped under python -O) keeps the f-string interpolation safe (S15).
@@ -1487,14 +1523,15 @@ def _fresh_measurement(
         raise ValueError(f"unsupported telemetry column: {column}")
     import psycopg  # lazy: optional [db] extra
 
+    box, box_params = _box_filter(device_id)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             f"""
             SELECT time, {column} FROM telemetry
-            WHERE site_id = %s AND {column} IS NOT NULL
+            WHERE site_id = %s AND {column} IS NOT NULL{box}
             ORDER BY time DESC LIMIT 1
             """,
-            (site_id,),
+            (site_id, *box_params),
         )
         row = cur.fetchone()
     if row is None:
@@ -1502,17 +1539,17 @@ def _fresh_measurement(
     observed_at, val = ensure_utc(row[0]), float(row[1])
     age = now - observed_at
     if age > max_age:
+        context = {
+            "site_id": str(site_id),
+            "column": column,
+            "value": val,
+            "age_minutes": round(age.total_seconds() / 60.0, 1),
+            "max_age_minutes": round(max_age.total_seconds() / 60.0, 1),
+        }
+        if device_id is not None:
+            context["device_id"] = str(device_id)
         logger.warning(
-            "telemetry.stale_reading_ignored",
-            extra={
-                "context": {
-                    "site_id": str(site_id),
-                    "column": column,
-                    "value": val,
-                    "age_minutes": round(age.total_seconds() / 60.0, 1),
-                    "max_age_minutes": round(max_age.total_seconds() / 60.0, 1),
-                }
-            },
+            "telemetry.stale_reading_ignored", extra={"context": context}
         )
         return None
     return val
