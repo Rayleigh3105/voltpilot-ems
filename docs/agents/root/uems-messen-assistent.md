@@ -13,6 +13,7 @@ Vorschlags-Routen aus AP-04 IP-16 (`uems-messstellen-vorschlagsliste-bestand.md`
 | Route `PUT /api/v1/standorte/{id}/funktionen/messen` `{"aktion":"einrichten"}` → 200 `{aktion, standort}`; 409 `bereits_angelegt`/`standort_archiviert`, 404 fremd, 400 sonst | `web/FunktionController`, `uems/FunktionService.messenStandort`, `uems/FunktionAbgelehnt` · `FunktionApiTest`, `FunktionSchnittstelleVertragTest` |
 | Reine Regel: Schrittfolge, „Schritt n von 5", Entwurf im Browser, Start/Wiedereinstieg, Einstieg für die Karte, Sätze | `frontend/portal/src/messenAssistent.ts` · `messenAssistent.test.ts` |
 | Fläche: Schale `AnlegenDialog`, Schritt 1 (`VpPicker` + `StandortDialog`), Schritt 2 (`DatenquelleAnlegen`, `AddDeviceDrawer`, `AnlegenFlow`) | `src/components/MessenAssistent.tsx` (+ `.css`, `.test.tsx`); Datenquelle: `uems-datenquelle-anlegen.md` |
+| Schritt 2 „Datenquellen aus Ihren Geräten“ (seit 21.09.2026): Vorschlagsliste je Anlage, „Übernehmen“ nur mit den gezeigten Zeilen, „Zu DQ-n hinzufügen“ an eine Handquelle, Ausgelassene eingeklappt | `src/datenquelleVorschlag.ts` · `datenquelleVorschlag.test.ts` · `components/DatenquelleVorschlagListe.tsx`; Server: `uems-datenquelle-vorschlagsliste-bestand.md`; ganzer Weg: `PortalwegMesskundeAbnahmeTest` |
 | 375/1440 px + Bilder | `e2e/messen-assistent.spec.ts` auf der Bühne `messen-assistent.html/.tsx`; `MESSEN_ASSISTENT_BILDER=<Ordner>` |
 | Fixture „Messen im Entwurf" (Satz aus `messen()`) | `src/test/funktionenFixtures.ts` `funktionMessenEntwurf` |
 | Schritte 3–5 rein: Auswahl, Hauptzähler-Regel, Anfrage, Ort-Korrekturen, Prüfliste (`fehltArt` + Fakten), Fertig-Satz | `messenAssistent.ts` · `messenAssistentSchritte.test.ts` |
@@ -85,5 +86,6 @@ Vorschlags-Routen aus AP-04 IP-16 (`uems-messstellen-vorschlagsliste-bestand.md`
 (cd services/api && ./mvnw test -Dtest='FunktionSchnittstelleVertragTest')    # 4, rein
 (cd services/api && ./mvnw test -Dtest='MessstelleVorschlagApiTest')          # 8, Testcontainers (IP-9b: 2)
 (cd frontend/portal && npx vitest run src/messenAssistent.test.ts src/messenAssistentSchritte.test.ts src/components/MessenAssistent.test.tsx src/components/MessenAssistentSchritte.test.tsx src/copy.test.ts)
+(cd services/api && ./mvnw test -Dtest='PortalwegMesskundeAbnahmeTest')      # 1, Testcontainers: Portal-Weg bis Viertelstunde
 (cd frontend/portal && npx playwright test e2e/messen-assistent.spec.ts --project=desktop-chromium)
 ```

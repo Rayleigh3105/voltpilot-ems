@@ -188,7 +188,9 @@ public final class DatenquelleDto {
      * (dem Reihenbeginn) ohnehin liest. {@code kennzeichen} ist das, das eine Bestätigung in
      * dieser Reihenfolge bekäme; {@code grund} ist {@code null}, wenn der Vorschlag übernommen
      * werden kann, sonst der Grund des Vertrags ({@code adresse_an_box_vergeben}); {@code text}
-     * ist der Satz dazu.
+     * ist der Satz dazu. {@code ziel} nennt bei {@code adresse_an_box_vergeben} die EINE
+     * vorhandene Quelle derselben Anlage, an die die Bestätigung die Komponenten hängen kann
+     * („Gerät dort hinzufügen?"), sonst {@code null}.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Vorschlag(
@@ -202,7 +204,12 @@ public final class DatenquelleDto {
             Instant ab,
             List<VorschlagKomponente> komponenten,
             String grund,
-            String text) {}
+            String text,
+            VorschlagZiel ziel) {}
+
+    /** Die vorhandene Quelle, die einen gesperrten Vorschlag aufnehmen kann: Kennung, Kennzeichen, Name. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VorschlagZiel(UUID id, String kennzeichen, String name) {}
 
     /** Eine Komponente ohne Vorschlag — mit dem Grund des Vertrags und seinem Satz. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -225,9 +232,19 @@ public final class DatenquelleDto {
             List<Vorschlag> vorschlaege,
             List<Ausgelassen> ausgelassen) {}
 
-    /** Ein bestätigter Vorschlag — genau so, wie das GET ihn zeigte: Box, Weg, Komponenten. */
+    /**
+     * Ein bestätigter Vorschlag — genau so, wie das GET ihn zeigte: Box, Weg, Komponenten. Mit
+     * {@code datenquelle_id} (dem {@code ziel} des GET) hängt die Bestätigung die Komponenten an
+     * diese vorhandene Quelle, statt eine neue anzulegen; ohne bleibt ein gesperrter Vorschlag 409.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Bestaetigt(UUID deviceId, String protokoll, String adresse, List<UUID> komponenten) {}
+    public record Bestaetigt(UUID deviceId, String protokoll, String adresse, List<UUID> komponenten,
+            UUID datenquelleId) {
+
+        public Bestaetigt(UUID deviceId, String protokoll, String adresse, List<UUID> komponenten) {
+            this(deviceId, protokoll, adresse, komponenten, null);
+        }
+    }
 
     /** {@code POST …/vorschlag/uebernehmen}. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -235,9 +252,9 @@ public final class DatenquelleDto {
 
     /**
      * Was die Bestätigung geschrieben hat: {@code neu} Quellen angelegt, {@code unveraendert}
-     * waren schon übernommen (ein zweiter Aufruf ist 0 neue); {@code datenquellen} in der
-     * Reihenfolge der Anfrage.
+     * waren schon übernommen (ein zweiter Aufruf ist 0 neue), {@code angehaengt} Vorschläge an
+     * eine vorhandene Quelle gehängt; {@code datenquellen} in der Reihenfolge der Anfrage.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Uebernommen(int neu, int unveraendert, List<Datenquelle> datenquellen) {}
+    public record Uebernommen(int neu, int unveraendert, int angehaengt, List<Datenquelle> datenquellen) {}
 }

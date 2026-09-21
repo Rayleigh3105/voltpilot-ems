@@ -98,7 +98,10 @@ public class DatenquelleVorschlagService {
                     v.komponenten().stream().map(k -> komponente(k, lage)).toList(),
                     gesperrt.map(e -> e.grund().code()).orElse(null),
                     gesperrt.map(AntragErgebnis::text).orElseGet(() -> DatenquelleRegeln.liestAb(beginn(v),
-                            lage.boxNamen().getOrDefault(v.box(), v.box()), DatenquelleService.ZONE))));
+                            lage.boxNamen().getOrDefault(v.box(), v.box()), DatenquelleService.ZONE)),
+                    ziel(siteId, v, gesperrt, lage)
+                            .map(q -> new DatenquelleDto.VorschlagZiel(q.id(), q.kennzeichen(), q.name()))
+                            .orElse(null)));
         }
         List<DatenquelleDto.Ausgelassen> ausgelassen = lage.liste().ausgelassen().stream()
                 .map(a -> new DatenquelleDto.Ausgelassen(komponente(a.komponente(), lage), a.grund().code(),
@@ -119,6 +122,13 @@ public class DatenquelleVorschlagService {
      * wurde: ein Vorschlag, den es so nicht mehr gibt, ist 409 {@code vorschlag_geaendert}; eine
      * Komponente, die inzwischen auf anderem Weg eine Quelle hat, 409 {@code komponente_hat_quelle}.
      * Ein schon übernommener Vorschlag zählt als unverändert — ein zweiter Aufruf legt nichts an.
+     *
+     * <p><b>Gerät dort hinzufügen.</b> Nennt ein bestätigter Vorschlag {@code datenquelle_id}, hängt
+     * die Bestätigung seine Komponenten an diese VORHANDENE Quelle — nur, wenn das GET sie als
+     * {@code ziel} zeigt ({@link #ziel}: der Vorschlag ist {@code adresse_an_box_vergeben}, die
+     * Quelle hat an dieser Box eine nicht beendete Zuständigkeit unter demselben Weg); sonst 409
+     * {@code vorschlag_geaendert}.
+     * Ihre Zuständigkeit bleibt, wie sie ist — die Komponenten gehören ab jetzt dazu, nie rückwirkend.
      */
     public DatenquelleDto.Uebernommen uebernehmen(UUID siteId, DatenquelleDto.Uebernehmen u, ProtokollAkteur wer) {
         datenquellen.anlage(siteId);
@@ -130,11 +140,11 @@ public class DatenquelleVorschlagService {
         } catch (DataIntegrityViolationException ex) {
             throw DatenquelleService.rueckwand(ex);
         }
-        return new DatenquelleDto.Uebernommen(e.neu(), e.unveraendert(),
+        return new DatenquelleDto.Uebernommen(e.neu(), e.unveraendert(), e.angehaengt(),
                 e.quellen().stream().map(id -> datenquellen.eine(siteId, id)).toList());
     }
 
-    private record Ergebnis(int neu, int unveraendert, List<UUID> quellen) {}
+    private record Ergebnis(int neu, int unveraendert, int angehaengt, List<UUID> quellen) {}
 
     private Ergebnis uebernehmenInDerTransaktion(UUID mandant, UUID siteId, List<DatenquelleDto.Bestaetigt> bestaetigt,
             ProtokollAkteur wer) {
@@ -142,6 +152,7 @@ public class DatenquelleVorschlagService {
         Lage lage = lage(siteId);
         Map<DatenquelleDto.Bestaetigt, UUID> schon = new HashMap<>();
         Map<DatenquelleDto.Bestaetigt, Vorschlag> neu = new HashMap<>();
+        Map<DatenquelleDto.Bestaetigt, Vorschlag> anhaengen = new HashMap<>();
         for (DatenquelleDto.Bestaetigt b : bestaetigt) {
             Optional<UUID> uebernommen = schonUebernommen(b, lage);
             if (uebernommen.isPresent()) {
@@ -158,6 +169,16 @@ public class DatenquelleVorschlagService {
                             "Dieser Vorschlag hat sich inzwischen geändert — bitte die Vorschlagsliste neu laden",
                             fakten(b)));
             Optional<AntragErgebnis> gesperrt = sperre(v, lage);
+            if (b.datenquelleId() != null) {
+                // Gezeigt war „an diese Quelle hängen" — gilt nur, solange das GET genau sie zeigt.
+                if (!ziel(siteId, v, gesperrt, lage).map(q -> q.id().equals(b.datenquelleId())).orElse(false)) {
+                    throw DatenquelleAbgelehnt.schnittstelle(Schnittstelle.VORSCHLAG_GEAENDERT,
+                            "Dieser Vorschlag hat sich inzwischen geändert — bitte die Vorschlagsliste neu laden",
+                            fakten(b));
+                }
+                anhaengen.put(b, v);
+                continue;
+            }
             if (gesperrt.isPresent()) {
                 throw DatenquelleAbgelehnt.regel(gesperrt.get());
             }
@@ -172,11 +193,67 @@ public class DatenquelleVorschlagService {
                 angelegt.put(v, schreibe(mandant, siteId, v, lage, wer));
             }
         }
+        for (Map.Entry<DatenquelleDto.Bestaetigt, Vorschlag> a : anhaengen.entrySet()) {
+            haenge(mandant, siteId, a.getValue(), a.getKey().datenquelleId(), lage, wer);
+        }
         List<UUID> ergebnis = new ArrayList<>();
         for (DatenquelleDto.Bestaetigt b : bestaetigt) {
-            ergebnis.add(schon.containsKey(b) ? schon.get(b) : angelegt.get(neu.get(b)));
+            ergebnis.add(schon.containsKey(b) ? schon.get(b)
+                    : anhaengen.containsKey(b) ? b.datenquelleId() : angelegt.get(neu.get(b)));
         }
-        return new Ergebnis(angelegt.size(), schon.size(), ergebnis);
+        return new Ergebnis(angelegt.size(), schon.size(), anhaengen.size(), ergebnis);
+    }
+
+    /**
+     * Hängt die Komponenten eines gesperrten Vorschlags an die vorhandene Quelle {@code ziel} —
+     * dieselben Schreibbausteine wie {@link #schreibe}, ohne neue Quelle und ohne neue
+     * Zuständigkeit; der Protokoll-Eintrag {@code aus_bestand_uebernommen} gilt ab jetzt.
+     */
+    private void haenge(UUID mandant, UUID siteId, Vorschlag v, UUID ziel, Lage lage, ProtokollAkteur wer) {
+        List<UUID> komponenten = v.komponenten().stream().map(UUID::fromString).toList();
+        if (bestand.verknuepfeKomponenten(ziel, siteId, komponenten) != komponenten.size()) {
+            throw DatenquelleService.gleichzeitig(Grund.UEBERSCHNEIDUNG);
+        }
+        bestand.verknuepfeGeraete(ziel, komponenten);
+        Datenquelle q = lage.quellen().get(ziel);
+        Map<String, Object> werte = new LinkedHashMap<>();
+        werte.put("kennzeichen", q.kennzeichen());
+        werte.put("protokoll", q.protokoll());
+        werte.put("adresse", q.adresse());
+        werte.put("box", v.box());
+        werte.put("box_name", lage.boxNamen().get(v.box()));
+        werte.put("komponenten", v.komponenten());
+        werte.put("angehaengt", true);
+        datenquellen.eintragen(mandant, ziel, "aus_bestand_uebernommen", UUID.fromString(v.box()), null, null, werte,
+                Instant.now().truncatedTo(ChronoUnit.MINUTES), wer);
+    }
+
+    /**
+     * Die vorhandene Quelle, an die ein gesperrter Vorschlag seine Komponenten hängen kann
+     * („Gerät dort hinzufügen?"): nur bei {@code adresse_an_box_vergeben}, und nur, wenn es genau
+     * EINE gibt — dieselbe Anlage, nicht archiviert, derselbe Weg (Protokoll + Adresse, wie
+     * {@link DatenquelleRegeln#bestandWegVergeben} vergleicht), ihre Zuständigkeit an der Box des
+     * Vorschlags ist nicht beendet (eine Zuweisung „ab jetzt“ beginnt erst an der nächsten vollen
+     * Minute), sie nennt alle seine Geräte-IDs und ist Steuerquelle, wenn er es ist. Sonst keine:
+     * dann bleibt es bei der Ablehnung — der Kunde ordnet die Quelle von Hand.
+     */
+    private static Optional<Datenquelle> ziel(UUID siteId, Vorschlag v, Optional<AntragErgebnis> gesperrt,
+            Lage lage) {
+        if (gesperrt.isEmpty() || gesperrt.get().grund() != Grund.ADRESSE_AN_BOX_VERGEBEN) {
+            return Optional.empty();
+        }
+        UUID box = UUID.fromString(v.box());
+        Instant jetzt = Instant.now();
+        List<Datenquelle> passend = lage.quellen().values().stream()
+                .filter(q -> siteId.equals(q.siteId()) && q.archiviertAm() == null)
+                .filter(q -> q.protokoll().equals(v.protokoll()) && q.adresse().equals(v.adresse()))
+                .filter(q -> lage.zeitraeume().getOrDefault(q.id(), List.of()).stream()
+                        .anyMatch(z -> z.deviceId().equals(box)
+                                && (z.effectiveTo() == null || z.effectiveTo().isAfter(jetzt))))
+                .filter(q -> q.geraeteIds() != null && q.geraeteIds().containsAll(v.geraeteIds()))
+                .filter(q -> !v.steuerquelle() || q.steuerquelle())
+                .toList();
+        return passend.size() == 1 ? Optional.of(passend.get(0)) : Optional.empty();
     }
 
     private UUID schreibe(UUID mandant, UUID siteId, Vorschlag v, Lage lage, ProtokollAkteur wer) {

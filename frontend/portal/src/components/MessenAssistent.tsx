@@ -94,6 +94,7 @@ import { AnlegenDialog } from './AnlegenDialog';
 import { AnlegenFlow } from './AnlegenFlow';
 import { AddDeviceDrawer } from './DeviceDrawers';
 import { DatenquelleAnlegen } from './DatenquelleAnlegen';
+import { DatenquelleVorschlagListe } from './DatenquelleVorschlagListe';
 import { StandortDialog } from './StandortDialog';
 import { VpPicker } from './VpPicker';
 import { WagoAssistent } from './WagoAssistent';
@@ -604,6 +605,8 @@ export function MessenAssistent({
                         <span className="vp-ma-weg-satz">Bogen, Kopfprüfung und Energiekarten gemeinsam einrichten</span>
                       </button></Recht>}
                     </div>
+                    {/* AP-06 IP-4: erst die Übernahme verknüpft die Geräte mit einer Datenquelle. */}
+                    <DatenquelleVorschlagListe siteId={a.id} anlageName={a.name} />
                   </li>
                 );
               })}

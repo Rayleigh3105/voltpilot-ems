@@ -386,6 +386,76 @@ class DatenquelleVorschlagApiTest {
         assertThat(fingerabdruck()).isEqualTo(abdruck);
     }
 
+    /**
+     * „Gerät dort hinzufügen?" (Messen-Assistent Schritt 2, 21.09.2026): die gesperrte Zeile nennt die von
+     * Hand angelegte Quelle als {@code ziel}, sobald sie alle Geräte-IDs des Vorschlags trägt; die
+     * Bestätigung MIT {@code datenquelle_id} hängt die Komponenten daran — ein anderes Ziel ist 409
+     * {@code vorschlag_geaendert}, ein zweiter Aufruf unverändert. Keine neue Quelle, keine neue Zuständigkeit.
+     */
+    @Test
+    void eineVergebeneAdresseNimmtDieGeraeteNachBestaetigungAuf() throws Exception {
+        Welt w = halle1("Halle 1 · hinzufügen");
+        UUID an1 = w.anlagen.get("AN-1");
+        UUID e1 = w.boxen.get("E-1");
+        UUID vonHand = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, protokoll, "
+                + "adresse, kadenz_s) VALUES (?, ?, 'DQ-41', 'modbus_tcp', '192.168.10.30:502', 10) RETURNING id",
+                UUID.class, w.mandant, an1);
+        root.update("INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, protokoll, adresse, "
+                + "effective_from) VALUES (?, ?, ?, 'modbus_tcp', '192.168.10.30:502', '2026-09-01T08:00:00Z')",
+                w.mandant, vonHand, e1);
+
+        // Ohne die Geräte-IDs des Vorschlags beschreibt DQ-41 diese Geräte nicht — kein Ziel.
+        JsonNode dq2 = ruf(w.jonas, HttpMethod.GET, basis(an1) + "/vorschlag", null).body().at("/vorschlaege/1");
+        assertThat(dq2.get("grund").asText()).isEqualTo("adresse_an_box_vergeben");
+        assertThat(dq2.get("ziel").isNull()).isTrue();
+        List<Integer> ids = new ArrayList<>();
+        dq2.get("geraete_ids").forEach(i -> ids.add(i.asInt()));
+        root.update(con -> {
+            var ps = con.prepareStatement("UPDATE data_source SET geraete_ids = ? WHERE id = ?");
+            ps.setArray(1, con.createArrayOf("integer", ids.toArray()));
+            ps.setObject(2, vonHand);
+            return ps;
+        });
+
+        dq2 = ruf(w.jonas, HttpMethod.GET, basis(an1) + "/vorschlag", null).body().at("/vorschlaege/1");
+        assertThat(dq2.at("/ziel/id").asText()).isEqualTo(vonHand.toString());
+        assertThat(dq2.at("/ziel/kennzeichen").asText()).isEqualTo("DQ-41");
+        Map<String, Object> zeile = new LinkedHashMap<>();
+        zeile.put("device_id", dq2.at("/box/id").asText());
+        zeile.put("protokoll", dq2.get("protokoll").asText());
+        zeile.put("adresse", dq2.get("adresse").asText());
+        zeile.put("komponenten", texte(ids(dq2.get("komponenten"))));
+
+        String abdruck = fingerabdruck();
+        zeile.put("datenquelle_id", UUID.randomUUID().toString());
+        Antwort falsch = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen",
+                Map.of("vorschlaege", List.of(zeile)));
+        assertThat(falsch.status()).as(falsch.body().toString()).isEqualTo(409);
+        assertThat(falsch.body().get("code").asText()).isEqualTo("vorschlag_geaendert");
+        assertThat(fingerabdruck()).isEqualTo(abdruck);
+
+        zeile.put("datenquelle_id", vonHand.toString());
+        Antwort u = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen",
+                Map.of("vorschlaege", List.of(zeile)));
+        assertThat(u.status()).as(u.body().toString()).isEqualTo(200);
+        assertThat(u.body().get("neu").asInt()).isZero();
+        assertThat(u.body().get("angehaengt").asInt()).isEqualTo(1);
+        assertThat(u.body().at("/datenquellen/0/kennzeichen").asText()).isEqualTo("DQ-41");
+        int zahl = dq2.get("komponenten").size();
+        assertThat(root.queryForObject("SELECT count(*) FROM measurement_point WHERE data_source_id = ?",
+                Integer.class, vonHand)).isEqualTo(zahl);
+        assertThat(root.queryForObject("SELECT count(*) FROM data_source WHERE site_id = ?", Integer.class, an1))
+                .as("keine zweite Quelle").isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM data_source_assignment WHERE data_source_id = ?",
+                Integer.class, vonHand)).as("keine neue Zuständigkeit").isEqualTo(1);
+
+        Antwort nochmal = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen",
+                Map.of("vorschlaege", List.of(zeile)));
+        assertThat(nochmal.status()).isEqualTo(200);
+        assertThat(nochmal.body().get("unveraendert").asInt()).isEqualTo(1);
+        assertThat(nochmal.body().get("angehaengt").asInt()).isZero();
+    }
+
     @Test
     void gleicheAdresseAnAndererBoxBrauchtAusserhalbDesBestandsAssistentenEineNetzlage() throws Exception {
         Welt w = halle1("Halle 1 · Doppel-Lesen");

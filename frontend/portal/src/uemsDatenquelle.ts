@@ -12,9 +12,11 @@
  * `docs/contracts/v2/edge-capabilities.json`.
  * **Wer die Regel ändert, ändert beide Seiten UND die Vektor-Datei.**
  *
- * ⚠ IM PORTAL RUFT NOCH NIEMAND AN: keine Fläche ist umgestellt. Der Java-Zwilling trägt die
- * Datenquellen-Schnittstelle, seit IP-4 auch die Vorschlagsliste (`…/data-sources/vorschlag`);
- * die Liste im Übernahme-Assistenten kommt mit einem Portal-Paket.
+ * Die Regeln hier ruft noch keine Fläche; der Java-Zwilling trägt die Datenquellen-Schnittstelle.
+ * Die Vorschlagsliste (`…/data-sources/vorschlag`) zeigt seit dem Paket
+ * `vp-uems-messen-assistent-datenquelle-vorschlag` Schritt 2 des Messen-Assistenten
+ * (`datenquelleVorschlag.ts`, `DatenquelleVorschlagListe`); der Übernahme-Assistent für
+ * Bestandskunden soll dieselbe Liste nutzen.
  */
 import { VORGABE_ZEITZONE, teile } from './uemsZustand';
 import type { DatenquelleBudgetFehler } from './api';
