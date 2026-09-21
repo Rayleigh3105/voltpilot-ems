@@ -46,7 +46,9 @@ func (a *Agent) netzladenDeckel(now time.Time, r guards.Reading) *guards.Netzlad
 	in := guards.Netzladen{Fuehrt: an.Fuehrt, PvKw: r.PvKw}
 	if rt := a.ocpp; an.Fuehrt && rt != nil {
 		n, hasLimit := rt.budget.Netzpunkt(now, rt.currentSettings())
-		in.Fresh = n.Seen && n.Age <= lastmgmt.BudgetFreshWindow
+		// B2 (AP-15 IP-20): a frozen value is not fresh, however new its
+		// timestamp - blind, the box charges only from its own PV
+		in.Fresh = n.Seen && n.Age <= lastmgmt.BudgetFreshWindow && a.eingefrorenSeit(now).IsZero()
 		in.Limit = hasLimit
 		in.PlanableKw, in.GridKw, in.BattChargeKw = n.PlanableKw, n.GridKw, n.BattChargeKw
 		if p := rt.previousPlan(); p != nil && p.AllocatedKw > n.ChargingKw {

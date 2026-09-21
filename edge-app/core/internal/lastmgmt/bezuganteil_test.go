@@ -11,6 +11,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 )
 
 // R3, Anlage AN-1: 550 kW connection, Vorbehalt 473 kW, verteilbar 77 kW -
@@ -189,9 +191,12 @@ func TestOhneRolleGiltDerAnteilImmer(t *testing.T) {
 // without a tolerance. The minimum with today's evaluation is the
 // construction; a mutation that drops it goes red here at once (a share above
 // today's budget).
+// IP-20: the meter may FREEZE (fresh timestamps, the same number from a random
+// step on) while the box adjusts itself at random; the probe's verdict goes in.
 func TestEigenschaftDerWaechterErweitertNie(t *testing.T) {
 	rng := rand.New(rand.NewSource(19))
 	t0 := time.Date(2027, 6, 15, 10, 0, 0, 0, time.UTC)
+	eingefroren := 0
 	for run := 0; run < 400; run++ {
 		set := Settings{
 			GridLimitKw:    []float64{0, 30, 100, 550}[rng.Intn(4)],
@@ -201,13 +206,28 @@ func TestEigenschaftDerWaechterErweitertNie(t *testing.T) {
 		}
 		an := BezugAnteil{AnteilKw: float64(rng.Intn(700)) / 2, Fuehrt: rng.Intn(2) == 0}
 		mit, ohne := NewBudgetTracker(), NewBudgetTracker()
+		probe := &guards.Einfrierprobe{}
+		friertAb, frozenGrid := rng.Intn(90), 0.0 // >= 60: never frozen in this run
 		now := t0
 		for step := 0; step < 60; step++ {
 			now = now.Add(time.Duration(rng.Intn(40)) * time.Second)
 			if rng.Intn(3) > 0 {
 				m := Measurement{GridKw: float64(rng.Intn(700) - 150), ChargingKw: float64(rng.Intn(100)), Complete: rng.Intn(8) > 0}
+				if step < friertAb {
+					frozenGrid = m.GridKw
+				} else {
+					m.GridKw = frozenGrid // frozen: fresh timestamp, same number
+				}
+				probe.Wert(now, m.GridKw)
 				mit.ObserveM(now, m)
 				ohne.ObserveM(now, m)
+			}
+			if rng.Intn(3) == 0 { // an own adjustment, effective or not
+				probe.Verstellt(now, float64(rng.Intn(60)-30))
+			}
+			an.EingefrorenSeit = time.Time{}
+			if seit, ok := probe.Eingefroren(now); ok {
+				an.EingefrorenSeit = seit
 			}
 			if rng.Intn(5) == 0 {
 				kw := float64(rng.Intn(400))
@@ -222,6 +242,17 @@ func TestEigenschaftDerWaechterErweitertNie(t *testing.T) {
 			if !an.Fuehrt && v.Kw > round3(an.AnteilKw) {
 				t.Fatalf("run %d step %d: co-controlling box %.3f kW above its share %.3f", run, step, v.Kw, an.AnteilKw)
 			}
+			// B2: frozen for more than 30 + 60 s - the leading box on its share
+			if an.Fuehrt && !an.EingefrorenSeit.IsZero() {
+				eingefroren++
+				if now.Sub(an.EingefrorenSeit) > BudgetFreshWindow+BezugAnteilWindow && v.Kw > round3(an.AnteilKw) {
+					t.Fatalf("run %d step %d: frozen %v, %.3f kW above the share %.3f", run, step, now.Sub(an.EingefrorenSeit), v.Kw, an.AnteilKw)
+				}
+			}
 		}
 	}
+	if eingefroren < 100 {
+		t.Fatalf("the frozen meter reached the leading box in only %d steps", eingefroren)
+	}
+	t.Logf("%d steps of a leading box with a frozen meter", eingefroren)
 }

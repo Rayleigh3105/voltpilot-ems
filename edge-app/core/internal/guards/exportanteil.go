@@ -57,6 +57,11 @@ type ExportAnteil struct {
 	// connection point). False for steuert_mit AND for a document without a
 	// role: the share then holds at the box's own point, always.
 	Fuehrt bool
+	// EingefrorenSeit is set while the box's own measured value counts as
+	// frozen (B2, Einfrierprobe): the time of its last change. The watchdog
+	// then treats the value as a measurement that old - blind, the same
+	// stages as a measurement gone quiet. Zero = not frozen.
+	EingefrorenSeit time.Time
 }
 
 // CapAnteil evaluates the watchdog for a box that holds a share document.
@@ -103,8 +108,16 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	res := l.capLocked(now, loop, safePv)
+	// B2: a frozen value is no measurement - its age counts from its last
+	// change, so it goes blind exactly like one that stopped arriving.
+	at := l.at
+	eingefroren := l.seen && !an.EingefrorenSeit.IsZero() && !an.EingefrorenSeit.After(at)
+	if eingefroren {
+		at = an.EingefrorenSeit
+	}
+	res := l.capLockedAb(now, at, loop, safePv)
 	res.AnteilKw = &anteil
+	res.Eingefroren = eingefroren && res.Blind
 	switch {
 	case !res.Blind:
 		l.rampValid = false
@@ -318,15 +331,15 @@ func (l *ExportLimiter) anteilReason(fuehrt bool, budget, discharge float64, res
 			kw1(exportKw), kw1(res.LimitKw), kw1(res.CapKw), kw1(pv), entladung)
 	case ExportHolding:
 		res.Reason = fmt.Sprintf(
-			"Seit %s keine Messung %s - die zuletzt gesetzte Begrenzung von %s kW liegt schon "+
+			"%s - die zuletzt gesetzte Begrenzung von %s kW liegt schon "+
 				"unter dem Anteil dieser Box von %s kW und wird gehalten, nicht freigegeben.%s",
-			age1(res.MeasurementAge), wo, kw1(res.CapKw), kw1(budget), entladung)
+			blindSatz(res, wo), kw1(res.CapKw), kw1(budget), entladung)
 	case ExportContracting:
 		res.Reason = fmt.Sprintf(
-			"Seit %s keine Messung %s - Erzeugung und Entladung werden ohne Halten auf den Anteil "+
+			"%s - Erzeugung und Entladung werden ohne Halten auf den Anteil "+
 				"dieser Box von %s kW gefuehrt (Erzeuger aktuell %s kW). Freigegeben wird ohne "+
 				"Messung nichts.%s",
-			age1(res.MeasurementAge), wo, kw1(budget), kw1(res.CapKw), entladung)
+			blindSatz(res, wo), kw1(budget), kw1(res.CapKw), entladung)
 	default:
 		if !l.seen {
 			res.Reason = fmt.Sprintf(
@@ -336,8 +349,19 @@ func (l *ExportLimiter) anteilReason(fuehrt bool, budget, discharge float64, res
 			return
 		}
 		res.Reason = fmt.Sprintf(
-			"Seit %s keine Messung %s - Erzeugung und Entladung zusammen liegen auf dem Anteil "+
+			"%s - Erzeugung und Entladung zusammen liegen auf dem Anteil "+
 				"dieser Box von %s kW, der ohne jede Messung gilt (Erzeuger %s kW).%s",
-			age1(res.MeasurementAge), wo, kw1(budget), kw1(res.CapKw), entladung)
+			blindSatz(res, wo), kw1(budget), kw1(res.CapKw), entladung)
 	}
+}
+
+// blindSatz opens the sentence of a blind verdict: the measurement stopped
+// arriving - or it arrives, frozen (B2).
+func blindSatz(res *ExportCap, wo string) string {
+	if res.Eingefroren {
+		return fmt.Sprintf("Der Messwert %s steht seit %s still, obwohl diese Box selbst um "+
+			"mindestens %s kW verstellt hat - er gilt als eingefroren",
+			wo, age1(res.MeasurementAge), kw1(EinfrierStellKw))
+	}
+	return fmt.Sprintf("Seit %s keine Messung %s", age1(res.MeasurementAge), wo)
 }

@@ -387,6 +387,10 @@ type Agent struct {
 	bezugMu   sync.Mutex
 	bezugLade guards.ExportState
 	bezugBatt guards.ExportState
+	// AP-15 IP-20: the one probe for a frozen connection-point value (B2),
+	// shared by both watchdogs (eingefroren.go). Fed only with a share
+	// document.
+	einfrier einfrierStand
 
 	// Edge-local deadline fallback (agent/flexfallback.go + internal/
 	// flexfallback; Verbrauchssteuerung Inkrement 6, D-20): the validated
@@ -1635,6 +1639,9 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// point plus its measured battery (einspeisewaechter_anteil.go); without a
 	// document this is exactly the call above it always was.
 	if an := a.exportAnteil(); an != nil {
+		// AP-15 IP-20: the same measuring point feeds the probe for a frozen
+		// value (B2, eingefroren.go) - one probe for both watchdogs.
+		a.einfrierWert(ts, measurements, battKw)
 		if a.observeExportAnteil(ts, measurements, battKw, an.Fuehrt) {
 			a.nudgeSetpoint()
 		}
@@ -2607,6 +2614,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// the first measurement, with or without a plan (R15, V5).
 		var noReadingCap guards.ExportCap
 		if an := a.exportAnteil(); an != nil {
+			an.EingefrorenSeit = a.eingefrorenSeit(now)
 			noReadingCap = a.export.CapAnteil(now, exportLimit, *an, 0)
 		} else {
 			noReadingCap = a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, 0))
@@ -3034,6 +3042,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// pv_total, W11).
 	var exportCap guards.ExportCap
 	if an := a.exportAnteil(); an != nil {
+		// B2 (AP-15 IP-20): a frozen value counts as blind - its age from its
+		// last change (eingefroren.go)
+		an.EingefrorenSeit = a.eingefrorenSeit(now)
 		exportCap = a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
 		kw = lowerDischarge(kw, exportCap.DischargeCapKw)
 	} else {
@@ -3163,6 +3174,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 		slog.Error("setpoint publish failed", "err", err)
 		return
 	}
+	// AP-15 IP-20: what this setpoint MUST change at the meter goes to the
+	// probe for a frozen value (no-op without a share document).
+	a.einfrierSollwert(now, controlEnabled, pvLimit, r.PvKw, kw, nativeDec.Native)
 	// The per-entity retained command is owned by the ARBITER since E2 (the
 	// plan executor injects the plan as market desires, the failsafe is the
 	// arbiter's registry fallback) - the E1a applySetpoint-side mirror is

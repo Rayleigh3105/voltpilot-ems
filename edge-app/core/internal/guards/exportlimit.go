@@ -203,6 +203,11 @@ type ExportCap struct {
 	// AnteilKw echoes the box's own feed-in share; nil without a share
 	// document (Cap).
 	AnteilKw *float64
+	// Eingefroren is true while the verdict is blind because the measured
+	// value stands still although the box itself moved its actuators (B2,
+	// eingefroren.go; CapAnteil only). MeasurementAge then counts from the
+	// last change of the value.
+	Eingefroren bool
 }
 
 // ExportLimiter holds the watchdog's measurement + hysteresis state across ticks.
@@ -319,6 +324,13 @@ func (l *ExportLimiter) Cap(now time.Time, limitKw *float64, safeStaticCapKw flo
 // against the loop limit and the share's safe cap first - so a share can only
 // ever narrow what this returns). Caller holds l.mu.
 func (l *ExportLimiter) capLocked(now time.Time, limit, safeStaticCapKw float64) ExportCap {
+	return l.capLockedAb(now, l.at, limit, safeStaticCapKw)
+}
+
+// capLockedAb is capLocked with the time of the newest usable measurement
+// given: CapAnteil passes the last CHANGE of a frozen value (B2,
+// eingefroren.go), Cap always the newest sample. Caller holds l.mu.
+func (l *ExportLimiter) capLockedAb(now, at time.Time, limit, safeStaticCapKw float64) ExportCap {
 	l.limit, l.limitValid = limit, true
 
 	res := ExportCap{Active: true, LimitKw: limit}
@@ -326,7 +338,7 @@ func (l *ExportLimiter) capLocked(now time.Time, limit, safeStaticCapKw float64)
 	age := time.Duration(0)
 	fresh := false
 	if l.seen {
-		age = now.Sub(l.at)
+		age = now.Sub(at)
 		if age < 0 {
 			age = 0
 		}
