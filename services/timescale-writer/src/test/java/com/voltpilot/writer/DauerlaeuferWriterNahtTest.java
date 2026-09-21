@@ -52,8 +52,9 @@ import org.testcontainers.utility.DockerImageName;
  * <p>Echt: Redpanda, der Writer mit seinem Nachschlag der Herkunft. Die Datenbank ist der Spiegel
  * {@code writer-schema.sql} (die Bühne von {@link UemsStreckeAbnahmeTest}); diese Bühne hat keine Routen,
  * die Stammdaten stehen darum per INSERT darin. NICHT durchlaufen: MQTT und ingest. Der Umschlag wird wie
- * in {@link UemsStreckeAbnahmeTest} zum {@code measurements.raw}-Ereignis; ingest reicht die 2.0-Felder
- * unverändert weiter und stempelt den Eingang.
+ * in {@link UemsStreckeAbnahmeTest} zum {@code measurements.raw}-Ereignis. Dass die echte Datenannahme aus
+ * jedem Umschlag genau dieses Ereignis bildet (nur {@code event_id} neu), belegt
+ * {@code DauerlaeuferVorlageAnnahmeTest} in services/ingest.
  *
  * <ul>
  *   <li><b>E-1</b> so, wie Drehbuch §14.2 die Einrichtung heute hinterlässt: KEINE Auswahlzeile, weil die

@@ -80,7 +80,8 @@ import org.testcontainers.utility.DockerImageName;
  * Umschläge sind die des echten Dauerläufers ({@code tools/edge-simulator/abnahme/dauerlaeufer-nw6.json},
  * erzeugt von {@code uems_dauerlaeufer.umschlag}, gebunden über ihre sha256). NICHT durchlaufen: MQTT,
  * ingest und der Writer — die Zeilen entstehen an der Naht genau so, wie sie der echte Writer mit diesen
- * Umschlägen schreibt; das belegt {@code DauerlaeuferWriterNahtTest} (timescale-writer, Redpanda + Writer).
+ * Umschlägen schreibt; das belegt {@code DauerlaeuferWriterNahtTest} (timescale-writer, Redpanda + Writer),
+ * und dass ingest die Umschläge unverändert weiterreicht, {@code DauerlaeuferVorlageAnnahmeTest}.
  *
  * <p><b>Der Befund.</b> Die Einrichtung aus §14.2 genügt NICHT. Die Punktschlüssel des Simulators
  * ({@code custom.ms-05.wirkenergie-bezug} …) nimmt die Mess-Auswahl über keinen Produktivweg an: die

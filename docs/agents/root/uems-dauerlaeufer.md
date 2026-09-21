@@ -10,7 +10,7 @@ Neu angelegt am 21.09.2026. Keine Migration, keine Route, keine Fläche. Einrich
 | Bleibt sichtbar | `voltpilot_uems_kundenbereich_*{tenant}` (`UemsMetricsCollector`): Ziel der gitops-Regel `VoltPilotDauerlaeuferStumm` |
 | Simulator | `tools/edge-simulator/uems_dauerlaeufer.py`, `Dockerfile.dauerlaeufer`, `.env.dauerlaeufer.example` |
 | Tests | `DauerlaeuferMetrikenDbTest` (Testcontainers) · `test_uems_dauerlaeufer.py` |
-| NW-6 im Kleinen | api: `DauerlaeuferGanzerWegDbTest` (Portalwege, echter Lücken-Melder) · Writer: `DauerlaeuferWriterNahtTest` (Redpanda + Writer); beide lesen `abnahme/dauerlaeufer-nw6.json` (`make abnahme`), MQTT und ingest laufen in keinem |
+| NW-6 im Kleinen | api `DauerlaeuferGanzerWegDbTest` (Portalwege, echter Lücken-Melder) · Writer `DauerlaeuferWriterNahtTest` (Redpanda + Writer) · ingest `DauerlaeuferVorlageAnnahmeTest` (rein); alle lesen `abnahme/dauerlaeufer-nw6.json` (`make abnahme`), MQTT läuft in keinem |
 
 ## Die Fallen
 
