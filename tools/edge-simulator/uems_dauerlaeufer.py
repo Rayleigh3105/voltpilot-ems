@@ -26,6 +26,7 @@ eingehängten Geheimnis (siehe ``.env.dauerlaeufer.example``).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -163,6 +164,44 @@ def bytes_je_tag(tenant_id: str, boxen: tuple[BoxZugang, ...]) -> dict:
     }
 
 
+#: NW-6 im Kleinen: feste Testkennungen der Vorlage. Der Java-Lauf ersetzt sie durch die, die die
+#: Plattform beim Anlegen vergibt (die Tenant-UUID lässt sich nicht vorgeben, Drehbuch §14.1).
+NW6_TENANT = "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+NW6_BOXEN = (
+    BoxZugang("E-1", "d1000000-0000-4000-8000-000000000001", "d1b00000-0000-4000-8000-000000000001"),
+    BoxZugang("E-2", "d1000000-0000-4000-8000-000000000002", "d1b00000-0000-4000-8000-000000000002"),
+)
+#: Fünf Takte je Box; der letzte liegt eine Minute vor 2026-11-03T10:00:00Z, dem „Jetzt“ des Laufs.
+NW6_ERSTER_TAKT = takt_von(datetime(2026, 11, 3, 9, 55, tzinfo=timezone.utc).timestamp())
+NW6_TAKTE = 5
+
+
+def nw6_vorlage() -> dict:
+    """Die Zustellungen beider Boxen, gebaut von ``topic`` und ``umschlag`` — nie von Hand."""
+    zustellungen = []
+    for takt in range(NW6_ERSTER_TAKT, NW6_ERSTER_TAKT + NW6_TAKTE):
+        for box in NW6_BOXEN:
+            zustellungen.append({"box": box.code, "topic": topic(NW6_TENANT, box),
+                                 "nutzlast": umschlag(NW6_TENANT, box, takt)})
+    return {
+        "quelle": "tools/edge-simulator/uems_dauerlaeufer.py (topic, umschlag)",
+        "tenant_id": NW6_TENANT,
+        "boxen": [{"code": b.code, "site_id": b.site_id, "device_id": b.device_id,
+                   "point_keys": [KANAELE[m][1] for m in BOX_REIHEN[b.code]]} for b in NW6_BOXEN],
+        "zustellungen": zustellungen,
+    }
+
+
+def nw6_text() -> str:
+    """Genau die Bytes der eingecheckten Vorlage ``abnahme/dauerlaeufer-nw6.json``."""
+    return json.dumps(nw6_vorlage(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def nw6_dateisumme() -> str:
+    """sha256 über die Bytes — der Java-Lauf rechnet sie nach, bevor er die Vorlage glaubt."""
+    return hashlib.sha256(nw6_text().encode("utf-8")).hexdigest()
+
+
 class Lebenszeichen:
     """Eine Datei, deren Änderungszeit die Probe liest — kein Port, keine Abhängigkeit."""
 
@@ -260,7 +299,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--probe", action="store_true",
                         help="Kubernetes-Probe: Exit 0, wenn das Lebenszeichen jünger als drei Takte ist")
     parser.add_argument("--menge", action="store_true", help="Datenmenge je Tag vorrechnen und enden")
+    parser.add_argument("--nw6-vorlage", action="store_true", help="die NW-6-Vorlage ausgeben und enden")
+    parser.add_argument("--nw6-summe", action="store_true", help="ihre sha256 ausgeben und enden")
     args = parser.parse_args(argv)
+
+    if args.nw6_vorlage:
+        sys.stdout.write(nw6_text())
+        return 0
+    if args.nw6_summe:
+        print(nw6_dateisumme())
+        return 0
 
     if args.probe:
         pfad = os.environ.get("VP_DAUERLAEUFER_LEBENSZEICHEN", LEBENSZEICHEN)

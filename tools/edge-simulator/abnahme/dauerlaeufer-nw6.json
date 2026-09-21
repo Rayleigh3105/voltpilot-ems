@@ -1,0 +1,496 @@
+{
+  "boxen": [
+    {
+      "code": "E-1",
+      "device_id": "d1b00000-0000-4000-8000-000000000001",
+      "point_keys": [
+        "custom.ms-05.wirkenergie-bezug",
+        "custom.ms-06.wirkenergie-bezug",
+        "custom.ms-07.wirkenergie-bezug",
+        "custom.ms-08.wirkenergie-bezug"
+      ],
+      "site_id": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "code": "E-2",
+      "device_id": "d1b00000-0000-4000-8000-000000000002",
+      "point_keys": [
+        "custom.ms-10.wirkenergie-bezug",
+        "custom.ms-11.wirkenergie-bezug",
+        "custom.ms-12.wirkenergie-bezug",
+        "custom.ms-13.wirkenergie-bezug",
+        "custom.ms-14.ocpp-zaehlerstand"
+      ],
+      "site_id": "d1000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "quelle": "tools/edge-simulator/uems_dauerlaeufer.py (topic, umschlag)",
+  "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020",
+  "zustellungen": [
+    {
+      "box": "E-1",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000001",
+        "observed_at": "2026-11-03T09:55:00Z",
+        "samples": [
+          {
+            "decoded": 9189948.5,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 91899485
+          },
+          {
+            "decoded": 27988895.5,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 279888955
+          },
+          {
+            "decoded": 15278677.5,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 152786775
+          },
+          {
+            "decoded": 12148738.0,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 121487380
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894995,
+        "site_id": "d1000000-0000-4000-8000-000000000001",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/measurement-samples"
+    },
+    {
+      "box": "E-2",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000002",
+        "observed_at": "2026-11-03T09:55:00Z",
+        "samples": [
+          {
+            "decoded": 47872620.0,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 478726200
+          },
+          {
+            "decoded": 20945308.5,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 209453085
+          },
+          {
+            "decoded": 11967462.0,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 119674620
+          },
+          {
+            "decoded": 5984189.0,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 59841890
+          },
+          {
+            "decoded": 2991733.5,
+            "observed_at": "2026-11-03T09:55:00Z",
+            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "quality": "good",
+            "raw": 29917335
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894995,
+        "site_id": "d1000000-0000-4000-8000-000000000002",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/measurement-samples"
+    },
+    {
+      "box": "E-1",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000001",
+        "observed_at": "2026-11-03T09:56:00Z",
+        "samples": [
+          {
+            "decoded": 9189948.8,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 91899488
+          },
+          {
+            "decoded": 27988896.4,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 279888964
+          },
+          {
+            "decoded": 15278678.0,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 152786780
+          },
+          {
+            "decoded": 12148738.4,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 121487384
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894996,
+        "site_id": "d1000000-0000-4000-8000-000000000001",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/measurement-samples"
+    },
+    {
+      "box": "E-2",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000002",
+        "observed_at": "2026-11-03T09:56:00Z",
+        "samples": [
+          {
+            "decoded": 47872621.6,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 478726216
+          },
+          {
+            "decoded": 20945309.2,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 209453092
+          },
+          {
+            "decoded": 11967462.4,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 119674624
+          },
+          {
+            "decoded": 5984189.2,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 59841892
+          },
+          {
+            "decoded": 2991733.6,
+            "observed_at": "2026-11-03T09:56:00Z",
+            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "quality": "good",
+            "raw": 29917336
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894996,
+        "site_id": "d1000000-0000-4000-8000-000000000002",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/measurement-samples"
+    },
+    {
+      "box": "E-1",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000001",
+        "observed_at": "2026-11-03T09:57:00Z",
+        "samples": [
+          {
+            "decoded": 9189949.1,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 91899491
+          },
+          {
+            "decoded": 27988897.3,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 279888973
+          },
+          {
+            "decoded": 15278678.5,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 152786785
+          },
+          {
+            "decoded": 12148738.8,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 121487388
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894997,
+        "site_id": "d1000000-0000-4000-8000-000000000001",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/measurement-samples"
+    },
+    {
+      "box": "E-2",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000002",
+        "observed_at": "2026-11-03T09:57:00Z",
+        "samples": [
+          {
+            "decoded": 47872623.2,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 478726232
+          },
+          {
+            "decoded": 20945309.9,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 209453099
+          },
+          {
+            "decoded": 11967462.8,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 119674628
+          },
+          {
+            "decoded": 5984189.4,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 59841894
+          },
+          {
+            "decoded": 2991733.7,
+            "observed_at": "2026-11-03T09:57:00Z",
+            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "quality": "good",
+            "raw": 29917337
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894997,
+        "site_id": "d1000000-0000-4000-8000-000000000002",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/measurement-samples"
+    },
+    {
+      "box": "E-1",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000001",
+        "observed_at": "2026-11-03T09:58:00Z",
+        "samples": [
+          {
+            "decoded": 9189949.4,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 91899494
+          },
+          {
+            "decoded": 27988898.2,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 279888982
+          },
+          {
+            "decoded": 15278679.0,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 152786790
+          },
+          {
+            "decoded": 12148739.2,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 121487392
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894998,
+        "site_id": "d1000000-0000-4000-8000-000000000001",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/measurement-samples"
+    },
+    {
+      "box": "E-2",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000002",
+        "observed_at": "2026-11-03T09:58:00Z",
+        "samples": [
+          {
+            "decoded": 47872624.8,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 478726248
+          },
+          {
+            "decoded": 20945310.6,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 209453106
+          },
+          {
+            "decoded": 11967463.2,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 119674632
+          },
+          {
+            "decoded": 5984189.6,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 59841896
+          },
+          {
+            "decoded": 2991733.8,
+            "observed_at": "2026-11-03T09:58:00Z",
+            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "quality": "good",
+            "raw": 29917338
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894998,
+        "site_id": "d1000000-0000-4000-8000-000000000002",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/measurement-samples"
+    },
+    {
+      "box": "E-1",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000001",
+        "observed_at": "2026-11-03T09:59:00Z",
+        "samples": [
+          {
+            "decoded": 9189949.7,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-05.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 91899497
+          },
+          {
+            "decoded": 27988899.1,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-06.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 279888991
+          },
+          {
+            "decoded": 15278679.5,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-07.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 152786795
+          },
+          {
+            "decoded": 12148739.6,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-08.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 121487396
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894999,
+        "site_id": "d1000000-0000-4000-8000-000000000001",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000001/d1b00000-0000-4000-8000-000000000001/v2/measurement-samples"
+    },
+    {
+      "box": "E-2",
+      "nutzlast": {
+        "catalog_version": "2026.08.26.3",
+        "device_id": "d1b00000-0000-4000-8000-000000000002",
+        "observed_at": "2026-11-03T09:59:00Z",
+        "samples": [
+          {
+            "decoded": 47872626.4,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-10.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 478726264
+          },
+          {
+            "decoded": 20945311.3,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-11.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 209453113
+          },
+          {
+            "decoded": 11967463.6,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-12.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 119674636
+          },
+          {
+            "decoded": 5984189.8,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-13.wirkenergie-bezug",
+            "quality": "good",
+            "raw": 59841898
+          },
+          {
+            "decoded": 2991733.9,
+            "observed_at": "2026-11-03T09:59:00Z",
+            "point_key": "custom.ms-14.ocpp-zaehlerstand",
+            "quality": "good",
+            "raw": 29917339
+          }
+        ],
+        "schema_version": "2.0",
+        "sequence": 29894999,
+        "site_id": "d1000000-0000-4000-8000-000000000002",
+        "tenant_id": "e1b07da2-5f48-4330-a46b-6457ab9fb020"
+      },
+      "topic": "ems/e1b07da2-5f48-4330-a46b-6457ab9fb020/d1000000-0000-4000-8000-000000000002/d1b00000-0000-4000-8000-000000000002/v2/measurement-samples"
+    }
+  ]
+}
