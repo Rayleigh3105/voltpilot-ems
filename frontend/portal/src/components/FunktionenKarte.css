@@ -140,8 +140,9 @@
   min-height: 44px;
 }
 
-/* „Messen & Auswerten für Werk Ahrenberg einrichten“ ist am Telefon breiter als die Karte: umbrechen statt querlaufen. */
-.vp-fk-schritt .vp-btn {
+/* „Messen & Auswerten für Werk Ahrenberg einrichten“ ist am Telefon breiter als die Karte: umbrechen statt querlaufen.
+   Nur die Messen-Zeile — die Knöpfe von „Steuern & Optimieren“ bleiben zeichengleich. */
+.vp-fk-abschnitt[data-funktion='messen'] .vp-fk-schritt .vp-btn {
   max-width: 100%;
   height: auto;
   white-space: normal;
