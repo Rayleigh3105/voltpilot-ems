@@ -30,6 +30,7 @@ const zustand: MeasurementSelectionState = {
   status: 'idle', statusReason: 'Keine zusätzlichen Messwerte ausgewählt.', activationNotice: '',
   disableNotice: '', selections: [], volumeEstimate: schaetzung,
 };
+const KLASSEN = ['live_power', 'phase_mppt_string', 'thermal_bms', 'energy_counter', 'state_event', 'identity_configuration'];
 const gesendet: unknown[] = [];
 (window as unknown as { __eigeneMesswerte: unknown[] }).__eigeneMesswerte = gesendet;
 
@@ -40,7 +41,13 @@ const belegt: Record<string, unknown> = {
     catalogVersion: '2026.08.26.3', edgeMinVersion: 'unreleased', customPointActionLabel: 'Eigenen Messwert hinzufügen',
     total: 0, offset: 0, limit: 100, groups: [], semanticStatuses: [], points: [],
   }),
-  customMeasurementEstimate: ok(schaetzung),
+  // Wie die API (`MeasurementRetention.ofCustomClass`): eine unbekannte Aufbewahrungsklasse ist 400.
+  customMeasurementEstimate: async (_d: string, definition: { retentionClass?: string }) => {
+    if (!KLASSEN.includes(definition.retentionClass ?? '')) {
+      throw new Error('Bitte eine Aufbewahrungsklasse für den eigenen Messwert wählen.');
+    }
+    return schaetzung;
+  },
   addCustomMeasurement: async (_d: string, body: unknown) => { gesendet.push(body); return { ...zustand, desiredRevision: 4 }; },
 };
 const offen = api as unknown as Record<string, unknown>;

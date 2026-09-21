@@ -371,6 +371,11 @@ export function BeobachteteRegister({
   const [customEstimate, setCustomEstimate] = useState<MeasurementBudgetEstimate | null>(null);
   /** „Was misst dieser Wert?" (`eigenerMesswert.ts`) — leer, bis der Kunde antwortet. */
   const [customArt, setCustomArt] = useState('');
+  /**
+   * Der Satz der API zum Formular. ⚠ Nicht `error`: das steht nur im Katalog-Einschub, und
+   * eine Ablehnung von „Last und Volumen prüfen" blieb so unsichtbar.
+   */
+  const [customError, setCustomError] = useState<string | null>(null);
   const [sparks, setSparks] = useState<Record<string, MiniPoint[]>>({});
 
   const loadState = () => {
@@ -554,8 +559,9 @@ export function BeobachteteRegister({
 
   const checkCustom = async () => {
     if (!deviceId) return;
+    setCustomError(null);
     try { setCustomEstimate(await api.customMeasurementEstimate(deviceId, customDefinition(), entityId)); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Das Register ist nicht gültig.'); }
+    catch (e) { setCustomError(e instanceof Error ? e.message : 'Das Register ist nicht gültig.'); }
   };
   const addCustom = async () => {
     if (!deviceId || !state) return;
@@ -565,7 +571,7 @@ export function BeobachteteRegister({
         expectedRevision: state.desiredRevision, idempotencyKey: uuid(), definition: customDefinition(),
       }, entityId));
       setCustomOpen(false); setCustomEstimate(null); setCustomArt(''); loadQuiet();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Das Register konnte nicht hinzugefügt werden.'); }
+    } catch (e) { setCustomError(e instanceof Error ? e.message : 'Das Register konnte nicht hinzugefügt werden.'); }
     finally { setBusy(false); }
   };
 
@@ -588,6 +594,7 @@ export function BeobachteteRegister({
     }));
     setCustomEstimate(null);
     setCustomArt('');
+    setCustomError(null);
     setCustomOpen(true);
     onBrueckeVerbraucht?.();
   }, [bruecke, onBrueckeVerbraucht]);
@@ -705,7 +712,7 @@ export function BeobachteteRegister({
         {historyError ? <div className="vp-assist-error" role="alert"><p>{historyError}</p>{representation === 'raw' && <Button size="sm" variant="outline" onClick={() => setRepresentation('decoded')}>Dekodierte Werte laden</Button>}</div> : !history ? <p role="status">Verlauf wird geladen …</p> : history.data.length === 0 ? <p className="vp-measure-empty">Für diesen Zeitraum sind keine Werte gespeichert. Eine frühere Abwahl löscht die Historie nicht.</p> : <><HistoryChart history={history} onWaehlen={setHistoryIndex} /><p className="vp-measure-hint">{rohwerteHinweis(history) ?? history.meta.aggregationExplanation}</p><p className="vp-measure-hint">Tippen Sie auf einen Messwert, um seine Herkunft zu sehen.</p>{historyIndex !== null && <MesswertHerkunftKarte history={history} index={historyIndex} namen={{ geraete: geraeteNamen, boxen: boxNamen }} />}<ul className="vp-measure-marker-list">{history.markers.map((m) => <li key={`${m.time}-${m.kind}`}><time>{new Date(m.time).toLocaleString('de-DE')}</time> · {nachlieferungMarker(history, m)}</li>)}</ul></>}
       </Modal>
 
-      <Modal open={customOpen} onClose={() => setCustomOpen(false)} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Recht aktion="mess_selektion.bearbeiten"><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy || !gewaehlteArt || !!customEinheitFehler}>Jetzt aufzeichnen</Button></Recht></>}>
+      <Modal open={customOpen} onClose={() => { setCustomOpen(false); setCustomError(null); }} title="Eigenen Messwert hinzufügen" footer={<><Button variant="ghost" onClick={checkCustom}>Last und Volumen prüfen</Button><Recht aktion="mess_selektion.bearbeiten"><Button onClick={addCustom} disabled={!customEstimate || customEstimate.hardRejected || busy || !gewaehlteArt || !!customEinheitFehler}>Jetzt aufzeichnen</Button></Recht></>}>
         <p>Nur lesbare Modbus-Register. VoltPilot erfindet keine Semantik: Name, Einheit, Datentyp und Skala stammen aus Ihrer Gerätedokumentation.</p>
         <div className="vp-measure-custom">
           <Input label="Bezeichnung" value={custom.label} onChange={(e) => { setCustom({ ...custom, label: e.target.value }); setCustomEstimate(null); }} />
@@ -719,6 +726,7 @@ export function BeobachteteRegister({
           <Input label="Kadenz in Sekunden" type="number" min="1" max="86400" value={custom.cadenceS} onChange={(e) => { setCustom({ ...custom, cadenceS: e.target.value }); setCustomEstimate(null); }} />
         </div>
         <p className="vp-measure-readonly"><Icon name="lock" size={15} /> Ausschließlich lesbar. Keine Schreibparameter.</p>
+        {customError && <p role="alert" className="vp-assist-error">{customError}</p>}
         {customEstimate && <p role="status" className="vp-measure-global-status">{customEstimate.samplesPerMinute} Samples/min · {customEstimate.dutyCyclePercent} % Buslast · {customEstimate.totalGbPerYear.toFixed(3)} GB/Jahr. Start jetzt, kein Backfill.</p>}
       </Modal>
     </section>

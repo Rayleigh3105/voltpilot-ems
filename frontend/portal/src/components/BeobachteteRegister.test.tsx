@@ -509,6 +509,15 @@ describe('BeobachteteRegister · „Was misst dieser Wert?" (Schnitt 2)', () => 
     expect(body.definition.retentionClass).toBe('live_power');
   });
 
+  it('zeigt die Ablehnung der API IM Formular, nicht im geschlossenen Einschub', async () => {
+    vi.mocked(api.customMeasurementEstimate).mockRejectedValueOnce(new Error('Die Registeradresse muss zwischen 0 und 65535 liegen.'));
+    const dialog = await formular('kWh');
+    await waehle(dialog, 'Energie-Zählerstand – Bezug');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Last und Volumen prüfen' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Die Registeradresse muss zwischen 0 und 65535 liegen.');
+    expect(screen.getByRole('button', { name: 'Jetzt aufzeichnen' })).toBeDisabled();
+  });
+
   it('sagt, wenn die Einheit nicht zur Antwort passt, und speichert dann nicht', async () => {
     const dialog = await formular('kW');
     await waehle(dialog, 'Energie-Zählerstand – Abgabe');
