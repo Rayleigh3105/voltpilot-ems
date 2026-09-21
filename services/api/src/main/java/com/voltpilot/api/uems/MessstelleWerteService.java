@@ -274,6 +274,11 @@ public class MessstelleWerteService {
      * ({@link MessstelleRegisterRepository#werte}): die Box über die Mess-Selektion, die Reihe über
      * {@code entity_id} + Rolle nicht {@code spiegel}. Kein Schritt, keine Zahl und kein Grund ändert sich — die
      * Schritte sagen weiter, was die Reihe hat; das Feld sagt dazu, was die Box sieht.
+     *
+     * <p><b>Standort-Zaun:</b> die Box-Werte zählen nur an einer Anlage im Zugriff ({@code JOIN site}, RLS
+     * {@code site_scope}). Die Komponente ist über {@code measurement_point} gezäunt, ihre Mess-Selektion aber nicht
+     * ({@code entity_id} ohne {@code site_id}), und jeder Wert trägt die Anlage, an der er ankam — nach einem Umzug
+     * die alte. Ohne den Join verriete das Wort Werte einer fremden Anlage.
      */
     private String zuordnung(List<Quelle> imZeitraum, Zeitraum z) {
         if (imZeitraum.isEmpty()) {
@@ -293,6 +298,7 @@ public class MessstelleWerteService {
                                    AS b(komponente, kanal, von, bis)
                           JOIN device_measurement_selection d ON d.entity_id = b.komponente AND d.point_key = b.kanal
                          WHERE EXISTS (SELECT 1 FROM device_measurement_sample s
+                                         JOIN site st ON st.id = s.site_id
                                         WHERE s.device_id = d.device_id AND s.point_key = b.kanal
                                           AND s.quality = 'good' AND s.time >= b.von AND s.time < b.bis)
                            AND NOT EXISTS (SELECT 1 FROM device_measurement_sample s

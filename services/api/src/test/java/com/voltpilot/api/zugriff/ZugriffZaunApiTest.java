@@ -984,6 +984,67 @@ class ZugriffZaunApiTest {
                 .isEqualTo(alle.stream().filter(sichtAnderswo::contains).toList());
     }
 
+    /**
+     * „Daten kommen an – noch keiner Messreihe zugeordnet“ (PR 1008) spricht nur über Anlagen im Zugriff. Die
+     * Komponente der Messstelle ist gezäunt, ihre Mess-Selektion und die Box-Werte sind es nicht: ein Wert trägt die
+     * Anlage, an der er ankam (nach einem Umzug die alte), und die Selektion bindet die Komponente ohne Anlage. Zwei
+     * Wege zu einer fremden Anlage B — Werte derselben Box, an B gestempelt, und eine Box an B, die denselben Kanal
+     * der Komponente liest. Der Kundenadministrator sieht B und bekommt das Wort (die Probe schlägt an); der
+     * Bearbeiter am Standort der Messstelle sieht B nicht und bekommt {@code null} wie ohne Werte.
+     */
+    @Test
+    void dieZuordnungDerWerteKarteVerraetKeineWerteEinerFremdenAnlage() throws Exception {
+        Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
+        Konto hier = new Konto("Bearbeiter am Standort der Messstelle", konto(KUNDE_BEARBEITER, DEMO), new String[0]);
+        String pfad = "/api/v1/messstellen/MS-Z1/werte?raster=tag&von=2026-09-01&bis=2026-09-01";
+        assertThat(zuordnung(pfad, ka)).as("ohne Box-Werte kein Fall").isNull();
+        assertThat(zuordnung(pfad, hier)).isNull();
+
+        UUID anlageB = root.queryForObject("INSERT INTO site (tenant_id, name, bidding_zone) VALUES (?, "
+                + "'Zaun-Anlage B', 'DE-LU') RETURNING id", UUID.class, DEMO);
+        UUID boxB = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, status) VALUES (?, ?, "
+                + "'VP-BOX-ZAUN-B', 'claimed') RETURNING id", UUID.class, DEMO, anlageB);
+        try {
+            // (1) Dieselbe Box, ihre Werte an B gestempelt (vor einem Umzug nach A).
+            boxWertAn(anlageB, buehne.box(), 1);
+            assertThat(zuordnung(pfad, ka)).as("die Probe schlägt an").isEqualTo("nicht_zugeordnet");
+            assertThat(zuordnung(pfad, hier)).as("dieselbe Box, Werte an B").isNull();
+            root.update("DELETE FROM device_measurement_sample WHERE site_id = ?", anlageB);
+
+            // (2) Eine Box an B liest denselben Kanal der Komponente.
+            root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                    + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                    + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 60, 1, '2024-03-12', "
+                    + "'2026.09.11.1', 'test', 'pending_edge', 'live_power', 'fifteen_minute')", DEMO, anlageB, boxB,
+                    buehne.komponente(), KANAL);
+            boxWertAn(anlageB, boxB, 2);
+            assertThat(zuordnung(pfad, ka)).as("die Probe schlägt an").isEqualTo("nicht_zugeordnet");
+            assertThat(zuordnung(pfad, hier)).as("eine Box an B").isNull();
+        } finally {
+            root.update("DELETE FROM device_measurement_sample WHERE site_id = ?", anlageB);
+            root.update("DELETE FROM device_measurement_selection WHERE device_id = ?", boxB);
+            root.update("DELETE FROM device WHERE id = ?", boxB);
+            root.update("DELETE FROM site WHERE id = ?", anlageB);
+        }
+        assertThat(zuordnung(pfad, ka)).as("aufgeräumt").isNull();
+    }
+
+    private String zuordnung(String pfad, Konto k) throws Exception {
+        Antwort a = ruf(get(pfad), k);
+        assertThat(a.status()).as(k.name() + " " + a.body()).isEqualTo(200);
+        JsonNode z = MAPPER.readTree(a.body()).get("zuordnung");
+        assertThat(z).as("das Feld steht an der Route").isNotNull();
+        return z.isNull() ? null : z.asText();
+    }
+
+    /** Ein guter Wert am Zaun-Kanal, ohne Reihe (kein {@code entity_id}), an Anlage und Box. */
+    private static void boxWertAn(UUID anlage, UUID box, int folge) {
+        root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, raw_numeric, "
+                + "decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) VALUES "
+                + "('2026-09-01T08:00:00Z', ?, ?, ?, ?, 500, 500, 'good', '2026.09.11.1', ?, 'counter')", DEMO, anlage,
+                box, KANAL, folge);
+    }
+
     /** Alle Seiten zu je zwei Einträgen: jede Seite ist voll, solange „weiter“ steht. */
     private List<String> seitenweise(String pfad, Konto k) throws Exception {
         List<String> ids = new ArrayList<>();
