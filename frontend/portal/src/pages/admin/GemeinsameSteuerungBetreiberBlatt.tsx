@@ -175,6 +175,7 @@ export function GemeinsameSteuerungBetreiberBlatt({
               <Reihe titel="Anteile quittiert" zeile="revision-quittiert" spalten={spalten} zelle={(s) => s.revision.quittiert} />
               <Reihe titel="Wirksam Einspeisung" zeile="wirksam-einspeisung" spalten={spalten} zelle={(s) => s.wirksam.einspeisung} />
               <Reihe titel="Wirksam Bezug" zeile="wirksam-bezug" spalten={spalten} zelle={(s) => s.wirksam.bezug} />
+              <Reihe titel="Verlust gestern" zeile="verlust-gestern" spalten={spalten} zelle={(s) => s.verlustGestern} />
             </tbody>
           </table>
         </div>

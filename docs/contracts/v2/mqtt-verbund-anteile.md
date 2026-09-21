@@ -84,7 +84,11 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   gegen die ganze Grenze — ihr Abregeln ist nie Anteils-Verlust. **Belastbarkeit:** die verfügbare Erzeugung einer
   abgeregelten PV misst niemand (kein Register, keine Prognose auf der Box); die Box nimmt den höchsten GEMESSENEN
   PV-Wert der letzten 15 min — `kwh` ist eine Untergrenze, bei einem festen Anteil unter steigender Sonne nahe 0;
-  `gebunden_s` (wie lange der Anteil die Erzeuger hielt) ist exakt. Ohne PV-Messung wird nichts gezählt. Der Tag
+  `gebunden_s` (wie lange der Anteil die Erzeuger hielt) ist exakt. Ohne PV-Messung wird nichts gezählt. Die
+  SCHÄTZUNG rechnet die Cloud daneben (`uems/AnteilVerlustSchaetzung`, `schaetzung_kwh` · `schaetzung_grundlage`):
+  PV-Prognose der Anlage × kWp-Teil der Box − gemessene PV der Box, die Summe `gebunden_s` in die Viertelstunden mit
+  der höchsten verfügbaren Erzeugung gelegt (Näherung, die Box meldet keine Zeitfenster); der Vertrag der Box ändert
+  sich dadurch nicht. Der Tag
   liegt atomar auf der Platte (`anteil-verlust.json`, höchstens minütlich geschrieben), ein Neustart zählt weiter;
   Übertragung im Herzschlag `anteil_verlust` mit laufendem Tag und abgeschlossenem Vortag
   ([Plan-Quittung](./mqtt-plan-result.md#spiegel-im-herzschlag-y3)); die Cloud schreibt je Box und Tag das Größere

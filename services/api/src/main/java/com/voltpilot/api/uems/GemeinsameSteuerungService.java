@@ -233,7 +233,8 @@ public class GemeinsameSteuerungService {
     }
 
     private GemeinsameSteuerungDto.VerlustSumme summe(AnteilVerlustRepository.Summe s) {
-        return new GemeinsameSteuerungDto.VerlustSumme(s.kwh(), s.gebundenS(), s.tage());
+        return new GemeinsameSteuerungDto.VerlustSumme(s.kwh(), s.gebundenS(), s.tage(), s.schaetzungKwh(),
+                s.tageGeschaetzt());
     }
 
     /** Die Verbund-Bilanz für IP-24: jüngster gerechneter Tag und seit wann derselbe Zustand steht (IP-12). */
