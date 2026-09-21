@@ -201,6 +201,71 @@ class SprungprobeApiTest {
         assertThat(s.body().path("zustand").asText()).isEqualTo("anteile_aktiv");
     }
 
+    // ============================================================================ Betreiber-Blatt (IP-24)
+
+    /**
+     * IP-24: {@code GET /api/v1/admin/…/gemeinsame-steuerung} — nur die Plattform, leer ohne Gemeinsame Steuerung,
+     * fremde Anlage 404; je Box Fähigkeit gemeldet/fehlt und „nicht gemeldet“ statt einer Null; das Protokoll mit
+     * Abweichung je Sprung, jüngste Probe zuerst.
+     */
+    @Test
+    void betreiberBlattZeigtBoxenProtokollUndZweischritt() throws Exception {
+        Welt w = welt();
+        assertThat(kunde(w, get(w.admin())).status()).isEqualTo(403);
+        assertThat(plattform(w, get("/api/v1/admin/sites/" + UUID.randomUUID() + "/gemeinsame-steuerung")).status())
+                .isEqualTo(404);
+        Antwort leer = plattform(w, get(w.admin()));
+        assertThat(leer.status()).isEqualTo(200);
+        assertThat(leer.body().path("boxen")).isEmpty();
+        assertThat(leer.body().path("zweischritt").isNull()).isTrue();
+
+        vorbereitet(w);
+        root.update("UPDATE device SET supports = '[\"steuerungsverbund_anteil\"]'::jsonb, supports_reported_at = now() "
+                + "WHERE id = ?", w.e1());
+        Instant t0 = Instant.now().truncatedTo(ChronoUnit.SECONDS).plus(2, ChronoUnit.MINUTES);
+        probe(w, w.e4(), t0, -60, -30, "erzeugung_senken", 55, 25);
+
+        JsonNode blatt = plattform(w, get(w.admin())).body();
+        assertThat(blatt.path("boxen")).hasSize(2);
+        JsonNode e1 = box(blatt, w.e1());
+        JsonNode e4 = box(blatt, w.e4());
+        assertThat(e1.path("rolle").asText()).isEqualTo("fuehrt");
+        assertThat(e1.path("faehigkeit").path("steuerungsverbund_anteil").asText()).isEqualTo("gemeldet");
+        assertThat(e4.path("faehigkeit").path("steuerungsverbund_anteil").asText()).isEqualTo("fehlt");
+        assertThat(e4.path("messpunkt").path("data_source_id").asText()).isEqualTo(w.dq10().toString());
+        assertThat(e4.path("messpunkt").path("zustand").asText()).as("keine Meldung ist keine Null")
+                .isEqualTo("nicht_gemeldet");
+        assertThat(e4.path("waechter").isNull()).as("ohne Herzschlag-Block keine Stufe").isTrue();
+        assertThat(e4.path("anteile").path("wirksam_kw").isNull()).isTrue();
+        assertThat(e4.path("plan").path("veroeffentlicht").isNull()).isTrue();
+        assertThat(blatt.path("zweischritt").isNull()).as("vor dem Scharfschalten kein Anteils-Dokument").isTrue();
+        JsonNode protokoll = blatt.path("sprungproben");
+        assertThat(protokoll).hasSize(1);
+        assertThat(protokoll.get(0).path("probe").path("box_id").asText()).isEqualTo(w.e4().toString());
+        assertThat(protokoll.get(0).path("probe").path("urteil").asText()).isEqualTo("bestanden");
+        assertThat(protokoll.get(0).path("spruenge")).hasSize(2);
+        assertThat(protokoll.get(0).path("spruenge").get(0).path("abweichung_kw").decimalValue())
+                .isEqualByComparingTo("0");
+
+        probe(w, w.e1(), t0.plusSeconds(600), -60, -30, "erzeugung_senken", 90, 60);
+        assertThat(plattform(w, post(w.admin() + "/scharfschalten")).status()).isEqualTo(200);
+        JsonNode scharf = plattform(w, get(w.admin())).body();
+        assertThat(scharf.path("sprungproben")).hasSize(2);
+        assertThat(scharf.path("sprungproben").get(0).path("probe").path("box_id").asText())
+                .as("jüngste zuerst").isEqualTo(w.e1().toString());
+        // der Zweischritt selbst: SteuerungsverbundAnteilDienstTest (R12, „1 von 2“) — diese Welt leitet keine Anteile ab
+        assertThat(box(scharf, w.e4()).path("anteile").path("quittiert").isNull()).isTrue();
+    }
+
+    private static JsonNode box(JsonNode blatt, UUID box) {
+        for (JsonNode b : blatt.path("boxen")) {
+            if (b.path("box_id").asText().equals(box.toString())) {
+                return b;
+            }
+        }
+        throw new AssertionError("Box fehlt im Blatt: " + box);
+    }
+
     // ============================================================================ R19 → bleibt S1
 
     /** R19, erste Form: Box Verwaltung hängt an einem anderen Anschluss — am Netzzähler NA-1 ist nichts zu sehen. */

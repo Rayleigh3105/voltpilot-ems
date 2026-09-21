@@ -6893,6 +6893,33 @@ export interface UemsGemeinsameSteuerungZustand {
   mitglieder?: UemsGemeinsameSteuerungMitglied[];
   naechster_schritt?: 'beobachtet' | 'anteile_aktiv' | 'vom_betreiber_angehalten' | null;
   fehlt?: UemsGemeinsameSteuerungBefund[];
+  /** Das Betreiber-Blatt (IP-24) liest dazu Epoche, Bilanz (IP-12) und Vorbehalt (IP-13). */
+  epoche?: number | null;
+  bilanz?: UemsVerbundBilanz | null;
+  vorbehalt?: UemsVerbundVorbehalt | null;
+}
+
+/** Die Verbund-Bilanz (IP-12): Urteil des jüngsten gerechneten Tages. */
+export interface UemsVerbundBilanz {
+  zustand: 'plausibel' | 'unplausibel' | 'unbekannt';
+  tag: string;
+  seit?: string | null;
+  grund?: string | null;
+  gerechnet_am?: string | null;
+}
+
+export interface UemsVerbundVorbehaltRichtung {
+  kw: number | null;
+  herkunft: 'erklaert' | 'gemessen';
+  seit?: string | null;
+  zweischritt?: string | null;
+}
+
+/** Der Vorbehalt (IP-13) je Richtung, dazu ein offener Vorschlag zum Senken. */
+export interface UemsVerbundVorbehalt {
+  einspeisung: UemsVerbundVorbehaltRichtung;
+  bezug: UemsVerbundVorbehaltRichtung;
+  vorschlag?: { richtung: UemsSteuerRichtung; alt_kw: number; neu_kw: number; messtage: number } | null;
 }
 
 export type UemsSteuerRichtung = 'einspeisung' | 'bezug';
@@ -6902,10 +6929,92 @@ export interface UemsGemeinsameSteuerungMitglied {
   box_id: string;
   rolle: 'fuehrt' | 'steuert_mit';
   messpunkt_id?: string | null;
+  /** R17: wann der Betreiber das Mitglied bestätigt hat; `null` = noch nicht (Box-Tausch). */
+  bestaetigt_am?: string | null;
   vorgabe_signal: UemsDreiwert;
   verbraucher14a: UemsDreiwert;
   /** IP-22: `kwh` ist eine UNTERGRENZE, `gebunden_s` exakt; `null`, solange die Box keinen Tag gemeldet hat. */
   anteil_verlust?: { heute?: UemsVerlustSumme | null; monat?: UemsVerlustSumme | null } | null;
+  /** IP-21: die jüngste Sprungprobe der Box; `null` ohne Probe. */
+  sprungprobe?: UemsSprungprobe | null;
+}
+
+/** Eine Sprungprobe (IP-21). `ausgeloest` = der Bericht steht aus; `nicht_auswertbar` ist kein Bestanden. */
+export interface UemsSprungprobe {
+  probe_id: string;
+  box_id: string;
+  art: 'erzeugung_senken' | 'verbrauch_senken';
+  sprung_kw: number;
+  dauer_s: number;
+  wiederholungen: number;
+  ausgeloest_am: string;
+  urteil: 'ausgeloest' | 'bestanden' | 'nicht_bestanden' | 'abgebrochen' | 'nicht_auswertbar';
+  grund?: string | null;
+  ausgewertet_am?: string | null;
+  entwertet_am?: string | null;
+  gilt: boolean;
+}
+
+/**
+ * `GET /api/v1/admin/sites/{siteId}/gemeinsame-steuerung` (AP-15 IP-24, nur Plattform-Rolle): je Box, was nur der
+ * Betreiber sieht. `null` heißt „nicht gemeldet“ — nie eine Null.
+ */
+export interface UemsBetreiberblatt {
+  boxen: UemsBoxStand[];
+  zweischritt?: UemsZweischritt | null;
+  sprungproben: UemsSprungprobeProtokoll[];
+}
+
+export type UemsFaehigkeitHerkunft = 'gemeldet' | 'versions_tabelle' | 'fehlt';
+
+export interface UemsRevision {
+  epoche: number;
+  revision: number;
+  am?: string | null;
+}
+
+export interface UemsPlanZeile {
+  plan_id: string;
+  erzeugt_am?: string | null;
+  am?: string | null;
+  urteil?: string | null;
+  grund?: string | null;
+}
+
+export interface UemsBoxStand {
+  box_id: string;
+  rolle: 'fuehrt' | 'steuert_mit';
+  zuletzt_gesehen?: string | null;
+  faehigkeit: { steuerungsverbund_anteil: UemsFaehigkeitHerkunft; sprungprobe: UemsFaehigkeitHerkunft };
+  messpunkt?: { data_source_id: string; zustand: 'ok' | 'stale' | 'never' | 'nicht_gemeldet'; gelesen_am?: string | null } | null;
+  waechter?: { einspeisung?: string | null; bezug?: string | null } | null;
+  plan: { veroeffentlicht?: UemsPlanZeile | null; angenommen?: UemsPlanZeile | null };
+  anteile: { gesendet?: UemsRevision | null; quittiert?: UemsRevision | null; wirksam_kw?: { einspeisung?: number; bezug?: number } | null };
+}
+
+/** Das jüngste Anteils-Dokument; der Zielstand gilt erst mit `schritt = ziel` und leerem `wartet_auf`. */
+export interface UemsZweischritt {
+  schritt: 'uebergang' | 'ziel';
+  epoche: number;
+  revision: number;
+  am?: string | null;
+  bestaetigt: string[];
+  wartet_auf: string[];
+}
+
+export interface UemsSprungMessung {
+  eigene_kw?: number | null;
+  erwartet_kw?: number | null;
+  gesehen_kw?: number | null;
+  toleranz_kw?: number | null;
+  abweichung_kw?: number | null;
+  urteil?: string | null;
+  grund?: string | null;
+}
+
+export interface UemsSprungprobeProtokoll {
+  probe: UemsSprungprobe;
+  spruenge: UemsSprungMessung[];
 }
 
 export interface UemsVerlustSumme {
@@ -8511,6 +8620,20 @@ export const api = {
     request<unknown>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/komponenten/${komponenteId}/rueckfall`,
       { method: 'PUT', body: JSON.stringify(body) }),
   /** Anhalten · Fortsetzen (Recht `steuerung.starten_beenden`); Scharfschalten ist nie eine Kundenroute (I5). */
+  /** Betreiber-Blatt (IP-24): nur die Plattform-Rolle; die Handgriffe unter `/admin` (I4). */
+  gemeinsameSteuerungBlatt: (siteId: string) =>
+    request<UemsBetreiberblatt>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung`),
+
+  gemeinsameSteuerungBetreiber: (siteId: string, schritt: 'scharfschalten' | 'fortsetzen') =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/${schritt}`, { method: 'POST' }),
+
+  gemeinsameSteuerungBestaetigen: (siteId: string, boxId: string) =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/mitglieder/${boxId}/bestaetigen`, { method: 'POST' }),
+
+  gemeinsameSteuerungSprungprobe: (siteId: string, body: { box_id: string; art: UemsSprungprobe['art']; sprung_kw: number }) =>
+    request<UemsSprungprobe>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/sprungprobe`,
+      { method: 'POST', body: JSON.stringify(body) }),
+
   gemeinsameSteuerungSchritt: (siteId: string, schritt: 'anhalten' | 'fortsetzen') =>
     request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/${schritt}`, { method: 'POST' }),
 

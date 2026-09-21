@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.uems.GemeinsameSteuerungAbgelehnt;
+import com.voltpilot.api.uems.GemeinsameSteuerungBoxStand;
 import com.voltpilot.api.uems.GemeinsameSteuerungService;
 import com.voltpilot.api.uems.SprungprobeDienst;
 import com.voltpilot.api.uems.SprungprobeRegel;
@@ -15,6 +16,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,7 +26,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 /**
  * Die Handgriffe des Betreibers an der Gemeinsamen Steuerung (UEMS AP-15 IP-5, Konzept §4.9 I4/I5, §5.3, §5.7, Kasten
  * W9): scharfschalten, fortsetzen (auch nach einem Anhalten des Betreibers), ein Mitglied bestätigen, (IP-13) den
- * Vorschlag zum Senken des Vorbehalts freigeben und (IP-21) die Sprungprobe je Box auslösen. NUR die Plattform-Rolle — ein Kundenkonto, auch der
+ * Vorschlag zum Senken des Vorbehalts freigeben und (IP-21) die Sprungprobe je Box auslösen; (IP-24) das Betreiber-Blatt lesen. NUR die Plattform-Rolle — ein Kundenkonto, auch der
  * Kundenadministrator, bekommt auf {@code /api/v1/admin/**} 403 (SecurityConfig + {@code @PreAuthorize}); eine
  * Kundenroute wäre für die Plattform am Umschalter ohnehin offen, deshalb liegen die Schritte nur hier.
  *
@@ -39,10 +41,23 @@ public class AdminGemeinsameSteuerungController {
 
     private final GemeinsameSteuerungService dienst;
     private final SprungprobeDienst sprungproben;
+    private final GemeinsameSteuerungBoxStand boxStand;
 
-    public AdminGemeinsameSteuerungController(GemeinsameSteuerungService dienst, SprungprobeDienst sprungproben) {
+    public AdminGemeinsameSteuerungController(GemeinsameSteuerungService dienst, SprungprobeDienst sprungproben,
+            GemeinsameSteuerungBoxStand boxStand) {
         this.dienst = dienst;
         this.sprungproben = sprungproben;
+        this.boxStand = boxStand;
+    }
+
+    /**
+     * Recht: {@code plattform.betrieb} — lesend: das Betreiber-Blatt (IP-24, §5.3/§5.4) je Box — Fähigkeit, Messpunkt
+     * und sein Alter, Wächter-Stufe, {@code plan_id} veröffentlicht/angenommen, Anteils-Revision gesendet/quittiert,
+     * wirksame Anteile —, der Zweischritt und alle Sprungprobe-Protokolle. Ohne Gemeinsame Steuerung leer.
+     */
+    @GetMapping
+    public GemeinsameSteuerungDto.Betreiberblatt blatt(@PathVariable UUID siteId) {
+        return boxStand.blatt(siteId);
     }
 
     /**
