@@ -598,6 +598,13 @@ class OptimizationInput:
     #: ``initial_soc_kwh`` ist dann ein reiner MODELL-PLATZHALTER, der den
     #: Solver nie verlaesst (siehe :meth:`SchedulePlan.soc_pct`).
     soc_source: str = SOC_SOURCE_GEMESSEN
+    #: Die mitsteuernden Boxen einer Anlage in Stufe ``anteile_aktiv`` (UEMS
+    #: AP-15 IP-14, Regel P4): je Box ihr Anteil als Nebenbedingung des Laufs,
+    #: siehe :mod:`voltpilot_optimization.verbund`. ``()`` (die Vorgabe) = kein
+    #: Verbund, also KEIN Term und ein byte-identischer Plan - jede Ein-Box-
+    #: Anlage, jede Anlage ohne scharfe Gemeinsame Steuerung und jeder
+    #: Aufrufer, der seine Eingaben selbst baut.
+    verbund: tuple = ()
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -606,6 +613,11 @@ class OptimizationInput:
         for name in ("prices_eur_mwh", "load_kw", "pv_kw"):
             if len(getattr(self, name)) != n:
                 raise ValueError(f"{name} must have one entry per slot ({n})")
+        for box in self.verbund:
+            if len(box.pv_kw) != n:
+                raise ValueError(f"verbund pv_kw must have one entry per slot ({n})")
+            if box.einspeisung_kw < 0 or box.bezug_kw < 0:
+                raise ValueError("verbund shares must be >= 0")
         for name in ("import_price_eur_mwh", "export_value_eur_mwh"):
             series = getattr(self, name)
             if series is not None and len(series) != n:

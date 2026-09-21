@@ -229,6 +229,11 @@ class _SitesCursor:
             assert "LEFT JOIN netzanschluss_grenze g" in sql
             self._rows = self._grenz_rows
             return
+        if "FROM steuerungsverbund v" in sql:
+            # UEMS AP-15 IP-14 (load_verbund): keine Anlage in `anteile_aktiv`.
+            assert "v.stufe = 'anteile_aktiv'" in sql
+            self._rows = []
+            return
         assert "FROM asset" in sql
         assert "a.wear_cost_ct_per_kwh" in sql
         assert "s.tarif_art" in sql  # the P1 pricing master data is read too
