@@ -75,6 +75,31 @@ Datei selbst nach.
   Nachfolge-Anteile bleiben OFFEN — ab 2027 ist MS-03 ehrlich „nicht verteilt“, nie still auf
   9010/9020 umgehängt.
 
+## Was die Fassung 1.5 dazugelegt hat (21.09.2026, AP-15 IP-1, E8 = A)
+
+Rein ADDITIV: ohne ihre Zusätze ist die Datei Zeichen für Zeichen 1.4 (Fingerabdruck in beiden
+Zwillingen). Neu ist die **gemeinsame Steuerung** von AN-1 — zwei steuernde Boxen hinter NA-1:
+
+- **Box E-4 „Box Verwaltung“** (Heimat AN-1, `fuehrend_fuer: null`, LAN 192.168.40.0/24) ab
+  03.05.2027, Nachfolgerin **E-4′** ab dem Box-Tausch 12.10.2027 (R17; Seriennummer frei gewählt).
+  DQ-8 (PV-Wechselrichter, Steuerquelle), DQ-9 (sechs Ladepunkte OCPP, Steuerquelle), DQ-10
+  (Abgangszähler = eigener Messpunkt), Geräte GR-11 … GR-18, Komponenten K-12, K-13.1 … K-13.6, K-14.
+- **„Höchstens eine Steuerquelle je Anlage“ gilt nur OHNE gemeinsame Steuerung.** Mit ihr liest
+  jede Steuerquelle eine Mitglied-Box mit Heimat in der Anlage.
+- **`netzanschluss_grenzen[]`** (tagesgenau): NA-1 ab 03.05.2027 Einspeisung 100, Bezug 550 kW.
+- **`gemeinsame_steuerungen[]`** V-1: E-1 `fuehrt` (Messpunkt DQ-2), E-4/E-4′ `steuert_mit`
+  (DQ-10), Stufen S0/S2/S3 (kein S4 — nicht gebaut), Auslegung 40/60 und 0/77 kW, Vorbehalt 473
+  = 430 × 1,1. **`geraete_rueckfaelle[]`** je steuerbarer Komponente und Richtung.
+- **`abnahmefaelle_ap15`**: R1 … R22 mit „gegeben“ wörtlich aus AP-15 §7; R16 `stand: entwurf`.
+- ⚠ **Zeitachsen-Zeilen mit `gemeinsame_steuerung: V-1`** verlängern die Zeitachse nur für die
+  gemeinsame Steuerung. Wer den Horizont der übrigen Welt misst (Fortschreibungen der
+  Messstellen-Vektoren), nimmt genau diese Zeilen aus — ein Wächterfall bricht, sobald eine davon
+  eine Messstelle, Datenquelle oder Bezugsgröße der Messstellen-Vektoren nennt.
+- ⚠ **Bestands-Spiegel nehmen die Objekte der `steuert_mit`-Boxen aus** (benannte Regel):
+  `src/test/datenquellenFixtures.test.ts` (Bühne, fällt mit AP-15 IP-23 weg) und
+  `MessstelleRegisterApiTest` (legt nur den Bestand an). `UemsDatenquelleMigrationTest` leitet
+  seine Kennzeichen aus der Datei ab und legt DQ-8 … DQ-10 mit an.
+
 ## Die Prüfungen
 
 Die Zwillinge Java `uems/UemsReferenzunternehmenVectorsTest` und TS
@@ -104,6 +129,11 @@ Seit Fassung 1.2 zusätzlich (beide Zwillinge, dieselben Prüfungen):
 - **Jede Bezugsgröße nutzt das geschlossene Vokabular** von `bezugsdaten-vectors.json`
   (`einheiten`, `periode_art`, `wertart`, `geltung_art`); `formel_typ` das von
   `messstelle-formel.md` §0.
+
+Seit Fassung 1.5 zusätzlich: Steuerquellen je Anlage (s. o.), die gemeinsame Steuerung hängt an
+Anlage, Netzanschluss und führender Box, die Auslegung rechnet aus Grenze, Grundlast und
+Rückfällen, jeder Rückfall hängt an einer steuerbaren Komponente, und die „gegeben“-Werte der
+Abnahmefälle sind die Objekte der Datei.
 
 Gegen die Datei prüfen außerdem die Tests der Messstellen, der Herkunft, der Datenquellen, der
 Rechte und die Migrationstests `UemsStandortMigrationTest`, `UemsOrteMigrationTest` und

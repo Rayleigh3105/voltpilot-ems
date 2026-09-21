@@ -28,9 +28,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -114,12 +116,17 @@ class UemsReferenzunternehmenVectorsTest {
         assertThat(d.get("prozesse")).as("Prozesse").hasSize(6);
         assertThat(d.get("netzanschluesse")).as("Netzanschlüsse").hasSize(3);
         assertThat(d.get("anlagen")).as("Anlagen").hasSize(3);
-        assertThat(d.get("datenquellen")).as("Datenquellen").hasSize(7);
-        assertThat(d.get("geraete")).as("Geräte").hasSize(10);
+        // Fassung 1.5 (AP-15 E8): DQ-8 … DQ-10 mit GR-11 … GR-18 an Box Verwaltung.
+        assertThat(d.get("datenquellen")).as("Datenquellen").hasSize(10);
+        assertThat(d.get("geraete")).as("Geräte").hasSize(18);
         assertThat(d.get("messstellen")).as("Messstellen").hasSize(22);
         // Fassung 1.3 (AP-11 E13): BZ-6 und BZ-7 als Gebäude-Stückzahlen, fünf Kennzahlen.
         assertThat(d.get("bezugsgroessen")).as("Bezugsgrößen").hasSize(7);
         assertThat(d.get("kennzahlen")).as("Kennzahlen").hasSize(5);
+        // Fassung 1.5 (AP-15 E8): eine gemeinsame Steuerung mit Grenzen an NA-1, die Abnahmefälle R1 … R22.
+        assertThat(d.get("netzanschluss_grenzen")).as("Netzanschluss-Grenzen").hasSize(1);
+        assertThat(d.get("gemeinsame_steuerungen")).as("Gemeinsame Steuerungen").hasSize(1);
+        assertThat(d.at("/abnahmefaelle_ap15/faelle")).as("Abnahmefälle AP-15").hasSize(22);
 
         // Boxen, Komponenten und Kostenstellen tragen auch Objekte, die erst
         // NACH der Momentaufnahme entstehen (Nachfolger-Box E-2′, Energiekarte
@@ -1210,6 +1217,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung13IstEsDieFassung12() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung15(d);
         ohneFassung14(d);
         assertThat(d.path("version").asText()).isEqualTo("1.3");
         d.put("version", "1.2");
@@ -1339,6 +1347,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung14IstEsDieFassung13() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung15(d);
         ohneFassung14(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.3").isEqualTo(FASSUNG_1_3_SHA256);
     }
@@ -1481,6 +1490,440 @@ class UemsReferenzunternehmenVectorsTest {
         assertThat(fehler).isEmpty();
     }
 
+    // ------------------------------------------------------- Fassung 1.5 (AP-15 IP-1, E8)
+
+    /**
+     * Der Fingerabdruck der Fassung 1.4, {@link #kanonisch} geschrieben und aus {@code origin/uems}
+     * vor AP-15 IP-1 berechnet (21.09.2026). Der TS-Zwilling trägt denselben Wert.
+     */
+    static final String FASSUNG_1_4_SHA256 = "a32f92053787fb6cdbe31c5c1c154179ccfadd2bc330e4c8c3b0061a768000a4";
+
+    /** So viele Zeilen hatte {@code _comment} in Fassung 1.4 — Fassung 1.5 hängt nur an. */
+    static final int KOMMENTAR_ZEILEN_1_4 = 89;
+
+    /** Die Datenquellen, die Fassung 1.5 der Box Verwaltung gibt (AP-15 E8). */
+    private static final Set<String> QUELLEN_1_5 = Set.of("DQ-8", "DQ-9", "DQ-10");
+
+    /**
+     * Nimmt GENAU die Zusätze der Fassung 1.5 heraus — Box E-4/E-4′, DQ-8 … DQ-10 mit ihren Geräten, Komponenten
+     * und Zuständigkeiten, die Blöcke {@code netzanschluss_grenzen}, {@code gemeinsame_steuerungen},
+     * {@code geraete_rueckfaelle} und {@code abnahmefaelle_ap15}, die sechs Zeilen der Zeitachse aus AP-15, die
+     * Herkunft {@code fassung_1_5} und die angehängten Kommentarzeilen — und setzt Fassung und Stand auf 1.4 zurück.
+     */
+    static void ohneFassung15(ObjectNode d) {
+        assertThat(d.path("version").asText()).isEqualTo("1.5");
+        d.put("version", "1.4");
+        d.put("stand", "2026-09-15");
+        ArrayNode kommentar = (ArrayNode) d.get("_comment");
+        assertThat(kommentar.size()).as("_comment wächst nur hinten").isGreaterThan(KOMMENTAR_ZEILEN_1_4);
+        while (kommentar.size() > KOMMENTAR_ZEILEN_1_4) {
+            kommentar.remove(kommentar.size() - 1);
+        }
+        assertThat(((ObjectNode) d.get("_herkunft")).remove("fassung_1_5")).as("_herkunft.fassung_1_5").isNotNull();
+        for (String block : List.of("netzanschluss_grenzen", "gemeinsame_steuerungen", "geraete_rueckfaelle",
+                "abnahmefaelle_ap15")) {
+            assertThat(d.remove(block)).as(block).isNotNull();
+        }
+        Set<String> geraete = new LinkedHashSet<>();
+        kinder(d.get("geraete")).stream().filter(g -> QUELLEN_1_5.contains(g.get("datenquelle").asText()))
+                .forEach(g -> geraete.add(g.get("kennzeichen").asText()));
+        entferne((ArrayNode) d.get("boxen"), b -> List.of("E-4", "E-4′").contains(b.path("kennzeichen").asText()), 2);
+        entferne((ArrayNode) d.get("datenquellen"), q -> QUELLEN_1_5.contains(q.path("kennzeichen").asText()), 3);
+        entferne((ArrayNode) d.get("geraete"), g -> geraete.contains(g.path("kennzeichen").asText()), 8);
+        entferne((ArrayNode) d.get("komponenten"), k -> geraete.contains(k.path("geraet").asText()), 8);
+        entferne((ArrayNode) d.get("zuordnungen"), z -> QUELLEN_1_5.contains(z.path("von").asText()), 6);
+        entferne((ArrayNode) d.get("zeitachse"), z -> z.hasNonNull("gemeinsame_steuerung"), 6);
+    }
+
+    /** Diff-Test (AP-15 IP-1): ohne ihre Zusätze ist die Datei Zeichen für Zeichen die Fassung 1.4. */
+    @Test
+    void ohneDieZusaetzeDerFassung15IstEsDieFassung14() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ohneFassung15(d);
+        assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.4").isEqualTo(FASSUNG_1_4_SHA256);
+    }
+
+    /**
+     * Fassung 1.5 (AP-15 E8): „höchstens eine Steuerquelle je Anlage“ gilt nur noch OHNE gemeinsame Steuerung. Zu
+     * jedem Zeitpunkt, an dem eine Zuständigkeit oder Mitgliedschaft beginnt: hat die Anlage dann keine gemeinsame
+     * Steuerung, liest höchstens EINE ihrer Steuerquellen; hat sie eine, liest jede Steuerquelle eine Mitglied-Box mit
+     * Heimat in dieser Anlage. Mehr als eine Steuerquelle hat nur eine Anlage mit gemeinsamer Steuerung.
+     */
+    @Test
+    void hoechstensEineSteuerquelleJeAnlageOhneGemeinsameSteuerung() throws Exception {
+        JsonNode d = daten();
+        Map<String, List<JsonNode>> zustaendig = zuordnungenNach(d, "datenquelle_box");
+        Map<String, JsonNode> boxen = nachKennzeichen(d.get("boxen"));
+        List<String> fehler = new ArrayList<>();
+        Set<String> mehrAlsEine = new TreeSet<>();
+        Set<String> gemeinsam = new TreeSet<>();
+        for (JsonNode a : kinder(d.get("anlagen"))) {
+            String an = a.get("kennzeichen").asText();
+            List<JsonNode> quellen = kinder(d.get("datenquellen")).stream()
+                    .filter(q -> an.equals(q.get("anlage").asText()) && q.get("steuerquelle").asBoolean()).toList();
+            List<JsonNode> mitglieder = kinder(d.get("gemeinsame_steuerungen")).stream()
+                    .filter(v -> an.equals(v.get("anlage").asText()))
+                    .flatMap(v -> kinder(v.get("mitglieder")).stream()).toList();
+            if (quellen.size() > 1) {
+                mehrAlsEine.add(an);
+            }
+            if (!mitglieder.isEmpty()) {
+                gemeinsam.add(an);
+            }
+            Set<OffsetDateTime> stichzeiten = new TreeSet<>();
+            for (JsonNode q : quellen) {
+                zustaendig.getOrDefault(q.get("kennzeichen").asText(), List.of())
+                        .forEach(z -> stichzeiten.add(zeit(z.get("gueltig_ab").asText())));
+            }
+            mitglieder.forEach(m -> stichzeiten.add(zeit(m.get("gueltig_ab").asText())));
+            for (OffsetDateTime t : stichzeiten) {
+                List<String> mitgliedBoxen = mitglieder.stream().filter(m -> gilt(m, t))
+                        .map(m -> m.get("box").asText()).toList();
+                List<String> lesend = new ArrayList<>();
+                for (JsonNode q : quellen) {
+                    String kz = q.get("kennzeichen").asText();
+                    for (JsonNode z : zustaendig.getOrDefault(kz, List.of())) {
+                        if (!gilt(z, t)) {
+                            continue;
+                        }
+                        String box = z.get("nach").asText();
+                        lesend.add(kz);
+                        if (!mitgliedBoxen.isEmpty() && (!mitgliedBoxen.contains(box)
+                                || !an.equals(boxen.get(box).get("heimat_anlage").asText()))) {
+                            fehler.add(an + " " + t + ": Steuerquelle " + kz + " liest " + box
+                                    + " — kein Mitglied der gemeinsamen Steuerung mit Heimat in der Anlage");
+                        }
+                    }
+                }
+                if (mitgliedBoxen.isEmpty() && lesend.size() > 1) {
+                    fehler.add(an + " " + t + ": " + lesend + " — mehr als eine Steuerquelle ohne gemeinsame Steuerung");
+                }
+            }
+        }
+        assertThat(fehler).isEmpty();
+        assertThat(mehrAlsEine).as("Anlagen mit mehr als einer Steuerquelle").isNotEmpty().isSubsetOf(gemeinsam);
+    }
+
+    /**
+     * Fassung 1.5: eine gemeinsame Steuerung hängt an ihrer Anlage und deren Netzanschluss. Zu jedem Zeitpunkt führt
+     * genau ein Mitglied — die führende Box der Anlage —; jedes Mitglied hat seine Heimat in der Anlage, ist beim
+     * Eintritt in Betrieb und liest seinen Messpunkt (eine Datenquelle der Anlage, keine Steuerquelle) selbst. Die
+     * Stufen steigen, Code und Stufe passen; der Netzanschluss hat ab der ersten Stufe eine Grenze, deren Bezug nicht
+     * über der vereinbarten Leistung liegt.
+     */
+    @Test
+    void dieGemeinsameSteuerungHaengtAnIhrerAnlage() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> anlagen = nachKennzeichen(d.get("anlagen"));
+        Map<String, JsonNode> boxen = nachKennzeichen(d.get("boxen"));
+        Map<String, JsonNode> quellen = nachKennzeichen(d.get("datenquellen"));
+        Map<String, JsonNode> na = nachKennzeichen(d.get("netzanschluesse"));
+        Map<String, List<JsonNode>> zustaendig = zuordnungenNach(d, "datenquelle_box");
+        Map<String, String> stufenCode = Map.of("S0", "erklaert", "S1", "beobachtet", "S2", "geprueft",
+                "S3", "anteile_aktiv");
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode v : kinder(d.get("gemeinsame_steuerungen"))) {
+            String kz = v.get("kennzeichen").asText();
+            String an = v.get("anlage").asText();
+            String netz = v.get("netzanschluss").asText();
+            if (!netz.equals(anlagen.get(an).get("netzanschluss").asText())) {
+                fehler.add(kz + ": " + netz + " ist nicht der Netzanschluss von " + an);
+            }
+            List<JsonNode> mitglieder = kinder(v.get("mitglieder"));
+            for (JsonNode m : mitglieder) {
+                String box = m.get("box").asText();
+                String punkt = m.get("messpunkt").asText();
+                OffsetDateTime ab = zeit(m.get("gueltig_ab").asText());
+                if (!an.equals(boxen.get(box).get("heimat_anlage").asText())) {
+                    fehler.add(kz + ": " + box + " hat ihre Heimat nicht in " + an);
+                }
+                if (!laeuft(boxen.get(box), ab, "in_betrieb_ab", "ausgebaut_am")) {
+                    fehler.add(kz + ": " + box + " ist beim Eintritt nicht in Betrieb");
+                }
+                if (!an.equals(quellen.get(punkt).get("anlage").asText())
+                        || quellen.get(punkt).get("steuerquelle").asBoolean()) {
+                    fehler.add(kz + ": " + punkt + " ist kein Messpunkt in " + an);
+                }
+                if (zustaendig.getOrDefault(punkt, List.of()).stream()
+                        .noneMatch(z -> gilt(z, ab) && box.equals(z.get("nach").asText()))) {
+                    fehler.add(kz + ": " + box + " liest ihren Messpunkt " + punkt + " nicht selbst");
+                }
+                if ("fuehrt".equals(m.get("rolle").asText()) && !an.equals(text(boxen.get(box), "fuehrend_fuer"))) {
+                    fehler.add(kz + ": " + box + " führt, ist aber nicht die führende Box von " + an);
+                }
+                long fuehrend = mitglieder.stream()
+                        .filter(x -> gilt(x, ab) && "fuehrt".equals(x.get("rolle").asText())).count();
+                if (fuehrend != 1) {
+                    fehler.add(kz + " " + ab + ": " + fuehrend + " führende Mitglieder statt einem");
+                }
+            }
+            List<JsonNode> stufen = kinder(v.get("stufen"));
+            for (int i = 0; i < stufen.size(); i++) {
+                JsonNode s = stufen.get(i);
+                if (!s.get("code").asText().equals(stufenCode.get(s.get("stufe").asText()))) {
+                    fehler.add(kz + ": Stufe " + s.get("stufe").asText() + " heißt nicht " + s.get("code").asText());
+                }
+                if (i > 0 && (s.get("stufe").asText().compareTo(stufen.get(i - 1).get("stufe").asText()) <= 0
+                        || !tag(s.get("ab").asText()).isAfter(tag(stufen.get(i - 1).get("ab").asText())))) {
+                    fehler.add(kz + ": die Stufen steigen nicht");
+                }
+            }
+            LocalDate beginn = tag(stufen.get(0).get("ab").asText());
+            if (!beginn.equals(tagVon(mitglieder.stream().map(m -> zeit(m.get("gueltig_ab").asText()))
+                    .min(Comparator.naturalOrder()).orElseThrow(), zone(d)))) {
+                fehler.add(kz + ": die erste Stufe beginnt nicht mit den ersten Mitgliedern");
+            }
+            JsonNode grenze = grenzeAm(d, netz, beginn);
+            if (grenze == null) {
+                fehler.add(kz + ": " + netz + " hat ab " + beginn + " keine Grenze");
+            } else if (kw(grenze.get("bezugsgrenze_kw")).compareTo(kw(na.get(netz).get("vereinbart_kw"))) > 0) {
+                fehler.add(kz + ": die Bezugsgrenze liegt über der vereinbarten Leistung von " + netz);
+            }
+        }
+        assertThat(fehler).isEmpty();
+    }
+
+    /**
+     * Fassung 1.5: die Auslegung rechnet aus der Datei, am Tag, an dem die Anteile scharf werden. Vorbehalt =
+     * Viertelstunden-Maximum × Zuschlag; verteilbar ist die Einspeisegrenze bzw. die Bezugsgrenze minus Vorbehalt;
+     * Anteile + ungenutzt = verteilbar; die Summe der Rückfälle ist die der Komponenten, die eine Mitglied-Box
+     * steuert; keine Box hält weniger Anteil, als ihre Geräte ohne sie beanspruchen; „passt“ heißt: die Summe der
+     * Rückfälle liegt nicht über dem Verteilbaren.
+     */
+    @Test
+    void dieAuslegungDerGemeinsamenSteuerungRechnetAusDerDatei() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> komponenten = nachKennzeichen(d.get("komponenten"));
+        Map<String, JsonNode> geraete = nachKennzeichen(d.get("geraete"));
+        Map<String, List<JsonNode>> zustaendig = zuordnungenNach(d, "datenquelle_box");
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode v : kinder(d.get("gemeinsame_steuerungen"))) {
+            String kz = v.get("kennzeichen").asText();
+            LocalDate scharf = kinder(v.get("stufen")).stream().filter(s -> "S3".equals(s.get("stufe").asText()))
+                    .map(s -> tag(s.get("ab").asText())).findFirst().orElseThrow();
+            OffsetDateTime t = scharf.atStartOfDay(zone(d)).toOffsetDateTime();
+            JsonNode grenze = grenzeAm(d, v.get("netzanschluss").asText(), scharf);
+            JsonNode gl = v.get("grundlast");
+            BigDecimal vorbehalt = kw(gl.get("gemessenes_viertelstunden_maximum_kw")).multiply(kw(gl.get("zuschlag")))
+                    .setScale(1, RoundingMode.HALF_UP);
+            Set<String> mitglieder = new LinkedHashSet<>();
+            kinder(v.get("mitglieder")).stream().filter(m -> gilt(m, t)).forEach(m -> mitglieder.add(m.get("box").asText()));
+            for (String richtung : List.of("einspeisung", "bezug")) {
+                JsonNode a = v.get("auslegung").get(richtung);
+                BigDecimal verteilbar = "einspeisung".equals(richtung) ? kw(grenze.get("einspeisegrenze_kw"))
+                        : kw(grenze.get("bezugsgrenze_kw")).subtract(vorbehalt);
+                if ("bezug".equals(richtung) && kw(a.get("vorbehalt_grundlast_kw")).compareTo(vorbehalt) != 0) {
+                    fehler.add(kz + " bezug: Vorbehalt " + a.get("vorbehalt_grundlast_kw") + " statt " + vorbehalt);
+                }
+                if (kw(a.get("verteilbar_kw")).compareTo(verteilbar) != 0) {
+                    fehler.add(kz + " " + richtung + ": verteilbar " + a.get("verteilbar_kw") + " statt " + verteilbar);
+                }
+                BigDecimal summe = kw(a.get("ungenutzt_kw"));
+                for (String box : feldnamen(a.get("anteile"))) {
+                    summe = summe.add(kw(a.get("anteile").get(box)));
+                    if (!mitglieder.contains(box)) {
+                        fehler.add(kz + " " + richtung + ": Anteil für " + box + ", kein Mitglied am " + scharf);
+                    }
+                }
+                if (summe.compareTo(verteilbar) != 0) {
+                    fehler.add(kz + " " + richtung + ": Anteile + ungenutzt = " + summe + " statt " + verteilbar);
+                }
+                Map<String, BigDecimal> jeBox = new LinkedHashMap<>();
+                for (JsonNode r : kinder(d.get("geraete_rueckfaelle"))) {
+                    if (!richtung.equals(r.get("richtung").asText())) {
+                        continue;
+                    }
+                    String quelle = geraete.get(komponenten.get(r.get("komponente").asText()).get("geraet").asText())
+                            .get("datenquelle").asText();
+                    zustaendig.getOrDefault(quelle, List.of()).stream().filter(z -> gilt(z, t))
+                            .map(z -> z.get("nach").asText()).filter(mitglieder::contains)
+                            .forEach(box -> jeBox.merge(box, kw(r.get("rueckfall_kw")), BigDecimal::add));
+                }
+                BigDecimal rueckfall = jeBox.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                if (rueckfall.compareTo(kw(a.get("summe_rueckfall_kw"))) != 0) {
+                    fehler.add(kz + " " + richtung + ": Summe der Rückfälle " + rueckfall + " statt "
+                            + a.get("summe_rueckfall_kw"));
+                }
+                jeBox.forEach((box, kwBox) -> {
+                    JsonNode anteil = a.get("anteile").get(box);
+                    if (anteil == null || kwBox.compareTo(kw(anteil)) > 0) {
+                        fehler.add(kz + " " + richtung + ": " + box + " hält weniger Anteil als den Rückfall " + kwBox);
+                    }
+                });
+                String urteil = rueckfall.compareTo(verteilbar) <= 0 ? "passt" : "auslegung_passt_nicht";
+                if (!urteil.equals(a.get("urteil").asText())) {
+                    fehler.add(kz + " " + richtung + ": Urteil " + a.get("urteil").asText() + " statt " + urteil);
+                }
+            }
+        }
+        assertThat(fehler).isEmpty();
+    }
+
+    /**
+     * Fassung 1.5: jeder Geräte-Rückfall gehört zu einer steuerbaren Komponente, höchstens einer je Komponente und
+     * Richtung; frei laufen zählt mit der Nennleistung, ein Rückfallwert liegt nie über ihr. Jede steuerbare
+     * Komponente hinter einer Steuerquelle einer Anlage mit gemeinsamer Steuerung nennt ihren Rückfall.
+     */
+    @Test
+    void jederGeraeteRueckfallGehoertZuEinerSteuerbarenKomponente() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> komponenten = nachKennzeichen(d.get("komponenten"));
+        Map<String, JsonNode> geraete = nachKennzeichen(d.get("geraete"));
+        Map<String, JsonNode> quellen = nachKennzeichen(d.get("datenquellen"));
+        List<String> fehler = new ArrayList<>();
+        Set<String> gesehen = new LinkedHashSet<>();
+        for (JsonNode r : kinder(d.get("geraete_rueckfaelle"))) {
+            String k = r.get("komponente").asText();
+            if (!gesehen.add(k + "/" + r.get("richtung").asText())) {
+                fehler.add(k + ": zwei Rückfälle in derselben Richtung");
+            }
+            if (text(komponenten.get(k), "steuerbar") == null || text(komponenten.get(k), "steuerbar").startsWith("nein")) {
+                fehler.add(k + ": Rückfall an einer nicht steuerbaren Komponente");
+            }
+            int vergleich = kw(r.get("rueckfall_kw")).compareTo(kw(r.get("nenn_kw")));
+            if ("laeuft_frei".equals(r.get("rueckfall").asText()) ? vergleich != 0 : vergleich > 0) {
+                fehler.add(k + ": Rückfall " + r.get("rueckfall_kw") + " kW passt nicht zu " + r.get("rueckfall").asText());
+            }
+        }
+        Set<String> gemeinsam = new LinkedHashSet<>();
+        kinder(d.get("gemeinsame_steuerungen")).forEach(v -> gemeinsam.add(v.get("anlage").asText()));
+        for (JsonNode k : komponenten.values()) {
+            JsonNode quelle = quellen.get(geraete.get(k.get("geraet").asText()).get("datenquelle").asText());
+            String steuerbar = text(k, "steuerbar");
+            if (gemeinsam.contains(k.get("anlage").asText()) && quelle.get("steuerquelle").asBoolean()
+                    && steuerbar != null && steuerbar.startsWith("ja")
+                    && gesehen.stream().noneMatch(s -> s.startsWith(k.get("kennzeichen").asText() + "/"))) {
+                fehler.add(k.get("kennzeichen").asText() + ": steuerbar in einer gemeinsamen Steuerung, aber ohne Rückfall");
+            }
+        }
+        assertThat(fehler).isEmpty();
+    }
+
+    /**
+     * Fassung 1.5: die Abnahmefälle R1 … R22 stehen vollständig und in Reihenfolge; nur R16 (Stufe S4, nicht gebaut)
+     * ist Entwurf. Wo „gegeben“ eine Tatsache dieser Welt nennt, ist es die des Objekts der Datei — Grenzen,
+     * Auslegung, Grundlast, Rückfälle, Anteile, Arbeitspreis, Netzanschlüsse, Box-Tausch und die Zuständigkeitskette
+     * von DQ-3; der Augenblick des Beispielsonntags rechnet in sich.
+     */
+    @Test
+    void dieAbnahmefaelleNennenDieTatsachenDerDatei() throws Exception {
+        JsonNode d = daten();
+        List<JsonNode> faelle = kinder(d.at("/abnahmefaelle_ap15/faelle"));
+        assertThat(faelle.stream().map(f -> f.get("fall").asText()).toList())
+                .isEqualTo(IntStream.rangeClosed(1, 22).mapToObj(i -> "R" + i).toList());
+        assertThat(faelle.stream().filter(f -> "entwurf".equals(f.get("stand").asText()))
+                .map(f -> f.get("fall").asText()).toList()).containsExactly("R16");
+        Map<String, JsonNode> g = new LinkedHashMap<>();
+        faelle.forEach(f -> g.put(f.get("fall").asText(), f.get("gegeben")));
+
+        JsonNode v = d.at("/gemeinsame_steuerungen/0");
+        String netz = v.get("netzanschluss").asText();
+        Map<String, JsonNode> na = nachKennzeichen(d.get("netzanschluesse"));
+        ObjectNode grenze = kinder(d.get("netzanschluss_grenzen")).stream()
+                .filter(x -> netz.equals(x.get("netzanschluss").asText())).findFirst().orElseThrow().deepCopy();
+        grenze.remove(List.of("netzanschluss", "gueltig_bis"));
+        JsonNode einspeisung = v.at("/auslegung/einspeisung");
+        JsonNode bezug = v.at("/auslegung/bezug");
+        assertThat(kanonisch(g.get("R1").get("grenzen_na1"))).as("R1 Grenzen").isEqualTo(kanonisch(grenze));
+        assertThat(kanonisch(g.get("R1").get("einspeisung"))).as("R1 Einspeisung").isEqualTo(kanonisch(einspeisung));
+        assertThat(kanonisch(g.get("R1").get("bezug"))).as("R1 Bezug").isEqualTo(kanonisch(bezug));
+        assertThat(kanonisch(g.get("R3").get("bezug"))).as("R3 Bezug").isEqualTo(kanonisch(bezug));
+        assertThat(kanonisch(g.get("R3").get("grundlast"))).as("R3 Grundlast").isEqualTo(kanonisch(v.get("grundlast")));
+        assertThat(kanonisch(g.get("R7").get("anteile_kw"))).as("R7").isEqualTo(kanonisch(einspeisung.get("anteile")));
+        assertThat(kanonisch(g.get("R12").get("alt"))).as("R12 alt").isEqualTo(kanonisch(einspeisung.get("anteile")));
+        assertThat(kw(g.get("R2").get("arbeitspreis_ct_kwh"))).as("R2 Arbeitspreis")
+                .isEqualByComparingTo(kw(na.get(netz).get("arbeitspreis_ct_kwh")));
+
+        // Geräte-Rückfälle: K-1 wörtlich, die Ladepunkte der Anlage als Summe.
+        Map<String, JsonNode> komponenten = nachKennzeichen(d.get("komponenten"));
+        ObjectNode k1 = kinder(d.get("geraete_rueckfaelle")).stream()
+                .filter(r -> "K-1".equals(r.get("komponente").asText())).findFirst().orElseThrow().deepCopy();
+        k1.remove(List.of("komponente", "richtung"));
+        assertThat(kanonisch(g.get("R5").get("rueckfall_k1"))).as("R5 Rückfall K-1").isEqualTo(kanonisch(k1));
+        BigDecimal ladepunkte = kinder(d.get("geraete_rueckfaelle")).stream()
+                .map(r -> komponenten.get(r.get("komponente").asText()))
+                .filter(k -> v.get("anlage").asText().equals(k.get("anlage").asText())
+                        && text(k, "art").startsWith("Ladepunkt"))
+                .map(k -> kinder(d.get("geraete_rueckfaelle")).stream()
+                        .filter(r -> r.get("komponente").asText().equals(k.get("kennzeichen").asText()))
+                        .map(r -> kw(r.get("rueckfall_kw"))).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(kw(g.get("R3").get("geraete_rueckfall_ladepunkte_kw"))).as("R3 Ladepunkte")
+                .isEqualByComparingTo(ladepunkte);
+
+        // Der Augenblick des Beispielsonntags (R1 = R4 vorher = R5 vorher) rechnet in sich.
+        JsonNode aug = g.get("R1").get("augenblick");
+        assertThat(kanonisch(g.get("R4").get("vorher"))).isEqualTo(kanonisch(aug));
+        assertThat(kanonisch(g.get("R5").get("vorher"))).isEqualTo(kanonisch(aug));
+        assertThat(kw(aug.get("grenze_kw"))).isEqualByComparingTo(kw(grenze.get("einspeisegrenze_kw")));
+        BigDecimal ueberschussE4 = kw(aug.get("pv_e4_kw")).subtract(kw(aug.get("last_kw")));
+        assertThat(kw(aug.get("ungeregelt_einspeisung_kw")))
+                .isEqualByComparingTo(ueberschussE4.add(kw(aug.get("pv_e1_verfuegbar_kw"))));
+        assertThat(kw(aug.get("einspeisung_kw")))
+                .isEqualByComparingTo(kw(aug.get("grenze_kw")).subtract(kw(aug.get("marge_kw"))));
+        assertThat(kw(aug.get("e1_darf_kw"))).isEqualByComparingTo(kw(aug.get("einspeisung_kw")).subtract(ueberschussE4));
+        assertThat(kw(aug.get("e1_regelt_ab_kw")))
+                .isEqualByComparingTo(kw(aug.get("pv_e1_verfuegbar_kw")).subtract(kw(aug.get("e1_darf_kw"))));
+        // Der Dienstag (R3): der Ladepark bekommt seinen Anteil, schlimmstenfalls genau die Bezugsgrenze.
+        JsonNode di = g.get("R3").get("augenblick");
+        assertThat(kw(di.get("anteil_e4_kw"))).isEqualByComparingTo(kw(bezug.get("anteile").get("E-4")));
+        assertThat(kw(di.get("laden_kw"))).isEqualByComparingTo(kw(di.get("ladewunsch_kw")).min(kw(di.get("anteil_e4_kw"))));
+        assertThat(kw(di.get("schlimmster_fall_kw"))).isEqualByComparingTo(kw(grenze.get("bezugsgrenze_kw")))
+                .isEqualByComparingTo(kw(bezug.get("vorbehalt_grundlast_kw")).add(kw(bezug.get("verteilbar_kw"))));
+
+        // R17: die Nachfolgerin von E-4 übernimmt genau die Quellen, die ihr die Datei zuordnet.
+        String nachfolger = g.get("R17").get("nachfolger").asText();
+        JsonNode box = nachKennzeichen(d.get("boxen")).get(nachfolger);
+        assertThat(box).as("R17 Nachfolgerin").isNotNull();
+        assertThat(text(box, "vorgaenger")).isEqualTo("E-4");
+        List<String> uebernimmt = new ArrayList<>();
+        kinder(g.get("R17").get("uebernimmt")).forEach(x -> uebernimmt.add(x.asText()));
+        assertThat(kinder(d.get("zuordnungen")).stream()
+                .filter(z -> "datenquelle_box".equals(z.get("art").asText()) && nachfolger.equals(z.get("nach").asText()))
+                .map(z -> z.get("von").asText()).toList()).containsExactlyInAnyOrderElementsOf(uebernimmt);
+
+        // R20: die Netzanschlüsse, wie die Datei sie führt, je mit ihrer Anlage.
+        for (String n : feldnamen(g.get("R20").get("na"))) {
+            JsonNode r = g.get("R20").get("na").get(n);
+            JsonNode anschluss = na.get(n);
+            assertThat(r.get("standort").asText()).isEqualTo(anschluss.get("standort").asText());
+            assertThat(kw(r.get("anschluss_kva"))).isEqualByComparingTo(kw(anschluss.get("anschluss_kva")));
+            assertThat(kw(r.get("vereinbart_kw"))).isEqualByComparingTo(kw(anschluss.get("vereinbart_kw")));
+            assertThat(kinder(d.get("anlagen")).stream().filter(a -> n.equals(a.get("netzanschluss").asText()))
+                    .map(a -> a.get("kennzeichen").asText()).toList()).containsExactly(r.get("anlage").asText());
+        }
+
+        // R21: die Zuständigkeitskette von DQ-3, wie Fassung 1.4 sie führt.
+        String kette = String.join(" → ", zuordnungenNach(d, "datenquelle_box").get("DQ-3").stream()
+                .sorted(Comparator.comparing(z -> zeit(z.get("gueltig_ab").asText())))
+                .map(z -> z.get("nach").asText()).toList());
+        assertThat(g.get("R21").get("zeitachse").asText()).endsWith("DQ-3 " + kette);
+    }
+
+    /** Die Objekte einer Liste nach ihrem Kennzeichen. */
+    private static Map<String, JsonNode> nachKennzeichen(JsonNode array) {
+        Map<String, JsonNode> out = new LinkedHashMap<>();
+        kinder(array).forEach(o -> out.put(o.get("kennzeichen").asText(), o));
+        return out;
+    }
+
+    /** Die Grenze eines Netzanschlusses an einem Tag (tagesgenau), oder {@code null}. */
+    private static JsonNode grenzeAm(JsonNode d, String netzanschluss, LocalDate tag) {
+        return kinder(d.get("netzanschluss_grenzen")).stream()
+                .filter(g -> netzanschluss.equals(g.get("netzanschluss").asText()) && giltAm(g, tag))
+                .findFirst().orElse(null);
+    }
+
+    private static BigDecimal kw(JsonNode n) {
+        return n.decimalValue();
+    }
+
+    private static List<String> feldnamen(JsonNode o) {
+        List<String> out = new ArrayList<>();
+        o.fieldNames().forEachRemaining(out::add);
+        return out;
+    }
+
     /** Die Formel einer berechneten Messstelle („MS-10 − MS-11 − …“) mit den Oktoberzahlen der Datei, eine davon ersetzt. */
     private static BigDecimal formel(Map<String, JsonNode> ms, String messstelle, String ersetzt, BigDecimal durch) {
         BigDecimal summe = BigDecimal.ZERO;
@@ -1546,7 +1989,7 @@ class UemsReferenzunternehmenVectorsTest {
         merke(reg, fehler, "unternehmen", d.at("/unternehmen/kennzeichen").asText());
         for (String s : List.of("standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen",
                 "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten",
-                "messstellen", "bezugsgroessen", "kennzahlen")) {
+                "messstellen", "bezugsgroessen", "kennzahlen", "gemeinsame_steuerungen")) {
             for (JsonNode o : kinder(d.get(s))) {
                 merke(reg, fehler, s, o.get("kennzeichen").asText());
             }
@@ -1714,6 +2157,28 @@ class UemsReferenzunternehmenVectorsTest {
                 for (JsonNode p : kinder(k.get("paare"))) {
                     out.add(new Verweis(kz + ".paar", p.asText(), "kennzahlen"));
                 }
+            }
+        }
+        // Fassung 1.5 (AP-15 E8): Grenzen, gemeinsame Steuerung und Geräte-Rückfälle verweisen nur über Kennzeichen.
+        for (JsonNode g : kinder(d.get("netzanschluss_grenzen"))) {
+            out.add(new Verweis("grenze.netzanschluss", g.get("netzanschluss").asText(), "netzanschluesse"));
+        }
+        for (JsonNode v : kinder(d.get("gemeinsame_steuerungen"))) {
+            String kz = v.get("kennzeichen").asText();
+            out.add(new Verweis(kz + ".anlage", v.get("anlage").asText(), "anlagen"));
+            out.add(new Verweis(kz + ".netzanschluss", v.get("netzanschluss").asText(), "netzanschluesse"));
+            for (JsonNode m : kinder(v.get("mitglieder"))) {
+                out.add(new Verweis(kz + ".mitglied", m.get("box").asText(), "boxen"));
+                out.add(new Verweis(kz + ".messpunkt", m.get("messpunkt").asText(), "datenquellen"));
+            }
+        }
+        for (JsonNode r : kinder(d.get("geraete_rueckfaelle"))) {
+            out.add(new Verweis("rueckfall.komponente", r.get("komponente").asText(), "komponenten"));
+        }
+        for (JsonNode z : kinder(d.get("zeitachse"))) {
+            if (z.hasNonNull("gemeinsame_steuerung")) {
+                out.add(new Verweis("zeitachse.gemeinsame_steuerung", z.get("gemeinsame_steuerung").asText(),
+                        "gemeinsame_steuerungen"));
             }
         }
         // Welcher Elternknoten wem erlaubt ist, prüft jederOrtHaengtZeitgueltigAnSeinemElternknoten.

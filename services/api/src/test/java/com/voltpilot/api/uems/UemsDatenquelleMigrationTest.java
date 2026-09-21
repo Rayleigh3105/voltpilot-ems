@@ -428,8 +428,11 @@ class UemsDatenquelleMigrationTest {
     void dieReferenzDatenquellenUndIhreZustaendigkeitenPassenUnverfaelschtInsSchema() {
         Map<String, UUID> dq = referenzQuellen();
         Map<String, List<Zeitraum>> perioden = referenzPerioden();
-        // Der Zähler vergibt in der Reihenfolge der Referenz genau ihre Kennzeichen.
-        assertThat(dq.keySet()).containsExactly("DQ-1", "DQ-2", "DQ-3", "DQ-4", "DQ-5", "DQ-6", "DQ-7");
+        // Der Zähler vergibt in der Reihenfolge der Referenz genau ihre Kennzeichen (ab Fassung 1.5 auch
+        // DQ-8 … DQ-10 der Box Verwaltung, AP-15 E8).
+        List<String> referenzKennzeichen = new ArrayList<>();
+        referenz.get("datenquellen").forEach(rq -> referenzKennzeichen.add(rq.get("kennzeichen").asText()));
+        assertThat(dq.keySet()).containsExactlyElementsOf(referenzKennzeichen);
         alsTue(AHRENBERG, () -> {
             for (JsonNode rq : referenz.get("datenquellen")) {
                 String kz = rq.get("kennzeichen").asText();
@@ -450,11 +453,11 @@ class UemsDatenquelleMigrationTest {
             }
         });
         assertThat(root.queryForObject("SELECT naechste_nummer FROM data_source_kennzeichen_seq "
-                + "WHERE tenant_id = ?", Integer.class, AHRENBERG)).isEqualTo(8);
+                + "WHERE tenant_id = ?", Integer.class, AHRENBERG)).isEqualTo(referenzKennzeichen.size() + 1);
 
         // Die führende Box je Anlage (E3): die heute führende Box der Referenz.
         for (JsonNode b : referenz.get("boxen")) {
-            if (b.get("ausgebaut_am").isNull()) {
+            if (b.get("ausgebaut_am").isNull() && b.hasNonNull("fuehrend_fuer")) {
                 UUID anlage = ANLAGEN.get(b.get("fuehrend_fuer").asText());
                 assertThat(root.queryForObject("SELECT lead_device_id FROM site WHERE id = ?",
                         UUID.class, anlage)).isEqualTo(BOXEN.get(b.get("kennzeichen").asText()));
@@ -800,7 +803,7 @@ class UemsDatenquelleMigrationTest {
                     }
                 }
                 for (JsonNode b : referenz.get("boxen")) {
-                    if (b.get("ausgebaut_am").isNull()) {
+                    if (b.get("ausgebaut_am").isNull() && b.hasNonNull("fuehrend_fuer")) {
                         app.update("UPDATE site SET lead_device_id = ? WHERE id = ?",
                                 BOXEN.get(b.get("kennzeichen").asText()),
                                 ANLAGEN.get(b.get("fuehrend_fuer").asText()));

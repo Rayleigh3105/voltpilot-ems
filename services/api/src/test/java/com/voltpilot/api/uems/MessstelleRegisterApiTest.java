@@ -25,9 +25,11 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.sql.DataSource;
@@ -1039,9 +1041,10 @@ class MessstelleRegisterApiTest {
             }
         }
         Map<String, UUID> komponenten = new LinkedHashMap<>();
+        Set<String> gemeinsam = komponentenDerMitsteuerndenBoxen();
         for (JsonNode k : referenz.get("komponenten")) {
             String kz = k.get("kennzeichen").asText();
-            if ("K-2".equals(kz) || "K-8.7".equals(kz)) {
+            if ("K-2".equals(kz) || "K-8.7".equals(kz) || gemeinsam.contains(kz)) {
                 continue; // K-2 meldet der Wechselrichter mit; K-8.7 kommt erst 2027 (A18).
             }
             komponenten.put(kz, komponente(t, anlagen.get(k.get("anlage").asText()), k));
@@ -1100,6 +1103,39 @@ class MessstelleRegisterApiTest {
                 .containsExactly("GR-1", "GR-2", "GR-3", "GR-4", "GR-5", "GR-6");
         ahrenberg = new Ahrenberg(t, standorte, anlagen, messstellen, komponenten, geraeteJeKomponente(t));
         return ahrenberg;
+    }
+
+    /**
+     * Die EINE Ausnahme vom Anlegen: die Komponenten der mitsteuernden Boxen einer gemeinsamen Steuerung
+     * (Referenzunternehmen 1.5, AP-15 E8) — hinter den Datenquellen, für die eine Box mit der Rolle
+     * {@code steuert_mit} zuständig ist. Das Register zeigt den Bestand ohne gemeinsame Steuerung.
+     */
+    private static Set<String> komponentenDerMitsteuerndenBoxen() {
+        Set<String> boxen = new HashSet<>();
+        referenz.path("gemeinsame_steuerungen").forEach(v -> v.path("mitglieder").forEach(m -> {
+            if ("steuert_mit".equals(m.path("rolle").asText())) {
+                boxen.add(m.path("box").asText());
+            }
+        }));
+        Set<String> quellen = new HashSet<>();
+        referenz.path("zuordnungen").forEach(z -> {
+            if ("datenquelle_box".equals(z.path("art").asText()) && boxen.contains(z.path("nach").asText())) {
+                quellen.add(z.path("von").asText());
+            }
+        });
+        Set<String> geraete = new HashSet<>();
+        referenz.path("geraete").forEach(g -> {
+            if (quellen.contains(g.path("datenquelle").asText())) {
+                geraete.add(g.path("kennzeichen").asText());
+            }
+        });
+        Set<String> out = new HashSet<>();
+        referenz.path("komponenten").forEach(k -> {
+            if (geraete.contains(k.path("geraet").asText())) {
+                out.add(k.path("kennzeichen").asText());
+            }
+        });
+        return out;
     }
 
     /** Erst die Hauptzähler, dann die, die auf sie zeigen — in der Reihenfolge der Referenz. */

@@ -1,7 +1,7 @@
 {
-  "version": "1.4",
+  "version": "1.5",
   "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS). Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
-  "stand": "2026-09-15",
+  "stand": "2026-09-21",
   "_comment": [
     "Diese Datei ist die maschinenlesbare Fassung von AP-00 §4.4 (Referenzunternehmen),",
     "erweitert um die Verfeinerungen aus AP-01…AP-07. Sie wird von ZWEI Zwillingen",
@@ -91,7 +91,29 @@
     "  zwei Berichtsständen: Nr. 1 (Datenstand 10.11.2026 08:55, freigegeben 09:02, MS-12 = 6 100 in Version 1, ersetzt durch",
     "  Nr. 2) und Nr. 2 (Datenstand = die Kaskade 12.11.2026 10:05:33, freigegeben 16.11.2026 14:20, Anlass K-2026-0007, drei",
     "  Abweichungen). Die Stände nennen MS-12, MS-15 und KZ-0001 je Version; den vollständigen Abzug trägt bericht-vectors.json.",
-    "  ZEITACHSE: vier Einträge — 10.11.2026 Nr. 1, 12.11.2026 Korrektur und Anstoß, 16.11.2026 Nr. 2, 29.01.2027 Rohwerte weg."
+    "  ZEITACHSE: vier Einträge — 10.11.2026 Nr. 1, 12.11.2026 Korrektur und Anstoß, 16.11.2026 Nr. 2, 29.01.2027 Rohwerte weg.",
+    "FASSUNG 1.5 (AP-15 IP-1, E8 = A, 21.09.2026) — additiv: die GEMEINSAME STEUERUNG. Jede Angabe der Fassung 1.4 behält",
+    "  ihren Wert — beide Zwillinge prüfen das als Diff-Test gegen den Fingerabdruck der Fassung 1.4. Neu sind nur:",
+    "  BOXEN: E-4 „Box Verwaltung“ (Heimat AN-1, führt nicht, LAN 192.168.40.0/24) ab 03.05.2027 und ihre Nachfolgerin",
+    "  E-4′ ab dem Box-Tausch am 12.10.2027 (Abnahmefall R17). AN-1 hat damit ZWEI steuernde Boxen hinter EINEM Netzanschluss.",
+    "  DATENQUELLEN DQ-8 (PV-Wechselrichter Verwaltung), DQ-9 (sechs Ladepunkte, OCPP), DQ-10 (Abgangszähler, der eigene",
+    "  Messpunkt der Box Verwaltung) mit den Geräten GR-11 … GR-18 und den Komponenten K-12, K-13.1 … K-13.6, K-14.",
+    "  STEUERQUELLEN: „höchstens eine Steuerquelle je Anlage“ gilt ab 1.5 nur noch für Anlagen OHNE gemeinsame Steuerung.",
+    "  Mit gemeinsamer Steuerung liest jede Steuerquelle eine MITGLIED-Box mit Heimat in dieser Anlage (DQ-1 → E-1,",
+    "  DQ-8/DQ-9 → E-4). AN-2 und AN-3 bleiben unverändert — sie sind der Gegenbeweis (R20, R21).",
+    "  NETZANSCHLUSS-GRENZEN (`netzanschluss_grenzen[]`, tagesgenau): NA-1 ab 03.05.2027 Einspeisung 100 kW, Bezug 550 kW",
+    "  (≤ vereinbart_kw). GEMEINSAME STEUERUNG (`gemeinsame_steuerungen[]`): V-1 an AN-1/NA-1 — E-1 führt (Messpunkt DQ-2),",
+    "  E-4 steuert mit (Messpunkt DQ-10); Stufen S0 03.05. · S2 17.05. · S3 24.05.2027; Auslegung Einspeisung 40/60 kW,",
+    "  Bezug 0/77 kW bei einem Vorbehalt von 473 kW (= 430 kW × 1,1) für alles, was keine Box steuert. Stufe S4 (Zuteilung",
+    "  auf Zeit) ist mit AP-15 E1 = A nicht gebaut und kommt deshalb in keiner Stufe vor.",
+    "  GERÄTE-RÜCKFÄLLE (`geraete_rueckfaelle[]`) je steuerbarer Komponente und Richtung: K-1 fällt nach 60 s auf 40 kW,",
+    "  K-2 lädt ohne Box nicht aus dem Netz, K-12 läuft frei (60 kW), jeder Ladepunkt fällt auf seinen Vorgabewert 4,1 kW.",
+    "  ABNAHMEFÄLLE (`abnahmefaelle_ap15`): je Fall R1 … R22 der Block „gegeben“ wörtlich aus dem Konzept AP-15 §7; wo er",
+    "  eine Tatsache dieser Welt nennt, prüfen die Zwillinge, dass sie mit dem Objekt der Datei übereinstimmt. R16 gehört zur",
+    "  nicht gebauten Stufe S4 und trägt deshalb `stand: entwurf`.",
+    "  ZEITACHSE: sechs Einträge 2027 — Einrichtung, Prüfung, Scharfschalten, die Beispieltage 13.06. und 15.06., Box-Tausch —",
+    "  je mit dem Merkmal `gemeinsame_steuerung: V-1`: sie verlängern die Zeitachse nur für die gemeinsame Steuerung; wer den",
+    "  Horizont der übrigen Welt misst (Fortschreibungen der Messstellen-Vektoren), nimmt genau diese Zeilen aus."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",
@@ -112,7 +134,8 @@
     "fassung_1_4": "AP-12 IP-2 (E15 = A, 14.09.2026): `korrekturen[]` K-2026-0007, `berichte[]` BR-2026-0001 mit den Berichtsständen Nr. 1 und Nr. 2 und vier Zeilen der Zeitachse — die Zahlen und Zeitpunkte sind die des Abnahmefalls B1 aus dem Konzept AP-12 §7 (Ergänzung der Referenzdatei)",
     "personen": "AP-00 §4.4 (vier Personen) · vollständiger Personen-Satz mit Rollen, Geltungsbereichen und Unterstützungszugriffen aus AP-03 §4.1",
     "zeitachse": "AP-00 §4.4 · Box-Ausfall Halle 2 am 03.11.2026 mit Rückkehr um 17:30 und Nachlieferung (AP-00 §7.6, AP-06 A2, AP-07 A3), danach Box-Tausch am 04.11.2026 (AP-06 A5), Zählerwechsel-Zeitpunkt (AP-04 E2), Unterstützungszeiträume (AP-03 §4.1), Hardwareblatt-Fassungen und Wandlertausch (AP-05 §4.1)",
-    "bewusst_ausgelassen": "Standort ST-3 „Werk Ahrenberg Nord“ (ab 20.02.2027) und die daran hängende Person Sabine Rauch aus AP-03 §4.1 — AP-00 §4.4 führt das Referenzunternehmen mit ZWEI Standorten, und die Abnahme dieses Pakets zählt zwei."
+    "bewusst_ausgelassen": "Standort ST-3 „Werk Ahrenberg Nord“ (ab 20.02.2027) und die daran hängende Person Sabine Rauch aus AP-03 §4.1 — AP-00 §4.4 führt das Referenzunternehmen mit ZWEI Standorten, und die Abnahme dieses Pakets zählt zwei.",
+    "fassung_1_5": "AP-15 IP-1 (E8 = A, 21.09.2026): Box E-4/E-4′, DQ-8…DQ-10, GR-11…GR-18, K-12…K-14, `netzanschluss_grenzen[]`, `gemeinsame_steuerungen[]` V-1, `geraete_rueckfaelle[]`, `abnahmefaelle_ap15` R1–R22 und sechs Zeilen der Zeitachse — Zahlen, Adressen und Zeitpunkte aus dem Konzept AP-15 §7 (Abschnitt „Referenzdatei: die Erweiterung 1.5“ und referenzfaelle.json `erweiterung_1_5`). Frei gewählt, weil das Konzept sie nicht nennt: die Seriennummer von E-4′ und die Kennzeichen der Geräte GR-11…GR-18; nicht erhoben (null): Port und Geräte-ID der Modbus-Quellen, Kanalzahlen"
   },
 
   "unternehmen": {
@@ -247,6 +270,14 @@
     }
   ],
 
+  "netzanschluss_grenzen": [
+    {
+      "netzanschluss": "NA-1", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550,
+      "gueltig_ab": "2027-05-03", "gueltig_bis": null,
+      "hinweis": "Einspeisegrenze = Auflage des Netzbetreibers zur PV-Erweiterung; Bezugsgrenze = vereinbarte Leistung"
+    }
+  ],
+
   "anlagen": [
     {
       "kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "standort": "ST-1", "netzanschluss": "NA-1",
@@ -309,6 +340,22 @@
       "in_betrieb_ab": "2026-10-15T00:00:00+02:00", "ausgebaut_am": null,
       "lan": "192.168.30.0/24", "software": "2.5.0", "vorgaenger": null,
       "steuert": "—"
+    },
+    {
+      "kennzeichen": "E-4", "name": "Box Verwaltung", "seriennummer": "VP-BOX-2027-0211",
+      "heimat_anlage": "AN-1", "fuehrend_fuer": null,
+      "ort_art": "gebaeude", "ort": "G-3", "ort_hinweis": "Unterverteilung „PV und Ladepark Verwaltung“",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "ausgebaut_am": "2027-10-12T00:00:00+02:00",
+      "lan": "192.168.40.0/24", "software": null, "vorgaenger": null,
+      "steuert": "PV-Wechselrichter K-12 und Ladepunkte K-13.1 … K-13.6 — steuert in der gemeinsamen Steuerung V-1 von AN-1 mit"
+    },
+    {
+      "kennzeichen": "E-4′", "name": "Box Verwaltung (neu)", "seriennummer": "VP-BOX-2027-0377",
+      "heimat_anlage": "AN-1", "fuehrend_fuer": null,
+      "ort_art": "gebaeude", "ort": "G-3", "ort_hinweis": "Unterverteilung „PV und Ladepark Verwaltung“",
+      "in_betrieb_ab": "2027-10-12T00:00:00+02:00", "ausgebaut_am": null,
+      "lan": "192.168.40.0/24", "software": null, "vorgaenger": "E-4",
+      "steuert": "PV-Wechselrichter K-12 und Ladepunkte K-13.1 … K-13.6 — steuert in der gemeinsamen Steuerung V-1 von AN-1 mit"
     }
   ],
 
@@ -368,6 +415,30 @@
       "netz": "192.168.30.0/24", "kadenz_s": 10, "kadenz_beschreibung": null, "kanaele": 3,
       "steuerquelle": false,
       "hinweis": "Netzzähler NA-3"
+    },
+    {
+      "kennzeichen": "DQ-8", "anlage": "AN-1", "protokoll": "modbus_tcp",
+      "adresse": "192.168.40.21", "port": null, "geraete_ids": [],
+      "weg": "Modbus TCP 192.168.40.21 (Port und Geräte-ID nicht erhoben)",
+      "netz": "192.168.40.0/24", "kadenz_s": 10, "kadenz_beschreibung": null, "kanaele": null,
+      "steuerquelle": true,
+      "hinweis": "PV-Wechselrichter Verwaltung 60 kW (K-12) — die ZWEITE Steuerquelle von AN-1; zulässig, weil AN-1 ab 03.05.2027 die gemeinsame Steuerung V-1 hat"
+    },
+    {
+      "kennzeichen": "DQ-9", "anlage": "AN-1", "protokoll": "ocpp",
+      "adresse": "AHR-LP-02 … AHR-LP-07", "port": null, "geraete_ids": [],
+      "weg": "OCPP, sechs Stationen „AHR-LP-02“ … „AHR-LP-07“ verbinden sich zur Box",
+      "netz": "192.168.40.0/24", "kadenz_s": 60, "kadenz_beschreibung": "bei Ereignis, spätestens 60 s (AP-07 §4.6)", "kanaele": null,
+      "steuerquelle": true,
+      "hinweis": "sechs Ladepunkte 22 kW (K-13.1 … K-13.6) auf dem Mitarbeiterparkplatz der Verwaltung"
+    },
+    {
+      "kennzeichen": "DQ-10", "anlage": "AN-1", "protokoll": "modbus_tcp",
+      "adresse": "192.168.40.30", "port": null, "geraete_ids": [],
+      "weg": "Modbus TCP 192.168.40.30 (Port und Geräte-ID nicht erhoben)",
+      "netz": "192.168.40.0/24", "kadenz_s": 10, "kadenz_beschreibung": null, "kanaele": null,
+      "steuerquelle": false,
+      "hinweis": "Abgangszähler der neuen Unterverteilung „PV und Ladepark Verwaltung“ (K-14) — der EIGENE Messpunkt von Box Verwaltung; dahinter liegt NUR, was sie steuert"
     }
   ],
 
@@ -445,6 +516,62 @@
       "modbus_geraete_id": 1,
       "einbauten": [ { "kennzeichen": "GR-10", "seriennummer": null, "gueltig_ab": "2026-10-15T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
       "hinweis": "Zählerplatz Lindach"
+    },
+    {
+      "kennzeichen": "GR-11", "name": "PV-Wechselrichter Verwaltung 60 kW (Modbus)", "datenquelle": "DQ-8",
+      "art": "Wechselrichter", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": null,
+      "einbauten": [ { "kennzeichen": "GR-11", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "Dach Verwaltung; kein Rückfallwert am Gerät — läuft ohne Box frei"
+    },
+    {
+      "kennzeichen": "GR-12", "name": "Ladestation AHR-LP-02 (OCPP, 22 kW)", "datenquelle": "DQ-9",
+      "art": "Ladestation", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": null,
+      "einbauten": [ { "kennzeichen": "AHR-LP-02", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "verbindet sich selbst zur Box Verwaltung; Rückfall = gespeicherter Vorgabewert 4,1 kW"
+    },
+    {
+      "kennzeichen": "GR-13", "name": "Ladestation AHR-LP-03 (OCPP, 22 kW)", "datenquelle": "DQ-9",
+      "art": "Ladestation", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": null,
+      "einbauten": [ { "kennzeichen": "AHR-LP-03", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "verbindet sich selbst zur Box Verwaltung; Rückfall = gespeicherter Vorgabewert 4,1 kW"
+    },
+    {
+      "kennzeichen": "GR-14", "name": "Ladestation AHR-LP-04 (OCPP, 22 kW)", "datenquelle": "DQ-9",
+      "art": "Ladestation", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": null,
+      "einbauten": [ { "kennzeichen": "AHR-LP-04", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "verbindet sich selbst zur Box Verwaltung; Rückfall = gespeicherter Vorgabewert 4,1 kW"
+    },
+    {
+      "kennzeichen": "GR-15", "name": "Ladestation AHR-LP-05 (OCPP, 22 kW)", "datenquelle": "DQ-9",
+      "art": "Ladestation", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": null,
+      "einbauten": [ { "kennzeichen": "AHR-LP-05", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "verbindet sich selbst zur Box Verwaltung; Rückfall = gespeicherter Vorgabewert 4,1 kW"
+    },
+    {
+      "kennzeichen": "GR-16", "name": "Ladestation AHR-LP-06 (OCPP, 22 kW)", "datenquelle": "DQ-9",
+      "art": "Ladestation", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": null,
+      "einbauten": [ { "kennzeichen": "AHR-LP-06", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "verbindet sich selbst zur Box Verwaltung; Rückfall = gespeicherter Vorgabewert 4,1 kW"
+    },
+    {
+      "kennzeichen": "GR-17", "name": "Ladestation AHR-LP-07 (OCPP, 22 kW)", "datenquelle": "DQ-9",
+      "art": "Ladestation", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": null,
+      "einbauten": [ { "kennzeichen": "AHR-LP-07", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "verbindet sich selbst zur Box Verwaltung; Rückfall = gespeicherter Vorgabewert 4,1 kW"
+    },
+    {
+      "kennzeichen": "GR-18", "name": "Abgangszähler PV und Ladepark Verwaltung (Modbus)", "datenquelle": "DQ-10",
+      "art": "Zähler", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": null,
+      "einbauten": [ { "kennzeichen": "GR-18", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "Unterverteilung „PV und Ladepark Verwaltung“ — dahinter liegt NUR, was Box Verwaltung steuert"
     }
   ],
 
@@ -571,7 +698,96 @@
       "steckplatz": null, "kartentyp": null, "wandler": [],
       "kanaele": "Wirkleistung, Wirkenergie Bezug, Wirkenergie Abgabe", "steuerbar": "nein",
       "in_betrieb_ab": "2026-10-15T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-12", "name": "PV-Wechselrichter Verwaltung 60 kW", "art": "Wechselrichter (PV, Modbus)",
+      "anlage": "AN-1", "ort_art": "gebaeude", "ort": "G-3", "ort_hinweis": "Dach Verwaltung", "geraet": "GR-11",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": null, "steuerbar": "ja — Einspeiseleistung, im Anteil der Box Verwaltung (gemeinsame Steuerung V-1)",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-13.1", "name": "Ladepunkt AHR-LP-02 Parkplatz Verwaltung (22 kW)", "art": "Ladepunkt (OCPP)",
+      "anlage": "AN-1", "ort_art": "standort", "ort": "ST-1", "ort_hinweis": "Mitarbeiterparkplatz Verwaltung", "geraet": "GR-12",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": null, "steuerbar": "ja — Ladeleistung, im Anteil der Box Verwaltung (gemeinsame Steuerung V-1)",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-13.2", "name": "Ladepunkt AHR-LP-03 Parkplatz Verwaltung (22 kW)", "art": "Ladepunkt (OCPP)",
+      "anlage": "AN-1", "ort_art": "standort", "ort": "ST-1", "ort_hinweis": "Mitarbeiterparkplatz Verwaltung", "geraet": "GR-13",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": null, "steuerbar": "ja — Ladeleistung, im Anteil der Box Verwaltung (gemeinsame Steuerung V-1)",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-13.3", "name": "Ladepunkt AHR-LP-04 Parkplatz Verwaltung (22 kW)", "art": "Ladepunkt (OCPP)",
+      "anlage": "AN-1", "ort_art": "standort", "ort": "ST-1", "ort_hinweis": "Mitarbeiterparkplatz Verwaltung", "geraet": "GR-14",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": null, "steuerbar": "ja — Ladeleistung, im Anteil der Box Verwaltung (gemeinsame Steuerung V-1)",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-13.4", "name": "Ladepunkt AHR-LP-05 Parkplatz Verwaltung (22 kW)", "art": "Ladepunkt (OCPP)",
+      "anlage": "AN-1", "ort_art": "standort", "ort": "ST-1", "ort_hinweis": "Mitarbeiterparkplatz Verwaltung", "geraet": "GR-15",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": null, "steuerbar": "ja — Ladeleistung, im Anteil der Box Verwaltung (gemeinsame Steuerung V-1)",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-13.5", "name": "Ladepunkt AHR-LP-06 Parkplatz Verwaltung (22 kW)", "art": "Ladepunkt (OCPP)",
+      "anlage": "AN-1", "ort_art": "standort", "ort": "ST-1", "ort_hinweis": "Mitarbeiterparkplatz Verwaltung", "geraet": "GR-16",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": null, "steuerbar": "ja — Ladeleistung, im Anteil der Box Verwaltung (gemeinsame Steuerung V-1)",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-13.6", "name": "Ladepunkt AHR-LP-07 Parkplatz Verwaltung (22 kW)", "art": "Ladepunkt (OCPP)",
+      "anlage": "AN-1", "ort_art": "standort", "ort": "ST-1", "ort_hinweis": "Mitarbeiterparkplatz Verwaltung", "geraet": "GR-17",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": null, "steuerbar": "ja — Ladeleistung, im Anteil der Box Verwaltung (gemeinsame Steuerung V-1)",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-14", "name": "Abgangszähler PV und Ladepark Verwaltung", "art": "Zähler (Modbus)",
+      "anlage": "AN-1", "ort_art": "gebaeude", "ort": "G-3", "ort_hinweis": "Unterverteilung „PV und Ladepark Verwaltung“", "geraet": "GR-18",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": null, "steuerbar": "nein",
+      "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
     }
+  ],
+
+  "gemeinsame_steuerungen": [
+    {
+      "kennzeichen": "V-1", "anlage": "AN-1", "netzanschluss": "NA-1",
+      "mitglieder": [
+        { "box": "E-1", "rolle": "fuehrt", "messpunkt": "DQ-2", "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "hinweis": "misst den Netzanschluss NA-1 (Netzzähler) und regelt dort" },
+        { "box": "E-4", "rolle": "steuert_mit", "messpunkt": "DQ-10", "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": "2027-10-12T00:00:00+02:00", "hinweis": "hält ihren Anteil am eigenen Messpunkt, dem Abgangszähler PV und Ladepark Verwaltung" },
+        { "box": "E-4′", "rolle": "steuert_mit", "messpunkt": "DQ-10", "gueltig_ab": "2027-10-12T00:00:00+02:00", "gueltig_bis": null, "hinweis": "Nachfolgerin von E-4 (R17): übernimmt Quellen, Messpunkt und den reservierten Anteil; bekommt erst nach der Bestätigung des Betreibers wieder einen Plan" }
+      ],
+      "stufen": [
+        { "stufe": "S0", "code": "erklaert", "ab": "2027-05-03" },
+        { "stufe": "S2", "code": "geprueft", "ab": "2027-05-17" },
+        { "stufe": "S3", "code": "anteile_aktiv", "ab": "2027-05-24" }
+      ],
+      "grundlast": {"gemessenes_viertelstunden_maximum_kw": 430, "zuschlag": 1.1, "hinweis": "höchster Viertelstundenwert von allem, was keine Box steuert (Halle 1 + Verwaltung ohne Speicher, PV, Ladepunkte); Annahme — IP-10 rechnet ihn aus den Messwerten"},
+      "auslegung": {
+        "einspeisung": {"urteil": "passt", "verteilbar_kw": 100.0, "summe_rueckfall_kw": 100.0, "anteile": {"E-1": 40.0, "E-4": 60.0}, "ungenutzt_kw": 0.0},
+        "bezug": {"urteil": "passt", "verteilbar_kw": 77.0, "summe_rueckfall_kw": 24.6, "anteile": {"E-1": 0.0, "E-4": 77.0}, "ungenutzt_kw": 0.0, "vorbehalt_grundlast_kw": 473.0}
+      }
+    }
+  ],
+
+  "geraete_rueckfaelle": [
+    { "komponente": "K-1", "richtung": "einspeisung", "nenn_kw": 100, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 40, "nach_s": 60, "hinweis": "am Gerät hinterlegt, vom Installateur gesetzt" },
+    { "komponente": "K-2", "richtung": "bezug", "nenn_kw": 100, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 0, "nach_s": 60, "hinweis": "ohne Box lädt der Speicher nicht aus dem Netz" },
+    { "komponente": "K-12", "richtung": "einspeisung", "nenn_kw": 60, "rueckfall": "laeuft_frei", "rueckfall_kw": 60, "nach_s": 0, "hinweis": "kein Rückfallwert am Gerät — zählt mit Nennleistung" },
+    { "komponente": "K-13.1", "richtung": "bezug", "nenn_kw": 22, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 4.1, "nach_s": 60, "hinweis": "gespeicherter Vorgabewert der Säule 4,1 kW (6 A, dreiphasig) — der OCPP-eigene Rückfall" },
+    { "komponente": "K-13.2", "richtung": "bezug", "nenn_kw": 22, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 4.1, "nach_s": 60, "hinweis": "gespeicherter Vorgabewert der Säule 4,1 kW (6 A, dreiphasig) — der OCPP-eigene Rückfall" },
+    { "komponente": "K-13.3", "richtung": "bezug", "nenn_kw": 22, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 4.1, "nach_s": 60, "hinweis": "gespeicherter Vorgabewert der Säule 4,1 kW (6 A, dreiphasig) — der OCPP-eigene Rückfall" },
+    { "komponente": "K-13.4", "richtung": "bezug", "nenn_kw": 22, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 4.1, "nach_s": 60, "hinweis": "gespeicherter Vorgabewert der Säule 4,1 kW (6 A, dreiphasig) — der OCPP-eigene Rückfall" },
+    { "komponente": "K-13.5", "richtung": "bezug", "nenn_kw": 22, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 4.1, "nach_s": 60, "hinweis": "gespeicherter Vorgabewert der Säule 4,1 kW (6 A, dreiphasig) — der OCPP-eigene Rückfall" },
+    { "komponente": "K-13.6", "richtung": "bezug", "nenn_kw": 22, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 4.1, "nach_s": 60, "hinweis": "gespeicherter Vorgabewert der Säule 4,1 kW (6 A, dreiphasig) — der OCPP-eigene Rückfall" }
   ],
 
   "messstellen": [
@@ -1175,7 +1391,13 @@
     { "art": "datenquelle_box", "von": "DQ-5", "nach": "E-2", "gueltig_ab": "2026-10-01T00:00:00+02:00", "gueltig_bis": "2026-11-04T09:38:00+01:00", "hinweis": null },
     { "art": "datenquelle_box", "von": "DQ-5", "nach": "E-2′", "gueltig_ab": "2026-11-04T09:38:00+01:00", "gueltig_bis": null, "hinweis": "Box-Tausch nach dem Ausfall vom 03.11.2026" },
     { "art": "datenquelle_box", "von": "DQ-6", "nach": "E-3", "gueltig_ab": "2026-10-15T00:00:00+02:00", "gueltig_bis": null, "hinweis": null },
-    { "art": "datenquelle_box", "von": "DQ-7", "nach": "E-3", "gueltig_ab": "2026-10-15T00:00:00+02:00", "gueltig_bis": null, "hinweis": null }
+    { "art": "datenquelle_box", "von": "DQ-7", "nach": "E-3", "gueltig_ab": "2026-10-15T00:00:00+02:00", "gueltig_bis": null, "hinweis": null },
+    { "art": "datenquelle_box", "von": "DQ-8", "nach": "E-4", "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": "2027-10-12T00:00:00+02:00", "hinweis": "Box Verwaltung — Mitglied der gemeinsamen Steuerung V-1" },
+    { "art": "datenquelle_box", "von": "DQ-8", "nach": "E-4′", "gueltig_ab": "2027-10-12T00:00:00+02:00", "gueltig_bis": null, "hinweis": "Box-Tausch E-4 → E-4′ (R17) — nur als Änderung der gemeinsamen Steuerung, nie als einfacher Zuständigkeitswechsel (Regel T6)" },
+    { "art": "datenquelle_box", "von": "DQ-9", "nach": "E-4", "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": "2027-10-12T00:00:00+02:00", "hinweis": "Box Verwaltung — Mitglied der gemeinsamen Steuerung V-1" },
+    { "art": "datenquelle_box", "von": "DQ-9", "nach": "E-4′", "gueltig_ab": "2027-10-12T00:00:00+02:00", "gueltig_bis": null, "hinweis": "Box-Tausch E-4 → E-4′ (R17) — nur als Änderung der gemeinsamen Steuerung, nie als einfacher Zuständigkeitswechsel (Regel T6)" },
+    { "art": "datenquelle_box", "von": "DQ-10", "nach": "E-4", "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": "2027-10-12T00:00:00+02:00", "hinweis": "Box Verwaltung — Mitglied der gemeinsamen Steuerung V-1" },
+    { "art": "datenquelle_box", "von": "DQ-10", "nach": "E-4′", "gueltig_ab": "2027-10-12T00:00:00+02:00", "gueltig_bis": null, "hinweis": "Box-Tausch E-4 → E-4′ (R17) — nur als Änderung der gemeinsamen Steuerung, nie als einfacher Zuständigkeitswechsel (Regel T6)" }
   ],
 
   "zeitachse": [
@@ -1208,6 +1430,40 @@
     { "zeitpunkt": "2027-03-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kaltwassersatz zieht in Halle 2: MS-08 wechselt Ort (B-2 → B-3), elektrisches System (AN-1 → AN-2), Quelle (K-7 → EK-7/K-8.7 an C-1) und Box (E-1 → E-2′) — EINE Messstelle, vier zeitgültige Zuordnungen", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2027-04-09T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Erreichbarkeitsprüfung von DQ-3 aus Box Halle 2 bestanden (Route VLAN 20 → VLAN 10 durch die Kunden-IT freigegeben)", "herkunft": "AP-06 §4.1" },
     { "zeitpunkt": "2027-04-10T07:30:00+02:00", "genauigkeit": "minute", "ereignis": "Wartung Box Halle 1: Zuständigkeit für DQ-3 wechselt von E-1 zu E-2′ — die Messstellen MS-05…MS-08 bleiben unverändert", "herkunft": "AP-06 §4.1" },
-    { "zeitpunkt": "2027-04-12T16:00:00+02:00", "genauigkeit": "minute", "ereignis": "Zuständigkeit für DQ-3 zurück an E-1", "herkunft": "AP-06 §4.1" }
-  ]
+    { "zeitpunkt": "2027-04-12T16:00:00+02:00", "genauigkeit": "minute", "ereignis": "Zuständigkeit für DQ-3 zurück an E-1", "herkunft": "AP-06 §4.1" },
+    { "zeitpunkt": "2027-05-03T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Gemeinsame Steuerung V-1 von AN-1 eingerichtet (Stufe S0 erklärt): Box Verwaltung E-4 angemeldet (Heimat AN-1, steuert mit); DQ-8, DQ-9 und DQ-10 an E-4; PV Verwaltung 60 kW (K-12) und sechs Ladepunkte (K-13.1 … K-13.6) in Betrieb; NA-1 bekommt die Grenzen Einspeisung 100 kW und Bezug 550 kW", "herkunft": "AP-15 §7 (Referenzdatei 1.5), E8", "gemeinsame_steuerung": "V-1" },
+    { "zeitpunkt": "2027-05-17T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Gemeinsame Steuerung V-1 geprüft (Stufe S2)", "herkunft": "AP-15 §7 (Referenzdatei 1.5)", "gemeinsame_steuerung": "V-1" },
+    { "zeitpunkt": "2027-05-24T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Gemeinsame Steuerung V-1 scharf (Stufe S3, Anteile aktiv): Einspeisung E-1 40 kW / E-4 60 kW, Bezug E-1 0 kW / E-4 77 kW", "herkunft": "AP-15 §7 (Referenzdatei 1.5)", "gemeinsame_steuerung": "V-1" },
+    { "zeitpunkt": "2027-06-13T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Beispieltag Sonntag 13.06.2027 (Betriebsruhe) der gemeinsamen Steuerung — Abnahmefälle R1, R4, R5, R6, R9, R15", "herkunft": "AP-15 §7", "gemeinsame_steuerung": "V-1" },
+    { "zeitpunkt": "2027-06-15T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Beispieltag Dienstag 15.06.2027 der gemeinsamen Steuerung — Abnahmefälle R3, R7, R8, R10, R11, R13", "herkunft": "AP-15 §7", "gemeinsame_steuerung": "V-1" },
+    { "zeitpunkt": "2027-10-12T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Box-Tausch E-4 → E-4′ in der gemeinsamen Steuerung (R17): die Nachfolgerin übernimmt DQ-8, DQ-9, DQ-10 und den reservierten Anteil; der Betreiber bestätigt das Mitglied", "herkunft": "AP-15 §7 R17", "gemeinsame_steuerung": "V-1" }
+  ],
+
+  "abnahmefaelle_ap15": {
+    "quelle": "Konzept AP-15 §7 (Referenzfallkatalog, referenzfaelle.json vom 21.09.2026) — je Fall der Block „gegeben“ wörtlich. Wo er eine Tatsache dieser Welt nennt (Grenzen, Anteile, Vorbehalt, Grundlast, Rückfälle, Netzanschlüsse, Box-Tausch), prüfen die Zwillinge die Übereinstimmung mit dem Objekt der Datei; der Rest (Fristen, Ränge, Varianten wie „wäre die Grenze 70 kW“) ist Eingang des Falls, kein Zustand der Welt",
+    "faelle": [
+    { "fall": "R1", "stand": "entschieden", "periode": "Sonntag 13.06.2027, 13:00 (Betriebsruhe)", "gegeben": {"grenzen_na1": {"einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550, "gueltig_ab": "2027-05-03", "hinweis": "Einspeisegrenze = Auflage des Netzbetreibers zur PV-Erweiterung; Bezugsgrenze = vereinbarte Leistung"}, "einspeisung": {"urteil": "passt", "verteilbar_kw": 100.0, "summe_rueckfall_kw": 100.0, "anteile": {"E-1": 40.0, "E-4": 60.0}, "ungenutzt_kw": 0.0}, "bezug": {"urteil": "passt", "verteilbar_kw": 77.0, "summe_rueckfall_kw": 24.6, "anteile": {"E-1": 0.0, "E-4": 77.0}, "ungenutzt_kw": 0.0, "vorbehalt_grundlast_kw": 473.0}, "augenblick": {"last_kw": 40.0, "pv_e4_kw": 55.0, "pv_e1_verfuegbar_kw": 95.0, "grenze_kw": 100.0, "marge_kw": 2.0, "ungeregelt_einspeisung_kw": 110.0, "e1_darf_kw": 83.0, "e1_regelt_ab_kw": 12.0, "einspeisung_kw": 98.0}} },
+    { "fall": "R2", "stand": "entschieden", "periode": "klarer Werktag im Juni, 06:00–20:00", "gegeben": {"grenze_kw": 70, "anteile": {"urteil": "passt", "verteilbar_kw": 70.0, "summe_rueckfall_kw": 60.0, "anteile": {"E-1": 40.0, "E-4": 30.0}, "ungenutzt_kw": 0.0}, "ohne_rueckfallwert_an_k12": {"urteil": "auslegung_passt_nicht", "verteilbar_kw": 70.0, "summe_rueckfall_kw": 100.0, "anteile": {}}, "pv_verwaltung_spitze_kw": 57.0, "arbeitspreis_ct_kwh": 22.4} },
+    { "fall": "R3", "stand": "entschieden", "periode": "Dienstag 15.06.2027, 10:00", "gegeben": {"bezug": {"urteil": "passt", "verteilbar_kw": 77.0, "summe_rueckfall_kw": 24.6, "anteile": {"E-1": 0.0, "E-4": 77.0}, "ungenutzt_kw": 0.0, "vorbehalt_grundlast_kw": 473.0}, "grundlast": {"gemessenes_viertelstunden_maximum_kw": 430, "zuschlag": 1.1, "hinweis": "höchster Viertelstundenwert von allem, was keine Box steuert (Halle 1 + Verwaltung ohne Speicher, PV, Ladepunkte); Annahme — IP-10 rechnet ihn aus den Messwerten"}, "augenblick": {"grundlast_kw": 410.0, "pv_gesamt_kw": 120.0, "ladewunsch_kw": 132.0, "anteil_e4_kw": 77.0, "laden_kw": 77.0, "bezug_kw": 367.0, "schlimmster_fall_kw": 550.0}, "geraete_rueckfall_ladepunkte_kw": 24.6} },
+    { "fall": "R4", "stand": "entschieden", "periode": "Sonntag 13.06.2027, 13:10", "gegeben": {"vorher": {"last_kw": 40.0, "pv_e4_kw": 55.0, "pv_e1_verfuegbar_kw": 95.0, "grenze_kw": 100.0, "marge_kw": 2.0, "ungeregelt_einspeisung_kw": 110.0, "e1_darf_kw": 83.0, "e1_regelt_ab_kw": 12.0, "einspeisung_kw": 98.0}, "rueckfall_e4": {"K-12": "läuft frei, ≤ 60 kW", "Ladepunkte": "je 4,1 kW nach Ablauf der lebenden Zuteilung"}} },
+    { "fall": "R5", "stand": "entschieden", "periode": "Sonntag 13.06.2027, 13:10", "gegeben": {"vorher": {"last_kw": 40.0, "pv_e4_kw": 55.0, "pv_e1_verfuegbar_kw": 95.0, "grenze_kw": 100.0, "marge_kw": 2.0, "ungeregelt_einspeisung_kw": 110.0, "e1_darf_kw": 83.0, "e1_regelt_ab_kw": 12.0, "einspeisung_kw": 98.0}, "rueckfall_k1": {"nenn_kw": 100, "rueckfall": "faellt_auf_wert", "rueckfall_kw": 40, "nach_s": 60, "hinweis": "am Gerät hinterlegt, vom Installateur gesetzt"}} },
+    { "fall": "R6", "stand": "entschieden", "periode": "Sonntag 13.06.2027, 13:10–16:10", "gegeben": {"plan_frische_min": 20, "puffer_h": 48, "anteile_ablauf": "keiner"} },
+    { "fall": "R7", "stand": "entschieden", "periode": "Dienstag 15.06.2027, 09:00–11:00", "gegeben": {"anteile_kw": {"E-1": 40.0, "E-4": 60.0}} },
+    { "fall": "R8", "stand": "entschieden", "periode": "Dienstag 15.06.2027, 11:45", "gegeben": {"heute": "SELECT … FROM telemetry WHERE site_id = … ORDER BY time DESC LIMIT 1 — ohne Box", "fristen": {"kurzfrist_s": 30, "netzbetreiber_vorgabe_min": 60, "speicherstand_min": 120}} },
+    { "fall": "R9", "stand": "entschieden", "periode": "Sonntag 13.06.2027, 13:10", "gegeben": {"heute_eine_box": "30 s frisch · bis 90 s halten · dann 5 min zusammenziehen", "gemeinsame_steuerung": "30 s frisch · kein Halten · in 60 s auf den eigenen Anteil", "eingefroren": "Wert ändert sich 60 s nicht, obwohl die Box selbst ≥ 2 kW verstellt hat"} },
+    { "fall": "R10", "stand": "entschieden", "periode": "Dienstag 15.06.2027", "gegeben": {"versatz_s": 840} },
+    { "fall": "R11", "stand": "entschieden", "periode": "Dienstag 15.06.2027, 10:15", "gegeben": {"quittung": {"topic": "…/v2/plan-result", "felder": ["plan_id", "lauf_nr", "angenommen", "grund", "anteile_revision"]}} },
+    { "fall": "R12", "stand": "entschieden", "periode": "Herbst 2027", "gegeben": {"alt": {"E-1": 40.0, "E-4": 60.0}, "neu": {"E-1": 10.0, "E-4": 90.0}, "uebergang": {"E-1": 10.0, "E-4": 60.0}, "anlass": "ein zweiter Wechselrichter 30 kW an Box Verwaltung (läuft frei); K-1 bekommt am Gerät den Rückfallwert 10 kW"} },
+    { "fall": "R13", "stand": "entschieden", "periode": "Dienstag 15.06.2027, 10:20", "gegeben": {"raenge": {"safety": 100, "grid": 90, "contract": 80, "handeingriff": 75, "pflichtregel": 70, "plan": 60, "regel": 40}} },
+    { "fall": "R14", "stand": "entschieden", "periode": "03.05.2027 bis zum Update", "gegeben": {"faehigkeit": "steuerungsverbund_anteil", "abfrage": "BoxFaehigkeiten.kann(deviceId, capability) — gemeldet ODER laut Versions-Tabelle"} },
+    { "fall": "R15", "stand": "entschieden", "periode": "Sonntag 13.06.2027, 13:20", "gegeben": {"auf_platte": ["Anteile mit Epoche und Revision", "letzter Plan", "laufende Verengungen mit voller Dauer"], "nicht_auf_platte": ["Erweiterungen auf Zeit"]} },
+    { "fall": "R16", "stand": "entwurf", "periode": "beliebig", "gegeben": {"dauern": {"ttl_weiter_s": 900, "ttl_enger_s": 1200, "tau_s": 20, "marge_s": 60}, "guter_lauf": {"enger_gesendet": "12:00:00", "enger_quittiert": "12:00:02", "angebot": "12:00:02", "annahme_bei_cloud": "12:00:04", "pruefung": "4 + 20 + 900 + 60 = 984 s ≤ 1200 s", "weiter_endet_spaetestens": "12:15:24", "enger_endet_fruehestens": "12:20:00", "abstand_s": 276}, "zu_spaet": {"annahme_bei_cloud": "12:03:50", "pruefung": "230 + 20 + 900 + 60 = 1210 s > 1200 s", "zusage": false}}, "hinweis": "Stufe S4 (Zuteilung auf Zeit) ist mit AP-15 E1 = A nicht gebaut (IP-33/IP-34 bleiben Entwurf, Entscheid nach dem Pilot) — die Werte stehen hier, damit der Fall nachrechenbar bleibt, und beschreiben keinen Zustand von V-1" },
+    { "fall": "R17", "stand": "entschieden", "periode": "Beispiel 12.10.2027", "gegeben": {"nachfolger": "E-4′", "uebernimmt": ["DQ-8", "DQ-9", "DQ-10"]} },
+    { "fall": "R18", "stand": "entschieden", "periode": "beliebig", "gegeben": {"regel": "G6", "ablehnung": "vorgabe_signal_nicht_an_jeder_box"} },
+    { "fall": "R19", "stand": "entschieden", "periode": "Inbetriebnahme", "gegeben": {"sprung_kw": -30.0, "dauer_s": 60, "toleranz": "max(10 %, 2 kW)", "wiederholungen": 2} },
+    { "fall": "R20", "stand": "entschieden", "periode": "jederzeit", "gegeben": {"na": {"NA-1": {"standort": "ST-1", "anschluss_kva": 630, "vereinbart_kw": 550, "anlage": "AN-1"}, "NA-2": {"standort": "ST-1", "anschluss_kva": 250, "vereinbart_kw": 200, "anlage": "AN-2"}}} },
+    { "fall": "R21", "stand": "entschieden", "periode": "10.04.2027 07:30 bis 12.04.2027 16:00", "gegeben": {"zeitachse": "Referenzdatei 1.4: DQ-3 E-1 → E-2′ → E-1"} },
+    { "fall": "R22", "stand": "entschieden", "periode": "jederzeit", "gegeben": {"muster": "Paarbeweis AP-14 IP-20"} }
+    ]
+  }
 }

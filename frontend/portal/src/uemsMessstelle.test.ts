@@ -602,7 +602,14 @@ const giltAm = (o: Json, tag: string): boolean => o.gueltig_ab <= tag && (o.guel
 /** Ein Kalendertag als Zeitpunkt MITTEN in ihm (12:00 UTC liegt immer im Berliner Tag). */
 const mittag = (tag: string): number => Date.parse(`${tag}T12:00:00Z`);
 
-const letztesEreignis = Math.max(...referenz.zeitachse.map((z: Json) => Date.parse(z.zeitpunkt)));
+/**
+ * Der Horizont einer Fortschreibung: das letzte Ereignis der Zeitachse OHNE die Zeilen mit dem Merkmal
+ * `gemeinsame_steuerung` (Referenzunternehmen 1.5) — sie verlängern die Zeitachse nur für die gemeinsame
+ * Steuerung von AN-1 und sagen über Messstellen-Quellen nichts (Fall unten). Dieselbe Regel steht in
+ * MessstelleRegelnVectorsTest.
+ */
+const horizontZeilen: Json[] = referenz.zeitachse.filter((z: Json) => z.gemeinsame_steuerung == null);
+const letztesEreignis = Math.max(...horizontZeilen.map((z: Json) => Date.parse(z.zeitpunkt)));
 
 const gilt = (o: Json, t: number): boolean =>
   Date.parse(o.gueltig_ab) <= t && (o.gueltig_bis === null || t < Date.parse(o.gueltig_bis));
@@ -656,6 +663,20 @@ const pruefeZeitstrahlWieReferenz = (zeitstrahl: Json[], referenzQuellen: Json[]
 const ohneStand = (qs: Json[]) => qs.map(({ anfangsstand: _a, endstand: _e, ...rest }) => rest);
 
 describe('Messstellen-Vertrag — übernimmt das Referenzunternehmen', () => {
+  it('die Zeilen der gemeinsamen Steuerung nennen keine Messstelle, Datenquelle oder Bezugsgröße der Vektoren', () => {
+    // Die Ausnahme vom Horizont ist durch die Daten begründet; sagt AP-15 doch etwas über eine solche Quelle,
+    // bricht dieser Fall — dann gehört die Zeile in den Horizont.
+    const kz = /\b(?:MS|DQ|BZ)-[0-9]+\b/g;
+    const benutzt = new Set(JSON.stringify(vectors).match(kz) ?? []);
+    expect(benutzt.size).toBeGreaterThan(0);
+    const ausgenommen = (referenz.zeitachse as Json[]).filter((z) => z.gemeinsame_steuerung != null);
+    expect(ausgenommen.length).toBeGreaterThan(0);
+    const fehler = ausgenommen.flatMap((z) =>
+      ((z.ereignis as string).match(kz) ?? []).filter((k) => benutzt.has(k)).map((k) => `${z.zeitpunkt} nennt ${k}`),
+    );
+    expect(fehler).toEqual([]);
+  });
+
   it.each(gueltige)('%s ist die Messstelle des Referenzunternehmens, Feld für Feld', (datei) => {
     const d = lies(resolve(FIXTURES, datei));
     const m = refMessstelle(d.kennzeichen);

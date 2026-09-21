@@ -25,10 +25,32 @@ const daten = JSON.parse(readFileSync(resolve(WURZEL, 'uems-referenzunternehmen.
 
 const gleich = (a: string, b: string) => Date.parse(a) === Date.parse(b);
 
+/**
+ * Die EINE Ausnahme vom Spiegel: die Objekte der mitsteuernden Boxen einer gemeinsamen Steuerung
+ * (Referenzunternehmen 1.5, AP-15 E8) — die Boxen mit der Rolle `steuert_mit`, die Datenquellen, für die sie
+ * zuständig sind, und deren Geräte. Die Bühne zeigt die Welt ohne gemeinsame Steuerung; fällt mit AP-15 IP-23
+ * weg, das die Bühne um die gemeinsame Steuerung erweitert.
+ */
+const ohneGemeinsameSteuerung = (() => {
+  const boxen = new Set<string>(
+    (daten.gemeinsame_steuerungen ?? []).flatMap((v: any) =>
+      v.mitglieder.filter((m: any) => m.rolle === 'steuert_mit').map((m: any) => m.box),
+    ),
+  );
+  const quellen = new Set<string>(
+    daten.zuordnungen.filter((z: any) => z.art === 'datenquelle_box' && boxen.has(z.nach)).map((z: any) => z.von),
+  );
+  return {
+    boxen: daten.boxen.filter((b: any) => !boxen.has(b.kennzeichen)),
+    datenquellen: daten.datenquellen.filter((q: any) => !quellen.has(q.kennzeichen)),
+    geraete: daten.geraete.filter((g: any) => !quellen.has(g.datenquelle)),
+  };
+})();
+
 describe('Datenquellen-Fixtures ⟷ Referenzunternehmen', () => {
   it('die vier Boxen tragen Namen und Inbetriebnahme der Referenz', () => {
-    expect(daten.boxen).toHaveLength(4);
-    for (const b of daten.boxen) {
+    expect(ohneGemeinsameSteuerung.boxen).toHaveLength(4);
+    for (const b of ohneGemeinsameSteuerung.boxen) {
       const kz = b.kennzeichen as keyof typeof BOX_NAMEN;
       expect(BOX_NAMEN[kz]).toBe(b.name);
       expect(gleich(BOX_AB[kz], b.in_betrieb_ab)).toBe(true);
@@ -46,16 +68,16 @@ describe('Datenquellen-Fixtures ⟷ Referenzunternehmen', () => {
   });
 
   it('jedes Gerät zeigt auf die Datenquelle der Referenz', () => {
-    expect(Object.keys(GERAET_QUELLE)).toHaveLength(daten.geraete.length);
-    for (const g of daten.geraete) expect(GERAET_QUELLE[g.kennzeichen]).toBe(g.datenquelle);
+    expect(Object.keys(GERAET_QUELLE)).toHaveLength(ohneGemeinsameSteuerung.geraete.length);
+    for (const g of ohneGemeinsameSteuerung.geraete) expect(GERAET_QUELLE[g.kennzeichen]).toBe(g.datenquelle);
   });
 
   it('die sieben Datenquellen tragen Protokoll, Adresse, Geräte-IDs und Kadenz der Referenz', () => {
     const alle = [FIXTURE_IDS.an1, FIXTURE_IDS.an2, FIXTURE_IDS.an3].flatMap(
       (a) => ahrenbergDatenquellen(a, BOX_TAUSCH).datenquellen,
     );
-    expect(alle).toHaveLength(daten.datenquellen.length);
-    for (const q of daten.datenquellen) {
+    expect(alle).toHaveLength(ohneGemeinsameSteuerung.datenquellen.length);
+    for (const q of ohneGemeinsameSteuerung.datenquellen) {
       const f = alle.find((x) => x.kennzeichen === q.kennzeichen)!;
       expect(f.protokoll).toBe(q.protokoll);
       expect(f.adresse).toBe(q.adresse);
