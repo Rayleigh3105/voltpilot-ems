@@ -19,21 +19,26 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class GeraeteRueckfallRepository {
 
-    /** Eine Angabe mit wer/wann; {@code aufgehobenAm} fehlt bei der wirksamen. */
-    public record Zeile(UUID id, UUID komponente, String richtung, GeraeteRueckfall rueckfall, BigDecimal rueckfallKw,
-            Integer nachS, String hinweis, String eingetragenVon, Instant eingetragenAm, Instant aufgehobenAm) {
+    /**
+     * Eine Angabe mit wer/wann; {@code geraet} ist der Einbau, der die Komponente beim Eintragen speiste (oder
+     * {@code null}); {@code aufgehobenAm} fehlt bei der wirksamen.
+     */
+    public record Zeile(UUID id, UUID komponente, UUID geraet, String richtung, GeraeteRueckfall rueckfall,
+            BigDecimal rueckfallKw, Integer nachS, String hinweis, String eingetragenVon, Instant eingetragenAm,
+            Instant aufgehobenAm) {
 
         public GeraeteRueckfallRegel.Angabe angabe() {
             return new GeraeteRueckfallRegel.Angabe(rueckfall, rueckfallKw, nachS);
         }
     }
 
-    private static final String SPALTEN = "id, entity_id, richtung, rueckfall, rueckfall_kw, nach_s, hinweis, "
-            + "created_by, created_at, aufgehoben_am";
+    private static final String SPALTEN = "id, entity_id, geraet_id, richtung, rueckfall, rueckfall_kw, nach_s, "
+            + "hinweis, created_by, created_at, aufgehoben_am";
 
     private static final RowMapper<Zeile> ZEILE = (rs, n) -> new Zeile(
             rs.getObject("id", UUID.class),
             rs.getObject("entity_id", UUID.class),
+            rs.getObject("geraet_id", UUID.class),
             rs.getString("richtung"),
             wort(rs.getString("rueckfall")),
             ohneNullen(rs.getBigDecimal("rueckfall_kw")),
@@ -49,7 +54,18 @@ public class GeraeteRueckfallRepository {
         this.jdbc = jdbc;
     }
 
-    /** Die wirksame Angabe einer Komponente in einer Richtung, oder {@code null}. */
+    /**
+     * Der Einbau, der die Komponente jetzt speist ({@code geraet_komponente} ohne Ende), oder {@code null}. Speisen
+     * mehrere, zählt der zuletzt begonnene.
+     */
+    public UUID einbauJetzt(UUID komponente, Instant jetzt) {
+        List<UUID> zeilen = jdbc.queryForList("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ? "
+                + "AND gueltig_ab <= ? AND (gueltig_bis IS NULL OR gueltig_bis > ?) ORDER BY gueltig_ab DESC, id "
+                + "LIMIT 1", UUID.class, komponente, Timestamp.from(jetzt), Timestamp.from(jetzt));
+        return zeilen.isEmpty() ? null : zeilen.get(0);
+    }
+
+    /** Die wirksame Angabe einer Komponente in einer Richtung, oder {@code null} — gleich, an welchem Einbau. */
     public Zeile wirksam(UUID komponente, String richtung) {
         List<Zeile> zeilen = jdbc.query("SELECT " + SPALTEN + " FROM komponente_geraete_rueckfall "
                 + "WHERE entity_id = ? AND richtung = ? AND aufgehoben_am IS NULL", ZEILE, komponente, richtung);
@@ -72,12 +88,12 @@ public class GeraeteRueckfallRepository {
                 id);
     }
 
-    public UUID eintragen(UUID tenant, UUID komponente, String richtung, GeraeteRueckfallRegel.Angabe angabe,
-            String hinweis, String wer) {
-        return jdbc.queryForObject("INSERT INTO komponente_geraete_rueckfall (tenant_id, entity_id, richtung, "
-                + "rueckfall, rueckfall_kw, nach_s, hinweis, created_by) VALUES (?,?,?,?,?,?,?,?) RETURNING id",
-                UUID.class, tenant, komponente, richtung, angabe.rueckfall().code(), angabe.rueckfallKw(),
-                angabe.nachS(), hinweis, wer);
+    public UUID eintragen(UUID tenant, UUID komponente, UUID geraet, String richtung,
+            GeraeteRueckfallRegel.Angabe angabe, String hinweis, String wer) {
+        return jdbc.queryForObject("INSERT INTO komponente_geraete_rueckfall (tenant_id, entity_id, geraet_id, "
+                + "richtung, rueckfall, rueckfall_kw, nach_s, hinweis, created_by) VALUES (?,?,?,?,?,?,?,?,?) "
+                + "RETURNING id", UUID.class, tenant, komponente, geraet, richtung, angabe.rueckfall().code(),
+                angabe.rueckfallKw(), angabe.nachS(), hinweis, wer);
     }
 
     private static GeraeteRueckfall wort(String code) {

@@ -21,6 +21,14 @@
 -- ⚠ KEINE BESTÄTIGUNG AM PRÜFSTAND: eine Zeile sagt, was am Gerät eingestellt
 -- ist, nicht, dass es geprüft wurde (NW-7 trägt nur der Betreiber ein, nicht hier).
 --
+-- DAS GERÄT GEHÖRT DAZU: `geraet_id` ist der Einbau, der die Komponente beim
+-- Eintragen speiste (geraet_komponente ohne Ende; NULL = die Komponente hat
+-- keinen Einbau). Der Wert steckt im PHYSISCHEN Gerät — nach einem Tausch
+-- (Austausch/Zählerwechsel, neuer Einbau an derselben Komponente) gilt die alte
+-- Angabe nicht mehr, und es zählt wieder Katalog/Nennleistung, bis der
+-- Installateur den Wert am neuen Gerät einträgt. Das prüft die Lese-Regel beim
+-- Lesen; keine Zeile ändert sich durch den Tausch.
+--
 -- EINE Angabe je Komponente und Richtung ist wirksam; eine neue hebt die alte auf
 -- (`aufgehoben_am`), nie überschrieben, nie gelöscht — die aufgehobenen Zeilen
 -- sind das Protokoll (wer = `created_by`, wann = `created_at`).
@@ -28,8 +36,9 @@
 -- LÖSCHEN (die App-Rolle hat kein DELETE):
 --   * → tenant: ON DELETE RESTRICT; das Offboarding räumt die Tabelle
 --     AUSDRÜCKLICH ab (TenantRepository.offboard), vor den Komponenten.
---   * → measurement_point: ON DELETE CASCADE wie quelle_einstellung — das
---     heutige Löschen einer Anlage oder Komponente bleibt, wie es ist.
+--   * → measurement_point und → geraet: ON DELETE CASCADE wie
+--     quelle_einstellung — das heutige Löschen einer Anlage, Komponente oder
+--     eines Geräts bleibt, wie es ist.
 --
 -- ⚠ REIN ADDITIV: eine leere Tabelle kommt dazu; keine Bestandszeile ändert
 -- sich, es wird KEINE Zeile angelegt. Eine Komponente ohne Angabe verhält sich
@@ -42,6 +51,7 @@ CREATE TABLE IF NOT EXISTS komponente_geraete_rueckfall (
     id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id       UUID          NOT NULL,
     entity_id       UUID          NOT NULL,
+    geraet_id       UUID,
     richtung        TEXT          NOT NULL,
     rueckfall       TEXT          NOT NULL,
     rueckfall_kw    NUMERIC(12, 3),
@@ -55,6 +65,8 @@ CREATE TABLE IF NOT EXISTS komponente_geraete_rueckfall (
     -- Über uq_measurement_point_id_tenant (V20260855000000).
     CONSTRAINT komponente_geraete_rueckfall_entity_fk FOREIGN KEY (entity_id, tenant_id)
         REFERENCES measurement_point (id, tenant_id) ON DELETE CASCADE,
+    CONSTRAINT komponente_geraete_rueckfall_geraet_fk FOREIGN KEY (geraet_id, tenant_id)
+        REFERENCES geraet (id, tenant_id) ON DELETE CASCADE,
     CONSTRAINT komponente_geraete_rueckfall_richtung_chk
         CHECK (richtung IN ('einspeisung', 'bezug')),
     CONSTRAINT komponente_geraete_rueckfall_rueckfall_chk

@@ -43,7 +43,9 @@ Summanden je Komponente macht EINE Regel (Java `uems/GeraeteRueckfallRegel`, Ein
 `uems/GeraeteRueckfallDienst`):
 
 1. der **am Gerät hinterlegte Wert** der Komponente (`komponente_geraete_rueckfall`, je Richtung eine wirksame
-   Angabe mit wer/wann; eine neue hebt die alte auf) — z. B. K-1 `faellt_auf_wert` 40 kW nach 60 s;
+   Angabe mit wer/wann; eine neue hebt die alte auf) — z. B. K-1 `faellt_auf_wert` 40 kW nach 60 s. Er zählt nur,
+   solange derselbe Einbau die Komponente speist, an dem er eingetragen wurde: nach einem Tausch steckt er im alten
+   Gerät, und es gilt wieder 2./3., bis der Wert am neuen Gerät eingetragen ist;
 2. sonst der **Katalog-Eintrag** der Familie (`families[].rueckfall_ohne_box` im Messpunktkatalog; mehrere
    Katalog-Familien einer Komponente, die Verschiedenes sagen, gelten als keiner);
 3. sonst `unbekannt`.

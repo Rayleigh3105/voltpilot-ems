@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,14 +55,24 @@ public class GeraeteRueckfallDienst {
 
     /**
      * Der Rückfall dieser Komponente in kW in einer Richtung: hinterlegter Wert, sonst Katalog-Eintrag, sonst
-     * {@code unbekannt} → Nennleistung.
+     * {@code unbekannt} → Nennleistung. Der hinterlegte Wert zählt nur, solange DERSELBE Einbau die Komponente
+     * speist, an dem er eingetragen wurde — nach einem Tausch steckt er im alten Gerät.
      */
     @Transactional(readOnly = true)
     public GeraeteRueckfallRegel.Rueckfall rueckfall(UUID komponente, Grenzart richtung, BigDecimal nennKw) {
         String familie = komponente(komponente).familie();
-        GeraeteRueckfallRepository.Zeile amGeraet = angaben.wirksam(komponente, richtung.code());
+        GeraeteRueckfallRepository.Zeile amGeraet = gueltig(komponente, richtung);
         return GeraeteRueckfallRegel.rueckfall(richtung, amGeraet == null ? null : amGeraet.angabe(),
                 katalogEintrag(familie, richtung), nennKw);
+    }
+
+    /** Die wirksame Angabe, wenn sie am Einbau von jetzt eingetragen wurde, sonst {@code null}. */
+    private GeraeteRueckfallRepository.Zeile gueltig(UUID komponente, Grenzart richtung) {
+        GeraeteRueckfallRepository.Zeile zeile = angaben.wirksam(komponente, richtung.code());
+        if (zeile == null || !Objects.equals(zeile.geraet(), angaben.einbauJetzt(komponente, clock.instant()))) {
+            return null;
+        }
+        return zeile;
     }
 
     /**
@@ -106,14 +117,16 @@ public class GeraeteRueckfallDienst {
         }
         UUID tenant = komponente(komponente).tenant();
         angaben.sperren(komponente);
+        UUID einbau = angaben.einbauJetzt(komponente, clock.instant());
         GeraeteRueckfallRepository.Zeile alt = angaben.wirksam(komponente, richtung.code());
-        if (alt != null && alt.angabe().equals(normiert(angabe)) && java.util.Objects.equals(alt.hinweis(), hinweis)) {
+        if (alt != null && alt.angabe().equals(normiert(angabe)) && Objects.equals(alt.hinweis(), hinweis)
+                && Objects.equals(alt.geraet(), einbau)) {
             return alt;
         }
         if (alt != null) {
             angaben.aufheben(alt.id(), clock.instant());
         }
-        angaben.eintragen(tenant, komponente, richtung.code(), angabe, hinweis, wer);
+        angaben.eintragen(tenant, komponente, einbau, richtung.code(), angabe, hinweis, wer);
         return angaben.wirksam(komponente, richtung.code());
     }
 
