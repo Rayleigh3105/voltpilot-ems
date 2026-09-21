@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -579,18 +580,8 @@ class ZugriffZaunApiTest {
     private static final Map<String, String> ZAUN_OFFEN = Map.ofEntries(
             Map.entry("/api/v1/unternehmen/kostenstellen", "Liste nennt jede Kostenstelle; Geltung Unternehmen sieht "
                     + "nach AP-03 R-A1 nur eine unternehmensweite Rolle — KostenstelleProzessService.java:81"),
-            Map.entry("/api/v1/unternehmen/kostenstellen/{id}", "ganze Kostenstelle (Geltung Unternehmen, R-A1) — "
-                    + "KostenstelleProzessService.java:88"),
-            Map.entry("/api/v1/unternehmen/kostenstellen/{id}/energie", "ganze Energiebilanz der Kostenstelle, auch "
-                    + "Anteile von Messstellen fremder Standorte — KostenstelleEnergieService.java:92"),
             Map.entry("/api/v1/unternehmen/prozesse", "Liste nennt jeden Prozess (Geltung Unternehmen, R-A1) — "
-                    + "KostenstelleProzessService.java:92"),
-            Map.entry("/api/v1/unternehmen/prozesse/{id}", "ganzer Prozess (Geltung Unternehmen, R-A1) — "
-                    + "KostenstelleProzessService.java:99"),
-            Map.entry("/api/v1/unternehmen/aenderungen", "Protokoll des Unternehmens nennt jeden Eintrag fremder "
-                    + "Messstellen samt alt/neu, Grund und Person — AenderungsprotokollService.java:111"),
-            Map.entry("/api/v1/berichte/betroffen", "nur Existenz einer Messstelle-Kennung (?objekt=) — "
-                    + "StrukturAufloesung.java:151 objektArt liest messstelle ohne Zaun"));
+                    + "KostenstelleProzessService.java:92"));
 
     /**
      * Ein Zaun-Fall. {@code sieht} bekommt das Objekt ({@code < 400}, der Körper nennt {@code beleg}). {@code blind}
@@ -890,6 +881,90 @@ class ZugriffZaunApiTest {
                 .containsExactlyInAnyOrderElementsOf(ZAUN_OFFEN.keySet().stream().filter(inventur::contains).toList());
         assertThat(ZAUN_OFFEN.keySet()).as("jeder offene Fall ist gemessen").allMatch(
                 m -> inventur.contains(m) || schonGemessen.contains(m));
+    }
+
+    /**
+     * Das Protokoll des Unternehmens (AP-03 R-A1): ein Eintrag erscheint nur, wenn sein Objekt im Zugriff liegt. Im
+     * Fenster 01.–02.03.2025 stehen abwechselnd drei Einträge an MS-Z1 (Demo-Standort) und zwei am anderen Standort: der
+     * Bearbeiter am Demo-Standort sieht die drei, der am anderen Standort die zwei — auf jeder Seite; die Seiten bleiben
+     * voll, „weiter“ führt durch genau seine Einträge in derselben Folge wie beim Kundenadministrator. Kundenadministrator,
+     * Bestandskonto (E12) und ein Aufruf ohne Zugriff-Kontext bekommen dieselben Bytes (hier und im ganzen Jahr 2026).
+     */
+    @Test
+    void dasProtokollDesUnternehmensZeigtNurEintraegeImZugriff() throws Exception {
+        Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
+        Konto bestand = new Konto("Bestandskonto (E12, nie zugewiesen)", konto("sub-zaun-bestandskonto", DEMO),
+                new String[0]);
+        Konto hier = new Konto("Bearbeiter am Standort des Objekts", konto(KUNDE_BEARBEITER, DEMO), new String[0]);
+        Konto anderswo = new Konto("Bearbeiter nur an einem anderen Standort", konto(KUNDE_BEARBEITER_FREMD, DEMO),
+                new String[0]);
+        List<String> demo = new ArrayList<>();
+        List<String> fremd = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            demo.add("messstelle:" + root.queryForObject("INSERT INTO messstelle_aenderung (tenant_id, messstelle_id, "
+                    + "art, alt, neu, gilt_ab, rueckwirkend, grund, actor_sub, actor_name, actor_rolle, actor_art) VALUES "
+                    + "(?, ?, 'bearbeitet', '{}'::jsonb, '{\"name\":\"Zaun-Zähler\"}'::jsonb, ?, false, 'Zaun-Seite', ?, "
+                    + "'Zaun', 'kundenadministrator', 'kunde') RETURNING id", Long.class, DEMO, buehne.messstelle(),
+                    java.sql.Timestamp.from(Instant.parse("2025-03-01T0" + (1 + 2 * i) + ":00:00Z")), KUNDE_KA));
+        }
+        for (String tag : List.of("2025-03-01", "2025-03-01")) {
+            fremd.add("ort:" + root.queryForObject("INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, alt, "
+                    + "neu, gilt_ab, rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, 'standort', ?, "
+                    + "'bearbeitet', '{}'::jsonb, '{\"name\":\"Zaun-Werk\"}'::jsonb, ?::date, false, ?, 'Zaun', "
+                    + "'kundenadministrator', 'kunde') RETURNING id", Long.class, DEMO, andererStandort, tag, KUNDE_KA));
+        }
+        for (String fenster : List.of("?von=2025-03-01&bis=2025-03-02", "?von=2026-01-01&bis=2027-01-01")) {
+            String pfad = "/api/v1/unternehmen/aenderungen" + fenster + "&limit=500";
+            Antwort voll = ruf(get(pfad), ka);
+            assertThat(voll.status()).as(voll.body()).isEqualTo(200);
+            assertThat(ruf(get(pfad), bestand)).as("Bestandskonto " + fenster).isEqualTo(voll);
+            MvcResult ohne = mvc.perform(get(pfad).with(jwt().jwt(j -> {
+                j.subject(KUNDE_KA);
+                j.claim("preferred_username", KUNDE_KA);
+                j.claim("tenant_id", DEMO.toString());
+            }))).andReturn();
+            assertThat(new Antwort(ohne.getResponse().getStatus(),
+                    ohne.getResponse().getContentAsString(StandardCharsets.UTF_8))).as("ohne Zugriff-Kontext " + fenster)
+                    .isEqualTo(voll);
+        }
+
+        String pfad = "/api/v1/unternehmen/aenderungen?von=2025-03-01&bis=2025-03-02";
+        List<String> alle = eintraege(ruf(get(pfad + "&limit=500"), ka).body());
+        assertThat(alle).containsAll(demo).containsAll(fremd);
+        assertThat(seitenweise(pfad, ka)).as("seitenweise wie am Stück").isEqualTo(alle);
+        List<String> sichtHier = seitenweise(pfad, hier);
+        List<String> sichtAnderswo = seitenweise(pfad, anderswo);
+        assertThat(sichtHier).containsAll(demo).doesNotContainAnyElementsOf(fremd)
+                .isEqualTo(eintraege(ruf(get(pfad + "&limit=500"), hier).body()))
+                .isEqualTo(alle.stream().filter(sichtHier::contains).toList());
+        assertThat(sichtAnderswo).containsAll(fremd).doesNotContainAnyElementsOf(demo)
+                .isEqualTo(eintraege(ruf(get(pfad + "&limit=500"), anderswo).body()))
+                .isEqualTo(alle.stream().filter(sichtAnderswo::contains).toList());
+    }
+
+    /** Alle Seiten zu je zwei Einträgen: jede Seite ist voll, solange „weiter“ steht. */
+    private List<String> seitenweise(String pfad, Konto k) throws Exception {
+        List<String> ids = new ArrayList<>();
+        String weiter = null;
+        for (int seite = 0; seite < 500; seite++) {
+            Antwort a = ruf(get(pfad + "&limit=2" + (weiter == null ? "" : "&nach=" + weiter)), k);
+            assertThat(a.status()).as(k.name() + " " + a.body()).isEqualTo(200);
+            JsonNode n = MAPPER.readTree(a.body());
+            List<String> hier = eintraege(a.body());
+            ids.addAll(hier);
+            if (n.path("weiter").isNull() || n.path("weiter").isMissingNode()) {
+                return ids;
+            }
+            assertThat(hier).as(k.name() + ": eine Seite mit „weiter“ ist voll").hasSize(2);
+            weiter = n.path("weiter").asText();
+        }
+        throw new AssertionError("mehr als 500 Seiten");
+    }
+
+    private static List<String> eintraege(String body) throws Exception {
+        List<String> ids = new ArrayList<>();
+        MAPPER.readTree(body).path("eintraege").forEach(e -> ids.add(e.path("id").asText()));
+        return ids;
     }
 
     private static String kurz(String body) {

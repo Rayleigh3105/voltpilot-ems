@@ -1,15 +1,20 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.KostenstelleProzessAbgelehnt.Ablehnung;
+import com.voltpilot.api.zugriff.ZugriffContext;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +33,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -88,6 +95,9 @@ class KostenstelleProzessApiTest {
     @Autowired
     MockMvc mvc;
 
+    @Autowired
+    KostenstelleProzessService dienst;
+
     private static JdbcTemplate root;
     private static JsonNode referenz;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -95,6 +105,14 @@ class KostenstelleProzessApiTest {
     private record Welt(UUID mandant, UUID messstelle, String kennzeichen) {}
 
     private record Antwort(int status, JsonNode body) {}
+
+    private record Roh(int status, String body) {}
+
+    @AfterEach
+    void aufraeumen() {
+        TenantContext.clear();
+        ZugriffContext.clear();
+    }
 
     @BeforeAll
     static void verbinde() throws Exception {
@@ -319,6 +337,83 @@ class KostenstelleProzessApiTest {
         Welt w = new Welt(t, null, null);
         abgelehnt(w, HttpMethod.POST, KST, objekt("4100", "Spritzguss", "2026-10-01"), "unternehmen_nicht_angelegt");
         assertThat(ok(ruf(w, HttpMethod.GET, KST, null), 200).body().get("kostenstellen")).isEmpty();
+    }
+
+    // ======================================================================== Standort-Zaun
+
+    /**
+     * Geltung Unternehmen (AP-03 R-A1, §4.9): Kostenstelle und Prozess sieht nur eine unternehmensweite Rolle.
+     * Kundenadministrator, Bestandskonto (E12) und ein Aufruf ohne Zugriff-Kontext (wie jeder andere Fall dieser Klasse)
+     * sehen das Objekt byte-gleich; ein Bearbeiter — auch am Standort der zugeordneten Messstelle — bekommt Status und
+     * Körper einer Kennung, die es nicht gibt. Der interne Leser (Verteilung, Bericht) liest weiter.
+     */
+    @Test
+    void kostenstelleUndProzessSiehtNurEineUnternehmensweiteRolle() throws Exception {
+        Welt w = welt();
+        UUID unternehmen = root.queryForObject("SELECT id FROM unternehmen WHERE tenant_id = ?", UUID.class, w.mandant());
+        UUID standort = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), unternehmen);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2024-01-01')", w.mandant(), w.messstelle(), standort);
+        UUID kostenstelle = id(ok(ruf(w, HttpMethod.POST, KST, objekt("4200", "Montage", "2024-01-01")), 201));
+        UUID prozess = id(ok(ruf(w, HttpMethod.POST, PRZ, objekt("P-1", "Spritzguss", "2024-01-01")), 201));
+        ok(ruf(w, HttpMethod.PUT, pfad(w), setzen("2024-01-01", prozess)), 200);
+        String bestand = "sub-ines-" + w.mandant();
+        String ka = zuweisung(w, "sub-ka-", "kundenadministrator", null);
+        String hier = zuweisung(w, "sub-hier-", "bearbeiter", standort);
+        String nie = "00000000-0000-0000-0000-00000000dead";
+
+        for (String basis : List.of(KST + "/", PRZ + "/")) {
+            String pfad = basis + (basis.startsWith(KST) ? kostenstelle : prozess);
+            Roh voll = als(w, ka, pfad);
+            assertThat(voll.status()).as(pfad + " " + voll.body()).isEqualTo(200);
+            assertThat(als(w, bestand, pfad)).as(pfad + ": Bestandskonto").isEqualTo(voll);
+            assertThat(ohneKontext(w, pfad)).as(pfad + ": ohne Kontext").isEqualTo(voll);
+            Roh h = als(w, hier, pfad);
+            assertThat(h.status()).as(pfad + ": Bearbeiter " + h.body()).isEqualTo(404);
+            assertThat(h).as(pfad + ": wie eine unbekannte Kennung").isEqualTo(als(w, hier, basis + nie));
+        }
+
+        // Der interne Leser bedient keine Kundenanfrage nach der Kennung: er liest auch unter einem Zugriff, der die
+        // Kostenstelle nicht sieht.
+        TenantContext.set(w.mandant());
+        ZugriffContext.set(new ZugriffContext.Zugriff("sub-ohne", RechteAbleitung.Konto.BENUTZER, w.mandant(),
+                ZugriffContext.Zugang.KONTO, List.of(), Instant.now(), false));
+        assertThat(dienst.kostenstelle(kostenstelle).kennzeichen()).isEqualTo("4200");
+        assertThat(dienst.prozess(prozess).kennzeichen()).isEqualTo("P-1");
+    }
+
+    /** Ein Konto mit einer wirksamen Zuweisung ({@code standort} {@code null} = unternehmensweit). */
+    private static String zuweisung(Welt w, String praefix, String rolle, UUID standort) {
+        String sub = praefix + w.mandant();
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, "
+                + "'aktiv')", w.mandant(), sub, sub);
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) VALUES "
+                + "(?, ?, ?, ?, '2024-01-01T00:00:00+01', 'Europe/Berlin')", w.mandant(), sub, rolle, standort);
+        return sub;
+    }
+
+    /** Ein Kundenkonto wie aus Keycloak (der Konverter setzt die Kontoart): der Zugriff-Kontext wird geladen. */
+    private Roh als(Welt w, String sub, String pfad) throws Exception {
+        Map<String, Object> claims = Map.of("sub", sub, "preferred_username", sub, "tenant_id", w.mandant().toString(),
+                "realm_access", Map.of("roles", List.of()));
+        Jwt token = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
+        return roh(request(HttpMethod.GET, pfad).with(authentication(new KeycloakRealmRoleConverter().convert(token))));
+    }
+
+    /** Derselbe Aufruf ohne Kontoart — ohne Zugriff-Kontext, wie {@link #ruf}. */
+    private Roh ohneKontext(Welt w, String pfad) throws Exception {
+        return roh(request(HttpMethod.GET, pfad).with(jwt().jwt(j -> {
+            j.subject("sub-ines-" + w.mandant());
+            j.claim("preferred_username", "Ines Kaltenbach");
+            j.claim("tenant_id", w.mandant().toString());
+        })));
+    }
+
+    private Roh roh(MockHttpServletRequestBuilder anfrage) throws Exception {
+        MvcResult r = mvc.perform(anfrage).andReturn();
+        return new Roh(r.getResponse().getStatus(), r.getResponse().getContentAsString(StandardCharsets.UTF_8));
     }
 
     // ============================================================================== Gerüst

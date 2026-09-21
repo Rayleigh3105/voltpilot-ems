@@ -3,10 +3,12 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -51,6 +53,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -222,6 +225,61 @@ class BerichtApiTest {
         assertThat(zaehle("bericht_stand", w)).isEqualTo(staende);
         assertThat(zaehle("bericht_revision_anstoss", w)).isEqualTo(anstoesse);
         assertThat(zaehle("bericht_aenderung", w)).isEqualTo(protokoll);
+    }
+
+    /**
+     * Standort-Zaun (AP-03 R-A1): eine Messstelle außerhalb des Zugriffs antwortet wie eine Kennung, die der Kundenbereich
+     * nicht kennt — Peter (Bearbeiter nur Werk Lindach) erfährt nicht, dass es MS-12 in Werk Ahrenberg gibt. An MS-18
+     * seines Standorts antwortet die Route wie bisher. Ines (Energiemanager mit Zuweisung), Jonas als Bestandskonto (E12,
+     * nie zugewiesen) und Jonas ohne Zugriff-Kontext (wie jeder andere Fall dieser Klasse) bekommen dieselben Bytes.
+     */
+    @Test
+    void betroffenVerraetKeineMessstelleAusserhalbDesZugriffs() throws Exception {
+        Welt w = welt();
+        // Der Ort gilt HEUTE (der Zaun fragt den Ort von heute; ohne Ort gälte „irgendwo“, firstmate 21.09.2026).
+        messstelle(w, "MS-12", "Montage Linie M1", w.st1(), "2024-01-01");
+        messstelle(w, "MS-18", "Montagehalle Lindach gesamt", w.st2(), "2024-01-01");
+        UUID ms12 = root.queryForObject("SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = 'MS-12'", UUID.class,
+                w.mandant());
+        UUID ms18 = root.queryForObject("SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = 'MS-18'", UUID.class,
+                w.mandant());
+        konto(w.peter(), "bearbeiter", w.st2());
+        konto(w.ines(), "energiemanager", null);
+        String frage = PFAD + "/betroffen?anlass=zuordnung_rueckwirkend&gilt_ab=2026-10-01&objekt=";
+        String nie = "00000000-0000-0000-0000-00000000dead";
+
+        Antwort fremd = mitKonto(w.peter(), frage + ms12);
+        assertThat(fremd.status()).as(fremd.text()).isEqualTo(404);
+        assertThat(fremd).isEqualTo(mitKonto(w.peter(), frage + nie));
+        Antwort eigen = mitKonto(w.peter(), frage + ms18);
+        assertThat(eigen.status()).as(eigen.text()).isEqualTo(200);
+        assertThat(eigen).isEqualTo(ruf(w.peter(), HttpMethod.GET, frage + ms18, null));
+
+        for (UUID ms : List.of(ms12, ms18)) {
+            Antwort voll = ruf(w.jonas(), HttpMethod.GET, frage + ms, null);
+            assertThat(voll.status()).as(voll.text()).isEqualTo(200);
+            assertThat(mitKonto(w.jonas(), frage + ms)).as("Bestandskonto").isEqualTo(voll);
+            assertThat(mitKonto(w.ines(), frage + ms)).as("Energiemanager").isEqualTo(voll);
+        }
+    }
+
+    /** Die wirksame Zuweisung einer Person der Welt im Zugriff-Kontext ({@code standort} {@code null} = unternehmensweit). */
+    private static void konto(Wer wer, String rolle, UUID standort) {
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, "
+                + "'aktiv')", wer.kundenbereich(), wer.sub(), wer.name());
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) VALUES "
+                + "(?, ?, ?, ?, '2024-01-01T00:00:00+01', 'Europe/Berlin')", wer.kundenbereich(), wer.sub(), rolle, standort);
+    }
+
+    /** Ein Kundenkonto wie aus Keycloak (der Konverter setzt die Kontoart): der Zugriff-Kontext wird geladen. */
+    private Antwort mitKonto(Wer wer, String pfad) throws Exception {
+        Map<String, Object> claims = Map.of("sub", wer.sub(), "preferred_username", wer.name(), "tenant_id",
+                wer.kundenbereich().toString(), "realm_access", Map.of("roles", List.of()));
+        Jwt token = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
+        MvcResult r = mvc.perform(request(HttpMethod.GET, pfad)
+                .with(authentication(new KeycloakRealmRoleConverter().convert(token)))).andReturn();
+        String text = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        return new Antwort(r.getResponse().getStatus(), text.isEmpty() ? NullNode.getInstance() : MAPPER.readTree(text), text);
     }
 
     // =========================================================================== B4

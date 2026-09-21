@@ -4,11 +4,14 @@ import com.voltpilot.api.uems.BilanzAbgelehnt;
 import com.voltpilot.api.uems.KostenstelleEnergieService;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.web.dto.KostenstelleEnergieDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,31 +24,36 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Die Kostenstellen-Sicht (UEMS AP-10 IP-11): gemessen · verteilt · berechnet · nicht verteilt je Periode.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die Mandantengrenze aus
- * dem JWT. Die Kennung steht an der Route ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); durchgesetzt
- * wird sie hier nicht.
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die Mandantengrenze aus dem JWT. Die Kennung
+ * steht an der Route ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); gelesen wird über die Geltung
+ * Unternehmen der Kostenstelle ({@link RechtPruefung#pruefenLesen}, AP-03 R-A1).
  */
 @RestController
 @RequestMapping("/api/v1/unternehmen/kostenstellen")
 public class KostenstelleEnergieController {
 
     private final KostenstelleEnergieService dienst;
+    private final RechtPruefung rechte;
 
-    public KostenstelleEnergieController(KostenstelleEnergieService dienst) {
+    public KostenstelleEnergieController(KostenstelleEnergieService dienst, RechtPruefung rechte) {
         this.dienst = dienst;
+        this.rechte = rechte;
     }
 
     /**
      * Recht: {@code messstelle.ansehen} (AP-10 §4.10: „Lesen der Bilanz, Verteilung und Herkunft“). Die Periode
      * {@code tag} · {@code monat} (Vorgabe) · {@code jahr}, die {@code am} enthält (Vorgabe: heute in der Zeitzone des
      * Unternehmens); {@code version} optional — je Tag die höchste Version bis dahin, ohne Angabe die neueste.
+     * Geltung Unternehmen (AP-03 R-A1, §4.9): die Bilanz sieht nur eine unternehmensweite Rolle; jedes andere Konto
+     * bekommt Status und Körper einer Kostenstelle, die es nicht gibt.
      */
     @GetMapping("/{id}/energie")
     public KostenstelleEnergieDto.Energie energie(@PathVariable UUID id,
             @RequestParam(required = false) String periode,
             @RequestParam(required = false) String am,
             @RequestParam(required = false) String version) {
-        return dienst.energie(id, periode, tag(am), version);
+        return dienst.energie(id, periode, tag(am), version, k -> rechte.pruefenLesen(RechtZiel.UNTERNEHMEN, k,
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Kostenstelle nicht gefunden.")));
     }
 
     private static LocalDate tag(String text) {

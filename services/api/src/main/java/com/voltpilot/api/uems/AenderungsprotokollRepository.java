@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -294,6 +295,12 @@ public class AenderungsprotokollRepository {
     public List<Zeile> fuerUnternehmen(Filter f) {
         return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_ORT + "UNION ALL\n" + STROM_DATENQUELLE,
                 true, null, List.of(), f);
+    }
+
+    /** Die Anlage einer Datenquelle — leer, wenn es sie nicht (mehr) gibt. */
+    public Optional<UUID> anlageDerDatenquelle(UUID dataSourceId) {
+        return jdbc.queryForList("SELECT site_id FROM data_source WHERE id = ?", UUID.class, dataSourceId).stream()
+                .findFirst();
     }
 
     /** Die Einträge einer Anlage, einschließlich ihrer sofortigen Rollenänderungen. */

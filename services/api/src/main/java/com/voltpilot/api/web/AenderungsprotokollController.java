@@ -101,7 +101,8 @@ public class AenderungsprotokollController {
      * Recht: {@code aenderungsprotokoll.lesen}. Das Protokoll des ganzen Unternehmens über
      * einen Zeitraum — Messstellen, Quellen und Einstellungen zusammen mit Standorten,
      * Gebäuden, Bereichen, Anlagen und Datenquellen. Seitenweise: {@code limit} (Vorgabe 100,
-     * höchstens 500) und {@code nach} = der Wert {@code weiter} der vorigen Seite.
+     * höchstens 500) und {@code nach} = der Wert {@code weiter} der vorigen Seite. Ein Eintrag erscheint nur, wenn sein
+     * Objekt im Zugriff des Aufrufers liegt ({@link RechtPruefung#lesbar}, AP-03 R-A1); unternehmensweite Rollen sehen alle.
      */
     @GetMapping("/api/v1/unternehmen/aenderungen")
     public ProtokollDto.Protokoll unternehmen(
@@ -110,7 +111,7 @@ public class AenderungsprotokollController {
             @RequestParam(required = false) String achse,
             @RequestParam(required = false) String limit,
             @RequestParam(required = false) String nach) {
-        return protokoll.unternehmen(anfrage(von, bis, achse, limit, nach));
+        return protokoll.unternehmen(anfrage(von, bis, achse, limit, nach), rechte::lesbar);
     }
 
     /**
