@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -251,10 +252,15 @@ class MessstelleSchnittstelleVertragTest {
                 {"MessstelleRegisterStandortAbdeckung", MessstelleDto.RegisterStandortAbdeckung.class}}) {
             List<String> felder = Arrays.stream(((Class<?>) paar[1]).getRecordComponents())
                     .map(c -> snake.translate(c.getName())).toList();
+            // Ein Feld, das nur in seinem Fall erscheint (NON_NULL, z.B. beobachtung.zuordnung), ist nicht Pflicht.
+            List<String> pflicht = Arrays.stream(((Class<?>) paar[1]).getRecordComponents())
+                    .filter(c -> c.getAccessor().getAnnotation(JsonInclude.class) == null
+                            || c.getAccessor().getAnnotation(JsonInclude.class).value() != JsonInclude.Include.NON_NULL)
+                    .map(c -> snake.translate(c.getName())).toList();
             assertThat(map(schema((String) paar[0]), "properties").keySet()).as((String) paar[0])
                     .containsExactlyInAnyOrderElementsOf(felder);
             assertThat(liste(schema((String) paar[0]), "required")).as((String) paar[0])
-                    .containsExactlyInAnyOrderElementsOf(felder);
+                    .containsExactlyInAnyOrderElementsOf(pflicht);
         }
         assertThat(liste(map(map(schema("MessstelleRegisterQuelle"), "properties"), "stand"), "enum"))
                 .containsExactly(MessstelleRegisterService.GEBUNDEN, MessstelleRegisterService.BERECHNET,
@@ -269,6 +275,11 @@ class MessstelleSchnittstelleVertragTest {
         assertThat(liste(map(map(schema("MessstelleRegisterBeobachtung"), "properties"), "zustand"), "enum"))
                 .containsExactlyElementsOf(Arrays.stream(ZustandAbleitung.LiefertDaten.values())
                         .map(ZustandAbleitung.LiefertDaten::code).toList());
+        // „Werte kommen an, gehören aber zu keiner Reihe“: ein Wort, dasselbe im Register und an der Werte-Route.
+        assertThat(liste(map(map(schema("MessstelleRegisterBeobachtung"), "properties"), "zuordnung"), "enum"))
+                .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
+        assertThat(liste(map(map(schema("MessstelleWerte"), "properties"), "zuordnung"), "enum"))
+                .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
         // Die Filter der Route sind die des Berichts (§6.1) — in derselben Reihenfolge.
         assertThat(parameter("/api/v1/messstellen"))
                 .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle", "stichtag");

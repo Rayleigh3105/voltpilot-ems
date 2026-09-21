@@ -622,6 +622,56 @@ class MessstelleRegisterApiTest {
     }
 
     /**
+     * Werte kommen an der Box an, gehören aber zu keiner Reihe (Untersuchung Messkunde-Portalweg, verdeckende
+     * Bedingung 1): die Zeile sagt NICHT „Liefert Daten“, sondern was das System sieht — der Zustand spricht
+     * über die Reihe, {@code zuordnung} benennt den Fall, der letzte Wert bleibt. Die Werte-Karte trägt dasselbe
+     * Wort; ihre Schritte, Zahlen und Gründe bleiben. Kommen die Werte zugeordnet an, ist die Zeile wieder
+     * Zeichen für Zeichen die eines liefernden Zählers — ohne das Feld.
+     */
+    @Test
+    void werteOhneReiheSindNichtLiefertDaten() {
+        Buehne b = buehne("Nicht zugeordnet", 60);
+        boxWert(b, "2026-05-01T08:00:00Z", 500.0);
+        boxWert(b, "2026-05-01T08:01:00Z", 501.0);
+
+        JsonNode vorher = zeile(register(b.wer(), "?stichtag=2026-05-01T08:02:00Z"), "MS-0001");
+        assertThat(vorher.at("/beobachtung/zustand").asText()).as("die Reihe hat nichts")
+                .isEqualTo("wartet_auf_erste_daten");
+        assertThat(vorher.at("/beobachtung/zuordnung").asText()).isEqualTo("nicht_zugeordnet");
+        assertThat(vorher.at("/beobachtung/text").asText())
+                .isEqualTo("Daten kommen an – noch keiner Messreihe zugeordnet");
+        assertThat(vorher.at("/letzter_wert/wert").asDouble()).as("keine Zahl ändert sich").isEqualTo(501.0);
+        assertThat(register(b.wer(), "?stichtag=2026-05-01T08:02:00Z").at("/aggregat/unternehmen/erfuellt").asInt())
+                .as("zählt nicht als liefernd").isZero();
+
+        JsonNode werte = ok(rufe(HttpMethod.GET, "/messstellen/MS-0001/werte?raster=tag&von=2026-05-01&bis=2026-05-01",
+                b.wer()));
+        assertThat(werte.get("zuordnung").asText()).isEqualTo("nicht_zugeordnet");
+        assertThat(werte.at("/werte/0/menge").isNull()).as("keine Zahl " + werte.at("/werte/0")).isTrue();
+        assertThat(werte.at("/werte/0/grund").isNull()).as("kein Schritt bekommt einen Grund").isTrue();
+
+        // Ohne Werte an der Box: kein Fall, das Wort fehlt (null an der Werte-Route, kein Feld im Register).
+        JsonNode frueher = ok(rufe(HttpMethod.GET,
+                "/messstellen/MS-0001/werte?raster=tag&von=2026-04-30&bis=2026-04-30", b.wer()));
+        assertThat(frueher.get("zuordnung").isNull()).isTrue();
+
+        // Nach der Übernahme kommen die Werte zugeordnet an: „Liefert Daten“, und die Zeile ist die eines
+        // liefernden Zählers ohne Box-Werte — Zeichen für Zeichen.
+        wert(b, "2026-05-01T08:02:00Z", 502.0, "good");
+        JsonNode nachher = zeile(register(b.wer(), "?stichtag=2026-05-01T08:03:00Z"), "MS-0001");
+        assertThat(nachher.at("/beobachtung/zustand").asText()).isEqualTo("liefert");
+        assertThat(nachher.at("/beobachtung/text").asText()).isEqualTo("Liefert Daten");
+        assertThat(nachher.get("beobachtung").has("zuordnung")).as("das Feld fehlt ohne den Fall").isFalse();
+        assertThat(nachher.at("/letzter_wert/wert").asDouble()).isEqualTo(502.0);
+
+        Buehne bestand = buehne("Bestand zugeordnet", 60);
+        wert(bestand, "2026-05-01T08:02:00Z", 502.0, "good");
+        JsonNode soll = zeile(register(bestand.wer(), "?stichtag=2026-05-01T08:03:00Z"), "MS-0001");
+        assertThat(nachher.get("beobachtung")).isEqualTo(soll.get("beobachtung"));
+        assertThat(nachher.get("letzter_wert")).isEqualTo(soll.get("letzter_wert"));
+    }
+
+    /**
      * Der Fall, den man falsch erwartet (Vektor {@code mindestfenster-schlaegt-drei-kadenzen}):
      * 60 s Kadenz, 190 s Alter — 3 x Kadenz ist überschritten, das Mindestfenster von 300 s nicht.
      * Es gilt „Liefert Daten“. Der Deckel greift umgekehrt bei sehr trägen Reihen.
@@ -887,14 +937,29 @@ class MessstelleRegisterApiTest {
         wert(b, b.erste(), zeit, zahl, qualitaet);
     }
 
-    /** EIN Messwert, wie ihn der Writer ablegt — je Box und Kanal, nie je Messstelle. */
+    /**
+     * EIN Messwert, wie ihn der Writer ablegt, wenn die Komponente eine Datenquelle hat: an seiner Box UND in der
+     * Reihe der Komponente ({@code entity_id}, Rolle {@code fuehrend}) — ein zugeordneter Wert.
+     */
     private void wert(Buehne b, String kennzeichen, String zeit, double zahl, String qualitaet) {
         root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
-                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
-                + "VALUES (?,?,?,?,?,?,?,?,'2026.08.26.3',?,'counter')",
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind, "
+                + "entity_id, role) VALUES (?,?,?,?,?,?,?,?,'2026.08.26.3',?,'counter',?,'fuehrend')",
                 Timestamp.from(Instant.parse(zeit)), b.wer().kundenbereich(), b.anlage(),
                 b.boxen().get(kennzeichen), ENERGIE_BEZUG, zahl, zahl, qualitaet,
-                Math.abs(zeit.hashCode()) % 100000);
+                Math.abs(zeit.hashCode()) % 100000, b.komponenten().get(kennzeichen));
+    }
+
+    /**
+     * EIN Messwert, der an der Box ankommt, aber zu keiner Reihe gehört — der Writer legt ihn als Bestandswert ohne
+     * {@code entity_id} ab, weil der Komponente die Datenquelle fehlt (Messkunde vor Schritt 2 des Assistenten).
+     */
+    private void boxWert(Buehne b, String zeit, double zahl) {
+        root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
+                + "VALUES (?,?,?,?,?,?,?,'good','2026.08.26.3',?,'counter')",
+                Timestamp.from(Instant.parse(zeit)), b.wer().kundenbereich(), b.anlage(),
+                b.boxen().get(b.erste()), ENERGIE_BEZUG, zahl, zahl, Math.abs(zeit.hashCode()) % 100000);
     }
 
     /**

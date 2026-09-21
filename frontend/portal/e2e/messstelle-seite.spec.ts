@@ -227,10 +227,66 @@ const alsBerechnet = (a: MessstelleWerte): MessstelleWerte => ({
   ),
 });
 
+/**
+ * „Werte kommen an der Box an, gehören aber zu keiner Messreihe“ an MS-06 (Messstelle liefert Daten ehrlich): `vorher` ist
+ * die Antwort von heute (die Liste sagt „Liefert Daten“, die Karte „keine Werte“ ohne Grund), `a` die gebaute (Register:
+ * Zustand über die Reihe + `zuordnung`, Werte-Route: `zuordnung`), `b` dieselbe Antwort mit dem zweiten Wortlaut.
+ */
+type OhneReihe = 'vorher' | 'a' | 'b';
+const ETIKETT_B = 'Werte kommen an, zählen aber noch nicht';
+const SATZ_B =
+  'Dieser Zähler sendet Werte an die Box, ist aber noch keiner Datenquelle zugeordnet. Zuordnen: Messen-Assistent, ' +
+  'Schritt 2 „Datenquellen aus Ihren Geräten“. Frühere Werte bleiben ohne Messreihe.';
+
+function registerOhneReihe(register: ReturnType<typeof ahrenbergRegister>, fall: OhneReihe) {
+  if (fall === 'vorher') return register;
+  return {
+    ...register,
+    register: register.register.map((z) =>
+      z.kennzeichen !== 'MS-06' || !z.beobachtung
+        ? z
+        : {
+            ...z,
+            beobachtung: {
+              ...z.beobachtung,
+              zustand: 'wartet_auf_erste_daten' as const,
+              seit: null,
+              text: fall === 'a' ? 'Daten kommen an – noch keiner Messreihe zugeordnet' : ETIKETT_B,
+              zuordnung: 'nicht_zugeordnet' as const,
+            },
+          },
+    ),
+  };
+}
+
+function werteOhneReihe(antwort: MessstelleWerte, fall: OhneReihe): MessstelleWerte {
+  return {
+    ...antwort,
+    werte: antwort.werte.map((w) => ({
+      ...w,
+      menge: null,
+      mittel: null,
+      min: null,
+      max: null,
+      menge_zustand: 'keine_werte',
+      kennzeichen: [],
+      erhalten: 0,
+      abdeckung_prozent: 0,
+    })),
+    zuordnung: fall === 'vorher' ? null : 'nicht_zugeordnet',
+  };
+}
+
 /** `angelegt`: MS-08 am 01.10.2026, eben angelegt (heute = Stichtag der Einführung); `heute`: der Stichtag des Registers. */
 async function cloud(
   page: Page,
-  { angelegt = false, heute = null as string | null, f8 = false, berechnet = false } = {},
+  {
+    angelegt = false,
+    heute = null as string | null,
+    f8 = false,
+    berechnet = false,
+    ohneReihe = null as OhneReihe | null,
+  } = {},
 ): Promise<Gesendet[]> {
   const gesendet: Gesendet[] = [];
   let gespeichert = false;
@@ -271,7 +327,7 @@ async function cloud(
     if (pfad.endsWith('/orte')) return route.fulfill(json(pfad.includes(FIXTURE_IDS.st1) ? ortsbaumAhrenberg() : ortsbaumLindach()));
     if (pfad === '/api/v1/messstellen' && methode === 'GET') {
       const register = angelegt ? { ...ahrenbergRegister(), stichtag: EINFUEHRUNG_TAG } : heute ? ahrenbergRegister({ stichtag: heute }) : ahrenbergRegister();
-      return route.fulfill(json(register));
+      return route.fulfill(json(ohneReihe ? registerOhneReihe(register, ohneReihe) : register));
     }
     if (pfad.endsWith('/quellen') && methode === 'GET') {
       const stichtag = url.searchParams.get('stichtag') ?? ahrenbergRegister({ stichtag: heute ?? SEITE_HEUTE }).zeitpunkt;
@@ -336,6 +392,7 @@ async function cloud(
       if (ablehnung) return route.fulfill(json(ablehnung.body, ablehnung.status));
       const antwort = werteAntwort(decodeURIComponent(werte[1]), url.searchParams, heute ?? SEITE_HEUTE, f8);
       if (!antwort) return route.fulfill(json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
+      if (ohneReihe) return route.fulfill(json(werteOhneReihe(antwort, ohneReihe)));
       return route.fulfill(json(berechnet && url.searchParams.get('raster') === 'monat' ? alsBerechnet(antwort) : antwort));
     }
     if (/^\/api\/v1\/messstellen\/[^/]+$/.test(pfad) && methode === 'GET') return route.fulfill(json(messstelle));
@@ -1095,4 +1152,55 @@ test('VG1 · Umschalter UND weitere Reihe: das Bild zeigt die Messstellen, die �
   await page.mouse.move(0, 0);
   await messeUndFotografiere(page, breite, 'vg1-beides-seite');
   await werteBild(werte, breite, 'vg1-beides');
+});
+
+test('ZU · MS-06: Werte kommen an, gehören aber zu keiner Messreihe — die Liste sagt es statt „Liefert Daten“, die Werte-Karte nennt den Weg', async ({ page }, info) => {
+  test.slow();
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  const bild = async (ziel: Locator, name: string) => {
+    if (!BILDER) return;
+    mkdirSync(BILDER, { recursive: true });
+    await ziel.screenshot({ path: join(BILDER, `zu-${name}-${breite}.png`) });
+  };
+  const liste = page.getByTestId('messstellen');
+  const ms06 = () =>
+    breite === 1440
+      ? page.locator('.vp-ms-tabelle tbody tr').filter({ has: page.locator('td:first-child', { hasText: /^MS-06$/ }) })
+      : page.locator('.vp-ms-karte').filter({ has: page.locator('.vp-ms-kz', { hasText: /^MS-06$/ }) });
+
+  for (const fall of (BILDER ? ['vorher', 'a', 'b'] : ['a']) as OhneReihe[]) {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await cloud(page, { ohneReihe: fall });
+    await page.goto('/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen');
+    await expect(ms06()).toBeVisible();
+    if (fall === 'a') {
+      await expect(ms06()).toContainText('Daten kommen an – noch keiner Messreihe zugeordnet');
+      await expect(ms06()).not.toContainText('Liefert Daten');
+    }
+    await bild(breite === 1440 ? liste : ms06(), `liste-${fall}`);
+
+    await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+    const werte = page.getByTestId('werte');
+    await expect(werte.getByTestId('werte-karte')).toBeVisible();
+    const hinweis = werte.getByTestId('werte-zuordnung');
+    if (fall === 'vorher') {
+      await expect(hinweis).toHaveCount(0);
+    } else {
+      await expect(hinweis.getByRole('heading')).toHaveText('Daten kommen an – noch keiner Messreihe zugeordnet');
+      await expect(hinweis).toContainText('Schritt 2 „Datenquellen aus Ihren Geräten“');
+      if (fall === 'b') {
+        // Der zweite Wortlaut als Bild: dieselbe gebaute Fläche, nur der Text getauscht (nicht im Code).
+        await hinweis.evaluate(
+          (el, [t, s]) => {
+            el.querySelector('h3')!.textContent = t;
+            el.querySelector('p')!.textContent = s;
+          },
+          [ETIKETT_B, SATZ_B],
+        );
+      }
+    }
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
+    await bild(werte, `werte-${fall}`);
+  }
 });

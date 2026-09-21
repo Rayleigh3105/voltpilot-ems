@@ -286,7 +286,9 @@ function beobachtungWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileWo
   if (!b) return null;
   const ausfall = messstelleAusfallSatz(k.ausfaelle?.get(z.id), (iso) => zeitpunktText(iso, k.zone, k.zeitpunkt));
   if (ausfall) return { text: ausfall, ton: 'hinweis' };
-  const ton: Ton = b.zustand === 'liefert' ? 'gut' : b.zustand === 'liefert_nicht_seit' ? 'hinweis' : 'still';
+  // Werte kommen an, gehören aber zu keiner Reihe: ein Hinweis wie „liefert nicht seit“, nie „gut“.
+  const ton: Ton =
+    b.zuordnung === 'nicht_zugeordnet' || b.zustand === 'liefert_nicht_seit' ? 'hinweis' : b.zustand === 'liefert' ? 'gut' : 'still';
   return { text: b.text, ton };
 }
 

@@ -584,12 +584,13 @@ class BilanzApiTest {
     }
 
     private void probe(Welt w, String kennzeichen, String kanal, double wert, Instant zeit) {
+        // Zugeordnet (Reihe der Komponente, führend), wie der Writer ihn heute ablegt — nur so „liefert“ das Register.
         root.update("INSERT INTO device_measurement_sample (time, received_at, tenant_id, site_id, device_id, point_key, "
-                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
-                + "VALUES (?, ?, ?, (SELECT site_id FROM device WHERE id = ?), ?, ?, ?, ?, 'good', ?, ?, ?)",
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind, entity_id, role) "
+                + "VALUES (?, ?, ?, (SELECT site_id FROM device WHERE id = ?), ?, ?, ?, ?, 'good', ?, ?, ?, ?, 'fuehrend')",
                 Timestamp.from(zeit), Timestamp.from(zeit), w.mandant(), w.boxen().get(kennzeichen),
                 w.boxen().get(kennzeichen), kanal, wert, wert, KATALOG, SEQ.incrementAndGet(),
-                ENERGIE.equals(kanal) ? "counter" : "gauge");
+                ENERGIE.equals(kanal) ? "counter" : "gauge", w.komponenten().get(kennzeichen));
     }
 
     /** Ein endgültiger, vollständiger Tageswert der Reihe einer Messstelle (Speicherklasse AP-07, Menge AP-08 IP-5). */

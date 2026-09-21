@@ -290,6 +290,33 @@
   overflow-wrap: break-word;
 }
 
+/* Werte kommen an der Box an, gehören aber zu keiner Messreihe: ein ruhiger Hinweis, kein Alarm, kein Knopf. */
+.vp-wk-zuordnung {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1);
+  min-width: 0;
+  margin: 0;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-wk-zuordnung-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-wk-zuordnung p {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+}
+
 .vp-wk-neueste {
   display: inline-flex;
   align-items: center;
