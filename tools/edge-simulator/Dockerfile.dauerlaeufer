@@ -1,0 +1,24 @@
+# AP-14 IP-18 (Kasten E11): der Dauerläufer — zwei simulierte Ahrenberg-Boxen als
+# dauerhafte Arbeit im Cluster. Bauen aus diesem Verzeichnis:
+#
+#   docker build -f Dockerfile.dauerlaeufer -t voltpilot-dauerlaeufer .
+#
+# Kein root, feste Abhängigkeiten, keine Zugangsdaten im Image: Zertifikat und
+# Schlüssel je Box werden als Geheimnis eingehängt (README, Abschnitt Dauerläufer).
+FROM python:3.12.7-slim-bookworm
+
+RUN useradd --create-home --uid 10001 dauerlaeufer
+WORKDIR /app
+
+COPY requirements-dauerlaeufer.txt ./
+RUN pip install --no-cache-dir -r requirements-dauerlaeufer.txt
+
+COPY uems_dauerlaeufer.py uems_szenarien.py uems_ahrenberg.py ./
+
+USER 10001
+ENV PYTHONUNBUFFERED=1 \
+    VP_DAUERLAEUFER_LEBENSZEICHEN=/tmp/dauerlaeufer-lebenszeichen
+
+# Kubernetes: exec-Probe `python uems_dauerlaeufer.py --probe` (Exit 0 = Lebenszeichen
+# jünger als drei Takte). SIGTERM beendet sauber mit Exit 0.
+ENTRYPOINT ["python", "uems_dauerlaeufer.py"]

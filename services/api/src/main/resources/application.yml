@@ -408,6 +408,15 @@ voltpilot:
   # Idempotent; ändert keine Anlage, keinen Push, kein Kommando. `enabled` ist
   # der Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
   uems:
+    # AP-14 IP-18 (Kasten E11): interne UUID des Kundenbereichs "VoltPilot
+    # Dauerlaeufer (intern)" - zwei simulierte Boxen, die dauerhaft den Weg
+    # Box -> Bericht gehen. Leer = kein Dauerlaeufer, jede Kennzahl wie vorher.
+    # Gesetzt zaehlt er in KEINER Flottenkennzahl (voltpilot_sites und die
+    # voltpilot_site_*-Reihen); sein Messkunden-Alter bleibt mit Etikett tenant
+    # sichtbar, denn darauf schaut VoltPilotDauerlaeuferStumm. Derselbe Wert wie
+    # voltpilot:uems_dauerlaeufer in gitops. Drehbuch: docs/rollout/uems-erste-freigabe.md §14.
+    dauerlaeufer:
+      tenant: ${VOLTPILOT_UEMS_DAUERLAEUFER_TENANT:}
     uebergabe:
       enabled: ${VOLTPILOT_UEMS_UEBERGABE_ENABLED:true}
       interval-ms: ${VOLTPILOT_UEMS_UEBERGABE_INTERVAL_MS:1000}

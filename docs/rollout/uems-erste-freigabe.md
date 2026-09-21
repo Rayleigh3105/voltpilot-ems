@@ -93,7 +93,8 @@ Rollout-Tag falsch oder gar nicht.
    Grenztest in `hack/alert-tests/uems_test.yaml` nachziehen.
 2. **`voltpilot:uems_dauerlaeufer`**, Label `tenant: CHANGE-ME-dauerlaeufer-tenant` — die
    interne UUID des Dauerläufer-Kundenbereichs (IP-18). Erst sie macht
-   `VoltPilotDauerlaeuferStumm` scharf.
+   `VoltPilotDauerlaeuferStumm` scharf. Woher die UUID kommt und wohin sie noch gehört:
+   §14.
 
 ### 2.4 Die Fensterlänge (Regel D4)
 
@@ -786,7 +787,7 @@ sicher").
 ### 9.3 Weitere offene Punkte
 
 - **Die zwei Platzhalter** aus §2.3 — `voltpilot:uems_datenbank_warnschwelle_bytes` (Q14)
-  und der Dauerläufer-Tenant (IP-18).
+  und der Dauerläufer-Tenant (IP-18, Einrichtung §14).
 - **NW-6 bleibt eine reale Übung:** jeden der zwölf Alarme einmal auslösen, Zustellung an
   `betreiber` beobachten, jeden Läufer-Schalter umlegen. Lokale Regeltests beweisen weder
   Zustellung noch tatsächlichen Not-Aus.
@@ -930,3 +931,119 @@ Migration (Version über dem eingefrorenen Satz) `RENAME COLUMN`, `DROP COLUMN` 
 `DROP CONSTRAINT …_pkey` ab, wenn sie nicht die Kommentarzeile `-- freigabe: fenster`
 trägt. Der Bestand bleibt ohne nachträgliche Marker grün — er ist gebaut, und dieses
 Fenster macht ihn unschädlich.
+
+---
+
+## 14. Dauerläufer einrichten (IP-18, Kasten E11)
+
+Der Dauerläufer ist ein interner Kundenbereich mit zwei simulierten Boxen, der in Produktion
+dauerhaft den Weg Box → Bericht geht. Er gehört keinem Kunden, zählt in keiner
+Flottenkennzahl und hat einen eigenen Alarm: `VoltPilotDauerlaeuferStumm` meldet sich, wenn
+bei ihm länger als 15 Minuten kein Messwert ankam. Alles hier tust du; die Crew hat nur das
+Werkzeug gebaut.
+
+**Name:** „VoltPilot Dauerläufer (intern)“. **Kennung:** Die Plattform vergibt sie beim
+Anlegen selbst. Eine vorgegebene Kennung wie `e1b07da2-…` lässt sich nicht eintragen: Die
+Anlege-Route nimmt nur Name und Segment an (`CreateTenantRequest.java:10-12`), die Datenbank
+vergibt die UUID (`TenantRepository.java:50-53`). Trag also die Kennung ein, die die Plattform
+beim Anlegen vergibt.
+
+### 14.1 Kundenbereich anlegen
+
+1. Portal, Plattformverwaltung › **Mandanten** › „Mandant anlegen“: Name
+   `VoltPilot Dauerläufer (intern)`, Segment Gewerbe & Industrie
+   (`POST /api/v1/admin/tenants`, `AdminController.java:106-110`).
+2. Den Mandanten öffnen. Die **volle interne Kennung** steht in der Kopfzeile des
+   Detailbereichs (`MandantenPage.tsx:456`), in der Liste nur ihre ersten acht Zeichen.
+   Schreib sie klein und vollständig ab. Das ist `<DL_TENANT>`.
+3. Im Mandanten einen Benutzer anlegen, der den Dauerläufer pflegt, zum Beispiel
+   `dauerlaeufer@voltpilot.de` als Kundenadministrator (`POST …/tenants/{id}/users`). Mit
+   dieser Anmeldung erledigst du 14.2 und den Monatsbericht (14.5).
+
+### 14.2 Aufbau wie ein Messkunde, zwei Boxen anmelden
+
+Der Dauerläufer ist ein gewöhnlicher Messkunde. Sein Messwert-Alter entsteht erst, wenn
+**Funktion „Messen“** an einem Standort aktiv ist und die Box-Werte über eine
+**Mess-Auswahl** einer Komponente zugeordnet sind. Der Lücken-Melder zählt nur zugeordnete
+Werte (`LueckenMelder.java:84`, `UemsMetricsRepository.java:88-99`).
+
+1. Als Dauerläufer-Benutzer: Standort „Werk Dauerläufer“ anlegen, darin zwei Anlagen im Modus
+   „nur messen“: `AN-1` (Halle 1) und `AN-2` (Halle 2).
+2. Zwei Boxen anmelden, je eine an ihrer Anlage. Das geht mit dem Betreiber-Werkzeug und der
+   Anmeldung aus 14.1:
+   ```bash
+   cd tools/pki
+   ./provision-device.sh --api-base https://portal.voltpilot.de --token "$DL_TOKEN" \
+     --site <AN-1-UUID> --external-ref dauerlaeufer-e1 --domain <mqtt-host>
+   ./provision-device.sh --api-base https://portal.voltpilot.de --token "$DL_TOKEN" \
+     --site <AN-2-UUID> --external-ref dauerlaeufer-e2 --domain <mqtt-host>
+   ```
+   Das Werkzeug beansprucht die Box im Kundenbereich des Tokens (`POST /api/v1/devices/claim`),
+   stellt ihr Zertifikat aus und schreibt die ACL-Zeile (`provision-device.sh:16-21`). Merk dir
+   je Box die Geräte-UUID: `<DL_E1_DEVICE>` und `<DL_E2_DEVICE>`.
+3. „Messen & Auswerten“ je Anlage: Messstellen mit diesen Punktschlüsseln anlegen und binden.
+   Genau diese Schlüssel sendet der Simulator (`uems_szenarien.py` `KANAELE`,
+   `uems_dauerlaeufer.py` `BOX_REIHEN`):
+   E-1: `custom.ms-05.wirkenergie-bezug` bis `custom.ms-08.…`. E-2: `custom.ms-10.…` bis
+   `custom.ms-14.…` (MS-14 heißt `custom.ms-14.ocpp-zaehlerstand`). Alle sind Zählerstände
+   in kWh, `decoded = raw / 10`.
+
+### 14.3 Geheimnis hinterlegen
+
+Aus 14.2 hast du je Box einen Schlüssel und ein Zertifikat, dazu die Geräte-CA. Sie kommen als
+**ein** Kubernetes-Secret `voltpilot-dauerlaeufer-boxen` in den Namespace `voltpilot-prod`,
+mit den Schlüsseln `ca.crt`, `e1.crt`, `e1.key`, `e2.crt` und `e2.key`. Das Secret steht nie im
+Repo und nie im gitops-Klartext; nimm den Weg, auf dem die anderen Produktionsgeheimnisse
+hinkommen. Die Namen und die Form stehen in `tools/edge-simulator/.env.dauerlaeufer.example`.
+
+### 14.4 Schalter, Platzhalter, Sync
+
+`<DL_TENANT>` gehört an **zwei** Stellen, beide Male derselbe Wert, klein geschrieben:
+
+| Stelle | Datei im gitops-Repo | Eintrag |
+|---|---|---|
+| Alarmregel | `apps/voltpilot/overlays/prod/prometheusrule.yaml` | `voltpilot:uems_dauerlaeufer` → `tenant: <DL_TENANT>` (statt `CHANGE-ME-dauerlaeufer-tenant`) |
+| api | Umgebung des api-Deployments | `VOLTPILOT_UEMS_DAUERLAEUFER_TENANT=<DL_TENANT>` |
+
+Dazu kommt die Simulator-Arbeit aus dem Textblock für den gitops-Teil (PR von IP-18) mit
+`VP_DAUERLAEUFER_TENANT`, `…_E1_SITE`, `…_E1_DEVICE`, `…_E2_SITE` und `…_E2_DEVICE`. Die
+Sync-Welle liegt **nach** api und Writer. Dann syncen.
+
+**Was der api-Schalter tut:** Ist er leer, bleibt jede Kennzahl so wie ohne Dauerläufer. Ist er
+gesetzt, fehlt der Dauerläufer in `voltpilot_sites` und in allen `voltpilot_site_*`-Reihen.
+Sein `voltpilot_uems_kundenbereich_letzter_messwert_age_seconds{tenant="<DL_TENANT>"}` bleibt
+sichtbar, denn darauf schaut die Regel. Ein Wert, der keine UUID ist, zum Beispiel ein
+vergessenes `CHANGE-ME`, lässt die api **nicht starten**. Das ist Absicht: Sonst würde ein
+Tippfehler den Dauerläufer still wieder mitzählen.
+
+**Nachsehen:** Nach etwa fünf Minuten liefert `…letzter_messwert_age_seconds{tenant="<DL_TENANT>"}`
+einen Wert unter 300. Außerdem zeigt die Probe des Simulator-Pods „bereit“, und der
+Warteschlangen-Stand steht im Lebenszeichen (`verbunden: true` je Box).
+
+### 14.5 Monatsbericht als Dauerbeleg
+
+Die gebauten Berichte (AP-12) erzeugen für den Dauerläufer ohne neuen Code einen
+Monatsbericht, aber **nicht von selbst**. Es gibt keinen Lauf, der Berichte anlegt; ein
+Bericht entsteht über `POST /api/v1/berichte` (Portal › Berichte). Freigeben lässt er sich
+frühestens 7 Tage nach Monatsende (`docs/contracts/v2/bericht.md:134`).
+
+- **Einmalig:** 14.1 bis 14.3. Wenn Kennzahlen im Bericht stehen sollen, zusätzlich eine
+  Kennzahl am Standort.
+- **Monatlich**, ab dem 8.: Mit der Dauerläufer-Anmeldung den Bericht für den Vormonat
+  anlegen und freigeben. Der freigegebene Stand belegt, dass der ganze Weg einen Monat lang
+  gegangen ist. Ein fehlender Monat ist ein Befund.
+
+### 14.6 Übung: Simulator anhalten → Alarm nach 15 Minuten
+
+1. Die Simulator-Arbeit auf 0 Replikas setzen, als ausdrücklichen gitops-Wert, und syncen.
+2. Beobachten: `…letzter_messwert_age_seconds{tenant="<DL_TENANT>"}` wächst. Nach 15 Minuten
+   plus einer Minute Stabilität geht `VoltPilotDauerlaeuferStumm` (critical) an `betreiber`.
+   Zusätzlich meldet sich nach 30 Minuten `VoltPilotMesskundeOhneMesswerte` (warning), denn
+   für diese Regel ist der Dauerläufer ein Messkunde wie jeder andere.
+3. Wieder auf 1 Replika setzen. Das Alter fällt innerhalb von etwa drei Minuten
+   (Lücken-Melder plus 60-s-Sammeltakt), und der Alarm löst sich. Sequenz und Zählerstand
+   laufen nach dem Neustart weiter, ohne Reset (`uems_dauerlaeufer.py` `takt_von`).
+
+Lokal belegt ist, dass die Metrik bei ausbleibenden Werten über 900 s steigt
+(`DauerlaeuferMetrikenDbTest`, mit verstellter Uhr). Ob der Alarm in Produktion wirklich
+zugestellt wird, zeigt nur diese Übung.

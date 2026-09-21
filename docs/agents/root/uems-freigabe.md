@@ -60,7 +60,7 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   Fenster genau der Fehlstart. Und **Auto-Sync lässt sich nur per gitops-Commit anhalten**,
   nicht nebenbei ([Drehbuch §2.2, §3](../../rollout/uems-erste-freigabe.md)).
 - **Zwei Platzhalter in PR 37 stehen auf `CHANGE-ME`**: die DB-Warnschwelle (aus **Q14**
-  und der nutzbaren Platte, nicht „0,5 TB“ blind) und der Tenant des Dauerläufers (IP-18).
+  und der nutzbaren Platte, nicht „0,5 TB“ blind) und der Tenant des Dauerläufers (IP-18, Einrichtung Drehbuch §14, [Wegweiser](uems-dauerlaeufer.md)).
   Ungesetzt alarmiert die Überwachung am Rollout-Tag falsch oder gar nicht.
 - **Wegwerf-Zahlen sind keine Fensterplanung.** Eine Migrationssumme aus einer leeren
   Datenbank liegt bei Millisekunden; die Fensterlänge ist *gemessene Summe × 3, mindestens
