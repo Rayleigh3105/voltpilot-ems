@@ -4,7 +4,8 @@ Neu angelegt am 15.09.2026. Spezifikation: AP-03 §6.2 Punkte 3–4, §8 IP-5, F
 `V20260915190000__uems_site_scope.sql`, `zugriff/Geltungsbereich` (ersetzt `SiteRepository.existsForCurrentTenant`
 an 39 Einstiegen; die Methode gibt es nicht mehr), `MeasurementHistoryService.history` (Verlauf und Geräte-CSV). Beweis:
 `RlsIsolationTest` (A1, A13, A16, Schreiben, fail closed, Mandanten-Zaun), `SiteScopeBestandTest` (vorher/nachher je
-Kundenbereich und Tabelle), `ZugriffZaunApiTest` (157 lesende Routen gleich, standortbeschränkte Konten),
+Kundenbereich und Tabelle), `ZugriffZaunApiTest` (157 lesende Routen gleich, standortbeschränkte Konten; seit 21.09.2026 die 18 nach IP-4
+eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anderswo, `PROBEN`),
 `SiteScopeArchitekturTest` (Messdaten ohne `site`).
 
 ## Was gilt
@@ -43,6 +44,13 @@ Kundenbereich und Tabelle), `ZugriffZaunApiTest` (157 lesende Routen gleich, sta
   - Die Werte einer Messstelle kommen nur über `measurement_point` und fallen darum weg. Die Messstelle selbst bleibt
     sichtbar.
   - Das gehört zu IP-10/IP-11 (A1: MS-19 unsichtbar).
+- ⚠ **Offen, nicht gezäunt (Befund 21.09.2026): `bezugsgroesse`.** Nur die Mandanten-Policy, und die Lesewege
+  lösen sie ohne Standort auf (`BezugsgroesseRepository#finde`, keine `RechtPruefung` auf `BEZUGSGROESSE`).
+  - Ein Konto NUR an einem anderen Standort bekommt `GET /api/v1/bezugsgroessen/{id}` und `…/kanalbindung` mit 200
+    samt Inhalt (die Bindung nennt die `entity_id` einer für es unsichtbaren Komponente), `…/kanalbindung/kanaele`
+    mit 200 `[]`. Eine unbekannte Kennung ist 404 — die Existenz ist verraten.
+  - Benannt in `ZugriffZaunApiTest.ZAUN_OFFEN`: rot bei einem NEUEN und bei einem GEHEILTEN Fall. Heilung ist das
+    Folgepaket `vp-uems-zaun-bezugsgroesse-lesen`; danach ist die Liste leer.
 - ⚠ **Summen:** `/overview` und `/earnings` lesen je Anlage des ganzen Kundenbereichs (`ZEIGT_NUR_SICHTBARE`). Die Antwort
   nimmt nur Anlagen aus `sites.findAll()`. Die Teilansicht der Summen ist IP-10.
 - ⚠ Übrige Tabellen mit `site_id` (Konfiguration, Verbraucher, Ladepunkte, `ort_zuordnung` …) sind nur über ihre
