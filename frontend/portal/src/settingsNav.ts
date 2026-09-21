@@ -25,6 +25,13 @@ export type SettingsGroupId =
   | 'app'
   | 'loeschen';
 
+/**
+ * Was die Adresse anspringen kann: jede Gruppe und dazu die Karte „Gemeinsame Steuerung“ (UEMS AP-15) — das Ziel des
+ * Wegs „Gemeinsame Steuerung ändern“ der Box-Seite. Sie ist KEINE Gruppe der Suche: sie steht nur an steuernden
+ * Anlagen mit mehr als einer Box, ein Suchtreffer wäre sonst ein toter Link.
+ */
+export type TechnikAbschnitt = SettingsGroupId | 'gemeinsam';
+
 /** Der Parametername im Hash. */
 const PARAM = 'abschnitt';
 
@@ -32,6 +39,7 @@ const GROUPS = new Set<string>([
   'anlage',
   'geld',
   'geraet',
+  'gemeinsam',
   'speicher',
   'registrierung',
   'app',
@@ -63,7 +71,7 @@ export function settingsGroupFor(id: ModeSettingId): SettingsGroupId | null {
 }
 
 /** Die Adresse der Einstellungs-Seite, optional auf eine Gruppe gezielt. */
-export function einstellungenHash(siteId: string, group?: SettingsGroupId | null): string {
+export function einstellungenHash(siteId: string, group?: TechnikAbschnitt | null): string {
   const base = `#/anlage/${siteId}/technik`;
   return group ? `${base}?${PARAM}=${group}` : base;
 }
@@ -72,11 +80,11 @@ export function einstellungenHash(siteId: string, group?: SettingsGroupId | null
  * Die per Deep-Link angesprungene Gruppe aus einem Hash — null, wenn keine oder
  * eine unbekannte genannt ist (nie raten).
  */
-export function parseSettingsAnchor(hash: string): SettingsGroupId | null {
+export function parseSettingsAnchor(hash: string): TechnikAbschnitt | null {
   const q = hash.indexOf('?');
   if (q < 0) return null;
   const value = new URLSearchParams(hash.slice(q + 1)).get(PARAM);
-  return value && GROUPS.has(value) ? (value as SettingsGroupId) : null;
+  return value && GROUPS.has(value) ? (value as TechnikAbschnitt) : null;
 }
 
 /**

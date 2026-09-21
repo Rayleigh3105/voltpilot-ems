@@ -7,7 +7,7 @@ import type { VerlustVariante } from '../src/gemeinsameSteuerungFlaeche';
 import { GemeinsameSteuerungAbschnitt } from '../src/pages/AnlageTechnik';
 import { RechteStandort } from '../src/rollen';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
-import { GS_IDS, gsBoxen, gsDatenquellen, gsEingerichtet, gsVorschlag, gsZustand, type GsLage } from '../src/test/gemeinsameSteuerungFixtures';
+import { GS_ABWEICHEND, GS_IDS, gsBoxen, gsDatenquellen, gsEingerichtet, gsVorschlag, gsZustand, type GsLage } from '../src/test/gemeinsameSteuerungFixtures';
 import { FIXTURE_IDS } from '../src/test/standorteFixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -21,9 +21,11 @@ import '../src/index.css';
 /**
  * AP-15 IP-23 — Bühne der Karte „Gemeinsame Steuerung“ (Anlage → Technik) mit der echten Komponente. Die Routen der
  * Gemeinsamen Steuerung, `/funktionen` und `…/data-sources` stellt dieser `fetch`, mit einem kleinen Zustand, damit
- * die Folge wirklich einrichtet (PUT → Stufe S1, danach das Ergebnis aus `GET …/einrichten`). Zahlen aus der
- * Referenzdatei 1.5 (V-1 an AN-1). Parameter: `lage`, `ausfall` (verwaltung · halle1 · beide), `kwh`/`gebunden`
- * (Verlust-Zeile von E-4), `variante` (A · B), `boxen=1`, `anlage=an2` (misst nur).
+ * die Folge wirklich einrichtet (Frage 6 aus `POST …/einrichten/vorschau`, die NICHTS schreibt; erst „Absenden“ =
+ * PUT → Stufe S1). Zahlen aus der Referenzdatei 1.5 (V-1 an AN-1). Parameter: `lage`, `ausfall` (verwaltung · halle1
+ * · beide; der Herzschlag steht in `zuletzt_gehoert` der Route), `wirksam=abweichend` (der Betreiber ist beim
+ * Scharfschalten abgewichen: 30/70, Bezug 5/72), `kwh`/`gebunden` (Verlust-Zeile von E-4), `variante` (A · B),
+ * `boxen=1`, `anlage=an2` (misst nur).
  */
 (keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
@@ -37,9 +39,25 @@ const variante = (p.get('variante') ?? undefined) as VerlustVariante | undefined
 let lage = (p.get('lage') ?? 'nicht_eingerichtet') as GsLage;
 let einrichten: UemsGemeinsameSteuerungEinrichten = lage === 'nicht_eingerichtet' ? gsVorschlag() : gsEingerichtet();
 let geschrieben: UemsGemeinsameSteuerungSetzen | null = null;
+let vorschauen = 0;
+let k12Rueckfall: number | null = null;
 (window as unknown as Record<string, unknown>).__gsGeschrieben = () => geschrieben;
+(window as unknown as Record<string, unknown>).__gsVorschauen = () => vorschauen;
 
-const zustand = (): UemsGemeinsameSteuerungZustand => gsZustand(lage, verlust);
+const jetzt = new Date();
+const seit = {
+  halle1Seit: ausfall === 'halle1' || ausfall === 'beide' ? 25 * 60 : 40,
+  verwaltungSeit: ausfall === 'verwaltung' || ausfall === 'beide' ? 30 * 60 : 35,
+};
+const wirksam = p.get('wirksam') === 'abweichend' ? GS_ABWEICHEND : undefined;
+const zustand = (l: GsLage = lage): UemsGemeinsameSteuerungZustand => gsZustand(l, verlust, { jetzt, wirksam, ...seit });
+/** Die Auslegung mit dem am Gerät hinterlegten Rückfall von K-12 (eine gespeicherte Tatsache am Gerät). */
+const ausgelegt = (): UemsGemeinsameSteuerungEinrichten => {
+  const e = gsEingerichtet();
+  if (k12Rueckfall == null) return e;
+  return { ...e, boxen: e.boxen.map((b) => ({ ...b, geraete: (b.geraete ?? []).map((g) =>
+    g.komponente_id === GS_IDS.k12 ? { ...g, rueckfall: 'faellt_auf_wert', rueckfall_kw: k12Rueckfall, rueckfall_herkunft: 'am_geraet' as const } : g) })) };
+};
 const echtesFetch = window.fetch.bind(window);
 window.fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
@@ -52,17 +70,22 @@ window.fetch = async (input, init) => {
     const rest = gs[1] ?? '';
     if (rest === '' && methode === 'GET') return Response.json(zustand());
     if (rest === '/einrichten') return Response.json(einrichten);
+    if (rest === '/einrichten/vorschau' && methode === 'POST') {
+      // Frage 6 für den Entwurf — schreibt nichts: weder `lage` noch `einrichten` noch `geschrieben` ändern sich
+      if (lage === 'anteile_aktiv') return Response.json({ code: 'erst_anhalten', message: 'Erst anhalten.' }, { status: 409 });
+      vorschauen += 1;
+      return Response.json({ einrichten: ausgelegt(), zustand: zustand('beobachtet') });
+    }
     if (rest === '' && methode === 'PUT') {
       if (lage === 'anteile_aktiv') return Response.json({ code: 'erst_anhalten', message: 'Erst anhalten.' }, { status: 409 });
       geschrieben = JSON.parse(String(init?.body));
       lage = 'beobachtet';
-      einrichten = gsEingerichtet();
+      einrichten = ausgelegt();
       return Response.json(zustand());
     }
     if (rest.endsWith('/rueckfall') && methode === 'PUT') {
-      const kw = (JSON.parse(String(init?.body)) as { rueckfall_kw: number }).rueckfall_kw;
-      einrichten = { ...einrichten, boxen: einrichten.boxen.map((b) => ({ ...b, geraete: (b.geraete ?? []).map((g) =>
-        g.komponente_id === GS_IDS.k12 ? { ...g, rueckfall: 'faellt_auf_wert', rueckfall_kw: kw, rueckfall_herkunft: 'am_geraet' as const } : g) })) };
+      k12Rueckfall = (JSON.parse(String(init?.body)) as { rueckfall_kw: number }).rueckfall_kw;
+      if (lage !== 'nicht_eingerichtet') einrichten = ausgelegt();
       return Response.json({});
     }
     if (rest === '/anhalten' && methode === 'POST') { lage = 'angehalten'; return Response.json(zustand()); }
@@ -71,11 +94,8 @@ window.fetch = async (input, init) => {
   return echtesFetch(input, init);
 };
 
-const jetzt = new Date();
-const boxen = gsBoxen(jetzt, {
-  halle1Seit: ausfall === 'halle1' || ausfall === 'beide' ? 25 * 60 : 40,
-  verwaltungSeit: ausfall === 'verwaltung' || ausfall === 'beide' ? 30 * 60 : 35,
-}).map((b) => ({ ...b, siteId })).slice(0, p.get('boxen') === '1' ? 1 : 2);
+// Die Geräteliste bleibt frisch: die Ausfall-Sätze lesen `zuletzt_gehoert` aus der Route, nicht diese Liste.
+const boxen = gsBoxen(jetzt).map((b) => ({ ...b, siteId })).slice(0, p.get('boxen') === '1' ? 1 : 2);
 
 function Buehne() {
   const daten = useGemeinsameSteuerung(siteId, boxen);

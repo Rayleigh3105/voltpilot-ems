@@ -9844,6 +9844,37 @@ paths:
               schema: { $ref: "#/components/schemas/GemeinsameSteuerungEinrichtenAuskunft" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/sites/{siteId}/gemeinsame-steuerung/einrichten/vorschau:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [funktionen]
+      summary: Frage 6 für einen Entwurf — Ergebnis vor dem Absenden, schreibt nichts (UEMS AP-15, §5.2 Nr. 6/7).
+      description: >
+        Recht `funktion.steuern_einrichten` an der Anlage (wie `PUT …/gemeinsame-steuerung`). Derselbe Körper wie
+        das `PUT`, dieselben Prüfungen und Antworten (400, 409 mit dem ersten Wort des Ablehnungs-Vokabulars,
+        422 `erklaerung_unvollstaendig` mit je Lücke der Kennung). Die Antwort ist das Bild von
+        `GET …/gemeinsame-steuerung/einrichten`, als wäre der Entwurf gespeichert — das Ergebnis (Frage 6) aus
+        derselben Ableitung. Geschrieben wird NICHTS: keine Zeile, kein Protokoll, keine Stufe; eine Anlage ohne
+        Gemeinsame Steuerung bleibt ohne (I6). Erst „Absenden“ (`PUT`) schreibt. Dazu der Zustand, den das `PUT`
+        antworten würde (`fehlt` trägt die Sätze von Frage 6, etwa `faehigkeit_fehlt`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GemeinsameSteuerungEinrichten" }
+      responses:
+        "200":
+          description: Vorschlag, Erklärung, Ergebnis und Zustand für den Entwurf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerungVorschau" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Das Recht `funktion.steuern_einrichten` fehlt. }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "422": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/sites/{siteId}/gemeinsame-steuerung/komponenten/{komponenteId}/rueckfall:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -13539,6 +13570,36 @@ components:
           description: >-
             AP-15 IP-21 (E3 = A, T5): die jüngste Sprungprobe dieser Box. `null` ohne Probe.
           allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungSprungprobe' }]
+        wirksame_anteile:
+          nullable: true
+          description: >-
+            AP-15 IP-23-Folge (G4): die Anteile, die dieser Box zugestellt UND von ihr quittiert sind — der Stand
+            ihres jüngsten quittierten Anteils-Dokuments (im Übergangsstand der Übergangswert; weicht der Betreiber
+            beim Scharfschalten von der Auslegung ab, dessen Zahl). Gespeichert, nicht aus dem Herzschlag. `null`,
+            solange nichts quittiert ist — unbekannt, keine Null.
+          allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungWirksameAnteile' }]
+        zuletzt_gehoert:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            AP-15 IP-23-Folge: der letzte Status-Herzschlag dieser Box (Cloud-Ankunft); null = nie. Die Ausfall-Sätze
+            A1/A2/A4 der Kundenfläche lesen hier.
+    GemeinsameSteuerungVorschau:
+      type: object
+      description: >-
+        Antwort von `POST …/gemeinsame-steuerung/einrichten/vorschau` — als wäre der Entwurf gespeichert; geschrieben
+        ist nichts.
+      required: [einrichten, zustand]
+      properties:
+        einrichten: { $ref: "#/components/schemas/GemeinsameSteuerungEinrichtenAuskunft" }
+        zustand: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+    GemeinsameSteuerungWirksameAnteile:
+      type: object
+      description: Wirksame Anteile einer Box je Richtung in kW; eine leere Richtung ist unbekannt, keine Null.
+      properties:
+        einspeisung_kw: { type: number, nullable: true }
+        bezug_kw: { type: number, nullable: true }
     GemeinsameSteuerungSprungprobe:
       type: object
       required: [probe_id, box_id, art, sprung_kw, dauer_s, wiederholungen, ausgeloest_am, urteil, gilt]

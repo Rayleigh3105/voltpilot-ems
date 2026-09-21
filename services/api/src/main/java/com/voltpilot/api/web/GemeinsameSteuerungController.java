@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.uems.GemeinsameSteuerungAbgelehnt;
 import com.voltpilot.api.uems.GemeinsameSteuerungErklaerung;
 import com.voltpilot.api.uems.GemeinsameSteuerungService;
+import com.voltpilot.api.uems.GemeinsameSteuerungVorschau;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.GeraeteRueckfall;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
@@ -69,12 +70,14 @@ public class GemeinsameSteuerungController {
     private final GemeinsameSteuerungService dienst;
     private final GemeinsameSteuerungErklaerung erklaerung;
     private final RechtPruefung recht;
+    private final GemeinsameSteuerungVorschau vorschau;
 
     public GemeinsameSteuerungController(GemeinsameSteuerungService dienst, GemeinsameSteuerungErklaerung erklaerung,
-            RechtPruefung recht) {
+            RechtPruefung recht, GemeinsameSteuerungVorschau vorschau) {
         this.dienst = dienst;
         this.erklaerung = erklaerung;
         this.recht = recht;
+        this.vorschau = vorschau;
     }
 
     /**
@@ -105,6 +108,18 @@ public class GemeinsameSteuerungController {
     public GemeinsameSteuerungDto.Zustand einrichten(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return dienst.einrichten(siteId, mitglieder(body), erklaerung(body), akteur(auth));
+    }
+
+    /**
+     * Recht: {@code funktion.steuern_einrichten} an der Anlage (wie einrichten) — Frage 6 für einen ENTWURF (§5.2 Nr. 6,
+     * vor „Absenden“): derselbe Körper wie {@code PUT}, dieselben 400/409/422, die Antwort ist das Bild von
+     * {@code GET …/einrichten} und der Zustand für diesen Entwurf. Schreibt nichts ({@link GemeinsameSteuerungVorschau}).
+     */
+    @PostMapping(PFAD + "/einrichten/vorschau")
+    @Recht(value = "funktion.steuern_einrichten", ziel = RechtZiel.ANLAGE)
+    public GemeinsameSteuerungEinrichtenDto.Vorschau einrichtenVorschau(@PathVariable UUID siteId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return vorschau.vorschau(siteId, mitglieder(body), erklaerung(body), akteur(auth));
     }
 
     /**

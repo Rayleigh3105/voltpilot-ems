@@ -33,6 +33,7 @@ import {
   SETTING_HINT,
   settingsGroupFor,
   type SettingsGroupId,
+  type TechnikAbschnitt,
 } from '../settingsNav';
 import {
   AUTHORITY,
@@ -152,8 +153,8 @@ function sectionOf(key: SectionKey): (typeof SECTIONS)[number] {
  * Spiegel eine Sackgasse. Gelesen beim Aufbau UND bei jedem Hash-Wechsel, damit
  * ein Klick aus einer bereits offenen Anlage heraus auch wirkt.
  */
-function useSettingsAnchor(): SettingsGroupId | null {
-  const [group, setGroup] = useState<SettingsGroupId | null>(() =>
+function useSettingsAnchor(): TechnikAbschnitt | null {
+  const [group, setGroup] = useState<TechnikAbschnitt | null>(() =>
     typeof window === 'undefined' ? null : parseSettingsAnchor(window.location.hash),
   );
   useEffect(() => {

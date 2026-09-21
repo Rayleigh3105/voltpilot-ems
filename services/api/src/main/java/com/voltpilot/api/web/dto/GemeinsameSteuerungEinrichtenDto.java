@@ -35,6 +35,14 @@ public final class GemeinsameSteuerungEinrichtenDto {
     public record Einrichten(boolean eingerichtet, UUID netzzaehlerBoxId, Grenzen grenzen, List<Box> boxen,
             Object ungesteuerteErzeuger, Vorbehalt vorbehalt, Ergebnis ergebnis, List<Hinweis> hinweise) {}
 
+    /**
+     * Antwort von {@code POST …/einrichten/vorschau}: Frage 6 für einen ENTWURF — {@code einrichten} wie
+     * {@code GET …/einrichten}, {@code zustand} wie {@code GET …/gemeinsame-steuerung}, beides als wäre der Entwurf
+     * gespeichert. Geschrieben ist nichts.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vorschau(Einrichten einrichten, GemeinsameSteuerungDto.Zustand zustand) {}
+
     /** Die wirksamen Grenzen am Netzanschluss; eine leere Richtung ist unbekannt. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Grenzen(BigDecimal einspeisungKw, BigDecimal bezugKw) {}

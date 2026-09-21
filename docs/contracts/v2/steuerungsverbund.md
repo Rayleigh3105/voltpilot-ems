@@ -143,7 +143,7 @@ anderes Feld im Körper ist 400 `anfrage_ungueltig`; eine fremde Anlage ist 404 
 
 | Route | Recht | Übergang |
 |---|---|---|
-| `GET /api/v1/sites/{siteId}/gemeinsame-steuerung` | lesend, keine eigene Kennung | ohne Verbund `nicht_eingerichtet` und sonst nichts (I6); mit: Stufe, Epoche, Mitglieder, `naechster_schritt`, `fehlt` |
+| `GET /api/v1/sites/{siteId}/gemeinsame-steuerung` | lesend, keine eigene Kennung | ohne Verbund `nicht_eingerichtet` und sonst nichts (I6); mit: Stufe, Epoche, Mitglieder, `naechster_schritt`, `fehlt`; je Mitglied `wirksame_anteile` (quittiert, aus `steuerungsverbund_mitglied` + Anteils-Dokument über `GemeinsameSteuerungBoxStand#fuerKunden`, im Übergangsstand der Übergangswert, `null` = nichts quittiert) und `zuletzt_gehoert` (letzter Status-Herzschlag) — keine Wächter-Stufe, keine `plan_id`, keine Revision |
 | `PUT …/gemeinsame-steuerung` | `funktion.steuern_einrichten` | einrichten/ändern (Kundenadministrator, I5): gewünschter Stand der Mitglieder (je Mitglied wahlfrei `vorgabe_signal`, G6) → S0/S1 |
 | `POST …/anhalten` | `steuerung.starten_beenden` | `anteile_aktiv` → `angehalten`; die Anteile bleiben in Kraft |
 | `POST …/fortsetzen` | `steuerung.starten_beenden` | `angehalten` → `anteile_aktiv`, dieselbe Epoche, I1 erneut geprüft — nur wenn das jüngste Anhalten von einem Kundenkonto kam, sonst 409 `vom_betreiber_angehalten` |
@@ -212,6 +212,7 @@ Kundensatz — die Flächen kommen mit IP-23/IP-24.
 |---|---|---|
 | `GET …/gemeinsame-steuerung/einrichten` | lesend, keine eigene Kennung (Zaun `pruefenLesen`) | Fragen 1–5 aus dem Bestand: je Box, was sie liest (`komponenten`: Schreibfreigabe, Richtungen nach Typ, Nennleistung soweit bekannt), `netzzaehler_box_id`, wirksame `grenzen`; mit Verbund dazu die Erklärung (`geraete` je Box mit `rueckfall_herkunft` `am_geraet` · `katalog` · `ohne_angabe`, `ungeregelt`, `ungesteuerte_erzeuger`, `vorbehalt` mit Herkunft, wer/wann und `aus_messwerten`), Frage 6 `ergebnis` (Auslegung je Richtung aus `SteuerungsverbundAnteilDienst#ableiten`: Urteil, Grenze, Vorbehalt, verteilbar, Rückfälle, Anteile je Box) und `hinweise`. Ohne Verbund nur der Vorschlag — schreibt nie (I6) |
 | `PUT …/gemeinsame-steuerung` | `funktion.steuern_einrichten` | wie §6, dazu die Erklärung (unten) |
+| `POST …/gemeinsame-steuerung/einrichten/vorschau` | `funktion.steuern_einrichten` | Frage 6 für einen ENTWURF (§5.2 Nr. 6 vor Nr. 7 „Absenden“): derselbe Körper und dieselben 400/409/422 wie das `PUT`, Antwort `{einrichten, zustand}` wie `GET …/einrichten` und das `PUT` für den Entwurf; `GemeinsameSteuerungVorschau` spielt das Einrichten in einer immer zurückgerollten Transaktion — schreibt nichts, auch keine Anlage ohne Verbund an (I6) |
 | `GET …/gemeinsame-steuerung/komponenten/{komponenteId}/rueckfall` | lesend, keine eigene Kennung | Verlauf der Rückfall-Angaben (IP-6), neueste zuerst; fremde Komponente 404 |
 | `PUT …/gemeinsame-steuerung/komponenten/{komponenteId}/rueckfall` | `funktion.steuern_einrichten` | `GeraeteRueckfallDienst#hinterlegen` (Folgepunkt PR 1026): `{richtung, rueckfall, rueckfall_kw, nach_s, hinweis}`, kW nur und genau bei `faellt_auf_wert` |
 

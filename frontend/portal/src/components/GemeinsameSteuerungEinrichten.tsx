@@ -50,9 +50,10 @@ const SIGNAL = [
 const KEIN_ZAEHLER = '__kein__';
 
 /**
- * Einrichten in sechs Fragen (UEMS AP-15 IP-23, §5.2) — dieselbe Folge zum Ändern, vorbelegt. Nach Frage 5 schreibt
- * `PUT …/gemeinsame-steuerung` die Erklärung (Zustand „eingerichtet“; an den Boxen ändert sich nichts), danach zeigt
- * Frage 6 die Auslegung aus `GET …/einrichten`: das Ergebnis rechnet der Server nur für eine gespeicherte Erklärung.
+ * Einrichten in sechs Fragen (UEMS AP-15 IP-23, §5.2) — dieselbe Folge zum Ändern, vorbelegt. Nach Frage 5 rechnet
+ * `POST …/einrichten/vorschau` das Ergebnis des ENTWURFS (Frage 6; schreibt nichts, dieselben 422-Lücken wie das PUT).
+ * Erst „Absenden“ (§5.2 Nr. 7) schreibt mit `PUT …/gemeinsame-steuerung` — Zustand „eingerichtet · wird geprüft“, an
+ * den Boxen ändert sich nichts.
  */
 export function GemeinsameSteuerungEinrichten({
   siteId,
@@ -75,6 +76,9 @@ export function GemeinsameSteuerungEinrichten({
   const [geprueft, setGeprueft] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
+  /** Frage 6: das Ergebnis des Entwurfs aus der Vorschau (nichts gespeichert). */
+  const [ergebnis, setErgebnis] = useState<{ einrichten: UemsGemeinsameSteuerungEinrichten; zustand: UemsGemeinsameSteuerungZustand } | null>(null);
+  /** Nach „Absenden“: der gespeicherte Zustand. */
   const [nachher, setNachher] = useState<UemsGemeinsameSteuerungZustand | null>(null);
   const [rueckfall, setRueckfall] = useState<Record<string, string>>({});
   const kopf = useRef<HTMLParagraphElement>(null);
@@ -94,7 +98,7 @@ export function GemeinsameSteuerungEinrichten({
     return () => { aus = true; };
   }, [siteId, zustandVorher]);
 
-  useEffect(() => { kopf.current?.focus(); }, [frage]);
+  useEffect(() => { kopf.current?.focus(); }, [frage, nachher]);
 
   const namen = boxNamen(siteDevices, vorschlag);
   const mit = entwurf?.boxen.filter((b) => b.mit) ?? [];
@@ -116,36 +120,57 @@ export function GemeinsameSteuerungEinrichten({
     const offen = entwurfLuecken(entwurf).filter((l) => l.frage === frage);
     if (offen.length > 0) { setGeprueft(true); return; }
     setGeprueft(false);
+    if (frage === 5) { void vorschau(); return; }
     setFrage((n) => n + 1);
   }
 
-  async function absenden() {
-    if (!entwurf || busy) return;
-    const offen = entwurfLuecken(entwurf);
-    if (offen.length > 0) {
-      setGeprueft(true);
-      setFrage(Math.min(...offen.map((l) => l.frage)));
-      return;
+  /** Die Lücken des ganzen Entwurfs: zur ersten Frage mit einer. */
+  function ohneLuecken(e: Entwurf): boolean {
+    const offen = entwurfLuecken(e);
+    if (offen.length === 0) return true;
+    setGeprueft(true);
+    setFrage(Math.min(...offen.map((l) => l.frage)));
+    return false;
+  }
+
+  /** 422 · 409 des Servers an ihre Stelle (Vorschau und PUT antworten gleich). */
+  function abgelehnt(err: unknown) {
+    const body = err instanceof ApiError ? (err.body as { code?: string; message?: string } | undefined) : undefined;
+    const l = lueckenAusAntwort(body);
+    if (l.length > 0) {
+      setLuecken(l);
+      setFrage(Math.min(...l.map((x) => x.frage)));
+    } else if (body?.code === 'erst_anhalten') {
+      setFehler(FLAECHE.erst_anhalten);
+    } else {
+      setFehler(body?.message ?? 'Das hat nicht geklappt. Bitte versuchen Sie es erneut.');
     }
+  }
+
+  /** Frage 6: das Ergebnis des Entwurfs — geschrieben wird nichts. */
+  async function vorschau() {
+    if (!entwurf || busy || !ohneLuecken(entwurf)) return;
     setBusy(true);
     setFehler(null);
     try {
-      await api.gemeinsameSteuerungSetzen(siteId, koerper(entwurf));
-      const [z, e] = await Promise.all([api.gemeinsameSteuerung(siteId), api.gemeinsameSteuerungEinrichten(siteId)]);
-      setNachher(z);
-      setVorschlag(e);
+      setErgebnis(await api.gemeinsameSteuerungVorschau(siteId, koerper(entwurf)));
       setFrage(6);
     } catch (err) {
-      const body = err instanceof ApiError ? (err.body as { code?: string; message?: string } | undefined) : undefined;
-      const l = lueckenAusAntwort(body);
-      if (l.length > 0) {
-        setLuecken(l);
-        setFrage(Math.min(...l.map((x) => x.frage)));
-      } else if (body?.code === 'erst_anhalten') {
-        setFehler(FLAECHE.erst_anhalten);
-      } else {
-        setFehler(body?.message ?? 'Das hat nicht geklappt. Bitte versuchen Sie es erneut.');
-      }
+      abgelehnt(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** §5.2 Nr. 7: erst jetzt wird geschrieben. */
+  async function absenden() {
+    if (!entwurf || busy || !ohneLuecken(entwurf)) return;
+    setBusy(true);
+    setFehler(null);
+    try {
+      setNachher(await api.gemeinsameSteuerungSetzen(siteId, koerper(entwurf)));
+    } catch (err) {
+      abgelehnt(err);
     } finally {
       setBusy(false);
     }
@@ -158,7 +183,8 @@ export function GemeinsameSteuerungEinrichten({
     setFehler(null);
     try {
       await api.gemeinsameSteuerungRueckfall(siteId, komponenteId, { richtung, rueckfall: 'faellt_auf_wert', rueckfall_kw: wert });
-      setVorschlag(await api.gemeinsameSteuerungEinrichten(siteId));
+      // der Rückfall ist eine Tatsache am Gerät (gespeichert); das Ergebnis bleibt ein Entwurf und wird neu gerechnet
+      if (entwurf) setErgebnis(await api.gemeinsameSteuerungVorschau(siteId, koerper(entwurf)));
     } catch (err) {
       setFehler(err instanceof ApiError && err.message ? err.message : 'Der Rückfallwert konnte nicht gespeichert werden.');
     } finally {
@@ -166,26 +192,27 @@ export function GemeinsameSteuerungEinrichten({
     }
   }
 
-  const hinweise = vorschlag && frage === 6 ? ergebnisHinweise(vorschlag, nachher, namen) : [];
+  const bild = nachher == null ? ergebnis : null;
+  const hinweise = bild && frage === 6 ? ergebnisHinweise(bild.einrichten, bild.zustand, namen) : [];
   const netzWeg = standortId ? hashForRoute(standortBereichRoute(standortId, 'netzanschluesse')) : null;
   const boxWeg = standortId ? hashForRoute(standortBereichRoute(standortId, 'boxen')) : null;
   const titel = aendern ? 'Gemeinsame Steuerung ändern' : 'Gemeinsame Steuerung einrichten';
 
-  const fuss = frage === 6
+  const fuss = nachher != null
     ? <Button onClick={onClose}>Fertig</Button>
     : <>
       <Button variant="ghost" disabled={busy} onClick={frage === 1 ? onClose : () => { setGeprueft(false); setFrage((n) => n - 1); }}>
         {frage === 1 ? 'Abbrechen' : 'Zurück'}
       </Button>
-      {entwurf && (frage < 5
-        ? <Button onClick={weiter}>Weiter</Button>
-        : <Button disabled={busy} onClick={() => void absenden()}>{busy ? 'Wird gespeichert …' : aendern ? 'Änderung speichern' : 'Einrichten'}</Button>)}
+      {entwurf && (frage < 6
+        ? <Button disabled={busy} onClick={weiter}>{busy ? 'Wird gerechnet …' : 'Weiter'}</Button>
+        : <Button disabled={busy || ergebnis == null} onClick={() => void absenden()}>{busy ? 'Wird gespeichert …' : 'Absenden'}</Button>)}
     </>;
 
   return (
     <Modal open onClose={() => { if (!busy) onClose(); }} title={titel} footer={fuss}>
       <div className="vp-gs-folge" data-testid="gs-folge">
-        <p ref={kopf} tabIndex={-1} className="vp-gs-frage-nr">Frage {frage} von 6 · {FRAGEN[frage - 1]}</p>
+        <p ref={kopf} tabIndex={-1} className="vp-gs-frage-nr">{nachher != null ? 'Abgesendet' : `Frage ${frage} von 6 · ${FRAGEN[frage - 1]}`}</p>
         {fehler && <p className="vp-gs-fehler" role="alert">{fehler}</p>}
         {!entwurf && !fehler && <p role="status">Der Vorschlag wird geladen …</p>}
 
@@ -338,18 +365,26 @@ export function GemeinsameSteuerungEinrichten({
           </fieldset>
         ))}
 
-        {vorschlag && frage === 6 && (
-          <section className="vp-gs-feld" aria-label="Ergebnis" data-testid="gs-ergebnis">
+        {nachher != null && vorschlag && (
+          <section className="vp-gs-feld" aria-label="Abgesendet" data-testid="gs-abgesendet">
             <p className="vp-gs-zeile" role="status" data-testid="gs-ergebnis-zustand">{zustandsZeile(nachher, vorschlag, namen)}</p>
+            <p>{FLAECHE.abgesendet}</p>
+            {befundSaetze(nachher, namen).map((b) => <p key={b.text} className="vp-gs-hinweis" data-testid="gs-befund">{b.text}</p>)}
+          </section>
+        )}
+
+        {bild && frage === 6 && (
+          <section className="vp-gs-feld" aria-label="Ergebnis" data-testid="gs-ergebnis">
+            <p className="vp-gs-zeile" role="status" data-testid="gs-ergebnis-entwurf">{FLAECHE.ergebnis_entwurf}</p>
             {(['einspeisung', 'bezug'] as const).map((r) => {
-              const a = vorschlag.ergebnis?.[r] ?? null;
+              const a = bild.einrichten.ergebnis?.[r] ?? null;
               return (
                 <div key={r} className="vp-gs-richtung" data-testid={`gs-richtung-${r}`}>
                   <h3>{RICHTUNG[r]}{a ? ` · Grenze ${kw(a.grenze_kw)} kW` : ''}</h3>
                   {a && (
                     <ul>
-                      {vorschlag.boxen.filter((b) => b.rolle != null).map((b) => (
-                        <li key={b.box_id}>Box {namen.get(b.box_id) ?? b.name}: {kw(anteilVon(vorschlag.ergebnis ?? null, r, b.box_id) ?? 0)} kW</li>
+                      {bild.einrichten.boxen.filter((b) => b.rolle != null).map((b) => (
+                        <li key={b.box_id}>Box {namen.get(b.box_id) ?? b.name}: {kw(anteilVon(bild.einrichten.ergebnis ?? null, r, b.box_id) ?? 0)} kW</li>
                       ))}
                     </ul>
                   )}
@@ -369,7 +404,7 @@ export function GemeinsameSteuerungEinrichten({
                 )}
               </div>
             ))}
-            {befundSaetze(nachher, namen).filter((b) => !hinweise.some((h) => h.text === b.text))
+            {befundSaetze(bild.zustand, namen).filter((b) => !hinweise.some((h) => h.text === b.text))
               .map((b) => <p key={b.text} className="vp-gs-hinweis" data-testid="gs-befund">{b.text}</p>)}
           </section>
         )}

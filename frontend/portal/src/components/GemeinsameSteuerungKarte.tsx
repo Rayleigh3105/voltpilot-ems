@@ -110,7 +110,7 @@ export function GemeinsameSteuerungKarte({
   const [fehler, setFehler] = useState<string | null>(null);
   const l = lage(zustand);
   const namen = useMemo(() => boxNamen(siteDevices, einrichten), [siteDevices, einrichten]);
-  const ausfall = ausfallSaetze(zustand, siteDevices, namen, jetzt ?? new Date());
+  const ausfall = ausfallSaetze(zustand, namen, jetzt ?? new Date());
   const zeilen = boxZeilen(zustand, einrichten, namen, ausfall, verlustVariante);
   const befunde = befundSaetze(zustand, namen);
   const beiBetreiber = l === 'angehalten' && zustand?.naechster_schritt === 'vom_betreiber_angehalten';

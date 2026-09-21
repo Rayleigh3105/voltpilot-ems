@@ -125,6 +125,14 @@ public class GemeinsameSteuerungService {
         this.sprungproben = dienst;
     }
 
+    /** Wirksame Anteile und Erreichbarkeit je Mitglied (IP-24-Dienst, IP-23-Folge), nachgereicht wie die Bilanz. */
+    private GemeinsameSteuerungBoxStand boxStand;
+
+    @Autowired(required = false)
+    void boxStand(GemeinsameSteuerungBoxStand boxStand) {
+        this.boxStand = boxStand;
+    }
+
     void uhrStellen(Clock clock) {
         uhr = clock;
     }
@@ -148,8 +156,11 @@ public class GemeinsameSteuerungService {
         List<MitgliedZeile> mitglieder = repo.mitglieder(v.id(), jetzt);
         Map<UUID, Instant> bestaetigt = repo.bestaetigt(v.id());
         Map<UUID, SteuerungsverbundRepository.VorgabeSignal> signale = repo.vorgabeSignale(v.id());
+        Map<UUID, GemeinsameSteuerungBoxStand.Kunde> stand = boxStand == null ? Map.of()
+                : boxStand.fuerKunden(v.id(), mitglieder);
         List<GemeinsameSteuerungDto.Mitglied> dto = mitglieder.stream().map(m -> {
             SteuerungsverbundRepository.VorgabeSignal signal = signale.get(m.id());
+            GemeinsameSteuerungBoxStand.Kunde box = stand.get(m.deviceId());
             return new GemeinsameSteuerungDto.Mitglied(m.deviceId(), m.rolle().code(), m.dataSourceId(),
                     m.gueltigAb().atOffset(ZoneOffset.UTC),
                     Optional.ofNullable(bestaetigt.get(m.id())).map(t -> t.atOffset(ZoneOffset.UTC)).orElse(null),
@@ -157,7 +168,8 @@ public class GemeinsameSteuerungService {
                     signal == null || signal.am() == null ? null : signal.am().atOffset(ZoneOffset.UTC),
                     SteuerungsverbundNachweiseHeute.wort(nachweise.verbraucher14a(siteId, m.deviceId())),
                     anteilVerlust(siteId, m.deviceId(), jetzt),
-                    sprungproben == null ? null : sprungproben.auskunft(v.id(), m.deviceId(), mitglieder));
+                    sprungproben == null ? null : sprungproben.auskunft(v.id(), m.deviceId(), mitglieder),
+                    box == null ? null : box.wirksameAnteile(), box == null ? null : box.zuletztGehoert());
         }).toList();
         LocalDate tag = tag(jetzt);
         UUID netzanschluss = repo.netzanschluesse(siteId, tag).stream().findFirst().orElse(null);

@@ -7,7 +7,7 @@
  * nie. Der Kunde richtet ein und hält an; er schaltet nicht scharf (I5).
  */
 import {
-  deviceLiveStatus,
+  ONLINE_WINDOW_MS,
   type Device,
   type Funktionen,
   type UemsDreiwert,
@@ -136,7 +136,11 @@ export interface BoxZeile {
   ausfall: string | null;
 }
 
-/** Die Box-Zeilen: führend zuerst, dann mitsteuernd mit Anteil (aktiv/angehalten) oder vorgesehenem Anteil. */
+/**
+ * Die Box-Zeilen: führend zuerst, dann mitsteuernd mit Anteil. In `aktiv`/`angehalten` ist das der WIRKSAME Anteil der
+ * Box (`wirksame_anteile`: zugestellt und quittiert — weicht der Betreiber beim Scharfschalten ab, dessen Zahl), sonst
+ * der vorgesehene aus der Auslegung. Fehlt eine Zahl, steht der Satz ohne Zahl — unbekannt ist keine Null.
+ */
 export function boxZeilen(
   z: UemsGemeinsameSteuerungZustand | null,
   einrichten: UemsGemeinsameSteuerungEinrichten | null,
@@ -154,8 +158,8 @@ export function boxZeilen(
     if (m.rolle === 'fuehrt') {
       text = satz('box_fuehrend', { box });
     } else {
-      const ein = anteilVon(einrichten?.ergebnis ?? null, 'einspeisung', m.box_id);
-      const bez = anteilVon(einrichten?.ergebnis ?? null, 'bezug', m.box_id);
+      const ein = inKraft ? m.wirksame_anteile?.einspeisung_kw ?? null : anteilVon(einrichten?.ergebnis ?? null, 'einspeisung', m.box_id);
+      const bez = inKraft ? m.wirksame_anteile?.bezug_kw ?? null : anteilVon(einrichten?.ergebnis ?? null, 'bezug', m.box_id);
       if (ein == null || bez == null) text = flaechenSatz(inKraft ? 'box_mitsteuernd_kurz' : 'box_mitsteuernd_geplant_kurz', { box });
       else {
         const werte = { box, einspeisung_kw: kw(ein), bezug_kw: kw(bez) };
@@ -177,13 +181,12 @@ export function boxZeilen(
  * Die Ausfall-Sätze der Matrix (A1, A2, A4) — nur, solange Anteile in Kraft sind (aktiv, angehalten): vorher hält
  * keine Box einen Anteil, und S2 verlangt, dass ein Satz nur dort steht, wo die Matrix ihn trägt.
  *
- * ⚠ `GET …/gemeinsame-steuerung` nennt keine Erreichbarkeit je Mitglied. Die Karte nimmt den Herzschlag der Box aus
- * der Geräteliste (`deviceLiveStatus`, dieselbe Quelle wie das Abzeichen „online“): `stale` heißt „antwortet seit
- * {letzter Herzschlag} nicht“. Eine Box ohne Eintrag oder ohne je einen Herzschlag ist unbekannt — kein Satz.
+ * Die Erreichbarkeit kommt aus der Route: `zuletzt_gehoert` je Mitglied (letzter Status-Herzschlag). Älter als das
+ * Online-Fenster der Geräteliste (`ONLINE_WINDOW_MS`) heißt „antwortet seit {zuletzt gehört} nicht“; eine Box ohne je
+ * einen Herzschlag ist unbekannt — kein Satz.
  */
 export function ausfallSaetze(
   z: UemsGemeinsameSteuerungZustand | null,
-  devices: readonly Device[],
   namen: BoxNamen,
   jetzt: Date,
   zone: string = VORGABE_ZEITZONE,
@@ -192,10 +195,8 @@ export function ausfallSaetze(
   const l = lage(z);
   if (l !== 'aktiv' && l !== 'angehalten') return out;
   const mitglieder = z?.mitglieder ?? [];
-  const stumm = mitglieder.filter((m) => {
-    const d = devices.find((x) => x.id === m.box_id);
-    return d != null && deviceLiveStatus(d, jetzt) === 'stale';
-  });
+  const stumm = mitglieder.filter((m) =>
+    m.zuletzt_gehoert != null && jetzt.getTime() - new Date(m.zuletzt_gehoert).getTime() > ONLINE_WINDOW_MS);
   if (mitglieder.length === 2 && stumm.length === 2) {
     for (const m of mitglieder) out.set(m.box_id, satz('beide_nicht_verbunden'));
     return out;
@@ -205,8 +206,7 @@ export function ausfallSaetze(
     if (m.rolle === 'fuehrt') {
       out.set(m.box_id, satz('fuehrende_box_stumm', { box }));
     } else {
-      const d = devices.find((x) => x.id === m.box_id)!;
-      out.set(m.box_id, satz('box_stumm', { box, uhrzeit: seitText(d.lastSeenAt!, jetzt, zone) }));
+      out.set(m.box_id, satz('box_stumm', { box, uhrzeit: seitText(m.zuletzt_gehoert!, jetzt, zone) }));
     }
   }
   return out;

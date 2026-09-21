@@ -3,15 +3,21 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
+import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Schritt;
+import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Tabelle;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeAll;
@@ -310,6 +316,121 @@ class GemeinsameSteuerungEinrichtenApiTest {
                 .as("faellt_auf_wert ohne kW").isEqualTo(400);
     }
 
+    // ============================================================================ Frage 6 vor dem Absenden (§5.2 Nr. 6/7)
+
+    @Test
+    void vorschauZeigtFrage6FuerDenEntwurfUndSchreibtNichts() throws Exception {
+        Welt w = welt();
+        rueckfaelleAmGeraet(w);
+        long vorher = zeilen(w);
+        assertThat(vorher).isZero();
+
+        // ohne Gemeinsame Steuerung: das Ergebnis des Entwurfs — und die Anlage bleibt ohne (I6)
+        JsonNode antwort = ok(kunde(w, post(w.pfad() + "/einrichten/vorschau")
+                .content(erklaerung(w, w.k13(), "\"keine\"", "473"))));
+        JsonNode v = antwort.path("einrichten");
+        assertThat(antwort.path("zustand").path("zustand").asText()).as("was das PUT antworten würde")
+                .isEqualTo("beobachtet");
+        assertThat(v.path("ergebnis").path("einspeisung").path("urteil").asText()).isEqualTo("passt");
+        assertThat(anteil(v.path("ergebnis").path("einspeisung"), w.e1())).isEqualByComparingTo("40");
+        assertThat(anteil(v.path("ergebnis").path("einspeisung"), w.e4())).isEqualByComparingTo("60");
+        assertThat(anteil(v.path("ergebnis").path("bezug"), w.e1())).isEqualByComparingTo("0");
+        assertThat(anteil(v.path("ergebnis").path("bezug"), w.e4())).isEqualByComparingTo("77");
+        assertThat(zeilen(w)).as("die Vorschau schreibt nichts").isEqualTo(vorher);
+        assertThat(ok(kunde(w, get(w.pfad()))).path("zustand").asText()).isEqualTo("nicht_eingerichtet");
+        assertThat(ok(kunde(w, get(w.pfad() + "/einrichten"))).path("ergebnis").isNull()).isTrue();
+
+        // Absenden schreibt — und GET …/einrichten zeigt danach dieselben Zahlen wie die Vorschau
+        ok(kunde(w, put(w.pfad()).content(erklaerung(w, w.k13(), "\"keine\"", "473"))));
+        JsonNode gespeichert = ok(kunde(w, get(w.pfad() + "/einrichten")));
+        assertThat(gespeichert.path("ergebnis")).isEqualTo(v.path("ergebnis"));
+
+        // ein geänderter Entwurf (Vorbehalt 480) rechnet neu, ändert aber weder Zeilen, Stufe noch Protokoll
+        long gespeichertZeilen = zeilen(w);
+        String stufe = stufe(w);
+        JsonNode aenderung = ok(kunde(w, post(w.pfad() + "/einrichten/vorschau")
+                .content(erklaerung(w, w.k13(), "\"keine\"", "480")))).path("einrichten");
+        assertThat(aenderung.path("ergebnis").path("bezug").path("verteilbar_kw").decimalValue())
+                .isEqualByComparingTo("70");
+        assertThat(zeilen(w)).isEqualTo(gespeichertZeilen);
+        assertThat(stufe(w)).isEqualTo(stufe);
+        assertThat(ok(kunde(w, get(w.pfad() + "/einrichten"))).path("ergebnis")).isEqualTo(v.path("ergebnis"));
+    }
+
+    @Test
+    void vorschauHatDieselbenLueckenWieDasPut() throws Exception {
+        Welt w = welt();
+        String unvollstaendig = erklaerung(w, w.k13().subList(0, 5), "\"keine\"", "473");
+        Antwort vorschau = kunde(w, post(w.pfad() + "/einrichten/vorschau").content(unvollstaendig));
+        Antwort absenden = kunde(w, put(w.pfad()).content(unvollstaendig));
+        assertThat(vorschau.status()).isEqualTo(422);
+        assertThat(vorschau.code()).isEqualTo("erklaerung_unvollstaendig");
+        assertThat(vorschau.body().path("fehlt")).isEqualTo(absenden.body().path("fehlt"));
+        String ohneErzeuger = erklaerung(w, w.k13(), null, "473");
+        Antwort v2 = kunde(w, post(w.pfad() + "/einrichten/vorschau").content(ohneErzeuger));
+        Antwort p2 = kunde(w, put(w.pfad()).content(ohneErzeuger));
+        assertThat(v2.status()).isEqualTo(p2.status()).isEqualTo(422);
+        assertThat(v2.body().path("fehlt")).isEqualTo(p2.body().path("fehlt"));
+        assertThat(kunde(w, post(w.pfad() + "/einrichten/vorschau").content("{\"mitglieder\":[],\"tenant_id\":\""
+                + w.mandant() + "\"}")).status()).as("Mandant im Körper").isEqualTo(400);
+        assertThat(zeilen(w)).as("nichts geschrieben").isZero();
+        Welt fremd = welt();
+        assertThat(kunde(w, post(fremd.pfad() + "/einrichten/vorschau")
+                .content(erklaerung(fremd, fremd.k13(), "\"keine\"", "473"))).status()).isEqualTo(404);
+        assertThat(zeilen(fremd)).isZero();
+    }
+
+    // ============================================================================ wirksame Anteile je Mitglied (G4)
+
+    @Test
+    void kundenGetNenntDieQuittiertenAnteileNichtDieAuslegung() throws Exception {
+        Welt w = welt();
+        rueckfaelleAmGeraet(w);
+        JsonNode eingerichtet = ok(kunde(w, put(w.pfad()).content(erklaerung(w, w.k13(), "\"keine\"", "473"))));
+        assertThat(mitglied(eingerichtet, w.e1()).path("wirksame_anteile").isNull())
+                .as("nichts zugestellt: keine Zahl, keine Null").isTrue();
+        assertThat(mitglied(eingerichtet, w.e1()).path("zuletzt_gehoert").isNull()).isTrue();
+
+        // Der Betreiber weicht beim Scharfschalten ab (G4, innerhalb G2/G3): 30/70 statt der Auslegung 40/60,
+        // Bezug 5/72 statt 0/77 — beide Boxen haben das Dokument quittiert
+        UUID verbund = root.queryForObject("SELECT id FROM steuerungsverbund WHERE site_id = ?", UUID.class, w.an1());
+        SteuerungsverbundAnteilRepository dokumente = new SteuerungsverbundAnteilRepository(root, MAPPER);
+        dokumente.dokumentAnhaengen(w.mandant(), verbund, 1, 1, Schritt.ZIEL,
+                tabelle(w, "30", "70", "5", "72"), null, List.of(), "scharfschalten", "betrieb");
+        zugestellt(w, w.e1(), 1, 1, true);
+        zugestellt(w, w.e4(), 1, 1, true);
+        root.update("UPDATE steuerungsverbund SET stufe = 'anteile_aktiv', epoche = 1 WHERE id = ?", verbund);
+        root.update("UPDATE device SET device_status_seen_at = TIMESTAMPTZ '2026-09-22T08:15:00Z' WHERE id = ?",
+                w.e1());
+
+        JsonNode aktiv = ok(kunde(w, get(w.pfad())));
+        JsonNode e1 = mitglied(aktiv, w.e1());
+        JsonNode e4 = mitglied(aktiv, w.e4());
+        assertThat(e1.path("wirksame_anteile").path("einspeisung_kw").decimalValue()).isEqualByComparingTo("30");
+        assertThat(e4.path("wirksame_anteile").path("einspeisung_kw").decimalValue()).isEqualByComparingTo("70");
+        assertThat(e1.path("wirksame_anteile").path("bezug_kw").decimalValue()).isEqualByComparingTo("5");
+        assertThat(e4.path("wirksame_anteile").path("bezug_kw").decimalValue()).isEqualByComparingTo("72");
+        assertThat(anteil(ok(kunde(w, get(w.pfad() + "/einrichten"))).path("ergebnis").path("einspeisung"), w.e1()))
+                .as("die Auslegung bleibt 40 — die Karte liest die wirksamen").isEqualByComparingTo("40");
+        assertThat(e1.path("zuletzt_gehoert").asText()).isEqualTo("2026-09-22T08:15:00Z");
+        assertThat(e4.path("zuletzt_gehoert").isNull()).as("nie gehört").isTrue();
+        // keine Betreiber-Interna beim Kunden
+        assertThat(e1.path("wirksame_anteile").has("revision")).isFalse();
+        assertThat(e1.has("waechter") || e1.has("plan") || e1.has("anteile")).isFalse();
+
+        // Übergangsstand (IP-7): gesendet an beide, quittiert nur von E-4 → E-4 der Übergangswert, E-1 bleibt 30
+        dokumente.dokumentAnhaengen(w.mandant(), verbund, 1, 2, Schritt.UEBERGANG,
+                tabelle(w, "20", "50", "5", "72"), tabelle(w, "20", "80", "5", "72"), List.of(w.e1().toString()),
+                "aendern", "betrieb");
+        zugestellt(w, w.e1(), 1, 2, false);
+        zugestellt(w, w.e4(), 1, 2, true);
+        JsonNode uebergang = ok(kunde(w, get(w.pfad())));
+        assertThat(mitglied(uebergang, w.e1()).path("wirksame_anteile").path("einspeisung_kw").decimalValue())
+                .as("gesendet ist nicht quittiert").isEqualByComparingTo("30");
+        assertThat(mitglied(uebergang, w.e4()).path("wirksame_anteile").path("einspeisung_kw").decimalValue())
+                .isEqualByComparingTo("50");
+    }
+
     // ============================================================================ Gerüst
 
     private Welt welt() {
@@ -440,6 +561,36 @@ class GemeinsameSteuerungEinrichtenApiTest {
         List<String> w = new ArrayList<>();
         hinweise.forEach(h -> w.add(h.path("wort").asText()));
         return w;
+    }
+
+    /** Rückfall am Gerät (IP-6): K-1 40 kW, K-2 0 kW, jeder Ladepunkt 4,1 kW; K-12 läuft frei. */
+    private void rueckfaelleAmGeraet(Welt w) throws Exception {
+        ok(kunde(w, put(w.pfad() + "/komponenten/" + w.k1() + "/rueckfall").content(
+                "{\"richtung\":\"einspeisung\",\"rueckfall\":\"faellt_auf_wert\",\"rueckfall_kw\":40,\"nach_s\":60}")));
+        ok(kunde(w, put(w.pfad() + "/komponenten/" + w.k2() + "/rueckfall").content(
+                "{\"richtung\":\"bezug\",\"rueckfall\":\"faellt_auf_wert\",\"rueckfall_kw\":0,\"nach_s\":60}")));
+        for (UUID k : w.k13()) {
+            ok(kunde(w, put(w.pfad() + "/komponenten/" + k + "/rueckfall").content(
+                    "{\"richtung\":\"bezug\",\"rueckfall\":\"faellt_auf_wert\",\"rueckfall_kw\":4.1,\"nach_s\":60}")));
+        }
+    }
+
+    private static Tabelle tabelle(Welt w, String e1Ein, String e4Ein, String e1Bez, String e4Bez) {
+        return new Tabelle(Map.of(
+                Grenzart.EINSPEISUNG, Map.of(w.e1().toString(), new BigDecimal(e1Ein), w.e4().toString(),
+                        new BigDecimal(e4Ein)),
+                Grenzart.BEZUG, Map.of(w.e1().toString(), new BigDecimal(e1Bez), w.e4().toString(),
+                        new BigDecimal(e4Bez))),
+                Map.of(Grenzart.EINSPEISUNG, new BigDecimal("100"), Grenzart.BEZUG, new BigDecimal("77")));
+    }
+
+    /** Das Dokument ging an die Box ({@code gesendet}); {@code quittiert} = sie hat es angenommen. */
+    private static void zugestellt(Welt w, UUID box, long epoche, long revision, boolean quittiert) {
+        root.update("UPDATE steuerungsverbund_mitglied SET gesendet_epoche = ?, gesendet_revision = ?, gesendet_am = "
+                + "now()" + (quittiert ? ", quittiert_epoche = ?, quittiert_revision = ?, quittiert_am = now()" : "")
+                + " WHERE device_id = ? AND aufgehoben_am IS NULL AND gueltig_bis IS NULL",
+                quittiert ? new Object[] {epoche, revision, epoche, revision, box}
+                        : new Object[] {epoche, revision, box});
     }
 
     private static long zeilen(Welt w) {

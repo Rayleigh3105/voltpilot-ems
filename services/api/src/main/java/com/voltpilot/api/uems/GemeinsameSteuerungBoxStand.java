@@ -91,6 +91,40 @@ public class GemeinsameSteuerungBoxStand {
                 sprungproben.protokoll(v.get().id(), mitglieder));
     }
 
+    /**
+     * Für die Kundenroute ({@code GET …/gemeinsame-steuerung}, IP-23-Folge): je Mitglied die WIRKSAMEN Anteile und
+     * wann die Box zuletzt gehört wurde — ohne Betreiber-Interna (keine Wächter-Stufe, keine {@code plan_id}, keine
+     * Revision). Wirksam ist, was der Box zugestellt UND von ihr quittiert ist: der Stand ihres jüngsten quittierten
+     * Anteils-Dokuments (im Übergangsstand also der Übergangswert). Das ist die gespeicherte Wahrheit, nicht der
+     * flüchtige Herzschlag — sie übersteht einen Neustart der api. Nichts quittiert: {@code anteile} leer, nie 0.
+     */
+    public Map<UUID, Kunde> fuerKunden(UUID verbundId, List<MitgliedZeile> mitglieder) {
+        Map<Stand, DokumentZeile> jeStand = new HashMap<>();
+        if (mitglieder.stream().anyMatch(m -> m.quittiertEpoche() != null)) {
+            anteile.dokumente(verbundId).forEach(d -> jeStand.put(d.stand(), d));
+        }
+        Map<UUID, Kunde> je = new LinkedHashMap<>();
+        for (MitgliedZeile m : mitglieder) {
+            GemeinsameSteuerungDto.WirksameAnteile wirksamKw = null;
+            if (m.quittiertEpoche() != null && m.quittiertRevision() != null) {
+                DokumentZeile d = jeStand.get(new Stand(m.quittiertEpoche(), m.quittiertRevision()));
+                if (d != null) {
+                    String box = m.deviceId().toString();
+                    BigDecimal ein = d.tabelle().anteile().getOrDefault(Grenzart.EINSPEISUNG, Map.of()).get(box);
+                    BigDecimal bez = d.tabelle().anteile().getOrDefault(Grenzart.BEZUG, Map.of()).get(box);
+                    if (ein != null || bez != null) {
+                        wirksamKw = new GemeinsameSteuerungDto.WirksameAnteile(ein, bez);
+                    }
+                }
+            }
+            je.put(m.deviceId(), new Kunde(wirksamKw, zuletztGesehen(m.deviceId())));
+        }
+        return je;
+    }
+
+    /** Was die Kundenroute je Mitglied aus diesem Dienst liest. */
+    public record Kunde(GemeinsameSteuerungDto.WirksameAnteile wirksameAnteile, OffsetDateTime zuletztGehoert) {}
+
     private GemeinsameSteuerungDto.BoxStand box(UUID siteId, MitgliedZeile m, GemeinsameSteuerungHerzschlag bloecke) {
         UUID box = m.deviceId();
         GemeinsameSteuerungDto.Faehigkeit faehigkeit = new GemeinsameSteuerungDto.Faehigkeit(

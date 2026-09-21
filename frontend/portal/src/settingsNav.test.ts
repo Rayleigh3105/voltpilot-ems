@@ -52,6 +52,8 @@ describe('einstellungenHash / parseSettingsAnchor — die Adresse einer Gruppe',
 
   it('liest die Gruppe zurück und rät nie', () => {
     expect(parseSettingsAnchor(einstellungenHash('s-1', 'speicher'))).toBe('speicher');
+    // AP-15: der Weg „Gemeinsame Steuerung ändern“ der Box-Seite springt auf #technik-gemeinsam
+    expect(parseSettingsAnchor(einstellungenHash('s-1', 'gemeinsam'))).toBe('gemeinsam');
     expect(parseSettingsAnchor(einstellungenHash('s-1'))).toBeNull();
     expect(parseSettingsAnchor('#/anlage/s-1/technik?abschnitt=erfunden')).toBeNull();
     expect(parseSettingsAnchor('#/anlage/s-1/technik?z=tag')).toBeNull();

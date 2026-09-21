@@ -6937,6 +6937,13 @@ export interface UemsGemeinsameSteuerungMitglied {
   anteil_verlust?: { heute?: UemsVerlustSumme | null; monat?: UemsVerlustSumme | null } | null;
   /** IP-21: die jüngste Sprungprobe der Box; `null` ohne Probe. */
   sprungprobe?: UemsSprungprobe | null;
+  /**
+   * IP-23-Folge (G4): was der Box zugestellt UND von ihr quittiert ist — nach einer Abweichung des Betreibers beim
+   * Scharfschalten dessen Zahl, im Übergangsstand der Übergangswert. `null` = nichts quittiert (unbekannt, keine Null).
+   */
+  wirksame_anteile?: { einspeisung_kw?: number | null; bezug_kw?: number | null } | null;
+  /** IP-23-Folge: der letzte Status-Herzschlag der Box; `null` = nie gehört. */
+  zuletzt_gehoert?: string | null;
 }
 
 /** Eine Sprungprobe (IP-21). `ausgeloest` = der Bericht steht aus; `nicht_auswertbar` ist kein Bestanden. */
@@ -8614,6 +8621,13 @@ export const api = {
   gemeinsameSteuerungSetzen: (siteId: string, body: UemsGemeinsameSteuerungSetzen) =>
     request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung`,
       { method: 'PUT', body: JSON.stringify(body) }),
+  /**
+   * Frage 6 für einen ENTWURF (§5.2 Nr. 6, vor „Absenden“): derselbe Körper und dieselben 422-Lücken wie das PUT,
+   * die Antwort wie `GET …/einrichten` und das PUT (`zustand` mit `fehlt`) — schreibt nichts.
+   */
+  gemeinsameSteuerungVorschau: (siteId: string, body: UemsGemeinsameSteuerungSetzen) =>
+    request<{ einrichten: UemsGemeinsameSteuerungEinrichten; zustand: UemsGemeinsameSteuerungZustand }>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/einrichten/vorschau`,
+      { method: 'POST', body: JSON.stringify(body) }),
   /** Den sicheren Rückfallwert am Gerät hinterlegen (Vertrag §6a, `GeraeteRueckfallDienst`). */
   gemeinsameSteuerungRueckfall: (siteId: string, komponenteId: string,
     body: { richtung: UemsSteuerRichtung; rueckfall: 'faellt_auf_wert'; rueckfall_kw: number }) =>

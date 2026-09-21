@@ -69,11 +69,23 @@ public final class GemeinsameSteuerungDto {
      * {@code unbekannt}, erklärt; {@code vorgabeSignalAm} wann zuletzt, null = nie) — und {@code verbraucher14a} —
      * hängen steuerbare Verbraucher nach § 14a hinter ihr (dieselben drei Wörter, abgeleitet aus den Geräten je Box).
      * {@code anteilVerlust} (IP-22) {@code null}, solange die Box an dieser Anlage keinen Tag gemeldet hat.
+     * {@code wirksameAnteile} (IP-23-Folge): was der Box zugestellt und von ihr quittiert ist — {@code null}, solange
+     * nichts quittiert ist (unbekannt, keine Null). {@code zuletztGehoert}: der letzte Status-Herzschlag der Box
+     * ({@code null} = nie).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Mitglied(UUID boxId, String rolle, UUID messpunktId, OffsetDateTime gueltigAb,
             OffsetDateTime bestaetigtAm, String vorgabeSignal, OffsetDateTime vorgabeSignalAm, String verbraucher14a,
-            AnteilVerlust anteilVerlust, Sprungprobe sprungprobe) {}
+            AnteilVerlust anteilVerlust, Sprungprobe sprungprobe, WirksameAnteile wirksameAnteile,
+            OffsetDateTime zuletztGehoert) {}
+
+    /**
+     * Die wirksamen Anteile einer Box je Richtung in kW (G4): der Stand ihres jüngsten QUITTIERTEN Anteils-Dokuments —
+     * im Übergangsstand der Übergangswert, nach einer Abweichung des Betreibers beim Scharfschalten dessen Zahl. Eine
+     * leere Richtung ist unbekannt, keine Null.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record WirksameAnteile(BigDecimal einspeisungKw, BigDecimal bezugKw) {}
 
     /**
      * Die jüngste Sprungprobe einer Box (IP-21, E3 = A, T5) — für das Betreiber-Blatt (IP-24): Urteil ({@code
