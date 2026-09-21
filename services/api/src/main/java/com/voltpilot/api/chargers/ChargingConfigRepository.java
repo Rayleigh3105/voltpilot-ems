@@ -387,4 +387,34 @@ public class ChargingConfigRepository {
                 + "WHERE d.site_id = ? AND d.ausgebaut_am IS NULL ORDER BY d.id",
                 (rs, n) -> rs.getObject("id", UUID.class), siteId));
     }
+
+    /**
+     * Die gemeldeten Ladepunkte JE BOX der Anlage (UEMS AP-15 IP-16) — derselbe physische Beleg wie
+     * {@link #deviceIdsWithChargePoints}, nur mit den Kennungen: er entscheidet, in welchem Ladepark-Dokument eine Säule
+     * mit ihrem Rang reist.
+     */
+    public Map<UUID, java.util.Set<String>> chargePointsPerDevice(UUID siteId) {
+        Map<UUID, java.util.Set<String>> je = new LinkedHashMap<>();
+        jdbc.query("SELECT d.id, cp.charge_point_id FROM device d "
+                + "JOIN device_charge_point cp ON cp.device_id = d.id AND cp.site_id = d.site_id "
+                + "WHERE d.site_id = ? AND d.ausgebaut_am IS NULL ORDER BY d.id, cp.charge_point_id",
+                rs -> {
+                    je.computeIfAbsent(rs.getObject("id", UUID.class), k -> new java.util.TreeSet<>())
+                            .add(rs.getString("charge_point_id"));
+                }, siteId);
+        return je;
+    }
+
+    /** Die Wallbox-Entitäten JE BOX der Anlage (IP-16); eine Wallbox ohne Box fehlt hier. */
+    public Map<UUID, java.util.Set<UUID>> wallboxesPerDevice(UUID siteId) {
+        Map<UUID, java.util.Set<UUID>> je = new LinkedHashMap<>();
+        jdbc.query("SELECT mp.device_id, mp.id FROM measurement_point mp JOIN site s ON s.id = mp.site_id "
+                + "WHERE mp.site_id = ? AND mp.entity_type = 'wallbox' AND mp.device_id IS NOT NULL "
+                + "ORDER BY mp.device_id, mp.id",
+                rs -> {
+                    je.computeIfAbsent(rs.getObject("device_id", UUID.class), k -> new java.util.TreeSet<>())
+                            .add(rs.getObject("id", UUID.class));
+                }, siteId);
+        return je;
+    }
 }
