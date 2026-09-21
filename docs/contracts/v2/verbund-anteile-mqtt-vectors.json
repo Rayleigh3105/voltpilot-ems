@@ -1,5 +1,5 @@
 {
- "_comment": "UEMS AP-15 IP-7: Anteils-Dokument auf dem Draht (Downlink …/v2/verbund-anteile) gegen die Box-Prüfung von IP-2 (SteuerungsverbundAnteile.dokumentPruefen) und die Quittung (Uplink …/v2/verbund-anteile-result). Zahlen aus R12 (40/60 → 10/60 → 10/90 kW) und dem Bezug aus R1/R3 (0/77 kW). Kennungen konstruiert. Leser: VerbundAnteileVectorsTest (Java). Der Go-Zwilling der Box kommt mit IP-17.",
+ "_comment": "UEMS AP-15 IP-7: Anteils-Dokument auf dem Draht (Downlink …/v2/verbund-anteile) gegen die Box-Prüfung von IP-2 (SteuerungsverbundAnteile.dokumentPruefen) und die Quittung (Uplink …/v2/verbund-anteile-result). Zahlen aus R12 (40/60 → 10/60 → 10/90 kW) und dem Bezug aus R1/R3 (0/77 kW). Kennungen konstruiert. Leser: VerbundAnteileVectorsTest (Java) und der Go-Zwilling der Box (edge-app/core/internal/anteile, cloud/verbund_anteile_test.go; IP-17).",
  "schema_version": "1.0",
  "kennungen": {
   "tenant": "7a000000-0000-4000-8000-000000000001",

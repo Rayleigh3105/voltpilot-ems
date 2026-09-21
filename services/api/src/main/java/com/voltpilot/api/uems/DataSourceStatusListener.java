@@ -74,6 +74,17 @@ public class DataSourceStatusListener {
         this.gemeinsameSteuerung = gemeinsameSteuerung;
     }
 
+    /**
+     * AP-15 IP-17: die wirksamen Anteile je Box aus demselben Block (Y3, A18). Nachgereicht wie oben; ohne sie
+     * (Tests mit eigenem Aufbau) überliest der Zuhörer die Anteile.
+     */
+    private WirksameAnteileAusHerzschlag wirksameAnteile;
+
+    @Autowired(required = false)
+    void wirksameAnteile(WirksameAnteileAusHerzschlag wirksameAnteile) {
+        this.wirksameAnteile = wirksameAnteile;
+    }
+
     public DataSourceStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
@@ -177,6 +188,9 @@ public class DataSourceStatusListener {
             devices.markStatusSeen(deviceId);
             if (gemeinsameSteuerung != null) {
                 gemeinsameSteuerung.merke(deviceId, json.get("gemeinsame_steuerung"));
+            }
+            if (wirksameAnteile != null) {
+                wirksameAnteile.merke(siteId, deviceId, json.get("gemeinsame_steuerung"));
             }
             Instant capabilityAt = instant(json.get("ts"));
             if (capabilityAt == null) capabilityAt = Instant.now();

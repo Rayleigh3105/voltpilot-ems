@@ -299,6 +299,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 Neue UEMS-Pakete tragen ihren Eintrag HIER ein, nicht im Themen-Index von `AGENTS.md`.
 
 - **Plan-Quittung und Herzschlag-Block (AP-15 IP-10 ⚡)** — `…/v2/plan-result` je Urteil, `plan_zustellung` veröffentlicht/angenommen je Box, gemeldete Fähigkeit `plan_quittung` · [Wege und Fallen](uems-plan-quittung.md)
+- **Anteils-Dokument auf der Box (AP-15 IP-17 ⚡, Y1–Y3, G5)** — Go-Zwilling `edge-app/core/internal/anteile` fährt beide Vektor-Dateien (NW-1); angenommen = atomar auf der Platte (`verbund-anteile.json`), im Konstruktor geladen, vor dem ersten Messwert; Quittung je Urteil retained, leere retained Nachricht / unlesbar / fremde Box = Anteil bleibt, keine Quittung (nie erweitern); Herzschlag `rolle`/`anteile_epoche`/`anteile_revision`/`anteile_kw` → `uems/WirksameAnteileAusHerzschlag` (im Prozess); `rolle` wahlfrei im Dokument; Fähigkeit `steuerungsverbund_anteil` nur gemeldet; Wächter regeln erst mit IP-18/IP-19 · [Box-Seite](../../contracts/v2/mqtt-verbund-anteile.md) §2a
 
 - **Ersatzwerte in gröberen Perioden (AP-08 IP-13/IP-17, E7/E9):** d–g ersetzen ihre bisherigen Beiträge; e bis Kalendermonat ohne erfundenes Viertelstundenprofil, Rücknahme aus der gemessenen Grundlage. Java-/TS-Regel, Vektoren und Nachweise: [Ersatzwert-Perioden](uems-ersatzwert-perioden.md).
 

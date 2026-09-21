@@ -14,6 +14,10 @@
     "epoche": { "type": "integer", "minimum": 1 },
     "revision": { "type": "integer", "minimum": 1 },
     "schritt": { "enum": ["uebergang", "ziel"] },
+    "rolle": {
+      "enum": ["fuehrt", "steuert_mit"],
+      "description": "wahlfrei (IP-17): die Rolle der Box des Topics im Verbund; die Box spiegelt sie im Herzschlag"
+    },
     "verteilbar": { "$ref": "#/$defs/je_richtung_kw" },
     "anteile": {
       "type": "object",
