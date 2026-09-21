@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import os
 import signal
 import subprocess
@@ -224,3 +225,24 @@ def test_image_layout_laedt_und_rechnet_die_menge(monkeypatch, capsys):
         monkeypatch.setenv(schluessel, wert)
     assert modul.main(["--menge"]) == 0
     assert '"nutzlast_bytes": 2577600' in capsys.readouterr().out
+
+
+NW6_VORLAGE = HIER / "abnahme" / "dauerlaeufer-nw6.json"
+
+
+def test_nw6_vorlage_ist_die_des_simulators():
+    """Der Java-Lauf ``DauerlaeuferGanzerWegDbTest`` startet kein Python; er liest diese Datei."""
+    assert NW6_VORLAGE.read_text(encoding="utf-8") == dl.nw6_text(), (
+        "Vorlage und Dauerläufer laufen auseinander — `make abnahme` und den Java-Lauf erneut fahren")
+    summe = NW6_VORLAGE.with_suffix(NW6_VORLAGE.suffix + ".sha256").read_text(encoding="utf-8").strip()
+    assert summe == dl.nw6_dateisumme() == hashlib.sha256(NW6_VORLAGE.read_bytes()).hexdigest()
+
+
+def test_nw6_vorlage_traegt_beide_boxen_mit_topic_gleich_nutzlast():
+    vorlage = dl.nw6_vorlage()
+    assert [z["box"] for z in vorlage["zustellungen"]] == ["E-1", "E-2"] * dl.NW6_TAKTE
+    for z in vorlage["zustellungen"]:
+        n = z["nutzlast"]
+        assert z["topic"] == f"ems/{n['tenant_id']}/{n['site_id']}/{n['device_id']}/v2/measurement-samples"
+    letzte = vorlage["zustellungen"][-1]["nutzlast"]["observed_at"]
+    assert letzte == "2026-11-03T09:59:00Z"

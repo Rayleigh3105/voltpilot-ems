@@ -3,7 +3,7 @@
 #   make test        alle Tests des Simulators, ohne Broker und ohne Datenbank
 #   make plan        die fünf Szenarien als JSON (Trockenlauf, nichts wird gesendet)
 #   make szenarien   spielt alle fünf Szenarien gegen VP_SIM_BROKER
-#   make abnahme     erzeugt die Abnahme-Vorlage für AP-07 IP-21 neu
+#   make abnahme     erzeugt die Abnahme-Vorlagen für AP-07 IP-21 und NW-6 (IP-18) neu
 #
 # Der Broker wird IMMER über die Umgebung genannt, nie fest verdrahtet:
 #
@@ -54,8 +54,12 @@ szenarien:
 # Ereignisse und Stammdaten liest. Erzeugt, nie von Hand geschrieben:
 # test_ap07_abnahme_fixture.py hält sie an diesen Befehl.
 ABNAHME := abnahme/ap07-szenarien.json
+NW6 := abnahme/dauerlaeufer-nw6.json
 
 abnahme:
 	$(PY) uems_szenarien.py --abnahme > $(ABNAHME)
 	$(PY) uems_szenarien.py --abnahme-summe > $(ABNAHME).sha256
 	@echo "$(ABNAHME) neu erzeugt — Abnahme-Klassen erneut fahren"
+	$(PY) uems_dauerlaeufer.py --nw6-vorlage > $(NW6)
+	$(PY) uems_dauerlaeufer.py --nw6-summe > $(NW6).sha256
+	@echo "$(NW6) neu erzeugt — DauerlaeuferGanzerWegDbTest erneut fahren"

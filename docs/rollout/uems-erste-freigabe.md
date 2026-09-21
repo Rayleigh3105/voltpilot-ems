@@ -988,6 +988,44 @@ Werte (`LueckenMelder.java:84`, `UemsMetricsRepository.java:88-99`).
    `custom.ms-14.…` (MS-14 heißt `custom.ms-14.ocpp-zaehlerstand`). Alle sind Zählerstände
    in kWh, `decoded = raw / 10`.
 
+> **⚠ Schritt 3 geht so heute nicht (berichtigt am 21.09.2026, NW-6 im Kleinen,
+> `DauerlaeuferGanzerWegDbTest`).** Standort, Anlagen, Funktion „Messen“ und die zwei Boxen
+> entstehen über die Portalwege wie beschrieben. Die Mess-Auswahl aber nimmt die Schlüssel des
+> Simulators über **keinen** Weg an:
+>
+> - Die Katalog-Auswahl (`PUT /api/v1/devices/{box}/measurement-selection/{schlüssel}`) antwortet
+>   bei allen neun Schlüsseln 400 „Dieser Katalog-Messpunkt ist nicht lesbar oder unbekannt.“
+>   (`MeasurementSelectionService.java:416`). `custom.ms-05.…` steht in keinem Katalog.
+> - „Eigenen Messwert hinzufügen“ (`POST …/measurement-selection/custom`) ordnet zwar der
+>   Komponente zu, vergibt den Schlüssel aber selbst: `custom.<32 Hexzeichen>`
+>   (`MeasurementSelectionService.java:291`). Der Simulator sendet einen anderen.
+>
+> Ohne Auswahlzeile verwirft der Writer jeden Wert (`MeasurementWriteRepository.java:145-150`).
+> Der Lücken-Melder schreibt dann keinen Stand, und `…letzter_messwert_age_seconds` hat für den
+> Dauerläufer **keine Reihe**. Eine Regel der Form „Alter > 900 s“ sieht dann nichts; sie
+> schweigt, statt zu melden. Ob `VoltPilotDauerlaeuferStumm` ein fehlendes Alter mitprüft,
+> steht in der gitops-Regel.
+>
+> Eine Auswahlzeile allein genügt außerdem nicht. Damit der Writer `entity_id` setzt und der
+> Lücken-Melder den Wert zählt, braucht es zusätzlich:
+>
+> - eine Datenquelle an der Komponente (`HerkunftNachschlag.java:106-108`). Die setzt nur
+>   „Vorschlag übernehmen“ (`POST /api/v1/sites/{anlage}/data-sources/vorschlag/uebernehmen`,
+>   `DatenquelleBestandRepository.java:167`);
+> - die Zuständigkeit der Box für diese Datenquelle. Sonst ist die Rolle „Spiegel“
+>   (`MesswertHerkunft.java:447`), und Spiegel zählt der Lücken-Melder nicht (`LueckenMelder.java:84`);
+> - eine Einstellungs-Fassung zur Messzeit (`MesswertHerkunft.java:437`). Der Simulator
+>   quittiert keine Auswahl; `applied_at` setzt erst die Erstwert-Marke des Writers
+>   (`MeasurementWriteRepository.java:451`). Am echten Writer (`DauerlaeuferWriterNahtTest`)
+>   bleibt darum der erste Wert jedes Schlüssels ohne Zuordnung, ab dem zweiten Takt tragen alle
+>   eine. Das gilt, sobald der Writer seine Zeitleiste neu liest; er hält sie 60 s
+>   (`HerkunftNachschlag.java:62`), so lange wie ein Takt des Simulators.
+>
+> Welcher Weg das behebt, ist noch **nicht entschieden**. Zur Wahl stehen: der Simulator sendet
+> die Schlüssel, die die Plattform vergibt; er sendet Katalog-Schlüssel; oder die Mess-Auswahl
+> nimmt feste `custom.*`-Schlüssel an. Bis dahin bleibt der Dauerläufer ohne Messwert-Alter, und
+> die Übung 14.6 ist nicht fahrbar.
+
 ### 14.3 Geheimnis hinterlegen
 
 Aus 14.2 hast du je Box einen Schlüssel und ein Zertifikat, dazu die Geräte-CA. Sie kommen als
@@ -1045,5 +1083,10 @@ frühestens 7 Tage nach Monatsende (`docs/contracts/v2/bericht.md:134`).
    laufen nach dem Neustart weiter, ohne Reset (`uems_dauerlaeufer.py` `takt_von`).
 
 Lokal belegt ist, dass die Metrik bei ausbleibenden Werten über 900 s steigt
-(`DauerlaeuferMetrikenDbTest`, mit verstellter Uhr). Ob der Alarm in Produktion wirklich
-zugestellt wird, zeigt nur diese Übung.
+(`DauerlaeuferMetrikenDbTest`, mit verstellter Uhr). `DauerlaeuferGanzerWegDbTest` geht die
+api-Hälfte mit der Einrichtung über die Portalwege, dem echten Lücken-Melder und den Umschlägen
+des Simulators. Dort steigt das Alter von 148 s auf 1 108 s, und der Schalter nimmt die zwei
+Anlagen aus der Flotte. Die Zeilen an der Writer-Naht sind die, die `DauerlaeuferWriterNahtTest`
+am echten Writer sieht, aber nur mit einer Einrichtung, die über die Portalwege heute nicht
+entsteht (Hinweis unter 14.2). Ob der Alarm in Produktion wirklich zugestellt wird, zeigt nur
+diese Übung.
