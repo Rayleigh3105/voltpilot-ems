@@ -71,7 +71,9 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   und ein Dokument **ohne** `rolle` (sichere Seite) — hält den Anteil immer am eigenen Messpunkt (Abgangszähler,
   ohne ihn die Summe der eigenen Geräte), blind `Anteil − Entladung`; die ganze Grenze ist dort nie Eingang (G1).
   Der Anteil gilt für Erzeugung UND Entladung (V6): der Wächter senkt auch die Entladung — blind auf den Anteil,
-  mit frischer Messung erst, wenn die Erzeuger auf 0 stehen —, lädt nie und hebt nie an. Er steht hinter der
+  mit frischer Messung erst, wenn die Erzeuger auf 0 stehen —, lädt nie und hebt nie an. Den Spielraum EINER
+  frischen Messung vergibt er nur einmal: nach einem Zustand, in dem beide gesenkt waren (blind, Prüf-Verstellung),
+  bekommt erst die Entladung ihren Anstieg, die Erzeuger den Rest (IP-18-Befund aus IP-27). Er steht hinter der
   Arbitration (V1) und gilt in Ruhe, Pause und ohne Plan (V5); zusätzlich läuft die Box ohne Anteil als Schatten mit,
   das Ergebnis ist nie weiter als ohne Dokument. `sicherheitskappe` im Herzschlag heißt dann „= eigener Anteil“.
   Ohne Dokument verhält sich die Box Byte für Byte wie vor IP-17.

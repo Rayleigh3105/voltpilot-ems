@@ -263,9 +263,6 @@ type ExportLimiter struct {
 	// actuator is not probed
 	pruefValid        bool
 	pruefPv, pruefDis float64
-	// a probe that lowered the discharge: the discharge and the PV cap before
-	// it (pruefNachher); pruefDisVor 0 = none pending
-	pruefDisVor, pruefCapVor float64
 }
 
 // NewExportLimiter returns an idle watchdog (no measurement, no cap).

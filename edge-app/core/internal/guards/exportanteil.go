@@ -140,8 +140,9 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 	switch {
 	case !res.Blind:
 		l.rampValid = false
-		l.pruefNachher(now, discharge, &res)
+		dcapVor, dcapVorValid := l.dcap, l.dcapValid
 		l.dischargeFresh(now, loop, discharge, &res)
+		l.einSpielraum(now, loop, discharge, dcapVor, dcapVorValid, &res)
 		if an.Pruefen {
 			l.pruefen(now, budget, discharge, an.PruefenNeu, &res)
 		}
@@ -308,7 +309,6 @@ func (l *ExportLimiter) pruefen(now time.Time, budget, discharge float64, neu bo
 			l.pruefPv, l.pruefDis = pv-PruefSenkKw, math.Inf(1)
 		case dis >= PruefSenkKw:
 			l.pruefPv, l.pruefDis = math.Inf(1), dis-PruefSenkKw
-			l.pruefDisVor, l.pruefCapVor = dis, l.cap
 		default:
 			return
 		}
@@ -329,27 +329,6 @@ func (l *ExportLimiter) pruefen(now time.Time, budget, discharge float64, neu bo
 	}
 }
 
-// pruefNachher keeps the producers where they were while the discharge a
-// probing adjustment lowered is still below its point before the probe (and
-// that ceiling still binds): one measurement shows the headroom the probe
-// freed, and the PV law and the discharge law would each claim all of it.
-// The discharge the probe took releases first; the producers only after.
-// Caller holds l.mu.
-func (l *ExportLimiter) pruefNachher(now time.Time, discharge float64, res *ExportCap) {
-	if l.pruefDisVor <= 0 {
-		return
-	}
-	if !l.dcapValid || l.dcap >= math.Min(l.pruefDisVor, discharge)-ExportStepKw {
-		l.pruefDisVor, l.pruefCapVor = 0, 0
-		return
-	}
-	if l.cap > l.pruefCapVor {
-		l.cap = l.pruefCapVor
-		res.CapKw = round3(l.cap)
-	}
-	l.capAt = now
-}
-
 // schattenLocked is the shadow of V5 - the same box WITHOUT a share. It
 // starts as a copy of what this watchdog held until now (without a document
 // it WAS today's watchdog: Observe and Cap), so it continues exactly where
@@ -366,6 +345,40 @@ func (l *ExportLimiter) schattenLocked() *ExportLimiter {
 		}
 	}
 	return l.heute
+}
+
+// einSpielraum gives the headroom of ONE fresh measurement out once (IP-18
+// finding of IP-27): the PV law (exportlimit.go) and the discharge law above
+// each see all of it, so after a state in which both actuators were lowered -
+// blind on the share, or a probing adjustment - both released it, and the
+// plant pushed that headroom twice. Now the discharge takes first what its
+// ceiling rose in this evaluation (the last actuator to be cut is the first to
+// be released, V6), and the producers get what is left: the PV cap is at most
+// the PV law's target minus that rise. Only the RISE of the ceiling counts -
+// never the gap between a plan and a battery that cannot follow it (SoC,
+// limits), which would hold the producers down for nothing. A ceiling born in
+// this evaluation rises from the discharge measured under it. Caller holds
+// l.mu.
+func (l *ExportLimiter) einSpielraum(now time.Time, limit, discharge, dcapVor float64, vorValid bool, res *ExportCap) {
+	if !l.dcapValid {
+		return
+	}
+	vor := discharge
+	switch {
+	case vorValid:
+		vor = math.Min(dcapVor, discharge)
+	case l.battValid:
+		vor = math.Min(math.Max(-l.battKw, 0), discharge)
+	}
+	anstieg := math.Min(l.dcap, discharge) - vor
+	if anstieg <= 0 {
+		return
+	}
+	rest := math.Max(closedLoopCap(limit, l.gridKw, l.pvKw)-anstieg, 0)
+	if l.cap > rest {
+		l.cap, l.capAt = rest, now
+		res.CapKw = round3(l.cap)
+	}
 }
 
 // verankern re-anchors the watchdog on a clock that went back to ts (A8):
