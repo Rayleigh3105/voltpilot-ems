@@ -427,10 +427,10 @@ def punkte(tor: str):
              betreiber('startwaechter_main',
                        'die alte api schreibt beim Neustart 18 DELETE-Marker, danach startet die neue nicht; '
                        'das Drehbuch ist mit und ohne Waechter fahrbar - der Betreiber entscheidet')),
-            ('R1', 'Offene Rechte-Frage zum Standort-Zaun auf geraet/component_definition', 'Bau-Befund AP-03 IP-5',
-             betreiber('standortzaun_geraet',
-                       'ob der Standort-Zaun auf geraet und component_definition greifen soll, ist nicht entschieden',
-                       'Crew legt vor, Betreiber entscheidet')),
+            ('R1', 'Standort-Zaun auf geraet/component_definition bleibt, ein fremdes Geraet ist unsichtbar',
+             'Bau-Befund AP-03 IP-5 / Entscheid A vom 21.09.2026',
+             surefire('com.voltpilot.api.zugriff.RechtMatrixApiTest',
+                      'PR 830; das entschiedene Urteil haelt ausserhalbIstDieselbe404WieEineKennungDieEsNichtGibt fest')),
         ]
     if tor == 'GA':
         return [

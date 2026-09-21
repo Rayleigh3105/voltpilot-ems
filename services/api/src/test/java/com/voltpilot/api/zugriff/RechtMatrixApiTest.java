@@ -73,8 +73,9 @@ import org.testcontainers.utility.DockerImageName;
  *   <li><b>Je Matrix-Zeile der Gruppen 1–3</b> eine Route und alle acht Personen: erlaubt · 403 {@code recht_fehlt} ·
  *       404 außerhalb des Geltungsbereichs.</li>
  *   <li><b>{@code SiteController}-Löschen als Leser → 403</b> mit Rolle und Weg; die Anlage bleibt.</li>
- *   <li><b>Außerhalb ist dieselbe 404 wie eine Kennung, die es nicht gibt</b> (Messstelle, Bezugsgröße, Gerät — die
- *       Objekte ohne Standort-Zaun).</li>
+ *   <li><b>Außerhalb ist dieselbe 404 wie eine Kennung, die es nicht gibt</b> (Messstelle, Bezugsgröße — die Objekte
+ *       ohne Standort-Zaun; ein Gerät ({@code geraet}) trägt den Zaun selbst, ist am fremden Standort unsichtbar und
+ *       bekommt dieselbe 404 von der Route).</li>
  *   <li><b>Die genaue Prüfung im Anfragekörper</b> (Box anmelden, Bezugsgröße anlegen, Ort verschieben, rückwirkend).</li>
  *   <li><b>Bestand: jedes heutige Konto kommt an jeder Route mit {@link Recht} bis zum Handler</b> — der
  *       Kundenadministrator der Bestandsübernahme, das nie zugewiesene Kundenkonto (E12), die Plattform am Umschalter
@@ -429,17 +430,11 @@ class RechtMatrixApiTest {
                 "/api/v1/messstellen/%s/archivieren → ausserhalb",
                 "/api/v1/messstellen/%s/verteilung → ausserhalb",
                 "/api/v1/messstellen/%s/prozesse → ausserhalb",
-                // VORLÄUFIG, offene Aufgabe vp-uems-geraet-standortzaun: seit PR 949
-                // (V20260918102000, Policy wago_geraet_site_scope AS RESTRICTIVE auf geraet) liefert
-                // SELECT site_id FROM geraet (RechtPruefung:411) für einen fremden Standort keine
-                // Zeile mehr; ueberAnlage fällt schon bei zeilen.isEmpty() auf Unsichtbar, der für
-                // GERAET ausdrücklich mit ohneZaun=true gemeinte Zweig (:444) wird nie erreicht.
-                // Der Kommentar in RechtPruefung:432 ("geraet trägt den Zaun NICHT") stimmt damit
-                // nicht mehr. Fällt der Entscheid auf "Zaun gewollt", gehört hier unsichtbar hin und
-                // GERAET muss wie DEVICE mit ohneZaun=false aufgerufen werden; fällt er auf
-                // "PR 949 hat zu weit gegriffen", steht hier wieder ausserhalb. Die Entscheidung ist
-                // sicherheitsrelevant und liegt als eigene Aufgabe vp-uems-geraet-standortzaun beim
-                // Betreiber; dieser PR fasst weder RechtPruefung noch die Policy an.
+                // Entschieden am 21.09.2026, Lesart A: geraet behält den Standort-Zaun aus
+                // V20260918102000 (wago_geraet_site_scope AS RESTRICTIVE), RechtPruefung löst
+                // GERAET wie DEVICE auf. Ein Gerät an einem fremden Standort ist unsichtbar - die
+                // Route antwortet selbst, mit derselben 404 wie für eine unbekannte Kennung
+                // (Zusicherung oben). Tor G1, Punkt R1 liest diesen Test als Beleg.
                 "/api/v1/geraete/%s/austausch → unsichtbar");
     }
 

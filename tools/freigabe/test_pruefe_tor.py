@@ -34,6 +34,7 @@ NACHWEIS_KLASSEN = {
     'V0': 'com.voltpilot.api.uems.UemsProduktionsreihenfolgeMigrationTest',
     'NW-2': 'com.voltpilot.api.uems.UemsBestandSteuerungAusEinemStueckTest',
     'NW-4': 'com.voltpilot.api.uems.UemsMesskundenLaufAbnahmeTest',
+    'R1': 'com.voltpilot.api.zugriff.RechtMatrixApiTest',
 }
 
 PROBE_GUT = {
@@ -55,8 +56,8 @@ NW3_GRUEN = {
 # Genau die Punkte, die allein der Betreiber weiss - alle vier Tore zusammen.
 STAND_PUNKTE = ['m1_ausgewertet', 'nw5_lastmessung', 'nw6_alarmuebung', 'kapazitaet_l6', 'pilotkunden',
                 'gitops_pr37', 'gitops_platzhalter', 'supportweg', 'kundennachricht', 'ip18_dauerlaeufer',
-                'startwaechter_main', 'standortzaun_geraet', 'budgetpruefung_produktion',
-                'core_palette_gemeinsam', 'flotte_auf_release_a', 'q10_pending_edge', 'wago_hardware_pilot']
+                'startwaechter_main', 'budgetpruefung_produktion', 'core_palette_gemeinsam',
+                'flotte_auf_release_a', 'q10_pending_edge', 'wago_hardware_pilot']
 
 
 def git(repo, *argv):
@@ -323,6 +324,20 @@ class TorPrueferTest(unittest.TestCase):
         code, text = self.b.fahre('G1')
         self.assertEqual(1, code)
         self.assertIn('[offen] NW-4', text)
+
+    def test_r1_standortzaun_ist_ein_testbeleg_kein_betreiberwort(self):
+        # Entscheid A vom 21.09.2026: das Urteil haelt RechtMatrixApiTest fest, nicht das Stand-Blatt.
+        _, text = self.b.fahre('G1')
+        self.assertIn('[belegt] R1', text)
+        self.assertIn(f'TEST-{NACHWEIS_KLASSEN["R1"]}.xml', text)
+        (self.b.laeufe / f'TEST-{NACHWEIS_KLASSEN["R1"]}.xml').unlink()
+        punkte = {p: ('ja', '2026-09-20') for p in STAND_PUNKTE}
+        punkte['standortzaun_geraet'] = ('ja', '2026-09-21')
+        self.b.stand_schreiben(punkte)
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code)
+        self.assertIn('[offen] R1', text)
+        self.assertIn('1 offen', text)
 
     def test_kaputtes_stand_blatt_bricht_ab_statt_zu_raten(self):
         self.b.stand.write_text('nw6_alarmuebung\n   bestaetigt ja\n', encoding='utf-8')
