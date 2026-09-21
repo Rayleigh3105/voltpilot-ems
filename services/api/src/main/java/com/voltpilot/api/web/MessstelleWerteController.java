@@ -5,8 +5,11 @@ import com.voltpilot.api.uems.MessstelleWerteRegeln;
 import com.voltpilot.api.uems.MessstelleWerteService;
 import com.voltpilot.api.uems.WertVersionenRegeln;
 import com.voltpilot.api.web.dto.MessstelleWerteDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -36,9 +39,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class MessstelleWerteController {
 
     private final MessstelleWerteService werte;
+    private final RechtPruefung rechte;
 
-    public MessstelleWerteController(MessstelleWerteService werte) {
+    public MessstelleWerteController(MessstelleWerteService werte, RechtPruefung rechte) {
         this.werte = werte;
+        this.rechte = rechte;
     }
 
     /**
@@ -54,7 +59,7 @@ public class MessstelleWerteController {
             @RequestParam(required = false) String von,
             @RequestParam(required = false) String bis,
             @RequestParam(required = false) String version) {
-        return werte.werteDerRoute(kennzeichen, raster, von, bis, version);
+        return werte.werteDerRoute(kennzeichen, raster, von, bis, version, this::imZugriff);
     }
 
     /**
@@ -68,7 +73,13 @@ public class MessstelleWerteController {
             @RequestParam(required = false) String raster,
             @RequestParam(required = false) String von,
             @RequestParam(required = false) String bis) {
-        return werte.historie(kennzeichen, raster, von, bis);
+        return werte.historie(kennzeichen, raster, von, bis, this::imZugriff);
+    }
+
+    /** Außerhalb des Zugriffs (AP-03 R-A1): Status und Körper eines Kennzeichens, das es nicht gibt. */
+    private void imZugriff(UUID id) {
+        rechte.pruefenLesen(RechtZiel.MESSSTELLE, id,
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
     }
 
     /**

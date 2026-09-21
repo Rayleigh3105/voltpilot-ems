@@ -40,13 +40,26 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
 
 ## ⚠ Fallen für die Folgepakete
 
-- ⚠ **Offen, nicht gezäunt:** `messstelle` und ihre Tabellen haben keinen Standort-Zaun — gemessen am 21.09.2026,
-  13 Einzelrouten und die Liste stehen in `ZugriffZaunApiTest.ZAUN_OFFEN` (siehe Inventur).
-  - `GET /api/v1/messstellen` (`MessstelleRegisterRepository`, in der Liste `OFFEN`) liest alle Messstellen. Die
-    Formel-Kanäle liest es über `device_measurement_selection` ohne Anlage.
-  - Die Werte einer Messstelle kommen nur über `measurement_point` und fallen darum weg. Die Messstelle selbst bleibt
-    sichtbar.
-  - Das gehört zu IP-10/IP-11 (A1: MS-19 unsichtbar).
+- **`messstelle`: Lesewege gezäunt seit 21.09.2026** (`vp-uems-zaun-messstelle-vorlagen-lesen`). Die Tabelle trägt
+  weiter nur die Mandanten-Policy; die ROUTEN lesen über `RechtPruefung#pruefenLesen`/`#lesbar` mit
+  `RechtZiel.MESSSTELLE` (Auflösung über `messstelle_ort`, wie die Schreibseite). Außerhalb = Status und Körper der
+  unbekannten Kennung, nach der Prüfung der Parameter.
+  - Gezäunt: `GET /messstellen` (beide Listen und Aggregat, `MessstelleRegisterService#liste(…, sichtbar)`), `/{id}`,
+    `/{id}/standort`, `/{id}/quellen`, `…/quellen/{quelleId}`, `…/kadenz`, `/{kennzeichen}/werte`, `…/werte/versionen`,
+    `/{id}/formel`, `/{id}/wert`, `/{id}/verlauf`, `/{id}/verteilung`, `/{id}/prozesse`, `/{id}/aenderungen`.
+    Schon vorher: `…/ablesungen`, `…/ersatzwerte/luecken`.
+  - Ort „Unternehmen“ (MS-19) sieht nur eine unternehmensweite Rolle (A1). **Ohne Ort (Entwurf)** liest jedes Konto
+    mit dem Recht irgendwo, wie die Schreibseite — Entscheid firstmate 21.09.2026 (Lesart A; der Anlege-Fluss liest den
+    eben angelegten Entwurf weiter). Sobald die Messstelle einen Ort hat, gilt der Zaun ohne Ausnahme.
+  - Interne Leser (`MessstelleService#eine`, `MessstelleRegisterService#liste(Instant, Filter)`, Bilanz, Formel,
+    Kennzahl, Standort-Übersicht) bleiben ungezäunt. Beweis: `LesewegImZugriffApiTest`.
+  - ⚠ Offen: `MessstelleRegisterRepository` (in der Liste `OFFEN` von `SiteScopeArchitekturTest`) liest die
+    Formel-Kanäle über `device_measurement_sample` ohne Anlage; die Route zeigt davon nur Messstellen im Zugriff. Die
+    Werte, die über `measurement_point` laufen, fallen weiter über `site_scope` weg.
+- **Vorlagen und Import-Protokoll** (gleiches Paket): `GET /bezugsdaten/vorlagen` zeigt nur Vorlagen, deren Bezüge
+  (`bezugsdaten_vorlage_bezug`) alle `#lesbar` sind (AP-09 E12); `GET /bezugsdaten/importe` lässt einen Import mit
+  einem Ziel außerhalb weg (`RechtPruefung#erlaubt`, dieselbe Prüfung wie das Detail), statt die ganze Liste mit 404
+  abzulehnen.
 - **`bezugsgroesse`: geschlossen mit PR 1000 (Befund 21.09.2026).** Die Tabelle trägt weiter nur die
   Mandanten-Policy; gezäunt wird in der Anwendungsschicht über die Geltung, mit DERSELBEN Auflösung wie die
   Schreibseite: `RechtPruefung#pruefenLesen` (Einzelroute) und `#lesbar` (Liste), Aktion `messwerte.ansehen`.
@@ -99,15 +112,15 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
 | Bericht (6) | `Geltungsbereich.requireScope` | `uems/BerichtService.java:584` |
 | Korrektur, Ersatzwert-Lücken (2) | Standort jeder Reihe/Quelle | PR 998 |
 | Bezugsgröße (5), Import (2), Ablesung (1), Kennzahl (5) | `RechtPruefung`/`sicht` | `zugriff/RechtPruefung.java:550-575`, `uems/KennzahlService.java:484` |
-| **Messstelle (13), Kostenstelle (2), Prozess (1)** | **nichts — offen** | `ZAUN_OFFEN` |
+| Messstelle (13) | `RechtPruefung#pruefenLesen` in der Route | `web/MessstelleController.java` `imZugriff`, `LesewegImZugriffApiTest` |
+| **Kostenstelle (2), Prozess (1)** | **nichts — offen** | `ZAUN_OFFEN` |
 | Unterstützung, Komponenten-Vorlage, Enrollment (3) | kein Standortbezug (Recht + Mandant, globaler Katalog, öffentlich) | — |
 
-- **Offen (22 Muster in `ZAUN_OFFEN`, jedes gemessen):** Messstelle `/{id}`, `/aenderungen`, `/prozesse`,
-  `/verteilung` (ganz), `/quellen`, `/standort`, `/{kennzeichen}/werte(/versionen)` (Teile), `/quellen/{quelleId}`,
-  `…/kadenz`, `/formel`, `/wert`, `/verlauf` (Existenz); Kostenstelle `/{id}`, `/{id}/energie`, Prozess `/{id}`; die Listen
-  `/messstellen`, `/unternehmen/kostenstellen`, `/unternehmen/prozesse`, `/bezugsdaten/vorlagen`,
-  `/unternehmen/aenderungen`; `/berichte/betroffen?objekt=` (Existenz). Kostenstelle/Prozess haben Geltung
-  Unternehmen: nach R-A1 nur unternehmensweite Rollen.
+- **Offen (7 Muster in `ZAUN_OFFEN`, jedes gemessen):** Kostenstelle `/{id}`, `/{id}/energie`, Prozess `/{id}`; die
+  Listen `/unternehmen/kostenstellen`, `/unternehmen/prozesse`, `/unternehmen/aenderungen`; `/berichte/betroffen?objekt=`
+  (Existenz). Kostenstelle/Prozess haben Geltung Unternehmen: nach R-A1 nur unternehmensweite Rollen. Die 14 Muster der
+  Messstelle und `/bezugsdaten/vorlagen` (22 bei der Inventur) sind geschlossen mit
+  `vp-uems-zaun-messstelle-vorlagen-lesen`.
 - **Messform:** erste Kennung = Objekt der Bühne (`behaelter`), Bearbeiter hier sieht es (sonst Kundenadministrator),
   Bearbeiter anderswo = Status und Körper der unbekannten Kennung. Zwei gleiche Ablehnungen sind „ohne Aussage“, zwei
   verschiedene ein Loch (Existenz). Listen: anderswo fehlt das Objekt.

@@ -153,13 +153,19 @@ public class ImportUebernahmeService {
         });
     }
 
+    /**
+     * Das Protokoll der Route: ein Import fehlt, wenn eines seiner Ziele außerhalb des Zugriffs liegt (dieselbe Prüfung
+     * wie {@link #detail}, AP-03 R-A1) — ohne Hinweis und ohne Anzahl; die übrigen bleiben.
+     */
     public Protokoll protokoll() {
         return tx.execute(t -> {
             UUID tenant = TenantContext.get();
             List<ProtokollEintrag> aus = new ArrayList<>();
             for (Map<String,Object> i : repo.importe(tenant)) {
-                for (UUID id : repo.importZiele((String)i.get("kennung"))) recht(id,"bezugsgroesse.importieren");
-                aus.add(protokollEintrag(i, false));
+                if (repo.importZiele((String)i.get("kennung")).stream()
+                        .allMatch(id -> rechte.erlaubt("bezugsgroesse.importieren",RechtZiel.BEZUGSGROESSE,id))) {
+                    aus.add(protokollEintrag(i, false));
+                }
             }
             return new Protokoll(aus);
         });

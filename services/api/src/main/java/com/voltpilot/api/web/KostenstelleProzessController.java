@@ -13,6 +13,7 @@ import com.voltpilot.api.uems.KostenstelleProzessService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.KostenstelleProzessDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
@@ -59,10 +60,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class KostenstelleProzessController {
 
     private final KostenstelleProzessService dienst;
+    private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public KostenstelleProzessController(KostenstelleProzessService dienst, ObjectMapper json) {
+    public KostenstelleProzessController(KostenstelleProzessService dienst, RechtPruefung rechte, ObjectMapper json) {
         this.dienst = dienst;
+        this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -154,7 +157,11 @@ public class KostenstelleProzessController {
     @GetMapping("/messstellen/{id}/prozesse")
     public KostenstelleProzessDto.MessstelleProzesse prozesseDerMessstelle(@PathVariable UUID id,
             @RequestParam(required = false) String am) {
-        return dienst.prozesseDerMessstelle(id, tag("am", am));
+        LocalDate tag = tag("am", am);
+        // Außerhalb des Zugriffs (AP-03 R-A1): Status und Körper einer Messstelle, die es nicht gibt.
+        rechte.pruefenLesen(RechtZiel.MESSSTELLE, id,
+                () -> KostenstelleProzessAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        return dienst.prozesseDerMessstelle(id, tag);
     }
 
     /**

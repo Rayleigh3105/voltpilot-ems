@@ -21,6 +21,7 @@ import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import com.voltpilot.api.web.dto.ZaehlerwechselDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.Instant;
@@ -80,17 +81,19 @@ public class MessstelleController {
     private final MessstelleQuelleService quellen;
     private final QuelleKadenzService kadenzen;
     private final ZaehlerwechselService wechsel;
+    private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
     public MessstelleController(MessstelleService messstellen, MessstelleRegisterService register,
             MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
-            QuelleKadenzService kadenzen, ZaehlerwechselService wechsel, ObjectMapper json) {
+            QuelleKadenzService kadenzen, ZaehlerwechselService wechsel, RechtPruefung rechte, ObjectMapper json) {
         this.messstellen = messstellen;
         this.register = register;
         this.zuordnungen = zuordnungen;
         this.quellen = quellen;
         this.kadenzen = kadenzen;
         this.wechsel = wechsel;
+        this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -99,7 +102,8 @@ public class MessstelleController {
      * weiter die Vertrags-Form jeder Messstelle, {@code register} die Zeile zum {@code stichtag}
      * (Ort mit abgeleitetem Standort, Stellung, Quelle mit „davor“, Zustand). Die Filter gelten für
      * beide Listen; ein Standort, Ort oder eine Anlage, die es im Kundenbereich nicht gibt, findet
-     * nichts (leer, nie 403) — {@code teilansicht} bleibt {@code false}, bis AP-03 Rechte durchsetzt.
+     * nichts (leer, nie 403). Eine Messstelle außerhalb des Zugriffs fehlt in beiden Listen und im Aggregat — ohne
+     * Hinweis und ohne Anzahl ({@link RechtPruefung#lesbar}, AP-03 R-A1); {@code teilansicht} bleibt {@code false}.
      * Ein Stichtag ist ein Tag ({@code 2026-11-20}, dann gilt sein Beginn) oder ein Zeitpunkt mit
      * Versatz; fehlend = jetzt.
      */
@@ -113,7 +117,18 @@ public class MessstelleController {
             @RequestParam(required = false) String stichtag) {
         return register.liste(stichtag(stichtag), new MessstelleRegisterService.Filter(
                 leer(standort) ? null : standort.strip(), leer(ort) ? null : ort.strip(),
-                anlage(anlage), zustand(zustand), ohneQuelle(ohneQuelle)));
+                anlage(anlage), zustand(zustand), ohneQuelle(ohneQuelle)),
+                id -> rechte.lesbar(RechtZiel.MESSSTELLE, id));
+    }
+
+    /**
+     * Der Leseweg einer Route zur Messstelle (AP-03 R-A1, A1 „MS-19 unsichtbar“): außerhalb des Zugriffs Status und
+     * Körper einer unbekannten Kennung — nach der Prüfung der Parameter, wie für eine unbekannte Kennung. Die Dienste
+     * selbst bleiben ungezäunt (Bilanz, Formel, Kennzahl, Bericht lesen intern).
+     */
+    private void imZugriff(UUID id) {
+        rechte.pruefenLesen(RechtZiel.MESSSTELLE, id,
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
     }
 
     /** Der Stichtag beider Lese-Routen: ein Tag (dann sein Beginn) oder ein Zeitpunkt; fehlend = jetzt. */
@@ -173,6 +188,7 @@ public class MessstelleController {
     /** Recht: {@code messstelle.ansehen}. */
     @GetMapping("/{id}")
     public MessstelleDto.Messstelle eine(@PathVariable UUID id) {
+        imZugriff(id);
         return messstellen.eine(id);
     }
 
@@ -248,6 +264,7 @@ public class MessstelleController {
     @GetMapping("/{id}/standort")
     public MessstelleDto.StandortAm standort(@PathVariable UUID id,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate am) {
+        imZugriff(id);
         return zuordnungen.standortAm(id, am);
     }
 
@@ -261,12 +278,15 @@ public class MessstelleController {
     @GetMapping("/{id}/quellen")
     public MessstelleQuelleDto.Liste quellen(@PathVariable UUID id,
             @RequestParam(required = false) String stichtag) {
-        return quellen.liste(id, stichtag(stichtag));
+        Instant am = stichtag(stichtag);
+        imZugriff(id);
+        return quellen.liste(id, am);
     }
 
     /** Recht: {@code messstelle.ansehen}. */
     @GetMapping("/{id}/quellen/{quelleId}")
     public MessstelleQuelleDto.Quelle quelle(@PathVariable UUID id, @PathVariable UUID quelleId) {
+        imZugriff(id);
         return quellen.eine(id, quelleId);
     }
 
@@ -322,7 +342,9 @@ public class MessstelleController {
     @GetMapping("/{id}/quellen/{quelleId}/kadenz")
     public KadenzDto.Kadenz kadenz(@PathVariable UUID id, @PathVariable UUID quelleId,
             @RequestParam(required = false) String stichtag) {
-        return kadenzen.kadenz(id, quelleId, stichtag(stichtag));
+        Instant am = stichtag(stichtag);
+        imZugriff(id);
+        return kadenzen.kadenz(id, quelleId, am);
     }
 
     /**

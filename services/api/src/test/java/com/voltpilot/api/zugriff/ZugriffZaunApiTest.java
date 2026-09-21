@@ -572,37 +572,11 @@ class ZugriffZaunApiTest {
      * Messstelle, Kostenstelle, Prozess und die Vorlagen-Liste: {@code messstelle*}, {@code kostenstelle},
      * {@code prozess} und {@code bezugsdaten_vorlage} tragen nur die Mandanten-Policy, und die Dienste fragen weder
      * {@code Geltungsbereich} noch {@code RechtPruefung#pruefenLesen}. Ursachen relativ zu
-     * {@code services/api/src/main/java/com/voltpilot/api/uems/}.
+     * {@code services/api/src/main/java/com/voltpilot/api/uems/}. Die 14 Muster der Messstelle und die Vorlagen-Liste
+     * sind geschlossen mit {@code vp-uems-zaun-messstelle-vorlagen-lesen} (Routen über {@code RechtPruefung#pruefenLesen}
+     * bzw. {@code #lesbar}, Beweis {@code LesewegImZugriffApiTest}).
      */
     private static final Map<String, String> ZAUN_OFFEN = Map.ofEntries(
-            Map.entry("/api/v1/messstellen", "Liste nennt jede Messstelle des Kundenbereichs (ganzes Objekt je Zeile) — "
-                    + "MessstelleRegisterService.java:127 register.alle(), keine Teilansicht"),
-            Map.entry("/api/v1/messstellen/{id}", "ganze Messstelle (Stammdaten, Größen, Stellung) — "
-                    + "MessstelleService.java:145 → MessstelleRepository#finde, kein Zaun"),
-            Map.entry("/api/v1/messstellen/{id}/aenderungen", "ganzes Änderungsprotokoll der Messstelle — "
-                    + "AenderungsprotokollService.java:93 messstellen.finde(id)"),
-            Map.entry("/api/v1/messstellen/{id}/formel", "Existenz (an einer berechneten Messstelle die ganze Formel) — "
-                    + "MessstelleFormelService.java:475"),
-            Map.entry("/api/v1/messstellen/{id}/wert", "Existenz (an einer berechneten Messstelle Einheit und Werte "
-                    + "sichtbarer Terme) — MessstelleFormelService.java:648"),
-            Map.entry("/api/v1/messstellen/{id}/verlauf", "Existenz (an einer berechneten Messstelle der Verlauf) — "
-                    + "MessstelleFormelService.java:992"),
-            Map.entry("/api/v1/messstellen/{id}/prozesse", "Prozess-Zuordnungen der Messstelle (Teile) — "
-                    + "KostenstelleProzessService.java:104"),
-            Map.entry("/api/v1/messstellen/{id}/quellen", "Existenz und Größen-Gerüst; die Quellen selbst fallen über "
-                    + "den Join auf geraet/measurement_point weg (Teile) — MessstelleQuelleService.java:149"),
-            Map.entry("/api/v1/messstellen/{id}/quellen/{quelleId}", "nur Existenz: „Quelle nicht gefunden.“ statt "
-                    + "„Messstelle nicht gefunden.“ — MessstelleQuelleService.java:221"),
-            Map.entry("/api/v1/messstellen/{id}/quellen/{quelleId}/kadenz", "nur Existenz: „Quelle nicht gefunden.“ "
-                    + "statt „Messstelle nicht gefunden.“ — QuelleKadenzService.java:102"),
-            Map.entry("/api/v1/messstellen/{id}/standort", "Existenz und Stellung; Ort und Standort bleiben leer "
-                    + "(site_scope) — MessstelleZuordnungService.java:411"),
-            Map.entry("/api/v1/messstellen/{id}/verteilung", "ganze Verteilung auf Kostenstellen — "
-                    + "VerteilungService.java:93"),
-            Map.entry("/api/v1/messstellen/{kennzeichen}/werte", "Kopf der Messstelle (an berechneten auch die Werte) — "
-                    + "MessstelleWerteService.java:305 findeNachKennzeichen"),
-            Map.entry("/api/v1/messstellen/{kennzeichen}/werte/versionen", "Kopf der Messstelle (an berechneten auch "
-                    + "die Versionen) — MessstelleWerteService.java:305 findeNachKennzeichen"),
             Map.entry("/api/v1/unternehmen/kostenstellen", "Liste nennt jede Kostenstelle; Geltung Unternehmen sieht "
                     + "nach AP-03 R-A1 nur eine unternehmensweite Rolle — KostenstelleProzessService.java:81"),
             Map.entry("/api/v1/unternehmen/kostenstellen/{id}", "ganze Kostenstelle (Geltung Unternehmen, R-A1) — "
@@ -616,9 +590,7 @@ class ZugriffZaunApiTest {
             Map.entry("/api/v1/unternehmen/aenderungen", "Protokoll des Unternehmens nennt jeden Eintrag fremder "
                     + "Messstellen samt alt/neu, Grund und Person — AenderungsprotokollService.java:111"),
             Map.entry("/api/v1/berichte/betroffen", "nur Existenz einer Messstelle-Kennung (?objekt=) — "
-                    + "StrukturAufloesung.java:151 objektArt liest messstelle ohne Zaun"),
-            Map.entry("/api/v1/bezugsdaten/vorlagen", "Liste nennt jede Vorlage samt Zuordnung (Kennzeichen der "
-                    + "Ziel-Bezugsgröße am fremden Standort), AP-09 E12 — BezugsdatenVorlageService.java:30"));
+                    + "StrukturAufloesung.java:151 objektArt liest messstelle ohne Zaun"));
 
     /**
      * Ein Zaun-Fall. {@code sieht} bekommt das Objekt ({@code < 400}, der Körper nennt {@code beleg}). {@code blind}

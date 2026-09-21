@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -122,9 +123,9 @@ public class MessstelleWerteService {
      * Bericht-Bildung) lesen eine alte Periode weiter als „keine Werte“ und brechen an ihr nie ab.
      */
     public MessstelleWerteDto.Werte werteDerRoute(String kennzeichen, String raster, String von, String bis,
-            String version) {
+            String version, Consumer<UUID> zaun) {
         Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
-        Lesung l = lesen(kennzeichen, form, versionen);
+        Lesung l = lesen(kennzeichen, form, versionen, zaun);
         MessstelleWerteDto.Werte antwort = werte(l, form);
         pruefeAufbewahrung(l, form.version());
         return antwort;
@@ -238,9 +239,10 @@ public class MessstelleWerteService {
      * der Wert davor, und die Entscheidungen, die sie ausmachen — wer, wann, warum, aus den Fassungen der Vorgänge
      * gelesen. Version 1 ist die Zahl der Verdichtung. Eine Periode ohne Korrektur hat genau eine Version.
      */
-    public MessstelleWerteDto.Historie historie(String kennzeichen, String raster, String von, String bis) {
+    public MessstelleWerteDto.Historie historie(String kennzeichen, String raster, String von, String bis,
+            Consumer<UUID> zaun) {
         Form form = pruefe(() -> MessstelleWerteRegeln.historieForm(raster, von, bis));
-        Lesung l = lesen(kennzeichen, form, versionen);
+        Lesung l = lesen(kennzeichen, form, versionen, zaun);
         Schritt s = pruefe(() -> MessstelleWerteRegeln.einePeriode(l.z()));
         Deckung d = l.deckung().get(s);
         ZoneId zone = l.zone().id();
@@ -301,9 +303,15 @@ public class MessstelleWerteService {
             List<AblesungRepository.Wert> ablesewerte) {}
 
     private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen) {
+        return lesen(kennzeichen, form, versionen, id -> { });
+    }
+
+    /** {@code zaun} ist der Leseweg der Route (wirft außerhalb die 404 einer unbekannten Kennung), intern leer. */
+    private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen, Consumer<UUID> zaun) {
         UUID tenant = TenantContext.get();
         Messstelle m = messstellen.findeNachKennzeichen(kennzeichen).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
+        zaun.accept(m.id());
         return lesen(tenant, m, form, versionen);
     }
 

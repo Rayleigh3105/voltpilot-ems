@@ -124,7 +124,7 @@ public class BezugsdatenImportController {
         return uebernahme.detail(kennung);
     }
 
-    /** Recht: {@code bezugsgroesse.importieren}; je Eintrag werden zusätzlich alle Ziele geprüft. */
+    /** Recht: {@code bezugsgroesse.importieren}; ein Eintrag mit einem Ziel außerhalb des Zugriffs fehlt. */
     @GetMapping
     public ImportUebernahmeService.Protokoll importe() {
         return uebernahme.protokoll();

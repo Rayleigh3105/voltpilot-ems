@@ -13,6 +13,7 @@ import com.voltpilot.api.uems.VerteilungAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.VerteilungService;
 import com.voltpilot.api.web.dto.VerteilungDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -59,10 +60,12 @@ public class VerteilungController {
     private static final Set<String> ZEILE_FELDER = Set.of("kostenstelle_id", "anteil_prozent");
 
     private final VerteilungService dienst;
+    private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public VerteilungController(VerteilungService dienst, ObjectMapper json) {
+    public VerteilungController(VerteilungService dienst, RechtPruefung rechte, ObjectMapper json) {
         this.dienst = dienst;
+        this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -72,7 +75,10 @@ public class VerteilungController {
      */
     @GetMapping("/messstellen/{id}/verteilung")
     public VerteilungDto.Verteilung verteilung(@PathVariable UUID id, @RequestParam(required = false) String am) {
-        return dienst.verteilung(id, tag("am", am));
+        LocalDate tag = tag("am", am);
+        // Außerhalb des Zugriffs (AP-03 R-A1): Status und Körper einer Messstelle, die es nicht gibt.
+        rechte.pruefenLesen(RechtZiel.MESSSTELLE, id, () -> VerteilungAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        return dienst.verteilung(id, tag);
     }
 
     /**

@@ -52,6 +52,12 @@ public class BezugsdatenVorlageRepository {
                 + "ORDER BY v.fassung DESC LIMIT 1", this::zeile, id).stream().findFirst();
     }
 
+    /** Die Bezugsgrößen, die eine Fassung der Vorlage nennt ({@code bezugsdaten_vorlage_bezug}). */
+    public List<UUID> bezuege(UUID id, int fassung) {
+        return jdbc.queryForList("SELECT bezugsgroesse_id FROM bezugsdaten_vorlage_bezug "
+                + "WHERE vorlage_id = ? AND vorlage_fassung = ?", UUID.class, id, fassung);
+    }
+
     /** Serialisiert zwei gleichzeitige neue Fassungen derselben Vorlage. */
     public int naechsteFassung(UUID id) {
         jdbc.queryForObject("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(?::text, 0))) x",
