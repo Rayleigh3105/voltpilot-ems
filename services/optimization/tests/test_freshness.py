@@ -234,6 +234,10 @@ class _SitesCursor:
             assert "v.stufe = 'anteile_aktiv'" in sql
             self._rows = []
             return
+        if "SELECT s.id, s.lead_device_id FROM site s" in sql:
+            # AP-15 Folgepunkt (load_fuehrende_boxen): keine Mehr-Box-Anlage.
+            self._rows = []
+            return
         assert "FROM asset" in sql
         assert "a.wear_cost_ct_per_kwh" in sql
         assert "s.tarif_art" in sql  # the P1 pricing master data is read too

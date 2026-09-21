@@ -353,6 +353,12 @@ class BatterySite:
     #: ``anteile_aktiv`` (:func:`voltpilot_optimization.verbund.load_verbund`);
     #: ``None`` = kein Verbund, keine mitsteuernde Box oder eine andere Stufe.
     verbund: verbund.VerbundStand | None = None
+    #: UEMS AP-15 Folgepunkt (W2, B1): die fuehrende Box einer MEHR-Box-Anlage
+    #: (:func:`load_fuehrende_boxen`) - sie liest den Netzzaehler, an ihr lesen
+    #: Lastspitze und Last; die PV ist die Summe der Boxen. ``None`` fuer jede
+    #: Ein-Box-Anlage und jede ohne bestimmte fuehrende Box: dann lesen die
+    #: Leser Wort fuer Wort wie vorher.
+    fuehrende_box: UUID | None = None
 
 
 def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySite]:
@@ -375,6 +381,7 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     # UEMS AP-15 IP-14: die Anteile der mitsteuernden Boxen je Anlage in
     # `anteile_aktiv` (P4); jede andere Anlage fehlt und bleibt, wie sie war.
     verbuende = verbund.load_verbund(dsn, datetime.now(timezone.utc), site_id)
+    fuehrende = load_fuehrende_boxen(dsn, site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -473,6 +480,7 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                         str(abrechnung) if abrechnung is not None else "jahr"
                     ),
                     verbund=verbuende.get(site_id),
+                    fuehrende_box=fuehrende.get(site_id),
                     tariff=SiteTariff(
                         plant_kind=(
                             str(plant_kind) if plant_kind is not None
@@ -515,6 +523,50 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
 #: The day a Grenzblatt Fassung is picked for (contract zeitzone of
 #: docs/contracts/v2/netzanschluss-grenze-vectors.json).
 GRENZ_ZONE = ZoneInfo("Europe/Berlin")
+
+
+def load_fuehrende_boxen(dsn: str, site_id: UUID | None = None) -> dict[UUID, UUID]:
+    """``{site_id: box}`` fuer jede MEHR-Box-Anlage mit bestimmter fuehrender Box.
+
+    UEMS AP-15 Folgepunkt ``vp-uems-v15-folge-leser-je-anlage`` (W2 "zwei
+    Fragen, zwei Anker", B1): Anlagen-Summen liest man an der fuehrenden Box -
+    sie liest den Netzzaehler. Bestimmt ist sie, wenn ``site.lead_device_id``
+    gesetzt ist, diese Box in DIESER Anlage angemeldet und nicht ausgebaut ist
+    (``FuehrendeBoxAbleitung``: sonst fuehrt keine, nie still eine andere) und
+    mindestens eine weitere Box der Anlage es auch ist. Dieselbe Bedingung
+    traegt die Rollup-Prozedur (api ``V20260922020000``); eine Ein-Box-Anlage
+    und jede ohne gespeicherte Wahl fehlen hier, ihre Leser bleiben, wie sie
+    waren. Vor den api-Migrationen der Spalten gilt "keine" (Muster
+    :func:`load_grenzblaetter`).
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    sql = """
+        SELECT s.id, s.lead_device_id FROM site s
+        WHERE s.lead_device_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM device d
+                       WHERE d.id = s.lead_device_id AND d.site_id = s.id
+                         AND d.ausgebaut_am IS NULL)
+          AND EXISTS (SELECT 1 FROM device d
+                       WHERE d.site_id = s.id AND d.id <> s.lead_device_id
+                         AND d.ausgebaut_am IS NULL)
+        """
+    params: tuple = ()
+    if site_id is not None:
+        sql += "  AND s.id = %s\n"
+        params = (site_id,)
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("fuehrende_box.schema_missing")
+        return {}
+    return {_uuid(sid): _uuid(box) for sid, box in rows}
+
+
+def _uuid(value) -> UUID:
+    return value if isinstance(value, UUID) else UUID(str(value))
 
 
 def load_grenzblaetter(dsn: str, tag, site_id: UUID | None = None) -> dict:
@@ -805,7 +857,8 @@ def gather_inputs(
     peak_so_far = 0.0
     if site.leistungspreis_eur_kw is not None:
         peak_so_far = _peak_so_far_kw(
-            dsn, site.site_id, now, site.abrechnung_leistung
+            dsn, site.site_id, now, site.abrechnung_leistung,
+            fuehrende_box=site.fuehrende_box,
         )
 
     # P3 (Nachtreserve): die Nacht-Fehlerverteilung DIESER Anlage - EIN Lesen je
@@ -922,7 +975,12 @@ def plausible_peak(buckets_desc: list[float]) -> tuple[float, bool]:
 
 
 def _peak_so_far_kw(
-    dsn: str, site_id: UUID, now: datetime, abrechnung_leistung: str
+    dsn: str,
+    site_id: UUID,
+    now: datetime,
+    abrechnung_leistung: str,
+    *,
+    fuehrende_box: UUID | None = None,
 ) -> float:
     """The billing period's highest 15-min mean grid import so far (kW).
 
@@ -936,11 +994,19 @@ def _peak_so_far_kw(
     that is forming right now. The raw blend is ungated - a spike there
     distorts at most ONE cycle (peak_so_far is recomputed fresh every 15 min,
     and the completed bucket is gated on the next cycle).
+
+    In a multi-box site ``fuehrende_box`` names the box that reads the grid
+    meter (AP-15 W2/B1): the running mean is read there only - the other
+    box's ``power_kw`` is its own feeder, and averaging both rows understated
+    R3's 367 kW as 222 kW. The completed buckets need no condition: the
+    rollup reads the same box since api ``V20260922020000``. Without it the
+    query is the one of before, word for word.
     """
     import psycopg  # lazy: optional [db] extra
 
     now = ensure_utc(now)
     period_start = billing_period_start(now, abrechnung_leistung)
+    box_sql, box_params = _box_filter(fuehrende_box)
     slot_start = floor_to_slot(now)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -957,8 +1023,9 @@ def _peak_so_far_kw(
             SELECT avg(greatest(power_kw, 0)) FROM telemetry
             WHERE site_id = %s AND power_kw IS NOT NULL
               AND time >= %s AND time <= %s
-            """,
-            (site_id, max(slot_start, period_start), now),
+            """
+            + box_sql,
+            (site_id, max(slot_start, period_start), now, *box_params),
         )
         row = cur.fetchone()
         running = float(row[0]) if row is not None and row[0] is not None else 0.0
@@ -1072,7 +1139,9 @@ def _forecast_or_fallback(
     if all(s in stored for s in slot_starts):
         return [stored[s] for s in slot_starts], False
 
-    history = _load_history(dsn, site.site_id, telemetry_column, now)
+    history = _load_history(
+        dsn, site.site_id, telemetry_column, now, fuehrende_box=site.fuehrende_box
+    )
     missing = sum(1 for s in slot_starts if s not in stored)
     logger.info(
         "forecast.fallback",
@@ -1120,7 +1189,11 @@ def _anchor_pv_input(
             return pv_kw, NO_EVIDENCE
         model = active_model("pv", choices=site_choices)
         measured = _measured_slot_means(
-            dsn, site.site_id, "pv_power_kw", lookback_slots
+            dsn,
+            site.site_id,
+            "pv_power_kw",
+            lookback_slots,
+            fuehrende_box=site.fuehrende_box,
         )
         predicted = _past_predictions(dsn, site.site_id, "pv", model, lookback_slots)
         evidence = anchor_evidence(
@@ -1325,7 +1398,12 @@ def _slot_minutes(slot_starts: list[datetime]) -> int:
 
 
 def _measured_slot_means(
-    dsn: str, site_id: UUID, column: str, slot_starts: list[datetime]
+    dsn: str,
+    site_id: UUID,
+    column: str,
+    slot_starts: list[datetime],
+    *,
+    fuehrende_box: UUID | None = None,
 ) -> dict[datetime, float]:
     """Measured slot MEANS over the evidence window (never a single sample).
 
@@ -1335,6 +1413,10 @@ def _measured_slot_means(
     from inside the quarter hour. Aggregated in Python, not in SQL, exactly
     like the two other telemetry-vs-forecast paths - the slot width belongs to
     the horizon, not to a query.
+
+    In a multi-box site (``fuehrende_box`` set) the slot value is the SITE's:
+    :func:`_anlagen_slot_werte` - PV the sum of the boxes' slot means, never
+    their mean (AP-15 W2). Without it the query is the one of before.
     """
     # Fixed set, never user input - a hard raise (not assert, which is
     # stripped under python -O) keeps the f-string interpolation safe (S15).
@@ -1348,6 +1430,9 @@ def _measured_slot_means(
 
     minutes = _slot_minutes(slot_starts)
     window_end = slot_starts[-1] + timedelta(minutes=minutes)
+    if fuehrende_box is not None:
+        rows = _telemetrie_je_box(dsn, site_id, slot_starts[0], window_end)
+        return _anlagen_slot_werte(rows, column, fuehrende_box, minutes)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             f"""
@@ -1479,13 +1564,26 @@ def _load_forecast(
 
 
 def _load_history(
-    dsn: str, site_id: UUID, column: str, now: datetime
+    dsn: str,
+    site_id: UUID,
+    column: str,
+    now: datetime,
+    *,
+    fuehrende_box: UUID | None = None,
 ) -> list[tuple[datetime, float]]:
+    """Raw fallback history of one channel; in a multi-box site (``fuehrende_box``
+    set) the SITE's quarter-hour values instead (:func:`_anlagen_slot_werte`):
+    the load at the leading box plus the other boxes' net output, PV the sum.
+    """
     # Fixed set, never user input - a hard raise (not assert, which is
     # stripped under python -O) keeps the f-string interpolation safe (S15).
     if column not in ("load_kw", "pv_power_kw"):
         raise ValueError(f"unsupported telemetry column: {column}")
     import psycopg  # lazy: optional [db] extra
+
+    if fuehrende_box is not None:
+        rows = _telemetrie_je_box(dsn, site_id, now - FALLBACK_HISTORY, None)
+        return sorted(_anlagen_slot_werte(rows, column, fuehrende_box, 15).items())
 
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -1497,6 +1595,81 @@ def _load_history(
             (site_id, now - FALLBACK_HISTORY),
         )
         return [(ensure_utc(ts), float(v)) for ts, v in cur.fetchall()]
+
+
+def _telemetrie_je_box(
+    dsn: str, site_id: UUID, since: datetime, until: datetime | None
+) -> list[tuple]:
+    """``(time, device_id, pv_power_kw, load_kw, power_kw)`` of every box of the
+    site from ``since`` (to ``until``, exclusive) - the input of
+    :func:`_anlagen_slot_werte`."""
+    import psycopg  # lazy: optional [db] extra
+
+    sql = """
+        SELECT time, device_id, pv_power_kw, load_kw, power_kw FROM telemetry
+        WHERE site_id = %s AND time >= %s"""
+    params: tuple = (site_id, since)
+    if until is not None:
+        sql += " AND time < %s"
+        params = (*params, until)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(sql + " ORDER BY time", params)
+        return list(cur.fetchall())
+
+
+def _anlagen_slot_werte(
+    rows: list[tuple], column: str, fuehrende_box: UUID, minutes: int
+) -> dict[datetime, float]:
+    """The SITE's slot means from the rows of several boxes (AP-15 W2, B1).
+
+    The twin of the multi-box branch of the api rollup (``V20260922020000``),
+    slot by slot:
+
+    * ``pv_power_kw``: the SUM of the boxes' slot means - the site's generation.
+      A box without a PV sample in the slot adds nothing (it has no PV channel).
+    * ``load_kw``: the leading box's slot mean PLUS, for every other box that
+      sent in the slot, its slot mean of ``load_kw - power_kw``. A box forms
+      ``load_kw`` from its OWN balance (pv + power - battery); the PV of another
+      box is invisible to it, so the leading box's load is short by exactly the
+      other boxes' net output (PV - charging) = their ``load_kw - power_kw``.
+      Missing that pair for a box that sent, or the leading box's own load,
+      the slot is unknown and absent - never the understated number.
+    """
+    from voltpilot_forecast.domain import Observation, slot_means
+
+    reihen: dict[UUID, dict[str, list]] = {}
+    for ts, box, pv, load, power in rows:
+        at = ensure_utc(ts)
+        eigen = reihen.setdefault(
+            _uuid(box), {"gesendet": [], "pv": [], "load": [], "abgabe": []}
+        )
+        eigen["gesendet"].append(Observation(at, 0.0))
+        if pv is not None:
+            eigen["pv"].append(Observation(at, float(pv)))
+        if load is not None:
+            eigen["load"].append(Observation(at, float(load)))
+            if power is not None:
+                eigen["abgabe"].append(Observation(at, float(load) - float(power)))
+    je_box = {
+        box: {name: slot_means(obs, minutes) for name, obs in eigen.items()}
+        for box, eigen in reihen.items()
+    }
+
+    out: dict[datetime, float] = {}
+    if column == "pv_power_kw":
+        for mittel in je_box.values():
+            for slot, wert in mittel["pv"].items():
+                out[slot] = out.get(slot, 0.0) + wert
+        return out
+    fuehrend = je_box.get(fuehrende_box)
+    if fuehrend is None:
+        return out
+    andere = [m for box, m in je_box.items() if box != fuehrende_box]
+    for slot, last in fuehrend["load"].items():
+        abgaben = [m["abgabe"].get(slot) for m in andere if slot in m["gesendet"]]
+        if all(a is not None for a in abgaben):
+            out[slot] = last + sum(abgaben)
+    return out
 
 
 def _box_filter(device_id: UUID | None) -> tuple[str, tuple[UUID, ...]]:
