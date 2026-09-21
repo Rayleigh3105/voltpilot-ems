@@ -37,7 +37,7 @@ import type {
 } from './api';
 import { UEMS_KOSTENSTELLE, UEMS_PROZESS_SUMME } from './glossar';
 import { hashForRoute, pageRoute } from './nav';
-import { datumZeit } from './rechte';
+import { ROLLE_KUNDENWORT, TEXTE, datumZeit } from './rechte';
 import { ende, zeitraumText } from './uebersichtBausteine';
 import { KWH, zahl } from './uemsErgebnis';
 import { periodeSchluessel, sprungziel, type Sprung } from './uemsOberflaechen';
@@ -86,6 +86,23 @@ export const PROZESSE_LEER = 'In diesem Zeitraum besteht kein Prozess.';
 export const NICHT_ABRUFBAR = 'Diese Kostenstelle ist gerade nicht abrufbar.';
 export const ALLE_NICHT_ABRUFBAR = 'Die Kostenstellen sind gerade nicht abrufbar.';
 export const PROZESSE_NICHT_ABRUFBAR = 'Die Prozesse sind gerade nicht abrufbar.';
+
+/**
+ * Kostenstelle B (21.09.2026): die Mengen je Kostenstelle trägt `…/energie`, und die prüft `messwerte.ansehen` auf
+ * Unternehmensebene — eine U-Zelle haben nur diese beiden Rollen (`rechte-matrix.json`; der Test hält beides zusammen).
+ * Wer sie nicht hat, sieht die Stammdaten der Liste und statt der Zahlen EINEN Satz, warum und wer sie sieht.
+ */
+export const MENGEN_RECHT = 'messwerte.ansehen';
+export const MENGEN_ROLLEN = ['energiemanager', 'kundenadministrator'] as const;
+export const OHNE_MENGEN = `Die Mengen je Kostenstelle sehen nur die Rollen ${ROLLE_KUNDENWORT.energiemanager} und ${ROLLE_KUNDENWORT.kundenadministrator}, weil eine Kostenstelle Messstellen aller Standorte umfassen kann.`;
+
+/** {@link OHNE_MENGEN} mit dem Weg aus der Selbstauskunft (Muster AP-03: wer es hat, wen man fragt). */
+export function ohneMengenSatz(kundenadministratoren: readonly { name: string }[]): string {
+  const namen = kundenadministratoren.map((p) => p.name);
+  if (namen.length === 0) return OHNE_MENGEN;
+  const weg = namen.length === 1 ? TEXTE.weg_ein_kundenadministrator : TEXTE.weg_kundenadministratoren;
+  return `${OHNE_MENGEN} ${weg.replace('{namen}', namen.join(', '))}`;
+}
 
 export const PROZESS_SUMME_OHNE = `Keine ${UEMS_PROZESS_SUMME}: sie ist eine berechnete Messstelle, die diesem Prozess zugeordnet ist.`;
 export const PROZESS_SUMME_NICHT_ABRUFBAR = 'Der Wert ist gerade nicht abrufbar.';
@@ -262,6 +279,8 @@ export interface KostenstellenBild {
   vorherBeendet: string | null;
   leer: string | null;
   alleFehler: boolean;
+  /** Ohne Recht auf die Mengen: der Satz, warum hier keine Zahlen stehen — die Karten tragen dann nur ihren Kopf. */
+  ohneMengen: string | null;
 }
 
 /** Die Antwort je Kostenstelle: `null` = unterwegs, `'fehler'` = nicht abrufbar. */
@@ -362,8 +381,23 @@ export function kostenstellenBild(
   antworten: ReadonlyMap<string, EnergieAntwort>,
   periode: KostenstelleEnergiePeriode,
   am: string,
+  ohneMengen: string | null = null,
 ): KostenstellenBild {
   const im = kostenstellenImZeitraum(katalog, periode, am);
+  if (ohneMengen !== null) {
+    return {
+      zeitraum: zeitraumText(periode, am),
+      zone: null,
+      stand: null,
+      keineSumme: null,
+      nichtVerteilt: null,
+      karten: im.map((k) => ({ ...karteBild(k, null, periode, am), laedt: false })),
+      vorherBeendet: vorherBeendetText(katalog, am),
+      leer: im.length === 0 ? KOSTENSTELLEN_LEER : null,
+      alleFehler: false,
+      ohneMengen: im.length > 0 ? ohneMengen : null,
+    };
+  }
   const geladen = im
     .map((k) => antworten.get(k.id) ?? null)
     .filter((a): a is KostenstelleEnergie => a !== null && a !== 'fehler');
@@ -382,6 +416,7 @@ export function kostenstellenBild(
     vorherBeendet: vorherBeendetText(katalog, am),
     leer: im.length === 0 ? KOSTENSTELLEN_LEER : null,
     alleFehler: im.length > 0 && im.every((k) => antworten.get(k.id) === 'fehler'),
+    ohneMengen: null,
   };
 }
 

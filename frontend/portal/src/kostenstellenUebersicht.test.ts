@@ -146,9 +146,9 @@ describe('UEMS AP-13 IP-9 · Kostenstellen nebeneinander (O9, E8 = A, B6)', () =
     expect(KEINE_SUMME).toBe('Die Kostenstellen sind nicht summierbar — nicht verteilte Mengen gehören keiner.');
     expect(O9.erwartet.summe_ueber_kostenstellen).toBe(false);
     expect(b.keineSumme).toBe(KEINE_SUMME);
-    // Das Bild hat kein Feld für eine Zahl über Karten — nur diese Schlüssel.
+    // Das Bild hat kein Feld für eine Zahl über Karten — nur diese Schlüssel (`ohneMengen` ist ein Satz, Kostenstelle B).
     expect(Object.keys(b).sort()).toEqual(
-      ['alleFehler', 'karten', 'keineSumme', 'leer', 'nichtVerteilt', 'vorherBeendet', 'stand', 'zeitraum', 'zone'].sort(),
+      ['alleFehler', 'karten', 'keineSumme', 'leer', 'nichtVerteilt', 'ohneMengen', 'vorherBeendet', 'stand', 'zeitraum', 'zone'].sort(),
     );
     // Keine Zahl im Bild ist die Summe der Karten-Summen (mit oder ohne 9100, mit oder ohne „nicht verteilt“).
     const text = n(JSON.stringify(b));

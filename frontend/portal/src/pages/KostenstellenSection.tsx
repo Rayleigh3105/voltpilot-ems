@@ -12,11 +12,13 @@ import { ZeitSegment } from '../components/HistorieWelt';
 import { UEMS_PROZESS_SUMME } from '../glossar';
 import {
   ALLE_NICHT_ABRUFBAR,
+  MENGEN_RECHT,
   PROZESSE_NICHT_ABRUFBAR,
   REITER_WORT,
   berechnete,
   kostenstellenBild,
   kostenstellenImZeitraum,
+  ohneMengenSatz,
   prozessSummeAnfrage,
   prozessSummen,
   prozesseBild,
@@ -28,6 +30,7 @@ import {
   type WerteAntwort,
 } from '../kostenstellenUebersicht';
 import { BILANZ_PERIODEN, blaettere, laeuftNoch, letzterGebildeter, zeitraumText } from '../uebersichtBausteine';
+import { useRollen } from '../rollen';
 import { useIsPhone } from '../useIsPhone';
 import './KostenstellenSection.css';
 
@@ -141,7 +144,7 @@ function NichtVerteilt({ nv }: { nv: NichtVerteiltBild }) {
   );
 }
 
-function KostenstelleKarte({ k, hervor }: { k: KarteBild; hervor: boolean }) {
+function KostenstelleKarte({ k, hervor, nurKopf }: { k: KarteBild; hervor: boolean; nurKopf: boolean }) {
   const titelId = `vp-ks-karte-${k.kennzeichen}`;
   return (
     <article
@@ -161,7 +164,7 @@ function KostenstelleKarte({ k, hervor }: { k: KarteBild; hervor: boolean }) {
           </p>
         )}
       </header>
-      {k.laedt ? (
+      {nurKopf ? null : k.laedt ? (
         <p className="vp-ks-satz">Wird geladen …</p>
       ) : k.fehler ? (
         <p className="vp-ks-satz" role="alert">
@@ -214,10 +217,16 @@ export function KostenstellenReiter({ katalog, hervor = null, ...zeit }: ReiterP
   const [antworten, setAntworten] = useState<ReadonlyMap<string, EnergieAntwort>>(() => new Map());
   const [versuch, setVersuch] = useState(0);
   const im = useMemo(() => kostenstellenImZeitraum(katalog, periode, am), [katalog, periode, am]);
+  // Kostenstelle B: die Mengen sieht nur, wer `messwerte.ansehen` am Unternehmen hat (so prüft die api) — alle anderen
+  // fragen `…/energie` gar nicht erst. Ohne Selbstauskunft entscheidet die Route wie bisher.
+  const rollen = useRollen();
+  const ohneMengen = rollen.selbst !== null && !rollen.darf(MENGEN_RECHT, null) ? ohneMengenSatz(rollen.selbst.kundenadministratoren) : null;
+  const nurKopf = ohneMengen !== null;
 
   useEffect(() => {
     let aktiv = true;
     setAntworten(new Map());
+    if (nurKopf) return;
     for (const k of im) {
       api.kostenstelleEnergie(k.id, periode, am).then(
         (a) => aktiv && setAntworten((m) => new Map(m).set(k.id, a)),
@@ -227,9 +236,9 @@ export function KostenstellenReiter({ katalog, hervor = null, ...zeit }: ReiterP
     return () => {
       aktiv = false;
     };
-  }, [im, periode, am, versuch]);
+  }, [im, periode, am, versuch, nurKopf]);
 
-  const bild = kostenstellenBild(katalog, antworten, periode, am);
+  const bild = kostenstellenBild(katalog, antworten, periode, am, ohneMengen);
   const geladen = bild.karten.some((k) => !k.laedt);
 
   // Ein Sprung auf eine Kostenstelle (IP-11: aus einer Herkunfts-Zeile) holt ihre Karte in den Blick, sobald sie steht.
@@ -243,6 +252,11 @@ export function KostenstellenReiter({ katalog, hervor = null, ...zeit }: ReiterP
       {bild.keineSumme && (
         <p className="vp-ks-keine-summe" data-testid="kostenstellen-keine-summe">
           {bild.keineSumme}
+        </p>
+      )}
+      {bild.ohneMengen && (
+        <p className="vp-ks-keine-summe" role="note" data-testid="kostenstellen-ohne-mengen">
+          {bild.ohneMengen}
         </p>
       )}
       {bild.alleFehler ? (
@@ -260,7 +274,7 @@ export function KostenstellenReiter({ katalog, hervor = null, ...zeit }: ReiterP
         <ul className="vp-ks-karten">
           {bild.karten.map((k) => (
             <li key={k.id}>
-              <KostenstelleKarte k={k} hervor={k.kennzeichen === hervor} />
+              <KostenstelleKarte k={k} hervor={k.kennzeichen === hervor} nurKopf={nurKopf} />
             </li>
           ))}
         </ul>

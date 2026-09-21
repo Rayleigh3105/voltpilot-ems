@@ -13,8 +13,8 @@ Regeln und Route: `uems-kostenstelle-energie.md`, Objekte: `uems-kostenstelle-pr
 | Client | `api.kostenstelleEnergie(id, periode, am)` — **je Kostenstelle EIN Aufruf mit Zwischenspeicher** (`gemerkteAnfrage`, `GEMERKT_MS` = 120 s, Schlüssel mit Mandanten-Umschalter, eine Ablehnung wird nie gemerkt) |
 | Wirt | `App.tsx`: `organisation = page === 'portfolio-messstellen' && !(Standort-Ebene mit Teilansicht)` — nie am Standort unter dem Unternehmen, nie in einer Teilansicht (die Sicht ist unternehmensweit) |
 | Sprung hierher | `uemsOberflaechen.sprungziel({art:'kostenstelle', kennzeichen, periode?, am?})` → `…?reiter=kostenstellen&kostenstelle=4200`; die Karte wird hervorgehoben und in den Blick geholt (Aufrufer: IP-11) |
-| Tests | `kostenstellenUebersicht.test.ts` (O9, F12, Prozess-Summe, Reiter), `uemsOberflaechen.test.ts` (Sprung), `copy.test.ts` (Welt Oberflächen), `e2e/kostenstellen.spec.ts` (`KOSTENSTELLEN_BILDER=<Ordner>`) |
-| Bühne | `e2e/startansicht.html?bild=unternehmen&ansicht=kostenstellen` · `&ansicht=prozesse` · `&periode=tag&am=2027-01-15` (F12) · `&organisation=leer` (Bestand ohne Reiter) |
+| Tests | `kostenstellenUebersicht.test.ts` (O9, F12, Prozess-Summe, Reiter), `pages/KostenstellenSection.test.tsx` (Sicht nach Recht), `uemsOberflaechen.test.ts` (Sprung), `copy.test.ts` (Welt Oberflächen), `e2e/kostenstellen.spec.ts` (`KOSTENSTELLEN_BILDER=<Ordner>`) |
+| Bühne | `e2e/startansicht.html?bild=unternehmen&ansicht=kostenstellen` · `&ansicht=prozesse` · `&periode=tag&am=2027-01-15` (F12) · `&organisation=leer` (Bestand ohne Reiter) · `&person=PH` (Bearbeiter: `…/energie` = 404, `window.__energieAufrufe` zählt) |
 
 ## Die Regel dieser Fläche: keine Summe über Kostenstellen
 
@@ -26,6 +26,13 @@ und **ändert keine Zahl**. `kostenstellenUebersicht.ts` hat darum kein Feld und
 prüft die Schlüssel des Bildes, die Namen der Exporte und dass keine Zahl der Fläche eine Kartensumme summiert.
 
 ## Die Fallen
+
+- ⚠ **Mengen nur mit `messwerte.ansehen` am Unternehmen (Kostenstelle B, 21.09.2026).** So prüft `…/energie`; die U-Zelle
+  haben nur Energiemanager und Kundenadministrator. Ein standortbeschränktes Konto sieht Kennzeichen, Name und Gültigkeit und
+  statt der Zahlen EINEN Satz mit den Rollen und dem Kundenadministrator (`OHNE_MENGEN`/`ohneMengenSatz`) — es fragt
+  `…/energie` gar nicht erst, entschieden aus `/me` (`useRollen`), nie am 404. Ohne Selbstauskunft fragt die Route wie
+  bisher; ein echter Fehler bleibt „gerade nicht abrufbar“ mit „Erneut versuchen“. Leser bekommen die Liste leer — dann gibt
+  es den Reiter nicht (`reiterDa`).
 
 - ⚠ **`grund: keine_zuordnung` steht auch an einem einzelnen Block** („berechnet“ bei 4200), nicht nur an einer Kostenstelle
   ohne jede Zuordnung. Der Satz „Dieser Kostenstelle ist im Zeitraum keine Messstelle zugeordnet.“ gilt der KARTE erst,
