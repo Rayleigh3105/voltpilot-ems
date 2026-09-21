@@ -184,6 +184,79 @@ public final class DatenquelleRegeln {
     public static final List<Grund> PRUEFREIHENFOLGE_TAUSCH =
             List.of(Grund.KEINE_VOLLE_MINUTE, Grund.RUECKWIRKEND);
 
+    // ------------------------------------------- Gemeinsame Steuerung (AP-15 T6, IP-26)
+
+    /**
+     * Wohin ein Wechsel der zuständigen Box führt, VOR der Prüfreihenfolge des Antrags (Familie
+     * {@code gemeinsame_steuerung}). Kein Grund des Vokabulars: ob eine Anlage eine Gemeinsame Steuerung hat, ist ein
+     * Fakt des Vertrags {@code steuerungsverbund.md}, nicht der Datenquelle — die Schnittstelle antwortet mit ihrem
+     * Code {@code gemeinsame_steuerung_aendern} (409).
+     */
+    public enum WechselWeg {
+        /** Der Zuständigkeitswechsel, wie er ist: es entscheidet die Prüfreihenfolge — auch {@code steuerquelle}. */
+        ZUSTAENDIGKEITSWECHSEL("zustaendigkeitswechsel"),
+        /**
+         * Die Steuerquelle zieht vor dem Scharfschalten (S0–S2) zu einem Mitglied der Gemeinsamen Steuerung DIESER
+         * Anlage um — der Schritt „ändern“ aus T6: die Prüfreihenfolge ohne Grund {@code steuerquelle}
+         * ({@link Antrag#innerhalbGemeinsamerSteuerung}), alle übrigen Gründe unverändert.
+         */
+        INNERHALB_DER_GEMEINSAMEN_STEUERUNG("innerhalb_der_gemeinsamen_steuerung"),
+        /** Nur als Änderung der Gemeinsamen Steuerung (anhalten → ändern → prüfen → scharfschalten). */
+        GEMEINSAME_STEUERUNG_AENDERN("gemeinsame_steuerung_aendern");
+
+        private final String code;
+
+        WechselWeg(String code) {
+            this.code = code;
+        }
+
+        public String code() {
+            return code;
+        }
+    }
+
+    /** Die Zustände (GET …/gemeinsame-steuerung), in denen eine Gemeinsame Steuerung Mitglieder trägt. */
+    private static final Set<String> EINGERICHTET =
+            Set.of("erklaert", "beobachtet", "geprueft", "anteile_aktiv", "angehalten");
+
+    /** Die Zustände, in denen die Anteile an den Boxen in Kraft sind. */
+    private static final Set<String> ANTEILE_IN_KRAFT = Set.of("anteile_aktiv", "angehalten");
+
+    /**
+     * T6: in einer Anlage MIT eingerichteter Gemeinsamer Steuerung wechselt eine Steuerquelle ihre Box nie über die
+     * AP-06-Sperre {@code steuerquelle} („…erst mit der gemeinsamen Steuerung“ wäre dort eine Sackgasse). Vor dem
+     * Scharfschalten (S0–S2) zieht sie zu einem Mitglied DIESER Gemeinsamen Steuerung um wie jede andere Quelle
+     * (IP-26: anhalten → ändern → prüfen → scharfschalten, der Umzug ist „ändern“); zu jeder anderen Box und solange
+     * die Anteile in Kraft sind ({@code anteile_aktiv}, angehalten) nur über „Gemeinsame Steuerung ändern“ — ebenso
+     * jede Quelle, die sie in einer scharfen oder angehaltenen Anlage trägt ({@code nurAlsAenderung}, IP-8). Ohne
+     * Gemeinsame Steuerung, nach dem Auflösen und für jede andere Quelle bleibt der Zuständigkeitswechsel, wie er ist
+     * (I6).
+     *
+     * @param zustand der Zustand der Gemeinsamen Steuerung der Anlage, {@code null} ohne
+     * @param nurAlsAenderung das Urteil von {@link SteuerungsverbundRegeln#wechseltNurAlsAenderung}
+     * @param zielIstMitglied die Ziel-Box ist jetzt Mitglied ({@link SteuerungsverbundRegeln#istMitglied})
+     */
+    public static WechselWeg wegDesWechsels(boolean steuerquelle, String zustand, boolean nurAlsAenderung,
+            boolean zielIstMitglied) {
+        if (zustand == null || !EINGERICHTET.contains(zustand)) {
+            return WechselWeg.ZUSTAENDIGKEITSWECHSEL;
+        }
+        if (nurAlsAenderung) {
+            return WechselWeg.GEMEINSAME_STEUERUNG_AENDERN;
+        }
+        if (!steuerquelle) {
+            return WechselWeg.ZUSTAENDIGKEITSWECHSEL;
+        }
+        boolean anteileInKraft = ANTEILE_IN_KRAFT.contains(zustand);
+        return !anteileInKraft && zielIstMitglied ? WechselWeg.INNERHALB_DER_GEMEINSAMEN_STEUERUNG
+                : WechselWeg.GEMEINSAME_STEUERUNG_AENDERN;
+    }
+
+    /** Der Satz zu {@link WechselWeg#GEMEINSAME_STEUERUNG_AENDERN}: Grund und Weg (Muster AP-03). */
+    public static String gemeinsameSteuerungAendern(String kennzeichen) {
+        return fuelle(TEXTE.get("gemeinsame_steuerung_aendern"), Map.of("kennzeichen", kennzeichen));
+    }
+
     /** Wer eine Fehlerklasse feststellen kann. */
     public enum Herkunft {
         BOX("box"),
@@ -338,6 +411,8 @@ public final class DatenquelleRegeln {
         t.put("software_unbekannt", "Software-Stand unbekannt");
         t.put("alle_faehigkeiten", "alle Fähigkeiten");
         t.put("update_noetig", "Update nötig für: {liste}");
+        t.put("gemeinsame_steuerung_aendern",
+                "{kennzeichen} gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“");
         return Map.copyOf(t);
     }
 
@@ -423,6 +498,10 @@ public final class DatenquelleRegeln {
     }
 
     /** Der Wunsch: {@code kandidat} anlegen oder {@code quelle} übergeben — an {@code box}, ab {@code effectiveFrom}. */
+    /**
+     * Ein Antrag. {@code innerhalbGemeinsamerSteuerung}: der Wechsel ist der Weg
+     * {@link WechselWeg#INNERHALB_DER_GEMEINSAMEN_STEUERUNG} — Grund {@code steuerquelle} entfällt (AP-15 IP-26).
+     */
     public record Antrag(
             Art art,
             String quelle,
@@ -430,7 +509,15 @@ public final class DatenquelleRegeln {
             String box,
             Instant effectiveFrom,
             Pruefung pruefung,
-            boolean vergleichBestaetigt) {}
+            boolean vergleichBestaetigt,
+            boolean innerhalbGemeinsamerSteuerung) {
+
+        /** Ohne Gemeinsame Steuerung — der Antrag, wie er seit AP-06 ist. */
+        public Antrag(Art art, String quelle, Kandidat kandidat, String box, Instant effectiveFrom,
+                Pruefung pruefung, boolean vergleichBestaetigt) {
+            this(art, quelle, kandidat, box, effectiveFrom, pruefung, vergleichBestaetigt, false);
+        }
+    }
 
     /** Das Urteil über einen Antrag, samt Kundensatz und — wenn erlaubt — den Zeiträumen danach. */
     public record AntragErgebnis(
@@ -544,7 +631,7 @@ public final class DatenquelleRegeln {
         }
         Zeitraum letzter = letzter(q.zeitraeume());
         if (wechsel) {
-            if (q.steuerquelle()) {
+            if (q.steuerquelle() && !antrag.innerhalbGemeinsamerSteuerung()) {
                 return abgelehnt(Grund.STEUERQUELLE, Map.of());
             }
             if (letzter != null && t.isBefore(letzter.von())) {

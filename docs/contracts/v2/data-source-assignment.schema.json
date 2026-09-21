@@ -58,7 +58,7 @@
       "description": "Die acht Familien der Fälle.",
       "type": "array",
       "items": {
-        "enum": ["antrag", "zeitraeume", "zustaendig", "box_tausch", "fuehrende_box", "faehigkeiten", "fehlerklasse", "bestand"]
+        "enum": ["antrag", "zeitraeume", "zustaendig", "box_tausch", "fuehrende_box", "faehigkeiten", "fehlerklasse", "bestand", "gemeinsame_steuerung"]
       }
     },
     "abnahmefaelle": {
@@ -165,7 +165,8 @@
         "software",
         "software_unbekannt",
         "alle_faehigkeiten",
-        "update_noetig"
+        "update_noetig",
+        "gemeinsame_steuerung_aendern"
       ],
       "additionalProperties": false,
       "properties": {
@@ -183,7 +184,8 @@
         "software": { "type": "string" },
         "software_unbekannt": { "type": "string" },
         "alle_faehigkeiten": { "type": "string" },
-        "update_noetig": { "type": "string" }
+        "update_noetig": { "type": "string" },
+        "gemeinsame_steuerung_aendern": { "type": "string", "description": "AP-15 T6 (IP-26): Grund und Weg, wenn ein Wechsel nur als Änderung der Gemeinsamen Steuerung geht. Platzhalter {kennzeichen}." }
       }
     },
     "auslass_gruende": {
@@ -353,6 +355,10 @@
         "vergleich_bestaetigt": {
           "description": "Ob der Kunde ausdrücklich bestätigt hat, das Gerät als gekennzeichnete Vergleichsquelle ein zweites Mal zu lesen.",
           "type": "boolean"
+        },
+        "innerhalb_gemeinsamer_steuerung": {
+          "description": "AP-15 IP-26: der Wechsel ist der Weg innerhalb_der_gemeinsamen_steuerung (Familie gemeinsame_steuerung) — Grund 4 `steuerquelle` entfällt. Fehlt das Feld: false.",
+          "type": "boolean"
         }
       }
     },
@@ -485,7 +491,18 @@
           "type": "array",
           "items": { "$ref": "#/$defs/quellenKennzeichen" }
         },
-        "komponenten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/bestandKomponente" } }
+        "komponenten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/bestandKomponente" } },
+        "gemeinsame_steuerung": {
+          "description": "Familie gemeinsame_steuerung (AP-15 T6): die Gemeinsame Steuerung der Anlage der Quelle — null ohne. `zustand` wie GET …/gemeinsame-steuerung, `nur_als_aenderung` das Urteil von SteuerungsverbundRegeln (steuerungsverbund-objekt-vectors.json, Gruppe zustaendigkeitswechsel).",
+          "type": ["object", "null"],
+          "required": ["zustand", "nur_als_aenderung", "ziel_ist_mitglied"],
+          "additionalProperties": false,
+          "properties": {
+            "zustand": { "enum": ["nicht_eingerichtet", "erklaert", "beobachtet", "geprueft", "anteile_aktiv", "angehalten", "aufgeloest"] },
+            "nur_als_aenderung": { "type": "boolean" },
+            "ziel_ist_mitglied": { "description": "Die Ziel-Box ist jetzt Mitglied (fuehrt oder steuert_mit) der Gemeinsamen Steuerung DIESER Anlage (SteuerungsverbundRegeln#istMitglied).", "type": "boolean" }
+          }
+        }
       }
     },
     "ergebnis": {
@@ -495,6 +512,14 @@
       "properties": {
         "urteil": { "$ref": "#/$defs/urteil" },
         "grund": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$" },
+        "weg": {
+          "description": "Familie gemeinsame_steuerung: zustaendigkeitswechsel (die Prüfreihenfolge entscheidet), innerhalb_der_gemeinsamen_steuerung (die Prüfreihenfolge ohne Grund 4) oder gemeinsame_steuerung_aendern (409).",
+          "enum": ["zustaendigkeitswechsel", "innerhalb_der_gemeinsamen_steuerung", "gemeinsame_steuerung_aendern"]
+        },
+        "code": {
+          "description": "Familie gemeinsame_steuerung: der Code der Schnittstelle (kein Grund des Vokabulars) oder null.",
+          "enum": ["gemeinsame_steuerung_aendern", null]
+        },
         "text": { "type": ["string", "null"] },
         "hinweis": { "type": ["string", "null"] },
         "vergleichsquelle": { "type": "boolean" },
@@ -613,7 +638,7 @@
           "pattern": "^[a-z0-9][a-z0-9-]*$"
         },
         "familie": {
-          "enum": ["antrag", "zeitraeume", "zustaendig", "box_tausch", "fuehrende_box", "faehigkeiten", "fehlerklasse", "bestand"]
+          "enum": ["antrag", "zeitraeume", "zustaendig", "box_tausch", "fuehrende_box", "faehigkeiten", "fehlerklasse", "bestand", "gemeinsame_steuerung"]
         },
         "abnahme": {
           "description": "Der Abnahmefall des Konzepts, den dieser Fall pinnt.",

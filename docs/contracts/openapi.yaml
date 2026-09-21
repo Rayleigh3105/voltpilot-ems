@@ -9472,9 +9472,12 @@ paths:
       description: >
         Recht `datenquelle.zustaendigkeit`. Vor allen Regeln (AP-15 T6): ist die Quelle
         Netzzähler, Messpunkt oder Steuerquelle eines Mitglieds einer Gemeinsamen
-        Steuerung in `anteile_aktiv` oder angehalten, 409 `gemeinsame_steuerung_aendern` -
-        ihre Box wechselt nur als Änderung der Gemeinsamen Steuerung. Ohne Gemeinsame
-        Steuerung greift das nie. Die erste Box einer Quelle ist ein Antrag
+        Steuerung in `anteile_aktiv` oder angehalten - und jede Steuerquelle in einer Anlage
+        mit eingerichteter Gemeinsamer Steuerung, außer vor dem Scharfschalten (S0-S2) zu
+        einem Mitglied (IP-26: dann ein Wechsel ohne den Grund `steuerquelle`) -, 409
+        `gemeinsame_steuerung_aendern` mit Fakt `anlage` - ihre Box wechselt nur als Änderung
+        der Gemeinsamen Steuerung (`…/sites/{anlage}/gemeinsame-steuerung`). Die erste Box
+        einer neuen Quelle ist kein Wechsel. Ohne Gemeinsame Steuerung greift das nie. Die erste Box einer Quelle ist ein Antrag
         `anlegen`, jede weitere ein `wechsel`; geprüft von DatenquelleRegeln in der
         festen Reihenfolge des Vertrags (§5): protokoll_unbekannt → keine_volle_minute
         → rueckwirkend → steuerquelle → spaeterer_wechsel_geplant → schon_zustaendig →
@@ -24845,9 +24848,11 @@ components:
         (`komponenten`, `datenquellen`) und `vorschlag_geaendert` 409 (`device_id`,
         `protokoll`, `adresse`). `budget_ueberschritten` ist 422 und trägt unter
         `rechnung` Zahlen, freie Kapazität am Standort und beide konkrete Auswege.
-        `gemeinsame_steuerung_aendern` 409 (`kennzeichen`, AP-15 T6): die Quelle ist
+        `gemeinsame_steuerung_aendern` 409 (`kennzeichen`, `anlage`, AP-15 T6): die Quelle ist
         Netzzähler, Messpunkt oder Steuerquelle eines Mitglieds einer scharfen
-        Gemeinsamen Steuerung - ihre Box wechselt nur über „Gemeinsame Steuerung ändern“.
+        Gemeinsamen Steuerung oder eine Steuerquelle in einer Anlage mit eingerichteter
+        Gemeinsamer Steuerung, deren Ziel-Box kein Mitglied ist oder deren Anteile in Kraft
+        sind (IP-26) - ihre Box wechselt nur über „Gemeinsame Steuerung ändern“.
       required: [code, message]
       properties:
         code:
@@ -24864,6 +24869,7 @@ components:
         feld: { type: string, description: "anfrage_ungueltig: device_id, adresse, register …" }
         felder: { type: array, items: { type: string }, description: "weg_fest: die festen Felder, die sich ändern sollten." }
         kennzeichen: { type: string }
+        anlage: { type: string, format: uuid, description: "gemeinsame_steuerung_aendern: die Anlage, deren Gemeinsame Steuerung sich ändern muss (…/sites/{anlage}/gemeinsame-steuerung)." }
         protokoll: { type: string }
         grund: { type: string, description: "gleichzeitig_geaendert: der Grund des Constraints, der gegriffen hat." }
         komponenten: { type: array, items: { type: string, format: uuid }, description: "komponente_hat_quelle: die Komponenten, die inzwischen eine Quelle haben." }

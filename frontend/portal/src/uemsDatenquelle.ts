@@ -20,6 +20,7 @@
  */
 import { VORGABE_ZEITZONE, teile } from './uemsZustand';
 import type { DatenquelleBudgetFehler } from './api';
+import { WECHSEL_NUR_ALS_AENDERUNG } from './uemsGemeinsameSteuerung';
 
 // ───────────────────────────────────────────────────────────────────── Vokabular
 
@@ -250,7 +251,50 @@ export const TEXTE = {
   software_unbekannt: 'Software-Stand unbekannt',
   alle_faehigkeiten: 'alle Fähigkeiten',
   update_noetig: 'Update nötig für: {liste}',
+  gemeinsame_steuerung_aendern: WECHSEL_NUR_ALS_AENDERUNG,
 } as const;
+
+// ─────────────────────────────────────────── Gemeinsame Steuerung (AP-15 T6, IP-26)
+
+/**
+ * Wohin ein Wechsel der zuständigen Box führt, VOR der Prüfreihenfolge (Familie
+ * `gemeinsame_steuerung`). Kein Grund des Vokabulars: die Schnittstelle antwortet mit ihrem Code
+ * `gemeinsame_steuerung_aendern` (409).
+ */
+export const WECHSEL_WEGE = ['zustaendigkeitswechsel', 'innerhalb_der_gemeinsamen_steuerung', 'gemeinsame_steuerung_aendern'] as const;
+export type WechselWeg = (typeof WECHSEL_WEGE)[number];
+
+/** Die Zustände aus `GET …/gemeinsame-steuerung`, in denen eine Gemeinsame Steuerung Mitglieder trägt. */
+const EINGERICHTET = new Set(['erklaert', 'beobachtet', 'geprueft', 'anteile_aktiv', 'angehalten']);
+
+/** Die Zustände, in denen die Anteile an den Boxen in Kraft sind. */
+const ANTEILE_IN_KRAFT = new Set(['anteile_aktiv', 'angehalten']);
+
+/**
+ * T6: in einer Anlage MIT eingerichteter Gemeinsamer Steuerung gilt die AP-06-Sperre `steuerquelle`
+ * nicht mehr. Vor dem Scharfschalten (S0–S2) zieht eine Steuerquelle zu einem Mitglied DIESER
+ * Gemeinsamen Steuerung um wie jede Quelle (IP-26, der Schritt „ändern“: die Prüfreihenfolge ohne
+ * Grund 4); zu jeder anderen Box und solange die Anteile in Kraft sind nur über „Gemeinsame
+ * Steuerung ändern“ — ebenso jede Quelle, die sie in einer scharfen oder angehaltenen Anlage trägt
+ * (`nurAlsAenderung`, IP-8). Ohne, nach dem Auflösen und für jede andere Quelle entscheidet die
+ * Prüfreihenfolge wie bisher (I6).
+ */
+export function wegDesWechsels(
+  steuerquelle: boolean,
+  zustand: string | null,
+  nurAlsAenderung: boolean,
+  zielIstMitglied: boolean,
+): WechselWeg {
+  if (zustand === null || !EINGERICHTET.has(zustand)) return 'zustaendigkeitswechsel';
+  if (nurAlsAenderung) return 'gemeinsame_steuerung_aendern';
+  if (!steuerquelle) return 'zustaendigkeitswechsel';
+  return !ANTEILE_IN_KRAFT.has(zustand) && zielIstMitglied ? 'innerhalb_der_gemeinsamen_steuerung' : 'gemeinsame_steuerung_aendern';
+}
+
+/** Der Satz zu `gemeinsame_steuerung_aendern`: Grund und Weg (Muster AP-03). */
+export function gemeinsameSteuerungAendern(kennzeichen: string): string {
+  return fuelle(TEXTE.gemeinsame_steuerung_aendern, { kennzeichen });
+}
 
 /**
  * Warum eine vorhandene Komponente in der Vorschlagsliste der Bestands-Übernahme KEINE Quelle
@@ -320,6 +364,8 @@ export interface Antrag {
   effective_from: string;
   pruefung: Pruefung | null;
   vergleich_bestaetigt: boolean;
+  /** AP-15 IP-26: der Weg `innerhalb_der_gemeinsamen_steuerung` — Grund 4 `steuerquelle` entfällt. */
+  innerhalb_gemeinsamer_steuerung?: boolean;
 }
 
 export interface AntragErgebnis {
@@ -525,7 +571,7 @@ export function pruefeAntrag(
   if (ms(t) < minuteVon(jetzt)) return abgelehnt('rueckwirkend');
   const l = letzter(q.zeitraeume);
   if (wechsel) {
-    if (q.steuerquelle) return abgelehnt('steuerquelle');
+    if (q.steuerquelle && !antrag.innerhalb_gemeinsamer_steuerung) return abgelehnt('steuerquelle');
     if (l !== null && ms(t) < ms(l.effective_from)) {
       return abgelehnt('spaeterer_wechsel_geplant', {
         zeitpunkt: zeit(l.effective_from, zeitzone),

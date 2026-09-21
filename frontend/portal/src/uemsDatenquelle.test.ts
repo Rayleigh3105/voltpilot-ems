@@ -17,9 +17,11 @@ import {
   faehigkeiten,
   fehlerklasse,
   fuehrendeBox,
+  gemeinsameSteuerungAendern,
   pruefeAntrag,
   pruefeZeitraum,
   vorschlagsliste,
+  wegDesWechsels,
   zustaendigeBox,
   type Herkunft,
   type TabellenEintrag,
@@ -47,7 +49,8 @@ type Familie =
   | 'fuehrende_box'
   | 'faehigkeiten'
   | 'fehlerklasse'
-  | 'bestand';
+  | 'bestand'
+  | 'gemeinsame_steuerung';
 
 interface Fall {
   name: string;
@@ -128,6 +131,17 @@ describe('Datenquelle und Zuständigkeit — Fehlerklassen', () => {
   it.each(vonFamilie('fehlerklasse').map((c) => [c.name, c] as const))('%s', (_, c) => {
     const k = fehlerklasse(c.input.code, c.input.von as Herkunft);
     expect({ klasse: k?.code ?? null, name: k?.name ?? null }).toEqual(c.expected);
+  });
+});
+
+describe('Datenquelle und Zuständigkeit — Gemeinsame Steuerung (AP-15 T6, IP-26)', () => {
+  it.each(vonFamilie('gemeinsame_steuerung').map((c) => [c.name, c] as const))('%s', (_, c) => {
+    const q = c.input.quellen[0];
+    const gs = c.input.gemeinsame_steuerung;
+    const weg = wegDesWechsels(q.steuerquelle, gs?.zustand ?? null, gs?.nur_als_aenderung ?? false, gs?.ziel_ist_mitglied ?? false);
+    const aendern = weg === 'gemeinsame_steuerung_aendern';
+    expect({ weg, code: aendern ? 'gemeinsame_steuerung_aendern' : null, text: aendern ? gemeinsameSteuerungAendern(q.kennzeichen) : null })
+      .toEqual(c.expected);
   });
 });
 
