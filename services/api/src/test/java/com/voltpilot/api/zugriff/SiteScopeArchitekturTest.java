@@ -198,11 +198,7 @@ class SiteScopeArchitekturTest {
             new Erlaubt("uems/EreignisVokabular.java", "telemetry", 1, Grund.KEIN_SQL, "uems/EreignisVokabular.java",
                     "STROM = List.of(\"telemetry\""),
             new Erlaubt("consumers/LoadResidualReplanListener.java", "telemetry", 1, Grund.KEIN_SQL,
-                    "consumers/LoadResidualReplanListener.java", "\"telemetry\".equals(parts[4])"),
-
-            // --- offen
-            new Erlaubt("uems/MessstelleRegisterRepository.java", "device_measurement_sample", 1, Grund.OFFEN,
-                    "docs/agents/root/uems-standort-zaun.md", "MessstelleRegisterRepository"));
+                    "consumers/LoadResidualReplanListener.java", "\"telemetry\".equals(parts[4])"));
 
     @Test
     void keineAbfrageAufMessdatenOhneSiteOderBegruendetenEintrag() throws IOException {

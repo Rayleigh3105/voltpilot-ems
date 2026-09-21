@@ -1029,6 +1029,70 @@ class ZugriffZaunApiTest {
         assertThat(zuordnung(pfad, ka)).as("aufgeräumt").isNull();
     }
 
+    /**
+     * Dasselbe im Messstellen-Register ({@code MessstelleRegisterRepository#WERTE}): dort trägt die Box-Abfrage nicht
+     * nur das Wort, sondern auch den LETZTEN WERT der Zeile. Dieselben zwei Wege zu einer fremden Anlage B. Der
+     * Kundenadministrator sieht B und bekommt Wort und Zahl (die Probe schlägt an); der Bearbeiter am Standort der
+     * Messstelle bekommt weder das Wort noch eine an B gemessene Zahl — außerhalb des Zugriffs fehlt sie ganz.
+     */
+    @Test
+    void dasRegisterZeigtKeinenBoxWertEinerFremdenAnlage() throws Exception {
+        Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
+        Konto hier = new Konto("Bearbeiter am Standort der Messstelle", konto(KUNDE_BEARBEITER, DEMO), new String[0]);
+        assertThat(registerZeile(ka).has("letzter_wert") && !registerZeile(ka).get("letzter_wert").isNull())
+                .as("ohne Box-Werte kein letzter Wert " + registerZeile(ka)).isFalse();
+        assertThat(registerZeile(ka).at("/beobachtung/zuordnung").isMissingNode()).as("ohne Box-Werte kein Fall")
+                .isTrue();
+
+        UUID anlageB = root.queryForObject("INSERT INTO site (tenant_id, name, bidding_zone) VALUES (?, "
+                + "'Zaun-Anlage B', 'DE-LU') RETURNING id", UUID.class, DEMO);
+        UUID boxB = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, status) VALUES (?, ?, "
+                + "'VP-BOX-ZAUN-B', 'claimed') RETURNING id", UUID.class, DEMO, anlageB);
+        try {
+            // (1) Dieselbe Box, ihre Werte an B gestempelt (vor einem Umzug nach A).
+            boxWertAn(anlageB, buehne.box(), 1);
+            registerSiehtB(ka, hier, "dieselbe Box, Werte an B");
+            root.update("DELETE FROM device_measurement_sample WHERE site_id = ?", anlageB);
+
+            // (2) Eine Box an B liest denselben Kanal der Komponente.
+            root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                    + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                    + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 60, 1, '2024-03-12', "
+                    + "'2026.09.11.1', 'test', 'pending_edge', 'live_power', 'fifteen_minute')", DEMO, anlageB, boxB,
+                    buehne.komponente(), KANAL);
+            boxWertAn(anlageB, boxB, 2);
+            registerSiehtB(ka, hier, "eine Box an B");
+        } finally {
+            root.update("DELETE FROM device_measurement_sample WHERE site_id = ?", anlageB);
+            root.update("DELETE FROM device_measurement_selection WHERE device_id = ?", boxB);
+            root.update("DELETE FROM device WHERE id = ?", boxB);
+            root.update("DELETE FROM site WHERE id = ?", anlageB);
+        }
+        assertThat(registerZeile(ka).at("/beobachtung/zuordnung").isMissingNode()).as("aufgeräumt").isTrue();
+    }
+
+    private void registerSiehtB(Konto ka, Konto hier, String weg) throws Exception {
+        JsonNode mitB = registerZeile(ka);
+        assertThat(mitB.at("/beobachtung/zuordnung").asText()).as("die Probe schlägt an: " + weg)
+                .isEqualTo("nicht_zugeordnet");
+        assertThat(mitB.at("/letzter_wert/wert").asDouble()).as("die Probe schlägt an: " + weg).isEqualTo(500.0);
+        JsonNode ohneB = registerZeile(hier);
+        assertThat(ohneB.at("/beobachtung/zuordnung").isMissingNode()).as(weg + " " + ohneB).isTrue();
+        assertThat(ohneB.get("letzter_wert").isNull()).as(weg + ": keine an B gemessene Zahl " + ohneB).isTrue();
+    }
+
+    /** Die Register-Zeile von MS-Z1, kurz nach dem Box-Wert der Probe. */
+    private JsonNode registerZeile(Konto k) throws Exception {
+        Antwort a = ruf(get("/api/v1/messstellen?stichtag=2026-09-01T08:05:00Z"), k);
+        assertThat(a.status()).as(k.name() + " " + a.body()).isEqualTo(200);
+        for (JsonNode z : MAPPER.readTree(a.body()).get("register")) {
+            if ("MS-Z1".equals(z.get("kennzeichen").asText())) {
+                return z;
+            }
+        }
+        throw new AssertionError(k.name() + ": keine Zeile MS-Z1");
+    }
+
     private String zuordnung(String pfad, Konto k) throws Exception {
         Antwort a = ruf(get(pfad), k);
         assertThat(a.status()).as(k.name() + " " + a.body()).isEqualTo(200);

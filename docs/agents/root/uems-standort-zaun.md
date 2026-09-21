@@ -53,13 +53,11 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
     eben angelegten Entwurf weiter). Sobald die Messstelle einen Ort hat, gilt der Zaun ohne Ausnahme.
   - Interne Leser (`MessstelleService#eine`, `MessstelleRegisterService#liste(Instant, Filter)`, Bilanz, Formel,
     Kennzahl, Standort-Übersicht) bleiben ungezäunt. Beweis: `LesewegImZugriffApiTest`.
-  - ⚠ Offen: `MessstelleRegisterRepository` (in der Liste `OFFEN` von `SiteScopeArchitekturTest`) liest die
-    Formel-Kanäle über `device_measurement_sample` ohne Anlage; die Route zeigt davon nur Messstellen im Zugriff. Die
-    Werte, die über `measurement_point` laufen, fallen weiter über `site_scope` weg. Dieselbe Box-Abfrage trägt
-    dort auch „Daten kommen an“ und den letzten Box-Wert — ohne Anlage, also auch Werte einer fremden Anlage.
-  - Box-Werte ohne Reihe (`zuordnung` an `…/werte`, `MessstelleWerteService#zuordnung`) zählen nur an Anlagen im
-    Zugriff (`JOIN site`): die Mess-Selektion bindet die Komponente ohne Anlage, und ein Wert trägt die Anlage, an der
-    er ankam (nach einem Umzug die alte). Beweis: `ZugriffZaunApiTest#dieZuordnungDerWerteKarteVerraetKeineWerteEinerFremdenAnlage`.
+  - Box-Werte ohne Reihe (`zuordnung` an `…/werte`, `MessstelleWerteService#zuordnung`; letzter Box-Wert und „Daten
+    kommen an“ im Register, `MessstelleRegisterRepository#WERTE`) zählen nur an Anlagen im Zugriff (`JOIN site`): die
+    Mess-Selektion bindet die Komponente ohne Anlage, und ein Wert trägt die Anlage, an der er ankam (nach einem Umzug
+    die alte). Beweis: `ZugriffZaunApiTest#dieZuordnungDerWerteKarteVerraetKeineWerteEinerFremdenAnlage` und
+    `…#dasRegisterZeigtKeinenBoxWertEinerFremdenAnlage`. `SiteScopeArchitekturTest` führt keinen `OFFEN`-Eintrag mehr.
 - **Vorlagen und Import-Protokoll** (gleiches Paket): `GET /bezugsdaten/vorlagen` zeigt nur Vorlagen, deren Bezüge
   (`bezugsdaten_vorlage_bezug`) alle `#lesbar` sind (AP-09 E12); `GET /bezugsdaten/importe` lässt einen Import mit
   einem Ziel außerhalb weg (`RechtPruefung#erlaubt`, dieselbe Prüfung wie das Detail), statt die ganze Liste mit 404
