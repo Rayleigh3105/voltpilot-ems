@@ -11,6 +11,7 @@ import {
   scharfschaltenMoeglich,
   sprungEingabe,
   sprungprobeGrund,
+  verlustGesternZelle,
   WOERTER,
   zweischrittLage,
 } from './adminGemeinsameSteuerung';
@@ -80,6 +81,22 @@ describe('AP-15 IP-24 · Betreiber-Blatt — Spalten je Box', () => {
     const [e1, e4] = boxSpalten(gsBlatt('aktiv', JETZT), null, NAMEN, JETZT);
     expect(e1.wirksam.einspeisung.text).toBe('40 kW');
     expect(e4.wirksam.bezug.text).toBe('77 kW');
+  });
+
+  it('Verlust gestern: Untergrenze der Box und Schätzung der Cloud nebeneinander, nie verrechnet (Folgepaket IP-22, R2)', () => {
+    const b = gsBlatt('aktiv', JETZT);
+    b.boxen[1].verlust_gestern = { tag: '2027-06-14', verlust_kwh: 0, gebunden_s: 32_400, schaetzung_kwh: 160.211, schaetzung_grundlage: 'prognose' };
+    const [e1, e4] = boxSpalten(b, null, NAMEN, JETZT);
+    expect(e4.verlustGestern).toEqual({ text: 'mindestens 0 kWh (gemessen) · geschätzt 160,2 kWh (Prognose)' });
+    expect(e1.verlustGestern).toEqual({ text: NICHT_GEMELDET, unbekannt: true });
+  });
+
+  it('Verlust gestern ohne Prognose oder noch nicht gerechnet: keine Null als Schätzung', () => {
+    const tag = { tag: '2027-06-14', verlust_kwh: 1.5, gebunden_s: 3600 };
+    expect(verlustGesternZelle({ ...tag, schaetzung_kwh: null, schaetzung_grundlage: 'keine' }))
+      .toEqual({ text: 'mindestens 1,5 kWh (gemessen) · keine Schätzung (keine Prognose)', unbekannt: true });
+    expect(verlustGesternZelle({ ...tag, schaetzung_grundlage: null }))
+      .toEqual({ text: 'mindestens 1,5 kWh (gemessen) · Schätzung noch nicht gerechnet', unbekannt: true });
   });
 
   it('eine stumme Box (Herzschlag älter als 90 s) ist markiert', () => {

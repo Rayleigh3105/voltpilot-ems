@@ -116,6 +116,8 @@ for (const breite of [375, 1440]) {
       await expect(zelle(blatt, 'plan-veroeffentlicht', 1)).toHaveText('a1b2c3d4');
       await expect(zelle(blatt, 'plan-angenommen', 1)).toHaveText('a1b2c3d4');
       await expect(zelle(blatt, 'wirksam-bezug', 1)).toHaveText('77 kW');
+      await expect(zelle(blatt, 'verlust-gestern', 1)).toHaveText('mindestens 0 kWh (gemessen) · geschätzt 160,2 kWh (Prognose)');
+      await expect(zelle(blatt, 'verlust-gestern', 0)).toHaveText('nicht gemeldet');
       await bild(blatt, `aktiv-${breite}`);
     });
 

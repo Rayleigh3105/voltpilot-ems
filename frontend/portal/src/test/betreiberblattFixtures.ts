@@ -81,6 +81,9 @@ export function gsBlatt(lage: BlattLage, jetzt: Date, proben: UemsSprungprobePro
       box(GS_IDS.e4, 'steuert_mit', {
         plan: { veroeffentlicht: plan(PLAN_A), angenommen: { ...plan(PLAN_A), urteil: 'angenommen' } },
         anteile: { gesendet: r(2, 20), quittiert: r(2, 15), wirksam_kw: { einspeisung: 60, bezug: 77 } },
+        // R2 (Folgepaket zu IP-22): die Box kennt die verfügbare PV nicht und meldet ≈ 0 kWh bei 9 h gebunden;
+        // die Cloud schätzt aus der Prognose 160,2 kWh.
+        verlust_gestern: { tag: '2027-06-14', verlust_kwh: 0, gebunden_s: 32_400, schaetzung_kwh: 160.211, schaetzung_grundlage: 'prognose' },
       }, jetzt),
     ],
     zweischritt: { schritt: 'ziel', epoche: 1, revision: 2, am: vor(20), bestaetigt: [GS_IDS.e1, GS_IDS.e4], wartet_auf: [] },

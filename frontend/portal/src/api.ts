@@ -6997,6 +6997,8 @@ export interface UemsBoxStand {
   waechter?: { einspeisung?: string | null; bezug?: string | null } | null;
   plan: { veroeffentlicht?: UemsPlanZeile | null; angenommen?: UemsPlanZeile | null };
   anteile: { gesendet?: UemsRevision | null; quittiert?: UemsRevision | null; wirksam_kw?: { einspeisung?: number; bezug?: number } | null };
+  /** Folgepaket zu IP-22: `null` = die Box hat für gestern keinen Anteils-Verlust gemeldet. */
+  verlust_gestern?: UemsVerlustTag | null;
 }
 
 /** Das jüngste Anteils-Dokument; der Zielstand gilt erst mit `schritt = ziel` und leerem `wartet_auf`. */
@@ -7028,6 +7030,22 @@ export interface UemsVerlustSumme {
   kwh: number;
   gebunden_s: number;
   tage: number;
+  /**
+   * Folgepaket zu IP-22: die SCHÄTZUNG der Cloud aus der PV-Prognose über `tage_geschaetzt` Tage (`null`, solange
+   * keiner). Die Kundenfläche zeigt sie nicht — Wortlaut-Entscheid offen.
+   */
+  schaetzung_kwh?: number | null;
+  tage_geschaetzt?: number;
+}
+
+/** Folgepaket zu IP-22: der gestrige Tag einer Box — Untergrenze der Box und Schätzung der Cloud getrennt. */
+export interface UemsVerlustTag {
+  tag: string;
+  verlust_kwh: number;
+  gebunden_s: number;
+  /** `null` bei `keine` oder solange noch nicht gerechnet (`schaetzung_grundlage` null). */
+  schaetzung_kwh?: number | null;
+  schaetzung_grundlage?: 'prognose' | 'nowcast' | 'keine' | null;
 }
 
 export interface UemsGemeinsameSteuerungBefund {

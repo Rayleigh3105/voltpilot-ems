@@ -2800,6 +2800,35 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/anteil-verlust:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [admin]
+      summary: Pilot-Bericht des Anteils-Verlusts — Untergrenze der Boxen und Schätzung der Cloud (AP-15, Folgepaket zu IP-22, E1).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle; ein Kundenkonto bekommt 403), lesend, über den
+        `X-Tenant-Id`-Umschalter auf dem RLS-Pfad. Je Box und in `summe` über [`von`, `bis`] (Tage der Anlage,
+        Europe/Berlin, beide zählen mit, höchstens 366): `verlust_kwh` die Summe der UNTERGRENZE, die die Boxen melden,
+        und GETRENNT `schaetzung_kwh`, die Summe der Schätzung der Cloud (PV-Prognose der Anlage × kWp-Teil der Box −
+        gemessene PV der Box in der gebundenen Zeit) über die `tage_geschaetzt` Tage, die eine haben;
+        `tage_ohne_prognose` und `tage_nicht_gerechnet` nennen, was in dieser Summe fehlt. Die Zahl, an der nach dem
+        Pilot über die Zuteilung auf Zeit (S4) entschieden wird. Ohne gemeldeten Tag (auch ohne Gemeinsame Steuerung)
+        `boxen` leer und `summe` null — nie 0 kWh. Eine fremde Anlage ist 404, ein unlesbarer oder zu langer
+        Zeitraum 400 `anfrage_ungueltig`.
+      parameters:
+        - { name: von, in: query, required: true, schema: { type: string, format: date } }
+        - { name: bis, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Der Bericht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerungPilotBericht" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/scharfschalten:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -13654,6 +13683,50 @@ components:
           description: null = kein Herzschlag-Block seit dem Start der api (alte Box) — nicht gemeldet, keine Stufe.
         plan: { $ref: '#/components/schemas/GemeinsameSteuerungPlanStand' }
         anteile: { $ref: '#/components/schemas/GemeinsameSteuerungAnteilStand' }
+        verlust_gestern:
+          allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungVerlustTag' }]
+          nullable: true
+          description: Folgepaket zu IP-22 — null = die Box hat für gestern keinen Anteils-Verlust gemeldet.
+    GemeinsameSteuerungVerlustTag:
+      type: object
+      required: [tag, verlust_kwh, gebunden_s]
+      description: >-
+        Der gestrige Tag einer Box: `verlust_kwh` die UNTERGRENZE der Box (gemessen), `gebunden_s` exakt,
+        `schaetzung_kwh` die Schätzung der Cloud mit `schaetzung_grundlage` (`prognose` · `nowcast` · `keine`;
+        null = noch nicht gerechnet). Bei `keine` gibt es keinen Wert — unbekannt ist keine Null.
+      properties:
+        tag: { type: string, format: date }
+        verlust_kwh: { type: number }
+        gebunden_s: { type: integer }
+        schaetzung_kwh: { type: number, nullable: true }
+        schaetzung_grundlage: { type: string, enum: [prognose, nowcast, keine], nullable: true }
+    GemeinsameSteuerungPilotBericht:
+      type: object
+      required: [site_id, von, bis, boxen]
+      properties:
+        site_id: { type: string, format: uuid }
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        boxen: { type: array, items: { $ref: '#/components/schemas/GemeinsameSteuerungPilotZeile' } }
+        summe:
+          allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungPilotZeile' }]
+          nullable: true
+          description: über alle Boxen (`box_id` null); null ohne gemeldeten Tag.
+    GemeinsameSteuerungPilotZeile:
+      type: object
+      required: [tage, gebunden_s, verlust_kwh, tage_geschaetzt, tage_ohne_prognose, tage_nicht_gerechnet]
+      properties:
+        box_id: { type: string, format: uuid, nullable: true }
+        tage: { type: integer }
+        gebunden_s: { type: integer, format: int64 }
+        verlust_kwh: { type: number, description: Summe der Untergrenze der Box. }
+        schaetzung_kwh:
+          type: number
+          nullable: true
+          description: Summe der Schätzung über `tage_geschaetzt` Tage; null, wenn keiner eine hat.
+        tage_geschaetzt: { type: integer }
+        tage_ohne_prognose: { type: integer }
+        tage_nicht_gerechnet: { type: integer }
     GemeinsameSteuerungFaehigkeit:
       type: object
       properties:
@@ -13746,6 +13819,13 @@ components:
         kwh: { type: number }
         gebunden_s: { type: integer, format: int64 }
         tage: { type: integer }
+        schaetzung_kwh:
+          type: number
+          nullable: true
+          description: >-
+            Folgepaket zu IP-22: die SCHÄTZUNG der Cloud aus der PV-Prognose über `tage_geschaetzt` Tage (gerechnet
+            nach dem Tag, heute also nie); null, solange keiner eine hat.
+        tage_geschaetzt: { type: integer }
     GemeinsameSteuerungBefund:
       type: object
       required: [wort]

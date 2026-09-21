@@ -21,6 +21,8 @@ import org.springframework.stereotype.Component;
  * betreten. Ein Tag wird genau einmal gerechnet; ein zweiter Takt am selben Tag schreibt nichts. Ausnahme (A4, IP-30):
  * ein Tag der letzten {@value #NACHRECHNEN_TAGE} Tage davor, der noch {@code unbekannt} steht, wird mit dem heutigen
  * Datenstand neu geurteilt — die Boxen puffern 48 h, eine Viertelstunde kann nach dem ersten Lauf nachgeliefert werden.
+ * Danach, im selben Takt und mit demselben Melder, die SCHÄTZUNG des Anteils-Verlusts ({@link AnteilVerlustSchaetzung},
+ * Folgepaket zu IP-22) für gestern und dieselben {@value #NACHRECHNEN_TAGE} Tage davor — kein eigener Läufer.
  *
  * <p><b>⚠ Wie jeder {@code @Scheduled} ist er im TESTLAUF AUS</b> (surefire-Systemeigenschaft) und in PRODUKTION AN
  * ({@code application.yml}, {@code matchIfMissing}); wer ihn prüft, ruft {@link #lauf(LocalDate)} selbst. Er wirft
@@ -47,6 +49,14 @@ public class VerbundBilanzLaeufer {
         this.melder = melder;
     }
 
+    /** Die Schätzung des Anteils-Verlusts; ohne sie (schmale Testkontexte) rechnet der Takt nur die Bilanz. */
+    private AnteilVerlustSchaetzung schaetzung;
+
+    @Autowired(required = false)
+    void schaetzung(AnteilVerlustSchaetzung schaetzung) {
+        this.schaetzung = schaetzung;
+    }
+
     public VerbundBilanzLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, VerbundBilanzService bilanz) {
         this.adminJdbc = adminJdbc;
         this.bilanz = bilanz;
@@ -65,6 +75,7 @@ public class VerbundBilanzLaeufer {
             if (nach > 0) {
                 log.info("Verbund-Bilanz: {} nachgelieferte(r) Tag(e) neu geurteilt", nach);
             }
+            schaetzen(gestern);
             melder.gelaufen(UemsLaeuferMelder.VERBUND_BILANZ);
             if (n > 0) {
                 log.info("Verbund-Bilanz: {} Anlage(n) gerechnet", n);
@@ -123,5 +134,34 @@ public class VerbundBilanzLaeufer {
             }
         }
         return geaendert;
+    }
+
+    /**
+     * Rechnet in jedem Kundenbereich mit Verbund, je Anlage mit Gemeinsamer Steuerung, die Schätzung des
+     * Anteils-Verlusts für [{@code gestern} − {@value #NACHRECHNEN_TAGE}, {@code gestern}] neu (idempotent); gibt die
+     * Zahl der geschriebenen Zeilen zurück.
+     */
+    public int schaetzen(LocalDate gestern) {
+        if (schaetzung == null) {
+            return 0;
+        }
+        List<UUID> kundenbereiche = adminJdbc.queryForList(
+                "SELECT DISTINCT tenant_id FROM steuerungsverbund ORDER BY tenant_id", UUID.class);
+        int n = 0;
+        for (UUID tenant : kundenbereiche) {
+            try {
+                TenantContext.set(tenant);
+                for (UUID anlage : bilanz.anlagen()) {
+                    try {
+                        n += schaetzung.rechnen(anlage, gestern.minusDays(NACHRECHNEN_TAGE), gestern);
+                    } catch (RuntimeException e) {
+                        log.warn("Anteils-Verlust schätzen für Anlage {} gescheitert: {}", anlage, e.toString());
+                    }
+                }
+            } finally {
+                TenantContext.clear();
+            }
+        }
+        return n;
     }
 }

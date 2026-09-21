@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,6 +73,14 @@ public class GemeinsameSteuerungBoxStand {
         uhr = clock;
     }
 
+    /** Der Anteils-Verlust (IP-22) samt Schätzung der Cloud; ohne ihn (schmale Testkontexte) bleibt die Zeile leer. */
+    private AnteilVerlustRepository verluste;
+
+    @Autowired(required = false)
+    void verluste(AnteilVerlustRepository verluste) {
+        this.verluste = verluste;
+    }
+
     /** Das Blatt der Anlage; ohne Gemeinsame Steuerung leer (I6), eine fremde Anlage 404. */
     @Transactional(readOnly = true)
     public GemeinsameSteuerungDto.Betreiberblatt blatt(UUID siteId) {
@@ -83,9 +93,10 @@ public class GemeinsameSteuerungBoxStand {
         }
         List<MitgliedZeile> mitglieder = verbuende.mitglieder(v.get().id(), uhr.instant());
         GemeinsameSteuerungHerzschlag bloecke = herzschlag.getIfAvailable();
+        Map<UUID, GemeinsameSteuerungDto.VerlustTag> gestern = verlustGestern(siteId);
         List<GemeinsameSteuerungDto.BoxStand> boxen = new ArrayList<>();
         for (MitgliedZeile m : mitglieder) {
-            boxen.add(box(siteId, m, bloecke));
+            boxen.add(box(siteId, m, bloecke, gestern.get(m.deviceId())));
         }
         return new GemeinsameSteuerungDto.Betreiberblatt(List.copyOf(boxen), zweischritt(v.get(), mitglieder),
                 sprungproben.protokoll(v.get().id(), mitglieder));
@@ -125,7 +136,70 @@ public class GemeinsameSteuerungBoxStand {
     /** Was die Kundenroute je Mitglied aus diesem Dienst liest. */
     public record Kunde(GemeinsameSteuerungDto.WirksameAnteile wirksameAnteile, OffsetDateTime zuletztGehoert) {}
 
-    private GemeinsameSteuerungDto.BoxStand box(UUID siteId, MitgliedZeile m, GemeinsameSteuerungHerzschlag bloecke) {
+    /** Höchstens ein Jahr (366 Tage) je Pilot-Bericht. */
+    static final int BERICHT_HOECHSTENS_TAGE = 366;
+
+    /**
+     * Der Pilot-Bericht (Folgepaket zu IP-22, E1): je Box und in Summe die Untergrenze und die Schätzung des
+     * Anteils-Verlusts über [{@code von}, {@code bis}]. Eine fremde Anlage ist 404; ohne gemeldeten Tag leer — auch
+     * die Summe ist dann leer, nie 0 kWh.
+     */
+    @Transactional(readOnly = true)
+    public GemeinsameSteuerungDto.PilotBericht pilotBericht(UUID siteId, LocalDate von, LocalDate bis) {
+        if (!verbuende.anlageSichtbar(siteId)) {
+            throw GemeinsameSteuerungAbgelehnt.nichtGefunden();
+        }
+        if (bis.isBefore(von) || von.plusDays(BERICHT_HOECHSTENS_TAGE).isBefore(bis.plusDays(1))) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("von liegt vor bis, höchstens " + BERICHT_HOECHSTENS_TAGE
+                    + " Tage.");
+        }
+        List<AnteilVerlustRepository.BerichtZeile> zeilen = verluste == null ? List.of()
+                : verluste.bericht(siteId, von, bis);
+        List<GemeinsameSteuerungDto.PilotZeile> boxen = new ArrayList<>();
+        int tage = 0;
+        int geschaetzt = 0;
+        int ohne = 0;
+        int offen = 0;
+        long s = 0;
+        BigDecimal kwh = BigDecimal.ZERO;
+        BigDecimal sk = null;
+        for (AnteilVerlustRepository.BerichtZeile z : zeilen) {
+            boxen.add(new GemeinsameSteuerungDto.PilotZeile(z.deviceId(), z.tage(), z.gebundenS(), z.verlustKwh(),
+                    z.schaetzungKwh(), z.tageGeschaetzt(), z.tageOhnePrognose(), z.tageNichtGerechnet()));
+            tage += z.tage();
+            geschaetzt += z.tageGeschaetzt();
+            ohne += z.tageOhnePrognose();
+            offen += z.tageNichtGerechnet();
+            s += z.gebundenS();
+            kwh = kwh.add(z.verlustKwh());
+            if (z.schaetzungKwh() != null) {
+                sk = (sk == null ? BigDecimal.ZERO : sk).add(z.schaetzungKwh());
+            }
+        }
+        GemeinsameSteuerungDto.PilotZeile summe = zeilen.isEmpty() ? null
+                : new GemeinsameSteuerungDto.PilotZeile(null, tage, s, kwh, sk, geschaetzt, ohne, offen);
+        return new GemeinsameSteuerungDto.PilotBericht(siteId, von, bis, List.copyOf(boxen), summe);
+    }
+
+    /**
+     * Je Box der gestrige Tag der Anlage (Europe/Berlin): Untergrenze der Box und Schätzung der Cloud (Folgepaket zu
+     * IP-22). Nur Boxen, die für gestern gemeldet haben.
+     */
+    private Map<UUID, GemeinsameSteuerungDto.VerlustTag> verlustGestern(UUID siteId) {
+        if (verluste == null) {
+            return Map.of();
+        }
+        LocalDate gestern = LocalDate.ofInstant(uhr.instant(), AnteilVerlustAusHerzschlag.ZONE).minusDays(1);
+        Map<UUID, GemeinsameSteuerungDto.VerlustTag> je = new HashMap<>();
+        for (AnteilVerlustRepository.Tag t : verluste.tage(siteId, gestern, gestern)) {
+            je.put(t.deviceId(), new GemeinsameSteuerungDto.VerlustTag(t.tag(), t.verlustKwh(), t.gebundenS(),
+                    t.schaetzungKwh(), t.schaetzungGrundlage()));
+        }
+        return je;
+    }
+
+    private GemeinsameSteuerungDto.BoxStand box(UUID siteId, MitgliedZeile m, GemeinsameSteuerungHerzschlag bloecke,
+            GemeinsameSteuerungDto.VerlustTag verlustGestern) {
         UUID box = m.deviceId();
         GemeinsameSteuerungDto.Faehigkeit faehigkeit = new GemeinsameSteuerungDto.Faehigkeit(
                 faehigkeiten.herkunft(box, SteuerungsverbundNachweise.FAEHIGKEIT),
@@ -151,7 +225,8 @@ public class GemeinsameSteuerungBoxStand {
                         plan(plan.angenommen(), false)),
                 new GemeinsameSteuerungDto.AnteilStand(
                         revision(m.gesendetEpoche(), m.gesendetRevision(), m.gesendetAm()),
-                        revision(m.quittiertEpoche(), m.quittiertRevision(), m.quittiertAm()), wirksamKw));
+                        revision(m.quittiertEpoche(), m.quittiertRevision(), m.quittiertAm()), wirksamKw),
+                verlustGestern);
     }
 
     /**

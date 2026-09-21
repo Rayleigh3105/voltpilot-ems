@@ -105,7 +105,7 @@ vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet. Au
 | `zeilentexte` | `ZeilentextAufbewahrungLaeufer` | `voltpilot.uems.zeilentexte.enabled` | täglich 03:17 Europe/Berlin |
 | `plan_zustellung` | `PlanZustellungAufbewahrungLaeufer` | `voltpilot.uems.plan-zustellung.enabled` | täglich 03:47 Europe/Berlin |
 | `ladepark_grenze` | `chargers/LadeparkGrenzeLaeufer` | `voltpilot.uems.ladepark-grenze.enabled` | 1 h (Minute 1, UTC) |
-| `verbund_bilanz` | `VerbundBilanzLaeufer` | `voltpilot.uems.verbund-bilanz.enabled` | täglich 04:37 Europe/Berlin |
+| `verbund_bilanz` | `VerbundBilanzLaeufer` (danach im selben Takt die Schätzung des Anteils-Verlusts, `AnteilVerlustSchaetzung` — kein eigener Läufer) | `voltpilot.uems.verbund-bilanz.enabled` | täglich 04:37 Europe/Berlin |
 | `vorbehalt` | `VorbehaltLaeufer` | `voltpilot.uems.vorbehalt.enabled` | täglich 04:52 Europe/Berlin |
 | `vorbehalt_viertelstunde` | `VorbehaltViertelstundeLaeufer` | `…vorbehalt.enabled` UND `…vorbehalt.viertelstunde.enabled` | 15 min (Minute 10/25/40/55 Europe/Berlin) |
 | `uebergabe` | `UebergabeLaeufer` | `voltpilot.uems.uebergabe.enabled` | 1 s |

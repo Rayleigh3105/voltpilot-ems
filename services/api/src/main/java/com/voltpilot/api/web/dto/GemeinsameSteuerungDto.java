@@ -108,9 +108,39 @@ public final class GemeinsameSteuerungDto {
     /**
      * {@code kwh} ist eine UNTERGRENZE (die Box kennt die verfügbare Erzeugung einer abgeregelten PV nur aus gemessenen
      * Werten); {@code gebundenS} — wie lange der Anteil die Erzeuger hielt — ist exakt; {@code tage} gemeldete Tage.
+     * {@code schaetzungKwh} (Folgepaket zu IP-22) ist die SCHÄTZUNG der Cloud aus der PV-Prognose über die
+     * {@code tageGeschaetzt} Tage, die eine haben — {@code null}, solange keiner (heute nie: gerechnet wird nach dem
+     * Tag). Die Kundenfläche zeigt sie nicht (Wortlaut-Entscheid offen).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record VerlustSumme(BigDecimal kwh, long gebundenS, int tage) {}
+    public record VerlustSumme(BigDecimal kwh, long gebundenS, int tage, BigDecimal schaetzungKwh,
+            int tageGeschaetzt) {}
+
+    /**
+     * Der Pilot-Bericht (Folgepaket zu IP-22, E1): je Anlage und Zeitraum [{@code von}, {@code bis}] (Tage der
+     * Anlage) die Summe der Untergrenze der Boxen und die Summe der Schätzung der Cloud — die Zahl, an der nach dem
+     * Pilot über die Zuteilung auf Zeit (S4) entschieden wird. Nur Plattform-Rolle.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record PilotBericht(UUID siteId, LocalDate von, LocalDate bis, List<PilotZeile> boxen, PilotZeile summe) {}
+
+    /**
+     * Je Box (bzw. in {@code summe} über alle Boxen, {@code boxId} null) Untergrenze und Schätzung eines Zeitraums.
+     * {@code schaetzungKwh} summiert NUR die {@code tageGeschaetzt} Tage mit einer Schätzung ({@code null}, wenn keiner);
+     * {@code tageOhnePrognose} und {@code tageNichtGerechnet} nennen, was darin fehlt — eine Lücke ist keine Null.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record PilotZeile(UUID boxId, int tage, long gebundenS, BigDecimal verlustKwh, BigDecimal schaetzungKwh,
+            int tageGeschaetzt, int tageOhnePrognose, int tageNichtGerechnet) {}
+
+    /**
+     * Der Anteils-Verlust einer Box am Vortag für das Betreiber-Blatt: {@code verlustKwh} die Untergrenze der Box
+     * (gemessen), {@code gebundenS} exakt, {@code schaetzungKwh} die Schätzung der Cloud mit ihrer Grundlage
+     * ({@code prognose} · {@code nowcast} · {@code keine}; {@code null} = noch nicht gerechnet).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VerlustTag(LocalDate tag, BigDecimal verlustKwh, int gebundenS, BigDecimal schaetzungKwh,
+            String schaetzungGrundlage) {}
 
     /** Ein Grund aus dem Ablehnungs-Vokabular; {@code boxId} bzw. {@code richtung} nur, wo er daran hängt. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -143,11 +173,12 @@ public final class GemeinsameSteuerungDto {
     /**
      * Eine Box des Verbunds. {@code zuletztGesehen} = letzter Herzschlag ({@code device.device_status_seen_at}, null =
      * nie); {@code waechter} null = kein Herzschlag-Block seit dem Start der api (alte Box oder noch keiner) — nie
-     * eine Null-Stufe; {@code anteile.wirksamKw} null = nicht gemeldet.
+     * eine Null-Stufe; {@code anteile.wirksamKw} null = nicht gemeldet; {@code verlustGestern} null = die Box hat für
+     * gestern keinen Anteils-Verlust gemeldet.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record BoxStand(UUID boxId, String rolle, OffsetDateTime zuletztGesehen, Faehigkeit faehigkeit,
-            Messpunkt messpunkt, Waechter waechter, PlanStand plan, AnteilStand anteile) {}
+            Messpunkt messpunkt, Waechter waechter, PlanStand plan, AnteilStand anteile, VerlustTag verlustGestern) {}
 
     /** Je Fähigkeit {@code gemeldet} · {@code versions_tabelle} · {@code fehlt}. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

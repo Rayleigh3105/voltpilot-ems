@@ -16,6 +16,7 @@ import type {
   UemsRevision,
   UemsSprungMessung,
   UemsSprungprobe,
+  UemsVerlustTag,
 } from './api';
 import { zahl as deutscheZahl } from './zahl';
 
@@ -253,6 +254,7 @@ export interface BoxSpalte {
   plan: { veroeffentlicht: Zelle; angenommen: Zelle; ungleich: boolean };
   revision: { gesendet: Zelle; quittiert: Zelle; ungleich: boolean };
   wirksam: { einspeisung: Zelle; bezug: Zelle };
+  verlustGestern: Zelle;
 }
 
 const RUECKFALL: Record<string, string> = { am_geraet: 'am Gerät hinterlegt', katalog: 'laut Katalog', ohne_angabe: 'ohne Angabe' };
@@ -275,6 +277,21 @@ function geraeteZeilen(box: string, einrichten: UemsGemeinsameSteuerungEinrichte
 
 function kwZelle(n: number | null | undefined): Zelle {
   return n == null ? { text: NICHT_GEMELDET, unbekannt: true } : { text: `${zahl(n)} kW` };
+}
+
+const GRUNDLAGE: Record<string, string> = { prognose: 'Prognose', nowcast: 'Nowcast' };
+
+/**
+ * Folgepaket zu IP-22: der Anteils-Verlust von gestern — die Untergrenze der Box (gemessen) und die Schätzung der
+ * Cloud (aus der PV-Prognose) nebeneinander, nie verrechnet. Ohne Meldung der Box: nicht gemeldet, keine Null.
+ */
+export function verlustGesternZelle(v: UemsVerlustTag | null | undefined): Zelle {
+  if (!v) return { text: NICHT_GEMELDET, unbekannt: true };
+  const gemessen = `mindestens ${zahl(v.verlust_kwh)} kWh (gemessen)`;
+  const g = v.schaetzung_grundlage ?? null;
+  if (g == null) return { text: `${gemessen} · Schätzung noch nicht gerechnet`, unbekannt: true };
+  if (g === 'keine' || v.schaetzung_kwh == null) return { text: `${gemessen} · keine Schätzung (keine Prognose)`, unbekannt: true };
+  return { text: `${gemessen} · geschätzt ${zahl(v.schaetzung_kwh)} kWh (${GRUNDLAGE[g] ?? g})` };
 }
 
 /** Die Stufen aus dem Herzschlag-Block (`GemeinsameSteuerungHerzschlag.WAECHTER_STUFEN`). */
@@ -341,6 +358,7 @@ export function boxSpalten(
         ungleich: revUngleich,
       },
       wirksam: { einspeisung: kwZelle(b.anteile.wirksam_kw?.einspeisung), bezug: kwZelle(b.anteile.wirksam_kw?.bezug) },
+      verlustGestern: verlustGesternZelle(b.verlust_gestern),
     };
   });
 }

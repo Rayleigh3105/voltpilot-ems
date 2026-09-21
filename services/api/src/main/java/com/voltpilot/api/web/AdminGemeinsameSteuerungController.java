@@ -7,6 +7,8 @@ import com.voltpilot.api.uems.GemeinsameSteuerungService;
 import com.voltpilot.api.uems.SprungprobeDienst;
 import com.voltpilot.api.uems.SprungprobeRegel;
 import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
@@ -58,6 +61,25 @@ public class AdminGemeinsameSteuerungController {
     @GetMapping
     public GemeinsameSteuerungDto.Betreiberblatt blatt(@PathVariable UUID siteId) {
         return boxStand.blatt(siteId);
+    }
+
+    /**
+     * Recht: {@code plattform.betrieb} — lesend: der Pilot-Bericht des Anteils-Verlusts (Folgepaket zu IP-22, E1) je
+     * Box und in Summe über {@code von}…{@code bis} (Tage der Anlage, beide zählen mit, höchstens 366): Untergrenze der
+     * Box und Schätzung der Cloud getrennt. Nur für die Plattform — der Captain entscheidet damit über S4.
+     */
+    @GetMapping("/anteil-verlust")
+    public GemeinsameSteuerungDto.PilotBericht anteilVerlust(@PathVariable UUID siteId,
+            @RequestParam(required = false) String von, @RequestParam(required = false) String bis) {
+        LocalDate v;
+        LocalDate b;
+        try {
+            v = LocalDate.parse(von == null ? "" : von);
+            b = LocalDate.parse(bis == null ? "" : bis);
+        } catch (DateTimeParseException e) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("von und bis sind Tage (JJJJ-MM-TT).");
+        }
+        return boxStand.pilotBericht(siteId, v, b);
     }
 
     /**
