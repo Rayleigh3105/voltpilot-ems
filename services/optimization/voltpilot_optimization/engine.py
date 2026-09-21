@@ -230,6 +230,22 @@ def _shadow_publish_v2(
             "publish_v2.shadow_failed",
             extra={"context": {"site_id": str(site.site_id), "error": str(exc)}},
         )
+        return
+    # AP-15 IP-10 (P3): the cloud notes "veröffentlicht" per box AFTER the
+    # send; the box's receipt fills "angenommen". A failed note (e.g. an api
+    # not yet migrated) costs the operator view one row, never the plan.
+    if v2_repository is not None:
+        try:
+            v2_repository.record_publication(
+                site_plan, site.device_id, datetime.now(timezone.utc)
+            )
+        except Exception as exc:
+            logger.warning(
+                "publish_v2.publication_not_recorded",
+                extra={
+                    "context": {"site_id": str(site.site_id), "error": str(exc)}
+                },
+            )
 
 
 def run_cycle(

@@ -8,6 +8,9 @@ import "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcest
 type StatusExtension struct {
 	DataSources []datasourcestatus.Status
 	Supports    []string
+	// GemeinsameSteuerung: nil = no block (a box without a plan 2.0 sends the
+	// heartbeat it sent before AP-15 IP-10, apart from supports[]).
+	GemeinsameSteuerung *GemeinsameSteuerung
 }
 
 // BuiltSupports advertises only capabilities implemented by this runtime bundle.
@@ -16,7 +19,9 @@ type StatusExtension struct {
 // over .../v2/events (internal/boxevents). automation_paused_until_revoked is
 // present because entities.Registry decodes the field and Paused keeps the Ruhe
 // in force without an end. A name is added here only when the way behind it
-// works - never because a package exists.
+// works - never because a package exists. plan_quittung (AP-15 IP-10): the agent
+// really judges every plan 2.0 on .../v2/plan-result (agent/plan_result.go).
 func BuiltSupports() []string {
-	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked"}
+	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
+		"plan_quittung"}
 }

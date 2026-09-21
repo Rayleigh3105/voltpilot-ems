@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mqtt-plan-result.schema.json",
+  "title": "Plan-Quittung 1.0 (…/v2/plan-result) und Herzschlag-Block gemeinsame_steuerung",
+  "type": "object",
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "ts", "angenommen"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "plan_id": { "type": "string", "format": "uuid" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "angenommen": { "type": "boolean" },
+    "grund": {
+      "enum": ["unlesbar", "schema_version_unbekannt", "slot_minutes_ungueltig", "keine_entitaeten", "fremde_box"]
+    },
+    "lauf_nr": { "type": "integer", "minimum": 1 },
+    "anteile_revision": { "type": "integer", "minimum": 0 }
+  },
+  "anyOf": [
+    { "properties": { "angenommen": { "const": true } }, "not": { "required": ["grund"] }, "required": ["plan_id"] },
+    { "properties": { "angenommen": { "const": false } }, "required": ["grund"] }
+  ],
+  "$defs": {
+    "herzschlag_block": {
+      "title": "Block gemeinsame_steuerung im Status-Herzschlag 1.0 (wahlfrei)",
+      "type": "object",
+      "required": ["plan_id"],
+      "properties": {
+        "plan_id": { "type": "string", "format": "uuid" },
+        "waechter": {
+          "type": "object",
+          "properties": {
+            "einspeisung": { "$ref": "#/$defs/waechter_stufe" },
+            "bezug": { "$ref": "#/$defs/waechter_stufe" }
+          },
+          "additionalProperties": false
+        },
+        "messpunkt_alter_s": { "type": "integer", "minimum": 0 },
+        "rolle": { "enum": ["fuehrt", "steuert_mit", "liest"] },
+        "anteile_revision": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "waechter_stufe": { "enum": ["aus", "ueberwacht", "regelt", "haelt", "zieht_zusammen", "sicherheitskappe"] }
+  }
+}

@@ -228,17 +228,20 @@ func (a *Agent) onPlanV2(payload []byte) {
 		a.runPlanExecutors(now)
 		return
 	}
-	p, err := plan2.Parse(payload, now)
+	// AP-15 IP-10 (P3): every verdict - acceptance and each rejection - is
+	// receipted on …/v2/plan-result; the judgement itself is unchanged.
+	p, quittung, err := beurteilePlan2(payload, a.State.Get().DeviceID, now)
 	if err != nil {
-		slog.Warn("v2 plan payload rejected", "err", err)
-		return
-	}
-	snap := a.State.Get()
-	if p.DeviceID != "" && snap.DeviceID != "" && p.DeviceID != snap.DeviceID {
-		slog.Warn("v2 plan for another device ignored", "payload_device", p.DeviceID)
+		if quittung.Grund == plan2.GrundFremdeBox {
+			slog.Warn("v2 plan for another device ignored", "err", err)
+		} else {
+			slog.Warn("v2 plan payload rejected", "err", err)
+		}
+		a.quittierePlan2(quittung)
 		return
 	}
 	a.applyPlan2(p, now)
+	a.quittierePlan2(quittung)
 	if a.plan2Store != nil {
 		if err := a.plan2Store.Save(payload, now); err != nil {
 			slog.Warn("v2 plan not persisted", "err", err)

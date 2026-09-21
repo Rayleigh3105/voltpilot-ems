@@ -11,6 +11,8 @@
   ganze Vokabular: sechs Box-Arten, kein `clock_jump` · [Box-Seite](uems-box-ereignisse.md).
 - `automation_paused_until_revoked` wird gemeldet, weil `entities.Registry` das Feld liest und
   `Paused` die Ruhe tatsächlich bis zum Widerruf hält. Der gemeinsame Go-Test koppelt beides.
+- `plan_quittung` (AP-15 IP-10) wird gemeldet, weil `agent/plan_result.go` jedes Urteil über einen
+  Plan 2.0 quittiert; bewusst keine Zeile in `edge-capabilities.json` · [Plan-Quittung](uems-plan-quittung.md).
 - `edge-supports-vectors.json`: Go `cloud/edge_supports_test.go`, Java
   `EdgeSupportsListenerTest`, TS `edgeSupportsVectors.test.ts` gemeinsam prüfen.
   Die bestehenden `data-source-vectors.json`-Leser prüfen weiterhin die Tabellenregel.

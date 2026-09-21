@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "vertrag": "mqtt-plan-result.md",
+  "gruende": ["unlesbar", "schema_version_unbekannt", "slot_minutes_ungueltig", "keine_entitaeten", "fremde_box"],
+  "identitaet": {
+    "tenant_id": "7a1c4e10-0000-4000-8000-000000000001",
+    "site_id": "7a1c4e10-0000-4000-8000-0000000000a1",
+    "device_id": "7a1c4e10-0000-4000-8000-0000000000e4"
+  },
+  "box": [
+    {
+      "name": "angenommen",
+      "plan": {"schema_version": "2.0", "device_id": "7a1c4e10-0000-4000-8000-0000000000e4", "plan_id": "4711aaaa-0000-4000-8000-000000004711", "generated_at": "2027-06-15T08:15:00Z", "slot_minutes": 15,
+        "entities": [{"entity_id": "battery-1", "kind": "storage", "charge_from_grid_allowed": false, "slots": [{"start": "2027-06-15T08:15:00Z", "commands": {"setpoint_kw": 5}}]}]},
+      "erwartet": {"angenommen": true, "plan_id": "4711aaaa-0000-4000-8000-000000004711", "generated_at": "2027-06-15T08:15:00Z"}
+    },
+    {
+      "name": "unlesbar",
+      "roh": "{\"schema_version\": \"2.0\", ",
+      "erwartet": {"angenommen": false, "grund": "unlesbar"}
+    },
+    {
+      "name": "schema_version_unbekannt",
+      "plan": {"schema_version": "1.0", "plan_id": "4711aaaa-0000-4000-8000-000000004711", "generated_at": "2027-06-15T08:15:00Z", "slot_minutes": 15, "entities": []},
+      "erwartet": {"angenommen": false, "grund": "schema_version_unbekannt", "plan_id": "4711aaaa-0000-4000-8000-000000004711", "generated_at": "2027-06-15T08:15:00Z"}
+    },
+    {
+      "name": "slot_minutes_ungueltig",
+      "plan": {"schema_version": "2.0", "plan_id": "4711aaaa-0000-4000-8000-000000004711", "slot_minutes": 0,
+        "entities": [{"entity_id": "battery-1", "slots": [{"start": "2027-06-15T08:15:00Z", "commands": {"setpoint_kw": 5}}]}]},
+      "erwartet": {"angenommen": false, "grund": "slot_minutes_ungueltig", "plan_id": "4711aaaa-0000-4000-8000-000000004711"}
+    },
+    {
+      "name": "keine_entitaeten",
+      "plan": {"schema_version": "2.0", "plan_id": "4711aaaa-0000-4000-8000-000000004711", "slot_minutes": 15, "entities": []},
+      "erwartet": {"angenommen": false, "grund": "keine_entitaeten", "plan_id": "4711aaaa-0000-4000-8000-000000004711"}
+    },
+    {
+      "name": "keine_verwertbaren_slots",
+      "plan": {"schema_version": "2.0", "plan_id": "4711aaaa-0000-4000-8000-000000004711", "slot_minutes": 15,
+        "entities": [{"entity_id": "battery-1", "slots": [{"start": "nicht-iso", "commands": {"setpoint_kw": 5}}]}]},
+      "erwartet": {"angenommen": false, "grund": "keine_entitaeten", "plan_id": "4711aaaa-0000-4000-8000-000000004711"}
+    },
+    {
+      "name": "fremde_box",
+      "plan": {"schema_version": "2.0", "device_id": "7a1c4e10-0000-4000-8000-0000000000e1", "plan_id": "4711aaaa-0000-4000-8000-000000004711", "slot_minutes": 15,
+        "entities": [{"entity_id": "battery-1", "slots": [{"start": "2027-06-15T08:15:00Z", "commands": {"setpoint_kw": 5}}]}]},
+      "erwartet": {"angenommen": false, "grund": "fremde_box", "plan_id": "4711aaaa-0000-4000-8000-000000004711"}
+    }
+  ],
+  "cloud": [
+    {"name": "annahme", "gilt": true,
+      "quittung": {"angenommen": true, "plan_id": "4711aaaa-0000-4000-8000-000000004711", "generated_at": "2027-06-15T08:15:00Z"}},
+    {"name": "ablehnung", "gilt": true,
+      "quittung": {"angenommen": false, "grund": "fremde_box", "plan_id": "4711aaaa-0000-4000-8000-000000004711"}},
+    {"name": "kuenftige_felder_werden_ueberlesen", "gilt": true,
+      "quittung": {"angenommen": true, "plan_id": "4711aaaa-0000-4000-8000-000000004711", "lauf_nr": 4711, "anteile_revision": 3, "kuenftig": "x"}},
+    {"name": "grund_bei_annahme", "gilt": false,
+      "quittung": {"angenommen": true, "grund": "fremde_box", "plan_id": "4711aaaa-0000-4000-8000-000000004711"}},
+    {"name": "ablehnung_ohne_grund", "gilt": false,
+      "quittung": {"angenommen": false, "plan_id": "4711aaaa-0000-4000-8000-000000004711"}},
+    {"name": "unbekannter_grund", "gilt": false,
+      "quittung": {"angenommen": false, "grund": "zu_alt", "plan_id": "4711aaaa-0000-4000-8000-000000004711"}},
+    {"name": "ohne_plan_id_keinem_plan_zuzuordnen", "gilt": false,
+      "quittung": {"angenommen": false, "grund": "unlesbar"}},
+    {"name": "fremde_identitaet", "gilt": false, "payload_device_id": "7a1c4e10-0000-4000-8000-0000000000e1",
+      "quittung": {"angenommen": true, "plan_id": "4711aaaa-0000-4000-8000-000000004711"}}
+  ],
+  "r11": {
+    "_comment": "Fall R11, Ahrenberg AN-1, Dienstag 15.06.2027 (MESZ): Lauf 4710 um 10:00, Lauf 4711 um 10:15; Box Verwaltung (E-4) bekommt 4711 nicht.",
+    "laeufe": [
+      {"lauf_nr": 4710, "plan_id": "4710aaaa-0000-4000-8000-000000004710", "generated_at": "2027-06-15T08:00:00Z"},
+      {"lauf_nr": 4711, "plan_id": "4711aaaa-0000-4000-8000-000000004711", "generated_at": "2027-06-15T08:15:00Z"}
+    ],
+    "boxen": [
+      {"box": "E-1", "quittiert": ["4710aaaa-0000-4000-8000-000000004710", "4711aaaa-0000-4000-8000-000000004711"],
+        "erwartet": {"veroeffentlicht": "2027-06-15T08:15:00Z", "angenommen": "2027-06-15T08:15:00Z"}},
+      {"box": "E-4", "quittiert": ["4710aaaa-0000-4000-8000-000000004710"],
+        "erwartet": {"veroeffentlicht": "2027-06-15T08:15:00Z", "angenommen": "2027-06-15T08:00:00Z"}}
+    ]
+  }
+}

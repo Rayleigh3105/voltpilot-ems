@@ -30,6 +30,12 @@
       "meaning": "Die Box hält eine Ruhe ohne Enddatum, bis die Cloud sie ausdrücklich aufhebt.",
       "advertised": true,
       "evidence": "edge-app/core/internal/entities/ruhe_vectors_test.go"
+    },
+    {
+      "name": "plan_quittung",
+      "meaning": "Die Box quittiert jeden Plan 2.0 fachlich auf .../v2/plan-result (angenommen oder abgelehnt mit Grund aus dem geschlossenen Vokabular) und spiegelt den wirksamen Plan im Herzschlag-Block gemeinsame_steuerung (mqtt-plan-result 1.0, AP-15 IP-10).",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/agent/plan_result_test.go"
     }
   ],
   "cases": [
@@ -100,6 +106,16 @@
       "table": [],
       "expected": [
         "automation_paused_until_revoked"
+      ]
+    },
+    {
+      "name": "reported_plan_quittung_is_recognized",
+      "supports": [
+        "plan_quittung"
+      ],
+      "table": [],
+      "expected": [
+        "plan_quittung"
       ]
     },
     {
