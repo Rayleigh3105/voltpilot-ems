@@ -53,7 +53,9 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
     eben angelegten Entwurf weiter). Sobald die Messstelle einen Ort hat, gilt der Zaun ohne Ausnahme.
   - Interne Leser (`MessstelleService#eine`, `MessstelleRegisterService#liste(Instant, Filter)`, Bilanz, Formel,
     Kennzahl, Standort-Übersicht) bleiben ungezäunt. Beweis: `LesewegImZugriffApiTest`.
-  - Offen: die Werte einer Messstelle, die über `measurement_point` laufen, fallen weiter über `site_scope` weg.
+  - ⚠ Offen: `MessstelleRegisterRepository` (in der Liste `OFFEN` von `SiteScopeArchitekturTest`) liest die
+    Formel-Kanäle über `device_measurement_sample` ohne Anlage; die Route zeigt davon nur Messstellen im Zugriff. Die
+    Werte, die über `measurement_point` laufen, fallen weiter über `site_scope` weg.
 - **Vorlagen und Import-Protokoll** (gleiches Paket): `GET /bezugsdaten/vorlagen` zeigt nur Vorlagen, deren Bezüge
   (`bezugsdaten_vorlage_bezug`) alle `#lesbar` sind (AP-09 E12); `GET /bezugsdaten/importe` lässt einen Import mit
   einem Ziel außerhalb weg (`RechtPruefung#erlaubt`, dieselbe Prüfung wie das Detail), statt die ganze Liste mit 404
