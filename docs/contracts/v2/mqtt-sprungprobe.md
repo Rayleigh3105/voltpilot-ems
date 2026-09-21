@@ -4,9 +4,10 @@ UEMS AP-15 IP-21, Kasten E3 = A, Regeln T5/I3/I4, Fälle R1/R19, Befund A17. Clo
 [steuerungsverbund.md §10](steuerungsverbund.md#10-die-sprungprobe-ip-21). Regel und Vektoren:
 `uems/SprungprobeRegel` ⟷ [`sprungprobe-vectors.json`](sprungprobe-vectors.json) — die Box rechnet sie **nicht**.
 
-**Stand:** die Cloud-Seite ist gebaut (Auftrag senden, Bericht prüfen und auswerten). Der Box-Ausführer (`edge-app/core`)
-folgt als eigener PR; bis dahin meldet keine Box die Fähigkeit `sprungprobe`, und die Route antwortet 409
-`sprungprobe_nicht_gemeldet`. Es gibt kein Edge-Release in diesem Schritt.
+**Stand:** Cloud-Seite (Auftrag senden, Bericht prüfen und auswerten) und Box-Ausführer (`edge-app/core`:
+`internal/sprungprobe` + `agent/sprungprobe.go`, Fähigkeit `sprungprobe` in `BuiltSupports()`) sind gebaut. Wirksam an
+einer Anlage wird die Box-Seite erst mit einem Edge-Release (Hand des Betreibers); bis dahin meldet keine Box die
+Fähigkeit, und die Route antwortet 409 `sprungprobe_nicht_gemeldet`.
 
 ## 1. Topics
 
@@ -41,7 +42,7 @@ ohne Gemeinsame Steuerung bekommt nie ein Topic.
 - Obergrenzen (benannte Konstanten in `SprungprobeRegel`, CHECK in der Tabelle): `sprung_kw` > 0 und ≤ 50, `dauer_s` 60,
   `wiederholungen` 2, `pause_s` 60. Nach `gueltig_bis` (Auslösen + 120 s) beginnt die Box den Auftrag nicht mehr.
 
-**Pflichten der Box (für den Box-PR):** sie prüft die Identität wie beim Anteils-Dokument (T4) und verwirft sonst still;
+**Pflichten der Box** (gebaut in `internal/sprungprobe`, verdrahtet in `agent/sprungprobe.go`): sie prüft die Identität wie beim Anteils-Dokument (T4) und verwirft sonst still;
 sie verstellt EINE ihrer Stellgrößen für `dauer_s` um höchstens `sprung_kw` — nie mehr, als sie gerade erzeugt bzw.
 verbraucht, und nie über das hinaus, was Plan und Anteil gerade erlauben (die Probe ist ein weiterer SENKENDER Wunsch;
 kein neuer Schreibpfad zu einem Gerät, keine neue Registerfreigabe, §6.3) — stellt danach zurück, wartet `pause_s`,
@@ -50,6 +51,28 @@ Geräteschutz), bei Regelung aus, ohne passende Stellgröße, nach einem Neustar
 nicht voraus: sie läuft in S1, vor dem Scharfschalten (§5.3); die Wächter stehen über ihr. Ohne Auftrag ist die Box
 Byte für Byte wie vorher. Nach dem letzten Sprung wartet sie 30 s (der Netzpunkt kommt über die Telemetrie an) und
 berichtet.
+
+**So hält die Box das (Box-Seite):**
+
+- **Stellgrößen:** `erzeugung_senken` = die Anlagen-PV-Kappe (`pv_limit_kw`, dieselbe Größe, die Plan und
+  Einspeisewächter tragen); `verbrauch_senken` = das Laden der Batterie (`battery_setpoint_kw` > 0). Der Deckel wird zu
+  Beginn jedes Sprungs an der EIGENEN Messung verankert (PV gemessen bzw. `battery_power_kw` gemessen, + = Laden):
+  max(Messung − `sprung_kw`, 0), fest für den ganzen Sprung. Unter 1 kW oder ohne Messung: kein Sprung
+  (`keine_stellgroesse`).
+- **Verknüpfung:** nur als Minimum in den fertigen Sollwert (`sprungprobe.Kappe`/`Laden`): das Laden hinter allen
+  Klemmen und beiden Bezugs-Wächtern, vor Abregel-Verfolger und Einspeisewächter; die PV-Kappe NACH dem
+  Einspeisewächter. Eine Entladung, ein ruhender Speicher oder eine fehlende Kappe werden nie angehoben.
+- **Abbruch (derselbe Takt):** Einspeisewächter hält die Erzeuger zurück, regelt blind oder senkt die Entladung →
+  `einspeisewaechter`; ein Bezugs-Wächter (Lastspitze, Netzladen-Deckel IP-19) senkt den Sollwert → `bezugswaechter`;
+  eingefrorener Netzpunkt-Wert (IP-20, nur gelesen) → `eingefroren`; Schutz-Sperre des Batterie-BMS → `geraeteschutz`;
+  Regelung aus → `regelung_aus`; über `gueltig_bis` bzw. die Gesamtdauer → `abgelaufen`. In der Pause bricht ein
+  Wächter genauso ab; im Nachlauf nicht mehr.
+- **Genau ein Bericht:** er wartet, bis der Link ihn nimmt; der offene Auftrag steht auf der Platte
+  (`sprungprobe-offen.json`) — nach einem Neustart meldet die Box ihn `abgebrochen`/`neustart`, sie setzt nie einen
+  Sprung fort. Ein zweiter Auftrag, solange einer läuft oder unberichtet ist, wird nicht genommen.
+- **Hinweis für das Auslösen:** andere Regelkreise der Box (Eigenverbrauch, Lastspitze) können einen Sprung am
+  Netzpunkt ausgleichen; ein Bezugs-Eingriff bricht ab, ein Eigenverbrauchs-Ausgleich zeigt sich als `nicht_gesehen`
+  bzw. `zu_klein` — nie als Bestanden. Auslösen, wenn die Bedingungen passen (§5.3).
 
 ## 3. Bericht (Box → Cloud)
 
@@ -84,4 +107,5 @@ berichtet.
 ```bash
 (cd services/api && ./mvnw test -Dtest='SprungprobeRegelTest,GemeinsameSteuerungSchnittstelleVertragTest')
 (cd services/api && ./mvnw test -Dtest='SprungprobeApiTest')   # Testcontainers, Anlagenmodell — nie eine echte Anlage
+(cd edge-app/core && go test ./internal/sprungprobe/ ./internal/cloud/ ./internal/agent/ -run 'Sprungprobe|Sprung|Abbruch|OhneAuftrag|Lesen|MitProbe|KeinSprung')
 ```

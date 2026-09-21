@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil"]` steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe"]` steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -32,8 +32,8 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
 - `sprungprobe` (AP-15 IP-21): die Box führt einen Sprungprobe-Auftrag auf `.../v2/sprungprobe` aus und berichtet auf
   `.../v2/sprungprobe-result` ([Sprungprobe](mqtt-sprungprobe.md)). Die Route
   `POST …/admin/sites/{id}/gemeinsame-steuerung/sprungprobe` fragt dieses Wort (`sprungprobe_nicht_gemeldet`). **Nur
-  gemeldet, keine Zeile in `edge-capabilities.json`** (Begründung wie `plan_quittung`). Die Cloud kennt das Wort; die
-  Box meldet es erst mit ihrem Ausführer (`advertised: false` in den Vektoren, bis der Box-PR es umstellt).
+  gemeldet, keine Zeile in `edge-capabilities.json`** (Begründung wie `plan_quittung`). Die Box meldet es, weil ihr
+  Ausführer gebaut ist (`internal/sprungprobe`, `agent/sprungprobe.go`; Beleg `agent/sprungprobe_test.go`).
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

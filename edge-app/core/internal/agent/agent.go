@@ -52,6 +52,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/registerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/shelly"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sprungprobe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
@@ -394,6 +395,12 @@ type Agent struct {
 	// AP-15 IP-22: what the feed-in share holds back, per local day of the
 	// plant, on disk (anteil_verlust.go). Counted only with a share document.
 	verlust *guards.AnteilVerlust
+	// AP-15 IP-21: the one running Sprungprobe and its report waiting for the
+	// link (sprungprobe.go). nil/nil = no order: the setpoint is untouched.
+	sprungMu           sync.Mutex
+	sprung             *sprungprobe.Probe
+	sprungBericht      *sprungprobe.Bericht
+	sprungSendetGerade bool
 
 	// Edge-local deadline fallback (agent/flexfallback.go + internal/
 	// flexfallback; Verbrauchssteuerung Inkrement 6, D-20): the validated
@@ -763,6 +770,7 @@ func New(cfg config.Config) (*Agent, error) {
 	}
 	a.restoreAnteile(as)
 	a.restoreVerlust(cfg.DataDir)
+	a.restoreSprungprobe(time.Now())
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
@@ -1262,6 +1270,9 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// AP-15 IP-17: the share document of a Gemeinsame Steuerung -
 		// judged, stored, receipted and mirrored (verbund_anteile.go).
 		OnVerbundAnteile: a.onVerbundAnteile,
+		// AP-15 IP-21: a Sprungprobe order - run bounded, reported once
+		// (sprungprobe.go).
+		OnSprungprobe: a.onSprungprobe,
 		// OTA Stufe 2: das zugewiesene Release kommt retained ueber denselben
 		// Link. Es wird geprueft, abgelegt und gemeldet - angewandt wird es
 		// beaufsichtigt (update.sh --from-target).
@@ -2943,6 +2954,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// EEG solar-only, SoC floor and the rated band are never violated. With no
 	// fresh grid measurement the tracker reports inactive - never regulate
 	// blind; a missed quarter only costs money, never safety.
+	// AP-15 IP-21: what the setpoint was before the import-side guards - if one
+	// of them lowers it on this tick, a running Sprungprobe aborts.
+	vorBezugswaechter := kw
 	peakActive := false
 	var quarterMean *float64
 	if marketCorrectionsAllowed && peakTarget != nil {
@@ -2970,6 +2984,20 @@ func (a *Agent) applySetpoint(now time.Time) {
 		stufe := battStufe(*d, before, kw < before)
 		a.setBezugStufe(nil, &stufe)
 	}
+
+	// SPRUNGPROBE (AP-15 IP-21, sprungprobe.go): a running probe lowers ONE
+	// set value - here the battery's charge (verbrauch_senken); the PV cap
+	// below, after the feed-in watchdog. It sits after every clamp and both
+	// import-side guards, before the curtailment tracker and the feed-in
+	// watchdog, so they see what the battery will really take; it only ever
+	// LOWERS a charge. An import-side guard that acted on this tick, a frozen
+	// connection-point value or the battery's protection stop abort it at
+	// once. Without an order the Wunsch is empty and nothing changes.
+	a.mu.Lock()
+	battGemessen := a.lastBattKw
+	a.mu.Unlock()
+	sprung := a.sprungSchritt(now, r, battGemessen, kw < vorBezugswaechter, limits.Bms)
+	kw = sprungprobe.Laden(kw, sprung)
 
 	// DYNAMISCHE EINSPEISEBEGRENZUNG (2026-08-06): the real-time watchdog at the
 	// grid connection point. The plan already carries the site's feed-in limit as
@@ -3047,12 +3075,15 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// generation THIS box controls (a producer another box reads is not in
 	// pv_total, W11).
 	var exportCap guards.ExportCap
+	entladungGesenkt := false
 	if an := a.exportAnteil(); an != nil {
 		// B2 (AP-15 IP-20): a frozen value counts as blind - its age from its
 		// last change (eingefroren.go)
 		an.EingefrorenSeit = a.eingefrorenSeit(now)
 		exportCap = a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
+		vorEntladeKappe := kw
 		kw = lowerDischarge(kw, exportCap.DischargeCapKw)
+		entladungGesenkt = kw != vorEntladeKappe
 		// AP-15 IP-22: count what the share holds back (anteil_verlust.go)
 		a.verlust.Zaehle(now, exportCap, an.Fuehrt, exportCap.PvKw)
 	} else {
@@ -3086,6 +3117,14 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// only, it decides nothing.
 	certSource := a.certSource(family)
 	controlEnabled := a.Cfg.ControlEnabled && certified
+
+	// SPRUNGPROBE, second half (AP-15 IP-21): the feed-in watchdog that holds
+	// the producers back, regulates blind or lowers the discharge on this tick,
+	// or control off, abort the probe - its PV ceiling then never reaches the
+	// setpoint. Otherwise the ceiling composes into the plant's PV cap as a
+	// minimum (sprungprobe.Kappe), never a widening, AFTER the watchdog.
+	sprung = a.sprungNachher(now, sprung, exportCap, entladungGesenkt, controlEnabled)
+	pvLimit = sprungprobe.Kappe(pvLimit, sprung)
 
 	// NATIVE SELF-REGULATION (Selbstregel-Modus, guards/nativemode.go): in a slot
 	// the CLOUD marked worth covering from the battery, hand the SETPOINT itself
