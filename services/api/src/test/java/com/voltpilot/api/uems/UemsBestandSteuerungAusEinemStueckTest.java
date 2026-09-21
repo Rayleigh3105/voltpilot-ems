@@ -217,6 +217,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
     @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ProvisioningPublisher provisioningPublisher;
     @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) MeasurementConfigPublisher measurementPublisher;
     @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) ConsumerOverridePublisher consumerPublisher;
+    @MockBean(reset = org.springframework.boot.test.mock.mockito.MockReset.NONE) VerbundAnteilePublisher verbundAnteilePublisher;
     @Autowired ApplicationContext context;
     @Autowired MockMvc mvc;
     @Autowired EntityRegistryService registry;
@@ -690,7 +691,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
         var result = new LinkedHashMap<String, Object>();
         for (Object sender : List.of(registryPublisher, probePublisher, chargingPublisher, boostPublisher,
                 registerPublisher, flowPublisher, certificationPublisher, otaPublisher, provisioningPublisher,
-                measurementPublisher, consumerPublisher))
+                measurementPublisher, consumerPublisher, verbundAnteilePublisher))
             result.put(mockingDetails(sender).getMockCreationSettings().getTypeToMock().getSimpleName(), sender);
         return result;
     }

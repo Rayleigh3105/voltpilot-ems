@@ -39,8 +39,11 @@ class UemsMetrikenWiringTest {
             // AP-15 IP-3: der Grenzblatt-Anstoß lebt beim Ladepark.
             Path.of("src/main/java/com/voltpilot/api/chargers"));
 
-    /** {@code PlanResultListener} (AP-15 IP-10) hält mit seinem Takt nur die Broker-Verbindung, es gibt keinen Lauf, der stehen könnte. */
-    private static final Set<String> KEIN_LAEUFER = Set.of("PlanResultListener");
+    /**
+     * {@code PlanResultListener} (AP-15 IP-10) und {@code VerbundAnteileResultListener} (AP-15 IP-7) halten mit ihrem
+     * Takt nur die Broker-Verbindung, es gibt keinen Lauf, der stehen könnte.
+     */
+    private static final Set<String> KEIN_LAEUFER = Set.of("PlanResultListener", "VerbundAnteileResultListener");
 
     @Test
     void jedeKlasseMitTaktOderStartLaufStehtImKatalogUndUmgekehrt() throws IOException {

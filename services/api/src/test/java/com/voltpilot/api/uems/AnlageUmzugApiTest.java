@@ -142,6 +142,7 @@ class AnlageUmzugApiTest {
     @MockBean ProvisioningPublisher provisioningPublisher;
     @MockBean MeasurementConfigPublisher measurementConfigPublisher;
     @MockBean ConsumerOverridePublisher consumerOverridePublisher;
+    @MockBean VerbundAnteilePublisher verbundAnteilePublisher;
 
     @LocalServerPort
     int port;
@@ -548,6 +549,7 @@ class AnlageUmzugApiTest {
         m.put("ProvisioningPublisher", provisioningPublisher);
         m.put("MeasurementConfigPublisher", measurementConfigPublisher);
         m.put("ConsumerOverridePublisher", consumerOverridePublisher);
+        m.put("VerbundAnteilePublisher", verbundAnteilePublisher);
         return m;
     }
 
