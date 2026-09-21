@@ -85,18 +85,19 @@ public class MessstelleFormelController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate am) {
         imZugriff(id);
         MessstelleFormelDto.Formel f = formeln.formel(id, am);
-        return rechte.alleLesbar(RechtZiel.MESSSTELLE, formeln.eingangsMessstellen(id, am)) ? f : ohneFremde(f);
+        return alleImZugriff(formeln.eingaenge(id, am)) ? f : ohneFremde(f);
     }
 
     /**
      * Die Formel für einen Leser, der nicht jeden Eingang sieht (AP-03 R-A3/R-A6/R-A7): kein Term, der eine Messstelle
-     * außerhalb nennt — weder Kennung noch Größe noch Faktor —, die übrigen lückenlos durchnummeriert (eine Lücke
-     * verriete die Anzahl), und der Hinweis ohne Namen. Die Messstelle selbst bleibt sichtbar.
+     * oder eine Komponente außerhalb nennt — weder Kennung noch Kanal noch Größe noch Faktor —, die übrigen lückenlos
+     * durchnummeriert (eine Lücke verriete die Anzahl), und der Hinweis ohne Namen. Die Messstelle selbst bleibt sichtbar.
      */
     private MessstelleFormelDto.Formel ohneFremde(MessstelleFormelDto.Formel f) {
         List<MessstelleFormelDto.Term> terme = new ArrayList<>();
         for (MessstelleFormelDto.Term t : f.terme()) {
-            if (t.quellMessstelleId() == null || rechte.lesbar(RechtZiel.MESSSTELLE, t.quellMessstelleId())) {
+            if ((t.quellMessstelleId() == null || rechte.lesbar(RechtZiel.MESSSTELLE, t.quellMessstelleId()))
+                    && (t.entityId() == null || formeln.komponenteSichtbar(t.entityId()))) {
                 terme.add(new MessstelleFormelDto.Term(terme.size(), t.eingangArt(), t.entityId(), t.pointKey(),
                         t.quellMessstelleId(), t.vorzeichen(), t.faktor(), t.giltAlsErzeugung(), t.groesse(),
                         t.eingerichtet(), t.verteilungZiel(), t.anteil()));
@@ -105,6 +106,11 @@ public class MessstelleFormelController {
         return new MessstelleFormelDto.Formel(f.messstelleId(), f.schemaVersion(), f.hauptgroesse(),
                 List.copyOf(terme), f.formelVorhanden(), f.eingaengeEingerichtet(), f.fassungAm(),
                 RechtPruefung.AUSSERHALB_ZUGRIFF);
+    }
+
+    /** Liegt jeder Eingang der Zahl im Zugriff (AP-03 R-A3)? Messstellen und Komponenten der Messkanal-Terme. */
+    private boolean alleImZugriff(MessstelleFormelService.Eingaenge e) {
+        return formeln.imZugriff(e, ms -> rechte.alleLesbar(RechtZiel.MESSSTELLE, ms));
     }
 
     /** Außerhalb des Zugriffs (AP-03 R-A1): Status und Körper einer Kennung, die es nicht gibt. */
@@ -137,7 +143,7 @@ public class MessstelleFormelController {
     public MessstelleFormelDto.Wert wert(@PathVariable UUID id) {
         imZugriff(id);
         MessstelleFormelDto.Wert w = formeln.wert(id);
-        return rechte.alleLesbar(RechtZiel.MESSSTELLE, formeln.eingangsMessstellen(id, null)) ? w
+        return alleImZugriff(formeln.eingaenge(id, null)) ? w
                 : new MessstelleFormelDto.Wert(null, w.einheit(), true, List.of(), null,
                         RechtPruefung.AUSSERHALB_ZUGRIFF);
     }
@@ -151,7 +157,7 @@ public class MessstelleFormelController {
             @RequestParam(name = "range", required = false) String range) {
         imZugriff(id);
         MessstelleFormelDto.Verlauf v = formeln.verlauf(id, range);
-        return rechte.alleLesbar(RechtZiel.MESSSTELLE, formeln.eingangsMessstellenDesVerlaufs(id, range)) ? v
+        return alleImZugriff(formeln.eingaengeDesVerlaufs(id, range)) ? v
                 : new MessstelleFormelDto.Verlauf(id, v.einheit(), List.of(), RechtPruefung.AUSSERHALB_ZUGRIFF);
     }
 

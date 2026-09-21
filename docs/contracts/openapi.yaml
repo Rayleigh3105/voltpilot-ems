@@ -21940,7 +21940,7 @@ components:
               allOf: [{ $ref: "#/components/schemas/MessstelleFormelFassung" }]
         ausserhalb_zugriff:
           type: string
-          description: "NUR wenn ein Eingang (auch über eine berechnete Messstelle oder einen Rest) außerhalb des Zugriffs des Lesers liegt (AP-03 R-A3/R-A6): dann fehlt jeder Term, der eine Messstelle außerhalb nennt, die übrigen sind lückenlos durchnummeriert. Ohne Namen, ohne Anzahl."
+          description: "NUR wenn ein Eingang (auch über eine berechnete Messstelle oder einen Rest) außerhalb des Zugriffs des Lesers liegt (AP-03 R-A3/R-A6): dann fehlt jeder Term, der eine Messstelle oder die Komponente eines Messkanal-Terms außerhalb nennt, die übrigen sind lückenlos durchnummeriert. Ohne Namen, ohne Anzahl."
           example: "umfasst Standorte außerhalb Ihres Zugriffs"
     MessstelleFormelFassungEintragen:
       type: object
@@ -23631,6 +23631,10 @@ components:
             der Messstelle aber keinen trägt (der Komponente fehlt die Datenquelle) - dasselbe Wort und dieselben
             zwei Kriterien wie `MessstelleRegisterBeobachtung.zuordnung`. Kein Schritt, keine Zahl und kein
             `grund` ändern sich; sonst null. An der Woche und an einer Messstelle mit Ablesungen immer null.
+        ausserhalb_zugriff:
+          type: string
+          description: "NUR an einer BERECHNETEN Messstelle, von deren Eingängen im Zeitraum einer (auch über eine berechnete Messstelle, einen Rest oder als Komponente eines Messkanal-Terms) außerhalb des Zugriffs des Lesers liegt (AP-03 R-A3/R-A6): dann ist `werte` leer - keine Zahl, keine Abdeckung, keine Version. Ohne Namen, ohne Anzahl."
+          example: "umfasst Standorte außerhalb Ihres Zugriffs"
     MessstelleWerteMessstelle:
       type: object
       required: [id, kennzeichen, name, art, groesse, richtung, einheit, wertart]
@@ -23710,6 +23714,10 @@ components:
         zeitzone_herkunft: { type: string }
         grund: { type: string, nullable: true, description: "Ein Wort von MessstelleWerteWert.grund - warum die Periode keine Versionen hat." }
         versionen: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteVersion" } }
+        ausserhalb_zugriff:
+          type: string
+          description: "NUR wie an MessstelleWerte.ausserhalb_zugriff: ein Eingang der berechneten Messstelle liegt in der Periode außerhalb des Zugriffs - dann ist `versionen` leer und `grund` null. Ohne Namen, ohne Anzahl."
+          example: "umfasst Standorte außerhalb Ihres Zugriffs"
     MessstelleWerteVersion:
       type: object
       required: [version, wert_alt, wert_neu, gebildet_am, nachgezogen_am, anlass, entscheidungen]

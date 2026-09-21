@@ -15,6 +15,9 @@ import java.util.UUID;
  * <p><b>Jedes Feld steht immer da, auch leer ({@code null}).</b> Eine Menge verlässt die Route nie
  * ohne ihren Zustand, ihre Abdeckung und ihre Kennzeichen; ein Feld, das „meistens leer“ ist, fehlt
  * darum trotzdem nicht. {@code null} heißt „nicht bekannt“ oder „nicht gebildet“ — nie 0.
+ *
+ * <p>Einzige Ausnahme: {@code ausserhalb_zugriff} (AP-03 R-A3/R-A6) steht nur, wenn ein Eingang einer berechneten
+ * Messstelle außerhalb des Zugriffs liegt — dann ohne Schritte und ohne Versionen, dieselbe Form wie an der Formel.
  */
 public final class MessstelleWerteDto {
     private MessstelleWerteDto() {}
@@ -31,7 +34,14 @@ public final class MessstelleWerteDto {
             Integer version,
             List<Quelle> quellen,
             List<Wert> werte,
-            String zuordnung) {}
+            String zuordnung,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {
+
+        public Werte(Messstelle messstelle, String raster, String von, String bis, String zeitzone,
+                String zeitzoneHerkunft, Integer version, List<Quelle> quellen, List<Wert> werte, String zuordnung) {
+            this(messstelle, raster, von, bis, zeitzone, zeitzoneHerkunft, version, quellen, werte, zuordnung, null);
+        }
+    }
 
     /** Die Messstelle und ihre Hauptgröße — jede Zahl der Antwort steht in {@code einheit}. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -105,7 +115,14 @@ public final class MessstelleWerteDto {
             String zeitzone,
             String zeitzoneHerkunft,
             String grund,
-            List<Version> versionen) {}
+            List<Version> versionen,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {
+
+        public Historie(Messstelle messstelle, String raster, String von, String bis, String zeitzone,
+                String zeitzoneHerkunft, String grund, List<Version> versionen) {
+            this(messstelle, raster, von, bis, zeitzone, zeitzoneHerkunft, grund, versionen, null);
+        }
+    }
 
     /**
      * Eine Version der Periode.

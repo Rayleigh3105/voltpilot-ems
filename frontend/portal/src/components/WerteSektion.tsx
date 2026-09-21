@@ -266,6 +266,8 @@ export function WerteSektion({
   const hinweis = aktuell?.karte ? versionHinweis(aktuell.karte, gewaehlt) : null;
   // Werte kommen an der Box an, gehören aber zu keiner Reihe: gesagt statt als „keine Werte“ gedeutet.
   const zuordnung = aktuell ? zuordnungDerWerte(aktuell.karte, aktuell.liste) : null;
+  // AP-03 R-A3/R-A6: ein Eingang liegt außerhalb des Zugriffs — der Hinweis statt einer leeren Karte und Liste.
+  const ausserhalb = aktuell ? (aktuell.karte?.ausserhalb_zugriff ?? aktuell.liste.ausserhalb_zugriff ?? null) : null;
   const frueher = hinweis !== null && gewaehlt !== aktuell?.karte?.werte[0]?.versionen;
   // Die Zone steht, sobald EINE Antwort da ist; beim Blättern bleibt die Zeile stehen, statt zu springen.
   const zone = geladen ? zeitenKopf(geladen.karte ?? geladen.liste, standortName) : null;
@@ -358,6 +360,8 @@ export function WerteSektion({
           <div aria-busy="true">
             <Skeleton height={148} />
           </div>
+        ) : ausserhalb ? (
+          <p className="vp-wk-version" role="status" data-testid="werte-ausserhalb">Die Werte {ausserhalb}.</p>
         ) : leer ? (
           <WerteLeer leer={leer} weg={weg} onAb={(tag) => waehle(art, wertAm(art, tag))} onQuelleZuordnen={onQuelleZuordnen} />
         ) : (

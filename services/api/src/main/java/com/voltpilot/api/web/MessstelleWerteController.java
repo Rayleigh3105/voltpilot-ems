@@ -1,12 +1,14 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
+import com.voltpilot.api.uems.MessstelleFormelService;
 import com.voltpilot.api.uems.MessstelleWerteRegeln;
 import com.voltpilot.api.uems.MessstelleWerteService;
 import com.voltpilot.api.uems.WertVersionenRegeln;
 import com.voltpilot.api.web.dto.MessstelleWerteDto;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -28,7 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
  * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS — eine fremde Messstelle ist 404, nie 403. Die Route nennt ihre Kennung aus
  * {@code docs/contracts/v2/rechte-matrix.json} im Kommentar ({@code RechteKennungenDerRoutenTest});
- * durchgesetzt wird sie hier NICHT.
+ * durchgesetzt wird sie hier NICHT. Die Zahl einer BERECHNETEN Messstelle fehlt, wenn einer ihrer Eingänge im Zeitraum
+ * außerhalb des Zugriffs liegt (AP-03 R-A3/R-A6, {@code ausserhalb_zugriff}).
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein unbekanntes Raster, ein Zeitpunkt neben dem Raster,
  * {@code von} nicht vor {@code bis}, ein Tag, den es nicht gibt, oder zu viele Schritte sind 400
@@ -39,10 +42,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class MessstelleWerteController {
 
     private final MessstelleWerteService werte;
+    private final MessstelleFormelService formeln;
     private final RechtPruefung rechte;
 
-    public MessstelleWerteController(MessstelleWerteService werte, RechtPruefung rechte) {
+    public MessstelleWerteController(MessstelleWerteService werte, MessstelleFormelService formeln,
+            RechtPruefung rechte) {
         this.werte = werte;
+        this.formeln = formeln;
         this.rechte = rechte;
     }
 
@@ -59,7 +65,7 @@ public class MessstelleWerteController {
             @RequestParam(required = false) String von,
             @RequestParam(required = false) String bis,
             @RequestParam(required = false) String version) {
-        return werte.werteDerRoute(kennzeichen, raster, von, bis, version, this::imZugriff);
+        return werte.werteDerRoute(kennzeichen, raster, von, bis, version, this::imZugriff, this::eingaengeImZugriff);
     }
 
     /**
@@ -73,7 +79,16 @@ public class MessstelleWerteController {
             @RequestParam(required = false) String raster,
             @RequestParam(required = false) String von,
             @RequestParam(required = false) String bis) {
-        return werte.historie(kennzeichen, raster, von, bis, this::imZugriff);
+        return werte.historie(kennzeichen, raster, von, bis, this::imZugriff, this::eingaengeImZugriff);
+    }
+
+    /**
+     * Liegt jeder Eingang einer berechneten Messstelle im Zeitraum im Zugriff (AP-03 R-A3)? Sonst fehlt die gespeicherte
+     * Zahl ganz, an ihrer Stelle {@code ausserhalb_zugriff} — derselbe Baustein wie an Formel, Wert und Verlauf.
+     */
+    private boolean eingaengeImZugriff(UUID messstelle, LocalDate von, LocalDate bis) {
+        return formeln.imZugriff(formeln.eingaenge(messstelle, von, bis),
+                ms -> rechte.alleLesbar(RechtZiel.MESSSTELLE, ms));
     }
 
     /** Außerhalb des Zugriffs (AP-03 R-A1): Status und Körper eines Kennzeichens, das es nicht gibt. */
