@@ -75,6 +75,18 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   Arbitration (V1) und gilt in Ruhe, Pause und ohne Plan (V5); zusätzlich läuft die Box ohne Anteil als Schatten mit,
   das Ergebnis ist nie weiter als ohne Dokument. `sicherheitskappe` im Herzschlag heißt dann „= eigener Anteil“.
   Ohne Dokument verhält sich die Box Byte für Byte wie vor IP-17.
+- **Anteils-Verlust (IP-22, E1 = A, R2):** gilt ein Dokument, zählt die Box je Tag der Anlage (Europe/Berlin), was
+  der Einspeise-Anteil zurückhält (`edge-app/core/internal/guards/anteilverlust.go`): solange die Kappe mit Anteil
+  unter der des Schattens ohne Anteil liegt UND die Erzeuger an ihr stehen, die Rate
+  `min(Kappe ohne Anteil, verfügbare Erzeugung) − Kappe mit Anteil`. Die führende Box mit frischer Messung regelt
+  gegen die ganze Grenze — ihr Abregeln ist nie Anteils-Verlust. **Belastbarkeit:** die verfügbare Erzeugung einer
+  abgeregelten PV misst niemand (kein Register, keine Prognose auf der Box); die Box nimmt den höchsten GEMESSENEN
+  PV-Wert der letzten 15 min — `kwh` ist eine Untergrenze, bei einem festen Anteil unter steigender Sonne nahe 0;
+  `gebunden_s` (wie lange der Anteil die Erzeuger hielt) ist exakt. Ohne PV-Messung wird nichts gezählt. Der Tag
+  liegt atomar auf der Platte (`anteil-verlust.json`, höchstens minütlich geschrieben), ein Neustart zählt weiter;
+  Übertragung im Herzschlag `anteil_verlust` mit laufendem Tag und abgeschlossenem Vortag
+  ([Plan-Quittung](./mqtt-plan-result.md#spiegel-im-herzschlag-y3)); die Cloud schreibt je Box und Tag das Größere
+  (`steuerungsverbund_anteil_verlust`) und nennt es je Mitglied im `GET …/gemeinsame-steuerung` (heute, Monat).
 - **Bezugswächter (IP-19, V3):** gilt ein Dokument, hält die Box den Anteil der Richtung `bezug` über alles, was sie
   auf der Bezugsseite steuert. **Ladebudget** (Ladepark-Rahmen: OCPP-Säulen und `wallboxes[]`,
   `edge-app/core/internal/lastmgmt/bezuganteil.go`): `steuert_mit` — und ein Dokument **ohne** `rolle` — gibt den

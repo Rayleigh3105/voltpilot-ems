@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.repo.DeviceRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -71,7 +72,24 @@ class AnteilVerlustApiTest {
     MockMvc mvc;
 
     @Autowired
-    DataSourceStatusListener listener;
+    DeviceRepository devices;
+
+    @Autowired
+    DeviceDataSourceStatusRepository statuses;
+
+    @Autowired
+    BoxFaehigkeiten faehigkeiten;
+
+    @Autowired
+    AnteilVerlustAusHerzschlag empfang;
+
+    /** Der Zuhörer ist im Testprofil abgeschaltet (kein Broker) — gebaut aus den echten Beans, wie im Betrieb. */
+    private DataSourceStatusListener listener() {
+        DataSourceStatusListener l = new DataSourceStatusListener("tcp://unused", "", "", devices, statuses,
+                faehigkeiten);
+        l.anteilVerlust(empfang);
+        return l;
+    }
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -137,7 +155,7 @@ class AnteilVerlustApiTest {
     private void herzschlag(Welt w, UUID box, String block) {
         String json = "{\"tenant_id\":\"" + w.mandant() + "\",\"site_id\":\"" + w.an1() + "\",\"device_id\":\"" + box
                 + "\",\"ts\":\"2026-06-17T12:00:00Z\",\"gemeinsame_steuerung\":" + block + "}";
-        listener.handle("ems/" + w.mandant() + "/" + w.an1() + "/" + box + "/status",
+        listener().handle("ems/" + w.mandant() + "/" + w.an1() + "/" + box + "/status",
                 json.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -155,10 +173,17 @@ class AnteilVerlustApiTest {
                 + "RETURNING id", UUID.class, t, an1, "E-4-VERLUST-" + nr);
         UUID v = root.queryForObject("INSERT INTO steuerungsverbund (tenant_id, site_id, stufe, epoche, created_by) "
                 + "VALUES (?, ?, 'anteile_aktiv', 1, 'test') RETURNING id", UUID.class, t, an1);
-        for (Object[] m : new Object[][] {{e1, "fuehrt"}, {e4, "steuert_mit"}}) {
+        // die führende Box misst den Netzanschluss (DQ-2)
+        UUID dq2 = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, protokoll, adresse, "
+                + "geraete_ids, kadenz_s) VALUES (?, ?, 'DQ-2', 'modbus_tcp', '10.0.1.2:502', '{1}', 10) RETURNING id",
+                UUID.class, t, an1);
+        root.update("INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, protokoll, adresse, "
+                + "effective_from) SELECT tenant_id, id, ?, protokoll, adresse, TIMESTAMPTZ '2026-01-01T00:00:00Z' "
+                + "FROM data_source WHERE id = ?", e1, dq2);
+        for (Object[] m : new Object[][] {{e1, "fuehrt", dq2}, {e4, "steuert_mit", null}}) {
             root.update("INSERT INTO steuerungsverbund_mitglied (tenant_id, steuerungsverbund_id, site_id, device_id, "
-                    + "rolle, gueltig_ab, created_by) VALUES (?, ?, ?, ?, ?, TIMESTAMPTZ '2026-01-01T00:00:00Z', "
-                    + "'test')", t, v, an1, m[0], m[1]);
+                    + "rolle, data_source_id, gueltig_ab, created_by) VALUES (?, ?, ?, ?, ?, ?, "
+                    + "TIMESTAMPTZ '2026-01-01T00:00:00Z', 'test')", t, v, an1, m[0], m[1], m[2]);
         }
         return new Welt(t, an1, e1, e4);
     }

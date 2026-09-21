@@ -86,6 +86,7 @@ einer Box mit Plan und ohne Dokument ist Byte für Byte der aus IP-10:
 | `anteile_epoche` | wenn ein Anteils-Dokument gilt (IP-17) | Epoche der wirksamen Anteile |
 | `anteile_revision` | wenn ein Anteils-Dokument gilt (IP-17) | Revision der wirksamen Anteile |
 | `anteile_kw` | wenn ein Anteils-Dokument gilt (IP-17) | die WIRKSAMEN eigenen Anteile `{einspeisung, bezug}` in kW, wie im Dokument — „alt“ jedes Zweischritts (Y3, A18) |
+| `anteil_verlust` | wenn ein Anteils-Dokument gilt (IP-22) | was der Einspeise-Anteil zurückhielt, je Tag der Anlage (Europe/Berlin): `{tag, kwh, gebunden_s, vortag?: {tag, kwh, gebunden_s}}` — `kwh` eine UNTERGRENZE (verfügbare Erzeugung nur aus gemessener PV), `gebunden_s` exakt; der Zähler eines Tages wächst nur |
 
 Der Block spiegelt, er entscheidet nichts: die Cloud liest ihn nur für die Überwachung
 (`waechter.*` als Box-Metrik, und eine Box mit Block zählt als Box mit Bezug, AP-15 IP-11) und als Quelle der
