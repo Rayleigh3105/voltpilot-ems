@@ -83,7 +83,9 @@ import org.testcontainers.utility.DockerImageName;
  *       und die Listen derselben Objekte machen dieselbe Aussage. Was daran scheitert, stand benannt in
  *       {@link #ZAUN_OFFEN} (Messstelle, Kostenstelle, Prozess, Vorlagen, Protokoll des Unternehmens) — seit dem
  *       Entscheid vom 21.09.2026 ist die Map leer; die Listen der Kostenstellen und Prozesse sind die benannte
- *       Ausnahme {@link #AUSWAHL_KATALOG} (nur Stammdaten).</li>
+ *       Ausnahme {@link #AUSWAHL_KATALOG} (nur Stammdaten). Seit dem 21.09.2026 trägt die Bühne auch Netzanschlüsse
+ *       ({@link #netzanschluesse}); ihre Kreuzfälle misst
+ *       {@link #derNetzanschlussNenntKeineAnlageUndKeinenZaehlerAusserhalbDesZugriffs}.</li>
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
