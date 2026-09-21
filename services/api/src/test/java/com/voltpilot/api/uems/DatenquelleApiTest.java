@@ -214,7 +214,7 @@ class DatenquelleApiTest {
     Stream<DynamicTest> dieFamilieAntragLaeuftDurchDieSchnittstelle() {
         List<JsonNode> faelle = StreamSupport.stream(vektoren.get("cases").spliterator(), false)
                 .filter(f -> "antrag".equals(f.get("familie").asText())).toList();
-        assertThat(faelle).hasSize(21);
+        assertThat(faelle).hasSize(22);
         return faelle.stream().map(f -> DynamicTest.dynamicTest(f.get("name").asText(), () -> spiele(f)));
     }
 
@@ -270,6 +270,15 @@ class DatenquelleApiTest {
         } else {
             quelle = w.quellen.get(antrag.get("quelle").asText());
             anlage = w.anlage(w.quelleAnlage.get(antrag.get("quelle").asText()));
+        }
+        if (antrag.path("innerhalb_gemeinsamer_steuerung").asBoolean()) {
+            // AP-15 IP-26: der Fakt dahinter — die Anlage hat eine Gemeinsame Steuerung vor dem Scharfschalten (S1),
+            // und die Ziel-Box steuert mit. Die Schnittstelle leitet das Antrag-Feld daraus ab.
+            UUID verbund = root.queryForObject("INSERT INTO steuerungsverbund (tenant_id, site_id, stufe, created_by) "
+                    + "VALUES (?, ?, 'beobachtet', 'test') RETURNING id", UUID.class, w.mandant, anlage);
+            root.update("INSERT INTO steuerungsverbund_mitglied (tenant_id, steuerungsverbund_id, site_id, device_id, "
+                    + "rolle, gueltig_ab) VALUES (?, ?, ?, ?, 'steuert_mit', ?)", w.mandant, verbund, anlage, ziel,
+                    OffsetDateTime.parse(jetzt).minusDays(1));
         }
 
         if (!pruefung.isNull()) {

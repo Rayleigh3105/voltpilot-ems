@@ -355,6 +355,10 @@
         "vergleich_bestaetigt": {
           "description": "Ob der Kunde ausdrücklich bestätigt hat, das Gerät als gekennzeichnete Vergleichsquelle ein zweites Mal zu lesen.",
           "type": "boolean"
+        },
+        "innerhalb_gemeinsamer_steuerung": {
+          "description": "AP-15 IP-26: der Wechsel ist der Weg innerhalb_der_gemeinsamen_steuerung (Familie gemeinsame_steuerung) — Grund 4 `steuerquelle` entfällt. Fehlt das Feld: false.",
+          "type": "boolean"
         }
       }
     },
@@ -491,11 +495,12 @@
         "gemeinsame_steuerung": {
           "description": "Familie gemeinsame_steuerung (AP-15 T6): die Gemeinsame Steuerung der Anlage der Quelle — null ohne. `zustand` wie GET …/gemeinsame-steuerung, `nur_als_aenderung` das Urteil von SteuerungsverbundRegeln (steuerungsverbund-objekt-vectors.json, Gruppe zustaendigkeitswechsel).",
           "type": ["object", "null"],
-          "required": ["zustand", "nur_als_aenderung"],
+          "required": ["zustand", "nur_als_aenderung", "ziel_ist_mitglied"],
           "additionalProperties": false,
           "properties": {
             "zustand": { "enum": ["nicht_eingerichtet", "erklaert", "beobachtet", "geprueft", "anteile_aktiv", "angehalten", "aufgeloest"] },
-            "nur_als_aenderung": { "type": "boolean" }
+            "nur_als_aenderung": { "type": "boolean" },
+            "ziel_ist_mitglied": { "description": "Die Ziel-Box ist jetzt Mitglied (fuehrt oder steuert_mit) der Gemeinsamen Steuerung DIESER Anlage (SteuerungsverbundRegeln#istMitglied).", "type": "boolean" }
           }
         }
       }
@@ -508,8 +513,8 @@
         "urteil": { "$ref": "#/$defs/urteil" },
         "grund": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$" },
         "weg": {
-          "description": "Familie gemeinsame_steuerung: zustaendigkeitswechsel (die Prüfreihenfolge entscheidet) oder gemeinsame_steuerung_aendern.",
-          "enum": ["zustaendigkeitswechsel", "gemeinsame_steuerung_aendern"]
+          "description": "Familie gemeinsame_steuerung: zustaendigkeitswechsel (die Prüfreihenfolge entscheidet), innerhalb_der_gemeinsamen_steuerung (die Prüfreihenfolge ohne Grund 4) oder gemeinsame_steuerung_aendern (409).",
+          "enum": ["zustaendigkeitswechsel", "innerhalb_der_gemeinsamen_steuerung", "gemeinsame_steuerung_aendern"]
         },
         "code": {
           "description": "Familie gemeinsame_steuerung: der Code der Schnittstelle (kein Grund des Vokabulars) oder null.",

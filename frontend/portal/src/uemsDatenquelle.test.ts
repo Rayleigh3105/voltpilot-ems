@@ -138,7 +138,7 @@ describe('Datenquelle und Zuständigkeit — Gemeinsame Steuerung (AP-15 T6, IP-
   it.each(vonFamilie('gemeinsame_steuerung').map((c) => [c.name, c] as const))('%s', (_, c) => {
     const q = c.input.quellen[0];
     const gs = c.input.gemeinsame_steuerung;
-    const weg = wegDesWechsels(q.steuerquelle, gs?.zustand ?? null, gs?.nur_als_aenderung ?? false);
+    const weg = wegDesWechsels(q.steuerquelle, gs?.zustand ?? null, gs?.nur_als_aenderung ?? false, gs?.ziel_ist_mitglied ?? false);
     const aendern = weg === 'gemeinsame_steuerung_aendern';
     expect({ weg, code: aendern ? 'gemeinsame_steuerung_aendern' : null, text: aendern ? gemeinsameSteuerungAendern(q.kennzeichen) : null })
       .toEqual(c.expected);

@@ -355,7 +355,7 @@ public class DatenquelleService {
         Datenquelle q = quellen.sperren(id).orElseThrow(DatenquelleService::quelleFehlt);
         nichtArchiviert(q);
         Lage lage = lage();
-        nichtInGemeinsamerSteuerung(q, !lage.von(id).isEmpty());
+        DatenquelleRegeln.WechselWeg weg = wegInGemeinsamerSteuerung(q, !lage.von(id).isEmpty(), z.deviceId());
         Box box = boxImZaun(z.deviceId(), lage.boxen());
         Instant ab = z.effectiveFrom() == null ? minute(lage.jetzt()) : z.effectiveFrom().toInstant();
         List<ZustaendigkeitRepository.Zeitraum> eigene = lage.von(id);
@@ -363,7 +363,8 @@ public class DatenquelleService {
         String ziel = box.id().toString();
         boolean bestaetigt = Boolean.TRUE.equals(z.vergleichBestaetigt()) || q.vergleichsquelle();
         Antrag antrag = wechsel
-                ? new Antrag(Art.WECHSEL, q.kennzeichen(), null, ziel, ab, pruefung(q, box.id()), bestaetigt)
+                ? new Antrag(Art.WECHSEL, q.kennzeichen(), null, ziel, ab, pruefung(q, box.id()), bestaetigt,
+                        weg == DatenquelleRegeln.WechselWeg.INNERHALB_DER_GEMEINSAMEN_STEUERUNG)
                 : new Antrag(Art.ANLEGEN, null, Felder.aus(q).kandidat(), ziel, ab, pruefung(q, box.id()),
                         bestaetigt);
         AntragErgebnis e = DatenquelleRegeln.pruefeAntrag(antrag, regelQuellen(lage, wechsel ? null : id),
@@ -733,18 +734,20 @@ public class DatenquelleService {
     }
 
     /**
-     * AP-15 T6: in einer Anlage mit eingerichteter Gemeinsamer Steuerung wechselt eine Steuerquelle ihre Box nur über
-     * „Gemeinsame Steuerung ändern“ (IP-26), ebenso Netzzähler und Messpunkt eines Mitglieds, solange die Anteile in
-     * Kraft sind (IP-8: {@code anteile_aktiv} oder angehalten). Die Antwort nennt den Weg und die Anlage, deren
-     * Gemeinsame Steuerung sich ändern muss ({@code GET …/sites/{anlage}/gemeinsame-steuerung}). Ohne Gemeinsame
-     * Steuerung greift das nie; der Zuständigkeitswechsel bleibt, wie er war. Die erste Box einer neuen Quelle ist kein
-     * Wechsel ({@code anlegen}): so entstehen die Steuerquellen einer mitsteuernden Box (Ahrenberg 1.5 DQ-8/DQ-9).
+     * AP-15 T6: in einer Anlage mit eingerichteter Gemeinsamer Steuerung zieht eine Steuerquelle vor dem Scharfschalten
+     * (S0–S2) nur zu einem Mitglied DIESER Gemeinsamen Steuerung um (IP-26, der Schritt „ändern“ — dann ohne die
+     * AP-06-Sperre {@code steuerquelle}); zu jeder anderen Box und solange die Anteile in Kraft sind nur über
+     * „Gemeinsame Steuerung ändern“, ebenso Netzzähler und Messpunkt eines Mitglieds in {@code anteile_aktiv} oder
+     * angehalten (IP-8). Die Antwort nennt den Weg und die Anlage, deren Gemeinsame Steuerung sich ändern muss
+     * ({@code GET …/sites/{anlage}/gemeinsame-steuerung}). Ohne Gemeinsame Steuerung greift das nie; der
+     * Zuständigkeitswechsel bleibt, wie er war. Die erste Box einer neuen Quelle ist kein Wechsel ({@code anlegen}):
+     * so entstehen die Steuerquellen einer mitsteuernden Box (Ahrenberg 1.5 DQ-8/DQ-9).
      */
-    private void nichtInGemeinsamerSteuerung(Datenquelle q, boolean wechsel) {
+    private DatenquelleRegeln.WechselWeg wegInGemeinsamerSteuerung(Datenquelle q, boolean wechsel, UUID ziel) {
         Optional<SteuerungsverbundRepository.VerbundZeile> v =
                 verbund == null ? Optional.empty() : verbund.derAnlage(q.siteId());
         if (v.isEmpty()) {
-            return; // Bestand: ohne Gemeinsame Steuerung eine Abfrage mehr, sonst nichts
+            return DatenquelleRegeln.WechselWeg.ZUSTAENDIGKEITSWECHSEL; // Bestand: eine Abfrage mehr, sonst nichts
         }
         Instant jetzt = uhr.instant();
         SteuerungsverbundRegeln.Verbund stand = verbund.regelStand(q.siteId(), jetzt, jetzt.atZone(ZONE).toLocalDate())
@@ -754,12 +757,15 @@ public class DatenquelleService {
                 SteuerungsverbundRegeln.wechseltNurAlsAenderung(v.get().stufe(), stand, quelle, q.steuerquelle());
         String zustand = stand.mitglieder().isEmpty() ? GemeinsameSteuerungService.ZUSTAND_AUFGELOEST
                 : v.get().stufe().code();
-        if (DatenquelleRegeln.wegDesWechsels(wechsel && q.steuerquelle(), zustand, nurAlsAenderung)
-                == DatenquelleRegeln.WechselWeg.GEMEINSAME_STEUERUNG_AENDERN) {
+        boolean zielIstMitglied = ziel != null && SteuerungsverbundRegeln.istMitglied(stand, ziel.toString());
+        DatenquelleRegeln.WechselWeg weg =
+                DatenquelleRegeln.wegDesWechsels(wechsel && q.steuerquelle(), zustand, nurAlsAenderung, zielIstMitglied);
+        if (weg == DatenquelleRegeln.WechselWeg.GEMEINSAME_STEUERUNG_AENDERN) {
             throw DatenquelleAbgelehnt.schnittstelle(Schnittstelle.GEMEINSAME_STEUERUNG_AENDERN,
                     DatenquelleRegeln.gemeinsameSteuerungAendern(q.kennzeichen()),
                     Map.of("kennzeichen", q.kennzeichen(), "anlage", q.siteId().toString()));
         }
+        return weg;
     }
 
     static UUID mandant() {

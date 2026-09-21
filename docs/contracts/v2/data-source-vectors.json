@@ -50,16 +50,20 @@
     "                  Geschwister, dessen Wechselrichter keinen Vorschlag hat: anker_ohne_vorschlag.",
     "  gemeinsame_steuerung – AP-15 T6 (IP-8, IP-26), VOR der Prüfreihenfolge eines Wechsels: in einer",
     "                  Anlage mit eingerichteter Gemeinsamer Steuerung (Zustand erklaert … angehalten)",
-    "                  wechselt eine Steuerquelle ihre Box nie als einfacher Zuständigkeitswechsel, sondern",
-    "                  nur über „Gemeinsame Steuerung ändern“ — die AP-06-Sperre `steuerquelle` („…erst mit",
-    "                  der gemeinsamen Steuerung“) wäre dort eine Sackgasse. Netzzähler und Messpunkt eines",
-    "                  Mitglieds ebenso, solange die Anteile in Kraft sind (`nur_als_aenderung` ist das",
-    "                  Urteil von SteuerungsverbundRegeln, gepinnt in steuerungsverbund-objekt-vectors.json,",
-    "                  Gruppe zustaendigkeitswechsel). Ohne Gemeinsame Steuerung und nach dem Auflösen",
-    "                  entscheidet die Prüfreihenfolge wie bisher (I6). KEIN Grund des Vokabulars: ob eine",
-    "                  Anlage eine Gemeinsame Steuerung hat, ist ein Fakt eines anderen Vertrags; die",
-    "                  Schnittstelle antwortet 409 `gemeinsame_steuerung_aendern` mit dem Satz",
-    "                  `texte.gemeinsame_steuerung_aendern` und den Fakten `kennzeichen` und `anlage`."
+    "                  gilt die AP-06-Sperre `steuerquelle` („…erst mit der gemeinsamen Steuerung“) nicht",
+    "                  mehr — sie wäre dort eine Sackgasse. Vor dem Scharfschalten (S0–S2) zieht eine",
+    "                  Steuerquelle zu einem MITGLIED dieser Gemeinsamen Steuerung um wie jede Quelle",
+    "                  (`innerhalb_der_gemeinsamen_steuerung`: die Prüfreihenfolge ohne Grund 4, Antrag-Feld",
+    "                  `innerhalb_gemeinsamer_steuerung`); zu jeder anderen Box und solange die Anteile in",
+    "                  Kraft sind (anteile_aktiv, angehalten) nur über „Gemeinsame Steuerung ändern“.",
+    "                  Netzzähler und Messpunkt eines Mitglieds ebenso, solange die Anteile in Kraft sind",
+    "                  (`nur_als_aenderung` ist das Urteil von SteuerungsverbundRegeln, gepinnt in",
+    "                  steuerungsverbund-objekt-vectors.json, Gruppe zustaendigkeitswechsel). Ohne",
+    "                  Gemeinsame Steuerung und nach dem Auflösen entscheidet die Prüfreihenfolge wie bisher",
+    "                  (I6). KEIN Grund des Vokabulars: ob eine Anlage eine Gemeinsame Steuerung hat, ist",
+    "                  ein Fakt eines anderen Vertrags; die Schnittstelle antwortet 409",
+    "                  `gemeinsame_steuerung_aendern` mit dem Satz `texte.gemeinsame_steuerung_aendern` und",
+    "                  den Fakten `kennzeichen` und `anlage`."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./data-source-assignment.schema.json",
@@ -1545,6 +1549,76 @@
         "hinweis": null,
         "vergleichsquelle": false,
         "zeitraeume": null
+      }
+    },
+    {
+      "name": "t6-steuerquelle-innerhalb-der-gemeinsamen-steuerung-erlaubt",
+      "familie": "antrag",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5), hier noch nicht scharf (S1); Box Verwaltung ist Mitglied (steuert mit). Der Umzug von DQ-1 an Box Verwaltung ist erfunden; Box Verwaltung erreichte 192.168.10.21 — angenommen.",
+      "why": "IP-26 (T6 „ändern“): mit `innerhalb_gemeinsamer_steuerung` (Weg `innerhalb_der_gemeinsamen_steuerung` aus der Familie gemeinsame_steuerung) entfällt Grund 4 `steuerquelle`; alle übrigen Gründe gelten unverändert, das Urteil ist das eines gewöhnlichen Wechsels. Ohne das Feld bleibt es A13.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-4",
+            "name": "Box Verwaltung"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-1",
+          "box": "E-4",
+          "effective_from": "2027-05-10T10:00:00+02:00",
+          "pruefung": {
+            "box": "E-4",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-05-10T09:55:00+02:00"
+          },
+          "vergleich_bestaetigt": false,
+          "innerhalb_gemeinsamer_steuerung": true
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ab 10.05.2027 10:00 liest Box Verwaltung",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-05-10T10:00:00+02:00"
+          },
+          {
+            "box": "E-4",
+            "effective_from": "2027-05-10T10:00:00+02:00",
+            "effective_to": null
+          }
+        ]
       }
     },
     {
@@ -3842,7 +3916,8 @@
         ],
         "gemeinsame_steuerung": {
           "zustand": "nicht_eingerichtet",
-          "nur_als_aenderung": false
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": false
         }
       },
       "expected": {
@@ -3852,10 +3927,10 @@
       }
     },
     {
-      "name": "t6-steuerquelle-eingerichtet-fuehrt-auf-aendern",
+      "name": "t6-steuerquelle-zu-einer-box-ausserhalb-fuehrt-auf-aendern",
       "familie": "gemeinsame_steuerung",
       "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
-      "why": "IP-26: schon in S0 (erklärt) hat die Anlage eine Gemeinsame Steuerung — die AP-06-Sperre „…erst mit der gemeinsamen Steuerung“ wäre eine Sackgasse. Die Steuerquelle wechselt nur über „Gemeinsame Steuerung ändern“.",
+      "why": "IP-26: in S0 (erklärt) hat die Anlage schon eine Gemeinsame Steuerung — die AP-06-Sperre „…erst mit der gemeinsamen Steuerung“ wäre eine Sackgasse. Ist die Ziel-Box KEIN Mitglied (Lese-Box, fremde Anlage, ausgeschieden), wechselt die Steuerquelle nur über „Gemeinsame Steuerung ändern“: erst die Box aufnehmen.",
       "input": {
         "jetzt": "2027-05-10T10:00:00+02:00",
         "quellen": [
@@ -3878,7 +3953,8 @@
         ],
         "gemeinsame_steuerung": {
           "zustand": "erklaert",
-          "nur_als_aenderung": false
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": false
         }
       },
       "expected": {
@@ -3888,10 +3964,10 @@
       }
     },
     {
-      "name": "t6-steuerquelle-beobachtet-fuehrt-auf-aendern",
+      "name": "t6-steuerquelle-zu-einem-mitglied-vor-dem-scharfschalten",
       "familie": "gemeinsame_steuerung",
       "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
-      "why": "IP-26: in S1 (beobachtet) ebenso — auch wenn IP-8 den Wechsel vor dem Scharfschalten nicht sperrt (nur_als_aenderung false).",
+      "why": "IP-26 (T6 „ändern“): vor dem Scharfschalten (S1, beobachtet) zieht die Steuerquelle zu einem Mitglied DIESER Gemeinsamen Steuerung um wie jede Quelle — die Prüfreihenfolge ohne Grund `steuerquelle` (Antrag-Fall t6-steuerquelle-innerhalb-der-gemeinsamen-steuerung-erlaubt).",
       "input": {
         "jetzt": "2027-05-10T10:00:00+02:00",
         "quellen": [
@@ -3914,7 +3990,45 @@
         ],
         "gemeinsame_steuerung": {
           "zustand": "beobachtet",
-          "nur_als_aenderung": false
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": true
+        }
+      },
+      "expected": {
+        "weg": "innerhalb_der_gemeinsamen_steuerung",
+        "code": null,
+        "text": null
+      }
+    },
+    {
+      "name": "t6-steuerquelle-zu-einer-lese-box-vor-dem-scharfschalten",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "IP-26: dieselbe Lage (S1), aber die Ziel-Box ist kein Mitglied — eine Lese-Box oder die Box einer anderen Anlage (R21: Lesen macht kein Mitglied). Nur über „Gemeinsame Steuerung ändern“.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "beobachtet",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": false
         }
       },
       "expected": {
@@ -3950,7 +4064,45 @@
         ],
         "gemeinsame_steuerung": {
           "zustand": "anteile_aktiv",
-          "nur_als_aenderung": true
+          "nur_als_aenderung": true,
+          "ziel_ist_mitglied": true
+        }
+      },
+      "expected": {
+        "weg": "gemeinsame_steuerung_aendern",
+        "code": "gemeinsame_steuerung_aendern",
+        "text": "DQ-1 gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“"
+      }
+    },
+    {
+      "name": "t6-steuerquelle-angehalten-auch-zu-einem-mitglied-aendern",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "Angehalten sind die Anteile in Kraft: auch zu einem Mitglied zieht die Steuerquelle nur über „Gemeinsame Steuerung ändern“ um (anhalten → PUT ändern, die Stufe fällt → Wechsel → prüfen → scharfschalten) — auch wenn IP-8 sie nicht sperrt, weil kein Mitglied sie liest.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "angehalten",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": true
         }
       },
       "expected": {
@@ -3986,7 +4138,8 @@
         ],
         "gemeinsame_steuerung": {
           "zustand": "geprueft",
-          "nur_als_aenderung": false
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": true
         }
       },
       "expected": {
@@ -4022,7 +4175,8 @@
         ],
         "gemeinsame_steuerung": {
           "zustand": "angehalten",
-          "nur_als_aenderung": true
+          "nur_als_aenderung": true,
+          "ziel_ist_mitglied": false
         }
       },
       "expected": {
@@ -4058,7 +4212,8 @@
         ],
         "gemeinsame_steuerung": {
           "zustand": "aufgeloest",
-          "nur_als_aenderung": false
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": false
         }
       },
       "expected": {

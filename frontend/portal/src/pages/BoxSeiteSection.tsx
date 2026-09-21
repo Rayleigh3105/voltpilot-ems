@@ -95,6 +95,8 @@ export function BoxSeiteSection({
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
   const [gemeinsameSteuerung, setGemeinsameSteuerung] = useState<UemsGemeinsameSteuerungZustand | null>(null);
+  // Wohin der Wechsel einer Steuerquelle zu einem Mitglied führt (T6) — ohne Gemeinsame Steuerung der Bestand.
+  const steuerquelleWeg = wegDesWechsels(true, gemeinsameSteuerung?.zustand ?? null, false, true);
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminFehler, setAdminFehler] = useState<string | null>(null);
@@ -410,8 +412,11 @@ export function BoxSeiteSection({
                           <b>{q.kennzeichen} · {q.name}</b>
                           <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
                           <small>{q.budget}</small>
-                          {datenquellen?.find((d) => d.id === q.id)?.steuerquelle ? (
-                            wegDesWechsels(true, gemeinsameSteuerung?.zustand ?? null, false) === 'gemeinsame_steuerung_aendern'
+                          {/* AP-15 IP-26: der Weg zu einem Mitglied — vor dem Scharfschalten bleibt der Knopf, der Server
+                              urteilt je Ziel-Box; scharf oder angehalten nur „Gemeinsame Steuerung ändern“. */}
+                          {datenquellen?.find((d) => d.id === q.id)?.steuerquelle
+                            && steuerquelleWeg !== 'innerhalb_der_gemeinsamen_steuerung' ? (
+                            steuerquelleWeg === 'gemeinsame_steuerung_aendern'
                               ? <small data-testid="steuerquelle-weg">{gemeinsameSteuerungAendern(q.kennzeichen)}</small>
                               : <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>
                           ) : (

@@ -149,22 +149,30 @@ Das Lesebudget je Box (E6) prüft der Endpunkt danach mit den bestehenden Zwilli
 ### 5.1 Vor der Reihenfolge: Gemeinsame Steuerung (AP-15 T6, IP-8 und IP-26)
 
 Hat die Anlage der Quelle eine eingerichtete Gemeinsame Steuerung (Zustand `erklaert`,
-`beobachtet`, `geprueft`, `anteile_aktiv` oder `angehalten`), wechselt eine **Steuerquelle** ihre
-Box nie als einfacher Zuständigkeitswechsel: Grund 4 („…erst mit der gemeinsamen Steuerung“) wäre
-dort eine Sackgasse, denn die Gemeinsame Steuerung gibt es schon. Der Weg ist „Gemeinsame Steuerung
-ändern“ (anhalten → ändern → prüfen → scharfschalten). Ebenso — solange die Anteile in Kraft sind
-(`anteile_aktiv`, angehalten) — Netzzähler und Messpunkt eines Mitglieds (IP-8,
-`SteuerungsverbundRegeln#wechseltNurAlsAenderung`, Vektoren `zustaendigkeitswechsel` in
-`steuerungsverbund-objekt-vectors.json`). Vor dem Scharfschalten wechseln Netzzähler und Messpunkt
-wie bisher. Die erste Box einer NEUEN Quelle ist kein Wechsel (`anlegen`).
+`beobachtet`, `geprueft`, `anteile_aktiv` oder `angehalten`), gilt Grund 4 `steuerquelle`
+(„…erst mit der gemeinsamen Steuerung“) nicht mehr — er wäre dort eine Sackgasse. T6 heißt
+anhalten → ändern → prüfen → scharfschalten, und der Umzug einer Steuerquelle ist „ändern“:
 
-Das ist **kein Grund dieses Vokabulars**: ob eine Anlage eine Gemeinsame Steuerung hat, ist ein Fakt
-von `steuerungsverbund.md`, nicht der Datenquelle. Die Schnittstelle antwortet 409
-`gemeinsame_steuerung_aendern` mit dem Satz `texte.gemeinsame_steuerung_aendern`
-(„{kennzeichen} gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung
-ändern““) und den Fakten `kennzeichen` und `anlage` (deren `GET/PUT …/sites/{anlage}/gemeinsame-steuerung`
-der Weg ist). Ohne Gemeinsame Steuerung und nach dem Auflösen entscheidet die Reihenfolge oben,
-Byte für Byte wie bisher (I6). Familie `gemeinsame_steuerung` der Vektor-Datei.
+| Lage | Steuerquelle | Netzzähler / Messpunkt eines Mitglieds | andere Quelle |
+|---|---|---|---|
+| vor dem Scharfschalten (S0–S2), Ziel-Box ist Mitglied (`fuehrt`/`steuert_mit`, jetzt) | Wechsel wie jede Quelle: Reihenfolge **ohne** Grund 4 (Antrag-Feld `innerhalb_gemeinsamer_steuerung`) | Wechsel wie bisher (IP-8) | wie bisher |
+| vor dem Scharfschalten, Ziel-Box kein Mitglied (Lese-Box, andere Anlage, ausgeschieden) | 409 `gemeinsame_steuerung_aendern` — erst die Box aufnehmen | wie bisher | wie bisher |
+| `anteile_aktiv`, angehalten (die Anteile sind in Kraft) | 409 `gemeinsame_steuerung_aendern` | 409 (IP-8, `SteuerungsverbundRegeln#wechseltNurAlsAenderung`) | wie bisher |
+
+Alle übrigen Gründe der Reihenfolge gelten unverändert. Die Regel „höchstens eine Steuerquelle je
+Anlage“ erzwingt die Reihenfolge nicht (es gibt keinen solchen Grund); sie gilt nach der
+Referenz 1.5 nur noch für Anlagen OHNE Gemeinsame Steuerung. Die erste Box einer NEUEN Quelle ist
+kein Wechsel (`anlegen`). Gepinnt: Vektoren `zustaendigkeitswechsel` in
+`steuerungsverbund-objekt-vectors.json` (IP-8) und die Familie `gemeinsame_steuerung` hier.
+
+Das ist **kein Grund dieses Vokabulars**: ob eine Anlage eine Gemeinsame Steuerung hat und ob die
+Ziel-Box Mitglied ist, sind Fakten von `steuerungsverbund.md`, nicht der Datenquelle. Die
+Schnittstelle antwortet 409 `gemeinsame_steuerung_aendern` mit dem Satz
+`texte.gemeinsame_steuerung_aendern` („{kennzeichen} gehört zur Gemeinsamen Steuerung — ihre Box
+wechselt nur über „Gemeinsame Steuerung ändern““) und den Fakten `kennzeichen` und `anlage` (deren
+`GET/PUT …/sites/{anlage}/gemeinsame-steuerung` der Weg ist). Ohne Gemeinsame Steuerung und nach
+dem Auflösen entscheidet die Reihenfolge oben, Byte für Byte wie bisher (I6). Familie
+`gemeinsame_steuerung` der Vektor-Datei.
 
 ## 6. Doppel-Lesen nur als gekennzeichnete Vergleichsquelle (E10 = B)
 

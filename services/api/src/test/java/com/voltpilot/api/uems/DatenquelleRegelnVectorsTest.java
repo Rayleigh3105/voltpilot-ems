@@ -187,7 +187,8 @@ class DatenquelleRegelnVectorsTest {
                     instant(a.get("effective_from")),
                     p.isNull() ? null : new Pruefung(p.path("box").asText(), p.path("ergebnis").asText(),
                             instant(p.get("zeitpunkt"))),
-                    a.path("vergleich_bestaetigt").asBoolean());
+                    a.path("vergleich_bestaetigt").asBoolean(),
+                    a.path("innerhalb_gemeinsamer_steuerung").asBoolean());
             AntragErgebnis ist = DatenquelleRegeln.pruefeAntrag(antrag, quellen(in.path("quellen")),
                     boxNamen(in.path("boxen")), instant(in.get("jetzt")), zone(in));
             JsonNode exp = c.path("expected");
@@ -349,7 +350,8 @@ class DatenquelleRegelnVectorsTest {
             JsonNode q = in.path("quellen").get(0);
             JsonNode gs = in.path("gemeinsame_steuerung");
             WechselWeg ist = DatenquelleRegeln.wegDesWechsels(q.path("steuerquelle").asBoolean(),
-                    gs.isNull() ? null : gs.path("zustand").asText(), gs.path("nur_als_aenderung").asBoolean());
+                    gs.isNull() ? null : gs.path("zustand").asText(), gs.path("nur_als_aenderung").asBoolean(),
+                    gs.path("ziel_ist_mitglied").asBoolean());
             JsonNode exp = c.path("expected");
             assertThat(ist.code()).isEqualTo(exp.path("weg").asText());
             boolean aendern = ist == WechselWeg.GEMEINSAME_STEUERUNG_AENDERN;

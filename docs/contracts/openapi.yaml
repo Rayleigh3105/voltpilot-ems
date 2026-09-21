@@ -9473,7 +9473,8 @@ paths:
         Recht `datenquelle.zustaendigkeit`. Vor allen Regeln (AP-15 T6): ist die Quelle
         Netzzähler, Messpunkt oder Steuerquelle eines Mitglieds einer Gemeinsamen
         Steuerung in `anteile_aktiv` oder angehalten - und jede Steuerquelle in einer Anlage
-        mit eingerichteter Gemeinsamer Steuerung (IP-26, auch vor dem Scharfschalten) -, 409
+        mit eingerichteter Gemeinsamer Steuerung, außer vor dem Scharfschalten (S0-S2) zu
+        einem Mitglied (IP-26: dann ein Wechsel ohne den Grund `steuerquelle`) -, 409
         `gemeinsame_steuerung_aendern` mit Fakt `anlage` - ihre Box wechselt nur als Änderung
         der Gemeinsamen Steuerung (`…/sites/{anlage}/gemeinsame-steuerung`). Die erste Box
         einer neuen Quelle ist kein Wechsel. Ohne Gemeinsame Steuerung greift das nie. Die erste Box einer Quelle ist ein Antrag
@@ -24850,7 +24851,8 @@ components:
         `gemeinsame_steuerung_aendern` 409 (`kennzeichen`, `anlage`, AP-15 T6): die Quelle ist
         Netzzähler, Messpunkt oder Steuerquelle eines Mitglieds einer scharfen
         Gemeinsamen Steuerung oder eine Steuerquelle in einer Anlage mit eingerichteter
-        Gemeinsamer Steuerung (IP-26) - ihre Box wechselt nur über „Gemeinsame Steuerung ändern“.
+        Gemeinsamer Steuerung, deren Ziel-Box kein Mitglied ist oder deren Anteile in Kraft
+        sind (IP-26) - ihre Box wechselt nur über „Gemeinsame Steuerung ändern“.
       required: [code, message]
       properties:
         code:
