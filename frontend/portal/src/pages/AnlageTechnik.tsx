@@ -1,5 +1,5 @@
 import { Recht } from '../components/Recht';
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -77,6 +77,9 @@ import { SettingRow } from '../components/SettingEditors';
 import { SettingsSearch } from '../components/SettingsSearch';
 import { ErrorState, TextSkeleton } from '../components/States';
 import { replaceCurrentNavigation } from '../navigationBlocker';
+import { GemeinsameSteuerungKarte, useGemeinsameSteuerung, type GemeinsameSteuerungDaten } from '../components/GemeinsameSteuerungKarte';
+import type { VerlustVariante } from '../gemeinsameSteuerungFlaeche';
+import { FLAECHE } from '../uemsGemeinsameSteuerung';
 import './Einstellungen.css';
 
 /**
@@ -123,6 +126,8 @@ const SECTIONS = [
   { key: 'anlage', icon: 'home' as IconName, label: 'Meine Anlage' },
   { key: 'geld', icon: 'euro' as IconName, label: 'Strompreis & Vergütung' },
   { key: 'geraet', icon: 'cpu' as IconName, label: 'Mein Gerät' },
+  // UEMS AP-15 IP-23: nur, wenn die Anlage steuert UND mehr als eine Box hat (`gemeinsameSteuerungFlaeche`).
+  { key: 'gemeinsam', icon: 'zap' as IconName, label: 'Gemeinsame Steuerung' },
   { key: 'speicher', icon: 'battery' as IconName, label: 'Mein Speicher' },
   { key: 'registrierung', icon: 'file-text' as IconName, label: 'Registrierung' },
   { key: 'app', icon: 'smartphone' as IconName, label: 'Als App auf dem Handy' },
@@ -188,10 +193,10 @@ function useScrollSpy(keys: readonly SectionKey[], enabled: boolean): SectionKey
 }
 
 /** The desktop jump-navigation: a hairline left rail that scrolls to a section. */
-function JumpNav({ active }: { active: SectionKey | null }) {
+function JumpNav({ active, ohne }: { active: SectionKey | null; ohne: ReadonlySet<SectionKey> }) {
   return (
     <nav className="vp-technik-nav" aria-label="Abschnitte">
-      {SECTIONS.map((s) => (
+      {SECTIONS.filter((s) => !ohne.has(s.key)).map((s) => (
         <a
           key={s.key}
           href={`#${anchorId(s.key)}`}
@@ -293,6 +298,36 @@ function TechCard({
         </div>
       )}
     </section>
+  );
+}
+
+const KEINE: ReadonlySet<SectionKey> = new Set();
+const OHNE_GEMEINSAM: ReadonlySet<SectionKey> = new Set(['gemeinsam']);
+
+/**
+ * Die Karte „Gemeinsame Steuerung“ (UEMS AP-15 IP-23, §5.2) als Abschnitt der Technik-Seite — erscheint nur, wenn
+ * die Anlage steuert UND mehr als eine Box hat; wer nur misst, sieht sie nie. Exportiert für die E2E-Bühne.
+ */
+export function GemeinsameSteuerungAbschnitt({
+  siteId,
+  siteDevices,
+  daten,
+  deepLinked = false,
+  jetzt,
+  verlustVariante,
+}: {
+  siteId: string;
+  siteDevices: readonly Device[];
+  daten: GemeinsameSteuerungDaten;
+  deepLinked?: boolean;
+  jetzt?: Date;
+  verlustVariante?: VerlustVariante;
+}) {
+  if (!daten.sichtbar) return null;
+  return (
+    <TechCard section={sectionOf('gemeinsam')} explain={FLAECHE.karte_erklaerung} summary={daten.zeile ?? undefined} deepLinked={deepLinked}>
+      <GemeinsameSteuerungKarte siteId={siteId} siteDevices={siteDevices} daten={daten} jetzt={jetzt} verlustVariante={verlustVariante} />
+    </TechCard>
   );
 }
 
@@ -399,7 +434,8 @@ export function TechnikSection({
   /** Ist diese Gruppe gerade angesprungen (Deep-Link ODER Suche)? */
   const opened = (key: SectionKey): boolean => anchored === key || jumped === key;
 
-  const siteDevices = devices.filter((d) => d.siteId === site.id);
+  const siteDevices = useMemo(() => devices.filter((d) => d.siteId === site.id), [devices, site.id]);
+  const gemeinsam = useGemeinsameSteuerung(site.id, siteDevices);
   const deviceDetail = siteDevices.find((d) => d.id === deviceDetailId) ?? null;
 
   useEffect(() => {
@@ -976,7 +1012,7 @@ export function TechnikSection({
 
   return (
     <div className="vp-technik">
-      <JumpNav active={activeSection} />
+      <JumpNav active={activeSection} ohne={gemeinsam.sichtbar ? KEINE : OHNE_GEMEINSAM} />
       <div className="vp-technik-sections">
         {/* E6: das Suchfeld über allen Gruppen - „Wo stelle ich meinen
             Strompreis ein?" ist damit in einer Geste beantwortet. */}
@@ -994,6 +1030,7 @@ export function TechnikSection({
         {anlageCard}
         {geldCard}
         {geraetCard}
+        <GemeinsameSteuerungAbschnitt siteId={site.id} siteDevices={siteDevices} daten={gemeinsam} deepLinked={opened('gemeinsam')} />
         {speicherCard}
         {registrierungCard}
         {appCard}
