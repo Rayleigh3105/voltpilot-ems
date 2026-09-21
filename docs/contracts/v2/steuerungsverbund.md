@@ -144,7 +144,7 @@ anderes Feld im Körper ist 400 `anfrage_ungueltig`; eine fremde Anlage ist 404 
 | Route | Recht | Übergang |
 |---|---|---|
 | `GET /api/v1/sites/{siteId}/gemeinsame-steuerung` | lesend, keine eigene Kennung | ohne Verbund `nicht_eingerichtet` und sonst nichts (I6); mit: Stufe, Epoche, Mitglieder, `naechster_schritt`, `fehlt` |
-| `PUT …/gemeinsame-steuerung` | `funktion.steuern_einrichten` | einrichten/ändern (Kundenadministrator, I5): gewünschter Stand der Mitglieder → S0/S1 |
+| `PUT …/gemeinsame-steuerung` | `funktion.steuern_einrichten` | einrichten/ändern (Kundenadministrator, I5): gewünschter Stand der Mitglieder (je Mitglied wahlfrei `vorgabe_signal`, G6) → S0/S1 |
 | `POST …/anhalten` | `steuerung.starten_beenden` | `anteile_aktiv` → `angehalten`; die Anteile bleiben in Kraft |
 | `POST …/fortsetzen` | `steuerung.starten_beenden` | `angehalten` → `anteile_aktiv`, dieselbe Epoche, I1 erneut geprüft — nur wenn das jüngste Anhalten von einem Kundenkonto kam, sonst 409 `vom_betreiber_angehalten` |
 | `POST …/aufloesen` | `steuerung.starten_beenden` | alle Mitglieder enden; nur ohne je scharf gewesen zu sein (`epoche = 0`) |
@@ -167,18 +167,35 @@ Ablehnungs-Vokabulars. `zustand = aufgeloest` heißt: der Verbund hat keine wirk
 Grenzen wirksam (`AnlageGrenzen`, W1), Fähigkeit und Sprungprobe je Mitglied, Auslegung bekannt, G6, Box angemeldet.
 Abgelehnt wird mit dem ersten Wort in Vokabular-Reihenfolge; `fehlt` nennt alle Befunde. Die Tatsachen ohne heutige
 Quelle liefert die Naht `uems/SteuerungsverbundNachweise` — in IP-5 antwortet sie „fehlt“, eine Anlage kommt
-darum höchstens bis S1 und wird nicht scharf:
+darum höchstens bis S1 und wird nicht scharf, solange eine Quelle fehlt:
 
 | Methode | heute | füllt |
 |---|---|---|
 | `faehigkeit` | `BoxFaehigkeiten.kann(box, "steuerungsverbund_anteil")` — seit IP-17 in `EdgeSupports.NAMES`: ja, sobald die Box es in `supports[]` meldet (keine Zeile in `edge-capabilities.json`) | IP-17 ✓ |
 | `sprungprobe` | nein | IP-21 |
 | `auslegung` | leer → `auslegung_passt_nicht` (unbekannt ist nicht „passt“) | IP-7 (mit den Rückfällen aus IP-6) |
-| `verbraucher14a`, `vorgabeSignal` | unbekannt → `vorgabe_signal_nicht_an_jeder_box` | offen: kein Paket in §8 nennt den Träger |
+| `vorgabeSignal` | erklärt je Mitglied (`vorgabe_signal`, V20260922030000): `ja` → true, `nein` → false, `unbekannt` → unbekannt | Folge zu IP-5 ✓ (IP-23 fragt es ab) |
+| `verbraucher14a` | abgeleitet aus `steuerungsverbund_geraet` der Box: eine Angabe `bezug` mit Komponente und Schreibfreigabe → ja; Angaben, aber keine solche → nein; keine Angabe → unbekannt | Folge zu IP-5 ✓ (Angaben: IP-7) |
 
 **G6.** Scharf nur, wenn an jeder Box mit steuerbaren Verbrauchern nach § 14a das Signal anliegt; „alle solchen
 Verbraucher hängen an der Box mit dem Signal“ ist dieselbe Bedingung. Unbekannte Verbraucher zählen als vorhanden,
 ein unbekanntes Signal als nicht anliegend (R18).
+
+- **Der Träger des Signals** ist `steuerungsverbund_mitglied.vorgabe_signal` (`ja` · `nein` · `unbekannt`, Vorgabe
+  `unbekannt`) mit `vorgabe_signal_am`/`_von`. Gesetzt über `PUT …/gemeinsame-steuerung`, wahlfreies Feld
+  `vorgabe_signal` je Mitglied: fehlt es, bleibt das erklärte (ein neues Intervall derselben Box erbt es mit wer/wann,
+  eine neue Box beginnt mit `unbekannt`). Das Signal gehört nicht zur Identität des Mitglieds — eine Änderung
+  schreibt die offene Zeile um (Spalten-Recht), ist aber eine Strukturänderung: Protokoll `art = vorgabe_signal`
+  (`alt`/`neu` = `{box_id, vorgabe_signal}`), die Stufe geht zurück wie bei jeder anderen (I3).
+- **Steuerbare Verbraucher nach § 14a** werden nicht erklärt, sondern abgeleitet. Ob ein Gerät beim Netzbetreiber als
+  § 14a-Einrichtung gemeldet ist, weiß das Portal nicht; es weiß, welche Geräte die Box in Bezugsrichtung treiben
+  darf. Darum zählt JEDES solche Gerät mit — Ladepunkt, Wärmepumpe/SG-Ready, Speicher mit Netzladen, Heizstab, jede
+  andere schaltbare Last (im Zweifel mit: mehr Boxen brauchen das Signal). Nicht mit zählen Erzeuger (`einspeisung`),
+  Geräte ohne Schreibfreigabe und das Ungeregelte hinter dem Abgang — die Box kann sie nicht hochfahren.
+- **`GET`** zeigt je Mitglied `vorgabe_signal`, `vorgabe_signal_am` und `verbraucher14a` (dieselben drei Wörter);
+  `fehlt` nennt wie bisher `vorgabe_signal_nicht_an_jeder_box` mit der betroffenen `box_id`.
+- Nicht hier: wie das Signal physisch an eine Box kommt oder ob die Box es selbst erkennt (Hand des Betreibers,
+  Pilot-Drehbuch IP-32).
 
 **Z1 (W2).** `warnung_fuehrung` mit dem Wort `fuehrende_box_ist_nicht_speicher_box`, nur an einer Anlage OHNE
 Gemeinsame Steuerung, deren führende Box (`LeadDeviceService`) nicht die Box des primären Speichers ist. Kein

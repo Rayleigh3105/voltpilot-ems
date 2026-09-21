@@ -19,6 +19,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,6 +56,9 @@ public class GemeinsameSteuerungService {
     /** Herkunft des Vorbehalts (IP-13). */
     public static final String HERKUNFT_ERKLAERT = "erklaert";
     public static final String HERKUNFT_GEMESSEN = "gemessen";
+    /** Die Wörter von {@code vorgabe_signal} (G6). */
+    static final Set<String> SIGNALE = Set.of(SteuerungsverbundNachweiseHeute.JA, SteuerungsverbundNachweiseHeute.NEIN,
+            SteuerungsverbundNachweiseHeute.UNBEKANNT);
 
     static final ZoneId ZONE = ZoneId.of("Europe/Berlin");
 
@@ -119,10 +123,16 @@ public class GemeinsameSteuerungService {
     private GemeinsameSteuerungDto.Zustand zustand(UUID siteId, VerbundZeile v, Instant jetzt) {
         List<MitgliedZeile> mitglieder = repo.mitglieder(v.id(), jetzt);
         Map<UUID, Instant> bestaetigt = repo.bestaetigt(v.id());
-        List<GemeinsameSteuerungDto.Mitglied> dto = mitglieder.stream().map(m -> new GemeinsameSteuerungDto.Mitglied(
-                m.deviceId(), m.rolle().code(), m.dataSourceId(), m.gueltigAb().atOffset(ZoneOffset.UTC),
-                Optional.ofNullable(bestaetigt.get(m.id())).map(t -> t.atOffset(ZoneOffset.UTC)).orElse(null)))
-                .toList();
+        Map<UUID, SteuerungsverbundRepository.VorgabeSignal> signale = repo.vorgabeSignale(v.id());
+        List<GemeinsameSteuerungDto.Mitglied> dto = mitglieder.stream().map(m -> {
+            SteuerungsverbundRepository.VorgabeSignal signal = signale.get(m.id());
+            return new GemeinsameSteuerungDto.Mitglied(m.deviceId(), m.rolle().code(), m.dataSourceId(),
+                    m.gueltigAb().atOffset(ZoneOffset.UTC),
+                    Optional.ofNullable(bestaetigt.get(m.id())).map(t -> t.atOffset(ZoneOffset.UTC)).orElse(null),
+                    signal == null ? SteuerungsverbundNachweiseHeute.UNBEKANNT : signal.wert(),
+                    signal == null || signal.am() == null ? null : signal.am().atOffset(ZoneOffset.UTC),
+                    SteuerungsverbundNachweiseHeute.wort(nachweise.verbraucher14a(siteId, m.deviceId())));
+        }).toList();
         LocalDate tag = tag(jetzt);
         UUID netzanschluss = repo.netzanschluesse(siteId, tag).stream().findFirst().orElse(null);
         if (mitglieder.isEmpty()) {
@@ -195,6 +205,11 @@ public class GemeinsameSteuerungService {
     /**
      * Richtet ein oder ändert: {@code mitglieder} ist der gewünschte Stand. Unveränderte Mitglieder bleiben stehen;
      * wer fehlt oder sich ändert, endet mit der laufenden Minute, wer neu ist, beginnt mit ihr. Danach S0 oder S1 (I3).
+     *
+     * <p>G6: {@code vorgabe_signal} je Mitglied ist wahlfrei. Fehlt es, bleibt das erklärte (ein neues Intervall derselben
+     * Box erbt es mit wer/wann, eine neue Box beginnt mit {@code unbekannt}); steht es, wird es an der offenen Zeile
+     * umgeschrieben. Ändert sich das Signal einer Box, ist das eine Strukturänderung wie jede andere: Protokoll
+     * {@code vorgabe_signal} und die Stufe geht zurück (I3).
      */
     @Transactional
     public GemeinsameSteuerungDto.Zustand einrichten(UUID siteId, List<GemeinsameSteuerungDto.MitgliedWunsch> wunsch,
@@ -220,6 +235,9 @@ public class GemeinsameSteuerungService {
         }
         boolean geaendert = vorhanden.isEmpty();
         List<MitgliedZeile> ist = repo.mitglieder(verbundId, jetzt);
+        Map<UUID, SteuerungsverbundRepository.VorgabeSignal> signaleVorher = new HashMap<>();
+        Map<UUID, SteuerungsverbundRepository.VorgabeSignal> signaleIst = repo.vorgabeSignale(verbundId);
+        ist.forEach(m -> Optional.ofNullable(signaleIst.get(m.id())).ifPresent(s -> signaleVorher.put(m.deviceId(), s)));
         for (MitgliedZeile m : ist) {
             if (!soll.contains(new Wunsch(m.deviceId(), m.rolle(), m.dataSourceId()))) {
                 beenden(m, ab);
@@ -237,6 +255,9 @@ public class GemeinsameSteuerungService {
                 geaendert = true;
             }
         }
+        if (signaleSetzen(tenant, verbundId, siteId, wunsch, signaleVorher, jetzt, wer)) {
+            geaendert = true;
+        }
         VerbundZeile v = repo.finden(verbundId).orElseThrow();
         if (geaendert) {
             Stufe neu = SteuerungsverbundScharfschalten.stufeNachAenderung(urteil(siteId, v, jetzt));
@@ -244,6 +265,40 @@ public class GemeinsameSteuerungService {
             v = repo.finden(verbundId).orElseThrow();
         }
         return zustand(siteId, v, jetzt);
+    }
+
+    /**
+     * G6: schreibt das Signal je offenem Mitglied — gewünscht, sonst geerbt vom vorigen Intervall derselben Box. true,
+     * wenn sich das Signal einer Box geändert hat (je Box ein Protokoll-Eintrag {@code vorgabe_signal}).
+     */
+    private boolean signaleSetzen(UUID tenant, UUID verbundId, UUID siteId,
+            List<GemeinsameSteuerungDto.MitgliedWunsch> wunsch,
+            Map<UUID, SteuerungsverbundRepository.VorgabeSignal> vorher, Instant jetzt, ProtokollAkteur wer) {
+        Map<UUID, String> gewuenscht = new HashMap<>();
+        wunsch.stream().filter(w -> w.vorgabeSignal() != null).forEach(w -> gewuenscht.put(w.boxId(), w.vorgabeSignal()));
+        Map<UUID, SteuerungsverbundRepository.VorgabeSignal> zeilen = repo.vorgabeSignale(verbundId);
+        boolean geaendert = false;
+        for (MitgliedZeile m : repo.mitglieder(verbundId, jetzt)) {
+            SteuerungsverbundRepository.VorgabeSignal alt = vorher.get(m.deviceId());
+            SteuerungsverbundRepository.VorgabeSignal zeile = zeilen.get(m.id());
+            String soll = gewuenscht.get(m.deviceId());
+            if (soll == null) {
+                if (alt != null && alt.am() != null && zeile != null && zeile.am() == null) {
+                    repo.vorgabeSignalSetzen(m.id(), alt.wert(), alt.von(), alt.am()); // neues Intervall erbt
+                }
+                continue;
+            }
+            if (zeile == null || !soll.equals(zeile.wert()) || zeile.am() == null) {
+                repo.vorgabeSignalSetzen(m.id(), soll, wer.name(), jetzt);
+            }
+            String war = alt == null ? SteuerungsverbundNachweiseHeute.UNBEKANNT : alt.wert();
+            if (!soll.equals(war)) {
+                repo.protokoll(tenant, verbundId, siteId, "vorgabe_signal", signalJson(m.deviceId(), war),
+                        signalJson(m.deviceId(), soll), jetzt, false, null, wer);
+                geaendert = true;
+            }
+        }
+        return geaendert;
     }
 
     // ------------------------------------------------------------------ Übergänge
@@ -460,6 +515,9 @@ public class GemeinsameSteuerungService {
             if (rolle == Rolle.FUEHRT && ++fuehrende > 1) {
                 throw GemeinsameSteuerungAbgelehnt.anfrage("Genau eine Box führt.");
             }
+            if (w.vorgabeSignal() != null && !SIGNALE.contains(w.vorgabeSignal())) {
+                throw GemeinsameSteuerungAbgelehnt.anfrage("vorgabe_signal ist ja, nein oder unbekannt.");
+            }
             soll.add(new Wunsch(w.boxId(), rolle, w.messpunktId()));
         }
         List<GemeinsameSteuerungDto.Befund> befunde = new ArrayList<>();
@@ -566,6 +624,10 @@ public class GemeinsameSteuerungService {
     private static String json(UUID box, Rolle rolle, UUID messpunkt) {
         return "{\"box_id\":" + quote(box.toString()) + ",\"rolle\":" + quote(rolle.code()) + ",\"messpunkt_id\":"
                 + (messpunkt == null ? "null" : quote(messpunkt.toString())) + "}";
+    }
+
+    private static String signalJson(UUID box, String signal) {
+        return "{\"box_id\":" + quote(box.toString()) + ",\"vorgabe_signal\":" + quote(signal) + "}";
     }
 
     private static String bestaetigtJson(MitgliedZeile m) {

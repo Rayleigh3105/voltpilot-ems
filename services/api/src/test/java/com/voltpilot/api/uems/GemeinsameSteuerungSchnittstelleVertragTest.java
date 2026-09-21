@@ -64,7 +64,8 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         Arrays.stream(GemeinsameSteuerungDto.MitgliedWunsch.class.getRecordComponents()).forEach(c -> wunsch.add(
                 PropertyNamingStrategies.SnakeCaseStrategy.INSTANCE.translate(c.getName())));
         assertThat(text).contains("required: [box_id, rolle]");
-        assertThat(wunsch).containsExactly("box_id", "rolle", "messpunkt_id");
+        assertThat(wunsch).containsExactly("box_id", "rolle", "messpunkt_id", "vorgabe_signal");
+        assertThat(text).as("G6: vorgabe_signal wahlfrei im Einrichten-Körper").contains("              vorgabe_signal:");
     }
 
     @Test

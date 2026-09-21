@@ -39,14 +39,15 @@ import org.springframework.web.server.ResponseStatusException;
  * trägt keine eigene Kennung; eine Anlage außerhalb des Zugriffs ist dieselbe 404 wie eine unbekannte. Jede Route nennt
  * im Kommentar ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}.
  *
- * <p>Der Körper von {@code PUT} ist {@code {"mitglieder": [{"box_id", "rolle", "messpunkt_id"}]}}. Jedes andere Feld —
+ * <p>Der Körper von {@code PUT} ist {@code {"mitglieder": [{"box_id", "rolle", "messpunkt_id", "vorgabe_signal"}]}}
+ * ({@code messpunkt_id} und {@code vorgabe_signal} wahlfrei). Jedes andere Feld —
  * ausdrücklich ein Mandant oder eine Anlage — ist 400 {@code anfrage_ungueltig}: beide kommen aus Anmeldung und Pfad.
  */
 @RestController
 public class GemeinsameSteuerungController {
 
     private static final String PFAD = "/api/v1/sites/{siteId}/gemeinsame-steuerung";
-    private static final Set<String> FELDER_MITGLIED = Set.of("box_id", "rolle", "messpunkt_id");
+    private static final Set<String> FELDER_MITGLIED = Set.of("box_id", "rolle", "messpunkt_id", "vorgabe_signal");
 
     private final GemeinsameSteuerungService dienst;
     private final RechtPruefung recht;
@@ -134,8 +135,12 @@ public class GemeinsameSteuerungController {
                     throw GemeinsameSteuerungAbgelehnt.anfrage("Unbekanntes Feld „" + feld + "“ an einem Mitglied.");
                 }
             }
+            JsonNode signal = m.get("vorgabe_signal");
+            if (signal != null && !signal.isNull() && !signal.isTextual()) {
+                throw GemeinsameSteuerungAbgelehnt.anfrage("vorgabe_signal ist ja, nein oder unbekannt.");
+            }
             out.add(new GemeinsameSteuerungDto.MitgliedWunsch(uuid(m.get("box_id"), true), text(m.get("rolle")),
-                    uuid(m.get("messpunkt_id"), false)));
+                    uuid(m.get("messpunkt_id"), false), text(signal)));
         }
         return out;
     }
