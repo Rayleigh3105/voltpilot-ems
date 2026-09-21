@@ -17,6 +17,8 @@ const BILDER = process.env.KOSTENSTELLEN_BILDER;
 const BREITEN = [375, 1440] as const;
 const JETZT = new Date('2026-11-05T08:00:00Z');
 const KEINE_SUMME = 'Die Kostenstellen sind nicht summierbar — nicht verteilte Mengen gehören keiner.';
+const OHNE_MENGEN =
+  'Die Mengen je Kostenstelle sehen nur die Rollen Energiemanager und Kundenadministrator, weil eine Kostenstelle Messstellen aller Standorte umfassen kann.';
 const PROZESSE_KEINE_SUMME = 'Die Prozesse sind nicht summierbar — eine Messstelle kann zu mehreren Prozessen gehören.';
 const n = (s: string | null | undefined): string => (s ?? '').replace(/ /g, ' ');
 
@@ -119,6 +121,24 @@ for (const breite of BREITEN) {
       expect(m.reiter).toEqual(['Liste', 'Kostenstellen', 'Prozesse']);
       ohneQuerlauf(m, 'o9-kostenstellen', breite);
       await ablegen(page, 'o9-kostenstellen', breite, m);
+      expect(fehler).toEqual([]);
+    });
+
+    test('Kostenstelle B: Bearbeiter (Peter Hollerbach, ST-2) sieht Kennzeichen und Namen, EINEN Satz, keine Zahl, keinen Aufruf von …/energie', async ({ page }) => {
+      const fehler: string[] = [];
+      await oeffne(page, 'ansicht=kostenstellen&person=PH', breite, fehler, 'kostenstellen');
+      await expect(page.getByTestId('kostenstelle-karte')).toHaveCount(5);
+      await expect(karte(page, '4200')).toContainText('Montage');
+      await expect(page.getByTestId('kostenstellen-ohne-mengen')).toHaveText(`${OHNE_MENGEN} Ihr Kundenadministrator: Jonas Wendlinger.`);
+      for (const weg of ['block-summe', 'nicht-verteilt', 'kostenstellen-keine-summe', 'doppelzaehlung']) await expect(page.getByTestId(weg)).toHaveCount(0);
+      await expect(page.getByText('Die Kostenstellen sind gerade nicht abrufbar.')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Erneut versuchen' })).toHaveCount(0);
+      expect(n(await page.getByTestId('kostenstellen').innerText())).not.toMatch(/kWh/);
+      expect(await page.evaluate(() => (window as unknown as { __energieAufrufe?: number }).__energieAufrufe ?? 0)).toBe(0);
+
+      const m = await messe(page, 'kostenstellen');
+      ohneQuerlauf(m, 'bearbeiter-kostenstellen', breite);
+      await ablegen(page, 'bearbeiter-kostenstellen', breite, m);
       expect(fehler).toEqual([]);
     });
 

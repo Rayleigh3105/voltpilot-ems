@@ -1,7 +1,7 @@
 import { netzanschlussBuehne } from './netzanschluss-buehne';
 import { StandortNetzanschluessePage } from '../src/pages/StandortNetzanschluessePage';
 import App from '../src/App';
-import { RechteStandort, teilansichtKopf } from '../src/rollen';
+import { darf, RechteStandort, teilansichtKopf } from '../src/rollen';
 import { rollenMoment } from './rollen-fixture';
 import { sichtbareListe } from '../src/test/rollenFixtures';
 import { C1_IDS, geraeteAhrenberg } from '../src/test/messenAssistentFixtures';
@@ -941,7 +941,14 @@ Object.assign(api, {
   }),
   // AP-13 IP-9: die Kostenstellen-Sicht je Kostenstelle (O9 Oktober 2026, F12 am 15.01.2027) und die Prozesse der
   // berechneten Messstellen (MS-20 → P-1).
-  kostenstelleEnergie: async (id: string, periode: 'tag' | 'monat' | 'jahr', am: string) => ahrenbergKostenstelleEnergie(id, periode, am),
+  // Wie die api (Kostenstelle B): ohne `messwerte.ansehen` am Unternehmen gibt es diese Kostenstelle nicht (404);
+  // `window.__energieAufrufe` zählt jeden Aufruf — der Nachweis, dass ein Bearbeiter gar nicht erst fragt.
+  kostenstelleEnergie: async (id: string, periode: 'tag' | 'monat' | 'jahr', am: string) => {
+    const w = window as unknown as { __energieAufrufe?: number };
+    w.__energieAufrufe = (w.__energieAufrufe ?? 0) + 1;
+    if (!darf('messwerte.ansehen', null, rollenMoment)) throw new ApiError(404, 'Kostenstelle nicht gefunden.');
+    return ahrenbergKostenstelleEnergie(id, periode, am);
+  },
   messstelleProzesse: async (id: string) => ahrenbergMessstelleProzesse(id),
   kennzahlVorschau: async (a: KennzahlAnfrage) => {
     kennzahlAufrufe.vorschau.push(structuredClone(a));
