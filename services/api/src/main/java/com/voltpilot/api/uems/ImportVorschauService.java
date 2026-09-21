@@ -4,6 +4,8 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.BezugsdatenImportDto;
 import com.voltpilot.api.web.dto.BezugsgroesseDto;
 import com.voltpilot.api.web.dto.BezugsdatenVorlageDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -35,6 +37,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p><b>Welche Bezugsgröße Werte aufnimmt:</b> eine nicht archivierte mit der Wertart Periodenwert oder Stand. Ein
  * Stammdatum hat Gültigkeiten, keine Werte (E15/E17). Beides hat im geschlossenen Befund-Vokabular kein eigenes
  * Wort; die Zeile ist darum {@code bezug_unbekannt}.
+ *
+ * <p><b>Im Zugriff (AP-03 R-A1):</b> Ziel ist nur eine Bezugsgröße, die {@link RechtPruefung#lesbar} ist; eine
+ * außerhalb ist wie ein unbekanntes Kennzeichen {@code bezug_unbekannt} (kein Stand, keine Kennung). Eine Vorlage
+ * mit einem Bezug außerhalb ist {@code nicht_gefunden} wie eine unbekannte ({@link BezugsdatenVorlageService#aktuell}).
+ * Die Übernahme rechnet die Vorschau mit derselben Sicht nach, sonst wiche ihr Fingerabdruck ab. Unternehmensweite
+ * Rollen, Bestandskonto und ohne Zugriff-Kontext sehen alle Bezugsgrößen wie bisher.
  */
 @Service
 public class ImportVorschauService {
@@ -43,16 +51,18 @@ public class ImportVorschauService {
     private final BezugsgroesseService werte;
     private final BezugsdatenImportRepository importe;
     private final BezugsdatenVorlageService vorlagen;
+    private final RechtPruefung rechte;
     private final TransactionTemplate lesen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public ImportVorschauService(BezugsgroesseRepository bezugsgroessen, BezugsgroesseService werte,
-            BezugsdatenImportRepository importe, BezugsdatenVorlageService vorlagen,
+            BezugsdatenImportRepository importe, BezugsdatenVorlageService vorlagen, RechtPruefung rechte,
             PlatformTransactionManager transactionManager) {
         this.bezugsgroessen = bezugsgroessen;
         this.werte = werte;
         this.importe = importe;
         this.vorlagen = vorlagen;
+        this.rechte = rechte;
         this.lesen = new TransactionTemplate(transactionManager);
         this.lesen.setReadOnly(true);
     }
@@ -76,6 +86,7 @@ public class ImportVorschauService {
             Map<String, ImportVorschau.Ziel> ziele = ImportVorschau.nachKennzeichen(bezugsgroessen.alle().stream()
                     .filter(b -> b.archiviertAm() == null)
                     .filter(b -> "periodenwert".equals(b.wertart()) || "stand".equals(b.wertart()))
+                    .filter(b -> rechte.lesbar(RechtZiel.BEZUGSGROESSE, b.id()))
                     .map(b -> new ImportVorschau.Ziel(b.id(), b.kennzeichen(), b.wertart(), b.einheit(), b.periodeArt(),
                             ZoneId.of(bezugsgroessen.zeitzone(b.id())), 1))
                     .toList());

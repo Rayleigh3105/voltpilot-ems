@@ -60,6 +60,16 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   (`bezugsdaten_vorlage_bezug`) alle `#lesbar` sind (AP-09 E12); `GET /bezugsdaten/importe` lässt einen Import mit
   einem Ziel außerhalb weg (`RechtPruefung#erlaubt`, dieselbe Prüfung wie das Detail), statt die ganze Liste mit 404
   abzulehnen.
+- **Import-Vorschau** (`vp-uems-zaun-folgepunkte-1003`): `POST /bezugsdaten/importe/vorschau` nimmt als Ziel nur
+  `#lesbar`e Bezugsgrößen (außerhalb = `bezug_unbekannt` wie ein unbekanntes Kennzeichen, ohne Kennung und Stand);
+  eine `vorlage_id` mit einem Bezug außerhalb ist `nicht_gefunden` (`BezugsdatenVorlageService#aktuell`). Die
+  Übernahme rechnet mit derselben Sicht nach, sonst wiche der Fingerabdruck ab.
+- ⚠ **Eingänge außerhalb, gemessen und OFFEN** (`LesewegImZugriffApiTest.FOLGEPUNKTE_OFFEN`, rot bei neuem UND
+  geheiltem Fall): eine sichtbare Antwort nennt eine Messstelle an einem fremden Standort — Register `berechnung`
+  (`fehlend`/`text`), `/{id}/formel` (`quell_messstelle_id`), `GET /standorte/{id}/messstellen-vorschlag`
+  (`unterzaehler_von`), `GET /sites/{siteId}/bilanz` (Hauptzähler). Entschieden ist AP-03 R-A3/R-A6/R-A7: die Zahl
+  über einen Eingang außerhalb fehlt ganz, Hinweis „umfasst Standorte außerhalb Ihres Zugriffs“ ohne Namen und Werte.
+  Bau: `vp-uems-zaun-eingaenge-ausserhalb`. Der Vorschlag eines FREMDEN Standorts ist die unbekannte Kennung (RLS).
 - **Kostenstelle, Prozess, Protokoll des Unternehmens, Bericht-Betroffenheit** (`vp-uems-zaun-kostenstelle-prozess-protokoll`):
   - `GET /unternehmen/kostenstellen/{id}`, `…/{id}/energie`, `/unternehmen/prozesse/{id}`: Geltung Unternehmen,
     `pruefenLesen(RechtZiel.UNTERNEHMEN, …)` in der Route — nur unternehmensweite Rollen, sonst die 404 der unbekannten

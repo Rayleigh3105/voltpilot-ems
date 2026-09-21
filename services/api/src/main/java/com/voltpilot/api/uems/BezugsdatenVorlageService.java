@@ -34,10 +34,13 @@ public class BezugsdatenVorlageService {
      */
     @Transactional(readOnly = true)
     public BezugsdatenVorlageDto.Liste liste() {
-        return new BezugsdatenVorlageDto.Liste(vorlagen.aktuelle().stream()
-                .filter(v -> vorlagen.bezuege(v.id(), v.fassung()).stream()
-                        .allMatch(b -> rechte.lesbar(RechtZiel.BEZUGSGROESSE, b)))
+        return new BezugsdatenVorlageDto.Liste(vorlagen.aktuelle().stream().filter(this::imZugriff)
                 .map(this::dto).toList());
+    }
+
+    /** Eine Vorlage ist sichtbar, wenn alle ihre Bezüge {@link RechtPruefung#lesbar} sind (wie die Liste). */
+    private boolean imZugriff(BezugsdatenVorlageRepository.Zeile v) {
+        return vorlagen.bezuege(v.id(), v.fassung()).stream().allMatch(b -> rechte.lesbar(RechtZiel.BEZUGSGROESSE, b));
     }
 
     @Transactional
@@ -79,9 +82,13 @@ public class BezugsdatenVorlageService {
         return vorlagen.aktuell(id).map(this::dto).orElseThrow();
     }
 
+    /**
+     * Die Vorlage der Import-Vorschau per Kennung: eine Vorlage mit einem Bezug außerhalb des Zugriffs ist, wie eine
+     * unbekannte Kennung, {@code nicht_gefunden} (AP-03 R-A1, dieselbe Regel wie die Liste).
+     */
     @Transactional(readOnly = true)
     public BezugsdatenVorlageRepository.Zeile aktuell(UUID id) {
-        return vorlagen.aktuell(id).orElseThrow(
+        return vorlagen.aktuell(id).filter(this::imZugriff).orElseThrow(
                 () -> BezugsgroesseAbgelehnt.von(BezugsgroesseRegeln.Ablehnung.NICHT_GEFUNDEN));
     }
 
