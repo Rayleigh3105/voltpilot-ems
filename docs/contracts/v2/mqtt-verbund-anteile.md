@@ -112,6 +112,17 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   sich der Wert wieder ändert; dann gibt der Regelkreis gebremst frei wie nach jedem Blind-Zustand. Eine ruhende
   Anlage (nichts verstellt) ist mit gleichbleibendem Wert gesund. Ohne Dokument wird die Probe weder gefüttert noch
   gefragt.
+- **Prüf-Verstellung (IP-27 Befund A7, erweitert B2):** steht der eigene Wert 30 s bitgleich still (gemessen an den
+  Zeitstempeln der Werte), WÄHREND die Box über ihrem Anteil läuft (Erzeugung + Entladung bzw. Ladepark-Bezug bzw.
+  Netzladen des Speichers, gemessen — dieselbe Größe, auf die sie blind zurückfällt), senkt der Wächter der Richtung
+  des stehenden Werts EINMAL je Stillstand um 2,1 kW (2 kW + Schreibauflösung) und hält das; die Probe urteilt nach
+  einer solchen gezielten Verstellung schon nach 20 s (Startwerte, NW-7). Bewegt sich der Wert: gesund, gebremste
+  Freigabe; bleibt er: eingefroren = blind. Unter dem Anteil, ohne wirksam Senkbares oder zum zweiten Mal im selben
+  Stillstand: keine Prüf-Verstellung.
+- **Dauer statt Uhrzeit (IP-27 Befund A8):** ein Wert mit älterem Zeitstempel als der letzte ist ein Uhrensprung —
+  Einspeisewächter, Ladebudget (über einen Zwilling, der Tracker von heute bleibt unberührt) und Probe verankern neu
+  statt zu verwerfen; ein Alter unter 0 ist blind (Anteil), nie „frisch“. Nur mit Dokument; der Weg der Einzelbox von
+  heute hat dieselbe Lücke weiter (Befund `befundEinzelboxUhrZurueck`, Entscheidung des Betreibers).
 
 ## 3. Die Quittung (Uplink)
 

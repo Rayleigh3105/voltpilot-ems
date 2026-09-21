@@ -59,7 +59,21 @@ type BezugAnteil struct {
 	// box goes blind exactly as when the value stops arriving. Zero = not
 	// frozen.
 	EingefrorenSeit time.Time
+	// Pruefen is set while the Einfrierprobe asks for a probing adjustment in
+	// the import direction (IP-27 A7, guards.Einfrierprobe.Pruefung). The
+	// leading box then lowers its charging budget ONCE by guards.PruefSenkKw
+	// below the MEASURED draw - only while that draw is above its share (the
+	// figure it falls back to blind) - and holds it until the probe answers.
+	Pruefen bool
+	// PruefenNeu: the probe is due and no watchdog made it yet in this
+	// standstill - only then may the budget START it (once per standstill).
+	PruefenNeu bool
 }
+
+// pruefSenkKw is guards.PruefSenkKw (EinfrierStellKw + the write resolution);
+// lastmgmt keeps its own copy like its own fresh window, and a test pins the
+// two equal.
+const pruefSenkKw = 2.1
 
 // BudgetAnteil evaluates the charging budget for a box that holds a share
 // document. The verdict keeps today's vocabulary (BudgetMode) - a share that
@@ -69,6 +83,21 @@ type BezugAnteil struct {
 // safe default of stations it cannot reach OUT OF the share (ocppBudget).
 func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil) BudgetVerdict {
 	heute := t.Budget(now, set)
+	// IP-27 A8: the twin re-anchors on a clock that jumped back where today's
+	// tracker holds a stale sample as fresh; the lower of the two is the base -
+	// the share never evaluates above today's (V5), and a stale sample never
+	// lifts it.
+	z := t.twin()
+	src := t
+	if z != nil {
+		if h := z.Budget(now, set); h.Kw < heute.Kw {
+			heute = h
+		}
+		src = z
+	}
+	src.mu.Lock()
+	seen, at, charging := src.seen, src.at, src.chargingKw
+	src.mu.Unlock()
 	anteil := an.AnteilKw
 	if !budgetFinite(anteil) || anteil < 0 {
 		anteil = 0
@@ -78,16 +107,18 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 	res.AnteilKw = &anteil
 
 	t.mu.Lock()
-	seen, at := t.seen, t.at
 	// B2: a frozen value is no measurement - its age counts from its last
 	// change.
 	eingefroren := seen && !an.EingefrorenSeit.IsZero() && !an.EingefrorenSeit.After(at)
 	if eingefroren {
 		at = an.EingefrorenSeit
 	}
+	// A8: an age below zero is no age - the clock went back behind the
+	// sample. Blind, never clamped to "fresh".
 	age := now.Sub(at)
-	if age < 0 {
-		age = 0
+	uhrsprung := seen && age < 0
+	if !an.Pruefen || !an.Fuehrt || uhrsprung || age > BudgetFreshWindow {
+		t.pruefValid = false
 	}
 	var deckel float64
 	mode, blind := BudgetStatic, heute.Blind
@@ -98,10 +129,18 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 	case !an.Fuehrt:
 		t.rampValid = false
 		deckel = anteil
+	case uhrsprung:
+		t.rampValid = false
+		deckel, mode, blind = anteil, BudgetSafe, true
+		reason = "Die Uhr der Box ist hinter die letzte Messung am Netzanschluss zurückgesprungen - bis zur " +
+			"nächsten Messung gilt in der Gemeinsamen Steuerung der Anteil dieser Box von " + kwText(anteil) + " kW."
 	case seen && age <= BudgetFreshWindow:
 		// fresh: the leading box regulates the WHOLE limit with today's loop;
 		// its share does not bind while it measures.
 		t.rampValid = false
+		if an.Pruefen {
+			t.pruefenLocked(charging, anteil, an.PruefenNeu, &res)
+		}
 		t.mu.Unlock()
 		return res
 	case !seen:
@@ -138,6 +177,29 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 		res.AnteilBinds = true
 	}
 	return res
+}
+
+// pruefenLocked is the probing adjustment of IP-27 A7 on the import side: at
+// its start the leading box lowers its charging budget ONCE to pruefSenkKw
+// below the MEASURED draw - only while that draw runs above its share, and
+// only when there is that much to lower (else nothing: no adjustment that
+// could not show, no verdict from the probe). It holds that figure until the
+// probe answers; a value that moves releases through today's loop. Caller
+// holds t.mu.
+func (t *BudgetTracker) pruefenLocked(chargingKw, anteil float64, neu bool, res *BudgetVerdict) {
+	if !t.pruefValid {
+		if !neu || !budgetFinite(chargingKw) || chargingKw <= anteil || chargingKw < pruefSenkKw {
+			return
+		}
+		t.pruefValid, t.pruefKw = true, round3(chargingKw-pruefSenkKw)
+		res.Pruefung = true
+	}
+	if t.pruefKw < res.Kw {
+		res.Kw = t.pruefKw
+		res.Reason = "Gemeinsame Steuerung: der Messwert am Netzanschluss steht still - diese Box senkt ihr " +
+			"Ladebudget einmal um " + kwText(pruefSenkKw) + " kW auf " + kwText(t.pruefKw) +
+			" kW und prüft, ob der Zähler das zeigt."
+	}
 }
 
 // anteilBlindPrefix opens the sentence of a blind share verdict: the value
@@ -182,16 +244,25 @@ func (t *BudgetTracker) Netzpunkt(now time.Time, set Settings) (n Netzpunkt, has
 	}
 	n.PlanableKw = round3(limit * (1 - set.MarginPct/100))
 	hasLimit = set.GridLimitKw > 0
-	if !t.seen {
+	// IP-27 A8: the sample of the share path's twin, which re-anchors on a
+	// clock that jumped back
+	src := t
+	if t.zwilling != nil {
+		src = t.zwilling
+		src.mu.Lock()
+		defer src.mu.Unlock()
+	}
+	if !src.seen {
 		return n, hasLimit
 	}
-	n.Seen, n.GridKw, n.ChargingKw = true, t.gridKw, t.chargingKw
-	n.Age = now.Sub(t.at)
+	n.Seen, n.GridKw, n.ChargingKw = true, src.gridKw, src.chargingKw
+	n.Age = now.Sub(src.at)
 	if n.Age < 0 {
-		n.Age = 0
+		// an age below zero is no age: older than every window (blind)
+		n.Age = BudgetHoldWindow + BudgetContractWindow + time.Second
 	}
-	if t.haveBatt {
-		n.BattChargeKw = t.battKw
+	if src.haveBatt {
+		n.BattChargeKw = src.battKw
 	}
 	return n, hasLimit
 }

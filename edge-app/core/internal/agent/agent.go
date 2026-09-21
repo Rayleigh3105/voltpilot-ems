@@ -3080,7 +3080,12 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// B2 (AP-15 IP-20): a frozen value counts as blind - its age from its
 		// last change (eingefroren.go)
 		an.EingefrorenSeit = a.eingefrorenSeit(now)
+		// IP-27 A7: a standing value asks for ONE probing adjustment
+		if r, neu := a.einfrierPruefen(now); r < 0 {
+			an.Pruefen, an.PruefenNeu = true, neu
+		}
 		exportCap = a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
+		a.einfrierGeprueft(now, exportCap.Pruefung)
 		vorEntladeKappe := kw
 		kw = lowerDischarge(kw, exportCap.DischargeCapKw)
 		entladungGesenkt = kw != vorEntladeKappe

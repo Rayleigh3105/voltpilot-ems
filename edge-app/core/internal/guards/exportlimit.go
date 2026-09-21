@@ -213,6 +213,14 @@ type ExportCap struct {
 	// eingefroren.go; CapAnteil only). MeasurementAge then counts from the
 	// last change of the value.
 	Eingefroren bool
+	// Uhrsprung is true while the verdict is blind because the box's clock
+	// went back behind its newest measurement (IP-27 A8; CapAnteil only): an
+	// age below zero is no age.
+	Uhrsprung bool
+	// Pruefung is true when this evaluation made the probing adjustment of
+	// IP-27 A7 (CapAnteil only): the caller reports it to the Einfrierprobe
+	// (Geprueft), whose answer window starts now.
+	Pruefung bool
 }
 
 // ExportLimiter holds the watchdog's measurement + hysteresis state across ticks.
@@ -250,6 +258,14 @@ type ExportLimiter struct {
 	rampPv, rampDis float64
 	// heute is the same box WITHOUT a share, evaluated alongside (V5)
 	heute *ExportLimiter
+	// the probing adjustment of IP-27 A7 (exportanteil.go, pruefen): the
+	// point it lowered to, held until the Einfrierprobe answers; +Inf = that
+	// actuator is not probed
+	pruefValid        bool
+	pruefPv, pruefDis float64
+	// a probe that lowered the discharge: the discharge and the PV cap before
+	// it (pruefNachher); pruefDisVor 0 = none pending
+	pruefDisVor, pruefCapVor float64
 }
 
 // NewExportLimiter returns an idle watchdog (no measurement, no cap).
