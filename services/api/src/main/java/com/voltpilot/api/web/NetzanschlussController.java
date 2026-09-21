@@ -85,11 +85,15 @@ public class NetzanschlussController {
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
-    /** Recht: heute lesend — keine eigene Kennung (wie das Standort-Lesemodell). Ohne Stichtag alle, beendete eingeschlossen. */
+    /**
+     * Recht: heute lesend — keine eigene Kennung (wie das Standort-Lesemodell). Ohne Stichtag alle, beendete
+     * eingeschlossen. Der Standort-Zaun hält den Standort (RLS); eine gebundene Anlage außerhalb des Zugriffs fehlt
+     * ({@code RechtPruefung#lesbar}).
+     */
     @GetMapping
     public NetzanschlussDto.Netzanschluesse liste(@PathVariable UUID standortId,
             @RequestParam(required = false) String stichtag) {
-        return dienst.liste(standortId, tag("stichtag", stichtag));
+        return dienst.liste(standortId, tag("stichtag", stichtag), anlage -> rechte.lesbar(RechtZiel.ANLAGE, anlage));
     }
 
     /** Recht: {@code netzanschluss.verwalten} (AP-10 §4.10, E15). Ohne Kennzeichen vergibt die Regel das nächste. */
@@ -101,10 +105,13 @@ public class NetzanschlussController {
         return ResponseEntity.created(URI.create(pfad(standortId, id))).body(dienst.netzanschluss(standortId, id));
     }
 
-    /** Recht: heute lesend — keine eigene Kennung (wie das Standort-Lesemodell). */
+    /**
+     * Recht: heute lesend — keine eigene Kennung (wie das Standort-Lesemodell). Zaun wie die Liste: Standort über RLS,
+     * eine gebundene Anlage außerhalb des Zugriffs fehlt.
+     */
     @GetMapping("/{id}")
     public NetzanschlussDto.Netzanschluss netzanschluss(@PathVariable UUID standortId, @PathVariable UUID id) {
-        return dienst.netzanschluss(standortId, id);
+        return dienst.netzanschluss(standortId, id, anlage -> rechte.lesbar(RechtZiel.ANLAGE, anlage));
     }
 
     /** Recht: {@code netzanschluss.verwalten}. Die ganze Menge; ein Ende wird nur vorgezogen. */

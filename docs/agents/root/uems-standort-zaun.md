@@ -158,14 +158,24 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   14 der Messstelle und `/bezugsdaten/vorlagen` (`vp-uems-zaun-messstelle-vorlagen-lesen`), Kostenstelle `/{id}`,
   `/{id}/energie`, Prozess `/{id}`, `/unternehmen/aenderungen`, `/berichte/betroffen`
   (`vp-uems-zaun-kostenstelle-prozess-protokoll`).
+- **Netzanschluss auf der Bühne** (`vp-uems-zaun-netzanschluss-buehne`, `ZugriffZaunApiTest#netzanschluesse`): NA-Z1
+  am Demo-Standort (Berliner Anlage, Fassung, Hauptzähler MS-Z1), NA-Z9 am anderen Standort (eigene Anlage mit
+  437 kW, Fassung, Hauptzähler MS-Z8); die Anlage anderswo hing 2023 an NA-Z1 — die Zuordnung (Umzug) ändert den
+  Anschluss nicht. `…/netzanschluesse/{id}`, `/grenzen`, `/grenznachweis` sind damit gemessen (vorher „ohne Aussage“).
+  Kreuzfälle in `#derNetzanschlussNenntKeineAnlageUndKeinenZaehlerAusserhalbDesZugriffs`: Liste und `/{id}` nennen
+  eine gebundene Anlage außerhalb nicht (`NetzanschlussService#liste`/`#netzanschluss` mit Prädikat,
+  `RechtPruefung#lesbar(ANLAGE, …)` in der Route; vorher Kennung mit `name: null` wie gelöscht). Die Antworten der
+  Schreibwege nennen weiter alle Bindungen. Der Grenz-Nachweis hielt schon: `alleLesbar` am Hauptzähler, die
+  Grenze der fremden Anlage liest `site` unter RLS. Das Protokoll `netzanschluss_aenderung` hat keinen Leseweg.
 - **Entschiedene Ausnahme `AUSWAHL_KATALOG` (21.09.2026, Lesart B):** die Listen `/unternehmen/kostenstellen` und
   `/unternehmen/prozesse` nennen dem Bearbeiter anderswo jede Zeile, aber GENAU die Stammdaten-Felder; der Leser sieht
   keine. Die Inventur misst beides — ein weiteres Feld ist ein Loch.
 - **Messform:** erste Kennung = Objekt der Bühne (`behaelter`), Bearbeiter hier sieht es (sonst Kundenadministrator),
   Bearbeiter anderswo = Status und Körper der unbekannten Kennung. Zwei gleiche Ablehnungen sind „ohne Aussage“, zwei
   verschiedene ein Loch (Existenz). Listen: anderswo fehlt das Objekt.
-- ⚠ Die Inventur setzt ihre Pfade selbst und fasst `PROBEN` (Bestandsvergleich) nicht an. 18 Muster bleiben „ohne
-  Aussage“ (Unterobjekte der Anlage ohne Objekt, Pflichtparameter), 11 ohne Objekt der Bühne (Bericht, Kennzahl).
+- ⚠ Die Inventur setzt ihre Pfade selbst und fasst `PROBEN` (Bestandsvergleich) nicht an. Stand 21.09.2026: 110
+  gemessen, 21 Muster „ohne Aussage“ (Unterobjekte der Anlage ohne Objekt, Pflichtparameter), 12 ohne Objekt der
+  Bühne (Bericht, Kennzahl).
 
 ## Prüfen
 

@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,20 +90,31 @@ public class NetzanschlussService {
 
     // ------------------------------------------------------------------------ lesen
 
-    /** Die Anschlüsse eines Standorts — mit {@code stichtag} nur die an dem Tag bestehenden. */
-    public NetzanschlussDto.Netzanschluesse liste(UUID standortId, LocalDate stichtag) {
+    /**
+     * Die Anschlüsse eines Standorts — mit {@code stichtag} nur die an dem Tag bestehenden. {@code sichtbar} beantwortet
+     * je Anlage, ob die Leseroute ihre Bindung nennen darf ({@code RechtPruefung#lesbar}): eine Anlage außerhalb des
+     * Zugriffs fehlt in {@code anlagen} ganz, ohne Hinweis (AP-03 R-A7) — etwa nach ihrem Umzug an einen anderen
+     * Standort, denn die Zuordnung ändert den Anschluss nicht.
+     */
+    public NetzanschlussDto.Netzanschluesse liste(UUID standortId, LocalDate stichtag, Predicate<UUID> sichtbar) {
         StandortRepository.Standort s = standort(standortId);
         String vorschlag = NetzanschlussRegeln.kennzeichen(null, belegt(null), repo.zaehler()).vorschlag().kennzeichen();
         List<NetzanschlussDto.Netzanschluss> liste = repo.amStandort(standortId).stream()
                 .filter(a -> stichtag == null || besteht(a, stichtag))
-                .map(a -> darstellung(a, s, stichtag))
+                .map(a -> darstellung(a, s, stichtag, sichtbar))
                 .toList();
         return new NetzanschlussDto.Netzanschluesse(verweis(s), stichtag, vorschlag, liste);
     }
 
+    /** Ein Anschluss mit allen Bindungen — die Antwort der Schreibwege. */
     public NetzanschlussDto.Netzanschluss netzanschluss(UUID standortId, UUID id) {
+        return netzanschluss(standortId, id, anlage -> true);
+    }
+
+    /** Ein Anschluss; {@code sichtbar} wie bei {@link #liste}. */
+    public NetzanschlussDto.Netzanschluss netzanschluss(UUID standortId, UUID id, Predicate<UUID> sichtbar) {
         StandortRepository.Standort s = standort(standortId);
-        return darstellung(anschluss(s, id), s, null);
+        return darstellung(anschluss(s, id), s, null, sichtbar);
     }
 
     // --------------------------------------------------------------------- schreiben
@@ -400,10 +412,12 @@ public class NetzanschlussService {
                 && (a.gueltigBis() == null || !tag.isAfter(a.gueltigBis()));
     }
 
-    private NetzanschlussDto.Netzanschluss darstellung(Anschluss a, StandortRepository.Standort s, LocalDate stichtag) {
+    private NetzanschlussDto.Netzanschluss darstellung(Anschluss a, StandortRepository.Standort s, LocalDate stichtag,
+            Predicate<UUID> sichtbar) {
         ZoneId zone = ZoneId.of(s.zeitzone());
         List<NetzanschlussDto.Bindung> anlagen = repo.bindungenDesAnschlusses(a.id()).stream()
                 .filter(b -> stichtag == null || b.laeuftAm(stichtag))
+                .filter(b -> sichtbar.test(b.siteId()))
                 .map(b -> new NetzanschlussDto.Bindung(b.id(), new NetzanschlussDto.Anlage(b.siteId(), b.anlageName()),
                         b.gueltigAb(), b.gueltigBis()))
                 .toList();
