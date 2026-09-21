@@ -152,12 +152,15 @@ const PRUEF_LADEFEHLER = 'Die Prüfliste konnte nicht geladen werden. Bitte vers
 
 export function MessenAssistent({
   standortId: vorwahl = null,
+  schritt: wunsch = null,
   gebaut = GEBAUTE_SCHRITTE,
   speicher,
   onClose,
 }: {
   /** Der Standort, aus dessen Zeile der Assistent geöffnet wurde; ohne: der des Entwurfs. */
   standortId?: string | null;
+  /** Die Stelle, auf die ein Einstieg zeigt (Satz „Daten kommen an“ → 2); gilt nur mit bestehender Funktion. */
+  schritt?: MessenSchritt | null;
   /** Die Schritte, die eine Fläche trägt (IP-9a: 1 und 2). */
   gebaut?: readonly MessenSchritt[];
   /** Wo der Entwurf liegt; ohne Angabe der Speicher des Browsers, `null` = keiner. */
@@ -216,7 +219,7 @@ export function MessenAssistent({
         setFunktionen(f);
         if (gestartet.current) return;
         gestartet.current = true;
-        const start = startSchritt({ standortId: vorwahl, funktionen: f, entwurf: entwurfLesen(ablage), gebaut });
+        const start = startSchritt({ standortId: vorwahl, funktionen: f, entwurf: entwurfLesen(ablage), gebaut, wunsch });
         setStandortId(start.standortId ?? standortWahl(l)?.vorbelegt ?? null);
         setSchritt(start.schritt);
       },
@@ -227,7 +230,7 @@ export function MessenAssistent({
     return () => {
       aktiv = false;
     };
-  }, [runde, vorwahl, ablage, gebaut]);
+  }, [runde, vorwahl, wunsch, ablage, gebaut]);
 
   // Der Entwurf folgt jeder Wahl und jedem Schritt — ein Abbruch verliert nichts.
   // „Fertig" löscht ihn: danach gibt es nichts mehr fortzusetzen.

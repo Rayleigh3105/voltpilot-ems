@@ -1,4 +1,5 @@
 import { KorrekturenDialog } from '../components/KorrekturenDialog';
+import { MESSEN_EINRICHTEN } from '../messenEinstieg';
 import { Recht } from '../components/Recht';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
@@ -224,6 +225,8 @@ interface RegisterProps {
   zone?: string;
   /** Der Weg aus dem Leerzustand „gibt es erst mit Messen & Auswerten“: die Übersicht der Ebene. */
   onUebersicht?: () => void;
+  /** AP-01 E5 = A: der Leerzustand führt in den Assistenten „Messen & Auswerten“ (nur mit Recht). */
+  onMessenEinrichten?: () => void;
   /** Öffnet die Messstellen-Seite (AP-04 IP-8) — der Name jeder Zeile ist der Einstieg. */
   onOeffnen?: (id: string) => void;
   /**
@@ -241,6 +244,7 @@ function RegisterFlaeche({
   bereichDa = null,
   zone = VORGABE_ZEITZONE,
   onUebersicht,
+  onMessenEinrichten,
   onOeffnen,
   onWerte,
   leiste = null,
@@ -371,7 +375,7 @@ function RegisterFlaeche({
               {LADEN}
             </p>
           ) : leer ? (
-            <Leer leer={leer} onUebersicht={onUebersicht} onAnlegen={anlegbar ? () => setAnlegen(true) : undefined} />
+            <Leer leer={leer} onUebersicht={onUebersicht} onMessenEinrichten={onMessenEinrichten} onAnlegen={anlegbar ? () => setAnlegen(true) : undefined} />
           ) : isPhone ? (
             <Karten eintraege={eintraege} stichtag={stichtag} onOeffnen={onOeffnen} onWerte={werteOeffnen} />
           ) : (
@@ -454,16 +458,30 @@ function Filterleiste({
 function Leer({
   leer,
   onUebersicht,
+  onMessenEinrichten,
   onAnlegen,
 }: {
   leer: Leerzustand;
   onUebersicht?: () => void;
+  /**
+   * AP-01 E5 = A: „Messen & Auswerten einrichten“ öffnet den Assistenten (am Standort mit Vorwahl, sonst am
+   * Entwurf) — in beiden Leerzuständen der Messwelt, nur mit Recht; ohne Recht steht Grund und Weg.
+   */
+  onMessenEinrichten?: () => void;
   /** §5.11: „noch keine Messstelle“ trägt den Knopf „Messstelle anlegen“ — nur, wenn angelegt werden darf. */
   onAnlegen?: () => void;
 }) {
+  const messen = (leer.art === 'bereich_fehlt' || leer.art === 'keine_messstelle') && onMessenEinrichten;
   return (
     <div className="vp-ms-leer" role="status">
       <p>{leer.satz}</p>
+      {messen && (
+        <Recht aktion="funktion.messen_einrichten">
+          <Button variant={leer.art === 'bereich_fehlt' ? 'primary' : 'outline'} onClick={onMessenEinrichten}>
+            {MESSEN_EINRICHTEN}
+          </Button>
+        </Recht>
+      )}
       {leer.art === 'bereich_fehlt' && onUebersicht && (
         <Button variant="outline" onClick={onUebersicht}>
           {ZUR_UEBERSICHT}

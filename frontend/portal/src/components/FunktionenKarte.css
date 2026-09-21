@@ -16,6 +16,8 @@
 }
 
 .vp-fk-titel {
+  /* Avatar-Menü „Funktionen“ rückt die Karte in den Blick — nicht unter den Seitenkopf. */
+  scroll-margin-top: 80px;
   margin: 0 0 var(--vp-space-4, 16px);
   font-size: 1.125rem;
   font-weight: 600;
@@ -138,8 +140,21 @@
   min-height: 44px;
 }
 
+/* „Messen & Auswerten für Werk Ahrenberg einrichten“ ist am Telefon breiter als die Karte: umbrechen statt querlaufen.
+   Nur die Messen-Zeile — die Knöpfe von „Steuern & Optimieren“ bleiben zeichengleich. */
+.vp-fk-abschnitt[data-funktion='messen'] .vp-fk-schritt .vp-btn {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: left;
+}
+
 /* Der Leerzustand der Standort-Übersicht spricht dieselbe Schritt-Sprache. */
 .vp-portfolio-schritt {
   display: block;
   margin-top: var(--vp-space-2, 8px);
+}
+
+.vp-fk-titel:focus:not(:focus-visible) {
+  outline: none;
 }

@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { FUNKTIONEN_EINTRAG } from '../messenEinstieg';
 import { NavItem } from '../../designsystem/components/shell/NavItem';
 // Die BESCHNITTENE Wortmarke (640x152, 9 kB), nicht die 292-kB-Bestandsdatei
 // (Perf-Review `vp-cockpit-perf-p7` §2 U3): die grosse Datei traegt einen
@@ -139,6 +140,7 @@ export function AppShell({
   fleetLabel = PORTFOLIO_PAGE.label,
   showAddAnlage,
   onAddAnlage,
+  onFunktionen,
   counts,
   tenants,
   tenantOverride,
@@ -183,6 +185,11 @@ export function AppShell({
   showAddAnlage: boolean;
   /** Open the "Anlage anlegen" one-flow drawer (hosted by the caller). */
   onAddAnlage: () => void;
+  /**
+   * AP-01 E5 = A: „Funktionen“ im Avatar-Menü führt zur Karte „Funktionen“ der Übersicht. Ohne Ziel (Anlage-
+   * oder Bestands-Landung, keine Karte) gibt es den Eintrag nicht.
+   */
+  onFunktionen?: () => void;
   counts: { sites: number | null; devices: number | null };
   /** Admin only: tenants for the context switcher. */
   tenants: Tenant[];
@@ -617,6 +624,20 @@ export function AppShell({
                   onClick={() => openTarget({ kind: 'page', page: 'kunden-benutzer' })}>
                   <Icon name="users" size={18} />Benutzer
                 </button>}
+                {onFunktionen && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="vp-avatarmenu-item"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onFunktionen();
+                    }}
+                  >
+                    <Icon name="layers" size={18} />
+                    {FUNKTIONEN_EINTRAG}
+                  </button>
+                )}
                 <button
                   type="button"
                   role="menuitem"
