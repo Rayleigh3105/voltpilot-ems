@@ -62,6 +62,16 @@ type ExportAnteil struct {
 	// then treats the value as a measurement that old - blind, the same
 	// stages as a measurement gone quiet. Zero = not frozen.
 	EingefrorenSeit time.Time
+	// Pruefen is set while the Einfrierprobe asks for a probing adjustment in
+	// the feed-in direction (IP-27 A7, Einfrierprobe.Pruefung): the value has
+	// stood still for PruefStillstand, or the answer window of the probe runs.
+	// The watchdog then lowers ONCE by PruefSenkKw - only above its share and
+	// only what must reach its own point - and holds that point until the
+	// probe has answered. ExportCap.Pruefung reports the lowering.
+	Pruefen bool
+	// PruefenNeu: the probe is due, no watchdog made it yet in this
+	// standstill - only then may this one START it (once per standstill).
+	PruefenNeu bool
 }
 
 // CapAnteil evaluates the watchdog for a box that holds a share document.
@@ -95,10 +105,7 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 	// V5 by construction: the SAME box without a share runs alongside,
 	// unchanged, on the same measurements - the share only ever lowers it.
 	l.mu.Lock()
-	if l.heute == nil {
-		l.heute = NewExportLimiter()
-	}
-	shadow := l.heute
+	shadow := l.schattenLocked()
 	l.mu.Unlock()
 	heuteStatic := 0.0
 	if limitKw != nil && finite(*limitKw) {
@@ -115,13 +122,29 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 	if eingefroren {
 		at = an.EingefrorenSeit
 	}
+	// A8 (IP-27): an age below zero is no age - the clock went back behind
+	// the measurement. Blind, never clamped to "fresh": the measurement counts
+	// as older than every window until the next one re-anchors the clock
+	// (ObserveMitSpeicher).
+	uhrsprung := l.seen && now.Before(at)
+	if uhrsprung {
+		at = now.Add(-(ExportFreshWindow + ExportAnteilWindow + time.Second))
+	}
 	res := l.capLockedAb(now, at, loop, safePv)
 	res.AnteilKw = &anteil
 	res.Eingefroren = eingefroren && res.Blind
+	res.Uhrsprung = uhrsprung
+	if !an.Pruefen || res.Blind {
+		l.pruefValid = false
+	}
 	switch {
 	case !res.Blind:
 		l.rampValid = false
+		l.pruefNachher(now, discharge, &res)
 		l.dischargeFresh(now, loop, discharge, &res)
+		if an.Pruefen {
+			l.pruefen(now, budget, discharge, an.PruefenNeu, &res)
+		}
 	case !l.seen || res.MeasurementAge > ExportFreshWindow+ExportAnteilWindow:
 		// never measured (R15: the share holds before the first measurement)
 		// or past the ramp: the share, for generation AND discharge together.
@@ -257,6 +280,108 @@ func (l *ExportLimiter) dischargeReport(discharge float64, res *ExportCap) {
 	}
 }
 
+// pruefen is the probing adjustment of IP-27 A7 on a fresh measurement (the
+// Einfrierprobe asked for it, an.Pruefen). At its start it lowers ONCE what
+// must reach the box's own point by PruefSenkKw - generation first, the
+// discharge only when the producers have less (V6: the discharge is the last
+// actuator) - and only while generation plus discharge, MEASURED, run above
+// the share (the same quantity the box falls back to blind). Under the share,
+// or with nothing effectively lowerable, it does nothing: no adjustment that
+// could not show, and so no verdict from the probe. Until the probe answers it
+// holds that point - no release credit accrues - and a value that moves then
+// releases from there, braked, like after every blind state. Caller holds l.mu.
+func (l *ExportLimiter) pruefen(now time.Time, budget, discharge float64, neu bool, res *ExportCap) {
+	if !l.pruefValid {
+		if !neu {
+			return
+		}
+		dis := 0.0
+		if l.battValid && l.battKw < 0 {
+			dis = -l.battKw
+		}
+		if l.pvKw+dis <= budget {
+			return
+		}
+		pv := math.Min(l.cap, l.pvKw)
+		switch {
+		case pv >= PruefSenkKw:
+			l.pruefPv, l.pruefDis = pv-PruefSenkKw, math.Inf(1)
+		case dis >= PruefSenkKw:
+			l.pruefPv, l.pruefDis = math.Inf(1), dis-PruefSenkKw
+			l.pruefDisVor, l.pruefCapVor = dis, l.cap
+		default:
+			return
+		}
+		l.pruefValid = true
+		res.Pruefung = true
+	}
+	if l.cap > l.pruefPv {
+		l.cap = l.pruefPv
+	}
+	l.capAt = now
+	res.CapKw = round3(l.cap)
+	if !math.IsInf(l.pruefDis, 1) {
+		if !l.dcapValid || l.dcap > l.pruefDis {
+			l.dcap, l.dcapValid = l.pruefDis, true
+		}
+		l.dcapAt = now
+		l.dischargeReport(discharge, res)
+	}
+}
+
+// pruefNachher keeps the producers where they were while the discharge a
+// probing adjustment lowered is still below its point before the probe (and
+// that ceiling still binds): one measurement shows the headroom the probe
+// freed, and the PV law and the discharge law would each claim all of it.
+// The discharge the probe took releases first; the producers only after.
+// Caller holds l.mu.
+func (l *ExportLimiter) pruefNachher(now time.Time, discharge float64, res *ExportCap) {
+	if l.pruefDisVor <= 0 {
+		return
+	}
+	if !l.dcapValid || l.dcap >= math.Min(l.pruefDisVor, discharge)-ExportStepKw {
+		l.pruefDisVor, l.pruefCapVor = 0, 0
+		return
+	}
+	if l.cap > l.pruefCapVor {
+		l.cap = l.pruefCapVor
+		res.CapKw = round3(l.cap)
+	}
+	l.capAt = now
+}
+
+// schattenLocked is the shadow of V5 - the same box WITHOUT a share. It
+// starts as a copy of what this watchdog held until now (without a document
+// it WAS today's watchdog: Observe and Cap), so it continues exactly where
+// today's would, and from then on it gets every sample through today's
+// Observe - which discards a sample older than the newest (IP-27: once this
+// watchdog re-anchors on a clock that jumped back, the two must not have
+// started from different samples). Caller holds l.mu.
+func (l *ExportLimiter) schattenLocked() *ExportLimiter {
+	if l.heute == nil {
+		l.heute = &ExportLimiter{
+			seen: l.seen, at: l.at, gridKw: l.gridKw, pvKw: l.pvKw,
+			capValid: l.capValid, cap: l.cap, capAt: l.capAt,
+			limitValid: l.limitValid, limit: l.limit,
+		}
+	}
+	return l.heute
+}
+
+// verankern re-anchors the watchdog on a clock that went back to ts (A8):
+// the sample at ts becomes the newest, and the release credit counts from it
+// at the earliest - the time before the jump is no time on the new clock, and
+// a merely reordered sample can never earn a faster release. Caller holds l.mu.
+func (l *ExportLimiter) verankern(ts time.Time) {
+	l.at = ts
+	if l.capAt.After(ts) {
+		l.capAt = ts
+	}
+	if l.dcapAt.After(ts) {
+		l.dcapAt = ts
+	}
+}
+
 // ObserveMitSpeicher is Observe plus the measured battery power of the same
 // sample (kW, + charge / - discharge; nil = not measured - unknown is not
 // zero). Only a box holding a share uses the battery (V6); for every other
@@ -266,9 +391,13 @@ func (l *ExportLimiter) ObserveMitSpeicher(ts time.Time, gridKw, pvKw float64, b
 		return false
 	}
 	l.mu.Lock()
+	shadow := l.schattenLocked()
 	if l.seen && ts.Before(l.at) {
-		l.mu.Unlock()
-		return false
+		// A8 (IP-27): a sample older than the newest one is a clock that
+		// jumped back, not a stale sample - re-anchor instead of discarding
+		// every sample until the clock has caught up. The shadow below keeps
+		// today's rule (it IS today).
+		l.verankern(ts)
 	}
 	l.battValid = battKw != nil && finite(*battKw)
 	if l.battValid {
@@ -278,7 +407,6 @@ func (l *ExportLimiter) ObserveMitSpeicher(ts time.Time, gridKw, pvKw float64, b
 	// discharge: a tighter discharge ceiling republishes at once, too
 	urgentDis := l.limitValid && l.dcapValid &&
 		l.dischargeTargetAt(gridKw, math.Max(pvKw, 0), l.limit, l.dcap) < l.dcap-ExportStepKw
-	shadow := l.heute
 	l.mu.Unlock()
 	if shadow != nil {
 		shadow.Observe(ts, gridKw, pvKw)
@@ -362,6 +490,10 @@ func (l *ExportLimiter) anteilReason(fuehrt bool, budget, discharge float64, res
 // blindSatz opens the sentence of a blind verdict: the measurement stopped
 // arriving - or it arrives, frozen (B2).
 func blindSatz(res *ExportCap, wo string) string {
+	if res.Uhrsprung {
+		return fmt.Sprintf("Die Uhr dieser Box ist hinter die letzte Messung %s zurückgesprungen - "+
+			"bis zur nächsten Messung gilt sie als blind", wo)
+	}
 	if res.Eingefroren {
 		return fmt.Sprintf("Der Messwert %s steht seit %s still, obwohl diese Box selbst um "+
 			"mindestens %s kW verstellt hat - er gilt als eingefroren",

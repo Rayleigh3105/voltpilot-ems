@@ -26,6 +26,9 @@ type einfrierStand struct {
 	battKw   *float64 // newest measured battery (+ charge / - discharge)
 	pvCapKw  float64  // last published PV cap; +Inf = none
 	pvCapSet bool     // false before the first published setpoint
+	// pruefBattKw is the probing ceiling on the battery charge the
+	// Bezugswaechter set (IP-27 A7), kept while the probe runs
+	pruefBattKw *float64
 }
 
 // einfrierWert feeds the probe with the box's own measuring point - the same
@@ -97,4 +100,23 @@ func (a *Agent) eingefrorenSeit(now time.Time) time.Time {
 		return seit
 	}
 	return time.Time{}
+}
+
+// einfrierPruefen is the probe's request for a probing adjustment (IP-27 A7,
+// guards.Einfrierprobe.Pruefung): the direction of the standing value (0 =
+// none) and whether it is still to be made. Only with a share document -
+// without one nothing here is ever asked.
+func (a *Agent) einfrierPruefen(now time.Time) (richtung int, neu bool) {
+	if a.heldAnteile() == nil {
+		return 0, false
+	}
+	return a.einfrier.probe.Pruefung(now)
+}
+
+// einfrierGeprueft reports a probing adjustment a watchdog made: once per
+// standstill, the answer window starts.
+func (a *Agent) einfrierGeprueft(now time.Time, geprueft bool) {
+	if geprueft {
+		a.einfrier.probe.Geprueft(now)
+	}
 }

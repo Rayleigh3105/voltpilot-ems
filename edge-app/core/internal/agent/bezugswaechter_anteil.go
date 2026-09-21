@@ -55,7 +55,24 @@ func (a *Agent) netzladenDeckel(now time.Time, r guards.Reading) *guards.Netzlad
 			in.ReservedKw = p.AllocatedKw - n.ChargingKw
 		}
 	}
+	// IP-27 A7: a standing import value asks for ONE probing adjustment
+	e := &a.einfrier
+	richtung, neu := a.einfrierPruefen(now)
+	e.mu.Lock()
+	if richtung > 0 {
+		in.Pruefen, in.PruefenNeu, in.PruefKw = true, neu, e.pruefBattKw
+	} else {
+		e.pruefBattKw = nil
+	}
+	e.mu.Unlock()
 	d := guards.NetzladenDeckelFuer(in)
+	e.mu.Lock()
+	if d.PruefKw != nil {
+		v := *d.PruefKw
+		e.pruefBattKw = &v
+	}
+	e.mu.Unlock()
+	a.einfrierGeprueft(now, d.Pruefung)
 	return &d
 }
 

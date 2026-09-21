@@ -447,7 +447,12 @@ func (a *Agent) ocppBudget(now time.Time, set lastmgmt.Settings, snap csms.Snaps
 	// it - their draw is inside no measurement the share is compared with.
 	// B2 (AP-15 IP-20): a frozen connection-point value counts as blind
 	an.EingefrorenSeit = a.eingefrorenSeit(now)
+	// IP-27 A7: a standing import value asks for ONE probing adjustment
+	if r, neu := a.einfrierPruefen(now); r > 0 {
+		an.Pruefen, an.PruefenNeu = true, neu
+	}
 	verdict := a.ocpp.budget.BudgetAnteil(now, set, *an)
+	a.einfrierGeprueft(now, verdict.Pruefung)
 	reserved := 0.0
 	if safe.Computable && !verdict.Measured() {
 		reserved = safe.PerConnectorKw * float64(ocppUncontrolledConnectors(snap))

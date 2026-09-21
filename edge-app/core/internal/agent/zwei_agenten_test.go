@@ -336,12 +336,10 @@ type zaBefund struct {
 // connection-point value stands bit-identical for 60 s WHILE the box runs above
 // its share, it lowers ONCE by >= 2 kW (lowering is always safe), and the
 // existing Einfrierprobe decides. After the healing: befundA7Friert = nil.
-var befundA7Friert = &zaBefund{
-	punkt:           "Mittag",
-	ursache:         "Einfrierprobe feuert nur nach eigener Verstellung >= 2 kW; die führende Box sieht konstant 98 kW und verstellt nicht",
-	heilung:         "Prüf-Verstellung: 60 s bitgleich über dem Anteil -> einmal um >= 2 kW senken, die Einfrierprobe entscheidet",
-	groessteUeberKw: 26.8, laengsteS: 2096, viertelKw: 126.8,
-}
+// Healed (guards/eingefroren.go Pruefung, exportanteil.go pruefen): 30 s
+// standstill, 20 s answer window; measured before +26.8 kW, 2096 s, quarter
+// 126.8 kW.
+var befundA7Friert *zaBefund
 
 // befundA8Zurueck - A8, the clock of the LEADING box jumps 840 s back (R10,
 // the partner 840 s ahead, holds). Every new reading then carries a timestamp
@@ -359,12 +357,10 @@ var befundA7Friert = &zaBefund{
 // lastmgmt/budget.go ObserveM + Budget, lastmgmt/bezuganteil.go BudgetAnteil +
 // Netzpunkt (guards/peakguard.go already re-anchors). After the healing:
 // befundA8Zurueck = nil.
-var befundA8Zurueck = &zaBefund{
-	punkt:           "Mittag",
-	ursache:         "Messung mit älterem Zeitstempel wird verworfen, negatives Alter auf 0 geklemmt: der letzte Wert vor dem Sprung gilt als frisch",
-	heilung:         "Frische über die monotone Empfangszeit, negatives Alter = blind, älterer Zeitstempel = Uhrensprung -> neu verankern",
-	groessteUeberKw: 26.8, laengsteS: 589, viertelKw: 115.0,
-}
+// Healed (exportanteil.go ObserveMitSpeicher/CapAnteil, eingefroren.go Wert):
+// re-anchor on the older timestamp, a negative age is blind; measured before
+// +26.8 kW, 589 s, quarter 115.0 kW.
+var befundA8Zurueck *zaBefund
 
 // zaFall is one row of the matrix (ausfallmatrix.json of the concept).
 type zaFall struct {

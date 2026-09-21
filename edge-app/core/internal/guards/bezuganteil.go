@@ -54,6 +54,12 @@ type Netzladen struct {
 	ReservedKw float64
 	// PvKw is the box's own measured PV; Unknown() without a reading.
 	PvKw float64
+	// Pruefen / PruefenNeu: the Einfrierprobe asks for a probing adjustment
+	// in the import direction (IP-27 A7) - running / still to be made.
+	// PruefKw is the ceiling a probe of THIS guard already set (the caller
+	// keeps it between evaluations); nil = none.
+	Pruefen, PruefenNeu bool
+	PruefKw             *float64
 }
 
 // NetzladenDeckel is the ceiling on the battery's charge (kW >= 0).
@@ -62,6 +68,10 @@ type NetzladenDeckel struct {
 	// Regelt is true for the leading box's closed loop, false for the
 	// solar-only clamp.
 	Regelt bool
+	// PruefKw is the probing ceiling to keep while the probe runs (IP-27
+	// A7), nil = none; Pruefung is true when this evaluation set it.
+	PruefKw  *float64
+	Pruefung bool
 }
 
 // NetzladenDeckelFuer derives the battery's charge ceiling for a box that
@@ -76,7 +86,11 @@ func NetzladenDeckelFuer(in Netzladen) NetzladenDeckel {
 			reserved = 0
 		}
 		rest := in.GridKw - batt + reserved
-		return NetzladenDeckel{DeckelKw: round3(math.Max(in.PlanableKw-rest, 0)), Regelt: true}
+		d := NetzladenDeckel{DeckelKw: round3(math.Max(in.PlanableKw-rest, 0)), Regelt: true}
+		if in.Pruefen {
+			netzladenPruefen(in, batt, &d)
+		}
+		return d
 	}
 	pv := 0.0
 	if known(in.PvKw) && finite(in.PvKw) && in.PvKw > 0 {
@@ -88,6 +102,27 @@ func NetzladenDeckelFuer(in Netzladen) NetzladenDeckel {
 // LowerCharge applies a charge ceiling to the final battery setpoint (+ charge
 // / - discharge): it only ever LOWERS a charge - a discharge, an idle battery
 // and a charge below the ceiling pass unchanged.
+// netzladenPruefen is the probing adjustment of IP-27 A7 at the battery: the
+// leading box lowers the charge ONCE by PruefSenkKw below the MEASURED charge
+// - only while the battery charges from the grid (above its own PV, what it
+// falls back to blind) and only with that much to lower - and keeps the
+// ceiling until the probe answers.
+func netzladenPruefen(in Netzladen, battKw float64, d *NetzladenDeckel) {
+	switch {
+	case in.PruefKw != nil:
+		v := *in.PruefKw
+		d.PruefKw = &v
+	case in.PruefenNeu && battKw >= PruefSenkKw && (!known(in.PvKw) || !finite(in.PvKw) || battKw > in.PvKw):
+		v := round3(battKw - PruefSenkKw)
+		d.PruefKw, d.Pruefung = &v, true
+	default:
+		return
+	}
+	if *d.PruefKw < d.DeckelKw {
+		d.DeckelKw = *d.PruefKw
+	}
+}
+
 func LowerCharge(kw float64, deckelKw *float64) float64 {
 	if deckelKw == nil || !(kw > 0) || kw <= *deckelKw {
 		return kw
