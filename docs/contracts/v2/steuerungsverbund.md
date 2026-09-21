@@ -81,8 +81,9 @@ prüfen, dass sie sie nicht kennen.
   Vektor-Gruppe mit IP-33, falls der Captain nach dem Pilot so entscheidet.
 - **Die Prüfungen beim Scharfschalten** (T5, I1, G6) samt Routen und Stufen stehen in §6 (IP-5); T1, T2, B1/B3 und T6
   am Verbund-Objekt in §5 (IP-4). Hier stehen nur ihre Wörter.
-- **MQTT**: Topic, Schema und Quittung des Anteils-Dokuments (`mqtt-verbund-anteile.md`, IP-10/IP-17) übernehmen die
-  Wörter aus `dokument_ablehnung` als Grund der Quittung; Topic- und Payload-Identität prüft dort die Box zusätzlich.
+- **MQTT**: Topic, Schema und Quittung des Anteils-Dokuments stehen in [`mqtt-verbund-anteile.md`](./mqtt-verbund-anteile.md)
+  (IP-7 Cloud-Seite, IP-17 Box-Seite); die Quittung übernimmt die Wörter aus `dokument_ablehnung` als Grund, Topic-
+  und Payload-Identität prüft dort die Box zusätzlich.
 - **Der Go-Zwilling** der Box: IP-17 fährt dieselbe Datei als dritter Zwilling (NW-1 in Go).
 
 ## 4. Zwillinge und Herkunft der Zahlen
@@ -123,7 +124,7 @@ Datei, weil nur die api diese Regeln rechnet; die Anteile oben behalten ihre dre
 | **B3** Messpunkt einer mitsteuernden Box | wahlfrei (ohne: Summe ihrer Geräteleistungen), sonst derselbe Fremdschlüssel | nicht dieser Anlage oder nicht von ihr gelesen: `mitsteuernde_box_misst_nicht` |
 | **Kein Doppel-Lesen** (§3.3) | Exklusion: ein Messpunkt je Zeitpunkt bei höchstens einem Mitglied; eine Box höchstens einmal | Eingabefehler |
 | **T6** Lesen macht kein Mitglied | `rolle` nur `fuehrt`/`steuert_mit` (CHECK); eine Zuständigkeit legt keine Zeile an | `istMitglied` nur mit Heimat UND Rolle (R21) |
-| **G2/G3** | — (keine Anteile gespeichert) | je übergebener Richtung `SteuerungsverbundAnteile.anteile` mit genau den Mitgliedern des Verbunds: `auslegung_passt_nicht` mit Richtung |
+| **G2/G3** | — (die Anteile speichert IP-7: `steuerungsverbund_anteile`, `mqtt-verbund-anteile.md` §4) | je übergebener Richtung `SteuerungsverbundAnteile.anteile` mit genau den Mitgliedern des Verbunds: `auslegung_passt_nicht` mit Richtung |
 
 Die Befunde stehen in der Reihenfolge des Vokabulars `ablehnung`, je Wort in der Reihenfolge der Mitglieder; das
 erste Wort ist die Antwort einer Route. Mitgliedschaften sind minutengenau und halboffen `[gueltig_ab, gueltig_bis)`,

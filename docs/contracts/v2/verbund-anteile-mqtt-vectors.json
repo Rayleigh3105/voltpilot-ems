@@ -1,0 +1,518 @@
+{
+ "_comment": "UEMS AP-15 IP-7: Anteils-Dokument auf dem Draht (Downlink …/v2/verbund-anteile) gegen die Box-Prüfung von IP-2 (SteuerungsverbundAnteile.dokumentPruefen) und die Quittung (Uplink …/v2/verbund-anteile-result). Zahlen aus R12 (40/60 → 10/60 → 10/90 kW) und dem Bezug aus R1/R3 (0/77 kW). Kennungen konstruiert. Leser: VerbundAnteileVectorsTest (Java). Der Go-Zwilling der Box kommt mit IP-17.",
+ "schema_version": "1.0",
+ "kennungen": {
+  "tenant": "7a000000-0000-4000-8000-000000000001",
+  "site": "7a000000-0000-4000-8000-0000000000a1",
+  "andere_site": "7a000000-0000-4000-8000-0000000000a2",
+  "E-1": "7a000000-0000-4000-8000-0000000000e1",
+  "E-4": "7a000000-0000-4000-8000-0000000000e4"
+ },
+ "dokumente": [
+  {
+   "name": "R12 Übergangsstand 10/60 an die verengte Box E-1, Revision 8 nach 7",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": {
+    "epoche": 1,
+    "revision": 7
+   },
+   "epoche": 1,
+   "revision": 8,
+   "schritt": "uebergang",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 10.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "R12 Übergangsstand geht an ALLE: auch E-4 (nicht verengt) nimmt Revision 8 an",
+   "box": "7a000000-0000-4000-8000-0000000000e4",
+   "stand": {
+    "epoche": 1,
+    "revision": 7
+   },
+   "epoche": 1,
+   "revision": 8,
+   "schritt": "uebergang",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 10.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "R12 Zielstand 10/90, Revision 9 — erst nach der Quittung von E-1",
+   "box": "7a000000-0000-4000-8000-0000000000e4",
+   "stand": {
+    "epoche": 1,
+    "revision": 8
+   },
+   "epoche": 1,
+   "revision": 9,
+   "schritt": "ziel",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 10.0,
+     "7a000000-0000-4000-8000-0000000000e4": 90.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "erstes Dokument nach dem Scharfschalten (Epoche 1, Revision 1): die Box hat noch keinen Stand",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": null,
+   "epoche": 1,
+   "revision": 1,
+   "schritt": "ziel",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 40.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "A18 zurückgespielt: Revision 7 nach quittierter 9 derselben Epoche → revision_aelter",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": {
+    "epoche": 1,
+    "revision": 9
+   },
+   "epoche": 1,
+   "revision": 7,
+   "schritt": "ziel",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 40.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "abgelehnt",
+    "grund": "revision_aelter"
+   }
+  },
+  {
+   "name": "A18 neu scharfgeschaltet: Epoche 2 mit Revision 8 nach Epoche 1 Revision 9 → angenommen",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": {
+    "epoche": 1,
+    "revision": 9
+   },
+   "epoche": 2,
+   "revision": 8,
+   "schritt": "uebergang",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 10.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "nie der Übergang über verteilbar: 40 + 70 = 110 > 100 → summe_ueber_verteilbar",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": null,
+   "epoche": 1,
+   "revision": 2,
+   "schritt": "uebergang",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 40.0,
+     "7a000000-0000-4000-8000-0000000000e4": 70.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "abgelehnt",
+    "grund": "summe_ueber_verteilbar"
+   }
+  }
+ ],
+ "identitaet": [
+  {
+   "name": "Topic nennt Anlage AN-1, Nutzlast eine andere Anlage → fremde_anlage",
+   "topic": {
+    "tenant": "7a000000-0000-4000-8000-000000000001",
+    "site": "7a000000-0000-4000-8000-0000000000a1",
+    "box": "7a000000-0000-4000-8000-0000000000e1"
+   },
+   "nutzlast": {
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a2",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1"
+   },
+   "erwartet": {
+    "gelesen": true,
+    "urteil": "abgelehnt",
+    "grund": "fremde_anlage"
+   }
+  },
+  {
+   "name": "Topic nennt Box E-1, Nutzlast Box E-4 → nicht ihres, verworfen ohne Quittung",
+   "topic": {
+    "tenant": "7a000000-0000-4000-8000-000000000001",
+    "site": "7a000000-0000-4000-8000-0000000000a1",
+    "box": "7a000000-0000-4000-8000-0000000000e1"
+   },
+   "nutzlast": {
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e4"
+   },
+   "erwartet": {
+    "gelesen": false
+   }
+  },
+  {
+   "name": "Box fehlt in der Tabelle → box_fehlt_im_dokument",
+   "topic": {
+    "tenant": "7a000000-0000-4000-8000-000000000001",
+    "site": "7a000000-0000-4000-8000-0000000000a1",
+    "box": "7a000000-0000-4000-8000-0000000000e9"
+   },
+   "nutzlast": {
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e9"
+   },
+   "erwartet": {
+    "gelesen": true,
+    "urteil": "abgelehnt",
+    "grund": "box_fehlt_im_dokument"
+   }
+  }
+ ],
+ "quittungen": [
+  {
+   "name": "E-1 quittiert den Übergang (Revision 8)",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": true,
+    "grund": null,
+    "stand": {
+     "epoche": 1,
+     "revision": 8
+    },
+    "wirksam": null
+   }
+  },
+  {
+   "name": "Ablehnung mit Grund und gemeldetem wirksamem Stand (A18: Box hält Revision 9)",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 7,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "revision_aelter",
+    "wirksam": {
+     "epoche": 1,
+     "revision": 9
+    }
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": false,
+    "grund": "revision_aelter",
+    "stand": {
+     "epoche": 1,
+     "revision": 7
+    },
+    "wirksam": {
+     "epoche": 1,
+     "revision": 9
+    }
+   }
+  },
+  {
+   "name": "jeder Grund aus IP-2 dokument_ablehnung",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "summe_ueber_verteilbar"
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": false,
+    "grund": "summe_ueber_verteilbar",
+    "stand": {
+     "epoche": 1,
+     "revision": 8
+    },
+    "wirksam": null
+   }
+  },
+  {
+   "name": "fremde_anlage als Grund",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "fremde_anlage"
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": false,
+    "grund": "fremde_anlage",
+    "stand": {
+     "epoche": 1,
+     "revision": 8
+    },
+    "wirksam": null
+   }
+  },
+  {
+   "name": "box_fehlt_im_dokument als Grund",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "box_fehlt_im_dokument"
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": false,
+    "grund": "box_fehlt_im_dokument",
+    "stand": {
+     "epoche": 1,
+     "revision": 8
+    },
+    "wirksam": null
+   }
+  },
+  {
+   "name": "Topic- und Payload-Identität: Box im Topic E-4, Nutzlast E-1 → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e4",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "unbekannter Grund → verworfen (geschlossenes Vokabular)",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "zu_spaet"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "abgelehnt ohne Grund → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "angenommen MIT Grund → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "revision_aelter"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "unbekanntes Urteil → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "teilweise",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "falsche Schema-Version → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "2.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "Revision negativ → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": -1,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  }
+ ]
+}

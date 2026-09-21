@@ -56,12 +56,15 @@ public class GemeinsameSteuerungService {
     private final SteuerungsverbundRepository repo;
     private final AnlageGrenzen grenzen;
     private final SteuerungsverbundNachweise nachweise;
+    private final SteuerungsverbundAnteilDienst anteile;
     private final LeadDeviceService fuehrung;
     private final EntityRegistryRepository registry;
     private Clock uhr = Clock.systemUTC();
 
     public GemeinsameSteuerungService(SteuerungsverbundRepository repo, AnlageGrenzen grenzen,
-            SteuerungsverbundNachweise nachweise, LeadDeviceService fuehrung, EntityRegistryRepository registry) {
+            SteuerungsverbundNachweise nachweise, LeadDeviceService fuehrung, EntityRegistryRepository registry,
+            SteuerungsverbundAnteilDienst anteile) {
+        this.anteile = anteile;
         this.repo = repo;
         this.grenzen = grenzen;
         this.nachweise = nachweise;
@@ -274,6 +277,8 @@ public class GemeinsameSteuerungService {
             }
         }
         stufeWechseln(tenant, v, Stufe.ANTEILE_AKTIV, jetzt, wer);
+        // IP-7: der Zweischritt in der neuen Epoche — Übergang an alle, der Zielstand nach den Quittungen (G5)
+        anteile.anteileAusrollen(siteId, wer);
         return zustand(siteId, repo.finden(v.id()).orElseThrow(), jetzt);
     }
 

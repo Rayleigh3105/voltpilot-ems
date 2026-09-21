@@ -144,6 +144,7 @@ class OrtVerschiebenApiTest {
     @MockBean ProvisioningPublisher provisioningPublisher;
     @MockBean MeasurementConfigPublisher measurementConfigPublisher;
     @MockBean ConsumerOverridePublisher consumerOverridePublisher;
+    @MockBean VerbundAnteilePublisher verbundAnteilePublisher;
 
     @LocalServerPort
     int port;
@@ -210,7 +211,7 @@ class OrtVerschiebenApiTest {
         // Gezählt, nicht vermutet: kein Sender hat irgendetwas bekommen …
         Map<String, Integer> aufrufe = new LinkedHashMap<>();
         sender().forEach((name, mock) -> aufrufe.put(name, Mockito.mockingDetails(mock).getInvocations().size()));
-        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach dem Verschieben").hasSize(11)
+        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach dem Verschieben").hasSize(12)
                 .allSatisfy((name, n) -> assertThat(n).as(name).isZero());
         // … und außer der Zuordnung und dem Protokoll ändert sich keine Zeile: Anlage, Anlagen-Zuordnung, Box,
         // Netzanschluss und seine Bindung, Messstellen mit Ort und Stellung, Bereiche mit ihren Zuordnungen.
@@ -618,6 +619,7 @@ class OrtVerschiebenApiTest {
         m.put("ProvisioningPublisher", provisioningPublisher);
         m.put("MeasurementConfigPublisher", measurementConfigPublisher);
         m.put("ConsumerOverridePublisher", consumerOverridePublisher);
+        m.put("VerbundAnteilePublisher", verbundAnteilePublisher);
         return m;
     }
 
