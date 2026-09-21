@@ -85,12 +85,14 @@ Die zwei `…_zustand`-Metriken sind der Hausstil von `voltpilot_site_telemetry_
 eine Regel „steht“ nicht von „ist abgeschaltet“ und „lief seit dem Neustart noch nie“ unterscheiden
 — und ein abgeschalteter Läufer soll gerade KEINEN Daueralarm erzeugen.
 
-## Die dreizehn Läufer
+## Die fünfzehn Läufer
 
 Der Katalog steht in `UemsLaeuferMelder.KATALOG` und ist VOLLSTÄNDIG: `UemsMetrikenWiringTest` liest
-die Quelltexte von `uems`, `unterstuetzung` und `zugriff` und verlangt für jede Klasse mit
+die Quelltexte von `uems`, `unterstuetzung`, `zugriff` und `chargers` und verlangt für jede Klasse mit
 `@Scheduled` oder `ApplicationReadyEvent` einen Eintrag. Wer einen Läufer ergänzt und den Katalog
-vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet.
+vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet. Ausnahme mit Grund:
+`PlanResultListener` (AP-15 IP-10) — sein `@Scheduled` hält nur die Broker-Verbindung
+(`KEIN_LAEUFER` im Test; sein Ausfall zeigt sich an `voltpilot_uems_box_plan_angenommen_age_seconds`).
 
 | `laeufer` | Klasse | Schalter | Takt |
 |---|---|---|---|
@@ -101,6 +103,8 @@ vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet.
 | `kaskade` | `KorrekturKaskadeLaeufer` | `voltpilot.uems.kaskade.enabled` | 5 min |
 | `bericht_struktur` | `StrukturAenderungLaeufer` | `…berichte.struktur.enabled` UND `…berichte.enabled` | 5 min |
 | `zeilentexte` | `ZeilentextAufbewahrungLaeufer` | `voltpilot.uems.zeilentexte.enabled` | täglich 03:17 Europe/Berlin |
+| `plan_zustellung` | `PlanZustellungAufbewahrungLaeufer` | `voltpilot.uems.plan-zustellung.enabled` | täglich 03:47 Europe/Berlin |
+| `ladepark_grenze` | `chargers/LadeparkGrenzeLaeufer` | `voltpilot.uems.ladepark-grenze.enabled` | 1 h (Minute 1, UTC) |
 | `uebergabe` | `UebergabeLaeufer` | `voltpilot.uems.uebergabe.enabled` | 1 s |
 | `box_tausch` | `BoxTauschZustellung` | `voltpilot.uems.uebergabe.enabled` | 15 s |
 | `unterstuetzung` | `AblaufLaeufer` | `voltpilot.uems.unterstuetzung.enabled` | 1 min |
@@ -157,9 +161,9 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
   rechnet, ist Arithmetik auf dem zuletzt gesammelten Zeitpunkt — darum wachsen die Alter zwischen
   zwei Sammel-Läufen weiter, und ein ausgefallener SAMMLER wird an denselben Regeln sichtbar, ohne
   eigene Metrik.
-- **Kardinalität**: drei Arbeitslisten, dreizehn Läufer, ein Wert je Messkunden-Kundenbereich. Keine
-  Anlage, keine Box, keine Messstelle als Label — und `tenant` trägt die INTERNE Kennung, nie einen
-  Namen.
+- **Kardinalität**: drei Arbeitslisten, fünfzehn Läufer, ein Wert je Messkunden-Kundenbereich. Keine
+  Anlage, keine Box, keine Messstelle als Label (Ausnahme mit Absicht: die Box-Sicht unten, nur für
+  Boxen mit Bezug) — und `tenant` trägt die INTERNE Kennung, nie einen Namen.
 
 ## Was hier NICHT entsteht
 
@@ -179,3 +183,14 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
 Kundenbereiche), `UemsMetricsEndpointE2eTest` (anonymes `GET /metrics`: keine Zeile trägt
 Kundensprache), `UemsMetrikenWiringTest` (Katalog gegen den Code, Schalternamen gegen die echte
 `application.yml`).
+
+## Box-Sicht der Gemeinsamen Steuerung (AP-15 IP-11)
+
+`metrics/GemeinsameSteuerungMetrikSammler` am selben Schalter und Takt: `voltpilot_uems_box_*` mit
+`tenant`/`site`/`device`, nur für aktive Boxen mit `plan_zustellung`-Zeile, Herzschlag-Block oder
+gültiger Mitgliedschaft (`repo/BoxMetrikRepository`, Admin-Rolle; Rolle und Anteils-Revision aus
+`steuerungsverbund_mitglied`). Der Block `gemeinsame_steuerung` liegt nur im Prozess
+(`metrics/GemeinsameSteuerungHerzschlag`, vom `DataSourceStatusListener` gefüllt). Namen, Leer-bis-Paket
+und die acht Regeln: [Übergabe an Teil B](../../rollout/gemeinsame-steuerung-metriken.md).
+⚠ „veröffentlicht“/„angenommen“ sind die ERZEUGUNG des Plans, nicht die Ankunft der Quittung — die
+retained Quittung kommt nach jedem api-Neustart erneut und setzte ein Ankunfts-Alter zurück.

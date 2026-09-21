@@ -35,7 +35,7 @@ import org.springframework.stereotype.Component;
  * INTERNE Kennung (UUID) — dieselbe Regel wie bei {@code voltpilot_db_table_bytes}.
  * {@code UemsMetricsExportTest} liest den ganzen Export zurück und belegt es.
  *
- * <p><b>Die Kardinalität ist klein und gewollt:</b> drei Arbeitslisten, dreizehn Läufer, ein Wert je
+ * <p><b>Die Kardinalität ist klein und gewollt:</b> drei Arbeitslisten, fünfzehn Läufer, ein Wert je
  * Messkunden-Kundenbereich. Keine Anlage, keine Box, keine Messstelle als Label.
  */
 @Component
