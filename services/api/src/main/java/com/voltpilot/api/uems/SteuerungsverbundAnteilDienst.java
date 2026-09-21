@@ -1,0 +1,451 @@
+package com.voltpilot.api.uems;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.SteuerungsverbundAnteilRepository.DokumentZeile;
+import com.voltpilot.api.uems.SteuerungsverbundRepository.MitgliedZeile;
+import com.voltpilot.api.uems.SteuerungsverbundRepository.VerbundZeile;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.DokumentAblehnung;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Stufe;
+import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Schritt;
+import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Stand;
+import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Tabelle;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+/**
+ * Anteils-Ableitung und Zweischritt einer Gemeinsamen Steuerung (UEMS AP-15 IP-7; G3–G5, E2 = A, Y1, A10, A18, R12).
+ *
+ * <ul>
+ *   <li><b>Ableitung</b>: Mitglieder (IP-4), Geräte je Box mit Nennleistung und Schreibfreigabe, ihr Rückfall (IP-6),
+ *       die wirksame Grenze (IP-3) und der gespeicherte Vorbehalt → {@link SteuerungsverbundAbleitung}; gerechnet von
+ *       {@link SteuerungsverbundAnteile#anteile} (NW-1).</li>
+ *   <li><b>Auslegungsprüfung</b> für IP-5 (Bedingung „Auslegung passt“ beim Scharfschalten): {@link #eingaenge} ist
+ *       der Eingang {@code auslegung} von {@link SteuerungsverbundRegeln#pruefen}, {@link #auslegungPasst} die kurze
+ *       Antwort. {@code auslegung_passt_nicht} ist in BEIDEN Richtungen eine Ablehnung (E2 = A).</li>
+ *   <li><b>Zweischritt</b>: Übergangsstand an ALLE Mitglieder → Quittung JEDER verengten Box → Zielstand; ohne
+ *       Quittung bleibt der Übergangsstand, es gibt keinen Zeitablauf. Revision steigt je Dokument, die Epoche nur
+ *       mit {@link #anteileScharfschalten}. Nach einem erkannten Rückspielen (A18) ändert die Cloud nichts mehr, bis
+ *       neu scharfgeschaltet wird.</li>
+ * </ul>
+ *
+ * <p>Nur eine Anlage MIT Verbund und ab Stufe S1 bekommt je ein Dokument (LA2: der erste Schritt verengt schon in S1);
+ * ohne Verbund antwortet jeder Aufruf {@link Grund#KEIN_VERBUND} und nichts wird veröffentlicht (I6). Keine Route:
+ * die ruft IP-5 bzw. der Handgriff des Betreibers (nach IP-24).
+ */
+@Service
+public class SteuerungsverbundAnteilDienst {
+
+    private static final ZoneId ZONE = ZoneId.of("Europe/Berlin");
+    /** Der Zielstand nach der letzten Quittung geht ohne Person — VoltPilot selbst. */
+    private static final ProtokollAkteur ZWEISCHRITT = new ProtokollAkteur(null, "Zweischritt", "voltpilot_betrieb",
+            ProtokollAkteur.ART_VOLTPILOT);
+
+    /** Warum ein Aufruf nichts veröffentlicht hat — Dienst-Antworten, kein Vertragswort. */
+    public enum Grund {
+        KEIN_VERBUND,
+        STUFE_ZU_FRUEH,
+        NOCH_NICHT_SCHARF,
+        AUSLEGUNG_PASST_NICHT,
+        ZWEISCHRITT_LAEUFT,
+        RUECKGESPIELT,
+        WIRKSAME_ANTEILE_UNBEKANNT,
+        UNVERAENDERT
+    }
+
+    /** Das Ergebnis: entweder das veröffentlichte Dokument samt Empfängern oder der Grund. */
+    public record Ergebnis(Grund grund, DokumentZeile dokument, List<UUID> gesendetAn) {
+
+        static Ergebnis nicht(Grund grund) {
+            return new Ergebnis(grund, null, List.of());
+        }
+
+        public boolean veroeffentlicht() {
+            return grund == null;
+        }
+    }
+
+    /** Die Ableitung einer Anlage: Mitglieder, Eingänge und Urteil je Richtung. */
+    public record Ableitung(List<SteuerungsverbundAbleitung.Mitglied> mitglieder,
+            Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge,
+            Map<Grenzart, SteuerungsverbundAnteile.Auslegung> auslegung) {
+
+        public boolean passt() {
+            return SteuerungsverbundAbleitung.passt(auslegung);
+        }
+
+        /** Der Zielstand, wenn die Auslegung passt. */
+        public Tabelle ziel() {
+            Map<Grenzart, Map<String, BigDecimal>> a = new EnumMap<>(Grenzart.class);
+            Map<Grenzart, BigDecimal> v = new EnumMap<>(Grenzart.class);
+            auslegung.forEach((r, x) -> {
+                a.put(r, x.anteile());
+                v.put(r, x.verteilbarKw());
+            });
+            return new Tabelle(a, v);
+        }
+    }
+
+    private final SteuerungsverbundRepository verbuende;
+    private final SteuerungsverbundAnteilRepository anteile;
+    private final GeraeteRueckfallDienst rueckfaelle;
+    private final AnlageGrenzen grenzen;
+    private final ObjectProvider<VerbundAnteileVersand> versand;
+    private final ObjectProvider<WirksameAnteileQuelle> herzschlag;
+    private final ObjectMapper mapper;
+    private final Clock clock;
+
+    @Autowired
+    public SteuerungsverbundAnteilDienst(SteuerungsverbundRepository verbuende,
+            SteuerungsverbundAnteilRepository anteile, GeraeteRueckfallDienst rueckfaelle, AnlageGrenzen grenzen,
+            ObjectProvider<VerbundAnteileVersand> versand, ObjectProvider<WirksameAnteileQuelle> herzschlag,
+            ObjectMapper mapper) {
+        this(verbuende, anteile, rueckfaelle, grenzen, versand, herzschlag, mapper, Clock.systemUTC());
+    }
+
+    SteuerungsverbundAnteilDienst(SteuerungsverbundRepository verbuende, SteuerungsverbundAnteilRepository anteile,
+            GeraeteRueckfallDienst rueckfaelle, AnlageGrenzen grenzen, ObjectProvider<VerbundAnteileVersand> versand,
+            ObjectProvider<WirksameAnteileQuelle> herzschlag, ObjectMapper mapper, Clock clock) {
+        this.verbuende = verbuende;
+        this.anteile = anteile;
+        this.rueckfaelle = rueckfaelle;
+        this.grenzen = grenzen;
+        this.versand = versand;
+        this.herzschlag = herzschlag;
+        this.mapper = mapper;
+        this.clock = clock;
+    }
+
+    // ------------------------------------------------------------------ Ableitung und Auslegung (Naht zu IP-5)
+
+    /** Die Ableitung der Anlage — leer ohne Verbund (Bestand). */
+    @Transactional(readOnly = true)
+    public Optional<Ableitung> ableiten(UUID siteId) {
+        return verbuende.derAnlage(siteId).map(this::ableitung);
+    }
+
+    /**
+     * Der Eingang {@code auslegung} für {@link SteuerungsverbundRegeln#pruefen} (IP-5). Eine Richtung ohne Grenze oder
+     * ohne Vorbehalt fehlt — unbekannt ist keine Null; {@link #auslegungPasst} sagt dann „passt nicht“.
+     */
+    @Transactional(readOnly = true)
+    public Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge(UUID siteId) {
+        return ableiten(siteId).map(Ableitung::eingaenge).orElse(Map.of());
+    }
+
+    /** Scharf nur mit {@code passt} in BEIDEN Richtungen (E2 = A, I1). Ohne Verbund: false. */
+    @Transactional(readOnly = true)
+    public boolean auslegungPasst(UUID siteId) {
+        return ableiten(siteId).map(Ableitung::passt).orElse(false);
+    }
+
+    private Ableitung ableitung(VerbundZeile v) {
+        Instant jetzt = clock.instant();
+        List<SteuerungsverbundAbleitung.Mitglied> mitglieder = verbuende.mitglieder(v.id(), jetzt).stream()
+                .map(m -> new SteuerungsverbundAbleitung.Mitglied(m.deviceId().toString(), m.rolle())).toList();
+        List<SteuerungsverbundAbleitung.Geraet> geraete = new ArrayList<>();
+        for (SteuerungsverbundAnteilRepository.GeraetZeile g : anteile.geraete(v.id())) {
+            BigDecimal rueckfall = g.entityId() != null && g.schreibfreigabe()
+                    ? rueckfaelle.rueckfall(g.entityId(), g.richtung(), g.nennKw()).kw() : g.nennKw();
+            geraete.add(new SteuerungsverbundAbleitung.Geraet(g.deviceId().toString(),
+                    g.entityId() == null ? null : g.entityId().toString(), g.richtung(), g.nennKw(),
+                    g.schreibfreigabe(), rueckfall));
+        }
+        Map<Grenzart, BigDecimal> grenze = new EnumMap<>(Grenzart.class);
+        BigDecimal[] anlage = anteile.grenzwerteDerAnlage(v.siteId());
+        GrenzeAufloesung.Wirksam wirksam = grenzen.wirksam(v.siteId(), LocalDate.ofInstant(jetzt, ZONE), anlage[0],
+                anlage[1]);
+        if (wirksam.einspeisungKw() != null) {
+            grenze.put(Grenzart.EINSPEISUNG, wirksam.einspeisungKw());
+        }
+        if (wirksam.bezugKw() != null) {
+            grenze.put(Grenzart.BEZUG, wirksam.bezugKw());
+        }
+        Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge = SteuerungsverbundAbleitung.eingaenge(mitglieder,
+                geraete, grenze, anteile.vorbehalt(v.id()).kw());
+        return new Ableitung(mitglieder, eingaenge, SteuerungsverbundAbleitung.auslegung(mitglieder, eingaenge));
+    }
+
+    // ------------------------------------------------------------------ Zweischritt
+
+    /**
+     * Neue Epoche und Zweischritt (G5) — das Scharfschalten der Anteile; ab Stufe S1 (LA2: der erste Schritt verengt
+     * schon dort). „Alt“ ist, was die Boxen wirksam halten: nach einem erkannten Rückspielen NUR aus dem Herzschlag
+     * (A18, fehlt er für eine Box: {@link Grund#WIRKSAME_ANTEILE_UNBEKANNT}), sonst aus den gesendeten und quittierten
+     * Dokumenten, vor dem allerersten Dokument die führende Box mit der ganzen Grenze und jede andere mit ihrem
+     * Rückfall (§5.3, W11).
+     */
+    @Transactional
+    public Ergebnis anteileScharfschalten(UUID siteId, ProtokollAkteur wer) {
+        Optional<VerbundZeile> gefunden = verbuende.derAnlage(siteId);
+        if (gefunden.isEmpty()) {
+            return Ergebnis.nicht(Grund.KEIN_VERBUND);
+        }
+        VerbundZeile v = gefunden.get();
+        if (v.stufe() == Stufe.ERKLAERT) {
+            return Ergebnis.nicht(Grund.STUFE_ZU_FRUEH);
+        }
+        Ableitung a = ableitung(v);
+        if (!a.passt()) {
+            return Ergebnis.nicht(Grund.AUSLEGUNG_PASST_NICHT);
+        }
+        Map<Grenzart, Map<String, BigDecimal>> alt;
+        boolean rueckgespielt = anteile.rueckgespieltErkannt(v.id()).isPresent();
+        if (rueckgespielt) {
+            Optional<Map<Grenzart, Map<String, BigDecimal>>> gemeldet = wirksamAusHerzschlag(v, a.mitglieder());
+            if (gemeldet.isEmpty()) {
+                return Ergebnis.nicht(Grund.WIRKSAME_ANTEILE_UNBEKANNT);
+            }
+            alt = gemeldet.get();
+        } else if (anteile.dokumente(v.id()).isEmpty()) {
+            alt = SteuerungsverbundZweischritt.altOhneDokument(a.mitglieder(), a.eingaenge());
+        } else {
+            alt = wirksamAusHerzschlag(v, a.mitglieder()).orElseGet(() -> altAusDokumenten(v));
+        }
+        long epoche = verbuende.epocheErhoehen(v.id()).orElseThrow();
+        verbuende.protokoll(TenantContext.get(), v.id(), v.siteId(), "epoche", "{\"epoche\":" + (epoche - 1) + "}",
+                "{\"epoche\":" + epoche + "}", clock.instant(), false, "Anteile scharfgeschaltet", wer);
+        if (rueckgespielt) {
+            anteile.rueckgespieltAufheben(v.id());
+        }
+        return veroeffentlichen(v, epoche, SteuerungsverbundZweischritt.beginnen(alt, a.ziel()), "scharfschalten",
+                wer);
+    }
+
+    /**
+     * Zweischritt in derselben Epoche (neues Gerät, neue Grenze, neuer Vorbehalt): nur nach dem Scharfschalten, nie
+     * während ein Übergang auf Quittungen wartet und nie nach einem erkannten Rückspielen.
+     */
+    @Transactional
+    public Ergebnis anteileAendern(UUID siteId, ProtokollAkteur wer) {
+        Optional<VerbundZeile> gefunden = verbuende.derAnlage(siteId);
+        if (gefunden.isEmpty()) {
+            return Ergebnis.nicht(Grund.KEIN_VERBUND);
+        }
+        VerbundZeile v = gefunden.get();
+        List<DokumentZeile> dokumente = anteile.dokumente(v.id());
+        if (dokumente.isEmpty() || v.epoche() == 0) {
+            return Ergebnis.nicht(Grund.NOCH_NICHT_SCHARF);
+        }
+        if (anteile.rueckgespieltErkannt(v.id()).isPresent()) {
+            return Ergebnis.nicht(Grund.RUECKGESPIELT);
+        }
+        if (dokumente.get(0).ziel() != null) {
+            return Ergebnis.nicht(Grund.ZWEISCHRITT_LAEUFT);
+        }
+        Ableitung a = ableitung(v);
+        if (!a.passt()) {
+            return Ergebnis.nicht(Grund.AUSLEGUNG_PASST_NICHT);
+        }
+        Tabelle ziel = a.ziel();
+        if (gleich(dokumente.get(0).tabelle(), ziel)) {
+            return Ergebnis.nicht(Grund.UNVERAENDERT);
+        }
+        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, a.mitglieder())
+                .orElseGet(() -> altAusDokumenten(v));
+        return veroeffentlichen(v, v.epoche(), SteuerungsverbundZweischritt.beginnen(alt, ziel), "aendern", wer);
+    }
+
+    /**
+     * Die Quittung einer Box (Uplink {@code …/v2/verbund-anteile-result}); der Mandant steht im TenantContext.
+     * {@code gemeldet} = der Stand, den die Box danach wirksam hält (wahlfrei). Nimmt die Box an, wird quittiert und
+     * der Zielstand geprüft; meldet sie einen Stand über dem Gesendeten oder lehnt sie mit {@code revision_aelter}
+     * ab, ist die Cloud zurückgespielt (A18). False = verworfen (keine aktive Box dieses Verbunds).
+     */
+    @Transactional
+    public boolean quittungEmpfangen(UUID siteId, UUID box, Stand stand, boolean angenommen,
+            DokumentAblehnung grund, Stand gemeldet, Instant am) {
+        Optional<VerbundZeile> gefunden = verbuende.derAnlage(siteId);
+        if (gefunden.isEmpty()) {
+            return false;
+        }
+        VerbundZeile v = gefunden.get();
+        MitgliedZeile m = verbuende.mitglieder(v.id(), clock.instant()).stream()
+                .filter(x -> x.deviceId().equals(box)).findFirst().orElse(null);
+        if (m == null) {
+            return false;
+        }
+        // Kein Stand, den die Box hält, kann über dem liegen, was die Cloud je gemacht hat — außer sie wurde
+        // zurückgespielt. Das Dokument ist vor dem Senden gespeichert (nach dem Commit), also nie ein Wettlauf.
+        List<DokumentZeile> dokumente = anteile.dokumente(v.id());
+        Stand hoechster = dokumente.isEmpty() ? null : dokumente.get(0).stand();
+        boolean zurueck = SteuerungsverbundZweischritt.rueckgespielt(hoechster, gemeldet)
+                || SteuerungsverbundZweischritt.rueckgespielt(hoechster, stand)
+                || !angenommen && grund == DokumentAblehnung.REVISION_AELTER;
+        if (zurueck) {
+            anteile.rueckgespieltMarkieren(v.id(), am);
+            return true;
+        }
+        if (angenommen) {
+            verbuende.quittiert(m.id(), stand.epoche(), stand.revision(), am);
+            zielstandPruefen(v);
+        }
+        return true;
+    }
+
+    /** Ist jede verengte Box quittiert, geht der Zielstand an alle (neue Revision, dieselbe Epoche). */
+    private void zielstandPruefen(VerbundZeile v) {
+        List<DokumentZeile> dokumente = anteile.dokumente(v.id());
+        if (dokumente.isEmpty() || dokumente.get(0).ziel() == null) {
+            return;
+        }
+        DokumentZeile uebergang = dokumente.get(0);
+        if (uebergang.epoche() != v.epoche() || anteile.rueckgespieltErkannt(v.id()).isPresent()) {
+            return;
+        }
+        Map<String, Stand> quittiert = new HashMap<>();
+        for (MitgliedZeile m : verbuende.mitglieder(v.id(), clock.instant())) {
+            if (m.quittiertEpoche() != null) {
+                quittiert.put(m.deviceId().toString(), new Stand(m.quittiertEpoche(), m.quittiertRevision()));
+            }
+        }
+        if (!SteuerungsverbundZweischritt.zielFaellig(uebergang.stand(), uebergang.verengteBoxen(), quittiert)) {
+            return;
+        }
+        veroeffentlichen(v, v.epoche(), new SteuerungsverbundZweischritt.Dokument(Schritt.ZIEL,
+                uebergang.ziel(), null, List.of()), "zielstand", ZWEISCHRITT);
+    }
+
+    private Ergebnis veroeffentlichen(VerbundZeile v, long epoche, SteuerungsverbundZweischritt.Dokument d,
+            String anlass, ProtokollAkteur wer) {
+        UUID tenant = TenantContext.get();
+        long revision = anteile.hoechsteRevision(v.id()) + 1;
+        UUID id = anteile.dokumentAnhaengen(tenant, v.id(), epoche, revision, d.schritt(), d.tabelle(), d.ziel(),
+                d.verengteBoxen(), anlass, wer.name());
+        Instant jetzt = clock.instant();
+        Map<String, MitgliedZeile> mitglieder = new HashMap<>();
+        verbuende.mitglieder(v.id(), jetzt).forEach(m -> mitglieder.put(m.deviceId().toString(), m));
+        List<UUID> gesendetAn = new ArrayList<>();
+        List<Map.Entry<String, byte[]>> auftraege = new ArrayList<>();
+        VerbundAnteileVersand weg = versand.getIfAvailable();
+        for (String box : d.tabelle().boxen()) {
+            MitgliedZeile m = mitglieder.get(box);
+            if (m == null || weg == null) {
+                continue; // eine ausgeschiedene Box hat keinen Mitglieds-Stand mehr; ohne Broker bleibt es ungesendet
+            }
+            UUID b = UUID.fromString(box);
+            auftraege.add(Map.entry(VerbundAnteileDokument.topic(tenant, v.siteId(), b),
+                    VerbundAnteileDokument.nutzlast(mapper, tenant, v.siteId(), b, epoche, revision, d.schritt(),
+                            d.tabelle(), jetzt)));
+            verbuende.gesendet(m.id(), epoche, revision, jetzt);
+            gesendetAn.add(b);
+        }
+        // Erst nach dem Commit auf den Draht: eine schnelle Quittung findet Dokument und „gesendet“ schon vor.
+        nachCommit(() -> auftraege.forEach(a -> weg.senden(a.getKey(), a.getValue())));
+        DokumentZeile zeile = anteile.dokumente(v.id()).stream().filter(z -> z.id().equals(id)).findFirst()
+                .orElseThrow();
+        return new Ergebnis(null, zeile, List.copyOf(gesendetAn));
+    }
+
+    /**
+     * Stellt das jüngste Dokument noch einmal an alle Mitglieder zu (gespeichert, dieselbe Epoche und Revision — die
+     * Box nimmt dieselbe Revision noch einmal an). Für den Fall, dass der Broker beim ersten Mal nicht erreichbar war.
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> erneutSenden(UUID siteId) {
+        Optional<VerbundZeile> gefunden = verbuende.derAnlage(siteId);
+        VerbundAnteileVersand weg = versand.getIfAvailable();
+        if (gefunden.isEmpty() || weg == null) {
+            return List.of();
+        }
+        VerbundZeile v = gefunden.get();
+        List<DokumentZeile> dokumente = anteile.dokumente(v.id());
+        if (dokumente.isEmpty()) {
+            return List.of();
+        }
+        DokumentZeile d = dokumente.get(0);
+        UUID tenant = TenantContext.get();
+        List<UUID> an = new ArrayList<>();
+        for (MitgliedZeile m : verbuende.mitglieder(v.id(), clock.instant())) {
+            if (d.tabelle().boxen().contains(m.deviceId().toString()) && weg.senden(
+                    VerbundAnteileDokument.topic(tenant, v.siteId(), m.deviceId()), VerbundAnteileDokument.nutzlast(
+                            mapper, tenant, v.siteId(), m.deviceId(), d.epoche(), d.revision(), d.schritt(),
+                            d.tabelle(), clock.instant()))) {
+                an.add(m.deviceId());
+            }
+        }
+        return List.copyOf(an);
+    }
+
+    private static void nachCommit(Runnable r) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    r.run();
+                }
+            });
+        } else {
+            r.run();
+        }
+    }
+
+    private Optional<Map<Grenzart, Map<String, BigDecimal>>> wirksamAusHerzschlag(VerbundZeile v,
+            List<SteuerungsverbundAbleitung.Mitglied> mitglieder) {
+        WirksameAnteileQuelle quelle = herzschlag.getIfAvailable();
+        if (quelle == null) {
+            return Optional.empty();
+        }
+        Map<Grenzart, Map<String, BigDecimal>> alt = new EnumMap<>(Grenzart.class);
+        for (SteuerungsverbundAbleitung.Mitglied m : mitglieder) {
+            Optional<Map<Grenzart, BigDecimal>> je = quelle.wirksam(v.siteId(), UUID.fromString(m.box()));
+            if (je.isEmpty() || !je.get().keySet().containsAll(SteuerungsverbundAnteile.RICHTUNGEN)) {
+                return Optional.empty(); // unbekannt ist keine Null — dann nicht aus dem Herzschlag
+            }
+            je.get().forEach((r, kw) -> alt.computeIfAbsent(r, x -> new java.util.TreeMap<>()).put(m.box(), kw));
+        }
+        return Optional.of(alt);
+    }
+
+    private Map<Grenzart, Map<String, BigDecimal>> altAusDokumenten(VerbundZeile v) {
+        Map<Stand, Tabelle> jeStand = new HashMap<>();
+        anteile.dokumente(v.id()).forEach(d -> jeStand.put(d.stand(), d.tabelle()));
+        Map<String, Tabelle> quittiert = new HashMap<>();
+        Map<String, Tabelle> gesendet = new HashMap<>();
+        for (MitgliedZeile m : verbuende.mitgliederGeschichte(v.id())) {
+            if (m.aufgehobenAm() != null) {
+                continue;
+            }
+            String box = m.deviceId().toString();
+            if (m.quittiertEpoche() != null) {
+                quittiert.put(box, jeStand.get(new Stand(m.quittiertEpoche(), m.quittiertRevision())));
+            }
+            if (m.gesendetEpoche() != null) {
+                gesendet.put(box, jeStand.get(new Stand(m.gesendetEpoche(), m.gesendetRevision())));
+            }
+        }
+        return SteuerungsverbundZweischritt.altAusDokumenten(quittiert, gesendet);
+    }
+
+    private static boolean gleich(Tabelle a, Tabelle b) {
+        for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            if (a.verteilbar().get(r).compareTo(b.verteilbar().get(r)) != 0) {
+                return false;
+            }
+            Map<String, BigDecimal> x = a.anteile().getOrDefault(r, Map.of());
+            Map<String, BigDecimal> y = b.anteile().getOrDefault(r, Map.of());
+            if (!x.keySet().equals(y.keySet())
+                    || x.entrySet().stream().anyMatch(e -> e.getValue().compareTo(y.get(e.getKey())) != 0)) {
+                return false;
+            }
+        }
+        return true;
+    }
+}

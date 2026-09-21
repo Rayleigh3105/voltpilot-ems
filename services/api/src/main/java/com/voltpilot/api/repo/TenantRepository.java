@@ -354,7 +354,9 @@ public class TenantRepository {
                 for (String table : new String[] {
                         // The Gemeinsame Steuerung (V20260921140000): a member holds its
                         // Messpunkt (data_source, RESTRICT) and goes before it; the Verbund
-                        // before the tenant (RESTRICT); the protocol holds only the tenant.
+                        // before the tenant (RESTRICT); the protocol holds only the tenant. Its
+                        // Geräte and Anteils-Dokumente (V20260921190000) hold the tenant (RESTRICT).
+                        "steuerungsverbund_geraet", "steuerungsverbund_anteile",
                         "steuerungsverbund_mitglied", "steuerungsverbund", "steuerungsverbund_aenderung",
                         "prozess", "kostenstelle",
                         // The Geräte-Rückfall (V20260921150000) holds only the tenant (RESTRICT).
