@@ -407,9 +407,9 @@ public class RechtPruefung {
             case STANDORT -> sichtbar("standort", id) ? new Ort.AmStandort(id.toString()) : new Ort.Unsichtbar();
             case ORT -> ort(id);
             case DEVICE -> ueberAnlage(jdbc.query("SELECT site_id FROM device WHERE id = ?",
-                    (rs, i) -> Optional.ofNullable(rs.getObject(1, UUID.class)), id), false);
+                    (rs, i) -> Optional.ofNullable(rs.getObject(1, UUID.class)), id));
             case GERAET -> ueberAnlage(jdbc.query("SELECT site_id FROM geraet WHERE id = ?",
-                    (rs, i) -> Optional.ofNullable(rs.getObject(1, UUID.class)), id), true);
+                    (rs, i) -> Optional.ofNullable(rs.getObject(1, UUID.class)), id));
             case MESSSTELLE -> messstelle(id);
             case BEZUGSGROESSE -> bezugsgroesse(id);
             case DIENST -> throw new IllegalArgumentException("DIENST löst kein Objekt auf");
@@ -429,10 +429,11 @@ public class RechtPruefung {
     }
 
     /**
-     * Gerät über seine Anlage. {@code device} trägt den Standort-Zaun selbst (unsichtbar = die Route antwortet);
-     * {@code geraet} nicht — dort ist eine Anlage, die die Anfrage nicht sieht, „außerhalb".
+     * Gerät über seine Anlage. {@code device} ({@code site_scope}, V20260915190000) und {@code geraet}
+     * ({@code wago_geraet_site_scope}, V20260918102000; Entscheid A vom 21.09.2026) tragen den Standort-Zaun selbst:
+     * eine Zeile hinter dem Zaun ist unsichtbar, die Route antwortet 404 mit dem gemeinsamen Körper.
      */
-    private Ort ueberAnlage(List<Optional<UUID>> zeilen, boolean ohneZaun) {
+    private Ort ueberAnlage(List<Optional<UUID>> zeilen) {
         if (zeilen.isEmpty()) {
             return new Ort.Unsichtbar();
         }
@@ -441,7 +442,7 @@ public class RechtPruefung {
             return new Ort.OhneStandort();
         }
         if (!geltungsbereich.siteVisible(site.get())) {
-            return ohneZaun ? new Ort.Ausserhalb() : new Ort.Unsichtbar();
+            return new Ort.Unsichtbar();
         }
         return anlage(site.get());
     }

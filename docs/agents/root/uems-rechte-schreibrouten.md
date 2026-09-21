@@ -18,8 +18,9 @@ Code: `zugriff/Recht`, `zugriff/RechtZiel`, `zugriff/RechtInterceptor` (über `z
 - **Reihenfolge (W2):** das Objekt wird unter der Verbindung der Anfrage aufgelöst, also unter Mandanten-RLS und
   Standort-Zaun.
   - Unsichtbar oder unbekannt: die Anfrage geht an die Route, deren eigene 404 bleibt byte-gleich.
-  - Sichtbar, nach dem Vertrag aber außerhalb (nur Messstelle, Bezugsgröße, `geraet` — ohne Zaun): dieselbe 404, die
-    die Route für eine unbekannte Kennung gibt (`RechtPruefung.nichtGefunden` je Controller).
+  - Sichtbar, nach dem Vertrag aber außerhalb (nur Messstelle, Bezugsgröße — ohne Zaun): dieselbe 404, die
+    die Route für eine unbekannte Kennung gibt (`RechtPruefung.nichtGefunden` je Controller). `geraet` trägt den Zaun
+    selbst (`V20260918102000`, entschieden A am 21.09.2026): wie `device` unsichtbar, die Route antwortet.
   - Im Geltungsbereich ohne Recht: 403 `{code: recht_fehlt, message, recht, rolle_noetig[, umfang_noetig]}`, der Satz
     nennt die Kundenadministratoren.
 - **Das Urteil** spricht `RechteAbleitung.darf` mit dem Aufrufer aus `ZugriffContext` (Standorte als ID). Nie

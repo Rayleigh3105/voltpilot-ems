@@ -67,10 +67,6 @@ startwaechter_main:
   bestaetigt: nein
   beleg: Entscheidung ueber den Start-Waechter auf main steht aus, Drehbuch ist mit und ohne fahrbar
 
-standortzaun_geraet:
-  bestaetigt: nein
-  beleg: Standort-Zaun auf geraet und component_definition ist eine offene Rechte-Frage
-
 # ---------------------------------------------------------------------------
 # GA - Edge-Release A
 # ---------------------------------------------------------------------------
