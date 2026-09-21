@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.voltpilot.api.uems.GrenzNachweisService;
 import com.voltpilot.api.uems.NetzanschlussAbgelehnt;
 import com.voltpilot.api.uems.NetzanschlussAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.NetzanschlussGrenzeService;
@@ -72,13 +73,15 @@ public class NetzanschlussController {
     private final NetzanschlussVorschlagService vorschlaege;
     private final NetzanschlussGrenzeService grenzen;
     private final RechtPruefung rechte;
+    private final GrenzNachweisService nachweise;
 
     public NetzanschlussController(NetzanschlussService dienst, ObjectMapper json, NetzanschlussVorschlagService vorschlaege,
-            NetzanschlussGrenzeService grenzen, RechtPruefung rechte) {
+            NetzanschlussGrenzeService grenzen, RechtPruefung rechte, GrenzNachweisService nachweise) {
         this.dienst = dienst;
         this.vorschlaege = vorschlaege;
         this.grenzen = grenzen;
         this.rechte = rechte;
+        this.nachweise = nachweise;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -158,6 +161,19 @@ public class NetzanschlussController {
             @RequestParam(required = false) String stichtag) {
         rechte.pruefenLesen(RechtZiel.STANDORT, standortId, () -> NetzanschlussAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
         return grenzen.grenzblatt(standortId, id, tag("stichtag", stichtag));
+    }
+
+    /**
+     * Recht: heute lesend — keine eigene Kennung (wie der Anschluss selbst); der Zaun fragt
+     * {@code RechtPruefung#pruefenLesen} am Standort — außerhalb dieselbe Antwort wie ein unbekannter (404); ein
+     * Hauptzähler außerhalb des Zugriffs nimmt seiner Richtung die Zahlen ({@code RechtPruefung#alleLesbar}).
+     * Der Grenz-Nachweis (UEMS AP-15 IP-31): gerechnet über die abgeschlossenen Tage des Monats (ohne: der laufende).
+     */
+    @GetMapping("/{id}/grenznachweis")
+    public NetzanschlussDto.GrenzNachweis grenznachweis(@PathVariable UUID standortId, @PathVariable UUID id,
+            @RequestParam(required = false) String monat) {
+        rechte.pruefenLesen(RechtZiel.STANDORT, standortId, () -> NetzanschlussAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        return nachweise.nachweis(standortId, id, monat, ms -> rechte.alleLesbar(RechtZiel.MESSSTELLE, ms));
     }
 
     /**

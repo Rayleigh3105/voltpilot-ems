@@ -219,10 +219,42 @@ export interface KopfzeileUrteil {
   grenze_geprueft: boolean;
 }
 
+/** Der Grenz-Nachweis eines Monats für die Kopfzeile (AP-15 IP-31) — `monat` als `JJJJ-MM`. */
+export interface KopfzeileNachweis {
+  grenze_geprueft: boolean;
+  urteil: string | null;
+  monat: string | null;
+}
+
+/** Die Monatsnamen der Kopfzeile — fest, nie aus der Sprache des Browsers. */
+const MONATE = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+
+/** Das Wort je Urteil des Grenz-Nachweises; ein anderes Wort ist kein Urteil und wird nicht gezeigt. */
+const URTEIL_TEXT: Record<string, string> = {
+  eingehalten: 'eingehalten',
+  ueberschritten: 'überschritten',
+  nicht_belegt: 'nicht belegt',
+};
+
 /**
  * Die Kopfzeile der Bilanz-Seite. Was fehlt, steht nicht da — ein fehlender Momentanwert wird nie
  * zu „0 kW". `uemsErgebnis.zahl` unterscheidet vereinbarte Angaben und gemessene Leistung (E11).
- * `grenze_geprueft` ist immer `false`: hier wird GEZEIGT, nicht geprüft (AP-15).
+ * `grenze_geprueft` ist wahr, wo der Grenz-Nachweis (AP-15 IP-31) Grenze UND Hauptzähler hatte —
+ * dann sagt die Zeile „Grenze im September 2026 eingehalten" (überschritten · nicht belegt); sonst
+ * bleibt sie, wie sie war: sie zeigt, sie prüft nicht.
  */
 export function kopfzeile(
   // Die Kennung steht am Kopf der Seite, nicht in dieser Zeile.
@@ -230,10 +262,22 @@ export function kopfzeile(
   vereinbartKw: Dez | null,
   anschlussKva: Dez | null,
   momentanKw: Dez | null,
+  nachweis: KopfzeileNachweis | null = null,
 ): KopfzeileUrteil {
   const teile: string[] = [];
   if (vereinbartKw !== null) teile.push(`vereinbart ${zahl(dezText(vereinbartKw), KW, null, 'vereinbart')}`);
   if (anschlussKva !== null) teile.push(`Anschluss ${zahl(dezText(anschlussKva), KVA, null, 'vereinbart')}`);
   if (momentanKw !== null) teile.push(`Momentan ${zahl(dezText(momentanKw), KW, null)}`);
-  return { text: teile.join(KOPFZEILE_TRENNER), grenze_geprueft: false };
+  const geprueft =
+    nachweis !== null &&
+    nachweis.grenze_geprueft &&
+    nachweis.urteil !== null &&
+    Object.prototype.hasOwnProperty.call(URTEIL_TEXT, nachweis.urteil) &&
+    nachweis.monat !== null &&
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(nachweis.monat);
+  if (geprueft) {
+    const monat = `${MONATE[Number(nachweis.monat!.slice(5)) - 1]} ${nachweis.monat!.slice(0, 4)}`;
+    teile.push(`Grenze im ${monat} ${URTEIL_TEXT[nachweis.urteil!]}`);
+  }
+  return { text: teile.join(KOPFZEILE_TRENNER), grenze_geprueft: geprueft };
 }

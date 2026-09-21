@@ -3984,6 +3984,14 @@ export interface NetzanschlussVorschlag {
 }
 export interface NetzanschlussUebernehmen extends NetzanschlussAnfrage { bindung_ab: string; grund: string | null }
 export interface NetzanschlussBinden { anlage_id: string; gueltig_ab: string; grund: string | null }
+/** AP-15 IP-31: der Grenz-Nachweis eines Monats — die Kopfzeile liest nur Urteil, Monat und `grenze_geprueft`. */
+export interface NetzanschlussGrenzNachweis {
+  netzanschluss_id: string; kennzeichen: string; monat: string; von: string | null; bis: string | null;
+  zeitzone: string; grenze_geprueft: boolean;
+  grund: 'keine_grenze' | 'kein_hauptzaehler' | 'kein_abgeschlossener_tag' | null;
+  urteil: 'eingehalten' | 'ueberschritten' | 'nicht_belegt' | null;
+  richtungen: Array<{ richtung: 'bezug' | 'einspeisung'; grenze_geprueft: boolean; urteil: string | null }>;
+}
 
 // ---- UEMS AP-02 IP-11: Anlage einem Standort zuordnen oder umziehen
 
@@ -8651,6 +8659,8 @@ export const api = {
 
   netzanschluesse: (standortId: string, stichtag?: string) =>
     request<Netzanschluesse>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`),
+  netzanschlussGrenznachweis: (standortId: string, id: string, monat: string) =>
+    request<NetzanschlussGrenzNachweis>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/${encodeURIComponent(id)}/grenznachweis?monat=${encodeURIComponent(monat)}`),
   netzanschlussVorschlaege: (standortId: string) =>
     request<NetzanschlussVorschlag[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/vorschlaege`),
   netzanschlussUebernehmen: (standortId: string, anlageId: string, body: NetzanschlussUebernehmen) =>

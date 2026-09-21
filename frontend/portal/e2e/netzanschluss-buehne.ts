@@ -115,6 +115,23 @@ export function netzanschlussBuehne(standorte: StandorteAmStichtag) {
           })),
       });
     },
+    // AP-15 IP-31: ohne `grenze=` ist nichts geprüft — die Kopfzeile bleibt, wie sie war.
+    netzanschlussGrenznachweis: async (_standort: string, id: string, monat: string) => {
+      const wort = params.get('grenze');
+      const urteil = wort === 'eingehalten' || wort === 'ueberschritten' || wort === 'nicht_belegt' ? wort : null;
+      return {
+        netzanschluss_id: id,
+        kennzeichen: liste.find((n) => n.id === id)?.kennzeichen ?? 'NA-1',
+        monat,
+        von: null,
+        bis: null,
+        zeitzone: 'Europe/Berlin',
+        grenze_geprueft: urteil !== null,
+        grund: urteil === null ? ('kein_hauptzaehler' as const) : null,
+        urteil,
+        richtungen: [],
+      };
+    },
     netzanschlussAnlegen: async (id: string, body: NetzanschlussAnfrage) => {
       aufrufe.anlegen.push(body);
       const n = {
