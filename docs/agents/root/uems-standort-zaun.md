@@ -44,7 +44,7 @@ eingeführten Lese-Routen mit echtem Objekt und Zaun-Paar Bearbeiter hier/anders
   - Die Werte einer Messstelle kommen nur über `measurement_point` und fallen darum weg. Die Messstelle selbst bleibt
     sichtbar.
   - Das gehört zu IP-10/IP-11 (A1: MS-19 unsichtbar).
-- **`bezugsgroesse`: geschlossen mit PR-NR (Befund 21.09.2026).** Die Tabelle trägt weiter nur die
+- **`bezugsgroesse`: geschlossen mit PR 1000 (Befund 21.09.2026).** Die Tabelle trägt weiter nur die
   Mandanten-Policy; gezäunt wird in der Anwendungsschicht über die Geltung, mit DERSELBEN Auflösung wie die
   Schreibseite: `RechtPruefung#pruefenLesen` (Einzelroute) und `#lesbar` (Liste), Aktion `messwerte.ansehen`.
   - Standort/Gebäude/Bereich/Messstelle: nur mit Zuweisung dort; Unternehmen/Prozess/Kostenstelle: nur
