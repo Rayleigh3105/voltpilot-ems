@@ -72,7 +72,17 @@ public final class GemeinsameSteuerungDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Mitglied(UUID boxId, String rolle, UUID messpunktId, OffsetDateTime gueltigAb,
             OffsetDateTime bestaetigtAm, String vorgabeSignal, OffsetDateTime vorgabeSignalAm, String verbraucher14a,
-            AnteilVerlust anteilVerlust) {}
+            AnteilVerlust anteilVerlust, Sprungprobe sprungprobe) {}
+
+    /**
+     * Die jüngste Sprungprobe einer Box (IP-21, E3 = A, T5) — für das Betreiber-Blatt (IP-24): Urteil ({@code
+     * ausgeloest} = Bericht steht aus), Grund, wann; {@code gilt} = sie trägt die Naht für die HEUTIGE Struktur
+     * (bestanden, nicht entwertet, dieselbe führende Box). {@code null} ohne Probe. Beim Auslösen die Antwort der Route.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Sprungprobe(UUID probeId, UUID boxId, String art, BigDecimal sprungKw, int dauerS,
+            int wiederholungen, OffsetDateTime ausgeloestAm, String urteil, String grund, OffsetDateTime ausgewertetAm,
+            OffsetDateTime entwertetAm, boolean gilt) {}
 
     /**
      * Was der feste Einspeise-Anteil der Box zurückhielt (IP-22, E1 = A, R2) — für die Verlust-Zeile (IP-23) und das

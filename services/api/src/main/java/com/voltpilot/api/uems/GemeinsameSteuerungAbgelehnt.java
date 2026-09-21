@@ -45,11 +45,22 @@ public final class GemeinsameSteuerungAbgelehnt extends RuntimeException {
     public static final String VORBEHALT_GEMESSEN = "vorbehalt_gemessen";
     /** Die Erklärung ist unvollständig (422): {@code fehlt} nennt jede Lücke mit ihrer Kennung. */
     public static final String ERKLAERUNG_UNVOLLSTAENDIG = "erklaerung_unvollstaendig";
+    /** Sprungprobe außerhalb von S1 {@code beobachtet} (IP-21, §5.3): sie gehört vor das Scharfschalten. */
+    public static final String NICHT_BEOBACHTET = "nicht_beobachtet";
+    /** Sprungprobe an einer Box, die die Fähigkeit {@code sprungprobe} nicht meldet (IP-21). */
+    public static final String SPRUNGPROBE_NICHT_GEMELDET = "sprungprobe_nicht_gemeldet";
+    /** In der Anlage läuft schon eine Sprungprobe: zwei Sprünge am selben Netzpunkt wären nicht zu trennen. */
+    public static final String SPRUNGPROBE_LAEUFT = "sprungprobe_laeuft";
+    /** Der Netzpunkt der führenden Box hat keinen frischen Wert — ausgewertet würde gegen Unbekanntes (IP-21). */
+    public static final String NETZPUNKT_NICHT_FRISCH = "netzpunkt_nicht_frisch";
+    /** Der Auftrag erreichte die Box nicht; es gibt kein Protokoll (IP-21). */
+    public static final String NICHT_ZUGESTELLT = "nicht_zugestellt";
 
     /** Die Übergangs-Gründe (409) in ihrer Vertrags-Reihenfolge. */
     public static final List<String> UEBERGANG = List.of(NICHT_EINGERICHTET, NICHT_AKTIV, NICHT_ANGEHALTEN,
             VOM_BETREIBER_ANGEHALTEN, BEREITS_AKTIV, ERST_ANHALTEN, ANTEILE_IN_KRAFT, KEIN_MITGLIED, BEREITS_BESTAETIGT,
-            KEIN_VORSCHLAG, VORBEHALT_GEMESSEN);
+            KEIN_VORSCHLAG, VORBEHALT_GEMESSEN, NICHT_BEOBACHTET, SPRUNGPROBE_NICHT_GEMELDET, SPRUNGPROBE_LAEUFT,
+            NETZPUNKT_NICHT_FRISCH, NICHT_ZUGESTELLT);
 
     private final int status;
     private final String code;

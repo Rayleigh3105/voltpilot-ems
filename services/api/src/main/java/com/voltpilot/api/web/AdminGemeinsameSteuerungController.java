@@ -3,8 +3,11 @@ package com.voltpilot.api.web;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.uems.GemeinsameSteuerungAbgelehnt;
 import com.voltpilot.api.uems.GemeinsameSteuerungService;
+import com.voltpilot.api.uems.SprungprobeDienst;
+import com.voltpilot.api.uems.SprungprobeRegel;
 import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -20,14 +23,14 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 /**
  * Die Handgriffe des Betreibers an der Gemeinsamen Steuerung (UEMS AP-15 IP-5, Konzept §4.9 I4/I5, §5.3, §5.7, Kasten
- * W9): scharfschalten, fortsetzen (auch nach einem Anhalten des Betreibers), ein Mitglied bestätigen und (IP-13) den
- * Vorschlag zum Senken des Vorbehalts freigeben. NUR die Plattform-Rolle — ein Kundenkonto, auch der
+ * W9): scharfschalten, fortsetzen (auch nach einem Anhalten des Betreibers), ein Mitglied bestätigen, (IP-13) den
+ * Vorschlag zum Senken des Vorbehalts freigeben und (IP-21) die Sprungprobe je Box auslösen. NUR die Plattform-Rolle — ein Kundenkonto, auch der
  * Kundenadministrator, bekommt auf {@code /api/v1/admin/**} 403 (SecurityConfig + {@code @PreAuthorize}); eine
  * Kundenroute wäre für die Plattform am Umschalter ohnehin offen, deshalb liegen die Schritte nur hier.
  *
  * <p>Wie {@link AdminChargingFrameController} über den {@code X-Tenant-Id}-Umschalter auf dem RLS-Pfad — KEIN
  * BYPASSRLS, eine fremde Anlage ist 404. Der Mandant kommt aus dem Umschalter, die Anlage aus dem Pfad; ein Körper ist
- * nicht vorgesehen (mit Feldern 400).
+ * nicht vorgesehen (mit Feldern 400) — außer beim Auslösen der Sprungprobe.
  */
 @RestController
 @RequestMapping("/api/v1/admin/sites/{siteId}/gemeinsame-steuerung")
@@ -35,9 +38,11 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class AdminGemeinsameSteuerungController {
 
     private final GemeinsameSteuerungService dienst;
+    private final SprungprobeDienst sprungproben;
 
-    public AdminGemeinsameSteuerungController(GemeinsameSteuerungService dienst) {
+    public AdminGemeinsameSteuerungController(GemeinsameSteuerungService dienst, SprungprobeDienst sprungproben) {
         this.dienst = dienst;
+        this.sprungproben = sprungproben;
     }
 
     /**
@@ -80,6 +85,43 @@ public class AdminGemeinsameSteuerungController {
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         GemeinsameSteuerungController.leer(body);
         return dienst.vorbehaltFreigeben(siteId, GemeinsameSteuerungController.akteur(auth));
+    }
+
+    /**
+     * Recht: {@code plattform.betrieb} — die Sprungprobe an einer Box auslösen (IP-21, E3 = A, I4): Körper {@code
+     * {box_id, art, sprung_kw}}, {@code art} ist {@code erzeugung_senken} oder {@code verbrauch_senken} (immer die
+     * sichere Richtung), {@code sprung_kw} höchstens 50; Dauer 60 s, zweimal. Nur in S1, nur an einer Box, die
+     * {@code sprungprobe} meldet, nur mit frischem Netzzähler der führenden Box, eine Probe zur Zeit je Anlage.
+     */
+    @PostMapping("/sprungprobe")
+    public GemeinsameSteuerungDto.Sprungprobe sprungprobe(@PathVariable UUID siteId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        if (body == null || !body.isObject()) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("Welche Box, welche Art, wie viele kW?");
+        }
+        for (var it = body.fieldNames(); it.hasNext();) {
+            String feld = it.next();
+            if (!Set.of("box_id", "art", "sprung_kw").contains(feld)) {
+                throw GemeinsameSteuerungAbgelehnt.anfrage("Unbekanntes Feld „" + feld + "“.");
+            }
+        }
+        UUID box;
+        try {
+            box = UUID.fromString(body.path("box_id").asText());
+        } catch (IllegalArgumentException e) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("box_id ist die Kennung einer Box.");
+        }
+        SprungprobeRegel.Art art = SprungprobeRegel.Art.aus(body.path("art").asText());
+        if (art == null) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("art ist „erzeugung_senken“ oder „verbrauch_senken“.");
+        }
+        JsonNode kw = body.path("sprung_kw");
+        if (!kw.isNumber() || kw.decimalValue().signum() <= 0
+                || kw.decimalValue().compareTo(SprungprobeRegel.MAX_SPRUNG_KW) > 0) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("sprung_kw liegt über 0 und höchstens bei "
+                    + SprungprobeRegel.MAX_SPRUNG_KW + " kW.");
+        }
+        return sprungproben.ausloesen(siteId, box, art, kw.decimalValue(), GemeinsameSteuerungController.akteur(auth));
     }
 
     /** {@code {code, message[, fehlt]}}. */

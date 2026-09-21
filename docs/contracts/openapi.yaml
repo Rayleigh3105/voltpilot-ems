@@ -2867,6 +2867,45 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
         "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/sprungprobe:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Die Sprungprobe an einer Box auslösen (AP-15 IP-21, E3 = A, T5, I4).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle; ein Kundenkonto bekommt 403). Die Box senkt EINE ihrer
+        Stellgrößen zweimal für 60 s um höchstens `sprung_kw` (immer die sichere Richtung) und berichtet
+        (`docs/contracts/v2/mqtt-sprungprobe.md`); die Cloud vergleicht mit dem Netzzähler der führenden Box
+        (`telemetry.power_kw`, Sekundenwerte): Richtung und Größe ± max(10 %, 2 kW), innerhalb von 20 s, zweimal.
+        Urteil im Protokoll und im GET je Mitglied (`sprungprobe`); die letzte bestandene Probe hebt S1 auf S2
+        `geprueft`, jede Strukturänderung entwertet (I3). 409 `nicht_beobachtet` außerhalb von S1,
+        `kein_mitglied`, `sprungprobe_nicht_gemeldet` (Fähigkeit `sprungprobe` fehlt), `sprungprobe_laeuft`
+        (eine Probe zur Zeit je Anlage), `netzpunkt_nicht_frisch` (kein Wert der führenden Box in den letzten 60 s),
+        `nicht_zugestellt` (die Box war nicht erreichbar; nichts gespeichert), `nicht_eingerichtet`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [box_id, art, sprung_kw]
+              properties:
+                box_id: { type: string, format: uuid }
+                art: { type: string, enum: [erzeugung_senken, verbrauch_senken] }
+                sprung_kw: { type: number, exclusiveMinimum: 0, maximum: 50 }
+      responses:
+        "200":
+          description: Ausgelöst; der Auftrag ist zugestellt, das Urteil steht aus (`ausgeloest`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerungSprungprobe" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/admin/sites/{siteId}/charging-frame:
     put:
       tags: [admin]
@@ -13298,7 +13337,8 @@ components:
         oder Anlage im Körper), 404 `nicht_gefunden` (fremd, nie 403), 409 mit dem ersten Wort des
         Ablehnungs-Vokabulars und allen Befunden in `fehlt` — oder einem Übergangs-Grund: `nicht_eingerichtet` ·
         `nicht_aktiv` · `nicht_angehalten` · `vom_betreiber_angehalten` · `bereits_aktiv` · `erst_anhalten` · `anteile_in_kraft` ·
-        `kein_mitglied` · `bereits_bestaetigt` · `kein_vorschlag` · `vorbehalt_gemessen`. 422
+        `kein_mitglied` · `bereits_bestaetigt` · `kein_vorschlag` · `vorbehalt_gemessen` · `nicht_beobachtet` ·
+        `sprungprobe_nicht_gemeldet` · `sprungprobe_laeuft` · `netzpunkt_nicht_frisch` · `nicht_zugestellt`. 422
         `erklaerung_unvollstaendig`: die Erklärung ist unvollständig, `fehlt` nennt je Lücke `wort` (`geraete` ·
         `komponente` · `ungesteuerte_erzeuger`) mit `box_id`/`komponente_id`.
       content:
@@ -13470,6 +13510,43 @@ components:
             AP-15 IP-22 (E1 = A, R2): was der feste Einspeise-Anteil dieser Box zurückhielt, gemeldet von der Box im
             Herzschlag. `null`, solange sie an dieser Anlage keinen Tag gemeldet hat.
           allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungAnteilVerlust' }]
+        sprungprobe:
+          nullable: true
+          description: >-
+            AP-15 IP-21 (E3 = A, T5): die jüngste Sprungprobe dieser Box. `null` ohne Probe.
+          allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungSprungprobe' }]
+    GemeinsameSteuerungSprungprobe:
+      type: object
+      required: [probe_id, box_id, art, sprung_kw, dauer_s, wiederholungen, ausgeloest_am, urteil, gilt]
+      properties:
+        probe_id: { type: string, format: uuid }
+        box_id: { type: string, format: uuid }
+        art: { type: string, enum: [erzeugung_senken, verbrauch_senken] }
+        sprung_kw: { type: number }
+        dauer_s: { type: integer }
+        wiederholungen: { type: integer }
+        ausgeloest_am: { type: string, format: date-time }
+        urteil:
+          type: string
+          enum: [ausgeloest, bestanden, nicht_bestanden, abgebrochen, nicht_auswertbar]
+          description: >-
+            `ausgeloest` = der Bericht der Box steht aus. `nicht_auswertbar` = unbekannt (kein Bestanden).
+        grund:
+          type: string
+          nullable: true
+          enum: [nicht_gesehen, falsche_richtung, zu_klein, zu_gross, netzpunkt_nicht_frisch,
+            eigene_wirkung_unbekannt, sprung_zu_klein, bericht_unvollstaendig, einspeisewaechter, bezugswaechter,
+            eingefroren, geraeteschutz, regelung_aus, keine_stellgroesse, abgelaufen, neustart, null]
+        ausgewertet_am: { type: string, format: date-time, nullable: true }
+        entwertet_am:
+          type: string
+          format: date-time
+          nullable: true
+          description: I3 — eine Strukturänderung nach der Probe; sie zählt nicht mehr.
+        gilt:
+          type: boolean
+          description: >-
+            Trägt die Naht `sprungprobe` für die HEUTIGE Struktur: bestanden, nicht entwertet, dieselbe führende Box.
     GemeinsameSteuerungAnteilVerlust:
       type: object
       properties:

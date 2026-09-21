@@ -133,6 +133,12 @@ public class DatenquelleService {
     @org.springframework.beans.factory.annotation.Autowired
     void verbund(SteuerungsverbundRepository repo) { this.verbund = repo; }
 
+    /** AP-15 IP-21 (I3): ein Zuständigkeitswechsel entwertet die Sprungproben der betroffenen Mitglieder. */
+    private SprungprobeDienst sprungproben;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void sprungproben(SprungprobeDienst dienst) { this.sprungproben = dienst; }
+
     /**
      * @param uhr die Uhr des Dienstes — ohne eigene {@link Clock}-Bean die Systemuhr (UTC);
      *     die Schnittstellen-Tests setzen eine, um die „jetzt“-Zeitpunkte der Vektor-Datei zu
@@ -355,7 +361,8 @@ public class DatenquelleService {
         Datenquelle q = quellen.sperren(id).orElseThrow(DatenquelleService::quelleFehlt);
         nichtArchiviert(q);
         Lage lage = lage();
-        DatenquelleRegeln.WechselWeg weg = wegInGemeinsamerSteuerung(q, !lage.von(id).isEmpty(), z.deviceId());
+        WegImVerbund imVerbund = wegInGemeinsamerSteuerung(q, !lage.von(id).isEmpty(), z.deviceId());
+        DatenquelleRegeln.WechselWeg weg = imVerbund.weg();
         Box box = boxImZaun(z.deviceId(), lage.boxen());
         Instant ab = z.effectiveFrom() == null ? minute(lage.jetzt()) : z.effectiveFrom().toInstant();
         List<ZustaendigkeitRepository.Zeitraum> eigene = lage.von(id);
@@ -407,6 +414,12 @@ public class DatenquelleService {
         DatenquelleRegeln.Zeitraum neuer = danach.get(danach.size() - 1);
         zustaendigkeiten.eintragen(mandant, id, box.id(), neuer.von(), neuer.bis(), wer.sub())
                 .orElseThrow(DatenquelleService::quelleFehlt);
+        if (wechsel && imVerbund.verbund() != null && sprungproben != null) {
+            // I3 (Befund aus IP-26): Netzzähler, Messpunkt oder Steuerquelle eines Mitglieds wechselt — die Proben
+            // der betroffenen Boxen gelten nicht mehr, eine geprüfte Anlage geht auf S1 zurück.
+            sprungproben.zustaendigkeitGewechselt(imVerbund.verbund(), q.id(), q.steuerquelle(), imVerbund.bisher(),
+                    box.id(), wer);
+        }
         if (e.vergleichsquelle() && !q.vergleichsquelle()) {
             quellen.alsVergleichsquelleKennzeichnen(id);
         }
@@ -743,11 +756,16 @@ public class DatenquelleService {
      * Zuständigkeitswechsel bleibt, wie er war. Die erste Box einer neuen Quelle ist kein Wechsel ({@code anlegen}):
      * so entstehen die Steuerquellen einer mitsteuernden Box (Ahrenberg 1.5 DQ-8/DQ-9).
      */
-    private DatenquelleRegeln.WechselWeg wegInGemeinsamerSteuerung(Datenquelle q, boolean wechsel, UUID ziel) {
+    /** Der Weg des Wechsels und, mit Gemeinsamer Steuerung, ihr Verbund und die Box, die die Quelle bisher las. */
+    private record WegImVerbund(DatenquelleRegeln.WechselWeg weg, SteuerungsverbundRepository.VerbundZeile verbund,
+            UUID bisher) {}
+
+    private WegImVerbund wegInGemeinsamerSteuerung(Datenquelle q, boolean wechsel, UUID ziel) {
         Optional<SteuerungsverbundRepository.VerbundZeile> v =
                 verbund == null ? Optional.empty() : verbund.derAnlage(q.siteId());
         if (v.isEmpty()) {
-            return DatenquelleRegeln.WechselWeg.ZUSTAENDIGKEITSWECHSEL; // Bestand: eine Abfrage mehr, sonst nichts
+            // Bestand: eine Abfrage mehr, sonst nichts
+            return new WegImVerbund(DatenquelleRegeln.WechselWeg.ZUSTAENDIGKEITSWECHSEL, null, null);
         }
         Instant jetzt = uhr.instant();
         SteuerungsverbundRegeln.Verbund stand = verbund.regelStand(q.siteId(), jetzt, jetzt.atZone(ZONE).toLocalDate())
@@ -765,7 +783,7 @@ public class DatenquelleService {
                     DatenquelleRegeln.gemeinsameSteuerungAendern(q.kennzeichen()),
                     Map.of("kennzeichen", q.kennzeichen(), "anlage", q.siteId().toString()));
         }
-        return weg;
+        return new WegImVerbund(weg, v.get(), quelle.gelesenVon() == null ? null : UUID.fromString(quelle.gelesenVon()));
     }
 
     static UUID mandant() {
