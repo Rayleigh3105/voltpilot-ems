@@ -6,9 +6,10 @@ import type { MessstelleWerte, MessstelleZuordnung } from './api';
  * dafür dasselbe Wort (`zuordnung: 'nicht_zugeordnet'`); die Liste zeigt den Satz des Servers, die Werte-Karte
  * diesen hier — mit demselben Anfang, damit beide Flächen dasselbe sagen.
  *
- * Informieren statt bevormunden: kein Knopf, keine Zahl ändert sich, kein Wort über Steuern oder Geld. Der Weg ist
- * der Messen-Assistent, Schritt 2 („Datenquellen aus Ihren Geräten“, `DQ_TITEL`); was vorher ankam, wird dabei
- * nicht nachträglich zugeordnet — der Satz verspricht es darum auch nicht.
+ * Informieren statt bevormunden: keine Zahl ändert sich, kein Wort über Steuern oder Geld. Der Weg ist der
+ * Messen-Assistent, Schritt 2 („Datenquellen aus Ihren Geräten“, `DQ_TITEL`) — seit AP-01 E5 = A mit Knopf
+ * (`ZUORDNUNG_KNOPF`, nur mit Recht); was vorher ankam, wird dabei nicht nachträglich zugeordnet — der Satz
+ * verspricht es darum auch nicht.
  */
 export const ZUORDNUNG_ETIKETT = 'Daten kommen an – noch keiner Messreihe zugeordnet';
 

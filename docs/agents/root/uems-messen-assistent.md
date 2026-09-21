@@ -52,9 +52,16 @@ Vorschlags-Routen aus AP-04 IP-16 (`uems-messstellen-vorschlagsliste-bestand.md`
    Kreuz wurde „… einrichten" zu „Messen & Auswerten ein…" gekürzt (Variante B empfohlen; A „Titel umbrechen"
    hätte die gemeinsame Kopf-CSS des Anlege-Dialogs geändert, nur als Foto gezeigt). „Anderen Standort wählen"
    steht im Rumpf, nicht im Fuß (dort breiter als sein halber Platz). Die Spec misst gekürzte Titel und Knöpfe.
-7. **Kein Einstiegsknopf in diesem Paket.** Die Karte „Funktionen" (IP-8) nennt ihren Schritt weiter als
-   Hinweis; `messenEinstieg(fs, entwurf)` liefert ihr Text und Start („Messen & Auswerten für Werk Lindach
-   einrichten" / „Einrichtung fortsetzen (Schritt 2 von 5)"), der Knopf ist eine eigene Entscheidung.
+7. **Einstieg (AP-01 E5 = A, seit 21.09.2026): ein Ort, ein Zustand.** `App.tsx` rendert den Assistenten genau
+   einmal, nachgeladen (`lazy`, eigenes Stück), solange `messenZiel` gesetzt ist; jede Fläche öffnet ihn über
+   `useMessenEinstieg()` (`src/messenEinstieg.ts`, ohne Laufzeit-Import aus `messenAssistent.ts` — Einstiegsbündel).
+   Einstiege: Karte „Funktionen" (`messenEinstiegeDerKarte`: Text aus `messenEinstieg`, nur mit Anlage), Leerzustände
+   der Messstellen-Liste (`bereich_fehlt`, `keine_messstelle`), Satz „Daten kommen an" der Werte-Karte (`schritt: 2`;
+   `startSchritt({ wunsch })` gilt nur mit bestehender Funktion). Avatar-Menü „Funktionen" führt zur KARTE (Unternehmens-
+   bzw. Standort-Übersicht), nicht direkt in den Assistenten — so tragen beide Funktionen denselben Weg; ohne Ebene mit
+   Karte (Anlage-/Bestands-Landung) gibt es den Eintrag nicht. Jeder Knopf nur mit Recht (`Recht`), sonst Grund und Weg.
+   Ohne Wirt (Bühnen) bleibt der Hinweis. Beweis auf der echten Schale: `e2e/messen-assistent-einstieg.spec.ts`
+   (`startansicht.html?rechte=1&messen=entwurf|bestand&zuordnung=offen`).
 
 9. **Die Liste urteilt, Schritt 3 wählt nur.** Was vorgeschlagen wird und mit welcher Stellung, entscheidet der
    Server (`vorschlagsliste`). Zurück geht jede gewählte Zeile wie gezeigt — nur `name` darf anders sein; ein
@@ -87,5 +94,5 @@ Vorschlags-Routen aus AP-04 IP-16 (`uems-messstellen-vorschlagsliste-bestand.md`
 (cd services/api && ./mvnw test -Dtest='MessstelleVorschlagApiTest')          # 8, Testcontainers (IP-9b: 2)
 (cd frontend/portal && npx vitest run src/messenAssistent.test.ts src/messenAssistentSchritte.test.ts src/components/MessenAssistent.test.tsx src/components/MessenAssistentSchritte.test.tsx src/copy.test.ts)
 (cd services/api && ./mvnw test -Dtest='PortalwegMesskundeAbnahmeTest')      # 1, Testcontainers: Portal-Weg bis Viertelstunde
-(cd frontend/portal && npx playwright test e2e/messen-assistent.spec.ts --project=desktop-chromium)
+(cd frontend/portal && npx playwright test e2e/messen-assistent.spec.ts e2e/messen-assistent-einstieg.spec.ts --project=desktop-chromium)
 ```
