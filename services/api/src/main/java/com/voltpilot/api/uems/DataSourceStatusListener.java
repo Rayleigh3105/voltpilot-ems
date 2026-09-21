@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.metrics.GemeinsameSteuerungHerzschlag;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Meldung;
@@ -23,6 +24,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -59,6 +61,18 @@ public class DataSourceStatusListener {
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
+
+    /**
+     * AP-15 IP-11: der Halter des Blocks {@code gemeinsame_steuerung} für die Box-Metriken. Nachgereicht
+     * statt im Konstruktor, damit kein bestehender Aufrufer sich ändert; ohne ihn (UEMS-Metriken aus,
+     * Tests) überliest der Zuhörer den Block wie vor IP-11.
+     */
+    private GemeinsameSteuerungHerzschlag gemeinsameSteuerung;
+
+    @Autowired(required = false)
+    void gemeinsameSteuerung(GemeinsameSteuerungHerzschlag gemeinsameSteuerung) {
+        this.gemeinsameSteuerung = gemeinsameSteuerung;
+    }
 
     public DataSourceStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -161,6 +175,9 @@ public class DataSourceStatusListener {
                 return;
             }
             devices.markStatusSeen(deviceId);
+            if (gemeinsameSteuerung != null) {
+                gemeinsameSteuerung.merke(deviceId, json.get("gemeinsame_steuerung"));
+            }
             Instant capabilityAt = instant(json.get("ts"));
             if (capabilityAt == null) capabilityAt = Instant.now();
             try {

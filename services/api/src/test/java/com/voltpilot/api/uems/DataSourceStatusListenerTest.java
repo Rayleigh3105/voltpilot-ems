@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -8,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.voltpilot.api.metrics.GemeinsameSteuerungHerzschlag;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Ableitung;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Meldung;
@@ -59,6 +61,44 @@ class DataSourceStatusListenerTest {
                 new Meldung("DQ-5", "stale", "unreachable",
                         Instant.parse("2026-11-03T14:02:10Z"),
                         Instant.parse("2026-11-03T14:01:50Z"), 1.0, 0.0));
+    }
+
+    /**
+     * AP-15 IP-11: der Block {@code gemeinsame_steuerung} landet im Halter der Box-Metriken; ein
+     * Herzschlag ohne Block nimmt ihn wieder heraus, ein Wort außerhalb des Vokabulars wird überlesen.
+     */
+    @Test
+    void derBlockGemeinsameSteuerungLandetImHalterUndFaelltOhneBlockWeg() {
+        GemeinsameSteuerungHerzschlag halter = new GemeinsameSteuerungHerzschlag();
+        listener.gemeinsameSteuerung(halter);
+        UUID plan = UUID.fromString("00000000-0000-0000-0000-000000004711");
+
+        listener.handle(TOPIC, herzschlag(",\"gemeinsame_steuerung\":{\"plan_id\":\"" + plan + "\","
+                + "\"waechter\":{\"einspeisung\":\"sicherheitskappe\",\"bezug\":\"erfunden\"},"
+                + "\"messpunkt_alter_s\":4}"));
+
+        assertThat(halter.block(DEVICE).planId()).isEqualTo(plan);
+        assertThat(halter.block(DEVICE).waechter()).containsExactly(entry("einspeisung", "sicherheitskappe"));
+
+        listener.handle(TOPIC, herzschlag(""));
+        assertThat(halter.block(DEVICE)).as("Plan gelöscht: kein Block, kein Eintrag").isNull();
+        assertThat(halter.boxen()).isEmpty();
+    }
+
+    @Test
+    void einBlockMitFalscherIdentitaetLandetNicht() {
+        GemeinsameSteuerungHerzschlag halter = new GemeinsameSteuerungHerzschlag();
+        listener.gemeinsameSteuerung(halter);
+        String fremd = "ems/" + TENANT + "/" + SITE + "/" + UUID.randomUUID() + "/status";
+
+        listener.handle(fremd, herzschlag(",\"gemeinsame_steuerung\":{\"waechter\":{\"einspeisung\":\"regelt\"}}"));
+
+        assertThat(halter.boxen()).isEmpty();
+    }
+
+    private static byte[] herzschlag(String rest) {
+        return ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE + "\",\"device_id\":\"" + DEVICE
+                + "\",\"ts\":\"2026-11-03T14:02:15Z\"" + rest + "}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     @Test

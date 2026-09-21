@@ -14,6 +14,9 @@
   Optimierer nach dem Senden (`persistence_v2.record_publication`), das Urteil der
   `uems/PlanResultListener`; `PlanZustellungRepository.stand` ist „veröffentlicht gegen
   angenommen“ (R11) für IP-11/IP-24. Eine alte Box behält „angenommen“ leer, ohne Alarm.
+- Seit IP-11: Frist 35 Tage (`uems/PlanZustellungAufbewahrung`, täglich; je Box bleiben die jüngste
+  veröffentlichte und die jüngste angenommene Zeile), und der Block landet für die Box-Metriken im
+  Prozess (`metrics/GemeinsameSteuerungHerzschlag`) — [Übergabe](../../rollout/gemeinsame-steuerung-metriken.md).
 - `plan_quittung` ist eine GEMELDETE Fähigkeit (`edge-supports-vectors.json`), keine Zeile in
   `edge-capabilities.json`: die Tabelle speist den Kunden-Satz „Update nötig für …“ jeder Box.
 - Neues Grund-Wort: Vertrag, Vektoren, Go, `PlanResultListener.GRUENDE`, CHECK der Tabelle

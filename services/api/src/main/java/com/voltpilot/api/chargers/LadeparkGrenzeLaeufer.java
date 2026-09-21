@@ -1,10 +1,12 @@
 package com.voltpilot.api.chargers;
 
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,6 +34,14 @@ public class LadeparkGrenzeLaeufer {
     private final LadeparkNetzgrenzeRepository zugestellt;
     private final ChargingConfigService ladepark;
 
+    /** Der Betriebs-Melder (Läufer {@code ladepark_grenze}), nachgereicht wie bei {@code ZeilentextAufbewahrungLaeufer}. */
+    private UemsLaeuferMelder melder = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void melder(UemsLaeuferMelder melder) {
+        this.melder = melder;
+    }
+
     public LadeparkGrenzeLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             LadeparkNetzgrenzeRepository zugestellt, ChargingConfigService ladepark) {
         this.adminJdbc = adminJdbc;
@@ -43,10 +53,12 @@ public class LadeparkGrenzeLaeufer {
     public void takt() {
         try {
             int n = lauf();
+            melder.gelaufen(UemsLaeuferMelder.LADEPARK_GRENZE);
             if (n > 0) {
                 log.info("Grenzblatt-Anstoß: {} Ladepark-Dokument(e) mit neuem Bezug zugestellt", n);
             }
         } catch (RuntimeException e) {
+            melder.fehler(UemsLaeuferMelder.LADEPARK_GRENZE);
             log.warn("Grenzblatt-Anstoß übersprungen: {}", e.toString());
         }
     }

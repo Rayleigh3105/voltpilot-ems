@@ -80,6 +80,10 @@ public class UemsLaeuferMelder {
     public static final String BERICHT_STRUKTUR = "bericht_struktur";
     /** {@code ZeilentextAufbewahrungLaeufer}. */
     public static final String ZEILENTEXTE = "zeilentexte";
+    /** {@code PlanZustellungAufbewahrungLaeufer} — Frist der Plan-Zustellungen (AP-15 IP-11). */
+    public static final String PLAN_ZUSTELLUNG = "plan_zustellung";
+    /** {@code LadeparkGrenzeLaeufer} — Grenzblatt-Anstoß (AP-15 IP-3, Paket {@code chargers}). */
+    public static final String LADEPARK_GRENZE = "ladepark_grenze";
     /** {@code UebergabeLaeufer}. */
     public static final String UEBERGABE = "uebergabe";
     /** {@code BoxTauschZustellung}. */
@@ -106,7 +110,7 @@ public class UemsLaeuferMelder {
     public record Eintrag(String label, String klasse, List<String> schalter, String takt) {}
 
     /**
-     * ALLE geplanten UEMS-Läufer — dreizehn, in der Reihenfolge der Verarbeitungskette, danach die
+     * ALLE geplanten UEMS-Läufer — fünfzehn, in der Reihenfolge der Verarbeitungskette, danach die
      * drei Start-Läufer. Wer einen Läufer ergänzt, ergänzt ihn hier; sonst ist er unbeobachtet.
      */
     public static final List<Eintrag> KATALOG = List.of(
@@ -125,6 +129,10 @@ public class UemsLaeuferMelder {
                     "5 min"),
             new Eintrag(ZEILENTEXTE, "ZeilentextAufbewahrungLaeufer",
                     List.of("voltpilot.uems.zeilentexte.enabled"), "taeglich 03:17 Europe/Berlin"),
+            new Eintrag(PLAN_ZUSTELLUNG, "PlanZustellungAufbewahrungLaeufer",
+                    List.of("voltpilot.uems.plan-zustellung.enabled"), "taeglich 03:47 Europe/Berlin"),
+            new Eintrag(LADEPARK_GRENZE, "LadeparkGrenzeLaeufer",
+                    List.of("voltpilot.uems.ladepark-grenze.enabled"), "1 h (Minute 1, UTC)"),
             new Eintrag(UEBERGABE, "UebergabeLaeufer",
                     List.of("voltpilot.uems.uebergabe.enabled"), "1 s"),
             new Eintrag(BOX_TAUSCH, "BoxTauschZustellung",

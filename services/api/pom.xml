@@ -348,6 +348,11 @@
                              ZeilentextAufbewahrungWiringTest prueft die ausgelieferte
                              Vorgabe. -->
                         <voltpilot.uems.zeilentexte.enabled>false</voltpilot.uems.zeilentexte.enabled>
+                        <!-- Die Frist der Plan-Zustellungen (AP-15 IP-11): dieselbe Falle, im
+                             Testlauf aus, in PRODUKTION an.
+                             PlanZustellungAufbewahrungWiringTest prueft die ausgelieferte
+                             Vorgabe. -->
+                        <voltpilot.uems.plan-zustellung.enabled>false</voltpilot.uems.plan-zustellung.enabled>
                         <!-- Der Grenzblatt-Anstoss (AP-15 IP-3 Folgepaket): im Testlauf aus,
                              in PRODUKTION an. Wer ihn prueft, ruft
                              LadeparkGrenzeLaeufer.lauf() selbst. -->

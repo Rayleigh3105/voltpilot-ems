@@ -561,6 +561,14 @@ voltpilot:
     zeilentexte:
       enabled: ${VOLTPILOT_UEMS_ZEILENTEXTE_ENABLED:true}
       cron: ${VOLTPILOT_UEMS_ZEILENTEXTE_CRON:0 17 3 * * *}
+    # Frist fuer plan_zustellung (AP-15 IP-11): ein taeglicher Lauf loescht Zeilen, deren juengster
+    # Zeitpunkt aelter als die Frist ist - je Box bleiben IMMER die juengste veroeffentlichte und die
+    # juengste angenommene Zeile. Vorgabe AN, im Testlauf AUS (surefire); wer ihn prueft, ruft
+    # PlanZustellungAufbewahrung.lauf() selbst.
+    plan-zustellung:
+      enabled: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_CRON:0 47 3 * * *}
+      aufbewahrung-tage: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_AUFBEWAHRUNG_TAGE:35}
     # Grenzblatt-Anstoss (AP-15 IP-3 Folgepaket): stuendlich je Anlage mit Ladepark-Rahmen den heute
     # wirksamen Bezug gegen den zuletzt zugestellten vergleichen und nur bei einem Unterschied das
     # Ladepark-Dokument neu zustellen (Fassung/Bindung am Tageswechsel, Nachholen nach Ausfall).

@@ -83,8 +83,9 @@ nach dem Löschen des Plans. Eine Box ohne Plan 2.0 sendet ihren Herzschlag wie 
 | `rolle` | nie (IP-17) | `fuehrt` · `steuert_mit` · `liest` |
 | `anteile_revision` | nie (IP-17) | Revision der wirksamen Anteile |
 
-Der Block spiegelt, er entscheidet nichts: die Cloud liest ihn heute nicht; die
-Status-Zuhörer überlesen ihn, Lebenszeichen, Quellenstatus und Fähigkeiten bleiben gleich.
+Der Block spiegelt, er entscheidet nichts: die Cloud liest ihn nur für die Überwachung
+(`waechter.*` als Box-Metrik, und eine Box mit Block zählt als Box mit Bezug, AP-15 IP-11); Lebenszeichen, Quellenstatus und
+Fähigkeiten bleiben gleich.
 
 ## Fähigkeit
 

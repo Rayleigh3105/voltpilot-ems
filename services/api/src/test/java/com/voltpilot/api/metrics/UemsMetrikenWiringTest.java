@@ -8,6 +8,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -34,11 +35,17 @@ class UemsMetrikenWiringTest {
     private static final List<Path> PAKETE = List.of(
             Path.of("src/main/java/com/voltpilot/api/uems"),
             Path.of("src/main/java/com/voltpilot/api/unterstuetzung"),
-            Path.of("src/main/java/com/voltpilot/api/zugriff"));
+            Path.of("src/main/java/com/voltpilot/api/zugriff"),
+            // AP-15 IP-3: der Grenzblatt-Anstoß lebt beim Ladepark.
+            Path.of("src/main/java/com/voltpilot/api/chargers"));
+
+    /** {@code PlanResultListener} (AP-15 IP-10) hält mit seinem Takt nur die Broker-Verbindung, es gibt keinen Lauf, der stehen könnte. */
+    private static final Set<String> KEIN_LAEUFER = Set.of("PlanResultListener");
 
     @Test
     void jedeKlasseMitTaktOderStartLaufStehtImKatalogUndUmgekehrt() throws IOException {
-        List<String> imCode = PAKETE.stream().flatMap(UemsMetrikenWiringTest::klassenMitLauf).sorted().toList();
+        List<String> imCode = PAKETE.stream().flatMap(UemsMetrikenWiringTest::klassenMitLauf)
+                .filter(k -> !KEIN_LAEUFER.contains(k)).sorted().toList();
         List<String> imKatalog = UemsLaeuferMelder.KATALOG.stream()
                 .map(UemsLaeuferMelder.Eintrag::klasse).sorted().toList();
 
