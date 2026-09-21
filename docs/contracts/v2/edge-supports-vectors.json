@@ -45,9 +45,9 @@
     },
     {
       "name": "sprungprobe",
-      "meaning": "Die Box führt einen Sprungprobe-Auftrag auf .../v2/sprungprobe aus (eine Stellgröße senken, begrenzt in kW und Sekunden, zweimal, danach zurückstellen; Abbruch, sobald ein eigener Wächter eingreift) und berichtet auf .../v2/sprungprobe-result (mqtt-sprungprobe 1.0, AP-15 IP-21). Die Cloud-Seite ist gebaut; die Box meldet das Wort erst mit ihrem Ausführer.",
-      "advertised": false,
-      "evidence": "docs/contracts/v2/mqtt-sprungprobe.md (Cloud-Seite gebaut; Box-Ausführer folgt als eigener PR)"
+      "meaning": "Die Box führt einen Sprungprobe-Auftrag auf .../v2/sprungprobe aus (PV-Kappe oder Batterie-Laden senken, begrenzt in kW und Sekunden, zweimal, danach zurückstellen; Abbruch, sobald ein eigener Wächter eingreift) und berichtet genau einmal auf .../v2/sprungprobe-result (mqtt-sprungprobe 1.0, AP-15 IP-21).",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/agent/sprungprobe_test.go"
     }
   ],
   "cases": [

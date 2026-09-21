@@ -24,7 +24,10 @@ type StatusExtension struct {
 // steuerungsverbund_anteil (AP-15 IP-17): the agent judges, stores and
 // receipts the share document of a Gemeinsame Steuerung and mirrors it in the
 // heartbeat (agent/verbund_anteile.go) - regulating against it is IP-18/IP-19.
+// sprungprobe (AP-15 IP-21): the agent runs a Sprungprobe order bounded and
+// lowering-only under its own watchdogs and reports it once
+// (agent/sprungprobe.go, internal/sprungprobe).
 func BuiltSupports() []string {
 	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
-		"plan_quittung", "steuerungsverbund_anteil"}
+		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe"}
 }
