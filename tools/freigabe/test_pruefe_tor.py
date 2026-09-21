@@ -35,6 +35,7 @@ NACHWEIS_KLASSEN = {
     'NW-2': 'com.voltpilot.api.uems.UemsBestandSteuerungAusEinemStueckTest',
     'NW-4': 'com.voltpilot.api.uems.UemsMesskundenLaufAbnahmeTest',
     'R1': 'com.voltpilot.api.zugriff.RechtMatrixApiTest',
+    'NW-6k': 'com.voltpilot.api.metrics.DauerlaeuferGanzerWegDbTest',
 }
 
 PROBE_GUT = {
@@ -337,6 +338,19 @@ class TorPrueferTest(unittest.TestCase):
         code, text = self.b.fahre('G1')
         self.assertEqual(1, code)
         self.assertIn('[offen] R1', text)
+        self.assertIn('1 offen', text)
+
+    def test_nw6_im_kleinen_ist_ein_testbeleg_die_uebung_bleibt_betreiberpunkt(self):
+        # IP-18-Einrichtung: der Lauf belegt die Strecke bis zur Alarm-Kennzahl, nicht die Zustellung in Produktion.
+        _, text = self.b.fahre('G1')
+        self.assertIn('[belegt] NW-6k', text)
+        self.assertIn(f'TEST-{NACHWEIS_KLASSEN["NW-6k"]}.xml', text)
+        (self.b.laeufe / f'TEST-{NACHWEIS_KLASSEN["NW-6k"]}.xml').unlink()
+        self.b.stand_schreiben({p: ('ja', '2026-09-20') for p in STAND_PUNKTE})
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code)
+        self.assertIn('[offen] NW-6k', text)
+        self.assertIn('[nicht maschinell pruefbar] NW-6 ', text)
         self.assertIn('1 offen', text)
 
     def test_kaputtes_stand_blatt_bricht_ab_statt_zu_raten(self):

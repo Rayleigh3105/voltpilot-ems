@@ -10,7 +10,8 @@ Neu angelegt am 21.09.2026. Keine Migration, keine Route, keine Fläche. Einrich
 | Bleibt sichtbar | `voltpilot_uems_kundenbereich_*{tenant}` (`UemsMetricsCollector`): Ziel der gitops-Regel `VoltPilotDauerlaeuferStumm` |
 | Simulator | `tools/edge-simulator/uems_dauerlaeufer.py`, `Dockerfile.dauerlaeufer`, `.env.dauerlaeufer.example` |
 | Tests | `DauerlaeuferMetrikenDbTest` (Testcontainers) · `test_uems_dauerlaeufer.py` |
-| NW-6 im Kleinen | api `DauerlaeuferGanzerWegDbTest` (Portalwege, echter Lücken-Melder) · Writer `DauerlaeuferWriterNahtTest` (Redpanda + Writer) · ingest `DauerlaeuferVorlageAnnahmeTest` (rein); alle lesen `abnahme/dauerlaeufer-nw6.json` (`make abnahme`), MQTT läuft in keinem |
+| Box-Seite (Weg a+) | `uems_dauerlaeufer.py`: `probe_antwort` (Baukasten-Lesung), `auswahl_lernen` (Zustellung → Quittung), `umschlag` (nur gelernte Schlüssel); Zähler-Tabelle `GATEWAY`/`register` = Drehbuch §14.2 |
+| NW-6 im Kleinen | api `DauerlaeuferGanzerWegDbTest` (ganze Einrichtung über Routen, Box-Antworten aus der Vorlage über `ProbeResultListener`/`MeasurementConfigStatusListener`, Zustellung über `ZustellungOhneBroker`) · Writer `DauerlaeuferWriterNahtTest` (quittierte Auswahl, jeder Wert zugeordnet) · ingest `DauerlaeuferVorlageAnnahmeTest`; alle lesen `abnahme/dauerlaeufer-nw6.json` (`make abnahme`), MQTT läuft in keinem. Tor G1 `nw6_im_kleinen` |
 
 ## Die Fallen
 
@@ -18,11 +19,14 @@ Neu angelegt am 21.09.2026. Keine Migration, keine Route, keine Fläche. Einrich
   Der Betreiber legt an und überträgt die UUID an zwei Stellen (gitops-Platzhalter, api-Schalter).
 - **Ein falscher Schalterwert stoppt den Start.** Das ist gewollt, siehe `Dauerlaeufer.kennung`. Das Etikett ist immer
   `UUID.toString()`, also klein geschrieben; gitops PR 37 vergleicht es wörtlich.
-- **Die Mess-Auswahl nimmt die Simulator-Schlüssel nicht an** (400 bzw. `custom.<hex>`), ohne Auswahl verwirft der Writer
-  jeden Wert: Drehbuch §14.2 Hinweis, Behebung noch nicht entschieden.
+- **Feste Schlüssel gehen nicht, der Simulator lernt sie.** Die Katalog-Route lehnt die Szenario-Schlüssel ab (400),
+  „Eigenen Messwert hinzufügen“ vergibt `custom.<hex>`. Darum abonniert der Simulator `v2/measurement-config` (gehalten),
+  quittiert auf `…-status` und sendet nur Gelerntes; ohne Zustellung sendet er nichts. Kein Schlüssel im Geheimnis.
 - **Messkunden-Alter entsteht nur mit Zuordnung.** Der Lücken-Melder zählt nur Werte mit `entity_id` (`LueckenMelder.SPUR`).
-  Der Dauerläufer braucht deshalb Funktion „Messen“, eine Mess-Auswahl mit Komponente, eine Datenquelle an ihr und die
-  zuständige Box (sonst Spiegel, nicht gezählt).
+  Dafür braucht es eine Komponente MIT Anschluss (Baukasten, Lesung = Verbindungsbeleg; `POST …/measurement-points` hat keinen
+  und bekommt keinen Vorschlag), „Vorschlag übernehmen“ (Datenquelle UND Zuständigkeit, sonst Spiegel; das Portal hat dafür
+  keinen Knopf) und die Quittung (sonst bleibt der erste Wert je Schlüssel ohne Fassung).
+- **Vor dem ersten Wert** gibt es kein Alter, aber `messwert_zustand{zustand="nie"} 1`; daran hängt die nie-Regel in gitops.
 - **Arbeitslisten und Speicher zählen ihn mit.** Beide messen die Verarbeitung, sie zählen keine Kunden. Der Dauerläufer soll
   dort gerade auffallen, wenn die Strecke steht.
 - **Neustart ohne Reset.** Sequenz, Messzeit und Zählerstand sind Funktionen der Minute seit 1970. Ein Zustand auf der

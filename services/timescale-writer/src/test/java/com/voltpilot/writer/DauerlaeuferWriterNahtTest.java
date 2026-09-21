@@ -165,9 +165,6 @@ class DauerlaeuferWriterNahtTest {
         registry.add("spring.datasource.password", () -> APP_PW);
     }
 
-    @Autowired
-    HerkunftNachschlag nachschlag;
-
     @Test
     void dieUmschlaegeDesDauerlaeufersAmEchtenWriter() throws Exception {
         // EINE Partition: ist der letzte Umschlag (E-2) geschrieben, sind alle davor gelesen.
