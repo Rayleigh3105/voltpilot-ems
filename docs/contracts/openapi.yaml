@@ -13273,6 +13273,24 @@ components:
         warnung_fuehrung:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/GemeinsameSteuerungWarnungFuehrung" }]
+        bilanz:
+          nullable: true
+          description: "Verbund-Bilanz (AP-15 IP-12) — null, solange kein Tag gerechnet ist."
+          allOf: [{ $ref: "#/components/schemas/GemeinsameSteuerungBilanz" }]
+    GemeinsameSteuerungBilanz:
+      type: object
+      required: [zustand, tag, seit, gerechnet_am]
+      properties:
+        zustand: { type: string, enum: [plausibel, unplausibel, unbekannt] }
+        tag: { type: string, format: date, description: "der jüngste gerechnete Tag (Europe/Berlin)" }
+        seit: { type: string, format: date, description: "erster Tag der ununterbrochenen Reihe mit diesem Zustand" }
+        grund:
+          type: string
+          nullable: true
+          enum: [struktur_geaendert, netzpunkt_ohne_messstelle, box_ohne_messstelle, richtung_nicht_eindeutig,
+                 luecke, einzelne_abweichung]
+          description: "nur bei unbekannt"
+        gerechnet_am: { type: string, format: date-time }
     GemeinsameSteuerungMitglied:
       type: object
       required: [box_id, rolle, gueltig_ab]

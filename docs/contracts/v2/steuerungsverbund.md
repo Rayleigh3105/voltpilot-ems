@@ -183,11 +183,51 @@ ein unbekanntes Signal als nicht anliegend (R18).
 Gemeinsame Steuerung, deren führende Box (`LeadDeviceService`) nicht die Box des primären Speichers ist. Kein
 Kundensatz — die Flächen kommen mit IP-23/IP-24.
 
+## 7. Die Verbund-Bilanz (IP-12)
+
+**Die Frage (A17):** erklärt sich der Netzpunkt aus den Boxen? Je Viertelstunde (kW-Mittel, Bezug positiv) ist das
+**Ungeregelte = Netzpunkt − Σ Box-Beiträge**. Ungeregelt ist Last, die keine Box steuert; ein Erzeuger ist darin nicht
+vorgesehen. Liegt es unter `−max(2 kW, 5 % × (|Netzpunkt| + Σ |Beitrag|))`, speist am Netzpunkt mehr ein, als die Boxen
+erklären → `unplausibel`. Regel `uems/VerbundBilanzRegel` (rein), Vektoren
+[`verbund-bilanz-vectors.json`](verbund-bilanz-vectors.json).
+
+| Term | Messstellen (Viertelstunden aus AP-08, nur `vollständig`) |
+|---|---|
+| Netzpunkt | an den Komponenten des Messpunkts der führenden Box (B1, der Netzzähler) |
+| mitsteuernde Box | an den Komponenten ihres Messpunkts — Abgangszähler oder, ohne ihn, ihre Geräte (B3) |
+| führende Box | Summe ihrer Geräteleistungen: an allen Komponenten, die sie außerhalb ihres Messpunkts liest |
+
+Vorzeichen aus der Richtung der Bindung (Bezug/Laden +, Abgabe/Erzeugung/Entladen −); je Komponente und Richtung eine
+Bindung der Wirkenergie oder Wirkleistung.
+
+**Tag:** `unplausibel` ab zwei unplausiblen Viertelstunden; sonst `unbekannt` mit `grund` (`struktur_geaendert`,
+`netzpunkt_ohne_messstelle`, `box_ohne_messstelle`, `richtung_nicht_eindeutig`, `luecke`, `einzelne_abweichung`);
+sonst `plausibel`. **Unbekannt ist keine Null (B5):** eine fehlende oder unvollständige Viertelstunde macht den Tag
+nie `plausibel`.
+
+**Lauf und Folge.** `uems/VerbundBilanzLaeufer` (täglich 04:37 Europe/Berlin, Schalter
+`voltpilot.uems.verbund-bilanz.enabled`) rechnet den Vortag jeder Anlage MIT Gemeinsamer Steuerung und Mitgliedern —
+genau einmal je Tag, gespeichert in `steuerungsverbund_bilanz` (V20260921210000: wer, wann, worauf, Stufe davor). Eine
+Anlage ohne Gemeinsame Steuerung bekommt keinen Lauf, keine Zeile, keine Metrik-Reihe. `unplausibel` führt eine Anlage
+auf S2, S3 oder angehalten über `GemeinsameSteuerungService#bilanzUnplausibel` auf S1 zurück — Protokoll `stufe` mit
+Akteur „Verbund-Bilanz“ und Grund `verbund_bilanz_unplausibel <tag>`; Epoche und Mitglieder bleiben, die Anteile an den
+Boxen also in Kraft. `unbekannt` ändert nichts. Die Bilanz trägt keine Beweislast (E3 = A, die Sprungprobe IP-21).
+
+**Auskunft:** `GET …/gemeinsame-steuerung` → `bilanz` {`zustand`, `tag`, `seit`, `grund`, `gerechnet_am`}; `null`, solange
+kein Tag gerechnet ist. **Metrik:** `voltpilot_uems_verbund_bilanz_zustand{tenant,site,zustand}`
+([Übergabe](../../rollout/gemeinsame-steuerung-metriken.md)).
+
+**Grenzen (bewusst):** ein versteckter Erzeuger zeigt sich erst, wenn er mehr einspeist als die Last derselben
+Viertelstunde (A17: „innerhalb eines Tages mit Sonne“). Eine Box an einem anderen Anschluss macht das Ungeregelte nur
+größer — das fängt die Sprungprobe. Die Obergrenze (Ungeregeltes über dem Vorbehalt) ist A20/IP-13, nicht A17. Ohne
+Abgangszähler (B3, Geräte als Messpunkt) zählt Ungeregeltes hinter dem Abgang zum Ungeregelten statt zum Anteil der Box —
+für die Bilanz gleich, für den Vorbehalt nicht prüfbar.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='SteuerungsverbundAnteilVectorsTest,SteuerungsverbundRegelnVectorsTest')
-(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest')
-(cd services/api && ./mvnw test -Dtest='SteuerungsverbundMigrationTest,GemeinsameSteuerungApiTest')   # Testcontainers
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundScharfschaltenTest,GemeinsameSteuerungSchnittstelleVertragTest,VerbundBilanzVectorsTest')
+(cd services/api && ./mvnw test -Dtest='SteuerungsverbundMigrationTest,GemeinsameSteuerungApiTest,VerbundBilanzApiTest')   # Testcontainers
 (cd services/optimization && PYTHONPATH=. python -m pytest tests/test_steuerungsverbund_referenz.py)
 ```

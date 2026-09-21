@@ -2,6 +2,7 @@ package com.voltpilot.api.web.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -22,10 +23,20 @@ public final class GemeinsameSteuerungDto {
      *
      * @param fehlt           was zum {@code naechsterSchritt} fehlt — je Bedingung ein Wort des Ablehnungs-Vokabulars
      * @param warnungFuehrung Z1/W2 — nur OHNE Gemeinsame Steuerung: führende Box und Speicher-Box fallen auseinander
+     * @param bilanz          die Verbund-Bilanz (IP-12) — {@code null}, solange kein Tag gerechnet ist
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Zustand(boolean eingerichtet, String zustand, String stufe, Long epoche, UUID netzanschlussId,
-            List<Mitglied> mitglieder, String naechsterSchritt, List<Befund> fehlt, WarnungFuehrung warnungFuehrung) {}
+            List<Mitglied> mitglieder, String naechsterSchritt, List<Befund> fehlt, WarnungFuehrung warnungFuehrung,
+            Bilanz bilanz) {}
+
+    /**
+     * Die Verbund-Bilanz (IP-12, A17): {@code zustand} des jüngsten gerechneten Tages ({@code plausibel} ·
+     * {@code unplausibel} · {@code unbekannt}), {@code seit} dem ersten Tag, an dem sie ununterbrochen so steht,
+     * {@code grund} nur bei {@code unbekannt} (Vokabular {@code VerbundBilanzRegel.Grund}), {@code gerechnetAm} wann.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Bilanz(String zustand, LocalDate tag, LocalDate seit, String grund, OffsetDateTime gerechnetAm) {}
 
     /** Ein wirksames Mitglied: Box, Rolle ({@code fuehrt} · {@code steuert_mit}), Messpunkt (Datenquelle, wahlfrei). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

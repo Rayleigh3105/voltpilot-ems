@@ -55,11 +55,27 @@ promtool-Tests setzen die Reihe als Eingang.
 | `GemeinsameSteuerungBoxStumm` (je Box, 5 min) | A1, A4, A5 | `voltpilot_uems_box_herzschlag_age_seconds > 300`, dazu `voltpilot_uems_box_herzschlag_zustand{zustand="nie"} == 1` mit `for: 5m` | nichts (Mitglieder kommen mit dem Einrichten, IP-5) |
 | `GemeinsameSteuerungOhneFuehrendeBox` (kritisch, 5 min) | A2 | `voltpilot_uems_box_herzschlag_age_seconds > 300 and on (device) voltpilot_uems_box_rolle{rolle="fuehrt"} == 1` | nichts; wirksam, sobald eine Anlage eingerichtet ist (IP-5) |
 | `GemeinsameSteuerungAufAnteil` (Wächter > 10 min auf dem Anteil) | A7 | `voltpilot_uems_box_waechter_stufe{stufe="sicherheitskappe"} == 1` mit `for: 10m`, `and on (device) voltpilot_uems_box_herzschlag_age_seconds < 120` (eine stumme Box meldet `BoxStumm`, nicht ihren letzten Wächter-Wert) | Bedeutung „= eigener Anteil“ erst mit IP-18 (davor ist es die heutige Sicherheitskappe der Einzelbox); Richtung `bezug` erst IP-18/IP-19; Mitglieder-Begrenzung |
-| `GemeinsameSteuerungBilanzUnplausibel` | A17 | — | alles: die Verbund-Bilanz entsteht in IP-12 (plausibel / unplausibel / unbekannt). Vorschlag an IP-12: je Anlage `voltpilot_uems_verbund_bilanz_zustand{tenant,site,zustand}` |
+| `GemeinsameSteuerungBilanzUnplausibel` | A17 | `voltpilot_uems_verbund_bilanz_zustand{zustand="unplausibel"} == 1` (je Anlage, ohne `for`: der Wert ändert sich höchstens einmal am Tag) | nichts: gefüllt seit IP-12, sobald für eine Anlage mit Mitgliedern ein Tag gerechnet ist (siehe unten) |
 | `GemeinsameSteuerungUhrUnsicher` | A8 | — | eine Quelle je Box. `clock_jump` gehört der Datenannahme und ist ein Ereignis, keine Metrik mit `device`. Vorschlag: der Versatz Herzschlag-`ts` gegen Cloud-Ankunft als `voltpilot_uems_box_uhr_versatz_seconds` in diesem Sammler (der Status ist nicht retained, der Versatz also echt) — in IP-11 nicht gebaut, weil die Zelle ihn nicht nennt |
 | `GemeinsameSteuerungVorbehaltZuKlein` | A20 | — | alles: die selbsttätige Erhöhung des Vorbehalts baut IP-13. Vorschlag an IP-13: ein Zähler je Anlage `voltpilot_uems_vorbehalt_erhoeht_total{tenant,site}` |
 | `PlanNichtAngenommen{device}` (30 min) | A3, A9 | `voltpilot_uems_box_plan_angenommen_age_seconds > 1800 and on (device) voltpilot_uems_box_plan_quittung_gemeldet == 1`; der Nie-Fall: `(voltpilot_uems_box_plan_quittung_gemeldet == 1) unless on (device) voltpilot_uems_box_plan_angenommen_age_seconds` mit `for: 30m` | baubar; wirksam, sobald Boxen mit dem IP-10-Edge-Release quittieren. Ob ohne Mitglieder-Begrenzung, entscheidet Teil B (die Regel ist reine Betreibersicht) |
 | `AnteileNichtBestaetigt` (30 min) | A10 | `voltpilot_uems_box_anteile_unbestaetigt_age_seconds > 1800` | die Werte: IP-7 schreibt `gesendet_*`/`quittiert_*`, IP-17 lässt die Box quittieren |
+
+## Verbund-Bilanz je Anlage (AP-15 IP-12)
+
+| Metrik | Labels | Einheit | Bedeutung | leer bis |
+|---|---|---|---|---|
+| `voltpilot_uems_verbund_bilanz_zustand` | `tenant`, `site`, `zustand` = `plausibel` \| `unplausibel` \| `unbekannt` | 1/0 | 1 für den Zustand des jüngsten gerechneten Tages (`steuerungsverbund_bilanz`, täglicher Läufer `verbund_bilanz` 04:37 Europe/Berlin, rechnet den Vortag). `unbekannt` ist kein `plausibel` (B5): eine Lücke, ein Messpunkt ohne Messstelle oder genau eine abweichende Viertelstunde. | gefüllt, sobald für eine Anlage mit JETZT wirksamen Mitgliedern ein Tag gerechnet ist |
+
+- Sammler `metrics/VerbundBilanzMetrik` am selben Schalter und Takt wie oben; gelesen über die
+  Admin-Rolle (`repo/VerbundBilanzMetrikRepository`). Eine Anlage ohne Gemeinsame Steuerung, eine
+  aufgelöste (keine wirksamen Mitglieder) und eine ohne gerechneten Tag hat keine Reihe.
+- Was `unplausibel` auslöst: in mindestens zwei Viertelstunden speist der Netzpunkt mehr ein, als
+  die Boxen zusammen erklären (Toleranz max(2 kW, 5 %)) — ein nie eingetragener Erzeuger oder ein
+  verdrehtes Vorzeichen (A17). Die api führt eine Anlage über S1 dann selbst auf S1 zurück
+  (Protokoll-Akteur „Verbund-Bilanz“, die Anteile bleiben in Kraft); die Regel meldet es.
+- Ein stehender Läufer lässt die Reihe auf dem letzten Tag stehen — das deckt die Läufer-Regel über
+  `voltpilot_uems_laeufer_*{laeufer="verbund_bilanz"}` (Takt täglich), nicht diese Metrik.
 
 ## Frist für `plan_zustellung`
 

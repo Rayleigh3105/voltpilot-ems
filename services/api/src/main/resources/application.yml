@@ -569,6 +569,13 @@ voltpilot:
       enabled: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_ENABLED:true}
       cron: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_CRON:0 47 3 * * *}
       aufbewahrung-tage: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_AUFBEWAHRUNG_TAGE:35}
+    # Verbund-Bilanz (AP-15 IP-12): taeglich je Anlage MIT Gemeinsamer Steuerung den Vortag rechnen
+    # (Netzpunkt gegen Summe der Box-Beitraege); unplausibel fuehrt eine Anlage ueber S1 auf S1 zurueck,
+    # die Anteile bleiben in Kraft. Vorgabe AN, im Testlauf AUS (surefire); wer ihn prueft, ruft
+    # VerbundBilanzLaeufer.lauf(tag) selbst.
+    verbund-bilanz:
+      enabled: ${VOLTPILOT_UEMS_VERBUND_BILANZ_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_VERBUND_BILANZ_CRON:0 37 4 * * *}
     # Grenzblatt-Anstoss (AP-15 IP-3 Folgepaket): stuendlich je Anlage mit Ladepark-Rahmen den heute
     # wirksamen Bezug gegen den zuletzt zugestellten vergleichen und nur bei einem Unterschied das
     # Ladepark-Dokument neu zustellen (Fassung/Bindung am Tageswechsel, Nachholen nach Ausfall).

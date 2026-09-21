@@ -51,6 +51,14 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
         return new ProtokollAkteur(null, "Bestandsübernahme", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
     }
 
+    /**
+     * VoltPilot selbst, ohne Person: der tägliche Lauf der Verbund-Bilanz (AP-15 IP-12), der eine unplausible Anlage
+     * auf S1 zurückführt. Eigener Name, damit das Protokoll ihn von einem Handgriff des Betreibers unterscheidet.
+     */
+    public static ProtokollAkteur verbundBilanz() {
+        return new ProtokollAkteur(null, "Verbund-Bilanz", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
     /** Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). */
     public static Optional<ProtokollAkteur> aus(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt)

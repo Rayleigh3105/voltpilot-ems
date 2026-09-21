@@ -26,6 +26,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +62,9 @@ public class GemeinsameSteuerungService {
     private final EntityRegistryRepository registry;
     private Clock uhr = Clock.systemUTC();
 
+    /** Die Auskunft der Verbund-Bilanz (IP-12), nachgereicht — ein bestehender Konstruktor ändert sich nicht. */
+    private VerbundBilanzRepository bilanzen;
+
     public GemeinsameSteuerungService(SteuerungsverbundRepository repo, AnlageGrenzen grenzen,
             SteuerungsverbundNachweise nachweise, LeadDeviceService fuehrung, EntityRegistryRepository registry,
             SteuerungsverbundAnteilDienst anteile) {
@@ -70,6 +74,11 @@ public class GemeinsameSteuerungService {
         this.nachweise = nachweise;
         this.fuehrung = fuehrung;
         this.registry = registry;
+    }
+
+    @Autowired(required = false)
+    void bilanzen(VerbundBilanzRepository bilanzen) {
+        this.bilanzen = bilanzen;
     }
 
     void uhrStellen(Clock clock) {
@@ -86,7 +95,7 @@ public class GemeinsameSteuerungService {
         Optional<VerbundZeile> v = repo.derAnlage(siteId);
         if (v.isEmpty()) {
             return new GemeinsameSteuerungDto.Zustand(false, ZUSTAND_NICHT_EINGERICHTET, null, null, null, List.of(),
-                    null, List.of(), warnungFuehrung(siteId));
+                    null, List.of(), warnungFuehrung(siteId), null);
         }
         return zustand(siteId, v.get(), jetzt);
     }
@@ -102,7 +111,7 @@ public class GemeinsameSteuerungService {
         UUID netzanschluss = repo.netzanschluesse(siteId, tag).stream().findFirst().orElse(null);
         if (mitglieder.isEmpty()) {
             return new GemeinsameSteuerungDto.Zustand(true, ZUSTAND_AUFGELOEST, null, v.epoche(), netzanschluss, dto,
-                    null, List.of(), null);
+                    null, List.of(), null, bilanz(v));
         }
         String naechster = switch (v.stufe()) {
             case ERKLAERT -> Stufe.BEOBACHTET.code();
@@ -115,7 +124,16 @@ public class GemeinsameSteuerungService {
                 : v.stufe() == Stufe.ERKLAERT ? SteuerungsverbundScharfschalten.struktur(urteil(siteId, v, jetzt))
                 : urteil(siteId, v, jetzt).befunde();
         return new GemeinsameSteuerungDto.Zustand(true, v.stufe().code(), v.stufe().stufe(), v.epoche(),
-                netzanschluss, dto, naechster, befunde(befunde), null);
+                netzanschluss, dto, naechster, befunde(befunde), null, bilanz(v));
+    }
+
+    /** Die Verbund-Bilanz für IP-24: jüngster gerechneter Tag und seit wann derselbe Zustand steht (IP-12). */
+    private GemeinsameSteuerungDto.Bilanz bilanz(VerbundZeile v) {
+        if (bilanzen == null) {
+            return null;
+        }
+        return bilanzen.stand(v.id()).map(b -> new GemeinsameSteuerungDto.Bilanz(b.zustand(), b.tag(), b.seit(),
+                b.grund(), b.gerechnetAm().atOffset(ZoneOffset.UTC))).orElse(null);
     }
 
     /** Z1: nur OHNE Gemeinsame Steuerung, nur mit Speicher, nur wenn die führende Box eine andere ist. */
@@ -298,6 +316,33 @@ public class GemeinsameSteuerungService {
                 null, wer);
         return zustand(siteId, repo.finden(v.id()).orElseThrow(), jetzt);
     }
+
+    /**
+     * Die Verbund-Bilanz des Tages {@code tag} ist unplausibel (IP-12, A17): eine Anlage ÜBER S1 — geprüft, scharf oder
+     * angehalten — geht auf S1 {@code beobachtet} zurück, mit einem Protokoll-Eintrag des Akteurs {@code wer} und dem
+     * Tag als Grund. Epoche und Mitglieder bleiben unverändert: die Anteile an den Boxen bleiben in Kraft, Zurückführen
+     * nimmt nie einen Wächter weg (V5); wieder scharf wird die Anlage nur über das Scharfschalten mit allen Bedingungen
+     * aus I1. S0 und S1 bleiben stehen. Liefert, ob zurückgeführt wurde.
+     */
+    @Transactional
+    public boolean bilanzUnplausibel(UUID siteId, LocalDate tag, ProtokollAkteur wer) {
+        Optional<VerbundZeile> gefunden = repo.derAnlage(siteId);
+        if (gefunden.isEmpty()) {
+            return false;
+        }
+        repo.sperren(gefunden.get().id());
+        VerbundZeile v = repo.finden(gefunden.get().id()).orElseThrow();
+        if (v.stufe() != Stufe.GEPRUEFT && v.stufe() != Stufe.ANTEILE_AKTIV && v.stufe() != Stufe.ANGEHALTEN) {
+            return false;
+        }
+        repo.stufeSetzen(v.id(), Stufe.BEOBACHTET);
+        repo.protokoll(TenantContext.get(), v.id(), siteId, "stufe", quote(v.stufe().code()),
+                quote(Stufe.BEOBACHTET.code()), uhr.instant(), false, BILANZ_GRUND + " " + tag, wer);
+        return true;
+    }
+
+    /** Der Grund im Protokoll, wenn die Verbund-Bilanz die Stufe zurückführt; dahinter steht der Tag. */
+    public static final String BILANZ_GRUND = "verbund_bilanz_unplausibel";
 
     // ------------------------------------------------------------------ Prüfung
 
