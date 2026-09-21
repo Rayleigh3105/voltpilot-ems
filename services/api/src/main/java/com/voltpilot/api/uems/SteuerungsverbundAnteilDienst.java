@@ -156,12 +156,36 @@ public class SteuerungsverbundAnteilDienst {
         return ableiten(siteId).map(Ableitung::passt).orElse(false);
     }
 
+    /**
+     * Die Naht von IP-5 ({@link SteuerungsverbundNachweise#auslegung}): der Eingang je Richtung für genau diese Boxen
+     * am Tag — leer ohne Verbund, ohne Boxen oder wenn eine Richtung nicht rechenbar ist (unbekannt ist nicht „passt“).
+     */
+    @Transactional(readOnly = true)
+    public Optional<Map<Grenzart, SteuerungsverbundRegeln.Richtung>> auslegungFuer(UUID siteId, List<UUID> boxen,
+            LocalDate tag) {
+        if (boxen.isEmpty()) {
+            return Optional.empty();
+        }
+        return verbuende.derAnlage(siteId).map(v -> ableitung(v, tag, java.util.Set.copyOf(boxen)).eingaenge())
+                .filter(e -> e.keySet().containsAll(SteuerungsverbundAnteile.RICHTUNGEN));
+    }
+
     private Ableitung ableitung(VerbundZeile v) {
+        return ableitung(v, LocalDate.ofInstant(clock.instant(), ZONE), null);
+    }
+
+    private Ableitung ableitung(VerbundZeile v, LocalDate tag, java.util.Set<UUID> nurBoxen) {
         Instant jetzt = clock.instant();
         List<SteuerungsverbundAbleitung.Mitglied> mitglieder = verbuende.mitglieder(v.id(), jetzt).stream()
+                .filter(m -> nurBoxen == null || nurBoxen.contains(m.deviceId()))
                 .map(m -> new SteuerungsverbundAbleitung.Mitglied(m.deviceId().toString(), m.rolle())).toList();
+        java.util.Set<String> imVerbund = new java.util.HashSet<>();
+        mitglieder.forEach(m -> imVerbund.add(m.box()));
         List<SteuerungsverbundAbleitung.Geraet> geraete = new ArrayList<>();
         for (SteuerungsverbundAnteilRepository.GeraetZeile g : anteile.geraete(v.id())) {
+            if (!imVerbund.contains(g.deviceId().toString())) {
+                continue; // Gerät an einer Box, die gerade kein Mitglied ist
+            }
             BigDecimal rueckfall = g.entityId() != null && g.schreibfreigabe()
                     ? rueckfaelle.rueckfall(g.entityId(), g.richtung(), g.nennKw()).kw() : g.nennKw();
             geraete.add(new SteuerungsverbundAbleitung.Geraet(g.deviceId().toString(),
@@ -170,8 +194,7 @@ public class SteuerungsverbundAnteilDienst {
         }
         Map<Grenzart, BigDecimal> grenze = new EnumMap<>(Grenzart.class);
         BigDecimal[] anlage = anteile.grenzwerteDerAnlage(v.siteId());
-        GrenzeAufloesung.Wirksam wirksam = grenzen.wirksam(v.siteId(), LocalDate.ofInstant(jetzt, ZONE), anlage[0],
-                anlage[1]);
+        GrenzeAufloesung.Wirksam wirksam = grenzen.wirksam(v.siteId(), tag, anlage[0], anlage[1]);
         if (wirksam.einspeisungKw() != null) {
             grenze.put(Grenzart.EINSPEISUNG, wirksam.einspeisungKw());
         }
@@ -194,6 +217,19 @@ public class SteuerungsverbundAnteilDienst {
      */
     @Transactional
     public Ergebnis anteileScharfschalten(UUID siteId, ProtokollAkteur wer) {
+        return ausrollen(siteId, wer, true);
+    }
+
+    /**
+     * Das Scharfschalten S3 (IP-5, {@code GemeinsameSteuerungService#scharfschalten}) hat die neue Epoche schon gesetzt:
+     * der Zweischritt läuft in DIESER Epoche, einmal — gibt es in ihr schon ein Dokument, geschieht nichts.
+     */
+    @Transactional
+    public Ergebnis anteileAusrollen(UUID siteId, ProtokollAkteur wer) {
+        return ausrollen(siteId, wer, false);
+    }
+
+    private Ergebnis ausrollen(UUID siteId, ProtokollAkteur wer, boolean neueEpoche) {
         Optional<VerbundZeile> gefunden = verbuende.derAnlage(siteId);
         if (gefunden.isEmpty()) {
             return Ergebnis.nicht(Grund.KEIN_VERBUND);
@@ -206,6 +242,10 @@ public class SteuerungsverbundAnteilDienst {
         if (!a.passt()) {
             return Ergebnis.nicht(Grund.AUSLEGUNG_PASST_NICHT);
         }
+        List<DokumentZeile> bisher = anteile.dokumente(v.id());
+        if (!neueEpoche && (v.epoche() == 0 || bisher.stream().anyMatch(d -> d.epoche() == v.epoche()))) {
+            return Ergebnis.nicht(v.epoche() == 0 ? Grund.NOCH_NICHT_SCHARF : Grund.UNVERAENDERT);
+        }
         Map<Grenzart, Map<String, BigDecimal>> alt;
         boolean rueckgespielt = anteile.rueckgespieltErkannt(v.id()).isPresent();
         if (rueckgespielt) {
@@ -214,14 +254,17 @@ public class SteuerungsverbundAnteilDienst {
                 return Ergebnis.nicht(Grund.WIRKSAME_ANTEILE_UNBEKANNT);
             }
             alt = gemeldet.get();
-        } else if (anteile.dokumente(v.id()).isEmpty()) {
+        } else if (bisher.isEmpty()) {
             alt = SteuerungsverbundZweischritt.altOhneDokument(a.mitglieder(), a.eingaenge());
         } else {
             alt = wirksamAusHerzschlag(v, a.mitglieder()).orElseGet(() -> altAusDokumenten(v));
         }
-        long epoche = verbuende.epocheErhoehen(v.id()).orElseThrow();
-        verbuende.protokoll(TenantContext.get(), v.id(), v.siteId(), "epoche", "{\"epoche\":" + (epoche - 1) + "}",
-                "{\"epoche\":" + epoche + "}", clock.instant(), false, "Anteile scharfgeschaltet", wer);
+        long epoche = v.epoche();
+        if (neueEpoche) {
+            epoche = verbuende.epocheErhoehen(v.id()).orElseThrow();
+            verbuende.protokoll(TenantContext.get(), v.id(), v.siteId(), "epoche", "{\"epoche\":" + (epoche - 1)
+                    + "}", "{\"epoche\":" + epoche + "}", clock.instant(), false, "Anteile scharfgeschaltet", wer);
+        }
         if (rueckgespielt) {
             anteile.rueckgespieltAufheben(v.id());
         }

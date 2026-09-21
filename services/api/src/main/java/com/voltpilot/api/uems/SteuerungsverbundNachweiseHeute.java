@@ -17,9 +17,11 @@ import org.springframework.stereotype.Component;
 public class SteuerungsverbundNachweiseHeute implements SteuerungsverbundNachweise {
 
     private final BoxFaehigkeiten faehigkeiten;
+    private final SteuerungsverbundAnteilDienst anteile;
 
-    public SteuerungsverbundNachweiseHeute(BoxFaehigkeiten faehigkeiten) {
+    public SteuerungsverbundNachweiseHeute(BoxFaehigkeiten faehigkeiten, SteuerungsverbundAnteilDienst anteile) {
         this.faehigkeiten = faehigkeiten;
+        this.anteile = anteile;
     }
 
     @Override
@@ -33,11 +35,15 @@ public class SteuerungsverbundNachweiseHeute implements SteuerungsverbundNachwei
         return false;
     }
 
-    /** IP-7 rechnet den Eingang aus den Geräte-Rückfällen (IP-6). */
+    /**
+     * IP-7: der Eingang aus Geräten je Box (Nennleistung, Schreibfreigabe), ihren Rückfällen (IP-6), der wirksamen
+     * Grenze und dem gespeicherten Vorbehalt ({@link SteuerungsverbundAnteilDienst#auslegungFuer}); leer, solange eine
+     * Richtung nicht rechenbar ist.
+     */
     @Override
     public Optional<Map<Grenzart, SteuerungsverbundRegeln.Richtung>> auslegung(UUID siteId, List<UUID> boxen,
             LocalDate tag) {
-        return Optional.empty();
+        return anteile.auslegungFuer(siteId, boxen, tag);
     }
 
     @Override

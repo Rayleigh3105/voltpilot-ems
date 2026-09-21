@@ -263,6 +263,29 @@ class SteuerungsverbundAnteilDienstTest {
     }
 
     @Test
+    void nahtZuIp5AuslegungUndAusrollenInDerEpocheDesScharfschaltens() throws Exception {
+        Welt w = ahrenberg(Stufe.GEPRUEFT);
+        TenantContext.set(w.mandant());
+        java.time.LocalDate heute = java.time.LocalDate.now(java.time.ZoneId.of("Europe/Berlin"));
+        var eingang = dienst.auslegungFuer(w.anlage(), List.of(w.e1(), w.e4()), heute);
+        assertThat(eingang).isPresent();
+        assertThat(eingang.get().get(Grenzart.BEZUG).vorbehaltKw()).isEqualByComparingTo("473");
+        assertThat(dienst.auslegungFuer(w.anlage(), List.of(), heute)).isEmpty();
+        anteile.vorbehaltSetzen(w.verbund(), BigDecimal.ZERO, null, "betreiber@voltpilot.test");
+        assertThat(dienst.auslegungFuer(w.anlage(), List.of(w.e1(), w.e4()), heute))
+                .as("ohne Vorbehalt am Bezug nicht rechenbar — unbekannt ist nicht passt").isEmpty();
+        anteile.vorbehaltSetzen(w.verbund(), BigDecimal.ZERO, new BigDecimal("473"), "betreiber@voltpilot.test");
+
+        assertThat(dienst.anteileAusrollen(w.anlage(), BETREIBER).grund()).isEqualTo(Grund.NOCH_NICHT_SCHARF);
+        long epoche = verbuende.epocheErhoehen(w.verbund()).orElseThrow(); // so setzt IP-5 sie beim Scharfschalten
+        Ergebnis e = dienst.anteileAusrollen(w.anlage(), BETREIBER);
+        assertThat(e.veroeffentlicht()).isTrue();
+        assertThat(e.dokument().epoche()).as("keine zweite Epoche").isEqualTo(epoche);
+        assertThat(verbuende.derAnlage(w.anlage()).orElseThrow().epoche()).isEqualTo(epoche);
+        assertThat(dienst.anteileAusrollen(w.anlage(), BETREIBER).grund()).isEqualTo(Grund.UNVERAENDERT);
+    }
+
+    @Test
     void bestandOhneVerbundKeinDokumentKeinTopic() throws Exception {
         int nr = NR.incrementAndGet();
         UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class, "Bestand #" + nr);

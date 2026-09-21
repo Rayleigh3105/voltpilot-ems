@@ -230,13 +230,17 @@ class UemsBestandSteuerungAusEinemStueckTest {
     private JsonNode reference;
     private String startup;
     private String lastRegisterCorrelation;
+    /** Sender, die es auf main nicht gibt (die Referenz kennt sie nicht): beim Start gezählt und stumm verlangt. */
+    private static final java.util.Set<String> NEU_SEIT_MAIN = java.util.Set.of("VerbundAnteilePublisher");
+    private final Map<String, Integer> startNeu = new TreeMap<>();
     private MockedStatic<Instant> time;
 
     @BeforeAll
     void start() throws Exception {
         if (!CAPTURE) reference = JSON.readTree(getClass().getResourceAsStream("/uems/nw2/main-reference.json"));
         Map<String, Integer> boot = new TreeMap<>();
-        senders().forEach((name, sender) -> boot.put(name, mockingDetails(sender).getInvocations().size()));
+        senders().forEach((name, sender) -> (NEU_SEIT_MAIN.contains(name) ? startNeu : boot).put(name,
+                mockingDetails(sender).getInvocations().size()));
         startup = JSON.writeValueAsString(boot);
         clearInvocations(senders().values().toArray());
         // Die Testdatenbank enthält neben den beiden Bühnenkunden weitere Dev-Seed-Mandanten. Der echte
@@ -367,7 +371,9 @@ class UemsBestandSteuerungAusEinemStueckTest {
         }
         runAllRunners();
         same("startup publisher counts; main ApplicationReadyEvent (including control certification)", startup);
-        assertPublishersSilent("NW-2 nichts wird geschaltet; alle 11 MQTT-Publisher");
+        assertThat(startNeu).as("neue Sender seit main senden beim Start nichts").containsOnlyKeys(NEU_SEIT_MAIN)
+                .allSatisfy((name, n) -> assertThat(n).as(name).isZero());
+        assertPublishersSilent("NW-2 nichts wird geschaltet; alle 12 MQTT-Publisher");
         assertThat((List<?>) ReflectionTestUtils.invokeMethod(Class.forName("com.voltpilot.api.uems.Bestandsschutz"),
                 "abweichungen", before, fingerprint())).as("main → UEMS: alle Bestandstabellen; Bestandsschutz").isEmpty();
         assertThat(root.queryForObject("SELECT count(*) FROM funktion_teilnahme WHERE site_id=? AND zustand='aktiv' AND uebernommen", Integer.class, SITE)).isEqualTo(1);
