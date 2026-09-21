@@ -47,14 +47,20 @@
 // and is sufficient for ANY house load: export = pv + discharge - load - charge
 // <= pv + discharge <= (limit - discharge) + discharge = limit, because load and
 // charge are non-negative. It needs no measurement at all - which is precisely
-// why it is the blind fallback.
+// why it is the blind fallback. It holds for every house load, but NOT for every
+// producer: pv is the generation THIS box controls, and a producer that another
+// box reads or controls behind the same connection point is not in it (UEMS
+// AP-15 W11). Where several boxes share one connection point, each holds its
+// own share instead (exportanteil.go), and this guard's blind fallback becomes
+// that share.
 //
 // Safety posture, the parts that are structural rather than argued:
 //
 //   - It NEVER widens anything. The caller composes the live cap with the plan's
 //     own curtailment most-restrictive-wins (min), and the cap only ever REDUCES
-//     generation - it can never command production, never touch the battery,
-//     never raise an import, never affect the §14a envelope or a SoC bound.
+//     generation - it can never command production, never raise an import, never
+//     affect the §14a envelope or a SoC bound. It never touches the battery -
+//     except that, with a share document, it may LOWER a discharge (W12 below).
 //   - It only ever regulates the CONTROLLABLE producers. The uncontrollable
 //     share (the primary hybrid) rides inside pv_total, so the loop accounts for
 //     it - but if that share alone exceeds the limit, the writable budget floors
@@ -66,10 +72,16 @@
 //     what gets written, so the register readback matches it (the PR #280 lesson,
 //     applied to the curtailment path).
 //
-// WHAT IT DOES NOT DO. It regulates ONLY the controllable producers - never the
-// battery. Absorbing a surplus into the battery is an OPTIMIZER decision (see
-// guards/surpluscharge.go, which acts on a CLOUD-priced flag); a live guard that
-// also commanded the battery would fight the plan it is supposed to execute.
+// WHAT IT DOES NOT DO. Without a share document it regulates ONLY the
+// controllable producers - never the battery. Absorbing a surplus into the
+// battery is an OPTIMIZER decision (see guards/surpluscharge.go, which acts on a
+// CLOUD-priced flag); a live guard that commanded the battery for anything
+// ECONOMIC would fight the plan it is supposed to execute - that stays true in
+// every case. What changes with a share (UEMS AP-15 W12, V6): a share smaller
+// than the battery's discharge power cannot be held by the producers alone, so
+// the share guard (exportanteil.go) also LOWERS the discharge - never charges,
+// never raises, blind to the share and with a fresh measurement only once the
+// producers are already at 0. That costs a planned discharge, never safety.
 package guards
 
 import (
@@ -184,6 +196,13 @@ type ExportCap struct {
 	// Blind is true whenever the verdict was NOT formed from a fresh
 	// measurement (hold / contract / safe cap).
 	Blind bool
+	// DischargeCapKw is the ceiling on the battery DISCHARGE (kW, >= 0) that a
+	// share demands (V6, CapAnteil only); nil = none binds. The caller only
+	// ever LOWERS a commanded discharge to it - never a charge, never a raise.
+	DischargeCapKw *float64
+	// AnteilKw echoes the box's own feed-in share; nil without a share
+	// document (Cap).
+	AnteilKw *float64
 }
 
 // ExportLimiter holds the watchdog's measurement + hysteresis state across ticks.
@@ -206,6 +225,21 @@ type ExportLimiter struct {
 	// the caller having to hand it the plan.
 	limitValid bool
 	limit      float64
+
+	// Only with a share document (exportanteil.go, CapAnteil) - untouched by
+	// Cap. The measured battery of the newest sample (+ charge / - discharge).
+	battValid bool
+	battKw    float64
+	// the commanded discharge ceiling (V6)
+	dcapValid bool
+	dcap      float64
+	dcapAt    time.Time
+	// the operating point at the onset of blindness, origin of the linear
+	// ramp to the share (V2)
+	rampValid       bool
+	rampPv, rampDis float64
+	// heute is the same box WITHOUT a share, evaluated alongside (V5)
+	heute *ExportLimiter
 }
 
 // NewExportLimiter returns an idle watchdog (no measurement, no cap).
@@ -278,6 +312,13 @@ func (l *ExportLimiter) Cap(now time.Time, limitKw *float64, safeStaticCapKw flo
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.capLocked(now, limit, safeStaticCapKw)
+}
+
+// capLocked is the staged evaluation behind Cap (and CapAnteil, which runs it
+// against the loop limit and the share's safe cap first - so a share can only
+// ever narrow what this returns). Caller holds l.mu.
+func (l *ExportLimiter) capLocked(now time.Time, limit, safeStaticCapKw float64) ExportCap {
 	l.limit, l.limitValid = limit, true
 
 	res := ExportCap{Active: true, LimitKw: limit}
@@ -445,6 +486,7 @@ func (l *ExportLimiter) forget() {
 	l.mu.Lock()
 	l.capValid, l.cap, l.capAt = false, 0, time.Time{}
 	l.limitValid, l.limit = false, 0
+	l.dcapValid, l.dcap, l.dcapAt, l.rampValid = false, 0, time.Time{}, false
 	l.mu.Unlock()
 }
 

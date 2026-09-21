@@ -65,8 +65,16 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   braucht darum einen eigenen, ausdrücklichen Weg (nicht Teil von IP-17).
 - **Herzschlag** (Y3): der Block `gemeinsame_steuerung` trägt `rolle`, `anteile_epoche`, `anteile_revision` und
   `anteile_kw` (die WIRKSAMEN eigenen Anteile je Richtung) — [Plan-Quittung](./mqtt-plan-result.md#spiegel-im-herzschlag-y3).
-- **Noch nicht geregelt:** kein Wächter liest den Anteil; das bauen IP-18/IP-19. Ohne Dokument verhält sich die Box
-  Byte für Byte wie vor IP-17.
+- **Einspeisewächter (IP-18):** gilt ein Dokument, regelt der Wächter gegen den Anteil der Richtung `einspeisung`
+  (`edge-app/core/internal/guards/exportanteil.go`). `fuehrt`: Regelkreis gegen die ganze Grenze des Plans, solange
+  der eigene Netzpunkt-Wert frisch ist (≤ 30 s); danach ohne Halten in 60 s linear auf den Anteil. `steuert_mit` —
+  und ein Dokument **ohne** `rolle` (sichere Seite) — hält den Anteil immer am eigenen Messpunkt (Abgangszähler,
+  ohne ihn die Summe der eigenen Geräte), blind `Anteil − Entladung`; die ganze Grenze ist dort nie Eingang (G1).
+  Der Anteil gilt für Erzeugung UND Entladung (V6): der Wächter senkt auch die Entladung — blind auf den Anteil,
+  mit frischer Messung erst, wenn die Erzeuger auf 0 stehen —, lädt nie und hebt nie an. Er steht hinter der
+  Arbitration (V1) und gilt in Ruhe, Pause und ohne Plan (V5); zusätzlich läuft die Box ohne Anteil als Schatten mit,
+  das Ergebnis ist nie weiter als ohne Dokument. `sicherheitskappe` im Herzschlag heißt dann „= eigener Anteil“.
+  Der Bezug (IP-19) liest den Anteil noch nicht. Ohne Dokument verhält sich die Box Byte für Byte wie vor IP-17.
 
 ## 3. Die Quittung (Uplink)
 
