@@ -80,8 +80,10 @@ import org.testcontainers.utility.DockerImageName;
  *       18.09.2026, PR 961): jede trifft über {@link #PROBEN} ein echtes Objekt, und ein Bearbeiter an einem ANDEREN
  *       Standort bekommt dort die Antwort einer unbekannten Kennung.</li>
  *   <li><b>Die Inventur vom 21.09.2026:</b> jede übrige lesende Kundenroute mit Kennung, deren Objekt die Bühne trägt,
- *       und die Listen derselben Objekte machen dieselbe Aussage. Was daran scheitert, steht benannt in
- *       {@link #ZAUN_OFFEN} (Messstelle, Kostenstelle, Prozess, Vorlagen, Protokoll des Unternehmens).</li>
+ *       und die Listen derselben Objekte machen dieselbe Aussage. Was daran scheitert, stand benannt in
+ *       {@link #ZAUN_OFFEN} (Messstelle, Kostenstelle, Prozess, Vorlagen, Protokoll des Unternehmens) — seit dem
+ *       Entscheid vom 21.09.2026 ist die Map leer; die Listen der Kostenstellen und Prozesse sind die benannte
+ *       Ausnahme {@link #AUSWAHL_KATALOG} (nur Stammdaten).</li>
  * </ol>
  */
 @Testcontainers(disabledWithoutDocker = true)
@@ -575,13 +577,23 @@ class ZugriffZaunApiTest {
      * {@code Geltungsbereich} noch {@code RechtPruefung#pruefenLesen}. Ursachen relativ zu
      * {@code services/api/src/main/java/com/voltpilot/api/uems/}. Die 14 Muster der Messstelle und die Vorlagen-Liste
      * sind geschlossen mit {@code vp-uems-zaun-messstelle-vorlagen-lesen} (Routen über {@code RechtPruefung#pruefenLesen}
-     * bzw. {@code #lesbar}, Beweis {@code LesewegImZugriffApiTest}).
+     * bzw. {@code #lesbar}, Beweis {@code LesewegImZugriffApiTest}). Die zwei Listen der Kostenstellen und Prozesse
+     * standen hier bis zum Entscheid vom 21.09.2026 (Lesart B) und sind seitdem die benannte Ausnahme
+     * {@link #AUSWAHL_KATALOG}. Die Map ist LEER — und bleibt als Wache gegen jedes neue Loch stehen.
      */
-    private static final Map<String, String> ZAUN_OFFEN = Map.ofEntries(
-            Map.entry("/api/v1/unternehmen/kostenstellen", "Liste nennt jede Kostenstelle; Geltung Unternehmen sieht "
-                    + "nach AP-03 R-A1 nur eine unternehmensweite Rolle — KostenstelleProzessService.java:81"),
-            Map.entry("/api/v1/unternehmen/prozesse", "Liste nennt jeden Prozess (Geltung Unternehmen, R-A1) — "
-                    + "KostenstelleProzessService.java:92"));
+    private static final Map<String, String> ZAUN_OFFEN = Map.of();
+
+    /**
+     * Die benannte Ausnahme vom Satz „anderswo nennt die Liste das Objekt nicht": der Auswahl-Katalog (Entscheid
+     * 21.09.2026, Lesart B; {@code RechtPruefung#auswahlKatalog}). Wer Messstellen zuordnen darf
+     * ({@code messstelle.bearbeiten} oder {@code messstelle.verteilung} irgendwo), braucht die Namen der Kostenstellen
+     * und Prozesse zum Zuordnen — AP-03-Matrix und AP-10 E15 geben ihm das an seinem Standort. Er sieht darum JEDE Zeile,
+     * aber GENAU mit diesen Feldern (Kennung, Kennzeichen, Name, Gültigkeit, beim Prozess die Eltern) und keinem
+     * weiteren; ein Konto ohne diese Rechte sieht keine Zeile. Detail und Bilanz bleiben den unternehmensweiten Rollen.
+     */
+    private static final Map<String, List<String>> AUSWAHL_KATALOG = Map.of(
+            "/api/v1/unternehmen/kostenstellen", List.of("id", "kennzeichen", "name", "gueltig_ab", "gueltig_bis"),
+            "/api/v1/unternehmen/prozesse", List.of("id", "kennzeichen", "name", "eltern", "gueltig_ab", "gueltig_bis"));
 
     /**
      * Ein Zaun-Fall. {@code sieht} bekommt das Objekt ({@code < 400}, der Körper nennt {@code beleg}). {@code blind}
@@ -798,6 +810,8 @@ class ZugriffZaunApiTest {
         Konto hier = new Konto("Bearbeiter am Standort des Objekts", konto(KUNDE_BEARBEITER, DEMO), new String[0]);
         Konto anderswo = new Konto("Bearbeiter nur an einem anderen Standort", konto(KUNDE_BEARBEITER_FREMD, DEMO),
                 new String[0]);
+        Konto leser = new Konto("Leser am Demo-Standort", konto(KUNDE_LESER, DEMO), new String[0]);
+        Set<String> auswahl = new TreeSet<>();
         Set<String> schonGemessen = new TreeSet<>(NACH_IP4_NUR_ZUFAELLIG_GRUEN);
         schonGemessen.add(BEZUGSGROESSE_SELBST);
         Set<String> inventur = new TreeSet<>();
@@ -865,7 +879,19 @@ class ZugriffZaunApiTest {
                 continue;
             }
             Antwort blind = ruf(get(pfad), anderswo);
-            if (blind.status() < 400 && blind.body().contains(beleg)) {
+            List<String> stammdaten = AUSWAHL_KATALOG.get(muster);
+            if (blind.status() < 400 && blind.body().contains(beleg) && stammdaten != null) {
+                // Die benannte Ausnahme: die Zeile nennt anderswo GENAU die Stammdaten, und ein Konto ohne das Recht
+                // zum Zuordnen (der Leser) sieht sie gar nicht.
+                List<String> felder = felderDerZeile(blind.body(), beleg);
+                Antwort ohneRecht = ruf(get(pfad), leser);
+                if (felder.equals(stammdaten) && ohneRecht.status() == 200 && !ohneRecht.body().contains(beleg)) {
+                    auswahl.add(muster + " (Liste, nur Stammdaten " + felder + ")");
+                } else {
+                    zaunVerfehlt.put(muster, "der Auswahl-Katalog nennt " + anderswo.name() + " " + felder + ", "
+                            + leser.name() + " bekommt " + ohneRecht.status() + " " + kurz(ohneRecht.body()));
+                }
+            } else if (blind.status() < 400 && blind.body().contains(beleg)) {
                 zaunVerfehlt.put(muster, "die Liste nennt " + anderswo.name() + " das Objekt (" + beleg + ")");
             } else {
                 gezaeunt.add(muster + " (Liste)" + wer);
@@ -874,6 +900,7 @@ class ZugriffZaunApiTest {
         System.out.printf("Inventur: %d gemessen, davon am Zaun %d: %s%n", gezaeunt.size() + zaunVerfehlt.size(),
                 gezaeunt.size(), gezaeunt);
         System.out.printf("Inventur OFFEN (%d): %s%n", zaunVerfehlt.size(), zaunVerfehlt);
+        System.out.printf("Inventur Auswahl-Katalog (%d): %s%n", auswahl.size(), auswahl);
         System.out.printf("Inventur ohne Aussage (%d): %s%n", ohneAussage.size(), ohneAussage);
         System.out.printf("Inventur ohne Objekt der Bühne (%d): %s%n", ohneObjekt.size(), ohneObjekt);
         assertThat(zaunVerfehlt.keySet()).as("genau die benannten offenen Fälle verfehlen den Zaun — ein weiterer ist "
@@ -881,6 +908,21 @@ class ZugriffZaunApiTest {
                 .containsExactlyInAnyOrderElementsOf(ZAUN_OFFEN.keySet().stream().filter(inventur::contains).toList());
         assertThat(ZAUN_OFFEN.keySet()).as("jeder offene Fall ist gemessen").allMatch(
                 m -> inventur.contains(m) || schonGemessen.contains(m));
+        assertThat(auswahl).as("jede benannte Ausnahme ist gemessen und hält: " + zaunVerfehlt)
+                .hasSize(AUSWAHL_KATALOG.size());
+    }
+
+    /** Die Feldnamen der Listen-Zeile mit dem Kennzeichen {@code beleg}, in der Folge der Antwort. */
+    private static List<String> felderDerZeile(String body, String beleg) throws Exception {
+        List<String> felder = new ArrayList<>();
+        for (JsonNode liste : MAPPER.readTree(body)) {
+            for (JsonNode zeile : liste.isArray() ? liste : MAPPER.createArrayNode()) {
+                if (beleg.equals(zeile.path("kennzeichen").asText())) {
+                    zeile.fieldNames().forEachRemaining(felder::add);
+                }
+            }
+        }
+        return felder;
     }
 
     /**

@@ -3225,7 +3225,8 @@ export interface Kostenstelle {
   name: string;
   gueltig_ab: string;
   gueltig_bis: string | null;
-  angelegt_am: string;
+  /** Fehlt im Auswahl-Katalog der Liste (nur Stammdaten, Standort-Zaun Lesart B, 21.09.2026). */
+  angelegt_am?: string;
 }
 
 /** Ein Verweis auf eine Kostenstelle oder einen Prozess. */
@@ -3242,7 +3243,8 @@ export interface Prozess {
   eltern: KostenstelleProzessVerweis | null;
   gueltig_ab: string;
   gueltig_bis: string | null;
-  angelegt_am: string;
+  /** Fehlt im Auswahl-Katalog der Liste (wie an der Kostenstelle). */
+  angelegt_am?: string;
 }
 
 /** Der Körper von `POST …/kostenstellen` und `POST …/prozesse`; `eltern_id` nur beim Prozess. */

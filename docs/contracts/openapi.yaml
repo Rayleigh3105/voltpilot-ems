@@ -11288,7 +11288,13 @@ paths:
     get:
       tags: [kostenstellen-prozesse]
       summary: Die Kostenstelle-Objekte des Unternehmens; mit `stichtag` nur die an dem Tag bestehenden.
-      description: Heute lesend - keine eigene Kennung (wie das Unternehmen). Ohne Stichtag alle, beendete eingeschlossen, nach Kennzeichen.
+      description: >
+        Heute lesend - keine eigene Kennung (wie das Unternehmen). Ohne Stichtag alle, beendete eingeschlossen, nach Kennzeichen.
+        Der Auswahl-Katalog (Standort-Zaun, Entscheid 21.09.2026, Lesart B): eine unternehmensweite Rolle, ein Aufruf
+        ohne Zugriff-Kontext und der Umschalter sehen jede Zeile ganz. Ein Konto, das `messstelle.bearbeiten` oder
+        `messstelle.verteilung` im Unternehmen oder an einem seiner Standorte hat, sieht jede Zeile nur mit ihren
+        Stammdaten - Kennung, Kennzeichen, Name, Gültigkeit; `angelegt_am` fehlt dann. Jedes andere Konto bekommt
+        eine leere Liste, ohne Hinweis und ohne Anzahl. Detail und Bilanz bleiben den unternehmensweiten Rollen.
       parameters:
         - { name: stichtag, in: query, required: false, schema: { type: string, format: date } }
       responses:
@@ -11432,7 +11438,13 @@ paths:
     get:
       tags: [kostenstellen-prozesse]
       summary: Die Prozess-Objekte des Unternehmens; mit `stichtag` nur die an dem Tag bestehenden.
-      description: Heute lesend - keine eigene Kennung (wie das Unternehmen). Ohne Stichtag alle, beendete eingeschlossen, nach Kennzeichen.
+      description: >
+        Heute lesend - keine eigene Kennung (wie das Unternehmen). Ohne Stichtag alle, beendete eingeschlossen, nach Kennzeichen.
+        Der Auswahl-Katalog (Standort-Zaun, Entscheid 21.09.2026, Lesart B): eine unternehmensweite Rolle, ein Aufruf
+        ohne Zugriff-Kontext und der Umschalter sehen jede Zeile ganz. Ein Konto, das `messstelle.bearbeiten` oder
+        `messstelle.verteilung` im Unternehmen oder an einem seiner Standorte hat, sieht jede Zeile nur mit ihren
+        Stammdaten - Kennung, Kennzeichen, Name, Gültigkeit, Eltern; `angelegt_am` fehlt dann. Jedes andere Konto bekommt
+        eine leere Liste, ohne Hinweis und ohne Anzahl. Detail und Bilanz bleiben den unternehmensweiten Rollen.
       parameters:
         - { name: stichtag, in: query, required: false, schema: { type: string, format: date } }
       responses:
@@ -22161,14 +22173,14 @@ components:
     Kostenstelle:
       type: object
       description: Eine Kostenstelle - flach, ohne Elternteil.
-      required: [id, kennzeichen, name, gueltig_ab, gueltig_bis, angelegt_am]
+      required: [id, kennzeichen, name, gueltig_ab, gueltig_bis]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
         name: { type: string }
         gueltig_ab: { type: string, format: date }
         gueltig_bis: { type: string, format: date, nullable: true }
-        angelegt_am: { type: string, format: date-time }
+        angelegt_am: { type: string, format: date-time, description: "Immer da, außer im Auswahl-Katalog der Liste (nur Stammdaten, Entscheid 21.09.2026, Lesart B)." }
     KostenstelleListe:
       type: object
       required: [stichtag, kostenstellen]
@@ -22184,7 +22196,7 @@ components:
     Prozess:
       type: object
       description: Ein Prozess; `eltern` ist der übergeordnete Prozess (eine Ebene) oder null.
-      required: [id, kennzeichen, name, eltern, gueltig_ab, gueltig_bis, angelegt_am]
+      required: [id, kennzeichen, name, eltern, gueltig_ab, gueltig_bis]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -22192,7 +22204,7 @@ components:
         eltern: { allOf: [{ $ref: "#/components/schemas/KostenstelleProzessVerweis" }], nullable: true }
         gueltig_ab: { type: string, format: date }
         gueltig_bis: { type: string, format: date, nullable: true }
-        angelegt_am: { type: string, format: date-time }
+        angelegt_am: { type: string, format: date-time, description: "Immer da, außer im Auswahl-Katalog der Liste (nur Stammdaten, Entscheid 21.09.2026, Lesart B)." }
     ProzessListe:
       type: object
       required: [stichtag, prozesse]

@@ -592,14 +592,63 @@ public class RechtPruefung {
         return eingaenge.stream().allMatch(id -> lesbar(ziel, id));
     }
 
+    /** Was ein Konto von einem Auswahl-Katalog der Geltung Unternehmen (Kostenstellen, Prozesse) sieht. */
+    public enum Katalog {
+        /** Jede Zeile mit jedem Feld — wie vor dem Zaun. */
+        GANZ,
+        /** Jede Zeile, aber nur ihre Stammdaten: Kennung, Kennzeichen, Name, Gültigkeit, Eltern. */
+        STAMMDATEN,
+        /** Keine Zeile — ohne Hinweis, ohne Anzahl. */
+        KEINER
+    }
+
+    /**
+     * Die Rechte, die das Zuordnen einer Messstelle zu Prozess und Kostenstelle tragen — genau die {@link Recht} der
+     * zwei Schreibwege {@code PUT /messstellen/{id}/prozesse} und {@code PUT /messstellen/{id}/verteilung}.
+     */
+    static final List<String> ZUORDNEN = List.of("messstelle.bearbeiten", "messstelle.verteilung");
+
+    /**
+     * Darf dieses Konto den Auswahl-Katalog der Kostenstellen und Prozesse sehen (Entscheid 21.09.2026, Lesart B)? Eine
+     * unternehmensweite Rolle ({@link #lesbar} für die Geltung Unternehmen), ohne Kontext und am Umschalter: ganz. Wer
+     * eines der Rechte {@link #ZUORDNEN} im Unternehmen oder an einem seiner Standorte hat, sieht die Namen, die er zum
+     * Zuordnen braucht — nur die Stammdaten, keine Werte, keine Messstellen (AP-03 R-A1 gilt weiter für Detail und
+     * Bilanz). Jedes andere Konto: keiner. Gezählt wird nicht (keine Schreibroute).
+     */
+    public Katalog auswahlKatalog() {
+        Zugriff z = ZugriffContext.get();
+        if (ungeprueft(z) != null || unternehmensweitLesend(z)) {
+            return Katalog.GANZ;
+        }
+        Benutzer b = benutzer(z);
+        List<String> ziele = new ArrayList<>();
+        ziele.add(null);
+        b.zuweisungen().stream().filter(x -> x.wirksam(z.stand()) && x.standorte() != null)
+                .forEach(x -> ziele.addAll(x.standorte()));
+        for (String kennung : ZUORDNEN) {
+            for (String s : ziele) {
+                if (RechteAbleitung.darf(RechteMatrixDatei.matrix(), b, kundenbereich(s, List.of()), kennung,
+                        s == null ? Ziel.unternehmen() : Ziel.standort(s), z.stand()).darf()) {
+                    return Katalog.STAMMDATEN;
+                }
+            }
+        }
+        return Katalog.KEINER;
+    }
+
+    /** Hat der Aufrufer {@code messwerte.ansehen} unternehmensweit — sieht er also jedes Objekt des Kundenbereichs? */
+    private boolean unternehmensweitLesend(Zugriff z) {
+        return RechteAbleitung.darf(RechteMatrixDatei.matrix(), benutzer(z), kundenbereich(null, List.of()), ANSEHEN,
+                Ziel.unternehmen(), z.stand()).darf();
+    }
+
     private Urteil lesen(RechtZiel ziel, UUID id, Supplier<? extends RuntimeException> nichtGefunden) {
         Zugriff z = ZugriffContext.get();
         Ergebnis ohne = ungeprueft(z);
         if (ohne != null) {
             return new Urteil(ohne, null);
         }
-        if (RechteAbleitung.darf(RechteMatrixDatei.matrix(), benutzer(z), kundenbereich(null, List.of()), ANSEHEN,
-                Ziel.unternehmen(), z.stand()).darf()) {
+        if (unternehmensweitLesend(z)) {
             return new Urteil(Ergebnis.ERLAUBT, null);
         }
         if (id == null) {

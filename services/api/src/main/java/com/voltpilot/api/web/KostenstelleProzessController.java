@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -71,10 +72,19 @@ public class KostenstelleProzessController {
 
     // ------------------------------------------------------------------ Kostenstellen
 
-    /** Recht: heute lesend — keine eigene Kennung (wie das Unternehmen). Ohne Stichtag alle, beendete eingeschlossen. */
+    /**
+     * Recht: heute lesend — keine eigene Kennung (wie das Unternehmen). Ohne Stichtag alle, beendete eingeschlossen.
+     * Der Auswahl-Katalog ({@link RechtPruefung#auswahlKatalog}, Entscheid 21.09.2026, Lesart B): ganz für eine
+     * unternehmensweite Rolle; nur die Stammdaten für ein Konto, das Messstellen zuordnen darf; sonst leer.
+     */
     @GetMapping("/unternehmen/kostenstellen")
     public KostenstelleProzessDto.Kostenstellen kostenstellen(@RequestParam(required = false) String stichtag) {
-        return dienst.kostenstellen(tag("stichtag", stichtag));
+        LocalDate tag = tag("stichtag", stichtag);
+        return switch (rechte.auswahlKatalog()) {
+            case GANZ -> dienst.kostenstellen(tag);
+            case STAMMDATEN -> dienst.kostenstellen(tag).stammdaten();
+            case KEINER -> new KostenstelleProzessDto.Kostenstellen(tag, List.of());
+        };
     }
 
     /** Recht: {@code kostenstelle.verwalten} (AP-10 §4.10, E15). */
@@ -116,10 +126,15 @@ public class KostenstelleProzessController {
 
     // ----------------------------------------------------------------------- Prozesse
 
-    /** Recht: heute lesend — keine eigene Kennung. */
+    /** Recht: heute lesend — keine eigene Kennung. Der Auswahl-Katalog wie bei den Kostenstellen. */
     @GetMapping("/unternehmen/prozesse")
     public KostenstelleProzessDto.Prozesse prozesse(@RequestParam(required = false) String stichtag) {
-        return dienst.prozesse(tag("stichtag", stichtag));
+        LocalDate tag = tag("stichtag", stichtag);
+        return switch (rechte.auswahlKatalog()) {
+            case GANZ -> dienst.prozesse(tag);
+            case STAMMDATEN -> dienst.prozesse(tag).stammdaten();
+            case KEINER -> new KostenstelleProzessDto.Prozesse(tag, List.of());
+        };
     }
 
     /** Recht: {@code prozess.verwalten} (AP-10 §4.10, E15). */
