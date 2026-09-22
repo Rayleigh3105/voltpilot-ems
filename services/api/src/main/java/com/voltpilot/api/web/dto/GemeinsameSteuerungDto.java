@@ -197,7 +197,17 @@ public final class GemeinsameSteuerungDto {
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Betreiberblatt(List<BoxStand> boxen, Zweischritt zweischritt,
-            List<SprungprobeProtokoll> sprungproben) {}
+            List<SprungprobeProtokoll> sprungproben, List<Steckerprobe> steckerproben) {}
+
+    /**
+     * Die von der Plattform eingetragene Steckerprobe (AP-15 NW-8): der benannte freie Zeitraum und der dafür
+     * gerechnete Grenz-Nachweis. Ohne durchgehend gebundenen Netzanschluss ist {@code nachweis} leer und
+     * {@code grund = kein_netzanschluss}; eine Lücke in den Messwerten steht dagegen im Nachweis als
+     * {@code nicht_belegt}.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Steckerprobe(UUID id, OffsetDateTime von, OffsetDateTime bis, UUID boxId, String bemerkung,
+            OffsetDateTime eingetragenAm, String grund, NetzanschlussDto.GrenzNachweis nachweis) {}
 
     /**
      * Eine Box des Verbunds. {@code zuletztGesehen} = letzter Herzschlag ({@code device.device_status_seen_at}, null =

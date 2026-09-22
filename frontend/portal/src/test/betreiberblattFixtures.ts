@@ -58,6 +58,7 @@ export function gsBlatt(lage: BlattLage, jetzt: Date, proben: UemsSprungprobePro
       ],
       zweischritt: null,
       sprungproben: proben,
+      steckerproben: [],
     };
   }
   if (lage === 'uebergang') {
@@ -69,6 +70,7 @@ export function gsBlatt(lage: BlattLage, jetzt: Date, proben: UemsSprungprobePro
       ],
       zweischritt: { schritt: 'uebergang', epoche: 1, revision: 1, am: vor(30), bestaetigt: [GS_IDS.e1], wartet_auf: [GS_IDS.e4] },
       sprungproben: proben,
+      steckerproben: [],
     };
   }
   const plan = (id: string) => ({ plan_id: id, erzeugt_am: vor(300), am: vor(290) });
@@ -88,6 +90,7 @@ export function gsBlatt(lage: BlattLage, jetzt: Date, proben: UemsSprungprobePro
     ],
     zweischritt: { schritt: 'ziel', epoche: 1, revision: 2, am: vor(20), bestaetigt: [GS_IDS.e1, GS_IDS.e4], wartet_auf: [] },
     sprungproben: proben,
+    steckerproben: [],
   };
 }
 

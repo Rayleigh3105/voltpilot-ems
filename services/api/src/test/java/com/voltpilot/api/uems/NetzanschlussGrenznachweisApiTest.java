@@ -151,6 +151,8 @@ class NetzanschlussGrenznachweisApiTest {
         assertThat(bezug.path("hauptzaehler").get(0).path("kennzeichen").asText()).isEqualTo("MS-01");
         assertThat(bezug.path("grenzen").toString()).isEqualTo(
                 "[{\"von\":\"2026-09-01\",\"bis\":\"2026-09-30\",\"kw\":500,\"quelle\":\"netzanschluss\"}]");
+        assertThat(bezug.path("grenzherkunft").toString()).isEqualTo("[\"grenzblatt\"]");
+        assertThat(bezug.path("grenzhinweis").isNull()).isTrue();
         assertThat(bezug.path("augenblick").path("status").asText()).as("M-2 wird nicht erfunden")
                 .isEqualTo("nicht_gemessen");
         assertThat(bezug.has("ausserhalb_zugriff")).isFalse();
@@ -222,6 +224,36 @@ class NetzanschlussGrenznachweisApiTest {
         assertThat(bezug.path("unterbrechungen")).isEmpty();
     }
 
+    @Test
+    void freierZeitraumRechnetGenauDreissigMinutenSauberUeberschrittenUndMitLuecke() throws Exception {
+        Welt w = welt();
+        grenze(w, "2026-09-01", null, "500");
+        UUID entity = hauptzaehler(w, "MS-01");
+        viertelstunden(w, entity);
+        String pfad = w.nachweis(null) + "?von=2026-09-10T06:00:00Z&bis=2026-09-10T06:30:00Z";
+
+        JsonNode sauber = ok(ruf(w, pfad)).body();
+        assertThat(sauber.path("monat").isNull()).isTrue();
+        assertThat(sauber.path("zeitraum_von").asText()).isEqualTo("2026-09-10T08:00:00+02:00");
+        assertThat(sauber.path("zeitraum_bis").asText()).isEqualTo("2026-09-10T08:30:00+02:00");
+        assertThat(richtung(sauber, "bezug").path("viertelstunden").path("erwartet").asInt()).isEqualTo(2);
+        assertThat(sauber.path("urteil").asText()).isEqualTo("eingehalten");
+
+        menge(w, entity, "2026-09-10T06:15:00Z", "150");
+        JsonNode ueber = ok(ruf(w, pfad)).body();
+        assertThat(ueber.path("urteil").asText()).isEqualTo("ueberschritten");
+        assertThat(richtung(ueber, "bezug").path("darueber").path("minuten").asInt()).isEqualTo(15);
+
+        root.update("DELETE FROM messreihe_viertelstunde WHERE entity_id = ? AND intervall_beginn = ?", entity,
+                ts("2026-09-10T06:15:00Z"));
+        JsonNode luecke = ok(ruf(w, pfad)).body();
+        assertThat(luecke.path("urteil").asText()).isEqualTo("nicht_belegt");
+        assertThat(richtung(luecke, "bezug").path("viertelstunden").path("fehlend").asInt()).isEqualTo(1);
+
+        assertThat(ruf(w, w.nachweis(null) + "?von=2026-09-01T00:00:00Z&bis=2026-10-03T00:00:00Z").status())
+                .as("höchstens 31 Tage").isEqualTo(400);
+    }
+
     // ============================================================================ Grenzwechsel und Gründe
 
     @Test
@@ -239,6 +271,8 @@ class NetzanschlussGrenznachweisApiTest {
         assertThat(bezug.path("grenzen").toString()).isEqualTo("[{\"von\":\"2026-09-01\",\"bis\":\"2026-09-15\","
                 + "\"kw\":450,\"quelle\":\"anlage\"},{\"von\":\"2026-09-16\",\"bis\":\"2026-09-30\",\"kw\":380,"
                 + "\"quelle\":\"netzanschluss\"}]");
+        assertThat(bezug.path("grenzherkunft").toString()).isEqualTo("[\"anlage\",\"grenzblatt\"]");
+        assertThat(bezug.path("grenzhinweis").asText()).contains("nicht zeitgültig").contains("Grenzblatt");
         assertThat(bezug.path("urteil").asText()).isEqualTo("ueberschritten");
         assertThat(bezug.path("darueber").toString()).isEqualTo("{\"viertelstunden\":1440,\"minuten\":21600}");
         assertThat(bezug.path("unterbrechungen")).hasSize(1);

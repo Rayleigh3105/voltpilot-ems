@@ -2787,7 +2787,8 @@ paths:
         Betreiber sieht: Fähigkeit (`gemeldet` · `versions_tabelle` · `fehlt`), Messpunkt und sein Alter, Wächter-Stufe
         je Richtung aus dem Herzschlag-Block, `plan_id` veröffentlicht/angenommen, Anteils-Revision gesendet/quittiert
         und die WIRKSAMEN Anteile, wie die Box sie meldet; dazu der Zweischritt des jüngsten Anteils-Dokuments und alle
-        Sprungprobe-Protokolle mit den Messungen je Sprung. Unbekannt ist nie eine Null — was die Box nicht meldet, ist
+        Sprungprobe-Protokolle mit den Messungen je Sprung sowie die benannten Steckerproben mit ihrem Grenz-Nachweis.
+        Unbekannt ist nie eine Null — was die Box nicht meldet, ist
         `null` bzw. `nicht_gemeldet`. Zustand, `fehlt`, Bilanz und Vorbehalt stehen in `GET …/sites/{siteId}/gemeinsame-steuerung`,
         Geräte, Rückfall und Auslegung in `GET …/gemeinsame-steuerung/einrichten`. Ohne Gemeinsame Steuerung leer;
         eine fremde Anlage ist 404.
@@ -2978,6 +2979,40 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GemeinsameSteuerungSprungprobe" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/steckerprobe:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Eine Steckerprobe als benannten Zeitraum eintragen (AP-15 NW-8, I4).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle; ein Kundenkonto bekommt 403). Speichert den Handgriff des
+        Betreibers und rechnet mit derselben Regel wie der Grenz-Nachweis über exakt `[von,bis)`, höchstens 31 Tage.
+        Der Mandant kommt aus dem `X-Tenant-Id`-Umschalter, nie aus dem Körper; eine fremde Anlage ist 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [von, bis, box_id]
+              properties:
+                von: { type: string, format: date-time }
+                bis: { type: string, format: date-time }
+                box_id: { type: string, format: uuid }
+                bemerkung: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Eingetragen und mit dem aktuellen Grenz-Nachweis beantwortet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerungSteckerprobe" }
         "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -12268,13 +12303,14 @@ paths:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       tags: [netzanschluesse]
-      summary: Der Grenz-Nachweis des Netzanschlusses für einen Monat (UEMS AP-15 IP-31).
+      summary: Der Grenz-Nachweis des Netzanschlusses für einen Monat oder freien Zeitraum (UEMS AP-15 IP-31/NW-8).
       description: >
         Heute lesend - keine eigene Kennung; der Zaun fragt `RechtPruefung#pruefenLesen` am
         Standort. Fremd, unbekannt, an einem anderen Standort oder außerhalb des Zugriffs = 404
         `nicht_gefunden`; ein Hauptzähler außerhalb des Zugriffs nimmt seiner Richtung die Zahlen
         (`ausserhalb_zugriff`). Gerechnet, nie gespeichert, über die abgeschlossenen Tage des
-        Monats (ohne `monat`: der laufende am Standort; heute gehört nicht dazu). Je Richtung
+        Monats (ohne Parameter: der laufende am Standort; heute gehört nicht dazu) oder über den freien Zeitraum
+        `[von,bis)` (beide Zeitpunkte erforderlich, statt `monat`, höchstens 31 Tage). Je Richtung
         (Bezug = Hauptzähler Bezug, Einspeisung = Hauptzähler Abgabe) das höchste
         Viertelstunden-Mittel gegen die an seinem Tag wirksame Grenze (der engere Wert aus Anlage
         und Grenzblatt), die Viertelstunden und Minuten darüber und die Unterbrechungen
@@ -12286,6 +12322,8 @@ paths:
         (netzanschluss.md §6).
       parameters:
         - { name: monat, in: query, required: false, schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$", example: "2026-09" } }
+        - { name: von, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: bis, in: query, required: false, schema: { type: string, format: date-time } }
       responses:
         "200":
           description: Der Nachweis.
@@ -13761,11 +13799,26 @@ components:
             Trägt die Naht `sprungprobe` für die HEUTIGE Struktur: bestanden, nicht entwertet, dieselbe führende Box.
     GemeinsameSteuerungBetreiberblatt:
       type: object
-      required: [boxen, sprungproben]
+      required: [boxen, sprungproben, steckerproben]
       properties:
         boxen: { type: array, items: { $ref: '#/components/schemas/GemeinsameSteuerungBoxStand' } }
         zweischritt: { allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungZweischritt' }], nullable: true }
         sprungproben: { type: array, items: { $ref: '#/components/schemas/GemeinsameSteuerungSprungprobeProtokoll' } }
+        steckerproben: { type: array, items: { $ref: '#/components/schemas/GemeinsameSteuerungSteckerprobe' } }
+    GemeinsameSteuerungSteckerprobe:
+      type: object
+      required: [id, von, bis, box_id, bemerkung, eingetragen_am, grund, nachweis]
+      properties:
+        id: { type: string, format: uuid }
+        von: { type: string, format: date-time }
+        bis: { type: string, format: date-time }
+        box_id: { type: string, format: uuid }
+        bemerkung: { type: string, nullable: true }
+        eingetragen_am: { type: string, format: date-time }
+        grund: { type: string, enum: [kein_netzanschluss], nullable: true }
+        nachweis:
+          allOf: [{ $ref: '#/components/schemas/NetzanschlussGrenzNachweis' }]
+          nullable: true
     GemeinsameSteuerungBoxStand:
       type: object
       required: [box_id, rolle, faehigkeit, plan, anteile]
@@ -23391,13 +23444,16 @@ components:
     NetzanschlussGrenzNachweis:
       type: object
       description: UEMS AP-15 IP-31 - netzanschluss.md §6, Vektoren netzanschluss-grenznachweis-vectors.json.
-      required: [netzanschluss_id, kennzeichen, monat, von, bis, zeitzone, grenze_geprueft, grund, urteil, richtungen]
+      required: [netzanschluss_id, kennzeichen, monat, von, bis, zeitraum_von, zeitraum_bis, zeitzone,
+        grenze_geprueft, grund, urteil, richtungen]
       properties:
         netzanschluss_id: { type: string, format: uuid }
         kennzeichen: { type: string }
-        monat: { type: string, example: "2026-09" }
+        monat: { type: string, nullable: true, example: "2026-09", description: "Leer beim freien Zeitraum." }
         von: { type: string, format: date, nullable: true, description: "Erster Tag; null ohne abgeschlossenen Tag." }
         bis: { type: string, format: date, nullable: true, description: "Letzter Tag, eingeschlossen; nie heute." }
+        zeitraum_von: { type: string, format: date-time, nullable: true, description: "Beginn des freien Zeitraums." }
+        zeitraum_bis: { type: string, format: date-time, nullable: true, description: "Ende des freien Zeitraums, ausgeschlossen." }
         zeitzone: { type: string }
         grenze_geprueft: { type: boolean }
         grund: { type: string, nullable: true, enum: [keine_grenze, kein_hauptzaehler, kein_abgeschlossener_tag, null] }
@@ -23412,7 +23468,7 @@ components:
     NetzanschlussGrenzNachweisRichtung:
       type: object
       required: [richtung, grenze_geprueft, grund, urteil, grenzen, hauptzaehler, viertelstunden, belegt_prozent,
-        hoechstes_mittel, darueber, unterbrechungen, augenblick]
+        hoechstes_mittel, darueber, unterbrechungen, augenblick, grenzherkunft, grenzhinweis]
       properties:
         richtung: { type: string, enum: [bezug, einspeisung] }
         grenze_geprueft: { type: boolean }
@@ -23477,6 +23533,15 @@ components:
           properties:
             status: { type: string, enum: [nicht_gemessen] }
             grund: { type: string }
+        grenzherkunft:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [grenzblatt, anlage] }
+          description: Grenzblatt = zeitgültig; Anlage = nicht zeitgültiges Anlagenfeld.
+        grenzhinweis:
+          type: string
+          nullable: true
+          description: Bei Herkunft Anlage der sichtbare Hinweis, die Grenze für den Nachweis ins Grenzblatt einzutragen.
         ausserhalb_zugriff: { type: string, description: "Nur, wenn ein Hauptzähler außerhalb des Zugriffs liegt; dann ohne Zahlen." }
     NetzanschlussStandort:
       type: object

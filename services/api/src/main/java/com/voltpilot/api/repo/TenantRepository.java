@@ -363,6 +363,7 @@ public class TenantRepository {
                         // the tenant (RESTRICT).
                         "steuerungsverbund_bilanz", "steuerungsverbund_vorbehalt", "steuerungsverbund_erzeuger",
                         "steuerungsverbund_anteil_verlust", "steuerungsverbund_sprungprobe",
+                        "steuerungsverbund_steckerprobe",
                         "steuerungsverbund_geraet", "steuerungsverbund_anteile",
                         "steuerungsverbund_mitglied", "steuerungsverbund", "steuerungsverbund_aenderung",
                         "prozess", "kostenstelle",

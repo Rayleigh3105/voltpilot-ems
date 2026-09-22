@@ -224,6 +224,7 @@ export interface KopfzeileNachweis {
   grenze_geprueft: boolean;
   urteil: string | null;
   monat: string | null;
+  richtungen?: Array<{ grenzhinweis?: string | null }>;
 }
 
 /** Die Monatsnamen der Kopfzeile — fest, nie aus der Sprache des Browsers. */

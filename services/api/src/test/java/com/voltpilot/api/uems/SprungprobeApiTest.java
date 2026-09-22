@@ -257,6 +257,33 @@ class SprungprobeApiTest {
         assertThat(box(scharf, w.e4()).path("anteile").path("quittiert").isNull()).isTrue();
     }
 
+    @Test
+    void steckerprobeTraegtPlattformEinUndBetreiberBlattLiestSie() throws Exception {
+        Welt w = welt();
+        vorbereitet(w);
+        String body = "{\"von\":\"2026-09-10T06:00:00Z\",\"bis\":\"2026-09-10T06:30:00Z\","
+                + "\"box_id\":\"" + w.e4() + "\",\"bemerkung\":\"Kabel an Box Verwaltung gezogen\"}";
+
+        assertThat(kunde(w, post(w.admin() + "/steckerprobe").content(body)).status()).isEqualTo(403);
+        Welt fremd = welt();
+        assertThat(plattform(fremd, post(w.admin() + "/steckerprobe").content(body)).status())
+                .as("fremde Anlage bleibt unbekannt").isEqualTo(404);
+
+        Antwort erstellt = plattform(w, post(w.admin() + "/steckerprobe").content(body));
+        assertThat(erstellt.status()).as(erstellt.body().toString()).isEqualTo(200);
+        assertThat(erstellt.body().path("box_id").asText()).isEqualTo(w.e4().toString());
+        assertThat(erstellt.body().path("nachweis").path("zeitraum_von").asText())
+                .isEqualTo("2026-09-10T08:00:00+02:00");
+        assertThat(erstellt.body().path("nachweis").path("grund").asText()).isEqualTo("kein_hauptzaehler");
+
+        JsonNode blatt = plattform(w, get(w.admin())).body();
+        assertThat(blatt.path("steckerproben")).hasSize(1);
+        assertThat(blatt.path("steckerproben").get(0).path("bemerkung").asText())
+                .isEqualTo("Kabel an Box Verwaltung gezogen");
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_steckerprobe WHERE site_id = ?",
+                Long.class, w.an1())).isOne();
+    }
+
     private static JsonNode box(JsonNode blatt, UUID box) {
         for (JsonNode b : blatt.path("boxen")) {
             if (b.path("box_id").asText().equals(box.toString())) {

@@ -3984,13 +3984,18 @@ export interface NetzanschlussVorschlag {
 }
 export interface NetzanschlussUebernehmen extends NetzanschlussAnfrage { bindung_ab: string; grund: string | null }
 export interface NetzanschlussBinden { anlage_id: string; gueltig_ab: string; grund: string | null }
-/** AP-15 IP-31: der Grenz-Nachweis eines Monats — die Kopfzeile liest nur Urteil, Monat und `grenze_geprueft`. */
+/** AP-15 IP-31/NW-8: Grenz-Nachweis eines Monats oder eines freien Zeitraums. */
 export interface NetzanschlussGrenzNachweis {
-  netzanschluss_id: string; kennzeichen: string; monat: string; von: string | null; bis: string | null;
+  netzanschluss_id: string; kennzeichen: string; monat: string | null; von: string | null; bis: string | null;
+  zeitraum_von?: string | null; zeitraum_bis?: string | null;
   zeitzone: string; grenze_geprueft: boolean;
   grund: 'keine_grenze' | 'kein_hauptzaehler' | 'kein_abgeschlossener_tag' | null;
   urteil: 'eingehalten' | 'ueberschritten' | 'nicht_belegt' | null;
-  richtungen: Array<{ richtung: 'bezug' | 'einspeisung'; grenze_geprueft: boolean; urteil: string | null }>;
+  richtungen: Array<{
+    richtung: 'bezug' | 'einspeisung'; grenze_geprueft: boolean; urteil: string | null;
+    hoechstes_mittel?: { von: string; bis: string; mittel_kw: number; grenze_kw: number; abstand_kw: number } | null;
+    grenzherkunft?: Array<'grenzblatt' | 'anlage'>; grenzhinweis?: string | null;
+  }>;
 }
 
 // ---- UEMS AP-02 IP-11: Anlage einem Standort zuordnen oder umziehen
@@ -6984,6 +6989,19 @@ export interface UemsBetreiberblatt {
   boxen: UemsBoxStand[];
   zweischritt?: UemsZweischritt | null;
   sprungproben: UemsSprungprobeProtokoll[];
+  steckerproben: UemsSteckerprobe[];
+}
+
+/** AP-15 NW-8: vom Betreiber benannter Kabelzug mit dem Grenz-Nachweis genau dieses Zeitraums. */
+export interface UemsSteckerprobe {
+  id: string;
+  von: string;
+  bis: string;
+  box_id: string;
+  bemerkung?: string | null;
+  eingetragen_am: string;
+  grund?: 'kein_netzanschluss' | null;
+  nachweis?: NetzanschlussGrenzNachweis | null;
 }
 
 export type UemsFaehigkeitHerkunft = 'gemeldet' | 'versions_tabelle' | 'fehlt';
@@ -8687,6 +8705,11 @@ export const api = {
   gemeinsameSteuerungSprungprobe: (siteId: string, body: { box_id: string; art: UemsSprungprobe['art']; sprung_kw: number }) =>
     request<UemsSprungprobe>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/sprungprobe`,
       { method: 'POST', body: JSON.stringify(body) }),
+
+  gemeinsameSteuerungSteckerprobe: (siteId: string, body: {
+    von: string; bis: string; box_id: string; bemerkung?: string;
+  }) => request<UemsSteckerprobe>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/steckerprobe`,
+    { method: 'POST', body: JSON.stringify(body) }),
 
   gemeinsameSteuerungSchritt: (siteId: string, schritt: 'anhalten' | 'fortsetzen') =>
     request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/${schritt}`, { method: 'POST' }),

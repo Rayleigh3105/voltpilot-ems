@@ -50,6 +50,7 @@ public class GemeinsameSteuerungBoxStand {
     private final BoxFaehigkeiten faehigkeiten;
     private final WirksameAnteileQuelle wirksam;
     private final SprungprobeDienst sprungproben;
+    private final SteckerprobeDienst steckerproben;
     private final ObjectProvider<GemeinsameSteuerungHerzschlag> herzschlag;
     private final JdbcTemplate jdbc;
     private Clock uhr = Clock.systemUTC();
@@ -57,7 +58,8 @@ public class GemeinsameSteuerungBoxStand {
     public GemeinsameSteuerungBoxStand(SteuerungsverbundRepository verbuende, SteuerungsverbundAnteilRepository anteile,
             PlanZustellungRepository plaene, DeviceDataSourceStatusRepository quellen, BoxFaehigkeiten faehigkeiten,
             WirksameAnteileQuelle wirksam, SprungprobeDienst sprungproben,
-            ObjectProvider<GemeinsameSteuerungHerzschlag> herzschlag, JdbcTemplate jdbc) {
+            SteckerprobeDienst steckerproben, ObjectProvider<GemeinsameSteuerungHerzschlag> herzschlag,
+            JdbcTemplate jdbc) {
         this.verbuende = verbuende;
         this.anteile = anteile;
         this.plaene = plaene;
@@ -65,6 +67,7 @@ public class GemeinsameSteuerungBoxStand {
         this.faehigkeiten = faehigkeiten;
         this.wirksam = wirksam;
         this.sprungproben = sprungproben;
+        this.steckerproben = steckerproben;
         this.herzschlag = herzschlag;
         this.jdbc = jdbc;
     }
@@ -89,7 +92,7 @@ public class GemeinsameSteuerungBoxStand {
         }
         Optional<VerbundZeile> v = verbuende.derAnlage(siteId);
         if (v.isEmpty()) {
-            return new GemeinsameSteuerungDto.Betreiberblatt(List.of(), null, List.of());
+            return new GemeinsameSteuerungDto.Betreiberblatt(List.of(), null, List.of(), List.of());
         }
         List<MitgliedZeile> mitglieder = verbuende.mitglieder(v.get().id(), uhr.instant());
         GemeinsameSteuerungHerzschlag bloecke = herzschlag.getIfAvailable();
@@ -102,7 +105,7 @@ public class GemeinsameSteuerungBoxStand {
                     GemeinsameSteuerungService.ausscheiden(gehen.get(m.deviceId()))));
         }
         return new GemeinsameSteuerungDto.Betreiberblatt(List.copyOf(boxen), zweischritt(v.get(), mitglieder),
-                sprungproben.protokoll(v.get().id(), mitglieder));
+                sprungproben.protokoll(v.get().id(), mitglieder), steckerproben.lesen(siteId));
     }
 
     /**

@@ -71,13 +71,15 @@ it('trägt das Urteil des Grenz-Nachweises im Monat des Stichtags (AP-15 IP-31)'
     grenze_geprueft: true,
     grund: null,
     urteil: 'ueberschritten',
-    richtungen: [],
+    richtungen: [{ richtung: 'bezug', grenze_geprueft: true, urteil: 'ueberschritten', grenzherkunft: ['anlage'],
+      grenzhinweis: 'Grenze aus dem Anlagenfeld - nicht zeitgültig; für den Nachweis die Grenze ins Grenzblatt eintragen' }],
   });
   render(<NetzanschlussBilanzKopf anlage={I.an1} am="2026-10-20" />);
   await waitFor(() =>
     expect(screen.getByTestId('bilanz-netzanschluss')).toHaveTextContent('Grenze im Oktober 2026 überschritten'),
   );
   expect(api.netzanschlussGrenznachweis).toHaveBeenCalledWith(I.st1, 'na-NA-1', '2026-10');
+  expect(screen.getByTestId('bilanz-grenzherkunft')).toHaveTextContent('nicht zeitgültig');
 });
 it('ohne Grenze oder Hauptzähler bleibt die Kopfzeile, wie sie war', async () => {
   stelle(bezug);

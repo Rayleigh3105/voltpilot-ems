@@ -99,7 +99,8 @@ public final class NetzanschlussDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record GrenzNachweis(UUID netzanschlussId, String kennzeichen, String monat, LocalDate von, LocalDate bis,
-            String zeitzone, boolean grenzeGeprueft, String grund, String urteil, List<GrenzNachweisRichtung> richtungen) {}
+            OffsetDateTime zeitraumVon, OffsetDateTime zeitraumBis, String zeitzone, boolean grenzeGeprueft,
+            String grund, String urteil, List<GrenzNachweisRichtung> richtungen) {}
 
     /**
      * Eine Richtung ({@code bezug} · {@code einspeisung}). {@code viertelstunden} zählt nur die mit Grenze;
@@ -112,6 +113,7 @@ public final class NetzanschlussDto {
             List<GrenzAbschnitt> grenzen, List<MessstelleKurz> hauptzaehler, GrenzViertelstunden viertelstunden,
             Integer belegtProzent, GrenzHoechstes hoechstesMittel, GrenzDarueber darueber,
             List<GrenzUnterbrechung> unterbrechungen, GrenzAugenblick augenblick,
+            List<String> grenzherkunft, String grenzhinweis,
             @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {}
 
     /** Die wirksame Grenze einer Richtung über zusammenhängende Tage (engerer Wert aus Anlage und Anschluss). */

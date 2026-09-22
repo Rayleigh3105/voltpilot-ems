@@ -613,6 +613,34 @@
       }
     },
     {
+      "id": "steckerprobe-30-min",
+      "name": "Steckerprobe: höchstes Viertel im freien 30-Minuten-Zeitraum",
+      "warum": "NW-8 verwendet dieselbe Regel für genau zwei Viertelstunden; das höchste Viertel bleibt unter der Grenze.",
+      "eingang": {
+        "ab": "2026-10-21T10:00:00Z",
+        "reihe": [
+          ["100", true, "vollständig", "97.3"],
+          ["100", true, "vollständig", "94.1"]
+        ]
+      },
+      "ergebnis": {
+        "grenze_geprueft": true,
+        "grund": null,
+        "urteil": "eingehalten",
+        "viertelstunden": { "erwartet": 2, "belegt": 2, "unvollstaendig": 0, "fehlend": 0 },
+        "belegt_prozent": 100,
+        "hoechstes_mittel": {
+          "von": "2026-10-21T10:00:00Z",
+          "bis": "2026-10-21T10:15:00Z",
+          "mittel_kw": "97.3",
+          "grenze_kw": "100",
+          "abstand_kw": "-2.7"
+        },
+        "darueber": { "viertelstunden": 0, "minuten": 0 },
+        "unterbrechungen": []
+      }
+    },
+    {
       "id": "hauptzaehler-teilweise",
       "name": "Tage mit Grenze, aber ohne Hauptzähler fehlen",
       "warum": "Geprüft wird, wo beides vorliegt — der Rest ist nicht belegt.",
