@@ -224,7 +224,7 @@ class BewertungRanglisteApiTest {
                 .containsExactly("22400","6040","3500","1100");
         assertThat(ortAbdeckung(a,"AN-2","Strom").at("/ungemessen/menge").asText()).isEqualTo("3860");
         assertThat(ortAbdeckung(a,"AN-3","Strom").path("gemessen").findValuesAsText("menge"))
-                .containsExactly("3600","4300");
+                .containsExactly("4300","3600");
         assertThat(ortAbdeckung(a,"AN-3","Strom").at("/ungemessen/menge").asText()).isEqualTo("1200");
         assertThat(ortAbdeckung(a,"ST-1 ST-1","Gas").path("gemessen").findValuesAsText("menge"))
                 .containsExactly("1240");

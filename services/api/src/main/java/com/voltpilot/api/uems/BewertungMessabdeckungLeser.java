@@ -102,16 +102,20 @@ public final class BewertungMessabdeckungLeser {
         return aus;
     }
     private static List<Messwert> gemessen(List<BewertungRanglisteDto.Messstelle> ms, Map<UUID, Info> infos) {
-        return ms.stream().filter(m -> m.menge() != null).map(m -> new Messwert(m.id(), m.kennzeichen(),
+        return ms.stream().filter(m -> m.menge() != null)
+                .sorted(Comparator.comparing(BewertungRanglisteDto.Messstelle::kennzeichen))
+                .map(m -> new Messwert(m.id(), m.kennzeichen(),
                 ort(infos, m.id()), m.menge(), m.einheit())).toList();
     }
     private static List<Plan> geplant(List<BewertungRanglisteDto.Messstelle> ms, Map<UUID, Info> infos) {
         return ms.stream().filter(m -> m.menge() == null && infos.containsKey(m.id())
                         && infos.get(m.id()).ohneDatenquelle())
+                .sorted(Comparator.comparing(BewertungRanglisteDto.Messstelle::kennzeichen))
                 .map(m -> new Plan(m.id(), m.kennzeichen(), ort(infos, m.id()), infos.get(m.id()).seit(), null)).toList();
     }
     private static List<Messwert> ersatz(List<BewertungRanglisteDto.Messstelle> ms, Map<UUID, Info> infos) {
         return ms.stream().filter(m -> m.menge() != null && positiv(m.ersatz()))
+                .sorted(Comparator.comparing(BewertungRanglisteDto.Messstelle::kennzeichen))
                 .map(m -> new Messwert(m.id(), m.kennzeichen(), ort(infos, m.id()), m.ersatz(), m.einheit())).toList();
     }
     private static String ort(Map<UUID, Info> infos, UUID id) {
