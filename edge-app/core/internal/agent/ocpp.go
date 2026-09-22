@@ -79,6 +79,11 @@ type ocppRuntime struct {
 	mu       sync.Mutex
 	settings lastmgmt.Settings
 	plan     *lastmgmt.Plan
+	// planStichprobe is the connection-point sample the current plan was
+	// decided on (taken BEFORE the budget, so never newer than the one it
+	// used). The battery ceiling of a share-holding box releases no headroom
+	// of a sample the park has not decided on yet (bezugswaechter_anteil.go).
+	planStichprobe time.Time
 	// commissioned fingerprints what a station was last set up WITH, so a
 	// reconnect or a changed site limit re-commissions and nothing else does.
 	commissioned map[string]string
@@ -305,6 +310,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	}
 
 	// THE BUDGET (see ocppBudget: one derivation, shared with the surface).
+	stichprobe := rt.budget.Stichprobe()
 	verdict, reserved := a.ocppBudget(now, set, snap, safe)
 
 	// ⚠ WHAT WE CANNOT SEE IS STILL DRAWING. A station whose websocket is
@@ -389,7 +395,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		Previous:            rt.previousPlan(), Now: now,
 	})
 	prevPlan := rt.previousPlan()
-	rt.setPlan(&plan)
+	rt.setPlanAuf(&plan, stichprobe)
 
 	// P6: the wallbox allocations are published for the consumer executor
 	// BEFORE the OCPP write, so a cap and its station profile are formed from
@@ -856,6 +862,20 @@ func (rt *ocppRuntime) setPlan(p *lastmgmt.Plan) {
 	rt.mu.Lock()
 	rt.plan = p
 	rt.mu.Unlock()
+}
+
+// setPlanAuf stores the plan together with the sample it was decided on.
+func (rt *ocppRuntime) setPlanAuf(p *lastmgmt.Plan, stichprobe time.Time) {
+	rt.mu.Lock()
+	rt.plan, rt.planStichprobe = p, stichprobe
+	rt.mu.Unlock()
+}
+
+// planUndStichprobe is the current plan and the sample it was decided on.
+func (rt *ocppRuntime) planUndStichprobe() (*lastmgmt.Plan, time.Time) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return rt.plan, rt.planStichprobe
 }
 
 // nudge asks the executor to re-decide out of band. Non-blocking: the channel

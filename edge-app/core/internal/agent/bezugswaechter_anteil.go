@@ -63,9 +63,28 @@ func (a *Agent) netzladenDeckel(now time.Time, r guards.Reading) *guards.Netzlad
 		in.Fresh = n.Seen && n.Age <= lastmgmt.BudgetFreshWindow && a.eingefrorenSeit(now).IsZero()
 		in.Limit = hasLimit
 		in.PlanableKw, in.GridKw, in.BattChargeKw = n.PlanableKw, n.GridKw, n.BattChargeKw
-		if p := rt.previousPlan(); p != nil && p.AllocatedKw > n.ChargingKw {
+		p, stichprobe := rt.planUndStichprobe()
+		if p != nil && p.AllocatedKw > n.ChargingKw {
 			in.ReservedKw = p.AllocatedKw - n.ChargingKw
 		}
+		// AP-15 Folge: one headroom is given out once. When the loop starts
+		// regulating again (after blind, a frozen value, the start), both
+		// loops were lowered and the first fresh sample shows ONE headroom -
+		// it is the park's first, whichever tick runs first: the battery
+		// releases nothing until the park has decided on a sample at least
+		// as new (guards.Netzladen.ParkOffen). Afterwards ReservedKw carries
+		// what the park took.
+		regelt := in.Fresh && in.Limit
+		a.bezugMu.Lock()
+		switch {
+		case !regelt:
+			a.bezugFrischAb = time.Time{}
+		case a.bezugFrischAb.IsZero():
+			a.bezugFrischAb = n.At
+		}
+		frischAb := a.bezugFrischAb
+		a.bezugMu.Unlock()
+		in.ParkOffen = regelt && (p == nil || stichprobe.Before(frischAb))
 	}
 	// IP-27 A7: a standing import value asks for ONE probing adjustment
 	e := &a.einfrier
