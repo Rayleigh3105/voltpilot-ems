@@ -9417,11 +9417,12 @@ export const api = {
 
 /** AP-09 K1/K7: Minutenintervall [von,bis), Parameter bleiben mit der Bindung erhalten. */
 export interface BezugsKanalAnfrage {
-  entity_id: string; kanal: string; zustand?: string; von: string; raumtemperatur?: number; heizgrenze?: number;
+  entity_id?: string; kanal?: string; zustand?: string; von: string; raumtemperatur?: number; heizgrenze?: number;
+  messstelle_id?: string; schwelle_kw?: number; begruendung?: string;
 }
 export interface BezugsKanalbindung extends BezugsKanalAnfrage {
-  id: string; wertart: string; bis: string | null;
-  regel?: string; messstelle_id?: string; schwelle_kw?: number; begruendung?: string; fassung?: number; ersetzt_bindung_id?: string;
+  id: string; entity_id: string; kanal: string; wertart: string; bis: string | null;
+  regel?: string; fassung?: number; ersetzt_bindung_id?: string;
 }
 
 export interface BezugsKanalAuswahl {
