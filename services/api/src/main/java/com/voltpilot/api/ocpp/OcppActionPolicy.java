@@ -21,9 +21,9 @@ import org.springframework.stereotype.Component;
  * ({@link RechtPruefung#ocppStufe}): CUSTOMER = Unterstützer „Einrichten und Bedienen", SITE_ADMIN =
  * Kundenadministrator and Bedienberechtigt, PLATFORM = VoltPilot. The realm roles {@code operator},
  * {@code admin}, {@code site-admin} carry no meaning there. Without an access context (OIDC off, token without
- * account kind), at the platform tenant switch and for a BESTANDSKONTO (E12: never assigned, tenant without a
- * cut-off date), the realm-role mapping below stays exactly as it was: the CONTROL axis only follows a REAL
- * assignment, see {@link RechtPruefung#ocppStufe}. A Kundenadministrator raises the level by assigning one.
+ * account kind) and at the platform tenant switch, the realm-role mapping below stays exactly as it was.
+ * Captain 22.09.2026 E2 = A: a BESTANDSKONTO (E12: never assigned, tenant without a cut-off marker) receives
+ * SITE_ADMIN through its implicit Kundenadministrator assignment, see {@link RechtPruefung#ocppStufe}.
  */
 @Component
 public class OcppActionPolicy {

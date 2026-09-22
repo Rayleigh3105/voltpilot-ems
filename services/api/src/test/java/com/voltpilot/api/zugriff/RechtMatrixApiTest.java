@@ -746,11 +746,9 @@ class RechtMatrixApiTest {
                 new Stufe(TB, kunde, 200),
                 new Stufe(LV, plattform, 200),
                 new Stufe(VP, plattform, 200),
-                // Die Steuerungs-Achse folgt erst einer ECHTEN Zuweisung (firstmate 16.09.2026): E12 fuehrt das
-                // Bestandskonto zwar unternehmensweit als Kundenadministrator, die Stufe holt es sich damit aber
-                // NICHT - ohne Realm-Rolle bleibt es beim Kundensatz, wie vor IP-7.
+                // Captain 22.09.2026 E2 = A: das gedachte Bestands-Recht gilt auch auf der OCPP-Achse.
                 new Stufe(new Person("BN", "Kundenkonto ohne je eine Zuweisung",
-                        authentication(konto("sub-ahr-bestand-nie", AHR))), kunde, 200));
+                        authentication(konto("sub-ahr-bestand-nie", AHR))), anlage, 200));
         Map<String, String> tabelle = new LinkedHashMap<>();
         for (Stufe s : stufen) {
             MvcResult r = ruf(HttpMethod.GET, "/api/v1/sites/" + A1 + "/ocpp/action-permissions", s.person(), false,
@@ -771,6 +769,45 @@ class RechtMatrixApiTest {
             tabelle.put(s.person().kurz(), erlaubt.size() + " Aktionen");
         }
         System.out.println("OCPP-Stufen je Person: " + tabelle);
+    }
+
+    @Test
+    void bestandskontoDarfSoftResetNurImEigenenKundenbereichBisZumStichtag() throws Exception {
+        String sub = "sub-ahr-ocpp-bestand";
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) "
+                + "VALUES (?, ?, 'benutzer', 'Bestandskonto', 'aktiv')", AHR, sub);
+        Person bestand = new Person("BN", "Bestandskonto", authentication(konto(sub, AHR)));
+        UUID andereAnlage = root.queryForObject("SELECT id FROM site WHERE tenant_id <> ? ORDER BY id LIMIT 1",
+                UUID.class, AHR);
+        String eigeneStufe = "/api/v1/sites/" + A1 + "/ocpp/action-permissions";
+        String fremdeStufe = "/api/v1/sites/" + andereAnlage + "/ocpp/action-permissions";
+        try {
+            assertThat(root.queryForObject("SELECT count(*) FROM zugriff_bestand WHERE tenant_id = ?",
+                    Integer.class, AHR)).isZero();
+            MvcResult vorher = ruf(HttpMethod.GET, eigeneStufe, bestand, false, null);
+            assertThat(vorher.getResponse().getStatus()).isEqualTo(200);
+            assertThat(MAPPER.readTree(vorher.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                    .path("actions").path("SoftReset").asBoolean()).isTrue();
+            JsonNode me = MAPPER.readTree(ruf(HttpMethod.GET, "/api/v1/me", bestand, false, null)
+                    .getResponse().getContentAsString(StandardCharsets.UTF_8));
+            // /me zeigt ausschließlich echte Zuweisungen; die bestehende Selbstauskunft bleibt unverändert.
+            assertThat(me.path("standorte")).isEmpty();
+            assertThat(ruf(HttpMethod.GET, fremdeStufe, bestand, false, null).getResponse().getStatus()).isEqualTo(404);
+
+            // Der Stichtag ist die vorhandene Übernahme-Markierung, kein Vergleich mit der Wanduhr.
+            root.update("INSERT INTO zugriff_bestand (tenant_id, stichtag, herkunft, konten) "
+                    + "VALUES (?, now(), 'bestandslauf', 0)", AHR);
+            assertThat(ruf(HttpMethod.GET, eigeneStufe, bestand, false, null).getResponse().getStatus()).isEqualTo(404);
+            assertThat(ruf(HttpMethod.GET, fremdeStufe, bestand, false, null).getResponse().getStatus()).isEqualTo(404);
+            me = MAPPER.readTree(ruf(HttpMethod.GET, "/api/v1/me", bestand, false, null)
+                    .getResponse().getContentAsString(StandardCharsets.UTF_8));
+            assertThat(me.path("standorte")).isEmpty();
+            assertThat(ruf(HttpMethod.GET, eigeneStufe, JW, false, null).getResponse().getStatus())
+                    .as("echte Kundenadmin-Zuweisung gilt nach dem Stichtag weiter").isEqualTo(200);
+        } finally {
+            root.update("DELETE FROM zugriff_bestand WHERE tenant_id = ?", AHR);
+            root.update("DELETE FROM benutzer WHERE tenant_id = ? AND sub = ?", AHR, sub);
+        }
     }
 
     /**
