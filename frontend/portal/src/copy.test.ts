@@ -5,7 +5,16 @@ import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from './steuernAssiste
 import { everydayArticles } from './help/content/alltag';
 import { plantArticles } from './help/content/anlage';
 import { KORREKTUR_VORSPANN } from './anlageUmziehen';
-import { GESAMTWERT, SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
+import {
+  GESAMTWERT,
+  SUMMENWERT,
+  SUMMENWERT_VERBOTENE_WOERTER,
+  UEMS_BEWERTUNG_ABDECKUNG,
+  UEMS_BEWERTUNG_SAETZE,
+  UEMS_BEWERTUNG_URTEILE,
+  UEMS_EINSTUFUNGEN,
+  UEMS_NORMGRENZE,
+} from './glossar';
 import { budgetFreiText, folgenSaetze } from './datenquelle';
 import { rechteSeed } from './test/rollenFixtures';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -2297,9 +2306,105 @@ describe('AP-14 IP-15 · Zuordnung korrigieren', () => {
   });
 });
 
+describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1–SP3)', () => {
+  /** IP-6/IP-12/IP-18/IP-20/IP-25 tragen hier ihre Kunden-Komponenten ein. */
+  const BEWERTUNG_FLAECHEN: string[] = [];
+  const VERBOTEN = [
+    /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])EnPI([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])ISO[-‑– ]wesentlich([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])wesentlich\s+nach\s+ISO([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])automatisch\s+eingestuft([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])ISO([^\p{L}\p{N}]|$)/iu,
+  ];
+  const verstoesse = (text: string) => {
+    const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
+    return VERBOTEN.filter((re) => re.test(ohneGrenze));
+  };
+  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE);
+
+  it('beißt an jedem verbotenen Wort und lässt die Wortgrenzen heil', () => {
+    for (const probe of ['SEU', 'seu', 'EnPI', 'enpi', 'ISO-wesentlich', 'wesentlich nach ISO', 'automatisch eingestuft', 'ISO']) {
+      expect(verstoesse(`Bewertung: ${probe}.`), probe).not.toEqual([]);
+    }
+    expect(verstoesse('Museum und Isolierung bleiben normale Wörter.')).toEqual([]);
+    expect(verstoesse(UEMS_NORMGRENZE)).toEqual([]);
+  });
+
+  it('verlangt den Grenz-Satz auf jeder Bewertungs-Fläche und prüft die Mechanik am Prüfling', () => {
+    for (const datei of BEWERTUNG_FLAECHEN) {
+      const text = readFileSync(join(SRC, datei), 'utf8');
+      expect(verstoesse(text), datei).toEqual([]);
+      expect(traegtGrenze(text), datei).toBe(true);
+    }
+    expect(traegtGrenze('Bewertung ohne Abgrenzung')).toBe(false);
+    expect(traegtGrenze(`Bewertung. ${UEMS_NORMGRENZE}`)).toBe(true);
+  });
+
+  it('findet verbotene Wörter auf jeder Kundenfläche', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+  });
+
+  it('bildet die geschlossenen Vokabulare mit Kundenwörtern ab', () => {
+    expect(UEMS_EINSTUFUNGEN).toEqual({ wesentlich: 'wesentlich', nicht_wesentlich: 'nicht wesentlich', offen: 'offen' });
+    expect(UEMS_BEWERTUNG_URTEILE).toEqual({
+      ueber_schwelle: 'über Schwelle', unter_schwelle: 'unter Schwelle', nicht_anwendbar: 'nicht anwendbar',
+      nicht_belastbar: 'nicht belastbar', erfuellt: 'erfüllt', vorbehalt_datenlage: 'Vorbehalt: Datenlage',
+      vorbehalt_ersatzwerte: 'Vorbehalt: Ersatzwerte', unter_zwoelf: 'unter zwölf Monaten', vorlaeufig: 'vorläufig',
+    });
+    expect(UEMS_BEWERTUNG_ABDECKUNG).toEqual({ gemessen: 'gemessen', geplant: 'geplant', ersatz: 'Ersatz', ungemessen: 'ungemessen' });
+  });
+
+  it('erzeugt die 17 Kundensätze aus §5.7 Zeichen für Zeichen', () => {
+    const s = UEMS_BEWERTUNG_SAETZE;
+    expect([
+      s.ranglisteKopf('Oktober', 2026, 185380, 3, 3, 67.8),
+      s.restZeile(59640, 32.2, 'Halle 1', 39.2),
+      s.nichtBelastbar(80, 67.8),
+      s.vorlaeufig(1, 12),
+      s.einstufung('Wesentlich', '06.11.2026', 1, 'Ines Kaltenbach', '41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.'),
+      s.abweichungVorschlag('Wesentlich', 'unter Schwelle', 8.6, 'Querschnitt für Spritzguss und Montage, Leckageverluste vermutet.'),
+      s.querschnitt('Spritzguss', 'Druckluft', 70, 'MS-07', 11130),
+      s.messbedarf('MB-1', 'Lüftung, Beleuchtung und Allgemeinstrom Halle 1', 'MS-23 Halle 1 Allgemein', 'keine Datenquelle seit 27.11.2026'),
+      s.messmittel('Netzzähler Halle 1', 'B', 'MID', '14.06.2023', '31.12.2031', 'Zählerstandsmitteilung 10/2026', '3b1f…9a2e'),
+      s.messmittelOffen('Unterzähler Druckluft'),
+      s.vergleichsquelle('Dezember', 2026, 1.1, 'Netzleistung am Wechselrichter', 2),
+      s.befund(3.4, 2),
+      s.stand(2026, 2, '17.11.2026', 1, '09.11.2026', 'Korrektur K-2026-0007'),
+      s.frist(2, '17.11.2026', 1),
+      s.traegerOhneAnteil('Heizung Verwaltung', 'Gas', 1240, 'm³', 'Oktober', 2026, 'abgelesen'),
+      s.leer(),
+      s.grenze(),
+    ]).toEqual([
+      'Stromeinsatz Oktober 2026: 185 380 kWh aus 3 von 3 Anlagen · 67,8 % Energieeinsätzen zugeordnet.',
+      '59 640 kWh (32,2 %) sind keinem Energieeinsatz zugeordnet — größter Block: Halle 1 (39,2 % der Anlage).',
+      'Der 80-%-Block ist nicht belastbar: nur 67,8 % des Stromeinsatzes sind Energieeinsätzen zugeordnet.',
+      'Datengrundlage 1 von 12 Monaten — vorläufig.',
+      'Wesentlich · seit 06.11.2026 (Fassung 1) · Ines Kaltenbach: ‚41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.‘',
+      'Wesentlich — Vorschlag: unter Schwelle (8,6 %). Begründung: ‚Querschnitt für Spritzguss und Montage, Leckageverluste vermutet.‘',
+      'Spritzguss bezieht Druckluft: 70 % von MS-07 = 11 130 kWh — in Druckluft gezählt.',
+      'Messbedarf MB-1: Lüftung, Beleuchtung und Allgemeinstrom Halle 1 — eingelöst durch MS-23 Halle 1 Allgemein (keine Datenquelle seit 27.11.2026).',
+      'Netzzähler Halle 1: Klasse B (MID) · geeicht 14.06.2023, gültig bis 31.12.2031 · Beleg: Zählerstandsmitteilung 10/2026 (Prüfsumme 3b1f…9a2e).',
+      'Unterzähler Druckluft: Klasse und Prüfung nicht erhoben.',
+      'Vergleich Dezember 2026: 1,1 % Abweichung zur Netzleistung am Wechselrichter (Toleranz 2 %) — passt.',
+      'Abweichung zur Vergleichsquelle 3,4 % (Toleranz 2 %) — bitte prüfen.',
+      'Bewertung 2026 · Stand Nr. 2 vom 17.11.2026 (ersetzt Nr. 1 vom 09.11.2026 — Anlass: Korrektur K-2026-0007).',
+      'Energetische Bewertung: Stand Nr. 2 vom 17.11.2026 · Überprüfung fällig seit 1 Tag.',
+      'Heizung Verwaltung (Gas): 1 240 m³ im Oktober 2026, abgelesen · ohne Anteil — Gas hat keinen gemeinsamen Nenner mit Strom.',
+      'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',
+      UEMS_NORMGRENZE,
+    ]);
+  });
+});
+
 describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)', () => {
-  const GRENZ_SATZ =
-    'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
+  const GRENZ_SATZ = UEMS_NORMGRENZE;
   const NEUTRALE_ISO_NENNUNG = 'Eine Zertifizierung nach ISO 50001 wird nicht versprochen.';
   const RELEASE_NOTIZ = join(SRC, '../../../docs/rollout/release-notiz-vorlage.md');
   const BERICHT_VORLAGEN = join(
