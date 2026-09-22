@@ -128,7 +128,11 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   nur `fuehrt` mit frischem Netzpunkt UND gepflegter Anschlussgrenze lädt aus dem Netz — Deckel
   `planbar − (Netz − gemessene Ladung + zugeteilte, noch nicht gezogene Ladeleistung)`, der Ladepark geht vor; sonst
   (blind, ohne Grenze, `steuert_mit`, ohne `rolle`) lädt der Speicher höchstens die eigene gemessene PV („nicht aus
-  dem Netz“, ohne PV-Wert 0). Beide Teile senken nur, entladen nie, heben nie an; das Ladebudget ist das Minimum mit der
+  dem Netz“, ohne PV-Wert 0). **PV zählt einmal (AP-15 Folge):** läuft ein Ladepark, nimmt der Speicher auch aus PV
+  nie, was der Ladepark-Regelkreis am Zähler schon als Spielraum gezählt hat — `steuert_mit` und ohne `rolle` mit
+  frischem eigenem Zähler `min(PV, Anteil − (Abgang − gemessene Ladung + zugeteilte, noch nicht gezogene
+  Ladeleistung))`, blind mit bekannter Messung (beide Rollen) derselbe Regelkreis auf der letzten Messung mit der
+  aktuellen Zuteilung, vor dem ersten Messwert die PV; nie über der PV, nie unter 0. Beide Teile senken nur, entladen nie, heben nie an; das Ladebudget ist das Minimum mit der
   Box ohne Anteil (V5), „Jetzt voll laden“ verteilt innerhalb des Anteils (R13). Stufe im Herzschlag:
   `waechter.bezug` (die strengere beider Teile). **Der Anteil gilt für ALLES (Folge von IP-19):** trägt das Dokument
   `reserve_verbraucher.bezug`, rechnet das Ladebudget überall, wo der Anteil bindet und die Box die Verbraucher nicht

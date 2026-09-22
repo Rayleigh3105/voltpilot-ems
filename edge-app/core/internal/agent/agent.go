@@ -388,8 +388,9 @@ type Agent struct {
 	bezugMu   sync.Mutex
 	bezugLade guards.ExportState
 	bezugBatt guards.ExportState
-	// AP-15 Folge: the sample from which the battery's loop regulates again
-	// after it did not (blind, frozen, start); zero while it does not. Until
+	// AP-15 Folge: the sample from which the battery's loop (at the leading
+	// box, and at a co-controlling one's own meter) regulates again after it
+	// did not (blind, frozen, start); zero while it does not. Until
 	// the charge park has decided on a sample at least that new, the battery
 	// releases nothing (guards.Netzladen.ParkOffen).
 	bezugFrischAb time.Time
