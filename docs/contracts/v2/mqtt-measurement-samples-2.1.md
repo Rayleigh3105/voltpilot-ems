@@ -37,7 +37,21 @@ Quellenbindung), wird in beiden Versionen abgewiesen. Eine ältere Box sendet 2.
 der Cloud vervollständigt — nie abgelehnt (AP-06 E8). 2.1 ohne die neuen Felder ist ebenfalls
 gültig: eine Auswahl ohne Komponenten-Bindung hat keine `entity_id`.
 
-`point_key` bleibt je Umschlag eindeutig (wie 2.0).
+`point_key` bleibt je Umschlag eindeutig (wie 2.0) — mit EINER Ausnahme, nur unter 2.1 (AP-07
+IP-18b, Cloud-Vorpaket): derselbe `point_key` darf mehrfach stehen, wenn JEDES Vorkommen eine
+`entity_id` nennt und keine Komponente zweimal vorkommt (ein **geteilter Punkt**, ein Punkt je
+Komponente). Doppelt ist dann das Paar (`point_key`, `entity_id`). Fehlt einem Vorkommen die
+Komponente, gilt die Eindeutigkeit des `point_key` unverändert für alle Vorkommen. Das Schema
+kann diese Regel nicht ausdrücken (JSON Schema kennt keine Eindeutigkeit eines Feldes über
+Array-Elemente); sie steht in der Datenannahme und im Writer.
+
+| Vorkommen desselben `point_key` im Umschlag | Ergebnis |
+|---|---|
+| einmal, mit oder ohne `entity_id` | angenommen, wie bisher |
+| zweimal, `entity_id` A und B | beide angenommen (geteilter Punkt) |
+| zweimal, `entity_id` A und A (auch in anderer Schreibweise) | beide `regel_verletzt` |
+| zweimal, eines ohne `entity_id` | beide `regel_verletzt` (die Regel von 2.0) |
+| dreimal: A, A, B | A zweimal `regel_verletzt`, B angenommen |
 
 ## 3. Was die Datenannahme heute tut (IP-2) — und was IP-5 tut
 
@@ -58,6 +72,19 @@ Umschlags verwerfen ihn ganz. Jede Ablehnung wird gebündelt als Ereignis der Da
 `events.raw` festgehalten ([`events-vocabulary.md`](./events-vocabulary.md) §7). `sequence` reist
 wie bisher unverändert in `measurements.raw`.
 
+**Seit IP-18b (Cloud-Vorpaket)** reist `entity_id` an GENAU einer Stelle ins Ereignis: an den
+Samples eines geteilten Punkts. Dort ist sie das Einzige, was die zwei Werte unterscheidet
+(`measurements.raw` bleibt `1.0`, das Sample-Feld ist additiv). An jedem einfachen Punkt entfernt
+die Datenannahme sie weiter — ein heutiges Ereignis ist damit Zeichen für Zeichen das bisherige.
+Der Writer nimmt die Komponente nie als Fakt: er zählt zu (Box, `point_key`, `entity_id`) die
+Zeilen der EIGENEN Auswahl, und nur bei genau einer folgt die Reihe; sonst bleibt der Wert ohne
+Komponente wie heute bei Mehrdeutigkeit. ⚠ Auslieferung: Writer vor (oder mit) der Datenannahme —
+ein älterer Writer verwirft ein Ereignis mit `entity_id` ganz. ⚠ Offen bis zum Folgepaket: der
+alte Speicherschlüssel `(device_id, point_key, time, edge_sequence)` lässt zu DERSELBEN Messzeit
+nur die erste Komponente eines geteilten Punkts durch; Schlüssel je Komponente und die
+Historienzählung je Komponente kommen dort. Heute liefert keine Box einen geteilten Punkt (der
+Mess-Plan führt ihn zusammen); das ändert erst Teil 2 (Plan + Box, nach `supports[]`).
+
 Die Box sendet 2.1 erst mit einem Edge-Release (AP-07 IP-18).
 
 ## 4. Beispiele (Referenzunternehmen Ahrenberg)
@@ -76,6 +103,9 @@ den Kanal „Wirkenergie Bezug“ eines Modbus-Zählers; die Beispiele benutzen 
 ## 5. Prüfung
 
 `services/ingest`: `MeasurementSamplesValidatorTest` (2.0 ohne, 2.1 mit und ohne neue Felder,
-fremdes Feld in beiden Versionen, unbekannte `schema_version`, unverändertes Ereignis) und
-`MeasurementSamplesContractSchemaTest` (jedes Beispiel gegen sein Schema UND gegen die
-Datenannahme; 2.1 = 2.0 + genau die zwei Felder; Feldlisten der Datenannahme = Schema).
+fremdes Feld in beiden Versionen, unbekannte `schema_version`, unverändertes Ereignis, die Tabelle
+des geteilten Punkts in §2) und `MeasurementSamplesContractSchemaTest` (jedes Beispiel gegen sein
+Schema UND gegen die Datenannahme; 2.1 = 2.0 + genau die zwei Felder; Feldlisten der Datenannahme
+= Schema). `services/timescale-writer`: `GeteilterPunktConsumerTest` (Schlüssel im Ereignis) und
+`WriterPipeTest#einGeteilterPunktFindetJeKomponenteSeineReihe` (Nachschlag je Komponente, die
+Grenze des alten Speicherschlüssels).

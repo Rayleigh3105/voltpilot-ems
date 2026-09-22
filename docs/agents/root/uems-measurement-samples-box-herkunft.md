@@ -20,7 +20,9 @@ geliefert. Die Zuordnung fehlt schon am Eingang der Box:
   Duplikat-Ablehnung. Diese vier Stellen wurden nicht geändert.
 
 Die Aufhebung gehört in `vp-uems-b07-ip18b-config-demerge`, nach der
-Fähigkeitsmeldung `supports[]` (AP-06 IP-18). Ältere Boxen benötigen weiter den
+Fähigkeitsmeldung `supports[]` (AP-06 IP-18). Die Cloud nimmt einen geteilten
+Punkt seit dem Cloud-Vorpaket an (Regel in `mqtt-measurement-samples-2.1.md` §2/§3);
+Speicherschlüssel und Historienzählung je Komponente fehlen noch (Folgepaket). Ältere Boxen benötigen weiter den
 bisherigen Plan. Registry-Pins oder gleiche Transportadressen ersetzen keine
 verlorene Auswahlzuordnung.
 

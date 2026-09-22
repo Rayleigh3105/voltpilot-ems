@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +58,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Repository
 public class MeasurementWriteRepository {
+    private static final Logger log = LoggerFactory.getLogger(MeasurementWriteRepository.class);
 
     /** Die Metrik, an der das Urteil des Herkunftsvertrags je Wert ablesbar ist. */
     static final String URTEIL_METRIK = "voltpilot.writer.herkunft.urteil";
@@ -129,11 +132,14 @@ public class MeasurementWriteRepository {
         for (JsonNode sample : event.samples()) {
             String pointKey = sample.path("point_key").asText();
             Instant observedAt = sampleTime(sample, event.observed_at());
-            Meta meta = metadata(event, pointKey);
+            // Nur an einem geteilten Punkt (IP-18b) nennt das Ereignis die Komponente - als
+            // Schlüssel des Nachschlags in der EIGENEN Auswahl, nie als Fakt vom Draht.
+            UUID komponente = komponente(sample);
+            Meta meta = metadata(event, pointKey, komponente);
             // Die Reihe (E2): Komponente + Datenquelle des Messkanals. EIN gecachter Nachschlag
             // je Messkanal - er wächst mit der Zahl der Kanäle, nie mit der Zahl der Werte.
             HerkunftNachschlag.Reihe reihe = meta == null ? null
-                    : nachschlag.reihe(event, pointKey, templateKey(pointKey));
+                    : nachschlag.reihe(event, pointKey, templateKey(pointKey), komponente);
             boolean uems = reihe != null && reihe.uems();
             // ⚠ Diese Prüfung ist UNVERÄNDERT, und das ist die Auflösung von W8, nicht ihr
             // Gegenteil: `enabled_at`, `disabled_at` und das Purge-Wasserzeichen werden schon
@@ -170,15 +176,24 @@ public class MeasurementWriteRepository {
             int inserted = schreiben(event, sample, pointKey, observedAt, raw, decoded, quality,
                     meta, urteil, herkunft);
             HerkunftNachschlag.Urteil endgueltig = urteil;
-            if (inserted == 0 && herkunft != null) {
+            List<MesswertHerkunft.Gespeichert> liegt = inserted == 0 && herkunft != null
+                    ? nachschlag.gespeichertZurMesszeit(event, urteil.entityId(), pointKey, observedAt)
+                    : List.of();
+            if (inserted == 0 && herkunft != null && komponente != null && liegt.isEmpty()) {
+                // Geteilter Punkt, und in SEINER Reihe liegt nichts: abgewiesen hat der alte
+                // Box-Schlüssel (device_id, point_key, time, edge_sequence), den die andere
+                // Komponente desselben Ticks schon belegt. Kein Urteil wird als gespeichert
+                // gezählt; den Schlüssel je Komponente bringt das Folgepaket (AP-07 IP-18b).
+                endgueltig = null;
+                log.warn("Geteilter Punkt {} der Box {} zur Messzeit {}: Komponente {} vom alten "
+                        + "Box-Schlüssel abgewiesen", pointKey, event.device_id(), observedAt, komponente);
+            } else if (inserted == 0 && herkunft != null) {
                 // E3 am lebenden Schlüssel: die Datenbank hat abgewiesen. Liegt dort DERSELBE
                 // Wert (Wiederholung - gezählt, kein Ereignis) oder ein WIDERSPRUCH
                 // (duplicate_conflict)? Das ist die EINZIGE Abfrage je Wert in diesem Paket,
                 // und sie entsteht nur, wenn wirklich schon etwas liegt.
                 HerkunftNachschlag.Urteil zweit = nachschlag.beurteilen(eingang(event, reihe,
-                        pointKey, observedAt, raw, decoded, quality, meta, null,
-                        nachschlag.gespeichertZurMesszeit(event, urteil.entityId(), pointKey,
-                                observedAt)));
+                        pointKey, observedAt, raw, decoded, quality, meta, null, liegt));
                 if (zweit != null) {
                     sammler.sammelnNurKonflikt(zweit, pointKey);
                     // Gezählt wird das ENDGÜLTIGE Urteil: der erste Durchgang wusste noch nicht,
@@ -191,7 +206,13 @@ public class MeasurementWriteRepository {
             }
             if (inserted > 0) {
                 updatePointState(event, pointKey, observedAt, raw, decoded, quality);
-                appendTransitions(event, pointKey, observedAt, raw, decoded, quality, meta);
+                // Geteilter Punkt (IP-18b): ein Wechsel ist nur gegen den Vorgänger DERSELBEN
+                // Komponente einer - nie zwischen zwei Zählern an einem point_key. Ohne eindeutige
+                // Reihe lässt sich das nicht sagen, dann entsteht kein Wechsel-Ereignis.
+                if (komponente == null || herkunft != null) {
+                    appendTransitions(event, pointKey, observedAt, raw, decoded, quality, meta,
+                            komponente == null ? null : urteil.entityId());
+                }
                 // AP-08 IP-4: Überlauf (Z6) nur an einem GUTEN Zählerstand der Reihe, der als
                 // führend oder Vergleich gespeichert ist. Eigener Savepoint, wirft nie - ein Fehler
                 // der Erkennung kostet diesen Wert nicht (UeberlaufErkennung).
@@ -327,8 +348,15 @@ public class MeasurementWriteRepository {
                 event.gap(), event.dropped_samples(), event.catalog_version());
     }
 
-    private Meta metadata(MeasurementRawEvent event, String pointKey) {
+    /**
+     * Die Auswahlzeile des Punkts. Nennt ein geteilter Punkt seine Komponente, gewinnt DEREN Zeile
+     * (Freigabe und Takt je Komponente); fehlt sie, bleibt es die Zeile wie ohne Komponente. Ohne
+     * Komponente ist die Abfrage Zeichen für Zeichen die bisherige.
+     */
+    private Meta metadata(MeasurementRawEvent event, String pointKey, UUID komponente) {
         String template = templateKey(pointKey);
+        String reihenfolge = komponente == null ? ""
+                : ",CASE WHEN s.entity_id=? THEN 0 ELSE 1 END";
         List<Meta> rows = jdbc.query("SELECT s.point_key,s.enabled,s.enabled_at,s.disabled_at,s.apply_status,"
                         + "s.applied_at,"
                         + "COALESCE(m.aggregation_kind,CASE s.retention_class "
@@ -341,11 +369,15 @@ public class MeasurementWriteRepository {
                         + "WHERE m.catalog_version=? AND m.point_key IN (s.point_key,?) "
                         + "ORDER BY CASE WHEN m.point_key=s.point_key THEN 0 ELSE 1 END LIMIT 1) m ON true "
                         + "WHERE s.device_id=? AND s.point_key IN (?,?) "
-                        + "ORDER BY CASE WHEN s.point_key=? THEN 0 ELSE 1 END LIMIT 1",
+                        + "ORDER BY CASE WHEN s.point_key=? THEN 0 ELSE 1 END" + reihenfolge + " LIMIT 1",
                 (rs, n) -> new Meta(rs.getString(1), rs.getBoolean(2), instant(rs.getTimestamp(3)),
                         instant(rs.getTimestamp(4)), rs.getString(5), instant(rs.getTimestamp(6)),
                         rs.getString(7), (Integer) rs.getObject(8)),
-                event.catalog_version(), template, event.device_id(), pointKey, template, pointKey);
+                komponente == null
+                        ? new Object[] {event.catalog_version(), template, event.device_id(), pointKey,
+                                template, pointKey}
+                        : new Object[] {event.catalog_version(), template, event.device_id(), pointKey,
+                                template, pointKey, komponente});
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -358,11 +390,12 @@ public class MeasurementWriteRepository {
     }
 
     private void appendTransitions(MeasurementRawEvent event, String pointKey, Instant at,
-            Value raw, Value decoded, String quality, Meta meta) {
+            Value raw, Value decoded, String quality, Meta meta, UUID reihe) {
         List<Previous> rows = jdbc.query("SELECT decoded_numeric,decoded_text,raw_numeric,raw_text,"
                         + "quality FROM device_measurement_sample "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? AND "
                         + "(time<? OR (time=? AND edge_sequence<?)) "
+                        + (reihe == null ? "" : "AND entity_id=? ")
                         + "ORDER BY time DESC,edge_sequence DESC LIMIT 1",
                 (rs, n) -> {
                     Value dec = new Value(rs.getBigDecimal(1), rs.getString(2));
@@ -371,8 +404,11 @@ public class MeasurementWriteRepository {
                             dec.text() != null ? dec.text() : was.text(), rs.getString(5),
                             Value.prefer(dec, was));
                 },
-                event.tenant_id(), event.site_id(), event.device_id(), pointKey,
-                Timestamp.from(at), Timestamp.from(at), event.sequence());
+                reihe == null
+                        ? new Object[] {event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                                Timestamp.from(at), Timestamp.from(at), event.sequence()}
+                        : new Object[] {event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                                Timestamp.from(at), Timestamp.from(at), event.sequence(), reihe});
         Previous previous = rows.isEmpty() ? null : rows.get(0);
         if (previous == null) {
             return;
@@ -515,6 +551,18 @@ public class MeasurementWriteRepository {
                     + ",\"cleared_bits\":" + before.andNot(after) + "}";
         } catch (ArithmeticException e) {
             return "{}";
+        }
+    }
+
+    /** Die Komponente eines Samples im Ereignis, {@code null} ohne oder ohne lesbare Angabe. */
+    static UUID komponente(JsonNode sample) {
+        JsonNode e = sample.get("entity_id");
+        if (e == null || !e.isTextual()) return null;
+        try {
+            UUID id = UUID.fromString(e.asText());
+            return id.toString().equalsIgnoreCase(e.asText()) ? id : null;
+        } catch (IllegalArgumentException ex) {
+            return null;
         }
     }
 

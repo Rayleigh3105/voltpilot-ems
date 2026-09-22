@@ -1273,6 +1273,89 @@ class WriterPipeTest {
                 .as("ein Bestandswert löst kein UEMS-Ereignis aus").isZero();
     }
 
+    /**
+     * UEMS AP-07 IP-18b (Cloud-Vorpaket): ein GETEILTER Punkt nennt je Vorkommen seine Komponente.
+     * Der Writer schlägt die Reihe dann nur in der Auswahlzeile genau dieser Komponente nach - eine
+     * Komponente, die die eigene Auswahl nicht kennt, bleibt ohne Reihe wie heute bei
+     * Mehrdeutigkeit. Zwei Messzeiten: beide gespeichert, je in ihrer Reihe. Derselbe Tick: der
+     * alte Box-Schlüssel {@code (device_id, point_key, time, edge_sequence)} lässt bis zum
+     * Folgepaket nur die erste Komponente durch; die zweite wird NICHT als gespeichert gezählt.
+     * Ein Wechsel-Ereignis vergleicht nur Werte derselben Komponente, nie zwei Zähler.
+     */
+    @Test
+    void einGeteilterPunktFindetJeKomponenteSeineReihe() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-0000000000cc";
+        String a = "71000000-0000-0000-0000-0000000000ca";
+        String b = "71000000-0000-0000-0000-0000000000cb";
+        String fremd = "71000000-0000-0000-0000-0000000000cf";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, device, a, "72000000-0000-0000-0000-0000000000ca", "DQ-CA",
+                    "73000000-0000-0000-0000-0000000000ca", "Z-CAa", "2026-11-01T00:00:00Z",
+                    "2026-11-01T00:00:00Z");
+            uemsKomponente(st, device, b, "72000000-0000-0000-0000-0000000000cb", "DQ-CB",
+                    "73000000-0000-0000-0000-0000000000cb", "Z-CBa", "2026-11-01T00:00:00Z",
+                    "2026-11-01T00:00:00Z");
+            bindung(st, "74000000-0000-0000-0000-0000000000ca", a,
+                    "73000000-0000-0000-0000-0000000000ca", "fuehrend", "2026-11-01T00:00:00Z");
+            bindung(st, "74000000-0000-0000-0000-0000000000cb", b,
+                    "73000000-0000-0000-0000-0000000000cb", "fuehrend", "2026-11-01T00:00:00Z");
+            auswahl(st, device, a, PUNKT, "counter", "2026-11-01T00:00:00Z", "2026-11-01T00:00:30Z", 1);
+            auswahl(st, device, b, PUNKT, "counter", "2026-11-01T00:00:00Z", "2026-11-01T00:00:30Z", 1);
+        }
+        // Zwei Messzeiten im selben Umschlag: jede Komponente in ihrer Reihe.
+        senden(device, geteilt(device, 500, "2026-11-22T10:00:07Z",
+                new String[] {a, "2026-11-22T10:00:00Z", "100"},
+                new String[] {b, "2026-11-22T10:00:01Z", "500"}));
+        awaitMeasurementRows(device, 2);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND ((entity_id='" + a + "' AND raw_numeric=100) OR (entity_id='" + b
+                + "' AND raw_numeric=500)) AND role='fuehrend'"))
+                .as("beide Werte je in der Reihe ihrer Komponente").isEqualTo(2);
+
+        // Derselbe Tick: der alte Box-Schlüssel nimmt nur die erste Komponente; eine Komponente,
+        // die die Auswahl nicht kennt, bekommt keine Reihe (Kontrolle an einer dritten Messzeit).
+        senden(device,
+                geteilt(device, 501, "2026-11-22T10:01:07Z",
+                        new String[] {a, "2026-11-22T10:01:00Z", "101"},
+                        new String[] {b, "2026-11-22T10:01:00Z", "501"}),
+                geteilt(device, 502, "2026-11-22T10:02:07Z",
+                        new String[] {a, "2026-11-22T10:02:00Z", "102"},
+                        new String[] {fremd, "2026-11-22T10:02:01Z", "999"}));
+        awaitMeasurementRows(device, 5);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND time='2026-11-22T10:01:00Z' AND entity_id='" + a + "' AND raw_numeric=101"))
+                .as("die erste Komponente des Ticks steht in ihrer Reihe").isOne();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND time='2026-11-22T10:01:00Z'"))
+                .as("bis zum Folgepaket: der alte Box-Schlüssel hält die zweite ab").isOne();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND raw_numeric=999 AND entity_id IS NULL AND role IS NULL"))
+                .as("eine unbekannte Komponente vom Draht wird nie übernommen").isOne();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_event WHERE device_id='" + device
+                + "' AND event_kind='counter_reset'"))
+                .as("101 nach 500 ist kein Rücksetzen: der Vorgänger ist der derselben Komponente")
+                .isZero();
+    }
+
+    /** Ein Umschlag mit einem GETEILTEN Punkt: je Vorkommen {Komponente, Messzeit, Rohwert}. */
+    private static String geteilt(String device, long sequence, String ingestedAt, String[]... werte) {
+        StringBuilder samples = new StringBuilder();
+        for (String[] w : werte) {
+            if (samples.length() > 0) samples.append(',');
+            samples.append("{\"point_key\":\"").append(PUNKT).append("\",\"raw\":").append(w[2])
+                    .append(",\"quality\":\"good\",\"observed_at\":\"").append(w[1])
+                    .append("\",\"entity_id\":\"").append(w[0]).append("\"}");
+        }
+        return "{\"schema_version\":\"1.0\",\"event_id\":\"" + UUID.randomUUID()
+                + "\",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + device + "\",\"catalog_version\":\"" + UEMS_CATALOG
+                + "\",\"sequence\":" + sequence + ",\"observed_at\":\"" + werte[0][1]
+                + "\",\"ingested_at\":\"" + ingestedAt + "\",\"source_topic\":\"ems/" + TENANT_A
+                + "/" + SITE + "/" + device + "/v2/measurement-samples\",\"gap\":false,"
+                + "\"dropped_samples\":0,\"samples\":[" + samples + "]}";
+    }
+
     // ---- Werkzeug für die UEMS-Fälle ----------------------------------------------------
 
     /** Box, Datenquelle mit ihrer Zuständigkeit, Komponente an der Quelle und ihr Gerät-Einbau. */

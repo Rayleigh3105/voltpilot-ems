@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +20,10 @@ public class MeasurementRawConsumer {
     private static final Set<String> QUALITY = Set.of(
             "good", "uncertain", "invalid", "stale", "device_error");
     private static final Pattern POINT_KEY = Pattern.compile("^[a-z0-9][a-z0-9._*\\[\\]@-]{0,239}$");
+    // entity_id kommt NUR an einem geteilten Punkt (derselbe point_key mehrfach, je mit eigener
+    // Komponente, UEMS AP-07 IP-18b); dort ist (point_key, entity_id) der Schlüssel im Ereignis.
     private static final Set<String> SAMPLE_FIELDS = Set.of("point_key", "raw", "decoded",
-            "quality", "observed_at", "signed_data", "signed_data_format");
+            "quality", "observed_at", "signed_data", "signed_data_format", "entity_id");
 
     private final ObjectMapper mapper;
     private final MeasurementWriteRepository repository;
@@ -73,10 +76,22 @@ public class MeasurementRawConsumer {
                 + event.device_id() + "/v2/measurement-samples";
         if (!expectedTopic.equals(event.source_topic())) return WriterVerwerfMetriken.IDENTITAET;
         Set<String> points = new HashSet<>();
+        Set<String> geteilt = new HashSet<>();
         for (JsonNode sample : event.samples()) {
             String pointKey = sample.path("point_key").asText("");
+            if (!points.add(pointKey)) geteilt.add(pointKey);
+        }
+        Set<String> paare = new HashSet<>();
+        for (JsonNode sample : event.samples()) {
+            String pointKey = sample.path("point_key").asText("");
+            UUID komponente = MeasurementWriteRepository.komponente(sample);
+            // Ein einfacher Punkt trägt keine Komponente; ein geteilter trägt sie JE Vorkommen,
+            // und dasselbe Paar zweimal ist doppelt wie bisher der Punkt.
+            boolean schluessel = geteilt.contains(pointKey)
+                    ? komponente != null && paare.add(pointKey + "|" + komponente)
+                    : !sample.has("entity_id");
             if (!sample.isObject() || !onlyFields(sample, SAMPLE_FIELDS)
-                    || !points.add(pointKey) || !POINT_KEY.matcher(pointKey).matches()
+                    || !schluessel || !POINT_KEY.matcher(pointKey).matches()
                     || sample.get("raw") == null
                     || !scalar(sample.get("raw"))
                     || !QUALITY.contains(sample.path("quality").asText())) {
