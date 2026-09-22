@@ -464,7 +464,8 @@ export type EbenenBereichId =
   | 'messstellen'
   | 'bezugsgroessen'
   | 'kennzahlen'
-  | 'berichte';
+  | 'berichte'
+  | 'bewertung';
 
 export interface EbenenBereich {
   key: EbenenBereichId;
@@ -492,6 +493,11 @@ export interface EbenenLesemodell {
   funktionen: Funktionen | null;
   /** `GET /api/v1/kennzahlen`. */
   kennzahlen: readonly Kennzahl[] | null;
+  /**
+   * UEMS AP-16 IP-6: darf die Person Energieeinsätze ansehen (`energieeinsatz.ansehen` aus `/me`, am Unternehmen
+   * oder an einem Standort)? Fehlt der Wert, gibt es den Bereich „Bewertung“ nicht — unbekannt ist nie „ja“.
+   */
+  bewertung?: boolean | null;
 }
 
 const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
@@ -505,6 +511,7 @@ const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
   bezugsgroessen: { key: 'bezugsgroessen', label: 'Bezugsgrößen', icon: 'layers' },
   kennzahlen: { key: 'kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
   berichte: { key: 'berichte', label: 'Berichte', icon: 'file-text' },
+  bewertung: { key: 'bewertung', label: 'Bewertung', icon: 'list' },
 };
 
 /** Ein Standort misst: „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv — ein Entwurf misst noch nicht. */
@@ -535,7 +542,8 @@ const lebenderStandort = (lm: EbenenLesemodell, standortId: string) =>
  *
  * - Unternehmen: Übersicht immer · Standorte ab 2 Standorten · Messstellen und
  *   Bezugsgrößen und Berichte, sobald ein Standort misst · Kennzahlen, sobald ein Standort misst
- *   UND es eine Kennzahl gibt.
+ *   UND es eine Kennzahl gibt · Bewertung, sobald ein Standort misst UND die Person
+ *   Energieeinsätze sehen darf (AP-16 IP-6).
  * - Standort: Übersicht immer · Boxen und Messstellen, wenn DIESER Standort
  *   misst · Gebäude ab 1 Gebäude · Anlagen ab 2 Anlagen.
  *
@@ -553,6 +561,8 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
     if (irgendwoGemessen) out.push('messstellen', 'bezugsgroessen');
     if (irgendwoGemessen && (lm.kennzahlen ?? []).some((k) => k.archiviert_am == null)) out.push('kennzahlen');
     if (irgendwoGemessen) out.push('berichte');
+    // AP-16 IP-6 (§5.1/§6.3): „Bewertung“ nach der Berichte-Regel — und nur, wer Energieeinsätze sehen darf.
+    if (irgendwoGemessen && lm.bewertung === true) out.push('bewertung');
   } else {
     const standort = lebenderStandort(lm, ort.standortId);
     if (standort) {
@@ -597,6 +607,7 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
         bezugsgroessen: pageRoute('portfolio-bezugsgroessen'),
         kennzahlen: pageRoute('portfolio-kennzahlen'),
         berichte: pageRoute('portfolio-berichte'),
+        bewertung: pageRoute('portfolio-bewertung'),
       }
     : {
         uebersicht: standortRoute(ort.standortId),
@@ -739,6 +750,7 @@ export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBerei
   if (page === 'portfolio-bezugsgroessen') return 'bezugsgroessen';
   if (page === 'portfolio-kennzahlen') return 'kennzahlen';
   if (page === 'portfolio-berichte') return 'berichte';
+  if (page === 'portfolio-bewertung') return 'bewertung';
   return page === 'standort' || isPortfolioPage(page) ? 'uebersicht' : null;
 }
 

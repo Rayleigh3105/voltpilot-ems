@@ -634,6 +634,8 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       bezugsgroessen: pageRoute('portfolio-bezugsgroessen'),
       kennzahlen: pageRoute('portfolio-kennzahlen'),
       berichte: pageRoute('portfolio-berichte'),
+      // AP-16 IP-6: die Seite steht; die Kachel nur mit Recht (`EbenenLesemodell.bewertung`).
+      bewertung: pageRoute('portfolio-bewertung'),
     });
     // AP-13 IP-2: der Standort hat jede Seite; Kennzahlen und Berichte stehen als Seiten da, sind aber kein Bereich.
     expect(EBENEN_SEITEN(WERK, MESSKUNDE)).toEqual({

@@ -26,6 +26,7 @@ export type PageId =
   | 'portfolio-bezugsgroessen'
   | 'portfolio-kennzahlen'
   | 'portfolio-berichte'
+  | 'portfolio-bewertung'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
   | 'standort'
@@ -149,6 +150,11 @@ export interface Route {
    */
   berichtKennung?: string;
   /**
+   * Nur bei `page === 'portfolio-bewertung'`: WELCHER Energieeinsatz die Seite zeigt (UEMS AP-16 IP-6
+   * `#/portfolio/bewertung/{id}`). Absent = Umfang und Liste.
+   */
+  energieeinsatzId?: string;
+  /**
    * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
    * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
    * AP-04 IP-8, `#/portfolio/messstellen/{id}` bzw. `#/standort/{sid}/messstellen/{id}`).
@@ -247,6 +253,9 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // `…/berichte/{kennung}`), bis AP-13 die Ebenen-Navigation bringt. Der Reiter steht
   // nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showBerichte`).
   { id: 'portfolio-berichte', label: 'Berichte', icon: 'file-text' },
+  // UEMS AP-16 IP-6: „Unternehmen › Bewertung“ (`#/portfolio/bewertung`, ein Energieeinsatz unter
+  // `…/bewertung/{id}`). Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showBewertung`).
+  { id: 'portfolio-bewertung', label: 'Bewertung', icon: 'list' },
   { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];
@@ -628,6 +637,7 @@ export function parseRoute(hash: string): Route {
   if (head === 'portfolio') {
     if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'berichte' && segments[2]) return berichtRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'bewertung' && segments[2]) return energieeinsatzRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
@@ -744,7 +754,9 @@ export function hashForRoute(route: Route): string {
     const messstelle =
       route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}`;
+    const einsatz =
+      route.page === 'portfolio-bewertung' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
@@ -790,6 +802,11 @@ export function kennzahlRoute(kennzahlId: string, standortId?: string | null): R
   return standortId
     ? { ...standortBereichRoute(standortId, 'kennzahlen'), kennzahlId }
     : { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
+}
+
+/** Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6): `#/portfolio/bewertung/{id}` — nur am Unternehmen. */
+export function energieeinsatzRoute(energieeinsatzId: string): Route {
+  return { page: 'portfolio-bewertung', siteId: null, sub: null, energieeinsatzId };
 }
 
 /**

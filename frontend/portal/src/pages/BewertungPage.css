@@ -1,0 +1,334 @@
+/*
+ * „Bewertung“ (UEMS AP-16 IP-6): Umfang, Liste und Seite eines Energieeinsatzes samt Dialogen. Nur diese Welt —
+ * Klassen mit `vp-bw-`, damit nichts in Portfolio-Tabellen oder andere Welten greift.
+ * ⚠ 375 px: eine Spalte; Namen, Kennzeichen und Sätze brechen um (`anywhere`), nichts läuft quer.
+ */
+
+.vp-bw {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-bw-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-bw-kopf > div {
+  min-width: 0;
+}
+
+.vp-bw-kopf h1 {
+  margin: 0;
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-title);
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-kopf p {
+  margin: 4px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-bw h2 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-bw-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-bw-karte p,
+.vp-bw-karte ul,
+.vp-bw-karte ol {
+  margin: 0;
+}
+
+.vp-bw-karte-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-bw-umfang-fassung {
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-umfang-standorte,
+.vp-bw-zeilen,
+.vp-bw-ausschluesse,
+.vp-bw-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.vp-bw-umfang-standorte li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px var(--vp-c-space-3);
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-ausschluesse li,
+.vp-bw-zeilen li {
+  overflow-wrap: anywhere;
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-bw-traeger,
+.vp-bw-abzeichen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vp-bw-leise,
+.vp-bw-leer {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-leer {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+}
+
+.vp-bw-hinweis {
+  margin: 0;
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+  color: var(--vp-c-muted-fg);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-bw-einsaetze {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-bw-liste {
+  margin: 0;
+}
+
+.vp-bw-einsatz {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-bw-einsatz:hover {
+  border-color: var(--vp-c-primary);
+}
+
+.vp-bw-einsatz:focus-visible {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: 2px;
+}
+
+.vp-bw-einsatz.is-beendet {
+  opacity: 0.8;
+}
+
+.vp-bw-einsatz-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.vp-bw-einsatz-name {
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-pfeil {
+  margin-left: auto;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-bw-kz {
+  margin: 0;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.04em;
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-bw-zurueck {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  cursor: pointer;
+}
+
+.vp-bw-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-bw-felder {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: var(--vp-c-space-2) var(--vp-c-space-4);
+  margin: 0;
+}
+
+.vp-bw-felder dt {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-bw-felder dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-ms {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--vp-c-space-2);
+}
+
+.vp-bw-ms-name {
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-grenze {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+}
+
+/* Dialoge */
+
+.vp-bw-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-bw-form > p {
+  margin: 0;
+}
+
+.vp-bw-gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-bw-gruppe legend {
+  margin-bottom: var(--vp-c-space-2);
+  padding: 0;
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-bw-gruppe p {
+  margin: 0;
+}
+
+.vp-bw-wahl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-c-space-2);
+  min-height: 32px;
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-einfluss {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+}
+
+.vp-bw-einfluss > button {
+  align-self: flex-start;
+}
+
+.vp-bw-schalter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-3);
+}
+
+.vp-bw-schalter label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vp-bw-feldfehler {
+  color: var(--vp-c-destructive);
+  font-size: var(--vp-c-fs-14);
+}
+
+@media (min-width: 720px) {
+  .vp-bw-liste {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+}

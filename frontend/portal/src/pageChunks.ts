@@ -37,6 +37,7 @@ export const PAGE_CHUNK = {
   'portfolio-bezugsgroessen': () => import('./pages/BezugsgroessenPage'),
   'portfolio-kennzahlen': () => import('./pages/KennzahlenPage'),
   'portfolio-berichte': () => import('./pages/BerichtePage'),
+  'portfolio-bewertung': () => import('./pages/BewertungPage'),
   'portfolio-messwerte': () => import('./pages/PortfolioMesswerte'),
   'portfolio-erloese': () => import('./pages/PortfolioErloese'),
   standort: () => import('./pages/StandortUebersichtPage'),
