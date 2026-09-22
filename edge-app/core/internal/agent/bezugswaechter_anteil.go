@@ -193,3 +193,18 @@ func (a *Agent) bezugStufe() string {
 	}
 	return string(s)
 }
+
+// A published battery rise also evaluates the park's blind ramp. No document:
+// no extra state and no wake-up, preserving the single-box path.
+func (a *Agent) bezugSpeicherSoll(kw float64, enabled bool) {
+	if a.ocpp == nil || !enabled {
+		return
+	}
+	an := a.bezugAnteil()
+	if an == nil || !an.Fuehrt {
+		return
+	}
+	if a.ocpp.budget.BezugSpeicherSoll(kw) {
+		a.ocpp.nudge()
+	}
+}

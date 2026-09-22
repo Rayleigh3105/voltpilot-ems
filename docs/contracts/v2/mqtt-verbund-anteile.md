@@ -135,7 +135,8 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   Gerätesumme wie bei IP-18 der Messpunkt: der Speicher lädt nur aus eigener PV, die anderen Verbraucher sind die
   Reserve). Ohne `ungeregelt_hinter_abgang` gilt blind `Anteil − Reserve` wie vorher. Was unerreichbare Säulen ziehen
   dürfen, geht vom Anteil ab (frisch steckt es zugleich im gemessenen Rest — die sichere Seite). `fuehrt`: der Regelkreis von heute gegen die ganze Anschlussgrenze, solange der
-  Netzpunkt-Wert frisch ist (≤ 30 s); danach ohne Halten in 60 s linear auf den Anteil; vor dem ersten Messwert der
+  Netzpunkt-Wert frisch ist (≤ 30 s); danach ohne Halten in 60 s linear auf den Anteil, wobei ein befehlsseitiger Batterieanstieg gegenüber dem
+  Schub der letzten Netzpunkt-Messung bei Rampenbeginn das Ladebudget im selben Takt zusätzlich senkt (nie unter 0); vor dem ersten Messwert der
   Anteil. **Netzladen des Speichers** (`guards/bezuganteil.go`, hinter der Arbitration und vor der Abregelungs-Nachführung):
   nur `fuehrt` mit frischem Netzpunkt UND gepflegter Anschlussgrenze lädt aus dem Netz — Deckel
   `planbar − (Netz − gemessene Ladung + zugeteilte, noch nicht gezogene Ladeleistung)`, der Ladepark geht vor; sonst

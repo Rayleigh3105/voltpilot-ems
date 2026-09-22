@@ -718,6 +718,7 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	// the rig, not by a unit test - the tests fed the map by hand.
 	if battKw != nil {
 		m.HaveBattery = true
+		m.BatteryPowerKw = battKw
 		if *battKw > 0 {
 			m.BatteryChargeKw = *battKw
 		}
