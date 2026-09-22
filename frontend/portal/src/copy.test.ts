@@ -1437,7 +1437,7 @@ describe('UEMS AP-04 IP-14 · „Quelle binden“ spricht Quelle · führend · 
   it('liest wirklich die Sätze — und kein Satz trägt ein verbotenes oder Werkstatt-Wort', () => {
     const alle = saetze();
     expect(alle.length).toBeGreaterThan(40);
-    expect(alle).toContain('Beide Werte stehen nebeneinander; bewertet wird nichts.');
+    expect(alle).toContain('Beide Werte stehen nebeneinander; keiner ersetzt den anderen. Liefern beide eine Monatsmenge, steht darunter die Abweichung gegen Ihre Toleranz — ohne Ursache.');
     const violations = alle.flatMap((text) =>
       [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
     );
@@ -1452,7 +1452,11 @@ describe('UEMS AP-04 IP-14 · „Quelle binden“ spricht Quelle · führend · 
   });
 
   it('E3: keine Fläche der Quelle bewertet — kein Delta, keine Ampel, kein stiller Ersatz', () => {
-    const alle = saetze().join(' | ');
+    // AP-16 IP-18: der EINE Brückensatz über der Befund-Zeile nennt sie (Abweichung gegen die Toleranz des Kunden,
+    // G5) — er trägt selbst keine Zahl, verneint den Ersatz und sagt „ohne Ursache“. Alle übrigen Sätze bleiben frei.
+    expect(QB.OHNE_BEWERTUNG).toMatch(/keiner ersetzt den anderen.*ohne Ursache\.$/);
+    expect(QB.OHNE_BEWERTUNG).not.toMatch(/[0-9%]|Ampel|plausibel|Delta/);
+    const alle = saetze().map((s) => s.replace(QB.OHNE_BEWERTUNG, '')).join(' | ');
     for (const verboten of ['Abweichung', 'Ampel', 'plausibel', 'Toleranz', 'ersetzt', 'Delta']) {
       expect(alle, verboten).not.toContain(verboten);
     }
@@ -2316,6 +2320,10 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/EnergieeinsatzDialoge.tsx',
     // IP-12: Rangliste, Einstufung, Kriterien und Historie.
     'components/BewertungEntscheidungen.tsx',
+    // IP-18: Abdeckungs-Tabelle, Messmittel-Blatt mit Dialog, Toleranz-Dialog an der Befund-Zeile.
+    'components/MessabdeckungTabelle.tsx',
+    'components/MessmittelBlatt.tsx',
+    'components/VergleichBefund.tsx',
   ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,

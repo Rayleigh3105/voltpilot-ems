@@ -400,3 +400,7 @@
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   }
 }
+
+/* AP-16 IP-18: die Prüfaufgaben-Zeile — ein Hinweis zum Erheben, kein Fehler (G3). */
+.vp-bw-pruefaufgaben { display: grid; gap: var(--vp-c-space-2); margin: 0; padding: 0; list-style: none; }
+.vp-bw-pruefaufgabe { margin: 0; padding: var(--vp-c-space-2) var(--vp-c-space-3); border-radius: var(--vp-c-radius); background: var(--vp-c-warn-bg); color: var(--vp-c-warn-fg); font-size: var(--vp-c-fs-14); overflow-wrap: break-word; }

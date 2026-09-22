@@ -36,3 +36,27 @@ ausschließlich aus `/me`; ohne sie bleiben alle Angaben lesbar, aber ohne Schre
   Einstufung trägt. Der Vorschlag heißt immer Vorschlag und ändert nie selbst eine Einstufung.
 - Nachweis: `src/bewertung.test.ts`; `e2e/bewertung.spec.ts` prüft Pflichtbegründung, Abweichung, Vier-Augen,
   Kriterien und Rückstufungshistorie bei 375/1440.
+
+## Messabdeckung, Messmittel und Toleranz (AP-16 IP-18, Meilenstein M3)
+
+`#/portfolio/bewertung` zeigt unter der Rangliste die Abdeckungs-Tabelle (`components/MessabdeckungTabelle.tsx`, reines
+Modul `src/uemsMessabdeckung.ts`) aus `…/bewertung/messabdeckung`: je Einsatz und je Ort gemessen · geplant · Ersatz ·
+ungemessen, Rest-Zeilen je Anlage, Summe mit K8. Darüber die Prüfaufgaben-Zeile, auf der Einsatzseite die Karte
+„Messmittel“ (`components/EinsatzMessmittel.tsx`: Messstelle → führende Quelle der Hauptgröße → `…/geraete/{id}/messmittel`).
+Die Geräteseite trägt das Messmittel-Blatt mit Dialog (`components/MessmittelBlatt.tsx`, reines Modul `src/uemsMessmittel.ts`);
+die Befund-Zeile der Messstelle (`components/VergleichBefund.tsx`) je Zeile „Toleranz ändern“.
+
+- „geplant“ trägt nie eine Menge (auch keine 0); Ersatz ist Teil von „gemessen“; ungemessen ist nur der Anlagenrest.
+- Beleg = Verweis (G2): `pruefsummeLokal` bildet die SHA-256 im Browser; `eintragAus` kennt die Datei nicht. Beweis:
+  `src/uemsMessmittel.test.ts` („Prüfsumme lokal“) und `e2e/abdeckung-messmittel.spec.ts` (kein Datei-Inhalt im Netz).
+- „laut Hersteller“ (G4) liest `laut_hersteller` der Route (IP-16) und steht als eigener Abschnitt unter „am Einbau
+  erhoben“, mit Fundstelle und Quellen-Prüfsumme; `nicht_belegt` ohne Zahl. Er füllt nie eine Einbau-Zeile.
+- Die Prüfaufgabe ist eine Ableitung im Portal (wesentlich = jüngste freigegebene, offene Einstufung; Klasse UND Prüfung
+  `nicht_erhoben`); die Prüfaufgabe im Bewertungsstand bleibt IP-21.
+- ⚠ Der Satz der Quelle-Karte (`UEMS_VERGLEICH_NEBENEINANDER`, auch im Folgen-Satz beim Binden einer Vergleichsquelle)
+  nennt seit IP-18 die Befund-Zeile. Die E3-Wächter (`copy.test.ts`, `QuelleBinden.test.tsx`) nehmen nur diesen einen
+  Satz aus; er trägt keine Zahl und sagt „ohne Ursache“.
+- Hebel: `messmittel.angaben` über `RechteStandort` der Seite (Recht ohne `standort`-Prop), Sichtbarkeit aus den Routen.
+- Bühnen: `e2e/bewertung.html?stand=voll` (Abdeckung, Prüfaufgabe; `&ee=EE-3`), `e2e/geraet-herkunft.html?…&messmittel=1`
+  (opt-in, die übrigen Leser dieser Bühne sehen die Seite unverändert), Toleranz über `cloud(page, { vergleich: true })` in
+  `e2e/messstelle-seite.spec.ts`. `IP18_BILDER=<Ordner>` legt die Bilder der Ansicht ab.

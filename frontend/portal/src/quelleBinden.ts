@@ -37,6 +37,7 @@ import {
   UEMS_NEBENGROESSE,
   UEMS_QUELLE,
   UEMS_VERGLEICH,
+  UEMS_VERGLEICH_NEBENEINANDER,
 } from './glossar';
 import {
   HAUPT,
@@ -73,8 +74,11 @@ export const UHRZEIT = 'Uhrzeit *';
 export const KEINE_DATENQUELLE = 'Keine Datenquelle. Diese Messstelle bekommt noch keine Werte.';
 export const KEINE_VERGLEICHSQUELLE = `Keine ${VERGLEICHSQUELLE}. Eine ${VERGLEICHSQUELLE} zeigt einen zweiten Messwert neben dem führenden.`;
 
-/** E3: die Karte stellt nebeneinander — sie urteilt nicht. Der Satz sagt das ausdrücklich. */
-export const OHNE_BEWERTUNG = 'Beide Werte stehen nebeneinander; bewertet wird nichts.';
+/**
+ * E3: die Karte stellt nebeneinander — kein Wert ersetzt den anderen, keine Ursache. Seit AP-16 IP-18 nennt der Satz
+ * die Befund-Zeile darunter (Abweichung gegen die Toleranz des Kunden, G5); Wortlaut in `glossar.ts`.
+ */
+export const OHNE_BEWERTUNG = UEMS_VERGLEICH_NEBENEINANDER;
 
 export const PFLICHT = {
   messstelle: `Bitte wählen Sie eine ${UEMS_MESSSTELLE} und ihre Messgröße.`,
@@ -307,7 +311,7 @@ export function bindenPruefen(
 /**
  * „Was geschieht“ aus FAKTEN, nie aus Absichten (§5.2 · §5.3):
  * führend — „MS-0017 liest ab 15.10.2026, 09:00 Uhr Zähler Energiekarte EK-5 · Wirkenergie Bezug.“
- * Vergleich — „… vergleicht ab … (Plausibilität). Beide Werte stehen nebeneinander; bewertet wird nichts.“
+ * Vergleich — „… vergleicht ab … (Plausibilität). Beide Werte stehen nebeneinander; keiner ersetzt den anderen. …“
  */
 export function folgenSatz(e: {
   rolle: BindungsRolle;

@@ -2,7 +2,7 @@ import { sichtbareListe } from '../src/test/rollenFixtures';
 import './rollen-fixture';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { api, type Device, type Site } from '../src/api';
+import { api, type Device, type MessmittelAngaben, type MessmittelEintrag, type Site } from '../src/api';
 import { keycloak } from '../src/auth';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { GeraetSeiteSection } from '../src/pages/GeraetSeiteSection';
@@ -22,6 +22,7 @@ import {
   SITE_HALLE_2,
 } from '../src/test/geraetHerkunftFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
+import { leerMessmittel, messmittelNachEintrag, z5bMessmittel } from '../src/test/messmittelFixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -41,7 +42,7 @@ import '../src/index.css';
  * (`src/test/geraetHerkunftFixtures.ts`). `?fall=gr4` zeigt GR-4 nach dem
  * Zählerwechsel (K-5 → MS-06), `?fall=ek2` die Energiekarte EK-2 am Controller
  * C-1 mit dem angekündigten Wandler 400/5 A (K-8.2 → MS-11), `&vor=a5` denselben
- * Stand vor dem Eintrag.
+ * Stand vor dem Eintrag. `&messmittel=1` (AP-16 IP-18) belegt zusätzlich das Messmittel-Blatt.
  *
  * Belegt ist, was die Seite fragt; alles Übrige antwortet „nichts da“ — die
  * Seite ist darauf gebaut (fail-soft), und die Bühne ruft nie eine Cloud.
@@ -186,6 +187,17 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   messstellenRegister: ok(ahrenbergRegister()),
   messstelleQuelleBinden: ok({ quelle: null, beendet: null, rueckwirkung: { art: 'ab_jetzt', minuten: 0, abzeichen: null }, hinweise: [] }),
 };
+
+// UEMS AP-16 IP-18: `&messmittel=1` belegt das Messmittel-Blatt (sonst unbelegt → kein Block, die übrigen Specs
+// dieser Bühne sehen die Seite wie bisher). gr4 zeigt Z-5b mit Werksbescheinigung, ek2 den Controller C-1 ohne Angabe
+// mit der Stromwandler-Fassung 400/5 A; der PUT antwortet wie die Route (Person und Zeitpunkt am Beleg).
+if (frage.get('messmittel') === '1') {
+  let angaben: MessmittelAngaben | null = null;
+  const start = (id: string) => (fall === 'ek2' ? leerMessmittel(id, 'C-1', 'K-8.2', true) : z5bMessmittel(id));
+  belegt.geraetMessmittel = (async (id: string) => structuredClone(angaben ??= start(id))) as never;
+  belegt.geraetMessmittelEintragen = (async (id: string, e: MessmittelEintrag) =>
+    structuredClone((angaben = messmittelNachEintrag(angaben ?? start(id), e, 'JW', new Date().toISOString())))) as never;
+}
 
 const offen = api as unknown as Record<string, unknown>;
 for (const [name, wert] of Object.entries(offen)) {

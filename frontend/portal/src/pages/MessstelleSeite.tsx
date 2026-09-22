@@ -449,7 +449,8 @@ function MessstelleSeiteMitId({
         />
       )}
       {/* AP-16 IP-17 (G5): der Monatsvergleich je Vergleichsquelle — nur wo es eine gibt; ohne steht nichts. */}
-      {quellen?.quellen.some(q => q.rolle === 'vergleich') && <VergleichBefund kennzeichen={m.kennzeichen} />}
+      {/* AP-16 IP-18: je Zeile „Toleranz ändern“ (messmittel.angaben am Standort der Messstelle). */}
+      {quellen?.quellen.some(q => q.rolle === 'vergleich') && <VergleichBefund kennzeichen={m.kennzeichen} messstelleId={m.id} />}
 
       {/* AP-05 IP-11: die Energiekarte — nur wo es eine WAGO-Komponente GIBT (sonst 404, nichts
           gezeichnet). Die Verlauf-Marker der Box-Ereignisse hängen NICHT hieran; sie stehen oben

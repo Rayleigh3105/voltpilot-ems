@@ -13,12 +13,14 @@ import {
   type EnergieeinsatzMessstelle,
   type EnergieeinsatzEinstufungFassung,
   type EnergieeinsatzEinstufungSpeichern,
+  type MessstelleQuellenListe,
 } from '../api';
 import { ahrenbergBezugsgroessen, ahrenbergProzesse } from './kennzahlAnlegenFixtures';
 import { ahrenbergRegister } from './messstellenRegisterFixtures';
 import { rechteSeed } from './rollenFixtures';
 import { FIXTURE_IDS } from './standorteFixtures';
 import { r16ProzessSummeHinweis } from './kostenstellenFixtures';
+import { ahrenbergMessabdeckung, GR5_ID, gr5Messmittel, z5bMessmittel } from './messmittelFixtures';
 
 /**
  * Die Bewertung des Referenzunternehmens Ahrenberg (UEMS AP-16 IP-6) — abgeschrieben aus
@@ -253,6 +255,12 @@ export function ahrenbergRangliste(leer = false, kriterien = kriterienFassung())
 
 const fehler = (status: number, code: string, message: string) => new ApiError(status, message, { code, message });
 
+/** Bühne (IP-18): welches Gerät die Hauptgröße einer Messstelle führend liest. */
+const FUEHREND_GERAET: Record<string, { id: string; kz: string; einbau: string }> = {
+  'MS-06': { id: '9b000000-0000-4000-8000-000000000004', kz: 'GR-4', einbau: 'Z-5b' },
+  'MS-07': { id: GR5_ID, kz: 'GR-5', einbau: 'GR-5' },
+};
+
 /**
  * Die Routen der Bewertung als Zustandsmaschine im Speicher. `ich` ist das Kürzel des Aufrufers (der Akteur im
  * Protokoll); `heute` der Kalendertag der Bühne.
@@ -310,6 +318,19 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
       return structuredClone(umfangAus(umfangFassung.nr, s, s.gueltig_ab));
     },
     bewertungRangliste: async () => structuredClone(ahrenbergRangliste(stand === 'leer' && einsaetze.length === 0, aktuelleKriterien)),
+    // AP-16 IP-18: Messabdeckung (§5.3) und der Weg Messstelle → führende Quelle → Messmittel (R8: MS-07 an GR-5 ohne
+    // Angabe, MS-06 an Z-5b mit Werksbescheinigung). Die übrigen Messstellen haben auf der Bühne keine führende Quelle.
+    bewertungMessabdeckung: async () => structuredClone(ahrenbergMessabdeckung()),
+    messstelleQuellen: async (id: string) => {
+      const kz = ahrenbergRegister().register.find((r) => r.id === id)?.kennzeichen ?? '';
+      const geraet = FUEHREND_GERAET[kz];
+      return {
+        messstelle_id: id, kennzeichen: kz, stichtag: `${heute}T12:00:00+01:00`, quellen: [],
+        groessen: [{ groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Zählerstand', hauptgroesse: true, lebenszyklus: 'aktiv',
+          fuehrend: geraet ? { geraet: { id: geraet.id, geraet: geraet.kz, einbau: geraet.einbau } } : null, vergleich: [], zeitstrahl: [] }],
+      } as unknown as MessstelleQuellenListe;
+    },
+    geraetMessmittel: async (id: string) => structuredClone(id === GR5_ID ? gr5Messmittel() : z5bMessmittel(id)),
     bewertungKriterien: async () => structuredClone(aktuelleKriterien),
     bewertungKriterienSpeichern: async (s: BewertungKriterienSpeichern) => {
       if (!s.begruendung.trim()) throw fehler(422, 'begruendung_fehlt', 'Bitte geben Sie eine Begründung an.');

@@ -334,6 +334,8 @@ Die Messstelle ist das zentrale Objekt des Unternehmens-Energiemanagements. Sie 
 
 > **Verfeinert durch AP-04 E3:** Vergleichsquellen werden mit Zweck gekennzeichnet (Plausibilität · Ersatz bei Ausfall · Abrechnungszähler) und beide Werte nebeneinander gezeigt — ohne Bewertung, ohne Ersatz.
 
+> **Verfeinert durch AP-16 E10 (IP-17/IP-18):** Eine Vergleichsquelle trägt eine **Toleranz** als Fassung (Startwert 2 % je Monat, änderbar mit Begründung ab dem laufenden Monat). Liegt die Monatsabweichung darüber, steht unter der Quelle-Karte ein Befund „Abweichung x % (Toleranz y %) — bitte prüfen“ — ohne Ursache; die Werte stehen weiter nebeneinander, keiner ersetzt den anderen. Messmittel-Angaben ohne Erhebung heißen „nicht erhoben“; ein wesentlicher Einsatz mit solchen Messmitteln wird zur **Prüfaufgabe**.
+
 > **Verfeinert durch AP-04 E7:** Das Kennzeichen ist vierstellig fortlaufend („MS-0001“) je Kundenbereich, änderbar auf 2–16 Zeichen (Großbuchstaben, Ziffern, „-“, „.“, „/“); archivierte Kennzeichen bleiben belegt.
 
 > **Verfeinert durch AP-04 E8:** Eine Messstelle OHNE Quelle ist erlaubt und eingerichtet (Kennzeichen + Name + Hauptgröße + Ort); ihre Beobachtung ist „keine Datenquelle“, und in Bilanz und Bericht steht sie als „ohne Werte“ — nie als 0.

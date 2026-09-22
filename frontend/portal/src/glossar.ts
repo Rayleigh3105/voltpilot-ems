@@ -434,6 +434,27 @@ export const UEMS_BEWERTUNG_ABDECKUNG = {
   ungemessen: 'ungemessen',
 } as const;
 
+/**
+ * AP-16 IP-18 (G5, AP-04 E3): der Satz der Quelle-Karte über der Befund-Zeile. Die Karte stellt weiter nebeneinander
+ * und ersetzt nichts; seit IP-17 steht darunter die Monatsabweichung gegen die Toleranz, die der Kunde selbst setzt —
+ * nie eine Ursache. Nebengrößen ohne Monatsmenge bekommen keine Zeile, darum „liefern beide eine Monatsmenge“.
+ */
+export const UEMS_VERGLEICH_NEBENEINANDER =
+  'Beide Werte stehen nebeneinander; keiner ersetzt den anderen. Liefern beide eine Monatsmenge, steht darunter die Abweichung gegen Ihre Toleranz — ohne Ursache.';
+
+/** AP-16 IP-18 (G1–G4): die Anzeigewörter der Messmittel-Angaben; `nicht erhoben` steht wörtlich, nie ein Wert. */
+export const UEMS_NICHT_ERHOBEN = 'nicht erhoben';
+export const UEMS_PRUEFUNGSARTEN = {
+  eichung: 'Eichung',
+  mid_konformitaet: 'MID-Konformität',
+  kalibrierung: 'Kalibrierung',
+  werksbescheinigung: 'Werksbescheinigung',
+  keine: 'keine Prüfung',
+  nicht_erhoben: UEMS_NICHT_ERHOBEN,
+} as const;
+export const UEMS_TOLERANZ = 'Toleranz';
+export const UEMS_PRUEFAUFGABE = 'Prüfaufgabe';
+
 /** AP-14-Grenz-Satz: eine Quelle für jede Bewertungs-Fläche und jeden Stand. */
 export const UEMS_NORMGRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';

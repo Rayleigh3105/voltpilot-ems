@@ -226,7 +226,7 @@ test('Q1 · A8 — die Quelle-Karte zeigt beide Werte NEBENEINANDER, ohne jede B
   await expect(werte.nth(0)).toContainText('liest den Bezugs-Teil des Werts');
   await expect(werte.nth(1)).toContainText('309,8');
   await expect(werte.nth(1)).toContainText('Vergleich · Plausibilität');
-  await expect(leistung.getByText('Beide Werte stehen nebeneinander; bewertet wird nichts.')).toBeVisible();
+  await expect(leistung.getByText('Beide Werte stehen nebeneinander; keiner ersetzt den anderen. Liefern beide eine Monatsmenge, steht darunter die Abweichung gegen Ihre Toleranz — ohne Ursache.')).toBeVisible();
 
   // E3 — sie stehen wirklich NEBENEINANDER, nicht untereinander: gleiche Oberkante, verschiedene Spalte.
   const a = await werte.nth(0).boundingBox();
@@ -283,7 +283,7 @@ test('Q2 · „Quelle binden“ — was nicht passt, steht GRAU mit seinem Grund
   await expect(zweck.getByRole('option')).toHaveCount(3);
   await zweck.getByRole('option', { name: /Plausibilität/ }).click();
   await expect(dialog.getByTestId('quelle-folgen')).toContainText('vergleicht ab');
-  await expect(dialog.getByTestId('quelle-folgen')).toContainText('Beide Werte stehen nebeneinander; bewertet wird nichts.');
+  await expect(dialog.getByTestId('quelle-folgen')).toContainText('Beide Werte stehen nebeneinander; keiner ersetzt den anderen. Liefern beide eine Monatsmenge, steht darunter die Abweichung gegen Ihre Toleranz — ohne Ursache.');
   await messeUndFotografiere(page, breite, 'q3-vergleichsquelle-zweck', { dialog: true });
 
   await dialog.getByRole('button', { name: 'Hinzufügen' }).click();

@@ -46,6 +46,7 @@ import { ZaehlerwechselVerlauf } from './ZaehlerwechselVerlauf';
 import { ZaehlerwechselDialog } from './ZaehlerwechselDialog';
 import { ControllerwechselDialog } from './ControllerwechselDialog';
 import { QuelleBindenDialog, type QuelleBindenZiel } from './QuelleBindenDialog';
+import { MessmittelBlatt } from './MessmittelBlatt';
 import './GeraetHerkunft.css';
 
 export interface HerkunftKomponente {
@@ -233,6 +234,9 @@ export function GeraetHerkunft({
           </p>
         )}
       </section>
+
+      {/* AP-16 IP-18 (§5.4, G1–G4): das Messmittel-Blatt des Einbaus; ohne Antwort steht nichts. */}
+      <MessmittelBlatt geraetId={geraet.id} heute={uhr.slice(0, 10)} />
 
       {mitKanaelen.length > 0 && (
         <section className="vp-rahmen-block vp-gh" data-testid="geraet-messkanaele" aria-labelledby="vp-gh-kanaele">

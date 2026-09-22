@@ -63,7 +63,8 @@ describe('Quelle-Karte — beide Werte nebeneinander (E3, Abnahmefall A8)', () =
     expect(within(leistung).getByText('führend')).toBeInTheDocument();
     expect(within(leistung).getByText('Vergleich · Plausibilität')).toBeInTheDocument();
     expect(within(leistung).getByText(OHNE_BEWERTUNG)).toBeInTheDocument();
-    expect(leistung.textContent).not.toMatch(/Abweichung|Toleranz|%/);
+    // AP-16 IP-18: nur der Brückensatz nennt die Befund-Zeile darunter; die Karte selbst bewertet weiter nichts.
+    expect(leistung.textContent!.replace(OHNE_BEWERTUNG, '')).not.toMatch(/Abweichung|Toleranz|%/);
   });
 
   it('ohne Vergleichsquelle sagt die Karte es — und bietet „Vergleichsquelle hinzufügen“ an', () => {
