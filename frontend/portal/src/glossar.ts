@@ -392,6 +392,92 @@ export const UEMS_NICHT_VERORTET = 'nicht verortet';
 /** Eine Messstelle mit Ablesung statt Datenquelle — in der Datenlage ein Zusatz („· 1 manuell abgelesen“, E13). */
 export const UEMS_MANUELL_ABGELESEN = 'manuell abgelesen';
 
+/**
+ * UEMS AP-16 IP-7 (SP1–SP3) — Kundenwörter der energetischen Bewertung.
+ * Vertragskennungen bleiben in `uemsBewertung.ts`; diese Konstanten sind ihre
+ * Anzeigewörter. Ein Urteil ist nur ein Vorschlag. Die Einstufung trifft eine
+ * Person und hält sie als Fassung fest.
+ */
+export const UEMS_ENERGIEEINSATZ = 'Energieeinsatz';
+export const UEMS_ENERGIEEINSAETZE = 'Energieeinsätze';
+export const UEMS_BEWERTUNG = 'Bewertung';
+export const UEMS_RANGLISTE = 'Rangliste';
+export const UEMS_EINSTUFUNG = 'Einstufung';
+export const UEMS_EINSTUFUNGEN = {
+  wesentlich: 'wesentlich',
+  nicht_wesentlich: 'nicht wesentlich',
+  offen: 'offen',
+} as const;
+export const UEMS_MESSPLANUNG = 'Messplanung';
+export const UEMS_MESSBEDARF = 'Messbedarf';
+export const UEMS_MESSABDECKUNG = 'Messabdeckung';
+export const UEMS_MESSMITTEL = 'Messmittel';
+export const UEMS_BELEG = 'Beleg';
+export const UEMS_UEBERPRUEFUNG_FAELLIG = 'Überprüfung fällig';
+
+export const UEMS_BEWERTUNG_URTEILE = {
+  ueber_schwelle: 'über Schwelle',
+  unter_schwelle: 'unter Schwelle',
+  nicht_anwendbar: 'nicht anwendbar',
+  nicht_belastbar: 'nicht belastbar',
+  erfuellt: 'erfüllt',
+  vorbehalt_datenlage: 'Vorbehalt: Datenlage',
+  vorbehalt_ersatzwerte: 'Vorbehalt: Ersatzwerte',
+  unter_zwoelf: 'unter zwölf Monaten',
+  vorlaeufig: 'vorläufig',
+} as const;
+
+export const UEMS_BEWERTUNG_ABDECKUNG = {
+  gemessen: 'gemessen',
+  geplant: 'geplant',
+  ersatz: 'Ersatz',
+  ungemessen: 'ungemessen',
+} as const;
+
+/** AP-14-Grenz-Satz: eine Quelle für jede Bewertungs-Fläche und jeden Stand. */
+export const UEMS_NORMGRENZE =
+  'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
+
+const bewertungZahl = (wert: number, stellen = 0) =>
+  wert
+    .toLocaleString('de-DE', { minimumFractionDigits: stellen, maximumFractionDigits: stellen })
+    .replace(/\./g, ' ');
+
+/** Die 17 Satzmuster aus AP-16 §5.7; Zahlen werden immer im deutschen Format eingesetzt. */
+export const UEMS_BEWERTUNG_SAETZE = {
+  ranglisteKopf: (monat: string, jahr: number, mengeKwh: number, vorhanden: number, gesamt: number, anteil: number) =>
+    `Stromeinsatz ${monat} ${jahr}: ${bewertungZahl(mengeKwh)} kWh aus ${vorhanden} von ${gesamt} Anlagen · ${bewertungZahl(anteil, 1)} % Energieeinsätzen zugeordnet.`,
+  restZeile: (mengeKwh: number, anteil: number, anlage: string, anlagenAnteil: number) =>
+    `${bewertungZahl(mengeKwh)} kWh (${bewertungZahl(anteil, 1)} %) sind keinem Energieeinsatz zugeordnet — größter Block: ${anlage} (${bewertungZahl(anlagenAnteil, 1)} % der Anlage).`,
+  nichtBelastbar: (schwelle: number, anteil: number) =>
+    `Der ${bewertungZahl(schwelle)}-%-Block ist nicht belastbar: nur ${bewertungZahl(anteil, 1)} % des Stromeinsatzes sind Energieeinsätzen zugeordnet.`,
+  vorlaeufig: (monate: number, benoetigt: number) =>
+    `Datengrundlage ${monate} von ${benoetigt} Monaten — vorläufig.`,
+  einstufung: (einstufung: string, seit: string, fassung: number, person: string, begruendung: string) =>
+    `${einstufung} · seit ${seit} (Fassung ${fassung}) · ${person}: ‚${begruendung}‘`,
+  abweichungVorschlag: (einstufung: string, vorschlag: string, anteil: number, begruendung: string) =>
+    `${einstufung} — Vorschlag: ${vorschlag} (${bewertungZahl(anteil, 1)} %). Begründung: ‚${begruendung}‘`,
+  querschnitt: (prozess: string, medium: string, anteil: number, messstelle: string, mengeKwh: number) =>
+    `${prozess} bezieht ${medium}: ${bewertungZahl(anteil)} % von ${messstelle} = ${bewertungZahl(mengeKwh)} kWh — in ${medium} gezählt.`,
+  messbedarf: (kennung: string, wortlaut: string, messstelle: string, hinweis: string) =>
+    `Messbedarf ${kennung}: ${wortlaut} — eingelöst durch ${messstelle} (${hinweis}).`,
+  messmittel: (name: string, klasse: string, art: string, geprueftAm: string, gueltigBis: string, beleg: string, pruefsumme: string) =>
+    `${name}: Klasse ${klasse} (${art}) · geeicht ${geprueftAm}, gültig bis ${gueltigBis} · Beleg: ${beleg} (Prüfsumme ${pruefsumme}).`,
+  messmittelOffen: (name: string) => `${name}: Klasse und Prüfung nicht erhoben.`,
+  vergleichsquelle: (monat: string, jahr: number, abweichung: number, quelle: string, toleranz: number) =>
+    `Vergleich ${monat} ${jahr}: ${bewertungZahl(abweichung, 1)} % Abweichung zur ${quelle} (Toleranz ${bewertungZahl(toleranz)} %) — passt.`,
+  befund: (abweichung: number, toleranz: number) =>
+    `Abweichung zur Vergleichsquelle ${bewertungZahl(abweichung, 1)} % (Toleranz ${bewertungZahl(toleranz)} %) — bitte prüfen.`,
+  stand: (jahr: number, nummer: number, datum: string, ersetzt: number, ersetztAm: string, anlass: string) =>
+    `Bewertung ${jahr} · Stand Nr. ${nummer} vom ${datum} (ersetzt Nr. ${ersetzt} vom ${ersetztAm} — Anlass: ${anlass}).`,
+  frist: (nummer: number, datum: string, tage: number) =>
+    `Energetische Bewertung: Stand Nr. ${nummer} vom ${datum} · Überprüfung fällig seit ${tage} Tag${tage === 1 ? '' : 'en'}.`,
+  traegerOhneAnteil: (name: string, traeger: string, menge: number, einheit: string, monat: string, jahr: number, zustand: string) =>
+    `${name} (${traeger}): ${bewertungZahl(menge)} ${einheit} im ${monat} ${jahr}, ${zustand} · ohne Anteil — ${traeger} hat keinen gemeinsamen Nenner mit Strom.`,
+  leer: () => 'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',
+  grenze: () => UEMS_NORMGRENZE,
+} as const;
+
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex
 // ---------------------------------------------------------------------------
