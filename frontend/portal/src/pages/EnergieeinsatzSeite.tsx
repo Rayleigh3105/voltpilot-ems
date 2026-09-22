@@ -33,6 +33,7 @@ import {
 } from '../bewertung';
 import { EnergieeinsatzBearbeitenDialog, EnergieeinsatzBeendenDialog } from '../components/EnergieeinsatzDialoge';
 import { EinstufungDialog, EinstufungHistorie } from '../components/BewertungEntscheidungen';
+import { EinsatzMessmittel, istWesentlich } from '../components/EinsatzMessmittel';
 import { ErrorState, Skeleton } from '../components/States';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
@@ -186,6 +187,8 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
               </ul>
             )}
           </section>
+
+          <EinsatzMessmittel einsatz={`${einsatz.kennzeichen} ${einsatz.name}`} messstellen={einsatz.messstellen} wesentlich={istWesentlich(einstufungen)} />
 
           <section className="vp-bw-karte" aria-labelledby="ee-protokoll">
             <h2 id="ee-protokoll">{PROTOKOLL}</h2>

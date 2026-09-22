@@ -291,7 +291,7 @@ describe('UEMS AP-04 IP-14 · die Quelle-Karte: beide Werte nebeneinander (E3, A
     // E3: keine Bewertung — nirgends eine Abweichung, ein Prozentwert oder eine Ampel.
     const text = JSON.stringify(karten);
     expect(text).not.toMatch(/Abweichung|%|Ampel|plausibel|Toleranz/);
-    expect(OHNE_BEWERTUNG).toBe('Beide Werte stehen nebeneinander; bewertet wird nichts.');
+    expect(OHNE_BEWERTUNG).toBe('Beide Werte stehen nebeneinander; keiner ersetzt den anderen. Liefern beide eine Monatsmenge, steht darunter die Abweichung gegen Ihre Toleranz — ohne Ursache.');
   });
 
   it('die Hauptgröße ohne Vergleichsquelle sagt es — und nennt den nächsten Schritt', () => {
@@ -464,7 +464,7 @@ describe('UEMS AP-04 IP-14 · der Dialog prüft, was er selbst weiß', () => {
       folgenSatz({ ...gemeinsam, rolle: 'vergleich', zweck: 'Plausibilität', rueckwirkendAbzeichen: null }),
     ).toBe(
       'MS-01 vergleicht ab 20.10.2026, 10:15 Uhr Netzzähler Halle 1 · Wirkleistung ' +
-        '(liest den Bezugs-Teil des Werts) (Plausibilität). Beide Werte stehen nebeneinander; bewertet wird nichts.',
+        '(liest den Bezugs-Teil des Werts) (Plausibilität). Beide Werte stehen nebeneinander; keiner ersetzt den anderen. Liefern beide eine Monatsmenge, steht darunter die Abweichung gegen Ihre Toleranz — ohne Ursache.',
     );
   });
 });

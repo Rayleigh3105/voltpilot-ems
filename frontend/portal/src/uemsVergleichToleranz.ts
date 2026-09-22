@@ -1,4 +1,4 @@
-import { request } from './api';
+import { request, type VergleichToleranzFassung } from './api';
 
 /**
  * AP-16 IP-17 (G5, E10 = A): der Monatsvergleich einer Messstelle mit ihren Vergleichsquellen
@@ -32,6 +32,9 @@ export interface VergleichQuelle {
   kanal: string;
   zweck: string;
   monatsvergleich: 'ja' | 'ohne_monatsmenge';
+  /** Die heute wirksame Fassung (IP-18 liest sie für den Toleranz-Dialog; eine ältere Antwort ohne sie: `null`). */
+  toleranz?: VergleichToleranzFassung | null;
+  fassungen?: VergleichToleranzFassung[];
   monate: VergleichMonat[];
 }
 
@@ -73,6 +76,8 @@ export interface BefundZeile {
   schluessel: string;
   zustand: VergleichMonat['zustand'];
   satz: string;
+  /** IP-18: die Vergleichsquelle der Zeile — Ziel des Toleranz-Dialogs. */
+  quelle: VergleichQuelle;
 }
 
 /**
@@ -91,6 +96,6 @@ export function befundZeilen(v: MessstelleVergleich): BefundZeile[] {
       : m.zustand === 'abweichung'
         ? `Abweichung zur Vergleichsquelle ${name} im ${monatWort(m.monat)}: ${prozentWort(m.abweichung_prozent!)} (${toleranz}) — bitte prüfen`
         : `Vergleich ${monatWort(m.monat)} mit ${name}: nicht vergleichbar — ${GRUND[m.grund!]}`;
-    return [{ schluessel: q.quelle_id, zustand: m.zustand, satz }];
+    return [{ schluessel: q.quelle_id, zustand: m.zustand, satz, quelle: q }];
   });
 }

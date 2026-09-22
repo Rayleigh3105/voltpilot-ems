@@ -9412,6 +9412,19 @@ export const api = {
   /** UEMS AP-16 IP-12: Rangliste mit Urteil und Vorschlag; die Einstufung bleibt eine Entscheidung einer Person. */
   bewertungRangliste: (von: string, bis: string) =>
     request<BewertungRangliste>(`/api/v1/unternehmen/bewertung/rangliste?${new URLSearchParams({ von, bis }).toString()}`),
+  /** UEMS AP-16 IP-13: Messabdeckung je Einsatz und je Ort — gemessen, geplant (Menge null, nie 0), Ersatz, ungemessen. */
+  bewertungMessabdeckung: (von: string, bis: string) =>
+    request<BewertungMessabdeckung>(`/api/v1/unternehmen/bewertung/messabdeckung?${new URLSearchParams({ von, bis }).toString()}`),
+  /** UEMS AP-16 IP-15: die Messmittel-Angaben des Einbaus; ohne Angabe `nicht_erhoben` (G3). */
+  geraetMessmittel: (id: string) => request<MessmittelAngaben>(`/api/v1/geraete/${id}/messmittel`),
+  /** Trägt die ganze Angabe ein; der Beleg ist ein Verweis mit SHA-256 — die Datei verlässt den Browser nie (G2). */
+  geraetMessmittelEintragen: (id: string, body: MessmittelEintrag) =>
+    request<MessmittelAngaben>(`/api/v1/geraete/${id}/messmittel`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** UEMS AP-16 IP-17: neue Toleranz-Fassung einer Vergleichsquelle; gilt ab dem laufenden Monat, nie rückwirkend. */
+  vergleichToleranzEintragen: (messstelleId: string, quelleId: string, body: { prozent: string; begruendung: string }) =>
+    request<VergleichToleranzFassung>(`/api/v1/messstellen/${messstelleId}/quellen/${quelleId}/toleranz`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
   bewertungKriterien: () => request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien`),
   bewertungKriterienSpeichern: (body: BewertungKriterienSpeichern) =>
     request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -9563,6 +9576,65 @@ export interface BewertungRangliste {
   anlagen: { id: string; name: string; ab: string | null; nenner: string | null; zugeordnet: string | null; rest: string | null; rest_anteil_prozent: string | null; zustand: string }[];
   einsaetze: BewertungRanglisteEinsatz[]; weitere_traeger: BewertungRanglisteEinsatz[];
 }
+/** UEMS AP-16 IP-13 (`BewertungMessabdeckung*`): Mengen als Dezimaltext; `null` heißt keine Werte, nie 0. */
+export interface BewertungMessabdeckungMesswert { id: string; kennzeichen: string; ort: string | null; menge: string | null; einheit: string | null }
+export interface BewertungMessabdeckungPlan {
+  messstelle_id: string | null; kennzeichen: string | null; ort: string | null; keine_datenquelle_seit: string | null; messbedarf: string | null;
+}
+export interface BewertungMessabdeckungRest { anlage_id: string; anlage: string; menge: string | null; anteil_prozent: string | null }
+export interface BewertungMessabdeckungEinsatz {
+  id: string; kennzeichen: string; name: string; prozess_id: string; traeger: EnergieTraeger; einheit: string | null; menge: string | null;
+  gemessen: BewertungMessabdeckungMesswert[]; geplant: BewertungMessabdeckungPlan[]; ersatz: BewertungMessabdeckungMesswert[];
+  ungemessen: BewertungMessabdeckungRest[];
+}
+export interface BewertungMessabdeckungOrt {
+  art: 'anlage' | 'standort' | 'gebaeude' | 'bereich' | 'unternehmen' | 'ort'; id: string | null; kennzeichen: string | null; name: string | null;
+  traeger: EnergieTraeger; einheit: string | null; gemessen: BewertungMessabdeckungMesswert[]; geplant: BewertungMessabdeckungPlan[];
+  ersatz: BewertungMessabdeckungMesswert[]; ungemessen: BewertungMessabdeckungRest | null;
+}
+export interface BewertungMessabdeckung {
+  von: string; bis: string; umfang_id: string | null; umfang_fassung: number | null; teilansicht: boolean;
+  summe: {
+    nenner: BewertungRangliste['nenner']; gemessen_zugeordnet: string | null; abdeckung_prozent: string | null;
+    k8: 'ueber_schwelle' | 'unter_schwelle' | 'nicht_anwendbar'; ersatz: string | null; ungemessen: string | null; ungemessen_prozent: string | null;
+  };
+  je_einsatz: BewertungMessabdeckungEinsatz[]; je_ort: BewertungMessabdeckungOrt[];
+}
+
+/** UEMS AP-16 IP-15 (G1–G3): Angaben am EINBAU; `null` heißt nicht erhoben, nie ein Vorgabewert. */
+export type MessmittelPruefungsart = 'eichung' | 'mid_konformitaet' | 'kalibrierung' | 'werksbescheinigung' | 'keine' | 'nicht_erhoben';
+export interface MessmittelBeleg { bezeichnung: string; ablage: string | null; sha256: string; person: BewertungAkteur | null; zeitpunkt: string }
+export interface MessmittelWandler {
+  fassung: string; art: 'wandler_strom' | 'wandler_spannung'; wert: Record<string, unknown>; gueltig_ab: string; gueltig_bis: string | null;
+  klasse: string | null; zustand: 'erhoben' | 'nicht_erhoben';
+}
+export interface MessmittelAngaben {
+  geraet_id: string; kennzeichen: string; einbau_kennzeichen: string; zustand: 'erhoben' | 'nicht_erhoben';
+  genauigkeitsklasse: string | null; pruefungsart: MessmittelPruefungsart; pruefung_am: string | null; pruefung_gueltig_bis: string | null;
+  beleg: MessmittelBeleg | null; wandler: MessmittelWandler[];
+  /** IP-16 (G4): Katalog-Angaben für Gerätetyp und Karten — getrennt, nie eine Einbau-Angabe. */
+  laut_hersteller: MessmittelHerstellerangabe[];
+}
+export interface MessmittelHerstellerangabe {
+  ziel_art: 'geraet' | 'teil'; ziel: string; bezeichnung: string; hersteller: string; modell: string; zustand: 'belegt' | 'nicht_belegt';
+  klasse: string | null; wert: string | null; bezug: string | null; fundstelle: string | null; source_url: string | null; source_sha256: string | null;
+}
+/** Der PUT: die ganze Angabe. `beleg.sha256` ist im Browser gebildet — nie der Inhalt der Datei. */
+export interface MessmittelEintrag {
+  genauigkeitsklasse: string | null; pruefungsart: MessmittelPruefungsart | null; pruefung_am: string | null; pruefung_gueltig_bis: string | null;
+  beleg: { bezeichnung: string; ablage: string | null; sha256: string } | null;
+  wandler?: { fassung: string; klasse: string | null }[] | null;
+}
+export type MessmittelFehlerCode =
+  | 'anfrage_ungueltig' | 'nicht_gefunden' | 'pruefsumme_ungueltig' | 'beleg_unvollstaendig' | 'pruefungsart_unbekannt'
+  | 'zeitraum_ungueltig' | 'text_zu_lang' | 'fassung_unbekannt' | 'klasse_nur_am_wandler';
+
+/** UEMS AP-16 IP-17: eine Toleranz-Fassung; Fassung 1 ist der Startwert 2 % ohne Person und Begründung. */
+export interface VergleichToleranzFassung {
+  fassung: number; prozent: string; startwert: boolean; gilt_ab_monat: string; begruendung: string | null;
+  person: BewertungAkteur | null; eingetragen_am: string | null;
+}
+
 export interface BewertungKriterium {
   kennung: 'K1' | 'K2' | 'K3' | 'K4' | 'K5' | 'K6' | 'K7' | 'K8';
   schwelle: string | number | null; einheit: '%' | 'kWh' | 'Monate' | null; vergleich: '>=' | '<=' | '=' | 'kumuliert bis' | null;

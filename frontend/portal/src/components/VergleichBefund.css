@@ -31,3 +31,40 @@
   background: var(--vp-c-warn-bg);
   color: var(--vp-c-warn-fg);
 }
+
+/* AP-16 IP-18: „Toleranz ändern“ je Zeile — am Telefon unter dem Satz, ab 640 px rechts daneben. */
+.vp-vgl-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+}
+
+.vp-vgl-satz {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.vp-vgl-knopf {
+  min-height: 36px;
+  padding: 0 var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-field-border, var(--vp-c-border));
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+  color: var(--vp-c-fg, inherit);
+  font: inherit;
+  font-weight: var(--vp-c-fw-700);
+  cursor: pointer;
+}
+
+.vp-vgl-knopf:focus-visible { outline: 2px solid var(--vp-c-primary); outline-offset: 2px; }
+
+.vp-vgl-notiz { margin: var(--vp-c-space-2) 0 0; font-size: var(--vp-c-fs-14); }
+
+.vp-vgl-form { display: grid; gap: var(--vp-c-space-3); }
+.vp-vgl-form > p { margin: 0; }
+.vp-vgl-leise { color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-14); overflow-wrap: break-word; }
+.vp-vgl-label { margin-bottom: calc(-1 * var(--vp-c-space-2)); font-size: var(--vp-c-fs-14); font-weight: var(--vp-c-fw-700); }
+.vp-vgl-textarea { box-sizing: border-box; width: 100%; padding: 12px 16px; border: 1px solid var(--vp-c-field-border, var(--vp-c-border)); border-radius: var(--vp-c-radius); background: var(--vp-c-card); color: inherit; font: inherit; resize: vertical; }
+.vp-vgl-textarea:focus { outline: 2px solid var(--vp-c-primary); outline-offset: 2px; }
+.vp-vgl-gilt { padding: var(--vp-c-space-2) var(--vp-c-space-3); border-radius: var(--vp-c-radius); background: var(--vp-c-muted); font-size: var(--vp-c-fs-14); }

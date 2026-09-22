@@ -297,6 +297,8 @@ function mitVergleichsquellen(liste: MessstelleQuellenListe): MessstelleQuellenL
   };
 }
 
+const startwert = { fassung: 1, prozent: '2', startwert: true, gilt_ab_monat: '2026-11-01', begruendung: null, person: null, eingetragen_am: null };
+
 function r9Vergleich(kennzeichen: string) {
   const monat = (vergleichKwh: string, zustand: string, p: string, befund: boolean) => ({
     monat: '2026-12', fuehrend: '131200', fuehrend_zustand: 'vollständig', vergleich: vergleichKwh,
@@ -306,7 +308,7 @@ function r9Vergleich(kennzeichen: string) {
   const quelle = (id: string, name: string, m: ReturnType<typeof monat>) => ({
     quelle_id: id, entity_id: id, komponente: name, kanal: 'grid.power', zweck: 'Plausibilität', groesse: 'Wirkenergie',
     richtung: 'Bezug', herleitung: 'integration', gueltig_ab: '2026-11-20T07:30:00Z', gueltig_bis: null,
-    monatsvergleich: 'ja', toleranz: null, fassungen: [], monate: [m],
+    monatsvergleich: 'ja', toleranz: startwert, fassungen: [startwert], monate: [m],
   });
   return {
     messstelle_id: MS_IDS.ms06, kennzeichen, von: '2026-12', bis: '2026-12', einheit: 'kWh',
@@ -378,6 +380,12 @@ async function cloud(
       return route.fulfill(json(vergleich ? mitVergleichsquellen(liste) : liste));
     }
     if (vergleich && pfad.endsWith('/vergleich') && methode === 'GET') return route.fulfill(json(r9Vergleich(messstelle.kennzeichen)));
+    if (vergleich && pfad.endsWith('/toleranz') && methode === 'POST') {
+      const b = req.postDataJSON() as { prozent: string; begruendung: string };
+      if (!b.begruendung?.trim()) return route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ code: 'begruendung_fehlt', feld: 'begruendung', message: 'Begründung fehlt' }) });
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ fassung: 2, prozent: b.prozent, startwert: false,
+        gilt_ab_monat: '2027-01-01', begruendung: b.begruendung, person: { sub: null, name: 'Jana Wolff', rolle: null, art: 'kunde' }, eingetragen_am: '2027-01-05T09:00:00+01:00' }) });
+    }
     // Ohne Prozess und Kostenstelle: die Hauptzähler MS-10 und MS-16, und MS-21 (AP-13 IP-6) zeigt nichts Geliehenes.
     const hauptzaehler = ['MS-10', 'MS-16', 'MS-21'].includes(messstelle.kennzeichen);
     if (pfad.endsWith('/prozesse') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneProzesse(messstelle) : prozesseVon(messstelle)));
@@ -542,14 +550,56 @@ test('AP-16 IP-17 · R9: Befund-Zeile unter der Quelle-Karte — 1,1 % passt, 3,
   await expect(zeile).toContainText(
     'Abweichung zur Vergleichsquelle Abrechnungszähler im Dezember 2026: 3,4 % (Toleranz 2 %) — bitte prüfen');
   await expect(zeile).not.toContainText('Ursache');
-  // Nur Text: kein Bedienelement in der Zeile (der Toleranz-Dialog kommt mit IP-18).
-  await expect(zeile.locator('button, a, input, select')).toHaveCount(0);
+  // Seit IP-18 trägt jede Zeile genau einen Hebel: „Toleranz ändern“ — sonst kein Bedienelement.
+  await expect(zeile.locator('button, a, input, select')).toHaveCount(2);
+  await expect(zeile.getByRole('button', { name: 'Toleranz ändern' })).toHaveCount(2);
+  // Der Satz der Quelle-Karte passt zur Befund-Zeile darunter: nebeneinander, kein Ersatz, ohne Ursache.
+  await expect(page.getByTestId('quelle-karte')).toContainText(
+    'Beide Werte stehen nebeneinander; keiner ersetzt den anderen. Liefern beide eine Monatsmenge, steht darunter die Abweichung gegen Ihre Toleranz — ohne Ursache.');
   await zeile.scrollIntoViewIfNeeded();
   await messeUndFotografiere(page, breite, 'ip17-vergleich');
   if (BILDER) {
     // Für die Ansicht: die Befund-Zeile mitten im Fenster, darüber die Quelle-Karte.
     await zeile.evaluate((e) => e.scrollIntoView({ block: 'center' }));
     await page.screenshot({ path: join(BILDER, `ip17-ausschnitt-${breite}.png`) });
+  }
+});
+
+test('AP-16 IP-18 · Toleranz ändern: Begründung Pflicht, gilt ab laufendem Monat, nie rückwirkend', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.clock.setFixedTime(new Date('2027-01-05T09:00:00+01:00'));
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  const gesendet = await cloud(page, { vergleich: true });
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+
+  const zeile = page.getByTestId('vergleich-befund');
+  await zeile.getByRole('listitem').filter({ hasText: 'Abrechnungszähler' }).getByRole('button', { name: 'Toleranz ändern' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Toleranz ändern' });
+  await expect(dialog).toContainText('Vergleichsquelle Abrechnungszähler (Plausibilität). Heute gilt 2 % je Monat — der Startwert.');
+  await expect(dialog.getByTestId('toleranz-gilt-ab')).toHaveText(
+    'Gilt ab Januar 2027 — abgeschlossene Monate bleiben beurteilt wie bisher. Die Toleranz ändert keinen Wert und nennt keine Ursache.');
+  await dialog.getByLabel('Toleranz in % je Monat').fill('3,5');
+  await dialog.getByTestId('toleranz-speichern').click();
+  // Begründung ist Pflicht: der Satz steht, nichts wird gesendet.
+  await expect(dialog.getByRole('alert')).toHaveText('Bitte begründen Sie die neue Toleranz.');
+  expect(gesendet.filter((g) => g.pfad.endsWith('/toleranz'))).toEqual([]);
+  await dialog.getByLabel('Begründung').fill('Abrechnungszähler misst am Übergabepunkt, Wandlerklasse 1 — 3,5 % sind erklärbar.');
+  const dlgBox = page.locator('.vp-modal').first();
+  const ueber = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(ueber).toBe(0);
+  if (BILDER) await dlgBox.screenshot({ path: join(BILDER, `ip18-toleranz-dialog-${breite}.png`) });
+  await dialog.getByTestId('toleranz-speichern').click();
+  await expect(dialog).toBeHidden();
+  expect(gesendet.filter((g) => g.pfad.endsWith('/toleranz'))).toEqual([{
+    methode: 'POST', pfad: `/api/v1/messstellen/${MS_IDS.ms06}/quellen/17000000-0000-4000-8000-000000000009/toleranz`,
+    body: { prozent: '3.5', begruendung: 'Abrechnungszähler misst am Übergabepunkt, Wandlerklasse 1 — 3,5 % sind erklärbar.' },
+  }]);
+  await expect(page.getByTestId('toleranz-notiz')).toHaveText(
+    'Toleranz 3,5 % gilt ab Januar 2027 (Fassung 2). Abgeschlossene Monate bleiben beurteilt wie bisher; kein Wert ändert sich.');
+  if (BILDER) {
+    const block = page.getByTestId('vergleich-befund-block');
+    await block.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    await page.screenshot({ path: join(BILDER, `ip18-quelle-befund-${breite}.png`) });
   }
 });
 

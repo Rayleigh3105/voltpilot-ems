@@ -25,6 +25,8 @@ import {
 } from '../bewertung';
 import { EnergieeinsatzAnlegenDialog } from '../components/EnergieeinsatzDialoge';
 import { RanglisteBereich } from '../components/BewertungEntscheidungen';
+import { istWesentlich, Pruefaufgaben } from '../components/EinsatzMessmittel';
+import { MessabdeckungTabelle } from '../components/MessabdeckungTabelle';
 import { ErrorState, Skeleton } from '../components/States';
 import { UmfangDialog } from '../components/UmfangDialog';
 import { UEMS_NORMGRENZE } from '../glossar';
@@ -186,6 +188,11 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
               setVersuch((v) => v + 1);
             }}
           />}
+
+          {/* AP-16 IP-18 (G3, R8): Prüfaufgaben aus wesentlichen Einsätzen mit Messmitteln ohne Angabe. */}
+          <Pruefaufgaben einsaetze={liste.filter((e) => istWesentlich(historien[e.id])).map((e) => ({ name: `${e.kennzeichen} ${e.name}`, messstellen: e.messstellen }))} />
+          {/* AP-16 IP-18 (§5.3, R5): Messabdeckung je Einsatz und je Ort; ohne Einsatz steht nichts (R11). */}
+          {liste.length > 0 && <MessabdeckungTabelle von={zeitraum.von} bis={zeitraum.bis} zeitraum={zeitraum.label} />}
 
           <section className="vp-bw-einsaetze" aria-labelledby="bw-einsaetze">
             <h2 id="bw-einsaetze">{EINSAETZE_TITEL}</h2>

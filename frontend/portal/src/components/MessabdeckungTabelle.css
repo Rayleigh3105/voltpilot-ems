@@ -1,0 +1,38 @@
+/*
+ * Abdeckungs-Tabelle (UEMS AP-16 IP-18). Rechner: echte Tabelle, Kopfspalte links. Telefon (unter 900 px): jede Zeile
+ * wird eine Karte, jede Zelle trägt ihre Spaltenüberschrift (`data-label`); leere Spalten fallen weg. Kein
+ * waagerechter Seitenlauf — lange Kennungen brechen um.
+ */
+.vp-ma { min-width: 0; }
+.vp-ma-lesehilfe, .vp-ma-satz { margin: 0 0 var(--vp-c-space-3); color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-14); overflow-wrap: break-word; }
+.vp-ma-satz { color: var(--vp-c-fg); }
+.vp-ma-summe { display: grid; gap: var(--vp-c-space-2); margin: 0 0 var(--vp-c-space-3); padding: var(--vp-c-space-3); border-radius: var(--vp-c-radius); background: var(--vp-c-muted); }
+.vp-ma-summe div { display: grid; gap: 2px; min-width: 0; }
+.vp-ma-summe dt { color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-12); font-weight: var(--vp-c-fw-600); }
+.vp-ma-summe dd { margin: 0; font-weight: var(--vp-c-fw-700); overflow-wrap: break-word; }
+.vp-ma-unter { margin: var(--vp-c-space-4) 0 var(--vp-c-space-2); font-size: var(--vp-c-fs-14); }
+.vp-ma-tabelle { width: 100%; border-collapse: collapse; font-size: var(--vp-c-fs-14); }
+.vp-ma-tabelle thead th { padding: var(--vp-c-space-2); border-bottom: 2px solid var(--vp-c-border); color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-12); text-align: left; }
+.vp-ma-tabelle tbody th, .vp-ma-tabelle td { padding: var(--vp-c-space-2); border-bottom: 1px solid var(--vp-c-border); vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+.vp-ma-tabelle tbody th { font-weight: var(--vp-c-fw-600); }
+.vp-ma-kopf { display: flex; flex-direction: column; gap: 2px; }
+.vp-ma-tabelle ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.vp-ma-tabelle td.is-leer { color: var(--vp-c-muted-fg); }
+.vp-ma-zeile.is-rest { background: var(--vp-c-warn-bg); }
+.vp-ma-zeile.is-rest th, .vp-ma-zeile.is-rest td:not(.is-leer) { color: var(--vp-c-warn-fg); }
+.vp-ma-titel { overflow-wrap: anywhere; }
+.vp-ma-leise { color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-12); font-weight: var(--vp-c-fw-400); }
+.vp-ma-menge { font-weight: var(--vp-c-fw-700); white-space: nowrap; }
+@media (min-width: 900px) {
+  .vp-ma-summe { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+@media (max-width: 899px) {
+  .vp-ma-tabelle, .vp-ma-tabelle tbody, .vp-ma-tabelle tr, .vp-ma-tabelle th, .vp-ma-tabelle td { display: block; }
+  .vp-ma-tabelle thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .vp-ma-tabelle tr { margin-bottom: var(--vp-c-space-3); border: 1px solid var(--vp-c-border); border-radius: var(--vp-c-radius); }
+  .vp-ma-tabelle tbody th { border-bottom: 1px solid var(--vp-c-border); }
+  .vp-ma-tabelle td { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: var(--vp-c-space-2); border-bottom: 0; }
+  .vp-ma-tabelle td::before { content: attr(data-label); color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-12); font-weight: var(--vp-c-fw-600); }
+  .vp-ma-tabelle td.is-leer { display: none; }
+  .vp-ma-menge { white-space: normal; }
+}
