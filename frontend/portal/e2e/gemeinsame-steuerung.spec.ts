@@ -141,7 +141,7 @@ for (const breite of [375, 1440]) {
     await expect(m.getByTestId('gs-hinweis')).toHaveText([
       'Box Verwaltung braucht ein Update für die gemeinsame Steuerung.',
       /^Am Gerät PV-Wechselrichter Verwaltung 60 kW ist kein sicherer Rückfallwert hinterlegt — es zählt mit seiner vollen Leistung\./,
-      'Der Ladepark hängt an einer Box, die den Netzanschluss nicht sieht: er bekommt fest 77 kW. An Box Halle 1 bekäme er, was am Anschluss frei ist.',
+      'Der Ladepark hängt an einer Box, die den Netzanschluss nicht sieht: er bekommt höchstens 77 kW. An Box Halle 1 bekäme er, was am Anschluss frei ist.',
       'Die Ladepunkte müssen an der Box hängen, die das Signal des Netzbetreibers bekommt.',
     ]);
     await bild(m, `frage-6-${breite}`);

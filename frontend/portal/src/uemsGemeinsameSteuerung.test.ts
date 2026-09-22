@@ -20,7 +20,7 @@ const PARAGRAF_5_8: Array<{ wo: string; schluessel: SatzSchluessel; werte: Recor
   { wo: 'Regel über zwei Boxen', schluessel: 'regel_ueber_zwei_boxen', werte: { box: 'Halle 1', andere_box: 'Verwaltung' }, satz: 'Diese Regel braucht Werte von Box Halle 1 und steuert ein Gerät an Box Verwaltung. Eine Regel lebt heute auf einer Box.' },
   { wo: 'Verlust-Zeile (R2)', schluessel: 'verlust', werte: { kwh: '160' }, satz: 'Heute 160 kWh nicht erzeugt, weil diese Box den Netzanschluss nicht sieht.' },
   { wo: 'Vorbehalt erhöht (R23)', schluessel: 'vorbehalt_erhoeht', werte: { ladepark: 'Ladepark Verwaltung', kw: '55' }, satz: 'Ihr Verbrauch ist gewachsen: die Reserve für alles Übrige wurde erhöht. Der Ladepark Verwaltung bekommt jetzt höchstens 55 kW.' },
-  { wo: 'Hinweis beim Einrichten (G7)', schluessel: 'hinweis_einrichten', werte: { kw: '77', box: 'Halle 1' }, satz: 'Der Ladepark hängt an einer Box, die den Netzanschluss nicht sieht: er bekommt fest 77 kW. An Box Halle 1 bekäme er, was am Anschluss frei ist.' },
+  { wo: 'Hinweis beim Einrichten (G7)', schluessel: 'hinweis_einrichten', werte: { kw: '77', box: 'Halle 1' }, satz: 'Der Ladepark hängt an einer Box, die den Netzanschluss nicht sieht: er bekommt höchstens 77 kW. An Box Halle 1 bekäme er, was am Anschluss frei ist.' },
   { wo: 'Anhalten', schluessel: 'angehalten', werte: { box: 'Halle 1' }, satz: 'Gemeinsame Steuerung angehalten. Box Halle 1 steuert allein; alle Boxen halten weiter ihren Anteil.' },
   { wo: 'Prüfung läuft', schluessel: 'pruefung_laeuft', werte: {}, satz: 'Eingerichtet · wird geprüft. VoltPilot prüft die Anlage mit einer kurzen Messung und schaltet sie frei.' },
 ];
