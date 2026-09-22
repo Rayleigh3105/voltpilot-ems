@@ -206,7 +206,13 @@ public class MeasurementWriteRepository {
             }
             if (inserted > 0) {
                 updatePointState(event, pointKey, observedAt, raw, decoded, quality);
-                appendTransitions(event, pointKey, observedAt, raw, decoded, quality, meta);
+                // Geteilter Punkt (IP-18b): ein Wechsel ist nur gegen den Vorgänger DERSELBEN
+                // Komponente einer - nie zwischen zwei Zählern an einem point_key. Ohne eindeutige
+                // Reihe lässt sich das nicht sagen, dann entsteht kein Wechsel-Ereignis.
+                if (komponente == null || herkunft != null) {
+                    appendTransitions(event, pointKey, observedAt, raw, decoded, quality, meta,
+                            komponente == null ? null : urteil.entityId());
+                }
                 // AP-08 IP-4: Überlauf (Z6) nur an einem GUTEN Zählerstand der Reihe, der als
                 // führend oder Vergleich gespeichert ist. Eigener Savepoint, wirft nie - ein Fehler
                 // der Erkennung kostet diesen Wert nicht (UeberlaufErkennung).
@@ -384,11 +390,12 @@ public class MeasurementWriteRepository {
     }
 
     private void appendTransitions(MeasurementRawEvent event, String pointKey, Instant at,
-            Value raw, Value decoded, String quality, Meta meta) {
+            Value raw, Value decoded, String quality, Meta meta, UUID reihe) {
         List<Previous> rows = jdbc.query("SELECT decoded_numeric,decoded_text,raw_numeric,raw_text,"
                         + "quality FROM device_measurement_sample "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? AND "
                         + "(time<? OR (time=? AND edge_sequence<?)) "
+                        + (reihe == null ? "" : "AND entity_id=? ")
                         + "ORDER BY time DESC,edge_sequence DESC LIMIT 1",
                 (rs, n) -> {
                     Value dec = new Value(rs.getBigDecimal(1), rs.getString(2));
@@ -397,8 +404,11 @@ public class MeasurementWriteRepository {
                             dec.text() != null ? dec.text() : was.text(), rs.getString(5),
                             Value.prefer(dec, was));
                 },
-                event.tenant_id(), event.site_id(), event.device_id(), pointKey,
-                Timestamp.from(at), Timestamp.from(at), event.sequence());
+                reihe == null
+                        ? new Object[] {event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                                Timestamp.from(at), Timestamp.from(at), event.sequence()}
+                        : new Object[] {event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                                Timestamp.from(at), Timestamp.from(at), event.sequence(), reihe});
         Previous previous = rows.isEmpty() ? null : rows.get(0);
         if (previous == null) {
             return;

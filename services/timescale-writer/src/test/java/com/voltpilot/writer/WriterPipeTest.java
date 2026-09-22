@@ -1280,6 +1280,7 @@ class WriterPipeTest {
      * Mehrdeutigkeit. Zwei Messzeiten: beide gespeichert, je in ihrer Reihe. Derselbe Tick: der
      * alte Box-Schlüssel {@code (device_id, point_key, time, edge_sequence)} lässt bis zum
      * Folgepaket nur die erste Komponente durch; die zweite wird NICHT als gespeichert gezählt.
+     * Ein Wechsel-Ereignis vergleicht nur Werte derselben Komponente, nie zwei Zähler.
      */
     @Test
     void einGeteilterPunktFindetJeKomponenteSeineReihe() throws Exception {
@@ -1331,6 +1332,10 @@ class WriterPipeTest {
         assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
                 + "' AND raw_numeric=999 AND entity_id IS NULL AND role IS NULL"))
                 .as("eine unbekannte Komponente vom Draht wird nie übernommen").isOne();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_event WHERE device_id='" + device
+                + "' AND event_kind='counter_reset'"))
+                .as("101 nach 500 ist kein Rücksetzen: der Vorgänger ist der derselben Komponente")
+                .isZero();
     }
 
     /** Ein Umschlag mit einem GETEILTEN Punkt: je Vorkommen {Komponente, Messzeit, Rohwert}. */
