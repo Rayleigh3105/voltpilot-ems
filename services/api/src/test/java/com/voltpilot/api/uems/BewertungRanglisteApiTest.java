@@ -18,6 +18,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -260,6 +263,19 @@ class BewertungRanglisteApiTest {
         String standPfad = "/api/v1/berichte/" + kennung + "/staende/1";
         assertThat(rufText("GET", standPfad, "IK", null, 200))
                 .isEqualTo(rufText("GET", standPfad, "IK", null, 200));
+        byte[] pdf = rufBytes(standPfad + "/pdf", "IK", 200);
+        assertThat(rufBytes(standPfad + "/pdf", "IK", 200)).isEqualTo(pdf);
+        try (PDDocument dokument = Loader.loadPDF(pdf)) {
+            String text = new PDFTextStripper().getText(dokument).replaceAll("\\s+", " ");
+            assertThat(text).contains(BerichtRegeln.BEWERTUNG_GRENZ_SATZ, "Einstufungen", "Fassung 1", "MB-1");
+            assertThat(text).doesNotContain("SEU", "ISO-wesentlich", "automatisch eingestuft");
+        }
+        byte[] csv = rufBytes(standPfad + "/csv", "IK", 200);
+        assertThat(rufBytes(standPfad + "/csv", "IK", 200)).isEqualTo(csv);
+        assertThat(new String(csv, StandardCharsets.UTF_8)).contains(
+                "# grenz_satz=" + BerichtRegeln.BEWERTUNG_GRENZ_SATZ,
+                "energieeinsatz;name;einstufung;fassung;gueltig_ab;person;begruendung",
+                "EE-1;Spritzguss;wesentlich;1;");
 
         assertThat(ruf("PUT", "/api/v1/unternehmen/energieeinsaetze/" + ids.get("EE-1"), "IK",
                 Map.of("name", "Kunststoffverarbeitung geändert"), 409).path("code").asText())
@@ -589,5 +605,13 @@ class BewertungRanglisteApiTest {
         var r=mvc.perform(b).andReturn().getResponse();
         assertThat(r.getStatus()).as(method+" "+path+" "+r.getContentAsString()).isEqualTo(status);
         return r.getContentAsString(StandardCharsets.UTF_8);
+    }
+    private byte[] rufBytes(String path,String sub,int status) throws Exception {
+        Jwt token=Jwt.withTokenValue("test").header("alg","none").subject(sub).issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600)).claim("tenant_id",tenant.toString()).claim("realm_access",Map.of("roles",List.of())).build();
+        var b=request(HttpMethod.GET,path).with(authentication(new KeycloakRealmRoleConverter().convert(token)));
+        var r=mvc.perform(b).andReturn().getResponse();
+        assertThat(r.getStatus()).as("GET "+path+" "+r.getContentAsString()).isEqualTo(status);
+        return r.getContentAsByteArray();
     }
 }

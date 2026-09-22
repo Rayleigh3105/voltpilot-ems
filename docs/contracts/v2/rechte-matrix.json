@@ -584,6 +584,24 @@
       "anmerkung": null
     },
     {
+      "kennung": "bewertung.abrufen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Energetische Bewertung anlegen · freigeben · abrufen",
+      "herkunft": "AP-16 §6.1 (S1–S5, R7/R10)",
+      "nachtrag": "AP-16 §6.1",
+      "wie": "bericht.unternehmen",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Nur die Vorlage energetische_bewertung; derselbe Unternehmenszaun wie bei bericht.unternehmen, ohne andere Berichtsvorlagen zu öffnen."
+    },
+    {
       "kennung": "export.standort",
       "gruppe": "kennzahlen",
       "kundenwort": "Export je Standort (CSV: Messwerte, Kennzahlen)",
@@ -1809,6 +1827,16 @@
           ],
           "zuordnung": "neu",
           "anmerkung": "Kriterien als Fassung mit Begründung ändern, freigeben oder ablehnen. Lesen über energieeinsatz.ansehen; Vier-Augen nach Unternehmen."
+        },
+        {
+          "handlung": "Energetische Bewertung anlegen · freigeben · abrufen",
+          "wer": "KA U · EM U",
+          "recht": "`bewertung.abrufen`",
+          "kennungen": [
+            "bewertung.abrufen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Nur die Vorlage energetische_bewertung; Bericht-Maschine und Unternehmenszaun bleiben dieselben."
         },
         {
           "handlung": "Energieeinsatz anlegen · bearbeiten · beenden",

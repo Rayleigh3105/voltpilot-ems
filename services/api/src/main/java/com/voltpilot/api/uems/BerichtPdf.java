@@ -81,10 +81,15 @@ public final class BerichtPdf {
             "Zusammenfassung", BerichtCsv.STANDORTE, "Standorte", BerichtCsv.KOSTENSTELLEN, "Prozesse und Kostenstellen",
             BerichtCsv.KENNZAHLEN, "Kennzahlen des Unternehmens", QUALITAET, "Qualität", QUELLENVERZEICHNIS,
             "Quellenverzeichnis");
+    public static final Map<String, String> ABSCHNITTE_BEWERTUNG = geordnet(BerichtCsv.UMFANG, "Umfang",
+            BerichtCsv.RANGLISTE, "Rangliste", BerichtCsv.EINSTUFUNGEN, "Einstufungen",
+            BerichtCsv.MESSABDECKUNG, "Messabdeckung", BerichtCsv.MESSPLANUNG, "Messplanung",
+            BerichtCsv.MESSMITTEL, "Messmittel", QUALITAET, "Qualität", QUELLENVERZEICHNIS, "Quellenverzeichnis");
     /** Die Namen der Vorlagen (Fassung 1, {@code bericht-vorlagen.json}) — der Titel des PDF. */
     public static final Map<String, String> VORLAGEN = geordnet("monatsbericht_standort", "Monatsbericht Standort",
             "jahresbericht_standort", "Jahresbericht Standort", "monatsbericht_unternehmen", "Monatsbericht Unternehmen",
-            "jahresbericht_unternehmen", "Jahresbericht Unternehmen");
+            "jahresbericht_unternehmen", "Jahresbericht Unternehmen", BerichtRegeln.ENERGETISCHE_BEWERTUNG,
+            "Energetische Bewertung");
 
     private static final Map<String, String> SUMMEN = geordnet("netzbezug_kwh", "Netzbezug", "einspeisung_kwh",
             "Einspeisung", "pv_erzeugung_kwh", "PV-Erzeugung", "speicher_laden_kwh", "Speicher laden",
@@ -125,8 +130,10 @@ public final class BerichtPdf {
         String ebene = kopf.path("zeitraum").path("art").asText();
         String wasserzeichen = stand.ersetztDurchNr() == null ? null
                 : BerichtRegeln.ersetztDurch(stand.ersetztDurchNr(), stand.ersetztAm(), zone);
+        boolean bewertung = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(kopf.path("vorlage").asText());
         boolean unternehmen = BerichtRegeln.UNTERNEHMEN.equals(kopf.path("geltung").path("art").asText());
-        Map<String, String> abschnitte = unternehmen ? ABSCHNITTE_UNTERNEHMEN : ABSCHNITTE_STANDORT;
+        Map<String, String> abschnitte = bewertung ? ABSCHNITTE_BEWERTUNG
+                : unternehmen ? ABSCHNITTE_UNTERNEHMEN : ABSCHNITTE_STANDORT;
         try (TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBuffer(SCHRIFT_DATEI));
                 PDDocument doc = new PDDocument()) {
             Setzer s = new Setzer(doc, PDType0Font.load(doc, ttf, true), ttf.getUnicodeCmapLookup(), wasserzeichen);
@@ -143,6 +150,12 @@ public final class BerichtPdf {
                     case BerichtCsv.STANDORTE -> standorte(s, abzug, zone, ebene);
                     case BerichtCsv.KOSTENSTELLEN -> kostenstellen(s, abzug.path(BerichtCsv.KOSTENSTELLEN), ebene);
                     case BerichtCsv.KENNZAHLEN -> kennzahlen(s, abzug.path(BerichtCsv.KENNZAHLEN), zone, ebene);
+                    case BerichtCsv.UMFANG -> umfang(s, abzug.path(BerichtCsv.UMFANG));
+                    case BerichtCsv.RANGLISTE -> rangliste(s, abzug.path(BerichtCsv.RANGLISTE));
+                    case BerichtCsv.EINSTUFUNGEN -> einstufungen(s, abzug.path(BerichtCsv.EINSTUFUNGEN));
+                    case BerichtCsv.MESSABDECKUNG -> messabdeckung(s, abzug.path(BerichtCsv.MESSABDECKUNG));
+                    case BerichtCsv.MESSPLANUNG -> messplanung(s, abzug);
+                    case BerichtCsv.MESSMITTEL -> messmittel(s, abzug.path(BerichtCsv.MESSMITTEL));
                     case QUALITAET -> qualitaet(s, abzug.path(QUALITAET), zone);
                     case QUELLENVERZEICHNIS -> quellenverzeichnis(s, abzug);
                     default -> throw new IllegalStateException("Abschnitt " + a.getKey());
@@ -167,6 +180,10 @@ public final class BerichtPdf {
         JsonNode geltung = kopf.path("geltung");
         s.titel(VORLAGEN.getOrDefault(vorlage, vorlage));
         s.absatz(geltung(geltung), UEBERSCHRIFT, SCHWARZ);
+        if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(vorlage)) {
+            s.abstand(4);
+            s.absatz(BerichtRegeln.BEWERTUNG_GRENZ_SATZ, NORMAL, GRAU);
+        }
         s.abstand(6);
         List<String[]> paare = new ArrayList<>();
         paare.add(paar("Bericht", kopf.path("bericht").asText()));
@@ -334,6 +351,121 @@ public final class BerichtPdf {
                 new Spalte("Zustand", 78, false), new Spalte("Nachweis", 0, false)), zeilen);
     }
 
+    private static void umfang(Setzer s, JsonNode u) throws IOException {
+        s.paare(List.of(paar("Fassung", textOderStrich(u.path("fassung"))),
+                paar("Datengrundlage", tag(u.path("von")) + "–" + tag(u.path("bis"))),
+                paar("Teilansicht", u.path("teilansicht").asBoolean(false) ? "ja" : "nein")));
+    }
+
+    private static void rangliste(Setzer s, JsonNode r) throws IOException {
+        JsonNode n = r.path("nenner");
+        s.paare(List.of(paar("Stromeinsatz", wert(n.path("wert"), text(n.path("einheit")))),
+                paar("Anlagen", textOderStrich(n.path("anlagen"))),
+                paar("Zugeordnet", wert(r.path("zugeordnet"), n.path("einheit").asText(null))),
+                paar("Rest", wert(r.path("rest"), n.path("einheit").asText(null))),
+                paar("Abdeckung", prozent(r.path("abdeckung_prozent"))),
+                paar("Kriterien-Fassung", textOderStrich(r.path("kriterien").path("fassung")))));
+        List<List<List<String>>> zeilen = new ArrayList<>();
+        for (String gruppe : List.of("einsaetze", "weitere_traeger")) {
+            r.path(gruppe).forEach(e -> zeilen.add(List.of(
+                    List.of(benannt(e.path("kennzeichen"), e.path("name"))),
+                    List.of(textOderStrich(e.path("traeger"))),
+                    List.of(wert(e.path("menge"), text(e.path("einheit")))),
+                    List.of(prozent(e.path("anteil_prozent")), e.path("rang").isIntegralNumber()
+                            ? "Rang " + e.path("rang").asInt() : ErgebnisZustand.OHNE_ZAHL),
+                    List.of(textOderStrich(e.path("vorschlag"))))));
+        }
+        if (zeilen.isEmpty()) {
+            s.absatz("Noch keine Energieeinsätze.", NORMAL, GRAU);
+        } else {
+            s.tabelle(List.of(new Spalte("Energieeinsatz", 130, false), new Spalte("Träger", 58, false),
+                    new Spalte("Menge", 70, true), new Spalte("Anteil", 68, false),
+                    new Spalte("Vorschlag", 0, false)), zeilen);
+        }
+    }
+
+    private static void einstufungen(Setzer s, JsonNode einstufungen) throws IOException {
+        if (einstufungen.isEmpty()) {
+            s.absatz("Noch keine Einstufung.", NORMAL, GRAU);
+            return;
+        }
+        List<List<List<String>>> zeilen = new ArrayList<>();
+        einstufungen.forEach(e -> zeilen.add(List.of(
+                List.of(benannt(e.path("einsatz"), e.path("name_zum_datenstand"))),
+                List.of(textOderStrich(e.path("einstufung"))),
+                List.of(e.path("fassung").isIntegralNumber() ? "Fassung " + e.path("fassung").asInt()
+                        : ErgebnisZustand.OHNE_ZAHL),
+                List.of(e.path("gueltig_ab").isTextual() ? "seit " + tag(e.path("gueltig_ab")) : ErgebnisZustand.OHNE_ZAHL,
+                        textOderStrich(e.path("person"))),
+                List.of(textOderStrich(e.path("begruendung"))))));
+        s.tabelle(List.of(new Spalte("Energieeinsatz", 125, false), new Spalte("Einstufung", 72, false),
+                new Spalte("Fassung", 62, false), new Spalte("Seit / Person", 100, false),
+                new Spalte("Begründung", 0, false)), zeilen);
+    }
+
+    private static void messabdeckung(Setzer s, JsonNode a) throws IOException {
+        JsonNode summe = a.path("summe");
+        s.paare(List.of(paar("Abdeckung", prozent(summe.path("abdeckung_prozent"))),
+                paar("Gemessen zugeordnet", wert(summe.path("gemessen_zugeordnet"),
+                        text(summe.path("nenner").path("einheit")))),
+                paar("Ersatz", textOderStrich(summe.path("ersatz"))),
+                paar("Ungemessen", wert(summe.path("ungemessen"), text(summe.path("nenner").path("einheit"))))));
+        List<List<List<String>>> zeilen = new ArrayList<>();
+        a.path("je_einsatz").forEach(e -> zeilen.add(List.of(
+                List.of(benannt(e.path("kennzeichen"), e.path("name"))),
+                liste(e.path("gemessen"), "kennzeichen"), liste(e.path("geplant"), "kennzeichen"),
+                liste(e.path("ersatz"), "kennzeichen"), liste(e.path("ungemessen"), "anlage"))));
+        if (!zeilen.isEmpty()) {
+            s.tabelle(List.of(new Spalte("Energieeinsatz", 125, false), new Spalte("Gemessen", 86, false),
+                    new Spalte("Geplant", 86, false), new Spalte("Ersatz", 86, false),
+                    new Spalte("Ungemessen", 0, false)), zeilen);
+        }
+    }
+
+    private static void messplanung(Setzer s, JsonNode abzug) throws IOException {
+        JsonNode planung = abzug.path(BerichtCsv.MESSPLANUNG);
+        if (planung.isEmpty()) {
+            s.absatz("Kein Messbedarf eingetragen.", NORMAL, GRAU);
+            return;
+        }
+        Map<String, String> einsaetze = new LinkedHashMap<>();
+        for (String gruppe : List.of("einsaetze", "weitere_traeger")) {
+            abzug.path(BerichtCsv.RANGLISTE).path(gruppe).forEach(e ->
+                    einsaetze.put(text(e.path("id")), text(e.path("kennzeichen"))));
+        }
+        List<List<List<String>>> zeilen = new ArrayList<>();
+        planung.forEach(m -> zeilen.add(List.of(
+                List.of(textOderStrich(m.path("kennzeichen")), Objects.requireNonNullElse(
+                        einsaetze.get(text(m.path("einsatz_id"))), ErgebnisZustand.OHNE_ZAHL)),
+                List.of(textOderStrich(m.path("wortlaut")), verbunden(TRENNER, text(m.path("ort")), text(m.path("groesse")))),
+                List.of(textOderStrich(m.path("zustand")), m.path("frist").isTextual()
+                        ? "Frist " + tag(m.path("frist")) : ErgebnisZustand.OHNE_ZAHL),
+                List.of(verbunden(TRENNER, text(m.path("messstelle")), text(m.path("begruendung")))))));
+        s.tabelle(List.of(new Spalte("Messbedarf", 78, false), new Spalte("Aufgabe", 180, false),
+                new Spalte("Zustand", 92, false), new Spalte("Einlösung / Grund", 0, false)), zeilen);
+    }
+
+    private static void messmittel(Setzer s, JsonNode messmittel) throws IOException {
+        if (messmittel.isEmpty()) {
+            s.absatz("Keine Messmittel-Angabe.", NORMAL, GRAU);
+            return;
+        }
+        List<List<List<String>>> zeilen = new ArrayList<>();
+        messmittel.forEach(m -> {
+            JsonNode beleg = m.path("beleg");
+            zeilen.add(List.of(List.of(benannt(m.path("geraet"), m.path("einbau"))),
+                    List.of(textOderStrich(m.path("genauigkeitsklasse"))),
+                    List.of(textOderStrich(m.path("pruefungsart")), m.path("pruefung_am").isTextual()
+                            ? "am " + tag(m.path("pruefung_am")) : ErgebnisZustand.OHNE_ZAHL,
+                            m.path("pruefung_gueltig_bis").isTextual()
+                                    ? "gültig bis " + tag(m.path("pruefung_gueltig_bis")) : ErgebnisZustand.OHNE_ZAHL),
+                    List.of(verbunden(TRENNER, text(beleg.path("bezeichnung")), text(beleg.path("ablage")),
+                            text(beleg.path("sha256"))))));
+        });
+        s.tabelle(List.of(new Spalte("Gerät / Einbau", 120, false), new Spalte("Klasse", 58, false),
+                new Spalte("Prüfung", 125, false), new Spalte("Beleg", 0, false)), zeilen);
+    }
+
     private static void qualitaet(Setzer s, JsonNode q, ZoneId zone) throws IOException {
         List<String[]> paare = new ArrayList<>();
         paare.add(paar("Abdeckung", q.path("abdeckung_min_prozent").isNumber()
@@ -381,6 +513,26 @@ public final class BerichtPdf {
                 text(k.path("name_zum_datenstand"))));
         abzug.path(BerichtCsv.STANDORTE).forEach(st -> namen.putIfAbsent(st.path("kennzeichen").asText(),
                 text(st.path("name_zum_datenstand"))));
+        JsonNode umfang = abzug.path(BerichtCsv.UMFANG);
+        if (!umfang.isMissingNode()) {
+            namen.putIfAbsent("Umfang", "Betrachtungsumfang");
+            merke(fassungen, "Umfang", umfang.path("fassung").isIntegralNumber()
+                    ? "Fassung " + umfang.path("fassung").asInt() : null);
+        }
+        for (String gruppe : List.of("einsaetze", "weitere_traeger")) {
+            abzug.path(BerichtCsv.RANGLISTE).path(gruppe).forEach(e ->
+                    namen.putIfAbsent(e.path("kennzeichen").asText(), text(e.path("name"))));
+        }
+        abzug.path(BerichtCsv.EINSTUFUNGEN).forEach(e -> {
+            String kz = e.path("einsatz").asText();
+            namen.putIfAbsent(kz, text(e.path("name_zum_datenstand")));
+            merke(fassungen, kz, e.path("fassung").isIntegralNumber()
+                    ? "Einstufung Fassung " + e.path("fassung").asInt() : null);
+        });
+        abzug.path(BerichtCsv.MESSPLANUNG).forEach(m -> namen.putIfAbsent(m.path("kennzeichen").asText(),
+                text(m.path("wortlaut"))));
+        abzug.path(BerichtCsv.MESSMITTEL).forEach(m -> namen.putIfAbsent(m.path("einbau").asText(),
+                text(m.path("geraet"))));
         List<List<List<String>>> zeilen = new ArrayList<>();
         verzeichnis.forEach(q -> {
             String kz = q.asText();
@@ -494,6 +646,30 @@ public final class BerichtPdf {
 
     private static String benannt(JsonNode kennzeichen, JsonNode name) {
         return verbunden(" ", text(kennzeichen), text(name));
+    }
+
+    private static String textOderStrich(JsonNode n) {
+        return Objects.requireNonNullElse(text(n), ErgebnisZustand.OHNE_ZAHL);
+    }
+
+    private static String wert(JsonNode n, String einheit) {
+        String roh = text(n);
+        if (roh == null || roh.isBlank()) return ErgebnisZustand.OHNE_ZAHL;
+        try {
+            return ungerundet(new BigDecimal(roh), einheit);
+        } catch (NumberFormatException e) {
+            return verbunden(" ", roh, einheit);
+        }
+    }
+
+    private static String prozent(JsonNode n) {
+        return wert(n, ErgebnisZustand.PROZENT);
+    }
+
+    private static List<String> liste(JsonNode werte, String feld) {
+        List<String> raus = new ArrayList<>();
+        werte.forEach(w -> raus.add(textOderStrich(w.path(feld))));
+        return raus.isEmpty() ? List.of(ErgebnisZustand.OHNE_ZAHL) : raus;
     }
 
     private static String tag(JsonNode n) {

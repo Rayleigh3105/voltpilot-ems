@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -68,6 +69,35 @@ class BerichtPdfTest {
                 standEins.pruefsumme(), 2, t("2026-11-16T14:20:00+01:00"));
         assertThat(BerichtPdf.datei(nummerEins, ersetzt)).as("ersetzt, zweimal").isEqualTo(BerichtPdf.datei(nummerEins, ersetzt))
                 .as("das Wasserzeichen ändert die Datei").isNotEqualTo(eins);
+    }
+
+    /** AP-16 IP-22: die Bewertung ist eine deterministische Tabelle; Grenz-Satz und Kundensprache stehen im PDF-Text. */
+    @Test
+    void bewertungIstByteGleichHatPruefsummenIdUndAchtTabellen() throws Exception {
+        ObjectNode abzug = BerichtBewertungTestdaten.aus(nummerEins);
+        String kanonisch = BerichtRegeln.kanonisch(abzug);
+        BerichtCsv.Stand stand = new BerichtCsv.Stand(2, t("2026-11-17T15:42:00+01:00"), "Ines Kaltenbach",
+                BerichtRegeln.pruefsumme(kanonisch), null, null);
+
+        byte[] eins = BerichtPdf.datei(abzug, stand);
+        byte[] zwei = BerichtPdf.datei(EXAKT.readTree(kanonisch), stand);
+        assertThat(zwei).isEqualTo(eins);
+        String pdfText = text(eins);
+        assertThat(pdfText.replaceAll("\\s+", " ")).contains(BerichtRegeln.BEWERTUNG_GRENZ_SATZ);
+        assertThat(pdfText).contains("Umfang", "Rangliste", "Einstufungen",
+                "Messabdeckung", "Messplanung", "Messmittel", "Qualität", "Quellenverzeichnis",
+                "EE-1 Spritzguss", "wesentlich", "Fassung 4", "MB-1", "Netzzähler Halle 1");
+        assertThat(pdfText).doesNotContain("SEU", "ISO-wesentlich", "automatisch eingestuft");
+        assertThat(Files.readString(Path.of("..", "..", "frontend", "portal", "src", "glossar.ts")))
+                .contains("'" + BerichtRegeln.BEWERTUNG_GRENZ_SATZ + "'");
+
+        try (PDDocument d = Loader.loadPDF(eins)) {
+            byte[] erwartet = java.util.Arrays.copyOf(MessageDigest.getInstance("SHA-256")
+                    .digest(stand.pruefsumme().getBytes(StandardCharsets.UTF_8)), 16);
+            assertThat(((org.apache.pdfbox.cos.COSString) d.getDocument().getTrailer().getCOSArray(COSName.ID)
+                    .getObject(0)).getBytes())
+                    .containsExactly(erwartet);
+        }
     }
 
     /** Text-Extraktion: Kennung, Stand, Datenstand und Prüfsumme sind lesbar, nicht nur gezeichnet — dazu B1 an MS-12. */
@@ -167,14 +197,15 @@ class BerichtPdfTest {
             String schluessel = v.path("schluessel").asText();
             assertThat(v.path("fassung").asInt()).isEqualTo(1);
             if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(schluessel)) {
-                assertThat(BerichtPdf.VORLAGEN).doesNotContainKey(schluessel);
-                continue;
+                assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
             }
             assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
             Map<String, String> soll = new LinkedHashMap<>();
             v.path("abschnitte").forEach(a -> soll.put(a.path("schluessel").asText(), a.path("titel").asText()));
-            Map<String, String> ist = BerichtRegeln.UNTERNEHMEN.equals(v.path("geltung_art").asText())
-                    ? BerichtPdf.ABSCHNITTE_UNTERNEHMEN : BerichtPdf.ABSCHNITTE_STANDORT;
+            Map<String, String> ist = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(schluessel)
+                    ? BerichtPdf.ABSCHNITTE_BEWERTUNG
+                    : BerichtRegeln.UNTERNEHMEN.equals(v.path("geltung_art").asText())
+                            ? BerichtPdf.ABSCHNITTE_UNTERNEHMEN : BerichtPdf.ABSCHNITTE_STANDORT;
             Map<String, String> vorlageOhneAbzugsLuecken = new LinkedHashMap<>(soll);
             vorlageOhneAbzugsLuecken.keySet().retainAll(ist.keySet());
             assertThat(ist).as(schluessel).containsExactlyEntriesOf(vorlageOhneAbzugsLuecken);

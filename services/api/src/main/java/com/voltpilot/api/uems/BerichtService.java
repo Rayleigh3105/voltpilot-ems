@@ -314,10 +314,6 @@ public class BerichtService {
     private Datei ausgabe(String kennung, int nr, ProtokollAkteur wer, String handlung, String format, Ausgabe ausgabe) {
         Zugriff z = zugriff(kennung, wer, handlung);
         Kopf kopf = z.kopf();
-        // IP-22 hängt die Ausgabe der neuen Abzugsform ein. Bis dahin gibt es für sie bewusst keine Datei.
-        if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(kopf.vorlage())) {
-            throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
-        }
         StandZeile s = geprueft(kopf, nr);
         Instant ersetztAm = s.ersetztDurchNr() == null ? null : repo.staende(kopf.tenant(), kopf.id()).stream()
                 .filter(x -> x.nr() == s.ersetztDurchNr()).map(StandZeile::freigegebenAm).findFirst().orElseThrow();
@@ -360,7 +356,7 @@ public class BerichtService {
         Geltung g = geltung(standort, geltungId);
         Benutzer b = aufrufer.benutzer(wer);
         DarfErgebnis d = Geltungsbereich.requireScope(b, rechteKundenbereich(),
-                BerichtRegeln.kennung(BerichtRechte.ANLEGEN, v.geltungArt()),
+                BerichtRechte.kennung(BerichtRechte.ANLEGEN, v.geltungArt(), v.schluessel()),
                 standort ? g.id().toString() : null, jetzt, BerichtAbgelehnt::rechte);
         ZoneId zone = repo.zeitzone(standort ? g.id() : null);
         if (BerichtRegeln.DATENGRUNDLAGE.equals(v.zeitraumArt()) && (zeitraum == null || zeitraum.isBlank())) {
@@ -632,13 +628,14 @@ public class BerichtService {
         Kopf kopf = repo.bericht(kennung).orElseThrow(() -> BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
         Benutzer b = aufrufer.benutzer(wer);
         Kundenbereich k = rechteKundenbereich();
-        DarfErgebnis d = Geltungsbereich.requireScope(b, k, BerichtRegeln.kennung(handlung, kopf.geltungArt()),
+        DarfErgebnis d = Geltungsbereich.requireScope(b, k,
+                BerichtRechte.kennung(handlung, kopf.geltungArt(), kopf.vorlage()),
                 kopf.standortId() == null ? null : kopf.standortId().toString(), jetzt, BerichtAbgelehnt::rechte);
         return new Zugriff(kopf, d, b, k, jetzt);
     }
 
     private static DarfErgebnis darf(Benutzer b, Kundenbereich k, String handlung, Kopf kopf, Instant jetzt) {
-        return Geltungsbereich.scope(b, k, BerichtRegeln.kennung(handlung, kopf.geltungArt()),
+        return Geltungsbereich.scope(b, k, BerichtRechte.kennung(handlung, kopf.geltungArt(), kopf.vorlage()),
                 kopf.standortId() == null ? null : kopf.standortId().toString(), jetzt);
     }
 
@@ -646,6 +643,10 @@ public class BerichtService {
     private static void irgendwoLesbar(Benutzer b, Kundenbereich k, Instant jetzt) {
         DarfErgebnis nein = Geltungsbereich.scope(b, k, BerichtRechte.UNTERNEHMEN, null, jetzt);
         if (nein.darf()) {
+            return;
+        }
+        DarfErgebnis bewertung = Geltungsbereich.scope(b, k, BerichtRechte.BEWERTUNG, null, jetzt);
+        if (bewertung.darf()) {
             return;
         }
         for (RechteAbleitung.Standort s : k.standorte()) {

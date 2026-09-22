@@ -7,7 +7,11 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Der Berichts-CSV eines Berichtsstands (UEMS AP-12 IP-10, E11 DA3) — rein, ohne Spring und ohne Datenbank. Er liest NUR
@@ -43,9 +47,20 @@ public final class BerichtCsv {
     public static final String STANDORTE = "standorte";
     public static final String KOSTENSTELLEN = "kostenstellen";
     public static final String KENNZAHLEN = "kennzahlen";
+    public static final String UMFANG = "umfang";
+    public static final String RANGLISTE = "rangliste";
+    public static final String EINSTUFUNGEN = "einstufungen";
+    public static final String MESSABDECKUNG = "messabdeckung";
+    public static final String MESSPLANUNG = "messplanung";
+    public static final String MESSMITTEL = "messmittel";
+    public static final String QUALITAET = "qualitaet";
+    public static final String QUELLENVERZEICHNIS = "quellenverzeichnis";
     /** Die Abschnitte mit Zeilen je Geltung, in der Folge der Vorlagen (Fassung 1). */
     public static final List<String> ABSCHNITTE_STANDORT = List.of(MESSSTELLEN, KENNZAHLEN);
     public static final List<String> ABSCHNITTE_UNTERNEHMEN = List.of(STANDORTE, KOSTENSTELLEN, KENNZAHLEN);
+    /** Die acht Abschnitte der energetischen Bewertung, je mit eigener Kopfzeile. */
+    public static final List<String> ABSCHNITTE_BEWERTUNG = List.of(UMFANG, RANGLISTE, EINSTUFUNGEN,
+            MESSABDECKUNG, MESSPLANUNG, MESSMITTEL, QUALITAET, QUELLENVERZEICHNIS);
 
     /** Was der Stand über den Abzug hinaus trägt: Nr., Freigabe, Prüfsumme und — wenn ersetzt — durch welche Nr., wann. */
     public record Stand(int nr, Instant freigegebenAm, String freigegebenVon, String pruefsumme, Integer ersetztDurchNr,
@@ -74,9 +89,17 @@ public final class BerichtCsv {
                 geltung.path("name_zum_datenstand").asText(), zeitraum.path("art").asText(),
                 zeitraum.path("schluessel").asText(), zone, stand.nr(), zeit(kopf.path("datenstand")),
                 stand.freigegebenAm(), stand.freigegebenVon(), stand.pruefsumme(), erzeugtAm, erzeugtVon, teilansicht)));
+        boolean bewertung = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(kopf.path("vorlage").asText());
+        if (bewertung) {
+            raus.add("# grenz_satz=" + BerichtRegeln.BEWERTUNG_GRENZ_SATZ);
+        }
         if (stand.ersetztDurchNr() != null) {
             raus.add("# " + WASSERZEICHEN + "="
                     + BerichtRegeln.ersetztDurch(stand.ersetztDurchNr(), stand.ersetztAm(), zone));
+        }
+        if (bewertung) {
+            bewertung(raus, abzug);
+            return raus;
         }
         raus.add(String.join(BerichtRegeln.CSV_TRENNER, BerichtRegeln.CSV_SPALTEN));
         String periode = zeitraum.path("schluessel").asText();
@@ -92,6 +115,90 @@ public final class BerichtCsv {
             }
         }
         return raus;
+    }
+
+    /** AP-16 IP-22: Tabellen statt des Messwert-Trägers — jeder Abschnitt benennt seine eigenen Zellen. */
+    private static void bewertung(List<String> raus, JsonNode abzug) {
+        abschnitt(raus, UMFANG, List.of("id", "fassung", "von", "bis", "teilansicht"));
+        JsonNode u = abzug.path(UMFANG);
+        raus.add(csvZeile(text(u.path("id")), text(u.path("fassung")), text(u.path("von")), text(u.path("bis")),
+                text(u.path("teilansicht"))));
+
+        abschnitt(raus, RANGLISTE, List.of("energieeinsatz", "name", "traeger", "menge", "einheit", "zustand",
+                "anteil_prozent", "rang", "vorschlag", "kriterien_fassung"));
+        JsonNode rangliste = abzug.path(RANGLISTE);
+        for (String gruppe : List.of("einsaetze", "weitere_traeger")) {
+            rangliste.path(gruppe).forEach(e -> raus.add(csvZeile(text(e.path("kennzeichen")),
+                    text(e.path("name")), text(e.path("traeger")), text(e.path("menge")), text(e.path("einheit")),
+                    text(e.path("zustand")), text(e.path("anteil_prozent")), text(e.path("rang")),
+                    text(e.path("vorschlag")), text(rangliste.path("kriterien").path("fassung")))));
+        }
+
+        abschnitt(raus, EINSTUFUNGEN, List.of("energieeinsatz", "name", "einstufung", "fassung", "gueltig_ab",
+                "person", "begruendung"));
+        abzug.path(EINSTUFUNGEN).forEach(e -> raus.add(csvZeile(text(e.path("einsatz")),
+                text(e.path("name_zum_datenstand")), text(e.path("einstufung")), text(e.path("fassung")),
+                text(e.path("gueltig_ab")), text(e.path("person")), text(e.path("begruendung")))));
+
+        abschnitt(raus, MESSABDECKUNG, List.of("energieeinsatz", "name", "traeger", "menge", "einheit", "gemessen",
+                "geplant", "ersatz", "ungemessen"));
+        abzug.path(MESSABDECKUNG).path("je_einsatz").forEach(e -> raus.add(csvZeile(text(e.path("kennzeichen")),
+                text(e.path("name")), text(e.path("traeger")), text(e.path("menge")), text(e.path("einheit")),
+                liste(e.path("gemessen"), "kennzeichen"), liste(e.path("geplant"), "kennzeichen"),
+                liste(e.path("ersatz"), "kennzeichen"), liste(e.path("ungemessen"), "anlage"))));
+
+        Map<String, String> einsaetze = einsaetze(rangliste);
+        abschnitt(raus, MESSPLANUNG, List.of("messbedarf", "energieeinsatz", "wortlaut", "ort", "groesse", "frist",
+                "zustand", "messstelle", "begruendung", "datenstand"));
+        abzug.path(MESSPLANUNG).forEach(m -> raus.add(csvZeile(text(m.path("kennzeichen")),
+                einsaetze.get(text(m.path("einsatz_id"))), text(m.path("wortlaut")), text(m.path("ort")),
+                text(m.path("groesse")), text(m.path("frist")), text(m.path("zustand")),
+                text(m.path("messstelle")), text(m.path("begruendung")), text(m.path("datenstand")))));
+
+        abschnitt(raus, MESSMITTEL, List.of("geraet", "einbau", "genauigkeitsklasse", "pruefungsart", "pruefung_am",
+                "pruefung_gueltig_bis", "beleg", "ablage", "beleg_sha256"));
+        abzug.path(MESSMITTEL).forEach(m -> raus.add(csvZeile(text(m.path("geraet")), text(m.path("einbau")),
+                text(m.path("genauigkeitsklasse")), text(m.path("pruefungsart")), text(m.path("pruefung_am")),
+                text(m.path("pruefung_gueltig_bis")), text(m.path("beleg").path("bezeichnung")),
+                text(m.path("beleg").path("ablage")), text(m.path("beleg").path("sha256")))));
+
+        abschnitt(raus, QUALITAET, List.of("merkmal", "wert"));
+        abzug.path(QUALITAET).fields().forEachRemaining(e -> raus.add(csvZeile(e.getKey(), text(e.getValue()))));
+
+        abschnitt(raus, QUELLENVERZEICHNIS, List.of("kennzeichen"));
+        abzug.path("kopf").path(QUELLENVERZEICHNIS).forEach(q -> raus.add(csvZeile(text(q))));
+    }
+
+    private static void abschnitt(List<String> raus, String schluessel, List<String> spalten) {
+        raus.add("# " + ABSCHNITT + "=" + schluessel);
+        raus.add(String.join(BerichtRegeln.CSV_TRENNER, spalten));
+    }
+
+    private static Map<String, String> einsaetze(JsonNode rangliste) {
+        Map<String, String> raus = new LinkedHashMap<>();
+        for (String gruppe : List.of("einsaetze", "weitere_traeger")) {
+            rangliste.path(gruppe).forEach(e -> raus.put(text(e.path("id")), text(e.path("kennzeichen"))));
+        }
+        return raus;
+    }
+
+    private static String liste(JsonNode liste, String feld) {
+        List<String> raus = new ArrayList<>();
+        liste.forEach(e -> raus.add(Objects.requireNonNullElse(text(e.path(feld)), "")));
+        return String.join(", ", raus);
+    }
+
+    private static String csvZeile(String... zellen) {
+        return Arrays.stream(zellen).map(BerichtCsv::csvZelle)
+                .collect(java.util.stream.Collectors.joining(BerichtRegeln.CSV_TRENNER));
+    }
+
+    private static String csvZelle(String s) {
+        if (s == null) return "";
+        if (s.contains(";") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
+        }
+        return s;
     }
 
     /**

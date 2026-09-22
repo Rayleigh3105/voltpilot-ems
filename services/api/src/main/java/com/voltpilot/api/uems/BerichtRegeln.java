@@ -56,6 +56,9 @@ public final class BerichtRegeln {
     public static final String MONATSBERICHT_UNTERNEHMEN = "monatsbericht_unternehmen";
     public static final String JAHRESBERICHT_UNTERNEHMEN = "jahresbericht_unternehmen";
     public static final String ENERGETISCHE_BEWERTUNG = "energetische_bewertung";
+    /** AP-14/AP-16: derselbe Grenz-Satz im Bewertungs-PDF und -CSV; das Portal hält ihn als {@code UEMS_NORMGRENZE}. */
+    public static final String BEWERTUNG_GRENZ_SATZ = "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen "
+            + "und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.";
 
     public static final String STANDORT = KennzahlRegeln.STANDORT;
     public static final String UNTERNEHMEN = KennzahlRegeln.UNTERNEHMEN;
@@ -139,7 +142,7 @@ public final class BerichtRegeln {
             "bericht_revision_angestossen/bericht", "bericht_entwurf_neu_gebildet/bericht", "bericht_abgerufen/bericht");
 
     public static final List<String> RECHTE = List.of("bericht.standort_abrufen", "bericht.standort_freigeben",
-            "bericht.unternehmen", "export.standort", "export.unternehmen");
+            "bericht.unternehmen", "bewertung.abrufen", "export.standort", "export.unternehmen");
 
     /** G1 — Handlung × Geltung → Kennung der Rechte-Matrix, Schlüssel {@code <geltung>/<handlung>}. */
     public static final Map<String, String> KENNUNG = kennungen();

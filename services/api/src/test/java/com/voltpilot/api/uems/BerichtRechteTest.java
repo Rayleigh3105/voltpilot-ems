@@ -46,10 +46,10 @@ class BerichtRechteTest {
             BerichtRechte.FREIGEBEN, BerichtRechte.VERWERFEN, BerichtRechte.ARCHIVIEREN);
 
     @Test
-    void dieSechsZeilenSindZelleFuerZelleDieDerMatrixDatei() throws Exception {
+    void dieSiebenZeilenSindZelleFuerZelleDieDerMatrixDatei() throws Exception {
         Matrix datei = RechteAbleitung.matrix(JSON.readTree(V2.resolve("rechte-matrix.json").toFile()));
         assertThat(BerichtRechte.MATRIX.aktionen().keySet()).containsExactlyInAnyOrder(BerichtRechte.STANDORT_ABRUFEN,
-                BerichtRechte.STANDORT_FREIGEBEN, BerichtRechte.UNTERNEHMEN, BerichtRechte.EXPORT_STANDORT,
+                BerichtRechte.STANDORT_FREIGEBEN, BerichtRechte.UNTERNEHMEN, BerichtRechte.BEWERTUNG, BerichtRechte.EXPORT_STANDORT,
                 BerichtRechte.EXPORT_UNTERNEHMEN, BerichtRechte.ANSEHEN);
         for (String kennung : BerichtRechte.MATRIX.aktionen().keySet()) {
             assertThat(BerichtRechte.MATRIX.aktion(kennung)).as(kennung).isEqualTo(datei.aktion(kennung));
@@ -73,6 +73,10 @@ class BerichtRechteTest {
             String[] teile = schluessel.split("/");
             assertThat(BerichtRegeln.kennung(teile[1], teile[0])).as(schluessel).isEqualTo(kennung);
         });
+        for (String handlung : HANDLUNGEN) {
+            assertThat(BerichtRechte.kennung(handlung, BerichtRegeln.UNTERNEHMEN,
+                    BerichtRegeln.ENERGETISCHE_BEWERTUNG)).as(handlung).isEqualTo(BerichtRechte.BEWERTUNG);
+        }
     }
 
     /** B13 — die dreizehn Zeilen der Matrix und die Teilansicht je Person, durch die Stelle der Routen. */
