@@ -29,7 +29,7 @@ echten Sekunden. Auf ihm fährt IP-29 das Ergebnisblatt je Matrixzeile.
 | Anlage | Modell | `uems_verbund.py` an der Stelle von `edge/sim`, dieselbe Registerkarte |
 | Broker | **echter Prozess** | `edge-app/test/Dockerfile.broker` |
 | Cloud | *kein Prozess* | Nutzlasten aus den Vertrags-Beispielen und -Vektoren (`nutzlast.py`) |
-| Ladepunkte (OCPP) | *nicht angeschlossen* | im Profil „mittag“ ohne Auto; siehe Grenzen |
+| Ladepunkte (OCPP) | **echter Prozess** am Bezugs-Punkt | sechs `vp-ocpp-sim` (Dienst `ladepunkte`, IP-29); im Profil „mittag“ ohne Auto und nicht angeschlossen |
 
 ## Start
 
@@ -97,6 +97,42 @@ Simulator-Sekunde und Messsekunde im Protokoll (`anlage.stoerungen`).
 | A13 / A13v | Neustart mitten im Eingriff: `docker kill` + `docker start` der Box |
 | A15 | Box lebt, erreicht ihr Gerät nicht: die Anlage beantwortet Modbus nicht |
 
+## Drehbuch und Ergebnisblatt (AP-15 IP-29)
+
+`szenarien.py` fährt jede Zeile der Ausfallmatrix als eigenen Lauf und schreibt
+daraus [das Ergebnisblatt](../../docs/rollout/gemeinsame-steuerung-ausfalltests.md).
+
+```bash
+python3 szenarien.py liste                     # Läufe, Betriebspunkt, T0, Messfenster
+python3 szenarien.py drehbuch A10 --aus /tmp/x # Drehbuch + Dokumente ansehen, ohne Aufbau
+make blatt                                     # alle Läufe nacheinander (~14 h), dann das Blatt
+make blatt-md                                  # nur das Blatt aus protokolle/*.json
+```
+
+- **Ein Lauf je Zeile, nacheinander.** Vor jedem `up`: höchstens zwei
+  Testcontainers anderer Bahnen und ≥ 3 GiB frei, sonst wartet der Läufer;
+  nach jedem Lauf `down -v`. Die Bilder baut er EINMAL je Reihe
+  (`VB_BILDER_FEST`), das Werkzeug fährt er aus einem Schnappschuss unter
+  `$TMPDIR` (eine Reihe dauert Stunden, bash liest ein laufendes Skript
+  stückweise).
+- **Messfenster** = `nach_zeit` der Matrix auf volle Viertelstunden aufgerundet
+  plus zwei volle Viertelstunden (30/45/60 min); R1 und A7 wie `make r1`/`make a7`.
+- **Drehbuch** (`verbund.sh lauf --drehbuch`): je Zeile „<Messsekunde> <Aktion>“ —
+  `stoerung <zeile>`, `zurueck`, `sende <box> <leaf> <datei>` (wie die Cloud,
+  retained), `lokal <box> <topic> <datei>` (lokaler Bus, A11), `lauschen`,
+  `anlage <json>` (z. B. K-1-Rückfall für A10), `cloud stumm|ungueltig` (A3/A9),
+  `tausch` (A14: Nachfolgerin `core-e5` mit neuer Kennung). Nach der Messung
+  hebt der Lauf jede Störung auf, dann schreibt er das Protokoll.
+- **Bezugs-Punkt** (`nacht`, `nacht_a20`): die Anlage verschiebt den Nullpunkt
+  von Box Halle 1 um 400 kW (`NULLPUNKT_NACHT_KW`: Netzzähler, Last,
+  Anschlussleistung), `nutzlast.py --nullpunkt` stellt E-1 die Bezugsgrenze um
+  denselben Betrag tiefer zu (550 → 150 kW). Jede Differenz „Grenze − Zähler“
+  bleibt gleich, gemessen wird am echten Netzpunkt; der Treiber bleibt
+  unverändert. Die sechs Säulen AHR-LP-02…07 sind echte OCPP-1.6J-Ladepunkte
+  (`Dockerfile.ladepunkte`, `ladepunkte.sh`); sie wählen die Box erst an, wenn
+  das Ladepark-Dokument sie in ihre Freigabeliste gesetzt hat, und die lebende
+  Zuteilung braucht `VP_CONSUMER_CONTROL_ENABLED` (nur am Bezugs-Punkt gesetzt).
+
 ## Grenzen (benannt, nicht übersehen)
 
 - **A8 Uhr verstellen geht im Container nicht.** Die Uhr eines Containers ist
@@ -106,13 +142,14 @@ Simulator-Sekunde und Messsekunde im Protokoll (`anlage.stoerungen`).
   Messung kommt vom Core selbst (der Simulator-Tab schickt keinen `ts`). Nötig
   wäre eine Prüf-Verstellung der Uhr im Core; `stoerung.sh A8+` sagt das und
   endet mit Exit 3.
-- **Nur der Mittag ist fahrbar.** Die kompakte Registerkarte trägt int16 ×
-  0,01 kW, also ±327,67 kW. Der Bezugs-Punkt „nacht“ (473 kW Last + 100 kW
-  Speicher + 77 kW Abgang) passt nicht hinein; die Anlage zählt jeden solchen
-  Wert als `ueberlauf` statt ihn abgeschnitten zu senden.
-- **Ladepunkte hängen nicht an.** Die sechs Säulen von E-4 sind OCPP-Geräte; ein
-  OCPP-Ladepunkt-Simulator gehört nicht zu diesem Aufbau. Im Mittag steckt kein
-  Auto, sie ziehen nichts; für den Bezug bräuchte IP-29 einen OCPP-Client.
+- **Die Karte trägt nur ±327,67 kW** (int16 × 0,01 kW). Der Bezugs-Punkt (bis
+  712 kW am Netzpunkt) läuft darum nur mit verschobenem Nullpunkt (siehe oben);
+  ohne ihn zählt die Anlage jeden solchen Wert als `ueberlauf`, statt ihn
+  abgeschnitten zu senden.
+- **Die Säulen fallen nicht auf 4,1 kW.** `vp-ocpp-sim` hält ohne Box sein
+  zuletzt gesetztes Profil; den OCPP-eigenen Rückfall der Referenzdatei
+  (4,1 kW je Säule nach 60 s) bildet er nicht nach. Am Bezugs-Punkt fährt das
+  Drehbuch darum keine Zeile, in der Box Verwaltung ausfällt.
 - **Der Modell-Zähler rauscht nicht.** Ein bitgleich stehender Netzpunkt löst
   die Einfrierprobe der Box aus (Prüf-Verstellung −2,1 kW nach 30 s Stillstand,
   PR 1053) — im Protokoll als kurze Delle auf 95,9 kW sichtbar. Das ist das
@@ -134,5 +171,8 @@ Simulator-Sekunde und Messsekunde im Protokoll (`anlage.stoerungen`).
 | `verbund.yml` | Compose: zwei Boxen (per `extends` aus `edge-app/docker-compose.yml`), Broker, Anlage |
 | `verbund.sh` | Bilder, hoch, zustellen, start, stand, protokoll, runter, `r1` |
 | `stoerung.sh` | die Störungen, wiederholbar, mit `zurueck` |
+| `szenarien.py` | IP-29: Drehbuch je Matrixzeile, Läufer mit Fenster-Tor, Ergebnisblatt |
+| `Dockerfile.ladepunkte`, `ladepunkte.sh` | IP-29: die sechs OCPP-Säulen von E-4 (`vp-ocpp-sim`, unverändert) |
+| `protokolle/` | IP-29: die Protokolle der Läufe, aus denen das Blatt entsteht |
 | `Dockerfile` | die Anlage (Python-Standardbibliothek, Referenzdatei als zweiter Kontext) |
-| `test_uems_verbund.py` | `make test` |
+| `test_uems_verbund.py`, `test_szenarien.py` | `make test` |

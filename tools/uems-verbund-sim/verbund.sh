@@ -5,18 +5,24 @@
 #   verbund.sh r1 [--protokoll <datei>] [--stoerung "<zeile> <sek> <dauer>"]
 #                                hoch, Nutzlasten zustellen, R1 durchfahren,
 #                                Protokoll schreiben, IMMER abbauen
+#   verbund.sh lauf --drehbuch <datei> [--protokoll <datei>]
+#                                wie r1, dazu ein Drehbuch (szenarien.py): je Zeile
+#                                „<messsekunde> <aktion> …“, abgearbeitet im Lauf
 #   verbund.sh hoch | zustellen | start | stand | protokoll <datei> | runter
 #                                die Schritte einzeln (Fehlersuche; `runter` nicht vergessen)
 #
 # Umgebung: VB_PROJEKT (Vorgabe uems-verbund), VB_DAUER_S (2700 = 45 min
-# Messung), VB_ANLAUF_S (300), VB_T0_S (600), VB_PROFIL (mittag), VB_ARBEIT.
+# Messung), VB_ANLAUF_S (300), VB_T0_S (600), VB_PROFIL (mittag), VB_ARBEIT,
+# VB_BILD_ZUSATZ (Vorsatz der Bild-Marke, damit eine Bahn ihre eigenen Bilder
+# fährt), VB_NULLPUNKT_KW, VB_LADEPUNKTE, VB_ZUSTELLUNG, VB_E4_STEUERT (IP-29).
 #
 # Maschinenregel: vor `up` höchstens zwei Testcontainers anderer Bahnen (sonst
 # Exit 75, „paused"), nie zwei Aufbauten zugleich, nach jedem Lauf `down -v`.
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HIER/../.." && pwd)"
+# VB_REPO: szenarien.py fährt einen Schnappschuss des Werkzeugs außerhalb des Repos
+REPO="${VB_REPO:-$(cd "$HIER/../.." && pwd)}"
 PROJEKT="${VB_PROJEKT:-uems-verbund}"
 ARBEIT="${VB_ARBEIT:-${TMPDIR:-/tmp}/uems-verbund-$PROJEKT}"
 # Die Marke der Box-Bilder ist der letzte Commit, der die Box berührt - ein
@@ -24,8 +30,10 @@ ARBEIT="${VB_ARBEIT:-${TMPDIR:-/tmp}/uems-verbund-$PROJEKT}"
 # wird bei jedem `bilder` neu gebaut.
 SHA="$(git -C "$REPO" log -1 --format=%H -- edge-app edge/sim)"
 MARKE="${SHA:0:12}"
-export VB_CORE_IMAGE="vb-edge-core:$MARKE" VB_NODERED_IMAGE="vb-edge-nodered:$MARKE"
-export VB_BROKER_IMAGE="vb-broker:$MARKE" VB_ANLAGE_IMAGE="vb-anlage:lokal"
+Z="${VB_BILD_ZUSATZ:-}"
+export VB_CORE_IMAGE="vb-edge-core:$Z$MARKE" VB_NODERED_IMAGE="vb-edge-nodered:$Z$MARKE"
+export VB_BROKER_IMAGE="vb-broker:$Z$MARKE" VB_ANLAGE_IMAGE="vb-anlage:${Z}lokal"
+export VB_LADEPUNKTE_IMAGE="vb-ladepunkte:$Z$MARKE"
 export VB_PROFIL="${VB_PROFIL:-mittag}" VB_ANLAUF_S="${VB_ANLAUF_S:-300}"
 export VB_DAUER_S="${VB_DAUER_S:-2700}" VB_T0_S="${VB_T0_S:-600}"
 
@@ -34,6 +42,8 @@ SIT=7a000000-0000-4000-8000-0000000000a1
 # bash 3.2 (macOS) kennt keine assoziativen Felder
 geraet() { case "$1" in E-1) echo 7a000000-0000-4000-8000-0000000000e1 ;; E-4) echo 7a000000-0000-4000-8000-0000000000e4 ;; esac; }
 DC=(docker compose -p "$PROJEKT" -f "$HIER/verbund.yml")
+# Die Säulen hängen nur am Bezugs-Punkt an (VB_LADEPUNKTE gesetzt).
+[ -z "${VB_LADEPUNKTE:-}" ] || DC+=(--profile ladepunkte)
 
 mkdir -p "$ARBEIT"
 
@@ -45,6 +55,9 @@ bilder() {
   # Bau, nicht das Artefakt. Stempel wie edge-images.yaml, nur mit „uems-".
   local fehlt=0 b
   docker build -q --build-context "referenz=$REPO/docs/contracts/v2" -t "$VB_ANLAGE_IMAGE" "$HIER" >/dev/null
+  # Die Säulen sind Werkzeug wie die Anlage (vp-ocpp-sim + ladepunkte.sh): billig, jedes Mal
+  docker build -q -t "$VB_LADEPUNKTE_IMAGE" -f "$HIER/Dockerfile.ladepunkte" \
+    --build-context "hier=$HIER" "$REPO/edge-app/core" >/dev/null
   for b in "$VB_CORE_IMAGE" "$VB_NODERED_IMAGE" "$VB_BROKER_IMAGE"; do
     docker image inspect "$b" >/dev/null 2>&1 || fehlt=1
   done
@@ -118,6 +131,20 @@ hoch() {
   done
 }
 
+# Die Säulen wählen die Box erst an, wenn das Ladepark-Dokument sie in die
+# Freigabeliste der Box gesetzt hat - darum NACH dem Zustellen.
+saeulen_warten() {
+  if [ -n "${VB_LADEPUNKTE:-}" ]; then
+    local i=0
+    until "${DC[@]}" logs ladepunkte 2>/dev/null | grep -q "AHR-LP-07: Wagen eingesteckt"; do
+      i=$((i + 1))
+      [ "$i" -lt 120 ] || { echo "die Säulen haben sich nicht verbunden"; "${DC[@]}" logs --tail 30 ladepunkte; return 1; }
+      sleep 1
+    done
+    echo "    6 Säulen an Box E-4 verbunden, je ein Wagen eingesteckt"
+  fi
+}
+
 # Wie die Cloud: retained, QoS 1, auf das Topic der jeweiligen Box.
 senden() { # <verzeichnis> <liste>
   local topic datei
@@ -133,6 +160,8 @@ zustellen() {
   senden "$nl" "$ARBEIT/nutzlasten.txt"
   echo "==> $(wc -l < "$ARBEIT/nutzlasten.txt" | tr -d ' ') Nutzlasten zugestellt (Registry, Anteile, Ladepark, Fahrplan v1, Plan v2 je Box)"
   local b
+  # A12: ein alter Edge-Stand bekommt weder Anteile noch Plan v2 - nichts zu quittieren
+  [ "${VB_ZUSTELLUNG:-}" != ohne_anteile ] || return 0
   for b in E-1 E-4; do
     warte_auf "$b" v2/verbund-anteile-result 'd.get("urteil")' 60 \
       || echo "    WARNUNG: Box $b hat das Anteils-Dokument nicht quittiert"
@@ -156,7 +185,10 @@ cloud_takt() {
       echo "$(date -u +%FT%TZ) stumm" >> "$ARBEIT/cloud-takt.log"; continue
     fi
     runde=$((runde + 1)); nl="$ARBEIT/runde-$runde"
-    python3 "$HIER/nutzlast.py" --aus "$nl" --runde "$runde" --nur-plan > "$nl.txt"
+    local art=()
+    # A9: der Lauf kommt an, aber ungültig (die Box lehnt ihn ab)
+    [ ! -e "$ARBEIT/cloud.ungueltig" ] || art=(--ungueltig)
+    python3 "$HIER/nutzlast.py" --aus "$nl" --runde "$runde" --nur-plan ${art[@]+"${art[@]}"} > "$nl.txt"
     senden "$nl" "$nl.txt"
     echo "$(date -u +%FT%TZ) runde $runde" >> "$ARBEIT/cloud-takt.log"
   done
@@ -175,13 +207,66 @@ warte_lauf() {
   done
 }
 
+# --- Drehbuch-Aktionen (szenarien.py schreibt sie, `lauf` arbeitet sie ab) ---
+
+aktion() { # <aktion> [argumente]
+  local was="$1"; shift
+  case "$was" in
+    stoerung) VB_PROJEKT="$PROJEKT" VB_ARBEIT="$ARBEIT" "$HIER/stoerung.sh" "$1" ;;
+    zurueck) VB_PROJEKT="$PROJEKT" VB_ARBEIT="$ARBEIT" "$HIER/stoerung.sh" zurueck ;;
+    # sende <box> <leaf> <datei>: wie die Cloud, retained, QoS 1
+    sende)
+      docker exec -i "$(broker)" sh -c 'cat > /tmp/d.json' < "$3"
+      docker exec "$(broker)" mosquitto_pub -h 127.0.0.1 -q 1 -r \
+        -t "ems/$TEN/$SIT/$(geraet "$1")/$2" -f /tmp/d.json ;;
+    # lokal <box> <topic> <datei>: auf den lokalen Bus der Box (Handeingriff, A11);
+    # @JETZT@ in der Datei wird zur Sendezeit (die Arbitrierung rechnet TTL ab issued_at)
+    lokal)
+      sed "s/@JETZT@/$(date -u +%Y-%m-%dT%H:%M:%SZ)/g" "$3" \
+        | docker run --rm -i --network "${PROJEKT}_box-$(echo "$1" | tr 'A-Z' 'a-z' | tr -d -)" \
+          --entrypoint mosquitto_pub "$VB_BROKER_IMAGE" -h core -q 1 -t "$2" -s ;;
+    # lauschen <box> <topic> <sekunden>: den lokalen Bus mitschneiden (A11: was
+    # die Arbitrierung aus dem Handeingriff macht) - nach lokal-<box>.txt
+    lauschen)
+      (docker run --rm --network "${PROJEKT}_box-$(echo "$1" | tr 'A-Z' 'a-z' | tr -d -)" \
+        --entrypoint mosquitto_sub "$VB_BROKER_IMAGE" -h core -v -t "$2" -W "$3" \
+        >> "$ARBEIT/lokal-$1.txt" 2>/dev/null || true) & ;;
+    anlage) anlage "$1" >/dev/null ;;
+    cloud) touch "$ARBEIT/cloud.$1" ;;
+    # tausch: A14 - Box Verwaltung wird gegen eine Nachfolgerin getauscht
+    tausch)
+      docker rm -f "$(id_von core-e4)" "$(id_von nodered-e4)" >/dev/null
+      "${DC[@]}" --profile tausch up -d core-e5 nodered-e5 >/dev/null ;;
+    *) echo "unbekannte Aktion $was" >&2; return 2 ;;
+  esac
+  echo "$(date -u +%FT%TZ) mess_s=$(stand | python3 -c 'import json,sys; print(json.load(sys.stdin)["mess_s"])') $was $*" \
+    >> "$ARBEIT/drehbuch.log"
+}
+
+drehbuch_abarbeiten() { # <datei>
+  local t rest m
+  while read -r t rest; do
+    case "$t" in ''|\#*) continue ;; esac
+    while :; do
+      m="$(stand | python3 -c 'import json,sys; print(json.load(sys.stdin)["mess_s"])')"
+      [ "$m" -ge "$t" ] && break
+      sleep 1
+    done
+    # shellcheck disable=SC2086
+    aktion $rest || echo "WARNUNG: Aktion '$rest' bei mess_s $t schlug fehl" >> "$ARBEIT/drehbuch.log"
+  done < "$1"
+}
+
 protokoll() { # <datei>
   local ziel="$1"
   anlage '{"cmd":"protokoll"}' > "$ARBEIT/anlage.json"
   mitschnitt > "$ARBEIT/mitschnitt.txt"
-  "${DC[@]}" logs --no-color core-e1 core-e4 > "$ARBEIT/core.log" 2>&1 || true
+  "${DC[@]}" --profile tausch logs --no-color core-e1 core-e4 core-e5 > "$ARBEIT/core.log" 2>&1 || true
+  local db=()
+  [ ! -e "$ARBEIT/drehbuch.log" ] || db=(--drehbuch "$ARBEIT/drehbuch.log")
+  [ ! -e "$ARBEIT/lokal-E-1.txt" ] || db+=(--lokal "$ARBEIT/lokal-E-1.txt")
   python3 "$HIER/protokoll.py" --anlage "$ARBEIT/anlage.json" --mitschnitt "$ARBEIT/mitschnitt.txt" \
-    --nutzlasten "$ARBEIT/nutzlasten.txt" --sha "$SHA" --aus "$ziel"
+    --nutzlasten "$ARBEIT/nutzlasten.txt" --sha "$SHA" --bilder "$VB_CORE_IMAGE" ${db[@]+"${db[@]}"} --aus "$ziel"
   echo "==> Protokoll $ziel"
 }
 
@@ -195,7 +280,7 @@ aufraeumen() {
 
 runter() {
   echo "==> Aufbau $PROJEKT abbauen"
-  "${DC[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+  "${DC[@]}" --profile tausch --profile ladepunkte down -v --remove-orphans >/dev/null 2>&1 || true
 }
 
 # Eine Störung während des Laufs: "<zeile> <messsekunde> <dauer_s>" (stoerung.sh).
@@ -227,6 +312,7 @@ r1() {
   trap aufraeumen EXIT
   [ "$rc" = 0 ] || return "$rc"
   zustellen
+  saeulen_warten
   cloud_takt &
   TAKT_PID=$!
   start >/dev/null
@@ -246,9 +332,50 @@ r1() {
   protokoll "$ziel"
 }
 
+# Ein Lauf nach Drehbuch (szenarien.py): wie r1, aber jede Aktion zu ihrer
+# Messsekunde; nach der Messung werden alle Störungen aufgehoben (ein
+# angehaltener Broker gäbe sonst seinen Mitschnitt nicht her), dann Protokoll.
+lauf() {
+  local ziel="$ARBEIT/lauf-protokoll.json" buch=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --protokoll) ziel="$2"; shift 2 ;;
+      --drehbuch) buch="$2"; shift 2 ;;
+      *) echo "unbekanntes Argument $1" >&2; return 2 ;;
+    esac
+  done
+  [ -n "$buch" ] || { echo "lauf braucht --drehbuch" >&2; return 2; }
+  # szenarien.py baut die Bilder EINMAL je Reihe (VB_BILDER_FEST=1)
+  [ "${VB_BILDER_FEST:-0}" = 1 ] || bilder
+  local rc=0
+  : > "$ARBEIT/drehbuch.log"
+  for f in cloud.stumm cloud.ungueltig stoerung.aktiv lokal-E-1.txt; do
+    [ ! -e "$ARBEIT/$f" ] || rm "$ARBEIT/$f"
+  done
+  hoch || rc=$?
+  if [ "$rc" = 75 ]; then return 75; fi
+  trap aufraeumen EXIT
+  [ "$rc" = 0 ] || return "$rc"
+  zustellen
+  saeulen_warten || return 1
+  cloud_takt &
+  TAKT_PID=$!
+  start >/dev/null
+  echo "==> Lauf ($VB_PROFIL): $VB_ANLAUF_S s Anlauf + $VB_DAUER_S s Messung (Echtzeit), T0 = Messsekunde $VB_T0_S"
+  drehbuch_abarbeiten "$buch" &
+  STOER_PID=$!
+  warte_lauf
+  kill "$STOER_PID" 2>/dev/null || true; wait "$STOER_PID" 2>/dev/null || true
+  kill "$TAKT_PID" 2>/dev/null || true
+  aktion zurueck >/dev/null 2>&1 || true
+  sleep 3
+  protokoll "$ziel"
+}
+
 case "${1:-}" in
   bilder) bilder ;;
   r1) shift; r1 "$@" ;;
+  lauf) shift; lauf "$@" ;;
   hoch) bilder; hoch ;;
   zustellen) zustellen ;;
   start) start ;;

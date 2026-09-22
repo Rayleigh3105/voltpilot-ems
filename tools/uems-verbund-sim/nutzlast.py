@@ -21,8 +21,20 @@ Der Plan ist ein LAUF: die Box fährt ihn höchstens 20 Minuten (danach
 Lauf für beide Boxen: `--runde N --nur-plan` gibt Fahrplan v1 und Plan v2 mit
 einer neuen, für beide Boxen gleichen `plan_id` und `lauf_nr` 4711 + N − 1.
 
+Der Bezugs-Punkt (AP-15 IP-29, Profil `nacht`): der Plan lädt den Speicher
+100 kW aus dem Netz (zaNacht.e1BattKw), und weil die Anlage den Nullpunkt der
+führenden Box um `--nullpunkt` kW verschiebt (uems_verbund.NULLPUNKT_NACHT_KW),
+bekommt E-1 ihre Bezugsgrenze um denselben Betrag tiefer zugestellt. E-4 misst
+ihren Abgang unverschoben und bekommt alles wie immer.
+
+Varianten des Drehbuchs (szenarien.py): `--ohne-anteile` (A12: ein alter
+Edge-Stand - weder Anteils-Dokument noch Plan v2 noch Ladepark je Box, nur der
+Fahrplan wie heute) und `--ungueltig` (A9: der Lauf kommt an, die Box lehnt ihn
+ab - Plan v2 mit unbekannter schema_version, kein v1-Fahrplan).
+
 Aufruf: nutzlast.py --aus <verzeichnis> [--revision 1] [--runde 1] [--nur-plan]
-                    [--jetzt 2026-09-22T01:00:00Z]
+                    [--profil mittag|nacht|nacht_a20] [--nullpunkt 0]
+                    [--ohne-anteile] [--ungueltig] [--jetzt 2026-09-22T01:00:00Z]
 """
 
 from __future__ import annotations
@@ -31,6 +43,7 @@ import argparse
 import copy
 import datetime as dt
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -51,6 +64,13 @@ ANTEILE = {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.0, "E-4
 EINSPEISEGRENZE_KW = 100.0
 BEZUGSGRENZE_KW = 550.0
 E1_SPEICHER_KW = -60.0     # zaMittag.e1BattKw: der Speicher entlädt 60 kW für den Markt (V6)
+E1_SPEICHER_NACHT_KW = 100.0  # zaNacht.e1BattKw: der Plan lädt den Speicher 100 kW aus dem Netz
+
+
+def speicher_kw(profil: str) -> float:
+    if profil == "heute":
+        return 0.0
+    return E1_SPEICHER_KW if profil == "mittag" else E1_SPEICHER_NACHT_KW
 PLAN_SLOTS = 16            # zaPlan: vier Stunden ab dem Viertel von jetzt
 
 
@@ -103,14 +123,17 @@ def registry(k: dict, box: str, revision: int, jetzt: dt.datetime) -> dict:
     return d
 
 
-def anteile(k: dict, box: str, revision: int, jetzt: dt.datetime) -> dict:
-    """Form wie jedes Dokument der Vektoren; Zahlen aus R1."""
+def anteile(k: dict, box: str, revision: int, jetzt: dt.datetime, schritt: str = "ziel",
+            werte: dict | None = None, verteilbar: dict | None = None) -> dict:
+    """Form wie jedes Dokument der Vektoren (zwei_agenten_test.go zaDokV); Zahlen
+    aus R1, für A10/A18/A20 die Zahlen des Drehbuchs."""
+    werte = werte or ANTEILE
     return {
         "schema_version": "1.0",
         "tenant_id": k["tenant"], "site_id": k["site"], "device_id": k[box],
-        "epoche": 1, "revision": revision, "schritt": "ziel",
-        "verteilbar": {r: sum(v.values()) for r, v in ANTEILE.items()},
-        "anteile": {r: {k[b]: v[b] for b in BOXEN} for r, v in ANTEILE.items()},
+        "epoche": 1, "revision": revision, "schritt": schritt,
+        "verteilbar": verteilbar or {r: sum(v.values()) for r, v in werte.items()},
+        "anteile": {r: {k[b]: v[b] for b in BOXEN} for r, v in werte.items()},
         "published_at": zeit(jetzt),
         "rolle": "fuehrt" if box == "E-1" else "steuert_mit",
     }
@@ -122,7 +145,8 @@ def plan_id(runde: int) -> str:
     return basis if runde == 1 else str(uuid.uuid5(uuid.UUID(basis), f"runde-{runde}"))
 
 
-def plan_v2(k: dict, box: str, jetzt: dt.datetime, runde: int = 1) -> dict:
+def plan_v2(k: dict, box: str, jetzt: dt.datetime, runde: int = 1, profil: str = "mittag",
+            nullpunkt: float = 0.0) -> dict:
     vorlage = PLAN_FUEHRT if box == "E-1" else PLAN_STEUERT_MIT
     d = identitaet(json.loads(vorlage.read_text(encoding="utf-8")), k, box)
     q = viertel(jetzt)
@@ -133,10 +157,10 @@ def plan_v2(k: dict, box: str, jetzt: dt.datetime, runde: int = 1) -> dict:
     e = d["entities"][0]
     if box == "E-1":
         # grid_import_limit_kw trägt nur die führende Box (mqtt-schedule-2.0.md)
-        d["grid_import_limit_kw"] = BEZUGSGRENZE_KW
+        d["grid_import_limit_kw"] = BEZUGSGRENZE_KW - nullpunkt
         e["entity_id"] = speicher_entitaet(k)
         e["charge_from_grid_allowed"] = True
-        befehl = {"setpoint_kw": E1_SPEICHER_KW}
+        befehl = {"setpoint_kw": speicher_kw(profil)}
     else:
         e["entity_id"] = f"pv-{k['E-4']}"
         befehl = {"limit_kw": 60.0}
@@ -145,14 +169,14 @@ def plan_v2(k: dict, box: str, jetzt: dt.datetime, runde: int = 1) -> dict:
     return d
 
 
-def fahrplan_v1(k: dict, box: str, plan_id: str, jetzt: dt.datetime) -> dict:
+def fahrplan_v1(k: dict, box: str, plan_id: str, jetzt: dt.datetime, profil: str = "mittag") -> dict:
     d = identitaet(json.loads(FAHRPLAN_V1.read_text(encoding="utf-8")), k, box)
     q = viertel(jetzt)
     d["plan_id"] = plan_id
     d["generated_at"] = zeit(jetzt)
     d["horizon_slots"] = PLAN_SLOTS
     d["grid_charge_allowed"] = True
-    kw = E1_SPEICHER_KW if box == "E-1" else 0.0
+    kw = speicher_kw(profil) if box == "E-1" else 0.0
     if box == "E-1":
         # zaPlan(e1Batt, &grenze): nur die führende Box trägt die Grenze des Netzpunkts
         d["grid_export_limit_kw"] = EINSPEISEGRENZE_KW
@@ -163,7 +187,7 @@ def fahrplan_v1(k: dict, box: str, plan_id: str, jetzt: dt.datetime) -> dict:
     return d
 
 
-def ladepark(k: dict, box: str, jetzt: dt.datetime) -> dict:
+def ladepark(k: dict, box: str, jetzt: dt.datetime, nullpunkt: float = 0.0) -> dict:
     v = json.loads(LADEPARK_VEKTOREN.read_text(encoding="utf-8"))
     fall = next(f for f in v["ausschnitt"] if f["fall"].startswith("R3"))
     teil = fall["erwartet"][box]
@@ -171,25 +195,39 @@ def ladepark(k: dict, box: str, jetzt: dt.datetime) -> dict:
         "schema_version": "1.0",
         "tenant_id": k["tenant"], "site_id": k["site"], "device_id": k[box],
         "published_at": zeit(jetzt),
-        "grid_limit_kw": BEZUGSGRENZE_KW,
-        "charge_points": [{"id": s["id"], "rank": s["rank"]} for s in teil["saeulen"]],
+        "grid_limit_kw": BEZUGSGRENZE_KW - (nullpunkt if box == "E-1" else 0.0),
+        # Nennleistung, Anschlüsse und Mindestleistung je Säule aus der Referenzdatei
+        # (geraete_rueckfaelle K-13.x: 22 kW, 4,1 kW = 6 A dreiphasig) - ohne sie
+        # nimmt die Box die Säule nicht in ihre Freigabeliste auf (IP-29).
+        "charge_points": [{"id": s["id"], "rank": s["rank"], "rated_kw": 22.0, "connectors": 1,
+                           "min_kw": 4.1} for s in teil["saeulen"]],
         "priority_charge_point_ids": teil["vorrang"],
     }
 
 
-def alle(revision: int, jetzt: dt.datetime, runde: int = 1,
-         nur_plan: bool = False) -> dict[str, dict[str, dict]]:
+def alle(revision: int, jetzt: dt.datetime, runde: int = 1, nur_plan: bool = False,
+         profil: str = "mittag", nullpunkt: float = 0.0, ohne_anteile: bool = False,
+         ungueltig: bool = False) -> dict[str, dict[str, dict]]:
     """{box: {leaf: nutzlast}} - leaf ist das Topic unter ems/{tenant}/{site}/{device}/."""
     k = kennungen()
     out: dict[str, dict[str, dict]] = {}
     for box in BOXEN:
-        v2 = plan_v2(k, box, jetzt, runde)
-        out[box] = {} if nur_plan else {
-            "v2/entities": registry(k, box, revision, jetzt),
-            "v2/verbund-anteile": anteile(k, box, revision, jetzt),
-            "v2/charging-config": ladepark(k, box, jetzt),
-        }
-        out[box]["schedule"] = fahrplan_v1(k, box, v2["plan_id"], jetzt)
+        v2 = plan_v2(k, box, jetzt, runde, profil, nullpunkt)
+        out[box] = {} if nur_plan else {"v2/entities": registry(k, box, revision, jetzt)}
+        if not nur_plan and not ohne_anteile:
+            out[box]["v2/verbund-anteile"] = anteile(k, box, revision, jetzt)
+            out[box]["v2/charging-config"] = ladepark(k, box, jetzt, nullpunkt)
+        if ohne_anteile:
+            # A12 wie zwei_agenten_test.go e1PlanHeute: ohne Anteil gibt es keinen
+            # Wächter über dem Speicher (V6 kommt mit dem Anteil) - die führende
+            # Box bekommt den Plan von heute, gegen die Grenze gerechnet: keine
+            # Markt-Entladung, kein Laden aus dem Netz.
+            out[box]["schedule"] = fahrplan_v1(k, box, v2["plan_id"], jetzt, "heute")
+            continue
+        if ungueltig:
+            v2["schema_version"] = "9.9"  # A9: zugestellt, aber von der Box abzulehnen
+        else:
+            out[box]["schedule"] = fahrplan_v1(k, box, v2["plan_id"], jetzt, profil)
         out[box]["v2/plan"] = v2
     return out
 
@@ -201,12 +239,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--runde", type=int, default=1, help="Lauf der Cloud (je Viertelstunde einer)")
     p.add_argument("--nur-plan", action="store_true", help="nur Fahrplan v1 und Plan v2")
     p.add_argument("--jetzt", help="UTC, Vorgabe: jetzt")
+    p.add_argument("--profil", default=os.environ.get("VB_PROFIL", "mittag"))
+    p.add_argument("--nullpunkt", type=float, default=float(os.environ.get("VB_NULLPUNKT_KW", "0")))
+    p.add_argument("--ohne-anteile", action="store_true",
+                   default=os.environ.get("VB_ZUSTELLUNG") == "ohne_anteile")
+    p.add_argument("--ungueltig", action="store_true")
     a = p.parse_args(argv)
     jetzt = (dt.datetime.strptime(a.jetzt, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
              if a.jetzt else dt.datetime.now(dt.timezone.utc))
     a.aus.mkdir(parents=True, exist_ok=True)
     k = kennungen()
-    for box, leafs in alle(a.revision, jetzt, a.runde, a.nur_plan).items():
+    for box, leafs in alle(a.revision, jetzt, a.runde, a.nur_plan, a.profil, a.nullpunkt,
+                           a.ohne_anteile, a.ungueltig).items():
         for leaf, d in leafs.items():
             name = f"{box}__{leaf.replace('/', '_')}.json"
             (a.aus / name).write_text(json.dumps(d, ensure_ascii=False, separators=(",", ":")),

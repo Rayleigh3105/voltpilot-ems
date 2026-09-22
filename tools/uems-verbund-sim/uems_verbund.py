@@ -34,8 +34,9 @@ Gemessen am Netzpunkt, jede Sekunde ab Messbeginn (§4.12 des Konzepts):
   M-2 Sekunden über der Grenze, längste Strecke, größte Überschreitung
 
 Aufrufe:
-  uems_verbund.py anlage [--profil mittag] [--anlauf 300] [--dauer 2700] [--t0 600]
-  uems_verbund.py steuer '<json>'      (start, stand, stoerung, protokoll)
+  uems_verbund.py anlage [--profil mittag|nacht|nacht_a20] [--anlauf 300] [--dauer 2700]
+                         [--t0 600] [--nullpunkt 400] [--ladepunkte host:port,…]
+  uems_verbund.py steuer '<json>'      (start, stand, stoerung, rueckfall, protokoll)
 
 Die Uhr des Laufs beginnt mit {"cmd":"start"} - verbund.sh schickt es, sobald
 beide Boxen Anteils- und Plan-Dokument quittiert haben. Bis dahin stehen alle
@@ -52,7 +53,9 @@ import os
 import socket
 import struct
 import sys
+import threading
 import time
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -75,6 +78,15 @@ R_GRID, R_PV, R_LOAD, R_BATT, R_SOC, R_WMAXLIM, R_GRIDCONN = 0, 1, 2, 3, 4, 5, 6
 R_SETPOINT, R_ENABLE, R_PVLIMIT = 40, 41, 42
 KEIN_PV_LIMIT = 0xFFFF
 N_REGISTER = 64
+
+# AP-15 IP-29: der Bezugs-Punkt auf der kompakten Karte. Sie trägt nur
+# int16 × 0,01 kW (±327,67 kW), die Nacht liegt am Netzpunkt bei bis zu 712 kW.
+# Der Treiber (nodered/modbus-tcp.js, Profil sunspec) bleibt, wie er ist; die
+# Anlage verschiebt stattdessen den NULLPUNKT der führenden Box: Netzzähler,
+# Last und Anschlussleistung von E-1 stehen um VB_NULLPUNKT_KW tiefer, und
+# nutzlast.py stellt E-1 die Bezugsgrenze um denselben Betrag tiefer zu. Jede
+# Differenz „Grenze − Zähler" bleibt gleich; gemessen wird am echten Netzpunkt.
+NULLPUNKT_NACHT_KW = 400.0
 
 
 def referenz_pfad() -> Path:
@@ -174,7 +186,12 @@ def profil(name: str) -> Profil:
         # je 22 kW, der Plan lädt den Speicher 100 kW aus dem Netz.
         return Profil("nacht", "Bezug", lambda t: 473.0, lambda t: 0.0, lambda t: 0.0,
                       lambda t: 22.0, 100.0)
-    raise ValueError(f"unbekanntes Profil {name!r} (mittag, nacht)")
+    if name == "nacht_a20":
+        # zaNachtA20 (R23): die Last wächst 5 min nach T0 von ihrem gemessenen
+        # Höchstwert 430 kW auf 480 kW - über ihren Vorbehalt von 473 kW.
+        return Profil("nacht_a20", "Bezug", lambda t: 480.0 if t >= 300 else 430.0,
+                      lambda t: 0.0, lambda t: 0.0, lambda t: 22.0, 100.0)
+    raise ValueError(f"unbekanntes Profil {name!r} (mittag, nacht, nacht_a20)")
 
 
 # --- Messung M-1/M-2 --------------------------------------------------------
@@ -256,6 +273,10 @@ class Anlage:
         self.pv_k1 = self.pv_k12 = self.batt_k2 = self.laden_k13 = 0.0
         self.netz = self.abgang_e4 = 0.0
         self.soc_pct = 50.0  # fest wie im Zwei-Agenten-Test (msg["soc_pct"] = 50)
+        # Mit echten Ladepunkten (vp-ocpp-sim, Dienst `ladepunkte`) zieht K-13,
+        # was die Säulen melden - sie folgen den Ladeprofilen, die Box Verwaltung
+        # per OCPP setzt. None = das Modell (ohne Säulen, Profil mittag).
+        self.ladepunkte_kw: float | None = None
 
     def alle(self) -> list[Geraet]:
         return [self.k1, self.k12, self.k2, *self.k13]
@@ -268,7 +289,10 @@ class Anlage:
         self.pv_k1 = min(max(self.k1.wirkt, 0.0), self.p.sonne_k1(t))
         self.pv_k12 = min(max(self.k12.wirkt, 0.0), self.p.sonne_k12(t))
         self.batt_k2 = self.k2.wirkt
-        self.laden_k13 = sum(min(max(g.wirkt, 0.0), self.p.autos(t)) for g in self.k13)
+        if self.ladepunkte_kw is not None:
+            self.laden_k13 = self.ladepunkte_kw
+        else:
+            self.laden_k13 = sum(min(max(g.wirkt, 0.0), self.p.autos(t)) for g in self.k13)
         self.abgang_e4 = self.laden_k13 - self.pv_k12
         self.netz = self.p.grundlast(t) + self.batt_k2 - self.pv_k1 + self.abgang_e4
 
@@ -312,11 +336,12 @@ class BoxSeite:
     schreiben: int = 0
     letzter_schreib_s: int | None = None
     ueberlauf: int = 0
+    nullpunkt_kw: float = 0.0         # nur E-1: siehe NULLPUNKT_NACHT_KW
 
     def __post_init__(self):
         self.regs[R_PVLIMIT] = KEIN_PV_LIMIT
         self.regs[R_WMAXLIM] = 10000        # 100,00 %: der §14a-Rahmen engt nichts ein
-        self.regs[R_GRIDCONN] = int(BEZUGSGRENZE_KW * 100)
+        self.regs[R_GRIDCONN] = int((BEZUGSGRENZE_KW - self.nullpunkt_kw) * 100)
 
     def aktualisiere(self, a: Anlage) -> None:
         if self.box == "E-1":
@@ -325,6 +350,7 @@ class BoxSeite:
             zaehler, pv, last, batt = a.abgang_e4, a.pv_k12, a.laden_k13, 0.0
         if self.friert is not None:
             zaehler = self.friert
+        zaehler, last = zaehler - self.nullpunkt_kw, last - self.nullpunkt_kw
         try:
             self.regs[R_GRID] = kodiere_s16(zaehler)
             self.regs[R_PV] = kodiere_s16(pv)
@@ -386,7 +412,10 @@ class Lauf:
         ein, bez = lade_grenzen()
         self.ein = Messung(ein, -1)
         self.bez = Messung(bez, +1)
-        self.seiten = {"E-1": BoxSeite("E-1"), "E-4": BoxSeite("E-4")}
+        self.nullpunkt_kw = float(getattr(a, "nullpunkt", 0.0) or 0.0)
+        self.seiten = {"E-1": BoxSeite("E-1", nullpunkt_kw=self.nullpunkt_kw), "E-4": BoxSeite("E-4")}
+        self.ladepunkte = [x for x in (getattr(a, "ladepunkte", "") or "").split(",") if x]
+        self.ladepunkte_stand: dict[str, dict] = {}
         self.adresse_zu_box: dict[str, str] = {}
         self.stoerungen: list[dict] = []
         self.reihe: list[dict] = []
@@ -450,6 +479,14 @@ class Lauf:
             return self.protokoll()
         if cmd == "stoerung":
             return self.stoerung(b)
+        if cmd == "rueckfall":
+            # A10 (R12): der Installateur setzt den Rückfall von K-1 auf 10 kW
+            g = {x.name: x for x in self.anlage.alle()}[b["komponente"]]
+            g.rueckfall_kw = float(b["kw"])
+            eintrag = {"art": "rueckfall", "komponente": g.name, "kw": g.rueckfall_kw,
+                       "sim_s": self.anlage.s, "mess_s": self.mess_sekunde()}
+            self.stoerungen.append(eintrag)
+            return eintrag
         raise ValueError(f"unbekannter Befehl {cmd!r}")
 
     def stoerung(self, b: dict) -> dict:
@@ -488,6 +525,8 @@ class Lauf:
                           "ueberlauf": v.ueberlauf}
                       for k, v in self.seiten.items()},
             "gestartet": self.gestartet.is_set(), "fertig": self.fertig.is_set(),
+            "laden_k13_kw": round(a.laden_k13, 3),
+            "ladepunkte": self.ladepunkte_stand,
         }
 
     def protokoll(self) -> dict:
@@ -496,6 +535,7 @@ class Lauf:
             "werkzeug": "tools/uems-verbund-sim (AP-15 IP-28, NW-3)",
             "takt": "1 Simulator-Sekunde = 1 echte Sekunde (die Box rechnet in echten Sekunden)",
             "profil": a.profil, "anlauf_s": a.anlauf, "dauer_s": a.dauer, "t0_mess_s": a.t0,
+            "nullpunkt_e1_kw": self.nullpunkt_kw, "ladepunkte": self.ladepunkte,
             "sim_s": self.anlage.s, "mess_s": max(self.mess_sekunde(), 0),
             "fertig": self.fertig.is_set(),
             "einspeisung": self.ein.bericht(), "bezug": self.bez.bericht(),
@@ -524,13 +564,33 @@ class Lauf:
                                    "abgang_e4_kw": round(self.anlage.abgang_e4, 2),
                                    "pv_k1_kw": round(self.anlage.pv_k1, 2),
                                    "pv_k12_kw": round(self.anlage.pv_k12, 2),
-                                   "speicher_k2_kw": round(self.anlage.batt_k2, 2)})
+                                   "speicher_k2_kw": round(self.anlage.batt_k2, 2),
+                                   "laden_k13_kw": round(self.anlage.laden_k13, 2)})
         self.ein.schluss()
         self.bez.schluss()
         self.fertig.set()
 
+    def lies_ladepunkte(self) -> None:
+        """Ein Faden: je Sekunde /status jeder Säule (vp-ocpp-sim). Eine Säule,
+        die nicht antwortet, zählt mit ihrem letzten Wert - ihr Wagen zieht weiter."""
+        while True:
+            summe = 0.0
+            for adr in self.ladepunkte:
+                try:
+                    with urllib.request.urlopen(f"http://{adr}/status", timeout=0.8) as r:
+                        d = json.loads(r.read())
+                    self.ladepunkte_stand[adr] = {"id": d.get("id"), "kw": d.get("total_kw", 0.0)}
+                except (OSError, ValueError):
+                    self.ladepunkte_stand.setdefault(adr, {"id": None, "kw": 0.0})["fehler"] = True
+                summe += float(self.ladepunkte_stand[adr].get("kw") or 0.0)
+            self.anlage.ladepunkte_kw = summe
+            time.sleep(1.0)
+
     async def lauf(self) -> None:
         self.ordne_adressen()
+        if self.ladepunkte:
+            self.anlage.ladepunkte_kw = 0.0
+            threading.Thread(target=self.lies_ladepunkte, daemon=True).start()
         mb = await asyncio.start_server(self.modbus, "0.0.0.0", MODBUS_PORT)
         st = await asyncio.start_server(self.steuer, "127.0.0.1", STEUER_PORT)
         print(f"[anlage] Profil {self.args.profil}, Anlauf {self.args.anlauf} s, "
@@ -559,6 +619,9 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--anlauf", type=int, default=int(os.environ.get("VB_ANLAUF_S", "300")))
     an.add_argument("--dauer", type=int, default=int(os.environ.get("VB_DAUER_S", "2700")))
     an.add_argument("--t0", type=int, default=int(os.environ.get("VB_T0_S", "600")))
+    an.add_argument("--nullpunkt", type=float, default=float(os.environ.get("VB_NULLPUNKT_KW", "0")))
+    an.add_argument("--ladepunkte", default=os.environ.get("VB_LADEPUNKTE", ""),
+                    help="host:port,… der vp-ocpp-sim-Statusseiten")
     st = sub.add_parser("steuer", help="Befehl an den laufenden Prozess")
     st.add_argument("json")
     a = p.parse_args(argv)

@@ -17,6 +17,14 @@
 # Kein Host-Port, kein Bind-Mount. Die Cloud läuft nicht: verbund.sh stellt
 # ihre Nutzlasten über den Broker zu (nutzlast.py). Die Identität ist die der
 # Vertrags-Vektoren (verbund-anteile-mqtt-vectors.json kennungen).
+#
+# AP-15 IP-29 ergänzt drei Dinge, alle nur für das Drehbuch (szenarien.py):
+#   ladepunkte   Profil `ladepunkte`: die sechs Säulen AHR-LP-02…07 von E-4 als
+#                echte OCPP-1.6J-Ladepunkte (edge-app/core/cmd/vp-ocpp-sim,
+#                unverändert), im LAN von Box Verwaltung an core:8887
+#   core-e5 …    Profil `tausch` (A14): die Nachfolgerin von Box Verwaltung mit
+#                eigener, noch nirgends bestätigter Kennung
+#   VB_E4_STEUERT  A12: Box Verwaltung ohne Steuerpfad (alter Edge-Stand)
 x-tenant: &tenant "7a000000-0000-4000-8000-000000000001"
 x-site: &site "7a000000-0000-4000-8000-0000000000a1"
 
@@ -44,6 +52,10 @@ services:
       # K-2 Speicher 100 kW (zwei_agenten_test.go zaStarteBox: MaxCharge/MaxDischarge 100)
       VP_MAX_CHARGE_KW: "100"
       VP_MAX_DISCHARGE_KW: "100"
+      # IP-29, nur am Bezugs-Punkt: die LEBENDE Zuteilung an die Säulen braucht
+      # neben VP_CONTROL_ENABLED auch diesen Schalter (edge-app/docker-compose.yml);
+      # ohne ihn halten sie ihr Sicherheitsprofil. Mittag bleibt wie in IP-28.
+      VP_CONSUMER_CONTROL_ENABLED: ${VB_VERBRAUCHER:-false}
     volumes: !override [daten-e1:/data]
     ports: !reset []
     networks:
@@ -73,6 +85,7 @@ services:
     environment:
       <<: *core-env
       VP_DEV_DEVICE_ID: "7a000000-0000-4000-8000-0000000000e4"
+      VP_CONTROL_ENABLED: ${VB_E4_STEUERT:-true}
     volumes: !override [daten-e4:/data]
     ports: !reset []
     networks:
@@ -91,6 +104,49 @@ services:
     ports: !reset []
     networks: [box-e4]
 
+  # A14: die Nachfolgerin von Box Verwaltung - dieselbe Hardware-Rolle im
+  # selben LAN, aber eine neue Kennung, die kein Anteils-Dokument kennt.
+  core-e5:
+    extends: { file: ../../edge-app/docker-compose.yml, service: core }
+    image: ${VB_CORE_IMAGE:?VB_CORE_IMAGE}
+    pull_policy: never
+    restart: "no"
+    mem_limit: 192m
+    profiles: [tausch]
+    depends_on: !override [cloud-broker]
+    environment:
+      <<: *core-env
+      VP_DEV_DEVICE_ID: "7a000000-0000-4000-8000-0000000000e5"
+    volumes: !override [daten-e5:/data]
+    ports: !reset []
+    networks:
+      wan: {}
+      box-e4: { aliases: [core] }
+
+  nodered-e5:
+    extends: { file: ../../edge-app/docker-compose.yml, service: nodered }
+    image: ${VB_NODERED_IMAGE:?VB_NODERED_IMAGE}
+    pull_policy: never
+    restart: "no"
+    mem_limit: 320m
+    profiles: [tausch]
+    depends_on: !override [core-e5]
+    environment: *nodered-env
+    volumes: !override [nodered-e5:/data]
+    ports: !reset []
+    networks: [box-e4]
+
+  # Die sechs Säulen von E-4 (R3), je ein vp-ocpp-sim mit einem Anschluss und
+  # einem Wagen, der 22 kW will (zaNacht). Die Anlage liest ihre Statusseiten.
+  ladepunkte:
+    image: ${VB_LADEPUNKTE_IMAGE:-vb-ladepunkte:lokal}
+    pull_policy: never
+    restart: "no"
+    mem_limit: 96m
+    profiles: [ladepunkte]
+    depends_on: [core-e4]
+    networks: [box-e4]
+
   anlage:
     image: ${VB_ANLAGE_IMAGE:?VB_ANLAGE_IMAGE}
     pull_policy: never
@@ -101,6 +157,8 @@ services:
       VB_ANLAUF_S: ${VB_ANLAUF_S:-300}
       VB_DAUER_S: ${VB_DAUER_S:-2700}
       VB_T0_S: ${VB_T0_S:-600}
+      VB_NULLPUNKT_KW: ${VB_NULLPUNKT_KW:-0}
+      VB_LADEPUNKTE: ${VB_LADEPUNKTE:-}
     networks:
       box-e1: { aliases: [edge-sim, anlage-e1] }
       box-e4: { aliases: [edge-sim, anlage-e4] }
@@ -115,3 +173,5 @@ volumes:
   daten-e4: {}
   nodered-e1: {}
   nodered-e4: {}
+  daten-e5: {}
+  nodered-e5: {}
