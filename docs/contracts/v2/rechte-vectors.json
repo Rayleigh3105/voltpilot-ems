@@ -7390,6 +7390,59 @@
       }
     },
     {
+      "name": "e12-bestandskonto-gedachter-kundenadmin-site-admin",
+      "familie": "ocpp_stufe",
+      "ableitung": "ocpp_stufe",
+      "abnahme": "A10",
+      "why": "Captain 22.09.2026 E2 = A: RechtPruefung.benutzer bildet das nie zugewiesene Bestandskonto vor dem Stichtag als unternehmensweiten Kundenadministrator ab; E13 liefert dafür dieselbe OCPP-Stufe wie für eine echte Zuweisung.",
+      "annahme": "Jonas als nie zugewiesenes Bestandskonto vor der Übernahme-Markierung; der Eingang zeigt das gedachte E12-Recht, keine gespeicherte Zuweisung. Stichtag und Mandanten-Zaun prüft RechtMatrixApiTest.",
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "standort": "ST-1",
+        "jetzt": "2026-10-20T10:15:00+02:00"
+      },
+      "expected": {
+        "stufe": "SITE_ADMIN",
+        "sichtbar": true,
+        "rolle": "kundenadministrator"
+      }
+    },
+    {
       "name": "e13-kundenadministrator-site-admin",
       "familie": "ocpp_stufe",
       "ableitung": "ocpp_stufe",

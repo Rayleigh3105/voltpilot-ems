@@ -346,9 +346,8 @@ class ZugriffZaunApiTest {
      * festgenagelt — so faellt sowohl eine ZWEITE Route auf, die den Bestand verlaesst, als auch ein Zurueckdrehen
      * der Regel. Die beiden Plattform-Konten stehen bewusst nicht darin: am Umschalter gilt weiter die Realm-Rolle.
      *
-     * <p><b>Und genau EIN Konto steigt:</b> das mit einer echten Zuweisung. Das Bestandskonto (E12) steht NICHT
-     * darin — die Steuerungs-Achse folgt erst einer echten Zuweisung ({@code RechtPruefung#ocppStufe}), sonst
-     * haette das Ausrollen von IP-7 jedem bestehenden Kundenkonto still den Hardware-Befehlssatz gegeben.
+     * <p>Captain 22.09.2026 E2 = A: genau die beiden Kundenkonten steigen — echte und gedachte
+     * Kundenadmin-Zuweisung (E12) erhalten dieselbe Stufe. Alle anderen Leseantworten bleiben gleich.
      */
     @Test
     void jedesHeutigeKontoSiehtAufJederLesendenKundenrouteDasselbeWieVorIp4UndIp5() throws Exception {
@@ -421,11 +420,10 @@ class ZugriffZaunApiTest {
         assertThat(routen).hasSizeGreaterThan(150);
         assertThat(mitDaten).isGreaterThan(100);
         assertThat(abweichungen).isEmpty();
-        // Genau EINER — und MIT Stufe, nicht nur „weicht ab": das Konto mit einer echten Zuweisung
-        // (Kundenadministrator, E13). Das Bestandskonto fehlt hier bewusst: ohne echte Zuweisung keine Stufe, sonst
-        // bekaeme jedes bestehende Kundenkonto den Hardware-Befehlssatz, ohne dass jemand es ihm gegeben hat.
+        // Captain 22.09.2026 E2 = A: echte und gedachte Kundenadmin-Zuweisung, jeweils MIT Stufe.
         assertThat(stufenwechsel).containsExactly(
-                "Kundenkonto (Bestandsübernahme: Kundenadministrator): CUSTOMER → SITE_ADMIN");
+                "Kundenkonto (Bestandsübernahme: Kundenadministrator): CUSTOMER → SITE_ADMIN",
+                "Kundenkonto ohne Realm-Rolle, nie zugewiesen (Bestandsregel E12): CUSTOMER → SITE_ADMIN");
     }
 
     /**

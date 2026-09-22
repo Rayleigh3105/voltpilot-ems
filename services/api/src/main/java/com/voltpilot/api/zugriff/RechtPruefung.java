@@ -206,18 +206,14 @@ public class RechtPruefung {
     /**
      * Die OCPP-Stufe des Aufrufers an einer Anlage — aus der Zuweisung (AP-03 E13, IP-7): {@code SITE_ADMIN} für
      * Kundenadministrator und Bedienberechtigt, {@code CUSTOMER} für den Unterstützer mit „Einrichten und Bedienen",
-     * {@code PLATFORM} für VoltPilot, sonst {@code KEINE}. Leer ohne Kontext, am Umschalter und beim BESTANDSKONTO:
+     * {@code PLATFORM} für VoltPilot, sonst {@code KEINE}. Leer ohne Kontext und am Umschalter:
      * dort gelten die Realm-Rollen wie vor IP-7 ({@code OcppActionPolicy}). Eine Anlage ohne Standort decken nur
      * unternehmensweite Zuweisungen (wie {@link #route} sie auflöst).
      *
-     * <p><b>Die Steuerungs-Achse folgt erst einer ECHTEN Zuweisung</b> (firstmate, 16.09.2026). Ein Bestandskonto
-     * (E12: nie zugewiesen, Kundenbereich ohne Stichtag) führt {@link #benutzer} unternehmensweit als
-     * {@code KUNDENADMINISTRATOR} — das hält den GELTUNGSBEREICH weit, wie E12 es will. Über E13 hätte es damit
-     * zusätzlich an echter Hardware handeln dürfen (SoftReset, ChangeConfiguration, ChangeAvailability, ClearCache,
-     * SendLocalList), ohne dass jemand ihm etwas zugewiesen hat — und weil heute noch KEIN Konto im Feld eine
-     * Zuweisung trägt, hätte das jedes bestehende Kundenkonto im Moment des Ausrollens betroffen. Darum bleibt hier
-     * die Realm-Rolle stehen: ein Kundenadministrator hebt die Stufe, indem er sich selbst oder einem anderen eine
-     * Zuweisung gibt.
+     * <p>Captain 22.09.2026 E2 = A: Das gedachte Bestands-Recht (E12: nie zugewiesen, Kundenbereich ohne
+     * Stichtag) ist auf ALLEN Achsen Kundenadministrator, auch hier {@code SITE_ADMIN}. Sobald der Kundenbereich
+     * seinen Stichtag trägt, liefert {@link #benutzer} nur noch echte Zuweisungen. Der Mandanten-/Standort-Zaun
+     * wird weiterhin vor der Stufen-Ableitung geprüft.
      */
     public Optional<RechteAbleitung.OcppStufe> ocppStufe(UUID siteId) {
         Zugriff z = ZugriffContext.get();
@@ -226,9 +222,6 @@ public class RechtPruefung {
         }
         if (!geltungsbereich.siteVisible(siteId)) {
             return Optional.of(RechteAbleitung.OcppStufe.KEINE);
-        }
-        if (z.zugang() == Zugang.KONTO && z.bestandskonto()) {
-            return Optional.empty();
         }
         List<UUID> standorte = jdbc.queryForList(ANLAGE_STANDORT, UUID.class, siteId);
         String standort = standorte.isEmpty() || standorte.get(0) == null ? OHNE_STANDORT : standorte.get(0).toString();
