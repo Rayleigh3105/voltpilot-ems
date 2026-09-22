@@ -1,6 +1,7 @@
 package lastmgmt
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -34,7 +35,7 @@ func TestEinzelboxUhrZurueckHaeltGlaettungUndPlan(t *testing.T) {
 }
 
 func TestEinzelboxBudgetNegativesAlterHaeltDannZiehtZusammen(t *testing.T) {
-	for _, rueck := range []time.Duration{5 * time.Second, 840 * time.Second} {
+	for _, rueck := range []time.Duration{400 * time.Second, 840 * time.Second} {
 		t.Run(rueck.String(), func(t *testing.T) {
 			b := NewBudgetTracker()
 			set := dynSite()
@@ -64,6 +65,22 @@ func TestEinzelboxBudgetNegativesAlterHaeltDannZiehtZusammen(t *testing.T) {
 				t.Fatalf("next complete sample must restore the loop: %+v", v)
 			}
 		})
+	}
+}
+
+func TestEinzelboxBudgetPositivesAlterBleibtUnveraendert(t *testing.T) {
+	heute, ohne := NewBudgetTracker(), NewBudgetTracker()
+	set := dynSite()
+	for _, b := range []*BudgetTracker{heute, ohne} {
+		b.Observe(t0, 60, 40, true)
+		b.Budget(t0, set)
+	}
+	if v := heute.Budget(t0.Add(-time.Microsecond), set); !v.Blind {
+		t.Fatal("negative age must be blind, even for a microsecond")
+	}
+	now := t0.Add(time.Second)
+	if got, want := heute.Budget(now, set), ohne.Budget(now, set); !reflect.DeepEqual(got, want) {
+		t.Fatalf("positive age must keep the old verdict: got %+v, want %+v", got, want)
 	}
 }
 

@@ -381,7 +381,7 @@ func (l *ExportLimiter) schattenLocked() *ExportLimiter {
 				limitValid: l.limitValid, limit: l.limit,
 			}
 			if !alt {
-				s.uhrBlind, s.uhrAb, s.uhrNeu = l.uhrBlind, l.uhrAb, l.uhrNeu
+				s.uhrBlind, s.uhrAb = l.uhrBlind, l.uhrAb
 			}
 			return s
 		}

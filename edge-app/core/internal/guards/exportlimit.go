@@ -234,10 +234,10 @@ type ExportLimiter struct {
 	gridKw float64
 	pvKw   float64
 	// A negative age starts the ordinary blind fallback on the new clock.
-	// Only an accepted measurement ends it; catching up is no new evidence.
+	// Nonnegative ages keep their original behavior, including concurrent
+	// samples which arrived just after the caller captured its evaluation time.
 	uhrBlind bool
 	uhrAb    time.Time
-	uhrNeu   bool // a new sample must also be on/before the evaluation clock
 	// Befristet: der alte Schatten deckt einen Befund des Anteilswegs nach
 	// Uhrensprung rückwärts (+95,9 kW / 15 s). Heilung folgt im Paket
 	// vp-uems-v15-folge-anteilsweg-uhrensprung; dann entfällt der Schalter.
@@ -320,7 +320,6 @@ func (l *ExportLimiter) Observe(ts time.Time, gridKw, pvKw float64) (urgent bool
 		}
 		l.verankern(ts)
 	}
-	l.uhrNeu = l.uhrBlind
 	l.seen, l.at, l.gridKw, l.pvKw = true, ts, gridKw, math.Max(pvKw, 0)
 	l.messung++
 	if !l.limitValid || !l.capValid {
@@ -395,15 +394,13 @@ func (l *ExportLimiter) capLockedAb(now, at time.Time, limit, safeStaticCapKw fl
 		if l.alterAnteilsSchatten && age < 0 {
 			age = 0
 		}
-		if l.uhrNeu && age >= 0 {
-			l.uhrBlind = false
-		}
-		l.uhrNeu = false
 		if age < 0 {
 			if !l.uhrBlind || now.Before(l.uhrAb) {
 				l.uhrAb = now
 			}
 			l.uhrBlind = true
+		} else {
+			l.uhrBlind = false
 		}
 		if l.uhrBlind {
 			age = now.Sub(l.uhrAb)

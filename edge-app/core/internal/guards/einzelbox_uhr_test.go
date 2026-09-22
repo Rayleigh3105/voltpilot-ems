@@ -2,6 +2,7 @@ package guards
 
 import (
 	"math"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -27,7 +28,7 @@ func TestEinzelboxUhrZurueckFreigabeAbSprung(t *testing.T) {
 }
 
 func TestEinzelboxNegativesAlterHaeltDannZiehtZusammen(t *testing.T) {
-	for _, rueck := range []time.Duration{5 * time.Second, 840 * time.Second} {
+	for _, rueck := range []time.Duration{400 * time.Second, 840 * time.Second} {
 		t.Run(rueck.String(), func(t *testing.T) {
 			l := NewExportLimiter()
 			l.Observe(r9t0, -98, 148)
@@ -56,6 +57,22 @@ func TestEinzelboxNegativesAlterHaeltDannZiehtZusammen(t *testing.T) {
 				t.Fatalf("accepted sample must restore the loop: %+v", c)
 			}
 		})
+	}
+}
+
+func TestEinzelboxPositivesAlterBleibtUnveraendert(t *testing.T) {
+	heute, ohne := NewExportLimiter(), NewExportLimiter()
+	for _, l := range []*ExportLimiter{heute, ohne} {
+		l.Observe(r9t0, -98, 148)
+		l.Cap(r9t0, &grenze100, 100)
+	}
+	// A concurrent sample can be slightly ahead of the caller's captured now.
+	if c := heute.Cap(r9t0.Add(-time.Microsecond), &grenze100, 100); !c.Blind {
+		t.Fatal("negative age must be blind, even for a microsecond")
+	}
+	now := r9t0.Add(time.Second)
+	if got, want := heute.Cap(now, &grenze100, 100), ohne.Cap(now, &grenze100, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("positive age must keep the old verdict: got %+v, want %+v", got, want)
 	}
 }
 

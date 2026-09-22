@@ -265,10 +265,9 @@ type BudgetTracker struct {
 	// future of now (an age below zero is no age - blind)
 	uhrsprung bool
 	// The single-box fallback holds for 90 s from detecting a negative age,
-	// then contracts as for missing telemetry. Only a new sample ends it.
+	// then contracts as for missing telemetry while the age stays negative.
 	uhrBlind bool
 	uhrAb    time.Time
-	uhrNeu   bool // a future-dated sample cannot restart the blind window
 	// steht: the twin's newest sample repeats the grid value of the one
 	// before bit for bit (AP-15 Folge of IP-28 finding 1, ObserveM);
 	// ankerLadenKw/ankerBattKw are the charging and battery charge of the
@@ -419,7 +418,6 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 	if t.seen && ts.Before(t.at) {
 		t.verankernLocked(ts)
 	}
-	t.uhrNeu = t.uhrBlind
 	// AP-15 Folge of IP-28 finding 1 (the twin only - today's tracker is
 	// untouched): a sample that repeats the grid value bit for bit is no new
 	// measurement of the connection point, only its charging is new. The
@@ -567,10 +565,6 @@ func (t *BudgetTracker) Budget(now time.Time, set Settings) BudgetVerdict {
 	}
 
 	age := now.Sub(t.at)
-	if t.uhrNeu && age >= 0 {
-		t.uhrBlind = false
-	}
-	t.uhrNeu = false
 	t.uhrsprung = false
 	if age < 0 {
 		if t.verankert {
@@ -584,6 +578,8 @@ func (t *BudgetTracker) Budget(now time.Time, set Settings) BudgetVerdict {
 			}
 			t.uhrBlind = true
 		}
+	} else {
+		t.uhrBlind = false
 	}
 	if t.uhrBlind {
 		t.uhrsprung = true
