@@ -252,6 +252,29 @@ def test_zyklus_unbestaetigtes_mitglied_nur_die_fuehrende_einmal_vermerkt(monkey
     assert publisher.cleared == []  # eine belegte Box bekommt auch keine Ruecknahme
 
 
+def test_fuehrende_nachfolgerin_bekommt_plan_erst_nach_bestaetigung(monkeypatch):
+    plan = _plan(R1_VERBUND, loads=(_ladepunkt(),))
+    wartend = dataclasses.replace(_stand(), fuehrende_belegt=True)
+
+    publisher, repo = _zyklus(monkeypatch, plan, verbund=wartend)
+
+    assert [t for t, _ in publisher.published] == [
+        f"ems/{TENANT}/{SITE}/{E_4}/v2/plan"
+    ]
+    assert [box for box, *_ in repo.publications] == [E_4]
+    assert publisher.cleared == []
+
+    publisher, repo = _zyklus(
+        monkeypatch, plan, verbund=dataclasses.replace(wartend, fuehrende_belegt=False)
+    )
+
+    assert [t for t, _ in publisher.published] == [
+        f"ems/{TENANT}/{SITE}/{E_1}/v2/plan",
+        f"ems/{TENANT}/{SITE}/{E_4}/v2/plan",
+    ]
+    assert [box for box, *_ in repo.publications] == [E_1, E_4]
+
+
 def test_zyklus_ruecknahme_wird_nicht_als_veroeffentlicht_vermerkt(monkeypatch):
     plan = _plan((BoxAnteil(E_4, 60.0, 77.0, pv_kw=(55.0,) * 4),))
     publisher, repo = _zyklus(monkeypatch, plan, verbund=_stand(verbraucher=()))
@@ -310,7 +333,7 @@ def test_load_verbund_box_ohne_faehigkeit_wird_als_belegt_gerechnet(monkeypatch)
         "FROM steuerungsverbund v": [(SITE, E_4, None, None, T0, T0, False)],
         "FROM asset": [],
         "FROM steuerungsverbund_geraet g": [],
-        "FROM steuerungsverbund_mitglied f": [(SITE, E_1)],
+        "FROM steuerungsverbund_mitglied f": [(SITE, E_1, T0)],
     }
     abfragen: list[str] = []
 
@@ -349,6 +372,11 @@ def test_load_verbund_box_ohne_faehigkeit_wird_als_belegt_gerechnet(monkeypatch)
     )
     stand = load_verbund("dsn", T0)[SITE]
     assert stand.fuehrende == E_1
+    assert not stand.fuehrende_belegt
     assert stand.mitsteuernde[0].stumm and not stand.mitsteuernde[0].bekommt_plan
     assert "'steuerungsverbund_anteil'" in abfragen[0]
     assert "f.rolle = 'fuehrt'" in abfragen[-1]
+    assert "f.bestaetigt_am" in abfragen[-1]
+
+    rows["FROM steuerungsverbund_mitglied f"] = [(SITE, E_1, None)]
+    assert load_verbund("dsn", T0)[SITE].fuehrende_belegt
