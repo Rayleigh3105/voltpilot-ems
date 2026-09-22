@@ -3094,6 +3094,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 		if r, neu := a.einfrierPruefen(now); r < 0 {
 			an.Pruefen, an.PruefenNeu = true, neu
 		}
+		// V6 in every evaluation: the charge counts too - a battery that goes
+		// from charging to discharging lowers the producers at once
+		an.LadenKw = math.Max(kw, 0)
 		exportCap = a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
 		a.einfrierGeprueft(now, exportCap.Pruefung)
 		vorEntladeKappe := kw

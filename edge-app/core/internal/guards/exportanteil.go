@@ -69,10 +69,15 @@ const ExportAnteilWindow = 60 * time.Second
 // mutation probe of the tests (stehender_wert_test.go), never set outside them.
 var ohneStehSperre bool
 
-// ohneJeMessung counts the headroom of einSpielraum per evaluation again, as
-// on uems - the mutation probe of einspielraum_je_messung_test.go, never set
-// outside it.
+// ohneJeMessung counts the headroom of einSpielraum (and the rise of its
+// counterpart einAnstieg) per evaluation again, as on uems - the mutation
+// probe of einspielraum_je_messung_test.go, never set outside it.
 var ohneJeMessung bool
+
+// ohneAnstieg switches the healing of A8r off - a rising battery push and a
+// charge while the clock runs in the past lower nothing, as on uems: the
+// mutation probe of anstieg_senkt_test.go, never set outside it.
+var ohneAnstieg bool
 
 // ExportAnteil is the own feed-in share of a held share document.
 type ExportAnteil struct {
@@ -97,6 +102,11 @@ type ExportAnteil struct {
 	// PruefenNeu: the probe is due, no watchdog made it yet in this
 	// standstill - only then may this one START it (once per standstill).
 	PruefenNeu bool
+	// LadenKw is the battery charge the setpoint path is about to command
+	// (kW >= 0; a discharge is 0), the counterpart of dischargeKw: together
+	// they are the battery's push, which einAnstieg compares with the push
+	// the measurement was taken under. Zero = no charge.
+	LadenKw float64
 }
 
 // CapAnteil evaluates the watchdog for a box that holds a share document.
@@ -118,6 +128,10 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 	if !finite(discharge) || discharge < 0 {
 		discharge = 0
 	}
+	laden := an.LadenKw
+	if !finite(laden) || laden < 0 || discharge > 0 {
+		laden = 0
+	}
 	// budget: what generation and discharge together may push at the box's
 	// point when it is blind - its share (never above the whole limit).
 	budget, loop := anteil, anteil
@@ -131,14 +145,12 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 	// unchanged, on the same measurements - the share only ever lowers it.
 	l.mu.Lock()
 	shadow := l.schattenLocked()
-	alterSchatten := l.alterSchatten
 	l.mu.Unlock()
 	heuteStatic := 0.0
 	if limitKw != nil && finite(*limitKw) {
 		heuteStatic = math.Max(*limitKw-discharge, 0)
 	}
 	heute := shadow.Cap(now, limitKw, heuteStatic)
-	frueher := alterSchatten.Cap(now, limitKw, heuteStatic)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -170,6 +182,12 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 		dcapVor, dcapVorValid := l.dcap, l.dcapValid
 		l.dischargeFresh(now, loop, discharge, &res)
 		l.einSpielraum(now, loop, discharge, dcapVor, dcapVorValid, &res)
+		if !ohneAnstieg {
+			if l.vergangenheit {
+				l.ladungVorDemSprung(now, loop, &res)
+			}
+			l.einAnstieg(now, loop, discharge, laden, &res)
+		}
 		if l.steht && !ohneStehSperre {
 			l.stehBeleg(now, loop, discharge, &res)
 		}
@@ -192,6 +210,7 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 		l.ramp(now, res.MeasurementAge, safePv, budget, discharge, &res)
 	}
 	l.anteilReason(an.Fuehrt, budget, discharge, &res)
+	l.stellKw, l.stellValid = l.schub(discharge, laden), true
 	if heute.Active {
 		h := heute.CapKw
 		res.HeuteCapKw = &h
@@ -201,11 +220,6 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 		// restarted from its static cap after the plan's limit came back):
 		// it binds, with its own verdict
 		res.CapKw, res.State, res.Reason = heute.CapKw, heute.State, heute.Reason
-	}
-	if frueher.Active && frueher.CapKw < res.CapKw {
-		// Keep the old A8r ceiling as an ADDITIONAL minimum. Replacing the
-		// healed shadow with it would break V5 against today's single box.
-		res.CapKw, res.State, res.Reason = frueher.CapKw, frueher.State, frueher.Reason
 	}
 	return res
 }
@@ -368,24 +382,16 @@ func (l *ExportLimiter) pruefen(now time.Time, budget, discharge float64, neu bo
 // starts as a copy of what this watchdog held until now (without a document
 // it WAS today's watchdog: Observe and Cap), so it continues exactly where
 // today's would, and from then on it gets every sample through today's
-// Observe. The temporary old shadow starts from the SAME state and only adds
-// a ceiling (alterAnteilsSchatten); it must never replace the V5 shadow.
-// Caller holds l.mu.
+// Observe - which re-anchors on a clock that jumped back, exactly as the
+// single box does (A8). Caller holds l.mu.
 func (l *ExportLimiter) schattenLocked() *ExportLimiter {
 	if l.heute == nil {
-		kopie := func(alt bool) *ExportLimiter {
-			s := &ExportLimiter{
-				alterAnteilsSchatten: alt,
-				seen:                 l.seen, at: l.at, gridKw: l.gridKw, pvKw: l.pvKw,
-				capValid: l.capValid, cap: l.cap, capAt: l.capAt,
-				limitValid: l.limitValid, limit: l.limit,
-			}
-			if !alt {
-				s.uhrBlind, s.uhrAb = l.uhrBlind, l.uhrAb
-			}
-			return s
+		l.heute = &ExportLimiter{
+			seen: l.seen, at: l.at, gridKw: l.gridKw, pvKw: l.pvKw,
+			capValid: l.capValid, cap: l.cap, capAt: l.capAt,
+			limitValid: l.limitValid, limit: l.limit,
+			uhrBlind: l.uhrBlind, uhrAb: l.uhrAb,
 		}
-		l.heute, l.alterSchatten = kopie(false), kopie(true)
 	}
 	return l.heute
 }
@@ -433,6 +439,85 @@ func (l *ExportLimiter) einSpielraum(now time.Time, limit, discharge, dcapVor fl
 		l.cap, l.capAt = rest, now
 		res.CapKw = round3(l.cap)
 	}
+}
+
+// einAnstieg is einSpielraum in the other direction (V6 in EVERY
+// evaluation): the PV law and the discharge law read the newest measurement
+// with the battery where it stood when it was taken - and count a charging
+// battery as no discharge at all. When the setpoint path raises the battery's
+// push above that (the plan comes back and the battery goes from charging to
+// discharging, a charge drops, a discharge rises), the measurement's headroom
+// is spent on that rise first: the producers get the PV law's target minus
+// the rise, at once in this evaluation, and what goes beyond the producers
+// lowers the discharge (the last actuator, V6). The rise counts from the push
+// before the FIRST evaluation of this measurement - the measured battery, or
+// the push let through before when the battery did not follow it: only a
+// RISE of the command counts, never a battery that cannot follow it, which
+// would hold the producers down for nothing. Only ever lowers. Caller holds
+// l.mu.
+func (l *ExportLimiter) einAnstieg(now time.Time, limit, discharge, laden float64, res *ExportCap) {
+	if !l.stellValid {
+		// no push let through yet: nothing it could rise from
+		return
+	}
+	vor := l.stellKw
+	if l.battValid {
+		vor = math.Max(vor, -l.battKw)
+	}
+	if l.anstiegValid && l.anstiegMessung == l.messung && !ohneJeMessung {
+		vor = math.Min(vor, l.anstiegVor)
+	} else {
+		l.anstiegValid, l.anstiegMessung, l.anstiegVor = true, l.messung, vor
+	}
+	anstieg := l.schub(discharge, laden) - vor
+	if anstieg <= 1e-9 {
+		return
+	}
+	rest := closedLoopCap(limit, l.gridKw, l.pvKw) - anstieg
+	if pv := math.Max(rest, 0); l.cap > pv {
+		l.cap, l.capAt = pv, now
+		res.CapKw = round3(pv)
+	}
+	dis := l.schub(discharge, 0)
+	if rest < 0 && dis > 0 {
+		l.dcap, l.dcapValid, l.dcapAt = math.Max(dis+rest, 0), true, now
+		l.dischargeReport(discharge, res)
+	}
+}
+
+// ladungVorDemSprung: while the box's clock runs behind the newest sample it
+// had before it jumped back (A8r), a charge proves no headroom - the same
+// uncertainty as a standing value. The watchdog re-anchors and regulates on
+// the samples after the jump, but the plan it executes is anchored on the
+// clock before the jump: its slots come back when the clock reaches them
+// again, and with them a discharge instead of the charge that took the
+// producers' power until then (the self-consumption fallback while no slot
+// covers the clock). The producers are held where they would push the limit
+// with the charge gone; the discharge then gets its share from einAnstieg.
+// Only ever lowers; a sample after the old newest one ends it. Caller holds
+// l.mu.
+func (l *ExportLimiter) ladungVorDemSprung(now time.Time, limit float64, res *ExportCap) {
+	if !l.battValid || l.battKw <= 0 {
+		return
+	}
+	pv := math.Max(closedLoopCap(limit, l.gridKw, l.pvKw)-l.battKw, 0)
+	if l.cap > pv {
+		l.cap, l.capAt = pv, now
+		res.CapKw = round3(pv)
+	}
+}
+
+// schub is the battery push the evaluation lets through (+ discharge /
+// - charge, kW): the commanded discharge under its ceiling, or the charge.
+// Caller holds l.mu.
+func (l *ExportLimiter) schub(discharge, laden float64) float64 {
+	if laden > 0 {
+		return -laden
+	}
+	if l.dcapValid && l.dcap < discharge {
+		return math.Max(l.dcap, 0)
+	}
+	return discharge
 }
 
 // stehBeleg bounds what the box pushes on a standing value by what the last
@@ -492,16 +577,22 @@ func (l *ExportLimiter) ObserveMitSpeicher(ts time.Time, gridKw, pvKw float64, b
 	}
 	l.mu.Lock()
 	shadow := l.schattenLocked()
-	alterSchatten := l.alterSchatten
 	if l.seen && ts.Before(l.at) {
 		// A8 (IP-27): a sample older than the newest one is a clock that
 		// jumped back, not a stale sample - re-anchor instead of discarding
 		// every sample until the clock has caught up. The shadow below keeps
 		// today's rule (it IS today). As in the Einfrierprobe, the jump
 		// sample's value proves nothing: it counts as standing.
+		if !l.vergangenheit || l.at.After(l.sprungBis) {
+			l.sprungBis = l.at
+		}
+		l.vergangenheit = true
 		l.verankern(ts)
 		l.steht = l.wertValid
 	} else {
+		if l.vergangenheit && ts.After(l.sprungBis) {
+			l.vergangenheit = false
+		}
 		l.steht = l.wertValid && gridKw == l.wertKw
 		l.wertValid, l.wertKw = true, gridKw
 		if !l.steht {
@@ -522,7 +613,6 @@ func (l *ExportLimiter) ObserveMitSpeicher(ts time.Time, gridKw, pvKw float64, b
 	l.mu.Unlock()
 	if shadow != nil {
 		shadow.Observe(ts, gridKw, pvKw)
-		alterSchatten.Observe(ts, gridKw, pvKw)
 	}
 	return l.Observe(ts, gridKw, pvKw) || urgentDis
 }

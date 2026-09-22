@@ -238,12 +238,6 @@ type ExportLimiter struct {
 	// samples which arrived just after the caller captured its evaluation time.
 	uhrBlind bool
 	uhrAb    time.Time
-	// Befristet: der alte Schatten deckt einen Befund des Anteilswegs nach
-	// Uhrensprung rückwärts (+95,9 kW / 15 s). Heilung folgt im Paket
-	// vp-uems-v15-folge-anteilsweg-uhrensprung; dann entfällt der Schalter.
-	// Nur schattenLocked setzt ihn: ältere Werte verwerfen, negatives Alter
-	// wie vor der Einzelbox-Korrektur auf 0 klemmen.
-	alterAnteilsSchatten bool
 
 	// the currently commanded cap
 	capValid bool
@@ -269,8 +263,6 @@ type ExportLimiter struct {
 	rampPv, rampDis float64
 	// heute is the same box WITHOUT a share, evaluated alongside (V5)
 	heute *ExportLimiter
-	// Additional temporary ceiling of the old share path, never instead of V5.
-	alterSchatten *ExportLimiter
 	// the probing adjustment of IP-27 A7 (exportanteil.go, pruefen): the
 	// point it lowered to, held until the Einfrierprobe answers; +Inf = that
 	// actuator is not probed
@@ -292,6 +284,17 @@ type ExportLimiter struct {
 	messung, spielraumMessung uint64
 	spielraumVor              float64
 	spielraumValid            bool
+	// einAnstieg (exportanteil.go): the battery push (+ discharge / - charge,
+	// kW) the last evaluation let through, and the push before the first
+	// evaluation of measurement anstiegMessung.
+	stellValid, anstiegValid bool
+	stellKw, anstiegVor      float64
+	anstiegMessung           uint64
+	// the clock went back behind sprungBis, the newest sample before the jump:
+	// vergangenheit until a sample after it arrives (exportanteil.go,
+	// ladungVorDemSprung). Written by ObserveMitSpeicher only.
+	vergangenheit bool
+	sprungBis     time.Time
 }
 
 // NewExportLimiter returns an idle watchdog (no measurement, no cap).
@@ -315,9 +318,6 @@ func (l *ExportLimiter) Observe(ts time.Time, gridKw, pvKw float64) (urgent bool
 	// Like ObserveMitSpeicher: an older timestamp re-anchors the clock.
 	// A reordered sample must not earn release credit from before the jump.
 	if l.seen && ts.Before(l.at) {
-		if l.alterAnteilsSchatten {
-			return false
-		}
 		l.verankern(ts)
 	}
 	l.seen, l.at, l.gridKw, l.pvKw = true, ts, gridKw, math.Max(pvKw, 0)
@@ -391,9 +391,6 @@ func (l *ExportLimiter) capLockedAb(now, at time.Time, limit, safeStaticCapKw fl
 	fresh := false
 	if l.seen {
 		age = now.Sub(at)
-		if l.alterAnteilsSchatten && age < 0 {
-			age = 0
-		}
 		if age < 0 {
 			if !l.uhrBlind || now.Before(l.uhrAb) {
 				l.uhrAb = now
