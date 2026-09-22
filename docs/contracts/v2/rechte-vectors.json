@@ -13709,7 +13709,7 @@
               "standorte": null,
               "umfang": null,
               "art": null,
-              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
               "gueltig_bis": null,
               "beendet_am": null
             }
@@ -13773,7 +13773,7 @@
               "standorte": null,
               "umfang": null,
               "art": null,
-              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
               "gueltig_bis": null,
               "beendet_am": null
             }
