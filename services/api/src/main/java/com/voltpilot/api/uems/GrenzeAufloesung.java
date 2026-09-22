@@ -1,7 +1,9 @@
 package com.voltpilot.api.uems;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 
@@ -19,6 +21,8 @@ import java.util.List;
  * (die Anschlussgrenze des Ladeparks). Tarif und Vergütung ziehen NICHT um (W1).
  */
 public final class GrenzeAufloesung {
+
+    private static final ZoneId VORGABE_ZONE = ZoneId.of("Europe/Berlin");
 
     public static final String QUELLE_ANLAGE = "anlage";
     public static final String QUELLE_NETZANSCHLUSS = "netzanschluss";
@@ -45,6 +49,12 @@ public final class GrenzeAufloesung {
         public boolean grenzenGesetzt() {
             return bezugKw != null && (einspeisungKw != null || einspeisungKeine);
         }
+    }
+
+    /** Der Kalendertag des Standorts; nur ohne Standort-Zeitzone gilt die Berliner Vorgabe. */
+    public static LocalDate tagAm(Instant zeitpunkt, String zeitzone) {
+        ZoneId zone = zeitzone == null || zeitzone.isBlank() ? VORGABE_ZONE : ZoneId.of(zeitzone);
+        return zeitpunkt.atZone(zone).toLocalDate();
     }
 
     /** Die Fassung, die am {@code tag} gilt: die mit dem spätesten ersten Tag ≤ {@code tag}; sonst {@code null}. */

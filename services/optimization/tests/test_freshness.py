@@ -225,9 +225,24 @@ class _SitesCursor:
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
-        if "FROM anlage_netzanschluss b" in sql:
+        if "LEFT JOIN anlage_netzanschluss b" in sql:
             assert "LEFT JOIN netzanschluss_grenze g" in sql
-            self._rows = self._grenz_rows
+            from datetime import date
+
+            self._rows = [
+                (
+                    sid,
+                    "Europe/Berlin",
+                    UUID(int=98),
+                    date(2000, 1, 1),
+                    None,
+                    ab,
+                    einspeisung,
+                    bezug,
+                    keine,
+                )
+                for sid, ab, einspeisung, bezug, keine in self._grenz_rows
+            ]
             return
         if "FROM steuerungsverbund v" in sql:
             # UEMS AP-15 IP-14 (load_verbund): keine Anlage in `anteile_aktiv`.
@@ -381,7 +396,17 @@ def test_grenzblatt_ausdruecklich_keine_bleibt_ohne_kuenstliche_kappe(monkeypatc
         _wire_sites(monkeypatch, None, max_feed_in=anlage, grenz_rows=fassung)
         [site] = load_battery_sites("postgresql://fake")
         assert site.max_feed_in_kw == anlage
-        assert load_grenzblaetter("postgresql://fake", date.today())[SITE][0].einspeisegrenze_keine
+        stand = load_grenzblaetter("postgresql://fake", datetime.now(timezone.utc))[SITE]
+        assert stand.fassungen[0].einspeisegrenze_keine
+
+
+def test_grenzblatt_tag_ist_der_tag_des_standorts_mit_berlin_nur_als_rueckfall():
+    from datetime import date
+    from voltpilot_optimization.inputs import _grenz_tag
+
+    jetzt = datetime(2026, 9, 21, 22, 30, tzinfo=timezone.utc)
+    assert _grenz_tag(jetzt, "Europe/Lisbon") == date(2026, 9, 21)
+    assert _grenz_tag(jetzt, None) == date(2026, 9, 22)
 
 
 def test_grenzblatt_tabelle_fehlt_vor_der_migration_heisst_kein_grenzblatt(monkeypatch):
@@ -409,12 +434,12 @@ def test_grenzblatt_tabelle_fehlt_vor_der_migration_heisst_kein_grenzblatt(monke
         "psycopg",
         SimpleNamespace(
             connect=lambda dsn: _Conn(),
-            errors=SimpleNamespace(UndefinedTable=_Undefined),
+            errors=SimpleNamespace(UndefinedTable=_Undefined, UndefinedColumn=_Undefined),
         ),
     )
     from voltpilot_optimization.inputs import load_grenzblaetter
 
-    assert load_grenzblaetter("postgresql://fake", datetime.now().date()) == {}
+    assert load_grenzblaetter("postgresql://fake", datetime.now(timezone.utc)) == {}
 
 
 def test_peak_shaving_columns_resolve_to_site_and_battery_params(monkeypatch):

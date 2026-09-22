@@ -16,6 +16,7 @@ import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
 import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
 import com.voltpilot.api.repo.AdminFleetRepository.SourceCounts;
 import com.voltpilot.api.repo.AdminFleetRepository.UpdateStatusRow;
+import com.voltpilot.api.uems.GrenzeAufloesung;
 import com.voltpilot.api.web.dto.AdminFleetDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetEdgeDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetBoxDto;
@@ -131,7 +132,7 @@ public class AdminFleetController {
         Set<UUID> withBattery = fleet.sitesWithBattery();
         Map<UUID, BigDecimal> pvCapacity = fleet.pvCapacityPerSite();
         Map<UUID, PvPeak> pvPeak = fleet.pvPeakPerSite(now.minus(PV_PEAK_LOOKBACK));
-        Map<UUID, BigDecimal> maxFeedIn = fleet.maxFeedInPerSite();
+        Map<UUID, GrenzeAufloesung.Wirksam> maxFeedIn = fleet.maxFeedInPerSite(now);
         Map<UUID, ExportCeiling> feedInCeiling = fleet.feedInCeilingPerSite(now.minus(FEED_IN_LOOKBACK));
 
         // Die UNTERSTE Präzedenz-Stufe (Umgebungs-Vorgabe, validiert - eine
@@ -162,7 +163,10 @@ public class AdminFleetController {
             int waitingCount = stats == null ? 0 : stats.waitingCount();
 
             FleetKwpDto kwp = FleetPflege.kwp(pvCapacity.get(id), pvPeak.get(id));
-            FleetFeedInDto feedIn = FleetPflege.feedIn(maxFeedIn.get(id), feedInCeiling.get(id));
+            GrenzeAufloesung.Wirksam einspeisung = maxFeedIn.get(id);
+            FleetFeedInDto feedIn = FleetPflege.feedIn(
+                    einspeisung == null ? null : einspeisung.einspeisungKw(),
+                    einspeisung == null ? null : einspeisung.quelleEinspeisung(), feedInCeiling.get(id));
             List<FleetForecastDto> siteForecast = forecast.getOrDefault(id, List.of());
             boolean batteryWithoutDevice = unlinkedBattery.contains(id);
 

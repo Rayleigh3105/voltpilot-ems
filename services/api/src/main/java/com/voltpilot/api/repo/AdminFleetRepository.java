@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.uems.GrenzeAufloesung;
 import com.voltpilot.api.web.dto.ControlStatusDto;
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
 import java.math.BigDecimal;
@@ -529,17 +530,60 @@ public class AdminFleetRepository {
     }
 
     /**
-     * Die gepflegte Einspeisegrenze je Anlage ({@code site.max_feed_in_kw}, die
-     * statische Kappe am Netzverknüpfungspunkt, FK1). {@code NULL} = nicht
-     * gepflegt (dann ist die gemessene Decke nicht einzuordnen).
+     * Die wirksame Einspeisegrenze je Anlage am heutigen Tag des Standorts. Eine
+     * Abfrage liest Anlagenwert, heutige Bindung und alle Fassungen des gebundenen
+     * Grenzblatts; die EINE Fachregel {@link GrenzeAufloesung} entscheidet danach
+     * in Java. So bleibt der Admin-Leser mandantenübergreifend, aber ohne N+1.
      */
-    public Map<UUID, BigDecimal> maxFeedInPerSite() {
-        Map<UUID, BigDecimal> out = new HashMap<>();
+    public Map<UUID, GrenzeAufloesung.Wirksam> maxFeedInPerSite(Instant jetzt) {
+        Map<UUID, GrenzeAufloesung.Grenzen> anlagen = new HashMap<>();
+        Map<UUID, LocalDate> tage = new HashMap<>();
+        Map<UUID, Boolean> gebunden = new HashMap<>();
+        Map<UUID, List<GrenzeAufloesung.Fassung>> fassungen = new HashMap<>();
         jdbc.query(
-                "SELECT id, max_feed_in_kw FROM site WHERE max_feed_in_kw IS NOT NULL",
+                "WITH jetzt AS (SELECT ?::timestamptz AS zeit), site_zone AS ("
+                        + " SELECT s.id, s.max_feed_in_kw, coalesce(ort.zeitzone, 'Europe/Berlin') AS zeitzone"
+                        + " FROM site s CROSS JOIN jetzt j LEFT JOIN LATERAL ("
+                        + "  SELECT st.zeitzone FROM anlage_standort az"
+                        + "  JOIN standort st ON st.id = az.standort_id AND st.tenant_id = az.tenant_id"
+                        + "  WHERE az.site_id = s.id AND az.tenant_id = s.tenant_id AND az.aufgehoben_am IS NULL"
+                        + "    AND az.gueltig_ab <= (j.zeit AT TIME ZONE st.zeitzone)::date"
+                        + "    AND (az.gueltig_bis IS NULL OR az.gueltig_bis >= (j.zeit AT TIME ZONE st.zeitzone)::date)"
+                        + "  ORDER BY az.gueltig_ab DESC LIMIT 1"
+                        + " ) ort ON true"
+                        + ") SELECT z.id, z.max_feed_in_kw, z.zeitzone, b.id AS bindung_id,"
+                        + " b.gueltig_ab AS bindung_ab, b.gueltig_bis AS bindung_bis,"
+                        + " g.gueltig_ab, g.einspeisegrenze_kw, g.bezugsgrenze_kw, g.einspeisegrenze_keine"
+                        + " FROM site_zone z"
+                        + " LEFT JOIN anlage_netzanschluss b ON b.site_id = z.id AND b.aufgehoben_am IS NULL"
+                        + " LEFT JOIN netzanschluss_grenze g ON g.netzanschluss_id = b.netzanschluss_id"
+                        + "  AND g.tenant_id = b.tenant_id AND g.aufgehoben_am IS NULL"
+                        + " ORDER BY z.id, b.gueltig_ab, g.gueltig_ab",
                 rs -> {
-                    out.put(rs.getObject("id", UUID.class), rs.getBigDecimal("max_feed_in_kw"));
-                });
+                    UUID site = rs.getObject("id", UUID.class);
+                    LocalDate tag = GrenzeAufloesung.tagAm(jetzt, rs.getString("zeitzone"));
+                    anlagen.putIfAbsent(site, new GrenzeAufloesung.Grenzen(rs.getBigDecimal("max_feed_in_kw"), null));
+                    tage.putIfAbsent(site, tag);
+                    UUID bindung = rs.getObject("bindung_id", UUID.class);
+                    LocalDate ab = rs.getObject("bindung_ab", LocalDate.class);
+                    LocalDate bis = rs.getObject("bindung_bis", LocalDate.class);
+                    boolean laeuft = bindung != null && !ab.isAfter(tag) && (bis == null || !bis.isBefore(tag));
+                    if (laeuft) {
+                        gebunden.put(site, true);
+                        LocalDate fassungAb = rs.getObject("gueltig_ab", LocalDate.class);
+                        if (fassungAb != null) {
+                            fassungen.computeIfAbsent(site, ignored -> new ArrayList<>()).add(
+                                    new GrenzeAufloesung.Fassung(fassungAb,
+                                            rs.getBigDecimal("einspeisegrenze_kw"),
+                                            rs.getBigDecimal("bezugsgrenze_kw"),
+                                            rs.getBoolean("einspeisegrenze_keine")));
+                        }
+                    }
+                },
+                Timestamp.from(jetzt));
+        Map<UUID, GrenzeAufloesung.Wirksam> out = new HashMap<>();
+        anlagen.forEach((site, anlage) -> out.put(site, GrenzeAufloesung.aufloesen(anlage,
+                gebunden.getOrDefault(site, false), fassungen.getOrDefault(site, List.of()), tage.get(site))));
         return out;
     }
 
