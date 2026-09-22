@@ -90,7 +90,8 @@ class UemsZugriffMigrationTest {
     private static final List<String> BAUEN_DARAUF_AUF = List.of("20260916070000", "20260916190000",
             "20260922210000", // AP-16 IP-3: Verantwortlicher verweist auf benutzer(tenant_id, sub).
             "20260922220000", // AP-16 IP-5: Umfang mit Standort- und Ausschlussverweisen.
-            "20260922230000"); // AP-16 IP-8: erweitert bewertung_aenderung aus IP-5.
+            "20260922230000", // AP-16 IP-8: erweitert bewertung_aenderung aus IP-5.
+            "20260922237000"); // AP-16 IP-11: Einstufung verweist auf Energieeinsatz und Benutzerrollen.
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");

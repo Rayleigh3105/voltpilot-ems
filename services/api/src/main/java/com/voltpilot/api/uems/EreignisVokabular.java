@@ -190,6 +190,7 @@ public final class EreignisVokabular {
         STAND,
         MESSWERT,
         GANZ_LISTE,
+        WORT_LISTE,
         WERT
     }
 
@@ -285,6 +286,10 @@ public final class EreignisVokabular {
         // AP-11 IP-8 (additiv): die neu gebildete Kennzahl — ihr Kennzeichen (KZ-…) als Bezug und die Version n + 1.
         f.put("kennzahl", Typ.KENNUNG);
         f.put("version", Typ.GANZ_AB_1);
+        f.put("energieeinsatz", Typ.KENNUNG);
+        f.put("fassung", Typ.GANZ_AB_1);
+        f.put("einstufung", Typ.WORT);
+        f.put("gruende", Typ.WORT_LISTE);
         FELDER = Collections.unmodifiableMap(f);
     }
 
@@ -546,7 +551,10 @@ public final class EreignisVokabular {
         // hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet; [von, bis) ist seine Periode. Bezug NUR die
         // Kennzahl (ihr Kennzeichen KZ-…), nur die Cloud; vorläufige Werte ziehen ohne Meldung nach.
         KENNZAHL_NEU_GEBILDET("kennzahl_neu_gebildet", EnumSet.of(CLOUD), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
-                List.of("kennzahl"), List.of(), List.of("ausloeser", "version"), List.of(), List.of(), null, null);
+                List.of("kennzahl"), List.of(), List.of("ausloeser", "version"), List.of(), List.of(), null, null),
+        EINSTUFUNG_GESETZT("einstufung_gesetzt", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("energieeinsatz"), List.of(), List.of("fassung", "einstufung", "gruende"),
+                List.of(), List.of(), null, null);
 
         private final String code;
         private final Set<Urheber> urheber;
@@ -916,6 +924,7 @@ public final class EreignisVokabular {
             case STAND -> w.isNumber();
             case MESSWERT -> istMesswert(w);
             case GANZ_LISTE -> istGanzListe(w);
+            case WORT_LISTE -> istWortListe(w);
             case WERT -> w.isNull() || skalar(w);
         };
     }
@@ -967,6 +976,12 @@ public final class EreignisVokabular {
         return true;
     }
 
+    private static boolean istWortListe(JsonNode w) {
+        if (!w.isArray()) return false;
+        for (JsonNode x : w) if (!x.isTextual()) return false;
+        return true;
+    }
+
     private static void pruefeWoerter(JsonNode e, Art art) {
         wort(e, "strom", STROM);
         wort(e, "erkannt_aus", List.copyOf(ERKANNT_AUS.keySet()));
@@ -976,6 +991,8 @@ public final class EreignisVokabular {
         wort(e, "korrektur_art", KORREKTUR_ART);
         wort(e, "anstoss_art", ANSTOSS_ART);
         wort(e, "format", BERICHT_FORMAT);
+        wort(e, "einstufung", List.of("wesentlich", "nicht_wesentlich"));
+        wortListe(e, "gruende", List.of("K1", "K2", "K3", "K4"));
         wort(e, "status", art == Art.SUBSTITUTE ? ERSATZWERT_STATUS : KORREKTUR_STATUS);
         if (art == Art.DATA_GAP) {
             wort(e, "einheit", EINHEITEN_ZUWACHS);
@@ -993,6 +1010,15 @@ public final class EreignisVokabular {
     private static void wort(JsonNode e, String feld, List<String> vokabular) {
         if (e.has(feld) && !vokabular.contains(e.get(feld).asText())) {
             throw nein(Grund.WORT_UNBEKANNT, feld + " " + e.get(feld).asText());
+        }
+    }
+
+    private static void wortListe(JsonNode e, String feld, List<String> vokabular) {
+        if (!e.has(feld)) return;
+        for (JsonNode wert : e.get(feld)) {
+            if (!wert.isTextual() || !vokabular.contains(wert.asText())) {
+                throw nein(Grund.WORT_UNBEKANNT, feld + " " + wert.asText());
+            }
         }
     }
 

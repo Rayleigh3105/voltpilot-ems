@@ -5,7 +5,7 @@ Stand 11.09.2026 · Umschlag 2.1 · `events.raw` 1.0 · Vokabular 1.0 · Bezug: 
 beide Pfade — nie gelöscht“), dazu AP-04 E2, AP-05 E6, AP-06 E5/E7/E9 und der
 [Herkunftsvertrag](./messwert-herkunft.md).
 
-Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 33 Arten),
+Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 34 Arten),
 **wer sie melden darf**, **worauf sie sich beziehen**, **wie ihre Zeit zu lesen ist**, **wie
 eine VoltPilot-Box sie an die Cloud schickt** und **in welcher Form jedes Ereignis — von der
 Box oder von der Cloud selbst — auf Redpanda liegt**, bevor es in die nie gelöschte
@@ -15,7 +15,7 @@ Ereignis-Tabelle je Mandant geht (IP-8).
 |---|---|
 | [`mqtt-events-2.1.schema.json`](./mqtt-events-2.1.schema.json) | der Umschlag Box → Cloud auf `ems/{tenant_id}/{site_id}/{device_id}/v2/events` |
 | [`events-raw.event.schema.json`](./events-raw.event.schema.json) | das Redpanda-Ereignis `events.raw` (beide Wege, ein Ereignis je Datensatz) |
-| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 126 Fälle im Referenzunternehmen Ahrenberg |
+| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 132 Fälle im Referenzunternehmen Ahrenberg |
 | [`events-vocabulary.schema.json`](./events-vocabulary.schema.json) | JSON Schema 2020-12 der Vektor-Datei |
 | `services/api/.../uems/EreignisVokabular.java` | die reine PRÜFUNG: angenommen oder verworfen mit Grund |
 | `services/api/.../uems/EreignisVokabularVectorsTest.java` | Schema, Vokabular ⟷ Klasse ⟷ beide Schemas, jeder Fall, Referenzunternehmen, Herkunfts- und Datenquellen-Vektoren, Bestand des Writers |
@@ -154,6 +154,7 @@ Felder, die eine Fortschreibung setzen darf.
 | `bericht_entwurf_neu_gebildet` | Entwurf neu gebildet | cloud | — | Zeitpunkt · Messzeit | bericht | `datenstand` | — |
 | `bericht_abgerufen` | Bericht abgerufen | kunde | — | Zeitpunkt · Messzeit | bericht | `nr`, `format` | — |
 | `kennzahl_neu_gebildet` | Kennzahl neu gebildet | cloud | — | [von, bis) · Messzeit | kennzahl | `ausloeser`, `version` | — |
+| `einstufung_gesetzt` | Einstufung gesetzt | kunde | — | Zeitpunkt · Messzeit | energieeinsatz | `fassung`, `einstufung`, `gruende` | — |
 
 Die optionalen Felder, die Regeln je Art (Anzahl aus den Sequenzen, Einbau je Anlass, Schwellen
 der Zeitfehler …) und die Kundensätze stehen je Art in der Vektor-Datei. Die Teil-Vokabulare:
@@ -300,12 +301,13 @@ angelegt (siehe „Berichte“); die Reservierung bleibt als Herkunft stehen. `B
 `BerichtRegeln.EREIGNISSE_RESERVIERT`; `KennzahlVectorsTest` prüft weiter nur die Reservierungen der Kennzahl.
 Vertrag des Berichts: [`bericht.md`](./bericht.md).
 
-**Reserviert für die energetische Bewertung (AP-16 IP-3).** `einstufung_gesetzt`
-(Bezug `energieeinsatz`, Anlage IP-11/IP-12), `messbedarf_erfasst` und
+**Energetische Bewertung (AP-16 IP-3/IP-11).** `einstufung_gesetzt` ist seit IP-11
+angelegt: Bezug `energieeinsatz` (EE-…), Urheber `kunde`, Pflicht Fassung,
+Einstufung und Gründe K1–K4. Der unveränderliche Herkunftssatz und die Begründung
+stehen an der Fassung; Zahlen allein erzeugen nie die Meldung. `messbedarf_erfasst` und
 `messbedarf_eingeloest` (Bezug `messbedarf`, Anlage IP-19/IP-20) haben jeweils Urheber
-`kunde`. Eine Person stuft ein oder erfasst/löst einen Messbedarf ein. Sie stehen nur
-im Block `reserviert`; noch kein Schreiber und kein Eintrag in `vokabular.arten` oder
-der Ereignis-Tabelle. Bis zur Anlage lehnen die bestehenden Prüfer diese Wörter ab.
+`kunde`. Eine Person erfasst/löst einen Messbedarf ein. Diese beiden stehen weiter nur
+im Block `reserviert`; bis zu ihrer Anlage lehnen die bestehenden Prüfer sie ab.
 
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
@@ -435,7 +437,7 @@ angenommenen Umschlags ein Datensatz wie oben (`BoxEventsValidator`, Zwilling vo
 
 ## 8. Die Fälle
 
-126 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
+132 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
 verworfenen Fall; A = mit `annahme` (siehe §9).
 
 | Gruppe | Fälle |

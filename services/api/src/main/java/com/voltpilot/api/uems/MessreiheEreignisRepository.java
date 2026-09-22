@@ -55,10 +55,10 @@ public class MessreiheEreignisRepository {
     private static final Pattern UUID_FORM =
             Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
     private static final List<String> KENNUNGEN = List.of("box", "datenquelle", "komponente", "messstelle",
-            "bezugsgroesse", "bericht", "kennzahl");
+            "bezugsgroesse", "bericht", "kennzahl", "energieeinsatz");
     private static final List<String> KEIN_NUTZFELD = List.of("ereignis_id", "art", "zeitpunkt", "von",
             "bis", "box", "datenquelle", "komponente", "messkanal", "messstelle", "bezugsgroesse", "bericht",
-            "kennzahl");
+            "kennzahl", "energieeinsatz");
 
     private final JdbcTemplate jdbc;
 

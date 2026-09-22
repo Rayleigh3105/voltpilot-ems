@@ -12,9 +12,9 @@
     "  Java  services/ingest .../EventsContractSchemaTest — Umschläge und Beispiele gegen die Schemas",
     "Wer eine Art, ein Feld oder einen Satz ändert, ändert Java, TS, beide Schemas UND diese Datei.",
     "",
-    "⚠ NOCH RUFT NIEMAND AN. Keine Box sendet Ereignisse (erst mit einem Edge-Release,",
-    "IP-18/IP-19), die Datenannahme verarbeitet …/v2/events noch nicht (IP-5), es gibt noch",
-    "keine Ereignis-Tabelle (IP-8). Bis dahin schreibt der Writer weiter device_measurement_event.",
+    "Cloud-Dienste hängen Ereignisse über die gemeinsame Prüfung an die Ereignis-Tabelle an.",
+    "`einstufung_gesetzt` kommt ausschließlich aus der API und ist ausdrücklich kein Box-Ereignis;",
+    "die Ergänzung erweitert weder den MQTT-Umschlag noch eine Edge-Auslieferung.",
     "",
     "DIE BEISPIELWELT ist das Referenzunternehmen (uems-referenzunternehmen.json). Jeder Fall,",
     "der ein Ahrenberg-Objekt nennt (E-x, DQ-x, K-x, MS-x, Einbau), übernimmt dessen Werte, und",
@@ -725,6 +725,22 @@
       "version": {
         "typ": "ganz_ab_1",
         "beschreibung": "Die Version n + 1 des Kennzahl-Werts, die mit dieser Meldung entstanden ist — mindestens 2; Version 1 bildet der Regellauf ohne Meldung (AP-11 E7/E8, IP-8)."
+      },
+      "energieeinsatz": {
+        "typ": "kennung",
+        "beschreibung": "Das unveränderliche Kennzeichen des Energieeinsatzes (EE-…)."
+      },
+      "fassung": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Nummer der Einstufungs-Fassung."
+      },
+      "einstufung": {
+        "typ": "wort",
+        "beschreibung": "Die von einer Person gesetzte Einstufung: wesentlich oder nicht_wesentlich."
+      },
+      "gruende": {
+        "typ": "wort_liste",
+        "beschreibung": "Die begründenden Kriteriennummern K1 bis K4; darf bei nicht wesentlich leer sein."
       }
     },
     "arten": [
@@ -2170,6 +2186,31 @@
         "bestand": false,
         "nie_geloescht": true,
         "herkunft": "AP-11 §8 IP-8 (Kaskaden-Naht, Reihen-Pfad), reserviert seit AP-11 IP-1 (Block `reserviert`); Referenzfall K7 (kennzahl-vectors.json)"
+      },
+      {
+        "art": "einstufung_gesetzt",
+        "name": "Einstufung gesetzt",
+        "urheber": ["kunde"],
+        "zeit": { "form": "zeitpunkt", "grenzen": null, "offen_erlaubt": false, "achse": "messzeit" },
+        "bezug_pflicht": ["energieeinsatz"],
+        "bezug_erlaubt": [],
+        "pflicht": ["fassung", "einstufung", "gruende"],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "{energieeinsatz}: Fassung {fassung} als {einstufung} gesetzt (Gründe: {gruende})"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Nur eine Person mit energieeinsatz.einstufen meldet die angelegte Fassung; Zahlen melden niemals selbst.",
+          "Bezug ist nur der Energieeinsatz EE-…; Fassung und Einstufung entsprechen der gespeicherten Fassung, gruende enthält K1 bis K4 ohne Wiederholung.",
+          "Die Begründung und der vollständige Herkunftssatz stehen in der Fassung und im unveränderlichen Einsatzprotokoll, nicht doppelt in der Meldung."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-16 IP-11, F1–F5 und R3; reserviert seit IP-3"
       }
     ]
   },
@@ -2313,10 +2354,10 @@
       "urheber": [
         "kunde"
       ],
-      "angelegt_von": "AP-16 IP-11/IP-12; Reservierung mit IP-3",
+      "angelegt_von": "AP-16 IP-11 (Vokabular, Tabelle und Schreiber); Reservierung mit IP-3",
       "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
       "regel": "Eine Person setzt eine Einstufungs-Fassung am Energieeinsatz (EE-…) mit Begründung und Herkunfts-Satz; Zahlen allein stufen niemals ein.",
-      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+      "bis_dahin": "Eingelöst mit AP-16 IP-11 (V20260922237000): vokabular.arten kennt einstufung_gesetzt; es gilt jener Eintrag. Die Reservierung bleibt als Herkunft stehen."
     },
     {
       "art": "messbedarf_erfasst",
@@ -2342,6 +2383,31 @@
     }
   ],
   "cases": [
+    {
+      "name": "einstufung-ee3-wesentlich-nach-einschaetzung",
+      "pruefung": "ereignis",
+      "bezug": "AP-16 R3, F1–F5",
+      "why": "Die Person weicht mit K4 vom Vorschlag unter Schwelle ab; die Zahlen selbst melden nichts.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000001611",
+          "art": "einstufung_gesetzt",
+          "zeitpunkt": "2026-11-06T09:00:00Z",
+          "energieeinsatz": "EE-3",
+          "fassung": 1,
+          "einstufung": "wesentlich",
+          "gruende": ["K4"]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": ["EE-3: Fassung 1 als wesentlich gesetzt (Gründe: K4)"]
+      }
+    },
     {
       "name": "ausfall-e2-luecke-je-box-offen",
       "pruefung": "ereignis",

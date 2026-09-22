@@ -463,6 +463,9 @@
         },
         {
           "$ref": "#/$defs/art_kennzahl_neu_gebildet"
+        },
+        {
+          "$ref": "#/$defs/art_einstufung_gesetzt"
         }
       ]
     },
@@ -1912,6 +1915,24 @@
         },
         "version": {
           "$ref": "#/$defs/ganz_ab_1"
+        }
+      }
+    },
+    "art_einstufung_gesetzt": {
+      "type": "object",
+      "description": "einstufung_gesetzt — Eine Person hat eine Einstufungs-Fassung gesetzt. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": ["ereignis_id", "art", "zeitpunkt", "energieeinsatz", "fassung", "einstufung", "gruende"],
+      "properties": {
+        "ereignis_id": { "$ref": "#/$defs/uuid" },
+        "art": { "const": "einstufung_gesetzt" },
+        "zeitpunkt": { "$ref": "#/$defs/zeit_utc" },
+        "energieeinsatz": { "$ref": "#/$defs/kennung" },
+        "fassung": { "$ref": "#/$defs/ganz_ab_1" },
+        "einstufung": { "type": "string", "enum": ["wesentlich", "nicht_wesentlich"] },
+        "gruende": {
+          "type": "array", "uniqueItems": true,
+          "items": { "type": "string", "enum": ["K1", "K2", "K3", "K4"] }
         }
       }
     }

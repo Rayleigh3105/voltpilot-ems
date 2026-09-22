@@ -1209,7 +1209,7 @@
         "unterstuetzer": "-",
         "voltpilot_betrieb": "-"
       },
-      "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+      "anmerkung": "Seit AP-16 IP-11 setzen PUT …/einstufung und POST …/einstufung/bestaetigen die Kennung durch; Begründung, vollständige Herkunft und gegebenenfalls eine zweite Person sind Pflicht."
     },
     {
       "kennung": "energieeinsatz.ansehen",
@@ -1810,7 +1810,7 @@
             "energieeinsatz.einstufen"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+          "anmerkung": "Seit AP-16 IP-11 setzen PUT …/einstufung und POST …/einstufung/bestaetigen die Kennung durch; gelesen wird über energieeinsatz.ansehen."
         },
         {
           "handlung": "Energieeinsätze ansehen",
