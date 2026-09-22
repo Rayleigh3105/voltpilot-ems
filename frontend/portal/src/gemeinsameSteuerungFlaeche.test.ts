@@ -13,6 +13,7 @@ import {
   koerper,
   lage,
   lueckenAusAntwort,
+  pufferSatz,
   urteilSatz,
   verlustZeile,
   zustandsZeile,
@@ -278,4 +279,36 @@ it('Auflösen: zählt die API-Bestätigungen und bleibt eingerichtet', () => {
     aufloesen: { bestaetigt: 1, gesamt: 2, wartet_auf: [GS_IDS.e4] } };
   expect(lage(z)).toBe('wird_aufgeloest');
   expect(zustandsZeile(z, gsEingerichtet(), new Map())).toBe('Gemeinsame Steuerung wird aufgelöst · 1 von 2 Boxen haben bestätigt.');
+});
+
+describe('AP-15 Folge · Puffer für den Ausfall der führenden Box (Captain 22.09.2026, Lesart B)', () => {
+  const mitPuffer = (einspeisung: [number, number | null], bezug: [number, number | null]) => {
+    const e = gsEingerichtet();
+    e.ergebnis = {
+      einspeisung: { ...e.ergebnis!.einspeisung!, uebergangszuschlag_kw: einspeisung[0], uebergangszuschlag_fehlt_kw: einspeisung[1] },
+      bezug: { ...e.ergebnis!.bezug!, anteile: [{ box_id: GS_IDS.e1, kw: 0 }, { box_id: GS_IDS.e4, kw: 73 }],
+        uebergangszuschlag_kw: bezug[0], uebergangszuschlag_fehlt_kw: bezug[1] },
+    };
+    return e;
+  };
+
+  it('Ahrenberg A2: Bezug trägt den Puffer ganz, Einspeisung nennt den fehlenden Teil und den Handgriff am Gerät', () => {
+    const e = mitPuffer([4, 4], [4, 0]);
+    expect(pufferSatz(e, 'bezug')).toBe('Puffer für den Ausfall der führenden Box: 4 kW.');
+    expect(pufferSatz(e, 'einspeisung')).toBe(
+      'Puffer für den Ausfall der führenden Box: 4 kW, davon fehlen 4 kW — Rückfallwert von Hybrid-Wechselrichter 100 kW auf höchstens 36 kW senken.',
+    );
+  });
+
+  it('ohne Speicher an der führenden Box (0 oder Feld fehlt) keine Zeile — die Fläche bleibt wie vorher', () => {
+    expect(pufferSatz(gsEingerichtet(), 'einspeisung')).toBeNull();
+    expect(pufferSatz(mitPuffer([0, 0], [0, 0]), 'bezug')).toBeNull();
+    expect(pufferSatz(null, 'bezug')).toBeNull();
+  });
+
+  it('trägt kein einzelnes Gerät den fehlenden Teil, nennt der Satz die Rückfallwerte zusammen', () => {
+    expect(pufferSatz(mitPuffer([4, 0], [6.7, 6.7]), 'bezug')).toBe(
+      'Puffer für den Ausfall der führenden Box: 6,7 kW, davon fehlen 6,7 kW — die Rückfallwerte der Geräte zusammen um so viel senken.',
+    );
+  });
 });

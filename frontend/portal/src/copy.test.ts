@@ -2551,7 +2551,7 @@ describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)',
   it('die Sätze der Kundenfläche (AP-15 IP-23) bestehen den Wächter — roh und eingesetzt', () => {
     const werte: Record<string, string> = {
       box: 'Verwaltung', boxen: '2', einspeisung_kw: '60', bezug_kw: '77', geraet: 'PV-Wechselrichter Verwaltung 60 kW',
-      summe_kw: '100', verteilbar_kw: '70', kwh: '160', dauer: '9,1 Stunden',
+      summe_kw: '100', verteilbar_kw: '70', kwh: '160', dauer: '9,1 Stunden', puffer_kw: '4', fehlt_kw: '4', hoechstens_kw: '36',
     };
     const texte = Object.entries(STEUERUNG_FLAECHE).flatMap(([schluessel, vorlage]) => [
       vorlage,

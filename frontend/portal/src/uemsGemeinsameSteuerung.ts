@@ -130,6 +130,12 @@ export const FLAECHE = {
   urteil_passt_nicht: 'Nein — ohne ihre Boxen kämen die Geräte auf {summe_kw} kW, die Grenze lässt {verteilbar_kw} kW zu.',
   urteil_vorbehalt_ueber_grenze: 'Nein — schon was keine Box steuert, braucht mehr, als die Grenze zulässt.',
   urteil_offen: 'Noch nicht zu rechnen — dafür fehlen Angaben aus den Fragen davor.',
+  /** Frage 6 und Betreiber-Blatt: der Übergangszuschlag (Captain 22.09.2026, Lesart B) je Richtung */
+  puffer: 'Puffer für den Ausfall der führenden Box: {puffer_kw} kW.',
+  /** …wenn über den sicheren Rückfallwerten nicht genug frei ist — mit dem Handgriff am Gerät */
+  puffer_fehlt: 'Puffer für den Ausfall der führenden Box: {puffer_kw} kW, davon fehlen {fehlt_kw} kW — Rückfallwert von {geraet} auf höchstens {hoechstens_kw} kW senken.',
+  /** …wenn kein einzelnes Gerät den fehlenden Teil tragen kann */
+  puffer_fehlt_geraete: 'Puffer für den Ausfall der führenden Box: {puffer_kw} kW, davon fehlen {fehlt_kw} kW — die Rückfallwerte der Geräte zusammen um so viel senken.',
   /** Grund und Weg: angehalten vom Betreiber (409 `vom_betreiber_angehalten`) */
   vom_betreiber_angehalten: 'VoltPilot hat die Gemeinsame Steuerung angehalten. Fortsetzen kann nur VoltPilot — bitte wenden Sie sich an den Support.',
   /** Grund und Weg: ändern in aktiv (409 `erst_anhalten`) */

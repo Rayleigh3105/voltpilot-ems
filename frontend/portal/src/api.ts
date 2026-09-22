@@ -7098,6 +7098,10 @@ export interface UemsGemeinsameSteuerungAuslegung {
   summe_rueckfall_kw: number;
   anteile: { box_id: string; kw: number }[];
   ungenutzt_kw?: number;
+  /** Puffer für den Ausfall der führenden Box (Übergangszuschlag); 0 ohne Speicher dort. */
+  uebergangszuschlag_kw?: number;
+  /** Was davon über den Rückfällen keinen Platz fand (nur bei `passt`) — nie eine Ablehnung. */
+  uebergangszuschlag_fehlt_kw?: number | null;
 }
 
 export interface UemsEinrichtenKomponente {

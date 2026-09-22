@@ -23,6 +23,7 @@ import {
   lage,
   lueckenAusAntwort,
   positiveZahl,
+  pufferSatz,
   urteilSatz,
   zustandsZeile,
   type Entwurf,
@@ -399,6 +400,7 @@ export function GemeinsameSteuerungEinrichten({
                     </ul>
                   )}
                   <p><b>Passt die Anlage zur Grenze?</b> {urteilSatz(a)}</p>
+                  {pufferSatz(bild.einrichten, r) && <p data-testid={`gs-puffer-${r}`}>{pufferSatz(bild.einrichten, r)}</p>}
                 </div>
               );
             })}

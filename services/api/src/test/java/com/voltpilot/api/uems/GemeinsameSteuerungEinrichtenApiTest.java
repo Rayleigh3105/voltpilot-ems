@@ -111,6 +111,40 @@ class GemeinsameSteuerungEinrichtenApiTest {
                 POSTGRES.getPassword()));
     }
 
+    // ============================================================================ Puffer für den Ausfall der führenden Box
+
+    /**
+     * Übergangszuschlag (Captain 22.09.2026, Lesart B): die Rückfallzeit kommt aus {@code nach_s} des Speichers an der
+     * führenden Box, die Leistung aus seinem {@code asset}; ohne Speicher ist alles wie vor dem Puffer (0/77).
+     */
+    @Test
+    void pufferAusRueckfallzeitUndSpeicherleistungOhneSpeicherWieVorher() throws Exception {
+        Welt w = welt();
+        ok(kunde(w, put(w.pfad() + "/komponenten/" + w.k1() + "/rueckfall").content(
+                "{\"richtung\":\"einspeisung\",\"rueckfall\":\"faellt_auf_wert\",\"rueckfall_kw\":40,\"nach_s\":60}")));
+        ok(kunde(w, put(w.pfad() + "/komponenten/" + w.k2() + "/rueckfall").content(
+                "{\"richtung\":\"bezug\",\"rueckfall\":\"faellt_auf_wert\",\"rueckfall_kw\":0,\"nach_s\":90}")));
+        for (UUID k : w.k13()) {
+            ok(kunde(w, put(w.pfad() + "/komponenten/" + k + "/rueckfall").content(
+                    "{\"richtung\":\"bezug\",\"rueckfall\":\"faellt_auf_wert\",\"rueckfall_kw\":4.1,\"nach_s\":60}")));
+        }
+        ok(kunde(w, put(w.pfad()).content(erklaerung(w, w.k13(), "\"keine\"", "473"))));
+
+        // K-2 fällt erst nach 90 s zurück: 90 s / 900 s × 60 kW = 6,0 kW → Bezug 0/71
+        JsonNode bezug = ok(kunde(w, get(w.pfad() + "/einrichten"))).path("ergebnis").path("bezug");
+        assertThat(bezug.path("uebergangszuschlag_kw").decimalValue()).isEqualByComparingTo("6");
+        assertThat(anteil(bezug, w.e4())).isEqualByComparingTo("71");
+        assertThat(bezug.path("urteil").asText()).isEqualTo("passt");
+
+        // ohne Speicher an der führenden Box: kein Puffer, die Zahlen von vorher (R1/R3)
+        root.update("DELETE FROM asset WHERE site_id = ? AND type = 'battery'", w.an1());
+        JsonNode ohne = ok(kunde(w, get(w.pfad() + "/einrichten"))).path("ergebnis");
+        assertThat(ohne.path("bezug").path("uebergangszuschlag_kw").decimalValue()).isEqualByComparingTo("0");
+        assertThat(anteil(ohne.path("bezug"), w.e4())).isEqualByComparingTo("77");
+        assertThat(ohne.path("einspeisung").path("uebergangszuschlag_fehlt_kw").decimalValue()).isEqualByComparingTo("0");
+        assertThat(anteil(ohne.path("einspeisung"), w.e4())).isEqualByComparingTo("60");
+    }
+
     // ============================================================================ Abnahme: Ahrenberg
 
     @Test
@@ -150,19 +184,26 @@ class GemeinsameSteuerungEinrichtenApiTest {
         JsonNode zustand = ok(kunde(w, put(w.pfad()).content(erklaerung(w, w.k13(), "\"keine\"", "473"))));
         assertThat(zustand.path("zustand").asText()).isEqualTo("beobachtet");
 
-        // Frage 6: dieselben Zahlen wie SteuerungsverbundAnteilDienstTest (R1/R3)
+        // Frage 6: die Zahlen von R1/R3 — mit dem Puffer für den Ausfall der führenden Box (Ahrenberg A2, Lesart B):
+        // Einspeisung bleibt 40/60 „passt“, davon fehlen 4 kW (die Rückfälle füllen die Grenze); Bezug 0/73 statt 0/77
         JsonNode e = ok(kunde(w, get(w.pfad() + "/einrichten")));
         assertThat(e.path("eingerichtet").asBoolean()).isTrue();
         JsonNode einspeisung = e.path("ergebnis").path("einspeisung");
         assertThat(einspeisung.path("urteil").asText()).isEqualTo("passt");
         assertThat(anteil(einspeisung, w.e1())).isEqualByComparingTo("40");
         assertThat(anteil(einspeisung, w.e4())).isEqualByComparingTo("60");
+        assertThat(einspeisung.path("uebergangszuschlag_kw").decimalValue()).isEqualByComparingTo("4");
+        assertThat(einspeisung.path("uebergangszuschlag_fehlt_kw").decimalValue()).isEqualByComparingTo("4");
         JsonNode bezug = e.path("ergebnis").path("bezug");
         assertThat(bezug.path("urteil").asText()).isEqualTo("passt");
-        assertThat(bezug.path("verteilbar_kw").decimalValue()).isEqualByComparingTo("77");
+        assertThat(bezug.path("verteilbar_kw").decimalValue()).as("verteilbar bleibt Grenze − Vorbehalt")
+                .isEqualByComparingTo("77");
         assertThat(bezug.path("summe_rueckfall_kw").decimalValue()).isEqualByComparingTo("24.6");
         assertThat(anteil(bezug, w.e1())).isEqualByComparingTo("0");
-        assertThat(anteil(bezug, w.e4())).isEqualByComparingTo("77");
+        assertThat(anteil(bezug, w.e4())).isEqualByComparingTo("73");
+        assertThat(bezug.path("uebergangszuschlag_kw").decimalValue()).isEqualByComparingTo("4");
+        assertThat(bezug.path("uebergangszuschlag_fehlt_kw").decimalValue()).isEqualByComparingTo("0");
+        assertThat(bezug.path("ungenutzt_kw").decimalValue()).as("der Puffer ist nicht „ungenutzt“").isEqualByComparingTo("0");
         assertThat(e.path("vorbehalt").path("bezug_kw").decimalValue()).isEqualByComparingTo("473");
         assertThat(e.path("vorbehalt").path("bezug_herkunft").asText()).isEqualTo("erklaert");
         assertThat(e.path("vorbehalt").path("einspeisung_kw").decimalValue()).isEqualByComparingTo("0");
@@ -189,7 +230,8 @@ class GemeinsameSteuerungEinrichtenApiTest {
      * AP-15 Folge von IP-19 (d1, B3): ein per API erklärtes Ungeregeltes hinter dem Abgang von E-4 (50 kW Gebäude)
      * steht im {@code GET …/einrichten} je Box; speichert das Portal danach mit dem Feld (wie
      * {@code gemeinsameSteuerungFlaeche#koerper}), ist es noch da — und es zählt in den Anteil von E-4 (Fall C:
-     * Vorbehalt 418 + 50 dahinter → 132 kW). Ohne das Feld löscht das PUT es (das alte Portal tat das still).
+     * Vorbehalt 418 + 50 dahinter → 132 kW, abzüglich 4 kW Puffer für den Ausfall der führenden Box → 128 kW). Ohne das
+     * Feld löscht das PUT es (das alte Portal tat das still).
      */
     @Test
     void einErklaertesUngeregeltesBleibtBeimSpeichernMitFeld() throws Exception {
@@ -206,7 +248,7 @@ class GemeinsameSteuerungEinrichtenApiTest {
         assertThat(box(e, w.e4()).path("ungeregelt").get(0).path("hoechstwert_kw").decimalValue())
                 .isEqualByComparingTo("50");
         assertThat(box(e, w.e4()).path("ungeregelt").get(0).path("richtung").asText()).isEqualTo("bezug");
-        assertThat(anteil(e.path("ergebnis").path("bezug"), w.e4())).as("Fall C").isEqualByComparingTo("132");
+        assertThat(anteil(e.path("ergebnis").path("bezug"), w.e4())).as("Fall C").isEqualByComparingTo("128");
 
         // das Portal speichert noch einmal - mit dem Feld, wie es es geladen hat: es bleibt
         ok(kunde(w, put(w.pfad()).content(mit)));
@@ -370,7 +412,7 @@ class GemeinsameSteuerungEinrichtenApiTest {
         assertThat(anteil(v.path("ergebnis").path("einspeisung"), w.e1())).isEqualByComparingTo("40");
         assertThat(anteil(v.path("ergebnis").path("einspeisung"), w.e4())).isEqualByComparingTo("60");
         assertThat(anteil(v.path("ergebnis").path("bezug"), w.e1())).isEqualByComparingTo("0");
-        assertThat(anteil(v.path("ergebnis").path("bezug"), w.e4())).isEqualByComparingTo("77");
+        assertThat(anteil(v.path("ergebnis").path("bezug"), w.e4())).isEqualByComparingTo("73");
         assertThat(zeilen(w)).as("die Vorschau schreibt nichts").isEqualTo(vorher);
         assertThat(ok(kunde(w, get(w.pfad()))).path("zustand").asText()).isEqualTo("nicht_eingerichtet");
         assertThat(ok(kunde(w, get(w.pfad() + "/einrichten"))).path("ergebnis").isNull()).isTrue();
@@ -492,9 +534,10 @@ class GemeinsameSteuerungEinrichtenApiTest {
                 + "'Box Halle 1') RETURNING id", UUID.class, t, an1, "E-1-" + nr);
         UUID e4 = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, name) VALUES (?, ?, ?, "
                 + "'Box Verwaltung') RETURNING id", UUID.class, t, an1, "E-4-" + nr);
-        // Der Speicher hängt an Box Halle 1 — sie führt (Anlagen-Rollen an die führende Box)
+        // Der Speicher hängt an Box Halle 1 — sie führt (Anlagen-Rollen an die führende Box). 60 kW Lade- und
+        // Entladeleistung wie im Simulator-Befund IP-29 A2: Puffer für den Ausfall der führenden Box 60 s / 900 s × 60 kW = 4 kW
         root.update("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, max_discharge_kw, "
-                + "roundtrip_efficiency_pct, device_id) VALUES (?, ?, 'battery', 200, 100, 100, 92, ?)", t, an1, e1);
+                + "roundtrip_efficiency_pct, device_id) VALUES (?, ?, 'battery', 200, 60, 60, 92, ?)", t, an1, e1);
         UUID dq1 = quelle(t, an1, "DQ-1", "10.0." + nr + ".1:502", e1);
         UUID dq2 = quelle(t, an1, "DQ-2", "10.0." + nr + ".2:502", e1);
         UUID dq8 = quelle(t, an1, "DQ-8", "10.0." + nr + ".8:502", e4);

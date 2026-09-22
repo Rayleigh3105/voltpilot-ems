@@ -27,6 +27,14 @@ import java.util.TreeSet;
  * bleibt ungenutzt. Die Python-Referenz ist {@code services/optimization/tests/test_steuerungsverbund_referenz.py};
  * beide fahren {@code docs/contracts/v2/verbund-anteil-vectors.json}, der Go-Zwilling der Box kommt mit IP-17.
  * <b>Wer eine Regel ändert, ändert die Vektor-Datei UND alle Zwillinge.</b>
+ *
+ * <p><b>Übergangszuschlag</b> (AP-15 Folge, Captain-Entscheid 22.09.2026 „Puffer einrechnen“, Lesart B): fällt die
+ * führende Box aus, halten ihre Speicher bis zum Geräte-Rückfall den letzten Sollwert. Die Viertelstunde mit dem Ausfall
+ * bekommt dafür einen Puffer {@code Z} = Rückfallzeit / 900 s × Lade- bzw. Entladeleistung (aufgerundet). Er wird nur
+ * aus dem Rest ÜBER den Rückfällen genommen, bevor G4 verteilt, und führt NIE zur Ablehnung: das Urteil und
+ * {@code verteilbar = Grenze − Vorbehalt} bleiben wie ohne ihn. Reicht der Rest nicht, fehlt der Unterschied
+ * ({@code zuschlagFehltKw}) — das Portal nennt ihn mit dem Handgriff (Rückfallwert am Gerät senken). Die Box rechnet ihn
+ * nicht; sie bekommt nur kleinere Anteile unter demselben {@code verteilbar}.
  */
 public final class SteuerungsverbundAnteile {
 
@@ -43,10 +51,13 @@ public final class SteuerungsverbundAnteile {
 
     /**
      * Das Urteil einer Richtung. {@code summeRueckfallKw} fehlt bei {@code vorbehalt_ueber_grenze},
-     * {@code ungenutztKw} bei jedem Urteil außer {@code passt}; {@code anteile} ist dann leer.
+     * {@code ungenutztKw} bei jedem Urteil außer {@code passt}; {@code anteile} ist dann leer. {@code zuschlagKw} ist
+     * der Übergangszuschlag (0,0 ohne Speicher an der führenden Box), {@code zuschlagFehltKw} der Teil davon, der über
+     * den Rückfällen keinen Platz fand — nur bei {@code passt}. Der genommene Teil steckt nicht in {@code ungenutztKw}.
      */
     public record Auslegung(AuslegungUrteil urteil, BigDecimal verteilbarKw, BigDecimal summeRueckfallKw,
-            Map<String, BigDecimal> anteile, BigDecimal ungenutztKw) {
+            Map<String, BigDecimal> anteile, BigDecimal ungenutztKw, BigDecimal zuschlagKw,
+            BigDecimal zuschlagFehltKw) {
 
         /** Scharfschalten verlangt {@code passt} (I1); jedes andere Urteil lehnt mit {@code auslegung_passt_nicht} ab (E2 = A). */
         public Ablehnung ablehnung() {
@@ -82,8 +93,19 @@ public final class SteuerungsverbundAnteile {
      * Nennleistung (an den rohen Werten) — wirft {@link IllegalArgumentException}.
      */
     public static Auslegung anteile(BigDecimal grenzeKw, BigDecimal vorbehaltKw, List<Mitglied> mitglieder) {
+        return anteile(grenzeKw, vorbehaltKw, BigDecimal.ZERO, mitglieder);
+    }
+
+    /**
+     * Wie {@link #anteile(BigDecimal, BigDecimal, List)}, dazu der Übergangszuschlag {@code zuschlagKw}
+     * ({@link #uebergangszuschlag}), aufgerundet: er geht vom Rest über den Rückfällen ab, bevor G4 verteilt — höchstens
+     * so viel, wie dort ist. Das Urteil hängt nicht an ihm.
+     */
+    public static Auslegung anteile(BigDecimal grenzeKw, BigDecimal vorbehaltKw, BigDecimal zuschlagKw,
+            List<Mitglied> mitglieder) {
         nichtNegativ(grenzeKw);
         nichtNegativ(vorbehaltKw);
+        nichtNegativ(zuschlagKw);
         Set<String> gesehen = new HashSet<>();
         Map<String, Long> rueckfall = new LinkedHashMap<>();
         Map<String, Long> nenn = new LinkedHashMap<>();
@@ -107,15 +129,20 @@ public final class SteuerungsverbundAnteile {
         }
 
         long verteilbar = zehntel(grenzeKw, RoundingMode.FLOOR) - zehntel(vorbehaltKw, RoundingMode.CEILING);
+        long zuschlag = zehntel(zuschlagKw, RoundingMode.CEILING);
         if (verteilbar < 0) {
-            return new Auslegung(AuslegungUrteil.VORBEHALT_UEBER_GRENZE, kw(verteilbar), null, Map.of(), null);
+            return new Auslegung(AuslegungUrteil.VORBEHALT_UEBER_GRENZE, kw(verteilbar), null, Map.of(), null,
+                    kw(zuschlag), null);
         }
         long summeRueckfall = rueckfall.values().stream().mapToLong(Long::longValue).sum();
         if (summeRueckfall > verteilbar) {
-            return new Auslegung(AuslegungUrteil.AUSLEGUNG_PASST_NICHT, kw(verteilbar), kw(summeRueckfall), Map.of(), null);
+            return new Auslegung(AuslegungUrteil.AUSLEGUNG_PASST_NICHT, kw(verteilbar), kw(summeRueckfall), Map.of(), null,
+                    kw(zuschlag), null);
         }
 
-        long rest = verteilbar - summeRueckfall;
+        // Übergangszuschlag: nur aus dem Rest über den Rückfällen, nie mehr als dort ist (Lesart B)
+        long genommen = Math.min(zuschlag, verteilbar - summeRueckfall);
+        long rest = verteilbar - summeRueckfall - genommen;
         Map<String, Long> anteil = new LinkedHashMap<>(rueckfall);
         for (Rolle rolle : VERTEIL_REIHENFOLGE) {
             List<String> gruppe = mitglieder.stream().filter(m -> m.rolle() == rolle).map(Mitglied::box).toList();
@@ -139,7 +166,29 @@ public final class SteuerungsverbundAnteile {
         Map<String, BigDecimal> ergebnis = new LinkedHashMap<>();
         anteil.forEach((b, z) -> ergebnis.put(b, kw(z)));
         long vergeben = anteil.values().stream().mapToLong(Long::longValue).sum();
-        return new Auslegung(AuslegungUrteil.PASST, kw(verteilbar), kw(summeRueckfall), ergebnis, kw(verteilbar - vergeben));
+        return new Auslegung(AuslegungUrteil.PASST, kw(verteilbar), kw(summeRueckfall), ergebnis,
+                kw(verteilbar - vergeben - genommen), kw(zuschlag), kw(zuschlag - genommen));
+    }
+
+    /** Die Viertelstunde, über die die Grenze gilt (Viertelstunden-Mittel am Hauptzähler), in Sekunden. */
+    public static final int VIERTELSTUNDE_S = 900;
+
+    /** Die Rückfallzeit, wenn am Speicher keine hinterlegt ist ({@code nach_s} fehlt): 60 s. */
+    public static final int RUECKFALLZEIT_VORGABE_S = 60;
+
+    /**
+     * Der Übergangszuschlag einer Richtung: {@code rueckfallzeitS} / 900 s × {@code leistungKw} (die größte Entlade- bzw.
+     * Ladeleistung der Speicher an der führenden Box), auf 0,1 kW AUFgerundet — zugunsten der Grenze. Ahrenberg A2:
+     * 60 s / 900 s × 60 kW = 4,0 kW. Ohne Speicher (Leistung 0) ist er 0,0.
+     */
+    public static BigDecimal uebergangszuschlag(int rueckfallzeitS, BigDecimal leistungKw) {
+        nichtNegativ(leistungKw);
+        if (rueckfallzeitS < 0) {
+            throw new IllegalArgumentException("Rückfallzeit negativ: " + rueckfallzeitS);
+        }
+        BigDecimal z = leistungKw.multiply(BigDecimal.valueOf(rueckfallzeitS))
+                .divide(BigDecimal.valueOf(VIERTELSTUNDE_S), 1, RoundingMode.CEILING);
+        return z.setScale(1, RoundingMode.UNNECESSARY);
     }
 
     /** Zweischritt (G5): je Box das Kleinere aus alt und neu; wer in einem Stand fehlt, steht dort mit 0. */
