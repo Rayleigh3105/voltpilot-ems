@@ -268,9 +268,9 @@ public class TenantRepository {
                     st.setObject(1, tenantId);
                     st.executeUpdate();
                 }
-                // AP-16 IP-3/IP-5: before Benutzer, Bezugsgröße, Prozess, Standort and Unternehmen (RESTRICT).
+                // AP-16 IP-3/IP-5/IP-8: before Benutzer, Bezugsgröße, Prozess, Standort and Unternehmen (RESTRICT).
                 // Current repository code also runs against older migration fixtures.
-                for (String table : new String[] {"bewertung_aenderung", "bewertung_umfang_ausschluss",
+                for (String table : new String[] {"bewertung_aenderung", "bewertung_kriterien_fassung", "bewertung_umfang_ausschluss",
                         "bewertung_umfang_standort", "bewertung_umfang",
                         "energieeinsatz_aenderung", "energieeinsatz_einflussgroesse",
                         "energieeinsatz", "energieeinsatz_kennzeichen_seq"}) {

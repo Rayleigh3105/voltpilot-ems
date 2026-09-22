@@ -13623,6 +13623,200 @@
         "umfang_noetig": null,
         "text": null
       }
+    },
+    {
+      "name": "ap16-kriterien-bearbeiter",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 KR1/R15/R17: Kriterien ändern, freigeben und ablehnen nur KA/EM; die zweite Person prüft der Schreibweg.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bewertung.kriterien",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ap16-kriterien-energiemanager",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 KR1/R15/R17: Kriterien ändern, freigeben und ablehnen nur KA/EM; die zweite Person prüft der Schreibweg.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bewertung.kriterien",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap16-kriterien-kundenadministrator",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 KR1/R15/R17: Kriterien ändern, freigeben und ablehnen nur KA/EM; die zweite Person prüft der Schreibweg.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bewertung.kriterien",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
     }
   ]
 }

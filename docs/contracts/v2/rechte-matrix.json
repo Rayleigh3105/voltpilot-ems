@@ -1176,6 +1176,24 @@
       "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
     },
     {
+      "kennung": "bewertung.kriterien",
+      "gruppe": "struktur",
+      "kundenwort": "Kriterien ändern",
+      "herkunft": "AP-16 §6.1 (KR1, R15/R17)",
+      "nachtrag": "AP-16 §6.1",
+      "wie": "prozess.verwalten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Kriterien als Fassung mit Begründung ändern, freigeben oder ablehnen. Lesen über energieeinsatz.ansehen; Vier-Augen nach Unternehmen."
+    },
+    {
       "kennung": "energieeinsatz.einstufen",
       "gruppe": "struktur",
       "kundenwort": "Energieeinsatz einstufen",
@@ -1764,6 +1782,16 @@
       "titel": "Energetische Bewertung: Energieeinsätze (IP-3)",
       "konzept": "AP-16 §4.4, §6.1, R14; entschieden am 22.09.2026",
       "handlungen": [
+        {
+          "handlung": "Kriterien ändern",
+          "wer": "KA U · EM U",
+          "recht": "`bewertung.kriterien`",
+          "kennungen": [
+            "bewertung.kriterien"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Kriterien als Fassung mit Begründung ändern, freigeben oder ablehnen. Lesen über energieeinsatz.ansehen; Vier-Augen nach Unternehmen."
+        },
         {
           "handlung": "Energieeinsatz anlegen · bearbeiten · beenden",
           "wer": "KA U · EM U",

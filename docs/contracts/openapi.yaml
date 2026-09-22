@@ -11967,6 +11967,146 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/unternehmen/bewertung/kriterien:
+    get:
+      tags: [energieeinsaetze]
+      summary: Wirksame Kriterien-Fassung oder Vertragsvorgabe lesen.
+      description: >
+        Recht energieeinsatz.ansehen; Unternehmens- oder sichtbarer Standortumfang.
+        Ohne gespeicherte Fassung 1 mit Herkunft Vorgabe und gueltig_ab null, ohne Schreibwirkung.
+        Beantragte und abgelehnte Fassungen sind nur in der Historie, nie wirksam.
+      responses:
+        "200":
+          description: Wirksame Fassung; werte entspricht bei Fassung 1 startwerte aus bewertung-vectors.json.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungKriterienFassung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [energieeinsaetze]
+      summary: Kriterien als nächste Fassung mit Begründung speichern.
+      description: >
+        Recht bewertung.kriterien (KA U, EM U). Vollständige Werte im Vertragsformat.
+        Sichert beim ersten Ändern Fassung 1, danach stets nächste Nummer; alle Fassungen bleiben lesbar.
+        Ohne Vier-Augen sofort ab heute in der Unternehmenszeitzone wirksam, sonst beantragt ohne gueltig_ab.
+        Höchstens ein offener Antrag. Fassung und Protokoll atomar. Kein Anstoß (IP-23).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BewertungKriterienSpeichern" }
+      responses:
+        "200":
+          description: Neue wirksame oder beantragte Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungKriterienFassung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: freigabe_offen — zuerst den vorhandenen Antrag entscheiden.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungKriterienFehler" }
+        "422":
+          description: begruendung_fehlt oder kriterien_ungueltig.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungKriterienFehler" }
+  /api/v1/unternehmen/bewertung/kriterien/fassungen:
+    get:
+      tags: [energieeinsaetze]
+      summary: Alle Kriterien-Fassungen, jüngste zuerst, einschließlich Anträge und Ablehnungen.
+      description: Recht energieeinsatz.ansehen; ohne Speicherung nur Fassung 1 als Vorgabe.
+      responses:
+        "200":
+          description: Unverlierbare Historie.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fassungen]
+                properties:
+                  fassungen: { type: array, items: { $ref: "#/components/schemas/BewertungKriterienFassung" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/unternehmen/bewertung/kriterien/{nummer}/freigeben:
+    post:
+      tags: [energieeinsaetze]
+      summary: Beantragte Kriterien-Fassung durch eine zweite Person freigeben.
+      description: >
+        Recht bewertung.kriterien (KA U, EM U). Urheber ausgeschlossen, auch nach Abschalten der Vier-Augen-Einstellung.
+        Freigabe wird ab dem Bestätigungstag in der Unternehmenszeitzone wirksam; Ablehnung erhält die bisher wirksame Fassung.
+      parameters:
+        - in: path
+          name: nummer
+          required: true
+          schema: { type: integer, minimum: 2 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              description: Optionale Begründung der Freigabe.
+              properties:
+                begruendung: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Entschiedene Fassung mit beiden Akteuren und Entscheidungszeitpunkt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungKriterienFassung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Fehlendes Recht oder zweite_person_noetig.
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: bereits_entschieden — kein offener Antrag.
+        "422":
+          description: begruendung_fehlt bei Ablehnung.
+  /api/v1/unternehmen/bewertung/kriterien/{nummer}/ablehnen:
+    post:
+      tags: [energieeinsaetze]
+      summary: Beantragte Kriterien-Fassung durch eine zweite Person ablehnen.
+      description: >
+        Recht bewertung.kriterien (KA U, EM U). Urheber ausgeschlossen, auch nach Abschalten der Vier-Augen-Einstellung.
+        Freigabe wird ab dem Bestätigungstag in der Unternehmenszeitzone wirksam; Ablehnung erhält die bisher wirksame Fassung.
+      parameters:
+        - in: path
+          name: nummer
+          required: true
+          schema: { type: integer, minimum: 2 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [begruendung]
+              properties:
+                begruendung: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Entschiedene Fassung mit beiden Akteuren und Entscheidungszeitpunkt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungKriterienFassung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Fehlendes Recht oder zweite_person_noetig.
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: bereits_entschieden — kein offener Antrag.
+        "422":
+          description: begruendung_fehlt bei Ablehnung.
   /api/v1/unternehmen/bewertung/umfang:
     get:
       tags: [energieeinsaetze]
@@ -13879,6 +14019,77 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    BewertungKriterienWerte:
+      type: object
+      additionalProperties: false
+      required: [K1, K2, K3, K5, K6, K7, K8, mindest_monate]
+      description: >
+        JSON-Typen und Startwerte aus bewertung-vectors.json#/startwerte, K4 hat keine Zahl.
+        Prozent 0 bis 100, Menge nichtnegativ; mindest_monate höchstens K7.
+      properties:
+        K1: { type: string, pattern: '^(0|[1-9][0-9]*)(\.[0-9]+)?$', description: Anteil in Prozent. }
+        K2: { type: string, pattern: '^(0|[1-9][0-9]*)(\.[0-9]+)?$', description: Kumulierter Block in Prozent. }
+        K3: { type: string, pattern: '^(0|[1-9][0-9]*)(\.[0-9]+)?$', description: Jahresmenge in kWh. }
+        K5: { type: string, pattern: '^(0|[1-9][0-9]*)(\.[0-9]+)?$', description: Datenlage in Prozent. }
+        K6: { type: string, pattern: '^(0|[1-9][0-9]*)(\.[0-9]+)?$', description: Ersatzwert-Anteil in Prozent. }
+        K7: { type: integer, minimum: 1, maximum: 2147483647, description: Volle Monate. }
+        K8: { type: string, pattern: '^(0|[1-9][0-9]*)(\.[0-9]+)?$', description: Messabdeckung in Prozent. }
+        mindest_monate: { type: integer, minimum: 1, maximum: 2147483647 }
+    BewertungKriterienSpeichern:
+      type: object
+      additionalProperties: false
+      required: [werte, begruendung]
+      properties:
+        werte: { $ref: "#/components/schemas/BewertungKriterienWerte" }
+        begruendung: { type: string, minLength: 1 }
+    BewertungKriterienAkteur:
+      type: object
+      nullable: true
+      required: [sub, name, rolle, art]
+      properties:
+        sub: { type: string, nullable: true }
+        name: { type: string }
+        rolle: { type: string, nullable: true }
+        art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+    BewertungKriterienFassung:
+      type: object
+      required: [fassung, werte, kriterien, herkunft, gueltig_ab, begruendung, akteur, vieraugen, freigabe_status, entschieden_von, entschieden_am, entscheidungs_begruendung, created_at, aufgehoben_am]
+      properties:
+        fassung: { type: integer, minimum: 1 }
+        werte: { $ref: "#/components/schemas/BewertungKriterienWerte" }
+        kriterien:
+          type: array
+          minItems: 8
+          maxItems: 8
+          description: K1 bis K8 in Reihenfolge; K4 ohne Schwelle, Einheit und Vergleich.
+          items:
+            type: object
+            required: [kennung, schwelle, einheit, vergleich]
+            properties:
+              kennung: { type: string, enum: [K1, K2, K3, K4, K5, K6, K7, K8] }
+              schwelle:
+                oneOf:
+                  - { type: string, nullable: true }
+                  - { type: integer }
+              einheit: { type: string, nullable: true, enum: ['%', kWh, Monate, null] }
+              vergleich: { type: string, nullable: true, enum: ['>=', '<=', '=', kumuliert bis, null] }
+        herkunft: { type: string, enum: [Vorgabe, Unternehmen] }
+        gueltig_ab: { type: string, format: date, nullable: true, description: Null bei ungespeicherter Vorgabe und unwirksamen Anträgen. }
+        begruendung: { type: string, nullable: true }
+        akteur: { $ref: "#/components/schemas/BewertungKriterienAkteur" }
+        vieraugen: { type: boolean, description: Einstellung beim Beantragen; spätere Änderungen umgehen die Freigabe nicht. }
+        freigabe_status: { type: string, enum: [beantragt, freigegeben, abgelehnt] }
+        entschieden_von: { $ref: "#/components/schemas/BewertungKriterienAkteur" }
+        entschieden_am: { type: string, format: date-time, nullable: true }
+        entscheidungs_begruendung: { type: string, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        aufgehoben_am: { type: string, format: date-time, nullable: true }
+    BewertungKriterienFehler:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, kriterien_ungueltig, begruendung_fehlt, freigabe_offen, bereits_entschieden, zweite_person_noetig] }
+        message: { type: string }
     BewertungUmfangSpeichern:
       type: object
       additionalProperties: false

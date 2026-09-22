@@ -289,6 +289,9 @@ class RechtMatrixApiTest {
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/sites/{A1}/cockpit-layout", "ee44333e"));
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/tenant/cockpit-layout", "ee33333e"));
         z.add(new Zeile("energieeinsatz.verwalten", HttpMethod.POST, "/api/v1/unternehmen/energieeinsaetze", "ee333333"));
+        z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee333333"));
+        z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee333333"));
+        z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee333333"));
         return z;
     }
 
