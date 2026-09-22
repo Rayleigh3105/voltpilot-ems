@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"math"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
@@ -47,22 +48,30 @@ func (a *Agent) bezugAnteil() *lastmgmt.BezugAnteil {
 
 // netzladenDeckel is the ceiling on the battery's charge for a box holding a
 // share document, nil without one. Every input is the box's own (G1): its PV
-// reading and, at the leading box, the connection-point sample and connection
-// limit of its charging budget. A leading box without a charge park knows no
-// connection limit and so never charges from the grid while it holds a share.
+// reading and, wherever a charge park runs, the sample of its charging budget
+// - at the leading box the connection point and its limit, at a
+// co-controlling one its own meter and its share. A leading box without a
+// charge park knows no connection limit and so never charges from the grid
+// while it holds a share.
 func (a *Agent) netzladenDeckel(now time.Time, r guards.Reading) *guards.NetzladenDeckel {
 	an := a.bezugAnteil()
 	if an == nil {
 		return nil
 	}
 	in := guards.Netzladen{Fuehrt: an.Fuehrt, PvKw: r.PvKw}
-	if rt := a.ocpp; an.Fuehrt && rt != nil {
+	if rt := a.ocpp; rt != nil {
 		n, hasLimit := rt.budget.Netzpunkt(now, rt.currentSettings())
 		// B2 (AP-15 IP-20): a frozen value is not fresh, however new its
 		// timestamp - blind, the box charges only from its own PV
 		in.Fresh = n.Seen && n.Age <= lastmgmt.BudgetFreshWindow && a.eingefrorenSeit(now).IsZero()
 		in.Limit = hasLimit
 		in.PlanableKw, in.GridKw, in.BattChargeKw = n.PlanableKw, n.GridKw, n.BattChargeKw
+		if !an.Fuehrt {
+			// AP-15 Folge (PV counted once): the co-controlling box holds its
+			// share at its own meter - the battery like the charge park
+			// (lastmgmt.BudgetAnteil, PR 1059)
+			in.PlanableKw = math.Max(round3(an.AnteilKw), 0)
+		}
 		p, stichprobe := rt.planUndStichprobe()
 		if p != nil && p.AllocatedKw > n.ChargingKw {
 			in.ReservedKw = p.AllocatedKw - n.ChargingKw
@@ -74,7 +83,7 @@ func (a *Agent) netzladenDeckel(now time.Time, r guards.Reading) *guards.Netzlad
 		// releases nothing until the park has decided on a sample at least
 		// as new (guards.Netzladen.ParkOffen). Afterwards ReservedKw carries
 		// what the park took.
-		regelt := in.Fresh && in.Limit
+		regelt := in.Fresh && (in.Limit || !an.Fuehrt)
 		a.bezugMu.Lock()
 		switch {
 		case !regelt:
@@ -85,6 +94,14 @@ func (a *Agent) netzladenDeckel(now time.Time, r guards.Reading) *guards.Netzlad
 		frischAb := a.bezugFrischAb
 		a.bezugMu.Unlock()
 		in.ParkOffen = regelt && (p == nil || stichprobe.Before(frischAb))
+		// AP-15 Folge: PV is counted once - the park's loop already counted
+		// a PV surplus at the meter as headroom, so the battery's PV comes
+		// after the park (guards.Netzladen.Vorrang). Blind, the loop keeps
+		// the last sample, with the park's current grant.
+		in.Vorrang, in.Nachlauf = true, n.Seen && !in.Fresh
+		if p != nil && p.AllocatedKw < n.ChargingKw {
+			in.ParkUnterKw = n.ChargingKw - p.AllocatedKw
+		}
 	}
 	// IP-27 A7: a standing import value asks for ONE probing adjustment
 	e := &a.einfrier

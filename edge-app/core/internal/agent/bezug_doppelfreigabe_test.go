@@ -67,6 +67,7 @@ type dbErgebnis struct {
 	groessteKw float64 // largest excess of the meter over the headroom
 	sekunden   int     // seconds above it
 	speicherKw float64 // largest grid charge of the battery while it measures
+	ladungKw   float64 // largest charge of the battery while it measures (PV and grid)
 }
 
 // dbLauf plays one case: 5 min fresh from a cold start, the gap, 10 min
@@ -151,6 +152,7 @@ func dbLauf(t *testing.T, f dbFall) dbErgebnis {
 		if netzladen := batt - f.pvKw; netzladen > e.speicherKw {
 			e.speicherKw = netzladen
 		}
+		e.ladungKw = math.Max(e.ladungKw, batt)
 		if ueber := zaehler() - spielraum; ueber > dbAufloesungKw {
 			e.groessteKw = math.Max(e.groessteKw, ueber)
 			e.sekunden++
@@ -223,7 +225,8 @@ func TestBezugDoppelfreigabeSpeicherBekommtDenRest(t *testing.T) {
 // starts from 0 and takes its PV while the park's loop has already counted
 // that PV surplus as headroom at the feeder - a DIFFERENT mechanism (PV
 // counted twice, the solar-only clamp does not see the park), reported in
-// the PR of this test as a finding and not healed here.
+// the PR of this test as a finding. Healed since (PV counted once); the cold
+// start is measured in bezug_pv_doppelt_test.go.
 func TestBezugDoppelfreigabeNachBlindAmEigenenZaehler(t *testing.T) {
 	for _, luecke := range []time.Duration{60 * time.Second, 120 * time.Second, 300 * time.Second} {
 		for pp := 0; pp < 20; pp++ {
@@ -246,41 +249,18 @@ func TestBezugDoppelfreigabeNachBlindAmEigenenZaehler(t *testing.T) {
 // shares, building loads, vehicle demand, and the battery's grid charge as a
 // random source (the plan's wish), random gaps, both meter cadences and every
 // phase of the two ticks. Without PV: with PV the solar-only clamp (blind, and
-// at the co-controlling box always) can take PV the park's loop already
-// counted at the meter - a second mechanism, reported in the PR, not this
-// one. At every second the box measures, its meter
+// at the co-controlling box always) could take PV the park's loop already
+// counted at the meter - a second mechanism, healed since and measured WITH
+// PV from the cold start on in bezug_pv_doppelt_test.go. At every second the
+// box measures, its meter
 // stays at or below the headroom - exactly, without tolerance - wherever the
 // load it does not control leaves that headroom at all.
 func TestEigenschaftBezugEinSpielraumMitSpeicherNetzladen(t *testing.T) {
 	rng := rand.New(rand.NewSource(1055))
 	gebunden := 0
 	for run := 0; run < 300; run++ {
-		f := dbFall{rolle: []string{"fuehrt", "steuert_mit"}[rng.Intn(2)], grenzeKw: float64(40 + rng.Intn(500)),
-			parkPhase: rng.Intn(20), speicherPhase: rng.Intn(10), messtakt: []int{5, 10}[rng.Intn(2)]}
-		f.anteilKw = float64(rng.Intn(78))
-		f.hausKw = rng.Float64() * f.grenzeKw * 0.6
-		f.parkWunschKw = rng.Float64() * f.grenzeKw
-		f.speicherWunsch = rng.Float64() * f.grenzeKw
-		// one to three gaps of 10 s to 6 min
-		type luecke struct{ von, bis int }
-		var ls []luecke
-		for von := rng.Intn(60); von < 540 && len(ls) < 3; {
-			bis := von + 10 + rng.Intn(360)
-			ls = append(ls, luecke{von, bis})
-			von = bis + 30 + rng.Intn(120)
-		}
-		f.blind = func(s int) bool {
-			for _, l := range ls {
-				if s >= l.von && s < l.bis {
-					return true
-				}
-			}
-			return false
-		}
-		spielraum := f.anteilKw
-		if f.rolle == "fuehrt" {
-			spielraum = f.grenzeKw * 0.9
-		} else {
+		f, spielraum := dbZufall(rng)
+		if f.rolle != "fuehrt" {
 			f.abLuecke = true // the cold start at the feeder: see above
 		}
 		if f.hausKw > spielraum-1e-9 {
@@ -298,4 +278,38 @@ func TestEigenschaftBezugEinSpielraumMitSpeicherNetzladen(t *testing.T) {
 		t.Fatalf("the battery charged from the grid in only %d runs - the source does not reach the loop", gebunden)
 	}
 	t.Logf("%d runs with a grid charge of the battery", gebunden)
+}
+
+// dbZufall draws one random operating point of the two loops (the source of
+// the properties): role, limit, share, building load, vehicle demand, the
+// battery's wish, one to three gaps of 10 s to 6 min, the phases of the two
+// ticks and the meter cadence - and the headroom the box holds at its meter.
+func dbZufall(rng *rand.Rand) (dbFall, float64) {
+	f := dbFall{rolle: []string{"fuehrt", "steuert_mit"}[rng.Intn(2)], grenzeKw: float64(40 + rng.Intn(500)),
+		parkPhase: rng.Intn(20), speicherPhase: rng.Intn(10), messtakt: []int{5, 10}[rng.Intn(2)]}
+	f.anteilKw = float64(rng.Intn(78))
+	f.hausKw = rng.Float64() * f.grenzeKw * 0.6
+	f.parkWunschKw = rng.Float64() * f.grenzeKw
+	f.speicherWunsch = rng.Float64() * f.grenzeKw
+	// one to three gaps of 10 s to 6 min
+	type luecke struct{ von, bis int }
+	var ls []luecke
+	for von := rng.Intn(60); von < 540 && len(ls) < 3; {
+		bis := von + 10 + rng.Intn(360)
+		ls = append(ls, luecke{von, bis})
+		von = bis + 30 + rng.Intn(120)
+	}
+	f.blind = func(s int) bool {
+		for _, l := range ls {
+			if s >= l.von && s < l.bis {
+				return true
+			}
+		}
+		return false
+	}
+	spielraum := f.anteilKw
+	if f.rolle == "fuehrt" {
+		spielraum = f.grenzeKw * 0.9
+	}
+	return f, spielraum
 }
