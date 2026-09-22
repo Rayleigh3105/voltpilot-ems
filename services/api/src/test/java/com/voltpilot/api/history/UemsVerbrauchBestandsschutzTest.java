@@ -69,9 +69,12 @@ class UemsVerbrauchBestandsschutzTest {
     private static final Map<String, String> ROLLUP_FINGERABDRUECKE = Map.of(
             "refresh_device_measurement_rollup",
             "6290471ab9cd23b33415e31b97731c1d14a81aa7c4966083561b83e2ac4b492a",
-            // V20260922020000 (vorher 89c6795528f28718173c57613646e8251b70e32dd7d21cc486f316a44bad9cd4)
+            // V20260922020000 (vorher 89c6795528f28718173c57613646e8251b70e32dd7d21cc486f316a44bad9cd4),
+            // V20260922170000 (vorher e3c35a4157b245227daaa65a4dd92b94dc9b9d34e0ea9f96574f60dd4bec3945):
+            // die 15m-Stufe liest telemetry_anlage_15m, Werte Zeile fuer Zeile gleich
+            // (UemsAnlageLeserMigrationTest).
             "refresh_telemetry_rollups",
-            "e3c35a4157b245227daaa65a4dd92b94dc9b9d34e0ea9f96574f60dd4bec3945",
+            "1a9e79a5c575a5e0602a49cb2b5a8a12a23007be436a3c3c07fa63932bc7e2f8",
             "refresh_telemetry_v2_rollups",
             "906ae662ee2e974c2b6822cda07e5dedc4f072990b0b5e28f771397d3569485c");
 

@@ -28,6 +28,7 @@ import os
 from datetime import date, datetime, timedelta, timezone
 
 from voltpilot_forecast import model_choice
+from voltpilot_forecast.anlage import anlage_slot_kw, fuehrende_box
 from voltpilot_forecast.domain import ForecastKind, ensure_utc
 from voltpilot_forecast.evaluation import (
     BERLIN,
@@ -76,12 +77,17 @@ def _sites(cur) -> list[tuple[str, str]]:
 
 
 def _actuals(cur, site_id: str, column: str, start, end) -> dict[datetime, float]:
-    """Slot-mean actuals (15-min buckets) from raw telemetry."""
+    """Slot-mean actuals (15-min buckets) from raw telemetry - per SITE
+    (:mod:`voltpilot_forecast.anlage` for a multi-box site)."""
     # power_kw feeds the plan-economics realized cost; fixed set, never user
     # input - a hard raise (not assert, which is stripped under python -O)
     # keeps the f-string interpolation safe (S15).
     if column not in (*_KIND_COLUMNS.values(), "power_kw"):
         raise ValueError(f"unsupported telemetry column: {column}")
+    # A multi-box site with a determined leading box: the site's values by the
+    # api's one rule (AP-15 W2/B1), never the mean of the boxes' rows.
+    if fuehrende_box(cur, site_id) is not None:
+        return dict(anlage_slot_kw(cur, site_id, column, start, end))
     cur.execute(
         f"""
         SELECT time_bucket('15 minutes', time) AS bucket, avg({column})

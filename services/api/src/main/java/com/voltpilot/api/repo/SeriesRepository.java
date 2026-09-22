@@ -142,32 +142,24 @@ public class SeriesRepository {
     }
 
     /**
-     * Rebuild a site's rollups from its raw telemetry - delete, then re-insert
-     * with the SAME aggregate expressions as {@code refresh_telemetry_rollups}
-     * (migration V20260701030000), just site-scoped. Buckets whose raw rows are
-     * all gone simply do not reappear (an upsert could never empty them, which
-     * is why this is a full site rebuild and not a refresh call).
+     * Rebuild a site's rollups from its raw telemetry - delete, then re-insert.
+     * The 15m stage comes from {@code telemetry_anlage_15m} (V20260922170000),
+     * the same site rows {@code refresh_telemetry_rollups} writes - including
+     * the site sums of a multi-box site with a determined leading box (AP-15
+     * W2/B1), over the site's WHOLE history, so buckets older than the job's
+     * 7-day window are right again after a purge. The 1h/1d cascades sum like
+     * the procedure's, just site-scoped. Buckets whose raw rows are all gone
+     * simply do not reappear (an upsert could never empty them, which is why
+     * this is a full site rebuild and not a refresh call).
      */
     private void recomputeRollupsForSite(UUID siteId) {
         for (String table : new String[] {
                 "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d"}) {
             jdbc.update("DELETE FROM " + table + " WHERE site_id = ?", siteId);
         }
-        // NULL-safe aggregates (audit B2), in sync with refresh_telemetry_rollups
-        // (V20260712000000): average only over samples where the source channels
-        // exist - GREATEST would otherwise coerce a NULL channel to 0.
         jdbc.update(
                 "INSERT INTO telemetry_rollup_15m "
-                        + "SELECT time_bucket('15 minutes', time) AS bucket, tenant_id, site_id, "
-                        + "  avg(pv_power_kw) * 0.25, avg(load_kw) * 0.25, "
-                        + "  avg(CASE WHEN power_kw IS NOT NULL THEN greatest(power_kw, 0) END) * 0.25, "
-                        + "  avg(CASE WHEN power_kw IS NOT NULL THEN greatest(-power_kw, 0) END) * 0.25, "
-                        + "  avg(CASE WHEN power_kw IS NOT NULL AND load_kw IS NOT NULL AND pv_power_kw IS NOT NULL "
-                        + "       THEN greatest(power_kw - load_kw + pv_power_kw, 0) END) * 0.25, "
-                        + "  avg(CASE WHEN power_kw IS NOT NULL AND load_kw IS NOT NULL AND pv_power_kw IS NOT NULL "
-                        + "       THEN greatest(-(power_kw - load_kw + pv_power_kw), 0) END) * 0.25, "
-                        + "  min(soc_pct), max(soc_pct), last(soc_pct, time), count(*) "
-                        + "FROM telemetry WHERE site_id = ? GROUP BY 1, 2, 3",
+                        + "SELECT * FROM telemetry_anlage_15m(NULL::timestamptz, NULL::timestamptz, ?)",
                 siteId);
         jdbc.update(
                 "INSERT INTO telemetry_rollup_1h "
