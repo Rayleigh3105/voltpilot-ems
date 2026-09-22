@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { ahrenbergProzessMessstellen } from '../src/test/kostenstellenFixtures';
 
 /**
  * Unternehmen › Messstellen › Kostenstellen und › Prozesse (UEMS AP-13 IP-9 = AP-10 IP-15, E8 = A, B6) bei 375 und
@@ -161,12 +162,20 @@ for (const breite of BREITEN) {
 
     test('Prozesse: P-1 mit der Prozess-Summe MS-20 88 630 kWh, die anderen ohne, keine Summe über Prozesse; Reiter wechseln', async ({ page }) => {
       const fehler: string[] = [];
+      await page.route('**/api/v1/unternehmen/prozesse/*/messstellen?*', async (route) => {
+        const teile = new URL(route.request().url()).pathname.split('/');
+        const id = teile.at(-2) ?? '';
+        const am = new URL(route.request().url()).searchParams.get('am') ?? '';
+        await route.fulfill({ json: ahrenbergProzessMessstellen(id, am) });
+      });
       await oeffne(page, 'ansicht=prozesse', breite, fehler, 'prozesse');
       await expect(page.getByTestId('prozess-karte')).toHaveCount(6);
       await expect(page.getByTestId('prozesse-keine-summe')).toHaveText(PROZESSE_KEINE_SUMME);
       const p1 = page.locator('[data-testid="prozess-karte"][data-kennzeichen="P-1"]');
       await expect(p1.getByTestId('prozess-summe')).toContainText('Prozess Spritzguss gesamt');
       expect(n(await p1.getByTestId('prozess-summe').locator('.vp-ks-posten-zahl').textContent())).toBe('88.630 kWh');
+      await expect(p1.getByRole('note')).toContainText('MS-20) enthält 70 % von Druckluft Kompressoren K1+K2 (MS-07) über Verteilung 4100');
+      await expect(p1.getByRole('note')).toContainText('MS-07 gehört zu Druckluft (P-3). Die Bewertung zählt Druckluft dort.');
       await expect(page.locator('[data-testid="prozess-karte"][data-kennzeichen="P-2"]')).toContainText(
         'Keine Prozess-Summe: sie ist eine berechnete Messstelle, die diesem Prozess zugeordnet ist.',
       );

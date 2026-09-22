@@ -60,7 +60,7 @@ public final class BewertungMengenLeser {
                     mitAnteil ? prozent(menge, text(nenner)) : null, null,
                     !mitAnteil ? "ohne Anteil" : !nennerZustand.equals("vollständig") ? "unvollständig"
                             : menge == null ? "keine Werte" : nenner == null || nenner.signum() <= 0 ? "ohne Anteil" : zustand,
-                    null, null, null, null, ms);
+                    null, null, null, null, ms, List.of());
             (mitAnteil ? stromZeilen : weitere).add(zeile);
         }
         stromZeilen.sort(Comparator.comparing((Einsatz e) -> zahl(e.menge()),
@@ -70,7 +70,7 @@ public final class BewertungMengenLeser {
             stromZeilen.set(i,new Einsatz(e.id(),e.kennzeichen(),e.name(),e.prozessId(),e.traeger(),e.einheit(),
                     e.menge(),e.zustand(),e.ersatz(),e.ersatzProzent(),e.datenlageProzent(),e.anteilProzent(),
                     e.kumuliertZugeordnetProzent(),e.anteilZustand(),e.menge() == null ? null : i+1,
-                    e.urteil(),e.vorschlag(),e.herkunft(),e.messstellen()));
+                    e.urteil(),e.vorschlag(),e.herkunft(),e.messstellen(),e.prozessSummeHinweise()));
         }
         weitere.sort(Comparator.comparing(Einsatz::traeger).thenComparing(Einsatz::kennzeichen));
         BigDecimal zugeordnet = stromZeilen.stream().filter(e -> e.menge()!=null).map(e -> zahl(e.menge()))

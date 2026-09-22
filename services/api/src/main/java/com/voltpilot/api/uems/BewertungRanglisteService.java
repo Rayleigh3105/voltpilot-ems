@@ -34,13 +34,14 @@ public class BewertungRanglisteService {
     private final BilanzService bilanzen;
     private final RechtPruefung rechte;
     private final BewertungKriterienService kriterien;
+    private final ProzessMessstellenService prozessMessstellen;
     public BewertungRanglisteService(BewertungUmfangService umfang, UnternehmenRepository unternehmen,
             EnergieeinsatzRepository einsaetze, BewertungMengenRepository mengen, MessstelleRepository messstellen,
             MessstelleZuordnungRepository zuordnungen, MessstelleWerteService werte, BilanzService bilanzen,
-            RechtPruefung rechte, BewertungKriterienService kriterien) {
+            RechtPruefung rechte, BewertungKriterienService kriterien, ProzessMessstellenService prozessMessstellen) {
         this.umfang=umfang; this.unternehmen=unternehmen; this.einsaetze=einsaetze; this.mengen=mengen;
         this.messstellen=messstellen; this.zuordnungen=zuordnungen; this.werte=werte; this.bilanzen=bilanzen;
-        this.rechte=rechte; this.kriterien=kriterien;
+        this.rechte=rechte; this.kriterien=kriterien; this.prozessMessstellen=prozessMessstellen;
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Rangliste lesen(LocalDate von,LocalDate bis) {
@@ -61,6 +62,7 @@ public class BewertungRanglisteService {
         }
         var cache=new HashMap<UUID,MessstellenEingang>();
         var zeilen=new ArrayList<EinsatzEingang>();
+        var prozessHinweise=new HashMap<UUID,List<com.voltpilot.api.web.dto.ProzessMessstellenDto.Hinweis>>();
         for (var e : einsaetze.jeUnternehmen(unternehmenId)) {
             if (!traeger.contains(e.traeger()) || e.gueltigBis()!=null
                     || mengen.prozessAusgeschlossen(u.id(),e.prozessId())) continue;
@@ -87,13 +89,15 @@ public class BewertungRanglisteService {
                 ms.add(gelesen);
             }
             zeilen.add(new EinsatzEingang(e.id(),e.kennzeichen(),e.name(),e.prozessId(),e.traeger(),List.copyOf(ms)));
+            prozessHinweise.computeIfAbsent(e.prozessId(), id -> prozessMessstellen.lesen(id,bis).hinweise());
         }
         var basis=BewertungMengenLeser.lesen(von,bis,u.id(),u.fassung(),u.teilansicht(),traeger.contains("Strom"),anlagen,zeilen);
-        return urteilen(basis,anlagen,zeilen,kriterien.lesen());
+        return urteilen(basis,anlagen,zeilen,kriterien.lesen(),prozessHinweise);
     }
 
     private static Rangliste urteilen(Rangliste basis,List<AnlagenEingang> anlagen,List<EinsatzEingang> eingaenge,
-            com.voltpilot.api.web.dto.BewertungKriterienDto.Fassung fassung) {
+            com.voltpilot.api.web.dto.BewertungKriterienDto.Fassung fassung,
+            Map<UUID,List<com.voltpilot.api.web.dto.ProzessMessstellenDto.Hinweis>> prozessHinweise) {
         int monate=(int)ChronoUnit.MONTHS.between(YearMonth.from(basis.von()),YearMonth.from(basis.bis()))+1;
         var w=fassung.werte();
         var regeln=new BewertungRegeln.Kriterien(w.get("K1").asText(),w.get("K2").asText(),w.get("K3").asText(),
@@ -102,10 +106,10 @@ public class BewertungRanglisteService {
         var nenner=new BewertungRegeln.Nenner(basis.nenner().wert(),basis.nenner().vorhanden(),
                 basis.nenner().gesamt(),basis.nenner().zustand());
         var herkunftNenner=new HerkunftNenner(basis.nenner().wert(),basis.nenner().anlagen(),bilanzwerte(anlagen));
-        var strom=gruppe(basis.einsaetze(),"Strom",nenner,monate,regeln,roh,herkunftNenner,basis.von(),basis.bis(),fassung.fassung());
+        var strom=gruppe(basis.einsaetze(),"Strom",nenner,monate,regeln,roh,herkunftNenner,basis.von(),basis.bis(),fassung.fassung(),prozessHinweise);
         var weitere=new ArrayList<Einsatz>();
         for (var g:basis.weitereTraeger().stream().collect(Collectors.groupingBy(Einsatz::traeger,LinkedHashMap::new,Collectors.toList())).entrySet())
-            weitere.addAll(gruppe(g.getValue(),g.getKey(),nenner,monate,regeln,roh,null,basis.von(),basis.bis(),fassung.fassung()).einsaetze());
+            weitere.addAll(gruppe(g.getValue(),g.getKey(),nenner,monate,regeln,roh,null,basis.von(),basis.bis(),fassung.fassung(),prozessHinweise).einsaetze());
         return new Rangliste(basis.von(),basis.bis(),basis.umfangId(),basis.umfangFassung(),basis.teilansicht(),monate,
                 new KriterienGrundlage(fassung.fassung(),fassung.werte()),new StandUrteil(strom.K7(),strom.K8()),
                 basis.nenner(),basis.zugeordnet(),basis.rest(),basis.abdeckungProzent(),basis.zustand(),basis.anlagen(),
@@ -116,7 +120,8 @@ public class BewertungRanglisteService {
     @SuppressWarnings("unchecked")
     private static Gruppe gruppe(List<Einsatz> basis,String traeger,BewertungRegeln.Nenner nenner,int monate,
             BewertungRegeln.Kriterien kriterien,Map<String,EinsatzEingang> roh,HerkunftNenner herkunftNenner,
-            LocalDate von,LocalDate bis,int kriterienFassung) {
+            LocalDate von,LocalDate bis,int kriterienFassung,
+            Map<UUID,List<com.voltpilot.api.web.dto.ProzessMessstellenDto.Hinweis>> prozessHinweise) {
         var datenlage=new HashMap<String,Datenlage>();
         var regelEingaenge=new ArrayList<BewertungRegeln.Einsatz>();
         for (var e:basis) {
@@ -137,7 +142,8 @@ public class BewertungRanglisteService {
                     traeger.equals("Strom") ? herkunftNenner : null,urteil,vorschlag);
             aus.add(new Einsatz(e.id(),e.kennzeichen(),e.name(),e.prozessId(),e.traeger(),e.einheit(),e.menge(),e.zustand(),
                     e.ersatz(),e.ersatzProzent(),datenlage.get(e.kennzeichen()).anzeige(),e.anteilProzent(),
-                    (String)x.get("kumuliert_zugeordnet_prozent"),e.anteilZustand(),(Integer)x.get("rang"),urteil,vorschlag,h,e.messstellen()));
+                    (String)x.get("kumuliert_zugeordnet_prozent"),e.anteilZustand(),(Integer)x.get("rang"),urteil,vorschlag,h,e.messstellen(),
+                    prozessHinweise.getOrDefault(e.prozessId(),List.of())));
         }
         return new Gruppe(List.copyOf(aus),(String)result.get("K7"),(String)result.get("K8"));
     }

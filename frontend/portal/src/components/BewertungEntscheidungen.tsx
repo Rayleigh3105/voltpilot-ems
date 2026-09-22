@@ -24,6 +24,7 @@ import {
   zahlMitEinheit,
 } from '../bewertung';
 import { UEMS_NORMGRENZE } from '../glossar';
+import { prozessSummeHinweisSatz } from '../kostenstellenUebersicht';
 import { STARTWERTE } from '../uemsBewertung';
 
 const fehlerText = (e: unknown) => e instanceof Error && e.message ? e.message : 'Das hat gerade nicht geklappt. Bitte versuchen Sie es noch einmal.';
@@ -57,7 +58,9 @@ export function RanglisteBereich({ rangliste, zeitraum, historien, darfEinstufen
         const f = historien[e.id]?.[0];
         return <tr key={e.id} data-testid={`rang-${e.kennzeichen}`}>
           <td data-label="Rang">{e.rang ?? '—'}</td>
-          <td data-label="Energieeinsatz"><strong>{e.kennzeichen} {e.name}</strong><span className="vp-bw-rang-balken"><i style={{ width: `${Math.min(100, Number(e.anteil_prozent ?? 0))}%` }} /></span></td>
+          <td data-label="Energieeinsatz"><strong>{e.kennzeichen} {e.name}</strong><span className="vp-bw-rang-balken"><i style={{ width: `${Math.min(100, Number(e.anteil_prozent ?? 0))}%` }} /></span>
+            {e.prozess_summe_hinweise.map((h) => <small key={`${h.summe.id}-${h.messstelle.id}`} className="vp-bw-prozess-hinweis" role="note">{prozessSummeHinweisSatz(h)}</small>)}
+          </td>
           <td data-label="Menge">{zahlMitEinheit(e.menge, e.einheit)}</td><td data-label="Anteil">{prozentText(e.anteil_prozent)}</td>
           {(['K1', 'K2', 'K3'] as const).map((k) => <td key={k} data-label={k}>{urteilText(e.urteil[k])}</td>)}
           {(['K5', 'K6'] as const).map((k) => <td key={k} data-label={k}><Badge variant={e.urteil[k] === 'erfuellt' ? 'ok' : 'off'}>{urteilText(e.urteil[k])}</Badge></td>)}

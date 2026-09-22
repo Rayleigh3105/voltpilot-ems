@@ -33,7 +33,8 @@ class BewertungRanglisteSchnittstelleVertragTest {
                 Map.entry("BewertungHerkunftNenner",BewertungRanglisteDto.HerkunftNenner.class),
                 Map.entry("BewertungBilanzwert",BewertungRanglisteDto.Bilanzwert.class),
                 Map.entry("BewertungBilanzEingang",BewertungRanglisteDto.BilanzEingang.class),
-                Map.entry("BewertungRanglisteMessstelle",BewertungRanglisteDto.Messstelle.class));
+                Map.entry("BewertungRanglisteMessstelle",BewertungRanglisteDto.Messstelle.class),
+                Map.entry("ProzessSummeHinweis",com.voltpilot.api.web.dto.ProzessMessstellenDto.Hinweis.class));
         var mapper=new ObjectMapper();
         for(var dto:dtos.entrySet()) {
             var props=(Map<String,Object>)((Map<String,Object>)schemas.get(dto.getKey())).get("properties");

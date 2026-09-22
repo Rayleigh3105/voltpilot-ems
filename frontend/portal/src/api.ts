@@ -3293,6 +3293,25 @@ export interface MessstelleProzesse {
   prozesse: MessstelleProzessZuordnung[];
 }
 
+export interface ProzessMessstellenVerweis { id: string; kennzeichen: string; name: string }
+export interface ProzessMessstelle { id: string; kennzeichen: string; name: string }
+export interface ProzessSummeHinweis {
+  code: 'prozess_summe_passt';
+  summe: ProzessMessstelle;
+  messstelle: ProzessMessstelle;
+  prozesse: ProzessMessstellenVerweis[];
+  ueber_verteilung: boolean;
+  verteilung: string | null;
+  anteil_prozent: string | null;
+}
+export interface ProzessMessstellen {
+  prozess: ProzessMessstellenVerweis;
+  am: string;
+  gemessen: ProzessMessstelle[];
+  berechnet: ProzessMessstelle[];
+  hinweise: ProzessSummeHinweis[];
+}
+
 /** Der Zeitraum der Kostenstellen-Sicht (AP-10 IP-11): der Tag, Monat oder das Jahr, das `am` enthält. */
 export type KostenstelleEnergiePeriode = 'tag' | 'monat' | 'jahr';
 
@@ -9180,6 +9199,9 @@ export const api = {
   /** Die Prozesse einer Messstelle: alle wirksamen Intervalle, mit `am` die an dem Tag geltenden. */
   messstelleProzesse: (id: string, am?: string) =>
     request<MessstelleProzesse>(`/api/v1/messstellen/${id}/prozesse${am ? `?am=${encodeURIComponent(am)}` : ''}`),
+  /** AP-16 IP-14: gemessene und berechnete Messstellen des Prozesses samt P4-Hinweisen. */
+  prozessMessstellen: (id: string, am: string) =>
+    request<ProzessMessstellen>(`/api/v1/unternehmen/prozesse/${id}/messstellen?am=${encodeURIComponent(am)}`),
 
   /** Ab `gueltig_ab` gehört die Messstelle zu GENAU diesen Prozessen (leer = zu keinem). */
   messstelleProzesseSetzen: (id: string, body: { gueltig_ab: string; prozesse: string[]; grund?: string | null }) =>
@@ -9529,7 +9551,8 @@ export interface BewertungRanglisteEinsatz {
   menge: string | null; zustand: string; ersatz: string | null; ersatz_prozent: string | null; datenlage_prozent: string | null;
   anteil_prozent: string | null; kumuliert_zugeordnet_prozent: string | null; anteil_zustand: string; rang: number | null;
   urteil: BewertungEinsatzUrteil; vorschlag: 'ueber_schwelle' | 'unter_schwelle'; herkunft: BewertungHerkunftEntwurf;
-  messstellen: unknown[];
+  messstellen: Array<{ id: string; kennzeichen: string; anlage_id: string | null; einheit: string | null; menge: string | null }>;
+  prozess_summe_hinweise: ProzessSummeHinweis[];
 }
 export interface BewertungRangliste {
   von: string; bis: string; umfang_id: string | null; umfang_fassung: number | null; teilansicht: boolean; monate: number;

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.voltpilot.api.web.dto.KostenstelleProzessDto;
+import com.voltpilot.api.web.dto.ProzessMessstellenDto;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,6 +59,10 @@ class KostenstelleProzessSchnittstelleVertragTest {
         formen.put("MessstelleProzesseSetzen", KostenstelleProzessDto.ProzesseSetzen.class);
         formen.put("MessstelleProzessZuordnung", KostenstelleProzessDto.Zuordnung.class);
         formen.put("MessstelleProzesse", KostenstelleProzessDto.MessstelleProzesse.class);
+        formen.put("ProzessMessstellenVerweis", ProzessMessstellenDto.Verweis.class);
+        formen.put("ProzessMessstelle", ProzessMessstellenDto.Messstelle.class);
+        formen.put("ProzessSummeHinweis", ProzessMessstellenDto.Hinweis.class);
+        formen.put("ProzessMessstellen", ProzessMessstellenDto.Antwort.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -72,8 +77,8 @@ class KostenstelleProzessSchnittstelleVertragTest {
     void keineRouteLoescht() {
         List<String> eigene = pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/unternehmen/kostenstellen")
                 || p.startsWith("/api/v1/unternehmen/prozesse") || p.equals("/api/v1/messstellen/{id}/prozesse")).toList();
-        // Sieben aus AP-10 IP-7, die achte ist die Kostenstellen-Sicht (AP-10 IP-11, GET …/{id}/energie).
-        assertThat(eigene).hasSize(8);
+        // Sieben aus AP-10 IP-7, die Kostenstellen-Sicht (IP-11) und der Prozess-Messstellen-Leser (AP-16 IP-14).
+        assertThat(eigene).hasSize(9);
         for (String p : eigene) {
             assertThat(((Map<String, Object>) pfade.get(p)).keySet()).as(p).doesNotContain("delete");
         }

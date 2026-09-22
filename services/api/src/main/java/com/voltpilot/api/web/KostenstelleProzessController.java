@@ -11,6 +11,7 @@ import com.voltpilot.api.uems.KostenstelleProzessAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.KostenstelleProzessRepository.Art;
 import com.voltpilot.api.uems.KostenstelleProzessService;
 import com.voltpilot.api.uems.ProtokollAkteur;
+import com.voltpilot.api.uems.ProzessMessstellenService;
 import com.voltpilot.api.web.dto.KostenstelleProzessDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtPruefung;
@@ -61,11 +62,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class KostenstelleProzessController {
 
     private final KostenstelleProzessService dienst;
+    private final ProzessMessstellenService prozessMessstellen;
     private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public KostenstelleProzessController(KostenstelleProzessService dienst, RechtPruefung rechte, ObjectMapper json) {
+    public KostenstelleProzessController(KostenstelleProzessService dienst, ProzessMessstellenService prozessMessstellen,
+            RechtPruefung rechte, ObjectMapper json) {
         this.dienst = dienst;
+        this.prozessMessstellen = prozessMessstellen;
         this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
@@ -151,6 +155,15 @@ public class KostenstelleProzessController {
     public KostenstelleProzessDto.Prozess prozess(@PathVariable UUID id) {
         rechte.pruefenLesen(RechtZiel.UNTERNEHMEN, id, () -> KostenstelleProzessAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
         return dienst.prozess(id);
+    }
+
+    /** Recht: {@code energieeinsatz.ansehen}; Standort-Zaun wie am Energieeinsatz, keine eigene Schreibberechtigung. */
+    @GetMapping("/unternehmen/prozesse/{id}/messstellen")
+    public com.voltpilot.api.web.dto.ProzessMessstellenDto.Antwort prozessMessstellen(@PathVariable UUID id,
+            @RequestParam String am) {
+        LocalDate tag = tag("am", am);
+        if (tag == null) throw KostenstelleProzessAbgelehnt.anfrage("am");
+        return prozessMessstellen.lesen(id, tag);
     }
 
     /** Recht: {@code prozess.verwalten}. Nur der Name. */

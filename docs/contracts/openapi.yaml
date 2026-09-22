@@ -12729,6 +12729,28 @@ paths:
         "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/unternehmen/prozesse/{id}/messstellen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: am, in: query, required: true, schema: { type: string, format: date } }
+    get:
+      tags: [kostenstellen-prozesse, bewertung]
+      summary: Gemessene und berechnete Messstellen eines Prozesses an einem Tag.
+      description: >
+        Recht `energieeinsatz.ansehen`; reine Lese-Route ohne `@Recht`. Der Standort-Zaun entspricht dem
+        Energieeinsatz: sichtbar über mindestens eine Messstelle des Prozesses, außerhalb dieselbe 404 wie unbekannt;
+        in der Antwort stehen nur lesbare Messstellen. `prozess_summe_passt` prüft die Quell-Messstellen der
+        berechneten Messstellen gegen `gemessen`. Ein äußerer Term ist ein Hinweis, niemals ein Fehler oder eine
+        Umrechnung; Verteilungs-Terme nennen `ueber_verteilung`, Kostenstelle und Tagesanteil.
+      responses:
+        "200":
+          description: Messstellen und P4-Hinweise am Stichtag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProzessMessstellen" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
   /api/v1/standorte/{standortId}/netzanschluesse:
     parameters:
       - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -14481,7 +14503,7 @@ components:
         zustand: { type: string, enum: [vollständig, unvollständig, mit Ersatzwert, ohne Bilanz] }
     BewertungRanglisteEinsatz:
       type: object
-      required: [id, kennzeichen, name, prozess_id, traeger, einheit, menge, zustand, ersatz, ersatz_prozent, datenlage_prozent, anteil_prozent, kumuliert_zugeordnet_prozent, anteil_zustand, rang, urteil, vorschlag, herkunft, messstellen]
+      required: [id, kennzeichen, name, prozess_id, traeger, einheit, menge, zustand, ersatz, ersatz_prozent, datenlage_prozent, anteil_prozent, kumuliert_zugeordnet_prozent, anteil_zustand, rang, urteil, vorschlag, herkunft, messstellen, prozess_summe_hinweise]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -14502,6 +14524,7 @@ components:
         vorschlag: { type: string, enum: [ueber_schwelle, unter_schwelle], description: Keine Einstufung. }
         herkunft: { $ref: "#/components/schemas/BewertungHerkunftEntwurf" }
         messstellen: { type: array, items: { $ref: "#/components/schemas/BewertungRanglisteMessstelle" } }
+        prozess_summe_hinweise: { type: array, items: { $ref: "#/components/schemas/ProzessSummeHinweis" }, description: "P4-Hinweise; ändern keine Menge, Formel, Kennzahl oder Einstufung." }
     BewertungKriterienGrundlage:
       type: object
       required: [fassung, werte]
@@ -25032,6 +25055,40 @@ components:
         kennzeichen: { type: string }
         am: { type: string, format: date, nullable: true }
         prozesse: { type: array, items: { $ref: "#/components/schemas/MessstelleProzessZuordnung" } }
+    ProzessMessstellenVerweis:
+      type: object
+      required: [id, kennzeichen, name]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+    ProzessMessstelle:
+      type: object
+      required: [id, kennzeichen, name]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+    ProzessSummeHinweis:
+      type: object
+      required: [code, summe, messstelle, prozesse, ueber_verteilung, verteilung, anteil_prozent]
+      properties:
+        code: { type: string, enum: [prozess_summe_passt] }
+        summe: { $ref: "#/components/schemas/ProzessMessstelle" }
+        messstelle: { $ref: "#/components/schemas/ProzessMessstelle" }
+        prozesse: { type: array, items: { $ref: "#/components/schemas/ProzessMessstellenVerweis" } }
+        ueber_verteilung: { type: boolean }
+        verteilung: { type: string, nullable: true, description: "Kennzeichen der Kostenstelle, z. B. 4100; nur über Verteilung." }
+        anteil_prozent: { type: string, nullable: true, description: "Ungerundeter Tagesanteil der Verteilung." }
+    ProzessMessstellen:
+      type: object
+      required: [prozess, am, gemessen, berechnet, hinweise]
+      properties:
+        prozess: { $ref: "#/components/schemas/ProzessMessstellenVerweis" }
+        am: { type: string, format: date }
+        gemessen: { type: array, items: { $ref: "#/components/schemas/ProzessMessstelle" } }
+        berechnet: { type: array, items: { $ref: "#/components/schemas/ProzessMessstelle" } }
+        hinweise: { type: array, items: { $ref: "#/components/schemas/ProzessSummeHinweis" } }
     FunktionFehler:
       type: object
       required: [code, message, fehlt, wege]

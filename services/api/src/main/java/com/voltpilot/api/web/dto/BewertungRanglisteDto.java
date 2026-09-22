@@ -29,7 +29,8 @@ public final class BewertungRanglisteDto {
             String einheit, String menge, String zustand, String ersatz, String ersatzProzent,
             String datenlageProzent, String anteilProzent, String kumuliertZugeordnetProzent,
             String anteilZustand, Integer rang, Urteil urteil, String vorschlag,
-            HerkunftEntwurf herkunft, List<Messstelle> messstellen) {}
+            HerkunftEntwurf herkunft, List<Messstelle> messstellen,
+            List<ProzessMessstellenDto.Hinweis> prozessSummeHinweise) {}
     public record Urteil(String K1, String K2, String K3, String K5, String K6) {}
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record HerkunftEntwurf(String zeitraum, int kriterienFassung, List<HerkunftEingang> eingaenge,

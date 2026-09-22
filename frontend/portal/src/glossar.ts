@@ -443,7 +443,7 @@ const bewertungZahl = (wert: number, stellen = 0) =>
     .toLocaleString('de-DE', { minimumFractionDigits: stellen, maximumFractionDigits: stellen })
     .replace(/\./g, ' ');
 
-/** Die 17 Satzmuster aus AP-16 §5.7; Zahlen werden immer im deutschen Format eingesetzt. */
+/** Die Satzmuster aus AP-16 §5.7 und R16; Zahlen werden immer im deutschen Format eingesetzt. */
 export const UEMS_BEWERTUNG_SAETZE = {
   ranglisteKopf: (monat: string, jahr: number, mengeKwh: number, vorhanden: number, gesamt: number, anteil: number) =>
     `Stromeinsatz ${monat} ${jahr}: ${bewertungZahl(mengeKwh)} kWh aus ${vorhanden} von ${gesamt} Anlagen · ${bewertungZahl(anteil, 1)} % Energieeinsätzen zugeordnet.`,
@@ -459,6 +459,9 @@ export const UEMS_BEWERTUNG_SAETZE = {
     `${einstufung} — Vorschlag: ${vorschlag} (${bewertungZahl(anteil, 1)} %). Begründung: ‚${begruendung}‘`,
   querschnitt: (prozess: string, medium: string, anteil: number, messstelle: string, mengeKwh: number) =>
     `${prozess} bezieht ${medium}: ${bewertungZahl(anteil)} % von ${messstelle} = ${bewertungZahl(mengeKwh)} kWh — in ${medium} gezählt.`,
+  prozessSummeHinweis: (summe: string, summeKennzeichen: string, quelle: string, quelleKennzeichen: string,
+    prozess: string, prozessKennzeichen: string, anteil: string | null, verteilung: string | null) =>
+    `Hinweis: Die Summe „${summe}“ (${summeKennzeichen}) enthält ${anteil === null ? '' : `${anteil.replace('.', ',')} % von `}${quelle} (${quelleKennzeichen})${verteilung ? ` über Verteilung ${verteilung}` : ''}. ${quelleKennzeichen} gehört zu ${prozess} (${prozessKennzeichen}). Die Bewertung zählt ${prozess} dort.`,
   messbedarf: (kennung: string, wortlaut: string, messstelle: string, hinweis: string) =>
     `Messbedarf ${kennung}: ${wortlaut} — eingelöst durch ${messstelle} (${hinweis}).`,
   messmittel: (name: string, klasse: string, art: string, geprueftAm: string, gueltigBis: string, beleg: string, pruefsumme: string) =>
