@@ -34,6 +34,7 @@ def test_jeder_aufloesungsfall_gilt_im_python_zwilling(fall):
             date.fromisoformat(x["gueltig_ab"]),
             _num(x["einspeisegrenze_kw"]),
             _num(x["bezugsgrenze_kw"]),
+            x.get("einspeisegrenze_keine", False),
         )
         for x in fall["fassungen"]
     ]
@@ -49,6 +50,7 @@ def test_jeder_aufloesungsfall_gilt_im_python_zwilling(fall):
     assert w.bezug_kw == _num(e["bezug_kw"])
     assert w.quelle_einspeisung == e["quelle_einspeisung"]
     assert w.quelle_bezug == e["quelle_bezug"]
+    assert w.einspeisung_keine == e.get("einspeisung_keine", False)
 
 
 @pytest.mark.parametrize("fall", DATA["plausibel"], ids=lambda f: f["name"])

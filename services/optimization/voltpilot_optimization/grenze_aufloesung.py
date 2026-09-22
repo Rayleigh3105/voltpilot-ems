@@ -30,6 +30,7 @@ class Fassung:
     gueltig_ab: date
     einspeisegrenze_kw: float | None
     bezugsgrenze_kw: float | None
+    einspeisegrenze_keine: bool = False
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class Wirksam:
     quelle_einspeisung: str | None
     bezug_kw: float | None
     quelle_bezug: str | None
+    einspeisung_keine: bool = False
 
 
 def fassung_am(fassungen, tag: date) -> Fassung | None:
@@ -69,11 +71,13 @@ def aufloesen(
     f = fassung_am(fassungen, tag) if gebunden else None
     na_einspeisung = f.einspeisegrenze_kw if f is not None else None
     na_bezug = f.bezugsgrenze_kw if f is not None else None
+    keine = einspeisung_kw is None and f is not None and f.einspeisegrenze_keine
     return Wirksam(
         einspeisung_kw=engerer(einspeisung_kw, na_einspeisung),
-        quelle_einspeisung=_quelle(einspeisung_kw, na_einspeisung),
+        quelle_einspeisung=QUELLE_NETZANSCHLUSS if keine else _quelle(einspeisung_kw, na_einspeisung),
         bezug_kw=engerer(bezug_kw, na_bezug),
         quelle_bezug=_quelle(bezug_kw, na_bezug),
+        einspeisung_keine=keine,
     )
 
 

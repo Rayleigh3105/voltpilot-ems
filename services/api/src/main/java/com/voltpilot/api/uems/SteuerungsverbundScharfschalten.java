@@ -52,7 +52,7 @@ public final class SteuerungsverbundScharfschalten {
      * @param objekt         das Urteil des Verbund-Objekts ({@link SteuerungsverbundRegeln#pruefen}); wurde es mit
      *                       einer Auslegung gerechnet, stehen ihre Befunde schon darin
      * @param mitglieder     die Mitglieder in ihrer Reihenfolge (Rolle nur zur Einordnung)
-     * @param grenzenGesetzt Einspeise- UND Bezugsgrenze wirksam am Tag (I1)
+     * @param grenzenGesetzt Bezugsgrenze UND Einspeisegrenze oder ausdrücklich keine Einspeisegrenze am Tag (I1)
      * @param auslegungBekannt ob die Auslegung gerechnet werden konnte; nein = {@code auslegung_passt_nicht}
      * @param boxen          je Mitglied, was die Box mitbringt
      */

@@ -32,10 +32,20 @@ public final class GrenzeAufloesung {
     public record Grenzen(BigDecimal einspeisungKw, BigDecimal bezugKw) {}
 
     /** Eine Fassung des Grenzblatts: gilt ab ihrem Tag bis zum Vortag der nächsten. */
-    public record Fassung(LocalDate gueltigAb, BigDecimal einspeisegrenzeKw, BigDecimal bezugsgrenzeKw) {}
+    public record Fassung(LocalDate gueltigAb, BigDecimal einspeisegrenzeKw, BigDecimal bezugsgrenzeKw,
+            boolean einspeisegrenzeKeine) {
+        public Fassung(LocalDate gueltigAb, BigDecimal einspeisegrenzeKw, BigDecimal bezugsgrenzeKw) {
+            this(gueltigAb, einspeisegrenzeKw, bezugsgrenzeKw, false);
+        }
+    }
 
-    /** Das Ergebnis je Richtung mit der Seite, von der der Wert kommt ({@code null}, wenn keine Grenze gilt). */
-    public record Wirksam(BigDecimal einspeisungKw, String quelleEinspeisung, BigDecimal bezugKw, String quelleBezug) {}
+    /** Wert oder unbekannt; nur Einspeisung darf ausdrücklich unbegrenzt sein (I1). Quelle bleibt dabei das Blatt. */
+    public record Wirksam(BigDecimal einspeisungKw, String quelleEinspeisung, BigDecimal bezugKw, String quelleBezug,
+            boolean einspeisungKeine) {
+        public boolean grenzenGesetzt() {
+            return bezugKw != null && (einspeisungKw != null || einspeisungKeine);
+        }
+    }
 
     /** Die Fassung, die am {@code tag} gilt: die mit dem spätesten ersten Tag ≤ {@code tag}; sonst {@code null}. */
     public static Fassung fassungAm(List<Fassung> fassungen, LocalDate tag) {
@@ -58,9 +68,10 @@ public final class GrenzeAufloesung {
         Fassung f = gebunden ? fassungAm(fassungen, tag) : null;
         BigDecimal naEinspeisung = f == null ? null : f.einspeisegrenzeKw();
         BigDecimal naBezug = f == null ? null : f.bezugsgrenzeKw();
+        boolean keine = einspeisung == null && f != null && f.einspeisegrenzeKeine();
         return new Wirksam(
-                engerer(einspeisung, naEinspeisung), quelle(einspeisung, naEinspeisung),
-                engerer(bezug, naBezug), quelle(bezug, naBezug));
+                engerer(einspeisung, naEinspeisung), keine ? QUELLE_NETZANSCHLUSS : quelle(einspeisung, naEinspeisung),
+                engerer(bezug, naBezug), quelle(bezug, naBezug), keine);
     }
 
     /** Der engere Wert; gleich = der Wert der Anlage (dasselbe Objekt); einer fehlt = der andere. */

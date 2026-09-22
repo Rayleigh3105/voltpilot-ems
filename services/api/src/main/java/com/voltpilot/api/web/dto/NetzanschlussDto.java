@@ -68,17 +68,18 @@ public final class NetzanschlussDto {
 
     /**
      * {@code POST …/netzanschluesse/{id}/grenzen} (UEMS AP-15 IP-3): ab {@code gueltig_ab} gilt diese Fassung des
-     * Grenzblatts — bis zum Vortag der nächsten. {@code null} in einer Richtung = dort keine Grenze am Anschluss;
+     * Grenzblatts — bis zum Vortag der nächsten. {@code null} = unbekannt; {@code einspeisegrenzeKeine} erklärt
+     * ausdrücklich „keine Einspeisegrenze“ und ist nur ohne Einspeisewert zulässig;
      * die Leistungen als Zahl oder Dezimaltext.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record GrenzeSetzen(String gueltigAb, BigDecimal einspeisegrenzeKw, BigDecimal bezugsgrenzeKw,
-            String grund) {}
+            String grund, boolean einspeisegrenzeKeine) {}
 
     /** Eine wirksame Fassung des Grenzblatts. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record GrenzFassung(LocalDate gueltigAb, BigDecimal einspeisegrenzeKw, BigDecimal bezugsgrenzeKw,
-            OffsetDateTime eingetragenAm) {}
+            OffsetDateTime eingetragenAm, boolean einspeisegrenzeKeine) {}
 
     /**
      * {@code GET …/netzanschluesse/{id}/grenzen}: alle wirksamen Fassungen und die am {@code stichtag} (ohne: heute am

@@ -209,6 +209,29 @@ class GemeinsameSteuerungApiTest {
     }
 
     @Test
+    void ausdruecklichKeineEinspeisegrenzeMitBezugErfuelltDieGrenzbedingung() throws Exception {
+        Welt w = welt(true, false);
+        root.update("INSERT INTO netzanschluss_grenze (tenant_id, netzanschluss_id, gueltig_ab, "
+                + "einspeisegrenze_keine, bezugsgrenze_kw) VALUES (?, ?, DATE '2024-01-01', true, 550)",
+                w.mandant(), w.na1());
+        Antwort e = einrichten(w);
+        assertThat(e.body().path("stufe").asText()).isEqualTo("S1");
+        assertThat(e.fehlt()).doesNotContain("grenze_fehlt");
+        Antwort a = plattform(w, post(w.admin() + "/scharfschalten"));
+        assertThat(a.status()).isEqualTo(409);
+        assertThat(a.fehlt()).doesNotContain("grenze_fehlt").contains("faehigkeit_fehlt");
+    }
+
+    @Test
+    void ausdruecklichKeineEinspeisegrenzeErsetztNiemalsDieBezugsgrenze() throws Exception {
+        Welt w = welt(true, false);
+        root.update("INSERT INTO netzanschluss_grenze (tenant_id, netzanschluss_id, gueltig_ab, "
+                + "einspeisegrenze_keine) VALUES (?, ?, DATE '2024-01-01', true)", w.mandant(), w.na1());
+        assertThat(einrichten(w).fehlt()).contains("grenze_fehlt");
+        assertThat(plattform(w, post(w.admin() + "/scharfschalten")).code()).isEqualTo("grenze_fehlt");
+    }
+
+    @Test
     void ohneBeideGrenzenSagtScharfschaltenGrenzeFehlt() throws Exception {
         Welt w = welt(true, false);
         grenze(w, null, "550");
