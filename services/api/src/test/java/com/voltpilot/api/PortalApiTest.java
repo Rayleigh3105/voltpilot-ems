@@ -7791,8 +7791,23 @@ class PortalApiTest {
         // Am LAUFENDEN Tag gewinnt das rohe Sample über den Rollup-Stand - sonst
         // hinkte die Bestandszeile dem kWh-Satz daneben 15 Minuten hinterher.
         java.time.Instant jetzt = java.time.Instant.now();
+        java.time.LocalDate laufenderTag = jetzt.atZone(berlin).toLocalDate();
+        java.time.Instant laufenderTagStart = laufenderTag.atStartOfDay(berlin).toInstant();
+        // Die Methode kann in einem langen Klassenlauf über Mitternacht reichen.
+        // Dann muss weiterhin 92 % der Tagesanfang sein: je ein Anker für den bei
+        // der Vorbereitung laufenden Tag und den unmittelbar folgenden Tag hält
+        // die Testbühne stabil, ohne die Produkt-Erwartung abzuschwächen.
+        String laufenderTagAnker = ts(laufenderTag.atStartOfDay(berlin)
+                .minusMinutes(15).toInstant());
+        String folgetagAnker = ts(laufenderTag.plusDays(1).atStartOfDay(berlin)
+                .minusMinutes(15).toInstant());
         exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct,"
-                + " n_samples) VALUES (" + ts(jetzt.minusSeconds(1800)) + ", '" + tenantA
+                + " n_samples) VALUES (" + laufenderTagAnker + ", '" + tenantA + "', '"
+                + site + "', 92.00, 90), (" + folgetagAnker + ", '" + tenantA + "', '"
+                + site + "', 92.00, 90) ON CONFLICT DO NOTHING");
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct,"
+                + " n_samples) VALUES (" + ts(laufenderTagStart.plus(java.time.Duration
+                        .between(laufenderTagStart, jetzt).dividedBy(2))) + ", '" + tenantA
                 + "', '" + site + "', 20.00, 90) ON CONFLICT DO NOTHING");
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, soc_pct) VALUES ("
                 + ts(jetzt.minusSeconds(60)) + ", '" + tenantA + "', '" + site + "',"
