@@ -282,7 +282,7 @@ public class BilanzService {
             List<BilanzwertHerkunft.GespeicherterEingang> herkunftEingaenge = new ArrayList<>();
             for (BilanzAbleitung.RestTerm t : fassung.terme()) {
                 MessstelleWerteDto.Wert w = wertAm(jeMessstelle.get(t.messstelle()), tag);
-                BigDecimal menge = w == null ? null : w.menge();
+                BigDecimal menge = BilanzRichtungswerte.menge(jdbc, raster, t.anteil(), w);
                 String zustand = w == null || w.zustand() == null || menge == null
                         ? BilanzAbleitung.KEINE_WERTE : w.zustand();
                 Integer abdeckung = w == null ? null : w.abdeckungProzent();

@@ -6,7 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes=BewertungUmfangController.class)
+@RestControllerAdvice(assignableTypes={BewertungUmfangController.class,BewertungRanglisteController.class})
 public class BewertungUmfangFehlerHandler {
     @ExceptionHandler(BewertungUmfangAbgelehnt.class)
     public ResponseEntity<Map<String,Object>> abgelehnt(BewertungUmfangAbgelehnt e) {
