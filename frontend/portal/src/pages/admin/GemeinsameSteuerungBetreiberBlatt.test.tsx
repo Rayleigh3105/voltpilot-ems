@@ -38,7 +38,9 @@ afterEach(() => {
 });
 
 async function blatt() {
-  return screen.findByTestId('betreiber-blatt', {}, { timeout: 3000 });
+  const b = await screen.findByTestId('betreiber-blatt', {}, { timeout: 3000 });
+  await within(b).findByTestId('gsb-spalten', {}, { timeout: 3000 });
+  return b;
 }
 
 describe('AP-15 IP-24 · Betreiber-Blatt — Sichtbarkeit', () => {
