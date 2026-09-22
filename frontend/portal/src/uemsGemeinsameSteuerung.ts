@@ -56,7 +56,7 @@ export const SAETZE = {
   /** Vorbehalt erhöht (R23) */
   vorbehalt_erhoeht: 'Ihr Verbrauch ist gewachsen: die Reserve für alles Übrige wurde erhöht. Der {ladepark} bekommt jetzt höchstens {kw} kW.',
   /** Hinweis beim Einrichten (G7) */
-  hinweis_einrichten: 'Der Ladepark hängt an einer Box, die den Netzanschluss nicht sieht: er bekommt fest {kw} kW. An Box {box} bekäme er, was am Anschluss frei ist.',
+  hinweis_einrichten: 'Der Ladepark hängt an einer Box, die den Netzanschluss nicht sieht: er bekommt höchstens {kw} kW. An Box {box} bekäme er, was am Anschluss frei ist.',
   /** Anhalten */
   angehalten: 'Gemeinsame Steuerung angehalten. Box {box} steuert allein; alle Boxen halten weiter ihren Anteil.',
   /** Prüfung läuft */
