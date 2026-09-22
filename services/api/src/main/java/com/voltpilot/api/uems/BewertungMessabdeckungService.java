@@ -13,15 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class BewertungMessabdeckungService {
     private final BewertungRanglisteService rangliste;
     private final BewertungMessabdeckungRepository repository;
-    private final BewertungKriterienService kriterien;
     private final BewertungMessbedarfNaht messbedarfe;
 
     public BewertungMessabdeckungService(BewertungRanglisteService rangliste,
-            BewertungMessabdeckungRepository repository, BewertungKriterienService kriterien,
-            BewertungMessbedarfNaht messbedarfe) {
+            BewertungMessabdeckungRepository repository, BewertungMessbedarfNaht messbedarfe) {
         this.rangliste = rangliste;
         this.repository = repository;
-        this.kriterien = kriterien;
         this.messbedarfe = messbedarfe;
     }
 
@@ -31,8 +28,7 @@ public class BewertungMessabdeckungService {
         var ids = new LinkedHashSet<UUID>();
         mengen.einsaetze().forEach(e -> e.messstellen().forEach(m -> ids.add(m.id())));
         mengen.weitereTraeger().forEach(e -> e.messstellen().forEach(m -> ids.add(m.id())));
-        String k8 = kriterien.lesen().werte().path("K8").asText();
         return BewertungMessabdeckungLeser.lesen(mengen, repository.infos(ids, von, bis),
-                messbedarfe.offene(von, bis), k8);
+                messbedarfe.offene(von, bis), mengen.urteil().K8());
     }
 }

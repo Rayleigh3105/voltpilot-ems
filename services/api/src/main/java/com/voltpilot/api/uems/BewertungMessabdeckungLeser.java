@@ -18,7 +18,7 @@ public final class BewertungMessabdeckungLeser {
     private BewertungMessabdeckungLeser() {}
 
     public static Messabdeckung lesen(BewertungRanglisteDto.Rangliste rangliste,
-            Map<UUID, Info> infos, List<BewertungMessbedarfNaht.Bedarf> bedarfe, String k8Schwelle) {
+            Map<UUID, Info> infos, List<BewertungMessbedarfNaht.Bedarf> bedarfe, String k8Urteil) {
         Map<UUID, BewertungRanglisteDto.Anlage> anlagen = new LinkedHashMap<>();
         rangliste.anlagen().forEach(a -> anlagen.put(a.id(), a));
         Map<UUID, List<BewertungMessbedarfNaht.Bedarf>> bedarfJeEinsatz = new HashMap<>();
@@ -85,10 +85,8 @@ public final class BewertungMessabdeckungLeser {
         }
 
         String ersatzSumme = ersatzSumme(rangliste.einsaetze());
-        String k8 = BewertungMengenLeser.abdeckungUrteil(rangliste.zugeordnet(),
-                rangliste.nenner().wert(), k8Schwelle);
         var summe = new Summe(rangliste.nenner(), rangliste.zugeordnet(), rangliste.abdeckungProzent(),
-                k8, ersatzSumme, rangliste.rest(), BewertungRegeln.prozent(zahl(rangliste.rest()),
+                k8Urteil, ersatzSumme, rangliste.rest(), BewertungRegeln.prozent(zahl(rangliste.rest()),
                         zahl(rangliste.nenner().wert())));
         return new Messabdeckung(rangliste.von(), rangliste.bis(), rangliste.umfangId(),
                 rangliste.umfangFassung(), rangliste.teilansicht(), summe,

@@ -30,15 +30,6 @@ public final class BewertungMengenLeser {
         return BewertungRegeln.menge(messstellen, traeger);
     }
 
-    /** K8 über dieselbe ungerundete P3-Regel wie die Vertragszwillinge; keine zweite Prozentrechnung. */
-    public static String abdeckungUrteil(String gemessen, String nenner, String schwelle) {
-        var eingang = new BewertungRegeln.AbdeckungEingang(
-                List.of(new BewertungRegeln.Messstelle("zugeordnet", "Strom", "gemessen", true,
-                        false, gemessen, "0")),
-                "Strom", List.of(), nenner, List.of(), schwelle);
-        return (String) BewertungRegeln.abdeckung(eingang).get("K8");
-    }
-
     public static Rangliste lesen(LocalDate von, LocalDate bis, UUID umfangId, Integer fassung,
             boolean teilansicht, boolean strom, List<AnlagenEingang> anlagen, List<EinsatzEingang> einsaetze) {
         var bilanzen = anlagen.stream().map(BewertungMengenLeser::bilanz).toList();
