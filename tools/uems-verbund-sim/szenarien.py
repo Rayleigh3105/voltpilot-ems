@@ -93,6 +93,24 @@ DOKUMENTE = {
 }
 ANTEILE_LEAF = "v2/verbund-anteile"
 
+# Was ein Lauf gezeigt hat, das die Zahlen allein nicht sagen - je (Lauf, Bilder-Stempel).
+BEOBACHTUNGEN = {
+    ("A7", "17abebe1c993"): "**Befund** (IP-28 Befund 1, vor PR 1068): der Zähler friert in der Prüf-Delle ein, "
+                            "Box Halle 1 gibt den Spielraum zweimal frei; M-1 über der Grenze. Wiederholung auf "
+                            "Bildern aus `f68d5e606` (PR 1068, 1075, 1078) steht aus.",
+    ("A2", "17abebe1c993"): "**Befund** (Auslegung, beim Captain als G3 Übergangszuschlag): Box Halle 1 fällt in "
+                            "einer Prüf-Delle aus; bis zum Geräte-Rückfall (60 s) speisen K-1 5,9 + K-2 60 + "
+                            "K-12 58,8 = 124,7 kW ein, danach 40 + 58,8 = 98,8 kW - 1,2 kW Marge reichen für "
+                            "60 s Übergang im selben Viertel nicht. Kein Box-Fehler gefunden.",
+    ("A9", "17abebe1c993"): "Box Halle 1 lehnt jeden ungültigen Lauf ab (`schema_version_unbekannt`); nach 20 min "
+                            "Rückfall des Plans, der Speicher lädt aus der PV (Viertel 2–4 bei 58–60 kW).",
+    ("A10", "17abebe1c993"): "Quittungen wie zaA10: Box Halle 1 nimmt Übergang und Ziel an, Box Verwaltung "
+                             "lehnt Revision 1 (`revision_aelter`) und Summe 110 (`summe_ueber_verteilbar`) ab.",
+    ("A11", "17abebe1c993"): "Die Arbitrierung gibt dem Handeingriff den Speicher (`granted` −100 kW, "
+                             "`manual intervention`), der Core befiehlt −100 kW - am Gerät bleibt es bei −39,2 kW: "
+                             "der Einspeise-Wächter hält; kein Wunsch hebt ihn auf.",
+}
+
 
 @dataclass
 class Lauf:
@@ -471,9 +489,10 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
                 u = " / ".join(dict.fromkeys(urteil(w["m1"], w["grenze"], haelt) for w in werte))
             z.append(f"| {name} | {text} | {punkt} | `{st}` | {m1} | +{e['m2_kw']:g} kW / {e['m2_s']} s / "
                      f"{e['m2_summe']} s{bandbreite} | {grenze_text} · {nach} | {vgl} | {u} |")
+            beob = BEOBACHTUNGEN.get((name, st))
             notizen.append(f"- **{name}** auf `{st}` ({lauf.profil}, T0 = Messsekunde {lauf.t0}, "
                            f"{lauf.messdauer() // 60} min, {len(gruppe)} Lauf/Läufe): {lauf.warum}. "
-                           f"Quittungen: {quittungen_text(p)}.")
+                           f"Quittungen: {quittungen_text(p)}." + (f" {beob}" if beob else ""))
     z += ["", "## Umsetzung und Quittungen je Lauf", "", *notizen, ""]
     return "\n".join(z)
 
