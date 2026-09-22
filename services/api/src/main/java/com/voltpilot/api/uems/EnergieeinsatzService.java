@@ -114,11 +114,12 @@ public class EnergieeinsatzService {
                 json(a.alt()), json(a.neu()), a.akteur(), a.zeit())).toList());
     }
 
-    private EnergieeinsatzRepository.Zeile finde(UUID id) {
+    EnergieeinsatzRepository.Zeile sichtbareZeile(UUID id) {
         var e = repo.finde(id).orElseThrow(EnergieeinsatzAbgelehnt::fehlt);
         if (!sichtbar(e.prozessId())) throw EnergieeinsatzAbgelehnt.fehlt();
         return e;
     }
+    private EnergieeinsatzRepository.Zeile finde(UUID id) { return sichtbareZeile(id); }
     private boolean sichtbar(UUID prozess) {
         return rechte.lesbar(RechtZiel.UNTERNEHMEN, null) || repo.messstellen(prozess, heute()).stream()
                 .anyMatch(id -> rechte.lesbar(RechtZiel.MESSSTELLE, id));

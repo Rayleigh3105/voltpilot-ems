@@ -1,6 +1,6 @@
 # Energetische Bewertung und Messplanung (AP-16)
 
-Vertrag 1.0 · 22.09.2026 · IP-2/IP-3/IP-4/IP-5 / NW-1. Grundlage: das entschiedene AP-16-Konzept
+Vertrag 1.1 · 22.09.2026 · IP-2/IP-3/IP-4/IP-5/IP-8/IP-9/IP-10/IP-11 / NW-1/NW-2. Grundlage: das entschiedene AP-16-Konzept
 §4.2–4.8, §7 R1/R2/R4/R6/R9/R16; E2/E4/E10 = A und W4/W12.
 **Zahlen schlagen vor, eine Person stuft ein, nichts verschwindet.**
 
@@ -350,3 +350,40 @@ Die Vektoroperation `rangliste` bleibt aus Version 1.0 bestehen; `urteil` ist ih
 additiver Name seit IP-10. Java, TypeScript und Python führen beide über die reine
 Funktion `urteil` aus. Damit bleiben vorhandene Leser kompatibel und R2/R6 beweisen
 dieselbe Regel in allen drei Zwillingen.
+
+## 11. Einstufungs-Fassungen (IP-11, F1–F5)
+
+`PUT /api/v1/unternehmen/energieeinsaetze/{id}/einstufung` legt ausschließlich durch
+eine Person eine Fassung an. Zulässig sind `wesentlich` und `nicht_wesentlich`; eine
+nicht leere `begruendung`, `grund` aus K1–K4 und der vollständige `herkunft`-Satz aus
+IP-10 sind Pflicht. Fehlt die Begründung, lautet das Urteil `422 begruendung_fehlt`;
+eine unvollständige Herkunft ist `422 herkunft_unvollstaendig`. Bei Strom gehören der
+Nenner, alle Bilanzwerte und deren Eingänge dazu; jede gespeicherte Zahl trägt ihre
+Version und ihren Zustand. Ein anderer Wert als der Vorschlag ist ausdrücklich erlaubt:
+beide bleiben in derselben Fassung lesbar. Das System erzeugt nie selbst eine Einstufung.
+
+Eine Fassung hat eine je Einsatz steigende Nummer und gilt ab einem Tag. Die vorherige
+wirksame Fassung endet am Vortag; `gueltig_bis` ist einschließlich. Ein früherer Beginn
+trägt `rueckwirkend: true`. `GET …/{id}/einstufungen` liefert alle Fassungen, jüngste
+zuerst, auch nach einer Rückstufung. Eine Rückstufung ist kein Löschen, sondern eine neue
+Fassung mit Begründung und eigenem Herkunftssatz (R13).
+
+Ist `unternehmen.vieraugen_freigabe` aus, wird die Fassung sofort wirksam. Ist sie an,
+entsteht sie als `beantragt`, ohne `gueltig_ab`; bis dahin bleibt die bisherige Fassung
+wirksam. `POST …/{id}/einstufung/bestaetigen` macht sie am Bestätigungstag wirksam. Der
+Urheber darf nicht selbst bestätigen (`403 zweite_person_noetig`); nur eine zweite Person
+mit `energieeinsatz.einstufen` darf dies tun. Schreiben verwenden diese Kennung, der
+Historien-GET trägt nur den Pflichtkommentar `energieeinsatz.ansehen` und denselben
+Prozess-/Messstellen-Zaun wie der Energieeinsatz.
+
+Tabelle `energieeinsatz_einstufung` hat RLS + FORCE, keine App-DELETE-Rechte und nur die
+für Gültigkeit und Bestätigung nötigen UPDATE-Spalten. Das Anlegen jeder Fassung protokolliert
+`einstufung_gesetzt`, jede Bestätigung `einstufung_bestaetigt` in
+`energieeinsatz_aenderung`. Sobald die Fassung wirksam ist, entsteht zusätzlich das
+gleichnamige Ereignis `einstufung_gesetzt` mit Energieeinsatz, Fassung, Einstufung und
+K1–K4-Gründen; eine beantragte Vier-Augen-Fassung meldet es erst bei der Bestätigung.
+Offboarding entfernt die Fassungen vor dem Energieeinsatz.
+
+Nachweise: `EnergieeinsatzEinstufungApiTest` (R3, R13, R17, Herkunft, Rechte und RLS),
+`EnergieeinsatzSchnittstelleVertragTest`, `RechtMatrixApiTest`,
+`RechteKennungenDerRoutenTest`, `RechtRoutenArchitekturTest` und die Migrationswächter.

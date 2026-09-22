@@ -289,6 +289,10 @@ class RechtMatrixApiTest {
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/sites/{A1}/cockpit-layout", "ee44333e"));
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/tenant/cockpit-layout", "ee33333e"));
         z.add(new Zeile("energieeinsatz.verwalten", HttpMethod.POST, "/api/v1/unternehmen/energieeinsaetze", "ee333333"));
+        z.add(new Zeile("energieeinsatz.einstufen", HttpMethod.PUT,
+                "/api/v1/unternehmen/energieeinsaetze/{A1}/einstufung", "ee333333"));
+        z.add(new Zeile("energieeinsatz.einstufen", HttpMethod.POST,
+                "/api/v1/unternehmen/energieeinsaetze/{A1}/einstufung/bestaetigen", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee333333"));
@@ -308,7 +312,6 @@ class RechtMatrixApiTest {
             Map.entry("export.standort", "lesend — IP-11"),
             Map.entry("export.unternehmen", "lesend — IP-11"),
             Map.entry("auswertung.anlegen", "keine Schreibroute (Eigene Auswertung liest nur)"),
-            Map.entry("energieeinsatz.einstufen", "reserviert für AP-16 IP-4; Einstufungs-Schreibweg IP-12"),
             Map.entry("energieeinsatz.ansehen", "lesend — EnergieeinsatzApiTest, Prozess-Messstellen-Zaun R14"));
 
     @Test

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.EnergieeinsatzAbgelehnt;
 import com.voltpilot.api.uems.EnergieeinsatzService;
+import com.voltpilot.api.uems.EnergieeinsatzEinstufungService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.EnergieeinsatzDto.*;
 import com.voltpilot.api.zugriff.Recht;
@@ -20,9 +21,12 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/unternehmen/energieeinsaetze")
 public class EnergieeinsatzController {
     private final EnergieeinsatzService dienst;
+    private final EnergieeinsatzEinstufungService einstufungen;
     private final ObjectMapper json;
-    public EnergieeinsatzController(EnergieeinsatzService dienst, ObjectMapper json) {
+    public EnergieeinsatzController(EnergieeinsatzService dienst, EnergieeinsatzEinstufungService einstufungen,
+            ObjectMapper json) {
         this.dienst = dienst;
+        this.einstufungen = einstufungen;
         this.json = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .disable(com.fasterxml.jackson.databind.MapperFeature.ALLOW_COERCION_OF_SCALARS);
     }
@@ -82,6 +86,29 @@ public class EnergieeinsatzController {
     /** Recht: {@code energieeinsatz.ansehen}; derselbe Standort-Zaun wie am Einsatz. */
     @GetMapping("/{id}/protokoll")
     public Protokoll protokoll(@PathVariable UUID id) { return dienst.protokoll(id); }
+
+    /** Recht: {@code energieeinsatz.einstufen}; eine Person, Pflichtbegründung und vollständige Herkunft. */
+    @PutMapping("/{id}/einstufung")
+    @Recht(value = "energieeinsatz.einstufen", ziel = RechtZiel.UNTERNEHMEN)
+    public com.voltpilot.api.web.dto.EnergieeinsatzEinstufungDto.Fassung einstufen(@PathVariable UUID id,
+            @RequestBody JsonNode body, Authentication auth) {
+        return einstufungen.speichern(id,
+                lies(body, com.voltpilot.api.web.dto.EnergieeinsatzEinstufungDto.Speichern.class), wer(auth));
+    }
+
+    /** Recht: {@code energieeinsatz.einstufen}; bei Vier-Augen nur durch eine zweite Person. */
+    @PostMapping("/{id}/einstufung/bestaetigen")
+    @Recht(value = "energieeinsatz.einstufen", ziel = RechtZiel.UNTERNEHMEN)
+    public com.voltpilot.api.web.dto.EnergieeinsatzEinstufungDto.Fassung bestaetigen(@PathVariable UUID id,
+            Authentication auth) {
+        return einstufungen.bestaetigen(id, wer(auth));
+    }
+
+    /** Recht: {@code energieeinsatz.ansehen}; alle Fassungen bleiben lesbar. */
+    @GetMapping("/{id}/einstufungen")
+    public com.voltpilot.api.web.dto.EnergieeinsatzEinstufungDto.Historie einstufungen(@PathVariable UUID id) {
+        return einstufungen.historie(id);
+    }
 
     private <T> T lies(JsonNode body, Class<T> typ) {
         if (body == null || !body.isObject()) throw anfrage();

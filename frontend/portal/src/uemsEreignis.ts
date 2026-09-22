@@ -56,6 +56,7 @@ export const EREIGNIS_ARTEN = [
   'bericht_entwurf_neu_gebildet',
   'bericht_abgerufen',
   'kennzahl_neu_gebildet',
+  'einstufung_gesetzt',
 ] as const;
 export type EreignisArt = (typeof EREIGNIS_ARTEN)[number];
 
@@ -87,6 +88,7 @@ export type Feldtyp =
   | 'stand'
   | 'messwert'
   | 'ganz_liste'
+  | 'wort_liste'
   | 'wert';
 
 /** Jedes Feld mit seinem Typ — der Typ bestimmt, wie es im Satz steht. */
@@ -174,6 +176,10 @@ export const FELDTYP: Record<string, Feldtyp> = {
   format: 'wort',
   kennzahl: 'kennung',
   version: 'ganz_ab_1',
+  energieeinsatz: 'kennung',
+  fassung: 'ganz_ab_1',
+  einstufung: 'wort',
+  gruende: 'wort_liste',
 };
 
 export interface ArtText {
@@ -456,6 +462,13 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
     saetze: { standard: 'Kennzahl {kennzahl} neu gebildet für {von} bis {bis}: Version {version} nach {ausloeser}' },
     zusaetze: {},
   },
+  einstufung_gesetzt: {
+    name: 'Einstufung gesetzt',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: '{energieeinsatz}: Fassung {fassung} als {einstufung} gesetzt (Gründe: {gruende})' },
+    zusaetze: {},
+  },
 };
 
 /**
@@ -598,12 +611,15 @@ function feldText(feld: string, e: Ereignis, namen: Namen, zone: string): string
       return typeof x === 'number' ? `${zahlText(x)}${einheit(e)}` : wertText(x);
     }
     case 'wort':
+      if (feld === 'einstufung') return w === 'nicht_wesentlich' ? 'nicht wesentlich' : String(w);
       if (feld === 'grund') return GRUND_TEXT[w as Grund] ?? String(w);
       if (feld === 'methode') return METHODE_TEXT[String(w)] ?? String(w);
       if (feld === 'korrektur_art') return KORREKTUR_ART_TEXT[String(w)] ?? String(w);
       if (feld === 'anstoss_art') return ANSTOSS_ART_TEXT[String(w)] ?? String(w);
       if (feld === 'format') return BERICHT_FORMAT_TEXT[String(w)] ?? String(w);
       return String(w);
+    case 'wort_liste':
+      return (w as unknown[]).join(', ') || 'keine Kriteriennummer';
     default:
       return wertText(w);
   }

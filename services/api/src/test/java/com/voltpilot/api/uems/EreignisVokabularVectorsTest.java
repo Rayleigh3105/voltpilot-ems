@@ -855,9 +855,9 @@ class EreignisVokabularVectorsTest {
         return s;
     }
     @Test
-    void bewertungsEreignisseBleibenBisZumSchreibpaketNurReserviert() throws Exception {
+    void bewertungsEreignisseSindReserviertUndWerdenPaketweiseAngelegt() throws Exception {
         JsonNode datei = MAPPER.readTree(VECTORS.toFile());
-        for (String art : List.of("einstufung_gesetzt", "messbedarf_erfasst", "messbedarf_eingeloest")) {
+        for (String art : List.of("messbedarf_erfasst", "messbedarf_eingeloest")) {
             List<JsonNode> reservierungen = new ArrayList<>();
             datei.path("reserviert").forEach(r -> {
                 if (r.path("art").asText().equals(art)) reservierungen.add(r);
@@ -867,6 +867,8 @@ class EreignisVokabularVectorsTest {
             assertThat(EreignisVokabular.pruefe(MAPPER.createObjectNode().put("art", art), Urheber.KUNDE).grund())
                     .isEqualTo(Grund.WORT_UNBEKANNT);
         }
+        assertThat(EreignisVokabular.Art.vonCode("einstufung_gesetzt"))
+                .isEqualTo(EreignisVokabular.Art.EINSTUFUNG_GESETZT);
     }
 
 }

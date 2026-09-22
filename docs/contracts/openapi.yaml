@@ -12336,6 +12336,74 @@ paths:
         "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/einstufung:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [energieeinsaetze]
+      summary: Begründete Einstufungs-Fassung einer Person setzen.
+      description: >
+        Recht `energieeinsatz.einstufen`. Der vollständige Herkunftssatz aus der Rangliste wird eingefroren;
+        der Vorschlag ist keine Einstufung. Bei Vier-Augen bleibt die Fassung bis zur Bestätigung beantragt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergieeinsatzEinstufungSpeichern" }
+      responses:
+        "200":
+          description: Angelegte Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergieeinsatzEinstufungFassung" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/einstufung/bestaetigen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energieeinsaetze]
+      summary: Beantragte Einstufung durch eine zweite Person bestätigen.
+      description: Recht `energieeinsatz.einstufen`; der Urheber darf nicht selbst bestätigen.
+      responses:
+        "200":
+          description: Wirksame Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergieeinsatzEinstufungFassung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/einstufungen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energieeinsaetze]
+      summary: Alle Einstufungs-Fassungen lesen.
+      description: Recht `energieeinsatz.ansehen`; Rückstufungen entfernen keine frühere Fassung.
+      responses:
+        "200":
+          description: Historie, jüngste Fassung zuerst.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergieeinsatzEinstufungHistorie" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
   /api/v1/unternehmen/energieeinsaetze/{id}/verantwortlicher:
     parameters:
       - in: path
@@ -14115,7 +14183,9 @@ components:
         akteur: { $ref: "#/components/schemas/BewertungKriterienAkteur" }
         vieraugen: { type: boolean, description: Einstellung beim Beantragen; spätere Änderungen umgehen die Freigabe nicht. }
         freigabe_status: { type: string, enum: [beantragt, freigegeben, abgelehnt] }
-        entschieden_von: { $ref: "#/components/schemas/BewertungKriterienAkteur" }
+        entschieden_von:
+          allOf: [{ $ref: "#/components/schemas/BewertungKriterienAkteur" }]
+          nullable: true
         entschieden_am: { type: string, format: date-time, nullable: true }
         entscheidungs_begruendung: { type: string, nullable: true }
         created_at: { type: string, format: date-time, nullable: true }
@@ -14429,13 +14499,52 @@ components:
       properties:
         code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, traeger_unbekannt, standort_unbekannt, ausschluss_ungueltig, begruendung_fehlt, gueltig_ab_ungueltig] }
         message: { type: string }
+    EnergieeinsatzEinstufungSpeichern:
+      type: object
+      additionalProperties: false
+      required: [einstufung, begruendung, grund, herkunft]
+      properties:
+        einstufung: { type: string, enum: [wesentlich, nicht_wesentlich] }
+        begruendung: { type: string, minLength: 1 }
+        grund:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [K1, K2, K3, K4] }
+        gueltig_ab: { type: string, format: date, description: Vorgabe heute; ein früherer Tag wird als rückwirkend gekennzeichnet. }
+        herkunft:
+          allOf: [{ $ref: "#/components/schemas/BewertungHerkunftEntwurf" }]
+          description: Vollständige Kopie aus der Rangliste; bei Strom ist der Nenner Pflicht und jede Zahl trägt eine Version.
+    EnergieeinsatzEinstufungFassung:
+      type: object
+      required: [fassung, einstufung, begruendung, grund, herkunft, vorgeschlagen_ab, gueltig_ab, gueltig_bis, rueckwirkend, akteur, vieraugen, freigabe_status, entschieden_von, entschieden_am, created_at]
+      properties:
+        fassung: { type: integer, minimum: 1 }
+        einstufung: { type: string, enum: [wesentlich, nicht_wesentlich] }
+        begruendung: { type: string }
+        grund: { type: array, uniqueItems: true, items: { type: string, enum: [K1, K2, K3, K4] } }
+        herkunft: { $ref: "#/components/schemas/BewertungHerkunftEntwurf" }
+        vorgeschlagen_ab: { type: string, format: date }
+        gueltig_ab: { type: string, format: date, nullable: true }
+        gueltig_bis: { type: string, format: date, nullable: true, description: Letzter eingeschlossener Tag. }
+        rueckwirkend: { type: boolean }
+        akteur: { $ref: "#/components/schemas/BewertungKriterienAkteur" }
+        vieraugen: { type: boolean }
+        freigabe_status: { type: string, enum: [beantragt, freigegeben] }
+        entschieden_von: { $ref: "#/components/schemas/BewertungKriterienAkteur" }
+        entschieden_am: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    EnergieeinsatzEinstufungHistorie:
+      type: object
+      required: [fassungen]
+      properties:
+        fassungen: { type: array, items: { $ref: "#/components/schemas/EnergieeinsatzEinstufungFassung" } }
     EnergieeinsatzFehler:
       type: object
       required: [code, message]
       properties:
         code:
           type: string
-          enum: [anfrage_ungueltig, nicht_gefunden, prozess_unbekannt, traeger_unbekannt, einsatz_laeuft_bereits, verantwortlicher_unbekannt, einflussgroesse_ungueltig, name_fehlt, grund_fehlt, zeitraum_ungueltig, einsatz_beendet, bezugsgroesse_in_verwendung, recht_fehlt]
+          enum: [anfrage_ungueltig, nicht_gefunden, prozess_unbekannt, traeger_unbekannt, einsatz_laeuft_bereits, verantwortlicher_unbekannt, einflussgroesse_ungueltig, name_fehlt, grund_fehlt, zeitraum_ungueltig, einsatz_beendet, bezugsgroesse_in_verwendung, recht_fehlt, begruendung_fehlt, einstufung_ungueltig, grund_ungueltig, herkunft_unvollstaendig, gueltig_ab_ungueltig, freigabe_offen, keine_freigabe_offen, zweite_person_noetig]
         message: { type: string }
         energieeinsaetze:
           type: array

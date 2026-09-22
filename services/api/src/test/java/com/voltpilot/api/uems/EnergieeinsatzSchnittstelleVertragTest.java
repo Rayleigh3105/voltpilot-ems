@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.web.dto.EnergieeinsatzDto;
+import com.voltpilot.api.web.dto.EnergieeinsatzEinstufungDto;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -32,6 +33,14 @@ class EnergieeinsatzSchnittstelleVertragTest {
                 assertThat(op.get("description").toString()).contains("energieeinsatz." + (method.equals("get") ? "ansehen" : "verwalten"));
             }
         }
+        assertThat(paths).containsKeys(base + "/{id}/einstufung", base + "/{id}/einstufung/bestaetigen",
+                base + "/{id}/einstufungen");
+        assertThat(((Map<String,Object>) paths.get(base + "/{id}/einstufung")).get("put").toString())
+                .contains("energieeinsatz.einstufen");
+        assertThat(((Map<String,Object>) paths.get(base + "/{id}/einstufung/bestaetigen")).get("post").toString())
+                .contains("energieeinsatz.einstufen");
+        assertThat(((Map<String,Object>) paths.get(base + "/{id}/einstufungen")).get("get").toString())
+                .contains("energieeinsatz.ansehen");
         var dtos = Map.ofEntries(Map.entry("EnergieeinsatzAnlegen", EnergieeinsatzDto.Anlegen.class),
                 Map.entry("EnergieeinsatzBearbeiten", EnergieeinsatzDto.Bearbeiten.class),
                 Map.entry("EnergieeinsatzBeenden", EnergieeinsatzDto.Beenden.class),
@@ -43,6 +52,13 @@ class EnergieeinsatzSchnittstelleVertragTest {
                 Map.entry("EnergieeinsatzMessstelle", EnergieeinsatzDto.Messstelle.class));
         var mapper = new ObjectMapper();
         for (var dto : dtos.entrySet()) {
+            var props = (Map<String,Object>) ((Map<String,Object>) schemas.get(dto.getKey())).get("properties");
+            var namen = mapper.getSerializationConfig().introspect(mapper.constructType(dto.getValue()))
+                    .findProperties().stream().map(p -> p.getName()).toList();
+            assertThat(props.keySet()).as(dto.getKey()).containsExactlyInAnyOrderElementsOf(namen);
+        }
+        for (var dto : Map.of("EnergieeinsatzEinstufungSpeichern", EnergieeinsatzEinstufungDto.Speichern.class,
+                "EnergieeinsatzEinstufungFassung", EnergieeinsatzEinstufungDto.Fassung.class).entrySet()) {
             var props = (Map<String,Object>) ((Map<String,Object>) schemas.get(dto.getKey())).get("properties");
             var namen = mapper.getSerializationConfig().introspect(mapper.constructType(dto.getValue()))
                     .findProperties().stream().map(p -> p.getName()).toList();
