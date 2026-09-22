@@ -303,6 +303,13 @@ def fahre(namen: list[str], protokolle: Path, status: Path | None) -> int:
         warte_auf_fenster()
         env = dict(basis, VB_ARBEIT=str(arbeit), **lauf.umgebung())
         print(f"==> {name} (Lauf {n}): {lauf.umgebung()}", flush=True)
+        if status:
+            # Lebenszeichen für die Aufsicht: der Lauf ist still, bis er endet
+            # (Anlauf + Messung + ~4 min Auf-/Abbau + 5 min Luft).
+            bis = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=300 + lauf.messdauer() + 540)
+            with status.open("a", encoding="utf-8") as f:
+                f.write(f"paused: IP-29 Lauf {name} läuft im Simulator, Wecker gestellt until "
+                        f"{bis.strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
         r = subprocess.run([str(werk / "verbund.sh"), "lauf", "--drehbuch", str(buch),
                             "--protokoll", str(ziel)], env=env, check=False)
         if ziel.exists():
