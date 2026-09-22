@@ -243,7 +243,9 @@ public class GemeinsameSteuerungService {
             return null;
         }
         return bilanzen.stand(v.id()).map(b -> new GemeinsameSteuerungDto.Bilanz(b.zustand(), b.tag(), b.seit(),
-                b.grund(), b.gerechnetAm().atOffset(ZoneOffset.UTC))).orElse(null);
+                b.grund(), b.gerechnetAm().atOffset(ZoneOffset.UTC), b.komponente() == null ? null
+                        : new GemeinsameSteuerungDto.BilanzKomponente(b.komponente().id(), b.komponente().name())))
+                .orElse(null);
     }
 
     /** Z1: nur OHNE Gemeinsame Steuerung, nur mit Speicher, nur wenn die führende Box eine andere ist. */

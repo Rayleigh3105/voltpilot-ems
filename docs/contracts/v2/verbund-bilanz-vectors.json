@@ -8,6 +8,7 @@
   "vorzeichen": "kW-Mittel der Viertelstunde, Bezug positiv, Einspeisung negativ; ungeregelt = netzpunkt - Summe box",
   "toleranz": "max(2 kW, 5 % x (|netzpunkt| + Summe |box|)); unplausibel, wenn ungeregelt < -toleranz",
   "tag": "unplausibel ab 2 unplausiblen Viertelstunden; sonst unbekannt bei einer unbekannten (luecke) oder genau einer unplausiblen (einzelne_abweichung); sonst plausibel",
+  "beitrag": "führende Box = Summe ihrer Geräte; mitsteuernde Box = ihr Abgangszähler oder, ohne ihn (kein eigener Zähler, B3), die Summe ihrer erklärten Komponenten mit Schreibfreigabe — eine Komponente ohne Messstelle macht den Tag unbekannt (komponente_ohne_messstelle, B5)",
   "hoechstes": "die belegte Viertelstunde mit dem größten Ungeregelten (Eingang des Vorbehalts aus Messwerten, AP-15 IP-13); eine unbekannte zählt nicht",
   "viertelstunden": [
     {
@@ -27,6 +28,12 @@
       "netzpunkt_kw": "-98",
       "box_kw": ["-53", "-55"],
       "erwartet": { "zustand": "plausibel", "ungeregelt_kw": "10", "toleranz_kw": "10.3" }
+    },
+    {
+      "fall": "Mitsteuernd ohne Zähler, Geräte gemessen: E-4 ohne Abgangszähler, ihre erklärten Komponenten (Abgang Verwaltung 55 kW, Ladepunkt 10 kW Bezug) zählen als Summe — Ungeregeltes = Netzpunkt − Σ Komponenten",
+      "netzpunkt_kw": "-98",
+      "box_kw": ["-83", "-45"],
+      "erwartet": { "zustand": "plausibel", "ungeregelt_kw": "30", "toleranz_kw": "11.3" }
     },
     {
       "fall": "Vorzeichen des Abgangszählers der Verwaltung verdreht",
@@ -127,6 +134,14 @@
       "grund_fest": "netzpunkt_ohne_messstelle",
       "muster": [],
       "erwartet": { "zustand": "unbekannt", "grund": "netzpunkt_ohne_messstelle", "plausibel": 0, "unplausibel": 0,
+                    "unbekannt": 96 }
+    },
+    {
+      "fall": "Mitsteuernd ohne Zähler, eine erklärte Komponente ohne Messstelle: der Grund steht vor den Werten und nennt die Komponente",
+      "erwartet_viertelstunden": 96,
+      "grund_fest": "komponente_ohne_messstelle",
+      "muster": [],
+      "erwartet": { "zustand": "unbekannt", "grund": "komponente_ohne_messstelle", "plausibel": 0, "unplausibel": 0,
                     "unbekannt": 96 }
     },
     {

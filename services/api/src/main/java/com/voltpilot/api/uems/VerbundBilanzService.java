@@ -35,7 +35,10 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li><b>Netzpunkt</b> = die Messstellen an den Komponenten des Messpunkts der führenden Box (B1: der Netzzähler);
  *       an der Übergabe ist das der Hauptzähler als Messstelle.</li>
  *   <li><b>mitsteuernde Box</b> = die Messstellen ihres Messpunkts: ein Abgangszähler, hinter dem alles liegt, was sie
- *       steuert, oder — ohne Abgangszähler — ihre Geräte selbst (B3).</li>
+ *       steuert. Ohne Abgangszähler („kein eigener Zähler“, B3) zählen ihre Geräte: die Messstellen ihrer erklärten
+ *       Komponenten mit Schreibfreigabe ({@code steuerungsverbund_geraet}). Hat eine davon keine Messstelle, ist der
+ *       Tag {@code unbekannt} mit {@code komponente_ohne_messstelle} und der Komponente in der Grundlage; ist keine
+ *       erklärt, {@code box_ohne_messstelle} (B5).</li>
  *   <li><b>führende Box</b> = die Summe ihrer Geräteleistungen: die Messstellen aller Komponenten, die sie außerhalb
  *       ihres Messpunkts liest. Hat eine davon keine Messstelle, ist ihr Beitrag unbekannt — nie Null (B5).</li>
  * </ul>
@@ -181,27 +184,52 @@ public class VerbundBilanzService {
         ArrayNode boxenJson = grundlage.putArray("boxen");
         for (MitgliedZeile m : amEnde) {
             List<VerbundBilanzRepository.Term> t = new ArrayList<>();
+            List<VerbundBilanzRepository.Komponente> ohne = new ArrayList<>();
             boolean vollstaendig = true;
+            String beitrag;
             if (m.rolle() == Rolle.FUEHRT) {
+                beitrag = "geraetesumme";
                 for (UUID geraet : repo.geraeteDerBox(m.deviceId(), m.dataSourceId())) {
                     List<VerbundBilanzRepository.Term> g = repo.termeDerKomponente(geraet, von, bis);
                     vollstaendig &= !g.isEmpty();
                     t.addAll(g);
                 }
-            } else {
-                t.addAll(m.dataSourceId() == null ? List.of() : repo.termeDerQuelle(m.dataSourceId(), von, bis));
+            } else if (m.dataSourceId() != null) {
+                beitrag = "messpunkt";
+                t.addAll(repo.termeDerQuelle(m.dataSourceId(), von, bis));
                 vollstaendig = !t.isEmpty();
+            } else {
+                // „kein eigener Zähler“ (Frage 5): ihre erklärten Geräte mit Schreibfreigabe zählen — wie die Summe
+                // der führenden Box. Ohne erklärtes Gerät bleibt der Beitrag unbekannt, nie Null (B5).
+                beitrag = "geraete";
+                List<VerbundBilanzRepository.Komponente> erklaert = repo.erklaerteKomponenten(v.id(), m.deviceId());
+                vollstaendig = !erklaert.isEmpty();
+                for (VerbundBilanzRepository.Komponente k : erklaert) {
+                    List<VerbundBilanzRepository.Term> g = repo.termeDerKomponente(k.id(), von, bis);
+                    if (g.isEmpty()) {
+                        ohne.add(k);
+                    }
+                    t.addAll(g);
+                }
             }
             if (grund == null && !vollstaendig) {
                 grund = VerbundBilanzRegel.Grund.BOX_OHNE_MESSSTELLE;
+            }
+            if (grund == null && !ohne.isEmpty()) {
+                grund = VerbundBilanzRegel.Grund.KOMPONENTE_OHNE_MESSSTELLE;
+                grundlage.set("komponente_ohne_messstelle", komponente(ohne.get(0)));
             }
             boxen.add(t);
             ObjectNode b = boxenJson.addObject();
             b.put("box_id", m.deviceId().toString());
             b.put("rolle", m.rolle().code());
             b.put("messpunkt_id", m.dataSourceId() == null ? null : m.dataSourceId().toString());
-            b.put("beitrag", m.rolle() == Rolle.FUEHRT ? "geraetesumme" : "messpunkt");
+            b.put("beitrag", beitrag);
             b.set("terme", terme(t));
+            if (!ohne.isEmpty()) {
+                ArrayNode o = b.putArray("ohne_messstelle");
+                ohne.forEach(k -> o.add(komponente(k)));
+            }
         }
         if (grund == null && (netz.stream().anyMatch(x -> !VORZEICHEN.containsKey(x.richtung()))
                 || boxen.stream().flatMap(List::stream).anyMatch(x -> !VORZEICHEN.containsKey(x.richtung())))) {
@@ -255,6 +283,10 @@ public class VerbundBilanzService {
             }
         }
         return out;
+    }
+
+    private static ObjectNode komponente(VerbundBilanzRepository.Komponente k) {
+        return JSON.createObjectNode().put("entity_id", k.id().toString()).put("name", k.name());
     }
 
     private static ArrayNode terme(List<VerbundBilanzRepository.Term> terme) {

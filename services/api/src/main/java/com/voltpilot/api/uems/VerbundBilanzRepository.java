@@ -24,8 +24,12 @@ public class VerbundBilanzRepository {
             java.math.BigDecimal geringstesToleranzKw, Instant geringstesVon, String grundlageJson, String stufeVorher,
             boolean aufS1Zurueck, String gerechnetVon, java.math.BigDecimal hoechstesKw, Instant hoechstesVon) {}
 
-    /** Der Stand für die Auskunft: jüngstes Ergebnis, seit wann derselbe Zustand steht, wann gerechnet. */
-    public record Stand(String zustand, LocalDate tag, LocalDate seit, String grund, Instant gerechnetAm) {}
+    /**
+     * Der Stand für die Auskunft: jüngstes Ergebnis, seit wann derselbe Zustand steht, wann gerechnet — und bei
+     * {@code komponente_ohne_messstelle} die Komponente, der die Messstelle fehlt (aus der Grundlage), sonst null.
+     */
+    public record Stand(String zustand, LocalDate tag, LocalDate seit, String grund, Instant gerechnetAm,
+            Komponente komponente) {}
 
     /** Eine Messstelle eines Terms: Kennzeichen und die Richtung ihrer Bindung (gibt das Vorzeichen). */
     public record Term(String kennzeichen, String richtung) {}
@@ -93,15 +97,18 @@ public class VerbundBilanzRepository {
      * davor („seit“). Leer ohne Ergebnis.
      */
     public Optional<Stand> stand(UUID verbundId) {
-        return jdbc.query("WITH j AS (SELECT tag, zustand, grund, gerechnet_am FROM steuerungsverbund_bilanz "
+        return jdbc.query("WITH j AS (SELECT tag, zustand, grund, gerechnet_am, "
+                + "grundlage -> 'komponente_ohne_messstelle' AS k FROM steuerungsverbund_bilanz "
                 + "WHERE steuerungsverbund_id = ? ORDER BY tag DESC LIMIT 1) "
-                + "SELECT j.zustand, j.tag, j.grund, j.gerechnet_am, (SELECT min(b.tag) FROM steuerungsverbund_bilanz b "
+                + "SELECT j.zustand, j.tag, j.grund, j.gerechnet_am, j.k ->> 'entity_id' AS k_id, "
+                + "j.k ->> 'name' AS k_name, (SELECT min(b.tag) FROM steuerungsverbund_bilanz b "
                 + "WHERE b.steuerungsverbund_id = ? AND b.tag > coalesce((SELECT max(x.tag) FROM "
                 + "steuerungsverbund_bilanz x WHERE x.steuerungsverbund_id = ? AND x.zustand <> j.zustand), "
                 + "DATE '-infinity')) AS seit FROM j",
                 (rs, n) -> new Stand(rs.getString("zustand"), rs.getObject("tag", LocalDate.class),
                         rs.getObject("seit", LocalDate.class), rs.getString("grund"),
-                        rs.getTimestamp("gerechnet_am").toInstant()),
+                        rs.getTimestamp("gerechnet_am").toInstant(), rs.getString("k_id") == null ? null
+                                : new Komponente(UUID.fromString(rs.getString("k_id")), rs.getString("k_name"))),
                 verbundId, verbundId, verbundId).stream().findFirst();
     }
 
@@ -139,6 +146,22 @@ public class VerbundBilanzRepository {
     public List<UUID> geraeteDerBox(UUID box, UUID ausser) {
         return jdbc.queryForList("SELECT id FROM measurement_point WHERE device_id = ? "
                 + "AND (data_source_id IS NULL OR data_source_id <> ?) ORDER BY id", UUID.class, box, ausser);
+    }
+
+    /** Eine erklärte Komponente einer Box: Kennung und Anzeigename (für den Grund {@code komponente_ohne_messstelle}). */
+    public record Komponente(UUID id, String name) {}
+
+    /**
+     * Die erklärten Komponenten mit Schreibfreigabe einer Box im Verbund (IP-7, {@code steuerungsverbund_geraet}) — der
+     * Beitrag einer mitsteuernden Box OHNE Abgangszähler (B3: „ohne ihn, ihre Geräte“). Je Komponente einmal, auch wenn
+     * sie für beide Richtungen erklärt ist; das Ungeregelte hinter dem Abgang (Komponente leer) zählt nicht.
+     */
+    public List<Komponente> erklaerteKomponenten(UUID verbundId, UUID box) {
+        return jdbc.query("SELECT DISTINCT g.entity_id, mp.label FROM steuerungsverbund_geraet g "
+                + "JOIN measurement_point mp ON mp.id = g.entity_id WHERE g.steuerungsverbund_id = ? "
+                + "AND g.device_id = ? AND g.entity_id IS NOT NULL AND g.schreibfreigabe AND g.aufgehoben_am IS NULL "
+                + "ORDER BY g.entity_id", (rs, n) -> new Komponente(rs.getObject(1, UUID.class), rs.getString(2)),
+                verbundId, box);
     }
 
     /** Die Messstellen einer Komponente am Tag, wie {@link #termeDerQuelle}. */

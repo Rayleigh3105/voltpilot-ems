@@ -13519,10 +13519,18 @@ components:
         grund:
           type: string
           nullable: true
-          enum: [struktur_geaendert, netzpunkt_ohne_messstelle, box_ohne_messstelle, richtung_nicht_eindeutig,
-                 luecke, einzelne_abweichung]
+          enum: [struktur_geaendert, netzpunkt_ohne_messstelle, box_ohne_messstelle, komponente_ohne_messstelle,
+                 richtung_nicht_eindeutig, luecke, einzelne_abweichung]
           description: "nur bei unbekannt"
         gerechnet_am: { type: string, format: date-time }
+        komponente:
+          type: object
+          nullable: true
+          required: [entity_id]
+          description: "nur bei komponente_ohne_messstelle: die erklärte Komponente einer mitsteuernden Box ohne Abgangszähler, an der eine Messstelle mit Wirkleistung oder Wirkenergie fehlt"
+          properties:
+            entity_id: { type: string, format: uuid }
+            name: { type: string, nullable: true }
     GemeinsameSteuerungVorbehalt:
       type: object
       required: [einspeisung, bezug]

@@ -265,16 +265,19 @@ erklären → `unplausibel`. Regel `uems/VerbundBilanzRegel` (rein), Vektoren
 | Term | Messstellen (Viertelstunden aus AP-08, nur `vollständig`) |
 |---|---|
 | Netzpunkt | an den Komponenten des Messpunkts der führenden Box (B1, der Netzzähler) |
-| mitsteuernde Box | an den Komponenten ihres Messpunkts — Abgangszähler oder, ohne ihn, ihre Geräte (B3) |
+| mitsteuernde Box | an den Komponenten ihres Messpunkts (Abgangszähler); ohne ihn („kein eigener Zähler“, B3) an ihren erklärten Komponenten mit Schreibfreigabe (`steuerungsverbund_geraet`) — dieselbe Summe wie bei der führenden Box |
 | führende Box | Summe ihrer Geräteleistungen: an allen Komponenten, die sie außerhalb ihres Messpunkts liest |
 
 Vorzeichen aus der Richtung der Bindung (Bezug/Laden +, Abgabe/Erzeugung/Entladen −); je Komponente und Richtung eine
 Bindung der Wirkenergie oder Wirkleistung.
 
 **Tag:** `unplausibel` ab zwei unplausiblen Viertelstunden; sonst `unbekannt` mit `grund` (`struktur_geaendert`,
-`netzpunkt_ohne_messstelle`, `box_ohne_messstelle`, `richtung_nicht_eindeutig`, `luecke`, `einzelne_abweichung`);
-sonst `plausibel`. **Unbekannt ist keine Null (B5):** eine fehlende oder unvollständige Viertelstunde macht den Tag
-nie `plausibel`.
+`netzpunkt_ohne_messstelle`, `box_ohne_messstelle`, `komponente_ohne_messstelle`, `richtung_nicht_eindeutig`, `luecke`,
+`einzelne_abweichung`); sonst `plausibel`. **Unbekannt ist keine Null (B5):** eine fehlende oder unvollständige
+Viertelstunde macht den Tag nie `plausibel`. Ohne Abgangszähler zählt die Viertelstunde nur, wenn JEDE erklärte
+Komponente mit Schreibfreigabe eine Messstelle hat: fehlt sie an einer, ist der Tag `komponente_ohne_messstelle` und die
+Komponente steht in der Grundlage (`komponente_ohne_messstelle` {`entity_id`, `name`}, je Box `ohne_messstelle[]`); ist
+keine erklärt, `box_ohne_messstelle`.
 
 **Lauf und Folge.** `uems/VerbundBilanzLaeufer` (täglich 04:37 Europe/Berlin, Schalter
 `voltpilot.uems.verbund-bilanz.enabled`) rechnet den Vortag jeder Anlage MIT Gemeinsamer Steuerung und Mitgliedern —
@@ -287,15 +290,16 @@ auf S2, S3 oder angehalten über `GemeinsameSteuerungService#bilanzUnplausibel` 
 Akteur „Verbund-Bilanz“ und Grund `verbund_bilanz_unplausibel <tag>`; Epoche und Mitglieder bleiben, die Anteile an den
 Boxen also in Kraft. `unbekannt` ändert nichts. Die Bilanz trägt keine Beweislast (E3 = A, die Sprungprobe IP-21).
 
-**Auskunft:** `GET …/gemeinsame-steuerung` → `bilanz` {`zustand`, `tag`, `seit`, `grund`, `gerechnet_am`}; `null`, solange
-kein Tag gerechnet ist. **Metrik:** `voltpilot_uems_verbund_bilanz_zustand{tenant,site,zustand}`
+**Auskunft:** `GET …/gemeinsame-steuerung` → `bilanz` {`zustand`, `tag`, `seit`, `grund`, `gerechnet_am`, `komponente`};
+`null`, solange kein Tag gerechnet ist. `komponente` {`entity_id`, `name`} nur bei `komponente_ohne_messstelle` — dort
+fehlt die Messstelle mit Leistung, und dort liegt der Weg. **Metrik:** `voltpilot_uems_verbund_bilanz_zustand{tenant,site,zustand}`
 ([Übergabe](../../rollout/gemeinsame-steuerung-metriken.md)).
 
 **Grenzen (bewusst):** ein versteckter Erzeuger zeigt sich erst, wenn er mehr einspeist als die Last derselben
 Viertelstunde (A17: „innerhalb eines Tages mit Sonne“). Eine Box an einem anderen Anschluss macht das Ungeregelte nur
 größer — das fängt die Sprungprobe. Die Obergrenze (Ungeregeltes über dem Vorbehalt) ist A20/IP-13, nicht A17. Ohne
-Abgangszähler (B3, Geräte als Messpunkt) zählt Ungeregeltes hinter dem Abgang zum Ungeregelten statt zum Anteil der Box —
-für die Bilanz gleich, für den Vorbehalt nicht prüfbar.
+Abgangszähler (B3, die erklärten Geräte als Beitrag) zählt Last hinter dem Abgang, die kein erklärtes Gerät ist, zum
+Ungeregelten statt zum Anteil der Box — für die Bilanz gleich; der Vorbehalt aus Messwerten (§8) trägt sie mit.
 
 ## 8. Der Vorbehalt aus Messwerten (IP-13)
 
