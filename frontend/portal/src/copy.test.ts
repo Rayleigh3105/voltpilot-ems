@@ -2324,6 +2324,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/MessabdeckungTabelle.tsx',
     'components/MessmittelBlatt.tsx',
     'components/VergleichBefund.tsx',
+    // IP-20: Messplanung — Bedarf erfassen, einlösen, verwerfen; Liste je Einsatz und je Standort.
+    'components/Messplanung.tsx',
   ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,

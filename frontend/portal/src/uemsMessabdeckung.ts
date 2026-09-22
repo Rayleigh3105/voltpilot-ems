@@ -1,6 +1,7 @@
 import type {
   BewertungMessabdeckung,
   BewertungMessabdeckungMesswert,
+  BewertungMessabdeckungOrt,
   BewertungMessabdeckungPlan,
   BewertungMessabdeckungRest,
 } from './api';
@@ -34,6 +35,8 @@ export interface AbdeckungZeile {
   unter: string | null;
   zellen: Record<AbdeckungSpalte, string[]>;
   menge: string | null;
+  /** Nur an Rest-Zeilen: die Anlage aus `je_ort` — daraus entsteht ein Messbedarf (IP-20). */
+  rest?: BewertungMessabdeckungOrt;
 }
 
 const gemessenText = (m: BewertungMessabdeckungMesswert) =>
@@ -81,6 +84,7 @@ export function einsatzZeilen(m: BewertungMessabdeckung): AbdeckungZeile[] {
       unter: 'keinem Energieeinsatz zugeordnet',
       zellen: { gemessen: [], geplant: [], ersatz: [], ungemessen: [restText(o.ungemessen, o.einheit)] },
       menge: zahlMitEinheit(o.ungemessen.menge, o.einheit ?? 'kWh'),
+      rest: o,
     });
   }
   return zeilen;

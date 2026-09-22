@@ -13,8 +13,10 @@ import {
   type EnergieeinsatzMessstelle,
   type EnergieeinsatzEinstufungFassung,
   type EnergieeinsatzEinstufungSpeichern,
+  type Messbedarf,
   type MessstelleQuellenListe,
 } from '../api';
+import { ee8, messplanungRouten } from './messplanungBuehne';
 import { ahrenbergBezugsgroessen, ahrenbergProzesse } from './kennzahlAnlegenFixtures';
 import { ahrenbergRegister } from './messstellenRegisterFixtures';
 import { rechteSeed } from './rollenFixtures';
@@ -265,11 +267,16 @@ const FUEHREND_GERAET: Record<string, { id: string; kz: string; einbau: string }
  * Die Routen der Bewertung als Zustandsmaschine im Speicher. `ich` ist das Kürzel des Aufrufers (der Akteur im
  * Protokoll); `heute` der Kalendertag der Bühne.
  */
-export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen = false, historieR13 = false) {
+/**
+ * `messplanung` (AP-16 IP-20, R5): zusätzlich EE-8 ab 27.11.2026 und die Routen von Messbedarf und Messstellen-Dialog
+ * aus `messplanungFixtures.ts`; `bedarfe` belegt den Anfang. Ohne sie ist jede Messbedarf-Liste leer (nichts geplant).
+ */
+export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen = false, historieR13 = false,
+  messplanung: false | { bedarfe: Messbedarf[] } = false) {
   let umfangFassung: { nr: number; s: BewertungUmfangSpeichern } | null = stand === 'voll'
     ? { nr: 1, s: { gueltig_ab: '2026-11-04', standort_ids: STANDORTE.map((x) => x.id), traeger: ['Strom', 'Gas'], ausschluesse: [], begruendung: null } }
     : null;
-  const einsaetze: Energieeinsatz[] = stand === 'voll' ? ahrenbergEinsaetze() : [];
+  const einsaetze: Energieeinsatz[] = stand === 'voll' ? [...ahrenbergEinsaetze(), ...(messplanung ? [ee8()] : [])] : [];
   const protokolle = new Map<string, EnergieeinsatzAenderung[]>();
   let zaehler = einsaetze.length;
   let aenderung = 100;
@@ -278,7 +285,8 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
   const akteur = () => ({ ...person(ich), rolle: ich === 'IK' ? 'energiemanager' : null, art: 'kunde' as const });
   const protokolliere = (id: string, art: EnergieeinsatzAenderung['art'], zeit = `${heute}T09:30:00+01:00`) =>
     protokolle.set(id, [...(protokolle.get(id) ?? []), { id: ++aenderung, art, alt: null, neu: null, akteur: akteur(), zeit }]);
-  for (const e of einsaetze) protokolle.set(e.id, [{ id: ++aenderung, art: 'angelegt', alt: null, neu: null, akteur: { ...person('IK'), rolle: 'energiemanager', art: 'kunde' }, zeit: '2026-11-04T10:12:00+01:00' }]);
+  for (const e of einsaetze) protokolle.set(e.id, [{ id: ++aenderung, art: 'angelegt', alt: null, neu: null, akteur: { ...person('IK'), rolle: 'energiemanager', art: 'kunde' },
+    zeit: e.gueltig_ab === '2026-11-04' ? '2026-11-04T10:12:00+01:00' : `${e.gueltig_ab}T09:15:00+01:00` }]);
   if (stand === 'voll') {
     const r = ahrenbergRangliste(false, aktuelleKriterien);
     const gruende = ['41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.', '5,2 %; Montage läuft an zwei Standorten.', '8,6 % — unter der Schwelle; Querschnitt für Spritzguss und Montage, Leckageverluste vermutet.', '3,3 % im Oktober.', '4,2 % im Oktober.', '4,7 %; Ladepark 2027 erhöht ihn — Wiedervorlage.', 'Gas ohne Anteil; nur Bürobeheizung.'];
@@ -311,6 +319,8 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
     return structuredClone(e);
   };
   return {
+    messbedarfe: async () => ({ messbedarfe: [] as Messbedarf[] }),
+    ...(messplanung ? messplanungRouten(heute, ich, messplanung.bedarfe) : {}),
     bewertungUmfang: async () => structuredClone(umfangFassung ? umfangAus(umfangFassung.nr, umfangFassung.s, heute) : umfangAus(null, null, heute)),
     bewertungUmfangSpeichern: async (s: BewertungUmfangSpeichern) => {
       if (s.ausschluesse.some((a) => !a.begruendung.trim())) throw fehler(422, 'begruendung_fehlt', 'Ein Ausschluss braucht eine Begründung.');

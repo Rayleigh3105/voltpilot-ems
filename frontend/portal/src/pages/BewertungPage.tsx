@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type BewertungRangliste, type BewertungUmfang, type Energieeinsatz, type EnergieeinsatzEinstufungFassung } from '../api';
+import { api, type BewertungMessabdeckungOrt, type BewertungRangliste, type BewertungUmfang, type Energieeinsatz, type EnergieeinsatzEinstufungFassung } from '../api';
 import {
   ANLEGEN_KNOPF,
   darfVerwalten,
@@ -14,6 +14,7 @@ import {
   KEINE_WERTE,
   LADEN,
   ladeFehler,
+  laeuft,
   LEER,
   NUR_LESEN,
   TITEL,
@@ -27,6 +28,7 @@ import { EnergieeinsatzAnlegenDialog } from '../components/EnergieeinsatzDialoge
 import { RanglisteBereich } from '../components/BewertungEntscheidungen';
 import { istWesentlich, Pruefaufgaben } from '../components/EinsatzMessmittel';
 import { MessabdeckungTabelle } from '../components/MessabdeckungTabelle';
+import { MessbedarfErfassenDialog, MessplanungStandorte } from '../components/Messplanung';
 import { ErrorState, Skeleton } from '../components/States';
 import { UmfangDialog } from '../components/UmfangDialog';
 import { UEMS_NORMGRENZE } from '../glossar';
@@ -71,6 +73,8 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
   const [versuch, setVersuch] = useState(0);
   const [dialog, setDialog] = useState<'umfang' | 'anlegen' | null>(null);
+  const [rest, setRest] = useState<BewertungMessabdeckungOrt | null>(null);
+  const [planVersion, setPlanVersion] = useState(0);
 
   useEffect(() => {
     let aktiv = true;
@@ -192,7 +196,17 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
           {/* AP-16 IP-18 (G3, R8): Prüfaufgaben aus wesentlichen Einsätzen mit Messmitteln ohne Angabe. */}
           <Pruefaufgaben einsaetze={liste.filter((e) => istWesentlich(historien[e.id])).map((e) => ({ name: `${e.kennzeichen} ${e.name}`, messstellen: e.messstellen }))} />
           {/* AP-16 IP-18 (§5.3, R5): Messabdeckung je Einsatz und je Ort; ohne Einsatz steht nichts (R11). */}
-          {liste.length > 0 && <MessabdeckungTabelle von={zeitraum.von} bis={zeitraum.bis} zeitraum={zeitraum.label} />}
+          {liste.length > 0 && (
+            <MessabdeckungTabelle
+              von={zeitraum.von}
+              bis={zeitraum.bis}
+              zeitraum={zeitraum.label}
+              version={planVersion}
+              onRestErfassen={verwalten && liste.some((e) => laeuft(e) && e.traeger === 'Strom') ? setRest : undefined}
+            />
+          )}
+          {/* AP-16 IP-20: die Messbedarfe aller Einsätze je Standort; gehandelt wird am Einsatz. */}
+          {liste.length > 0 && <MessplanungStandorte einsaetze={liste} version={planVersion} onOeffnen={onOeffnen} />}
 
           <section className="vp-bw-einsaetze" aria-labelledby="bw-einsaetze">
             <h2 id="bw-einsaetze">{EINSAETZE_TITEL}</h2>
@@ -222,6 +236,17 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
           onGespeichert={(u) => {
             setUmfang(u);
             setDialog(null);
+          }}
+        />
+      )}
+      {rest && liste && (
+        <MessbedarfErfassenDialog
+          einsaetze={liste.filter((e) => laeuft(e) && e.traeger === 'Strom')}
+          rest={rest}
+          onClose={() => setRest(null)}
+          onErfasst={() => {
+            setRest(null);
+            setPlanVersion((v) => v + 1);
           }}
         />
       )}
