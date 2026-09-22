@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class BewertungRanglisteController {
     private final BewertungRanglisteService dienst;
     public BewertungRanglisteController(BewertungRanglisteService dienst) { this.dienst=dienst; }
-    /** Recht: {@code energieeinsatz.ansehen}; Standort-Zaun, Mengen ohne Kriterien oder Einstufung. */
+    /** Recht: {@code energieeinsatz.ansehen}; Standort-Zaun, Urteil und Vorschlag, aber keine Einstufung. */
     @GetMapping
     public Rangliste lesen(@RequestParam LocalDate von,@RequestParam LocalDate bis) { return dienst.lesen(von,bis); }
 }

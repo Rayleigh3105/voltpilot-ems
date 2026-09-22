@@ -52,7 +52,8 @@ export function menge(messstellen: Messstelle[], traeger: string) {
 }
 export interface Einsatz { kennung: string; menge: string | null; datenlage_prozent: string | null; ersatz_prozent: string | null; begruendung: string | null }
 export interface RanglisteEingang { nenner: Nenner; traeger: string; monate: number; einsaetze: Einsatz[]; kriterien: typeof STARTWERTE }
-export function rangliste(e: RanglisteEingang) {
+/** KR2–KR4: Urteil und Vorschlag; ausdrücklich keine menschliche Einstufung. */
+export function urteil(e: RanglisteEingang) {
   if (!TRAEGER.includes(e.traeger)) throw new Error('traeger_unbekannt');
   const k = e.kriterien;
   const n = e.traeger === 'Strom' && e.nenner.zustand === 'vollständig' ? d(e.nenner.wert) : null;
@@ -82,6 +83,8 @@ export function rangliste(e: RanglisteEingang) {
   return { nenner: text(n), anlagen: `${e.nenner.vorhanden} von ${e.nenner.gesamt}`, zugeordnet: text(zugeordnet),
     rest: n === null ? null : text(dezMinus(n, zugeordnet)), abdeckung_prozent: prozent(zugeordnet, n), K8: k8, K7: k7, einsaetze: aus };
 }
+/** Kompatibler Name aus IP-2. */
+export const rangliste = urteil;
 export interface AbdeckungEingang { messstellen: Messstelle[]; traeger: string; reste: { kennung: string; wert: string | null }[]; nenner: string | null; offene_bedarfe: string[]; schwelle: string }
 /** Gleiche Ableitung je Einsatz, Ort und Umfang; Ersatz ist Teil der Menge. */
 export function abdeckung(e: AbdeckungEingang) {

@@ -1,8 +1,8 @@
-# Energetische Bewertung (AP-16 IP-8/IP-9)
+# Energetische Bewertung (AP-16 IP-8 bis IP-10)
 
 `BewertungRanglisteController` liest `GET /api/v1/unternehmen/bewertung/rangliste?von=&bis=`.
-`BewertungMengenLeser` ist rein; `BewertungRanglisteService` verbindet Monatswerte,
-Bilanz und den heutigen Betrachtungsumfang. Die Datengrundlage besteht aus ganzen
+`BewertungMengenLeser` liest die Zahlen; `BewertungRanglisteService` verbindet Monatswerte,
+Bilanz, wirksame Kriterien-Fassung und den heutigen Betrachtungsumfang. Die Datengrundlage besteht aus ganzen
 Kalendermonaten, Anlagen-/Prozessbindungen werden am letzten Tag gelesen.
 Die Rangliste zeigt laufende Einsätze; beendete bleiben über die IP-4-Leser und ihr
 Protokoll erreichbar und zählen nicht nochmals neben einem Nachfolger.
@@ -26,9 +26,25 @@ Protokoll erreichbar und zählen nicht nochmals neben einem Nachfolger.
   Anlagen wird nicht geraten. Dann sind die Anlagenreste null und das Ergebnis unvollständig.
 
 Nachweise: `BewertungRanglisteApiTest`, `BewertungMengenLeserTest`,
-`BewertungVectorsTest` (unveränderte NW-1-Vektoren, TS-/Python-Zwillinge),
+`BewertungVectorsTest` (NW-1-Vektoren, TS-/Python-Zwillinge),
 `BewertungRanglisteSchnittstelleVertragTest`, `BilanzApiTest` und Rechte-/Architekturwächter.
-IP-9 bringt keine Migration, keinen Läufer und kein Kriterien-Urteil.
+IP-9/IP-10 bringen keine Migration und keinen Läufer.
+
+## Urteil und Herkunftsentwurf (IP-10, KR2–KR4)
+
+- `BewertungRegeln.urteil` ist in Java, TypeScript und Python rein und rechnet die
+  Vektoroperationen `rangliste` und `urteil`. Schwellen vergleichen ungerundete
+  Größen; erst Anzeigen erhalten eine Nachkommastelle. K2 wird bei Strom erst mit
+  erfülltem K8 belastbar. K7/K8 stehen am Stand, K1–K3/K5–K6 am Einsatz.
+- Die Ranglistenroute ergänzt die Zahlen um `kriterien` (Fassung + Werte), `urteil`
+  und `vorschlag`. Das ist niemals eine Einstufung; diese setzt erst IP-11 durch
+  eine Person mit Begründung. K4 bleibt deshalb hier unbesetzt.
+- `herkunft` ist der Entwurf für IP-11: Zeitraum, Kriterien-Fassung, Urteil,
+  Vorschlag, jede Einsatz-Monatszahl mit Version/Zustand und bei Strom jeder
+  Bilanzwert des Nenners samt Eingangs-Versionen. Weitere Träger haben `nenner: null`.
+- K5 gewichtet die Zustände der gelesenen Monatswerte mit deren Kalendertagen;
+  K6 verwendet den ungerundeten Ersatzanteil. Der Standort-Zaun wird vor
+  beiden Rechnungen angewandt, deshalb verrät auch die Herkunft keine fremden IDs.
 
 ## Kriterien-Fassungen (IP-8, KR1, R15/R17)
 

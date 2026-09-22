@@ -38,7 +38,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-/** R1/R4/R5/R12: Referenzmengen über echte Monatsleser, App-Rolle, HTTP und Standort-RLS. */
+/** R1/R2/R4/R5/R12/R15: Mengen und Urteil über echte Leser, App-Rolle, HTTP und Standort-RLS. */
 @Testcontainers(disabledWithoutDocker=true)
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -142,8 +142,23 @@ class BewertungRanglisteApiTest {
         assertThat(a.path("zugeordnet").asText()).isEqualTo("125740");
         assertThat(a.path("abdeckung_prozent").asText()).isEqualTo("67.8");
         assertThat(a.path("rest").asText()).isEqualTo("59640");
+        assertThat(a.path("monate").asInt()).isEqualTo(1);
+        assertThat(a.at("/kriterien/fassung").asInt()).isEqualTo(1);
+        assertThat(a.at("/urteil/K7").asText()).isEqualTo("vorlaeufig");
+        assertThat(a.at("/urteil/K8").asText()).isEqualTo("unter_schwelle");
         assertThat(a.path("anlagen").findValuesAsText("rest")).containsExactlyInAnyOrder("54580","3860","1200");
         assertThat(einsatz(a,"EE-1").path("menge").asText()).isEqualTo("77500");
+        assertThat(einsatz(a,"EE-1").at("/urteil/K1").asText()).isEqualTo("ueber_schwelle");
+        assertThat(einsatz(a,"EE-1").at("/urteil/K2").asText()).isEqualTo("nicht_belastbar");
+        assertThat(einsatz(a,"EE-1").at("/urteil/K3").asText()).isEqualTo("nicht_anwendbar");
+        assertThat(einsatz(a,"EE-1").at("/urteil/K5").asText()).isEqualTo("erfuellt");
+        assertThat(einsatz(a,"EE-1").at("/urteil/K6").asText()).isEqualTo("erfuellt");
+        assertThat(einsatz(a,"EE-1").path("datenlage_prozent").asText()).isEqualTo("100.0");
+        assertThat(einsatz(a,"EE-1").path("vorschlag").asText()).isEqualTo("ueber_schwelle");
+        assertThat(einsatz(a,"EE-1").at("/herkunft/kriterien_fassung").asInt()).isEqualTo(1);
+        assertThat(einsatz(a,"EE-1").at("/herkunft/eingaenge").findValuesAsText("version")).containsOnly("1");
+        assertThat(einsatz(a,"EE-1").at("/herkunft/nenner/bilanzwerte").size()).isEqualTo(3);
+        assertThat(einsatz(a,"EE-1").at("/herkunft/nenner/bilanzwerte").findValuesAsText("version")).containsOnly("1");
         assertThat(einsatz(a,"EE-3").path("menge").asText()).isEqualTo("15900");
         assertThat(einsatz(a,"EE-8").path("menge").isNull()).isTrue();
         assertThat(einsatz(a,"EE-8").path("zustand").asText()).isEqualTo("keine Werte");
@@ -152,11 +167,26 @@ class BewertungRanglisteApiTest {
         assertThat(gas.path("einheit").asText()).isEqualTo("m³");
         assertThat(gas.path("anteil_prozent").isNull()).isTrue();
         assertThat(gas.path("anteil_zustand").asText()).isEqualTo("ohne Anteil");
-        assertThat(a.toString()).doesNotContain("\"K1\"","\"vorschlag\"","\"einstufung\"");
+        assertThat(gas.at("/urteil/K1").asText()).isEqualTo("nicht_anwendbar");
+        assertThat(gas.at("/herkunft/nenner").isNull()).isTrue();
+        assertThat(a.toString()).doesNotContain("\"einstufung\"");
         assertThat(a.path("anlagen").findValuesAsText("ab")).contains("2026-10-15");
         // N1 ist dieselbe Zahl in der bestehenden Bilanz: Speicher getrennt aus der Verdichtung.
         var b=ruf("GET","/api/v1/sites/"+ids.get("AN-1")+"/bilanz?periode=monat&am=2026-10-01","IK",null,200);
         assertThat(b.at("/hauptzaehler/0/abschnitte/0/werte/0/rest/menge").decimalValue()).isEqualByComparingTo("54580");
+    }
+    @Test void r15KriterienFassungZweiAendertDasUrteilAberStuftenNichtEin() throws Exception {
+        var werte=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(
+                Path.of("../../docs/contracts/v2/bewertung-vectors.json").toFile()).path("startwerte").deepCopy();
+        werte.put("K1","5");
+        ruf("PUT","/api/v1/unternehmen/bewertung/kriterien","IK",Map.of("werte",werte,"begruendung","Montage beobachten"),200);
+        var a=ruf("GET",BASE+OKTOBER,"IK",null,200);
+        assertThat(a.at("/kriterien/fassung").asInt()).isEqualTo(2);
+        assertThat(a.at("/kriterien/werte/K1").asText()).isEqualTo("5");
+        assertThat(einsatz(a,"EE-2").path("anteil_prozent").asText()).isEqualTo("5.2");
+        assertThat(einsatz(a,"EE-2").at("/urteil/K1").asText()).isEqualTo("ueber_schwelle");
+        assertThat(einsatz(a,"EE-2").path("vorschlag").asText()).isEqualTo("ueber_schwelle");
+        assertThat(a.toString()).doesNotContain("\"einstufung\"");
     }
     @Test void ohneHauptzaehlerBleibtDerNennerUnvollstaendig() throws Exception {
         root.update("UPDATE messstelle_stellung SET aufgehoben_am=now() WHERE messstelle_id=?",ids.get("MS-16"));

@@ -18,19 +18,28 @@ class BewertungRanglisteSchnittstelleVertragTest {
         var route=(Map<String,Object>)paths.get("/api/v1/unternehmen/bewertung/rangliste");
         assertThat(route.keySet()).containsExactly("get");
         assertThat(((Map<String,Object>)route.get("get")).get("description").toString())
-                .contains("energieeinsatz.ansehen","teilansicht","unvollständig");
+                .contains("energieeinsatz.ansehen","teilansicht","unvollständig","Urteil und Vorschlag","niemals eine Einstufung");
         var schemas=(Map<String,Object>)((Map<String,Object>)api.get("components")).get("schemas");
-        var dtos=Map.of("BewertungRangliste",BewertungRanglisteDto.Rangliste.class,
-                "BewertungRanglisteNenner",BewertungRanglisteDto.Nenner.class,
-                "BewertungRanglisteAnlage",BewertungRanglisteDto.Anlage.class,
-                "BewertungRanglisteEinsatz",BewertungRanglisteDto.Einsatz.class,
-                "BewertungRanglisteMessstelle",BewertungRanglisteDto.Messstelle.class);
+        var dtos=Map.ofEntries(
+                Map.entry("BewertungRangliste",BewertungRanglisteDto.Rangliste.class),
+                Map.entry("BewertungRanglisteNenner",BewertungRanglisteDto.Nenner.class),
+                Map.entry("BewertungRanglisteAnlage",BewertungRanglisteDto.Anlage.class),
+                Map.entry("BewertungRanglisteEinsatz",BewertungRanglisteDto.Einsatz.class),
+                Map.entry("BewertungKriterienGrundlage",BewertungRanglisteDto.KriterienGrundlage.class),
+                Map.entry("BewertungStandUrteil",BewertungRanglisteDto.StandUrteil.class),
+                Map.entry("BewertungEinsatzUrteil",BewertungRanglisteDto.Urteil.class),
+                Map.entry("BewertungHerkunftEntwurf",BewertungRanglisteDto.HerkunftEntwurf.class),
+                Map.entry("BewertungHerkunftEingang",BewertungRanglisteDto.HerkunftEingang.class),
+                Map.entry("BewertungHerkunftNenner",BewertungRanglisteDto.HerkunftNenner.class),
+                Map.entry("BewertungBilanzwert",BewertungRanglisteDto.Bilanzwert.class),
+                Map.entry("BewertungBilanzEingang",BewertungRanglisteDto.BilanzEingang.class),
+                Map.entry("BewertungRanglisteMessstelle",BewertungRanglisteDto.Messstelle.class));
         var mapper=new ObjectMapper();
         for(var dto:dtos.entrySet()) {
             var props=(Map<String,Object>)((Map<String,Object>)schemas.get(dto.getKey())).get("properties");
             var namen=mapper.getSerializationConfig().introspect(mapper.constructType(dto.getValue())).findProperties().stream().map(p->p.getName()).toList();
             assertThat(props.keySet()).as(dto.getKey()).containsExactlyInAnyOrderElementsOf(namen);
-            assertThat(props.keySet()).doesNotContain("kriterien","einstufung","vorschlag");
+            assertThat(props.keySet()).doesNotContain("einstufung");
         }
     }
 }

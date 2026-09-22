@@ -25,7 +25,7 @@ class BewertungVectorsTest {
         return switch (fall.get("operation").asText()) {
             case "nenner" -> BewertungMengenLeser.nenner(list(e.get("anlagen"), BewertungRegeln.Anlage[].class));
             case "menge" -> BewertungMengenLeser.menge(list(e.get("messstellen"), BewertungRegeln.Messstelle[].class), e.get("traeger").asText());
-            case "rangliste" -> BewertungRegeln.rangliste(M.treeToValue(e, BewertungRegeln.RanglisteEingang.class));
+            case "rangliste", "urteil" -> BewertungRegeln.urteil(M.treeToValue(e, BewertungRegeln.RanglisteEingang.class));
             case "abdeckung" -> BewertungRegeln.abdeckung(M.treeToValue(e, BewertungRegeln.AbdeckungEingang.class));
             case "prozess_summe_passt" -> BewertungRegeln.prozessSummePasst(list(e.get("gemessen"), String[].class), list(e.get("summen"), BewertungRegeln.ProzessSumme[].class));
             case "toleranz" -> BewertungRegeln.toleranz(text(e.get("fuehrend")), text(e.get("vergleich")), e.get("toleranz").asText());

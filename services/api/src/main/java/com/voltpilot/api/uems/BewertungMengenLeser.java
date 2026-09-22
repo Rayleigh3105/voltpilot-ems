@@ -56,10 +56,11 @@ public final class BewertungMengenLeser {
                 return a;
             }).orElse(e.traeger().equals("Strom") ? "kWh" : null);
             var zeile = new Einsatz(e.id(), e.kennzeichen(), e.name(), e.prozessId(), e.traeger(), einheit,
-                    menge, zustand, ersatz, prozent(ersatz, menge), mitAnteil ? prozent(menge, text(nenner)) : null,
+                    menge, zustand, ersatz, prozent(ersatz, menge), null,
+                    mitAnteil ? prozent(menge, text(nenner)) : null, null,
                     !mitAnteil ? "ohne Anteil" : !nennerZustand.equals("vollständig") ? "unvollständig"
                             : menge == null ? "keine Werte" : nenner == null || nenner.signum() <= 0 ? "ohne Anteil" : zustand,
-                    null, ms);
+                    null, null, null, null, ms);
             (mitAnteil ? stromZeilen : weitere).add(zeile);
         }
         stromZeilen.sort(Comparator.comparing((Einsatz e) -> zahl(e.menge()),
@@ -67,8 +68,9 @@ public final class BewertungMengenLeser {
         for (int i=0; i<stromZeilen.size(); i++) {
             var e = stromZeilen.get(i);
             stromZeilen.set(i,new Einsatz(e.id(),e.kennzeichen(),e.name(),e.prozessId(),e.traeger(),e.einheit(),
-                    e.menge(),e.zustand(),e.ersatz(),e.ersatzProzent(),e.anteilProzent(),e.anteilZustand(),
-                    e.menge() == null ? null : i+1,e.messstellen()));
+                    e.menge(),e.zustand(),e.ersatz(),e.ersatzProzent(),e.datenlageProzent(),e.anteilProzent(),
+                    e.kumuliertZugeordnetProzent(),e.anteilZustand(),e.menge() == null ? null : i+1,
+                    e.urteil(),e.vorschlag(),e.herkunft(),e.messstellen()));
         }
         weitere.sort(Comparator.comparing(Einsatz::traeger).thenComparing(Einsatz::kennzeichen));
         BigDecimal zugeordnet = stromZeilen.stream().filter(e -> e.menge()!=null).map(e -> zahl(e.menge()))
@@ -85,7 +87,7 @@ public final class BewertungMengenLeser {
                             ? "unvollständig" : a.zustand()));
         }
         String rest = nenner == null ? null : text(nenner.subtract(zugeordnet));
-        return new Rangliste(von,bis,umfangId,fassung,teilansicht,
+        return new Rangliste(von,bis,umfangId,fassung,teilansicht,0,null,null,
                 new Nenner(text(nenner),strom ? "kWh" : null,(int)n.get("vorhanden"),(int)n.get("gesamt"),
                         n.get("vorhanden")+" von "+n.get("gesamt"),nennerZustand),
                 strom ? text(zugeordnet) : null,strom ? rest : null,strom ? prozent(text(zugeordnet),text(nenner)) : null,

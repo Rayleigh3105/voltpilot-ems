@@ -75,7 +75,8 @@ public final class BewertungRegeln {
         return obj("menge", werte.isEmpty() ? null : text(menge), "ersatz", werte.isEmpty() ? null : text(ersatz),
             "zustand", werte.isEmpty() ? "keine Werte" : werte.size() != ms.size() ? "unvollständig" : ersatz.signum() > 0 ? "mit Ersatzwert" : "vollständig");
     }
-    public static Map<String, Object> rangliste(RanglisteEingang e) {
+    /** KR2–KR4: Urteil und Vorschlag; ausdrücklich keine menschliche Einstufung. */
+    public static Map<String, Object> urteil(RanglisteEingang e) {
         if (!TRAEGER.contains(e.traeger)) throw new IllegalArgumentException("traeger_unbekannt");
         var k = e.kriterien;
         boolean strom = e.traeger.equals("Strom");
@@ -107,6 +108,8 @@ public final class BewertungRegeln {
         return obj("nenner", text(n), "anlagen", e.nenner.vorhanden + " von " + e.nenner.gesamt, "zugeordnet", text(zugeordnet),
             "rest", n == null ? null : text(n.subtract(zugeordnet)), "abdeckung_prozent", prozent(zugeordnet, n), "K8", k8, "K7", k7, "einsaetze", aus);
     }
+    /** Kompatibler Name aus IP-2; neue Aufrufer verwenden {@link #urteil(RanglisteEingang)}. */
+    public static Map<String, Object> rangliste(RanglisteEingang e) { return urteil(e); }
     /** Gleiche Regel je Einsatz, Ort und Umfang; Rest wird nicht einem Einsatz zugeschlagen. */
     public static Map<String, Object> abdeckung(AbdeckungEingang e) {
         var ms = relevante(e.messstellen, e.traeger);

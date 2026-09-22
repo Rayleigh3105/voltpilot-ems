@@ -11955,7 +11955,7 @@ paths:
   /api/v1/unternehmen/bewertung/rangliste:
     get:
       tags: [energieeinsaetze]
-      summary: Mengen und Anteile der Energieeinsätze aus Monatswerten und Anlagenbilanzen.
+      summary: Mengen, Kriterien-Urteile und Vorschläge der Energieeinsätze.
       description: >
         Recht `energieeinsatz.ansehen`. Laufende Einsätze und heutige Umfangsfassung, Anlagen und direkte Prozesszuordnungen
         am letzten Tag der Datengrundlage. Ganze Kalendermonate, letzter Tag eingeschlossen.
@@ -11963,7 +11963,9 @@ paths:
         deren Nenner und x von y gelten nur für diese Teilansicht. Fehlt darin eine Bilanz, sind der
         Nenner null und alle Stromanteile unvollständig. Ohne Hauptzähler Bezug heißt die Anlage
         ohne Bilanz. Mengenlose Einsätze tragen keine Werte, keine Null. Weitere Träger behalten
-        ihre Einheit und haben keinen Anteil. Keine Kriterien, Vorschläge oder Einstufungen.
+        ihre Einheit und haben keinen Anteil. Die wirksame Kriterien-Fassung erzeugt je Einsatz nur
+        Urteil und Vorschlag, niemals eine Einstufung. Der Herkunftsentwurf nennt jede gelesene
+        Monatszahl mit Version sowie die Bilanzwerte des Nenners; eine Teilansicht enthält nur Sichtbares.
       parameters:
         - { in: query, name: von, required: true, schema: { type: string, format: date }, description: Erster Tag des ersten Monats. }
         - { in: query, name: bis, required: true, schema: { type: string, format: date }, description: Letzter Tag des letzten Monats. }
@@ -14128,13 +14130,16 @@ components:
         mit_anteil: { type: boolean, description: Nur Strom; alle anderen Träger sind im Umfang ohne Anteil. }
     BewertungRangliste:
       type: object
-      required: [von, bis, umfang_id, umfang_fassung, teilansicht, nenner, zugeordnet, rest, abdeckung_prozent, zustand, anlagen, einsaetze, weitere_traeger]
+      required: [von, bis, umfang_id, umfang_fassung, teilansicht, monate, kriterien, urteil, nenner, zugeordnet, rest, abdeckung_prozent, zustand, anlagen, einsaetze, weitere_traeger]
       properties:
         von: { type: string, format: date }
         bis: { type: string, format: date }
         umfang_id: { type: string, format: uuid, nullable: true }
         umfang_fassung: { type: integer, nullable: true }
         teilansicht: { type: boolean }
+        monate: { type: integer, minimum: 1 }
+        kriterien: { $ref: "#/components/schemas/BewertungKriterienGrundlage" }
+        urteil: { $ref: "#/components/schemas/BewertungStandUrteil" }
         nenner: { $ref: "#/components/schemas/BewertungRanglisteNenner" }
         zugeordnet: { type: string, nullable: true, description: Bekannte Strommenge in kWh als ungerundeter Dezimaltext. }
         rest: { type: string, nullable: true }
@@ -14167,7 +14172,7 @@ components:
         zustand: { type: string, enum: [vollständig, unvollständig, mit Ersatzwert, ohne Bilanz] }
     BewertungRanglisteEinsatz:
       type: object
-      required: [id, kennzeichen, name, prozess_id, traeger, einheit, menge, zustand, ersatz, ersatz_prozent, anteil_prozent, anteil_zustand, rang, messstellen]
+      required: [id, kennzeichen, name, prozess_id, traeger, einheit, menge, zustand, ersatz, ersatz_prozent, datenlage_prozent, anteil_prozent, kumuliert_zugeordnet_prozent, anteil_zustand, rang, urteil, vorschlag, herkunft, messstellen]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -14179,10 +14184,82 @@ components:
         zustand: { type: string, enum: [vollständig, unvollständig, mit Ersatzwert, keine Werte] }
         ersatz: { type: string, nullable: true, description: Teil der Menge; null wenn nicht nachweisbar. }
         ersatz_prozent: { type: string, nullable: true }
+        datenlage_prozent: { type: string, nullable: true, description: Anteil vollständiger Tage, Anzeige mit einer Nachkommastelle. }
         anteil_prozent: { type: string, nullable: true }
+        kumuliert_zugeordnet_prozent: { type: string, nullable: true }
         anteil_zustand: { type: string, enum: [vollständig, unvollständig, mit Ersatzwert, keine Werte, ohne Anteil] }
         rang: { type: integer, nullable: true }
+        urteil: { $ref: "#/components/schemas/BewertungEinsatzUrteil" }
+        vorschlag: { type: string, enum: [ueber_schwelle, unter_schwelle], description: Keine Einstufung. }
+        herkunft: { $ref: "#/components/schemas/BewertungHerkunftEntwurf" }
         messstellen: { type: array, items: { $ref: "#/components/schemas/BewertungRanglisteMessstelle" } }
+    BewertungKriterienGrundlage:
+      type: object
+      required: [fassung, werte]
+      properties:
+        fassung: { type: integer, minimum: 1 }
+        werte: { $ref: "#/components/schemas/BewertungKriterienWerte" }
+    BewertungStandUrteil:
+      type: object
+      required: [K7, K8]
+      properties:
+        K7: { type: string, enum: [erfuellt, unter_zwoelf, vorlaeufig] }
+        K8: { type: string, enum: [ueber_schwelle, unter_schwelle, nicht_anwendbar] }
+    BewertungEinsatzUrteil:
+      type: object
+      required: [K1, K2, K3, K5, K6]
+      properties:
+        K1: { type: string, enum: [ueber_schwelle, unter_schwelle, nicht_anwendbar] }
+        K2: { type: string, enum: [ueber_schwelle, unter_schwelle, nicht_anwendbar, nicht_belastbar] }
+        K3: { type: string, enum: [ueber_schwelle, unter_schwelle, nicht_anwendbar] }
+        K5: { type: string, enum: [erfuellt, vorbehalt_datenlage] }
+        K6: { type: string, enum: [erfuellt, vorbehalt_ersatzwerte] }
+    BewertungHerkunftEntwurf:
+      type: object
+      required: [zeitraum, kriterien_fassung, eingaenge, nenner, urteil, vorschlag]
+      properties:
+        zeitraum: { type: string, example: 2026-10 }
+        kriterien_fassung: { type: integer, minimum: 1 }
+        eingaenge: { type: array, items: { $ref: "#/components/schemas/BewertungHerkunftEingang" } }
+        nenner: { allOf: [{ $ref: "#/components/schemas/BewertungHerkunftNenner" }], nullable: true }
+        urteil: { $ref: "#/components/schemas/BewertungEinsatzUrteil" }
+        vorschlag: { type: string, enum: [ueber_schwelle, unter_schwelle] }
+    BewertungHerkunftEingang:
+      type: object
+      required: [objekt, von, bis, wert, version, zustand]
+      properties:
+        objekt: { type: string }
+        von: { type: string }
+        bis: { type: string }
+        wert: { type: string, nullable: true }
+        version: { type: integer, nullable: true }
+        zustand: { type: string, nullable: true }
+    BewertungHerkunftNenner:
+      type: object
+      required: [wert, anlagen, bilanzwerte]
+      properties:
+        wert: { type: string, nullable: true }
+        anlagen: { type: string }
+        bilanzwerte: { type: array, items: { $ref: "#/components/schemas/BewertungBilanzwert" } }
+    BewertungBilanzwert:
+      type: object
+      required: [anlage, von, bis, wert, version, zustand, eingaenge]
+      properties:
+        anlage: { type: string }
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        wert: { type: string, nullable: true }
+        version: { type: integer, minimum: 1 }
+        zustand: { type: string }
+        eingaenge: { type: array, items: { $ref: "#/components/schemas/BewertungBilanzEingang" } }
+    BewertungBilanzEingang:
+      type: object
+      required: [objekt, wert, version, zustand]
+      properties:
+        objekt: { type: string }
+        wert: { type: string, nullable: true }
+        version: { type: integer, minimum: 1 }
+        zustand: { type: string, nullable: true }
     BewertungRanglisteMessstelle:
       type: object
       required: [id, kennzeichen, anlage_id, einheit, menge, zustand, ersatz, ersatz_prozent, monatswerte]
