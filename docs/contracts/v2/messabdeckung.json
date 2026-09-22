@@ -1,0 +1,265 @@
+{
+ "schema_version": "1.0",
+ "stand": "22.09.2026",
+ "repo": "origin/uems dd5f45b0 (PR 1070); Fundament 8c435070 (PR 1069)",
+ "entscheid": {
+  "datum": "22.09.2026",
+  "uhrzeit": "10:20",
+  "kanal": "Review-Seite, Sitzungsende-Nachricht",
+  "wortlaut": "Bitte alle Empfeungen so nehemne",
+  "quelle": "captain-entscheid-2026-09-22.txt",
+  "e_kaesten": {
+   "E1": "A",
+   "E2": "A",
+   "E3": "A",
+   "E4": "A",
+   "E5": "A",
+   "E6": "A",
+   "E7": "A",
+   "E8": "A",
+   "E9": "A",
+   "E10": "A",
+   "E11": "A"
+  },
+  "w_kaesten": "W1 bis W12: Auflösung übernommen",
+  "folge": "§8 ist die verbindliche Bau-Liste (28 Pakete, 37 Personentage); kein Paket entfällt, keines kommt hinzu — IP-26 steht mit E9 = A ohne Bedingung in der Liste. Die Zahlen ab November 2026 bleiben Annahmen; die Erweiterung 1.6 wird erst mit IP-1 gebaut. Mit dem Bau wird noch nicht begonnen."
+ },
+ "titel": "AP-16 Messabdeckung Ahrenberg — je Energieeinsatz und je Ort: gemessen · geplant · Ersatz · ungemessen",
+ "zeitraum": "Oktober 2026 (Werte Version 2 nach K-2026-0007)",
+ "datenstand": "30.11.2026 (nach Messbedarf MB-1 und MS-23 der Erweiterung 1.6)",
+ "lesehilfe": "gemessen = Messstelle liefert Daten (direkt zugeordnet) · geplant = Messbedarf offen oder Messstelle ohne Datenquelle (AP-04 E8) · Ersatz = Ersatzwerte im Zeitraum (AP-08 E7) · ungemessen = Rest der Bilanz je Anlage, keinem Einsatz zugeordnet. Eine berechnete Messstelle ist nie „gemessen“.",
+ "summe": {
+  "zeitraum": "Oktober 2026",
+  "traeger": "Strom",
+  "nenner_kwh": 185380,
+  "anlagen": "3 von 3",
+  "gemessen_zugeordnet_kwh": 125740,
+  "abdeckung_prozent": 67.8,
+  "ungemessen_kwh": 59640,
+  "ungemessen_prozent": 32.2,
+  "geplant": "MS-23 (0 kWh — geplant, nie 0)",
+  "ersatz_kwh": 0,
+  "K8": "unter_schwelle",
+  "satz": "67,8 % des Stromeinsatzes sind Energieeinsätzen zugeordnet; 59 640 kWh (32,2 %) sind keinem zugeordnet — der größte Block ist Halle 1 (39,2 % der Anlage)."
+ },
+ "je_einsatz": [
+  {
+   "energieeinsatz": "EE-1",
+   "name": "Spritzguss",
+   "prozess": "P-1",
+   "traeger": "Strom",
+   "gemessen": [
+    {
+     "messstelle": "MS-06",
+     "ort": "B-1 Halle 1 Nord",
+     "oktober_2026": "55100 kWh",
+     "zustand": "liefert Daten"
+    },
+    {
+     "messstelle": "MS-11",
+     "ort": "B-4 Halle 2 Spritzguss",
+     "oktober_2026": "22400 kWh",
+     "zustand": "liefert Daten"
+    }
+   ],
+   "geplant": [],
+   "ersatz": [],
+   "ungemessen": [],
+   "menge": "77500 kWh"
+  },
+  {
+   "energieeinsatz": "EE-2",
+   "name": "Montage",
+   "prozess": "P-2",
+   "traeger": "Strom",
+   "gemessen": [
+    {
+     "messstelle": "MS-12",
+     "ort": "B-3 Halle 2 Montage",
+     "oktober_2026": "6040 kWh",
+     "zustand": "liefert Daten"
+    },
+    {
+     "messstelle": "MS-18",
+     "ort": "G-5 Montagehalle Lindach",
+     "oktober_2026": "3600 kWh",
+     "zustand": "liefert Daten"
+    }
+   ],
+   "geplant": [],
+   "ersatz": [],
+   "ungemessen": [],
+   "menge": "9640 kWh"
+  },
+  {
+   "energieeinsatz": "EE-3",
+   "name": "Druckluft",
+   "prozess": "P-3",
+   "traeger": "Strom",
+   "gemessen": [
+    {
+     "messstelle": "MS-07",
+     "ort": "B-2 Halle 1 Süd",
+     "oktober_2026": "15900 kWh",
+     "zustand": "liefert Daten"
+    }
+   ],
+   "geplant": [],
+   "ersatz": [],
+   "ungemessen": [],
+   "menge": "15900 kWh"
+  },
+  {
+   "energieeinsatz": "EE-4",
+   "name": "Kühlung",
+   "prozess": "P-4",
+   "traeger": "Strom",
+   "gemessen": [
+    {
+     "messstelle": "MS-08",
+     "ort": "B-2 Halle 1 Süd (ab 01.03.2027 B-3)",
+     "oktober_2026": "6200 kWh",
+     "zustand": "liefert Daten"
+    }
+   ],
+   "geplant": [],
+   "ersatz": [],
+   "ungemessen": [],
+   "menge": "6200 kWh"
+  },
+  {
+   "energieeinsatz": "EE-5",
+   "name": "Logistik",
+   "prozess": "P-5",
+   "traeger": "Strom",
+   "gemessen": [
+    {
+     "messstelle": "MS-13",
+     "ort": "B-5 Halle 2 Lager",
+     "oktober_2026": "3500 kWh",
+     "zustand": "liefert Daten"
+    },
+    {
+     "messstelle": "MS-17",
+     "ort": "G-4 Lagerhalle Lindach",
+     "oktober_2026": "4300 kWh",
+     "zustand": "liefert Daten"
+    }
+   ],
+   "geplant": [],
+   "ersatz": [],
+   "ungemessen": [],
+   "menge": "7800 kWh"
+  },
+  {
+   "energieeinsatz": "EE-6",
+   "name": "Verwaltung",
+   "prozess": "P-6",
+   "traeger": "Strom",
+   "gemessen": [
+    {
+     "messstelle": "MS-05",
+     "ort": "G-3 Verwaltung",
+     "oktober_2026": "7600 kWh",
+     "zustand": "liefert Daten"
+    },
+    {
+     "messstelle": "MS-14",
+     "ort": "ST-1 Außenfläche Halle 2",
+     "oktober_2026": "1100 kWh",
+     "zustand": "liefert Daten"
+    }
+   ],
+   "geplant": [],
+   "ersatz": [],
+   "ungemessen": [],
+   "menge": "8700 kWh"
+  },
+  {
+   "energieeinsatz": "EE-7",
+   "name": "Heizung Verwaltung (Gas)",
+   "prozess": "P-6",
+   "traeger": "Gas",
+   "gemessen": [
+    {
+     "messstelle": "MS-21",
+     "ort": "G-3 Verwaltung",
+     "oktober_2026": "1240 m³",
+     "zustand": "abgelesen (kein Kanal)"
+    }
+   ],
+   "geplant": [],
+   "ersatz": [],
+   "ungemessen": [],
+   "menge": "1 240 m³ (ohne Anteil)"
+  },
+  {
+   "energieeinsatz": "EE-8",
+   "name": "Gebäudetechnik Halle 1",
+   "prozess": "P-7 (neu, Erweiterung 1.6)",
+   "traeger": "Strom",
+   "gemessen": [],
+   "geplant": [
+    {
+     "messstelle": "MS-23",
+     "ort": "G-1 Halle 1",
+     "zustand": "eingerichtet · keine Datenquelle seit 27.11.2026 (AP-04 E8)",
+     "messbedarf": "MB-1 eingelöst 27.11.2026, Zähler bestellt, Quelle ab 01.03.2027"
+    }
+   ],
+   "ersatz": [],
+   "ungemessen": [
+    {
+     "was": "Rest AN-1 „Halle 1 + Verwaltung nicht zugeordnet“ (MS-09)",
+     "oktober_2026": "54 580 kWh",
+     "anteil_an_anlage": "39,2 %"
+    }
+   ],
+   "menge": "keine Werte"
+  }
+ ],
+ "je_ort": [
+  {
+   "ort": "AN-1 Halle 1 + Verwaltung (G-1, G-3)",
+   "gemessen": "MS-05, MS-06, MS-07, MS-08 = 84 800 kWh",
+   "geplant": "MS-23 Halle 1 Allgemein (ab 27.11.2026, Quelle ab 01.03.2027)",
+   "ersatz": "keine im Oktober 2026",
+   "ungemessen": "Rest MS-09 54 580 kWh = 39,2 % von 139 380"
+  },
+  {
+   "ort": "AN-2 Halle 2 (G-2)",
+   "gemessen": "MS-11, MS-12, MS-13, MS-14 = 33 040 kWh",
+   "geplant": "—",
+   "ersatz": "keine (Box-Ausfall 03.11.2026 wurde nachgeliefert, kein Ersatzwert)",
+   "ungemessen": "Rest MS-15 3 860 kWh = 10,5 % von 36 900"
+  },
+  {
+   "ort": "AN-3 Werk Lindach (G-4, G-5)",
+   "gemessen": "MS-17, MS-18 = 7 900 kWh",
+   "geplant": "—",
+   "ersatz": "keine",
+   "ungemessen": "Rest MS-22 1 200 kWh = 13,2 % von 9 100 (ab 15.10.2026)"
+  },
+  {
+   "ort": "G-3 Verwaltung, Träger Gas",
+   "gemessen": "MS-21 1 240 m³ (abgelesen)",
+   "geplant": "—",
+   "ersatz": "—",
+   "ungemessen": "kein Nenner je Träger — ohne Anteil (E3)"
+  }
+ ],
+ "rest_je_anlage": {
+  "AN-1": {
+   "kwh": 54580,
+   "anteil_an_anlage_prozent": 39.2
+  },
+  "AN-2": {
+   "kwh": 3860,
+   "anteil_an_anlage_prozent": 10.5
+  },
+  "AN-3": {
+   "kwh": 1200,
+   "anteil_an_anlage_prozent": 13.2
+  }
+ }
+}

@@ -1,11 +1,14 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -52,5 +55,37 @@ class BewertungVectorsTest {
             ((ObjectNode) falsch.at("/cases/0/eingang/anlagen/0")).put(key, 1.5);
             assertThat(UemsSchemaLaeufer.verstoesse(falsch, read("bewertung.schema.json"))).isNotEmpty();
         }
+    }
+
+    @Test void messabdeckungAhrenbergLaeuftDurchDenselbenP3Zwilling() throws Exception {
+        var v = read("messabdeckung.json");
+        var messstellen = new ArrayList<BewertungRegeln.Messstelle>();
+        for (var e : v.path("je_einsatz")) {
+            if (!"Strom".equals(e.path("traeger").asText())) continue;
+            for (var m : e.path("gemessen")) messstellen.add(new BewertungRegeln.Messstelle(
+                    m.path("messstelle").asText(), "Strom", "gemessen", true, false,
+                    menge(m.path("oktober_2026").asText()), "0"));
+            for (var m : e.path("geplant")) messstellen.add(new BewertungRegeln.Messstelle(
+                    m.path("messstelle").asText(), "Strom", "gemessen", true, false, null, "0"));
+        }
+        var reste = new ArrayList<BewertungRegeln.Rest>();
+        Iterator<String> namen = v.path("rest_je_anlage").fieldNames();
+        while (namen.hasNext()) {
+            String name = namen.next();
+            reste.add(new BewertungRegeln.Rest(name, v.at("/rest_je_anlage/" + name + "/kwh").asText()));
+        }
+        var aus = BewertungRegeln.abdeckung(new BewertungRegeln.AbdeckungEingang(messstellen, "Strom",
+                reste, v.at("/summe/nenner_kwh").asText(), List.of(), BewertungRegeln.STARTWERTE.K8()));
+        assertThat(aus).containsEntry("menge", v.at("/summe/gemessen_zugeordnet_kwh").asText())
+                .containsEntry("ersatz", v.at("/summe/ersatz_kwh").asText())
+                .containsEntry("ungemessen", v.at("/summe/ungemessen_kwh").asText())
+                .containsEntry("abdeckung_prozent", v.at("/summe/abdeckung_prozent").asText())
+                .containsEntry("K8", v.at("/summe/K8").asText());
+        assertEquals(10, ((List<?>) aus.get("gemessen")).size());
+        assertEquals(List.of("MS-23"), aus.get("geplant"));
+    }
+
+    private static String menge(String text) {
+        return text.replace(" ", "").split("kWh|m³")[0];
     }
 }

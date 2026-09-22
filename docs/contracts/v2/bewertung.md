@@ -133,6 +133,13 @@ R1/§5.3: 125740 gemessen/zugeordnet, MS-23 geplant, Ersatz 0, ungemessen 59640;
 K8 unter Schwelle. MS-23 macht den vorhandenen Mengenanteil nicht null und erhält
 selbst keine Menge. Archivierte und berechnete Messstellen sind nie gemessen.
 
+Der Produktivleser ist `GET /api/v1/unternehmen/bewertung/messabdeckung?von=&bis=`.
+Er projiziert das Ergebnis von `BewertungMengenLeser` — Nenner, Mengen und Rest werden
+nicht erneut gebildet — und liest K8 aus der wirksamen Kriterien-Fassung. Die vollständige
+Ahrenberg-Abnahme steht in [`messabdeckung.json`](messabdeckung.json) und läuft zusätzlich
+durch Java-, TypeScript- und Python-Zwilling. `BewertungMessbedarfNaht` ist bis IP-19 leer;
+Messstellen ohne Datenquelle erscheinen bereits jetzt unter `geplant`, stets ohne Menge.
+
 **P4:** `prozess_summe_passt` vergleicht die Quell-Messstellen der Terme jeder
 zugeordneten berechneten Messstelle mit den direkt gemessenen Messstellen des
 Prozesses. Jeder äußere Term liefert einen Hinweis mit Summe, Messstelle und optionaler

@@ -11978,6 +11978,31 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/unternehmen/bewertung/messabdeckung:
+    get:
+      tags: [energieeinsaetze]
+      summary: Messabdeckung je Energieeinsatz und je Ort aus Monatswerten und Anlagenbilanzen.
+      description: >
+        Recht `energieeinsatz.ansehen`; keine Schreibrecht-Annotation. Derselbe Standort-Zaun,
+        Betrachtungsumfang, Nenner, Messstellenmengen und Anlagenrest wie in der Rangliste.
+        Ganze Kalendermonate, letzter Tag eingeschlossen. Gemessen sind ausschließlich direkte,
+        nicht archivierte Messstellen mit Werten; berechnete Messstellen zählen nie. Geplant sind
+        Messstellen ohne Datenquelle und — ab IP-19 über die benannte Naht — offene Messbedarfe;
+        eine geplante Menge ist null, nie 0. Ersatz ist eine Teilmenge von gemessen. Ungemessen ist
+        ausschließlich der Rest der jeweiligen Anlagenbilanz. K8 stammt aus der wirksamen
+        Kriterien-Fassung. Standortrollen erhalten teilansicht=true und keine fremden Kennungen.
+      parameters:
+        - { in: query, name: von, required: true, schema: { type: string, format: date }, description: Erster Tag des ersten Monats. }
+        - { in: query, name: bis, required: true, schema: { type: string, format: date }, description: Letzter Tag des letzten Monats. }
+      responses:
+        "200":
+          description: Summe sowie vier Spalten je Einsatz und je Ort.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungMessabdeckung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/unternehmen/bewertung/kriterien:
     get:
       tags: [energieeinsaetze]
@@ -14128,6 +14153,85 @@ components:
       properties:
         name: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
         mit_anteil: { type: boolean, description: Nur Strom; alle anderen Träger sind im Umfang ohne Anteil. }
+    BewertungMessabdeckung:
+      type: object
+      required: [von, bis, umfang_id, umfang_fassung, teilansicht, summe, je_einsatz, je_ort]
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        umfang_id: { type: string, format: uuid, nullable: true }
+        umfang_fassung: { type: integer, nullable: true }
+        teilansicht: { type: boolean }
+        summe: { $ref: "#/components/schemas/BewertungMessabdeckungSumme" }
+        je_einsatz: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungEinsatz" } }
+        je_ort: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungOrt" } }
+    BewertungMessabdeckungSumme:
+      type: object
+      required: [nenner, gemessen_zugeordnet, abdeckung_prozent, k8, ersatz, ungemessen, ungemessen_prozent]
+      properties:
+        nenner: { $ref: "#/components/schemas/BewertungRanglisteNenner" }
+        gemessen_zugeordnet: { type: string, nullable: true }
+        abdeckung_prozent: { type: string, nullable: true }
+        k8: { type: string, enum: [ueber_schwelle, unter_schwelle, nicht_anwendbar] }
+        ersatz: { type: string, nullable: true, description: Teil der gemessenen Menge, nie zusätzlich addiert. }
+        ungemessen: { type: string, nullable: true }
+        ungemessen_prozent: { type: string, nullable: true }
+    BewertungMessabdeckungEinsatz:
+      type: object
+      required: [id, kennzeichen, name, prozess_id, traeger, einheit, menge, gemessen, geplant, ersatz, ungemessen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        prozess_id: { type: string, format: uuid }
+        traeger: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
+        einheit: { type: string, nullable: true }
+        menge: { type: string, nullable: true }
+        gemessen: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungMesswert" } }
+        geplant: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungPlan" } }
+        ersatz: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungMesswert" } }
+        ungemessen: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungRest" } }
+    BewertungMessabdeckungOrt:
+      type: object
+      required: [art, id, kennzeichen, name, traeger, einheit, gemessen, geplant, ersatz, ungemessen]
+      properties:
+        art: { type: string, enum: [anlage, standort, gebaeude, bereich, unternehmen, ort] }
+        id: { type: string, format: uuid, nullable: true }
+        kennzeichen: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+        traeger: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
+        einheit: { type: string, nullable: true }
+        gemessen: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungMesswert" } }
+        geplant: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungPlan" } }
+        ersatz: { type: array, items: { $ref: "#/components/schemas/BewertungMessabdeckungMesswert" } }
+        ungemessen: { $ref: "#/components/schemas/BewertungMessabdeckungRest" }
+    BewertungMessabdeckungMesswert:
+      type: object
+      required: [id, kennzeichen, ort, menge, einheit]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        ort: { type: string, nullable: true }
+        menge: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+    BewertungMessabdeckungPlan:
+      type: object
+      required: [messstelle_id, kennzeichen, ort, keine_datenquelle_seit, messbedarf]
+      properties:
+        messstelle_id: { type: string, format: uuid, nullable: true }
+        kennzeichen: { type: string, nullable: true }
+        ort: { type: string, nullable: true }
+        keine_datenquelle_seit: { type: string, format: date, nullable: true }
+        messbedarf: { type: string, nullable: true, description: Erst ab IP-19 belegt. }
+    BewertungMessabdeckungRest:
+      type: object
+      nullable: true
+      required: [anlage_id, anlage, menge, anteil_prozent]
+      properties:
+        anlage_id: { type: string, format: uuid }
+        anlage: { type: string }
+        menge: { type: string, nullable: true }
+        anteil_prozent: { type: string, nullable: true }
     BewertungRangliste:
       type: object
       required: [von, bis, umfang_id, umfang_fassung, teilansicht, monate, kriterien, urteil, nenner, zugeordnet, rest, abdeckung_prozent, zustand, anlagen, einsaetze, weitere_traeger]
