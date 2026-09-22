@@ -113,13 +113,13 @@ class UemsReferenzunternehmenVectorsTest {
         assertThat(d.get("standorte")).as("Standorte").hasSize(2);
         assertThat(d.get("gebaeude")).as("Gebäude").hasSize(5);
         assertThat(d.get("bereiche")).as("Bereiche").hasSize(7);
-        assertThat(d.get("prozesse")).as("Prozesse").hasSize(6);
+        assertThat(d.get("prozesse")).as("Prozesse").hasSize(7);
         assertThat(d.get("netzanschluesse")).as("Netzanschlüsse").hasSize(3);
         assertThat(d.get("anlagen")).as("Anlagen").hasSize(3);
         // Fassung 1.5 (AP-15 E8): DQ-8 … DQ-10 mit GR-11 … GR-18 an Box Verwaltung.
         assertThat(d.get("datenquellen")).as("Datenquellen").hasSize(10);
-        assertThat(d.get("geraete")).as("Geräte").hasSize(18);
-        assertThat(d.get("messstellen")).as("Messstellen").hasSize(22);
+        assertThat(d.get("geraete")).as("Geräte").hasSize(19);
+        assertThat(d.get("messstellen")).as("Messstellen").hasSize(23);
         // Fassung 1.3 (AP-11 E13): BZ-6 und BZ-7 als Gebäude-Stückzahlen, fünf Kennzahlen.
         assertThat(d.get("bezugsgroessen")).as("Bezugsgrößen").hasSize(7);
         assertThat(d.get("kennzahlen")).as("Kennzahlen").hasSize(5);
@@ -144,7 +144,7 @@ class UemsReferenzunternehmenVectorsTest {
                 .filter(m -> "gemessen".equals(m.get("art").asText())).count();
         long berechnet = kinder(d.get("messstellen")).stream()
                 .filter(m -> "berechnet".equals(m.get("art").asText())).count();
-        assertThat(gemessen).as("gemessene Messstellen (16 elektrisch + MS-21 Gas)").isEqualTo(17);
+        assertThat(gemessen).as("gemessene Messstellen (17 elektrisch + MS-21 Gas)").isEqualTo(18);
         // Fassung 1.2 (AP-10 E19): MS-22 „Lindach nicht zugeordnet“ ist der Rest der
         // Bilanz von AN-3 — ohne ihn hätte Lindach eine unsichtbare Bilanzdifferenz.
         assertThat(berechnet).as("berechnete Messstellen").isEqualTo(5);
@@ -266,8 +266,11 @@ class UemsReferenzunternehmenVectorsTest {
                 List<JsonNode> zs = orte.getOrDefault(kz, List.of());
                 assertThat(ueberlappungenTage(zs)).as(kz + ": Ort-Zeiträume überlappen").isEmpty();
 
+                LocalDate stichtag = zs.stream().anyMatch(z -> giltAm(z, heute)) || zs.isEmpty()
+                        ? heute
+                        : zs.stream().map(z -> tag(z.get("gueltig_ab").asText())).min(LocalDate::compareTo).orElse(heute);
                 List<JsonNode> jetztGueltig =
-                        zs.stream().filter(z -> giltAm(z, heute)).toList();
+                        zs.stream().filter(z -> giltAm(z, stichtag)).toList();
                 if ("gemessen".equals(m.get("art").asText())) {
                     assertThat(jetztGueltig).as(kz + ": Orte zur Momentaufnahme").hasSize(1);
                 } else {
@@ -1217,6 +1220,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung13IstEsDieFassung12() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung16(d);
         ohneFassung15(d);
         ohneFassung14(d);
         assertThat(d.path("version").asText()).isEqualTo("1.3");
@@ -1347,6 +1351,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung14IstEsDieFassung13() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung16(d);
         ohneFassung15(d);
         ohneFassung14(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.3").isEqualTo(FASSUNG_1_3_SHA256);
@@ -1539,6 +1544,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung15IstEsDieFassung14() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung16(d);
         ohneFassung15(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.4").isEqualTo(FASSUNG_1_4_SHA256);
     }
@@ -1900,6 +1906,215 @@ class UemsReferenzunternehmenVectorsTest {
         assertThat(g.get("R21").get("zeitachse").asText()).endsWith("DQ-3 " + kette);
     }
 
+    // ------------------------------------------------------- Fassung 1.6 (AP-16 IP-1, E11)
+
+    static final String FASSUNG_1_5_SHA256 = "c6a03b8b8446edc9324f6d5bb9288b4ebf16f5c3577a8210c805d4b76cdb5b8c";
+    static final int KOMMENTAR_ZEILEN_1_5 = 111;
+
+    static void ohneFassung16(ObjectNode d) {
+        assertThat(d.path("version").asText()).isEqualTo("1.6");
+        d.put("version", "1.5");
+        d.put("stand", "2026-09-21");
+        d.put("beschreibung", d.get("beschreibung").asText()
+                .replace(", erweitert um energetische Bewertung und Messplanung", ""));
+        ArrayNode kommentar = (ArrayNode) d.get("_comment");
+        assertThat(kommentar.size()).isGreaterThan(KOMMENTAR_ZEILEN_1_5);
+        while (kommentar.size() > KOMMENTAR_ZEILEN_1_5) {
+            kommentar.remove(kommentar.size() - 1);
+        }
+        assertThat(((ObjectNode) d.get("_herkunft")).remove("fassung_1_6")).isNotNull();
+        for (String block : List.of("bewertung_umfang", "energieeinsaetze", "bewertung_kriterien",
+                "einstufungen", "messbedarfe", "messmittel_angaben", "abnahmefaelle_ap16")) {
+            assertThat(d.remove(block)).as(block).isNotNull();
+        }
+        entferne((ArrayNode) d.get("prozesse"), p -> "P-7".equals(text(p, "kennzeichen")), 1);
+        entferne((ArrayNode) d.get("geraete"), g -> "GR-19".equals(text(g, "kennzeichen")), 1);
+        entferne((ArrayNode) d.get("komponenten"), k -> "K-15".equals(text(k, "kennzeichen")), 1);
+        entferne((ArrayNode) d.get("messstellen"), m -> "MS-23".equals(text(m, "kennzeichen")), 1);
+        entferne((ArrayNode) d.get("zuordnungen"), z -> "MS-23".equals(text(z, "von")), 1);
+        entferne((ArrayNode) d.get("berichte"), b -> text(b, "kennung").startsWith("BW-"), 2);
+        entferne((ArrayNode) d.get("zeitachse"), z -> text(z, "herkunft").startsWith("AP-16"), 11);
+        ObjectNode dq3 = (ObjectNode) nachKennzeichen(d.get("datenquellen")).get("DQ-3");
+        dq3.set("geraete_ids", MAPPER.valueToTree(List.of(1, 2, 3, 4)));
+        dq3.put("weg", "Modbus TCP 192.168.10.31:502, Geräte-IDs 1–4");
+        dq3.put("kanaele", 8);
+        dq3.put("hinweis", "Multi-Zähler-Gateway in der Unterverteilung Halle 1 — vier Zähler hinter EINER Adresse");
+        JsonNode ms01 = nachKennzeichen(d.get("messstellen")).get("MS-01");
+        assertThat(((ObjectNode) ms01.at("/nebengroessen/0/vergleichsquellen/0"))
+                .remove("toleranz_fassungen")).isNotNull();
+    }
+
+    @Test
+    void ohneDieZusaetzeDerFassung16IstEsDieFassung15() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ohneFassung16(d);
+        assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.5")
+                .isEqualTo(FASSUNG_1_5_SHA256);
+    }
+
+    @Test
+    void energetischeBewertungTraegtDieGegebenWerteUndIhreInvarianten() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> ms = nachKennzeichen(d.get("messstellen"));
+        Map<String, BigDecimal> oktober = new LinkedHashMap<>();
+        for (JsonNode m : kinder(d.get("messstellen"))) {
+            JsonNode wert = m.at("/beispielwerte/oktober_2026_kwh");
+            if (wert.isNumber()) {
+                oktober.put(text(m, "kennzeichen"), wert.decimalValue());
+            }
+        }
+        for (JsonNode k : kinder(d.get("korrekturen"))) {
+            for (JsonNode f : kinder(k.get("folgen"))) {
+                if (text(f, "objekt").startsWith("MS-")) {
+                    oktober.put(text(f, "objekt"), f.get("wert").decimalValue());
+                }
+            }
+        }
+
+        Set<String> personen = new LinkedHashSet<>();
+        kinder(d.get("personen")).forEach(p -> personen.add(text(p, "kuerzel")));
+        Set<String> bezugsgroessen = nachKennzeichen(d.get("bezugsgroessen")).keySet();
+        Set<String> paare = new LinkedHashSet<>();
+        Map<String, BigDecimal> einsatzMengen = new LinkedHashMap<>();
+        Map<String, BigDecimal> zugeordnetJeAnlage = new LinkedHashMap<>();
+        for (JsonNode e : kinder(d.get("energieeinsaetze"))) {
+            assertThat(paare.add(text(e, "prozess") + "|" + text(e, "traeger")))
+                    .as("höchstens ein laufender Einsatz je (Prozess, Träger)").isTrue();
+            assertThat(personen).contains(text(e, "verantwortlich"));
+            for (JsonNode i : kinder(e.get("einflussgroessen"))) {
+                if (i.hasNonNull("bezugsgroesse")) {
+                    assertThat(bezugsgroessen).contains(text(i, "bezugsgroesse"));
+                }
+            }
+            if (!"Strom".equals(text(e, "traeger"))) {
+                continue;
+            }
+            BigDecimal summe = BigDecimal.ZERO;
+            for (JsonNode kz : kinder(e.get("messstellen"))) {
+                BigDecimal wert = oktober.get(kz.asText());
+                if (wert == null) {
+                    continue;
+                }
+                summe = summe.add(wert);
+                JsonNode stellung = ms.get(kz.asText()).at("/elektrische_stellung/0");
+                zugeordnetJeAnlage.merge(text(stellung, "anlage"), wert, BigDecimal::add);
+            }
+            einsatzMengen.put(text(e, "kennzeichen"), summe);
+        }
+        Map<String, BigDecimal> rest = new LinkedHashMap<>();
+        kinder(d.get("messstellen")).stream().filter(m -> "rest".equals(text(m, "formel_typ"))).forEach(m -> {
+            String anlage = text(m.at("/elektrische_stellung/0"), "anlage");
+            rest.put(anlage, oktober.get(text(m, "kennzeichen")));
+        });
+        Map<String, BigDecimal> nenner = new LinkedHashMap<>();
+        for (String anlage : List.of("AN-1", "AN-2", "AN-3")) {
+            nenner.put(anlage, zugeordnetJeAnlage.get(anlage).add(rest.get(anlage)));
+        }
+        assertThat(nenner).containsExactly(
+                Map.entry("AN-1", new BigDecimal("139380")),
+                Map.entry("AN-2", new BigDecimal("36900")),
+                Map.entry("AN-3", new BigDecimal("9100")));
+        assertThat(nenner.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("185380");
+        assertThat(einsatzMengen.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("125740");
+        assertThat(rest.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("59640");
+        assertThat(einsatzMengen).containsEntry("EE-1", new BigDecimal("77500"))
+                .containsEntry("EE-3", new BigDecimal("15900"))
+                .containsEntry("EE-2", new BigDecimal("9640"));
+        assertThat(ms.get("MS-20").at("/beispielwerte/oktober_2026_kwh").decimalValue())
+                .isEqualByComparingTo("88630");
+
+        for (JsonNode e : kinder(d.get("einstufungen"))) {
+            for (JsonNode f : kinder(e.get("fassungen"))) {
+                assertThat(personen).contains(text(f, "person"));
+                assertThat(text(f, "begruendung")).isNotBlank();
+                assertThat(f.get("herkunft").fieldNames()).toIterable()
+                        .contains("zeitraum", "kriterien_fassung", "eingaenge", "nenner", "urteil", "vorschlag");
+            }
+        }
+        JsonNode mb1 = nachKennzeichen(d.get("messbedarfe")).get("MB-1");
+        assertThat(text(mb1, "zustand")).isEqualTo("eingeloest");
+        assertThat(ms).containsKey(text(mb1, "messstelle"));
+        JsonNode geplanteStellung = ms.get(text(mb1, "messstelle")).get("geplante_elektrische_stellung");
+        assertThat(geplanteStellung).isNotNull();
+        assertThat(text(geplanteStellung, "anlage")).isEqualTo("AN-1");
+        assertThat(text(geplanteStellung, "unterzaehler_von")).isEqualTo("MS-01");
+
+        Map<String, JsonNode> berichte = new LinkedHashMap<>();
+        kinder(d.get("berichte")).forEach(b -> berichte.put(text(b, "kennung"), b));
+        kinder(d.get("zeitachse")).stream().filter(z -> z.hasNonNull("energetische_bewertung"))
+                .forEach(z -> assertThat(berichte).containsKey(text(z, "energetische_bewertung")));
+        assertThat(berichte.get("BW-2026-0001").at("/staende/0/werte/0/wert").decimalValue())
+                .isEqualByComparingTo("6100");
+        assertThat(berichte.get("BW-2026-0001").at("/staende/1/werte/0/wert").decimalValue())
+                .isEqualByComparingTo("6040");
+        assertThat(berichte.get("BW-2026-0001").at("/staende/1/werte/2/wert").decimalValue())
+                .isEqualByComparingTo("59640");
+        assertThat(berichte.get("BW-2027-0001").at("/staende/0/annahme").asBoolean()).isTrue();
+        assertThat(berichte.get("BW-2027-0001").at("/staende/0/werte")).isEmpty();
+
+        Map<String, JsonNode> angaben = new LinkedHashMap<>();
+        kinder(d.get("messmittel_angaben")).forEach(a -> angaben.put(text(a, "ziel"), a));
+        assertThat(text(angaben.get("GR-2"), "pruefungsart")).isEqualTo("eichung");
+        assertThat(text(angaben.get("Z-5b"), "pruefungsart")).isEqualTo("werksbescheinigung");
+        assertThat(text(angaben.get("GR-5"), "pruefungsart")).isEqualTo("nicht_erhoben");
+        assertThat(angaben.get("K-8.2").get("genauigkeitsklasse").isNull()).isTrue();
+        assertThat(ms.get("MS-21").at("/beispielwerte/oktober_2026_m3").decimalValue())
+                .isEqualByComparingTo("1240");
+        assertThat(kinder(d.get("energieeinsaetze")).stream()
+                .collect(java.util.stream.Collectors.toMap(e -> text(e, "kennzeichen"), e -> text(e, "verantwortlich"))))
+                .containsEntry("EE-1", "MD").containsEntry("EE-2", "PH").containsEntry("EE-5", "PH")
+                .containsEntry("EE-3", "IK").containsEntry("EE-6", "JW").containsEntry("EE-7", "JW");
+
+        List<JsonNode> fallListe = kinder(d.at("/abnahmefaelle_ap16/faelle"));
+        assertThat(fallListe.stream().map(f -> text(f, "fall")).toList())
+                .containsExactly("R1", "R2", "R3", "R4", "R5", "R7", "R8", "R12", "R14");
+        Map<String, JsonNode> gegeben = new LinkedHashMap<>();
+        fallListe.forEach(f -> gegeben.put(text(f, "fall"), f.get("gegeben")));
+        assertThat(gegeben.get("R1").get("nenner_kwh").decimalValue()).isEqualByComparingTo("185380");
+        assertThat(gegeben.get("R1").get("zugeordnet_kwh").decimalValue()).isEqualByComparingTo("125740");
+        assertThat(gegeben.get("R1").get("rest_kwh").decimalValue()).isEqualByComparingTo("59640");
+        for (String kz : List.of("EE-1", "EE-3", "EE-2", "EE-6", "EE-5", "EE-4")) {
+            JsonNode r = gegeben.get("R2").at("/rangliste/" + kz);
+            assertThat(r.get("menge_kwh").decimalValue()).isEqualByComparingTo(einsatzMengen.get(kz));
+            BigDecimal anteil = einsatzMengen.get(kz).multiply(new BigDecimal("100"))
+                    .divide(new BigDecimal("185380"), 1, RoundingMode.HALF_UP);
+            assertThat(r.get("anteil_prozent").decimalValue()).isEqualByComparingTo(anteil);
+        }
+        Map<String, JsonNode> einstufungen = new LinkedHashMap<>();
+        kinder(d.get("einstufungen")).forEach(e -> einstufungen.put(text(e, "einsatz"), e));
+        for (JsonNode r : kinder(gegeben.get("R3").get("einstufungen"))) {
+            JsonNode f = einstufungen.get(text(r, "einsatz")).at("/fassungen/0");
+            assertThat(text(r, "einstufung")).isEqualTo(text(f, "einstufung"));
+            assertThat(text(r, "begruendung")).isEqualTo(text(f, "begruendung"));
+            assertThat(text(r, "person")).isEqualTo(text(f, "person"));
+        }
+        assertThat(gegeben.get("R4").get("EE-1_menge_kwh").decimalValue()).isEqualByComparingTo(einsatzMengen.get("EE-1"));
+        assertThat(gegeben.get("R4").get("MS-20_minus_EE-1").decimalValue()).isEqualByComparingTo("11130");
+        assertThat(kanonisch(gegeben.get("R5").get("messbedarf"))).isEqualTo(kanonisch(mb1));
+        JsonNode r5Messstelle = gegeben.get("R5").get("MS-23");
+        assertThat(text(r5Messstelle, "name")).isEqualTo(text(ms.get("MS-23"), "name"));
+        assertThat(text(r5Messstelle, "ort")).isEqualTo(text(ms.get("MS-23").get("ort"), "kennzeichen"));
+        assertThat(text(r5Messstelle, "stellung")).isEqualTo(String.format("%s · %s von %s",
+                text(geplanteStellung, "anlage"), text(geplanteStellung, "stellung"),
+                text(geplanteStellung, "unterzaehler_von")));
+        assertThat(text(r5Messstelle, "quelle_ab")).startsWith(
+                ms.get("MS-23").at("/fuehrende_quelle/0/gueltig_ab").asText());
+        assertThat(gegeben.get("R7").at("/stand_2/MS-12/wert").decimalValue()).isEqualByComparingTo("6040");
+        assertThat(gegeben.get("R7").at("/stand_2/rest_kwh").decimalValue()).isEqualByComparingTo("59640");
+        assertThat(text(gegeben.get("R8").get("GR-2"), "pruefungsart")).isEqualTo(text(angaben.get("GR-2"), "pruefungsart"));
+        assertThat(text(gegeben.get("R8").get("GR-5"), "pruefungsart")).isEqualTo(text(angaben.get("GR-5"), "pruefungsart"));
+        assertThat(gegeben.get("R12").at("/MS-21/oktober_2026_m3").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(text(gegeben.get("R12").get("EE-7"), "traeger")).isEqualTo("Gas");
+        Map<String, String> verantwortlich = kinder(d.get("energieeinsaetze")).stream()
+                .collect(java.util.stream.Collectors.toMap(e -> text(e, "kennzeichen"), e -> text(e, "verantwortlich")));
+        for (String kz : List.of("EE-2", "EE-5", "EE-3", "EE-4", "EE-6", "EE-7")) {
+            assertThat(text(gegeben.get("R14").get("verantwortlich"), kz)).startsWith(verantwortlich.get(kz));
+        }
+    }
+
     /** Die Objekte einer Liste nach ihrem Kennzeichen. */
     private static Map<String, JsonNode> nachKennzeichen(JsonNode array) {
         Map<String, JsonNode> out = new LinkedHashMap<>();
@@ -1989,7 +2204,8 @@ class UemsReferenzunternehmenVectorsTest {
         merke(reg, fehler, "unternehmen", d.at("/unternehmen/kennzeichen").asText());
         for (String s : List.of("standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen",
                 "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten",
-                "messstellen", "bezugsgroessen", "kennzahlen", "gemeinsame_steuerungen")) {
+                "messstellen", "bezugsgroessen", "kennzahlen", "gemeinsame_steuerungen",
+                "energieeinsaetze", "messbedarfe")) {
             for (JsonNode o : kinder(d.get(s))) {
                 merke(reg, fehler, s, o.get("kennzeichen").asText());
             }
@@ -2092,6 +2308,12 @@ class UemsReferenzunternehmenVectorsTest {
                             st.get("unterzaehler_von").asText(), "messstellen"));
                 }
             }
+            JsonNode geplant = m.get("geplante_elektrische_stellung");
+            if (geplant != null && geplant.isObject()) {
+                out.add(new Verweis(kz + ".geplante_stellung.anlage", text(geplant, "anlage"), "anlagen"));
+                out.add(new Verweis(kz + ".geplante_stellung.unterzaehler_von",
+                        text(geplant, "unterzaehler_von"), "messstellen"));
+            }
             for (JsonNode q : alleQuellen(m)) {
                 out.add(new Verweis(kz + ".quelle.komponente", q.get("komponente").asText(),
                         "komponenten"));
@@ -2101,6 +2323,9 @@ class UemsReferenzunternehmenVectorsTest {
                 out.add(new Verweis(kz + ".vergleich.komponente", q.get("komponente").asText(),
                         "komponenten"));
                 out.add(new Verweis(kz + ".vergleich.geraet", q.get("geraet").asText(), "geraete"));
+                for (JsonNode t : kinder(q.get("toleranz_fassungen"))) {
+                    out.add(new Verweis(kz + ".vergleich.toleranz.person", t.get("person").asText(), "personen"));
+                }
             }
             // Fassung 1.2 (AP-09 W5): wer abgelesen hat, ist eine Person dieser Datei.
             for (JsonNode a : kinder(m.get("ablesungen"))) {
@@ -2116,6 +2341,55 @@ class UemsReferenzunternehmenVectorsTest {
             if (p.hasNonNull("unterstuetzung")) {
                 out.add(new Verweis(kz + ".gewaehrt_von",
                         p.at("/unterstuetzung/gewaehrt_von").asText(), "personen"));
+            }
+        }
+        for (JsonNode u : kinder(d.at("/bewertung_umfang/fassungen"))) {
+            for (JsonNode s : kinder(u.get("standorte"))) {
+                out.add(new Verweis("bewertung_umfang.standort", s.asText(), "standorte"));
+            }
+            out.add(new Verweis("bewertung_umfang.person", u.get("person").asText(), "personen"));
+        }
+        for (JsonNode e : kinder(d.get("energieeinsaetze"))) {
+            String kz = e.get("kennzeichen").asText();
+            out.add(new Verweis(kz + ".prozess", e.get("prozess").asText(), "prozesse"));
+            out.add(new Verweis(kz + ".verantwortlich", e.get("verantwortlich").asText(), "personen"));
+            for (JsonNode m : kinder(e.get("messstellen"))) {
+                out.add(new Verweis(kz + ".messstelle", m.asText(), "messstellen"));
+            }
+            for (JsonNode i : kinder(e.get("einflussgroessen"))) {
+                if (i.hasNonNull("bezugsgroesse")) {
+                    out.add(new Verweis(kz + ".einflussgroesse", i.get("bezugsgroesse").asText(),
+                            "bezugsgroessen"));
+                }
+            }
+        }
+        for (JsonNode k : kinder(d.get("bewertung_kriterien"))) {
+            out.add(new Verweis("bewertung_kriterien.person", k.get("person").asText(), "personen"));
+        }
+        for (JsonNode e : kinder(d.get("einstufungen"))) {
+            out.add(new Verweis("einstufung.einsatz", e.get("einsatz").asText(), "energieeinsaetze"));
+            for (JsonNode f : kinder(e.get("fassungen"))) {
+                out.add(new Verweis("einstufung.person", f.get("person").asText(), "personen"));
+                for (JsonNode i : kinder(f.at("/herkunft/eingaenge"))) {
+                    out.add(new Verweis("einstufung.herkunft.eingang", i.get("objekt").asText(), "messstellen"));
+                }
+            }
+        }
+        for (JsonNode b : kinder(d.get("messbedarfe"))) {
+            out.add(new Verweis("messbedarf.einsatz", b.get("einsatz").asText(), "energieeinsaetze"));
+            out.add(new Verweis("messbedarf.ort", b.get("ort").asText(), "bereiche", "gebaeude", "standorte"));
+            if (b.hasNonNull("messstelle")) {
+                out.add(new Verweis("messbedarf.messstelle", b.get("messstelle").asText(), "messstellen"));
+            }
+            out.add(new Verweis("messbedarf.person", b.get("person").asText(), "personen"));
+        }
+        for (JsonNode a : kinder(d.get("messmittel_angaben"))) {
+            String art = a.get("ziel_art").asText();
+            out.add(new Verweis("messmittel.ziel", a.get("ziel").asText(),
+                    "geraet".equals(art) ? "geraete" : "einbau".equals(art) ? "einbauten" : "komponenten"));
+            out.add(new Verweis("messmittel.person", a.get("person").asText(), "personen"));
+            if (a.hasNonNull("beleg")) {
+                out.add(new Verweis("messmittel.beleg.person", a.at("/beleg/person").asText(), "personen"));
             }
         }
         for (JsonNode b : kinder(d.get("bezugsgroessen"))) {

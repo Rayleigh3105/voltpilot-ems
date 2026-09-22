@@ -710,15 +710,15 @@ class MessstelleRegelnVectorsTest {
      */
     /**
      * Die Zeilen der Zeitachse, an denen der Horizont einer Fortschreibung gemessen wird: alle außer denen
-     * mit dem Merkmal {@code gemeinsame_steuerung} (Referenzunternehmen 1.5). Diese verlängern die Zeitachse
-     * nur für die gemeinsame Steuerung von AN-1 und sagen über Messstellen-Quellen nichts — das hält
-     * {@link #dieZeilenDerGemeinsamenSteuerungNennenKeineMessstelleDerVektoren} fest. Dieselbe Regel steht in
+     * mit einem fachfremden Horizont-Merkmal: {@code gemeinsame_steuerung} (Fassung 1.5) oder
+     * {@code energetische_bewertung} (Fassung 1.6). Diese Zeilen sagen über Messstellen-Quellen nichts — das hält
+     * {@link #dieFachfremdenZeilenNennenKeineMessstelleDerVektoren} fest. Dieselbe Regel steht in
      * {@code frontend/portal/src/uemsMessstelle.test.ts}.
      */
     private static List<JsonNode> horizontZeilen(JsonNode ref) {
         List<JsonNode> out = new ArrayList<>();
         ref.path("zeitachse").forEach(z -> {
-            if (!z.hasNonNull("gemeinsame_steuerung")) {
+            if (!z.hasNonNull("gemeinsame_steuerung") && !z.hasNonNull("energetische_bewertung")) {
                 out.add(z);
             }
         });
@@ -731,7 +731,7 @@ class MessstelleRegelnVectorsTest {
      * eine solche Quelle, bricht dieser Fall — dann gehört die Zeile in den Horizont.
      */
     @Test
-    void dieZeilenDerGemeinsamenSteuerungNennenKeineMessstelleDerVektoren() throws Exception {
+    void dieFachfremdenZeilenNennenKeineMessstelleDerVektoren() throws Exception {
         Pattern kz = Pattern.compile("\\b(?:MS|DQ|BZ)-[0-9]+\\b");
         Set<String> benutzt = new TreeSet<>();
         Matcher m = kz.matcher(Files.readString(VECTORS));
@@ -742,7 +742,7 @@ class MessstelleRegelnVectorsTest {
         List<String> fehler = new ArrayList<>();
         int ausgenommen = 0;
         for (JsonNode z : lies(REFERENZ).path("zeitachse")) {
-            if (!z.hasNonNull("gemeinsame_steuerung")) {
+            if (!z.hasNonNull("gemeinsame_steuerung") && !z.hasNonNull("energetische_bewertung")) {
                 continue;
             }
             ausgenommen++;

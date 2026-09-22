@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.local/contracts/v2/uems-referenzunternehmen.schema.json",
   "title": "UEMS-Referenzunternehmen (Kunststoffwerk Ahrenberg GmbH)",
-  "description": "Die Form der EINEN geteilten Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement. Sie beschreibt ein erfundenes Unternehmen mit zwei Standorten, fünf Gebäuden, sieben Bereichen, drei Anlagen und 22 Messstellen und dient jedem Folgepaket als gemeinsame Beispieldatenbasis. Kennzeichen sind stabile Schlüssel; jeder Verweis geht über ein Kennzeichen. Zeitgültige Angaben haben zwei Formen: tagesgenau (Orte, Anlage → Standort, Messstelle → Ort, Stellung, Kostenstellen, Anteile, Flächen) mit einem Tag „gültig ab“ und dem LETZTEN gültigen Tag als „gültig bis“; auf die Minute (Quellen, Einbauten, Wandler, Datenquelle → Box) halboffen mit „gültig bis“ ausschließend. Eine Änderung überschreibt nie, sie beendet die alte Gültigkeit und beginnt eine neue. Regeln, die eine Form nicht ausdrücken kann — genau ein Hauptzähler je Anlage und Richtung, Kostenstellen-Anteile von 100 %, ein Ort je Messstelle, kein Ziel vor seinem Bestehen, eine zuständige Box je Datenquelle und Zeitpunkt, das Abzeichen eines rückwirkenden Eintrags — prüfen die beiden Zwillings-Tests (Java services/api .../uems/UemsReferenzunternehmenVectorsTest und TypeScript frontend/portal/src/uemsReferenzunternehmen.test.ts) gegen dieselbe Datei.",
+  "description": "Die Form der EINEN geteilten Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement. Sie beschreibt ein erfundenes Unternehmen mit zwei Standorten, fünf Gebäuden, sieben Bereichen, drei Anlagen und 23 Messstellen einschließlich energetischer Bewertung und Messplanung und dient jedem Folgepaket als gemeinsame Beispieldatenbasis. Kennzeichen sind stabile Schlüssel; jeder Verweis geht über ein Kennzeichen. Zeitgültige Angaben haben zwei Formen: tagesgenau (Orte, Anlage → Standort, Messstelle → Ort, Stellung, Kostenstellen, Anteile, Flächen) mit einem Tag „gültig ab“ und dem LETZTEN gültigen Tag als „gültig bis“; auf die Minute (Quellen, Einbauten, Wandler, Datenquelle → Box) halboffen mit „gültig bis“ ausschließend. Eine Änderung überschreibt nie, sie beendet die alte Gültigkeit und beginnt eine neue. Regeln, die eine Form nicht ausdrücken kann — genau ein Hauptzähler je Anlage und Richtung, Kostenstellen-Anteile von 100 %, ein Ort je Messstelle, kein Ziel vor seinem Bestehen, eine zuständige Box je Datenquelle und Zeitpunkt, das Abzeichen eines rückwirkenden Eintrags sowie die Invarianten der Bewertung — prüfen die beiden Zwillings-Tests (Java services/api .../uems/UemsReferenzunternehmenVectorsTest und TypeScript frontend/portal/src/uemsReferenzunternehmen.test.ts) gegen dieselbe Datei.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "beschreibung", "stand", "unternehmen", "standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen", "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten", "messstellen", "personen", "bezugsgroessen", "kennzahl_beispiel", "kennzahlen", "korrekturen", "berichte", "netzanschluss_grenzen", "gemeinsame_steuerungen", "geraete_rueckfaelle", "zuordnungen", "zeitachse", "abnahmefaelle_ap15"],
+  "required": ["version", "beschreibung", "stand", "unternehmen", "standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen", "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten", "messstellen", "personen", "bewertung_umfang", "energieeinsaetze", "bewertung_kriterien", "einstufungen", "messbedarfe", "messmittel_angaben", "bezugsgroessen", "kennzahl_beispiel", "kennzahlen", "korrekturen", "berichte", "netzanschluss_grenzen", "gemeinsame_steuerungen", "geraete_rueckfaelle", "zuordnungen", "zeitachse", "abnahmefaelle_ap16", "abnahmefaelle_ap15"],
   "properties": {
-    "version": { "type": "string", "const": "1.5", "description": "Fassung dieser Beispieldaten. Sie wächst, wenn ein Folgepaket die Beispielwelt erweitert oder ein Abgleich mit den Verträgen sie berichtigt (1.1: tagesgenaue Gültigkeiten als Kalendertag, Ort → Elternknoten, U als Unternehmen · 1.2: Bezugsgrößen-Kennungen und BZ-5, Ablesungen an MS-21, MS-22 als Rest von AN-3, Tageswerte des 18.10.2026, `formel_typ` — sowie die beiden entschiedenen Berichtigungen MS-09 und Ende der 9000-Anteile · 1.3: BZ-6 und BZ-7 als Gebäude-Stückzahlen und der Block `kennzahlen[]` mit KZ-0001 … KZ-0005, AP-11 E13 · 1.4: die Korrektur K-2026-0007 in `korrekturen[]` und der Bericht BR-2026-0001 mit zwei Berichtsständen in `berichte[]`, AP-12 E15 · 1.5: die gemeinsame Steuerung von AN-1 — Box E-4/E-4′, DQ-8 … DQ-10, K-12 … K-14, `netzanschluss_grenzen[]`, `gemeinsame_steuerungen[]` V-1, `geraete_rueckfaelle[]` und `abnahmefaelle_ap15`, AP-15 E8)." },
+    "version": { "type": "string", "const": "1.6", "description": "Fassung dieser Beispieldaten. 1.6 ergänzt additiv die energetische Bewertung und Messplanung aus AP-16 E11: Umfang, Energieeinsätze, Kriterien- und Einstufungs-Fassungen, Messbedarf, Messmittel-Angaben, Bewertungs-Berichte sowie P-7/MS-23/K-15/GR-19. Die Fassungen 1.1 bis 1.5 bleiben durch Fingerabdrucktests geschützt." },
     "beschreibung": { "type": "string", "description": "Wofür diese Datei da ist, in einem Satz." },
     "stand": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Tag, an dem die Daten zuletzt bestätigt wurden." },
     "_comment": { "type": "array", "items": { "type": "string" }, "description": "Erklärender Fließtext für Menschen; ohne Wirkung." },
@@ -104,6 +104,7 @@
           "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen des Prozesses (P-1 …)." },
           "name": { "type": "string", "description": "Name des Prozesses in Kundensprache." },
           "eltern": { "type": ["string", "null"], "description": "Übergeordneter Prozess, wenn der Kunde staffelt." },
+          "gueltig_ab": { "$ref": "#/$defs/tag", "description": "Optionaler Beginn für einen nach dem Grundbestand angelegten Prozess." },
           "hinweis": { "type": ["string", "null"], "description": "Wo der Prozess läuft und was ihn besonders macht." }
         }
       }
@@ -362,6 +363,18 @@
               }
             }
           },
+          "geplante_elektrische_stellung": {
+            "type": "object", "additionalProperties": false,
+            "description": "Ab Fassung 1.6: die für einen Messbedarf vorgesehene Stellung, solange sie noch nicht als zeitgültige elektrische Stellung in Betrieb ist. Planung zählt nie als Bilanzterm.",
+            "required": ["anlage", "stellung", "unterzaehler_von", "geplant_ab", "hinweis"],
+            "properties": {
+              "anlage": { "$ref": "#/$defs/kennzeichen", "description": "Geplantes elektrisches System." },
+              "stellung": { "type": "string", "enum": ["Unterzähler"], "description": "Die geplante Rolle im Baum." },
+              "unterzaehler_von": { "$ref": "#/$defs/kennzeichen", "description": "Geplante übergeordnete Messstelle." },
+              "geplant_ab": { "$ref": "#/$defs/tag", "description": "Vorgesehener erster Tag." },
+              "hinweis": { "type": "string", "minLength": 1, "description": "Warum die Stellung noch Planung und kein Bilanzterm ist." }
+            }
+          },
           "prozesse": { "type": "array", "items": { "$ref": "#/$defs/kennzeichen" }, "description": "Wofür die gemessene Energie eingesetzt wird." },
           "kostenstellen_anteile": {
             "type": "array",
@@ -456,6 +469,68 @@
           "hinweis": { "type": ["string", "null"], "description": "Was zu dieser Person zu wissen ist." }
         }
       }
+    },
+
+    "bewertung_umfang": {
+      "type": "object", "additionalProperties": false, "required": ["fassungen"],
+      "description": "Fassungen des Betrachtungsumfangs der energetischen Bewertung (ab 1.6, AP-16).",
+      "properties": {
+        "fassungen": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["fassung", "gueltig_ab", "gueltig_bis", "standorte", "traeger", "ausschluesse", "person", "begruendung"], "properties": {
+          "fassung": { "type": "integer", "minimum": 1 }, "gueltig_ab": { "$ref": "#/$defs/tag" }, "gueltig_bis": { "$ref": "#/$defs/tag_offen" },
+          "standorte": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/kennzeichen" } },
+          "traeger": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["name", "mit_anteil"], "properties": { "name": { "type": "string", "enum": ["Strom", "Gas"] }, "mit_anteil": { "type": "boolean" } } } },
+          "ausschluesse": { "type": "array", "items": { "type": "string" } }, "person": { "$ref": "#/$defs/kennzeichen" }, "begruendung": { "type": "string", "minLength": 1 }
+        } } }
+      }
+    },
+
+    "energieeinsaetze": {
+      "type": "array", "minItems": 1, "description": "Genau ein Prozess × genau ein Träger, mit verantwortlicher Person und direkt zugeordneten Messstellen.",
+      "items": { "type": "object", "additionalProperties": false, "required": ["kennzeichen", "name", "prozess", "traeger", "gueltig_ab", "gueltig_bis", "verantwortlich", "verbraucher", "messstellen", "einflussgroessen"], "properties": {
+        "kennzeichen": { "type": "string", "pattern": "^EE-[0-9]+$" }, "name": { "type": "string", "minLength": 1 }, "prozess": { "$ref": "#/$defs/kennzeichen" }, "traeger": { "type": "string", "enum": ["Strom", "Gas"] },
+        "gueltig_ab": { "$ref": "#/$defs/tag" }, "gueltig_bis": { "$ref": "#/$defs/tag_offen" }, "verantwortlich": { "$ref": "#/$defs/kennzeichen" }, "verbraucher": { "type": "string", "minLength": 1 },
+        "messstellen": { "type": "array", "items": { "$ref": "#/$defs/kennzeichen" } },
+        "einflussgroessen": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["art", "bezugsgroesse", "text"], "properties": { "art": { "type": "string", "enum": ["produktion", "betriebszeit", "wetter", "sonstige"] }, "bezugsgroesse": { "type": ["string", "null"], "pattern": "^BZ-[0-9]+$" }, "text": { "type": "string", "minLength": 1 } } } }
+      } }
+    },
+
+    "bewertung_kriterien": {
+      "type": "array", "minItems": 1, "description": "Kriterien-Fassungen des Unternehmens. Kriterien schlagen vor; sie setzen keine Einstufung.",
+      "items": { "type": "object", "additionalProperties": false, "required": ["fassung", "gueltig_ab", "gueltig_bis", "person", "begruendung", "kriterien"], "properties": {
+        "fassung": { "type": "integer", "minimum": 1 }, "gueltig_ab": { "$ref": "#/$defs/tag" }, "gueltig_bis": { "$ref": "#/$defs/tag_offen" }, "person": { "$ref": "#/$defs/kennzeichen" }, "begruendung": { "type": "string", "minLength": 1 },
+        "kriterien": { "type": "array", "minItems": 8, "maxItems": 8, "items": { "type": "object", "additionalProperties": false, "required": ["kennung", "kundenwort", "art", "schwelle", "einheit", "vergleich"], "properties": {
+          "kennung": { "type": "string", "pattern": "^K[1-8]$" }, "kundenwort": { "type": "string", "minLength": 1 }, "art": { "type": "string", "enum": ["wesentlichkeit", "gueltigkeit", "messplanung"] },
+          "schwelle": { "type": ["number", "null"] }, "einheit": { "type": ["string", "null"], "enum": ["%", "kWh", "Monate", null] }, "vergleich": { "type": ["string", "null"], "enum": [">=", "<=", "=", "kumuliert_bis", null] }
+        } } }
+      } }
+    },
+
+    "einstufungen": {
+      "type": "array", "minItems": 1, "description": "Einstufungs-Fassungen je Energieeinsatz; jede trägt Person, Begründung und einen vollständigen Herkunfts-Satz.",
+      "items": { "type": "object", "additionalProperties": false, "required": ["einsatz", "fassungen"], "properties": {
+        "einsatz": { "$ref": "#/$defs/kennzeichen" },
+        "fassungen": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["fassung", "einstufung", "gueltig_ab", "gueltig_bis", "grund", "begruendung", "person", "herkunft"], "properties": {
+          "fassung": { "type": "integer", "minimum": 1 }, "einstufung": { "type": "string", "enum": ["wesentlich", "nicht_wesentlich", "offen"] }, "gueltig_ab": { "$ref": "#/$defs/tag" }, "gueltig_bis": { "$ref": "#/$defs/tag_offen" },
+          "grund": { "type": "array", "items": { "type": "string", "pattern": "^K[1-4]$" } }, "begruendung": { "type": "string", "minLength": 1 }, "person": { "$ref": "#/$defs/kennzeichen" }, "herkunft": { "$ref": "#/$defs/einstufung_herkunft" }
+        } } }
+      } }
+    },
+
+    "messbedarfe": {
+      "type": "array", "description": "Messplanung je Einsatz; eingelöst nur durch eine eingerichtete Messstelle.",
+      "items": { "type": "object", "additionalProperties": false, "required": ["kennzeichen", "einsatz", "was", "ort", "groesse", "frist", "zustand", "messstelle", "erfasst_am", "person"], "properties": {
+        "kennzeichen": { "type": "string", "pattern": "^MB-[0-9]+$" }, "einsatz": { "$ref": "#/$defs/kennzeichen" }, "was": { "type": "string", "minLength": 1 }, "ort": { "type": ["string", "null"] }, "groesse": { "type": ["string", "null"] }, "frist": { "$ref": "#/$defs/tag_offen" },
+        "zustand": { "type": "string", "enum": ["offen", "eingeloest", "verworfen"] }, "messstelle": { "type": ["string", "null"] }, "erfasst_am": { "$ref": "#/$defs/tag" }, "person": { "$ref": "#/$defs/kennzeichen" }, "begruendung": { "type": ["string", "null"] }
+      } }
+    },
+
+    "messmittel_angaben": {
+      "type": "array", "description": "Am Einbau erhobene Messmittel-Angaben; Katalogangaben bleiben getrennt.",
+      "items": { "type": "object", "additionalProperties": false, "required": ["ziel_art", "ziel", "genauigkeitsklasse", "pruefungsart", "pruefung_am", "pruefung_gueltig_bis", "beleg", "person", "erfasst_am"], "properties": {
+        "ziel_art": { "type": "string", "enum": ["geraet", "einbau", "wandler"] }, "ziel": { "$ref": "#/$defs/kennzeichen" }, "genauigkeitsklasse": { "type": ["string", "null"] },
+        "pruefungsart": { "type": "string", "enum": ["eichung", "mid_konformitaet", "kalibrierung", "werksbescheinigung", "keine", "nicht_erhoben"] }, "pruefung_am": { "$ref": "#/$defs/tag_offen" }, "pruefung_gueltig_bis": { "$ref": "#/$defs/tag_offen" },
+        "beleg": { "anyOf": [ { "$ref": "#/$defs/beleg" }, { "type": "null" } ] }, "person": { "$ref": "#/$defs/kennzeichen" }, "erfasst_am": { "$ref": "#/$defs/tag" }, "hinweis": { "type": ["string", "null"] }
+      } }
     },
 
     "bezugsgroessen": {
@@ -566,9 +641,9 @@
         "type": "object", "additionalProperties": false,
         "required": ["kennung", "name", "vorlage", "vorlage_fassung", "geltung_art", "geltung", "zeitraum_art", "zeitraum", "quellen", "staende"],
         "properties": {
-          "kennung": { "type": "string", "pattern": "^BR-[0-9]{4}-[0-9]{4}$" },
+          "kennung": { "type": "string", "pattern": "^(BR|BW)-[0-9]{4}-[0-9]{4}$" },
           "name": { "type": "string", "minLength": 1 },
-          "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen"] },
+          "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung"] },
           "vorlage_fassung": { "type": "integer", "minimum": 1 },
           "geltung_art": { "type": "string", "enum": ["standort", "unternehmen"] },
           "geltung": { "type": "string", "description": "Kennzeichen des Standorts oder U." },
@@ -589,8 +664,9 @@
                 "anlass": { "type": ["string", "null"], "description": "Kennung des Anlasses der Revision; beim ersten Stand leer." },
                 "ersetzt_durch": { "type": ["integer", "null"] },
                 "abweichungen": { "type": ["integer", "null"], "description": "Zahl der Abweichungen gegen den ersetzten Stand." },
+                "annahme": { "type": "boolean", "description": "Nur bei der Struktur des Bewertungsstands 2027: Zahlen liegen ausschließlich als Annahmen im Konzept vor." },
                 "werte": {
-                  "type": "array", "minItems": 1,
+                  "type": "array",
                   "items": {
                     "type": "object", "additionalProperties": false, "required": ["objekt", "version", "wert"],
                     "properties": { "objekt": { "type": "string" }, "version": { "type": "integer", "minimum": 1 }, "wert": { "type": "number" } }
@@ -624,10 +700,12 @@
           "genauigkeit": { "type": "string", "enum": ["tag", "minute"], "description": "Wie genau die Quelle den Zeitpunkt nennt — eine Tagesangabe behauptet nie eine Uhrzeit." },
           "ereignis": { "type": "string", "description": "Was geschah, in Kundensprache." },
           "herkunft": { "type": "string", "description": "Aus welchem Konzeptpaket die Zeile stammt." },
-          "gemeinsame_steuerung": { "$ref": "#/$defs/kennzeichen", "description": "Ab Fassung 1.5: die Zeile gehört zu dieser gemeinsamen Steuerung (`gemeinsame_steuerungen[]`) und verlängert die Zeitachse nur für sie — der Horizont der übrigen Welt (z. B. Fortschreibungen der Messstellen-Vektoren) wird ohne sie gemessen." }
+          "gemeinsame_steuerung": { "$ref": "#/$defs/kennzeichen", "description": "Ab Fassung 1.5: die Zeile gehört zu dieser gemeinsamen Steuerung (`gemeinsame_steuerungen[]`) und verlängert die Zeitachse nur für sie — der Horizont der übrigen Welt (z. B. Fortschreibungen der Messstellen-Vektoren) wird ohne sie gemessen." },
+          "energetische_bewertung": { "$ref": "#/$defs/kennzeichen", "description": "Ab Fassung 1.6: die Zeile gehört nur zur genannten energetischen Bewertung (`berichte[]`) und verlängert den Horizont fachfremder Leser nicht." }
         }
       }
     },
+    "abnahmefaelle_ap16": {"type": "object", "additionalProperties": false, "required": ["quelle", "faelle"], "description": "Die für NW-3 geforderten Blöcke „gegeben“ aus AP-16 §7 wörtlich; die Zwillinge rechnen die Tatsachen aus den fachlichen Blöcken nach.", "properties": {"quelle": {"type": "string"}, "faelle": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["fall", "gegeben"], "properties": {"fall": {"type": "string", "pattern": "^R[0-9]+$"}, "gegeben": {"type": "object"}}}}}},
     "abnahmefaelle_ap15": {"type": "object", "additionalProperties": false, "required": ["quelle", "faelle"], "description": "Die Abnahmefälle R1 … R22 des Konzepts AP-15 §7 mit ihrem Block „gegeben“ wörtlich (ab Fassung 1.5). Der Inhalt von „gegeben“ ist je Fall frei geformt; wo er eine Tatsache dieser Welt nennt, prüfen die Zwillinge die Übereinstimmung mit dem Objekt der Datei.", "properties": {"quelle": {"type": "string"}, "faelle": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["fall", "stand", "periode", "gegeben"], "properties": {"fall": {"type": "string", "pattern": "^R[0-9]+$"}, "stand": {"type": "string", "enum": ["entschieden", "entwurf"], "description": "entwurf = gehört zu einer nicht gebauten Stufe (R16, Zuteilung auf Zeit)."}, "periode": {"type": "string"}, "gegeben": {"type": "object"}, "hinweis": {"type": ["string", "null"]}}}}}}
   },
 
@@ -782,8 +860,31 @@
         "kanal_wertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Wie der Kanal am Draht zu lesen ist." },
         "zweck": { "type": "string", "enum": ["Plausibilität", "Ersatz bei Ausfall", "Abrechnungszähler"], "description": "Wozu der Vergleich dient (AP-04 E3) — nie ohne Zweck." },
         "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann dieser Vergleich gilt, auf die Minute." },
-        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." },
+        "toleranz_fassungen": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["fassung", "prozent_je_monat", "gueltig_ab", "begruendung", "person"], "properties": { "fassung": { "type": "integer", "minimum": 1 }, "prozent_je_monat": { "type": "number", "minimum": 0 }, "gueltig_ab": { "$ref": "#/$defs/tag" }, "begruendung": { "type": "string", "minLength": 1 }, "person": { "$ref": "#/$defs/kennzeichen" } } }, "description": "Fassungen der monatlichen Toleranz für den Vergleich; oberhalb entsteht nur ein Befund." }
       }
+    },
+    "einstufung_herkunft": {
+      "type": "object", "additionalProperties": false, "required": ["zeitraum", "kriterien_fassung", "eingaenge", "nenner", "urteil", "vorschlag", "annahme"],
+      "properties": {
+        "zeitraum": { "type": "string", "minLength": 1 }, "kriterien_fassung": { "type": "integer", "minimum": 1 },
+        "eingaenge": {
+          "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["objekt", "wert", "version", "zustand"],
+            "properties": { "objekt": { "$ref": "#/$defs/kennzeichen" }, "wert": { "type": "number" }, "version": { "type": "integer", "minimum": 1 }, "zustand": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "nenner": { "anyOf": [
+          { "type": "object", "additionalProperties": false, "required": ["wert", "anlagen", "bilanzwerte"],
+            "properties": { "wert": { "type": "number" }, "anlagen": { "type": "string" }, "bilanzwerte": { "type": "array", "items": { "type": "string" } } }
+          },
+          { "type": "null" }
+        ] },
+        "urteil": { "type": "object", "additionalProperties": { "type": "string" } }, "vorschlag": { "type": "string", "enum": ["ueber_schwelle", "unter_schwelle"] }, "annahme": { "type": "boolean" }
+      }
+    },
+    "beleg": {
+      "type": "object", "additionalProperties": false, "required": ["bezeichnung", "ablage", "sha256", "person", "zeitpunkt"],
+      "properties": { "bezeichnung": { "type": "string", "minLength": 1 }, "ablage": { "type": "string", "minLength": 1 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "person": { "$ref": "#/$defs/kennzeichen" }, "zeitpunkt": { "$ref": "#/$defs/zeitpunkt" } }
     }
   }
 }
