@@ -24,10 +24,12 @@ CREATE UNIQUE INDEX uq_device_measurement_sample_reihe
   derselben Reihe und Messzeit verdrängt den führenden nicht und wird nicht von ihm verdrängt.
 - **`entity_id IS NOT NULL`** hält den Index auf den Werten, die eine Reihe HABEN; eine Zeile
   ohne Komponente wäre darin ohnehin nie ein Konflikt (NULL ist verschieden von NULL).
-- ⚠ **Der ALTE Index `uq_device_measurement_sample_idempotency`
-  `(device_id, point_key, time, edge_sequence)` BLEIBT STEHEN** — auch nach der Umschaltung
-  (IP-7): er ist der Schlüssel JEDES Bestandswerts ohne Komponente und JEDES Spiegels, denn beide
-  liegen ausserhalb des partiellen Index oben. Wer ihn entfernt, nimmt ihnen ihre Idempotenz.
+- ⚠ **Der Box-Schlüssel `(device_id, point_key, time, edge_sequence)` BLEIBT** — auch nach der
+  Umschaltung (IP-7): er ist der Schlüssel JEDES Bestandswerts ohne Komponente und JEDES Spiegels,
+  denn beide liegen ausserhalb des partiellen Index oben. Seit IP-18b Teil 1b heißt er
+  `uq_device_measurement_sample_box` (`WHERE edge_entity_id IS NULL`, für den Bestand dieselbe
+  Semantik); der geteilte Punkt hat daneben `uq_device_measurement_sample_box_komponente`
+  ([Box-Schlüssel des geteilten Punkts](uems-geteilter-punkt-box-schluessel.md)).
 - ⚠ Die **Spiegel-Spur je lesender Box** hat weiter KEINEN eigenen Schlüssel: zwei Spiegelwerte
   derselben Reihe und Messzeit aus zwei Boxen sind beide erlaubt. Den Doppel-Schutz trägt für sie
   der alte Index (gleiche Box, gleiche Sequenz); IP-7 hat daran nichts geändert und entscheidet die

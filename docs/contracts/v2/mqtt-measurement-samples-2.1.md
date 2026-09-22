@@ -79,10 +79,10 @@ die Datenannahme sie weiter — ein heutiges Ereignis ist damit Zeichen für Zei
 Der Writer nimmt die Komponente nie als Fakt: er zählt zu (Box, `point_key`, `entity_id`) die
 Zeilen der EIGENEN Auswahl, und nur bei genau einer folgt die Reihe; sonst bleibt der Wert ohne
 Komponente wie heute bei Mehrdeutigkeit. ⚠ Auslieferung: Writer vor (oder mit) der Datenannahme —
-ein älterer Writer verwirft ein Ereignis mit `entity_id` ganz. ⚠ Offen bis zum Folgepaket: der
-alte Speicherschlüssel `(device_id, point_key, time, edge_sequence)` lässt zu DERSELBEN Messzeit
-nur die erste Komponente eines geteilten Punkts durch; Schlüssel je Komponente und die
-Historienzählung je Komponente kommen dort. Heute liefert keine Box einen geteilten Punkt (der
+ein älterer Writer verwirft ein Ereignis mit `entity_id` ganz. Seit Teil 1b speichert der Writer
+die genannte Komponente zusätzlich in `edge_entity_id`; der Box-Schlüssel gilt dort je Komponente,
+beide Werte DERSELBEN Messzeit liegen. Im Box-Verlauf, in der Box-Verdichtung und im Punktzustand
+erscheint ein geteilter Punkt nicht; seine Werte zeigt nur die Reihe. Heute liefert keine Box einen geteilten Punkt (der
 Mess-Plan führt ihn zusammen); das ändert erst Teil 2 (Plan + Box, nach `supports[]`).
 
 Die Box sendet 2.1 erst mit einem Edge-Release (AP-07 IP-18).

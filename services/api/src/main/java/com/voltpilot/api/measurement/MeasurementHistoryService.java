@@ -219,7 +219,7 @@ public class MeasurementHistoryService {
                 "SELECT EXISTS(SELECT 1 FROM device_measurement_sample WHERE tenant_id=? "
                         + "AND site_id=? AND device_id=? AND "
                         + pointKeyPredicate("point_key", pointKey) + " AND quality='good' "
-                        + "AND time>=? AND time<=? AND "
+                        + "AND edge_entity_id IS NULL AND time>=? AND time<=? AND "
                         + "(raw_numeric IS NOT NULL OR raw_text IS NOT NULL))",
                 Boolean.class, scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
                 Timestamp.from(window.from()),
@@ -380,13 +380,16 @@ public class MeasurementHistoryService {
         // Die Herkunfts-Spalten (UEMS AP-07 IP-6/IP-7) kommen ADDITIV mit: sie treten als
         // weitere Aggregate in dieselbe Gruppierung ein. Kein bestehender Ausdruck und keine
         // GROUP-BY-Spalte ändert sich — die gezeichneten Werte bleiben Zeichen für Zeichen.
+        // Ein GETEILTER Punkt (UEMS AP-07 IP-18b) liefert Werte zweier Komponenten unter einem
+        // point_key; sie gehören in ihre Reihe (entity_id), nicht in den Box-Verlauf. Der zeigt nur
+        // Zeilen ohne edge_entity_id - im Bestand ist das jede Zeile.
         String sql = "WITH ordered AS (SELECT time,aggregation_kind,gap," + numeric
                 + " value_numeric," + text + " value_text,device_install_id,applied_revision,"
                 + "catalog_version,role,value_kind,delivery,received_at,lag(" + numeric + ") OVER "
                 + "(PARTITION BY tenant_id,site_id,device_id,point_key ORDER BY time,edge_sequence) "
                 + "previous_numeric FROM device_measurement_sample WHERE tenant_id=? AND site_id=? "
                 + "AND device_id=? AND " + pointKeyPredicate("point_key", pointKey)
-                + " AND quality='good' AND time>=? AND time<=?),"
+                + " AND quality='good' AND edge_entity_id IS NULL AND time>=? AND time<=?),"
                 + "bucketed AS (SELECT time_bucket(CAST(? AS interval),time) bucket,aggregation_kind,"
                 + "avg(value_numeric) avg_value,min(value_numeric) min_value,max(value_numeric) max_value,"
                 + "sum(CASE WHEN previous_numeric IS NOT NULL AND value_numeric>=previous_numeric "
@@ -452,7 +455,8 @@ public class MeasurementHistoryService {
                         + " last_text,0::bigint samples,false has_gap FROM device_measurement_sample "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? AND "
                         + pointKeyPredicate("point_key", pointKey) + " "
-                        + "AND quality='good' AND time<? ORDER BY time DESC,edge_sequence DESC LIMIT 1",
+                        + "AND quality='good' AND edge_entity_id IS NULL AND time<? "
+                        + "ORDER BY time DESC,edge_sequence DESC LIMIT 1",
                 MeasurementHistoryService::mapDatum, Timestamp.from(window.from()),
                 scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
                 Timestamp.from(window.from()));
