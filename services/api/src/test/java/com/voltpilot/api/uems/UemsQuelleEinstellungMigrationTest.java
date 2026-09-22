@@ -368,7 +368,9 @@ class UemsQuelleEinstellungMigrationTest {
         assertThat(rechte("quelle_einstellung")).isEqualTo("INSERT,SELECT");
         assertThat(root.queryForList("SELECT column_name FROM information_schema.column_privileges "
                 + "WHERE table_name = 'quelle_einstellung' AND grantee = ? AND privilege_type = 'UPDATE'",
-                String.class, APP_USER)).containsExactlyInAnyOrder("gueltig_ab", "gueltig_bis");
+                // AP-16 IP-15 (V20260922245000): `klasse` ist eine Messmittel-Angabe an der Wandler-Fassung,
+                // keine Wirkung — sie steht außerhalb des Tupels, das quelle_einstellung_nur_verkuerzen festhält.
+                String.class, APP_USER)).containsExactlyInAnyOrder("gueltig_ab", "gueltig_bis", "klasse");
     }
 
     /**

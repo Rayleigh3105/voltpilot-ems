@@ -1230,6 +1230,24 @@
       "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
     },
     {
+      "kennung": "messmittel.angaben",
+      "gruppe": "struktur",
+      "kundenwort": "Messmittel-Angaben und Belege eintragen",
+      "herkunft": "AP-16 §6.1 (G1–G3, R8, E7)",
+      "nachtrag": "AP-16 §6.1",
+      "wie": "geraet.einrichten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Angaben am Einbau (Klasse, Prüfung, Beleg als Verweis mit SHA-256) und die Wandler-Klasse; Standort-Zaun über die Anlage des Geräts. Lesen über messwerte.ansehen; ohne Angabe nicht erhoben."
+    },
+    {
       "kennung": "netzanschluss.verwalten",
       "gruppe": "struktur",
       "kundenwort": "Netzanschluss anlegen · bearbeiten · beenden · Anlage binden",
@@ -1821,6 +1839,16 @@
           ],
           "zuordnung": "neu",
           "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+        },
+        {
+          "handlung": "Messmittel-Angaben und Belege eintragen",
+          "wer": "KA U · EM U · BE S · US Ei",
+          "recht": "`messmittel.angaben`",
+          "kennungen": [
+            "messmittel.angaben"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Angaben am Einbau (Klasse, Prüfung, Beleg als Verweis mit SHA-256) und die Wandler-Klasse; Standort-Zaun über die Anlage des Geräts. Lesen über messwerte.ansehen; ohne Angabe nicht erhoben."
         }
       ],
       "regeln": [

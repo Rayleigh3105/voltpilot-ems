@@ -13755,6 +13755,204 @@
       }
     },
     {
+      "name": "ap16-messmittel-bearbeiter-am-standort",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 §6.1/R8 (G1–G3, E7): Messmittel-Angaben wie geraet.einrichten — KA/EM überall, Bearbeiter am Standort, Unterstützer mit Einrichten; der Standort ist der Einbauort des Geräts.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messmittel.angaben",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-28T10:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap16-messmittel-brunner-einrichten",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 §6.1/R8 (G1–G3, E7): Messmittel-Angaben wie geraet.einrichten — KA/EM überall, Bearbeiter am Standort, Unterstützer mit Einrichten; der Standort ist der Einbauort des Geräts.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten_und_bedienen",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messmittel.angaben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-28T09:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "unterstuetzer",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap16-messmittel-bearbeiter-fremder-standort",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 §6.1/R8 (G1–G3, E7): Messmittel-Angaben wie geraet.einrichten — KA/EM überall, Bearbeiter am Standort, Unterstützer mit Einrichten; der Standort ist der Einbauort des Geräts.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messmittel.angaben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-28T10:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "ausserhalb_geltungsbereich",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Diese Seite gibt es für Sie nicht."
+      }
+    },
+    {
       "name": "ap16-kriterien-kundenadministrator",
       "familie": "darf",
       "ableitung": "darf",

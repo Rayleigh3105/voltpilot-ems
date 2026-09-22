@@ -100,10 +100,10 @@ public class AenderungsprotokollService {
     }
 
     /**
-     * Das Protokoll EINES Geräts. Ein Gerät hat kein eigenes Journal — seine Einträge hängen an
-     * den Messstellen, die es speist, und nennen es über ihr Einbau-Kennzeichen (die
-     * Überbrückung steht in {@link AenderungsprotokollRepository#fuerEinbau}). Ein fremdes
-     * Gerät ist 404.
+     * Das Protokoll EINES Geräts. Seine Einträge hängen an den Messstellen, die es speist, und
+     * nennen es über ihr Einbau-Kennzeichen (die Überbrückung steht in
+     * {@link AenderungsprotokollRepository#fuerEinbau}); nur die Messmittel-Angaben (AP-16 IP-15)
+     * stehen im eigenen Journal des Einbaus. Ein fremdes Gerät ist 404.
      */
     public ProtokollDto.Protokoll geraet(UUID id, Anfrage a) {
         GeraetRepository.Einbau g = geraete.eines(id).orElseThrow(() ->
@@ -158,6 +158,7 @@ public class AenderungsprotokollService {
             case "standort" -> sichtbar.test(RechtZiel.STANDORT, z.bezugId());
             case "gebaeude", "bereich" -> sichtbar.test(RechtZiel.ORT, z.bezugId());
             case "anlage" -> sichtbar.test(RechtZiel.ANLAGE, z.bezugId());
+            case "geraet" -> sichtbar.test(RechtZiel.GERAET, z.bezugId());
             case "datenquelle" -> protokolle.anlageDerDatenquelle(z.bezugId())
                     .map(anlage -> sichtbar.test(RechtZiel.ANLAGE, anlage)).orElse(false);
             default -> false;

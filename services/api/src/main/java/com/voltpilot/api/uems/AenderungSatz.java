@@ -58,7 +58,8 @@ public final class AenderungSatz {
             "standort", "Standort",
             "gebaeude", "Gebäude",
             "bereich", "Bereich",
-            "anlage", "Anlage");
+            "anlage", "Anlage",
+            "geraet", "Gerät");
 
     /** Die Kundenwörter der bearbeitbaren Felder — für „bearbeitet“, das nur Geändertes trägt. */
     private static final Map<String, String> FELD = felder();
@@ -133,6 +134,8 @@ public final class AenderungSatz {
             case "aus_bestand_uebernommen" -> was + " aus dem Bestand übernommen";
             case "zugriff_zugewiesen" -> "Zugriff zugewiesen" + zugriff(neu);
             case "zugriff_entzogen" -> "Zugriff entzogen" + zugriff(neu);
+            // AP-16 IP-15 (G1–G3): die Angabe am Einbau; „nicht erhoben“ bleibt so stehen, nie geschätzt.
+            case "messmittel_angabe" -> "Messmittel-Angaben eingetragen" + zusatz(text(neu, "einbau"));
             default -> art;
         };
     }

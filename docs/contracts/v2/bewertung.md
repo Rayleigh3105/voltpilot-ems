@@ -387,3 +387,48 @@ Offboarding entfernt die Fassungen vor dem Energieeinsatz.
 Nachweise: `EnergieeinsatzEinstufungApiTest` (R3, R13, R17, Herkunft, Rechte und RLS),
 `EnergieeinsatzSchnittstelleVertragTest`, `RechtMatrixApiTest`,
 `RechteKennungenDerRoutenTest`, `RechtRoutenArchitekturTest` und die Migrationswächter.
+
+## 12. Messmittel-Angaben am Einbau (IP-15, G1–G3, R8, E7 = A)
+
+**G1:** Die Angaben hängen am EINBAU (`geraet`, `V20260922245000`):
+`genauigkeitsklasse` (Freitext, höchstens 60 Zeichen), `pruefungsart`
+(`eichung` · `mid_konformitaet` · `kalibrierung` · `werksbescheinigung` · `keine`,
+das Vokabular von `uems-referenzunternehmen.schema.json`), `pruefung_am`,
+`pruefung_gueltig_bis` (nicht vor `pruefung_am`). Alles nullable. Ein
+Zählerwechsel legt einen neuen Einbau ohne Angaben an; Z-5a behält seine. Die
+Wandler-Klasse steht an der Wandler-Fassung (`quelle_einstellung.klasse`, CHECK:
+nur `wandler_strom`/`wandler_spannung`); sie ist eine Angabe, keine Wirkung, und
+ändert weder Wert noch Gültigkeit der Fassung.
+
+**G2:** Ein Beleg ist ein Verweis, keine Datei: Bezeichnung, Ablage beim Kunden,
+SHA-256 (64 Hex-Zeichen, gespeichert klein; im Portal aus der gewählten Datei
+gebildet, die Datei wird nie übertragen), Person (Akteur-Vokabular von AP-03) und
+Zeitpunkt. Ganz oder gar nicht (`geraet_beleg_vollstaendig_chk`). Derselbe Verweis
+behält beim erneuten Speichern Person und Zeitpunkt seines Eintragens.
+
+**G3:** Ohne Angabe liefert die Route `pruefungsart: nicht_erhoben`,
+`genauigkeitsklasse: null`, `zustand: nicht_erhoben`; eine Wandler-Fassung ohne
+Klasse `zustand: nicht_erhoben`. Nichts wird vorbelegt, geschätzt oder zu einer
+Genauigkeit der Messkette verrechnet. Die Katalog-Angabe „laut Hersteller“ (G4,
+IP-16) steht getrennt und ersetzt die Einbau-Angabe nie.
+
+**Routen:** `GET /api/v1/geraete/{id}/messmittel` (Recht `messwerte.ansehen`,
+außerhalb des Zugriffs 404) und `PUT …/messmittel` (Recht `messmittel.angaben`:
+KA U · EM U · BE S · US Ei, Standort-Zaun über die Anlage des Einbaus). Der PUT
+trägt die ganze Angabe; was fehlt, ist nicht erhoben. `wandler[]` nennt nur
+Fassungen, deren Klasse sich ändert. 422: `pruefsumme_ungueltig` (Beleg ohne
+gültige SHA-256), `beleg_unvollstaendig`, `pruefungsart_unbekannt`,
+`zeitraum_ungueltig`, `text_zu_lang`, `fassung_unbekannt`, `klasse_nur_am_wandler`;
+400 `anfrage_ungueltig` bei unbekanntem Feld.
+
+**Protokoll:** jede Änderung steht als `messmittel_angabe` mit `alt`/`neu` und
+Akteur im eigenen Journal des Einbaus `geraet_aenderung` (RLS + FORCE, nur SELECT
+und INSERT; ohne Fremdschlüssel auf `geraet`, damit das Löschen einer Anlage nicht
+am Journal scheitert). Es erscheint im Protokoll des Geräts und des Unternehmens
+(Sichtbarkeit über das Gerät). Ein unveränderter PUT schreibt nichts.
+
+Nachweis: `MessmittelAngabenApiTest` (R8 GR-2/Z-5b/GR-5, 422, Wandler-Klasse,
+Rechte je Rolle mit Zaun, RLS, Offboarding) und `MessmittelSchnittstelleVertragTest`
+(DTO ⟷ OpenAPI ⟷ Migration ⟷ Referenz-Vokabular). Nicht hier: Katalog-Genauigkeit
+(IP-16), Toleranz (IP-17), Messmittel-Blatt und Dialog im Portal (IP-18), die
+Prüfaufgabe im Bewertungsstand (IP-21).
