@@ -2308,7 +2308,13 @@ describe('AP-14 IP-15 · Zuordnung korrigieren', () => {
 
 describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1–SP3)', () => {
   /** IP-6/IP-12/IP-18/IP-20/IP-25 tragen hier ihre Kunden-Komponenten ein. */
-  const BEWERTUNG_FLAECHEN: string[] = [];
+  const BEWERTUNG_FLAECHEN: string[] = [
+    // IP-6: Umfang, Liste, Seite eines Energieeinsatzes und ihre Dialoge.
+    'pages/BewertungPage.tsx',
+    'pages/EnergieeinsatzSeite.tsx',
+    'components/UmfangDialog.tsx',
+    'components/EnergieeinsatzDialoge.tsx',
+  ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,
     /(^|[^\p{L}\p{N}])EnPI([^\p{L}\p{N}]|$)/iu,
@@ -2321,7 +2327,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
     return VERBOTEN.filter((re) => re.test(ohneGrenze));
   };
-  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE);
+  // Der Satz steht wörtlich ODER als JSX-Kind aus seiner einen Quelle (`glossar.ts`) — nie nur als Import.
+  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
 
   it('beißt an jedem verbotenen Wort und lässt die Wortgrenzen heil', () => {
     for (const probe of ['SEU', 'seu', 'EnPI', 'enpi', 'ISO-wesentlich', 'wesentlich nach ISO', 'automatisch eingestuft', 'ISO']) {
@@ -2339,6 +2346,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     }
     expect(traegtGrenze('Bewertung ohne Abgrenzung')).toBe(false);
     expect(traegtGrenze(`Bewertung. ${UEMS_NORMGRENZE}`)).toBe(true);
+    expect(traegtGrenze('<p className="x">{UEMS_NORMGRENZE}</p>')).toBe(true);
+    expect(traegtGrenze("import { UEMS_NORMGRENZE } from '../glossar';")).toBe(false);
   });
 
   it('findet verbotene Wörter auf jeder Kundenfläche', () => {

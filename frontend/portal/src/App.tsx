@@ -51,6 +51,7 @@ import {
   standortBereichRoute,
   kennzahlRoute,
   berichtRoute,
+  energieeinsatzRoute,
   messstelleRoute,
   standortRoute,
   transitionKind,
@@ -58,6 +59,7 @@ import {
   type Route,
 } from './nav';
 import { PAGE_CHUNK } from './pageChunks';
+import { darfAnsehen as darfEnergieeinsaetzeSehen } from './bewertung';
 import { transitionToRoute } from './pageTransition';
 import { hatGeldWelt } from './portfolioHistorie';
 import { geldAnlagen, type UebersichtEbene } from './uebersicht';
@@ -180,6 +182,9 @@ const KennzahlenPage = lazy(() =>
 );
 const BerichtePage = lazy(() =>
   PAGE_CHUNK['portfolio-berichte']().then((m) => ({ default: m.BerichtePage })),
+);
+const BewertungPage = lazy(() =>
+  PAGE_CHUNK['portfolio-bewertung']().then((m) => ({ default: m.BewertungPage })),
 );
 const PortfolioMesswerte = lazy(() =>
   PAGE_CHUNK['portfolio-messwerte']().then((m) => ({ default: m.PortfolioMesswerte })),
@@ -1183,6 +1188,8 @@ function UnifiedPortal() {
     standorte: orteQuelle?.liste.standorte ?? null,
     funktionen: ebenenFakten?.funktionen ?? null,
     kennzahlen: ebenenFakten?.kennzahlen ?? null,
+    // AP-16 IP-6: „Bewertung“ nur mit `energieeinsatz.ansehen` — ohne Selbstauskunft kein Bereich.
+    bewertung: selbst ? darfEnergieeinsaetzeSehen(selbst) : null,
   };
   const ebenenKacheln = ebenenOrtHier ? ebenenLeiste(ebenenOrtHier, ebenenLesemodell) : [];
   const standortBereich = standortBereichFuer(route, ebenenLesemodell);
@@ -1206,6 +1213,8 @@ function UnifiedPortal() {
   const kennzahlenDa = ebenenFakten ? bereicheHier.includes('kennzahlen') : null;
   // AP-12 IP-13: der Reiter „Berichte" nur, wo die Ebene den Bereich hat (ein Standort misst).
   const berichteDa = ebenenFakten ? bereicheHier.includes('berichte') : null;
+  // AP-16 IP-6: der Reiter „Bewertung“ nach derselben Regel, dazu das Recht aus `/me`.
+  const bewertungDa = ebenenFakten ? bereicheHier.includes('bewertung') : null;
   const leisteHier = ebenenKacheln.map((k) => k.key);
   // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Gebäude · Anlagen · Messstellen);
   // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
@@ -1402,6 +1411,7 @@ function UnifiedPortal() {
             showBezugsgroessen={bezugsgroessenDa === true}
             showKennzahlen={kennzahlenDa === true}
             showBerichte={berichteDa === true}
+            showBewertung={bewertungDa === true}
             leiste={leisteHier}
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
@@ -1452,6 +1462,14 @@ function UnifiedPortal() {
               kennung={route.berichtKennung ?? null}
               onOeffnen={(kennung) => navigate(berichtRoute(kennung))}
               onListe={() => navigate(pageRoute('portfolio-berichte'))}
+            />
+          )}
+          {/* UEMS AP-16 IP-6: „Unternehmen › Bewertung“ (Umfang, Energieeinsätze) und die Seite eines Einsatzes. */}
+          {page === 'portfolio-bewertung' && (
+            <BewertungPage
+              einsatzId={route.energieeinsatzId ?? null}
+              onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
+              onListe={() => navigate(pageRoute('portfolio-bewertung'))}
             />
           )}
           {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}

@@ -9377,6 +9377,38 @@ export const api = {
     request<BerichteBetroffen>(
       `/api/v1/berichte/betroffen?${new URLSearchParams({ objekt, gilt_ab: giltAb, anlass }).toString()}`,
     ),
+  /** UEMS AP-16 IP-5: der Betrachtungsumfang am Stichtag; ohne Fassung die ungespeicherte Vorgabe (`fassung: null`). */
+  bewertungUmfang: (am?: string) =>
+    request<BewertungUmfang>(`/api/v1/unternehmen/bewertung/umfang${am ? `?am=${encodeURIComponent(am)}` : ''}`),
+  /** Speichert den Umfang als neue Fassung; identischer Inhalt liefert dieselbe Fassung. */
+  bewertungUmfangSpeichern: (body: BewertungUmfangSpeichern) =>
+    request<BewertungUmfang>(`/api/v1/unternehmen/bewertung/umfang`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** UEMS AP-16 IP-4: die Energieeinsätze, laufende zuerst; Ablehnungen tragen `EnergieeinsatzFehlerCode`. */
+  energieeinsaetze: () => request<{ energieeinsaetze: Energieeinsatz[] }>(`/api/v1/unternehmen/energieeinsaetze`),
+  /** Prozesse ohne laufenden Einsatz für Strom — die Vorschläge des Prozess-Pickers. */
+  energieeinsatzVorschlaege: () =>
+    request<{ vorschlaege: EnergieeinsatzVorschlag[] }>(`/api/v1/unternehmen/energieeinsaetze/vorschlaege`),
+  energieeinsatz: (id: string) => request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}`),
+  energieeinsatzAnlegen: (body: EnergieeinsatzAnlegen) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze`, { method: 'POST', body: JSON.stringify(body) }),
+  energieeinsatzBearbeiten: (id: string, body: EnergieeinsatzBearbeiten) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  energieeinsatzBeenden: (id: string, body: { grund: string; gueltig_bis?: string }) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/beenden`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** Verantwortlich ist eine Zuständigkeit, kein Recht (R14); `null` hebt sie auf. */
+  energieeinsatzVerantwortlicher: (id: string, verantwortlichSub: string | null) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/verantwortlicher`, {
+      method: 'PUT',
+      body: JSON.stringify({ verantwortlich_sub: verantwortlichSub }),
+    }),
+  /** Ersetzt die Einflussgrößen; die Vorgänger bleiben im Protokoll. */
+  energieeinsatzEinflussgroessen: (id: string, einflussgroessen: EnergieeinsatzEinfluss[]) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/einflussgroessen`, {
+      method: 'PUT',
+      body: JSON.stringify({ einflussgroessen }),
+    }),
+  energieeinsatzProtokoll: (id: string) =>
+    request<{ aenderungen: EnergieeinsatzAenderung[] }>(`/api/v1/unternehmen/energieeinsaetze/${id}/protokoll`),
 };
 
 /** AP-09 K1/K7: Minutenintervall [von,bis), Parameter bleiben mit der Bindung erhalten. */
@@ -9390,4 +9422,154 @@ export interface BezugsKanalbindung extends BezugsKanalAnfrage {
 export interface BezugsKanalAuswahl {
   entity_id: string; komponente: string; kanal: string; name: string; wertart: string; einheit: string;
   erste_messung: string | null; liefert: boolean; zustaende: string[];
+}
+
+// ---------------------------------------------------------------------------
+// UEMS AP-16 IP-4/IP-5 · Energieeinsätze und Betrachtungsumfang (openapi `energieeinsaetze`)
+// ---------------------------------------------------------------------------
+
+export type EnergieTraeger = 'Strom' | 'Gas' | 'Wärme' | 'Kälte' | 'Wasser' | 'Druckluft';
+
+export interface BewertungUmfangAusschluss {
+  art: 'standort' | 'anlage' | 'prozess';
+  verweis: string;
+  begruendung: string;
+}
+
+export interface BewertungUmfangAnlage {
+  id: string;
+  name: string;
+}
+
+export interface BewertungUmfangStandort {
+  id: string;
+  name: string;
+  anlagen_im_umfang: BewertungUmfangAnlage[];
+  anzahl_anlagen_im_umfang: number;
+}
+
+export interface BewertungAkteur {
+  sub: string | null;
+  name: string;
+  rolle: string | null;
+  art: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall';
+}
+
+/** `fassung: null` = der ungespeicherte Vorschlag (alle sichtbaren Standorte, Strom). Die Anlagenzahl ist nur y. */
+export interface BewertungUmfang {
+  id: string | null;
+  fassung: number | null;
+  gueltig_ab: string | null;
+  am: string;
+  standorte: BewertungUmfangStandort[];
+  traeger: { name: EnergieTraeger; mit_anteil: boolean }[];
+  ausschluesse: BewertungUmfangAusschluss[];
+  anlagen_im_umfang: BewertungUmfangAnlage[];
+  anzahl_anlagen_im_umfang: number;
+  nenner_traeger: 'Strom' | null;
+  begruendung: string | null;
+  akteur: BewertungAkteur | null;
+  created_at: string | null;
+  aufgehoben_am: string | null;
+  teilansicht: boolean;
+}
+
+export interface BewertungUmfangSpeichern {
+  gueltig_ab: string;
+  standort_ids: string[];
+  traeger: EnergieTraeger[];
+  ausschluesse: BewertungUmfangAusschluss[];
+  begruendung?: string | null;
+}
+
+export type BewertungUmfangFehlerCode =
+  | 'anfrage_ungueltig' | 'nicht_gefunden' | 'traeger_unbekannt' | 'standort_unbekannt'
+  | 'ausschluss_ungueltig' | 'begruendung_fehlt' | 'gueltig_ab_ungueltig';
+
+export type EnergieeinsatzFehlerCode =
+  | 'anfrage_ungueltig' | 'nicht_gefunden' | 'prozess_unbekannt' | 'traeger_unbekannt' | 'einsatz_laeuft_bereits'
+  | 'verantwortlicher_unbekannt' | 'einflussgroesse_ungueltig' | 'name_fehlt' | 'grund_fehlt' | 'zeitraum_ungueltig'
+  | 'einsatz_beendet' | 'bezugsgroesse_in_verwendung' | 'recht_fehlt';
+
+export interface EnergieeinsatzVerweis {
+  id: string;
+  kennzeichen: string;
+  name: string;
+}
+
+/** Genau ein Bezugsgrößen-Verweis ODER ein nicht leerer Wortlaut. */
+export interface EnergieeinsatzEinfluss {
+  bezugsgroesse_id?: string | null;
+  wortlaut?: string | null;
+  art: 'produktion' | 'betriebszeit' | 'wetter' | 'sonstige';
+}
+
+export interface EnergieeinsatzVerantwortlicher {
+  sub?: string | null;
+  /** Schnappschuss beim Setzen — bleibt, wenn das Konto endet. */
+  name?: string | null;
+  konto?: string | null;
+  zustand?: string | null;
+  ohne_konto_seit?: string | null;
+}
+
+export interface EnergieeinsatzMessstelle {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  art: 'gemessen' | 'berechnet';
+  traeger: string;
+  orte: MessstelleOrtZuordnung[];
+  zustand: string;
+}
+
+export interface Energieeinsatz {
+  id: string;
+  kennzeichen: string;
+  prozess: EnergieeinsatzVerweis;
+  traeger: EnergieTraeger;
+  name: string;
+  wortlaut?: string | null;
+  verbraucher_wortlaut?: string | null;
+  verantwortlich: EnergieeinsatzVerantwortlicher;
+  einflussgroessen: EnergieeinsatzEinfluss[];
+  messstellen: EnergieeinsatzMessstelle[];
+  /** Keine gemessene Menge im letzten vollen Monat — nie als Null darstellen. */
+  keine_werte: boolean;
+  gueltig_ab: string;
+  gueltig_bis?: string | null;
+  beendet_am?: string | null;
+  beendet_grund?: string | null;
+}
+
+export interface EnergieeinsatzVorschlag {
+  prozess: EnergieeinsatzVerweis;
+  traeger: 'Strom';
+}
+
+export interface EnergieeinsatzAnlegen {
+  prozess_id: string;
+  traeger: EnergieTraeger;
+  name: string;
+  wortlaut?: string | null;
+  verbraucher_wortlaut?: string | null;
+  verantwortlich_sub?: string | null;
+  gueltig_ab?: string;
+  einflussgroessen?: EnergieeinsatzEinfluss[];
+}
+
+export interface EnergieeinsatzBearbeiten {
+  name: string;
+  wortlaut?: string | null;
+  verbraucher_wortlaut?: string | null;
+}
+
+export interface EnergieeinsatzAenderung {
+  id: number;
+  art: 'angelegt' | 'bearbeitet' | 'verantwortlicher' | 'einflussgroessen' | 'beendet';
+  alt: unknown;
+  neu: unknown;
+  akteur: BewertungAkteur;
+  /** Die Route liefert den Zeitpunkt (`EnergieeinsatzService.Aenderung.zeit`); `openapi.yaml` nennt ihn noch nicht. */
+  zeit?: string | null;
 }
