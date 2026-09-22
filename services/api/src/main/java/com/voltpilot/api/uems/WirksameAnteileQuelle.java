@@ -18,4 +18,13 @@ public interface WirksameAnteileQuelle {
 
     /** Leer = die Box hat (noch) keine Anteile gemeldet; unbekannt ist keine Null. */
     Optional<Map<Grenzart, BigDecimal>> wirksam(UUID siteId, UUID box);
+
+    /**
+     * Die Reserve der anderen steuerbaren Verbraucher, die die Box aus ihrem Dokument hält (Herzschlag
+     * {@code reserve_verbraucher_kw.bezug}, AP-15 Folge von IP-19). Leer = nicht gemeldet (alte Box oder ein Dokument
+     * ohne das Feld) — dann gilt auf der Box keine Reserve.
+     */
+    default Optional<BigDecimal> reserveVerbraucher(UUID siteId, UUID box) {
+        return Optional.empty();
+    }
 }

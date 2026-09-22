@@ -30,6 +30,12 @@ func (a *Agent) bezugAnteil() *lastmgmt.BezugAnteil {
 	if v, err := h.AnteilKw["bezug"].Float64(); err == nil {
 		an.AnteilKw = v
 	}
+	// AP-15 Folge: the share holds for ALL the box controls on the import
+	// side - the charge park gets it minus the reserve of the other
+	// controllable consumers. Absent (older document or cloud): no reserve.
+	if v, err := h.ReserveBezugKw.Float64(); err == nil && v > 0 {
+		an.ReserveKw = v
+	}
 	return an
 }
 

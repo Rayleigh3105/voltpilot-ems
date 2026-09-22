@@ -225,7 +225,8 @@ public class GemeinsameSteuerungBoxStand {
                         plan(plan.angenommen(), false)),
                 new GemeinsameSteuerungDto.AnteilStand(
                         revision(m.gesendetEpoche(), m.gesendetRevision(), m.gesendetAm()),
-                        revision(m.quittiertEpoche(), m.quittiertRevision(), m.quittiertAm()), wirksamKw),
+                        revision(m.quittiertEpoche(), m.quittiertRevision(), m.quittiertAm()), wirksamKw,
+                        wirksam.reserveVerbraucher(siteId, box).orElse(null)),
                 verlustGestern);
     }
 

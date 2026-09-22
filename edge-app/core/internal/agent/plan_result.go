@@ -90,6 +90,12 @@ func (a *Agent) gemeinsameSteuerung() *cloud.GemeinsameSteuerung {
 		block.AnteileEpoche = &epoche
 		block.AnteileRevision = &revision
 		block.AnteileKw = &cloud.AnteileKw{Einspeisung: h.AnteilKw["einspeisung"], Bezug: h.AnteilKw["bezug"]}
+		// AP-15 Folge of IP-19: the reserve of the other controllable import
+		// devices the charge park's share is lowered by - only when the
+		// document carries one (never claimed for an older document).
+		if h.ReserveBezugKw != "" {
+			block.ReserveVerbraucherKw = &cloud.ReserveVerbraucherKw{Bezug: h.ReserveBezugKw}
+		}
 		// AP-15 IP-22: what the share held back today (and the closed day before)
 		block.AnteilVerlust = a.anteilVerlust()
 	}

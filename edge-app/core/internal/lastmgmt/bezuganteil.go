@@ -68,6 +68,13 @@ type BezugAnteil struct {
 	// PruefenNeu: the probe is due and no watchdog made it yet in this
 	// standstill - only then may the budget START it (once per standstill).
 	PruefenNeu bool
+	// ReserveKw is reserve_verbraucher.bezug of the share document (AP-15
+	// Folge of IP-19): the rated power of the box's OTHER controllable import
+	// devices - relays, SG-Ready, heat pumps, a wallbox outside wallboxes[].
+	// The share holds for everything the box controls, so the charge park
+	// gets the share MINUS this reserve (never below 0) wherever the share
+	// binds. 0 = none (an older document without the field): today's figure.
+	ReserveKw float64
 }
 
 // pruefSenkKw is guards.PruefSenkKw (EinfrierStellKw + the write resolution);
@@ -105,6 +112,19 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 	anteil = round3(anteil)
 	res := heute
 	res.AnteilKw = &anteil
+	// The charge park's part of the share: the share minus the reserve of the
+	// box's other controllable consumers (V3 - the share holds for ALL of
+	// them; they have no power model on the box). Only ever lower (V5); the
+	// fresh leading box below regulates the whole limit and measures those
+	// consumers at the connection point, so the reserve changes nothing there.
+	lade, anteilKw := anteil, kwText(anteil)+" kW"
+	if r := an.ReserveKw; budgetFinite(r) && r > 0 {
+		r = round3(r)
+		lade = round3(math.Max(anteil-r, 0))
+		res.ReserveVerbraucherKw = &r
+		anteilKw = kwText(lade) + " kW (" + kwText(anteil) + " kW abzüglich " + kwText(r) +
+			" kW für ihre anderen steuerbaren Verbraucher)"
+	}
 
 	t.mu.Lock()
 	// B2: a frozen value is no measurement - its age counts from its last
@@ -123,17 +143,17 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 	var deckel float64
 	mode, blind := BudgetStatic, heute.Blind
 	reason := "Gemeinsame Steuerung: diese Box steuert mit und sieht den Netzanschluss nicht. " +
-		"Ihre Ladepunkte bekommen zusammen höchstens ihren Anteil von " + kwText(anteil) +
-		" kW - auch ohne Verbindung und nach einem Neustart."
+		"Ihre Ladepunkte bekommen zusammen höchstens ihren Anteil von " + anteilKw +
+		" - auch ohne Verbindung und nach einem Neustart."
 	switch {
 	case !an.Fuehrt:
 		t.rampValid = false
-		deckel = anteil
+		deckel = lade
 	case uhrsprung:
 		t.rampValid = false
-		deckel, mode, blind = anteil, BudgetSafe, true
+		deckel, mode, blind = lade, BudgetSafe, true
 		reason = "Die Uhr der Box ist hinter die letzte Messung am Netzanschluss zurückgesprungen - bis zur " +
-			"nächsten Messung gilt in der Gemeinsamen Steuerung der Anteil dieser Box von " + kwText(anteil) + " kW."
+			"nächsten Messung gilt in der Gemeinsamen Steuerung der Anteil dieser Box von " + anteilKw + "."
 	case seen && age <= BudgetFreshWindow:
 		// fresh: the leading box regulates the WHOLE limit with today's loop;
 		// its share does not bind while it measures.
@@ -146,14 +166,14 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 	case !seen:
 		// R15: the share holds before the first measurement.
 		t.rampValid = false
-		deckel = anteil
+		deckel = lade
 		reason = "Gemeinsame Steuerung: noch keine Messung am Netzanschluss - es gilt der Anteil dieser Box von " +
-			kwText(anteil) + " kW."
+			anteilKw + "."
 	case age > BudgetFreshWindow+BezugAnteilWindow:
 		t.rampValid = false
-		deckel, mode, blind = anteil, BudgetSafe, true
+		deckel, mode, blind = lade, BudgetSafe, true
 		reason = t.anteilBlindPrefix(age, eingefroren) + "in der Gemeinsamen Steuerung gilt der Anteil dieser Box von " +
-			kwText(anteil) + " kW."
+			anteilKw + "."
 	default:
 		if !t.rampValid {
 			// the operating point at the onset of blindness: the budget
@@ -161,13 +181,13 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 			t.rampValid, t.rampFrom = true, heute.Kw
 		}
 		deckel, mode, blind = t.rampFrom, BudgetContracting, true
-		if deckel > anteil {
+		if deckel > lade {
 			frac := (age - BudgetFreshWindow).Seconds() / BezugAnteilWindow.Seconds()
 			frac = math.Min(math.Max(frac, 0), 1)
-			deckel -= (deckel - anteil) * frac
+			deckel -= (deckel - lade) * frac
 		}
 		reason = t.anteilBlindPrefix(age, eingefroren) + "in der Gemeinsamen Steuerung zieht die Box das Ladebudget ohne Halten auf ihren Anteil von " +
-			kwText(anteil) + " kW zusammen (aktuell " + kwText(round3(deckel)) + " kW)."
+			anteilKw + " zusammen (aktuell " + kwText(round3(deckel)) + " kW)."
 	}
 	t.mu.Unlock()
 

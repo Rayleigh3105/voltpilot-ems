@@ -33,6 +33,11 @@ type Gelesen struct {
 	// the cloud does not send it.
 	Rolle string
 	Box   string
+	// ReserveBezug is reserve_verbraucher.bezug (optional, AP-15 Folge of
+	// IP-19): the rated power of the box's controllable import devices
+	// outside the charge park, as decimal text; "" when the cloud does not
+	// send it - then there is no reserve, as before.
+	ReserveBezug json.Number
 	// roh keeps the decimal text of every share for the heartbeat mirror.
 	roh map[string]map[string]json.Number
 }
@@ -48,6 +53,8 @@ type draht struct {
 	Rolle         string                            `json:"rolle"`
 	Verteilbar    map[string]json.Number            `json:"verteilbar"`
 	Anteile       map[string]map[string]json.Number `json:"anteile"`
+	// ReserveVerbraucher is optional (additive, schema_version stays 1.0).
+	ReserveVerbraucher map[string]json.Number `json:"reserve_verbraucher"`
 }
 
 // Lesen reads a …/v2/verbund-anteile payload for the box own (whose topic
@@ -107,7 +114,17 @@ func parse(payload []byte) (*Gelesen, error) {
 			dok.Anteile[r] = je
 		}
 	}
-	return &Gelesen{Dokument: dok, Schritt: d.Schritt, Rolle: d.Rolle, Box: d.DeviceID, roh: d.Anteile}, nil
+	var reserve json.Number
+	if n, ok := d.ReserveVerbraucher["bezug"]; ok {
+		// a negative or unreadable reserve is a broken document like a
+		// negative share: discarded, the held share stays
+		if _, err := kw(n); err != nil {
+			return nil, fmt.Errorf("%w: reserve_verbraucher.bezug", ErrUnlesbar)
+		}
+		reserve = n
+	}
+	return &Gelesen{Dokument: dok, Schritt: d.Schritt, Rolle: d.Rolle, Box: d.DeviceID, ReserveBezug: reserve,
+		roh: d.Anteile}, nil
 }
 
 func kw(n json.Number) (*big.Rat, error) {
@@ -131,6 +148,10 @@ type Gehalten struct {
 	// AnteilKw is the own share per direction as the decimal text of the
 	// document (kW, one decimal - never re-rounded through a float).
 	AnteilKw map[string]json.Number
+	// ReserveBezugKw is the reserve of the box's other controllable import
+	// devices from the same document (decimal text); "" = the document has
+	// none - the heartbeat then does not claim one.
+	ReserveBezugKw json.Number
 }
 
 // Halten turns an accepted document into the held share of its box.
@@ -140,10 +161,11 @@ func Halten(g *Gelesen) *Gehalten {
 		own[r] = g.roh[r][g.Box]
 	}
 	return &Gehalten{
-		Identitaet: Identitaet{Mandant: g.Dokument.Mandant, Anlage: g.Dokument.Anlage, Box: g.Box},
-		Stand:      Stand{Epoche: g.Dokument.Epoche, Revision: g.Dokument.Revision},
-		Rolle:      g.Rolle,
-		AnteilKw:   own,
+		Identitaet:     Identitaet{Mandant: g.Dokument.Mandant, Anlage: g.Dokument.Anlage, Box: g.Box},
+		Stand:          Stand{Epoche: g.Dokument.Epoche, Revision: g.Dokument.Revision},
+		Rolle:          g.Rolle,
+		AnteilKw:       own,
+		ReserveBezugKw: g.ReserveBezug,
 	}
 }
 

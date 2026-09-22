@@ -54,6 +54,12 @@
             "einspeisung": { "type": "number", "minimum": 0 },
             "bezug": { "type": "number", "minimum": 0 }
           }
+        },
+        "reserve_verbraucher_kw": {
+          "description": "wahlfrei (AP-15 Folge von IP-19): reserve_verbraucher des angenommenen Dokuments — fehlt, wenn das Dokument keine trägt",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "bezug": { "type": "number", "minimum": 0 } }
         }
       }
     },

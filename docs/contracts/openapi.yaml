@@ -13769,6 +13769,13 @@ components:
           properties:
             einspeisung: { type: number }
             bezug: { type: number }
+        reserve_verbraucher_kw:
+          type: number
+          nullable: true
+          description: >-
+            Reserve der anderen steuerbaren Verbraucher (Schalter/Relais, SG-Ready, Wärmepumpen, Wallbox außerhalb des
+            Ladeparks) aus dem Herzschlag der Box - um sie senkt die Box das Ladebudget ihres Bezugs-Anteils; null = nicht
+            gemeldet, dann gilt keine.
     GemeinsameSteuerungRevision:
       type: object
       required: [epoche, revision]

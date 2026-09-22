@@ -538,6 +538,50 @@ class SteuerungsverbundAnteilDienstTest {
         return w;
     }
 
+    /**
+     * AP-15 Folge von IP-19 (V3): jedes Dokument trägt je Box {@code reserve_verbraucher.bezug} — die Nennleistungen
+     * ihrer steuerbaren Bezugs-Geräte außerhalb des Ladeparks. R3 mit einer 10-kW-Wärmepumpe und einer go-e ohne Platz
+     * in {@code wallboxes[]} an Box Verwaltung: 21,0; eine Wallbox MIT Verbraucher-Profil (im Ladepark), ein Relais
+     * ohne Schreibfreigabe und die Ladepunkte zählen nicht; Box Halle 1 (nur Speicher) 0,0. Die Anteile bleiben 0/77.
+     */
+    @Test
+    void reserveVerbraucherJeBoxImDokument() throws Exception {
+        Welt w = ahrenberg(Stufe.BEOBACHTET);
+        TenantContext.set(w.mandant());
+        verbraucher(w, "heat-pump-sgready", "10", true, false);
+        verbraucher(w, "wallbox", "11", true, false);
+        verbraucher(w, "wallbox", "11", true, true);
+        verbraucher(w, "generic-load", "5", false, false);
+
+        dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        quittung(w, w.e1(), 1, 1, "angenommen", null, null);
+        Ergebnis ziel = letztes(w);
+        assertThat(kw(ziel, Grenzart.BEZUG, w.e4())).as("die Reserve teilt den Anteil nur auf").isEqualByComparingTo("77.0");
+        synchronized (Draht.GESENDET) {
+            assertThat(Draht.GESENDET).hasSize(4);
+            for (Map.Entry<String, byte[]> e : Draht.GESENDET) {
+                JsonNode n = mapper.readTree(e.getValue());
+                String erwartet = e.getKey().contains(w.e4().toString()) ? "21.0" : "0.0";
+                assertThat(n.path("reserve_verbraucher").path("bezug").decimalValue()).as(e.getKey())
+                        .isEqualByComparingTo(erwartet);
+                assertThat(n.path("schema_version").asText()).isEqualTo("1.0");
+            }
+        }
+    }
+
+    /** Ein Bezugs-Gerät an Box Verwaltung mit Typ; {@code imLadepark} = mit Verbraucher-Profil (wallboxes[]). */
+    private void verbraucher(Welt w, String typ, String nenn, boolean schreibfreigabe, boolean imLadepark) {
+        UUID k = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, created_at) "
+                + "VALUES (?, ?, 'consumer', ?, '2026-01-01T00:00:00Z') RETURNING id", UUID.class, w.mandant(),
+                w.anlage(), typ);
+        if (imLadepark) {
+            root.update("INSERT INTO consumer_profile (entity_id, tenant_id, site_id, control_kind, rated_power_kw) "
+                    + "VALUES (?, ?, ?, 'continuous', ?)", k, w.mandant(), w.anlage(), new BigDecimal(nenn));
+        }
+        anteile.geraetEintragen(w.mandant(), w.verbund(), w.e4(), k, Grenzart.BEZUG, new BigDecimal(nenn),
+                schreibfreigabe, null, "test");
+    }
+
     private void quittung(SteuerungsverbundAnteilDienst d, Welt w, UUID box, long epoche, long revision,
             String urteil) {
         VerbundAnteileResultListener listener = new VerbundAnteileResultListener("tcp://nie:1883", "", "", d, mapper);
