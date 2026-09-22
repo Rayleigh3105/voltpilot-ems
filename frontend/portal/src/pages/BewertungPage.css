@@ -326,6 +326,66 @@
   font-size: var(--vp-c-fs-14);
 }
 
+/* AP-16 IP-12: Rangliste, Einstufung, Kriterien und Historie. */
+.vp-bw-rangliste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-bw-rangliste p,
+.vp-bw-rangliste h3 { margin: 0; }
+
+.vp-bw-rang-kopf { font-size: var(--vp-c-fs-16); font-weight: var(--vp-c-fw-700); line-height: var(--vp-c-lh-text); }
+.vp-bw-vorlaeufig { align-self: flex-start; padding: 4px 8px; border-radius: 999px; background: var(--vp-c-warning-soft, var(--vp-c-surface-alt)); font-size: var(--vp-c-fs-12); font-weight: var(--vp-c-fw-700); }
+.vp-bw-rang-scroll { min-width: 0; overflow-x: auto; }
+.vp-bw-rang-tabelle { width: 100%; min-width: 1080px; border-collapse: collapse; font-size: var(--vp-c-fs-12); }
+.vp-bw-rang-tabelle th { color: var(--vp-c-muted-fg); text-align: left; white-space: nowrap; }
+.vp-bw-rang-tabelle th,
+.vp-bw-rang-tabelle td { padding: 10px 8px; border-bottom: 1px solid var(--vp-c-border); vertical-align: top; }
+.vp-bw-rang-tabelle td:first-child { font-variant-numeric: tabular-nums; font-weight: var(--vp-c-fw-700); }
+.vp-bw-rang-tabelle td:last-child { min-width: 150px; }
+.vp-bw-rang-tabelle td:last-child button { display: block; margin-top: 4px; }
+.vp-bw-rang-balken { display: block; width: 112px; height: 6px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: var(--vp-c-surface-alt); }
+.vp-bw-rang-balken i { display: block; height: 100%; border-radius: inherit; background: var(--vp-c-primary); }
+.vp-bw-rest td { background: var(--vp-c-surface-alt); }
+.vp-bw-rest-anlagen { display: flex; flex-wrap: wrap; gap: 6px var(--vp-c-space-3); color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-12); }
+.vp-bw-weitere { display: flex; flex-direction: column; gap: var(--vp-c-space-2); padding-top: var(--vp-c-space-3); border-top: 1px solid var(--vp-c-border); }
+.vp-bw-entscheidung-kopf { display: grid; grid-template-columns: auto 1fr auto; gap: var(--vp-c-space-2); align-items: baseline; padding: var(--vp-c-space-3); border-radius: var(--vp-c-radius); background: var(--vp-c-surface-alt); }
+.vp-bw-urteile { display: flex; flex-wrap: wrap; gap: 6px; }
+.vp-bw-urteile span { padding: 4px 8px; border: 1px solid var(--vp-c-border); border-radius: 999px; font-size: var(--vp-c-fs-12); }
+.vp-bw-herkunft { display: flex; flex-direction: column; gap: var(--vp-c-space-2); padding: var(--vp-c-space-3); border: 1px solid var(--vp-c-border); border-radius: var(--vp-c-radius); }
+.vp-bw-herkunft h3,
+.vp-bw-herkunft p,
+.vp-bw-herkunft ul { margin: 0; }
+.vp-bw-herkunft ul { padding-left: 20px; color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-12); }
+.vp-bw-textarea-label { margin-bottom: calc(-1 * var(--vp-c-space-3)); font-size: var(--vp-c-fs-14); font-weight: var(--vp-c-fw-700); }
+.vp-bw-form textarea { box-sizing: border-box; width: 100%; padding: 12px 16px; border: 1px solid var(--vp-c-field-border, var(--vp-c-border)); border-radius: var(--vp-c-radius); background: var(--vp-c-card); color: inherit; font: inherit; resize: vertical; }
+.vp-bw-form textarea:focus { outline: 2px solid var(--vp-c-primary); outline-offset: 2px; }
+.vp-bw-kriterien { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vp-c-space-3); }
+.vp-bw-historie { display: flex; flex-direction: column; gap: var(--vp-c-space-3); margin: 0; padding-left: 22px; }
+.vp-bw-historie li { padding-left: 4px; }
+.vp-bw-historie p { margin: 0 0 4px; overflow-wrap: anywhere; }
+
+@media (max-width: 719px) {
+  .vp-bw-rang-scroll { overflow: visible; }
+  .vp-bw-rang-tabelle { min-width: 0; }
+  .vp-bw-rang-tabelle thead { display: none; }
+  .vp-bw-rang-tabelle tr { display: block; margin-bottom: var(--vp-c-space-3); padding: var(--vp-c-space-3); border: 1px solid var(--vp-c-border); border-radius: var(--vp-c-radius); }
+  .vp-bw-rang-tabelle td { display: grid; grid-template-columns: minmax(76px, 0.7fr) minmax(0, 1.3fr); gap: var(--vp-c-space-2); padding: 5px 0; border: 0; overflow-wrap: anywhere; }
+  .vp-bw-rang-tabelle td::before { content: attr(data-label); color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-12); font-weight: var(--vp-c-fw-700); }
+  .vp-bw-rang-tabelle .vp-bw-rest td:first-child { display: none; }
+  .vp-bw-rang-tabelle .vp-bw-rest td[colspan] { display: block; }
+  .vp-bw-rang-balken { width: 100%; }
+  .vp-bw-kriterien { grid-template-columns: minmax(0, 1fr); }
+  .vp-bw-entscheidung-kopf { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (min-width: 720px) {
   .vp-bw-liste {
     display: grid;

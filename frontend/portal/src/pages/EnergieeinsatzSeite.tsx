@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Bezugsgroesse, type Energieeinsatz, type EnergieeinsatzAenderung } from '../api';
+import { api, type Bezugsgroesse, type BewertungRanglisteEinsatz, type Energieeinsatz, type EnergieeinsatzAenderung, type EnergieeinsatzEinstufungFassung } from '../api';
 import {
   ablehnung,
+  bewertungZeitraum,
   BEENDEN_KNOPF,
   darfVerwalten,
+  darfEinstufen,
   einflussText,
   EINFLUSSGROESSEN,
   KEINE_EINFLUSSGROESSEN,
@@ -30,6 +32,7 @@ import {
   zustandText,
 } from '../bewertung';
 import { EnergieeinsatzBearbeitenDialog, EnergieeinsatzBeendenDialog } from '../components/EnergieeinsatzDialoge';
+import { EinstufungDialog, EinstufungHistorie } from '../components/BewertungEntscheidungen';
 import { ErrorState, Skeleton } from '../components/States';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
@@ -37,7 +40,7 @@ import { useRollen } from '../rollen';
 /**
  * Die Seite eines Energieeinsatzes (UEMS AP-16 IP-6, `#/portfolio/bewertung/{id}`): Prozess, Träger, Verbraucher,
  * Verantwortlicher, Einflussgrößen, die Messstellen des Prozesses mit Ort und Zustand und das Protokoll mit Akteur.
- * Nichts rechnet (M1): „keine Werte“ ist die Aussage der Route, nie eine Null.
+ * „Keine Werte“ ist die Aussage der Route, nie eine Null. IP-12 ergänzt die unverlierbare Einstufungshistorie.
  *
  * ⚠ Die Einflussgröße trägt nur die Kennung ihrer Bezugsgröße; den Namen liest die Seite aus dem Bezugsgrößen-Katalog
  * (Stammdaten, keine Werte) — erst, wenn eine Einflussgröße eine Bezugsgröße nennt.
@@ -45,21 +48,27 @@ import { useRollen } from '../rollen';
 export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () => void }) {
   const { selbst } = useRollen();
   const verwalten = darfVerwalten(selbst);
+  const einstufen = darfEinstufen(selbst);
+  const zeitraum = bewertungZeitraum();
   const [einsatz, setEinsatz] = useState<Energieeinsatz | null>(null);
   const [protokoll, setProtokoll] = useState<EnergieeinsatzAenderung[] | null>(null);
   const [bezugsgroessen, setBezugsgroessen] = useState<Bezugsgroesse[]>([]);
+  const [rang, setRang] = useState<BewertungRanglisteEinsatz | null>(null);
+  const [einstufungen, setEinstufungen] = useState<EnergieeinsatzEinstufungFassung[]>([]);
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
   const [versuch, setVersuch] = useState(0);
-  const [dialog, setDialog] = useState<'bearbeiten' | 'beenden' | null>(null);
+  const [dialog, setDialog] = useState<'bearbeiten' | 'beenden' | 'einstufen' | null>(null);
 
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
-    Promise.all([api.energieeinsatz(id), api.energieeinsatzProtokoll(id)]).then(
-      ([e, p]) => {
+    Promise.all([api.energieeinsatz(id), api.energieeinsatzProtokoll(id), api.bewertungRangliste(zeitraum.von, zeitraum.bis), api.energieeinsatzEinstufungen(id)]).then(
+      ([e, p, r, h]) => {
         if (!aktiv) return;
         setEinsatz(e);
         setProtokoll(p.aenderungen);
+        setRang([...r.einsaetze, ...r.weitere_traeger].find((x) => x.id === id) ?? null);
+        setEinstufungen(h.fassungen);
         if (e.einflussgroessen.some((x) => x.bezugsgroesse_id))
           api.bezugsgroessen().then((b) => aktiv && setBezugsgroessen(b.bezugsgroessen), () => undefined);
       },
@@ -68,7 +77,7 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
     return () => {
       aktiv = false;
     };
-  }, [id, versuch]);
+  }, [id, versuch, zeitraum.bis, zeitraum.von]);
 
   const neu = (e: Energieeinsatz) => {
     setEinsatz(e);
@@ -133,6 +142,17 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
             </dl>
           </section>
 
+          <div className="vp-bw-karte-kopf">
+            <span className="vp-bw-leise">Vorschläge sind keine Einstufung.</span>
+            {einstufen && rang && <Button size="sm" onClick={() => setDialog('einstufen')} data-testid="einsatz-einstufen-knopf">Einstufen</Button>}
+          </div>
+          <EinstufungHistorie
+            einsatzId={id}
+            fassungen={einstufungen}
+            darfBestaetigen={einstufen}
+            onBestaetigt={(f) => setEinstufungen((alt) => alt.map((x) => x.fassung === f.fassung ? f : x))}
+          />
+
           <section className="vp-bw-karte" aria-labelledby="ee-einfluss">
             <h2 id="ee-einfluss">{EINFLUSSGROESSEN}</h2>
             {einsatz.einflussgroessen.length === 0 ? (
@@ -189,6 +209,12 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
       )}
       {dialog === 'beenden' && einsatz && (
         <EnergieeinsatzBeendenDialog einsatz={einsatz} onClose={() => setDialog(null)} onBeendet={neu} />
+      )}
+      {dialog === 'einstufen' && rang && (
+        <EinstufungDialog einsatz={rang} onClose={() => setDialog(null)} onGespeichert={(f) => {
+          setEinstufungen((alt) => [f, ...alt]);
+          setDialog(null);
+        }} />
       )}
     </div>
   );

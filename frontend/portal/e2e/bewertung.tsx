@@ -39,12 +39,14 @@ import '../src/index.css';
 const params = new URLSearchParams(location.search);
 const person = params.get('person') ?? 'IK';
 const stand = params.get('stand') === 'voll' ? 'voll' : 'leer';
+const vieraugen = params.get('vieraugen') === '1';
+const historieR13 = params.get('historie') === 'r13';
 const me = rechteSeed(person).me;
 setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
 
-const buehne = bewertungBuehne(stand, person);
+const buehne = bewertungBuehne(stand, person, stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen, historieR13);
 Object.assign(api, buehne, {
   prozesse: async () => ({ stichtag: null, prozesse: ahrenbergProzesse() }),
   bezugsgroessen: async () => ahrenbergBezugsgroessen(),

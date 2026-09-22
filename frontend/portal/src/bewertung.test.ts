@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from './api';
 import {
   ablehnung,
+  bewertungZeitraum,
   darfAnsehen,
+  darfEinstufen,
+  darfKriterienAendern,
   darfVerwalten,
   einflussText,
   einsatzAnfrage,
@@ -24,12 +27,15 @@ import {
   VORSCHLAG_GRUPPE,
   WEITERE_GRUPPE,
   zustandText,
+  prozentText,
+  zahlMitEinheit,
+  vorschlagText,
 } from './bewertung';
 import { ebenenBereiche, ebenenLeiste, EBENEN_SEITEN, ebenenAktiv, type EbenenLesemodell } from './ebenenNav';
 import { UEMS_BEWERTUNG_SAETZE } from './glossar';
 import { energieeinsatzRoute, hashForRoute, pageRoute, parseRoute } from './nav';
 import { benutzerFixture } from './test/benutzerFixtures';
-import { ahrenbergEinsaetze, ahrenbergUmfang, ahrenbergUmfangVorgabe, bewertungBuehne } from './test/bewertungFixtures';
+import { ahrenbergEinsaetze, ahrenbergRangliste, ahrenbergUmfang, ahrenbergUmfangVorgabe, bewertungBuehne } from './test/bewertungFixtures';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { ahrenbergBezugsgroessen, ahrenbergProzesse } from './test/kennzahlAnlegenFixtures';
 import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
@@ -57,11 +63,51 @@ describe('Rechte aus /me (R14)', () => {
     expect([darfAnsehen(ik), darfVerwalten(ik)]).toEqual([true, true]);
     expect([darfAnsehen(ph), darfVerwalten(ph)]).toEqual([true, false]);
     expect([darfAnsehen(jw), darfVerwalten(jw)]).toEqual([true, true]);
+    expect([darfEinstufen(ik), darfKriterienAendern(ik)]).toEqual([true, true]);
+    expect([darfEinstufen(ph), darfKriterienAendern(ph)]).toEqual([false, false]);
   });
 
   it('unbekannt ist nie ein Recht', () => {
     expect(darfAnsehen(null)).toBe(false);
     expect(darfVerwalten(undefined)).toBe(false);
+  });
+});
+
+describe('Rangliste, Einstufung und Kriterien (IP-12)', () => {
+  it('nimmt den letzten vollen Monat und zeigt UEMS-Zahlen nur gerundet an', () => {
+    expect(bewertungZeitraum(new Date('2026-11-20T12:00:00Z'))).toEqual({ von: '2026-10-01', bis: '2026-10-31', label: 'Oktober 2026' });
+    expect(zahlMitEinheit('185380', 'kWh')).toBe('185.380 kWh');
+    expect(prozentText('67.8')).toBe('67,8 %');
+    expect(vorschlagText('ueber_schwelle')).toBe('über Schwelle');
+  });
+
+  it('bildet R2 mit sechs Stromzeilen, Rest je Anlage und Gas unter „Weitere Träger“ ab', () => {
+    const r = ahrenbergRangliste();
+    expect(r.einsaetze.map((e) => [e.rang, e.kennzeichen, e.anteil_prozent, e.vorschlag])).toEqual([
+      [1, 'EE-1', '41.8', 'ueber_schwelle'], [2, 'EE-3', '8.6', 'unter_schwelle'], [3, 'EE-2', '5.2', 'unter_schwelle'],
+      [4, 'EE-6', '4.7', 'unter_schwelle'], [5, 'EE-5', '4.2', 'unter_schwelle'], [6, 'EE-4', '3.3', 'unter_schwelle'],
+    ]);
+    expect(r).toMatchObject({ rest: '59640', abdeckung_prozent: '67.8', urteil: { K7: 'vorlaeufig', K8: 'unter_schwelle' } });
+    expect(r.anlagen.map((a) => a.rest)).toEqual(['54580', '3860', '1200']);
+    expect(r.weitere_traeger[0]).toMatchObject({ kennzeichen: 'EE-7', menge: '1240', einheit: 'm³', anteil_prozent: null });
+  });
+
+  it('erzwingt Begründungen, hält Fassungen und bildet Vier-Augen als wartenden Vorschlag ab', async () => {
+    const b = bewertungBuehne('voll', 'IK', '2026-11-20', true);
+    const e = (await b.bewertungRangliste()).einsaetze.find((x) => x.kennzeichen === 'EE-3')!;
+    await expect(b.energieeinsatzEinstufen(e.id, { einstufung: 'wesentlich', begruendung: ' ', grund: ['K4'], herkunft: e.herkunft })).rejects.toMatchObject({ status: 422 });
+    const f = await b.energieeinsatzEinstufen(e.id, { einstufung: 'wesentlich', begruendung: 'Querschnitt mit Leckagepotenzial.', grund: ['K4'], herkunft: e.herkunft });
+    expect(f).toMatchObject({ fassung: 2, gueltig_ab: null, freigabe_status: 'beantragt', vieraugen: true });
+    expect((await b.energieeinsatzEinstufungen(e.id)).fassungen.map((x) => x.fassung)).toEqual([2, 1]);
+  });
+
+  it('ändert Kriterien nur begründet und berechnet den Vorschlag mit der neuen Fassung', async () => {
+    const b = bewertungBuehne('voll');
+    const k = await b.bewertungKriterien();
+    await expect(b.bewertungKriterienSpeichern({ werte: k.werte, begruendung: '' })).rejects.toMatchObject({ status: 422 });
+    await b.bewertungKriterienSpeichern({ werte: { ...k.werte, K1: '5' }, begruendung: 'Ab fünf Prozent prüfen.' });
+    const ee2 = (await b.bewertungRangliste()).einsaetze.find((x) => x.kennzeichen === 'EE-2');
+    expect(ee2).toMatchObject({ vorschlag: 'ueber_schwelle', herkunft: { kriterien_fassung: 2 } });
   });
 });
 

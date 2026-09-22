@@ -185,12 +185,78 @@ for (const breite of [375, 1440]) {
       await expect(prozesse).toContainText('läuft bereits: EE-1 Spritzguss');
     });
 
+    test('Rangliste: Balken, K-Spalten, Rest-Zeile und weitere Träger (R2/R12)', async ({ page }) => {
+      await oeffne(page, 'stand=voll', breite, AM_20_11);
+      const rangliste = page.getByTestId('rangliste');
+      await expect(rangliste).toContainText('Stromeinsatz Oktober 2026: 185.380');
+      await expect(rangliste.locator('tbody tr')).toHaveCount(7);
+      await expect(page.getByTestId('rang-EE-1')).toContainText('41,8 %');
+      await expect(page.getByTestId('rang-EE-1')).toContainText('über Schwelle');
+      await expect(page.getByTestId('rest-satz')).toContainText('59.640');
+      await expect(page.getByTestId('weitere-traeger')).toContainText('1.240,0 m³');
+      ohneQuerlauf(await messe(page), `rangliste-${breite}`);
+      await ablegen(page, `rangliste-${breite}`, true);
+    });
+
+    test('Einstufen: Begründung Pflicht, Abweichung sichtbar und Vier-Augen wartet (R3/R17)', async ({ page }) => {
+      await oeffne(page, 'stand=voll', breite, AM_20_11);
+      await page.getByTestId('rang-EE-3').getByRole('button', { name: 'Einstufen' }).click();
+      const dialog = page.getByTestId('einstufung-dialog');
+      await expect(dialog).toContainText('Kriterien-Fassung 1');
+      await expect(dialog).toContainText('Version 1');
+      await dialog.getByRole('radio', { name: 'wesentlich', exact: true }).check();
+      await expect(page.getByTestId('abweichung-hinweis')).toBeVisible();
+      await page.getByTestId('abweichung-hinweis').scrollIntoViewIfNeeded();
+      await ablegen(page, `einstufung-abweichung-${breite}`);
+      await page.getByTestId('einstufung-speichern').click();
+      await expect(dialog.getByRole('alert')).toContainText('ausdrücklich');
+      await dialog.getByLabel('Begründung').fill('Querschnitt für Spritzguss und Montage; Leckageverluste werden geprüft.');
+      await page.getByTestId('einstufung-speichern').click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByTestId('rang-EE-3')).toContainText('Fassung 2');
+
+      await oeffne(page, 'stand=voll&vieraugen=1', breite, AM_20_11);
+      await page.getByTestId('rang-EE-2').getByRole('button', { name: 'Einstufen' }).click();
+      const vier = page.getByTestId('einstufung-dialog');
+      await vier.getByRole('radio', { name: 'wesentlich', exact: true }).check();
+      await vier.getByLabel('Begründung').fill('Montage wird wegen des erwarteten Jahresverbrauchs wesentlich eingestuft.');
+      await page.getByTestId('einstufung-speichern').click();
+      await expect(page.getByTestId('rang-EE-2')).toContainText('vorgeschlagen, wartet auf Bestätigung');
+      await ablegen(page, `vieraugen-${breite}`, true);
+    });
+
+    test('Kriterien ändern: acht Zeilen, Begründung Pflicht, neue Fassung gilt für Vorschläge (R15)', async ({ page }) => {
+      await oeffne(page, 'stand=voll', breite, AM_20_11);
+      await page.getByTestId('kriterien-oeffnen').click();
+      const dialog = page.getByTestId('kriterien-dialog');
+      await expect(dialog.locator('input[type="number"]')).toHaveCount(8);
+      await dialog.getByLabel('K1 · Anteil am Stromeinsatz').fill('5');
+      await page.getByTestId('kriterien-speichern').click();
+      await expect(dialog.getByRole('alert')).toContainText('Begründung');
+      await dialog.getByLabel('Begründung').fill('Bis die Abdeckung reicht, werden Einsätze ab fünf Prozent geprüft.');
+      await ablegen(page, `kriterien-${breite}`);
+      await page.getByTestId('kriterien-speichern').click();
+      await expect(page.getByTestId('kriterien-hinweis')).toContainText('Kriterien-Fassung 2');
+      await expect(page.getByTestId('rang-EE-2')).toContainText('über Schwelle');
+    });
+
+    test('Historie: Fassungen bleiben auf der Einsatzseite lesbar (R13)', async ({ page }) => {
+      await oeffne(page, 'stand=voll&ee=EE-3&historie=r13', breite, AM_20_11);
+      await expect(page.getByTestId('einstufung-historie')).toContainText('Fassung 3 · nicht wesentlich');
+      await expect(page.getByTestId('einstufung-historie')).toContainText('Fassung 1 · wesentlich');
+      await expect(page.getByTestId('einstufung-historie')).toContainText('Grundlage 2026-10');
+      ohneQuerlauf(await messe(page), `historie-${breite}`);
+      await ablegen(page, `historie-${breite}`, true);
+    });
+
     test('Peter Hollerbach (Bearbeiter) sieht die Einsätze, darf aber nicht anlegen oder ändern (R14)', async ({ page }) => {
       await oeffne(page, 'stand=voll&person=PH', breite, AM_20_11);
       await expect(page.getByTestId('einsatz-karte').first()).toBeVisible();
       await expect(page.getByTestId('bewertung-nur-lesen')).toBeVisible();
       await expect(page.getByTestId('einsatz-anlegen-knopf')).toHaveCount(0);
       await expect(page.getByTestId('umfang-knopf')).toHaveCount(0);
+      await expect(page.getByTestId('kriterien-oeffnen')).toHaveCount(0);
+      await expect(page.getByTestId('rang-EE-1').getByRole('button', { name: 'Einstufen' })).toHaveCount(0);
       await page.getByTestId('einsatz-karte').nth(1).click();
       await expect(page.getByTestId('einsatz-verantwortlich')).toHaveText('Peter Hollerbach');
       await expect(page.getByTestId('einsatz-bearbeiten-knopf')).toHaveCount(0);

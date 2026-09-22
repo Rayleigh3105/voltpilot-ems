@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type BewertungUmfang, type Energieeinsatz } from '../api';
+import { api, type BewertungRangliste, type BewertungUmfang, type Energieeinsatz, type EnergieeinsatzEinstufungFassung } from '../api';
 import {
   ANLEGEN_KNOPF,
   darfVerwalten,
+  darfEinstufen,
+  darfKriterienAendern,
+  bewertungZeitraum,
   EINSAETZE_TITEL,
   einsatzZeile,
   KEINE_WERTE,
@@ -21,6 +24,7 @@ import {
   type EinsatzZeile,
 } from '../bewertung';
 import { EnergieeinsatzAnlegenDialog } from '../components/EnergieeinsatzDialoge';
+import { RanglisteBereich } from '../components/BewertungEntscheidungen';
 import { ErrorState, Skeleton } from '../components/States';
 import { UmfangDialog } from '../components/UmfangDialog';
 import { UEMS_NORMGRENZE } from '../glossar';
@@ -31,7 +35,8 @@ import './BewertungPage.css';
 /**
  * „Unternehmen › Bewertung“ (UEMS AP-16 IP-6, `#/portfolio/bewertung`) und die Seite eines Energieeinsatzes
  * (`#/portfolio/bewertung/{id}`) — Meilenstein M1: Umfang und Einsätze lassen sich anlegen, sehen und zuordnen; nichts
- * rechnet, nichts stuft ein. Die Welt erscheint nach der Berichte-Regel (ein Standort misst) und nur mit
+ * rechnet, nichts stuft selbst ein. IP-12 ergänzt Rangliste, Kriterien und die begründete Einstufung durch eine Person.
+ * Die Welt erscheint nach der Berichte-Regel (ein Standort misst) und nur mit
  * `energieeinsatz.ansehen` (`ebenenNav.ts`).
  *
  * Die Fläche liest nur ihre eigene Welt (W11): `…/bewertung/umfang` und `…/energieeinsaetze`. Jede Ableitung steht im
@@ -53,8 +58,14 @@ export function BewertungPage({
 function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void }) {
   const { selbst } = useRollen();
   const verwalten = darfVerwalten(selbst);
+  const einstufen = darfEinstufen(selbst);
+  const kriterienAendern = darfKriterienAendern(selbst);
+  const zeitraum = useMemo(() => bewertungZeitraum(), []);
   const [liste, setListe] = useState<Energieeinsatz[] | null>(null);
   const [umfang, setUmfang] = useState<BewertungUmfang | null>(null);
+  const [rangliste, setRangliste] = useState<BewertungRangliste | null>(null);
+  const [historien, setHistorien] = useState<Record<string, EnergieeinsatzEinstufungFassung[]>>({});
+  const [kriterienHinweis, setKriterienHinweis] = useState<string | null>(null);
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
   const [versuch, setVersuch] = useState(0);
   const [dialog, setDialog] = useState<'umfang' | 'anlegen' | null>(null);
@@ -62,18 +73,21 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
-    Promise.all([api.energieeinsaetze(), api.bewertungUmfang()]).then(
-      ([l, u]) => {
+    Promise.all([api.energieeinsaetze(), api.bewertungUmfang(), api.bewertungRangliste(zeitraum.von, zeitraum.bis)]).then(
+      async ([l, u, r]) => {
         if (!aktiv) return;
         setListe(l.energieeinsaetze);
         setUmfang(u);
+        setRangliste(r);
+        const h = await Promise.all([...r.einsaetze, ...r.weitere_traeger].map(async (e) => [e.id, (await api.energieeinsatzEinstufungen(e.id)).fassungen] as const));
+        if (aktiv) setHistorien(Object.fromEntries(h));
       },
       (e) => aktiv && setFehler(ladeFehler(e)),
     );
     return () => {
       aktiv = false;
     };
-  }, [versuch]);
+  }, [versuch, zeitraum.bis, zeitraum.von]);
 
   const karte = useMemo(() => {
     if (!umfang) return null;
@@ -158,6 +172,20 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
             {karte.akteur && <p className="vp-bw-leise">Festgelegt von {karte.akteur}</p>}
             {karte.teilansicht && <p className="vp-bw-leise">{karte.teilansicht}</p>}
           </section>
+
+          {kriterienHinweis && <p className="vp-alert vp-alert-ok" role="status" data-testid="kriterien-hinweis">{kriterienHinweis}</p>}
+          {rangliste && <RanglisteBereich
+            rangliste={rangliste}
+            zeitraum={zeitraum.label}
+            historien={historien}
+            darfEinstufen={einstufen}
+            darfKriterien={kriterienAendern}
+            onEinstufung={(id, f) => setHistorien((h) => ({ ...h, [id]: [f, ...(h[id] ?? [])] }))}
+            onKriterien={(f) => {
+              setKriterienHinweis(`Kriterien-Fassung ${f.fassung} gilt ab sofort für Rangliste und Vorschlag. Keine Einstufung ändert sich dadurch.`);
+              setVersuch((v) => v + 1);
+            }}
+          />}
 
           <section className="vp-bw-einsaetze" aria-labelledby="bw-einsaetze">
             <h2 id="bw-einsaetze">{EINSAETZE_TITEL}</h2>

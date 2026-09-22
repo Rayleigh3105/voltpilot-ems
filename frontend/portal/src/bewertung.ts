@@ -1,9 +1,9 @@
 /**
- * UEMS AP-16 IP-6 — die Welt „Bewertung“ am Unternehmen: Umfang und Energieeinsätze (Meilenstein M1).
+ * UEMS AP-16 IP-6/IP-12 — die Welt „Bewertung“ am Unternehmen: Umfang, Energieeinsätze, Rangliste und Einstufung.
  *
  * Reines Modul: jede Ableitung der Seiten `BewertungPage`/`EnergieeinsatzSeite` und ihrer Dialoge steht hier, damit sie
- * ohne DOM prüfbar ist. Nichts rechnet, nichts stuft ein (§8.4 M1): die Anlagenzahl des Umfangs ist die Zahl der Route
- * (nur y), einen Nenner in kWh gibt es erst mit IP-9 — hier wird er weder gerechnet noch angedeutet.
+ * ohne DOM prüfbar ist. Zahlen und Kriterienurteile kommen aus der Ranglistenroute; das Portal formatiert sie nur.
+ * Eine Einstufung entsteht ausschließlich durch die begründete Entscheidung einer Person (§8.4 M2).
  *
  * Rechte (R14): sehen mit `energieeinsatz.ansehen` am Unternehmen ODER an einem Standort; anlegen, ändern, beenden und
  * den Umfang festlegen nur mit `energieeinsatz.verwalten` am Unternehmen. Entscheiden tut weiter die Route.
@@ -14,6 +14,11 @@ import {
   type BewertungUmfang,
   type BewertungUmfangAusschluss,
   type BewertungUmfangSpeichern,
+  type BewertungKriterienFassung,
+  type BewertungKriterienWerte,
+  type BewertungRangliste,
+  type BewertungRanglisteEinsatz,
+  type EnergieeinsatzEinstufungFassung,
   type EnergieTraeger,
   type Energieeinsatz,
   type EnergieeinsatzAenderung,
@@ -27,7 +32,7 @@ import {
 } from './api';
 import type { BenutzerEintrag } from './benutzer';
 import type { VpGruppe, VpOption } from './picker/optionen';
-import { UEMS_BEWERTUNG, UEMS_BEWERTUNG_SAETZE, UEMS_ENERGIEEINSAETZE, UEMS_ENERGIEEINSATZ } from './glossar';
+import { UEMS_BEWERTUNG, UEMS_BEWERTUNG_SAETZE, UEMS_BEWERTUNG_URTEILE, UEMS_EINSTUFUNGEN, UEMS_ENERGIEEINSAETZE, UEMS_ENERGIEEINSATZ } from './glossar';
 
 // ------------------------------------------------------------------ Wörter
 
@@ -479,3 +484,50 @@ export function ladeFehler(e: unknown): { satz: string; erneut: boolean } {
     return { satz: 'Die Bewertung ist für Ihr Konto nicht verfügbar.', erneut: false };
   return { satz: 'Die Energieeinsätze konnten nicht geladen werden.', erneut: true };
 }
+
+// ------------------------------------------------------------------ Rangliste, Einstufung und Kriterien (AP-16 IP-12)
+
+/** Der letzte abgeschlossene Kalendermonat in der Unternehmenszeitzone. */
+export function bewertungZeitraum(jetzt: Date = new Date()) {
+  const teile = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit' })
+    .formatToParts(jetzt).reduce<Record<string, string>>((a, x) => ({ ...a, [x.type]: x.value }), {});
+  const ersterDieser = new Date(Date.UTC(Number(teile.year), Number(teile.month) - 1, 1));
+  const letzter = new Date(ersterDieser.getTime() - 86_400_000);
+  const y = letzter.getUTCFullYear(), m = String(letzter.getUTCMonth() + 1).padStart(2, '0');
+  const bis = `${y}-${m}-${String(new Date(Date.UTC(y, letzter.getUTCMonth() + 1, 0)).getUTCDate()).padStart(2, '0')}`;
+  return { von: `${y}-${m}-01`, bis, label: letzter.toLocaleDateString('de-DE', { month: 'long', year: 'numeric', timeZone: 'UTC' }) };
+}
+
+export const zahlMitEinheit = (wert: string | null, einheit: string | null) => {
+  if (wert === null) return 'keine Werte';
+  const n = Number(wert);
+  const stellen = einheit === 'kWh' ? 0 : 1;
+  return `${n.toLocaleString('de-DE', { minimumFractionDigits: stellen, maximumFractionDigits: stellen })}\u00a0${einheit ?? ''}`.trim();
+};
+
+export const prozentText = (wert: string | null) => wert === null ? '—' : `${Number(wert).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}\u00a0%`;
+export const urteilText = (wert: string) => UEMS_BEWERTUNG_URTEILE[wert as keyof typeof UEMS_BEWERTUNG_URTEILE] ?? wert;
+export const vorschlagText = (wert: BewertungRanglisteEinsatz['vorschlag']) => wert === 'ueber_schwelle' ? 'über Schwelle' : 'unter Schwelle';
+export const einstufungText = (wert: EnergieeinsatzEinstufungFassung['einstufung']) => UEMS_EINSTUFUNGEN[wert];
+
+export function ranglisteKopf(r: BewertungRangliste, label: string) {
+  if (r.nenner.wert === null || r.abdeckung_prozent === null) return `Stromeinsatz ${label}: ohne vollständigen Nenner · ${r.nenner.anlagen} Anlagen.`;
+  return UEMS_BEWERTUNG_SAETZE.ranglisteKopf(label.split(' ')[0], Number(label.split(' ')[1]), Number(r.nenner.wert), r.nenner.vorhanden, r.nenner.gesamt, Number(r.abdeckung_prozent));
+}
+
+export function groessterRest(r: BewertungRangliste) {
+  return r.anlagen.filter((a) => a.rest !== null).sort((a, b) => Number(b.rest) - Number(a.rest))[0] ?? null;
+}
+
+export const darfEinstufen = (s: Rechte | null | undefined) => !!s && s.unternehmen_rechte.includes('energieeinsatz.einstufen');
+export const darfKriterienAendern = (s: Rechte | null | undefined) => !!s && s.unternehmen_rechte.includes('bewertung.kriterien');
+
+export const KRITERIEN_NAMEN: Record<keyof BewertungKriterienWerte, string> = {
+  K1: 'K1 · Anteil am Stromeinsatz', K2: 'K2 · Kumulierter Block', K3: 'K3 · Jahresmenge',
+  K5: 'K5 · Datenlage', K6: 'K6 · Ersatzwert-Anteil', K7: 'K7 · Volle Monate',
+  K8: 'K8 · Messabdeckung', mindest_monate: 'K7 · Vorläufig bis',
+};
+export const KRITERIEN_EINHEIT: Record<keyof BewertungKriterienWerte, string> = {
+  K1: '%', K2: '%', K3: 'kWh', K5: '%', K6: '%', K7: 'Monate', K8: '%', mindest_monate: 'Monate',
+};
+export const kriterienStarttext = (f: BewertungKriterienFassung, key: keyof BewertungKriterienWerte) => `${f.werte[key]} ${KRITERIEN_EINHEIT[key]}`;

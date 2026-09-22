@@ -9387,6 +9387,12 @@ export const api = {
   /** Speichert den Umfang als neue Fassung; identischer Inhalt liefert dieselbe Fassung. */
   bewertungUmfangSpeichern: (body: BewertungUmfangSpeichern) =>
     request<BewertungUmfang>(`/api/v1/unternehmen/bewertung/umfang`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** UEMS AP-16 IP-12: Rangliste mit Urteil und Vorschlag; die Einstufung bleibt eine Entscheidung einer Person. */
+  bewertungRangliste: (von: string, bis: string) =>
+    request<BewertungRangliste>(`/api/v1/unternehmen/bewertung/rangliste?${new URLSearchParams({ von, bis }).toString()}`),
+  bewertungKriterien: () => request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien`),
+  bewertungKriterienSpeichern: (body: BewertungKriterienSpeichern) =>
+    request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien`, { method: 'PUT', body: JSON.stringify(body) }),
   /** UEMS AP-16 IP-4: die Energieeinsätze, laufende zuerst; Ablehnungen tragen `EnergieeinsatzFehlerCode`. */
   energieeinsaetze: () => request<{ energieeinsaetze: Energieeinsatz[] }>(`/api/v1/unternehmen/energieeinsaetze`),
   /** Prozesse ohne laufenden Einsatz für Strom — die Vorschläge des Prozess-Pickers. */
@@ -9413,6 +9419,14 @@ export const api = {
     }),
   energieeinsatzProtokoll: (id: string) =>
     request<{ aenderungen: EnergieeinsatzAenderung[] }>(`/api/v1/unternehmen/energieeinsaetze/${id}/protokoll`),
+  energieeinsatzEinstufungen: (id: string) =>
+    request<EnergieeinsatzEinstufungHistorie>(`/api/v1/unternehmen/energieeinsaetze/${id}/einstufungen`),
+  energieeinsatzEinstufen: (id: string, body: EnergieeinsatzEinstufungSpeichern) =>
+    request<EnergieeinsatzEinstufungFassung>(`/api/v1/unternehmen/energieeinsaetze/${id}/einstufung`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+  energieeinsatzEinstufungBestaetigen: (id: string) =>
+    request<EnergieeinsatzEinstufungFassung>(`/api/v1/unternehmen/energieeinsaetze/${id}/einstufung/bestaetigen`, { method: 'POST' }),
 };
 
 /** AP-09 K1/K7: Minutenintervall [von,bis), Parameter bleiben mit der Bindung erhalten. */
@@ -9487,6 +9501,67 @@ export interface BewertungUmfangSpeichern {
   ausschluesse: BewertungUmfangAusschluss[];
   begruendung?: string | null;
 }
+
+export interface BewertungKriterienWerte {
+  K1: string; K2: string; K3: string; K5: string; K6: string; K7: number; K8: string; mindest_monate: number;
+}
+export type BewertungUrteil = 'ueber_schwelle' | 'unter_schwelle' | 'nicht_anwendbar' | 'nicht_belastbar';
+export type BewertungGueltigkeitsUrteil = 'erfuellt' | 'vorbehalt_datenlage' | 'vorbehalt_ersatzwerte';
+export interface BewertungEinsatzUrteil {
+  K1: BewertungUrteil; K2: BewertungUrteil; K3: BewertungUrteil;
+  K5: BewertungGueltigkeitsUrteil; K6: BewertungGueltigkeitsUrteil;
+}
+export interface BewertungHerkunftEingang {
+  objekt: string; von: string; bis: string; wert: string | null; version: number | null; zustand: string | null;
+}
+export interface BewertungBilanzEingang { objekt: string; wert: string | null; version: number; zustand: string | null }
+export interface BewertungBilanzwert {
+  anlage: string; von: string; bis: string; wert: string | null; version: number; zustand: string;
+  eingaenge: BewertungBilanzEingang[];
+}
+export interface BewertungHerkunftEntwurf {
+  zeitraum: string; kriterien_fassung: number; eingaenge: BewertungHerkunftEingang[];
+  nenner: { wert: string | null; anlagen: string; bilanzwerte: BewertungBilanzwert[] } | null;
+  urteil: BewertungEinsatzUrteil; vorschlag: 'ueber_schwelle' | 'unter_schwelle';
+}
+export interface BewertungRanglisteEinsatz {
+  id: string; kennzeichen: string; name: string; prozess_id: string; traeger: EnergieTraeger; einheit: string | null;
+  menge: string | null; zustand: string; ersatz: string | null; ersatz_prozent: string | null; datenlage_prozent: string | null;
+  anteil_prozent: string | null; kumuliert_zugeordnet_prozent: string | null; anteil_zustand: string; rang: number | null;
+  urteil: BewertungEinsatzUrteil; vorschlag: 'ueber_schwelle' | 'unter_schwelle'; herkunft: BewertungHerkunftEntwurf;
+  messstellen: unknown[];
+}
+export interface BewertungRangliste {
+  von: string; bis: string; umfang_id: string | null; umfang_fassung: number | null; teilansicht: boolean; monate: number;
+  kriterien: { fassung: number; werte: BewertungKriterienWerte };
+  urteil: { K7: 'erfuellt' | 'unter_zwoelf' | 'vorlaeufig'; K8: BewertungUrteil };
+  nenner: { wert: string | null; einheit: 'kWh' | null; vorhanden: number; gesamt: number; anlagen: string; zustand: string };
+  zugeordnet: string | null; rest: string | null; abdeckung_prozent: string | null; zustand: string;
+  anlagen: { id: string; name: string; ab: string | null; nenner: string | null; zugeordnet: string | null; rest: string | null; rest_anteil_prozent: string | null; zustand: string }[];
+  einsaetze: BewertungRanglisteEinsatz[]; weitere_traeger: BewertungRanglisteEinsatz[];
+}
+export interface BewertungKriterium {
+  kennung: 'K1' | 'K2' | 'K3' | 'K4' | 'K5' | 'K6' | 'K7' | 'K8';
+  schwelle: string | number | null; einheit: '%' | 'kWh' | 'Monate' | null; vergleich: '>=' | '<=' | '=' | 'kumuliert bis' | null;
+}
+export interface BewertungKriterienFassung {
+  fassung: number; werte: BewertungKriterienWerte; kriterien: BewertungKriterium[]; herkunft: 'Vorgabe' | 'Unternehmen';
+  gueltig_ab: string | null; begruendung: string | null; akteur: BewertungAkteur | null; vieraugen: boolean;
+  freigabe_status: 'beantragt' | 'freigegeben' | 'abgelehnt'; entschieden_von: BewertungAkteur | null;
+  entschieden_am: string | null; entscheidungs_begruendung: string | null; created_at: string | null; aufgehoben_am: string | null;
+}
+export interface BewertungKriterienSpeichern { werte: BewertungKriterienWerte; begruendung: string }
+
+export interface EnergieeinsatzEinstufungSpeichern {
+  einstufung: 'wesentlich' | 'nicht_wesentlich'; begruendung: string; grund: ('K1' | 'K2' | 'K3' | 'K4')[];
+  gueltig_ab?: string; herkunft: BewertungHerkunftEntwurf;
+}
+export interface EnergieeinsatzEinstufungFassung extends Omit<EnergieeinsatzEinstufungSpeichern, 'gueltig_ab'> {
+  fassung: number; vorgeschlagen_ab: string; gueltig_ab: string | null; gueltig_bis: string | null; rueckwirkend: boolean;
+  akteur: BewertungAkteur; vieraugen: boolean; freigabe_status: 'beantragt' | 'freigegeben';
+  entschieden_von: BewertungAkteur | null; entschieden_am: string | null; created_at: string;
+}
+export interface EnergieeinsatzEinstufungHistorie { fassungen: EnergieeinsatzEinstufungFassung[] }
 
 export type BewertungUmfangFehlerCode =
   | 'anfrage_ungueltig' | 'nicht_gefunden' | 'traeger_unbekannt' | 'standort_unbekannt'
