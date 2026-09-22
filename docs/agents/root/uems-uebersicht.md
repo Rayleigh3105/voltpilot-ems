@@ -7,6 +7,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 ## Verträge
 
 - **Energetische Bewertung (AP-16 IP-2, NW-1)** — Nenner aus Anlagenbilanzen, direkte Messstellenmengen, Kriterien und Rangliste, Abdeckung, Prozess-Summen-Hinweise und Vergleichstoleranz; drei reine Zwillinge gegen dieselben Vektoren, Prozentvergleich ungerundet, keine Einstufung · [Vertrag und Prüfläufe](uems-bewertung-vertrag.md)
+- **Betrachtungsumfang (AP-16 IP-5, U1/U2/N4)** — Fassungen am Unternehmen, Anlagen aus zeitgültigen Standortbindungen, Ausschlüsse mit Grund; nur Anlagenzahl, Bilanzanteil erst IP-9 · [Vertrag und Grenzen](uems-bewertung-umfang.md)
 - **Energieeinsatz: Datenhaltung und Routen (AP-16 IP-3/IP-4)** — Prozess × Träger, EE-Zähler, Verantwortlichen-Schnappschuss, Einflussgrößen und atomare Protokollierung; Unternehmens-Routen mit Messstellen-Standort-Zaun, R14 und lesbare Bezugsgrößen-Löschsperre; RLS, kein App-DELETE; Offboarding vor Benutzer/Bezugsgröße/Prozess · [Grenzen und Nachweise](uems-energieeinsatz.md)
 
 
