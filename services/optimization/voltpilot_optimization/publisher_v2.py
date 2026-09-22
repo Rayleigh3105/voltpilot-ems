@@ -164,8 +164,10 @@ def plan_je_box(
     Nebenbedingung) dieser Box, alles andere der fuehrenden. Eine mitsteuernde
     Box, die der Planer als belegt rechnet (stumm, unbestaetigt, ohne
     Faehigkeit), bekommt nichts - auch keine Ruecknahme; ihre Entitaeten stehen
-    in keinem Dokument. ``grid_import_limit_kw`` (das Lastspitzen-ZIEL) traegt
-    nur die fuehrende Box. Reihenfolge: fuehrende, Speicher-Box, mitsteuernde.
+    in keinem Dokument. Das gilt nach einem Box-Tausch ebenso fuer die
+    unbestaetigte fuehrende Nachfolgerin; die mitsteuernden Boxen bekommen ihre
+    Dokumente weiter. ``grid_import_limit_kw`` (das Lastspitzen-ZIEL) traegt nur
+    die fuehrende Box. Reihenfolge: fuehrende, Speicher-Box, mitsteuernde.
     """
     if stand is None or stand.fuehrende is None:
         return [BoxDokument(plan.device_id, plan_v2_topic(plan), build_plan_v2_payload(plan))]
@@ -184,6 +186,8 @@ def plan_je_box(
 
     dokumente: list[BoxDokument] = []
     for box in reihenfolge:
+        if box == fuehrende and stand.fuehrende_belegt:
+            continue
         mit = mitsteuernde.get(box)
         if mit is not None and not mit.bekommt_plan:
             continue

@@ -102,6 +102,10 @@ class VerbundStand:
     #: (IP-15). ``None`` = keine gueltige fuehrende Box: dann bleibt es beim
     #: EINEN Dokument von heute.
     fuehrende: UUID | None = None
+    #: R17: Nach einem Box-Tausch bleibt auch eine fuehrende Nachfolgerin bis
+    #: zur Bestaetigung durch den Betreiber belegt. Der Anlagenlauf findet
+    #: weiter statt, aber sie bekommt solange kein Plan-Dokument.
+    fuehrende_belegt: bool = False
 
 
 @dataclass(frozen=True)
@@ -227,7 +231,7 @@ ORDER BY v.site_id, m.device_id
 #: IP-15: die fuehrende Box je Anlage (hoechstens eine ``fuehrt`` je Zeitpunkt,
 #: von der Datenbank erzwungen - IP-4).
 _FUEHRENDE_SQL = """
-SELECT v.site_id, f.device_id
+SELECT v.site_id, f.device_id, f.bestaetigt_am
 FROM steuerungsverbund_mitglied f
 JOIN steuerungsverbund v
   ON v.id = f.steuerungsverbund_id AND v.tenant_id = f.tenant_id
@@ -295,7 +299,10 @@ def load_verbund(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict
             cur.execute(_VERBRAUCHER_SQL, {"sites": sites})
             verbraucher_rows = cur.fetchall()
             cur.execute(_FUEHRENDE_SQL, {"jetzt": jetzt, "sites": sites})
-            fuehrende = dict(cur.fetchall())
+            fuehrende = {
+                sid: (box, bestaetigt_am is None)
+                for sid, box, bestaetigt_am in cur.fetchall()
+            }
     except psycopg.errors.UndefinedTable:
         logger.warning("verbund.table_missing")
         return {}
@@ -337,7 +344,8 @@ def load_verbund(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict
         sid: VerbundStand(
             mitsteuernde=tuple(liste),
             pv_kwp_gesamt=pv_gesamt.get(sid, 0.0),
-            fuehrende=fuehrende.get(sid),
+            fuehrende=fuehrende.get(sid, (None, False))[0],
+            fuehrende_belegt=fuehrende.get(sid, (None, False))[1],
         )
         for sid, liste in boxen.items()
     }

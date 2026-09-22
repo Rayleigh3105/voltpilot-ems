@@ -531,7 +531,7 @@ def test_load_verbund_liest_den_planwert_je_richtung_und_die_stummen(monkeypatch
         ],
         pv=[(SITE, E_1, 100.0), (SITE, E_4, 60.0), (SITE, None, 0.0)],
         verbraucher=[(SITE, E_4, "ahr-lp-02"), (SITE, E_4, "ahr-lp-03")],
-        fuehrende=[(SITE, E_1)],
+        fuehrende=[(SITE, E_1, jetzt)],
     )
     _psycopg(monkeypatch, cursor)
     stand = load_verbund("dsn", jetzt)[SITE]
@@ -543,6 +543,7 @@ def test_load_verbund_liest_den_planwert_je_richtung_und_die_stummen(monkeypatch
     assert e5.einspeisung_kw is None  # E-5 steht in keinem Dokument
     assert e6.stumm  # nach dem Box-Tausch noch nicht bestaetigt (R17)
     assert stand.fuehrende == E_1  # IP-15: Empfaenger von allem ohne mitsteuernde Box
+    assert not stand.fuehrende_belegt
     assert (e4.bekommt_plan, e5.bekommt_plan, e6.bekommt_plan) == (True, False, False)
     assert "v.stufe = 'anteile_aktiv'" in cursor.abfragen[0]
     assert "m.rolle = 'steuert_mit'" in cursor.abfragen[0]
