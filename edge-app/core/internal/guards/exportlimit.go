@@ -272,6 +272,13 @@ type ExportLimiter struct {
 	wertKw             float64
 	ankerPv, ankerBatt float64
 	ankerBattValid     bool
+	// messung counts the accepted samples (Observe) - the identity of the
+	// measurement an evaluation reads. einSpielraum gives the headroom of one
+	// measurement out once: spielraumVor is the discharge ceiling before the
+	// first evaluation of measurement spielraumMessung (exportanteil.go).
+	messung, spielraumMessung uint64
+	spielraumVor              float64
+	spielraumValid            bool
 }
 
 // NewExportLimiter returns an idle watchdog (no measurement, no cap).
@@ -297,6 +304,7 @@ func (l *ExportLimiter) Observe(ts time.Time, gridKw, pvKw float64) (urgent bool
 		return false
 	}
 	l.seen, l.at, l.gridKw, l.pvKw = true, ts, gridKw, math.Max(pvKw, 0)
+	l.messung++
 	if !l.limitValid || !l.capValid {
 		return false
 	}

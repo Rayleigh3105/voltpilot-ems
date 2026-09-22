@@ -69,6 +69,11 @@ const ExportAnteilWindow = 60 * time.Second
 // mutation probe of the tests (stehender_wert_test.go), never set outside them.
 var ohneStehSperre bool
 
+// ohneJeMessung counts the headroom of einSpielraum per evaluation again, as
+// on uems - the mutation probe of einspielraum_je_messung_test.go, never set
+// outside it.
+var ohneJeMessung bool
+
 // ExportAnteil is the own feed-in share of a held share document.
 type ExportAnteil struct {
 	// AnteilKw is the box's own share in the direction einspeisung (kW).
@@ -375,9 +380,10 @@ func (l *ExportLimiter) schattenLocked() *ExportLimiter {
 // each see all of it, so after a state in which both actuators were lowered -
 // blind on the share, or a probing adjustment - both released it, and the
 // plant pushed that headroom twice. Now the discharge takes first what its
-// ceiling rose in this evaluation (the last actuator to be cut is the first to
-// be released, V6), and the producers get what is left: the PV cap is at most
-// the PV law's target minus that rise. Only the RISE of the ceiling counts -
+// ceiling rose on this measurement (the last actuator to be cut is the first
+// to be released, V6), and the producers get what is left: the PV cap is at
+// most the PV law's target minus that rise - over ALL evaluations of the one
+// measurement, not per evaluation. Only the RISE of the ceiling counts -
 // never the gap between a plan and a battery that cannot follow it (SoC,
 // limits), which would hold the producers down for nothing. A ceiling born in
 // this evaluation rises from the discharge measured under it. Caller holds
@@ -392,6 +398,16 @@ func (l *ExportLimiter) einSpielraum(now time.Time, limit, discharge, dcapVor fl
 		vor = math.Min(dcapVor, discharge)
 	case l.battValid:
 		vor = math.Min(math.Max(-l.battKw, 0), discharge)
+	}
+	// ONE measurement, not one evaluation: a second evaluation of the same
+	// sample (an urgent nudge and the tick before the next sample) counts
+	// the rise from where the ceiling stood before the FIRST one - what the
+	// discharge took there is taken from the producers again. Only ever a
+	// larger rise, so only ever a lower PV cap (V5).
+	if l.spielraumValid && l.spielraumMessung == l.messung && !ohneJeMessung {
+		vor = math.Min(vor, l.spielraumVor)
+	} else {
+		l.spielraumValid, l.spielraumMessung, l.spielraumVor = true, l.messung, vor
 	}
 	anstieg := math.Min(l.dcap, discharge) - vor
 	if anstieg <= 0 {
@@ -409,9 +425,7 @@ func (l *ExportLimiter) einSpielraum(now time.Time, limit, discharge, dcapVor fl
 // headroom (see the file doc). The laws above read the newest PV and battery,
 // which followed every release while the frozen grid value did not show it -
 // they would find the same headroom again on every sample; this takes back
-// whatever goes beyond the proof, and with it what two evaluations of the one
-// moved sample gave out twice (einSpielraum counts the rise of ONE
-// evaluation). The producers are cut first (V6: the discharge is the last
+// whatever goes beyond the proof. The producers are cut first (V6: the discharge is the last
 // actuator). Only ever lowers; on a healthy standing value (nothing moved,
 // nothing released) the loop already sits exactly on the proof. Caller holds
 // l.mu.
