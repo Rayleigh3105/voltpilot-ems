@@ -281,6 +281,10 @@ class KennzahlVectorsTest {
             if (BerichtRegeln.EREIGNISSE_RESERVIERT.contains(art + "/" + bezug)) {
                 continue; // die Reservierungen der Berichte prüft BerichtVectorsTest (AP-12 IP-1)
             }
+            if (List.of("einstufung_gesetzt/energieeinsatz", "messbedarf_erfasst/messbedarf",
+                    "messbedarf_eingeloest/messbedarf").contains(art + "/" + bezug)) {
+                continue; // AP-16 IP-3: EreignisVokabularVectorsTest prüft diese Reservierungen.
+            }
             reserviert.add(art + "/" + bezug);
             JsonNode angelegt = arten.get(art);
             if (angelegt == null) {

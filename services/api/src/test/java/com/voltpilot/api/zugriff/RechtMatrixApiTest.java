@@ -294,16 +294,19 @@ class RechtMatrixApiTest {
     /**
      * Zeilen der Gruppen 1–3 ohne Zeile oben — und warum. Der Test hält die Liste mit der Matrix-Datei zusammen.
      */
-    private static final Map<String, String> OHNE_SCHREIBROUTE = Map.of(
-            "aenderung.rueckwirkend", "genaue Prüfung im Körper — genaueRechtePruefungImAnfragekoerper",
-            "aenderungsprotokoll.lesen", "lesend — Standort-Zaun (IP-5)",
-            "korrektur.erfassen", "keine Schreibroute (Korrektur erfassen ist noch nicht gebaut)",
-            "ersatzwert.erfassen", "keine Schreibroute (Ersatzwert erfassen ist noch nicht gebaut)",
-            "messwerte.ansehen", "lesend — Standort-Zaun (IP-5), Teilansicht IP-10/IP-11",
-            "bericht.standort_abrufen", "lesend — IP-11",
-            "export.standort", "lesend — IP-11",
-            "export.unternehmen", "lesend — IP-11",
-            "auswertung.anlegen", "keine Schreibroute (Eigene Auswertung liest nur)");
+    private static final Map<String, String> OHNE_SCHREIBROUTE = Map.ofEntries(
+            Map.entry("aenderung.rueckwirkend", "genaue Prüfung im Körper — genaueRechtePruefungImAnfragekoerper"),
+            Map.entry("aenderungsprotokoll.lesen", "lesend — Standort-Zaun (IP-5)"),
+            Map.entry("korrektur.erfassen", "keine Schreibroute (Korrektur erfassen ist noch nicht gebaut)"),
+            Map.entry("ersatzwert.erfassen", "keine Schreibroute (Ersatzwert erfassen ist noch nicht gebaut)"),
+            Map.entry("messwerte.ansehen", "lesend — Standort-Zaun (IP-5), Teilansicht IP-10/IP-11"),
+            Map.entry("bericht.standort_abrufen", "lesend — IP-11"),
+            Map.entry("export.standort", "lesend — IP-11"),
+            Map.entry("export.unternehmen", "lesend — IP-11"),
+            Map.entry("auswertung.anlegen", "keine Schreibroute (Eigene Auswertung liest nur)"),
+            Map.entry("energieeinsatz.verwalten", "reserviert für AP-16 IP-4; Einstufungs-Schreibweg IP-12"),
+            Map.entry("energieeinsatz.einstufen", "reserviert für AP-16 IP-4; Einstufungs-Schreibweg IP-12"),
+            Map.entry("energieeinsatz.ansehen", "reserviert für AP-16 IP-4; Einstufungs-Schreibweg IP-12"));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {

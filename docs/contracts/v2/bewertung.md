@@ -1,6 +1,6 @@
 # Energetische Bewertung und Messplanung (AP-16)
 
-Vertrag 1.0 · 22.09.2026 · IP-2 / NW-1. Grundlage: das entschiedene AP-16-Konzept
+Vertrag 1.0 · 22.09.2026 · IP-2/IP-3 / NW-1. Grundlage: das entschiedene AP-16-Konzept
 §4.2–4.8, §7 R1/R2/R4/R6/R9/R16; E2/E4/E10 = A und W4/W12.
 **Zahlen schlagen vor, eine Person stuft ein, nichts verschwindet.**
 
@@ -13,7 +13,8 @@ Die Python-Funktionen `menge`, `prozent` und `rangliste` sind aus `k_faelle.py` 
 Prozente und dessen Epsilon-Rundung sind gemäß KR4 korrigiert. `fall` war ausschließlich
 eine Report-Hülle; ihre Rolle übernehmen `name`, `quelle`, `eingang`, `erwartet` der Vektoren.
 
-Es gibt hier keine Datenhaltung, Route, Portal-Fläche oder automatische Einstufung.
+Die Rechenregeln erzeugen keine Einstufung. Die Datenhaltung des Energieeinsatzes steht in §7;
+Routen und Portal-Fläche folgen in eigenen Paketen.
 Noch kein Produktivaufrufer ist angebunden. Die Eingänge sind bereits gelesene Bilanz-
 und Monatswerte derselben Periode und desselben Trägers. Verbrauchsbildung, Bilanz,
 Kennzahlen und Prozess-Summen bleiben bei ihren bestehenden Verträgen (W4).
@@ -164,3 +165,36 @@ Grenzen, geplante Messstellen und K2-Blockgrenzen sind eigene Vektoren.
 Nicht Bestandteil dieses Nachweises: Datenbankleser, Fassungsverwaltung, Rechte,
 Einstufungs-Schreibwege, Kaskaden und sichtbare Flächen; dafür folgen eigene Pakete.
 Die Regeln erzeugen weder Box-Aufträge noch Optimiererpläne und benötigen kein Docker.
+
+## 7. Datenhaltung (IP-3, B1/B4/B5)
+
+`energieeinsatz` ist ein eigenes Objekt mit genau einem unveränderten Prozess und einem
+Träger aus dem Medium-Vokabular (`Strom`, `Gas`, `Wärme`, `Kälte`, `Wasser`, `Druckluft`).
+`energieeinsatz_kennzeichen_seq` zählt je Mandant atomar `EE-1`, `EE-2`, …; die Kennzeichen
+bleiben nach dem Ende belegt. Der partielle Unique-Index `(tenant_id, prozess_id, traeger)
+WHERE gueltig_bis IS NULL` verhindert einen zweiten laufenden Einsatz. Tage gelten
+inklusive `gueltig_bis`; Beenden setzt zusätzlich Zeitpunkt und Grund. Name, Wortlaut und
+Verbraucher-Wortlaut stehen am Einsatz. Relevante Unterprozesse bleiben Prozesse; die
+Referenzwelt 1.6 benötigt keine zusätzliche Komponenten-Verknüpfung und kein Verbraucherobjekt.
+
+`verantwortlich_sub` verweist mit `tenant_id` auf `benutzer`; Name und Konto werden beim
+Setzen aus dem Benutzerspiegel kopiert. Ein Konto-Ende löscht den Spiegel nicht: der Leser
+liefert dessen Zustand und bei Entfernung den Zeitpunkt aus `zugriff_protokoll` als
+`ohneKontoSeit`, der Name bleibt als Schnappschuss. Verantwortung verleiht kein Recht.
+`energieeinsatz_einflussgroesse` trägt geordnete Verweise auf Bezugsgrößen oder genau einen
+Wortlaut; `art` ist geschlossen auf `produktion`, `betriebszeit`, `wetter`, `sonstige`.
+Bei Referenzeinträgen ist deren `text` die Beschriftung der Bezugsgröße, kein zusätzlicher
+Wortlaut. Ersetzen hebt Vorgänger auf und fügt neue Zeilen an; es wird nichts gerechnet.
+
+`energieeinsatz_aenderung` hält `angelegt`, `bearbeitet`, `verantwortlicher`,
+`einflussgroessen`, `beendet` mit Alt/Neu-JSON, Akteur und Zeitpunkt. Die mutierenden Methoden
+von `EnergieeinsatzRepository` sperren den Einsatz und schreiben Änderung plus Protokoll in
+einer Transaktion. Alle vier Tabellen haben RLS und FORCE mit USING/WITH CHECK sowie
+gezielte App-Grants; das Protokoll ist für `voltpilot_app` nur lesbar und anfügbar, DELETE
+bleibt überall entzogen. Zusammengesetzte Fremdschlüssel verhindern mandantenfremde Ziele;
+eine referenzierte Bezugsgröße kann auch über ihren bestehenden Löschweg nicht verschwinden.
+Nur `TenantRepository.offboard` löscht administrativ: Protokoll/Einflussgrößen vor Einsatz,
+Zähler und vor Benutzer/Bezugsgröße/Prozess. Es gibt keinen Seed und keine Route. Die spätere
+Route prüft zusätzlich den Standort-Zaun über Messstellen (R14), nicht über die verantwortliche
+Person. `EnergieeinsatzDatenhaltungTest` prüft DB-Grenzen, Referenzwelt und Offboarding;
+`UemsProduktionsreihenfolgeMigrationTest` prüft frische DB gegen den Out-of-order-Nachzug.

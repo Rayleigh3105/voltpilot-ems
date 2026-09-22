@@ -2306,6 +2306,39 @@
       "gelesen_von": "AP-12 — „wer hat welchen Stand gesehen“ (bericht.md DA5)",
       "regel": "Eine Person ruft PDF oder CSV eines Berichtsstands ab — nie eines Entwurfs (EW4): Stand, Format, Person, Zeitpunkt und Teilansicht. Jeder Abruf ist eine Meldung.",
       "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_abgerufen` mit Pflicht nr, format; es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
+    },
+    {
+      "art": "einstufung_gesetzt",
+      "bezug": "energieeinsatz",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-16 IP-11/IP-12; Reservierung mit IP-3",
+      "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
+      "regel": "Eine Person setzt eine Einstufungs-Fassung am Energieeinsatz (EE-…) mit Begründung und Herkunfts-Satz; Zahlen allein stufen niemals ein.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+    },
+    {
+      "art": "messbedarf_erfasst",
+      "bezug": "messbedarf",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-16 IP-19/IP-20; Reservierung mit IP-3",
+      "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
+      "regel": "Eine Person erfasst einen offenen Messbedarf am Energieeinsatz.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+    },
+    {
+      "art": "messbedarf_eingeloest",
+      "bezug": "messbedarf",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-16 IP-19/IP-20; Reservierung mit IP-3",
+      "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
+      "regel": "Eine Person löst einen Messbedarf durch eine eingerichtete Messstelle ein; die Historie bleibt erhalten.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
     }
   ],
   "cases": [
