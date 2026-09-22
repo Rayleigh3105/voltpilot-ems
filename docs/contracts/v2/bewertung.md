@@ -1,6 +1,6 @@
 # Energetische Bewertung und Messplanung (AP-16)
 
-Vertrag 1.1 · 22.09.2026 · IP-2/IP-3/IP-4/IP-5/IP-8/IP-9/IP-10/IP-11 / NW-1/NW-2. Grundlage: das entschiedene AP-16-Konzept
+Vertrag 1.1 · 22.09.2026 · IP-2/IP-3/IP-4/IP-5/IP-8/IP-9/IP-10/IP-11/IP-15/IP-17 / NW-1/NW-2. Grundlage: das entschiedene AP-16-Konzept
 §4.2–4.8, §7 R1/R2/R4/R6/R9/R16; E2/E4/E10 = A und W4/W12.
 **Zahlen schlagen vor, eine Person stuft ein, nichts verschwindet.**
 
@@ -190,9 +190,13 @@ Vergleich oder bei führend ≤ 0 ist die Prüfung unbekannt (`befund: null`), n
 R9 (**Annahme**): 131200 zu 129700 → **1,1 %**, kein Befund;
 131200 zu 126700 → **3,4 %**, Befund ohne Ursache.
 
+Der Monatsvergleich (`monatsvergleich`, IP-17) setzt `toleranz` nur ein, wenn beide Seiten
+vollständig gemessen und die Vergleichsquelle den ganzen Monat gilt; sonst
+`nicht_vergleichbar` mit Grund. Fassung, Lesemodell und Route: §13.
+
 ## 6. Nachweis und Grenzen
 
-62 Vektoren: N1 1, N2 5, B3 12, KR2 9, KR3 2, KR4 6, P3 15, P4 3, G5 9.
+71 Vektoren: N1 1, N2 5, B3 12, KR2 9, KR3 2, KR4 6, P3 15, P4 3, G5 18 (9 `toleranz`, 9 `monatsvergleich`).
 `BewertungVectorsTest`, `uemsBewertung.test.ts`, `tests/test_bewertung.py` fahren alle
 gegen dieselbe Datei. Schema-Negativproben verwerfen zusätzliche Felder und Float-
 Mengen. Der Python-Test verbindet die Oktoberzahlen und Startkriterien zusätzlich mit
@@ -462,3 +466,56 @@ Rechte je Rolle mit Zaun, RLS, Offboarding) und `MessmittelSchnittstelleVertragT
 (DTO ⟷ OpenAPI ⟷ Migration ⟷ Referenz-Vokabular). Nicht hier: Katalog-Genauigkeit
 (IP-16), Toleranz (IP-17), Messmittel-Blatt und Dialog im Portal (IP-18), die
 Prüfaufgabe im Bewertungsstand (IP-21).
+
+## 13. Toleranz je Vergleichsquelle und Monatsvergleich (IP-17, G5, R9, E10 = A)
+
+**Fassung:** Die Toleranz gehört an die Vergleichsquelle — die Bindung `messstelle_quelle`
+der Rolle `vergleich` — als Fassung in `vergleich_toleranz` (`V20260922251700`, RLS +
+FORCE, nur SELECT/INSERT). **Fassung 1** ist der Startwert 2 % je Monat und wird nie
+gespeichert; sie gilt ab dem Monat des Beginns der Vergleichsquelle. Jede Änderung ist
+eine Fassung n + 1 mit Begründung (1–500 Zeichen) und Akteur, gültig ab dem laufenden
+Monat in der Zeitzone der Messstelle — nie rückwirkend: ein abgeschlossener Monat wird
+nie nachträglich anders beurteilt, ein Befund verschwindet nicht durch eine spätere,
+großzügigere Toleranz. Ein Monat gilt mit der höchsten Fassung, die ab ihm oder früher
+gilt. Dieselbe Toleranz wie die wirksame schreibt nichts. Der Trigger
+`vergleich_toleranz_nur_vergleich` hält eine Toleranz von der führenden Quelle fern.
+Eine eigene Tabelle statt einer Art in `quelle_einstellung`: jene Fassungen hängen am
+Einbau, wirken auf den Messwert und stehen in der Einstellungs-Liste des Geräts; die
+Toleranz ändert keinen Wert und gilt je Bindung (ein Messwert kann an zwei Messstellen
+vergleichen).
+
+**Monatsvergleich** (reines Lesemodell, `VergleichToleranzService`): je Monat die
+führende Monatsmenge der Hauptgröße, wie `…/werte` sie liefert, gegen die gespeicherte
+Monatszeile des Vergleichskanals (`messreihe_periode`: `menge` bei Zählerstand/Differenzen,
+`energie` bei Integration). Verglichen werden nur Vergleichsquellen der Hauptgröße mit
+einer Monatsmenge und ohne Anteil; die übrigen (etwa eine Leistung an einer Nebengröße)
+stehen mit `monatsvergleich: ohne_monatsmenge` und ohne Monate. Die Regel
+`monatsvergleich` (Vektoren G5, drei Zwillinge) entscheidet `passt` · `abweichung` ·
+`nicht_vergleichbar`; Gründe: `vergleich_nicht_ganzer_monat`, `fuehrend_luecke`,
+`vergleich_luecke`, `fuehrend_ersatzwert`, `vergleich_ersatzwert`,
+`fuehrend_nicht_positiv`. Über der Toleranz steht der Befund
+`abweichung_vergleichsquelle` „Abweichung x % (Toleranz y %)“ mit Monat, Quelle und
+Fassung — **ohne Ursache, ohne Ersatz, ohne Änderung eines Werts** (AP-04 E3, AP-08 E7
+bleiben). Der Befund ist kein Kriterium und ändert keine Einstufung. Ohne Vergleichsquelle
+wird nichts gelesen.
+
+**Routen:** `GET /api/v1/messstellen/{kennzeichen}/vergleich?von=JJJJ-MM&bis=JJJJ-MM`
+(Recht `messwerte.ansehen`; ohne Angabe der letzte volle Monat; höchstens 24 Monate;
+außerhalb des Zugriffs 404) — gelesen am Messstellen-Weg, weil der Befund an die
+Messstelle gehört und ihr Standort-Zaun gilt. `POST /api/v1/messstellen/{id}/quellen/{quelleId}/toleranz`
+(Recht `messmittel.angaben`: KA U · EM U · BE S · US Ei, AP-16 §5.4; Standort-Zaun über
+die Messstelle): 201 neue Fassung, 200 unverändert; 422 `toleranz_ungueltig` (über 0,
+höchstens 100, höchstens zwei Nachkommastellen), `begruendung_fehlt`, `text_zu_lang`,
+`keine_vergleichsquelle`; 400 `anfrage_ungueltig`.
+
+**Referenzdatei:** MS-01 führt die Netzleistung K-1 als Vergleichsquelle der
+**Nebengröße** Wirkleistung (Momentanwert). Sie liefert keine Monatsmenge; der
+kWh-Vergleich aus R9 braucht eine Vergleichsquelle der Hauptgröße (etwa K-1 mit
+Herleitung `integration`). `VergleichToleranzApiTest` spielt R9 genau so.
+
+Nachweis: `VergleichToleranzApiTest` (R9 1,1 % passt / 3,4 % Befund, byte-gleiche Werte vor
+und nach Lesen und Eintragen, Fassung 2 mit Begründung beurteilt den Dezember nicht neu,
+422/400, Trigger und Grants, Zaun je Rolle, fremder Mandant 404, Bestand ohne
+Vergleichsquelle) und `VergleichToleranzSchnittstelleVertragTest` (DTO ⟷ OpenAPI ⟷
+Vektor-Schema ⟷ Vertrag ⟷ Migration). Nicht hier: der Toleranz-Dialog und das
+Messmittel-Blatt (IP-18), der Befund im Bewertungsstand (Stand-Pakete).

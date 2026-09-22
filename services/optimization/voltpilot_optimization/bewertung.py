@@ -153,3 +153,26 @@ def toleranz(fuehrend, vergleich, grenze):
     p = prozent(diff, a)
     return {"abweichung_prozent": p, "toleranz_prozent": grenze,
             "befund": None if p is None else diff * 100 > a * dez(grenze)}
+
+
+def _luecke(seite, s):
+    if s is None or s.get("menge") is None or s.get("zustand") != "vollständig":
+        ersatz = s is not None and s.get("menge") is not None and s.get("zustand") == "mit Ersatzwert"
+        return seite + ("_ersatzwert" if ersatz else "_luecke")
+    return None
+
+
+@exakt
+def monatsvergleich(fuehrend, vergleich, ganzer_monat, grenze):
+    """G5 im Lesemodell (IP-17): ein Monat führend ↔ Vergleich; Lücke/Ersatzwert = nicht vergleichbar."""
+    grund = "vergleich_nicht_ganzer_monat" if not ganzer_monat else _luecke("fuehrend", fuehrend)
+    if grund is None:
+        grund = _luecke("vergleich", vergleich)
+    t = toleranz(fuehrend["menge"], vergleich["menge"], grenze) if grund is None else None
+    if t is not None and t["befund"] is None:
+        grund = "fuehrend_nicht_positiv"
+    if grund is not None:
+        return {"zustand": "nicht_vergleichbar", "grund": grund, "abweichung_prozent": None,
+                "toleranz_prozent": grenze, "befund": None}
+    return {"zustand": "abweichung" if t["befund"] else "passt", "grund": None,
+            "abweichung_prozent": t["abweichung_prozent"], "toleranz_prozent": grenze, "befund": t["befund"]}

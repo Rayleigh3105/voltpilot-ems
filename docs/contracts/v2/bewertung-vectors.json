@@ -3176,6 +3176,231 @@
         "toleranz_prozent": "4",
         "befund": false
       }
+    },
+    {
+      "name": "R9-Dezember-passt-1.1",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "131200",
+          "zustand": "vollständig"
+        },
+        "vergleich": {
+          "menge": "129700",
+          "zustand": "vollständig"
+        },
+        "ganzer_monat": true,
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "zustand": "passt",
+        "grund": null,
+        "abweichung_prozent": "1.1",
+        "toleranz_prozent": "2",
+        "befund": false
+      }
+    },
+    {
+      "name": "R9-Gegenprobe-Befund-3.4",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "131200",
+          "zustand": "vollständig"
+        },
+        "vergleich": {
+          "menge": "126700",
+          "zustand": "vollständig"
+        },
+        "ganzer_monat": true,
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "zustand": "abweichung",
+        "grund": null,
+        "abweichung_prozent": "3.4",
+        "toleranz_prozent": "2",
+        "befund": true
+      }
+    },
+    {
+      "name": "R9-November-Vergleich-erst-ab-20.11",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "118400",
+          "zustand": "vollständig"
+        },
+        "vergleich": {
+          "menge": "41200",
+          "zustand": "vollständig"
+        },
+        "ganzer_monat": false,
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "zustand": "nicht_vergleichbar",
+        "grund": "vergleich_nicht_ganzer_monat",
+        "abweichung_prozent": null,
+        "toleranz_prozent": "2",
+        "befund": null
+      }
+    },
+    {
+      "name": "Monat-Luecke-fuehrend-kein-Befund",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "98000",
+          "zustand": "unvollständig"
+        },
+        "vergleich": {
+          "menge": "129700",
+          "zustand": "vollständig"
+        },
+        "ganzer_monat": true,
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "zustand": "nicht_vergleichbar",
+        "grund": "fuehrend_luecke",
+        "abweichung_prozent": null,
+        "toleranz_prozent": "2",
+        "befund": null
+      }
+    },
+    {
+      "name": "Monat-Vergleich-keine-Werte",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "131200",
+          "zustand": "vollständig"
+        },
+        "vergleich": {
+          "menge": null,
+          "zustand": "keine Werte"
+        },
+        "ganzer_monat": true,
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "zustand": "nicht_vergleichbar",
+        "grund": "vergleich_luecke",
+        "abweichung_prozent": null,
+        "toleranz_prozent": "2",
+        "befund": null
+      }
+    },
+    {
+      "name": "Monat-Ersatzwert-fuehrend-nie-verglichen",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "131200",
+          "zustand": "mit Ersatzwert"
+        },
+        "vergleich": {
+          "menge": "126700",
+          "zustand": "vollständig"
+        },
+        "ganzer_monat": true,
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "zustand": "nicht_vergleichbar",
+        "grund": "fuehrend_ersatzwert",
+        "abweichung_prozent": null,
+        "toleranz_prozent": "2",
+        "befund": null
+      }
+    },
+    {
+      "name": "Monat-fuehrend-null",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "0",
+          "zustand": "vollständig"
+        },
+        "vergleich": {
+          "menge": "0",
+          "zustand": "vollständig"
+        },
+        "ganzer_monat": true,
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "zustand": "nicht_vergleichbar",
+        "grund": "fuehrend_nicht_positiv",
+        "abweichung_prozent": null,
+        "toleranz_prozent": "2",
+        "befund": null
+      }
+    },
+    {
+      "name": "Monat-Fassung-2-mit-4",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "131200",
+          "zustand": "vollständig"
+        },
+        "vergleich": {
+          "menge": "126700",
+          "zustand": "vollständig"
+        },
+        "ganzer_monat": true,
+        "toleranz": "4"
+      },
+      "erwartet": {
+        "zustand": "passt",
+        "grund": null,
+        "abweichung_prozent": "3.4",
+        "toleranz_prozent": "4",
+        "befund": false
+      }
+    },
+    {
+      "name": "Monat-genau-Toleranz",
+      "regel": "G5",
+      "operation": "monatsvergleich",
+      "quelle": "AP-16 §7 R9 / IP-17 Monatsvergleich",
+      "eingang": {
+        "fuehrend": {
+          "menge": "100",
+          "zustand": "vollständig"
+        },
+        "vergleich": {
+          "menge": "98",
+          "zustand": "vollständig"
+        },
+        "ganzer_monat": true,
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "zustand": "passt",
+        "grund": null,
+        "abweichung_prozent": "2.0",
+        "toleranz_prozent": "2",
+        "befund": false
+      }
     }
   ]
 }

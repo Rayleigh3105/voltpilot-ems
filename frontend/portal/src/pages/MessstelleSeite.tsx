@@ -25,6 +25,7 @@ import { ZaehlerwechselVerlauf } from '../components/ZaehlerwechselVerlauf';
 import { ZaehlerwechselDialog } from '../components/ZaehlerwechselDialog';
 import type { WechselZiel } from '../zaehlerwechsel';
 import { QuelleKarte } from '../components/QuelleKarte';
+import { VergleichBefund } from '../components/VergleichBefund';
 import type { Schritt } from '../messstelleDialog';
 import { PROTOKOLL_LABEL } from '../components/ProtokollDialog';
 import { ProtokollListe, useProtokoll } from '../components/ProtokollListe';
@@ -447,6 +448,8 @@ function MessstelleSeiteMitId({
           }}
         />
       )}
+      {/* AP-16 IP-17 (G5): der Monatsvergleich je Vergleichsquelle — nur wo es eine gibt; ohne steht nichts. */}
+      {quellen?.quellen.some(q => q.rolle === 'vergleich') && <VergleichBefund kennzeichen={m.kennzeichen} />}
 
       {/* AP-05 IP-11: die Energiekarte — nur wo es eine WAGO-Komponente GIBT (sonst 404, nichts
           gezeichnet). Die Verlauf-Marker der Box-Ereignisse hängen NICHT hieran; sie stehen oben

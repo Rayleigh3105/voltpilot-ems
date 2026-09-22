@@ -32,6 +32,8 @@ class BewertungVectorsTest {
             case "abdeckung" -> BewertungRegeln.abdeckung(M.treeToValue(e, BewertungRegeln.AbdeckungEingang.class));
             case "prozess_summe_passt" -> BewertungRegeln.prozessSummePasst(list(e.get("gemessen"), String[].class), list(e.get("summen"), BewertungRegeln.ProzessSumme[].class));
             case "toleranz" -> BewertungRegeln.toleranz(text(e.get("fuehrend")), text(e.get("vergleich")), e.get("toleranz").asText());
+            case "monatsvergleich" -> BewertungRegeln.monatsvergleich(M.treeToValue(e.get("fuehrend"), BewertungRegeln.MonatsSeite.class),
+                M.treeToValue(e.get("vergleich"), BewertungRegeln.MonatsSeite.class), e.get("ganzer_monat").asBoolean(), e.get("toleranz").asText());
             default -> throw new AssertionError("Ungeprüfte Operation: " + fall.get("operation"));
         };
     }

@@ -1,0 +1,33 @@
+/*
+ * Die Befund-Zeile des Monatsvergleichs (UEMS AP-16 IP-17). Lange Namen brechen um; nichts läuft quer.
+ * Ein Befund ist ein Hinweis zum Prüfen, kein Fehler: Warnfarbe nur für „bitte prüfen“.
+ */
+
+.vp-vgl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+  font-family: var(--vp-c-font);
+}
+
+.vp-vgl-zeile {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-vgl-zeile.is-abweichung {
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+}

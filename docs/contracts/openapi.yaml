@@ -10470,6 +10470,95 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MessmittelFehler" }
+  /api/v1/messstellen/{kennzeichen}/vergleich:
+    parameters:
+      - { name: kennzeichen, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [messstellen]
+      summary: Monatsvergleich führend ↔ Vergleich je Vergleichsquelle mit Toleranz und Befund (AP-16 IP-17, G5).
+      description: >
+        Recht `messwerte.ansehen`; eine Messstelle außerhalb des Zugriffs ist 404.
+        Je Vergleichsquelle die Monate `von`–`bis` (JJJJ-MM, beide eingeschlossen,
+        höchstens 24; ohne Angabe der letzte volle Monat in der Zeitzone der
+        Messstelle): die führende Monatsmenge (dieselbe Zahl wie an `…/werte`),
+        die gespeicherte Monatsmenge des Vergleichskanals, die Abweichung
+        `|führend − Vergleich| ÷ führend` auf eine Stelle und die Toleranz-Fassung
+        des Monats. Über der Toleranz (streng größer, ungerundet) steht ein Befund
+        `abweichung_vergleichsquelle` - ohne Ursache, ohne Ersatz, ohne Änderung
+        eines Werts (AP-04 E3, AP-08 E7). Eine Lücke, ein Ersatzwert oder ein
+        angebrochener Monat der Vergleichsquelle ist `nicht_vergleichbar` mit
+        `grund`, nie „passt“. Nur Vergleichsquellen der Hauptgröße mit einer
+        Monatsmenge werden verglichen; die übrigen stehen mit
+        `monatsvergleich: ohne_monatsmenge` und ohne Monate. Ohne Vergleichsquelle
+        leere Listen - nichts wird gelesen.
+      parameters:
+        - { name: von, in: query, schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$" } }
+        - { name: bis, in: query, schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$" } }
+      responses:
+        "200":
+          description: Vergleichsquellen, Monate und Befunde.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VergleichToleranzVergleich" }
+        "400":
+          description: anfrage_ungueltig - kein Monat JJJJ-MM, `bis` vor `von`, mehr als 24 Monate oder nur eine Grenze.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VergleichToleranzFehler" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/messstellen/{id}/quellen/{quelleId}/toleranz:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: quelleId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [messstellen]
+      summary: Toleranz einer Vergleichsquelle als neue Fassung mit Begründung (AP-16 IP-17, E10 = A).
+      description: >
+        Recht `messmittel.angaben` (Kundenadministrator, Energiemanager,
+        Bearbeiter am Standort, Unterstützer mit „Einrichten“); Standort-Zaun über
+        die Messstelle, außerhalb 404. Fassung 1 ist der Startwert 2 % je Monat
+        des Vertrags und wird nie gespeichert. Eine neue Fassung n + 1 gilt ab dem
+        laufenden Monat in der Zeitzone der Messstelle (frühestens ab dem Monat
+        des Beginns der Vergleichsquelle) - nie rückwirkend, ein abgeschlossener
+        Monat wird nie anders beurteilt. Dieselbe Toleranz wie die wirksame
+        schreibt nichts (200). Die Toleranz ändert keinen Wert.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VergleichToleranzEintrag" }
+      responses:
+        "201":
+          description: Die neue Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VergleichToleranzFassung" }
+        "200":
+          description: Unverändert - die wirksame Fassung, nichts geschrieben.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VergleichToleranzFassung" }
+        "400":
+          description: anfrage_ungueltig - kein JSON-Objekt oder unbekanntes Feld.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VergleichToleranzFehler" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: nicht_gefunden - die Messstelle oder ihre Quelle gibt es nicht (oder außerhalb des Zugriffs).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VergleichToleranzFehler" }
+        "422":
+          description: >
+            toleranz_ungueltig (über 0, höchstens 100, höchstens zwei
+            Nachkommastellen), begruendung_fehlt, text_zu_lang (über 500 Zeichen)
+            oder keine_vergleichsquelle (die Quelle ist führend); `feld` nennt die Stelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VergleichToleranzFehler" }
   /api/v1/geraete/{id}/austausch/vorschau:
     get:
       summary: Folgen des Controllerwechsels zum Zeitpunkt lesen (AP-04 E10)
@@ -27250,6 +27339,91 @@ components:
       required: [code, feld, message]
       properties:
         code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, pruefsumme_ungueltig, beleg_unvollstaendig, pruefungsart_unbekannt, zeitraum_ungueltig, text_zu_lang, fassung_unbekannt, klasse_nur_am_wandler] }
+        feld: { type: string }
+        message: { type: string }
+    VergleichToleranzEintrag:
+      type: object
+      additionalProperties: false
+      required: [prozent, begruendung]
+      properties:
+        prozent: { type: string, pattern: "^[0-9]{1,3}(\\.[0-9]{1,2})?$", example: "2" }
+        begruendung: { type: string, maxLength: 500 }
+    VergleichToleranzFassung:
+      type: object
+      required: [fassung, prozent, startwert, gilt_ab_monat, begruendung, person, eingetragen_am]
+      properties:
+        fassung: { type: integer, minimum: 1 }
+        prozent: { type: string, example: "2" }
+        startwert: { type: boolean, description: "Fassung 1 = Startwert des Vertrags, ohne Person und Begründung." }
+        gilt_ab_monat: { type: string, format: date }
+        begruendung: { type: string, nullable: true }
+        person: { $ref: "#/components/schemas/BewertungKriterienAkteur" }
+        eingetragen_am: { type: string, format: date-time, nullable: true }
+    VergleichToleranzMonat:
+      type: object
+      required: [monat, fuehrend, fuehrend_zustand, vergleich, vergleich_zustand, zustand, grund,
+        abweichung_prozent, toleranz_prozent, toleranz_fassung, befund]
+      properties:
+        monat: { type: string, example: "2026-12" }
+        fuehrend: { type: string, nullable: true, example: "131200" }
+        fuehrend_zustand: { type: string, nullable: true }
+        vergleich: { type: string, nullable: true, example: "129700" }
+        vergleich_zustand: { type: string, nullable: true }
+        zustand: { type: string, enum: [passt, abweichung, nicht_vergleichbar] }
+        grund:
+          type: string
+          nullable: true
+          enum: [vergleich_nicht_ganzer_monat, fuehrend_luecke, vergleich_luecke, fuehrend_ersatzwert,
+            vergleich_ersatzwert, fuehrend_nicht_positiv, null]
+        abweichung_prozent: { type: string, nullable: true, example: "1.1" }
+        toleranz_prozent: { type: string, example: "2" }
+        toleranz_fassung: { type: integer, minimum: 1 }
+        befund: { type: boolean, nullable: true }
+    VergleichToleranzQuelle:
+      type: object
+      required: [quelle_id, entity_id, komponente, kanal, zweck, groesse, richtung, herleitung, gueltig_ab,
+        gueltig_bis, monatsvergleich, toleranz, fassungen, monate]
+      properties:
+        quelle_id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        komponente: { type: string, nullable: true }
+        kanal: { type: string }
+        zweck: { type: string, enum: ["Plausibilität", "Ersatz bei Ausfall", "Abrechnungszähler"] }
+        groesse: { type: string }
+        richtung: { type: string }
+        herleitung: { type: string }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+        monatsvergleich: { type: string, enum: [ja, ohne_monatsmenge] }
+        toleranz: { $ref: "#/components/schemas/VergleichToleranzFassung" }
+        fassungen: { type: array, items: { $ref: "#/components/schemas/VergleichToleranzFassung" } }
+        monate: { type: array, items: { $ref: "#/components/schemas/VergleichToleranzMonat" } }
+    VergleichToleranzBefund:
+      type: object
+      required: [art, quelle_id, monat, abweichung_prozent, toleranz_prozent, toleranz_fassung]
+      properties:
+        art: { type: string, enum: [abweichung_vergleichsquelle] }
+        quelle_id: { type: string, format: uuid }
+        monat: { type: string, example: "2026-12" }
+        abweichung_prozent: { type: string, example: "3.4" }
+        toleranz_prozent: { type: string, example: "2" }
+        toleranz_fassung: { type: integer, minimum: 1 }
+    VergleichToleranzVergleich:
+      type: object
+      required: [messstelle_id, kennzeichen, von, bis, einheit, vergleichsquellen, befunde]
+      properties:
+        messstelle_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        von: { type: string, example: "2026-11" }
+        bis: { type: string, example: "2026-12" }
+        einheit: { type: string, example: "kWh" }
+        vergleichsquellen: { type: array, items: { $ref: "#/components/schemas/VergleichToleranzQuelle" } }
+        befunde: { type: array, items: { $ref: "#/components/schemas/VergleichToleranzBefund" } }
+    VergleichToleranzFehler:
+      type: object
+      required: [code, feld, message]
+      properties:
+        code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, toleranz_ungueltig, begruendung_fehlt, text_zu_lang, keine_vergleichsquelle] }
         feld: { type: string }
         message: { type: string }
     Geraet:

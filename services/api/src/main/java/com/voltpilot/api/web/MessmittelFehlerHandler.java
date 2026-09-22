@@ -6,8 +6,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-/** AP-16 IP-15: {@code code}, {@code feld} und Kundensatz der Messmittel-Routen. */
-@RestControllerAdvice(assignableTypes = {MessmittelController.class})
+/** AP-16 IP-15/IP-17: {@code code}, {@code feld} und Kundensatz der Messmittel- und Toleranz-Routen. */
+@RestControllerAdvice(assignableTypes = {MessmittelController.class, VergleichToleranzController.class})
 public class MessmittelFehlerHandler {
     @ExceptionHandler(MessmittelAbgelehnt.class)
     public ResponseEntity<Map<String, Object>> abgelehnt(MessmittelAbgelehnt e) {

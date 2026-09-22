@@ -23,6 +23,7 @@ def rechnen(fall):
         case 'abdeckung': return b.abdeckung(e)
         case 'prozess_summe_passt': return b.prozess_summe_passt(e['gemessen'], e['summen'])
         case 'toleranz': return b.toleranz(e['fuehrend'], e['vergleich'], e['toleranz'])
+        case 'monatsvergleich': return b.monatsvergleich(e['fuehrend'], e['vergleich'], e['ganzer_monat'], e['toleranz'])
         case _: raise AssertionError(f"Ungeprüfte Operation: {fall['operation']}")
 
 
