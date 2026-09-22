@@ -256,15 +256,18 @@ type BudgetTracker struct {
 	mitKw    float64
 
 	// zwilling is the share path's twin (IP-27 A8): it is fed every input of
-	// this tracker, but it RE-ANCHORS on a clock that jumped back (verankert)
-	// where this tracker - today's - discards every sample until the clock has
-	// caught up. Only BudgetAnteil and Netzpunkt read it; today's verdicts are
-	// byte for byte what they were.
+	// this tracker. Both re-anchor after a backward clock jump; the twin still
+	// differs for standing values and the immediate blind fallback on a share.
+	// Only BudgetAnteil and Netzpunkt read it.
 	zwilling  *BudgetTracker
 	verankert bool
-	// uhrsprung: the last Budget of the twin found its newest sample in the
+	// uhrsprung: the last Budget found its newest sample in the
 	// future of now (an age below zero is no age - blind)
 	uhrsprung bool
+	// The single-box fallback holds for 90 s from detecting a negative age,
+	// then contracts as for missing telemetry while the age stays negative.
+	uhrBlind bool
+	uhrAb    time.Time
 	// steht: the twin's newest sample repeats the grid value of the one
 	// before bit for bit (AP-15 Folge of IP-28 finding 1, ObserveM);
 	// ankerLadenKw/ankerBattKw are the charging and battery charge of the
@@ -410,13 +413,9 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 		}
 		return false
 	}
-	// Out-of-order samples are ignored: the newest measurement is the truth.
-	// The share path's twin re-anchors instead: a sample older than the
-	// newest one is a clock that jumped back (IP-27 A8).
+	// An older timestamp re-anchors both paths. Existing smoothing samples
+	// and the plan ceiling survive on the new clock (IP-27 A8).
 	if t.seen && ts.Before(t.at) {
-		if !t.verankert {
-			return false
-		}
 		t.verankernLocked(ts)
 	}
 	// AP-15 Folge of IP-28 finding 1 (the twin only - today's tracker is
@@ -568,15 +567,30 @@ func (t *BudgetTracker) Budget(now time.Time, set Settings) BudgetVerdict {
 	age := now.Sub(t.at)
 	t.uhrsprung = false
 	if age < 0 {
-		age = 0
 		if t.verankert {
 			// the twin (IP-27 A8): an age below zero is no age - blind,
 			// past every stage, until the next sample re-anchors the clock
 			t.uhrsprung = true
 			age = BudgetHoldWindow + BudgetContractWindow + time.Second
+		} else {
+			if !t.uhrBlind || now.Before(t.uhrAb) {
+				t.uhrAb = now
+			}
+			t.uhrBlind = true
 		}
+	} else {
+		t.uhrBlind = false
+	}
+	if t.uhrBlind {
+		t.uhrsprung = true
+		age = now.Sub(t.uhrAb)
 	}
 	res.MeasurementAge = age
+	if t.uhrBlind {
+		// Do not report a negative measurement age as zero/fresh. The fallback
+		// duration above has its own anchor, independent of this stale sample.
+		res.MeasurementAge = now.Sub(t.at)
+	}
 	grid, charging := t.gridKw, t.chargingKw
 	res.GridKw, res.ChargingKw = &grid, &charging
 
@@ -588,7 +602,7 @@ func (t *BudgetTracker) Budget(now time.Time, set Settings) BudgetVerdict {
 	safeKw := round3(math.Max(0, planable-safeHouse))
 
 	switch {
-	case age <= BudgetFreshWindow:
+	case !t.uhrBlind && age <= BudgetFreshWindow:
 		rest := t.restHoldLocked()
 		res.SiteLoadKw = &rest
 		kw := measuredBudget(planable, rest)

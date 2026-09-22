@@ -214,7 +214,7 @@ type ExportCap struct {
 	// last change of the value.
 	Eingefroren bool
 	// Uhrsprung is true while the verdict is blind because the box's clock
-	// went back behind its newest measurement (IP-27 A8; CapAnteil only): an
+	// went back behind its newest measurement (IP-27 A8): an
 	// age below zero is no age.
 	Uhrsprung bool
 	// Pruefung is true when this evaluation made the probing adjustment of
@@ -233,6 +233,17 @@ type ExportLimiter struct {
 	at     time.Time
 	gridKw float64
 	pvKw   float64
+	// A negative age starts the ordinary blind fallback on the new clock.
+	// Nonnegative ages keep their original behavior, including concurrent
+	// samples which arrived just after the caller captured its evaluation time.
+	uhrBlind bool
+	uhrAb    time.Time
+	// Befristet: der alte Schatten deckt einen Befund des Anteilswegs nach
+	// Uhrensprung rückwärts (+95,9 kW / 15 s). Heilung folgt im Paket
+	// vp-uems-v15-folge-anteilsweg-uhrensprung; dann entfällt der Schalter.
+	// Nur schattenLocked setzt ihn: ältere Werte verwerfen, negatives Alter
+	// wie vor der Einzelbox-Korrektur auf 0 klemmen.
+	alterAnteilsSchatten bool
 
 	// the currently commanded cap
 	capValid bool
@@ -258,6 +269,8 @@ type ExportLimiter struct {
 	rampPv, rampDis float64
 	// heute is the same box WITHOUT a share, evaluated alongside (V5)
 	heute *ExportLimiter
+	// Additional temporary ceiling of the old share path, never instead of V5.
+	alterSchatten *ExportLimiter
 	// the probing adjustment of IP-27 A7 (exportanteil.go, pruefen): the
 	// point it lowered to, held until the Einfrierprobe answers; +Inf = that
 	// actuator is not probed
@@ -299,9 +312,13 @@ func (l *ExportLimiter) Observe(ts time.Time, gridKw, pvKw float64) (urgent bool
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	// Out-of-order samples are ignored: the newest measurement is the truth.
+	// Like ObserveMitSpeicher: an older timestamp re-anchors the clock.
+	// A reordered sample must not earn release credit from before the jump.
 	if l.seen && ts.Before(l.at) {
-		return false
+		if l.alterAnteilsSchatten {
+			return false
+		}
+		l.verankern(ts)
 	}
 	l.seen, l.at, l.gridKw, l.pvKw = true, ts, gridKw, math.Max(pvKw, 0)
 	l.messung++
@@ -374,12 +391,29 @@ func (l *ExportLimiter) capLockedAb(now, at time.Time, limit, safeStaticCapKw fl
 	fresh := false
 	if l.seen {
 		age = now.Sub(at)
-		if age < 0 {
+		if l.alterAnteilsSchatten && age < 0 {
 			age = 0
 		}
-		fresh = age <= ExportFreshWindow
+		if age < 0 {
+			if !l.uhrBlind || now.Before(l.uhrAb) {
+				l.uhrAb = now
+			}
+			l.uhrBlind = true
+		} else {
+			l.uhrBlind = false
+		}
+		if l.uhrBlind {
+			age = now.Sub(l.uhrAb)
+		}
+		fresh = !l.uhrBlind && age <= ExportFreshWindow
 	}
 	res.MeasurementAge = age
+	res.Uhrsprung = l.uhrBlind
+	if l.uhrBlind {
+		// Keep the actual (possibly negative) age visible; only the fallback
+		// windows count from detecting the jump on the new clock.
+		res.MeasurementAge = now.Sub(at)
+	}
 
 	switch {
 	case l.seen && fresh:
@@ -404,6 +438,9 @@ func (l *ExportLimiter) capLockedAb(now, at time.Time, limit, safeStaticCapKw fl
 					"Eigenverbrauch einhaelt.",
 				age1(age), kw1(safeStaticCapKw), kw1(limit))
 		}
+	}
+	if res.Uhrsprung {
+		res.Reason = "Die Uhr der Box ist hinter die letzte Messung am Netzverknuepfungspunkt zurückgesprungen - " + res.Reason
 	}
 	return res
 }

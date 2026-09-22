@@ -131,12 +131,14 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 	// unchanged, on the same measurements - the share only ever lowers it.
 	l.mu.Lock()
 	shadow := l.schattenLocked()
+	alterSchatten := l.alterSchatten
 	l.mu.Unlock()
 	heuteStatic := 0.0
 	if limitKw != nil && finite(*limitKw) {
 		heuteStatic = math.Max(*limitKw-discharge, 0)
 	}
 	heute := shadow.Cap(now, limitKw, heuteStatic)
+	frueher := alterSchatten.Cap(now, limitKw, heuteStatic)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -199,6 +201,11 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 		// restarted from its static cap after the plan's limit came back):
 		// it binds, with its own verdict
 		res.CapKw, res.State, res.Reason = heute.CapKw, heute.State, heute.Reason
+	}
+	if frueher.Active && frueher.CapKw < res.CapKw {
+		// Keep the old A8r ceiling as an ADDITIONAL minimum. Replacing the
+		// healed shadow with it would break V5 against today's single box.
+		res.CapKw, res.State, res.Reason = frueher.CapKw, frueher.State, frueher.Reason
 	}
 	return res
 }
@@ -361,16 +368,24 @@ func (l *ExportLimiter) pruefen(now time.Time, budget, discharge float64, neu bo
 // starts as a copy of what this watchdog held until now (without a document
 // it WAS today's watchdog: Observe and Cap), so it continues exactly where
 // today's would, and from then on it gets every sample through today's
-// Observe - which discards a sample older than the newest (IP-27: once this
-// watchdog re-anchors on a clock that jumped back, the two must not have
-// started from different samples). Caller holds l.mu.
+// Observe. The temporary old shadow starts from the SAME state and only adds
+// a ceiling (alterAnteilsSchatten); it must never replace the V5 shadow.
+// Caller holds l.mu.
 func (l *ExportLimiter) schattenLocked() *ExportLimiter {
 	if l.heute == nil {
-		l.heute = &ExportLimiter{
-			seen: l.seen, at: l.at, gridKw: l.gridKw, pvKw: l.pvKw,
-			capValid: l.capValid, cap: l.cap, capAt: l.capAt,
-			limitValid: l.limitValid, limit: l.limit,
+		kopie := func(alt bool) *ExportLimiter {
+			s := &ExportLimiter{
+				alterAnteilsSchatten: alt,
+				seen:                 l.seen, at: l.at, gridKw: l.gridKw, pvKw: l.pvKw,
+				capValid: l.capValid, cap: l.cap, capAt: l.capAt,
+				limitValid: l.limitValid, limit: l.limit,
+			}
+			if !alt {
+				s.uhrBlind, s.uhrAb = l.uhrBlind, l.uhrAb
+			}
+			return s
 		}
+		l.heute, l.alterSchatten = kopie(false), kopie(true)
 	}
 	return l.heute
 }
@@ -477,6 +492,7 @@ func (l *ExportLimiter) ObserveMitSpeicher(ts time.Time, gridKw, pvKw float64, b
 	}
 	l.mu.Lock()
 	shadow := l.schattenLocked()
+	alterSchatten := l.alterSchatten
 	if l.seen && ts.Before(l.at) {
 		// A8 (IP-27): a sample older than the newest one is a clock that
 		// jumped back, not a stale sample - re-anchor instead of discarding
@@ -506,6 +522,7 @@ func (l *ExportLimiter) ObserveMitSpeicher(ts time.Time, gridKw, pvKw float64, b
 	l.mu.Unlock()
 	if shadow != nil {
 		shadow.Observe(ts, gridKw, pvKw)
+		alterSchatten.Observe(ts, gridKw, pvKw)
 	}
 	return l.Observe(ts, gridKw, pvKw) || urgentDis
 }

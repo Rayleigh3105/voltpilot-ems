@@ -118,9 +118,8 @@ func TestBezugPruefVerstellungKeinFehlalarm(t *testing.T) {
 }
 
 // A8 on the import side: the clock of the leading box jumps 840 s back.
-// Today's tracker discards every later sample (and keeps its verdict - byte
-// for byte what it was); the share path's twin re-anchors on them, so a rise
-// of the building load after the jump is regulated at once. Evaluated BEFORE
+// Both trackers re-anchor, so a rise of the building load after the jump
+// is regulated at once. Evaluated BEFORE
 // the next sample the age is below zero: blind, on the share.
 func TestBezugUhrZurueck(t *testing.T) {
 	b := NewBudgetTracker()
@@ -137,12 +136,12 @@ func TestBezugUhrZurueck(t *testing.T) {
 	if v.Blind || v.Kw > vor.Kw-60+1e-6 {
 		t.Fatalf("re-anchored: the rise is regulated at once (%.3f -> %.3f kW), got blind=%v", vor.Kw, v.Kw, v.Blind)
 	}
-	// today's tracker alone: the older sample is discarded, as it always was
+	// The single box now accepts the older sample too (next box release).
 	h := NewBudgetTracker()
 	h.ObserveM(puT0, Measurement{GridKw: 470, ChargingKw: 50, Complete: true})
 	h.ObserveM(nach.Add(10*time.Second), Measurement{GridKw: 530, ChargingKw: 50, Complete: true})
-	if hv := h.Budget(nach.Add(10*time.Second), puSet); hv.Kw != vor.Kw {
-		t.Fatalf("today's Budget is unchanged by this package: %.3f, want %.3f", hv.Kw, vor.Kw)
+	if hv := h.Budget(nach.Add(10*time.Second), puSet); hv.Kw != vor.Kw-60 {
+		t.Fatalf("single-box Budget follows the load rise: %.3f, want %.3f", hv.Kw, vor.Kw-60)
 	}
 	n, _ := b.Netzpunkt(nach.Add(5*time.Second), puSet)
 	if n.GridKw != 530 {
