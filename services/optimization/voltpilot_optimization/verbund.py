@@ -185,9 +185,24 @@ def erzeuger_id(device_id: UUID) -> str:
 # DB-Leser (vertrauenswuerdige Backend-Rolle, wie load_grenzblaetter).
 # ---------------------------------------------------------------------------
 
-_MITGLIEDER_SQL = """
+#: Box-Tausch (A14/R17): das gespeicherte Dokument fuehrt den Anteil einer
+#: Nachfolgerin noch unter der Vorgaengerin (``m.anteil_kennung``); der Eintrag
+#: wird fuer sie umgeschluesselt - sonst waere ihr Anteil unbekannt (B5) und nichts
+#: fuer ihre Geraete reserviert. Ohne Tausch (``anteil_kennung`` NULL) das
+#: Dokument unveraendert.
+_UMSCHLUESSELN = """CASE WHEN m.anteil_kennung IS NULL OR {d}.anteile IS NULL THEN {d}.anteile
+       ELSE (SELECT jsonb_object_agg(r.key, CASE
+                WHEN jsonb_typeof(r.value) = 'object' AND r.value ? m.anteil_kennung::text
+                     AND NOT r.value ? m.device_id::text
+                THEN (r.value - m.anteil_kennung::text)
+                     || jsonb_build_object(m.device_id::text, r.value -> m.anteil_kennung::text)
+                ELSE r.value END)
+             FROM jsonb_each({d}.anteile) r) END"""
+
+_MITGLIEDER_SQL = f"""
 SELECT v.site_id, m.device_id,
-       q.anteile AS quittiert, g.anteile AS gesendet,
+       {_UMSCHLUESSELN.format(d="q")} AS quittiert,
+       {_UMSCHLUESSELN.format(d="g")} AS gesendet,
        d.device_status_seen_at, m.bestaetigt_am,
        COALESCE(d.supports ? 'steuerungsverbund_anteil', false) AS faehig
 FROM steuerungsverbund v

@@ -94,6 +94,8 @@ export const FLAECHE = {
   /** Box-Zeile, mitsteuernd, solange die Auslegung keinen Anteil nennt */
   box_mitsteuernd_kurz: 'Box {box} steuert mit',
   box_mitsteuernd_geplant_kurz: 'Box {box} steuert mit, sobald VoltPilot freischaltet',
+  /** Box-Zeile nach dem Box-Tausch, bis VoltPilot das Mitglied bestätigt (A14, R17, wörtlich) — ihr Anteil bleibt reserviert */
+  box_wartet_auf_bestaetigung: 'Box {box} ist angemeldet. VoltPilot schaltet sie für die gemeinsame Steuerung frei.',
   /** Befund `auslegung_passt_nicht` */
   auslegung_passt_nicht: 'Die Anlage passt noch nicht zur Grenze am Netzanschluss.',
   /** §5.2 Nr. 2, wörtlich */

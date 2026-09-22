@@ -116,14 +116,18 @@ public class GemeinsameSteuerungBoxStand {
             anteile.dokumente(verbundId).forEach(d -> jeStand.put(d.stand(), d));
         }
         Map<UUID, Kunde> je = new LinkedHashMap<>();
+        Map<UUID, UUID> kennungen = jeStand.isEmpty() ? Map.of() : verbuende.anteilKennungen(verbundId);
         for (MitgliedZeile m : mitglieder) {
             GemeinsameSteuerungDto.WirksameAnteile wirksamKw = null;
             if (m.quittiertEpoche() != null && m.quittiertRevision() != null) {
                 DokumentZeile d = jeStand.get(new Stand(m.quittiertEpoche(), m.quittiertRevision()));
                 if (d != null) {
                     String box = m.deviceId().toString();
-                    BigDecimal ein = d.tabelle().anteile().getOrDefault(Grenzart.EINSPEISUNG, Map.of()).get(box);
-                    BigDecimal bez = d.tabelle().anteile().getOrDefault(Grenzart.BEZUG, Map.of()).get(box);
+                    // Box-Tausch (A14): das quittierte Dokument führt den Anteil noch unter der Vorgängerin.
+                    var t = SteuerungsverbundAnteilDienst.fuerBox(d.tabelle(), m.deviceId(),
+                            kennungen.get(m.deviceId()));
+                    BigDecimal ein = t.anteile().getOrDefault(Grenzart.EINSPEISUNG, Map.of()).get(box);
+                    BigDecimal bez = t.anteile().getOrDefault(Grenzart.BEZUG, Map.of()).get(box);
                     if (ein != null || bez != null) {
                         wirksamKw = new GemeinsameSteuerungDto.WirksameAnteile(ein, bez);
                     }

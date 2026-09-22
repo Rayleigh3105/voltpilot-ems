@@ -211,10 +211,33 @@ public class SprungprobeDienst {
     }
 
     private boolean gilt(UUID verbundId, UUID box, List<MitgliedZeile> mitglieder) {
-        Optional<UUID> fuehrende = fuehrende(mitglieder);
-        return fuehrende.isPresent() && proben.geltende(verbundId, box)
-                .filter(p -> SprungprobeRegel.BESTANDEN.equals(p.urteil()))
-                .filter(p -> p.fuehrendeBox().equals(fuehrende.get())).isPresent();
+        Optional<MitgliedZeile> fuehrende = mitglieder.stream().filter(m -> m.rolle() == Rolle.FUEHRT).findFirst();
+        if (fuehrende.isEmpty()) {
+            return false;
+        }
+        // Box-Tausch (A14/R17 Schritt 2): die Quellen reisen 1:1 mit — die Nachfolgerin erbt das Protokoll ihrer Linie,
+        // und eine Probe gegen die Vorgängerin der führenden Box gilt für ihre Nachfolgerin. Ohne Tausch: die Box selbst.
+        List<UUID> fuehrendeLinie = linie(fuehrende.get());
+        Optional<SprungprobeRepository.Probe> geltende = Optional.empty();
+        for (UUID b : linieDerBox(box, mitglieder)) {
+            geltende = proben.geltende(verbundId, b);
+            if (geltende.isPresent()) {
+                break;
+            }
+        }
+        return geltende.filter(p -> SprungprobeRegel.BESTANDEN.equals(p.urteil()))
+                .filter(p -> fuehrendeLinie.contains(p.fuehrendeBox())).isPresent();
+    }
+
+    /** Die Boxen der Tausch-Linie (die Box zuerst); ohne Tausch nur die Box. */
+    private List<UUID> linie(MitgliedZeile m) {
+        List<UUID> l = verbuende.linie(m.id());
+        return l.isEmpty() ? List.of(m.deviceId()) : l;
+    }
+
+    private List<UUID> linieDerBox(UUID box, List<MitgliedZeile> mitglieder) {
+        return mitglieder.stream().filter(m -> m.deviceId().equals(box)).findFirst().map(this::linie)
+                .orElse(List.of(box));
     }
 
     /** Die jüngste Probe der Box für die Auskunft im GET (IP-24), oder null. */
@@ -273,7 +296,14 @@ public class SprungprobeDienst {
      * der entwerteten Proben.
      */
     public int entwerten(UUID verbundId, Collection<UUID> boxen, String grund) {
-        return boxen.isEmpty() ? 0 : proben.entwerten(verbundId, boxen, uhr.instant(), GRUND_ENTWERTET + " " + grund);
+        if (boxen.isEmpty()) {
+            return 0;
+        }
+        // Eine geerbte Probe (Box-Tausch) fällt mit der Nachfolgerin: entwertet wird die ganze Linie.
+        List<MitgliedZeile> mitglieder = verbuende.mitglieder(verbundId, uhr.instant());
+        Set<UUID> alle = new java.util.LinkedHashSet<>();
+        boxen.forEach(b -> alle.addAll(linieDerBox(b, mitglieder)));
+        return proben.entwerten(verbundId, alle, uhr.instant(), GRUND_ENTWERTET + " " + grund);
     }
 
     /**

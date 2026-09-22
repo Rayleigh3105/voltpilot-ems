@@ -155,7 +155,11 @@ export function boxZeilen(
   return mitglieder.map((m) => {
     const box = nameVon(namen, m.box_id);
     let text: string;
-    if (m.rolle === 'fuehrt') {
+    // Nach dem Box-Tausch (A14/R17): die Nachfolgerin wartet auf die Bestätigung durch VoltPilot (I4). Nur ein
+    // ausdrückliches null — vor dem Freischalten ist kein Mitglied bestätigt, und die Anteile sind nicht in Kraft.
+    if (inKraft && m.bestaetigt_am === null) {
+      text = flaechenSatz('box_wartet_auf_bestaetigung', { box });
+    } else if (m.rolle === 'fuehrt') {
       text = satz('box_fuehrend', { box });
     } else {
       const ein = inKraft ? m.wirksame_anteile?.einspeisung_kw ?? null : anteilVon(einrichten?.ergebnis ?? null, 'einspeisung', m.box_id);

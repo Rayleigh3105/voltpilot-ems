@@ -125,6 +125,61 @@ public class SteuerungsverbundRepository {
                 + "WHERE id = ? AND gueltig_bis IS NULL AND aufgehoben_am IS NULL", Timestamp.from(bis), mitgliedId) > 0;
     }
 
+    /**
+     * Box-Tausch (A14/R17, V20260922150000): das Mitglied {@code alt} endet zum Tauschzeitpunkt, die Nachfolgerin
+     * beginnt dort — dieselbe Rolle, derselbe Messpunkt, dasselbe Signal, derselbe Endzeitpunkt, NICHT bestätigt
+     * ({@code bestaetigt_am} NULL: „wartet auf Bestätigung“, I4). Beginnt {@code alt} erst in dieser Minute, bleibt es
+     * aufgehoben stehen und die Nachfolgerin übernimmt seinen Beginn (ein leeres Intervall hält der CHECK nicht).
+     * Nichts wird gelöscht oder umgehängt. Die Kennung des neuen Mitglieds, oder leer, wenn {@code alt} inzwischen
+     * endet oder aufgehoben ist.
+     */
+    public Optional<UUID> nachfolgerinAufnehmen(MitgliedZeile alt, UUID nachfolgerin, Instant ab, UUID anteilKennung,
+            String wer) {
+        Instant beginn = alt.gueltigAb().isBefore(ab) ? ab : alt.gueltigAb();
+        int beendet = beginn.equals(ab)
+                ? jdbc.update("UPDATE steuerungsverbund_mitglied SET gueltig_bis = ? WHERE id = ? "
+                        + "AND aufgehoben_am IS NULL AND (gueltig_bis IS NULL OR gueltig_bis > ?)",
+                        Timestamp.from(ab), alt.id(), Timestamp.from(ab))
+                : jdbc.update("UPDATE steuerungsverbund_mitglied SET aufgehoben_am = now() "
+                        + "WHERE id = ? AND aufgehoben_am IS NULL", alt.id());
+        if (beendet == 0) {
+            return Optional.empty();
+        }
+        return Optional.of(jdbc.queryForObject("INSERT INTO steuerungsverbund_mitglied (tenant_id, "
+                + "steuerungsverbund_id, site_id, device_id, rolle, data_source_id, gueltig_ab, gueltig_bis, created_by, "
+                + "vorgabe_signal, vorgabe_signal_am, vorgabe_signal_von, vorgaenger_mitglied_id, anteil_kennung) "
+                + "SELECT tenant_id, steuerungsverbund_id, site_id, ?::uuid, rolle, data_source_id, ?::timestamptz, "
+                + "?::timestamptz, ?, vorgabe_signal, vorgabe_signal_am, vorgabe_signal_von, id, ?::uuid "
+                + "FROM steuerungsverbund_mitglied WHERE id = ? RETURNING id", UUID.class, nachfolgerin,
+                Timestamp.from(beginn), alt.gueltigBis() == null ? null : Timestamp.from(alt.gueltigBis()), wer,
+                anteilKennung, alt.id()));
+    }
+
+    /**
+     * Box → Kennung, unter der das gespeicherte Anteils-Dokument ihren Anteil führt, für jedes nicht aufgehobene
+     * Mitglied, das eine Box-Tausch-Nachfolgerin ist ({@code anteil_kennung}, V20260922150000). Leer ohne Tausch.
+     */
+    public java.util.Map<UUID, UUID> anteilKennungen(UUID verbundId) {
+        java.util.Map<UUID, UUID> out = new java.util.HashMap<>();
+        jdbc.query("SELECT device_id, anteil_kennung FROM steuerungsverbund_mitglied WHERE steuerungsverbund_id = ? "
+                + "AND aufgehoben_am IS NULL AND anteil_kennung IS NOT NULL", rs -> {
+                    out.put(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class));
+                }, verbundId);
+        return out;
+    }
+
+    /**
+     * Die Boxen der Tausch-Linie eines Mitglieds: das Mitglied selbst zuerst, dann jede Vorgängerin
+     * ({@code vorgaenger_mitglied_id}); ohne Tausch nur die eigene Box.
+     */
+    public List<UUID> linie(UUID mitgliedId) {
+        return jdbc.queryForList("WITH RECURSIVE l(id, device_id, vorgaenger, tiefe) AS ("
+                + "SELECT id, device_id, vorgaenger_mitglied_id, 0 FROM steuerungsverbund_mitglied WHERE id = ? "
+                + "UNION ALL SELECT m.id, m.device_id, m.vorgaenger_mitglied_id, l.tiefe + 1 "
+                + "FROM steuerungsverbund_mitglied m JOIN l ON m.id = l.vorgaenger WHERE l.tiefe < 32) "
+                + "SELECT device_id FROM l ORDER BY tiefe", UUID.class, mitgliedId);
+    }
+
     /** Hebt einen falschen Eintrag auf — er bleibt stehen, zählt aber nicht mehr (nie gelöscht, nie umgeschrieben). */
     public boolean mitgliedAufheben(UUID mitgliedId) {
         return jdbc.update("UPDATE steuerungsverbund_mitglied SET aufgehoben_am = now() "

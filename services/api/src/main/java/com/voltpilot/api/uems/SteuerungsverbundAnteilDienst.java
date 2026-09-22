@@ -356,9 +356,17 @@ public class SteuerungsverbundAnteilDienst {
             return;
         }
         Map<String, Stand> quittiert = new HashMap<>();
+        Map<UUID, UUID> kennungen = verbuende.anteilKennungen(v.id());
         for (MitgliedZeile m : verbuende.mitglieder(v.id(), clock.instant())) {
             if (m.quittiertEpoche() != null) {
-                quittiert.put(m.deviceId().toString(), new Stand(m.quittiertEpoche(), m.quittiertRevision()));
+                Stand q = new Stand(m.quittiertEpoche(), m.quittiertRevision());
+                quittiert.put(m.deviceId().toString(), q);
+                // Box-Tausch (A14): die Quittung der Nachfolgerin zählt für den Eintrag, den sie trägt.
+                UUID kennung = kennungen.get(m.deviceId());
+                if (kennung != null && uebergang.tabelle().boxen().contains(kennung.toString())
+                        && !uebergang.tabelle().boxen().contains(m.deviceId().toString())) {
+                    quittiert.put(kennung.toString(), q);
+                }
             }
         }
         if (!SteuerungsverbundZweischritt.zielFaellig(uebergang.stand(), uebergang.verengteBoxen(), quittiert)) {
@@ -377,20 +385,29 @@ public class SteuerungsverbundAnteilDienst {
         Instant jetzt = clock.instant();
         Map<String, MitgliedZeile> mitglieder = new HashMap<>();
         verbuende.mitglieder(v.id(), jetzt).forEach(m -> mitglieder.put(m.deviceId().toString(), m));
+        // Box-Tausch (A14): ein Zielstand aus einem Übergang vor dem Tausch führt die Nachfolgerin unter der Vorgängerin.
+        Map<String, MitgliedZeile> getragen = new HashMap<>();
+        verbuende.anteilKennungen(v.id()).forEach((b, k) -> {
+            if (mitglieder.containsKey(b.toString())) {
+                getragen.put(k.toString(), mitglieder.get(b.toString()));
+            }
+        });
         List<UUID> gesendetAn = new ArrayList<>();
         List<Map.Entry<String, byte[]>> auftraege = new ArrayList<>();
         VerbundAnteileVersand weg = versand.getIfAvailable();
         Map<String, BigDecimal> reserven = reserveVerbraucher(v, jetzt);
         Map<String, BigDecimal> ungeregelt = ungeregeltHinterAbgang(v, jetzt);
-        for (String box : d.tabelle().boxen()) {
-            MitgliedZeile m = mitglieder.get(box);
+        for (String eintrag : d.tabelle().boxen()) {
+            MitgliedZeile m = mitglieder.containsKey(eintrag) ? mitglieder.get(eintrag) : getragen.get(eintrag);
             if (m == null || weg == null) {
                 continue; // eine ausgeschiedene Box hat keinen Mitglieds-Stand mehr; ohne Broker bleibt es ungesendet
             }
-            UUID b = UUID.fromString(box);
+            UUID b = m.deviceId();
+            String box = b.toString();
             auftraege.add(Map.entry(VerbundAnteileDokument.topic(tenant, v.siteId(), b),
                     VerbundAnteileDokument.nutzlast(mapper, tenant, v.siteId(), b, m.rolle(), epoche, revision,
-                            d.schritt(), d.tabelle(), reserven.getOrDefault(box, BigDecimal.ZERO.setScale(1)),
+                            d.schritt(), fuerBox(d.tabelle(), b, UUID.fromString(eintrag)),
+                            reserven.getOrDefault(box, BigDecimal.ZERO.setScale(1)),
                             ungeregelt.get(box), jetzt)));
             verbuende.gesendet(m.id(), epoche, revision, jetzt);
             gesendetAn.add(b);
@@ -400,6 +417,57 @@ public class SteuerungsverbundAnteilDienst {
         DokumentZeile zeile = anteile.dokumente(v.id()).stream().filter(z -> z.id().equals(id)).findFirst()
                 .orElseThrow();
         return new Ergebnis(null, zeile, List.copyOf(gesendetAn));
+    }
+
+    /**
+     * Box-Tausch (A14/R17): das jüngste gespeicherte Dokument geht an die Nachfolgerin — dieselbe Epoche, dieselbe
+     * Revision, der Eintrag der Vorgängerin auf ihre Kennung umgeschlüsselt (die Summe bleibt, die Box prüft sie). Es ist
+     * keine Änderung der Anteile: kein neues Dokument, kein Zielstand, keine andere Box bekommt etwas. Ihre Quittung
+     * nimmt {@link #quittungEmpfangen} wie jede an. Aufzurufen in der Transaktion des Tauschs; auf den Draht erst nach
+     * dem Commit. Die Kennung, unter der das Dokument den Anteil führt, oder null ohne Dokument mit diesem Eintrag.
+     */
+    public UUID nachfolgerinZustellen(VerbundZeile v, UUID mitgliedId, UUID box, SteuerungsverbundVokabular.Rolle rolle,
+            UUID vorgaengerKennung, Instant jetzt) {
+        List<DokumentZeile> dokumente = anteile.dokumente(v.id());
+        if (dokumente.isEmpty() || vorgaengerKennung == null
+                || !dokumente.get(0).tabelle().boxen().contains(vorgaengerKennung.toString())) {
+            return null;
+        }
+        DokumentZeile d = dokumente.get(0);
+        UUID tenant = TenantContext.get();
+        Tabelle t = fuerBox(d.tabelle(), box, vorgaengerKennung);
+        // Reserve und Ungeregeltes aus den Geräte-Angaben, die mit der Box umgezogen sind (Stand zum Tauschzeitpunkt).
+        byte[] nutzlast = VerbundAnteileDokument.nutzlast(mapper, tenant, v.siteId(), box, rolle, d.epoche(),
+                d.revision(), d.schritt(), t, reserveVerbraucher(v, jetzt).getOrDefault(box.toString(),
+                        BigDecimal.ZERO.setScale(1)), ungeregeltHinterAbgang(v, jetzt).get(box.toString()), jetzt);
+        verbuende.gesendet(mitgliedId, d.epoche(), d.revision(), jetzt);
+        VerbundAnteileVersand weg = versand.getIfAvailable();
+        if (weg != null) {
+            String topic = VerbundAnteileDokument.topic(tenant, v.siteId(), box);
+            nachCommit(() -> weg.senden(topic, nutzlast));
+        }
+        return vorgaengerKennung;
+    }
+
+    /**
+     * Die Tabelle, wie sie für {@code box} gilt: führt sie die Box nicht, wohl aber {@code kennung} (die Vorgängerin
+     * nach einem Box-Tausch, A14), steht deren Eintrag unter der Box — sonst unverändert.
+     */
+    static Tabelle fuerBox(Tabelle t, UUID box, UUID kennung) {
+        if (t == null || kennung == null || t.boxen().contains(box.toString())
+                || !t.boxen().contains(kennung.toString())) {
+            return t;
+        }
+        Map<Grenzart, Map<String, BigDecimal>> je = new EnumMap<>(Grenzart.class);
+        t.anteile().forEach((r, m) -> {
+            Map<String, BigDecimal> neu = new java.util.TreeMap<>(m);
+            BigDecimal kw = neu.remove(kennung.toString());
+            if (kw != null) {
+                neu.put(box.toString(), kw);
+            }
+            je.put(r, neu);
+        });
+        return new Tabelle(je, t.verteilbar());
     }
 
     /**
@@ -423,11 +491,13 @@ public class SteuerungsverbundAnteilDienst {
         List<UUID> an = new ArrayList<>();
         Map<String, BigDecimal> reserven = reserveVerbraucher(v, clock.instant());
         Map<String, BigDecimal> ungeregelt = ungeregeltHinterAbgang(v, clock.instant());
+        Map<UUID, UUID> kennungen = verbuende.anteilKennungen(v.id());
         for (MitgliedZeile m : verbuende.mitglieder(v.id(), clock.instant())) {
-            if (d.tabelle().boxen().contains(m.deviceId().toString()) && weg.senden(
+            Tabelle t = fuerBox(d.tabelle(), m.deviceId(), kennungen.get(m.deviceId()));
+            if (t.boxen().contains(m.deviceId().toString()) && weg.senden(
                     VerbundAnteileDokument.topic(tenant, v.siteId(), m.deviceId()), VerbundAnteileDokument.nutzlast(
                             mapper, tenant, v.siteId(), m.deviceId(), m.rolle(), d.epoche(), d.revision(),
-                            d.schritt(), d.tabelle(), reserven.getOrDefault(m.deviceId().toString(),
+                            d.schritt(), t, reserven.getOrDefault(m.deviceId().toString(),
                                     BigDecimal.ZERO.setScale(1)), ungeregelt.get(m.deviceId().toString()),
                             clock.instant()))) {
                 an.add(m.deviceId());
@@ -502,16 +572,20 @@ public class SteuerungsverbundAnteilDienst {
         anteile.dokumente(v.id()).forEach(d -> jeStand.put(d.stand(), d.tabelle()));
         Map<String, Tabelle> quittiert = new HashMap<>();
         Map<String, Tabelle> gesendet = new HashMap<>();
+        Map<UUID, UUID> kennungen = verbuende.anteilKennungen(v.id());
         for (MitgliedZeile m : verbuende.mitgliederGeschichte(v.id())) {
             if (m.aufgehobenAm() != null) {
                 continue;
             }
             String box = m.deviceId().toString();
+            UUID kennung = kennungen.get(m.deviceId());
             if (m.quittiertEpoche() != null) {
-                quittiert.put(box, jeStand.get(new Stand(m.quittiertEpoche(), m.quittiertRevision())));
+                quittiert.put(box, fuerBox(jeStand.get(new Stand(m.quittiertEpoche(), m.quittiertRevision())),
+                        m.deviceId(), kennung));
             }
             if (m.gesendetEpoche() != null) {
-                gesendet.put(box, jeStand.get(new Stand(m.gesendetEpoche(), m.gesendetRevision())));
+                gesendet.put(box, fuerBox(jeStand.get(new Stand(m.gesendetEpoche(), m.gesendetRevision())),
+                        m.deviceId(), kennung));
             }
         }
         return SteuerungsverbundZweischritt.altAusDokumenten(quittiert, gesendet);
