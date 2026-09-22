@@ -1347,6 +1347,187 @@
                 }
               }
             }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "regel": {
+                "enum": [
+                  "G5"
+                ]
+              },
+              "operation": {
+                "const": "monatsvergleich"
+              },
+              "quelle": {
+                "type": "string"
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "fuehrend",
+                  "vergleich",
+                  "ganzer_monat",
+                  "toleranz"
+                ],
+                "properties": {
+                  "fuehrend": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "menge",
+                      "zustand"
+                    ],
+                    "properties": {
+                      "menge": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "zustand": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "vollständig",
+                              "unvollständig",
+                              "keine Werte",
+                              "mit Ersatzwert"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "vergleich": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "menge",
+                      "zustand"
+                    ],
+                    "properties": {
+                      "menge": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "zustand": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "vollständig",
+                              "unvollständig",
+                              "keine Werte",
+                              "mit Ersatzwert"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "ganzer_monat": {
+                    "type": "boolean"
+                  },
+                  "toleranz": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "zustand",
+                  "grund",
+                  "abweichung_prozent",
+                  "toleranz_prozent",
+                  "befund"
+                ],
+                "properties": {
+                  "zustand": {
+                    "enum": [
+                      "passt",
+                      "abweichung",
+                      "nicht_vergleichbar"
+                    ]
+                  },
+                  "grund": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "vergleich_nicht_ganzer_monat",
+                          "fuehrend_luecke",
+                          "vergleich_luecke",
+                          "fuehrend_ersatzwert",
+                          "vergleich_ersatzwert",
+                          "fuehrend_nicht_positiv"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "abweichung_prozent": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "toleranz_prozent": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  },
+                  "befund": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         ]
       }

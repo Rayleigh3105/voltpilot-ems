@@ -17,6 +17,7 @@ function rechnen(fall: any) {
     case 'abdeckung': return b.abdeckung(e);
     case 'prozess_summe_passt': return b.prozessSummePasst(e.gemessen, e.summen);
     case 'toleranz': return b.toleranz(e.fuehrend, e.vergleich, e.toleranz);
+    case 'monatsvergleich': return b.monatsvergleich(e.fuehrend, e.vergleich, e.ganzer_monat, e.toleranz);
     default: throw new Error(`Ungeprüfte Operation: ${fall.operation}`);
   }
 }

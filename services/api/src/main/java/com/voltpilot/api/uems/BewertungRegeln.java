@@ -138,4 +138,31 @@ public final class BewertungRegeln {
         return obj("abweichung_prozent", p, "toleranz_prozent", grenze,
             "befund", p == null ? null : diff.multiply(BigDecimal.valueOf(100)).compareTo(a.multiply(d(grenze))) > 0);
     }
+
+    /** Eine Seite des Monatsvergleichs (IP-17): Monatsmenge und ihr gespeicherter Mengenzustand. */
+    public record MonatsSeite(String menge, String zustand) {}
+    public static final String PASST = "passt", ABWEICHUNG = "abweichung", NICHT_VERGLEICHBAR = "nicht_vergleichbar";
+
+    /**
+     * G5 im Lesemodell (IP-17): EIN Monat führend ↔ Vergleich. Vergleichbar sind nur zwei vollständig
+     * gemessene Monatsmengen über den ganzen Monat; eine Lücke oder ein Ersatzwert ist kein Befund, sondern
+     * {@code nicht_vergleichbar} mit Grund. Die Abweichung selbst rechnet {@link #toleranz}; keine Ursache.
+     */
+    public static Map<String, Object> monatsvergleich(MonatsSeite fuehrend, MonatsSeite vergleich,
+            boolean ganzerMonat, String grenze) {
+        String grund = !ganzerMonat ? "vergleich_nicht_ganzer_monat" : luecke("fuehrend", fuehrend);
+        if (grund == null) grund = luecke("vergleich", vergleich);
+        Map<String, Object> t = grund == null ? toleranz(fuehrend.menge(), vergleich.menge(), grenze) : null;
+        if (t != null && t.get("befund") == null) grund = "fuehrend_nicht_positiv";
+        if (grund != null) return obj("zustand", NICHT_VERGLEICHBAR, "grund", grund, "abweichung_prozent", null,
+            "toleranz_prozent", grenze, "befund", null);
+        boolean befund = (Boolean) t.get("befund");
+        return obj("zustand", befund ? ABWEICHUNG : PASST, "grund", null,
+            "abweichung_prozent", t.get("abweichung_prozent"), "toleranz_prozent", grenze, "befund", befund);
+    }
+    private static String luecke(String seite, MonatsSeite s) {
+        if (s == null || s.menge() == null || !"vollständig".equals(s.zustand()))
+            return seite + (s != null && s.menge() != null && "mit Ersatzwert".equals(s.zustand()) ? "_ersatzwert" : "_luecke");
+        return null;
+    }
 }

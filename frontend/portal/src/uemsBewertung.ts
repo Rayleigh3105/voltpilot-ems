@@ -108,3 +108,21 @@ export function toleranz(fuehrend: string | null, vergleich: string | null, gren
   const p = prozent(diff, a);
   return { abweichung_prozent: p, toleranz_prozent: grenze, befund: p === null ? null : cmp(mal100(diff!), dezMal(a!, dez(grenze))) > 0 };
 }
+export interface MonatsSeite { menge: string | null; zustand: string | null }
+export type MonatsvergleichZustand = 'passt' | 'abweichung' | 'nicht_vergleichbar';
+function luecke(seite: string, s: MonatsSeite | null): string | null {
+  if (s === null || s.menge === null || s.zustand !== 'vollständig')
+    return seite + (s !== null && s.menge !== null && s.zustand === 'mit Ersatzwert' ? '_ersatzwert' : '_luecke');
+  return null;
+}
+/** G5 im Lesemodell (IP-17): ein Monat führend ↔ Vergleich; Lücke/Ersatzwert = nicht vergleichbar, keine Ursache. */
+export function monatsvergleich(fuehrend: MonatsSeite, vergleich: MonatsSeite, ganzerMonat: boolean, grenze: string) {
+  let grund = !ganzerMonat ? 'vergleich_nicht_ganzer_monat' : luecke('fuehrend', fuehrend);
+  if (grund === null) grund = luecke('vergleich', vergleich);
+  const t = grund === null ? toleranz(fuehrend.menge, vergleich.menge, grenze) : null;
+  if (t !== null && t.befund === null) grund = 'fuehrend_nicht_positiv';
+  if (grund !== null || t === null)
+    return { zustand: 'nicht_vergleichbar' as MonatsvergleichZustand, grund, abweichung_prozent: null, toleranz_prozent: grenze, befund: null };
+  return { zustand: (t.befund ? 'abweichung' : 'passt') as MonatsvergleichZustand, grund: null,
+    abweichung_prozent: t.abweichung_prozent, toleranz_prozent: grenze, befund: t.befund };
+}
