@@ -1,6 +1,6 @@
 # Energetische Bewertung und Messplanung (AP-16)
 
-Vertrag 1.0 · 22.09.2026 · IP-2/IP-3/IP-4 / NW-1. Grundlage: das entschiedene AP-16-Konzept
+Vertrag 1.0 · 22.09.2026 · IP-2/IP-3/IP-4/IP-5 / NW-1. Grundlage: das entschiedene AP-16-Konzept
 §4.2–4.8, §7 R1/R2/R4/R6/R9/R16; E2/E4/E10 = A und W4/W12.
 **Zahlen schlagen vor, eine Person stuft ein, nichts verschwindet.**
 
@@ -252,3 +252,67 @@ Nachweise: `EnergieeinsatzApiTest`, `EnergieeinsatzSchnittstelleVertragTest`,
 `EnergieeinsatzDatenhaltungTest`, `RechtMatrixApiTest`, `RechteKennungenDerRoutenTest`,
 `RechtRoutenArchitekturTest`, `BezugsgroesseApiTest`. Keine Migration, keine Bestandsbefüllung;
 Lesen vor dem ersten Einsatz verändert nichts (R11).
+
+
+## 9. Umfang (IP-5, U1/U2/N4, R1/R12)
+
+`GET /api/v1/unternehmen/bewertung/umfang?am=YYYY-MM-DD` liest die gültige
+Fassung zum Tag (Vorgabe: heute in der Unternehmenszeitzone). Ohne Fassung antwortet
+es mit `200`, `fassung: null`, allen sichtbaren Standorten und Träger Strom als
+**ungespeichertem Vorschlag**. Lesen legt weder Umfang noch Energieeinsatz an (R11).
+
+`PUT /api/v1/unternehmen/bewertung/umfang` nimmt `gueltig_ab`, `standort_ids`,
+`traeger`, `ausschluesse` und optional `begruendung` an. Der Mandant und der Akteur
+kommen ausschließlich aus der Sitzung. Speichern legt Fassung 1 an; Änderungen
+legen n+1 an und markieren n mit `aufgehoben_am`. Die alten Inhalte bleiben erhalten.
+Identischer Inhalt einschließlich Gültigkeitsbeginn und Begründung ist idempotent;
+Standort-/Trägerreihenfolge und doppelte Listeneinträge ändern den Inhalt nicht.
+Fassung und `bewertung_aenderung` werden unter derselben Unternehmenssperre geschrieben.
+
+Der Gültigkeitsbeginn darf nicht vor dem Beginn der letzten Fassung liegen
+(`422 gueltig_ab_ungueltig`); eine Änderung am selben Tag ersetzt ab diesem Tag.
+Am früheren Stichtag gilt weiterhin die damalige Fassung, auch wenn sie inzwischen
+als abgelöst markiert ist. Eine zukünftige Fassung verändert den heutigen Umfang
+noch nicht. `GET …/umfang/fassungen` liefert alle lesbaren Fassungen, jüngste zuerst,
+mit Akteur, Anlagezeit und Ablösezeit; die Anlagen darin werden jeweils am Beginn
+der Fassung gelesen. Der Anlagenbestand ist keine eingefrorene Kopie.
+
+**Anlagen und Ausschlüsse:** Die Bilanzgrenze bleibt die Anlage. `standorte[]`
+nennt die gewählten Standorte mit Namen, je Standort `anlagen_im_umfang[]` und
+`anzahl_anlagen_im_umfang`; dieselben beiden Felder stehen für den ganzen Umfang.
+Es zählen die nicht aufgehobenen Bindungen aus `anlage_standort`, deren
+`tagesgenaues [gueltig_ab, gueltig_bis]` den Stichtag enthält (letzter Tag inklusive).
+Ein Ausschluss nennt `art: standort|anlage|prozess`, `verweis` und eine nicht leere
+`begruendung`; sonst `422 begruendung_fehlt` („Bitte begründen Sie jeden Ausschluss.“).
+Standort-/Anlagenausschlüsse entfernen die betreffenden Bilanzgrenzen; ein
+Prozessausschluss entfernt keine Anlage aus dem Nenner (U2).
+
+Ein Standort ohne Anlage bleibt in der Liste mit leeren Anlagen und Anzahl `0`:
+„0 von 0 Anlagen“. Die Zahl sonst ist ausschließlich **y = Anlagen im Umfang**;
+IP-5 liefert kein `x`, keine Hauptzählerprüfung und keine kWh. Der Bilanzanteil
+und „x von y Anlagen“ folgen mit IP-9. Ein fehlender Bilanznachweis ist keine Null.
+Die Träger kommen aus dem Medium-Vokabular. Die Antwort ergänzt `mit_anteil: true`
+ausschließlich für Strom; Gas, Wärme, Kälte, Wasser und Druckluft sind
+„im Umfang, ohne Anteil“. Ohne Strom ist `nenner_traeger: null`; mit Strom lautet
+das Feld `Strom`, noch ohne berechneten Nenner. Keine Umrechnung zwischen Trägern.
+
+**Rechte:** Schreiben verwendet `energieeinsatz.verwalten` (KA U · EM U), Lesen
+`energieeinsatz.ansehen`. Die vorhandene Kennung trägt auch den Umfang;
+`bewertung.kriterien` und `bewertung.abrufen` bleiben für spätere Pakete reserviert.
+GET trägt keine `@Recht`-Annotation. Standortrollen BE/LE lesen ihre Standorte und
+Anlagen unter dem bestehenden aktuellen Standort-Zaun, auch in der Historie;
+`teilansicht: true` kennzeichnet, dass die Anzahl nur für diese Ansicht gilt.
+Fremde Ausschlüsse und unternehmensweite Prozess-Ausschlüsse werden darin nicht
+preisgegeben; ein nicht sichtbarer Umfang antwortet wie unbekannt mit `404`.
+
+**Datenhaltung und Löschwege:** `bewertung_umfang`, `bewertung_umfang_standort`,
+`bewertung_umfang_ausschluss`, `bewertung_aenderung` haben RLS + FORCE; die App darf
+kein DELETE und nur `aufgehoben_am` ändern. Ausschlussverweise werden beim
+Einfügen mandantengebunden geprüft und als historische Referenz erhalten.
+Insbesondere sperrt ein Anlagen-Ausschluss nicht den bestehenden Anlagen-Löschweg.
+Offboarding entfernt Protokoll und Kinder vor Fassung, Standort und Unternehmen;
+Existenzproben erhalten ältere Migrations-Teststände. Es gibt keine Bestandsbefüllung.
+
+Nachweise: `BewertungUmfangApiTest`, `BewertungUmfangSchnittstelleVertragTest`,
+die sechs Mengen-Migrationsnachbarn, `UemsProduktionsreihenfolgeMigrationTest`,
+`UemsZugriffMigrationTest` und die API-Wächter.

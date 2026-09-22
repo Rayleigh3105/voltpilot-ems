@@ -11943,6 +11943,73 @@ paths:
         "400": { $ref: "#/components/responses/BilanzAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/unternehmen/bewertung/umfang:
+    get:
+      tags: [energieeinsaetze]
+      summary: Betrachtungsumfang am Stichtag oder ungespeicherte Vorgabe.
+      description: >
+        Recht `energieeinsatz.ansehen`. Sichtbare Standorte und deren zeitgültig gebundene Anlagen.
+        Ohne gültige Fassung 200 mit fassung null, allen sichtbaren Standorten und Strom als Vorschlag.
+        Standortrollen erhalten eine Teilansicht ohne fremde Namen oder Anlagenzahlen.
+        Keine Bilanzrechnung; die Anlagenzahl ist ausschließlich y, kein erfundenes x von y.
+      parameters:
+        - in: query
+          name: am
+          description: Tag; Vorgabe heute in der Zeitzone des Unternehmens.
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Umfang oder Vorgabe; ein Standort ohne Anlage hat eine leere Liste und Anzahl 0.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungUmfang" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [energieeinsaetze]
+      summary: Umfang als neue Fassung speichern.
+      description: >
+        Recht `energieeinsatz.verwalten` (Kundenadministrator oder Energiemanager im Unternehmen).
+        Unternehmenssperre, Fassung und Protokoll atomar. Identischer Inhalt einschließlich Gültigkeitsbeginn
+        und Begründung liefert 200 ohne neue Fassung; Reihenfolge und Wiederholung von Standorten/Trägern zählen nicht.
+        Der Beginn darf nicht vor dem Beginn der letzten Fassung liegen; derselbe Tag korrigiert ab diesem Tag.
+        Die Antwort zeigt die neue Fassung an ihrem Gültigkeitsbeginn. Strom ist optional.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BewertungUmfangSpeichern" }
+      responses:
+        "200":
+          description: Gespeicherte oder unveränderte Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungUmfang" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: Begründung fehlt oder Angaben zum Umfang sind ungültig.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungUmfangFehler" }
+  /api/v1/unternehmen/bewertung/umfang/fassungen:
+    get:
+      tags: [energieeinsaetze]
+      summary: Alle lesbaren Fassungen des Betrachtungsumfangs, jüngste zuerst.
+      description: >
+        Recht `energieeinsatz.ansehen`. Einschließlich aufgehobener Fassungen;
+        Anlagen jeweils am Gültigkeitsbeginn der Fassung und unter dem aktuellen Standort-Zaun.
+      responses:
+        "200":
+          description: Fassungen mit Akteur; ohne Fassung eine leere Liste.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungUmfangHistorie" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/unternehmen/energieeinsaetze:
     get:
       tags: [energieeinsaetze]
@@ -13788,6 +13855,85 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    BewertungUmfangSpeichern:
+      type: object
+      additionalProperties: false
+      required: [gueltig_ab, standort_ids, traeger, ausschluesse]
+      properties:
+        gueltig_ab: { type: string, format: date }
+        standort_ids: { type: array, items: { type: string, format: uuid } }
+        traeger:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
+        ausschluesse: { type: array, items: { $ref: "#/components/schemas/BewertungUmfangAusschluss" } }
+        begruendung: { type: string, nullable: true }
+    BewertungUmfangAusschluss:
+      type: object
+      additionalProperties: false
+      required: [art, verweis, begruendung]
+      properties:
+        art: { type: string, enum: [standort, anlage, prozess] }
+        verweis: { type: string, format: uuid }
+        begruendung: { type: string, minLength: 1 }
+    BewertungUmfangTraeger:
+      type: object
+      required: [name, mit_anteil]
+      properties:
+        name: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
+        mit_anteil: { type: boolean, description: Nur Strom; alle anderen Träger sind im Umfang ohne Anteil. }
+    BewertungUmfangAnlage:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    BewertungUmfangStandort:
+      type: object
+      required: [id, name, anlagen_im_umfang, anzahl_anlagen_im_umfang]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        anlagen_im_umfang: { type: array, items: { $ref: "#/components/schemas/BewertungUmfangAnlage" } }
+        anzahl_anlagen_im_umfang: { type: integer, minimum: 0, description: Ohne Anlage 0; später als 0 von 0 Anlagen darstellbar. }
+    BewertungUmfang:
+      type: object
+      required: [id, fassung, gueltig_ab, am, standorte, traeger, ausschluesse, anlagen_im_umfang, anzahl_anlagen_im_umfang, nenner_traeger, begruendung, akteur, created_at, aufgehoben_am, teilansicht]
+      properties:
+        id: { type: string, format: uuid, nullable: true }
+        fassung: { type: integer, minimum: 1, nullable: true, description: null kennzeichnet den ungespeicherten Vorschlag. }
+        gueltig_ab: { type: string, format: date, nullable: true }
+        am: { type: string, format: date }
+        standorte: { type: array, items: { $ref: "#/components/schemas/BewertungUmfangStandort" } }
+        traeger: { type: array, items: { $ref: "#/components/schemas/BewertungUmfangTraeger" } }
+        ausschluesse: { type: array, items: { $ref: "#/components/schemas/BewertungUmfangAusschluss" } }
+        anlagen_im_umfang: { type: array, items: { $ref: "#/components/schemas/BewertungUmfangAnlage" } }
+        anzahl_anlagen_im_umfang: { type: integer, minimum: 0, description: Nur Anlagen im Umfang (y); sagt nichts über Hauptzähler oder Bilanzabdeckung (x). }
+        nenner_traeger: { type: string, nullable: true, enum: [Strom, null], description: null ohne Strom; es wird noch kein Nenner berechnet. }
+        begruendung: { type: string, nullable: true }
+        akteur:
+          type: object
+          nullable: true
+          required: [sub, name, rolle, art]
+          properties:
+            sub: { type: string, nullable: true }
+            name: { type: string }
+            rolle: { type: string, nullable: true }
+            art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+        created_at: { type: string, format: date-time, nullable: true }
+        aufgehoben_am: { type: string, format: date-time, nullable: true, description: Ablösung protokolliert; ältere Gültigkeit bleibt am früheren Stichtag lesbar. }
+        teilansicht: { type: boolean, description: Liste und Anzahl gelten nur für den sichtbaren Standortumfang. }
+    BewertungUmfangHistorie:
+      type: object
+      required: [fassungen]
+      properties:
+        fassungen: { type: array, items: { $ref: "#/components/schemas/BewertungUmfang" } }
+    BewertungUmfangFehler:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, traeger_unbekannt, standort_unbekannt, ausschluss_ungueltig, begruendung_fehlt, gueltig_ab_ungueltig] }
+        message: { type: string }
     EnergieeinsatzFehler:
       type: object
       required: [code, message]
