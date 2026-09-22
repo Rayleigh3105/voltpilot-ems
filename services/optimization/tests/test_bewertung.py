@@ -10,6 +10,7 @@ from voltpilot_optimization import bewertung as b
 
 V2 = Path(__file__).resolve().parents[3] / 'docs' / 'contracts' / 'v2'
 DATA = json.loads((V2 / 'bewertung-vectors.json').read_text())
+MESSABDECKUNG = json.loads((V2 / 'messabdeckung.json').read_text())
 SCHEMA = json.loads((V2 / 'bewertung.schema.json').read_text())
 
 
@@ -61,3 +62,27 @@ def test_ahrenberg_werte_sind_die_der_referenzdatei():
     for k in ref['bewertung_kriterien'][0]['kriterien']:
         if k['schwelle'] is not None:
             assert str(DATA['startwerte'][k['kennung']]) == str(k['schwelle'])
+
+
+def test_messabdeckung_ahrenberg_laeuft_durch_denselben_p3_zwilling():
+    messstellen = []
+    for einsatz in MESSABDECKUNG['je_einsatz']:
+        if einsatz['traeger'] != 'Strom':
+            continue
+        messstellen.extend(dict(kennung=m['messstelle'], traeger='Strom', art='gemessen', direkt=True,
+                                archiviert=False, wert=m['oktober_2026'].replace(' ', '').split('kWh')[0], ersatz='0')
+                            for m in einsatz['gemessen'])
+        messstellen.extend(dict(kennung=m['messstelle'], traeger='Strom', art='gemessen', direkt=True,
+                                archiviert=False, wert=None, ersatz='0') for m in einsatz['geplant'])
+    reste = [{'kennung': kennung, 'wert': str(rest['kwh'])}
+             for kennung, rest in MESSABDECKUNG['rest_je_anlage'].items()]
+    aus = b.abdeckung(dict(messstellen=messstellen, traeger='Strom', reste=reste,
+                           nenner=str(MESSABDECKUNG['summe']['nenner_kwh']), offene_bedarfe=[],
+                           schwelle=b.STARTWERTE['K8']))
+    assert aus['menge'] == str(MESSABDECKUNG['summe']['gemessen_zugeordnet_kwh'])
+    assert aus['ersatz'] == str(MESSABDECKUNG['summe']['ersatz_kwh'])
+    assert aus['ungemessen'] == str(MESSABDECKUNG['summe']['ungemessen_kwh'])
+    assert aus['abdeckung_prozent'] == str(MESSABDECKUNG['summe']['abdeckung_prozent'])
+    assert aus['K8'] == MESSABDECKUNG['summe']['K8']
+    assert len(aus['gemessen']) == 9
+    assert aus['geplant'] == ['MS-23']
