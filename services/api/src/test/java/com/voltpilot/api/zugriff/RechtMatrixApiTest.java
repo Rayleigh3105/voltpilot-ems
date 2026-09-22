@@ -267,6 +267,8 @@ class RechtMatrixApiTest {
         z.add(new Zeile("messstelle.bearbeiten", HttpMethod.POST, "/api/v1/messstellen", "eee333e3"));
         z.add(new Zeile("messstelle.quelle", HttpMethod.POST, "/api/v1/messstellen/{M1}/quellen", "ee4433e3"));
         z.add(new Zeile("messstelle.quelle", HttpMethod.POST, "/api/v1/geraete/{GR1}/austausch", "ee4433e3"));
+        // AP-16 IP-15: Standort-Zaun über den Einbauort; der Unterstützer mit „Einrichten“ darf.
+        z.add(new Zeile("messmittel.angaben", HttpMethod.PUT, "/api/v1/geraete/{GR1}/messmittel", "ee4433e3"));
         z.add(new Zeile("messstelle.formel", HttpMethod.POST, "/api/v1/sites/{A1}/bilanz/rest", "ee4433e3"));
         z.add(new Zeile("messstelle.verteilung", HttpMethod.PUT, "/api/v1/messstellen/{M1}/verteilung", "ee4433e3"));
         z.add(new Zeile("ablesung.erfassen", HttpMethod.POST, "/api/v1/messstellen/MS-1/ablesungen", "eee33333"));

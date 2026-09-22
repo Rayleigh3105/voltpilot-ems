@@ -10407,6 +10407,68 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/EinstellungAbgelehnt" }
         "422": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+  /api/v1/geraete/{id}/messmittel:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Messmittel-Angaben eines Einbaus - Klasse, Prüfung, Beleg, Wandler-Klassen (AP-16 IP-15).
+      description: >
+        Recht `messwerte.ansehen`; ein Gerät außerhalb des Zugriffs ist 404.
+        Die Angaben hängen am EINBAU (G1): ein Zählerwechsel legt einen neuen
+        Einbau ohne Angaben an. Ohne Angabe steht `nicht_erhoben` (G3) - nie
+        ein Vorgabewert, nie eine gerechnete Genauigkeit der Messkette. Die
+        Katalog-Angabe „laut Hersteller" steht getrennt (IP-16).
+      responses:
+        "200":
+          description: Die Angaben des Einbaus.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessmittelAngaben" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [geraete]
+      summary: Messmittel-Angaben eines Einbaus eintragen - die ganze Angabe, Beleg als Verweis mit SHA-256.
+      description: >
+        Recht `messmittel.angaben` (Kundenadministrator, Energiemanager,
+        Bearbeiter am Standort, Unterstützer mit „Einrichten"); der Standort
+        ist der des Einbaus (die Anlage des Geräts), außerhalb 404. Was fehlt,
+        ist nicht erhoben. Der Beleg (G2) ist Bezeichnung, Ablage beim Kunden
+        und die SHA-256 der Datei - im Portal gebildet, die Datei wird nie
+        übertragen; ohne gültige Prüfsumme 422. Derselbe Verweis behält Person
+        und Zeitpunkt seines Eintragens. `wandler` nennt nur die Fassungen,
+        deren Klasse sich ändert; eine Klasse steht nur an `wandler_strom` und
+        `wandler_spannung` dieses Einbaus. Jede Änderung steht als
+        `messmittel_angabe` mit alt/neu und Akteur im Protokoll des Geräts; ein
+        unveränderter PUT schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessmittelEintrag" }
+      responses:
+        "200":
+          description: Die Angaben nach dem Eintragen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessmittelAngaben" }
+        "400":
+          description: anfrage_ungueltig - kein JSON-Objekt, unbekanntes Feld oder falsche Form.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessmittelFehler" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: >
+            pruefsumme_ungueltig, beleg_unvollstaendig, pruefungsart_unbekannt,
+            zeitraum_ungueltig, text_zu_lang, fassung_unbekannt oder
+            klasse_nur_am_wandler; `feld` nennt die Stelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessmittelFehler" }
   /api/v1/geraete/{id}/austausch/vorschau:
     get:
       summary: Folgen des Controllerwechsels zum Zeitpunkt lesen (AP-04 E10)
@@ -26896,6 +26958,79 @@ components:
         takt: { type: string, nullable: true, example: "Takt 60 s wählen" }
         boxen: { type: array, items: { $ref: "#/components/schemas/DatenquelleBudgetBox" } }
         andere_box: { type: string, nullable: true, example: "Box Halle 2 wählen (29 Anfragen/min frei)" }
+    MessmittelAngaben:
+      type: object
+      description: AP-16 IP-15 (G1–G3). NULL heißt nicht erhoben; `zustand` fasst Klasse, Prüfung und Beleg zusammen.
+      required: [geraet_id, kennzeichen, einbau_kennzeichen, zustand, genauigkeitsklasse, pruefungsart, pruefung_am, pruefung_gueltig_bis, beleg, wandler]
+      properties:
+        geraet_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        einbau_kennzeichen: { type: string }
+        zustand: { type: string, enum: [erhoben, nicht_erhoben] }
+        genauigkeitsklasse: { type: string, nullable: true, maxLength: 60 }
+        pruefungsart: { type: string, enum: [eichung, mid_konformitaet, kalibrierung, werksbescheinigung, keine, nicht_erhoben] }
+        pruefung_am: { type: string, format: date, nullable: true }
+        pruefung_gueltig_bis: { type: string, format: date, nullable: true }
+        beleg:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MessmittelBeleg" }]
+        wandler: { type: array, items: { $ref: "#/components/schemas/MessmittelWandler" } }
+    MessmittelBeleg:
+      type: object
+      description: Ein Verweis, keine Datei (G2). Person und Zeitpunkt sind die des Eintragens.
+      required: [bezeichnung, ablage, sha256, person, zeitpunkt]
+      properties:
+        bezeichnung: { type: string, maxLength: 200 }
+        ablage: { type: string, nullable: true, maxLength: 200 }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        person: { $ref: "#/components/schemas/BewertungKriterienAkteur" }
+        zeitpunkt: { type: string, format: date-time }
+    MessmittelWandler:
+      type: object
+      description: Eine Wandler-Fassung des Einbaus mit ihrer Klasse; die Klasse ändert keinen Wert.
+      required: [fassung, art, wert, gueltig_ab, gueltig_bis, klasse, zustand]
+      properties:
+        fassung: { type: string, format: uuid }
+        art: { type: string, enum: [wandler_strom, wandler_spannung] }
+        wert: { type: object, additionalProperties: true }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+        klasse: { type: string, nullable: true, maxLength: 60 }
+        zustand: { type: string, enum: [erhoben, nicht_erhoben] }
+    MessmittelEintrag:
+      type: object
+      additionalProperties: false
+      properties:
+        genauigkeitsklasse: { type: string, nullable: true, maxLength: 60 }
+        pruefungsart: { type: string, nullable: true, enum: [eichung, mid_konformitaet, kalibrierung, werksbescheinigung, keine, nicht_erhoben, null] }
+        pruefung_am: { type: string, format: date, nullable: true }
+        pruefung_gueltig_bis: { type: string, format: date, nullable: true }
+        beleg:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required: [bezeichnung, sha256]
+          properties:
+            bezeichnung: { type: string, maxLength: 200 }
+            ablage: { type: string, nullable: true, maxLength: 200 }
+            sha256: { type: string, pattern: "^[0-9a-fA-F]{64}$", description: Im Portal aus der gewählten Datei gebildet. }
+        wandler:
+          type: array
+          nullable: true
+          items:
+            type: object
+            additionalProperties: false
+            required: [fassung]
+            properties:
+              fassung: { type: string, format: uuid }
+              klasse: { type: string, nullable: true, maxLength: 60 }
+    MessmittelFehler:
+      type: object
+      required: [code, feld, message]
+      properties:
+        code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, pruefsumme_ungueltig, beleg_unvollstaendig, pruefungsart_unbekannt, zeitraum_ungueltig, text_zu_lang, fassung_unbekannt, klasse_nur_am_wandler] }
+        feld: { type: string }
+        message: { type: string }
     Geraet:
       type: object
       description: >

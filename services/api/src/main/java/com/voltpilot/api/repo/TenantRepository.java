@@ -269,8 +269,10 @@ public class TenantRepository {
                     st.executeUpdate();
                 }
                 // AP-16 IP-3/IP-5/IP-8/IP-11: before Benutzer, Bezugsgröße, Prozess, Standort and Unternehmen (RESTRICT).
+                // AP-16 IP-15: the Einbau journal geraet_aenderung holds only the tenant (RESTRICT, no FK to geraet).
                 // Current repository code also runs against older migration fixtures.
-                for (String table : new String[] {"bewertung_aenderung", "bewertung_kriterien_fassung", "bewertung_umfang_ausschluss",
+                for (String table : new String[] {"geraet_aenderung",
+                        "bewertung_aenderung", "bewertung_kriterien_fassung", "bewertung_umfang_ausschluss",
                         "bewertung_umfang_standort", "bewertung_umfang",
                         "energieeinsatz_aenderung", "energieeinsatz_einstufung", "energieeinsatz_einflussgroesse",
                         "energieeinsatz", "energieeinsatz_kennzeichen_seq"}) {

@@ -99,10 +99,11 @@ public class AenderungsprotokollRepository {
         }
     }
 
-    /** Die drei Herkünfte — der Wert ist zugleich der stabile zweite Sortierschlüssel. */
+    /** Die vier Herkünfte — der Wert ist zugleich der stabile zweite Sortierschlüssel. */
     public static final String QUELLE_DATENQUELLE = "datenquelle";
     public static final String QUELLE_MESSSTELLE = "messstelle";
     public static final String QUELLE_ORT = "ort";
+    public static final String QUELLE_GERAET = "geraet";
 
     /**
      * Eine Zeile des Lesemodells — die FAKTEN, noch ohne Kundensatz (den macht
@@ -266,6 +267,24 @@ public class AenderungsprotokollRepository {
               LEFT JOIN data_source q ON q.id = d.data_source_id
             """.replace("{zone}", ZONE);
 
+    /**
+     * Der Zweig des Journals am Einbau (AP-16 IP-15, V20260922245000): Messmittel-Angaben betreffen den Einbau
+     * selbst, auch einen ohne Messstelle. Er gilt ab seinem Eintrag; das Einbau-Kennzeichen steht als Spalte.
+     */
+    private static final String STROM_GERAET = """
+            SELECT 'geraet', a.id, a.art,
+                   a.geraet_id, 'geraet',
+                   g.einbau_kennzeichen, g.bezeichnung,
+                   a.created_at, a.created_at,
+                   false, NULL,
+                   NULL, a.alt::text, a.neu::text,
+                   a.actor_name, a.actor_rolle, a.actor_art,
+                   coalesce(g.einbau_kennzeichen, a.neu->>'einbau'), NULL,
+                   (a.created_at AT TIME ZONE '{zone}')::date, NULL::date, false
+              FROM geraet_aenderung a
+              LEFT JOIN geraet g ON g.id = a.geraet_id
+            """.replace("{zone}", ZONE);
+
     /** Das Protokoll EINER Messstelle, jüngster Eintrag zuerst — leer für eine fremde. */
     public List<Zeile> fuerMessstelle(UUID messstelleId, Filter f) {
         return lies(STROM_MESSSTELLE, false, "bezug_id = ?", List.of(messstelleId), f);
@@ -288,13 +307,14 @@ public class AenderungsprotokollRepository {
      * Journale vereinheitlicht (AP-03 IP-7), darf hier eine echte Geräte-Spalte einsetzen.
      */
     public List<Zeile> fuerEinbau(String einbauKennzeichen, Filter f) {
-        return lies(STROM_MESSSTELLE, false, "? IN (einbau, einbau_zweit)", List.of(einbauKennzeichen), f);
+        return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_GERAET, false, "? IN (einbau, einbau_zweit)",
+                List.of(einbauKennzeichen), f);
     }
 
-    /** Das Protokoll des ganzen Unternehmens — alle drei Journale in EINER Abfrage. */
+    /** Das Protokoll des ganzen Unternehmens — alle vier Journale in EINER Abfrage. */
     public List<Zeile> fuerUnternehmen(Filter f) {
-        return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_ORT + "UNION ALL\n" + STROM_DATENQUELLE,
-                true, null, List.of(), f);
+        return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_ORT + "UNION ALL\n" + STROM_DATENQUELLE
+                + "UNION ALL\n" + STROM_GERAET, true, null, List.of(), f);
     }
 
     /** Die Anlage einer Datenquelle — leer, wenn es sie nicht (mehr) gibt. */
