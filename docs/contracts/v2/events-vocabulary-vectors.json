@@ -13,7 +13,7 @@
     "Wer eine Art, ein Feld oder einen Satz ändert, ändert Java, TS, beide Schemas UND diese Datei.",
     "",
     "Cloud-Dienste hängen Ereignisse über die gemeinsame Prüfung an die Ereignis-Tabelle an.",
-    "`einstufung_gesetzt` kommt ausschließlich aus der API und ist ausdrücklich kein Box-Ereignis;",
+    "`einstufung_gesetzt`, `messbedarf_erfasst` und `messbedarf_eingeloest` kommen ausschließlich aus der API und sind ausdrücklich keine Box-Ereignisse;",
     "die Ergänzung erweitert weder den MQTT-Umschlag noch eine Edge-Auslieferung.",
     "",
     "DIE BEISPIELWELT ist das Referenzunternehmen (uems-referenzunternehmen.json). Jeder Fall,",
@@ -741,6 +741,10 @@
       "gruende": {
         "typ": "wort_liste",
         "beschreibung": "Die begründenden Kriteriennummern K1 bis K4; darf bei nicht wesentlich leer sein."
+      },
+      "messbedarf": {
+        "typ": "kennung",
+        "beschreibung": "Der Messbedarf: sein Kennzeichen MB-… zur Zeit der Meldung (AP-16 IP-19)."
       }
     },
     "arten": [
@@ -2211,6 +2215,44 @@
         "bestand": false,
         "nie_geloescht": true,
         "herkunft": "AP-16 IP-11, F1–F5 und R3; reserviert seit IP-3"
+      },
+      {
+        "art": "messbedarf_erfasst",
+        "name": "Messbedarf erfasst",
+        "urheber": ["kunde"],
+        "zeit": { "form": "zeitpunkt", "grenzen": null, "offen_erlaubt": false, "achse": "messzeit" },
+        "bezug_pflicht": ["messbedarf"],
+        "bezug_erlaubt": [],
+        "pflicht": [],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": { "standard": "Messbedarf {messbedarf} erfasst" },
+        "zusaetze": {},
+        "regeln": ["Nur kunde; Zeitpunkt des Erfassens, Bezug nur der Messbedarf. Eine Wiederholung schreibt nichts."],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-16 §4.7 P1/P2, IP-19; reserviert mit IP-3"
+      },
+      {
+        "art": "messbedarf_eingeloest",
+        "name": "Messbedarf eingelöst",
+        "urheber": ["kunde"],
+        "zeit": { "form": "zeitpunkt", "grenzen": null, "offen_erlaubt": false, "achse": "messzeit" },
+        "bezug_pflicht": ["messbedarf", "messstelle"],
+        "bezug_erlaubt": [],
+        "pflicht": [],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": { "standard": "Messbedarf {messbedarf} durch Messstelle {messstelle} eingelöst" },
+        "zusaetze": {},
+        "regeln": ["Nur kunde; die Messstelle ist eingerichtet und steht im selben Kundenbereich und Zugriffszaun."],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-16 §4.7 P2, IP-19; reserviert mit IP-3"
       }
     ]
   },
@@ -2368,7 +2410,7 @@
       "angelegt_von": "AP-16 IP-19/IP-20; Reservierung mit IP-3",
       "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
       "regel": "Eine Person erfasst einen offenen Messbedarf am Energieeinsatz.",
-      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+      "bis_dahin": "Eingelöst mit AP-16 IP-19: `vokabular.arten` enthält `messbedarf_erfasst`; der API-Schreibweg meldet es atomar mit dem offenen Bedarf."
     },
     {
       "art": "messbedarf_eingeloest",
@@ -2379,7 +2421,7 @@
       "angelegt_von": "AP-16 IP-19/IP-20; Reservierung mit IP-3",
       "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
       "regel": "Eine Person löst einen Messbedarf durch eine eingerichtete Messstelle ein; die Historie bleibt erhalten.",
-      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+      "bis_dahin": "Eingelöst mit AP-16 IP-19: `vokabular.arten` enthält `messbedarf_eingeloest`; der API-Schreibweg meldet es atomar mit der Messstellen-Verknüpfung."
     }
   ],
   "cases": [
@@ -6295,6 +6337,51 @@
         "urteil": "verworfen",
         "grund": "regel_verletzt",
         "saetze": []
+      }
+    },
+    {
+      "name": "messbedarf-mb-1-erfasst",
+      "pruefung": "ereignis",
+      "bezug": "AP-16 §4.7 P1, R5; IP-19",
+      "why": "Die Person erfasst den offenen Messbedarf; Zahlen stufen nichts ein.",
+      "annahme": "MB-1 ist das Kennzeichen der Erweiterung 1.6 aus R5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000001901",
+          "art": "messbedarf_erfasst",
+          "zeitpunkt": "2026-11-27T09:00:00Z",
+          "messbedarf": "MB-1"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": ["Messbedarf MB-1 erfasst"]
+      }
+    },
+    {
+      "name": "messbedarf-mb-1-eingeloest",
+      "pruefung": "ereignis",
+      "bezug": "AP-16 §4.7 P2, R5; IP-19",
+      "why": "Die Person löst den Bedarf durch die eingerichtete Messstelle MS-23 ein.",
+      "annahme": "MB-1 und MS-23 sind die Kennzeichen der Erweiterung 1.6 aus R5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000001902",
+          "art": "messbedarf_eingeloest",
+          "zeitpunkt": "2026-11-27T09:05:00Z",
+          "messbedarf": "MB-1",
+          "messstelle": "MS-23"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": ["Messbedarf MB-1 durch Messstelle Halle 1 Allgemein eingelöst"]
       }
     }
   ]

@@ -137,8 +137,30 @@ Der Produktivleser ist `GET /api/v1/unternehmen/bewertung/messabdeckung?von=&bis
 Er projiziert das Ergebnis von `BewertungMengenLeser` — Nenner, Mengen und Rest werden
 nicht erneut gebildet — und liest K8 aus der wirksamen Kriterien-Fassung. Die vollständige
 Ahrenberg-Abnahme steht in [`messabdeckung.json`](messabdeckung.json) und läuft zusätzlich
-durch Java-, TypeScript- und Python-Zwilling. `BewertungMessbedarfNaht` ist bis IP-19 leer;
-Messstellen ohne Datenquelle erscheinen bereits jetzt unter `geplant`, stets ohne Menge.
+durch Java-, TypeScript- und Python-Zwilling. `BewertungMessbedarfNaht` liest offene
+Messbedarfe; Messstellen ohne Datenquelle erscheinen ebenfalls unter `geplant`, stets
+ohne Menge.
+
+### 4.1 Messbedarf (P1/P2, R5)
+
+Ein Messbedarf gehört genau zu einem Energieeinsatz und hat ein stabiles Kennzeichen
+`MB-…`, Wortlaut, optional Ort, Größe und Frist sowie Zustand `offen`, `eingeloest`
+oder `verworfen`. Erfassen und Bearbeiten verwenden
+`/api/v1/unternehmen/energieeinsaetze/{id}/messbedarf`; Einlösen und Verwerfen sind
+eigene Unterrouten. Jede Änderung speichert Akteur, Zeitpunkt und Vorher-/Nachher-Stand.
+Verworfen verlangt eine nicht leere Begründung und bleibt lesbar.
+
+Einlösen ist ausschließlich mit einer eingerichteten Messstelle desselben Mandanten
+und im Standort-Zaun möglich. Der Bedarf nennt danach die Messstelle; deren Registerzeile
+nennt unter `geplant_fuer_einsaetze` den Einsatz, und `geplantFuerEinsatz=true` filtert
+darauf. Eine Messstelle ohne Datenquelle meldet weiter `keine_datenquelle` und keinen
+letzten Wert — niemals eine erfundene Null. Offene Bedarfe liefert
+`BewertungMessbedarfNaht` an P3 als `geplant`, ebenfalls ohne Menge; eingelöste oder
+verworfene Bedarfe erscheinen dort nicht zusätzlich.
+
+Erfassen und Einlösen erzeugen atomar die Kundenereignisse `messbedarf_erfasst` und
+`messbedarf_eingeloest`. Datenhaltung und Protokoll erzwingen RLS einschließlich
+`FORCE ROW LEVEL SECURITY`; die Laufzeitrolle hat kein DELETE-Recht.
 
 **P4:** `prozess_summe_passt` vergleicht die Quell-Messstellen der Terme jeder
 zugeordneten berechneten Messstelle mit den direkt gemessenen Messstellen des

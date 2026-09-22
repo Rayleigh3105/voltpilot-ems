@@ -179,7 +179,7 @@ class LesewegImZugriffApiTest {
         unterZugriffOhneSicht(w);
         assertThat(messstellen.eine(ms.get("MS-16")).kennzeichen()).isEqualTo("MS-16");
         assertThat(register.liste(Instant.parse("2026-09-21T00:00:00Z"),
-                new MessstelleRegisterService.Filter(null, null, null, null, false)).messstellen())
+                new MessstelleRegisterService.Filter(null, null, null, null, false, false)).messstellen())
                 .extracting(x -> x.kennzeichen()).containsExactlyInAnyOrderElementsOf(ms.keySet());
     }
 

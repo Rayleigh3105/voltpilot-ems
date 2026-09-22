@@ -174,7 +174,7 @@ public class FunktionFakten {
 
     private Hauptzaehler hauptzaehler(UUID siteId, List<MessstelleDto.RegisterZeile> vorhanden) {
         List<MessstelleDto.RegisterZeile> zeilen = new ArrayList<>(vorhanden != null ? vorhanden : register.liste(null,
-                new MessstelleRegisterService.Filter(null, null, siteId, null, false)).register());
+                new MessstelleRegisterService.Filter(null, null, siteId, null, false, false)).register());
         zeilen.sort(Comparator.comparing(MessstelleDto.RegisterZeile::kennzeichen));
         for (MessstelleDto.RegisterZeile z : zeilen) {
             if (hauptzaehlerDer(z, siteId) && z.beobachtung() != null) {

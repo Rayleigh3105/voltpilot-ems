@@ -466,6 +466,12 @@
         },
         {
           "$ref": "#/$defs/art_einstufung_gesetzt"
+        },
+        {
+          "$ref": "#/$defs/art_messbedarf_erfasst"
+        },
+        {
+          "$ref": "#/$defs/art_messbedarf_eingeloest"
         }
       ]
     },
@@ -1934,6 +1940,31 @@
           "type": "array", "uniqueItems": true,
           "items": { "type": "string", "enum": ["K1", "K2", "K3", "K4"] }
         }
+      }
+    },
+    "art_messbedarf_erfasst": {
+      "type": "object",
+      "description": "messbedarf_erfasst — eine Person erfasst einen offenen Messbedarf.",
+      "additionalProperties": false,
+      "required": ["ereignis_id", "art", "zeitpunkt", "messbedarf"],
+      "properties": {
+        "ereignis_id": { "$ref": "#/$defs/uuid" },
+        "art": { "const": "messbedarf_erfasst" },
+        "zeitpunkt": { "$ref": "#/$defs/zeit_utc" },
+        "messbedarf": { "$ref": "#/$defs/kennung" }
+      }
+    },
+    "art_messbedarf_eingeloest": {
+      "type": "object",
+      "description": "messbedarf_eingeloest — eine Person löst den Bedarf durch eine eingerichtete Messstelle ein.",
+      "additionalProperties": false,
+      "required": ["ereignis_id", "art", "zeitpunkt", "messbedarf", "messstelle"],
+      "properties": {
+        "ereignis_id": { "$ref": "#/$defs/uuid" },
+        "art": { "const": "messbedarf_eingeloest" },
+        "zeitpunkt": { "$ref": "#/$defs/zeit_utc" },
+        "messbedarf": { "$ref": "#/$defs/kennung" },
+        "messstelle": { "$ref": "#/$defs/kennung" }
       }
     }
   }

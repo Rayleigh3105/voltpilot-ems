@@ -142,7 +142,7 @@ public class OrtService {
                         orte.mitKennzahl());
         Instant datenAm = stichtag == null ? null : tag.atStartOfDay(ZoneId.of(st.get().zeitzone())).toInstant();
         MessstelleDto.Liste registerListe = register.liste(datenAm,
-                new MessstelleRegisterService.Filter(standortId.toString(), null, null, null, false));
+                new MessstelleRegisterService.Filter(standortId.toString(), null, null, null, false, false));
         Map<String, List<ZustandAbleitung.LiefertDaten>> datenlagen = new HashMap<>();
         for (MessstelleDto.RegisterZeile zeile : registerListe.register()) {
             ZustandAbleitung.LiefertDaten zustand = MessstelleRegisterService.aggregatZustand(zeile);

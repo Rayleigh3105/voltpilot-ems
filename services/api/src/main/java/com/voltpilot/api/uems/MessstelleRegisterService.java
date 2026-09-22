@@ -85,9 +85,10 @@ public class MessstelleRegisterService {
      * {@code ohneQuelle} findet die gemessenen ohne führende Quelle zum Zeitpunkt — die berechneten
      * haben keine und sind deshalb nicht „ohne Quelle“.
      */
-    public record Filter(String standort, String ort, UUID anlage, String zustand, boolean ohneQuelle) {
+    public record Filter(String standort, String ort, UUID anlage, String zustand, boolean ohneQuelle,
+            boolean geplantFuerEinsatz) {
 
-        public static final Filter KEINER = new Filter(null, null, null, null, false);
+        public static final Filter KEINER = new Filter(null, null, null, null, false, false);
     }
 
     private final MessstelleRegisterRepository register;
@@ -97,11 +98,13 @@ public class MessstelleRegisterService {
     private final QuelleKadenzRepository kadenzen;
     private final BilanzRestRepository reste;
     private final MessstelleFormelTermRepository formelTerme;
+    private final MessbedarfRepository messbedarfe;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleRegisterService(MessstelleRegisterRepository register, MessstelleService messstellen,
             StandortService standorte, MesskanalService kanaele, QuelleKadenzRepository kadenzen,
-            BilanzRestRepository reste, MessstelleFormelTermRepository formelTerme) {
+            BilanzRestRepository reste, MessstelleFormelTermRepository formelTerme,
+            MessbedarfRepository messbedarfe) {
         this.register = register;
         this.messstellen = messstellen;
         this.standorte = standorte;
@@ -109,6 +112,7 @@ public class MessstelleRegisterService {
         this.kadenzen = kadenzen;
         this.reste = reste;
         this.formelTerme = formelTerme;
+        this.messbedarfe = messbedarfe;
     }
 
     /** Nur für Tests: die Uhr, an der „ohne Stichtag = jetzt“ hängt. */
@@ -162,12 +166,15 @@ public class MessstelleRegisterService {
         // Geschichte, und ein alter Stichtag sieht die alte Erwartung.
         Map<UUID, Integer> fassungen = kadenzen.jeBindung(bindungen(bestand, zeitpunkt), zeitpunkt);
         Auswahl auswahl = Auswahl.aus(filter, baum);
+        Map<UUID, List<MessbedarfRepository.Planung>> planungen = messbedarfe.planungenJeMessstelle();
         List<MessstelleDto.Messstelle> messstellenListe = new ArrayList<>();
         List<MessstelleDto.RegisterZeile> zeilen = new ArrayList<>();
         Map<UUID, MessstelleDto.RegisterZeile> alle = new LinkedHashMap<>();
         for (int i = 0; i < bestand.size(); i++) {
-            alle.put(bestand.get(i).messstelle().id(), zeile(bestand.get(i), voll.get(i), baum, anlagen, tag,
-                    zeitpunkt, werte, fassungen));
+            MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag,
+                    zeitpunkt, werte, fassungen);
+            alle.put(bestand.get(i).messstelle().id(), mitPlanungen(z,
+                    planungen.getOrDefault(z.id(), List.of())));
         }
         Map<UUID, MessstelleDto.RegisterBerechnung> berechnungen = RegisterBerechnung.ableiten(plan, alle, werte,
                 m -> kanaele.kadenz(m.kanal(), werte.get(m) == null ? null : werte.get(m).kadenzS(), null).erwartetS(),
@@ -227,14 +234,24 @@ public class MessstelleRegisterService {
                 ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt),
                 voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(),
                 haupt == null ? null : haupt.beobachtung(), haupt == null ? null : haupt.letzterWert(),
-                List.copyOf(neben), fakten(b.fakten(), zeitpunkt), null);
+                List.copyOf(neben), fakten(b.fakten(), zeitpunkt), null, List.of());
+    }
+
+    private static MessstelleDto.RegisterZeile mitPlanungen(MessstelleDto.RegisterZeile z,
+            List<MessbedarfRepository.Planung> planungen) {
+        return new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
+                z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
+                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(),
+                z.berechnung(), planungen.stream().map(p -> new MessstelleDto.GeplanterEinsatz(
+                        p.einsatzId(), p.einsatzKennzeichen(), p.einsatzName())).toList());
     }
 
     private static MessstelleDto.RegisterZeile mitBerechnung(MessstelleDto.RegisterZeile z,
             MessstelleDto.RegisterBerechnung b) {
         return b == null ? z : new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
                 z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
-                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(), b);
+                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(), b,
+                z.geplantFuerEinsaetze());
     }
 
     private static List<MessstelleDto.RegisterFakt> fakten(List<Fakt> fakten, Instant zeitpunkt) {
@@ -474,7 +491,10 @@ public class MessstelleRegisterService {
             if (filter.zustand() != null && !filter.zustand().equals(z.lebenszyklus())) {
                 return false;
             }
-            return !filter.ohneQuelle() || KEINE_DATENQUELLE.equals(z.quelle().stand());
+            if (filter.ohneQuelle() && !KEINE_DATENQUELLE.equals(z.quelle().stand())) {
+                return false;
+            }
+            return !filter.geplantFuerEinsatz() || !z.geplantFuerEinsaetze().isEmpty();
         }
 
         private static String kurzzeichen(String wert, StandortService.Baum baum) {

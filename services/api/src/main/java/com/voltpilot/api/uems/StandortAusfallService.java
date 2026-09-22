@@ -44,7 +44,7 @@ public class StandortAusfallService {
         direkt.values().forEach(m -> direkteKennzeichen.add(m.kennzeichen()));
 
         MessstelleDto.Liste liste = register.liste(null,
-                new MessstelleRegisterService.Filter(standort.kurzzeichen(), null, null, null, false));
+                new MessstelleRegisterService.Filter(standort.kurzzeichen(), null, null, null, false, false));
         List<StandortAusfallDto.Messstelle> betroffen = new ArrayList<>();
         for (MessstelleDto.RegisterZeile z : liste.register()) {
             StandortAusfallRepository.Messstelle fakt = direkt.get(z.id());

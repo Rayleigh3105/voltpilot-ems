@@ -208,7 +208,7 @@
       "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
     },
     "feldliste": { "type": "array", "items": { "$ref": "#/$defs/code" } },
-    "bezugsliste": { "type": "array", "items": { "type": "string", "enum": ["box", "datenquelle", "komponente", "messkanal", "messstelle", "bezugsgroesse", "bericht", "kennzahl", "energieeinsatz"] } },
+    "bezugsliste": { "type": "array", "items": { "type": "string", "enum": ["box", "datenquelle", "komponente", "messkanal", "messstelle", "bezugsgroesse", "bericht", "kennzahl", "energieeinsatz", "messbedarf"] } },
     "art": {
       "type": "object",
       "additionalProperties": false,

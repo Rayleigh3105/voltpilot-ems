@@ -119,10 +119,12 @@ public class MessstelleController {
             @RequestParam(required = false) String anlage,
             @RequestParam(required = false) String zustand,
             @RequestParam(required = false) String ohneQuelle,
+            @RequestParam(required = false) String geplantFuerEinsatz,
             @RequestParam(required = false) String stichtag) {
         return register.liste(stichtag(stichtag), new MessstelleRegisterService.Filter(
                 leer(standort) ? null : standort.strip(), leer(ort) ? null : ort.strip(),
-                anlage(anlage), zustand(zustand), ohneQuelle(ohneQuelle)),
+                anlage(anlage), zustand(zustand), wahrFalsch(ohneQuelle, "ohneQuelle", "ohne Quelle"),
+                wahrFalsch(geplantFuerEinsatz, "geplantFuerEinsatz", "geplant für Einsatz")),
                 id -> rechte.lesbar(RechtZiel.MESSSTELLE, id), formeln::komponenteSichtbar);
     }
 
@@ -169,13 +171,13 @@ public class MessstelleController {
         return wert;
     }
 
-    private static boolean ohneQuelle(String text) {
+    private static boolean wahrFalsch(String text, String feld, String name) {
         if (leer(text)) {
             return false;
         }
         String wert = text.strip();
         if (!"true".equals(wert) && !"false".equals(wert)) {
-            throw MessstelleAbgelehnt.anfrage("ohneQuelle", "„ohne Quelle“ ist true oder false.");
+            throw MessstelleAbgelehnt.anfrage(feld, "„" + name + "“ ist true oder false.");
         }
         return "true".equals(wert);
     }
