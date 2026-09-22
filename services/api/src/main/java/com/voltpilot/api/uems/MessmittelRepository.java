@@ -28,6 +28,9 @@ public class MessmittelRepository {
 
     public record Beleg(String bezeichnung, String ablage, String sha256, ProtokollAkteur person, Instant am) {}
 
+    /** Ein Gerät oder eine eingebaute Karte, deren Typ gegen reine Cloud-Katalogangaben gelesen wird. */
+    public record KatalogZiel(String art, UUID id, String bezeichnung, String hersteller, String modell) {}
+
     /** Eine Wandler-Fassung des Einbaus mit ihrer Klasse. */
     public record Wandler(UUID id, String art, JsonNode wert, Instant gueltigAb, Instant gueltigBis,
             String klasse) {}
@@ -62,6 +65,19 @@ public class MessmittelRepository {
                 + "WHERE geraet_id = ? AND art IN ('wandler_strom', 'wandler_spannung') ORDER BY gueltig_ab, id",
                 (rs, n) -> new Wandler(rs.getObject(1, UUID.class), rs.getString(2), baum(rs.getString(3)),
                         instant(rs, 4), instant(rs, 5), rs.getString(6)), geraetId);
+    }
+
+    /** Das Gerät und seine heute eingebauten Karten; die Karte erbt nur den Hersteller ihres Trägers. */
+    public List<KatalogZiel> katalogZiele(UUID geraetId) {
+        return jdbc.query("SELECT 'geraet' AS art, g.id, g.einbau_kennzeichen AS bezeichnung, g.hersteller, "
+                + "g.typ AS modell, 0 AS sortierung FROM geraet g WHERE g.id = ? AND g.typ IS NOT NULL UNION ALL "
+                + "SELECT 'teil', t.id, COALESCE(t.bezeichnung, 'Steckplatz ' || t.steckplatz::text), "
+                + "g.hersteller, t.typ, 1 FROM geraet_teil t JOIN geraet g ON g.id = t.geraet_id "
+                + "WHERE t.geraet_id = ? AND t.ausgebaut_am IS NULL AND t.typ IS NOT NULL "
+                + "ORDER BY sortierung, bezeichnung",
+                (rs, n) -> new KatalogZiel(rs.getString("art"), rs.getObject("id", UUID.class),
+                        rs.getString("bezeichnung"), rs.getString("hersteller"), rs.getString("modell")),
+                geraetId, geraetId);
     }
 
     /** Die Art einer Einstellungs-Fassung DIESES Einbaus — leer, wenn sie ihm nicht gehört. */

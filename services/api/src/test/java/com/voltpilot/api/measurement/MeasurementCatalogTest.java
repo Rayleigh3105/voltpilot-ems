@@ -119,7 +119,7 @@ class MeasurementCatalogTest {
     @Test
     void theBoxKeepsItsRuntimeVersionWhileTheContentVersionCarriesQuantityAndDirection() {
         assertThat(catalog.version()).isEqualTo("2026.08.26.3");
-        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.21.1");
+        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.23.1");
 
         assertThat(catalog.semantik("sunspec.model_203.totwhimp"))
                 .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "import"));
@@ -130,6 +130,25 @@ class MeasurementCatalogTest {
         assertThat(catalog.semantik("goe.api_v2.eto"))
                 .isEqualTo(new MeasurementCatalog.Semantik(null, null));
         assertThat(catalog.semantik("gibt.es.nicht")).isNull();
+    }
+
+    @Test
+    void herstellerGenauigkeitBleibtCloudOnlyUndTrifftModellvarianten() {
+        var karte = catalog.herstellerGenauigkeit("WAGO", "750-494/000-001 (5 A)");
+        assertThat(karte).isNotNull();
+        assertThat(karte.modell()).isEqualTo("750-494");
+        assertThat(karte.zustand()).isEqualTo("belegt");
+        assertThat(karte.wert()).isEqualTo("± 0,5 %");
+        assertThat(karte.bezug()).isEqualTo("Messbereichsendwert der Wirkleistung");
+        assertThat(karte.sourceSha256()).matches("^[0-9a-f]{64}$");
+
+        var zaehler = catalog.herstellerGenauigkeit("wago", "879-3020");
+        assertThat(zaehler).isNotNull();
+        assertThat(zaehler.modell()).isEqualTo("879-30xx");
+        assertThat(zaehler.klasse()).isEqualTo("MID");
+        assertThat(catalog.herstellerGenauigkeit("WAGO", "879-3100")).isNull();
+        assertThat(catalog.herstellerGenauigkeit("anderer Hersteller", "750-494")).isNull();
+        assertThat(catalog.version()).isEqualTo("2026.08.26.3");
     }
 
     /**

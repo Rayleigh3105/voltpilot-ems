@@ -30,7 +30,13 @@ public final class MessmittelDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Angaben(UUID geraetId, String kennzeichen, String einbauKennzeichen, String zustand,
             String genauigkeitsklasse, String pruefungsart, LocalDate pruefungAm, LocalDate pruefungGueltigBis,
-            Beleg beleg, List<Wandler> wandler) {}
+            Beleg beleg, List<Wandler> wandler, List<Herstellerangabe> lautHersteller) {}
+
+    /** G4: Katalog-Angabe je Geräte-/Kartentyp; ausdrücklich getrennt von {@link Angaben#genauigkeitsklasse()}. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Herstellerangabe(String zielArt, UUID ziel, String bezeichnung, String hersteller, String modell,
+            String zustand, String klasse, String wert, String bezug, String fundstelle, String sourceUrl,
+            String sourceSha256) {}
 
     /** Person und Zeitpunkt sind die des Eintragens des Belegs, nicht der Datei. */
     public record Beleg(String bezeichnung, String ablage, String sha256, ProtokollAkteur person,

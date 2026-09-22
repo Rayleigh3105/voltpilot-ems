@@ -854,9 +854,15 @@ def build_catalog() -> dict[str, Any]:
     manifest = read_json(MANIFEST_PATH)
     verify_source_hashes(manifest)
     points: list[dict[str, Any]] = []
+    models: list[dict[str, Any]] = []
     for source in manifest["sources"]:
+        if source["adapter"] == "accuracy":
+            document = read_json(source_file(source))
+            models.extend(document["models"])
+            continue
         points.extend(ADAPTERS[source["adapter"]](source))
     points.sort(key=lambda point: point["point_key"])
+    models.sort(key=lambda model: (model["hersteller"].casefold(), model["modell"].casefold()))
     for point in points:
         point["quantity"], point["direction"] = classify(point)
     family_counts = collections.Counter(point["family"] for point in points)
@@ -876,6 +882,7 @@ def build_catalog() -> dict[str, Any]:
         "deye_point_key_lock_sha256": sha256(DEYE_KEY_LOCK_PATH),
         "edge_min_version": EDGE_MIN_VERSION,
         "families": families,
+        "models": models,
         "points": points,
         "runtime_catalog_version": RUNTIME_CATALOG_VERSION,
         "schema_version": "1.0",

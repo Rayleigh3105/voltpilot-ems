@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.MessmittelRepository.Beleg;
 import com.voltpilot.api.uems.MessmittelRepository.Stand;
 import com.voltpilot.api.web.dto.MessmittelDto;
 import com.voltpilot.api.web.dto.MessmittelDto.Angaben;
 import com.voltpilot.api.web.dto.MessmittelDto.Eintrag;
+import com.voltpilot.api.web.dto.MessmittelDto.Herstellerangabe;
 import com.voltpilot.api.web.dto.MessmittelDto.WandlerEintrag;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -27,7 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * AP-16 IP-15 (G1–G3, E7 = A): Messmittel-Angaben am Einbau.
+ * AP-16 IP-15/IP-16 (G1–G4, E7 = A): Messmittel-Angaben am Einbau und getrennt „laut Hersteller“.
  *
  * <p>Zahlen werden hier nie erfunden: was fehlt, ist {@code nicht_erhoben} (G3); eine Genauigkeit der
  * Messkette wird nicht gerechnet. Ein Beleg ist ein Verweis mit SHA-256 (G2) — ohne gültige Prüfsumme kein
@@ -48,11 +50,14 @@ public class MessmittelService {
     private final MessmittelRepository messmittel;
     private final RechtPruefung rechte;
     private final ObjectMapper json;
+    private final MeasurementCatalog katalog;
 
-    public MessmittelService(MessmittelRepository messmittel, RechtPruefung rechte, ObjectMapper json) {
+    public MessmittelService(MessmittelRepository messmittel, RechtPruefung rechte, ObjectMapper json,
+            MeasurementCatalog katalog) {
         this.messmittel = messmittel;
         this.rechte = rechte;
         this.json = json;
+        this.katalog = katalog;
     }
 
     public Angaben lesen(UUID geraetId) {
@@ -189,7 +194,14 @@ public class MessmittelService {
                 b == null ? null : new MessmittelDto.Beleg(b.bezeichnung(), b.ablage(), b.sha256(), b.person(), b.am()),
                 messmittel.wandler(s.id()).stream().map(w -> new MessmittelDto.Wandler(w.id(), w.art(), w.wert(),
                         w.gueltigAb(), w.gueltigBis(), w.klasse(), w.klasse() == null ? NICHT_ERHOBEN : ERHOBEN))
-                        .toList());
+                        .toList(),
+                messmittel.katalogZiele(s.id()).stream().map(z -> {
+                    MeasurementCatalog.HerstellerGenauigkeit a = katalog.herstellerGenauigkeit(
+                            z.hersteller(), z.modell());
+                    return a == null ? null : new Herstellerangabe(z.art(), z.id(), z.bezeichnung(), z.hersteller(),
+                            z.modell(), a.zustand(), a.klasse(), a.wert(), a.bezug(), a.fundstelle(), a.sourceUrl(),
+                            a.sourceSha256());
+                }).filter(Objects::nonNull).toList());
     }
 
     /** Die Angabe im Journal — dieselben Wörter wie die Antwort; der Beleg ohne Person (die steht am Eintrag). */

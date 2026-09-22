@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.09.21.1.json`](dist/measurement-point-catalog-2026.09.21.1.json).
+[`dist/measurement-point-catalog-2026.09.23.1.json`](dist/measurement-point-catalog-2026.09.23.1.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
@@ -207,6 +207,20 @@ zu erheben ist (`faktor_zu_erheben`, noch an keiner Box). ⚠ Ein Nachtrag an `u
 und hebt den Laufzeitstand (nächster Abschnitt) — die Box liest `unit` zwar nicht, aber die
 Palette trägt es.
 
+## Genauigkeit laut Hersteller
+
+`models[].accuracy` und optional `points[].accuracy` sind reine Cloud-Angaben (UEMS AP-16 G4). Sie
+nennen Zustand `belegt|nicht_belegt`, Klasse, Wert und Bezug sowie die öffentlich erreichbare
+Herstellerquelle mit SHA-256. Bei `nicht_belegt` bleiben Klasse, Wert, Bezug und Quelle `null`; eine
+Quelle hinter Anmeldung oder eine nicht nachprüfbare Zahl wird nicht übernommen. Die erste Fassung
+belegt WAGO 750-494 und 750-495 mit ± 0,5 % vom Messbereichsendwert der Wirkleistung sowie die
+MID-Modellreihe 879-30xx.
+
+Die Cloud zeigt diese Angabe als „laut Hersteller“ getrennt von der am konkreten Einbau erhobenen
+Klasse, Prüfung und dem Kundenbeleg. Sie ersetzt die Einbau-Angabe nie und wird nicht zu einer
+Genauigkeit der Messkette verrechnet. `accuracy` gehört bewusst nicht zu `EDGE_FIELDS` oder
+`RUNTIME_FIELDS`; `RUNTIME_VERSION`, Palette-Katalog und SQL-Metadaten bleiben unverändert.
+
 ## Inhaltsstand und Laufzeitstand
 
 Das Artefakt trägt ZWEI Stände. `VERSION` → `catalog_version` ist der **Inhaltsstand**: er
@@ -221,7 +235,7 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
   Punktbestand). `validate.py` beweist es: die Box-Sicht des Inhaltsstands ist gleich der des
   ausgelieferten Laufzeitstand-Artefakts — sonst schlägt er fehl.
 - Eine rein cloud-seitige Version (wie 2026.09.17.1: `families[].single_reader`, 2026.09.21.1:
-  `families[].rueckfall_ohne_box`) lässt
+  `families[].rueckfall_ohne_box`, 2026.09.23.1: `models[].accuracy`) lässt
   `edge-app/nodered/measurements/catalog.json` und die Metadaten-Migration BYTE-GLEICH
   (`tools/package_edge_runtime.py --check`, Test `test_runtime_derivatives_are_byte_identical`).
   Keine Box sieht einen fremden Stand, kein Edge-Release ist nötig.
@@ -336,4 +350,4 @@ Herstellerlizenz erneut zu prüfen.
 7. Sollbestände und Quellenstände in `tests/expected_inventory.json` bewusst
    anpassen, danach Generator-Drift, Validator und Unit-Tests ausführen.
 
-Portal, Cloud und Edge verwenden den Katalog oder daraus erzeugte Ableitungen. `tools/package_edge_runtime.py --check` prüft Runtime-JSON und SQL-Metadaten. Neue Katalogstände brauchen eine neue Migration; bereits angewandte SQL-Dateien bleiben unverändert.
+Portal, Cloud und Edge verwenden den Katalog oder daraus erzeugte Ableitungen. `tools/package_edge_runtime.py --check` prüft Runtime-JSON und SQL-Metadaten. Neue **Laufzeitstände** brauchen eine neue Migration; rein cloud-seitige Inhaltsstände nicht. Bereits angewandte SQL-Dateien bleiben unverändert.

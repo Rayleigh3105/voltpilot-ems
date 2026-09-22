@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/** UEMS AP-16 IP-15 (G1–G3): Messmittel-Angaben am Einbau — Klasse, Prüfung, Beleg als Verweis. */
+/** UEMS AP-16 IP-15/IP-16 (G1–G4): Einbau-Angaben und getrennte Herstellerangaben. */
 @RestController
 public class MessmittelController {
     private final MessmittelService messmittel;

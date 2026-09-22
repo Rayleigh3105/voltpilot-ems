@@ -138,6 +138,39 @@ class CatalogTest(unittest.TestCase):
         vektoren = json.loads((REPO / "docs" / "contracts" / "v2" / "verbund-anteil-vectors.json").read_text(encoding="utf-8"))
         self.assertEqual(list(cataloglib.GERAETE_RUECKFALL_WOERTER), vektoren["vokabulare"]["geraete_rueckfall"])
 
+    def test_manufacturer_accuracy_is_pinned_and_cloud_only(self) -> None:
+        models = {(entry["hersteller"], entry["modell"]): entry["accuracy"]
+                  for entry in self.catalog["models"]}
+        self.assertEqual(set(models), {("WAGO", "750-494"), ("WAGO", "750-495"), ("WAGO", "879-30xx")})
+        for key in (("WAGO", "750-494"), ("WAGO", "750-495")):
+            self.assertEqual(models[key]["zustand"], "belegt")
+            self.assertEqual(models[key]["wert"], "± 0,5 %")
+            self.assertEqual(models[key]["bezug"], "Messbereichsendwert der Wirkleistung")
+            self.assertRegex(models[key]["source_sha256"], r"^[0-9a-f]{64}$")
+            self.assertTrue(models[key]["source_url"].startswith("https://www.wago.com/"))
+        self.assertEqual((models[("WAGO", "879-30xx")]["klasse"],
+                          models[("WAGO", "879-30xx")]["wert"]), ("MID", "MID"))
+
+        runtime = runtime_projection(self.catalog, self.catalog["runtime_catalog_version"])
+        self.assertFalse(any("accuracy" in point for point in runtime))
+        self.assertNotIn("models", {field for point in runtime for field in point})
+
+        source = next(source for source in self.manifest["sources"] if source["adapter"] == "accuracy")
+        self.assertEqual(hashlib.sha256((ROOT / source["path"]).read_bytes()).hexdigest(),
+                         source["source_sha256"])
+
+    def test_accuracy_schema_keeps_unproven_values_empty(self) -> None:
+        catalog_schema = json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8"))
+        document = copy.deepcopy(self.catalog)
+        accuracy = document["models"][0]["accuracy"]
+        accuracy.update({"zustand": "nicht_belegt", "klasse": None, "wert": None, "bezug": None,
+                         "source_url": None, "source_sha256": None})
+        validate_json_schema(document, catalog_schema)
+
+        accuracy["wert"] = "± 0,5 %"
+        with self.assertRaisesRegex(SchemaValidationError, "expected type"):
+            validate_json_schema(document, catalog_schema)
+
     def test_rueckfall_ohne_box_rejects_invented_vendor_claims(self) -> None:
         catalog_schema = json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8"))
         falsch = []

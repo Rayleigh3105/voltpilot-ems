@@ -113,7 +113,7 @@ def validate_manifest(errors: ValidationErrors) -> dict[str, Any]:
         source_id = source.get("id")
         ids.append(source_id)
         errors.check(isinstance(source_id, str) and bool(source_id), f"{prefix} has no id")
-        errors.check(source.get("adapter") in {"deye", "sunspec", "goe", "shelly", "ocpp", "builtin_inverter", "wago"}, f"{prefix} has an unsupported adapter")
+        errors.check(source.get("adapter") in {"deye", "sunspec", "goe", "shelly", "ocpp", "builtin_inverter", "wago", "accuracy"}, f"{prefix} has an unsupported adapter")
         errors.check(bool(source.get("source_commit") or source.get("source_revision")), f"{prefix} has neither commit nor revision")
         if source.get("adapter") == "sunspec":
             errors.check(len(source.get("models", [])) == 19, "SunSpec manifest must pin 19 models")

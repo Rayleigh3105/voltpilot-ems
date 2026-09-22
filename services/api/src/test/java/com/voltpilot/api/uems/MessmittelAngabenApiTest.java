@@ -37,7 +37,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * AP-16 IP-15 (G1–G3, R8, E7 = A): Messmittel-Angaben am Einbau über die echte HTTP-, Rechte- und RLS-Kette
+ * AP-16 IP-15/IP-16 (G1–G4, R8, E7 = A): Messmittel-Angaben am Einbau über die echte HTTP-, Rechte- und RLS-Kette
  * mit der App-Rolle. Der Netzzähler trägt Eichung und Beleg mit Prüfsumme, der Druckluft-Zähler sagt
  * {@code nicht_erhoben}; ein Beleg ohne Prüfsumme ist 422; die Klasse steht nur an Wandler-Fassungen.
  */
@@ -106,6 +106,11 @@ class MessmittelAngabenApiTest {
         gr2 = geraet(a1, "GR-2", "GR-2", "2024-01-01T00:00:00Z", null);
         gr5 = geraet(a1, "GR-5", "GR-5", "2024-01-01T00:00:00Z", null);
         gr7 = geraet(a1, "GR-7", "GR-7", "2024-01-01T00:00:00Z", null);
+        root.update("UPDATE geraet SET hersteller='WAGO', typ='879-3020' WHERE id=?", gr2);
+        root.update("UPDATE geraet SET geraeteart='controller', hersteller='WAGO', typ='PFC200 750-8212' WHERE id=?",
+                gr7);
+        root.update("INSERT INTO geraet_teil(tenant_id,geraet_id,steckplatz,bezeichnung,typ,eingebaut_am) "
+                + "VALUES (?,?,3,'K-8.2','750-494/000-001 (5 A)','2024-01-01T00:00:00Z')", tenant, gr7);
         gr9 = geraet(a2, "GR-9", "GR-9", "2024-01-01T00:00:00Z", null);
         // R8 Schritt 2: der Zählerwechsel GR-4 — Z-5a ausgebaut, Z-5b eingebaut.
         z5a = geraet(a1, "GR-4", "Z-5a", "2024-01-01T00:00:00Z", "2026-10-02T08:00:00Z");
@@ -174,6 +179,31 @@ class MessmittelAngabenApiTest {
         ruf("PUT", pfad(gr5), "IK", Map.of("pruefungsart", "keine"), 200);
         assertThat(ruf("PUT", pfad(gr5), "IK", Map.of(), 200)).isEqualTo(a);
         assertThat(journal(gr5)).hasSize(2);
+    }
+
+    @Test void lautHerstellerStehtGetrenntVonDerEinbauUndWandlerAngabe() throws Exception {
+        var zaehler = ruf("GET", pfad(gr2), "IK", null, 200);
+        assertThat(zaehler.path("zustand").asText()).isEqualTo("nicht_erhoben");
+        assertThat(zaehler.path("genauigkeitsklasse").isNull()).isTrue();
+        assertThat(zaehler.path("laut_hersteller")).hasSize(1);
+        assertThat(zaehler.at("/laut_hersteller/0/ziel_art").asText()).isEqualTo("geraet");
+        assertThat(zaehler.at("/laut_hersteller/0/modell").asText()).isEqualTo("879-3020");
+        assertThat(zaehler.at("/laut_hersteller/0/klasse").asText()).isEqualTo("MID");
+
+        var karte = ruf("PUT", pfad(gr7), "IK",
+                Map.of("wandler", List.of(Map.of("fassung", wandler, "klasse", "0,5"))), 200);
+        assertThat(karte.path("zustand").asText()).isEqualTo("nicht_erhoben");
+        assertThat(karte.at("/wandler/0/klasse").asText()).isEqualTo("0,5");
+        assertThat(karte.path("laut_hersteller")).hasSize(1);
+        assertThat(karte.at("/laut_hersteller/0/ziel_art").asText()).isEqualTo("teil");
+        assertThat(karte.at("/laut_hersteller/0/bezeichnung").asText()).isEqualTo("K-8.2");
+        assertThat(karte.at("/laut_hersteller/0/modell").asText()).isEqualTo("750-494/000-001 (5 A)");
+        assertThat(karte.at("/laut_hersteller/0/wert").asText()).isEqualTo("± 0,5 %");
+        assertThat(karte.at("/laut_hersteller/0/bezug").asText())
+                .isEqualTo("Messbereichsendwert der Wirkleistung");
+        assertThat(karte.at("/laut_hersteller/0/source_sha256").asText()).hasSize(64);
+        assertThat(karte.at("/laut_hersteller/0/source_url").asText()).startsWith("https://www.wago.com/");
+        assertThat(karte.path("genauigkeitsklasse").isNull()).as("am Einbau weiter nicht erhoben").isTrue();
     }
 
     @Test void belegOhnePruefsumme422UndKeineNebenwirkung() throws Exception {

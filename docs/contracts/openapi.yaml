@@ -10413,13 +10413,14 @@ paths:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       tags: [geraete]
-      summary: Messmittel-Angaben eines Einbaus - Klasse, Prüfung, Beleg, Wandler-Klassen (AP-16 IP-15).
+      summary: Messmittel-Angaben eines Einbaus und getrennte Herstellerangaben (AP-16 IP-15/IP-16).
       description: >
         Recht `messwerte.ansehen`; ein Gerät außerhalb des Zugriffs ist 404.
         Die Angaben hängen am EINBAU (G1): ein Zählerwechsel legt einen neuen
         Einbau ohne Angaben an. Ohne Angabe steht `nicht_erhoben` (G3) - nie
         ein Vorgabewert, nie eine gerechnete Genauigkeit der Messkette. Die
-        Katalog-Angabe „laut Hersteller" steht getrennt (IP-16).
+        Katalog-Angaben stehen in `laut_hersteller` getrennt daneben (IP-16), ersetzen die
+        Einbau-Angabe nie und werden nicht zu einer Genauigkeit der Messkette verrechnet.
       responses:
         "200":
           description: Die Angaben des Einbaus.
@@ -27270,8 +27271,8 @@ components:
         andere_box: { type: string, nullable: true, example: "Box Halle 2 wählen (29 Anfragen/min frei)" }
     MessmittelAngaben:
       type: object
-      description: AP-16 IP-15 (G1–G3). NULL heißt nicht erhoben; `zustand` fasst Klasse, Prüfung und Beleg zusammen.
-      required: [geraet_id, kennzeichen, einbau_kennzeichen, zustand, genauigkeitsklasse, pruefungsart, pruefung_am, pruefung_gueltig_bis, beleg, wandler]
+      description: AP-16 IP-15/IP-16 (G1–G4). NULL heißt nicht erhoben; Hersteller- und Einbau-Angaben bleiben getrennt.
+      required: [geraet_id, kennzeichen, einbau_kennzeichen, zustand, genauigkeitsklasse, pruefungsart, pruefung_am, pruefung_gueltig_bis, beleg, wandler, laut_hersteller]
       properties:
         geraet_id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -27285,6 +27286,27 @@ components:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessmittelBeleg" }]
         wandler: { type: array, items: { $ref: "#/components/schemas/MessmittelWandler" } }
+        laut_hersteller:
+          type: array
+          description: Reine Cloud-Katalogangaben für den Gerätetyp und eingebaute Karten; niemals eine Einbau-Angabe.
+          items: { $ref: "#/components/schemas/MessmittelHerstellerangabe" }
+    MessmittelHerstellerangabe:
+      type: object
+      description: G4 „laut Hersteller“ mit öffentlich prüfbarer Provenienz; getrennt von Klasse, Prüfung und Wandler am Einbau.
+      required: [ziel_art, ziel, bezeichnung, hersteller, modell, zustand, klasse, wert, bezug, fundstelle, source_url, source_sha256]
+      properties:
+        ziel_art: { type: string, enum: [geraet, teil] }
+        ziel: { type: string, format: uuid }
+        bezeichnung: { type: string }
+        hersteller: { type: string }
+        modell: { type: string }
+        zustand: { type: string, enum: [belegt, nicht_belegt] }
+        klasse: { type: string, nullable: true }
+        wert: { type: string, nullable: true }
+        bezug: { type: string, nullable: true }
+        fundstelle: { type: string, nullable: true }
+        source_url: { type: string, format: uri, nullable: true }
+        source_sha256: { type: string, nullable: true, pattern: "^[0-9a-f]{64}$" }
     MessmittelBeleg:
       type: object
       description: Ein Verweis, keine Datei (G2). Person und Zeitpunkt sind die des Eintragens.

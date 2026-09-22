@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * Rein, ohne Docker (AP-16 IP-15): die Messmittel-Schnittstelle sagt in vier Dateien DASSELBE — die Migration
+ * Rein, ohne Docker (AP-16 IP-15/IP-16): die Messmittel-Schnittstelle sagt in vier Dateien DASSELBE — die Migration
  * {@code V20260922245000} (CHECK der Prüfungsarten), die Java-Form ({@link MessmittelDto},
  * {@link MessmittelService#PRUEFUNGSARTEN}), {@code docs/contracts/openapi.yaml} und das Vokabular der
  * Referenzdatei ({@code uems-referenzunternehmen.schema.json}, {@code messmittel_angaben.pruefungsart}).
@@ -54,7 +54,8 @@ class MessmittelSchnittstelleVertragTest {
     @Test
     void jedeAntwortFormIstDieDerOpenApiUndJedesFeldIstPflicht() {
         for (Object[] paar : new Object[][] {{"MessmittelAngaben", MessmittelDto.Angaben.class},
-                {"MessmittelBeleg", MessmittelDto.Beleg.class}, {"MessmittelWandler", MessmittelDto.Wandler.class}}) {
+                {"MessmittelBeleg", MessmittelDto.Beleg.class}, {"MessmittelWandler", MessmittelDto.Wandler.class},
+                {"MessmittelHerstellerangabe", MessmittelDto.Herstellerangabe.class}}) {
             Map<String, Object> schema = map(schemas, (String) paar[0]);
             List<String> dto = felder((Class<?>) paar[1]);
             assertThat(map(schema, "properties").keySet()).as((String) paar[0]).containsExactlyElementsOf(dto);
