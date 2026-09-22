@@ -546,6 +546,11 @@ test('AP-16 IP-17 · R9: Befund-Zeile unter der Quelle-Karte — 1,1 % passt, 3,
   await expect(zeile.locator('button, a, input, select')).toHaveCount(0);
   await zeile.scrollIntoViewIfNeeded();
   await messeUndFotografiere(page, breite, 'ip17-vergleich');
+  if (BILDER) {
+    // Für die Ansicht: die Befund-Zeile mitten im Fenster, darüber die Quelle-Karte.
+    await zeile.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    await page.screenshot({ path: join(BILDER, `ip17-ausschnitt-${breite}.png`) });
+  }
 });
 
 test('AP-16 IP-17 · ohne Vergleichsquelle keine Befund-Zeile und keine Anfrage', async ({ page }, info) => {
