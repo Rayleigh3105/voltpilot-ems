@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -146,6 +147,47 @@ public class BerichtRepository {
     public boolean archivieren(UUID tenant, UUID bericht, Instant jetzt) {
         return jdbc.update("UPDATE bericht SET archiviert_am = ? WHERE tenant_id = ? AND id = ? AND archiviert_am IS NULL",
                 Timestamp.from(jetzt), tenant, bericht) == 1;
+    }
+
+    /**
+     * AP-16 S5 (IP-24) — je nicht archivierter Bewertung des Unternehmens ihr jüngster Stand: daraus liest
+     * {@link BewertungFrist#abgeloestDurch} die gültige Bewertung.
+     */
+    public List<BewertungFrist.BewertungStand> bewertungsStaende(UUID tenant, UUID unternehmen) {
+        return jdbc.query("SELECT b.kennung, s.nr, s.freigegeben_am FROM bericht b "
+                + "JOIN LATERAL (SELECT nr, freigegeben_am FROM bericht_stand x WHERE x.tenant_id = b.tenant_id "
+                + "AND x.bericht_id = b.id ORDER BY x.nr DESC LIMIT 1) s ON true "
+                + "WHERE b.tenant_id = ? AND b.unternehmen_id = ? AND b.vorlage = 'energetische_bewertung' "
+                + "AND b.archiviert_am IS NULL",
+                (rs, n) -> new BewertungFrist.BewertungStand(rs.getString("kennung"), rs.getInt("nr"),
+                        zeit(rs, "freigegeben_am")), tenant, unternehmen);
+    }
+
+    /** Ein laufender Energieeinsatz des Unternehmens am Tag: wirksame Einstufung, Verantwortliche, offene Bedarfe. */
+    public record EinsatzLage(String kennzeichen, boolean wesentlich, String verantwortlichName, int offeneBedarfe) {}
+
+    /**
+     * AP-16 S6 (IP-24) — die laufenden Energieeinsätze des Unternehmens am Tag {@code tag} mit ihrer WIRKSAMEN Einstufung
+     * (freigegebene Fassung, am Tag gültig; ohne Fassung = nicht wesentlich) und der Zahl offener Messbedarfe. Liest nur.
+     */
+    public List<EinsatzLage> einsatzLage(UUID tenant, UUID unternehmen, LocalDate tag) {
+        java.sql.Date d = java.sql.Date.valueOf(tag);
+        return jdbc.query("""
+                SELECT e.kennzeichen, e.verantwortlich_name, coalesce(x.einstufung = 'wesentlich', false) AS wesentlich,
+                       (SELECT count(*) FROM messbedarf b WHERE b.tenant_id = e.tenant_id AND b.einsatz_id = e.id
+                           AND b.zustand = 'offen') AS offen
+                  FROM energieeinsatz e
+                  JOIN prozess p ON p.id = e.prozess_id AND p.tenant_id = e.tenant_id
+                  LEFT JOIN LATERAL (
+                    SELECT f.einstufung FROM energieeinsatz_einstufung f
+                     WHERE f.tenant_id = e.tenant_id AND f.einsatz_id = e.id AND f.freigabe_status = 'freigegeben'
+                       AND f.gueltig_ab <= ? AND (f.gueltig_bis IS NULL OR f.gueltig_bis >= ?)
+                     ORDER BY f.nummer DESC LIMIT 1) x ON true
+                 WHERE e.tenant_id = ? AND p.unternehmen_id = ? AND e.gueltig_ab <= ?
+                   AND (e.gueltig_bis IS NULL OR e.gueltig_bis >= ?)
+                 ORDER BY length(e.kennzeichen), e.kennzeichen
+                """, (rs, n) -> new EinsatzLage(rs.getString("kennzeichen"), rs.getBoolean("wesentlich"),
+                        rs.getString("verantwortlich_name"), rs.getInt("offen")), d, d, tenant, unternehmen, d, d);
     }
 
     /** AP-16 S5 — nur die energetische Bewertung darf ihre Wiedervorlage ändern. */

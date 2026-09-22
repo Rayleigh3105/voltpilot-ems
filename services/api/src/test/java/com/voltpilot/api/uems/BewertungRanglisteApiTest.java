@@ -274,6 +274,79 @@ class BewertungRanglisteApiTest {
         assertThat(ruf("PUT", "/api/v1/geraete/" + geraetId + "/messmittel", "IK", geaendertesMessmittel, 409)
                 .path("code").asText()).isEqualTo("berichts_belege");
     }
+    /**
+     * AP-16 R10 (IP-24, S5/S6): die Frist wird beim Abruf abgeleitet — Datum injiziert, keine Rechneruhr, kein Läufer. Der
+     * Stand vom 17.11.2026 macht die Bewertung am 17.11.2027 fällig, am 18.11.2027 „seit 1 Tag“; der Hinweis nennt die
+     * Verantwortlichen der wesentlichen Einsätze; 24 Monate Wiedervorlage (mit Begründung) schieben die Frist sofort.
+     */
+    @Test void r10UeberpruefungWirdBeimAbrufAbgeleitetUndNenntDieVerantwortlichen() throws Exception {
+        uhr("2026-11-17T08:30:00Z");
+        for (String s:List.of("MD","PH","JW")) benutzer(s,"leser",ids.get("ST-1"));
+        Map<String,String> verantwortlich=new java.util.LinkedHashMap<>();
+        verantwortlich.put("EE-1","MD"); verantwortlich.put("EE-2","PH"); verantwortlich.put("EE-3","IK");
+        verantwortlich.put("EE-5","PH"); verantwortlich.put("EE-6","JW"); verantwortlich.put("EE-7","JW");
+        for (var v:verantwortlich.entrySet()) ruf("PUT","/api/v1/unternehmen/energieeinsaetze/"+ids.get(v.getKey())
+                +"/verantwortlicher","IK",Map.of("verantwortlich_sub",v.getValue()),200);
+        for (String ee:verantwortlich.keySet()) einstufen(ee,"wesentlich");
+        einstufen("EE-4","nicht_wesentlich");
+        ruf("POST","/api/v1/unternehmen/energieeinsaetze/"+ids.get("EE-1")+"/messbedarf","IK",Map.of("wortlaut",
+                "Druckluft der Spritzgussmaschinen","ort","Halle 1","groesse","Wirkenergie","frist","2027-03-31"),201);
+
+        JsonNode bericht=ruf("POST","/api/v1/berichte","IK",Map.of("vorlage","energetische_bewertung",
+                "geltung_id",unternehmen.toString(),"zeitraum","2026-10"),201);
+        assertThat(bericht.path("ueberpruefung").isNull()).as("ohne Stand keine Frist").isTrue();
+        String kennung=bericht.path("kennung").asText(), pfad="/api/v1/berichte/"+kennung;
+        JsonNode entwurf=ruf("GET",pfad+"/entwurf","IK",null,200);
+        assertThat(ruf("POST",pfad+"/freigeben","IK",Map.of("entwurf_datenstand",entwurf.path("datenstand").asText()),201)
+                .path("freigegeben_am").asText()).isEqualTo("2026-11-17T08:30:00Z");
+
+        String geschrieben="SELECT (SELECT count(*) FROM bericht_aenderung)+(SELECT count(*) FROM bericht_stand)"
+                +"+(SELECT count(*) FROM bericht_revision_anstoss)+(SELECT count(*) FROM bericht_abruf)";
+        int schreibstand=root.queryForObject(geschrieben,Integer.class);
+        uhr("2027-11-16T12:00:00Z");
+        JsonNode vorher=ruf("GET",pfad,"IK",null,200).at("/bericht/ueberpruefung");
+        assertThat(vorher.path("faellig_am").asText()).isEqualTo("2027-11-17");
+        assertThat(vorher.path("ueberpruefung_faellig").asBoolean()).isFalse();
+        assertThat(vorher.path("faellig_seit_tagen").isNull()).isTrue();
+        uhr("2027-11-17T12:00:00Z");
+        JsonNode amTag=ruf("GET",pfad,"IK",null,200).at("/bericht/ueberpruefung");
+        assertThat(amTag.path("ueberpruefung_faellig").asBoolean()).isTrue();
+        assertThat(amTag.path("faellig_seit_tagen").asInt()).isZero();
+
+        uhr("2027-11-18T12:00:00Z");
+        JsonNode r10=ruf("GET",pfad,"IK",null,200).at("/bericht/ueberpruefung");
+        assertThat(r10.path("stand_nr").asInt()).isEqualTo(1);
+        assertThat(r10.path("stand_vom").asText()).isEqualTo("2026-11-17");
+        assertThat(r10.path("wiedervorlage_monate").asInt()).isEqualTo(12);
+        assertThat(r10.path("ueberpruefung_faellig").asBoolean()).isTrue();
+        assertThat(r10.path("faellig_seit_tagen").asInt()).isEqualTo(1);
+        assertThat(r10.path("abgeloest_durch").isNull()).isTrue();
+        assertThat(r10.path("wesentliche_einsaetze").asInt()).isEqualTo(6);
+        assertThat(r10.path("offene_bedarfe").asInt()).isEqualTo(1);
+        assertThat(JSON.writeValueAsString(r10.path("verantwortliche"))).isEqualTo(
+                "[{\"name\":\"MD\",\"einsaetze\":[\"EE-1\"]},{\"name\":\"PH\",\"einsaetze\":[\"EE-2\",\"EE-5\"]},"
+                + "{\"name\":\"IK\",\"einsaetze\":[\"EE-3\"]},{\"name\":\"JW\",\"einsaetze\":[\"EE-6\",\"EE-7\"]}]");
+        assertThat(r10.path("ohne_verantwortliche").size()).isZero();
+        JsonNode inDerListe=null;
+        for (JsonNode b:ruf("GET","/api/v1/berichte","IK",null,200).path("berichte"))
+            if (b.path("kennung").asText().equals(kennung)) inDerListe=b.path("ueberpruefung");
+        assertThat(inDerListe).as("dieselbe Ableitung in der Liste").isEqualTo(r10);
+        assertThat(root.queryForObject(geschrieben,Integer.class)).as("abgeleitet, nicht geschrieben").isEqualTo(schreibstand);
+
+        ruf("PUT",pfad+"/wiedervorlage","IK",Map.of("wiedervorlage_monate",24),400);
+        JsonNode frist24=ruf("PUT",pfad+"/wiedervorlage","IK",Map.of("wiedervorlage_monate",24,
+                "begruendung","Zweijähriger Prüfzyklus des Unternehmens."),200).path("ueberpruefung");
+        assertThat(frist24.path("faellig_am").asText()).isEqualTo("2028-11-17");
+        assertThat(frist24.path("ueberpruefung_faellig").asBoolean()).isFalse();
+        assertThat(ruf("GET","/api/v1/unternehmen/energieeinsaetze/"+ids.get("EE-1"),"IK",null,200).path("id").asText())
+                .isEqualTo(ids.get("EE-1").toString());
+
+        // Rechte/Zaun: die Standort-Leserin sieht den Unternehmensbericht nicht — Kopf 403, in ihrer Liste fehlt er.
+        ruf("GET",pfad,"LE",null,403);
+        assertThat(ruf("GET","/api/v1/berichte","LE",null,200).path("berichte").findValuesAsText("kennung"))
+                .doesNotContain(kennung);
+    }
+
     @Test void r15KriterienFassungZweiAendertDasUrteilAberStuftenNichtEin() throws Exception {
         var werte=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(
                 Path.of("../../docs/contracts/v2/bewertung-vectors.json").toFile()).path("startwerte").deepCopy();
@@ -487,6 +560,17 @@ class BewertungRanglisteApiTest {
                 tenant,ids.get("MS-07"),k4100,tenant,ids.get("MS-07"),k4200);
         root.update("INSERT INTO messstelle_formel_term(tenant_id,messstelle_id,fassung_id,position,eingang_art,quell_messstelle_id,vorzeichen,faktor,verteilung_ziel) "
                 +"VALUES (?,?,?,3,'verteilung',?,'+',1,?)",tenant,ms20,fassung,ids.get("MS-07"),k4100);
+    }
+    private void uhr(String zeitpunkt) {
+        var uhr=Clock.fixed(Instant.parse(zeitpunkt),ZoneOffset.UTC);
+        ablesungen.uhrStellen(uhr); werte.uhrStellen(uhr); bilanz.uhrStellen(uhr); berichte.uhrStellen(uhr);
+    }
+    /** IP-24-Vorbedingung: eine freigegebene Einstufungs-Fassung ab Einsatzbeginn (die Einstufung selbst prüft IP-11). */
+    private void einstufen(String ee,String einstufung) {
+        root.update("INSERT INTO energieeinsatz_einstufung(tenant_id,einsatz_id,nummer,einstufung,begruendung,herkunft,grund,"
+                +"vorgeschlagen_ab,gueltig_ab,rueckwirkend,actor_sub,actor_name,actor_rolle,actor_art,vieraugen,freigabe_status) "
+                +"VALUES (?,?,1,?,'R10','{}'::jsonb,'[\"K1\"]'::jsonb,'2026-11-04','2026-11-04',false,'IK','IK','energiemanager',"
+                +"'kunde',false,'freigegeben')",tenant,ids.get(ee),einstufung);
     }
     private void benutzer(String sub,String rolle,UUID standort) {
         root.update("INSERT INTO benutzer(tenant_id,sub,konto,anzeigename,zustand) VALUES (?,?,'benutzer',?,'aktiv')",tenant,sub,sub);

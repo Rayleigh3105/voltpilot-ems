@@ -122,8 +122,15 @@ Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen
   („+260 kWh“, „+4,3 %“, „−3,0 %“); Vergleich 0 hat keinen Prozentwert; ohne Vergleichswert „keine Werte“ und der Grund.
 
 Die Vorlage `energetische_bewertung` startet ohne Angabe bei den letzten zwölf vollen Monaten. Ihr Feld
-`wiedervorlage_monate` startet mit 12 und lässt sich nur mit Begründung ändern; die Fälligkeit wird erst mit AP-16 IP-24
-beim Abruf abgeleitet.
+`wiedervorlage_monate` startet mit 12 und lässt sich nur mit Begründung ändern (`PUT …/wiedervorlage`).
+
+**Überprüfung (AP-16 S5/S6, IP-24).** Die Fälligkeit wird bei jedem Abruf abgeleitet (`ueberpruefung` an `Bericht`) —
+kein Läufer, kein Ereignis, keine gespeicherte Spalte: `faellig_am` = Tag der Freigabe des jüngsten gültigen Stands in
+der Zone des Berichts + `wiedervorlage_monate`; ab diesem Tag ist die Überprüfung fällig (am Tag selbst seit 0 Tagen).
+Eine geänderte Wiedervorlage wirkt beim nächsten Abruf. Gibt eine andere nicht archivierte Bewertung desselben
+Unternehmens später einen Stand frei, ist diese abgelöst (`abgeloest_durch`, keine Frist, bleibt lesbar). Der Hinweis
+nennt die Verantwortlichen der wesentlichen Einsätze (wirksame Einstufung am Abruftag); er ist ein Satz auf den Flächen,
+keine Nachricht.
 
 ## 5. Datenstand (D1–D5, E4)
 

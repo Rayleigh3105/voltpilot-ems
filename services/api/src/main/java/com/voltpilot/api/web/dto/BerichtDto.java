@@ -45,7 +45,22 @@ public final class BerichtDto {
     public record Bericht(String kennung, String vorlage, int vorlageFassung, String geltungArt, String geltungId,
             String geltungName, String zeitraumArt, String zeitraum, String zeitraumText, String zeitzone,
             Person angelegtVon, OffsetDateTime angelegtAm, OffsetDateTime archiviertAm, String standZeichen,
-            String standText, Integer neuesteNr, OffsetDateTime entwurfDatenstand, Integer wiedervorlageMonate) {}
+            String standText, Integer neuesteNr, OffsetDateTime entwurfDatenstand, Integer wiedervorlageMonate,
+            Ueberpruefung ueberpruefung) {}
+
+    /**
+     * AP-16 S5/S6 (IP-24): die Überprüfung der energetischen Bewertung, beim Abruf abgeleitet — nur an einer Bewertung mit
+     * freigegebenem Stand, sonst {@code null}. {@code faellig_am} = Freigabetag des jüngsten gültigen Stands +
+     * {@code wiedervorlage_monate}; am Frist-Tag selbst {@code faellig_seit_tagen} 0. Eine abgelöste Bewertung
+     * ({@code abgeloest_durch}) hat keine Frist. Einsätze, Verantwortliche und offene Bedarfe gelten am Abruftag.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Ueberpruefung(int standNr, String standVom, int wiedervorlageMonate, String faelligAm,
+            boolean ueberpruefungFaellig, Integer faelligSeitTagen, String abgeloestDurch, int wesentlicheEinsaetze,
+            int offeneBedarfe, List<Verantwortliche> verantwortliche, List<String> ohneVerantwortliche) {}
+
+    /** Eine verantwortliche Person und ihre wesentlichen Einsätze (Kennzeichen). */
+    public record Verantwortliche(String name, List<String> einsaetze) {}
 
     /** {@code GET /api/v1/berichte}: die Berichte, die die Person lesen darf — archivierte nicht (V4). */
     public record Liste(List<Bericht> berichte) {}

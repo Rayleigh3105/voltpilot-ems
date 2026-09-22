@@ -66,6 +66,7 @@ class BerichtSchnittstelleVertragTest {
         formen.put("BerichtAnstossVerwerfen", BerichtDto.Verwerfen.class);
         formen.put("BerichtPerson", BerichtDto.Person.class);
         formen.put("Bericht", BerichtDto.Bericht.class);
+        formen.put("BerichtUeberpruefung", BerichtDto.Ueberpruefung.class);
         formen.put("BerichtListe", BerichtDto.Liste.class);
         formen.put("BerichtStandKurz", BerichtDto.StandKurz.class);
         formen.put("BerichtAnstoss", BerichtDto.Anstoss.class);

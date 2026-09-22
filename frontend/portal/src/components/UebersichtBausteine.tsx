@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Funktionen, type MessstellenRegister } from '../api';
+import { api, type Bericht, type Funktionen, type MessstellenRegister } from '../api';
+import { darfAnsehen } from '../bewertung';
+import { bewertungFristBaustein, type BewertungFristBild } from '../bewertungFrist';
 import { misst } from '../ebenenNav';
 import { UEMS_ENERGIEBILANZ, UEMS_GEBAEUDE, UEMS_KENNZAHLEN } from '../glossar';
 import { heuteIn, listenKarte, ZUR_LISTE } from '../kennzahlKarte';
@@ -25,7 +27,9 @@ import {
   type GebaeudeEingang,
   type UebersichtBausteinId,
 } from '../uebersichtBausteine';
+import { useRollen } from '../rollen';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
+import { BewertungBaustein } from './BewertungBaustein';
 import { ZeitSegment } from './HistorieWelt';
 import { KennzahlKarte, useKennzahlenListe } from './KennzahlListe';
 import './UebersichtBausteine.css';
@@ -50,6 +54,8 @@ export interface UebersichtDaten {
   laedt: boolean;
   gebaeude: GebaeudeEingang[];
   kennzahlen: ReturnType<typeof useKennzahlenListe>;
+  /** AP-16 IP-24: die gültige Bewertung am Unternehmen — nur mit `energieeinsatz.ansehen` und einem Stand. */
+  bewertung: BewertungFristBild | null;
   /** Die Bausteine MIT Inhalt — nur sie bietet die Fläche an. */
   inhalt: UebersichtBausteinId[];
 }
@@ -165,6 +171,27 @@ export function useUebersichtBausteine(
 
   const kennzahlen = useKennzahlenListe(zone, standortId, 0, an);
 
+  // AP-16 IP-24: „Bewertung“ nach der Berichte-Regel (misst) und nur, wer Energieeinsätze sehen darf (IP-6); nur am
+  // Unternehmen. Frist und Zahlen leitet der Server beim Abruf ab — ohne Recht wird nichts abgefragt.
+  const { selbst } = useRollen();
+  const bewertungAn = an && ebene?.art === 'unternehmen' && darfAnsehen(selbst);
+  const [berichte, setBerichte] = useState<Bericht[] | null>(null);
+  useEffect(() => {
+    if (!bewertungAn) {
+      setBerichte(null);
+      return;
+    }
+    let aktiv = true;
+    api
+      .berichte()
+      .then((r) => aktiv && setBerichte(r.berichte))
+      .catch(() => aktiv && setBerichte(null));
+    return () => {
+      aktiv = false;
+    };
+  }, [bewertungAn]);
+  const bewertung = bewertungAn ? bewertungFristBaustein(berichte) : null;
+
   if (!ebene || !an) return null;
   const gebaeude: GebaeudeEingang[] = gebaeudeListe.map((g) => ({
     ...g,
@@ -180,6 +207,7 @@ export function useUebersichtBausteine(
       ? gebaeudeZeilen({ standortId, periode: wahl.periode, am: wahl.am, heute, anlagen: laedt ? null : anlagenBilanz, gebaeude })
       : [],
     kennzahlen: kennzahlenDerEbene(ebene, kennzahlen.liste),
+    bewertung,
   });
   return {
     ebene,
@@ -192,6 +220,7 @@ export function useUebersichtBausteine(
     laedt,
     gebaeude,
     kennzahlen,
+    bewertung,
     inhalt,
   };
 }
@@ -216,7 +245,8 @@ export function UebersichtBausteine({
       ? gebaeudeZeilen({ standortId, periode, am, heute, anlagen: laedt ? null : daten.anlagen, gebaeude: daten.gebaeude })
       : [];
   const kennzahlen = zeigen.includes('kennzahlen') ? kennzahlenDerEbene(ebene, daten.kennzahlen.liste) : null;
-  if (!messstellen && !energie && gebaeude.length === 0 && !kennzahlen) return null;
+  const bewertung = zeigen.includes('bewertung') ? daten.bewertung : null;
+  if (!messstellen && !energie && gebaeude.length === 0 && !kennzahlen && !bewertung) return null;
 
   return (
     <div className="vp-ub" data-testid="uebersicht-bausteine">
@@ -361,6 +391,8 @@ export function UebersichtBausteine({
           </ul>
         </section>
       )}
+
+      {bewertung && <BewertungBaustein bild={bewertung} onOeffnen={() => onNavigate(pageRoute('portfolio-bewertung'))} />}
     </div>
   );
 }

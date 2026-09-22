@@ -496,6 +496,17 @@ export const UEMS_BEWERTUNG_SAETZE = {
     `Bewertung ${jahr} · Stand Nr. ${nummer} vom ${datum} (ersetzt Nr. ${ersetzt} vom ${ersetztAm} — Anlass: ${anlass}).`,
   frist: (nummer: number, datum: string, tage: number) =>
     `Energetische Bewertung: Stand Nr. ${nummer} vom ${datum} · Überprüfung fällig seit ${tage} Tag${tage === 1 ? '' : 'en'}.`,
+  /** IP-24: dieselbe Kopfzeile vor und am Frist-Tag (§5.5 Schritt 4). */
+  fristAm: (nummer: number, datum: string, faelligAm: string) =>
+    `Energetische Bewertung: Stand Nr. ${nummer} vom ${datum} · Überprüfung fällig am ${faelligAm}.`,
+  fristHeute: (nummer: number, datum: string) =>
+    `Energetische Bewertung: Stand Nr. ${nummer} vom ${datum} · Überprüfung heute fällig.`,
+  /** IP-24: die Zahlen des Übersichts-Bausteins am Unternehmen. */
+  fristZahlen: (wesentliche: number, offen: number) =>
+    `${wesentliche} ${wesentliche === 1 ? 'wesentlicher Energieeinsatz' : 'wesentliche Energieeinsätze'} · ${offen} ${offen === 1 ? 'offener Messbedarf' : 'offene Messbedarfe'}`,
+  /** S6: der Hinweis ist ein Satz auf der Fläche, keine Nachricht. */
+  fristHinweis: (verantwortliche: string) => `Verantwortlich für die wesentlichen Energieeinsätze: ${verantwortliche}.`,
+  fristOhneVerantwortliche: (einsaetze: string) => `Ohne verantwortliche Person: ${einsaetze}.`,
   traegerOhneAnteil: (name: string, traeger: string, menge: number, einheit: string, monat: string, jahr: number, zustand: string) =>
     `${name} (${traeger}): ${bewertungZahl(menge)} ${einheit} im ${monat} ${jahr}, ${zustand} · ohne Anteil — ${traeger} hat keinen gemeinsamen Nenner mit Strom.`,
   leer: () => 'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',

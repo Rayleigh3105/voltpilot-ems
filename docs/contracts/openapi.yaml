@@ -28008,7 +28008,7 @@ components:
         Ein Bericht in der Liste und im Kopf: `stand_zeichen` ist der Vermerk aus R5 als Wort,
         `stand_text` sein Kundensatz („Entwurf · Datenstand …“, „Berichtsstand Nr. 1“, „Revision nötig —
         Korrektur K-2026-0007“, „Anstoß verworfen (…)“).
-      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate]
+      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate, ueberpruefung]
       properties:
         kennung: { type: string }
         vorlage: { type: string }
@@ -28028,6 +28028,39 @@ components:
         neueste_nr: { type: integer, nullable: true }
         entwurf_datenstand: { type: string, format: date-time, nullable: true }
         wiedervorlage_monate: { type: integer, minimum: 1, maximum: 120, nullable: true, description: "Nur bei der energetischen Bewertung; Startwert 12." }
+        ueberpruefung:
+          allOf: [{ $ref: "#/components/schemas/BerichtUeberpruefung" }]
+          nullable: true
+          description: "AP-16 S5/S6 (IP-24): nur an einer energetischen Bewertung mit freigegebenem Stand, sonst null."
+    BerichtUeberpruefung:
+      type: object
+      description: >
+        AP-16 S5/S6 (IP-24): beim Abruf abgeleitet, nie geschrieben (kein Läufer, kein Ereignis). `faellig_am` = Tag der
+        Freigabe des jüngsten gültigen Stands (Zone des Berichts) + `wiedervorlage_monate`; ab diesem Tag ist
+        `ueberpruefung_faellig` wahr, am Frist-Tag selbst mit `faellig_seit_tagen` 0. Hat eine andere nicht archivierte
+        Bewertung desselben Unternehmens einen später freigegebenen Stand, ist diese abgelöst (`abgeloest_durch`) und hat
+        keine Frist. Wesentliche Einsätze (wirksame Einstufung), ihre Verantwortlichen und offene Messbedarfe gelten am
+        Abruftag.
+      required: [stand_nr, stand_vom, wiedervorlage_monate, faellig_am, ueberpruefung_faellig, faellig_seit_tagen, abgeloest_durch, wesentliche_einsaetze, offene_bedarfe, verantwortliche, ohne_verantwortliche]
+      properties:
+        stand_nr: { type: integer, minimum: 1 }
+        stand_vom: { type: string, format: date }
+        wiedervorlage_monate: { type: integer, minimum: 1, maximum: 120 }
+        faellig_am: { type: string, format: date, nullable: true }
+        ueberpruefung_faellig: { type: boolean }
+        faellig_seit_tagen: { type: integer, minimum: 0, nullable: true }
+        abgeloest_durch: { type: string, nullable: true, description: "Kennung der Bewertung, die diese ablöst." }
+        wesentliche_einsaetze: { type: integer, minimum: 0 }
+        offene_bedarfe: { type: integer, minimum: 0 }
+        verantwortliche:
+          type: array
+          items:
+            type: object
+            required: [name, einsaetze]
+            properties:
+              name: { type: string }
+              einsaetze: { type: array, items: { type: string } }
+        ohne_verantwortliche: { type: array, items: { type: string }, description: "Wesentliche Einsätze ohne verantwortliche Person." }
     BerichtListe:
       type: object
       required: [berichte]
