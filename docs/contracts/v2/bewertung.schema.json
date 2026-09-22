@@ -1,0 +1,1355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/bewertung.schema.json",
+  "title": "Energetische Bewertung – gemeinsame Vertragsvektoren (AP-16 NW-1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "startwerte",
+    "vokabulare",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "herkunft": {
+      "type": "string"
+    },
+    "startwerte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "K1",
+        "K2",
+        "K3",
+        "K5",
+        "K6",
+        "K7",
+        "K8",
+        "mindest_monate"
+      ],
+      "properties": {
+        "K1": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "K2": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "K3": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "K5": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "K6": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "K7": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "K8": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "mindest_monate": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "vokabulare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "urteil",
+        "traeger",
+        "abdeckung",
+        "einstufung"
+      ],
+      "properties": {
+        "urteil": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "traeger": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Strom",
+              "Gas",
+              "Wärme",
+              "Kälte",
+              "Wasser",
+              "Druckluft"
+            ]
+          }
+        },
+        "abdeckung": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "einstufung": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "regel": {
+                "enum": [
+                  "N1",
+                  "N2"
+                ]
+              },
+              "operation": {
+                "const": "nenner"
+              },
+              "quelle": {
+                "type": "string"
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "anlagen"
+                ],
+                "properties": {
+                  "anlagen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kennung",
+                        "hauptzaehler",
+                        "zufluss",
+                        "abgabe",
+                        "laden"
+                      ],
+                      "properties": {
+                        "kennung": {
+                          "type": "string"
+                        },
+                        "hauptzaehler": {
+                          "type": "boolean"
+                        },
+                        "zufluss": {
+                          "type": "string",
+                          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                        },
+                        "abgabe": {
+                          "type": "string",
+                          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                        },
+                        "laden": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "wert",
+                  "vorhanden",
+                  "gesamt",
+                  "zustand",
+                  "anlagen"
+                ],
+                "properties": {
+                  "wert": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "vorhanden": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "gesamt": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "zustand": {
+                    "type": "string",
+                    "enum": [
+                      "vollständig",
+                      "unvollständig",
+                      "mit Ersatzwert",
+                      "keine Werte"
+                    ]
+                  },
+                  "anlagen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kennung",
+                        "wert"
+                      ],
+                      "properties": {
+                        "kennung": {
+                          "type": "string"
+                        },
+                        "wert": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "regel": {
+                "enum": [
+                  "B3"
+                ]
+              },
+              "operation": {
+                "const": "menge"
+              },
+              "quelle": {
+                "type": "string"
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "messstellen",
+                  "traeger"
+                ],
+                "properties": {
+                  "messstellen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kennung",
+                        "traeger",
+                        "art",
+                        "direkt",
+                        "archiviert",
+                        "wert",
+                        "ersatz"
+                      ],
+                      "properties": {
+                        "kennung": {
+                          "type": "string"
+                        },
+                        "traeger": {
+                          "type": "string",
+                          "enum": [
+                            "Strom",
+                            "Gas",
+                            "Wärme",
+                            "Kälte",
+                            "Wasser",
+                            "Druckluft"
+                          ]
+                        },
+                        "art": {
+                          "type": "string",
+                          "enum": [
+                            "gemessen",
+                            "berechnet",
+                            "verteilung"
+                          ]
+                        },
+                        "direkt": {
+                          "type": "boolean"
+                        },
+                        "archiviert": {
+                          "type": "boolean"
+                        },
+                        "wert": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "ersatz": {
+                          "type": "string",
+                          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                        }
+                      }
+                    }
+                  },
+                  "traeger": {
+                    "type": "string",
+                    "enum": [
+                      "Strom",
+                      "Gas",
+                      "Wärme",
+                      "Kälte",
+                      "Wasser",
+                      "Druckluft"
+                    ]
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "menge",
+                  "ersatz",
+                  "zustand"
+                ],
+                "properties": {
+                  "menge": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ersatz": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "zustand": {
+                    "type": "string",
+                    "enum": [
+                      "vollständig",
+                      "unvollständig",
+                      "mit Ersatzwert",
+                      "keine Werte"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "regel": {
+                "enum": [
+                  "KR2",
+                  "KR3",
+                  "KR4",
+                  "N2"
+                ]
+              },
+              "operation": {
+                "const": "rangliste"
+              },
+              "quelle": {
+                "type": "string"
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nenner",
+                  "traeger",
+                  "monate",
+                  "einsaetze",
+                  "kriterien"
+                ],
+                "properties": {
+                  "nenner": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "wert",
+                      "vorhanden",
+                      "gesamt",
+                      "zustand"
+                    ],
+                    "properties": {
+                      "wert": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "vorhanden": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "gesamt": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "zustand": {
+                        "type": "string",
+                        "enum": [
+                          "vollständig",
+                          "unvollständig",
+                          "mit Ersatzwert",
+                          "keine Werte"
+                        ]
+                      }
+                    }
+                  },
+                  "traeger": {
+                    "type": "string",
+                    "enum": [
+                      "Strom",
+                      "Gas",
+                      "Wärme",
+                      "Kälte",
+                      "Wasser",
+                      "Druckluft"
+                    ]
+                  },
+                  "monate": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "einsaetze": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kennung",
+                        "menge",
+                        "datenlage_prozent",
+                        "ersatz_prozent",
+                        "begruendung"
+                      ],
+                      "properties": {
+                        "kennung": {
+                          "type": "string"
+                        },
+                        "menge": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "datenlage_prozent": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "ersatz_prozent": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "begruendung": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "kriterien": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "K1",
+                      "K2",
+                      "K3",
+                      "K5",
+                      "K6",
+                      "K7",
+                      "K8",
+                      "mindest_monate"
+                    ],
+                    "properties": {
+                      "K1": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "K2": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "K3": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "K5": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "K6": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "K7": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "K8": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "mindest_monate": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nenner",
+                  "anlagen",
+                  "zugeordnet",
+                  "rest",
+                  "abdeckung_prozent",
+                  "K8",
+                  "K7",
+                  "einsaetze"
+                ],
+                "properties": {
+                  "nenner": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "anlagen": {
+                    "type": "string"
+                  },
+                  "zugeordnet": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  },
+                  "rest": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "abdeckung_prozent": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "K8": {
+                    "type": "string",
+                    "enum": [
+                      "ueber_schwelle",
+                      "unter_schwelle",
+                      "nicht_anwendbar",
+                      "nicht_belastbar",
+                      "erfuellt",
+                      "vorbehalt_datenlage",
+                      "vorbehalt_ersatzwerte",
+                      "unter_zwoelf",
+                      "vorlaeufig"
+                    ]
+                  },
+                  "K7": {
+                    "type": "string",
+                    "enum": [
+                      "ueber_schwelle",
+                      "unter_schwelle",
+                      "nicht_anwendbar",
+                      "nicht_belastbar",
+                      "erfuellt",
+                      "vorbehalt_datenlage",
+                      "vorbehalt_ersatzwerte",
+                      "unter_zwoelf",
+                      "vorlaeufig"
+                    ]
+                  },
+                  "einsaetze": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kennung",
+                        "menge",
+                        "rang",
+                        "anteil_prozent",
+                        "kumuliert_zugeordnet_prozent",
+                        "K1",
+                        "K2",
+                        "K3",
+                        "K4",
+                        "K5",
+                        "K6",
+                        "vorschlag",
+                        "zustand"
+                      ],
+                      "properties": {
+                        "kennung": {
+                          "type": "string"
+                        },
+                        "menge": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rang": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "anteil_prozent": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "kumuliert_zugeordnet_prozent": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "K1": {
+                          "type": "string",
+                          "enum": [
+                            "ueber_schwelle",
+                            "unter_schwelle",
+                            "nicht_anwendbar",
+                            "nicht_belastbar",
+                            "erfuellt",
+                            "vorbehalt_datenlage",
+                            "vorbehalt_ersatzwerte",
+                            "unter_zwoelf",
+                            "vorlaeufig"
+                          ]
+                        },
+                        "K2": {
+                          "type": "string",
+                          "enum": [
+                            "ueber_schwelle",
+                            "unter_schwelle",
+                            "nicht_anwendbar",
+                            "nicht_belastbar",
+                            "erfuellt",
+                            "vorbehalt_datenlage",
+                            "vorbehalt_ersatzwerte",
+                            "unter_zwoelf",
+                            "vorlaeufig"
+                          ]
+                        },
+                        "K3": {
+                          "type": "string",
+                          "enum": [
+                            "ueber_schwelle",
+                            "unter_schwelle",
+                            "nicht_anwendbar",
+                            "nicht_belastbar",
+                            "erfuellt",
+                            "vorbehalt_datenlage",
+                            "vorbehalt_ersatzwerte",
+                            "unter_zwoelf",
+                            "vorlaeufig"
+                          ]
+                        },
+                        "K4": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "K5": {
+                          "type": "string",
+                          "enum": [
+                            "ueber_schwelle",
+                            "unter_schwelle",
+                            "nicht_anwendbar",
+                            "nicht_belastbar",
+                            "erfuellt",
+                            "vorbehalt_datenlage",
+                            "vorbehalt_ersatzwerte",
+                            "unter_zwoelf",
+                            "vorlaeufig"
+                          ]
+                        },
+                        "K6": {
+                          "type": "string",
+                          "enum": [
+                            "ueber_schwelle",
+                            "unter_schwelle",
+                            "nicht_anwendbar",
+                            "nicht_belastbar",
+                            "erfuellt",
+                            "vorbehalt_datenlage",
+                            "vorbehalt_ersatzwerte",
+                            "unter_zwoelf",
+                            "vorlaeufig"
+                          ]
+                        },
+                        "vorschlag": {
+                          "type": "string",
+                          "enum": [
+                            "ueber_schwelle",
+                            "unter_schwelle",
+                            "nicht_anwendbar",
+                            "nicht_belastbar",
+                            "erfuellt",
+                            "vorbehalt_datenlage",
+                            "vorbehalt_ersatzwerte",
+                            "unter_zwoelf",
+                            "vorlaeufig"
+                          ]
+                        },
+                        "zustand": {
+                          "type": "string",
+                          "enum": [
+                            "vollständig",
+                            "unvollständig",
+                            "mit Ersatzwert",
+                            "keine Werte"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "regel": {
+                "enum": [
+                  "P3"
+                ]
+              },
+              "operation": {
+                "const": "abdeckung"
+              },
+              "quelle": {
+                "type": "string"
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "messstellen",
+                  "traeger",
+                  "reste",
+                  "nenner",
+                  "offene_bedarfe",
+                  "schwelle"
+                ],
+                "properties": {
+                  "messstellen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kennung",
+                        "traeger",
+                        "art",
+                        "direkt",
+                        "archiviert",
+                        "wert",
+                        "ersatz"
+                      ],
+                      "properties": {
+                        "kennung": {
+                          "type": "string"
+                        },
+                        "traeger": {
+                          "type": "string",
+                          "enum": [
+                            "Strom",
+                            "Gas",
+                            "Wärme",
+                            "Kälte",
+                            "Wasser",
+                            "Druckluft"
+                          ]
+                        },
+                        "art": {
+                          "type": "string",
+                          "enum": [
+                            "gemessen",
+                            "berechnet",
+                            "verteilung"
+                          ]
+                        },
+                        "direkt": {
+                          "type": "boolean"
+                        },
+                        "archiviert": {
+                          "type": "boolean"
+                        },
+                        "wert": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "ersatz": {
+                          "type": "string",
+                          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                        }
+                      }
+                    }
+                  },
+                  "traeger": {
+                    "type": "string",
+                    "enum": [
+                      "Strom",
+                      "Gas",
+                      "Wärme",
+                      "Kälte",
+                      "Wasser",
+                      "Druckluft"
+                    ]
+                  },
+                  "reste": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kennung",
+                        "wert"
+                      ],
+                      "properties": {
+                        "kennung": {
+                          "type": "string"
+                        },
+                        "wert": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "nenner": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "offene_bedarfe": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "schwelle": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "menge",
+                  "ersatz",
+                  "zustand",
+                  "gemessen",
+                  "geplant",
+                  "ersatz_messstellen",
+                  "ungemessen",
+                  "abdeckung_prozent",
+                  "K8"
+                ],
+                "properties": {
+                  "menge": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ersatz": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "zustand": {
+                    "type": "string",
+                    "enum": [
+                      "vollständig",
+                      "unvollständig",
+                      "mit Ersatzwert",
+                      "keine Werte"
+                    ]
+                  },
+                  "gemessen": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "geplant": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "ersatz_messstellen": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "ungemessen": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "abdeckung_prozent": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "K8": {
+                    "type": "string",
+                    "enum": [
+                      "ueber_schwelle",
+                      "unter_schwelle",
+                      "nicht_anwendbar",
+                      "nicht_belastbar",
+                      "erfuellt",
+                      "vorbehalt_datenlage",
+                      "vorbehalt_ersatzwerte",
+                      "unter_zwoelf",
+                      "vorlaeufig"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "regel": {
+                "enum": [
+                  "P4"
+                ]
+              },
+              "operation": {
+                "const": "prozess_summe_passt"
+              },
+              "quelle": {
+                "type": "string"
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "gemessen",
+                  "summen"
+                ],
+                "properties": {
+                  "gemessen": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "summen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kennung",
+                        "terme"
+                      ],
+                      "properties": {
+                        "kennung": {
+                          "type": "string"
+                        },
+                        "terme": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "messstelle",
+                              "verteilung"
+                            ],
+                            "properties": {
+                              "messstelle": {
+                                "type": "string"
+                              },
+                              "verteilung": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "summe",
+                    "messstelle",
+                    "verteilung"
+                  ],
+                  "properties": {
+                    "summe": {
+                      "type": "string"
+                    },
+                    "messstelle": {
+                      "type": "string"
+                    },
+                    "verteilung": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "regel": {
+                "enum": [
+                  "G5"
+                ]
+              },
+              "operation": {
+                "const": "toleranz"
+              },
+              "quelle": {
+                "type": "string"
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "fuehrend",
+                  "vergleich",
+                  "toleranz"
+                ],
+                "properties": {
+                  "fuehrend": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "vergleich": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  },
+                  "toleranz": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "abweichung_prozent",
+                  "toleranz_prozent",
+                  "befund"
+                ],
+                "properties": {
+                  "abweichung_prozent": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "toleranz_prozent": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  },
+                  "befund": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
