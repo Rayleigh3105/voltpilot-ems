@@ -26,10 +26,15 @@ public class BewertungUmfangService {
     }
     @Transactional(readOnly = true)
     public Umfang lesen(LocalDate am) {
+        return lesen(am, am);
+    }
+    /** IP-9: heutige Umfangsfassung, Anlagenbindung am Ende der Datengrundlage. */
+    @Transactional(readOnly = true)
+    public Umfang lesen(LocalDate fassungAm, LocalDate anlagenAm) {
         var u = unternehmen.desKundenbereichs().orElseThrow(BewertungUmfangAbgelehnt::fehlt);
-        LocalDate tag = am == null ? LocalDate.now(ZoneId.of(u.zeitzone())) : am;
+        LocalDate tag = fassungAm == null ? LocalDate.now(ZoneId.of(u.zeitzone())) : fassungAm;
         var f = repo.fassungen(u.id()).stream().filter(x -> !x.inhalt().gueltigAb().isAfter(tag)).findFirst().orElse(null);
-        return darstellen(u.id(), f, tag);
+        return darstellen(u.id(), f, anlagenAm == null ? tag : anlagenAm);
     }
     @Transactional(readOnly = true)
     public Historie historie() {

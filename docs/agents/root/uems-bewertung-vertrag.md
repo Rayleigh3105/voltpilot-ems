@@ -15,7 +15,8 @@ kleiner. Einsatzmenge nur aus direkt zugeordneten gemessenen Messstellen:
 Prozess-Summen/Verteilung zählen nicht. Ersatz ist Teil der Menge. Resthinweise
 am Einsatz nicht erneut summieren: für den Umfang jeden Anlagenrest einmal.
 K4 ist Wortlaut einer Person, kein maschinelles Urteil; das Modul stuft niemanden ein.
-Noch keine Produktivaufrufer, Datenhaltung oder Flächen (eigene Folgepakete).
+Produktivaufrufer für Nenner und Menge: `BewertungMengenLeser`
+([IP-9](uems-bewertung.md)); Kriterien und Einstufung bleiben eigene Folgepakete.
 
 Prüfen: `BewertungVectorsTest`, `uemsBewertung.test.ts`, `tests/test_bewertung.py`.
 Schema-Negativproben verwerfen Zusatzfelder und Float-Mengen. Für den gesamten

@@ -23,8 +23,8 @@ class BewertungVectorsTest {
     private static Object rechnen(JsonNode fall) throws Exception {
         var e = fall.get("eingang");
         return switch (fall.get("operation").asText()) {
-            case "nenner" -> BewertungRegeln.nenner(list(e.get("anlagen"), BewertungRegeln.Anlage[].class));
-            case "menge" -> BewertungRegeln.menge(list(e.get("messstellen"), BewertungRegeln.Messstelle[].class), e.get("traeger").asText());
+            case "nenner" -> BewertungMengenLeser.nenner(list(e.get("anlagen"), BewertungRegeln.Anlage[].class));
+            case "menge" -> BewertungMengenLeser.menge(list(e.get("messstellen"), BewertungRegeln.Messstelle[].class), e.get("traeger").asText());
             case "rangliste" -> BewertungRegeln.rangliste(M.treeToValue(e, BewertungRegeln.RanglisteEingang.class));
             case "abdeckung" -> BewertungRegeln.abdeckung(M.treeToValue(e, BewertungRegeln.AbdeckungEingang.class));
             case "prozess_summe_passt" -> BewertungRegeln.prozessSummePasst(list(e.get("gemessen"), String[].class), list(e.get("summen"), BewertungRegeln.ProzessSumme[].class));

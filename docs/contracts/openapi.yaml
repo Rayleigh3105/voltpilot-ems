@@ -11943,6 +11943,30 @@ paths:
         "400": { $ref: "#/components/responses/BilanzAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/unternehmen/bewertung/rangliste:
+    get:
+      tags: [energieeinsaetze]
+      summary: Mengen und Anteile der Energieeinsätze aus Monatswerten und Anlagenbilanzen.
+      description: >
+        Recht `energieeinsatz.ansehen`. Laufende Einsätze und heutige Umfangsfassung, Anlagen und direkte Prozesszuordnungen
+        am letzten Tag der Datengrundlage. Ganze Kalendermonate, letzter Tag eingeschlossen.
+        Standortrollen erhalten teilansicht=true mit ausschließlich sichtbaren Anlagen und Messstellen;
+        deren Nenner und x von y gelten nur für diese Teilansicht. Fehlt darin eine Bilanz, sind der
+        Nenner null und alle Stromanteile unvollständig. Ohne Hauptzähler Bezug heißt die Anlage
+        ohne Bilanz. Mengenlose Einsätze tragen keine Werte, keine Null. Weitere Träger behalten
+        ihre Einheit und haben keinen Anteil. Keine Kriterien, Vorschläge oder Einstufungen.
+      parameters:
+        - { in: query, name: von, required: true, schema: { type: string, format: date }, description: Erster Tag des ersten Monats. }
+        - { in: query, name: bis, required: true, schema: { type: string, format: date }, description: Letzter Tag des letzten Monats. }
+      responses:
+        "200":
+          description: Mengen, Herkunft in Monatswerten, Nenner und nicht zugeordneter Rest je Anlage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BewertungRangliste" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/unternehmen/bewertung/umfang:
     get:
       tags: [energieeinsaetze]
@@ -13882,6 +13906,76 @@ components:
       properties:
         name: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
         mit_anteil: { type: boolean, description: Nur Strom; alle anderen Träger sind im Umfang ohne Anteil. }
+    BewertungRangliste:
+      type: object
+      required: [von, bis, umfang_id, umfang_fassung, teilansicht, nenner, zugeordnet, rest, abdeckung_prozent, zustand, anlagen, einsaetze, weitere_traeger]
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        umfang_id: { type: string, format: uuid, nullable: true }
+        umfang_fassung: { type: integer, nullable: true }
+        teilansicht: { type: boolean }
+        nenner: { $ref: "#/components/schemas/BewertungRanglisteNenner" }
+        zugeordnet: { type: string, nullable: true, description: Bekannte Strommenge in kWh als ungerundeter Dezimaltext. }
+        rest: { type: string, nullable: true }
+        abdeckung_prozent: { type: string, nullable: true, description: Anzeige mit einer Nachkommastelle. }
+        zustand: { type: string, enum: [vollständig, unvollständig, ohne Anteil] }
+        anlagen: { type: array, items: { $ref: "#/components/schemas/BewertungRanglisteAnlage" } }
+        einsaetze: { type: array, items: { $ref: "#/components/schemas/BewertungRanglisteEinsatz" } }
+        weitere_traeger: { type: array, items: { $ref: "#/components/schemas/BewertungRanglisteEinsatz" } }
+    BewertungRanglisteNenner:
+      type: object
+      required: [wert, einheit, vorhanden, gesamt, anlagen, zustand]
+      properties:
+        wert: { type: string, nullable: true }
+        einheit: { type: string, nullable: true, enum: [kWh, null] }
+        vorhanden: { type: integer, minimum: 0 }
+        gesamt: { type: integer, minimum: 0 }
+        anlagen: { type: string, example: 3 von 3 }
+        zustand: { type: string, enum: [vollständig, unvollständig, ohne Anteil] }
+    BewertungRanglisteAnlage:
+      type: object
+      required: [id, name, ab, nenner, zugeordnet, rest, rest_anteil_prozent, zustand]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        ab: { type: string, format: date, nullable: true, description: Beginn des ersten Bilanzabschnitts im Zeitraum. }
+        nenner: { type: string, nullable: true }
+        zugeordnet: { type: string, nullable: true }
+        rest: { type: string, nullable: true }
+        rest_anteil_prozent: { type: string, nullable: true }
+        zustand: { type: string, enum: [vollständig, unvollständig, mit Ersatzwert, ohne Bilanz] }
+    BewertungRanglisteEinsatz:
+      type: object
+      required: [id, kennzeichen, name, prozess_id, traeger, einheit, menge, zustand, ersatz, ersatz_prozent, anteil_prozent, anteil_zustand, rang, messstellen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        prozess_id: { type: string, format: uuid }
+        traeger: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
+        einheit: { type: string, nullable: true }
+        menge: { type: string, nullable: true }
+        zustand: { type: string, enum: [vollständig, unvollständig, mit Ersatzwert, keine Werte] }
+        ersatz: { type: string, nullable: true, description: Teil der Menge; null wenn nicht nachweisbar. }
+        ersatz_prozent: { type: string, nullable: true }
+        anteil_prozent: { type: string, nullable: true }
+        anteil_zustand: { type: string, enum: [vollständig, unvollständig, mit Ersatzwert, keine Werte, ohne Anteil] }
+        rang: { type: integer, nullable: true }
+        messstellen: { type: array, items: { $ref: "#/components/schemas/BewertungRanglisteMessstelle" } }
+    BewertungRanglisteMessstelle:
+      type: object
+      required: [id, kennzeichen, anlage_id, einheit, menge, zustand, ersatz, ersatz_prozent, monatswerte]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        anlage_id: { type: string, format: uuid, nullable: true }
+        einheit: { type: string }
+        menge: { type: string, nullable: true }
+        zustand: { type: string, enum: [vollständig, unvollständig, mit Ersatzwert, keine Werte] }
+        ersatz: { type: string, nullable: true }
+        ersatz_prozent: { type: string, nullable: true }
+        monatswerte: { $ref: "#/components/schemas/MessstelleWerte" }
     BewertungUmfangAnlage:
       type: object
       required: [id, name]
