@@ -48,7 +48,8 @@ export function geltungsOrte(q: OrtsDaten, heute: string): Ort[] {
   return out;
 }
 
-export const anlegeArten = (): VpOption[] => Object.entries(ARTEN).filter(([key]) => key !== 'bezugsflaeche' && key !== 'zaehlerstand').map(([value, a]) => ({ value, label: a.name }));
+// AP-16 IP-26 liefert die Art über die API; der vorhandene Anlegedialog erfasst keine Schwellenfassung.
+export const anlegeArten = (): VpOption[] => Object.entries(ARTEN).filter(([key]) => key !== 'bezugsflaeche' && key !== 'zaehlerstand' && key !== 'betriebszeit_aus_leistung').map(([value, a]) => ({ value, label: a.name }));
 export const einheiten = (art: string) => ARTEN[art] ? einheitenDer(ARTEN[art], VOKABULAR.einheiten, null).filter(e => e !== 'm²') : [];
 export const perioden = (art: string) => ARTEN[art] ? periodenDer(ARTEN[art], VOKABULAR.periode_art) : [];
 export const passtOrt = (art: string, o: Ort) => Boolean(ARTEN[art] && geltungDer(ARTEN[art], VOKABULAR.geltung_art).includes(o.art));

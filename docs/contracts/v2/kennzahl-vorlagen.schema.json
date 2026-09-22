@@ -55,7 +55,7 @@
       "required": ["art", "bezugsgroesse_arten", "einheiten", "wertarten", "satz"],
       "properties": {
         "art": { "type": "string", "const": "bezugsgroesse" },
-        "bezugsgroesse_arten": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["produktionsmenge", "gutteile", "betriebszeit", "schichten", "bezugsflaeche", "mitarbeitende", "gradtagzahl", "zaehlerstand", "sonstige_menge"] } },
+        "bezugsgroesse_arten": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["produktionsmenge", "gutteile", "betriebszeit", "schichten", "bezugsflaeche", "mitarbeitende", "gradtagzahl", "zaehlerstand", "sonstige_menge", "betriebszeit_aus_leistung"] } },
         "einheiten": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Nie umgerechnet — kg und t sind zwei Vorlagen." },
         "wertarten": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["periodenwert", "stammdatum"] }, "description": "Nie Stand (U3)." },
         "satz": { "type": "string", "minLength": 1 }

@@ -743,6 +743,35 @@
           "herkunft": "Eingabe · Import",
           "ahrenberg": "—"
         }
+      },
+      "betriebszeit_aus_leistung": {
+        "name": "Betriebszeit aus Leistung",
+        "einheiten": [
+          "h",
+          "min"
+        ],
+        "wertart": "periodenwert",
+        "perioden": [
+          "tag",
+          "woche",
+          "monat"
+        ],
+        "geltung": [
+          "prozess",
+          "bereich",
+          "messstelle"
+        ],
+        "herkunft": [
+          "messkanal"
+        ],
+        "konzept": {
+          "einheiten": "h, min",
+          "wertart": "Periodenwert (Dauer)",
+          "periode": "Tag · Woche · Monat",
+          "geltungsbereich": "Prozess · Bereich · Messstelle",
+          "herkunft": "Leistungskanal mit begründeter Schwelle (AP-16 E9)",
+          "ahrenberg": "Annahme für Maschinen ohne Statuskanal; BZ-3 bleibt Handeingabe"
+        }
       }
     },
     "pruefungen": [
@@ -2095,7 +2124,10 @@
     ]
   },
   "zwillinge": {
-    "gradtage": ["java", "ts"],
+    "gradtage": [
+      "java",
+      "ts"
+    ],
     "zahl": [
       "java",
       "ts"
@@ -2155,6 +2187,10 @@
     ],
     "vorschau": [
       "java"
+    ],
+    "betriebszeit_aus_leistung": [
+      "java",
+      "ts"
     ]
   },
   "zwillinge_grund": {
@@ -5449,6 +5485,367 @@
             "zustand": "vollständig",
             "kennzeichen": [
               "Gradtage G20/15"
+            ]
+          }
+        },
+        {
+          "name": "E9 Schwelle 5 kW",
+          "regel": "betriebszeit_aus_leistung",
+          "eingang": {
+            "von": "2026-10-01T00:00:00+00:00",
+            "bis": "2026-10-01T01:00:00+00:00",
+            "kadenz_s": 900,
+            "leistungen": [
+              {
+                "zeit": "2026-10-01T00:00:00+00:00",
+                "kw": "1",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:15:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:30:00+00:00",
+                "kw": "5",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:45:00+00:00",
+                "kw": "7",
+                "gut": true
+              }
+            ],
+            "schwellen": [
+              {
+                "von": "2026-10-01T00:00:00+00:00",
+                "bis": null,
+                "kw": "5"
+              }
+            ],
+            "luecken": []
+          },
+          "ergebnis": {
+            "betrag": "0.25",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "kennzeichen": [
+              "aus Leistung über 5 kW (Annahme)"
+            ]
+          }
+        },
+        {
+          "name": "E9 Schwelle 2 kW",
+          "regel": "betriebszeit_aus_leistung",
+          "eingang": {
+            "von": "2026-10-01T00:00:00+00:00",
+            "bis": "2026-10-01T01:00:00+00:00",
+            "kadenz_s": 900,
+            "leistungen": [
+              {
+                "zeit": "2026-10-01T00:00:00+00:00",
+                "kw": "1",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:15:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:30:00+00:00",
+                "kw": "5",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:45:00+00:00",
+                "kw": "7",
+                "gut": true
+              }
+            ],
+            "schwellen": [
+              {
+                "von": "2026-10-01T00:00:00+00:00",
+                "bis": null,
+                "kw": "2"
+              }
+            ],
+            "luecken": []
+          },
+          "ergebnis": {
+            "betrag": "0.75",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "kennzeichen": [
+              "aus Leistung über 2 kW (Annahme)"
+            ]
+          }
+        },
+        {
+          "name": "E9 Lücke ist kein Stillstand",
+          "regel": "betriebszeit_aus_leistung",
+          "eingang": {
+            "von": "2026-10-01T00:00:00+00:00",
+            "bis": "2026-10-01T01:00:00+00:00",
+            "kadenz_s": 900,
+            "leistungen": [
+              {
+                "zeit": "2026-10-01T00:00:00+00:00",
+                "kw": "1",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:15:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:30:00+00:00",
+                "kw": "5",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-01T00:45:00+00:00",
+                "kw": "7",
+                "gut": true
+              }
+            ],
+            "schwellen": [
+              {
+                "von": "2026-10-01T00:00:00+00:00",
+                "bis": null,
+                "kw": "5"
+              }
+            ],
+            "luecken": [
+              {
+                "von": "2026-10-01T00:45:00+00:00",
+                "bis": "2026-10-01T01:00:00+00:00",
+                "quelle": "Verbindung fehlt"
+              }
+            ]
+          },
+          "ergebnis": {
+            "betrag": "0",
+            "zustand": "unvollständig",
+            "abdeckung_prozent": 75,
+            "kennzeichen": [
+              "aus Leistung über 5 kW (Annahme)"
+            ]
+          }
+        },
+        {
+          "name": "E9 ohne Rohwerte bleibt null",
+          "regel": "betriebszeit_aus_leistung",
+          "eingang": {
+            "von": "2026-10-01T00:00:00+00:00",
+            "bis": "2026-10-01T01:00:00+00:00",
+            "kadenz_s": 900,
+            "leistungen": [],
+            "schwellen": [
+              {
+                "von": "2026-10-01T00:00:00+00:00",
+                "bis": null,
+                "kw": "5"
+              }
+            ],
+            "luecken": []
+          },
+          "ergebnis": {
+            "betrag": null,
+            "zustand": "keine Werte",
+            "abdeckung_prozent": 0,
+            "kennzeichen": [
+              "aus Leistung über 5 kW (Annahme)"
+            ]
+          }
+        },
+        {
+          "name": "E9 Fassung 2 mitten im Monat",
+          "regel": "betriebszeit_aus_leistung",
+          "eingang": {
+            "von": "2026-10-01T00:00:00+00:00",
+            "bis": "2026-11-01T00:00:00+00:00",
+            "kadenz_s": 86400,
+            "leistungen": [
+              {
+                "zeit": "2026-10-01T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-02T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-03T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-04T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-05T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-06T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-07T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-08T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-09T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-10T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-11T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-12T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-13T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-14T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-15T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-16T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-17T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-18T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-19T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-20T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-21T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-22T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-23T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-24T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-25T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-26T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-27T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-28T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-29T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-30T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              },
+              {
+                "zeit": "2026-10-31T00:00:00+00:00",
+                "kw": "3",
+                "gut": true
+              }
+            ],
+            "schwellen": [
+              {
+                "von": "2026-10-01T00:00:00+00:00",
+                "bis": "2026-10-16T00:00:00+00:00",
+                "kw": "5"
+              },
+              {
+                "von": "2026-10-16T00:00:00+00:00",
+                "bis": null,
+                "kw": "2"
+              }
+            ],
+            "luecken": []
+          },
+          "ergebnis": {
+            "betrag": "384",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "kennzeichen": [
+              "aus Leistung über 5 kW (Annahme)",
+              "aus Leistung über 2 kW (Annahme)"
             ]
           }
         }

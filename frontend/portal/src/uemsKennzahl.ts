@@ -221,6 +221,7 @@ export const KENNZEICHEN: Kennzeichen[] = [
   k('ab', 'ab {datum}', { datum: 'datum' }, 50, 'geerbt', 'wert', false),
   k('mit_ersatzwert', 'mit Ersatzwert ({text})', T, 51, 'geerbt', 'wert', false),
   k('stammdatum_geaendert', '{bezeichnung} geändert am {datum} ({wechsel})', { bezeichnung: 'bezeichnung', datum: 'datum', wechsel: 'text' }, 52, 'geerbt', 'wert', false),
+  k('betriebszeit_annahme', 'aus Leistung über {text} kW (Annahme)', T, 53, 'geerbt', 'wert', false),
   k('berechnung_geaendert_am', 'Berechnung geändert am {datum} (Fassung {von} → {nach})', { datum: 'datum', von: 'ganzzahl', nach: 'ganzzahl_ab_2' }, 55, 'eigen', 'wert', false),
   k('x_von_y', '{mit} von {gesamt} {wort}', { mit: 'ganzzahl', gesamt: 'ganzzahl', wort: 'wort' }, 60, 'beides', 'wert', false),
   k('x_von_y_fehlt', '{mit} von {gesamt} {wort} ({fehlt})', { mit: 'ganzzahl', gesamt: 'ganzzahl', wort: 'wort', fehlt: 'text' }, 60, 'eigen', 'wert', false),
@@ -248,6 +249,7 @@ export const ERBEND: Erbregel[] = [
   { muster: '^mit Ersatzwert \\(.+\\)$', als: '{0}', von: [MESSSTELLE] },
   { muster: '^(?!Berechnung\\b).+ geändert am \\d{2}\\.\\d{2}\\.\\d{4} \\(.+\\)$', als: '{0}', von: [BEZUGSGROESSE] },
   { muster: '^\\d+ von \\d+ Systemen$', als: '{0}', von: [MESSSTELLE] },
+  { muster: '^aus Leistung über .+ kW \\(Annahme\\)$', als: '{0}', von: [BEZUGSGROESSE, KENNZAHL] },
 ];
 
 const MUSTER = new Map<string, RegExp>(
@@ -405,7 +407,7 @@ const seite = (e: Eingang): Seite => {
     const da = e.wertart === PERIODENWERT ? e.status === WIRKSAM && e.wert !== null : e.wert !== null;
     return {
       wert: da ? e.wert : null,
-      zustand: da ? VOLLSTAENDIG : KEINE_WERTE,
+      zustand: da ? (e.kennzeichen.some(k => k.startsWith('aus Leistung über ')) && e.zustand === UNVOLLSTAENDIG ? UNVOLLSTAENDIG : VOLLSTAENDIG) : KEINE_WERTE,
       abdeckung: da ? e.abdeckung_prozent ?? HUNDERT : NULL_DEZ,
       endgueltig: e.endgueltig,
       zurueckgenommen: e.status === ZURUECKGENOMMEN,
@@ -522,7 +524,7 @@ const teileQuotient = (a: Antrag): Ergebnis => {
 };
 
 const ZEIT_VEREINIGT = new Set([
-  'enthaelt_berechnet', 'enthaelt_verteilt', 'mit_ersatzwert', 'stammdatum_geaendert', 'berechnung_geaendert_am',
+  'enthaelt_berechnet', 'enthaelt_verteilt', 'betriebszeit_annahme', 'mit_ersatzwert', 'stammdatum_geaendert', 'berechnung_geaendert_am',
   'eingang_ausserhalb', 'bezugsgroesse_archiviert', 'eingang_archiviert',
 ]);
 

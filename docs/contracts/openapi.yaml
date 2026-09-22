@@ -10599,23 +10599,32 @@ paths:
         "404": { description: Bezugsgröße nicht gefunden. }
     post:
       tags: [bezugsgroessen]
-      summary: Bindet einen Zähler-, Zustands- oder Temperaturkanal an Periodenwerte (K1–K6).
+      summary: Bindet einen Zähler-, Zustands-, Temperatur- oder Leistungskanal an Periodenwerte (K1–K6, E9).
       description: >
         Recht `bezugsgroesse.verwalten`. Minutenweise, halboffen; frühestens ab dem ersten
         gespeicherten Rohwert. Der Kanal muss Daten liefern. Ein Zustandskanal braucht einen
         gewählten Zustand; ein Zähler eine passende Einheit. Temperatur benötigt quantity=temperature, °C und Standortgeltung in Kd; Raumtemperatur und Heizgrenze sind je Bindung gespeichert (Vorgabe G20/15). Im gebundenen Zeitraum sind
         Eingabe, Berichtigung und Import mit 422 `kanal_gebunden` gesperrt. Archivieren erhält
         die Historie; eine Bezugsgröße mit Bindung kann nicht gelöscht werden.
+        Betriebszeit aus Leistung benötigt eine Messstelle mit führendem Wirkleistungs-Gauge (W/kW),
+        schwelle_kw und eine Begründung. Die nächste Fassung beendet die vorige; jede Zahl trägt
+        „aus Leistung über x kW (Annahme)“. Akteur und unveränderliche Parameter bleiben gespeichert.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [entity_id, kanal, von]
+              required: [von]
+              anyOf:
+                - required: [entity_id, kanal]
+                - required: [messstelle_id, schwelle_kw, begruendung]
               properties:
                 entity_id: { type: string, format: uuid }
                 kanal: { type: string }
+                messstelle_id: { type: string, format: uuid, description: "Nur Betriebszeit aus Leistung; entity_id und kanal werden daraus gelesen oder müssen dazu passen." }
+                schwelle_kw: { type: number, minimum: 0, description: "Nur Betriebszeit aus Leistung; striktes Leistung > Schwelle." }
+                begruendung: { type: string, minLength: 10, maxLength: 2000, description: "Pflicht für jede Schwellenfassung." }
                 zustand: { type: string, nullable: true }
                 von: { type: string, format: date-time }
                 raumtemperatur: { type: number, default: 20, description: "Nur Temperatur; größer als Heizgrenze." }
@@ -25449,7 +25458,7 @@ components:
         periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
         geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle], description: "Alle sieben sind seit AP-10 IP-7 wählbar (Prozess und Kostenstelle haben ihre Tabellen)." }
         geltung_id: { type: string, format: uuid }
-        art: { type: string, nullable: true, enum: [produktionsmenge, gutteile, betriebszeit, schichten, bezugsflaeche, mitarbeitende, gradtagzahl, zaehlerstand, sonstige_menge], description: "Eigene Art; null = nicht angegeben. POST darf sie weglassen; PUT ohne Art oder mit null erhält die vorhandene Art." }
+        art: { type: string, nullable: true, enum: [produktionsmenge, gutteile, betriebszeit, schichten, bezugsflaeche, mitarbeitende, gradtagzahl, zaehlerstand, sonstige_menge, betriebszeit_aus_leistung], description: "Eigene Art; null = nicht angegeben. POST darf sie weglassen; PUT ohne Art oder mit null erhält die vorhandene Art." }
     Bezugsgroesse:
       type: object
       required: [id, kennzeichen, name, art, wertart, einheit, periode_art, geltung_art, geltung_id, geltung_name, hat_werte, archiviert_am, angelegt_am]
@@ -25466,7 +25475,7 @@ components:
         hat_werte: { type: boolean, description: "Trägt sie eine Wert-Zeile oder ein Intervall eines Stammdatums? Dann gilt M1 und sie ist nicht löschbar (M6)." }
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
-        art: { type: string, nullable: true, enum: [produktionsmenge, gutteile, betriebszeit, schichten, bezugsflaeche, mitarbeitende, gradtagzahl, zaehlerstand, sonstige_menge], description: "Eigene Art; null = nicht angegeben. POST darf sie weglassen; PUT ohne Art oder mit null erhält die vorhandene Art." }
+        art: { type: string, nullable: true, enum: [produktionsmenge, gutteile, betriebszeit, schichten, bezugsflaeche, mitarbeitende, gradtagzahl, zaehlerstand, sonstige_menge, betriebszeit_aus_leistung], description: "Eigene Art; null = nicht angegeben. POST darf sie weglassen; PUT ohne Art oder mit null erhält die vorhandene Art." }
     BezugsgroesseListe:
       type: object
       required: [bezugsgroessen, bezugsflaechen]
@@ -25618,6 +25627,12 @@ components:
         entity_id: { type: string, format: uuid }
         kanal: { type: string }
         wertart: { type: string, enum: [counter, state, gauge] }
+        messstelle_id: { type: string, format: uuid }
+        schwelle_kw: { type: number, minimum: 0 }
+        begruendung: { type: string }
+        fassung: { type: integer, minimum: 1 }
+        ersetzt_bindung_id: { type: string, format: uuid }
+        regel: { type: string, description: "Bei Betriebszeit aus Leistung: aus Leistung über x kW (Annahme)." }
         raumtemperatur: { type: number, nullable: true, description: "Nur Temperatur; dauerhaft gespeicherter Parameter." }
         heizgrenze: { type: number, nullable: true, description: "Nur Temperatur; dauerhaft gespeicherter Parameter." }
         zustand: { type: string, nullable: true }

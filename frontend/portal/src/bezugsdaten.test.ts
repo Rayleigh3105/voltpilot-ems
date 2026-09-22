@@ -1,3 +1,5 @@
+import { erbe } from './uemsKennzahl';
+import { betriebszeit } from './betriebszeit';
 import { gradtage } from './gradtage';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -197,6 +199,16 @@ describe('Bezugsdaten-Vertrag: die Vektoren', () => {
     const soll = p.ergebnis;
 
     switch (p.regel) {
+      case 'betriebszeit_aus_leistung': {
+        const ist = betriebszeit(ein.von, ein.bis, ein.kadenz_s, ein.leistungen, ein.schwellen, ein.luecken);
+        betragGleich(ist.betrag, soll.betrag);
+        expect(ist.zustand).toBe(soll.zustand);
+        expect(ist.abdeckung_prozent).toBe(soll.abdeckung_prozent);
+        expect(ist.kennzeichen).toEqual(soll.kennzeichen);
+        expect(erbe('bezugsgroesse', null, ist.kennzeichen)).toEqual(soll.kennzeichen);
+        expect(erbe('kennzahl', null, ist.kennzeichen)).toEqual(soll.kennzeichen);
+        break;
+      }
       case 'gradtage': {
         const ist = gradtage(ein.tage, ein.raumtemperatur, ein.heizgrenze);
         betragGleich(ist.betrag, soll.betrag);

@@ -245,6 +245,7 @@ public final class KennzahlRegeln {
             new Kennzeichen("mit_ersatzwert", "mit Ersatzwert ({text})", T, 51, "geerbt", "wert", false),
             new Kennzeichen("stammdatum_geaendert", "{bezeichnung} geändert am {datum} ({wechsel})",
                     Map.of("bezeichnung", "bezeichnung", "datum", "datum", "wechsel", "text"), 52, "geerbt", "wert", false),
+            new Kennzeichen("betriebszeit_annahme", "aus Leistung über {text} kW (Annahme)", T, 53, "geerbt", "wert", false),
             new Kennzeichen("berechnung_geaendert_am", "Berechnung geändert am {datum} (Fassung {von} → {nach})",
                     Map.of("datum", "datum", "von", "ganzzahl", "nach", "ganzzahl_ab_2"), 55, "eigen", "wert", false),
             new Kennzeichen("x_von_y", "{mit} von {gesamt} {wort}",
@@ -279,7 +280,8 @@ public final class KennzahlRegeln {
             new Erbregel("^ab \\d{2}\\.\\d{2}\\.\\d{4}$", "{geltung} {0}", List.of(KENNZAHL)),
             new Erbregel("^mit Ersatzwert \\(.+\\)$", "{0}", List.of(MESSSTELLE)),
             new Erbregel("^(?!Berechnung\\b).+ geändert am \\d{2}\\.\\d{2}\\.\\d{4} \\(.+\\)$", "{0}", List.of(BEZUGSGROESSE)),
-            new Erbregel("^\\d+ von \\d+ Systemen$", "{0}", List.of(MESSSTELLE)));
+            new Erbregel("^\\d+ von \\d+ Systemen$", "{0}", List.of(MESSSTELLE)),
+            new Erbregel("^aus Leistung über .+ kW \\(Annahme\\)$", "{0}", List.of(BEZUGSGROESSE, KENNZAHL)));
 
     public static final String KENNZEICHEN_UNBEKANNT = "kennzeichen_unbekannt";
     public static final String KENNZEICHEN_STELLE = "kennzeichen_stelle";
@@ -399,6 +401,11 @@ public final class KennzahlRegeln {
             BigDecimal wert, String einheit, String zustand, BigDecimal abdeckungProzent, boolean endgueltig,
             String ursache, List<String> kennzeichen) {}
 
+    /** Zeitgewichtete Kanalabdeckung mehrerer Bezugsperioden, einschließlich unterschiedlich langer DST-Tage. */
+    static BigDecimal zeitAbdeckung(BigDecimal prozentSekunden, BigDecimal sekunden) {
+        return sekunden.signum()==0 ? null : prozentSekunden.divide(sekunden,1,java.math.RoundingMode.HALF_UP);
+    }
+
     /** Ein Paar einer Zusammenfassung (eine Kennzahl oder eine Teilperiode) mit Zähler und Nenner. */
     public record Teil(String objekt, String geltung, BigDecimal zaehler, BigDecimal nenner, String zustand,
             String richtung, BigDecimal abdeckungProzent, boolean endgueltig, List<String> kennzeichen) {}
@@ -435,7 +442,8 @@ public final class KennzahlRegeln {
     private static Seite seite(Eingang e) {
         if (BEZUGSGROESSE.equals(e.art()) && (PERIODENWERT.equals(e.wertart()) || STAMMDATUM.equals(e.wertart()))) {
             boolean da = PERIODENWERT.equals(e.wertart()) ? WIRKSAM.equals(e.status()) && e.wert() != null : e.wert() != null;
-            return new Seite(da ? e.wert() : null, da ? ErgebnisZustand.VOLLSTAENDIG : ErgebnisZustand.KEINE_WERTE,
+            return new Seite(da ? e.wert() : null, da ? (e.kennzeichen().stream().anyMatch(k -> k.startsWith("aus Leistung über "))
+                    && ErgebnisZustand.UNVOLLSTAENDIG.equals(e.zustand()) ? ErgebnisZustand.UNVOLLSTAENDIG : ErgebnisZustand.VOLLSTAENDIG) : ErgebnisZustand.KEINE_WERTE,
                     da ? (e.abdeckungProzent() == null ? HUNDERT : e.abdeckungProzent()) : BigDecimal.ZERO,
                     e.endgueltig(), ZURUECKGENOMMEN.equals(e.status()));
         }
@@ -584,7 +592,7 @@ public final class KennzahlRegeln {
     }
 
     /** Was eine Teilperiode an die gröbere Periode vererbt (übernommen, nicht neu gerechnet). */
-    private static final Set<String> ZEIT_VEREINIGT = Set.of("enthaelt_berechnet", "enthaelt_verteilt",
+    private static final Set<String> ZEIT_VEREINIGT = Set.of("enthaelt_berechnet", "enthaelt_verteilt", "betriebszeit_annahme",
             "mit_ersatzwert", "stammdatum_geaendert", "berechnung_geaendert_am", "eingang_ausserhalb",
             "bezugsgroesse_archiviert", "eingang_archiviert");
 

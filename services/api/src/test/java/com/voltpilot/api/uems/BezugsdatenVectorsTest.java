@@ -558,6 +558,21 @@ class BezugsdatenVectorsTest {
                 intervallGleich(why + " · aufgehoben", e.path("aufgehoben"), ist.aufgehoben());
                 intervallGleich(why + " · neu", e.path("neu"), ist.neu());
             }
+            case "betriebszeit_aus_leistung" -> {
+                List<BetriebszeitRegeln.Leistung> werte=new ArrayList<>();
+                ein.path("leistungen").forEach(r->werte.add(new BetriebszeitRegeln.Leistung(Instant.parse(r.path("zeit").asText()), dezimal(r.path("kw")),r.path("gut").asBoolean())));
+                List<BetriebszeitRegeln.Schwelle> schwellen=new ArrayList<>();
+                ein.path("schwellen").forEach(r->schwellen.add(new BetriebszeitRegeln.Schwelle(Instant.parse(r.path("von").asText()),r.path("bis").isNull()?null:Instant.parse(r.path("bis").asText()),dezimal(r.path("kw")))));
+                List<Luecke> luecken=new ArrayList<>();
+                ein.path("luecken").forEach(r->luecken.add(new Luecke(Instant.parse(r.path("von").asText()),Instant.parse(r.path("bis").asText()),r.path("quelle").asText())));
+                var ist=BetriebszeitRegeln.rechnen(Instant.parse(ein.path("von").asText()),Instant.parse(ein.path("bis").asText()),ein.path("kadenz_s").asInt(),werte,schwellen,luecken);
+                betrag(why,soll.path("betrag"),ist.betrag());
+                assertThat(ist.zustand()).isEqualTo(soll.path("zustand").asText());
+                betrag(why,soll.path("abdeckung_prozent"),ist.abdeckungProzent());
+                assertThat(ist.kennzeichen()).isEqualTo(texte(soll.path("kennzeichen")));
+                assertThat(KennzahlRegeln.erbe("bezugsgroesse",null,ist.kennzeichen())).isEqualTo(ist.kennzeichen());
+                assertThat(KennzahlRegeln.erbe("kennzahl",null,ist.kennzeichen())).isEqualTo(ist.kennzeichen());
+            }
             case "gradtage" -> {
                 List<GradtagRegeln.Tag> tage=new ArrayList<>();
                 ein.path("tage").forEach(t->tage.add(new GradtagRegeln.Tag(t.path("mittel").isNull()?null:new java.math.BigDecimal(t.path("mittel").asText()),t.path("zustand").asText())));

@@ -14,14 +14,14 @@ import org.springframework.web.bind.annotation.*;
 public class KanalbindungController {
     private final KanalbindungService service;
     public KanalbindungController(KanalbindungService service) { this.service=service; }
-    public record Anfrage(@JsonProperty("entity_id") UUID entityId, String kanal, String zustand, Instant von, java.math.BigDecimal raumtemperatur, java.math.BigDecimal heizgrenze) {}
+    public record Anfrage(@JsonProperty("entity_id") UUID entityId, String kanal, String zustand, Instant von, java.math.BigDecimal raumtemperatur, java.math.BigDecimal heizgrenze, @JsonProperty("messstelle_id") UUID messstelleId, @JsonProperty("schwelle_kw") java.math.BigDecimal schwelleKw, String begruendung) {}
     public record Ende(Instant bis) {}
 
     /** Recht: {@code bezugsgroesse.verwalten}. */
     @PostMapping
     @Recht(value="bezugsgroesse.verwalten",ziel=RechtZiel.BEZUGSGROESSE)
     public ResponseEntity<KanalbindungService.Bindung> binden(@PathVariable UUID id,@RequestBody Anfrage a,Authentication auth) {
-        return ResponseEntity.status(201).body(service.binden(id,a.entityId(),a.kanal(),a.zustand(),a.von(),a.raumtemperatur(),a.heizgrenze(),ProtokollAkteur.aus(auth).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED,"Anmeldung fehlt."))));
+        return ResponseEntity.status(201).body(service.binden(id,a.entityId(),a.kanal(),a.zustand(),a.von(),a.raumtemperatur(),a.heizgrenze(),a.messstelleId(),a.schwelleKw(),a.begruendung(),ProtokollAkteur.aus(auth).orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED,"Anmeldung fehlt."))));
     }
     /** Recht: {@code bezugsgroesse.verwalten}. */
     @PostMapping("/{bindung}/beenden")

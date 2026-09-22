@@ -31,7 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
  *       der Periode: Menge aus den Periodenständen, AP-08-Zustand, Abdeckung, Version;</li>
  *   <li>eine Bezugsgröße als Periodenwert über ihre wirksame Fassung ({@link BezugsgroesseService#werte}, Lesart
  *       {@code wirksam}) — auch ein Wert mit Herkunft {@code messkanal}: {@code bezugsgroesse_wert} trägt keinen
- *       AP-08-Zustand, eine Kanal-Bezugsgröße mit eigenem Zustand gibt es erst mit AP-09 IP-17;</li>
+ *       AP-08-Zustand als Spalte; Kanalqualität steht seit AP-09 IP-17 in der Herkunft. AP-16 E9 liest
+ *       deren Zustand und Annahmen für die Betriebszeit aus Leistung;</li>
  *   <li>eine Bezugsgröße als Stammdatum am Stichtag, dem letzten Tag der Periode ({@link BezugsgroesseService#stammdatum},
  *       E17);</li>
  *   <li>eine Kennzahl über ihren gespeicherten Wert derselben Periode (R3) — als Paar einer Zusammenfassung mit Zähler und
@@ -257,6 +258,13 @@ public class KennzahlEingangLeser {
             }
             boolean einzeln = erwartet.size() == 1;
             BigDecimal summe = BigDecimal.ZERO;
+            List<String> annahmen = jeSchluessel.values().stream().map(w -> wirksame(w) == null ? juengste(w) : wirksame(w))
+                    .filter(java.util.Objects::nonNull).map(BezugsgroesseDto.Fassung::kennzeichen)
+                    .filter(java.util.Objects::nonNull).flatMap(List::stream)
+                    .filter(kz -> kz.startsWith("aus Leistung über ")).distinct().toList();
+            boolean unvollstaendigeBetriebszeit = false;
+            BigDecimal betriebszeitAbdeckung = BigDecimal.ZERO;
+            BigDecimal betriebszeitDauer = BigDecimal.ZERO;
             boolean endgueltig = true;
             Instant ab = null;
             Gelesen ohne = null;
@@ -269,7 +277,7 @@ public class KennzahlEingangLeser {
                     BezugsgroesseDto.Fassung juengste = einzeln && w != null ? juengste(w) : null;
                     ohne = new Gelesen(new KennzahlRegeln.Eingang(x.art(), x.kennzeichen(), x.name(), null,
                             KennzahlRegeln.PERIODENWERT, zurueck && einzeln ? KennzahlRegeln.ZURUECKGENOMMEN : null, null,
-                            x.einheit(), null, null, zurueck && einzeln, null, List.of()), null,
+                            x.einheit(), null, null, zurueck && einzeln, null, annahmen), null,
                             juengste == null ? null : juengste.fassung(),
                             juengste == null || juengste.kennzeichen() == null ? List.of() : juengste.kennzeichen(), null);
                     break;
@@ -277,6 +285,18 @@ public class KennzahlEingangLeser {
                 summe = summe.add(new BigDecimal(w.wirksamerBetrag()));
                 endgueltig &= !w.standOffen();
                 BezugsgroesseDto.Fassung wirksame = wirksame(w);
+                if (wirksame != null && wirksame.kennzeichen() != null) {
+                    var erbe = wirksame.kennzeichen().stream().filter(kz -> kz.startsWith("aus Leistung über ")).toList();
+                    if (!erbe.isEmpty() && wirksame.kanal() != null) {
+                        unvollstaendigeBetriebszeit |= !"vollständig".equals(wirksame.kanal().path("zustand").asText());
+                        var zone = java.time.ZoneId.of(w.zeitzone());
+                        BigDecimal dauer = BigDecimal.valueOf(java.time.Duration.between(w.periodeVon().atStartOfDay(zone),
+                                w.periodeBis().plusDays(1).atStartOfDay(zone)).toSeconds());
+                        betriebszeitAbdeckung = betriebszeitAbdeckung.add(wirksame.kanal().path("abdeckung_prozent").decimalValue().multiply(dauer));
+                        betriebszeitDauer = betriebszeitDauer.add(dauer);
+                        endgueltig &= !wirksame.kanal().path("vorlaeufig").asBoolean();
+                    }
+                }
                 if (wirksame != null && wirksame.eingetragenAm() != null) {
                     Instant t = wirksame.eingetragenAm().toInstant();
                     ab = ab == null || t.isAfter(ab) ? t : ab;
@@ -290,8 +310,11 @@ public class KennzahlEingangLeser {
             }
             BezugsgroesseDto.Fassung wirksame = einzeln && letzter != null ? wirksame(letzter) : null;
             aus.put(s, new Gelesen(new KennzahlRegeln.Eingang(x.art(), x.kennzeichen(), x.name(), null,
-                    KennzahlRegeln.PERIODENWERT, KennzahlRegeln.WIRKSAM, summe, x.einheit(), null, null, endgueltig, null,
-                    List.of()), null, einzeln && letzter != null ? letzter.wirksameFassung() : null,
+                    KennzahlRegeln.PERIODENWERT, KennzahlRegeln.WIRKSAM, summe, x.einheit(),
+                    annahmen.isEmpty() ? null : unvollstaendigeBetriebszeit ? ErgebnisZustand.UNVOLLSTAENDIG : ErgebnisZustand.VOLLSTAENDIG,
+                    KennzahlRegeln.zeitAbdeckung(betriebszeitAbdeckung,betriebszeitDauer),
+                    endgueltig, unvollstaendigeBetriebszeit ? "Leistungskanal mit Lücken" : null,
+                    annahmen.stream().distinct().toList()), null, einzeln && letzter != null ? letzter.wirksameFassung() : null,
                     wirksame == null || wirksame.kennzeichen() == null ? List.of() : wirksame.kennzeichen(),
                     endgueltig ? ab : null));
         }
