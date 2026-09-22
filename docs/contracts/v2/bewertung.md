@@ -316,3 +316,30 @@ Existenzproben erhalten ältere Migrations-Teststände. Es gibt keine Bestandsbe
 Nachweise: `BewertungUmfangApiTest`, `BewertungUmfangSchnittstelleVertragTest`,
 die sechs Mengen-Migrationsnachbarn, `UemsProduktionsreihenfolgeMigrationTest`,
 `UemsZugriffMigrationTest` und die API-Wächter.
+
+## 10. Kriterien-Urteil, Vorschlag und Herkunftsentwurf (IP-10)
+
+`GET /api/v1/unternehmen/bewertung/rangliste` ergänzt die IP-9-Mengen um die
+wirksame Kriterien-Fassung und das reine Ergebnis von `BewertungRegeln.urteil`.
+Der Stand trägt K7/K8; jeder Einsatz trägt K1–K3 und K5/K6 sowie den Vorschlag
+nach KR3. K4 bleibt das Wort einer Person und wird hier nicht erfunden. Der
+Vorschlag ist ausdrücklich keine Einstufung; ohne den Schreibweg aus IP-11 bleibt
+der Einsatz offen.
+
+Der Herkunftsentwurf je Einsatz enthält Zeitraum, Kriterien-Fassung, Urteil,
+Vorschlag und jede gelesene Monatszahl mit Zustand und Version. Bei Strom nennt
+er außerdem jeden Bilanzwert des Nenners mit Version und seinen Eingängen. Bei
+Trägern ohne Anteil ist `nenner` null und K1–K3 sind `nicht_anwendbar`. Die
+Kundenroute liefert keine Annahme-Zahlen aus R6; R6 bleibt ein Vertragsvektor.
+
+K5 gewichtet die Zustände der gelesenen Monatswerte mit den Tagen ihres Monats;
+ein vollständiger Monatswert gilt damit für alle seine Tage, ein fehlender nicht.
+K6 vergleicht den ungerundeten Ersatzanteil. Anzeigeprozente haben eine
+Nachkommastelle, aber K1, K2, K5, K6 und K8 vergleichen ungerundete Größen. Eine
+Teilansicht berechnet Urteil, Nenner und Herkunft ausschließlich aus ihren
+sichtbaren Anlagen, Einsätzen und Messstellen.
+
+Die Vektoroperation `rangliste` bleibt aus Version 1.0 bestehen; `urteil` ist ihr
+additiver Name seit IP-10. Java, TypeScript und Python führen beide über die reine
+Funktion `urteil` aus. Damit bleiben vorhandene Leser kompatibel und R2/R6 beweisen
+dieselbe Regel in allen drei Zwillingen.

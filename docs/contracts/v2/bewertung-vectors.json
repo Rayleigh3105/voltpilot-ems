@@ -591,7 +591,7 @@
     {
       "name": "R2-Oktober-2026",
       "regel": "KR2",
-      "operation": "rangliste",
+      "operation": "urteil",
       "quelle": "AP-16 §7 R2-Oktober-2026; referenzfaelle.json staende 2026_oktober_version_2",
       "eingang": {
         "nenner": {
@@ -762,7 +762,7 @@
     {
       "name": "R6-Annahme-2027",
       "regel": "KR2",
-      "operation": "rangliste",
+      "operation": "urteil",
       "quelle": "AP-16 §7 R6-Annahme-2027; referenzfaelle.json staende 2027_annahme",
       "eingang": {
         "nenner": {

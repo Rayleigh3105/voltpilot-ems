@@ -93,8 +93,8 @@ def menge(messstellen, traeger):
 
 
 @exakt
-def rangliste(e):
-    """Eine Trägergruppe; Qualitätsanteile stammen aus den vorhandenen Monatswerten."""
+def urteil(e):
+    """KR2–KR4: Urteil und Vorschlag, ausdrücklich keine menschliche Einstufung."""
     if e["traeger"] not in TRAEGER:
         raise ValueError("traeger_unbekannt")
     k = e["kriterien"]
@@ -120,6 +120,10 @@ def rangliste(e):
     return {"nenner": text(n), "anlagen": f'{e["nenner"]["vorhanden"]} von {e["nenner"]["gesamt"]}',
             "zugeordnet": text(zugeordnet), "rest": text(n - zugeordnet) if n is not None else None,
             "abdeckung_prozent": prozent(zugeordnet, n), "K8": k8, "K7": k7, "einsaetze": aus}
+
+
+# Kompatibler Name aus IP-2.
+rangliste = urteil
 
 
 @exakt

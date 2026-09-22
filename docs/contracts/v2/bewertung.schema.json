@@ -438,7 +438,7 @@
                 ]
               },
               "operation": {
-                "const": "rangliste"
+                "enum": ["rangliste", "urteil"]
               },
               "quelle": {
                 "type": "string"

@@ -12,7 +12,7 @@ function rechnen(fall: any) {
   switch (fall.operation) {
     case 'nenner': return b.nenner(e.anlagen);
     case 'menge': return b.menge(e.messstellen, e.traeger);
-    case 'rangliste': return b.rangliste(e);
+    case 'rangliste': case 'urteil': return b.urteil(e);
     case 'abdeckung': return b.abdeckung(e);
     case 'prozess_summe_passt': return b.prozessSummePasst(e.gemessen, e.summen);
     case 'toleranz': return b.toleranz(e.fuehrend, e.vergleich, e.toleranz);
