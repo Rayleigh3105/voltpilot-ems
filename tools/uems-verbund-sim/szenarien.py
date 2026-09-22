@@ -265,15 +265,16 @@ def schnappschuss(ziel: Path) -> Path:
     """Das Werkzeug einfrieren: eine Reihe dauert Stunden, und bash liest ein
     laufendes Skript stückweise - eine Änderung im Arbeitsbaum darf keinen
     laufenden Lauf treffen. Verträge und Box-Quellen liest der Schnappschuss
-    weiter aus dem Repo (VB_REPO, Verweis docs/)."""
+    weiter aus dem Repo (VB_REPO, Verweise docs/ und edge-app/)."""
     import shutil
     werk = ziel / "tools" / "uems-verbund-sim"
     if werk.exists():
         shutil.rmtree(werk)
     shutil.copytree(HIER, werk, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", "protokolle"))
-    docs = ziel / "docs"
-    if not docs.exists():
-        docs.symlink_to(HIER.parents[1] / "docs")
+    for teil in ("docs", "edge-app"):  # Verträge; verbund.yml erbt aus edge-app/docker-compose.yml
+        verweis = ziel / teil
+        if not verweis.exists():
+            verweis.symlink_to(HIER.parents[1] / teil)
     return werk
 
 
