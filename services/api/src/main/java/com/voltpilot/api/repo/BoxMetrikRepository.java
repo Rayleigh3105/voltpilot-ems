@@ -45,7 +45,8 @@ public class BoxMetrikRepository {
                    COALESCE(d.supports @> '["plan_quittung"]'::jsonb, false) AS quittiert,
                    v.erzeugt AS veroeffentlicht, a.erzeugt AS angenommen,
                    m.rolle, m.stufe, m.gesendet_epoche, m.gesendet_revision, m.gesendet_am,
-                   m.quittiert_epoche, m.quittiert_revision
+                   m.quittiert_epoche, m.quittiert_revision,
+                   COALESCE(u.anzahl, 0) AS uhrereignisse
               FROM device d
               LEFT JOIN LATERAL (SELECT COALESCE(z.generated_at, z.veroeffentlicht_um) AS erzeugt
                                    FROM plan_zustellung z
@@ -65,6 +66,13 @@ public class BoxMetrikRepository {
                                     AND m.gueltig_ab <= now()
                                     AND (m.gueltig_bis IS NULL OR m.gueltig_bis > now())
                                   ORDER BY m.gueltig_ab DESC LIMIT 1) m ON true
+              LEFT JOIN LATERAL (
+                    SELECT count(*) AS anzahl
+                      FROM messreihe_ereignis e
+                     WHERE e.tenant_id = d.tenant_id
+                       AND e.art IN ('clock_jump', 'clock_ahead')
+                       AND e.device_id = d.id
+              ) u ON true
              WHERE d.ausgebaut_am IS NULL
                AND (EXISTS (SELECT 1 FROM plan_zustellung z WHERE z.device_id = d.id)
                     OR d.id = ANY (?)
@@ -78,12 +86,18 @@ public class BoxMetrikRepository {
      * {@code plan_quittung} (sonst bleibt „angenommen“ leer, ohne Alarm).
      */
     public record Box(UUID deviceId, UUID tenantId, UUID siteId, Instant herzschlag, boolean quittiert,
-            Instant veroeffentlicht, Instant angenommen, Mitglied mitglied) {
+            Instant veroeffentlicht, Instant angenommen, Mitglied mitglied, long uhrereignisse) {
+
+        /** Kompatible Test-Naht ohne Uhr-Ereignisse. */
+        public Box(UUID deviceId, UUID tenantId, UUID siteId, Instant herzschlag, boolean quittiert,
+                Instant veroeffentlicht, Instant angenommen, Mitglied mitglied) {
+            this(deviceId, tenantId, siteId, herzschlag, quittiert, veroeffentlicht, angenommen, mitglied, 0L);
+        }
 
         /** Eine Box ohne Mitgliedschaft. */
         public Box(UUID deviceId, UUID tenantId, UUID siteId, Instant herzschlag, boolean quittiert,
                 Instant veroeffentlicht, Instant angenommen) {
-            this(deviceId, tenantId, siteId, herzschlag, quittiert, veroeffentlicht, angenommen, null);
+            this(deviceId, tenantId, siteId, herzschlag, quittiert, veroeffentlicht, angenommen, null, 0L);
         }
     }
 
@@ -109,7 +123,7 @@ public class BoxMetrikRepository {
                     boxen.add(new Box(rs.getObject("device_id", UUID.class), rs.getObject("tenant_id", UUID.class),
                             rs.getObject("site_id", UUID.class), instant(rs.getTimestamp("herzschlag")),
                             rs.getBoolean("quittiert"), instant(rs.getTimestamp("veroeffentlicht")),
-                            instant(rs.getTimestamp("angenommen")), mitglied(rs)));
+                            instant(rs.getTimestamp("angenommen")), mitglied(rs), rs.getLong("uhrereignisse")));
                 });
         return boxen;
     }

@@ -10,13 +10,18 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.voltpilot.api.metrics.GemeinsameSteuerungHerzschlag;
+import com.voltpilot.api.metrics.GemeinsameSteuerungUhrMetrik;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Ableitung;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Meldung;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Status;
 import com.voltpilot.api.web.dto.DeviceDto;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import java.io.InputStream;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -94,6 +99,28 @@ class DataSourceStatusListenerTest {
         listener.handle(fremd, herzschlag(",\"gemeinsame_steuerung\":{\"waechter\":{\"einspeisung\":\"regelt\"}}"));
 
         assertThat(halter.boxen()).isEmpty();
+    }
+
+    @Test
+    void uhrversatzKommtAusHerzschlagUndZaehlerAusEreignisstand() {
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        GemeinsameSteuerungUhrMetrik metrik = new GemeinsameSteuerungUhrMetrik(registry);
+        listener.gemeinsameSteuerungUhr(metrik);
+        Instant boxZeit = Instant.parse("2026-11-03T14:02:15Z");
+
+        listener.uhrStellen(Clock.fixed(boxZeit.minusSeconds(840), ZoneOffset.UTC));
+        listener.handle(TOPIC, herzschlag(""));
+
+        assertThat(registry.scrape()).contains(
+                "voltpilot_uems_box_uhr_versatz_seconds{device=\"" + DEVICE + "\"} 840.0");
+
+        listener.uhrStellen(Clock.fixed(boxZeit.plusSeconds(840), ZoneOffset.UTC));
+        listener.handle(TOPIC, herzschlag(""));
+
+        metrik.uhrereignisse(java.util.Map.of(DEVICE, 2L));
+        assertThat(registry.scrape()).contains(
+                "voltpilot_uems_box_uhr_versatz_seconds{device=\"" + DEVICE + "\"} -840.0",
+                "voltpilot_uems_box_uhrsprung_total{device=\"" + DEVICE + "\"} 2.0");
     }
 
     private static byte[] herzschlag(String rest) {

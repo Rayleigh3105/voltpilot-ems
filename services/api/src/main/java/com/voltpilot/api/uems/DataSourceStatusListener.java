@@ -3,12 +3,14 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.metrics.GemeinsameSteuerungHerzschlag;
+import com.voltpilot.api.metrics.GemeinsameSteuerungUhrMetrik;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Meldung;
 import com.voltpilot.api.web.dto.DeviceDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -61,6 +63,7 @@ public class DataSourceStatusListener {
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
+    private Clock uhr = Clock.systemUTC();
 
     /**
      * AP-15 IP-11: der Halter des Blocks {@code gemeinsame_steuerung} für die Box-Metriken. Nachgereicht
@@ -72,6 +75,19 @@ public class DataSourceStatusListener {
     @Autowired(required = false)
     void gemeinsameSteuerung(GemeinsameSteuerungHerzschlag gemeinsameSteuerung) {
         this.gemeinsameSteuerung = gemeinsameSteuerung;
+    }
+
+    /** AP-15 IP-11 Rest: Versatz der Box-Uhr; dieselbe Bean exportiert den dauerhaften Ereignisstand. */
+    private GemeinsameSteuerungUhrMetrik gemeinsameSteuerungUhr;
+
+    @Autowired(required = false)
+    void gemeinsameSteuerungUhr(GemeinsameSteuerungUhrMetrik gemeinsameSteuerungUhr) {
+        this.gemeinsameSteuerungUhr = gemeinsameSteuerungUhr;
+    }
+
+    /** Testuhr; die Produktionsvorgabe bleibt UTC. */
+    void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
     }
 
     /**
@@ -168,6 +184,7 @@ public class DataSourceStatusListener {
 
     /** Test-visible parser for one old or new heartbeat fixture. */
     public void handle(String topic, byte[] payload) {
+        Instant empfangenUm = uhr.instant();
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));
@@ -197,6 +214,9 @@ public class DataSourceStatusListener {
                 return;
             }
             devices.markStatusSeen(deviceId);
+            if (gemeinsameSteuerungUhr != null) {
+                gemeinsameSteuerungUhr.herzschlag(deviceId, instant(json.get("ts")), empfangenUm);
+            }
             if (gemeinsameSteuerung != null) {
                 gemeinsameSteuerung.merke(deviceId, json.get("gemeinsame_steuerung"));
             }
