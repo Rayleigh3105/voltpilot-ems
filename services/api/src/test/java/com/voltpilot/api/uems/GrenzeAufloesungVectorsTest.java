@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -74,6 +75,13 @@ class GrenzeAufloesungVectorsTest {
                 LocalDate.of(2027, 6, 13));
         assertThat(ungebunden.einspeisungKw()).isSameAs(einspeisung);
         assertThat(ungebunden.bezugKw()).isSameAs(bezug);
+    }
+
+    @Test
+    void derFassungstagIstDerTagDesStandortsMitBerlinNurAlsRueckfall() {
+        Instant jetzt = Instant.parse("2026-09-21T22:30:00Z");
+        assertThat(GrenzeAufloesung.tagAm(jetzt, "Europe/Lisbon")).isEqualTo(LocalDate.of(2026, 9, 21));
+        assertThat(GrenzeAufloesung.tagAm(jetzt, null)).isEqualTo(LocalDate.of(2026, 9, 22));
     }
 
     private static void assertGleich(String fall, BigDecimal ist, BigDecimal soll) {

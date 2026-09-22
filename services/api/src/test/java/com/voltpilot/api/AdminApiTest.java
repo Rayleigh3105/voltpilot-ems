@@ -3195,6 +3195,73 @@ class AdminApiTest {
                 .doesNotContain("einspeisegrenze-unplausibel");
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void adminFleetComparesAgainstTheEffectiveGrenzblattLimit() {
+        String admin = token("admin", "admin");
+        UUID tenant = UUID.fromString((String) createTenant(admin, "Grenzblatt Pflege GmbH", "CI").get("id"));
+        UUID standort = UUID.randomUUID();
+        exec("INSERT INTO standort (id, tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
+                + "SELECT '" + standort + "', tenant_id, id, 'Werk Pflege', 'ST-PF', 'Europe/Berlin', 'aktiv' "
+                + "FROM unternehmen WHERE tenant_id = '" + tenant + "'");
+
+        UUID enger = UUID.randomUUID();
+        UUID keine = UUID.randomUUID();
+        UUID unbekannt = UUID.randomUUID();
+        seedSite(enger, tenant, "Pflege Grenzblatt 80");
+        seedSite(keine, tenant, "Pflege ausdrücklich keine");
+        seedSite(unbekannt, tenant, "Pflege unbekannt");
+        exec("UPDATE site SET tarif_art = 'fest', tarif_param_ct_kwh = 30 WHERE id IN ('"
+                + enger + "', '" + keine + "', '" + unbekannt + "')");
+        exec("UPDATE site SET max_feed_in_kw = 100 WHERE id = '" + enger + "'");
+
+        for (UUID site : new UUID[] {enger, keine, unbekannt}) {
+            exec("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES ('"
+                    + tenant + "', '" + site + "', '" + standort + "', current_date - 30)");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, grid_export_kwh, n_samples) "
+                    + "SELECT date_trunc('day', now()) - (d || ' days')::interval "
+                    + "+ (q * interval '15 minutes'), '" + tenant + "', '" + site
+                    + "', 7.5, 90 FROM generate_series(1, 8) d, generate_series(0, 47) q");
+        }
+
+        UUID naEnger = UUID.randomUUID();
+        UUID naKeine = UUID.randomUUID();
+        UUID naUnbekannt = UUID.randomUUID();
+        int nr = 0;
+        for (UUID na : new UUID[] {naEnger, naKeine, naUnbekannt}) {
+            nr++;
+            exec("INSERT INTO netzanschluss (id, tenant_id, standort_id, kennzeichen, name, messung) VALUES ('"
+                    + na + "', '" + tenant + "', '" + standort + "', 'NA-PF-" + nr
+                    + "', 'Pflege " + nr + "', 'RLM')");
+        }
+        exec("INSERT INTO anlage_netzanschluss (tenant_id, site_id, netzanschluss_id, gueltig_ab) VALUES "
+                + "('" + tenant + "', '" + enger + "', '" + naEnger + "', current_date - 30),"
+                + "('" + tenant + "', '" + keine + "', '" + naKeine + "', current_date - 30),"
+                + "('" + tenant + "', '" + unbekannt + "', '" + naUnbekannt + "', current_date - 30)");
+        exec("INSERT INTO netzanschluss_grenze (tenant_id, netzanschluss_id, gueltig_ab, einspeisegrenze_kw, "
+                + "einspeisegrenze_keine) VALUES "
+                + "('" + tenant + "', '" + naEnger + "', current_date - 10, 80, false),"
+                + "('" + tenant + "', '" + naKeine + "', current_date - 10, NULL, true),"
+                + "('" + tenant + "', '" + naUnbekannt + "', current_date - 10, NULL, false)");
+
+        Map<String, Map<String, Object>> bySite = new java.util.HashMap<>();
+        for (Map<String, Object> row : fleet(admin)) {
+            bySite.put((String) row.get("siteName"), row);
+        }
+        Map<String, Object> wirksam = (Map<String, Object>) bySite.get("Pflege Grenzblatt 80").get("feedIn");
+        assertThat((Number) wirksam.get("configuredKw")).extracting(Number::doubleValue).isEqualTo(80.0);
+        assertThat(wirksam).containsEntry("verdict", "zu_hoch");
+        assertThat((String) wirksam.get("reason")).contains("Einspeisegrenze aus dem Grenzblatt");
+
+        for (String name : List.of("Pflege ausdrücklich keine", "Pflege unbekannt")) {
+            Map<String, Object> site = bySite.get(name);
+            assertThat((Map<String, Object>) site.get("feedIn"))
+                    .containsEntry("configuredKw", null).containsEntry("verdict", "unbekannt");
+            assertThat((List<Map<String, Object>>) site.get("pflege")).extracting(f -> f.get("code"))
+                    .doesNotContain("einspeisegrenze-unplausibel");
+        }
+    }
+
     // ---- OTA Stufe 0 „Sehen" (Scout vp-ota-rollout-h4) ----------------------
 
     /**

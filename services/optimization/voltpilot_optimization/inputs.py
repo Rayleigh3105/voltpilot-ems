@@ -36,7 +36,7 @@ import logging
 import math
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -374,13 +374,14 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     # Platform default for assets without a per-asset wear override (NULL
     # column); resolved once per cycle so an env change needs only a restart.
     default_wear_ct = default_wear_cost_ct_per_kwh()
+    jetzt = datetime.now(timezone.utc)
     # UEMS AP-15 IP-3: the Einspeisegrenze is read through the resolution twin
     # - the tighter of site and Netzanschluss, else the site value unchanged.
-    grenz_tag = datetime.now(GRENZ_ZONE).date()
-    grenzblaetter = load_grenzblaetter(dsn, grenz_tag, site_id)
+    # Each site gets its own calendar day from its Standort timezone.
+    grenzblaetter = load_grenzblaetter(dsn, jetzt, site_id)
     # UEMS AP-15 IP-14: die Anteile der mitsteuernden Boxen je Anlage in
     # `anteile_aktiv` (P4); jede andere Anlage fehlt und bleibt, wie sie war.
-    verbuende = verbund.load_verbund(dsn, datetime.now(timezone.utc), site_id)
+    verbuende = verbund.load_verbund(dsn, jetzt, site_id)
     fuehrende = load_fuehrende_boxen(dsn, site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
@@ -471,7 +472,6 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                         site_id,
                         float(max_feed_in) if max_feed_in is not None else None,
                         grenzblaetter,
-                        grenz_tag,
                     ),
                     leistungspreis_eur_kw=(
                         float(leistungspreis) if leistungspreis is not None else None
@@ -520,9 +520,21 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     return sites
 
 
-#: The day a Grenzblatt Fassung is picked for (contract zeitzone of
-#: docs/contracts/v2/netzanschluss-grenze-vectors.json).
+#: Fallback only for a site without a Standort timezone. A Grenzblatt Fassung
+#: is otherwise picked on the Standort's calendar day (contract §5).
 GRENZ_ZONE = ZoneInfo("Europe/Berlin")
+
+
+@dataclass
+class GrenzblattStand:
+    tag: date
+    fassungen: list[grenze_aufloesung.Fassung]
+
+
+def _grenz_tag(jetzt: datetime, zeitzone: str | None) -> date:
+    """The Grenzblatt day in the Standort timezone; Berlin only when absent."""
+    zone = ZoneInfo(zeitzone) if zeitzone else GRENZ_ZONE
+    return jetzt.astimezone(zone).date()
 
 
 def load_fuehrende_boxen(dsn: str, site_id: UUID | None = None) -> dict[UUID, UUID]:
@@ -569,14 +581,15 @@ def _uuid(value) -> UUID:
     return value if isinstance(value, UUID) else UUID(str(value))
 
 
-def load_grenzblaetter(dsn: str, tag, site_id: UUID | None = None) -> dict:
-    """``{site_id: [Fassung, ...]}`` for every site bound to a Netzanschluss on ``tag``.
+def load_grenzblaetter(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict:
+    """``{site_id: GrenzblattStand}`` for each site bound on its local day.
 
-    A site bound without any Fassung maps to ``[]``; an unbound site is absent
-    (UEMS AP-15 IP-3). Only the raw rows are read here - WHICH Fassung holds and
-    the tighter value are the twin's (:mod:`grenze_aufloesung`). Before the api
-    migration ``V20260921120000`` has run there is no table and therefore no
-    Fassung: that is exactly "no Grenzblatt", so the site value stays.
+    A site bound without any Fassung maps to a stand with ``[]``; an unbound
+    site is absent (UEMS AP-15 IP-3). Only the raw rows are read here - WHICH
+    Fassung holds and the tighter value are the twin's
+    (:mod:`grenze_aufloesung`). Before the api migration ``V20260921120000``
+    has run there is no table and therefore no Fassung: that is exactly "no
+    Grenzblatt", so the site value stays.
     The optional explicit-no-limit flag is read via the row JSON so the previous
     Grenzblatt schema still yields its numeric limits before the additive migration.
     """
@@ -586,44 +599,86 @@ def load_grenzblaetter(dsn: str, tag, site_id: UUID | None = None) -> dict:
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT b.site_id, g.gueltig_ab, g.einspeisegrenze_kw,
+                WITH site_zone AS (
+                    SELECT s.id AS site_id,
+                           COALESCE(ort.zeitzone, 'Europe/Berlin') AS zeitzone
+                    FROM site s
+                    LEFT JOIN LATERAL (
+                        SELECT st.zeitzone
+                        FROM anlage_standort az
+                        JOIN standort st ON st.id = az.standort_id
+                                        AND st.tenant_id = az.tenant_id
+                        WHERE az.site_id = s.id AND az.tenant_id = s.tenant_id
+                          AND az.aufgehoben_am IS NULL
+                          AND az.gueltig_ab <= (%(jetzt)s AT TIME ZONE st.zeitzone)::date
+                          AND (az.gueltig_bis IS NULL
+                               OR az.gueltig_bis >= (%(jetzt)s AT TIME ZONE st.zeitzone)::date)
+                        ORDER BY az.gueltig_ab DESC
+                        LIMIT 1
+                    ) ort ON true
+                    WHERE (%(site_id)s::uuid IS NULL OR s.id = %(site_id)s::uuid)
+                )
+                SELECT z.site_id, z.zeitzone, b.id, b.gueltig_ab, b.gueltig_bis,
+                       g.gueltig_ab, g.einspeisegrenze_kw,
                        g.bezugsgrenze_kw,
                        COALESCE((to_jsonb(g)->>'einspeisegrenze_keine')::boolean, false)
-                FROM anlage_netzanschluss b
+                FROM site_zone z
+                LEFT JOIN anlage_netzanschluss b
+                  ON b.site_id = z.site_id AND b.aufgehoben_am IS NULL
                 LEFT JOIN netzanschluss_grenze g
                   ON g.netzanschluss_id = b.netzanschluss_id
                  AND g.tenant_id = b.tenant_id
                  AND g.aufgehoben_am IS NULL
-                WHERE b.aufgehoben_am IS NULL
-                  AND b.gueltig_ab <= %(tag)s
-                  AND (b.gueltig_bis IS NULL OR b.gueltig_bis >= %(tag)s)
-                  AND (%(site_id)s::uuid IS NULL OR b.site_id = %(site_id)s::uuid)
-                ORDER BY b.site_id, g.gueltig_ab
+                ORDER BY z.site_id, b.gueltig_ab, g.gueltig_ab
                 """,
                 {
-                    "tag": tag,
+                    "jetzt": jetzt,
                     "site_id": str(site_id) if site_id is not None else None,
                 },
             )
             rows = cur.fetchall()
-    except psycopg.errors.UndefinedTable:
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
         logger.warning("grenzblatt.table_missing")
         return {}
     out: dict = {}
-    for sid, ab, einspeisung, bezug, keine in rows:
-        fassungen = out.setdefault(sid, [])
+    for (
+        sid,
+        zeitzone,
+        bindung,
+        bindung_ab,
+        bindung_bis,
+        ab,
+        einspeisung,
+        bezug,
+        keine,
+    ) in rows:
+        tag = _grenz_tag(jetzt, zeitzone)
+        laeuft = (
+            bindung is not None
+            and bindung_ab <= tag
+            and (bindung_bis is None or bindung_bis >= tag)
+        )
+        if not laeuft:
+            continue
+        stand = out.setdefault(_uuid(sid), GrenzblattStand(tag, []))
         if ab is not None:
-            fassungen.append(
-                grenze_aufloesung.Fassung(ab, _opt_float(einspeisung), _opt_float(bezug), keine)
+            stand.fassungen.append(
+                grenze_aufloesung.Fassung(
+                    ab, _opt_float(einspeisung), _opt_float(bezug), keine
+                )
             )
     return out
 
 
-def _einspeisegrenze(site_id, anlage_kw, grenzblaetter: dict, tag):
+def _einspeisegrenze(site_id, anlage_kw, grenzblaetter: dict):
     """The effective feed-in cap: the twin's tighter value, else ``anlage_kw`` itself."""
-    fassungen = grenzblaetter.get(site_id)
+    stand = grenzblaetter.get(site_id)
     return grenze_aufloesung.aufloesen(
-        anlage_kw, None, fassungen is not None, fassungen, tag
+        anlage_kw,
+        None,
+        stand is not None,
+        stand.fassungen if stand is not None else (),
+        stand.tag if stand is not None else date.min,
     ).einspeisung_kw
 
 
