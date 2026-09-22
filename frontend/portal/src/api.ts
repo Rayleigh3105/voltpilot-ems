@@ -6996,7 +6996,7 @@ export interface UemsBoxStand {
   messpunkt?: { data_source_id: string; zustand: 'ok' | 'stale' | 'never' | 'nicht_gemeldet'; gelesen_am?: string | null } | null;
   waechter?: { einspeisung?: string | null; bezug?: string | null } | null;
   plan: { veroeffentlicht?: UemsPlanZeile | null; angenommen?: UemsPlanZeile | null };
-  anteile: { gesendet?: UemsRevision | null; quittiert?: UemsRevision | null; wirksam_kw?: { einspeisung?: number; bezug?: number } | null; reserve_verbraucher_kw?: number | null };
+  anteile: { gesendet?: UemsRevision | null; quittiert?: UemsRevision | null; wirksam_kw?: { einspeisung?: number; bezug?: number } | null; reserve_verbraucher_kw?: number | null; ungeregelt_hinter_abgang_kw?: number | null };
   /** Folgepaket zu IP-22: `null` = die Box hat für gestern keinen Anteils-Verlust gemeldet. */
   verlust_gestern?: UemsVerlustTag | null;
 }
@@ -7132,6 +7132,8 @@ export interface UemsGemeinsameSteuerungSetzen {
     messpunkt_id: string | null;
     vorgabe_signal: UemsDreiwert;
     geraete: { komponente_id: string; richtung: UemsSteuerRichtung; nenn_kw: number }[];
+    /** Ungeregeltes hinter dem Abgang dieser Box (B3) — fehlt es, löscht das PUT ein erklärtes. */
+    ungeregelt?: { richtung: UemsSteuerRichtung; hoechstwert_kw: number }[];
   }[];
   ungesteuerte_erzeuger: 'keine' | UemsErzeuger[];
   vorbehalt?: { bezug_kw: number };

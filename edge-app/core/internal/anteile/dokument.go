@@ -38,6 +38,11 @@ type Gelesen struct {
 	// outside the charge park, as decimal text; "" when the cloud does not
 	// send it - then there is no reserve, as before.
 	ReserveBezug json.Number
+	// UngeregeltBezug is ungeregelt_hinter_abgang.bezug (optional, AP-15
+	// Folge of IP-19, B3): the declared maximum of the uncontrolled load
+	// behind the box's own feeder meter, as decimal text; "" when the cloud
+	// does not send it.
+	UngeregeltBezug json.Number
 	// roh keeps the decimal text of every share for the heartbeat mirror.
 	roh map[string]map[string]json.Number
 }
@@ -55,6 +60,8 @@ type draht struct {
 	Anteile       map[string]map[string]json.Number `json:"anteile"`
 	// ReserveVerbraucher is optional (additive, schema_version stays 1.0).
 	ReserveVerbraucher map[string]json.Number `json:"reserve_verbraucher"`
+	// UngeregeltHinterAbgang is optional (additive, schema_version stays 1.0).
+	UngeregeltHinterAbgang map[string]json.Number `json:"ungeregelt_hinter_abgang"`
 }
 
 // Lesen reads a …/v2/verbund-anteile payload for the box own (whose topic
@@ -123,8 +130,16 @@ func parse(payload []byte) (*Gelesen, error) {
 		}
 		reserve = n
 	}
+	var ungeregelt json.Number
+	if n, ok := d.UngeregeltHinterAbgang["bezug"]; ok {
+		// the same: a negative or unreadable maximum is a broken document
+		if _, err := kw(n); err != nil {
+			return nil, fmt.Errorf("%w: ungeregelt_hinter_abgang.bezug", ErrUnlesbar)
+		}
+		ungeregelt = n
+	}
 	return &Gelesen{Dokument: dok, Schritt: d.Schritt, Rolle: d.Rolle, Box: d.DeviceID, ReserveBezug: reserve,
-		roh: d.Anteile}, nil
+		UngeregeltBezug: ungeregelt, roh: d.Anteile}, nil
 }
 
 func kw(n json.Number) (*big.Rat, error) {
@@ -152,6 +167,9 @@ type Gehalten struct {
 	// devices from the same document (decimal text); "" = the document has
 	// none - the heartbeat then does not claim one.
 	ReserveBezugKw json.Number
+	// UngeregeltBezugKw is the declared maximum of the uncontrolled load
+	// behind the box's own feeder meter (decimal text); "" = none declared.
+	UngeregeltBezugKw json.Number
 }
 
 // Halten turns an accepted document into the held share of its box.
@@ -161,11 +179,12 @@ func Halten(g *Gelesen) *Gehalten {
 		own[r] = g.roh[r][g.Box]
 	}
 	return &Gehalten{
-		Identitaet:     Identitaet{Mandant: g.Dokument.Mandant, Anlage: g.Dokument.Anlage, Box: g.Box},
-		Stand:          Stand{Epoche: g.Dokument.Epoche, Revision: g.Dokument.Revision},
-		Rolle:          g.Rolle,
-		AnteilKw:       own,
-		ReserveBezugKw: g.ReserveBezug,
+		Identitaet:        Identitaet{Mandant: g.Dokument.Mandant, Anlage: g.Dokument.Anlage, Box: g.Box},
+		Stand:             Stand{Epoche: g.Dokument.Epoche, Revision: g.Dokument.Revision},
+		Rolle:             g.Rolle,
+		AnteilKw:          own,
+		ReserveBezugKw:    g.ReserveBezug,
+		UngeregeltBezugKw: g.UngeregeltBezug,
 	}
 }
 

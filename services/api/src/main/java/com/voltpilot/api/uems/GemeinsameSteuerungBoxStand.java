@@ -94,9 +94,10 @@ public class GemeinsameSteuerungBoxStand {
         List<MitgliedZeile> mitglieder = verbuende.mitglieder(v.get().id(), uhr.instant());
         GemeinsameSteuerungHerzschlag bloecke = herzschlag.getIfAvailable();
         Map<UUID, GemeinsameSteuerungDto.VerlustTag> gestern = verlustGestern(siteId);
+        Map<String, BigDecimal> ungeregelt = ungeregeltHinterAbgang(v.get().id(), mitglieder);
         List<GemeinsameSteuerungDto.BoxStand> boxen = new ArrayList<>();
         for (MitgliedZeile m : mitglieder) {
-            boxen.add(box(siteId, m, bloecke, gestern.get(m.deviceId())));
+            boxen.add(box(siteId, m, bloecke, gestern.get(m.deviceId()), ungeregelt.get(m.deviceId().toString())));
         }
         return new GemeinsameSteuerungDto.Betreiberblatt(List.copyOf(boxen), zweischritt(v.get(), mitglieder),
                 sprungproben.protokoll(v.get().id(), mitglieder));
@@ -198,8 +199,23 @@ public class GemeinsameSteuerungBoxStand {
         return je;
     }
 
+    /**
+     * Das erklärte Ungeregelte hinter dem Abgang je mitsteuernder Box (AP-15 Folge von IP-19, B3) — dieselbe Zahl, die
+     * ihr Anteils-Dokument als {@code ungeregelt_hinter_abgang.bezug} trägt; nur Boxen mit einem Wert über 0.
+     */
+    private Map<String, BigDecimal> ungeregeltHinterAbgang(UUID verbundId, List<MitgliedZeile> mitglieder) {
+        return SteuerungsverbundAbleitung.ungeregeltHinterAbgang(
+                mitglieder.stream().map(m -> new SteuerungsverbundAbleitung.Mitglied(m.deviceId().toString(), m.rolle()))
+                        .toList(),
+                anteile.geraete(verbundId).stream()
+                        .map(g -> new SteuerungsverbundAbleitung.Geraet(g.deviceId().toString(),
+                                g.entityId() == null ? null : g.entityId().toString(), g.richtung(), g.nennKw(),
+                                g.schreibfreigabe(), null))
+                        .toList());
+    }
+
     private GemeinsameSteuerungDto.BoxStand box(UUID siteId, MitgliedZeile m, GemeinsameSteuerungHerzschlag bloecke,
-            GemeinsameSteuerungDto.VerlustTag verlustGestern) {
+            GemeinsameSteuerungDto.VerlustTag verlustGestern, BigDecimal ungeregeltKw) {
         UUID box = m.deviceId();
         GemeinsameSteuerungDto.Faehigkeit faehigkeit = new GemeinsameSteuerungDto.Faehigkeit(
                 faehigkeiten.herkunft(box, SteuerungsverbundNachweise.FAEHIGKEIT),
@@ -226,7 +242,7 @@ public class GemeinsameSteuerungBoxStand {
                 new GemeinsameSteuerungDto.AnteilStand(
                         revision(m.gesendetEpoche(), m.gesendetRevision(), m.gesendetAm()),
                         revision(m.quittiertEpoche(), m.quittiertRevision(), m.quittiertAm()), wirksamKw,
-                        wirksam.reserveVerbraucher(siteId, box).orElse(null)),
+                        wirksam.reserveVerbraucher(siteId, box).orElse(null), ungeregeltKw),
                 verlustGestern);
     }
 

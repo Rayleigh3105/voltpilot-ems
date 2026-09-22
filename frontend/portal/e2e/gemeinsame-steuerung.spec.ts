@@ -97,6 +97,8 @@ for (const breite of [375, 1440]) {
 
     await expect(m.getByText(/^Frage 4 von 6/)).toBeVisible();
     await expect(m.getByLabel(/Verbrauch, den keine Box steuert/)).toHaveValue('473');
+    // AP-15 Folge von IP-19: der Vorschlag aus den Messwerten enthält nicht, was hinter einem Abgangszähler liegt
+    await expect(m.getByText(/enthält nicht, was hinter dem Zähler einer mitsteuernden Box liegt/)).toBeVisible();
     await weiter.click();
     await expect(m.getByText('Bitte „Keine“ wählen oder die Erzeuger eintragen.')).toBeVisible();
     await waehle(page, m.getByRole('combobox', { name: 'Gibt es solche Erzeuger?', exact: true }), /^Keine/);
@@ -116,6 +118,9 @@ for (const breite of [375, 1440]) {
     await halle1.getByLabel(/Batteriespeicher 200 kWh · Bezug/).fill('100');
     await waehle(page, halle1.getByRole('combobox', { name: 'Bekommt diese Box das Signal des Netzbetreibers?', exact: true }), /^Ja/);
     await waehle(page, verwaltung.getByRole('combobox', { name: 'Zähler dieser Box', exact: true }), /^DQ-10/);
+    // mit eigenem Zähler: das Ungeregelte dahinter, Vorgabe 0 (DQ-10 wie in Ahrenberg); an der führenden Box nicht
+    await expect(verwaltung.getByLabel(/Verbrauch hinter diesem Zähler/)).toHaveValue('0');
+    await expect(halle1.getByLabel(/Verbrauch hinter diesem Zähler/)).toHaveCount(0);
     await waehle(page, verwaltung.getByRole('combobox', { name: 'Bekommt diese Box das Signal des Netzbetreibers?', exact: true }), /^Nein/);
     await bild(m, `frage-5-${breite}`);
     await weiter.click();
@@ -159,6 +164,7 @@ for (const breite of [375, 1440]) {
       mitglieder: { rolle: string; vorgabe_signal: string; geraete: unknown[] }[]; ungesteuerte_erzeuger: unknown; vorbehalt: unknown;
     };
     expect(koerper.mitglieder.map((x) => [x.rolle, x.vorgabe_signal, x.geraete.length])).toEqual([['fuehrt', 'ja', 2], ['steuert_mit', 'nein', 7]]);
+    expect(koerper.mitglieder.every((x) => !('ungeregelt' in x))).toBe(true);
     expect(koerper.ungesteuerte_erzeuger).toBe('keine');
     expect(koerper.vorbehalt).toEqual({ bezug_kw: 473 });
     await bild(m, `abgesendet-${breite}`);
@@ -167,6 +173,38 @@ for (const breite of [375, 1440]) {
     await expect(page.getByTestId('gs-zustand')).toHaveText('Eingerichtet · wird geprüft. VoltPilot prüft die Anlage mit einer kurzen Messung und schaltet sie frei.');
     await expect(page.getByTestId('gs-box').nth(1)).toContainText('Box Verwaltung steuert mit, sobald VoltPilot freischaltet · vorgesehener Anteil: Einspeisung 60 kW · Bezug 77 kW');
     await bild(page.locator('#technik-gemeinsam'), `karte-wird-geprueft-${breite}`);
+  });
+
+  test(`AP-15 Folge IP-19 · ${breite} px: ein per API erklärtes Ungeregeltes hinter dem Abgang bleibt beim Speichern`, async ({ page }) => {
+    await oeffne(page, breite, 'lage=nicht_eingerichtet&ungeregelt=50');
+    const k = await karte(page, breite);
+    await k.getByRole('button', { name: 'Gemeinsame Steuerung einrichten' }).click();
+    const m = modal(page);
+    const weiter = m.getByRole('button', { name: 'Weiter' });
+    await weiter.click();
+    await waehle(page, m.getByRole('combobox', { name: 'Datenquelle des Netzzählers', exact: true }), /^DQ-2/);
+    await weiter.click();
+    await weiter.click();
+    await waehle(page, m.getByRole('combobox', { name: 'Gibt es solche Erzeuger?', exact: true }), /^Keine/);
+    await weiter.click();
+    await expect(m.getByText(/^Frage 5 von 6/)).toBeVisible();
+    const halle1 = m.getByTestId('gs-box-frage').filter({ hasText: 'Box Halle 1' });
+    const verwaltung = m.getByTestId('gs-box-frage').filter({ hasText: 'Box Verwaltung' });
+    await halle1.getByLabel(/Batteriespeicher 200 kWh · Bezug/).fill('100');
+    await waehle(page, verwaltung.getByRole('combobox', { name: 'Zähler dieser Box', exact: true }), /^DQ-10/);
+    const feld = verwaltung.getByLabel(/Verbrauch hinter diesem Zähler/);
+    await expect(feld).toHaveValue('50');
+    await expect(verwaltung).toContainText('kein Gebäudeverteiler, keine Geräte ohne Freigabe, nichts einer anderen Box');
+    await bild(verwaltung, `frage-5-ungeregelt-${breite}`);
+    await weiter.click();
+    await expect(m.getByText('Frage 6 von 6 · Ergebnis')).toBeVisible();
+    await m.getByRole('button', { name: 'Absenden' }).click();
+    await expect(m.getByText('Abgesendet', { exact: true })).toBeVisible();
+    const koerper = await geschrieben(page) as { mitglieder: { rolle: string; ungeregelt?: unknown }[] };
+    expect(koerper.mitglieder.map((x) => [x.rolle, x.ungeregelt ?? null])).toEqual([
+      ['fuehrt', null],
+      ['steuert_mit', [{ richtung: 'bezug', hoechstwert_kw: 50 }]],
+    ]);
   });
 
   test(`AP-15 IP-23 · ${breite} px: Ausfall-Satz — Box Verwaltung antwortet nicht, die Grenze bleibt eingehalten`, async ({ page }) => {

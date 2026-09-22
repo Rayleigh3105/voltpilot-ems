@@ -48,7 +48,15 @@ window.fetch = async (input, init) => {
   const admin = /^\/api\/v1\/admin\/sites\/[^/]+\/gemeinsame-steuerung(\/.*)?$/.exec(pfad);
   if (admin) {
     const rest = admin[1] ?? '';
-    if (rest === '' && methode === 'GET') return Response.json(gsBlatt(blattLage, jetzt, [...proben].reverse()));
+    if (rest === '' && methode === 'GET') {
+      const blatt = gsBlatt(blattLage, jetzt, [...proben].reverse());
+      // `ungeregelt=<kW>`: erklärtes Ungeregeltes hinter dem Abgang von E-4 (AP-15 Folge von IP-19)
+      if (p.has('ungeregelt')) {
+        blatt.boxen = blatt.boxen.map((b) => b.box_id === GS_IDS.e4
+          ? { ...b, anteile: { ...b.anteile, ungeregelt_hinter_abgang_kw: Number(p.get('ungeregelt')) } } : b);
+      }
+      return Response.json(blatt);
+    }
     if (rest === '/scharfschalten') {
       if (lage !== 'geprueft') {
         return Response.json({ code: 'nachweis_fehlt', message: 'Nachweis fehlt.', fehlt: gsBetreiberZustand(lage).fehlt }, { status: 409 });

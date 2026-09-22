@@ -569,6 +569,54 @@ class SteuerungsverbundAnteilDienstTest {
         }
     }
 
+    /**
+     * AP-15 Folge von IP-19 (B3): trägt die Erklärung an Box Verwaltung Ungeregeltes hinter ihrem Abgang (20 kW
+     * Gebäudelast, Gerätezeile ohne Komponente) und ein Gerät ohne Schreibfreigabe (5 kW), reist in IHREM Dokument
+     * {@code ungeregelt_hinter_abgang.bezug} = 25,0 — die mitsteuernde Box zieht es blind ab. Box Halle 1 führt: ihr
+     * Dokument trägt das Feld nicht, ihr Ungeregeltes (3 kW) reist nie. (Die Rückfälle passen weiter in 77 kW.)
+     */
+    @Test
+    void ungeregeltHinterAbgangJeMitsteuernderBoxImDokument() throws Exception {
+        Welt w = ahrenberg(Stufe.BEOBACHTET);
+        TenantContext.set(w.mandant());
+        anteile.geraetEintragen(w.mandant(), w.verbund(), w.e4(), null, Grenzart.BEZUG, new BigDecimal("20"), false,
+                null, "test");
+        verbraucher(w, "generic-load", "5", false, false);
+        anteile.geraetEintragen(w.mandant(), w.verbund(), w.e1(), null, Grenzart.BEZUG, new BigDecimal("3"), false,
+                null, "test");
+
+        dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        quittung(w, w.e1(), 1, 1, "angenommen", null, null);
+        synchronized (Draht.GESENDET) {
+            assertThat(Draht.GESENDET).isNotEmpty();
+            for (Map.Entry<String, byte[]> e : Draht.GESENDET) {
+                JsonNode n = mapper.readTree(e.getValue());
+                if (e.getKey().contains(w.e4().toString())) {
+                    assertThat(n.path("ungeregelt_hinter_abgang").path("bezug").asText()).as(e.getKey())
+                            .isEqualTo("25.0");
+                } else {
+                    assertThat(n.has("ungeregelt_hinter_abgang")).as(e.getKey()).isFalse();
+                }
+                assertThat(n.path("schema_version").asText()).isEqualTo("1.0");
+            }
+        }
+    }
+
+    /** Ohne Ungeregeltes hinter einem Abgang (Referenzanlage, DQ-10) trägt kein Dokument das Feld. */
+    @Test
+    void ohneUngeregeltesKeinFeld() throws Exception {
+        Welt w = ahrenberg(Stufe.BEOBACHTET);
+        TenantContext.set(w.mandant());
+        dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        quittung(w, w.e1(), 1, 1, "angenommen", null, null);
+        synchronized (Draht.GESENDET) {
+            assertThat(Draht.GESENDET).isNotEmpty();
+            for (Map.Entry<String, byte[]> e : Draht.GESENDET) {
+                assertThat(mapper.readTree(e.getValue()).has("ungeregelt_hinter_abgang")).as(e.getKey()).isFalse();
+            }
+        }
+    }
+
     /** Ein Bezugs-Gerät an Box Verwaltung mit Typ; {@code imLadepark} = mit Verbraucher-Profil (wallboxes[]). */
     private void verbraucher(Welt w, String typ, String nenn, boolean schreibfreigabe, boolean imLadepark) {
         UUID k = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, created_at) "

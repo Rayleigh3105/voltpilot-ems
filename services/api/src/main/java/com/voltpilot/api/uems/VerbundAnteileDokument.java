@@ -60,6 +60,19 @@ public final class VerbundAnteileDokument {
      */
     public static byte[] nutzlast(ObjectMapper mapper, UUID tenant, UUID site, UUID box, Rolle rolle, long epoche,
             long revision, Schritt schritt, Tabelle tabelle, BigDecimal reserveBezugKw, Instant veroeffentlicht) {
+        return nutzlast(mapper, tenant, site, box, rolle, epoche, revision, schritt, tabelle, reserveBezugKw, null,
+                veroeffentlicht);
+    }
+
+    /**
+     * Wie oben, zusätzlich mit dem erklärten Höchstwert des Ungeregelten hinter dem Abgang dieser Box
+     * ({@code ungeregelt_hinter_abgang.bezug}, wahlfrei, AP-15 Folge von IP-19, B3;
+     * {@link SteuerungsverbundAbleitung#ungeregeltHinterAbgang}): die mitsteuernde Box zieht ihn blind von ihrem Anteil
+     * ab. {@code null} = ohne das Feld (Byte für Byte wie vorher); {@code schema_version} bleibt 1.0.
+     */
+    public static byte[] nutzlast(ObjectMapper mapper, UUID tenant, UUID site, UUID box, Rolle rolle, long epoche,
+            long revision, Schritt schritt, Tabelle tabelle, BigDecimal reserveBezugKw, BigDecimal ungeregeltBezugKw,
+            Instant veroeffentlicht) {
         ObjectNode n = mapper.createObjectNode();
         n.put("schema_version", SCHEMA_VERSION);
         n.put("tenant_id", tenant.toString());
@@ -80,6 +93,9 @@ public final class VerbundAnteileDokument {
         }
         if (reserveBezugKw != null) {
             n.putObject("reserve_verbraucher").put(Grenzart.BEZUG.code(), reserveBezugKw);
+        }
+        if (ungeregeltBezugKw != null) {
+            n.putObject("ungeregelt_hinter_abgang").put(Grenzart.BEZUG.code(), ungeregeltBezugKw);
         }
         n.put("published_at", veroeffentlicht.toString());
         try {

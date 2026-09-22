@@ -185,6 +185,41 @@ class GemeinsameSteuerungEinrichtenApiTest {
         assertThat(zeilen(w)).isEqualTo(vorher);
     }
 
+    /**
+     * AP-15 Folge von IP-19 (d1, B3): ein per API erklärtes Ungeregeltes hinter dem Abgang von E-4 (50 kW Gebäude)
+     * steht im {@code GET …/einrichten} je Box; speichert das Portal danach mit dem Feld (wie
+     * {@code gemeinsameSteuerungFlaeche#koerper}), ist es noch da — und es zählt in den Anteil von E-4 (Fall C:
+     * Vorbehalt 418 + 50 dahinter → 132 kW). Ohne das Feld löscht das PUT es (das alte Portal tat das still).
+     */
+    @Test
+    void einErklaertesUngeregeltesBleibtBeimSpeichernMitFeld() throws Exception {
+        Welt w = welt();
+        rueckfaelleAmGeraet(w);
+        String ohne = erklaerung(w, w.k13(), "\"keine\"", "418");
+        String mit = ohne.replace("\"geraete\":[{\"komponente_id\":\"" + w.k12(),
+                "\"ungeregelt\":[{\"richtung\":\"bezug\",\"hoechstwert_kw\":50}],\"geraete\":[{\"komponente_id\":\""
+                        + w.k12());
+        assertThat(mit).isNotEqualTo(ohne);
+        ok(kunde(w, put(w.pfad()).content(mit)));
+        JsonNode e = ok(kunde(w, get(w.pfad() + "/einrichten")));
+        assertThat(box(e, w.e4()).path("ungeregelt")).hasSize(1);
+        assertThat(box(e, w.e4()).path("ungeregelt").get(0).path("hoechstwert_kw").decimalValue())
+                .isEqualByComparingTo("50");
+        assertThat(box(e, w.e4()).path("ungeregelt").get(0).path("richtung").asText()).isEqualTo("bezug");
+        assertThat(anteil(e.path("ergebnis").path("bezug"), w.e4())).as("Fall C").isEqualByComparingTo("132");
+
+        // das Portal speichert noch einmal - mit dem Feld, wie es es geladen hat: es bleibt
+        ok(kunde(w, put(w.pfad()).content(mit)));
+        JsonNode nach = ok(kunde(w, get(w.pfad() + "/einrichten")));
+        assertThat(box(nach, w.e4()).path("ungeregelt").get(0).path("hoechstwert_kw").decimalValue())
+                .isEqualByComparingTo("50");
+
+        // ohne das Feld (der Körper des alten Portals): weg
+        ok(kunde(w, put(w.pfad()).content(ohne)));
+        JsonNode weg = ok(kunde(w, get(w.pfad() + "/einrichten")));
+        assertThat(box(weg, w.e4()).path("ungeregelt").isEmpty()).isTrue();
+    }
+
     // ============================================================================ Vollständigkeit und Pflicht
 
     @Test

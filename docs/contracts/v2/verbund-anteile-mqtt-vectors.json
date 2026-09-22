@@ -855,5 +855,225 @@
     }
    }
   ]
+ },
+ "ungeregelt_hinter_abgang": {
+  "_comment": "UEMS AP-15 Folge von IP-19 (B3, Konzept §3.2 Schicht 2): der Anteil einer mitsteuernden Box ist ALLES hinter ihrem eigenen Messpunkt — die Box hält ihn am Abgangszähler (Regelkreis von heute mit planbar = Anteil: Ladebudget = min(Anteil, Anteil − (Abgang − gemessenes Laden))). Blind (kein Abgangswert, älter als 30 s, eingefroren, Uhrensprung, vor der ersten Messung, nach Neustart) kennt sie nur den erklärten Höchstwert des Ungeregelten hinter ihrem Abgang: Ladebudget = max(0, Anteil − Reserve − ungeregelt_hinter_abgang). Der Höchstwert je Box = Summe der Nennleistungen bzw. Höchstwerte ihrer UNGEREGELTEN Bezugs-Geräte (Erklärung ungeregelt, d. h. ohne Komponente, und Geräte ohne Schreibfreigabe, I1), aufgerundet auf 0,1 kW; nur Boxen, die nicht führen, und nur über 0 — sonst reist das Feld nicht (Dokument Byte für Byte wie vorher). Reist als ungeregelt_hinter_abgang.bezug (wahlfrei, schema_version bleibt 1.0). Die Reserve der anderen steuerbaren Verbraucher gilt nur blind: mit frischem Abgang stecken sie im gemessenen Rest. Leser: VerbundAnteileUngeregeltVectorsTest (Java, Erzeuger) und edge-app/core/internal/lastmgmt/ungeregelt_vectors_test.go (Go, Lesen + Ladebudget).",
+  "ableitung": [
+   {
+    "name": "R3 Fall C: 50 kW Gebäudelast hinter dem Abgang von Box Verwaltung erklärt → 50,0; das Ungeregelte der führenden Box Halle 1 reist nie",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": null,
+      "richtung": "bezug",
+      "nenn_kw": 50.0,
+      "schreibfreigabe": false
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e1",
+      "komponente": null,
+      "richtung": "bezug",
+      "nenn_kw": 380.0,
+      "schreibfreigabe": false
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e4": 50.0
+    }
+   },
+   {
+    "name": "R3 wie in der Referenzanlage (DQ-10: hinter dem Abgang NUR, was die Box steuert) → kein Feld",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     }
+    ],
+    "erwartet": {}
+   },
+   {
+    "name": "Gerät ohne Schreibfreigabe zählt wie das Ungeregelte (I1), Einspeisung zählt nicht, aufgerundet: 12,04 + 3,0 → 15,1",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f2",
+      "richtung": "bezug",
+      "nenn_kw": 12.04,
+      "schreibfreigabe": false
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": null,
+      "richtung": "bezug",
+      "nenn_kw": 3.0,
+      "schreibfreigabe": false
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": null,
+      "richtung": "einspeisung",
+      "nenn_kw": 40.0,
+      "schreibfreigabe": false
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e4": 15.1
+    }
+   }
+  ],
+  "draht": [
+   {
+    "name": "Fall A: Anteil 77, 50 kW Gebäude im Abgang erklärt → blind 27; frisch mit 50 kW im Abgang 27",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": 50.0,
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": true,
+     "ungeregelt_bezug": "50.0",
+     "ladebudget_blind_kw": 27.0,
+     "ladebudget_frisch_kw": 27.0
+    }
+   },
+   {
+    "name": "ohne das Feld (alte Cloud): blind der Anteil 77 wie seit PR 1058; frisch hält der Abgang trotzdem: 27",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": null,
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": true,
+     "ungeregelt_bezug": null,
+     "ladebudget_blind_kw": 77.0,
+     "ladebudget_frisch_kw": 27.0
+    }
+   },
+   {
+    "name": "mit Reserve 10 (Wärmepumpe): blind 77 − 10 − 50 = 17; frisch misst der Abgang beide, die Reserve zählt nicht doppelt: 27",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": 50.0,
+    "reserve_bezug": 10.0,
+    "erwartet": {
+     "gelesen": true,
+     "ungeregelt_bezug": "50.0",
+     "ladebudget_blind_kw": 17.0,
+     "ladebudget_frisch_kw": 27.0
+    }
+   },
+   {
+    "name": "Ungeregeltes über dem Anteil: das Ladebudget fällt nie unter 0",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": 90.0,
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": true,
+     "ungeregelt_bezug": "90.0",
+     "ladebudget_blind_kw": 0.0,
+     "ladebudget_frisch_kw": 27.0
+    }
+   },
+   {
+    "name": "negativer Höchstwert: unlesbar, ohne Quittung, der Anteil bleibt",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": -1.0,
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": false,
+     "ungeregelt_bezug": null,
+     "ladebudget_blind_kw": null,
+     "ladebudget_frisch_kw": null
+    }
+   }
+  ]
  }
 }

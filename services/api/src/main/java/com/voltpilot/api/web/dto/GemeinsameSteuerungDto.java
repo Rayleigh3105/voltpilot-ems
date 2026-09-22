@@ -206,11 +206,12 @@ public final class GemeinsameSteuerungDto {
      * Anteils-Dokument der Box: zuletzt gesendet und zuletzt quittiert (Epoche/Revision), die WIRKSAMEN Anteile, wie
      * die Box sie im Herzschlag meldet ({@code einspeisung}/{@code bezug} in kW; null = nicht gemeldet), und die
      * Reserve der anderen steuerbaren Verbraucher, um die die Box das Ladebudget ihres Bezugs-Anteils senkt (AP-15
-     * Folge von IP-19; null = nicht gemeldet, dann gilt keine).
+     * Folge von IP-19; null = nicht gemeldet, dann gilt keine), und das erklärte Ungeregelte hinter dem Abgang dieser
+     * Box, das ihr Dokument trägt (AP-15 Folge von IP-19, B3; null = keins erklärt).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record AnteilStand(Revision gesendet, Revision quittiert, Map<String, BigDecimal> wirksamKw,
-            BigDecimal reserveVerbraucherKw) {}
+            BigDecimal reserveVerbraucherKw, BigDecimal ungeregeltHinterAbgangKw) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Revision(long epoche, long revision, OffsetDateTime am) {}

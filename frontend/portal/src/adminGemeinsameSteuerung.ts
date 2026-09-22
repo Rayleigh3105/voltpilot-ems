@@ -255,6 +255,11 @@ export interface BoxSpalte {
   revision: { gesendet: Zelle; quittiert: Zelle; ungleich: boolean };
   /** `reserve`: um so viel senkt die Box das Ladebudget ihres Bezugs-Anteils (andere steuerbare Verbraucher). */
   wirksam: { einspeisung: Zelle; bezug: Zelle; reserve: Zelle };
+  /**
+   * Erklärtes Ungeregeltes hinter dem Abgang (AP-15 Folge von IP-19): `null` = keins erklärt — die Zeile erscheint
+   * nur, wenn eine Box einen Wert über 0 hat.
+   */
+  ungeregelt: Zelle | null;
   verlustGestern: Zelle;
 }
 
@@ -364,6 +369,8 @@ export function boxSpalten(
         // nicht gemeldet = die Box hält keine Reserve (altes Dokument, alte Box)
         reserve: b.anteile.reserve_verbraucher_kw == null ? { text: 'keine', unbekannt: true } : kwZelle(b.anteile.reserve_verbraucher_kw),
       },
+      ungeregelt: b.anteile.ungeregelt_hinter_abgang_kw != null && b.anteile.ungeregelt_hinter_abgang_kw > 0
+        ? kwZelle(b.anteile.ungeregelt_hinter_abgang_kw) : null,
       verlustGestern: verlustGesternZelle(b.verlust_gestern),
     };
   });

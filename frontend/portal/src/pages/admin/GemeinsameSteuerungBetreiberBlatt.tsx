@@ -176,6 +176,10 @@ export function GemeinsameSteuerungBetreiberBlatt({
               <Reihe titel="Wirksam Einspeisung" zeile="wirksam-einspeisung" spalten={spalten} zelle={(s) => s.wirksam.einspeisung} />
               <Reihe titel="Wirksam Bezug" zeile="wirksam-bezug" spalten={spalten} zelle={(s) => s.wirksam.bezug} />
               <Reihe titel="davon Reserve andere Verbraucher" zeile="wirksam-reserve" spalten={spalten} zelle={(s) => s.wirksam.reserve} />
+              {spalten.some((s) => s.ungeregelt != null) && (
+                <Reihe titel="Ungeregeltes hinter dem Abgang (erklärt)" zeile="ungeregelt-abgang" spalten={spalten}
+                  zelle={(s) => s.ungeregelt ?? { text: 'keins', unbekannt: true }} />
+              )}
               <Reihe titel="Verlust gestern" zeile="verlust-gestern" spalten={spalten} zelle={(s) => s.verlustGestern} />
             </tbody>
           </table>

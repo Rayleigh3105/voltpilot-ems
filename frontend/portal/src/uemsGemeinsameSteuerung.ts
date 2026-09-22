@@ -108,6 +108,12 @@ export const FLAECHE = {
   signal_ladepunkte: 'Die Ladepunkte müssen an der Box hängen, die das Signal des Netzbetreibers bekommt.',
   /** §5.2 Nr. 6 („Am Wechselrichter Verwaltung …“), mit dem Gerätenamen aus dem Bestand */
   rueckfall_fehlt: 'Am Gerät {geraet} ist kein sicherer Rückfallwert hinterlegt — es zählt mit seiner vollen Leistung.',
+  /** Frage 5, je mitsteuernder Box mit eigenem Zähler (AP-15 Folge von IP-19, B3): das Ungeregelte dahinter */
+  ungeregelt_label: 'Verbrauch hinter diesem Zähler, den keine Box steuert — höchstens (kW)',
+  ungeregelt_hinweis: '0 heißt: dahinter hängt nur, was diese Box steuert. So soll es sein — kein Gebäudeverteiler, keine Geräte ohne Freigabe, nichts einer anderen Box. Hängt doch etwas dahinter, tragen Sie seinen höchsten Wert ein: diese Box hält es dann in ihrem Anteil.',
+  ungeregelt_luecke: 'Bitte den höchsten Wert in kW angeben — 0, wenn dahinter nur hängt, was diese Box steuert.',
+  /** Frage 4, zum Vorschlag aus den Messwerten (AP-15 Folge von IP-19, B3) */
+  vorschlag_ohne_abgang: 'Der Vorschlag aus den Messwerten enthält nicht, was hinter dem Zähler einer mitsteuernden Box liegt — das tragen Sie in Frage 5 bei dieser Box ein.',
   /** Frage 6 vor „Absenden“ (§5.2 Nr. 6/7): das Ergebnis ist ein Entwurf */
   ergebnis_entwurf: 'Noch ist nichts gespeichert. Mit „Absenden“ richten Sie die Gemeinsame Steuerung so ein.',
   /** §5.2 Nr. 7, wörtlich */

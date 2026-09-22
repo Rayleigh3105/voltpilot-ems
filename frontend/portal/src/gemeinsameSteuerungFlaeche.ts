@@ -20,7 +20,7 @@ import {
   type UemsSteuerRichtung,
   type UemsVerlustSumme,
 } from './api';
-import { flaechenSatz, KUNDENWORT, satz, ZUSTAENDE } from './uemsGemeinsameSteuerung';
+import { FLAECHE, flaechenSatz, KUNDENWORT, satz, ZUSTAENDE } from './uemsGemeinsameSteuerung';
 import { teile, VORGABE_ZEITZONE } from './uemsZustand';
 
 // ───────────────────────────────────────────────────────────── Sichtbarkeit
@@ -327,6 +327,13 @@ export interface BoxEntwurf {
   messpunkt: string | null;
   signal: UemsDreiwert;
   geraete: GeraetEntwurf[];
+  /**
+   * Frage 5 (AP-15 Folge von IP-19, B3): der Höchstwert des Ungeregelten hinter dem Zähler dieser Box, Richtung
+   * Bezug, als Eingabetext — „0“ = nichts. Vorbelegt aus der bisherigen Erklärung, damit Speichern sie erhält.
+   */
+  ungeregeltBezug: string;
+  /** Erklärtes Ungeregeltes der anderen Richtung — unverändert zurück, das Portal fragt es nicht ab. */
+  ungeregeltWeitere: { richtung: UemsSteuerRichtung; hoechstwert_kw: number }[];
 }
 
 export interface Entwurf {
@@ -368,6 +375,8 @@ export function entwurfAus(
       }
     }
     const steuerbar = b.komponenten.some((k) => k.schreibfreigabe);
+    const ungeregelt = b.ungeregelt ?? [];
+    const ungeregeltBezug = ungeregelt.filter((u) => u.richtung === 'bezug').reduce((summe, u) => summe + u.hoechstwert_kw, 0);
     return {
       boxId: b.box_id,
       name: boxName(b.name, b.box_id),
@@ -375,6 +384,9 @@ export function entwurfAus(
       messpunkt: b.messpunkt_id ?? null,
       signal: mitglied(b.box_id)?.vorgabe_signal ?? 'unbekannt',
       geraete,
+      // exakt, nicht auf eine Nachkommastelle gerundet: Speichern darf ein erklärtes Ungeregeltes nie verkleinern
+      ungeregeltBezug: String(ungeregeltBezug).replace('.', ','),
+      ungeregeltWeitere: ungeregelt.filter((u) => u.richtung !== 'bezug'),
     };
   });
   const u = e.ungesteuerte_erzeuger;
@@ -402,6 +414,8 @@ export interface EntwurfLuecke {
   komponenteId?: string;
   richtung?: UemsSteuerRichtung;
   erzeuger?: number;
+  /** Frage 5: das Feld „Verbrauch hinter diesem Zähler“ der Box `boxId`. */
+  ungeregelt?: true;
   text: string;
 }
 
@@ -426,6 +440,9 @@ export function entwurfLuecken(e: Entwurf): EntwurfLuecke[] {
     out.push({ frage: 4, text: 'Bitte den Wert in kW angeben, z. B. 473.' });
   }
   for (const b of mit) {
+    if (b.ungeregeltBezug.trim() !== '' && positiveZahlOderNull(b.ungeregeltBezug) == null) {
+      out.push({ frage: 5, boxId: b.boxId, ungeregelt: true, text: FLAECHE.ungeregelt_luecke });
+    }
     for (const g of b.geraete) {
       if (positiveZahl(g.nenn) == null) {
         out.push({ frage: 5, boxId: b.boxId, komponenteId: g.komponenteId, richtung: g.richtung, text: 'Bitte die Nennleistung in kW angeben.' });
@@ -451,12 +468,23 @@ export function koerper(e: Entwurf): UemsGemeinsameSteuerungSetzen {
         messpunkt_id: b.messpunkt,
         vorgabe_signal: b.signal,
         geraete: b.geraete.map((g) => ({ komponente_id: g.komponenteId, richtung: g.richtung, nenn_kw: positiveZahl(g.nenn)! })),
+        ...ungeregeltKoerper(b),
       })),
     ungesteuerte_erzeuger: e.erzeugerArt === 'liste'
       ? e.erzeuger.map((x) => ({ bezeichnung: x.bezeichnung.trim(), nenn_kw: positiveZahl(x.nenn)! }))
       : 'keine',
     ...(vorbehalt == null ? {} : { vorbehalt: { bezug_kw: vorbehalt } }),
   };
+}
+
+/**
+ * Das Ungeregelte einer Box im PUT (AP-15 Folge von IP-19): der Höchstwert Bezug, wenn über 0, und das erklärte der
+ * anderen Richtung unverändert. Ohne beides fehlt das Feld — dann löscht der Server ein erklärtes, gewollt bei „0“.
+ */
+function ungeregeltKoerper(b: BoxEntwurf): { ungeregelt?: { richtung: UemsSteuerRichtung; hoechstwert_kw: number }[] } {
+  const bezug = positiveZahl(b.ungeregeltBezug);
+  const ungeregelt = [...(bezug == null ? [] : [{ richtung: 'bezug' as const, hoechstwert_kw: bezug }]), ...b.ungeregeltWeitere];
+  return ungeregelt.length === 0 ? {} : { ungeregelt };
 }
 
 /** Die Lücken einer 422 `erklaerung_unvollstaendig`, übersetzt an IHRE Stelle in der Folge. */

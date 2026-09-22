@@ -48,6 +48,12 @@ einen Verbund ab Stufe S1 (LA2), und nur an seine Mitglieder.
   Speicher, Geräte ohne Schreibfreigabe und das Ungeregelte hinter dem Abgang zählen nicht. **Kein Doppelzählen:** ein
   solches Gerät steckt nicht im Vorbehalt (der deckt, was keine Box steuert), sondern einmal im Anteil seiner Box — die
   Reserve teilt diesen einen Anteil auf der Box nur auf. Vektoren: Abschnitt `reserve_verbraucher`.
+- **`ungeregelt_hinter_abgang`** (wahlfrei, AP-15 Folge von IP-19, B3; `schema_version` bleibt 1.0): je Box, die
+  NICHT führt, ihr eigenes `bezug` = der erklärte Höchstwert des Ungeregelten hinter ihrem Abgangszähler — die
+  Erklärung `ungeregelt` (Gerätezeile ohne Komponente) plus Geräte ohne Schreibfreigabe (I1), also genau das, was die
+  Ableitung ohne Rückfall in ihren Anteil zählt —, aufgerundet auf 0,1 kW
+  (`SteuerungsverbundAbleitung.ungeregeltHinterAbgang`). Es reist nur über 0; ohne es bleibt das Dokument Byte für
+  Byte wie vorher. Die Box braucht es nur blind (siehe Bezugswächter). Vektoren: Abschnitt `ungeregelt_hinter_abgang`.
 - **Epoche und Revision steigen nur.** Die Revision steigt je Dokument eines Verbunds; eine neue Epoche setzt nur das
   Scharfschalten. Das Dokument reist **nie im Plan**.
 
@@ -103,10 +109,20 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   (`steuerungsverbund_anteil_verlust`) und nennt es je Mitglied im `GET …/gemeinsame-steuerung` (heute, Monat).
 - **Bezugswächter (IP-19, V3):** gilt ein Dokument, hält die Box den Anteil der Richtung `bezug` über alles, was sie
   auf der Bezugsseite steuert. **Ladebudget** (Ladepark-Rahmen: OCPP-Säulen und `wallboxes[]`,
-  `edge-app/core/internal/lastmgmt/bezuganteil.go`): `steuert_mit` — und ein Dokument **ohne** `rolle` — gibt den
-  Ladepunkten zusammen höchstens den Anteil, fest, ohne Messung (auch ohne Verbindung und nach einem Neustart; das
-  Ungeregelte hinter dem Abgangszähler steckt schon im Vorbehalt, R3: 473 + 77 = 550 kW); was unerreichbare Säulen
-  ziehen dürfen, geht vom Anteil ab. `fuehrt`: der Regelkreis von heute gegen die ganze Anschlussgrenze, solange der
+  `edge-app/core/internal/lastmgmt/bezuganteil.go`): `steuert_mit` — und ein Dokument **ohne** `rolle` — hält den
+  Anteil **am eigenen Messpunkt** (AP-15 Folge, Konzept §3.2 Schicht 2, §3.3, B3: der Anteil ist ALLES hinter dem
+  Abgang, auch Gebäudelast und Geräte ohne Freigabe). Frisch (Abgangswert ≤ 30 s, nicht eingefroren, kein
+  Uhrensprung) der Regelkreis von heute mit `planbar = Anteil`: Ladebudget = `min(Anteil, Anteil − (Abgang − gemessenes
+  Laden))`, nie unter 0 — R3 mit 50 kW Gebäudelast hinter dem Abgang von Box Verwaltung: 27 statt 77 kW; mit einem
+  Zähler wie DQ-10 (dahinter NUR, was die Box steuert) bleibt es 77. Eine stehende Zahl verlangt auch hier die eine
+  Prüf-Verstellung (IP-27 A7), solange der Ladepark über dem Blind-Wert zieht. Blind (kein Abgangswert, älter als
+  30 s, eingefroren, Uhrensprung, vor dem ersten Messwert, nach einem Neustart, oder eine Box ohne eigenen Zähler):
+  `max(0, Anteil − reserve_verbraucher − ungeregelt_hinter_abgang)`, sofort — nur innerhalb von 60 s nie über dem
+  zuletzt frisch gerechneten Wert. **Die Reserve zählt nie doppelt:** mit frischem Abgang stecken die anderen
+  steuerbaren Verbraucher im gemessenen Rest; die Reserve gilt nur blind und ohne eigenen Zähler (dort ist die
+  Gerätesumme wie bei IP-18 der Messpunkt: der Speicher lädt nur aus eigener PV, die anderen Verbraucher sind die
+  Reserve). Ohne `ungeregelt_hinter_abgang` gilt blind `Anteil − Reserve` wie vorher. Was unerreichbare Säulen ziehen
+  dürfen, geht vom Anteil ab (frisch steckt es zugleich im gemessenen Rest — die sichere Seite). `fuehrt`: der Regelkreis von heute gegen die ganze Anschlussgrenze, solange der
   Netzpunkt-Wert frisch ist (≤ 30 s); danach ohne Halten in 60 s linear auf den Anteil; vor dem ersten Messwert der
   Anteil. **Netzladen des Speichers** (`guards/bezuganteil.go`, hinter der Arbitration und vor der Abregelungs-Nachführung):
   nur `fuehrt` mit frischem Netzpunkt UND gepflegter Anschlussgrenze lädt aus dem Netz — Deckel
@@ -115,9 +131,10 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   dem Netz“, ohne PV-Wert 0). Beide Teile senken nur, entladen nie, heben nie an; das Ladebudget ist das Minimum mit der
   Box ohne Anteil (V5), „Jetzt voll laden“ verteilt innerhalb des Anteils (R13). Stufe im Herzschlag:
   `waechter.bezug` (die strengere beider Teile). **Der Anteil gilt für ALLES (Folge von IP-19):** trägt das Dokument
-  `reserve_verbraucher.bezug`, rechnet das Ladebudget überall, wo der Anteil bindet (`steuert_mit`, ohne `rolle`, die
-  führende Box blind, vor dem ersten Messwert, nach einem Uhrensprung), mit `max(0, Anteil − Reserve)` — R3 mit einer
-  10-kW-Wärmepumpe an Box Verwaltung: 67 statt 77 kW, 473 + 67 + 10 = 550. Die führende Box mit frischem Netzpunkt
+  `reserve_verbraucher.bezug`, rechnet das Ladebudget überall, wo der Anteil bindet und die Box die Verbraucher nicht
+  misst (`steuert_mit` und ohne `rolle` blind, die führende Box blind, vor dem ersten Messwert, nach einem
+  Uhrensprung), mit `max(0, Anteil − Reserve)` — R3 mit einer 10-kW-Wärmepumpe an Box Verwaltung: 67 statt 77 kW,
+  473 + 67 + 10 = 550; frisch misst DQ-10 die laufende Wärmepumpe (77 − 10 = 67). Die führende Box mit frischem Netzpunkt
   misst die Verbraucher am Netzzähler; dort (und in ihrer Prüf-Verstellung) ändert die Reserve nichts. Der
   Netzladen-Deckel rechnet nicht vom Anteil und bleibt. Fehlt das Feld: keine Reserve, wie vorher; der Herzschlag
   spiegelt sie nur, wenn sie gilt (`reserve_verbraucher_kw`), das Betreiber-Blatt zeigt sie unter „Wirksam Bezug“.
