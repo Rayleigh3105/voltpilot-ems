@@ -1,7 +1,7 @@
 {
-  "version": "1.5",
-  "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS). Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
-  "stand": "2026-09-21",
+  "version": "1.6",
+  "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS), erweitert um energetische Bewertung und Messplanung. Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
+  "stand": "2026-09-22",
   "_comment": [
     "Diese Datei ist die maschinenlesbare Fassung von AP-00 §4.4 (Referenzunternehmen),",
     "erweitert um die Verfeinerungen aus AP-01…AP-07. Sie wird von ZWEI Zwillingen",
@@ -113,7 +113,14 @@
     "  nicht gebauten Stufe S4 und trägt deshalb `stand: entwurf`.",
     "  ZEITACHSE: sechs Einträge 2027 — Einrichtung, Prüfung, Scharfschalten, die Beispieltage 13.06. und 15.06., Box-Tausch —",
     "  je mit dem Merkmal `gemeinsame_steuerung: V-1`: sie verlängern die Zeitachse nur für die gemeinsame Steuerung; wer den",
-    "  Horizont der übrigen Welt misst (Fortschreibungen der Messstellen-Vektoren), nimmt genau diese Zeilen aus."
+    "  Horizont der übrigen Welt misst (Fortschreibungen der Messstellen-Vektoren), nimmt genau diese Zeilen aus.",
+    "FASSUNG 1.6 (AP-16 IP-1, E11 = A, 22.09.2026) — additiv: ENERGETISCHE BEWERTUNG UND MESSPLANUNG.",
+    "  Zahlen schlagen vor, eine Person stuft ein, nichts verschwindet. Umfang, Kriterien, Einstufungen und Berichte",
+    "  bleiben als Fassungen lesbar; jede Einstufung trägt Person, Begründung und den Herkunfts-Satz ihrer Zahlen.",
+    "  Neu sind P-7, EE-1 … EE-8, MB-1, MS-23 mit K-15/GR-19, Messmittel-Angaben, die 2-%-Toleranz an der",
+    "  Vergleichsquelle von MS-01 sowie BW-2026-0001 und BW-2027-0001. Die Werte für 2027 sind Annahmen, keine Messwerte.",
+    "  AN-1 … AN-3, NA-1 … NA-3, P-1 … P-6, Kostenstellen, Kennzahlen und der bestehende Bericht BR-2026-0001",
+    "  behalten ihre Bedeutung; insbesondere MS-20 und KZ-0004 bleiben unverändert."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",
@@ -135,7 +142,8 @@
     "personen": "AP-00 §4.4 (vier Personen) · vollständiger Personen-Satz mit Rollen, Geltungsbereichen und Unterstützungszugriffen aus AP-03 §4.1",
     "zeitachse": "AP-00 §4.4 · Box-Ausfall Halle 2 am 03.11.2026 mit Rückkehr um 17:30 und Nachlieferung (AP-00 §7.6, AP-06 A2, AP-07 A3), danach Box-Tausch am 04.11.2026 (AP-06 A5), Zählerwechsel-Zeitpunkt (AP-04 E2), Unterstützungszeiträume (AP-03 §4.1), Hardwareblatt-Fassungen und Wandlertausch (AP-05 §4.1)",
     "bewusst_ausgelassen": "Standort ST-3 „Werk Ahrenberg Nord“ (ab 20.02.2027) und die daran hängende Person Sabine Rauch aus AP-03 §4.1 — AP-00 §4.4 führt das Referenzunternehmen mit ZWEI Standorten, und die Abnahme dieses Pakets zählt zwei.",
-    "fassung_1_5": "AP-15 IP-1 (E8 = A, 21.09.2026): Box E-4/E-4′, DQ-8…DQ-10, GR-11…GR-18, K-12…K-14, `netzanschluss_grenzen[]`, `gemeinsame_steuerungen[]` V-1, `geraete_rueckfaelle[]`, `abnahmefaelle_ap15` R1–R22 und sechs Zeilen der Zeitachse — Zahlen, Adressen und Zeitpunkte aus dem Konzept AP-15 §7 (Abschnitt „Referenzdatei: die Erweiterung 1.5“ und referenzfaelle.json `erweiterung_1_5`). Frei gewählt, weil das Konzept sie nicht nennt: die Seriennummer von E-4′ und die Kennzeichen der Geräte GR-11…GR-18; nicht erhoben (null): Port und Geräte-ID der Modbus-Quellen, Kanalzahlen"
+    "fassung_1_5": "AP-15 IP-1 (E8 = A, 21.09.2026): Box E-4/E-4′, DQ-8…DQ-10, GR-11…GR-18, K-12…K-14, `netzanschluss_grenzen[]`, `gemeinsame_steuerungen[]` V-1, `geraete_rueckfaelle[]`, `abnahmefaelle_ap15` R1–R22 und sechs Zeilen der Zeitachse — Zahlen, Adressen und Zeitpunkte aus dem Konzept AP-15 §7 (Abschnitt „Referenzdatei: die Erweiterung 1.5“ und referenzfaelle.json `erweiterung_1_5`). Frei gewählt, weil das Konzept sie nicht nennt: die Seriennummer von E-4′ und die Kennzeichen der Geräte GR-11…GR-18; nicht erhoben (null): Port und Geräte-ID der Modbus-Quellen, Kanalzahlen",
+    "fassung_1_6": "AP-16 IP-1 (E11 = A, 22.09.2026): `bewertung_umfang`, P-7, `energieeinsaetze[]` EE-1…EE-8, `bewertung_kriterien[]`, `einstufungen[]`, `messbedarfe[]` MB-1, MS-23 mit GR-19/K-15, `messmittel_angaben[]`, Toleranz an der Vergleichsquelle von MS-01, die Bewertungs-Berichte BW-2026-0001/BW-2027-0001, `abnahmefaelle_ap16` und elf Zeilen der Zeitachse. Grundlage: AP-16 §7 und die gegeben-Werte R1–R5, R7, R8, R12, R14; Zahlen 2027 sind ausdrücklich Annahmen."
   },
 
   "unternehmen": {
@@ -235,7 +243,8 @@
     { "kennzeichen": "P-3", "name": "Druckluft", "eltern": null, "hinweis": "Querschnittsprozess; versorgt Spritzguss und Montage" },
     { "kennzeichen": "P-4", "name": "Kühlung", "eltern": null, "hinweis": "Prozesskühlung für Spritzguss" },
     { "kennzeichen": "P-5", "name": "Logistik", "eltern": null, "hinweis": "Lager Halle 2 + Werk Lindach" },
-    { "kennzeichen": "P-6", "name": "Verwaltung", "eltern": null, "hinweis": "Büro, IT, Ladepunkt" }
+    { "kennzeichen": "P-6", "name": "Verwaltung", "eltern": null, "hinweis": "Büro, IT, Ladepunkt" },
+    { "kennzeichen": "P-7", "name": "Gebäudetechnik Halle 1", "eltern": null, "gueltig_ab": "2026-11-27", "hinweis": "Lüftung, Beleuchtung und Allgemeinstrom Halle 1" }
   ],
 
   "kostenstellen": [
@@ -378,11 +387,11 @@
     },
     {
       "kennzeichen": "DQ-3", "anlage": "AN-1", "protokoll": "modbus_tcp",
-      "adresse": "192.168.10.31", "port": 502, "geraete_ids": [1, 2, 3, 4],
-      "weg": "Modbus TCP 192.168.10.31:502, Geräte-IDs 1–4",
-      "netz": "192.168.10.0/24", "kadenz_s": 60, "kadenz_beschreibung": null, "kanaele": 8,
+      "adresse": "192.168.10.31", "port": 502, "geraete_ids": [1, 2, 3, 4, 5],
+      "weg": "Modbus TCP 192.168.10.31:502, Geräte-IDs 1–5 (ID 5 ab 01.03.2027)",
+      "netz": "192.168.10.0/24", "kadenz_s": 60, "kadenz_beschreibung": null, "kanaele": 10,
       "steuerquelle": false,
-      "hinweis": "Multi-Zähler-Gateway in der Unterverteilung Halle 1 — vier Zähler hinter EINER Adresse"
+      "hinweis": "Multi-Zähler-Gateway in der Unterverteilung Halle 1 — vier Zähler im Grundbestand, GR-19 mit Geräte-ID 5 ab 01.03.2027 hinter DERSELBEN Adresse"
     },
     {
       "kennzeichen": "DQ-4", "anlage": "AN-2", "protokoll": "modbus_tcp",
@@ -572,6 +581,13 @@
       "modbus_geraete_id": null,
       "einbauten": [ { "kennzeichen": "GR-18", "seriennummer": null, "gueltig_ab": "2027-05-03T00:00:00+02:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
       "hinweis": "Unterverteilung „PV und Ladepark Verwaltung“ — dahinter liegt NUR, was Box Verwaltung steuert"
+    },
+    {
+      "kennzeichen": "GR-19", "name": "Unterzähler Halle 1 Allgemein (Modbus, Geräte-ID 5)", "datenquelle": "DQ-3",
+      "art": "Zähler", "hersteller": null, "typ": null, "firmware": null, "anwendung": null,
+      "modbus_geraete_id": 5,
+      "einbauten": [ { "kennzeichen": "GR-19", "seriennummer": null, "gueltig_ab": "2027-03-01T10:00:00+01:00", "gueltig_bis": null, "endstand_kwh": null, "anfangsstand_kwh": null } ],
+      "hinweis": "für den Messbedarf MB-1; bis zur Quellenbindung am 01.03.2027 trägt MS-23 keine Datenquelle"
     }
   ],
 
@@ -754,6 +770,13 @@
       "steckplatz": null, "kartentyp": null, "wandler": [],
       "kanaele": null, "steuerbar": "nein",
       "in_betrieb_ab": "2027-05-03T00:00:00+02:00", "in_betrieb_bis": null
+    },
+    {
+      "kennzeichen": "K-15", "name": "Unterzähler Halle 1 Allgemein", "art": "Zähler (Modbus, Geräte-ID 5)",
+      "anlage": "AN-1", "ort_art": "gebaeude", "ort": "G-1", "ort_hinweis": "Unterverteilung Halle 1 Allgemein", "geraet": "GR-19",
+      "steckplatz": null, "kartentyp": null, "wandler": [],
+      "kanaele": "Wirkenergie Bezug", "steuerbar": "nein",
+      "in_betrieb_ab": "2027-03-01T10:00:00+01:00", "in_betrieb_bis": null
     }
   ],
 
@@ -797,7 +820,7 @@
       "nebengroessen": [
         { "groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert",
           "fuehrende_quelle": [ { "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null } ],
-          "vergleichsquellen": [ { "komponente": "K-1", "kanal": "Einspeise-/Bezugsleistung am Wechselrichter", "geraet": "GR-1", "einbau": "GR-1", "kanal_wertart": "gauge", "zweck": "Plausibilität", "gueltig_ab": "2026-11-20T08:30:00+01:00", "gueltig_bis": null } ] }
+          "vergleichsquellen": [ { "komponente": "K-1", "kanal": "Einspeise-/Bezugsleistung am Wechselrichter", "geraet": "GR-1", "einbau": "GR-1", "kanal_wertart": "gauge", "zweck": "Plausibilität", "gueltig_ab": "2026-11-20T08:30:00+01:00", "gueltig_bis": null, "toleranz_fassungen": [ { "fassung": 1, "prozent_je_monat": 2.0, "gueltig_ab": "2026-11-20", "begruendung": "Startwert der energetischen Bewertung", "person": "IK" } ] } ] }
       ],
       "ort": { "art": "standort", "kennzeichen": "ST-1", "hinweis": "Zählerplatz" },
       "elektrische_stellung": [ { "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "gueltig_ab": "2024-03-12", "gueltig_bis": null } ],
@@ -1174,6 +1197,23 @@
       "quelle_hinweis": "Rest der Bilanz (AN-3) — die elektrische Stellung ist „keine“, weil eine Differenz keinen Zählerplatz hat",
       "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 1200, "oktober_2026_beschreibung": "ab 15.10.2026 (Standort erst dann eingerichtet): 9 100 − 4 300 − 3 600 = 1 200", "tag_2026_10_18_kwh": 10, "momentanleistung_kw": null },
       "zustand": "berechnet"
+    },
+    {
+      "kennzeichen": "MS-23", "name": "Halle 1 Allgemein", "art": "gemessen", "art_beschreibung": null, "medium": "Strom",
+      "hauptgroesse": { "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand", "wertart_beschreibung": "Zählerstand + 15-min-Menge" },
+      "nebengroessen": [],
+      "ort": { "art": "gebaeude", "kennzeichen": "G-1", "hinweis": "Lüftung, Beleuchtung und Allgemeinstrom Halle 1" },
+      "elektrische_stellung": [],
+      "geplante_elektrische_stellung": { "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "geplant_ab": "2027-03-01", "hinweis": "Planung für MB-1; erst nach fachlicher Inbetriebnahme wird daraus eine zeitgültige Stellung im elektrischen Baum" },
+      "prozesse": ["P-7"],
+      "kostenstellen_anteile": [], "kostenstellen_beschreibung": "— (noch nicht zugerechnet)",
+      "fuehrende_quelle": [ { "komponente": "K-15", "kanal": "Wirkenergie Bezug", "geraet": "GR-19", "einbau": "GR-19", "kanal_wertart": "counter", "gueltig_ab": "2027-03-01T10:00:00+01:00", "gueltig_bis": null } ],
+      "vergleichsquellen": [],
+      "kadenz_s": 60, "kadenz_beschreibung": null,
+      "formel": null,
+      "quelle_hinweis": "eingerichtet am 27.11.2026 für MB-1; keine Datenquelle bis 01.03.2027 10:00; geplant für EE-8",
+      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": null, "oktober_2026_beschreibung": "im Oktober 2026 noch nicht eingerichtet — keine Werte, nie 0", "momentanleistung_kw": null },
+      "zustand": "eingerichtet · keine Datenquelle seit 27.11.2026; Quelle ab 01.03.2027"
     }
   ],
 
@@ -1235,6 +1275,83 @@
       },
       "hinweis": "angefragt am 21.10.2026, am selben Tag gewährt"
     }
+  ],
+
+  "bewertung_umfang": {
+    "fassungen": [
+      {
+        "fassung": 1, "gueltig_ab": "2026-11-04", "gueltig_bis": null,
+        "standorte": ["ST-1", "ST-2"],
+        "traeger": [
+          { "name": "Strom", "mit_anteil": true },
+          { "name": "Gas", "mit_anteil": false }
+        ],
+        "ausschluesse": [], "person": "IK",
+        "begruendung": "Erster Betrachtungsumfang der energetischen Bewertung: beide Werke, Strom mit Anteil und Gas ohne gemeinsamen Nenner."
+      }
+    ]
+  },
+
+  "energieeinsaetze": [
+    { "kennzeichen": "EE-1", "name": "Spritzguss", "prozess": "P-1", "traeger": "Strom", "gueltig_ab": "2026-11-04", "gueltig_bis": null, "verantwortlich": "MD", "verbraucher": "Spritzgussmaschinen SG01–SG06 (Halle 1 Nord) und SG07–SG10 (Halle 2 Spritzguss)", "messstellen": ["MS-06", "MS-11"], "einflussgroessen": [ { "art": "produktion", "bezugsgroesse": "BZ-1", "text": "Produktionsmenge" }, { "art": "betriebszeit", "bezugsgroesse": "BZ-3", "text": "Betriebsstunden" } ] },
+    { "kennzeichen": "EE-2", "name": "Montage", "prozess": "P-2", "traeger": "Strom", "gueltig_ab": "2026-11-04", "gueltig_bis": null, "verantwortlich": "PH", "verbraucher": "Montagelinie M1 (Halle 2) und M2 (Montagehalle Lindach)", "messstellen": ["MS-12", "MS-18"], "einflussgroessen": [ { "art": "produktion", "bezugsgroesse": "BZ-2", "text": "Gutteile Montage" }, { "art": "produktion", "bezugsgroesse": "BZ-6", "text": "Gutteile Halle 2" }, { "art": "produktion", "bezugsgroesse": "BZ-7", "text": "Gutteile Lindach" } ] },
+    { "kennzeichen": "EE-3", "name": "Druckluft", "prozess": "P-3", "traeger": "Strom", "gueltig_ab": "2026-11-04", "gueltig_bis": null, "verantwortlich": "IK", "verbraucher": "Kompressoren K1+K2 (Technikraum Halle 1 Süd) — Querschnitt: versorgt Spritzguss und Montage", "messstellen": ["MS-07"], "einflussgroessen": [ { "art": "betriebszeit", "bezugsgroesse": "BZ-3", "text": "Betriebsstunden Spritzguss" }, { "art": "sonstige", "bezugsgroesse": null, "text": "Leckagerate (Freitext, ohne Zahl)" } ] },
+    { "kennzeichen": "EE-4", "name": "Kühlung", "prozess": "P-4", "traeger": "Strom", "gueltig_ab": "2026-11-04", "gueltig_bis": null, "verantwortlich": "IK", "verbraucher": "Kaltwassersatz (bis 28.02.2027 Halle 1 Süd, ab 01.03.2027 Halle 2 Montage)", "messstellen": ["MS-08"], "einflussgroessen": [ { "art": "wetter", "bezugsgroesse": null, "text": "Außentemperatur (Freitext — kein gemessener Kanal)" } ] },
+    { "kennzeichen": "EE-5", "name": "Logistik", "prozess": "P-5", "traeger": "Strom", "gueltig_ab": "2026-11-04", "gueltig_bis": null, "verantwortlich": "PH", "verbraucher": "Lager Halle 2 (Allgemeinstrom), Lagerhalle Lindach (Tore, Förderer, Beleuchtung)", "messstellen": ["MS-13", "MS-17"], "einflussgroessen": [ { "art": "betriebszeit", "bezugsgroesse": null, "text": "Schichten (Freitext)" } ] },
+    { "kennzeichen": "EE-6", "name": "Verwaltung", "prozess": "P-6", "traeger": "Strom", "gueltig_ab": "2026-11-04", "gueltig_bis": null, "verantwortlich": "JW", "verbraucher": "Büro, IT, Ladepunkt Parkplatz Halle 2", "messstellen": ["MS-05", "MS-14"], "einflussgroessen": [ { "art": "sonstige", "bezugsgroesse": null, "text": "Mitarbeitende (Stammdatum 180)" } ] },
+    { "kennzeichen": "EE-7", "name": "Heizung Verwaltung (Gas)", "prozess": "P-6", "traeger": "Gas", "gueltig_ab": "2026-11-04", "gueltig_bis": null, "verantwortlich": "JW", "verbraucher": "Gasheizung Verwaltung (monatlich abgelesen, m³)", "messstellen": ["MS-21"], "einflussgroessen": [ { "art": "wetter", "bezugsgroesse": null, "text": "Gradtage (Freitext — keine gemessene Außentemperatur)" } ] },
+    { "kennzeichen": "EE-8", "name": "Gebäudetechnik Halle 1", "prozess": "P-7", "traeger": "Strom", "gueltig_ab": "2026-11-27", "gueltig_bis": null, "verantwortlich": "IK", "verbraucher": "Lüftung, Beleuchtung und Allgemeinstrom Halle 1", "messstellen": ["MS-23"], "einflussgroessen": [ { "art": "betriebszeit", "bezugsgroesse": null, "text": "Betriebszeiten Halle 1 (Freitext)" }, { "art": "wetter", "bezugsgroesse": null, "text": "Außentemperatur (Freitext)" } ] }
+  ],
+
+  "bewertung_kriterien": [
+    {
+      "fassung": 1, "gueltig_ab": "2026-11-04", "gueltig_bis": "2026-11-19", "person": "IK", "begruendung": "Startwerte des Vertrags AP-16 vom 22.09.2026.",
+      "kriterien": [
+        { "kennung": "K1", "kundenwort": "Anteil am Stromeinsatz", "art": "wesentlichkeit", "schwelle": 10, "einheit": "%", "vergleich": ">=" },
+        { "kennung": "K2", "kundenwort": "Im 80-%-Block", "art": "wesentlichkeit", "schwelle": 80, "einheit": "%", "vergleich": "kumuliert_bis" },
+        { "kennung": "K3", "kundenwort": "Jahresmenge", "art": "wesentlichkeit", "schwelle": 100000, "einheit": "kWh", "vergleich": ">=" },
+        { "kennung": "K4", "kundenwort": "Begründete Einschätzung", "art": "wesentlichkeit", "schwelle": null, "einheit": null, "vergleich": null },
+        { "kennung": "K5", "kundenwort": "Datenlage", "art": "gueltigkeit", "schwelle": 90, "einheit": "%", "vergleich": ">=" },
+        { "kennung": "K6", "kundenwort": "Ersatzwert-Anteil", "art": "gueltigkeit", "schwelle": 5, "einheit": "%", "vergleich": "<=" },
+        { "kennung": "K7", "kundenwort": "Zeitraum der Datengrundlage", "art": "gueltigkeit", "schwelle": 12, "einheit": "Monate", "vergleich": "=" },
+        { "kennung": "K8", "kundenwort": "Messabdeckung", "art": "messplanung", "schwelle": 80, "einheit": "%", "vergleich": ">=" }
+      ]
+    },
+    {
+      "fassung": 2, "gueltig_ab": "2026-11-20", "gueltig_bis": null, "person": "IK", "begruendung": "Der 80-%-Block ist nicht belastbar (67,8 % zugeordnet); bis die Abdeckung reicht, sollen Einsätze ab 5 % geprüft werden.",
+      "kriterien": [
+        { "kennung": "K1", "kundenwort": "Anteil am Stromeinsatz", "art": "wesentlichkeit", "schwelle": 5, "einheit": "%", "vergleich": ">=" },
+        { "kennung": "K2", "kundenwort": "Im 80-%-Block", "art": "wesentlichkeit", "schwelle": 80, "einheit": "%", "vergleich": "kumuliert_bis" },
+        { "kennung": "K3", "kundenwort": "Jahresmenge", "art": "wesentlichkeit", "schwelle": 100000, "einheit": "kWh", "vergleich": ">=" },
+        { "kennung": "K4", "kundenwort": "Begründete Einschätzung", "art": "wesentlichkeit", "schwelle": null, "einheit": null, "vergleich": null },
+        { "kennung": "K5", "kundenwort": "Datenlage", "art": "gueltigkeit", "schwelle": 90, "einheit": "%", "vergleich": ">=" },
+        { "kennung": "K6", "kundenwort": "Ersatzwert-Anteil", "art": "gueltigkeit", "schwelle": 5, "einheit": "%", "vergleich": "<=" },
+        { "kennung": "K7", "kundenwort": "Zeitraum der Datengrundlage", "art": "gueltigkeit", "schwelle": 12, "einheit": "Monate", "vergleich": "=" },
+        { "kennung": "K8", "kundenwort": "Messabdeckung", "art": "messplanung", "schwelle": 80, "einheit": "%", "vergleich": ">=" }
+      ]
+    }
+  ],
+
+  "einstufungen": [
+    { "einsatz": "EE-1", "fassungen": [ { "fassung": 1, "einstufung": "wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": null, "grund": ["K1"], "begruendung": "41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-06", "wert": 55100, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-11", "wert": 22400, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "ueber_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "ueber_schwelle", "annahme": false } } ] },
+    { "einsatz": "EE-2", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": "2027-11-23", "grund": [], "begruendung": "5,2 %; Montage läuft an zwei Standorten, Kennzahl KZ-0003 beobachtet sie.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-12", "wert": 6100, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-18", "wert": 3600, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } }, { "fassung": 2, "einstufung": "wesentlich", "gueltig_ab": "2027-11-24", "gueltig_bis": null, "grund": ["K2", "K3"], "begruendung": "Im belastbaren 80-%-Block und Jahresmenge 118 000 kWh.", "person": "IK", "herkunft": { "zeitraum": "2026-11/2027-10", "kriterien_fassung": 2, "eingaenge": [], "nenner": { "wert": 2200000, "anlagen": "3 von 3", "bilanzwerte": [] }, "urteil": { "K1": "ueber_schwelle", "K2": "ueber_schwelle", "K3": "ueber_schwelle" }, "vorschlag": "ueber_schwelle", "annahme": true } } ] },
+    { "einsatz": "EE-3", "fassungen": [ { "fassung": 1, "einstufung": "wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": "2027-11-23", "grund": ["K4"], "begruendung": "8,6 % — unter der Schwelle; Querschnitt für Spritzguss und Montage, Leckageverluste vermutet, Prüfung 2027 geplant.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-07", "wert": 15900, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } }, { "fassung": 2, "einstufung": "wesentlich", "gueltig_ab": "2027-11-24", "gueltig_bis": null, "grund": ["K2", "K3"], "begruendung": "Der belastbare 80-%-Block und die Jahresmenge tragen die Einstufung; die frühere Einschätzung bleibt lesbar.", "person": "IK", "herkunft": { "zeitraum": "2026-11/2027-10", "kriterien_fassung": 2, "eingaenge": [], "nenner": { "wert": 2200000, "anlagen": "3 von 3", "bilanzwerte": [] }, "urteil": { "K1": "ueber_schwelle", "K2": "ueber_schwelle", "K3": "ueber_schwelle" }, "vorschlag": "ueber_schwelle", "annahme": true } } ] },
+    { "einsatz": "EE-4", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": null, "grund": [], "begruendung": "3,3 % im Oktober; Umzug des Kaltwassersatzes 03/2027 — Neubewertung nach dem Sommer 2027.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-08", "wert": 6200, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } } ] },
+    { "einsatz": "EE-5", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": null, "grund": [], "begruendung": "4,2 %.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-13", "wert": 4200, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-17", "wert": 3600, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } } ] },
+    { "einsatz": "EE-6", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": "2027-11-23", "grund": [], "begruendung": "4,7 %; Ladepark 2027 erhöht ihn — Wiedervorlage.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-05", "wert": 4900, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-14", "wert": 3800, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } }, { "fassung": 2, "einstufung": "wesentlich", "gueltig_ab": "2027-11-24", "gueltig_bis": null, "grund": ["K3"], "begruendung": "Die Jahresmenge liegt mit 104 000 kWh über der Schwelle.", "person": "IK", "herkunft": { "zeitraum": "2026-11/2027-10", "kriterien_fassung": 2, "eingaenge": [], "nenner": { "wert": 2200000, "anlagen": "3 von 3", "bilanzwerte": [] }, "urteil": { "K1": "unter_schwelle", "K2": "unter_schwelle", "K3": "ueber_schwelle" }, "vorschlag": "ueber_schwelle", "annahme": true } } ] },
+    { "einsatz": "EE-7", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": null, "grund": [], "begruendung": "Gas ohne Anteil (1 240 m³ im Oktober, abgelesen); nur Bürobeheizung.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-21", "wert": 1240, "version": 1, "zustand": "abgelesen" } ], "nenner": null, "urteil": { "K1": "nicht_anwendbar", "K2": "nicht_anwendbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } } ] },
+    { "einsatz": "EE-8", "fassungen": [ { "fassung": 1, "einstufung": "wesentlich", "gueltig_ab": "2027-11-24", "gueltig_bis": null, "grund": ["K1", "K2", "K3"], "begruendung": "Gebäudetechnik Halle 1 ist nach acht Monaten Messung der zweitgrößte Einsatz; Datenlage bleibt als Vorbehalt sichtbar.", "person": "IK", "herkunft": { "zeitraum": "2026-11/2027-10", "kriterien_fassung": 2, "eingaenge": [], "nenner": { "wert": 2200000, "anlagen": "3 von 3", "bilanzwerte": [] }, "urteil": { "K1": "ueber_schwelle", "K2": "ueber_schwelle", "K3": "ueber_schwelle", "K5": "vorbehalt_datenlage" }, "vorschlag": "ueber_schwelle", "annahme": true } } ] }
+  ],
+
+  "messbedarfe": [
+    { "kennzeichen": "MB-1", "einsatz": "EE-8", "was": "Lüftung, Beleuchtung und Allgemeinstrom Halle 1 (Rest 39 % der Anlage)", "ort": "G-1", "groesse": "Wirkenergie Bezug (kWh)", "frist": "2027-03-31", "zustand": "eingeloest", "messstelle": "MS-23", "erfasst_am": "2026-11-27", "person": "IK" }
+  ],
+
+  "messmittel_angaben": [
+    { "ziel_art": "geraet", "ziel": "GR-2", "genauigkeitsklasse": "B (MID, Wirkenergie)", "pruefungsart": "eichung", "pruefung_am": "2023-06-14", "pruefung_gueltig_bis": "2031-12-31", "beleg": { "bezeichnung": "Zählerstandsmitteilung 10/2026, Netzgesellschaft Ahrental, Zählernr. 47110000001-Z1", "ablage": "beim Kunden (Netzrechnung)", "sha256": "3b1f4d86f164c8e54eaa3a9c335975dd54dcbd68b42bbb9c7b24d2195e2a9a2e", "person": "IK", "zeitpunkt": "2026-11-28T09:00:00+01:00" }, "person": "IK", "erfasst_am": "2026-11-28" },
+    { "ziel_art": "einbau", "ziel": "Z-5b", "genauigkeitsklasse": "1", "pruefungsart": "werksbescheinigung", "pruefung_am": "2026-10-02", "pruefung_gueltig_bis": null, "beleg": { "bezeichnung": "Werksprüfprotokoll Seriennr. 88231", "ablage": "beim Kunden", "sha256": "c07dd7a33d2b17df6fece484ec4e08bb50c93326653576cfb1b8dd8dcf8a41f0", "person": "TB", "zeitpunkt": "2026-11-28T09:15:00+01:00" }, "person": "TB", "erfasst_am": "2026-11-28" },
+    { "ziel_art": "geraet", "ziel": "GR-5", "genauigkeitsklasse": null, "pruefungsart": "nicht_erhoben", "pruefung_am": null, "pruefung_gueltig_bis": null, "beleg": null, "person": "IK", "erfasst_am": "2026-11-28" },
+    { "ziel_art": "wandler", "ziel": "K-8.2", "genauigkeitsklasse": null, "pruefungsart": "nicht_erhoben", "pruefung_am": null, "pruefung_gueltig_bis": null, "beleg": null, "person": "IK", "erfasst_am": "2026-11-28", "hinweis": "Wandler 400/5 A ab 01.02.2027; Klasse nicht erhoben. Herstellerangabe der Karte bleibt getrennt." }
   ],
 
   "bezugsgroessen": [
@@ -1336,6 +1453,38 @@
         }
       ],
       "hinweis": "Ein Berichtsstand ist ein Abzug (Kopie mit Prüfsumme), nie ein Verweis: Nr. 1 nennt nach der Korrektur, nach dem Ende der Rohwerte (29.01.2027) und nach dem Ende der Zeilen (31.10.2036) weiter 6 100 kWh in Version 1. Der Datenstand ist der Zeitpunkt der Bildung, nicht der Freigabe."
+    },
+    {
+      "kennung": "BW-2026-0001", "name": "Energetische Bewertung 2026",
+      "vorlage": "energetische_bewertung", "vorlage_fassung": 1, "geltung_art": "unternehmen", "geltung": "U",
+      "zeitraum_art": "monat", "zeitraum": "2026-10",
+      "quellen": ["bewertung_umfang:1", "bewertung_kriterien:1", "EE-1", "EE-2", "EE-3", "EE-4", "EE-5", "EE-6", "EE-7", "MB-1", "messmittel_angaben"],
+      "staende": [
+        {
+          "nr": 1, "datenstand": "2026-11-09T10:05:00+01:00", "freigegeben_am": "2026-11-09T10:12:00+01:00", "freigegeben_von": "IK",
+          "vieraugen": false, "anlass": null, "ersetzt_durch": 2, "abweichungen": null, "annahme": false,
+          "werte": [ { "objekt": "MS-12", "version": 1, "wert": 6100 }, { "objekt": "EE-2", "version": 1, "wert": 9700 }, { "objekt": "rest", "version": 1, "wert": 59580 } ]
+        },
+        {
+          "nr": 2, "datenstand": "2026-11-12T10:05:33+01:00", "freigegeben_am": "2026-11-17T09:30:00+01:00", "freigegeben_von": "IK",
+          "vieraugen": false, "anlass": "K-2026-0007", "ersetzt_durch": null, "abweichungen": 3, "annahme": false,
+          "werte": [ { "objekt": "MS-12", "version": 2, "wert": 6040 }, { "objekt": "EE-2", "version": 2, "wert": 9640 }, { "objekt": "rest", "version": 2, "wert": 59640 } ]
+        }
+      ],
+      "hinweis": "Bewertungsstand Nr. 1 bleibt byte-gleich; Nr. 2 ersetzt ihn wegen K-2026-0007."
+    },
+    {
+      "kennung": "BW-2027-0001", "name": "Energetische Bewertung 2027",
+      "vorlage": "energetische_bewertung", "vorlage_fassung": 1, "geltung_art": "unternehmen", "geltung": "U",
+      "zeitraum_art": "jahr", "zeitraum": "2027",
+      "quellen": ["bewertung_umfang:1", "bewertung_kriterien:2", "EE-1", "EE-2", "EE-3", "EE-4", "EE-5", "EE-6", "EE-7", "EE-8", "MB-1", "MS-23", "messmittel_angaben"],
+      "staende": [
+        {
+          "nr": 1, "datenstand": "2027-11-24T09:00:00+01:00", "freigegeben_am": "2027-11-24T09:30:00+01:00", "freigegeben_von": "IK",
+          "vieraugen": false, "anlass": null, "ersetzt_durch": null, "abweichungen": null, "annahme": true, "werte": []
+        }
+      ],
+      "hinweis": "Nur die Berichtsstruktur gehört zur Referenzdatei; sämtliche Zahlen 2027 sind Annahmen des Konzepts und stehen in referenzfaelle.json, nicht als Messwerte hier."
     }
   ],
 
@@ -1380,6 +1529,7 @@
     { "art": "messstelle_ort", "von": "MS-18", "nach": "G-5", "gueltig_ab": "2026-10-15", "gueltig_bis": null, "hinweis": null },
     { "art": "messstelle_ort", "von": "MS-19", "nach": "U", "gueltig_ab": "2026-10-01", "gueltig_bis": null, "hinweis": "unternehmensweit berechnet — der „Ort“ ist das Unternehmen (AP-04 E9)" },
     { "art": "messstelle_ort", "von": "MS-21", "nach": "G-3", "gueltig_ab": "2026-10-01", "gueltig_bis": null, "hinweis": null },
+    { "art": "messstelle_ort", "von": "MS-23", "nach": "G-1", "gueltig_ab": "2026-11-27", "gueltig_bis": null, "hinweis": "für Messbedarf MB-1 eingerichtet" },
 
     { "art": "datenquelle_box", "von": "DQ-1", "nach": "E-1", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "hinweis": "Steuerquelle von AN-1 — wechselt die Box erst mit der gemeinsamen Steuerung (AP-15)" },
     { "art": "datenquelle_box", "von": "DQ-2", "nach": "E-1", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "hinweis": null },
@@ -1411,15 +1561,23 @@
     { "zeitpunkt": "2026-11-03T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Ines Kaltenbach legt die Kennzahlen KZ-0001, KZ-0003, KZ-0004 und KZ-0005 an, Peter Hollerbach KZ-0002 aus der Vorlage „Stromeinsatz je Stück“ — jede mit Fassung 1 „gilt seit Beginn“", "herkunft": "AP-11 §7 (K1, K20), E13" },
     { "zeitpunkt": "2026-11-03T14:00:00+01:00", "genauigkeit": "minute", "ereignis": "Ausfall Box Halle 2 (E-2): letzter Herzschlag, die Verbindung ist weg — die Box liest weiter und puffert; ab 14:05 DQ-4/DQ-5 „liefert keine Daten seit 14:00“, MS-10…MS-15 unvollständig — nie 0", "herkunft": "AP-00 §7.6, AP-06 A2, AP-07 A3" },
     { "zeitpunkt": "2026-11-03T17:30:00+01:00", "genauigkeit": "minute", "ereignis": "Box Halle 2 wieder verbunden: erste Lesung 17:31, 17:31–17:34 liefert sie die gepufferten Werte 14:00–17:30 nach (Zustellart „nachgeliefert“) — die Lücke schließt sich, der Tageswert Halle 2 ist vollständig. Elektro Brunner findet die Ursache, ein defektes Netzteil; die Box läuft bis zum Tausch weiter, Ersatzgerät VP-BOX-2027-0090 bestellt", "herkunft": "AP-00 §7.6, AP-06 A2, AP-07 A3, AP-06 §Abnahmefall Box-Tausch" },
+    { "zeitpunkt": "2026-11-04T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Ines Kaltenbach legt Betrachtungsumfang Fassung 1 und die Energieeinsätze EE-1 … EE-7 an; Strom trägt einen Anteil, Gas bleibt ohne gemeinsamen Nenner", "herkunft": "AP-16 §7 R1–R3, E11" },
     { "zeitpunkt": "2026-11-04T09:20:00+01:00", "genauigkeit": "minute", "ereignis": "Jonas Wendlinger verbindet die neue Box und wählt „als Nachfolger von Box Halle 2“", "herkunft": "AP-06 §Abnahmefall Box-Tausch" },
     { "zeitpunkt": "2026-11-04T09:38:00+01:00", "genauigkeit": "minute", "ereignis": "Cloud hängt um: E-2′ übernimmt Heimat-Anlage AN-2, führende Rolle und die Zuständigkeit für DQ-4/DQ-5; E-2 „ausgebaut“, Zertifikat gesperrt; nichts gelöscht", "herkunft": "AP-06 §Abnahmefall Box-Tausch" },
     { "zeitpunkt": "2026-11-04T09:40:00+01:00", "genauigkeit": "minute", "ereignis": "Erste Lesung von E-2′; MS-10…MS-14 laufen unter derselben Messstelle weiter und zeigen nur die Lücke der Übergabe 09:38–09:40 (nie 0); Herkunft je Wert: bis 09:38 E-2 (auch die am 03.11. nachgelieferten Werte 14:00–17:30), ab 09:40 E-2′", "herkunft": "AP-06 A5, AP-07 §4.5" },
+    { "zeitpunkt": "2026-11-06T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Ines Kaltenbach stuft EE-1 … EE-7 von Hand ein; jede Fassung 1 trägt Begründung, Person und Herkunfts-Satz", "herkunft": "AP-16 §7 R3, E11" },
+    { "zeitpunkt": "2026-11-09T10:12:00+01:00", "genauigkeit": "minute", "ereignis": "Energetische Bewertung BW-2026-0001, Stand Nr. 1, freigegeben (Datenstand 10:05)", "herkunft": "AP-16 §7 R7, E11" },
     { "zeitpunkt": "2026-11-10T09:02:00+01:00", "genauigkeit": "minute", "ereignis": "Ines Kaltenbach gibt Berichtsstand Nr. 1 des Monatsberichts Werk Ahrenberg Oktober 2026 frei (Datenstand 08:55)", "herkunft": "AP-12 §7 (B1), E15" },
     { "zeitpunkt": "2026-11-12T10:05:33+01:00", "genauigkeit": "minute", "ereignis": "Korrektur K-2026-0007 freigegeben: MS-12 Oktober 6 100 → 6 040 kWh; Kaskade bis zum Jahr, KZ-0001 und KZ-0003 Version 2; Berichtsstand Nr. 1 bekommt den Revisions-Anstoß, der Entwurf bildet sich neu", "herkunft": "AP-12 §7 (B1, B2), E15; AP-11 K7" },
+    { "zeitpunkt": "2026-11-12T10:05:33+01:00", "genauigkeit": "minute", "ereignis": "Korrektur K-2026-0007 stößt die Revision der energetischen Bewertung BW-2026-0001 an; Stand Nr. 1 bleibt byte-gleich", "herkunft": "AP-16 §7 R7, E11" },
     { "zeitpunkt": "2026-11-16T14:20:00+01:00", "genauigkeit": "minute", "ereignis": "Berichtsstand Nr. 2 (Revision) freigegeben; Nr. 1 bleibt lesbar, ersetzt durch Nr. 2", "herkunft": "AP-12 §7 (B1), E15" },
+    { "zeitpunkt": "2026-11-17T09:30:00+01:00", "genauigkeit": "minute", "ereignis": "Energetische Bewertung BW-2026-0001, Stand Nr. 2, wegen K-2026-0007 freigegeben; Stand Nr. 1 bleibt lesbar", "herkunft": "AP-16 §7 R7, E11" },
     { "zeitpunkt": "2026-11-18T10:40:00+01:00", "genauigkeit": "minute", "ereignis": "Zählerwechsel an MS-06: Z-5a → Z-5b; Endstand Z-5a 1 083 415,2 kWh, Anfangsstand Z-5b 0,0 kWh; Messstelle bleibt, alte Werte bleiben Z-5a zugeordnet; Lücke 10:40–10:47 bleibt sichtbar", "herkunft": "AP-00 §4.4, AP-04 E2" },
+    { "zeitpunkt": "2026-11-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kriterien-Fassung 2 gilt: Ines Kaltenbach senkt K1 begründet von 10 % auf 5 %; keine Einstufung ändert sich dadurch", "herkunft": "AP-16 §7 R15, E11" },
     { "zeitpunkt": "2026-11-20T08:30:00+01:00", "genauigkeit": "minute", "ereignis": "Ines Kaltenbach kennzeichnet an MS-01 die Netzleistung am Wechselrichter (K-1 · Einspeise-/Bezugsleistung am Wechselrichter) als Vergleichsquelle der Wirkleistung, Zweck „Plausibilität“ — beide Werte stehen nebeneinander, bewertet und ersetzt wird nichts; die führende Quelle K-3 bleibt", "herkunft": "AP-04 §4.1 (Feld „Vergleichsquellen“), E3; Zeitpunkt aus dem AP-04-Änderungsprotokoll" },
     { "zeitpunkt": "2026-11-24T09:40:00+01:00", "genauigkeit": "minute", "ereignis": "Jonas Wendlinger gewährt Elektro Brunner Unterstützung für ST-1, Umfang „Einrichten und Bedienen“, befristet bis 15.12.2026", "herkunft": "AP-03 §4.1" },
+    { "zeitpunkt": "2026-11-27T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Prozess P-7 und Energieeinsatz EE-8 angelegt; Messbedarf MB-1 durch die eingerichtete Messstelle MS-23 eingelöst — noch ohne Datenquelle", "herkunft": "AP-16 §7 R5, E11" },
+    { "zeitpunkt": "2026-11-28T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Messmittel-Angaben für GR-2, Einbau Z-5b, GR-5 und Wandler K-8.2 erfasst; nicht erhobene Angaben bleiben unbekannt", "herkunft": "AP-16 §7 R8, E11" },
     { "zeitpunkt": "2026-12-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Referenzfall 5: Ladepunkt K-9 „Steuern freigeben“, Ladepark-Rahmen an NA-2 (200 kW, Hausreserve 30 kW) — keine neuen Geräte, keine neuen Messstellen", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2026-12-16T00:00:00+01:00", "genauigkeit": "minute", "ereignis": "Unterstützung von Elektro Brunner endet planmäßig: ihr Enddatum 15.12.2026 gilt einschließlich, um 00:00 beendet der Runner sie — Banner weg, Protokoll „Endete am 15.12.2026 durch Zeitablauf“", "herkunft": "AP-03 §4.1, A4; Entscheid firstmate 11.09.2026 (Enddatum einschließlich)" },
     { "zeitpunkt": "2027-01-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kostenstelle 9000 aufgeteilt in 9010 Druckluft und 9020 Kühlung; Berichte 2026 bleiben unverändert (zeitliche Gültigkeit)", "herkunft": "AP-00 §4.4" },
@@ -1428,6 +1586,7 @@
     { "zeitpunkt": "2027-01-29T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Die Oktober-Rohwerte sind 90 Tage alt und werden gelöscht — beide Berichtsstände bleiben erklärbar (Abzug)", "herkunft": "AP-12 §7 (B1), E15" },
     { "zeitpunkt": "2027-02-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Stromwandler EK-2 getauscht: 250/5 A → 400/5 A; Hardwareblatt Ahrenberg C-1, Fassung 2", "herkunft": "AP-05 §4.1, Erhebungsbogen B3" },
     { "zeitpunkt": "2027-03-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kaltwassersatz zieht in Halle 2: MS-08 wechselt Ort (B-2 → B-3), elektrisches System (AN-1 → AN-2), Quelle (K-7 → EK-7/K-8.7 an C-1) und Box (E-1 → E-2′) — EINE Messstelle, vier zeitgültige Zuordnungen", "herkunft": "AP-00 §4.4" },
+    { "zeitpunkt": "2027-03-01T10:00:00+01:00", "genauigkeit": "minute", "ereignis": "MS-23 bekommt mit K-15 und GR-19 ihre Datenquelle an DQ-3; bis dahin waren ihre Werte unbekannt, nie 0", "herkunft": "AP-16 §7 R5, E11" },
     { "zeitpunkt": "2027-04-09T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Erreichbarkeitsprüfung von DQ-3 aus Box Halle 2 bestanden (Route VLAN 20 → VLAN 10 durch die Kunden-IT freigegeben)", "herkunft": "AP-06 §4.1" },
     { "zeitpunkt": "2027-04-10T07:30:00+02:00", "genauigkeit": "minute", "ereignis": "Wartung Box Halle 1: Zuständigkeit für DQ-3 wechselt von E-1 zu E-2′ — die Messstellen MS-05…MS-08 bleiben unverändert", "herkunft": "AP-06 §4.1" },
     { "zeitpunkt": "2027-04-12T16:00:00+02:00", "genauigkeit": "minute", "ereignis": "Zuständigkeit für DQ-3 zurück an E-1", "herkunft": "AP-06 §4.1" },
@@ -1436,8 +1595,25 @@
     { "zeitpunkt": "2027-05-24T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Gemeinsame Steuerung V-1 scharf (Stufe S3, Anteile aktiv): Einspeisung E-1 40 kW / E-4 60 kW, Bezug E-1 0 kW / E-4 77 kW", "herkunft": "AP-15 §7 (Referenzdatei 1.5)", "gemeinsame_steuerung": "V-1" },
     { "zeitpunkt": "2027-06-13T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Beispieltag Sonntag 13.06.2027 (Betriebsruhe) der gemeinsamen Steuerung — Abnahmefälle R1, R4, R5, R6, R9, R15", "herkunft": "AP-15 §7", "gemeinsame_steuerung": "V-1" },
     { "zeitpunkt": "2027-06-15T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Beispieltag Dienstag 15.06.2027 der gemeinsamen Steuerung — Abnahmefälle R3, R7, R8, R10, R11, R13", "herkunft": "AP-15 §7", "gemeinsame_steuerung": "V-1" },
-    { "zeitpunkt": "2027-10-12T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Box-Tausch E-4 → E-4′ in der gemeinsamen Steuerung (R17): die Nachfolgerin übernimmt DQ-8, DQ-9, DQ-10 und den reservierten Anteil; der Betreiber bestätigt das Mitglied", "herkunft": "AP-15 §7 R17", "gemeinsame_steuerung": "V-1" }
+    { "zeitpunkt": "2027-10-12T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Box-Tausch E-4 → E-4′ in der gemeinsamen Steuerung (R17): die Nachfolgerin übernimmt DQ-8, DQ-9, DQ-10 und den reservierten Anteil; der Betreiber bestätigt das Mitglied", "herkunft": "AP-15 §7 R17", "gemeinsame_steuerung": "V-1" },
+    { "zeitpunkt": "2027-11-17T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Die energetische Bewertung 2026 erreicht ihre Wiedervorlagefrist; Überprüfung fällig, ohne Läufer und ohne automatische Einstufung", "herkunft": "AP-16 §7 R10, E11", "energetische_bewertung": "BW-2026-0001" },
+    { "zeitpunkt": "2027-11-24T09:30:00+01:00", "genauigkeit": "minute", "ereignis": "Energetische Bewertung BW-2027-0001, Stand Nr. 1, freigegeben; die Zahlen des Konzeptfalls 2027 bleiben Annahmen", "herkunft": "AP-16 §7 R6, E11", "energetische_bewertung": "BW-2027-0001" }
   ],
+
+  "abnahmefaelle_ap16": {
+    "quelle": "Konzept AP-16 §7 (referenzfaelle.json vom 22.09.2026) — die Blöcke „gegeben“ von R1–R5, R7, R8, R12 und R14 wörtlich; die Zwillinge rechnen ihre Tatsachen aus den fachlichen Blöcken dieser Datei nach",
+    "faelle": [
+      { "fall": "R1", "gegeben": { "nenner_je_anlage_kwh": { "AN-1": 139380, "AN-2": 36900, "AN-3": 9100 }, "nenner_kwh": 185380, "anlagen": "3 von 3", "rest_je_anlage_kwh": { "AN-1": 54580, "AN-2": 3860, "AN-3": 1200 }, "rest_anteil_an_anlage_prozent": { "AN-1": 39.2, "AN-2": 10.5, "AN-3": 13.2 }, "zugeordnet_kwh": 125740, "rest_kwh": 59640, "abdeckung_prozent": 67.8 } },
+      { "fall": "R2", "gegeben": { "rangliste": { "EE-1": { "rang": 1, "menge_kwh": 77500, "anteil_prozent": 41.8, "K1": "ueber_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-3": { "rang": 2, "menge_kwh": 15900, "anteil_prozent": 8.6, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-2": { "rang": 3, "menge_kwh": 9640, "anteil_prozent": 5.2, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-6": { "rang": 4, "menge_kwh": 8700, "anteil_prozent": 4.7, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-5": { "rang": 5, "menge_kwh": 7800, "anteil_prozent": 4.2, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-4": { "rang": 6, "menge_kwh": 6200, "anteil_prozent": 3.3, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" } }, "K7": "vorlaeufig", "monate": 1, "kriterien_fassung": 1 } },
+      { "fall": "R3", "gegeben": { "einstufungen": [ { "einsatz": "EE-1", "einstufung": "wesentlich", "fassung": 1, "gilt_ab": "2026-11-06", "grund": ["K1"], "begruendung": "41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.", "person": "IK" }, { "einsatz": "EE-3", "einstufung": "wesentlich", "fassung": 1, "gilt_ab": "2026-11-06", "grund": ["K4"], "begruendung": "8,6 % — unter der Schwelle; Querschnitt für Spritzguss und Montage, Leckageverluste vermutet, Prüfung 2027 geplant.", "person": "IK" }, { "einsatz": "EE-2", "einstufung": "nicht_wesentlich", "fassung": 1, "gilt_ab": "2026-11-06", "grund": [], "begruendung": "5,2 %; Montage läuft an zwei Standorten, Kennzahl KZ-0003 beobachtet sie.", "person": "IK" }, { "einsatz": "EE-4", "einstufung": "nicht_wesentlich", "fassung": 1, "gilt_ab": "2026-11-06", "grund": [], "begruendung": "3,3 % im Oktober; Umzug des Kaltwassersatzes 03/2027 — Neubewertung nach dem Sommer 2027.", "person": "IK" }, { "einsatz": "EE-5", "einstufung": "nicht_wesentlich", "fassung": 1, "gilt_ab": "2026-11-06", "grund": [], "begruendung": "4,2 %.", "person": "IK" }, { "einsatz": "EE-6", "einstufung": "nicht_wesentlich", "fassung": 1, "gilt_ab": "2026-11-06", "grund": [], "begruendung": "4,7 %; Ladepark 2027 erhöht ihn — Wiedervorlage.", "person": "IK" }, { "einsatz": "EE-7", "einstufung": "nicht_wesentlich", "fassung": 1, "gilt_ab": "2026-11-06", "grund": [], "begruendung": "Gas ohne Anteil (1 240 m³ im Oktober, abgelesen); nur Bürobeheizung.", "person": "IK" } ], "herkunft_ee1": { "kriterien_fassung": 1, "zeitraum": "2026-10", "eingaenge": [ { "objekt": "MS-06", "wert": 55100, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-11", "wert": 22400, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "ueber_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" } } } },
+      { "fall": "R4", "gegeben": { "MS-07": { "prozesse": ["P-3"], "kostenstellen_anteile": { "4100": 70, "4200": 30 }, "oktober_2026_kwh": 15900 }, "MS-20": { "formel": "MS-06 + MS-11 + 4100 von MS-07 (Verteilungs-Term, liest den Tagesanteil)", "oktober_2026_kwh": 88630, "prozesse": ["P-1"] }, "EE-1_menge_kwh": 77500, "EE-3_menge_kwh": 15900, "MS-20_minus_EE-1": 11130 } },
+      { "fall": "R5", "gegeben": { "rest_AN-1_oktober_kwh": 54580, "rest_AN-1_anteil_prozent": 39.2, "messbedarf": { "kennzeichen": "MB-1", "einsatz": "EE-8", "was": "Lüftung, Beleuchtung und Allgemeinstrom Halle 1 (Rest 39 % der Anlage)", "ort": "G-1", "groesse": "Wirkenergie Bezug (kWh)", "frist": "2027-03-31", "zustand": "eingeloest", "messstelle": "MS-23", "erfasst_am": "2026-11-27", "person": "IK" }, "MS-23": { "name": "Halle 1 Allgemein", "ort": "G-1", "stellung": "AN-1 · Unterzähler von MS-01", "lebenszyklus": "eingerichtet · keine Datenquelle seit 27.11.2026", "quelle_ab": "2027-03-01T10:00:00+01:00 (neuer Unterzähler K-15, Modbus, Geräte-ID 5 am Gateway DQ-3)" } } },
+      { "fall": "R7", "gegeben": { "stand_1": { "nr": 1, "freigegeben_am": "2026-11-09T10:12:00+01:00", "datenstand": "2026-11-09T10:05:00+01:00", "freigeber": "IK", "MS-12": { "version": 1, "wert": 6100 }, "EE-2_menge": 9700, "EE-2_anteil": 5.2, "rest_kwh": 59580 }, "korrektur": { "kennung": "K-2026-0007", "freigegeben_am": "2026-11-12T10:05:33+01:00", "MS-12_neu": 6040 }, "stand_2": { "nr": 2, "freigegeben_am": "2026-11-17T09:30:00+01:00", "anlass": "K-2026-0007", "MS-12": { "version": 2, "wert": 6040 }, "EE-2_menge": 9640, "EE-2_anteil": 5.2, "rest_kwh": 59640, "ersetzt": 1 } } },
+      { "fall": "R8", "gegeben": { "GR-2": { "genauigkeitsklasse": "B (MID, Wirkenergie)", "pruefungsart": "eichung", "pruefung_am": "2023-06-14", "gueltig_bis": "2031-12-31", "beleg": { "bezeichnung": "Zählerstandsmitteilung 10/2026, Netzgesellschaft Ahrental, Zählernr. 47110000001-Z1", "sha256": "3b1f…9a2e (32 Byte, vom Kunden beim Eintragen aus der Datei gebildet)", "abgelegt": "beim Kunden (Netzrechnung)" }, "eingetragen": "IK 2026-11-28" }, "Z-5b": { "genauigkeitsklasse": "1", "pruefungsart": "werksbescheinigung", "pruefung_am": "2026-10-02", "gueltig_bis": null, "beleg": { "bezeichnung": "Werksprüfprotokoll Seriennr. 88231", "sha256": "c07d…41f0" }, "eingetragen": "TB (Elektro Brunner, Unterstützer) 2026-11-28" }, "GR-5": { "genauigkeitsklasse": null, "pruefungsart": "nicht_erhoben", "hinweis": "Hersteller, Typ und Seriennummer sind in der Referenzdatei `null` — nicht erhoben" }, "K-8.2": { "karte": "750-494/000-001 (5 A) — laut Hersteller ± 0,5 % v. ME Wirkleistung (Katalog, Quelle mit sha256)", "wandler": "400/5 A ab 01.02.2027 (Fassung 2), Klasse nicht erhoben" } } },
+      { "fall": "R12", "gegeben": { "MS-21": { "medium": "Gas", "hauptgroesse": "Volumen · Bezug · m³ · Zählerstand", "oktober_2026_m3": 1240, "ablesungen": "01.10.2026 07:15 Stand 48 211 m³ … (Referenzdatei)", "quelle": "keine (kein Kanal, AP-04 E8 / AP-00 E11)" }, "EE-7": { "traeger": "Gas", "anteil": null, "kriterien": { "K1": "nicht_anwendbar", "K2": "nicht_anwendbar", "K3": "nicht_anwendbar", "K4": "möglich", "K5": "aus den Ablesungen (Lücken-Lauf der Ablesungen)" } } } },
+      { "fall": "R14", "gegeben": { "verantwortlich": { "EE-2": "PH", "EE-5": "PH", "EE-1": "MD (Bedienberechtigt, ST-1)", "EE-3": "IK", "EE-4": "IK", "EE-6": "JW", "EE-7": "JW" }, "rechte": { "energieeinsatz.verwalten": "KA U · EM U", "energieeinsatz.einstufen": "KA U · EM U", "energieeinsatz.ansehen": "KA U · EM U · BE S · BD S · LE S · US A", "bewertung.abrufen": "KA U · EM U", "bewertung.kriterien": "KA U · EM U", "messmittel.angaben": "KA U · EM U · BE S · US Ei" } } }
+    ]
+  },
 
   "abnahmefaelle_ap15": {
     "quelle": "Konzept AP-15 §7 (Referenzfallkatalog, referenzfaelle.json vom 21.09.2026) — je Fall der Block „gegeben“ wörtlich. Wo er eine Tatsache dieser Welt nennt (Grenzen, Anteile, Vorbehalt, Grundlast, Rückfälle, Netzanschlüsse, Box-Tausch), prüfen die Zwillinge die Übereinstimmung mit dem Objekt der Datei; der Rest (Fristen, Ränge, Varianten wie „wäre die Grenze 70 kW“) ist Eingang des Falls, kein Zustand der Welt",

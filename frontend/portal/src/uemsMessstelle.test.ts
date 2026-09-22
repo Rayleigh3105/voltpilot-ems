@@ -603,12 +603,13 @@ const giltAm = (o: Json, tag: string): boolean => o.gueltig_ab <= tag && (o.guel
 const mittag = (tag: string): number => Date.parse(`${tag}T12:00:00Z`);
 
 /**
- * Der Horizont einer Fortschreibung: das letzte Ereignis der Zeitachse OHNE die Zeilen mit dem Merkmal
- * `gemeinsame_steuerung` (Referenzunternehmen 1.5) — sie verlängern die Zeitachse nur für die gemeinsame
- * Steuerung von AN-1 und sagen über Messstellen-Quellen nichts (Fall unten). Dieselbe Regel steht in
- * MessstelleRegelnVectorsTest.
+ * Der Horizont einer Fortschreibung: das letzte Ereignis der Zeitachse OHNE fachfremde Zeilen. Seit Fassung
+ * 1.5 sind das Zeilen der `gemeinsame_steuerung`, seit 1.6 auch Zeilen der `energetische_bewertung`; beide
+ * sagen über Messstellen-Quellen nichts (Fall unten). Dieselbe Regel steht in MessstelleRegelnVectorsTest.
  */
-const horizontZeilen: Json[] = referenz.zeitachse.filter((z: Json) => z.gemeinsame_steuerung == null);
+const horizontZeilen: Json[] = referenz.zeitachse.filter(
+  (z: Json) => z.gemeinsame_steuerung == null && z.energetische_bewertung == null,
+);
 const letztesEreignis = Math.max(...horizontZeilen.map((z: Json) => Date.parse(z.zeitpunkt)));
 
 const gilt = (o: Json, t: number): boolean =>
@@ -663,13 +664,15 @@ const pruefeZeitstrahlWieReferenz = (zeitstrahl: Json[], referenzQuellen: Json[]
 const ohneStand = (qs: Json[]) => qs.map(({ anfangsstand: _a, endstand: _e, ...rest }) => rest);
 
 describe('Messstellen-Vertrag — übernimmt das Referenzunternehmen', () => {
-  it('die Zeilen der gemeinsamen Steuerung nennen keine Messstelle, Datenquelle oder Bezugsgröße der Vektoren', () => {
-    // Die Ausnahme vom Horizont ist durch die Daten begründet; sagt AP-15 doch etwas über eine solche Quelle,
+  it('die fachfremden Zeilen nennen keine Messstelle, Datenquelle oder Bezugsgröße der Vektoren', () => {
+    // Die Ausnahme vom Horizont ist durch die Daten begründet; sagt eine solche Zeile doch etwas über eine Quelle,
     // bricht dieser Fall — dann gehört die Zeile in den Horizont.
     const kz = /\b(?:MS|DQ|BZ)-[0-9]+\b/g;
     const benutzt = new Set(JSON.stringify(vectors).match(kz) ?? []);
     expect(benutzt.size).toBeGreaterThan(0);
-    const ausgenommen = (referenz.zeitachse as Json[]).filter((z) => z.gemeinsame_steuerung != null);
+    const ausgenommen = (referenz.zeitachse as Json[]).filter(
+      (z) => z.gemeinsame_steuerung != null || z.energetische_bewertung != null,
+    );
     expect(ausgenommen.length).toBeGreaterThan(0);
     const fehler = ausgenommen.flatMap((z) =>
       ((z.ereignis as string).match(kz) ?? []).filter((k) => benutzt.has(k)).map((k) => `${z.zeitpunkt} nennt ${k}`),

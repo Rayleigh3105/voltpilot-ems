@@ -128,7 +128,7 @@ const register = (): { reg: Map<string, string>; doppelt: string[] } => {
   for (const s of [
     'standorte', 'gebaeude', 'bereiche', 'prozesse', 'kostenstellen', 'netzanschluesse',
     'anlagen', 'boxen', 'datenquellen', 'geraete', 'komponenten', 'messstellen', 'bezugsgroessen', 'kennzahlen',
-    'gemeinsame_steuerungen',
+    'gemeinsame_steuerungen', 'energieeinsaetze', 'messbedarfe',
   ]) {
     for (const o of daten[s] as any[]) merke(s, o.kennzeichen);
   }
@@ -180,6 +180,10 @@ const verweise = (): Array<[string, string, string[]]> => {
         out.push([`${m.kennzeichen}.unterzaehler_von`, st.unterzaehler_von, ['messstellen']]);
       }
     }
+    if (m.geplante_elektrische_stellung) {
+      out.push([`${m.kennzeichen}.geplante_stellung.anlage`, m.geplante_elektrische_stellung.anlage, ['anlagen']]);
+      out.push([`${m.kennzeichen}.geplante_stellung.unterzaehler_von`, m.geplante_elektrische_stellung.unterzaehler_von, ['messstellen']]);
+    }
     for (const q of alleQuellen(m)) {
       out.push([`${m.kennzeichen}.quelle.komponente`, q.komponente, ['komponenten']]);
       out.push([`${m.kennzeichen}.quelle.geraet`, q.geraet, ['geraete']]);
@@ -187,6 +191,9 @@ const verweise = (): Array<[string, string, string[]]> => {
     for (const q of alleVergleichsquellen(m)) {
       out.push([`${m.kennzeichen}.vergleich.komponente`, q.komponente, ['komponenten']]);
       out.push([`${m.kennzeichen}.vergleich.geraet`, q.geraet, ['geraete']]);
+      for (const t of q.toleranz_fassungen ?? []) {
+        out.push([`${m.kennzeichen}.vergleich.toleranz.person`, t.person, ['personen']]);
+      }
     }
     // Fassung 1.2 (AP-09 W5): wer abgelesen hat, ist eine Person dieser Datei.
     for (const a of (m.ablesungen ?? []) as any[]) {
@@ -198,6 +205,38 @@ const verweise = (): Array<[string, string, string[]]> => {
     if (p.unterstuetzung) {
       out.push([`${p.kuerzel}.gewaehrt_von`, p.unterstuetzung.gewaehrt_von, ['personen']]);
     }
+  }
+  for (const u of daten.bewertung_umfang.fassungen as any[]) {
+    for (const s of u.standorte as string[]) out.push(['bewertung_umfang.standort', s, ['standorte']]);
+    out.push(['bewertung_umfang.person', u.person, ['personen']]);
+  }
+  for (const e of daten.energieeinsaetze as any[]) {
+    out.push([`${e.kennzeichen}.prozess`, e.prozess, ['prozesse']]);
+    out.push([`${e.kennzeichen}.verantwortlich`, e.verantwortlich, ['personen']]);
+    for (const m of e.messstellen as string[]) out.push([`${e.kennzeichen}.messstelle`, m, ['messstellen']]);
+    for (const i of e.einflussgroessen as any[]) {
+      if (i.bezugsgroesse) out.push([`${e.kennzeichen}.einflussgroesse`, i.bezugsgroesse, ['bezugsgroessen']]);
+    }
+  }
+  for (const k of daten.bewertung_kriterien as any[]) out.push(['bewertung_kriterien.person', k.person, ['personen']]);
+  for (const e of daten.einstufungen as any[]) {
+    out.push(['einstufung.einsatz', e.einsatz, ['energieeinsaetze']]);
+    for (const f of e.fassungen as any[]) {
+      out.push(['einstufung.person', f.person, ['personen']]);
+      for (const i of f.herkunft.eingaenge as any[]) out.push(['einstufung.herkunft.eingang', i.objekt, ['messstellen']]);
+    }
+  }
+  for (const b of daten.messbedarfe as any[]) {
+    out.push(['messbedarf.einsatz', b.einsatz, ['energieeinsaetze']]);
+    out.push(['messbedarf.ort', b.ort, ['bereiche', 'gebaeude', 'standorte']]);
+    if (b.messstelle) out.push(['messbedarf.messstelle', b.messstelle, ['messstellen']]);
+    out.push(['messbedarf.person', b.person, ['personen']]);
+  }
+  for (const a of daten.messmittel_angaben as any[]) {
+    const gattung = a.ziel_art === 'geraet' ? 'geraete' : a.ziel_art === 'einbau' ? 'einbauten' : 'komponenten';
+    out.push(['messmittel.ziel', a.ziel, [gattung]]);
+    out.push(['messmittel.person', a.person, ['personen']]);
+    if (a.beleg) out.push(['messmittel.beleg.person', a.beleg.person, ['personen']]);
   }
   for (const b of daten.bezugsgroessen as any[]) {
     if (b.geltung_art === 'prozess' && b.geltung) {
@@ -265,13 +304,13 @@ describe('UEMS-Referenzunternehmen — Form', () => {
     expect(daten.standorte).toHaveLength(2);
     expect(daten.gebaeude).toHaveLength(5);
     expect(daten.bereiche).toHaveLength(7);
-    expect(daten.prozesse).toHaveLength(6);
+    expect(daten.prozesse).toHaveLength(7);
     expect(daten.netzanschluesse).toHaveLength(3);
     expect(daten.anlagen).toHaveLength(3);
     // Fassung 1.5 (AP-15 E8): DQ-8 … DQ-10 mit GR-11 … GR-18 an Box Verwaltung.
     expect(daten.datenquellen).toHaveLength(10);
-    expect(daten.geraete).toHaveLength(18);
-    expect(daten.messstellen).toHaveLength(22);
+    expect(daten.geraete).toHaveLength(19);
+    expect(daten.messstellen).toHaveLength(23);
     // Fassung 1.3 (AP-11 E13): BZ-6 und BZ-7 als Gebäude-Stückzahlen, fünf Kennzahlen.
     expect(daten.bezugsgroessen).toHaveLength(7);
     expect(daten.kennzahlen).toHaveLength(5);
@@ -293,7 +332,7 @@ describe('UEMS-Referenzunternehmen — Form', () => {
     expect((daten.kostenstellen as any[]).filter((k) => giltAm(k, heute))).toHaveLength(5);
 
     const nachArt = (a: string) => (daten.messstellen as any[]).filter((m) => m.art === a).length;
-    expect(nachArt('gemessen')).toBe(17);
+    expect(nachArt('gemessen')).toBe(18);
     // Fassung 1.2 (AP-10 E19): MS-22 „Lindach nicht zugeordnet“ ist der Rest der
     // Bilanz von AN-3 — ohne ihn hätte Lindach eine unsichtbare Bilanzdifferenz.
     expect(nachArt('berechnet')).toBe(5);
@@ -369,7 +408,10 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
     for (const m of daten.messstellen as any[]) {
       const zs = orte.get(m.kennzeichen) ?? [];
       if (ueberlappungenTage(zs).length) fehler.push(`${m.kennzeichen}: Ort-Zeiträume überlappen`);
-      const jetztGueltig = zs.filter((z) => giltAm(z, heute));
+      const stichtag = zs.some((z) => giltAm(z, heute)) || zs.length === 0
+        ? heute
+        : [...zs.map((z) => z.gueltig_ab as string)].sort()[0];
+      const jetztGueltig = zs.filter((z) => giltAm(z, stichtag));
       const erwartet = m.art === 'gemessen' ? 1 : jetztGueltig.length;
       if (jetztGueltig.length !== erwartet || jetztGueltig.length > 1) {
         fehler.push(`${m.kennzeichen}: ${jetztGueltig.length} Orte zur Momentaufnahme`);
@@ -1001,6 +1043,42 @@ const ohneFassung15 = (d: Record<string, any>): void => {
   entferne('zeitachse', (z) => z.gemeinsame_steuerung != null, 6);
 };
 
+/** Nimmt GENAU die Zusätze der Fassung 1.6 heraus (AP-16 IP-1, E11). */
+const ohneFassung16 = (d: Record<string, any>): void => {
+  expect(d.version).toBe('1.6');
+  d.version = '1.5';
+  d.stand = '2026-09-21';
+  d.beschreibung = d.beschreibung.replace(', erweitert um energetische Bewertung und Messplanung', '');
+  expect(d._comment.length).toBeGreaterThan(111);
+  d._comment = d._comment.slice(0, 111);
+  expect(d._herkunft.fassung_1_6).toBeDefined();
+  delete d._herkunft.fassung_1_6;
+  for (const block of ['bewertung_umfang', 'energieeinsaetze', 'bewertung_kriterien', 'einstufungen', 'messbedarfe', 'messmittel_angaben', 'abnahmefaelle_ap16']) {
+    expect(d[block], block).toBeDefined();
+    delete d[block];
+  }
+  const entferne = (liste: string, weg: (o: any) => boolean, erwartet: number) => {
+    const vorher = d[liste].length;
+    d[liste] = d[liste].filter((o: any) => !weg(o));
+    expect(vorher - d[liste].length, liste).toBe(erwartet);
+  };
+  entferne('prozesse', (p) => p.kennzeichen === 'P-7', 1);
+  entferne('geraete', (g) => g.kennzeichen === 'GR-19', 1);
+  entferne('komponenten', (k) => k.kennzeichen === 'K-15', 1);
+  entferne('messstellen', (m) => m.kennzeichen === 'MS-23', 1);
+  entferne('zuordnungen', (z) => z.von === 'MS-23', 1);
+  entferne('berichte', (b) => b.kennung.startsWith('BW-'), 2);
+  entferne('zeitachse', (z) => z.herkunft.startsWith('AP-16'), 11);
+  const dq3 = d.datenquellen.find((q: any) => q.kennzeichen === 'DQ-3');
+  dq3.geraete_ids = [1, 2, 3, 4];
+  dq3.weg = 'Modbus TCP 192.168.10.31:502, Geräte-IDs 1–4';
+  dq3.kanaele = 8;
+  dq3.hinweis = 'Multi-Zähler-Gateway in der Unterverteilung Halle 1 — vier Zähler hinter EINER Adresse';
+  const ms01 = d.messstellen.find((m: any) => m.kennzeichen === 'MS-01');
+  expect(ms01.nebengroessen[0].vergleichsquellen[0].toleranz_fassungen).toBeDefined();
+  delete ms01.nebengroessen[0].vergleichsquellen[0].toleranz_fassungen;
+};
+
 describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
   /** Der Fingerabdruck der Fassung 1.2, kanonisch geschrieben, aus origin/uems vor AP-11 IP-2 — derselbe wie im Java-Zwilling. */
   const FASSUNG_1_2_SHA256 = '33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd';
@@ -1023,6 +1101,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
    */
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.2', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung16(d);
     ohneFassung15(d);
     ohneFassung14(d);
     expect(d.version).toBe('1.3');
@@ -1098,6 +1177,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.4 (AP-12 E15)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.3', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung16(d);
     ohneFassung15(d);
     ohneFassung14(d);
     expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_3_SHA256);
@@ -1208,6 +1288,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.5 (AP-15 E8)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.4', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung16(d);
     ohneFassung15(d);
     expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_4_SHA256);
   });
@@ -1416,5 +1497,136 @@ describe('UEMS-Referenzunternehmen — Fassung 1.5 (AP-15 E8)', () => {
       .map((z) => z.nach)
       .join(' → ');
     expect(g.R21.zeitachse.endsWith(`DQ-3 ${kette}`)).toBe(true);
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.6 (AP-16 E11)', () => {
+  const FASSUNG_1_5_SHA256 = 'c6a03b8b8446edc9324f6d5bb9288b4ebf16f5c3577a8210c805d4b76cdb5b8c';
+  const kanonisch = (x: unknown): string => {
+    if (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(x);
+  };
+  const nach = (liste: any[]): Map<string, any> => new Map(liste.map((o) => [o.kennzeichen as string, o]));
+
+  it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.5', () => {
+    const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung16(d);
+    expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_5_SHA256);
+  });
+
+  it('trägt die gegeben-Werte und die neuen Bewertungs-Invarianten', () => {
+    const ms = nach(daten.messstellen as any[]);
+    const oktober = new Map<string, number>();
+    for (const m of daten.messstellen as any[]) {
+      if (typeof m.beispielwerte.oktober_2026_kwh === 'number') oktober.set(m.kennzeichen, m.beispielwerte.oktober_2026_kwh);
+    }
+    for (const k of daten.korrekturen as any[]) {
+      for (const f of k.folgen as any[]) if (f.objekt.startsWith('MS-')) oktober.set(f.objekt, f.wert);
+    }
+    const personen = new Set((daten.personen as any[]).map((p) => p.kuerzel as string));
+    const bezugsgroessen = new Set((daten.bezugsgroessen as any[]).map((b) => b.kennzeichen as string));
+    const paare = new Set<string>();
+    const einsatzMengen = new Map<string, number>();
+    const zugeordnetJeAnlage = new Map<string, number>();
+    for (const e of daten.energieeinsaetze as any[]) {
+      const paar = `${e.prozess}|${e.traeger}`;
+      expect(paare.has(paar), `doppelter laufender Einsatz ${paar}`).toBe(false);
+      paare.add(paar);
+      expect(personen.has(e.verantwortlich)).toBe(true);
+      for (const i of e.einflussgroessen as any[]) if (i.bezugsgroesse) expect(bezugsgroessen.has(i.bezugsgroesse)).toBe(true);
+      if (e.traeger !== 'Strom') continue;
+      let summe = 0;
+      for (const kz of e.messstellen as string[]) {
+        const wert = oktober.get(kz);
+        if (wert == null) continue;
+        summe += wert;
+        const anlage = ms.get(kz).elektrische_stellung[0].anlage as string;
+        zugeordnetJeAnlage.set(anlage, (zugeordnetJeAnlage.get(anlage) ?? 0) + wert);
+      }
+      einsatzMengen.set(e.kennzeichen, summe);
+    }
+    const rest = new Map<string, number>();
+    for (const m of daten.messstellen as any[]) {
+      if (m.formel_typ === 'rest') rest.set(m.elektrische_stellung[0].anlage, oktober.get(m.kennzeichen) as number);
+    }
+    const nenner = new Map(['AN-1', 'AN-2', 'AN-3'].map((a) => [a, (zugeordnetJeAnlage.get(a) ?? 0) + (rest.get(a) ?? 0)]));
+    expect(Object.fromEntries(nenner)).toEqual({ 'AN-1': 139380, 'AN-2': 36900, 'AN-3': 9100 });
+    expect([...nenner.values()].reduce((a, b) => a + b, 0)).toBe(185380);
+    expect([...einsatzMengen.values()].reduce((a, b) => a + b, 0)).toBe(125740);
+    expect([...rest.values()].reduce((a, b) => a + b, 0)).toBe(59640);
+    expect(Object.fromEntries(einsatzMengen)).toMatchObject({ 'EE-1': 77500, 'EE-3': 15900, 'EE-2': 9640 });
+    expect(ms.get('MS-20').beispielwerte.oktober_2026_kwh).toBe(88630);
+
+    for (const e of daten.einstufungen as any[]) {
+      for (const f of e.fassungen as any[]) {
+        expect(personen.has(f.person)).toBe(true);
+        expect(f.begruendung.trim().length).toBeGreaterThan(0);
+        expect(Object.keys(f.herkunft)).toEqual(expect.arrayContaining(['zeitraum', 'kriterien_fassung', 'eingaenge', 'nenner', 'urteil', 'vorschlag']));
+      }
+    }
+    const mb1 = (daten.messbedarfe as any[]).find((b) => b.kennzeichen === 'MB-1');
+    expect(mb1.zustand).toBe('eingeloest');
+    expect(ms.has(mb1.messstelle)).toBe(true);
+    expect(ms.get(mb1.messstelle).geplante_elektrische_stellung).toMatchObject({
+      anlage: 'AN-1',
+      unterzaehler_von: 'MS-01',
+    });
+
+    const berichte = new Map((daten.berichte as any[]).map((b) => [b.kennung, b]));
+    for (const z of (daten.zeitachse as any[]).filter((e) => e.energetische_bewertung)) {
+      expect(berichte.has(z.energetische_bewertung)).toBe(true);
+    }
+    expect(berichte.get('BW-2026-0001').staende[0].werte[0].wert).toBe(6100);
+    expect(berichte.get('BW-2026-0001').staende[1].werte[0].wert).toBe(6040);
+    expect(berichte.get('BW-2026-0001').staende[1].werte[2].wert).toBe(59640);
+    expect(berichte.get('BW-2027-0001').staende[0].annahme).toBe(true);
+    expect(berichte.get('BW-2027-0001').staende[0].werte).toEqual([]);
+
+    const angaben = new Map((daten.messmittel_angaben as any[]).map((a) => [a.ziel, a]));
+    expect(angaben.get('GR-2').pruefungsart).toBe('eichung');
+    expect(angaben.get('Z-5b').pruefungsart).toBe('werksbescheinigung');
+    expect(angaben.get('GR-5').pruefungsart).toBe('nicht_erhoben');
+    expect(angaben.get('K-8.2').genauigkeitsklasse).toBeNull();
+    expect(ms.get('MS-21').beispielwerte.oktober_2026_m3).toBe(1240);
+    const verantwortlich = Object.fromEntries((daten.energieeinsaetze as any[]).map((e) => [e.kennzeichen, e.verantwortlich]));
+    expect(verantwortlich).toMatchObject({ 'EE-1': 'MD', 'EE-2': 'PH', 'EE-5': 'PH', 'EE-3': 'IK', 'EE-6': 'JW', 'EE-7': 'JW' });
+
+    const fallListe = daten.abnahmefaelle_ap16.faelle as any[];
+    expect(fallListe.map((f) => f.fall)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R7', 'R8', 'R12', 'R14']);
+    const gegeben: Record<string, any> = Object.fromEntries(fallListe.map((f) => [f.fall, f.gegeben]));
+    expect(gegeben.R1.nenner_kwh).toBe(185380);
+    expect(gegeben.R1.zugeordnet_kwh).toBe(125740);
+    expect(gegeben.R1.rest_kwh).toBe(59640);
+    for (const kz of ['EE-1', 'EE-3', 'EE-2', 'EE-6', 'EE-5', 'EE-4']) {
+      expect(gegeben.R2.rangliste[kz].menge_kwh).toBe(einsatzMengen.get(kz));
+      expect(gegeben.R2.rangliste[kz].anteil_prozent).toBe(Math.round((einsatzMengen.get(kz) as number) / 185380 * 1000) / 10);
+    }
+    const einstufungen = new Map((daten.einstufungen as any[]).map((e) => [e.einsatz, e]));
+    for (const r of gegeben.R3.einstufungen) {
+      const f = einstufungen.get(r.einsatz).fassungen[0];
+      expect({ einstufung: r.einstufung, begruendung: r.begruendung, person: r.person })
+        .toEqual({ einstufung: f.einstufung, begruendung: f.begruendung, person: f.person });
+    }
+    expect(gegeben.R4.EE_1_menge_kwh ?? gegeben.R4['EE-1_menge_kwh']).toBe(einsatzMengen.get('EE-1'));
+    expect(gegeben.R4.MS_20_minus_EE_1 ?? gegeben.R4['MS-20_minus_EE-1']).toBe(11130);
+    expect(kanonisch(gegeben.R5.messbedarf)).toBe(kanonisch(mb1));
+    expect(gegeben.R5['MS-23'].name).toBe(ms.get('MS-23').name);
+    expect(gegeben.R5['MS-23'].ort).toBe(ms.get('MS-23').ort.kennzeichen);
+    const plan = ms.get('MS-23').geplante_elektrische_stellung;
+    expect(gegeben.R5['MS-23'].stellung).toBe(`${plan.anlage} · ${plan.stellung} von ${plan.unterzaehler_von}`);
+    expect(gegeben.R5['MS-23'].quelle_ab.startsWith(ms.get('MS-23').fuehrende_quelle[0].gueltig_ab)).toBe(true);
+    expect(gegeben.R7.stand_2['MS-12'].wert).toBe(6040);
+    expect(gegeben.R7.stand_2.rest_kwh).toBe(59640);
+    expect(gegeben.R8['GR-2'].pruefungsart).toBe(angaben.get('GR-2').pruefungsart);
+    expect(gegeben.R8['GR-5'].pruefungsart).toBe(angaben.get('GR-5').pruefungsart);
+    expect(gegeben.R12['MS-21'].oktober_2026_m3).toBe(1240);
+    expect(gegeben.R12['EE-7'].traeger).toBe('Gas');
+    for (const kz of ['EE-2', 'EE-5', 'EE-3', 'EE-4', 'EE-6', 'EE-7']) {
+      expect(gegeben.R14.verantwortlich[kz].startsWith(verantwortlich[kz])).toBe(true);
+    }
   });
 });

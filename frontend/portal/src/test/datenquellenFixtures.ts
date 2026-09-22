@@ -76,7 +76,7 @@ interface Def {
 const DEFS: Def[] = [
   { kz: 'DQ-1', nr: 1, anlage: FIXTURE_IDS.an1, protokoll: 'modbus_tcp', adresse: '192.168.10.21', geraete_ids: [1], netz: '192.168.10.0/24', kadenz_s: 10, steuerquelle: true, boxen: ['E-1'] },
   { kz: 'DQ-2', nr: 2, anlage: FIXTURE_IDS.an1, protokoll: 'modbus_tcp', adresse: '192.168.10.30', geraete_ids: [1], netz: '192.168.10.0/24', kadenz_s: 10, steuerquelle: false, boxen: ['E-1'] },
-  { kz: 'DQ-3', nr: 3, anlage: FIXTURE_IDS.an1, protokoll: 'modbus_tcp', adresse: '192.168.10.31', geraete_ids: [1, 2, 3, 4], netz: '192.168.10.0/24', kadenz_s: 60, steuerquelle: false, boxen: ['E-1'] },
+  { kz: 'DQ-3', nr: 3, anlage: FIXTURE_IDS.an1, protokoll: 'modbus_tcp', adresse: '192.168.10.31', geraete_ids: [1, 2, 3, 4, 5], netz: '192.168.10.0/24', kadenz_s: 60, steuerquelle: false, boxen: ['E-1'] },
   { kz: 'DQ-4', nr: 4, anlage: FIXTURE_IDS.an2, protokoll: 'modbus_tcp', adresse: '192.168.20.10', geraete_ids: [1], netz: 'VLAN 20 „Produktion“ 192.168.20.0/24', kadenz_s: 60, steuerquelle: false, boxen: ['E-2', 'E-2′'] },
   { kz: 'DQ-5', nr: 5, anlage: FIXTURE_IDS.an2, protokoll: 'ocpp', adresse: 'AHR-LP-01', geraete_ids: [], netz: 'VLAN 20 „Produktion“ 192.168.20.0/24', kadenz_s: 60, steuerquelle: false, boxen: ['E-2', 'E-2′'] },
   { kz: 'DQ-6', nr: 6, anlage: FIXTURE_IDS.an3, protokoll: 'modbus_tcp', adresse: '192.168.30.10', geraete_ids: [1], netz: '192.168.30.0/24', kadenz_s: 60, steuerquelle: false, boxen: ['E-3'] },
@@ -95,6 +95,7 @@ export const GERAET_QUELLE: Record<string, string> = {
   'GR-8': 'DQ-5',
   'GR-9': 'DQ-6',
   'GR-10': 'DQ-7',
+  'GR-19': 'DQ-3',
 };
 
 /** Gerät → Anlage (über die Datenquelle) und Gerät → Komponenten, wie die Referenz sie führt. */
@@ -109,6 +110,7 @@ const GERAET_KOMPONENTEN: Record<string, string[]> = {
   'GR-8': ['K-9'],
   'GR-9': ['K-10.1', 'K-10.2'],
   'GR-10': ['K-11'],
+  'GR-19': ['K-15'],
 };
 
 /** Der Einbau, unter dem das Register das Gerät nennt (GR-7 → „C-1“). */
