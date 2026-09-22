@@ -95,7 +95,10 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   Der Anteil gilt für Erzeugung UND Entladung (V6): der Wächter senkt auch die Entladung — blind auf den Anteil,
   mit frischer Messung erst, wenn die Erzeuger auf 0 stehen —, lädt nie und hebt nie an. Den Spielraum EINER
   frischen Messung vergibt er nur einmal: nach einem Zustand, in dem beide gesenkt waren (blind, Prüf-Verstellung),
-  bekommt erst die Entladung ihren Anstieg, die Erzeuger den Rest (IP-18-Befund aus IP-27). Er steht hinter der
+  bekommt erst die Entladung ihren Anstieg, die Erzeuger den Rest (IP-18-Befund aus IP-27). Umgekehrt senkt ein
+  Anstieg der Entladung — der Plan kehrt zurück, der Speicher wechselt von Laden auf Entladen — die Erzeuger im
+  selben Takt um diesen Anstieg, was darüber hinausgeht die Entladung; nach einem Uhrensprung rückwärts belegt eine
+  Ladung keinen Spielraum, bis eine Messung nach dem Sprung-Zeitpunkt vorliegt (A8r). Er steht hinter der
   Arbitration (V1) und gilt in Ruhe, Pause und ohne Plan (V5); zusätzlich läuft die Box ohne Anteil als Schatten mit,
   das Ergebnis ist nie weiter als ohne Dokument. `sicherheitskappe` im Herzschlag heißt dann „= eigener Anteil“.
   Ohne Dokument verhält sich die Box Byte für Byte wie vor IP-17.
