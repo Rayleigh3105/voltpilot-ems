@@ -262,7 +262,18 @@ func (a *Agent) nudgeSetpoint() {
 	if a.Bus == nil {
 		return
 	}
-	a.applySetpoint(time.Now().UTC())
+	a.applySetpoint(a.sollwertJetzt())
+}
+
+// sollwertJetzt is the one clock of the setpoint path: the tick, the plan
+// reaction and every nudge evaluate on it. In the box it is the wall clock,
+// exactly as before; a harness with a model clock injects sollwertUhr, so an
+// urgent nudge never shows the watchdogs a clock jump the box cannot have.
+func (a *Agent) sollwertJetzt() time.Time {
+	if a.sollwertUhr != nil {
+		return a.sollwertUhr().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // armCalibrationWatchdog (re)starts the controller-owned auto-revert timer: at the

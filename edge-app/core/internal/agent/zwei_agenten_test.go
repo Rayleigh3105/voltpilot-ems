@@ -84,6 +84,9 @@ type zaBox struct {
 	set  lastmgmt.Settings
 	sp   map[string]any
 	plan func(now time.Time) *plan.Plan
+	// modell is the plant whose test clock the box runs on - also for the
+	// urgent nudge from its own telemetry (sollwertUhr), as the box does.
+	modell *zaAnlage
 
 	aus           bool          // power gone: no reading, no setpoint, no write (A1, A2, A13)
 	lanWeg        bool          // alive, but reaches none of its devices (A15)
@@ -129,6 +132,9 @@ func (b *zaBox) starte(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// The box's setpoint path runs on ITS clock (model time plus its offset),
+	// never on the wall clock of the test process.
+	a.sollwertUhr = func() time.Time { return b.jetzt(b.modell) }
 	b.a = a
 	if b.id == vaE4 {
 		b.rt = &ocppRuntime{budget: lastmgmt.NewBudgetTracker()}
@@ -412,6 +418,7 @@ func zaFahre(t *testing.T, f zaFall, p zaPunkt) zaErgebnis {
 		e1: zaStarteBox(t, "Box Halle 1", vaE1, dok1, zaPlan(e1Batt, &grenze)),
 		e4: zaStarteBox(t, "Box Verwaltung", vaE4, zaDok(vaE4, 1, "ziel", 40, 60, 0, 77), zaPlan(0, nil)),
 	}
+	l.e1.modell, l.e4.modell = m, m
 	ein := &zaMessung{grenzeKw: zaEinspeisegrenze, richtung: -1}
 	bez := &zaMessung{grenzeKw: zaBezugsgrenze, richtung: +1}
 	ende := f.ende

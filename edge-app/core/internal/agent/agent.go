@@ -93,6 +93,10 @@ type Agent struct {
 	gestartet          time.Time
 	// uhr is nil in production; a test injects a jumping clock through it.
 	uhr boxevents.Uhr
+	// sollwertUhr is the clock of the setpoint path (sollwertJetzt); nil in
+	// production = the wall clock. A harness that plays a model clock sets it,
+	// so an urgent nudge is evaluated on the same clock as the tick.
+	sollwertUhr func() time.Time
 
 	mu            sync.Mutex
 	currentPlan   *plan.Plan
@@ -2463,7 +2467,7 @@ func (a *Agent) onSchedule(payload []byte) {
 		s.PlanSlots = len(p.Slots)
 	})
 	slog.Info("schedule cached", "plan_id", p.PlanID, "slots", len(p.Slots), "slot_minutes", p.SlotMinutes)
-	a.applySetpoint(time.Now().UTC()) // react immediately, don't wait for the tick
+	a.applySetpoint(a.sollwertJetzt()) // react immediately, don't wait for the tick
 }
 
 // setpointLoop recomputes + publishes the current setpoint on every tick
@@ -2477,7 +2481,7 @@ func (a *Agent) setpointLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			a.applySetpoint(time.Now().UTC())
+			a.applySetpoint(a.sollwertJetzt())
 		}
 	}
 }

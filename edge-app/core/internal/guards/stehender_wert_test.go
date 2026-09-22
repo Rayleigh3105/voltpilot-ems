@@ -196,9 +196,9 @@ func zaAnteil(t *testing.T, f swLauf, r swErgebnis, anteil float64) {
 // and the connection point at most ONE headroom above the regulated point:
 // a meter that freezes in the middle of a release still sends one value
 // that moved (it cannot be told from a live one) - it releases what it shows,
-// at most the probe's 2.1 kW; with the discharge two evaluations of one
-// moved sample may give that out twice until the next sample (einSpielraum
-// counts one evaluation), which stehBeleg takes back. uems ratchets on.
+// at most the probe's 2.1 kW - once, over all evaluations of that sample
+// (einSpielraum counts per measurement, einspielraum_je_messung_test.go).
+// uems ratchets on.
 func TestStehenderWertEinfrierenZuZufaelligemZeitpunkt(t *testing.T) {
 	rng := rand.New(rand.NewSource(20260922))
 	regelpunkt := grenze100 - exportMargin(grenze100)
@@ -209,7 +209,7 @@ func TestStehenderWertEinfrierenZuZufaelligemZeitpunkt(t *testing.T) {
 		art, bis := "Erzeuger", regelpunkt+PruefSenkKw
 		if i%2 == 1 {
 			f.sonne, f.entladung = 1.5, 97.9 // the probe lowers the discharge
-			art, bis = "Entladung", regelpunkt+2*PruefSenkKw
+			art, bis = "Entladung", regelpunkt+PruefSenkKw
 		} else {
 			f.sonne = 100
 		}
@@ -223,19 +223,12 @@ func TestStehenderWertEinfrierenZuZufaelligemZeitpunkt(t *testing.T) {
 			t.Fatalf("%+v: released on a standing value beyond its proof: PV %d, discharge %d", f, neu.freigaben, neu.entladeAuf)
 		}
 		h := hoechst[art]
-		stehtAb := -1 // the first standing fresh evaluation after the freeze
 		for j, x := range neu.sek {
 			if x.s < neu.pruefAb {
 				continue
 			}
-			if stehtAb >= 0 && x.s > stehtAb {
-				bis = regelpunkt + PruefSenkKw // stehBeleg took the double back
-			}
 			if x.exportKw > bis+1e-6 {
 				t.Fatalf("%+v: second %d exports %.3f kW (at most %.1f)", f, x.s, x.exportKw, bis)
-			}
-			if stehtAb < 0 && x.s > neu.friertAb && x.steht && x.frisch && (f.auswertung <= 1 || x.s%f.auswertung == 0) {
-				stehtAb = x.s
 			}
 			if c := alt.sek[j].c; c.HeuteCapKw != nil && x.capKw > *c.HeuteCapKw+1e-9 {
 				t.Fatalf("%+v: second %d above the watchdog without a share: %.3f > %.3f", f, x.s, x.capKw, *c.HeuteCapKw)
