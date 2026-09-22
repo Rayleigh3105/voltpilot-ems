@@ -288,6 +288,7 @@ class RechtMatrixApiTest {
                 "eee33333"));
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/sites/{A1}/cockpit-layout", "ee44333e"));
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/tenant/cockpit-layout", "ee33333e"));
+        z.add(new Zeile("energieeinsatz.verwalten", HttpMethod.POST, "/api/v1/unternehmen/energieeinsaetze", "ee333333"));
         return z;
     }
 
@@ -304,9 +305,8 @@ class RechtMatrixApiTest {
             Map.entry("export.standort", "lesend — IP-11"),
             Map.entry("export.unternehmen", "lesend — IP-11"),
             Map.entry("auswertung.anlegen", "keine Schreibroute (Eigene Auswertung liest nur)"),
-            Map.entry("energieeinsatz.verwalten", "reserviert für AP-16 IP-4; Einstufungs-Schreibweg IP-12"),
             Map.entry("energieeinsatz.einstufen", "reserviert für AP-16 IP-4; Einstufungs-Schreibweg IP-12"),
-            Map.entry("energieeinsatz.ansehen", "reserviert für AP-16 IP-4; Einstufungs-Schreibweg IP-12"));
+            Map.entry("energieeinsatz.ansehen", "lesend — EnergieeinsatzApiTest, Prozess-Messstellen-Zaun R14"));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {

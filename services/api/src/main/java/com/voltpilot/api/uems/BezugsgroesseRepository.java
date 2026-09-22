@@ -279,6 +279,16 @@ public class BezugsgroesseRepository {
         jdbc.update("UPDATE bezugsgroesse SET archiviert_am = now(), updated_at = now() WHERE id = ?", id);
     }
 
+    /** Auch aufgehobene Verweise sind Belege und bleiben durch den RESTRICT-FK erhalten. */
+    public List<String> energieeinsatzVerweise(UUID id) {
+        // Repository-Leser in Migrationstests laufen auch vor AP-16 IP-3.
+        if (jdbc.queryForObject("SELECT to_regclass('energieeinsatz_einflussgroesse')::text", String.class) == null)
+            return List.of();
+        return jdbc.queryForList("SELECT DISTINCT e.kennzeichen FROM energieeinsatz_einflussgroesse g "
+                + "JOIN energieeinsatz e ON e.id = g.einsatz_id AND e.tenant_id = g.tenant_id "
+                + "WHERE g.bezugsgroesse_id = ? ORDER BY e.kennzeichen", String.class, id);
+    }
+
     /** Löscht die Zeile; der Kennzeichen-Verlauf behält seine Belegung als Grabstein (V20260913120000). */
     public int loeschen(UUID id) {
         return jdbc.update("DELETE FROM bezugsgroesse WHERE id = ?", id);

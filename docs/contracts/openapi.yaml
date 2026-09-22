@@ -10568,12 +10568,21 @@ paths:
         Weg ist das Archivieren. Die Datenbank hält dieselbe Regel (Trigger
         `bezugsgroesse_nur_ohne_wert_loeschen`, V20260913120000); das Kennzeichen
         bleibt als Grabstein im Kennzeichen-Verlauf belegt. Protokolleintrag
-        `geloescht` mit dem letzten Stand in `alt`.
+        `geloescht` mit dem letzten Stand in `alt`. Verweise aus Energieeinsätzen (auch aufgehobene)
+        ergeben 409 `bezugsgroesse_in_verwendung` mit `energieeinsaetze` als Liste der Kennzeichen;
+        die Bezugsgröße kann archiviert werden.
       responses:
         "204": { description: Gelöscht. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
-        "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "409":
+          description: Werte oder Energieeinsätze verhindern das Löschen.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/BezugsgroesseFehler" }
+                  - { $ref: "#/components/schemas/EnergieeinsatzFehler" }
   /api/v1/bezugsgroessen/{id}/kanalbindung:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -11934,6 +11943,208 @@ paths:
         "400": { $ref: "#/components/responses/BilanzAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/unternehmen/energieeinsaetze:
+    get:
+      tags: [energieeinsaetze]
+      summary: Energieeinsätze — laufende zuerst, beendete danach.
+      description: >
+        Recht `energieeinsatz.ansehen`. Standort-Zaun über die Messstellen des Prozesses; außerhalb dieselbe 404 wie unbekannt.
+      parameters:
+        - in: query
+          name: prozess
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergieeinsatzListe" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+    post:
+      tags: [energieeinsaetze]
+      summary: Energieeinsatz anlegen; je Prozess und Träger höchstens einer laufend.
+      description: >
+        Recht `energieeinsatz.verwalten`. Schreiben mit Akteur im Protokoll; beendete Einsätze bleiben lesbar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergieeinsatzAnlegen" }
+      responses:
+        "201":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieeinsatz" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/vorschlaege:
+    get:
+      tags: [energieeinsaetze]
+      summary: Prozesse ohne laufenden Einsatz für Strom.
+      description: >
+        Recht `energieeinsatz.ansehen`. Standort-Zaun über die Messstellen des Prozesses; außerhalb dieselbe 404 wie unbekannt.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergieeinsatzVorschlaege" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energieeinsaetze]
+      summary: Energieeinsatz lesen.
+      description: >
+        Recht `energieeinsatz.ansehen`. Standort-Zaun über die Messstellen des Prozesses; außerhalb dieselbe 404 wie unbekannt.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieeinsatz" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+    put:
+      tags: [energieeinsaetze]
+      summary: Name, Wortlaut und Verbraucher ändern.
+      description: >
+        Recht `energieeinsatz.verwalten`. Schreiben mit Akteur im Protokoll; beendete Einsätze bleiben lesbar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergieeinsatzBearbeiten" }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieeinsatz" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/beenden:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energieeinsaetze]
+      summary: Mit Grund beenden; der letzte Tag zählt mit.
+      description: >
+        Recht `energieeinsatz.verwalten`. Schreiben mit Akteur im Protokoll; beendete Einsätze bleiben lesbar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergieeinsatzBeenden" }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieeinsatz" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/verantwortlicher:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [energieeinsaetze]
+      summary: Verantwortlichen aus den Benutzern setzen oder aufheben.
+      description: >
+        Recht `energieeinsatz.verwalten`. Schreiben mit Akteur im Protokoll; beendete Einsätze bleiben lesbar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergieeinsatzVerantwortlicherSetzen" }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieeinsatz" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/einflussgroessen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [energieeinsaetze]
+      summary: Einflussgrößen ersetzen; Vorgänger bleiben erhalten.
+      description: >
+        Recht `energieeinsatz.verwalten`. Schreiben mit Akteur im Protokoll; beendete Einsätze bleiben lesbar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergieeinsatzEinfluesseSetzen" }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieeinsatz" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/protokoll:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energieeinsaetze]
+      summary: Änderungsprotokoll mit Akteur.
+      description: >
+        Recht `energieeinsatz.ansehen`. Standort-Zaun über die Messstellen des Prozesses; außerhalb dieselbe 404 wie unbekannt.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergieeinsatzProtokoll" }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
   /api/v1/unternehmen/prozesse:
     get:
       tags: [kostenstellen-prozesse]
@@ -13383,6 +13594,11 @@ components:
         naechste Seite auch bei gleichen Zeitstempeln genau hinter dem letzten
         gelieferten Eintrag ansetzt.
   responses:
+    EnergieeinsatzAbgelehnt:
+      description: Lesbare Ablehnung mit stabiler Kennung; kein Schreibvorgang bei Ablehnung.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/EnergieeinsatzFehler" }
     Unauthorized:
       description: Missing, expired or invalid Bearer token.
     Forbidden:
@@ -13572,6 +13788,151 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    EnergieeinsatzFehler:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, nicht_gefunden, prozess_unbekannt, traeger_unbekannt, einsatz_laeuft_bereits, verantwortlicher_unbekannt, einflussgroesse_ungueltig, name_fehlt, grund_fehlt, zeitraum_ungueltig, einsatz_beendet, bezugsgroesse_in_verwendung, recht_fehlt]
+        message: { type: string }
+        energieeinsaetze:
+          type: array
+          description: Kennzeichen aller referenzierenden Einsätze, auch bei aufgehobenen Einflussgrößen.
+          items: { type: string }
+    EnergieeinsatzAnlegen:
+      type: object
+      additionalProperties: false
+      required: [prozess_id, traeger, name]
+      properties:
+        prozess_id: { type: string, format: uuid }
+        traeger: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
+        name: { type: string }
+        wortlaut: { type: string, nullable: true }
+        verbraucher_wortlaut: { type: string, nullable: true }
+        verantwortlich_sub: { type: string, nullable: true, description: Benutzer des Kundenbereichs; kein Recht folgt daraus. }
+        gueltig_ab: { type: string, format: date, description: Vorgabe heute in der Zeitzone des Unternehmens. }
+        einflussgroessen: { type: array, items: { $ref: "#/components/schemas/EnergieeinsatzEinfluss" } }
+    EnergieeinsatzBearbeiten:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string }
+        wortlaut: { type: string, nullable: true }
+        verbraucher_wortlaut: { type: string, nullable: true }
+    EnergieeinsatzBeenden:
+      type: object
+      additionalProperties: false
+      required: [grund]
+      properties:
+        grund: { type: string }
+        gueltig_bis: { type: string, format: date, description: Letzter eingeschlossener Tag; Vorgabe heute. }
+    EnergieeinsatzVerantwortlicherSetzen:
+      type: object
+      additionalProperties: false
+      properties:
+        verantwortlich_sub: { type: string, nullable: true }
+    EnergieeinsatzEinfluss:
+      type: object
+      additionalProperties: false
+      required: [art]
+      description: Genau ein Bezugsgrößen-Verweis oder ein nicht leerer Wortlaut.
+      properties:
+        bezugsgroesse_id: { type: string, format: uuid, nullable: true }
+        wortlaut: { type: string, nullable: true }
+        art: { type: string, enum: [produktion, betriebszeit, wetter, sonstige] }
+    EnergieeinsatzEinfluesseSetzen:
+      type: object
+      additionalProperties: false
+      required: [einflussgroessen]
+      properties:
+        einflussgroessen: { type: array, items: { $ref: "#/components/schemas/EnergieeinsatzEinfluss" } }
+    EnergieeinsatzVerweis:
+      type: object
+      required: [id, kennzeichen, name]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+    EnergieeinsatzVerantwortlicher:
+      type: object
+      properties:
+        sub: { type: string, nullable: true }
+        name: { type: string, nullable: true, description: Schnappschuss beim Setzen. }
+        konto: { type: string, nullable: true, description: Schnappschuss beim Setzen. }
+        zustand: { type: string, nullable: true, description: Aktueller Zustand des Kontos; entfernt bei Konto-Ende. }
+        ohne_konto_seit: { type: string, format: date-time, nullable: true }
+    EnergieeinsatzMessstelle:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        art: { type: string, enum: [gemessen, berechnet] }
+        traeger: { type: string }
+        orte: { type: array, items: { $ref: "#/components/schemas/MessstelleOrtZuordnung" } }
+        zustand: { type: string, description: Lebenszyklus aus dem Messstellen-Register. }
+        letzter_monat:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MessstelleWerte" }]
+          description: Letzter voller Monat über den bestehenden Messwerte-Leseweg; berechnete Messstellen ohne Werteübersicht.
+    Energieeinsatz:
+      type: object
+      required: [id, kennzeichen, prozess, traeger, name, verantwortlich, einflussgroessen, messstellen, keine_werte, gueltig_ab]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: '^EE-[1-9][0-9]{0,12}$' }
+        prozess: { $ref: "#/components/schemas/EnergieeinsatzVerweis" }
+        traeger: { type: string }
+        name: { type: string }
+        wortlaut: { type: string, nullable: true }
+        verbraucher_wortlaut: { type: string, nullable: true }
+        verantwortlich: { $ref: "#/components/schemas/EnergieeinsatzVerantwortlicher" }
+        einflussgroessen: { type: array, items: { $ref: "#/components/schemas/EnergieeinsatzEinfluss" } }
+        messstellen: { type: array, items: { $ref: "#/components/schemas/EnergieeinsatzMessstelle" } }
+        keine_werte: { type: boolean, description: Keine direkte gemessene Messstelle dieses Trägers mit einer Menge im letzten vollen Monat; nie als Nullmenge darstellen. }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        beendet_am: { type: string, format: date-time, nullable: true }
+        beendet_grund: { type: string, nullable: true }
+    EnergieeinsatzListe:
+      type: object
+      required: [energieeinsaetze]
+      properties:
+        energieeinsaetze: { type: array, items: { $ref: "#/components/schemas/Energieeinsatz" } }
+    EnergieeinsatzVorschlaege:
+      type: object
+      required: [vorschlaege]
+      properties:
+        vorschlaege:
+          type: array
+          items:
+            type: object
+            properties:
+              prozess: { $ref: "#/components/schemas/EnergieeinsatzVerweis" }
+              traeger: { type: string, enum: [Strom] }
+    EnergieeinsatzProtokoll:
+      type: object
+      required: [aenderungen]
+      properties:
+        aenderungen:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, format: int64 }
+              art: { type: string, enum: [angelegt, bearbeitet, verantwortlicher, einflussgroessen, beendet] }
+              alt: { nullable: true, description: Vorheriger Schnappschuss als Objekt oder Einflussgrößen-Liste. }
+              neu: { nullable: true, description: Neuer Schnappschuss als Objekt oder Einflussgrößen-Liste. }
+              akteur:
+                type: object
+                properties:
+                  sub: { type: string, nullable: true }
+                  name: { type: string }
+                  rolle: { type: string, nullable: true }
+                  art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+              zeit: { type: string, format: date-time }
     GemeinsameSteuerung:
       type: object
       required: [eingerichtet, zustand, mitglieder, fehlt]

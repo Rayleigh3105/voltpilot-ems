@@ -1,6 +1,6 @@
 # Energetische Bewertung und Messplanung (AP-16)
 
-Vertrag 1.0 · 22.09.2026 · IP-2/IP-3 / NW-1. Grundlage: das entschiedene AP-16-Konzept
+Vertrag 1.0 · 22.09.2026 · IP-2/IP-3/IP-4 / NW-1. Grundlage: das entschiedene AP-16-Konzept
 §4.2–4.8, §7 R1/R2/R4/R6/R9/R16; E2/E4/E10 = A und W4/W12.
 **Zahlen schlagen vor, eine Person stuft ein, nichts verschwindet.**
 
@@ -14,7 +14,7 @@ Prozente und dessen Epsilon-Rundung sind gemäß KR4 korrigiert. `fall` war auss
 eine Report-Hülle; ihre Rolle übernehmen `name`, `quelle`, `eingang`, `erwartet` der Vektoren.
 
 Die Rechenregeln erzeugen keine Einstufung. Die Datenhaltung des Energieeinsatzes steht in §7;
-Routen und Portal-Fläche folgen in eigenen Paketen.
+die Routen stehen in §8. Die Portal-Fläche folgt in einem eigenen Paket.
 Noch kein Produktivaufrufer ist angebunden. Die Eingänge sind bereits gelesene Bilanz-
 und Monatswerte derselben Periode und desselben Trägers. Verbrauchsbildung, Bilanz,
 Kennzahlen und Prozess-Summen bleiben bei ihren bestehenden Verträgen (W4).
@@ -194,7 +194,61 @@ gezielte App-Grants; das Protokoll ist für `voltpilot_app` nur lesbar und anfü
 bleibt überall entzogen. Zusammengesetzte Fremdschlüssel verhindern mandantenfremde Ziele;
 eine referenzierte Bezugsgröße kann auch über ihren bestehenden Löschweg nicht verschwinden.
 Nur `TenantRepository.offboard` löscht administrativ: Protokoll/Einflussgrößen vor Einsatz,
-Zähler und vor Benutzer/Bezugsgröße/Prozess. Es gibt keinen Seed und keine Route. Die spätere
-Route prüft zusätzlich den Standort-Zaun über Messstellen (R14), nicht über die verantwortliche
+Zähler und vor Benutzer/Bezugsgröße/Prozess. Es gibt keinen Seed. Die Routen (§8) prüfen
+zusätzlich den Standort-Zaun über Messstellen (R14), nicht über die verantwortliche
 Person. `EnergieeinsatzDatenhaltungTest` prüft DB-Grenzen, Referenzwelt und Offboarding;
 `UemsProduktionsreihenfolgeMigrationTest` prüft frische DB gegen den Out-of-order-Nachzug.
+
+## 8. Routen (IP-4, B1/B4/B5, R5/R14)
+
+Unter `/api/v1/unternehmen/energieeinsaetze` gelten folgende Wege:
+
+| Methode / Weg | Ergebnis |
+|---|---|
+| `GET` | `energieeinsaetze`: laufende zuerst, beendete danach; optional `?prozess=<UUID>` |
+| `POST` | Prozess, Träger, Name, Wortlaut, Verbraucher-Wortlaut, Verantwortlicher und Einflussgrößen anlegen; `201` |
+| `GET /vorschlaege` | Aktuelle Prozesse ohne laufenden Einsatz für Strom, mit demselben Sichtzaun |
+| `GET /{id}` | Einsatz mit Kennzeichen, Prozess, Träger, Verantwortlichen-Schnappschuss und aktuellem Konto-Zustand |
+| `PUT /{id}` | Name, Wortlaut und Verbraucher-Wortlaut; Protokoll `bearbeitet` |
+| `POST /{id}/beenden` | Grund Pflicht, `gueltig_bis` letzter eingeschlossener Tag (Vorgabe heute); Protokoll `beendet` |
+| `PUT /{id}/verantwortlicher` | `verantwortlich_sub` aus Benutzern dieses Kundenbereichs, `null` hebt auf; Protokoll `verantwortlicher` |
+| `PUT /{id}/einflussgroessen` | Ganze Liste ersetzen, leer hebt alle auf; Protokoll `einflussgroessen` |
+| `GET /{id}/protokoll` | Alt/Neu als JSON, Akteur und Zeitpunkt jeder Änderung |
+
+Die Formen stehen vollständig in `openapi.yaml`. Unbekannte Felder (auch ein Mandant im
+Anfragekörper) und ungültige Formen sind `400 anfrage_ungueltig`. Semantische Ablehnungen
+sind `422 prozess_unbekannt`, `traeger_unbekannt`, `verantwortlicher_unbekannt`,
+`einflussgroesse_ungueltig`, `name_fehlt`, `grund_fehlt`, `zeitraum_ungueltig`.
+Der partielle Unique-Index liefert auch bei konkurrierenden Anfragen `409 einsatz_laeuft_bereits`.
+Nach dem Beenden darf ein neuer Einsatz entstehen; Änderungen am beendeten Einsatz sind
+`409 einsatz_beendet`. Anlegen und Einflussgrößen sowie alle anderen Änderungen und ihre
+Protokolle sind jeweils eine Transaktion. Datumsvorgaben verwenden die Unternehmens-Zeitzone.
+
+**Rechte und R14:** Schreiben trägt `@Recht("energieeinsatz.verwalten")` mit Geltung Unternehmen
+(Kundenadministrator/Energiemanager). Lesen nennt `energieeinsatz.ansehen` im Routen-Kommentar;
+GET trägt gemäß `RechtRoutenArchitekturTest` keine Schreibrecht-Annotation. Derselbe vorhandene
+Lesezaun wie an Messstellen (`RechtPruefung`) gewährt Unternehmensrollen alle Einsätze,
+Standortrollen nur Einsätze mit mindestens einer heute zugeordneten Messstelle im eigenen
+Standort; Unterstützung braucht einen gültigen Auftrag. Listen und Vorschläge filtern,
+Einzelobjekt und Protokoll antworten außerhalb wie unbekannt mit `404 nicht_gefunden`.
+Die Messstellen-Zusammenfassung enthält nur lesbare Messstellen. Zuständigkeit erweitert
+keine Berechtigung. Konto-Ende lässt Name/Konto als Schnappschuss stehen und ergänzt
+`zustand: entfernt`, `ohne_konto_seit` aus dem bestehenden Zugriffsprotokoll.
+
+**Messstellen und R5:** Direkte, am heutigen Tag gültige Prozess-Zuordnungen liefern Ort und
+Lebenszyklus aus dem Register. `letzter_monat` liest den letzten vollen Monat über den
+bestehenden Messwerte-Dienst mit Zustand und Einheit; berechnete Messstellen tragen keine
+Werteübersicht. `keine_werte` ist wahr, wenn keine direkte gemessene Messstelle dieses Trägers
+im letzten vollen Monat eine Menge hat. Es entsteht keine Nullmenge, keine Einsatz-Summe und
+keine Einstufung. Unternehmensrollen dürfen auch Prozesse ohne Messstelle verwenden.
+
+**Bezugsgrößen-Löschen:** Der bestehende `DELETE /api/v1/bezugsgroessen/{id}` liefert bei
+Verweisen `409 bezugsgroesse_in_verwendung`, `energieeinsaetze: ["EE-…"]` statt eines
+Datenbankfehlers. Auch aufgehobene Einflussgrößen und beendete Einsätze behalten ihre
+Verweise (RESTRICT aus IP-3); die Bezugsgröße kann archiviert werden. Die Zeilensperre der
+Bezugsgröße und die Lesesperre beim Verweisen verhindern ein Rennen mit dem Löschen.
+
+Nachweise: `EnergieeinsatzApiTest`, `EnergieeinsatzSchnittstelleVertragTest`,
+`EnergieeinsatzDatenhaltungTest`, `RechtMatrixApiTest`, `RechteKennungenDerRoutenTest`,
+`RechtRoutenArchitekturTest`, `BezugsgroesseApiTest`. Keine Migration, keine Bestandsbefüllung;
+Lesen vor dem ersten Einsatz verändert nichts (R11).
