@@ -316,6 +316,116 @@ class KanalbindungApiTest {
         assertThat(b.path("heizgrenze").asInt()).isEqualTo(15);
     }
 
+    @Autowired KennzahlEingangLeser kennzahlLeser;
+
+    @Test
+    void e9FuenfUndZweiKwLiefernVerschiedeneZahlenUndKennzahlenErbenDieAnnahme() throws Exception {
+        for (int schwelle : new int[]{5,2}) {
+            Reihe r=leistungsReihe();
+            for (int i=0;i<96;i++) roh(r,TAG.plusSeconds(i*900),null,
+                    BigDecimal.valueOf(new int[]{1000,3000,5000,7000}[i%4]),TAG.plusSeconds(i*900+1));
+            bindungen.uhrStellen(Clock.fixed(ENDE.minusSeconds(60),ZoneOffset.UTC));
+            JsonNode bindung=ok(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",
+                    Map.of("messstelle_id",r.welt().messstelle(),"von",TAG.toString(),"schwelle_kw",schwelle,
+                        "begruendung","Annahme aus beobachtetem Maschinenbetrieb")),201).body();
+            assertThat(bindung.path("fassung").asInt()).isEqualTo(1);
+            assertThat(bindung.path("regel").asText()).isEqualTo("aus Leistung über "+schwelle+" kW (Annahme)");
+            assertThat(root.queryForObject("SELECT actor_name FROM bezugsgroesse_kanalbindung WHERE id=?",String.class,UUID.fromString(bindung.path("id").asText())))
+                    .isEqualTo("Ines Kaltenbach");
+            KanalbindungLauf lauf=new KanalbindungLauf(laufJdbc(),MAPPER);
+            assertThat(lauf.lauf(ENDE.plusSeconds(60),r.welt().mandant())).isEqualTo(1);
+            assertThat(lauf.fehlerAnzahl()).isZero();
+            JsonNode wert=ok(ruf(r.welt().ines(),HttpMethod.GET,PFAD+"/"+r.bezug()+"/werte?fassungen=alle",null),200).body().path("werte").get(0);
+            assertThat(new BigDecimal(wert.path("wirksamer_betrag").asText())).isEqualByComparingTo(schwelle==5?"6":"18");
+            assertThat(wert.path("fassungen").get(0).path("kennzeichen").toString()).contains("aus Leistung über "+schwelle+" kW (Annahme)");
+            TenantContext.set(r.welt().mandant());
+            var nenner=kennzahlLeser.lies(new KennzahlService.Aufgeloest("nenner","bezugsgroesse",r.bezug(),"BZ-5","Betriebszeit","h",null,
+                    "periodenwert","tag",null,null,null),"tag",LocalDate.parse("2025-12-02"),LocalDate.parse("2025-12-02")).get("2025-12-02").eingang();
+            var zaehler=new KennzahlRegeln.Eingang("messstelle","MS-1","Strom",null,null,null,new BigDecimal("36"),"kWh","vollständig",new BigDecimal("100"),true,null,List.of());
+            var kennzahl=KennzahlRegeln.wert(new KennzahlRegeln.Antrag("quotient",new KennzahlRegeln.Periode("tag","2025-12-02"),"kWh/h",zaehler,nenner,
+                    false,true,List.of(),null,null,null,null,null,List.of(),null,null));
+            assertThat(kennzahl.wert()).isEqualByComparingTo(schwelle==5?"6":"2");
+            assertThat(kennzahl.kennzeichen()).contains("aus Leistung über "+schwelle+" kW (Annahme)");
+            assertThat(KennzahlRegeln.erbe("kennzahl",null,kennzahl.kennzeichen())).contains("aus Leistung über "+schwelle+" kW (Annahme)");
+            assertThat(lauf.lauf(ENDE.plusSeconds(60),r.welt().mandant())).isZero();
+        }
+    }
+
+    @Test
+    void e9WechselIstNeueFassungMitGrundUndLueckenWerdenNichtNullStunden() throws Exception {
+        Reihe r=leistungsReihe();
+        root.update("UPDATE bezugsgroesse SET periode_art='monat' WHERE id=?",r.bezug());
+        // Annahme: an den beiden gemessenen Viertelstunden liegen jeweils 3 kW an.
+        Instant wechsel=Instant.parse("2025-12-16T11:00:00Z");
+        roh(r,TAG,null,new BigDecimal("3000"),TAG.plusSeconds(1));
+        roh(r,wechsel,null,new BigDecimal("3000"),wechsel.plusSeconds(1));
+        bindungen.uhrStellen(Clock.fixed(wechsel.plusSeconds(30),ZoneOffset.UTC));
+        var a=new LinkedHashMap<String,Object>(Map.of("messstelle_id",r.welt().messstelle(),"von",TAG.toString(),"schwelle_kw",5));
+        assertThat(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",a).status()).isEqualTo(422);
+        a.put("begruendung","Annahme aus beobachtetem Maschinenbetrieb");
+        JsonNode erste=ok(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",a),201).body();
+        a.put("von",wechsel.toString());a.put("schwelle_kw",2);a.put("begruendung","Standby erneut geprüft und Schwelle angepasst");
+        JsonNode zweite=ok(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",a),201).body();
+        assertThat(zweite.path("fassung").asInt()).isEqualTo(2);
+        assertThat(zweite.path("ersetzt_bindung_id").asText()).isEqualTo(erste.path("id").asText());
+        assertThat(root.queryForObject("SELECT schwelle_kw FROM bezugsgroesse_kanalbindung WHERE id=?",BigDecimal.class,UUID.fromString(erste.path("id").asText()))).isEqualByComparingTo("5");
+        assertThatThrownBy(()->root.update("UPDATE bezugsgroesse_kanalbindung SET schwelle_kw=1 WHERE id=?",UUID.fromString(erste.path("id").asText())))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        KanalbindungLauf lauf=new KanalbindungLauf(laufJdbc(),MAPPER);
+        lauf.lauf(Instant.parse("2026-01-01T00:01:00Z"),r.welt().mandant());
+        assertThat(lauf.fehlerAnzahl()).isZero();
+        JsonNode wert=ok(ruf(r.welt().ines(),HttpMethod.GET,PFAD+"/"+r.bezug()+"/werte?fassungen=alle",null),200).body().path("werte").get(0);
+        assertThat(new BigDecimal(wert.path("wirksamer_betrag").asText())).isEqualByComparingTo("0.25");
+        assertThat(wert.path("fassungen").get(0).path("kennzeichen").toString()).contains("aus Leistung über 5 kW (Annahme)","aus Leistung über 2 kW (Annahme)");
+        assertThat(wert.path("fassungen").get(0).path("kanal").path("zustand").asText()).isEqualTo("unvollständig");
+        TenantContext.set(r.welt().mandant());
+        var eingang=new KennzahlService.Aufgeloest("nenner","bezugsgroesse",r.bezug(),"BZ-5","Betriebszeit","h",null,
+                "periodenwert","monat",null,null,null);
+        var teilweise=kennzahlLeser.lies(eingang,"monat",LocalDate.parse("2025-12-01"),LocalDate.parse("2025-12-31")).get("2025-12").eingang();
+        assertThat(teilweise.zustand()).isEqualTo(ErgebnisZustand.UNVOLLSTAENDIG);
+        assertThat(teilweise.kennzeichen()).contains("aus Leistung über 5 kW (Annahme)","aus Leistung über 2 kW (Annahme)");
+        lauf.lauf(Instant.parse("2026-02-01T00:01:00Z"),r.welt().mandant());
+        assertThat(root.queryForObject("SELECT betrag FROM bezugsgroesse_wert WHERE bezugsgroesse_id=? AND periode_von='2026-01-01' ORDER BY fassung DESC LIMIT 1",BigDecimal.class,r.bezug())).isNull();
+        TenantContext.set(r.welt().mandant());
+        var fehlend=kennzahlLeser.lies(eingang,"monat",LocalDate.parse("2026-01-01"),LocalDate.parse("2026-01-31")).get("2026-01").eingang();
+        assertThat(fehlend.wert()).isNull();
+        assertThat(fehlend.kennzeichen()).contains("aus Leistung über 2 kW (Annahme)");
+        assertThat(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/werte",Map.of("periode","2026-01","wert","0")).status()).isEqualTo(422);
+    }
+
+    @Test
+    void e9FassungsabschnitteRundenErstNachDerSummeAuchInMinuten() throws Exception {
+        for (String einheit : List.of("h","min")) {
+            Reihe r=leistungsReihe();
+            root.update("UPDATE bezugsgroesse SET einheit=? WHERE id=?",einheit,r.bezug());
+            root.update("UPDATE device_measurement_selection SET cadence_s=60 WHERE entity_id=?",r.entity());
+            for (int i=0;i<2;i++) roh(r,TAG.plusSeconds(i*60),null,new BigDecimal("3000"),TAG.plusSeconds(i*60+1));
+            bindungen.uhrStellen(Clock.fixed(TAG.plusSeconds(90),ZoneOffset.UTC));
+            for (int i=0;i<2;i++) ok(ruf(r.welt().ines(),HttpMethod.POST,PFAD+"/"+r.bezug()+"/kanalbindung",
+                    Map.of("messstelle_id",r.welt().messstelle(),"von",TAG.plusSeconds(i*60).toString(),"schwelle_kw",2-i,
+                        "begruendung","Annahme zum Vergleich der Schwellenfassungen")),201);
+            var lauf=new KanalbindungLauf(laufJdbc(),MAPPER);
+            lauf.lauf(ENDE.plusSeconds(60),r.welt().mandant());
+            assertThat(lauf.fehlerAnzahl()).isZero();
+            assertThat(root.queryForObject("SELECT betrag FROM bezugsgroesse_wert WHERE bezugsgroesse_id=?",BigDecimal.class,r.bezug()))
+                    .isEqualByComparingTo("min".equals(einheit)?"2":"0.033333");
+        }
+    }
+
+    private Reihe leistungsReihe() throws Exception {
+        Reihe ursprung=reihe("gauge","h","deye.hybrid_1p.battery.battery-power");
+        UUID messstelle=root.queryForObject("INSERT INTO messstelle(tenant_id,kennzeichen,name,art,medium,groesse,richtung,einheit,wertart) VALUES (?,'MS-15','Maschinenleistung','gemessen','Strom','Wirkleistung','Bezug','kW','Momentanwert') RETURNING id",UUID.class,ursprung.welt().mandant());
+        var w=ursprung.welt();
+        Reihe r=new Reihe(new Welt(w.mandant(),w.standort(),messstelle,w.ines(),w.jonas()),ursprung.bezug(),ursprung.entity(),ursprung.box(),ursprung.site(),ursprung.kanal(),ursprung.art());
+        root.update("UPDATE device_measurement_selection SET cadence_s=900 WHERE entity_id=?",r.entity());
+        root.update("INSERT INTO messstelle_stellung(tenant_id,messstelle_id,site_id,stellung,gueltig_ab) VALUES (?,?,?,'keine','2025-01-01')",r.welt().mandant(),r.welt().messstelle(),r.site());
+        UUID geraet=root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id=?",UUID.class,r.entity());
+        root.update("INSERT INTO messstelle_quelle(tenant_id,messstelle_id,groesse,richtung,entity_id,geraet_id,kanal,kanal_wertart,herleitung,rolle,gueltig_ab,rueckwirkend,eingetragen_am,actor_name,actor_art) VALUES (?,?,'Wirkleistung','Bezug',?,?,?,'gauge','momentanwert','fuehrend',?,false,?,'Test','voltpilot')",
+                r.welt().mandant(),r.welt().messstelle(),r.entity(),geraet,r.kanal(),Timestamp.from(TAG),Timestamp.from(TAG));
+        root.update("UPDATE bezugsgroesse SET art='betriebszeit_aus_leistung',geltung_art='messstelle',standort_id=NULL,messstelle_id=? WHERE id=?",r.welt().messstelle(),r.bezug());
+        return r;
+    }
+
     private String fingerabdruck(UUID id) {
         return root.queryForObject("SELECT string_agg(to_jsonb(w)::text,'|' ORDER BY fassung) FROM bezugsgroesse_wert w WHERE bezugsgroesse_id=?",String.class,id);
     }

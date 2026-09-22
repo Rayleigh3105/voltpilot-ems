@@ -1,3 +1,4 @@
+import { erbe, BEZUGSGROESSE } from './uemsKennzahl';
 import type { BezugsKanalbindung } from './api';
 import { spanneVon, mitternacht, tagPlus } from './bezugsPeriode';
 /** K6: dieselben halboffenen Minutenintervalle wie im Server, bezogen auf ganze Kalenderperioden. */
@@ -12,3 +13,6 @@ export function periodeGebunden(key: string, art: string, zone: string, bindunge
 
 /** Zahlen einer Gradtag-Regel anzeigen; gemessene Zustandsnamen bleiben wortgleich. */
 export const kanalRegelText = (regel: string): string => regel.startsWith('Gradtage G') ? regel.replace(/\./g, ',') : regel;
+
+/** Dieselben wertbezogenen Kennzeichen wie an einer Kennzahl; Quellenbeschreibungen bleiben in der Herkunft. */
+export const wertKennzeichen = (saetze: string[]): string[] => erbe(BEZUGSGROESSE, null, saetze);

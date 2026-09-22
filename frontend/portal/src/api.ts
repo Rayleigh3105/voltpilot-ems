@@ -9421,11 +9421,12 @@ export interface BezugsKanalAnfrage {
 }
 export interface BezugsKanalbindung extends BezugsKanalAnfrage {
   id: string; wertart: string; bis: string | null;
+  regel?: string; messstelle_id?: string; schwelle_kw?: number; begruendung?: string; fassung?: number; ersetzt_bindung_id?: string;
 }
 
 export interface BezugsKanalAuswahl {
   entity_id: string; komponente: string; kanal: string; name: string; wertart: string; einheit: string;
-  erste_messung: string | null; liefert: boolean; zustaende: string[];
+  erste_messung: string | null; liefert: boolean; zustaende: string[]; messstelle_id?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ const alle = B.zeilen(liste, orte);
 const darf = () => true;
 
 describe('Bezugsgrößen-Liste und Anlegen (AP-09 IP-9)', () => {
-  it('führt alle neun Arten und Einheiten zeilengleich zum Vertrag, ohne Referenzdaten im Produkt', () => {
+  it('führt alle Vertragsarten und Einheiten zeilengleich zum Vertrag, ohne Referenzdaten im Produkt', () => {
     const v = JSON.parse(readFileSync('../../docs/contracts/v2/bezugsdaten-vectors.json', 'utf8'));
     expect(B.ARTEN).toEqual(Object.fromEntries(Object.entries(v.arten.je_art).map(([key, a]) => [key, Object.fromEntries(Object.entries(a as object).filter(([feld]) => feld !== 'konzept'))])));
     expect(B.VOKABULAR).toEqual({ ...Object.fromEntries(['wertart', 'geltung_art', 'periode_art', 'herkunft_art'].map(k => [k, v.vokabulare[k]])), einheiten: v.einheiten });
@@ -23,6 +23,7 @@ describe('Bezugsgrößen-Liste und Anlegen (AP-09 IP-9)', () => {
     expect(B.anlegeArten()).toHaveLength(7);
     expect(B.anlegeArten().map(a => a.value)).not.toContain('bezugsflaeche');
     expect(B.anlegeArten().map(a => a.value)).not.toContain('zaehlerstand');
+    expect(B.anlegeArten().map(a => a.value)).not.toContain('betriebszeit_aus_leistung');
     expect(B.einheiten('sonstige_menge')).not.toContain('m²');
   });
   it('behält Flächen als eigenständige Zeilen ohne BZ-ID oder Schreibweg', () => {

@@ -541,6 +541,19 @@
         "fall": "konstruiert"
       },
       {
+        "schluessel": "betriebszeit_annahme",
+        "muster": "aus Leistung über {text} kW (Annahme)",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 53,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "aus Leistung über 5 kW (Annahme)",
+        "fall": "konstruiert"
+      },
+      {
         "schluessel": "berechnung_geaendert_am",
         "muster": "Berechnung geändert am {datum} (Fassung {von} → {nach})",
         "platzhalter": {
@@ -781,6 +794,15 @@
           "messstelle"
         ],
         "warum": "AP-10: ein Gesamtwert, dem Systeme fehlen, sagt es; die Kennzahl verschweigt es nicht (K10)."
+      },
+      {
+        "muster": "^aus Leistung über .+ kW \\(Annahme\\)$",
+        "als": "{0}",
+        "von": [
+          "bezugsgroesse",
+          "kennzahl"
+        ],
+        "warum": "AP-16 E9: die Kundenannahme bleibt an jeder daraus gebildeten Kennzahl sichtbar."
       }
     ],
     "reihenfolge": [

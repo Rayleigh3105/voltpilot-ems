@@ -31,7 +31,15 @@ public class KanalbindungService {
 
     @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bindung(UUID id, UUID entityId, String kanal, String wertart, String zustand,
-            Instant von, Instant bis, BigDecimal raumtemperatur, BigDecimal heizgrenze) {}
+            Instant von, Instant bis, BigDecimal raumtemperatur, BigDecimal heizgrenze,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) UUID messstelleId,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) BigDecimal schwelleKw,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String begruendung,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Integer fassung,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) UUID ersetztBindungId) {
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        public String getRegel() { return schwelleKw==null ? null : BetriebszeitRegeln.kennzeichen(schwelleKw); }
+    }
 
     @Transactional
     public Bindung binden(UUID id, UUID entity, String kanal, String zustand, Instant von, ProtokollAkteur wer) {
@@ -41,8 +49,34 @@ public class KanalbindungService {
     @Transactional
     public Bindung binden(UUID id, UUID entity, String kanal, String zustand, Instant von,
             BigDecimal raumtemperatur, BigDecimal heizgrenze, ProtokollAkteur wer) {
+        return binden(id,entity,kanal,zustand,von,raumtemperatur,heizgrenze,null,null,null,wer);
+    }
+
+    @Transactional
+    public Bindung binden(UUID id, UUID entity, String kanal, String zustand, Instant von,
+            BigDecimal raumtemperatur, BigDecimal heizgrenze, UUID messstelle, BigDecimal schwelle,
+            String begruendung, ProtokollAkteur wer) {
         var b = bezuege.sperre(id).orElseThrow(KanalbindungService::nichtGefunden);
         minute(von);
+        boolean leistung="betriebszeit_aus_leistung".equals(b.art());
+        if (leistung) {
+            if (messstelle==null || schwelle==null || schwelle.signum()<0 || begruendung==null
+                    || begruendung.strip().length()<10 || begruendung.strip().length()>2000)
+                throw fehler("schwelle_ungueltig", "Messstelle, nicht negative Schwelle und Begründung mit 10 bis 2000 Zeichen sind erforderlich.");
+            rechte.pruefenLesen(com.voltpilot.api.zugriff.RechtZiel.MESSSTELLE,messstelle,KanalbindungService::nichtGefunden);
+            var quellen=jdbc.query("SELECT entity_id,kanal FROM messstelle_quelle WHERE messstelle_id=? "
+                    + "AND rolle='fuehrend' AND kanal_wertart='gauge' AND groesse='Wirkleistung' "
+                    + "AND gueltig_ab<=? AND (gueltig_bis IS NULL OR gueltig_bis>?)",
+                    (r,n)->Map.entry(r.getObject(1,UUID.class),r.getString(2)),messstelle,Timestamp.from(von),Timestamp.from(von));
+            if (quellen.size()!=1) throw fehler("kanal_passt_nicht", "Die Messstelle benötigt genau einen führenden Leistungskanal.");
+            var q=quellen.getFirst();
+            if (entity!=null && !entity.equals(q.getKey()) || kanal!=null && !kanal.equals(q.getValue()))
+                throw fehler("kanal_passt_nicht", "Der Kanal gehört nicht zur Messstelle.");
+            entity=q.getKey(); kanal=q.getValue();
+            begruendung=begruendung.strip();
+        } else if (schwelle!=null || messstelle!=null || begruendung!=null) {
+            throw fehler("kanal_passt_nicht", "Eine Leistungsschwelle gehört zur Betriebszeit aus Leistung.");
+        }
         if (entity == null || kanal == null) throw fehler("anfrage_ungueltig", "Komponente und Kanal fehlen.");
         List<UUID> anlagen=jdbc.query("SELECT site_id FROM measurement_point WHERE id=?",(r,n)->r.getObject(1,UUID.class),entity);
         if (anlagen.isEmpty() || !geltung.siteVisible(anlagen.getFirst())) throw nichtGefunden();
@@ -54,7 +88,12 @@ public class KanalbindungService {
         if ("state".equals(k.wertart()) && (zustand==null || zustand.isBlank() || !List.of("h","min").contains(b.einheit()))
                 || "counter".equals(k.wertart()) && (zustand!=null || !einheitPasst(k.einheit(),b.einheit())))
             throw fehler("kanal_passt_nicht", "Einheit oder gewählter Zustand passen nicht zum Kanal.");
-        if ("gauge".equals(k.wertart())) {
+        if (leistung) {
+            if (!"gauge".equals(k.wertart()) || !"active_power".equals(k.quantity())
+                    || !List.of("W","kW").contains(k.einheit()==null ? "" : k.einheit())
+                    || !List.of("h","min").contains(b.einheit()) || zustand!=null || raumtemperatur!=null || heizgrenze!=null)
+                throw fehler("kanal_passt_nicht", "Betriebszeit benötigt einen Leistungskanal in W oder kW und eine Dauer in Stunden oder Minuten.");
+        } else if ("gauge".equals(k.wertart())) {
             if (!"temperature".equals(k.quantity()) || !"°C".equals(k.einheit()) || !"Kd".equals(b.einheit())
                     || !"standort".equals(b.geltungArt()) || zustand!=null)
                 throw fehler("kanal_passt_nicht", "Gradtage benötigen einen gemessenen Temperaturkanal in °C am Standort.");
@@ -78,6 +117,24 @@ public class KanalbindungService {
         if (!k.aktiv() || roh[1]==null || roh[1].isBefore(uhr.instant().minusSeconds(ZustandAbleitung.toleranzS(kadenz))))
             throw fehler("kanal_liefert_nicht", "Der Kanal liefert zurzeit keine Daten.");
         if (von.isBefore(roh[0])) throw fehler("vor_erster_messung", "Die Bindung beginnt frühestens mit dem ersten gespeicherten Messwert.");
+        Bindung vorgaenger=null;
+        Integer fassung=null;
+        if (leistung) {
+            var bisher=liste(id);
+            vorgaenger=bisher.isEmpty()?null:bisher.getLast();
+            fassung=vorgaenger==null?1:vorgaenger.fassung()+1;
+            if (vorgaenger!=null) {
+                if (!von.isAfter(vorgaenger.von()) || vorgaenger.bis()!=null && von.isBefore(vorgaenger.bis()))
+                    throw fehler("bindung_ueberlappt", "Die neue Fassung muss nach der vorherigen beginnen.");
+                if (vorgaenger.bis()==null) {
+                    jdbc.update("UPDATE bezugsgroesse_kanalbindung SET bis=? WHERE id=?",Timestamp.from(von),vorgaenger.id());
+                    protokoll(id,"kanal_beendet",new Bindung(vorgaenger.id(),vorgaenger.entityId(),vorgaenger.kanal(),
+                            vorgaenger.wertart(),vorgaenger.zustand(),vorgaenger.von(),von,vorgaenger.raumtemperatur(),
+                            vorgaenger.heizgrenze(),vorgaenger.messstelleId(),vorgaenger.schwelleKw(),vorgaenger.begruendung(),
+                            vorgaenger.fassung(),vorgaenger.ersetztBindungId()),von,wer);
+                }
+            }
+        }
         if (ueberlappt(id,von,null)) throw fehler("bindung_ueberlappt", "In diesem Zeitraum ist bereits ein Kanal gebunden.");
         if (Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM bezugsgroesse_wert w "
                 + "WHERE bezugsgroesse_id=? AND tstzrange(w.periode_von::timestamp AT TIME ZONE w.zeitzone, "
@@ -86,10 +143,10 @@ public class KanalbindungService {
             throw fehler("zeitraum_hat_werte", "Für diesen Zeitraum sind bereits Werte eingetragen.");
         UUID neu=jdbc.queryForObject("INSERT INTO bezugsgroesse_kanalbindung "
                 + "(tenant_id,bezugsgroesse_id,entity_id,kanal,wertart,einheit,zustand,kadenz_s,von,"
-                + "actor_sub,actor_name,actor_rolle,actor_art,raumtemperatur,heizgrenze) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
+                + "actor_sub,actor_name,actor_rolle,actor_art,raumtemperatur,heizgrenze,messstelle_id,schwelle_kw,begruendung,fassung,ersetzt_bindung_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
                 UUID.class,TenantContext.get(),id,entity,kanal,k.wertart(),k.einheit()==null ? b.einheit() : k.einheit(),
-                zustand,kadenz,Timestamp.from(von),wer.sub(),wer.name(),wer.rolle(),wer.art(),raumtemperatur,heizgrenze);
-        Bindung aus=new Bindung(neu,entity,kanal,k.wertart(),zustand,von,null,raumtemperatur,heizgrenze);
+                zustand,kadenz,Timestamp.from(von),wer.sub(),wer.name(),wer.rolle(),wer.art(),raumtemperatur,heizgrenze,messstelle,schwelle,begruendung,fassung,vorgaenger==null?null:vorgaenger.id());
+        Bindung aus=new Bindung(neu,entity,kanal,k.wertart(),zustand,von,null,raumtemperatur,heizgrenze,messstelle,schwelle,begruendung,fassung,vorgaenger==null?null:vorgaenger.id());
         protokoll(id,"kanal_gebunden",aus,von,wer);
         return aus;
     }
@@ -102,7 +159,7 @@ public class KanalbindungService {
         if (alt.bis()!=null || !bis.isAfter(alt.von()) || bis.isBefore(uhr.instant().truncatedTo(java.time.temporal.ChronoUnit.MINUTES)))
             throw fehler("ende_ungueltig", "Die Bindung kann nur ab jetzt und nach ihrem Beginn beendet werden.");
         jdbc.update("UPDATE bezugsgroesse_kanalbindung SET bis=? WHERE id=?",Timestamp.from(bis),bindung);
-        Bindung aus=new Bindung(alt.id(),alt.entityId(),alt.kanal(),alt.wertart(),alt.zustand(),alt.von(),bis,alt.raumtemperatur(),alt.heizgrenze());
+        Bindung aus=new Bindung(alt.id(),alt.entityId(),alt.kanal(),alt.wertart(),alt.zustand(),alt.von(),bis,alt.raumtemperatur(),alt.heizgrenze(),alt.messstelleId(),alt.schwelleKw(),alt.begruendung(),alt.fassung(),alt.ersetztBindungId());
         protokoll(id,"kanal_beendet",aus,bis,wer);
         return aus;
     }
@@ -119,16 +176,18 @@ public class KanalbindungService {
         return jdbc.query("SELECT * FROM bezugsgroesse_kanalbindung WHERE bezugsgroesse_id=? ORDER BY von",
             (rs,n) -> new Bindung(rs.getObject("id",UUID.class),rs.getObject("entity_id",UUID.class),
                 rs.getString("kanal"),rs.getString("wertart"),rs.getString("zustand"),rs.getTimestamp("von").toInstant(),
-                rs.getTimestamp("bis")==null ? null : rs.getTimestamp("bis").toInstant(),rs.getBigDecimal("raumtemperatur"),rs.getBigDecimal("heizgrenze")),id);
+                rs.getTimestamp("bis")==null ? null : rs.getTimestamp("bis").toInstant(),rs.getBigDecimal("raumtemperatur"),rs.getBigDecimal("heizgrenze"),rs.getObject("messstelle_id",UUID.class),rs.getBigDecimal("schwelle_kw"),rs.getString("begruendung"),rs.getObject("fassung",Integer.class),rs.getObject("ersetzt_bindung_id",UUID.class)),id);
     }
 
     @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Auswahl(UUID entityId, String komponente, String kanal, String name, String wertart,
-            String einheit, Instant ersteMessung, boolean liefert, List<String> zustaende) {}
+            String einheit, Instant ersteMessung, boolean liefert, List<String> zustaende,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) UUID messstelleId) {}
 
     /** Dieselbe Mess-Selektion wie beim Binden; fremde Standorte erscheinen nie im Picker. */
     public List<Auswahl> auswahl(UUID id) {
         var b=sichtbar(id);
+        boolean leistung="betriebszeit_aus_leistung".equals(b.art());
         List<Auswahl> aus=new ArrayList<>();
         var reihen=jdbc.query("SELECT DISTINCT p.id,p.site_id,p.label,s.point_key FROM measurement_point p "
             + "JOIN device_measurement_selection s ON s.entity_id=p.id AND s.tenant_id=p.tenant_id ORDER BY p.label,s.point_key",
@@ -138,7 +197,8 @@ public class KanalbindungService {
             if (!geltung.siteVisible(site)) continue;
             var k=kanaele.kanal(entity,key).orElse(null);
             if (k==null || k.wertart()==null) continue;
-            boolean passt=switch(k.wertart()) {
+            boolean passt=leistung ? "gauge".equals(k.wertart()) && "active_power".equals(k.quantity())
+                    && List.of("W","kW").contains(k.einheit()==null?"":k.einheit()) : switch(k.wertart()) {
                 case "counter" -> einheitPasst(k.einheit(),b.einheit());
                 case "state" -> List.of("h","min").contains(b.einheit());
                 case "gauge" -> "Kd".equals(b.einheit()) && "standort".equals(b.geltungArt())
@@ -146,7 +206,15 @@ public class KanalbindungService {
                 default -> false;
             };
             if (!passt) continue;
-            if ("gauge".equals(k.wertart()) && !Boolean.TRUE.equals(jdbc.queryForObject(
+            UUID messstelle=null;
+            if (leistung) {
+                var quellen=jdbc.queryForList("SELECT messstelle_id FROM messstelle_quelle WHERE entity_id=? AND kanal=? "
+                        + "AND rolle='fuehrend' AND groesse='Wirkleistung' AND gueltig_ab<=? AND (gueltig_bis IS NULL OR gueltig_bis>?)",
+                        UUID.class,entity,key,Timestamp.from(uhr.instant()),Timestamp.from(uhr.instant()));
+                if (quellen.size()!=1 || !rechte.lesbar(com.voltpilot.api.zugriff.RechtZiel.MESSSTELLE,quellen.getFirst())) continue;
+                messstelle=quellen.getFirst();
+            }
+            if (!leistung && "gauge".equals(k.wertart()) && !Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT EXISTS (SELECT 1 FROM anlage_standort WHERE site_id=? AND standort_id=? AND aufgehoben_am IS NULL)",Boolean.class,site,b.geltungId()))) continue;
             var zeit=jdbc.query("SELECT min(time),max(time) FILTER (WHERE quality='good') FROM device_measurement_sample "
                 + "WHERE entity_id=? AND point_key=? AND role IS DISTINCT FROM 'spiegel'",
@@ -155,7 +223,7 @@ public class KanalbindungService {
                 + "FROM device_measurement_sample WHERE entity_id=? AND point_key=? AND quality='good' AND role IS DISTINCT FROM 'spiegel' "
                 + "AND coalesce(decoded_text,raw_text,decoded_numeric::text,raw_numeric::text) IS NOT NULL ORDER BY wort LIMIT 100",String.class,entity,key) : List.of();
             boolean liefert=k.aktiv() && zeit[1]!=null && !zeit[1].isBefore(uhr.instant().minusSeconds(ZustandAbleitung.toleranzS(kanaele.kadenzS(key,k.kadenzS()))));
-            aus.add(new Auswahl(entity,(String)r[2],key,k.anzeigename(),k.wertart(),k.einheit(),zeit[0],liefert,zustaende));
+            aus.add(new Auswahl(entity,(String)r[2],key,k.anzeigename(),k.wertart(),k.einheit(),zeit[0],liefert,zustaende,messstelle));
         }
         return aus;
     }
@@ -165,6 +233,8 @@ public class KanalbindungService {
     }
 
     public void eingabePruefen(UUID id, LocalDate von, LocalDate bis, ZoneId zone) {
+        if ("betriebszeit_aus_leistung".equals(bezuege.finde(id).orElseThrow(KanalbindungService::nichtGefunden).art()))
+            throw fehler("kanal_gebunden", "Betriebszeit aus Leistung wird ausschließlich aus dem begründeten Messkanal gebildet.");
         if (von!=null && ueberlappt(id,von.atStartOfDay(zone).toInstant(),bis.plusDays(1).atStartOfDay(zone).toInstant()))
             throw fehler("kanal_gebunden", "Für diesen Zeitraum liefert ein Messkanal die Werte. Eine Eingabe oder ein Import ist hier nicht möglich.");
     }

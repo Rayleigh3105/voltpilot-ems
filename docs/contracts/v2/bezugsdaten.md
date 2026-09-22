@@ -196,6 +196,48 @@ trifft (F1–F4, C7, B14).
 hinterlässt nicht einmal einen Import-Datensatz (B12). Werden nicht alle Zeilen übernommen,
 verlangt E10 eine ausdrückliche Bestätigung mit der Zahl: „1 von 3 Zeilen übernehmen“.
 
+### Betriebszeit aus Leistung (AP-16 E9 = A)
+
+Seit 22.09.2026 ergänzt `betriebszeit_aus_leistung` die bestehenden Arten (AP-09 E13,
+Lesart LA6). Einheiten h/min, Tag/Woche/Monat, Geltung Prozess/Bereich/Messstelle,
+ausschließlich Herkunft `messkanal`. Statuskanal und Handeingabe der Art `betriebszeit`
+bleiben bestehen; keine bestehende Bezugsgröße wird umgedeutet.
+
+Die vorhandene Route `POST /api/v1/bezugsgroessen/{id}/kanalbindung` nimmt bei dieser Art
+`messstelle_id`, `schwelle_kw` (nicht negativ), `von` (volle Minute, inklusive) und
+`begruendung` (10–2000 Zeichen) entgegen. `entity_id` und `kanal` werden aus genau einer
+führenden Wirkleistungsquelle der Messstelle gelesen; falls mitgesendet, müssen sie passen.
+Der Katalog muss `gauge`, `active_power`, W oder kW bestätigen. Der Akteur kommt aus der
+Anmeldung; Recht `bezugsgroesse.verwalten`, Quellstandort zusätzlich sichtbar, fremd = 404.
+GET liest mit `messwerte.ansehen` dieselben Fassungen einschließlich Grund und `regel`.
+
+Fassung n+1 beendet n am neuen `von`; sie trägt `fassung` und `ersetzt_bindung_id`.
+Schwelle, Quelle, Grund und Akteur werden niemals überschrieben. Der bestehende Schutz
+gegen Neubinden über bereits gebildete Periodenwerte gilt weiter. Minutenintervalle
+sind `[von,bis)`, also zählt am Wechsel genau die neue Schwelle. Jede Änderung ist im
+vorhandenen Bezugsgrößen-Protokoll. Die Datenbank erzwingt die Fassungsfolge und Art.
+
+`BetriebszeitRegeln` ⟷ `betriebszeit.ts`: Zeit mit **Leistung > Schwelle**, W vorher in kW.
+Rohwerte gelten höchstens eine gespeicherte Messkadenz und enden früher beim nächsten
+Rohwert; keine Interpolation über Lücken. Schlechte Werte, explizite Lücken, ausgelaufene
+Kadenz und Zeiten ohne gültige Quelle zählen weder als Betrieb noch als Stillstand.
+Abdeckung = gemessene Zeit / Periodendauer; keine gemessene Zeit ergibt NULL/„keine Werte“,
+Teilabdeckung „unvollständig“, gemessener Stillstand darf 0 sein. Stunden werden mit sechs
+Nachkommastellen gespeichert. Disjunkte Fassungsabschnitte werden je Periode summiert.
+
+Jede Zahl trägt **„aus Leistung über x kW (Annahme)“** in `kennzeichen` (Dezimalkomma).
+Eine Periode mit mehreren Schwellen nennt jede. Jede Kennzahl, die diese Zahl nutzt,
+erbt alle Annahmen — auch über weitere Kennzahlen und gröbere Perioden. Das geschlossene
+Kennzeichen-Vokabular steht in `ergebnis-zustand-vectors.json`, Schlüssel
+`betriebszeit_annahme`, Rang 53. Lücken des neuen Nenners machen eine daraus gebildete
+Kennzahl zur Obergrenze; bei fehlendem Nenner bleibt sie ohne Zahl.
+
+Die E9-Prüfungen im B7-Block von `bezugsdaten-vectors.json` sind ausdrücklich konstruierte
+Annahmen, keine neuen Ahrenberg-Messwerte: dieselben Leistungen liefern bei 5 kW 0,25 h,
+bei 2 kW 0,75 h; ein Wechsel zur Monatsmitte bewahrt beide Kennzeichen; Lücken bleiben
+sichtbar. API-Konfiguration gehört zu IP-26; das Portal zeigt die gespeicherten Zahlen und
+Kennzeichen auf bestehenden Flächen, ohne einen neuen Schwellen-Dialog einzuführen.
+
 ## 5. Was hier NICHT steht
 
 Die Datei trennt drei Dinge sauber:

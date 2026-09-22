@@ -26,7 +26,7 @@ public class KanalbindungLauf {
     }
     public long fehlerAnzahl() { return fehler.get(); }
     record Bindung(UUID id,UUID tenant,UUID bezug,UUID entity,String kanal,String art,String zustand,
-            String einheit,String quellEinheit,String periode,int kadenz,Instant von,Instant bis,ZoneId zone,BigDecimal raumtemperatur,BigDecimal heizgrenze) {}
+            String einheit,String quellEinheit,String periode,int kadenz,Instant von,Instant bis,ZoneId zone,BigDecimal raumtemperatur,BigDecimal heizgrenze,UUID messstelle,BigDecimal schwelle) {}
     record Roh(Instant zeit,BigDecimal zahl,String wort,boolean gut,UUID einbau) {}
     record Ergebnis(BigDecimal betrag,String zustand,BigDecimal abdeckung,List<String> kennzeichen) {}
 
@@ -46,7 +46,7 @@ public class KanalbindungLauf {
             """,(r,n)->new Bindung(r.getObject("id",UUID.class),r.getObject("tenant_id",UUID.class),
                 r.getObject("bezugsgroesse_id",UUID.class),r.getObject("entity_id",UUID.class),r.getString("kanal"),
                 r.getString("wertart"),r.getString("zustand"),r.getString("ziel_einheit"),r.getString("einheit"),r.getString("periode_art"),
-                r.getInt("kadenz_s"),r.getTimestamp("von").toInstant(),instant(r,"bis"),ZoneId.of(r.getString("zone")),r.getBigDecimal("raumtemperatur"),r.getBigDecimal("heizgrenze")),ts(jetzt),tenant,tenant);
+                r.getInt("kadenz_s"),r.getTimestamp("von").toInstant(),instant(r,"bis"),ZoneId.of(r.getString("zone")),r.getBigDecimal("raumtemperatur"),r.getBigDecimal("heizgrenze"),r.getObject("messstelle_id",UUID.class),r.getBigDecimal("schwelle_kw")),ts(jetzt),tenant,tenant);
         int anzahl=0;
         for (Bindung b:bindungen) {
             Integer neu=admin.execute((Connection con)->{
@@ -101,7 +101,7 @@ public class KanalbindungLauf {
             Ergebnis e=periode(j,con,teile,von,bis,datenBis);
             Bindung quelle=teile.getFirst();
             List<String> kennzeichen=new ArrayList<>(e.kennzeichen());
-            for (Bindung k:teile) kennzeichen.add("aus Messkanal " + k.kanal() + (" (" + regel(k) + ")"));
+            for (Bindung k:teile) if (k.schwelle()==null) kennzeichen.add("aus Messkanal " + k.kanal() + (" (" + regel(k) + ")"));
             ObjectNode herkunft=json.createObjectNode().put("bindung",quelle.id().toString()).put("entity_id",quelle.entity().toString())
                 .put("kanal",quelle.kanal()).put("regel",regel(quelle))
                 .put("zustand",e.zustand()).put("abdeckung_prozent",e.abdeckung()).put("endgueltig_ab",frist.toString())
@@ -193,6 +193,27 @@ public class KanalbindungLauf {
             + "(SELECT DISTINCT device_id FROM device_measurement_sample WHERE tenant_id=? AND entity_id=? AND point_key=? AND time>=? AND time<=?)))",
             (r,n)->new BezugsdatenRegeln.Luecke(r.getTimestamp(1).toInstant(),r.getTimestamp(2).toInstant(),r.getString(3)),
             ts(a),ts(z),b.tenant(),ts(eingang),ts(z),ts(a),b.entity(),b.kanal(),b.tenant(),b.entity(),b.kanal(),ts(a),ts(z)));
+        if (b.schwelle()!=null) {
+            // Eine beendete/ersetzte Messstellenquelle verlängert die eingefrorene Quelle nicht.
+            var abschnitte=j.query("SELECT greatest(gueltig_ab,?),least(gueltig_bis,?) FROM messstelle_quelle "
+                    + "WHERE tenant_id=? AND messstelle_id=? AND entity_id=? AND kanal=? AND rolle='fuehrend' "
+                    + "AND gueltig_ab<? AND (gueltig_bis IS NULL OR gueltig_bis>?) ORDER BY gueltig_ab",
+                    (r,n)->new Instant[]{r.getTimestamp(1).toInstant(),r.getTimestamp(2).toInstant()},
+                    ts(a),ts(z),b.tenant(),b.messstelle(),b.entity(),b.kanal(),ts(z),ts(a));
+            Instant ab=a;
+            for (var abschnitt:abschnitte) {
+                if (abschnitt[0].isAfter(ab)) luecken.add(new BezugsdatenRegeln.Luecke(ab,abschnitt[0],"Quelle nicht gebunden"));
+                if (abschnitt[1].isAfter(ab)) ab=abschnitt[1];
+            }
+            if (ab.isBefore(z)) luecken.add(new BezugsdatenRegeln.Luecke(ab,z,"Quelle nicht gebunden"));
+            var e=BetriebszeitRegeln.rechnen(a,z,b.kadenz(),roh.stream().map(r->new BetriebszeitRegeln.Leistung(r.zeit(),
+                    r.zahl()==null?null:"W".equals(b.quellEinheit())?r.zahl().movePointLeft(3):r.zahl(),r.gut())).toList(),
+                    List.of(new BetriebszeitRegeln.Schwelle(b.von(),b.bis(),b.schwelle())),luecken);
+            return new Ergebnis(e.betrag()==null?null:e.betriebsSekunden().divide(BigDecimal.valueOf("min".equals(b.einheit())?60:3600),
+                    new java.math.MathContext(28,java.math.RoundingMode.HALF_EVEN)), e.zustand(),
+                    e.gemesseneSekunden().multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(Duration.between(a,z).toSeconds()),
+                            new java.math.MathContext(28,java.math.RoundingMode.HALF_EVEN)), e.kennzeichen());
+        }
         if ("gauge".equals(b.art())) {
             List<GradtagRegeln.Tag> tage=new ArrayList<>();
             BigDecimal abgedeckt=BigDecimal.ZERO;
@@ -257,7 +278,7 @@ public class KanalbindungLauf {
         return new Ergebnis(betrag,teil && k.menge()!=null ? VerbrauchRegeln.UNVOLLSTAENDIG : k.zustand(),ab,kz);
     }
     private static String regel(Bindung b) {
-        return "gauge".equals(b.art()) ? GradtagRegeln.regel(b.raumtemperatur(),b.heizgrenze())
+        return b.schwelle()!=null ? BetriebszeitRegeln.kennzeichen(b.schwelle()) : "gauge".equals(b.art()) ? GradtagRegeln.regel(b.raumtemperatur(),b.heizgrenze())
             : "state".equals(b.art()) ? "Zustand = " + b.zustand() : "Zähler";
     }
     static LocalDate anfang(LocalDate tag,String art) {

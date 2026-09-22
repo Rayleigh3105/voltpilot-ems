@@ -176,6 +176,27 @@
         "eingabe",
         "import"
       ]
+    },
+    "betriebszeit_aus_leistung": {
+      "name": "Betriebszeit aus Leistung",
+      "einheiten": [
+        "h",
+        "min"
+      ],
+      "wertart": "periodenwert",
+      "perioden": [
+        "tag",
+        "woche",
+        "monat"
+      ],
+      "geltung": [
+        "prozess",
+        "bereich",
+        "messstelle"
+      ],
+      "herkunft": [
+        "messkanal"
+      ]
     }
   },
   "vokabular": {

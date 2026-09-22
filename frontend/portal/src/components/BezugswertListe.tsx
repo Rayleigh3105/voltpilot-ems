@@ -1,4 +1,4 @@
-import { kanalRegelText } from '../bezugsKanal';
+import { kanalRegelText, wertKennzeichen } from '../bezugsKanal';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type Bezugsgroesse, type BezugsgroesseWert, type BezugsKanalbindung } from '../api';
@@ -15,7 +15,7 @@ export function BezugswertListe({ bezug, standort, zone, onEingegeben, bindungRe
   const [dialog, setDialog] = useState<{ alt: BezugsgroesseWert | null } | null>(null);
   const ausloeser = useRef<HTMLElement | null>(null);
   const { darf } = useRollen();
-  const erlaubt = standort !== undefined && darf('bezugsgroesse.eingeben', standort) && !bezug.archiviert_am;
+  const erlaubt = standort !== undefined && darf('bezugsgroesse.eingeben', standort) && !bezug.archiviert_am && bezug.art !== 'betriebszeit_aus_leistung';
   useEffect(() => { if (!offen) return; let aktiv = true; setFehler(false);
     Promise.all([api.bezugsgroesseWerte(bezug.id, { fassungen: 'alle' }), api.kanalbindungen(bezug.id)]).then(([a, b]) => { if (aktiv) { setWerte(a.werte); setBindungen(b); } }, () => { if (aktiv) setFehler(true); });
     return () => { aktiv = false; };
@@ -28,6 +28,7 @@ export function BezugswertListe({ bezug, standort, zone, onEingegeben, bindungRe
       {werte.map(w => <div className="vp-wert-zeile" key={w.periode_von ?? w.zeitpunkt}>
         <strong>{w.periode_von ? periodenText(schluesselVon(w.periode_von, bezug.periode_art!), bezug.periode_art!) : w.zeitpunkt}</strong>
         <p>{betrag(w.wirksamer_betrag)}{w.wirksamer_betrag !== null ? ` ${bezug.einheit} · Fassung ${w.wirksame_fassung}` : ''}</p>
+        {wertKennzeichen(w.fassungen.find(f => f.fassung === w.wirksame_fassung)?.kennzeichen ?? []).map(k => <p key={k}>{k}</p>)}
         {w.vorschlag && <p>Vorschlag von {w.vorschlag.urheber.name}: {betrag(w.vorschlag.betrag)} {bezug.einheit}. Bis zur Freigabe gilt der bisherige Wert. {w.vorschlag.begruendung}</p>}
         <details><summary>Fassungen ansehen ({w.fassungen.length})</summary>{w.fassungen.map(f => <div className="vp-wert-fassung" key={f.fassung}>
           <strong>Fassung {f.fassung} · {betrag(f.betrag)} {bezug.einheit}</strong><p>{f.fassung === w.wirksame_fassung ? 'Wirksame Fassung' : 'Frühere Fassung'}</p>

@@ -14,7 +14,7 @@ import { VpZeitpunktPicker } from './VpZeitpunktPicker';
 
 export const BINDUNGS_HINWEIS = 'Im gebundenen Zeitraum sind Eingabe und Import nicht möglich. Werte erscheinen nach Periodenende.';
 export function bindungsRegel(b: BezugsKanalbindung) {
-  return b.wertart === 'gauge' ? kanalRegelText(`Gradtage G${b.raumtemperatur}/${b.heizgrenze}`) : b.wertart === 'state' ? `Zeit im Zustand „${b.zustand}“` : 'Zähler-Differenz';
+  return b.regel ?? (b.wertart === 'gauge' ? kanalRegelText(`Gradtage G${b.raumtemperatur}/${b.heizgrenze}`) : b.wertart === 'state' ? `Zeit im Zustand „${b.zustand}“` : 'Zähler-Differenz');
 }
 export function BezugsKanalbindung({ bezug, standort, zone, onChanged }: { onChanged?: () => void; bezug: Bezugsgroesse; standort: string | null | undefined; zone: string }) {
   const { darf } = useRollen();
@@ -36,10 +36,11 @@ export function BezugsKanalbindung({ bezug, standort, zone, onChanged }: { onCha
     {ladefehler ? <><p role="alert">Die Kanalbindungen konnten nicht geladen werden.</p><Button variant="outline" onClick={() => setNeu(n => n + 1)}>Erneut versuchen</Button></> : !bindungen ? <p>Messkanäle werden geladen …</p> : <>
       {bindungen.length === 0 && <p>Es ist kein Messkanal gebunden.</p>}
       {bindungen.map(b => <div key={b.id} className="vp-wert-zeile"><p><strong>{bindungsRegel(b)}</strong> · {b.kanal}</p><p>Ab {zeitText(b.von, zone)}{b.bis ? ` bis ${zeitText(b.bis, zone)} (Ende ausschließlich)` : ''}</p>
+        {b.begruendung && <p>Fassung {b.fassung}: {b.begruendung}</p>}
         {erlaubt && !b.bis && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setDialog({ ende: b }); }}>Bindung beenden</Button>}
       </div>)}
       {bindungen.length > 0 && <p>{BINDUNGS_HINWEIS}</p>}
-      {erlaubt && !bindungen.some(b => !b.bis) && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setDialog({ ende: null }); }}>Messkanal binden</Button>}
+      {erlaubt && bezug.art !== 'betriebszeit_aus_leistung' && !bindungen.some(b => !b.bis) && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setDialog({ ende: null }); }}>Messkanal binden</Button>}
     </>}
     {dialog && erlaubt && <BindungsDialog bezug={bezug} zone={zone} ende={dialog.ende} erlaubt={erlaubt} onClose={schliessen} onSaved={() => { setNeu(n => n + 1); onChanged?.(); schliessen(); }} />}
   </details>;
