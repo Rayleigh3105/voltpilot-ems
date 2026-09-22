@@ -194,7 +194,11 @@ def ladepark(k: dict, box: str, jetzt: dt.datetime, nullpunkt: float = 0.0) -> d
         "tenant_id": k["tenant"], "site_id": k["site"], "device_id": k[box],
         "published_at": zeit(jetzt),
         "grid_limit_kw": BEZUGSGRENZE_KW - (nullpunkt if box == "E-1" else 0.0),
-        "charge_points": [{"id": s["id"], "rank": s["rank"]} for s in teil["saeulen"]],
+        # Nennleistung, Anschlüsse und Mindestleistung je Säule aus der Referenzdatei
+        # (geraete_rueckfaelle K-13.x: 22 kW, 4,1 kW = 6 A dreiphasig) - ohne sie
+        # nimmt die Box die Säule nicht in ihre Freigabeliste auf (IP-29).
+        "charge_points": [{"id": s["id"], "rank": s["rank"], "rated_kw": 22.0, "connectors": 1,
+                           "min_kw": 4.1} for s in teil["saeulen"]],
         "priority_charge_point_ids": teil["vorrang"],
     }
 

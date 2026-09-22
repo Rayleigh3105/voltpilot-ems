@@ -53,7 +53,9 @@ import os
 import socket
 import struct
 import sys
+import threading
 import time
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -76,6 +78,15 @@ R_GRID, R_PV, R_LOAD, R_BATT, R_SOC, R_WMAXLIM, R_GRIDCONN = 0, 1, 2, 3, 4, 5, 6
 R_SETPOINT, R_ENABLE, R_PVLIMIT = 40, 41, 42
 KEIN_PV_LIMIT = 0xFFFF
 N_REGISTER = 64
+
+# AP-15 IP-29: der Bezugs-Punkt auf der kompakten Karte. Sie trägt nur
+# int16 × 0,01 kW (±327,67 kW), die Nacht liegt am Netzpunkt bei bis zu 712 kW.
+# Der Treiber (nodered/modbus-tcp.js, Profil sunspec) bleibt, wie er ist; die
+# Anlage verschiebt stattdessen den NULLPUNKT der führenden Box: Netzzähler,
+# Last und Anschlussleistung von E-1 stehen um VB_NULLPUNKT_KW tiefer, und
+# nutzlast.py stellt E-1 die Bezugsgrenze um denselben Betrag tiefer zu. Jede
+# Differenz „Grenze − Zähler" bleibt gleich; gemessen wird am echten Netzpunkt.
+NULLPUNKT_NACHT_KW = 400.0
 
 
 def referenz_pfad() -> Path:
@@ -175,7 +186,12 @@ def profil(name: str) -> Profil:
         # je 22 kW, der Plan lädt den Speicher 100 kW aus dem Netz.
         return Profil("nacht", "Bezug", lambda t: 473.0, lambda t: 0.0, lambda t: 0.0,
                       lambda t: 22.0, 100.0)
-    raise ValueError(f"unbekanntes Profil {name!r} (mittag, nacht)")
+    if name == "nacht_a20":
+        # zaNachtA20 (R23): die Last wächst 5 min nach T0 von ihrem gemessenen
+        # Höchstwert 430 kW auf 480 kW - über ihren Vorbehalt von 473 kW.
+        return Profil("nacht_a20", "Bezug", lambda t: 480.0 if t >= 300 else 430.0,
+                      lambda t: 0.0, lambda t: 0.0, lambda t: 22.0, 100.0)
+    raise ValueError(f"unbekanntes Profil {name!r} (mittag, nacht, nacht_a20)")
 
 
 # --- Messung M-1/M-2 --------------------------------------------------------
@@ -257,6 +273,10 @@ class Anlage:
         self.pv_k1 = self.pv_k12 = self.batt_k2 = self.laden_k13 = 0.0
         self.netz = self.abgang_e4 = 0.0
         self.soc_pct = 50.0  # fest wie im Zwei-Agenten-Test (msg["soc_pct"] = 50)
+        # Mit echten Ladepunkten (vp-ocpp-sim, Dienst `ladepunkte`) zieht K-13,
+        # was die Säulen melden - sie folgen den Ladeprofilen, die Box Verwaltung
+        # per OCPP setzt. None = das Modell (ohne Säulen, Profil mittag).
+        self.ladepunkte_kw: float | None = None
 
     def alle(self) -> list[Geraet]:
         return [self.k1, self.k12, self.k2, *self.k13]
@@ -269,7 +289,10 @@ class Anlage:
         self.pv_k1 = min(max(self.k1.wirkt, 0.0), self.p.sonne_k1(t))
         self.pv_k12 = min(max(self.k12.wirkt, 0.0), self.p.sonne_k12(t))
         self.batt_k2 = self.k2.wirkt
-        self.laden_k13 = sum(min(max(g.wirkt, 0.0), self.p.autos(t)) for g in self.k13)
+        if self.ladepunkte_kw is not None:
+            self.laden_k13 = self.ladepunkte_kw
+        else:
+            self.laden_k13 = sum(min(max(g.wirkt, 0.0), self.p.autos(t)) for g in self.k13)
         self.abgang_e4 = self.laden_k13 - self.pv_k12
         self.netz = self.p.grundlast(t) + self.batt_k2 - self.pv_k1 + self.abgang_e4
 
@@ -313,11 +336,12 @@ class BoxSeite:
     schreiben: int = 0
     letzter_schreib_s: int | None = None
     ueberlauf: int = 0
+    nullpunkt_kw: float = 0.0         # nur E-1: siehe NULLPUNKT_NACHT_KW
 
     def __post_init__(self):
         self.regs[R_PVLIMIT] = KEIN_PV_LIMIT
         self.regs[R_WMAXLIM] = 10000        # 100,00 %: der §14a-Rahmen engt nichts ein
-        self.regs[R_GRIDCONN] = int(BEZUGSGRENZE_KW * 100)
+        self.regs[R_GRIDCONN] = int((BEZUGSGRENZE_KW - self.nullpunkt_kw) * 100)
 
     def aktualisiere(self, a: Anlage) -> None:
         if self.box == "E-1":
@@ -326,6 +350,7 @@ class BoxSeite:
             zaehler, pv, last, batt = a.abgang_e4, a.pv_k12, a.laden_k13, 0.0
         if self.friert is not None:
             zaehler = self.friert
+        zaehler, last = zaehler - self.nullpunkt_kw, last - self.nullpunkt_kw
         try:
             self.regs[R_GRID] = kodiere_s16(zaehler)
             self.regs[R_PV] = kodiere_s16(pv)

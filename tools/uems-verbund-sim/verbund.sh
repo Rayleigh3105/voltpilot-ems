@@ -54,7 +54,10 @@ bilder() {
   # Bau, nicht das Artefakt. Stempel wie edge-images.yaml, nur mit „uems-".
   local fehlt=0 b
   docker build -q --build-context "referenz=$REPO/docs/contracts/v2" -t "$VB_ANLAGE_IMAGE" "$HIER" >/dev/null
-  for b in "$VB_CORE_IMAGE" "$VB_NODERED_IMAGE" "$VB_BROKER_IMAGE" "$VB_LADEPUNKTE_IMAGE"; do
+  # Die Säulen sind Werkzeug wie die Anlage (vp-ocpp-sim + ladepunkte.sh): billig, jedes Mal
+  docker build -q -t "$VB_LADEPUNKTE_IMAGE" -f "$HIER/Dockerfile.ladepunkte" \
+    --build-context "hier=$HIER" "$REPO/edge-app/core" >/dev/null
+  for b in "$VB_CORE_IMAGE" "$VB_NODERED_IMAGE" "$VB_BROKER_IMAGE"; do
     docker image inspect "$b" >/dev/null 2>&1 || fehlt=1
   done
   [ -n "$(git -C "$REPO" status --porcelain -- edge-app edge/sim)" ] \
@@ -66,8 +69,6 @@ bilder() {
   docker build -q --build-arg "VERSION=uems-$MARKE" -t "$VB_CORE_IMAGE" "$REPO/edge-app/core" >/dev/null
   docker build -q --build-arg "VERSION=uems-$MARKE" -t "$VB_NODERED_IMAGE" "$REPO/edge-app/nodered" >/dev/null
   docker build -q -t "$VB_BROKER_IMAGE" -f "$REPO/edge-app/test/Dockerfile.broker" "$REPO/edge-app/test" >/dev/null
-  docker build -q -t "$VB_LADEPUNKTE_IMAGE" -f "$HIER/Dockerfile.ladepunkte" \
-    --build-context "hier=$HIER" "$REPO/edge-app/core" >/dev/null
 }
 
 # Das Tor zählt nur die Testcontainers ANDERER Bahnen (firstmate 22.09.2026):
@@ -127,6 +128,11 @@ hoch() {
       || { echo "Box $b meldete keinen Herzschlag"; "${DC[@]}" logs --tail 30; return 1; }
     echo "    Box $b meldet Stand $(letzte "$b" status | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
   done
+}
+
+# Die Säulen wählen die Box erst an, wenn das Ladepark-Dokument sie in die
+# Freigabeliste der Box gesetzt hat - darum NACH dem Zustellen.
+saeulen_warten() {
   if [ -n "${VB_LADEPUNKTE:-}" ]; then
     local i=0
     until "${DC[@]}" logs ladepunkte 2>/dev/null | grep -q "AHR-LP-07: Wagen eingesteckt"; do
@@ -298,6 +304,7 @@ r1() {
   trap aufraeumen EXIT
   [ "$rc" = 0 ] || return "$rc"
   zustellen
+  saeulen_warten
   cloud_takt &
   TAKT_PID=$!
   start >/dev/null
@@ -341,6 +348,7 @@ lauf() {
   trap aufraeumen EXIT
   [ "$rc" = 0 ] || return "$rc"
   zustellen
+  saeulen_warten || return 1
   cloud_takt &
   TAKT_PID=$!
   start >/dev/null
