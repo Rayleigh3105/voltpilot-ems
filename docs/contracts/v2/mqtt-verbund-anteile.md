@@ -97,7 +97,8 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   frischen Messung vergibt er nur einmal: nach einem Zustand, in dem beide gesenkt waren (blind, Prüf-Verstellung),
   bekommt erst die Entladung ihren Anstieg, die Erzeuger den Rest (IP-18-Befund aus IP-27). Umgekehrt senkt ein
   Anstieg der Entladung — der Plan kehrt zurück, der Speicher wechselt von Laden auf Entladen — die Erzeuger im
-  selben Takt um diesen Anstieg, was darüber hinausgeht die Entladung; nach einem Uhrensprung rückwärts belegt eine
+  selben Takt um diesen Anstieg, was darüber hinausgeht die Entladung — ab der ersten Auswertung (vorher Schub 0)
+  und blind auch auf der 60-s-Rampe gegen den Schub, mit dem sie begann; nach einem Uhrensprung rückwärts belegt eine
   Ladung keinen Spielraum, bis eine Messung nach dem Sprung-Zeitpunkt vorliegt (A8r). Er steht hinter der
   Arbitration (V1) und gilt in Ruhe, Pause und ohne Plan (V5); zusätzlich läuft die Box ohne Anteil als Schatten mit,
   das Ergebnis ist nie weiter als ohne Dokument. `sicherheitskappe` im Herzschlag heißt dann „= eigener Anteil“.
