@@ -22,9 +22,8 @@ Neu angelegt am 11.09.2026 (AP-07 IP-2, Auflösung W4 „Verträge sind additiv�
    `entity_id` NUR an einem geteilten Punkt (derselbe `point_key` mehrfach, je eigene Komponente)
    mit; der Writer schlägt damit nur in der eigenen Auswahl nach
    (`HerkunftNachschlag#reihe(..., komponente)`), und ein einfacher Punkt mit `entity_id` bleibt
-   im Writer ungültig. Offen fürs Folgepaket: Speicherschlüssel je Komponente (der alte
-   `uq_device_measurement_sample_idempotency` hält den zweiten Wert desselben Ticks ab) und die
-   Historienzählung je Komponente (`MeasurementHistoryService#rawData` partitioniert nach Box).
+   im Writer ungültig. Speicherschlüssel und Box-Verlauf regelt Teil 1b
+   ([Box-Schlüssel des geteilten Punkts](uems-geteilter-punkt-box-schluessel.md)).
 2. **Die Box-Core liest den lokalen Layer-1-Batch mit `DisallowUnknownFields`**
    (`edge-app/core/internal/measurements` `parseBatch`, `Sample`/`LocalBatch`). Seit
    [IP-18](uems-measurement-samples-box-herkunft.md) erlaubt sie Herkunft und wählt

@@ -63,7 +63,9 @@ Fassungs-Eintrag gelesen eine spätere Fassung zurückdrehen. Der Nachschlag sch
 ## Der ALTE Index bleibt — an den Daten entschieden
 
 `uq_device_measurement_sample_idempotency (device_id, point_key, time, edge_sequence)` bleibt
-stehen. Der Grund ist kein Wunsch, sondern eine Zeile, die es weiter gibt: **jeder Bestandswert
+stehen (seit IP-18b Teil 1b als `uq_device_measurement_sample_box` für jede Zeile ohne
+`edge_entity_id`, dieselbe Spaltenfolge; siehe
+[Box-Schlüssel des geteilten Punkts](uems-geteilter-punkt-box-schluessel.md)). Der Grund ist kein Wunsch, sondern eine Zeile, die es weiter gibt: **jeder Bestandswert
 (ohne Komponente) und jeder Spiegel liegt ausserhalb des neuen partiellen Index** (der greift nur
 bei `entity_id IS NOT NULL AND role IS DISTINCT FROM 'spiegel'`), und für sie ist der alte Index
 der einzige Doppel-Schutz, den es gibt. Er darf erst fallen, wenn keine Zeile mehr ohne Komponente

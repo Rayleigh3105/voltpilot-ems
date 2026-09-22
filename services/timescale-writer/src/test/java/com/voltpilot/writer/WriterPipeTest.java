@@ -1277,10 +1277,11 @@ class WriterPipeTest {
      * UEMS AP-07 IP-18b (Cloud-Vorpaket): ein GETEILTER Punkt nennt je Vorkommen seine Komponente.
      * Der Writer schlägt die Reihe dann nur in der Auswahlzeile genau dieser Komponente nach - eine
      * Komponente, die die eigene Auswahl nicht kennt, bleibt ohne Reihe wie heute bei
-     * Mehrdeutigkeit. Zwei Messzeiten: beide gespeichert, je in ihrer Reihe. Derselbe Tick: der
-     * alte Box-Schlüssel {@code (device_id, point_key, time, edge_sequence)} lässt bis zum
-     * Folgepaket nur die erste Komponente durch; die zweite wird NICHT als gespeichert gezählt.
-     * Ein Wechsel-Ereignis vergleicht nur Werte derselben Komponente, nie zwei Zähler.
+     * Mehrdeutigkeit. Zwei Messzeiten: beide gespeichert, je in ihrer Reihe. Derselbe Tick
+     * (Teil 1b): der Box-Schlüssel gilt je genannter Komponente ({@code edge_entity_id}), beide
+     * werden gespeichert - auch zwei unaufgelöste. Dieselbe Zustellung noch einmal legt nichts
+     * dazu. Ein Wechsel-Ereignis vergleicht nur Werte derselben Komponente, nie zwei Zähler, und
+     * der Punktzustand der Box wird von einem geteilten Punkt nicht fortgeschrieben.
      */
     @Test
     void einGeteilterPunktFindetJeKomponenteSeineReihe() throws Exception {
@@ -1313,25 +1314,47 @@ class WriterPipeTest {
                 + "' AND raw_numeric=500)) AND role='fuehrend'"))
                 .as("beide Werte je in der Reihe ihrer Komponente").isEqualTo(2);
 
-        // Derselbe Tick: der alte Box-Schlüssel nimmt nur die erste Komponente; eine Komponente,
-        // die die Auswahl nicht kennt, bekommt keine Reihe (Kontrolle an einer dritten Messzeit).
-        senden(device,
-                geteilt(device, 501, "2026-11-22T10:01:07Z",
-                        new String[] {a, "2026-11-22T10:01:00Z", "101"},
-                        new String[] {b, "2026-11-22T10:01:00Z", "501"}),
+        // Derselbe Tick: zwei Komponenten, beide gespeichert, je in ihrer Reihe. Zwei
+        // Komponenten, die die Auswahl nicht kennen, bekommen keine Reihe - und liegen trotzdem
+        // beide, weil der Box-Schlüssel die NENNUNG trägt, nicht das Ergebnis des Nachschlags.
+        String fremd2 = "71000000-0000-0000-0000-0000000000ce";
+        String tick = geteilt(device, 501, "2026-11-22T10:01:07Z",
+                new String[] {a, "2026-11-22T10:01:00Z", "101"},
+                new String[] {b, "2026-11-22T10:01:00Z", "501"});
+        senden(device, tick,
                 geteilt(device, 502, "2026-11-22T10:02:07Z",
                         new String[] {a, "2026-11-22T10:02:00Z", "102"},
-                        new String[] {fremd, "2026-11-22T10:02:01Z", "999"}));
-        awaitMeasurementRows(device, 5);
+                        new String[] {fremd, "2026-11-22T10:02:01Z", "999"},
+                        new String[] {fremd2, "2026-11-22T10:02:01Z", "998"}));
+        awaitMeasurementRows(device, 7);
         assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
-                + "' AND time='2026-11-22T10:01:00Z' AND entity_id='" + a + "' AND raw_numeric=101"))
-                .as("die erste Komponente des Ticks steht in ihrer Reihe").isOne();
+                + "' AND time='2026-11-22T10:01:00Z' AND role='fuehrend' AND ((entity_id='" + a
+                + "' AND edge_entity_id='" + a + "' AND raw_numeric=101) OR (entity_id='" + b
+                + "' AND edge_entity_id='" + b + "' AND raw_numeric=501))"))
+                .as("zwei Komponenten, derselbe Tick: beide gespeichert, je in ihrer Reihe")
+                .isEqualTo(2);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND time='2026-11-22T10:02:01Z' AND entity_id IS NULL AND role IS NULL "
+                + "AND ((edge_entity_id='" + fremd + "' AND raw_numeric=999) OR (edge_entity_id='"
+                + fremd2 + "' AND raw_numeric=998))"))
+                .as("unbekannte Komponenten vom Draht werden nie übernommen - und liegen beide")
+                .isEqualTo(2);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND edge_entity_id IS NULL"))
+                .as("jede Zeile des geteilten Punkts trägt die Nennung der Box").isZero();
+
+        // Dieselbe Zustellung noch einmal: der Box-Schlüssel je Komponente weist beide ab. Eine
+        // neue Messzeit dahinter zeigt, dass der Writer die Wiederholung schon gelesen hat.
+        senden(device, tick, geteilt(device, 503, "2026-11-22T10:03:07Z",
+                new String[] {a, "2026-11-22T10:03:00Z", "103"},
+                new String[] {b, "2026-11-22T10:03:00Z", "503"}));
+        awaitMeasurementRows(device, 9);
         assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
                 + "' AND time='2026-11-22T10:01:00Z'"))
-                .as("bis zum Folgepaket: der alte Box-Schlüssel hält die zweite ab").isOne();
-        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
-                + "' AND raw_numeric=999 AND entity_id IS NULL AND role IS NULL"))
-                .as("eine unbekannte Komponente vom Draht wird nie übernommen").isOne();
+                .as("die Wiederholung legt nichts dazu").isEqualTo(2);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_point_state WHERE device_id='"
+                + device + "' AND point_key='" + PUNKT + "'"))
+                .as("der Punktzustand der Box bleibt vom geteilten Punkt unberührt").isZero();
         assertThat(zaehle("SELECT count(*) FROM device_measurement_event WHERE device_id='" + device
                 + "' AND event_kind='counter_reset'"))
                 .as("101 nach 500 ist kein Rücksetzen: der Vorgänger ist der derselben Komponente")

@@ -9,6 +9,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,6 +49,13 @@ import org.springframework.transaction.annotation.Transactional;
  *       neuen Schlüssel {@code (tenant_id, entity_id, point_key, time)} - der Spiegel ausdrücklich
  *       ausserhalb.
  * </ul>
+ *
+ * <p><b>Geteilter Punkt (AP-07 IP-18b).</b> Nennt die Box an einem point_key je Wert die
+ * Komponente, schreibt die Zeile diese Nennung zusätzlich nach {@code edge_entity_id}. Ihr
+ * Box-Schlüssel ist dann {@code (device_id, point_key, edge_entity_id, time, edge_sequence)} -
+ * beide Komponenten desselben Ticks werden gespeichert. Sie gehören nur in ihre Reihe, nie in den
+ * Box-Verlauf: der Punktzustand wird von ihnen nicht fortgeschrieben. Ohne Nennung ist die Zeile
+ * Zeichen für Zeichen die bisherige.
  *
  * <p><b>⚠ Ein Wert geht NIE verloren.</b> Scheitert ein Nachschlag, gibt er {@code null} zurück
  * (eigener Savepoint, geloggt, gezählt) und der Wert wird als Bestandswert gespeichert. Weist der
@@ -180,13 +189,14 @@ public class MeasurementWriteRepository {
                     ? nachschlag.gespeichertZurMesszeit(event, urteil.entityId(), pointKey, observedAt)
                     : List.of();
             if (inserted == 0 && herkunft != null && komponente != null && liegt.isEmpty()) {
-                // Geteilter Punkt, und in SEINER Reihe liegt nichts: abgewiesen hat der alte
-                // Box-Schlüssel (device_id, point_key, time, edge_sequence), den die andere
-                // Komponente desselben Ticks schon belegt. Kein Urteil wird als gespeichert
-                // gezählt; den Schlüssel je Komponente bringt das Folgepaket (AP-07 IP-18b).
+                // Geteilter Punkt, und in SEINER Reihe liegt nichts: abgewiesen hat der Box-Schlüssel
+                // je Komponente (device_id, point_key, edge_entity_id, time, edge_sequence). Dieselbe
+                // Nennung desselben Umschlags liegt also schon - nur ausserhalb dieser Reihe, weil der
+                // Nachschlag der ersten Zustellung anders ausfiel. Kein Urteil wird als gespeichert
+                // gezählt.
                 endgueltig = null;
-                log.warn("Geteilter Punkt {} der Box {} zur Messzeit {}: Komponente {} vom alten "
-                        + "Box-Schlüssel abgewiesen", pointKey, event.device_id(), observedAt, komponente);
+                log.warn("Geteilter Punkt {} der Box {} zur Messzeit {}: Komponente {} liegt schon "
+                        + "ausserhalb ihrer Reihe", pointKey, event.device_id(), observedAt, komponente);
             } else if (inserted == 0 && herkunft != null) {
                 // E3 am lebenden Schlüssel: die Datenbank hat abgewiesen. Liegt dort DERSELBE
                 // Wert (Wiederholung - gezählt, kein Ereignis) oder ein WIDERSPRUCH
@@ -205,7 +215,11 @@ public class MeasurementWriteRepository {
                 urteilGezaehlt(endgueltig, gespeicherteHerkunft(endgueltig));
             }
             if (inserted > 0) {
-                updatePointState(event, pointKey, observedAt, raw, decoded, quality);
+                // Der Punktzustand ist Box-Verlauf: ein geteilter Punkt (IP-18b) schreibt ihn nicht
+                // fort, sonst wechselte er je Tick zwischen zwei Komponenten.
+                if (komponente == null) {
+                    updatePointState(event, pointKey, observedAt, raw, decoded, quality);
+                }
                 // Geteilter Punkt (IP-18b): ein Wechsel ist nur gegen den Vorgänger DERSELBEN
                 // Komponente einer - nie zwischen zwei Zählern an einem point_key. Ohne eindeutige
                 // Reihe lässt sich das nicht sagen, dann entsteht kein Wechsel-Ereignis.
@@ -261,20 +275,16 @@ public class MeasurementWriteRepository {
     /**
      * Schreibt EINE Zeile. Ohne Herkunft sind die sieben neuen Spalten {@code null} - das ist
      * dieselbe Zeile wie vor IP-7, nur ausdrücklich hingeschrieben. {@code ON CONFLICT DO NOTHING}
-     * ohne Ziel sieht BEIDE Schlüssel: den alten (Bestand, Spiegel-Spur) und den neuen
-     * (Reihe + Messzeit der zuständigen Spur) - er ist der Wettlauf-Schutz unter dem Urteil.
+     * ohne Ziel sieht ALLE Schlüssel: den Box-Schlüssel (Bestand, Spiegel-Spur; am geteilten Punkt
+     * je genannter Komponente) und den der Reihe (Reihe + Messzeit der zuständigen Spur) - er ist
+     * der Wettlauf-Schutz unter dem Urteil. Nur ein geteilter Punkt (IP-18b) nennt
+     * {@code edge_entity_id}; ohne ihn ist die Anweisung Zeichen für Zeichen die bisherige.
      */
     private int schreiben(MeasurementRawEvent event, JsonNode sample, String pointKey,
             Instant observedAt, Value raw, Value decoded, String quality, Meta meta,
             HerkunftNachschlag.Urteil urteil, MesswertHerkunft.Herkunft herkunft) {
-        return jdbc.update("INSERT INTO device_measurement_sample "
-                        + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
-                        + "raw_text,decoded_numeric,decoded_text,quality,catalog_version,"
-                        + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples,"
-                        + "signed_data,signed_data_format,entity_id,device_install_id,"
-                        + "applied_revision,value_kind,role,delivery,delay_s) "
-                        + "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
-                        + "ON CONFLICT DO NOTHING",
+        UUID komponente = komponente(sample);
+        List<Object> werte = new ArrayList<>(Arrays.asList(
                 Timestamp.from(observedAt), Timestamp.from(event.ingested_at()),
                 event.tenant_id(), event.site_id(), event.device_id(), pointKey,
                 raw.numeric(), raw.text(), decoded.numeric(), decoded.text(),
@@ -287,7 +297,19 @@ public class MeasurementWriteRepository {
                 herkunft == null ? null : herkunft.wertart(),
                 herkunft == null ? null : herkunft.rolle().code(),
                 herkunft == null ? null : herkunft.zustellart().art().code(),
-                herkunft == null ? null : sekunden(herkunft.zustellart().verzoegerungS()));
+                herkunft == null ? null : sekunden(herkunft.zustellart().verzoegerungS())));
+        if (komponente != null) werte.add(komponente);
+        return jdbc.update("INSERT INTO device_measurement_sample "
+                        + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
+                        + "raw_text,decoded_numeric,decoded_text,quality,catalog_version,"
+                        + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples,"
+                        + "signed_data,signed_data_format,entity_id,device_install_id,"
+                        + "applied_revision,value_kind,role,delivery,delay_s"
+                        + (komponente == null ? "" : ",edge_entity_id") + ") "
+                        + "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?"
+                        + (komponente == null ? "" : ",?") + ") "
+                        + "ON CONFLICT DO NOTHING",
+                werte.toArray());
     }
 
     /** Die Verzögerung als {@code integer} der Spalte; sie liegt immer zwischen -300 s und 90 Tagen. */

@@ -206,6 +206,9 @@ CREATE TABLE device_measurement_sample (
     -- zeichengleich weiterschreibt.
     entity_id UUID, device_install_id UUID, applied_revision BIGINT,
     value_kind TEXT, role TEXT, delivery TEXT, delay_s INTEGER,
+    -- UEMS AP-07 IP-18b (V20260922236000): die Komponente, die die Box an einem
+    -- geteilten Punkt genannt hat; sonst NULL.
+    edge_entity_id UUID,
     CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1),
     -- Die geschlossenen Vokabulare und die Paar-Regel der Zustellart, wörtlich
     -- aus V20260912140000: ein fremdes Wort wird abgewiesen, nie aufgelöst.
@@ -221,10 +224,17 @@ CREATE TABLE device_measurement_sample (
         CHECK (applied_revision IS NULL OR applied_revision >= 0)
 );
 SELECT create_hypertable('device_measurement_sample','time',if_not_exists=>TRUE);
-CREATE UNIQUE INDEX uq_device_measurement_sample_idempotency
-    ON device_measurement_sample(device_id,point_key,time,edge_sequence);
+-- Der Box-Schlüssel (V20260922236000 löst uq_device_measurement_sample_idempotency
+-- ab): ohne genannte Komponente dieselbe Spaltenfolge wie vorher, am geteilten
+-- Punkt je genannter Komponente.
+CREATE UNIQUE INDEX uq_device_measurement_sample_box
+    ON device_measurement_sample(device_id,point_key,time,edge_sequence)
+    WHERE edge_entity_id IS NULL;
+CREATE UNIQUE INDEX uq_device_measurement_sample_box_komponente
+    ON device_measurement_sample(device_id,point_key,edge_entity_id,time,edge_sequence)
+    WHERE edge_entity_id IS NOT NULL;
 -- Der neue Doppel-Erkennungsschlüssel (Reihe + Messzeit, IP-6). Seit IP-7 ist er
--- der Schlüssel JEDES Werts mit nachgeschlagener Herkunft; der ALTE Index darüber
+-- der Schlüssel JEDES Werts mit nachgeschlagener Herkunft; der Box-Schlüssel darüber
 -- bleibt der Schlüssel jedes Bestandswerts (ohne Komponente) und jedes Spiegels.
 CREATE UNIQUE INDEX uq_device_measurement_sample_reihe
     ON device_measurement_sample(tenant_id,entity_id,point_key,time)
