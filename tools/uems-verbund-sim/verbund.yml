@@ -1,0 +1,117 @@
+# AP-15 IP-28 (NW-3): ZWEI Edge-Container in EINER Anlage.
+#
+# Abgeleitet aus tools/nw3-box-image/nw3-overlay.yml: dieselben lokal gebauten
+# Bilder (pull_policy never), dieselbe Box - nur zweimal. Core und Node-RED
+# erben ihre Umgebung per `extends` aus edge-app/docker-compose.yml, damit der
+# Aufbau jede Option fährt, die das Geräte-Compose fährt; überschrieben wird nur,
+# was zwei Boxen an einem Docker-Host brauchen (Identität, Daten, Netze, Ports).
+#
+#   wan     cloud-broker, core-e1, core-e4               (die „Cloud-Seite")
+#   box-e1  core-e1 (Alias core), nodered-e1, anlage     (das LAN von Box Halle 1)
+#   box-e4  core-e4 (Alias core), nodered-e4, anlage     (das LAN von Box Verwaltung)
+#
+# Die Anlage hängt in BEIDEN Box-Netzen unter dem Alias edge-sim - dort liest
+# und schreibt der Node-RED-Tab „SunSpec (Simulator)" jeder Box - und daneben
+# unter anlage-e1/anlage-e4, woran sie erkennt, welche Box fragt.
+#
+# Kein Host-Port, kein Bind-Mount. Die Cloud läuft nicht: verbund.sh stellt
+# ihre Nutzlasten über den Broker zu (nutzlast.py). Die Identität ist die der
+# Vertrags-Vektoren (verbund-anteile-mqtt-vectors.json kennungen).
+x-tenant: &tenant "7a000000-0000-4000-8000-000000000001"
+x-site: &site "7a000000-0000-4000-8000-0000000000a1"
+
+services:
+  cloud-broker:
+    image: ${VB_BROKER_IMAGE:?VB_BROKER_IMAGE}
+    pull_policy: never
+    mem_limit: 128m
+    networks: [wan]
+
+  core-e1:
+    extends: { file: ../../edge-app/docker-compose.yml, service: core }
+    image: ${VB_CORE_IMAGE:?VB_CORE_IMAGE}
+    pull_policy: never
+    restart: "no"
+    mem_limit: 192m
+    depends_on: !override [cloud-broker]
+    environment: &core-env
+      VP_DEV_TENANT_ID: *tenant
+      VP_DEV_SITE_ID: *site
+      VP_DEV_DEVICE_ID: "7a000000-0000-4000-8000-0000000000e1"
+      VP_DEV_CLOUD_URL: "tcp://cloud-broker:1883"
+      # wie docker-compose.e2e.yml: der Steuerpfad schreibt Register 40/41/42
+      VP_CONTROL_ENABLED: "true"
+      # K-2 Speicher 100 kW (zwei_agenten_test.go zaStarteBox: MaxCharge/MaxDischarge 100)
+      VP_MAX_CHARGE_KW: "100"
+      VP_MAX_DISCHARGE_KW: "100"
+    volumes: !override [daten-e1:/data]
+    ports: !reset []
+    networks:
+      wan: {}
+      box-e1: { aliases: [core] }
+
+  nodered-e1:
+    extends: { file: ../../edge-app/docker-compose.yml, service: nodered }
+    image: ${VB_NODERED_IMAGE:?VB_NODERED_IMAGE}
+    pull_policy: never
+    restart: "no"
+    mem_limit: 320m
+    depends_on: !override [core-e1]
+    environment: &nodered-env
+      VP_NODERED_PASSWORD: uems-verbund-sim
+    volumes: !override [nodered-e1:/data]
+    ports: !reset []
+    networks: [box-e1]
+
+  core-e4:
+    extends: { file: ../../edge-app/docker-compose.yml, service: core }
+    image: ${VB_CORE_IMAGE:?VB_CORE_IMAGE}
+    pull_policy: never
+    restart: "no"
+    mem_limit: 192m
+    depends_on: !override [cloud-broker]
+    environment:
+      <<: *core-env
+      VP_DEV_DEVICE_ID: "7a000000-0000-4000-8000-0000000000e4"
+    volumes: !override [daten-e4:/data]
+    ports: !reset []
+    networks:
+      wan: {}
+      box-e4: { aliases: [core] }
+
+  nodered-e4:
+    extends: { file: ../../edge-app/docker-compose.yml, service: nodered }
+    image: ${VB_NODERED_IMAGE:?VB_NODERED_IMAGE}
+    pull_policy: never
+    restart: "no"
+    mem_limit: 320m
+    depends_on: !override [core-e4]
+    environment: *nodered-env
+    volumes: !override [nodered-e4:/data]
+    ports: !reset []
+    networks: [box-e4]
+
+  anlage:
+    image: ${VB_ANLAGE_IMAGE:?VB_ANLAGE_IMAGE}
+    pull_policy: never
+    restart: "no"
+    mem_limit: 128m
+    environment:
+      VB_PROFIL: ${VB_PROFIL:-mittag}
+      VB_ANLAUF_S: ${VB_ANLAUF_S:-300}
+      VB_DAUER_S: ${VB_DAUER_S:-2700}
+      VB_T0_S: ${VB_T0_S:-600}
+    networks:
+      box-e1: { aliases: [edge-sim, anlage-e1] }
+      box-e4: { aliases: [edge-sim, anlage-e4] }
+
+networks:
+  wan: {}
+  box-e1: {}
+  box-e4: {}
+
+volumes:
+  daten-e1: {}
+  daten-e4: {}
+  nodered-e1: {}
+  nodered-e4: {}
