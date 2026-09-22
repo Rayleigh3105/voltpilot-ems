@@ -214,7 +214,7 @@ type ExportCap struct {
 	// last change of the value.
 	Eingefroren bool
 	// Uhrsprung is true while the verdict is blind because the box's clock
-	// went back behind its newest measurement (IP-27 A8; CapAnteil only): an
+	// went back behind its newest measurement (IP-27 A8): an
 	// age below zero is no age.
 	Uhrsprung bool
 	// Pruefung is true when this evaluation made the probing adjustment of
@@ -233,6 +233,11 @@ type ExportLimiter struct {
 	at     time.Time
 	gridKw float64
 	pvKw   float64
+	// A negative age starts the ordinary blind fallback on the new clock.
+	// Only an accepted measurement ends it; catching up is no new evidence.
+	uhrBlind bool
+	uhrAb    time.Time
+	uhrNeu   bool // a new sample must also be on/before the evaluation clock
 
 	// the currently commanded cap
 	capValid bool
@@ -299,10 +304,12 @@ func (l *ExportLimiter) Observe(ts time.Time, gridKw, pvKw float64) (urgent bool
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	// Out-of-order samples are ignored: the newest measurement is the truth.
+	// Like ObserveMitSpeicher: an older timestamp re-anchors the clock.
+	// A reordered sample must not earn release credit from before the jump.
 	if l.seen && ts.Before(l.at) {
-		return false
+		l.verankern(ts)
 	}
+	l.uhrNeu = l.uhrBlind
 	l.seen, l.at, l.gridKw, l.pvKw = true, ts, gridKw, math.Max(pvKw, 0)
 	l.messung++
 	if !l.limitValid || !l.capValid {
@@ -374,12 +381,28 @@ func (l *ExportLimiter) capLockedAb(now, at time.Time, limit, safeStaticCapKw fl
 	fresh := false
 	if l.seen {
 		age = now.Sub(at)
-		if age < 0 {
-			age = 0
+		if l.uhrNeu && age >= 0 {
+			l.uhrBlind = false
 		}
-		fresh = age <= ExportFreshWindow
+		l.uhrNeu = false
+		if age < 0 {
+			if !l.uhrBlind || now.Before(l.uhrAb) {
+				l.uhrAb = now
+			}
+			l.uhrBlind = true
+		}
+		if l.uhrBlind {
+			age = now.Sub(l.uhrAb)
+		}
+		fresh = !l.uhrBlind && age <= ExportFreshWindow
 	}
 	res.MeasurementAge = age
+	res.Uhrsprung = l.uhrBlind
+	if l.uhrBlind {
+		// Keep the actual (possibly negative) age visible; only the fallback
+		// windows count from detecting the jump on the new clock.
+		res.MeasurementAge = now.Sub(at)
+	}
 
 	switch {
 	case l.seen && fresh:
@@ -404,6 +427,9 @@ func (l *ExportLimiter) capLockedAb(now, at time.Time, limit, safeStaticCapKw fl
 					"Eigenverbrauch einhaelt.",
 				age1(age), kw1(safeStaticCapKw), kw1(limit))
 		}
+	}
+	if res.Uhrsprung {
+		res.Reason = "Die Uhr der Box ist hinter die letzte Messung am Netzverknuepfungspunkt zurückgesprungen - " + res.Reason
 	}
 	return res
 }

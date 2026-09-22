@@ -273,18 +273,16 @@ func TestEinfrierprobeUhrZurueck(t *testing.T) {
 	}
 }
 
-// befundEinzelboxUhrZurueck - the same clock gap in TODAY's path of a single
-// box (no share document: Observe + Cap). NOT healed in this package (the
-// operator decides whether existing boxes get the correction): a sample older
-// than the last one is discarded and the negative age is clamped to 0, so the
-// last value before the jump counts as fresh until the clock has caught up.
+// befundEinzelboxUhrZurueck: healed for the single box (Observe + Cap),
+// authorized for the next box release on 2026-09-22. Previously 830 s above
+// the limit, +28.0 kW: older samples were discarded and negative age was fresh.
 // Picture: limit 100 kW, PV 150 kW available, house 50 kW; the clock jumps
 // 840 s back, 5 s later the house drops to 20 kW. The test SHOWS the excess
-// with these numbers and breaks when it vanishes or grows.
-var befundEinzelboxUhrZurueck = struct {
+// with these numbers; nil requires the limit to hold throughout.
+var befundEinzelboxUhrZurueck *struct {
 	laengsteS       int
 	groessteUeberKw float64
-}{laengsteS: 830, groessteUeberKw: 28.0}
+} = nil
 
 func TestEinzelboxUhrZurueckBefund(t *testing.T) {
 	l := NewExportLimiter()
@@ -313,6 +311,13 @@ func TestEinzelboxUhrZurueckBefund(t *testing.T) {
 		}
 	}
 	b := befundEinzelboxUhrZurueck
+	if b == nil {
+		if laengste != 0 || groesste != 0 {
+			t.Fatalf("Einzelbox Uhr zurück hält nicht: %d s / +%.1f kW", laengste, groesste)
+		}
+		t.Logf("Einzelbox ohne Anteils-Dokument, Uhr 840 s zurück: hält, %d s über der Grenze, +%.1f kW", laengste, groesste)
+		return
+	}
 	if laengste < b.laengsteS-5 || laengste > b.laengsteS+5 || math.Abs(groesste-b.groessteUeberKw) > 0.1 {
 		t.Fatalf("Befund Einzelbox Uhr zurück verändert: festgehalten %d s / +%.1f kW, gemessen %d s / +%.1f kW",
 			b.laengsteS, b.groessteUeberKw, laengste, groesste)
