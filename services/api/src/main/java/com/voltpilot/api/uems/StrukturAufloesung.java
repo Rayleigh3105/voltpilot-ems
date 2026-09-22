@@ -50,11 +50,15 @@ final class StrukturAufloesung {
     static final String STANDORT = "standort";
     static final String ANLAGE = "anlage";
     static final String MESSSTELLE = "messstelle";
+    static final String ENERGIEEINSATZ = "energieeinsatz";
+    static final String BEWERTUNG = "bewertung";
+    static final String MESSBEDARF = "messbedarf";
+    static final String MESSMITTEL = "messmittel";
 
     /** Die Arten, die ein Urteil bekommen — jede andere Art ist nie ein Anstoß (bericht.md B4, Tabelle der Regel struktur). */
     static final List<String> ORT_ARTEN = List.of("verschoben", "korrigiert", "flaeche_geaendert");
     static final List<String> MESSSTELLE_ARTEN = List.of("ort_zugeordnet", "ort_korrigiert", "verteilung_geaendert",
-            "zaehler_gewechselt");
+            "zaehler_gewechselt", "prozesse_zugeordnet");
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final ZoneId VORGABE_ZONE = ZoneId.of("Europe/Berlin");
@@ -74,6 +78,9 @@ final class StrukturAufloesung {
         }
 
         LocalDate giltAb(ZoneId zone) {
+            if (BerichtRegeln.BEWERTUNGS_PROTOKOLLE.contains(protokoll)) {
+                return LocalDate.of(1, 1, 1);
+            }
             return giltAbTag != null ? giltAbTag : giltAbZeit.atZone(zone).toLocalDate();
         }
     }
@@ -103,6 +110,12 @@ final class StrukturAufloesung {
             case BerichtRegeln.FLAECHE_RUECKWIRKEND -> flaechen(j, z.tenant(), z.objektArt(), z.objektId());
             case BerichtRegeln.VERTEILUNG_RUECKWIRKEND -> verteilung(j, z.tenant(), z.objektId(),
                     kostenstellen(j, z.tenant(), z.alt(), z.neu()), giltAb);
+            case BerichtRegeln.EINSTUFUNG_FASSUNG, BerichtRegeln.MESSMITTEL_ANGABE -> Set.of(z.objektId());
+            case BerichtRegeln.MESSBEDARF_ZUSTAND -> messbedarfUndEinsatz(j, z);
+            case BerichtRegeln.UMFANG_FASSUNG -> umfangFassungen(z);
+            case BerichtRegeln.KRITERIEN_FASSUNG -> ids(j,
+                    "SELECT id FROM bewertung_umfang WHERE tenant_id = ?", z.tenant());
+            case BerichtRegeln.PROZESS_ZUORDNUNG_RUECKWIRKEND -> energieeinsaetzeDerProzesse(j, z);
             default -> throw new IllegalArgumentException(anstossArt + " ist keine Strukturänderung");
         };
     }
@@ -163,6 +176,9 @@ final class StrukturAufloesung {
             case MESSSTELLE -> "SELECT kennzeichen FROM messstelle WHERE tenant_id = ? AND id = ?";
             case GEBAEUDE, BEREICH -> "SELECT kurzzeichen FROM ort WHERE tenant_id = ? AND id = ?";
             case STANDORT -> "SELECT kurzzeichen FROM standort WHERE tenant_id = ? AND id = ?";
+            case ENERGIEEINSATZ -> "SELECT kennzeichen FROM energieeinsatz WHERE tenant_id = ? AND id = ?";
+            case MESSBEDARF -> "SELECT kennzeichen FROM messbedarf WHERE tenant_id = ? AND id = ?";
+            case MESSMITTEL -> "SELECT einbau_kennzeichen FROM geraet WHERE tenant_id = ? AND id = ?";
             default -> null;
         };
         return sql == null ? null : j.queryForList(sql, String.class, tenant, id).stream().findFirst().orElse(null);
@@ -247,6 +263,35 @@ final class StrukturAufloesung {
         }
         return kennzeichen.isEmpty() ? Set.of() : ids(j, "SELECT id FROM kostenstelle WHERE tenant_id = ? "
                 + "AND kennzeichen = ANY (?)", tenant, kennzeichen.toArray(String[]::new));
+    }
+
+    private static Set<UUID> umfangFassungen(Zeile z) {
+        Set<UUID> ids = new LinkedHashSet<>();
+        for (JsonNode stand : new JsonNode[] {z.alt(), z.neu()}) {
+            if (stand != null && stand.hasNonNull("id")) {
+                ids.add(UUID.fromString(stand.get("id").asText()));
+            }
+        }
+        return ids;
+    }
+
+    private static Set<UUID> messbedarfUndEinsatz(JdbcTemplate j, Zeile z) {
+        Set<UUID> ids = new LinkedHashSet<>(Set.of(z.objektId()));
+        ids.addAll(StrukturAufloesung.ids(j, "SELECT einsatz_id FROM messbedarf WHERE tenant_id=? AND id=?",
+                z.tenant(), z.objektId()));
+        return ids;
+    }
+
+    private static Set<UUID> energieeinsaetzeDerProzesse(JdbcTemplate j, Zeile z) {
+        Set<String> kennzeichen = new LinkedHashSet<>();
+        for (JsonNode stand : new JsonNode[] {z.alt(), z.neu()}) {
+            if (stand != null) {
+                stand.path("prozesse").forEach(p -> kennzeichen.add(p.asText()));
+            }
+        }
+        return kennzeichen.isEmpty() ? Set.of() : ids(j, "SELECT e.id FROM energieeinsatz e JOIN prozess p "
+                + "ON p.id=e.prozess_id AND p.tenant_id=e.tenant_id WHERE e.tenant_id = ? AND p.kennzeichen = ANY (?)",
+                z.tenant(), kennzeichen.toArray(String[]::new));
     }
 
     private static Set<UUID> ids(JdbcTemplate j, String sql, Object... args) {

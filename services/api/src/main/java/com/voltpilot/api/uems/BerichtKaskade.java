@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -71,6 +72,9 @@ public class BerichtKaskade implements BerichteNaht {
 
     private final BerichtAbzugBildung bildung;
 
+    @Value("${voltpilot.uems.bewertung.enabled:true}")
+    private boolean bewertungEnabled = true;
+
     public BerichtKaskade(BerichtAbzugBildung bildung) {
         this.bildung = bildung;
     }
@@ -106,18 +110,20 @@ public class BerichtKaskade implements BerichteNaht {
                   LEFT JOIN kennzahl k ON k.id = q.objekt_id AND k.tenant_id = q.tenant_id
                   LEFT JOIN bericht_stand s ON s.tenant_id = q.tenant_id AND s.bericht_id = q.bericht_id
                        AND s.nr = q.stand_nr
-                 WHERE q.tenant_id = ? AND q.erster_tag <= ? AND q.letzter_tag >= ?
+                 WHERE q.tenant_id = ? AND (? OR b.vorlage <> 'energetische_bewertung')
+                   AND q.erster_tag <= ? AND q.letzter_tag >= ?
                    AND ((m.id IS NOT NULL AND q.objekt_id = ANY (?))
                         OR (q.art IN ('bezugsgroesse', 'stammdatum') AND q.objekt_id = ANY (?))
                         OR (q.art = 'kennzahl' AND coalesce(k.kennzeichen, q.kennzeichen) = ?::text))
                  ORDER BY b.kennung, q.stand_nr NULLS LAST, 4, q.bezug
                 """)) {
             ps.setObject(1, b.tenant());
-            ps.setObject(2, b.letzterTag());
-            ps.setObject(3, b.ersterTag());
-            ps.setArray(4, con.createArrayOf("uuid", messstellen.toArray()));
-            ps.setArray(5, con.createArrayOf("uuid", bezugsgroessen.toArray()));
-            ps.setString(6, berechnung);
+            ps.setBoolean(2, bewertungEnabled);
+            ps.setObject(3, b.letzterTag());
+            ps.setObject(4, b.ersterTag());
+            ps.setArray(5, con.createArrayOf("uuid", messstellen.toArray()));
+            ps.setArray(6, con.createArrayOf("uuid", bezugsgroessen.toArray()));
+            ps.setString(7, berechnung);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     quellen.add(new BerichtRegeln.Quelle(rs.getString("kennung"), (Integer) rs.getObject("stand_nr"),
@@ -141,7 +147,7 @@ public class BerichtKaskade implements BerichteNaht {
             return List.of();
         }
         List<BerichtRegeln.Quelle> quellen = strukturQuellen(new JdbcTemplate(new SingleConnectionDataSource(con, true)),
-                s.tenant(), s.objekte(), s.giltAb(), s.eingetragen());
+                s.tenant(), s.objekte(), s.giltAb(), s.eingetragen(), bewertungEnabled);
         return BerichtRegeln.betroffene(quellen, s.objekte().stream().map(UUID::toString).toList(), s.giltAb());
     }
 
@@ -153,6 +159,11 @@ public class BerichtKaskade implements BerichteNaht {
      */
     static List<BerichtRegeln.Quelle> strukturQuellen(JdbcTemplate j, UUID tenant, Collection<UUID> objekte,
             LocalDate giltAb, Instant kenntNichtVor) {
+        return strukturQuellen(j, tenant, objekte, giltAb, kenntNichtVor, true);
+    }
+
+    static List<BerichtRegeln.Quelle> strukturQuellen(JdbcTemplate j, UUID tenant, Collection<UUID> objekte,
+            LocalDate giltAb, Instant kenntNichtVor, boolean bewertungEnabled) {
         String sql = """
                 SELECT b.kennung, q.stand_nr, s.ersetzt_durch_nr IS NOT NULL AS ersetzt, q.objekt_id::text AS objekt, q.bezug,
                        q.erster_tag, q.letzter_tag
@@ -161,12 +172,13 @@ public class BerichtKaskade implements BerichteNaht {
                   LEFT JOIN bericht_stand s ON s.tenant_id = q.tenant_id AND s.bericht_id = q.bericht_id
                        AND s.nr = q.stand_nr
                   LEFT JOIN bericht_entwurf e ON e.tenant_id = q.tenant_id AND e.bericht_id = q.bericht_id
-                 WHERE q.tenant_id = ? AND q.objekt_id = ANY (?::uuid[]) AND q.letzter_tag >= ?
+                 WHERE q.tenant_id = ? AND (? OR b.vorlage <> 'energetische_bewertung')
+                   AND q.objekt_id = ANY (?::uuid[]) AND q.letzter_tag >= ?
                 """ + (kenntNichtVor == null ? "" : """
                    AND (CASE WHEN q.stand_nr IS NULL THEN e.datenstand ELSE s.datenstand END) < ?
                 """) + " ORDER BY b.kennung, q.stand_nr NULLS LAST, 4, q.bezug";
-        List<Object> args = new ArrayList<>(List.of(tenant, objekte.stream().map(UUID::toString).toArray(String[]::new),
-                java.sql.Date.valueOf(giltAb)));
+        List<Object> args = new ArrayList<>(List.of(tenant, bewertungEnabled,
+                objekte.stream().map(UUID::toString).toArray(String[]::new), java.sql.Date.valueOf(giltAb)));
         if (kenntNichtVor != null) {
             args.add(Timestamp.from(kenntNichtVor));
         }

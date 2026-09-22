@@ -525,6 +525,12 @@ export const ANSTOSS_ART_TEXT: Record<string, string> = {
   anlage_umzug_rueckwirkend: 'Anlage rückwirkend umgezogen',
   flaeche_rueckwirkend: 'Fläche rückwirkend geändert',
   verteilung_rueckwirkend: 'Verteilung rückwirkend geändert',
+  einstufung_fassung: 'Einstufungs-Fassung geändert',
+  kriterien_fassung: 'Kriterien-Fassung geändert',
+  umfang_fassung: 'Betrachtungsumfang geändert',
+  messbedarf_zustand: 'Messbedarf geändert',
+  prozess_zuordnung_rueckwirkend: 'Prozess-Zuordnung rückwirkend geändert',
+  messmittel_angabe: 'Messmittel-Angaben geändert',
 };
 
 export const BERICHT_FORMAT_TEXT: Record<string, string> = {

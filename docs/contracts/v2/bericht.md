@@ -215,8 +215,19 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
   | `messstelle_aenderung` | `ort_zugeordnet`, `ort_korrigiert` | `zuordnung_rueckwirkend` | `nicht_rueckwirkend` |
   | `messstelle_aenderung` | `zaehler_gewechselt` | `zuordnung_rueckwirkend` | `nicht_rueckwirkend` |
   | `messstelle_aenderung` | `verteilung_geaendert` mit `korrektur` | `verteilung_rueckwirkend` | `nicht_rueckwirkend` |
+  | `messstelle_aenderung` | `prozesse_zugeordnet`, rückwirkend | `prozess_zuordnung_rueckwirkend` | `nicht_rueckwirkend` |
+  | `energieeinsatz_aenderung` | wirksame `einstufung_gesetzt`/`einstufung_bestaetigt` | `einstufung_fassung` | — |
+  | `bewertung_aenderung` | wirksame `kriterien_geaendert`/`kriterien_freigegeben` | `kriterien_fassung` | — |
+  | `bewertung_aenderung` | `umfang_geaendert` | `umfang_fassung` | — |
+  | `messbedarf_aenderung` | `erfasst`, `bearbeitet`, `eingeloest`, `verworfen` | `messbedarf_zustand` | — |
+  | `geraet_aenderung` | `messmittel_angabe` | `messmittel_angabe` | — |
   | beide | `bearbeitet` | — | `umbenennung` |
   | beide | jede andere Art | — | `keine_strukturaenderung` |
+
+  Die sechs additiven Bewertungs-Anlässe tragen die eindeutige Kennung
+  `<Anstoß-Art>/<Kennzeichen>/<Protokoll>-<Zeile>`; ein nicht kennungsfähiger oder nicht vorhandener Objektname bleibt
+  leer. Der Läufer liest diese Protokolle nur bei `voltpilot.uems.bewertung.enabled=true` und erst, wenn im Mandanten
+  eine energetische Bewertung besteht. Bei ausgeschaltetem Schalter schreibt er dafür kein Wasserzeichen.
 
 - **B5** Freigabe UND Rücknahme lösen aus; ein ersetzter Stand wird nie reaktiviert (B7 im Katalog).
 - **B6 Kein Anstoß:** Umbenennung, `gilt_ab` nach dem letzten Tag (kein Schnitt), Archivieren/Beenden heute oder künftig,

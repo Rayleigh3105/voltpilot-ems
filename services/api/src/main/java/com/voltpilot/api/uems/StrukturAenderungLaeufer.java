@@ -89,10 +89,52 @@ public class StrukturAenderungLaeufer {
             UNION ALL
             SELECT 'messstelle_aenderung', m.id, m.tenant_id, 'messstelle', m.messstelle_id, m.art, m.alt::text, m.neu::text,
                    CAST(NULL AS date), m.gilt_ab, m.rueckwirkend, m.created_at
-              FROM messstelle_aenderung m
+             FROM messstelle_aenderung m
              WHERE m.art = ANY (?)
+               AND (m.art <> 'prozesse_zugeordnet' OR EXISTS (
+                    SELECT 1 FROM bericht b WHERE b.tenant_id=m.tenant_id
+                     AND b.vorlage='energetische_bewertung'))
                AND NOT EXISTS (SELECT 1 FROM bericht_struktur_gelesen g
                                 WHERE g.protokoll = 'messstelle_aenderung' AND g.eintrag_id = m.id)
+            UNION ALL
+            SELECT 'energieeinsatz_aenderung', a.id, a.tenant_id, 'energieeinsatz', a.einsatz_id, a.art,
+                   a.alt::text, a.neu::text, CAST(NULL AS date), CAST(NULL AS timestamptz), true, a.created_at
+              FROM energieeinsatz_aenderung a
+             WHERE ? AND (a.art = 'einstufung_bestaetigt'
+                    OR (a.art = 'einstufung_gesetzt' AND a.neu->>'freigabe_status' = 'freigegeben'))
+               AND EXISTS (SELECT 1 FROM bericht b WHERE b.tenant_id=a.tenant_id
+                            AND b.vorlage='energetische_bewertung')
+               AND NOT EXISTS (SELECT 1 FROM bericht_struktur_gelesen g
+                                WHERE g.protokoll = 'energieeinsatz_aenderung' AND g.eintrag_id = a.id)
+            UNION ALL
+            SELECT 'bewertung_aenderung', a.id, a.tenant_id, 'bewertung',
+                   coalesce((a.neu->>'unternehmen_id')::uuid, (a.alt->>'unternehmen_id')::uuid), a.art,
+                   a.alt::text, a.neu::text, CAST(NULL AS date), CAST(NULL AS timestamptz), true, a.created_at
+              FROM bewertung_aenderung a
+             WHERE ? AND (a.art = 'umfang_geaendert' OR a.art = 'kriterien_freigegeben'
+                    OR (a.art = 'kriterien_geaendert' AND a.neu->>'freigabe_status' = 'freigegeben'))
+               AND EXISTS (SELECT 1 FROM bericht b WHERE b.tenant_id=a.tenant_id
+                            AND b.vorlage='energetische_bewertung')
+               AND NOT EXISTS (SELECT 1 FROM bericht_struktur_gelesen g
+                                WHERE g.protokoll = 'bewertung_aenderung' AND g.eintrag_id = a.id)
+            UNION ALL
+            SELECT 'messbedarf_aenderung', a.id, a.tenant_id, 'messbedarf', a.messbedarf_id, a.art,
+                   a.alt::text, a.neu::text, CAST(NULL AS date), CAST(NULL AS timestamptz), true, a.created_at
+              FROM messbedarf_aenderung a
+             WHERE ? AND a.art IN ('erfasst', 'bearbeitet', 'eingeloest', 'verworfen')
+               AND EXISTS (SELECT 1 FROM bericht b WHERE b.tenant_id=a.tenant_id
+                            AND b.vorlage='energetische_bewertung')
+               AND NOT EXISTS (SELECT 1 FROM bericht_struktur_gelesen g
+                                WHERE g.protokoll = 'messbedarf_aenderung' AND g.eintrag_id = a.id)
+            UNION ALL
+            SELECT 'geraet_aenderung', a.id, a.tenant_id, 'messmittel', a.geraet_id, a.art,
+                   a.alt::text, a.neu::text, CAST(NULL AS date), CAST(NULL AS timestamptz), true, a.created_at
+              FROM geraet_aenderung a
+             WHERE ? AND a.art = 'messmittel_angabe'
+               AND EXISTS (SELECT 1 FROM bericht b WHERE b.tenant_id=a.tenant_id
+                            AND b.vorlage='energetische_bewertung')
+               AND NOT EXISTS (SELECT 1 FROM bericht_struktur_gelesen g
+                                WHERE g.protokoll = 'geraet_aenderung' AND g.eintrag_id = a.id)
              ORDER BY created_at, protokoll, id
              LIMIT ?
             """;
@@ -100,6 +142,9 @@ public class StrukturAenderungLaeufer {
     private final JdbcTemplate adminJdbc;
     private final BerichteNaht naht;
     private final int zeilenJeLauf;
+
+    @Value("${voltpilot.uems.bewertung.enabled:true}")
+    private boolean bewertungEnabled = true;
 
     public StrukturAenderungLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, BerichteNaht naht,
             @Value("${voltpilot.uems.berichte.struktur.je-lauf:200}") int zeilenJeLauf) {
@@ -139,8 +184,11 @@ public class StrukturAenderungLaeufer {
                     StrukturAufloesung.json(rs.getString("neu")), rs.getObject("gilt_ab_tag", LocalDate.class),
                     zeit == null ? null : zeit.toInstant(), rs.getBoolean("rueckwirkend"),
                     rs.getTimestamp("created_at").toInstant());
-        }, StrukturAufloesung.ORT_ARTEN.toArray(String[]::new), StrukturAufloesung.MESSSTELLE_ARTEN.toArray(String[]::new),
-                zeilenJeLauf);
+        }, StrukturAufloesung.ORT_ARTEN.toArray(String[]::new),
+                (bewertungEnabled ? StrukturAufloesung.MESSSTELLE_ARTEN
+                        : StrukturAufloesung.MESSSTELLE_ARTEN.stream()
+                                .filter(a -> !"prozesse_zugeordnet".equals(a)).toList()).toArray(String[]::new),
+                bewertungEnabled, bewertungEnabled, bewertungEnabled, bewertungEnabled, zeilenJeLauf);
         int gelesen = 0;
         int berichte = 0;
         Map<String, String> gescheitert = new LinkedHashMap<>();
@@ -177,9 +225,12 @@ public class StrukturAenderungLaeufer {
             LocalDate giltAb = z.giltAb(zone);
             Set<UUID> objekte = StrukturAufloesung.objekte(j, z, urteil.anstossArt(), giltAb);
             if (!objekte.isEmpty()) {
-                String anlass = BerichtRegeln.strukturKennung(urteil.anstossArt(),
-                        StrukturAufloesung.kennzeichen(j, z.tenant(), z.objektArt(), z.objektId()), giltAb,
-                        z.eingetragen().atZone(zone).toLocalDate(), z.protokoll(), z.id());
+                String kennzeichen = StrukturAufloesung.kennzeichen(j, z.tenant(), z.objektArt(), z.objektId());
+                String anlass = BerichtRegeln.BEWERTUNGS_PROTOKOLLE.contains(z.protokoll())
+                                || BerichtRegeln.PROZESS_ZUORDNUNG_RUECKWIRKEND.equals(urteil.anstossArt())
+                        ? BerichtRegeln.bewertungKennung(urteil.anstossArt(), kennzeichen, z.protokoll(), z.id())
+                        : BerichtRegeln.strukturKennung(urteil.anstossArt(), kennzeichen, giltAb,
+                                z.eingetragen().atZone(zone).toLocalDate(), z.protokoll(), z.id());
                 BerichteNaht.StrukturBetroffen s = new BerichteNaht.StrukturBetroffen(z.tenant(), anlass,
                         urteil.anstossArt(), objekte, giltAb, z.eingetragen(), jetzt);
                 List<BerichteNaht.Bericht> getroffen = naht.betroffene(con, s);

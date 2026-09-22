@@ -44,4 +44,5 @@ Einstufungs-Fassung bleibt der vorgesehene Fortschreibungsweg; alte Fassungen we
   Dokument-Kennung aus der Prüfsumme. `BerichtCsv` setzt dieselbe Abschnittsfolge mit einer eigenen Kopfzeile je Abschnitt;
   `einstufung` und `fassung` sind getrennte Zellen. Die vier bisherigen Vorlagen gehen weiter durch ihren unveränderten
   Ausgabeweg. Spaltenvertrag und Nachweise: [`bericht.md` §10](../../contracts/v2/bericht.md#10-regelwerk-darstellung-und-ausgabe-rw1rw3-da1da5-e10-e11).
-- Automatischer Anstoß und die Bewertungs-Seite des Berichts gehören weiterhin nicht zu IP-21/IP-22/IP-24.
+- Die Bewertungs-Seite des Berichts gehört weiterhin nicht zu IP-21/IP-22/IP-23/IP-24. Der automatische Anstoß kam mit
+  IP-23; siehe `uems-bewertung-anstoss.md`.

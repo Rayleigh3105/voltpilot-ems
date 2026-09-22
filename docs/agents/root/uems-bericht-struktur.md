@@ -14,6 +14,10 @@ Neu angelegt am 15.09.2026. Entscheid AP-12 E6 = A (14.09.2026, zwei Pfade in ei
 | Vorschau | `GET /api/v1/berichte/betroffen?objekt&gilt_ab&anlass` → `BerichtService.betroffen`; Portal `berichteFolgen.ts` + `useBerichteFolgen.ts` in `FlaecheDialog`, `AnlageStandortDialog`, `ArchivierenDialog` |
 | Tests | `UemsStrukturAenderungTest` (Testcontainers: B8–B11, Umzug, Datenstand, Standortwechsel, Wasserzeichen, Bezugsgröße) · `StrukturAenderungWiringTest` · `BerichtApiTest` (Route) · `berichteFolgen.test.ts` |
 
+Seit AP-16 IP-23 liest derselbe Läufer zusätzlich die Bewertungs-Protokolle und die Prozess-Zuordnung; Anlass-Arten,
+Auflösung, Bestandsschutz und der eigene Schalter stehen in `uems-bewertung-anstoss.md`. Es bleibt derselbe Scheduler und
+derselbe Melder-Katalogeintrag `bericht_struktur`.
+
 ## ⚠ Fallen
 
 1. **Wer die Änderung schon kennt, ist nicht betroffen.** Nur Stände und Entwürfe, deren Datenstand VOR `created_at` der

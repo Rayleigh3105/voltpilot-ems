@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -468,6 +469,118 @@ class UemsStrukturAenderungTest {
         assertThat(anstoesse(anlass))
                 .containsExactly("BR-2026-0099 Nr. 1 | zuordnung_rueckwirkend | offen | Fassung -");
         assertThat(stand(bericht, 1)).as("der freigegebene Stand bleibt byte-gleich").isEqualTo(vorher);
+    }
+
+    /** AP-16 R7/R11/R15: beide Pfade treffen nur die Bewertung, halten Nr. 1 fest und beachten den Not-Aus. */
+    @Test
+    @Order(11)
+    void bewertungKorrekturUndFassungenStossenAn_ohneBewertungUndBeiFlagAusSchweigtDerLaeufer() throws Exception {
+        long ohneBewertung = root.queryForObject("INSERT INTO bewertung_aenderung "
+                + "(tenant_id,art,alt,neu,actor_sub,actor_name,actor_art,created_at) VALUES "
+                + "(?, 'kriterien_freigegeben', '{}'::jsonb, jsonb_build_object('unternehmen_id', ?::text), "
+                + "'kc-ines-kaltenbach','Ines Kaltenbach', 'kunde', '2026-11-18T08:00:00Z') RETURNING id", Long.class, KB,
+                IDS.get("U"));
+        laeufer.lauf(Instant.parse("2026-11-18T08:05:00Z"));
+        assertThat(gelesen(BerichtRegeln.BEWERTUNG_AENDERUNG, ohneBewertung))
+                .as("R11: ohne Bewertung kein Wasserzeichen").isNull();
+        root.update("DELETE FROM bewertung_aenderung WHERE id=?", ohneBewertung);
+
+        UUID umfang = uuid("INSERT INTO bewertung_umfang (tenant_id,unternehmen_id,fassung,gueltig_ab,traeger,"
+                + "actor_sub,actor_name,actor_art) VALUES (?,?,1,'2026-10-01',ARRAY['Strom'],'kc-ines-kaltenbach',"
+                + "'Ines Kaltenbach','kunde') RETURNING id",
+                KB, IDS.get("U"));
+        UUID einsatz = uuid("INSERT INTO energieeinsatz (tenant_id,kennzeichen,prozess_id,traeger,name,gueltig_ab,"
+                + "actor_sub,actor_name,actor_art) VALUES (?,'EE-99',?,'Strom','Spritzguss','2026-10-01',"
+                + "'kc-ines-kaltenbach','Ines Kaltenbach','kunde') "
+                + "RETURNING id", KB, IDS.get("P-1"));
+        UUID bedarf = uuid("INSERT INTO messbedarf (tenant_id,kennzeichen,einsatz_id,wortlaut,zustand,actor_sub,actor_name,"
+                + "actor_art) VALUES (?,'MB-99',?,'Unterzähler ergänzen','offen','kc-ines-kaltenbach',"
+                + "'Ines Kaltenbach','kunde') RETURNING id", KB, einsatz);
+        UUID geraet = root.queryForObject("SELECT geraet_id FROM messstelle_quelle WHERE tenant_id=? AND messstelle_id=? "
+                + "ORDER BY created_at LIMIT 1", UUID.class, KB, IDS.get("MS-12"));
+        UUID bewertung = uuid("INSERT INTO bericht (tenant_id,kennung,vorlage,vorlage_fassung,geltung_art,unternehmen_id,"
+                + "zeitraum_art,zeitraum_schluessel,zeitzone,angelegt_von_name) VALUES "
+                + "(?,'BR-2026-0199','energetische_bewertung',1,'unternehmen',?,'datengrundlage','2026-10',"
+                + "'Europe/Berlin','Ines Kaltenbach') RETURNING id", KB, IDS.get("U"));
+        root.update("INSERT INTO bericht_stand (tenant_id,bericht_id,nr,abzug,pruefsumme,datenstand,freigegeben_am,"
+                + "freigeber_sub,freigeber_name,freigeber_rolle,darstellung,regelwerk,vorlage_fassung) "
+                + "SELECT ?,?,1,abzug,pruefsumme,'2026-11-19T08:00:00Z','2026-11-19T08:05:00Z',"
+                + "'kc-ines-kaltenbach','Ines Kaltenbach','energiemanager',darstellung,regelwerk,1 "
+                + "FROM bericht_stand WHERE bericht_id=? AND nr=1", KB, bewertung, uOktober);
+        for (Object[] q : List.of(new Object[] {"messstelle", "MS-12", IDS.get("MS-12"), null},
+                new Object[] {"umfang", "Umfang", umfang, 1}, new Object[] {"energieeinsatz", "EE-99", einsatz, 1},
+                new Object[] {"messbedarf", "MB-99", bedarf, null}, new Object[] {"messmittel", "Z-99", geraet, null})) {
+            root.update("INSERT INTO bericht_quelle (tenant_id,bericht_id,stand_nr,art,kennzeichen,objekt_id,bezug,"
+                    + "erster_tag,letzter_tag,fassung,name_zum_datenstand) VALUES (?,?,1,?,?,?,'unmittelbar',"
+                    + "'2026-10-01','2026-10-31',?,?)", KB, bewertung, q[0], q[1], q[2], q[3], q[1]);
+        }
+        String nr1 = stand(bewertung, 1);
+
+        BerichtKaskade kaskade = new BerichtKaskade(bildung);
+        KorrekturKaskade.Betroffen korrektur = new KorrekturKaskade.Betroffen(KB, "K-2026-0099", 1,
+                KorrekturKaskade.FREIGEGEBEN, List.of(), OKT_BEGINN, OKT_ENDE, ZONE, OKT_AB, OKT_BIS,
+                List.of("MS-12"), List.of(), 1, Instant.parse("2026-11-20T08:05:00Z"));
+        inDerKaskade(con -> KorrekturKaskade.berichteBenachrichtigen(con, kaskade, korrektur));
+        assertThat(anstoesse("K-2026-0099"))
+                .contains("BR-2026-0199 Nr. 1 | korrektur_freigegeben | offen | Fassung 1");
+        assertThat(stand(bewertung, 1)).as("R7: Nr. 1 bleibt byte-gleich").isEqualTo(nr1);
+
+        long kriterien = bewertungAenderung("kriterien_geaendert", IDS.get("U"),
+                Instant.parse("2026-11-20T09:00:00Z"));
+        long umfangAenderung = root.queryForObject("INSERT INTO bewertung_aenderung "
+                + "(tenant_id,art,alt,neu,actor_sub,actor_name,actor_art,created_at) VALUES "
+                + "(?,'umfang_geaendert',jsonb_build_object('id',?::text,'unternehmen_id',?::text),"
+                + "jsonb_build_object('id',?::text,'unternehmen_id',?::text),'kc-ines-kaltenbach','Ines Kaltenbach',"
+                + "'kunde','2026-11-20T09:00:30Z') RETURNING id", Long.class, KB, umfang, IDS.get("U"),
+                UUID.randomUUID(), IDS.get("U"));
+        long einstufung = root.queryForObject("INSERT INTO energieeinsatz_aenderung "
+                + "(tenant_id,einsatz_id,art,alt,neu,actor_sub,actor_name,actor_art,created_at) VALUES "
+                + "(?,?,'einstufung_gesetzt','{}'::jsonb,'{\"freigabe_status\":\"freigegeben\"}'::jsonb,"
+                + "'kc-ines-kaltenbach','Ines Kaltenbach','kunde','2026-11-20T09:01:00Z') RETURNING id", Long.class, KB,
+                einsatz);
+        long messbedarf = root.queryForObject("INSERT INTO messbedarf_aenderung "
+                + "(tenant_id,messbedarf_id,art,alt,neu,actor_sub,actor_name,actor_art,created_at) VALUES "
+                + "(?,?,'eingeloest','{}'::jsonb,'{}'::jsonb,'kc-ines-kaltenbach','Ines Kaltenbach','kunde',"
+                + "'2026-11-20T09:02:00Z') "
+                + "RETURNING id", Long.class, KB, bedarf);
+        long messmittel = root.queryForObject("INSERT INTO geraet_aenderung "
+                + "(tenant_id,geraet_id,art,alt,neu,actor_sub,actor_name,actor_art,created_at) VALUES "
+                + "(?,?,'messmittel_angabe','{}'::jsonb,'{}'::jsonb,'kc-ines-kaltenbach','Ines Kaltenbach','kunde',"
+                + "'2026-11-20T09:03:00Z') "
+                + "RETURNING id", Long.class, KB, geraet);
+        long prozess = messstelleAenderung("MS-12", "prozesse_zugeordnet",
+                "{\"prozesse\":[]}", "{\"prozesse\":[\"P-1\"]}", beginn(OKT_AB), true,
+                Instant.parse("2026-11-20T09:04:00Z"));
+
+        assertThat(laeufer.lauf(Instant.parse("2026-11-20T09:05:00Z")).gescheitert()).isEmpty();
+        assertThat(gelesen(BerichtRegeln.BEWERTUNG_AENDERUNG, kriterien)).isEqualTo("kriterien_fassung · 1");
+        assertThat(gelesen(BerichtRegeln.BEWERTUNG_AENDERUNG, umfangAenderung)).isEqualTo("umfang_fassung · 1");
+        assertThat(gelesen(BerichtRegeln.ENERGIEEINSATZ_AENDERUNG, einstufung)).isEqualTo("einstufung_fassung · 1");
+        assertThat(gelesen(BerichtRegeln.MESSBEDARF_AENDERUNG, messbedarf)).isEqualTo("messbedarf_zustand · 1");
+        assertThat(gelesen(BerichtRegeln.GERAET_AENDERUNG, messmittel)).isEqualTo("messmittel_angabe · 1");
+        assertThat(gelesen(MESSSTELLE, prozess)).isEqualTo("prozess_zuordnung_rueckwirkend · 1");
+        assertThat(stand(bewertung, 1)).as("Pfad 2 ändert den freigegebenen Stand nicht").isEqualTo(nr1);
+
+        long flagAus = bewertungAenderung("kriterien_freigegeben", IDS.get("U"),
+                Instant.parse("2026-11-20T10:00:00Z"));
+        ReflectionTestUtils.setField(laeufer, "bewertungEnabled", false);
+        assertThat(laeufer.lauf(Instant.parse("2026-11-20T10:05:00Z")).gescheitert()).isEmpty();
+        assertThat(gelesen(BerichtRegeln.BEWERTUNG_AENDERUNG, flagAus)).as("Flag aus: kein Wasserzeichen").isNull();
+        assertThat(stand(bewertung, 1)).isEqualTo(nr1);
+        ReflectionTestUtils.setField(kaskade, "bewertungEnabled", false);
+        try (Connection con = admin.getConnection()) {
+            assertThat(kaskade.betroffene(con, korrektur)).extracting(BerichteNaht.Bericht::kennung)
+                    .as("Flag aus: Pfad 1 lässt nur Bewertungsstände schweigen").doesNotContain("BR-2026-0199");
+        }
+    }
+
+    private static long bewertungAenderung(String art, UUID unternehmen, Instant erstellt) {
+        return root.queryForObject("INSERT INTO bewertung_aenderung "
+                + "(tenant_id,art,alt,neu,actor_sub,actor_name,actor_art,created_at) VALUES "
+                + "(?,?,jsonb_build_object('unternehmen_id',?::text),jsonb_build_object('unternehmen_id',?::text,"
+                + "'freigabe_status','freigegeben'),"
+                + "'kc-ines-kaltenbach','Ines Kaltenbach','kunde',?) RETURNING id", Long.class, KB, art, unternehmen,
+                unternehmen, ts(erstellt));
     }
 
     // ============================================================================================ Hilfen: Protokolle

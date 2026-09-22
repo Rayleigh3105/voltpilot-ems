@@ -3010,7 +3010,13 @@ export type BerichtAnstossArt =
   | 'zuordnung_rueckwirkend'
   | 'anlage_umzug_rueckwirkend'
   | 'flaeche_rueckwirkend'
-  | 'verteilung_rueckwirkend';
+  | 'verteilung_rueckwirkend'
+  | 'einstufung_fassung'
+  | 'kriterien_fassung'
+  | 'umfang_fassung'
+  | 'messbedarf_zustand'
+  | 'prozess_zuordnung_rueckwirkend'
+  | 'messmittel_angabe';
 /** Der geschlossene Satz der Ablehnungen (`uems/BerichtAbgelehnt`, OpenAPI `BerichtFehler`). */
 export type BerichtFehlerCode =
   | 'anfrage_ungueltig'

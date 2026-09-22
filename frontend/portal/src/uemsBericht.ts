@@ -66,11 +66,18 @@ export const ZUORDNUNG_RUECKWIRKEND = 'zuordnung_rueckwirkend';
 export const ANLAGE_UMZUG_RUECKWIRKEND = 'anlage_umzug_rueckwirkend';
 export const FLAECHE_RUECKWIRKEND = 'flaeche_rueckwirkend';
 export const VERTEILUNG_RUECKWIRKEND = 'verteilung_rueckwirkend';
+export const EINSTUFUNG_FASSUNG = 'einstufung_fassung';
+export const KRITERIEN_FASSUNG = 'kriterien_fassung';
+export const UMFANG_FASSUNG = 'umfang_fassung';
+export const MESSBEDARF_ZUSTAND = 'messbedarf_zustand';
+export const PROZESS_ZUORDNUNG_RUECKWIRKEND = 'prozess_zuordnung_rueckwirkend';
+export const MESSMITTEL_ANGABE = 'messmittel_angabe';
 /** B4 — die Anstoß-Arten, geschlossen. */
 export const ANSTOSS_ARTEN = [
   KORREKTUR_FREIGEGEBEN, KORREKTUR_ZURUECKGENOMMEN, ERSATZWERT_WIRKSAM, ERSATZWERT_ZURUECKGENOMMEN,
   BEZUGSGROESSE_FASSUNG, KENNZAHL_FASSUNG_RUECKWIRKEND, ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND,
-  FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND,
+  FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND, EINSTUFUNG_FASSUNG, KRITERIEN_FASSUNG,
+  UMFANG_FASSUNG, MESSBEDARF_ZUSTAND, PROZESS_ZUORDNUNG_RUECKWIRKEND, MESSMITTEL_ANGABE,
 ];
 export const ANSTOSS_ZUSTAENDE = ['offen', 'erledigt', 'verworfen'];
 
@@ -86,7 +93,12 @@ export const KEIN_ANSTOSS = [UMBENENNUNG, NICHT_RUECKWIRKEND, KEINE_STRUKTURAEND
 
 export const ORT_AENDERUNG = 'ort_aenderung';
 export const MESSSTELLE_AENDERUNG = 'messstelle_aenderung';
-export const STRUKTUR_PROTOKOLLE = [ORT_AENDERUNG, MESSSTELLE_AENDERUNG];
+export const ENERGIEEINSATZ_AENDERUNG = 'energieeinsatz_aenderung';
+export const BEWERTUNG_AENDERUNG = 'bewertung_aenderung';
+export const MESSBEDARF_AENDERUNG = 'messbedarf_aenderung';
+export const GERAET_AENDERUNG = 'geraet_aenderung';
+export const STRUKTUR_PROTOKOLLE = [ORT_AENDERUNG, MESSSTELLE_AENDERUNG, ENERGIEEINSATZ_AENDERUNG,
+  BEWERTUNG_AENDERUNG, MESSBEDARF_AENDERUNG, GERAET_AENDERUNG];
 
 export const HANDLUNGEN = ['abrufen', 'pdf', 'csv', 'anlegen', 'freigeben', 'verwerfen', 'archivieren', 'wiedervorlage_aendern'];
 
@@ -112,7 +124,8 @@ export const EREIGNISSE_RESERVIERT = [
   'bericht_abgerufen/bericht',
 ];
 
-export const RECHTE = ['bericht.standort_abrufen', 'bericht.standort_freigeben', 'bericht.unternehmen', 'export.standort', 'export.unternehmen'];
+export const RECHTE = ['bericht.standort_abrufen', 'bericht.standort_freigeben', 'bericht.unternehmen',
+  'bewertung.abrufen', 'export.standort', 'export.unternehmen'];
 
 /** G1 — Handlung × Geltung → Kennung der Rechte-Matrix, Schlüssel `<geltung>/<handlung>`. */
 export const KENNUNG: Record<string, string> = Object.fromEntries(
@@ -192,6 +205,12 @@ export const SAETZE: Record<string, string> = {
   anlass_anlage_umzug_rueckwirkend: 'Anlage {objekt} umgezogen, gilt ab {ab}, eingetragen {am}',
   anlass_flaeche_rueckwirkend: 'Fläche {objekt} geändert, gilt ab {ab}, eingetragen {am}',
   anlass_verteilung_rueckwirkend: 'Verteilung {objekt} berichtigt, gilt ab {ab}, eingetragen {am}',
+  anlass_einstufung_fassung: 'Einstufung {objekt} geändert',
+  anlass_kriterien_fassung: 'Kriterien-Fassung geändert',
+  anlass_umfang_fassung: 'Betrachtungsumfang geändert',
+  anlass_messbedarf_zustand: 'Messbedarf {objekt} geändert',
+  anlass_prozess_zuordnung_rueckwirkend: 'Prozess-Zuordnung {objekt} rückwirkend geändert',
+  anlass_messmittel_angabe: 'Messmittel-Angaben {objekt} geändert',
   ueber_formel: '{anlass} (über die Formel)',
   ueber_kennzahl: '{anlass} (über die Kennzahl)',
   csv_geltung_standort: 'Standort {kennzeichen} {name}',
@@ -512,6 +531,29 @@ export type Struktur = { anstoss_art: string | null; grund: string | null };
 /** B3/B4/B6, Pfad 2 — was eine Zeile eines Änderungsprotokolls für Berichte ist. */
 export const struktur = (protokoll: string, objektArt: string, art: string, rueckwirkend: boolean, korrektur: boolean): Struktur => {
   if (!STRUKTUR_PROTOKOLLE.includes(protokoll)) throw new Error(`Protokoll ${protokoll} ist kein Strukturänderungs-Protokoll`);
+  if (protokoll === ENERGIEEINSATZ_AENDERUNG) {
+    return ['einstufung_gesetzt', 'einstufung_bestaetigt'].includes(art)
+      ? { anstoss_art: EINSTUFUNG_FASSUNG, grund: null } : { anstoss_art: null, grund: KEINE_STRUKTURAENDERUNG };
+  }
+  if (protokoll === BEWERTUNG_AENDERUNG) {
+    if (art === 'umfang_geaendert') return { anstoss_art: UMFANG_FASSUNG, grund: null };
+    if (['kriterien_geaendert', 'kriterien_freigegeben'].includes(art)) {
+      return { anstoss_art: KRITERIEN_FASSUNG, grund: null };
+    }
+    return { anstoss_art: null, grund: KEINE_STRUKTURAENDERUNG };
+  }
+  if (protokoll === MESSBEDARF_AENDERUNG) {
+    return ['erfasst', 'bearbeitet', 'eingeloest', 'verworfen'].includes(art)
+      ? { anstoss_art: MESSBEDARF_ZUSTAND, grund: null } : { anstoss_art: null, grund: KEINE_STRUKTURAENDERUNG };
+  }
+  if (protokoll === GERAET_AENDERUNG) {
+    return art === 'messmittel_angabe' ? { anstoss_art: MESSMITTEL_ANGABE, grund: null }
+      : { anstoss_art: null, grund: KEINE_STRUKTURAENDERUNG };
+  }
+  if (protokoll === MESSSTELLE_AENDERUNG && art === 'prozesse_zugeordnet') {
+    return rueckwirkend ? { anstoss_art: PROZESS_ZUORDNUNG_RUECKWIRKEND, grund: null }
+      : { anstoss_art: null, grund: NICHT_RUECKWIRKEND };
+  }
   if (art === 'bearbeitet') return { anstoss_art: null, grund: UMBENENNUNG };
   let anstoss: string;
   let wirkt = rueckwirkend;
@@ -691,6 +733,8 @@ export const anstossVerworfen = (begruendung: string): string => fuelle(muster('
 /** Pfad 2 (IP-9): `<Anstoß-Art>/<Kennzeichen>/<gilt ab>/<eingetragen>/<Protokoll>-<Zeile>` — Java `strukturKennung`. */
 const STRUKTUR_KENNUNG =
   /^(zuordnung_rueckwirkend|anlage_umzug_rueckwirkend|flaeche_rueckwirkend|verteilung_rueckwirkend)\/([A-Za-z0-9][A-Za-z0-9._-]*)?\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})\/(ort_aenderung|messstelle_aenderung)-(\d+)$/;
+const BEWERTUNG_KENNUNG =
+  /^(einstufung_fassung|kriterien_fassung|umfang_fassung|messbedarf_zustand|prozess_zuordnung_rueckwirkend|messmittel_angabe)\/([A-Za-z0-9][A-Za-z0-9._-]*)?\/((?:energieeinsatz|bewertung|messbedarf|messstelle|geraet)_aenderung)-(\d+)$/;
 
 /**
  * Der Anlass in Kundensprache: „Korrektur K-2026-0007“, „Ersatzwert EW-2026-0001“, die Kennung einer
@@ -705,6 +749,11 @@ export const anlass = (kennungText: string): string => {
     const satz = SAETZE[`anlass_${s[1]}`];
     const tage = { ab: datumText(s[3]), am: datumText(s[4]) };
     return s[2] === undefined ? fuelle(satz.replace(' {objekt}', ''), tage) : fuelle(satz, { objekt: s[2], ...tage });
+  }
+  const b = BEWERTUNG_KENNUNG.exec(kennungText);
+  if (b) {
+    const satz = SAETZE[`anlass_${b[1]}`];
+    return b[2] === undefined ? satz.replace(' {objekt}', '') : fuelle(satz, { objekt: b[2] });
   }
   return kennungText;
 };

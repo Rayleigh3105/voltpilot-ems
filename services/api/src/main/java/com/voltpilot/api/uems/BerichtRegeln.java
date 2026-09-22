@@ -93,10 +93,18 @@ public final class BerichtRegeln {
     public static final String ANLAGE_UMZUG_RUECKWIRKEND = "anlage_umzug_rueckwirkend";
     public static final String FLAECHE_RUECKWIRKEND = "flaeche_rueckwirkend";
     public static final String VERTEILUNG_RUECKWIRKEND = "verteilung_rueckwirkend";
+    public static final String EINSTUFUNG_FASSUNG = "einstufung_fassung";
+    public static final String KRITERIEN_FASSUNG = "kriterien_fassung";
+    public static final String UMFANG_FASSUNG = "umfang_fassung";
+    public static final String MESSBEDARF_ZUSTAND = "messbedarf_zustand";
+    public static final String PROZESS_ZUORDNUNG_RUECKWIRKEND = "prozess_zuordnung_rueckwirkend";
+    public static final String MESSMITTEL_ANGABE = "messmittel_angabe";
     /** B4 — die Anstoß-Arten, geschlossen. */
     public static final List<String> ANSTOSS_ARTEN = List.of(KORREKTUR_FREIGEGEBEN, KORREKTUR_ZURUECKGENOMMEN,
             ERSATZWERT_WIRKSAM, ERSATZWERT_ZURUECKGENOMMEN, BEZUGSGROESSE_FASSUNG, KENNZAHL_FASSUNG_RUECKWIRKEND,
-            ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND, FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND);
+            ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND, FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND,
+            EINSTUFUNG_FASSUNG, KRITERIEN_FASSUNG, UMFANG_FASSUNG, MESSBEDARF_ZUSTAND,
+            PROZESS_ZUORDNUNG_RUECKWIRKEND, MESSMITTEL_ANGABE);
 
     public static final List<String> ANSTOSS_ZUSTAENDE = List.of("offen", "erledigt", "verworfen");
 
@@ -113,7 +121,14 @@ public final class BerichtRegeln {
 
     public static final String ORT_AENDERUNG = "ort_aenderung";
     public static final String MESSSTELLE_AENDERUNG = "messstelle_aenderung";
-    public static final List<String> STRUKTUR_PROTOKOLLE = List.of(ORT_AENDERUNG, MESSSTELLE_AENDERUNG);
+    public static final String ENERGIEEINSATZ_AENDERUNG = "energieeinsatz_aenderung";
+    public static final String BEWERTUNG_AENDERUNG = "bewertung_aenderung";
+    public static final String MESSBEDARF_AENDERUNG = "messbedarf_aenderung";
+    public static final String GERAET_AENDERUNG = "geraet_aenderung";
+    public static final List<String> BEWERTUNGS_PROTOKOLLE = List.of(ENERGIEEINSATZ_AENDERUNG,
+            BEWERTUNG_AENDERUNG, MESSBEDARF_AENDERUNG, GERAET_AENDERUNG);
+    public static final List<String> STRUKTUR_PROTOKOLLE = List.of(ORT_AENDERUNG, MESSSTELLE_AENDERUNG,
+            ENERGIEEINSATZ_AENDERUNG, BEWERTUNG_AENDERUNG, MESSBEDARF_AENDERUNG, GERAET_AENDERUNG);
 
     public static final List<String> HANDLUNGEN =
             List.of("abrufen", "pdf", "csv", "anlegen", "freigeben", "verwerfen", "archivieren",
@@ -219,6 +234,12 @@ public final class BerichtRegeln {
             "anlass_anlage_umzug_rueckwirkend", "Anlage {objekt} umgezogen, gilt ab {ab}, eingetragen {am}",
             "anlass_flaeche_rueckwirkend", "Fläche {objekt} geändert, gilt ab {ab}, eingetragen {am}",
             "anlass_verteilung_rueckwirkend", "Verteilung {objekt} berichtigt, gilt ab {ab}, eingetragen {am}",
+            "anlass_einstufung_fassung", "Einstufung {objekt} geändert",
+            "anlass_kriterien_fassung", "Kriterien-Fassung geändert",
+            "anlass_umfang_fassung", "Betrachtungsumfang geändert",
+            "anlass_messbedarf_zustand", "Messbedarf {objekt} geändert",
+            "anlass_prozess_zuordnung_rueckwirkend", "Prozess-Zuordnung {objekt} rückwirkend geändert",
+            "anlass_messmittel_angabe", "Messmittel-Angaben {objekt} geändert",
             "ueber_formel", "{anlass} (über die Formel)",
             "ueber_kennzahl", "{anlass} (über die Kennzahl)",
             "csv_geltung_standort", "Standort {kennzeichen} {name}",
@@ -586,6 +607,32 @@ public final class BerichtRegeln {
         if (!STRUKTUR_PROTOKOLLE.contains(protokoll)) {
             throw new IllegalArgumentException("Protokoll " + protokoll + " ist kein Strukturänderungs-Protokoll");
         }
+        if (ENERGIEEINSATZ_AENDERUNG.equals(protokoll)) {
+            return switch (art) {
+                case "einstufung_gesetzt", "einstufung_bestaetigt" -> new Struktur(EINSTUFUNG_FASSUNG, null);
+                default -> new Struktur(null, KEINE_STRUKTURAENDERUNG);
+            };
+        }
+        if (BEWERTUNG_AENDERUNG.equals(protokoll)) {
+            return switch (art) {
+                case "umfang_geaendert" -> new Struktur(UMFANG_FASSUNG, null);
+                case "kriterien_geaendert", "kriterien_freigegeben" -> new Struktur(KRITERIEN_FASSUNG, null);
+                default -> new Struktur(null, KEINE_STRUKTURAENDERUNG);
+            };
+        }
+        if (MESSBEDARF_AENDERUNG.equals(protokoll)) {
+            return List.of("erfasst", "bearbeitet", "eingeloest", "verworfen").contains(art)
+                    ? new Struktur(MESSBEDARF_ZUSTAND, null)
+                    : new Struktur(null, KEINE_STRUKTURAENDERUNG);
+        }
+        if (GERAET_AENDERUNG.equals(protokoll)) {
+            return "messmittel_angabe".equals(art) ? new Struktur(MESSMITTEL_ANGABE, null)
+                    : new Struktur(null, KEINE_STRUKTURAENDERUNG);
+        }
+        if (MESSSTELLE_AENDERUNG.equals(protokoll) && "prozesse_zugeordnet".equals(art)) {
+            return rueckwirkend ? new Struktur(PROZESS_ZUORDNUNG_RUECKWIRKEND, null)
+                    : new Struktur(null, NICHT_RUECKWIRKEND);
+        }
         if ("bearbeitet".equals(art)) {
             return new Struktur(null, UMBENENNUNG);
         }
@@ -925,6 +972,12 @@ public final class BerichtRegeln {
             return s.group(2) == null ? fuelle(satz.replace(" {objekt}", ""), Map.of("ab", ab, "am", am))
                     : fuelle(satz, Map.of("objekt", s.group(2), "ab", ab, "am", am));
         }
+        Matcher b = BEWERTUNG_KENNUNG.matcher(kennung);
+        if (b.matches()) {
+            String satz = SAETZE.get("anlass_" + b.group(1));
+            return b.group(2) == null ? satz.replace(" {objekt}", "")
+                    : fuelle(satz, Map.of("objekt", b.group(2)));
+        }
         return kennung;
     }
 
@@ -935,6 +988,10 @@ public final class BerichtRegeln {
             + ANLAGE_UMZUG_RUECKWIRKEND + "|" + FLAECHE_RUECKWIRKEND + "|" + VERTEILUNG_RUECKWIRKEND
             + ")/([A-Za-z0-9][A-Za-z0-9._-]*)?/([0-9]{4}-[0-9]{2}-[0-9]{2})/([0-9]{4}-[0-9]{2}-[0-9]{2})/(" + ORT_AENDERUNG
             + "|" + MESSSTELLE_AENDERUNG + ")-([0-9]+)$");
+    private static final Pattern BEWERTUNG_KENNUNG = Pattern.compile("^(" + EINSTUFUNG_FASSUNG + "|"
+            + KRITERIEN_FASSUNG + "|" + UMFANG_FASSUNG + "|" + MESSBEDARF_ZUSTAND + "|"
+            + PROZESS_ZUORDNUNG_RUECKWIRKEND + "|" + MESSMITTEL_ANGABE
+            + ")/([A-Za-z0-9][A-Za-z0-9._-]*)?/((?:energieeinsatz|bewertung|messbedarf|messstelle|geraet)_aenderung)-([0-9]+)$");
 
     /**
      * B3, Pfad 2 — die Anlass-Kennung einer Strukturänderung: {@code <Anstoß-Art>/<Kennzeichen>/<gilt ab>/<eingetragen>/
@@ -946,11 +1003,22 @@ public final class BerichtRegeln {
     public static String strukturKennung(String anstossArt, String kennzeichen, LocalDate giltAb, LocalDate eingetragen,
             String protokoll, long zeile) {
         if (!List.of(ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND, FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND)
-                .contains(anstossArt) || !STRUKTUR_PROTOKOLLE.contains(protokoll)) {
+                .contains(anstossArt) || !List.of(ORT_AENDERUNG, MESSSTELLE_AENDERUNG).contains(protokoll)) {
             throw new IllegalArgumentException(anstossArt + " aus " + protokoll + " ist keine Strukturänderung");
         }
         String objekt = kennzeichen != null && KENNZEICHEN_IN_KENNUNG.matcher(kennzeichen).matches() ? kennzeichen : "";
         return anstossArt + "/" + objekt + "/" + giltAb + "/" + eingetragen + "/" + protokoll + "-" + zeile;
+    }
+
+    /** AP-16 S3: eindeutige, lesbare Kennung einer bewertungsbezogenen Protokollzeile. */
+    public static String bewertungKennung(String anstossArt, String kennzeichen, String protokoll, long zeile) {
+        if (!List.of(EINSTUFUNG_FASSUNG, KRITERIEN_FASSUNG, UMFANG_FASSUNG, MESSBEDARF_ZUSTAND,
+                PROZESS_ZUORDNUNG_RUECKWIRKEND, MESSMITTEL_ANGABE).contains(anstossArt)
+                || !(BEWERTUNGS_PROTOKOLLE.contains(protokoll) || MESSSTELLE_AENDERUNG.equals(protokoll))) {
+            throw new IllegalArgumentException(anstossArt + " aus " + protokoll + " ist kein Bewertungs-Anstoß");
+        }
+        String objekt = kennzeichen != null && KENNZEICHEN_IN_KENNUNG.matcher(kennzeichen).matches() ? kennzeichen : "";
+        return anstossArt + "/" + objekt + "/" + protokoll + "-" + zeile;
     }
 
     // ============================================================== Sätze (§5.8) und Anzeige (DA1)
