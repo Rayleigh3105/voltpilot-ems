@@ -43,6 +43,16 @@ public final class SteuerungsverbundAbleitung {
      */
     public static Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge(List<Mitglied> mitglieder,
             List<Geraet> geraete, Map<Grenzart, BigDecimal> grenze, Map<Grenzart, BigDecimal> vorbehalt) {
+        return eingaenge(mitglieder, geraete, grenze, vorbehalt, Map.of());
+    }
+
+    /**
+     * Wie {@link #eingaenge(List, List, Map, Map)}, dazu je Richtung der Übergangszuschlag für den Ausfall der führenden
+     * Box ({@link SteuerungsverbundAnteile#uebergangszuschlag}); eine Richtung ohne Eintrag hat keinen (0).
+     */
+    public static Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge(List<Mitglied> mitglieder,
+            List<Geraet> geraete, Map<Grenzart, BigDecimal> grenze, Map<Grenzart, BigDecimal> vorbehalt,
+            Map<Grenzart, BigDecimal> uebergangszuschlag) {
         Map<Grenzart, SteuerungsverbundRegeln.Richtung> ergebnis = new EnumMap<>(Grenzart.class);
         for (Grenzart richtung : SteuerungsverbundAnteile.RICHTUNGEN) {
             BigDecimal g = grenze.get(richtung);
@@ -72,7 +82,8 @@ public final class SteuerungsverbundAbleitung {
             }
             Map<String, SteuerungsverbundRegeln.Leistung> jeBox = new LinkedHashMap<>();
             summe.forEach((box, s) -> jeBox.put(box, new SteuerungsverbundRegeln.Leistung(s[0], s[1])));
-            ergebnis.put(richtung, new SteuerungsverbundRegeln.Richtung(g, v, jeBox));
+            ergebnis.put(richtung, new SteuerungsverbundRegeln.Richtung(g, v, jeBox,
+                    uebergangszuschlag.getOrDefault(richtung, BigDecimal.ZERO)));
         }
         return ergebnis;
     }
@@ -82,10 +93,13 @@ public final class SteuerungsverbundAbleitung {
             Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge) {
         Map<Grenzart, SteuerungsverbundAnteile.Auslegung> ergebnis = new EnumMap<>(Grenzart.class);
         eingaenge.forEach((richtung, e) -> ergebnis.put(richtung, SteuerungsverbundAnteile.anteile(e.grenzeKw(),
-                e.vorbehaltKw(), mitglieder.stream().map(m -> new SteuerungsverbundAnteile.Mitglied(m.box(), m.rolle(),
+                e.vorbehaltKw(), e.uebergangszuschlagKw(), mitglieder.stream().map(m -> new SteuerungsverbundAnteile.Mitglied(m.box(), m.rolle(),
                         e.jeBox().get(m.box()).nennKw(), e.jeBox().get(m.box()).rueckfallKw())).toList())));
         return ergebnis;
     }
+
+    /** Die Komponenten-Typen eines Speichers — Einrichten (Frage 5) und die Rückfallzeit des Übergangszuschlags. */
+    public static final Set<String> SPEICHER_TYPEN = Set.of("battery-hybrid", "user-defined-battery");
 
     /**
      * Steuerbare Bezugs-Geräte AUSSERHALB des Ladepark-Rahmens der Box (AP-15 Folge von IP-19, V3): Schalter/Relais,

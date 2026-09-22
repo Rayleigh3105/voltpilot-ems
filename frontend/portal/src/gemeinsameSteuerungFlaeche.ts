@@ -524,6 +524,29 @@ export function urteilSatz(a: UemsGemeinsameSteuerungAuslegung | null | undefine
   return flaechenSatz('urteil_passt_nicht', { summe_kw: kw(a.summe_rueckfall_kw), verteilbar_kw: kw(a.verteilbar_kw) });
 }
 
+/**
+ * Der Puffer für den Ausfall der führenden Box je Richtung (Übergangszuschlag, Captain 22.09.2026, Lesart B) — `null`
+ * ohne Puffer. Fehlt ein Teil, nennt der Satz den Handgriff: das Gerät mit dem größten festen Rückfallwert in dieser
+ * Richtung, der den fehlenden Teil trägt (die führende Box zuerst), und den Wert, auf den er höchstens darf.
+ */
+export function pufferSatz(e: UemsGemeinsameSteuerungEinrichten | null | undefined, r: UemsSteuerRichtung): string | null {
+  const a = e?.ergebnis?.[r];
+  const puffer = a?.uebergangszuschlag_kw ?? 0;
+  if (!a || !(puffer > 0)) return null;
+  const fehlt = a.uebergangszuschlag_fehlt_kw ?? 0;
+  if (!(fehlt > 0)) return flaechenSatz('puffer', { puffer_kw: kw(puffer) });
+  const namen = new Map(e!.boxen.flatMap((b) => b.komponenten.map((k) => [k.komponente_id, k.name ?? k.typ] as const)));
+  const geraet = e!.boxen
+    .flatMap((b) => (b.geraete ?? []).map((g) => ({ g, fuehrt: b.rolle === 'fuehrt' })))
+    .filter(({ g }) => g.richtung === r && g.rueckfall === 'faellt_auf_wert' && (g.rueckfall_kw ?? 0) >= fehlt)
+    .sort((x, y) => Number(y.fuehrt) - Number(x.fuehrt) || (y.g.rueckfall_kw ?? 0) - (x.g.rueckfall_kw ?? 0))[0];
+  if (!geraet) return flaechenSatz('puffer_fehlt_geraete', { puffer_kw: kw(puffer), fehlt_kw: kw(fehlt) });
+  const hoechstens = Math.floor(Math.round(((geraet.g.rueckfall_kw ?? 0) - fehlt) * 1000) / 100) / 10;
+  return flaechenSatz('puffer_fehlt', {
+    puffer_kw: kw(puffer), fehlt_kw: kw(fehlt), geraet: namen.get(geraet.g.komponente_id) ?? 'ohne Namen', hoechstens_kw: kw(hoechstens),
+  });
+}
+
 export interface ErgebnisHinweis {
   text: string;
   /** Rückfall am Gerät hinterlegen: die Komponente und ihre Richtung. */

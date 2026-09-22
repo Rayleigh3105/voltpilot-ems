@@ -104,6 +104,48 @@ class SteuerungsverbundAnteilVectorsTest {
         }
     }
 
+    /**
+     * Übergangszuschlag (Captain 22.09.2026, Lesart B): der Puffer kommt aus dem Rest über den Rückfällen, nie eine
+     * Ablehnung; ohne Speicher an der führenden Box ist alles wie in der Gruppe {@code anteile}.
+     */
+    @Test
+    void jederUebergangszuschlagGiltImJavaZwilling() throws Exception {
+        JsonNode faelle = lies(VECTORS).get("uebergangszuschlag");
+        assertThat(faelle.size()).isGreaterThanOrEqualTo(8);
+        for (JsonNode f : faelle) {
+            String fall = f.get("name").asText();
+            JsonNode e = f.get("erwartet");
+            JsonNode zeit = f.get("rueckfallzeit_s");
+            BigDecimal z = SteuerungsverbundAnteile.uebergangszuschlag(zeit.isNull()
+                    ? SteuerungsverbundAnteile.RUECKFALLZEIT_VORGABE_S : zeit.asInt(), bd(f.get("leistung_kw")));
+            assertGleich(fall + " / Zuschlag", z, bd(e.get("zuschlag_kw")));
+            List<Mitglied> mitglieder = new ArrayList<>();
+            for (JsonNode m : f.get("mitglieder")) {
+                mitglieder.add(new Mitglied(m.get("box").asText(), Rolle.valueOf(m.get("rolle").asText().toUpperCase()),
+                        bd(m.get("nenn_kw")), bd(m.get("rueckfall_kw"))));
+            }
+            Auslegung a = SteuerungsverbundAnteile.anteile(bd(f.get("grenze_kw")), bd(f.get("vorbehalt_kw")), z, mitglieder);
+            Auslegung ohne = SteuerungsverbundAnteile.anteile(bd(f.get("grenze_kw")), bd(f.get("vorbehalt_kw")), mitglieder);
+            assertThat(a.urteil().code()).as(fall + " / Urteil").isEqualTo(e.get("urteil").asText());
+            assertThat(a.urteil()).as(fall + " / der Puffer ändert kein Urteil").isEqualTo(ohne.urteil());
+            assertGleich(fall + " / verteilbar", a.verteilbarKw(), bd(e.get("verteilbar_kw")));
+            assertGleich(fall + " / verteilbar wie ohne Puffer", a.verteilbarKw(), ohne.verteilbarKw());
+            assertGleich(fall + " / Summe Rückfall", a.summeRueckfallKw(), bd(e.get("summe_rueckfall_kw")));
+            assertGleich(fall + " / ungenutzt", a.ungenutztKw(), bd(e.get("ungenutzt_kw")));
+            assertGleich(fall + " / Zuschlag im Urteil", a.zuschlagKw(), bd(e.get("zuschlag_kw")));
+            assertGleich(fall + " / Zuschlag fehlt", a.zuschlagFehltKw(), bd(e.get("zuschlag_fehlt_kw")));
+            assertTabelle(fall + " / Anteile", a.anteile(), e.get("anteile"));
+            if (z.signum() == 0) {
+                assertThat(a.anteile()).as(fall + " / ohne Speicher byte-gleich").isEqualTo(ohne.anteile());
+            }
+            if (!a.anteile().isEmpty()) {
+                BigDecimal genommen = a.zuschlagKw().subtract(a.zuschlagFehltKw());
+                assertThat(summe(a.anteile()).add(genommen)).as(fall + " / Anteile + Puffer ≤ verteilbar")
+                        .isLessThanOrEqualTo(a.verteilbarKw());
+            }
+        }
+    }
+
     @Test
     void abrundenNieAufrundenIstEinEigenerVektor() throws Exception {
         JsonNode f = null;

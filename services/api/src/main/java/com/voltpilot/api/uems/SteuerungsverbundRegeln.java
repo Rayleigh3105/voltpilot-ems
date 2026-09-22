@@ -42,8 +42,18 @@ public final class SteuerungsverbundRegeln {
     /** Nennleistung und Geräte-Rückfall einer Box in EINER Richtung (G3; dieselbe Menge hinter dem Abgang). */
     public record Leistung(BigDecimal nennKw, BigDecimal rueckfallKw) {}
 
-    /** Eingang der Auslegung einer Richtung (G2): Grenze, Vorbehalt und je Box ihre Leistung. */
-    public record Richtung(BigDecimal grenzeKw, BigDecimal vorbehaltKw, Map<String, Leistung> jeBox) {}
+    /**
+     * Eingang der Auslegung einer Richtung (G2): Grenze, Vorbehalt, je Box ihre Leistung und der Übergangszuschlag für
+     * den Ausfall der führenden Box ({@link SteuerungsverbundAnteile#uebergangszuschlag}; 0 ohne Speicher dort).
+     */
+    public record Richtung(BigDecimal grenzeKw, BigDecimal vorbehaltKw, Map<String, Leistung> jeBox,
+            BigDecimal uebergangszuschlagKw) {
+
+        /** Ohne Übergangszuschlag — der Stand vor dem Puffer, für Verbünde ohne Speicher an der führenden Box. */
+        public Richtung(BigDecimal grenzeKw, BigDecimal vorbehaltKw, Map<String, Leistung> jeBox) {
+            this(grenzeKw, vorbehaltKw, jeBox, BigDecimal.ZERO);
+        }
+    }
 
     /** Ein Grund, warum der Verbund so nicht scharf werden kann; {@code box} bzw. {@code richtung} nur, wo er daran hängt. */
     public record Befund(Ablehnung ablehnung, String box, Grenzart richtung) {}
@@ -91,7 +101,7 @@ public final class SteuerungsverbundRegeln {
                     continue;
                 }
                 var a = SteuerungsverbundAnteile.anteile(eingang.grenzeKw(), eingang.vorbehaltKw(),
-                        anteilsMitglieder(verbund, eingang, richtung));
+                        eingang.uebergangszuschlagKw(), anteilsMitglieder(verbund, eingang, richtung));
                 if (a.ablehnung() != null) {
                     befunde.add(new Befund(a.ablehnung(), null, richtung));
                 }

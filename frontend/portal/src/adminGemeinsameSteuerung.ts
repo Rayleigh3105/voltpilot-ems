@@ -18,6 +18,7 @@ import type {
   UemsSprungprobe,
   UemsVerlustTag,
 } from './api';
+import { pufferSatz } from './gemeinsameSteuerungFlaeche';
 import { flaechenSatz } from './uemsGemeinsameSteuerung';
 import { zahl as deutscheZahl } from './zahl';
 
@@ -393,6 +394,8 @@ export function auslegungSaetze(einrichten: UemsGemeinsameSteuerungEinrichten | 
     if (a.urteil === 'passt') out.push(`${kopf} — passt.`);
     else if (a.urteil === 'vorbehalt_ueber_grenze') out.push(`${kopf} — passt nicht: der Vorbehalt liegt über der Grenze.`);
     else out.push(`${kopf} — passt nicht: die Rückfälle übersteigen das Verteilbare.`);
+    const puffer = pufferSatz(einrichten, r);
+    if (puffer) out.push(`${RICHTUNG[r]}: ${puffer}`);
   }
   return out;
 }

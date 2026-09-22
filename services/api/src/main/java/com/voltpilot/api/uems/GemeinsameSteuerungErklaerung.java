@@ -74,7 +74,7 @@ public class GemeinsameSteuerungErklaerung {
 
     private static final String GRID_METER = "grid-meter";
     private static final Set<String> ERZEUGER_TYPEN = Set.of("producer");
-    private static final Set<String> SPEICHER_TYPEN = Set.of("battery-hybrid", "user-defined-battery");
+    private static final Set<String> SPEICHER_TYPEN = SteuerungsverbundAbleitung.SPEICHER_TYPEN;
     private static final Set<String> VERBRAUCHER_TYPEN = Set.of("wallbox", "ev-charger", "heating-rod",
             "heat-pump-sgready", "pump", "generic-load", "modbus-load");
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -392,7 +392,7 @@ public class GemeinsameSteuerungErklaerung {
         x.anteile().forEach((box, kw) -> anteile.add(new GemeinsameSteuerungEinrichtenDto.Anteil(UUID.fromString(box),
                 kw)));
         return new GemeinsameSteuerungEinrichtenDto.Auslegung(x.urteil().code(), e.grenzeKw(), e.vorbehaltKw(),
-                x.verteilbarKw(), x.summeRueckfallKw(), anteile, x.ungenutztKw());
+                x.verteilbarKw(), x.summeRueckfallKw(), anteile, x.ungenutztKw(), x.zuschlagKw(), x.zuschlagFehltKw());
     }
 
     private GemeinsameSteuerungEinrichtenDto.Geraet geraet(GeraetZeile z) {

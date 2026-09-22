@@ -101,10 +101,15 @@ public final class GemeinsameSteuerungEinrichtenDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Ergebnis(Auslegung einspeisung, Auslegung bezug) {}
 
-    /** Die Auslegung einer Richtung — genau die Rechnung von {@code SteuerungsverbundAnteile} (NW-1). */
+    /**
+     * Die Auslegung einer Richtung — genau die Rechnung von {@code SteuerungsverbundAnteile} (NW-1).
+     * {@code uebergangszuschlagKw}: der Puffer für den Ausfall der führenden Box (0,0 ohne Speicher dort);
+     * {@code uebergangszuschlagFehltKw}: was davon über den Rückfällen keinen Platz fand (nur bei {@code passt}).
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Auslegung(String urteil, BigDecimal grenzeKw, BigDecimal vorbehaltKw, BigDecimal verteilbarKw,
-            BigDecimal summeRueckfallKw, List<Anteil> anteile, BigDecimal ungenutztKw) {}
+            BigDecimal summeRueckfallKw, List<Anteil> anteile, BigDecimal ungenutztKw, BigDecimal uebergangszuschlagKw,
+            BigDecimal uebergangszuschlagFehltKw) {}
 
     /** Der Anteil einer Box. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

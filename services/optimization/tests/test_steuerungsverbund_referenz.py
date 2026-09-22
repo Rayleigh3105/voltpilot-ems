@@ -65,13 +65,13 @@ def _kw(zehntel: int) -> Decimal:
     return Decimal(zehntel).scaleb(-1)
 
 
-def anteile(grenze_kw, vorbehalt_kw, mitglieder):
+def anteile(grenze_kw, vorbehalt_kw, mitglieder, zuschlag_kw=0):
     """Anteile einer Richtung (G2-G4). ``mitglieder``: [{box, rolle, nenn_kw, rueckfall_kw}].
 
     Rundung zur sicheren Seite: Grenze und Nennleistung ab-, Vorbehalt und
     Rueckfall aufrunden; jeder anteilige Zuschlag abgerundet, der Rest bleibt
     ungenutzt. Ungueltiger Eingang wirft ``ValueError``."""
-    werte = [grenze_kw, vorbehalt_kw] + [x for m in mitglieder for x in (m["nenn_kw"], m["rueckfall_kw"])]
+    werte = [grenze_kw, vorbehalt_kw, zuschlag_kw] + [x for m in mitglieder for x in (m["nenn_kw"], m["rueckfall_kw"])]
     if any(Decimal(str(w)) < 0 for w in werte):
         raise ValueError("negativer Eingang")
     boxen = [m["box"] for m in mitglieder]
@@ -86,15 +86,18 @@ def anteile(grenze_kw, vorbehalt_kw, mitglieder):
     N = {m["box"]: max(_zehntel(m["nenn_kw"], ROUND_FLOOR), F[m["box"]]) for m in mitglieder}
 
     V = _zehntel(grenze_kw, ROUND_FLOOR) - _zehntel(vorbehalt_kw, ROUND_CEILING)
+    Z = _zehntel(zuschlag_kw, ROUND_CEILING)
     if V < 0:
         return {"urteil": "vorbehalt_ueber_grenze", "verteilbar_kw": _kw(V), "summe_rueckfall_kw": None,
-                "anteile": {}, "ungenutzt_kw": None}
+                "anteile": {}, "ungenutzt_kw": None, "zuschlag_kw": _kw(Z), "zuschlag_fehlt_kw": None}
     summe_f = sum(F.values())
     if summe_f > V:
         return {"urteil": "auslegung_passt_nicht", "verteilbar_kw": _kw(V), "summe_rueckfall_kw": _kw(summe_f),
-                "anteile": {}, "ungenutzt_kw": None}
+                "anteile": {}, "ungenutzt_kw": None, "zuschlag_kw": _kw(Z), "zuschlag_fehlt_kw": None}
 
-    rest = V - summe_f
+    # Uebergangszuschlag (Lesart B): nur aus dem Rest ueber den Rueckfaellen, nie eine Ablehnung
+    genommen = min(Z, V - summe_f)
+    rest = V - summe_f - genommen
     e = dict(F)
     for rolle in MITGLIED_ROLLEN:
         gruppe = [m["box"] for m in mitglieder if m["rolle"] == rolle]
@@ -111,7 +114,21 @@ def anteile(grenze_kw, vorbehalt_kw, mitglieder):
                 e[b] += rest * bedarf[b] // gesamt  # ganzzahlig = abgerundet
             rest = 0  # der Rundungsrest bleibt ungenutzt, er wandert nicht weiter
     return {"urteil": "passt", "verteilbar_kw": _kw(V), "summe_rueckfall_kw": _kw(summe_f),
-            "anteile": {b: _kw(e[b]) for b in boxen}, "ungenutzt_kw": _kw(V - sum(e.values()))}
+            "anteile": {b: _kw(e[b]) for b in boxen}, "ungenutzt_kw": _kw(V - sum(e.values()) - genommen),
+            "zuschlag_kw": _kw(Z), "zuschlag_fehlt_kw": _kw(Z - genommen)}
+
+
+RUECKFALLZEIT_VORGABE_S = 60  # ohne nach_s am Speicher
+VIERTELSTUNDE_S = 900
+
+
+def uebergangszuschlag(rueckfallzeit_s, leistung_kw) -> Decimal:
+    """Puffer fuer den Ausfall der fuehrenden Box: Rueckfallzeit / 900 s x Lade- bzw. Entladeleistung ihrer
+    Speicher, auf 0,1 kW AUFgerundet (zugunsten der Grenze); ohne Rueckfallzeit die Vorgabe 60 s."""
+    t = RUECKFALLZEIT_VORGABE_S if rueckfallzeit_s is None else int(rueckfallzeit_s)
+    if t < 0 or Decimal(str(leistung_kw)) < 0:
+        raise ValueError("negativer Eingang")
+    return _kw(int((Decimal(str(leistung_kw)) * t * 10 / VIERTELSTUNDE_S).to_integral_value(rounding=ROUND_CEILING)))
 
 
 def ablehnung_der_auslegung(urteil: str):
@@ -224,6 +241,27 @@ def test_jeder_anteilsfall_gilt_in_der_python_referenz(fall):
     assert _gleich(a["ungenutzt_kw"], e.get("ungenutzt_kw"))
     # die Summe der Anteile ueberschreitet nie das Verteilbare (G2)
     assert sum(a["anteile"].values(), Decimal(0)) <= a["verteilbar_kw"] or not a["anteile"]
+
+
+@pytest.mark.parametrize("fall", DATA["uebergangszuschlag"], ids=lambda f: f["name"])
+def test_jeder_uebergangszuschlag_gilt_in_der_python_referenz(fall):
+    e = fall["erwartet"]
+    z = uebergangszuschlag(fall["rueckfallzeit_s"], fall["leistung_kw"])
+    assert _gleich(z, e["zuschlag_kw"])
+    a = anteile(fall["grenze_kw"], fall["vorbehalt_kw"], fall["mitglieder"], zuschlag_kw=z)
+    ohne = anteile(fall["grenze_kw"], fall["vorbehalt_kw"], fall["mitglieder"])
+    assert a["urteil"] == e["urteil"] == ohne["urteil"]  # der Puffer aendert kein Urteil
+    assert _gleich(a["verteilbar_kw"], e["verteilbar_kw"]) and a["verteilbar_kw"] == ohne["verteilbar_kw"]
+    assert _gleich(a["summe_rueckfall_kw"], e["summe_rueckfall_kw"])
+    assert _gleich(a["anteile"], e["anteile"])
+    assert _gleich(a["ungenutzt_kw"], e["ungenutzt_kw"])
+    assert _gleich(a["zuschlag_kw"], e["zuschlag_kw"])
+    assert _gleich(a["zuschlag_fehlt_kw"], e["zuschlag_fehlt_kw"])
+    if z == 0:
+        assert a["anteile"] == ohne["anteile"]  # ohne Speicher byte-gleich
+    if a["anteile"]:
+        genommen = a["zuschlag_kw"] - a["zuschlag_fehlt_kw"]
+        assert sum(a["anteile"].values(), Decimal(0)) + genommen <= a["verteilbar_kw"]
 
 
 def test_ungeregeltes_hinter_dem_abgang_steht_in_beiden_summen():

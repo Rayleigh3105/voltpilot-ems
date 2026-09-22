@@ -182,6 +182,32 @@ public class SteuerungsverbundAnteilRepository {
                 siteId).stream().findFirst().orElse(new BigDecimal[] {null, null});
     }
 
+    /**
+     * Die Leistung der Speicher, die an der führenden Box {@code box} hängen (Übergangszuschlag, AP-15 Folge): je
+     * Richtung die Summe über {@code asset} vom Typ {@code battery} — Einspeisung = {@code max_discharge_kw}, Bezug =
+     * {@code max_charge_kw}. Ein Speicher ohne Box ({@code device_id} leer) zählt mit, die sichere Seite: ihn steuert
+     * keine mitsteuernde Box. Ohne Speicher oder ohne Angabe 0.
+     */
+    public Map<Grenzart, BigDecimal> speicherLeistung(UUID siteId, UUID box) {
+        Map<Grenzart, BigDecimal> out = new EnumMap<>(Grenzart.class);
+        jdbc.query("SELECT COALESCE(sum(max_discharge_kw), 0) AS entladen, COALESCE(sum(max_charge_kw), 0) AS laden "
+                + "FROM asset WHERE site_id = ? AND type = 'battery' AND (device_id = ? OR device_id IS NULL)", rs -> {
+                    out.put(Grenzart.EINSPEISUNG, rs.getBigDecimal("entladen"));
+                    out.put(Grenzart.BEZUG, rs.getBigDecimal("laden"));
+                }, siteId, box);
+        return out;
+    }
+
+    /** Die Speicher-Komponenten der Anlage ({@link SteuerungsverbundAbleitung#SPEICHER_TYPEN}) — für ihre Rückfallzeit. */
+    public List<UUID> speicherKomponenten(UUID siteId) {
+        List<Object> args = new ArrayList<>();
+        args.add(siteId);
+        SteuerungsverbundAbleitung.SPEICHER_TYPEN.stream().sorted().forEach(args::add);
+        return jdbc.query("SELECT id FROM measurement_point WHERE site_id = ? AND entity_type IN ("
+                + String.join(", ", java.util.Collections.nCopies(args.size() - 1, "?")) + ") ORDER BY id",
+                (rs, n) -> rs.getObject("id", UUID.class), args.toArray());
+    }
+
     // ------------------------------------------------------------------ JSON
 
     String anteileJson(Tabelle t) {

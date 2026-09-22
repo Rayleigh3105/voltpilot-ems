@@ -8,6 +8,7 @@ import com.voltpilot.api.uems.SteuerungsverbundRepository.MitgliedZeile;
 import com.voltpilot.api.uems.SteuerungsverbundRepository.VerbundZeile;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.DokumentAblehnung;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Rolle;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.Stufe;
 import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Schritt;
 import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Stand;
@@ -216,8 +217,52 @@ public class SteuerungsverbundAnteilDienst {
         vorbehalt.putAll(anteile.vorbehalt(v.id()).kw());
         reserviert.forEach((r, kw) -> vorbehalt.computeIfPresent(r, (x, alt) -> alt.add(kw)));
         Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge = SteuerungsverbundAbleitung.eingaenge(mitglieder,
-                geraete, grenze, vorbehalt);
+                geraete, grenze, vorbehalt, uebergangszuschlag(v.siteId(), mitglieder, geraete));
         return new Ableitung(mitglieder, eingaenge, SteuerungsverbundAbleitung.auslegung(mitglieder, eingaenge));
+    }
+
+    /**
+     * Der Übergangszuschlag je Richtung (AP-15 Folge, Captain-Entscheid 22.09.2026, Lesart B): fällt die
+     * führende Box aus, halten ihre Speicher den letzten Sollwert bis zum Geräte-Rückfall. Leistung = Entlade- (Einspeisung)
+     * bzw. Ladeleistung (Bezug) der Speicher an der führenden Box ({@link SteuerungsverbundAnteilRepository#speicherLeistung});
+     * Rückfallzeit = das größte {@code nach_s} ihrer Speicher-Komponenten in dieser Richtung (am Gerät hinterlegt, sonst
+     * aus dem Katalog), ohne Angabe {@link SteuerungsverbundAnteile#RUECKFALLZEIT_VORGABE_S}. Ohne führende Box oder ohne
+     * Speicher: leer — die Auslegung bleibt Byte für Byte wie vorher.
+     */
+    private Map<Grenzart, BigDecimal> uebergangszuschlag(UUID siteId, List<SteuerungsverbundAbleitung.Mitglied> mitglieder,
+            List<SteuerungsverbundAbleitung.Geraet> geraete) {
+        String fuehrt = mitglieder.stream().filter(m -> m.rolle() == Rolle.FUEHRT)
+                .map(SteuerungsverbundAbleitung.Mitglied::box).findFirst().orElse(null);
+        if (fuehrt == null) {
+            return Map.of();
+        }
+        Map<Grenzart, BigDecimal> leistung = anteile.speicherLeistung(siteId, UUID.fromString(fuehrt));
+        if (leistung.values().stream().allMatch(kw -> kw == null || kw.signum() <= 0)) {
+            return Map.of();
+        }
+        java.util.Set<String> speicher = new java.util.HashSet<>();
+        anteile.speicherKomponenten(siteId).forEach(id -> speicher.add(id.toString()));
+        Map<Grenzart, BigDecimal> out = new EnumMap<>(Grenzart.class);
+        for (Grenzart richtung : SteuerungsverbundAnteile.RICHTUNGEN) {
+            BigDecimal kw = leistung.getOrDefault(richtung, BigDecimal.ZERO);
+            if (kw == null || kw.signum() <= 0) {
+                continue;
+            }
+            Integer zeit = null;
+            for (SteuerungsverbundAbleitung.Geraet g : geraete) {
+                if (!fuehrt.equals(g.box()) || g.richtung() != richtung || g.komponente() == null
+                        || !speicher.contains(g.komponente())) {
+                    continue;
+                }
+                Integer nach = rueckfaelle.rueckfall(UUID.fromString(g.komponente()), richtung, g.nennKw()).nachS();
+                if (nach != null && (zeit == null || nach > zeit)) {
+                    zeit = nach;
+                }
+            }
+            out.put(richtung, SteuerungsverbundAnteile.uebergangszuschlag(
+                    zeit == null ? SteuerungsverbundAnteile.RUECKFALLZEIT_VORGABE_S : zeit, kw));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ Zweischritt

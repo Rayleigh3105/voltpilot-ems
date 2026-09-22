@@ -235,6 +235,22 @@ describe('AP-15 IP-24 · Darunter und Handgriffe', () => {
     expect(auslegungSaetze(nicht)[1]).toMatch(/nicht rechenbar/);
   });
 
+  it('Puffer für den Ausfall der führenden Box als eigene Zeile je Richtung; ohne Puffer wie vorher', () => {
+    const e = gsEingerichtet();
+    expect(auslegungSaetze(e)).toHaveLength(2);
+    const mit = { ...e, ergebnis: {
+      einspeisung: { ...e.ergebnis!.einspeisung!, uebergangszuschlag_kw: 4, uebergangszuschlag_fehlt_kw: 4 },
+      bezug: { ...e.ergebnis!.bezug!, anteile: [{ box_id: GS_IDS.e1, kw: 0 }, { box_id: GS_IDS.e4, kw: 73 }],
+        uebergangszuschlag_kw: 4, uebergangszuschlag_fehlt_kw: 0 },
+    } };
+    expect(auslegungSaetze(mit)).toEqual([
+      'Einspeisung: Grenze 100 kW − Vorbehalt 0 kW = 100 kW verteilbar, Rückfälle 100 kW — passt.',
+      'Einspeisung: Puffer für den Ausfall der führenden Box: 4 kW, davon fehlen 4 kW — Rückfallwert von Hybrid-Wechselrichter 100 kW auf höchstens 36 kW senken.',
+      'Bezug: Grenze 550 kW − Vorbehalt 473 kW = 77 kW verteilbar, Rückfälle 24,6 kW — passt.',
+      'Bezug: Puffer für den Ausfall der führenden Box: 4 kW.',
+    ]);
+  });
+
   it('Sprungprobe-Protokoll: wann, Art, Sprung, Urteil, Abweichung je Sprung', () => {
     const [p] = protokollZeilen(gsBlatt('s1', JETZT, [gsProbe(GS_IDS.e1, JETZT)]), NAMEN);
     expect(p).toMatchObject({ box: 'Halle 1', art: 'Erzeugung senken', sprung: '30 kW · 2 × 60 s', urteil: 'bestanden', gilt: true });

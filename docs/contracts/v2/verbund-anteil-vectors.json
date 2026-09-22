@@ -16,12 +16,14 @@
     "Abrunden, nie Aufrunden: jeder anteilige Zuschlag wird auf Zehntel-kW abgerundet; der Rundungsrest bleibt ungenutzt und wandert nicht weiter (G2).",
     "Rundung zur sicheren Seite am Eingang: was die Grenze gibt (Grenze, Nennleistung), wird abgerundet; was sie belegt (Vorbehalt, Geräte-Rückfall), aufgerundet. „Rückfall über Nennleistung“ prüfen die rohen Werte; die Obergrenze der Verteilung ist max(Nennleistung abgerundet, Rückfall aufgerundet).",
     "Übergangsstand = je Box das Kleinere aus alt und neu; eine Box, die nur in einem Stand vorkommt, steht dort mit 0. Zielstand erst nach der Quittung JEDER verengten Box; ist der Übergang schon der Zielstand, gibt es keinen zweiten Schritt (G5).",
-    "Die Box prüft jedes Anteils-Dokument: Mandant und Anlage (fremde_anlage), die eigene Kennung in BEIDEN Richtungen (box_fehlt_im_dokument), Epoche und Revision steigen nur (revision_aelter), je Richtung Summe ≤ verteilbar (summe_ueber_verteilbar) — in dieser Reihenfolge; dieselbe Revision noch einmal wird angenommen (T4, G5, Y1)."
+    "Die Box prüft jedes Anteils-Dokument: Mandant und Anlage (fremde_anlage), die eigene Kennung in BEIDEN Richtungen (box_fehlt_im_dokument), Epoche und Revision steigen nur (revision_aelter), je Richtung Summe ≤ verteilbar (summe_ueber_verteilbar) — in dieser Reihenfolge; dieselbe Revision noch einmal wird angenommen (T4, G5, Y1).",
+    "Übergangszuschlag (Captain 22.09.2026, Lesart B): Puffer = Rückfallzeit / 900 s × Entlade- (Einspeisung) bzw. Ladeleistung (Bezug) der Speicher an der führenden Box, auf 0,1 kW AUFgerundet; ohne hinterlegte Rückfallzeit 60 s. Er geht vom Rest über den Rückfällen ab, bevor G4 verteilt, höchstens so viel, wie dort ist; der Rest fehlt (zuschlag_fehlt_kw). Das Urteil und verteilbar = Grenze − Vorbehalt bleiben wie ohne ihn — nie eine Ablehnung."
   ],
   "zwillinge": {
     "anteile": ["java: SteuerungsverbundAnteile.anteile", "python: test_steuerungsverbund_referenz.anteile", "go: anteile.Verteilen"],
     "uebergangsstand": ["java: SteuerungsverbundAnteile.uebergangsstand", "python: test_steuerungsverbund_referenz.uebergangsstand", "go: anteile.Uebergangsstand"],
     "dokument_pruefen": ["java: SteuerungsverbundAnteile.dokumentPruefen", "python: test_steuerungsverbund_referenz.dokument_pruefen", "go: anteile.DokumentPruefen"],
+    "uebergangszuschlag": ["java: SteuerungsverbundAnteile.uebergangszuschlag + anteile(grenze, vorbehalt, zuschlag, mitglieder)", "python: test_steuerungsverbund_referenz.uebergangszuschlag + anteile(..., zuschlag_kw=)"],
     "vokabulare": ["java: SteuerungsverbundVokabular", "python: test_steuerungsverbund_referenz.VOKABULARE", "go: anteile.Rollen, AuslegungUrteile, DokumentUrteile, DokumentAblehnung"]
   },
   "_abweichungen": [
@@ -32,6 +34,10 @@
     {
       "feld": "TypeScript-Zwilling",
       "grund": "Das Portal rechnet keine Anteile; Kunden-Fläche und Betreiber-Blatt (IP-23/IP-24) lesen sie von der Route. Seine Kundensätze stehen in frontend/portal/src/uemsGemeinsameSteuerung.ts (IP-25) und nennen keines dieser Wörter."
+    },
+    {
+      "feld": "Go-Zwilling für uebergangszuschlag",
+      "grund": "Die Box rechnet keine Auslegung: anteile.Verteilen hat keinen Produktiv-Aufrufer, die Box prüft nur die Summe gegen verteilbar im Dokument (dokument_pruefen), und verteilbar bleibt mit dem Zuschlag unverändert. Der Zuschlag macht nur die Anteile kleiner — keine Box-Änderung, kein Edge-Release (Captain 22.09.2026: nur Cloud-Rechnung). Der Go-Zwilling fährt die Gruppe darum nicht."
     },
     {
       "feld": "Prüfung von G6 (vorgabe_signal_nicht_an_jeder_box)",
@@ -341,6 +347,62 @@
       "alt": {"verteilbar_kw": 100.0, "anteile": {"B-1": 30.0, "B-2": 40.0, "B-3": 30.0}},
       "neu": {"verteilbar_kw": 100.0, "anteile": {"B-1": 50.0, "B-2": 50.0}},
       "erwartet": {"uebergang": {"B-1": 30.0, "B-2": 40.0, "B-3": 0.0}, "verengte_boxen": ["B-3"], "zweiter_schritt": true, "summe_alt_kw": 100.0, "summe_uebergang_kw": 70.0, "summe_neu_kw": 100.0}
+    }
+  ],
+  "uebergangszuschlag": [
+    {
+      "name": "Ahrenberg A2 Einspeisung: Puffer 60 s / 900 s × 60 kW = 4,0 kW; die Rückfälle füllen die Grenze (40 + 60 = 100) — passt 40/60 wie R1, davon fehlen 4,0 kW",
+      "hinweis": "Grenze, Vorbehalt und Mitglieder wie R1 (Einspeisung); Entladeleistung 60 kW und Rückfallzeit 60 s aus dem Simulator-Befund IP-29 A2 (K-2). Kein Mitglied kann abgeben: E-1 = Rückfallwert K-1 40 kW, E-4 = K-12 läuft frei 60 kW. Der fehlende Puffer ist ein Handgriff am Gerät (Rückfallwert K-1 auf höchstens 36 kW), keine Ablehnung (Lesart B). A2 bleibt damit auf der Einspeiseseite offen (Pilot-Drehbuch IP-32).",
+      "richtung": "einspeisung", "grenze_kw": 100, "vorbehalt_kw": 0, "rueckfallzeit_s": 60, "leistung_kw": 60,
+      "mitglieder": [{"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40}, {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 60, "rueckfall_kw": 60}],
+      "erwartet": {"urteil": "passt", "verteilbar_kw": 100.0, "summe_rueckfall_kw": 100.0, "anteile": {"E-1": 40.0, "E-4": 60.0}, "ungenutzt_kw": 0.0, "zuschlag_kw": 4.0, "zuschlag_fehlt_kw": 4.0}
+    },
+    {
+      "name": "Ahrenberg A2 Bezug: Puffer 4,0 kW, Anteile um 4 kW kleiner — 0/73 statt 0/77",
+      "hinweis": "Wie R1/R3 Bezug (Grenze 550, Vorbehalt 473); Ladeleistung 60 kW, Rückfallzeit 60 s wie A2. Der Rest über den Rückfällen (52,4 kW) trägt den Puffer ganz; G4 verteilt 48,4 kW an E-4.",
+      "richtung": "bezug", "grenze_kw": 550, "vorbehalt_kw": 473.0, "rueckfallzeit_s": 60, "leistung_kw": 60,
+      "mitglieder": [{"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0}, {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 132, "rueckfall_kw": 24.6}],
+      "erwartet": {"urteil": "passt", "verteilbar_kw": 77.0, "summe_rueckfall_kw": 24.6, "anteile": {"E-1": 0.0, "E-4": 73.0}, "ungenutzt_kw": 0.0, "zuschlag_kw": 4.0, "zuschlag_fehlt_kw": 0.0}
+    },
+    {
+      "name": "ohne Speicher an der führenden Box: Puffer 0,0 kW, Anteile byte-gleich wie R1/R3 Bezug (0/77)",
+      "richtung": "bezug", "grenze_kw": 550, "vorbehalt_kw": 473.0, "rueckfallzeit_s": 60, "leistung_kw": 0,
+      "mitglieder": [{"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0}, {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 132, "rueckfall_kw": 24.6}],
+      "erwartet": {"urteil": "passt", "verteilbar_kw": 77.0, "summe_rueckfall_kw": 24.6, "anteile": {"E-1": 0.0, "E-4": 77.0}, "ungenutzt_kw": 0.0, "zuschlag_kw": 0.0, "zuschlag_fehlt_kw": 0.0}
+    },
+    {
+      "name": "Aufrunden zugunsten der Grenze: 100 kW × 60 s / 900 s = 6,67 → 6,7 kW; Bezug 0/70,3",
+      "hinweis": "Speicher mit 100 kW Ladeleistung an der führenden Box (Testwelt GemeinsameSteuerungEinrichtenApiTest). Abgerundet (6,6 kW) läge der Puffer unter dem, was der Speicher in 60 s zieht.",
+      "richtung": "bezug", "grenze_kw": 550, "vorbehalt_kw": 473.0, "rueckfallzeit_s": 60, "leistung_kw": 100,
+      "mitglieder": [{"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 0}, {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 132, "rueckfall_kw": 24.6}],
+      "erwartet": {"urteil": "passt", "verteilbar_kw": 77.0, "summe_rueckfall_kw": 24.6, "anteile": {"E-1": 0.0, "E-4": 70.3}, "ungenutzt_kw": 0.0, "zuschlag_kw": 6.7, "zuschlag_fehlt_kw": 0.0}
+    },
+    {
+      "name": "ohne hinterlegte Rückfallzeit gilt die Vorgabe 60 s",
+      "hinweis": "rueckfallzeit_s null = kein nach_s am Speicher (weder am Gerät noch im Katalog): 60 s / 900 s × 45 kW = 3,0 kW.",
+      "richtung": "einspeisung", "grenze_kw": 90, "vorbehalt_kw": 0, "rueckfallzeit_s": null, "leistung_kw": 45,
+      "mitglieder": [{"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40}, {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 50, "rueckfall_kw": 10}],
+      "erwartet": {"urteil": "passt", "verteilbar_kw": 90.0, "summe_rueckfall_kw": 50.0, "anteile": {"B-1": 40.0, "B-2": 47.0}, "ungenutzt_kw": 0.0, "zuschlag_kw": 3.0, "zuschlag_fehlt_kw": 0.0}
+    },
+    {
+      "name": "Puffer zum Teil: Rest 2,5 kW über den Rückfällen, Puffer 4,0 kW → 2,5 kW genommen, 1,5 kW fehlen",
+      "hinweis": "konstruiert. Wer einen Rest hat, gibt ihn erst an den Puffer, dann verteilt G4 — hier bleibt nichts.",
+      "richtung": "einspeisung", "grenze_kw": 102.5, "vorbehalt_kw": 0, "rueckfallzeit_s": 60, "leistung_kw": 60,
+      "mitglieder": [{"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40}, {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 70, "rueckfall_kw": 60}],
+      "erwartet": {"urteil": "passt", "verteilbar_kw": 102.5, "summe_rueckfall_kw": 100.0, "anteile": {"B-1": 40.0, "B-2": 60.0}, "ungenutzt_kw": 0.0, "zuschlag_kw": 4.0, "zuschlag_fehlt_kw": 1.5}
+    },
+    {
+      "name": "der Puffer ändert kein Urteil: R2 ohne Rückfallwert an K-12 bleibt auslegung_passt_nicht",
+      "richtung": "einspeisung", "grenze_kw": 70, "vorbehalt_kw": 0, "rueckfallzeit_s": 60, "leistung_kw": 60,
+      "mitglieder": [{"box": "E-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40}, {"box": "E-4", "rolle": "steuert_mit", "nenn_kw": 60, "rueckfall_kw": 60}],
+      "erwartet": {"urteil": "auslegung_passt_nicht", "verteilbar_kw": 70.0, "summe_rueckfall_kw": 100.0, "anteile": {}, "ungenutzt_kw": null, "zuschlag_kw": 4.0, "zuschlag_fehlt_kw": null}
+    },
+    {
+      "name": "erst der Puffer, dann G4 anteilig: 30 kW Rest, 6,7 kW Puffer → Bedarf 40/20 bekommt 23,3 kW anteilig",
+      "hinweis": "konstruiert, wie „anteilig nach Bedarf“ (30 kW Rest → 20/10), jetzt nach dem Puffer: 23,3 × 40/60 = 15,53 → 15,5 und 23,3 × 20/60 = 7,76 → 7,7; Rundungsrest 0,1 kW ungenutzt, der Puffer steckt nicht darin.",
+      "richtung": "einspeisung", "grenze_kw": 90, "vorbehalt_kw": 0, "rueckfallzeit_s": 60, "leistung_kw": 100,
+      "mitglieder": [{"box": "B-1", "rolle": "fuehrt", "nenn_kw": 100, "rueckfall_kw": 40}, {"box": "B-2", "rolle": "steuert_mit", "nenn_kw": 50, "rueckfall_kw": 10}, {"box": "B-3", "rolle": "steuert_mit", "nenn_kw": 30, "rueckfall_kw": 10}],
+      "erwartet": {"urteil": "passt", "verteilbar_kw": 90.0, "summe_rueckfall_kw": 60.0, "anteile": {"B-1": 40.0, "B-2": 25.5, "B-3": 17.7}, "ungenutzt_kw": 0.1, "zuschlag_kw": 6.7, "zuschlag_fehlt_kw": 0.0}
     }
   ],
   "dokument_pruefen": [

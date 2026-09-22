@@ -14847,6 +14847,13 @@ components:
               box_id: { type: string, format: uuid }
               kw: { type: number }
         ungenutzt_kw: { type: number }
+        uebergangszuschlag_kw:
+          type: number
+          description: Puffer für den Ausfall der führenden Box (Rückfallzeit / 900 s × Lade- bzw. Entladeleistung ihrer Speicher, aufgerundet); 0 ohne Speicher dort.
+        uebergangszuschlag_fehlt_kw:
+          type: number
+          nullable: true
+          description: Teil des Puffers, der über den Rückfällen keinen Platz fand (nur bei passt). Führt nie zur Ablehnung.
     BezugsdatenImportBestaetigung:
       type: object
       additionalProperties: false
