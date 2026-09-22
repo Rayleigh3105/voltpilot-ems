@@ -99,6 +99,12 @@ class AnteilVerlustSchaetzungApiTest {
     @Qualifier("adminJdbcTemplate")
     JdbcTemplate admin;
 
+    @Autowired
+    AnteilVerlustRepository repo;
+
+    @Autowired
+    JdbcTemplate app;
+
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
 
@@ -222,6 +228,36 @@ class AnteilVerlustSchaetzungApiTest {
         assertThat(bericht.status()).isEqualTo(200);
         assertThat(bericht.body().get("boxen")).isEmpty();
         assertThat(bericht.body().get("summe").isNull()).isTrue();
+    }
+
+    /**
+     * Der Mandanten-Zaun von {@link AnteilVerlustRepository#pvPrognose}: {@code forecast} hat kein RLS
+     * (ForecastTableDisciplineTest), der Zaun ist der Join auf die RLS-Tabelle {@code site} unter der App-Rolle. Unter
+     * Mandant A liefert die Prognose der Anlage von Mandant B nichts — obwohl dieselbe Abfrage ohne Join die Zeilen
+     * sähe —, unter B liefert sie alle; und der Läufer schreibt A keine Schätzung aus B's Prognose.
+     */
+    @Test
+    void pvPrognoseSiehtNieDiePrognoseEinesFremdenMandanten() {
+        Welt a = welt(true);
+        Welt b = welt(true);
+        LocalDate tag = gestern();
+        prognose(b, tag);
+        Instant von = tag.atStartOfDay(AnteilVerlustAusHerzschlag.ZONE).toInstant();
+        Instant bis = tag.plusDays(1).atStartOfDay(AnteilVerlustAusHerzschlag.ZONE).toInstant();
+        try {
+            TenantContext.set(b.mandant());
+            String modell = modelle.activeModels(b.an1()).get(ForecastModels.KIND_PV);
+            assertThat(repo.pvPrognose(b.an1(), modell, von, bis)).hasSize(56);
+            TenantContext.set(a.mandant());
+            assertThat(app.queryForObject("SELECT count(*) FROM forecast WHERE site_id = ?", Integer.class,
+                    b.an1())).as("ohne site-Join sähe A die fremden Zeilen - der Join IST der Zaun").isPositive();
+            assertThat(repo.pvPrognose(b.an1(), modell, von, bis)).isEmpty();
+        } finally {
+            TenantContext.clear();
+        }
+        meldet(a, a.e4(), tag, "0.0", 32_400);
+        laeufer().schaetzen(tag);
+        assertThat(zeile(a.e4(), tag).get("schaetzung_grundlage")).isEqualTo(AnteilVerlustSchaetzung.KEINE);
     }
 
     @Test
