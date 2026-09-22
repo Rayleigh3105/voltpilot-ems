@@ -1158,6 +1158,60 @@
       "anmerkung": "AP-10 E15: „Zellen wie `unternehmen.bearbeiten`: KA U · EM U“. Beendet, nie gelöscht (§5.7); seit AP-10 IP-7 nennen `POST /api/v1/unternehmen/prozesse`, `PUT …/{id}` und `PUT …/{id}/beenden` die Kennung. Eine Messstelle einem Prozess zuordnen bleibt `messstelle.bearbeiten` („Ort, Prozess, Kostenstelle zuordnen“)."
     },
     {
+      "kennung": "energieeinsatz.verwalten",
+      "gruppe": "struktur",
+      "kundenwort": "Energieeinsatz anlegen · bearbeiten · beenden",
+      "herkunft": "AP-16 §6.1 (B1/B4, R14)",
+      "nachtrag": "AP-16 §6.1",
+      "wie": "prozess.verwalten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+    },
+    {
+      "kennung": "energieeinsatz.einstufen",
+      "gruppe": "struktur",
+      "kundenwort": "Energieeinsatz einstufen",
+      "herkunft": "AP-16 §6.1 (B1/B4, R14)",
+      "nachtrag": "AP-16 §6.1",
+      "wie": "prozess.verwalten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+    },
+    {
+      "kennung": "energieeinsatz.ansehen",
+      "gruppe": "struktur",
+      "kundenwort": "Energieeinsätze ansehen",
+      "herkunft": "AP-16 §6.1 (B1/B4, R14)",
+      "nachtrag": "AP-16 §6.1",
+      "wie": "messstelle.ansehen",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "A",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+    },
+    {
       "kennung": "netzanschluss.verwalten",
       "gruppe": "struktur",
       "kundenwort": "Netzanschluss anlegen · bearbeiten · beenden · Anlage binden",
@@ -1702,6 +1756,49 @@
         {
           "wortlaut": "Bei Vier-Augen an ist der Knopf für den Ersteller gesperrt: „Freigabe durch eine zweite Person (Jonas Wendlinger, …)“ (§5, Bedienablauf „Einen Korrektur-Vorschlag prüfen und freigeben“)",
           "wo": "rechte-vectors.json, Familie `vieraugen`: 403 `zweite_person_noetig` mit dem Satz „Freigabe durch eine zweite Person.“ und dem Weg zu den übrigen Kundenadministratoren; der Knopf ist AP-08 IP-16"
+        }
+      ]
+    },
+    {
+      "abschnitt": "AP-16 §6.1",
+      "titel": "Energetische Bewertung: Energieeinsätze (IP-3)",
+      "konzept": "AP-16 §4.4, §6.1, R14; entschieden am 22.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Energieeinsatz anlegen · bearbeiten · beenden",
+          "wer": "KA U · EM U",
+          "recht": "`energieeinsatz.verwalten`",
+          "kennungen": [
+            "energieeinsatz.verwalten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+        },
+        {
+          "handlung": "Energieeinsatz einstufen",
+          "wer": "KA U · EM U",
+          "recht": "`energieeinsatz.einstufen`",
+          "kennungen": [
+            "energieeinsatz.einstufen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+        },
+        {
+          "handlung": "Energieeinsätze ansehen",
+          "wer": "KA U · EM U · BE S · BD S · LE S · US A",
+          "recht": "`energieeinsatz.ansehen`",
+          "kennungen": [
+            "energieeinsatz.ansehen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Verantwortlichkeit ist Zuständigkeit, kein Recht (B4/R14).",
+          "wo": "bewertung.md §Datenhaltung; Rechte-Zellen dieser drei Kennungen"
         }
       ]
     }

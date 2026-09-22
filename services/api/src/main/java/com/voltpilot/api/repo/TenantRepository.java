@@ -268,6 +268,17 @@ public class TenantRepository {
                     st.setObject(1, tenantId);
                     st.executeUpdate();
                 }
+                // AP-16 IP-3: before Benutzer, Bezugsgröße and Prozess (all RESTRICT).
+                // Current repository code also runs against older migration fixtures.
+                for (String table : new String[] {"energieeinsatz_aenderung", "energieeinsatz_einflussgroesse",
+                        "energieeinsatz", "energieeinsatz_kennzeichen_seq"}) {
+                    try (var probe = con.prepareStatement("SELECT to_regclass(?)")) {
+                        probe.setString(1, "public." + table);
+                        try (var result = probe.executeQuery()) {
+                            if (result.next() && result.getObject(1) != null) deleteByTenant(con, table, tenantId);
+                        }
+                    }
+                }
                 // The Zugriffe (V20260915030000, AP-03 IP-2) go before the Standort they name and the
                 // Benutzer they belong to; the protocol names its Zugriff (RESTRICT), so it goes first.
                 // The Stichtag (V20260916060000) holds only the tenant (RESTRICT) and goes with them.

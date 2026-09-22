@@ -300,6 +300,13 @@ angelegt (siehe „Berichte“); die Reservierung bleibt als Herkunft stehen. `B
 `BerichtRegeln.EREIGNISSE_RESERVIERT`; `KennzahlVectorsTest` prüft weiter nur die Reservierungen der Kennzahl.
 Vertrag des Berichts: [`bericht.md`](./bericht.md).
 
+**Reserviert für die energetische Bewertung (AP-16 IP-3).** `einstufung_gesetzt`
+(Bezug `energieeinsatz`, Anlage IP-11/IP-12), `messbedarf_erfasst` und
+`messbedarf_eingeloest` (Bezug `messbedarf`, Anlage IP-19/IP-20) haben jeweils Urheber
+`kunde`. Eine Person stuft ein oder erfasst/löst einen Messbedarf ein. Sie stehen nur
+im Block `reserviert`; noch kein Schreiber und kein Eintrag in `vokabular.arten` oder
+der Ereignis-Tabelle. Bis zur Anlage lehnen die bestehenden Prüfer diese Wörter ab.
+
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
 deutsch und Namen aus dem, was die Fläche kennt — etwa „Zählerwechsel am 18.11.2026 10:40:

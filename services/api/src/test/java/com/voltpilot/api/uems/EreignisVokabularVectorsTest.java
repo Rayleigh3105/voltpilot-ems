@@ -854,4 +854,19 @@ class EreignisVokabularVectorsTest {
         s.put("$ref", ref);
         return s;
     }
+    @Test
+    void bewertungsEreignisseBleibenBisZumSchreibpaketNurReserviert() throws Exception {
+        JsonNode datei = MAPPER.readTree(VECTORS.toFile());
+        for (String art : List.of("einstufung_gesetzt", "messbedarf_erfasst", "messbedarf_eingeloest")) {
+            List<JsonNode> reservierungen = new ArrayList<>();
+            datei.path("reserviert").forEach(r -> {
+                if (r.path("art").asText().equals(art)) reservierungen.add(r);
+            });
+            assertThat(reservierungen).hasSize(1);
+            assertThat(reservierungen.getFirst().path("urheber")).isEqualTo(MAPPER.readTree("[\"kunde\"]"));
+            assertThat(EreignisVokabular.pruefe(MAPPER.createObjectNode().put("art", art), Urheber.KUNDE).grund())
+                    .isEqualTo(Grund.WORT_UNBEKANNT);
+        }
+    }
+
 }

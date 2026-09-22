@@ -13372,6 +13372,204 @@
         "umfang_noetig": null,
         "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
       }
+    },
+    {
+      "name": "ap16-peter-energieeinsatz-verwalten-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 B4/R14: Zuständigkeit gibt dem Bearbeiter kein Unternehmens-Schreibrecht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "energieeinsatz.verwalten",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ap16-peter-energieeinsatz-einstufen-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 B4/R14: Zuständigkeit gibt dem Bearbeiter kein Unternehmens-Schreibrecht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "energieeinsatz.einstufen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ap16-peter-sieht-energieeinsatz-am-eigenen-standort",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-16 R14: Peter liest Einsätze am eigenen Standort; der Zaun kommt aus der Messstellen-Zuordnung.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "energieeinsatz.ansehen",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
     }
   ]
 }
