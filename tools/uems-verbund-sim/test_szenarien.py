@@ -152,7 +152,7 @@ def test_blatt_hat_jede_zeile_und_die_bandbreite(tmp_path: Path):
     text = sz.blatt(prot, nw2, "2026-09-22")
     zeilen = [z for z in text.splitlines() if z.startswith("| ") and not z.startswith("| Zeile")]
     namen = [z.split("|")[1].strip() for z in zeilen]
-    assert namen[:18] == ["R1", *sz.ZEILEN]
+    assert [n for n in namen if n != "A7x"][:18] == ["R1", *sz.ZEILEN]
     r1 = zeilen[0]
     assert "2 Läufe: 97.74–98" in r1 and "+24.7–26.8 kW" in r1 and r1.endswith("| hält |")
     a7 = next(z for z in zeilen if z.startswith("| A7 "))
@@ -160,3 +160,6 @@ def test_blatt_hat_jede_zeile_und_die_bandbreite(tmp_path: Path):
     assert "nicht fahrbar" in next(z for z in zeilen if z.startswith("| A8 "))
     assert "noch nicht gefahren" in next(z for z in zeilen if z.startswith("| A1 "))
     assert "`uems-17abebe1c993`" in text
+    (prot / "A7-2.json").write_text(json.dumps(protokoll(99.2, 26.8, 60, core="vb-edge-core:ip29-b70334ea3abc")))
+    zeilen = [z for z in sz.blatt(prot, nw2).splitlines() if z.startswith("| A7 ")]
+    assert len(zeilen) == 2 and "`b70334ea3abc`" in zeilen[1] and zeilen[1].endswith("| hält |")

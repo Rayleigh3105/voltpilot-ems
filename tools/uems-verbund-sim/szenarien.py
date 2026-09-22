@@ -147,6 +147,8 @@ def laeufe() -> dict[str, Lauf]:
             "hängt an keinem fremden Wert. Nachweis NW-4 (Matrix: nur NW-4)")),
         Lauf("A7", "A7", m, 600, 90, [(0, "stoerung A7")], dauer=1800,
              warum="wie IP-28 `make a7` (T0 600, 30 min, friert bis zum Ende) - vergleichbar mit A7 #1/#2"),
+        Lauf("A7x", "A7", m, 600, 90, [(0, "stoerung A7x")], dauer=1800,
+             warum="die andere Hälfte von A7: Netz- und Abgangszähler antworten nicht (A7 in NW-2), sonst wie A7"),
         Lauf("A8", "A8", m, 0, nicht_fahrbar=(
             "die Uhr eines Containers ist die des Docker-Hosts (CLOCK_REALTIME ohne Namensraum), der Go-Core ist "
             "statisch gebaut - faketime greift nicht; nötig wäre eine Prüf-Verstellung der Uhr im Core (Box-Code). "
@@ -426,7 +428,7 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
         "|---|---|---|---|---|---|---|---|---|",
     ]
     notizen = []
-    namen = ["R1"] + list(ZEILEN) + [n for n in alle if n.endswith("n")]
+    namen = ["R1"] + [n for z in ZEILEN for n in ([z, "A7x"] if z == "A7" else [z])] + [n for n in alle if n.endswith("n")]
     for name in namen:
         lauf = alle[name]
         text, grenze_text, nach, haelt = MATRIX[lauf.zeile]
@@ -440,23 +442,31 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
         if not ps:
             z.append(f"| {name} | {text} | {punkt} | — | — | — | {grenze_text} · {nach} | {vgl} | noch nicht gefahren |")
             continue
-        p = ps[-1]
-        e = kennzahlen(p, lauf.bezug())
-        u = urteil(e["m1"], e["grenze"], haelt)
-        viertel = " / ".join(f"{v:g}" for v in e["viertel"])
-        m1 = f"**{e['m1']:g} kW** ({viertel})" if e["m1"] is not None else "—"
-        if len(ps) > 1:
-            werte = [kennzahlen(x, lauf.bezug()) for x in ps]
-            m1s = [w["m1"] for w in werte if w["m1"] is not None]
-            m2s = [w["m2_kw"] for w in werte]
-            m1 += f"; {len(ps)} Läufe: {min(m1s):g}–{max(m1s):g}"
-            bandbreite = f"; {len(ps)} Läufe: +{min(m2s):g}–{max(m2s):g} kW"
-        else:
+        # Je Stand der Box-Bilder eine Zeile (A7 vor und nach einer Heilung),
+        # mehrere Läufe desselben Stands als Bandbreite.
+        je_stand: dict[str, list[dict]] = {}
+        for x in ps:
+            je_stand.setdefault(stempel(x), []).append(x)
+        for st, gruppe in je_stand.items():
+            p = gruppe[-1]
+            e = kennzahlen(p, lauf.bezug())
+            u = urteil(e["m1"], e["grenze"], haelt)
+            viertel = " / ".join(f"{v:g}" for v in e["viertel"])
+            m1 = f"**{e['m1']:g} kW** ({viertel})" if e["m1"] is not None else "—"
             bandbreite = ""
-        z.append(f"| {name} | {text} | {punkt} | `{stempel(p)}` | {m1} | +{e['m2_kw']:g} kW / {e['m2_s']} s / "
-                 f"{e['m2_summe']} s{bandbreite} | {grenze_text} · {nach} | {vgl} | {u} |")
-        notizen.append(f"- **{name}** ({lauf.profil}, T0 = Messsekunde {lauf.t0}, {lauf.messdauer() // 60} min): "
-                       f"{lauf.warum}. Quittungen: {quittungen_text(p)}.")
+            if len(gruppe) > 1:
+                werte = [kennzahlen(x, lauf.bezug()) for x in gruppe]
+                m1s = [w["m1"] for w in werte if w["m1"] is not None]
+                m2s = [w["m2_kw"] for w in werte]
+                m2l = [w["m2_s"] for w in werte]
+                m1 += f"; {len(gruppe)} Läufe: {min(m1s):g}–{max(m1s):g}"
+                bandbreite = f"; {len(gruppe)} Läufe: +{min(m2s):g}–{max(m2s):g} kW / {min(m2l)}–{max(m2l)} s"
+                u = " / ".join(dict.fromkeys(urteil(w["m1"], w["grenze"], haelt) for w in werte))
+            z.append(f"| {name} | {text} | {punkt} | `{st}` | {m1} | +{e['m2_kw']:g} kW / {e['m2_s']} s / "
+                     f"{e['m2_summe']} s{bandbreite} | {grenze_text} · {nach} | {vgl} | {u} |")
+            notizen.append(f"- **{name}** auf `{st}` ({lauf.profil}, T0 = Messsekunde {lauf.t0}, "
+                           f"{lauf.messdauer() // 60} min, {len(gruppe)} Lauf/Läufe): {lauf.warum}. "
+                           f"Quittungen: {quittungen_text(p)}.")
     z += ["", "## Umsetzung und Quittungen je Lauf", "", *notizen, ""]
     return "\n".join(z)
 
