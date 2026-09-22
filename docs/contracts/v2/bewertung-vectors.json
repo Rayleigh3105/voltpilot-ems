@@ -1,0 +1,3181 @@
+{
+  "schema_version": "1.0",
+  "herkunft": "AP-16 entschieden 22.09.2026, §4.2–4.8, §7 R1/R2/R4/R6/R9/R16; k_faelle.py (prozent/menge/rangliste), Referenzunternehmen 1.6; R6/R9 sind Annahmen.",
+  "startwerte": {
+    "K1": "10",
+    "K2": "80",
+    "K3": "100000",
+    "K5": "90",
+    "K6": "5",
+    "K7": 12,
+    "K8": "80",
+    "mindest_monate": 3
+  },
+  "vokabulare": {
+    "urteil": [
+      "ueber_schwelle",
+      "unter_schwelle",
+      "nicht_anwendbar",
+      "nicht_belastbar",
+      "erfuellt",
+      "vorbehalt_datenlage",
+      "vorbehalt_ersatzwerte",
+      "unter_zwoelf",
+      "vorlaeufig"
+    ],
+    "traeger": [
+      "Strom",
+      "Gas",
+      "Wärme",
+      "Kälte",
+      "Wasser",
+      "Druckluft"
+    ],
+    "abdeckung": [
+      "gemessen",
+      "geplant",
+      "ersatz",
+      "ungemessen"
+    ],
+    "einstufung": [
+      "wesentlich",
+      "nicht_wesentlich",
+      "offen"
+    ]
+  },
+  "cases": [
+    {
+      "name": "R1-Nenner-185380",
+      "regel": "N1",
+      "operation": "nenner",
+      "quelle": "Referenzunternehmen 1.6 abnahmefaelle_ap16 R1; Bilanz Zufluss = 128400 + 14900 + 7100",
+      "eingang": {
+        "anlagen": [
+          {
+            "kennung": "AN-1",
+            "hauptzaehler": true,
+            "zufluss": "150400",
+            "abgabe": "3120",
+            "laden": "7900"
+          },
+          {
+            "kennung": "AN-2",
+            "hauptzaehler": true,
+            "zufluss": "36900",
+            "abgabe": "0",
+            "laden": "0"
+          },
+          {
+            "kennung": "AN-3",
+            "hauptzaehler": true,
+            "zufluss": "9100",
+            "abgabe": "0",
+            "laden": "0"
+          }
+        ]
+      },
+      "erwartet": {
+        "wert": "185380",
+        "vorhanden": 3,
+        "gesamt": 3,
+        "zustand": "vollständig",
+        "anlagen": [
+          {
+            "kennung": "AN-1",
+            "wert": "139380"
+          },
+          {
+            "kennung": "AN-2",
+            "wert": "36900"
+          },
+          {
+            "kennung": "AN-3",
+            "wert": "9100"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Umfang-ohne-Anlage",
+      "regel": "N2",
+      "operation": "nenner",
+      "quelle": "AP-16 §4; Grenzfall",
+      "eingang": {
+        "anlagen": []
+      },
+      "erwartet": {
+        "wert": "0",
+        "vorhanden": 0,
+        "gesamt": 0,
+        "zustand": "vollständig",
+        "anlagen": []
+      }
+    },
+    {
+      "name": "fehlender-Hauptzaehler",
+      "regel": "N2",
+      "operation": "nenner",
+      "quelle": "AP-16 §4; Grenzfall",
+      "eingang": {
+        "anlagen": [
+          {
+            "kennung": "AN-1",
+            "hauptzaehler": false,
+            "zufluss": "150400",
+            "abgabe": "3120",
+            "laden": "7900"
+          },
+          {
+            "kennung": "AN-2",
+            "hauptzaehler": true,
+            "zufluss": "36900",
+            "abgabe": "0",
+            "laden": "0"
+          }
+        ]
+      },
+      "erwartet": {
+        "wert": null,
+        "vorhanden": 1,
+        "gesamt": 2,
+        "zustand": "unvollständig",
+        "anlagen": [
+          {
+            "kennung": "AN-1",
+            "wert": null
+          },
+          {
+            "kennung": "AN-2",
+            "wert": "36900"
+          }
+        ]
+      }
+    },
+    {
+      "name": "fehlender-Bilanzwert",
+      "regel": "N2",
+      "operation": "nenner",
+      "quelle": "AP-16 §4; Grenzfall",
+      "eingang": {
+        "anlagen": [
+          {
+            "kennung": "AN-1",
+            "hauptzaehler": true,
+            "zufluss": "150400",
+            "abgabe": "3120",
+            "laden": null
+          }
+        ]
+      },
+      "erwartet": {
+        "wert": null,
+        "vorhanden": 0,
+        "gesamt": 1,
+        "zustand": "unvollständig",
+        "anlagen": [
+          {
+            "kennung": "AN-1",
+            "wert": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "Menge-EE-1",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 energieeinsaetze; messabdeckung.json je_einsatz",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-06",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "55100",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-11",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "22400",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "77500",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "Menge-EE-2",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 energieeinsaetze; messabdeckung.json je_einsatz",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-12",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6040",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-18",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3600",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "9640",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "Menge-EE-3",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 energieeinsaetze; messabdeckung.json je_einsatz",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-07",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "15900",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "15900",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "Menge-EE-4",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 energieeinsaetze; messabdeckung.json je_einsatz",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-08",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6200",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "6200",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "Menge-EE-5",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 energieeinsaetze; messabdeckung.json je_einsatz",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-13",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3500",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-17",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "4300",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "7800",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "Menge-EE-6",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 energieeinsaetze; messabdeckung.json je_einsatz",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-05",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "7600",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-14",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "1100",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "8700",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "Menge-EE-7",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 energieeinsaetze; messabdeckung.json je_einsatz",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-21",
+            "traeger": "Gas",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "1240",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Gas"
+      },
+      "erwartet": {
+        "menge": "1240",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "Menge-EE-8",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 energieeinsaetze; messabdeckung.json je_einsatz",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-23",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": null,
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": null,
+        "ersatz": null,
+        "zustand": "keine Werte"
+      }
+    },
+    {
+      "name": "R4-Querschnitt-zaehlt-einmal",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "Referenzunternehmen 1.6 abnahmefaelle_ap16 R4",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-06",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "55100",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-11",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "22400",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-20",
+            "traeger": "Strom",
+            "art": "berechnet",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "88630",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "4100-von-MS-07",
+            "traeger": "Strom",
+            "art": "verteilung",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "11130",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-07",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": false,
+            "archiviert": false,
+            "wert": "15900",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "77500",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "archiviert-fremder-Traeger",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "AP-16 §4; Grenzfall",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "aktiv",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "0.1",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "aktiv2",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "0.2",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "alt",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": true,
+            "wert": "990",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "gas",
+            "traeger": "Gas",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "1240",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "0.3",
+        "ersatz": "0",
+        "zustand": "vollständig"
+      }
+    },
+    {
+      "name": "Menge-fehlende-Werte",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "AP-16 §4; Grenzfall",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "A",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "90",
+            "ersatz": "6"
+          },
+          {
+            "kennung": "B",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": null,
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "90",
+        "ersatz": "6",
+        "zustand": "unvollständig"
+      }
+    },
+    {
+      "name": "Menge-mit-Ersatz",
+      "regel": "B3",
+      "operation": "menge",
+      "quelle": "AP-16 §4; Grenzfall",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "A",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "100",
+            "ersatz": "5"
+          }
+        ],
+        "traeger": "Strom"
+      },
+      "erwartet": {
+        "menge": "100",
+        "ersatz": "5",
+        "zustand": "mit Ersatzwert"
+      }
+    },
+    {
+      "name": "R2-Oktober-2026",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §7 R2-Oktober-2026; referenzfaelle.json staende 2026_oktober_version_2",
+      "eingang": {
+        "nenner": {
+          "wert": "185380",
+          "vorhanden": 3,
+          "gesamt": 3,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 1,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "77500",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-3",
+            "menge": "15900",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-2",
+            "menge": "9640",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-6",
+            "menge": "8700",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-5",
+            "menge": "7800",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-4",
+            "menge": "6200",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "185380",
+        "anlagen": "3 von 3",
+        "zugeordnet": "125740",
+        "rest": "59640",
+        "abdeckung_prozent": "67.8",
+        "K8": "unter_schwelle",
+        "K7": "vorlaeufig",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "77500",
+            "rang": 1,
+            "anteil_prozent": "41.8",
+            "kumuliert_zugeordnet_prozent": "61.6",
+            "K1": "ueber_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-3",
+            "menge": "15900",
+            "rang": 2,
+            "anteil_prozent": "8.6",
+            "kumuliert_zugeordnet_prozent": "74.3",
+            "K1": "unter_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-2",
+            "menge": "9640",
+            "rang": 3,
+            "anteil_prozent": "5.2",
+            "kumuliert_zugeordnet_prozent": "81.9",
+            "K1": "unter_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-6",
+            "menge": "8700",
+            "rang": 4,
+            "anteil_prozent": "4.7",
+            "kumuliert_zugeordnet_prozent": "88.9",
+            "K1": "unter_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-5",
+            "menge": "7800",
+            "rang": 5,
+            "anteil_prozent": "4.2",
+            "kumuliert_zugeordnet_prozent": "95.1",
+            "K1": "unter_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-4",
+            "menge": "6200",
+            "rang": 6,
+            "anteil_prozent": "3.3",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "unter_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "R6-Annahme-2027",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §7 R6-Annahme-2027; referenzfaelle.json staende 2027_annahme",
+      "eingang": {
+        "nenner": {
+          "wert": "2200000",
+          "vorhanden": 3,
+          "gesamt": 3,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "860000",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-8",
+            "menge": "344000",
+            "datenlage_prozent": "66.7",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-3",
+            "menge": "190000",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-2",
+            "menge": "118000",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-6",
+            "menge": "104000",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-4",
+            "menge": "96000",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-5",
+            "menge": "92000",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "2200000",
+        "anlagen": "3 von 3",
+        "zugeordnet": "1804000",
+        "rest": "396000",
+        "abdeckung_prozent": "82.0",
+        "K8": "ueber_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "860000",
+            "rang": 1,
+            "anteil_prozent": "39.1",
+            "kumuliert_zugeordnet_prozent": "47.7",
+            "K1": "ueber_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "ueber_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-8",
+            "menge": "344000",
+            "rang": 2,
+            "anteil_prozent": "15.6",
+            "kumuliert_zugeordnet_prozent": "66.7",
+            "K1": "ueber_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "ueber_schwelle",
+            "K4": null,
+            "K5": "vorbehalt_datenlage",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-3",
+            "menge": "190000",
+            "rang": 3,
+            "anteil_prozent": "8.6",
+            "kumuliert_zugeordnet_prozent": "77.3",
+            "K1": "unter_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "ueber_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-2",
+            "menge": "118000",
+            "rang": 4,
+            "anteil_prozent": "5.4",
+            "kumuliert_zugeordnet_prozent": "83.8",
+            "K1": "unter_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "ueber_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-6",
+            "menge": "104000",
+            "rang": 5,
+            "anteil_prozent": "4.7",
+            "kumuliert_zugeordnet_prozent": "89.6",
+            "K1": "unter_schwelle",
+            "K2": "unter_schwelle",
+            "K3": "ueber_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-4",
+            "menge": "96000",
+            "rang": 6,
+            "anteil_prozent": "4.4",
+            "kumuliert_zugeordnet_prozent": "94.9",
+            "K1": "unter_schwelle",
+            "K2": "unter_schwelle",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-5",
+            "menge": "92000",
+            "rang": 7,
+            "anteil_prozent": "4.2",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "unter_schwelle",
+            "K2": "unter_schwelle",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nie-auf-eine-Schwelle-aufgerundet-9.95",
+      "regel": "KR4",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "9.95",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "9.95",
+        "rest": "90.05",
+        "abdeckung_prozent": "10.0",
+        "K8": "unter_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "9.95",
+            "rang": 1,
+            "anteil_prozent": "10.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "unter_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "genau-10-Prozent",
+      "regel": "KR4",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "10",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "10",
+        "rest": "90",
+        "abdeckung_prozent": "10.0",
+        "K8": "unter_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "10",
+            "rang": 1,
+            "anteil_prozent": "10.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "K8-79.95-bleibt-unter-80",
+      "regel": "KR4",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "79.95",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "79.95",
+        "rest": "20.05",
+        "abdeckung_prozent": "80.0",
+        "K8": "unter_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "79.95",
+            "rang": 1,
+            "anteil_prozent": "80.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "K2-80-erreicht-naechste-Zeile-ausserhalb",
+      "regel": "KR4",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "B",
+            "menge": "20",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "A",
+            "menge": "80",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "100",
+        "rest": "0",
+        "abdeckung_prozent": "100.0",
+        "K8": "ueber_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "A",
+            "menge": "80",
+            "rang": 1,
+            "anteil_prozent": "80.0",
+            "kumuliert_zugeordnet_prozent": "80.0",
+            "K1": "ueber_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "B",
+            "menge": "20",
+            "rang": 2,
+            "anteil_prozent": "20.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "unter_schwelle",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "K2-79.95-naechste-Zeile-noch-im-Block",
+      "regel": "KR4",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "A",
+            "menge": "79.95",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "B",
+            "menge": "20.05",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "100",
+        "rest": "0",
+        "abdeckung_prozent": "100.0",
+        "K8": "ueber_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "A",
+            "menge": "79.95",
+            "rang": 1,
+            "anteil_prozent": "80.0",
+            "kumuliert_zugeordnet_prozent": "80.0",
+            "K1": "ueber_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "B",
+            "menge": "20.05",
+            "rang": 2,
+            "anteil_prozent": "20.1",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Gleichstand-Kennzeichen-aufsteigend",
+      "regel": "KR4",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-2",
+            "menge": "40",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          },
+          {
+            "kennung": "EE-1",
+            "menge": "40",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "80",
+        "rest": "20",
+        "abdeckung_prozent": "80.0",
+        "K8": "ueber_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "40",
+            "rang": 1,
+            "anteil_prozent": "40.0",
+            "kumuliert_zugeordnet_prozent": "50.0",
+            "K1": "ueber_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          },
+          {
+            "kennung": "EE-2",
+            "menge": "40",
+            "rang": 2,
+            "anteil_prozent": "40.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "ueber_schwelle",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nenner-null-kein-verkleinerter-Anteil",
+      "regel": "N2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": null,
+          "vorhanden": 2,
+          "gesamt": 3,
+          "zustand": "unvollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "77500",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": null,
+        "anlagen": "2 von 3",
+        "zugeordnet": "77500",
+        "rest": null,
+        "abdeckung_prozent": null,
+        "K8": "nicht_anwendbar",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "77500",
+            "rang": 1,
+            "anteil_prozent": null,
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "nicht_anwendbar",
+            "K2": "nicht_belastbar",
+            "K3": "unter_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "unvollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nenner-0-kein-Prozent",
+      "regel": "N2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "0",
+          "vorhanden": 0,
+          "gesamt": 0,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "0",
+        "anlagen": "0 von 0",
+        "zugeordnet": "0",
+        "rest": "0",
+        "abdeckung_prozent": null,
+        "K8": "nicht_anwendbar",
+        "K7": "erfuellt",
+        "einsaetze": []
+      }
+    },
+    {
+      "name": "K3-genau-100000-K5-90-K6-5",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "2000000",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "100000",
+            "datenlage_prozent": "90",
+            "ersatz_prozent": "5",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "2000000",
+        "anlagen": "1 von 1",
+        "zugeordnet": "100000",
+        "rest": "1900000",
+        "abdeckung_prozent": "5.0",
+        "K8": "unter_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "100000",
+            "rang": 1,
+            "anteil_prozent": "5.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "unter_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "ueber_schwelle",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "K5-K6-nie-gerundet-K7-vorlaeufig",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 2,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "10",
+            "datenlage_prozent": "89.95",
+            "ersatz_prozent": "5.01",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "10",
+        "rest": "90",
+        "abdeckung_prozent": "10.0",
+        "K8": "unter_schwelle",
+        "K7": "vorlaeufig",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "10",
+            "rang": 1,
+            "anteil_prozent": "10.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "vorbehalt_datenlage",
+            "K6": "vorbehalt_ersatzwerte",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "K7-drei-Monate",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 3,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "10",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "10",
+        "rest": "90",
+        "abdeckung_prozent": "10.0",
+        "K8": "unter_schwelle",
+        "K7": "unter_zwoelf",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "10",
+            "rang": 1,
+            "anteil_prozent": "10.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "K7-elf-Monate-keine-Hochrechnung",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "1000000",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 11,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "100000",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "1000000",
+        "anlagen": "1 von 1",
+        "zugeordnet": "100000",
+        "rest": "900000",
+        "abdeckung_prozent": "10.0",
+        "K8": "unter_schwelle",
+        "K7": "unter_zwoelf",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "100000",
+            "rang": 1,
+            "anteil_prozent": "10.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "K3-mehr-als-zwoelf-keine-Jahresmenge",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "1000000",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 13,
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "100000",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "1000000",
+        "anlagen": "1 von 1",
+        "zugeordnet": "100000",
+        "rest": "900000",
+        "abdeckung_prozent": "10.0",
+        "K8": "unter_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-1",
+            "menge": "100000",
+            "rang": 1,
+            "anteil_prozent": "10.0",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "K4-Einschaetzung-bleibt-Wortlaut",
+      "regel": "KR3",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-3",
+            "menge": "8.6",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": "Querschnitt für Spritzguss und Montage; Leckagen prüfen."
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "8.6",
+        "rest": "91.4",
+        "abdeckung_prozent": "8.6",
+        "K8": "unter_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-3",
+            "menge": "8.6",
+            "rang": 1,
+            "anteil_prozent": "8.6",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "unter_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "unter_schwelle",
+            "K4": "Querschnitt für Spritzguss und Montage; Leckagen prüfen.",
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "R12-Gas-ohne-Anteil",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Gas",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-7",
+            "menge": "1240",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": null,
+        "anlagen": "1 von 1",
+        "zugeordnet": "1240",
+        "rest": null,
+        "abdeckung_prozent": null,
+        "K8": "nicht_anwendbar",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-7",
+            "menge": "1240",
+            "rang": null,
+            "anteil_prozent": null,
+            "kumuliert_zugeordnet_prozent": null,
+            "K1": "nicht_anwendbar",
+            "K2": "nicht_anwendbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "unter_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Keine-Werte-bleibt-ohne-Zahl",
+      "regel": "KR2",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "100",
+          "vorhanden": 1,
+          "gesamt": 1,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 12,
+        "einsaetze": [
+          {
+            "kennung": "EE-8",
+            "menge": null,
+            "datenlage_prozent": null,
+            "ersatz_prozent": null,
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "10",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "100",
+        "anlagen": "1 von 1",
+        "zugeordnet": "0",
+        "rest": "100",
+        "abdeckung_prozent": "0.0",
+        "K8": "unter_schwelle",
+        "K7": "erfuellt",
+        "einsaetze": [
+          {
+            "kennung": "EE-8",
+            "menge": null,
+            "rang": null,
+            "anteil_prozent": null,
+            "kumuliert_zugeordnet_prozent": null,
+            "K1": "nicht_anwendbar",
+            "K2": "nicht_anwendbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "vorbehalt_datenlage",
+            "K6": "vorbehalt_ersatzwerte",
+            "vorschlag": "unter_schwelle",
+            "zustand": "keine Werte"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Kriterien-Fassung-2",
+      "regel": "KR3",
+      "operation": "rangliste",
+      "quelle": "AP-16 §4.3; Grenzfall",
+      "eingang": {
+        "nenner": {
+          "wert": "185380",
+          "vorhanden": 3,
+          "gesamt": 3,
+          "zustand": "vollständig"
+        },
+        "traeger": "Strom",
+        "monate": 1,
+        "einsaetze": [
+          {
+            "kennung": "EE-2",
+            "menge": "9640",
+            "datenlage_prozent": "100",
+            "ersatz_prozent": "0",
+            "begruendung": null
+          }
+        ],
+        "kriterien": {
+          "K1": "5",
+          "K2": "80",
+          "K3": "100000",
+          "K5": "90",
+          "K6": "5",
+          "K7": 12,
+          "K8": "80",
+          "mindest_monate": 3
+        }
+      },
+      "erwartet": {
+        "nenner": "185380",
+        "anlagen": "3 von 3",
+        "zugeordnet": "9640",
+        "rest": "175740",
+        "abdeckung_prozent": "5.2",
+        "K8": "unter_schwelle",
+        "K7": "vorlaeufig",
+        "einsaetze": [
+          {
+            "kennung": "EE-2",
+            "menge": "9640",
+            "rang": 1,
+            "anteil_prozent": "5.2",
+            "kumuliert_zugeordnet_prozent": "100.0",
+            "K1": "ueber_schwelle",
+            "K2": "nicht_belastbar",
+            "K3": "nicht_anwendbar",
+            "K4": null,
+            "K5": "erfuellt",
+            "K6": "erfuellt",
+            "vorschlag": "ueber_schwelle",
+            "zustand": "vollständig"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Abdeckung-EE-1",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-EE-1",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-06",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "55100",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-11",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "22400",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [],
+        "nenner": "185380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "77500",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-06",
+          "MS-11"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": null,
+        "abdeckung_prozent": "41.8",
+        "K8": "unter_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-EE-2",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-EE-2",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-12",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6040",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-18",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3600",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [],
+        "nenner": "185380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "9640",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-12",
+          "MS-18"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": null,
+        "abdeckung_prozent": "5.2",
+        "K8": "unter_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-EE-3",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-EE-3",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-07",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "15900",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [],
+        "nenner": "185380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "15900",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-07"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": null,
+        "abdeckung_prozent": "8.6",
+        "K8": "unter_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-EE-4",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-EE-4",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-08",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6200",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [],
+        "nenner": "185380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "6200",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-08"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": null,
+        "abdeckung_prozent": "3.3",
+        "K8": "unter_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-EE-5",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-EE-5",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-13",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3500",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-17",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "4300",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [],
+        "nenner": "185380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "7800",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-13",
+          "MS-17"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": null,
+        "abdeckung_prozent": "4.2",
+        "K8": "unter_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-EE-6",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-EE-6",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-05",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "7600",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-14",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "1100",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [],
+        "nenner": "185380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "8700",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-05",
+          "MS-14"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": null,
+        "abdeckung_prozent": "4.7",
+        "K8": "unter_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-EE-7",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-EE-7",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-21",
+            "traeger": "Gas",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "1240",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Gas",
+        "reste": [],
+        "nenner": null,
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "1240",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-21"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": null,
+        "abdeckung_prozent": null,
+        "K8": "nicht_anwendbar"
+      }
+    },
+    {
+      "name": "Abdeckung-EE-8",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-EE-8",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-23",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": null,
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [
+          {
+            "kennung": "AN-1",
+            "wert": "54580"
+          }
+        ],
+        "nenner": "185380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": null,
+        "ersatz": null,
+        "zustand": "keine Werte",
+        "gemessen": [],
+        "geplant": [
+          "MS-23"
+        ],
+        "ersatz_messstellen": [],
+        "ungemessen": "54580",
+        "abdeckung_prozent": null,
+        "K8": "nicht_anwendbar"
+      }
+    },
+    {
+      "name": "Abdeckung-Ort-AN-1",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-Ort-AN-1",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-05",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "7600",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-06",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "55100",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-07",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "15900",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-08",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6200",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-23",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": null,
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [
+          {
+            "kennung": "AN-1",
+            "wert": "54580"
+          }
+        ],
+        "nenner": "139380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "84800",
+        "ersatz": "0",
+        "zustand": "unvollständig",
+        "gemessen": [
+          "MS-05",
+          "MS-06",
+          "MS-07",
+          "MS-08"
+        ],
+        "geplant": [
+          "MS-23"
+        ],
+        "ersatz_messstellen": [],
+        "ungemessen": "54580",
+        "abdeckung_prozent": "60.8",
+        "K8": "unter_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-Ort-AN-2",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-Ort-AN-2",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-11",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "22400",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-12",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6040",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-13",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3500",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-14",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "1100",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [
+          {
+            "kennung": "AN-2",
+            "wert": "3860"
+          }
+        ],
+        "nenner": "36900",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "33040",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-11",
+          "MS-12",
+          "MS-13",
+          "MS-14"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": "3860",
+        "abdeckung_prozent": "89.5",
+        "K8": "ueber_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-Ort-AN-3",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-Ort-AN-3",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-17",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "4300",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-18",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3600",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [
+          {
+            "kennung": "AN-3",
+            "wert": "1200"
+          }
+        ],
+        "nenner": "9100",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "7900",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-17",
+          "MS-18"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": "1200",
+        "abdeckung_prozent": "86.8",
+        "K8": "ueber_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-Summe-67.8-Rest-59640",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-Summe-67.8-Rest-59640",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-05",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "7600",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-06",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "55100",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-07",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "15900",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-08",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6200",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-11",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "22400",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-12",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6040",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-13",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3500",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-14",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "1100",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-17",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "4300",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-18",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3600",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-23",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": null,
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [
+          {
+            "kennung": "AN-1",
+            "wert": "54580"
+          },
+          {
+            "kennung": "AN-2",
+            "wert": "3860"
+          },
+          {
+            "kennung": "AN-3",
+            "wert": "1200"
+          }
+        ],
+        "nenner": "185380",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "125740",
+        "ersatz": "0",
+        "zustand": "unvollständig",
+        "gemessen": [
+          "MS-05",
+          "MS-06",
+          "MS-07",
+          "MS-08",
+          "MS-11",
+          "MS-12",
+          "MS-13",
+          "MS-14",
+          "MS-17",
+          "MS-18"
+        ],
+        "geplant": [
+          "MS-23"
+        ],
+        "ersatz_messstellen": [],
+        "ungemessen": "59640",
+        "abdeckung_prozent": "67.8",
+        "K8": "unter_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-Ersatz-ist-Teil-der-Menge",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-Ersatz-ist-Teil-der-Menge",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "A",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "100",
+            "ersatz": "6"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [
+          {
+            "kennung": "AN",
+            "wert": "25"
+          }
+        ],
+        "nenner": "125",
+        "offene_bedarfe": [
+          "MB-offen"
+        ],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "100",
+        "ersatz": "6",
+        "zustand": "mit Ersatzwert",
+        "gemessen": [
+          "A"
+        ],
+        "geplant": [
+          "MB-offen"
+        ],
+        "ersatz_messstellen": [
+          "A"
+        ],
+        "ungemessen": "25",
+        "abdeckung_prozent": "80.0",
+        "K8": "ueber_schwelle"
+      }
+    },
+    {
+      "name": "Abdeckung-archiviert-berechnet-nie-gemessen",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-archiviert-berechnet-nie-gemessen",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "alt",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": true,
+            "wert": "999",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "summe",
+            "traeger": "Strom",
+            "art": "berechnet",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "999",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [
+          {
+            "kennung": "AN",
+            "wert": "100"
+          }
+        ],
+        "nenner": "100",
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": null,
+        "ersatz": null,
+        "zustand": "keine Werte",
+        "gemessen": [],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": "100",
+        "abdeckung_prozent": null,
+        "K8": "nicht_anwendbar"
+      }
+    },
+    {
+      "name": "Abdeckung-Bilanz-fehlt",
+      "regel": "P3",
+      "operation": "abdeckung",
+      "quelle": "messabdeckung.json §5.3; Abdeckung-Bilanz-fehlt",
+      "eingang": {
+        "messstellen": [
+          {
+            "kennung": "MS-05",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "7600",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-06",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "55100",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-07",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "15900",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-08",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6200",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-11",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "22400",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-12",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "6040",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-13",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3500",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-14",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "1100",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-17",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "4300",
+            "ersatz": "0"
+          },
+          {
+            "kennung": "MS-18",
+            "traeger": "Strom",
+            "art": "gemessen",
+            "direkt": true,
+            "archiviert": false,
+            "wert": "3600",
+            "ersatz": "0"
+          }
+        ],
+        "traeger": "Strom",
+        "reste": [
+          {
+            "kennung": "AN",
+            "wert": null
+          }
+        ],
+        "nenner": null,
+        "offene_bedarfe": [],
+        "schwelle": "80"
+      },
+      "erwartet": {
+        "menge": "125740",
+        "ersatz": "0",
+        "zustand": "vollständig",
+        "gemessen": [
+          "MS-05",
+          "MS-06",
+          "MS-07",
+          "MS-08",
+          "MS-11",
+          "MS-12",
+          "MS-13",
+          "MS-14",
+          "MS-17",
+          "MS-18"
+        ],
+        "geplant": [],
+        "ersatz_messstellen": [],
+        "ungemessen": null,
+        "abdeckung_prozent": null,
+        "K8": "nicht_anwendbar"
+      }
+    },
+    {
+      "name": "R16-Prozess-Summe-passt-nicht",
+      "regel": "P4",
+      "operation": "prozess_summe_passt",
+      "quelle": "AP-16 §7 R16",
+      "eingang": {
+        "gemessen": [
+          "MS-06",
+          "MS-11"
+        ],
+        "summen": [
+          {
+            "kennung": "MS-20",
+            "terme": [
+              {
+                "messstelle": "MS-06",
+                "verteilung": null
+              },
+              {
+                "messstelle": "MS-11",
+                "verteilung": null
+              },
+              {
+                "messstelle": "MS-07",
+                "verteilung": "4100"
+              }
+            ]
+          }
+        ]
+      },
+      "erwartet": [
+        {
+          "summe": "MS-20",
+          "messstelle": "MS-07",
+          "verteilung": "4100"
+        }
+      ]
+    },
+    {
+      "name": "Prozess-Summe-passt",
+      "regel": "P4",
+      "operation": "prozess_summe_passt",
+      "quelle": "AP-16 §7 R16",
+      "eingang": {
+        "gemessen": [
+          "A"
+        ],
+        "summen": [
+          {
+            "kennung": "S",
+            "terme": [
+              {
+                "messstelle": "A",
+                "verteilung": null
+              }
+            ]
+          }
+        ]
+      },
+      "erwartet": []
+    },
+    {
+      "name": "Prozess-ohne-Summe",
+      "regel": "P4",
+      "operation": "prozess_summe_passt",
+      "quelle": "AP-16 §7 R16",
+      "eingang": {
+        "gemessen": [
+          "A"
+        ],
+        "summen": []
+      },
+      "erwartet": []
+    },
+    {
+      "name": "R9-1.1-kein-Befund",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": "131200",
+        "vergleich": "129700",
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "abweichung_prozent": "1.1",
+        "toleranz_prozent": "2",
+        "befund": false
+      }
+    },
+    {
+      "name": "R9-3.4-Befund",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": "131200",
+        "vergleich": "126700",
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "abweichung_prozent": "3.4",
+        "toleranz_prozent": "2",
+        "befund": true
+      }
+    },
+    {
+      "name": "Toleranz-genau-2",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": "100",
+        "vergleich": "98",
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "abweichung_prozent": "2.0",
+        "toleranz_prozent": "2",
+        "befund": false
+      }
+    },
+    {
+      "name": "Toleranz-2.01-trotz-Anzeige-2.0",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": "100",
+        "vergleich": "97.99",
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "abweichung_prozent": "2.0",
+        "toleranz_prozent": "2",
+        "befund": true
+      }
+    },
+    {
+      "name": "Toleranz-1.95-kaufmaennisch",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": "100",
+        "vergleich": "98.05",
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "abweichung_prozent": "2.0",
+        "toleranz_prozent": "2",
+        "befund": false
+      }
+    },
+    {
+      "name": "Toleranz-Vergleich-groesser",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": "100",
+        "vergleich": "103.4",
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "abweichung_prozent": "3.4",
+        "toleranz_prozent": "2",
+        "befund": true
+      }
+    },
+    {
+      "name": "Toleranz-Nullnenner",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": "0",
+        "vergleich": "0",
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "abweichung_prozent": null,
+        "toleranz_prozent": "2",
+        "befund": null
+      }
+    },
+    {
+      "name": "Toleranz-Wert-fehlt",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": null,
+        "vergleich": "123",
+        "toleranz": "2"
+      },
+      "erwartet": {
+        "abweichung_prozent": null,
+        "toleranz_prozent": "2",
+        "befund": null
+      }
+    },
+    {
+      "name": "Toleranz-eigene-Fassung",
+      "regel": "G5",
+      "operation": "toleranz",
+      "quelle": "AP-16 §7 R9 / Grenzfall",
+      "eingang": {
+        "fuehrend": "100",
+        "vergleich": "97",
+        "toleranz": "4"
+      },
+      "erwartet": {
+        "abweichung_prozent": "3.0",
+        "toleranz_prozent": "4",
+        "befund": false
+      }
+    }
+  ]
+}
