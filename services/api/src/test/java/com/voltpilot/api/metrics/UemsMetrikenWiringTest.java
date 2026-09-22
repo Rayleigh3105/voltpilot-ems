@@ -8,8 +8,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
@@ -38,6 +38,15 @@ class UemsMetrikenWiringTest {
             Path.of("src/main/java/com/voltpilot/api/zugriff"),
             // AP-15 IP-3: der Grenzblatt-Anstoß lebt beim Ladepark.
             Path.of("src/main/java/com/voltpilot/api/chargers"));
+
+    /** Jede Bean am gemeinsamen UEMS-Metrikschalter — neue Beans müssen bewusst in diese Klammer. */
+    private static final Set<String> METRIK_BEANS = Set.of(
+            "GemeinsameSteuerungHerzschlag",
+            "GemeinsameSteuerungMetrikSammler",
+            "GemeinsameSteuerungUhrMetrik",
+            "UemsMetricsCollector",
+            "VerbundBilanzMetrik",
+            "VorbehaltMetrik");
 
     /**
      * {@code PlanResultListener} (AP-15 IP-10), {@code VerbundAnteileResultListener} (AP-15 IP-7) und
@@ -99,6 +108,20 @@ class UemsMetrikenWiringTest {
                 "<voltpilot.metrics.uems.enabled>false</voltpilot.metrics.uems.enabled>");
     }
 
+    @Test
+    void jedeBeanAmUemsMetrikschalterStehtInDerKlammer() throws IOException {
+        Path paket = Path.of("src/main/java/com/voltpilot/api/metrics");
+        try (Stream<Path> dateien = Files.list(paket)) {
+            List<String> imCode = dateien.filter(p -> p.toString().endsWith(".java"))
+                    .filter(p -> enthaelt(p, "@Component")
+                            && enthaelt(p, "voltpilot.metrics.uems.enabled"))
+                    .map(p -> p.getFileName().toString().replace(".java", ""))
+                    .sorted().toList();
+
+            assertThat(imCode).containsExactlyElementsOf(METRIK_BEANS.stream().sorted().toList());
+        }
+    }
+
     // ---------------------------------------------------------------------------------------------
 
     private static Stream<String> klassenMitLauf(Path paket) {
@@ -122,6 +145,14 @@ class UemsMetrikenWiringTest {
                     .map(String::stripLeading)
                     .anyMatch(z -> !z.startsWith("*") && !z.startsWith("//")
                             && (z.startsWith("@Scheduled(") || z.contains("ApplicationReadyEvent.class")));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static boolean enthaelt(Path datei, String text) {
+        try {
+            return Files.readString(datei).contains(text);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

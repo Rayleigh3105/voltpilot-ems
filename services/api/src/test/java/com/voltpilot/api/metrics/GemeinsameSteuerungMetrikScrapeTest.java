@@ -270,7 +270,7 @@ class GemeinsameSteuerungMetrikScrapeTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
             .withUserConfiguration(Nachbarn.class, GemeinsameSteuerungHerzschlag.class,
-                    GemeinsameSteuerungMetrikSammler.class);
+                    GemeinsameSteuerungMetrikSammler.class, GemeinsameSteuerungUhrMetrik.class);
 
     /** Der vorhandene UEMS-Schalter nimmt Sammler UND Halter; ohne Halter überliest der Zuhörer den Block. */
     @Test
@@ -279,6 +279,7 @@ class GemeinsameSteuerungMetrikScrapeTest {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(GemeinsameSteuerungMetrikSammler.class);
             assertThat(context).doesNotHaveBean(GemeinsameSteuerungHerzschlag.class);
+            assertThat(context).doesNotHaveBean(GemeinsameSteuerungUhrMetrik.class);
             assertThat(context.getBean(PrometheusMeterRegistry.class).scrape()).isEmpty();
         });
         // Der Testlauf setzt den Schalter global auf false (surefire) - AN darum ausdrücklich.
@@ -286,6 +287,7 @@ class GemeinsameSteuerungMetrikScrapeTest {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(GemeinsameSteuerungMetrikSammler.class);
             assertThat(context).hasSingleBean(GemeinsameSteuerungHerzschlag.class);
+            assertThat(context).hasSingleBean(GemeinsameSteuerungUhrMetrik.class);
         });
     }
 

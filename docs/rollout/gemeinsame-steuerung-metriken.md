@@ -30,6 +30,8 @@ Betreiber sieht je Box, was sie fährt und was sie hält; der Ausfall EINER Box 
 |---|---|---|---|---|
 | `voltpilot_uems_box_herzschlag_age_seconds` | `tenant`, `site`, `device` | s | Alter des jüngsten gültigen Status-Herzschlags (Cloud-Ankunft, `device.device_status_seen_at`). Fehlt bei `zustand="nie"`. | gefüllt |
 | `voltpilot_uems_box_herzschlag_zustand` | + `zustand` = `bekannt` \| `nie` | 1/0 | 1 für den aktiven Zustand. `nie`: seit AP-06 IP-15 kein Herzschlag — eine Box ohne Alter, die trotzdem sichtbar ist. | gefüllt |
+| `voltpilot_uems_box_uhr_versatz_seconds` | `device` | s | Box-Uhr (`ts`) minus Cloud-Empfangszeit des gültigen Status-Herzschlags. Positiv = Box geht vor, negativ = Box geht nach. Wird bei jedem Herzschlag ersetzt; nach api-Neustart leer bis zum nächsten Herzschlag. | gefüllt |
+| `voltpilot_uems_box_uhrsprung_total` | `device` | Zähler | Dauerhaft gespeicherte Ereignisse `clock_ahead` und `clock_jump` aus `messreihe_ereignis`, gezählt über deren Pflichtbezug `box`/`device_id`. Der Vertrag führt beide Arten je Box, nicht nur je Datenquelle; der append-only Stand bleibt über api-Neustarts erhalten. | gefüllt (0) |
 | `voltpilot_uems_box_plan_veroeffentlicht_age_seconds` | `tenant`, `site`, `device` | s | Alter ab ERZEUGUNG (`generated_at`, Uhr des Optimierers) des jüngsten veröffentlichten Plans 2.0; Ordnung wie `PlanZustellungRepository#stand`. Fehlt, wenn nie. | gefüllt (Optimierer seit IP-10) |
 | `voltpilot_uems_box_plan_angenommen_age_seconds` | `tenant`, `site`, `device` | s | Alter ab Erzeugung des jüngsten ANGENOMMENEN Plans 2.0. R11 „erzeugt 10:15 · angenommen 10:00“ = 900 s Abstand zur Reihe darüber. Fehlt, wenn nie. | Edge-Release mit IP-10 (Box quittiert) |
 | `voltpilot_uems_box_plan_quittung_gemeldet` | `tenant`, `site`, `device` | 1/0 | 1, wenn die Box `plan_quittung` in `supports[]` meldet. 0 = alte Box: „angenommen“ bleibt leer, daraus darf kein Alarm werden. | gefüllt |
@@ -56,10 +58,30 @@ promtool-Tests setzen die Reihe als Eingang.
 | `GemeinsameSteuerungOhneFuehrendeBox` (kritisch, 5 min) | A2 | `voltpilot_uems_box_herzschlag_age_seconds > 300 and on (device) voltpilot_uems_box_rolle{rolle="fuehrt"} == 1` | nichts; wirksam, sobald eine Anlage eingerichtet ist (IP-5) |
 | `GemeinsameSteuerungAufAnteil` (Wächter > 10 min auf dem Anteil) | A7 | `voltpilot_uems_box_waechter_stufe{stufe="sicherheitskappe"} == 1` mit `for: 10m`, `and on (device) voltpilot_uems_box_herzschlag_age_seconds < 120` (eine stumme Box meldet `BoxStumm`, nicht ihren letzten Wächter-Wert) | Bedeutung „= eigener Anteil“ erst mit IP-18 (davor ist es die heutige Sicherheitskappe der Einzelbox); Richtung `bezug` erst IP-18/IP-19; Mitglieder-Begrenzung |
 | `GemeinsameSteuerungBilanzUnplausibel` | A17 | `voltpilot_uems_verbund_bilanz_zustand{zustand="unplausibel"} == 1` (je Anlage, ohne `for`: der Wert ändert sich höchstens einmal am Tag) | nichts: gefüllt seit IP-12, sobald für eine Anlage mit Mitgliedern ein Tag gerechnet ist (siehe unten) |
-| `GemeinsameSteuerungUhrUnsicher` | A8 | — | eine Quelle je Box. `clock_jump` gehört der Datenannahme und ist ein Ereignis, keine Metrik mit `device`. Vorschlag: der Versatz Herzschlag-`ts` gegen Cloud-Ankunft als `voltpilot_uems_box_uhr_versatz_seconds` in diesem Sammler (der Status ist nicht retained, der Versatz also echt) — in IP-11 nicht gebaut, weil die Zelle ihn nicht nennt |
+| `GemeinsameSteuerungUhrUnsicher` | A8 | `abs(voltpilot_uems_box_uhr_versatz_seconds) > 60` mit `for: 5m`; zusätzlich `increase(voltpilot_uems_box_uhrsprung_total[5m]) > 0` ohne Wartezeit; beide über `device` auf aktive Mitglieder begrenzen | nichts; Versatz aus dem gültigen Status-Herzschlag, Zähler aus `messreihe_ereignis`; beide hängen am UEMS-Metrikschalter |
 | `GemeinsameSteuerungVorbehaltZuKlein` | A20 | `max by (namespace, tenant, site) (increase(voltpilot_uems_vorbehalt_erhoeht_total[1h])) > 0` | nichts: gefüllt seit IP-13 (siehe unten) |
 | `PlanNichtAngenommen{device}` (30 min) | A3, A9 | `voltpilot_uems_box_plan_angenommen_age_seconds > 1800 and on (device) voltpilot_uems_box_plan_quittung_gemeldet == 1`; der Nie-Fall: `(voltpilot_uems_box_plan_quittung_gemeldet == 1) unless on (device) voltpilot_uems_box_plan_angenommen_age_seconds` mit `for: 30m` | baubar; wirksam, sobald Boxen mit dem IP-10-Edge-Release quittieren. Ob ohne Mitglieder-Begrenzung, entscheidet Teil B (die Regel ist reine Betreibersicht) |
 | `AnteileNichtBestaetigt` (30 min) | A10 | `voltpilot_uems_box_anteile_unbestaetigt_age_seconds > 1800` | die Werte: IP-7 schreibt `gesendet_*`/`quittiert_*`, IP-17 lässt die Box quittieren |
+
+Der GitOps-Regel-PR setzt `GemeinsameSteuerungUhrUnsicher` zweckmäßig als zwei Regeln mit demselben
+Alarmnamen um: dauerhafter Versatz und neues Uhr-Ereignis haben unterschiedliche Haltezeiten. Der
+vorgeschlagene Kern der Ausdrücke ist:
+
+```promql
+max by (namespace, device) (abs(voltpilot_uems_box_uhr_versatz_seconds)) > 60
+```
+
+mit `for: 5m`, sowie unmittelbar:
+
+```promql
+max by (namespace, device) (increase(voltpilot_uems_box_uhrsprung_total[5m])) > 0
+```
+
+Beide Ausdrücke werden wie die übrigen Box-Regeln über
+`* on (namespace, device) group_left(tenant, site)` mit
+`voltpilot:uems_box_mitglied{stufe="anteile_aktiv"}` multipliziert. Damit kommen `tenant` und
+`site` an den Alarm, und die zusätzlichen Reihen erzeugen für Bestandsboxen keinen Alarm, bis
+jemand die Gemeinsame Steuerung eingerichtet hat.
 
 ## Verbund-Bilanz je Anlage (AP-15 IP-12)
 

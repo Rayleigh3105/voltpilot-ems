@@ -11,7 +11,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -110,12 +113,18 @@ public class GemeinsameSteuerungMetrikSammler {
     private final MultiGauge revisionGesendet;
     private final MultiGauge revisionQuittiert;
     private final MultiGauge unbestaetigtAlter;
+    private GemeinsameSteuerungUhrMetrik uhrMetrik;
     private boolean failing;
+
+    void uhrMetrik(GemeinsameSteuerungUhrMetrik uhrMetrik) {
+        this.uhrMetrik = uhrMetrik;
+    }
 
     @Autowired
     public GemeinsameSteuerungMetrikSammler(BoxMetrikRepository repo, GemeinsameSteuerungHerzschlag herzschlag,
-            MeterRegistry registry) {
+            MeterRegistry registry, GemeinsameSteuerungUhrMetrik uhrMetrik) {
         this(repo, herzschlag, registry, Clock.systemUTC());
+        this.uhrMetrik = uhrMetrik;
     }
 
     /** Test-Naht mit steuerbarer Uhr. */
@@ -190,7 +199,9 @@ public class GemeinsameSteuerungMetrikSammler {
         List<MultiGauge.Row<?>> gesendet = new ArrayList<>();
         List<MultiGauge.Row<?>> quittiert = new ArrayList<>();
         List<MultiGauge.Row<?>> unbestaetigt = new ArrayList<>();
+        Map<UUID, Long> uhrereignisse = new LinkedHashMap<>();
         for (Box b : boxen) {
+            uhrereignisse.put(b.deviceId(), b.uhrereignisse());
             Tags tags = Tags.of("tenant", b.tenantId().toString(), "site", b.siteId().toString(),
                     "device", b.deviceId().toString());
             boolean bekannt = b.herzschlag() != null;
@@ -247,6 +258,9 @@ public class GemeinsameSteuerungMetrikSammler {
         revisionGesendet.register(gesendet, true);
         revisionQuittiert.register(quittiert, true);
         unbestaetigtAlter.register(unbestaetigt, true);
+        if (uhrMetrik != null) {
+            uhrMetrik.uhrereignisse(uhrereignisse);
+        }
         log.debug("box metrics collected: {} Box(en) mit Bezug", boxen.size());
     }
 

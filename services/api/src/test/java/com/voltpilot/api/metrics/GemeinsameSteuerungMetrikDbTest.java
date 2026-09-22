@@ -83,6 +83,8 @@ class GemeinsameSteuerungMetrikDbTest {
         p1015 = UUID.randomUUID();
         angenommen(mitPlan, kunde, werk, p10uhr, "20 minutes");
         veroeffentlicht(mitPlan, kunde, werk, p1015, "5 minutes");
+        uhrereignis(mitPlan, "clock_ahead", "{\"strom\":\"telemetry\",\"vor_s\":840}");
+        uhrereignis(mitPlan, "clock_jump", "{\"strom\":\"telemetry\",\"sequenz\":17,\"sprung_s\":-840}");
 
         alt = box(kunde, werk, "VP-IP11-ALT");
         root.update("UPDATE device SET device_status_seen_at = now() WHERE id = ?", alt);
@@ -151,6 +153,7 @@ class GemeinsameSteuerungMetrikDbTest {
         assertThat(b.quittiert()).isTrue();
         assertThat(Duration.between(b.herzschlag(), Instant.now()).toMinutes()).isBetween(1L, 4L);
         assertThat(b.siteId()).isEqualTo(werk);
+        assertThat(b.uhrereignisse()).as("clock_ahead und clock_jump je Box").isEqualTo(2L);
     }
 
     @Test
@@ -159,11 +162,16 @@ class GemeinsameSteuerungMetrikDbTest {
         GemeinsameSteuerungHerzschlag halter = new GemeinsameSteuerungHerzschlag();
         halter.merke(nurBlock, new ObjectMapper().readTree("{\"plan_id\":\"" + UUID.randomUUID()
                 + "\",\"waechter\":{\"einspeisung\":\"sicherheitskappe\"}}"));
-        new GemeinsameSteuerungMetrikSammler(new BoxMetrikRepository(admin), halter, registry, Clock.systemUTC()).collect();
+        GemeinsameSteuerungMetrikSammler sammler =
+                new GemeinsameSteuerungMetrikSammler(new BoxMetrikRepository(admin), halter, registry,
+                        Clock.systemUTC());
+        sammler.uhrMetrik(new GemeinsameSteuerungUhrMetrik(registry));
+        sammler.collect();
 
         String scrape = registry.scrape();
 
         assertThat(scrape).contains("voltpilot_uems_box_plan_angenommen_age_seconds{device=\"" + mitPlan + "\"");
+        assertThat(scrape).contains("voltpilot_uems_box_uhrsprung_total{device=\"" + mitPlan + "\"} 2.0");
         assertThat(scrape).contains("voltpilot_uems_box_waechter_stufe{device=\"" + nurBlock
                 + "\",richtung=\"einspeisung\",site=\"" + werk + "\",stufe=\"sicherheitskappe\",tenant=\"" + kunde + "\"} 1.0");
         assertThat(scrape).contains("tenant=\"" + dauerlaeufer + "\"");
@@ -215,6 +223,12 @@ class GemeinsameSteuerungMetrikDbTest {
     private static UUID box(UUID tenant, UUID site, String ref) {
         return root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) RETURNING id",
                 UUID.class, tenant, site, ref);
+    }
+
+    private static void uhrereignis(UUID deviceId, String art, String nutzlast) {
+        root.update("INSERT INTO messreihe_ereignis (zeit, tenant_id, ereignis_id, art, urheber, site_id, "
+                        + "kennungen, device_id, nutzlast) VALUES (now(), ?, ?, ?, 'datenannahme', ?, ?::jsonb, ?, ?::jsonb)",
+                kunde, UUID.randomUUID(), art, werk, "{\"box\":\"" + deviceId + "\"}", deviceId, nutzlast);
     }
 
     /** Wie der Optimierer: erzeugt und veröffentlicht vor {@code vor}. */
