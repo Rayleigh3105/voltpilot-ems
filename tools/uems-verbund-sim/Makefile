@@ -9,7 +9,7 @@ PROTOKOLL ?= $(or $(TMPDIR),/tmp)/uems-verbund-r1.json
 
 .PHONY: test bilder r1 a7 lint
 test:
-	$(PY) -m pytest -q test_uems_verbund.py
+	$(PY) -m pytest -q test_uems_verbund.py test_szenarien.py
 
 bilder:
 	./verbund.sh bilder

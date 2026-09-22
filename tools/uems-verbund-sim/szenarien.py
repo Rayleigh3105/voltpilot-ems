@@ -119,7 +119,7 @@ class Lauf:
     def umgebung(self) -> dict[str, str]:
         e = {"VB_PROFIL": self.profil, "VB_T0_S": str(self.t0), "VB_DAUER_S": str(self.messdauer())}
         if self.bezug():
-            e.update(VB_NULLPUNKT_KW=f"{NULLPUNKT_NACHT_KW:g}", VB_LADEPUNKTE=LADEPUNKTE)
+            e.update(VB_NULLPUNKT_KW=f"{NULLPUNKT_NACHT_KW:g}", VB_LADEPUNKTE=LADEPUNKTE, VB_VERBRAUCHER="true")
         e.update(self.env)
         return e
 
@@ -161,7 +161,8 @@ def laeufe() -> dict[str, Lauf]:
             (60, sende("E-4", "a10-e4-r1")), (61, sende("E-4", "a10-e4-r4"))],
              warum="Mittag, wie zaA10: Übergang 10/60 an beide, Ziel 10/90 nur an Box Halle 1; dann Revision 1 "
                    "erneut und Summe 110 > 100 an Box Verwaltung (beide abzulehnen); K-1-Rückfall auf 10 kW (R12)"),
-        Lauf("A11", "A11", m, 0, 0, [(0, f"lokal E-1 edge/entities/{k2}/desired {{dir}}/a11-hand.json")],
+        Lauf("A11", "A11", m, 0, 0, [(-5, f"lauschen E-1 edge/entities/{k2}/+ 300"),
+                                     (0, f"lokal E-1 edge/entities/{k2}/desired {{dir}}/a11-hand.json")],
              warum="Mittag: Handeingriff an K-2 -100 kW (local-ui, Vorrang vor dem Plan) - entlädt gegen die Einspeisegrenze"),
         Lauf("A12", "A12", m, 0, 0, env={"VB_ZUSTELLUNG": "ohne_anteile", "VB_E4_STEUERT": "false"},
              warum="Mittag, wie NW-2 A12: kein Anteils-Dokument, kein Plan v2, Box Halle 1 fährt den Fahrplan wie "
@@ -250,10 +251,41 @@ def warte_auf_fenster(max_container: int = 2, min_gib: float = 3.0) -> None:
         time.sleep(30)
 
 
+def werkzeug_stempel() -> str:
+    """Commit des Werkzeugs; „+geändert“, wenn tools/uems-verbund-sim ungesichert abweicht."""
+    repo = HIER.parents[1]
+    sha = subprocess.run(["git", "-C", str(repo), "rev-parse", "--short=12", "HEAD"],
+                         capture_output=True, text=True, check=False).stdout.strip()
+    offen = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--", str(HIER)],
+                           capture_output=True, text=True, check=False).stdout.strip()
+    return sha + ("+geändert" if offen else "")
+
+
+def schnappschuss(ziel: Path) -> Path:
+    """Das Werkzeug einfrieren: eine Reihe dauert Stunden, und bash liest ein
+    laufendes Skript stückweise - eine Änderung im Arbeitsbaum darf keinen
+    laufenden Lauf treffen. Verträge und Box-Quellen liest der Schnappschuss
+    weiter aus dem Repo (VB_REPO, Verweis docs/)."""
+    import shutil
+    werk = ziel / "tools" / "uems-verbund-sim"
+    if werk.exists():
+        shutil.rmtree(werk)
+    shutil.copytree(HIER, werk, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", "protokolle"))
+    docs = ziel / "docs"
+    if not docs.exists():
+        docs.symlink_to(HIER.parents[1] / "docs")
+    return werk
+
+
 def fahre(namen: list[str], protokolle: Path, status: Path | None) -> int:
     alle = laeufe()
     protokolle.mkdir(parents=True, exist_ok=True)
     fehler = 0
+    stempel_werkzeug = werkzeug_stempel()
+    werk = schnappschuss(Path(os.environ.get("TMPDIR", "/tmp")) / f"uems-verbund-ip29-werkzeug-{os.getpid()}")
+    basis = dict(os.environ, VB_REPO=str(HIER.parents[1]))
+    subprocess.run([str(werk / "verbund.sh"), "bilder"], env=basis, check=True)
+    basis["VB_BILDER_FEST"] = "1"
     for name in namen:
         lauf = alle[name]
         if lauf.nicht_fahrbar:
@@ -266,10 +298,14 @@ def fahre(namen: list[str], protokolle: Path, status: Path | None) -> int:
         arbeit = Path(os.environ.get("TMPDIR", "/tmp")) / f"uems-verbund-ip29-{name}-{n}"
         buch = schreibe_drehbuch(lauf, arbeit / "drehbuch")
         warte_auf_fenster()
-        env = dict(os.environ, VB_ARBEIT=str(arbeit), **lauf.umgebung())
+        env = dict(basis, VB_ARBEIT=str(arbeit), **lauf.umgebung())
         print(f"==> {name} (Lauf {n}): {lauf.umgebung()}", flush=True)
-        r = subprocess.run([str(HIER / "verbund.sh"), "lauf", "--drehbuch", str(buch),
+        r = subprocess.run([str(werk / "verbund.sh"), "lauf", "--drehbuch", str(buch),
                             "--protokoll", str(ziel)], env=env, check=False)
+        if ziel.exists():
+            p = json.loads(ziel.read_text(encoding="utf-8"))
+            p.update(lauf=name, werkzeug=stempel_werkzeug, umgebung=lauf.umgebung())
+            ziel.write_text(json.dumps(p, ensure_ascii=False, indent=1), encoding="utf-8")
         if r.returncode != 0 or not ziel.exists():
             fehler += 1
             zeile = f"working: IP-29 {name} Lauf {n} ohne Protokoll (Exit {r.returncode})"
@@ -339,7 +375,8 @@ def quittungen_text(p: dict) -> str:
 
 
 def stempel(p: dict) -> str:
-    return (p.get("core_bild") or "").split(":")[-1] or (p.get("bilder_aus_commit") or "")[:12]
+    """Die Marke der Box-Bilder (letzter Commit an edge-app/, edge/sim), ohne den Vorsatz der Bahn."""
+    return (p.get("core_bild") or "").split(":")[-1].split("-")[-1] or (p.get("bilder_aus_commit") or "")[:12]
 
 
 def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) -> str:

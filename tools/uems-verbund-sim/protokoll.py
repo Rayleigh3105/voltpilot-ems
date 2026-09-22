@@ -121,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sha", required=True)
     p.add_argument("--bilder", default=None, help="Marke des Core-Bilds (Stempel im Blatt)")
     p.add_argument("--drehbuch", type=Path, default=None, help="drehbuch.log des Laufs")
+    p.add_argument("--lokal", type=Path, default=None, help="Mitschnitt des lokalen Busses (A11)")
     p.add_argument("--aus", type=Path, required=True)
     a = p.parse_args(argv)
     anlage = json.loads(a.anlage.read_text(encoding="utf-8"))
@@ -130,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
         "core_bild": a.bilder,
         "drehbuch": ([z for z in a.drehbuch.read_text(encoding="utf-8").splitlines() if z]
                      if a.drehbuch else []),
+        "lokaler_bus": ([z for z in a.lokal.read_text(encoding="utf-8").splitlines() if z][:200]
+                        if a.lokal else []),
         "zugestellt": [z.split(" ", 1)[0] for z in a.nutzlasten.read_text().splitlines() if z],
         "quittiert": urteil(q),
         "boxen": q,

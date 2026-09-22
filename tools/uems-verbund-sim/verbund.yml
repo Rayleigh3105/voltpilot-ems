@@ -52,6 +52,10 @@ services:
       # K-2 Speicher 100 kW (zwei_agenten_test.go zaStarteBox: MaxCharge/MaxDischarge 100)
       VP_MAX_CHARGE_KW: "100"
       VP_MAX_DISCHARGE_KW: "100"
+      # IP-29, nur am Bezugs-Punkt: die LEBENDE Zuteilung an die Säulen braucht
+      # neben VP_CONTROL_ENABLED auch diesen Schalter (edge-app/docker-compose.yml);
+      # ohne ihn halten sie ihr Sicherheitsprofil. Mittag bleibt wie in IP-28.
+      VP_CONSUMER_CONTROL_ENABLED: ${VB_VERBRAUCHER:-false}
     volumes: !override [daten-e1:/data]
     ports: !reset []
     networks:

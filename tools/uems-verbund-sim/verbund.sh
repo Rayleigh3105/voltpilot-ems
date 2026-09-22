@@ -21,7 +21,8 @@
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HIER/../.." && pwd)"
+# VB_REPO: szenarien.py fährt einen Schnappschuss des Werkzeugs außerhalb des Repos
+REPO="${VB_REPO:-$(cd "$HIER/../.." && pwd)}"
 PROJEKT="${VB_PROJEKT:-uems-verbund}"
 ARBEIT="${VB_ARBEIT:-${TMPDIR:-/tmp}/uems-verbund-$PROJEKT}"
 # Die Marke der Box-Bilder ist der letzte Commit, der die Box berührt - ein
@@ -224,6 +225,12 @@ aktion() { # <aktion> [argumente]
       sed "s/@JETZT@/$(date -u +%Y-%m-%dT%H:%M:%SZ)/g" "$3" \
         | docker run --rm -i --network "${PROJEKT}_box-$(echo "$1" | tr 'A-Z' 'a-z' | tr -d -)" \
           --entrypoint mosquitto_pub "$VB_BROKER_IMAGE" -h core -q 1 -t "$2" -s ;;
+    # lauschen <box> <topic> <sekunden>: den lokalen Bus mitschneiden (A11: was
+    # die Arbitrierung aus dem Handeingriff macht) - nach lokal-<box>.txt
+    lauschen)
+      (docker run --rm --network "${PROJEKT}_box-$(echo "$1" | tr 'A-Z' 'a-z' | tr -d -)" \
+        --entrypoint mosquitto_sub "$VB_BROKER_IMAGE" -h core -v -t "$2" -W "$3" \
+        >> "$ARBEIT/lokal-$1.txt" 2>/dev/null || true) & ;;
     anlage) anlage "$1" >/dev/null ;;
     cloud) touch "$ARBEIT/cloud.$1" ;;
     # tausch: A14 - Box Verwaltung wird gegen eine Nachfolgerin getauscht
@@ -257,6 +264,7 @@ protokoll() { # <datei>
   "${DC[@]}" --profile tausch logs --no-color core-e1 core-e4 core-e5 > "$ARBEIT/core.log" 2>&1 || true
   local db=()
   [ ! -e "$ARBEIT/drehbuch.log" ] || db=(--drehbuch "$ARBEIT/drehbuch.log")
+  [ ! -e "$ARBEIT/lokal-E-1.txt" ] || db+=(--lokal "$ARBEIT/lokal-E-1.txt")
   python3 "$HIER/protokoll.py" --anlage "$ARBEIT/anlage.json" --mitschnitt "$ARBEIT/mitschnitt.txt" \
     --nutzlasten "$ARBEIT/nutzlasten.txt" --sha "$SHA" --bilder "$VB_CORE_IMAGE" ${db[@]+"${db[@]}"} --aus "$ziel"
   echo "==> Protokoll $ziel"
@@ -337,10 +345,11 @@ lauf() {
     esac
   done
   [ -n "$buch" ] || { echo "lauf braucht --drehbuch" >&2; return 2; }
-  bilder
+  # szenarien.py baut die Bilder EINMAL je Reihe (VB_BILDER_FEST=1)
+  [ "${VB_BILDER_FEST:-0}" = 1 ] || bilder
   local rc=0
   : > "$ARBEIT/drehbuch.log"
-  for f in cloud.stumm cloud.ungueltig stoerung.aktiv; do
+  for f in cloud.stumm cloud.ungueltig stoerung.aktiv lokal-E-1.txt; do
     [ ! -e "$ARBEIT/$f" ] || rm "$ARBEIT/$f"
   done
   hoch || rc=$?
