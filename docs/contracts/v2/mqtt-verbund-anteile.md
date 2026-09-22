@@ -163,6 +163,14 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
   einer solchen gezielten Verstellung schon nach 20 s (Startwerte, NW-7). Bewegt sich der Wert: gesund, gebremste
   Freigabe; bleibt er: eingefroren = blind. Unter dem Anteil, ohne wirksam Senkbares oder zum zweiten Mal im selben
   Stillstand: keine Prüf-Verstellung.
+- **Ein stehender Wert belegt keinen Spielraum (Folge von IP-28 Befund 1):** wiederholt eine Messung den Wert der
+  vorigen bitgleich, ist sie keine neue Messung des eigenen Punkts — nur PV, Speicher und Ladepunkte darin sind neu.
+  Darauf schiebt die Box höchstens, was die Messung belegt, auf der sich der Wert zuletzt bewegt hat:
+  Einspeisewächter Erzeugung + Entladung wie damals plus deren Spielraum (Erzeuger zuerst gekappt), Ladebudget
+  (Zwilling) und Netzlade-Deckel lesen Ladepunkte und Speicherladung jener Messung, nie mehr als jetzt. Sonst las
+  ein Zähler, der in der Delle einer Prüf-Verstellung einfror, jede Freigabe erneut als Spielraum (Container: K-1
+  8,0 → 10,1 → 12,2 kW). Keine Sperre der neuesten Messung: die Box misst alle 2 s und regelt alle 10 s, der Spielraum
+  der bewegten Messung wird weiter gebremst ausgegeben. Ein Wert, der sich mit jeder Messung bewegt, regelt wie heute.
 - **Dauer statt Uhrzeit (IP-27 Befund A8):** ein Wert mit älterem Zeitstempel als der letzte ist ein Uhrensprung —
   Einspeisewächter, Ladebudget (über einen Zwilling, der Tracker von heute bleibt unberührt) und Probe verankern neu
   statt zu verwerfen; ein Alter unter 0 ist blind (Anteil), nie „frisch“. Nur mit Dokument; der Weg der Einzelbox von

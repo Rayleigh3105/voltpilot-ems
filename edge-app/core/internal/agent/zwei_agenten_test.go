@@ -492,6 +492,8 @@ func zaFaelle() []zaFall {
 					l.e1.friert = &v
 				}
 			}},
+		{zeile: "A7d", ausfall: "Netzzähler der führenden Box friert in der Delle einer Prüf-Verstellung ein", haelt: true, nachZeit: "≤ 90 s nach dem letzten Wert", m2MaxS: 90,
+			punkte: []zaPunkt{zaMittag}, stoer: zaA7d()},
 		{zeile: "A8", ausfall: "Uhr von Box Verwaltung springt 840 s vor (R10)", haelt: true, nachZeit: "ohne Unterbrechung", m2MaxS: 60, punkte: beide,
 			stoer: func(l *zaLauf, t time.Duration) {
 				if t == 0 {
@@ -527,6 +529,48 @@ func zaFaelle() []zaFall {
 		{zeile: "A20", ausfall: "das Ungeregelte wächst über seinen Vorbehalt (BEFUND)", haelt: false,
 			nachZeit: "Erkennung nach einer Viertelstunde; Verengung in Sekunden — wenn die Box verbunden ist", m2MaxS: 60,
 			punkte: []zaPunkt{zaNachtA20}, ende: 60 * time.Minute, stoer: zaA20},
+	}
+}
+
+// zaA7d - A7 in the most unfavourable moment (IP-28 finding 1, M-3): the
+// meter of Box Halle 1 freezes in the dip of a probing adjustment. The last
+// probe before the failure (the noise-free model value stands, so the box
+// probes every ~50 s) lowers K-1 by 2.1 kW; once K-1 stands there, the meter
+// repeats the value of the dip - the operating point minus 2.1 kW - until
+// the end. The dip value proves ONE release, back to where K-1 stood before
+// the probe; a second one (8.0 -> 10.1 -> 12.2 kW in the container) pushes
+// the connection point over its limit before the partner even rises. Only by
+// day: at night Box Halle 1 has nothing it may lower in the import direction
+// (no charge park, no grid charge), so it never probes and the row is A7e.
+func zaA7d() func(l *zaLauf, t time.Duration) {
+	var delleK1 float64
+	gemeldet := false
+	return func(l *zaLauf, t time.Duration) {
+		m := l.m
+		if l.e1.friert != nil {
+			// one release: K-1 at most back on its point before the probe, and
+			// the connection point on the regulated 98 kW until the partner's
+			// PV rises at 5 s
+			if !gemeldet && (m.k1.soll > delleK1+2.1+1e-6 || t < 5*time.Second && m.netz < -98-1e-6) {
+				gemeldet = true
+				l.t.Errorf("A7d: Freigabe auf dem eingefrorenen Wert - K-1 %.3f kW (Delle %.3f kW), Netzpunkt %.3f kW bei %v",
+					m.k1.soll, delleK1, m.netz, t)
+			}
+			return
+		}
+		if t < -50*time.Second {
+			return
+		}
+		if r, neu := l.e1.a.einfrier.probe.Pruefung(l.e1.jetzt(m)); r < 0 && !neu &&
+			len(m.k1.anstehend) == 0 && m.k1.wirkt == m.k1.soll && m.pvK1 < m.sonneK1(m.now) {
+			v := m.netz
+			l.e1.friert, delleK1 = &v, m.k1.soll
+			l.notiz("Zähler friert %s in der Delle bei %.3f kW (K-1 %.3f kW)", m.now.Add(2*time.Hour).Format("15:04:05"), v, m.pvK1)
+			return
+		}
+		if t == 5*time.Minute {
+			l.t.Errorf("A7d: bis 5 min nach dem Ausfall keine Prüf-Verstellung an K-1 - der Fall zeigt nichts")
+		}
 	}
 }
 

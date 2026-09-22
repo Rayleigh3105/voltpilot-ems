@@ -265,6 +265,12 @@ type BudgetTracker struct {
 	// uhrsprung: the last Budget of the twin found its newest sample in the
 	// future of now (an age below zero is no age - blind)
 	uhrsprung bool
+	// steht: the twin's newest sample repeats the grid value of the one
+	// before bit for bit (AP-15 Folge of IP-28 finding 1, ObserveM);
+	// ankerLadenKw/ankerBattKw are the charging and battery charge of the
+	// sample on which the value last moved
+	steht                     bool
+	ankerLadenKw, ankerBattKw float64
 	// the probing adjustment of the leading box (IP-27 A7, BudgetAnteil): the
 	// budget it lowered to, held until the Einfrierprobe answers
 	pruefValid bool
@@ -413,9 +419,24 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 		}
 		t.verankernLocked(ts)
 	}
+	// AP-15 Folge of IP-28 finding 1 (the twin only - today's tracker is
+	// untouched): a sample that repeats the grid value bit for bit is no new
+	// measurement of the connection point, only its charging is new. The
+	// charging follows every release while a frozen meter does not show it,
+	// so on such a sample the loop reads the charging of the sample on which
+	// the value last moved (never more than now) - a standing value proves
+	// no headroom; the smoothing window keeps sliding as today.
+	steht := t.verankert && t.seen && gridKw == t.gridKw
 	t.seen, t.at, t.gridKw, t.chargingKw = true, ts, gridKw, chargingKw
 	t.battKw, t.haveBatt = batt, haveBatt
+	t.steht = steht
+	if !steht {
+		t.ankerLadenKw, t.ankerBattKw = chargingKw, batt
+	}
 	rest := gridKw - chargingKw
+	if steht {
+		rest, batt = gridKw-math.Min(chargingKw, t.ankerLadenKw), math.Min(batt, t.ankerBattKw)
+	}
 	t.samples = append(t.samples, restSample{at: ts, rest: rest, restNoBatt: rest - batt})
 	t.pruneLocked(ts)
 
