@@ -25,6 +25,13 @@ package guards
 // does not draw yet is taken off the battery's headroom, so the two loops
 // against one connection limit never both spend the same kilowatts from one
 // sample. The budget in turn sees the battery's measured charge as rest.
+// That reservation only exists once the park has decided on the sample: the
+// two run in different ticks (setpoint 10 s, OCPP pass 20 s), and after a
+// blind state both were lowered and the first fresh sample shows one
+// headroom (AP-15 Folge of PR 1055, agent/bezug_doppelfreigabe_test.go).
+// Until the park has decided on a sample of the fresh stretch (ParkOffen),
+// the battery releases nothing: it keeps at most its measured charge,
+// whatever the order of the two ticks.
 //
 // The ceiling only ever LOWERS a charge (LowerCharge): it never discharges,
 // never raises a charge and never touches a discharge (the mirror of V6).
@@ -52,6 +59,13 @@ type Netzladen struct {
 	BattChargeKw float64
 	// ReservedKw is what the charge park was granted but does not draw yet.
 	ReservedKw float64
+	// ParkOffen is true while the loop regulates again after it did not
+	// (blind, frozen, start) and the charge park has NOT yet decided on a
+	// sample of that fresh stretch: whatever headroom it shows is the
+	// park's first. The loop then releases nothing - the charge stays at or
+	// below the MEASURED charge - until the park has decided and ReservedKw
+	// says what it took.
+	ParkOffen bool
 	// PvKw is the box's own measured PV; Unknown() without a reading.
 	PvKw float64
 	// Pruefen / PruefenNeu: the Einfrierprobe asks for a probing adjustment
@@ -87,6 +101,9 @@ func NetzladenDeckelFuer(in Netzladen) NetzladenDeckel {
 		}
 		rest := in.GridKw - batt + reserved
 		d := NetzladenDeckel{DeckelKw: round3(math.Max(in.PlanableKw-rest, 0)), Regelt: true}
+		if in.ParkOffen && batt < d.DeckelKw {
+			d.DeckelKw = round3(batt)
+		}
 		if in.Pruefen {
 			netzladenPruefen(in, batt, &d)
 		}

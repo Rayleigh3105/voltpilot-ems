@@ -388,6 +388,11 @@ type Agent struct {
 	bezugMu   sync.Mutex
 	bezugLade guards.ExportState
 	bezugBatt guards.ExportState
+	// AP-15 Folge: the sample from which the battery's loop regulates again
+	// after it did not (blind, frozen, start); zero while it does not. Until
+	// the charge park has decided on a sample at least that new, the battery
+	// releases nothing (guards.Netzladen.ParkOffen).
+	bezugFrischAb time.Time
 	// AP-15 IP-20: the one probe for a frozen connection-point value (B2),
 	// shared by both watchdogs (eingefroren.go). Fed only with a share
 	// document.

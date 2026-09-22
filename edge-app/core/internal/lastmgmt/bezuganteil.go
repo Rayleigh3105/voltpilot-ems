@@ -391,6 +391,10 @@ type Netzpunkt struct {
 	// Seen is false while nothing usable was ever measured.
 	Seen bool
 	Age  time.Duration
+	// At is the time of that sample (zero while nothing was measured). The
+	// battery ceiling compares it with the sample the charge park last
+	// decided on (AP-15 Folge, one headroom given out once).
+	At time.Time
 	// GridKw is the signed connection-point power (+ import).
 	GridKw float64
 	// ChargingKw is the measured draw of the charge points.
@@ -427,7 +431,7 @@ func (t *BudgetTracker) Netzpunkt(now time.Time, set Settings) (n Netzpunkt, has
 	if !src.seen {
 		return n, hasLimit
 	}
-	n.Seen, n.GridKw, n.ChargingKw = true, src.gridKw, src.chargingKw
+	n.Seen, n.At, n.GridKw, n.ChargingKw = true, src.at, src.gridKw, src.chargingKw
 	n.Age = now.Sub(src.at)
 	if n.Age < 0 {
 		// an age below zero is no age: older than every window (blind)
@@ -437,4 +441,23 @@ func (t *BudgetTracker) Netzpunkt(now time.Time, set Settings) (n Netzpunkt, has
 		n.BattChargeKw = src.battKw
 	}
 	return n, hasLimit
+}
+
+// Stichprobe is the time of the newest paired sample Netzpunkt reports (the
+// share path's twin where there is one), zero before the first. The executor
+// takes it BEFORE it asks the budget, so the plan it stores is never marked
+// as decided on a sample newer than the one the budget read.
+func (t *BudgetTracker) Stichprobe() time.Time {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	src := t
+	if t.zwilling != nil {
+		src = t.zwilling
+		src.mu.Lock()
+		defer src.mu.Unlock()
+	}
+	if !src.seen {
+		return time.Time{}
+	}
+	return src.at
 }
