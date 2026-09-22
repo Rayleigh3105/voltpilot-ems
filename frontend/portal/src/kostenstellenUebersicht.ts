@@ -16,9 +16,8 @@
  * Prozess-Summe); gerundet wird nur zur Anzeige über `uemsErgebnis.zahl` (E11). Die Doppelzählungs-Warnung sind die
  * Sätze der Route (`verteilung-vectors.json` Regel `doppelzaehlung`) — sie ändert keine Zahl.
  *
- * ⚠ **Die Prozess-Summe ist eine berechnete Messstelle** (AP-10 §5.7: MS-20), die dem Prozess zugeordnet ist. Eine Route
- * „Messstellen eines Prozesses“ gibt es nicht (Befund) — die Fläche fragt die Prozesse der BERECHNETEN Messstellen des
- * Registers ab und liest deren Wert über die Werte-Route. Auch über Prozesse gibt es keine Summe.
+ * ⚠ **Die Prozess-Summe ist eine berechnete Messstelle** (AP-10 §5.7: MS-20), die dem Prozess zugeordnet ist. AP-16 IP-14
+ * prüft ihre Terme über die Prozess-Messstellen-Route; ein äußerer Term wird nur als Hinweis gezeigt und ändert keine Zahl.
  *
  * REIN: kein Netz, kein Zustand, keine Uhr.
  */
@@ -34,8 +33,9 @@ import type {
   MessstelleWerte,
   MessstelleWerteRaster,
   Prozess,
+  ProzessSummeHinweis,
 } from './api';
-import { UEMS_KOSTENSTELLE, UEMS_PROZESS_SUMME } from './glossar';
+import { UEMS_BEWERTUNG_SAETZE, UEMS_KOSTENSTELLE, UEMS_PROZESS_SUMME } from './glossar';
 import { hashForRoute, pageRoute } from './nav';
 import { ROLLE_KUNDENWORT, TEXTE, datumZeit } from './rechte';
 import { ende, zeitraumText } from './uebersichtBausteine';
@@ -473,6 +473,7 @@ export interface ProzessKarteBild {
   gueltig: string | null;
   summen: ProzessSummeBild[];
   ohneSumme: string | null;
+  hinweise: string[];
 }
 
 export interface ProzesseBild {
@@ -487,6 +488,13 @@ export interface ProzesseBild {
 
 /** Die Antwort der Werte-Route je Kennzeichen: `null` = unterwegs, `'fehler'` = nicht abrufbar. */
 export type WerteAntwort = MessstelleWerte | 'fehler' | null;
+
+export function prozessSummeHinweisSatz(h: ProzessSummeHinweis): string {
+  const p = h.prozesse[0] ?? { kennzeichen: '—', name: 'einem anderen Prozess' };
+  return UEMS_BEWERTUNG_SAETZE.prozessSummeHinweis(h.summe.name, h.summe.kennzeichen,
+    h.messstelle.name, h.messstelle.kennzeichen, p.name, p.kennzeichen,
+    h.anteil_prozent, h.verteilung);
+}
 
 function summeBild(z: MessstelleRegisterZeile, w: WerteAntwort, periode: KostenstelleEnergiePeriode, am: string): ProzessSummeBild {
   const kopf = {
@@ -518,6 +526,7 @@ export function prozesseBild(
   werte: ReadonlyMap<string, WerteAntwort>,
   periode: KostenstelleEnergiePeriode,
   am: string,
+  hinweise: ReadonlyMap<string, ProzessSummeHinweis[]> = new Map(),
 ): ProzesseBild {
   const bis = ende(periode, am);
   const im = nachKennzeichen(katalog.filter((p) => imZeitraum(p, am, bis)));
@@ -532,6 +541,7 @@ export function prozesseBild(
       gueltig: gueltigText(p, am),
       summen: nachKennzeichen(liste).map((z) => summeBild(z, werte.get(z.kennzeichen) ?? null, periode, am)),
       ohneSumme: summen !== null && liste.length === 0 ? PROZESS_SUMME_OHNE : null,
+      hinweise: (hinweise.get(p.id) ?? []).map(prozessSummeHinweisSatz),
     };
   });
   return {

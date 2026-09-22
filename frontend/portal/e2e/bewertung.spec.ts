@@ -192,6 +192,7 @@ for (const breite of [375, 1440]) {
       await expect(rangliste.locator('tbody tr')).toHaveCount(7);
       await expect(page.getByTestId('rang-EE-1')).toContainText('41,8 %');
       await expect(page.getByTestId('rang-EE-1')).toContainText('über Schwelle');
+      await expect(page.getByTestId('rang-EE-1').getByRole('note')).toContainText('MS-20) enthält 70 % von Druckluft Kompressoren K1+K2 (MS-07) über Verteilung 4100');
       await expect(page.getByTestId('rest-satz')).toContainText('59.640');
       await expect(page.getByTestId('weitere-traeger')).toContainText('1.240,0 m³');
       ohneQuerlauf(await messe(page), `rangliste-${breite}`);

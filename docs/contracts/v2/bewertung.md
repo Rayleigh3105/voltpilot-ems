@@ -170,6 +170,14 @@ Keine Summe bedeutet keine Hinweise. Ein Hinweis ist kein Fehler und verändert 
 Menge, Formel oder Kennzahl. Die Auflösung verschachtelter Formeln bleibt beim
 bestehenden Formelleser; hier werden die zu prüfenden Quell-Terme übergeben.
 
+Der Produktivleser ist `GET /api/v1/unternehmen/prozesse/{id}/messstellen?am=`. Er
+liefert die am Tag zugeordneten Messstellen in `gemessen` und `berechnet` getrennt
+und die P4-Befunde in `hinweise`. Ein Verteilungs-Term nennt ausdrücklich
+`ueber_verteilung: true`, die Kostenstelle und, wenn am Tag vorhanden, ihren Anteil.
+Die Bewertungsrangliste reicht dieselben Befunde je Energieeinsatz additiv als
+`prozess_summe_hinweise` durch. Beide Wege sind reine Leser; KZ-0004 und alle
+anderen Kennzahlen bleiben byte-gleich.
+
 ## 5. Vergleichsquelle (G5)
 
 **G5:** Die Toleranz gehört als Fassung an die Vergleichsquelle, Startwert **2 %** je

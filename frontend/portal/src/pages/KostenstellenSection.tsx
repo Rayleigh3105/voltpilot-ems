@@ -7,6 +7,7 @@ import {
   type MessstelleProzesse,
   type MessstelleRegisterZeile,
   type Prozess,
+  type ProzessSummeHinweis,
 } from '../api';
 import { ZeitSegment } from '../components/HistorieWelt';
 import { UEMS_PROZESS_SUMME } from '../glossar';
@@ -329,6 +330,7 @@ function ProzessKarte({ p, laedt }: { p: ProzessKarteBild; laedt: boolean }) {
           </dl>
         )
       )}
+      {p.hinweise.map((hinweis) => <p key={hinweis} className="vp-alert vp-alert-warn vp-ks-prozess-hinweis" role="note">{hinweis}</p>)}
     </article>
   );
 }
@@ -340,6 +342,7 @@ export function ProzesseReiter({ katalog, ...zeit }: ReiterProps & { katalog: Pr
   const { periode, am } = zeit.wahl;
   const [zuordnungen, setZuordnungen] = useState<Zuordnungen | 'fehler' | null>(null);
   const [werte, setWerte] = useState<ReadonlyMap<string, WerteAntwort>>(() => new Map());
+  const [pruefungen, setPruefungen] = useState<ReadonlyMap<string, ProzessSummeHinweis[]>>(() => new Map());
 
   useEffect(() => {
     let aktiv = true;
@@ -384,7 +387,16 @@ export function ProzesseReiter({ katalog, ...zeit }: ReiterProps & { katalog: Pr
     };
   }, [summen, periode, am]);
 
-  const bild = prozesseBild(katalog, summen, werte, periode, am);
+  useEffect(() => {
+    let aktiv = true;
+    Promise.all(katalog.map((p) => api.prozessMessstellen(p.id, am).then(
+      (a) => [p.id, a.hinweise] as const,
+      () => [p.id, [] as ProzessSummeHinweis[]] as const,
+    ))).then((paare) => { if (aktiv) setPruefungen(new Map(paare)); });
+    return () => { aktiv = false; };
+  }, [katalog, am]);
+
+  const bild = prozesseBild(katalog, summen, werte, periode, am, pruefungen);
   return (
     <section className="vp-ks" aria-labelledby="vp-pz-titel" data-testid="prozesse">
       <Kopf {...zeit} titel={REITER_WORT.prozesse} id="vp-pz-titel" unter={null} />

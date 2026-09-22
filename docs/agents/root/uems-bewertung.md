@@ -1,4 +1,4 @@
-# Energetische Bewertung (AP-16 IP-8 bis IP-10)
+# Energetische Bewertung (AP-16 IP-8 bis IP-10 und IP-14)
 
 `BewertungRanglisteController` liest `GET /api/v1/unternehmen/bewertung/rangliste?von=&bis=`.
 `BewertungMengenLeser` liest die Zahlen; `BewertungRanglisteService` verbindet Monatswerte,
@@ -29,6 +29,23 @@ Nachweise: `BewertungRanglisteApiTest`, `BewertungMengenLeserTest`,
 `BewertungVectorsTest` (NW-1-Vektoren, TS-/Python-Zwillinge),
 `BewertungRanglisteSchnittstelleVertragTest`, `BilanzApiTest` und Rechte-/Architekturwächter.
 IP-9/IP-10 bringen keine Migration und keinen Läufer.
+
+## Prozess-Messstellen und Prozess-Summe (IP-14, P4/W12)
+
+- `GET /api/v1/unternehmen/prozesse/{id}/messstellen?am=` liest die am Stichtag
+  zugeordneten Messstellen und trennt `gemessen` von `berechnet`. Die Route ist ein
+  reiner Leser ohne `@Recht`; Unternehmenssicht oder der Standort-Zaun aus IP-4
+  bestimmen den sichtbaren Ausschnitt.
+- `ProzessMessstellenService` prüft mit `BewertungRegeln.prozessSummePasst`, ob jeder
+  Term einer berechneten Prozess-Messstelle eine gemessene Messstelle desselben
+  Prozesses ist. Fremde Terme erzeugen nur `prozess_summe_passt`-Hinweise. Bei
+  Verteilungen enthalten sie Kostenstelle und Tagesanteil als „über Verteilung“.
+- Der Hinweis erscheint additiv in der Ranglisten-Antwort sowie im Portal an
+  Prozess-Karte und Rangliste. Er ändert weder Messwerte noch Kennzahlen; insbesondere
+  bleibt KZ-0004 bytegleich.
+- Nachweis: R16 in `BewertungRanglisteApiTest` (MS-20/P-1 nennt MS-07/P-3),
+  `KostenstelleProzessSchnittstelleVertragTest`,
+  `BewertungRanglisteSchnittstelleVertragTest` und die Portal-Tests.
 
 ## Urteil und Herkunftsentwurf (IP-10, KR2–KR4)
 

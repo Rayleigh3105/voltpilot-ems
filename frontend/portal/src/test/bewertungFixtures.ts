@@ -18,6 +18,7 @@ import { ahrenbergBezugsgroessen, ahrenbergProzesse } from './kennzahlAnlegenFix
 import { ahrenbergRegister } from './messstellenRegisterFixtures';
 import { rechteSeed } from './rollenFixtures';
 import { FIXTURE_IDS } from './standorteFixtures';
+import { r16ProzessSummeHinweis } from './kostenstellenFixtures';
 
 /**
  * Die Bewertung des Referenzunternehmens Ahrenberg (UEMS AP-16 IP-6) — abgeschrieben aus
@@ -237,7 +238,8 @@ export function ahrenbergRangliste(leer = false, kriterien = kriterienFassung())
       herkunft: { zeitraum: '2026-10', kriterien_fassung: kriterien.fassung,
         eingaenge: m.ms.map(([objekt, wert]) => ({ objekt, von: '2026-10-01', bis: '2026-10-31', wert, version: 1, zustand: 'vollständig' })),
         nenner: { wert: '185380', anlagen: '3 von 3', bilanzwerte: BILANZEN.map(([anlage, wert]) => ({ anlage, von: '2026-10-01', bis: '2026-10-31', wert, version: 1, zustand: 'vollständig', eingaenge: [] })) },
-        urteil, vorschlag: ueber ? 'ueber_schwelle' as const : 'unter_schwelle' as const }, messstellen: [] };
+        urteil, vorschlag: ueber ? 'ueber_schwelle' as const : 'unter_schwelle' as const }, messstellen: [],
+      prozess_summe_hinweise: n === 1 ? [r16ProzessSummeHinweis()] : [] };
   });
   const gas = einsaetze[6];
   const gasUrteil = { K1: 'nicht_anwendbar' as const, K2: 'nicht_anwendbar' as const, K3: 'nicht_anwendbar' as const, K5: 'erfuellt' as const, K6: 'erfuellt' as const };
@@ -246,7 +248,7 @@ export function ahrenbergRangliste(leer = false, kriterien = kriterienFassung())
     anlagen: [{ id: FIXTURE_IDS.an1, name: 'Halle 1', ab: '2026-10-01', nenner: '139380', zugeordnet: '84800', rest: '54580', rest_anteil_prozent: '39.2', zustand: 'vollständig' },
       { id: FIXTURE_IDS.an2, name: 'Halle 2', ab: '2026-10-01', nenner: '36900', zugeordnet: '33040', rest: '3860', rest_anteil_prozent: '10.5', zustand: 'vollständig' },
       { id: FIXTURE_IDS.an3, name: 'Werk Lindach', ab: '2026-10-01', nenner: '9100', zugeordnet: '7900', rest: '1200', rest_anteil_prozent: '13.2', zustand: 'vollständig' }],
-    einsaetze: zeilen, weitere_traeger: [{ id: gas.id, kennzeichen: gas.kennzeichen, name: gas.name, prozess_id: gas.prozess.id, traeger: 'Gas', einheit: 'm³', menge: '1240', zustand: 'vollständig', ersatz: '0', ersatz_prozent: '0', datenlage_prozent: '100', anteil_prozent: null, kumuliert_zugeordnet_prozent: null, anteil_zustand: 'ohne Anteil', rang: null, urteil: gasUrteil, vorschlag: 'unter_schwelle', herkunft: { zeitraum: '2026-10', kriterien_fassung: kriterien.fassung, eingaenge: [{ objekt: 'MS-21', von: '2026-10-01', bis: '2026-10-31', wert: '1240', version: 1, zustand: 'vollständig' }], nenner: null, urteil: gasUrteil, vorschlag: 'unter_schwelle' }, messstellen: [] }] };
+    einsaetze: zeilen, weitere_traeger: [{ id: gas.id, kennzeichen: gas.kennzeichen, name: gas.name, prozess_id: gas.prozess.id, traeger: 'Gas', einheit: 'm³', menge: '1240', zustand: 'vollständig', ersatz: '0', ersatz_prozent: '0', datenlage_prozent: '100', anteil_prozent: null, kumuliert_zugeordnet_prozent: null, anteil_zustand: 'ohne Anteil', rang: null, urteil: gasUrteil, vorschlag: 'unter_schwelle', herkunft: { zeitraum: '2026-10', kriterien_fassung: kriterien.fassung, eingaenge: [{ objekt: 'MS-21', von: '2026-10-01', bis: '2026-10-31', wert: '1240', version: 1, zustand: 'vollständig' }], nenner: null, urteil: gasUrteil, vorschlag: 'unter_schwelle' }, messstellen: [], prozess_summe_hinweise: [] }] };
 }
 
 const fehler = (status: number, code: string, message: string) => new ApiError(status, message, { code, message });

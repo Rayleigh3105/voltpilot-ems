@@ -8,7 +8,8 @@
     "kennzahlKarte.verlauf: Betrag/größter Betrag ausschließlich als Balkenbreite; kennzahlKarte/berichtSeite: Anzeige, Versionsnummern und Sortierung; die Fachwerte bilden die Vertrags-Zwillinge.",
     "uemsWerteCache: TTL und LRU-Indizes, keine Menge.",
     "kostenstellenUebersicht ./rechte:ROLLE_KUNDENWORT (PR 1014, Kostenstelle B): nur die Kundenwörter der Rollen für den Satz, wer die Mengen sieht; keine Menge.",
-    "kostenstellenUebersicht ./rechte:TEXTE (PR 1014, Kostenstelle B): nur die Satzbausteine weg_ein_kundenadministrator/weg_kundenadministratoren mit den Namen aus /me; keine Menge."
+    "kostenstellenUebersicht ./rechte:TEXTE (PR 1014, Kostenstelle B): nur die Satzbausteine weg_ein_kundenadministrator/weg_kundenadministratoren mit den Namen aus /me; keine Menge.",
+    "kostenstellenUebersicht ./glossar:UEMS_BEWERTUNG_SAETZE (AP-16 IP-14): formatiert nur den gelieferten Prozess-Summen-Hinweis; keine Menge."
   ],
   "dateien": {
     "uemsOberflaechen.ts": {
@@ -292,6 +293,7 @@
     },
     "kostenstellenUebersicht.ts": {
       "importe": [
+        "./glossar:UEMS_BEWERTUNG_SAETZE",
         "./glossar:UEMS_KOSTENSTELLE",
         "./glossar:UEMS_PROZESS_SUMME",
         "./nav:hashForRoute",

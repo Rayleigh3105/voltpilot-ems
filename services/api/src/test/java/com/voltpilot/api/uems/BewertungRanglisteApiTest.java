@@ -176,6 +176,35 @@ class BewertungRanglisteApiTest {
         var b=ruf("GET","/api/v1/sites/"+ids.get("AN-1")+"/bilanz?periode=monat&am=2026-10-01","IK",null,200);
         assertThat(b.at("/hauptzaehler/0/abschnitte/0/werte/0/rest/menge").decimalValue()).isEqualByComparingTo("54580");
     }
+    @Test void r16ProzessSummeHinweisUndKennzahlBleibtByteGleich() throws Exception {
+        r16();
+        UUID kz=uuid("INSERT INTO kennzahl(tenant_id,kennzeichen,name,rechenform,geltung_art,prozess_id,verantwortlich_name) "
+                +"VALUES (?,'KZ-0004','Stromeinsatz Spritzguss je kg','quotient','prozess',?,'Ines Kaltenbach') RETURNING id",
+                tenant,ids.get("P-1"));
+        String vorher=root.queryForObject("SELECT row_to_json(k)::text FROM kennzahl k WHERE id=?",String.class,kz);
+
+        var route=ruf("GET","/api/v1/unternehmen/prozesse/"+ids.get("P-1")+"/messstellen?am=2026-10-01","IK",null,200);
+        assertThat(route.path("gemessen").findValuesAsText("kennzeichen")).containsExactly("MS-06","MS-11");
+        assertThat(route.path("berechnet").findValuesAsText("kennzeichen")).containsExactly("MS-20");
+        var hinweis=route.at("/hinweise/0");
+        assertThat(hinweis.path("code").asText()).isEqualTo("prozess_summe_passt");
+        assertThat(hinweis.at("/summe/kennzeichen").asText()).isEqualTo("MS-20");
+        assertThat(hinweis.at("/messstelle/kennzeichen").asText()).isEqualTo("MS-07");
+        assertThat(hinweis.at("/prozesse/0/kennzeichen").asText()).isEqualTo("P-3");
+        assertThat(hinweis.at("/prozesse/0/name").asText()).isEqualTo("P-3");
+        assertThat(hinweis.path("ueber_verteilung").asBoolean()).isTrue();
+        assertThat(hinweis.path("verteilung").asText()).isEqualTo("4100");
+        assertThat(hinweis.path("anteil_prozent").asText()).isEqualTo("70");
+
+        var rangliste=ruf("GET",BASE+OKTOBER,"IK",null,200);
+        assertThat(einsatz(rangliste,"EE-1").at("/prozess_summe_hinweise/0")).isEqualTo(hinweis);
+        assertThat(root.queryForObject("SELECT row_to_json(k)::text FROM kennzahl k WHERE id=?",String.class,kz))
+                .as("KZ-0004 ist vor und nach beiden reinen Lesern byte-gleich").isEqualTo(vorher);
+        var teil=ruf("GET","/api/v1/unternehmen/prozesse/"+ids.get("P-1")+"/messstellen?am=2026-10-01","LE",null,200);
+        assertThat(teil.path("gemessen")).isEmpty();
+        assertThat(teil.path("hinweise")).as("kein Name einer fremden Quell-Messstelle").isEmpty();
+        assertThat(teil.toString()).doesNotContain("MS-06","MS-07","MS-11","P-3","4100");
+    }
     @Test void r15KriterienFassungZweiAendertDasUrteilAberStuftenNichtEin() throws Exception {
         var werte=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(
                 Path.of("../../docs/contracts/v2/bewertung-vectors.json").toFile()).path("startwerte").deepCopy();
@@ -368,6 +397,27 @@ class BewertungRanglisteApiTest {
         root.update("INSERT INTO messreihe_periode(tag,art,tenant_id,entity_id,messkanal,zeitzone,zeitzone_herkunft,beginn,ende,stunden,teile_erwartet,teile_vorhanden,teile_endgueltig,wertart,energie,menge_positiv,menge_negativ,menge_zustand,kennzeichen,erhalten,erwartet,abdeckung_prozent,zustand,endgueltig_ab,version,berechnet_am) "
                 +"VALUES ('2026-10-01','monat',?,?,'storage.power','Europe/Berlin','standort','2026-09-30T22:00:00Z','2026-10-31T23:00:00Z',745,31,31,31,'gauge',800,?,?,'vollständig',?::jsonb,44700,44700,100,'endgueltig','2026-11-07T23:00:00Z',1,'2026-11-08T23:00:00Z')",
                 tenant,entity,m.at("/beispielwerte/oktober_2026_laden_kwh").decimalValue(),m.at("/beispielwerte/oktober_2026_entladen_kwh").decimalValue(),"[\""+VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT+"\"]");
+    }
+    private void r16() {
+        UUID ms20=uuid("INSERT INTO messstelle(tenant_id,kennzeichen,name,art,medium,groesse,richtung,einheit,wertart) "
+                +"VALUES (?,'MS-20','Prozess Spritzguss gesamt','berechnet','Strom','Wirkenergie','Bezug','kWh','Intervallmenge') RETURNING id",tenant);
+        ids.put("MS-20",ms20);
+        root.update("INSERT INTO messstelle_prozess(tenant_id,messstelle_id,prozess_id,gueltig_ab) VALUES (?,?,?,'2024-01-01')",
+                tenant,ms20,ids.get("P-1"));
+        UUID fassung=uuid("INSERT INTO messstelle_formel_fassung(tenant_id,messstelle_id,nummer,formel_typ,herkunft,actor_name,actor_art) "
+                +"VALUES (?,?,1,'gewichtete_summe','anlage','Test','voltpilot') RETURNING id",tenant,ms20);
+        root.update("INSERT INTO messstelle_formel_term(tenant_id,messstelle_id,fassung_id,position,eingang_art,quell_messstelle_id,vorzeichen,faktor) "
+                +"VALUES (?,?,?,1,'messstelle',?,'+',1),(?,?,?,2,'messstelle',?,'+',1)",
+                tenant,ms20,fassung,ids.get("MS-06"),tenant,ms20,fassung,ids.get("MS-11"));
+        UUID k4100=uuid("INSERT INTO kostenstelle(tenant_id,unternehmen_id,kennzeichen,name,gueltig_ab) "
+                +"VALUES (?,?,'4100','Spritzguss','2024-01-01') RETURNING id",tenant,unternehmen);
+        UUID k4200=uuid("INSERT INTO kostenstelle(tenant_id,unternehmen_id,kennzeichen,name,gueltig_ab) "
+                +"VALUES (?,?,'4200','Montage','2024-01-01') RETURNING id",tenant,unternehmen);
+        root.update("INSERT INTO messstelle_verteilung(tenant_id,messstelle_id,kostenstelle_id,anteil_prozent,gueltig_ab) "
+                +"VALUES (?,?,?,70,'2024-01-01'),(?,?,?,30,'2024-01-01')",
+                tenant,ids.get("MS-07"),k4100,tenant,ids.get("MS-07"),k4200);
+        root.update("INSERT INTO messstelle_formel_term(tenant_id,messstelle_id,fassung_id,position,eingang_art,quell_messstelle_id,vorzeichen,faktor,verteilung_ziel) "
+                +"VALUES (?,?,?,3,'verteilung',?,'+',1,?)",tenant,ms20,fassung,ids.get("MS-07"),k4100);
     }
     private void benutzer(String sub,String rolle,UUID standort) {
         root.update("INSERT INTO benutzer(tenant_id,sub,konto,anzeigename,zustand) VALUES (?,?,'benutzer',?,'aktiv')",tenant,sub,sub);

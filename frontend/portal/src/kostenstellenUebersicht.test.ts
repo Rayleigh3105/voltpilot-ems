@@ -24,7 +24,7 @@ import {
   type WerteAntwort,
 } from './kostenstellenUebersicht';
 import { parseRoute } from './nav';
-import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte, F12_TAG } from './test/kostenstellenFixtures';
+import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte, F12_TAG, r16ProzessSummeHinweis } from './test/kostenstellenFixtures';
 import { ahrenbergRegister } from './test/messstellenRegisterFixtures';
 import { kostenstellenAhrenberg, prozesseAhrenberg } from './test/messstelleSeiteFixtures';
 import faelle from './test/oberflaechenFaelle.json';
@@ -231,13 +231,15 @@ describe('UEMS AP-13 IP-9 · Prozesse mit ihrer Prozess-Summe (MS-20)', () => {
   it('P-1 Spritzguss: Prozess-Summe MS-20 88 630 kWh mit Sprung; die anderen sagen, dass es keine gibt; keine Summe über Prozesse', () => {
     const summen = prozessSummen(register, zuordnungen, 'monat', '2026-10-01');
     const werte = new Map<string, WerteAntwort>([['MS-20', ahrenbergProzessSummeWerte('MS-20', 'monat', '2026-10-01', '2026-10-31')]]);
-    const b = prozesseBild(prozesseAhrenberg(), summen, werte, 'monat', '2026-10-01');
+    const p1Id = prozesseAhrenberg()[0].id;
+    const b = prozesseBild(prozesseAhrenberg(), summen, werte, 'monat', '2026-10-01', new Map([[p1Id, [r16ProzessSummeHinweis()]]]));
     expect(b.keineSumme).toBe(PROZESSE_KEINE_SUMME);
     expect(b.karten.map((p) => p.kennzeichen)).toEqual(['P-1', 'P-2', 'P-3', 'P-4', 'P-5', 'P-6']);
     const p1 = b.karten[0];
     expect(p1.summen.map((s) => [s.kennzeichen, s.name, s.zahl && n(s.zahl)])).toEqual([['MS-20', 'Prozess Spritzguss gesamt', '88.630 kWh']]);
     expect(p1.summen[0].sprung?.hash).toBe(`#/portfolio/messstellen/${p1.summen[0].id}?periode=2026-10`);
     expect(p1.ohneSumme).toBeNull();
+    expect(p1.hinweise).toEqual(['Hinweis: Die Summe „Prozess Spritzguss gesamt“ (MS-20) enthält 70 % von Druckluft Kompressoren K1+K2 (MS-07) über Verteilung 4100. MS-07 gehört zu Druckluft (P-3). Die Bewertung zählt Druckluft dort.']);
     expect(b.karten.slice(1).every((p) => p.ohneSumme === PROZESS_SUMME_OHNE && p.summen.length === 0)).toBe(true);
     expect(PROZESS_SUMME_OHNE).toBe('Keine Prozess-Summe: sie ist eine berechnete Messstelle, die diesem Prozess zugeordnet ist.');
     expect(Object.keys(b).sort()).toEqual(['karten', 'keineSumme', 'laedt', 'leer', 'vorherBeendet', 'zeitraum'].sort());

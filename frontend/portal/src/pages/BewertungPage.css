@@ -132,6 +132,14 @@
   line-height: var(--vp-c-lh-text);
 }
 
+.vp-bw-prozess-hinweis {
+  display: block;
+  margin-top: var(--vp-c-space-2);
+  max-width: 42rem;
+  color: var(--vp-c-muted-fg);
+  line-height: 1.35;
+}
+
 .vp-bw-einsaetze {
   display: flex;
   flex-direction: column;

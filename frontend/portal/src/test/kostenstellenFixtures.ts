@@ -9,6 +9,8 @@ import type {
   MessstelleProzesse,
   MessstelleWerte,
   MessstelleWerteRaster,
+  ProzessMessstellen,
+  ProzessSummeHinweis,
 } from '../api';
 import { ende } from '../uebersichtBausteine';
 import { ahrenbergRegister } from './messstellenRegisterFixtures';
@@ -260,6 +262,34 @@ export function ahrenbergMessstelleProzesse(id: string): MessstelleProzesse {
             },
           ]
         : [],
+  };
+}
+
+export function r16ProzessSummeHinweis(): ProzessSummeHinweis {
+  const ms20 = REGISTER.find((r) => r.kennzeichen === 'MS-20')!;
+  const ms07 = REGISTER.find((r) => r.kennzeichen === 'MS-07')!;
+  const p3 = prozesseAhrenberg().find((p) => p.kennzeichen === 'P-3')!;
+  return {
+    code: 'prozess_summe_passt',
+    summe: { id: ms20.id, kennzeichen: ms20.kennzeichen, name: ms20.name ?? ms20.kennzeichen },
+    messstelle: { id: ms07.id, kennzeichen: ms07.kennzeichen, name: ms07.name ?? ms07.kennzeichen },
+    prozesse: [{ id: p3.id, kennzeichen: p3.kennzeichen, name: p3.name }],
+    ueber_verteilung: true,
+    verteilung: '4100',
+    anteil_prozent: '70',
+  };
+}
+
+/** AP-16 R16: der Prozess-Leser trennt gemessen/berechnet und meldet den äußeren Verteilungs-Term. */
+export function ahrenbergProzessMessstellen(id: string, am: string): ProzessMessstellen {
+  const p = prozesseAhrenberg().find((x) => x.id === id)!;
+  const messstellen = REGISTER.filter((z) => z.kennzeichen === 'MS-06' || z.kennzeichen === 'MS-11' || z.kennzeichen === 'MS-20');
+  const dto = (z: (typeof REGISTER)[number]) => ({ id: z.id, kennzeichen: z.kennzeichen, name: z.name ?? z.kennzeichen });
+  return {
+    prozess: { id: p.id, kennzeichen: p.kennzeichen, name: p.name }, am,
+    gemessen: p.kennzeichen === 'P-1' ? messstellen.filter((z) => z.art === 'gemessen').map(dto) : [],
+    berechnet: p.kennzeichen === 'P-1' ? messstellen.filter((z) => z.art === 'berechnet').map(dto) : [],
+    hinweise: p.kennzeichen === 'P-1' ? [r16ProzessSummeHinweis()] : [],
   };
 }
 
