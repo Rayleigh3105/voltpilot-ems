@@ -24,7 +24,7 @@ import {
   prozesseVon,
   verteilungVon,
 } from '../src/test/messstelleSeiteFixtures';
-import type { MeasurementHistory, MessstelleVerteilung, MessstelleWerte } from '../src/api';
+import type { MeasurementHistory, MessstelleQuelle, MessstelleQuellenListe, MessstelleVerteilung, MessstelleWerte } from '../src/api';
 import { verschiebe } from '../src/picker/datum';
 import { ahrenbergDatenquellen, ahrenbergUemsGeraete, BOX_IDS, geraetId } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
@@ -277,6 +277,48 @@ function werteOhneReihe(antwort: MessstelleWerte, fall: OhneReihe): MessstelleWe
   };
 }
 
+/**
+ * UEMS AP-16 IP-17 (R9): zwei Vergleichsquellen an der Hauptgröße — gebunden seit 20.11.2026 — und die Antwort
+ * des Monatsvergleichs (Dezember 2026: 1,1 % passt, 3,4 % Befund). Die Zahlen rechnet die Cloud; die Bühne stellt sie.
+ */
+function mitVergleichsquellen(liste: MessstelleQuellenListe): MessstelleQuellenListe {
+  const f = liste.quellen.find((q) => q.rolle === 'fuehrend');
+  if (!f) return liste;
+  const v = (id: string, name: string, zweck: string): MessstelleQuelle => ({
+    ...f, id, rolle: 'vergleich', zweck, komponente_name: name, gueltig_ab: '2026-11-20T08:30:00+01:00',
+    gueltig_bis: null, status: 'gilt', letzter_wert: null,
+  });
+  const vergleiche = [v('17000000-0000-4000-8000-000000000001', 'Netzleistung am Wechselrichter', 'Plausibilität'),
+    v('17000000-0000-4000-8000-000000000009', 'Abrechnungszähler', 'Abrechnungszähler')];
+  return {
+    ...liste,
+    quellen: [...liste.quellen, ...vergleiche],
+    groessen: liste.groessen.map((g, i) => (i === 0 ? { ...g, vergleich: [...g.vergleich, ...vergleiche] } : g)),
+  };
+}
+
+function r9Vergleich(kennzeichen: string) {
+  const monat = (vergleichKwh: string, zustand: string, p: string, befund: boolean) => ({
+    monat: '2026-12', fuehrend: '131200', fuehrend_zustand: 'vollständig', vergleich: vergleichKwh,
+    vergleich_zustand: 'vollständig', zustand, grund: null, abweichung_prozent: p, toleranz_prozent: '2',
+    toleranz_fassung: 1, befund,
+  });
+  const quelle = (id: string, name: string, m: ReturnType<typeof monat>) => ({
+    quelle_id: id, entity_id: id, komponente: name, kanal: 'grid.power', zweck: 'Plausibilität', groesse: 'Wirkenergie',
+    richtung: 'Bezug', herleitung: 'integration', gueltig_ab: '2026-11-20T07:30:00Z', gueltig_bis: null,
+    monatsvergleich: 'ja', toleranz: null, fassungen: [], monate: [m],
+  });
+  return {
+    messstelle_id: MS_IDS.ms06, kennzeichen, von: '2026-12', bis: '2026-12', einheit: 'kWh',
+    vergleichsquellen: [
+      quelle('17000000-0000-4000-8000-000000000001', 'Netzleistung am Wechselrichter', monat('129700', 'passt', '1.1', false)),
+      quelle('17000000-0000-4000-8000-000000000009', 'Abrechnungszähler', monat('126700', 'abweichung', '3.4', true)),
+    ],
+    befunde: [{ art: 'abweichung_vergleichsquelle', quelle_id: '17000000-0000-4000-8000-000000000009', monat: '2026-12',
+      abweichung_prozent: '3.4', toleranz_prozent: '2', toleranz_fassung: 1 }],
+  };
+}
+
 /** `angelegt`: MS-08 am 01.10.2026, eben angelegt (heute = Stichtag der Einführung); `heute`: der Stichtag des Registers. */
 async function cloud(
   page: Page,
@@ -286,6 +328,7 @@ async function cloud(
     f8 = false,
     berechnet = false,
     ohneReihe = null as OhneReihe | null,
+    vergleich = false,
   } = {},
 ): Promise<Gesendet[]> {
   const gesendet: Gesendet[] = [];
@@ -331,8 +374,10 @@ async function cloud(
     }
     if (pfad.endsWith('/quellen') && methode === 'GET') {
       const stichtag = url.searchParams.get('stichtag') ?? ahrenbergRegister({ stichtag: heute ?? SEITE_HEUTE }).zeitpunkt;
-      return route.fulfill(json(quellenDerMessstellenBuehne(messstelle.id, stichtag)));
+      const liste = quellenDerMessstellenBuehne(messstelle.id, stichtag);
+      return route.fulfill(json(vergleich ? mitVergleichsquellen(liste) : liste));
     }
+    if (vergleich && pfad.endsWith('/vergleich') && methode === 'GET') return route.fulfill(json(r9Vergleich(messstelle.kennzeichen)));
     // Ohne Prozess und Kostenstelle: die Hauptzähler MS-10 und MS-16, und MS-21 (AP-13 IP-6) zeigt nichts Geliehenes.
     const hauptzaehler = ['MS-10', 'MS-16', 'MS-21'].includes(messstelle.kennzeichen);
     if (pfad.endsWith('/prozesse') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneProzesse(messstelle) : prozesseVon(messstelle)));
@@ -483,6 +528,36 @@ test('R2 · MS-06: drei Zuordnungs-Karten und das Protokoll nach der Eintragung,
   await expect(page.getByText('Sortiert danach, wann die Änderung eingetragen wurde.')).toBeVisible();
   await expect(page.locator('.vp-befehl').first()).toContainText('Quelle gebunden: Z-5a');
   await messeUndFotografiere(page, breite, 'r2-ms06');
+});
+
+test('AP-16 IP-17 · R9: Befund-Zeile unter der Quelle-Karte — 1,1 % passt, 3,4 % bitte prüfen, ohne Ursache', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { vergleich: true });
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+
+  const zeile = page.getByTestId('vergleich-befund');
+  await expect(zeile).toContainText(
+    'Vergleich Dezember 2026: 1,1 % Abweichung zur Netzleistung am Wechselrichter (Toleranz 2 %) — passt');
+  await expect(zeile).toContainText(
+    'Abweichung zur Vergleichsquelle Abrechnungszähler im Dezember 2026: 3,4 % (Toleranz 2 %) — bitte prüfen');
+  await expect(zeile).not.toContainText('Ursache');
+  // Nur Text: kein Bedienelement in der Zeile (der Toleranz-Dialog kommt mit IP-18).
+  await expect(zeile.locator('button, a, input, select')).toHaveCount(0);
+  await zeile.scrollIntoViewIfNeeded();
+  await messeUndFotografiere(page, breite, 'ip17-vergleich');
+});
+
+test('AP-16 IP-17 · ohne Vergleichsquelle keine Befund-Zeile und keine Anfrage', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  const anfragen: string[] = [];
+  page.on('request', (r) => { if (r.url().includes('/vergleich')) anfragen.push(r.url()); });
+  await cloud(page);
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+  await expect(page.getByTestId('quelle-karte')).toContainText('Unterzähler Spritzguss SG01–SG06');
+  await expect(page.getByTestId('vergleich-befund')).toHaveCount(0);
+  expect(anfragen).toEqual([]);
 });
 
 test('F10 · Verteilen: 70/30 ergibt live 100 %, 90 % sperrt das Eintragen mit dem Fehlersatz', async ({ page }, info) => {
