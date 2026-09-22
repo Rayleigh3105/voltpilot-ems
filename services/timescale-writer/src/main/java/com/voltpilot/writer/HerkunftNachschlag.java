@@ -138,9 +138,22 @@ public class HerkunftNachschlag {
      * die Reihe leer, nie geraten.
      */
     public Reihe reihe(MeasurementRawEvent event, String pointKey, String template) {
-        String schluessel = "reihe|" + event.tenant_id() + "|" + event.device_id() + "|" + pointKey;
+        return reihe(event, pointKey, template, null);
+    }
+
+    /**
+     * Dasselbe für einen GETEILTEN Punkt (AP-07 IP-18b): nennt das Ereignis die Komponente, zählt
+     * nur die Auswahlzeile genau dieser Komponente. Der Draht wählt damit nur aus, was die eigene
+     * Auswahl schon kennt: steht zu {@code (device_id, point_key, entity_id)} nicht GENAU EINE
+     * Zeile, bleibt die Reihe leer wie heute bei Mehrdeutigkeit, nie übernommen.
+     */
+    public Reihe reihe(MeasurementRawEvent event, String pointKey, String template, UUID komponente) {
+        String schluessel = "reihe|" + event.tenant_id() + "|" + event.device_id() + "|" + pointKey
+                + (komponente == null ? "" : "|" + komponente);
         try {
-            return savepoint.execute(status -> reiheLesen(schluessel, event, pointKey, template));
+            return savepoint.execute(status -> komponente == null
+                    ? reiheLesen(schluessel, event, pointKey, template)
+                    : reiheDerKomponente(schluessel, event, pointKey, template, komponente));
         } catch (RuntimeException ex) {
             zaehlen("reihe", "fehler");
             log.error("Nachschlag der Reihe für Box {} / {} fehlgeschlagen; auf den Savepoint "
@@ -163,6 +176,21 @@ public class HerkunftNachschlag {
                         rs.getObject("kadenz_s") == null ? 0L : rs.getLong("kadenz_s")),
                 event.device_id(), pointKey, template).stream().findFirst()
                 .orElse(new Reihe(null, null, 0L)));
+    }
+
+    private Reihe reiheDerKomponente(String schluessel, MeasurementRawEvent event, String pointKey,
+            String template, UUID komponente) {
+        return holen(schluessel, "reihe", () -> jdbc.query(
+                "WITH a AS (SELECT count(*) AS n FROM device_measurement_selection "
+                        + "WHERE device_id=? AND point_key IN (?,?) AND entity_id=?) "
+                        + "SELECT CASE WHEN a.n=1 THEN CAST(? AS uuid) END AS entity_id, "
+                        + "mp.data_source_id, ds.kadenz_s FROM a "
+                        + "LEFT JOIN measurement_point mp ON a.n=1 AND mp.id=? "
+                        + "LEFT JOIN data_source ds ON ds.id=mp.data_source_id",
+                (rs, n) -> new Reihe(uuid(rs, "entity_id"), uuid(rs, "data_source_id"),
+                        rs.getObject("kadenz_s") == null ? 0L : rs.getLong("kadenz_s")),
+                event.device_id(), pointKey, template, komponente, komponente, komponente)
+                .stream().findFirst().orElse(new Reihe(null, null, 0L)));
     }
 
     // ------------------------------------------------------------------ Das Urteil

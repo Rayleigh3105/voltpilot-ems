@@ -39,9 +39,12 @@ public class MeasurementSamplesValidator {
     static final Set<String> SAMPLE_FIELDS_2_0 = Set.of("point_key", "raw", "decoded",
             "quality", "observed_at", "signed_data", "signed_data_format");
     // 2.1 (UEMS AP-07 IP-2) = 2.0 plus two OPTIONAL provenance fields, and only under 2.1.
-    // Ingest validates and intentionally removes them: measurements.raw stays 1.0 with exactly
-    // the 2.0 sample fields. The writer resolves component, revision and role itself for the
-    // measurement time; forwarding wire provenance would bypass that authoritative lookup.
+    // Ingest validates and removes them: measurements.raw stays 1.0 with exactly the 2.0 sample
+    // fields. The writer resolves component, revision and role itself for the measurement time;
+    // forwarding wire provenance would bypass that authoritative lookup. ONE exception (AP-07
+    // IP-18b, Cloud-Vorpaket): a point_key that occurs more than once, each time with its own
+    // entity_id, keeps entity_id - there it is the only thing that tells the two values apart,
+    // and the writer only uses it as the key of its own selection lookup, never as a fact.
     static final String APPLIED_REVISION = "applied_revision";
     static final String ENTITY_ID = "entity_id";
     static final Set<String> ROOT_FIELDS_2_1 = plus(ROOT_FIELDS_2_0, APPLIED_REVISION);
@@ -104,14 +107,25 @@ public class MeasurementSamplesValidator {
 
         // Je Sample: erst der Inhalt, dann die Messzeit — ein Fehler verwirft nur dieses Sample.
         Ablehnungen ablehnungen = new Ablehnungen();
+        // Doppelt ist (point_key, entity_id) - derselbe Punkt für zwei GENANNTE Komponenten ist
+        // zulässig (IP-18b). Ohne Komponente gilt die Eindeutigkeit des point_key wie bisher: ein
+        // mehrfacher Punkt, von dem ein Vorkommen keine Komponente nennt, verliert jedes Vorkommen.
         Map<String, Integer> jeSchluessel = new HashMap<>();
+        Map<String, Integer> jePaar = new HashMap<>();
+        Set<String> ohneKomponente = new HashSet<>();
         samples.forEach(s -> {
-            if (s.path("point_key").isTextual()) jeSchluessel.merge(s.get("point_key").asText(), 1, Integer::sum);
+            if (!s.path("point_key").isTextual()) return;
+            String key = s.get("point_key").asText();
+            jeSchluessel.merge(key, 1, Integer::sum);
+            jePaar.merge(paar(key, s), 1, Integer::sum);
+            if (komponente(s) == null) ohneKomponente.add(key);
         });
         List<JsonNode> inhaltlichGut = new ArrayList<>();
         for (JsonNode s : samples) {
             Grund g = sampleGrund(s, v21);
-            if (g == null && jeSchluessel.get(s.get("point_key").asText()) > 1) {
+            String key = g == null ? s.get("point_key").asText() : null;
+            if (g == null && jeSchluessel.get(key) > 1
+                    && (ohneKomponente.contains(key) || jePaar.get(paar(key, s)) > 1)) {
                 g = Grund.REGEL_VERLETZT; // point_key doppelt: welcher Wert gilt, wird nie geraten
             }
             if (g != null) {
@@ -144,7 +158,11 @@ public class MeasurementSamplesValidator {
             ArrayNode weiter = mapper.createArrayNode();
             angenommen.forEach(s -> {
                 ObjectNode copy = s.deepCopy();
-                copy.remove(ENTITY_ID);
+                if (jeSchluessel.get(s.get("point_key").asText()) > 1) {
+                    copy.put(ENTITY_ID, komponente(s)); // geteilter Punkt: die Komponente unterscheidet
+                } else {
+                    copy.remove(ENTITY_ID);
+                }
                 weiter.add(copy);
             });
             event = new MeasurementRawEvent("1.0", UUID.randomUUID(), tenant, site, device, catalog,
@@ -204,6 +222,17 @@ public class MeasurementSamplesValidator {
             if (!zeitLesbar(node.get(field))) bad(Grund.SCHEMA_VERLETZT, field);
             return OffsetDateTime.parse(node.get(field).asText()).toInstant();
         }
+    }
+
+    /** Die genannte Komponente in Normalform, {@code null} ohne (oder ohne lesbare) Angabe. */
+    private static String komponente(JsonNode s) {
+        JsonNode e = s.get(ENTITY_ID);
+        if (e == null || !e.isTextual() || !canonicalUuid(e.asText())) return null;
+        return UUID.fromString(e.asText()).toString();
+    }
+
+    private static String paar(String key, JsonNode s) {
+        return key + "|" + komponente(s);
     }
 
     private static boolean textBis(JsonNode value, int laenge) {

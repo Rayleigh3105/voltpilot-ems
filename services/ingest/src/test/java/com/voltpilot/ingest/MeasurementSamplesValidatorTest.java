@@ -88,7 +88,7 @@ class MeasurementSamplesValidatorTest {
         assertSampleAbgewiesen(payload("2.1", TENANT, "", sample + ",\"entity_id\":5}"), Grund.SCHEMA_VERLETZT);
     }
 
-    /** measurements.raw stays 1.0 with the 2.0 sample fields (forwarding entity_id needs the writer, IP-6/IP-7). */
+    /** measurements.raw stays 1.0 with the 2.0 sample fields; a point that occurs once travels without entity_id. */
     @Test
     void a21EnvelopeProducesTheUnchangedRawEvent() {
         String sample = "{\"point_key\":\"goe.api_v2.alw\",\"raw\":false,\"quality\":\"good\"";
@@ -98,6 +98,57 @@ class MeasurementSamplesValidatorTest {
         assertThat(from21.schema_version()).isEqualTo("1.0");
         assertThat(from21.samples()).isEqualTo(from20.samples());
         assertThat(from21.samples().get(0).has("entity_id")).isFalse();
+    }
+
+    /**
+     * IP-18b (Cloud-Vorpaket): derselbe point_key für zwei GENANNTE Komponenten ist zulässig und
+     * behält seine Komponente im Ereignis; doppelt ist (point_key, entity_id). Ohne Komponente
+     * bleibt die Eindeutigkeit des point_key, und ein einfacher Punkt reist unverändert ohne.
+     */
+    @Test
+    void aPointSharedByTwoNamedComponentsKeepsBothAndOnlyThereTheComponent() {
+        String e1 = "00000000-0000-0000-0000-0000000000c6";
+        String punkt = "{\"point_key\":\"custom.wirkenergie-bezug\",\"raw\":50,\"quality\":\"good\"";
+        String einzeln = "{\"point_key\":\"goe.api_v2.alw\",\"raw\":false,\"quality\":\"good\","
+                + "\"entity_id\":\"" + ENTITY + "\"}";
+        var geteilt = validator.annehmen(TOPIC, payload("2.1", TENANT, "", String.join(",",
+                punkt + ",\"entity_id\":\"" + ENTITY + "\"}", punkt + ",\"entity_id\":\"" + e1 + "\"}",
+                einzeln)), EINGANG);
+        assertThat(geteilt.ablehnungen()).isEmpty();
+        assertThat(geteilt.weiter().schema_version()).isEqualTo("1.0");
+        assertThat(geteilt.weiter().samples()).hasSize(3);
+        assertThat(geteilt.weiter().samples().get(0).get("entity_id").asText()).isEqualTo(ENTITY);
+        assertThat(geteilt.weiter().samples().get(1).get("entity_id").asText()).isEqualTo(e1);
+        assertThat(geteilt.weiter().samples().get(2).has("entity_id")).isFalse();
+
+        // Dieselbe Komponente zweimal: doppelt wie heute, beide Vorkommen verworfen.
+        var gleich = validator.annehmen(TOPIC, payload("2.1", TENANT, "", String.join(",",
+                punkt + ",\"entity_id\":\"" + ENTITY + "\"}",
+                punkt + ",\"entity_id\":\"" + ENTITY.toUpperCase() + "\"}", einzeln)), EINGANG);
+        assertThat(gleich.weiter().samples()).hasSize(1);
+        assertThat(gleich.ablehnungen()).containsExactly(
+                new Ablehnungen.Ablehnung(Ereignisart.REJECTED, Grund.REGEL_VERLETZT, 2, null));
+
+        // Ein Vorkommen ohne Komponente: die heutige Regel gilt für den ganzen Punkt.
+        var gemischt = validator.annehmen(TOPIC, payload("2.1", TENANT, "", String.join(",",
+                punkt + "}", punkt + ",\"entity_id\":\"" + e1 + "\"}", einzeln)), EINGANG);
+        assertThat(gemischt.weiter().samples()).hasSize(1);
+        assertThat(gemischt.ablehnungen()).containsExactly(
+                new Ablehnungen.Ablehnung(Ereignisart.REJECTED, Grund.REGEL_VERLETZT, 2, null));
+
+        // Drei Vorkommen, eines doppelt: nur das Paar fällt, die dritte Komponente bleibt.
+        var dreifach = validator.annehmen(TOPIC, payload("2.1", TENANT, "", String.join(",",
+                punkt + ",\"entity_id\":\"" + ENTITY + "\"}", punkt + ",\"entity_id\":\"" + ENTITY + "\"}",
+                punkt + ",\"entity_id\":\"" + e1 + "\"}")), EINGANG);
+        assertThat(dreifach.weiter().samples()).hasSize(1);
+        assertThat(dreifach.weiter().samples().get(0).get("entity_id").asText()).isEqualTo(e1);
+
+        // 2.0 kennt keine Komponente: der doppelte Punkt bleibt doppelt.
+        var alt = validator.annehmen(TOPIC, payload(TENANT, String.join(",", punkt + "}", punkt + "}")),
+                EINGANG);
+        assertThat(alt.weiter()).isNull();
+        assertThat(alt.ablehnungen()).containsExactly(
+                new Ablehnungen.Ablehnung(Ereignisart.REJECTED, Grund.REGEL_VERLETZT, 2, null));
     }
 
     /** IP-5: one bad sample drops only itself; a bundle per reason; a duplicate key is never guessed. */
