@@ -5132,6 +5132,8 @@ export interface MessstelleRegisterZeile {
   /** Wirksame, append-only protokollierte Tatsachen an dieser Messstelle. */
   fakten?: MessstelleRegisterFakt[];
   berechnung: MessstelleRegisterBerechnung | null;
+  /** UEMS AP-16 IP-19: eingelöste Messbedarfe — die Messstelle ist „geplant für EE-…“. Ältere Antworten ohne Feld = keiner. */
+  geplant_fuer_einsaetze?: { id: string; kennzeichen: string; name: string }[];
 }
 
 export interface MessstelleRegisterFakt {
@@ -9462,6 +9464,22 @@ export const api = {
     }),
   energieeinsatzEinstufungBestaetigen: (id: string) =>
     request<EnergieeinsatzEinstufungFassung>(`/api/v1/unternehmen/energieeinsaetze/${id}/einstufung/bestaetigen`, { method: 'POST' }),
+  /** UEMS AP-16 IP-19: alle Messbedarfe des Einsatzes — eingelöste und verworfene bleiben lesbar. */
+  messbedarfe: (einsatzId: string) =>
+    request<{ messbedarfe: Messbedarf[] }>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf`),
+  /** Erfasst einen offenen Messbedarf; Recht `energieeinsatz.verwalten`. */
+  messbedarfErfassen: (einsatzId: string, body: MessbedarfAnlegen) =>
+    request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Löst ein — nur mit einer eingerichteten Messstelle (sonst 422 `messstelle_nicht_eingerichtet`). */
+  messbedarfEinloesen: (einsatzId: string, messbedarfId: string, messstelleId: string) =>
+    request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}/einloesen`, {
+      method: 'POST', body: JSON.stringify({ messstelle_id: messstelleId }),
+    }),
+  /** Verwirft mit Pflicht-Begründung; der Bedarf bleibt lesbar. */
+  messbedarfVerwerfen: (einsatzId: string, messbedarfId: string, begruendung: string) =>
+    request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}/verwerfen`, {
+      method: 'POST', body: JSON.stringify({ begruendung }),
+    }),
 };
 
 /** AP-09 K1/K7: Minutenintervall [von,bis), Parameter bleiben mit der Bindung erhalten. */
@@ -9501,6 +9519,15 @@ export interface BewertungUmfangStandort {
   name: string;
   anlagen_im_umfang: BewertungUmfangAnlage[];
   anzahl_anlagen_im_umfang: number;
+}
+
+/** UEMS AP-16 IP-19 (`Messbedarf`): Ort und Größe sind Wortlaut; `messstelle` erst nach dem Einlösen. */
+export interface MessbedarfAnlegen { wortlaut: string; ort: string | null; groesse: string | null; frist: string | null }
+export interface Messbedarf {
+  id: string; kennzeichen: string; energieeinsatz_id: string; wortlaut: string; ort: string | null; groesse: string | null;
+  frist: string | null; zustand: 'offen' | 'eingeloest' | 'verworfen';
+  messstelle: { id: string; kennzeichen: string; name: string | null } | null;
+  begruendung: string | null; akteur: BewertungAkteur; angelegt_am: string; geaendert_am: string;
 }
 
 export interface BewertungAkteur {

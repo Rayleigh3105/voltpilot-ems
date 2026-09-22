@@ -1,3 +1,4 @@
+import { geplantFuerText } from '../uemsMessplanung';
 import { clearWerteCache } from '../uemsWerteCache';
 import { Ablesungen } from '../components/Ablesungen';
 import { RechteStandort } from '../rollen';
@@ -364,6 +365,8 @@ function MessstelleSeiteMitId({
             {[k.unter, lebenszyklusWort(m.lebenszyklus as Lebenszyklus)].filter(Boolean).join(' · ')}
           </p>
           {w?.beobachtung && <p className={`vp-mss-beob is-${w.beobachtung.ton}`}>{w.beobachtung.text}</p>}
+          {/* AP-16 IP-20 (R5): ein eingelöster Messbedarf — „geplant für EE-8 …“; ersetzt weder Quelle noch Wert. */}
+          {geplantFuerText(zeile) && <p className="vp-mss-geplant" data-testid="messstelle-geplant-fuer">{geplantFuerText(zeile)}</p>}
           {w?.quelle.art === 'gebunden' && (
             <p className="vp-mss-quelle">
               Quelle: {[w.quelle.geraet, w.quelle.messwert, w.quelle.seit].join(' · ')}

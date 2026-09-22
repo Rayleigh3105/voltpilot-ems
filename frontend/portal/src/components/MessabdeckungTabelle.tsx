@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
-import { api, type BewertungMessabdeckung } from '../api';
+import { Button } from '../../designsystem/components/core/Button';
+import { api, type BewertungMessabdeckung, type BewertungMessabdeckungOrt } from '../api';
 import { UEMS_MESSABDECKUNG, UEMS_NORMGRENZE } from '../glossar';
 import { ABDECKUNG_SPALTEN, abdeckungSumme, einsatzZeilen, ortZeilen, type AbdeckungZeile } from '../uemsMessabdeckung';
+import { MESSPLANUNG } from '../uemsMessplanung';
 import './MessabdeckungTabelle.css';
 
 /**
@@ -12,8 +14,22 @@ import './MessabdeckungTabelle.css';
  *
  * ⚠ Ohne Antwort oder ohne Energieeinsatz steht GAR NICHTS (R11: wer keinen Einsatz anlegt, merkt nichts).
  * ⚠ Telefon: jede Zeile wird eine Karte mit beschrifteten Spalten; es gibt keinen waagerechten Seitenlauf.
+ * IP-20: an jeder Rest-Zeile „Messbedarf erfassen“ (nur mit `onRestErfassen`, also `energieeinsatz.verwalten`);
+ * `version` lädt nach einem neuen Bedarf neu — er steht dann unter „geplant“.
  */
-export function MessabdeckungTabelle({ von, bis, zeitraum }: { von: string; bis: string; zeitraum: string }) {
+export function MessabdeckungTabelle({
+  von,
+  bis,
+  zeitraum,
+  version = 0,
+  onRestErfassen,
+}: {
+  von: string;
+  bis: string;
+  zeitraum: string;
+  version?: number;
+  onRestErfassen?: (anlage: BewertungMessabdeckungOrt) => void;
+}) {
   const [daten, setDaten] = useState<BewertungMessabdeckung | null>(null);
   useEffect(() => {
     let aktiv = true;
@@ -25,7 +41,7 @@ export function MessabdeckungTabelle({ von, bis, zeitraum }: { von: string; bis:
     return () => {
       aktiv = false;
     };
-  }, [von, bis]);
+  }, [von, bis, version]);
 
   if (!daten || daten.je_einsatz.length === 0) return null;
   const summe = abdeckungSumme(daten);
@@ -53,7 +69,7 @@ export function MessabdeckungTabelle({ von, bis, zeitraum }: { von: string; bis:
       {summe.satz && <p className="vp-ma-satz">{summe.satz}</p>}
 
       <h3 className="vp-ma-unter">Je Energieeinsatz</h3>
-      <Tabelle zeilen={einsatzZeilen(daten)} mitMenge testId="messabdeckung-einsaetze" titel="Energieeinsatz" />
+      <Tabelle zeilen={einsatzZeilen(daten)} mitMenge testId="messabdeckung-einsaetze" titel="Energieeinsatz" onRestErfassen={onRestErfassen} />
       <h3 className="vp-ma-unter">Je Ort</h3>
       <Tabelle zeilen={ortZeilen(daten)} testId="messabdeckung-orte" titel="Ort" />
       <p className="vp-bw-grenze">{UEMS_NORMGRENZE}</p>
@@ -61,7 +77,19 @@ export function MessabdeckungTabelle({ von, bis, zeitraum }: { von: string; bis:
   );
 }
 
-function Tabelle({ zeilen, mitMenge = false, testId, titel }: { zeilen: AbdeckungZeile[]; mitMenge?: boolean; testId: string; titel: string }) {
+function Tabelle({
+  zeilen,
+  mitMenge = false,
+  testId,
+  titel,
+  onRestErfassen,
+}: {
+  zeilen: AbdeckungZeile[];
+  mitMenge?: boolean;
+  testId: string;
+  titel: string;
+  onRestErfassen?: (anlage: BewertungMessabdeckungOrt) => void;
+}) {
   return (
     <table className="vp-ma-tabelle" data-testid={testId}>
       <thead>
@@ -83,6 +111,11 @@ function Tabelle({ zeilen, mitMenge = false, testId, titel }: { zeilen: Abdeckun
                 {z.kennzeichen && <span className="vp-bw-kz">{z.kennzeichen}</span>}
                 <span className="vp-ma-titel">{z.titel}</span>
                 {z.unter && <span className="vp-ma-leise">{z.unter}</span>}
+                {z.rest && onRestErfassen && (
+                  <Button size="sm" variant="outline" className="vp-ma-rest-knopf" onClick={() => onRestErfassen(z.rest!)} data-testid="messabdeckung-rest-erfassen">
+                    {MESSPLANUNG.erfassen}
+                  </Button>
+                )}
               </span>
             </th>
             {ABDECKUNG_SPALTEN.map((s) => (

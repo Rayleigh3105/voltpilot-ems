@@ -12,6 +12,7 @@ import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
 import { AppShell } from '../src/shell/AppShell';
 import { benutzerFixture } from '../src/test/benutzerFixtures';
 import { bewertungBuehne } from '../src/test/bewertungFixtures';
+import { mb1 } from '../src/test/messplanungBuehne';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
 import { ahrenbergBezugsgroessen, ahrenbergProzesse } from '../src/test/kennzahlAnlegenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
@@ -33,7 +34,8 @@ import '../src/index.css';
  * Die Routen spielt `bewertungBuehne` aus `src/test/bewertungFixtures.ts` (Referenzunternehmen Ahrenberg 1.6).
  *
  * Adresse: `?person=IK|PH|JW` (Vorgabe IK, Ines Kaltenbach) · `&stand=leer|voll` (Vorgabe leer: kein Umfang, kein
- * Einsatz — R11) · `&ee=EE-2` öffnet die Seite dieses Einsatzes. Eigene Bühne, damit `startansicht` (25 Specs) unberührt
+ * Einsatz — R11) · `&ee=EE-2` öffnet die Seite dieses Einsatzes · `&messplanung=1|mb1` (IP-20) mit EE-8 und den Routen von
+ * Messbedarf und Messstellen-Dialog. Eigene Bühne, damit `startansicht` (25 Specs) unberührt
  * bleibt.
  */
 const params = new URLSearchParams(location.search);
@@ -41,12 +43,15 @@ const person = params.get('person') ?? 'IK';
 const stand = params.get('stand') === 'voll' ? 'voll' : 'leer';
 const vieraugen = params.get('vieraugen') === '1';
 const historieR13 = params.get('historie') === 'r13';
+// AP-16 IP-20: `&messplanung=1` (EE-8 ohne Bedarf) bzw. `=mb1` (MB-1 offen an EE-8) — Messbedarf und Messstellen-Dialog.
+const messplanung = params.get('messplanung');
 const me = rechteSeed(person).me;
 setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
 
-const buehne = bewertungBuehne(stand, person, stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen, historieR13);
+const buehne = bewertungBuehne(stand, person, messplanung ? '2026-11-27' : stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen, historieR13,
+  messplanung ? { bedarfe: messplanung === 'mb1' ? [mb1()] : [] } : false);
 Object.assign(api, buehne, {
   prozesse: async () => ({ stichtag: null, prozesse: ahrenbergProzesse() }),
   bezugsgroessen: async () => ahrenbergBezugsgroessen(),

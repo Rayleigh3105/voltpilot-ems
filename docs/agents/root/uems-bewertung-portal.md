@@ -60,3 +60,22 @@ die Befund-Zeile der Messstelle (`components/VergleichBefund.tsx`) je Zeile „T
 - Bühnen: `e2e/bewertung.html?stand=voll` (Abdeckung, Prüfaufgabe; `&ee=EE-3`), `e2e/geraet-herkunft.html?…&messmittel=1`
   (opt-in, die übrigen Leser dieser Bühne sehen die Seite unverändert), Toleranz über `cloud(page, { vergleich: true })` in
   `e2e/messstelle-seite.spec.ts`. `IP18_BILDER=<Ordner>` legt die Bilder der Ansicht ab.
+
+## Messplanung (AP-16 IP-20, §5.3 Schritte 1–3, R5)
+
+`components/Messplanung.tsx` (reines Modul `src/uemsMessplanung.ts`) liest und schreibt nur die IP-19-Routen
+`…/energieeinsaetze/{id}/messbedarf`: die Karte „Messplanung“ auf der Einsatzseite (erfassen, „Messstelle einrichten“,
+verwerfen), an jeder Rest-Zeile der Abdeckung „Messbedarf erfassen“ (Einsatz wählbar, Wortlaut mit dem Rest, Ort = Standort
+der Anlage) und unter der Abdeckung die Liste je Standort. Die Messstellen-Seite nennt `geplant_fuer_einsaetze` als
+„geplant für EE-…“ unter der Beobachtung; ohne Quelle bleibt es „Keine Datenquelle“, nie 0.
+
+- Einlösen = der ECHTE `MessstelleDialog` mit `vorbelegung` (Ort-Kurzzeichen, Hauptgröße); die erste gemeldete Messstelle
+  ohne `fehlt` (nach „Weiter: Quelle“) löst genau einmal ein — Ref statt State, weil `merke` Ort und Stellung im selben
+  Lauf meldet. Schließt jemand vorher, bleibt der Bedarf offen und die Messstelle ein Entwurf.
+- ⚠ Ort und Größe sind am Bedarf Wortlaut: das Portal schreibt das Kurzzeichen („G-1“) und „Wirkenergie · Bezug“;
+  `groesseVorbelegung` liest auch „Wirkenergie Bezug (kWh)“ aus R5, Unbekanntes wird nicht vorbelegt.
+- ⚠ Es gibt keine Standort-Route: die Liste je Standort liest je Einsatz und ordnet das Kurzzeichen über die Ortsbäume zu
+  (unbekannt → „ohne Ort“). Der Register-Filter `geplantFuerEinsatz` ist im Portal noch nicht verdrahtet.
+- Bühne: `e2e/bewertung.html?stand=voll&messplanung=1|mb1` (EE-8 und die Routen aus `src/test/messplanungBuehne.ts`;
+  Daten ohne `../api`-Wert-Import in `messplanungFixtures.ts`, auch für Playwright). Nachweis `src/uemsMessplanung.test.ts`,
+  `components/Messplanung.test.tsx`, `e2e/messplanung.spec.ts` (375/1440; `IP20_BILDER=<Ordner>` legt die Bilder ab).

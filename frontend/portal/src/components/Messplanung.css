@@ -1,0 +1,70 @@
+/* UEMS AP-16 IP-20: Messplanung — Liste je Einsatz und je Standort. Zeilen brechen um; kein waagerechter Seitenlauf. */
+.vp-mp-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-mp-zeile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  overflow-wrap: anywhere;
+}
+
+.vp-mp-zeile.is-verworfen {
+  background: var(--vp-c-surface-alt);
+}
+
+.vp-mp-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-mp-wortlaut {
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-mp-satz {
+  color: var(--vp-c-fg);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-mp-einsatz {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-mp-gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-mp-gruppe-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-ma-rest-knopf {
+  margin-top: 4px;
+}

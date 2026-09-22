@@ -116,6 +116,7 @@ export function MessstelleDialog({
   heute,
   jetzt,
   schritt,
+  vorbelegung = null,
   onClose,
   onGespeichert,
 }: {
@@ -133,6 +134,11 @@ export function MessstelleDialog({
    * (UEMS AP-13 IP-6). Jeder Schritt speichert beim Bearbeiten seinen Teil; beim Anlegen öffnet er immer mit Schritt 1.
    */
   schritt?: Schritt;
+  /**
+   * Beim Anlegen: Ort (Kurzzeichen) und Hauptgröße vorbelegt — der Sprung aus einem Messbedarf (UEMS AP-16 IP-20,
+   * §5.3 Schritt 2). Alles bleibt änderbar; ein Ort hier geht der Standort-Vorgabe vor.
+   */
+  vorbelegung?: { ort?: string | null; hauptgroesse?: GroesseEingabe | null } | null;
   onClose: () => void;
   /** Ein Schritt hat gespeichert — der Wirt lädt das Register neu. Kommt je Schritt. */
   onGespeichert?: (m: Messstelle) => void;
@@ -179,9 +185,10 @@ export function MessstelleDialog({
     setGespeichert(null);
     setLadeFehler(null);
     setVorschlag(null);
-    setIdentitaet(leereIdentitaet(null));
+    const vor = messstelleId ? null : vorbelegung;
+    setIdentitaet({ ...leereIdentitaet(null), hauptgroesse: vor?.hauptgroesse ?? leereGroesse() });
     setBestand(LEERER_BESTAND);
-    setZuordnung(zuordnungAus(LEERER_BESTAND, tag, null));
+    setZuordnung(zuordnungAus(LEERER_BESTAND, tag, vor?.ort ?? null));
     setOrtBeruehrt(false);
     setQuelle({ komponente: '', kanaele: {}, ...jetztEingabe(t) });
     setGebunden([]);

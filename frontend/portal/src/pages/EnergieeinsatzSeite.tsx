@@ -34,6 +34,7 @@ import {
 import { EnergieeinsatzBearbeitenDialog, EnergieeinsatzBeendenDialog } from '../components/EnergieeinsatzDialoge';
 import { EinstufungDialog, EinstufungHistorie } from '../components/BewertungEntscheidungen';
 import { EinsatzMessmittel, istWesentlich } from '../components/EinsatzMessmittel';
+import { MessbedarfKarte } from '../components/Messplanung';
 import { ErrorState, Skeleton } from '../components/States';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
@@ -187,6 +188,9 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
               </ul>
             )}
           </section>
+
+          {/* AP-16 IP-20 (§5.3, R5): Messbedarf erfassen, einlösen (Sprung in den Messstellen-Dialog), verwerfen. */}
+          <MessbedarfKarte einsatz={einsatz} verwalten={verwalten} />
 
           <EinsatzMessmittel einsatz={`${einsatz.kennzeichen} ${einsatz.name}`} messstellen={einsatz.messstellen} wesentlich={istWesentlich(einstufungen)} />
 
