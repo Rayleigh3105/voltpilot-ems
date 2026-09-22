@@ -613,7 +613,7 @@ public class GemeinsameSteuerungService {
                 auslegung.orElse(null));
         GrenzeAufloesung.Grenzen anlage = repo.grenzenDerAnlage(siteId);
         GrenzeAufloesung.Wirksam w = grenzen.wirksam(siteId, tag, anlage.einspeisungKw(), anlage.bezugKw());
-        boolean grenzenGesetzt = w.einspeisungKw() != null && w.bezugKw() != null;
+        boolean grenzenGesetzt = w.grenzenGesetzt();
         Map<String, SteuerungsverbundScharfschalten.Box> jeBox = new LinkedHashMap<>();
         for (UUID box : boxen) {
             jeBox.put(box.toString(), new SteuerungsverbundScharfschalten.Box(box.toString(), repo.boxAngemeldet(box),

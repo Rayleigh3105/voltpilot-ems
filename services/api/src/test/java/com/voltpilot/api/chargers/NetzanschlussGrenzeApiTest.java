@@ -133,6 +133,49 @@ class NetzanschlussGrenzeApiTest {
     }
 
     @Test
+    void ausdruecklichKeineIstZeitgueltigProtokolliertUndNichtDasselbeWieUnbekannt() throws Exception {
+        Welt w = welt();
+        Map<String, Object> leer = grenze("2027-05-03", null, 550);
+        ok(ruf(w, HttpMethod.POST, w.grenzen(), leer), 201);
+        Map<String, Object> keine = grenze("2027-05-03", null, 550);
+        keine.put("einspeisegrenze_keine", true);
+        JsonNode a = ok(ruf(w, HttpMethod.POST, w.grenzen(), keine), 201).body();
+        assertThat(a.at("/fassungen/0/einspeisegrenze_keine").asBoolean()).isTrue();
+        assertThat(a.at("/fassungen/0/einspeisegrenze_kw").isNull()).isTrue();
+        JsonNode am = ok(ruf(w, HttpMethod.GET, w.grenzen() + "?stichtag=2027-05-03", null), 200).body();
+        assertThat(am.at("/gilt/einspeisegrenze_keine").asBoolean()).isTrue();
+        ok(ruf(w, HttpMethod.POST, w.grenzen(), keine), 201);
+        assertThat(protokoll(w)).hasSize(2);
+        Map<String, Object> wechsel = protokoll(w).get(1);
+        assertThat(MAPPER.readTree(wechsel.get("alt").toString()).get("einspeisegrenze_keine").asBoolean()).isFalse();
+        assertThat(MAPPER.readTree(wechsel.get("neu").toString()).get("einspeisegrenze_keine").asBoolean()).isTrue();
+        ok(ruf(w, HttpMethod.POST, w.grenzen(), leer), 201);
+        assertThat(protokoll(w)).hasSize(3);
+        assertThat(MAPPER.readTree(protokoll(w).get(2).get("neu").toString())
+                .get("einspeisegrenze_keine").asBoolean()).isFalse();
+    }
+
+    @Test
+    void ausdruecklichKeineUndWertSindInApiUndDatenbankUnzulaessig() throws Exception {
+        Welt w = welt();
+        Map<String, Object> widerspruch = grenze("2027-05-03", 100, 550);
+        widerspruch.put("einspeisegrenze_keine", true);
+        abgelehntMitFeld(w, w.grenzen(), widerspruch, "einspeisegrenze_keine");
+        assertThat(protokoll(w)).isEmpty();
+        for (Object falsch : new Object[] {"true", 1, null}) {
+            Map<String, Object> anfrage = grenze("2027-05-03", null, 550);
+            anfrage.put("einspeisegrenze_keine", falsch);
+            abgelehntMitFeld(w, w.grenzen(), anfrage, "einspeisegrenze_keine");
+        }
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> root.update(
+                "INSERT INTO netzanschluss_grenze (tenant_id, netzanschluss_id, gueltig_ab, "
+                        + "einspeisegrenze_kw, einspeisegrenze_keine) VALUES (?, ?, DATE '2027-05-03', 100, true)",
+                w.mandant(), w.na1()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class)
+                .hasMessageContaining("netzanschluss_grenze_keine_oder_wert_chk");
+    }
+
+    @Test
     void eineZweiteFassungAmSelbenTagHebtDieErsteAufUndDieselbenWerteSchreibenNichts() throws Exception {
         Welt w = welt();
         ok(ruf(w, HttpMethod.POST, w.grenzen(), grenze("2027-05-03", 100, 550)), 201);

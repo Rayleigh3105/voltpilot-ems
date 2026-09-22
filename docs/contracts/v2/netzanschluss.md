@@ -88,14 +88,32 @@ Die drei Anschlüsse, ihre Marktlokationen, Leistungen und Bindungstage stammen 
 
 Zwei Grenzen, keine Preise: **Einspeisegrenze** und **Bezugsgrenze** in kW, zeitgültig je Netzanschluss
 (`netzanschluss_grenze`, `V20260921120000`). Eine Fassung gilt ab ihrem Tag (Zeitzone des Standorts) bis
-zum Vortag der nächsten; `null` in einer Richtung setzt dort keine Grenze; eine zweite Fassung am selben
+zum Vortag der nächsten; `null` in einer Richtung bedeutet **unbekannt**, nie 0 kW; eine zweite Fassung am selben
 Tag hebt die erste auf (nie überschrieben). Jeder Schreibvorgang ist GENAU EIN Protokolleintrag der Art
-`grenze` in `netzanschluss_aenderung` (alt/neu = die Fassung des Tages).
+`grenze` in `netzanschluss_aenderung` (alt/neu = die Fassung des Tages, einschließlich der ausdrücklichen Angabe).
+
+**Drei Lagen der Einspeisung (I1):** positiver Wert; ausdrücklich **„keine Einspeisegrenze“**
+(`einspeisegrenze_keine: true`, nur mit `einspeisegrenze_kw: null`); unbekannt
+(`einspeisegrenze_kw: null`, Kennzeichen fehlend oder `false`). Das Kennzeichen gilt je Fassung
+ab ihrem Tag und bleibt bei Bestandsfassungen `false` (`V20260922200000`). Wert und Kennzeichen
+zusammen sind 400 `anfrage_ungueltig` (Feld `einspeisegrenze_keine`), auch die DB verhindert das.
+Eine neue Fassung ohne Kennzeichen nimmt eine frühere ausdrückliche Angabe zurück.
+Die Bezugsseite kennt weiterhin nur Wert oder unbekannt; ihre Grenze bleibt beim Scharfschalten Pflicht.
 
 **Die eine Lese-Regel** (`GrenzeAufloesung` ⟷ `grenze_aufloesung.py`, Vektoren
 [`netzanschluss-grenze-vectors.json`](./netzanschluss-grenze-vectors.json)): je Richtung gilt der
 **ENGERE** Wert aus Anlage und Netzanschluss; ohne gebundenen Netzanschluss am Tag oder ohne gültige
-Fassung der alte Wert der Anlage — dasselbe Objekt, Byte für Byte. Gleich = Anlage. Unbekannt ist nie 0 kW.
+Fassung der alte Wert der Anlage — dasselbe Objekt, Byte für Byte. Gleich = Anlage. Ein Wert an der
+Anlage ist enger als ausdrücklich „keine“ am Blatt. Ohne Anlagenwert liefert die ausdrückliche Angabe
+`einspeisung_kw: null`, `einspeisung_keine: true`, Quelle `netzanschluss`; unbekannt liefert
+`einspeisung_keine: false`. I1 akzeptiert Bezug gesetzt UND (Einspeisewert ODER ausdrücklich keine).
+Unbekannt bleibt `grenze_fehlt`; andere Scharfschaltbedingungen bleiben bestehen.
+
+**Folgelücke im Anteils-/Planweg:** Ohne numerischen Einspeisewert bildet die Anteils-Ableitung keine
+Einspeiserichtung. Die Scharfschalt-Auslegung verlangt derzeit beide Richtungen (`auslegung_passt_nicht`); der Planer
+behandelt eine fehlende Richtung als unbekannt/stumm, niemals als unbegrenzt. I1 ist damit auf der
+Grenzblatt-Seite darstellbar; der vollständige Betrieb ohne Einspeisegrenze braucht ein eigenes Paket.
+Steht ein engerer Wert an der Anlage, bleibt die bisherige Verteilung mit diesem Wert erhalten.
 
 | Richtung | Wert der Anlage | wer liest über die Regel |
 |---|---|---|

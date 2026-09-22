@@ -143,6 +143,62 @@
       "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": 99.9, "bezugsgrenze_kw": 550}],
       "tag": "2027-06-13",
       "erwartet": {"einspeisung_kw": 99.9, "quelle_einspeisung": "netzanschluss", "bezug_kw": 549.5, "quelle_bezug": "anlage"}
+    },
+    {
+      "name": "ausdrücklich keine Einspeisegrenze, Bezug bleibt gesetzt",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 550, "einspeisegrenze_keine": true}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": null, "quelle_einspeisung": "netzanschluss", "bezug_kw": 550, "quelle_bezug": "netzanschluss", "einspeisung_keine": true}
+    },
+    {
+      "name": "Anlage bleibt enger als ausdrücklich keine Einspeisegrenze",
+      "anlage": {"einspeisung_kw": 70, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 550, "einspeisegrenze_keine": true}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 70, "quelle_einspeisung": "anlage", "bezug_kw": 550, "quelle_bezug": "netzanschluss", "einspeisung_keine": false}
+    },
+    {
+      "name": "ausdrücklich keine gilt einschließlich ab Tag",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 550, "einspeisegrenze_keine": true}],
+      "tag": "2027-05-03",
+      "erwartet": {"einspeisung_kw": null, "quelle_einspeisung": "netzanschluss", "bezug_kw": 550, "quelle_bezug": "netzanschluss", "einspeisung_keine": true}
+    },
+    {
+      "name": "ausdrücklich keine gilt nicht vor ab Tag",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 550, "einspeisegrenze_keine": true}],
+      "tag": "2027-05-02",
+      "erwartet": {"einspeisung_kw": null, "quelle_einspeisung": null, "bezug_kw": null, "quelle_bezug": null, "einspeisung_keine": false}
+    },
+    {
+      "name": "ausdrücklich keine gilt nicht ohne Bindung",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": false,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 550, "einspeisegrenze_keine": true}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": null, "quelle_einspeisung": null, "bezug_kw": null, "quelle_bezug": null, "einspeisung_keine": false}
+    },
+    {
+      "name": "spätere unbekannte Fassung hebt ausdrücklich keine auf",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 550, "einspeisegrenze_keine": true}, {"gueltig_ab": "2027-06-13", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": null, "quelle_einspeisung": null, "bezug_kw": 550, "quelle_bezug": "netzanschluss", "einspeisung_keine": false}
+    },
+    {
+      "name": "späterer Wert ersetzt ausdrücklich keine",
+      "anlage": {"einspeisung_kw": null, "bezug_kw": null},
+      "gebunden": true,
+      "fassungen": [{"gueltig_ab": "2027-05-03", "einspeisegrenze_kw": null, "bezugsgrenze_kw": 550, "einspeisegrenze_keine": true}, {"gueltig_ab": "2027-06-13", "einspeisegrenze_kw": 100, "bezugsgrenze_kw": 550}],
+      "tag": "2027-06-13",
+      "erwartet": {"einspeisung_kw": 100, "quelle_einspeisung": "netzanschluss", "bezug_kw": 550, "quelle_bezug": "netzanschluss", "einspeisung_keine": false}
     }
   ],
   "plausibel": [

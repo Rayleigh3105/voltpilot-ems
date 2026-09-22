@@ -12271,7 +12271,7 @@ paths:
       summary: Ab einem Tag gilt diese Fassung des Grenzblatts.
       description: >
         Recht `netzanschluss.verwalten`; mit „gültig ab“ vor heute zusätzlich
-        `aenderung.rueckwirkend`. Einspeise- und Bezugsgrenze in kW, je leer oder größer 0
+        `aenderung.rueckwirkend`. Einspeise- und Bezugsgrenze in kW, je unbekannt oder größer 0; alternativ ausdrücklich `einspeisegrenze_keine: true`
         (400 `anfrage_ungueltig` mit `feld`); der Anschluss besteht am Tag (422
         `netzanschluss_besteht_nicht`); Plausibilität gegen den Anschluss: Bezugsgrenze über der
         vereinbarten Leistung → 422 `grenze_ueber_vereinbart`, eine Grenze über der
@@ -23412,21 +23412,29 @@ components:
       additionalProperties: false
       description: >
         UEMS AP-15 IP-3. Ab `gueltig_ab` gilt diese Fassung bis zum Vortag der nächsten. null in
-        einer Richtung = dort keine Grenze am Anschluss (die Anlage gilt). Leistungen als Zahl
+        einer Richtung = unbekannt (die Anlage gilt). `einspeisegrenze_keine: true` erklärt ausdrücklich
+        keine Einspeisegrenze und ist nur ohne `einspeisegrenze_kw` zulässig (sonst 400). Leistungen als Zahl
         oder Dezimaltext, höchstens drei Nachkommastellen.
       required: [gueltig_ab]
+      not:
+        required: [einspeisegrenze_keine, einspeisegrenze_kw]
+        properties:
+          einspeisegrenze_keine: { enum: [true] }
+          einspeisegrenze_kw: { type: number }
       properties:
         gueltig_ab: { type: string, format: date }
-        einspeisegrenze_kw: { type: number, nullable: true, exclusiveMinimum: 0 }
-        bezugsgrenze_kw: { type: number, nullable: true, exclusiveMinimum: 0 }
+        einspeisegrenze_kw: { type: [number, "null"], exclusiveMinimum: 0 }
+        einspeisegrenze_keine: { type: boolean, default: false }
+        bezugsgrenze_kw: { type: [number, "null"], exclusiveMinimum: 0 }
         grund: { type: string, nullable: true }
     NetzanschlussGrenzFassung:
       type: object
-      required: [gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw, eingetragen_am]
+      required: [gueltig_ab, einspeisegrenze_kw, einspeisegrenze_keine, bezugsgrenze_kw, eingetragen_am]
       properties:
         gueltig_ab: { type: string, format: date }
-        einspeisegrenze_kw: { type: number, nullable: true }
-        bezugsgrenze_kw: { type: number, nullable: true }
+        einspeisegrenze_kw: { type: [number, "null"] }
+        einspeisegrenze_keine: { type: boolean, description: "Ausdrücklich keine Einspeisegrenze, nur ohne Zahlenwert." }
+        bezugsgrenze_kw: { type: [number, "null"] }
         eingetragen_am: { type: string, format: date-time }
     NetzanschlussGrenzblatt:
       type: object

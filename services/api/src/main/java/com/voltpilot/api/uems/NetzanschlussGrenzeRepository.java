@@ -21,10 +21,10 @@ public class NetzanschlussGrenzeRepository {
 
     /** Eine wirksame (nicht aufgehobene) Fassung mit ihrer Eintragszeit. */
     public record Zeile(UUID id, LocalDate gueltigAb, BigDecimal einspeisegrenzeKw, BigDecimal bezugsgrenzeKw,
-            Instant eingetragenAm) {
+            Instant eingetragenAm, boolean einspeisegrenzeKeine) {
 
         public GrenzeAufloesung.Fassung fassung() {
-            return new GrenzeAufloesung.Fassung(gueltigAb, einspeisegrenzeKw, bezugsgrenzeKw);
+            return new GrenzeAufloesung.Fassung(gueltigAb, einspeisegrenzeKw, bezugsgrenzeKw, einspeisegrenzeKeine);
         }
 
         public OffsetDateTime eingetragen() {
@@ -37,7 +37,7 @@ public class NetzanschlussGrenzeRepository {
             rs.getObject("gueltig_ab", LocalDate.class),
             ohneNullen(rs.getBigDecimal("einspeisegrenze_kw")),
             ohneNullen(rs.getBigDecimal("bezugsgrenze_kw")),
-            rs.getTimestamp("created_at").toInstant());
+            rs.getTimestamp("created_at").toInstant(), rs.getBoolean("einspeisegrenze_keine"));
 
     private final JdbcTemplate jdbc;
 
@@ -47,7 +47,7 @@ public class NetzanschlussGrenzeRepository {
 
     /** Die wirksamen Fassungen eines Anschlusses, nach erstem Tag. */
     public List<Zeile> fassungen(UUID netzanschluss) {
-        return jdbc.query("SELECT id, gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw, created_at "
+        return jdbc.query("SELECT id, gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw, created_at, einspeisegrenze_keine "
                 + "FROM netzanschluss_grenze WHERE netzanschluss_id = ? AND aufgehoben_am IS NULL "
                 + "ORDER BY gueltig_ab, id", ZEILE, netzanschluss);
     }
@@ -62,10 +62,11 @@ public class NetzanschlussGrenzeRepository {
     }
 
     public UUID eintragen(UUID tenant, UUID netzanschluss, LocalDate ab, BigDecimal einspeisung, BigDecimal bezug,
-            String wer) {
+            boolean einspeisungKeine, String wer) {
         return jdbc.queryForObject("INSERT INTO netzanschluss_grenze (tenant_id, netzanschluss_id, gueltig_ab, "
-                + "einspeisegrenze_kw, bezugsgrenze_kw, created_by) VALUES (?,?,?,?,?,?) RETURNING id", UUID.class,
-                tenant, netzanschluss, ab, einspeisung, bezug, wer);
+                + "einspeisegrenze_kw, bezugsgrenze_kw, einspeisegrenze_keine, created_by) "
+                + "VALUES (?,?,?,?,?,?,?) RETURNING id", UUID.class,
+                tenant, netzanschluss, ab, einspeisung, bezug, einspeisungKeine, wer);
     }
 
     /** {@code 100.000} aus NUMERIC(12,3) wird {@code 100} — die Zahl, die eingetragen wurde. */

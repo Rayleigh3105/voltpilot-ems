@@ -577,6 +577,8 @@ def load_grenzblaetter(dsn: str, tag, site_id: UUID | None = None) -> dict:
     the tighter value are the twin's (:mod:`grenze_aufloesung`). Before the api
     migration ``V20260921120000`` has run there is no table and therefore no
     Fassung: that is exactly "no Grenzblatt", so the site value stays.
+    The optional explicit-no-limit flag is read via the row JSON so the previous
+    Grenzblatt schema still yields its numeric limits before the additive migration.
     """
     import psycopg  # lazy: optional [db] extra
 
@@ -585,7 +587,8 @@ def load_grenzblaetter(dsn: str, tag, site_id: UUID | None = None) -> dict:
             cur.execute(
                 """
                 SELECT b.site_id, g.gueltig_ab, g.einspeisegrenze_kw,
-                       g.bezugsgrenze_kw
+                       g.bezugsgrenze_kw,
+                       COALESCE((to_jsonb(g)->>'einspeisegrenze_keine')::boolean, false)
                 FROM anlage_netzanschluss b
                 LEFT JOIN netzanschluss_grenze g
                   ON g.netzanschluss_id = b.netzanschluss_id
@@ -607,11 +610,11 @@ def load_grenzblaetter(dsn: str, tag, site_id: UUID | None = None) -> dict:
         logger.warning("grenzblatt.table_missing")
         return {}
     out: dict = {}
-    for sid, ab, einspeisung, bezug in rows:
+    for sid, ab, einspeisung, bezug, keine in rows:
         fassungen = out.setdefault(sid, [])
         if ab is not None:
             fassungen.append(
-                grenze_aufloesung.Fassung(ab, _opt_float(einspeisung), _opt_float(bezug))
+                grenze_aufloesung.Fassung(ab, _opt_float(einspeisung), _opt_float(bezug), keine)
             )
     return out
 

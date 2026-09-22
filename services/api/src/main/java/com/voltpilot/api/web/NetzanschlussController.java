@@ -223,7 +223,7 @@ public class NetzanschlussController {
         }
     }
 
-    /** Der strenge Mapper: ein JSON-Objekt, nur bekannte Felder, jedes Text oder {@code null} — die Leistungen auch Zahl. */
+    /** Der strenge Mapper: ein JSON-Objekt, nur bekannte Felder, Text oder {@code null}, Leistungen auch Zahl; das ausdrückliche Kennzeichen nur Boolean. */
     private <T> T lies(JsonNode body, Class<T> form) {
         if (body == null || !body.isObject()) {
             throw NetzanschlussAbgelehnt.anfrage("");
@@ -231,6 +231,12 @@ public class NetzanschlussController {
         for (Iterator<Map.Entry<String, JsonNode>> it = body.fields(); it.hasNext(); ) {
             Map.Entry<String, JsonNode> f = it.next();
             JsonNode wert = f.getValue();
+            if ("einspeisegrenze_keine".equals(f.getKey())) {
+                if (!wert.isBoolean()) {
+                    throw NetzanschlussAbgelehnt.anfrage(f.getKey());
+                }
+                continue;
+            }
             boolean zahl = ZAHLEN.contains(f.getKey()) && wert.isNumber();
             if (!zahl && !wert.isTextual() && !wert.isNull()) {
                 throw NetzanschlussAbgelehnt.anfrage(f.getKey());

@@ -31,7 +31,8 @@ class GrenzeAufloesungVectorsTest {
             List<GrenzeAufloesung.Fassung> fassungen = new ArrayList<>();
             for (JsonNode x : f.get("fassungen")) {
                 fassungen.add(new GrenzeAufloesung.Fassung(LocalDate.parse(x.get("gueltig_ab").asText()),
-                        bd(x.get("einspeisegrenze_kw")), bd(x.get("bezugsgrenze_kw"))));
+                        bd(x.get("einspeisegrenze_kw")), bd(x.get("bezugsgrenze_kw")),
+                        x.path("einspeisegrenze_keine").asBoolean(false)));
             }
             GrenzeAufloesung.Grenzen anlage = new GrenzeAufloesung.Grenzen(bd(f.at("/anlage/einspeisung_kw")),
                     bd(f.at("/anlage/bezug_kw")));
@@ -42,6 +43,8 @@ class GrenzeAufloesungVectorsTest {
             assertGleich(fall + " / Einspeisung", w.einspeisungKw(), bd(e.get("einspeisung_kw")));
             assertGleich(fall + " / Bezug", w.bezugKw(), bd(e.get("bezug_kw")));
             assertThat(w.quelleEinspeisung()).as(fall + " / Quelle Einspeisung").isEqualTo(str(e.get("quelle_einspeisung")));
+            assertThat(w.einspeisungKeine()).as(fall + " / ausdrücklich keine")
+                    .isEqualTo(e.path("einspeisung_keine").asBoolean(false));
             assertThat(w.quelleBezug()).as(fall + " / Quelle Bezug").isEqualTo(str(e.get("quelle_bezug")));
         }
     }

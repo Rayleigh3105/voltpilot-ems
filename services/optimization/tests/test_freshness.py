@@ -200,7 +200,7 @@ class _SitesCursor:
         peak_reserve=None, supply_row=None, grenz_rows=(),
     ) -> None:
         # The UEMS AP-15 IP-3 Grenzblatt read (load_grenzblaetter): rows of
-        # (site_id, gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw); none by
+        # (site_id, gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw, keine); none by
         # default = no site is bound, the site value stays.
         self._grenz_rows = list(grenz_rows)
         self._wear_ct = wear_ct
@@ -344,9 +344,9 @@ def test_grenzblatt_ohne_eintrag_laesst_den_optimierer_eingang_byte_gleich(monke
         _wire_sites(monkeypatch, None, max_feed_in=max_feed_in)
         [vorher] = load_battery_sites("postgresql://fake")
         for grenz_rows in (
-            [(SITE, None, None, None)],
-            [(SITE, morgen, 10.0, 20.0)],
-            [(UUID(int=99), date(2020, 1, 1), 10.0, 20.0)],
+            [(SITE, None, None, None, False)],
+            [(SITE, morgen, 10.0, 20.0, False)],
+            [(UUID(int=99), date(2020, 1, 1), 10.0, 20.0, False)],
         ):
             _wire_sites(
                 monkeypatch, None, max_feed_in=max_feed_in, grenz_rows=grenz_rows
@@ -360,7 +360,7 @@ def test_grenzblatt_am_gebundenen_netzanschluss_verengt_die_einspeisegrenze(monk
     # R1: Einspeisegrenze 100 kW am Netzanschluss; es gilt der ENGERE Wert.
     from datetime import date
 
-    fassung = [(SITE, date(2020, 1, 1), 100.0, 550.0)]
+    fassung = [(SITE, date(2020, 1, 1), 100.0, 550.0, False)]
     _wire_sites(monkeypatch, None, max_feed_in=None, grenz_rows=fassung)
     [site] = load_battery_sites("postgresql://fake")
     assert site.max_feed_in_kw == 100.0  # nur Netzanschluss
@@ -370,6 +370,18 @@ def test_grenzblatt_am_gebundenen_netzanschluss_verengt_die_einspeisegrenze(monk
     _wire_sites(monkeypatch, None, max_feed_in=75.0, grenz_rows=fassung)
     [site] = load_battery_sites("postgresql://fake")
     assert site.max_feed_in_kw == 75.0  # Anlage enger
+
+
+def test_grenzblatt_ausdruecklich_keine_bleibt_ohne_kuenstliche_kappe(monkeypatch):
+    from datetime import date
+    from voltpilot_optimization.inputs import load_grenzblaetter
+
+    fassung = [(SITE, date(2020, 1, 1), None, 550.0, True)]
+    for anlage in (None, 75.0):
+        _wire_sites(monkeypatch, None, max_feed_in=anlage, grenz_rows=fassung)
+        [site] = load_battery_sites("postgresql://fake")
+        assert site.max_feed_in_kw == anlage
+        assert load_grenzblaetter("postgresql://fake", date.today())[SITE][0].einspeisegrenze_keine
 
 
 def test_grenzblatt_tabelle_fehlt_vor_der_migration_heisst_kein_grenzblatt(monkeypatch):

@@ -96,6 +96,9 @@ public class NetzanschlussGrenzeService {
         LocalDate ab = tag("gueltig_ab", g.gueltigAb());
         BigDecimal einspeisung = leistung("einspeisegrenze_kw", g.einspeisegrenzeKw());
         BigDecimal bezug = leistung("bezugsgrenze_kw", g.bezugsgrenzeKw());
+        if (g.einspeisegrenzeKeine() && einspeisung != null) {
+            throw NetzanschlussAbgelehnt.anfrage("einspeisegrenze_keine");
+        }
         String grund = g.grund() == null || g.grund().isBlank() ? null : g.grund().strip();
         if ((na.gueltigAb() != null && ab.isBefore(na.gueltigAb()))
                 || (na.gueltigBis() != null && ab.isAfter(na.gueltigBis()))) {
@@ -123,15 +126,17 @@ public class NetzanschlussGrenzeService {
             repo.sperren(na.id());
             NetzanschlussGrenzeRepository.Zeile alt = repo.fassungen(na.id()).stream()
                     .filter(z -> z.gueltigAb().equals(ab)).findFirst().orElse(null);
-            if (alt != null && gleich(alt.einspeisegrenzeKw(), einspeisung) && gleich(alt.bezugsgrenzeKw(), bezug)) {
+            if (alt != null && gleich(alt.einspeisegrenzeKw(), einspeisung) && gleich(alt.bezugsgrenzeKw(), bezug)
+                    && alt.einspeisegrenzeKeine() == g.einspeisegrenzeKeine()) {
                 return false;
             }
             if (alt != null) {
                 repo.aufheben(alt.id(), uhr.instant());
             }
-            repo.eintragen(tenant, na.id(), ab, einspeisung, bezug, wer.sub());
+            repo.eintragen(tenant, na.id(), ab, einspeisung, bezug, g.einspeisegrenzeKeine(), wer.sub());
             anschluesse.protokoll(tenant, na.id(), GRENZE, alt == null ? null : alsJson(fassungForm(alt.gueltigAb(),
-                    alt.einspeisegrenzeKw(), alt.bezugsgrenzeKw())), alsJson(fassungForm(ab, einspeisung, bezug)),
+                    alt.einspeisegrenzeKw(), alt.bezugsgrenzeKw(), alt.einspeisegrenzeKeine())),
+                    alsJson(fassungForm(ab, einspeisung, bezug, g.einspeisegrenzeKeine())),
                     ab.atStartOfDay(zone).toInstant(), ab.isBefore(heute), grund, wer);
             return true;
         });
@@ -208,14 +213,15 @@ public class NetzanschlussGrenzeService {
 
     private static NetzanschlussDto.GrenzFassung form(NetzanschlussGrenzeRepository.Zeile z) {
         return new NetzanschlussDto.GrenzFassung(z.gueltigAb(), z.einspeisegrenzeKw(), z.bezugsgrenzeKw(),
-                z.eingetragen());
+                z.eingetragen(), z.einspeisegrenzeKeine());
     }
 
-    private static Map<String, Object> fassungForm(LocalDate ab, BigDecimal einspeisung, BigDecimal bezug) {
+    private static Map<String, Object> fassungForm(LocalDate ab, BigDecimal einspeisung, BigDecimal bezug, boolean keine) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("gueltig_ab", ab.toString());
         m.put("einspeisegrenze_kw", einspeisung);
         m.put("bezugsgrenze_kw", bezug);
+        m.put("einspeisegrenze_keine", keine);
         return m;
     }
 

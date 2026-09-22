@@ -58,6 +58,12 @@ KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsp
 `chargers/NetzanschlussGrenzeApiTest` (Paarbeweis Ladepark), `test_grenze_aufloesung.py`, `test_freshness.py`
 (Paarbeweis Optimierer). Vertrag [§5](../../contracts/v2/netzanschluss.md#5-das-grenzblatt-am-netzanschluss-ap-15-ip-3-kasten-w1).
 
+- **I1, ausdrücklich keine Einspeisegrenze:** `einspeisegrenze_keine` je Fassung
+  (`V20260922200000`), nur ohne Zahl; weggelassen/`false` bleibt unbekannt. Ein Anlagenwert ist enger
+  als „keine“. `Wirksam.grenzenGesetzt()` verlangt weiterhin Bezug. API/Protokoll und Java/Python
+  lesen das Kennzeichen, kein Portal-Schreibformular vorhanden. Der Anteilsweg verlangt noch beide
+  numerischen Richtungen (`auslegung_passt_nicht`), der Planer wertet fehlende Anteile als stumm:
+  vollständiger Betrieb ohne Einspeisegrenze ist ein Folgepaket, siehe Vertrag §5.
 - **Engerer Wert, ohne Eintrag dasselbe Objekt:** Byte-Gleichheit hängt an `isSameAs`, nicht an `equals` —
   `AnlageGrenzen.bezugKw` gibt das `Double` des Rahmens zurück, der Python-Zwilling den `float` der Anlage.
 - **Wer liest:** Einspeisung = Optimierer-Eingang (`load_grenzblaetter` + Zwilling, eigener Verbindungsaufbau;
