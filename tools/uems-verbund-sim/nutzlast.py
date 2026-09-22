@@ -68,6 +68,8 @@ E1_SPEICHER_NACHT_KW = 100.0  # zaNacht.e1BattKw: der Plan lädt den Speicher 10
 
 
 def speicher_kw(profil: str) -> float:
+    if profil == "heute":
+        return 0.0
     return E1_SPEICHER_KW if profil == "mittag" else E1_SPEICHER_NACHT_KW
 PLAN_SLOTS = 16            # zaPlan: vier Stunden ab dem Viertel von jetzt
 
@@ -215,12 +217,18 @@ def alle(revision: int, jetzt: dt.datetime, runde: int = 1, nur_plan: bool = Fal
         if not nur_plan and not ohne_anteile:
             out[box]["v2/verbund-anteile"] = anteile(k, box, revision, jetzt)
             out[box]["v2/charging-config"] = ladepark(k, box, jetzt, nullpunkt)
+        if ohne_anteile:
+            # A12 wie zwei_agenten_test.go e1PlanHeute: ohne Anteil gibt es keinen
+            # Wächter über dem Speicher (V6 kommt mit dem Anteil) - die führende
+            # Box bekommt den Plan von heute, gegen die Grenze gerechnet: keine
+            # Markt-Entladung, kein Laden aus dem Netz.
+            out[box]["schedule"] = fahrplan_v1(k, box, v2["plan_id"], jetzt, "heute")
+            continue
         if ungueltig:
             v2["schema_version"] = "9.9"  # A9: zugestellt, aber von der Box abzulehnen
         else:
             out[box]["schedule"] = fahrplan_v1(k, box, v2["plan_id"], jetzt, profil)
-        if not ohne_anteile:
-            out[box]["v2/plan"] = v2
+        out[box]["v2/plan"] = v2
     return out
 
 

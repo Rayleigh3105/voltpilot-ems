@@ -77,6 +77,8 @@ def test_varianten_der_nutzlasten():
     a12 = nutzlast.alle(1, JETZT, ohne_anteile=True)
     assert set(a12["E-1"]) == {"v2/entities", "schedule"}
     assert a12["E-1"]["schedule"]["grid_export_limit_kw"] == 100.0
+    assert {x["battery_setpoint_kw"] for x in a12["E-1"]["schedule"]["slots"]} == {0.0}  # e1PlanHeute
+    assert set(nutzlast.alle(1, JETZT, runde=2, nur_plan=True, ohne_anteile=True)["E-4"]) == {"schedule"}
     a9 = nutzlast.alle(1, JETZT, runde=2, nur_plan=True, ungueltig=True)
     assert set(a9["E-1"]) == {"v2/plan"} and a9["E-1"]["v2/plan"]["schema_version"] == "9.9"
     nacht = nutzlast.alle(1, JETZT, profil="nacht", nullpunkt=400)
