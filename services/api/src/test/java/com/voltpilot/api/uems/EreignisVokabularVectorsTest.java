@@ -855,20 +855,23 @@ class EreignisVokabularVectorsTest {
         return s;
     }
     @Test
-    void bewertungsEreignisseSindReserviertUndWerdenPaketweiseAngelegt() throws Exception {
+    void bewertungsEreignisseSindAusDerReservierungAktiviert() throws Exception {
         JsonNode datei = MAPPER.readTree(VECTORS.toFile());
-        for (String art : List.of("messbedarf_erfasst", "messbedarf_eingeloest")) {
+        for (String art : List.of("einstufung_gesetzt", "messbedarf_erfasst", "messbedarf_eingeloest")) {
             List<JsonNode> reservierungen = new ArrayList<>();
             datei.path("reserviert").forEach(r -> {
                 if (r.path("art").asText().equals(art)) reservierungen.add(r);
             });
             assertThat(reservierungen).hasSize(1);
             assertThat(reservierungen.getFirst().path("urheber")).isEqualTo(MAPPER.readTree("[\"kunde\"]"));
-            assertThat(EreignisVokabular.pruefe(MAPPER.createObjectNode().put("art", art), Urheber.KUNDE).grund())
-                    .isEqualTo(Grund.WORT_UNBEKANNT);
+            assertThat(EreignisVokabular.Art.vonCode(art)).isNotNull();
         }
         assertThat(EreignisVokabular.Art.vonCode("einstufung_gesetzt"))
                 .isEqualTo(EreignisVokabular.Art.EINSTUFUNG_GESETZT);
+        assertThat(EreignisVokabular.Art.vonCode("messbedarf_erfasst"))
+                .isEqualTo(EreignisVokabular.Art.MESSBEDARF_ERFASST);
+        assertThat(EreignisVokabular.Art.vonCode("messbedarf_eingeloest"))
+                .isEqualTo(EreignisVokabular.Art.MESSBEDARF_EINGELOEST);
     }
 
 }

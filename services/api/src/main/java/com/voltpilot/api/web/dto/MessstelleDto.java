@@ -161,7 +161,11 @@ public final class MessstelleDto {
             RegisterWert letzterWert,
             List<RegisterNebengroesse> nebengroessen,
             List<RegisterFakt> fakten,
-            RegisterBerechnung berechnung) {}
+            RegisterBerechnung berechnung,
+            List<GeplanterEinsatz> geplantFuerEinsaetze) {}
+
+    /** Ein eingelöster Messbedarf: die Messstelle ist für diesen Energieeinsatz geplant. */
+    public record GeplanterEinsatz(UUID id, String kennzeichen, String name) {}
 
     /** Ein wirksamer, append-only protokollierter Fakt an der Messstelle. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

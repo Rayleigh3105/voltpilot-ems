@@ -18,9 +18,9 @@ Eine Strom-Messstelle ohne Anlagenstellung verschwindet nicht aus der Ortssicht:
 steht unter ihrem Gebäude/Standort als eigene Ortszeile. Ihr wird aber kein Anlagenrest
 zugeschlagen; diese Verbindung liefert erst die IP-19-Naht als belegten Messbedarf.
 
-`BewertungMessbedarfNaht` liefert bis IP-19 eine leere Liste. IP-19 hängt dort offene
-Bedarfe mit Einsatz und optional eindeutiger Anlage ein; dadurch bleibt dieses Paket
-ohne vorweggenommene Datenhaltung. K8 kommt aus der wirksamen Kriterien-Fassung und
+`BewertungMessbedarfNaht` liest seit IP-19 offene Bedarfe mit Einsatz und optionalem
+Ortstext. Daraus wird keine Anlagenzuordnung geraten; eingelöste und verworfene Bedarfe
+erscheinen dort nicht zusätzlich. K8 kommt aus der wirksamen Kriterien-Fassung und
 wird über die vorhandene reine P3-Regel mit ungerundeten Mengen beurteilt.
 
 Verbindliche Abnahme: [`messabdeckung.json`](../../contracts/v2/messabdeckung.json).

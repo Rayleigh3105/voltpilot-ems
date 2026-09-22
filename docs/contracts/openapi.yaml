@@ -8876,6 +8876,7 @@ paths:
         - { name: anlage, in: query, required: false, description: "ID der Anlage der elektrischen Stellung am Stichtag.", schema: { type: string, format: uuid } }
         - { name: zustand, in: query, required: false, description: "Ein Wort des Lebenszyklus.", schema: { type: string, enum: [entwurf, eingerichtet, aktiv, angehalten, archiviert] } }
         - { name: ohneQuelle, in: query, required: false, description: "true = nur gemessene ohne führende Quelle zum Zeitpunkt (berechnete sind nicht „ohne Quelle“, sie haben keine); fehlend oder false = kein Filter.", schema: { type: boolean } }
+        - { name: geplantFuerEinsatz, in: query, required: false, description: "true = nur Messstellen, die einen eingelösten Messbedarf tragen („geplant für EE-…“).", schema: { type: boolean } }
         - { name: stichtag, in: query, required: false, schema: { type: string } }
       responses:
         "200":
@@ -12542,6 +12543,78 @@ paths:
         "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/messbedarf:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [energieeinsaetze]
+      summary: Alle Messbedarfe des Einsatzes; auch eingelöste und verworfene bleiben lesbar.
+      description: Recht `energieeinsatz.ansehen`; derselbe Standort-Zaun wie am Energieeinsatz.
+      responses:
+        "200": { description: Messbedarfe, content: { application/json: { schema: { $ref: "#/components/schemas/MessbedarfListe" } } } }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+    post:
+      tags: [energieeinsaetze]
+      summary: Einen offenen Messbedarf erfassen.
+      description: Recht `energieeinsatz.verwalten`; schreibt Protokoll und `messbedarf_erfasst` atomar.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MessbedarfAnlegen" } } } }
+      responses:
+        "201": { description: Erfasst, content: { application/json: { schema: { $ref: "#/components/schemas/Messbedarf" } } } }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "403": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/messbedarf/{messbedarfId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: messbedarfId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [energieeinsaetze]
+      summary: Einen offenen Messbedarf bearbeiten.
+      description: Recht `energieeinsatz.verwalten`; ein abgeschlossener Bedarf bleibt unverändert.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MessbedarfAnlegen" } } } }
+      responses:
+        "200": { description: Bearbeitet, content: { application/json: { schema: { $ref: "#/components/schemas/Messbedarf" } } } }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/messbedarf/{messbedarfId}/einloesen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: messbedarfId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [energieeinsaetze]
+      summary: Bedarf durch eine eingerichtete Messstelle im selben Mandanten und Standort-Zaun einlösen.
+      description: Recht `energieeinsatz.verwalten`; schreibt Protokoll und `messbedarf_eingeloest` atomar.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MessbedarfEinloesen" } } } }
+      responses:
+        "200": { description: Eingelöst, content: { application/json: { schema: { $ref: "#/components/schemas/Messbedarf" } } } }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/messbedarf/{messbedarfId}/verwerfen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: messbedarfId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [energieeinsaetze]
+      summary: Einen offenen Messbedarf mit Begründung verwerfen.
+      description: Recht `energieeinsatz.verwalten`; der verworfene Eintrag bleibt lesbar.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MessbedarfVerwerfen" } } } }
+      responses:
+        "200": { description: Verworfen, content: { application/json: { schema: { $ref: "#/components/schemas/Messbedarf" } } } }
+        "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/energieeinsaetze/{id}/messbedarf/{messbedarfId}/protokoll:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: messbedarfId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [energieeinsaetze]
+      summary: Das unveränderliche Messbedarf-Protokoll lesen.
+      description: Recht `energieeinsatz.ansehen`; derselbe Standort-Zaun wie am Energieeinsatz.
+      responses:
+        "200": { description: Protokoll, content: { application/json: { schema: { $ref: "#/components/schemas/MessbedarfProtokoll" } } } }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
   /api/v1/unternehmen/prozesse:
     get:
       tags: [kostenstellen-prozesse]
@@ -14606,7 +14679,7 @@ components:
       properties:
         code:
           type: string
-          enum: [anfrage_ungueltig, nicht_gefunden, prozess_unbekannt, traeger_unbekannt, einsatz_laeuft_bereits, verantwortlicher_unbekannt, einflussgroesse_ungueltig, name_fehlt, grund_fehlt, zeitraum_ungueltig, einsatz_beendet, bezugsgroesse_in_verwendung, recht_fehlt, begruendung_fehlt, einstufung_ungueltig, grund_ungueltig, herkunft_unvollstaendig, gueltig_ab_ungueltig, freigabe_offen, keine_freigabe_offen, zweite_person_noetig]
+          enum: [anfrage_ungueltig, nicht_gefunden, prozess_unbekannt, traeger_unbekannt, einsatz_laeuft_bereits, verantwortlicher_unbekannt, einflussgroesse_ungueltig, name_fehlt, grund_fehlt, zeitraum_ungueltig, einsatz_beendet, bezugsgroesse_in_verwendung, recht_fehlt, begruendung_fehlt, einstufung_ungueltig, grund_ungueltig, herkunft_unvollstaendig, gueltig_ab_ungueltig, freigabe_offen, keine_freigabe_offen, zweite_person_noetig, wortlaut_fehlt, messstelle_fehlt, messstelle_nicht_eingerichtet, messbedarf_abgeschlossen]
         message: { type: string }
         energieeinsaetze:
           type: array
@@ -14739,6 +14812,87 @@ components:
               neu: { nullable: true, description: Neuer Schnappschuss als Objekt oder Einflussgrößen-Liste. }
               akteur:
                 type: object
+                properties:
+                  sub: { type: string, nullable: true }
+                  name: { type: string }
+                  rolle: { type: string, nullable: true }
+                  art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+              zeit: { type: string, format: date-time }
+    MessbedarfAnlegen:
+      type: object
+      additionalProperties: false
+      required: [wortlaut]
+      properties:
+        wortlaut: { type: string, minLength: 1 }
+        ort: { type: string, nullable: true }
+        groesse: { type: string, nullable: true }
+        frist: { type: string, format: date, nullable: true }
+    MessbedarfEinloesen:
+      type: object
+      additionalProperties: false
+      required: [messstelle_id]
+      properties:
+        messstelle_id: { type: string, format: uuid }
+    MessbedarfVerwerfen:
+      type: object
+      additionalProperties: false
+      required: [begruendung]
+      properties:
+        begruendung: { type: string, minLength: 1 }
+    Messbedarf:
+      type: object
+      required: [id, kennzeichen, energieeinsatz_id, wortlaut, ort, groesse, frist, zustand, messstelle,
+        begruendung, akteur, angelegt_am, geaendert_am]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: '^MB-[1-9][0-9]*$' }
+        energieeinsatz_id: { type: string, format: uuid }
+        wortlaut: { type: string }
+        ort: { type: string, nullable: true }
+        groesse: { type: string, nullable: true }
+        frist: { type: string, format: date, nullable: true }
+        zustand: { type: string, enum: [offen, eingeloest, verworfen] }
+        messstelle:
+          type: object
+          nullable: true
+          required: [id, kennzeichen, name]
+          properties:
+            id: { type: string, format: uuid }
+            kennzeichen: { type: string }
+            name: { type: string, nullable: true }
+        begruendung: { type: string, nullable: true }
+        akteur:
+          type: object
+          required: [sub, name, rolle, art]
+          properties:
+            sub: { type: string, nullable: true }
+            name: { type: string }
+            rolle: { type: string, nullable: true }
+            art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+        angelegt_am: { type: string, format: date-time }
+        geaendert_am: { type: string, format: date-time }
+    MessbedarfListe:
+      type: object
+      required: [messbedarfe]
+      properties:
+        messbedarfe: { type: array, items: { $ref: "#/components/schemas/Messbedarf" } }
+    MessbedarfProtokoll:
+      type: object
+      required: [aenderungen]
+      properties:
+        aenderungen:
+          type: array
+          items:
+            type: object
+            required: [id, art, alt, neu, akteur, zeit]
+            properties:
+              id: { type: integer, format: int64 }
+              art: { type: string, enum: [erfasst, bearbeitet, eingeloest, verworfen] }
+              alt: { nullable: true, description: Vorheriger Schnappschuss. }
+              neu: { nullable: true, description: Neuer Schnappschuss. }
+              akteur:
+                type: object
+                required: [sub, name, rolle, art]
                 properties:
                   sub: { type: string, nullable: true }
                   name: { type: string }
@@ -23469,7 +23623,7 @@ components:
         der heutige Eingang); ein Stichtag verschiebt Ort, Stellung und Quelle, nicht ihn.
       required: [id, kennzeichen, name, art, medium, hauptgroesse, ort, elektrische_stellung, quelle,
         lebenszyklus, fehlt, angehalten_ab, archiviert_am, beobachtung, letzter_wert, nebengroessen, fakten,
-        berechnung]
+        berechnung, geplant_fuer_einsaetze]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -23514,6 +23668,16 @@ components:
             Stellung. null an einer gemessenen Messstelle und an einer berechneten ohne Formel
             am Tag.
           allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBerechnung" }]
+        geplant_fuer_einsaetze:
+          type: array
+          description: Eingelöste Messbedarfe; die Messstelle ist damit „geplant für EE-…“.
+          items:
+            type: object
+            required: [id, kennzeichen, name]
+            properties:
+              id: { type: string, format: uuid }
+              kennzeichen: { type: string }
+              name: { type: string }
     MessstelleRegisterFakt:
       type: object
       required: [art, gilt_ab]

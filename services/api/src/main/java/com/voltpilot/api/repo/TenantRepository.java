@@ -274,6 +274,7 @@ public class TenantRepository {
                 for (String table : new String[] {"geraet_aenderung",
                         "bewertung_aenderung", "bewertung_kriterien_fassung", "bewertung_umfang_ausschluss",
                         "bewertung_umfang_standort", "bewertung_umfang",
+                        "messbedarf_aenderung", "messbedarf", "messbedarf_kennzeichen_seq",
                         "energieeinsatz_aenderung", "energieeinsatz_einstufung", "energieeinsatz_einflussgroesse",
                         "energieeinsatz", "energieeinsatz_kennzeichen_seq"}) {
                     try (var probe = con.prepareStatement("SELECT to_regclass(?)")) {

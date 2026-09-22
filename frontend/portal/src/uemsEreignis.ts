@@ -57,6 +57,8 @@ export const EREIGNIS_ARTEN = [
   'bericht_abgerufen',
   'kennzahl_neu_gebildet',
   'einstufung_gesetzt',
+  'messbedarf_erfasst',
+  'messbedarf_eingeloest',
 ] as const;
 export type EreignisArt = (typeof EREIGNIS_ARTEN)[number];
 
@@ -180,6 +182,7 @@ export const FELDTYP: Record<string, Feldtyp> = {
   fassung: 'ganz_ab_1',
   einstufung: 'wort',
   gruende: 'wort_liste',
+  messbedarf: 'kennung',
 };
 
 export interface ArtText {
@@ -467,6 +470,20 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
     zeitraum: false,
     varianteNach: null,
     saetze: { standard: '{energieeinsatz}: Fassung {fassung} als {einstufung} gesetzt (Gründe: {gruende})' },
+    zusaetze: {},
+  },
+  messbedarf_erfasst: {
+    name: 'Messbedarf erfasst',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Messbedarf {messbedarf} erfasst' },
+    zusaetze: {},
+  },
+  messbedarf_eingeloest: {
+    name: 'Messbedarf eingelöst',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Messbedarf {messbedarf} durch Messstelle {messstelle} eingelöst' },
     zusaetze: {},
   },
 };

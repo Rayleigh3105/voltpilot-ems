@@ -285,6 +285,7 @@ public final class EreignisVokabular {
         f.put("fassung", Typ.GANZ_AB_1);
         f.put("einstufung", Typ.WORT);
         f.put("gruende", Typ.WORT_LISTE);
+        f.put("messbedarf", Typ.KENNUNG);
         FELDER = Collections.unmodifiableMap(f);
     }
 
@@ -548,7 +549,11 @@ public final class EreignisVokabular {
                 List.of("kennzahl"), List.of(), List.of("ausloeser", "version"), List.of(), List.of(), null, null),
         EINSTUFUNG_GESETZT("einstufung_gesetzt", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
                 List.of("energieeinsatz"), List.of(), List.of("fassung", "einstufung", "gruende"),
-                List.of(), List.of(), null, null);
+                List.of(), List.of(), null, null),
+        MESSBEDARF_ERFASST("messbedarf_erfasst", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("messbedarf"), List.of(), List.of(), List.of(), List.of(), null, null),
+        MESSBEDARF_EINGELOEST("messbedarf_eingeloest", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("messbedarf", "messstelle"), List.of(), List.of(), List.of(), List.of(), null, null);
 
         private final String code;
         private final Set<Urheber> urheber;

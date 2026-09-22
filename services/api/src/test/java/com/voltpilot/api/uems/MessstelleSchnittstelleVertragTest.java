@@ -282,7 +282,8 @@ class MessstelleSchnittstelleVertragTest {
                 .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
         // Die Filter der Route sind die des Berichts (§6.1) — in derselben Reihenfolge.
         assertThat(parameter("/api/v1/messstellen"))
-                .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle", "stichtag");
+                .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle",
+                        "geplantFuerEinsatz", "stichtag");
     }
 
     /** AP-03 E12: jeder heutige Kundenbenutzer ist Kundenadministrator; der Plattform-Admin ist VoltPilot. */

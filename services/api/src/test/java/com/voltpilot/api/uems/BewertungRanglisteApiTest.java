@@ -190,6 +190,9 @@ class BewertungRanglisteApiTest {
         assertThat(a.toString()).doesNotContain("\"einstufung\"");
     }
     @Test void p3MessabdeckungAhrenbergOktoberJeEinsatzUndOrt() throws Exception {
+        var bedarf = ruf("POST", "/api/v1/unternehmen/energieeinsaetze/" + ids.get("EE-8") + "/messbedarf",
+                "IK", Map.of("wortlaut", "Strommenge der Nebenaggregate", "ort", "Halle 1"), 201);
+        assertThat(bedarf.path("kennzeichen").asText()).isEqualTo("MB-1");
         var a=ruf("GET",ABDECKUNG+OKTOBER,"IK",null,200);
         assertThat(a.at("/summe/nenner/wert").asText()).isEqualTo("185380");
         assertThat(a.at("/summe/nenner/anlagen").asText()).isEqualTo("3 von 3");
@@ -216,6 +219,8 @@ class BewertungRanglisteApiTest {
         assertThat(einsatzAbdeckung(a,"EE-8").path("menge").isNull()).isTrue();
         assertThat(einsatzAbdeckung(a,"EE-8").at("/geplant/0/kennzeichen").asText()).isEqualTo("MS-23");
         assertThat(einsatzAbdeckung(a,"EE-8").path("geplant").get(0).has("menge")).isFalse();
+        assertThat(einsatzAbdeckung(a,"EE-8").at("/geplant/1/messbedarf").asText()).isEqualTo("MB-1");
+        assertThat(einsatzAbdeckung(a,"EE-8").path("geplant").get(1).has("menge")).isFalse();
         assertThat(a.path("je_ort")).hasSize(5);
         assertThat(ortAbdeckung(a,"AN-1","Strom").path("gemessen").findValuesAsText("menge"))
                 .containsExactly("7600","55100","15900","6200");
