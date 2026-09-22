@@ -261,6 +261,9 @@ type ExportLimiter struct {
 	// ramp to the share (V2)
 	rampValid       bool
 	rampPv, rampDis float64
+	// the battery push (+ discharge / - charge, kW) the ramp began with -
+	// rampAnstieg (exportanteil.go) lowers by any rise above it
+	rampSchub float64
 	// heute is the same box WITHOUT a share, evaluated alongside (V5)
 	heute *ExportLimiter
 	// the probing adjustment of IP-27 A7 (exportanteil.go, pruefen): the

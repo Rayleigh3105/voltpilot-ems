@@ -79,6 +79,16 @@ var ohneJeMessung bool
 // mutation probe of anstieg_senkt_test.go, never set outside it.
 var ohneAnstieg bool
 
+// ohneRampenAnstieg switches rampAnstieg off - a rising battery push on the
+// blind ramp lowers nothing, as on uems: the mutation probe of
+// rampe_anstieg_test.go, never set outside it.
+var ohneRampenAnstieg bool
+
+// ohneAnlauf lets einAnstieg start only after a push was let through, as on
+// uems (the first evaluation counts no rise): the mutation probe of
+// rampe_anstieg_test.go, never set outside it.
+var ohneAnlauf bool
+
 // ExportAnteil is the own feed-in share of a held share document.
 type ExportAnteil struct {
 	// AnteilKw is the box's own share in the direction einspeisung (kW).
@@ -207,7 +217,10 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 			res.State = ExportSafeCap
 		}
 	default:
-		l.ramp(now, res.MeasurementAge, safePv, budget, discharge, &res)
+		frac := l.ramp(now, res.MeasurementAge, safePv, budget, discharge, &res)
+		if !ohneRampenAnstieg {
+			l.rampAnstieg(now, frac, budget, discharge, laden, &res)
+		}
 	}
 	l.anteilReason(an.Fuehrt, budget, discharge, &res)
 	l.stellKw, l.stellValid = l.schub(discharge, laden), true
@@ -225,8 +238,9 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 }
 
 // ramp pulls generation and discharge linearly within ExportAnteilWindow to
-// the share, without holding (V2/V4). Caller holds l.mu.
-func (l *ExportLimiter) ramp(now time.Time, age time.Duration, safePv, budget, discharge float64, res *ExportCap) {
+// the share, without holding (V2/V4), and returns how far it is (0..1).
+// Caller holds l.mu.
+func (l *ExportLimiter) ramp(now time.Time, age time.Duration, safePv, budget, discharge float64, res *ExportCap) float64 {
 	if !l.rampValid {
 		// the operating point at the onset of blindness: the last cap and the
 		// discharge that was really allowed
@@ -234,6 +248,7 @@ func (l *ExportLimiter) ramp(now time.Time, age time.Duration, safePv, budget, d
 		if l.dcapValid && l.dcap < discharge {
 			l.rampDis = l.dcap
 		}
+		l.rampSchub = l.schubVor()
 	}
 	frac := (age - ExportFreshWindow).Seconds() / ExportAnteilWindow.Seconds()
 	frac = math.Min(math.Max(frac, 0), 1)
@@ -260,6 +275,37 @@ func (l *ExportLimiter) ramp(now time.Time, age time.Duration, safePv, budget, d
 		res.State = ExportSafeCap
 	default:
 		res.State = ExportContracting
+	}
+	return frac
+}
+
+// rampAnstieg is einAnstieg on the blind ramp (V6 in EVERY evaluation, also
+// blind): the ramp pulls generation and discharge from the operating point at
+// the onset of blindness, and that point held with the battery where it
+// stood then - a charge took part of the producers' power. When the setpoint
+// path raises the battery's push above the push the ramp began with (the plan
+// comes back during the ramp: a charge drops, a discharge rises), the
+// producers are lowered by that rise in the same evaluation, never below 0,
+// and what goes beyond them lowers the discharge (the last actuator). A push
+// above the share at the onset is pulled along the ramp like the discharge
+// itself - generation and discharge reach the share together. The ramp
+// itself stays (60 s linear, V2); this only ever lowers, command-side,
+// without a measurement. Caller holds l.mu, after ramp.
+func (l *ExportLimiter) rampAnstieg(now time.Time, frac, budget, discharge, laden float64, res *ExportCap) {
+	vor := l.rampSchub - math.Max(l.rampSchub-budget, 0)*frac
+	anstieg := l.schub(discharge, laden) - vor
+	if anstieg <= 1e-9 {
+		return
+	}
+	rest := l.cap - anstieg
+	if pv := math.Max(rest, 0); l.cap > pv {
+		l.cap, l.capAt = pv, now
+		res.CapKw = round3(pv)
+	}
+	dis := l.schub(discharge, 0)
+	if rest < 0 && dis > 0 {
+		l.dcap, l.dcapValid, l.dcapAt = math.Max(dis+rest, 0), true, now
+		l.dischargeReport(discharge, res)
 	}
 }
 
@@ -456,14 +502,10 @@ func (l *ExportLimiter) einSpielraum(now time.Time, limit, discharge, dcapVor fl
 // would hold the producers down for nothing. Only ever lowers. Caller holds
 // l.mu.
 func (l *ExportLimiter) einAnstieg(now time.Time, limit, discharge, laden float64, res *ExportCap) {
-	if !l.stellValid {
-		// no push let through yet: nothing it could rise from
+	if !l.stellValid && ohneAnlauf {
 		return
 	}
-	vor := l.stellKw
-	if l.battValid {
-		vor = math.Max(vor, -l.battKw)
-	}
+	vor := l.schubVor()
 	if l.anstiegValid && l.anstiegMessung == l.messung && !ohneJeMessung {
 		vor = math.Min(vor, l.anstiegVor)
 	} else {
@@ -505,6 +547,23 @@ func (l *ExportLimiter) ladungVorDemSprung(now time.Time, limit float64, res *Ex
 		l.cap, l.capAt = pv, now
 		res.CapKw = round3(pv)
 	}
+}
+
+// schubVor is the push a rise counts from: the push the last evaluation let
+// through, or the measured battery when it pushed more (a battery that did
+// not follow the command - only a RISE of the command counts). Before the
+// first evaluation no push was let through: push 0, so the very first
+// evaluation already counts a commanded discharge as a rise (Anlauf). Caller
+// holds l.mu.
+func (l *ExportLimiter) schubVor() float64 {
+	vor := 0.0
+	if l.stellValid {
+		vor = l.stellKw
+	}
+	if l.battValid {
+		vor = math.Max(vor, -l.battKw)
+	}
+	return vor
 }
 
 // schub is the battery push the evaluation lets through (+ discharge /

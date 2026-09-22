@@ -101,11 +101,18 @@ func TestA8rLadungNachDemSprungZeitpunktWieder(t *testing.T) {
 // charge <-> discharge, and the self-consumption charge of the PV.
 type asLauf struct {
 	seed int64
+	// rampe adds the blind path with the ramp (rampe_anstieg_test.go): the
+	// own measuring point goes away for 4-13 evaluations at random, so the
+	// share path runs its 60 s ramp while the plan comes back.
+	rampe bool
 }
 
 type asErgebnis struct {
 	auswertungen, rueckkehr, spruenge, blind int
-	verletzt                                 string
+	// rampe: evaluations on the ramp checked against its line, and plan
+	// returns that raised the push during it
+	rampe, rampeAnstieg int
+	verletzt            string
 }
 
 // fahre plays the run and checks V6 in EVERY evaluation, without tolerance:
@@ -128,8 +135,19 @@ func (f asLauf) fahre() asErgebnis {
 	sprungBei := 5 + rng.Intn(60)
 	uhr := time.Duration(0)
 	now := r9t0
+	// the ramp (only with f.rampe): the meter is gone until ausfallBis; the
+	// line runs from the operating point before the ramp (published cap plus
+	// the push the measurement held) to the budget within 60 s
+	ausfallBis := -1
+	var prev ExportCap
+	prevPush, pushGemessen := 0.0, 0.0
+	prevValid, aufRampe, rampeOk := false, false, false
+	rampeT0, rampeVor := 0.0, 0.0
 	for step := 0; step < 90; step++ {
 		now = now.Add(10 * time.Second)
+		if f.rampe && step > 0 && step > ausfallBis && rng.Intn(12) == 0 {
+			ausfallBis = step + 3 + rng.Intn(10)
+		}
 		if rng.Intn(10) == 0 {
 			sonne = rng.Float64() * 1.5 * limit
 		}
@@ -140,7 +158,7 @@ func (f asLauf) fahre() asErgebnis {
 			last = rng.Float64() * limit * 0.3
 		}
 		// step 0 only warms up: the plant starts anywhere, and the first
-		// evaluation knows no push before it (einAnstieg starts with it)
+		// evaluation knows no push before it (einAnstieg counts from push 0)
 		if step > 0 && rng.Intn(6) == 0 { // the plan comes back / goes: charge <-> discharge
 			switch rng.Intn(3) {
 			case 0:
@@ -165,8 +183,9 @@ func (f asLauf) fahre() asErgebnis {
 		}
 		pvMess, pushMess, exportMess := pv, -batt, -punkt
 		// after a jump the box sometimes evaluates before its next sample
-		gemessen := !(sprung && rng.Intn(2) == 0)
+		gemessen := !(sprung && rng.Intn(2) == 0) && step > ausfallBis
 		if gemessen {
+			pushGemessen = pushMess
 			b := batt
 			l.ObserveMitSpeicher(box, punkt, pv, &b)
 			heute.Observe(box, punkt, pv)
@@ -186,6 +205,25 @@ func (f asLauf) fahre() asErgebnis {
 			loop = limit
 		}
 		budget := math.Min(an.AnteilKw, loop)
+		age := c.MeasurementAge
+		rampeJetzt := f.rampe && c.Blind && !c.Uhrsprung && age > ExportFreshWindow && age <= ExportFreshWindow+ExportAnteilWindow
+		if rampeJetzt && !aufRampe {
+			// the onset: the share path pulls from its own cap - checkable
+			// when that is what was published (the shadow did not bind)
+			rampeVor = math.Max(prevPush, pushGemessen)
+			rampeT0 = prev.CapKw + rampeVor
+			rampeOk = prevValid && !prev.Blind && (prev.HeuteCapKw == nil || *prev.HeuteCapKw > prev.CapKw)
+		}
+		aufRampe = rampeJetzt
+		linie := math.Inf(1)
+		if rampeJetzt && rampeOk {
+			frac := math.Min(math.Max((age-ExportFreshWindow).Seconds()/ExportAnteilWindow.Seconds(), 0), 1)
+			linie = budget + math.Max(rampeT0-budget, 0)*(1-frac)
+			e.rampe++
+			if push > rampeVor+1e-9 {
+				e.rampeAnstieg++
+			}
+		}
 		switch {
 		case step == 0:
 		case h.Active && c.CapKw > h.CapKw:
@@ -200,6 +238,13 @@ func (f asLauf) fahre() asErgebnis {
 			// (plus half a unit of each published number's three decimals,
 			// round3 - the plant follows the published cap and ceiling)
 			e.verletzt = fmt.Sprintf("V6 blind step %d: cap %.3f push %.3f (soll %.3f) budget %.3f %s uhr=%v %s", step, c.CapKw, push, soll, budget, c.State, c.Uhrsprung, c.Reason)
+		case c.CapKw+push > linie+0.002:
+			// on the ramp: generation plus the signed push never above the
+			// line from the operating point (V2), whatever the plan does (V6)
+			// (plus half a unit of the three decimals of the four published
+			// numbers in it - cap and ceiling now and at the onset, round3)
+			e.verletzt = fmt.Sprintf("V6 ramp step %d age %v: cap %.3f push %.3f (soll %.3f) line %.3f (T0 %.3f, push before %.3f) budget %.3f %s",
+				step, age, c.CapKw, push, soll, linie, rampeT0, rampeVor, budget, c.State)
 		}
 		if e.verletzt != "" {
 			return e
@@ -208,6 +253,7 @@ func (f asLauf) fahre() asErgebnis {
 			e.blind++
 		}
 		pv, batt = math.Min(sonne, c.CapKw), push*-1
+		prev, prevPush, prevValid = c, push, true
 	}
 	return e
 }
