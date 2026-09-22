@@ -3239,6 +3239,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		slog.Error("setpoint publish failed", "err", err)
 		return
 	}
+	a.bezugSpeicherSoll(kw, controlEnabled)
 	// AP-15 IP-20: what this setpoint MUST change at the meter goes to the
 	// probe for a frozen value (no-op without a share document).
 	a.einfrierSollwert(now, controlEnabled, pvLimit, r.PvKw, kw, nativeDec.Native)

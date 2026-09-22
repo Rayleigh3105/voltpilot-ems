@@ -250,6 +250,10 @@ type BudgetTracker struct {
 	// document went blind (bezuganteil.go); rampValid while that ramp runs.
 	rampValid bool
 	rampFrom  float64
+	rampSchub float64
+	// Signed battery sample and published command, only read by the share ramp.
+	bezugBattKw float64
+	bezugSollKw float64
 	// mitKw is the last FRESH budget of a co-controlling box (bezuganteil.go),
 	// mitValid while it may still cap a blind evaluation.
 	mitValid bool
@@ -381,7 +385,10 @@ type Measurement struct {
 	// is only read when HaveBattery is true; a DISCHARGE belongs here as 0,
 	// never as a negative number (it is not a surplus the cars could claim).
 	BatteryChargeKw float64
-	HaveBattery     bool
+	// BatteryPowerKw preserves the signed sample (+ charge / - discharge)
+	// paired with GridKw for the import-share ramp. Nil: not measured.
+	BatteryPowerKw *float64
+	HaveBattery    bool
 	// Complete is false when a connector that currently claims budget reports
 	// no fresh measurement of its own.
 	Complete bool
@@ -431,6 +438,10 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 	t.steht = steht
 	if !steht {
 		t.ankerLadenKw, t.ankerBattKw = chargingKw, batt
+		t.bezugBattKw = 0
+		if m.BatteryPowerKw != nil && budgetFinite(*m.BatteryPowerKw) {
+			t.bezugBattKw = *m.BatteryPowerKw
+		}
 	}
 	rest := gridKw - chargingKw
 	if steht {

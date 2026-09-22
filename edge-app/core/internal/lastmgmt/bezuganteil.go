@@ -145,6 +145,7 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 	}
 	src.mu.Lock()
 	seen, at, charging := src.seen, src.at, src.chargingKw
+	battGemessen := src.bezugBattKw
 	rest := src.restHoldLocked()
 	src.mu.Unlock()
 	anteil := an.AnteilKw
@@ -238,12 +239,19 @@ func (t *BudgetTracker) BudgetAnteil(now time.Time, set Settings, an BezugAnteil
 			// the operating point at the onset of blindness: the budget
 			// today's evaluation still holds
 			t.rampValid, t.rampFrom = true, heute.Kw
+			t.rampSchub = battGemessen
 		}
 		deckel, mode, blind = t.rampFrom, BudgetContracting, true
 		if deckel > lade {
 			frac := (age - BudgetFreshWindow).Seconds() / BezugAnteilWindow.Seconds()
 			frac = math.Min(math.Max(frac, 0), 1)
 			deckel -= (deckel - lade) * frac
+		}
+		// The held budget counted the discharge of the last grid sample.
+		// A returning plan may remove it or charge: lower the park by that
+		// commanded rise in this evaluation, without changing the 60 s ramp.
+		if anstieg := t.bezugSollKw - t.rampSchub; anstieg > 0 {
+			deckel = math.Max(0, deckel-anstieg)
 		}
 		reason = t.anteilBlindPrefix(age, eingefroren) + "in der Gemeinsamen Steuerung zieht die Box das Ladebudget ohne Halten auf ihren Anteil von " +
 			anteilKw + " zusammen (aktuell " + kwText(round3(deckel)) + " kW)."
@@ -468,4 +476,18 @@ func (t *BudgetTracker) Stichprobe() time.Time {
 		return time.Time{}
 	}
 	return src.at
+}
+
+// BezugSpeicherSoll records the final published battery command for the share
+// path only. A rise wakes the park so it need not wait for its periodic pass.
+// This is a command, never a measurement or proof of physical response.
+func (t *BudgetTracker) BezugSpeicherSoll(kw float64) bool {
+	if !budgetFinite(kw) {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	steigt := kw > t.bezugSollKw
+	t.bezugSollKw = kw
+	return steigt
 }
