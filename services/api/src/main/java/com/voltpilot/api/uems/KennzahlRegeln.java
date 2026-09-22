@@ -401,6 +401,11 @@ public final class KennzahlRegeln {
             BigDecimal wert, String einheit, String zustand, BigDecimal abdeckungProzent, boolean endgueltig,
             String ursache, List<String> kennzeichen) {}
 
+    /** Zeitgewichtete Kanalabdeckung mehrerer Bezugsperioden, einschließlich unterschiedlich langer DST-Tage. */
+    static BigDecimal zeitAbdeckung(BigDecimal prozentSekunden, BigDecimal sekunden) {
+        return sekunden.signum()==0 ? null : prozentSekunden.divide(sekunden,1,java.math.RoundingMode.HALF_UP);
+    }
+
     /** Ein Paar einer Zusammenfassung (eine Kennzahl oder eine Teilperiode) mit Zähler und Nenner. */
     public record Teil(String objekt, String geltung, BigDecimal zaehler, BigDecimal nenner, String zustand,
             String richtung, BigDecimal abdeckungProzent, boolean endgueltig, List<String> kennzeichen) {}

@@ -312,7 +312,7 @@ public class KennzahlEingangLeser {
             aus.put(s, new Gelesen(new KennzahlRegeln.Eingang(x.art(), x.kennzeichen(), x.name(), null,
                     KennzahlRegeln.PERIODENWERT, KennzahlRegeln.WIRKSAM, summe, x.einheit(),
                     annahmen.isEmpty() ? null : unvollstaendigeBetriebszeit ? ErgebnisZustand.UNVOLLSTAENDIG : ErgebnisZustand.VOLLSTAENDIG,
-                    betriebszeitDauer.signum()==0 ? null : betriebszeitAbdeckung.divide(betriebszeitDauer,1,java.math.RoundingMode.HALF_UP),
+                    KennzahlRegeln.zeitAbdeckung(betriebszeitAbdeckung,betriebszeitDauer),
                     endgueltig, unvollstaendigeBetriebszeit ? "Leistungskanal mit Lücken" : null,
                     annahmen.stream().distinct().toList()), null, einzeln && letzter != null ? letzter.wirksameFassung() : null,
                     wirksame == null || wirksame.kennzeichen() == null ? List.of() : wirksame.kennzeichen(),
