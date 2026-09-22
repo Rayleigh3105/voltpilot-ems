@@ -341,9 +341,10 @@ class BewertungRanglisteApiTest {
         assertThat(ruf("GET","/api/v1/unternehmen/energieeinsaetze/"+ids.get("EE-1"),"IK",null,200).path("id").asText())
                 .isEqualTo(ids.get("EE-1").toString());
 
-        // Rechte/Zaun: die Standort-Leserin sieht den Unternehmensbericht nicht — weder Liste noch Kopf.
+        // Rechte/Zaun: die Standort-Leserin sieht den Unternehmensbericht nicht — Kopf 403, in ihrer Liste fehlt er.
         ruf("GET",pfad,"LE",null,403);
-        ruf("GET","/api/v1/berichte","LE",null,403);
+        assertThat(ruf("GET","/api/v1/berichte","LE",null,200).path("berichte").findValuesAsText("kennung"))
+                .doesNotContain(kennung);
     }
 
     @Test void r15KriterienFassungZweiAendertDasUrteilAberStuftenNichtEin() throws Exception {
