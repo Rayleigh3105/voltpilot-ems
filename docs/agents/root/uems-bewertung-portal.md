@@ -21,3 +21,18 @@ reinen Modul `frontend/portal/src/bewertung.ts`; Flächen `BewertungPage`, `Ener
 - ⚠ Offene Lücken der Routen (nicht nachgebaut): das Protokoll liefert `zeit`, `openapi.yaml` nennt es nicht; eine
   Einflussgröße trägt nur `bezugsgroesse_id` — die Einsatz-Seite liest dafür den Bezugsgrößen-Katalog nach.
 - Nachweis: `src/bewertung.test.ts`, `e2e/bewertung.spec.ts` (375/1440; `BEWERTUNG_BILDER=<Ordner>` legt die Bilder ab).
+
+## Rangliste und Einstufung (AP-16 IP-12, Meilenstein M2)
+
+Die bestehende Seite `#/portfolio/bewertung` liest für den letzten vollen Monat `…/bewertung/rangliste` und zeigt
+Rang, Menge, Anteil, Balken, K1–K3, K5/K6, Vorschlag, Anlagenrest und weitere Träger. Die Einsatzseite liest
+`…/{id}/einstufungen`; frühere Fassungen bleiben auch nach einer Rückstufung sichtbar. Einstufen sendet den
+vollständigen Herkunftsentwurf der Rangliste unverändert. `energieeinsatz.einstufen` und `bewertung.kriterien` kommen
+ausschließlich aus `/me`; ohne sie bleiben alle Angaben lesbar, aber ohne Schreibknöpfe.
+
+- Kriterien ändern schreibt acht Vertragswerte plus Pflichtbegründung. Der ehrliche Sofort-Hinweis nennt nur die neue
+  Wirkung auf Rangliste und Vorschlag: Bewertungsstände entstehen erst mit IP-21, ihr Anstoß mit IP-23/IP-25.
+- ⚠ `BewertungPage` lädt die Einstufungshistorien zusätzlich zur Rangliste, weil die Ranglistenroute keine aktuelle
+  Einstufung trägt. Der Vorschlag heißt immer Vorschlag und ändert nie selbst eine Einstufung.
+- Nachweis: `src/bewertung.test.ts`; `e2e/bewertung.spec.ts` prüft Pflichtbegründung, Abweichung, Vier-Augen,
+  Kriterien und Rückstufungshistorie bei 375/1440.

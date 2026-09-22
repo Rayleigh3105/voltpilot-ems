@@ -2314,6 +2314,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'pages/EnergieeinsatzSeite.tsx',
     'components/UmfangDialog.tsx',
     'components/EnergieeinsatzDialoge.tsx',
+    // IP-12: Rangliste, Einstufung, Kriterien und Historie.
+    'components/BewertungEntscheidungen.tsx',
   ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,

@@ -2,12 +2,17 @@ import {
   ApiError,
   type BewertungUmfang,
   type BewertungUmfangSpeichern,
+  type BewertungKriterienFassung,
+  type BewertungKriterienSpeichern,
+  type BewertungRangliste,
   type EnergieTraeger,
   type Energieeinsatz,
   type EnergieeinsatzAenderung,
   type EnergieeinsatzAnlegen,
   type EnergieeinsatzEinfluss,
   type EnergieeinsatzMessstelle,
+  type EnergieeinsatzEinstufungFassung,
+  type EnergieeinsatzEinstufungSpeichern,
 } from '../api';
 import { ahrenbergBezugsgroessen, ahrenbergProzesse } from './kennzahlAnlegenFixtures';
 import { ahrenbergRegister } from './messstellenRegisterFixtures';
@@ -22,8 +27,9 @@ import { FIXTURE_IDS } from './standorteFixtures';
  * - `leer`: vor dem 04.11.2026 — kein Umfang (die Route liefert die Vorgabe mit `fassung: null`), kein Einsatz (R11).
  * - `voll`: ab dem 04.11.2026 — Fassung 1 (ST-1, ST-2; Strom mit Anteil, Gas ohne) und EE-1 … EE-7.
  *
- * {@link bewertungBuehne} spielt die Routen nach (Anlegen mit 409 `einsatz_laeuft_bereits`, Protokoll mit Akteur), damit
- * Komponententests und die E2E-Bühne `e2e/bewertung.tsx` DENSELBEN Ablauf sehen. Die Fixture rechnet nichts.
+ * {@link bewertungBuehne} spielt die Routen nach (Anlegen, Rangliste, Einstufung, Kriterien und Historie), damit
+ * Komponententests und die E2E-Bühne `e2e/bewertung.tsx` DENSELBEN Ablauf sehen. Vertragszahlen werden abgeschrieben,
+ * nur die geänderte K1-Schwelle wird für den sichtbaren Vorschlag nachgezogen.
  * Nur für Tests und E2E-Bühnen, nie ins Produktionsbündel.
  */
 
@@ -185,13 +191,71 @@ export function ahrenbergUmfang(am = '2026-11-04'): BewertungUmfang {
 /** Die ungespeicherte Vorgabe der Route (kein Umfang): alle Standorte, Strom. */
 export const ahrenbergUmfangVorgabe = (am: string) => umfangAus(null, null, am);
 
+const KRITERIEN = { K1: '10', K2: '80', K3: '100000', K5: '90', K6: '5', K7: 12, K8: '80', mindest_monate: 3 };
+const KRITERIEN_ZEILEN = [
+  ['K1', '10', '%', '>='], ['K2', '80', '%', 'kumuliert bis'], ['K3', '100000', 'kWh', '>='],
+  ['K4', null, null, null], ['K5', '90', '%', '>='], ['K6', '5', '%', '<='], ['K7', 12, 'Monate', '='], ['K8', '80', '%', '>='],
+] as const;
+const ikAkteur = () => ({ ...person('IK'), rolle: 'energiemanager', art: 'kunde' as const });
+
+function kriterienFassung(fassung = 1, werte = KRITERIEN, begruendung: string | null = null): BewertungKriterienFassung {
+  return {
+    fassung, werte: { ...werte }, kriterien: KRITERIEN_ZEILEN.map(([kennung, schwelle, einheit, vergleich]) => ({ kennung, schwelle, einheit, vergleich })),
+    herkunft: fassung === 1 ? 'Vorgabe' : 'Unternehmen', gueltig_ab: fassung === 1 ? null : '2026-11-20', begruendung,
+    akteur: fassung === 1 ? null : ikAkteur(), vieraugen: false, freigabe_status: 'freigegeben', entschieden_von: null,
+    entschieden_am: null, entscheidungs_begruendung: null, created_at: fassung === 1 ? null : '2026-11-20T10:00:00+01:00', aufgehoben_am: null,
+  };
+}
+
+const MENGEN: Record<number, { menge: string; anteil: string; rang: number; ms: [string, string][] }> = {
+  1: { menge: '77500', anteil: '41.8', rang: 1, ms: [['MS-06', '55100'], ['MS-11', '22400']] },
+  3: { menge: '15900', anteil: '8.6', rang: 2, ms: [['MS-07', '15900']] },
+  2: { menge: '9640', anteil: '5.2', rang: 3, ms: [['MS-12', '6040'], ['MS-18', '3600']] },
+  6: { menge: '8700', anteil: '4.7', rang: 4, ms: [['MS-05', '4900'], ['MS-14', '3800']] },
+  5: { menge: '7800', anteil: '4.2', rang: 5, ms: [['MS-13', '4200'], ['MS-17', '3600']] },
+  4: { menge: '6200', anteil: '3.3', rang: 6, ms: [['MS-08', '6200']] },
+};
+const BILANZEN = [
+  [FIXTURE_IDS.an1, '139380'], [FIXTURE_IDS.an2, '36900'], [FIXTURE_IDS.an3, '9100'],
+] as const;
+
+export function ahrenbergRangliste(leer = false, kriterien = kriterienFassung()): BewertungRangliste {
+  const einsaetze = ahrenbergEinsaetze();
+  const basis = { von: '2026-10-01', bis: '2026-10-31', umfang_id: leer ? null : 'b0000000-0000-4000-8000-000000000001', umfang_fassung: leer ? null : 1,
+    teilansicht: false, monate: 1, kriterien: { fassung: kriterien.fassung, werte: kriterien.werte }, urteil: { K7: 'vorlaeufig' as const, K8: 'unter_schwelle' as const } };
+  if (leer) return { ...basis, nenner: { wert: null, einheit: 'kWh', vorhanden: 0, gesamt: 3, anlagen: '0 von 3', zustand: 'unvollständig' },
+    zugeordnet: null, rest: null, abdeckung_prozent: null, zustand: 'unvollständig', anlagen: [], einsaetze: [], weitere_traeger: [] };
+  const zeilen = [1, 3, 2, 6, 5, 4].map((n) => {
+    const e = einsaetze[n - 1], m = MENGEN[n];
+    const ueber = Number(m.anteil) >= Number(kriterien.werte.K1);
+    const urteil = { K1: ueber ? 'ueber_schwelle' as const : 'unter_schwelle' as const, K2: 'nicht_belastbar' as const,
+      K3: 'nicht_anwendbar' as const, K5: 'erfuellt' as const, K6: 'erfuellt' as const };
+    return { id: e.id, kennzeichen: e.kennzeichen, name: e.name, prozess_id: e.prozess.id, traeger: e.traeger, einheit: 'kWh', menge: m.menge,
+      zustand: 'vollständig', ersatz: '0', ersatz_prozent: '0', datenlage_prozent: '100', anteil_prozent: m.anteil,
+      kumuliert_zugeordnet_prozent: null, anteil_zustand: 'vollständig', rang: m.rang, urteil,
+      vorschlag: ueber ? 'ueber_schwelle' as const : 'unter_schwelle' as const,
+      herkunft: { zeitraum: '2026-10', kriterien_fassung: kriterien.fassung,
+        eingaenge: m.ms.map(([objekt, wert]) => ({ objekt, von: '2026-10-01', bis: '2026-10-31', wert, version: 1, zustand: 'vollständig' })),
+        nenner: { wert: '185380', anlagen: '3 von 3', bilanzwerte: BILANZEN.map(([anlage, wert]) => ({ anlage, von: '2026-10-01', bis: '2026-10-31', wert, version: 1, zustand: 'vollständig', eingaenge: [] })) },
+        urteil, vorschlag: ueber ? 'ueber_schwelle' as const : 'unter_schwelle' as const }, messstellen: [] };
+  });
+  const gas = einsaetze[6];
+  const gasUrteil = { K1: 'nicht_anwendbar' as const, K2: 'nicht_anwendbar' as const, K3: 'nicht_anwendbar' as const, K5: 'erfuellt' as const, K6: 'erfuellt' as const };
+  return { ...basis, nenner: { wert: '185380', einheit: 'kWh', vorhanden: 3, gesamt: 3, anlagen: '3 von 3', zustand: 'vollständig' },
+    zugeordnet: '125740', rest: '59640', abdeckung_prozent: '67.8', zustand: 'vollständig',
+    anlagen: [{ id: FIXTURE_IDS.an1, name: 'Halle 1', ab: '2026-10-01', nenner: '139380', zugeordnet: '84800', rest: '54580', rest_anteil_prozent: '39.2', zustand: 'vollständig' },
+      { id: FIXTURE_IDS.an2, name: 'Halle 2', ab: '2026-10-01', nenner: '36900', zugeordnet: '33040', rest: '3860', rest_anteil_prozent: '10.5', zustand: 'vollständig' },
+      { id: FIXTURE_IDS.an3, name: 'Werk Lindach', ab: '2026-10-01', nenner: '9100', zugeordnet: '7900', rest: '1200', rest_anteil_prozent: '13.2', zustand: 'vollständig' }],
+    einsaetze: zeilen, weitere_traeger: [{ id: gas.id, kennzeichen: gas.kennzeichen, name: gas.name, prozess_id: gas.prozess.id, traeger: 'Gas', einheit: 'm³', menge: '1240', zustand: 'vollständig', ersatz: '0', ersatz_prozent: '0', datenlage_prozent: '100', anteil_prozent: null, kumuliert_zugeordnet_prozent: null, anteil_zustand: 'ohne Anteil', rang: null, urteil: gasUrteil, vorschlag: 'unter_schwelle', herkunft: { zeitraum: '2026-10', kriterien_fassung: kriterien.fassung, eingaenge: [{ objekt: 'MS-21', von: '2026-10-01', bis: '2026-10-31', wert: '1240', version: 1, zustand: 'vollständig' }], nenner: null, urteil: gasUrteil, vorschlag: 'unter_schwelle' }, messstellen: [] }] };
+}
+
 const fehler = (status: number, code: string, message: string) => new ApiError(status, message, { code, message });
 
 /**
  * Die Routen der Bewertung als Zustandsmaschine im Speicher. `ich` ist das Kürzel des Aufrufers (der Akteur im
  * Protokoll); `heute` der Kalendertag der Bühne.
  */
-export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stand === 'leer' ? '2026-11-04' : '2026-11-20') {
+export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen = false, historieR13 = false) {
   let umfangFassung: { nr: number; s: BewertungUmfangSpeichern } | null = stand === 'voll'
     ? { nr: 1, s: { gueltig_ab: '2026-11-04', standort_ids: STANDORTE.map((x) => x.id), traeger: ['Strom', 'Gas'], ausschluesse: [], begruendung: null } }
     : null;
@@ -199,10 +263,34 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
   const protokolle = new Map<string, EnergieeinsatzAenderung[]>();
   let zaehler = einsaetze.length;
   let aenderung = 100;
+  let aktuelleKriterien = kriterienFassung();
+  const einstufungen = new Map<string, EnergieeinsatzEinstufungFassung[]>();
   const akteur = () => ({ ...person(ich), rolle: ich === 'IK' ? 'energiemanager' : null, art: 'kunde' as const });
   const protokolliere = (id: string, art: EnergieeinsatzAenderung['art'], zeit = `${heute}T09:30:00+01:00`) =>
     protokolle.set(id, [...(protokolle.get(id) ?? []), { id: ++aenderung, art, alt: null, neu: null, akteur: akteur(), zeit }]);
   for (const e of einsaetze) protokolle.set(e.id, [{ id: ++aenderung, art: 'angelegt', alt: null, neu: null, akteur: { ...person('IK'), rolle: 'energiemanager', art: 'kunde' }, zeit: '2026-11-04T10:12:00+01:00' }]);
+  if (stand === 'voll') {
+    const r = ahrenbergRangliste(false, aktuelleKriterien);
+    const gruende = ['41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.', '5,2 %; Montage läuft an zwei Standorten.', '8,6 % — unter der Schwelle; Querschnitt für Spritzguss und Montage, Leckageverluste vermutet.', '3,3 % im Oktober.', '4,2 % im Oktober.', '4,7 %; Ladepark 2027 erhöht ihn — Wiedervorlage.', 'Gas ohne Anteil; nur Bürobeheizung.'];
+    for (const e of [...r.einsaetze, ...r.weitere_traeger]) {
+      const n = Number(e.kennzeichen.slice(3));
+      const wesentlich = n === 1 || n === 3;
+      einstufungen.set(e.id, [{ fassung: 1, einstufung: wesentlich ? 'wesentlich' : 'nicht_wesentlich', begruendung: gruende[n - 1], grund: n === 1 ? ['K1'] : n === 3 ? ['K4'] : [], herkunft: e.herkunft,
+        vorgeschlagen_ab: '2026-11-06', gueltig_ab: '2026-11-06', gueltig_bis: null, rueckwirkend: false, akteur: ikAkteur(), vieraugen: false,
+        freigabe_status: 'freigegeben', entschieden_von: null, entschieden_am: null, created_at: '2026-11-06T10:00:00+01:00' }]);
+    }
+    if (historieR13) {
+      const ee3 = r.einsaetze.find((e) => e.kennzeichen === 'EE-3')!;
+      const f1 = einstufungen.get(ee3.id)![0];
+      einstufungen.set(ee3.id, [
+        { ...f1, fassung: 3, einstufung: 'nicht_wesentlich', grund: ['K1', 'K2'], vorgeschlagen_ab: '2028-11-20', gueltig_ab: '2028-11-20', gueltig_bis: null,
+          begruendung: 'Leckagen beseitigt; 6,2 %, hinter dem 80-%-Block; Wiedervorlage 2029.', created_at: '2028-11-20T10:00:00+01:00', herkunft: { ...f1.herkunft, zeitraum: '2027-11/2028-10' } },
+        { ...f1, fassung: 2, grund: ['K2'], vorgeschlagen_ab: '2027-11-24', gueltig_ab: '2027-11-24', gueltig_bis: '2028-11-19',
+          begruendung: 'Der belastbare 80-%-Block trägt die Einstufung.', created_at: '2027-11-24T10:00:00+01:00', herkunft: { ...f1.herkunft, zeitraum: '2026-11/2027-10' } },
+        { ...f1, gueltig_bis: '2027-11-23' },
+      ]);
+    }
+  }
   const finde = (id: string) => {
     const e = einsaetze.find((x) => x.id === id);
     if (!e) throw fehler(404, 'nicht_gefunden', 'Energieeinsatz nicht gefunden.');
@@ -218,6 +306,13 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
       if (s.ausschluesse.some((a) => !a.begruendung.trim())) throw fehler(422, 'begruendung_fehlt', 'Ein Ausschluss braucht eine Begründung.');
       umfangFassung = { nr: (umfangFassung?.nr ?? 0) + 1, s };
       return structuredClone(umfangAus(umfangFassung.nr, s, s.gueltig_ab));
+    },
+    bewertungRangliste: async () => structuredClone(ahrenbergRangliste(stand === 'leer' && einsaetze.length === 0, aktuelleKriterien)),
+    bewertungKriterien: async () => structuredClone(aktuelleKriterien),
+    bewertungKriterienSpeichern: async (s: BewertungKriterienSpeichern) => {
+      if (!s.begruendung.trim()) throw fehler(422, 'begruendung_fehlt', 'Bitte geben Sie eine Begründung an.');
+      aktuelleKriterien = kriterienFassung(aktuelleKriterien.fassung + 1, s.werte, s.begruendung.trim());
+      return structuredClone(aktuelleKriterien);
     },
     energieeinsaetze: async () => ({ energieeinsaetze: structuredClone(einsaetze) }),
     energieeinsatzVorschlaege: async () => ({
@@ -253,5 +348,25 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
       return ersetze({ ...finde(id), gueltig_bis: b.gueltig_bis ?? heute, beendet_am: `${heute}T09:30:00+01:00`, beendet_grund: b.grund });
     },
     energieeinsatzProtokoll: async (id: string) => ({ aenderungen: structuredClone(protokolle.get(finde(id).id) ?? []) }),
+    energieeinsatzEinstufungen: async (id: string) => ({ fassungen: structuredClone(einstufungen.get(finde(id).id) ?? []) }),
+    energieeinsatzEinstufen: async (id: string, s: EnergieeinsatzEinstufungSpeichern) => {
+      finde(id);
+      if (!s.begruendung.trim()) throw fehler(422, 'begruendung_fehlt', 'Bitte geben Sie eine Begründung an.');
+      const alt = einstufungen.get(id) ?? [];
+      const f: EnergieeinsatzEinstufungFassung = { ...s, begruendung: s.begruendung.trim(), fassung: (alt[0]?.fassung ?? 0) + 1,
+        vorgeschlagen_ab: heute, gueltig_ab: vieraugen ? null : heute, gueltig_bis: null, rueckwirkend: false, akteur: akteur(), vieraugen,
+        freigabe_status: vieraugen ? 'beantragt' : 'freigegeben', entschieden_von: null, entschieden_am: null, created_at: `${heute}T10:00:00+01:00` };
+      einstufungen.set(id, [f, ...alt]);
+      return structuredClone(f);
+    },
+    energieeinsatzEinstufungBestaetigen: async (id: string) => {
+      const alt = einstufungen.get(finde(id).id) ?? [];
+      const offen = alt.find((f) => f.freigabe_status === 'beantragt');
+      if (!offen) throw fehler(409, 'bereits_entschieden', 'Es wartet keine Einstufung auf Bestätigung.');
+      if (offen.akteur.sub === akteur().sub) throw fehler(403, 'zweite_person_noetig', 'Eine zweite Person muss bestätigen.');
+      const f = { ...offen, gueltig_ab: heute, freigabe_status: 'freigegeben' as const, entschieden_von: akteur(), entschieden_am: `${heute}T11:00:00+01:00` };
+      einstufungen.set(id, alt.map((x) => x.fassung === f.fassung ? f : x));
+      return structuredClone(f);
+    },
   };
 }
