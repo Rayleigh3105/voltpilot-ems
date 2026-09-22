@@ -11166,6 +11166,31 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/wiedervorlage:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" } }
+    put:
+      tags: [berichte]
+      summary: Wiedervorlage der energetischen Bewertung ändern.
+      description: >
+        Nur für die Vorlage `energetische_bewertung`, Recht `bericht.unternehmen`. Die Änderung braucht eine Begründung
+        und leitet noch keine Fälligkeit ab (AP-16 IP-21; die Fälligkeitsableitung folgt in IP-24).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BerichtWiedervorlage" }
+      responses:
+        "200":
+          description: Der Bericht mit der geänderten Wiedervorlage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bericht" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "422": { $ref: "#/components/responses/BerichtAbgelehnt" }
   /api/v1/berichte/{kennung}/entwurf:
     parameters:
       - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
@@ -27931,11 +27956,11 @@ components:
       description: >
         Der Körper von `POST /api/v1/berichte` (streng gelesen).
       additionalProperties: false
-      required: [vorlage, geltung_id, zeitraum]
+      required: [vorlage, geltung_id]
       properties:
         vorlage: { type: string, description: "Ein Schlüssel aus GET /api/v1/bericht-vorlagen." }
         geltung_id: { type: string, format: uuid, description: "Der Standort; beim Unternehmensbericht das Unternehmen." }
-        zeitraum: { type: string, pattern: "^[0-9]{4}(-(0[1-9]|1[0-2]))?$", description: "2026-10 (Monat) bzw. 2026 (Jahr), passend zur Vorlage." }
+        zeitraum: { type: string, pattern: "^([0-9]{4}|[0-9]{4}-(0[1-9]|1[0-2])|[0-9]{4}-(0[1-9]|1[0-2])/[0-9]{4}-(0[1-9]|1[0-2]))$", description: "2026-10 (Monat), 2026 (Jahr) bzw. 2025-11/2026-10 (Datengrundlage); nur bei der energetischen Bewertung optional, dann die letzten zwölf vollen Monate." }
         kennzahlen_abgewaehlt:
           type: array
           items: { type: string, format: uuid }
@@ -27953,6 +27978,14 @@ components:
       required: [entwurf_datenstand]
       properties:
         entwurf_datenstand: { type: string, format: date-time }
+    BerichtWiedervorlage:
+      type: object
+      description: Wiedervorlage der energetischen Bewertung in Monaten, mit Begründung.
+      additionalProperties: false
+      required: [wiedervorlage_monate, begruendung]
+      properties:
+        wiedervorlage_monate: { type: integer, minimum: 1, maximum: 120 }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
     BerichtAnstossVerwerfen:
       type: object
       description: >
@@ -27975,7 +28008,7 @@ components:
         Ein Bericht in der Liste und im Kopf: `stand_zeichen` ist der Vermerk aus R5 als Wort,
         `stand_text` sein Kundensatz („Entwurf · Datenstand …“, „Berichtsstand Nr. 1“, „Revision nötig —
         Korrektur K-2026-0007“, „Anstoß verworfen (…)“).
-      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand]
+      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate]
       properties:
         kennung: { type: string }
         vorlage: { type: string }
@@ -27983,7 +28016,7 @@ components:
         geltung_art: { type: string, enum: [standort, unternehmen] }
         geltung_id: { type: string, format: uuid }
         geltung_name: { type: string, nullable: true }
-        zeitraum_art: { type: string, enum: [monat, jahr] }
+        zeitraum_art: { type: string, enum: [monat, jahr, datengrundlage] }
         zeitraum: { type: string }
         zeitraum_text: { type: string }
         zeitzone: { type: string }
@@ -27994,6 +28027,7 @@ components:
         stand_text: { type: string, nullable: true }
         neueste_nr: { type: integer, nullable: true }
         entwurf_datenstand: { type: string, format: date-time, nullable: true }
+        wiedervorlage_monate: { type: integer, minimum: 1, maximum: 120, nullable: true, description: "Nur bei der energetischen Bewertung; Startwert 12." }
     BerichtListe:
       type: object
       required: [berichte]

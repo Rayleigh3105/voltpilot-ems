@@ -50,6 +50,7 @@ public final class BerichtRechte {
     public static final String FREIGEBEN = "freigeben";
     public static final String VERWERFEN = "verwerfen";
     public static final String ARCHIVIEREN = "archivieren";
+    public static final String WIEDERVORLAGE_AENDERN = "wiedervorlage_aendern";
 
     public static final Matrix MATRIX = matrix();
 

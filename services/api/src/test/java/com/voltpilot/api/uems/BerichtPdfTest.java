@@ -162,10 +162,14 @@ class BerichtPdfTest {
     @Test
     void dieAbschnitteFolgenDenVorlagen() throws Exception {
         JsonNode vorlagen = EXAKT.readTree(Files.readString(V2.resolve("bericht-vorlagen.json"))).path("vorlagen");
-        assertThat(vorlagen).hasSize(4);
+        assertThat(vorlagen).hasSize(5);
         for (JsonNode v : vorlagen) {
             String schluessel = v.path("schluessel").asText();
             assertThat(v.path("fassung").asInt()).isEqualTo(1);
+            if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(schluessel)) {
+                assertThat(BerichtPdf.VORLAGEN).doesNotContainKey(schluessel);
+                continue;
+            }
             assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
             Map<String, String> soll = new LinkedHashMap<>();
             v.path("abschnitte").forEach(a -> soll.put(a.path("schluessel").asText(), a.path("titel").asText()));

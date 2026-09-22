@@ -139,17 +139,30 @@ public class BerichtAbzugBildung {
     private final MeasurementCatalog katalog;
     private final ObjectMapper json;
     private final BerichtRegelwerk regelwerk;
+    private final BewertungRanglisteService bewertungRangliste;
+    private final BewertungMessabdeckungService bewertungMessabdeckung;
 
     @Autowired
     public BerichtAbzugBildung(MeasurementCatalog katalog, ObjectMapper json, ObjectProvider<BuildProperties> build,
-            @Value("${voltpilot.uems.berichte.build:}") String buildKennung) {
-        this(katalog, json, regelwerk(build.getIfAvailable(), buildKennung));
+            @Value("${voltpilot.uems.berichte.build:}") String buildKennung,
+            BewertungRanglisteService bewertungRangliste,
+            BewertungMessabdeckungService bewertungMessabdeckung) {
+        this(katalog, json, regelwerk(build.getIfAvailable(), buildKennung), bewertungRangliste,
+                bewertungMessabdeckung);
     }
 
     BerichtAbzugBildung(MeasurementCatalog katalog, ObjectMapper json, BerichtRegelwerk regelwerk) {
+        this(katalog, json, regelwerk, null, null);
+    }
+
+    private BerichtAbzugBildung(MeasurementCatalog katalog, ObjectMapper json, BerichtRegelwerk regelwerk,
+            BewertungRanglisteService bewertungRangliste,
+            BewertungMessabdeckungService bewertungMessabdeckung) {
         this.katalog = katalog;
         this.json = json;
         this.regelwerk = regelwerk;
+        this.bewertungRangliste = bewertungRangliste;
+        this.bewertungMessabdeckung = bewertungMessabdeckung;
     }
 
     static BerichtRegelwerk regelwerk(BuildProperties build, String buildKennung) {
@@ -228,6 +241,17 @@ public class BerichtAbzugBildung {
         boolean amStandort = BerichtRegeln.STANDORT.equals(b.geltungArt());
         BerichtRegeln.Vorlage vorlage = BerichtRegeln.vorlage(b.vorlage());
         BerichtRegeln.Zeitraum z = BerichtRegeln.zeitraum(b.zeitraumArt(), b.schluessel(), zone);
+        if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(b.vorlage())) {
+            if (bewertungRangliste == null || bewertungMessabdeckung == null) {
+                throw new IllegalStateException("Bewertungs-Leser sind nicht verdrahtet");
+            }
+            BerichtUnternehmen.BewertungsAbzug x = BerichtUnternehmen.bewertung(j, json, tenant, berichtId,
+                    b.kennung(), b.unternehmen(), z, zone, jetzt, regelwerk, bewertungRangliste,
+                    bewertungMessabdeckung);
+            String text = BerichtRegeln.kanonisch(x.abzug());
+            return new Ergebnis(tenant, berichtId, b.kennung(), x.abzug(), text, BerichtRegeln.pruefsumme(text), jetzt,
+                    x.quellen(), x.zeiten());
+        }
         MessstelleWerteService lesemodell = lesemodell(j, jetzt);
         MessstelleRepository messstellen = new MessstelleRepository(j);
         Map<UUID, List<Object[]>> stellungen = stellungen(j, tenant);

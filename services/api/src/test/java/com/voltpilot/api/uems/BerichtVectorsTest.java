@@ -201,7 +201,7 @@ class BerichtVectorsTest {
         assertThat(Files.exists(TS_ZWILLING)).as("TS-Zwilling").isTrue();
     }
 
-    /** B1 … B16 in ihrer Reihenfolge, jeder mit Zweck, Handrechnung und mindestens einer Prüfung. */
+    /** B1 … B17 in ihrer Reihenfolge, jeder mit Zweck, Handrechnung und mindestens einer Prüfung. */
     @Test
     void jederFallHatZweckHandrechnungUndPruefungen() throws Exception {
         List<String> ids = new ArrayList<>();
@@ -214,7 +214,7 @@ class BerichtVectorsTest {
             assertThat(c.path("pruefungen")).as(c.path("id").asText() + " · Prüfungen").isNotEmpty();
         });
         List<String> erwartet = new ArrayList<>();
-        for (int i = 1; i <= 16; i++) {
+        for (int i = 1; i <= 17; i++) {
             erwartet.add("B" + i);
         }
         assertThat(ids).isEqualTo(erwartet);

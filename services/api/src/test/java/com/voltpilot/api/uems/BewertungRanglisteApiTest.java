@@ -71,6 +71,7 @@ class BewertungRanglisteApiTest {
     @Autowired MessstelleWerteService werte;
     @Autowired BilanzService bilanz;
     @Autowired BewertungMengenRepository mengen;
+    @Autowired BerichtService berichte;
     static JdbcTemplate root;
     static JsonNode ref;
     UUID tenant,unternehmen;
@@ -82,7 +83,7 @@ class BewertungRanglisteApiTest {
     @BeforeEach void welt() throws Exception {
         ids=new HashMap<>();
         var uhr=Clock.fixed(Instant.parse("2026-12-10T12:00:00Z"),ZoneOffset.UTC);
-        ablesungen.uhrStellen(uhr); werte.uhrStellen(uhr); bilanz.uhrStellen(uhr);
+        ablesungen.uhrStellen(uhr); werte.uhrStellen(uhr); bilanz.uhrStellen(uhr); berichte.uhrStellen(uhr);
         tenant=uuid("INSERT INTO tenant(name) VALUES ('Ahrenberg IP-9') RETURNING id");
         unternehmen=uuid("INSERT INTO unternehmen(tenant_id,name) VALUES (?,'Ahrenberg') RETURNING id",tenant);
         for (String s:List.of("ST-1","ST-2")) ids.put(s,uuid("INSERT INTO standort(tenant_id,unternehmen_id,name,kurzzeichen,zeitzone,zustand) "
@@ -204,6 +205,74 @@ class BewertungRanglisteApiTest {
         assertThat(teil.path("gemessen")).isEmpty();
         assertThat(teil.path("hinweise")).as("kein Name einer fremden Quell-Messstelle").isEmpty();
         assertThat(teil.toString()).doesNotContain("MS-06","MS-07","MS-11","P-3","4100");
+    }
+
+    @Test void ip21BewertungWirdBytegleichFreigegebenUndIhreBelegeBleibenGeschuetzt() throws Exception {
+        root.update("UPDATE energieeinsatz SET gueltig_ab='2024-01-01' WHERE id=?", ids.get("EE-1"));
+        root.update("INSERT INTO messstelle_prozess(tenant_id,messstelle_id,prozess_id,gueltig_ab) "
+                + "VALUES (?,?,?,'2024-01-01')", tenant, ids.get("MS-04"), ids.get("P-1"));
+        JsonNode rangliste = ruf("GET", BASE + OKTOBER, "IK", null, 200);
+        JsonNode ee1 = einsatz(rangliste, "EE-1");
+        var einstufung = JSON.createObjectNode();
+        einstufung.put("einstufung", "wesentlich");
+        einstufung.put("begruendung", "Die Person bestätigt die Bedeutung für den Energieeinsatz.");
+        einstufung.putArray("grund").add("K1");
+        einstufung.put("gueltig_ab", "2026-09-23");
+        einstufung.set("herkunft", ee1.path("herkunft").deepCopy());
+        ruf("PUT", "/api/v1/unternehmen/energieeinsaetze/" + ids.get("EE-1") + "/einstufung",
+                "IK", einstufung, 200);
+
+        JsonNode bedarf = ruf("POST", "/api/v1/unternehmen/energieeinsaetze/" + ids.get("EE-8") + "/messbedarf",
+                "IK", Map.of("wortlaut", "Strommenge der Nebenaggregate", "ort", "Halle 1",
+                        "groesse", "Wirkenergie", "frist", "2027-03-31"), 201);
+        UUID bedarfId = UUID.fromString(bedarf.path("id").asText());
+        UUID geraetId = root.queryForObject("SELECT geraet_id FROM messstelle_quelle WHERE tenant_id=? AND messstelle_id=?",
+                UUID.class, tenant, ids.get("MS-04"));
+        Map<String,Object> messmittel = Map.of("genauigkeitsklasse", "1,0", "pruefungsart", "kalibrierung",
+                "pruefung_am", "2026-09-01", "pruefung_gueltig_bis", "2028-08-31",
+                "beleg", Map.of("bezeichnung", "Kalibrierschein", "ablage", "DMS-4711",
+                        "sha256", "a".repeat(64)), "wandler", List.of());
+        ruf("PUT", "/api/v1/geraete/" + geraetId + "/messmittel", "IK", messmittel, 200);
+
+        JsonNode bericht = ruf("POST", "/api/v1/berichte", "IK", Map.of("vorlage", "energetische_bewertung",
+                "geltung_id", unternehmen.toString(), "zeitraum", "2026-10"), 201);
+        assertThat(bericht.path("wiedervorlage_monate").asInt()).isEqualTo(12);
+        String kennung = bericht.path("kennung").asText();
+        assertThat(ruf("PUT", "/api/v1/berichte/" + kennung + "/wiedervorlage", "IK",
+                Map.of("wiedervorlage_monate", 18, "begruendung", "An den Prüfzyklus des Unternehmens angepasst."), 200)
+                .path("wiedervorlage_monate").asInt()).isEqualTo(18);
+        assertThat(ruf("POST", "/api/v1/berichte", "IK", Map.of("vorlage", "energetische_bewertung",
+                "geltung_id", unternehmen.toString()), 201).path("zeitraum").asText()).isEqualTo("2025-12/2026-11");
+        JsonNode entwurf = ruf("GET", "/api/v1/berichte/" + kennung + "/entwurf", "IK", null, 200);
+        JsonNode abzug = entwurf.path("abzug");
+        assertThat(abzug.path("rangliste").at("/kriterien/fassung").asInt()).isEqualTo(1);
+        assertThat(abzug.path("rangliste").findValuesAsText("version")).contains("1");
+        assertThat(abzug.at("/einstufungen/0/fassung").asInt()).isEqualTo(1);
+        assertThat(abzug.at("/einstufungen/0/herkunft/kriterien_fassung").asInt()).isEqualTo(1);
+        assertThat(abzug.path("messplanung").findValuesAsText("kennzeichen")).contains("MB-1");
+        assertThat(abzug.path("messmittel").findValuesAsText("genauigkeitsklasse")).contains("1,0");
+        assertThat(abzug.at("/kopf/quellenverzeichnis").isArray()).isTrue();
+
+        JsonNode freigabe = ruf("POST", "/api/v1/berichte/" + kennung + "/freigeben", "IK",
+                Map.of("entwurf_datenstand", entwurf.path("datenstand").asText()), 201);
+        assertThat(freigabe.path("nr").asInt()).isEqualTo(1);
+        assertThat(freigabe.path("pruefsumme").asText()).startsWith("sha256:");
+        String standPfad = "/api/v1/berichte/" + kennung + "/staende/1";
+        assertThat(rufText("GET", standPfad, "IK", null, 200))
+                .isEqualTo(rufText("GET", standPfad, "IK", null, 200));
+
+        assertThat(ruf("PUT", "/api/v1/unternehmen/energieeinsaetze/" + ids.get("EE-1"), "IK",
+                Map.of("name", "Kunststoffverarbeitung geändert"), 409).path("code").asText())
+                .isEqualTo("berichts_belege");
+        assertThat(ruf("PUT", "/api/v1/unternehmen/energieeinsaetze/" + ids.get("EE-8") + "/messbedarf/" + bedarfId,
+                "IK", Map.of("wortlaut", "Geänderte Planung"), 409).path("code").asText())
+                .isEqualTo("berichts_belege");
+        Map<String,Object> geaendertesMessmittel = Map.of("genauigkeitsklasse", "0,5",
+                "pruefungsart", "kalibrierung", "pruefung_am", "2026-09-01",
+                "pruefung_gueltig_bis", "2028-08-31", "beleg", Map.of("bezeichnung", "Kalibrierschein",
+                        "ablage", "DMS-4711", "sha256", "a".repeat(64)), "wandler", List.of());
+        assertThat(ruf("PUT", "/api/v1/geraete/" + geraetId + "/messmittel", "IK", geaendertesMessmittel, 409)
+                .path("code").asText()).isEqualTo("berichts_belege");
     }
     @Test void r15KriterienFassungZweiAendertDasUrteilAberStuftenNichtEin() throws Exception {
         var werte=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(
@@ -425,12 +494,16 @@ class BewertungRanglisteApiTest {
     }
     private UUID uuid(String sql,Object...args) { return root.queryForObject(sql,UUID.class,args); }
     private JsonNode ruf(String method,String path,String sub,Object body,int status) throws Exception {
+        String text = rufText(method, path, sub, body, status);
+        return text.isBlank() ? JSON.createObjectNode() : JSON.readTree(text);
+    }
+    private String rufText(String method,String path,String sub,Object body,int status) throws Exception {
         Jwt token=Jwt.withTokenValue("test").header("alg","none").subject(sub).issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(3600)).claim("tenant_id",tenant.toString()).claim("realm_access",Map.of("roles",List.of())).build();
         var b=request(HttpMethod.valueOf(method),path).with(authentication(new KeycloakRealmRoleConverter().convert(token)));
         if (body!=null) b.contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(body));
         var r=mvc.perform(b).andReturn().getResponse();
         assertThat(r.getStatus()).as(method+" "+path+" "+r.getContentAsString()).isEqualTo(status);
-        return JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8));
+        return r.getContentAsString(StandardCharsets.UTF_8);
     }
 }

@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.uems.EnergieeinsatzAbgelehnt;
+import com.voltpilot.api.uems.BelegeImWeg;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,10 @@ public class EnergieeinsatzFehlerHandler {
         body.put("message", e.getMessage());
         body.putAll(e.fakten());
         return ResponseEntity.status(e.status()).body(body);
+    }
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belege(BelegeImWeg e) {
+        return ResponseEntity.status(409).body(e.koerper());
     }
     @ExceptionHandler({org.springframework.http.converter.HttpMessageNotReadableException.class,
             org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class})

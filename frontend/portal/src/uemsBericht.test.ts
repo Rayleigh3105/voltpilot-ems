@@ -178,8 +178,8 @@ describe('Bericht-Vertrag: Form der Vektor-Datei', () => {
     expect(existsSync(resolve(process.cwd(), '../../services/api/src/main/java/com/voltpilot/api/uems/BerichtRegeln.java'))).toBe(true);
   });
 
-  it('B1 … B16 in ihrer Reihenfolge; die Plan-Abnahme hat B1 und B16 mit derselben Prüfsumme', () => {
-    expect((vektoren.cases as Json[]).map((c) => c.id)).toEqual(Array.from({ length: 16 }, (_, i) => `B${i + 1}`));
+  it('B1 … B17 in ihrer Reihenfolge; die Plan-Abnahme hat B1 und B16 mit derselben Prüfsumme', () => {
+    expect((vektoren.cases as Json[]).map((c) => c.id)).toEqual(Array.from({ length: 17 }, (_, i) => `B${i + 1}`));
     expect((vektoren.cases as Json[]).filter((c) => c.abnahme !== null).map((c) => [c.id, c.abnahme])).toEqual([['B1', 'captain'], ['B16', 'captain']]);
     const summe = (i: number): string => (vektoren.cases[i].pruefungen as Json[]).find((p) => p.regel === 'kanonisch').ergebnis.pruefsumme;
     expect(summe(15)).toBe(summe(0));

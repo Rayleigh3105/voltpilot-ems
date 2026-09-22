@@ -39,7 +39,8 @@ public class BerichtRepository {
     /** Ein Bericht mit dem Namen seiner Geltung. */
     public record Kopf(UUID id, UUID tenant, String kennung, String vorlage, int vorlageFassung, String geltungArt,
             UUID standortId, UUID unternehmenId, String geltungName, String zeitraumArt, String schluessel, String zeitzone,
-            String angelegtVonSub, String angelegtVonName, Instant angelegtAm, Instant archiviertAm) {
+            String angelegtVonSub, String angelegtVonName, Instant angelegtAm, Instant archiviertAm,
+            int wiedervorlageMonate) {
 
         public UUID geltungId() {
             return standortId != null ? standortId : unternehmenId;
@@ -66,7 +67,8 @@ public class BerichtRepository {
 
     private static final String KOPF = "SELECT b.id, b.tenant_id, b.kennung, b.vorlage, b.vorlage_fassung, b.geltung_art, "
             + "b.standort_id, b.unternehmen_id, coalesce(st.name, u.name) AS geltung_name, b.zeitraum_art, "
-            + "b.zeitraum_schluessel, b.zeitzone, b.angelegt_von_sub, b.angelegt_von_name, b.angelegt_am, b.archiviert_am "
+            + "b.zeitraum_schluessel, b.zeitzone, b.angelegt_von_sub, b.angelegt_von_name, b.angelegt_am, b.archiviert_am, "
+            + "b.wiedervorlage_monate "
             + "FROM bericht b LEFT JOIN standort st ON st.id = b.standort_id AND st.tenant_id = b.tenant_id "
             + "LEFT JOIN unternehmen u ON u.id = b.unternehmen_id AND u.tenant_id = b.tenant_id ";
 
@@ -144,6 +146,12 @@ public class BerichtRepository {
     public boolean archivieren(UUID tenant, UUID bericht, Instant jetzt) {
         return jdbc.update("UPDATE bericht SET archiviert_am = ? WHERE tenant_id = ? AND id = ? AND archiviert_am IS NULL",
                 Timestamp.from(jetzt), tenant, bericht) == 1;
+    }
+
+    /** AP-16 S5 — nur die energetische Bewertung darf ihre Wiedervorlage ändern. */
+    public boolean wiedervorlageAendern(UUID tenant, UUID bericht, int monate) {
+        return jdbc.update("UPDATE bericht SET wiedervorlage_monate = ? WHERE tenant_id = ? AND id = ? "
+                + "AND vorlage = 'energetische_bewertung'", monate, tenant, bericht) == 1;
     }
 
     // ================================================================================ Geltung
@@ -380,7 +388,7 @@ public class BerichtRepository {
                 rs.getObject("standort_id", UUID.class), rs.getObject("unternehmen_id", UUID.class),
                 rs.getString("geltung_name"), rs.getString("zeitraum_art"), rs.getString("zeitraum_schluessel"),
                 rs.getString("zeitzone"), rs.getString("angelegt_von_sub"), rs.getString("angelegt_von_name"),
-                zeit(rs, "angelegt_am"), zeit(rs, "archiviert_am"));
+                zeit(rs, "angelegt_am"), zeit(rs, "archiviert_am"), rs.getInt("wiedervorlage_monate"));
     }
 
     private static StandZeile stand(ResultSet rs, int i) throws SQLException {

@@ -29,10 +29,11 @@ public class EnergieeinsatzService {
     private final RechtPruefung rechte;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
+    private final BerichtsBelege berichtsBelege;
 
     public EnergieeinsatzService(EnergieeinsatzRepository repo, KostenstelleProzessRepository prozesse,
             UnternehmenRepository unternehmen, MessstelleService messstellen, MessstelleWerteService werte,
-            RechtPruefung rechte, ObjectMapper json, PlatformTransactionManager tm) {
+            RechtPruefung rechte, ObjectMapper json, PlatformTransactionManager tm, BerichtsBelege berichtsBelege) {
         this.repo = repo;
         this.prozesse = prozesse;
         this.unternehmen = unternehmen;
@@ -41,6 +42,7 @@ public class EnergieeinsatzService {
         this.rechte = rechte;
         this.json = json;
         this.tx = new TransactionTemplate(tm);
+        this.berichtsBelege = berichtsBelege;
     }
 
     public Liste liste(UUID prozess) {
@@ -90,6 +92,7 @@ public class EnergieeinsatzService {
 
     public void bearbeiten(UUID id, Bearbeiten a, ProtokollAkteur wer) {
         tx.executeWithoutResult(s -> { finde(id); name(a.name());
+            berichtsBelege.pruefeObjekt(id, BelegeImWeg.Gegenstand.ENERGIEEINSATZ);
             laufend(repo.bearbeiten(id, a.name().strip(), text(a.wortlaut()), text(a.verbraucherWortlaut()), wer)); });
     }
     public void beenden(UUID id, Beenden a, ProtokollAkteur wer) {
@@ -98,15 +101,19 @@ public class EnergieeinsatzService {
             if (text(a.grund()) == null) throw abgelehnt("grund_fehlt", "Bitte geben Sie einen Grund für das Beenden an.");
             LocalDate bis = a.gueltigBis() == null ? heute() : a.gueltigBis();
             if (bis.isBefore(e.gueltigAb())) throw abgelehnt("zeitraum_ungueltig", "Bitte wählen Sie einen letzten Tag ab dem Beginn.");
+            berichtsBelege.pruefeObjekt(id, BelegeImWeg.Gegenstand.ENERGIEEINSATZ);
             laufend(repo.beenden(id, bis, a.grund().strip(), wer));
         });
     }
     public void verantwortlicher(UUID id, VerantwortlicherSetzen a, ProtokollAkteur wer) {
         tx.executeWithoutResult(s -> { finde(id); verantwortlich(a.verantwortlichSub());
+            berichtsBelege.pruefeObjekt(id, BelegeImWeg.Gegenstand.ENERGIEEINSATZ);
             laufend(repo.verantwortlichenSetzen(id, a.verantwortlichSub(), wer)); });
     }
     public void einflussgroessen(UUID id, EinfluesseSetzen a, ProtokollAkteur wer) {
-        tx.executeWithoutResult(s -> { finde(id); laufend(repo.einflussgroessenErsetzen(id, einfluesse(a.einflussgroessen()), wer)); });
+        tx.executeWithoutResult(s -> { finde(id);
+            berichtsBelege.pruefeObjekt(id, BelegeImWeg.Gegenstand.ENERGIEEINSATZ);
+            laufend(repo.einflussgroessenErsetzen(id, einfluesse(a.einflussgroessen()), wer)); });
     }
     public Protokoll protokoll(UUID id) {
         finde(id);

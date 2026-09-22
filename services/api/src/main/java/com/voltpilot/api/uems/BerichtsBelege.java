@@ -109,4 +109,14 @@ public class BerichtsBelege {
             throw new BelegeImWeg(BelegeImWeg.Gegenstand.KOMPONENTE, k.messstellen(), k.staende());
         }
     }
+
+    /** AP-16 S4 — eine direkt zitierte Bewertungsquelle darf nicht still überschrieben werden. */
+    public void pruefeObjekt(UUID objekt, BelegeImWeg.Gegenstand gegenstand) {
+        List<BerichtRegeln.StandBezeichnung> staende = jdbc.query(
+                "SELECT kennung, nr FROM uems_berichts_belege(?) ORDER BY kennung, nr",
+                (rs, n) -> new BerichtRegeln.StandBezeichnung(rs.getString(1), rs.getInt(2)), objekt);
+        if (!staende.isEmpty()) {
+            throw new BelegeImWeg(gegenstand, List.of(), staende);
+        }
+    }
 }

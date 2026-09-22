@@ -3,15 +3,15 @@
     "Geteilte Vektoren des BERICHT-VERTRAGS (UEMS AP-12 IP-1, Entscheide E1–E15 und W1–W11 vom 14.09.2026) — Prosa in bericht.md.",
     "Ein Bericht ist ein EIGENES Objekt (Vorlage × Geltung × Zeitraum) mit genau einem gespeicherten Entwurf und null bis n freigegebenen",
     "Berichtsständen. Ein Berichtsstand ist ein ABZUG: der Inhalt als kanonischer Text mit SHA-256 — nie ein Verweis auf lebende Zeilen.",
-    "Die Fälle B1–B16 kommen aus dem Referenzfallkatalog des Konzepts (referenzfaelle.json); jede Zahl ist dort und beim Erzeugen dieser",
-    "Datei nachgerechnet. Zwei Zwillinge prüfen JEDE Prüfung: Java services/api .../uems/BerichtVectorsTest (BerichtRegeln) und",
+    "Die Fälle B1–B16 kommen aus dem Referenzfallkatalog des Konzepts (referenzfaelle.json); B17 ergänzt AP-16 IP-21.",
+    "Jede Zahl ist dort und beim Erzeugen dieser Datei nachgerechnet. Zwei Zwillinge prüfen JEDE Prüfung: Java services/api .../uems/BerichtVectorsTest (BerichtRegeln) und",
     "TypeScript frontend/portal/src/uemsBericht.test.ts (uemsBericht.ts).",
     "Was es schon gibt, wird AUFGERUFEN: Perioden BezugsPeriode.spanneVon, Frist TagRegeln.endgueltigAb, Uhrzeit ErgebnisZustand.uhr,",
     "Zahlform ErgebnisZustand.zahl/zahlMitStellen, Kennzahl-Anzeige KennzahlRegeln.anzeige, Periodenname KennzahlRegeln.periodeText,",
     "Recht RechteAbleitung.darf, die Sprache der Naht BerichteNaht.Bericht und KorrekturKaskade.Betroffen.",
     "Beträge sind Dezimaltext; Zeitpunkte ISO-8601 mit Offset; Tage einschließlich. null heißt „keine Werte“, nie 0."
   ],
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "$schema_datei": "./bericht.schema.json",
   "herkunft": "UEMS AP-12 §4 (A, Q, V, D, F, B, R, EW, RW, DA, G, S), §5.8 (Kundensätze), §7 (B1–B16) — Entscheide E1–E15 und W1–W11 vom 14.09.2026; Bau-Paket IP-1/IP-3",
   "zeitzone": "Europe/Berlin",
@@ -24,7 +24,7 @@
   },
   "regeln_kurz": [
     "Ein Bericht ist ein EIGENES Objekt (Vorlage × Geltung × Zeitraum, Kennung BR-<Jahr>-<Nr.>) mit genau einem gespeicherten Entwurf und null bis n freigegebenen Berichtsständen (E1, E8); ein Berichtsstand ist ein ABZUG: der vollständige Inhalt des Berichts als Text mit Prüfsumme, je Zahl mit Zustand, Abdeckung, Kennzeichen, Fassung (vorläufig/endgültig), Endgültigkeit, Version, Berechnungszeit, Formel-/Definitions-Fassung, Herkunft, Namen und Orten zum Datenstand — nichts wird nach der Freigabe aus lebenden Zeilen gelesen (E1, E2).",
-    "Quellen sind nur Objekte der UEMS-Messstellen-Welt: Messstellen (gemessen und berechnet), Kostenstellen-Energie, Bezugsgrößen, Kennzahlen (E3); Erlöse und Übersicht aus `telemetry_rollup_15m` sind im ersten Ausbau keine Berichtsquelle.",
+    "Quellen sind Objekte der UEMS-Messstellen- und Bewertungswelt: Messstellen, Kostenstellen-Energie, Bezugsgrößen, Kennzahlen sowie Umfang, Energieeinsatz, Messbedarf und Messmittel; Erlöse und Übersicht aus `telemetry_rollup_15m` sind keine Berichtsquelle.",
     "Datenstand = Zeitpunkt der Bildung des Abzugs (D1); alle einbezogenen Versionen/Fassungen sind älter (D2); die Freigabe liegt danach und setzt einen aktuellen Entwurf voraus (D3, D4); Freigabe nur, wenn der Zeitraum zu Ende und jeder Wert endgültig ist (E5); eine Person mit Recht, Zeitpunkt, eingefrorene Darstellung — kein Vier-Augen im ersten Ausbau.",
     "Betroffen = Zeitraum × Quellenverzeichnis: `betroffene` matcht `Betroffen.reihen`/`messstellen`/`bezugsgroessen` und die Tage `ersterTag … letzterTag` gegen `bericht_quelle` (unmittelbare und mittelbare Quellen, Vergleichszeiträume als eigene Einträge) (E6).",
     "Zwei Auslöser-Pfade in dieselbe Naht: (1) die Korrektur-Kaskade (Korrektur/Ersatzwert freigegeben oder zurückgenommen, Bezugsgrößen-Fassung ≥ 2, Kennzahl-Fassung rückwirkend — AP-08/AP-11), (2) der Strukturänderungs-Läufer für rückwirkende Zuordnungen (Ort, Anlage-Umzug, Fläche, Verteilung) aus den Änderungsprotokollen; Umbenennungen und Zuordnungen ab einem künftigen Tag sind kein Anstoß (E6).",
@@ -36,11 +36,11 @@
   ],
   "vokabulare": {
     "bericht_stand": ["entwurf", "freigegeben"],
-    "vorlage": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen"],
+    "vorlage": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung"],
     "geltung_art": ["standort", "unternehmen"],
-    "zeitraum_art": ["monat", "jahr"],
+    "zeitraum_art": ["monat", "jahr", "datengrundlage"],
     "vergleich_art": ["vormonat", "vorjahresmonat", "vorjahr"],
-    "quelle_art": ["messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl"],
+    "quelle_art": ["messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl", "umfang", "energieeinsatz", "messbedarf", "messmittel"],
     "quelle_bezug": ["unmittelbar", "mittelbar", "vergleich"],
     "anstoss_art": [
       "korrektur_freigegeben",
@@ -58,7 +58,7 @@
     "grund_ohne_vergleich": ["vor_bestehen", "quelle_beendet", "keine_werte"],
     "kein_anstoss": ["umbenennung", "nicht_rueckwirkend", "keine_strukturaenderung"],
     "struktur_protokoll": ["ort_aenderung", "messstelle_aenderung"],
-    "handlung": ["abrufen", "pdf", "csv", "anlegen", "freigeben", "verwerfen", "archivieren"],
+    "handlung": ["abrufen", "pdf", "csv", "anlegen", "freigeben", "verwerfen", "archivieren", "wiedervorlage_aendern"],
     "fehler": [
       "zeitraum_nicht_zu_ende",
       "werte_vorlaeufig",
@@ -151,13 +151,15 @@
       "standort/freigeben": "bericht.standort_freigeben",
       "standort/verwerfen": "bericht.standort_freigeben",
       "standort/archivieren": "bericht.standort_freigeben",
+      "standort/wiedervorlage_aendern": "bericht.standort_freigeben",
       "unternehmen/abrufen": "bericht.unternehmen",
       "unternehmen/pdf": "bericht.unternehmen",
       "unternehmen/csv": "export.unternehmen",
       "unternehmen/anlegen": "bericht.unternehmen",
       "unternehmen/freigeben": "bericht.unternehmen",
       "unternehmen/verwerfen": "bericht.unternehmen",
-      "unternehmen/archivieren": "bericht.unternehmen"
+      "unternehmen/archivieren": "bericht.unternehmen",
+      "unternehmen/wiedervorlage_aendern": "bericht.unternehmen"
     },
     "teilansicht_recht": "messwerte.ansehen"
   },
@@ -165,8 +167,10 @@
     "zeitraum_nicht_zu_ende": "{zeitraum} ist noch nicht zu Ende — ein Berichtsstand ist ab dem {datum} möglich ({tage} Tage nach {ende}).",
     "zeitraum_monat": "Der {name}",
     "zeitraum_jahr": "Das Jahr {name}",
+    "zeitraum_datengrundlage": "Die Datengrundlage {name}",
     "ende_monat": "Monatsende",
     "ende_jahr": "Jahresende",
+    "ende_datengrundlage": "Ende der Datengrundlage",
     "werte_vorlaeufig": "{werte} noch vorläufig (endgültig ab {datum}): {quellen} — ein Berichtsstand braucht endgültige Werte.",
     "werte_mehrere": "{anzahl} Werte sind",
     "werte_einer": "1 Wert ist",
@@ -5362,6 +5366,51 @@
           "name": "Kennzeichen anstoss_verworfen (F5, R4)",
           "eingang": {"schluessel": "anstoss_verworfen", "begruendung": "Ablesung geprüft, die Zahl bleibt"},
           "ergebnis": {"text": "Anstoß verworfen (Ablesung geprüft, die Zahl bleibt)"}
+        }
+      ]
+    },
+    {
+      "id": "B17",
+      "name": "b17-energetische-bewertung",
+      "familie": "plan_abnahme",
+      "abnahme": null,
+      "titel": "Energetische Bewertung ist eine Berichtsvorlage mit Datengrundlage und vier additiven Quellenarten",
+      "why": "AP-16 S1/S2 nutzt die bestehende Bericht-Maschine; der Stand bleibt Kopie mit Prüfsumme und erfindet keine zweite Rechenform.",
+      "schritte": [
+        "Die Vorlage gilt unternehmensweit und enthält genau die acht Abschnitte der energetischen Bewertung.",
+        "Die Datengrundlage 11/2025–10/2026 umfasst zwölf volle Monate und hat keine Vergleichszeiträume."
+      ],
+      "annahmen": [],
+      "pruefungen": [
+        {
+          "regel": "vorlage",
+          "name": "Vorlage Fassung 1 mit acht Abschnitten",
+          "eingang": {"vorlage": "energetische_bewertung"},
+          "ergebnis": {
+            "geltung_art": "unternehmen",
+            "zeitraum_art": "datengrundlage",
+            "vergleiche": [],
+            "abschnitte": ["umfang", "rangliste", "einstufungen", "messabdeckung", "messplanung", "messmittel", "qualitaet", "quellenverzeichnis"],
+            "fehler": null,
+            "status": null,
+            "kundensatz": null
+          }
+        },
+        {
+          "regel": "zeitraum",
+          "name": "zwölf volle Monate als Datengrundlage",
+          "eingang": {"art": "datengrundlage", "schluessel": "2025-11/2026-10", "zone": "Europe/Berlin"},
+          "ergebnis": {
+            "art": "datengrundlage",
+            "schluessel": "2025-11/2026-10",
+            "erster_tag": "2025-11-01",
+            "letzter_tag": "2026-10-31",
+            "von": "2025-11-01T00:00:00+01:00",
+            "bis": "2026-11-01T00:00:00+01:00",
+            "freigabe_ab": "2026-11-08T00:00:00+01:00",
+            "bezeichnung": "November 2025 bis Oktober 2026",
+            "vergleiche": []
+          }
         }
       ]
     }

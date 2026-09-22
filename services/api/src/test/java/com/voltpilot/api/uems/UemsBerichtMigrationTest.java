@@ -76,7 +76,7 @@ class UemsBerichtMigrationTest {
     private static final Path VORLAGEN = Path.of("..", "..", "docs", "contracts", "v2", "bericht-vorlagen.json");
     private static final Path MIGRATIONEN = Path.of("src", "main", "resources", "db", "migration");
     /** Migrationen, die auf den Berichts-Tabellen AUFBAUEN — in der späten Ankunft kommen sie mit dieser. */
-    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260915113000");
+    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260915113000", "20260922251800");
     private static final List<String> TABELLEN = List.of("bericht", "bericht_entwurf", "bericht_stand", "bericht_quelle",
             "bericht_revision_anstoss", "bericht_abruf", "bericht_aenderung", "bericht_kennung_seq");
 
@@ -370,7 +370,7 @@ class UemsBerichtMigrationTest {
             ausDerDatei.add("('" + v.path("schluessel").asText() + "', '" + v.path("geltung_art").asText() + "', '"
                     + v.path("zeitraum_art").asText() + "')");
         }
-        assertThat(ausDerDatei).hasSize(4);
+        assertThat(ausDerDatei).hasSize(5);
         assertThat(root.queryForList("SELECT format('(%L, %L, %L)', v.vorlage, v.geltung_art, v.zeitraum_art) "
                 + "FROM bericht_vorlage() WITH ORDINALITY AS v(vorlage, geltung_art, zeitraum_art, stelle) ORDER BY v.stelle",
                 String.class)).as("bericht_vorlage() weicht von %s ab", VORLAGEN).containsExactlyElementsOf(ausDerDatei);

@@ -147,7 +147,8 @@ export interface VorlageKarte {
  * Unternehmens nur mit `bericht.unternehmen` — sonst fehlen sie ganz (§5.5).
  */
 export const vorlageKarten = (rechte: BerichtRechte | null, standortIds: readonly string[]): VorlageKarte[] =>
-  VORLAGEN.filter((v) =>
+  // AP-16 IP-25 hängt die Bewertungsfläche ein; bis dahin bleibt die reine Vertragsvorlage aus dem Bestandsdialog heraus.
+  VORLAGEN.filter((v) => v.schluessel !== 'energetische_bewertung').filter((v) =>
     v.geltung_art === 'unternehmen'
       ? darf(rechte, 'anlegen', 'unternehmen', null)
       : standortIds.some((id) => darf(rechte, 'anlegen', 'standort', id)),
