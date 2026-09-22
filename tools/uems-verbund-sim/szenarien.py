@@ -101,7 +101,11 @@ BEOBACHTUNGEN = {
     ("A2", "17abebe1c993"): "**Befund** (Auslegung, beim Captain als G3 Übergangszuschlag): Box Halle 1 fällt in "
                             "einer Prüf-Delle aus; bis zum Geräte-Rückfall (60 s) speisen K-1 5,9 + K-2 60 + "
                             "K-12 58,8 = 124,7 kW ein, danach 40 + 58,8 = 98,8 kW - 1,2 kW Marge reichen für "
-                            "60 s Übergang im selben Viertel nicht. Kein Box-Fehler gefunden.",
+                            "60 s Übergang im selben Viertel nicht. Kein Box-Fehler gefunden. Der Captain hat "
+                            "Option a entschieden: Übergangszuschlag in der Auslegungsprüfung G3 "
+                            "(Rückfallzeit/900 s × größte Entladeleistung der führenden Box), nur Cloud, kein "
+                            "Box-Release; Folgepaket `vp-uems-v15-folge-auslegung-uebergangszuschlag`. Der "
+                            "Speicher-Watchdog bleibt im Pilot-Drehbuch.",
     ("A9", "17abebe1c993"): "Box Halle 1 lehnt jeden ungültigen Lauf ab (`schema_version_unbekannt`); nach 20 min "
                             "Rückfall des Plans, der Speicher lädt aus der PV (Viertel 2–4 bei 58–60 kW).",
     ("A10", "17abebe1c993"): "Quittungen wie zaA10: Box Halle 1 nimmt Übergang und Ziel an, Box Verwaltung "
@@ -109,6 +113,15 @@ BEOBACHTUNGEN = {
     ("A11", "17abebe1c993"): "Die Arbitrierung gibt dem Handeingriff den Speicher (`granted` −100 kW, "
                              "`manual intervention`), der Core befiehlt −100 kW - am Gerät bleibt es bei −39,2 kW: "
                              "der Einspeise-Wächter hält; kein Wunsch hebt ihn auf.",
+    ("A12", "17abebe1c993"): "Der erste Aufbauversuch mit −60 kW Speicherleistung war fehlerhaft und wurde "
+                              "verworfen. Dieser Lauf fährt wie NW-2 mit dem Fahrplan von heute und Speicher "
+                              "0 kW; die gemessenen Werte stammen ausschließlich aus dem korrigierten Aufbau.",
+    ("A15", "17abebe1c993"): "**Befund** wie A2: der Geräte-Rückfall braucht 60 s und die vorhandene Marge "
+                              "reicht im laufenden Viertel nicht. Der Captain hat Option a entschieden: "
+                              "Übergangszuschlag in G3 (Rückfallzeit/900 s × größte Entladeleistung der führenden "
+                              "Box), nur Cloud, kein Box-Release; Folgepaket "
+                              "`vp-uems-v15-folge-auslegung-uebergangszuschlag`. Der Speicher-Watchdog bleibt "
+                              "im Pilot-Drehbuch.",
 }
 
 
@@ -493,6 +506,23 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
             notizen.append(f"- **{name}** auf `{st}` ({lauf.profil}, T0 = Messsekunde {lauf.t0}, "
                            f"{lauf.messdauer() // 60} min, {len(gruppe)} Lauf/Läufe): {lauf.warum}. "
                            f"Quittungen: {quittungen_text(p)}." + (f" {beob}" if beob else ""))
+    offen = [name for name in ("A20", "R1n", "A2n", "A7n") if not gefahren.get(name)]
+    if offen:
+        z += [
+            "",
+            "## Offene Containerläufe",
+            "",
+            f"**Nicht gefahren - offen:** {', '.join(offen)}. Die Messreihe wurde auf Anweisung nach den "
+            "abgeschlossenen Läufen beendet; der begonnene A20-Lauf wurde vor der Auswertung abgebrochen und "
+            "liefert deshalb kein Ergebnisprotokoll. Nachfahren aus `tools/uems-verbund-sim/`:",
+            "",
+            "```bash",
+            "VB_BILD_ZUSATZ=ip29- VB_PROJEKT=uems-verbund-ip29 python3 szenarien.py fahre "
+            + " ".join(offen) + " \\",
+            "  --protokolle \"$TMPDIR/ip29/protokolle\" \\",
+            "  --status /Users/mvogt/IdeaProjects/firstmate/state/vp-uems-v15-ip29-ausfallblatt.status",
+            "```",
+        ]
     z += ["", "## Umsetzung und Quittungen je Lauf", "", *notizen, ""]
     return "\n".join(z)
 
