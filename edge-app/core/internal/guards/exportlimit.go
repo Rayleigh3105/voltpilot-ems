@@ -263,6 +263,15 @@ type ExportLimiter struct {
 	// actuator is not probed
 	pruefValid        bool
 	pruefPv, pruefDis float64
+	// a standing value proves no headroom (exportanteil.go, stehBeleg): the
+	// grid value of the newest sample, steht when it repeats the one before
+	// bit for bit, and the PV and measured battery (+ charge / - discharge;
+	// ankerBattValid = measured) of the sample on which it last moved.
+	// Written by ObserveMitSpeicher only - Cap never reads them.
+	wertValid, steht   bool
+	wertKw             float64
+	ankerPv, ankerBatt float64
+	ankerBattValid     bool
 }
 
 // NewExportLimiter returns an idle watchdog (no measurement, no cap).

@@ -33,6 +33,22 @@ package guards
 // minimum with a shadow of the SAME box without a share (today's Cap on the
 // same measurements, plan limit and discharge). A share can therefore never
 // release what the same box would hold without it.
+//
+// A STANDING VALUE PROVES NO HEADROOM (AP-15 Folge of IP-28 finding 1,
+// B2/V5): a sample whose grid value repeats the one before bit for bit is no
+// new measurement of the connection point - only its PV and battery are new.
+// On such a sample generation plus discharge stay within what the sample on
+// which the value last moved proved: its generation and discharge then plus
+// its headroom (stehBeleg). Its headroom is released once, braked as always,
+// but never found again. Without it a meter that froze in the dip of a
+// probing adjustment was read against the PV that followed each release -
+// the frozen grid value never showed it - and the loop found the same
+// headroom again on every sample (K-1 8.0 -> 10.1 -> 12.2 kW in the
+// container) until the probe judged the value blind. Not a lock on the
+// newest sample: the box samples every 2 s and regulates every 10 s, so the
+// sample that moved is often not the one a tick reads - a healthy noise-free
+// meter still gets its release. A value that moves with every sample is
+// exactly today's.
 
 import (
 	"fmt"
@@ -48,6 +64,10 @@ import (
 // So a box is on its share at most ExportFreshWindow + ExportAnteilWindow
 // (90 s) after its last measurement, against 390 s without a share (R9).
 const ExportAnteilWindow = 60 * time.Second
+
+// ohneStehSperre switches "a standing value proves no headroom" off - the
+// mutation probe of the tests (stehender_wert_test.go), never set outside them.
+var ohneStehSperre bool
 
 // ExportAnteil is the own feed-in share of a held share document.
 type ExportAnteil struct {
@@ -143,6 +163,9 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 		dcapVor, dcapVorValid := l.dcap, l.dcapValid
 		l.dischargeFresh(now, loop, discharge, &res)
 		l.einSpielraum(now, loop, discharge, dcapVor, dcapVorValid, &res)
+		if l.steht && !ohneStehSperre {
+			l.stehBeleg(now, loop, discharge, &res)
+		}
 		if an.Pruefen {
 			l.pruefen(now, budget, discharge, an.PruefenNeu, &res)
 		}
@@ -381,6 +404,41 @@ func (l *ExportLimiter) einSpielraum(now time.Time, limit, discharge, dcapVor fl
 	}
 }
 
+// stehBeleg bounds what the box pushes on a standing value by what the last
+// value that moved proved: its generation and discharge then, plus its
+// headroom (see the file doc). The laws above read the newest PV and battery,
+// which followed every release while the frozen grid value did not show it -
+// they would find the same headroom again on every sample; this takes back
+// whatever goes beyond the proof, and with it what two evaluations of the one
+// moved sample gave out twice (einSpielraum counts the rise of ONE
+// evaluation). The producers are cut first (V6: the discharge is the last
+// actuator). Only ever lowers; on a healthy standing value (nothing moved,
+// nothing released) the loop already sits exactly on the proof. Caller holds
+// l.mu.
+func (l *ExportLimiter) stehBeleg(now time.Time, limit, discharge float64, res *ExportCap) {
+	dis := discharge
+	if l.dcapValid && l.dcap < dis {
+		dis = l.dcap
+	}
+	disA := dis
+	if l.ankerBattValid {
+		disA = math.Max(-l.ankerBatt, 0)
+	}
+	beleg := math.Max(l.ankerPv+disA+limit-math.Max(-l.gridKw, 0)-exportMargin(limit), 0)
+	ueber := l.cap + dis - beleg
+	if ueber <= 1e-9 {
+		return
+	}
+	pv := math.Max(l.cap-ueber, 0)
+	ueber -= l.cap - pv
+	l.cap, l.capAt = pv, now
+	res.CapKw = round3(pv)
+	if ueber > 1e-9 {
+		l.dcap, l.dcapValid, l.dcapAt = math.Max(dis-ueber, 0), true, now
+		l.dischargeReport(discharge, res)
+	}
+}
+
 // verankern re-anchors the watchdog on a clock that went back to ts (A8):
 // the sample at ts becomes the newest, and the release credit counts from it
 // at the earliest - the time before the jump is no time on the new clock, and
@@ -409,8 +467,19 @@ func (l *ExportLimiter) ObserveMitSpeicher(ts time.Time, gridKw, pvKw float64, b
 		// A8 (IP-27): a sample older than the newest one is a clock that
 		// jumped back, not a stale sample - re-anchor instead of discarding
 		// every sample until the clock has caught up. The shadow below keeps
-		// today's rule (it IS today).
+		// today's rule (it IS today). As in the Einfrierprobe, the jump
+		// sample's value proves nothing: it counts as standing.
 		l.verankern(ts)
+		l.steht = l.wertValid
+	} else {
+		l.steht = l.wertValid && gridKw == l.wertKw
+		l.wertValid, l.wertKw = true, gridKw
+		if !l.steht {
+			l.ankerPv, l.ankerBattValid = math.Max(pvKw, 0), battKw != nil && finite(*battKw)
+			if l.ankerBattValid {
+				l.ankerBatt = *battKw
+			}
+		}
 	}
 	l.battValid = battKw != nil && finite(*battKw)
 	if l.battValid {

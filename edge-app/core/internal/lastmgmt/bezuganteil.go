@@ -400,6 +400,10 @@ type Netzpunkt struct {
 	// ChargingKw is the measured draw of the charge points.
 	ChargingKw float64
 	// BattChargeKw is the measured battery charge (>= 0), 0 without one.
+	// On a sample that repeats the grid value of the one before bit for bit,
+	// ChargingKw and BattChargeKw are never more than on the sample on which
+	// the value last moved: a standing value proves no headroom (AP-15 Folge
+	// of IP-28 finding 1).
 	BattChargeKw float64
 	// PlanableKw is the connection limit (or the tighter observed §14a
 	// envelope) minus the engineering margin - the figure the budget regulates
@@ -439,6 +443,10 @@ func (t *BudgetTracker) Netzpunkt(now time.Time, set Settings) (n Netzpunkt, has
 	}
 	if src.haveBatt {
 		n.BattChargeKw = src.battKw
+	}
+	if src.steht {
+		n.ChargingKw = math.Min(n.ChargingKw, src.ankerLadenKw)
+		n.BattChargeKw = math.Min(n.BattChargeKw, src.ankerBattKw)
 	}
 	return n, hasLimit
 }
