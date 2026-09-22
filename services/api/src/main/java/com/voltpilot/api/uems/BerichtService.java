@@ -92,6 +92,8 @@ public class BerichtService {
 
     private static final Pattern MONAT = Pattern.compile("^[0-9]{4}-(0[1-9]|1[0-2])$");
     private static final Pattern JAHR = Pattern.compile("^[0-9]{4}$");
+    private static final Pattern DATENGRUNDLAGE =
+            Pattern.compile("^[0-9]{4}-(0[1-9]|1[0-2])(/[0-9]{4}-(0[1-9]|1[0-2]))?$");
     /** Ein Abzug als Baum: Zahlen exakt als Dezimalzahl, wie die kanonische Form sie schrieb. */
     private static final ObjectMapper ABZUG = new ObjectMapper()
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
@@ -306,6 +308,10 @@ public class BerichtService {
     private Datei ausgabe(String kennung, int nr, ProtokollAkteur wer, String handlung, String format, Ausgabe ausgabe) {
         Zugriff z = zugriff(kennung, wer, handlung);
         Kopf kopf = z.kopf();
+        // IP-22 hängt die Ausgabe der neuen Abzugsform ein. Bis dahin gibt es für sie bewusst keine Datei.
+        if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(kopf.vorlage())) {
+            throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
+        }
         StandZeile s = geprueft(kopf, nr);
         Instant ersetztAm = s.ersetztDurchNr() == null ? null : repo.staende(kopf.tenant(), kopf.id()).stream()
                 .filter(x -> x.nr() == s.ersetztDurchNr()).map(StandZeile::freigegebenAm).findFirst().orElseThrow();
@@ -344,9 +350,6 @@ public class BerichtService {
             throw BerichtAbgelehnt.regel(Ablehnung.VORLAGE_UNBEKANNT, BerichtRegeln.SAETZE.get(BerichtRegeln.VORLAGE_UNBEKANNT),
                     Map.of("feld", "vorlage"));
         }
-        if (!(BerichtRegeln.MONAT.equals(v.zeitraumArt()) ? MONAT : JAHR).matcher(zeitraum).matches()) {
-            throw BerichtAbgelehnt.anfrage("zeitraum");
-        }
         boolean standort = BerichtRegeln.STANDORT.equals(v.geltungArt());
         Geltung g = geltung(standort, geltungId);
         Benutzer b = aufrufer.benutzer(wer);
@@ -354,18 +357,29 @@ public class BerichtService {
                 BerichtRegeln.kennung(BerichtRechte.ANLEGEN, v.geltungArt()),
                 standort ? g.id().toString() : null, jetzt, BerichtAbgelehnt::rechte);
         ZoneId zone = repo.zeitzone(standort ? g.id() : null);
-        BerichtRegeln.Zeitraum zr = BerichtRegeln.zeitraum(v.zeitraumArt(), zeitraum, zone);
-        Optional<Kopf> schon = repo.berichtZu(v.schluessel(), v.geltungArt(), g.id(), zeitraum);
+        if (BerichtRegeln.DATENGRUNDLAGE.equals(v.zeitraumArt()) && (zeitraum == null || zeitraum.isBlank())) {
+            java.time.YearMonth letzter = java.time.YearMonth.from(LocalDate.ofInstant(jetzt, zone)).minusMonths(1);
+            zeitraum = letzter.minusMonths(11) + "/" + letzter;
+        }
+        Pattern muster = BerichtRegeln.MONAT.equals(v.zeitraumArt()) ? MONAT
+                : BerichtRegeln.JAHR.equals(v.zeitraumArt()) ? JAHR : DATENGRUNDLAGE;
+        if (zeitraum == null || !muster.matcher(zeitraum).matches()) {
+            throw BerichtAbgelehnt.anfrage("zeitraum");
+        }
+        String zeitraumSchluessel = zeitraum;
+        BerichtRegeln.Zeitraum zr = BerichtRegeln.zeitraum(v.zeitraumArt(), zeitraumSchluessel, zone);
+        Optional<Kopf> schon = repo.berichtZu(v.schluessel(), v.geltungArt(), g.id(), zeitraumSchluessel);
         if (schon.isPresent()) {
             throw gibtEsSchon(schon.get());
         }
         // Q3 — am Standort die Messstellen seiner Orte, am Unternehmen die Netzbezugs-Zähler der Standorte, die Unternehmens-
         // und die Prozess-Messstellen (AP-12 IP-6).
-        if (!BerichtAbzugBildung.hatMessstellen(jdbc, tenant, v.geltungArt(), g.id(), zr.ersterTag(), zr.letzterTag())) {
+        if (!BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(v.schluessel())
+                && !BerichtAbzugBildung.hatMessstellen(jdbc, tenant, v.geltungArt(), g.id(), zr.ersterTag(), zr.letzterTag())) {
             LocalDate seit = BerichtAbzugBildung.bestehtSeit(jdbc, tenant, v.geltungArt(), g.id(),
                     LocalDate.ofInstant(jetzt, zone));
             throw BerichtAbgelehnt.regel(Ablehnung.KEINE_QUELLEN, BerichtRegeln.keineQuellen(g.name(), v.zeitraumArt(),
-                    zeitraum, seit != null && seit.isAfter(zr.letzterTag()) ? seit : null), Map.of("feld", "zeitraum"));
+                    zeitraumSchluessel, seit != null && seit.isAfter(zr.letzterTag()) ? seit : null), Map.of("feld", "zeitraum"));
         }
         // V3 (AP-12 IP-14) — jede abgewählte Kennzahl ist eine des Kundenbereichs; eine außerhalb der Geltung ist erlaubt
         // und wirkt nicht, weil Q4 sie nie liest. Kennung → Kennzeichen für das Protokoll.
@@ -379,7 +393,7 @@ public class BerichtService {
         try {
             kennung = transaktion.execute(tx -> {
                 String neueKennung = repo.kennungNeu(tenant, LocalDate.ofInstant(jetzt, zone).getYear());
-                UUID id = repo.anlegen(tenant, neueKennung, v, g.id(), zeitraum, zone, wer, jetzt);
+                UUID id = repo.anlegen(tenant, neueKennung, v, g.id(), zeitraumSchluessel, zone, wer, jetzt);
                 // Die Abwahl steht vor der ersten Bildung — schon der erste Entwurf lässt die Kennzahl weg.
                 repo.abwaehlen(tenant, id, abwahl.keySet(), wer, jetzt);
                 bilden(id, jetzt, GEBILDET_BEIM_ANLEGEN);
@@ -388,7 +402,7 @@ public class BerichtService {
                 neu.put("vorlage", v.schluessel());
                 neu.put("geltung_art", v.geltungArt());
                 neu.put("geltung_id", g.id().toString());
-                neu.put("zeitraum", zeitraum);
+                neu.put("zeitraum", zeitraumSchluessel);
                 if (!abwahl.isEmpty()) {
                     neu.put("kennzahlen_abgewaehlt", abwahl.values().stream().sorted().toList());
                 }
@@ -396,10 +410,34 @@ public class BerichtService {
                 return neueKennung;
             });
         } catch (DuplicateKeyException e) {
-            throw repo.berichtZu(v.schluessel(), v.geltungArt(), g.id(), zeitraum).map(BerichtService::gibtEsSchon)
+            throw repo.berichtZu(v.schluessel(), v.geltungArt(), g.id(), zeitraumSchluessel).map(BerichtService::gibtEsSchon)
                     .orElseGet(() -> BerichtAbgelehnt.von(Ablehnung.GLEICHZEITIG));
         }
         return uebersicht(tenant, repo.bericht(kennung).orElseThrow());
+    }
+
+    /** AP-16 S5 — Startwert 12; Änderung nur an der Bewertung und immer mit Begründung. */
+    public Uebersicht wiedervorlageAendern(String kennung, int monate, String begruendung, ProtokollAkteur wer) {
+        Zugriff z = zugriff(kennung, wer, BerichtRechte.WIEDERVORLAGE_AENDERN);
+        Kopf kopf = z.kopf();
+        if (!BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(kopf.vorlage())) {
+            throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
+        }
+        if (monate < 1 || monate > 120) {
+            throw BerichtAbgelehnt.anfrage("wiedervorlage_monate");
+        }
+        pruefeBegruendung(begruendung);
+        String rolle = rolle(z.darf(), wer);
+        transaktion.executeWithoutResult(tx -> {
+            repo.sperren(kopf.tenant(), kopf.id());
+            if (kopf.wiedervorlageMonate() != monate) {
+                repo.wiedervorlageAendern(kopf.tenant(), kopf.id(), monate);
+                repo.protokoll(kopf.tenant(), kopf.id(), null, BerichtRechte.WIEDERVORLAGE_AENDERN,
+                        text(Map.of("wiedervorlage_monate", kopf.wiedervorlageMonate())),
+                        text(Map.of("wiedervorlage_monate", monate)), begruendung, wer, rolle, z.jetzt());
+            }
+        });
+        return uebersicht(kopf.tenant(), repo.bericht(kennung).orElseThrow());
     }
 
     // ================================================================================ freigeben

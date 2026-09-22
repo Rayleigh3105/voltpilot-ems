@@ -30,15 +30,17 @@ public class MessbedarfService {
     private final RechtPruefung rechte;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
+    private final BerichtsBelege berichtsBelege;
 
     public MessbedarfService(MessbedarfRepository repo, EnergieeinsatzRepository einsaetze,
             UnternehmenRepository unternehmen,
             MessstelleRepository messstellen, MessstelleService messstelleService,
             MessreiheEreignisRepository ereignisse, RechtPruefung rechte, ObjectMapper json,
-            PlatformTransactionManager tm) {
+            PlatformTransactionManager tm, BerichtsBelege berichtsBelege) {
         this.repo=repo; this.einsaetze=einsaetze; this.unternehmen=unternehmen; this.messstellen=messstellen;
         this.messstelleService=messstelleService; this.ereignisse=ereignisse;
         this.rechte=rechte; this.json=json; this.tx=new TransactionTemplate(tm);
+        this.berichtsBelege=berichtsBelege;
     }
 
     public Liste liste(UUID einsatzId) {
@@ -63,6 +65,7 @@ public class MessbedarfService {
         return tx.execute(s -> {
             bedarf(einsatzId,id); String wortlaut=pflicht(a.wortlaut(),"wortlaut_fehlt",
                     "Bitte beschreiben Sie, was gemessen werden soll.");
+            berichtsBelege.pruefeObjekt(id, BelegeImWeg.Gegenstand.MESSBEDARF);
             offen(repo.bearbeiten(id,wortlaut,text(a.ort()),text(a.groesse()),a.frist(),wer));
             return dto(repo.finde(id).orElseThrow());
         });
@@ -70,6 +73,7 @@ public class MessbedarfService {
     public Bedarf einloesen(UUID einsatzId, UUID id, Einloesen a, ProtokollAkteur wer) {
         return tx.execute(s -> {
             var b=bedarf(einsatzId,id);
+            berichtsBelege.pruefeObjekt(id, BelegeImWeg.Gegenstand.MESSBEDARF);
             if (a.messstelleId()==null) throw abgelehnt("messstelle_fehlt","Bitte wählen Sie eine Messstelle.");
             if (messstellen.finde(a.messstelleId()).isEmpty()) throw EnergieeinsatzAbgelehnt.fehlt();
             rechte.pruefenLesen(RechtZiel.MESSSTELLE,a.messstelleId(),EnergieeinsatzAbgelehnt::fehlt);
@@ -85,6 +89,7 @@ public class MessbedarfService {
     public Bedarf verwerfen(UUID einsatzId, UUID id, Verwerfen a, ProtokollAkteur wer) {
         return tx.execute(s -> {
             bedarf(einsatzId,id);
+            berichtsBelege.pruefeObjekt(id, BelegeImWeg.Gegenstand.MESSBEDARF);
             String grund=pflicht(a.begruendung(),"begruendung_fehlt",
                     "Bitte begründen Sie, warum der Messbedarf verworfen wird.");
             offen(repo.verwerfen(id,grund,wer));

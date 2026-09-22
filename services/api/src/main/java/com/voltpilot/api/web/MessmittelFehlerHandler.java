@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.uems.MessmittelAbgelehnt;
+import com.voltpilot.api.uems.BelegeImWeg;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,6 +14,11 @@ public class MessmittelFehlerHandler {
     public ResponseEntity<Map<String, Object>> abgelehnt(MessmittelAbgelehnt e) {
         return ResponseEntity.status(e.status())
                 .body(Map.of("code", e.code(), "feld", e.feld(), "message", e.getMessage()));
+    }
+
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belege(BelegeImWeg e) {
+        return ResponseEntity.status(409).body(e.koerper());
     }
 
     @ExceptionHandler({org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class})

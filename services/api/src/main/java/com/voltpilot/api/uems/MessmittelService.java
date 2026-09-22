@@ -51,13 +51,15 @@ public class MessmittelService {
     private final RechtPruefung rechte;
     private final ObjectMapper json;
     private final MeasurementCatalog katalog;
+    private final BerichtsBelege berichtsBelege;
 
     public MessmittelService(MessmittelRepository messmittel, RechtPruefung rechte, ObjectMapper json,
-            MeasurementCatalog katalog) {
+            MeasurementCatalog katalog, BerichtsBelege berichtsBelege) {
         this.messmittel = messmittel;
         this.rechte = rechte;
         this.json = json;
         this.katalog = katalog;
+        this.berichtsBelege = berichtsBelege;
     }
 
     public Angaben lesen(UUID geraetId) {
@@ -77,6 +79,12 @@ public class MessmittelService {
         ArrayNode neuWandler = neuJson.putArray("wandler");
         Map<UUID, String> bisher = new LinkedHashMap<>();
         messmittel.wandler(geraetId).forEach(w -> bisher.put(w.id(), w.klasse()));
+        boolean wandlerGeaendert = klassen.entrySet().stream()
+                .anyMatch(k -> !Objects.equals(bisher.get(k.getKey()), k.getValue()[1]));
+        boolean angabeGeaendert = !angabe(alt).equals(angabe(neu));
+        if (angabeGeaendert || wandlerGeaendert) {
+            berichtsBelege.pruefeObjekt(geraetId, BelegeImWeg.Gegenstand.MESSMITTEL);
+        }
         for (Map.Entry<UUID, String[]> k : klassen.entrySet()) {
             String vorher = bisher.get(k.getKey());
             String nachher = k.getValue()[1];
@@ -86,7 +94,6 @@ public class MessmittelService {
                 neuWandler.add(wandlerJson(k.getKey(), k.getValue()[0], nachher));
             }
         }
-        boolean angabeGeaendert = !angabe(alt).equals(angabe(neu));
         if (angabeGeaendert) {
             messmittel.speichern(geraetId, neu);
         }

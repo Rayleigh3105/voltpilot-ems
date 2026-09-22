@@ -42,6 +42,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
 
 /**
  * Berichte (UEMS AP-12 IP-7, E4/E5/E7/E12) — Meilenstein „Bericht freigebbar“: anlegen, lesen, Entwurf, Vergleich, Freigabe,
@@ -116,7 +117,9 @@ public class BerichtController {
         BerichtDto.Anlegen b = lies(body, BerichtDto.Anlegen.class);
         pflicht(b.vorlage(), "vorlage");
         pflicht(b.geltungId(), "geltung_id");
-        pflicht(b.zeitraum(), "zeitraum");
+        if (!BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(b.vorlage())) {
+            pflicht(b.zeitraum(), "zeitraum");
+        }
         List<UUID> abgewaehlt = b.kennzahlenAbgewaehlt() == null ? List.of()
                 : b.kennzahlenAbgewaehlt().stream().map(k -> uuid(k, ABGEWAEHLT)).distinct().toList();
         return ResponseEntity.status(201).body(form(dienst.anlegen(b.vorlage(), b.geltungId(), b.zeitraum(), abgewaehlt,
@@ -129,6 +132,32 @@ public class BerichtController {
         BerichtService.Detail d = dienst.detail(kennung(kennung), OrtAnfrage.akteur(auth));
         return new BerichtDto.Detail(form(d.bericht()), d.staende().stream().map(BerichtController::kurz).toList(),
                 d.anstoesse().stream().map(BerichtController::anstoss).toList());
+    }
+
+    /** Recht: {@code bericht.unternehmen}; nur die energetische Bewertung, mit Begründung. */
+    @PutMapping("/berichte/{kennung}/wiedervorlage")
+    @Recht(value = {"bericht.unternehmen"}, ziel = RechtZiel.DIENST)
+    public BerichtDto.Bericht wiedervorlage(@PathVariable String kennung,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        if (body == null || !body.isObject()) {
+            throw BerichtAbgelehnt.anfrage("");
+        }
+        Iterator<String> felder = body.fieldNames();
+        while (felder.hasNext()) {
+            String feld = felder.next();
+            if (!"wiedervorlage_monate".equals(feld) && !"begruendung".equals(feld)) {
+                throw BerichtAbgelehnt.anfrage(feld);
+            }
+        }
+        JsonNode monate = body.get("wiedervorlage_monate");
+        if (monate == null || !monate.isIntegralNumber() || !monate.canConvertToInt()) {
+            throw BerichtAbgelehnt.anfrage("wiedervorlage_monate");
+        }
+        JsonNode grund = body.get("begruendung");
+        String begruendung = grund != null && grund.isTextual() ? grund.textValue() : null;
+        pflicht(begruendung, "begruendung");
+        return form(dienst.wiedervorlageAendern(kennung(kennung), monate.intValue(), begruendung,
+                OrtAnfrage.akteur(auth)));
     }
 
     /** Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} — mit D4-Prüfung, nötigenfalls neu gebildet. */
@@ -256,7 +285,8 @@ public class BerichtController {
                 k.geltungName(), k.zeitraumArt(), k.schluessel(),
                 BerichtRegeln.zeitraum(k.zeitraumArt(), k.schluessel(), k.zone()).bezeichnung(), k.zeitzone(),
                 new BerichtDto.Person(k.angelegtVonName(), null), utc(k.angelegtAm()), utc(k.archiviertAm()),
-                u.standZeichen(), u.standText(), u.neuesteNr(), utc(u.entwurfDatenstand()));
+                u.standZeichen(), u.standText(), u.neuesteNr(), utc(u.entwurfDatenstand()),
+                BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(k.vorlage()) ? k.wiedervorlageMonate() : null);
     }
 
     private static BerichtDto.StandKurz kurz(StandZeile s) {

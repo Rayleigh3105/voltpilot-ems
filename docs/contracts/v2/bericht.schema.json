@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.local/contracts/v2/bericht.schema.json",
-  "title": "Bericht: Zeitraum, Freigabe, Datenstand, Betroffenheit, Abweichung, Rechte und Ausgabe — die Vektor-Datei (UEMS AP-12)",
+  "title": "Bericht: Zeitraum, Freigabe, Datenstand, Betroffenheit, Abweichung, Rechte und Ausgabe — AP-12 und AP-16",
   "description": "Die Form von bericht-vectors.json und, unter $defs, die Formen, die spätere Pakete speichern und ausliefern: Abzug (A1–A7), Berichtsstand (F3), Quelle des Quellenverzeichnisses (Q1–Q6, B1), Anstoß (B4, B7), Vorlage und Vorlagen-Datei (V2). Zwei Zwillinge prüfen JEDE Prüfung: Java services/api .../uems/BerichtVectorsTest (BerichtRegeln) und TypeScript frontend/portal/src/uemsBericht.test.ts (uemsBericht.ts). Beträge sind Dezimaltext, Zeitpunkte ISO-8601 mit Offset, Tage einschließlich; null heißt „keine Werte“, nie 0.",
   "type": "object",
   "additionalProperties": false,
   "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "referenzunternehmen", "referenz_stand", "vorlagen_datei", "titel", "plan_abnahmen", "regeln_kurz", "vokabulare", "fehler_status", "regeln", "saetze", "verbotene_woerter", "zwillinge", "zwillinge_grund", "_abweichungen", "_nicht_geprueft", "abzuege", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-    "schema_version": { "type": "string", "const": "1.2", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Abzug des Unternehmens — standorte und kostenstellen, AP-12 IP-6. 1.2: Tagesverlauf, Richtungspaar des Speichers und Ort/Endgültigkeit je Kennzahl — vp-uems-b12-tagesverlauf-speicher). Ein Abzug nach 1.0 oder 1.1 bleibt gültig: alles Neue ist wahlfrei, seine Prüfsumme rührt sich nicht." },
+    "schema_version": { "type": "string", "const": "1.3", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Unternehmensabschnitte; 1.2: Tagesverlauf, Richtungspaar und Kennzahl-Angaben; 1.3: Energetische Bewertung). Alte Abzüge bleiben gültig: alles Neue ist wahlfrei, ihre Prüfsummen rühren sich nicht." },
     "$schema_datei": { "type": "string", "const": "./bericht.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt; die Regeln nehmen die Zone der Geltung." },
@@ -95,7 +95,7 @@
       "type": "object", "description": "Die Abzüge, auf die Prüfungen per Schlüssel verweisen. „BR-2026-0001/1“ und „…/2“ halten `$defs/abzug` (die Zwillinge prüfen es); „randfall“ ist ein beliebiges JSON-Objekt für die kanonische Form.",
       "additionalProperties": { "type": "object" }
     },
-    "cases": { "type": "array", "minItems": 16, "items": { "$ref": "#/$defs/fall" } }
+    "cases": { "type": "array", "minItems": 17, "items": { "$ref": "#/$defs/fall" } }
   },
   "$defs": {
     "woerter": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
@@ -107,7 +107,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "name", "familie", "abnahme", "titel", "why", "schritte", "annahmen", "pruefungen"],
       "properties": {
-        "id": { "type": "string", "pattern": "^B([1-9]|1[0-6])$" },
+        "id": { "type": "string", "pattern": "^B([1-9]|1[0-7])$" },
         "name": { "type": "string", "pattern": "^b[0-9]+-[a-z0-9-]+$" },
         "familie": { "type": "string", "enum": ["plan_abnahme", "revision", "betroffenheit", "freigabe", "datenstand", "vergleich", "struktur", "belegschutz", "rechte", "ausgabe", "jahr", "ablauf"] },
         "abnahme": { "type": ["string", "null"] },
@@ -172,7 +172,11 @@
     "abzug": {
       "type": "object", "additionalProperties": false,
       "description": "Der Inhalt eines Berichtsstands (A1–A5): was der Bericht zeigt, je Zahl mit ihrem Nachweis. Gespeichert als kanonischer Text (regeln.kanonisch), nie als jsonb (A7).",
-      "required": ["kopf", "zusammenfassung", "werte", "kennzahlen", "qualitaet"],
+      "required": ["kopf", "qualitaet"],
+      "anyOf": [
+        {"required": ["zusammenfassung", "werte", "kennzahlen"]},
+        {"required": ["umfang", "rangliste", "einstufungen", "messabdeckung", "messplanung", "messmittel"]}
+      ],
       "properties": {
         "kopf": { "$ref": "#/$defs/kopf" },
         "zusammenfassung": { "type": "object", "additionalProperties": { "type": "number" } },
@@ -181,6 +185,12 @@
         "tagesverlauf": { "type": "array", "items": { "$ref": "#/$defs/tagesverlauf_reihe" }, "description": "1.2, nur in der Monatsvorlage (Abschnitt „tagesverlauf“): je Wert-Zeile des Abschnitts „werte“ ihre Tage mit Menge und Zustand — abgeschrieben aus messreihe_tag, nie neu gerechnet (EW3). Eine Messstelle ohne gespeicherte Tageszeile steht mit leerer Tagesliste da; das ist die Lücke, keine Null." },
         "standorte": { "type": "array", "items": { "$ref": "#/$defs/standort_abschnitt" }, "description": "1.1, nur am Unternehmen: je Standort ein Abschnitt (AP-12 IP-6)." },
         "kostenstellen": { "type": "array", "items": { "$ref": "#/$defs/kostenstelle" }, "description": "1.1, nur am Unternehmen: je Kostenstelle, die einen Tag des Zeitraums besteht, ihre Energie (AP-10 IP-11) mit den Verteilungs-Sätzen zum Tag (AP-12 IP-6)." },
+        "umfang": { "type": "object", "description": "1.3, Energetische Bewertung: wirksame Umfang-Fassung." },
+        "rangliste": { "type": "object", "description": "1.3, Energetische Bewertung: Rangliste samt Herkunft und Versionen." },
+        "einstufungen": { "type": "array", "items": { "type": "object" }, "description": "1.3, wirksame Einstufungs-Fassungen mit eingefrorener Herkunft." },
+        "messabdeckung": { "type": "object", "description": "1.3, gemessen, geplant, Ersatz und ungemessen." },
+        "messplanung": { "type": "array", "items": { "type": "object" }, "description": "1.3, Messbedarfe der Einsätze." },
+        "messmittel": { "type": "array", "items": { "type": "object" }, "description": "1.3, Messmittel-Angaben der Einbauten." },
         "qualitaet": {
           "type": "object", "additionalProperties": false,
           "required": ["abdeckung_min_prozent", "luecken", "ersatzwerte", "korrekturen_im_zeitraum", "vorlaeufig"],
@@ -209,7 +219,7 @@
       "required": ["bericht", "vorlage", "vorlage_fassung", "geltung", "unternehmen", "sitz", "zeitraum", "vergleichszeitraeume", "datenstand", "regelwerk", "darstellung", "quellenverzeichnis"],
       "properties": {
         "bericht": { "type": "string", "pattern": "^BR-[0-9]{4}-[0-9]{4}$" },
-        "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen"] },
+        "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung"] },
         "vorlage_fassung": { "type": "integer", "minimum": 1 },
         "geltung": {
           "type": "object", "additionalProperties": false, "required": ["art", "kennzeichen", "name_zum_datenstand"],
@@ -220,7 +230,7 @@
         "zeitraum": {
           "type": "object", "additionalProperties": false, "required": ["art", "schluessel", "von", "bis", "zone"],
           "properties": {
-            "art": { "type": "string", "enum": ["monat", "jahr"] }, "schluessel": { "type": "string" },
+            "art": { "type": "string", "enum": ["monat", "jahr", "datengrundlage"] }, "schluessel": { "type": "string" },
             "von": { "$ref": "#/$defs/zeitpunkt" }, "bis": { "$ref": "#/$defs/zeitpunkt" }, "zone": { "type": "string" }
           }
         },
@@ -432,12 +442,12 @@
       "description": "Eine Berichtsvorlage (V2): VoltPilot-Katalog, Fassungsnummer, feste Abschnitte.",
       "required": ["schluessel", "fassung", "name", "geltung_art", "zeitraum_art", "vergleiche", "abschnitte"],
       "properties": {
-        "schluessel": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen"] },
+        "schluessel": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung"] },
         "fassung": { "type": "integer", "minimum": 1 },
         "name": { "type": "string", "minLength": 1 },
         "geltung_art": { "type": "string", "enum": ["standort", "unternehmen"] },
-        "zeitraum_art": { "type": "string", "enum": ["monat", "jahr"] },
-        "vergleiche": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["vormonat", "vorjahresmonat", "vorjahr"] } },
+        "zeitraum_art": { "type": "string", "enum": ["monat", "jahr", "datengrundlage"] },
+        "vergleiche": { "type": "array", "items": { "type": "string", "enum": ["vormonat", "vorjahresmonat", "vorjahr"] } },
         "abschnitte": {
           "type": "array", "minItems": 1,
           "items": {
@@ -460,7 +470,7 @@
         "schema_version": { "type": "string", "const": "1.0" },
         "$schema_datei": { "type": "string", "const": "./bericht.schema.json#/$defs/vorlagen_datei" },
         "herkunft": { "type": "string", "minLength": 1 },
-        "vorlagen": { "type": "array", "minItems": 4, "items": { "$ref": "#/$defs/vorlage" } }
+        "vorlagen": { "type": "array", "minItems": 5, "items": { "$ref": "#/$defs/vorlage" } }
       }
     }
   }

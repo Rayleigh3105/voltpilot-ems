@@ -62,6 +62,7 @@ class BerichtSchnittstelleVertragTest {
         Map<String, Class<? extends Record>> formen = new LinkedHashMap<>();
         formen.put("BerichtAnlegen", BerichtDto.Anlegen.class);
         formen.put("BerichtFreigeben", BerichtDto.Freigeben.class);
+        formen.put("BerichtWiedervorlage", BerichtDto.Wiedervorlage.class);
         formen.put("BerichtAnstossVerwerfen", BerichtDto.Verwerfen.class);
         formen.put("BerichtPerson", BerichtDto.Person.class);
         formen.put("Bericht", BerichtDto.Bericht.class);
@@ -104,6 +105,7 @@ class BerichtSchnittstelleVertragTest {
         soll.put("/api/v1/berichte", List.of("get", "post"));
         soll.put("/api/v1/berichte/betroffen", List.of("get"));
         soll.put("/api/v1/berichte/{kennung}", List.of("parameters", "get"));
+        soll.put("/api/v1/berichte/{kennung}/wiedervorlage", List.of("parameters", "put"));
         soll.put("/api/v1/berichte/{kennung}/entwurf", List.of("parameters", "get"));
         soll.put("/api/v1/berichte/{kennung}/entwurf/vergleich", List.of("parameters", "get"));
         soll.put("/api/v1/berichte/{kennung}/freigeben", List.of("parameters", "post"));

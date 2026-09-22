@@ -34,7 +34,10 @@ public final class BelegeImWeg extends RuntimeException {
         ANLAGE("Die Messwerte dieser Anlage"),
         BOX("Die Aufzeichnungen dieser Box"),
         /** Der Satz kommt aus dem Berichts-Vertrag ({@link BerichtRegeln#berichtsBelege}). */
-        KOMPONENTE("Diese Komponente");
+        KOMPONENTE("Diese Komponente"),
+        ENERGIEEINSATZ("Dieser Energieeinsatz"),
+        MESSBEDARF("Dieser Messbedarf"),
+        MESSMITTEL("Diese Messmittel-Angabe");
 
         private final String subjekt;
 
@@ -105,7 +108,7 @@ public final class BelegeImWeg extends RuntimeException {
     static List<String> codes(Gegenstand gegenstand, List<MessreihenBelege.Beleg> belege,
             List<BerichtRegeln.StandBezeichnung> staende) {
         List<String> codes = new ArrayList<>(2);
-        if (gegenstand != Gegenstand.KOMPONENTE && !belege.isEmpty()) {
+        if ((gegenstand == Gegenstand.ANLAGE || gegenstand == Gegenstand.BOX) && !belege.isEmpty()) {
             codes.add(CODE);
         }
         if (!staende.isEmpty()) {
@@ -121,8 +124,10 @@ public final class BelegeImWeg extends RuntimeException {
      */
     static String satz(Gegenstand gegenstand, List<MessreihenBelege.Beleg> belege,
             List<BerichtRegeln.StandBezeichnung> staende) {
-        if (gegenstand == Gegenstand.KOMPONENTE) {
-            return BerichtRegeln.berichtsBelege(staende);
+        if (gegenstand != Gegenstand.ANLAGE && gegenstand != Gegenstand.BOX) {
+            String satz = BerichtRegeln.berichtsBelege(staende);
+            return gegenstand == Gegenstand.KOMPONENTE ? satz
+                    : satz.replaceFirst("Diese Komponente", gegenstand.subjekt);
         }
         StringBuilder s = new StringBuilder();
         if (!belege.isEmpty()) {

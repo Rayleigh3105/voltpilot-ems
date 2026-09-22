@@ -59,7 +59,7 @@ class RechtRoutenArchitekturTest {
             m.put("KennzahlController#" + r, kennzahl);
         }
         String bericht = "BerichtService — Geltung des Berichts (G1), Aufrufer KennzahlAufrufer";
-        for (String r : List.of("anlegen", "freigeben", "archivieren", "verwerfen")) {
+        for (String r : List.of("anlegen", "freigeben", "archivieren", "verwerfen", "wiedervorlage")) {
             m.put("BerichtController#" + r, bericht);
         }
         for (String r : List.of("erfassen", "ablehnen", "zuruecknehmen")) {

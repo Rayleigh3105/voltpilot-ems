@@ -1,6 +1,7 @@
 package com.voltpilot.api.web.dto;
 
 import com.fasterxml.jackson.annotation.JsonRawValue;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.time.OffsetDateTime;
@@ -21,6 +22,11 @@ public final class BerichtDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Anlegen(String vorlage, String geltungId, String zeitraum, List<String> kennzahlenAbgewaehlt) {}
 
+    /** AP-16 S5: Wiedervorlage der energetischen Bewertung ändern. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Wiedervorlage(@JsonProperty("wiedervorlage_monate") Integer wiedervorlageMonate,
+            String begruendung) {}
+
     /** {@code POST …/freigeben}: der Datenstand des Entwurfs, den die Person sah (F2). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Freigeben(String entwurfDatenstand) {}
@@ -39,7 +45,7 @@ public final class BerichtDto {
     public record Bericht(String kennung, String vorlage, int vorlageFassung, String geltungArt, String geltungId,
             String geltungName, String zeitraumArt, String zeitraum, String zeitraumText, String zeitzone,
             Person angelegtVon, OffsetDateTime angelegtAm, OffsetDateTime archiviertAm, String standZeichen,
-            String standText, Integer neuesteNr, OffsetDateTime entwurfDatenstand) {}
+            String standText, Integer neuesteNr, OffsetDateTime entwurfDatenstand, Integer wiedervorlageMonate) {}
 
     /** {@code GET /api/v1/berichte}: die Berichte, die die Person lesen darf — archivierte nicht (V4). */
     public record Liste(List<Bericht> berichte) {}

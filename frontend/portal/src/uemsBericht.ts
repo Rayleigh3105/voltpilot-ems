@@ -45,14 +45,15 @@ export const GELTUNG_ARTEN = [STANDORT, UNTERNEHMEN];
 
 export const MONAT = 'monat';
 export const JAHR = 'jahr';
-export const ZEITRAUM_ARTEN = [MONAT, JAHR];
+export const DATENGRUNDLAGE = 'datengrundlage';
+export const ZEITRAUM_ARTEN = [MONAT, JAHR, DATENGRUNDLAGE];
 
 export const VORMONAT = 'vormonat';
 export const VORJAHRESMONAT = 'vorjahresmonat';
 export const VORJAHR = 'vorjahr';
 export const VERGLEICH_ARTEN = [VORMONAT, VORJAHRESMONAT, VORJAHR];
 
-export const QUELLE_ARTEN = ['messstelle', 'kostenstelle', 'bezugsgroesse', 'stammdatum', 'kennzahl'];
+export const QUELLE_ARTEN = ['messstelle', 'kostenstelle', 'bezugsgroesse', 'stammdatum', 'kennzahl', 'umfang', 'energieeinsatz', 'messbedarf', 'messmittel'];
 export const QUELLE_BEZUEGE = ['unmittelbar', 'mittelbar', 'vergleich'];
 
 export const KORREKTUR_FREIGEGEBEN = 'korrektur_freigegeben';
@@ -87,7 +88,7 @@ export const ORT_AENDERUNG = 'ort_aenderung';
 export const MESSSTELLE_AENDERUNG = 'messstelle_aenderung';
 export const STRUKTUR_PROTOKOLLE = [ORT_AENDERUNG, MESSSTELLE_AENDERUNG];
 
-export const HANDLUNGEN = ['abrufen', 'pdf', 'csv', 'anlegen', 'freigeben', 'verwerfen', 'archivieren'];
+export const HANDLUNGEN = ['abrufen', 'pdf', 'csv', 'anlegen', 'freigeben', 'verwerfen', 'archivieren', 'wiedervorlage_aendern'];
 
 /** §5.8 — der HTTP-Status je Fehler-Code. */
 export const FEHLER_STATUS: Record<string, number> = {
@@ -151,8 +152,10 @@ export const SAETZE: Record<string, string> = {
   zeitraum_nicht_zu_ende: '{zeitraum} ist noch nicht zu Ende — ein Berichtsstand ist ab dem {datum} möglich ({tage} Tage nach {ende}).',
   zeitraum_monat: 'Der {name}',
   zeitraum_jahr: 'Das Jahr {name}',
+  zeitraum_datengrundlage: 'Die Datengrundlage {name}',
   ende_monat: 'Monatsende',
   ende_jahr: 'Jahresende',
+  ende_datengrundlage: 'Ende der Datengrundlage',
   werte_vorlaeufig: '{werte} noch vorläufig (endgültig ab {datum}): {quellen} — ein Berichtsstand braucht endgültige Werte.',
   werte_mehrere: '{anzahl} Werte sind',
   werte_einer: '1 Wert ist',
@@ -241,6 +244,7 @@ export const VORLAGEN: Vorlage[] = [
   { schluessel: 'jahresbericht_standort', fassung: 1, geltung_art: STANDORT, zeitraum_art: JAHR, vergleiche: [VORJAHR], abschnitte: ['kopf', 'zusammenfassung', 'verbrauch_je_messstelle', 'monatswerte', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
   { schluessel: 'monatsbericht_unternehmen', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: MONAT, vergleiche: [VORMONAT, VORJAHRESMONAT], abschnitte: ['kopf', 'zusammenfassung', 'standorte', 'kostenstellen', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
   { schluessel: 'jahresbericht_unternehmen', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: JAHR, vergleiche: [VORJAHR], abschnitte: ['kopf', 'zusammenfassung', 'standorte', 'kostenstellen', 'monatswerte', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
+  { schluessel: 'energetische_bewertung', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: DATENGRUNDLAGE, vergleiche: [], abschnitte: ['umfang', 'rangliste', 'einstufungen', 'messabdeckung', 'messplanung', 'messmittel', 'qualitaet', 'quellenverzeichnis'] },
 ];
 
 /** V2 — die Vorlage zu ihrem Schlüssel; `null` = `vorlage_unbekannt`. */
@@ -268,10 +272,21 @@ const vergleichszeitraum = (art: string, tag: string, periodeArt: string, zone: 
   return { art, schluessel, erster_tag: erster, letzter_tag: letzter, von: iso(mitternacht(erster, zone), zone), bis: iso(mitternacht(tagPlus(letzter, 1), zone), zone) };
 };
 
-/** V1 — Kalendermonat oder Kalenderjahr in der Zone der Geltung, mit seinen Vergleichszeiträumen (Q5). */
+/** V1/S1 — Kalendermonat, Kalenderjahr oder eine Datengrundlage aus ganzen Monaten. */
 export const zeitraum = (art: string, schluessel: string, zone: string): Zeitraum => {
   if (!ZEITRAUM_ARTEN.includes(art)) throw new Error(`Zeitraum-Art ${art} hat keinen Bericht`);
-  const [erster, letzter] = spanneVon(schluessel, art);
+  let erster: string;
+  let letzter: string;
+  if (art === DATENGRUNDLAGE) {
+    const teile = schluessel.split('/');
+    if (teile.length < 1 || teile.length > 2 || !/^\d{4}-(0[1-9]|1[0-2])$/.test(teile[0])
+      || (teile[1] !== undefined && !/^\d{4}-(0[1-9]|1[0-2])$/.test(teile[1]))) throw new Error(`Datengrundlage ${schluessel}`);
+    [erster] = spanneVon(teile[0], MONAT);
+    [, letzter] = spanneVon(teile[1] ?? teile[0], MONAT);
+    if (letzter < erster) throw new Error(`Datengrundlage ${schluessel}`);
+  } else {
+    [erster, letzter] = spanneVon(schluessel, art);
+  }
   const jahr = Number(erster.slice(0, 4));
   const monat = Number(erster.slice(5, 7));
   const vergleiche = art === MONAT
@@ -279,11 +294,14 @@ export const zeitraum = (art: string, schluessel: string, zone: string): Zeitrau
       vergleichszeitraum(VORMONAT, monat === 1 ? `${jahr - 1}-12-01` : `${jahr}-${zwei(monat - 1)}-01`, MONAT, zone),
       vergleichszeitraum(VORJAHRESMONAT, `${jahr - 1}-${zwei(monat)}-01`, MONAT, zone),
     ]
-    : [vergleichszeitraum(VORJAHR, `${jahr - 1}-01-01`, JAHR, zone)];
+    : art === JAHR ? [vergleichszeitraum(VORJAHR, `${jahr - 1}-01-01`, JAHR, zone)] : [];
   const bis = mitternacht(tagPlus(letzter, 1), zone);
   return {
     art, schluessel, erster_tag: erster, letzter_tag: letzter, von: iso(mitternacht(erster, zone), zone), bis: iso(bis, zone),
-    freigabe_ab: iso(bis + FREIGABE_FRIST_TAGE * TAG_MS, zone), bezeichnung: periodeText(art, schluessel), vergleiche,
+    freigabe_ab: iso(bis + FREIGABE_FRIST_TAGE * TAG_MS, zone),
+    bezeichnung: art === DATENGRUNDLAGE
+      ? `${periodeText(MONAT, erster.slice(0, 7))}${erster.slice(0, 7) === letzter.slice(0, 7) ? '' : ` bis ${periodeText(MONAT, letzter.slice(0, 7))}`}`
+      : periodeText(art, schluessel), vergleiche,
   };
 };
 

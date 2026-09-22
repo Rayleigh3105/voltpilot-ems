@@ -70,7 +70,7 @@ nie ein Verweis auf lebende Zeilen (E1). Ein zweites Anlegen derselben Vorlage �
   gespeicherten Tage, und jede Kennzahl ihren Ort und ihre Endgültigkeit. Die CSV füllt damit ihre zwei Zellen
   (B14/KZ-0001: `G-2`, `2026-11-08`); ihr Mapping las beide schon immer, es fehlte nur der Abzug.
 
-## 3. Quellen (Q1–Q6, E3)
+## 3. Quellen (Q1–Q6, E3; AP-16 S2)
 
 - **Q1/Q2 Nur die Messstellen-Welt.** `quelle_art`: `messstelle` · `kostenstelle` · `bezugsgroesse` · `stammdatum` ·
   `kennzahl`. Erlöse, Übersicht, Prognosen und Optimierung sind keine Berichtsquelle.
@@ -84,6 +84,11 @@ nie ein Verweis auf lebende Zeilen (E1). Ein zweites Anlegen derselben Vorlage �
   Regeln `vergleich_grund` und `vergleich`.
 - **Q6 Mittelbare Quellen** (Eingänge berechneter Messstellen, Kostenstellen und Kennzahlen) stehen mit `bezug = mittelbar`
   im Quellenverzeichnis — sie machen die Betroffenheit vollständig.
+- **AP-16 S2 Energetische Bewertung.** Additiv zu den bisherigen Arten kennt das Quellenverzeichnis `umfang`
+  (wirksame Fassung), `energieeinsatz` (mit wirksamer Einstufungs-Fassung und eingefrorener Herkunft), `messbedarf`
+  sowie `messmittel` (Angaben am Einbau der Messstellen des Einsatzes). Messstellen- und Bilanz-Eingänge der Rangliste
+  behalten ihre vorhandenen Versionen. Ein freigegebener Stand schützt diese zitierten Objekte mit
+  `409 berichts_belege`; eine neue Einstufungs-Fassung bleibt möglich.
 
 Eine **Zeile des Quellenverzeichnisses** (`$defs/quelle`): Bericht, `nr` (leer = Entwurf), `ersetzt`, Objekt (Kennzeichen),
 Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen gleicher Gruppe zusammengefasst
@@ -91,11 +96,12 @@ Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen
 
 ## 4. Zeitraum, Vergleich und Vorlagen (V1–V5, E9)
 
-- **V1** Zeiträume sind Kalendermonat und Kalenderjahr in der Zone der Geltung, halboffen (`von` = Mitternacht des ersten
+- **V1** Zeiträume sind Kalendermonat, Kalenderjahr oder — für die energetische Bewertung — eine Datengrundlage aus
+  ganzen Kalendermonaten in der Zone der Geltung, halboffen (`von` = Mitternacht des ersten
   Tags, `bis` = Mitternacht nach dem letzten), Tage einschließlich. Monat: Vergleich `vormonat` und `vorjahresmonat`; Jahr:
   `vorjahr`. Regel `zeitraum`: `BezugsPeriode.spanneVon` + `TagRegeln.beginn` (TS: `spanneVon` + `mitternacht`), Name
   `KennzahlRegeln.periodeText`.
-- **V2** Vier Vorlagen mit Fassungsnummer und festen Abschnitten ([`bericht-vorlagen.json`](./bericht-vorlagen.json)):
+- **V2** Fünf Vorlagen mit Fassungsnummer und festen Abschnitten ([`bericht-vorlagen.json`](./bericht-vorlagen.json)):
 
   | Vorlage | Geltung | Zeitraum | Vergleich | Abschnitte |
   |---|---|---|---|---|
@@ -103,6 +109,7 @@ Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen
   | `jahresbericht_standort` | Standort | Jahr | Vorjahr | … Monatswerte statt Tagesverlauf |
   | `monatsbericht_unternehmen` | Unternehmen | Monat | Vormonat, Vorjahresmonat | Kopf · Zusammenfassung · Standorte · Prozesse und Kostenstellen · Kennzahlen · Qualität · Quellenverzeichnis |
   | `jahresbericht_unternehmen` | Unternehmen | Jahr | Vorjahr | … dazu Monatswerte |
+  | `energetische_bewertung` | Unternehmen | Datengrundlage | — | Umfang · Rangliste · Einstufungen · Messabdeckung · Messplanung · Messmittel · Qualität · Quellenverzeichnis |
 
   Regel `vorlage`; eine unbekannte ist `422 vorlage_unbekannt`.
 - **V3** Der Kunde wählt Vorlage, Geltung, Zeitraum und abgewählte Kennzahlen — sonst nichts. Eine neue Vorlagen-Fassung
@@ -113,6 +120,10 @@ Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen
 - **Vergleich (Q5, DA1).** Differenz = aktuell − Vergleich; Prozent = Differenz ÷ Vergleich × 100, gespeichert auf
   `regeln.prozent_rechen_nachkommastellen` (10) Stellen, angezeigt mit einer Nachkommastelle und Vorzeichen
   („+260 kWh“, „+4,3 %“, „−3,0 %“); Vergleich 0 hat keinen Prozentwert; ohne Vergleichswert „keine Werte“ und der Grund.
+
+Die Vorlage `energetische_bewertung` startet ohne Angabe bei den letzten zwölf vollen Monaten. Ihr Feld
+`wiedervorlage_monate` startet mit 12 und lässt sich nur mit Begründung ändern; die Fälligkeit wird erst mit AP-16 IP-24
+beim Abruf abgeleitet.
 
 ## 5. Datenstand (D1–D5, E4)
 

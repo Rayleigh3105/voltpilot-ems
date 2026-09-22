@@ -198,7 +198,7 @@ class BerichtCsvTest {
         JsonNode vorlagen = EXAKT.readTree(Files.readString(V2.resolve("bericht-vorlagen.json")));
         List<String> mitZeilen = List.of(BerichtCsv.MESSSTELLEN, BerichtCsv.STANDORTE, BerichtCsv.KOSTENSTELLEN,
                 BerichtCsv.KENNZAHLEN);
-        assertThat(vorlagen.path("vorlagen")).hasSize(4);
+        assertThat(vorlagen.path("vorlagen")).hasSize(5);
         for (JsonNode v : vorlagen.path("vorlagen")) {
             List<String> folge = new ArrayList<>();
             v.path("abschnitte").forEach(a -> {
@@ -206,6 +206,10 @@ class BerichtCsvTest {
                     folge.add(a.path("schluessel").asText());
                 }
             });
+            if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(v.path("schluessel").asText())) {
+                assertThat(folge).isEmpty();
+                continue;
+            }
             assertThat(folge).as(v.path("schluessel").asText()).containsExactlyElementsOf(
                     BerichtRegeln.UNTERNEHMEN.equals(v.path("geltung_art").asText()) ? BerichtCsv.ABSCHNITTE_UNTERNEHMEN
                             : BerichtCsv.ABSCHNITTE_STANDORT);

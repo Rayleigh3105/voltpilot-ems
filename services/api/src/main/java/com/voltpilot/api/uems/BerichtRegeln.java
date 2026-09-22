@@ -55,6 +55,7 @@ public final class BerichtRegeln {
     public static final String JAHRESBERICHT_STANDORT = "jahresbericht_standort";
     public static final String MONATSBERICHT_UNTERNEHMEN = "monatsbericht_unternehmen";
     public static final String JAHRESBERICHT_UNTERNEHMEN = "jahresbericht_unternehmen";
+    public static final String ENERGETISCHE_BEWERTUNG = "energetische_bewertung";
 
     public static final String STANDORT = KennzahlRegeln.STANDORT;
     public static final String UNTERNEHMEN = KennzahlRegeln.UNTERNEHMEN;
@@ -62,7 +63,8 @@ public final class BerichtRegeln {
 
     public static final String MONAT = "monat";
     public static final String JAHR = "jahr";
-    public static final List<String> ZEITRAUM_ARTEN = List.of(MONAT, JAHR);
+    public static final String DATENGRUNDLAGE = "datengrundlage";
+    public static final List<String> ZEITRAUM_ARTEN = List.of(MONAT, JAHR, DATENGRUNDLAGE);
 
     public static final String VORMONAT = "vormonat";
     public static final String VORJAHRESMONAT = "vorjahresmonat";
@@ -70,7 +72,8 @@ public final class BerichtRegeln {
     public static final List<String> VERGLEICH_ARTEN = List.of(VORMONAT, VORJAHRESMONAT, VORJAHR);
 
     public static final List<String> QUELLE_ARTEN =
-            List.of("messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl");
+            List.of("messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl", "umfang",
+                    "energieeinsatz", "messbedarf", "messmittel");
 
     public static final String UNMITTELBAR = "unmittelbar";
     public static final String MITTELBAR = "mittelbar";
@@ -110,7 +113,8 @@ public final class BerichtRegeln {
     public static final List<String> STRUKTUR_PROTOKOLLE = List.of(ORT_AENDERUNG, MESSSTELLE_AENDERUNG);
 
     public static final List<String> HANDLUNGEN =
-            List.of("abrufen", "pdf", "csv", "anlegen", "freigeben", "verwerfen", "archivieren");
+            List.of("abrufen", "pdf", "csv", "anlegen", "freigeben", "verwerfen", "archivieren",
+                    "wiedervorlage_aendern");
 
     public static final String ZEITRAUM_NICHT_ZU_ENDE = "zeitraum_nicht_zu_ende";
     public static final String WERTE_VORLAEUFIG = "werte_vorlaeufig";
@@ -172,8 +176,10 @@ public final class BerichtRegeln {
             "zeitraum_nicht_zu_ende", "{zeitraum} ist noch nicht zu Ende — ein Berichtsstand ist ab dem {datum} möglich ({tage} Tage nach {ende}).",
             "zeitraum_monat", "Der {name}",
             "zeitraum_jahr", "Das Jahr {name}",
+            "zeitraum_datengrundlage", "Die Datengrundlage {name}",
             "ende_monat", "Monatsende",
             "ende_jahr", "Jahresende",
+            "ende_datengrundlage", "Ende der Datengrundlage",
             "werte_vorlaeufig", "{werte} noch vorläufig (endgültig ab {datum}): {quellen} — ein Berichtsstand braucht endgültige Werte.",
             "werte_mehrere", "{anzahl} Werte sind",
             "werte_einer", "1 Wert ist",
@@ -260,7 +266,10 @@ public final class BerichtRegeln {
                             "quellenverzeichnis")),
             new Vorlage(JAHRESBERICHT_UNTERNEHMEN, 1, UNTERNEHMEN, JAHR, List.of(VORJAHR),
                     List.of("kopf", "zusammenfassung", "standorte", "kostenstellen", "monatswerte", "kennzahlen", "qualitaet",
-                            "quellenverzeichnis")));
+                            "quellenverzeichnis")),
+            new Vorlage(ENERGETISCHE_BEWERTUNG, 1, UNTERNEHMEN, DATENGRUNDLAGE, List.of(),
+                    List.of("umfang", "rangliste", "einstufungen", "messabdeckung", "messplanung", "messmittel",
+                            "qualitaet", "quellenverzeichnis")));
 
     /** V2 — die Vorlage zu ihrem Schlüssel; {@code null} = {@link #VORLAGE_UNBEKANNT}. */
     public static Vorlage vorlage(String schluessel) {
@@ -280,22 +289,42 @@ public final class BerichtRegeln {
     public record Zeitraum(String art, String schluessel, LocalDate ersterTag, LocalDate letzterTag, Instant von, Instant bis,
             Instant freigabeAb, String bezeichnung, List<Vergleichszeitraum> vergleiche) {}
 
-    /** V1 — Kalendermonat oder Kalenderjahr in der Zone der Geltung, mit seinen Vergleichszeiträumen (Q5). */
+    /** V1/S1 — Kalendermonat, Kalenderjahr oder eine Datengrundlage aus ganzen Monaten. */
     public static Zeitraum zeitraum(String art, String schluessel, ZoneId zone) {
         if (!ZEITRAUM_ARTEN.contains(art)) {
             throw new IllegalArgumentException("Zeitraum-Art " + art + " hat keinen Bericht");
         }
-        LocalDate[] spanne = BezugsPeriode.spanneVon(schluessel, art);
+        LocalDate[] spanne;
+        if (DATENGRUNDLAGE.equals(art)) {
+            String[] teile = schluessel.split("/", -1);
+            if (teile.length < 1 || teile.length > 2) {
+                throw new IllegalArgumentException("Datengrundlage " + schluessel);
+            }
+            LocalDate von = java.time.YearMonth.parse(teile[0]).atDay(1);
+            LocalDate bis = java.time.YearMonth.parse(teile.length == 1 ? teile[0] : teile[1]).atEndOfMonth();
+            if (bis.isBefore(von)) {
+                throw new IllegalArgumentException("Datengrundlage " + schluessel);
+            }
+            spanne = new LocalDate[] {von, bis};
+        } else {
+            spanne = BezugsPeriode.spanneVon(schluessel, art);
+        }
         List<Vergleichszeitraum> vergleiche = new ArrayList<>();
         if (MONAT.equals(art)) {
             vergleiche.add(vergleichszeitraum(VORMONAT, spanne[0].minusMonths(1), MONAT, zone));
             vergleiche.add(vergleichszeitraum(VORJAHRESMONAT, spanne[0].minusYears(1), MONAT, zone));
-        } else {
+        } else if (JAHR.equals(art)) {
             vergleiche.add(vergleichszeitraum(VORJAHR, spanne[0].minusYears(1), JAHR, zone));
         }
         Instant bis = TagRegeln.beginn(spanne[1].plusDays(1), zone);
+        String bezeichnung = DATENGRUNDLAGE.equals(art)
+                ? KennzahlRegeln.periodeText(MONAT, java.time.YearMonth.from(spanne[0]).toString())
+                        + (java.time.YearMonth.from(spanne[0]).equals(java.time.YearMonth.from(spanne[1])) ? ""
+                                : " bis " + KennzahlRegeln.periodeText(MONAT,
+                                        java.time.YearMonth.from(spanne[1]).toString()))
+                : KennzahlRegeln.periodeText(art, schluessel);
         return new Zeitraum(art, schluessel, spanne[0], spanne[1], TagRegeln.beginn(spanne[0], zone), bis,
-                TagRegeln.endgueltigAb(bis), KennzahlRegeln.periodeText(art, schluessel), List.copyOf(vergleiche));
+                TagRegeln.endgueltigAb(bis), bezeichnung, List.copyOf(vergleiche));
     }
 
     private static Vergleichszeitraum vergleichszeitraum(String art, LocalDate tag, String periodeArt, ZoneId zone) {
