@@ -6944,6 +6944,19 @@ export interface UemsGemeinsameSteuerungMitglied {
   wirksame_anteile?: { einspeisung_kw?: number | null; bezug_kw?: number | null } | null;
   /** IP-23-Folge: der letzte Status-Herzschlag der Box; `null` = nie gehört. */
   zuletzt_gehoert?: string | null;
+  /** AP-15 §5.5: die Box scheidet aus; `null`, solange nicht. */
+  ausscheiden?: UemsAusscheiden | null;
+}
+
+/**
+ * AP-15 §5.5: das Mitglied scheidet aus — sein Anteil fällt im Zweischritt auf den Rückfall seiner Geräte.
+ * `box` = wartet auf die Quittung der Box, `voltpilot` = die Box ist abgemeldet, VoltPilot bestätigt, dass ihre Geräte
+ * vom Netz sind.
+ */
+export interface UemsAusscheiden {
+  seit: string;
+  wartet_auf: 'box' | 'voltpilot';
+  vom_netz_bestaetigt_am?: string | null;
 }
 
 /** Eine Sprungprobe (IP-21). `ausgeloest` = der Bericht steht aus; `nicht_auswertbar` ist kein Bestanden. */
@@ -6999,6 +7012,8 @@ export interface UemsBoxStand {
   anteile: { gesendet?: UemsRevision | null; quittiert?: UemsRevision | null; wirksam_kw?: { einspeisung?: number; bezug?: number } | null; reserve_verbraucher_kw?: number | null; ungeregelt_hinter_abgang_kw?: number | null };
   /** Folgepaket zu IP-22: `null` = die Box hat für gestern keinen Anteils-Verlust gemeldet. */
   verlust_gestern?: UemsVerlustTag | null;
+  /** AP-15 §5.5: die Box scheidet aus; `null`, solange nicht. */
+  ausscheiden?: UemsAusscheiden | null;
 }
 
 /** Das jüngste Anteils-Dokument; der Zielstand gilt erst mit `schritt = ziel` und leerem `wartet_auf`. */
@@ -8663,6 +8678,10 @@ export const api = {
 
   gemeinsameSteuerungBestaetigen: (siteId: string, boxId: string) =>
     request<UemsGemeinsameSteuerungZustand>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/mitglieder/${boxId}/bestaetigen`, { method: 'POST' }),
+
+  /** AP-15 §5.5 (nur Plattform-Rolle, I4): die Geräte einer ausscheidenden Box sind vom Netz. */
+  gemeinsameSteuerungVomNetz: (siteId: string, boxId: string) =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/mitglieder/${boxId}/ausscheiden-bestaetigen`, { method: 'POST' }),
 
   gemeinsameSteuerungSprungprobe: (siteId: string, body: { box_id: string; art: UemsSprungprobe['art']; sprung_kw: number }) =>
     request<UemsSprungprobe>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/sprungprobe`,

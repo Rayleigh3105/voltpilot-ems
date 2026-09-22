@@ -641,6 +641,8 @@ class RechtMatrixApiTest {
         z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/anhalten", nurKa));
         z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/fortsetzen", nurKa));
         z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/aufloesen", nurKa));
+        // Ausscheiden eines Mitglieds (§5.5) — Recht wie auflösen
+        z.add(new Zeile("steuerung.starten_beenden", HttpMethod.POST, gs + "/mitglieder/{FREMD}/ausscheiden", nurKa));
         return z;
     }
 

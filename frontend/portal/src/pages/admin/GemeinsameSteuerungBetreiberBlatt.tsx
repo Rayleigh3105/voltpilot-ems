@@ -38,6 +38,7 @@ type Handgriff =
   | { was: 'anhalten' }
   | { was: 'fortsetzen' }
   | { was: 'bestaetigen'; box: string }
+  | { was: 'vomNetz'; box: string }
   | { was: 'sprungprobe'; box: string };
 
 /**
@@ -104,6 +105,7 @@ export function GemeinsameSteuerungBetreiberBlatt({
       if (h.was === 'scharfschalten' || h.was === 'fortsetzen') await api.gemeinsameSteuerungBetreiber(siteId, h.was);
       else if (h.was === 'anhalten') await api.gemeinsameSteuerungSchritt(siteId, 'anhalten');
       else if (h.was === 'bestaetigen') await api.gemeinsameSteuerungBestaetigen(siteId, h.box);
+      else if (h.was === 'vomNetz') await api.gemeinsameSteuerungVomNetz(siteId, h.box);
       else await api.gemeinsameSteuerungSprungprobe(siteId, { box_id: h.box, art, sprung_kw: kw! });
       setAbgelehnt([]);
       setOffen(null);
@@ -193,6 +195,7 @@ export function GemeinsameSteuerungBetreiberBlatt({
             const grund = sprungprobeGrund(zustand, b, namen);
             const mitglied = zustand?.mitglieder?.find((m) => m.box_id === s.boxId);
             const bestaetigen = (zustand?.epoche ?? 0) > 0 && mitglied != null && !mitglied.bestaetigt_am;
+            const scheidetAus = b.ausscheiden ?? mitglied?.ausscheiden ?? null;
             return (
               <li key={s.boxId} data-box={s.boxId}>
                 <span className="vp-gsb-box">Box {s.name}</span>
@@ -201,6 +204,12 @@ export function GemeinsameSteuerungBetreiberBlatt({
                   : <Button size="sm" variant="outline" disabled={busy} onClick={() => { setSprungFehler(null); setOffen({ was: 'sprungprobe', box: s.boxId }); }}>Sprungprobe auslösen</Button>}
                 {bestaetigen && <Button size="sm" variant="outline" disabled={busy} onClick={() => setOffen({ was: 'bestaetigen', box: s.boxId })}>Mitglied bestätigen</Button>}
                 {mitglied?.bestaetigt_am && <span className="vp-gsb-klein">Mitglied bestätigt {zeit(mitglied.bestaetigt_am)}</span>}
+                {scheidetAus && (
+                  <span className="vp-gsb-klein" data-testid="gsb-scheidet-aus">
+                    {scheidetAus.wartet_auf === 'voltpilot' ? 'Scheidet aus · abgemeldet, wartet auf VoltPilot' : 'Scheidet aus · wartet auf ihre Quittung'}
+                  </span>
+                )}
+                {scheidetAus && !scheidetAus.vom_netz_bestaetigt_am && <Button size="sm" variant="outline" disabled={busy} onClick={() => setOffen({ was: 'vomNetz', box: s.boxId })}>Geräte sind vom Netz - bestätigen</Button>}
               </li>
             );
           })}
@@ -325,5 +334,7 @@ function dialogText(h: Handgriff, namen: ReadonlyMap<string, string>): { titel: 
       return { titel: 'Als Betreiber fortsetzen', intro: 'Danach gilt:', danach: [...DANACH.fortsetzen], knopf: 'Fortsetzen' };
     case 'bestaetigen':
       return { titel: `Mitglied Box ${box} bestätigen`, intro: 'Danach gilt:', danach: [...DANACH.bestaetigen], knopf: 'Bestätigen' };
+    case 'vomNetz':
+      return { titel: `Geräte der Box ${box} sind vom Netz`, intro: 'Danach gilt:', danach: [...DANACH.vomNetz], knopf: 'Geräte sind vom Netz - bestätigen' };
   }
 }

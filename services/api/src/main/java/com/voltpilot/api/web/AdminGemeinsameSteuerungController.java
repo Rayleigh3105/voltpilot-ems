@@ -113,6 +113,17 @@ public class AdminGemeinsameSteuerungController {
     }
 
     /**
+     * Recht: {@code plattform.betrieb} — die Geräte einer ausscheidenden Box sind vom Netz (§5.5, I4): ihr Rückfall
+     * bleibt nicht reserviert, das Ziel folgt ohne ihre Quittung. 409 {@code scheidet_nicht_aus} ohne Ausscheiden.
+     */
+    @PostMapping("/mitglieder/{boxId}/ausscheiden-bestaetigen")
+    public GemeinsameSteuerungDto.Zustand ausscheidenBestaetigen(@PathVariable UUID siteId, @PathVariable UUID boxId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        GemeinsameSteuerungController.leer(body);
+        return dienst.ausscheidenBestaetigen(siteId, boxId, GemeinsameSteuerungController.akteur(auth));
+    }
+
+    /**
      * Recht: {@code plattform.betrieb} — den offenen Vorschlag zum SENKEN des Vorbehalts freigeben (IP-13, B4/G5):
      * erst dann sinkt der Vorbehalt, danach der Zweischritt; 409 {@code kein_vorschlag} ohne offenen Vorschlag. Erhöhen
      * braucht keine Freigabe (der tägliche Lauf); eine Kundenroute zum Senken gibt es nicht.

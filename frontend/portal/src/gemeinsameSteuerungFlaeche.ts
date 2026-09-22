@@ -157,7 +157,11 @@ export function boxZeilen(
     let text: string;
     // Nach dem Box-Tausch (A14/R17): die Nachfolgerin wartet auf die Bestätigung durch VoltPilot (I4). Nur ein
     // ausdrückliches null — vor dem Freischalten ist kein Mitglied bestätigt, und die Anteile sind nicht in Kraft.
-    if (inKraft && m.bestaetigt_am === null) {
+    if (m.ausscheiden) {
+      // §5.5: die Box scheidet aus — wartet auf ihre Quittung oder, abgemeldet, auf VoltPilot
+      text = flaechenSatz(m.ausscheiden.wartet_auf === 'voltpilot' ? 'box_scheidet_aus_wartet_auf_voltpilot'
+        : 'box_scheidet_aus_wartet_auf_box', { box });
+    } else if (inKraft && m.bestaetigt_am === null) {
       text = flaechenSatz('box_wartet_auf_bestaetigung', { box });
     } else if (m.rolle === 'fuehrt') {
       text = satz('box_fuehrend', { box });

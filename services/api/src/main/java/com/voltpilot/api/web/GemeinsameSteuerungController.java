@@ -186,6 +186,19 @@ public class GemeinsameSteuerungController {
         return dienst.aufloesen(siteId, akteur(auth));
     }
 
+    /**
+     * Recht: {@code steuerung.starten_beenden} an der Anlage — eine Box scheidet aus (§5.5): Zweischritt, ihr Anteil
+     * fällt auf den Rückfall ihrer Geräte; die anderen bekommen den Rest erst nach ihrer Quittung. 409
+     * {@code fuehrende_box_bleibt} für die führende Box, solange eine andere mitsteuert.
+     */
+    @PostMapping(PFAD + "/mitglieder/{boxId}/ausscheiden")
+    @Recht(value = "steuerung.starten_beenden", ziel = RechtZiel.ANLAGE)
+    public GemeinsameSteuerungDto.Zustand ausscheiden(@PathVariable UUID siteId, @PathVariable UUID boxId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        leer(body);
+        return dienst.ausscheiden(siteId, boxId, akteur(auth));
+    }
+
     // ----------------------------------------------------------------------------- Gerüst
 
     /** Liest {@code mitglieder}; jedes andere Feld (Mandant, Anlage, …) ist 400. */

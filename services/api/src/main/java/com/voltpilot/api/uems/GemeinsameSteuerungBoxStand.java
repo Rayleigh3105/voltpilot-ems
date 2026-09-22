@@ -95,9 +95,11 @@ public class GemeinsameSteuerungBoxStand {
         GemeinsameSteuerungHerzschlag bloecke = herzschlag.getIfAvailable();
         Map<UUID, GemeinsameSteuerungDto.VerlustTag> gestern = verlustGestern(siteId);
         Map<String, BigDecimal> ungeregelt = ungeregeltHinterAbgang(v.get().id(), mitglieder);
+        Map<UUID, SteuerungsverbundRepository.Ausscheiden> gehen = verbuende.ausscheidende(v.get().id(), uhr.instant());
         List<GemeinsameSteuerungDto.BoxStand> boxen = new ArrayList<>();
         for (MitgliedZeile m : mitglieder) {
-            boxen.add(box(siteId, m, bloecke, gestern.get(m.deviceId()), ungeregelt.get(m.deviceId().toString())));
+            boxen.add(box(siteId, m, bloecke, gestern.get(m.deviceId()), ungeregelt.get(m.deviceId().toString()),
+                    GemeinsameSteuerungService.ausscheiden(gehen.get(m.deviceId()))));
         }
         return new GemeinsameSteuerungDto.Betreiberblatt(List.copyOf(boxen), zweischritt(v.get(), mitglieder),
                 sprungproben.protokoll(v.get().id(), mitglieder));
@@ -219,7 +221,8 @@ public class GemeinsameSteuerungBoxStand {
     }
 
     private GemeinsameSteuerungDto.BoxStand box(UUID siteId, MitgliedZeile m, GemeinsameSteuerungHerzschlag bloecke,
-            GemeinsameSteuerungDto.VerlustTag verlustGestern, BigDecimal ungeregeltKw) {
+            GemeinsameSteuerungDto.VerlustTag verlustGestern, BigDecimal ungeregeltKw,
+            GemeinsameSteuerungDto.Ausscheiden ausscheiden) {
         UUID box = m.deviceId();
         GemeinsameSteuerungDto.Faehigkeit faehigkeit = new GemeinsameSteuerungDto.Faehigkeit(
                 faehigkeiten.herkunft(box, SteuerungsverbundNachweise.FAEHIGKEIT),
@@ -247,7 +250,7 @@ public class GemeinsameSteuerungBoxStand {
                         revision(m.gesendetEpoche(), m.gesendetRevision(), m.gesendetAm()),
                         revision(m.quittiertEpoche(), m.quittiertRevision(), m.quittiertAm()), wirksamKw,
                         wirksam.reserveVerbraucher(siteId, box).orElse(null), ungeregeltKw),
-                verlustGestern);
+                verlustGestern, ausscheiden);
     }
 
     /**

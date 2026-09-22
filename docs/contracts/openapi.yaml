@@ -2897,6 +2897,30 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
         "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/mitglieder/{boxId}/ausscheiden-bestaetigen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: boxId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [admin]
+      summary: Die Geräte einer ausscheidenden Box sind vom Netz — bestätigen (AP-15 §5.5, I4).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle). Setzt `vom_netz_bestaetigt_am` am ausscheidenden Mitglied:
+        ihr Rückfall bleibt nicht reserviert, der Zielstand geht ohne ihre Quittung (R12 endet hier), sobald keine
+        andere verengte Box mehr aussteht; danach endet die Mitgliedschaft. 409 `kein_mitglied`, `scheidet_nicht_aus`
+        für eine Box, die nicht ausscheidet, `bereits_bestaetigt` beim zweiten Mal, `nicht_eingerichtet` ohne
+        Gemeinsame Steuerung.
+      responses:
+        "200":
+          description: Bestätigt; der Zustand danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/vorbehalt/freigeben:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -10014,6 +10038,35 @@ paths:
         "403": { description: Das Recht `steuerung.starten_beenden` fehlt. }
         "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
         "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+  /api/v1/sites/{siteId}/gemeinsame-steuerung/mitglieder/{boxId}/ausscheiden:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: boxId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [funktionen]
+      summary: Eine Box scheidet aus der Gemeinsamen Steuerung aus (Kundenadministrator, AP-15 §5.5).
+      description: >
+        Recht `steuerung.starten_beenden` an der Anlage. Zweischritt (G5): im Übergang fällt der Anteil der Box in
+        beiden Richtungen auf den Rückfall ihrer Geräte (G3; ohne Geräte 0), die anderen behalten ihren; erst nach
+        IHRER Quittung bekommen sie den Rest nach G4 — der Rückfall ihrer Geräte bleibt im Vorbehalt reserviert. Bleibt
+        die Quittung aus, steht der Übergang (R12), bis VoltPilot bestätigt, dass ihre Geräte vom Netz sind
+        (`…/admin/…/ausscheiden-bestaetigen`). Dann endet die Mitgliedschaft (zeitgültig); die Box hält ihr letztes
+        Dokument (V5). Nie scharf (kein Anteils-Dokument): die Mitgliedschaft endet sofort. Das Abmelden der Box
+        (`DELETE /api/v1/devices/{id}`) führt denselben Weg und wartet auf VoltPilot. 409 `kein_mitglied`,
+        `fuehrende_box_bleibt` (die führende Box, solange eine andere mitsteuert — erst die Rolle wechseln),
+        `scheidet_schon_aus`, `zweischritt_laeuft` (eine Änderung wartet noch auf Quittungen), `rueckgespielt` (A18),
+        `ausscheiden_passt_nicht` (ohne die Box passt die Auslegung nicht).
+      responses:
+        "200":
+          description: Das Ausscheiden läuft; der Zustand danach (`mitglieder[].ausscheiden`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
+        "400": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Das Recht `steuerung.starten_beenden` fehlt. }
+        "404": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
+        "409": { $ref: "#/components/responses/GemeinsameSteuerungAbgelehnt" }
   /api/v1/sites/{siteId}/funktionen/steuern:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -13622,6 +13675,25 @@ components:
           description: >-
             AP-15 IP-23-Folge: der letzte Status-Herzschlag dieser Box (Cloud-Ankunft); null = nie. Die Ausfall-Sätze
             A1/A2/A4 der Kundenfläche lesen hier.
+        ausscheiden:
+          allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungAusscheiden' }]
+          nullable: true
+          description: AP-15 §5.5 — das Mitglied scheidet aus; null, solange nicht.
+    GemeinsameSteuerungAusscheiden:
+      type: object
+      required: [seit, wartet_auf]
+      description: >-
+        AP-15 §5.5 (V20260922160000): die Box scheidet aus — ihr Anteil fällt im Zweischritt auf den Rückfall ihrer
+        Geräte; die anderen bekommen den Rest erst mit dem Ende ihrer Mitgliedschaft.
+      properties:
+        seit: { type: string, format: date-time }
+        wartet_auf:
+          type: string
+          enum: [box, voltpilot]
+          description: >-
+            `box` = auf die Quittung der Box (Route `ausscheiden`); `voltpilot` = die Box ist abgemeldet, VoltPilot
+            bestätigt, dass ihre Geräte vom Netz sind.
+        vom_netz_bestaetigt_am: { type: string, format: date-time, nullable: true }
     GemeinsameSteuerungVorschau:
       type: object
       description: >-
@@ -13695,6 +13767,10 @@ components:
           allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungVerlustTag' }]
           nullable: true
           description: Folgepaket zu IP-22 — null = die Box hat für gestern keinen Anteils-Verlust gemeldet.
+        ausscheiden:
+          allOf: [{ $ref: '#/components/schemas/GemeinsameSteuerungAusscheiden' }]
+          nullable: true
+          description: AP-15 §5.5 — das Mitglied scheidet aus; null, solange nicht.
     GemeinsameSteuerungVerlustTag:
       type: object
       required: [tag, verlust_kwh, gebunden_s]

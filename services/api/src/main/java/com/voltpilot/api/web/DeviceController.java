@@ -88,6 +88,14 @@ public class DeviceController {
         this.leadDevices = service;
     }
 
+    /** UEMS AP-15 §5.5: eine abgemeldete Mitglieds-Box scheidet aus der Gemeinsamen Steuerung aus. */
+    private com.voltpilot.api.uems.GemeinsameSteuerungAusscheiden verbundAusscheiden;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void verbundAusscheiden(com.voltpilot.api.uems.GemeinsameSteuerungAusscheiden dienst) {
+        this.verbundAusscheiden = dienst;
+    }
+
     public DeviceController(DeviceRepository devices, Geltungsbereich geltungsbereich, RechtPruefung rechte,
             AssetRepository assets,
             ProvisionedDeviceRepository provisioned,
@@ -283,10 +291,16 @@ public class DeviceController {
     @DeleteMapping("/{deviceId}")
     @Recht(value = "komponente.loeschen", ziel = RechtZiel.DEVICE)
     @Transactional
-    public ResponseEntity<Void> unclaim(@PathVariable UUID deviceId) {
+    public ResponseEntity<Void> unclaim(@PathVariable UUID deviceId,
+            org.springframework.security.core.Authentication auth) {
         UUID tenantId = TenantContext.get();
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+        // Gemeinsame Steuerung (AP-15 §5.5): ist die Box Mitglied, scheidet sie aus und wartet auf die Bestätigung des
+        // Betreibers, dass ihre Geräte vom Netz sind — bis dahin bekommt keine andere Box mehr. Ohne Verbund: nichts.
+        if (verbundAusscheiden != null) {
+            verbundAusscheiden.beimAusbau(deviceId, com.voltpilot.api.uems.ProtokollAkteur.aus(auth).orElse(null));
+        }
         if (!devices.ausbauen(deviceId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }
