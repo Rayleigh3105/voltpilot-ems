@@ -84,5 +84,5 @@ def test_messabdeckung_ahrenberg_laeuft_durch_denselben_p3_zwilling():
     assert aus['ungemessen'] == str(MESSABDECKUNG['summe']['ungemessen_kwh'])
     assert aus['abdeckung_prozent'] == str(MESSABDECKUNG['summe']['abdeckung_prozent'])
     assert aus['K8'] == MESSABDECKUNG['summe']['K8']
-    assert len(aus['gemessen']) == 9
+    assert len(aus['gemessen']) == 10
     assert aus['geplant'] == ['MS-23']

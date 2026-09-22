@@ -216,9 +216,31 @@ class BewertungRanglisteApiTest {
         assertThat(einsatzAbdeckung(a,"EE-8").path("menge").isNull()).isTrue();
         assertThat(einsatzAbdeckung(a,"EE-8").at("/geplant/0/kennzeichen").asText()).isEqualTo("MS-23");
         assertThat(einsatzAbdeckung(a,"EE-8").path("geplant").get(0).has("menge")).isFalse();
-        assertThat(a.path("je_ort")).hasSize(4);
-        assertThat(a.path("je_ort").findValuesAsText("menge")).contains("54580","3860","1200");
+        assertThat(a.path("je_ort")).hasSize(5);
+        assertThat(ortAbdeckung(a,"AN-1","Strom").path("gemessen").findValuesAsText("menge"))
+                .containsExactly("7600","55100","15900","6200");
+        assertThat(ortAbdeckung(a,"AN-1","Strom").at("/ungemessen/menge").asText()).isEqualTo("54580");
+        assertThat(ortAbdeckung(a,"AN-2","Strom").path("gemessen").findValuesAsText("menge"))
+                .containsExactly("22400","6040","3500","1100");
+        assertThat(ortAbdeckung(a,"AN-2","Strom").at("/ungemessen/menge").asText()).isEqualTo("3860");
+        assertThat(ortAbdeckung(a,"AN-3","Strom").path("gemessen").findValuesAsText("menge"))
+                .containsExactly("3600","4300");
+        assertThat(ortAbdeckung(a,"AN-3","Strom").at("/ungemessen/menge").asText()).isEqualTo("1200");
+        assertThat(ortAbdeckung(a,"ST-1 ST-1","Gas").path("gemessen").findValuesAsText("menge"))
+                .containsExactly("1240");
+        assertThat(a.path("je_ort").findValuesAsText("kennzeichen")).contains("MS-23");
         assertThat(a.toString()).doesNotContain("MS-09","MS-15","MS-22","automatisch eingestuft","ISO-wesentlich");
+    }
+
+    @Test void p3K8KommtAusDerWirksamenKriterienFassung() throws Exception {
+        var werte=new HashMap<String,Object>();
+        werte.put("K1","10"); werte.put("K2","80"); werte.put("K3","100000");
+        werte.put("K5","90"); werte.put("K6","5"); werte.put("K7",12);
+        werte.put("K8","60"); werte.put("mindest_monate",3);
+        ruf("PUT","/api/v1/unternehmen/bewertung/kriterien","IK",
+                Map.of("werte",werte,"begruendung","Eigene Abdeckungsschwelle"),200);
+        assertThat(ruf("GET",ABDECKUNG+OKTOBER,"IK",null,200).at("/summe/k8").asText())
+                .isEqualTo("ueber_schwelle");
     }
 
     @Test void p3TeilansichtUndW8ArchiviertOderBerechnetNieGemessen() throws Exception {
@@ -226,10 +248,16 @@ class BewertungRanglisteApiTest {
                 +"VALUES (?,'MS-X','Summe','berechnet','Strom','Wirkenergie','Bezug','kWh','Intervallmenge') RETURNING id",tenant);
         root.update("INSERT INTO messstelle_prozess(tenant_id,messstelle_id,prozess_id,gueltig_ab) VALUES (?,?,?,'2024-01-01')",
                 tenant,berechnet,ids.get("P-1"));
+        root.update("INSERT INTO messstelle_ort(tenant_id,messstelle_id,standort_id,gueltig_ab) VALUES (?,?,?,'2024-01-01')",
+                tenant,berechnet,ids.get("ST-1"));
         root.update("UPDATE messstelle SET archiviert_am=now() WHERE id=?",ids.get("MS-06"));
         var ganz=ruf("GET",ABDECKUNG+OKTOBER,"IK",null,200);
         assertThat(einsatzAbdeckung(ganz,"EE-1").path("gemessen").findValuesAsText("kennzeichen"))
                 .containsExactly("MS-11").doesNotContain("MS-06","MS-X");
+        assertThat(ruf("GET",BASE+OKTOBER,"LE",null,200).path("einsaetze").findValuesAsText("kennzeichen"))
+                .doesNotContain("EE-1");
+        assertThat(ruf("GET","/api/v1/unternehmen/energieeinsaetze","LE",null,200)
+                .path("energieeinsaetze").findValuesAsText("kennzeichen")).doesNotContain("EE-1");
         var teil=ruf("GET",ABDECKUNG+OKTOBER,"LE",null,200);
         assertThat(teil.path("teilansicht").asBoolean()).isTrue();
         assertThat(teil.at("/summe/nenner/wert").asText()).isEqualTo("9100");
@@ -312,6 +340,11 @@ class BewertungRanglisteApiTest {
     private static JsonNode einsatzAbdeckung(JsonNode a,String k) {
         for (var e:a.path("je_einsatz")) if (e.path("kennzeichen").asText().equals(k)) return e;
         throw new AssertionError("Einsatz fehlt: "+k);
+    }
+    private static JsonNode ortAbdeckung(JsonNode a,String name,String traeger) {
+        for (var o:a.path("je_ort")) if (o.path("name").asText().equals(name)
+                && o.path("traeger").asText().equals(traeger)) return o;
+        throw new AssertionError("Ort fehlt: "+name+" / "+traeger);
     }
     private void monat(String k,String menge) throws Exception {
         ruf("POST","/api/v1/messstellen/"+k+"/ablesungen","IK",Map.of("zeitpunkt","2026-10-01T07:15:00+02:00","stand","0"),200);

@@ -62,9 +62,16 @@ public final class BewertungMessabdeckungLeser {
         }
         Map<String, List<BewertungRanglisteDto.Messstelle>> weitereOrte = new LinkedHashMap<>();
         Map<String, BewertungRanglisteDto.Einsatz> weitereEinsaetze = new LinkedHashMap<>();
+        for (var e : rangliste.einsaetze()) for (var m : e.messstellen()) {
+            if (m.anlageId() != null) continue;
+            Info i = infos.get(m.id());
+            String schluessel = e.traeger()+"\u0000"+(i == null || i.ortId() == null ? m.id() : i.ortId());
+            weitereOrte.computeIfAbsent(schluessel, x -> new ArrayList<>()).add(m);
+            weitereEinsaetze.putIfAbsent(schluessel, e);
+        }
         for (var e : rangliste.weitereTraeger()) for (var m : e.messstellen()) {
             Info i = infos.get(m.id());
-            String schluessel = e.traeger()+"\u0000"+(i == null ? m.id() : i.ortId());
+            String schluessel = e.traeger()+"\u0000"+(i == null || i.ortId() == null ? m.id() : i.ortId());
             weitereOrte.computeIfAbsent(schluessel, x -> new ArrayList<>()).add(m);
             weitereEinsaetze.putIfAbsent(schluessel, e);
         }

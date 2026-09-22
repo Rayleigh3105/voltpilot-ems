@@ -81,7 +81,7 @@ class BewertungVectorsTest {
                 .containsEntry("ungemessen", v.at("/summe/ungemessen_kwh").asText())
                 .containsEntry("abdeckung_prozent", v.at("/summe/abdeckung_prozent").asText())
                 .containsEntry("K8", v.at("/summe/K8").asText());
-        assertEquals(9, ((List<?>) aus.get("gemessen")).size());
+        assertEquals(10, ((List<?>) aus.get("gemessen")).size());
         assertEquals(List.of("MS-23"), aus.get("geplant"));
     }
 

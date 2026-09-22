@@ -49,7 +49,7 @@ describe('AP-16 NW-1 · Bewertung: dieselben Vektoren wie Java und Python', () =
     expect(aus).toMatchObject({ menge: String(messabdeckung.summe.gemessen_zugeordnet_kwh), ersatz: '0',
       ungemessen: String(messabdeckung.summe.ungemessen_kwh),
       abdeckung_prozent: String(messabdeckung.summe.abdeckung_prozent), K8: messabdeckung.summe.K8 });
-    expect(aus.gemessen).toHaveLength(9);
+    expect(aus.gemessen).toHaveLength(10);
     expect(aus.geplant).toEqual(['MS-23']);
   });
 });

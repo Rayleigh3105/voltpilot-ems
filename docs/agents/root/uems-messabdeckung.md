@@ -14,6 +14,10 @@ Ersatzanteile und Anlagenreste nur in die vier P3-Spalten.
 - `ungemessen`: ausschließlich der IP-9-Anlagenrest. Ohne eindeutige Anlagenstellung
   wird keine Zuordnung zu einem Einsatz geraten.
 
+Eine Strom-Messstelle ohne Anlagenstellung verschwindet nicht aus der Ortssicht: sie
+steht unter ihrem Gebäude/Standort als eigene Ortszeile. Ihr wird aber kein Anlagenrest
+zugeschlagen; diese Verbindung liefert erst die IP-19-Naht als belegten Messbedarf.
+
 `BewertungMessbedarfNaht` liefert bis IP-19 eine leere Liste. IP-19 hängt dort offene
 Bedarfe mit Einsatz und optional eindeutiger Anlage ein; dadurch bleibt dieses Paket
 ohne vorweggenommene Datenhaltung. K8 kommt aus der wirksamen Kriterien-Fassung und
