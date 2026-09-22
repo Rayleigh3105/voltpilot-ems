@@ -272,3 +272,10 @@ describe('AP-15 IP-23 · Einrichten in sechs Fragen', () => {
     expect(h[1].rueckfall).toEqual({ komponenteId: GS_IDS.k12, richtung: 'einspeisung' });
   });
 });
+
+it('Auflösen: zählt die API-Bestätigungen und bleibt eingerichtet', () => {
+  const z = { ...gsZustand('angehalten'), zustand: 'wird_aufgeloest' as const,
+    aufloesen: { bestaetigt: 1, gesamt: 2, wartet_auf: [GS_IDS.e4] } };
+  expect(lage(z)).toBe('wird_aufgeloest');
+  expect(zustandsZeile(z, gsEingerichtet(), new Map())).toBe('Gemeinsame Steuerung wird aufgelöst · 1 von 2 Boxen haben bestätigt.');
+});

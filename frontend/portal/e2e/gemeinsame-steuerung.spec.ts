@@ -279,3 +279,15 @@ for (const breite of [375, 1440]) {
     }
   });
 }
+
+for (const breite of [375, 1440]) {
+  test(`Auflösen: Kundenkarte wartet auf Bestätigungen (${breite} px)`, async ({ page }) => {
+    await oeffne(page, breite, 'lage=anteile_aktiv&aufloesen=1');
+    const k = await karte(page, breite);
+    await expect(k.getByTestId('gs-zustand')).toHaveText('Gemeinsame Steuerung wird aufgelöst · 0 von 1 Boxen haben bestätigt.');
+    await expect(k.getByRole('button', { name: 'Fortsetzen' })).toHaveCount(0);
+    await expect(k.getByRole('button', { name: 'Gemeinsame Steuerung ändern' })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    await bild(k, `aufloesen-${breite}`);
+  });
+}

@@ -18,6 +18,7 @@ import type {
   UemsSprungprobe,
   UemsVerlustTag,
 } from './api';
+import { flaechenSatz } from './uemsGemeinsameSteuerung';
 import { zahl as deutscheZahl } from './zahl';
 
 export const NICHT_GEMELDET = 'nicht gemeldet';
@@ -39,10 +40,14 @@ export const STUFEN: Record<UemsGemeinsameSteuerungZustand['zustand'], string> =
   anteile_aktiv: 'S3 · Anteile aktiv',
   angehalten: 'angehalten',
   aufgeloest: 'aufgelöst',
+  wird_aufgeloest: 'wird aufgelöst',
 };
 
 export function kopfZeile(z: UemsGemeinsameSteuerungZustand | null): string {
   if (!z) return 'Zustand nicht lesbar';
+  if (z.aufloesen) return flaechenSatz('wird_aufgeloest', {
+    bestaetigt: String(z.aufloesen.bestaetigt), gesamt: String(z.aufloesen.gesamt),
+  });
   const epoche = z.epoche == null ? 'Epoche —' : `Epoche ${z.epoche}`;
   const wer = z.zustand === 'angehalten'
     ? z.naechster_schritt === 'vom_betreiber_angehalten' ? ' · vom Betreiber angehalten' : ' · vom Kunden angehalten'

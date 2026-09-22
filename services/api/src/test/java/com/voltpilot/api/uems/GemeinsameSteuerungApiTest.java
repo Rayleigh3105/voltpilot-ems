@@ -342,7 +342,7 @@ class GemeinsameSteuerungApiTest {
         assertThat(h.status()).isEqualTo(200);
         assertThat(h.body().path("zustand").asText()).isEqualTo("angehalten");
         assertThat(h.body().path("epoche").asLong()).as("Anhalten nimmt keine Anteile weg").isOne();
-        assertThat(kunde(w, post(w.pfad() + "/aufloesen")).code()).isEqualTo("anteile_in_kraft");
+        assertThat(kunde(w, post(w.pfad() + "/aufloesen")).code()).isEqualTo("rueckgespielt");
 
         Antwort f = kunde(w, post(w.pfad() + "/fortsetzen"));
         assertThat(f.status()).isEqualTo(200);

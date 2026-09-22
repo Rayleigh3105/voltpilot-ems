@@ -16,6 +16,11 @@ Beide liegen auf dem eigenen `v2`-Teilbaum der Box — keine ACL-Änderung. v1-T
 ohne Gemeinsame Steuerung bekommt nie ein Dokument und hat kein solches Topic** (I6): veröffentlicht wird nur für
 einen Verbund ab Stufe S1 (LA2), und nur an seine Mitglieder.
 
+Beim Auflösen nach S3 bleibt dasselbe Dokumentformat: mitsteuernde Boxen halten zuletzt ihren Geräte-Rückfall
+(oder 0), die führende hält nach allen Bestätigungen `verteilbar` (Grenze minus Vorbehalt samt verbleibenden
+Geräte-Rückfällen), **nicht die ganze Grenze**. Keine leere retained-Nachricht, kein Ablauf (V5). Siehe
+[gemeinsames Auflösen](steuerungsverbund.md#auflösen-der-ganzen-gemeinsamen-steuerung-55-i4i5-g3g5-v5).
+
 ## 2. Das Dokument (Downlink)
 
 ```json

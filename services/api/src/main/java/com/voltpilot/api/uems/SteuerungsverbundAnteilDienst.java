@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
 import com.voltpilot.api.uems.SteuerungsverbundAnteilRepository.DokumentZeile;
 import com.voltpilot.api.uems.SteuerungsverbundRepository.MitgliedZeile;
 import com.voltpilot.api.uems.SteuerungsverbundRepository.VerbundZeile;
@@ -295,7 +296,10 @@ public class SteuerungsverbundAnteilDienst {
         if (gefunden.isEmpty()) {
             return Ergebnis.nicht(Grund.KEIN_VERBUND);
         }
-        VerbundZeile v = gefunden.get();
+        // Derselbe Verbund-Lock wie Kunden-/Betreiber-Handgriffe: gleichzeitige Quittungen dürfen das Ziel
+        // weder doppelt veröffentlichen noch gegenseitig übersehen.
+        verbuende.sperren(gefunden.get().id());
+        VerbundZeile v = verbuende.finden(gefunden.get().id()).orElseThrow();
         List<DokumentZeile> dokumente = anteile.dokumente(v.id());
         if (dokumente.isEmpty() || v.epoche() == 0) {
             return Ergebnis.nicht(Grund.NOCH_NICHT_SCHARF);
@@ -303,7 +307,8 @@ public class SteuerungsverbundAnteilDienst {
         if (anteile.rueckgespieltErkannt(v.id()).isPresent()) {
             return Ergebnis.nicht(Grund.RUECKGESPIELT);
         }
-        if (dokumente.get(0).ziel() != null) {
+        if (verbuende.aufloesungLaeuft(v.id()) || !verbuende.ausscheidende(v.id(), clock.instant()).isEmpty()
+                || dokumente.get(0).ziel() != null) {
             return Ergebnis.nicht(Grund.ZWEISCHRITT_LAEUFT);
         }
         Ableitung a = ableitung(v);
@@ -332,7 +337,10 @@ public class SteuerungsverbundAnteilDienst {
         if (gefunden.isEmpty()) {
             return false;
         }
-        VerbundZeile v = gefunden.get();
+        // Derselbe Verbund-Lock wie Kunden-/Betreiber-Handgriffe: gleichzeitige Quittungen dürfen das Ziel
+        // weder doppelt veröffentlichen noch gegenseitig übersehen.
+        verbuende.sperren(gefunden.get().id());
+        VerbundZeile v = verbuende.finden(gefunden.get().id()).orElseThrow();
         MitgliedZeile m = verbuende.mitglieder(v.id(), clock.instant()).stream()
                 .filter(x -> x.deviceId().equals(box)).findFirst().orElse(null);
         if (m == null) {
@@ -372,7 +380,7 @@ public class SteuerungsverbundAnteilDienst {
         if (uebergang.epoche() != v.epoche() || anteile.rueckgespieltErkannt(v.id()).isPresent()) {
             return;
         }
-        if (!verbuende.ausscheidende(v.id(), clock.instant()).isEmpty()) {
+        if (verbuende.aufloesungLaeuft(v.id()) || !verbuende.ausscheidende(v.id(), clock.instant()).isEmpty()) {
             ausscheidenPruefen(v); // §5.5: der Zielstand kommt erst mit dem Ende der ausscheidenden Mitglieder
             return;
         }
@@ -462,7 +470,8 @@ public class SteuerungsverbundAnteilDienst {
         Instant jetzt = clock.instant();
         Map<UUID, SteuerungsverbundRepository.Ausscheiden> gehen = verbuende.ausscheidende(v.id(), jetzt);
         List<DokumentZeile> dokumente = anteile.dokumente(v.id());
-        if (gehen.isEmpty()) {
+        boolean aufloesen = verbuende.aufloesungLaeuft(v.id());
+        if (gehen.isEmpty() && !aufloesen) {
             return Ergebnis.nicht(Grund.UNVERAENDERT);
         }
         if (dokumente.isEmpty() || v.epoche() == 0) {
@@ -481,7 +490,7 @@ public class SteuerungsverbundAnteilDienst {
         if (!rest.passt()) {
             return Ergebnis.nicht(Grund.AUSLEGUNG_PASST_NICHT);
         }
-        Tabelle ziel = rest.ziel();
+        Tabelle ziel = aufloesen ? aufloeseZiel(rest) : rest.ziel();
         Map<Grenzart, Map<String, BigDecimal>> mitGehenden = new EnumMap<>(Grenzart.class);
         Map<Grenzart, BigDecimal> verteilbar = new EnumMap<>(Grenzart.class);
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
@@ -497,7 +506,7 @@ public class SteuerungsverbundAnteilDienst {
                 .orElseGet(() -> altAusDokumenten(v));
         SteuerungsverbundZweischritt.Dokument d = SteuerungsverbundZweischritt.beginnen(alt,
                 new Tabelle(mitGehenden, verteilbar));
-        if (d.schritt() == Schritt.UEBERGANG) {
+        if (d.schritt() == Schritt.UEBERGANG || aufloesen) {
             d = new SteuerungsverbundZweischritt.Dokument(Schritt.UEBERGANG, d.tabelle(), ziel, d.verengteBoxen());
         }
         return veroeffentlichen(v, v.epoche(), d, ANLASS_AUSSCHEIDEN, wer);
@@ -515,7 +524,8 @@ public class SteuerungsverbundAnteilDienst {
     public boolean ausscheidenPruefen(VerbundZeile v) {
         Instant jetzt = clock.instant();
         Map<UUID, SteuerungsverbundRepository.Ausscheiden> gehen = verbuende.ausscheidende(v.id(), jetzt);
-        if (gehen.isEmpty() || anteile.rueckgespieltErkannt(v.id()).isPresent()) {
+        boolean aufloesen = verbuende.aufloesungLaeuft(v.id());
+        if ((gehen.isEmpty() && !aufloesen) || anteile.rueckgespieltErkannt(v.id()).isPresent()) {
             return false;
         }
         List<DokumentZeile> dokumente = anteile.dokumente(v.id());
@@ -566,14 +576,60 @@ public class SteuerungsverbundAnteilDienst {
         }
         Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, rest.mitglieder())
                 .orElseGet(() -> altAusDokumenten(v));
-        SteuerungsverbundZweischritt.Dokument d = SteuerungsverbundZweischritt.beginnen(alt, rest.ziel());
-        if (d.verengteBoxen().isEmpty()) {
-            // Keine verbleibende Box fällt: jede verengte hat quittiert (oben) — das ist der Zielstand (G5).
-            d = new SteuerungsverbundZweischritt.Dokument(Schritt.ZIEL, rest.ziel(), null, List.of());
+        Tabelle ziel = aufloesen ? aufloeseZiel(rest) : rest.ziel();
+        SteuerungsverbundZweischritt.Dokument d = SteuerungsverbundZweischritt.beginnen(alt, ziel);
+        if (aufloesen || d.verengteBoxen().isEmpty()) {
+            // Auflösen: alle erforderlichen Bestätigungen liegen vor. Das letzte Dokument enthält den ganzen
+            // Rest, auch wenn ein älterer Herzschlag noch andere Anteile meldet. Sonst: keine verbleibende Box fällt.
+            d = new SteuerungsverbundZweischritt.Dokument(Schritt.ZIEL, ziel, null, List.of());
         }
         veroeffentlichen(v, v.epoche(), d, d.schritt() == Schritt.ZIEL ? "zielstand" : ANLASS_AUSSCHEIDEN,
                 ZWEISCHRITT);
+        if (aufloesen) {
+            // Erst zustellen, solange die führende Mitgliedschaft noch gilt. Kein retained-Dokument löschen (V5).
+            for (MitgliedZeile m : verbuende.mitglieder(v.id(), jetzt)) {
+                if (m.gueltigAb().isBefore(ab)) verbuende.mitgliedBeenden(m.id(), ab);
+                else verbuende.mitgliedAufheben(m.id());
+            }
+            verbuende.stufeSetzen(v.id(), SteuerungsverbundVokabular.Stufe.ERKLAERT);
+            verbuende.aufloesungSetzen(v.id(), false);
+            verbuende.protokoll(tenant, v.id(), v.siteId(), "aufgeloest", "\"wird_aufgeloest\"",
+                    "\"aufgeloest\"", ab, false, "zielstand", ZWEISCHRITT);
+        }
         return true;
+    }
+
+    /** Beim Auflösen hält die führende Box blind den gesamten verteilbaren Rest, nicht die ganze Grenze (V5). */
+    private static Tabelle aufloeseZiel(Ableitung rest) {
+        Map<Grenzart, Map<String, BigDecimal>> je = new EnumMap<>(Grenzart.class);
+        String fuehrt = rest.mitglieder().stream().filter(m -> m.rolle() == SteuerungsverbundVokabular.Rolle.FUEHRT)
+                .findFirst().orElseThrow().box();
+        for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            je.put(r, Map.of(fuehrt, rest.ziel().verteilbar().get(r)));
+        }
+        return new Tabelle(je, rest.ziel().verteilbar());
+    }
+
+    public GemeinsameSteuerungDto.Aufloesen aufloeseStand(VerbundZeile v) {
+        if (!verbuende.aufloesungLaeuft(v.id())) return null;
+        var gehen = verbuende.ausscheidende(v.id(), clock.instant());
+        var dokumente = anteile.dokumente(v.id());
+        if (dokumente.isEmpty()) return null;
+        var d = dokumente.get(0);
+        List<UUID> wartet = new ArrayList<>();
+        int gesamt = 0;
+        for (MitgliedZeile m : verbuende.mitglieder(v.id(), clock.instant())) {
+            var a = gehen.get(m.deviceId());
+            if (a == null && !d.verengteBoxen().contains(m.deviceId().toString())) continue;
+            gesamt++;
+            boolean fertig = a != null && a.vomNetzAm() != null
+                    || (a == null || WARTET_AUF_QUITTUNG.equals(a.wartetAuf())) && quittiertAb(m, d.stand());
+            if (!fertig) {
+                wartet.add(m.deviceId());
+            }
+        }
+        return new GemeinsameSteuerungDto.Aufloesen(gesamt - wartet.size(), gesamt,
+                List.copyOf(wartet));
     }
 
     private static boolean quittiertAb(MitgliedZeile m, Stand stand) {

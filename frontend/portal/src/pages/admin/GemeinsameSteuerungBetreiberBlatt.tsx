@@ -130,9 +130,9 @@ export function GemeinsameSteuerungBetreiberBlatt({
         <p className="vp-gsb-stufe" data-testid="gsb-kopf">{kopfZeile(zustand)}</p>
       </header>
 
-      <p className={`vp-gsb-zweischritt vp-gsb-${zwei.art}`} data-testid="gsb-zweischritt" data-art={zwei.art} role="status">
+      {!zustand?.aufloesen && <p className={`vp-gsb-zweischritt vp-gsb-${zwei.art}`} data-testid="gsb-zweischritt" data-art={zwei.art} role="status">
         {zwei.text}
-      </p>
+      </p>}
 
       {fehltSaetze(zustand, namen).length > 0 && (
         <div className="vp-gsb-fehlt">
@@ -209,7 +209,7 @@ export function GemeinsameSteuerungBetreiberBlatt({
                     {scheidetAus.wartet_auf === 'voltpilot' ? 'Scheidet aus · abgemeldet, wartet auf VoltPilot' : 'Scheidet aus · wartet auf ihre Quittung'}
                   </span>
                 )}
-                {scheidetAus && !scheidetAus.vom_netz_bestaetigt_am && <Button size="sm" variant="outline" disabled={busy} onClick={() => setOffen({ was: 'vomNetz', box: s.boxId })}>Geräte sind vom Netz - bestätigen</Button>}
+                {scheidetAus && !scheidetAus.vom_netz_bestaetigt_am && (!zustand?.aufloesen || zustand.aufloesen.wartet_auf.includes(s.boxId)) && <Button size="sm" variant="outline" disabled={busy} onClick={() => setOffen({ was: 'vomNetz', box: s.boxId })}>Geräte sind vom Netz - bestätigen</Button>}
               </li>
             );
           })}

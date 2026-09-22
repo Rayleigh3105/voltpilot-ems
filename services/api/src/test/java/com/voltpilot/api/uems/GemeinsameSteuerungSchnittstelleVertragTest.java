@@ -48,6 +48,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
     void dieFormenSindZeichengleich() {
         Map<String, Class<? extends Record>> formen = new LinkedHashMap<>();
         formen.put("GemeinsameSteuerung", GemeinsameSteuerungDto.Zustand.class);
+        formen.put("GemeinsameSteuerungAufloesen", GemeinsameSteuerungDto.Aufloesen.class);
         formen.put("GemeinsameSteuerungMitglied", GemeinsameSteuerungDto.Mitglied.class);
         formen.put("GemeinsameSteuerungWirksameAnteile", GemeinsameSteuerungDto.WirksameAnteile.class);
         formen.put("GemeinsameSteuerungBefund", GemeinsameSteuerungDto.Befund.class);

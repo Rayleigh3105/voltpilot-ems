@@ -299,6 +299,16 @@ public class SteuerungsverbundRepository {
                 .orElse(new GrenzeAufloesung.Grenzen(null, null));
     }
 
+    /** Dauerhafter Modus des gemeinsamen Auflösens; getrennt von einem einzelnen Ausscheiden. */
+    public boolean aufloesungLaeuft(UUID verbundId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT aufloesung_laeuft FROM steuerungsverbund WHERE id = ?", Boolean.class, verbundId));
+    }
+
+    public void aufloesungSetzen(UUID verbundId, boolean laeuft) {
+        jdbc.update("UPDATE steuerungsverbund SET aufloesung_laeuft = ? WHERE id = ?", laeuft, verbundId);
+    }
+
     /** Die Akteur-Art des jüngsten Wechsels nach {@code angehalten} (Protokoll) — leer, wenn nie angehalten wurde. */
     public Optional<String> letztesAnhalten(UUID verbundId) {
         return jdbc.queryForList("SELECT actor_art FROM steuerungsverbund_aenderung WHERE steuerungsverbund_id = ? "

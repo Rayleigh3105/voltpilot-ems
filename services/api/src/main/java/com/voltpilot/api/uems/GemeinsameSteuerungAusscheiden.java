@@ -120,6 +120,41 @@ public class GemeinsameSteuerungAusscheiden {
         }
     }
 
+    /** Alle mitsteuernden Boxen gehen in EINEM Zweischritt; die führende endet erst nach ihrem letzten Dokument. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void aufloesen(VerbundZeile v, ProtokollAkteur wer) {
+        Instant jetzt = uhr.instant();
+        List<DokumentZeile> dokumente = anteile.dokumente(v.id());
+        if (verbuende.aufloesungLaeuft(v.id()) || !verbuende.ausscheidende(v.id(), jetzt).isEmpty()
+                || !dokumente.isEmpty() && dokumente.get(0).ziel() != null) {
+            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.ZWEISCHRITT_LAEUFT,
+                    "Eine Änderung der Anteile wird gerade übernommen. Bitte zuerst abschließen.");
+        }
+        if (anteile.rueckgespieltErkannt(v.id()).isPresent()) {
+            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.RUECKGESPIELT,
+                    "Die Anteile werden erst nach dem nächsten Scharfschalten wieder geändert.");
+        }
+        if (dokumente.isEmpty()) {
+            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.RUECKGESPIELT,
+                    "Das letzte Anteils-Dokument fehlt. VoltPilot prüft die Anlage.");
+        }
+        verbuende.aufloesungSetzen(v.id(), true);
+        verbuende.protokoll(TenantContext.get(), v.id(), v.siteId(), "aufgeloest", null,
+                "\"wird_aufgeloest\"", jetzt, false, "aufloesen_begonnen", wer);
+        for (MitgliedZeile m : verbuende.mitglieder(v.id(), jetzt)) {
+            if (m.rolle() != Rolle.FUEHRT) {
+                verbuende.ausscheidenSetzen(m.id(), SteuerungsverbundAnteilDienst.WARTET_AUF_QUITTUNG,
+                        wer.name(), jetzt);
+            }
+        }
+        Ergebnis e = dienst.ausscheidenBeginnen(v, wer);
+        if (e.grund() == Grund.AUSLEGUNG_PASST_NICHT) {
+            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.AUSSCHEIDEN_PASST_NICHT,
+                    "Die sicheren Werte passen nicht zur Grenze. VoltPilot prüft die Anlage.");
+        }
+        dienst.ausscheidenPruefen(v);
+    }
+
     /**
      * Der Betreiber bestätigt: die Geräte der ausscheidenden Box sind vom Netz (I4). Ihr Rückfall bleibt nicht
      * reserviert; hat noch kein Übergang die Box erfasst (Auslegung passte ohne die Bestätigung nicht), geht er jetzt.

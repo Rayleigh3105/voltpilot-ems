@@ -6887,8 +6887,9 @@ export interface UemsDatenquelleZeitraum {
  * Schritt. Alle weiteren Felder sind wahlfrei, damit ältere Antworten und die Bühnen gültig bleiben.
  */
 export interface UemsGemeinsameSteuerungZustand {
+  aufloesen?: { bestaetigt: number; gesamt: number; wartet_auf: string[] } | null;
   eingerichtet: boolean;
-  zustand: 'nicht_eingerichtet' | 'erklaert' | 'beobachtet' | 'geprueft' | 'anteile_aktiv' | 'angehalten' | 'aufgeloest';
+  zustand: 'nicht_eingerichtet' | 'erklaert' | 'beobachtet' | 'geprueft' | 'anteile_aktiv' | 'angehalten' | 'aufgeloest' | 'wird_aufgeloest';
   stufe?: 'S0' | 'S1' | 'S2' | 'S3' | null;
   mitglieder?: UemsGemeinsameSteuerungMitglied[];
   naechster_schritt?: 'beobachtet' | 'anteile_aktiv' | 'vom_betreiber_angehalten' | null;
