@@ -59,9 +59,16 @@ public final class GemeinsameSteuerungDto {
      * Die Verbund-Bilanz (IP-12, A17): {@code zustand} des jüngsten gerechneten Tages ({@code plausibel} ·
      * {@code unplausibel} · {@code unbekannt}), {@code seit} dem ersten Tag, an dem sie ununterbrochen so steht,
      * {@code grund} nur bei {@code unbekannt} (Vokabular {@code VerbundBilanzRegel.Grund}), {@code gerechnetAm} wann.
+     * {@code komponente} nur bei {@code komponente_ohne_messstelle}: die erklärte Komponente einer mitsteuernden Box ohne
+     * Abgangszähler, an der eine Messstelle mit Wirkleistung oder Wirkenergie fehlt — dort liegt der Weg.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Bilanz(String zustand, LocalDate tag, LocalDate seit, String grund, OffsetDateTime gerechnetAm) {}
+    public record Bilanz(String zustand, LocalDate tag, LocalDate seit, String grund, OffsetDateTime gerechnetAm,
+            BilanzKomponente komponente) {}
+
+    /** Eine Komponente im Grund der Verbund-Bilanz: Kennung ({@code entity_id}) und Name. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record BilanzKomponente(UUID entityId, String name) {}
 
     /**
      * Ein wirksames Mitglied: Box, Rolle ({@code fuehrt} · {@code steuert_mit}), Messpunkt (Datenquelle, wahlfrei). G6:

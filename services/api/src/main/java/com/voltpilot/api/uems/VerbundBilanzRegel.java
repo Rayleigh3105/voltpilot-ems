@@ -65,8 +65,16 @@ public final class VerbundBilanzRegel {
         STRUKTUR_GEAENDERT("struktur_geaendert"),
         /** Die führende Box hat keinen Messpunkt mit Messstelle — ohne Netzpunkt gibt es keine Bilanz. */
         NETZPUNKT_OHNE_MESSSTELLE("netzpunkt_ohne_messstelle"),
-        /** Ein Box-Beitrag hat keine Messstelle: Messpunkt ohne Messstelle oder ein Gerät der führenden Box ohne. */
+        /**
+         * Ein Box-Beitrag hat keine Messstelle: Messpunkt ohne Messstelle, ein Gerät der führenden Box ohne, oder eine
+         * mitsteuernde Box ohne Abgangszähler hat keine erklärte Komponente mit Schreibfreigabe.
+         */
         BOX_OHNE_MESSSTELLE("box_ohne_messstelle"),
+        /**
+         * Eine mitsteuernde Box ohne Abgangszähler zählt ihre erklärten Komponenten mit Schreibfreigabe — und eine
+         * davon hat keine Messstelle mit Wirkleistung oder Wirkenergie. Welche, steht in der Grundlage.
+         */
+        KOMPONENTE_OHNE_MESSSTELLE("komponente_ohne_messstelle"),
         /** Eine Messstelle misst in beide Richtungen („Laden / Entladen“) oder richtungslos — kein Vorzeichen. */
         RICHTUNG_NICHT_EINDEUTIG("richtung_nicht_eindeutig"),
         /** Eine Viertelstunde eines Terms fehlt, ist unvollständig oder trägt einen Ersatzwert (B5). */

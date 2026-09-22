@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.VerbundBilanzMetrikRepository;
+import com.voltpilot.api.tenant.TenantContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -91,6 +92,9 @@ class VerbundBilanzApiTest {
 
     @Autowired
     VerbundBilanzMetrikRepository metrik;
+
+    @Autowired
+    VorbehaltDienst vorbehalt;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -305,6 +309,140 @@ class VerbundBilanzApiTest {
         assertThat(z.path("bilanz").isNull()).isTrue();
     }
 
+    // ============================================================ mitsteuernd ohne eigenen Zähler (Frage 5, B3)
+
+    /**
+     * „Kein eigener Zähler“: E-4 ist ohne Messpunkt Mitglied, ihre erklärten Komponenten mit Schreibfreigabe zählen —
+     * Abgang Verwaltung 55 kW Abgabe und Ladepunkt 10 kW Bezug → Beitrag −45 kW; Ungeregeltes = −98 − (−83 − 45) = 30.
+     * Eine erklärte Komponente OHNE Schreibfreigabe und ohne Messstelle zählt nicht mit.
+     */
+    @Test
+    void ohneZaehlerZaehlenDieErklaertenGeraeteUndDieBilanzIstPlausibel() throws Exception {
+        OhneZaehler o = ohneZaehler(true);
+        UUID nurLesen = komponente(o.w().mandant(), o.w().an1(), o.e4(), "Lüftung Verwaltung");
+        erklaeren(o, nurLesen, false);
+
+        laeufer().lauf(TAG);
+
+        Map<String, Object> e = ergebnis(o.w());
+        assertThat(e.get("zustand")).isEqualTo("plausibel");
+        assertThat(e.get("grund")).isNull();
+        assertThat(e.get("viertelstunden_plausibel")).isEqualTo(96);
+        assertThat((java.math.BigDecimal) e.get("geringstes_ungeregeltes_kw")).isEqualByComparingTo("30");
+        assertThat((java.math.BigDecimal) root.queryForObject("SELECT hoechstes_ungeregeltes_kw FROM "
+                + "steuerungsverbund_bilanz WHERE site_id = ? AND tag = ?", java.math.BigDecimal.class, o.w().an1(),
+                TAG)).as("IP-13: der Höchstwert ist jetzt belegt").isEqualByComparingTo("30");
+        JsonNode box = MAPPER.readTree((String) e.get("grundlage")).path("boxen").get(1);
+        assertThat(box.path("rolle").asText()).isEqualTo("steuert_mit");
+        assertThat(box.path("messpunkt_id").isNull()).isTrue();
+        assertThat(box.path("beitrag").asText()).isEqualTo("geraete");
+        assertThat(box.path("terme")).hasSize(2);
+        assertThat(box.has("ohne_messstelle")).isFalse();
+        JsonNode z = lesen(o.w());
+        assertThat(z.path("bilanz").path("zustand").asText()).isEqualTo("plausibel");
+        assertThat(z.path("bilanz").path("komponente").isNull()).isTrue();
+    }
+
+    /** B5: fehlt an EINER erklärten Komponente die Messstelle, ist der Tag unbekannt — und der Grund nennt sie. */
+    @Test
+    void ohneZaehlerEineKomponenteOhneMessstelleIstUnbekanntMitDerKomponente() throws Exception {
+        OhneZaehler o = ohneZaehler(true);
+        UUID ladepunkt2 = komponente(o.w().mandant(), o.w().an1(), o.e4(), "Ladepunkt LP-2");
+        erklaeren(o, ladepunkt2, true);
+
+        laeufer().lauf(TAG);
+
+        Map<String, Object> e = ergebnis(o.w());
+        assertThat(e.get("zustand")).isEqualTo("unbekannt");
+        assertThat(e.get("grund")).isEqualTo("komponente_ohne_messstelle");
+        assertThat(e.get("viertelstunden_unbekannt")).isEqualTo(96);
+        assertThat(e.get("geringstes_ungeregeltes_kw")).isNull();
+        JsonNode grundlage = MAPPER.readTree((String) e.get("grundlage"));
+        assertThat(grundlage.path("komponente_ohne_messstelle").path("entity_id").asText())
+                .isEqualTo(ladepunkt2.toString());
+        assertThat(grundlage.path("boxen").get(1).path("ohne_messstelle").get(0).path("name").asText())
+                .isEqualTo("Ladepunkt LP-2");
+        JsonNode b = lesen(o.w()).path("bilanz");
+        assertThat(b.path("grund").asText()).isEqualTo("komponente_ohne_messstelle");
+        assertThat(b.path("komponente").path("entity_id").asText()).isEqualTo(ladepunkt2.toString());
+        assertThat(b.path("komponente").path("name").asText()).isEqualTo("Ladepunkt LP-2");
+    }
+
+    /** Ohne Zähler UND ohne erklärtes Gerät bleibt es beim alten Grund — unbekannt, nie Null (B5). */
+    @Test
+    void ohneZaehlerOhneErklaertesGeraetBleibtBoxOhneMessstelle() {
+        OhneZaehler o = ohneZaehler(false);
+
+        laeufer().lauf(TAG);
+
+        Map<String, Object> e = ergebnis(o.w());
+        assertThat(e.get("zustand")).isEqualTo("unbekannt");
+        assertThat(e.get("grund")).isEqualTo("box_ohne_messstelle");
+    }
+
+    /**
+     * Die Folge für IP-13: ohne erklärte Geräte ist jeder Tag unbekannt, der Vorbehalt aus Messwerten hat keinen
+     * Messtag und schlägt nie etwas vor (der Stand vor diesem Paket für jede Anlage mit „kein eigener Zähler“). Mit
+     * den erklärten Geräten rechnet A4 dieselben 30 Tage nach — danach liegt der Vorschlag vor (30 kW × 1,1 = 33 kW).
+     */
+    @Test
+    void ohneZaehlerErscheintDerVorschlagAusMesswertenNachDreissigMesstagen() {
+        OhneZaehler o = ohneZaehler(false);
+        LocalDate erster = TAG.minusDays(VorbehaltRegel.MINDEST_MESSTAGE - 1);
+        for (UUID k : List.of(o.w().netz(), o.w().pv(), o.w().abgang(), o.ladepunkt())) {
+            root.update("INSERT INTO messreihe_viertelstunde (intervall_beginn, tenant_id, entity_id, messkanal, "
+                    + "erhalten, erwartet, kadenz_s, kadenz_herkunft, endgueltig_ab, wertart, menge, menge_zustand) "
+                    + "SELECT q, tenant_id, entity_id, messkanal, erhalten, erwartet, kadenz_s, kadenz_herkunft, "
+                    + "q + interval '10095 minutes', wertart, menge, menge_zustand FROM messreihe_viertelstunde m, "
+                    + "generate_series(1, ?) AS d, LATERAL (SELECT m.intervall_beginn - d * interval '1 day' AS q) x "
+                    + "WHERE m.entity_id = ?", VorbehaltRegel.MINDEST_MESSTAGE - 1, k);
+        }
+        for (LocalDate t = erster; !t.isAfter(TAG); t = t.plusDays(1)) {
+            laeufer().lauf(t);
+        }
+        assertThat(root.queryForList("SELECT DISTINCT grund FROM steuerungsverbund_bilanz WHERE site_id = ?",
+                String.class, o.w().an1())).containsExactly("box_ohne_messstelle");
+        LocalDate heute = TAG.plusDays(1);
+        TenantContext.set(o.w().mandant());
+        try {
+            VorbehaltDienst.Lauf vorher = vorbehalt.pruefen(o.w().an1(), heute).orElseThrow();
+            assertThat(vorher.urteil().aktion()).isEqualTo(VorbehaltRegel.Aktion.KEINE);
+            assertThat(vorher.urteil().grund()).isEqualTo(VorbehaltRegel.Grund.KEINE_MESSUNG);
+            assertThat(vorher.zeile()).as("vorher: nie ein Vorschlag").isNull();
+
+            erklaeren(o, o.w().abgang(), true);
+            erklaeren(o, o.ladepunkt(), true);
+            assertThat(bilanz.nachrechnen(o.w().an1(), erster, TAG)).hasSize(VorbehaltRegel.MINDEST_MESSTAGE);
+
+            VorbehaltDienst.Lauf nachher = vorbehalt.pruefen(o.w().an1(), heute).orElseThrow();
+            assertThat(nachher.urteil().aktion()).isEqualTo(VorbehaltRegel.Aktion.VORSCHLAGEN);
+            assertThat(nachher.urteil().messtage()).isEqualTo(VorbehaltRegel.MINDEST_MESSTAGE);
+            assertThat(nachher.urteil().hoechstwertKw()).isEqualByComparingTo("30");
+            assertThat(nachher.urteil().neuKw()).isEqualByComparingTo("33.0");
+            assertThat(nachher.zeile()).as("der Vorschlag liegt vor").isNotNull();
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /** Bestand: eine Anlage mit nur der führenden Box rechnet wie vorher (−98 − (−83) = −15 kW, unplausibel). */
+    @Test
+    void einBoxAnlageRechnetUnveraendert() {
+        Welt w = weltOhneVerbund();
+        UUID v = root.queryForObject("INSERT INTO steuerungsverbund (tenant_id, site_id, stufe, epoche, created_by) "
+                + "VALUES (?, ?, 'beobachtet', 1, 'test') RETURNING id", UUID.class, w.mandant(), w.an1());
+        UUID e1 = root.queryForObject("SELECT device_id FROM measurement_point WHERE id = ?", UUID.class, w.netz());
+        UUID dq2 = root.queryForObject("SELECT data_source_id FROM measurement_point WHERE id = ?", UUID.class, w.netz());
+        mitglied(w, v, e1, "fuehrt", dq2);
+
+        laeufer().lauf(TAG);
+
+        Map<String, Object> e = ergebnis(w);
+        assertThat(e.get("zustand")).isEqualTo("unplausibel");
+        assertThat((java.math.BigDecimal) e.get("geringstes_ungeregeltes_kw")).isEqualByComparingTo("-15");
+        assertThat(e.get("viertelstunden_unplausibel")).isEqualTo(96);
+    }
+
     // ============================================================================ Gerüst
 
     private VerbundBilanzLaeufer laeufer() {
@@ -323,6 +461,42 @@ class VerbundBilanzApiTest {
         mitglied(w, v, e1, "fuehrt", dq2);
         mitglied(w, v, e4, "steuert_mit", dq10);
         return new Welt(w.mandant(), w.an1(), v, w.netz(), w.pv(), w.abgang());
+    }
+
+    /** E-4 mitsteuernd OHNE Messpunkt („kein eigener Zähler“), dazu ihr Ladepunkt (10 kW Bezug = 2,5 kWh). */
+    private record OhneZaehler(Welt w, UUID e4, UUID ladepunkt) {}
+
+    private OhneZaehler ohneZaehler(boolean geraeteErklaeren) {
+        Welt w0 = weltOhneVerbund();
+        UUID v = root.queryForObject("INSERT INTO steuerungsverbund (tenant_id, site_id, stufe, epoche, created_by) "
+                + "VALUES (?, ?, 'beobachtet', 1, 'test') RETURNING id", UUID.class, w0.mandant(), w0.an1());
+        Welt w = new Welt(w0.mandant(), w0.an1(), v, w0.netz(), w0.pv(), w0.abgang());
+        UUID e1 = root.queryForObject("SELECT device_id FROM measurement_point WHERE id = ?", UUID.class, w.netz());
+        UUID e4 = root.queryForObject("SELECT device_id FROM measurement_point WHERE id = ?", UUID.class, w.abgang());
+        UUID dq2 = root.queryForObject("SELECT data_source_id FROM measurement_point WHERE id = ?", UUID.class, w.netz());
+        UUID lp = messstelle(w.mandant(), w.an1(), e4, null, "MS-LP-" + NR.incrementAndGet(), "Bezug", "2.5");
+        mitglied(w, v, e1, "fuehrt", dq2);
+        mitglied(w, v, e4, "steuert_mit", null);
+        OhneZaehler o = new OhneZaehler(w, e4, lp);
+        if (geraeteErklaeren) {
+            erklaeren(o, w.abgang(), true);
+            erklaeren(o, lp, true);
+        }
+        return o;
+    }
+
+    /** Eine erklärte Komponente der Box E-4 (IP-7), Richtung Bezug. */
+    private static void erklaeren(OhneZaehler o, UUID komponente, boolean schreibfreigabe) {
+        root.update("INSERT INTO steuerungsverbund_geraet (tenant_id, steuerungsverbund_id, site_id, device_id, "
+                + "entity_id, richtung, nenn_kw, schreibfreigabe, created_by) VALUES (?, ?, ?, ?, ?, 'bezug', 22, ?, "
+                + "'test')", o.w().mandant(), o.w().verbund(), o.w().an1(), o.e4(), komponente, schreibfreigabe);
+    }
+
+    /** Eine Komponente an der Box ohne Messstelle. */
+    private static UUID komponente(UUID t, UUID site, UUID box, String name) {
+        return root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, "
+                + "device_id, communication, connection_json) VALUES (?, ?, 'modbus-generic', ?, 'modbus-generic', ?, "
+                + "'modbus_tcp', '{\"unit_id\":2}'::jsonb) RETURNING id", UUID.class, t, site, name, box);
     }
 
     private Welt weltOhneVerbund() {
