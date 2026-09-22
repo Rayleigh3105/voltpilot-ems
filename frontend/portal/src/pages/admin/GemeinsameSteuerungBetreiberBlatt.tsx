@@ -282,6 +282,15 @@ export function GemeinsameSteuerungBetreiberBlatt({
         )}
       </div>
 
+      <div className="vp-gsb-protokoll" data-testid="gsb-steckerproben">
+        <h4>Steckerproben</h4>
+        {(blatt?.steckerproben ?? []).length === 0 ? <p className="vp-gsb-klein">Noch keine Steckerprobe.</p> : (
+          <ul>
+            {blatt!.steckerproben.map((p) => <li key={p.id}>{steckerprobeSatz(p, namen)}</li>)}
+          </ul>
+        )}
+      </div>
+
       <ConfirmDialog
         open={offen != null}
         title={dialog?.titel ?? ''}
@@ -306,6 +315,24 @@ export function GemeinsameSteuerungBetreiberBlatt({
       />
     </section>
   );
+}
+
+function steckerprobeSatz(p: import('../../api').UemsSteckerprobe, namen: ReadonlyMap<string, string>): string {
+  const fmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const zeitraum = `${fmt.format(new Date(p.von))}–${fmt.format(new Date(p.bis)).split(', ')[1] ?? fmt.format(new Date(p.bis))}`;
+  const box = namen.get(p.box_id) ?? 'ohne Namen';
+  if (!p.nachweis) return `Steckerprobe ${zeitraum}, Box ${box}: nicht belegt`;
+  const richtungen = p.nachweis.richtungen.filter((r) => r.grenze_geprueft
+    && (p.nachweis?.urteil !== 'ueberschritten' || r.urteil === 'ueberschritten'));
+  const hoechstes = richtungen.map((r) => r.hoechstes_mittel).filter((h): h is NonNullable<typeof h> => h != null)
+    .sort((a, b) => b.mittel_kw - a.mittel_kw)[0];
+  if (!hoechstes || p.nachweis.urteil === 'nicht_belegt') return `Steckerprobe ${zeitraum}, Box ${box}: nicht belegt`;
+  const urteil = p.nachweis.urteil === 'ueberschritten' ? 'überschritten' : 'hält';
+  return `Steckerprobe ${zeitraum}, Box ${box}: höchstes Viertel ${zahl(hoechstes.mittel_kw)} kW, Grenze ${zahl(hoechstes.grenze_kw)} kW, ${urteil}`;
+}
+
+function zahl(wert: number): string {
+  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(wert);
 }
 
 function Reihe({ titel, zeile, spalten, zelle }: { titel: string; zeile: string; spalten: BoxSpalte[]; zelle: (s: BoxSpalte) => Zelle }) {

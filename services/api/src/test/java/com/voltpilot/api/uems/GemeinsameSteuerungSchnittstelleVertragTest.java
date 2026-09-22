@@ -79,6 +79,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
         formen.put("GemeinsameSteuerungZweischritt", GemeinsameSteuerungDto.Zweischritt.class);
         formen.put("GemeinsameSteuerungSprungprobeProtokoll", GemeinsameSteuerungDto.SprungprobeProtokoll.class);
         formen.put("GemeinsameSteuerungSprungMessung", GemeinsameSteuerungDto.SprungMessung.class);
+        formen.put("GemeinsameSteuerungSteckerprobe", GemeinsameSteuerungDto.Steckerprobe.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -151,6 +152,7 @@ class GemeinsameSteuerungSchnittstelleVertragTest {
                 ADMIN + "/vorbehalt/freigeben|post", "plattform.betrieb",
                 KUNDE + "/komponenten/{komponenteId}/rueckfall|put", "funktion.steuern_einrichten",
                 ADMIN + "/sprungprobe|post", "plattform.betrieb"));
+        recht.put(ADMIN + "/steckerprobe|post", "plattform.betrieb");
         recht.put(KUNDE + "/einrichten/vorschau|post", "funktion.steuern_einrichten");
         recht.forEach((schluessel, kennung) -> {
             String[] t = schluessel.split("\\|");

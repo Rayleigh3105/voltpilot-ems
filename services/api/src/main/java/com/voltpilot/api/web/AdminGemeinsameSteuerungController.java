@@ -6,8 +6,10 @@ import com.voltpilot.api.uems.GemeinsameSteuerungBoxStand;
 import com.voltpilot.api.uems.GemeinsameSteuerungService;
 import com.voltpilot.api.uems.SprungprobeDienst;
 import com.voltpilot.api.uems.SprungprobeRegel;
+import com.voltpilot.api.uems.SteckerprobeDienst;
 import com.voltpilot.api.web.dto.GemeinsameSteuerungDto;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.Set;
@@ -45,12 +47,14 @@ public class AdminGemeinsameSteuerungController {
     private final GemeinsameSteuerungService dienst;
     private final SprungprobeDienst sprungproben;
     private final GemeinsameSteuerungBoxStand boxStand;
+    private final SteckerprobeDienst steckerproben;
 
     public AdminGemeinsameSteuerungController(GemeinsameSteuerungService dienst, SprungprobeDienst sprungproben,
-            GemeinsameSteuerungBoxStand boxStand) {
+            GemeinsameSteuerungBoxStand boxStand, SteckerprobeDienst steckerproben) {
         this.dienst = dienst;
         this.sprungproben = sprungproben;
         this.boxStand = boxStand;
+        this.steckerproben = steckerproben;
     }
 
     /**
@@ -170,6 +174,34 @@ public class AdminGemeinsameSteuerungController {
                     + SprungprobeRegel.MAX_SPRUNG_KW + " kW.");
         }
         return sprungproben.ausloesen(siteId, box, art, kw.decimalValue(), GemeinsameSteuerungController.akteur(auth));
+    }
+
+    /**
+     * Recht: {@code plattform.betrieb} — die Steckerprobe als Handgriff des Betreibers (I4/NW-8) eintragen. Ihr
+     * Ergebnis ist derselbe Grenz-Nachweis über exakt {@code [von,bis)}; höchstens 31 Tage, typischerweise 30 Minuten.
+     */
+    @PostMapping("/steckerprobe")
+    public GemeinsameSteuerungDto.Steckerprobe steckerprobe(@PathVariable UUID siteId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        if (body == null || !body.isObject()) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("von, bis und box_id fehlen.");
+        }
+        for (var it = body.fieldNames(); it.hasNext();) {
+            String feld = it.next();
+            if (!Set.of("von", "bis", "box_id", "bemerkung").contains(feld)) {
+                throw GemeinsameSteuerungAbgelehnt.anfrage("Unbekanntes Feld „" + feld + "“.");
+            }
+        }
+        try {
+            UUID box = UUID.fromString(body.path("box_id").asText());
+            OffsetDateTime von = OffsetDateTime.parse(body.path("von").asText());
+            OffsetDateTime bis = OffsetDateTime.parse(body.path("bis").asText());
+            String bemerkung = body.hasNonNull("bemerkung") ? body.path("bemerkung").asText() : null;
+            return steckerproben.eintragen(siteId, von, bis, box, bemerkung,
+                    GemeinsameSteuerungController.akteur(auth));
+        } catch (IllegalArgumentException e) {
+            throw GemeinsameSteuerungAbgelehnt.anfrage("von und bis sind Zeitpunkte, box_id ist die Kennung einer Box.");
+        }
     }
 
     /** {@code {code, message[, fehlt]}}. */

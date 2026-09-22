@@ -178,9 +178,11 @@ public class NetzanschlussController {
      */
     @GetMapping("/{id}/grenznachweis")
     public NetzanschlussDto.GrenzNachweis grenznachweis(@PathVariable UUID standortId, @PathVariable UUID id,
-            @RequestParam(required = false) String monat) {
+            @RequestParam(required = false) String monat, @RequestParam(required = false) String von,
+            @RequestParam(required = false) String bis) {
         rechte.pruefenLesen(RechtZiel.STANDORT, standortId, () -> NetzanschlussAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
-        return nachweise.nachweis(standortId, id, monat, ms -> rechte.alleLesbar(RechtZiel.MESSSTELLE, ms));
+        return nachweise.nachweis(standortId, id, monat, von, bis,
+                ms -> rechte.alleLesbar(RechtZiel.MESSSTELLE, ms));
     }
 
     /**

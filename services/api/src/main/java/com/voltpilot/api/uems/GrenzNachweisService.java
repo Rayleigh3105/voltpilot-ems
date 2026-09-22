@@ -7,6 +7,7 @@ import com.voltpilot.api.web.dto.NetzanschlussDto;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -47,6 +48,8 @@ public class GrenzNachweisService {
     private static final Map<String, String> MESSRICHTUNG = Map.of(BEZUG, "Bezug", EINSPEISUNG, "Abgabe");
     /** 20 Tage × 100 Viertelstunden liegen unter der Zeilenbremse des Werte-Lesers (2 200). */
     private static final int TAGE_JE_LESUNG = 20;
+    private static final String ANLAGE_HINWEIS = "Grenze aus dem Anlagenfeld - nicht zeitgültig; für den Nachweis "
+            + "die Grenze ins Grenzblatt eintragen";
 
     private final StandortRepository standorte;
     private final NetzanschlussRepository anschluesse;
@@ -76,24 +79,25 @@ public class GrenzNachweisService {
      * Der Nachweis eines Monats ({@code JJJJ-MM}; ohne: der laufende am Standort). {@code imZugriff} beantwortet, ob die
      * Hauptzähler einer Richtung im Zugriff liegen ({@code RechtPruefung#alleLesbar}); sonst fehlen ihre Zahlen ganz.
      */
-    public NetzanschlussDto.GrenzNachweis nachweis(UUID standortId, UUID id, String monatText,
-            Predicate<Collection<UUID>> imZugriff) {
+    public NetzanschlussDto.GrenzNachweis nachweis(UUID standortId, UUID id, String monatText, String vonText,
+            String bisText, Predicate<Collection<UUID>> imZugriff) {
         StandortRepository.Standort s = standorte.finde(standortId)
                 .orElseThrow(() -> NetzanschlussAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
         NetzanschlussRepository.Anschluss na = anschluesse.finde(id).filter(a -> a.standortId().equals(s.id()))
                 .orElseThrow(() -> NetzanschlussAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
         ZoneId zone = ZoneId.of(s.zeitzone());
         LocalDate heute = uhr.instant().atZone(zone).toLocalDate();
-        YearMonth monat = monat(monatText, heute);
-        LocalDate von = monat.atDay(1);
-        LocalDate bis = monat.atEndOfMonth().isBefore(heute) ? monat.atEndOfMonth() : heute.minusDays(1);
+        Zeitraum zeitraum = zeitraum(monatText, vonText, bisText, heute, zone);
+        YearMonth monat = zeitraum.monat();
+        LocalDate von = zeitraum.ersterTag();
+        LocalDate bis = zeitraum.letzterTag();
         List<NetzanschlussDto.GrenzNachweisRichtung> richtungen = new ArrayList<>();
         if (bis.isBefore(von)) {
             for (String r : List.of(BEZUG, EINSPEISUNG)) {
                 richtungen.add(richtung(r, GrenzNachweisRegel.ohneAbgeschlossenenTag(), List.of(), List.of(), null,
                         zone));
             }
-            return antwort(na, monat, null, null, zone, richtungen);
+            return antwort(na, zeitraum, null, null, zone, richtungen);
         }
         List<NetzanschlussRepository.Bindung> bindungen = anschluesse.bindungenDesAnschlusses(na.id());
         List<GrenzeAufloesung.Fassung> fassungen = grenzen.fassungen(na.id()).stream()
@@ -112,16 +116,16 @@ public class GrenzNachweisService {
             }
         }
         for (String r : List.of(BEZUG, EINSPEISUNG)) {
-            richtungen.add(richtung(r, wirksam, anlageAm, stand, zone, imZugriff));
+            richtungen.add(richtung(r, wirksam, anlageAm, stand, zone, imZugriff, zeitraum));
         }
-        return antwort(na, monat, von, bis, zone, richtungen);
+        return antwort(na, zeitraum, von, bis, zone, richtungen);
     }
 
     // ------------------------------------------------------------------------ je Richtung
 
     private NetzanschlussDto.GrenzNachweisRichtung richtung(String richtung, Map<LocalDate, GrenzeAufloesung.Wirksam> wirksam,
             Map<LocalDate, UUID> anlageAm, BilanzStellungen.Stand stand, ZoneId zone,
-            Predicate<Collection<UUID>> imZugriff) {
+            Predicate<Collection<UUID>> imZugriff, Zeitraum zeitraum) {
         Map<LocalDate, BigDecimal> grenzeAm = new LinkedHashMap<>();
         Map<LocalDate, String> quelleAm = new HashMap<>();
         Map<LocalDate, MessstelleRepository.Messstelle> zaehlerAm = new LinkedHashMap<>();
@@ -142,7 +146,8 @@ public class GrenzNachweisService {
             boolean geprueft = grenzeAm.entrySet().stream()
                     .anyMatch(e -> e.getValue() != null && zaehlerAm.containsKey(e.getKey()));
             return new NetzanschlussDto.GrenzNachweisRichtung(richtung, geprueft, null, null, abschnitte, List.of(),
-                    null, null, null, null, List.of(), augenblick(), RechtPruefung.AUSSERHALB_ZUGRIFF);
+                    null, null, null, null, List.of(), augenblick(), herkunft(abschnitte), hinweis(abschnitte),
+                    RechtPruefung.AUSSERHALB_ZUGRIFF);
         }
         List<Viertelstunde> viertelstunden = new ArrayList<>();
         List<LocalDate> tage = new ArrayList<>(grenzeAm.keySet());
@@ -159,7 +164,10 @@ public class GrenzNachweisService {
             if (m == null) {
                 for (LocalDate tag = erster; !tag.isAfter(letzter); tag = tag.plusDays(1)) {
                     for (MessstelleWerteRegeln.Schritt sc : schritte(tag, zone)) {
-                        viertelstunden.add(new Viertelstunde(sc.von(), sc.bis(), grenzeAm.get(tag), false, null, null));
+                        if (zeitraum.enthaelt(sc.von(), sc.bis())) {
+                            viertelstunden.add(new Viertelstunde(sc.von(), sc.bis(), grenzeAm.get(tag), false, null,
+                                    null));
+                        }
                     }
                 }
             } else {
@@ -169,6 +177,9 @@ public class GrenzNachweisService {
                 for (MessstelleWerteDto.Wert x : w.werte()) {
                     Instant a = OffsetDateTime.parse(x.von()).toInstant();
                     Instant e = OffsetDateTime.parse(x.bis()).toInstant();
+                    if (!zeitraum.enthaelt(a, e)) {
+                        continue;
+                    }
                     BigDecimal mittel = leistung ? x.mittel() : ErgebnisZustand.KWH.equals(w.messstelle().einheit())
                             ? GrenzNachweisRegel.mittelAusMenge(x.menge(), a, e) : null;
                     viertelstunden.add(new Viertelstunde(a, e, grenzeAm.get(a.atZone(zone).toLocalDate()), true,
@@ -185,7 +196,8 @@ public class GrenzNachweisService {
             String ausserhalb, ZoneId zone) {
         if (!u.grenzeGeprueft()) {
             return new NetzanschlussDto.GrenzNachweisRichtung(richtung, false, u.grund(), null, abschnitte, zaehler,
-                    null, null, null, null, List.of(), augenblick(), ausserhalb);
+                    null, null, null, null, List.of(), augenblick(), herkunft(abschnitte), hinweis(abschnitte),
+                    ausserhalb);
         }
         GrenzNachweisRegel.Hoechstes h = u.hoechstes();
         return new NetzanschlussDto.GrenzNachweisRichtung(richtung, true, null, u.urteil(), abschnitte, zaehler,
@@ -196,7 +208,7 @@ public class GrenzNachweisService {
                 new NetzanschlussDto.GrenzDarueber(u.viertelstundenDarueber(), u.minutenDarueber()),
                 u.unterbrechungen().stream().map(x -> new NetzanschlussDto.GrenzUnterbrechung(zeit(x.von(), zone),
                         zeit(x.bis(), zone), x.minuten(), x.hoechstwertKw(), x.grenzeKw())).toList(),
-                augenblick(), ausserhalb);
+                augenblick(), herkunft(abschnitte), hinweis(abschnitte), ausserhalb);
     }
 
     /** M-2 ist heute nicht messbar: je Viertelstunde stehen Mittel, Min und Max, keine Dauer über einer Schwelle. */
@@ -245,7 +257,7 @@ public class GrenzNachweisService {
 
     // ------------------------------------------------------------------------ Gerüst
 
-    private static NetzanschlussDto.GrenzNachweis antwort(NetzanschlussRepository.Anschluss na, YearMonth monat,
+    private static NetzanschlussDto.GrenzNachweis antwort(NetzanschlussRepository.Anschluss na, Zeitraum zeitraum,
             LocalDate von, LocalDate bis, ZoneId zone, List<NetzanschlussDto.GrenzNachweisRichtung> richtungen) {
         boolean geprueft = richtungen.stream().anyMatch(NetzanschlussDto.GrenzNachweisRichtung::grenzeGeprueft);
         String grund = null;
@@ -256,8 +268,11 @@ public class GrenzNachweisService {
                     : gruende.contains(GrenzNachweisRegel.KEIN_HAUPTZAEHLER) ? GrenzNachweisRegel.KEIN_HAUPTZAEHLER
                     : GrenzNachweisRegel.KEINE_GRENZE;
         }
-        return new NetzanschlussDto.GrenzNachweis(na.id(), na.kennzeichen(), monat.toString(), von, bis, zone.getId(),
-                geprueft, grund, gesamt(richtungen), List.copyOf(richtungen));
+        return new NetzanschlussDto.GrenzNachweis(na.id(), na.kennzeichen(),
+                zeitraum.monat() == null ? null : zeitraum.monat().toString(), von, bis,
+                zeitraum.frei() ? zeit(zeitraum.von(), zone) : null,
+                zeitraum.frei() ? zeit(zeitraum.bis(), zone) : null,
+                zone.getId(), geprueft, grund, gesamt(richtungen), List.copyOf(richtungen));
     }
 
     /**
@@ -305,5 +320,47 @@ public class GrenzNachweisService {
         } catch (DateTimeParseException e) {
             throw NetzanschlussAbgelehnt.anfrage("monat");
         }
+    }
+
+    private record Zeitraum(YearMonth monat, LocalDate ersterTag, LocalDate letzterTag, Instant von, Instant bis,
+            boolean frei) {
+        boolean enthaelt(Instant schrittVon, Instant schrittBis) {
+            return !frei || (!schrittVon.isBefore(von) && !schrittBis.isAfter(bis));
+        }
+    }
+
+    private static Zeitraum zeitraum(String monatText, String vonText, String bisText, LocalDate heute, ZoneId zone) {
+        boolean hatVon = vonText != null && !vonText.isBlank();
+        boolean hatBis = bisText != null && !bisText.isBlank();
+        if (hatVon || hatBis) {
+            if (!hatVon || !hatBis || (monatText != null && !monatText.isBlank())) {
+                throw NetzanschlussAbgelehnt.anfrage("von/bis");
+            }
+            try {
+                Instant von = OffsetDateTime.parse(vonText.strip()).toInstant();
+                Instant bis = OffsetDateTime.parse(bisText.strip()).toInstant();
+                if (!bis.isAfter(von) || Duration.between(von, bis).compareTo(Duration.ofDays(31)) > 0) {
+                    throw NetzanschlussAbgelehnt.anfrage("von/bis");
+                }
+                return new Zeitraum(null, von.atZone(zone).toLocalDate(),
+                        bis.minusNanos(1).atZone(zone).toLocalDate(), von, bis, true);
+            } catch (DateTimeParseException e) {
+                throw NetzanschlussAbgelehnt.anfrage("von/bis");
+            }
+        }
+        YearMonth monat = monat(monatText, heute);
+        LocalDate von = monat.atDay(1);
+        LocalDate bis = monat.atEndOfMonth().isBefore(heute) ? monat.atEndOfMonth() : heute.minusDays(1);
+        return new Zeitraum(monat, von, bis, null, null, false);
+    }
+
+    private static List<String> herkunft(List<NetzanschlussDto.GrenzAbschnitt> abschnitte) {
+        return abschnitte.stream().map(NetzanschlussDto.GrenzAbschnitt::quelle)
+                .map(q -> GrenzeAufloesung.QUELLE_NETZANSCHLUSS.equals(q) ? "grenzblatt" : q).distinct().toList();
+    }
+
+    private static String hinweis(List<NetzanschlussDto.GrenzAbschnitt> abschnitte) {
+        return abschnitte.stream().anyMatch(a -> GrenzeAufloesung.QUELLE_ANLAGE.equals(a.quelle()))
+                ? ANLAGE_HINWEIS : null;
     }
 }

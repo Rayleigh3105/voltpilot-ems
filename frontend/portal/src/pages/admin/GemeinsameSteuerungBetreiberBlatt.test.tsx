@@ -87,6 +87,29 @@ describe('AP-15 IP-24 · Betreiber-Blatt — Sichtbarkeit', () => {
     expect(within(b).getByTestId('gsb-zweischritt')).toHaveTextContent('1 von 2 Boxen hat bestätigt · wartet auf Box Verwaltung');
     expect(b).not.toHaveTextContent('Zielstand steht');
   });
+
+  it('zeigt jede Steckerprobe mit dem Grenz-Nachweis genau ihres Zeitraums', async () => {
+    plattform();
+    const daten = gsBlatt('s1', JETZT);
+    daten.steckerproben = [{
+      id: 'ab000000-0000-4000-8000-000000000001',
+      von: '2026-10-21T10:00:00Z', bis: '2026-10-21T10:30:00Z', box_id: GS_IDS.e4,
+      bemerkung: 'Kabel gezogen', eingetragen_am: '2026-10-21T10:35:00Z', grund: null,
+      nachweis: {
+        netzanschluss_id: 'na-1', kennzeichen: 'NA-1', monat: null, von: '2026-10-21', bis: '2026-10-21',
+        zeitraum_von: '2026-10-21T12:00:00+02:00', zeitraum_bis: '2026-10-21T12:30:00+02:00',
+        zeitzone: 'Europe/Berlin', grenze_geprueft: true, grund: null, urteil: 'eingehalten',
+        richtungen: [{ richtung: 'einspeisung', grenze_geprueft: true, urteil: 'eingehalten',
+          hoechstes_mittel: { von: '2026-10-21T12:00:00+02:00', bis: '2026-10-21T12:15:00+02:00',
+            mittel_kw: 97.3, grenze_kw: 100, abstand_kw: -2.7 }, grenzherkunft: ['grenzblatt'], grenzhinweis: null }],
+      },
+    }];
+    stelle('beobachtet', daten);
+    render(<Technik boxen={boxen()} />);
+    const b = await blatt();
+    expect(within(b).getByTestId('gsb-steckerproben')).toHaveTextContent('Box Verwaltung');
+    expect(within(b).getByTestId('gsb-steckerproben')).toHaveTextContent('höchstes Viertel 97,3 kW, Grenze 100 kW, hält');
+  });
 });
 
 describe('AP-15 IP-24 · Betreiber-Blatt — Handgriffe', () => {

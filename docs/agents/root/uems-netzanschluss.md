@@ -87,7 +87,8 @@ KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsp
 ## Grenz-Nachweis (AP-15 IP-31, NW-8, M-1)
 
 Gerechnet, nie gespeichert (keine Migration): `uems/GrenzNachweisService` → `GrenzNachweisRegel` gegen
-`netzanschluss-grenznachweis-vectors.json` · Route `GET …/netzanschluesse/{id}/grenznachweis?monat=` · Vertrag
+`netzanschluss-grenznachweis-vectors.json` · Route `GET …/netzanschluesse/{id}/grenznachweis?monat=` oder
+`?von=&bis=` (≤ 31 Tage) · Vertrag
 [§6](../../contracts/v2/netzanschluss.md#6-der-grenz-nachweis-am-netzanschluss-ap-15-ip-31-nw-8-m-1-m-2-b5-w10) ·
 Tests `GrenzNachweisVectorsTest`, `NetzanschlussGrenznachweisApiTest`.
 
@@ -98,6 +99,11 @@ Tests `GrenzNachweisVectorsTest`, `NetzanschlussGrenznachweisApiTest`.
 - **Heute zählt nicht mit**; am 1. des laufenden Monats ist der Grund `kein_abgeschlossener_tag`.
 - **Die Kopfzeile** (`kopfzeile(…, nachweis)` beider Zwillinge) sagt „Grenze im September 2026 eingehalten“;
   `grenze_geprueft` nur mit Nachweis. Der Bilanz-Kopf fragt den Monat des Stichtags und schweigt bei Lesefehler.
+- **Grenzherkunft:** `grenzblatt` ist zeitgültig; beim Rückfall auf `anlage` nennt Antwort und Portal-Kopfzeile den
+  nicht zeitgültigen Anlagenwert und fordert das Grenzblatt. Das Anlagenfeld bleibt bewusst unverändert.
+- **Steckerprobe NW-8:** `POST /api/v1/admin/sites/{id}/gemeinsame-steuerung/steckerprobe` speichert Zeitraum, Box und
+  Bemerkung (`steuerungsverbund_steckerprobe`, V20260922190000); das Betreiber-Blatt rechnet dieselbe Regel genau für
+  diesen Zeitraum. Lücke = „nicht belegt“.
 - **Testdaten:** `messreihe_viertelstunde.endgueltig_ab` muss `intervall_beginn + 10095 minutes` sein (CHECK).
 
 **Portal:** [Reiter, Dialoge und Bilanzkopf (IP-13)](uems-netzanschluss-portal.md).

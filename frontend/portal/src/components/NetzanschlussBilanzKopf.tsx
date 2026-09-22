@@ -6,7 +6,7 @@ import type { KopfzeileNachweis } from '../uemsNetzanschluss';
 /** Ein ausgewiesener Stichtag, keine Behauptung über die gesamte Bilanzperiode.
  * Die Bilanzroute trägt keinen Anschluss; Standort und Bindung kommen aus den bestehenden Tages-Leserouten. */
 export function NetzanschlussBilanzKopf({ anlage, am }: { anlage: string; am: string }) {
-  const [stand, setStand] = useState<{ anlage: string; am: string; text: string } | null>(null);
+  const [stand, setStand] = useState<{ anlage: string; am: string; text: string; hinweis: string | null } | null>(null);
   useEffect(() => {
     let aktiv = true;
     const laden = async () => {
@@ -15,6 +15,7 @@ export function NetzanschlussBilanzKopf({ anlage, am }: { anlage: string; am: st
         const ort = orte.standorte.find((s) => s.anlagen.some((a) => a.id === anlage));
         const bezug = ort?.anlagen.find((a) => a.id === anlage)?.netzanschluss;
         let text = 'Netzanschluss konnte nicht geladen werden.';
+        let hinweis: string | null = null;
         if (bezug === null) text = anschlussText(null);
         if (bezug && ort) {
           // Eine umgezogene Anlage kann weiterhin am Anschluss des bisherigen Standorts hängen.
@@ -29,6 +30,7 @@ export function NetzanschlussBilanzKopf({ anlage, am }: { anlage: string; am: st
               let nachweis: KopfzeileNachweis | null = null;
               try {
                 nachweis = await api.netzanschlussGrenznachweis(ort.id, n.id, am.slice(0, 7));
+                hinweis = nachweis.richtungen?.map((r) => r.grenzhinweis).find(Boolean) ?? null;
               } catch {
                 /* Ohne Nachweis bleibt die Kopfzeile ohne Urteil. */
               }
@@ -38,9 +40,9 @@ export function NetzanschlussBilanzKopf({ anlage, am }: { anlage: string; am: st
             /* Der bekannte Bezug bleibt auch bei einem Lesefehler erhalten. */
           }
         }
-        if (aktiv) setStand({ anlage, am, text });
+        if (aktiv) setStand({ anlage, am, text, hinweis });
       } catch {
-        if (aktiv) setStand({ anlage, am, text: 'Netzanschluss konnte nicht geladen werden.' });
+        if (aktiv) setStand({ anlage, am, text: 'Netzanschluss konnte nicht geladen werden.', hinweis: null });
       }
     };
     void laden();
@@ -52,6 +54,9 @@ export function NetzanschlussBilanzKopf({ anlage, am }: { anlage: string; am: st
     <p className="vp-eb-zone" data-testid="bilanz-netzanschluss">
       Stand am {tagText(am)} ·{' '}
       {stand?.anlage === anlage && stand.am === am ? stand.text : 'Netzanschluss wird geladen …'}
+      {stand?.anlage === anlage && stand.am === am && stand.hinweis && (
+        <><br /><span data-testid="bilanz-grenzherkunft">{stand.hinweis}</span></>
+      )}
     </p>
   );
 }

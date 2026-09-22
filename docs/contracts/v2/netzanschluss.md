@@ -119,9 +119,11 @@ Bindung: keine Zustellung. Ob die Grenze eingehalten wurde, misst der Grenz-Nach
 ## 6. Der Grenz-Nachweis am Netzanschluss (AP-15 IP-31, NW-8, M-1, M-2, B5, W10)
 
 **Die Mess-Welt beweist, die Steuer-Welt regelt.** Der Nachweis wird GERECHNET, nie gespeichert (keine
-Migration): `GET …/netzanschluesse/{id}/grenznachweis?monat=JJJJ-MM` (lesend, keine eigene Kennung, Zaun
-über `RechtPruefung#pruefenLesen` am Standort; ohne `monat` der laufende am Standort). Er umfasst die
-**abgeschlossenen Tage** des Monats — heute und später nicht, eine laufende Viertelstunde ist keine Lücke.
+Migration): `GET …/netzanschluesse/{id}/grenznachweis?monat=JJJJ-MM` oder für NW-8 mit freiem Zeitraum
+`?von=<Zeitpunkt>&bis=<Zeitpunkt>` (halboffen, beide erforderlich, statt `monat`, höchstens 31 Tage; lesend, keine
+eigene Kennung, Zaun über `RechtPruefung#pruefenLesen` am Standort; ohne Parameter der laufende Monat am Standort).
+Der Monatsweg umfasst die **abgeschlossenen Tage** — heute und später nicht. Der freie Weg umfasst genau die
+vollständigen Viertelstunden in `[von,bis)`; eine Lücke ist auch dort kein sauberer Wert.
 
 | Schritt | Woher |
 |---|---|
@@ -145,6 +147,16 @@ sonst nennt `grund` `keine_grenze`, `kein_hauptzaehler` oder `kein_abgeschlossen
 wahr, wenn eine Richtung geprüft ist. Liegt ein Hauptzähler außerhalb des Zugriffs
 (`RechtPruefung#alleLesbar`), fehlen die Zahlen seiner Richtung ganz (`ausserhalb_zugriff`), und das
 Gesamturteil bleibt leer.
+
+**Herkunft der Grenze:** Jede Richtung nennt in `grenzherkunft` `grenzblatt` (zeitgültig) und/oder `anlage`
+(nicht zeitgültiges `site.max_feed_in_kw` bzw. `site_charging_config.grid_limit_kw`). Sobald `anlage` vorkommt,
+trägt `grenzhinweis` sichtbar: „Grenze aus dem Anlagenfeld - nicht zeitgültig; für den Nachweis die Grenze ins
+Grenzblatt eintragen“. Das Anlagenfeld wird bewusst nicht zeitgültig gemacht; die Pilotgrenze gehört ins Grenzblatt.
+
+**Steckerprobe (NW-8/I4):** Die Plattform trägt den Handgriff über
+`POST /api/v1/admin/sites/{id}/gemeinsame-steuerung/steckerprobe {von,bis,box_id,bemerkung}` ein. Die Tabelle
+`steuerungsverbund_steckerprobe` speichert nur den benannten Zeitraum; das Betreiber-Blatt rechnet beim Lesen mit
+derselben Route und Regel den Höchstwert genau in dieser Zeit. Messlücke = `nicht_belegt`, nie „hält“.
 
 **M-2 (Augenblick, Startwert ≤ 60 s) ist `nicht_gemessen`.** Die Mess-Welt hält je Viertelstunde Mittel,
 Min und Max, aber keine Dauer über einer Schwelle; der Nachweis erfindet keine. M-2 belegt heute der
