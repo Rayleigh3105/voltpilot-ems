@@ -119,12 +119,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--mitschnitt", type=Path, required=True)
     p.add_argument("--nutzlasten", type=Path, required=True)
     p.add_argument("--sha", required=True)
+    p.add_argument("--bilder", default=None, help="Marke des Core-Bilds (Stempel im Blatt)")
+    p.add_argument("--drehbuch", type=Path, default=None, help="drehbuch.log des Laufs")
     p.add_argument("--aus", type=Path, required=True)
     a = p.parse_args(argv)
     anlage = json.loads(a.anlage.read_text(encoding="utf-8"))
     q = quittungen(lies_mitschnitt(a.mitschnitt.read_text(encoding="utf-8", errors="replace")))
     doc = {
         "bilder_aus_commit": a.sha,
+        "core_bild": a.bilder,
+        "drehbuch": ([z for z in a.drehbuch.read_text(encoding="utf-8").splitlines() if z]
+                     if a.drehbuch else []),
         "zugestellt": [z.split(" ", 1)[0] for z in a.nutzlasten.read_text().splitlines() if z],
         "quittiert": urteil(q),
         "boxen": q,
