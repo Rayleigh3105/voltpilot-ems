@@ -56,11 +56,25 @@ public final class GemeinsameSteuerungAbgelehnt extends RuntimeException {
     /** Der Auftrag erreichte die Box nicht; es gibt kein Protokoll (IP-21). */
     public static final String NICHT_ZUGESTELLT = "nicht_zugestellt";
 
+    /** Die führende Box scheidet nicht aus, solange eine andere Box mitsteuert — erst die Rolle wechseln (§5.5). */
+    public static final String FUEHRENDE_BOX_BLEIBT = "fuehrende_box_bleibt";
+    /** Diese Box scheidet schon aus. */
+    public static final String SCHEIDET_SCHON_AUS = "scheidet_schon_aus";
+    /** Diese Box scheidet nicht aus — es gibt nichts zu bestätigen. */
+    public static final String SCHEIDET_NICHT_AUS = "scheidet_nicht_aus";
+    /** Ein Zweischritt wartet noch auf Quittungen (eine Änderung oder ein anderes Ausscheiden, G5). */
+    public static final String ZWEISCHRITT_LAEUFT = "zweischritt_laeuft";
+    /** Ohne die ausscheidende Box passt die Auslegung nicht (G3); nichts wird verengt oder erweitert. */
+    public static final String AUSSCHEIDEN_PASST_NICHT = "ausscheiden_passt_nicht";
+    /** Die Cloud wurde zurückgespielt (A18): bis zum neuen Scharfschalten ändert sie keine Anteile. */
+    public static final String RUECKGESPIELT = "rueckgespielt";
+
     /** Die Übergangs-Gründe (409) in ihrer Vertrags-Reihenfolge. */
     public static final List<String> UEBERGANG = List.of(NICHT_EINGERICHTET, NICHT_AKTIV, NICHT_ANGEHALTEN,
             VOM_BETREIBER_ANGEHALTEN, BEREITS_AKTIV, ERST_ANHALTEN, ANTEILE_IN_KRAFT, KEIN_MITGLIED, BEREITS_BESTAETIGT,
             KEIN_VORSCHLAG, VORBEHALT_GEMESSEN, NICHT_BEOBACHTET, SPRUNGPROBE_NICHT_GEMELDET, SPRUNGPROBE_LAEUFT,
-            NETZPUNKT_NICHT_FRISCH, NICHT_ZUGESTELLT);
+            NETZPUNKT_NICHT_FRISCH, NICHT_ZUGESTELLT, FUEHRENDE_BOX_BLEIBT, SCHEIDET_SCHON_AUS, SCHEIDET_NICHT_AUS,
+            ZWEISCHRITT_LAEUFT, AUSSCHEIDEN_PASST_NICHT, RUECKGESPIELT);
 
     private final int status;
     private final String code;

@@ -133,6 +133,14 @@ public class GemeinsameSteuerungService {
         this.boxStand = boxStand;
     }
 
+    /** Das Ausscheiden eines Mitglieds (§5.5), nachgereicht wie die Bilanz. */
+    private GemeinsameSteuerungAusscheiden ausscheiden;
+
+    @Autowired(required = false)
+    void ausscheiden(GemeinsameSteuerungAusscheiden ausscheiden) {
+        this.ausscheiden = ausscheiden;
+    }
+
     void uhrStellen(Clock clock) {
         uhr = clock;
     }
@@ -155,6 +163,7 @@ public class GemeinsameSteuerungService {
     private GemeinsameSteuerungDto.Zustand zustand(UUID siteId, VerbundZeile v, Instant jetzt) {
         List<MitgliedZeile> mitglieder = repo.mitglieder(v.id(), jetzt);
         Map<UUID, Instant> bestaetigt = repo.bestaetigt(v.id());
+        Map<UUID, SteuerungsverbundRepository.Ausscheiden> gehen = repo.ausscheidende(v.id(), jetzt);
         Map<UUID, SteuerungsverbundRepository.VorgabeSignal> signale = repo.vorgabeSignale(v.id());
         Map<UUID, GemeinsameSteuerungBoxStand.Kunde> stand = boxStand == null ? Map.of()
                 : boxStand.fuerKunden(v.id(), mitglieder);
@@ -169,7 +178,8 @@ public class GemeinsameSteuerungService {
                     SteuerungsverbundNachweiseHeute.wort(nachweise.verbraucher14a(siteId, m.deviceId())),
                     anteilVerlust(siteId, m.deviceId(), jetzt),
                     sprungproben == null ? null : sprungproben.auskunft(v.id(), m.deviceId(), mitglieder),
-                    box == null ? null : box.wirksameAnteile(), box == null ? null : box.zuletztGehoert());
+                    box == null ? null : box.wirksameAnteile(), box == null ? null : box.zuletztGehoert(),
+                    ausscheiden(gehen.get(m.deviceId())));
         }).toList();
         LocalDate tag = tag(jetzt);
         UUID netzanschluss = repo.netzanschluesse(siteId, tag).stream().findFirst().orElse(null);
@@ -491,6 +501,37 @@ public class GemeinsameSteuerungService {
         // IP-7: der Zweischritt in der neuen Epoche — Übergang an alle, der Zielstand nach den Quittungen (G5)
         anteile.anteileAusrollen(siteId, wer);
         return zustand(siteId, repo.finden(v.id()).orElseThrow(), jetzt);
+    }
+
+    /**
+     * Ausscheiden eines Mitglieds (§5.5, I3): Zweischritt — die Box fällt auf den Rückfall ihrer Geräte, die anderen
+     * bekommen den Rest erst nach ihrer Quittung. Die führende Box bleibt, solange eine andere mitsteuert.
+     */
+    @Transactional
+    public GemeinsameSteuerungDto.Zustand ausscheiden(UUID siteId, UUID box, ProtokollAkteur wer) {
+        VerbundZeile v = gesperrt(siteId);
+        ausscheiden.starten(v, box, SteuerungsverbundAnteilDienst.WARTET_AUF_QUITTUNG, wer);
+        return zustand(siteId, repo.finden(v.id()).orElseThrow(), uhr.instant());
+    }
+
+    /**
+     * Die Geräte der ausscheidenden Box sind vom Netz — Handgriff des Betreibers (I4, §5.5): ihr Rückfall bleibt nicht
+     * reserviert, das Ziel folgt ohne ihre Quittung.
+     */
+    @Transactional
+    public GemeinsameSteuerungDto.Zustand ausscheidenBestaetigen(UUID siteId, UUID box, ProtokollAkteur wer) {
+        VerbundZeile v = gesperrt(siteId);
+        ausscheiden.vomNetz(v, box, wer);
+        return zustand(siteId, repo.finden(v.id()).orElseThrow(), uhr.instant());
+    }
+
+    /** {@code null}, solange das Mitglied nicht ausscheidet. */
+    static GemeinsameSteuerungDto.Ausscheiden ausscheiden(SteuerungsverbundRepository.Ausscheiden a) {
+        return a == null ? null : new GemeinsameSteuerungDto.Ausscheiden(a.seit().atOffset(ZoneOffset.UTC),
+                SteuerungsverbundAnteilDienst.WARTET_AUF_QUITTUNG.equals(a.wartetAuf())
+                        ? GemeinsameSteuerungDto.Ausscheiden.WARTET_AUF_BOX
+                        : GemeinsameSteuerungDto.Ausscheiden.WARTET_AUF_VOLTPILOT,
+                a.vomNetzAm() == null ? null : a.vomNetzAm().atOffset(ZoneOffset.UTC));
     }
 
     /** Mitglied bestätigen — Handgriff des Betreibers nach dem Box-Tausch (I4, §5.7, R17). */

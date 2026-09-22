@@ -75,8 +75,11 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
 - **Ohne Quittung, Anteil bleibt:** ein unlesbares Dokument (JSON, Version, Pflichtfeld, negative kW — dafür hat die
   Quittung kein Wort), ein Dokument für eine andere Box, und die **leere retained Nachricht**. Der Vertrag kennt kein
   Löschen des Dokuments; ein verlorenes oder gelöschtes Dokument darf nie erweitern — die Box BEHÄLT ihren Anteil, auf
-  der Platte und im Herzschlag, bis ein neueres Dokument ihn ablöst. Ein Ausscheiden aus der Gemeinsamen Steuerung
-  braucht darum einen eigenen, ausdrücklichen Weg (nicht Teil von IP-17).
+  der Platte und im Herzschlag, bis ein neueres Dokument ihn ablöst. Das Ausscheiden aus der Gemeinsamen Steuerung ist
+  darum ein eigener, ausdrücklicher Weg in der Cloud (§4 Nr. 6): die Box bekommt als letztes Dokument den Übergang mit
+  ihrem eigenen Anteil auf dem Rückfall ihrer Geräte bzw. 0 — ein gewöhnliches Dokument, das sie nennt (kein
+  `box_fehlt_im_dokument`), das sie annimmt und quittiert — und danach keines mehr. Sie hält es, bis sie neu
+  eingerichtet wird (V5); nichts wird gelöscht, kein neuer Box-Code.
 - **Herzschlag** (Y3): der Block `gemeinsame_steuerung` trägt `rolle`, `anteile_epoche`, `anteile_revision` und
   `anteile_kw` (die WIRKSAMEN eigenen Anteile je Richtung) — [Plan-Quittung](./mqtt-plan-result.md#spiegel-im-herzschlag-y3).
 - **Einspeisewächter (IP-18):** gilt ein Dokument, regelt der Wächter gegen den Anteil der Richtung `einspeisung`
@@ -200,6 +203,10 @@ nach Wiederverbindung) ist angenommen. Die Box-Seite ist IP-17, siehe §2a.
    scharfgeschaltet wird — und das nur mit den WIRKSAMEN Anteilen aller Mitglieder aus dem Herzschlag
    (`uems/WirksameAnteileAusHerzschlag`, IP-17: der jüngste Block je Box, im Prozess). Fehlt er für ein Mitglied —
    alte Box, noch kein Dokument, API frisch gestartet —, antwortet der Dienst `WIRKSAME_ANTEILE_UNBEKANNT`.
+6. **Ausscheiden** (§5.5, `ausscheidenBeginnen`/`ausscheidenPruefen`, [Verbund-Vertrag §5](./steuerungsverbund.md#5-das-verbund-objekt-ip-4)):
+   Übergang (`anlass = 'ausscheiden'`) an alle — die ausscheidende Box auf den Rückfall ihrer Geräte, die anderen
+   unverändert; das Ziel der verbleibenden Boxen erst nach IHRER Quittung (oder der Bestätigung des Betreibers, dass
+   ihre Geräte vom Netz sind) und nur an sie. Ohne Quittung bleibt der Übergang (R12).
 
 Gespeichert wird in `V20260921190000`: `steuerungsverbund_anteile` (jedes Dokument, nur anhängen),
 `steuerungsverbund_geraet` (Geräte je Box: Nennleistung, Schreibfreigabe — ohne sie zählt ein Gerät als ungeregelt mit

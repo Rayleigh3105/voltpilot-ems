@@ -94,6 +94,10 @@ export const FLAECHE = {
   /** Box-Zeile, mitsteuernd, solange die Auslegung keinen Anteil nennt */
   box_mitsteuernd_kurz: 'Box {box} steuert mit',
   box_mitsteuernd_geplant_kurz: 'Box {box} steuert mit, sobald VoltPilot freischaltet',
+  /** Box-Zeile, die Box scheidet aus (§5.5) und wartet auf ihre eigene Quittung — bis dahin bekommt keine andere Box mehr */
+  box_scheidet_aus_wartet_auf_box: 'Box {box} scheidet aus · sie hält jetzt nur noch den sicheren Wert ihrer Geräte. Die anderen Boxen bekommen mehr, sobald sie das bestätigt hat.',
+  /** Box-Zeile, die Box ist abgemeldet (§5.5, I4) — es wartet auf VoltPilot */
+  box_scheidet_aus_wartet_auf_voltpilot: 'Box {box} scheidet aus · VoltPilot bestätigt, dass ihre Geräte vom Netz sind. Bis dahin bekommen die anderen Boxen nicht mehr.',
   /** Box-Zeile nach dem Box-Tausch, bis VoltPilot das Mitglied bestätigt (A14, R17, wörtlich) — ihr Anteil bleibt reserviert */
   box_wartet_auf_bestaetigung: 'Box {box} ist angemeldet. VoltPilot schaltet sie für die gemeinsame Steuerung frei.',
   /** Befund `auslegung_passt_nicht` */

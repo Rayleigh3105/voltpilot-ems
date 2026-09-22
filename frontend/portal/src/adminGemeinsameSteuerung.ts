@@ -502,6 +502,11 @@ export const DANACH = {
   bestaetigen: [
     'Das Mitglied gilt als bestätigt (nach dem Box-Tausch, R17). Rolle, Messpunkt und Probe übernimmt die Nachfolgerin nur bei unveränderten Datenquellen.',
   ],
+  vomNetz: [
+    'Sie bestätigen: die Geräte dieser Box sind vom Netz. Ihr Rückfall wird nicht mehr reserviert (§5.5, I4).',
+    'Die anderen Boxen bekommen den Rest ohne die Quittung dieser Box; danach endet ihre Mitgliedschaft.',
+    'Stimmt das nicht, kann die Grenze am Netzanschluss überschritten werden — im Zweifel die Quittung der Box abwarten.',
+  ],
 } as const;
 
 /** Die Ablehnung einer Admin-Route als Satz an ihrer Stelle: `{code, message, fehlt}`. */

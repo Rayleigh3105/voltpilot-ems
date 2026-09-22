@@ -84,7 +84,18 @@ public final class GemeinsameSteuerungDto {
     public record Mitglied(UUID boxId, String rolle, UUID messpunktId, OffsetDateTime gueltigAb,
             OffsetDateTime bestaetigtAm, String vorgabeSignal, OffsetDateTime vorgabeSignalAm, String verbraucher14a,
             AnteilVerlust anteilVerlust, Sprungprobe sprungprobe, WirksameAnteile wirksameAnteile,
-            OffsetDateTime zuletztGehoert) {}
+            OffsetDateTime zuletztGehoert, Ausscheiden ausscheiden) {}
+
+    /**
+     * Das Mitglied scheidet aus (§5.5) — {@code null}, solange nicht. {@code wartetAuf}: {@code box} = auf die Quittung
+     * ihrer Box (sie fällt auf den Rückfall ihrer Geräte), {@code voltpilot} = die Box ist abgemeldet, VoltPilot bestätigt,
+     * dass ihre Geräte vom Netz sind. {@code vomNetzBestaetigtAm} = wann der Betreiber das bestätigt hat.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Ausscheiden(OffsetDateTime seit, String wartetAuf, OffsetDateTime vomNetzBestaetigtAm) {
+        public static final String WARTET_AUF_BOX = "box";
+        public static final String WARTET_AUF_VOLTPILOT = "voltpilot";
+    }
 
     /**
      * Die wirksamen Anteile einer Box je Richtung in kW (G4): der Stand ihres jüngsten QUITTIERTEN Anteils-Dokuments —
@@ -185,7 +196,8 @@ public final class GemeinsameSteuerungDto {
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record BoxStand(UUID boxId, String rolle, OffsetDateTime zuletztGesehen, Faehigkeit faehigkeit,
-            Messpunkt messpunkt, Waechter waechter, PlanStand plan, AnteilStand anteile, VerlustTag verlustGestern) {}
+            Messpunkt messpunkt, Waechter waechter, PlanStand plan, AnteilStand anteile, VerlustTag verlustGestern,
+            Ausscheiden ausscheiden) {}
 
     /** Je Fähigkeit {@code gemeldet} · {@code versions_tabelle} · {@code fehlt}. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

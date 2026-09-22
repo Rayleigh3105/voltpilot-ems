@@ -357,6 +357,48 @@ public class SteuerungsverbundRepository {
                 mitgliedId) > 0;
     }
 
+    // ------------------------------------------------------------------ Ausscheiden (§5.5, V20260922160000)
+
+    /**
+     * Ein Mitglied, das ausscheidet: seit wann, worauf es wartet ({@code quittung} · {@code betreiber}) und ob der
+     * Betreiber bestätigt hat, dass die Geräte der Box vom Netz sind (null = nicht).
+     */
+    public record Ausscheiden(UUID mitgliedId, UUID deviceId, Instant seit, String wartetAuf, Instant vomNetzAm) {}
+
+    /** Die wirksamen Mitglieder zum Zeitpunkt, die ausscheiden — Box → Angabe. */
+    public java.util.Map<UUID, Ausscheiden> ausscheidende(UUID verbundId, Instant zeitpunkt) {
+        java.util.Map<UUID, Ausscheiden> out = new java.util.LinkedHashMap<>();
+        jdbc.query("SELECT id, device_id, scheidet_aus_seit, scheidet_aus_wartet_auf, vom_netz_bestaetigt_am "
+                + "FROM steuerungsverbund_mitglied WHERE steuerungsverbund_id = ? AND scheidet_aus_seit IS NOT NULL "
+                + "AND aufgehoben_am IS NULL AND gueltig_ab <= ? AND (gueltig_bis IS NULL OR gueltig_bis > ?) "
+                + "ORDER BY scheidet_aus_seit, id", rs -> {
+                    UUID box = rs.getObject("device_id", UUID.class);
+                    out.put(box, new Ausscheiden(rs.getObject("id", UUID.class), box,
+                            rs.getTimestamp("scheidet_aus_seit").toInstant(), rs.getString("scheidet_aus_wartet_auf"),
+                            instant(rs, "vom_netz_bestaetigt_am")));
+                }, verbundId, Timestamp.from(zeitpunkt), Timestamp.from(zeitpunkt));
+        return out;
+    }
+
+    /**
+     * Setzt „scheidet aus“ an einem wirksamen Mitglied. Scheidet es schon aus, bleibt der Beginn; nur {@code betreiber}
+     * darf {@code quittung} ablösen (die Box wurde danach abgemeldet), nie umgekehrt. False, wenn nichts geschah.
+     */
+    public boolean ausscheidenSetzen(UUID mitgliedId, String wartetAuf, String wer, Instant am) {
+        return jdbc.update("UPDATE steuerungsverbund_mitglied SET scheidet_aus_seit = COALESCE(scheidet_aus_seit, ?), "
+                + "scheidet_aus_wartet_auf = ?, scheidet_aus_von = COALESCE(scheidet_aus_von, ?) "
+                + "WHERE id = ? AND aufgehoben_am IS NULL AND (scheidet_aus_wartet_auf IS NULL "
+                + "OR (scheidet_aus_wartet_auf = 'quittung' AND ? = 'betreiber'))", Timestamp.from(am), wartetAuf,
+                wer, mitgliedId, wartetAuf) > 0;
+    }
+
+    /** Der Betreiber bestätigt: die Geräte der Box sind vom Netz (I4). False, wenn es nicht ausscheidet oder schon steht. */
+    public boolean vomNetzBestaetigen(UUID mitgliedId, String wer, Instant am) {
+        return jdbc.update("UPDATE steuerungsverbund_mitglied SET vom_netz_bestaetigt_am = ?, vom_netz_bestaetigt_von = ? "
+                + "WHERE id = ? AND scheidet_aus_seit IS NOT NULL AND vom_netz_bestaetigt_am IS NULL "
+                + "AND aufgehoben_am IS NULL", Timestamp.from(am), wer, mitgliedId) > 0;
+    }
+
     // ------------------------------------------------------------------ Protokoll
 
     /** GENAU EIN Eintrag je Schreibvorgang; die Eintragszeit setzt die Datenbank. */

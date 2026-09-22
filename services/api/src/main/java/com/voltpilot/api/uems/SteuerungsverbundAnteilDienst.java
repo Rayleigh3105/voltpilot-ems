@@ -26,6 +26,7 @@ import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -175,6 +176,15 @@ public class SteuerungsverbundAnteilDienst {
     }
 
     private Ableitung ableitung(VerbundZeile v, LocalDate tag, java.util.Set<UUID> nurBoxen) {
+        return ableitung(v, tag, nurBoxen, Map.of());
+    }
+
+    /**
+     * Wie {@link #ableitung(VerbundZeile, LocalDate, java.util.Set)}, der Vorbehalt je Richtung um {@code reserviert}
+     * erhöht — der Rückfall der Geräte einer ausscheidenden Box, der ohne sie reserviert bleiben muss (§5.5, G3).
+     */
+    private Ableitung ableitung(VerbundZeile v, LocalDate tag, java.util.Set<UUID> nurBoxen,
+            Map<Grenzart, BigDecimal> reserviert) {
         Instant jetzt = clock.instant();
         List<SteuerungsverbundAbleitung.Mitglied> mitglieder = verbuende.mitglieder(v.id(), jetzt).stream()
                 .filter(m -> nurBoxen == null || nurBoxen.contains(m.deviceId()))
@@ -201,8 +211,11 @@ public class SteuerungsverbundAnteilDienst {
         if (wirksam.bezugKw() != null) {
             grenze.put(Grenzart.BEZUG, wirksam.bezugKw());
         }
+        Map<Grenzart, BigDecimal> vorbehalt = new EnumMap<>(Grenzart.class);
+        vorbehalt.putAll(anteile.vorbehalt(v.id()).kw());
+        reserviert.forEach((r, kw) -> vorbehalt.computeIfPresent(r, (x, alt) -> alt.add(kw)));
         Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge = SteuerungsverbundAbleitung.eingaenge(mitglieder,
-                geraete, grenze, anteile.vorbehalt(v.id()).kw());
+                geraete, grenze, vorbehalt);
         return new Ableitung(mitglieder, eingaenge, SteuerungsverbundAbleitung.auslegung(mitglieder, eingaenge));
     }
 
@@ -340,7 +353,11 @@ public class SteuerungsverbundAnteilDienst {
         // Epoche) ist ein verspäteter Stand der alten Epoche keiner, den die Cloud je gesendet hat (IP-30).
         if (angenommen && dokumente.stream().anyMatch(d -> d.stand().equals(stand))) {
             verbuende.quittiert(m.id(), stand.epoche(), stand.revision(), am);
-            zielstandPruefen(v);
+            if (dokumente.get(0).ziel() == null) {
+                ausscheidenPruefen(v); // ein Ausscheiden ohne zweiten Schritt endet mit der Quittung der Box
+            } else {
+                zielstandPruefen(v);
+            }
         }
         return true;
     }
@@ -353,6 +370,10 @@ public class SteuerungsverbundAnteilDienst {
         }
         DokumentZeile uebergang = dokumente.get(0);
         if (uebergang.epoche() != v.epoche() || anteile.rueckgespieltErkannt(v.id()).isPresent()) {
+            return;
+        }
+        if (!verbuende.ausscheidende(v.id(), clock.instant()).isEmpty()) {
+            ausscheidenPruefen(v); // §5.5: der Zielstand kommt erst mit dem Ende der ausscheidenden Mitglieder
             return;
         }
         Map<String, Stand> quittiert = new HashMap<>();
@@ -417,6 +438,179 @@ public class SteuerungsverbundAnteilDienst {
         DokumentZeile zeile = anteile.dokumente(v.id()).stream().filter(z -> z.id().equals(id)).findFirst()
                 .orElseThrow();
         return new Ergebnis(null, zeile, List.copyOf(gesendetAn));
+    }
+
+    // ------------------------------------------------------------------ Ausscheiden (§5.5, I3, V5, R12)
+
+    /** Worauf ein ausscheidendes Mitglied wartet ({@code steuerungsverbund_mitglied.scheidet_aus_wartet_auf}). */
+    public static final String WARTET_AUF_QUITTUNG = "quittung";
+    public static final String WARTET_AUF_BETREIBER = "betreiber";
+    /** Protokoll-Art (V20260922160000) und Dokument-Anlass. */
+    public static final String ART_AUSGESCHIEDEN = "mitglied_ausgeschieden";
+    static final String ANLASS_AUSSCHEIDEN = "ausscheiden";
+
+    /**
+     * Der erste Schritt des Ausscheidens (§5.5): die ausscheidenden Mitglieder (sie tragen schon {@code scheidet_aus})
+     * fallen je Richtung auf den Rückfall ihrer Geräte (G3; 0, wenn der Betreiber bestätigt hat, dass sie vom Netz
+     * sind); die anderen behalten ihren Anteil (je Box das Kleinere, G5). Der Zielstand steht im Dokument: die
+     * verbleibenden Boxen nach G4, der Rückfall der ausscheidenden bleibt reserviert. Er geht erst mit
+     * {@link #ausscheidenPruefen} — nach der Quittung jeder ausscheidenden Box oder der Bestätigung des Betreibers.
+     * Ohne gespeichertes Dokument (nie scharf) {@link Grund#NOCH_NICHT_SCHARF}: der Aufrufer beendet direkt.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Ergebnis ausscheidenBeginnen(VerbundZeile v, ProtokollAkteur wer) {
+        Instant jetzt = clock.instant();
+        Map<UUID, SteuerungsverbundRepository.Ausscheiden> gehen = verbuende.ausscheidende(v.id(), jetzt);
+        List<DokumentZeile> dokumente = anteile.dokumente(v.id());
+        if (gehen.isEmpty()) {
+            return Ergebnis.nicht(Grund.UNVERAENDERT);
+        }
+        if (dokumente.isEmpty() || v.epoche() == 0) {
+            return Ergebnis.nicht(Grund.NOCH_NICHT_SCHARF);
+        }
+        if (anteile.rueckgespieltErkannt(v.id()).isPresent()) {
+            return Ergebnis.nicht(Grund.RUECKGESPIELT);
+        }
+        LocalDate tag = LocalDate.ofInstant(jetzt, ZONE);
+        Ableitung alle = ableitung(v, tag, null);
+        java.util.Set<UUID> bleiben = new java.util.HashSet<>();
+        alle.mitglieder().forEach(m -> bleiben.add(UUID.fromString(m.box())));
+        bleiben.removeAll(gehen.keySet());
+        Map<Grenzart, BigDecimal> reserviert = reserviert(alle, gehen.values());
+        Ableitung rest = ableitung(v, tag, bleiben, reserviert);
+        if (!rest.passt()) {
+            return Ergebnis.nicht(Grund.AUSLEGUNG_PASST_NICHT);
+        }
+        Tabelle ziel = rest.ziel();
+        Map<Grenzart, Map<String, BigDecimal>> mitGehenden = new EnumMap<>(Grenzart.class);
+        Map<Grenzart, BigDecimal> verteilbar = new EnumMap<>(Grenzart.class);
+        for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            Map<String, BigDecimal> je = new java.util.TreeMap<>(ziel.anteile().getOrDefault(r, Map.of()));
+            for (SteuerungsverbundRepository.Ausscheiden a : gehen.values()) {
+                je.put(a.deviceId().toString(), a.vomNetzAm() != null ? BigDecimal.ZERO.setScale(1)
+                        : rueckfall(alle, r, a.deviceId()));
+            }
+            mitGehenden.put(r, je);
+            verteilbar.put(r, ziel.verteilbar().get(r).add(reserviert.getOrDefault(r, BigDecimal.ZERO)));
+        }
+        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, alle.mitglieder())
+                .orElseGet(() -> altAusDokumenten(v));
+        SteuerungsverbundZweischritt.Dokument d = SteuerungsverbundZweischritt.beginnen(alt,
+                new Tabelle(mitGehenden, verteilbar));
+        if (d.schritt() == Schritt.UEBERGANG) {
+            d = new SteuerungsverbundZweischritt.Dokument(Schritt.UEBERGANG, d.tabelle(), ziel, d.verengteBoxen());
+        }
+        return veroeffentlichen(v, v.epoche(), d, ANLASS_AUSSCHEIDEN, wer);
+    }
+
+    /**
+     * Endet das Ausscheiden? Erst wenn JEDE ausscheidende Box das jüngste Dokument (oder später) quittiert hat — oder
+     * der Betreiber bestätigt hat, dass ihre Geräte vom Netz sind (I4) — und jede andere verengte Box quittiert hat.
+     * Ohne das bleibt der Übergangsstand stehen, gleich wie lange (R12). Dann: die Mitgliedschaften enden (zeitgültig,
+     * nichts gelöscht), der Rückfall der Boxen ohne Bestätigung geht in den Vorbehalt (er bleibt reserviert, auch wenn
+     * die Box später verstummt), und die verbleibenden Boxen bekommen den Rest nach G4 — im Zweischritt, falls eine von
+     * ihnen dabei fiele. Die ausgeschiedene Box bekommt nichts mehr: sie hält ihr letztes Dokument (V5). True = beendet.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean ausscheidenPruefen(VerbundZeile v) {
+        Instant jetzt = clock.instant();
+        Map<UUID, SteuerungsverbundRepository.Ausscheiden> gehen = verbuende.ausscheidende(v.id(), jetzt);
+        if (gehen.isEmpty() || anteile.rueckgespieltErkannt(v.id()).isPresent()) {
+            return false;
+        }
+        List<DokumentZeile> dokumente = anteile.dokumente(v.id());
+        if (dokumente.isEmpty()) {
+            return false;
+        }
+        DokumentZeile letztes = dokumente.get(0);
+        Map<String, MitgliedZeile> mitglieder = new HashMap<>();
+        verbuende.mitglieder(v.id(), jetzt).forEach(m -> mitglieder.put(m.deviceId().toString(), m));
+        for (SteuerungsverbundRepository.Ausscheiden a : gehen.values()) {
+            boolean fertig = a.vomNetzAm() != null || WARTET_AUF_QUITTUNG.equals(a.wartetAuf())
+                    && quittiertAb(mitglieder.get(a.deviceId().toString()), letztes.stand());
+            if (!fertig) {
+                return false; // abgemeldet: nur der Betreiber schließt ab (I4); sonst R12 — der Übergang steht
+            }
+        }
+        for (String box : letztes.verengteBoxen()) {
+            if (!gehen.containsKey(UUID.fromString(box)) && !quittiertAb(mitglieder.get(box), letztes.stand())) {
+                return false;
+            }
+        }
+        LocalDate tag = LocalDate.ofInstant(jetzt, ZONE);
+        Map<Grenzart, BigDecimal> reserviert = reserviert(ableitung(v, tag, null), gehen.values());
+        UUID tenant = TenantContext.get();
+        Instant ab = jetzt.truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        for (SteuerungsverbundRepository.Ausscheiden a : gehen.values()) {
+            MitgliedZeile m = mitglieder.get(a.deviceId().toString());
+            if (m.gueltigAb().isBefore(ab)) {
+                verbuende.mitgliedBeenden(m.id(), ab);
+            } else {
+                verbuende.mitgliedAufheben(m.id());
+            }
+            String weg = a.vomNetzAm() != null ? "geraete_vom_netz" : "quittung";
+            verbuende.protokoll(tenant, v.id(), v.siteId(), ART_AUSGESCHIEDEN, "{\"box_id\":\"" + a.deviceId()
+                    + "\",\"rolle\":\"" + m.rolle().code() + "\"}", null, ab, false, weg, ZWEISCHRITT);
+        }
+        if (reserviert.values().stream().anyMatch(kw -> kw.signum() > 0)) {
+            SteuerungsverbundAnteilRepository.Vorbehalt vb = anteile.vorbehalt(v.id());
+            BigDecimal e = plus(vb.kw().get(Grenzart.EINSPEISUNG), reserviert.get(Grenzart.EINSPEISUNG));
+            BigDecimal b = plus(vb.kw().get(Grenzart.BEZUG), reserviert.get(Grenzart.BEZUG));
+            anteile.vorbehaltSetzen(v.id(), e, b, ZWEISCHRITT.name());
+            verbuende.protokoll(tenant, v.id(), v.siteId(), "vorbehalt", vorbehaltJson(vb.kw().get(Grenzart.EINSPEISUNG),
+                    vb.kw().get(Grenzart.BEZUG)), vorbehaltJson(e, b), jetzt, false, ART_AUSGESCHIEDEN, ZWEISCHRITT);
+        }
+        Ableitung rest = ableitung(v, tag, null);
+        if (rest.mitglieder().isEmpty() || !rest.passt()) {
+            return true; // nichts wird erweitert: die verbleibenden Boxen halten das letzte Dokument (V5)
+        }
+        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, rest.mitglieder())
+                .orElseGet(() -> altAusDokumenten(v));
+        SteuerungsverbundZweischritt.Dokument d = SteuerungsverbundZweischritt.beginnen(alt, rest.ziel());
+        if (d.verengteBoxen().isEmpty()) {
+            // Keine verbleibende Box fällt: jede verengte hat quittiert (oben) — das ist der Zielstand (G5).
+            d = new SteuerungsverbundZweischritt.Dokument(Schritt.ZIEL, rest.ziel(), null, List.of());
+        }
+        veroeffentlichen(v, v.epoche(), d, d.schritt() == Schritt.ZIEL ? "zielstand" : ANLASS_AUSSCHEIDEN,
+                ZWEISCHRITT);
+        return true;
+    }
+
+    private static boolean quittiertAb(MitgliedZeile m, Stand stand) {
+        return m != null && m.quittiertEpoche() != null
+                && new Stand(m.quittiertEpoche(), m.quittiertRevision()).compareTo(stand) >= 0;
+    }
+
+    /** Je Richtung der Rückfall der ausscheidenden Boxen, deren Geräte nicht als „vom Netz“ bestätigt sind (G3). */
+    private static Map<Grenzart, BigDecimal> reserviert(Ableitung alle,
+            java.util.Collection<SteuerungsverbundRepository.Ausscheiden> gehen) {
+        Map<Grenzart, BigDecimal> out = new EnumMap<>(Grenzart.class);
+        for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            BigDecimal summe = BigDecimal.ZERO.setScale(1);
+            for (SteuerungsverbundRepository.Ausscheiden a : gehen) {
+                if (a.vomNetzAm() == null) {
+                    summe = summe.add(rueckfall(alle, r, a.deviceId()));
+                }
+            }
+            out.put(r, summe);
+        }
+        return out;
+    }
+
+    /** Der Rückfall einer Box in einer Richtung aus der Ableitung — ohne Geräte in dieser Richtung 0. */
+    private static BigDecimal rueckfall(Ableitung a, Grenzart r, UUID box) {
+        SteuerungsverbundRegeln.Richtung richtung = a.eingaenge().get(r);
+        SteuerungsverbundRegeln.Leistung l = richtung == null ? null : richtung.jeBox().get(box.toString());
+        return l == null || l.rueckfallKw() == null ? BigDecimal.ZERO.setScale(1) : l.rueckfallKw().setScale(1,
+                java.math.RoundingMode.UP);
+    }
+
+    private static BigDecimal plus(BigDecimal a, BigDecimal b) {
+        return a == null ? null : b == null ? a : a.add(b);
+    }
+
+    private static String vorbehaltJson(BigDecimal einspeisung, BigDecimal bezug) {
+        return "{\"einspeisung_kw\":" + einspeisung + ",\"bezug_kw\":" + bezug + "}";
     }
 
     /**
@@ -573,9 +767,10 @@ public class SteuerungsverbundAnteilDienst {
         Map<String, Tabelle> quittiert = new HashMap<>();
         Map<String, Tabelle> gesendet = new HashMap<>();
         Map<UUID, UUID> kennungen = verbuende.anteilKennungen(v.id());
+        Instant jetzt = clock.instant();
         for (MitgliedZeile m : verbuende.mitgliederGeschichte(v.id())) {
-            if (m.aufgehobenAm() != null) {
-                continue;
+            if (m.aufgehobenAm() != null || m.gueltigBis() != null && !m.gueltigBis().isAfter(jetzt)) {
+                continue; // eine ausgeschiedene Box hält ihr letztes Dokument, zählt aber nicht mehr (§5.5)
             }
             String box = m.deviceId().toString();
             UUID kennung = kennungen.get(m.deviceId());
