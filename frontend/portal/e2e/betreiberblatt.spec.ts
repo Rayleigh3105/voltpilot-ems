@@ -147,3 +147,18 @@ for (const breite of [375, 1440]) {
     });
   });
 }
+
+for (const breite of [375, 1440]) {
+  test(`Auflösen: Betreiber bestätigt fehlende Box (${breite} px)`, async ({ page }) => {
+    const blatt = await oeffne(page, breite, 'lage=anteile_aktiv&aufloesen=1');
+    await expect(blatt.getByTestId('gsb-kopf')).toHaveText('Gemeinsame Steuerung wird aufgelöst · 0 von 1 Boxen haben bestätigt.');
+    await expect(blatt.getByRole('button', { name: 'Geräte sind vom Netz - bestätigen' })).toHaveCount(1);
+    await keinUeberlauf(page);
+    await bild(blatt, `aufloesen-betreiber-${breite}`);
+    await blatt.getByRole('button', { name: 'Geräte sind vom Netz - bestätigen' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: /bestätigen/i }).click();
+    await expect(blatt.getByTestId('gsb-kopf')).toContainText('aufgelöst');
+  });
+}

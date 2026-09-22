@@ -76,11 +76,13 @@ const nameVon = (namen: BoxNamen, id: string | null | undefined) => (id && namen
 
 // ───────────────────────────────────────────────────────────── Zustand
 
-export type KartenLage = 'nicht_eingerichtet' | 'eingerichtet' | 'wird_geprueft' | 'aktiv' | 'angehalten';
+export type KartenLage = 'nicht_eingerichtet' | 'eingerichtet' | 'wird_geprueft' | 'aktiv' | 'angehalten' | 'wird_aufgeloest';
 
 /** Die vier Zustände der Kundensprache (S1) aus dem Vertragszustand; `aufgeloest` beginnt wieder von vorn. */
 export function lage(z: UemsGemeinsameSteuerungZustand | null): KartenLage {
   switch (z?.zustand) {
+    case 'wird_aufgeloest':
+      return 'wird_aufgeloest';
     case 'erklaert':
       return 'eingerichtet';
     case 'beobachtet':
@@ -117,6 +119,9 @@ export function zustandsZeile(
 ): string | null {
   const l = lage(z);
   if (l === 'nicht_eingerichtet') return null;
+  if (l === 'wird_aufgeloest' && z?.aufloesen) return flaechenSatz('wird_aufgeloest', {
+    bestaetigt: String(z.aufloesen.bestaetigt), gesamt: String(z.aufloesen.gesamt),
+  });
   if (l === 'eingerichtet') return `${KUNDENWORT} ${ZUSTAENDE.eingerichtet}`;
   if (l === 'wird_geprueft') return satz('pruefung_laeuft');
   if (l === 'angehalten') return satz('angehalten', { box: nameVon(namen, fuehrendeBox(z)) });
@@ -150,7 +155,7 @@ export function boxZeilen(
 ): BoxZeile[] {
   const l = lage(z);
   if (l === 'nicht_eingerichtet') return [];
-  const inKraft = l === 'aktiv' || l === 'angehalten';
+  const inKraft = l === 'aktiv' || l === 'angehalten' || l === 'wird_aufgeloest';
   const mitglieder = [...(z?.mitglieder ?? [])].sort((a, b) => (a.rolle === b.rolle ? 0 : a.rolle === 'fuehrt' ? -1 : 1));
   return mitglieder.map((m) => {
     const box = nameVon(namen, m.box_id);
@@ -201,7 +206,7 @@ export function ausfallSaetze(
 ): Map<string, string> {
   const out = new Map<string, string>();
   const l = lage(z);
-  if (l !== 'aktiv' && l !== 'angehalten') return out;
+  if (l !== 'aktiv' && l !== 'angehalten' && l !== 'wird_aufgeloest') return out;
   const mitglieder = z?.mitglieder ?? [];
   const stumm = mitglieder.filter((m) =>
     m.zuletzt_gehoert != null && jetzt.getTime() - new Date(m.zuletzt_gehoert).getTime() > ONLINE_WINDOW_MS);
@@ -241,7 +246,7 @@ export interface BefundSatz {
  * davor die Frage 2 aus §5.2.
  */
 export function befundSaetze(z: UemsGemeinsameSteuerungZustand | null, namen: BoxNamen): BefundSatz[] {
-  const inKraft = lage(z) === 'aktiv' || lage(z) === 'angehalten';
+  const inKraft = lage(z) === 'aktiv' || lage(z) === 'angehalten' || lage(z) === 'wird_aufgeloest';
   const out: BefundSatz[] = [];
   const gesehen = new Set<string>();
   const dazu = (b: BefundSatz) => {

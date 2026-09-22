@@ -136,6 +136,31 @@ beendet oder aufgehoben, nie gelöscht und nie umgehängt (Box, Rolle, Messpunkt
 quittiert (Epoche, Revision) steigen nur, und quittiert wird nie über das Gesendete hinaus (CHECK + Schreibweg).
 Eine Anlage ohne Gemeinsame Steuerung hat keine Zeile — sie merkt nichts (I6).
 
+### Auflösen der ganzen Gemeinsamen Steuerung (§5.5, I4/I5, G3/G5, V5)
+
+`aufloesung_laeuft` am Verbund (`V20260922180000`) unterscheidet den gemeinsamen Vorgang dauerhaft vom
+Einzel-Ausscheiden. Alle mitsteuernden Mitglieder werden zusammen markiert. Der Übergang geht an alle:
+mitsteuernde auf min(alt, Geräte-Rückfall/0), führende auf min(alt, Ziel). Erst jede ausscheidende Box UND jede
+weitere verengte Box muss quittiert haben; alternativ bestätigt der Betreiber je ausscheidender Box „Geräte sind
+vom Netz“. Nach dem Abmelden zählt nur diese Betreiber-Bestätigung. Ohne Bestätigung bleibt der Übergang stehen.
+
+Nicht abgetrennte Geräte bleiben mit ihrem Rückfall im Vorbehalt reserviert (G3). Im letzten Ziel-Dokument hält die
+führende Box **verteilbar = Grenze − Vorbehalt**, je Richtung und ohne Beschränkung auf ihre Geräte-Nennleistung.
+Das ist die bewusste Rückkehr unter V5: blind bleibt sie sicher, mit frischem Netzwert regelt der heutige Regelkreis
+gegen die ganze Anschlussgrenze. Die mitsteuernden halten ihr letztes Rückfall-/0-Dokument. Kein retained-Dokument
+wird gelöscht. R1/R3: Grenze 100/550, Vorbehalt 0/473, Rückfälle 0 ⇒ letztes führendes Dokument 100/77 kW;
+Ahrenberg mit Rückfällen 60/24,6 ⇒ Vorbehalt 60/497,6 und letztes Dokument 40/52,4 kW.
+
+Danach enden **alle** Mitgliedschaften minutengenau, Stufe `erklaert`, Kunden-Zustand `aufgeloest` wie bei IP-5.
+Erklärung, Vorbehalt, Dokumente und Sprungprobe-Protokolle bleiben erhalten. IP-4 erlaubt nur einen Verbund je
+Anlage: erneutes Einrichten öffnet denselben mit neuen Mitgliedsintervallen (kleinster bestehender IP-5-Weg),
+Scharfschalten benötigt die Nachweise und eine neue Epoche (IP-7). Alte Geräte-Rückfälle bleiben vorsichtshalber
+reserviert, bis eine neue Erklärung/ein bestätigter Vorbehalt sie ersetzt; keine automatische Rückkehr zu „heute“.
+Protokoll-Art `aufgeloest` für Beginn und Ende, CHECK als Vereinigung erweitert.
+
+Während des Auflösens sind Einrichten, Fortsetzen, Scharfschalten und Anteilsänderungen gesperrt
+(`zweischritt_laeuft`). Ein laufendes Einzel-Ausscheiden muss zuerst enden; nach Rückspielen `rueckgespielt`.
+
 ## 6. Routen, Rechte und Stufen (IP-5)
 
 `uems/GemeinsameSteuerungService` über `web/GemeinsameSteuerungController` (Kunde) und
@@ -149,7 +174,7 @@ anderes Feld im Körper ist 400 `anfrage_ungueltig`; eine fremde Anlage ist 404 
 | `PUT …/gemeinsame-steuerung` | `funktion.steuern_einrichten` | einrichten/ändern (Kundenadministrator, I5): gewünschter Stand der Mitglieder (je Mitglied wahlfrei `vorgabe_signal`, G6) → S0/S1 |
 | `POST …/anhalten` | `steuerung.starten_beenden` | `anteile_aktiv` → `angehalten`; die Anteile bleiben in Kraft |
 | `POST …/fortsetzen` | `steuerung.starten_beenden` | `angehalten` → `anteile_aktiv`, dieselbe Epoche, I1 erneut geprüft — nur wenn das jüngste Anhalten von einem Kundenkonto kam, sonst 409 `vom_betreiber_angehalten` |
-| `POST …/aufloesen` | `steuerung.starten_beenden` | alle Mitglieder enden; nur ohne je scharf gewesen zu sein (`epoche = 0`) |
+| `POST …/aufloesen` | `steuerung.starten_beenden` | nie scharf (`epoche = 0`): sofort; sonst gemeinsamer Zweischritt, `wird_aufgeloest` mit `aufloesen.bestaetigt/gesamt/wartet_auf`; danach `aufgeloest` (siehe unten) |
 | `POST …/mitglieder/{boxId}/ausscheiden` | `steuerung.starten_beenden` | eine Box scheidet aus (§5.5): Zweischritt wie oben (§5, Zeile Ausscheiden); 409 `kein_mitglied` · `fuehrende_box_bleibt` (solange eine andere Box mitsteuert — erst die Rolle wechseln) · `scheidet_schon_aus` · `zweischritt_laeuft` · `rueckgespielt` · `ausscheiden_passt_nicht`. Das Abmelden einer Mitglieds-Box (`DELETE /api/v1/devices/{id}`) führt denselben Weg mit `wartet_auf = voltpilot`; die führende Box wird dort mit 409 `fuehrende_box_bleibt` nicht abgemeldet |
 | `GET /api/v1/admin/sites/{siteId}/gemeinsame-steuerung` | `plattform.betrieb`, lesend (IP-24) | Betreiber-Blatt: je Box Fähigkeit (`gemeldet` · `versions_tabelle` · `fehlt`), Messpunkt und Alter, Wächter-Stufe je Richtung (Herzschlag-Block, im Prozess — nach Neustart `null` bis zum nächsten Herzschlag), `plan_id` veröffentlicht/angenommen, Anteils-Revision gesendet/quittiert, wirksame Anteile, letzter Herzschlag; Zweischritt des jüngsten Dokuments (`bestaetigt`/`wartet_auf`, Zielstand erst mit `schritt = ziel` und leerem `wartet_auf`); alle Sprungprobe-Protokolle mit `abweichung_kw` je Sprung. Ableitung `uems/GemeinsameSteuerungBoxStand` (für die Kundenroute wiederverwendbar); ohne Verbund leer |
 | `POST /api/v1/admin/sites/{siteId}/gemeinsame-steuerung/scharfschalten` | `plattform.betrieb` (nur Plattform-Rolle, I4/W9) | I1 vollständig → neue Epoche (G5), `anteile_aktiv`, Mitglieder bestätigt |
@@ -159,8 +184,8 @@ anderes Feld im Körper ist 400 `anfrage_ungueltig`; eine fremde Anlage ist 404 
 
 **Stufen.** Einrichten und jede Strukturänderung setzen S0 `erklaert`, bei vollständiger Struktur S1 `beobachtet`
 (I3) — Struktur sind `box_nicht_in_anlage`, `kein_netzanschluss`, `grenze_fehlt`, `fuehrende_box_misst_nicht`,
-`mitsteuernde_box_misst_nicht`. S2 `geprueft` setzt IP-21. Ändern und Auflösen bei `anteile_aktiv` sind 409
-`erst_anhalten`; Auflösen nach einem Scharfschalten ist 409 `anteile_in_kraft` (Rücknahme nur im Zweischritt, IP-7).
+`mitsteuernde_box_misst_nicht`. S2 `geprueft` setzt IP-21. Ändern bei `anteile_aktiv` ist 409
+`erst_anhalten`. Auflösen ist auch direkt aus S3 erlaubt und beendet die gemeinsame Planung sofort.
 Weitere Übergangs-Gründe: `nicht_eingerichtet`, `nicht_aktiv`, `nicht_angehalten`, `vom_betreiber_angehalten`,
 `bereits_aktiv`, `kein_mitglied`, `bereits_bestaetigt`. **Wer angehalten hat** steht im Protokoll (jüngster
 Stufenwechsel nach `angehalten`, `actor_art`): nur nach einem Anhalten mit `actor_art = kunde` setzt ein Kundenkonto

@@ -56,7 +56,16 @@ const seit = {
   verwaltungSeit: ausfall === 'verwaltung' || ausfall === 'beide' ? 30 * 60 : 35,
 };
 const wirksam = p.get('wirksam') === 'abweichend' ? GS_ABWEICHEND : undefined;
-const zustand = (l: GsLage = lage): UemsGemeinsameSteuerungZustand => gsZustand(l, verlust, { jetzt, wirksam, ...seit });
+const zustand = (l: GsLage = lage): UemsGemeinsameSteuerungZustand => {
+  const z = gsZustand(l, verlust, { jetzt, wirksam, ...seit });
+  if (!p.has('aufloesen')) return z;
+  return { ...z, zustand: 'wird_aufgeloest', stufe: null, fehlt: [], naechster_schritt: null,
+    aufloesen: { bestaetigt: 0, gesamt: 1, wartet_auf: [GS_IDS.e4] },
+    mitglieder: z.mitglieder?.map((m) => m.box_id !== GS_IDS.e4 ? m : {
+      ...m, ausscheiden: { seit: jetzt.toISOString(), wartet_auf: 'box' },
+    }),
+  };
+};
 /** Die Auslegung mit dem am Gerät hinterlegten Rückfall von K-12 (eine gespeicherte Tatsache am Gerät). */
 const ausgelegt = (): UemsGemeinsameSteuerungEinrichten => {
   const e = gsEingerichtet();

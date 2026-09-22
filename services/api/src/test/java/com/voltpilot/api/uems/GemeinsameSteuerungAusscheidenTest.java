@@ -49,6 +49,7 @@ import org.testcontainers.utility.DockerImageName;
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
+@org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 @ActiveProfiles("local")
 class GemeinsameSteuerungAusscheidenTest {
 
@@ -76,6 +77,11 @@ class GemeinsameSteuerungAusscheidenTest {
         registry.add("spring.flyway.placeholders.appDbPassword", () -> APP_PW);
         registry.add("spring.flyway.placeholders.adminDbUser", () -> ADMIN_USER);
         registry.add("spring.flyway.placeholders.adminDbPassword", () -> ADMIN_PW);
+        registry.add("voltpilot.admin-datasource.username", () -> ADMIN_USER);
+        registry.add("voltpilot.admin-datasource.password", () -> ADMIN_PW);
+        registry.add("voltpilot.security.oidc.enabled", () -> "true");
+        registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> "http://127.0.0.1:9/realms/voltpilot");
+        registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://127.0.0.1:9/realms/voltpilot/certs");
     }
 
     /** Der Draht im Test: jede Nutzlast je Topic. */
@@ -94,6 +100,10 @@ class GemeinsameSteuerungAusscheidenTest {
         }
     }
 
+    @Autowired
+    org.springframework.test.web.servlet.MockMvc mvc;
+    @Autowired
+    WirksameAnteileAusHerzschlag herzschlag;
     @Autowired
     SteuerungsverbundAnteilDienst dienst;
     @Autowired
@@ -335,6 +345,139 @@ class GemeinsameSteuerungAusscheidenTest {
     // ------------------------------------------------------------------ Welt
 
     /** S3 wie gebaut: Scharfschalten (Epoche 1), Übergang → Quittung E-1 → Ziel (rev 2), beide quittieren. */
+    @Test
+    void aufloesenInS3WartetAufBeideBoxenUndErhaeltDenVerlauf() throws Exception {
+        Welt w = ahrenberg(true);
+        TenantContext.set(w.mandant());
+        // R1 auf zwei mitsteuernde Boxen verteilt: E-4 30/77, E-5 30/0, E-1 weiterhin 40/0.
+        root.update("UPDATE steuerungsverbund_geraet SET nenn_kw = 30 WHERE device_id = ? AND richtung = 'einspeisung'",
+                w.e4());
+        UUID e5 = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) "
+                + "RETURNING id", UUID.class, w.mandant(), w.anlage(), "e5-" + w.verbund());
+        verbuende.mitgliedAufnehmen(w.mandant(), w.verbund(), e5, Rolle.STEUERT_MIT, null,
+                Instant.parse("2026-01-01T00:00:00Z"), null, "test");
+        geraet(w, e5, "pv-generation", Grenzart.EINSPEISUNG, "30", "0");
+        dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        quittung(w, w.e1(), 1, 1);
+        for (UUID box : List.of(w.e1(), w.e4(), e5)) quittung(w, box, 1, 2);
+        TenantContext.set(w.mandant());
+        verbuende.stufeSetzen(w.verbund(), Stufe.ANTEILE_AKTIV);
+        root.update("UPDATE steuerungsverbund_geraet SET nenn_kw = 50 WHERE device_id = ? AND richtung = 'einspeisung'",
+                w.e1()); // Letztes Dokument 100 kW, nicht die Geräte-Nennleistung 50 kW.
+        long geraete = root.queryForObject("SELECT count(*) FROM steuerungsverbund_geraet WHERE steuerungsverbund_id = ?",
+                Long.class, w.verbund());
+        var antwort = aufloesenRoute(w, w.mandant());
+        assertThat(antwort.path("zustand").asText()).isEqualTo("wird_aufgeloest");
+        assertThat(antwort.path("aufloesen").path("gesamt").asInt()).isEqualTo(2);
+        Ergebnis uebergang = letztes(w);
+        assertThat(uebergang.dokument().schritt()).isEqualTo(Schritt.UEBERGANG);
+        assertThat(kw(uebergang, Grenzart.EINSPEISUNG, w.e1())).isEqualByComparingTo("40");
+        assertThat(kw(uebergang, Grenzart.BEZUG, w.e1())).isEqualByComparingTo("0");
+        for (UUID box : List.of(w.e4(), e5)) {
+            assertThat(kw(uebergang, Grenzart.EINSPEISUNG, box)).isEqualByComparingTo("0");
+            assertThat(kw(uebergang, Grenzart.BEZUG, box)).isEqualByComparingTo("0");
+        }
+        quittung(w, w.e4(), 1, 3);
+        assertThat(letztes(w).dokument().revision()).isEqualTo(3);
+        assertThat(steuerung.lesen(w.anlage()).aufloesen().bestaetigt()).isOne();
+        assertThat(steuerung.lesen(w.anlage()).aufloesen().wartetAuf()).containsExactly(e5);
+        assertThat(code(() -> steuerung.fortsetzen(w.anlage(), KUNDE))).isEqualTo("zweischritt_laeuft");
+        assertThat(code(() -> steuerung.scharfschalten(w.anlage(), BETREIBER))).isEqualTo("zweischritt_laeuft");
+        // Ein verspäteter Herzschlag ersetzt nicht das bereits quittierte Dokument. Das letzte Dokument muss
+        // den Zielstand enthalten, keinen neuen halben Übergang (hier Einspeisung rauf, Bezug runter).
+        herzschlag.merke(w.anlage(), w.e1(), mapper.readTree("{\"anteile_kw\":{\"einspeisung\":40,\"bezug\":550}}"));
+        quittung(w, e5, 1, 3);
+        Ergebnis ziel = letztes(w);
+        assertThat(ziel.dokument().schritt()).isEqualTo(Schritt.ZIEL);
+        assertThat(ziel.dokument().revision()).isEqualTo(4);
+        assertThat(kw(ziel, Grenzart.EINSPEISUNG, w.e1())).isEqualByComparingTo("100");
+        assertThat(kw(ziel, Grenzart.BEZUG, w.e1())).isEqualByComparingTo("77");
+        assertThat(steuerung.lesen(w.anlage()).zustand()).isEqualTo("aufgeloest");
+        assertThat(verbuende.mitglieder(w.verbund(), Instant.now())).isEmpty();
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_mitglied WHERE steuerungsverbund_id = ? "
+                + "AND gueltig_bis IS NOT NULL", Long.class, w.verbund())).isEqualTo(3);
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_geraet WHERE steuerungsverbund_id = ?",
+                Long.class, w.verbund())).isEqualTo(geraete);
+        assertThat(anteile.dokumente(w.verbund())).hasSize(4);
+        assertThat(verbuende.protokollDerAnlage(w.anlage())).anyMatch(a -> "aufgeloest".equals(a.art()));
+        assertThat(verbuende.finden(w.verbund()).orElseThrow().stufe()).isEqualTo(Stufe.ERKLAERT);
+    }
+
+    @Test
+    void aufloesenReserviertRueckfaelleUndNutztVerteilbarOhneNennleistungsKappe() throws Exception {
+        Welt w = scharf(ahrenberg(false));
+        TenantContext.set(w.mandant());
+        // Die führende Box hat nur 100 kW Nennleistung; ihr letztes Dokument muss dennoch den Rest 550−473 halten.
+        aufloesenRoute(w, w.mandant());
+        assertThat(kw(letztes(w), Grenzart.EINSPEISUNG, w.e4())).isEqualByComparingTo("60");
+        assertThat(kw(letztes(w), Grenzart.BEZUG, w.e4())).isEqualByComparingTo("24.6");
+        quittung(w, w.e4(), 1, 3);
+        assertThat(kw(letztes(w), Grenzart.EINSPEISUNG, w.e1())).isEqualByComparingTo("40");
+        assertThat(kw(letztes(w), Grenzart.BEZUG, w.e1())).isEqualByComparingTo("52.4");
+        assertThat(anteile.vorbehalt(w.verbund()).kw().get(Grenzart.EINSPEISUNG)).isEqualByComparingTo("60");
+        assertThat(steuerung.lesen(w.anlage()).zustand()).isEqualTo("aufgeloest");
+    }
+
+    @Test
+    void aufloesenOhneQuittungWartetBisDerBetreiberBestaetigt() throws Exception {
+        Welt w = scharf(ahrenberg(false));
+        aufloesenRoute(w, w.mandant());
+        TenantContext.set(w.mandant());
+        assertThat(code(() -> steuerung.aufloesen(w.anlage(), KUNDE))).isEqualTo("zweischritt_laeuft");
+        assertThat(dienst.anteileAendern(w.anlage(), BETREIBER).grund()).isEqualTo(SteuerungsverbundAnteilDienst.Grund.ZWEISCHRITT_LAEUFT);
+        assertThat(letztes(w).dokument().revision()).isEqualTo(3);
+        tx.executeWithoutResult(s -> ausscheiden.beimAusbau(w.e4(), BETREIBER));
+        quittung(w, w.e4(), 1, 3);
+        assertThat(letztes(w).dokument().revision()).isEqualTo(3);
+        steuerung.ausscheidenBestaetigen(w.anlage(), w.e4(), BETREIBER);
+        assertThat(kw(letztes(w), Grenzart.EINSPEISUNG, w.e1())).isEqualByComparingTo("100");
+        assertThat(kw(letztes(w), Grenzart.BEZUG, w.e1())).isEqualByComparingTo("77");
+        assertThat(steuerung.lesen(w.anlage()).zustand()).isEqualTo("aufgeloest");
+    }
+
+    @Test
+    void aufloesenNieScharfSofortUndEinzelAusscheidenOderRueckspielenSperren() throws Exception {
+        Welt unscharf = ahrenberg(true);
+        assertThat(aufloesenRoute(unscharf, unscharf.mandant()).path("zustand").asText()).isEqualTo("aufgeloest");
+        assertThat(anteile.dokumente(unscharf.verbund())).isEmpty();
+        Welt w = scharf(ahrenberg(true));
+        TenantContext.set(w.mandant());
+        steuerung.ausscheiden(w.anlage(), w.e4(), KUNDE);
+        assertThat(code(() -> steuerung.aufloesen(w.anlage(), KUNDE))).isEqualTo("zweischritt_laeuft");
+        Welt zurueck = scharf(ahrenberg(true));
+        TenantContext.set(zurueck.mandant());
+        anteile.rueckgespieltMarkieren(zurueck.verbund(), Instant.now());
+        assertThat(code(() -> steuerung.aufloesen(zurueck.anlage(), KUNDE))).isEqualTo("rueckgespielt");
+    }
+
+    @Test
+    void letzteFuehrendeBoxEndetAuchWennSieSelbstNochVerengenMuss() throws Exception {
+        Welt w = scharf(ahrenberg(true));
+        TenantContext.set(w.mandant());
+        steuerung.ausscheiden(w.anlage(), w.e4(), KUNDE);
+        quittung(w, w.e4(), 1, 3);
+        assertThat(letztes(w).dokument().revision()).isEqualTo(4);
+        quittung(w, w.e1(), 1, 4);
+        root.update("UPDATE site SET max_feed_in_kw = 80 WHERE id = ?", w.anlage());
+        var antwort = aufloesenRoute(w, w.mandant());
+        assertThat(antwort.path("aufloesen").path("gesamt").asInt()).isOne();
+        assertThat(letztes(w).dokument().revision()).isEqualTo(5);
+        quittung(w, w.e1(), 1, 5);
+        assertThat(kw(letztes(w), Grenzart.EINSPEISUNG, w.e1())).isEqualByComparingTo("80");
+        assertThat(steuerung.lesen(w.anlage()).zustand()).isEqualTo("aufgeloest");
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode aufloesenRoute(Welt w, UUID tenant) throws Exception {
+        TenantContext.clear();
+        var r = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                "/api/v1/sites/" + w.anlage() + "/gemeinsame-steuerung/aufloesen")
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
+                        .jwt(j -> j.subject("kunde-" + tenant).claim("tenant_id", tenant.toString())))).andReturn();
+        assertThat(r.getResponse().getStatus()).as(r.getResponse().getContentAsString()).isEqualTo(200);
+        TenantContext.set(w.mandant());
+        return mapper.readTree(r.getResponse().getContentAsString());
+    }
+
     private Welt scharf(Welt w) {
         TenantContext.set(w.mandant());
         dienst.anteileScharfschalten(w.anlage(), BETREIBER);

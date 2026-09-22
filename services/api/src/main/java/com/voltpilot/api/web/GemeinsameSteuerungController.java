@@ -177,7 +177,7 @@ public class GemeinsameSteuerungController {
         return dienst.fortsetzen(siteId, akteur(auth));
     }
 
-    /** Recht: {@code steuerung.starten_beenden} an der Anlage — auflösen, solange keine Anteile in Kraft sind. */
+    /** Recht: {@code steuerung.starten_beenden} an der Anlage — auflösen; nach dem Scharfschalten im gemeinsamen Zweischritt. */
     @PostMapping(PFAD + "/aufloesen")
     @Recht(value = "steuerung.starten_beenden", ziel = RechtZiel.ANLAGE)
     public GemeinsameSteuerungDto.Zustand aufloesen(@PathVariable UUID siteId,

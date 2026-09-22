@@ -85,6 +85,7 @@ export const WECHSEL_NUR_ALS_AENDERUNG =
  * ohne „mindestens“ (Variante A: kWh, sonst Zeit; Variante B: immer die Zeit, kWh nur als Zusatz).
  */
 export const FLAECHE = {
+  wird_aufgeloest: 'Gemeinsame Steuerung wird aufgelöst · {bestaetigt} von {gesamt} Boxen haben bestätigt.',
   /** Kopf der Karte unter Anlage → Technik */
   karte_erklaerung: 'Mehrere Boxen dieser Anlage halten die Grenzen am Netzanschluss zusammen ein — jede ihren Teil.',
   /** ohne Gemeinsame Steuerung, mehr als eine Box */

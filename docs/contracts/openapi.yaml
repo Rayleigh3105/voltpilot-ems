@@ -10024,12 +10024,17 @@ paths:
       tags: [funktionen]
       summary: Gemeinsame Steuerung auflösen (Kundenadministrator).
       description: >
-        Recht `steuerung.starten_beenden` an der Anlage. Alle Mitglieder enden mit der laufenden Minute, `zustand`
-        wird `aufgeloest`; die Anlage läuft wie seit AP-06. Während die Anteile aktiv sind 409 `erst_anhalten`, nach
-        einem Scharfschalten 409 `anteile_in_kraft` (zurück nur im Zweischritt, IP-7).
+        Recht `steuerung.starten_beenden` an der Anlage. Nie scharf (`epoche = 0`): sofort `aufgeloest`.
+        Nach S3, auch in S1/S2 oder angehalten: alle mitsteuernden Boxen scheiden gemeinsam aus. `zustand` ist
+        `wird_aufgeloest`, `aufloesen` zählt die bestätigten und die wartenden Boxen. Übergang auf Rückfall/0,
+        führende Box auf min(alt, neu); Ziel erst nach jeder erforderlichen Quittung oder Betreiber-Bestätigung.
+        Die führende Box hält als letztes Dokument Grenze minus Vorbehalt einschließlich reservierter Rückfälle.
+        Dann enden alle Mitgliedschaften zeitgültig; Zustand `aufgeloest`, Historie bleibt erhalten.
+        409 `zweischritt_laeuft` bei laufender Änderung oder Einzel-Ausscheiden; 409 `rueckgespielt` nach Rückspielen.
+        Wieder einrichten öffnet denselben Verbund, Scharfschalten braucht eine neue Epoche.
       responses:
         "200":
-          description: Aufgelöst.
+          description: Aufgelöst oder gemeinsames Auflösen begonnen.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GemeinsameSteuerung" }
@@ -13536,7 +13541,7 @@ components:
         eingerichtet: { type: boolean }
         zustand:
           type: string
-          enum: [nicht_eingerichtet, erklaert, beobachtet, geprueft, anteile_aktiv, angehalten, aufgeloest]
+          enum: [nicht_eingerichtet, erklaert, beobachtet, geprueft, anteile_aktiv, angehalten, aufgeloest, wird_aufgeloest]
         stufe: { type: string, nullable: true, enum: [S0, S1, S2, S3], description: "null bei angehalten, aufgeloest, nicht_eingerichtet" }
         epoche: { type: integer, format: int64, nullable: true }
         netzanschluss_id: { type: string, format: uuid, nullable: true }
@@ -13562,6 +13567,19 @@ components:
           nullable: true
           description: "Vorbehalt je Richtung mit Herkunft und offenem Vorschlag (AP-15 IP-13) — null ohne Gemeinsame Steuerung."
           allOf: [{ $ref: "#/components/schemas/GemeinsameSteuerungVorbehalt" }]
+        aufloesen:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/GemeinsameSteuerungAufloesen" }]
+    GemeinsameSteuerungAufloesen:
+      type: object
+      description: Nur beim gemeinsamen Auflösen; Quittung oder Betreiber-Bestätigung, kein Zeitablauf.
+      required: [bestaetigt, gesamt, wartet_auf]
+      properties:
+        bestaetigt: { type: integer, minimum: 0 }
+        gesamt: { type: integer, minimum: 0 }
+        wartet_auf:
+          type: array
+          items: { type: string, format: uuid }
     GemeinsameSteuerungBilanz:
       type: object
       required: [zustand, tag, seit, gerechnet_am]

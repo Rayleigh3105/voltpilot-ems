@@ -5,7 +5,7 @@ import type { UemsSprungprobeProtokoll } from '../src/api';
 import { useGemeinsameSteuerung } from '../src/components/GemeinsameSteuerungKarte';
 import { GemeinsameSteuerungAbschnitt } from '../src/pages/AnlageTechnik';
 import { RechteStandort } from '../src/rollen';
-import { gsBetreiberZustand, gsBlatt, gsProbe, type BlattLage } from '../src/test/betreiberblattFixtures';
+import { gsBetreiberZustand as grundZustand, gsBlatt, gsProbe, type BlattLage } from '../src/test/betreiberblattFixtures';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
 import { GS_IDS, gsBoxen, gsDatenquellen, gsEingerichtet } from '../src/test/gemeinsameSteuerungFixtures';
 import { FIXTURE_IDS } from '../src/test/standorteFixtures';
@@ -30,11 +30,24 @@ import '../src/index.css';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
 Object.assign(keycloak, { tokenParsed: { name: 'VoltPilot Betrieb', realm_access: { roles: ['platform-admin'] } } });
 
-type Lage = Parameters<typeof gsBetreiberZustand>[0];
+type Lage = Parameters<typeof grundZustand>[0];
 const p = new URLSearchParams(location.search);
 let lage = (p.get('lage') ?? 'beobachtet') as Lage;
 let blattLage: BlattLage = lage === 'beobachtet' || lage === 'geprueft' ? 's1' : 'aktiv';
 const jetzt = new Date();
+let aufgeloest = false;
+function gsBetreiberZustand(l: Lage): ReturnType<typeof grundZustand> {
+  const z = grundZustand(l);
+  if (!p.has('aufloesen')) return z;
+  if (aufgeloest) return { ...z, zustand: 'aufgeloest', mitglieder: [], aufloesen: null };
+  return { ...z, zustand: 'wird_aufgeloest', stufe: null, fehlt: [], naechster_schritt: null,
+    aufloesen: { bestaetigt: 0, gesamt: 1, wartet_auf: [GS_IDS.e4] },
+    mitglieder: z.mitglieder?.map((m) => m.box_id !== GS_IDS.e4 ? m : {
+      ...m, ausscheiden: { seit: jetzt.toISOString(), wartet_auf: 'voltpilot' },
+    }),
+  };
+}
+
 const proben: UemsSprungprobeProtokoll[] = p.get('proben') === '1' ? [gsProbe(GS_IDS.e1, jetzt)] : [];
 (window as unknown as Record<string, unknown>).__quittung = () => { blattLage = 'aktiv'; };
 
@@ -56,6 +69,10 @@ window.fetch = async (input, init) => {
           ? { ...b, anteile: { ...b.anteile, ungeregelt_hinter_abgang_kw: Number(p.get('ungeregelt')) } } : b);
       }
       return Response.json(blatt);
+    }
+    if (rest.endsWith('/ausscheiden-bestaetigen')) {
+      aufgeloest = true;
+      return Response.json(gsBetreiberZustand(lage));
     }
     if (rest === '/scharfschalten') {
       if (lage !== 'geprueft') {

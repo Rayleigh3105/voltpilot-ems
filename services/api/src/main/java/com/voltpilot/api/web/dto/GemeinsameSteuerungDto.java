@@ -32,7 +32,18 @@ public final class GemeinsameSteuerungDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Zustand(boolean eingerichtet, String zustand, String stufe, Long epoche, UUID netzanschlussId,
             List<Mitglied> mitglieder, String naechsterSchritt, List<Befund> fehlt, WarnungFuehrung warnungFuehrung,
-            Bilanz bilanz, Vorbehalt vorbehalt) {}
+            Bilanz bilanz, Vorbehalt vorbehalt, Aufloesen aufloesen) {
+        public Zustand(boolean eingerichtet, String zustand, String stufe, Long epoche, UUID netzanschlussId,
+                List<Mitglied> mitglieder, String naechsterSchritt, List<Befund> fehlt, WarnungFuehrung warnungFuehrung,
+                Bilanz bilanz, Vorbehalt vorbehalt) {
+            this(eingerichtet, zustand, stufe, epoche, netzanschlussId, mitglieder, naechsterSchritt, fehlt,
+                    warnungFuehrung, bilanz, vorbehalt, null);
+        }
+    }
+
+    /** Bestätigungen des gemeinsamen Auflösens: Quittung oder Betreiber-Bestätigung; kein Zeitablauf. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Aufloesen(int bestaetigt, int gesamt, List<UUID> wartetAuf) {}
 
     /**
      * Der Vorbehalt (IP-13, B4): je Richtung Zahl und Herkunft, dazu ein offener Vorschlag zum Senken. Die

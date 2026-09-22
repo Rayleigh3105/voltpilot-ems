@@ -187,6 +187,11 @@ public class GemeinsameSteuerungService {
             return new GemeinsameSteuerungDto.Zustand(true, ZUSTAND_AUFGELOEST, null, v.epoche(), netzanschluss, dto,
                     null, List.of(), null, bilanz(v), vorbehalt(v));
         }
+        var aufloesen = anteile.aufloeseStand(v);
+        if (aufloesen != null) {
+            return new GemeinsameSteuerungDto.Zustand(true, "wird_aufgeloest", null, v.epoche(), netzanschluss, dto,
+                    null, List.of(), null, bilanz(v), vorbehalt(v), aufloesen);
+        }
         String naechster = switch (v.stufe()) {
             case ERKLAERT -> Stufe.BEOBACHTET.code();
             case BEOBACHTET, GEPRUEFT -> Stufe.ANTEILE_AKTIV.code();
@@ -310,6 +315,7 @@ public class GemeinsameSteuerungService {
         } else {
             verbundId = vorhanden.get().id();
             repo.sperren(verbundId);
+            aufloesungPruefen(verbundId);
             Stufe stufe = repo.finden(verbundId).orElseThrow().stufe();
             if (stufe == Stufe.ANTEILE_AKTIV) {
                 throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.ERST_ANHALTEN,
@@ -433,6 +439,7 @@ public class GemeinsameSteuerungService {
     @Transactional
     public GemeinsameSteuerungDto.Zustand fortsetzen(UUID siteId, ProtokollAkteur wer) {
         VerbundZeile v = gesperrt(siteId);
+        aufloesungPruefen(v.id());
         if (v.stufe() != Stufe.ANGEHALTEN) {
             throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.NICHT_ANGEHALTEN,
                     "Die Gemeinsame Steuerung ist nicht angehalten.");
@@ -448,19 +455,17 @@ public class GemeinsameSteuerungService {
     }
 
     /**
-     * Auflösen: alle Mitglieder enden mit der laufenden Minute; die Anlage läuft wie seit AP-06. Nach einem
-     * Scharfschalten sind Anteile an den Boxen in Kraft — dann nur über die Änderung im Zweischritt (IP-7).
+     * Auflösen: nie scharf sofort; sonst gemeinsam im Zweischritt. Die letzten Dokumente bleiben an den Boxen (V5).
      */
     @Transactional
     public GemeinsameSteuerungDto.Zustand aufloesen(UUID siteId, ProtokollAkteur wer) {
         VerbundZeile v = gesperrt(siteId);
-        if (v.stufe() == Stufe.ANTEILE_AKTIV) {
-            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.ERST_ANHALTEN,
-                    "Die Anteile sind aktiv. Bitte die Gemeinsame Steuerung zuerst anhalten.");
-        }
-        if (v.epoche() > 0) {
-            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.ANTEILE_IN_KRAFT,
-                    "Die Anteile sind an den Boxen in Kraft und werden nur im Zweischritt zurückgenommen.");
+        if (v.epoche() > 0 && !repo.mitglieder(v.id(), uhr.instant()).isEmpty()) {
+            ausscheiden.aufloesen(v, wer);
+            if (repo.aufloesungLaeuft(v.id())) {
+                stufeWechseln(TenantContext.get(), v, Stufe.ANGEHALTEN, uhr.instant(), wer);
+            }
+            return zustand(siteId, repo.finden(v.id()).orElseThrow(), uhr.instant());
         }
         UUID tenant = TenantContext.get();
         Instant jetzt = uhr.instant();
@@ -482,6 +487,7 @@ public class GemeinsameSteuerungService {
     @Transactional
     public GemeinsameSteuerungDto.Zustand scharfschalten(UUID siteId, ProtokollAkteur wer) {
         VerbundZeile v = gesperrt(siteId);
+        aufloesungPruefen(v.id());
         if (v.stufe() == Stufe.ANTEILE_AKTIV) {
             throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.BEREITS_AKTIV,
                     "Die Anteile sind schon aktiv.");
@@ -698,6 +704,13 @@ public class GemeinsameSteuerungService {
     }
 
     /** Der Verbund der Anlage, für diese Transaktion gesperrt — 404 ohne Anlage, 409 ohne Gemeinsame Steuerung. */
+    private void aufloesungPruefen(UUID verbundId) {
+        if (repo.aufloesungLaeuft(verbundId)) {
+            throw GemeinsameSteuerungAbgelehnt.uebergang(GemeinsameSteuerungAbgelehnt.ZWEISCHRITT_LAEUFT,
+                    "Die Gemeinsame Steuerung wird aufgelöst. Bitte warten, bis alle Boxen bestätigt haben.");
+        }
+    }
+
     private VerbundZeile gesperrt(UUID siteId) {
         sichtbar(siteId);
         VerbundZeile v = repo.derAnlage(siteId).orElseThrow(() -> GemeinsameSteuerungAbgelehnt.uebergang(
