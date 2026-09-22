@@ -67,6 +67,18 @@ for (const breite of [375, 1440]) {
       await expect(blatt.getByTestId('gsb-kopf')).toHaveText('S1 · beobachtet · Epoche 0');
     });
 
+    test('AP-15 Folge von IP-19: „Ungeregeltes hinter dem Abgang (erklärt)“ nur, wenn eine Box eins hat', async ({ page }) => {
+      const ohne = await oeffne(page, breite, 'lage=beobachtet');
+      await expect(ohne.locator('tr[data-zeile="wirksam-reserve"]')).toHaveCount(1);
+      await expect(ohne.locator('tr[data-zeile="ungeregelt-abgang"]')).toHaveCount(0);
+      const blatt = await oeffne(page, breite, 'lage=beobachtet&ungeregelt=50');
+      await expect(blatt.locator('tr[data-zeile="ungeregelt-abgang"] th')).toHaveText('Ungeregeltes hinter dem Abgang (erklärt)');
+      await expect(zelle(blatt, 'ungeregelt-abgang', 0)).toHaveText('keins');
+      await expect(zelle(blatt, 'ungeregelt-abgang', 1)).toHaveText('50 kW');
+      await keinUeberlauf(page);
+      await bild(blatt.locator('table').first(), `ungeregelt-${breite}`);
+    });
+
     test('Sprungprobe auslösen → das Protokoll erscheint', async ({ page }) => {
       const blatt = await oeffne(page, breite, 'lage=beobachtet&proben=1');
       await expect(blatt.getByTestId('gsb-protokoll').locator('tbody tr')).toHaveCount(1);

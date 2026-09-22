@@ -313,7 +313,7 @@ export function GemeinsameSteuerungEinrichten({
               inputMode="decimal"
               value={entwurf.vorbehaltBezug}
               hint={vorschlag.vorbehalt?.aus_messwerten
-                ? `Vorschlag aus den Messwerten: ${kw(vorschlag.vorbehalt.aus_messwerten.kw)} kW (höchster Viertelstundenwert ${kw(vorschlag.vorbehalt.aus_messwerten.hoechstwert_kw)} kW mit Zuschlag, ${vorschlag.vorbehalt.aus_messwerten.messtage} Messtage).`
+                ? `Vorschlag aus den Messwerten: ${kw(vorschlag.vorbehalt.aus_messwerten.kw)} kW (höchster Viertelstundenwert ${kw(vorschlag.vorbehalt.aus_messwerten.hoechstwert_kw)} kW mit Zuschlag, ${vorschlag.vorbehalt.aus_messwerten.messtage} Messtage). ${FLAECHE.vorschlag_ohne_abgang}`
                 : 'Noch kein Vorschlag aus Messwerten — bitte den höchsten Wert eintragen.'}
               error={lueckenDerFrage(4).find((l) => l.text.startsWith('Bitte den Wert'))?.text}
               onChange={(ev: ChangeEvent<HTMLInputElement>) => setzen((e) => ({ ...e, vorbehaltBezug: ev.target.value }))}
@@ -336,6 +336,16 @@ export function GemeinsameSteuerungEinrichten({
                 ]}
               />
             )}
+            {b.boxId !== entwurf.fuehrt && b.messpunkt != null && (
+              <Input
+                label={FLAECHE.ungeregelt_label}
+                inputMode="decimal"
+                value={b.ungeregeltBezug}
+                hint={FLAECHE.ungeregelt_hinweis}
+                error={lueckeBei((l) => l.frage === 5 && l.boxId === b.boxId && l.ungeregelt === true)}
+                onChange={(ev: ChangeEvent<HTMLInputElement>) => box(b.boxId, (x) => ({ ...x, ungeregeltBezug: ev.target.value }))}
+              />
+            )}
             <p className="vp-gs-klein">Geräte, die diese Box steuern darf — bitte vollständig:</p>
             {b.geraete.length === 0 && <p className="vp-gs-klein">Diese Box steuert kein Gerät.</p>}
             {b.geraete.map((g) => (
@@ -352,7 +362,7 @@ export function GemeinsameSteuerungEinrichten({
                 />
               </div>
             ))}
-            {lueckenDerFrage(5).filter((l) => l.boxId === b.boxId && !l.komponenteId).map((l) => <p key={l.text} className="vp-gs-luecke" role="alert">{l.text}</p>)}
+            {lueckenDerFrage(5).filter((l) => l.boxId === b.boxId && !l.komponenteId && !l.ungeregelt).map((l) => <p key={l.text} className="vp-gs-luecke" role="alert">{l.text}</p>)}
             {lueckenDerFrage(5).filter((l) => l.boxId === b.boxId && l.komponenteId && !b.geraete.some((g) => g.komponenteId === l.komponenteId)).map((l) => (
               <p key={`${l.komponenteId}`} className="vp-gs-luecke" role="alert">{l.text}</p>
             ))}

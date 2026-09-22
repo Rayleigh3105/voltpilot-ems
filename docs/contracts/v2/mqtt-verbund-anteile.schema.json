@@ -34,6 +34,12 @@
       "additionalProperties": false,
       "properties": { "bezug": { "$ref": "#/$defs/kw" } }
     },
+    "ungeregelt_hinter_abgang": {
+      "type": "object",
+      "description": "wahlfrei (AP-15 Folge von IP-19, B3): je Richtung (nur bezug) der erklärte Höchstwert des Ungeregelten hinter dem Abgangszähler DIESER Box (Erklärung ungeregelt und Geräte ohne Schreibfreigabe), kW mit einer Nachkommastelle, aufgerundet; nur für eine Box, die nicht führt, und nur über 0. Die mitsteuernde Box hält ihren Anteil am eigenen Zähler und zieht diesen Wert nur blind ab: max(0, Anteil − Reserve − Höchstwert). Fehlt es, gilt blind Anteil − Reserve.",
+      "additionalProperties": false,
+      "properties": { "bezug": { "$ref": "#/$defs/kw" } }
+    },
     "published_at": { "type": "string", "format": "date-time" }
   },
   "$defs": {

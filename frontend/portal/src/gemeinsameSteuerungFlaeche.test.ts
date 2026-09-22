@@ -197,6 +197,40 @@ describe('AP-15 IP-23 · Einrichten in sechs Fragen', () => {
     expect(k.ungesteuerte_erzeuger).toBe('keine');
     expect(k.vorbehalt).toEqual({ bezug_kw: 473 });
   });
+  it('Frage 5: Speichern erhält ein per API erklärtes Ungeregeltes hinter dem Abgang (AP-15 Folge von IP-19, d1)', () => {
+    const v = gsVorschlag();
+    // per API erklärt: 50 kW Gebäude hinter DQ-10 (Box Verwaltung), dazu die andere Richtung und ein Wert an der
+    // führenden Box, die das Portal nicht abfragt
+    v.boxen[1] = { ...v.boxen[1], ungeregelt: [{ richtung: 'bezug', hoechstwert_kw: 50.04 }, { richtung: 'einspeisung', hoechstwert_kw: 7 }] };
+    v.boxen[0] = { ...v.boxen[0], ungeregelt: [{ richtung: 'bezug', hoechstwert_kw: 30 }] };
+    const e = entwurfAus(v, gsZustand('nicht_eingerichtet'));
+    e.boxen[0].messpunkt = GS_IDS.dq2;
+    e.boxen[0].geraete[1].nenn = '100';
+    e.boxen[1].messpunkt = GS_IDS.dq10;
+    e.erzeugerArt = 'keine';
+    expect(e.boxen[1].ungeregeltBezug).toBe('50,04');
+    expect(entwurfLuecken(e)).toEqual([]);
+    const k = koerper(e);
+    // exakt zurück, nie auf eine Nachkommastelle verkleinert
+    expect(k.mitglieder[1].ungeregelt).toEqual([{ richtung: 'bezug', hoechstwert_kw: 50.04 }, { richtung: 'einspeisung', hoechstwert_kw: 7 }]);
+    expect(k.mitglieder[0].ungeregelt).toEqual([{ richtung: 'bezug', hoechstwert_kw: 30 }]);
+    // „0“ = nichts: der Bezug fällt weg, die andere Richtung bleibt
+    e.boxen[1].ungeregeltBezug = '0';
+    expect(koerper(e).mitglieder[1].ungeregelt).toEqual([{ richtung: 'einspeisung', hoechstwert_kw: 7 }]);
+    e.boxen[1].ungeregeltBezug = 'viel';
+    expect(entwurfLuecken(e).filter((l) => l.ungeregelt).map((l) => [l.frage, l.boxId])).toEqual([[5, GS_IDS.e4]]);
+  });
+  it('Frage 5 ohne erklärtes Ungeregeltes: Vorgabe „0“, der Körper bleibt wie vorher (kein Feld)', () => {
+    const e = entwurfAus(gsVorschlag(), gsZustand('nicht_eingerichtet'));
+    expect(e.boxen.map((b) => b.ungeregeltBezug)).toEqual(['0', '0']);
+    e.boxen[0].messpunkt = GS_IDS.dq2;
+    e.boxen[0].geraete[1].nenn = '100';
+    e.boxen[1].messpunkt = GS_IDS.dq10;
+    e.erzeugerArt = 'keine';
+    expect(koerper(e).mitglieder.every((m) => !('ungeregelt' in m))).toBe(true);
+    e.boxen[1].ungeregeltBezug = '50';
+    expect(koerper(e).mitglieder[1].ungeregelt).toEqual([{ richtung: 'bezug', hoechstwert_kw: 50 }]);
+  });
   it('übersetzt die 422-Lücken an ihre Stelle (Frage 4 und 5)', () => {
     expect(lueckenAusAntwort({ code: 'erklaerung_unvollstaendig', fehlt: [
       { wort: 'komponente', box_id: GS_IDS.e4, komponente_id: GS_IDS.k12 },

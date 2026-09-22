@@ -36,6 +36,12 @@ func (a *Agent) bezugAnteil() *lastmgmt.BezugAnteil {
 	if v, err := h.ReserveBezugKw.Float64(); err == nil && v > 0 {
 		an.ReserveKw = v
 	}
+	// AP-15 Folge (B3): the declared maximum of the uncontrolled load behind
+	// the own feeder - the co-controlling box's blind figure subtracts it.
+	// Absent: none declared, the blind figure is today's.
+	if v, err := h.UngeregeltBezugKw.Float64(); err == nil && v > 0 {
+		an.UngeregeltKw = v
+	}
 	return an
 }
 

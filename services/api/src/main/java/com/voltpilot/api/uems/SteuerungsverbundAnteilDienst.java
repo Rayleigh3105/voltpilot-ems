@@ -381,6 +381,7 @@ public class SteuerungsverbundAnteilDienst {
         List<Map.Entry<String, byte[]>> auftraege = new ArrayList<>();
         VerbundAnteileVersand weg = versand.getIfAvailable();
         Map<String, BigDecimal> reserven = reserveVerbraucher(v, jetzt);
+        Map<String, BigDecimal> ungeregelt = ungeregeltHinterAbgang(v, jetzt);
         for (String box : d.tabelle().boxen()) {
             MitgliedZeile m = mitglieder.get(box);
             if (m == null || weg == null) {
@@ -389,7 +390,8 @@ public class SteuerungsverbundAnteilDienst {
             UUID b = UUID.fromString(box);
             auftraege.add(Map.entry(VerbundAnteileDokument.topic(tenant, v.siteId(), b),
                     VerbundAnteileDokument.nutzlast(mapper, tenant, v.siteId(), b, m.rolle(), epoche, revision,
-                            d.schritt(), d.tabelle(), reserven.getOrDefault(box, BigDecimal.ZERO.setScale(1)), jetzt)));
+                            d.schritt(), d.tabelle(), reserven.getOrDefault(box, BigDecimal.ZERO.setScale(1)),
+                            ungeregelt.get(box), jetzt)));
             verbuende.gesendet(m.id(), epoche, revision, jetzt);
             gesendetAn.add(b);
         }
@@ -420,12 +422,14 @@ public class SteuerungsverbundAnteilDienst {
         UUID tenant = TenantContext.get();
         List<UUID> an = new ArrayList<>();
         Map<String, BigDecimal> reserven = reserveVerbraucher(v, clock.instant());
+        Map<String, BigDecimal> ungeregelt = ungeregeltHinterAbgang(v, clock.instant());
         for (MitgliedZeile m : verbuende.mitglieder(v.id(), clock.instant())) {
             if (d.tabelle().boxen().contains(m.deviceId().toString()) && weg.senden(
                     VerbundAnteileDokument.topic(tenant, v.siteId(), m.deviceId()), VerbundAnteileDokument.nutzlast(
                             mapper, tenant, v.siteId(), m.deviceId(), m.rolle(), d.epoche(), d.revision(),
                             d.schritt(), d.tabelle(), reserven.getOrDefault(m.deviceId().toString(),
-                                    BigDecimal.ZERO.setScale(1)), clock.instant()))) {
+                                    BigDecimal.ZERO.setScale(1)), ungeregelt.get(m.deviceId().toString()),
+                            clock.instant()))) {
                 an.add(m.deviceId());
             }
         }
@@ -437,15 +441,30 @@ public class SteuerungsverbundAnteilDienst {
      * Geräten ({@code steuerungsverbund_geraet}, Richtung bezug, Schreibfreigabe) — so, wie sie beim Versand gelten.
      */
     private Map<String, BigDecimal> reserveVerbraucher(VerbundZeile v, Instant jetzt) {
-        List<SteuerungsverbundAbleitung.Mitglied> mitglieder = verbuende.mitglieder(v.id(), jetzt).stream()
+        return SteuerungsverbundAbleitung.reserveVerbraucher(mitgliederDerAbleitung(v, jetzt), geraeteDerAbleitung(v),
+                anteile.komponentenZurReserve(v.siteId()));
+    }
+
+    /**
+     * Der erklärte Höchstwert des Ungeregelten hinter dem Abgang je mitsteuernder Box (AP-15 Folge von IP-19, B3) aus
+     * denselben erklärten Geräten — nur Boxen mit einem Wert über 0; ohne ihn reist das Feld nicht.
+     */
+    private Map<String, BigDecimal> ungeregeltHinterAbgang(VerbundZeile v, Instant jetzt) {
+        return SteuerungsverbundAbleitung.ungeregeltHinterAbgang(mitgliederDerAbleitung(v, jetzt),
+                geraeteDerAbleitung(v));
+    }
+
+    private List<SteuerungsverbundAbleitung.Mitglied> mitgliederDerAbleitung(VerbundZeile v, Instant jetzt) {
+        return verbuende.mitglieder(v.id(), jetzt).stream()
                 .map(m -> new SteuerungsverbundAbleitung.Mitglied(m.deviceId().toString(), m.rolle())).toList();
-        List<SteuerungsverbundAbleitung.Geraet> geraete = anteile.geraete(v.id()).stream()
+    }
+
+    private List<SteuerungsverbundAbleitung.Geraet> geraeteDerAbleitung(VerbundZeile v) {
+        return anteile.geraete(v.id()).stream()
                 .map(g -> new SteuerungsverbundAbleitung.Geraet(g.deviceId().toString(),
                         g.entityId() == null ? null : g.entityId().toString(), g.richtung(), g.nennKw(),
                         g.schreibfreigabe(), null))
                 .toList();
-        return SteuerungsverbundAbleitung.reserveVerbraucher(mitglieder, geraete,
-                anteile.komponentenZurReserve(v.siteId()));
     }
 
     private static void nachCommit(Runnable r) {

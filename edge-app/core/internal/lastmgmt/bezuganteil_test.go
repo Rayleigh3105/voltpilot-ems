@@ -57,12 +57,14 @@ func TestR3SechsLadepunkteBekommenZusammenDenAnteilVon77kW(t *testing.T) {
 	for name, tr := range map[string]func() (*BudgetTracker, time.Time){
 		"frisch": func() (*BudgetTracker, time.Time) {
 			tr := NewBudgetTracker()
-			tr.Observe(t0, 38, 0, true) // the feeder of Verwaltung: its building only
+			// DQ-10, the feeder of Verwaltung: behind it only what the box
+			// controls (the park stands) - nothing uncontrolled (AP-15 Folge)
+			tr.Observe(t0, 0, 0, true)
 			return tr, t0.Add(5 * time.Second)
 		},
 		"ohne Verbindung": func() (*BudgetTracker, time.Time) {
 			tr := NewBudgetTracker()
-			tr.Observe(t0, 38, 0, true)
+			tr.Observe(t0, 0, 0, true)
 			return tr, t0.Add(10 * time.Minute)
 		},
 		"nach Neustart": func() (*BudgetTracker, time.Time) { return NewBudgetTracker(), t0 },
@@ -96,7 +98,7 @@ func TestR3SchlimmsterFallOhneVerbindungIst550kW(t *testing.T) {
 	later := t0.Add(3 * time.Hour)
 
 	e4 := NewBudgetTracker()
-	e4.Observe(t0, 38, 0, true)
+	e4.Observe(t0, 0, 0, true) // DQ-10: nothing uncontrolled behind the feeder
 	verwaltung := e4.BudgetAnteil(later, verwaltungSet(), BezugAnteil{AnteilKw: r3AnteilE4Kw})
 
 	e1 := NewBudgetTracker()
@@ -120,7 +122,7 @@ func TestR3SchlimmsterFallOhneVerbindungIst550kW(t *testing.T) {
 func TestR13JetztVollLadenGewinntInnerhalbVon77kW(t *testing.T) {
 	t0 := time.Date(2027, 6, 15, 10, 20, 0, 0, time.UTC)
 	tr := NewBudgetTracker()
-	tr.Observe(t0, 38, 0, true)
+	tr.Observe(t0, 0, 0, true) // DQ-10
 	v := tr.BudgetAnteil(t0.Add(5*time.Second), verwaltungSet(), BezugAnteil{AnteilKw: r3AnteilE4Kw})
 	s := sechsFahrzeuge(t0.Add(-time.Hour))
 	s[2].BoostUntil = t0.Add(time.Hour)
@@ -174,14 +176,17 @@ func TestFuehrendeBoxBlindAufDenAnteilOhneHalten(t *testing.T) {
 }
 
 // A document without a role is the safe side: the share holds like
-// steuert_mit, also with a fresh measurement of the connection point.
+// steuert_mit - at the box's OWN meter, also with a fresh value there (AP-15
+// Folge: 100 kW behind it that are not charging leave nothing of 30 kW).
 func TestOhneRolleGiltDerAnteilImmer(t *testing.T) {
 	t0 := time.Date(2027, 6, 15, 10, 0, 0, 0, time.UTC)
-	tr := NewBudgetTracker()
-	tr.Observe(t0, 100, 0, true)
-	v := tr.BudgetAnteil(t0.Add(time.Second), Settings{GridLimitKw: 550}, BezugAnteil{AnteilKw: 30})
-	if v.Kw != 30 || !v.AnteilBinds {
-		t.Fatalf("no role: %+v, want the share 30 kW", v)
+	for _, c := range []struct{ eigenerZaehler, want float64 }{{0, 30}, {100, 0}} {
+		tr := NewBudgetTracker()
+		tr.Observe(t0, c.eigenerZaehler, 0, true)
+		v := tr.BudgetAnteil(t0.Add(time.Second), Settings{GridLimitKw: 550}, BezugAnteil{AnteilKw: 30})
+		if v.Kw != c.want || !v.AnteilBinds || !v.EigenerZaehler {
+			t.Fatalf("no role, %.0f kW at its meter: %+v, want %.0f kW", c.eigenerZaehler, v, c.want)
+		}
 	}
 }
 

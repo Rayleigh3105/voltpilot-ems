@@ -13776,6 +13776,14 @@ components:
             Reserve der anderen steuerbaren Verbraucher (Schalter/Relais, SG-Ready, Wärmepumpen, Wallbox außerhalb des
             Ladeparks) aus dem Herzschlag der Box - um sie senkt die Box das Ladebudget ihres Bezugs-Anteils; null = nicht
             gemeldet, dann gilt keine.
+        ungeregelt_hinter_abgang_kw:
+          type: number
+          nullable: true
+          description: >-
+            Erklärtes Ungeregeltes hinter dem Abgangszähler dieser Box (Erklärung ungeregelt und Geräte ohne
+            Schreibfreigabe, Richtung Bezug, aufgerundet auf 0,1 kW) - dieselbe Zahl, die ihr Anteils-Dokument als
+            ungeregelt_hinter_abgang.bezug trägt; blind zieht die mitsteuernde Box sie von ihrem Anteil ab. null = keins
+            erklärt (oder die Box führt).
     GemeinsameSteuerungRevision:
       type: object
       required: [epoche, revision]

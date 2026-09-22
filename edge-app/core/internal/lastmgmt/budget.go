@@ -180,6 +180,14 @@ type BudgetVerdict struct {
 	// ReserveVerbraucherKw echoes the reserve of the box's other controllable
 	// consumers the charge park's share was lowered by; nil without one.
 	ReserveVerbraucherKw *float64 `json:"reserve_verbraucher_kw,omitempty"`
+	// UngeregeltHinterAbgangKw echoes the declared maximum of the uncontrolled
+	// load behind a co-controlling box's feeder its blind figure subtracts;
+	// nil without one.
+	UngeregeltHinterAbgangKw *float64 `json:"ungeregelt_hinter_abgang_kw,omitempty"`
+	// EigenerZaehler is true when a co-controlling box held its share against
+	// a FRESH value of its own meter (bezuganteil.go): the reserve and the
+	// declared uncontrolled maximum were measured there, not assumed.
+	EigenerZaehler bool `json:"-"`
 	// Pruefung is true when this evaluation made the probing adjustment of
 	// IP-27 A7 (BudgetAnteil only): the caller reports it to the
 	// Einfrierprobe, whose answer window starts now.
@@ -242,6 +250,10 @@ type BudgetTracker struct {
 	// document went blind (bezuganteil.go); rampValid while that ramp runs.
 	rampValid bool
 	rampFrom  float64
+	// mitKw is the last FRESH budget of a co-controlling box (bezuganteil.go),
+	// mitValid while it may still cap a blind evaluation.
+	mitValid bool
+	mitKw    float64
 
 	// zwilling is the share path's twin (IP-27 A8): it is fed every input of
 	// this tracker, but it RE-ANCHORS on a clock that jumped back (verankert)

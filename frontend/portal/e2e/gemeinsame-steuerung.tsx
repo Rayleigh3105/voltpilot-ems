@@ -25,7 +25,8 @@ import '../src/index.css';
  * PUT → Stufe S1). Zahlen aus der Referenzdatei 1.5 (V-1 an AN-1). Parameter: `lage`, `ausfall` (verwaltung · halle1
  * · beide; der Herzschlag steht in `zuletzt_gehoert` der Route), `wirksam=abweichend` (der Betreiber ist beim
  * Scharfschalten abgewichen: 30/70, Bezug 5/72), `kwh`/`gebunden` (Verlust-Zeile von E-4), `variante` (A · B),
- * `boxen=1`, `anlage=an2` (misst nur).
+ * `boxen=1`, `anlage=an2` (misst nur), `ungeregelt=<kW>` (per API erklärtes Ungeregeltes hinter dem Abgang von E-4,
+ * AP-15 Folge von IP-19).
  */
 (keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
@@ -38,6 +39,11 @@ const variante = (p.get('variante') ?? undefined) as VerlustVariante | undefined
 
 let lage = (p.get('lage') ?? 'nicht_eingerichtet') as GsLage;
 let einrichten: UemsGemeinsameSteuerungEinrichten = lage === 'nicht_eingerichtet' ? gsVorschlag() : gsEingerichtet();
+if (p.has('ungeregelt')) {
+  const hoechstwert = Number(p.get('ungeregelt'));
+  einrichten = { ...einrichten, boxen: einrichten.boxen.map((b) =>
+    b.box_id === GS_IDS.e4 ? { ...b, ungeregelt: [{ richtung: 'bezug' as const, hoechstwert_kw: hoechstwert }] } : b) };
+}
 let geschrieben: UemsGemeinsameSteuerungSetzen | null = null;
 let vorschauen = 0;
 let k12Rueckfall: number | null = null;

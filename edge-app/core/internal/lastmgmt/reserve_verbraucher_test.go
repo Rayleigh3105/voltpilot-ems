@@ -22,18 +22,20 @@ const r3WaermepumpeKw = 10.0
 // R3 with a heat pump: Box Verwaltung (steuert mit, share 77 kW) controls the
 // six charge points AND a 10 kW heat pump. Without the reserve the park gets
 // 77 kW and the heat pump draws on top (87 kW, 473 + 87 = 560 > 550); with it
-// the park gets 67 kW - fresh, blind and before the first sample alike.
+// the park gets 67 kW blind and before the first sample. Fresh (AP-15 Folge),
+// the feeder DQ-10 measures the running heat pump - 77 − 10 = 67 kW with and
+// without the field, the reserve does not count twice.
 func TestR3MitWaermepumpeBekommtDerLadeparkHoechstens67kW(t *testing.T) {
 	t0 := time.Date(2027, 6, 15, 10, 0, 0, 0, time.UTC)
 	for name, tr := range map[string]func() (*BudgetTracker, time.Time){
 		"frisch": func() (*BudgetTracker, time.Time) {
 			tr := NewBudgetTracker()
-			tr.Observe(t0, 38, 0, true)
+			tr.Observe(t0, r3WaermepumpeKw, 0, true) // DQ-10: the heat pump at full power, the park stands
 			return tr, t0.Add(5 * time.Second)
 		},
 		"ohne Verbindung": func() (*BudgetTracker, time.Time) {
 			tr := NewBudgetTracker()
-			tr.Observe(t0, 38, 0, true)
+			tr.Observe(t0, 0, 0, true)
 			return tr, t0.Add(10 * time.Minute)
 		},
 		"nach Neustart": func() (*BudgetTracker, time.Time) { return NewBudgetTracker(), t0 },
@@ -47,7 +49,10 @@ func TestR3MitWaermepumpeBekommtDerLadeparkHoechstens67kW(t *testing.T) {
 		if v.ReserveVerbraucherKw == nil || *v.ReserveVerbraucherKw != 10 || *v.AnteilKw != 77 {
 			t.Fatalf("%s: verdict echoes share %v and reserve %v, want 77 and 10", name, v.AnteilKw, v.ReserveVerbraucherKw)
 		}
-		if !containsStr(v.Reason, "67,0 kW (77,0 kW abzüglich 10,0 kW für ihre anderen steuerbaren Verbraucher)") {
+		if name == "frisch" && (!v.EigenerZaehler || !containsStr(v.Reason, "Dort ziehen gerade 10,0 kW")) {
+			t.Fatalf("%s: reason %q does not name the measured heat pump", name, v.Reason)
+		}
+		if name != "frisch" && !containsStr(v.Reason, "67,0 kW (77,0 kW abzüglich 10,0 kW für ihre anderen steuerbaren Verbraucher)") {
 			t.Fatalf("%s: reason %q does not name the reserve", name, v.Reason)
 		}
 		p := Decide(Input{Settings: verwaltungSet(), Sessions: sechsFahrzeuge(t0), BudgetKw: &v.Kw, Now: now})
@@ -61,12 +66,17 @@ func TestR3MitWaermepumpeBekommtDerLadeparkHoechstens67kW(t *testing.T) {
 			t.Fatalf("%s: 473 + budget %.3f + heat pump 10 = %.3f kW above 550", name, v.Kw, worst)
 		}
 
-		// Without the field (older document, older cloud): 77 kW as today.
+		// Without the field (older document, older cloud): 77 kW as today -
+		// fresh the measured heat pump, 67 kW.
 		tr2, now2 := neu()
 		ohne := tr2.BudgetAnteil(now2, verwaltungSet(), BezugAnteil{AnteilKw: r3AnteilE4Kw})
-		if ohne.Kw != 77 || ohne.ReserveVerbraucherKw != nil ||
+		wantOhne := 77.0
+		if name == "frisch" {
+			wantOhne = 67
+		}
+		if ohne.Kw != wantOhne || ohne.ReserveVerbraucherKw != nil ||
 			containsStr(ohne.Reason, "abzüglich") {
-			t.Fatalf("%s: without the field %+v, want today's 77 kW and no reserve", name, ohne)
+			t.Fatalf("%s: without the field %+v, want %.0f kW and no reserve", name, ohne, wantOhne)
 		}
 	}
 }
@@ -104,7 +114,7 @@ func TestR3SchlimmsterFallMitWaermepumpeIst550kW(t *testing.T) {
 	t0 := time.Date(2027, 6, 15, 10, 0, 0, 0, time.UTC)
 	later := t0.Add(3 * time.Hour)
 	e4 := NewBudgetTracker()
-	e4.Observe(t0, 38, 0, true)
+	e4.Observe(t0, 0, 0, true) // DQ-10
 	verwaltung := e4.BudgetAnteil(later, verwaltungSet(), BezugAnteil{AnteilKw: r3AnteilE4Kw, ReserveKw: r3WaermepumpeKw})
 	e1 := NewBudgetTracker()
 	e1.Observe(t0, 367, 0, true)
@@ -127,7 +137,10 @@ func reserveZufall(rng *rand.Rand) float64 {
 
 // pruefeReserve holds the three verdicts of one step against each other:
 // with the reserve never above the same share without it, never above the box
-// without a share (V5); a co-controlling box never above share − reserve.
+// without a share (V5); a co-controlling box never above its share, and never
+// above share − reserve where it cannot see those consumers - blind or before
+// the first sample (AP-15 Folge: with a fresh value of its own meter they
+// draw inside the measured rest, and the reserve does not count twice).
 func pruefeReserve(t *testing.T, run, step int, an BezugAnteil, mitR, ohneR, heute BudgetVerdict) {
 	t.Helper()
 	if mitR.Kw > ohneR.Kw || mitR.Kw > heute.Kw {
@@ -138,8 +151,11 @@ func pruefeReserve(t *testing.T, run, step int, an BezugAnteil, mitR, ohneR, heu
 	if lade < 0 {
 		lade = 0
 	}
-	if !an.Fuehrt && mitR.Kw > lade {
+	if !an.Fuehrt && !mitR.EigenerZaehler && mitR.Kw > lade {
 		t.Fatalf("run %d step %d: co-controlling box %.3f kW above share − reserve %.3f", run, step, mitR.Kw, lade)
+	}
+	if !an.Fuehrt && mitR.Kw > round3(math.Max(an.AnteilKw, 0)) {
+		t.Fatalf("run %d step %d: co-controlling box %.3f kW above its share %.3f", run, step, mitR.Kw, an.AnteilKw)
 	}
 }
 

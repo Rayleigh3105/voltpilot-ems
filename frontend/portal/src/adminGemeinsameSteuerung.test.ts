@@ -92,6 +92,17 @@ describe('AP-15 IP-24 · Betreiber-Blatt — Spalten je Box', () => {
     expect(e1.wirksam.reserve).toEqual({ text: 'keine', unbekannt: true });
   });
 
+  it('das erklärte Ungeregelte hinter dem Abgang, nur über 0 (AP-15 Folge von IP-19, B3)', () => {
+    const [ohneE1, ohneE4] = boxSpalten(gsBlatt('aktiv', JETZT), null, NAMEN, JETZT);
+    expect([ohneE1.ungeregelt, ohneE4.ungeregelt]).toEqual([null, null]);
+    const b = gsBlatt('aktiv', JETZT);
+    b.boxen[1] = { ...b.boxen[1], anteile: { ...b.boxen[1].anteile, ungeregelt_hinter_abgang_kw: 50 } };
+    b.boxen[0] = { ...b.boxen[0], anteile: { ...b.boxen[0].anteile, ungeregelt_hinter_abgang_kw: 0 } };
+    const [e1, e4] = boxSpalten(b, null, NAMEN, JETZT);
+    expect(e4.ungeregelt?.text).toBe('50 kW');
+    expect(e1.ungeregelt).toBeNull();
+  });
+
   it('Verlust gestern: Untergrenze der Box und Schätzung der Cloud nebeneinander, nie verrechnet (Folgepaket IP-22, R2)', () => {
     const b = gsBlatt('aktiv', JETZT);
     b.boxen[1].verlust_gestern = { tag: '2027-06-14', verlust_kwh: 0, gebunden_s: 32_400, schaetzung_kwh: 160.211, schaetzung_grundlage: 'prognose' };

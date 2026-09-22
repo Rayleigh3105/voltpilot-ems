@@ -129,6 +129,33 @@ public final class SteuerungsverbundAbleitung {
         return summe;
     }
 
+    /**
+     * Der erklärte Höchstwert des Ungeregelten hinter dem Abgang je mitsteuernder Box
+     * ({@code ungeregelt_hinter_abgang.bezug} im Anteils-Dokument, AP-15 Folge von IP-19, B3): die Summe der
+     * Nennleistungen bzw. Höchstwerte ihrer UNGEREGELTEN Bezugs-Geräte — der Eintrag ohne Komponente (die Erklärung
+     * {@code ungeregelt}) und jedes Gerät ohne Schreibfreigabe (I1), genau das, was {@link #eingaenge} ohne Rückfall in
+     * ihren Anteil zählt —, aufgerundet auf 0,1 kW (die sichere Seite: die Box zieht ihn nur blind ab und senkt damit
+     * nur). Nur Boxen, die nicht führen, und nur mit einem Wert über 0 stehen im Ergebnis; fehlt eine Box, reist das
+     * Feld nicht und ihr Dokument bleibt Byte für Byte wie vorher.
+     *
+     * <p><b>Warum die Box ihn braucht:</b> mit frischem Wert ihres Zählers misst die mitsteuernde Box alles hinter ihrem
+     * Abgang selbst und hält ihren Anteil dort ({@code lastmgmt/bezuganteil.go}); ohne Messung (Neustart, Ausfall des
+     * Zählers) kennt sie nur diesen Höchstwert. Er steckt nicht im Vorbehalt (B3), sondern einmal im Anteil der Box.
+     */
+    public static Map<String, BigDecimal> ungeregeltHinterAbgang(List<Mitglied> mitglieder, List<Geraet> geraete) {
+        Map<String, BigDecimal> summe = new LinkedHashMap<>();
+        mitglieder.stream().filter(m -> m.rolle() != Rolle.FUEHRT).forEach(m -> summe.put(m.box(), BigDecimal.ZERO));
+        for (Geraet g : geraete) {
+            if (g.richtung() == Grenzart.BEZUG && !(g.schreibfreigabe() && g.komponente() != null)
+                    && summe.containsKey(g.box())) {
+                summe.merge(g.box(), g.nennKw(), BigDecimal::add);
+            }
+        }
+        summe.replaceAll((box, kw) -> kw.setScale(1, RoundingMode.CEILING));
+        summe.values().removeIf(kw -> kw.signum() <= 0);
+        return summe;
+    }
+
     /** Scharf nur mit {@code passt} in BEIDEN Richtungen (E2 = A); eine fehlende Richtung passt nicht. */
     public static boolean passt(Map<Grenzart, SteuerungsverbundAnteile.Auslegung> auslegung) {
         return SteuerungsverbundAnteile.RICHTUNGEN.stream().allMatch(r -> auslegung.get(r) != null
