@@ -140,6 +140,13 @@ public class MeasurementCatalog {
     public record Semantik(String quantity, String direction) {}
 
     /**
+     * Eine reine Cloud-Angabe des Herstellers (AP-16 G4). Sie ist weder die Angabe am Einbau noch
+     * Bestandteil der Box-Laufzeitprojektion und wird niemals zu einer Genauigkeit der Messkette verrechnet.
+     */
+    public record HerstellerGenauigkeit(String hersteller, String modell, String zustand, String klasse,
+            String wert, String bezug, String fundstelle, String sourceUrl, String sourceSha256) {}
+
+    /**
      * Was ein Gerät dieser Familie tut, wenn seine Box schweigt, in EINER Richtung ({@code families[].rueckfall_ohne_box},
      * UEMS AP-15 IP-6): ein Wort des geschlossenen Vokabulars {@code geraete_rueckfall}; {@code rueckfallKw} nur bei
      * {@code faellt_auf_wert} mit einem festen Wert des Modells, sonst {@code null}. Die Zahl macht allein
@@ -157,6 +164,7 @@ public class MeasurementCatalog {
     private final List<Point> points;
     private final Map<String, Point> byKey;
     private final Map<String, Semantik> semantik;
+    private final List<HerstellerGenauigkeit> herstellerGenauigkeiten;
     private final Set<String> nochNichtAnDerBox;
     private final Map<String, Map<String, RueckfallOhneBox>> rueckfallOhneBox;
 
@@ -166,6 +174,14 @@ public class MeasurementCatalog {
         String runtime = text(root, "runtime_catalog_version");
         this.version = runtime == null ? inhaltsstand : runtime;
         this.edgeMinVersion = required(root, "edge_min_version");
+        List<HerstellerGenauigkeit> genauigkeiten = new ArrayList<>();
+        for (JsonNode m : root.path("models")) {
+            JsonNode a = m.path("accuracy");
+            genauigkeiten.add(new HerstellerGenauigkeit(required(m, "hersteller"), required(m, "modell"),
+                    required(a, "zustand"), text(a, "klasse"), text(a, "wert"), text(a, "bezug"),
+                    text(a, "fundstelle"), text(a, "source_url"), text(a, "source_sha256")));
+        }
+        this.herstellerGenauigkeiten = List.copyOf(genauigkeiten);
         // Familien, die der Inhaltsstand führt, die aber noch an KEINE Box gehen (an_der_box: false,
         // Katalog-README „Familien noch nicht an der Box“, z. B. die WAGO-Karten bis UEMS AP-05 IP-6): ihre
         // Punkte gibt es für die api nicht — keine Suche, keine Auswahl, keine Mess-Konfiguration, die die
@@ -282,6 +298,38 @@ public class MeasurementCatalog {
 
     public Set<String> families() {
         return points.stream().map(Point::family).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    /**
+     * „Laut Hersteller“ für einen eingebauten Typ. {@code x} in einem Katalogmodell steht für genau eine
+     * Ziffer (z. B. 879-30xx); ein konkreter Kartentyp darf die Variante nach {@code /} ergänzen.
+     */
+    public HerstellerGenauigkeit herstellerGenauigkeit(String hersteller, String modell) {
+        if (hersteller == null || hersteller.isBlank() || modell == null || modell.isBlank()) {
+            return null;
+        }
+        String h = hersteller.strip();
+        String m = modell.strip();
+        for (HerstellerGenauigkeit kandidat : herstellerGenauigkeiten) {
+            if (kandidat.hersteller().equalsIgnoreCase(h) && modellPasst(kandidat.modell(), m)) {
+                return kandidat;
+            }
+        }
+        return null;
+    }
+
+    private static boolean modellPasst(String muster, String modell) {
+        if (muster.indexOf('x') >= 0 || muster.indexOf('X') >= 0) {
+            StringBuilder regex = new StringBuilder("^");
+            for (int i = 0; i < muster.length(); i++) {
+                char c = muster.charAt(i);
+                regex.append(c == 'x' || c == 'X' ? "[0-9]" : Pattern.quote(String.valueOf(c)));
+            }
+            return Pattern.compile(regex.append("(?:$|[/ (].*)").toString(), Pattern.CASE_INSENSITIVE)
+                    .matcher(modell).matches();
+        }
+        return modell.regionMatches(true, 0, muster, 0, muster.length())
+                && (modell.length() == muster.length() || "/ (".indexOf(modell.charAt(muster.length())) >= 0);
     }
 
     /**

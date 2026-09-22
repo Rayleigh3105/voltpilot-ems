@@ -1,5 +1,5 @@
 {
-  "catalog_version": "2026.09.21.1",
+  "catalog_version": "2026.09.23.1",
   "runtime_catalog_version": "2026.08.26.3",
   "deye_lock_sha256": "30d4ff814fbb0e17a2322370b6763666ce5181b6468700ab1dab3b879d737b02",
   "deye_direct_register_points": {
@@ -45,10 +45,11 @@
   },
   "goe_german_source_rows": 174,
   "goe_keys_with_german_label": 177,
-  "manifest_sha256": "1dbef72889ea6732058b1a9dec789a24461cd63db8e8a01a4426c3d3fb2a2662",
+  "manifest_sha256": "7b1f1410e24c1b32c458dc580ca0f04fec15b1056585eeadf80c94320e3fd7a2",
   "shelly_raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
   "source_versions": {
     "builtin.inverter.runtime": "voltpilot-runtime-2026-08-26-r2",
+    "cloud.manufacturer_accuracy": "wago-public-sources-retrieved-2026-09-23",
     "deye.hybrid_1p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "deye.hybrid_3p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "deye.micro": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",

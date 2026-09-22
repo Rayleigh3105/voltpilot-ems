@@ -15,7 +15,7 @@
         "additionalProperties": false,
         "required": ["adapter", "family", "id"],
         "properties": {
-          "adapter": {"enum": ["deye", "sunspec", "goe", "shelly", "ocpp", "builtin_inverter", "wago"]},
+          "adapter": {"enum": ["deye", "sunspec", "goe", "shelly", "ocpp", "builtin_inverter", "wago", "accuracy"]},
           "family": {"type": "string", "minLength": 1},
           "id": {"type": "string", "minLength": 1},
           "path": {"type": "string"},
@@ -75,6 +75,10 @@
           },
           {
             "if": {"properties": {"adapter": {"const": "wago"}}},
+            "then": {"required": ["path", "source_revision", "source_sha256", "source_url"]}
+          },
+          {
+            "if": {"properties": {"adapter": {"const": "accuracy"}}},
             "then": {"required": ["path", "source_revision", "source_sha256", "source_url"]}
           }
         ]

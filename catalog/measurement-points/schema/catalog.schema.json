@@ -9,6 +9,7 @@
     "deye_point_key_lock_sha256",
     "edge_min_version",
     "families",
+    "models",
     "points",
     "runtime_catalog_version",
     "schema_version",
@@ -45,12 +46,68 @@
         }
       }
     },
+    "models": {
+      "type": "array",
+      "description": "Reine Cloud-Angaben je Herstellermodell; sie gehen nicht in die Box-Laufzeitprojektion.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["accuracy", "hersteller", "modell"],
+        "properties": {
+          "accuracy": {"$ref": "#/$defs/accuracy"},
+          "hersteller": {"type": "string", "minLength": 1},
+          "modell": {"type": "string", "minLength": 1}
+        }
+      }
+    },
     "points": {
       "type": "array",
       "items": {"$ref": "#/$defs/point"}
     }
   },
   "$defs": {
+    "accuracy": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Herstellerangabe, getrennt von der Angabe am Einbau (AP-16 G4). Nicht belegte Angaben enthalten keine erfundene Zahl.",
+      "required": ["bezug", "fundstelle", "klasse", "source_sha256", "source_url", "wert", "zustand"],
+      "properties": {
+        "bezug": {"type": ["string", "null"], "minLength": 1},
+        "fundstelle": {"type": ["string", "null"], "minLength": 1},
+        "klasse": {"type": ["string", "null"], "minLength": 1},
+        "source_sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "source_url": {"type": ["string", "null"], "pattern": "^https://"},
+        "wert": {"type": ["string", "null"], "minLength": 1},
+        "zustand": {"enum": ["belegt", "nicht_belegt"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"zustand": {"const": "belegt"}}},
+          "then": {
+            "properties": {
+              "bezug": {"type": "string", "minLength": 1},
+              "fundstelle": {"type": "string", "minLength": 1},
+              "klasse": {"type": "string", "minLength": 1},
+              "source_sha256": {"$ref": "#/$defs/sha256"},
+              "source_url": {"type": "string", "pattern": "^https://"},
+              "wert": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"zustand": {"const": "nicht_belegt"}}},
+          "then": {
+            "properties": {
+              "bezug": {"type": "null"},
+              "klasse": {"type": "null"},
+              "source_sha256": {"type": "null"},
+              "source_url": {"type": "null"},
+              "wert": {"type": "null"}
+            }
+          }
+        }
+      ]
+    },
     "geraeteRueckfall": {
       "type": "object",
       "additionalProperties": false,
@@ -202,6 +259,7 @@
       ],
       "properties": {
         "access": {"type": "string"},
+        "accuracy": {"$ref": "#/$defs/accuracy"},
         "address": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/modbusAddress"}, {"$ref": "#/$defs/sunspecAddress"}, {"$ref": "#/$defs/registerbildAddress"}]},
         "aggregation_kind": {"enum": ["gauge", "counter", "state", "event", "bitfield", "text", "none"]},
         "angaben": {
