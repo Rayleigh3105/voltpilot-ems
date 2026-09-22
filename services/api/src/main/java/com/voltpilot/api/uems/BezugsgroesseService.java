@@ -485,6 +485,10 @@ public class BezugsgroesseService {
             Zeile b = repo.sperre(id).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
             if (kanalbindungen != null && kanalbindungen.hatBindungen(id))
                 throw new KanalbindungFehler(422,"kanalbindung_vorhanden","Die Bezugsgröße hat eine Kanalbindung. Sie kann archiviert werden.");
+            List<String> einsaetze = repo.energieeinsatzVerweise(id);
+            if (!einsaetze.isEmpty()) throw new EnergieeinsatzAbgelehnt(409, "bezugsgroesse_in_verwendung",
+                    "Diese Bezugsgröße wird von Energieeinsätzen verwendet. Sie können sie archivieren.",
+                    Map.of("energieeinsaetze", einsaetze));
             pruefe(BezugsgroesseRegeln.loeschen(repo.werteZahl(id)));
             repo.loeschen(id);
             repo.protokoll(tenant, id, "geloescht", alsJson(felder(entwurf(b))), null, wer);

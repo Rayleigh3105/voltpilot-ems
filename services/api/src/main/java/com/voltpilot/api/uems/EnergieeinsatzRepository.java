@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * AP-16 IP-3: Datenhaltung unter Mandanten-RLS. Alle Änderungen samt Protokoll sind atomar.
- * Die spätere Route (IP-4) prüft zusätzlich Recht und Standort-Sichtbarkeit; Verantwortlichkeit
+ * Die Route (IP-4) prüft zusätzlich Recht und Standort-Sichtbarkeit; Verantwortlichkeit
  * erteilt kein Recht. Unternehmen wird über den unveränderten Prozess gelesen.
  */
 @Repository
@@ -155,6 +155,23 @@ public class EnergieeinsatzRepository {
         return jdbc.query("SELECT * FROM energieeinsatz_aenderung WHERE einsatz_id = ? ORDER BY created_at, id",
                 (rs, n) -> new Aenderung(rs.getLong("id"), rs.getString("art"), rs.getString("alt"),
                         rs.getString("neu"), akteur(rs), instant(rs, "created_at")), id);
+    }
+
+    /** Nur direkte, heute zugeordnete Messstellen, unter deren Standort-RLS. */
+    public List<UUID> messstellen(UUID prozess, LocalDate tag) {
+        return jdbc.queryForList("SELECT DISTINCT m.id FROM messstelle_prozess p "
+                + "JOIN messstelle m ON m.id = p.messstelle_id AND m.tenant_id = p.tenant_id "
+                + "WHERE p.prozess_id = ? AND p.gueltig_ab <= ? AND (p.gueltig_bis IS NULL OR p.gueltig_bis >= ?) "
+                + "ORDER BY m.id", UUID.class, prozess, tag, tag);
+    }
+
+    public boolean verantwortlicherVorhanden(String sub) {
+        return !jdbc.queryForList("SELECT sub FROM benutzer WHERE sub = ? AND konto = 'benutzer' "
+                + "AND zustand <> 'entfernt' FOR SHARE", String.class, sub).isEmpty();
+    }
+
+    public boolean bezugsgroesseVorhanden(UUID id) {
+        return !jdbc.queryForList("SELECT id FROM bezugsgroesse WHERE id = ? FOR KEY SHARE", UUID.class, id).isEmpty();
     }
 
     private Verantwortlicher verantwortlich(String sub) {
