@@ -134,9 +134,15 @@ public class BerichtService {
 
     // ================================================================================ Ergebnisse
 
-    /** Ein Bericht mit seinem Vermerk aus R5. */
+    /**
+     * Ein Bericht mit seinem Vermerk aus R5 und — nur an einer energetischen Bewertung mit freigegebenem Stand — der beim
+     * Abruf abgeleiteten Überprüfung (AP-16 S5/S6, IP-24); sonst {@code null}.
+     */
     public record Uebersicht(Kopf kopf, Integer neuesteNr, Instant entwurfDatenstand, String standZeichen,
-            String standText) {}
+            String standText, Ueberpruefung ueberpruefung) {}
+
+    /** AP-16 S5/S6: die Frist am Abruftag und die laufenden Einsätze des Unternehmens mit wirksamer Einstufung. */
+    public record Ueberpruefung(BewertungFrist.Frist frist, List<BerichtRepository.EinsatzLage> einsaetze) {}
 
     public record Detail(Uebersicht bericht, List<StandZeile> staende, List<AnstossZeile> anstoesse) {}
 
@@ -674,21 +680,38 @@ public class BerichtService {
         Instant datenstand = repo.entwurfDatenstand(tenant, x.id()).orElse(null);
         if (staende.isEmpty()) {
             return new Uebersicht(x, null, datenstand, ZEICHEN_ENTWURF,
-                    datenstand == null ? null : BerichtRegeln.entwurf(datenstand, x.zone()));
+                    datenstand == null ? null : BerichtRegeln.entwurf(datenstand, x.zone()), null);
         }
         StandZeile gueltig = staende.get(staende.size() - 1);
+        Ueberpruefung ueberpruefung = ueberpruefung(tenant, x, gueltig);
         List<AnstossZeile> anstoesse = repo.anstoesse(tenant, x.id()).stream().filter(a -> a.nr() == gueltig.nr()).toList();
         Optional<AnstossZeile> offen = anstoesse.stream().filter(a -> OFFEN.equals(a.zustand())).findFirst();
         if (offen.isPresent()) {
             return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_REVISION,
-                    BerichtRegeln.revisionNoetig(BerichtRegeln.anlass(offen.get().anlassKennung())));
+                    BerichtRegeln.revisionNoetig(BerichtRegeln.anlass(offen.get().anlassKennung())), ueberpruefung);
         }
         AnstossZeile letzter = anstoesse.isEmpty() ? null : anstoesse.get(anstoesse.size() - 1);
         if (letzter != null && VERWORFEN.equals(letzter.zustand())) {
             return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_VERWORFEN,
-                    BerichtRegeln.anstossVerworfen(letzter.verworfenBegruendung()));
+                    BerichtRegeln.anstossVerworfen(letzter.verworfenBegruendung()), ueberpruefung);
         }
-        return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_STAND, BerichtRegeln.berichtsstand(gueltig.nr()));
+        return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_STAND, BerichtRegeln.berichtsstand(gueltig.nr()),
+                ueberpruefung);
+    }
+
+    /**
+     * AP-16 S5/S6 (IP-24): beim Abruf abgeleitet, nie geschrieben — Frist aus dem jüngsten gültigen Stand und der
+     * Wiedervorlage, „heute“ aus der injizierten Uhr in der Zone des Berichts. Archivierte Bewertungen haben keine Frist.
+     */
+    private Ueberpruefung ueberpruefung(UUID tenant, Kopf x, StandZeile gueltig) {
+        if (!BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(x.vorlage()) || x.archiviertAm() != null) {
+            return null;
+        }
+        LocalDate heute = LocalDate.ofInstant(jetzt(), x.zone());
+        String abgeloest = BewertungFrist.abgeloestDurch(x.kennung(), repo.bewertungsStaende(tenant, x.unternehmenId()));
+        BewertungFrist.Frist frist = BewertungFrist.ableiten(gueltig.nr(),
+                LocalDate.ofInstant(gueltig.freigegebenAm(), x.zone()), x.wiedervorlageMonate(), heute, abgeloest);
+        return new Ueberpruefung(frist, repo.einsatzLage(tenant, x.unternehmenId(), heute));
     }
 
     /** Ein Stand, dessen Prüfsumme über den gespeicherten Text stimmt — sonst 500 {@code abzug_beschaedigt}. */

@@ -3054,6 +3054,28 @@ export interface Bericht {
   stand_text: string | null;
   neueste_nr: number | null;
   entwurf_datenstand: string | null;
+  /** AP-16 S5: nur bei der energetischen Bewertung (Startwert 12), sonst `null`. */
+  wiedervorlage_monate?: number | null;
+  /** AP-16 S5/S6 (IP-24): beim Abruf abgeleitet — nur an einer energetischen Bewertung mit freigegebenem Stand. */
+  ueberpruefung?: BerichtUeberpruefung | null;
+}
+
+/**
+ * AP-16 S5/S6 (IP-24): die Überprüfung der energetischen Bewertung, vom Server beim Abruf abgeleitet — `faellig_am` =
+ * Freigabetag des jüngsten gültigen Stands + Wiedervorlage; eine abgelöste Bewertung hat keine Frist.
+ */
+export interface BerichtUeberpruefung {
+  stand_nr: number;
+  stand_vom: string;
+  wiedervorlage_monate: number;
+  faellig_am: string | null;
+  ueberpruefung_faellig: boolean;
+  faellig_seit_tagen: number | null;
+  abgeloest_durch: string | null;
+  wesentliche_einsaetze: number;
+  offene_bedarfe: number;
+  verantwortliche: { name: string; einsaetze: string[] }[];
+  ohne_verantwortliche: string[];
 }
 
 /** Der Körper von `POST /api/v1/berichte` (streng gelesen). */

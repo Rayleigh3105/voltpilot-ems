@@ -61,6 +61,7 @@ export type PortfolioBausteinId =
   | 'messstellen'
   | 'energiebilanz'
   | 'kennzahlen'
+  | 'bewertung'
   | 'anlagen';
 
 /** Alle Portfolio-Bausteine aus dem EINEN Katalog, in Katalog-Reihenfolge. */
@@ -97,6 +98,8 @@ export const CANONICAL_PORTFOLIO: PortfolioBausteinId[] = [
   'messstellen',
   'energiebilanz',
   'kennzahlen',
+  // UEMS AP-16 IP-24 (S5/S6): die Frist der energetischen Bewertung — nur am Unternehmen, nur mit Stand und Recht.
+  'bewertung',
   'anlagen',
 ];
 
@@ -142,6 +145,7 @@ const ORT: Record<PortfolioBausteinId, BausteinOrt> = {
   messstellen: { leiste: false, spalte: false },
   energiebilanz: { leiste: false, spalte: false },
   kennzahlen: { leiste: false, spalte: false },
+  bewertung: { leiste: false, spalte: false },
   // Die Tabelle SELBST — sie steht immer, und immer zuletzt.
   anlagen: { leiste: false, spalte: false },
 };
@@ -182,7 +186,7 @@ export const UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = [
  * (`uebersichtBausteine.bausteineMitInhalt`), nicht eine Kennzahl der Anlagen — ein Baustein ohne Inhalt wird nicht
  * angeboten und nicht gezeigt.
  */
-export const UEMS_UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = ['messstellen', 'energiebilanz', 'kennzahlen'];
+export const UEMS_UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = ['messstellen', 'energiebilanz', 'kennzahlen', 'bewertung'];
 
 /**
  * Wie dicht die Fläche rendert — die EINZIGE Wirkung der Betriebsart neben der

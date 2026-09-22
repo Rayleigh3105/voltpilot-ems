@@ -9,10 +9,12 @@ import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.BerichtAbgelehnt;
 import com.voltpilot.api.uems.BerichtAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.BerichtRegeln;
+import com.voltpilot.api.uems.BerichtRepository;
 import com.voltpilot.api.uems.BerichtRepository.AnstossZeile;
 import com.voltpilot.api.uems.BerichtRepository.Kopf;
 import com.voltpilot.api.uems.BerichtRepository.StandZeile;
 import com.voltpilot.api.uems.BerichtService;
+import com.voltpilot.api.uems.BewertungFrist;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.BerichtDto;
 import com.voltpilot.api.zugriff.Recht;
@@ -286,7 +288,22 @@ public class BerichtController {
                 BerichtRegeln.zeitraum(k.zeitraumArt(), k.schluessel(), k.zone()).bezeichnung(), k.zeitzone(),
                 new BerichtDto.Person(k.angelegtVonName(), null), utc(k.angelegtAm()), utc(k.archiviertAm()),
                 u.standZeichen(), u.standText(), u.neuesteNr(), utc(u.entwurfDatenstand()),
-                BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(k.vorlage()) ? k.wiedervorlageMonate() : null);
+                BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(k.vorlage()) ? k.wiedervorlageMonate() : null,
+                ueberpruefung(u.ueberpruefung()));
+    }
+
+    private static BerichtDto.Ueberpruefung ueberpruefung(BerichtService.Ueberpruefung u) {
+        if (u == null) {
+            return null;
+        }
+        BewertungFrist.Frist f = u.frist();
+        return new BerichtDto.Ueberpruefung(f.standNr(), f.standVom().toString(), f.wiedervorlageMonate(),
+                f.faelligAm() == null ? null : f.faelligAm().toString(), f.faellig(), f.faelligSeitTagen(),
+                f.abgeloestDurch(), (int) u.einsaetze().stream().filter(BerichtRepository.EinsatzLage::wesentlich).count(),
+                u.einsaetze().stream().mapToInt(BerichtRepository.EinsatzLage::offeneBedarfe).sum(),
+                BewertungFrist.verantwortliche(u.einsaetze()).stream()
+                        .map(v -> new BerichtDto.Verantwortliche(v.name(), v.einsaetze())).toList(),
+                BewertungFrist.ohneVerantwortliche(u.einsaetze()));
     }
 
     private static BerichtDto.StandKurz kurz(StandZeile s) {

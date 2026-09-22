@@ -14,6 +14,7 @@
  * Reines Modul: keine React-Importe, kein Netzwerk.
  */
 import type { Bilanz, BilanzEingang, Kennzahl, MessstelleRegisterAbdeckung, MessstellenRegister } from './api';
+import type { BewertungFristBild } from './bewertungFrist';
 import { dez, dezText } from './bezugsdaten';
 import { UEMS_MESSSTELLE, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
 import { amStandort } from './kennzahlKarte';
@@ -23,7 +24,7 @@ import { ebene as ebenenSumme, gebaeude as gebaeudeSicht, type GebaeudeZeile, ty
 import { zahl } from './uemsErgebnis';
 
 /** Die drei Bausteine in der Reihenfolge von Ü1 — zugleich ihre Schlüssel im Katalog (`anwendungen/catalog.json`). */
-export type UebersichtBausteinId = 'messstellen' | 'energiebilanz' | 'kennzahlen';
+export type UebersichtBausteinId = 'messstellen' | 'energiebilanz' | 'kennzahlen' | 'bewertung';
 
 // ---------------------------------------------------------------------------------------------- Messstellen
 
@@ -372,10 +373,13 @@ export function bausteineMitInhalt(i: {
   energiebilanz: EnergiebilanzBild | null;
   gebaeude: readonly GebaeudeZeileBild[];
   kennzahlen: readonly Kennzahl[] | null;
+  /** AP-16 IP-24: der Frist-Baustein — nur mit einer gültigen Bewertung mit Stand (`bewertungFrist.ts`). */
+  bewertung?: BewertungFristBild | null;
 }): UebersichtBausteinId[] {
   const out: UebersichtBausteinId[] = [];
   if (i.messstellen) out.push('messstellen');
   if (i.energiebilanz || i.gebaeude.length > 0) out.push('energiebilanz');
   if (i.kennzahlen) out.push('kennzahlen');
+  if (i.bewertung) out.push('bewertung');
   return out;
 }
